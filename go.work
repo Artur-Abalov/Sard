@@ -1,0 +1,8 @@
+go 1.27.1
+
+use (
+	./agent
+	./agent/plugins/sdk
+	./cli
+	./proto/gen/go
+)
