@@ -1,0 +1,107 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Artur Abalov
+
+syntax = "proto3";
+
+// Contract between sard-server and sard-agent.
+//
+// The agent is always the client: it dials the server over mTLS, registers,
+// then opens a long-lived bidirectional stream. The server never connects
+// to the agent; it sends commands over the stream the agent opened. Backup
+// data never travels over this API: the agent writes it straight to storage.
+package sard.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// AgentService is implemented by sard-server and called by sard-agent.
+service AgentService {
+  // Register announces the agent and its capabilities. Called on every
+  // agent start; the server returns a stable id for the host.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Connect is the command channel. The agent opens it after Register and
+  // keeps it open; heartbeats and step results flow up, commands flow down.
+  rpc Connect(stream ConnectRequest) returns (stream ConnectResponse);
+}
+
+// RegisterRequest describes the agent to the server.
+message RegisterRequest {
+  // Host name as reported by the operating system; shown in the UI.
+  string hostname = 1;
+  // Version of the sard-agent binary, e.g. "0.1.0" or a git describe string.
+  string agent_version = 2;
+  // Source plugins compiled into this agent.
+  repeated Plugin plugins = 3;
+}
+
+// Plugin is a source plugin available on the agent.
+message Plugin {
+  // Unique plugin name, e.g. "postgresql".
+  string name = 1;
+  // JSON Schema (draft 2020-12) of the plugin configuration; the UI renders
+  // configuration forms from it.
+  string config_schema = 2;
+}
+
+// RegisterResponse identifies the agent in all later calls.
+message RegisterResponse {
+  // Server-assigned agent id. The agent sends it in every Heartbeat.
+  string agent_id = 1;
+}
+
+// ConnectRequest is one message from the agent to the server.
+message ConnectRequest {
+  oneof message {
+    // Periodic liveness signal.
+    Heartbeat heartbeat = 1;
+    // Outcome of a command previously received from the server.
+    StepResult step_result = 2;
+  }
+}
+
+// Heartbeat tells the server the agent is alive.
+message Heartbeat {
+  // Id returned by Register.
+  string agent_id = 1;
+  // Agent clock at send time; lets the server detect clock skew.
+  google.protobuf.Timestamp sent_at = 2;
+}
+
+// StepResult reports how a RunStep command ended.
+message StepResult {
+  // Id of the command this result answers.
+  string command_id = 1;
+  // Final state of the step.
+  StepStatus status = 2;
+  // Human-readable detail; empty on success.
+  string message = 3;
+  // Snapshot id in the storage repository, when the step produced one.
+  string snapshot_id = 4;
+}
+
+// StepStatus is the final state of a step.
+enum StepStatus {
+  STEP_STATUS_UNSPECIFIED = 0;
+  // The step finished successfully.
+  STEP_STATUS_SUCCEEDED = 1;
+  // The step failed; see StepResult.message.
+  STEP_STATUS_FAILED = 2;
+}
+
+// ConnectResponse is one message from the server to the agent.
+message ConnectResponse {
+  oneof message {
+    // Execute one workflow step.
+    RunStep run_step = 1;
+  }
+}
+
+// RunStep asks the agent to execute one workflow step with a plugin.
+message RunStep {
+  // Server-generated id; echoed in StepResult.command_id.
+  string command_id = 1;
+  // Name of the plugin that executes the step, e.g. "postgresql".
+  string plugin = 2;
+  // Plugin configuration as JSON, valid against the plugin's config_schema.
+  string config_json = 3;
+}

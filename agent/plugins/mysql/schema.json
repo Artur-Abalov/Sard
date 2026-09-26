@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MySQL",
+  "type": "object",
+  "properties": {
+    "host": { "type": "string", "title": "Host", "default": "localhost" },
+    "port": { "type": "integer", "title": "Port", "minimum": 1, "maximum": 65535, "default": 3306 },
+    "database": { "type": "string", "title": "Database" },
+    "user": { "type": "string", "title": "User" }
+  },
+  "required": ["database", "user"],
+  "additionalProperties": false
+}

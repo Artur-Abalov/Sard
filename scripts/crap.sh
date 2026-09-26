@@ -25,7 +25,8 @@ case "$m" in
     [ "$m" = sdk ] && dir="$ROOT/agent/plugins/sdk"
     gowork="${GOWORK:-}"
     [ "$m" = tools ] && gowork=off
-    (cd "$dir" && GOWORK="$gowork" go test -count=1 -coverprofile=.cover.out ./... >/dev/null)
+    pkgs="$(cd "$dir" && GOWORK="$gowork" go list ./... | paste -sd, -)"
+    (cd "$dir" && GOWORK="$gowork" go test -count=1 -coverpkg="$pkgs" -coverprofile=.cover.out ./... >/dev/null)
     "$BIN/crap" -go-profile "$dir/.cover.out" -go-src "$dir" -top "$top" || true
     ;;
   *)

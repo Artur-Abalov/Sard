@@ -64,9 +64,10 @@ server — don't write a test for it in place.
    Disabling a test, weakening a threshold, `-x test`, `//nolint`,
    `t.Skip` — all forbidden (`scripts/claude/guard*.sh` enforce this).
 3. **Test first, code second.**
-4. **Specification before implementation** for product code: the
+4. **Specification before implementation** for product features: the
    `/ship-feature` pipeline (specifier → coder → cleaner → architect →
-   hardener). Configuration and tooling are not run through it.
+   hardener). Configuration, tooling and the initial skeleton are not run
+   through it, but still pass `make gate`.
 5. **Role boundaries are respected.** coder doesn't refactor unrelated
    code, cleaner doesn't change behavior, architect writes nothing.
 6. **Every source file carries an SPDX header** (`AGPL-3.0-only`, or
@@ -81,6 +82,11 @@ server — don't write a test for it in place.
 ## Commands
 
 ```bash
+make proto                    generate proto/gen/go (commit the result)
+make build                    agent/bin/sard-agent, cli/bin/sardctl
+make test                     all test suites
+make lint                     license-check, buf lint, gofmt/vet/golangci-lint
+make license-check            SPDX headers match the directory's license
 make tools                    build pinned dev tools into .bin/
 make gate                     full quality gate, all modules
 make gate-fast                same without mutation testing

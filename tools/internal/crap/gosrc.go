@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -56,8 +57,9 @@ func oneIf(b bool) int {
 }
 
 // ScanGo parses every non-test, non-generated .go file under root and
-// returns its functions. Directories named vendor or testdata and hidden
-// directories are skipped.
+// returns its functions. Directories named vendor or testdata, hidden
+// directories and nested modules (directories with their own go.mod) are
+// skipped.
 func ScanGo(root string) ([]GoFunc, error) {
 	s := &scanner{root: root, fset: token.NewFileSet()}
 	err := filepath.WalkDir(root, s.visit)
@@ -100,10 +102,15 @@ func skipDir(path, root, name string) error {
 	if path == root {
 		return nil
 	}
-	if name == "vendor" || name == "testdata" || strings.HasPrefix(name, ".") {
+	if name == "vendor" || name == "testdata" || strings.HasPrefix(name, ".") || isModuleRoot(path) {
 		return filepath.SkipDir
 	}
 	return nil
+}
+
+func isModuleRoot(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, "go.mod"))
+	return err == nil
 }
 
 func isMeasuredGoFile(name string) bool {

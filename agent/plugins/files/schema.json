@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Files",
+  "type": "object",
+  "properties": {
+    "paths": { "type": "array", "title": "Paths", "items": { "type": "string" }, "minItems": 1 },
+    "exclude": { "type": "array", "title": "Exclude patterns", "items": { "type": "string" } }
+  },
+  "required": ["paths"],
+  "additionalProperties": false
+}

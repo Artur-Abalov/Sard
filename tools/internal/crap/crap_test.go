@@ -189,6 +189,8 @@ func testModule(t *testing.T) string {
 	writeFile(t, filepath.Join(root, "vendor", "v.go"), "package v\n\nfunc Skip() {}\n")
 	writeFile(t, filepath.Join(root, ".hidden", "h.go"), "package h\n\nfunc Skip() {}\n")
 	writeFile(t, filepath.Join(root, "README.md"), "not go")
+	writeFile(t, filepath.Join(root, "nested", "go.mod"), "module example.com/m/nested\n")
+	writeFile(t, filepath.Join(root, "nested", "n.go"), "package nested\n\nfunc Skip() {}\n")
 	return root
 }
 

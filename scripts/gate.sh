@@ -56,7 +56,11 @@ gate_go() {
   gate_go_basic "$m"
   local profile="$dir/.cover.out"
   say "$m" "tests + coverage >= ${COVERAGE_MIN}%"
-  (cd "$dir" && GOWORK="$(go_env "$m")" go test -count=1 -coverprofile="$profile" ./...) || die "$m: tests"
+  # Coverage counts every package of this module hit by any of its tests
+  # (e.g. plugins exercised by the registry contract test), nothing else.
+  local pkgs
+  pkgs="$(cd "$dir" && GOWORK="$(go_env "$m")" go list ./... | paste -sd, -)"
+  (cd "$dir" && GOWORK="$(go_env "$m")" go test -count=1 -coverpkg="$pkgs" -coverprofile="$profile" ./...) || die "$m: tests"
   local total
   total="$(cd "$dir" && GOWORK="$(go_env "$m")" go tool cover -func="$profile" | awk '/^total:/ {sub("%","",$3); print $3}')"
   echo "coverage: ${total}%"
