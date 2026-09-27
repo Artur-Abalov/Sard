@@ -19,9 +19,10 @@ GO_TOOLS := \
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc \
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint \
 	github.com/avito-tech/go-mutesting/cmd/go-mutesting \
+	github.com/goreleaser/nfpm/v2/cmd/nfpm \
 	./cmd/crap
 
-.PHONY: tools gate gate-fast proto build build-agent build-cli test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check up down openapi
+.PHONY: tools gate gate-fast proto build build-agent build-cli package test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check up down openapi
 
 ## proto: generate Go code from proto/ into proto/gen/go (committed)
 proto: tools
@@ -36,6 +37,10 @@ build: build-agent build-cli
 
 build-agent:
 	cd agent && go build -ldflags "$(LDFLAGS)" -o bin/sard-agent ./cmd/sard-agent
+
+## package: sard-agent + pinned restic as tar.gz, deb and rpm for amd64/arm64 in dist/
+package: tools
+	VERSION=$(VERSION) ./scripts/package-agent.sh
 
 build-cli:
 	cd cli && go build -ldflags "$(LDFLAGS)" -o bin/sardctl ./cmd/sardctl

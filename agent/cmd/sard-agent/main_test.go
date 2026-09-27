@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -110,5 +111,29 @@ func TestMainProcess(t *testing.T) {
 	out, err := cmd.Output()
 	if err != nil || string(out) != "sard-agent dev\n" {
 		t.Fatalf("err = %v, out = %q", err, out)
+	}
+}
+
+// Without restic.path the agent runs the restic shipped next to it.
+func TestResticPath(t *testing.T) {
+	exe := func() (string, error) { return "/opt/sard/bin/sard-agent", nil }
+	if got, err := resticPath("", exe); got != "/opt/sard/bin/restic" || err != nil {
+		t.Errorf("default = %q, %v", got, err)
+	}
+	if got, err := resticPath("/usr/bin/restic", exe); got != "/usr/bin/restic" || err != nil {
+		t.Errorf("configured = %q, %v", got, err)
+	}
+	broken := func() (string, error) { return "", errors.ErrUnsupported }
+	if _, err := resticPath("", broken); !errors.Is(err, errors.ErrUnsupported) || !strings.HasPrefix(err.Error(), "restic.path: ") {
+		t.Errorf("no executable: %v", err)
+	}
+}
+
+func TestStartStopsWhenResticCannotBeLocated(t *testing.T) {
+	cfg := writeConfig(t, "server:\n  address: sard.example.com:9090\n")
+	broken := func() (string, error) { return "", errors.ErrUnsupported }
+	err := start(context.Background(), cfg, io.Discard, fixedHostname, broken)
+	if !errors.Is(err, errors.ErrUnsupported) {
+		t.Fatalf("err = %v", err)
 	}
 }

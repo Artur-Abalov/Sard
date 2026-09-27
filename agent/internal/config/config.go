@@ -15,6 +15,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -30,6 +31,16 @@ type Config struct {
 	Secrets map[string]string `yaml:"secrets"`
 	// Scripts maps a script name to the executable allowlisted for ACTION_RUN.
 	Scripts map[string]string `yaml:"scripts"`
+	Restic  Restic            `yaml:"restic"`
+}
+
+// Restic locates the restic binary shipped with the agent
+// (docs/adr/0017-restic-shipped-with-agent.md). Both fields are optional.
+type Restic struct {
+	// Path is the restic executable; empty means "restic" next to sard-agent.
+	Path string `yaml:"path"`
+	// CacheDir is restic's cache; empty means /var/cache/sard/restic.
+	CacheDir string `yaml:"cache_dir"`
 }
 
 // Server is where the agent dials in. The agent never listens.
@@ -66,6 +77,9 @@ var ErrNoServerAddress = errors.New("server.address is required")
 // ErrInvalidRepository is returned for an incomplete or duplicate repository.
 var ErrInvalidRepository = errors.New("invalid repository")
 
+// ErrInvalidRestic is returned for a relative restic.path or restic.cache_dir.
+var ErrInvalidRestic = errors.New("want an absolute path")
+
 // Load reads and validates the file at path.
 func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)
@@ -90,6 +104,9 @@ func (c Config) validate() error {
 	if c.Server.Address == "" {
 		return ErrNoServerAddress
 	}
+	if err := c.Restic.validate(); err != nil {
+		return err
+	}
 	var seen []string
 	for i, r := range c.Repositories {
 		if err := r.validate(seen); err != nil {
@@ -110,6 +127,15 @@ func (r Repository) validate(seen []string) error {
 		return fmt.Errorf("%w: %q: url is required", ErrInvalidRepository, r.Name)
 	case r.PasswordFile == "":
 		return fmt.Errorf("%w: %q: password_file is required", ErrInvalidRepository, r.Name)
+	}
+	return nil
+}
+
+func (r Restic) validate() error {
+	for _, f := range []struct{ key, value string }{{"restic.path", r.Path}, {"restic.cache_dir", r.CacheDir}} {
+		if f.value != "" && !filepath.IsAbs(f.value) {
+			return fmt.Errorf("%s: %w, got %q", f.key, ErrInvalidRestic, f.value)
+		}
 	}
 	return nil
 }

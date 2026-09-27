@@ -67,6 +67,7 @@ gate_go() {
   awk -v t="$total" -v min="$COVERAGE_MIN" 'BEGIN { exit !(t >= min) }' || die "$m: coverage ${total}% < ${COVERAGE_MIN}%"
   say "$m" "CRAP <= $CRAP_MAX"
   "$BIN/crap" -go-profile "$profile" -go-src "$dir" -threshold "$CRAP_MAX" || die "$m: CRAP"
+  [ "$m" = agent ] && gate_agent_integration
   [ "$mode" = fast ] && return 0
   say "$m" "mutation score >= $MUTATION_MIN"
   local log score
@@ -77,6 +78,17 @@ gate_go() {
   [ -n "$score" ] || { tail -20 "$log"; die "$m: go-mutesting produced no score"; }
   echo "mutation score: $score"
   awk -v s="$score" -v min="$MUTATION_MIN" 'BEGIN { exit !(s >= min) }' || die "$m: mutation score $score < $MUTATION_MIN"
+}
+
+# Integration tests run the pinned restic (agent/internal/restic/restic-version)
+# against a local repository in temporary directories.
+gate_agent_integration() {
+  local dir="$ROOT/agent"
+  say agent "integration tests with the pinned restic"
+  "$ROOT/scripts/fetch-restic.sh" || die "agent: fetch restic"
+  (cd "$dir" && go vet -tags integration ./internal/restic/...) || die "agent: go vet (integration)"
+  (cd "$dir" && "$BIN/golangci-lint" run --build-tags integration --config "$ROOT/.golangci.yml" ./internal/restic/...) || die "agent: golangci-lint (integration)"
+  (cd "$dir" && go test -count=1 -tags integration ./internal/restic/...) || die "agent: integration tests"
 }
 
 gate_gen() {

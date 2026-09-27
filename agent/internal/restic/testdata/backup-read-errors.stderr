@@ -1,0 +1,4 @@
+{"message_type":"error","error":{"message":"openfile for readdirnames failed: open /tmp/sardcap2/data/locked: permission denied"},"during":"scan","item":"/tmp/sardcap2/data/locked"}
+{"message_type":"error","error":{"message":"openfile for readdirnames failed: open /tmp/sardcap2/data/locked: permission denied"},"during":"archival","item":"/tmp/sardcap2/data/locked"}
+{"message_type":"error","error":{"message":"open /tmp/sardcap2/data/sub/unreadable.txt: permission denied"},"during":"archival","item":"/tmp/sardcap2/data/sub/unreadable.txt"}
+{"message_type":"exit_error","code":3,"message":"Warning: at least one source file could not be read"}
