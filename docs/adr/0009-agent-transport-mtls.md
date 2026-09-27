@@ -1,6 +1,6 @@
 # 0009 — Транспорт агента: исходящий gRPC и mTLS (план)
 
-- Статус: принято; mTLS не реализован
+- Статус: принято; CA и TLS на порту — ADR 0014 (2026-09-27); проверка клиентского сертификата — S3
 - Дата: 2026-09-26
 
 ## Решение
@@ -17,9 +17,10 @@
 - В каркасе все RPC обоих сервисов отвечают `UNIMPLEMENTED` (сервер) / `ErrNotImplemented` (клиент агента); это проверяется тестами.
 
 ## План mTLS (не в каркасе)
-1. Сервер выпускает сертификаты агентов своим CA по `Enroll`; продление — `RenewCertificate`.
-2. `EnrollmentService` и `AgentService` на разных портах или слушателях: первый — серверный TLS, второй — SSL bundle Spring Boot с `spring.grpc.server.ssl.client-auth=require`. Сейчас оба на одном порту без TLS.
+1. Сервер выпускает сертификаты агентов своим CA по `Enroll`; продление — `RenewCertificate`. CA — ADR 0014.
+2. ~~`EnrollmentService` и `AgentService` на разных портах или слушателях: первый — серверный TLS, второй — SSL bundle Spring Boot с `spring.grpc.server.ssl.client-auth=require`.~~ Изменено 2026-09-27 (ADR 0014): один порт, TLS всегда, `client-auth=optional`. Клиентский сертификат обязателен для всего, кроме `EnrollmentService`, — это проверяет перехватчик (S3). Причины: у агента один `server.address`, Spring Boot поднимает один сетевой gRPC-сервер, оператору нужен один открытый порт.
 3. У агента — `credentials.NewTLS` с CA bundle из `EnrollResponse` и клиентским сертификатом.
+4. Идентичность агента в сертификате — URI SAN `sard://tenants/<tenant>/agents/<agent>` (ADR 0014).
 
 ## Отвергнуто
 - Сервер подключается к агентам — требует входящих портов на каждом хосте.

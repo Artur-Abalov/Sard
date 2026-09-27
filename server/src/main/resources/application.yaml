@@ -16,8 +16,20 @@ spring:
   grpc:
     server:
       port: ${SARD_GRPC_PORT:9090}
+      # TLS always (ADR 0014). Client certificates are optional at the handshake so that
+      # EnrollmentService works without one; AgentService requires one in its interceptor.
+      # secure: presented client certificates are checked against the Sard CA.
+      ssl:
+        bundle: sard-grpc
+        client-auth: optional
+        secure: true
 server:
   port: ${SARD_HTTP_PORT:8080}
+sard:
+  pki:
+    # Holds the CA key; back it up separately from the database (docs/operations/pki.md).
+    dir: ${SARD_PKI_DIR:/var/lib/sard/pki}
+    server-names: ${SARD_PKI_SERVER_NAMES:localhost,127.0.0.1,::1}
 management:
   endpoints:
     web:
