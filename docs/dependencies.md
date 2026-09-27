@@ -25,3 +25,35 @@
 | google.golang.org/grpc/cmd/protoc-gen-go-grpc | v1.6.2 | Apache-2.0 | генерация gRPC-стабов |
 | github.com/golangci/golangci-lint/v2 | v2.14.0 | GPL-3.0 | линтер; запускается, не линкуется и не распространяется — на лицензию Sard не влияет |
 | github.com/avito-tech/go-mutesting | v0.0.0-20251226130216-48d0401f00fb | MIT | мутационное тестирование Go |
+
+## Сервер (Kotlin, Gradle)
+
+Версии без явного номера управляются BOM Spring Boot 4.1.1. Лицензии — из POM на Maven Central.
+
+| Зависимость | Версия | Лицензия | Где | Зачем |
+|---|---|---|---|---|
+| Kotlin stdlib, kotlin-reflect | 2.4.20 | Apache-2.0 | runtime | язык; reflect нужен Spring/Jackson |
+| spring-boot-starter-webmvc (Spring Framework 7, Tomcat 11) | 4.1.1 | Apache-2.0 | runtime | REST `/api/v1/status` |
+| spring-boot-starter-actuator | 4.1.1 | Apache-2.0 | runtime | `/actuator/health` |
+| spring-boot-starter-data-jpa (Hibernate ORM 7.4, jakarta.persistence-api 3.2) | 4.1.1 | Apache-2.0; persistence-api — EPL-2.0 **или** EDL-1.0 (BSD-3), используем EDL | runtime | таблица `agents` |
+| spring-boot-starter-flyway + flyway-database-postgresql | 4.1.1 / 12.4.0 | Apache-2.0 | runtime | миграции |
+| org.postgresql:postgresql | 42.7.13 | BSD-2-Clause | runtime | JDBC-драйвер |
+| spring-boot-starter-grpc-server (spring-grpc-core 1.1.1, grpc-netty 1.83.1) | 4.1.1 | Apache-2.0 | runtime | gRPC-сервер `AgentService` |
+| springdoc-openapi-starter-webmvc-api (без Swagger UI) | 3.1.1 | Apache-2.0 | runtime | `/v3/api-docs`, из него генерируется клиент веба |
+| tools.jackson.module:jackson-module-kotlin | 3.x (BOM) | Apache-2.0 | runtime | JSON для Kotlin-классов |
+| proto-jvm: grpc-protobuf, grpc-stub, grpc-kotlin-stub, protobuf-java, kotlinx-coroutines-core | 1.83.1 / 1.5.0 / 4.35.1 / 1.10.2 | Apache-2.0; protobuf-java — BSD-3-Clause | runtime | JVM-стабы контракта |
+| spring-boot-starter-webmvc-test, spring-boot-starter-grpc-server-test, spring-boot-testcontainers | 4.1.1 | Apache-2.0 | только тесты | тестовая инфраструктура |
+| testcontainers-postgresql, testcontainers-junit-jupiter | 2.0.5 | MIT | только тесты | настоящий PostgreSQL в тестах |
+| kotlin-test-junit5 | 2.4.20 | Apache-2.0 | только тесты | assert-функции |
+| mutflow (плагин, core, runtime, junit6) | 1.5.0 | Apache-2.0 | тесты; `mutflow-core` (аннотации) в runtime-classpath, мутированный код в jar не попадает | мутационное тестирование (ADR 0006) |
+
+## Инструменты сборки сервера (в поставку не входят)
+
+| Инструмент | Версия | Лицензия | Зачем |
+|---|---|---|---|
+| Gradle (wrapper) | 9.7.1 | Apache-2.0 | сборка |
+| com.google.protobuf (Gradle-плагин) + protoc, protoc-gen-grpc-java, protoc-gen-grpc-kotlin | 0.10.0 / 4.35.1 / 1.83.1 / 1.5.0 | BSD-3-Clause / Apache-2.0 | генерация JVM-кода из proto |
+| io.spring.dependency-management | 1.1.7 | Apache-2.0 | BOM Spring Boot |
+| detekt | 2.0.0-alpha.6 | Apache-2.0 | статический анализ, сложность ≤ 8 |
+| Spotless + ktlint | 8.10.3 / 1.8.0 | Apache-2.0 / MIT | форматирование Kotlin |
+| JaCoCo | 0.8.15 | EPL-2.0 | покрытие; агент только в тестовой JVM |

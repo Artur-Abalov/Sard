@@ -13,7 +13,7 @@ executed; a surviving mutant tells you nobody checks its result.
 | Module | Command | Where survivors are listed |
 |---|---|---|
 | sdk, agent, cli, tools (Go) | `./scripts/gate.sh <module>` (runs `go-mutesting`) | `FAIL "...file.go.N"` lines; rerun `cd <dir> && ../.bin/go-mutesting --verbose ./<pkg>` for diffs |
-| server (Kotlin) | `./gradlew :server:mutationTest` | see `docs/adr/0006-mutation-testing.md` for the tool and its report path |
+| server (Kotlin) | `./scripts/gate.sh server` (runs `./gradlew -Pmutflow.enabled=true :server:test --rerun`) | mutflow summary in `server/build/test-results/test/*.xml` ("MUTATION TESTING SUMMARY"); any survivor fails the build (ADR 0006) |
 | web, proto, proto/gen/go | not mutation-tested | — |
 
 The threshold is a mutation score of 0.80, defined once in
@@ -37,9 +37,15 @@ The threshold is a mutation score of 0.80, defined once in
    removed, document why in the report.
 
    **Tool noise** — a mutation the tool should not have produced
-   (generated code, compiler-generated Kotlin bytecode). Exclude it via
-   the tool's configuration with a written justification, never via
-   fake tests.
+   (generated code). Exclude it via the tool's configuration with a
+   written justification, never via fake tests. In Kotlin the only
+   allowed suppression is `// mutflow:falsePositive <reason>` for a
+   proven equivalent mutant; `mutflow:ignore`, `@SuppressMutations` and
+   LENIENT/DISABLED modes are forbidden.
+
+   mutflow only mutates code reached inside `MutFlow.underTest { }` in a
+   `@MutFlowTest` class. A class with zero discovered mutations is not
+   "hardened" — say so in the report.
 
 ## What not to do
 

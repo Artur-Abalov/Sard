@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# Local stack: PostgreSQL + sard-server. Secrets come from deploy/.env
+# (copy deploy/.env.example); make up does that on first run.
+name: sard
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: sard
+      POSTGRES_USER: sard
+      POSTGRES_PASSWORD: ${SARD_DB_PASSWORD:?set SARD_DB_PASSWORD in deploy/.env}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sard -d sard"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  server:
+    image: sard-server:dev
+    build:
+      context: ..
+      dockerfile: deploy/server/Dockerfile
+    environment:
+      SARD_DB_URL: jdbc:postgresql://postgres:5432/sard
+      SARD_DB_USER: sard
+      SARD_DB_PASSWORD: ${SARD_DB_PASSWORD:?set SARD_DB_PASSWORD in deploy/.env}
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # The JRE image has bash but no curl.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /actuator/health HTTP/1.0\r\n\r\n' >&3 && grep -q UP <&3"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+      start_period: 10s
+
+volumes:
+  postgres-data:

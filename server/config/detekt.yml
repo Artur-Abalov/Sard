@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# Overrides on top of detekt's default config. Complexity limit: <= 8.
+complexity:
+  CyclomaticComplexMethod:
+    active: true
+    allowedComplexity: 8

@@ -101,8 +101,10 @@ gate_server() {
   say server "CRAP <= $CRAP_MAX"
   "$BIN/crap" -jacoco "$ROOT/server/build/reports/jacoco/test/jacocoTestReport.xml" -threshold "$CRAP_MAX" || die "server: CRAP"
   [ "$mode" = fast ] && return 0
-  say server "mutation testing"
-  (cd "$ROOT" && ./gradlew --no-daemon -q :server:mutationTest) || die "server: mutation testing"
+  # mutflow: a second, mutated compilation; any surviving mutant fails the
+  # build (stricter than MUTATION_MIN). See docs/adr/0006-mutation-testing.md.
+  say server "mutation testing (mutflow, no survivors)"
+  (cd "$ROOT" && ./gradlew --no-daemon -q -Pmutflow.enabled=true :server:test --rerun) || die "server: mutation testing"
 }
 
 gate_web() {

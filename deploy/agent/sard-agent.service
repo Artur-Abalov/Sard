@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# systemd unit for sard-agent. The agent only dials out to the server;
+# it opens no listening ports.
+[Unit]
+Description=Sard backup agent
+Documentation=https://github.com/Artur-Abalov/sard
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=sard-agent
+Group=sard-agent
+ExecStart=/usr/local/bin/sard-agent --config /etc/sard/agent.yaml
+Restart=on-failure
+RestartSec=10s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ReadWritePaths=/var/lib/sard-agent
+
+[Install]
+WantedBy=multi-user.target

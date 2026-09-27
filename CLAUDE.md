@@ -83,9 +83,11 @@ server — don't write a test for it in place.
 
 ```bash
 make proto                    generate proto/gen/go (commit the result)
-make build                    agent/bin/sard-agent, cli/bin/sardctl
-make test                     all test suites
-make lint                     license-check, buf lint, gofmt/vet/golangci-lint
+make build                    agent/bin/sard-agent, cli/bin/sardctl, server/build/libs/sard-server.jar
+make test                     all test suites (server tests need Docker: Testcontainers)
+make lint                     license-check, buf lint, gofmt/vet/golangci-lint, spotless, detekt
+make up / make down           PostgreSQL + sard-server via docker compose (deploy/)
+make openapi                  export the server's OpenAPI into web/src/api/openapi.json
 make license-check            SPDX headers match the directory's license
 make tools                    build pinned dev tools into .bin/
 make gate                     full quality gate, all modules
@@ -93,6 +95,8 @@ make gate-fast                same without mutation testing
 make gate M=tools             one module (proto gen sdk tools agent cli server web)
 ./scripts/gate.sh tools fast  same, direct
 ./scripts/crap.sh tools       CRAP table, worst first, never fails
+./gradlew :server:test        server tests, fast dev loop
+./gradlew :server:spotlessApply   format Kotlin
 ```
 
 ## Go
@@ -104,6 +108,10 @@ make gate M=tools             one module (proto gen sdk tools agent cli server w
 
 ## Kotlin
 
+- Mutation tests use mutflow (ADR 0006): `@MutFlowTest` on the class,
+  the call under test inside `MutFlow.underTest { }`. Survivors fail the
+  build; `mutflow:ignore` and `@SuppressMutations` are forbidden.
+- Generated gRPC code lives in `:proto-jvm` (`proto/jvm`), never in `server`.
 - `when` over a sealed type is exhaustive, no `else`.
 - Coroutine dispatchers are injected, not pulled from `Dispatchers`.
 - Generated `data class` methods, protobuf and serializers are not tested.

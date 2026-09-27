@@ -30,5 +30,6 @@ grep -Eq -- 't\.Skip(Now|f)?\(' <<<"$text" && block "skipping a Go test"
 grep -Eq -- '@(Disabled|Ignore)\b' <<<"$text" && block "disabling a JUnit test"
 grep -Eq -- '\b(it|test|describe)\.(skip|only|todo)\(|\bx(it|describe)\(' <<<"$text" && block "skipping or focusing a JS test"
 grep -Eq -- '//[[:space:]]*nolint|eslint-disable|@Suppress\("(detekt|Complex|LongMethod|TooMany)' <<<"$text" && block "silencing a linter"
+grep -Eq -- 'mutflow:ignore|@SuppressMutations|VerificationMode\.(LENIENT|DISABLED)|MUTFLOW_VERIFICATION_MODE' <<<"$text" && block "weakening mutation testing"
 
 exit 0

@@ -8,6 +8,8 @@ BIN := $(CURDIR)/.bin
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
 GO_MODULES := agent agent/plugins/sdk cli
+GRADLE := ./gradlew --no-daemon -q
+COMPOSE := docker compose -f deploy/docker-compose.yml --env-file deploy/.env
 
 GO_TOOLS := \
 	github.com/bufbuild/buf/cmd/buf \
@@ -17,7 +19,7 @@ GO_TOOLS := \
 	github.com/avito-tech/go-mutesting/cmd/go-mutesting \
 	./cmd/crap
 
-.PHONY: tools gate gate-fast proto build test lint lint-proto lint-go license-check
+.PHONY: tools gate gate-fast proto build test lint lint-proto lint-go lint-server license-check up down openapi
 
 ## proto: generate Go code from proto/ into proto/gen/go (committed)
 proto: tools
@@ -28,13 +30,33 @@ proto: tools
 build:
 	cd agent && go build -ldflags "$(LDFLAGS)" -o bin/sard-agent ./cmd/sard-agent
 	cd cli && go build -ldflags "$(LDFLAGS)" -o bin/sardctl ./cmd/sardctl
+	$(GRADLE) :server:bootJar -PsardVersion=$(VERSION)
 
 ## test: run every test suite
 test:
 	@for m in $(GO_MODULES); do echo "== go test $$m"; (cd $$m && go test -count=1 ./...) || exit 1; done
+	@echo "== server tests (Testcontainers: needs Docker)"
+	$(GRADLE) :server:test
 
 ## lint: licenses, formatting, static analysis
-lint: license-check lint-proto lint-go
+lint: license-check lint-proto lint-go lint-server
+
+lint-server:
+	$(GRADLE) :server:spotlessCheck :server:detekt
+
+## openapi: export the server's OpenAPI document for the web client
+openapi:
+	$(GRADLE) :server:test --tests 'dev.sard.server.SardServerIntegrationTest'
+	cp server/build/openapi/openapi.json web/src/api/openapi.json
+
+## up: start PostgreSQL + sard-server (builds the image on first run)
+up:
+	test -f deploy/.env || cp deploy/.env.example deploy/.env
+	$(COMPOSE) up -d --wait
+
+## down: stop the local stack (data volume is kept)
+down:
+	$(COMPOSE) down
 
 license-check:
 	./scripts/license-check.sh
