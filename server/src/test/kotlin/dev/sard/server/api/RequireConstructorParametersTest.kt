@@ -15,7 +15,11 @@ import kotlin.test.assertNull
 
 @MutFlowTest
 class RequireConstructorParametersTest {
-    private fun objectSchema(vararg properties: String) = ObjectSchema().apply { properties.forEach { addProperty(it, StringSchema()) } }
+    private fun objectSchema(vararg properties: String): ObjectSchema {
+        val schema = ObjectSchema()
+        properties.forEach { schema.addProperty(it, StringSchema()) }
+        return schema
+    }
 
     @Test
     fun `parameters without a default are required, nullable or not`() {

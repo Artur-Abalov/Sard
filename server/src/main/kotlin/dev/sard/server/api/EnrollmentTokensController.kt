@@ -31,7 +31,7 @@ data class CreateEnrollmentTokenRequest(
     val ttlSeconds: Long? = null,
 )
 
-@Schema(description = "A created token. The only response that carries the token string (docs/specs/enrollment-token.md)")
+@Schema(description = "A created token: the only response with the token string (docs/specs/enrollment-token.md)")
 data class CreatedEnrollmentToken(
     val id: UUID,
     @field:Schema(description = "sard_<secret>.<CA fingerprint>; shown once, the server keeps only its hash")
@@ -61,18 +61,34 @@ data class EnrollmentTokenPage(
     val nextCursor: String?,
 )
 
-/** Enrollment tokens (S2b defines the behavior). */
+/** What the token endpoints do; S2b defines the behavior and implements it. */
+interface EnrollmentTokensApi {
+    fun createEnrollmentToken(request: CreateEnrollmentTokenRequest): CreatedEnrollmentToken
+
+    fun listEnrollmentTokens(
+        status: EnrollmentTokenStatus?,
+        cursor: String?,
+        limit: Int,
+    ): EnrollmentTokenPage
+
+    fun getEnrollmentToken(tokenId: UUID): EnrollmentToken
+
+    fun revokeEnrollmentToken(tokenId: UUID): EnrollmentToken
+}
+
 @RestController
 @RequestMapping("/api/v1/enrollment-tokens", produces = [MediaType.APPLICATION_JSON_VALUE])
 @Tag(name = "enrollment-tokens")
-class EnrollmentTokensController {
+class EnrollmentTokensController(
+    private val api: EnrollmentTokensApi,
+) {
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Create a token", description = "The token string and command are in this response only.")
     @Unprocessable
     fun createEnrollmentToken(
         @RequestBody request: CreateEnrollmentTokenRequest,
-    ): CreatedEnrollmentToken = notImplemented()
+    ): CreatedEnrollmentToken = api.createEnrollmentToken(request)
 
     @GetMapping
     @Operation(summary = "List tokens", description = "Newest first.")
@@ -80,7 +96,7 @@ class EnrollmentTokensController {
         @RequestParam(required = false) status: EnrollmentTokenStatus?,
         @PageCursor @RequestParam(required = false) cursor: String?,
         @PageLimit @RequestParam(defaultValue = DEFAULT_LIMIT) limit: Int,
-    ): EnrollmentTokenPage = notImplemented()
+    ): EnrollmentTokenPage = api.listEnrollmentTokens(status, cursor, limit)
 
     @GetMapping("/{tokenId}")
     @ResponseStatus(HttpStatus.OK)
@@ -88,7 +104,7 @@ class EnrollmentTokensController {
     @NotFound
     fun getEnrollmentToken(
         @PathVariable tokenId: UUID,
-    ): EnrollmentToken = notImplemented()
+    ): EnrollmentToken = api.getEnrollmentToken(tokenId)
 
     @PostMapping("/{tokenId}/revoke")
     @ResponseStatus(HttpStatus.OK)
@@ -101,5 +117,5 @@ class EnrollmentTokensController {
     )
     fun revokeEnrollmentToken(
         @PathVariable tokenId: UUID,
-    ): EnrollmentToken = notImplemented()
+    ): EnrollmentToken = api.revokeEnrollmentToken(tokenId)
 }

@@ -480,11 +480,10 @@ export interface components {
             /**
              * Format: int64
              * @description Lifetime in seconds: from 5 minutes to 7 days; 24 hours when omitted
-             * @default 86400
              */
-            ttlSeconds: number | null;
+            ttlSeconds?: number | null;
         };
-        /** @description A created token. The only response that carries the token string (docs/specs/enrollment-token.md) */
+        /** @description A created token: the only response with the token string (docs/specs/enrollment-token.md) */
         CreatedEnrollmentToken: {
             /** Format: uuid */
             id: string;
@@ -660,7 +659,7 @@ export interface components {
              * @description Pass as afterSeq to continue: seq of the last line, or afterSeq when there are none
              */
             nextAfterSeq: number;
-            /** @description More lines are there already; false means the end for now, poll to follow a running step */
+            /** @description More lines are there already; false is the end for now, poll to follow a step */
             hasMore: boolean;
         };
         /** @description A page of enrollment tokens */

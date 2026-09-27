@@ -46,7 +46,10 @@ class OpenApiConfiguration {
             .components(
                 Components().addSecuritySchemes(
                     SESSION_SCHEME,
-                    SecurityScheme().type(SecurityScheme.Type.APIKEY).`in`(SecurityScheme.In.COOKIE).name(SESSION_COOKIE),
+                    SecurityScheme()
+                        .type(SecurityScheme.Type.APIKEY)
+                        .`in`(SecurityScheme.In.COOKIE)
+                        .name(SESSION_COOKIE),
                 ),
             ).addSecurityItem(SecurityRequirement().addList(SESSION_SCHEME))
 
@@ -76,12 +79,25 @@ fun describeUnauthorized(api: OpenAPI) {
  * present and null. Schemas are matched to classes of this package by name.
  */
 fun requireConstructorParameters(api: OpenAPI) {
-    for ((name, schema) in api.components?.schemas.orEmpty()) {
-        if (schema.properties.isNullOrEmpty()) continue
-        val parameters = apiClass(name)?.primaryConstructor?.parameters ?: continue
-        schema.required = parameters.filterNot { it.isOptional }.mapNotNull { it.name }.ifEmpty { null }
+    for ((name, schema) in objectSchemas(api)) {
+        apiClass(name)?.let { schema.required = requiredParameters(it) }
     }
 }
+
+private fun objectSchemas(api: OpenAPI): Map<String, Schema<*>> =
+    api.components
+        ?.schemas
+        .orEmpty()
+        .filterValues { !it.properties.isNullOrEmpty() }
+
+/** Names of the primary constructor's parameters without a default; null when there are none. */
+private fun requiredParameters(type: KClass<*>): List<String>? =
+    type.primaryConstructor
+        ?.parameters
+        .orEmpty()
+        .filterNot { it.isOptional }
+        .mapNotNull { it.name }
+        .ifEmpty { null }
 
 private fun apiClass(name: String): KClass<*>? =
     runCatching { Class.forName("${OpenApiConfiguration::class.java.packageName}.$name").kotlin }.getOrNull()

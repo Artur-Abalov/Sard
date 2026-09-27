@@ -85,17 +85,30 @@ data class AgentPage(
     val nextCursor: String?,
 )
 
+/** What the agent endpoints do; S8b implements it. */
+interface AgentsApi {
+    fun listAgents(
+        status: AgentStatus?,
+        cursor: String?,
+        limit: Int,
+    ): AgentPage
+
+    fun getAgent(agentId: UUID): AgentDetails
+}
+
 @RestController
 @RequestMapping("/api/v1/agents", produces = [MediaType.APPLICATION_JSON_VALUE])
 @Tag(name = "agents")
-class AgentsController {
+class AgentsController(
+    private val api: AgentsApi,
+) {
     @GetMapping
     @Operation(summary = "List agents")
     fun listAgents(
         @RequestParam(required = false) status: AgentStatus?,
         @PageCursor @RequestParam(required = false) cursor: String?,
         @PageLimit @RequestParam(defaultValue = DEFAULT_LIMIT) limit: Int,
-    ): AgentPage = notImplemented()
+    ): AgentPage = api.listAgents(status, cursor, limit)
 
     @GetMapping("/{agentId}")
     @ResponseStatus(HttpStatus.OK)
@@ -103,5 +116,5 @@ class AgentsController {
     @NotFound
     fun getAgent(
         @PathVariable agentId: UUID,
-    ): AgentDetails = notImplemented()
+    ): AgentDetails = api.getAgent(agentId)
 }

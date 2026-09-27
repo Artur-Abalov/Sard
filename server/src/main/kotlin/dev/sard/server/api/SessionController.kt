@@ -37,10 +37,21 @@ data class Session(
 )
 
 /** Administrator session in a cookie (D2); W1b implements it. */
+interface SessionApi {
+    fun createSession(request: SessionRequest)
+
+    fun getSession(): Session
+
+    fun deleteSession()
+}
+
+/** HTTP side of the session endpoints. */
 @RestController
 @RequestMapping("/api/v1/session")
 @Tag(name = "session", description = "Administrator sign-in")
-class SessionController {
+class SessionController(
+    private val api: SessionApi,
+) {
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @SecurityRequirements
@@ -49,7 +60,11 @@ class SessionController {
         responseCode = "204",
         description = "Signed in",
         headers = [
-            Header(name = "Set-Cookie", description = "sard_session; HttpOnly; SameSite=Strict", schema = Schema(type = "string")),
+            Header(
+                name = "Set-Cookie",
+                description = "sard_session; HttpOnly; SameSite=Strict",
+                schema = Schema(type = "string"),
+            ),
         ],
     )
     @ApiResponse(
@@ -60,20 +75,26 @@ class SessionController {
     @ApiResponse(
         responseCode = "429",
         description = "Too many failed attempts; sign-in is locked for a while",
-        headers = [Header(name = "Retry-After", description = "Seconds until the next attempt", schema = Schema(type = "integer"))],
+        headers = [
+            Header(
+                name = "Retry-After",
+                description = "Seconds until the next attempt",
+                schema = Schema(type = "integer"),
+            ),
+        ],
         content = [Content(mediaType = PROBLEM_JSON, schema = Schema(implementation = Problem::class))],
     )
     fun createSession(
         @RequestBody request: SessionRequest,
-    ): Unit = notImplemented()
+    ): Unit = api.createSession(request)
 
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Current session", description = "401 when there is none or it expired.")
-    fun getSession(): Session = notImplemented()
+    fun getSession(): Session = api.getSession()
 
     @DeleteMapping
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Sign out", description = "Ends the session and clears the cookie.")
     @ApiResponse(responseCode = "204", description = "Signed out")
-    fun deleteSession(): Unit = notImplemented()
+    fun deleteSession(): Unit = api.deleteSession()
 }

@@ -1440,7 +1440,6 @@
           "ttlSeconds" : {
             "type" : [ "integer", "null" ],
             "format" : "int64",
-            "default" : 86400,
             "description" : "Lifetime in seconds: from 5 minutes to 7 days; 24 hours when omitted",
             "maximum" : 604800,
             "minimum" : 300
@@ -1449,7 +1448,7 @@
       },
       "CreatedEnrollmentToken" : {
         "type" : "object",
-        "description" : "A created token. The only response that carries the token string (docs/specs/enrollment-token.md)",
+        "description" : "A created token: the only response with the token string (docs/specs/enrollment-token.md)",
         "properties" : {
           "id" : {
             "type" : "string",
@@ -1769,7 +1768,7 @@
           },
           "hasMore" : {
             "type" : "boolean",
-            "description" : "More lines are there already; false means the end for now, poll to follow a running step"
+            "description" : "More lines are there already; false is the end for now, poll to follow a step"
           }
         },
         "required" : [ "hasMore", "items", "nextAfterSeq" ]

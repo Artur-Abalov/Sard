@@ -110,14 +110,36 @@ data class LogPage(
     val items: List<LogLine>,
     @field:Schema(description = "Pass as afterSeq to continue: seq of the last line, or afterSeq when there are none")
     val nextAfterSeq: Long,
-    @field:Schema(description = "More lines are there already; false means the end for now, poll to follow a running step")
+    @field:Schema(description = "More lines are there already; false is the end for now, poll to follow a step")
     val hasMore: Boolean,
 )
+
+/** What the run endpoints do; S8b implements it. */
+interface RunsApi {
+    fun listRuns(
+        sourceId: UUID?,
+        agentId: UUID?,
+        status: List<RunStatus>?,
+        cursor: String?,
+        limit: Int,
+    ): RunPage
+
+    fun getRun(runId: UUID): Run
+
+    fun listStepLogs(
+        runId: UUID,
+        stepId: UUID,
+        afterSeq: Long,
+        limit: Int,
+    ): LogPage
+}
 
 @RestController
 @RequestMapping("/api/v1/runs", produces = [MediaType.APPLICATION_JSON_VALUE])
 @Tag(name = "runs")
-class RunsController {
+class RunsController(
+    private val api: RunsApi,
+) {
     @GetMapping
     @Operation(summary = "List runs", description = "Newest first. Filters combine with AND; status values with OR.")
     fun listRuns(
@@ -126,7 +148,7 @@ class RunsController {
         @RequestParam(required = false) status: List<RunStatus>?,
         @PageCursor @RequestParam(required = false) cursor: String?,
         @PageLimit @RequestParam(defaultValue = DEFAULT_LIMIT) limit: Int,
-    ): RunPage = notImplemented()
+    ): RunPage = api.listRuns(sourceId, agentId, status, cursor, limit)
 
     @GetMapping("/{runId}")
     @ResponseStatus(HttpStatus.OK)
@@ -134,7 +156,7 @@ class RunsController {
     @NotFound
     fun getRun(
         @PathVariable runId: UUID,
-    ): Run = notImplemented()
+    ): Run = api.getRun(runId)
 
     @GetMapping("/{runId}/steps/{stepId}/logs")
     @ResponseStatus(HttpStatus.OK)
@@ -152,5 +174,5 @@ class RunsController {
         )
         @RequestParam(defaultValue = "500")
         limit: Int,
-    ): LogPage = notImplemented()
+    ): LogPage = api.listStepLogs(runId, stepId, afterSeq, limit)
 }

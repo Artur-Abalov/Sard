@@ -157,7 +157,8 @@ class ApiContractIntegrationTest(
             }
         }
         val scheme = spec.path("components").path("securitySchemes").path("session")
-        assertEquals(listOf("apiKey", "cookie", "sard_session"), listOf("type", "in", "name").map { scheme.path(it).asString() })
+        val cookie = listOf("type", "in", "name").map { scheme.path(it).asString() }
+        assertEquals(listOf("apiKey", "cookie", "sard_session"), cookie)
         assertEquals(
             listOf("session"),
             spec
@@ -173,7 +174,8 @@ class ApiContractIntegrationTest(
     @Test
     fun `every operation describes its success response`() {
         for ((name, op) in operations()) {
-            assertTrue(op.path("responses").propertyNames().any { it.startsWith("2") }, "$name: ${op.path("responses")}")
+            val codes = op.path("responses").propertyNames()
+            assertTrue(codes.any { it.startsWith("2") }, "$name: $codes")
         }
     }
 
@@ -194,7 +196,9 @@ class ApiContractIntegrationTest(
     fun `token list and card never carry the token string`() {
         for (name in listOf("EnrollmentToken", "EnrollmentTokenPage")) {
             val text = schema(name).toString()
-            for (field in listOf("\"token\"", "enrollCommand", "secret")) assertFalse(text.contains(field), "$name: $text")
+            for (field in listOf("\"token\"", "enrollCommand", "secret")) {
+                assertFalse(text.contains(field), "$name: $text")
+            }
         }
         val created = schema("CreatedEnrollmentToken").path("required").strings()
         assertTrue(created.containsAll(listOf("id", "token", "enrollCommand", "expiresAt")), "$created")

@@ -84,28 +84,60 @@ data class SnapshotPage(
     val nextCursor: String?,
 )
 
+/** What the source endpoints do; S8b implements it. */
+interface SourcesApi {
+    fun listSources(
+        agentId: UUID?,
+        cursor: String?,
+        limit: Int,
+    ): SourcePage
+
+    fun createSource(source: SourceInput): Source
+
+    fun getSource(sourceId: UUID): Source
+
+    fun replaceSource(
+        sourceId: UUID,
+        source: SourceInput,
+    ): Source
+
+    fun deleteSource(sourceId: UUID)
+
+    fun startRun(sourceId: UUID): Run
+
+    fun listSourceSnapshots(
+        sourceId: UUID,
+        cursor: String?,
+        limit: Int,
+    ): SnapshotPage
+}
+
 @RestController
 @RequestMapping("/api/v1/sources", produces = [MediaType.APPLICATION_JSON_VALUE])
 @Tag(name = "sources")
-class SourcesController {
+class SourcesController(
+    private val api: SourcesApi,
+) {
     @GetMapping
     @Operation(summary = "List sources")
     fun listSources(
         @RequestParam(required = false) agentId: UUID?,
         @PageCursor @RequestParam(required = false) cursor: String?,
         @PageLimit @RequestParam(defaultValue = DEFAULT_LIMIT) limit: Int,
-    ): SourcePage = notImplemented()
+    ): SourcePage = api.listSources(agentId, cursor, limit)
 
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(
         summary = "Create a source",
-        description = "422 codes: unknown_agent, unknown_plugin, unknown_repository, invalid_config, validation_failed.",
+        description =
+            "422 codes: unknown_agent, unknown_plugin, unknown_repository, invalid_config, " +
+                "validation_failed.",
     )
     @Unprocessable
     fun createSource(
         @RequestBody source: SourceInput,
-    ): Source = notImplemented()
+    ): Source = api.createSource(source)
 
     @GetMapping("/{sourceId}")
     @ResponseStatus(HttpStatus.OK)
@@ -113,7 +145,7 @@ class SourcesController {
     @NotFound
     fun getSource(
         @PathVariable sourceId: UUID,
-    ): Source = notImplemented()
+    ): Source = api.getSource(sourceId)
 
     @PutMapping("/{sourceId}", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.OK)
@@ -123,7 +155,7 @@ class SourcesController {
     fun replaceSource(
         @PathVariable sourceId: UUID,
         @RequestBody source: SourceInput,
-    ): Source = notImplemented()
+    ): Source = api.replaceSource(sourceId, source)
 
     @DeleteMapping("/{sourceId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -133,7 +165,7 @@ class SourcesController {
     @RunActive
     fun deleteSource(
         @PathVariable sourceId: UUID,
-    ): Unit = notImplemented()
+    ): Unit = api.deleteSource(sourceId)
 
     @PostMapping("/{sourceId}/runs")
     @ResponseStatus(HttpStatus.CREATED)
@@ -145,7 +177,7 @@ class SourcesController {
     @RunActive
     fun startRun(
         @PathVariable sourceId: UUID,
-    ): Run = notImplemented()
+    ): Run = api.startRun(sourceId)
 
     @GetMapping("/{sourceId}/snapshots")
     @ResponseStatus(HttpStatus.OK)
@@ -155,5 +187,5 @@ class SourcesController {
         @PathVariable sourceId: UUID,
         @PageCursor @RequestParam(required = false) cursor: String?,
         @PageLimit @RequestParam(defaultValue = DEFAULT_LIMIT) limit: Int,
-    ): SnapshotPage = notImplemented()
+    ): SnapshotPage = api.listSourceSnapshots(sourceId, cursor, limit)
 }
