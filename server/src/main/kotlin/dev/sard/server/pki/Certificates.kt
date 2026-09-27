@@ -32,7 +32,6 @@ private val SERVER_VALIDITY = Duration.ofDays(90)
 
 /** Tolerates clocks behind the server's when checking the root and the server certificate. */
 private val BACKDATE = Duration.ofHours(1)
-private val IPV4 = Regex("""\d{1,3}(\.\d{1,3}){3}""")
 
 /** X.509 profiles of the file CA (ADR 0014). */
 internal object Certificates {
@@ -119,8 +118,8 @@ internal object Certificates {
     private fun serial(random: SecureRandom): BigInteger = BigInteger(SERIAL_BITS, random).setBit(SERIAL_BITS - 1)
 
     private fun generalName(name: String): GeneralName {
-        val ip = ':' in name || IPV4.matches(name)
-        return GeneralName(if (ip) GeneralName.iPAddress else GeneralName.dNSName, name)
+        val tag = if (ServerNames.isIpLiteral(name)) GeneralName.iPAddress else GeneralName.dNSName
+        return GeneralName(tag, name)
     }
 
     private fun sign(

@@ -6,8 +6,6 @@ package dev.sard.server.enrollment
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.CertificateAuthority
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.security.SecureRandom
@@ -30,8 +28,4 @@ class EnrollmentConfiguration {
         ca: CertificateAuthority,
         clock: Clock,
     ) = Enrollment(sessions, tokens, ca, clock, UuidV7(clock, SecureRandom()))
-
-    /** Enroll blocks on JDBC and signing; injected so tests and callers can choose. */
-    @Bean
-    fun enrollmentDispatcher(): CoroutineDispatcher = Dispatchers.IO
 }

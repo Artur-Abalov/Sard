@@ -75,6 +75,11 @@ jobs:
 
   server:
     runs-on: ubuntu-latest
+    env:
+      # Kotlin test class file names come from Cyrillic spec-quoted titles; the
+      # JVM derives file-name encoding (sun.jnu.encoding) from the process
+      # locale only, never from JVM flags.
+      LC_ALL: C.UTF-8
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6

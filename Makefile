@@ -8,7 +8,10 @@ BIN := $(CURDIR)/.bin
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
 GO_MODULES := agent agent/plugins/sdk cli
-GRADLE := ./gradlew --no-daemon -q
+# LC_ALL=C.UTF-8: Kotlin test class file names come from Cyrillic spec-quoted
+# titles; the JVM derives file-name encoding (sun.jnu.encoding) from the
+# process locale only, never from JVM flags.
+GRADLE := LC_ALL=C.UTF-8 ./gradlew --no-daemon -q
 # Git ref the proto contract must stay compatible with (buf breaking).
 PROTO_BASE ?= origin/main
 COMPOSE := docker compose -f deploy/docker-compose.yml --env-file deploy/.env

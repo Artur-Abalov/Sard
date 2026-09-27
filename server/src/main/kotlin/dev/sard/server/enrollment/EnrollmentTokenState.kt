@@ -5,7 +5,12 @@ package dev.sard.server.enrollment
 
 import java.time.Instant
 
-/** A token's state, computed at read time (decision 9): priority used > revoked > expired > active. */
+/**
+ * A token's state, computed at read time (decision 9): priority used > revoked > expired > active.
+ * The database (enrollment_tokens_revocation_check) guarantees a row is never both used and
+ * revoked, so in practice at most one of the first two branches below can ever apply; the order
+ * is kept because it is the order the rejection contract and this enum's own tests document.
+ */
 enum class EnrollmentTokenState {
     ACTIVE,
     USED,

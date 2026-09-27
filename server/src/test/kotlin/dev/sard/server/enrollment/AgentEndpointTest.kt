@@ -106,4 +106,10 @@ class AgentEndpointTest {
         val error = assertFailsWith<InvalidAgentEndpointException> { resolve("999.999.999.999:9090") }
         assertTrue("999.999.999.999" in error.message.orEmpty(), error.message.orEmpty())
     }
+
+    @Test
+    fun `an IPv4-mapped IPv6 server name covers the same address written in hex`() {
+        val names = listOf("::ffff:10.0.0.1")
+        assertEquals("[::ffff:a00:1]:9090", resolve("[::ffff:a00:1]:9090", names = names).address)
+    }
 }

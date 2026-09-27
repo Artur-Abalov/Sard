@@ -4,9 +4,13 @@
 package dev.sard.server.enrollment
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.agents.EnrollmentGrpcService
 import dev.sard.server.enrollment.EnrollmentRejectedException.Reason
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.resource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
@@ -41,6 +45,7 @@ class EnrollmentConcurrencyIntegrationTest(
     @Autowired private val ca: GatedCertificateAuthority,
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
+    @Autowired private val grpcService: EnrollmentGrpcService,
 ) {
     private val acme = UUID.randomUUID()
     private val csr = resource("agent-p256.csr")
@@ -143,33 +148,25 @@ class EnrollmentConcurrencyIntegrationTest(
 
     @Test
     fun `Регистрация, прерванная агентом до фиксации, не расходует токен`() {
+        // Goes through EnrollmentGrpcService, not Enrollment directly: the cancellation bridge
+        // (job?.isActive == false) lives there, and only there.
         val issued = newToken()
         ca.gate = CountDownLatch(1)
-        val pool = Executors.newFixedThreadPool(1)
-        val cancelled =
-            java.util.concurrent.atomic
-                .AtomicBoolean(false)
-        try {
-            val registration =
-                pool.submit(
-                    Callable {
-                        runCatching { enrollment.enroll(issued.reveal(), csr, "db1") { cancelled.get() } }
-                    },
-                )
-            val started = ca.entered.tryAcquire(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS)
-            assertTrue(started, "the registration never reached the CA")
-            cancelled.set(true)
-            ca.gate?.countDown()
-            val result = registration.get(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS)
+        val request = enrollRequest(issued.reveal(), csr)
+        val result =
+            runBlocking {
+                val call = async(Dispatchers.IO) { grpcService.enroll(request) }
+                val started = ca.entered.tryAcquire(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS)
+                assertTrue(started, "the registration never reached the CA")
+                call.cancel()
+                ca.gate?.countDown()
+                runCatching { call.await() }
+            }
 
-            assertTrue(result.isFailure, "a cancelled registration must not succeed")
-            assertTrue(result.exceptionOrNull() is CancellationException, "$result")
-            assertEquals(0, countAgents())
-            assertEquals(EnrollmentTokenState.ACTIVE, tokens.get(acme, issued.id)?.state)
-        } finally {
-            ca.gate?.countDown()
-            pool.shutdownNow()
-        }
+        assertTrue(result.isFailure, "a cancelled registration must not succeed")
+        assertTrue(result.exceptionOrNull() is CancellationException, "$result")
+        assertEquals(0, countAgents())
+        assertEquals(EnrollmentTokenState.ACTIVE, tokens.get(acme, issued.id)?.state)
     }
 
     @Test

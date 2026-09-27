@@ -10,6 +10,9 @@ import dev.sard.server.pki.InvalidCsrException
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import io.grpc.Status
+import io.grpc.Status.Code.INVALID_ARGUMENT
+import io.grpc.Status.Code.UNAUTHENTICATED
+import io.grpc.Status.Code.UNAVAILABLE
 import io.grpc.StatusRuntimeException
 import io.grpc.protobuf.StatusProto
 import kotlin.test.Test
@@ -44,46 +47,69 @@ class EnrollmentStatusTest {
         assertEquals("sard.dev", info.domain)
     }
 
+    /**
+     * The literal wire string is hardcoded here, not derived from [Reason.name]: this pins the
+     * rejection contract table independently of the domain enum (F2 review, EnrollmentStatus.kt).
+     */
     private fun assertRejected(
         reason: Reason,
         code: Status.Code,
-    ) = assertMapping(EnrollmentRejectedException(reason), code, reason.name)
+        wireReason: String,
+    ) = assertMapping(EnrollmentRejectedException(reason), code, wireReason)
 
     @Test
-    fun `TOKEN_MALFORMED is INVALID_ARGUMENT`() = assertRejected(Reason.TOKEN_MALFORMED, Status.Code.INVALID_ARGUMENT)
+    fun `TOKEN_MALFORMED is INVALID_ARGUMENT`() {
+        assertRejected(Reason.TOKEN_MALFORMED, INVALID_ARGUMENT, "TOKEN_MALFORMED")
+    }
 
     @Test
-    fun `TOKEN_FOREIGN_CA is UNAUTHENTICATED`() = assertRejected(Reason.TOKEN_FOREIGN_CA, Status.Code.UNAUTHENTICATED)
+    fun `TOKEN_FOREIGN_CA is UNAUTHENTICATED`() {
+        assertRejected(Reason.TOKEN_FOREIGN_CA, UNAUTHENTICATED, "TOKEN_FOREIGN_CA")
+    }
 
     @Test
-    fun `TOKEN_UNKNOWN is UNAUTHENTICATED`() = assertRejected(Reason.TOKEN_UNKNOWN, Status.Code.UNAUTHENTICATED)
+    fun `TOKEN_UNKNOWN is UNAUTHENTICATED`() {
+        assertRejected(Reason.TOKEN_UNKNOWN, UNAUTHENTICATED, "TOKEN_UNKNOWN")
+    }
 
     @Test
-    fun `TOKEN_USED is UNAUTHENTICATED`() = assertRejected(Reason.TOKEN_USED, Status.Code.UNAUTHENTICATED)
+    fun `TOKEN_USED is UNAUTHENTICATED`() {
+        assertRejected(Reason.TOKEN_USED, UNAUTHENTICATED, "TOKEN_USED")
+    }
 
     @Test
-    fun `TOKEN_REVOKED is UNAUTHENTICATED`() = assertRejected(Reason.TOKEN_REVOKED, Status.Code.UNAUTHENTICATED)
+    fun `TOKEN_REVOKED is UNAUTHENTICATED`() {
+        assertRejected(Reason.TOKEN_REVOKED, UNAUTHENTICATED, "TOKEN_REVOKED")
+    }
 
     @Test
-    fun `TOKEN_EXPIRED is UNAUTHENTICATED`() = assertRejected(Reason.TOKEN_EXPIRED, Status.Code.UNAUTHENTICATED)
+    fun `TOKEN_EXPIRED is UNAUTHENTICATED`() {
+        assertRejected(Reason.TOKEN_EXPIRED, UNAUTHENTICATED, "TOKEN_EXPIRED")
+    }
 
     @Test
-    fun `HOSTNAME_INVALID is INVALID_ARGUMENT`() = assertRejected(Reason.HOSTNAME_INVALID, Status.Code.INVALID_ARGUMENT)
+    fun `HOSTNAME_INVALID is INVALID_ARGUMENT`() {
+        assertRejected(Reason.HOSTNAME_INVALID, INVALID_ARGUMENT, "HOSTNAME_INVALID")
+    }
 
     @Test
-    fun `CSR_INVALID is INVALID_ARGUMENT`() = assertRejected(Reason.CSR_INVALID, Status.Code.INVALID_ARGUMENT)
+    fun `CSR_INVALID is INVALID_ARGUMENT`() {
+        assertRejected(Reason.CSR_INVALID, INVALID_ARGUMENT, "CSR_INVALID")
+    }
 
     @Test
-    fun `INTERNAL_RETRYABLE is UNAVAILABLE`() = assertRejected(Reason.INTERNAL_RETRYABLE, Status.Code.UNAVAILABLE)
+    fun `INTERNAL_RETRYABLE is UNAVAILABLE`() {
+        assertRejected(Reason.INTERNAL_RETRYABLE, UNAVAILABLE, "INTERNAL_RETRYABLE")
+    }
 
     @Test
     fun `an unrecognised throwable also maps to INTERNAL_RETRYABLE`() {
-        assertMapping(IllegalStateException("boom"), Status.Code.UNAVAILABLE, "INTERNAL_RETRYABLE")
+        assertMapping(IllegalStateException("boom"), UNAVAILABLE, "INTERNAL_RETRYABLE")
     }
 
     @Test
     fun `a CSR rejected outside Enrollment still maps to CSR_INVALID`() {
-        assertMapping(InvalidCsrException("bad csr"), Status.Code.INVALID_ARGUMENT, "CSR_INVALID")
+        assertMapping(InvalidCsrException("bad csr"), INVALID_ARGUMENT, "CSR_INVALID")
     }
 
     @Test

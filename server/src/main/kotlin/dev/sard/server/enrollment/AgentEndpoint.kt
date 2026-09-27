@@ -3,12 +3,10 @@
 
 package dev.sard.server.enrollment
 
-import java.net.InetAddress
+import dev.sard.server.pki.ServerNames
 
 private const val MIN_PORT = 1
 private const val MAX_PORT = 65535
-private val IPV4_SHAPE = Regex("""^\d{1,3}(\.\d{1,3}){3}$""")
-private val IPV6_SHAPE = Regex("""^[0-9a-fA-F:]+$""")
 
 /** The address agents dial to reach this server (decision 5): host:port as it goes into the enroll command. */
 data class AgentEndpoint(
@@ -26,13 +24,6 @@ private fun fail(text: String): Nothing =
     throw InvalidAgentEndpointException("SARD_AGENT_ENDPOINT is not a valid host or host:port: '$text'")
 
 private fun parsePort(text: String): Int? = text.toIntOrNull()?.takeIf { it in MIN_PORT..MAX_PORT }
-
-/** The address bytes if [text] is shaped like a literal IP; never performs a DNS lookup. */
-private fun ipLiteralOrNull(text: String): ByteArray? {
-    val looksLikeIp = IPV4_SHAPE.matches(text) || (text.contains(':') && IPV6_SHAPE.matches(text))
-    if (!looksLikeIp) return null
-    return runCatching { InetAddress.getByName(text).address }.getOrNull()
-}
 
 /** Host, its as-given prefix (with brackets for IPv6) and port text, or null if the shape is unknown. */
 private data class AddressShape(
@@ -121,14 +112,7 @@ object AgentEndpointResolver {
     private fun covered(
         host: String,
         serverNames: List<String>,
-    ): Boolean {
-        val ip = ipLiteralOrNull(host)
-        return if (ip != null) {
-            serverNames.any { name -> ipLiteralOrNull(name)?.contentEquals(ip) == true }
-        } else {
-            serverNames.any { name -> ipLiteralOrNull(name) == null && name.equals(host, ignoreCase = true) }
-        }
-    }
+    ): Boolean = ServerNames.covers(host, serverNames)
 
     private data class ParsedAddress(
         val hostForMatching: String,

@@ -17,17 +17,28 @@ private typealias Reason = EnrollmentRejectedException.Reason
 /** google.rpc.ErrorInfo domain for every Enroll rejection (rejection contract). */
 private const val DOMAIN = "sard.dev"
 
-private val CODES =
+/** One entry per row of the rejection contract table: the gRPC code and the wire reason string. */
+private data class Wire(
+    val code: Status.Code,
+    val reason: String,
+)
+
+/**
+ * The rejection contract table (docs/specs/server/agent-enrollment.feature), spelled out as
+ * literal wire strings rather than derived from [Reason.name]: the wire contract with agents is
+ * pinned here on purpose, so renaming the domain enum can never silently change it.
+ */
+private val WIRE =
     mapOf(
-        Reason.TOKEN_MALFORMED to Status.Code.INVALID_ARGUMENT,
-        Reason.TOKEN_FOREIGN_CA to Status.Code.UNAUTHENTICATED,
-        Reason.TOKEN_UNKNOWN to Status.Code.UNAUTHENTICATED,
-        Reason.TOKEN_USED to Status.Code.UNAUTHENTICATED,
-        Reason.TOKEN_REVOKED to Status.Code.UNAUTHENTICATED,
-        Reason.TOKEN_EXPIRED to Status.Code.UNAUTHENTICATED,
-        Reason.HOSTNAME_INVALID to Status.Code.INVALID_ARGUMENT,
-        Reason.CSR_INVALID to Status.Code.INVALID_ARGUMENT,
-        Reason.INTERNAL_RETRYABLE to Status.Code.UNAVAILABLE,
+        Reason.TOKEN_MALFORMED to Wire(Status.Code.INVALID_ARGUMENT, "TOKEN_MALFORMED"),
+        Reason.TOKEN_FOREIGN_CA to Wire(Status.Code.UNAUTHENTICATED, "TOKEN_FOREIGN_CA"),
+        Reason.TOKEN_UNKNOWN to Wire(Status.Code.UNAUTHENTICATED, "TOKEN_UNKNOWN"),
+        Reason.TOKEN_USED to Wire(Status.Code.UNAUTHENTICATED, "TOKEN_USED"),
+        Reason.TOKEN_REVOKED to Wire(Status.Code.UNAUTHENTICATED, "TOKEN_REVOKED"),
+        Reason.TOKEN_EXPIRED to Wire(Status.Code.UNAUTHENTICATED, "TOKEN_EXPIRED"),
+        Reason.HOSTNAME_INVALID to Wire(Status.Code.INVALID_ARGUMENT, "HOSTNAME_INVALID"),
+        Reason.CSR_INVALID to Wire(Status.Code.INVALID_ARGUMENT, "CSR_INVALID"),
+        Reason.INTERNAL_RETRYABLE to Wire(Status.Code.UNAVAILABLE, "INTERNAL_RETRYABLE"),
     )
 
 /**
@@ -38,18 +49,17 @@ private val CODES =
  */
 object EnrollmentStatus {
     fun of(error: Throwable): StatusRuntimeException {
-        val reason = reasonOf(error)
-        val code = CODES.getValue(reason)
+        val wire = WIRE.getValue(reasonOf(error))
         val info =
             ErrorInfo
                 .newBuilder()
-                .setReason(reason.name)
+                .setReason(wire.reason)
                 .setDomain(DOMAIN)
                 .build()
         val status =
             RpcStatus
                 .newBuilder()
-                .setCode(code.value())
+                .setCode(wire.code.value())
                 .addDetails(Any.pack(info))
                 .build()
         return StatusProto.toStatusRuntimeException(status)

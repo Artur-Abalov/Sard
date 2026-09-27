@@ -4,6 +4,7 @@ bin/
 build/
 dist/
 .gradle/
+.kotlin/
 node_modules/
 .cover.out
 go-mutesting-report.html

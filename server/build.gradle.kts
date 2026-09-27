@@ -26,6 +26,19 @@ kotlin {
     }
 }
 
+// Kotlin test class file names come from Cyrillic spec-quoted scenario titles; the
+// JVM derives file-name encoding (sun.jnu.encoding) from the Gradle daemon's locale
+// at startup, not from JVM flags on the compile task. Fail fast with a clear message
+// instead of letting compilation fail (or silently mangle file names) on a stale
+// daemon started without a UTF-8 locale.
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    doFirst {
+        check(System.getProperty("sun.jnu.encoding").equals("UTF-8", ignoreCase = true)) {
+            "$name needs a UTF-8 locale: export LC_ALL=C.UTF-8 and run ./gradlew --stop"
+        }
+    }
+}
+
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
