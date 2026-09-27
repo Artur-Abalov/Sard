@@ -12,7 +12,7 @@
 | `.claude/agents/coder.md` | `.claude/agents/coder.md` | адаптировать | Команды Gradle KMP заменены на `go test`, `./gradlew :server:test`, `npm --prefix web test` и `./scripts/gate.sh`. Раздел KMP заменён разделом про стеки Sard, SPDX и зависимости. |
 | `.claude/agents/cleaner.md` | `.claude/agents/cleaner.md` | адаптировать | Kover + `crap.py` заменены на `./scripts/crap.sh`. Оговорка про KMP заменена оговорками про байткод Kotlin, сгенерированный Go-код и веб. |
 | `.claude/agents/architect.md` | `.claude/agents/architect.md` | адаптировать | graphify и KMP-граница измеримости заменены на `go list -deps` и `gradle dependencies`. Главная проверка — лицензионная граница Apache/AGPL и швы `crypto.Provider` / `sdk.Plugin`. |
-| `.claude/agents/hardener.md` | `.claude/agents/hardener.md` | адаптировать | pitest отвергнут владельцем. Go — `go-mutesting` через `scripts/gate.sh`. Kotlin — задача `:server:mutationTest`, инструмент по ADR 0006. |
+| `.claude/agents/hardener.md` | `.claude/agents/hardener.md` | адаптировать | pitest отвергнут владельцем. Go — `go-mutesting`, Kotlin — mutflow (ADR 0006); оба запускаются через `./scripts/gate.sh <module>`. Разрешено только `mutflow:falsePositive` для доказанно эквивалентного мутанта. |
 | `.claude/commands/ship-feature.md` | `.claude/commands/ship-feature.md` | адаптировать | Изменены только команды проверок (`gauntlet.sh` → `gate.sh`). |
 | `.claude/commands/quick-fix.md` | `.claude/commands/quick-fix.md` | адаптировать | То же. |
 | `.claude/commands/ship-client-feature.md` | — | не переносить | Целиком про KMP-клиент (`app/shared`, Android, iOS). |
@@ -29,3 +29,18 @@
 - Абсолютный путь к домашнему каталогу автора источника (хуки graphify) — не перенесён.
 - Имена модулей KMP (`core`, `composeApp`, `app/shared`, `:backend:`) — заменены.
 - Секретов, токенов и адресов электронной почты в файлах настроек источника нет.
+
+## Итоговое содержимое `.claude/`
+
+`agents/{specifier,coder,cleaner,architect,hardener}.md`, `commands/{ship-feature,quick-fix}.md`, `settings.json` — совпадает с таблицей выше. Скрипты хуков — `scripts/claude/{guard,guard-edit,on-edit}.sh`.
+
+Порядок работы (решение владельца): инструменты агентов и настройки перенесены **до** остальной работы; каркас (фазы 2–4) сделан без цепочки агентов, но через `scripts/gate.sh`; цепочка `/ship-feature` применяется к продуктовым фичам после каркаса.
+
+## Проверка переноса (2026-09-27)
+
+- `grep -rniE "kanach|/Users/|graphify|kover|gauntlet|commonMain|commonTest|iosMain|androidMain|composeApp|app/shared|crap\.py|credit-checker|:backend:|ktor" CLAUDE.md .claude scripts/claude` — совпадений нет.
+- Konsist упоминается в `architect.md` как один из вариантов архитектурных тестов Kotlin — это общедоступная библиотека, а не имя из исходного проекта.
+- Имя владельца `Artur-Abalov` встречается только как часть пути Go-модуля Sard (`github.com/Artur-Abalov/sard`) — согласовано с владельцем.
+- Исходный репозиторий не изменялся: `git status` в его чекауте пуст.
+- Каждая команда из `CLAUDE.md` запущена и завершилась с кодом 0 (список — в `docs/sessions/2026-09-26-skeleton.md`, фаза 5).
+- Хуки проверены на примерах: `guard.sh` — 12 команд, `guard-edit.sh` — 7 правок (включая `mutflow:ignore` → блок, `mutflow:falsePositive` → разрешено), `on-edit.sh` — успешный и падающий Go-тест.

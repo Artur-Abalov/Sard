@@ -50,7 +50,7 @@ Thresholds are defined once, in `scripts/gate.sh`.
 | | complexity | <= 8 | `golangci-lint` (gocyclo) |
 | | mutation score | >= 0.80 | `go-mutesting` |
 | server (Kotlin) | tests, coverage, CRAP, complexity, mutation | as above | JaCoCo, `.bin/crap`, detekt, see ADR 0006 |
-| web | lint, typecheck, unit tests of pure functions, build | green | ESLint, tsc, Vitest, Vite |
+| web | lint, complexity <= 8, typecheck, unit tests of pure functions, build | green | oxlint, Prettier, tsc, Vitest, Vite |
 | proto | lint, generated code up to date | green | buf |
 
 The web UI contains no business logic. If it shows up, move it to the
@@ -83,11 +83,11 @@ server — don't write a test for it in place.
 
 ```bash
 make proto                    generate proto/gen/go (commit the result)
-make build                    agent/bin/sard-agent, cli/bin/sardctl, server/build/libs/sard-server.jar
+make build                    agent/bin/sard-agent, cli/bin/sardctl, server/build/libs/sard-server.jar, web/dist/
 make test                     all test suites (server tests need Docker: Testcontainers)
-make lint                     license-check, buf lint, gofmt/vet/golangci-lint, spotless, detekt
+make lint                     license-check, buf lint, gofmt/vet/golangci-lint, spotless, detekt, oxlint/prettier/tsc
 make up / make down           PostgreSQL + sard-server via docker compose (deploy/)
-make openapi                  export the server's OpenAPI into web/src/api/openapi.json
+make openapi                  export the server's OpenAPI into web/ and regenerate the typed client
 make license-check            SPDX headers match the directory's license
 make tools                    build pinned dev tools into .bin/
 make gate                     full quality gate, all modules
@@ -97,6 +97,9 @@ make gate M=tools             one module (proto gen sdk tools agent cli server w
 ./scripts/crap.sh tools       CRAP table, worst first, never fails
 ./gradlew :server:test        server tests, fast dev loop
 ./gradlew :server:spotlessApply   format Kotlin
+cd web && npm run dev         dashboard on :5173, proxies /api to a server on :8080
+cd web && npm test            web unit tests (pure functions only)
+cd web && npm run format      Prettier
 ```
 
 ## Go
@@ -105,6 +108,12 @@ make gate M=tools             one module (proto gen sdk tools agent cli server w
   or the file system of the host.
 - `main` is a thin wrapper over a testable `run(args, stdout, stderr) int`.
 - Generated code (`proto/gen/go`) is committed and never edited by hand.
+
+## Web
+
+- Only pure functions are unit-tested (`src/format.ts`); no component tests.
+- `src/api/schema.d.ts` is generated (`npm run gen:api`) — never edit it.
+- Visual design lives in `src/theme.ts` only; strings in `src/locales/{ru,en}.json`.
 
 ## Kotlin
 
