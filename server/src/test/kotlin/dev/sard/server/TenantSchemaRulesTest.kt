@@ -51,14 +51,18 @@ private const val WITHOUT_TENANT_ID_KEY =
     order by 1
 """
 
-/** Rule: a reference between tenant tables pairs the child's tenant_id with the parent's. */
+/**
+ * Rule: a reference between tenant tables pairs the child's tenant_id with the parent's
+ * and carries at least one more column; tenant_id alone links a tenant, not a row.
+ */
 private const val SINGLE_TENANT_REFERENCES =
     TENANT_TABLES + """
     select k.conname from pg_constraint k
     join tenant_tables child on child.rel = k.conrelid
     join tenant_tables parent on parent.rel = k.confrelid
     where k.contype = 'f'
-      and k.confkey[array_position(k.conkey, child.tenant_col)] is distinct from parent.tenant_col
+      and (cardinality(k.conkey) < 2
+           or k.confkey[array_position(k.conkey, child.tenant_col)] is distinct from parent.tenant_col)
     order by 1
 """
 
@@ -98,8 +102,34 @@ class TenantSchemaRulesTest(
                     )
                     """.trimIndent(),
                 )
+                // Pairs tenant_id with tenant_id, but links no row: not a composite key.
+                jdbc.execute(
+                    """
+                    create table solo_parent (
+                        id uuid primary key,
+                        tenant_id uuid not null unique references tenants (id),
+                        unique (tenant_id, id)
+                    )
+                    """.trimIndent(),
+                )
+                jdbc.execute(
+                    """
+                    create table solo_child (
+                        id uuid primary key,
+                        tenant_id uuid not null references tenants (id),
+                        unique (tenant_id, id),
+                        constraint solo_child_parent_fkey foreign key (tenant_id) references solo_parent (tenant_id)
+                    )
+                    """.trimIndent(),
+                )
                 violations()
             }
-        assertEquals(listOf(listOf("bad_parent"), listOf("bad_parent"), listOf("bad_child_parent_id_fkey")), found)
+        val expected =
+            listOf(
+                listOf("bad_parent"),
+                listOf("bad_parent"),
+                listOf("bad_child_parent_id_fkey", "solo_child_parent_fkey"),
+            )
+        assertEquals(expected, found)
     }
 }
