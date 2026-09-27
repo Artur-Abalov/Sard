@@ -3,7 +3,6 @@
 
 package dev.sard.server.enrollment
 
-import com.google.protobuf.ByteString
 import com.google.rpc.ErrorInfo
 import dev.sard.proto.agent.v1.EnrollRequest
 import dev.sard.server.TestcontainersConfiguration
@@ -24,7 +23,6 @@ import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import java.sql.Timestamp
 import java.time.Duration
-import java.time.Instant
 import java.util.UUID
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -33,9 +31,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
-
-private val NOW: Instant = Instant.parse("2026-09-27T10:00:00Z")
-private val TTL: Duration = Duration.ofHours(1)
 
 /**
  * Rules "Успешная регистрация выдаёт агенту идентичность", "hostname — от 1 до 253 символов",
@@ -59,10 +54,10 @@ class EnrollmentContractIntegrationTest(
 
     @BeforeTest
     fun `start at a known instant with a fresh tenant`() {
-        clock.now = NOW
+        clock.now = ENROLLMENT_NOW
         ca.gate = null
         ca.entered.drainPermits()
-        jdbc.update("insert into tenants (id, name) values (?, ?)", acme, "acme-$acme")
+        jdbc.insertTenant(acme)
     }
 
     @AfterTest
@@ -73,12 +68,9 @@ class EnrollmentContractIntegrationTest(
         jdbc.update("delete from tenants where id = ?", acme)
     }
 
-    private fun newToken(ttl: Duration = TTL) = tokens.create(acme, ttl)
+    private fun newToken(ttl: Duration = ENROLLMENT_TOKEN_TTL) = tokens.create(acme, ttl)
 
-    private fun rejection(block: () -> Unit) = assertFailsWith<EnrollmentRejectedException> { block() }.reason
-
-    private fun countAgents(tenant: UUID = acme) =
-        jdbc.queryForObject("select count(*) from agents where tenant_id = ?", Int::class.java, tenant)
+    private fun countAgents(tenant: UUID = acme) = jdbc.countAgents(tenant)
 
     // --- Успешная регистрация выдаёт агенту идентичность в тенанте токена
 
@@ -126,7 +118,7 @@ class EnrollmentContractIntegrationTest(
         val issued = newToken()
         val enrolled = enrollment.enroll(issued.reveal(), csr, "db1")
         val row = jdbc.queryForMap("select used_at, agent_id from enrollment_tokens where id = ?", issued.id)
-        assertEquals(NOW, (row["used_at"] as Timestamp).toInstant())
+        assertEquals(ENROLLMENT_NOW, (row["used_at"] as Timestamp).toInstant())
         assertEquals(enrolled.agentId, row["agent_id"])
     }
 
@@ -146,7 +138,7 @@ class EnrollmentContractIntegrationTest(
     @Test
     fun `Регистрация с пустым hostname отклоняется и не расходует токен`() {
         val issued = newToken()
-        assertEquals(Reason.HOSTNAME_INVALID, rejection { enrollment.enroll(issued.reveal(), csr, "") })
+        assertEquals(Reason.HOSTNAME_INVALID, rejectionReason { enrollment.enroll(issued.reveal(), csr, "") })
         assertEquals(0, countAgents())
     }
 
@@ -162,7 +154,8 @@ class EnrollmentContractIntegrationTest(
     @Test
     fun `Hostname из 254 символов отклоняется и не расходует токен`() {
         val issued = newToken()
-        assertEquals(Reason.HOSTNAME_INVALID, rejection { enrollment.enroll(issued.reveal(), csr, "a".repeat(254)) })
+        val reason = rejectionReason { enrollment.enroll(issued.reveal(), csr, "a".repeat(254)) }
+        assertEquals(Reason.HOSTNAME_INVALID, reason)
         assertEquals(0, countAgents())
     }
 
@@ -170,13 +163,13 @@ class EnrollmentContractIntegrationTest(
     fun `Отказ по токену важнее невалидного hostname`() {
         val issued = newToken()
         enrollment.enroll(issued.reveal(), csr, "db1")
-        assertEquals(Reason.TOKEN_USED, rejection { enrollment.enroll(issued.reveal(), csr, "") })
+        assertEquals(Reason.TOKEN_USED, rejectionReason { enrollment.enroll(issued.reveal(), csr, "") })
     }
 
     @Test
     fun `Невалидный hostname важнее невалидного CSR`() {
         val issued = newToken()
-        val reason = rejection { enrollment.enroll(issued.reveal(), "garbage".toByteArray(), "") }
+        val reason = rejectionReason { enrollment.enroll(issued.reveal(), "garbage".toByteArray(), "") }
         assertEquals(Reason.HOSTNAME_INVALID, reason)
         assertEquals(0, countAgents())
     }
@@ -203,7 +196,7 @@ class EnrollmentContractIntegrationTest(
                 "sard_$secret.$fingerprint\n",
             )
         for (case in cases) {
-            assertEquals(Reason.TOKEN_MALFORMED, rejection { enrollment.enroll(case, csr, "db1") }, case)
+            assertEquals(Reason.TOKEN_MALFORMED, rejectionReason { enrollment.enroll(case, csr, "db1") }, case)
         }
         assertEquals(0, countAgents())
     }
@@ -214,10 +207,7 @@ class EnrollmentContractIntegrationTest(
         val error =
             assertFailsWith<StatusRuntimeException> {
                 runBlocking {
-                    service.enroll(
-                        dev.sard.proto.agent.v1.EnrollRequest
-                            .getDefaultInstance(),
-                    )
+                    service.enroll(EnrollRequest.getDefaultInstance())
                 }
             }
         assertEquals(Status.Code.INVALID_ARGUMENT, Status.fromThrowable(error).code)
@@ -232,7 +222,7 @@ class EnrollmentContractIntegrationTest(
         val issued = newToken()
         val parsed = EnrollmentToken.parse(issued.reveal())
         val corrupted = "sard_${parsed.secret.encoded()}.${parsed.fingerprint.hex.uppercase()}"
-        assertEquals(Reason.TOKEN_MALFORMED, rejection { enrollment.enroll(corrupted, csr, "db1") })
+        assertEquals(Reason.TOKEN_MALFORMED, rejectionReason { enrollment.enroll(corrupted, csr, "db1") })
         val row = jdbc.queryForMap("select used_at, agent_id from enrollment_tokens where id = ?", issued.id)
         assertEquals(mapOf<String, Any?>("used_at" to null, "agent_id" to null), row)
     }
@@ -242,7 +232,7 @@ class EnrollmentContractIntegrationTest(
         val issued = newToken()
         val parsed = EnrollmentToken.parse(issued.reveal())
         val foreign = EnrollmentToken(parsed.secret, CaFingerprint("0".repeat(64))).encode()
-        assertEquals(Reason.TOKEN_FOREIGN_CA, rejection { enrollment.enroll(foreign, csr, "db1") })
+        assertEquals(Reason.TOKEN_FOREIGN_CA, rejectionReason { enrollment.enroll(foreign, csr, "db1") })
         assertEquals(0, countAgents())
         val row = jdbc.queryForMap("select used_at, agent_id from enrollment_tokens where id = ?", issued.id)
         assertEquals(mapOf<String, Any?>("used_at" to null, "agent_id" to null), row)
@@ -252,7 +242,7 @@ class EnrollmentContractIntegrationTest(
     fun `Неизвестный токен отклоняется как TOKEN_UNKNOWN`() {
         val randomSecret = EnrollmentSecret.random(java.security.SecureRandom())
         val unknown = EnrollmentToken(randomSecret, ca.fingerprint()).encode()
-        assertEquals(Reason.TOKEN_UNKNOWN, rejection { enrollment.enroll(unknown, csr, "db1") })
+        assertEquals(Reason.TOKEN_UNKNOWN, rejectionReason { enrollment.enroll(unknown, csr, "db1") })
         assertEquals(0, countAgents())
     }
 
@@ -261,7 +251,7 @@ class EnrollmentContractIntegrationTest(
         val issued = newToken()
         val enrolled = enrollment.enroll(issued.reveal(), csr, "db1")
         val secondCsr = resource("agent-p384.csr")
-        assertEquals(Reason.TOKEN_USED, rejection { enrollment.enroll(issued.reveal(), secondCsr, "db2") })
+        assertEquals(Reason.TOKEN_USED, rejectionReason { enrollment.enroll(issued.reveal(), secondCsr, "db2") })
         assertEquals(1, countAgents())
         val sql = "select agent_id from enrollment_tokens where id = ?"
         assertEquals(enrolled.agentId, jdbc.queryForObject(sql, UUID::class.java, issued.id))
@@ -270,8 +260,8 @@ class EnrollmentContractIntegrationTest(
     @Test
     fun `Истёкший токен отклоняется как TOKEN_EXPIRED`() {
         val issued = newToken(Duration.ofMinutes(5))
-        clock.now = NOW + Duration.ofMinutes(5)
-        assertEquals(Reason.TOKEN_EXPIRED, rejection { enrollment.enroll(issued.reveal(), csr, "db1") })
+        clock.now = ENROLLMENT_NOW + Duration.ofMinutes(5)
+        assertEquals(Reason.TOKEN_EXPIRED, rejectionReason { enrollment.enroll(issued.reveal(), csr, "db1") })
         assertEquals(0, countAgents())
         assertEquals(EnrollmentTokenState.EXPIRED, tokens.get(acme, issued.id)?.state)
     }
@@ -279,7 +269,7 @@ class EnrollmentContractIntegrationTest(
     @Test
     fun `Токен за миллисекунду до срока ещё регистрирует агента`() {
         val issued = newToken(Duration.ofMinutes(5))
-        clock.now = NOW + Duration.ofMinutes(5) - Duration.ofMillis(1)
+        clock.now = ENROLLMENT_NOW + Duration.ofMinutes(5) - Duration.ofMillis(1)
         enrollment.enroll(issued.reveal(), csr, "db1")
         assertEquals(1, countAgents())
     }
@@ -288,7 +278,7 @@ class EnrollmentContractIntegrationTest(
     fun `Отозванный токен отклоняется как TOKEN_REVOKED`() {
         val issued = newToken()
         tokens.revoke(acme, issued.id, clock.now)
-        assertEquals(Reason.TOKEN_REVOKED, rejection { enrollment.enroll(issued.reveal(), csr, "db1") })
+        assertEquals(Reason.TOKEN_REVOKED, rejectionReason { enrollment.enroll(issued.reveal(), csr, "db1") })
         assertEquals(0, countAgents())
         assertEquals(EnrollmentTokenState.REVOKED, tokens.get(acme, issued.id)?.state)
     }
@@ -297,17 +287,17 @@ class EnrollmentContractIntegrationTest(
     fun `Отозванный токен после срока отклоняется как TOKEN_REVOKED`() {
         val issued = newToken(Duration.ofMinutes(5))
         tokens.revoke(acme, issued.id, clock.now)
-        clock.now = NOW + Duration.ofDays(1)
-        assertEquals(Reason.TOKEN_REVOKED, rejection { enrollment.enroll(issued.reveal(), csr, "db1") })
+        clock.now = ENROLLMENT_NOW + Duration.ofDays(1)
+        assertEquals(Reason.TOKEN_REVOKED, rejectionReason { enrollment.enroll(issued.reveal(), csr, "db1") })
     }
 
     @Test
     fun `Использованный токен после срока отклоняется как TOKEN_USED`() {
         val issued = newToken(Duration.ofMinutes(5))
         enrollment.enroll(issued.reveal(), csr, "db1")
-        clock.now = NOW + Duration.ofDays(1)
+        clock.now = ENROLLMENT_NOW + Duration.ofDays(1)
         val secondCsr = resource("agent-p384.csr")
-        assertEquals(Reason.TOKEN_USED, rejection { enrollment.enroll(issued.reveal(), secondCsr, "db2") })
+        assertEquals(Reason.TOKEN_USED, rejectionReason { enrollment.enroll(issued.reveal(), secondCsr, "db2") })
     }
 
     @Test
@@ -315,7 +305,7 @@ class EnrollmentContractIntegrationTest(
         val issued = newToken()
         enrollment.enroll(issued.reveal(), csr, "db1")
         val garbage = "garbage".toByteArray()
-        assertEquals(Reason.TOKEN_USED, rejection { enrollment.enroll(issued.reveal(), garbage, "db2") })
+        assertEquals(Reason.TOKEN_USED, rejectionReason { enrollment.enroll(issued.reveal(), garbage, "db2") })
     }
 
     // --- Неудачная попытка не расходует токен
@@ -333,7 +323,7 @@ class EnrollmentContractIntegrationTest(
             )
         for ((name, bytes) in cases) {
             val issued = newToken()
-            assertEquals(Reason.CSR_INVALID, rejection { enrollment.enroll(issued.reveal(), bytes, "db1") }, name)
+            assertEquals(Reason.CSR_INVALID, rejectionReason { enrollment.enroll(issued.reveal(), bytes, "db1") }, name)
         }
         assertEquals(0, countAgents())
     }
@@ -348,7 +338,7 @@ class EnrollmentContractIntegrationTest(
     @Test
     fun `После отказа CSR_INVALID тем же токеном можно зарегистрироваться`() {
         val issued = newToken()
-        rejection { enrollment.enroll(issued.reveal(), "garbage".toByteArray(), "db1") }
+        rejectionReason { enrollment.enroll(issued.reveal(), "garbage".toByteArray(), "db1") }
         enrollment.enroll(issued.reveal(), csr, "db1")
         assertEquals(1, countAgents())
     }
@@ -360,13 +350,7 @@ class EnrollmentContractIntegrationTest(
         val issued = newToken()
         tokens.revoke(acme, issued.id, clock.now)
         val service = EnrollmentGrpcService(enrollment, Dispatchers.Unconfined)
-        val request =
-            EnrollRequest
-                .newBuilder()
-                .setEnrollmentToken(issued.reveal())
-                .setCsrDer(ByteString.copyFrom(csr))
-                .setHostname("db1")
-                .build()
+        val request = enrollRequest(issued.reveal(), csr)
         val error = assertFailsWith<StatusRuntimeException> { runBlocking { service.enroll(request) } }
         assertEquals(Status.Code.UNAUTHENTICATED, Status.fromThrowable(error).code)
         val details = StatusProto.fromThrowable(error)?.detailsList.orEmpty()

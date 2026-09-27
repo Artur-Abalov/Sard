@@ -5,8 +5,6 @@ package dev.sard.server.enrollment
 
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
-import com.google.protobuf.ByteString
-import dev.sard.proto.agent.v1.EnrollRequest
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.agents.EnrollmentGrpcService
 import dev.sard.server.enrollment.EnrollmentRejectedException.Reason
@@ -31,7 +29,6 @@ import java.nio.file.Path
 import java.security.SecureRandom
 import java.time.Clock
 import java.time.Duration
-import java.time.Instant
 import java.util.UUID
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -40,8 +37,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-
-private val NOW: Instant = Instant.parse("2026-09-27T10:00:00Z")
 
 /**
  * A collaborator failure this test simulates on purpose (a named type, not a bare
@@ -111,17 +106,14 @@ class EnrollmentFailureIntegrationTest(
 
     @BeforeTest
     fun `start at a known instant with a fresh tenant`() {
-        clock.now = NOW
+        clock.now = ENROLLMENT_NOW
         ca.gate = null
-        jdbc.update("insert into tenants (id, name) values (?, ?)", acme, "acme-$acme")
+        jdbc.insertTenant(acme)
     }
 
     @AfterTest
     fun `drop everything of the tenant`() {
-        for (table in listOf("agent_certificates", "enrollment_tokens", "agents")) {
-            jdbc.update("delete from $table where tenant_id = ?", acme)
-        }
-        jdbc.update("delete from tenants where id = ?", acme)
+        jdbc.deleteEnrollmentTenantData(acme)
     }
 
     private fun ids() = UuidV7(clock, SecureRandom())
@@ -136,10 +128,7 @@ class EnrollmentFailureIntegrationTest(
         return jdbc.queryForObject(sql, Int::class.java, acme)
     }
 
-    private fun countAgents(): Int? {
-        val sql = "select count(*) from agents where tenant_id = ?"
-        return jdbc.queryForObject(sql, Int::class.java, acme)
-    }
+    private fun countAgents(): Int? = jdbc.countAgents(acme)
 
     // --- Отказ базы при создании и отзыве токена (service)
 
@@ -204,13 +193,7 @@ class EnrollmentFailureIntegrationTest(
         val broken = BrokenCertificateAuthority(freshCa()).apply { failWith = "disk on fire" }
         val testEnrollment = Enrollment(realSessions, tokens, broken, clock, ids())
         val service = EnrollmentGrpcService(testEnrollment, Dispatchers.Unconfined)
-        val request =
-            EnrollRequest
-                .newBuilder()
-                .setEnrollmentToken(issued.reveal())
-                .setCsrDer(ByteString.copyFrom(csr))
-                .setHostname("db1")
-                .build()
+        val request = enrollRequest(issued.reveal(), csr)
         val appender = attachLogCapture()
         val text: String
         try {

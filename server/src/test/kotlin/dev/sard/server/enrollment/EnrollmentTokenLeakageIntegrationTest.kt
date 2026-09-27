@@ -5,7 +5,6 @@ package dev.sard.server.enrollment
 
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
-import com.google.protobuf.ByteString
 import dev.sard.proto.agent.v1.EnrollRequest
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.agents.EnrollmentGrpcService
@@ -23,14 +22,11 @@ import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import java.security.SecureRandom
 import java.time.Duration
-import java.time.Instant
 import java.util.UUID
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertFalse
-
-private val NOW: Instant = Instant.parse("2026-09-27T10:00:00Z")
 
 /** Rule "Строка токена не появляется в логах, текстах ошибок и ответах". */
 @SpringBootTest(
@@ -51,17 +47,14 @@ class EnrollmentTokenLeakageIntegrationTest(
 
     @BeforeTest
     fun `start at a known instant with a fresh tenant`() {
-        clock.now = NOW
+        clock.now = ENROLLMENT_NOW
         ca.gate = null
-        jdbc.update("insert into tenants (id, name) values (?, ?)", acme, "acme-$acme")
+        jdbc.insertTenant(acme)
     }
 
     @AfterTest
     fun `drop everything of the tenant`() {
-        for (table in listOf("agent_certificates", "enrollment_tokens", "agents")) {
-            jdbc.update("delete from $table where tenant_id = ?", acme)
-        }
-        jdbc.update("delete from tenants where id = ?", acme)
+        jdbc.deleteEnrollmentTenantData(acme)
     }
 
     private fun secretsOf(token: String): List<String> = listOf(token, token.removePrefix("sard_").substringBefore('.'))
@@ -108,7 +101,7 @@ class EnrollmentTokenLeakageIntegrationTest(
     @Test
     fun `Строка токена не попадает в лог при успешной регистрации`() {
         val issued = tokens.create(acme, Duration.ofHours(1))
-        val log = capture { runBlocking { service.enroll(request(issued.reveal(), csr, "db1")) } }
+        val log = capture { runBlocking { service.enroll(enrollRequest(issued.reveal(), csr)) } }
         assertNoLeak(log, secretsOf(issued.reveal()))
     }
 
@@ -133,41 +126,32 @@ class EnrollmentTokenLeakageIntegrationTest(
 
     private fun rejectionRequests(): Map<String, (IssuedEnrollmentToken) -> EnrollRequest> =
         mapOf(
-            "TOKEN_MALFORMED" to { _: IssuedEnrollmentToken -> request("not-a-token", csr, "db1") },
+            "TOKEN_MALFORMED" to { _: IssuedEnrollmentToken -> enrollRequest("not-a-token", csr) },
             "TOKEN_FOREIGN_CA" to { issued: IssuedEnrollmentToken ->
                 val secret = EnrollmentToken.parse(issued.reveal()).secret
-                request(EnrollmentToken(secret, CaFingerprint("0".repeat(64))).encode(), csr, "db1")
+                enrollRequest(EnrollmentToken(secret, CaFingerprint("0".repeat(64))).encode(), csr)
             },
             "TOKEN_UNKNOWN" to { _: IssuedEnrollmentToken ->
-                request(EnrollmentToken(EnrollmentSecret.random(SecureRandom()), ca.fingerprint()).encode(), csr, "db1")
+                enrollRequest(EnrollmentToken(EnrollmentSecret.random(SecureRandom()), ca.fingerprint()).encode(), csr)
             },
             "TOKEN_USED" to { issued: IssuedEnrollmentToken ->
                 enrollment.enroll(issued.reveal(), csr, "db1")
-                request(issued.reveal(), resource("agent-p384.csr"), "db2")
+                enrollRequest(issued.reveal(), resource("agent-p384.csr"), "db2")
             },
             "TOKEN_REVOKED" to { issued: IssuedEnrollmentToken ->
                 tokens.revoke(acme, issued.id, clock.now)
-                request(issued.reveal(), csr, "db1")
+                enrollRequest(issued.reveal(), csr)
             },
             "TOKEN_EXPIRED" to { issued: IssuedEnrollmentToken ->
-                clock.now = NOW + Duration.ofHours(2)
-                request(issued.reveal(), csr, "db1")
+                clock.now = ENROLLMENT_NOW + Duration.ofHours(2)
+                enrollRequest(issued.reveal(), csr)
             },
-            "HOSTNAME_INVALID" to { issued: IssuedEnrollmentToken -> request(issued.reveal(), csr, "") },
+            "HOSTNAME_INVALID" to { issued: IssuedEnrollmentToken -> enrollRequest(issued.reveal(), csr, "") },
             "CSR_INVALID" to { issued: IssuedEnrollmentToken ->
-                request(issued.reveal(), "garbage".toByteArray(), "db1")
+                enrollRequest(issued.reveal(), "garbage".toByteArray())
             },
-            "INTERNAL_RETRYABLE" to { issued: IssuedEnrollmentToken -> request(issued.reveal(), ByteArray(0), "") },
+            "INTERNAL_RETRYABLE" to { issued: IssuedEnrollmentToken ->
+                enrollRequest(issued.reveal(), ByteArray(0), "")
+            },
         )
-
-    private fun request(
-        token: String,
-        csrDer: ByteArray,
-        hostname: String,
-    ) = EnrollRequest
-        .newBuilder()
-        .setEnrollmentToken(token)
-        .setCsrDer(ByteString.copyFrom(csrDer))
-        .setHostname(hostname)
-        .build()
 }

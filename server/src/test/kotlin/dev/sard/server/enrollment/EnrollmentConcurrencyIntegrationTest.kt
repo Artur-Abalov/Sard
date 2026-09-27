@@ -12,7 +12,6 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import java.time.Duration
-import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
@@ -25,10 +24,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-
-private val NOW: Instant = Instant.parse("2026-09-27T10:00:00Z")
-private val TTL: Duration = Duration.ofHours(1)
-private val WAIT: Duration = Duration.ofSeconds(10)
 
 /**
  * Rules "Из одновременных регистраций с одним токеном успешна ровно одна", "Отозвать можно любой
@@ -52,36 +47,20 @@ class EnrollmentConcurrencyIntegrationTest(
 
     @BeforeTest
     fun `start at a known instant with a fresh tenant`() {
-        clock.now = NOW
+        clock.now = ENROLLMENT_NOW
         ca.gate = null
         ca.entered.drainPermits()
-        jdbc.update("insert into tenants (id, name) values (?, ?)", acme, "acme-$acme")
+        jdbc.insertTenant(acme)
     }
 
     @AfterTest
     fun `drop everything of the tenant`() {
-        for (table in listOf("agent_certificates", "enrollment_tokens", "agents")) {
-            jdbc.update("delete from $table where tenant_id = ?", acme)
-        }
-        jdbc.update("delete from tenants where id = ?", acme)
+        jdbc.deleteEnrollmentTenantData(acme)
     }
 
-    private fun newToken() = tokens.create(acme, TTL)
+    private fun newToken() = tokens.create(acme, ENROLLMENT_TOKEN_TTL)
 
-    private fun countAgents(): Int? {
-        val sql = "select count(*) from agents where tenant_id = ?"
-        return jdbc.queryForObject(sql, Int::class.java, acme)
-    }
-
-    private fun awaitRowLockWait() {
-        val sql =
-            "select count(*) from pg_stat_activity where wait_event_type = 'Lock' and query like '%enrollment_tokens%'"
-        val deadline = System.nanoTime() + WAIT.toNanos()
-        while (jdbc.queryForObject(sql, Int::class.java) == 0) {
-            check(System.nanoTime() < deadline) { "nobody ever waited for the token's row lock" }
-            Thread.sleep(POLL_MILLIS)
-        }
-    }
+    private fun countAgents(): Int? = jdbc.countAgents(acme)
 
     @Test
     fun `Вторая одновременная регистрация с тем же токеном получает TOKEN_USED`() {
@@ -90,10 +69,11 @@ class EnrollmentConcurrencyIntegrationTest(
         val pool = Executors.newFixedThreadPool(2)
         try {
             val first = pool.submit(Callable { runCatching { enrollment.enroll(token, csr, "first") } })
-            assertTrue(ca.entered.tryAcquire(WAIT.toSeconds(), TimeUnit.SECONDS), "the first never reached the CA")
+            val entered = ca.entered.tryAcquire(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS)
+            assertTrue(entered, "the first never reached the CA")
             val secondCsr = resource("agent-p384.csr")
             val second = pool.submit(Callable { runCatching { enrollment.enroll(token, secondCsr, "second") } })
-            awaitRowLockWait()
+            jdbc.awaitEnrollmentRowLockWait()
             ca.gate?.countDown()
             val results = listOf(first.get(), second.get())
 
@@ -117,13 +97,13 @@ class EnrollmentConcurrencyIntegrationTest(
                 (1..RACERS).map { i ->
                     pool.submit(
                         Callable {
-                            start.await(WAIT.toSeconds(), TimeUnit.SECONDS)
+                            start.await(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS)
                             runCatching { enrollment.enroll(token, csr, "racer-$i") }
                         },
                     )
                 }
             start.countDown()
-            val results = futures.map { it.get(WAIT.toSeconds(), TimeUnit.SECONDS) }
+            val results = futures.map { it.get(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS) }
 
             assertEquals(1, results.count { it.isSuccess })
             val losers = results.filter { it.isFailure }
@@ -144,15 +124,15 @@ class EnrollmentConcurrencyIntegrationTest(
         val pool = Executors.newFixedThreadPool(2)
         try {
             val registration = pool.submit(Callable { runCatching { enrollment.enroll(issued.reveal(), csr, "db1") } })
-            val started = ca.entered.tryAcquire(WAIT.toSeconds(), TimeUnit.SECONDS)
+            val started = ca.entered.tryAcquire(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS)
             assertTrue(started, "the registration never reached the CA")
             val revocation = pool.submit(Callable { tokens.revoke(acme, issued.id, clock.now) })
-            awaitRowLockWait()
+            jdbc.awaitEnrollmentRowLockWait()
             ca.gate?.countDown()
 
-            val succeeded = registration.get(WAIT.toSeconds(), TimeUnit.SECONDS).isSuccess
+            val succeeded = registration.get(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS).isSuccess
             assertTrue(succeeded, "the registration must succeed")
-            val revoked = revocation.get(WAIT.toSeconds(), TimeUnit.SECONDS)
+            val revoked = revocation.get(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS)
             assertEquals(RevokeResult.Rejected(RevokeRejection.USED), revoked)
             assertEquals(EnrollmentTokenState.USED, tokens.get(acme, issued.id)?.state)
         } finally {
@@ -176,11 +156,11 @@ class EnrollmentConcurrencyIntegrationTest(
                         runCatching { enrollment.enroll(issued.reveal(), csr, "db1") { cancelled.get() } }
                     },
                 )
-            val started = ca.entered.tryAcquire(WAIT.toSeconds(), TimeUnit.SECONDS)
+            val started = ca.entered.tryAcquire(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS)
             assertTrue(started, "the registration never reached the CA")
             cancelled.set(true)
             ca.gate?.countDown()
-            val result = registration.get(WAIT.toSeconds(), TimeUnit.SECONDS)
+            val result = registration.get(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS)
 
             assertTrue(result.isFailure, "a cancelled registration must not succeed")
             assertTrue(result.exceptionOrNull() is CancellationException, "$result")
@@ -206,7 +186,6 @@ class EnrollmentConcurrencyIntegrationTest(
     }
 
     private companion object {
-        const val POLL_MILLIS = 20L
         const val RACERS = 10
     }
 }
