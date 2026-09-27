@@ -8,10 +8,628 @@
     },
     "version" : "v1"
   },
+  "servers" : [ {
+    "url" : "/"
+  } ],
+  "security" : [ {
+    "session" : [ ]
+  } ],
+  "tags" : [ {
+    "name" : "session",
+    "description" : "Administrator sign-in"
+  } ],
   "paths" : {
+    "/api/v1/sources/{sourceId}" : {
+      "get" : {
+        "tags" : [ "sources" ],
+        "summary" : "Source card",
+        "operationId" : "getSource",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Source"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put" : {
+        "tags" : [ "sources" ],
+        "summary" : "Replace a source",
+        "description" : "The same 422 codes as creation.",
+        "operationId" : "replaceSource",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SourceInput"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Source"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete" : {
+        "tags" : [ "sources" ],
+        "summary" : "Delete a source",
+        "description" : "Its runs and snapshots stay in the history.",
+        "operationId" : "deleteSource",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Deleted"
+          },
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "The source has an active run (D6)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RunActiveProblem"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources" : {
+      "get" : {
+        "tags" : [ "sources" ],
+        "summary" : "List sources",
+        "operationId" : "listSources",
+        "parameters" : [ {
+          "name" : "agentId",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "cursor",
+          "in" : "query",
+          "description" : "nextCursor of the previous page; omit for the first page",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "description" : "Page size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 50,
+            "maximum" : 200,
+            "minimum" : 1
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SourcePage"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "sources" ],
+        "summary" : "Create a source",
+        "description" : "422 codes: unknown_agent, unknown_plugin, unknown_repository, invalid_config, validation_failed.",
+        "operationId" : "createSource",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SourceInput"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "201" : {
+            "description" : "Created",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Source"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{sourceId}/runs" : {
+      "post" : {
+        "tags" : [ "sources" ],
+        "summary" : "Back up the source now",
+        "description" : "Queues a manual backup run; it waits for an offline agent. One active run per source (D6).",
+        "operationId" : "startRun",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "The source has an active run (D6)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RunActiveProblem"
+                }
+              }
+            }
+          },
+          "201" : {
+            "description" : "Created",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/session" : {
+      "get" : {
+        "tags" : [ "session" ],
+        "summary" : "Current session",
+        "description" : "401 when there is none or it expired.",
+        "operationId" : "getSession",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "session" ],
+        "summary" : "Sign in",
+        "description" : "Sets the session cookie. The same answer for any wrong password.",
+        "operationId" : "createSession",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SessionRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "Signed in",
+            "headers" : {
+              "Set-Cookie" : {
+                "description" : "sard_session; HttpOnly; SameSite=Strict",
+                "style" : "simple",
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Wrong password",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429" : {
+            "description" : "Too many failed attempts; sign-in is locked for a while",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Seconds until the next attempt",
+                "style" : "simple",
+                "schema" : {
+                  "type" : "integer"
+                }
+              }
+            },
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ ]
+      },
+      "delete" : {
+        "tags" : [ "session" ],
+        "summary" : "Sign out",
+        "description" : "Ends the session and clears the cookie.",
+        "operationId" : "deleteSession",
+        "responses" : {
+          "204" : {
+            "description" : "Signed out"
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/enrollment-tokens" : {
+      "get" : {
+        "tags" : [ "enrollment-tokens" ],
+        "summary" : "List tokens",
+        "description" : "Newest first.",
+        "operationId" : "listEnrollmentTokens",
+        "parameters" : [ {
+          "name" : "status",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "$ref" : "#/components/schemas/EnrollmentTokenStatus"
+          }
+        }, {
+          "name" : "cursor",
+          "in" : "query",
+          "description" : "nextCursor of the previous page; omit for the first page",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "description" : "Page size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 50,
+            "maximum" : 200,
+            "minimum" : 1
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EnrollmentTokenPage"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "enrollment-tokens" ],
+        "summary" : "Create a token",
+        "description" : "The token string and command are in this response only.",
+        "operationId" : "createEnrollmentToken",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateEnrollmentTokenRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "201" : {
+            "description" : "Created",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CreatedEnrollmentToken"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/enrollment-tokens/{tokenId}/revoke" : {
+      "post" : {
+        "tags" : [ "enrollment-tokens" ],
+        "summary" : "Revoke a token",
+        "description" : "Revoking a revoked token is a no-op and answers 200.",
+        "operationId" : "revokeEnrollmentToken",
+        "parameters" : [ {
+          "name" : "tokenId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "409" : {
+            "description" : "The token was used (agentId names the agent) or expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TokenConflictProblem"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EnrollmentToken"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/status" : {
       "get" : {
-        "tags" : [ "status-controller" ],
+        "tags" : [ "status" ],
+        "summary" : "Server status",
+        "description" : "Public: the dashboard shows it before sign-in.",
         "operationId" : "status",
         "responses" : {
           "200" : {
@@ -24,12 +642,907 @@
               }
             }
           }
+        },
+        "security" : [ ]
+      }
+    },
+    "/api/v1/sources/{sourceId}/snapshots" : {
+      "get" : {
+        "tags" : [ "sources" ],
+        "summary" : "Snapshots of the source",
+        "description" : "Newest first.",
+        "operationId" : "listSourceSnapshots",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "cursor",
+          "in" : "query",
+          "description" : "nextCursor of the previous page; omit for the first page",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "description" : "Page size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 50,
+            "maximum" : 200,
+            "minimum" : 1
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SnapshotPage"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runs" : {
+      "get" : {
+        "tags" : [ "runs" ],
+        "summary" : "List runs",
+        "description" : "Newest first. Filters combine with AND; status values with OR.",
+        "operationId" : "listRuns",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "agentId",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "status",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/RunStatus"
+            }
+          }
+        }, {
+          "name" : "cursor",
+          "in" : "query",
+          "description" : "nextCursor of the previous page; omit for the first page",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "description" : "Page size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 50,
+            "maximum" : 200,
+            "minimum" : 1
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RunPage"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runs/{runId}" : {
+      "get" : {
+        "tags" : [ "runs" ],
+        "summary" : "Run card with steps",
+        "operationId" : "getRun",
+        "parameters" : [ {
+          "name" : "runId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runs/{runId}/steps/{stepId}/logs" : {
+      "get" : {
+        "tags" : [ "runs" ],
+        "summary" : "Log of a step",
+        "description" : "Lines with seq > afterSeq, oldest first.",
+        "operationId" : "listStepLogs",
+        "parameters" : [ {
+          "name" : "runId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "stepId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "afterSeq",
+          "in" : "query",
+          "description" : "Return lines after this seq; 0 for the start",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64",
+            "default" : 0
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "description" : "Page size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 500,
+            "maximum" : 1000,
+            "minimum" : 1
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LogPage"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/enrollment-tokens/{tokenId}" : {
+      "get" : {
+        "tags" : [ "enrollment-tokens" ],
+        "summary" : "Token card",
+        "operationId" : "getEnrollmentToken",
+        "parameters" : [ {
+          "name" : "tokenId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EnrollmentToken"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agents" : {
+      "get" : {
+        "tags" : [ "agents" ],
+        "summary" : "List agents",
+        "operationId" : "listAgents",
+        "parameters" : [ {
+          "name" : "status",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "$ref" : "#/components/schemas/AgentStatus"
+          }
+        }, {
+          "name" : "cursor",
+          "in" : "query",
+          "description" : "nextCursor of the previous page; omit for the first page",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "description" : "Page size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 50,
+            "maximum" : 200,
+            "minimum" : 1
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AgentPage"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{agentId}" : {
+      "get" : {
+        "tags" : [ "agents" ],
+        "summary" : "Agent card",
+        "operationId" : "getAgent",
+        "parameters" : [ {
+          "name" : "agentId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AgentDetails"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
         }
       }
     }
   },
   "components" : {
     "schemas" : {
+      "SourceInput" : {
+        "type" : "object",
+        "description" : "What to back up, where from and where to",
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "agentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "plugin" : {
+            "type" : "string",
+            "description" : "A plugin the agent offers"
+          },
+          "repositoryName" : {
+            "type" : "string",
+            "description" : "A repository from the agent's last Register; its snapshots live there"
+          },
+          "config" : {
+            "type" : "object",
+            "additionalProperties" : { },
+            "description" : "Plugin config, valid against the plugin's configSchema; secrets by name only"
+          }
+        },
+        "required" : [ "agentId", "config", "name", "plugin", "repositoryName" ]
+      },
+      "ErrorCode" : {
+        "type" : "string",
+        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented" ]
+      },
+      "Problem" : {
+        "type" : "object",
+        "description" : "An error (RFC 9457)",
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "description" : "URI reference identifying the problem type; about:blank when the status says it all"
+          },
+          "title" : {
+            "type" : "string",
+            "description" : "Short summary for people; not for matching, use code"
+          },
+          "status" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "HTTP status code"
+          },
+          "detail" : {
+            "type" : [ "string", "null" ],
+            "description" : "Explanation of this occurrence; null when the title says it all"
+          },
+          "code" : {
+            "$ref" : "#/components/schemas/ErrorCode"
+          }
+        },
+        "required" : [ "code", "detail", "status", "title", "type" ]
+      },
+      "FieldError" : {
+        "type" : "object",
+        "description" : "A field of the request that failed validation",
+        "properties" : {
+          "field" : {
+            "type" : "string",
+            "description" : "JSON name of the field, e.g. repositoryName"
+          },
+          "message" : {
+            "type" : "string",
+            "description" : "Why the value was rejected"
+          }
+        },
+        "required" : [ "field", "message" ]
+      },
+      "ValidationProblem" : {
+        "type" : "object",
+        "description" : "The request is well-formed but its values are not acceptable (RFC 9457)",
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "description" : "URI reference identifying the problem type; about:blank when the status says it all"
+          },
+          "title" : {
+            "type" : "string",
+            "description" : "Short summary for people; not for matching, use code"
+          },
+          "status" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "HTTP status code"
+          },
+          "detail" : {
+            "type" : [ "string", "null" ],
+            "description" : "Explanation of this occurrence; null when the title says it all"
+          },
+          "code" : {
+            "$ref" : "#/components/schemas/ErrorCode"
+          },
+          "errors" : {
+            "type" : "array",
+            "description" : "The rejected fields",
+            "items" : {
+              "$ref" : "#/components/schemas/FieldError"
+            }
+          }
+        },
+        "required" : [ "code", "detail", "errors", "status", "title", "type" ]
+      },
+      "Source" : {
+        "type" : "object",
+        "description" : "A backup source",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "agentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "plugin" : {
+            "type" : "string"
+          },
+          "repositoryName" : {
+            "type" : "string",
+            "description" : "A repository from the agent's last Register; its snapshots live there"
+          },
+          "config" : {
+            "type" : "object",
+            "additionalProperties" : { },
+            "description" : "Plugin config, valid against the plugin's configSchema; secrets by name only"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "updatedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "agentId", "config", "createdAt", "id", "name", "plugin", "repositoryName", "updatedAt" ]
+      },
+      "RunActiveProblem" : {
+        "type" : "object",
+        "description" : "The source already has an active run (D6); no new run was created (RFC 9457)",
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "description" : "URI reference identifying the problem type; about:blank when the status says it all"
+          },
+          "title" : {
+            "type" : "string",
+            "description" : "Short summary for people; not for matching, use code"
+          },
+          "status" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "HTTP status code"
+          },
+          "detail" : {
+            "type" : [ "string", "null" ],
+            "description" : "Explanation of this occurrence; null when the title says it all"
+          },
+          "code" : {
+            "$ref" : "#/components/schemas/ErrorCode",
+            "description" : "run_active"
+          },
+          "activeRunId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "The run that is queued, dispatched or running"
+          }
+        },
+        "required" : [ "activeRunId", "code", "detail", "status", "title", "type" ]
+      },
+      "BackupOutput" : {
+        "type" : "object",
+        "description" : "What a backup step produced",
+        "properties" : {
+          "snapshotId" : {
+            "type" : "string",
+            "description" : "restic snapshot id"
+          },
+          "totalBytes" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "addedBytes" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        },
+        "required" : [ "addedBytes", "snapshotId", "totalBytes" ]
+      },
+      "Run" : {
+        "type" : "object",
+        "description" : "A run with its steps",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "sourceId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "agentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "trigger" : {
+            "$ref" : "#/components/schemas/RunTrigger"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/RunStatus"
+          },
+          "message" : {
+            "type" : [ "string", "null" ],
+            "description" : "Why it failed, was rejected or lost; null on success"
+          },
+          "queuedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "startedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "finishedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "steps" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/RunStep"
+            }
+          }
+        },
+        "required" : [ "agentId", "finishedAt", "id", "message", "queuedAt", "sourceId", "startedAt", "status", "steps", "trigger" ]
+      },
+      "RunStatus" : {
+        "type" : "string",
+        "enum" : [ "queued", "dispatched", "running", "succeeded", "failed", "cancelled" ]
+      },
+      "RunStep" : {
+        "type" : "object",
+        "description" : "One command to the agent",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Also the command_id of the agent protocol"
+          },
+          "ordinal" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "action" : {
+            "$ref" : "#/components/schemas/StepAction"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/StepStatus"
+          },
+          "phase" : {
+            "description" : "Last reported phase; null before the agent accepts the step",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/StepPhase"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "agentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "sourceId" : {
+            "type" : [ "string", "null" ],
+            "format" : "uuid",
+            "description" : "null for action run"
+          },
+          "plugin" : {
+            "type" : "string"
+          },
+          "repositoryName" : {
+            "type" : [ "string", "null" ],
+            "description" : "null for action run"
+          },
+          "bytesProcessed" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64"
+          },
+          "bytesTotal" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64",
+            "description" : "null while unknown"
+          },
+          "message" : {
+            "type" : [ "string", "null" ],
+            "description" : "Why it failed, was rejected or lost; null on success"
+          },
+          "backup" : {
+            "description" : "Set when a backup step succeeded",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/BackupOutput"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "queuedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "dispatchedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "startedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "finishedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "action", "agentId", "backup", "bytesProcessed", "bytesTotal", "dispatchedAt", "finishedAt", "id", "message", "ordinal", "phase", "plugin", "queuedAt", "repositoryName", "sourceId", "startedAt", "status" ]
+      },
+      "RunTrigger" : {
+        "type" : "string",
+        "enum" : [ "schedule", "manual", "verification" ]
+      },
+      "StepAction" : {
+        "type" : "string",
+        "enum" : [ "backup", "restore", "verify", "run" ]
+      },
+      "StepPhase" : {
+        "type" : "string",
+        "enum" : [ "accepted", "preparing", "dumping", "uploading", "restoring", "verifying" ]
+      },
+      "StepStatus" : {
+        "type" : "string",
+        "enum" : [ "queued", "dispatched", "running", "succeeded", "failed", "cancelled", "timed_out", "rejected", "lost" ]
+      },
+      "SessionRequest" : {
+        "type" : "object",
+        "description" : "Sign-in with the administrator password (D2)",
+        "properties" : {
+          "password" : {
+            "type" : "string",
+            "description" : "The administrator password from the server's environment"
+          }
+        },
+        "required" : [ "password" ]
+      },
+      "CreateEnrollmentTokenRequest" : {
+        "type" : "object",
+        "description" : "A new enrollment token",
+        "properties" : {
+          "ttlSeconds" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64",
+            "default" : 86400,
+            "description" : "Lifetime in seconds: from 5 minutes to 7 days; 24 hours when omitted",
+            "maximum" : 604800,
+            "minimum" : 300
+          }
+        }
+      },
+      "CreatedEnrollmentToken" : {
+        "type" : "object",
+        "description" : "A created token. The only response that carries the token string (docs/specs/enrollment-token.md)",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "token" : {
+            "type" : "string",
+            "description" : "sard_<secret>.<CA fingerprint>; shown once, the server keeps only its hash"
+          },
+          "enrollCommand" : {
+            "type" : "string",
+            "description" : "Ready-to-run command: sard-agent enroll --server <address> --token <token>"
+          },
+          "expiresAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "enrollCommand", "expiresAt", "id", "token" ]
+      },
+      "TokenConflictProblem" : {
+        "type" : "object",
+        "description" : "The token can no longer be revoked (RFC 9457)",
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "description" : "URI reference identifying the problem type; about:blank when the status says it all"
+          },
+          "title" : {
+            "type" : "string",
+            "description" : "Short summary for people; not for matching, use code"
+          },
+          "status" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "HTTP status code"
+          },
+          "detail" : {
+            "type" : [ "string", "null" ],
+            "description" : "Explanation of this occurrence; null when the title says it all"
+          },
+          "code" : {
+            "$ref" : "#/components/schemas/ErrorCode",
+            "description" : "token_used or token_expired"
+          },
+          "agentId" : {
+            "type" : [ "string", "null" ],
+            "format" : "uuid",
+            "description" : "The agent enrolled with the token; set when code is token_used"
+          }
+        },
+        "required" : [ "agentId", "code", "detail", "status", "title", "type" ]
+      },
+      "EnrollmentToken" : {
+        "type" : "object",
+        "description" : "An enrollment token without its string",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/EnrollmentTokenStatus"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "expiresAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "usedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "When an agent enrolled with it"
+          },
+          "revokedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "agentId" : {
+            "type" : [ "string", "null" ],
+            "format" : "uuid",
+            "description" : "The agent enrolled with it; set when status is used"
+          }
+        },
+        "required" : [ "agentId", "createdAt", "expiresAt", "id", "revokedAt", "status", "usedAt" ]
+      },
+      "EnrollmentTokenStatus" : {
+        "type" : "string",
+        "enum" : [ "active", "used", "expired", "revoked" ]
+      },
       "StatusResponse" : {
         "type" : "object",
         "properties" : {
@@ -44,6 +1557,427 @@
           }
         },
         "required" : [ "lastVerifiedRestoreAt", "version" ]
+      },
+      "SourcePage" : {
+        "type" : "object",
+        "description" : "A page of sources",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Source"
+            }
+          },
+          "nextCursor" : {
+            "type" : [ "string", "null" ],
+            "description" : "Pass as cursor to get the next page; null on the last page"
+          }
+        },
+        "required" : [ "items", "nextCursor" ]
+      },
+      "Snapshot" : {
+        "type" : "object",
+        "description" : "A restic snapshot made by a run of the source",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "snapshotId" : {
+            "type" : "string",
+            "description" : "restic snapshot id"
+          },
+          "sourceId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "runId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "stepId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "agentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "repositoryName" : {
+            "type" : "string"
+          },
+          "repositoryId" : {
+            "type" : "string",
+            "description" : "restic repository id; the same key held by several hosts shares it (ADR 0008)"
+          },
+          "totalBytes" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "addedBytes" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "forgottenAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "When restic forget removed it; null while it exists"
+          }
+        },
+        "required" : [ "addedBytes", "agentId", "createdAt", "forgottenAt", "id", "repositoryId", "repositoryName", "runId", "snapshotId", "sourceId", "stepId", "totalBytes" ]
+      },
+      "SnapshotPage" : {
+        "type" : "object",
+        "description" : "A page of snapshots",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Snapshot"
+            }
+          },
+          "nextCursor" : {
+            "type" : [ "string", "null" ],
+            "description" : "Pass as cursor to get the next page; null on the last page"
+          }
+        },
+        "required" : [ "items", "nextCursor" ]
+      },
+      "Session" : {
+        "type" : "object",
+        "description" : "The current administrator session",
+        "properties" : {
+          "tenantId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Tenant of the session; every other endpoint works within it"
+          },
+          "expiresAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "When the session ends unless renewed"
+          }
+        },
+        "required" : [ "expiresAt", "tenantId" ]
+      },
+      "RunPage" : {
+        "type" : "object",
+        "description" : "A page of runs",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/RunSummary"
+            }
+          },
+          "nextCursor" : {
+            "type" : [ "string", "null" ],
+            "description" : "Pass as cursor to get the next page; null on the last page"
+          }
+        },
+        "required" : [ "items", "nextCursor" ]
+      },
+      "RunSummary" : {
+        "type" : "object",
+        "description" : "A run in the list",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "sourceId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "The source the run backs up"
+          },
+          "agentId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "The source's agent"
+          },
+          "trigger" : {
+            "$ref" : "#/components/schemas/RunTrigger"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/RunStatus"
+          },
+          "message" : {
+            "type" : [ "string", "null" ],
+            "description" : "Why it failed, was rejected or lost; null on success"
+          },
+          "queuedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "startedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "finishedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "agentId", "finishedAt", "id", "message", "queuedAt", "sourceId", "startedAt", "status", "trigger" ]
+      },
+      "LogLevel" : {
+        "type" : "string",
+        "enum" : [ "debug", "info", "warn", "error" ]
+      },
+      "LogLine" : {
+        "type" : "object",
+        "description" : "A line of a step's log",
+        "properties" : {
+          "seq" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "Position in the step's log, assigned by the server; increasing, starts at 1"
+          },
+          "time" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Time on the agent"
+          },
+          "level" : {
+            "$ref" : "#/components/schemas/LogLevel"
+          },
+          "text" : {
+            "type" : "string",
+            "description" : "Secret values are redacted by the agent"
+          }
+        },
+        "required" : [ "level", "seq", "text", "time" ]
+      },
+      "LogPage" : {
+        "type" : "object",
+        "description" : "Log lines after afterSeq, in seq order",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/LogLine"
+            }
+          },
+          "nextAfterSeq" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "Pass as afterSeq to continue: seq of the last line, or afterSeq when there are none"
+          },
+          "hasMore" : {
+            "type" : "boolean",
+            "description" : "More lines are there already; false means the end for now, poll to follow a running step"
+          }
+        },
+        "required" : [ "hasMore", "items", "nextAfterSeq" ]
+      },
+      "EnrollmentTokenPage" : {
+        "type" : "object",
+        "description" : "A page of enrollment tokens",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/EnrollmentToken"
+            }
+          },
+          "nextCursor" : {
+            "type" : [ "string", "null" ],
+            "description" : "Pass as cursor to get the next page; null on the last page"
+          }
+        },
+        "required" : [ "items", "nextCursor" ]
+      },
+      "AgentStatus" : {
+        "type" : "string",
+        "enum" : [ "online", "offline" ]
+      },
+      "AgentPage" : {
+        "type" : "object",
+        "description" : "A page of agents",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/AgentSummary"
+            }
+          },
+          "nextCursor" : {
+            "type" : [ "string", "null" ],
+            "description" : "Pass as cursor to get the next page; null on the last page"
+          }
+        },
+        "required" : [ "items", "nextCursor" ]
+      },
+      "AgentSummary" : {
+        "type" : "object",
+        "description" : "An agent in the list",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "hostname" : {
+            "type" : "string",
+            "description" : "Host name reported at enrollment and on Register"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/AgentStatus"
+          },
+          "agentVersion" : {
+            "type" : [ "string", "null" ],
+            "description" : "sard-agent version; null until the first Register"
+          },
+          "os" : {
+            "type" : [ "string", "null" ],
+            "description" : "GOOS of the agent, e.g. linux; null until the first Register"
+          },
+          "arch" : {
+            "type" : [ "string", "null" ],
+            "description" : "GOARCH of the agent, e.g. amd64; null until the first Register"
+          },
+          "registeredAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "lastSeenAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "Last heartbeat; null if the agent never connected"
+          },
+          "revokedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "When its certificates were revoked; null if not revoked"
+          }
+        },
+        "required" : [ "agentVersion", "arch", "hostname", "id", "lastSeenAt", "os", "registeredAt", "revokedAt", "status" ]
+      },
+      "AgentDetails" : {
+        "type" : "object",
+        "description" : "An agent with what it reported in its last Register",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "hostname" : {
+            "type" : "string"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/AgentStatus"
+          },
+          "agentVersion" : {
+            "type" : [ "string", "null" ]
+          },
+          "os" : {
+            "type" : [ "string", "null" ]
+          },
+          "arch" : {
+            "type" : [ "string", "null" ]
+          },
+          "registeredAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "lastSeenAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "revokedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "protocolVersion" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32",
+            "description" : "Protocol version of the last Register; null until the first one"
+          },
+          "plugins" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/AgentPlugin"
+            }
+          },
+          "repositories" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/AgentRepository"
+            }
+          },
+          "secretNames" : {
+            "type" : "array",
+            "description" : "Names of secrets defined on the host; values never leave it (ADR 0008)",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "scriptNames" : {
+            "type" : "array",
+            "description" : "Names of allowlisted scripts on the host; paths never leave it (ADR 0008)",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        },
+        "required" : [ "agentVersion", "arch", "hostname", "id", "lastSeenAt", "os", "plugins", "protocolVersion", "registeredAt", "repositories", "revokedAt", "scriptNames", "secretNames", "status" ]
+      },
+      "AgentPlugin" : {
+        "type" : "object",
+        "description" : "A plugin the agent offers",
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "version" : {
+            "type" : "string"
+          },
+          "actions" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/StepAction"
+            }
+          },
+          "configSchema" : {
+            "type" : "object",
+            "additionalProperties" : { },
+            "description" : "JSON Schema (draft 2020-12) of a source's config; secret fields hold a secret name"
+          }
+        },
+        "required" : [ "actions", "configSchema", "name", "version" ]
+      },
+      "AgentRepository" : {
+        "type" : "object",
+        "description" : "A restic repository defined on the agent host (ADR 0008); no credentials",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "description" : "Name a source refers to"
+          },
+          "backend" : {
+            "type" : "string",
+            "description" : "Storage backend, e.g. local, sftp, s3"
+          },
+          "repositoryId" : {
+            "type" : [ "string", "null" ],
+            "description" : "restic repository id; null while the repository is not initialized"
+          },
+          "cryptoProvider" : {
+            "type" : "string",
+            "description" : "crypto.Provider that hands the key to restic"
+          }
+        },
+        "required" : [ "backend", "cryptoProvider", "name", "repositoryId" ]
+      }
+    },
+    "securitySchemes" : {
+      "session" : {
+        "type" : "apiKey",
+        "name" : "sard_session",
+        "in" : "cookie"
       }
     }
   }

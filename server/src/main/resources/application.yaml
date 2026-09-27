@@ -9,6 +9,10 @@ spring:
     url: ${SARD_DB_URL:jdbc:postgresql://localhost:5432/sard}
     username: ${SARD_DB_USER:sard}
     password: ${SARD_DB_PASSWORD:}
+  mvc:
+    # Errors are application/problem+json (RFC 9457), the format of the REST contract.
+    problemdetails:
+      enabled: true
   jpa:
     open-in-view: false
     hibernate:

@@ -1,0 +1,159 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright 2026 Artur Abalov
+
+package dev.sard.server.api
+
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.tags.Tag
+import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
+import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
+import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.ResponseStatus
+import org.springframework.web.bind.annotation.RestController
+import java.time.Instant
+import java.util.UUID
+
+private const val REPOSITORY_NAME = "A repository from the agent's last Register; its snapshots live there"
+private const val CONFIG = "Plugin config, valid against the plugin's configSchema; secrets by name only"
+
+@Schema(description = "What to back up, where from and where to")
+data class SourceInput(
+    val name: String,
+    val agentId: UUID,
+    @field:Schema(description = "A plugin the agent offers")
+    val plugin: String,
+    @field:Schema(description = REPOSITORY_NAME)
+    val repositoryName: String,
+    @field:Schema(description = CONFIG)
+    val config: Map<String, Any?>,
+)
+
+@Schema(description = "A backup source")
+data class Source(
+    val id: UUID,
+    val name: String,
+    val agentId: UUID,
+    val plugin: String,
+    @field:Schema(description = REPOSITORY_NAME)
+    val repositoryName: String,
+    @field:Schema(description = CONFIG)
+    val config: Map<String, Any?>,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+)
+
+@Schema(description = "A page of sources")
+data class SourcePage(
+    val items: List<Source>,
+    @field:Schema(description = CURSOR_NEXT)
+    val nextCursor: String?,
+)
+
+@Schema(description = "A restic snapshot made by a run of the source")
+data class Snapshot(
+    val id: UUID,
+    @field:Schema(description = "restic snapshot id")
+    val snapshotId: String,
+    val sourceId: UUID,
+    val runId: UUID,
+    val stepId: UUID,
+    val agentId: UUID,
+    val repositoryName: String,
+    @field:Schema(description = "restic repository id; the same key held by several hosts shares it (ADR 0008)")
+    val repositoryId: String,
+    val totalBytes: Long,
+    val addedBytes: Long,
+    val createdAt: Instant,
+    @field:Schema(description = "When restic forget removed it; null while it exists")
+    val forgottenAt: Instant?,
+)
+
+@Schema(description = "A page of snapshots")
+data class SnapshotPage(
+    val items: List<Snapshot>,
+    @field:Schema(description = CURSOR_NEXT)
+    val nextCursor: String?,
+)
+
+@RestController
+@RequestMapping("/api/v1/sources", produces = [MediaType.APPLICATION_JSON_VALUE])
+@Tag(name = "sources")
+class SourcesController {
+    @GetMapping
+    @Operation(summary = "List sources")
+    fun listSources(
+        @RequestParam(required = false) agentId: UUID?,
+        @PageCursor @RequestParam(required = false) cursor: String?,
+        @PageLimit @RequestParam(defaultValue = DEFAULT_LIMIT) limit: Int,
+    ): SourcePage = notImplemented()
+
+    @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(
+        summary = "Create a source",
+        description = "422 codes: unknown_agent, unknown_plugin, unknown_repository, invalid_config, validation_failed.",
+    )
+    @Unprocessable
+    fun createSource(
+        @RequestBody source: SourceInput,
+    ): Source = notImplemented()
+
+    @GetMapping("/{sourceId}")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Source card")
+    @NotFound
+    fun getSource(
+        @PathVariable sourceId: UUID,
+    ): Source = notImplemented()
+
+    @PutMapping("/{sourceId}", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Replace a source", description = "The same 422 codes as creation.")
+    @NotFound
+    @Unprocessable
+    fun replaceSource(
+        @PathVariable sourceId: UUID,
+        @RequestBody source: SourceInput,
+    ): Source = notImplemented()
+
+    @DeleteMapping("/{sourceId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Delete a source", description = "Its runs and snapshots stay in the history.")
+    @ApiResponse(responseCode = "204", description = "Deleted")
+    @NotFound
+    @RunActive
+    fun deleteSource(
+        @PathVariable sourceId: UUID,
+    ): Unit = notImplemented()
+
+    @PostMapping("/{sourceId}/runs")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(
+        summary = "Back up the source now",
+        description = "Queues a manual backup run; it waits for an offline agent. One active run per source (D6).",
+    )
+    @NotFound
+    @RunActive
+    fun startRun(
+        @PathVariable sourceId: UUID,
+    ): Run = notImplemented()
+
+    @GetMapping("/{sourceId}/snapshots")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Snapshots of the source", description = "Newest first.")
+    @NotFound
+    fun listSourceSnapshots(
+        @PathVariable sourceId: UUID,
+        @PageCursor @RequestParam(required = false) cursor: String?,
+        @PageLimit @RequestParam(defaultValue = DEFAULT_LIMIT) limit: Int,
+    ): SnapshotPage = notImplemented()
+}
