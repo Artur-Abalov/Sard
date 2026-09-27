@@ -6,11 +6,8 @@ package app
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
-	"github.com/Artur-Abalov/sard/agent/internal/session"
-	"github.com/Artur-Abalov/sard/agent/internal/transport"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
@@ -26,9 +23,14 @@ var builtinActions = []agentv1.Action{
 	agentv1.Action_ACTION_VERIFY,
 }
 
+// Link is the connection to the server (transport.Transport).
+type Link interface {
+	Run(ctx context.Context) error
+}
+
 // Agent is the running agent.
 type Agent struct {
-	Client   transport.Client
+	Link     Link
 	Plugins  *sdk.Registry
 	Hostname string
 	Version  string
@@ -41,27 +43,17 @@ type Agent struct {
 	// RepositoryID returns restic's id of a local repository. The server
 	// counts hosts per id to warn when a key exists on one host only.
 	RepositoryID func(ctx context.Context, r config.Repository) (string, error)
-	// Session serves the command stream once it is open.
-	Session session.Session
 }
 
-// Run registers with the server and serves commands until ctx ends or
-// the stream fails.
+// Run keeps the agent connected to the server until ctx ends or the
+// server refuses the agent for good.
 func (a *Agent) Run(ctx context.Context) error {
-	if _, err := a.Client.Register(ctx, a.registerRequest(ctx)); err != nil {
-		return fmt.Errorf("register: %w", err)
-	}
-	stream, err := a.Client.Connect(ctx)
-	if err != nil {
-		return fmt.Errorf("connect: %w", err)
-	}
-	if err := a.Session.Serve(ctx, stream); err != nil {
-		return fmt.Errorf("serve: %w", err)
-	}
-	return nil
+	return a.Link.Run(ctx)
 }
 
-func (a *Agent) registerRequest(ctx context.Context) *agentv1.RegisterRequest {
+// RegisterRequest describes this host to the server; the transport sends
+// it before every stream.
+func (a *Agent) RegisterRequest(ctx context.Context) *agentv1.RegisterRequest {
 	req := &agentv1.RegisterRequest{
 		Hostname:        a.Hostname,
 		AgentVersion:    a.Version,
@@ -100,3 +92,13 @@ func (a *Agent) repositoryInfos(ctx context.Context) []*agentv1.RepositoryInfo {
 	}
 	return infos
 }
+
+// NoExecutor stands in for the command executor (A4) until it is wired in:
+// nothing runs, nothing is pending, and commands from the server are dropped.
+type NoExecutor struct{}
+
+func (NoExecutor) Submit(*agentv1.RunStep)               {}
+func (NoExecutor) Cancel(string)                         {}
+func (NoExecutor) Ack(string) error                      { return nil }
+func (NoExecutor) RunningIDs() []string                  { return nil }
+func (NoExecutor) PendingResults() []*agentv1.StepResult { return nil }
