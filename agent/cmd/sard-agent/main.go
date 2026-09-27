@@ -7,18 +7,22 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
 	"syscall"
+	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/app"
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
+	"github.com/Artur-Abalov/sard/agent/internal/executor"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
 	"github.com/Artur-Abalov/sard/agent/plugins"
@@ -102,19 +106,75 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 			}, r).ID(ctx)
 		},
 	}
-	// The executor (A4) is wired in after A3 and A4 are merged.
+	return serve(ctx, cfg, agent)
+}
+
+// serve connects the agent and runs steps until ctx ends. The executor and
+// the transport need each other: the transport feeds the executor commands,
+// the executor reports through the transport. The transport is built first
+// (it checks TLS before anything touches the disk); ref points it at the
+// executor before it starts.
+func serve(ctx context.Context, cfg config.Config, agent *app.Agent) error {
+	ref := &executorRef{}
 	link, err := transport.New(transport.Options{
 		Address:  cfg.Server.Address,
 		TLS:      cfg.TLS,
 		Register: agent.RegisterRequest,
-		Commands: app.NoExecutor{},
-		State:    app.NoExecutor{},
+		Commands: ref,
+		State:    ref,
 	})
 	if err != nil {
 		return err
 	}
+	exec, err := executor.New(executor.Options{
+		Handlers:     app.NoHandlers{}, // plugin handlers arrive with A6
+		Sink:         link,
+		StateDir:     executorStateDir(cfg.Executor.StateDir),
+		Repositories: repositoryNames(cfg.Repositories),
+		MaxParallel:  cfg.Executor.MaxParallel,
+		Logger:       slog.Default(),
+	})
+	if err != nil {
+		return err
+	}
+	ref.Executor = exec
 	agent.Link = link
-	return agent.Run(ctx)
+	err = agent.Run(ctx)
+	return errors.Join(err, stopExecutor(exec))
+}
+
+// executorRef breaks the transport ↔ executor construction cycle.
+type executorRef struct{ *executor.Executor }
+
+// shutdownTimeout bounds the stop of running steps; it outlasts the
+// executor's own 30 s of cancellation checks and stays under systemd's 90 s.
+const shutdownTimeout = 45 * time.Second
+
+// stopExecutor fails queued steps and cancels running ones (SHUTDOWN
+// IMMEDIATE). Their results stay on disk and are sent on the next start.
+func stopExecutor(exec *executor.Executor) error {
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	return exec.Close(ctx)
+}
+
+// defaultExecutorStateDir lives under the unit's StateDirectory=sard-agent,
+// which systemd creates 0755; the executor makes its own subdirectory 0700.
+const defaultExecutorStateDir = "/var/lib/sard-agent/executor"
+
+func executorStateDir(configured string) string {
+	if configured != "" {
+		return configured
+	}
+	return defaultExecutorStateDir
+}
+
+func repositoryNames(repos []config.Repository) []string {
+	names := make([]string, 0, len(repos))
+	for _, r := range repos {
+		names = append(names, r.Name)
+	}
+	return names
 }
 
 // resticPath is restic.path, or the restic shipped next to sard-agent

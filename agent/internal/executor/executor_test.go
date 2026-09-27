@@ -474,6 +474,49 @@ func TestLogLinesOfARunningStepReachTheSink(t *testing.T) {
 	f.sink.quiet(t)
 }
 
+// blockingLogs holds every Log call until released, like the transport's
+// full log queue while the stream is down.
+type blockingLogs struct {
+	*fakeSink
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (b *blockingLogs) Log(id string, l *agentv1.LogLine) {
+	b.entered <- struct{}{}
+	<-b.release
+	b.fakeSink.Log(id, l)
+}
+
+func TestABlockedLogDoesNotBlockTheExecutor(t *testing.T) {
+	logs := &blockingLogs{fakeSink: newSink(), entered: make(chan struct{}, 1), release: make(chan struct{})}
+	f := setup(t, func(o *executor.Options) { o.Sink = logs })
+	f.sink = logs.fakeSink
+	f.e.Submit(backup("c1"))
+	accepted(t, f.sink, "c1")
+	c := f.files.next(t)
+	go c.r.Log(agentv1.LogLevel_LOG_LEVEL_INFO, "stuck")
+	<-logs.entered
+
+	ids := make(chan []string, 1)
+	go func() { ids <- f.e.RunningIDs() }() // what the transport asks for its Hello
+	select {
+	case got := <-ids:
+		if strings.Join(got, ",") != "c1" {
+			t.Fatalf("RunningIDs = %v", got)
+		}
+	case <-time.After(waitLimit):
+		t.Fatal("a blocked Log holds the executor's lock")
+	}
+	f.e.Cancel("c1")
+	<-c.ctx.Done()
+	close(logs.release)
+	if e := f.sink.next(t); e.log.GetText() != "stuck" {
+		t.Fatalf("event = %+v", e)
+	}
+	wantResult(t, f.sink.result(t), "c1", cancelled, "cancelled by the server")
+}
+
 // --- RunningIDs
 
 func TestRunningIDsListQueuedAndRunningCommands(t *testing.T) {

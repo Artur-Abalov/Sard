@@ -41,6 +41,9 @@ scripts:
 restic:
   path: /usr/lib/sard/restic
   cache_dir: /var/cache/sard/restic
+executor:
+  state_dir: /var/lib/sard-agent/executor
+  max_parallel: 2
 `
 
 func TestParseReadsAllFields(t *testing.T) {
@@ -55,9 +58,10 @@ func TestParseReadsAllFields(t *testing.T) {
 			{Name: "main", URL: "s3:https://s3.example.com/backups/db1", PasswordFile: "/etc/sard/main.pass", EnvFile: "/etc/sard/main.env"},
 			{Name: "nas", URL: "/mnt/nas/restic", PasswordFile: "/etc/sard/nas.pass", CryptoProvider: "restic-aes"},
 		},
-		Secrets: map[string]string{"pg-prod": "/etc/sard/secrets/pg-prod", "mikrotik-ssh": "/etc/sard/secrets/mikrotik.key"},
-		Scripts: map[string]string{"app-maintenance": "/usr/local/bin/app-maintenance"},
-		Restic:  config.Restic{Path: "/usr/lib/sard/restic", CacheDir: "/var/cache/sard/restic"},
+		Secrets:  map[string]string{"pg-prod": "/etc/sard/secrets/pg-prod", "mikrotik-ssh": "/etc/sard/secrets/mikrotik.key"},
+		Scripts:  map[string]string{"app-maintenance": "/usr/local/bin/app-maintenance"},
+		Restic:   config.Restic{Path: "/usr/lib/sard/restic", CacheDir: "/var/cache/sard/restic"},
+		Executor: config.Executor{StateDir: "/var/lib/sard-agent/executor", MaxParallel: 2},
 	}
 	if !reflect.DeepEqual(c, want) {
 		t.Fatalf("config = %+v", c)
@@ -81,6 +85,22 @@ func TestParseRejectsRelativeResticPaths(t *testing.T) {
 	}
 	if c, err := config.Parse([]byte("server:\n  address: s:1\n")); err != nil || c.Restic != (config.Restic{}) {
 		t.Errorf("no restic section: %+v, %v", c.Restic, err)
+	}
+}
+
+func TestParseRejectsAnInvalidExecutorSection(t *testing.T) {
+	cases := map[string]string{
+		"executor:\n  state_dir: state\n": `invalid executor setting: executor.state_dir: want an absolute path, got "state"`,
+		"executor:\n  max_parallel: -1\n": `invalid executor setting: executor.max_parallel: want zero (one step at a time) or more, got -1`,
+	}
+	for body, want := range cases {
+		_, err := config.Parse([]byte("server:\n  address: s:1\n" + body))
+		if !errors.Is(err, config.ErrInvalidExecutor) || err.Error() != want {
+			t.Errorf("%q: err = %v", body, err)
+		}
+	}
+	if c, err := config.Parse([]byte("server:\n  address: s:1\n")); err != nil || c.Executor != (config.Executor{}) {
+		t.Errorf("no executor section: %+v, %v", c.Executor, err)
 	}
 }
 

@@ -22,9 +22,12 @@ import (
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
-// Sink receives everything the executor reports, in the order it happens. The
-// executor calls it with its lock held: implementations must not block and
-// must not call back into the executor (A3 queues messages for the stream).
+// Sink receives what the executor reports; transport.Transport implements it.
+// Progress and Result are called with the executor's lock held, in the order
+// things happen: they must not block and must not call back into the
+// executor. Log is called from the plugin's goroutine without the lock and
+// may block for back pressure. A plugin's lines precede its result; a line
+// from a plugin that was given up on may still arrive after the result.
 type Sink interface {
 	Progress(p *agentv1.StepProgress)
 	Result(r *agentv1.StepResult)
