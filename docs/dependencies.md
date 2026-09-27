@@ -38,6 +38,7 @@
 | spring-boot-starter-data-jpa (Hibernate ORM 7.4, jakarta.persistence-api 3.2) | 4.1.1 | Apache-2.0; persistence-api — EPL-2.0 **или** EDL-1.0 (BSD-3), используем EDL | runtime | таблица `agents` |
 | spring-boot-starter-flyway + flyway-database-postgresql | 4.1.1 / 12.4.0 | Apache-2.0 | runtime | миграции |
 | org.postgresql:postgresql | 42.7.13 | BSD-2-Clause | runtime | JDBC-драйвер |
+| org.bouncycastle:bcpkix-jdk18on (+ bcprov-jdk18on, bcutil-jdk18on транзитивно) | 1.86 | Bouncy Castle Licence (MIT) | runtime | локальный CA: разбор CSR агента, выпуск X.509 (у JDK нет публичного API для этого) — ADR 0014 |
 | spring-boot-starter-grpc-server (spring-grpc-core 1.1.1, grpc-netty 1.83.1) | 4.1.1 | Apache-2.0 | runtime | gRPC-сервер `AgentService` |
 | springdoc-openapi-starter-webmvc-api (без Swagger UI) | 3.1.1 | Apache-2.0 | runtime | `/v3/api-docs`, из него генерируется клиент веба |
 | tools.jackson.module:jackson-module-kotlin | 3.x (BOM) | Apache-2.0 | runtime | JSON для Kotlin-классов |
@@ -67,22 +68,22 @@
 | @mantine/core 9.6.3 | MIT | runtime | UI-кит (ADR 0003) |
 | @mantine/hooks 9.6.3 | MIT | runtime | хуки Mantine (требование @mantine/core) |
 | @tanstack/react-query 5.104.0 | MIT | runtime | загрузка и кеширование данных API |
-| @tanstack/react-router 1.170.39 | MIT | runtime | типизированная маршрутизация (ADR 0014) |
+| @tanstack/react-router 1.170.39 | MIT | runtime | типизированная маршрутизация (ADR 0015) |
 | i18next 26.4.2 | MIT | runtime | локализация ru/en |
 | openapi-fetch 0.17.0 | MIT | runtime | типизированный клиент API |
 | react 19.3.0 | MIT | runtime | UI |
 | react-dom 19.3.0 | MIT | runtime | рендеринг в DOM |
 | react-i18next 17.0.15 | MIT | runtime | i18next для React |
-| @tanstack/react-query-devtools 5.104.0 | MIT | сборка/тесты | devtools Query, только в dev (ADR 0014) |
-| @tanstack/react-router-devtools 1.167.2 | MIT | сборка/тесты | devtools роутера, только в dev (ADR 0014) |
-| @tanstack/router-generator 1.167.38 | MIT | сборка/тесты | `npm run gen:routes` и проверка дерева маршрутов в CI (ADR 0014) |
-| @tanstack/router-plugin 1.168.40 | MIT | сборка/тесты | генерация дерева маршрутов из src/routes (ADR 0014) |
+| @tanstack/react-query-devtools 5.104.0 | MIT | сборка/тесты | devtools Query, только в dev (ADR 0015) |
+| @tanstack/react-router-devtools 1.167.2 | MIT | сборка/тесты | devtools роутера, только в dev (ADR 0015) |
+| @tanstack/router-generator 1.167.38 | MIT | сборка/тесты | `npm run gen:routes` и проверка дерева маршрутов в CI (ADR 0015) |
+| @tanstack/router-plugin 1.168.40 | MIT | сборка/тесты | генерация дерева маршрутов из src/routes (ADR 0015) |
 | @types/node 24.19.0 | MIT | сборка/тесты | типы Node для конфигов |
 | @types/react 19.3.0 | MIT | сборка/тесты | типы React |
 | @types/react-dom 19.3.0 | MIT | сборка/тесты | типы React DOM |
 | @vitejs/plugin-react 6.1.1 | MIT | сборка/тесты | React в Vite |
-| msw 2.15.0 | MIT | сборка/тесты | моки API в dev и Vitest (ADR 0015) |
-| openapi-msw 2.0.0 | MIT | сборка/тесты | типизация обработчиков MSW из OpenAPI (ADR 0015) |
+| msw 2.15.0 | MIT | сборка/тесты | моки API в dev и Vitest (ADR 0016) |
+| openapi-msw 2.0.0 | MIT | сборка/тесты | типизация обработчиков MSW из OpenAPI (ADR 0016) |
 | openapi-typescript 7.13.0 | MIT | сборка/тесты | генерация типов из OpenAPI |
 | oxlint 1.85.0 | MIT | сборка/тесты | линтер (ADR 0011) |
 | postcss 8.5.28 | MIT | сборка/тесты | PostCSS для Mantine |
