@@ -28,7 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # buf breaking: a PR is checked against its base, a push against the previous tip.
-      PROTO_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+      # The first push of a branch has an all-zero "before"; it is compared with itself.
+      PROTO_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before || github.sha) }}
     steps:
       - uses: actions/checkout@v7
         with:
