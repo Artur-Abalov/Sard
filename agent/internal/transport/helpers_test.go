@@ -163,7 +163,7 @@ func startServer(t *testing.T, ca *authority, serverCA *authority) *fakeServer {
 		t.Fatal(err)
 	}
 	s := &fakeServer{
-		addr:    "localhost:" + portOf(lis.Addr()),
+		addr:    lis.Addr().String(), // the IP the server listens on: "localhost" may resolve to ::1 first
 		streams: make(chan *serverStream, 16),
 		register: func() (*agentv1.RegisterResponse, error) {
 			return registered("agent-1", 30*time.Second), nil
@@ -174,11 +174,6 @@ func startServer(t *testing.T, ca *authority, serverCA *authority) *fakeServer {
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
 	return s
-}
-
-func portOf(addr net.Addr) string {
-	_, port, _ := net.SplitHostPort(addr.String())
-	return port
 }
 
 func (s *fakeServer) Register(ctx context.Context, req *agentv1.RegisterRequest) (*agentv1.RegisterResponse, error) {
