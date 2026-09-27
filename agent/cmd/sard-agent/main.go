@@ -19,6 +19,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/internal/session"
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
 	"github.com/Artur-Abalov/sard/agent/plugins"
 )
@@ -90,6 +91,7 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 		OS:       runtime.GOOS,
 		Arch:     runtime.GOARCH,
 		Local:    cfg,
+		Session:  session.Stub{},
 		RepositoryID: func(ctx context.Context, r config.Repository) (string, error) {
 			return restic.New(resticBinary, r.Name, r.URL, keys).ID(ctx)
 		},

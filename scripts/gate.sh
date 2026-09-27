@@ -16,7 +16,7 @@ BIN="$ROOT/.bin"
 COVERAGE_MIN=80    # % of statements (Go) / instructions (JVM)
 CRAP_MAX=6         # per function
 MUTATION_MIN=0.80  # killed / (killed + survived)
-# Cyclomatic complexity <= 8 is enforced by .golangci.yml, detekt and ESLint.
+# Cyclomatic complexity <= 8 is enforced by .golangci.yml, detekt and oxlint.
 
 ALL_MODULES=(proto gen sdk tools agent cli server web)
 

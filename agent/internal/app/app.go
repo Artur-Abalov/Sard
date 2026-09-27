@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/session"
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
@@ -40,15 +41,22 @@ type Agent struct {
 	// RepositoryID returns restic's id of a local repository. The server
 	// counts hosts per id to warn when a key exists on one host only.
 	RepositoryID func(ctx context.Context, r config.Repository) (string, error)
+	// Session serves the command stream once it is open.
+	Session session.Session
 }
 
-// Run registers with the server and serves commands until ctx ends.
+// Run registers with the server and serves commands until ctx ends or
+// the stream fails.
 func (a *Agent) Run(ctx context.Context) error {
 	if _, err := a.Client.Register(ctx, a.registerRequest(ctx)); err != nil {
 		return fmt.Errorf("register: %w", err)
 	}
-	if _, err := a.Client.Connect(ctx); err != nil {
+	stream, err := a.Client.Connect(ctx)
+	if err != nil {
 		return fmt.Errorf("connect: %w", err)
+	}
+	if err := a.Session.Serve(ctx, stream); err != nil {
+		return fmt.Errorf("serve: %w", err)
 	}
 	return nil
 }

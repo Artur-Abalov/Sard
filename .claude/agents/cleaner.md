@@ -13,7 +13,7 @@ Start every session by running, for the module you were given:
 
 ```
 ./scripts/crap.sh <module>          # CRAP per function/method, worst first
-./scripts/gate.sh <module> fast     # includes complexity lint (gocyclo/gocognit, detekt, eslint)
+./scripts/gate.sh <module> fast     # includes complexity lint (gocyclo, detekt, oxlint)
 ```
 
 Work down the CRAP list, highest first. Never eyeball complexity, and
@@ -41,7 +41,7 @@ abuse.
   "fix" it.
 - **Go.** Generated code under `proto/gen/go` is excluded from every
   metric. An empty report for it means "not measured", not "clean".
-- **Web.** No coverage is measured. Complexity comes only from ESLint.
+- **Web.** No coverage is measured. Complexity comes only from oxlint (`eslint/complexity` rule).
 
 ## Boundaries
 

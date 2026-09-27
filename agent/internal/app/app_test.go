@@ -22,6 +22,7 @@ type fakeClient struct {
 	registerErr, connectErr error
 	got                     *agentv1.RegisterRequest
 	connected               bool
+	stream                  agentv1.AgentService_ConnectClient
 }
 
 func (f *fakeClient) Register(_ context.Context, req *agentv1.RegisterRequest) (*agentv1.RegisterResponse, error) {
@@ -35,7 +36,26 @@ func (*fakeClient) RenewCertificate(context.Context, *agentv1.RenewCertificateRe
 
 func (f *fakeClient) Connect(context.Context) (agentv1.AgentService_ConnectClient, error) {
 	f.connected = true
-	return nil, f.connectErr
+	if f.connectErr != nil {
+		return nil, f.connectErr
+	}
+	return f.stream, nil
+}
+
+// fakeStream stands in for the open Connect stream.
+type fakeStream struct {
+	agentv1.AgentService_ConnectClient
+}
+
+// fakeSession records the stream it was asked to serve.
+type fakeSession struct {
+	err    error
+	served agentv1.AgentService_ConnectClient
+}
+
+func (f *fakeSession) Serve(_ context.Context, s agentv1.AgentService_ConnectClient) error {
+	f.served = s
+	return f.err
 }
 
 type plugin struct{ name, schema string }
@@ -48,6 +68,10 @@ func (plugin) Stream(context.Context, sdk.Dump, io.Writer) error  { return nil }
 func (plugin) Verify(context.Context, sdk.Config, string) error   { return nil }
 
 func newAgent(t *testing.T, c *fakeClient) *app.Agent {
+	return newAgentWith(t, c, &fakeSession{})
+}
+
+func newAgentWith(t *testing.T, c *fakeClient, s *fakeSession) *app.Agent {
 	t.Helper()
 	reg, err := sdk.NewRegistry(plugin{"mysql", `{"a":1}`}, plugin{"files", `{"b":2}`})
 	if err != nil {
@@ -70,7 +94,7 @@ func newAgent(t *testing.T, c *fakeClient) *app.Agent {
 	}
 	return &app.Agent{
 		Client: c, Plugins: reg, Hostname: "db1", Version: "1.2.3", OS: "linux", Arch: "amd64",
-		Local: local, RepositoryID: repoID,
+		Local: local, RepositoryID: repoID, Session: s,
 	}
 }
 
@@ -134,6 +158,27 @@ func TestRunNeverSendsHostLocalValues(t *testing.T) {
 		if strings.Contains(wire, value) {
 			t.Errorf("register request leaks %q: %s", value, wire)
 		}
+	}
+}
+
+// The open stream is handed to the session, which serves commands until
+// the context ends; Run does not return while the session is serving.
+func TestRunServesTheOpenStream(t *testing.T) {
+	stream := &fakeStream{}
+	s := &fakeSession{}
+	if err := newAgentWith(t, &fakeClient{stream: stream}, s).Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if s.served != stream {
+		t.Fatalf("session served %v, want the stream from Connect", s.served)
+	}
+}
+
+func TestRunReportsSessionFailure(t *testing.T) {
+	s := &fakeSession{err: errors.New("stream reset")}
+	err := newAgentWith(t, &fakeClient{stream: &fakeStream{}}, s).Run(context.Background())
+	if err == nil || err.Error() != "serve: stream reset" {
+		t.Fatalf("err = %v", err)
 	}
 }
 

@@ -8,6 +8,11 @@ import ru from './locales/ru.json'
 
 export const languages = ['ru', 'en'] as const
 
+// Keep <html lang> in sync so screen readers use the right language.
+i18n.on('languageChanged', (lng) => {
+  document.documentElement.lang = lng
+})
+
 void i18n.use(initReactI18next).init({
   resources: { ru: { translation: ru }, en: { translation: en } },
   lng: 'ru',

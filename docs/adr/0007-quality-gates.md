@@ -11,7 +11,7 @@
 | тесты | зелёные | `go test` | JUnit через Gradle | Vitest (чистые функции) |
 | покрытие | ≥ 80% | `go test -coverprofile` | JaCoCo | не меряется |
 | CRAP на функцию | ≤ 6 | `.bin/crap` | `.bin/crap` по JaCoCo XML | — |
-| цикломатика | ≤ 8 | golangci-lint `gocyclo` | detekt | ESLint `complexity` |
+| цикломатика | ≤ 8 | golangci-lint `gocyclo` | detekt | oxlint, правило `eslint/complexity` (ADR 0011) |
 | мутации | ≥ 0.80 | go-mutesting | ADR 0006 | — |
 
 - Инструменты Go закреплены в отдельном модуле `tools/` (директива `tool`), вне `go.work`, собираются `make tools` в `.bin/`. Так их тяжёлый граф зависимостей не влияет на продуктовые модули.
