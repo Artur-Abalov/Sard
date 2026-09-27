@@ -165,9 +165,8 @@ class EnrollmentIntegrationTest(
     @Test
     fun `a failed signature leaves the token unused and nothing behind`() {
         val issued = newToken()
-        assertFailsWith<dev.sard.server.pki.InvalidCsrException> {
-            enrollment.enroll(issued.reveal(), "not a CSR".toByteArray(), "db1")
-        }
+        val badCsr = "not a CSR".toByteArray()
+        assertEquals(Reason.CSR_INVALID, rejection { enrollment.enroll(issued.reveal(), badCsr, "db1") })
         assertUntouched(issued)
         enrollment.enroll(issued.reveal(), csr, "db1")
         assertEquals(1, count("agents"))
@@ -177,7 +176,7 @@ class EnrollmentIntegrationTest(
     fun `a used token is rejected`() {
         val issued = newToken()
         enrollment.enroll(issued.reveal(), csr, "db1")
-        assertEquals(Reason.USED_TOKEN, rejection { enrollment.enroll(issued.reveal(), csr, "db2") })
+        assertEquals(Reason.TOKEN_USED, rejection { enrollment.enroll(issued.reveal(), csr, "db2") })
         assertEquals(listOf(1, 1), listOf(count("agents"), count("agent_certificates")))
     }
 
@@ -188,7 +187,7 @@ class EnrollmentIntegrationTest(
         clock.now = NOW + TTL - Duration.ofMillis(1)
         enrollment.enroll(early.reveal(), csr, "db1")
         clock.now = NOW + TTL
-        assertEquals(Reason.EXPIRED_TOKEN, rejection { enrollment.enroll(late.reveal(), csr, "db2") })
+        assertEquals(Reason.TOKEN_EXPIRED, rejection { enrollment.enroll(late.reveal(), csr, "db2") })
         assertEquals(mapOf<String, Any?>("used_at" to null, "agent_id" to null), tokenRow(late))
     }
 
@@ -199,9 +198,9 @@ class EnrollmentIntegrationTest(
         val stranger = EnrollmentToken(secret, CaFingerprint("0".repeat(64))).encode()
         val unknown = EnrollmentToken(EnrollmentSecret.random(SecureRandom()), ca.fingerprint()).encode()
 
-        assertEquals(Reason.MALFORMED_TOKEN, rejection { enrollment.enroll("sard_", csr, "db1") })
-        assertEquals(Reason.FOREIGN_CA, rejection { enrollment.enroll(stranger, csr, "db1") })
-        assertEquals(Reason.UNKNOWN_TOKEN, rejection { enrollment.enroll(unknown, csr, "db1") })
+        assertEquals(Reason.TOKEN_MALFORMED, rejection { enrollment.enroll("sard_", csr, "db1") })
+        assertEquals(Reason.TOKEN_FOREIGN_CA, rejection { enrollment.enroll(stranger, csr, "db1") })
+        assertEquals(Reason.TOKEN_UNKNOWN, rejection { enrollment.enroll(unknown, csr, "db1") })
         assertUntouched(issued)
     }
 
@@ -220,7 +219,7 @@ class EnrollmentIntegrationTest(
 
             assertTrue(results[0].isSuccess, "the first holds the token: ${results[0]}")
             val loser = results[1].exceptionOrNull()
-            assertEquals(Reason.USED_TOKEN, (loser as EnrollmentRejectedException).reason)
+            assertEquals(Reason.TOKEN_USED, (loser as EnrollmentRejectedException).reason)
             assertEquals(listOf(1, 1), listOf(count("agents"), count("agent_certificates")))
         } finally {
             ca.gate?.countDown()
@@ -281,7 +280,7 @@ class EnrollmentIntegrationTest(
     @Test
     fun `Enroll over gRPC maps rejections to status codes`() {
         val issued = newToken()
-        assertEquals(Status.Code.UNAUTHENTICATED, code(grpcEnroll(request("nonsense", csr))))
+        assertEquals(Status.Code.INVALID_ARGUMENT, code(grpcEnroll(request("nonsense", csr))))
         assertEquals(Status.Code.INVALID_ARGUMENT, code(grpcEnroll(request(issued.reveal(), ByteArray(3)))))
         assertUntouched(issued)
     }

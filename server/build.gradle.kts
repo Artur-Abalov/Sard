@@ -32,6 +32,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.springframework.boot:spring-boot-starter-grpc-server")
+    // Rich gRPC status details (google.rpc.ErrorInfo): already on the classpath transitively
+    // through spring-boot-starter-grpc-server; declared directly because EnrollmentStatus uses it.
+    implementation("io.grpc:grpc-protobuf")
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.bouncycastle:bcpkix-jdk18on:1.86")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-api:3.1.1")

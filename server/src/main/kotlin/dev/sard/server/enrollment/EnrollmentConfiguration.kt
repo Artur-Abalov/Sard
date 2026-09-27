@@ -20,7 +20,8 @@ class EnrollmentConfiguration {
         sessions: TenantSessions,
         ca: CertificateAuthority,
         clock: Clock,
-    ) = EnrollmentTokens(sessions, ca, clock, SecureRandom(), UuidV7(clock, SecureRandom()))
+        endpoint: AgentEndpoint,
+    ) = EnrollmentTokens(sessions, ca, clock, SecureRandom(), UuidV7(clock, SecureRandom()), endpoint)
 
     @Bean
     fun enrollment(

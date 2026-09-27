@@ -47,6 +47,7 @@
 | org.postgresql:postgresql | 42.7.13 | BSD-2-Clause | runtime | JDBC-драйвер |
 | org.bouncycastle:bcpkix-jdk18on (+ bcprov-jdk18on, bcutil-jdk18on транзитивно) | 1.86 | Bouncy Castle Licence (MIT) | runtime | локальный CA: разбор CSR агента, выпуск X.509 (у JDK нет публичного API для этого) — ADR 0014 |
 | spring-boot-starter-grpc-server (spring-grpc-core 1.1.1, grpc-netty 1.83.1) | 4.1.1 | Apache-2.0 | runtime | gRPC-сервер `AgentService` |
+| io.grpc:grpc-protobuf (+ com.google.api.grpc:proto-google-common-protos транзитивно) | 1.83.1 / 2.64.1 | Apache-2.0 | runtime | `google.rpc.ErrorInfo` в деталях статуса Enroll (S2b, контракт отказов) — уже транзитивная зависимость spring-boot-starter-grpc-server, объявлена явно, так как код использует её классы напрямую |
 | springdoc-openapi-starter-webmvc-api (без Swagger UI) | 3.1.1 | Apache-2.0 | runtime | `/v3/api-docs`, из него генерируется клиент веба |
 | tools.jackson.module:jackson-module-kotlin | 3.x (BOM) | Apache-2.0 | runtime | JSON для Kotlin-классов |
 | proto-jvm: grpc-protobuf, grpc-stub, grpc-kotlin-stub, protobuf-java, kotlinx-coroutines-core | 1.83.1 / 1.5.0 / 4.35.1 / 1.10.2 | Apache-2.0; protobuf-java — BSD-3-Clause | runtime | JVM-стабы контракта |
