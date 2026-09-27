@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -292,6 +293,7 @@ type fixture struct {
 	files    *fakeHandler
 	stubborn *fakeHandler
 	log      *syncBuffer
+	opts     executor.Options
 }
 
 func setup(t *testing.T, tune func(*executor.Options)) *fixture {
@@ -302,7 +304,7 @@ func setup(t *testing.T, tune func(*executor.Options)) *fixture {
 	opts := executor.Options{
 		Handlers:     registry{"files": f.files, "stubborn": f.stubborn, "sloppy": sloppy},
 		Sink:         f.sink,
-		StateDir:     t.TempDir(),
+		StateDir:     stateDir(t),
 		Repositories: []string{"main"},
 		Clock:        f.clock,
 		Logger:       slog.New(slog.NewTextHandler(f.log, nil)),
@@ -310,14 +312,28 @@ func setup(t *testing.T, tune func(*executor.Options)) *fixture {
 	if tune != nil {
 		tune(&opts)
 	}
-	e, err := executor.New(opts)
+	f.opts = opts
+	f.restart(t)
+	return f
+}
+
+// restart closes the executor, as a stopped agent would, and creates a new
+// one on the same state directory with fresh handler counters intact.
+func (f *fixture) restart(t *testing.T) {
+	t.Helper()
+	if f.e != nil {
+		_ = f.e.Shutdown(context.Background(), executor.ShutdownAbort)
+	}
+	e, err := executor.New(f.opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.e = e
 	t.Cleanup(func() { _ = e.Shutdown(context.Background(), executor.ShutdownAbort) })
-	return f
 }
+
+// stateDir is a fresh path the executor creates itself (t.TempDir is 0755).
+func stateDir(t *testing.T) string { return filepath.Join(t.TempDir(), "state") }
 
 func backup(id string) *agentv1.RunStep {
 	return &agentv1.RunStep{CommandId: id, Plugin: "files", Action: agentv1.Action_ACTION_BACKUP, RepositoryName: "main"}

@@ -10,6 +10,7 @@
 package executor
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -68,8 +69,11 @@ type Timer interface {
 // becomes REJECTED rather than FAILED.
 var ErrRejected = errors.New("step rejected")
 
-// ErrInvalidOptions is returned by New for missing required options.
+// ErrInvalidOptions is returned by New for missing required options or an unusable state dir.
 var ErrInvalidOptions = errors.New("invalid executor options")
+
+// ErrNoResult is returned by Ack for a command without a finished result.
+var ErrNoResult = errors.New("no result to acknowledge")
 
 // ShutdownMode says how Shutdown treats queued and running steps, after
 // Oracle's SHUTDOWN NORMAL / IMMEDIATE / ABORT.
@@ -100,6 +104,7 @@ type Options struct {
 	CancelGrace      time.Duration // first wait for a cancelled handler; doubles per check; default 2s
 	CancelChecks     int           // checks before giving up on it; default 4 (2+4+8+16 = 30s)
 	ProgressInterval time.Duration // at most one progress per step per interval; default 1s
+	Retention        time.Duration // how long acknowledged command_ids are remembered; default 7 days
 	Clock            Clock         // default: system clock
 	Logger           *slog.Logger  // default: discard
 }
@@ -111,12 +116,14 @@ const (
 	defaultCancelGrace      = 2 * time.Second
 	defaultCancelChecks     = 4
 	defaultProgressInterval = time.Second
+	defaultRetention        = 7 * 24 * time.Hour
 )
 
 // Executor runs steps. All its state lives here; it is safe for concurrent use.
 type Executor struct {
 	opts  Options
 	repos map[string]bool
+	store *store
 
 	mu         sync.Mutex
 	cmds       map[string]*command
@@ -127,17 +134,27 @@ type Executor struct {
 	idleClosed bool
 }
 
-// New validates the options, fills in defaults and returns an idle executor.
+// New validates the options, fills in defaults, loads the results and
+// tombstones kept in StateDir and returns an idle executor. Loaded results
+// are available through PendingResults for resending.
 func New(opts Options) (*Executor, error) {
 	if err := validate(opts); err != nil {
 		return nil, err
 	}
 	withDefaults(&opts)
+	st, err := openStore(opts.StateDir)
+	if err != nil {
+		return nil, err
+	}
 	repos := make(map[string]bool, len(opts.Repositories))
 	for _, name := range opts.Repositories {
 		repos[name] = true
 	}
-	return &Executor{opts: opts, repos: repos, cmds: map[string]*command{}}, nil
+	e := &Executor{opts: opts, repos: repos, store: st, cmds: map[string]*command{}}
+	if err := e.restore(); err != nil {
+		return nil, err
+	}
+	return e, nil
 }
 
 func validate(opts Options) error {
@@ -159,6 +176,7 @@ func withDefaults(o *Options) {
 	o.CancelGrace = orDefault(o.CancelGrace, defaultCancelGrace)
 	o.CancelChecks = orDefault(o.CancelChecks, defaultCancelChecks)
 	o.ProgressInterval = orDefault(o.ProgressInterval, defaultProgressInterval)
+	o.Retention = orDefault(o.Retention, defaultRetention)
 	if o.Clock == nil {
 		o.Clock = systemClock{}
 	}
@@ -207,6 +225,81 @@ func (e *Executor) Cancel(commandID string) {
 		e.interrupt(c, cancelledByServer())
 	case c.state == finished:
 		e.opts.Sink.Result(c.result)
+	}
+}
+
+// Ack records that the server has the result of commandID: it leaves the
+// pending list and is kept as a tombstone for Retention, so a repeated
+// command_id still gets the same result instead of a second run.
+func (e *Executor) Ack(commandID string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	c := e.cmds[commandID]
+	if c == nil || c.state != finished {
+		return fmt.Errorf("%w: %q", ErrNoResult, commandID)
+	}
+	e.sweep()
+	if c.acked {
+		return nil
+	}
+	c.acked, c.ackedAt = true, e.opts.Clock.Now()
+	return e.store.acknowledge(c.result, c.ackedAt)
+}
+
+// PendingResults are the finished, unacknowledged results, oldest first, for
+// resending after a reconnect or a restart.
+func (e *Executor) PendingResults() []*agentv1.StepResult {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var pending []*agentv1.StepResult
+	for _, c := range e.cmds {
+		if c.state == finished && !c.acked {
+			pending = append(pending, c.result)
+		}
+	}
+	slices.SortFunc(pending, func(a, b *agentv1.StepResult) int {
+		return cmp.Or(a.GetFinishedAt().AsTime().Compare(b.GetFinishedAt().AsTime()), cmp.Compare(a.GetCommandId(), b.GetCommandId()))
+	})
+	return pending
+}
+
+// restore loads what the previous run left: results to resend and tombstones.
+func (e *Executor) restore() error {
+	found, err := e.store.load(func(path string, err error) {
+		e.opts.Logger.Warn("unreadable state file kept", "path", path, "error", err)
+	})
+	if err != nil {
+		return err
+	}
+	for id, st := range found {
+		c := &command{step: &agentv1.RunStep{CommandId: id}, state: finished, result: st.result}
+		c.acked, c.ackedAt = !st.ackedAt.IsZero(), st.ackedAt
+		e.cmds[id] = c
+		if c.acked {
+			e.dropLeftover(id)
+		}
+	}
+	e.sweep()
+	return nil
+}
+
+// dropLeftover removes a result a crash left next to its tombstone.
+func (e *Executor) dropLeftover(commandID string) {
+	if err := e.store.remove(resultsDir, commandID); err != nil {
+		e.opts.Logger.Warn("cannot remove an acknowledged result", "command_id", commandID, "error", err)
+	}
+}
+
+// sweep forgets tombstones older than Retention.
+func (e *Executor) sweep() {
+	now := e.opts.Clock.Now()
+	for id, c := range e.cmds {
+		if c.acked && now.Sub(c.ackedAt) >= e.opts.Retention {
+			delete(e.cmds, id)
+			if err := e.store.forget(id); err != nil {
+				e.opts.Logger.Warn("cannot remove a tombstone", "command_id", id, "error", err)
+			}
+		}
 	}
 }
 

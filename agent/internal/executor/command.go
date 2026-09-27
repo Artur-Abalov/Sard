@@ -43,6 +43,8 @@ type command struct {
 	progress *agentv1.StepProgress // last sent
 	sentAt   time.Time
 	result   *agentv1.StepResult
+	acked    bool
+	ackedAt  time.Time
 }
 
 func (c *command) live() bool { return c.state == running || c.state == stopping }
@@ -273,6 +275,9 @@ func (e *Executor) finish(c *command, r *agentv1.StepResult) {
 		e.active--
 	}
 	c.state, c.result = finished, r
+	if err := e.store.saveResult(r); err != nil {
+		e.opts.Logger.Error("cannot save the result; it is kept in memory only", "command_id", r.GetCommandId(), "error", err)
+	}
 	e.opts.Sink.Result(r)
 	e.dispatch()
 	e.signalIdle()

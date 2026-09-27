@@ -610,7 +610,7 @@ func TestClosingAnIdleExecutorReturnsAtOnceAndCanBeRepeated(t *testing.T) {
 func TestDefaultsAreSixteenWaitingStepsAndADayOfRuntime(t *testing.T) {
 	clock, sink, files := newClock(), newSink(), newHandler(false)
 	e, err := executor.New(executor.Options{
-		Handlers: registry{"files": files}, Sink: sink, StateDir: t.TempDir(),
+		Handlers: registry{"files": files}, Sink: sink, StateDir: stateDir(t),
 		Repositories: []string{"main"}, Clock: clock,
 	})
 	if err != nil {
@@ -636,7 +636,7 @@ func TestAnExecutorWithOnlyRequiredOptionsRunsOneStepAtATime(t *testing.T) {
 	e, err := executor.New(executor.Options{
 		Handlers:     registry{"files": files},
 		Sink:         sink,
-		StateDir:     t.TempDir(),
+		StateDir:     stateDir(t),
 		Repositories: []string{"main"},
 	})
 	if err != nil {
@@ -660,7 +660,7 @@ func TestNewRequiresHandlersSinkAndStateDir(t *testing.T) {
 	}
 	for name, edit := range cases {
 		t.Run(name, func(t *testing.T) {
-			opts := executor.Options{Handlers: registry{}, Sink: newSink(), StateDir: t.TempDir()}
+			opts := executor.Options{Handlers: registry{}, Sink: newSink(), StateDir: stateDir(t)}
 			edit(&opts)
 			if _, err := executor.New(opts); !errors.Is(err, executor.ErrInvalidOptions) || !strings.Contains(err.Error(), name) {
 				t.Fatalf("err = %v", err)
