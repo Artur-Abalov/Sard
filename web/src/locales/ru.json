@@ -1,0 +1,17 @@
+{
+  "app": {
+    "title": "Sard",
+    "language": "Язык",
+    "colorScheme": "Тема",
+    "light": "Светлая",
+    "dark": "Тёмная",
+    "auto": "Системная"
+  },
+  "dashboard": {
+    "title": "Дашборд",
+    "lastVerifiedRestore": "Последнее проверенное восстановление: {{value}}",
+    "serverVersion": "Версия сервера: {{version}}",
+    "loading": "Загрузка…",
+    "error": "Сервер недоступен"
+  }
+}

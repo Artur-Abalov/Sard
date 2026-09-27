@@ -1,0 +1,17 @@
+{
+  "app": {
+    "title": "Sard",
+    "language": "Language",
+    "colorScheme": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "auto": "System"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "lastVerifiedRestore": "Last verified restore: {{value}}",
+    "serverVersion": "Server version: {{version}}",
+    "loading": "Loading…",
+    "error": "Server unavailable"
+  }
+}

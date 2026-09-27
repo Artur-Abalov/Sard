@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Network device",
+  "type": "object",
+  "properties": {
+    "host": {
+      "type": "string",
+      "title": "Host[:port]"
+    },
+    "vendor": {
+      "type": "string",
+      "title": "Vendor",
+      "enum": [
+        "mikrotik",
+        "eltex"
+      ]
+    },
+    "username": {
+      "type": "string",
+      "title": "SSH user"
+    },
+    "key_ref": {
+      "type": "string",
+      "title": "SSH key secret",
+      "description": "Name of a secret defined on the agent host (secrets: in agent.yaml); never the value."
+    }
+  },
+  "required": [
+    "host",
+    "vendor",
+    "username",
+    "key_ref"
+  ],
+  "additionalProperties": false
+}

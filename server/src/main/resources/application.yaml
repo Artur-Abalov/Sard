@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# Secrets come from the environment (see deploy/.env.example), never from this file.
+spring:
+  application:
+    name: sard-server
+  datasource:
+    url: ${SARD_DB_URL:jdbc:postgresql://localhost:5432/sard}
+    username: ${SARD_DB_USER:sard}
+    password: ${SARD_DB_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  grpc:
+    server:
+      port: ${SARD_GRPC_PORT:9090}
+server:
+  port: ${SARD_HTTP_PORT:8080}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+springdoc:
+  api-docs:
+    path: /v3/api-docs

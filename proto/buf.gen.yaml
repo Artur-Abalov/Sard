@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Artur Abalov
+#
+# Local plugins pinned in tools/go.mod (make tools). The Go import path
+# prefix must match proto/gen/go/go.mod; see docs/adr/0005-go-module-path.md.
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/Artur-Abalov/sard/proto/gen/go
+plugins:
+  - local: ../.bin/protoc-gen-go
+    out: gen/go
+    opt: paths=source_relative
+  - local: ../.bin/protoc-gen-go-grpc
+    out: gen/go
+    opt: paths=source_relative
+inputs:
+  - directory: .

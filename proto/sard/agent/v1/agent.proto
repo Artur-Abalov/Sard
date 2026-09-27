@@ -1,0 +1,377 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Artur Abalov
+
+syntax = "proto3";
+
+// Contract between sard-server and sard-agent.
+//
+// The agent is always the client. On first start it enrolls with a one-time
+// token and receives a client certificate; after that it dials the server
+// over mTLS, registers, and opens a long-lived bidirectional stream. The
+// server never connects to the agent; it sends commands over the stream the
+// agent opened. Backup data never travels over this API: the agent writes it
+// straight to storage.
+//
+// Identity: the server identifies the agent (and its tenant) by the mTLS
+// client certificate, never by fields in messages.
+//
+// Trust model (ADR 0008): the server is a control plane, not a key holder.
+// It decides when to run which step and refers to repositories, secrets and
+// scripts by name only; their definitions and values live on the agent host
+// (restic password_file, backend credentials, source passwords, allowlisted
+// scripts). A compromised server can trigger or stop steps and see metadata,
+// but cannot read backups, learn credentials, redirect data to another
+// repository or run arbitrary code on hosts.
+package sard.agent.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "dev.sard.proto.agent.v1";
+
+// ---------------------------------------------------------------------------
+// Enrollment
+// ---------------------------------------------------------------------------
+
+// EnrollmentService is served with server-side TLS only: the agent has no
+// client certificate yet.
+service EnrollmentService {
+  // Enroll exchanges a one-time enrollment token and a certificate signing
+  // request for a client certificate. The token decides the tenant the agent
+  // belongs to; the agent cannot choose it.
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+}
+
+message EnrollRequest {
+  // One-time token created in the UI or CLI.
+  string enrollment_token = 1;
+  // PKCS#10 certificate signing request, DER-encoded. The private key never
+  // leaves the agent host.
+  bytes csr_der = 2;
+  // Host name as reported by the operating system.
+  string hostname = 3;
+}
+
+message EnrollResponse {
+  // Server-assigned agent id, also embedded in the certificate.
+  string agent_id = 1;
+  // Issued client certificate followed by intermediates, PEM.
+  string certificate_chain_pem = 2;
+  // CA bundle the agent uses to verify the server from now on, PEM.
+  string ca_bundle_pem = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Agent service (mTLS required)
+// ---------------------------------------------------------------------------
+
+// AgentService is implemented by sard-server and called by sard-agent.
+// Every call requires a client certificate issued by Enroll.
+service AgentService {
+  // Register announces the agent and its capabilities. Called on every
+  // agent start. Fails with FAILED_PRECONDITION if protocol_version is not
+  // supported by the server.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Connect is the command channel. The agent opens it after Register and
+  // keeps it open; the first message must be Hello. Heartbeats, progress,
+  // logs and results flow up, commands flow down. On disconnect the agent
+  // reconnects with backoff and sends Hello again.
+  rpc Connect(stream ConnectRequest) returns (stream ConnectResponse);
+
+  // RenewCertificate issues a new client certificate before the current one
+  // expires.
+  rpc RenewCertificate(RenewCertificateRequest) returns (RenewCertificateResponse);
+}
+
+// RegisterRequest describes the agent to the server.
+message RegisterRequest {
+  // Host name as reported by the operating system; shown in the UI.
+  string hostname = 1;
+  // Version of the sard-agent binary, e.g. "0.1.0" or a git describe string.
+  string agent_version = 2;
+  // Source plugins compiled into this agent.
+  repeated Plugin plugins = 3;
+  // Version of this contract the agent speaks. Starts at 1; bumped on
+  // behavioural changes that field numbers alone cannot express.
+  uint32 protocol_version = 4;
+  // Operating system and architecture, e.g. "linux", "amd64".
+  string os = 5;
+  string arch = 6;
+  // Repositories configured on this host; names and metadata only.
+  repeated RepositoryInfo repositories = 7;
+  // Names of secrets available on this host; values never leave it. Lets
+  // the UI show which configurations can run on which agent.
+  repeated string secret_names = 8;
+  // Names of scripts allowlisted on this host for ACTION_RUN.
+  repeated string script_names = 9;
+}
+
+// Plugin is a source plugin available on the agent.
+message Plugin {
+  // Unique plugin name, e.g. "postgresql".
+  string name = 1;
+  // JSON Schema (draft 2020-12) of the plugin configuration; the UI renders
+  // configuration forms from it. Secret fields hold the name of a secret
+  // stored on the agent host (e.g. "password_ref": "pg-prod"), never a value.
+  string config_schema = 2;
+  // Plugin version, e.g. "0.1.0".
+  string version = 3;
+  // Actions the plugin implements.
+  repeated Action actions = 4;
+}
+
+// RegisterResponse identifies the agent in all later calls.
+message RegisterResponse {
+  // Server-assigned agent id, for logs and diagnostics. The server itself
+  // identifies the agent by its certificate.
+  string agent_id = 1;
+  // How often the agent must send Heartbeat.
+  google.protobuf.Duration heartbeat_interval = 2;
+}
+
+message RenewCertificateRequest {
+  // New CSR, DER-encoded; may reuse the existing key or carry a new one.
+  bytes csr_der = 1;
+}
+
+message RenewCertificateResponse {
+  string certificate_chain_pem = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Stream: agent -> server
+// ---------------------------------------------------------------------------
+
+// ConnectRequest is one message from the agent to the server.
+message ConnectRequest {
+  oneof message {
+    // Periodic liveness signal.
+    Heartbeat heartbeat = 1;
+    // Final outcome of a command previously received from the server.
+    StepResult step_result = 2;
+    // First message on every stream.
+    Hello hello = 3;
+    // Intermediate state of a running command.
+    StepProgress step_progress = 4;
+    // Log output of a running command.
+    LogChunk log_chunk = 5;
+  }
+}
+
+// Hello opens the stream and lets the server reconcile state after a
+// reconnect.
+message Hello {
+  // Commands still running on the agent. The server marks commands it
+  // believes are running but absent here as failed ("agent lost the step"),
+  // and must not resend the listed ones.
+  repeated string running_command_ids = 1;
+}
+
+// Heartbeat tells the server the agent is alive.
+message Heartbeat {
+  reserved 1;
+  reserved "agent_id";
+  // Agent clock at send time; lets the server detect clock skew.
+  google.protobuf.Timestamp sent_at = 2;
+}
+
+// StepProgress reports that a command is accepted or advancing.
+message StepProgress {
+  string command_id = 1;
+  StepPhase phase = 2;
+  // Bytes processed so far in the current phase.
+  uint64 bytes_processed = 3;
+  // Expected total bytes; 0 when unknown.
+  uint64 bytes_total = 4;
+  google.protobuf.Timestamp sent_at = 5;
+}
+
+// StepPhase follows the plugin interface prepare -> dump -> stream -> verify.
+enum StepPhase {
+  STEP_PHASE_UNSPECIFIED = 0;
+  // The agent accepted the command and queued it.
+  STEP_PHASE_ACCEPTED = 1;
+  STEP_PHASE_PREPARING = 2;
+  STEP_PHASE_DUMPING = 3;
+  // Data is being written to the repository.
+  STEP_PHASE_UPLOADING = 4;
+  STEP_PHASE_RESTORING = 5;
+  STEP_PHASE_VERIFYING = 6;
+}
+
+// LogChunk carries log lines of one command, batched by the agent.
+message LogChunk {
+  string command_id = 1;
+  repeated LogLine lines = 2;
+}
+
+message LogLine {
+  google.protobuf.Timestamp time = 1;
+  LogLevel level = 2;
+  // Must not contain secrets; the agent redacts known secret values.
+  string text = 3;
+}
+
+enum LogLevel {
+  LOG_LEVEL_UNSPECIFIED = 0;
+  LOG_LEVEL_DEBUG = 1;
+  LOG_LEVEL_INFO = 2;
+  LOG_LEVEL_WARN = 3;
+  LOG_LEVEL_ERROR = 4;
+}
+
+// StepResult reports how a RunStep command ended. Sent exactly once per
+// command_id; if the stream breaks before the server acknowledges it by
+// closing the command, the agent resends it after reconnecting.
+message StepResult {
+  reserved 4;
+  reserved "snapshot_id";
+
+  // Id of the command this result answers.
+  string command_id = 1;
+  // Final state of the step.
+  StepStatus status = 2;
+  // Human-readable detail; empty on success.
+  string message = 3;
+  google.protobuf.Timestamp started_at = 5;
+  google.protobuf.Timestamp finished_at = 6;
+
+  // Action-specific output; unset when the step failed before producing it.
+  oneof output {
+    BackupOutput backup = 10;
+    RestoreOutput restore = 11;
+    VerifyOutput verify = 12;
+    RunOutput run = 13;
+  }
+}
+
+// StepStatus is the final state of a step.
+enum StepStatus {
+  STEP_STATUS_UNSPECIFIED = 0;
+  // The step finished successfully.
+  STEP_STATUS_SUCCEEDED = 1;
+  // The step failed; see StepResult.message.
+  STEP_STATUS_FAILED = 2;
+  // Cancelled by CancelStep.
+  STEP_STATUS_CANCELLED = 3;
+  // Exceeded RunStep.timeout.
+  STEP_STATUS_TIMED_OUT = 4;
+  // Not started: unknown plugin, repository, secret or script, unsupported
+  // action or invalid config.
+  STEP_STATUS_REJECTED = 5;
+}
+
+message BackupOutput {
+  // Snapshot id in the repository.
+  string snapshot_id = 1;
+  // Logical size of the backed-up data.
+  uint64 total_bytes = 2;
+  // Bytes actually added to the repository after deduplication.
+  uint64 added_bytes = 3;
+}
+
+message RestoreOutput {
+  // Where the data was restored, e.g. a path or a database name.
+  string target = 1;
+}
+
+// VerifyOutput is the evidence behind "last verified restore N hours ago".
+message VerifyOutput {
+  // Snapshot that was restored and checked.
+  string snapshot_id = 1;
+  repeated CheckResult checks = 2;
+}
+
+message CheckResult {
+  // Check name, e.g. "tables_count" or a user-defined SQL check.
+  string name = 1;
+  bool passed = 2;
+  // Observed value or failure reason.
+  string detail = 3;
+}
+
+message RunOutput {
+  // Exit code of a user script or hook.
+  int32 exit_code = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Stream: server -> agent
+// ---------------------------------------------------------------------------
+
+// ConnectResponse is one message from the server to the agent.
+message ConnectResponse {
+  oneof message {
+    // Execute one workflow step.
+    RunStep run_step = 1;
+    // Stop a running step.
+    CancelStep cancel_step = 2;
+  }
+}
+
+// Action is what a step does with a plugin.
+enum Action {
+  ACTION_UNSPECIFIED = 0;
+  ACTION_BACKUP = 1;
+  ACTION_RESTORE = 2;
+  // Restore into a temporary sandbox and run checks.
+  ACTION_VERIFY = 3;
+  // Run a script allowlisted on the agent host; no repository involved.
+  ACTION_RUN = 4;
+}
+
+// RunStep asks the agent to execute one workflow step with a plugin.
+//
+// Idempotency: command_id is unique. If the agent receives a command_id it
+// is already running or has finished, it must not run it again; it reports
+// the current progress or resends the stored result instead.
+message RunStep {
+  reserved 5, 6;
+  reserved "repository", "secrets";
+
+  // Server-generated id; echoed in every progress, log and result message.
+  string command_id = 1;
+  // Name of the plugin that executes the step, e.g. "postgresql".
+  string plugin = 2;
+  // Plugin configuration as JSON, valid against the plugin's config_schema.
+  // Secrets appear only as names of agent-local secrets, so it holds no
+  // secret values and may be logged. For ACTION_RUN it names an allowlisted
+  // script, never script text.
+  string config_json = 3;
+  Action action = 4;
+  // Name of a repository configured on the agent host; empty for
+  // ACTION_RUN. URL, restic password_file and backend credentials stay on
+  // the host.
+  string repository_name = 10;
+  // Snapshot to restore or verify; empty means the latest snapshot matching
+  // tags.
+  string snapshot_id = 7;
+  // Hard limit for the whole step; the agent kills it after this.
+  google.protobuf.Duration timeout = 8;
+  // Tags written to the snapshot, e.g. workflow and run ids.
+  map<string, string> tags = 9;
+}
+
+// RepositoryInfo is a repository configured on the agent host, as reported
+// in Register. It carries no URL credentials and no restic password.
+message RepositoryInfo {
+  // Name the server uses in RunStep.repository_name.
+  string name = 1;
+  // Backend kind, e.g. "s3", "sftp", "local".
+  string backend = 2;
+  // restic repository id (from the repository config), not a secret. Lets
+  // the server see how many agents can open the same repository and warn
+  // when the key exists on a single host only.
+  string repository_id = 3;
+  // Crypto provider; empty means restic built-in AES. Reserved for GOST.
+  string crypto_provider = 4;
+}
+
+// CancelStep asks the agent to stop a running step. The agent answers with
+// StepResult status CANCELLED, or with the real result if the step had
+// already finished.
+message CancelStep {
+  string command_id = 1;
+}

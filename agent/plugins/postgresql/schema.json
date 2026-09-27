@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PostgreSQL",
+  "type": "object",
+  "properties": {
+    "host": {
+      "type": "string",
+      "title": "Host[:port]",
+      "default": "localhost:5432"
+    },
+    "database": {
+      "type": "string",
+      "title": "Database"
+    },
+    "user": {
+      "type": "string",
+      "title": "User"
+    },
+    "password_ref": {
+      "type": "string",
+      "title": "Password secret",
+      "description": "Name of a secret defined on the agent host (secrets: in agent.yaml); never the value."
+    }
+  },
+  "required": [
+    "database",
+    "user",
+    "password_ref"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,89 @@
+kotlin version: 2.4.20
+error message: The daemon has terminated unexpectedly on startup attempt #1 with exit code: 1. The daemon process output:
+    ... (3 more lines)
+    4. java.lang.IllegalArgumentException: Unknown arguments: --daemon-logsPath /tmp --daemon-logsFileSizeLimit=1048576 --daemon-logsFileCountLimit=3
+    5. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.mainImpl$lambda$1(KotlinCompileDaemon.kt:123)
+    6. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.runSynchronized(KotlinCompileDaemon.kt:79)
+    7. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.mainImpl(KotlinCompileDaemon.kt:108)
+    8. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemon.main(KotlinCompileDaemon.kt:187)
+    9. Exception in thread "main" java.lang.IllegalArgumentException: Unknown arguments: --daemon-logsPath /tmp --daemon-logsFileSizeLimit=1048576 --daemon-logsFileCountLimit=3
+    10. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.mainImpl$lambda$1(KotlinCompileDaemon.kt:123)
+    11. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.runSynchronized(KotlinCompileDaemon.kt:79)
+    12. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.mainImpl(KotlinCompileDaemon.kt:108)
+    13. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemon.main(KotlinCompileDaemon.kt:187)
+The daemon didn't produce the message "Kotlin compile daemon is ready" during startup.
+
+error message: The daemon has terminated unexpectedly on startup attempt #2 with exit code: 1. The daemon process output:
+    ... (3 more lines)
+    4. java.lang.IllegalArgumentException: Unknown arguments: --daemon-logsPath /tmp --daemon-logsFileSizeLimit=1048576 --daemon-logsFileCountLimit=3
+    5. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.mainImpl$lambda$1(KotlinCompileDaemon.kt:123)
+    6. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.runSynchronized(KotlinCompileDaemon.kt:79)
+    7. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.mainImpl(KotlinCompileDaemon.kt:108)
+    8. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemon.main(KotlinCompileDaemon.kt:187)
+    9. Exception in thread "main" java.lang.IllegalArgumentException: Unknown arguments: --daemon-logsPath /tmp --daemon-logsFileSizeLimit=1048576 --daemon-logsFileCountLimit=3
+    10. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.mainImpl$lambda$1(KotlinCompileDaemon.kt:123)
+    11. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.runSynchronized(KotlinCompileDaemon.kt:79)
+    12. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.mainImpl(KotlinCompileDaemon.kt:108)
+    13. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemon.main(KotlinCompileDaemon.kt:187)
+Problems may have occurred during auto-selection of GC. The preferred GC is Parallel GC.
+If the problems persist, try adding the JVM option to the Kotlin daemon JVM arguments: -XX:-UseParallelGC.
+GC auto-selection logic is disabled temporary for the next daemon startup.
+The daemon didn't produce the message "Kotlin compile daemon is ready" during startup.
+
+error message: The daemon has terminated unexpectedly on startup attempt #3 with exit code: 1. The daemon process output:
+    ... (3 more lines)
+    4. java.lang.IllegalArgumentException: Unknown arguments: --daemon-logsPath /tmp --daemon-logsFileSizeLimit=1048576 --daemon-logsFileCountLimit=3
+    5. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.mainImpl$lambda$1(KotlinCompileDaemon.kt:123)
+    6. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.runSynchronized(KotlinCompileDaemon.kt:79)
+    7. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.mainImpl(KotlinCompileDaemon.kt:108)
+    8. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemon.main(KotlinCompileDaemon.kt:187)
+    9. Exception in thread "main" java.lang.IllegalArgumentException: Unknown arguments: --daemon-logsPath /tmp --daemon-logsFileSizeLimit=1048576 --daemon-logsFileCountLimit=3
+    10. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.mainImpl$lambda$1(KotlinCompileDaemon.kt:123)
+    11. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.runSynchronized(KotlinCompileDaemon.kt:79)
+    12. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemonBase.mainImpl(KotlinCompileDaemon.kt:108)
+    13. 	at org.jetbrains.kotlin.daemon.KotlinCompileDaemon.main(KotlinCompileDaemon.kt:187)
+The daemon didn't produce the message "Kotlin compile daemon is ready" during startup.
+
+error message: Failed connecting to the daemon in 4 retries
+
+error message: java.lang.ClassNotFoundException: org.jetbrains.kotlin.scripting.compiler.plugin.ScriptingCompilerConfigurationComponentRegistrar
+	at java.base/java.net.URLClassLoader.findClass(URLClassLoader.java:445)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:593)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:526)
+	at java.base/java.lang.Class.forName0(Native Method)
+	at java.base/java.lang.Class.forName(Class.java:536)
+	at java.base/java.lang.Class.forName(Class.java:515)
+	at org.jetbrains.kotlin.util.ServiceLoaderLite.loadImplementations(ServiceLoaderLite.kt:51)
+	at org.jetbrains.kotlin.util.ServiceLoaderLite.loadImplementations(ServiceLoaderLite.kt:44)
+	at org.jetbrains.kotlin.cli.jvm.plugins.PluginCliParser.loadPluginsLegacyStyle(PluginCliParser.kt:238)
+	at org.jetbrains.kotlin.cli.jvm.plugins.PluginCliParser.loadPluginsSafe(PluginCliParser.kt:112)
+	at org.jetbrains.kotlin.cli.pipeline.AbstractConfigurationPhase.loadCompilerPlugins(AbstractConfigurationPhase.kt:123)
+	at org.jetbrains.kotlin.cli.pipeline.AbstractConfigurationPhase.setupCommonConfiguration(AbstractConfigurationPhase.kt:73)
+	at org.jetbrains.kotlin.cli.pipeline.AbstractConfigurationPhase.executePhase(AbstractConfigurationPhase.kt:48)
+	at org.jetbrains.kotlin.cli.pipeline.jvm.JvmConfigurationPipelinePhase.executePhase(JvmConfigurationPipelinePhase.kt:38)
+	at org.jetbrains.kotlin.cli.pipeline.jvm.JvmConfigurationPipelinePhase.executePhase(JvmConfigurationPipelinePhase.kt:32)
+	at org.jetbrains.kotlin.cli.pipeline.PipelinePhase.phaseBody(PipelinePhase.kt:68)
+	at org.jetbrains.kotlin.cli.pipeline.PipelinePhase.phaseBody(PipelinePhase.kt:58)
+	at org.jetbrains.kotlin.config.phaser.NamedCompilerPhase.invoke(CompilerPhase.kt:102)
+	at org.jetbrains.kotlin.backend.common.phaser.CompositePhase.invoke(PhaseBuilders.kt:22)
+	at org.jetbrains.kotlin.config.phaser.CompilerPhaseKt.invokeToplevel(CompilerPhase.kt:53)
+	at org.jetbrains.kotlin.cli.pipeline.AbstractCliPipeline.runPhasedPipeline(AbstractCliPipeline.kt:109)
+	at org.jetbrains.kotlin.cli.pipeline.AbstractCliPipeline.execute(AbstractCliPipeline.kt:68)
+	at org.jetbrains.kotlin.cli.jvm.K2JVMCompiler.doExecutePhased(K2JVMCompiler.kt:51)
+	at org.jetbrains.kotlin.cli.jvm.K2JVMCompiler.doExecutePhased(K2JVMCompiler.kt:42)
+	at org.jetbrains.kotlin.cli.common.CLICompiler.execImpl(CLICompiler.kt:91)
+	at org.jetbrains.kotlin.cli.common.CLICompiler.exec(CLICompiler.kt:363)
+	at org.jetbrains.kotlin.cli.common.CLICompiler.exec(CLICompiler.kt:341)
+	at org.jetbrains.kotlin.cli.common.CLICompiler.execAndOutputXml(CLICompiler.kt:75)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.compileInProcessImpl(GradleKotlinCompilerWork.kt:347)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.access$compileInProcessImpl(GradleKotlinCompilerWork.kt:82)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork$compileInProcess$future$1.call(GradleKotlinCompilerWork.kt:320)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork$compileInProcess$future$1.call(GradleKotlinCompilerWork.kt:319)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+

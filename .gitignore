@@ -1,0 +1,20 @@
+# Build output
+.bin/
+bin/
+build/
+dist/
+.gradle/
+node_modules/
+.cover.out
+go-mutesting-report.html
+
+# Local configuration
+.env
+.claude/settings.local.json
+
+# Editors and OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+report.json

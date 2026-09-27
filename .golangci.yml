@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# Default golangci-lint linters plus a cyclomatic complexity gate (<= 8).
+version: "2"
+linters:
+  enable:
+    - gocyclo
+  settings:
+    gocyclo:
+      min-complexity: 8
+formatters:
+  enable:
+    - gofmt
