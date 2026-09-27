@@ -47,15 +47,28 @@ check_signature() {
     echo "fetch-restic: signature not checked (needs gpg and RESTIC_SIGNING_KEY); SHA-256 pinned in the repo"
     return
   fi
-  local home fpr
-  home="$(mktemp -d)"
-  trap 'rm -rf "$home"' RETURN
-  GNUPGHOME="$home" gpg --batch --quiet --import "$RESTIC_SIGNING_KEY"
-  fpr="$(GNUPGHOME="$home" gpg --batch --with-colons --fingerprint | sed -n 's/^fpr:*\([0-9A-F]*\):$/\1/p' | head -1)"
-  [ "$fpr" = "$(pinned signing_key_fingerprint)" ] || { echo "fetch-restic: RESTIC_SIGNING_KEY fingerprint $fpr is not the pinned one" >&2; exit 1; }
+  local fpr
+  fpr="$(pinned signing_key_fingerprint)"
   fetch "$BASE/SHA256SUMS.asc" "$DL/SHA256SUMS.asc"
-  GNUPGHOME="$home" gpg --batch --quiet --verify "$DL/SHA256SUMS.asc" "$DL/SHA256SUMS"
+  verify_signature "$RESTIC_SIGNING_KEY" "$DL/SHA256SUMS.asc" "$DL/SHA256SUMS" "$fpr" ||
+    { echo "fetch-restic: SHA256SUMS is not signed by the pinned key $fpr" >&2; exit 1; }
   echo "fetch-restic: SHA256SUMS signature OK ($fpr)"
+}
+
+# verify_signature succeeds only when sig is a good signature over data made
+# by the key with fingerprint fpr (or a subkey of it). The signer comes from
+# gpg's VALIDSIG status, not from the keys in the file: a key file holding
+# the pinned key and another one must not let the other one sign.
+verify_signature() {
+  local key="$1" sig="$2" data="$3" fpr="$4" home status ok=1
+  home="$(mktemp -d)"
+  if GNUPGHOME="$home" gpg --batch --quiet --import "$key" 2>/dev/null &&
+    status="$(GNUPGHOME="$home" gpg --batch --status-fd 1 --verify "$sig" "$data" 2>/dev/null)"; then
+    # [GNUPG:] VALIDSIG <signing key fpr> ... <primary key fpr>
+    awk -v fpr="$fpr" '$2 == "VALIDSIG" && ($3 == fpr || $NF == fpr) { found = 1 } END { exit !found }' <<<"$status" && ok=0
+  fi
+  rm -rf "$home"
+  return "$ok"
 }
 
 install_arch() {
@@ -74,13 +87,20 @@ install_arch() {
   echo "fetch-restic: $DEST/linux_$arch/restic ($archive sha256 OK)"
 }
 
-mkdir -p "$DL"
-fetch "$BASE/SHA256SUMS" "$DL/SHA256SUMS"
-check_signature
-[ "$#" -gt 0 ] || set -- "$(host_arch)"
-for arch in "$@"; do
-  case "$arch" in
-    amd64 | arm64) install_arch "$arch" ;;
-    *) echo "fetch-restic: unsupported architecture $arch (amd64, arm64)" >&2; exit 1 ;;
-  esac
-done
+main() {
+  mkdir -p "$DL"
+  fetch "$BASE/SHA256SUMS" "$DL/SHA256SUMS"
+  check_signature
+  [ "$#" -gt 0 ] || set -- "$(host_arch)"
+  for arch in "$@"; do
+    case "$arch" in
+      amd64 | arm64) install_arch "$arch" ;;
+      *) echo "fetch-restic: unsupported architecture $arch (amd64, arm64)" >&2; exit 1 ;;
+    esac
+  done
+}
+
+# Sourced (to check verify_signature), the script only defines functions.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi

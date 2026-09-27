@@ -34,7 +34,9 @@ ADR 0014: restic поставляется вместе с агентом. Нуж
   службу; пользователь, конфиг, состояние и кэш остаются.
 - unit: `StateDirectory=sard-agent`, `CacheDirectory=sard/restic` —
   при `ProtectSystem=strict` systemd сам создаёт и открывает на запись
-  `/var/lib/sard-agent` и кэш restic.
+  `/var/lib/sard-agent` и кэш restic. Другой `restic.cache_dir` требует
+  drop-in с `ReadWritePaths=` (описано в unit и примере конфига): открывать
+  на запись произвольный путь из конфига unit не может.
 - Версия пакета: тег `vX.Y.Z` → `X.Y.Z`; иначе `0.0.0~dev.<git describe>`,
   что ниже любого релиза и в deb, и в rpm.
 - Скрипт проверяет состав каждого архива и пакета (rpm — если есть `rpm`);
