@@ -4,7 +4,7 @@
 #
 # Fetches the restic release pinned in agent/internal/restic/restic-version
 # into .bin/restic/<version>/linux_<arch>/ (ignored by git), next to restic's
-# BSD-2 license text (docs/adr/0014-restic-shipped-with-agent.md).
+# BSD-2 license text (docs/adr/0017-restic-shipped-with-agent.md).
 #
 #   scripts/fetch-restic.sh              host architecture
 #   scripts/fetch-restic.sh amd64 arm64  both release architectures

@@ -19,7 +19,7 @@ homepage: https://github.com/Artur-Abalov/sard
 license: AGPL-3.0-only AND BSD-2-Clause
 
 contents:
-  # restic is found next to sard-agent (docs/adr/0014-restic-shipped-with-agent.md).
+  # restic is found next to sard-agent (docs/adr/0017-restic-shipped-with-agent.md).
   - src: ${STAGE}/sard-agent
     dst: /usr/lib/sard/sard-agent
     file_info: {mode: 0755}

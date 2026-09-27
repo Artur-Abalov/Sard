@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright 2026 Artur Abalov
 #
-# The restic release shipped with sard-agent (docs/adr/0014-restic-shipped-with-agent.md).
+# The restic release shipped with sard-agent (docs/adr/0017-restic-shipped-with-agent.md).
 # Single source of truth: read by scripts/fetch-restic.sh, embedded into the
 # agent (package restic) and used by the integration tests and the docs.
 # SHA-256 values are the official release archives, cross-checked against the

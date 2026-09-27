@@ -3,7 +3,7 @@
 # Copyright 2026 Artur Abalov
 #
 # Packages sard-agent with the pinned restic for linux/amd64 and linux/arm64
-# (docs/adr/0015-agent-packaging.md) into dist/:
+# (docs/adr/0018-agent-packaging.md) into dist/:
 #
 #   sard-agent_<version>_linux_<arch>.tar.gz   binaries, licenses, config, unit
 #   sard-agent_<version>_<arch>.deb / .rpm     /usr/lib/sard, systemd unit

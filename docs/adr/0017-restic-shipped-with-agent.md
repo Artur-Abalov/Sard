@@ -1,4 +1,4 @@
-# 0014 — restic поставляется вместе с агентом
+# 0017 — restic поставляется вместе с агентом
 
 - Статус: принято
 - Дата: 2026-09-27
@@ -29,7 +29,7 @@
   `ErrUnsupportedVersion`); сообщение оператору — задача A5b.
 - restic лицензирован BSD-2: текст лицензии лежит в
   `third_party/restic/LICENSE` и кладётся рядом с бинарником
-  (`LICENSE.restic`); упаковка — ADR 0015.
+  (`LICENSE.restic`); упаковка — ADR 0018.
 - Гейт `agent` скачивает закреплённый restic и прогоняет
   `go test -tags integration ./internal/restic/...`.
 

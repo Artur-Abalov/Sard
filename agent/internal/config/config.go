@@ -35,7 +35,7 @@ type Config struct {
 }
 
 // Restic locates the restic binary shipped with the agent
-// (docs/adr/0014-restic-shipped-with-agent.md). Both fields are optional.
+// (docs/adr/0017-restic-shipped-with-agent.md). Both fields are optional.
 type Restic struct {
 	// Path is the restic executable; empty means "restic" next to sard-agent.
 	Path string `yaml:"path"`

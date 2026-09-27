@@ -11,10 +11,12 @@ import dev.sard.proto.agent.v1.RenewCertificateRequest
 import dev.sard.server.extension.ExtensionRegistry
 import dev.sard.server.persistence.Agent
 import dev.sard.server.persistence.AgentRepository
+import dev.sard.server.pki.CertificateAuthority
+import io.grpc.Grpc
 import io.grpc.ManagedChannel
-import io.grpc.ManagedChannelBuilder
 import io.grpc.Status
 import io.grpc.StatusException
+import io.grpc.TlsChannelCredentials
 import kotlinx.coroutines.runBlocking
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.grpc.test.autoconfigure.LocalGrpcServerPort
@@ -52,6 +54,7 @@ class SardServerIntegrationTest(
     @Autowired private val jdbc: JdbcTemplate,
     @Autowired private val extensions: ExtensionRegistry,
     @Autowired private val agents: AgentRepository,
+    @Autowired private val ca: CertificateAuthority,
     @LocalServerPort private val httpPort: Int,
     @LocalGrpcServerPort private val grpcPort: Int,
 ) {
@@ -116,8 +119,10 @@ class SardServerIntegrationTest(
         Files.writeString(out, mapper.writerWithDefaultPrettyPrinter().writeValueAsString(body) + "\n")
     }
 
+    /** TLS that trusts the Sard CA only; no client certificate. */
     private fun grpcStatus(call: suspend (ManagedChannel) -> Any): Status.Code {
-        val channel = ManagedChannelBuilder.forAddress("localhost", grpcPort).usePlaintext().build()
+        val credentials = TlsChannelCredentials.newBuilder().trustManager(ca.caBundlePem().byteInputStream()).build()
+        val channel = Grpc.newChannelBuilderForAddress("localhost", grpcPort, credentials).build()
         try {
             val e = runCatching { runBlocking { call(channel) } }.exceptionOrNull()
             return (e as StatusException).status.code

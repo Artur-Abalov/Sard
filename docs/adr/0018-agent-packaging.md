@@ -1,10 +1,10 @@
-# 0015 — Упаковка агента: tar.gz, deb, rpm с restic и лицензиями
+# 0018 — Упаковка агента: tar.gz, deb, rpm с restic и лицензиями
 
 - Статус: принято
 - Дата: 2026-09-27
 
 ## Контекст
-ADR 0014: restic поставляется вместе с агентом. Нужны пакеты для linux/amd64
+ADR 0017: restic поставляется вместе с агентом. Нужны пакеты для linux/amd64
 и linux/arm64, в которых вместе с бинарниками лежат все лицензии, требуемые
 при распространении: AGPL-3.0 Sard, BSD-2 restic и лицензии Go-модулей,
 вкомпилированных в `sard-agent` (BSD/MIT требуют воспроизводить текст).
@@ -14,7 +14,7 @@ ADR 0014: restic поставляется вместе с агентом. Нуж
   `sard-agent_<версия>_linux_<arch>.tar.gz`, `.deb`, `.rpm`, `SHA256SUMS`.
 - Бинарник: `CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=…"`,
   статический. restic — официальный релиз, полученный `fetch-restic.sh` с
-  проверкой SHA-256 (ADR 0014).
+  проверкой SHA-256 (ADR 0017).
 - Раскладка deb/rpm: `/usr/lib/sard/{sard-agent,restic}`, ссылка
   `/usr/bin/sard-agent`, unit `/usr/lib/systemd/system/sard-agent.service`,
   пример конфига `/etc/sard/agent.example.yaml` (config, не перезаписывается),

@@ -15,7 +15,7 @@ import (
 )
 
 // versionFile is the single source of the restic release shipped with
-// the agent (docs/adr/0014-restic-shipped-with-agent.md).
+// the agent (docs/adr/0017-restic-shipped-with-agent.md).
 //
 //go:embed restic-version
 var versionFile string

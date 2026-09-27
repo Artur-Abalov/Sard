@@ -11,24 +11,31 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "gen:api": "node scripts/gen-api.mjs",
+    "gen:routes": "node scripts/gen-routes.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
     "@mantine/core": "^9.6.3",
     "@mantine/hooks": "^9.6.3",
     "@tanstack/react-query": "^5.104.0",
+    "@tanstack/react-router": "^1.170.39",
     "i18next": "^26.4.2",
     "openapi-fetch": "^0.17.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-i18next": "^17.0.15",
-    "react-router": "^8.4.0"
+    "react-i18next": "^17.0.15"
   },
   "devDependencies": {
+    "@tanstack/react-query-devtools": "^5.104.0",
+    "@tanstack/react-router-devtools": "^1.167.2",
+    "@tanstack/router-generator": "^1.167.38",
+    "@tanstack/router-plugin": "^1.168.40",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
+    "msw": "^2.15.0",
+    "openapi-msw": "^2.0.0",
     "openapi-typescript": "^7.13.0",
     "oxlint": "^1.81.0",
     "postcss": "^8.5.28",

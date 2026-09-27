@@ -15,5 +15,8 @@
 | [0011](0011-web-tooling.md) | Инструменты веба: oxlint, TypeScript 6 |
 | [0012](0012-tree-deviations.md) | Расхождения с целевым деревом каталогов |
 | [0013](0013-multitenancy-and-schema.md) | Мультитенантность и схема БД сервера |
-| [0014](0014-restic-shipped-with-agent.md) | restic поставляется вместе с агентом |
-| [0015](0015-agent-packaging.md) | Упаковка агента: tar.gz, deb, rpm с restic и лицензиями |
+| [0014](0014-local-ca.md) | Локальный CA сервера (D4) |
+| [0015](0015-tanstack-router.md) | TanStack Router вместо React Router, тесты маршрутов без рендера |
+| [0016](0016-msw-api-mocks.md) | Моки API на MSW с типами из OpenAPI |
+| [0017](0017-restic-shipped-with-agent.md) | restic поставляется вместе с агентом |
+| [0018](0018-agent-packaging.md) | Упаковка агента: tar.gz, deb, rpm с restic и лицензиями |

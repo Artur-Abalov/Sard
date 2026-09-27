@@ -109,7 +109,7 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 }
 
 // resticPath is restic.path, or the restic shipped next to sard-agent
-// (docs/adr/0014-restic-shipped-with-agent.md).
+// (docs/adr/0017-restic-shipped-with-agent.md).
 func resticPath(configured string, executable func() (string, error)) (string, error) {
 	if configured != "" {
 		return configured, nil

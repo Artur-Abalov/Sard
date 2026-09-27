@@ -1,0 +1,13 @@
+{
+  "routesDirectory": "./src/routes",
+  "generatedRouteTree": "./src/routeTree.gen.ts",
+  "quoteStyle": "single",
+  "semicolons": false,
+  "routeTreeFileHeader": [
+    "// SPDX-License-Identifier: AGPL-3.0-only",
+    "// Copyright 2026 Artur Abalov",
+    "// Generated from src/routes by @tanstack/router-plugin or `npm run gen:routes`. Do not edit.",
+    "/* eslint-disable */",
+    "// @ts-nocheck"
+  ]
+}
