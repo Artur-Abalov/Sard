@@ -24,7 +24,8 @@ RUN --mount=type=cache,target=/root/.gradle \
     ./gradlew --no-daemon :server:bootJar -PsardVersion="${SARD_VERSION}"
 
 FROM eclipse-temurin:25-jre
-RUN useradd --system --uid 10001 --no-create-home sard
+RUN useradd --system --uid 10001 --no-create-home sard \
+ && install -d -o sard -g sard -m 0700 /var/lib/sard/pki
 COPY --from=build /src/server/build/libs/sard-server.jar /app/sard-server.jar
 USER sard
 # 8080: REST API and Actuator; 9090: gRPC for agents.

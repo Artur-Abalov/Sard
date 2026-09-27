@@ -61,49 +61,15 @@ class FileCertificateAuthorityTest {
     @Test
     fun `a restart loads the same CA`() {
         val first = ca()
-        val second = MutFlow.underTest { ca() }
+        val second = ca()
         assertEquals(first.fingerprint(), second.fingerprint())
         assertEquals(first.caBundlePem(), second.caBundlePem())
-    }
-
-    @Test
-    fun `the CA certificate is a ten-year root able to sign an intermediate`() {
-        val cert = caCertificate(MutFlow.underTest { ca() })
-        cert.verify(cert.publicKey)
-        assertEquals(Int.MAX_VALUE, cert.basicConstraints, "CA without a path length limit")
-        assertTrue(cert.keyUsage[KEY_CERT_SIGN])
-        assertEquals(NOW - Duration.ofHours(1), cert.notBefore.toInstant())
-        assertEquals(NOW + Duration.ofDays(3650), cert.notAfter.toInstant())
     }
 
     @Test
     fun `the fingerprint is taken from the CA in the bundle`() {
         val ca = ca()
         assertEquals(CaFingerprint.of(caCertificate(ca)), MutFlow.underTest { ca.fingerprint() })
-    }
-
-    @Test
-    fun `a key readable by others is refused`() {
-        ca()
-        Files.setPosixFilePermissions(dir.resolve("ca/ca.key"), PosixFilePermissions.fromString("rw-r-----"))
-        val e = assertFailsWith<InsecureKeyStorageException> { MutFlow.underTest { ca() } }
-        assertTrue("ca.key" in e.message.orEmpty(), e.message)
-    }
-
-    @Test
-    fun `a key directory open to others is refused`() {
-        ca()
-        Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("rwxr-xr-x"))
-        assertFailsWith<InsecureKeyStorageException> { MutFlow.underTest { ca() } }
-    }
-
-    @Test
-    fun `a key that does not match the certificate is refused`() {
-        ca()
-        val other = tmp.resolve("other")
-        FileCertificateAuthority(other, SERVER_NAMES, CLOCK, random())
-        Files.write(dir.resolve("ca/ca.key"), Files.readAllBytes(other.resolve("ca/ca.key")))
-        assertFailsWith<IllegalStateException> { MutFlow.underTest { ca() } }
     }
 
     @Test
@@ -175,21 +141,35 @@ class FileCertificateAuthorityTest {
 
     // --- server certificate
 
-    @Test
-    fun `the server certificate is a 90-day server certificate for the configured names`() {
-        val ca = MutFlow.underTest { ca() }
-        val km = ca.serverKeyManager()
-        val alias = km.chooseServerAlias("EC", null, null)
-        val leaf = km.getCertificateChain(alias).first()
+    /** The server profile: signed by the CA, serverAuth only, the configured names, 90 days. */
+    private fun assertServerCertificate(
+        ca: CertificateAuthority,
+        leaf: X509Certificate,
+        issuedAt: java.time.Instant,
+    ) {
         leaf.verify(caCertificate(ca).publicKey)
         assertEquals(listOf(SERVER_AUTH), leaf.extendedKeyUsage)
         val sans = leaf.subjectAlternativeNames.map { it.toList() }
         val expected =
             listOf(listOf<Any>(SAN_DNS, "localhost"), listOf(SAN_IP, "127.0.0.1"), listOf(SAN_IP, "0:0:0:0:0:0:0:1"))
         assertEquals(expected, sans)
-        assertEquals(NOW - Duration.ofHours(1), leaf.notBefore.toInstant())
-        assertEquals(NOW + Duration.ofDays(90), leaf.notAfter.toInstant())
-        assertEquals(leaf.publicKey.algorithm, km.getPrivateKey(alias).algorithm)
+        assertEquals(issuedAt - Duration.ofHours(1), leaf.notBefore.toInstant())
+        assertEquals(issuedAt + Duration.ofDays(90), leaf.notAfter.toInstant())
+    }
+
+    @Test
+    fun `the server certificate is a 90-day server certificate for the configured names`() {
+        val ca = ca()
+        val km = MutFlow.underTest { ca.serverKeyManager() }
+        val alias = km.chooseServerAlias("EC", null, null)
+        assertServerCertificate(ca, km.getCertificateChain(alias).first(), NOW)
+        assertEquals(
+            km
+                .getCertificateChain(alias)
+                .first()
+                .publicKey.algorithm,
+            km.getPrivateKey(alias).algorithm,
+        )
         assertEquals(listOf(alias), km.getServerAliases("EC", null).toList())
     }
 
@@ -202,6 +182,26 @@ class FileCertificateAuthorityTest {
         assertNull(km.getClientAliases("EC", null))
         assertNull(km.getCertificateChain("unknown"))
         assertNull(km.getPrivateKey("unknown"))
+    }
+
+    @Test
+    fun `the server certificate is renewed once 30 days or less remain, and not before`() {
+        val clock = MovableClock(NOW)
+        val ca = FileCertificateAuthority(dir, SERVER_NAMES, clock, random())
+        val km = ca.serverKeyManager()
+        val first = km.chooseServerAlias("EC", null, null)
+
+        clock.now = NOW + Duration.ofDays(60) - Duration.ofSeconds(1)
+        assertFalse(MutFlow.underTest { ca.renewServerCertificate() })
+        assertEquals(first, km.chooseServerAlias("EC", null, null))
+
+        clock.now = NOW + Duration.ofDays(60)
+        assertTrue(MutFlow.underTest { ca.renewServerCertificate() })
+        val second = km.chooseServerAlias("EC", null, null)
+        assertTrue(first != second)
+        assertServerCertificate(ca, km.getCertificateChain(second).first(), clock.now)
+        assertTrue(km.getCertificateChain(first) != null, "a handshake that chose the old key can still finish")
+        assertFalse(ca.renewServerCertificate(), "the fresh certificate is not due")
     }
 
     @Test

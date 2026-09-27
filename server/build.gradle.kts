@@ -59,6 +59,14 @@ tasks.bootJar {
 
 tasks.test {
     useJUnitPlatform()
+    // The CA of integration tests; the default /var/lib/sard/pki is not writable here.
+    systemProperty(
+        "sard.pki.dir",
+        layout.buildDirectory
+            .dir("test-pki")
+            .get()
+            .asFile.path,
+    )
     finalizedBy(tasks.jacocoTestReport)
 }
 

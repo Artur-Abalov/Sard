@@ -33,6 +33,14 @@ internal class ServerKeyManager(
         keys.updateAndGet { listOf(key, it.first()) }
     }
 
+    /** The certificate new handshakes get. */
+    fun certificate(): X509Certificate =
+        keys
+            .get()
+            .first()
+            .chain
+            .first()
+
     private fun find(alias: String?) = keys.get().firstOrNull { it.alias == alias }
 
     override fun chooseServerAlias(

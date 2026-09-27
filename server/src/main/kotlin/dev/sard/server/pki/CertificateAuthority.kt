@@ -28,6 +28,13 @@ interface CertificateAuthority {
     fun serverKeyManager(): X509KeyManager
 
     /**
+     * Replaces the server certificate behind [serverKeyManager] if it is due, without a
+     * restart. Returns true when it did. Called periodically; a CA whose server
+     * certificate is managed elsewhere (corporate PKI) returns false.
+     */
+    fun renewServerCertificate(): Boolean
+
+    /**
      * Signs an agent CSR (DER): a client-only certificate naming [agent], whatever the
      * CSR asks for. Throws [InvalidCsrException] for a bad signature or an unsupported key.
      */

@@ -21,6 +21,8 @@ import java.nio.file.attribute.PosixFilePermission.OWNER_WRITE
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
+import java.time.Clock
+import java.time.Duration
 
 private const val CA = "ca"
 private const val CERT = "ca.crt"
@@ -28,6 +30,10 @@ private const val KEY = "ca.key"
 private val OWNER = setOf(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE)
 private val OWNER_DIR = PosixFilePermissions.asFileAttribute(OWNER)
 private val OWNER_FILE = PosixFilePermissions.asFileAttribute(setOf(OWNER_READ, OWNER_WRITE))
+private const val STAGING = ".tmp-"
+
+/** A staging directory this old was left by a crashed first start, not by one still running. */
+private val STALE_STAGING = Duration.ofHours(1)
 
 /** A key file or directory that someone besides its owner may access. */
 class InsecureKeyStorageException(
@@ -50,18 +56,20 @@ fun ownerOnlyViolation(path: Path): String? {
  */
 class CaDirectory(
     private val dir: Path,
+    private val clock: Clock,
 ) {
     private val ca = dir.resolve(CA)
 
     fun loadOrCreate(generate: () -> CaKeyPair): CaKeyPair {
         if (Files.notExists(dir)) Files.createDirectories(dir, OWNER_DIR)
         requireOwnerOnly(dir)
+        removeStaleStaging()
         if (Files.notExists(ca)) publish(generate())
         return load()
     }
 
     private fun publish(pair: CaKeyPair) {
-        val staging = Files.createTempDirectory(dir, ".tmp-", OWNER_DIR)
+        val staging = Files.createTempDirectory(dir, STAGING, OWNER_DIR)
         try {
             write(staging.resolve(KEY), Pem.privateKey(pair.privateKey))
             write(staging.resolve(CERT), Pem.certificate(pair.certificate))
@@ -71,6 +79,16 @@ class CaDirectory(
             if (Files.notExists(ca)) throw e
         } finally {
             staging.toFile().deleteRecursively()
+        }
+    }
+
+    private fun removeStaleStaging() {
+        val cutoff = clock.instant() - STALE_STAGING
+        Files.list(dir).use { entries ->
+            entries
+                .filter { it.fileName.toString().startsWith(STAGING) }
+                .filter { Files.getLastModifiedTime(it).toInstant() < cutoff }
+                .forEach { it.toFile().deleteRecursively() }
         }
     }
 

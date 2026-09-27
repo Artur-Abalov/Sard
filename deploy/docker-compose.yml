@@ -29,6 +29,10 @@ services:
       SARD_DB_URL: jdbc:postgresql://postgres:5432/sard
       SARD_DB_USER: sard
       SARD_DB_PASSWORD: ${SARD_DB_PASSWORD:?set SARD_DB_PASSWORD in deploy/.env}
+      SARD_PKI_SERVER_NAMES: ${SARD_PKI_SERVER_NAMES:-localhost,127.0.0.1,::1}
+    volumes:
+      # The CA key: its own volume, backed up apart from postgres-data (docs/operations/pki.md).
+      - sard-pki:/var/lib/sard/pki
     ports:
       - "8080:8080"
       - "9090:9090"
@@ -45,3 +49,4 @@ services:
 
 volumes:
   postgres-data:
+  sard-pki:

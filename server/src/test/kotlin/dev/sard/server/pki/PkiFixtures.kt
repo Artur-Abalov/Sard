@@ -12,6 +12,17 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
 
+/** A clock the test moves by hand. */
+class MovableClock(
+    var now: Instant,
+) : Clock() {
+    override fun getZone(): ZoneOffset = ZoneOffset.UTC
+
+    override fun withZone(zone: java.time.ZoneId?): Clock = this
+
+    override fun instant(): Instant = now
+}
+
 /** Test fixtures: Go-made CSRs (resources/pki/gencsr.go) and a fixed clock. */
 object PkiFixtures {
     val NOW: Instant = Instant.parse("2026-09-27T10:00:00Z")

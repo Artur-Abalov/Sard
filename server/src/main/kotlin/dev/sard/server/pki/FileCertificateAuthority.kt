@@ -7,8 +7,12 @@ import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
 import java.nio.file.Path
 import java.security.SecureRandom
 import java.time.Clock
+import java.time.Duration
 import java.util.concurrent.atomic.AtomicLong
 import javax.net.ssl.X509KeyManager
+
+/** The server certificate lives 90 days and is replaced in its last 30. */
+private val RENEW_BEFORE = Duration.ofDays(30)
 
 /**
  * The open core's CA: root key in a file under [dir] (see [CaDirectory]), server key in
@@ -20,7 +24,7 @@ class FileCertificateAuthority(
     private val clock: Clock,
     private val random: SecureRandom,
 ) : CertificateAuthority {
-    private val ca = CaDirectory(dir).loadOrCreate { CaKeyPair.generate(clock, random) }
+    private val ca = CaDirectory(dir, clock).loadOrCreate { CaKeyPair.generate(clock, random) }
     private val bundle = Pem.certificate(ca.certificate)
     private val fingerprint = CaFingerprint.of(ca.certificate)
     private val generation = AtomicLong()
@@ -31,6 +35,12 @@ class FileCertificateAuthority(
     override fun fingerprint() = fingerprint
 
     override fun serverKeyManager(): X509KeyManager = serverKeys
+
+    override fun renewServerCertificate(): Boolean {
+        val due = clock.instant() >= serverKeys.certificate().notAfter.toInstant() - RENEW_BEFORE
+        if (due) serverKeys.replace(issueServerKey())
+        return due
+    }
 
     override fun issueAgentCertificate(
         csrDer: ByteArray,
