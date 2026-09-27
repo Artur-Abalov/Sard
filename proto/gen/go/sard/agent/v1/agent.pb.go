@@ -1178,9 +1178,9 @@ func (x *LogLine) GetText() string {
 	return ""
 }
 
-// StepResult reports how a RunStep command ended. Sent exactly once per
-// command_id; if the stream breaks before the server acknowledges it by
-// closing the command, the agent resends it after reconnecting.
+// StepResult reports how a RunStep command ended. Sent once per command_id
+// and stream; the agent keeps it and sends it again on every new stream
+// until the server confirms it with ResultAck.
 type StepResult struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Id of the command this result answers.
@@ -1616,6 +1616,7 @@ type ConnectResponse struct {
 	//
 	//	*ConnectResponse_RunStep
 	//	*ConnectResponse_CancelStep
+	//	*ConnectResponse_ResultAck
 	Message       isConnectResponse_Message `protobuf_oneof:"message"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1676,6 +1677,15 @@ func (x *ConnectResponse) GetCancelStep() *CancelStep {
 	return nil
 }
 
+func (x *ConnectResponse) GetResultAck() *ResultAck {
+	if x != nil {
+		if x, ok := x.Message.(*ConnectResponse_ResultAck); ok {
+			return x.ResultAck
+		}
+	}
+	return nil
+}
+
 type isConnectResponse_Message interface {
 	isConnectResponse_Message()
 }
@@ -1690,9 +1700,68 @@ type ConnectResponse_CancelStep struct {
 	CancelStep *CancelStep `protobuf:"bytes,2,opt,name=cancel_step,json=cancelStep,proto3,oneof"`
 }
 
+type ConnectResponse_ResultAck struct {
+	// The server has durably recorded a StepResult.
+	ResultAck *ResultAck `protobuf:"bytes,3,opt,name=result_ack,json=resultAck,proto3,oneof"`
+}
+
 func (*ConnectResponse_RunStep) isConnectResponse_Message() {}
 
 func (*ConnectResponse_CancelStep) isConnectResponse_Message() {}
+
+func (*ConnectResponse_ResultAck) isConnectResponse_Message() {}
+
+// ResultAck confirms a StepResult. The server sends it only after the
+// result is durably recorded (its transaction committed), and also for a
+// command_id it does not know, so that the agent stops resending it. After
+// ResultAck the agent drops the stored result and never sends it again; it
+// ignores a ResultAck for a command_id it holds no result for. A result
+// without ResultAck is resent on the next stream, so the server must treat
+// a repeated StepResult for a closed command as a no-op and ack it again.
+type ResultAck struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Id of the command whose result is recorded.
+	CommandId     string `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResultAck) Reset() {
+	*x = ResultAck{}
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResultAck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResultAck) ProtoMessage() {}
+
+func (x *ResultAck) ProtoReflect() protoreflect.Message {
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResultAck.ProtoReflect.Descriptor instead.
+func (*ResultAck) Descriptor() ([]byte, []int) {
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *ResultAck) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
 
 // RunStep asks the agent to execute one workflow step with a plugin.
 //
@@ -1728,7 +1797,7 @@ type RunStep struct {
 
 func (x *RunStep) Reset() {
 	*x = RunStep{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[20]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1740,7 +1809,7 @@ func (x *RunStep) String() string {
 func (*RunStep) ProtoMessage() {}
 
 func (x *RunStep) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[20]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1753,7 +1822,7 @@ func (x *RunStep) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunStep.ProtoReflect.Descriptor instead.
 func (*RunStep) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{20}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *RunStep) GetCommandId() string {
@@ -1832,7 +1901,7 @@ type RepositoryInfo struct {
 
 func (x *RepositoryInfo) Reset() {
 	*x = RepositoryInfo{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[21]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1844,7 +1913,7 @@ func (x *RepositoryInfo) String() string {
 func (*RepositoryInfo) ProtoMessage() {}
 
 func (x *RepositoryInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[21]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1857,7 +1926,7 @@ func (x *RepositoryInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepositoryInfo.ProtoReflect.Descriptor instead.
 func (*RepositoryInfo) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{21}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *RepositoryInfo) GetName() string {
@@ -1900,7 +1969,7 @@ type CancelStep struct {
 
 func (x *CancelStep) Reset() {
 	*x = CancelStep{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[22]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1912,7 +1981,7 @@ func (x *CancelStep) String() string {
 func (*CancelStep) ProtoMessage() {}
 
 func (x *CancelStep) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[22]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1925,7 +1994,7 @@ func (x *CancelStep) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelStep.ProtoReflect.Descriptor instead.
 func (*CancelStep) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{22}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *CancelStep) GetCommandId() string {
@@ -2032,12 +2101,17 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\x06passed\x18\x02 \x01(\bR\x06passed\x12\x16\n" +
 	"\x06detail\x18\x03 \x01(\tR\x06detail\"(\n" +
 	"\tRunOutput\x12\x1b\n" +
-	"\texit_code\x18\x01 \x01(\x05R\bexitCode\"\x8f\x01\n" +
+	"\texit_code\x18\x01 \x01(\x05R\bexitCode\"\xca\x01\n" +
 	"\x0fConnectResponse\x123\n" +
 	"\brun_step\x18\x01 \x01(\v2\x16.sard.agent.v1.RunStepH\x00R\arunStep\x12<\n" +
 	"\vcancel_step\x18\x02 \x01(\v2\x19.sard.agent.v1.CancelStepH\x00R\n" +
-	"cancelStepB\t\n" +
-	"\amessage\"\x9f\x03\n" +
+	"cancelStep\x129\n" +
+	"\n" +
+	"result_ack\x18\x03 \x01(\v2\x18.sard.agent.v1.ResultAckH\x00R\tresultAckB\t\n" +
+	"\amessage\"*\n" +
+	"\tResultAck\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x01 \x01(\tR\tcommandId\"\x9f\x03\n" +
 	"\aRunStep\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x16\n" +
@@ -2115,7 +2189,7 @@ func file_sard_agent_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_sard_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_sard_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_sard_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_sard_agent_v1_agent_proto_goTypes = []any{
 	(StepPhase)(0),                   // 0: sard.agent.v1.StepPhase
 	(LogLevel)(0),                    // 1: sard.agent.v1.LogLevel
@@ -2141,55 +2215,57 @@ var file_sard_agent_v1_agent_proto_goTypes = []any{
 	(*CheckResult)(nil),              // 21: sard.agent.v1.CheckResult
 	(*RunOutput)(nil),                // 22: sard.agent.v1.RunOutput
 	(*ConnectResponse)(nil),          // 23: sard.agent.v1.ConnectResponse
-	(*RunStep)(nil),                  // 24: sard.agent.v1.RunStep
-	(*RepositoryInfo)(nil),           // 25: sard.agent.v1.RepositoryInfo
-	(*CancelStep)(nil),               // 26: sard.agent.v1.CancelStep
-	nil,                              // 27: sard.agent.v1.RunStep.TagsEntry
-	(*durationpb.Duration)(nil),      // 28: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),    // 29: google.protobuf.Timestamp
+	(*ResultAck)(nil),                // 24: sard.agent.v1.ResultAck
+	(*RunStep)(nil),                  // 25: sard.agent.v1.RunStep
+	(*RepositoryInfo)(nil),           // 26: sard.agent.v1.RepositoryInfo
+	(*CancelStep)(nil),               // 27: sard.agent.v1.CancelStep
+	nil,                              // 28: sard.agent.v1.RunStep.TagsEntry
+	(*durationpb.Duration)(nil),      // 29: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),    // 30: google.protobuf.Timestamp
 }
 var file_sard_agent_v1_agent_proto_depIdxs = []int32{
 	7,  // 0: sard.agent.v1.RegisterRequest.plugins:type_name -> sard.agent.v1.Plugin
-	25, // 1: sard.agent.v1.RegisterRequest.repositories:type_name -> sard.agent.v1.RepositoryInfo
+	26, // 1: sard.agent.v1.RegisterRequest.repositories:type_name -> sard.agent.v1.RepositoryInfo
 	3,  // 2: sard.agent.v1.Plugin.actions:type_name -> sard.agent.v1.Action
-	28, // 3: sard.agent.v1.RegisterResponse.heartbeat_interval:type_name -> google.protobuf.Duration
+	29, // 3: sard.agent.v1.RegisterResponse.heartbeat_interval:type_name -> google.protobuf.Duration
 	13, // 4: sard.agent.v1.ConnectRequest.heartbeat:type_name -> sard.agent.v1.Heartbeat
 	17, // 5: sard.agent.v1.ConnectRequest.step_result:type_name -> sard.agent.v1.StepResult
 	12, // 6: sard.agent.v1.ConnectRequest.hello:type_name -> sard.agent.v1.Hello
 	14, // 7: sard.agent.v1.ConnectRequest.step_progress:type_name -> sard.agent.v1.StepProgress
 	15, // 8: sard.agent.v1.ConnectRequest.log_chunk:type_name -> sard.agent.v1.LogChunk
-	29, // 9: sard.agent.v1.Heartbeat.sent_at:type_name -> google.protobuf.Timestamp
+	30, // 9: sard.agent.v1.Heartbeat.sent_at:type_name -> google.protobuf.Timestamp
 	0,  // 10: sard.agent.v1.StepProgress.phase:type_name -> sard.agent.v1.StepPhase
-	29, // 11: sard.agent.v1.StepProgress.sent_at:type_name -> google.protobuf.Timestamp
+	30, // 11: sard.agent.v1.StepProgress.sent_at:type_name -> google.protobuf.Timestamp
 	16, // 12: sard.agent.v1.LogChunk.lines:type_name -> sard.agent.v1.LogLine
-	29, // 13: sard.agent.v1.LogLine.time:type_name -> google.protobuf.Timestamp
+	30, // 13: sard.agent.v1.LogLine.time:type_name -> google.protobuf.Timestamp
 	1,  // 14: sard.agent.v1.LogLine.level:type_name -> sard.agent.v1.LogLevel
 	2,  // 15: sard.agent.v1.StepResult.status:type_name -> sard.agent.v1.StepStatus
-	29, // 16: sard.agent.v1.StepResult.started_at:type_name -> google.protobuf.Timestamp
-	29, // 17: sard.agent.v1.StepResult.finished_at:type_name -> google.protobuf.Timestamp
+	30, // 16: sard.agent.v1.StepResult.started_at:type_name -> google.protobuf.Timestamp
+	30, // 17: sard.agent.v1.StepResult.finished_at:type_name -> google.protobuf.Timestamp
 	18, // 18: sard.agent.v1.StepResult.backup:type_name -> sard.agent.v1.BackupOutput
 	19, // 19: sard.agent.v1.StepResult.restore:type_name -> sard.agent.v1.RestoreOutput
 	20, // 20: sard.agent.v1.StepResult.verify:type_name -> sard.agent.v1.VerifyOutput
 	22, // 21: sard.agent.v1.StepResult.run:type_name -> sard.agent.v1.RunOutput
 	21, // 22: sard.agent.v1.VerifyOutput.checks:type_name -> sard.agent.v1.CheckResult
-	24, // 23: sard.agent.v1.ConnectResponse.run_step:type_name -> sard.agent.v1.RunStep
-	26, // 24: sard.agent.v1.ConnectResponse.cancel_step:type_name -> sard.agent.v1.CancelStep
-	3,  // 25: sard.agent.v1.RunStep.action:type_name -> sard.agent.v1.Action
-	28, // 26: sard.agent.v1.RunStep.timeout:type_name -> google.protobuf.Duration
-	27, // 27: sard.agent.v1.RunStep.tags:type_name -> sard.agent.v1.RunStep.TagsEntry
-	4,  // 28: sard.agent.v1.EnrollmentService.Enroll:input_type -> sard.agent.v1.EnrollRequest
-	6,  // 29: sard.agent.v1.AgentService.Register:input_type -> sard.agent.v1.RegisterRequest
-	11, // 30: sard.agent.v1.AgentService.Connect:input_type -> sard.agent.v1.ConnectRequest
-	9,  // 31: sard.agent.v1.AgentService.RenewCertificate:input_type -> sard.agent.v1.RenewCertificateRequest
-	5,  // 32: sard.agent.v1.EnrollmentService.Enroll:output_type -> sard.agent.v1.EnrollResponse
-	8,  // 33: sard.agent.v1.AgentService.Register:output_type -> sard.agent.v1.RegisterResponse
-	23, // 34: sard.agent.v1.AgentService.Connect:output_type -> sard.agent.v1.ConnectResponse
-	10, // 35: sard.agent.v1.AgentService.RenewCertificate:output_type -> sard.agent.v1.RenewCertificateResponse
-	32, // [32:36] is the sub-list for method output_type
-	28, // [28:32] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	25, // 23: sard.agent.v1.ConnectResponse.run_step:type_name -> sard.agent.v1.RunStep
+	27, // 24: sard.agent.v1.ConnectResponse.cancel_step:type_name -> sard.agent.v1.CancelStep
+	24, // 25: sard.agent.v1.ConnectResponse.result_ack:type_name -> sard.agent.v1.ResultAck
+	3,  // 26: sard.agent.v1.RunStep.action:type_name -> sard.agent.v1.Action
+	29, // 27: sard.agent.v1.RunStep.timeout:type_name -> google.protobuf.Duration
+	28, // 28: sard.agent.v1.RunStep.tags:type_name -> sard.agent.v1.RunStep.TagsEntry
+	4,  // 29: sard.agent.v1.EnrollmentService.Enroll:input_type -> sard.agent.v1.EnrollRequest
+	6,  // 30: sard.agent.v1.AgentService.Register:input_type -> sard.agent.v1.RegisterRequest
+	11, // 31: sard.agent.v1.AgentService.Connect:input_type -> sard.agent.v1.ConnectRequest
+	9,  // 32: sard.agent.v1.AgentService.RenewCertificate:input_type -> sard.agent.v1.RenewCertificateRequest
+	5,  // 33: sard.agent.v1.EnrollmentService.Enroll:output_type -> sard.agent.v1.EnrollResponse
+	8,  // 34: sard.agent.v1.AgentService.Register:output_type -> sard.agent.v1.RegisterResponse
+	23, // 35: sard.agent.v1.AgentService.Connect:output_type -> sard.agent.v1.ConnectResponse
+	10, // 36: sard.agent.v1.AgentService.RenewCertificate:output_type -> sard.agent.v1.RenewCertificateResponse
+	33, // [33:37] is the sub-list for method output_type
+	29, // [29:33] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_sard_agent_v1_agent_proto_init() }
@@ -2213,6 +2289,7 @@ func file_sard_agent_v1_agent_proto_init() {
 	file_sard_agent_v1_agent_proto_msgTypes[19].OneofWrappers = []any{
 		(*ConnectResponse_RunStep)(nil),
 		(*ConnectResponse_CancelStep)(nil),
+		(*ConnectResponse_ResultAck)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -2220,7 +2297,7 @@ func file_sard_agent_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sard_agent_v1_agent_proto_rawDesc), len(file_sard_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   24,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

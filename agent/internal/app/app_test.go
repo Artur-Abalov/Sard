@@ -18,43 +18,14 @@ import (
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
-type fakeClient struct {
-	registerErr, connectErr error
-	got                     *agentv1.RegisterRequest
-	connected               bool
-	stream                  agentv1.AgentService_ConnectClient
+// fakeLink stands in for the transport.
+type fakeLink struct {
+	err       error
+	connected bool
 }
 
-func (f *fakeClient) Register(_ context.Context, req *agentv1.RegisterRequest) (*agentv1.RegisterResponse, error) {
-	f.got = req
-	return &agentv1.RegisterResponse{AgentId: "a1"}, f.registerErr
-}
-
-func (*fakeClient) RenewCertificate(context.Context, *agentv1.RenewCertificateRequest) (*agentv1.RenewCertificateResponse, error) {
-	return nil, nil
-}
-
-func (f *fakeClient) Connect(context.Context) (agentv1.AgentService_ConnectClient, error) {
+func (f *fakeLink) Run(context.Context) error {
 	f.connected = true
-	if f.connectErr != nil {
-		return nil, f.connectErr
-	}
-	return f.stream, nil
-}
-
-// fakeStream stands in for the open Connect stream.
-type fakeStream struct {
-	agentv1.AgentService_ConnectClient
-}
-
-// fakeSession records the stream it was asked to serve.
-type fakeSession struct {
-	err    error
-	served agentv1.AgentService_ConnectClient
-}
-
-func (f *fakeSession) Serve(_ context.Context, s agentv1.AgentService_ConnectClient) error {
-	f.served = s
 	return f.err
 }
 
@@ -67,11 +38,7 @@ func (plugin) Dump(context.Context, sdk.Config) (sdk.Dump, error) { return sdk.D
 func (plugin) Stream(context.Context, sdk.Dump, io.Writer) error  { return nil }
 func (plugin) Verify(context.Context, sdk.Config, string) error   { return nil }
 
-func newAgent(t *testing.T, c *fakeClient) *app.Agent {
-	return newAgentWith(t, c, &fakeSession{})
-}
-
-func newAgentWith(t *testing.T, c *fakeClient, s *fakeSession) *app.Agent {
+func newAgent(t *testing.T, link *fakeLink) *app.Agent {
 	t.Helper()
 	reg, err := sdk.NewRegistry(plugin{"mysql", `{"a":1}`}, plugin{"files", `{"b":2}`})
 	if err != nil {
@@ -93,33 +60,28 @@ func newAgentWith(t *testing.T, c *fakeClient, s *fakeSession) *app.Agent {
 		return "", sdk.ErrNotImplemented
 	}
 	return &app.Agent{
-		Client: c, Plugins: reg, Hostname: "db1", Version: "1.2.3", OS: "linux", Arch: "amd64",
-		Local: local, RepositoryID: repoID, Session: s,
+		Link: link, Plugins: reg, Hostname: "db1", Version: "1.2.3", OS: "linux", Arch: "amd64",
+		Local: local, RepositoryID: repoID,
 	}
 }
 
-func TestRunRegistersWithHostAndVersionThenConnects(t *testing.T) {
-	c := &fakeClient{}
-	if err := newAgent(t, c).Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	got := []any{c.got.GetHostname(), c.got.GetAgentVersion(), c.got.GetProtocolVersion(), c.got.GetOs(), c.got.GetArch()}
+func registered(t *testing.T) *agentv1.RegisterRequest {
+	t.Helper()
+	return newAgent(t, &fakeLink{}).RegisterRequest(context.Background())
+}
+
+func TestRegisterRequestCarriesHostAndVersion(t *testing.T) {
+	req := registered(t)
+	got := []any{req.GetHostname(), req.GetAgentVersion(), req.GetProtocolVersion(), req.GetOs(), req.GetArch()}
 	want := []any{"db1", "1.2.3", uint32(1), "linux", "amd64"}
 	if !slices.Equal(got, want) {
 		t.Errorf("request = %v, want %v", got, want)
 	}
-	if !c.connected {
-		t.Error("agent did not open the command stream")
-	}
 }
 
-func TestRunAnnouncesPluginsWithSchemasSortedByName(t *testing.T) {
-	c := &fakeClient{}
-	if err := newAgent(t, c).Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+func TestRegisterRequestAnnouncesPluginsWithSchemasSortedByName(t *testing.T) {
 	var got []string
-	for _, p := range c.got.GetPlugins() {
+	for _, p := range registered(t).GetPlugins() {
 		got = append(got, fmt.Sprintf("%s@%s=%s %v", p.GetName(), p.GetVersion(), p.GetConfigSchema(), p.GetActions()))
 	}
 	want := `files@1.2.3={"b":2} [ACTION_BACKUP ACTION_RESTORE ACTION_VERIFY]|mysql@1.2.3={"a":1} [ACTION_BACKUP ACTION_RESTORE ACTION_VERIFY]`
@@ -128,17 +90,8 @@ func TestRunAnnouncesPluginsWithSchemasSortedByName(t *testing.T) {
 	}
 }
 
-func registered(t *testing.T) *agentv1.RegisterRequest {
-	t.Helper()
-	c := &fakeClient{}
-	if err := newAgent(t, c).Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	return c.got
-}
-
 // Register carries names and metadata of host-local definitions (ADR 0008).
-func TestRunAnnouncesHostInventory(t *testing.T) {
+func TestRegisterRequestAnnouncesHostInventory(t *testing.T) {
 	req := registered(t)
 	var repos []string
 	for _, r := range req.GetRepositories() {
@@ -152,7 +105,7 @@ func TestRunAnnouncesHostInventory(t *testing.T) {
 }
 
 // Never URLs, password files, secret files or script paths.
-func TestRunNeverSendsHostLocalValues(t *testing.T) {
+func TestRegisterRequestNeverSendsHostLocalValues(t *testing.T) {
 	wire := registered(t).String()
 	for _, value := range []string{"/etc/sard", "s3.example.com", "/mnt/nas", "/usr/local"} {
 		if strings.Contains(wire, value) {
@@ -161,41 +114,20 @@ func TestRunNeverSendsHostLocalValues(t *testing.T) {
 	}
 }
 
-// The open stream is handed to the session, which serves commands until
-// the context ends; Run does not return while the session is serving.
-func TestRunServesTheOpenStream(t *testing.T) {
-	stream := &fakeStream{}
-	s := &fakeSession{}
-	if err := newAgentWith(t, &fakeClient{stream: stream}, s).Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if s.served != stream {
-		t.Fatalf("session served %v, want the stream from Connect", s.served)
+// Run is the transport's loop; its error comes back unchanged.
+func TestRunConnectsThroughTheLink(t *testing.T) {
+	link := &fakeLink{err: errors.New("stream: EOF")}
+	if err := newAgent(t, link).Run(context.Background()); err != link.err || !link.connected {
+		t.Fatalf("err = %v, connected = %v", err, link.connected)
 	}
 }
 
-func TestRunReportsSessionFailure(t *testing.T) {
-	s := &fakeSession{err: errors.New("stream reset")}
-	err := newAgentWith(t, &fakeClient{stream: &fakeStream{}}, s).Run(context.Background())
-	if err == nil || err.Error() != "serve: stream reset" {
-		t.Fatalf("err = %v", err)
-	}
-}
-
-func TestRunStopsWhenRegisterFails(t *testing.T) {
-	c := &fakeClient{registerErr: sdk.ErrNotImplemented}
-	err := newAgent(t, c).Run(context.Background())
-	if !errors.Is(err, sdk.ErrNotImplemented) || err.Error() != "register: not implemented" {
-		t.Fatalf("err = %v", err)
-	}
-	if c.connected {
-		t.Error("connected after a failed registration")
-	}
-}
-
-func TestRunReportsConnectFailure(t *testing.T) {
-	err := newAgent(t, &fakeClient{connectErr: errors.New("refused")}).Run(context.Background())
-	if err == nil || err.Error() != "connect: refused" {
-		t.Fatalf("err = %v", err)
+// Until the executor (A4) is wired in, nothing runs and commands are dropped.
+func TestNoExecutorHoldsNothing(t *testing.T) {
+	var x app.NoExecutor
+	x.Submit(&agentv1.RunStep{CommandId: "c"})
+	x.Cancel("c")
+	if x.Ack("c") != nil || x.RunningIDs() != nil || x.PendingResults() != nil {
+		t.Fatal("NoExecutor reports state")
 	}
 }

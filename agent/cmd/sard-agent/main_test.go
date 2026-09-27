@@ -6,13 +6,20 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"io"
+	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func fixedHostname() (string, error) { return "db1", nil }
@@ -88,15 +95,47 @@ func TestConfigErrorsExitWithOne(t *testing.T) {
 	}
 }
 
-// With a valid config the agent announces the server and stops at the
-// transport stub, which is not implemented yet.
-func TestValidConfigReachesTheTransportStub(t *testing.T) {
-	cfg := "server:\n  address: sard.example.com:9090\n" +
-		"repositories:\n  - {name: main, url: /srv/restic, password_file: /etc/sard/main.pass}\n"
-	code, out, errOut := runAgent("--config", writeConfig(t, cfg))
-	if code != 1 || out != "sard-agent dev: connecting to sard.example.com:9090\n" || errOut != "sard-agent: register: not implemented\n" {
-		t.Fatalf("code = %d, out = %q, stderr = %q", code, out, errOut)
+// Without tls.* the agent cannot dial and says which setting is missing.
+func TestConfigWithoutTLSStopsBeforeDialing(t *testing.T) {
+	cfg := "server:\n  address: sard.example.com:9090\n"
+	code, _, errOut := runAgent("--config", writeConfig(t, cfg))
+	if code != 1 || errOut != "sard-agent: invalid transport options: tls.ca_file is required\n" {
+		t.Fatalf("code = %d, stderr = %q", code, errOut)
 	}
+}
+
+// With a valid config the agent announces the server and keeps dialing it
+// over TLS; nothing listens on the port here, so it retries until stopped,
+// and a stop is a clean exit.
+func TestValidConfigDialsTheServerUntilStopped(t *testing.T) {
+	dir := t.TempDir()
+	ca := filepath.Join(dir, "ca.pem")
+	if err := os.WriteFile(ca, selfSignedPEM(t), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := "server:\n  address: 127.0.0.1:1\n" +
+		"tls: {ca_file: " + ca + ", cert_file: " + dir + "/agent.pem, key_file: " + dir + "/agent.key}\n"
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	var out, errOut bytes.Buffer
+	code := run(ctx, []string{"--config", writeConfig(t, cfg)}, &out, &errOut, fixedHostname)
+	if code != 0 || out.String() != "sard-agent dev: connecting to 127.0.0.1:1\n" || errOut.String() != "" {
+		t.Fatalf("code = %d, out = %q, stderr = %q", code, out.String(), errOut.String())
+	}
+}
+
+func selfSignedPEM(t *testing.T) []byte {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), NotAfter: time.Now().Add(time.Hour), IsCA: true, BasicConstraintsValid: true}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 }
 
 // TestMainProcess runs the real binary entry point in a child process.
