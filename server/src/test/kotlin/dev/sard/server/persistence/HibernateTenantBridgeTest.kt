@@ -29,7 +29,13 @@ class HibernateTenantBridgeTest {
 
     @Test
     fun `no tenant is root`() {
-        // Root would switch the tenant filter off; cross-tenant access is not designed yet (ADR 0013).
-        assertFalse(bridge.isRoot(tenant))
+        // Root switches the tenant filter off; only TenantSessions.system asks for it (ADR 0013).
+        assertFalse(MutFlow.underTest { bridge.isRoot(tenant) })
+        assertFalse(MutFlow.underTest { bridge.isRoot(TenantResolver.DEFAULT_TENANT_ID) })
+    }
+
+    @Test
+    fun `the reserved system identifier is root`() {
+        assertTrue(MutFlow.underTest { bridge.isRoot(HibernateTenantBridge.SYSTEM_TENANT_ID) })
     }
 }

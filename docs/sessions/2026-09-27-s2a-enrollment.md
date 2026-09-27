@@ -41,4 +41,39 @@ CA и TLS:
 
 Схема — одна миграция: `enrollment_tokens`, `agent_certificates`, составные FK `(tenant_id, agent_id) → agents (tenant_id, id)`.
 
-Вопросы владельцу — в ответе сессии; после ответа сюда записываются решения.
+### Решения владельца по контрольной точке 1
+1. Системный доступ — вариант A (`isRoot` + явные сессии `inTenant`/`system`), проверить тестом.
+2. `agent_version` снимать с `NOT NULL` нельзя: агент обязан регистрироваться с версией. В `EnrollRequest` её нет — это дефект контракта; решение (поле в proto) — вопрос контрольной точки 2.
+3. `issued_at` (= `notBefore`), `serial TEXT` 32 hex с `CHECK`, `created_at` у токенов.
+4. Версия миграции — метка времени, `out-of-order` не включается.
+5. UUIDv7 — свой генератор, раз его требует ADR 0013 (правило 6).
+6. Бин `Clock` с `@ConditionalOnMissingBean`; PKI не трогаем.
+7. Без `/ship-feature`, но `make gate M=server` обязателен.
+8. Истечение при `now >= expires_at`; чужой отпечаток — неверный токен; `certificate_chain_pem` = лист агента; цепочка TLS — `arrayOf(leaf, ca)`.
+
+## Фаза 2 — миграция, формат токена, сервис токенов
+
+### Сделано
+- `V202609271200__enrollment.sql`: `enrollment_tokens` (`token_hash BYTEA UNIQUE CHECK (octet_length = 32)`, `CHECK (expires_at > created_at)`, `CHECK (agent_id IS NULL OR used_at IS NOT NULL)` — Enroll сначала захватывает токен, потом создаёт агента) и `agent_certificates` (`serial TEXT PK CHECK ~ '^[0-9a-f]{32}$'`, `issued_at`, `not_after`, `revoked_at`, индекс `(tenant_id, agent_id)`); составные FK на `agents (tenant_id, id)`.
+- `enrollment/EnrollmentToken.kt`: `EnrollmentSecret` (копия байтов, `hash()`, `toString` без секрета), `EnrollmentToken.encode/parse`, `MalformedEnrollmentTokenException.Reason` — 7 типов ошибок; текст ошибки не содержит входа.
+- `persistence/TenantSessions.kt`: `inTenant` (отказывает `SYSTEM_TENANT_ID`) и `system` (`SET TRANSACTION READ ONLY` + `isDefaultReadOnly`); `HibernateTenantBridge.isRoot(id) = id == SYSTEM_TENANT_ID` (нулевой UUID).
+- `persistence/UuidV7.kt`, `persistence/EnrollmentTokenRecord.kt`, `enrollment/EnrollmentTokens.kt` (`create(tenant, ttl)` → `IssuedEnrollmentToken` с `reveal()`; `ownerOf(hash)` — единственный вызов `system`), `ClockAutoConfiguration`.
+- ADR 0013: раздел «Явный тенант и системный доступ (S2a)» со списком вызовов `system`; «Отложено» сужено до планировщика и S3.
+- `docs/specs/enrollment-token.md` — формат, типы ошибок, тестовый вектор (из фазы 3 перенесено раньше: A2a нужен формат сейчас).
+
+### Проверено (команды запускались)
+- Тесты писались первыми; до реализации не компилировались (`Unresolved reference 'EnrollmentTokenRecord'` и др.).
+- `./gradlew :server:test` — 85 тестов, 0 падений (из XML-отчётов). Миграции применяются к чистой PostgreSQL 18 (Testcontainers), `ddl-auto=validate` проходит.
+- Тест 1: `EnrollmentTokenTest` — вектор даёт ту же строку и `token_hash`, разбор возвращает части, 16 испорченных строк → ожидаемый `Reason`.
+- Тест 6: `EnrollmentTokensIntegrationTest` — системный поиск находит токены двух тенантов; `EntityManager` резолвера и `inTenant(acme)` видят только свои токены; строка токена не попадает в строку таблицы.
+- Контрольные прогоны: `isRoot = false` → падает «system lookup finds a token of any tenant»; `READ WRITE` вместо `READ ONLY` → падает «system session cannot write».
+- Найдено контрольным прогоном: первая версия теста «cannot write» проходила по чужой причине — Hibernate отвергал `createNativeMutationQuery` ещё до базы. Теперь запись идёт прямо в JDBC-соединение сессии, а тест требует SQLSTATE 25006.
+- `scripts/gate.sh server`: spotless, detekt, тесты — OK; покрытие 97.2% (инструкции); CRAP ≤ 6 (худший новый — `parseSecret` 4.0).
+- Мутации (`-Pmutflow.enabled=true :server:test --rerun`, шаг шлюза, повторён отдельно из-за 429): exit 0, выживших нет. Запусков: `EnrollmentTokenTest` 90 (9 тестов + 81 мутант), `HibernateTenantBridgeTest` 8. `UuidV7Test` — 3, то есть мутантов в `UuidV7` mutflow не породил (полагаю: побитовые `shl`/`or`/`and` вне его набора операторов, как `?:` в ADR 0006); маски проверяют точные значения в тестах.
+- `make license-check` — 171 файл OK.
+
+### Окружение
+- JDK 25 из apt, `dockerd` вручную, `postgres:18-alpine` с `mirror.gcr.io`, `TESTCONTAINERS_RYUK_DISABLED=true`; Maven Central отвечает 429 — повторы с паузой.
+
+### Открытый вопрос к контрольной точке 2
+- `agent_version` в Enroll: нужен аддитивный `string agent_version = 4;` в `EnrollRequest` — это нарушает ограничение задания «proto не менять» и затрагивает A2a.
