@@ -75,5 +75,36 @@ CA и TLS:
 ### Окружение
 - JDK 25 из apt, `dockerd` вручную, `postgres:18-alpine` с `mirror.gcr.io`, `TESTCONTAINERS_RYUK_DISABLED=true`; Maven Central отвечает 429 — повторы с паузой.
 
-### Открытый вопрос к контрольной точке 2
-- `agent_version` в Enroll: нужен аддитивный `string agent_version = 4;` в `EnrollRequest` — это нарушает ограничение задания «proto не менять» и затрагивает A2a.
+### Решение владельца по контрольной точке 2
+- Proto не меняется: `agents.agent_version` становится nullable, версию сообщает Register.
+
+## Фаза 3 — Enroll, цепочка TLS, спецификация
+
+### Сделано
+- Миграция `V202609271200` (ещё не слита, поэтому дополнена, а не новая): `ALTER TABLE agents ALTER COLUMN agent_version DROP NOT NULL`; `Agent.agentVersion: String?`.
+- `enrollment/Enrollment.kt`: разбор → сверка отпечатка с `ca.fingerprint()` → `ownerOf(hash)` → `inTenant(tenant)`: условный `UPDATE … set usedAt where usedAt is null and expiresAt > :now`; 0 строк → перечитать → `USED_TOKEN`/`EXPIRED_TOKEN`; создать `Agent` (UUIDv7, `registered_at` = время Clock), `flush`, подписать CSR, записать `AgentCertificateRecord` (`serial` = hex, `issued_at` = `notBefore` листа), связать токен с агентом. `EnrollmentRejectedException.Reason`: `MALFORMED_TOKEN, FOREIGN_CA, UNKNOWN_TOKEN, USED_TOKEN, EXPIRED_TOKEN`.
+- `agents/EnrollmentStatus.kt` — временное сопоставление в одном месте: отказ токена → `UNAUTHENTICATED`, `InvalidCsrException` → `INVALID_ARGUMENT`, прочее → `INTERNAL` без подробностей (в лог — исключение, запрос не логируется).
+- `EnrollmentGrpcService` вызывает `Enrollment` на внедрённом `enrollmentDispatcher` (`Dispatchers.IO` в конфигурации).
+- **Цепочка TLS сервера не содержала CA** (`FileCertificateAuthority.kt:58`, `arrayOf(certificate)`) — исправлено на `arrayOf(certificate, ca.certificate)`; дополнены ADR 0014 и спецификация.
+- Тесты `SardServerIntegrationTest`/`GrpcTlsIntegrationTest`, ждавшие `UNIMPLEMENTED` от Enroll, теперь ждут `UNAUTHENTICATED` (пустой запрос — нет токена); смысл «запрос дошёл до сервиса» сохранён.
+
+### Проверено (команды запускались)
+- Тесты написаны до кода; до реализации не компилировались (`Unresolved reference 'EnrollmentRejectedException'`).
+- `./gradlew :server:test` — 98 тестов, 0 падений, 0 пропусков (XML-отчёты); миграции — на чистой PostgreSQL 18.
+- Тест 2 — «an enrolled agent joins the token's tenant with its certificate recorded»: агент в тенанте токена, `agent_version` NULL, сертификат с URI SAN тенанта и агента записан (serial, `issued_at` = `notBefore`, `not_after`), `used_at` и `agent_id` у токена, бандл = корень.
+- Тест 3 — «a failed signature leaves the token unused and nothing behind»: после `InvalidCsrException` токен не использован, агентов и сертификатов нет; тем же токеном потом удаётся зарегистрироваться.
+- Тест 4 — гонка детерминирована: подпись первого Enroll удерживается `GatedCertificateAuthority`, тест ждёт, пока второй встанет на блокировку строки (`pg_stat_activity.wait_event_type = 'Lock'`), затем отпускает; первый успешен, второй — `USED_TOKEN`, агент и сертификат один.
+- Тест 5 — использованный токен → `USED_TOKEN`; истечение ровно в `expires_at` → `EXPIRED_TOKEN`, за 1 мс до — успех; испорченный, чужой по отпечатку и неизвестный токены отклоняются, токен не тронут.
+- Тест 7 — «the handshake presents the CA an enrollment token pins»: TLS-рукопожатие без доверия видит цепочку из 2 сертификатов, отпечаток последнего = `ca.fingerprint()`; юнит-тест в `FileCertificateAuthorityTest` — то же на key manager.
+- По gRPC: успешный Enroll отдаёт `agent_id`, лист с `CN=agent_id`, бандл; мусорный токен → `UNAUTHENTICATED`, плохой CSR → `INVALID_ARGUMENT`, токен не тронут.
+- Контрольные прогоны (каждый откатан, `diff` с оригиналом пуст):
+  - без `usedAt is null` в захвате → падают гонка и «used token»;
+  - коммит захвата до подписи → падают атомарность (оба теста) и гонка;
+  - цепочка только из листа → падают оба теста цепочки.
+- `scripts/gate.sh server` — `PASSED (server, full)`: покрытие 96.9% (инструкции), CRAP ≤ 6 (новые худшие — `EnrollmentGrpcService.enroll` и `Enrollment.claim`, по 4.0), mutflow без выживших. `EnrollmentStatusTest` — 3 запуска на 3 теста: мутантов mutflow не породил (полагаю: `when` по `is` вне его операторов). `make license-check` — 176 файлов OK.
+
+### Не сделано / открыто
+- `Enrollment` и `TenantSessions` работают с базой и проверяются только интеграционными тестами — mutflow (ADR 0006) их не мутирует; покрытие даёт JaCoCo.
+- Окончательные коды и тексты ошибок, пустой `hostname`, повторный enroll (D5) — S2b/A2b.
+- Системный поиск по `agent_certificates.serial` для S3 — отдельный вызов `TenantSessions.system`, вносится в список ADR 0013.
+- CA в тестах Spring использует `Clock.systemUTC()` (PKI не переведена на бин `Clock`, решение 6), поэтому `issued_at` берётся из сертификата, а не из часов Enroll.

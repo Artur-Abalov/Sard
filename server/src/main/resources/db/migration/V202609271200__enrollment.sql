@@ -36,3 +36,6 @@ CREATE TABLE agent_certificates (
 );
 
 CREATE INDEX agent_certificates_tenant_id_agent_id_idx ON agent_certificates (tenant_id, agent_id);
+
+-- Enroll creates the agent before it has said which version it runs; Register reports it.
+ALTER TABLE agents ALTER COLUMN agent_version DROP NOT NULL;

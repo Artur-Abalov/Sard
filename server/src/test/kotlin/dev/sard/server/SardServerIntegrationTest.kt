@@ -96,7 +96,7 @@ class SardServerIntegrationTest(
         val id = UUID.randomUUID()
         agents.save(Agent(id, "db1", "1.2.3", now, lastSeenAt = null))
         val loaded = agents.findById(id).orElseThrow()
-        assertEquals(listOf<Any>(id, "db1", "1.2.3"), listOf(loaded.id, loaded.hostname, loaded.agentVersion))
+        assertEquals(listOf<Any?>(id, "db1", "1.2.3"), listOf(loaded.id, loaded.hostname, loaded.agentVersion))
         assertEquals(now, loaded.registeredAt)
         assertEquals(null, loaded.lastSeenAt)
         agents.deleteById(id)
@@ -139,9 +139,9 @@ class SardServerIntegrationTest(
     }
 
     @Test
-    fun `enrollment service answers UNIMPLEMENTED`() {
+    fun `enrollment service rejects a request without a token`() {
         val enroll = grpcStatus { enrollmentStub(it).enroll(EnrollRequest.getDefaultInstance()) }
-        assertEquals(Status.Code.UNIMPLEMENTED, enroll)
+        assertEquals(Status.Code.UNAUTHENTICATED, enroll)
     }
 
     private fun agentStub(channel: ManagedChannel) = AgentServiceGrpcKt.AgentServiceCoroutineStub(channel)

@@ -174,6 +174,16 @@ class FileCertificateAuthorityTest {
     }
 
     @Test
+    fun `the served chain ends with the CA so a new agent can check the pinned fingerprint`() {
+        val ca = ca()
+        val km = MutFlow.underTest { ca.serverKeyManager() }
+        val chain = km.getCertificateChain(km.chooseServerAlias("EC", null, null)).toList()
+        assertEquals(2, chain.size)
+        assertEquals(caCertificate(ca), chain.last())
+        assertEquals(ca.fingerprint(), CaFingerprint.of(chain.last()))
+    }
+
+    @Test
     fun `the server key is offered only for its own key type and never for clients`() {
         val km = ca().serverKeyManager()
         assertNull(MutFlow.underTest { km.chooseServerAlias("RSA", null, null) })
