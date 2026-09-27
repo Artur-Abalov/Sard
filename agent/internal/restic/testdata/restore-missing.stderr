@@ -1,0 +1,1 @@
+{"message_type":"exit_error","code":1,"message":"Fatal: failed to find snapshot: no matching ID found for prefix \"deadbeef\""}

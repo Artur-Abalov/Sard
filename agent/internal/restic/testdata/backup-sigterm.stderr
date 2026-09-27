@@ -1,0 +1,2 @@
+signal terminated received, cleaning up 
+{"message_type":"exit_error","code":130,"message":"Fatal: unable to save snapshot: context canceled"}

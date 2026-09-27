@@ -1,0 +1,7 @@
+{"message_type":"status","seconds_remaining":5,"percent_done":0.01657125,"total_files":6,"total_bytes":600000000,"bytes_done":9942750,"current_files":["/tmp/sardcap2/big3/f1","/tmp/sardcap2/big3/f2"]}
+{"message_type":"status","seconds_remaining":7,"percent_done":0.026202605,"total_files":6,"total_bytes":600000000,"bytes_done":15721563,"current_files":["/tmp/sardcap2/big3/f1","/tmp/sardcap2/big3/f2"]}
+{"message_type":"status","seconds_remaining":4,"percent_done":0.06155653,"total_files":6,"total_bytes":600000000,"bytes_done":36933918,"current_files":["/tmp/sardcap2/big3/f1","/tmp/sardcap2/big3/f2"]}
+{"message_type":"status","seconds_remaining":3,"percent_done":0.092995085,"total_files":6,"total_bytes":600000000,"bytes_done":55797051,"current_files":["/tmp/sardcap2/big3/f1","/tmp/sardcap2/big3/f2"]}
+{"message_type":"status","seconds_remaining":4,"percent_done":0.10971206833333333,"total_files":6,"total_bytes":600000000,"bytes_done":65827241,"current_files":["/tmp/sardcap2/big3/f1","/tmp/sardcap2/big3/f2"]}
+{"message_type":"status","seconds_remaining":3,"percent_done":0.13923080166666665,"total_files":6,"total_bytes":600000000,"bytes_done":83538481,"current_files":["/tmp/sardcap2/big3/f1","/tmp/sardcap2/big3/f2"]}
+{"message_type":"status","seconds_remaining":3,"percent_done":0.17748362833333334,"total_files":6,"total_bytes":600000000,"bytes_done":106490177,"current_files":["/tmp/sardcap2/big3/f1","/tmp/sardcap2/big3/f2"]}
