@@ -222,10 +222,10 @@ class ApiContractIntegrationTest(
                 Triple("POST", "/api/v1/session", """{"password":"p"}"""),
                 Triple("GET", "/api/v1/session", null),
                 Triple("DELETE", "/api/v1/session", null),
-                Triple("GET", "/api/v1/agents", null),
+                Triple("GET", "/api/v1/agents?status=online", null),
                 Triple("GET", "/api/v1/agents/{agentId}", null),
                 Triple("POST", "/api/v1/enrollment-tokens", "{}"),
-                Triple("GET", "/api/v1/enrollment-tokens", null),
+                Triple("GET", "/api/v1/enrollment-tokens?status=active", null),
                 Triple("GET", "/api/v1/enrollment-tokens/{tokenId}", null),
                 Triple("POST", "/api/v1/enrollment-tokens/{tokenId}/revoke", null),
                 Triple("GET", "/api/v1/sources", null),
@@ -235,11 +235,11 @@ class ApiContractIntegrationTest(
                 Triple("DELETE", "/api/v1/sources/{sourceId}", null),
                 Triple("POST", "/api/v1/sources/{sourceId}/runs", null),
                 Triple("GET", "/api/v1/sources/{sourceId}/snapshots", null),
-                Triple("GET", "/api/v1/runs", null),
+                Triple("GET", "/api/v1/runs?status=queued&status=failed", null),
                 Triple("GET", "/api/v1/runs/{runId}", null),
                 Triple("GET", "/api/v1/runs/{runId}/steps/{stepId}/logs", null),
             )
-        val stubbed = calls.map { "${it.first} ${it.second}" }.toSet()
+        val stubbed = calls.map { "${it.first} ${it.second.substringBefore('?')}" }.toSet()
         assertEquals(operations().map { it.first }.toSet() - "GET /api/v1/status", stubbed)
         for ((method, path, body) in calls) {
             val response = send(method, path.replace(Regex("\\{[^}]+}"), id), body)
