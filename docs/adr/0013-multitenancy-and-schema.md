@@ -47,6 +47,9 @@ class HibernateTenantBridge(private val resolver: TenantResolver) : CurrentTenan
 - `system { session -> }` — сессия с зарезервированным `SYSTEM_TENANT_ID` (нулевой UUID; в `tenants` его нет, резолвер его не возвращает). `HibernateTenantBridge.isRoot` истинно только для него, поэтому фильтр снят только в этой сессии. Транзакция `READ ONLY` на уровне PostgreSQL: системная сессия не пишет ничего.
 - Вызовы `system` перечислены здесь; новый вызов — правка этого списка на ревью:
   1. `EnrollmentTokens.ownerOf(hash)` — токен по хэшу до того, как известен тенант.
+
+  Список проверяет `ArchitectureTest` (S2b): вызов `sessions.system` вне этого места роняет сборку.
+- Операции администратора над токенами (`EnrollmentTokens.create`, `list`, `get`, `revoke`, S2b) идут через `inTenant` с тенантом, который вызывающий получил от `TenantResolver`. Будущий REST-слой (D2 → W1b) никогда не берёт тенант из параметра пути.
 - Глобальный переключатель фильтра не вводится: всё остальное по-прежнему идёт через резолвер.
 
 ### Правила схемы (для всех таблиц)
@@ -82,9 +85,11 @@ agent_certificates            тенант · реализовано (S2a) — �
   issued_at, not_after, revoked_at
   -- отзыв отдельного сертификата здесь, отзыв агента целиком — agents.revoked_at
 
-enrollment_tokens             тенант · реализовано (S2a)
+enrollment_tokens             тенант · реализовано (S2a, S2b)
   id PK, token_hash BYTEA UNIQUE (глобальный: токен ищется до тенанта), expires_at, used_at,
-  agent_id NULL → agents, created_at
+  agent_id NULL → agents, created_at, revoked_at, label TEXT NOT NULL ('' — без подписи, ≤ 200)
+  CHECK (used_at IS NULL OR revoked_at IS NULL)   -- использован и отозван одновременно не бывает
+  -- состояние вычисляется при чтении: использован > отозван > истёк > активен
 
 plugin_schemas                глобальная, адресуется содержимым
   sha256 BYTEA PK, schema JSONB
