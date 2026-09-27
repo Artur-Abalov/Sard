@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -222,6 +223,12 @@ func (s *fakeServer) Connect(stream grpc.BidiStreamingServer[agentv1.ConnectRequ
 	}
 }
 
+func (s *fakeServer) registerCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.registered)
+}
+
 func (s *fakeServer) connectCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -321,6 +328,7 @@ func (c *fakeClock) waitTimer(t *testing.T) time.Duration {
 
 // commands records what the transport hands to the executor.
 type commands struct {
+	state     *state // Ack drops the result there, as the executor does
 	mu        sync.Mutex
 	submitted []string
 	cancelled []string
@@ -348,6 +356,11 @@ func (c *commands) Ack(id string) error {
 	c.mu.Lock()
 	c.acked = append(c.acked, id)
 	c.mu.Unlock()
+	if c.state != nil {
+		c.state.mu.Lock()
+		c.state.pending = slices.DeleteFunc(c.state.pending, func(r *agentv1.StepResult) bool { return r.GetCommandId() == id })
+		c.state.mu.Unlock()
+	}
 	c.events <- "ack " + id
 	return nil
 }

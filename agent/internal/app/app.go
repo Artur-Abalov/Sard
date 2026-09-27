@@ -25,7 +25,7 @@ var builtinActions = []agentv1.Action{
 
 // Link is the connection to the server (transport.Transport).
 type Link interface {
-	Connect(ctx context.Context) error
+	Run(ctx context.Context) error
 }
 
 // Agent is the running agent.
@@ -45,10 +45,10 @@ type Agent struct {
 	RepositoryID func(ctx context.Context, r config.Repository) (string, error)
 }
 
-// Run connects to the server and serves commands until ctx ends or the
-// connection fails.
+// Run keeps the agent connected to the server until ctx ends or the
+// server refuses the agent for good.
 func (a *Agent) Run(ctx context.Context) error {
-	return a.Link.Connect(ctx)
+	return a.Link.Run(ctx)
 }
 
 // RegisterRequest describes this host to the server; the transport sends

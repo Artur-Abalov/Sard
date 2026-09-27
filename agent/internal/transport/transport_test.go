@@ -58,6 +58,7 @@ func newRig(t *testing.T) *rig {
 func newRigWith(t *testing.T, ca, serverCA *authority) *rig {
 	t.Helper()
 	r := &rig{ca: ca, server: startServer(t, ca, serverCA), clock: newClock(), commands: newCommands(), state: &state{}}
+	r.commands.state = r.state
 	tr, err := transport.New(transport.Options{
 		Address: r.server.addr,
 		TLS:     ca.agentFiles(t, ca),
@@ -67,12 +68,31 @@ func newRigWith(t *testing.T, ca, serverCA *authority) *rig {
 		Commands: r.commands,
 		State:    r.state,
 		Clock:    r.clock,
+		Rand:     func() float64 { return 1 }, // the backoff's upper bound
+		LogQueue: 4,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	r.tr = tr
 	return r
+}
+
+// run runs the reconnecting loop in the background.
+func (r *rig) run(ctx context.Context) <-chan error {
+	done := make(chan error, 1)
+	go func() { done <- r.tr.Run(ctx) }()
+	return done
+}
+
+// backoff returns the next reconnect delay, skipping heartbeat timers.
+func (r *rig) backoff(t *testing.T, heartbeat time.Duration) time.Duration {
+	t.Helper()
+	for {
+		if d := r.clock.waitTimer(t); d != heartbeat {
+			return d
+		}
+	}
 }
 
 // connect runs one connection in the background; the returned channel

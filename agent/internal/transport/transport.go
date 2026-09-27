@@ -12,6 +12,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"os"
 	"time"
@@ -62,6 +63,16 @@ func (realClock) After(d time.Duration) <-chan time.Time { return time.After(d) 
 // DefaultHeartbeat applies when RegisterResponse carries no interval.
 const DefaultHeartbeat = 30 * time.Second
 
+// Reconnect backoff (answers of the owner, phase 1 of A3).
+const (
+	BackoffBase   = time.Second
+	BackoffMax    = time.Minute
+	HealthyStream = 30 * time.Second
+)
+
+// DefaultLogQueue is the default Options.LogQueue.
+const DefaultLogQueue = 1024
+
 // Client keepalive: a stream whose connection died silently is noticed
 // within about Time+Timeout even when nothing is being sent.
 const (
@@ -95,12 +106,18 @@ type Options struct {
 	Commands Commands
 	State    State
 	Clock    Clock
+	// Rand returns a number in [0, 1) for the backoff jitter; nil is math/rand.
+	Rand func() float64
+	// LogQueue is how many log lines may wait to be sent; zero is DefaultLogQueue.
+	LogQueue int
 }
 
-// Transport connects the agent to the server.
+// Transport connects the agent to the server. Its Progress, Result and Log
+// methods are the executor's way to report (the Sink of A4).
 type Transport struct {
 	opts  Options
 	creds credentials.TransportCredentials
+	out   *outbox
 }
 
 // New checks the options and loads the CA; the client certificate is read
@@ -117,7 +134,79 @@ func New(opts Options) (*Transport, error) {
 	if opts.Clock == nil {
 		opts.Clock = realClock{}
 	}
-	return &Transport{opts: opts, creds: credentials.NewTLS(cfg)}, nil
+	if opts.Rand == nil {
+		opts.Rand = rand.Float64
+	}
+	if opts.LogQueue <= 0 {
+		opts.LogQueue = DefaultLogQueue
+	}
+	return &Transport{opts: opts, creds: credentials.NewTLS(cfg), out: newOutbox(opts.LogQueue)}, nil
+}
+
+// Progress reports how far a command got; only the latest report per
+// command waits to be sent. It never blocks.
+func (t *Transport) Progress(p *agentv1.StepProgress) { t.out.Progress(p) }
+
+// Result reports a finished command. It is sent on every stream until the
+// server acks it and is never dropped. It never blocks.
+func (t *Transport) Result(r *agentv1.StepResult) { t.out.Result(r) }
+
+// Log queues one line of a command's output. When LogQueue lines are
+// waiting it blocks until there is room (back pressure), so it must not be
+// called while holding a lock the transport's callbacks need. After Run
+// returns, lines are dropped.
+func (t *Transport) Log(commandID string, line *agentv1.LogLine) { t.out.Log(commandID, line) }
+
+// Run connects and reconnects until ctx ends (nil) or the server refuses
+// the agent for good (see IsPermanent). Between attempts it waits with
+// exponential backoff and full jitter: up to BackoffBase·2ⁿ, capped at
+// BackoffMax; a stream that lived HealthyStream resets the growth.
+func (t *Transport) Run(ctx context.Context) error {
+	defer t.out.close()
+	attempt := 0
+	for {
+		started := t.opts.Clock.Now()
+		err := t.Connect(ctx)
+		if stop, err := stopReconnecting(ctx, err); stop {
+			return err
+		}
+		if t.opts.Clock.Now().Sub(started) >= HealthyStream {
+			attempt = 0
+		}
+		if !t.sleep(ctx, t.backoff(attempt)) {
+			return nil
+		}
+		attempt++
+	}
+}
+
+// stopReconnecting: a stopped agent returns nil, a permanent refusal its error.
+func stopReconnecting(ctx context.Context, err error) (bool, error) {
+	if ctx.Err() != nil {
+		return true, nil
+	}
+	if IsPermanent(err) {
+		return true, err
+	}
+	return false, nil
+}
+
+// sleep waits d; false when ctx ended first.
+func (t *Transport) sleep(ctx context.Context, d time.Duration) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.opts.Clock.After(d):
+		return true
+	}
+}
+
+func (t *Transport) backoff(attempt int) time.Duration {
+	limit := BackoffMax
+	if attempt < 6 { // 1 s · 2⁶ already exceeds the cap
+		limit = min(BackoffBase<<attempt, BackoffMax)
+	}
+	return time.Duration(t.opts.Rand() * float64(limit))
 }
 
 // tlsConfig trusts only the Sard CA and verifies the server's name.
@@ -201,8 +290,10 @@ func heartbeatInterval(resp *agentv1.RegisterResponse) time.Duration {
 	return DefaultHeartbeat
 }
 
-// serve runs one stream: Hello first, then heartbeats out and commands in.
-// Only the heartbeat goroutine sends after Hello (gRPC forbids concurrent Send).
+// serve runs one stream: Hello first, then the unacked results, then
+// whatever the executor reports and heartbeats; commands come in on a
+// second goroutine. Only the sender goroutine calls Send after Hello (gRPC
+// forbids concurrent Send).
 func (t *Transport) serve(parent context.Context, client agentv1.AgentServiceClient, interval time.Duration) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -214,9 +305,10 @@ func (t *Transport) serve(parent context.Context, client agentv1.AgentServiceCli
 	if err := stream.Send(&agentv1.ConnectRequest{Message: &agentv1.ConnectRequest_Hello{Hello: hello}}); err != nil {
 		return streamError(parent, err)
 	}
+	t.out.startStream(t.opts.State.PendingResults())
 	errs := make(chan error, 2)
 	go func() { errs <- t.receive(stream) }()
-	go func() { errs <- t.heartbeat(ctx, stream, interval) }()
+	go func() { errs <- t.send(ctx, stream, interval) }()
 	err = <-errs
 	cancel()
 	<-errs
@@ -243,22 +335,79 @@ func (t *Transport) receive(stream agentv1.AgentService_ConnectClient) error {
 		case *agentv1.ConnectResponse_CancelStep:
 			t.opts.Commands.Cancel(m.CancelStep.GetCommandId())
 		case *agentv1.ConnectResponse_ResultAck:
+			t.out.ack(m.ResultAck.GetCommandId())
 			// An ack for an unknown command is the executor's no-op.
 			_ = t.opts.Commands.Ack(m.ResultAck.GetCommandId())
 		}
 	}
 }
 
-func (t *Transport) heartbeat(ctx context.Context, stream agentv1.AgentService_ConnectClient, interval time.Duration) error {
+// send is the stream's only sender: queued messages as soon as they are
+// there, and a heartbeat every interval even while messages keep coming.
+func (t *Transport) send(ctx context.Context, stream agentv1.AgentService_ConnectClient, interval time.Duration) error {
+	s := &sender{t: t, stream: stream, interval: interval, beat: t.opts.Clock.After(interval)}
 	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-t.opts.Clock.After(interval):
-			hb := &agentv1.Heartbeat{SentAt: timestamppb.New(t.opts.Clock.Now())}
-			if err := stream.Send(&agentv1.ConnectRequest{Message: &agentv1.ConnectRequest_Heartbeat{Heartbeat: hb}}); err != nil {
-				return err
-			}
+		if err := s.step(ctx); err != nil {
+			return err
 		}
 	}
+}
+
+// step sends a due heartbeat, then one queued message, or waits for work.
+func (s *sender) step(ctx context.Context) error {
+	if err := s.beatIfDue(); err != nil {
+		return err
+	}
+	sent, err := s.sendNext()
+	if err != nil || sent {
+		return err
+	}
+	return s.wait(ctx)
+}
+
+type sender struct {
+	t        *Transport
+	stream   agentv1.AgentService_ConnectClient
+	interval time.Duration
+	beat     <-chan time.Time
+}
+
+func (s *sender) beatIfDue() error {
+	select {
+	case <-s.beat:
+		return s.heartbeat()
+	default:
+		return nil
+	}
+}
+
+// sendNext sends one queued message; a failed log chunk goes back in the queue.
+func (s *sender) sendNext() (bool, error) {
+	msg, ok := s.t.out.next()
+	if !ok {
+		return false, nil
+	}
+	if err := s.stream.Send(msg); err != nil {
+		s.t.out.requeue(msg)
+		return true, err
+	}
+	return true, nil
+}
+
+// wait blocks until there is something to send, a heartbeat is due or ctx ends.
+func (s *sender) wait(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.t.out.ready():
+		return nil
+	case <-s.beat:
+		return s.heartbeat()
+	}
+}
+
+func (s *sender) heartbeat() error {
+	s.beat = s.t.opts.Clock.After(s.interval)
+	hb := &agentv1.Heartbeat{SentAt: timestamppb.New(s.t.opts.Clock.Now())}
+	return s.stream.Send(&agentv1.ConnectRequest{Message: &agentv1.ConnectRequest_Heartbeat{Heartbeat: hb}})
 }

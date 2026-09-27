@@ -104,9 +104,10 @@ func TestConfigWithoutTLSStopsBeforeDialing(t *testing.T) {
 	}
 }
 
-// With a valid config the agent announces the server and dials it over
-// TLS; nothing listens on the port here, so Register fails.
-func TestValidConfigDialsTheServer(t *testing.T) {
+// With a valid config the agent announces the server and keeps dialing it
+// over TLS; nothing listens on the port here, so it retries until stopped,
+// and a stop is a clean exit.
+func TestValidConfigDialsTheServerUntilStopped(t *testing.T) {
 	dir := t.TempDir()
 	ca := filepath.Join(dir, "ca.pem")
 	if err := os.WriteFile(ca, selfSignedPEM(t), 0o600); err != nil {
@@ -114,9 +115,12 @@ func TestValidConfigDialsTheServer(t *testing.T) {
 	}
 	cfg := "server:\n  address: 127.0.0.1:1\n" +
 		"tls: {ca_file: " + ca + ", cert_file: " + dir + "/agent.pem, key_file: " + dir + "/agent.key}\n"
-	code, out, errOut := runAgent("--config", writeConfig(t, cfg))
-	if code != 1 || out != "sard-agent dev: connecting to 127.0.0.1:1\n" || !strings.HasPrefix(errOut, "sard-agent: register: ") {
-		t.Fatalf("code = %d, out = %q, stderr = %q", code, out, errOut)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	var out, errOut bytes.Buffer
+	code := run(ctx, []string{"--config", writeConfig(t, cfg)}, &out, &errOut, fixedHostname)
+	if code != 0 || out.String() != "sard-agent dev: connecting to 127.0.0.1:1\n" || errOut.String() != "" {
+		t.Fatalf("code = %d, out = %q, stderr = %q", code, out.String(), errOut.String())
 	}
 }
 

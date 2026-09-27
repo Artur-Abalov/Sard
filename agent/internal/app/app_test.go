@@ -24,7 +24,7 @@ type fakeLink struct {
 	connected bool
 }
 
-func (f *fakeLink) Connect(context.Context) error {
+func (f *fakeLink) Run(context.Context) error {
 	f.connected = true
 	return f.err
 }
@@ -114,7 +114,7 @@ func TestRegisterRequestNeverSendsHostLocalValues(t *testing.T) {
 	}
 }
 
-// Run is the transport's connection; its error comes back unchanged.
+// Run is the transport's loop; its error comes back unchanged.
 func TestRunConnectsThroughTheLink(t *testing.T) {
 	link := &fakeLink{err: errors.New("stream: EOF")}
 	if err := newAgent(t, link).Run(context.Background()); err != link.err || !link.connected {
