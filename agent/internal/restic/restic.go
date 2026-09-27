@@ -15,7 +15,6 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
-	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
 // Repository is a restic repository on S3, SFTP or local disk.
@@ -136,9 +135,14 @@ func requireID(cmd, id string) (string, error) {
 	return id, nil
 }
 
-// Restore will run `restic restore` (A5a, phase 3).
-func (*CLI) Restore(context.Context, string, string) error {
-	return sdk.ErrNotImplemented
+// Restore runs `restic restore`. The snapshot goes after "--", so an id
+// starting with "-" is not a flag.
+func (c *CLI) Restore(ctx context.Context, snapshotID, target string) error {
+	if snapshotID == "" || target == "" {
+		return fmt.Errorf("%w: snapshot and target are required", ErrInvalidRequest)
+	}
+	_, err := c.runRepo(ctx, []string{"restore", "--json", "--target", target, "--", snapshotID}, nil)
+	return err
 }
 
 // runRepo runs a restic command against the repository.

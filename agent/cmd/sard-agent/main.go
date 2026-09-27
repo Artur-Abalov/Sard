@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 
@@ -23,9 +24,6 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
 	"github.com/Artur-Abalov/sard/agent/plugins"
 )
-
-// resticBinary is looked up in PATH.
-const resticBinary = "restic"
 
 // version is set at build time: -ldflags "-X main.version=...".
 var version = "dev"
@@ -63,7 +61,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, hostname 
 		fs.Usage()
 		return exitUsage
 	}
-	if err := start(ctx, *configPath, stdout, hostname); err != nil {
+	if err := start(ctx, *configPath, stdout, hostname, os.Executable); err != nil {
 		_, _ = fmt.Fprintln(stderr, "sard-agent:", err)
 		return exitError
 	}
@@ -71,7 +69,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, hostname 
 }
 
 // start is the composition root: the only place that knows concrete types.
-func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf hostnameFunc) error {
+func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf hostnameFunc, executable func() (string, error)) error {
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return err
@@ -81,6 +79,10 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 		return fmt.Errorf("hostname: %w", err)
 	}
 	_, _ = fmt.Fprintf(stdout, "sard-agent %s: connecting to %s\n", version, cfg.Server.Address)
+	resticBinary, err := resticPath(cfg.Restic.Path, executable)
+	if err != nil {
+		return err
+	}
 	// Repository keys stay on this host (ADR 0008).
 	keys := crypto.NewResticAES(cfg.PasswordFiles())
 	agent := &app.Agent{
@@ -95,6 +97,7 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 		RepositoryID: func(ctx context.Context, r config.Repository) (string, error) {
 			return restic.New(restic.Options{
 				Binary:   resticBinary,
+				CacheDir: cfg.Restic.CacheDir,
 				Path:     os.Getenv("PATH"),
 				Exec:     restic.ProcessExecutor{},
 				Keys:     keys,
@@ -103,4 +106,17 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 		},
 	}
 	return agent.Run(ctx)
+}
+
+// resticPath is restic.path, or the restic shipped next to sard-agent
+// (docs/adr/0014-restic-shipped-with-agent.md).
+func resticPath(configured string, executable func() (string, error)) (string, error) {
+	if configured != "" {
+		return configured, nil
+	}
+	self, err := executable()
+	if err != nil {
+		return "", fmt.Errorf("restic.path: %w", err)
+	}
+	return filepath.Join(filepath.Dir(self), "restic"), nil
 }

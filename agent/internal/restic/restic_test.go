@@ -17,7 +17,6 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
-	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
 var _ restic.Repository = (*restic.CLI)(nil)
@@ -71,7 +70,7 @@ func (f *fakeExec) call(sub string) restic.Command {
 
 func feed(t *testing.T, file string, fn func([]byte)) {
 	t.Helper()
-	if file == "" {
+	if file == "" || fn == nil { // a nil callback discards the stream
 		return
 	}
 	data, err := os.ReadFile(filepath.Join("testdata", file))
@@ -357,10 +356,32 @@ func TestCancelledContextWins(t *testing.T) {
 	}
 }
 
-func TestRestoreIsNotImplementedYet(t *testing.T) {
-	f := newFixture(t, nil)
-	if err := f.build().Restore(context.Background(), "abc", "/tmp/x"); !errors.Is(err, sdk.ErrNotImplemented) {
+func TestRestoreWritesTheSnapshotIntoTheTarget(t *testing.T) {
+	f := newFixture(t, map[string]reply{"restore": {stdout: "restore.stdout"}})
+	if err := f.build().Restore(context.Background(), "6c719cbc", "/srv/restore"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"restore", "--json", "--target", "/srv/restore", "--", "6c719cbc"}
+	if got := f.exec.call("restore"); !slices.Equal(got.Args, want) || !slices.Contains(got.Env, "RESTIC_PASSWORD_FILE=/etc/sard/main.pass") {
+		t.Fatalf("args = %q, env = %q", got.Args, got.Env)
+	}
+}
+
+func TestRestoreOfAMissingSnapshot(t *testing.T) {
+	f := newFixture(t, map[string]reply{"restore": {stderr: "restore-missing.stderr", code: 1}})
+	err := f.build().Restore(context.Background(), "deadbeef", "/srv/restore")
+	want := `restic restore: exit code 1: Fatal: failed to find snapshot: no matching ID found for prefix "deadbeef"`
+	if err == nil || err.Error() != want {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRestoreRejectsInvalidRequests(t *testing.T) {
+	for _, c := range [][2]string{{"", "/srv/restore"}, {"6c719cbc", ""}} {
+		f := newFixture(t, nil)
+		if err := f.build().Restore(context.Background(), c[0], c[1]); !errors.Is(err, restic.ErrInvalidRequest) || len(f.exec.calls) != 0 {
+			t.Errorf("%q: err = %v", c, err)
+		}
 	}
 }
 

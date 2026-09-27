@@ -38,6 +38,9 @@ secrets:
   mikrotik-ssh: /etc/sard/secrets/mikrotik.key
 scripts:
   app-maintenance: /usr/local/bin/app-maintenance
+restic:
+  path: /usr/lib/sard/restic
+  cache_dir: /var/cache/sard/restic
 `
 
 func TestParseReadsAllFields(t *testing.T) {
@@ -54,9 +57,30 @@ func TestParseReadsAllFields(t *testing.T) {
 		},
 		Secrets: map[string]string{"pg-prod": "/etc/sard/secrets/pg-prod", "mikrotik-ssh": "/etc/sard/secrets/mikrotik.key"},
 		Scripts: map[string]string{"app-maintenance": "/usr/local/bin/app-maintenance"},
+		Restic:  config.Restic{Path: "/usr/lib/sard/restic", CacheDir: "/var/cache/sard/restic"},
 	}
 	if !reflect.DeepEqual(c, want) {
 		t.Fatalf("config = %+v", c)
+	}
+}
+
+// restic.path and restic.cache_dir are optional; when set they must be
+// absolute, so they do not depend on the agent's working directory.
+func TestParseRejectsRelativeResticPaths(t *testing.T) {
+	cases := map[string]string{
+		"restic:\n  path: bin/restic\n":    `restic.path: want an absolute path, got "bin/restic"`,
+		"restic:\n  cache_dir: cache\n":    `restic.cache_dir: want an absolute path, got "cache"`,
+		"restic:\n  path: ./restic\n":      `restic.path: want an absolute path, got "./restic"`,
+		"restic:\n  cache_dir: ~/.cache\n": `restic.cache_dir: want an absolute path, got "~/.cache"`,
+	}
+	for body, want := range cases {
+		_, err := config.Parse([]byte("server:\n  address: s:1\n" + body))
+		if !errors.Is(err, config.ErrInvalidRestic) || err.Error() != want {
+			t.Errorf("%q: err = %v", body, err)
+		}
+	}
+	if c, err := config.Parse([]byte("server:\n  address: s:1\n")); err != nil || c.Restic != (config.Restic{}) {
+		t.Errorf("no restic section: %+v, %v", c.Restic, err)
 	}
 }
 

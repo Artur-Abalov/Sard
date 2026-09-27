@@ -212,3 +212,66 @@ type PartialError struct{ Items []ItemError } // Is(ErrUnreadableSource)
 ### Открытые вопросы
 - Колбэк прогресса вызывается ~10 раз в секунду; прореживание для отправки
   на сервер — забота A7.
+
+## Фаза 3: Restore, интеграционные тесты, restic.path, ADR 0014
+
+### Решения и причины
+- `Restore(ctx, snapshotID, target)`: `restore --json --target <dir> -- <id>`;
+  id после `--`, пустой id или каталог — `ErrInvalidRequest`. Итоги
+  restore не разбираются: интерфейс возвращает только ошибку, а сверку
+  данных делает проверка восстановления (этап 2 дорожной карты).
+- Конфиг: секция `restic: {path, cache_dir}`, оба поля необязательны, но
+  если заданы — только абсолютные пути (`ErrInvalidRestic`): иначе путь
+  зависел бы от рабочего каталога агента. Пустой `path` → `main`
+  подставляет `restic` рядом с `os.Executable()`; функция внедряется в
+  `start`, как `hostnameFunc`.
+- Интеграционные тесты (`//go:build integration`,
+  `agent/internal/restic/integration_test.go`) берут restic из
+  `.bin/restic/<Pinned>/linux_<GOARCH>/restic`; если его нет — тест падает с
+  подсказкой запустить `scripts/fetch-restic.sh` (`t.Skip` запрещён).
+  Данные — псевдослучайные (ChaCha8), не сжимаются и не дедуплицируются.
+- `gate.sh agent`: после модульных тестов и CRAP — `fetch-restic.sh`,
+  `go vet`/`golangci-lint`/`go test` с тегом `integration` для
+  `./internal/restic/...`. Входит и в `fast`: интеграция — это проверка
+  корректности, а не мутаций. CI (`matrix.module: agent`) получает её без
+  изменений `ci.yml`.
+- ADR 0014 — «restic поставляется вместе с агентом».
+
+### Отвергнуто
+- Пропускать интеграционные тесты без restic — запрещено (`t.Skip`), а
+  молча «зелёный» гейт без настоящего restic не проверяет главное.
+- Разбирать итоги `restore --json` в структуру — не нужно интерфейсу сейчас.
+
+### Изменённые файлы
+- `agent/internal/restic/restic.go`, `restic_test.go`, `integration_test.go`
+- `agent/internal/config/config.go`, `config_test.go`
+- `agent/cmd/sard-agent/main.go`, `main_test.go`
+- `deploy/agent/agent.example.yaml`, `scripts/gate.sh`
+- `docs/adr/0014-restic-shipped-with-agent.md`, `docs/adr/README.md`
+
+### Проверено (команды запускались)
+- `go test -tags integration ./internal/restic/...` — PASS на restic 0.19.1:
+  версия = закреплённая; Init → Backup (16 МБ, 7 файлов) → Restore в другой
+  каталог → побайтово равно; повторная копия: `AddedBytes` 287
+  (`AddedBytesRaw` 348), `FilesUnmodified` 7; `ID()` дважды равен id из
+  Init; чужой пароль → `ErrWrongPassword`; отмена по первому прогрессу на
+  256 МБ → `context.Canceled`, `locks/` пуст, живых процессов restic нет.
+- Ручная проверка: `SARD_IT_SIZE_MB=300 go test -tags integration -run RoundTrip -v`
+  — 10 вызовов колбэка прогресса, байты растут
+  29 471 859 → 152 485 702 → 315 621 387 из 315 621 387.
+- `sard-agent --config deploy/agent/agent.example.yaml` доходит до заглушки
+  транспорта (`register: not implemented`) — пример конфига разбирается.
+- `./scripts/gate.sh agent` — PASSED: покрытие 98.9%, CRAP ≤ 6, интеграция
+  проходит, mutation score 0.966507 (прогон до внедрения `executable` в
+  `start`; после — выживший мутант `main.go` убит, `cmd/sard-agent`: 0.96,
+  единственный выживший — известный эквивалентный `stop()`).
+
+### Не проверено
+- Что id из `ID()` доходит до `Register` на настоящем restic: транспорт —
+  заглушка. Проверено по частям: `app_test` (`RepositoryID` → `RepositoryId`)
+  и интеграционный `ID()`.
+- Подпись `SHA256SUMS.asc` (нет ключа, см. фазу 1).
+
+### Открытые вопросы
+- Ключ подписи релизов restic в репозиторий и `REQUIRE_SIGNATURE=1` в CI.
+- Упаковка агента с restic и `LICENSE.restic` — отложено (ADR 0014).
