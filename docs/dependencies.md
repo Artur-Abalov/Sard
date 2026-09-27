@@ -57,3 +57,32 @@
 | detekt | 2.0.0-alpha.6 | Apache-2.0 | статический анализ, сложность ≤ 8 |
 | Spotless + ktlint | 8.10.3 / 1.8.0 | Apache-2.0 / MIT | форматирование Kotlin |
 | JaCoCo | 0.8.15 | EPL-2.0 | покрытие; агент только в тестовой JVM |
+
+## Веб (`web/package.json`)
+
+Версии зафиксированы в `web/package-lock.json`. Лицензии — из `package.json` пакетов.
+
+| Пакет | Лицензия | Где | Зачем |
+|---|---|---|---|
+| @mantine/core 9.6.3 | MIT | runtime | UI-кит (ADR 0003) |
+| @mantine/hooks 9.6.3 | MIT | runtime | хуки Mantine (требование @mantine/core) |
+| @tanstack/react-query 5.104.0 | MIT | runtime | загрузка и кеширование данных API |
+| i18next 26.4.2 | MIT | runtime | локализация ru/en |
+| openapi-fetch 0.17.0 | MIT | runtime | типизированный клиент API |
+| react 19.3.0 | MIT | runtime | UI |
+| react-dom 19.3.0 | MIT | runtime | рендеринг в DOM |
+| react-i18next 17.0.15 | MIT | runtime | i18next для React |
+| react-router 8.4.0 | MIT | runtime | маршрутизация |
+| @types/node 24.19.0 | MIT | сборка/тесты | типы Node для конфигов |
+| @types/react 19.3.0 | MIT | сборка/тесты | типы React |
+| @types/react-dom 19.3.0 | MIT | сборка/тесты | типы React DOM |
+| @vitejs/plugin-react 6.1.1 | MIT | сборка/тесты | React в Vite |
+| openapi-typescript 7.13.0 | MIT | сборка/тесты | генерация типов из OpenAPI |
+| oxlint 1.85.0 | MIT | сборка/тесты | линтер (ADR 0011) |
+| postcss 8.5.28 | MIT | сборка/тесты | PostCSS для Mantine |
+| postcss-preset-mantine 1.18.0 | MIT | сборка/тесты | официальная настройка Mantine |
+| postcss-simple-vars 7.0.1 | MIT | сборка/тесты | брейкпоинты Mantine |
+| prettier 3.9.9 | MIT | сборка/тесты | форматирование |
+| typescript 6.0.3 | Apache-2.0 | сборка/тесты | компилятор |
+| vite 8.3.1 | MIT | сборка/тесты | сборка и dev-сервер |
+| vitest 5.0.2 | MIT | сборка/тесты | юнит-тесты |

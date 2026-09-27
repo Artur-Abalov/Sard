@@ -98,6 +98,9 @@ gate_server() {
   need_tools
   say server "spotless, detekt, tests, coverage >= ${COVERAGE_MIN}%"
   (cd "$ROOT" && ./gradlew --no-daemon -q :server:check) || die "server: check"
+  # Report-level INSTRUCTION counter is the last one in the JaCoCo XML.
+  grep -o '<counter type="INSTRUCTION"[^>]*>' "$ROOT/server/build/reports/jacoco/test/jacocoTestReport.xml" | tail -1 |
+    awk -F'"' '{ printf "coverage: %.1f%% (instructions)\n", 100 * $6 / ($4 + $6) }'
   say server "CRAP <= $CRAP_MAX"
   "$BIN/crap" -jacoco "$ROOT/server/build/reports/jacoco/test/jacocoTestReport.xml" -threshold "$CRAP_MAX" || die "server: CRAP"
   [ "$mode" = fast ] && return 0
@@ -108,7 +111,8 @@ gate_server() {
 }
 
 gate_web() {
-  say web "eslint, typecheck, unit tests, build"
+  say web "oxlint + prettier, typecheck, unit tests, build"
+  [ -d "$ROOT/web/node_modules" ] || (cd "$ROOT/web" && npm ci --no-audit --no-fund) || die "web: npm ci"
   (cd "$ROOT/web" && npm run lint && npm run typecheck && npm test && npm run build) || die "web"
 }
 

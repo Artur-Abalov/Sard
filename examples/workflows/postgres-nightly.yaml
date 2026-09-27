@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# DRAFT FORMAT — the workflow schema is not designed yet and will change.
+# Nothing parses this file today; it illustrates the intended shape:
+# hook before → dump → encrypt → store → verify restore → notify.
+apiVersion: sard.dev/v1alpha1
+kind: Workflow
+metadata:
+  name: postgres-nightly
+spec:
+  schedule: "0 2 * * *"         # every night at 02:00, server time zone
+  agent: db1.example.com         # host where sard-agent runs
+  steps:
+    - name: freeze-app
+      hook:
+        run: /usr/local/bin/app-maintenance on
+
+    - name: dump
+      plugin: postgresql
+      config:                    # validated against the plugin's ConfigSchema
+        host: localhost
+        port: 5432
+        database: billing
+        user: backup
+
+    - name: encrypt
+      crypto: restic-aes         # key handed to restic (ADR 0008)
+
+    - name: store
+      repository: s3:https://s3.example.com/backups/db1   # data goes agent → storage, not via the server
+      retention:
+        daily: 7
+        weekly: 4
+
+    - name: unfreeze-app
+      hook:
+        run: /usr/local/bin/app-maintenance off
+      always: true               # run even if an earlier step failed
+
+    - name: verify
+      restore:
+        sandbox: postgres:18-alpine   # throwaway container
+        checks:
+          - sql: SELECT count(*) > 0 FROM invoices
+          - sql: SELECT max(created_at) > now() - interval '2 days' FROM invoices
+
+    - name: notify
+      notify:
+        telegram: ops-chat
+        on: [failure, verify-failure]

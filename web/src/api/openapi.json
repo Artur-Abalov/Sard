@@ -1,0 +1,50 @@
+{
+  "openapi" : "3.1.0",
+  "info" : {
+    "title" : "Sard API",
+    "license" : {
+      "name" : "AGPL-3.0-only",
+      "identifier" : "AGPL-3.0-only"
+    },
+    "version" : "v1"
+  },
+  "paths" : {
+    "/api/v1/status" : {
+      "get" : {
+        "tags" : [ "status-controller" ],
+        "operationId" : "status",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "StatusResponse" : {
+        "type" : "object",
+        "properties" : {
+          "version" : {
+            "type" : "string",
+            "description" : "sard-server version"
+          },
+          "lastVerifiedRestoreAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "When a restore was last verified successfully; null if never"
+          }
+        },
+        "required" : [ "lastVerifiedRestoreAt", "version" ]
+      }
+    }
+  }
+}

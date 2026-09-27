@@ -1,0 +1,101 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# Every job runs the same quality gate as a developer does locally
+# (scripts/gate.sh, thresholds defined there).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  licenses:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: make license-check
+
+  proto:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: tools/go.mod
+          cache-dependency-path: "**/go.sum"
+      # buf lint + `buf generate` must not change the committed proto/gen/go.
+      - run: ./scripts/gate.sh proto
+      - run: ./scripts/gate.sh gen
+
+  go:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [sdk, agent, cli, tools]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: tools/go.mod
+          cache-dependency-path: "**/go.sum"
+      - run: ./scripts/gate.sh ${{ matrix.module }}
+      - name: Build binaries
+        if: matrix.module == 'agent' || matrix.module == 'cli'
+        run: |
+          make build-${{ matrix.module }}
+          if [ "${{ matrix.module }}" = agent ]; then ./agent/bin/sard-agent --version; else ./cli/bin/sardctl version; fi
+
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: tools/go.mod
+          cache-dependency-path: "**/go.sum"
+      # Testcontainers uses the runner's Docker.
+      - run: ./scripts/gate.sh server
+      - name: OpenAPI document used by the web client is up to date
+        run: |
+          cp server/build/openapi/openapi.json web/src/api/openapi.json
+          git diff --exit-code -- web/src/api/openapi.json
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: web
+      - name: Generated API client matches openapi.json
+        working-directory: web
+        run: |
+          npm run gen:api
+          git diff --exit-code -- src/api/schema.d.ts
+      - run: ./scripts/gate.sh web
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build sard-server image
+        run: docker build -f deploy/server/Dockerfile -t sard-server:ci .
