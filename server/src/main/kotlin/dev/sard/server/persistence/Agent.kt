@@ -7,11 +7,12 @@ import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import org.hibernate.annotations.TenantId
 import org.springframework.data.jpa.repository.JpaRepository
 import java.time.Instant
 import java.util.UUID
 
-/** A registered agent; table created by Flyway migration V1. */
+/** A registered agent; table created by Flyway migrations V1 and V2. */
 @Entity
 @Table(name = "agents")
 class Agent(
@@ -25,6 +26,10 @@ class Agent(
     val registeredAt: Instant,
     @Column(name = "last_seen_at")
     val lastSeenAt: Instant?,
+    /** Set by Hibernate from the current tenant on insert (ADR 0013). */
+    @TenantId
+    @Column(name = "tenant_id", nullable = false, updatable = false)
+    val tenantId: UUID? = null,
 )
 
 /** Agents storage (roadmap: agent enrollment, stage 1). */
