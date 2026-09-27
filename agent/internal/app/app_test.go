@@ -123,11 +123,8 @@ func TestRunConnectsThroughTheLink(t *testing.T) {
 }
 
 // Until the executor (A4) is wired in, nothing runs and commands are dropped.
-func TestNoExecutorHoldsNothing(t *testing.T) {
-	var x app.NoExecutor
-	x.Submit(&agentv1.RunStep{CommandId: "c"})
-	x.Cancel("c")
-	if x.Ack("c") != nil || x.RunningIDs() != nil || x.PendingResults() != nil {
-		t.Fatal("NoExecutor reports state")
+func TestNoHandlersKnowsNoPlugin(t *testing.T) {
+	if h, ok := (app.NoHandlers{}).Handler("files"); ok || h != nil {
+		t.Fatal("NoHandlers offers a handler")
 	}
 }

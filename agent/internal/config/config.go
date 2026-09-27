@@ -30,8 +30,18 @@ type Config struct {
 	// Secrets maps a secret name to the file holding its value.
 	Secrets map[string]string `yaml:"secrets"`
 	// Scripts maps a script name to the executable allowlisted for ACTION_RUN.
-	Scripts map[string]string `yaml:"scripts"`
-	Restic  Restic            `yaml:"restic"`
+	Scripts  map[string]string `yaml:"scripts"`
+	Restic   Restic            `yaml:"restic"`
+	Executor Executor          `yaml:"executor"`
+}
+
+// Executor tunes how steps run. Both fields are optional.
+type Executor struct {
+	// StateDir keeps results until the server acknowledges them; empty means
+	// /var/lib/sard-agent/executor. The executor creates it owner-only.
+	StateDir string `yaml:"state_dir"`
+	// MaxParallel is how many steps run at once; zero means one.
+	MaxParallel int `yaml:"max_parallel"`
 }
 
 // Restic locates the restic binary shipped with the agent
@@ -80,6 +90,9 @@ var ErrInvalidRepository = errors.New("invalid repository")
 // ErrInvalidRestic is returned for a relative restic.path or restic.cache_dir.
 var ErrInvalidRestic = errors.New("want an absolute path")
 
+// ErrInvalidExecutor is returned for a relative executor.state_dir or a negative executor.max_parallel.
+var ErrInvalidExecutor = errors.New("invalid executor setting")
+
 // Load reads and validates the file at path.
 func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)
@@ -105,6 +118,9 @@ func (c Config) validate() error {
 		return ErrNoServerAddress
 	}
 	if err := c.Restic.validate(); err != nil {
+		return err
+	}
+	if err := c.Executor.validate(); err != nil {
 		return err
 	}
 	var seen []string
@@ -136,6 +152,16 @@ func (r Restic) validate() error {
 		if f.value != "" && !filepath.IsAbs(f.value) {
 			return fmt.Errorf("%s: %w, got %q", f.key, ErrInvalidRestic, f.value)
 		}
+	}
+	return nil
+}
+
+func (e Executor) validate() error {
+	if e.StateDir != "" && !filepath.IsAbs(e.StateDir) {
+		return fmt.Errorf("%w: executor.state_dir: want an absolute path, got %q", ErrInvalidExecutor, e.StateDir)
+	}
+	if e.MaxParallel < 0 {
+		return fmt.Errorf("%w: executor.max_parallel: want zero (one step at a time) or more, got %d", ErrInvalidExecutor, e.MaxParallel)
 	}
 	return nil
 }
