@@ -222,9 +222,9 @@ enum LogLevel {
   LOG_LEVEL_ERROR = 4;
 }
 
-// StepResult reports how a RunStep command ended. Sent exactly once per
-// command_id; if the stream breaks before the server acknowledges it by
-// closing the command, the agent resends it after reconnecting.
+// StepResult reports how a RunStep command ended. Sent once per command_id
+// and stream; the agent keeps it and sends it again on every new stream
+// until the server confirms it with ResultAck.
 message StepResult {
   reserved 4;
   reserved "snapshot_id";
@@ -308,7 +308,21 @@ message ConnectResponse {
     RunStep run_step = 1;
     // Stop a running step.
     CancelStep cancel_step = 2;
+    // The server has durably recorded a StepResult.
+    ResultAck result_ack = 3;
   }
+}
+
+// ResultAck confirms a StepResult. The server sends it only after the
+// result is durably recorded (its transaction committed), and also for a
+// command_id it does not know, so that the agent stops resending it. After
+// ResultAck the agent drops the stored result and never sends it again; it
+// ignores a ResultAck for a command_id it holds no result for. A result
+// without ResultAck is resent on the next stream, so the server must treat
+// a repeated StepResult for a closed command as a no-op and ack it again.
+message ResultAck {
+  // Id of the command whose result is recorded.
+  string command_id = 1;
 }
 
 // Action is what a step does with a plugin.
