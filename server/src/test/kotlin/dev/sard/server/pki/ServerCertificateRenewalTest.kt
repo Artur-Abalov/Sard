@@ -34,6 +34,25 @@ class ServerCertificateRenewalTest {
     }
 
     @Test
+    fun `a failed renewal is retried at the next check`() {
+        val calls = CountDownLatch(3)
+        val failing =
+            object : CertificateAuthority by CountingCa(calls) {
+                override fun renewServerCertificate(): Boolean {
+                    calls.countDown()
+                    throw IllegalStateException("CA unavailable")
+                }
+            }
+        val renewal = ServerCertificateRenewal(failing, Duration.ofMillis(10))
+        renewal.start()
+        try {
+            assertTrue(calls.await(5, TimeUnit.SECONDS), "renewal stopped after the first failure")
+        } finally {
+            renewal.stop()
+        }
+    }
+
+    @Test
     fun `the renewal asks the CA periodically while running and stops with the context`() {
         val calls = CountDownLatch(3)
         val renewal = ServerCertificateRenewal(CountingCa(calls), Duration.ofMillis(10))

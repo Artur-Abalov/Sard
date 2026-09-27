@@ -106,6 +106,7 @@ class CaDirectory(
         val key = ca.resolve(KEY)
         requireOwnerOnly(ca)
         requireOwnerOnly(key)
+        requireOwnerOnly(ca.resolve(CERT))
         val certificate =
             Files.newInputStream(ca.resolve(CERT)).use {
                 CertificateFactory.getInstance("X.509").generateCertificate(it) as X509Certificate

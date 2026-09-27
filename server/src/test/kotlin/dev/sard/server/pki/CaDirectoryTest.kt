@@ -81,9 +81,9 @@ class CaDirectoryTest {
     }
 
     @Test
-    fun `a key, CA directory or key directory open to others is refused`() {
+    fun `a key, certificate, CA directory or key directory open to others is refused`() {
         val pair = generate()
-        for (path in listOf("ca/ca.key", "ca", ".")) {
+        for (path in listOf("ca/ca.key", "ca/ca.crt", "ca", ".")) {
             CaDirectory(dir, CLOCK).loadOrCreate { pair }
             val target = dir.resolve(path)
             val before = Files.getPosixFilePermissions(target)
@@ -103,6 +103,17 @@ class CaDirectoryTest {
         Files.write(dir.resolve("ca/ca.key"), Files.readAllBytes(other.resolve("ca/ca.key")))
         val directory = CaDirectory(dir, CLOCK)
         assertFailsWith<IllegalStateException> { MutFlow.underTest { directory.loadOrCreate { generate() } } }
+    }
+
+    @Test
+    fun `a certificate swapped for one with the same key but another signer is refused`() {
+        val keys = Keys.generate(random())
+        CaDirectory(dir, CLOCK).loadOrCreate { CaKeyPair(Certificates.root(keys, NOW, random()), keys.private) }
+        val forged = PkiFixtures.rootLike(keys, Keys.generate(random()).private, ca = true)
+        Files.writeString(dir.resolve("ca/ca.crt"), Pem.certificate(forged))
+        val directory = CaDirectory(dir, CLOCK)
+        val e = assertFailsWith<IllegalStateException> { MutFlow.underTest { directory.loadOrCreate { generate() } } }
+        assertEquals("CA certificate CN=Sard CA is not self-signed", e.message)
     }
 
     @Test

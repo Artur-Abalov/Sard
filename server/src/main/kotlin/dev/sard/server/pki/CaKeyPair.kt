@@ -23,14 +23,19 @@ internal object Keys {
         }
 }
 
-/** The root certificate with its private key; refuses a key that does not match. */
+/** The root certificate with its private key; refuses anything that is not a self-signed CA holding that key. */
 class CaKeyPair(
     val certificate: X509Certificate,
     internal val privateKey: PrivateKey,
 ) {
     init {
-        check(matches()) { "CA key does not match the CA certificate ${certificate.subjectX500Principal}" }
+        val name = certificate.subjectX500Principal
+        check(selfSigned()) { "CA certificate $name is not self-signed" }
+        check(certificate.basicConstraints >= 0) { "CA certificate $name is not a CA" }
+        check(matches()) { "CA key does not match the CA certificate $name" }
     }
+
+    private fun selfSigned() = runCatching { certificate.verify(certificate.publicKey) }.isSuccess
 
     private fun matches(): Boolean {
         val probe = certificate.encoded

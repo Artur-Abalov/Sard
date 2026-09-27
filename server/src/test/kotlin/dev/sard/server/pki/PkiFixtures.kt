@@ -3,13 +3,25 @@
 
 package dev.sard.server.pki
 
+import org.bouncycastle.asn1.x500.X500Name
+import org.bouncycastle.asn1.x509.BasicConstraints
+import org.bouncycastle.asn1.x509.Extension
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
+import org.bouncycastle.cert.X509v3CertificateBuilder
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import java.io.ByteArrayInputStream
+import java.math.BigInteger
+import java.security.KeyPair
+import java.security.PrivateKey
 import java.security.SecureRandom
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
+import java.util.Date
 import java.util.UUID
 
 /** A clock the test moves by hand. */
@@ -50,4 +62,20 @@ object PkiFixtures {
             .map { it as X509Certificate }
 
     fun random() = SecureRandom()
+
+    /** A `CN=Sard CA` certificate for [keys]' public key, signed by [signer], with or without the CA flag. */
+    fun rootLike(
+        keys: KeyPair,
+        signer: PrivateKey,
+        ca: Boolean,
+    ): X509Certificate {
+        val name = X500Name("CN=Sard CA")
+        val spki = SubjectPublicKeyInfo.getInstance(keys.public.encoded)
+        val notAfter = Date.from(NOW + Duration.ofDays(1))
+        val builder =
+            X509v3CertificateBuilder(name, BigInteger.TEN, Date.from(NOW), notAfter, name, spki)
+                .addExtension(Extension.basicConstraints, true, BasicConstraints(ca))
+        val contentSigner = JcaContentSignerBuilder(Keys.SIGNATURE).build(signer)
+        return JcaX509CertificateConverter().getCertificate(builder.build(contentSigner))
+    }
 }

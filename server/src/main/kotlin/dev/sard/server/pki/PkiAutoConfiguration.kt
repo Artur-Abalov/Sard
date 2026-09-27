@@ -117,7 +117,10 @@ class ServerCertificateRenewal(
 
     private fun daemon(task: Runnable) = Thread(task, "sard-server-cert-renewal").apply { isDaemon = true }
 
+    /** Never throws: a thrown exception would cancel every later run of the periodic task. */
     private fun renew() {
-        if (ca.renewServerCertificate()) log.info("Server certificate renewed")
+        runCatching { ca.renewServerCertificate() }
+            .onSuccess { renewed -> if (renewed) log.info("Server certificate renewed") }
+            .onFailure { log.warn("Server certificate renewal failed; retrying at the next check", it) }
     }
 }
