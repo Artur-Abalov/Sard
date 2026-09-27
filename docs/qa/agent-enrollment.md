@@ -2,10 +2,8 @@
 
 Сценарии: `docs/specs/server/agent-enrollment.feature`,
 `docs/specs/web/agent-enrollment.feature`. Формат токена —
-`docs/specs/enrollment-token.md`.
-
-**Статус: черновик, ждёт подтверждения владельца.** Шаги с пометкой
-*(решение N)* зависят от открытого вопроса N и уточняются после ответа.
+`docs/specs/enrollment-token.md`. Решения владельца и контракт отказов — в
+заголовке серверной спецификации.
 
 Процедура из двух частей:
 
@@ -41,10 +39,12 @@ print(base64.urlsafe_b64encode(s).rstrip(b'=').decode(), hashlib.sha256(s).hexdi
 values (gen_random_uuid(), '$1', decode('$HASH','hex'), $2, ${3:-now()})" >/dev/null
   echo "sard_${SECRET}.${F}"
 }
-token_row() {  # used_at | agent_id токена по строке
+hash_of() {  # hex SHA-256 секрета строки токена
   local s=${1#sard_}; s=${s%%.*}
-  local h=$(python3 -c "import base64,hashlib,sys; print(hashlib.sha256(base64.urlsafe_b64decode(sys.argv[1]+'=')).hexdigest())" "$s")
-  $PSQL "select coalesce(used_at::text,'-') || '|' || coalesce(agent_id::text,'-') from enrollment_tokens where token_hash = decode('$h','hex')"
+  python3 -c "import base64,hashlib,sys; print(hashlib.sha256(base64.urlsafe_b64decode(sys.argv[1]+'=')).hexdigest())" "$s"
+}
+token_row() {  # used_at | agent_id токена по строке
+  $PSQL "select coalesce(used_at::text,'-') || '|' || coalesce(agent_id::text,'-') from enrollment_tokens where token_hash = decode('$(hash_of "$1")','hex')"
 }
 csr() {  # csr <curve|rsa> — печатает CSR в base64
   if [ "$1" = rsa ]; then openssl genrsa -out "$QA/k" 2048 2>/dev/null
@@ -54,6 +54,7 @@ csr() {  # csr <curve|rsa> — печатает CSR в base64
 enroll() {  # enroll <token> <csr_b64> <hostname>
   $GRPC -d "{\"enrollment_token\":\"$1\",\"csr_der\":\"$2\",\"hostname\":\"$3\"}" $EP
 }
+agents() { $PSQL "select count(*) from agents"; }
 ```
 
 → `make up` завершается, `$F` — 64 символа hex.
@@ -76,7 +77,7 @@ enroll() {  # enroll <token> <csr_b64> <hostname>
 
 В каждом шаге этого раздела проверяется: код статуса, деталь
 `google.rpc.ErrorInfo` с указанным `reason` и `domain` = `sard.dev`, и что
-`$PSQL "select count(*) from agents"` не изменился.
+`agents` не изменилось.
 
 6. `enroll "$T" "$(csr prime256v1)" qa-host` (токен из шага 1 повторно)
    → `UNAUTHENTICATED`, `TOKEN_USED`; `token_row "$T"` не изменился.
@@ -84,80 +85,109 @@ enroll() {  # enroll <token> <csr_b64> <hostname>
    → `INVALID_ARGUMENT`, `TOKEN_MALFORMED`.
 8. `enroll "" "$(csr prime256v1)" qa-host`
    → `INVALID_ARGUMENT`, `TOKEN_MALFORMED`.
-9. `T2=$(new_token $DEFAULT "now() + interval '1 hour'"); enroll "${T2%.*}.$(echo "${T2##*.}" | tr a-f A-F)" "$(csr prime256v1)" qa-host`
-   (отпечаток в верхнем регистре)
-   → `INVALID_ARGUMENT`, `TOKEN_MALFORMED`; `token_row "$T2"` → `-|-` (токен не тронут).
-10. `python3 -c "import os,base64; print('sard_'+base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode()+'.$F')"` → строка `U`; `enroll "$U" "$(csr prime256v1)" qa-host`
-    → `UNAUTHENTICATED`, `TOKEN_UNKNOWN`.
-11. `T3=$(new_token $DEFAULT "now() - interval '1 second'" "now() - interval '1 hour'"); enroll "$T3" "$(csr prime256v1)" qa-host`
-    → `UNAUTHENTICATED`, `TOKEN_EXPIRED`; `token_row "$T3"` → `-|-`.
-12. *(решение 3)* Создать токен `T4`, пометить его отозванным способом, выбранным
-    в решении 3 (или через API из части 2), `enroll "$T4" …`
-    → `UNAUTHENTICATED`, `TOKEN_REVOKED`.
-13. *(решение 4)* `enroll "${T2%.*}.8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f" "$(csr prime256v1)" qa-host`
+9. `T2=$(new_token $DEFAULT "now() + interval '1 hour'"); enroll " $T2" "$(csr prime256v1)" qa-host`
+   (пробел в начале) → `INVALID_ARGUMENT`, `TOKEN_MALFORMED`; `token_row "$T2"` → `-|-`.
+10. `enroll "${T2%.*}.$(echo "${T2##*.}" | tr a-f A-F)" "$(csr prime256v1)" qa-host`
+    (отпечаток в верхнем регистре) → `INVALID_ARGUMENT`, `TOKEN_MALFORMED`; `token_row "$T2"` → `-|-`.
+11. `enroll "${T2%.*}.8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f" "$(csr prime256v1)" qa-host`
     (секрет настоящего токена, отпечаток тестового вектора)
     → `UNAUTHENTICATED`, `TOKEN_FOREIGN_CA`; `token_row "$T2"` → `-|-`.
+12. `python3 -c "import os,base64; print('sard_'+base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode()+'.$F')"` → строка `U`; `enroll "$U" "$(csr prime256v1)" qa-host`
+    → `UNAUTHENTICATED`, `TOKEN_UNKNOWN`.
+13. `T3=$(new_token $DEFAULT "now() - interval '1 second'" "now() - interval '1 hour'"); enroll "$T3" "$(csr prime256v1)" qa-host`
+    → `UNAUTHENTICATED`, `TOKEN_EXPIRED`; `token_row "$T3"` → `-|-`.
+14. Отозвать токен `T4` прямо в базе (до части 2 другого пути нет; имя колонки
+    времени отзыва — по миграции S2b, здесь `revoked_at`):
+    `T4=$(new_token $DEFAULT "now() + interval '1 hour'"); $PSQL "update enrollment_tokens set revoked_at = now() where token_hash = decode('$(hash_of "$T4")','hex')"; enroll "$T4" "$(csr prime256v1)" qa-host`
+    → `UNAUTHENTICATED`, `TOKEN_REVOKED`; `token_row "$T4"` → `-|-`.
+
+### hostname
+
+15. `enroll "$T2" "$(csr prime256v1)" ""`
+    → `INVALID_ARGUMENT`, `HOSTNAME_INVALID`; `token_row "$T2"` → `-|-`.
+16. `enroll "$T2" "$(csr prime256v1)" "$(printf 'a%.0s' $(seq 254))"`
+    → `INVALID_ARGUMENT`, `HOSTNAME_INVALID`; `token_row "$T2"` → `-|-`.
+17. `enroll "$T2" "$(printf garbage | base64 -w0)" ""`
+    (пустой hostname и мусорный CSR) → `INVALID_ARGUMENT`, `HOSTNAME_INVALID`.
+18. `enroll "$T" "$(csr prime256v1)" ""` (использованный токен, пустой hostname)
+    → `UNAUTHENTICATED`, `TOKEN_USED`.
 
 ### Неудача не расходует токен
 
-14. `enroll "$T2" "$(printf garbage | base64 -w0)" qa-host`
+19. `enroll "$T2" "$(printf garbage | base64 -w0)" qa-host`
     → `INVALID_ARGUMENT`, `CSR_INVALID`; `token_row "$T2"` → `-|-`.
-15. `enroll "$T2" "$(csr rsa)" qa-host` → `INVALID_ARGUMENT`, `CSR_INVALID`; `token_row "$T2"` → `-|-`.
-16. `enroll "$T2" "$(csr secp521r1)" qa-host` → `INVALID_ARGUMENT`, `CSR_INVALID`; `token_row "$T2"` → `-|-`.
-17. `enroll "$T2" "$(csr secp384r1)" qa-host` → успех; `token_row "$T2"` → заполнено.
-18. `T5=$(new_token $DEFAULT "now() + interval '1 hour'"); $DC stop postgres; enroll "$T5" "$(csr prime256v1)" qa-host`
+20. `enroll "$T2" "$(csr rsa)" qa-host` → `INVALID_ARGUMENT`, `CSR_INVALID`; `token_row "$T2"` → `-|-`.
+21. `enroll "$T2" "$(csr secp521r1)" qa-host` → `INVALID_ARGUMENT`, `CSR_INVALID`; `token_row "$T2"` → `-|-`.
+22. `enroll "$T2" "$(csr secp384r1)" "$(printf 'a%.0s' $(seq 253))" | tee "$QA/long.json"`
+    → успех (ключ P-384, hostname из 253 символов);
+    `$PSQL "select length(hostname) from agents where id = '$(jq -r .agentId "$QA/long.json")'"` → `253`.
+23. `T5=$(new_token $DEFAULT "now() + interval '1 hour'"); $DC stop postgres; enroll "$T5" "$(csr prime256v1)" qa-host`
     → `UNAVAILABLE`, `INTERNAL_RETRYABLE`; текст статуса без подробностей сбоя.
-19. `$DC start postgres`, дождаться `healthy`; `token_row "$T5"` → `-|-`;
+24. `$DC start postgres`, дождаться `healthy`; `token_row "$T5"` → `-|-`;
     `enroll "$T5" "$(csr prime256v1)" qa-host` → успех.
+
+Обрыв связи агентом (решение владельца 7): до фиксации токен остаётся активным,
+после фиксации — использован, а агент-сирота остаётся в списке; оператор
+выпускает новый токен. Вручную момент обрыва относительно фиксации не
+воспроизводится, это проверяют тесты сценариев «Регистрация, прерванная агентом
+до фиксации, не расходует токен» и «Обрыв после фиксации расходует токен и
+оставляет агента».
 
 ### Тенант берётся из токена
 
-20. `$PSQL "insert into tenants (id, name) values ('00000000-0000-0000-0000-0000000000b0', 'qa-b')"`;
+25. `$PSQL "insert into tenants (id, name) values ('00000000-0000-0000-0000-0000000000b0', 'qa-b')"`;
     `TB=$(new_token 00000000-0000-0000-0000-0000000000b0 "now() + interval '1 hour'"); enroll "$TB" "$(csr prime256v1)" qa-b-host | tee "$QA/b.json"`
     → успех; `$PSQL "select tenant_id from agents where id = '$(jq -r .agentId "$QA/b.json")'"` → `…0000b0`;
     SAN сертификата называет тенант `…0000b0`.
 
 ### Повторная регистрация хоста
 
-21. `T6=$(new_token $DEFAULT "now() + interval '1 hour'"); enroll "$T6" "$(csr prime256v1)" qa-host`
+26. `T6=$(new_token $DEFAULT "now() + interval '1 hour'"); enroll "$T6" "$(csr prime256v1)" qa-host`
     → успех, `agentId` отличается от шага 1;
     `$PSQL "select count(*) from agents where hostname = 'qa-host'"` → на 1 больше, чем до шага.
 
 ### Гонка
 
-22. `T7=$(new_token $DEFAULT "now() + interval '1 hour'"); for i in $(seq 10); do (enroll "$T7" "$(csr prime256v1)" race > "$QA/race$i" 2>&1; echo $? >> "$QA/race.rc") & done; wait`
+27. `T7=$(new_token $DEFAULT "now() + interval '1 hour'"); for i in $(seq 10); do (enroll "$T7" "$(csr prime256v1)" race > "$QA/race$i" 2>&1; echo $? >> "$QA/race.rc") & done; wait`
     → в `$QA/race.rc` ровно один `0`; в остальных девяти файлах `UNAUTHENTICATED` и `TOKEN_USED`;
     `$PSQL "select count(*) from agents where hostname = 'race'"` → `1`.
 
 ### Секрет не утекает
 
-23. Для каждой строки токена, использованной выше (`$T`, `$T2` … `$T7`, `$TB`), и её
+28. Для каждой строки токена, использованной выше (`$T`, `$T2` … `$T7`, `$TB`), и её
     секрета: `$DC logs server | grep -cF "<строка или секрет>"` → `0`.
-24. В выводе шагов 6–18 (текст статуса и детали) ни строки токена, ни секрета
+29. В выводе шагов 6–24 (текст статуса и детали) ни строки токена, ни секрета
     → `grep -F` по сохранённому выводу даёт 0 совпадений.
 
 ## Часть 2. API и консоль (заблокировано D2 → W1b, S8a)
 
 Выполняется после появления входа администратора и API токенов. Пути и коды
-HTTP — из контракта S8a.
+HTTP — из контракта S8a. Сервер запущен с адресом для агентов
+`SARD_AGENT_ENDPOINT=sard.example.com:9090` (имя настройки — по реализации).
 
 1. Без входа запросить список токенов → отказ в аутентификации, данных токенов нет.
-2. Войти администратором тенанта, создать токен без срока *(решение 1)*
-   → срок = сейчас + 24 ч; показана команда `sard-agent enroll --server <адрес> --token <строка>` *(решение 5)*
-   и предупреждение «показывается один раз».
+2. Войти администратором тенанта, создать токен без срока
+   → срок = сейчас + 24 ч; показана команда
+   `sard-agent enroll --server sard.example.com:9090 --token <строка>` и
+   предупреждение «показывается один раз».
 3. Нажать «Копировать» → буфер обмена содержит ровно показанную команду.
 4. Закрыть диалог, открыть карточку токена → ни строки, ни команды на странице;
-   в ответе API карточки и списка (DevTools → Network) строки токена нет.
-5. Создать токен со сроком 4 мин 59 с и 7 дней 1 с *(решение 1)*
-   → ошибка у поля срока, команда не показана, токен в списке не появился.
-6. Создать токен с подписью из 201 символа *(решение 2)* → ошибка у поля подписи.
-7. Выполнить на хосте `sard-agent enroll` (A2b) командой из шага 2 → агент
-   зарегистрирован; в списке токен в состоянии «использован», кнопки отзыва нет.
-8. Создать токен, нажать «Отозвать» → состояние «отозван»; регистрация этим
-   токеном → `TOKEN_REVOKED`.
-9. Создать токен со сроком 5 мин, подождать 5 мин → состояние «истёк», кнопки
-   отзыва нет.
-10. Войти администратором другого тенанта → токены и агенты первого тенанта
+   в ответах API карточки и списка (DevTools → Network) нет ни строки, ни команды.
+5. Создать токены со сроком 5 мин и 7 дней → созданы; со сроком 4 мин 59 с и
+   7 дней 1 с → ошибка у поля срока, команда не показана, токен в списке не появился.
+6. Создать токен с подписью из 200 символов → создан, подпись видна в списке
+   целиком; с подписью из 201 символа → ошибка у поля подписи; с пустой
+   подписью → создан без подписи.
+7. Список → токены идут от новых к старым.
+8. Выполнить на хосте `sard-agent enroll` (A2b) командой из шага 2 → агент
+   зарегистрирован; токен в состоянии «использован», кнопки отзыва нет.
+9. Создать токен, нажать «Отозвать» → состояние «отозван», кнопки отзыва нет;
+   регистрация этим токеном → `TOKEN_REVOKED`.
+10. Повторный отзыв того же токена через API → отказ с причиной «уже отозван»;
+    отзыв использованного из шага 8 через API → отказ с причиной «использован».
+11. Создать токен со сроком 5 мин, подождать 5 мин → состояние «истёк», кнопка
+    отзыва есть; нажать её → состояние «отозван».
+12. Войти администратором другого тенанта → токены и агенты первого тенанта
     не видны; прямой запрос карточки по идентификатору → «не найден».
-11. `docker compose logs server | grep -F` по строкам и секретам токенов из этой
+13. `docker compose logs server | grep -F` по строкам и секретам токенов из этой
     части → 0 совпадений.
