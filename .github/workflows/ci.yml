@@ -60,6 +60,18 @@ jobs:
         run: |
           make build-${{ matrix.module }}
           if [ "${{ matrix.module }}" = agent ]; then ./agent/bin/sard-agent --version; else ./cli/bin/sardctl version; fi
+      - name: Package the agent with restic (tar.gz, deb, rpm)
+        if: matrix.module == 'agent'
+        run: make package
+      - uses: actions/upload-artifact@v7
+        if: matrix.module == 'agent'
+        with:
+          name: sard-agent-packages
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/SHA256SUMS
 
   server:
     runs-on: ubuntu-latest

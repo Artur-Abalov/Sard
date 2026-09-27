@@ -16,3 +16,4 @@
 | [0012](0012-tree-deviations.md) | Расхождения с целевым деревом каталогов |
 | [0013](0013-multitenancy-and-schema.md) | Мультитенантность и схема БД сервера |
 | [0014](0014-restic-shipped-with-agent.md) | restic поставляется вместе с агентом |
+| [0015](0015-agent-packaging.md) | Упаковка агента: tar.gz, deb, rpm с restic и лицензиями |

@@ -25,6 +25,13 @@
 | google.golang.org/grpc/cmd/protoc-gen-go-grpc | v1.6.2 | Apache-2.0 | генерация gRPC-стабов |
 | github.com/golangci/golangci-lint/v2 | v2.14.0 | GPL-3.0 | линтер; запускается, не линкуется и не распространяется — на лицензию Sard не влияет |
 | github.com/avito-tech/go-mutesting | v0.0.0-20251226130216-48d0401f00fb | MIT | мутационное тестирование Go |
+| github.com/goreleaser/nfpm/v2 | v2.47.0 | MIT | сборка deb и rpm агента (`make package`); запускается, в пакеты не попадает |
+
+## Поставляется вместе с агентом (не линкуется)
+
+| Программа | Версия | Лицензия | Зачем |
+|---|---|---|---|
+| restic (официальный бинарник релиза) | 0.19.1 (`agent/internal/restic/restic-version`) | BSD-2-Clause | хранение, дедупликация и шифрование бэкапов; ADR 0014, 0015. Текст лицензии — `third_party/restic/LICENSE`, в пакете — `LICENSE.restic` |
 
 ## Сервер (Kotlin, Gradle)
 

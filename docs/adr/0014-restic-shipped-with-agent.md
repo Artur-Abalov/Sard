@@ -29,7 +29,7 @@
   `ErrUnsupportedVersion`); сообщение оператору — задача A5b.
 - restic лицензирован BSD-2: текст лицензии лежит в
   `third_party/restic/LICENSE` и кладётся рядом с бинарником
-  (`LICENSE.restic`); при упаковке агента он обязан попасть в пакет.
+  (`LICENSE.restic`); упаковка — ADR 0015.
 - Гейт `agent` скачивает закреплённый restic и прогоняет
   `go test -tags integration ./internal/restic/...`.
 
@@ -47,7 +47,6 @@
 - Доверять только `SHA256SUMS` релиза — защищает лишь от битой загрузки.
 
 ## Отложено
-- Упаковка агента (tar.gz, deb/rpm) вместе с restic и его лицензией.
 - Ключ подписи релизов restic в репозитории и `REQUIRE_SIGNATURE=1` в CI:
   ключ не удалось получить из окружения разработки (keys.openpgp.org и
   restic.net закрыты политикой сети).

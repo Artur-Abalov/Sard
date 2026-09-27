@@ -13,14 +13,17 @@ After=network-online.target
 Type=simple
 User=sard-agent
 Group=sard-agent
-ExecStart=/usr/local/bin/sard-agent --config /etc/sard/agent.yaml
+ExecStart=/usr/bin/sard-agent --config /etc/sard/agent.yaml
 Restart=on-failure
 RestartSec=10s
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=true
-ReadWritePaths=/var/lib/sard-agent
+# /var/lib/sard-agent and restic's cache /var/cache/sard/restic
+# (restic.cache_dir), created and made writable by systemd.
+StateDirectory=sard-agent
+CacheDirectory=sard/restic
 
 [Install]
 WantedBy=multi-user.target

@@ -275,3 +275,56 @@ type PartialError struct{ Items []ItemError } // Is(ErrUnreadableSource)
 ### Открытые вопросы
 - Ключ подписи релизов restic в репозиторий и `REQUIRE_SIGNATURE=1` в CI.
 - Упаковка агента с restic и `LICENSE.restic` — отложено (ADR 0014).
+
+## Фаза 4: упаковка агента и лицензии (запрос владельца после фазы 3)
+
+### Решения и причины
+- ADR 0015: `make package` → `scripts/package-agent.sh` → `dist/`: tar.gz,
+  deb, rpm для amd64 и arm64 + `SHA256SUMS`. deb/rpm — nfpm v2.47.0 (MIT),
+  закреплён в `tools/go.mod`: один `deploy/agent/nfpm.yaml` на оба формата,
+  `rpmbuild` в окружении нет.
+- Лицензии в каждом пакете: `LICENSE` (AGPL-3.0), `LICENSE.restic`,
+  `THIRD_PARTY_LICENSES` (из кэша модулей по `go list -deps` для целевой
+  архитектуры: yaml/v3 + NOTICE, x/net, x/sys, x/text, genproto, grpc +
+  NOTICE.txt, protobuf), `NOTICE` с коммитом и ссылками на исходники.
+- Раскладка: `/usr/lib/sard/{sard-agent,restic}`, `/usr/bin/sard-agent` →
+  ссылка; unit в `/usr/lib/systemd/system`; `ExecStart` сменён с
+  `/usr/local/bin` на `/usr/bin`, `ReadWritePaths=/var/lib/sard-agent`
+  заменён на `StateDirectory=sard-agent` + `CacheDirectory=sard/restic`
+  (при `ProtectSystem=strict` кэш restic иначе недоступен на запись, а
+  несуществующий `ReadWritePaths` роняет запуск).
+- Maintainer в пакете — публичный noreply-адрес GitHub владельца (тот же,
+  что в его коммитах), не личная почта.
+- nfpm не подставляет переменные в пути `contents`, а файлы с типом
+  `license`/`doc` не кладёт в deb — конфиг рендерится скриптом, лицензии —
+  обычные файлы.
+- `go get -tool nfpm` поднял косвенные зависимости инструментов (viper,
+  xz, cast и др.): гейты tools, sdk, cli, agent после этого зелёные.
+
+### Изменённые файлы
+- `scripts/package-agent.sh`, `deploy/agent/{nfpm.yaml,postinstall.sh,preremove.sh,sard-agent.service}`
+- `Makefile` (`package`, nfpm в `GO_TOOLS`), `tools/go.mod`, `tools/go.sum`
+- `.github/workflows/ci.yml` (пакеты в job `go`/agent, артефакт `sard-agent-packages`)
+- `docs/adr/0015-agent-packaging.md`, `docs/adr/0014-…` (упаковка больше не отложена),
+  `docs/adr/README.md`, `docs/dependencies.md` (nfpm, restic)
+
+### Проверено (команды запускались)
+- `make package` — exit 0, 6 пакетов, состав каждого проверен скриптом
+  (tar, `dpkg-deb -c`, `rpm -qlp`; `rpm` поставлен в окружение через apt).
+- Контроль: без NOTICE в `nfpm.yaml` скрипт падает с
+  `…_amd64.deb: /usr/share/doc/sard-agent/NOTICE missing`.
+- `rpm -qip`: `License: AGPL-3.0-only AND BSD-2-Clause`, скрипты на месте.
+- `dpkg -i` deb в контейнере: создан пользователь `sard-agent`,
+  `sard-agent --version`, `/usr/lib/sard/restic version` → 0.19.1;
+  `strace -e execve`: агент, запущенный через `/usr/bin/sard-agent` без
+  `restic.path`, запускает `/usr/lib/sard/restic`; при `RESTIC_PASSWORD` и
+  `AWS_SECRET_ACCESS_KEY` в окружении агента restic получает только
+  `PATH, HOME, RESTIC_CACHE_DIR, RESTIC_REPOSITORY, RESTIC_PASSWORD_FILE`.
+  Пакет затем удалён (`dpkg -r`).
+- Гейты: `tools` (full, mutation 0.981043), `agent`, `sdk`, `cli` (fast) — PASSED.
+
+### Не проверено
+- Установка rpm (нет rpm-системы) и arm64-пакетов (нет arm64-хоста) —
+  проверен только состав.
+- Шаг CI с `actions/upload-artifact@v7` не запускался.
+- Работа unit-файла под настоящим systemd (в контейнере systemd нет).
