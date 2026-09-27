@@ -1,6 +1,6 @@
 # 0013 — Мультитенантность и схема БД сервера
 
-- Статус: принято (основа тенантности реализована; остальная схема — целевая, таблицы появляются вместе с фичами)
+- Статус: принято (основа тенантности реализована; остальная схема — целевая, таблицы появляются вместе с фичами; пересмотрено 2026-09-27 по ревью владельца)
 - Дата: 2026-09-27
 
 ## Контекст
@@ -41,77 +41,121 @@ class HibernateTenantBridge(private val resolver: TenantResolver) : CurrentTenan
 - Enterprise-резолвер при отсутствии тенанта в контексте **бросает исключение**, а не возвращает значение по умолчанию: ошибка закрывает доступ, а не открывает чужие данные.
 - Прибитый тенант — это не защита лицензии: ядро под AGPL, свой `TenantResolver` может написать любой. Ценность enterprise — управление тенантами, SSO, RBAC, аудит, а не колонка `tenant_id`.
 
-### Правила схемы (для всех будущих таблиц)
-1. **Составные внешние ключи.** У каждой таблицы тенанта есть `UNIQUE (tenant_id, id)`; ссылки на другие таблицы тенанта — `FOREIGN KEY (tenant_id, x_id) REFERENCES x (tenant_id, id)`. База сама не даст сослаться на строку чужого тенанта, даже если ошибся код. Уникальный индекс заодно служит индексом по `tenant_id`.
-2. **Уникальность — внутри тенанта:** `UNIQUE (tenant_id, name)`, а не `UNIQUE (name)`.
-3. **Индексы начинаются с `tenant_id`**, кроме индексов для системных сканов (планировщик, см. «Отложено»).
-4. `ON DELETE SET NULL` на составном ключе — только со списком колонок: `ON DELETE SET NULL (source_id)` (PostgreSQL 15+), иначе обнулится и `tenant_id`.
-5. Первичные ключи — `UUID`, генерирует приложение (UUIDv7: упорядочены по времени, дружат с B-деревом).
-6. Время — `TIMESTAMPTZ`. Перечисления — `TEXT` с `CHECK`, не `CREATE TYPE ... AS ENUM` (новое значение — обычная миграция).
-7. Данные тенанта читаются через JPA. `JdbcTemplate` и нативный SQL обходят фильтр Hibernate; такой запрос обязан содержать `tenant_id = ?` явно и проходит ревью как исключение.
-8. Секретов в базе нет (ADR 0008): `config` источников содержит ссылки (`password_ref`), репозитории — только имена.
+### Правила схемы (для всех таблиц)
+`@TenantId` в Hibernate фильтрует запросы, а правила 1 и 2 защищают сами данные. Это два независимых слоя: ошибка в коде, связавшая шаг одного тенанта с запуском другого, упрётся в базу.
 
-Правила 1 и «каждая таблица тенанта имеет `tenant_id NOT NULL`» + «каждая сущность имеет `@TenantId`» проверяет `TenancyIntegrationTest`: новая таблица или сущность без тенанта роняет тест.
+1. **`tenant_id NOT NULL REFERENCES tenants (id)`** в каждой таблице тенанта.
+2. **Составные ключи на всех связях.** Каждая таблица тенанта с колонкой `id` имеет `UNIQUE (tenant_id, id)`; каждая ссылка на другую таблицу тенанта идёт по паре: `FOREIGN KEY (tenant_id, run_id) REFERENCES runs (tenant_id, id)`. Одноколоночных ссылок между таблицами тенантов нет. Уникальный индекс заодно служит индексом по `tenant_id`.
+3. **История неизменна и не удаляется вместе с объектами.** `runs`, `run_steps`, `snapshots`, `restore_verifications` — доказательства для аудита, `step_logs` живут до срока хранения. То, на что история ссылается (`agents`, `sources`, `workflows`, `schedules`), удаляется мягко — `deleted_at TIMESTAMPTZ`. Ссылки из истории — без `ON DELETE CASCADE` и `SET NULL` (по умолчанию `NO ACTION`): жёсткое удаление такого объекта база отвергнет.
+4. **Уникальность — внутри тенанта** и среди живых строк: `UNIQUE (tenant_id, name) WHERE deleted_at IS NULL` (частичный индекс), чтобы имя удалённого источника можно было занять снова. Цель составного FK — полный `UNIQUE (tenant_id, id)`, не частичный.
+5. **Индексы начинаются с `tenant_id`**, кроме индексов системных сканов (планировщик).
+6. Первичные ключи — `UUID`, генерирует приложение (UUIDv7: упорядочены по времени, дружат с B-деревом).
+7. Время — только `TIMESTAMPTZ`. Перечисления — `TEXT` с `CHECK (x IN (...))`, значения в `lower_snake_case`, полные списки ниже; не `CREATE TYPE ... AS ENUM` (новое значение — обычная миграция). Без `CHECK` через год в колонке окажутся `Failed`, `failed` и `FAILED`.
+8. Данные тенанта читаются через JPA. `JdbcTemplate` и нативный SQL обходят фильтр Hibernate; такой запрос обязан содержать `tenant_id = ?` явно и проходит ревью как исключение.
+9. Секретов в базе нет (ADR 0008): конфиги содержат ссылки (`password_ref`), репозитории — только имена. Поэтому отправленный агенту конфиг можно хранить как есть.
+
+Правила 1 и 2 проверяет по каталогу PostgreSQL `TenantSchemaRulesTest` (с контрольным прогоном на заведомо плохих таблицах в откатываемой транзакции); `tenant_id NOT NULL` в каждой таблице кроме глобальных и `@TenantId` в каждой сущности — `TenancyIntegrationTest`. Миграция, нарушившая правило, роняет тесты.
+
+Мягкое удаление: в Hibernate 7.4 есть `@SoftDelete(strategy = TIMESTAMP)`, но он скрывает строку отовсюду, включая загрузку ссылки из истории (отчёт о запуске удалённого агента должен показать его имя). Выбор между ним и явным фильтром «живых» строк — в спецификации первой фичи удаления, с тестом на загрузку истории.
 
 ### Целевая схема
-Реализовано сейчас: `tenants`, `agents.tenant_id`. Остальные таблицы создаёт миграция той фичи, которой они нужны, и уточняет её спецификация.
+Реализовано сейчас: `tenants`, `agents.tenant_id`. Остальные таблицы и колонки создаёт миграция той фичи, которой они нужны; её спецификация может уточнить детали, но не правила выше. В листинге `tenant_id` и `UNIQUE (tenant_id, id)` подразумеваются у каждой таблицы тенанта, `→ x` означает составной FK `(tenant_id, x_id) → x (tenant_id, id)`.
 
 ```
 tenants                       глобальная
   id PK, name UNIQUE, created_at
 
-agents                        тенант · реализовано
-  id PK, tenant_id, hostname, agent_version, registered_at, last_seen_at
-  + (этап «регистрация») os, arch, protocol_version, cert_serial, revoked_at,
-    secret_names TEXT[], script_names TEXT[]        -- снимок из Register, только имена
-  UNIQUE (tenant_id, id)
+agents                        тенант · реализовано: id, tenant_id, hostname, agent_version, registered_at, last_seen_at
+  + (этап «регистрация») os, arch, protocol_version, revoked_at, deleted_at,
+    secret_names TEXT[], script_names TEXT[]          -- снимок из Register, только имена
+
+agent_certificates            тенант — во время RenewCertificate действуют два сертификата
+  serial TEXT PK (глобальный: сертификат ищется при рукопожатии), agent_id → agents,
+  issued_at, not_after, revoked_at
+  -- отзыв отдельного сертификата здесь, отзыв агента целиком — agents.revoked_at
 
 enrollment_tokens             тенант
-  id PK, tenant_id, token_hash BYTEA UNIQUE, expires_at, used_at, agent_id NULL
-  -- UNIQUE по token_hash глобальный: токен ищется до того, как тенант известен
+  id PK, token_hash BYTEA UNIQUE (глобальный: токен ищется до тенанта), expires_at, used_at,
+  agent_id NULL → agents
+
+plugin_schemas                глобальная, адресуется содержимым
+  sha256 BYTEA PK, schema JSONB
+  -- ключ — хеш, а не (name, version): иначе агент одного тенанта мог бы подменить схему другому
 
 agent_plugins                 тенант, снимок из Register
-  (agent_id, name) PK, tenant_id, version, config_schema JSONB, actions TEXT[]
+  (agent_id, name) PK, agent_id → agents, version, schema_sha256 → plugin_schemas, actions TEXT[]
 
 agent_repositories            тенант, снимок из Register (ADR 0008)
-  (agent_id, name) PK, tenant_id, backend, repository_id NULL, crypto_provider
-  INDEX (tenant_id, repository_id)  -- сколько агентов держат ключ репозитория
+  (agent_id, name) PK, agent_id → agents, backend, repository_id NULL, crypto_provider
+  INDEX (tenant_id, repository_id)  -- хранители ключа; удалённые и отозванные агенты не считаются
 
 sources                       тенант — что бэкапим
-  id PK, tenant_id, agent_id, name, plugin, config JSONB, created_at, updated_at
-  UNIQUE (tenant_id, name); FK (tenant_id, agent_id) → agents
+  id PK, agent_id → agents, name, plugin, config JSONB, created_at, updated_at, deleted_at
+  UNIQUE (tenant_id, name) WHERE deleted_at IS NULL
 
 workflows                     тенант
-  id PK, tenant_id, name, definition JSONB, created_at, updated_at
-  UNIQUE (tenant_id, name)
+  id PK, name, definition JSONB, created_at, updated_at, deleted_at
+  UNIQUE (tenant_id, name) WHERE deleted_at IS NULL
 
 schedules                     тенант
-  id PK, tenant_id, workflow_id, cron, timezone, enabled, next_run_at
-  INDEX (next_run_at) WHERE enabled   -- системный скан планировщика
+  id PK, workflow_id → workflows, cron, timezone, enabled, next_run_at, deleted_at,
+  misfire_policy TEXT CHECK IN ('run_once', 'skip') DEFAULT 'run_once'
+  INDEX (next_run_at) WHERE enabled AND deleted_at IS NULL   -- системный скан
+  -- выбор: SELECT ... WHERE next_run_at <= now() FOR UPDATE SKIP LOCKED — готово к HA;
+  -- пропущенные за время простоя запуски: run_once — один запуск вместо всех, skip — ни одного.
+  -- По умолчанию run_once: для бэкапа поздно лучше, чем никогда.
 
-runs                          тенант — запуск workflow
-  id PK, tenant_id, workflow_id, schedule_id NULL, trigger, status,
+runs                          тенант — запуск workflow · история
+  id PK, workflow_id → workflows, schedule_id NULL → schedules,
+  trigger CHECK IN ('schedule', 'manual', 'verification'),
+  status  CHECK IN ('queued', 'running', 'succeeded', 'failed', 'cancelled'),
   definition JSONB (снимок workflow на момент запуска), queued_at, started_at, finished_at
   INDEX (tenant_id, workflow_id, queued_at DESC)
 
-run_steps                     тенант — одна команда агенту
-  id PK (= RunStep.command_id), tenant_id, run_id, ordinal, agent_id, plugin, action,
-  repository_name, status, phase, bytes_processed, bytes_total, message,
-  output JSONB (BackupOutput | RestoreOutput | VerifyOutput | RunOutput), started_at, finished_at
+run_steps                     тенант — одна команда агенту · история
+  id PK (= RunStep.command_id), run_id → runs, ordinal, agent_id → agents,
+  source_id NULL → sources, plugin, repository_name, snapshot_id NULL,
+  config JSONB NOT NULL        -- RunStep.config_json как отправлен: sources.config может измениться
+  action CHECK IN ('backup', 'restore', 'verify', 'run'),
+  status CHECK IN ('queued', 'dispatched', 'running',
+                   'succeeded', 'failed', 'cancelled', 'timed_out', 'rejected', 'lost'),
+  phase  NULL CHECK IN ('accepted', 'preparing', 'dumping', 'uploading', 'restoring', 'verifying'),
+  bytes_processed, bytes_total, message,
+  output JSONB (BackupOutput | RestoreOutput | VerifyOutput | RunOutput),
+  queued_at, dispatched_at, started_at, finished_at
+  CHECK ((action = 'run') = (source_id IS NULL))
+  CHECK ((status = 'queued') = (dispatched_at IS NULL))
+  CHECK ((status IN ('queued', 'dispatched', 'running')) = (finished_at IS NULL))
+  -- dispatched: отправлен в поток; running: агент прислал ACCEPTED. На Hello шаг в dispatched/running,
+  -- которого нет в running_command_ids, становится lost (не failed: агент не сообщал об ошибке).
+  -- Повторно не отправляется: restore не идемпотентен; повтор решает workflow.
 
-step_logs                     тенант — LogChunk
-  (step_id, seq) PK, tenant_id, time, level, text   -- кандидат на партиционирование по времени
+step_logs                     тенант — LogChunk, секционирована PARTITION BY RANGE (received_at)
+  (step_id, seq, received_at) PK, step_id → run_steps, received_at, time, level, text
+  -- ключ секционирования — время сервера, а не агента: часы агента могут врать,
+  -- и строка не нашла бы секцию. Секции месячные, сервер создаёт их заранее;
+  -- срок хранения — sard.logs.retention (по умолчанию 90 дней), истёкшие секции удаляются
+  -- целиком (DROP), без DELETE. Срок глобальный: секционирование по времени не делит тенантов.
 
-snapshots                     тенант — снимки restic, созданные Sard
-  id PK, tenant_id, source_id NULL, step_id, agent_id, repository_name, repository_id,
-  snapshot_id, total_bytes, added_bytes, created_at
+snapshots                     тенант — снимки restic, созданные Sard · история
+  id PK, source_id NOT NULL → sources, step_id NOT NULL → run_steps, agent_id → agents,
+  repository_name, repository_id NOT NULL, snapshot_id, total_bytes, added_bytes, created_at,
+  forgotten_at                 -- restic forget удалил снимок; проверка не выдаётся за живую
+  UNIQUE (tenant_id, repository_id, snapshot_id)
+  UNIQUE (tenant_id, id, source_id)   -- цель FK из restore_verifications
 
-restore_verifications         тенант — доказательство восстановимости (ADR 0008, п. 3)
-  id PK, tenant_id, snapshot_id → snapshots, step_id, verifier_agent_id,
-  on_origin_host BOOL, status, checks JSONB, verified_at
+restore_verifications         тенант — доказательство восстановимости (ADR 0008, п. 3) · история
+  id PK, (snapshot_id, source_id) → snapshots (id, source_id), step_id → run_steps,
+  verifier_agent_id → agents, key_holders SMALLINT NOT NULL,
+  status CHECK IN ('passed', 'failed'), checks JSONB, verified_at
+  INDEX (tenant_id, source_id, verified_at DESC) WHERE status = 'passed'
 ```
 
-Глобальный `UNIQUE` на `enrollment_tokens.token_hash` и скан `schedules` без `tenant_id` — единственные места, где системе нужно найти строку до того, как тенант известен.
+Главная метрика — «последнее проверенное восстановление» по источнику — читается из одной таблицы по частичному индексу, без соединений: дашборд со ста источниками — сто коротких проходов по индексу. `source_id` здесь — копия `snapshots.source_id`, и составной FK `(tenant_id, snapshot_id, source_id) → snapshots (tenant_id, id, source_id)` не даёт копии разойтись с оригиналом.
+
+`on_origin_host` не хранится: это `verifier_agent_id = snapshots.agent_id`, обе колонки неизменны. Хранится то, что потом не вычислить: `key_holders` — сколько агентов держали ключ репозитория в момент проверки. По нему отчёт помечает проверку «ключ на одном хосте», даже если позже хранителей стало больше.
+
+Глобальные `enrollment_tokens.token_hash`, `agent_certificates.serial` и скан `schedules` без `tenant_id` — единственные места, где системе нужно найти строку до того, как тенант известен.
 
 ### Расширения и их таблицы
 Enterprise-модуль хранит свои таблицы в собственной схеме PostgreSQL (`sard_<id>`) со своей историей Flyway и может ссылаться на `public.tenants`. Нумерация миграций ядра и модулей не пересекается; удаление модуля не трогает схему ядра.
@@ -122,10 +166,16 @@ Enterprise-модуль хранит свои таблицы в собствен
 - **Ни тенантов, ни `tenants` в ядре, только `tenant_id` без FK.** Без FK ничто не мешает строке сослаться на несуществующего тенанта.
 - **Row-Level Security как основной механизм.** Требует `SET app.tenant_id` на каждое соединение из пула и отдельной роли без `BYPASSRLS`; ошибка в сбросе переменной между запросами хуже, чем её отсутствие. Остаётся кандидатом на второй рубеж (см. «Отложено»).
 - **Hibernate `@Filter`.** Его надо включать на каждой сессии и он не действует на `find` по id; `@TenantId` лишён обоих недостатков.
+- **Одноколоночные FK между таблицами тенантов.** Проверяют только существование строки, а не её тенанта; `@TenantId` защищает запросы, но не данные, записанные ошибочным кодом.
+- **Каскадное удаление или `SET NULL` из истории.** Отчёт «проверено 12 марта» теряет смысл, если источник проверки исчез или обнулился.
+- **`on_origin_host` колонкой.** Вычисляется из двух неизменных колонок; хранить стоит то, что не вычислить потом, — `key_holders`.
+- **Схемы плагинов с ключом `(name, version)`.** Общая для тенантов таблица с ключом, который присылает агент, позволяет одному тенанту подменить схему другому; ключ по хешу содержимого — нет.
+- **Время агента как ключ секционирования логов.** Строка с неверными часами агента не нашла бы секцию.
 - **`DEFAULT` на `agents.tenant_id` в базе.** Ядро молча писало бы в тенант по умолчанию даже из enterprise-сборки с ошибкой в резолвере. Значение по умолчанию используется только для заполнения существующих строк в V2 и сразу снимается.
 
 ## Отложено
 - **Системный доступ и контекст тенанта вне HTTP-запроса.** Планировщику нужен скан всех тенантов, регистрации — поиск токена до тенанта, gRPC-потоку агента — тенант из сертификата. В ядре все три тривиальны (тенант один). Для enterprise решим вместе с планировщиком и регистрацией: `CurrentTenantIdentifierResolver.isRoot` для системных операций; тенант агента — из его сертификата (например, URI SAN `sard://tenants/<tenant>/agents/<agent>`, дополнение к ADR 0009), а не из запроса к базе; контекст — элемент контекста корутины, а не `ThreadLocal`.
 - **Пользователи и роли.** В ядре — вместе с аутентификацией; вероятная форма — глобальная `users` и `memberships (tenant_id, user_id, role)`: оператор MSP видит нескольких тенантов.
 - **Каналы уведомлений** (токены Telegram, SMTP) — где хранить учётные данные сервера, решим на этапе уведомлений в духе ADR 0008.
+- **`BackupOutput.repository_id`.** `snapshots.repository_id NOT NULL`, а `BackupOutput` в контракте его не несёт; копировать из `agent_repositories`, где id может быть пустым, — значит терять снимки репозиториев с неизвестным id. Нужное аддитивное поле в proto — на этапе «первый бэкап».
 - **RLS вторым рубежом** под `@TenantId` — если появится нативный SQL в объёме, который не проверить ревью.
