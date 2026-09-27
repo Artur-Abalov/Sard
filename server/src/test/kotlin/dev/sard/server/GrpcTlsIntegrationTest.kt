@@ -6,6 +6,7 @@ package dev.sard.server
 import dev.sard.proto.agent.v1.EnrollRequest
 import dev.sard.proto.agent.v1.EnrollmentServiceGrpcKt
 import dev.sard.server.pki.AgentIdentity
+import dev.sard.server.pki.CaFingerprint
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.FileCertificateAuthority
 import dev.sard.server.pki.Pem
@@ -27,9 +28,13 @@ import org.springframework.context.annotation.Import
 import java.nio.file.Path
 import java.security.KeyPairGenerator
 import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.security.spec.ECGenParameterSpec
 import java.time.Clock
 import java.util.UUID
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.X509TrustManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -73,7 +78,36 @@ class GrpcTlsIntegrationTest(
 
     @Test
     fun `a client trusting the Sard CA reaches the server without a client certificate`() {
-        assertEquals(Status.Code.UNIMPLEMENTED, enroll(trusting().build()))
+        // An empty request reaches Enroll, which rejects its missing token.
+        assertEquals(Status.Code.UNAUTHENTICATED, enroll(trusting().build()))
+    }
+
+    /** A2a: a new agent trusts no CA yet and pins the root it finds in the handshake. */
+    @Test
+    fun `the handshake presents the CA an enrollment token pins`() {
+        val trustAll =
+            object : X509TrustManager {
+                override fun checkClientTrusted(
+                    chain: Array<X509Certificate>,
+                    authType: String,
+                ) = Unit
+
+                override fun checkServerTrusted(
+                    chain: Array<X509Certificate>,
+                    authType: String,
+                ) = Unit
+
+                override fun getAcceptedIssuers() = emptyArray<X509Certificate>()
+            }
+        val context = SSLContext.getInstance("TLS").apply { init(null, arrayOf(trustAll), null) }
+        val chain =
+            (context.socketFactory.createSocket("localhost", grpcPort) as SSLSocket).use { socket ->
+                socket.sslParameters = socket.sslParameters.apply { applicationProtocols = arrayOf("h2") }
+                socket.startHandshake()
+                socket.session.peerCertificates.map { it as X509Certificate }
+            }
+        assertEquals(2, chain.size)
+        assertEquals(ca.fingerprint(), CaFingerprint.of(chain.last()))
     }
 
     @Test
@@ -88,7 +122,7 @@ class GrpcTlsIntegrationTest(
 
     @Test
     fun `a client certificate from the Sard CA is accepted`() {
-        assertEquals(Status.Code.UNIMPLEMENTED, enroll(withClientCertificate(ca)))
+        assertEquals(Status.Code.UNAUTHENTICATED, enroll(withClientCertificate(ca)))
     }
 
     @Test

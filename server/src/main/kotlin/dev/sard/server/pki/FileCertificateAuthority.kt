@@ -55,7 +55,9 @@ class FileCertificateAuthority(
         val keys = Keys.generate(random)
         val spki = SubjectPublicKeyInfo.getInstance(keys.public.encoded)
         val certificate = Certificates.server(spki, serverNames, ca, clock.instant(), random)
-        return ServerKey("sard-server-${generation.incrementAndGet()}", keys.private, arrayOf(certificate))
+        // The root travels with the leaf: a new agent pins it by the fingerprint in its token (S2a).
+        val chain = arrayOf(certificate, ca.certificate)
+        return ServerKey("sard-server-${generation.incrementAndGet()}", keys.private, chain)
     }
 
     /** Never prints key material. */

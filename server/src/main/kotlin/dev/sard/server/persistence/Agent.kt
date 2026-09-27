@@ -12,7 +12,7 @@ import org.springframework.data.jpa.repository.JpaRepository
 import java.time.Instant
 import java.util.UUID
 
-/** A registered agent; table created by Flyway migrations V1 and V2. */
+/** A registered agent; table created by Flyway migrations V1, V2 and V202609271200. */
 @Entity
 @Table(name = "agents")
 class Agent(
@@ -20,8 +20,9 @@ class Agent(
     val id: UUID,
     @Column(nullable = false)
     val hostname: String,
-    @Column(name = "agent_version", nullable = false)
-    val agentVersion: String,
+    /** Null from Enroll until the agent's Register reports it. */
+    @Column(name = "agent_version")
+    val agentVersion: String?,
     @Column(name = "registered_at", nullable = false)
     val registeredAt: Instant,
     @Column(name = "last_seen_at")

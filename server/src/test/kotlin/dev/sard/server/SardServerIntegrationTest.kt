@@ -85,7 +85,7 @@ class SardServerIntegrationTest(
     @Test
     fun `flyway applied every migration`() {
         val sql = "select version from flyway_schema_history where success order by installed_rank"
-        assertEquals(listOf("1", "2"), jdbc.queryForList(sql, String::class.java))
+        assertEquals(listOf("1", "2", "202609271200"), jdbc.queryForList(sql, String::class.java))
         assertEquals(0, jdbc.queryForObject("select count(*) from agents", Int::class.java))
     }
 
@@ -96,7 +96,7 @@ class SardServerIntegrationTest(
         val id = UUID.randomUUID()
         agents.save(Agent(id, "db1", "1.2.3", now, lastSeenAt = null))
         val loaded = agents.findById(id).orElseThrow()
-        assertEquals(listOf<Any>(id, "db1", "1.2.3"), listOf(loaded.id, loaded.hostname, loaded.agentVersion))
+        assertEquals(listOf<Any?>(id, "db1", "1.2.3"), listOf(loaded.id, loaded.hostname, loaded.agentVersion))
         assertEquals(now, loaded.registeredAt)
         assertEquals(null, loaded.lastSeenAt)
         agents.deleteById(id)
@@ -139,9 +139,9 @@ class SardServerIntegrationTest(
     }
 
     @Test
-    fun `enrollment service answers UNIMPLEMENTED`() {
+    fun `enrollment service rejects a request without a token`() {
         val enroll = grpcStatus { enrollmentStub(it).enroll(EnrollRequest.getDefaultInstance()) }
-        assertEquals(Status.Code.UNIMPLEMENTED, enroll)
+        assertEquals(Status.Code.UNAUTHENTICATED, enroll)
     }
 
     private fun agentStub(channel: ManagedChannel) = AgentServiceGrpcKt.AgentServiceCoroutineStub(channel)
