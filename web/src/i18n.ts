@@ -3,10 +3,9 @@
 
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
+import { languages } from './languages'
 import en from './locales/en.json'
 import ru from './locales/ru.json'
-
-export const languages = ['ru', 'en'] as const
 
 // Keep <html lang> in sync so screen readers use the right language.
 i18n.on('languageChanged', (lng) => {
@@ -15,7 +14,7 @@ i18n.on('languageChanged', (lng) => {
 
 void i18n.use(initReactI18next).init({
   resources: { ru: { translation: ru }, en: { translation: en } },
-  lng: 'ru',
+  lng: languages[0],
   fallbackLng: 'en',
   interpolation: { escapeValue: false }, // React escapes already
 })

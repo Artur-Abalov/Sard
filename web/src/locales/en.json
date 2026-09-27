@@ -13,5 +13,24 @@
     "serverVersion": "Server version: {{version}}",
     "loading": "Loading…",
     "error": "Server unavailable"
+  },
+  "nav": {
+    "toggle": "Toggle navigation"
+  },
+  "agents": {
+    "title": "Agents"
+  },
+  "sources": {
+    "title": "Sources"
+  },
+  "runs": {
+    "title": "Runs"
+  },
+  "run": {
+    "title": "Run {{runId}}"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "home": "Go to the dashboard"
   }
 }
