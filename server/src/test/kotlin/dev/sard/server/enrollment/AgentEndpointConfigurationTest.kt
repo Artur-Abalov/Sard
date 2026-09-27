@@ -18,9 +18,12 @@ private class PkiPropertiesConfiguration
 // Kotlin gives an inner lambda class a name built from its enclosing function, so a non-inline
 // lambda directly inside a Cyrillic test name used to fail to compile on a non-UTF-8 host
 // locale. That is no longer required: the build now fails fast with a clear message if
-// sun.jnu.encoding isn't UTF-8 (see server/build.gradle.kts), and gate.sh/Makefile/CI set
-// LC_ALL=C.UTF-8 for the gradle tasks that compile this module. Kept anyway for readability:
-// these ASCII-named helpers keep the lambdas out of the test methods.
+// sun.jnu.encoding isn't UTF-8 (see server/build.gradle.kts, best-effort — a stale Kotlin
+// compile daemon keeps its old environment even after this check is added; stop it with
+// `./gradlew --stop` and `pkill -f KotlinCompileDaemon`). `make gate`/`make gate-fast`/CI set
+// LC_ALL=C.UTF-8 for the gradle tasks that compile this module; running scripts/gate.sh or
+// ./gradlew directly needs `export LC_ALL=C.UTF-8` first. Kept anyway for readability: these
+// ASCII-named helpers keep the lambdas out of the test methods.
 private fun runner() =
     ApplicationContextRunner()
         .withUserConfiguration(PkiPropertiesConfiguration::class.java, AgentEndpointConfiguration::class.java)

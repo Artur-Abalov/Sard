@@ -215,6 +215,27 @@ class FileCertificateAuthorityTest {
     }
 
     @Test
+    fun `an IP server name is encoded from the bytes ServerNames parsed`() {
+        // BouncyCastle's own GeneralName string constructor rejects a trailing "::" group
+        // ("1:2:3:4:5:6:7::"); building the SAN from ServerNames' own bytes sidesteps it.
+        val names = listOf("1:2:3:4:5:6:7::")
+        val ca = FileCertificateAuthority(dir, names, CLOCK, random())
+        val km = ca.serverKeyManager()
+        val leaf = km.getCertificateChain(km.chooseServerAlias("EC", null, null)).first()
+        val sans = leaf.subjectAlternativeNames.map { it.toList() }
+        assertEquals(listOf(listOf<Any>(SAN_IP, "1:2:3:4:5:6:7:0")), sans)
+    }
+
+    @Test
+    fun `a server name that is neither an IP literal nor a hostname stops the CA`() {
+        for (name in listOf("999.1.1.1", "fe80::1%eth0", "bad name")) {
+            assertFailsWith<IllegalArgumentException>(name) {
+                FileCertificateAuthority(dir, listOf(name), CLOCK, random())
+            }
+        }
+    }
+
+    @Test
     fun `the server key stays in memory`() {
         ca()
         assertEquals(

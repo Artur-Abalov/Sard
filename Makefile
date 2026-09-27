@@ -108,8 +108,8 @@ tools:
 
 ## gate: full quality gate for every module (M=<module> for one)
 gate:
-	./scripts/gate.sh $(or $(M),all)
+	LC_ALL=C.UTF-8 ./scripts/gate.sh $(or $(M),all)
 
 ## gate-fast: quality gate without mutation testing
 gate-fast:
-	./scripts/gate.sh $(or $(M),all) fast
+	LC_ALL=C.UTF-8 ./scripts/gate.sh $(or $(M),all) fast

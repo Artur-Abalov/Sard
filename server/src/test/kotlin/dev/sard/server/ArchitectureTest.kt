@@ -9,16 +9,16 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 private val ISOLATED_PACKAGES = listOf("enrollment", "persistence", "pki", "extension")
-private val FORBIDDEN_IMPORT_PREFIXES =
-    listOf(
-        "io.grpc.",
-        "dev.sard.proto.",
-        "com.google.rpc.",
-        "com.google.protobuf.",
-        "dev.sard.server.agents.",
-    )
-private val IMPORT_LINE = Regex("""^import\s+([\w.]+)""", RegexOption.MULTILINE)
+private val FORBIDDEN_FQN_REFERENCE =
+    Regex("""\b(io\.grpc|dev\.sard\.proto|com\.google\.rpc|com\.google\.protobuf|dev\.sard\.server\.agents)\.""")
 private val SESSIONS_SYSTEM_CALL = Regex("""\bsessions\.system\s*[({]""")
+private val LINE_COMMENT = Regex("""//.*$""", RegexOption.MULTILINE)
+private val BLOCK_COMMENT = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
+
+/** Source text with `//` and `/* */` comments stripped, so a comment mentioning a forbidden
+ * package (e.g. in a KDoc example) never trips the scan, but any real reference — import or
+ * fully-qualified use in a function body — does. */
+private fun withoutComments(text: String): String = text.replace(BLOCK_COMMENT, "").replace(LINE_COMMENT, "")
 
 /**
  * A dependency-free source scan, not a JVM classpath/reflection check: greps the .kt sources
@@ -44,19 +44,18 @@ class ArchitectureTest {
             .toList()
 
     @Test
-    fun `enrollment, persistence, pki and extension import nothing from the gRPC or agents boundary`() {
+    fun `enrollment, persistence, pki and extension reference nothing from the gRPC or agents boundary`() {
         val offenders = mutableListOf<String>()
         for (pkg in ISOLATED_PACKAGES) {
             for (file in ktFiles(File(mainRoot, pkg))) {
-                val imports = IMPORT_LINE.findAll(file.readText()).map { it.groupValues[1] }
-                for (import in imports) {
-                    if (FORBIDDEN_IMPORT_PREFIXES.any { import.startsWith(it) }) {
-                        offenders += "${file.path}: import $import"
-                    }
+                val text = withoutComments(file.readText())
+                val references = FORBIDDEN_FQN_REFERENCE.findAll(text).map { it.groupValues[1] }.toList()
+                for (reference in references) {
+                    offenders += "${file.path}: $reference."
                 }
             }
         }
-        assertTrue(offenders.isEmpty(), "forbidden imports:\n${offenders.joinToString("\n")}")
+        assertTrue(offenders.isEmpty(), "forbidden references:\n${offenders.joinToString("\n")}")
     }
 
     @Test

@@ -56,6 +56,20 @@ class ServerNamesTest {
     }
 
     @Test
+    fun `signed or zero-padded numbers are never IP literals`() {
+        val notLiterals =
+            listOf(
+                "+1.2.3.4", // leading '+' sign on an octet
+                "1.2.3.+4", // leading '+' sign on an octet
+                "010.0.0.1", // zero-padded octet
+                "::+f", // leading '+' sign on a hextet
+                "::-1", // leading '-' sign on a hextet
+                "+f::1", // leading '+' sign on a hextet
+            )
+        for (name in notLiterals) assertFalse(ServerNames.isIpLiteral(name), name)
+    }
+
+    @Test
     fun `malformed IPv6-shaped names are never IP literals`() {
         val malformed =
             listOf(

@@ -98,7 +98,7 @@ private fun parseHextets(text: String): List<Int>? {
     return if (hextets.size == parts.size) hextets else null
 }
 
-private fun parseHextet(text: String): Int? {
-    if (text.isEmpty() || text.length > IPV6_HEX_DIGITS_MAX) return null
-    return text.toIntOrNull(HEX_RADIX)
-}
+private val IPV6_HEXTET_DIGITS = Regex("^[0-9a-fA-F]{1,$IPV6_HEX_DIGITS_MAX}$")
+
+/** Ascii hex digits only, no sign (no "+"/"-"); no zone ID ("%eth0") ever parses as a hextet. */
+private fun parseHextet(text: String): Int? = if (IPV6_HEXTET_DIGITS.matches(text)) text.toInt(HEX_RADIX) else null

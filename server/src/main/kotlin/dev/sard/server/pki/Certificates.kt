@@ -3,6 +3,7 @@
 
 package dev.sard.server.pki
 
+import org.bouncycastle.asn1.DEROctetString
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.asn1.x509.BasicConstraints
 import org.bouncycastle.asn1.x509.ExtendedKeyUsage
@@ -117,9 +118,15 @@ internal object Certificates {
     /** Random, positive, exactly [SERIAL_BITS] long (RFC 5280 allows up to 20 octets). */
     private fun serial(random: SecureRandom): BigInteger = BigInteger(SERIAL_BITS, random).setBit(SERIAL_BITS - 1)
 
+    // Builds the IP SAN straight from ServerNames' own parsed bytes rather than handing the
+    // string to BouncyCastle's own (looser) GeneralName(tag, String) parser a second time.
     private fun generalName(name: String): GeneralName {
-        val tag = if (ServerNames.isIpLiteral(name)) GeneralName.iPAddress else GeneralName.dNSName
-        return GeneralName(tag, name)
+        val ip = ServerNames.ipLiteral(name)
+        return if (ip != null) {
+            GeneralName(GeneralName.iPAddress, DEROctetString(ip))
+        } else {
+            GeneralName(GeneralName.dNSName, name)
+        }
     }
 
     private fun sign(

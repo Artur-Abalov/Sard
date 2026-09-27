@@ -5,6 +5,7 @@ package dev.sard.server.pki
 
 private const val IPV4_OCTETS = 4
 private const val IPV4_OCTET_MAX = 255
+private const val IPV4_OCTET_MAX_DIGITS = 3
 
 /** Manual IPv4 literal parsing (no [java.net.InetAddress]): see [ServerNames] for why. */
 internal object Ipv4Literal {
@@ -18,4 +19,11 @@ internal object Ipv4Literal {
     }
 }
 
-private fun parseOctet(text: String): Int? = text.toIntOrNull()?.takeIf { it in 0..IPV4_OCTET_MAX }
+// "0" on its own, or 1-3 ascii digits not starting with '0' (Go's net.ParseIP — the agent is
+// the verifier — rejects zero-padded octets, and this shape also rejects a sign such as "+1").
+private val IPV4_OCTET_SHAPE = Regex("^(0|[1-9][0-9]{0,${IPV4_OCTET_MAX_DIGITS - 1}})$")
+
+private fun parseOctet(text: String): Int? {
+    if (!IPV4_OCTET_SHAPE.matches(text)) return null
+    return text.toInt().takeIf { it <= IPV4_OCTET_MAX }
+}
