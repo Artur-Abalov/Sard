@@ -1,1 +1,2 @@
 dev.sard.server.extension.SardExtensionsAutoConfiguration
+dev.sard.server.extension.TenancyAutoConfiguration

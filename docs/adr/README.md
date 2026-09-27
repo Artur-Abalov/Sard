@@ -14,3 +14,4 @@
 | [0010](0010-server-stack.md) | Стек сервера: Spring Boot 4.1, встроенный gRPC, proto/jvm |
 | [0011](0011-web-tooling.md) | Инструменты веба: oxlint, TypeScript 6 |
 | [0012](0012-tree-deviations.md) | Расхождения с целевым деревом каталогов |
+| [0013](0013-multitenancy-and-schema.md) | Мультитенантность и схема БД сервера |
