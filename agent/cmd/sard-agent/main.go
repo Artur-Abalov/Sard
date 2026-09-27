@@ -93,7 +93,13 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 		Local:    cfg,
 		Session:  session.Stub{},
 		RepositoryID: func(ctx context.Context, r config.Repository) (string, error) {
-			return restic.New(resticBinary, r.Name, r.URL, keys).ID(ctx)
+			return restic.New(restic.Options{
+				Binary:   resticBinary,
+				Path:     os.Getenv("PATH"),
+				Exec:     restic.ProcessExecutor{},
+				Keys:     keys,
+				ReadFile: os.ReadFile,
+			}, r).ID(ctx)
 		},
 	}
 	return agent.Run(ctx)

@@ -153,3 +153,62 @@ type PartialError struct{ Items []ItemError } // Is(ErrUnreadableSource)
 ### Открытые вопросы
 - Открытый ключ релизов restic (`CF8F…A907`) — положить в репозиторий,
   когда будет доступен, и включить `REQUIRE_SIGNATURE=1` в CI.
+
+## Фаза 2: Version, Init, ID, Backup, отмена
+
+### Решения и причины
+- `env_file`: опасные переменные не отбрасываются молча, а останавливают запуск
+  restic ошибкой `ErrInvalidEnvFile` с именем переменной и номером строки,
+  без значения (ответ владельца на п. 7 — «не отдавать»; отказ заметнее
+  тихого пропуска). Список — как в дизайне фазы 1; префикс `GO*` сужен до
+  `GODEBUG`, `GOTRACEBACK`, `GOMAXPROCS`, `GOGC`, `GOMEMLIMIT`, чтобы не
+  запретить `GOOGLE_APPLICATION_CREDENTIALS` бэкенда gs.
+- Репозиторий передаётся через `RESTIC_REPOSITORY`, а не флагом `-r`
+  (отличие от дизайна фазы 1): URL с логином (`rest:https://user:pass@…`)
+  не виден в `ps` другим пользователям.
+- `Version()` не получает ни ключа, ни репозитория, ни `env_file` — только
+  `PATH`, `HOME`, `RESTIC_CACHE_DIR`.
+- Последний `status` restic 0.19.1 не бывает 100% (golden
+  `backup-progress.stdout`: последний — `percent_done` 0.987); итоговые
+  цифры берутся только из `summary`.
+- Повторная копия тех же файлов на официальном бинарнике:
+  `data_added_packed` 288 (в сборке из исходников было 287).
+- `Backup` отклоняет пустые пути и теги с запятой (`ErrInvalidRequest`):
+  restic делит `--tag a,b` на два тега — это было бы молча неверно.
+  Пути идут после `--`, путь `-x` не станет флагом.
+- `ProcessExecutor`: своя группа процессов (`Setpgid`); отмена — SIGTERM
+  группе, через `Grace` (по умолчанию 10 с) — SIGKILL; после выхода restic
+  SIGKILL всегда получает остаток группы, а удержанный кем-то stdout
+  отпускается через `Grace` (`exec.Cmd.WaitDelay`).
+- Окружение процесса задаётся всегда непустым срезом: `cmd.Env = nil`
+  в Go означает «унаследовать всё».
+
+### Отвергнуто
+- Тихо выкидывать опасные переменные из `env_file` — оператор не узнает,
+  почему бэкенд ведёт себя иначе.
+- Добивать группу только при отмене — процесс, оставленный restic после
+  обычного выхода (ssh/rclone), жил бы дальше.
+
+### Изменённые файлы
+- `agent/internal/restic/{restic,exec,env,backup,version}.go`
+- `agent/internal/restic/{restic,exec,backup,version,export}_test.go`
+- `agent/internal/restic/testdata/backup-verbose.stdout` (golden `-vv`)
+- `agent/cmd/sard-agent/main.go` — новый конструктор `restic.New(Options, Repository)`
+
+### Проверено (команды запускались)
+- `./scripts/gate.sh agent` — PASSED: покрытие 99.2%, CRAP ≤ 6,
+  mutation score 0.969697.
+- Тест отмены сперва проходил и без добивания группы (дочерний процесс
+  получал SIGTERM раньше, чем успевал его игнорировать). После ожидания
+  готовности дочернего процесса тест падает, если убрать SIGKILL группы, и
+  проходит с ним.
+- После `go test ./internal/restic` живых процессов-помощников нет
+  (`ps … | grep TestHelperProcess`).
+- Выжившие мутанты в `internal/restic`: три — в ветке `cmd.ProcessState == nil`
+  (Wait упал до завершения процесса; тестом не воспроизводится), один —
+  `buf.WriteByte('\n')` в `collect` (эквивалентен: JSON и строка версии
+  разбираются и без переводов строк).
+
+### Открытые вопросы
+- Колбэк прогресса вызывается ~10 раз в секунду; прореживание для отправки
+  на сервер — забота A7.
