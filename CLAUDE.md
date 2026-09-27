@@ -55,7 +55,7 @@ Thresholds are defined once, in `scripts/gate.sh`.
 | | mutation score | >= 0.80 | `go-mutesting` |
 | server (Kotlin) | tests, coverage, CRAP, complexity, mutation | as above | JaCoCo, `.bin/crap`, detekt, see ADR 0006 |
 | web | lint, complexity <= 8, typecheck, unit tests of pure functions, build | green | oxlint, Prettier, tsc, Vitest, Vite |
-| proto | lint, generated code up to date | green | buf |
+| proto | lint, no breaking changes against the base, generated code up to date | green | buf |
 
 The web UI contains no business logic. If it shows up, move it to the
 server — don't write a test for it in place.
@@ -87,6 +87,7 @@ server — don't write a test for it in place.
 
 ```bash
 make proto                    generate proto/gen/go (commit the result)
+make breaking-proto           buf breaking against PROTO_BASE (default origin/main)
 make build                    agent/bin/sard-agent, cli/bin/sardctl, server/build/libs/sard-server.jar, web/dist/
 make test                     all test suites (server tests need Docker: Testcontainers)
 make lint                     license-check, buf lint, gofmt/vet/golangci-lint, spotless, detekt, oxlint/prettier/tsc

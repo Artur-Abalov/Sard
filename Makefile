@@ -9,6 +9,8 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
 GO_MODULES := agent agent/plugins/sdk cli
 GRADLE := ./gradlew --no-daemon -q
+# Git ref the proto contract must stay compatible with (buf breaking).
+PROTO_BASE ?= origin/main
 COMPOSE := docker compose -f deploy/docker-compose.yml --env-file deploy/.env
 
 GO_TOOLS := \
@@ -19,7 +21,7 @@ GO_TOOLS := \
 	github.com/avito-tech/go-mutesting/cmd/go-mutesting \
 	./cmd/crap
 
-.PHONY: tools gate gate-fast proto build build-agent build-cli test lint lint-proto lint-go lint-server lint-web web-deps license-check up down openapi
+.PHONY: tools gate gate-fast proto build build-agent build-cli test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check up down openapi
 
 ## proto: generate Go code from proto/ into proto/gen/go (committed)
 proto: tools
@@ -79,6 +81,10 @@ license-check:
 
 lint-proto: tools
 	cd proto && $(BIN)/buf lint
+
+## breaking-proto: the contract has no breaking changes against PROTO_BASE (default origin/main)
+breaking-proto: tools
+	cd proto && $(BIN)/buf breaking --against '$(CURDIR)/.git#ref=$(PROTO_BASE),subdir=proto'
 
 lint-go: tools
 	@for m in $(GO_MODULES) proto/gen/go; do \

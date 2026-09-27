@@ -26,13 +26,19 @@ jobs:
 
   proto:
     runs-on: ubuntu-latest
+    env:
+      # buf breaking: a PR is checked against its base, a push against the previous tip.
+      # The first push of a branch has an all-zero "before"; it is compared with itself.
+      PROTO_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before || github.sha) }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
           go-version-file: tools/go.mod
           cache-dependency-path: "**/go.sum"
-      # buf lint + `buf generate` must not change the committed proto/gen/go.
+      # buf lint, buf breaking, and `buf generate` must not change the committed proto/gen/go.
       - run: ./scripts/gate.sh proto
       - run: ./scripts/gate.sh gen
 

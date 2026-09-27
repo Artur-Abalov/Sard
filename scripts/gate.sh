@@ -87,10 +87,11 @@ gate_gen() {
 
 gate_proto() {
   need_tools
-  say proto "buf lint + generated code is up to date"
+  say proto "buf lint + buf breaking against ${PROTO_BASE:-origin/main} + generated code is up to date"
   make -C "$ROOT" proto
   git -C "$ROOT" diff --exit-code -- proto/gen || die "proto: generated code differs from committed code; run make proto and commit"
   make -C "$ROOT" lint-proto || die "proto: buf lint"
+  make -C "$ROOT" breaking-proto || die "proto: breaking change against ${PROTO_BASE:-origin/main}"
 }
 
 gate_server() {
