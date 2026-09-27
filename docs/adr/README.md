@@ -15,3 +15,4 @@
 | [0011](0011-web-tooling.md) | Инструменты веба: oxlint, TypeScript 6 |
 | [0012](0012-tree-deviations.md) | Расхождения с целевым деревом каталогов |
 | [0013](0013-multitenancy-and-schema.md) | Мультитенантность и схема БД сервера |
+| [0014](0014-tanstack-router.md) | TanStack Router вместо React Router, тесты маршрутов без рендера |

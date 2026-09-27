@@ -67,12 +67,15 @@
 | @mantine/core 9.6.3 | MIT | runtime | UI-кит (ADR 0003) |
 | @mantine/hooks 9.6.3 | MIT | runtime | хуки Mantine (требование @mantine/core) |
 | @tanstack/react-query 5.104.0 | MIT | runtime | загрузка и кеширование данных API |
+| @tanstack/react-router 1.170.39 | MIT | runtime | типизированная маршрутизация (ADR 0014) |
 | i18next 26.4.2 | MIT | runtime | локализация ru/en |
 | openapi-fetch 0.17.0 | MIT | runtime | типизированный клиент API |
 | react 19.3.0 | MIT | runtime | UI |
 | react-dom 19.3.0 | MIT | runtime | рендеринг в DOM |
 | react-i18next 17.0.15 | MIT | runtime | i18next для React |
-| react-router 8.4.0 | MIT | runtime | маршрутизация |
+| @tanstack/react-query-devtools 5.104.0 | MIT | сборка/тесты | devtools Query, только в dev (ADR 0014) |
+| @tanstack/react-router-devtools 1.167.2 | MIT | сборка/тесты | devtools роутера, только в dev (ADR 0014) |
+| @tanstack/router-plugin 1.168.40 | MIT | сборка/тесты | генерация дерева маршрутов из src/routes (ADR 0014) |
 | @types/node 24.19.0 | MIT | сборка/тесты | типы Node для конфигов |
 | @types/react 19.3.0 | MIT | сборка/тесты | типы React |
 | @types/react-dom 19.3.0 | MIT | сборка/тесты | типы React DOM |
