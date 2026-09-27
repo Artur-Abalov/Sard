@@ -97,6 +97,11 @@ jobs:
         run: |
           npm run gen:api
           git diff --exit-code -- src/api/schema.d.ts
+      - name: Generated route tree matches src/routes
+        working-directory: web
+        run: |
+          npm run gen:routes
+          git diff --exit-code -- src/routeTree.gen.ts
       - run: ./scripts/gate.sh web
 
   image:

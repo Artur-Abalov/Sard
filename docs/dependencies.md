@@ -75,6 +75,7 @@
 | react-i18next 17.0.15 | MIT | runtime | i18next для React |
 | @tanstack/react-query-devtools 5.104.0 | MIT | сборка/тесты | devtools Query, только в dev (ADR 0014) |
 | @tanstack/react-router-devtools 1.167.2 | MIT | сборка/тесты | devtools роутера, только в dev (ADR 0014) |
+| @tanstack/router-generator 1.167.38 | MIT | сборка/тесты | `npm run gen:routes` и проверка дерева маршрутов в CI (ADR 0014) |
 | @tanstack/router-plugin 1.168.40 | MIT | сборка/тесты | генерация дерева маршрутов из src/routes (ADR 0014) |
 | @types/node 24.19.0 | MIT | сборка/тесты | типы Node для конфигов |
 | @types/react 19.3.0 | MIT | сборка/тесты | типы React |

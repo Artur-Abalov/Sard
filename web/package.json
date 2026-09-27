@@ -11,6 +11,7 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "gen:api": "node scripts/gen-api.mjs",
+    "gen:routes": "node scripts/gen-routes.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@tanstack/react-query-devtools": "^5.104.0",
     "@tanstack/react-router-devtools": "^1.167.2",
+    "@tanstack/router-generator": "^1.167.38",
     "@tanstack/router-plugin": "^1.168.40",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
