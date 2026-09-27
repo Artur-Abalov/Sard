@@ -6,7 +6,9 @@ package app_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 
@@ -24,6 +26,10 @@ type fakeClient struct {
 func (f *fakeClient) Register(_ context.Context, req *agentv1.RegisterRequest) (*agentv1.RegisterResponse, error) {
 	f.got = req
 	return &agentv1.RegisterResponse{AgentId: "a1"}, f.registerErr
+}
+
+func (*fakeClient) RenewCertificate(context.Context, *agentv1.RenewCertificateRequest) (*agentv1.RenewCertificateResponse, error) {
+	return nil, nil
 }
 
 func (f *fakeClient) Connect(context.Context) (agentv1.AgentService_ConnectClient, error) {
@@ -46,7 +52,7 @@ func newAgent(t *testing.T, c *fakeClient) *app.Agent {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &app.Agent{Client: c, Plugins: reg, Hostname: "db1", Version: "1.2.3"}
+	return &app.Agent{Client: c, Plugins: reg, Hostname: "db1", Version: "1.2.3", OS: "linux", Arch: "amd64"}
 }
 
 func TestRunRegistersWithHostAndVersionThenConnects(t *testing.T) {
@@ -54,8 +60,10 @@ func TestRunRegistersWithHostAndVersionThenConnects(t *testing.T) {
 	if err := newAgent(t, c).Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if c.got.GetHostname() != "db1" || c.got.GetAgentVersion() != "1.2.3" {
-		t.Errorf("request = %v", c.got)
+	got := []any{c.got.GetHostname(), c.got.GetAgentVersion(), c.got.GetProtocolVersion(), c.got.GetOs(), c.got.GetArch()}
+	want := []any{"db1", "1.2.3", uint32(1), "linux", "amd64"}
+	if !slices.Equal(got, want) {
+		t.Errorf("request = %v, want %v", got, want)
 	}
 	if !c.connected {
 		t.Error("agent did not open the command stream")
@@ -69,9 +77,10 @@ func TestRunAnnouncesPluginsWithSchemasSortedByName(t *testing.T) {
 	}
 	var got []string
 	for _, p := range c.got.GetPlugins() {
-		got = append(got, p.GetName()+"="+p.GetConfigSchema())
+		got = append(got, fmt.Sprintf("%s@%s=%s %v", p.GetName(), p.GetVersion(), p.GetConfigSchema(), p.GetActions()))
 	}
-	if strings.Join(got, " ") != `files={"b":2} mysql={"a":1}` {
+	want := `files@1.2.3={"b":2} [ACTION_BACKUP ACTION_RESTORE ACTION_VERIFY]|mysql@1.2.3={"a":1} [ACTION_BACKUP ACTION_RESTORE ACTION_VERIFY]`
+	if strings.Join(got, "|") != want {
 		t.Errorf("plugins = %v", got)
 	}
 }

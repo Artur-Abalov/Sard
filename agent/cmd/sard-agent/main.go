@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	"github.com/Artur-Abalov/sard/agent/internal/app"
@@ -79,6 +80,8 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 		Plugins:  plugins.Registry(),
 		Hostname: hostname,
 		Version:  version,
+		OS:       runtime.GOOS,
+		Arch:     runtime.GOARCH,
 	}
 	return agent.Run(ctx)
 }

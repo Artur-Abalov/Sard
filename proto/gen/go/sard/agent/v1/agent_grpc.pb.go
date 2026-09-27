@@ -9,10 +9,15 @@
 
 // Contract between sard-server and sard-agent.
 //
-// The agent is always the client: it dials the server over mTLS, registers,
-// then opens a long-lived bidirectional stream. The server never connects
-// to the agent; it sends commands over the stream the agent opened. Backup
-// data never travels over this API: the agent writes it straight to storage.
+// The agent is always the client. On first start it enrolls with a one-time
+// token and receives a client certificate; after that it dials the server
+// over mTLS, registers, and opens a long-lived bidirectional stream. The
+// server never connects to the agent; it sends commands over the stream the
+// agent opened. Backup data never travels over this API: the agent writes it
+// straight to storage.
+//
+// Identity: the server identifies the agent (and its tenant) by the mTLS
+// client certificate, never by fields in messages.
 
 package agentv1
 
@@ -29,8 +34,123 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AgentService_Register_FullMethodName = "/sard.agent.v1.AgentService/Register"
-	AgentService_Connect_FullMethodName  = "/sard.agent.v1.AgentService/Connect"
+	EnrollmentService_Enroll_FullMethodName = "/sard.agent.v1.EnrollmentService/Enroll"
+)
+
+// EnrollmentServiceClient is the client API for EnrollmentService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// EnrollmentService is served with server-side TLS only: the agent has no
+// client certificate yet.
+type EnrollmentServiceClient interface {
+	// Enroll exchanges a one-time enrollment token and a certificate signing
+	// request for a client certificate. The token decides the tenant the agent
+	// belongs to; the agent cannot choose it.
+	Enroll(ctx context.Context, in *EnrollRequest, opts ...grpc.CallOption) (*EnrollResponse, error)
+}
+
+type enrollmentServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewEnrollmentServiceClient(cc grpc.ClientConnInterface) EnrollmentServiceClient {
+	return &enrollmentServiceClient{cc}
+}
+
+func (c *enrollmentServiceClient) Enroll(ctx context.Context, in *EnrollRequest, opts ...grpc.CallOption) (*EnrollResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EnrollResponse)
+	err := c.cc.Invoke(ctx, EnrollmentService_Enroll_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// EnrollmentServiceServer is the server API for EnrollmentService service.
+// All implementations must embed UnimplementedEnrollmentServiceServer
+// for forward compatibility.
+//
+// EnrollmentService is served with server-side TLS only: the agent has no
+// client certificate yet.
+type EnrollmentServiceServer interface {
+	// Enroll exchanges a one-time enrollment token and a certificate signing
+	// request for a client certificate. The token decides the tenant the agent
+	// belongs to; the agent cannot choose it.
+	Enroll(context.Context, *EnrollRequest) (*EnrollResponse, error)
+	mustEmbedUnimplementedEnrollmentServiceServer()
+}
+
+// UnimplementedEnrollmentServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedEnrollmentServiceServer struct{}
+
+func (UnimplementedEnrollmentServiceServer) Enroll(context.Context, *EnrollRequest) (*EnrollResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Enroll not implemented")
+}
+func (UnimplementedEnrollmentServiceServer) mustEmbedUnimplementedEnrollmentServiceServer() {}
+func (UnimplementedEnrollmentServiceServer) testEmbeddedByValue()                           {}
+
+// UnsafeEnrollmentServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to EnrollmentServiceServer will
+// result in compilation errors.
+type UnsafeEnrollmentServiceServer interface {
+	mustEmbedUnimplementedEnrollmentServiceServer()
+}
+
+func RegisterEnrollmentServiceServer(s grpc.ServiceRegistrar, srv EnrollmentServiceServer) {
+	// If the following call panics, it indicates UnimplementedEnrollmentServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&EnrollmentService_ServiceDesc, srv)
+}
+
+func _EnrollmentService_Enroll_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnrollRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EnrollmentServiceServer).Enroll(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EnrollmentService_Enroll_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EnrollmentServiceServer).Enroll(ctx, req.(*EnrollRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// EnrollmentService_ServiceDesc is the grpc.ServiceDesc for EnrollmentService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var EnrollmentService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "sard.agent.v1.EnrollmentService",
+	HandlerType: (*EnrollmentServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Enroll",
+			Handler:    _EnrollmentService_Enroll_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "sard/agent/v1/agent.proto",
+}
+
+const (
+	AgentService_Register_FullMethodName         = "/sard.agent.v1.AgentService/Register"
+	AgentService_Connect_FullMethodName          = "/sard.agent.v1.AgentService/Connect"
+	AgentService_RenewCertificate_FullMethodName = "/sard.agent.v1.AgentService/RenewCertificate"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -38,13 +158,20 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // AgentService is implemented by sard-server and called by sard-agent.
+// Every call requires a client certificate issued by Enroll.
 type AgentServiceClient interface {
 	// Register announces the agent and its capabilities. Called on every
-	// agent start; the server returns a stable id for the host.
+	// agent start. Fails with FAILED_PRECONDITION if protocol_version is not
+	// supported by the server.
 	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
 	// Connect is the command channel. The agent opens it after Register and
-	// keeps it open; heartbeats and step results flow up, commands flow down.
+	// keeps it open; the first message must be Hello. Heartbeats, progress,
+	// logs and results flow up, commands flow down. On disconnect the agent
+	// reconnects with backoff and sends Hello again.
 	Connect(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConnectRequest, ConnectResponse], error)
+	// RenewCertificate issues a new client certificate before the current one
+	// expires.
+	RenewCertificate(ctx context.Context, in *RenewCertificateRequest, opts ...grpc.CallOption) (*RenewCertificateResponse, error)
 }
 
 type agentServiceClient struct {
@@ -78,18 +205,35 @@ func (c *agentServiceClient) Connect(ctx context.Context, opts ...grpc.CallOptio
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentService_ConnectClient = grpc.BidiStreamingClient[ConnectRequest, ConnectResponse]
 
+func (c *agentServiceClient) RenewCertificate(ctx context.Context, in *RenewCertificateRequest, opts ...grpc.CallOption) (*RenewCertificateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RenewCertificateResponse)
+	err := c.cc.Invoke(ctx, AgentService_RenewCertificate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
 //
 // AgentService is implemented by sard-server and called by sard-agent.
+// Every call requires a client certificate issued by Enroll.
 type AgentServiceServer interface {
 	// Register announces the agent and its capabilities. Called on every
-	// agent start; the server returns a stable id for the host.
+	// agent start. Fails with FAILED_PRECONDITION if protocol_version is not
+	// supported by the server.
 	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
 	// Connect is the command channel. The agent opens it after Register and
-	// keeps it open; heartbeats and step results flow up, commands flow down.
+	// keeps it open; the first message must be Hello. Heartbeats, progress,
+	// logs and results flow up, commands flow down. On disconnect the agent
+	// reconnects with backoff and sends Hello again.
 	Connect(grpc.BidiStreamingServer[ConnectRequest, ConnectResponse]) error
+	// RenewCertificate issues a new client certificate before the current one
+	// expires.
+	RenewCertificate(context.Context, *RenewCertificateRequest) (*RenewCertificateResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -105,6 +249,9 @@ func (UnimplementedAgentServiceServer) Register(context.Context, *RegisterReques
 }
 func (UnimplementedAgentServiceServer) Connect(grpc.BidiStreamingServer[ConnectRequest, ConnectResponse]) error {
 	return status.Error(codes.Unimplemented, "method Connect not implemented")
+}
+func (UnimplementedAgentServiceServer) RenewCertificate(context.Context, *RenewCertificateRequest) (*RenewCertificateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RenewCertificate not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -152,6 +299,24 @@ func _AgentService_Connect_Handler(srv interface{}, stream grpc.ServerStream) er
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentService_ConnectServer = grpc.BidiStreamingServer[ConnectRequest, ConnectResponse]
 
+func _AgentService_RenewCertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RenewCertificateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).RenewCertificate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_RenewCertificate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).RenewCertificate(ctx, req.(*RenewCertificateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -162,6 +327,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Register",
 			Handler:    _AgentService_Register_Handler,
+		},
+		{
+			MethodName: "RenewCertificate",
+			Handler:    _AgentService_RenewCertificate_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

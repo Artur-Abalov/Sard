@@ -8,10 +8,17 @@
 - Данные бэкапа по этому каналу не идут: агент пишет их в хранилище через restic.
 - В конфиге агента уже есть `tls.ca_file`, `tls.cert_file`, `tls.key_file`; в каркасе они только читаются.
 
+## Контракт (обновлён 2026-09-27)
+- `EnrollmentService.Enroll` — только серверный TLS: одноразовый токен + CSR (DER) → `agent_id`, цепочка сертификата, CA bundle. Токен определяет тенанта, агент его не выбирает; приватный ключ не покидает хост.
+- `AgentService` — только mTLS: `Register` (добавлены `protocol_version`, `os`, `arch`, версия и действия плагинов), `Connect`, `RenewCertificate`.
+- Сервер определяет агента и тенанта по клиентскому сертификату, а не по полям сообщений (`Heartbeat.agent_id` убран, номер зарезервирован).
+- Поток: первое сообщение агента — `Hello` со списком выполняющихся команд (примирение после переподключения); вверх — `Heartbeat`, `StepProgress` (фазы prepare → dump → upload/restore → verify), `LogChunk`, `StepResult` с типизированным результатом (`BackupOutput`, `RestoreOutput`, `VerifyOutput` — доказательство «последнего проверенного восстановления», `RunOutput`); вниз — `RunStep` (действие, репозиторий, секреты, снапшот, таймаут, теги) и `CancelStep`. Команды идемпотентны по `command_id`.
+- В каркасе все RPC обоих сервисов отвечают `UNIMPLEMENTED` (сервер) / `ErrNotImplemented` (клиент агента); это проверяется тестами.
+
 ## План mTLS (не в каркасе)
-1. Сервер выпускает сертификаты агентов своим CA; первичная регистрация — по одноразовому токену enrollment.
-2. На сервере — SSL bundle Spring Boot и `spring.grpc.server.ssl.client-auth=require`.
-3. У агента — `credentials.NewTLS` с корневым CA сервера и клиентским сертификатом; ротация до истечения срока.
+1. Сервер выпускает сертификаты агентов своим CA по `Enroll`; продление — `RenewCertificate`.
+2. `EnrollmentService` и `AgentService` на разных портах или слушателях: первый — серверный TLS, второй — SSL bundle Spring Boot с `spring.grpc.server.ssl.client-auth=require`. Сейчас оба на одном порту без TLS.
+3. У агента — `credentials.NewTLS` с CA bundle из `EnrollResponse` и клиентским сертификатом.
 
 ## Отвергнуто
 - Сервер подключается к агентам — требует входящих портов на каждом хосте.

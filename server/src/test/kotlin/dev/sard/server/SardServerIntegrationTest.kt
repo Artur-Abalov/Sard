@@ -4,10 +4,14 @@
 package dev.sard.server
 
 import dev.sard.proto.agent.v1.AgentServiceGrpcKt
+import dev.sard.proto.agent.v1.EnrollRequest
+import dev.sard.proto.agent.v1.EnrollmentServiceGrpcKt
 import dev.sard.proto.agent.v1.RegisterRequest
+import dev.sard.proto.agent.v1.RenewCertificateRequest
 import dev.sard.server.extension.ExtensionRegistry
 import dev.sard.server.persistence.Agent
 import dev.sard.server.persistence.AgentRepository
+import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
 import io.grpc.Status
 import io.grpc.StatusException
@@ -112,17 +116,31 @@ class SardServerIntegrationTest(
         Files.writeString(out, mapper.writerWithDefaultPrettyPrinter().writeValueAsString(body) + "\n")
     }
 
-    @Test
-    fun `agent service answers UNIMPLEMENTED`() {
+    private fun grpcStatus(call: suspend (ManagedChannel) -> Any): Status.Code {
         val channel = ManagedChannelBuilder.forAddress("localhost", grpcPort).usePlaintext().build()
         try {
-            val stub = AgentServiceGrpcKt.AgentServiceCoroutineStub(channel)
-            val e =
-                runCatching { runBlocking { stub.register(RegisterRequest.newBuilder().setHostname("db1").build()) } }
-                    .exceptionOrNull()
-            assertEquals(Status.Code.UNIMPLEMENTED, (e as StatusException).status.code)
+            val e = runCatching { runBlocking { call(channel) } }.exceptionOrNull()
+            return (e as StatusException).status.code
         } finally {
             channel.shutdownNow()
         }
     }
+
+    @Test
+    fun `agent service answers UNIMPLEMENTED`() {
+        val register = grpcStatus { agentStub(it).register(RegisterRequest.getDefaultInstance()) }
+        val renew = grpcStatus { agentStub(it).renewCertificate(RenewCertificateRequest.getDefaultInstance()) }
+        assertEquals(listOf(Status.Code.UNIMPLEMENTED, Status.Code.UNIMPLEMENTED), listOf(register, renew))
+    }
+
+    @Test
+    fun `enrollment service answers UNIMPLEMENTED`() {
+        val enroll = grpcStatus { enrollmentStub(it).enroll(EnrollRequest.getDefaultInstance()) }
+        assertEquals(Status.Code.UNIMPLEMENTED, enroll)
+    }
+
+    private fun agentStub(channel: ManagedChannel) = AgentServiceGrpcKt.AgentServiceCoroutineStub(channel)
+
+    private fun enrollmentStub(channel: ManagedChannel): EnrollmentServiceGrpcKt.EnrollmentServiceCoroutineStub =
+        EnrollmentServiceGrpcKt.EnrollmentServiceCoroutineStub(channel)
 }
