@@ -157,10 +157,37 @@ func TestAHandlerThatIgnoresCancelIsGivenUpAfterFourDoublingChecks(t *testing.T)
 	if got := strings.Count(f.log.String(), "plugin has not stopped"); got != 4 {
 		t.Fatalf("%d warnings; log:\n%s", got, f.log)
 	}
-	f.files.next(t) // the slot is free again
+	if !strings.Contains(f.log.String(), "giving up on a plugin") {
+		t.Fatalf("log:\n%s", f.log)
+	}
+	f.files.next(t)                     // the slot is free again
+	if n := f.clock.pending(); n != 1 { // only c2's timeout
+		t.Fatalf("%d timers armed", n)
+	}
 
 	c.finish(snapshot("late"), nil) // a late return changes nothing
 	f.sink.quiet(t)
+	if !strings.Contains(f.log.String(), "late return of a plugin ignored") {
+		t.Fatalf("log:\n%s", f.log)
+	}
+}
+
+func TestATimerThatFiresAfterTheStepFinishedChangesNothing(t *testing.T) {
+	f := setup(t, nil)
+	f.clock.late = true
+	s := backup("c1")
+	s.Timeout = durationpb.New(time.Second)
+	f.e.Submit(s)
+	accepted(t, f.sink, "c1")
+	c := f.files.next(t)
+	f.e.Cancel("c1") // arms the recheck timer
+	<-c.ctx.Done()
+	wantResult(t, f.sink.result(t), "c1", cancelled, "cancelled by the server")
+	f.clock.Advance(time.Minute) // step timeout and all rechecks fire now
+	f.sink.quiet(t)
+	if strings.Contains(f.log.String(), "plugin has not stopped") {
+		t.Fatalf("a finished step was rechecked; log:\n%s", f.log)
+	}
 }
 
 // --- 4. timeout
@@ -198,8 +225,27 @@ func TestAStepFinishingJustBeforeItsTimeoutSucceeds(t *testing.T) {
 	accepted(t, f.sink, "c1")
 	f.files.next(t).finish(snapshot("s1"), nil)
 	wantResult(t, f.sink.result(t), "c1", succeeded, "")
+	if n := f.clock.pending(); n != 0 {
+		t.Fatalf("%d timers still armed after the step finished", n)
+	}
 	f.clock.Advance(time.Hour)
 	f.sink.quiet(t)
+}
+
+func TestAZeroTimeoutMeansTheMaximumAndOneNanosecondIsHonoured(t *testing.T) {
+	f := setup(t, func(o *executor.Options) { o.MaxTimeout = time.Minute })
+	zero, tiny := backup("zero"), backup("tiny")
+	zero.Timeout, tiny.Timeout = durationpb.New(0), durationpb.New(time.Nanosecond)
+	f.e.Submit(zero)
+	accepted(t, f.sink, "zero")
+	f.files.next(t)
+	f.clock.Advance(time.Minute)
+	wantResult(t, f.sink.result(t), "zero", timedOut, "exceeded the agent's maximum step timeout of 1m0s")
+	f.e.Submit(tiny)
+	accepted(t, f.sink, "tiny")
+	f.files.next(t)
+	f.clock.Advance(time.Nanosecond)
+	wantResult(t, f.sink.result(t), "tiny", timedOut, "exceeded the step timeout of 1ns")
 }
 
 // --- 5. panic
@@ -212,6 +258,9 @@ func TestAPanickingHandlerFailsTheStepAndTheNextStepRuns(t *testing.T) {
 	accepted(t, f.sink, "c2")
 	f.files.next(t).panic("boom")
 	wantResult(t, f.sink.result(t), "c1", failed, "plugin panicked: boom")
+	if log := f.log.String(); !strings.Contains(log, "plugin panicked") || !strings.Contains(log, "goroutine") {
+		t.Fatalf("the panic and its stack are logged; log:\n%s", log)
+	}
 	f.files.next(t).finish(snapshot("s2"), nil)
 	wantResult(t, f.sink.result(t), "c2", succeeded, "")
 }
@@ -250,6 +299,24 @@ func TestStepsThatCannotRunAreRejectedWithoutStartingTheHandler(t *testing.T) {
 			f.files.idle(t)
 		})
 	}
+}
+
+func TestUnspecifiedActionIsRejectedEvenIfAPluginListsIt(t *testing.T) {
+	f := setup(t, nil)
+	s := backup("c1")
+	s.Plugin, s.Action = "sloppy", agentv1.Action_ACTION_UNSPECIFIED
+	f.e.Submit(s)
+	wantResult(t, f.sink.result(t), "c1", rejected, `plugin "sloppy" does not support ACTION_UNSPECIFIED`)
+}
+
+func TestUnspecifiedProgressFromAHandlerIsDropped(t *testing.T) {
+	f := setup(t, nil)
+	f.e.Submit(backup("c1"))
+	accepted(t, f.sink, "c1")
+	c := f.files.next(t)
+	f.clock.Advance(time.Minute)
+	c.r.Progress(agentv1.StepPhase_STEP_PHASE_UNSPECIFIED, 1, 2)
+	f.sink.quiet(t)
 }
 
 func TestAScriptWithoutRepositoryIsAccepted(t *testing.T) {
@@ -297,6 +364,9 @@ func TestACommandWithoutIDIsIgnored(t *testing.T) {
 	f.e.Submit(backup(""))
 	f.sink.quiet(t)
 	f.files.idle(t)
+	if !strings.Contains(f.log.String(), "step without command_id ignored") {
+		t.Fatalf("log:\n%s", f.log)
+	}
 }
 
 // --- 7. concurrency
@@ -445,6 +515,11 @@ func TestImmediateShutdownFailsQueuedStepsAndCancelsRunningOnes(t *testing.T) {
 	f.e.Submit(backup("c3"))
 	f.sink.quiet(t)
 	f.files.idle(t)
+	if !strings.Contains(f.log.String(), "step ignored") || !strings.Contains(f.log.String(), "c3") {
+		t.Fatalf("log:\n%s", f.log)
+	}
+	f.e.Submit(backup("c1")) // a known command is still answered
+	wantResult(t, f.sink.result(t), "c1", failed, "agent is shutting down")
 }
 
 func TestImmediateShutdownGivesUpOnAStubbornHandlerWhenItsContextEnds(t *testing.T) {
@@ -513,6 +588,68 @@ func TestAbortReturnsAtOnceWithoutResults(t *testing.T) {
 	<-c.ctx.Done() // running steps are told to stop, e.g. to release restic locks
 	f.sink.quiet(t)
 	f.files.idle(t)
+	if n := f.clock.pending(); n != 0 {
+		t.Fatalf("%d timers armed after abort", n)
+	}
+	if err := f.e.Close(context.Background()); err != nil { // nothing is left to wait for
+		t.Fatal(err)
+	}
+}
+
+func TestClosingAnIdleExecutorReturnsAtOnceAndCanBeRepeated(t *testing.T) {
+	f := setup(t, nil)
+	for range 2 {
+		ctx, cancel := context.WithTimeout(context.Background(), waitLimit)
+		if err := f.e.Close(ctx); err != nil {
+			t.Fatal(err)
+		}
+		cancel()
+	}
+}
+
+func TestDefaultsAreSixteenWaitingStepsAndADayOfRuntime(t *testing.T) {
+	clock, sink, files := newClock(), newSink(), newHandler(false)
+	e, err := executor.New(executor.Options{
+		Handlers: registry{"files": files}, Sink: sink, StateDir: t.TempDir(),
+		Repositories: []string{"main"}, Clock: clock,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = e.Shutdown(context.Background(), executor.ShutdownAbort) }()
+	for i := range 18 { // one runs, sixteen wait, the last is one too many
+		e.Submit(backup(fmt.Sprintf("c%02d", i)))
+	}
+	for range 17 {
+		sink.progress(t)
+	}
+	wantResult(t, sink.result(t), "c17", rejected, "the queue is full (16 steps waiting)")
+	files.next(t)
+	clock.Advance(24*time.Hour - time.Nanosecond)
+	sink.quiet(t)
+	clock.Advance(time.Nanosecond)
+	wantResult(t, sink.result(t), "c00", timedOut, "exceeded the agent's maximum step timeout of 24h0m0s")
+}
+
+func TestAnExecutorWithOnlyRequiredOptionsRunsOneStepAtATime(t *testing.T) {
+	sink, files := newSink(), newHandler(false)
+	e, err := executor.New(executor.Options{
+		Handlers:     registry{"files": files},
+		Sink:         sink,
+		StateDir:     t.TempDir(),
+		Repositories: []string{"main"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = e.Shutdown(context.Background(), executor.ShutdownAbort) }()
+	e.Cancel("unknown") // the default logger swallows the warning
+	e.Submit(backup("c1"))
+	e.Submit(backup("c2"))
+	c := files.next(t)
+	files.idle(t)
+	c.finish(snapshot("s1"), nil)
+	files.next(t)
 }
 
 func TestNewRequiresHandlersSinkAndStateDir(t *testing.T) {

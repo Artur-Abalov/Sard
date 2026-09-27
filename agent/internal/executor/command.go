@@ -106,13 +106,11 @@ func (e *Executor) check(c *command) string {
 // checkRepository: data actions need a known repository; a script may name one or none.
 func (e *Executor) checkRepository(step *agentv1.RunStep) string {
 	name := step.GetRepositoryName()
-	switch {
-	case name == "" && step.GetAction() == agentv1.Action_ACTION_RUN:
-		return ""
-	case name == "":
-		return fmt.Sprintf("%s needs a repository", step.GetAction())
-	case !e.repos[name]:
+	if name != "" && !e.repos[name] {
 		return fmt.Sprintf("unknown repository %q", name)
+	}
+	if name == "" && step.GetAction() != agentv1.Action_ACTION_RUN {
+		return fmt.Sprintf("%s needs a repository", step.GetAction())
 	}
 	return ""
 }
@@ -127,9 +125,10 @@ func (e *Executor) repeat(c *command) {
 	}
 }
 
-// dispatch starts queued steps while slots are free.
+// dispatch starts the next queued step if a slot is free. Every event adds one
+// step to the queue or frees one slot, so at most one start is ever due.
 func (e *Executor) dispatch() {
-	for !e.halting && e.active < e.opts.MaxParallel && len(e.queue) > 0 {
+	if e.active < e.opts.MaxParallel && len(e.queue) > 0 {
 		c := e.queue[0]
 		e.queue = e.queue[1:]
 		e.start(c)
@@ -151,7 +150,7 @@ func (e *Executor) start(c *command) {
 
 // timeout is the step's own timeout, or the agent's maximum if it has none.
 func (e *Executor) timeout(step *agentv1.RunStep) (time.Duration, *stopCause) {
-	if d := step.GetTimeout().AsDuration(); step.GetTimeout() != nil && d > 0 {
+	if d := step.GetTimeout().AsDuration(); d > 0 { // nil or zero: no timeout of its own
 		return d, timedOut("exceeded the step timeout of %s", d)
 	}
 	return e.opts.MaxTimeout, timedOut("exceeded the agent's maximum step timeout of %s", e.opts.MaxTimeout)

@@ -100,7 +100,6 @@ type Options struct {
 	CancelGrace      time.Duration // first wait for a cancelled handler; doubles per check; default 2s
 	CancelChecks     int           // checks before giving up on it; default 4 (2+4+8+16 = 30s)
 	ProgressInterval time.Duration // at most one progress per step per interval; default 1s
-	Retention        time.Duration // how long acknowledged command_ids are remembered; default 7 days
 	Clock            Clock         // default: system clock
 	Logger           *slog.Logger  // default: discard
 }
@@ -112,7 +111,6 @@ const (
 	defaultCancelGrace      = 2 * time.Second
 	defaultCancelChecks     = 4
 	defaultProgressInterval = time.Second
-	defaultRetention        = 7 * 24 * time.Hour
 )
 
 // Executor runs steps. All its state lives here; it is safe for concurrent use.
@@ -125,7 +123,6 @@ type Executor struct {
 	queue      []*command
 	active     int  // running + stopping
 	closed     bool // no new steps
-	halting    bool // no new starts either (immediate/abort)
 	idle       chan struct{}
 	idleClosed bool
 }
@@ -162,7 +159,6 @@ func withDefaults(o *Options) {
 	o.CancelGrace = orDefault(o.CancelGrace, defaultCancelGrace)
 	o.CancelChecks = orDefault(o.CancelChecks, defaultCancelChecks)
 	o.ProgressInterval = orDefault(o.ProgressInterval, defaultProgressInterval)
-	o.Retention = orDefault(o.Retention, defaultRetention)
 	if o.Clock == nil {
 		o.Clock = systemClock{}
 	}
@@ -263,7 +259,6 @@ func (e *Executor) Shutdown(ctx context.Context, mode ShutdownMode) error {
 
 // halt fails queued steps and cancels running ones.
 func (e *Executor) halt() {
-	e.halting = true
 	waiting := e.queue
 	e.queue = nil
 	for _, c := range waiting {
@@ -287,7 +282,6 @@ func (e *Executor) abandon() {
 
 // abort cancels everything without recording results.
 func (e *Executor) abort() {
-	e.halting = true
 	e.queue = nil
 	for _, c := range e.cmds {
 		if c.live() {
@@ -309,7 +303,8 @@ func (e *Executor) idleSignal() chan struct{} {
 }
 
 func (e *Executor) signalIdle() {
-	if e.idle != nil && !e.idleClosed && len(e.queue) == 0 && e.active == 0 {
+	// A queued step implies a busy slot, so active == 0 means nothing is queued either.
+	if e.idle != nil && !e.idleClosed && e.active == 0 {
 		close(e.idle)
 		e.idleClosed = true
 	}

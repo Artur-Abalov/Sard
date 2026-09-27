@@ -33,6 +33,9 @@ type fakeClock struct {
 	mu     sync.Mutex
 	now    time.Time
 	timers []*fakeTimer
+	// late makes Stop ineffective, like time.AfterFunc whose callback is
+	// already waiting for the executor's lock when Stop is called.
+	late bool
 }
 
 func newClock() *fakeClock {
@@ -57,7 +60,7 @@ func (t *fakeTimer) Stop() bool {
 	t.clock.mu.Lock()
 	defer t.clock.mu.Unlock()
 	active := !t.stopped && !t.fired
-	t.stopped = true
+	t.stopped = !t.clock.late
 	return active
 }
 
@@ -77,6 +80,19 @@ func (c *fakeClock) Advance(d time.Duration) {
 	c.mu.Lock()
 	c.now = target
 	c.mu.Unlock()
+}
+
+// pending counts timers that are neither stopped nor fired.
+func (c *fakeClock) pending() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, t := range c.timers {
+		if !t.stopped && !t.fired {
+			n++
+		}
+	}
+	return n
 }
 
 func (c *fakeClock) nextDue(target time.Time) *fakeTimer {
@@ -281,8 +297,10 @@ type fixture struct {
 func setup(t *testing.T, tune func(*executor.Options)) *fixture {
 	t.Helper()
 	f := &fixture{sink: newSink(), clock: newClock(), files: newHandler(false), stubborn: newHandler(true), log: &syncBuffer{}}
+	sloppy := newHandler(false)
+	sloppy.actions = append(sloppy.actions, agentv1.Action_ACTION_UNSPECIFIED)
 	opts := executor.Options{
-		Handlers:     registry{"files": f.files, "stubborn": f.stubborn},
+		Handlers:     registry{"files": f.files, "stubborn": f.stubborn, "sloppy": sloppy},
 		Sink:         f.sink,
 		StateDir:     t.TempDir(),
 		Repositories: []string{"main"},
@@ -312,7 +330,8 @@ func snapshot(id string) *agentv1.StepResult {
 func accepted(t *testing.T, s *fakeSink, id string) {
 	t.Helper()
 	p := s.progress(t)
-	if p.GetCommandId() != id || p.GetPhase() != agentv1.StepPhase_STEP_PHASE_ACCEPTED {
+	if p.GetCommandId() != id || p.GetPhase() != agentv1.StepPhase_STEP_PHASE_ACCEPTED ||
+		p.GetBytesProcessed() != 0 || p.GetBytesTotal() != 0 {
 		t.Fatalf("want ACCEPTED for %s, got %v", id, p)
 	}
 }
