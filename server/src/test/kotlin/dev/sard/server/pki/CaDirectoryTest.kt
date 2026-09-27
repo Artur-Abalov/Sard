@@ -1,0 +1,120 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright 2026 Artur Abalov
+
+package dev.sard.server.pki
+
+import dev.sard.server.pki.PkiFixtures.CLOCK
+import dev.sard.server.pki.PkiFixtures.random
+import io.github.anschnapp.mutflow.MutFlow
+import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermission
+import java.nio.file.attribute.PosixFilePermissions
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+@MutFlowTest
+class CaDirectoryTest {
+    @TempDir
+    lateinit var tmp: Path
+
+    private fun generate() = CaKeyPair.generate(CLOCK, random())
+
+    private fun perms(path: Path) = PosixFilePermissions.toString(Files.getPosixFilePermissions(path))
+
+    private val dir get() = tmp.resolve("pki")
+
+    @Test
+    fun `the first start publishes the CA owner-only and a restart loads it`() {
+        val pair = generate()
+        val first = MutFlow.underTest { CaDirectory(dir).loadOrCreate { pair } }
+        val second = CaDirectory(dir).loadOrCreate { error("must load, not generate") }
+        assertEquals(pair.certificate, first.certificate)
+        assertEquals(pair.certificate, second.certificate)
+        val perms = listOf(dir, dir.resolve("ca"), dir.resolve("ca/ca.key")).map { perms(it) }
+        assertEquals(listOf("rwx------", "rwx------", "rw-------"), perms)
+    }
+
+    @Test
+    fun `losing the first-start race loads the winner's CA and leaves no temporary files`() {
+        val winner = generate()
+        val loser = generate()
+        val loaded =
+            MutFlow.underTest {
+                CaDirectory(dir).loadOrCreate {
+                    // Another instance publishes its CA while this one is generating.
+                    CaDirectory(dir).loadOrCreate { winner }
+                    loser
+                }
+            }
+        assertEquals(CaFingerprint.of(winner.certificate), CaFingerprint.of(loaded.certificate))
+        assertEquals(listOf("ca"), Files.list(dir).map { it.fileName.toString() }.toList())
+    }
+
+    @Test
+    fun `concurrent first starts agree on one CA`() {
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(4)
+        try {
+            val results =
+                (1..4).map {
+                    pool.submit<CaFingerprint> {
+                        start.await()
+                        CaFingerprint.of(CaDirectory(dir).loadOrCreate { generate() }.certificate)
+                    }
+                }
+            start.countDown()
+            assertEquals(1, results.map { it.get() }.toSet().size)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `a key, CA directory or key directory open to others is refused`() {
+        val pair = generate()
+        for (path in listOf("ca/ca.key", "ca", ".")) {
+            CaDirectory(dir).loadOrCreate { pair }
+            val target = dir.resolve(path)
+            val before = Files.getPosixFilePermissions(target)
+            Files.setPosixFilePermissions(target, before + PosixFilePermission.OTHERS_READ)
+            assertFailsWith<InsecureKeyStorageException>(path) {
+                MutFlow.underTest { CaDirectory(dir).loadOrCreate { pair } }
+            }
+            Files.setPosixFilePermissions(target, before)
+        }
+    }
+
+    @Test
+    fun `a key that does not match the certificate is refused`() {
+        CaDirectory(dir).loadOrCreate { generate() }
+        val other = tmp.resolve("other")
+        CaDirectory(other).loadOrCreate { generate() }
+        Files.write(dir.resolve("ca/ca.key"), Files.readAllBytes(other.resolve("ca/ca.key")))
+        assertFailsWith<IllegalStateException> { MutFlow.underTest { CaDirectory(dir).loadOrCreate { generate() } } }
+    }
+
+    @Test
+    fun `owner-only paths pass the permission check`() {
+        val ownerOnly = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"))
+        val file = Files.createFile(tmp.resolve("k"), ownerOnly)
+        assertNull(MutFlow.underTest { ownerOnlyViolation(file) })
+    }
+
+    @Test
+    fun `any group or other permission is a violation`() {
+        val file = Files.createFile(tmp.resolve("k"))
+        for (mode in listOf("rw----r--", "rw---x---", "rw-r-----", "rw-----w-")) {
+            Files.setPosixFilePermissions(file, PosixFilePermissions.fromString(mode))
+            val violation = MutFlow.underTest { ownerOnlyViolation(file) }
+            assertTrue(violation != null && mode in violation, "$mode: $violation")
+        }
+    }
+}

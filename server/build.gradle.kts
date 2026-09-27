@@ -33,6 +33,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.springframework.boot:spring-boot-starter-grpc-server")
     implementation("org.flywaydb:flyway-database-postgresql")
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.86")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-api:3.1.1")
     implementation("tools.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
