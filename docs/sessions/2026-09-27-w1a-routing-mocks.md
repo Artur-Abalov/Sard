@@ -84,3 +84,45 @@
 - Если добавить маршрут без перегенерированного дерева, `gen:routes` + `git diff --exit-code` дают exit 1.
 - `./scripts/gate.sh web` — PASSED, license-check — 117 файлов OK.
 - Сам CI-шаг в GitHub Actions не запускался — не проверено.
+
+## Фаза 3 — MSW для dev и тестов
+
+### Решения и причины (подробно — ADR 0015)
+- `msw` 2.15.0 + `openapi-msw` 2.0.0. Своя обёртка повторила бы вывод типов из `paths`, а это весь код `openapi-msw`.
+- `src/mocks/`: `http.ts` (типизированный `http`), `fixtures.ts`, `handlers.ts` (один обработчик `/api/v1/status`), `browser.ts`, `node.ts`, `vitest.setup.ts`, `contract.typecheck.ts`, `README.md`.
+- Воркер не коммитится и не лежит в `public/`. Его отдаёт из `node_modules/msw` плагин Vite `sard:mock-service-worker` (`apply: 'serve'`) — по ответам владельца на вопросы 3 и 4.
+- `main.tsx`: при `import.meta.env.DEV && VITE_API_MOCKS === '1'` динамически импортируется `./mocks/browser`, рендер ждёт запуска воркера. Тип переменной объявлен в `src/env.d.ts`.
+- В dev необработанный запрос к `/api/` выводится ошибкой MSW в консоль. Модули Vite и статика проходят мимо, иначе каждый импорт давал бы предупреждение.
+- `client.ts`: `baseUrl: location.origin` вместо `'/'`. В node относительный URL не разбирается (`TypeError: Failed to parse URL from /api/v1/status`). В браузере это тот же origin, поведение не меняется. Setup-файл подставляет `location` страницы (`vi.stubGlobal`).
+- `server.listen()` вызывается на верхнем уровне setup-файла: `openapi-fetch` запоминает `globalThis.fetch` при создании клиента. С `listen()` в `beforeAll` запросы клиента уходили в сеть (`ECONNREFUSED 127.0.0.1:5173`).
+- Тест необработанного запроса проверяет именно ошибку MSW («Cannot bypass a request when using the "error" strategy»). Просто `rejects` проходил бы и без MSW, потому что сети нет.
+- Отдельный QueryClient на тест: в тестах роутинга (фаза 2) новый `QueryClient` с `retry: false` создаётся на каждую загрузку. Тест клиента QueryClient не использует.
+
+### Отвергнуто
+- `msw init` в `public/` (с коммитом или `postinstall`) — решение владельца, и файл попал бы в `dist`.
+- jsdom или happy-dom ради `location` — новая зависимость.
+- `fetch: (r) => fetch(r)` в клиенте — хватает раннего `listen()`.
+
+### Проверено (команды запускались)
+- Тесты написаны первыми и падали: модулей `../mocks/*` не было, потом был неразборчивый URL, потом запрос ушёл в сеть.
+- `npm run lint`, `npm run typecheck`, `npm test` (18 тестов), `npm run build` — exit 0. `./scripts/gate.sh web` — PASSED. license-check — 126 файлов OK. `gen:routes` без диффа.
+- Контракт: если снять все `@ts-expect-error` в `contract.typecheck.ts`, tsc выдаёт ошибку ровно по заявленной причине для каждого случая:
+  - неизвестный путь;
+  - нет `lastVerifiedRestoreAt`;
+  - `version: number`;
+  - статус 404, которого нет в схеме;
+  - `HttpResponse.json` с неверным телом.
+- Контроль A: с `onUnhandledRequest: 'bypass'` тест необработанного запроса падает. Контроль B: с `listen()` в `beforeAll` падают 2 теста клиента.
+- Сборка: `grep -rli "msw\|mockServiceWorker" web/dist` пусто, в `dist/assets` только `index-*.js` и `index-*.css`. Контрольная сборка с принудительно включёнными моками создаёт чанк `browser-*.js`, где grep находит MSW.
+- Браузер (Playwright):
+  - `VITE_API_MOCKS=1`: `/mockServiceWorker.js` → 200 `text/javascript`, воркер управляет страницей.
+  - Дашборд показывает «Последнее проверенное восстановление: 1 сент. 2026 г., 03:04 | Версия сервера: 0.0.0-mock». Навигация работает.
+  - `fetch('/api/v1/agents')` → ошибка MSW в консоли «intercepted a request without a matching request handler».
+  - Без переменной воркера нет, `/api/v1/status` уходит через прокси на `:8080` (`proxy error` в логе Vite).
+- Не проверено: шаги CI в GitHub Actions (локально запускались те же команды).
+
+### Изменённые файлы
+`web/package.json`, `web/package-lock.json`, `web/vite.config.ts`, `web/src/main.tsx`, `web/src/env.d.ts`, `web/src/api/client.ts`, `web/src/api/client.test.ts`, `web/src/mocks/*`, `docs/adr/0015-msw-api-mocks.md`, `docs/adr/README.md`, `docs/dependencies.md`.
+
+### Открытые вопросы
+- Когда S8 добавит эндпоинты этапа 1, обработчики и фикстуры для них пишутся в W2 по `src/mocks/README.md`.

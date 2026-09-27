@@ -81,6 +81,8 @@
 | @types/react 19.3.0 | MIT | сборка/тесты | типы React |
 | @types/react-dom 19.3.0 | MIT | сборка/тесты | типы React DOM |
 | @vitejs/plugin-react 6.1.1 | MIT | сборка/тесты | React в Vite |
+| msw 2.15.0 | MIT | сборка/тесты | моки API в dev и Vitest (ADR 0015) |
+| openapi-msw 2.0.0 | MIT | сборка/тесты | типизация обработчиков MSW из OpenAPI (ADR 0015) |
 | openapi-typescript 7.13.0 | MIT | сборка/тесты | генерация типов из OpenAPI |
 | oxlint 1.85.0 | MIT | сборка/тесты | линтер (ADR 0011) |
 | postcss 8.5.28 | MIT | сборка/тесты | PostCSS для Mantine |

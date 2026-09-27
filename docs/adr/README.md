@@ -16,3 +16,4 @@
 | [0012](0012-tree-deviations.md) | Расхождения с целевым деревом каталогов |
 | [0013](0013-multitenancy-and-schema.md) | Мультитенантность и схема БД сервера |
 | [0014](0014-tanstack-router.md) | TanStack Router вместо React Router, тесты маршрутов без рендера |
+| [0015](0015-msw-api-mocks.md) | Моки API на MSW с типами из OpenAPI |
