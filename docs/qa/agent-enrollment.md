@@ -159,11 +159,31 @@ agents() { $PSQL "select count(*) from agents"; }
 29. В выводе шагов 6–24 (текст статуса и детали) ни строки токена, ни секрета
     → `grep -F` по сохранённому выводу даёт 0 совпадений.
 
+### Адрес для агентов при старте сервера
+
+Проверка самой команды регистрации до API идёт тестами `@startup @service`;
+здесь — что сервер делает при старте. `make up` поднимает сервер с
+`SARD_PKI_SERVER_NAMES` по умолчанию: `localhost,127.0.0.1,::1`. После каждого
+шага вернуть исходную конфигурацию: `$DC up -d server`.
+
+30. `SARD_AGENT_ENDPOINT` не задан (`make up` как есть)
+    → сервер `healthy`; в логе старта нет ошибки об адресе для агентов.
+31. `SARD_AGENT_ENDPOINT=localhost:9090 $DC up -d server` (переменная прокинута в
+    `environment` сервиса) → сервер `healthy`.
+32. `SARD_AGENT_ENDPOINT=127.0.0.1 $DC up -d server` → сервер `healthy`.
+33. `SARD_AGENT_ENDPOINT=backup.example.org:9090 $DC up -d server`
+    → контейнер не становится `healthy` и завершается; в `$DC logs server`
+    сообщение называет хост `backup.example.org` и имена `localhost`,
+    `127.0.0.1`, `::1`.
+34. `SARD_AGENT_ENDPOINT=https://localhost:9090 $DC up -d server`
+    → сервер не стартует; сообщение называет `SARD_AGENT_ENDPOINT` и его значение.
+
 ## Часть 2. API и консоль (заблокировано D2 → W1b, S8a)
 
 Выполняется после появления входа администратора и API токенов. Пути и коды
-HTTP — из контракта S8a. Сервер запущен с адресом для агентов
-`SARD_AGENT_ENDPOINT=sard.example.com:9090` (имя настройки — по реализации).
+HTTP — из контракта S8a. Сервер запущен с
+`SARD_PKI_SERVER_NAMES=sard.example.com,localhost` и
+`SARD_AGENT_ENDPOINT=sard.example.com:9090`.
 
 1. Без входа запросить список токенов → отказ в аутентификации, данных токенов нет.
 2. Войти администратором тенанта, создать токен без срока
@@ -191,3 +211,6 @@ HTTP — из контракта S8a. Сервер запущен с адрес�
     не видны; прямой запрос карточки по идентификатору → «не найден».
 13. `docker compose logs server | grep -F` по строкам и секретам токенов из этой
     части → 0 совпадений.
+14. Перезапустить сервер без `SARD_AGENT_ENDPOINT` (имена те же), создать токен
+    → команда `sard-agent enroll --server sard.example.com:9090 --token <строка>`
+    (первое имя сертификата и порт gRPC).
