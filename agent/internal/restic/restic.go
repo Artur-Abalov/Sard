@@ -15,6 +15,9 @@ import (
 
 // Repository is a restic repository on S3, SFTP or local disk.
 type Repository interface {
+	// ID returns restic's repository id (from the repository config). It is
+	// not a secret: the server uses it to see how many hosts hold the key.
+	ID(ctx context.Context) (string, error)
 	// Backup stores the bytes read from src as a new snapshot and returns its id.
 	Backup(ctx context.Context, src io.Reader, tags []string) (string, error)
 	// Restore writes snapshot snapshotID into the target directory.
@@ -23,14 +26,20 @@ type Repository interface {
 
 // CLI runs the restic binary. The repository key comes from a crypto.Provider.
 type CLI struct {
-	binary     string
-	repository string
-	keys       crypto.Provider
+	binary string
+	name   string // repository name on this host; the key is looked up by it
+	url    string
+	keys   crypto.Provider
 }
 
 // New returns a Repository backed by the restic binary.
-func New(binary, repository string, keys crypto.Provider) *CLI {
-	return &CLI{binary: binary, repository: repository, keys: keys}
+func New(binary, name, url string, keys crypto.Provider) *CLI {
+	return &CLI{binary: binary, name: name, url: url, keys: keys}
+}
+
+// ID will run `restic cat config` and return its id (roadmap: first backup, stage 1).
+func (*CLI) ID(context.Context) (string, error) {
+	return "", sdk.ErrNotImplemented
 }
 
 // Backup will run `restic backup --stdin` (roadmap: first backup, stage 1).

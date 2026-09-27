@@ -2,6 +2,10 @@
 // Copyright 2026 Artur Abalov
 
 // Package config reads the agent's YAML configuration.
+//
+// Trust model (ADR 0008): repositories, secrets and scripts are defined
+// here, on the agent host. The server refers to them by name only; their
+// values never leave the host.
 package config
 
 import (
@@ -9,16 +13,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"slices"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
 
 // Config is the agent configuration file.
 type Config struct {
-	Server Server `yaml:"server"`
-	TLS    TLS    `yaml:"tls"`
-	Restic Restic `yaml:"restic"`
+	Server       Server       `yaml:"server"`
+	TLS          TLS          `yaml:"tls"`
+	Repositories []Repository `yaml:"repositories"`
+	// Secrets maps a secret name to the file holding its value.
+	Secrets map[string]string `yaml:"secrets"`
+	// Scripts maps a script name to the executable allowlisted for ACTION_RUN.
+	Scripts map[string]string `yaml:"scripts"`
 }
 
 // Server is where the agent dials in. The agent never listens.
@@ -35,14 +46,25 @@ type TLS struct {
 	KeyFile  string `yaml:"key_file"`
 }
 
-// Restic configures the storage side.
-type Restic struct {
+// Repository is a restic repository configured on this host.
+type Repository struct {
+	// Name is what the server uses in RunStep.repository_name.
+	Name string `yaml:"name"`
+	// URL is the restic repository string, e.g. "s3:https://host/bucket".
+	URL string `yaml:"url"`
 	// PasswordFile is handed to restic by path (RESTIC_PASSWORD_FILE).
 	PasswordFile string `yaml:"password_file"`
+	// EnvFile holds backend credentials, e.g. AWS_ACCESS_KEY_ID; optional.
+	EnvFile string `yaml:"env_file"`
+	// CryptoProvider selects the crypto.Provider; empty means restic AES.
+	CryptoProvider string `yaml:"crypto_provider"`
 }
 
 // ErrNoServerAddress is returned when server.address is missing.
 var ErrNoServerAddress = errors.New("server.address is required")
+
+// ErrInvalidRepository is returned for an incomplete or duplicate repository.
+var ErrInvalidRepository = errors.New("invalid repository")
 
 // Load reads and validates the file at path.
 func Load(path string) (Config, error) {
@@ -61,8 +83,65 @@ func Parse(data []byte) (Config, error) {
 	if err := dec.Decode(&c); err != nil && !errors.Is(err, io.EOF) {
 		return Config{}, fmt.Errorf("parse config: %w", err)
 	}
+	return c, c.validate()
+}
+
+func (c Config) validate() error {
 	if c.Server.Address == "" {
-		return Config{}, ErrNoServerAddress
+		return ErrNoServerAddress
 	}
-	return c, nil
+	var seen []string
+	for i, r := range c.Repositories {
+		if err := r.validate(seen); err != nil {
+			return fmt.Errorf("repositories[%d]: %w", i, err)
+		}
+		seen = append(seen, r.Name)
+	}
+	return nil
+}
+
+func (r Repository) validate(seen []string) error {
+	switch {
+	case r.Name == "":
+		return fmt.Errorf("%w: name is required", ErrInvalidRepository)
+	case slices.Contains(seen, r.Name):
+		return fmt.Errorf("%w: duplicate name %q", ErrInvalidRepository, r.Name)
+	case r.URL == "":
+		return fmt.Errorf("%w: %q: url is required", ErrInvalidRepository, r.Name)
+	case r.PasswordFile == "":
+		return fmt.Errorf("%w: %q: password_file is required", ErrInvalidRepository, r.Name)
+	}
+	return nil
+}
+
+// backends are the restic backend prefixes ("s3:...", "sftp:...").
+var backends = []string{"azure", "b2", "gs", "rclone", "rest", "s3", "sftp", "swift"}
+
+// Backend returns the restic backend kind of the repository URL; a plain
+// path is "local".
+func (r Repository) Backend() string {
+	kind, _, found := strings.Cut(r.URL, ":")
+	if found && slices.Contains(backends, kind) {
+		return kind
+	}
+	return "local"
+}
+
+// SecretNames returns the configured secret names, sorted.
+func (c Config) SecretNames() []string { return sortedKeys(c.Secrets) }
+
+// ScriptNames returns the allowlisted script names, sorted.
+func (c Config) ScriptNames() []string { return sortedKeys(c.Scripts) }
+
+// PasswordFiles maps repository names to their restic password files.
+func (c Config) PasswordFiles() map[string]string {
+	files := make(map[string]string, len(c.Repositories))
+	for _, r := range c.Repositories {
+		files[r.Name] = r.PasswordFile
+	}
+	return files
+}
+
+func sortedKeys(m map[string]string) []string {
+	return slices.Sorted(maps.Keys(m))
 }

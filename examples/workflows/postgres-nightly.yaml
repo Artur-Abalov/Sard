@@ -4,6 +4,7 @@
 # DRAFT FORMAT — the workflow schema is not designed yet and will change.
 # Nothing parses this file today; it illustrates the intended shape:
 # hook before → dump → encrypt → store → verify restore → notify.
+# Encryption is restic's, with the key kept on the agent host (ADR 0008).
 apiVersion: sard.dev/v1alpha1
 kind: Workflow
 metadata:
@@ -13,8 +14,9 @@ spec:
   agent: db1.example.com         # host where sard-agent runs
   steps:
     - name: freeze-app
-      hook:
-        run: /usr/local/bin/app-maintenance on
+      run:
+        script: app-maintenance   # allowlisted in the agent's scripts:, never script text
+        args: [on]
 
     - name: dump
       plugin: postgresql
@@ -23,19 +25,19 @@ spec:
         port: 5432
         database: billing
         user: backup
-
-    - name: encrypt
-      crypto: restic-aes         # key handed to restic (ADR 0008)
+        password_ref: pg-billing  # secret name on the agent host, never the value
 
     - name: store
-      repository: s3:https://s3.example.com/backups/db1   # data goes agent → storage, not via the server
+      repository: main           # defined on the agent host with its key (ADR 0008);
+                                 # data goes agent → storage, not via the server
       retention:
         daily: 7
         weekly: 4
 
     - name: unfreeze-app
-      hook:
-        run: /usr/local/bin/app-maintenance off
+      run:
+        script: app-maintenance
+        args: [off]
       always: true               # run even if an earlier step failed
 
     - name: verify

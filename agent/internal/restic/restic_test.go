@@ -25,7 +25,10 @@ func (fakeKeys) RepositoryKey(context.Context, string) (crypto.Key, error) {
 var _ restic.Repository = (*restic.CLI)(nil)
 
 func TestResticStubsAreNotImplemented(t *testing.T) {
-	repo := restic.New("restic", "/srv/repo", fakeKeys{})
+	repo := restic.New("restic", "main", "/srv/repo", fakeKeys{})
+	if id, err := repo.ID(context.Background()); id != "" || !errors.Is(err, sdk.ErrNotImplemented) {
+		t.Errorf("ID = %q, %v", id, err)
+	}
 	if _, err := repo.Backup(context.Background(), strings.NewReader("x"), nil); !errors.Is(err, sdk.ErrNotImplemented) {
 		t.Errorf("Backup err = %v", err)
 	}

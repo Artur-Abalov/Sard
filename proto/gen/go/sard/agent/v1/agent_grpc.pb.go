@@ -18,6 +18,14 @@
 //
 // Identity: the server identifies the agent (and its tenant) by the mTLS
 // client certificate, never by fields in messages.
+//
+// Trust model (ADR 0008): the server is a control plane, not a key holder.
+// It decides when to run which step and refers to repositories, secrets and
+// scripts by name only; their definitions and values live on the agent host
+// (restic password_file, backend credentials, source passwords, allowlisted
+// scripts). A compromised server can trigger or stop steps and see metadata,
+// but cannot read backups, learn credentials, redirect data to another
+// repository or run arbitrary code on hosts.
 
 package agentv1
 

@@ -9,7 +9,7 @@
 | [0005](0005-go-module-path.md) | Путь Go-модулей и процедура его смены |
 | [0006](0006-mutation-testing.md) | Мутационное тестирование: go-mutesting и mutflow |
 | [0007](0007-quality-gates.md) | Шлюзы качества и инструменты |
-| [0008](0008-crypto-provider.md) | Криптопровайдер: передача ключа в restic |
+| [0008](0008-crypto-provider.md) | Модель доверия: сервер — управляющая плоскость, ключи на хостах |
 | [0009](0009-agent-transport-mtls.md) | Транспорт агента: исходящий gRPC и mTLS (план) |
 | [0010](0010-server-stack.md) | Стек сервера: Spring Boot 4.1, встроенный gRPC, proto/jvm |
 | [0011](0011-web-tooling.md) | Инструменты веба: oxlint, TypeScript 6 |

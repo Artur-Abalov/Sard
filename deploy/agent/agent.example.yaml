@@ -2,11 +2,22 @@
 # Copyright 2026 Artur Abalov
 #
 # /etc/sard/agent.yaml — sard-agent configuration.
+#
+# Trust model (docs/adr/0008-crypto-provider.md): repositories, secrets and
+# scripts are defined here and stay on this host. The server refers to them
+# by name only and never receives URLs, keys, passwords or script paths.
 server:
   address: sard.example.com:9090
 tls: # mTLS is not implemented yet: docs/adr/0009-agent-transport-mtls.md
   ca_file: /etc/sard/ca.pem
   cert_file: /etc/sard/agent.pem
   key_file: /etc/sard/agent.key
-restic:
-  password_file: /etc/sard/restic.pass
+repositories:
+  - name: main
+    url: s3:https://s3.example.com/backups/db1
+    password_file: /etc/sard/restic-main.pass   # restic key, handed to restic by path
+    env_file: /etc/sard/restic-main.env         # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+secrets:
+  pg-billing: /etc/sard/secrets/pg-billing      # referenced as "password_ref": "pg-billing"
+scripts:
+  app-maintenance: /usr/local/bin/app-maintenance

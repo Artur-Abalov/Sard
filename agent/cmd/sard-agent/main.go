@@ -17,9 +17,14 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/app"
 	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/crypto"
+	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
 	"github.com/Artur-Abalov/sard/agent/plugins"
 )
+
+// resticBinary is looked up in PATH.
+const resticBinary = "restic"
 
 // version is set at build time: -ldflags "-X main.version=...".
 var version = "dev"
@@ -75,6 +80,8 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 		return fmt.Errorf("hostname: %w", err)
 	}
 	_, _ = fmt.Fprintf(stdout, "sard-agent %s: connecting to %s\n", version, cfg.Server.Address)
+	// Repository keys stay on this host (ADR 0008).
+	keys := crypto.NewResticAES(cfg.PasswordFiles())
 	agent := &app.Agent{
 		Client:   transport.NewGRPC(cfg.Server.Address),
 		Plugins:  plugins.Registry(),
@@ -82,6 +89,10 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 		Version:  version,
 		OS:       runtime.GOOS,
 		Arch:     runtime.GOARCH,
+		Local:    cfg,
+		RepositoryID: func(ctx context.Context, r config.Repository) (string, error) {
+			return restic.New(resticBinary, r.Name, r.URL, keys).ID(ctx)
+		},
 	}
 	return agent.Run(ctx)
 }

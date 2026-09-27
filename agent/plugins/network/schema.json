@@ -3,11 +3,33 @@
   "title": "Network device",
   "type": "object",
   "properties": {
-    "host": { "type": "string", "title": "Host" },
-    "port": { "type": "integer", "title": "SSH port", "minimum": 1, "maximum": 65535, "default": 22 },
-    "vendor": { "type": "string", "title": "Vendor", "enum": ["mikrotik", "eltex"] },
-    "username": { "type": "string", "title": "SSH user" }
+    "host": {
+      "type": "string",
+      "title": "Host[:port]"
+    },
+    "vendor": {
+      "type": "string",
+      "title": "Vendor",
+      "enum": [
+        "mikrotik",
+        "eltex"
+      ]
+    },
+    "username": {
+      "type": "string",
+      "title": "SSH user"
+    },
+    "key_ref": {
+      "type": "string",
+      "title": "SSH key secret",
+      "description": "Name of a secret defined on the agent host (secrets: in agent.yaml); never the value."
+    }
   },
-  "required": ["host", "vendor", "username"],
+  "required": [
+    "host",
+    "vendor",
+    "username",
+    "key_ref"
+  ],
   "additionalProperties": false
 }

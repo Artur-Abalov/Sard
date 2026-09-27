@@ -14,6 +14,14 @@ syntax = "proto3";
 //
 // Identity: the server identifies the agent (and its tenant) by the mTLS
 // client certificate, never by fields in messages.
+//
+// Trust model (ADR 0008): the server is a control plane, not a key holder.
+// It decides when to run which step and refers to repositories, secrets and
+// scripts by name only; their definitions and values live on the agent host
+// (restic password_file, backend credentials, source passwords, allowlisted
+// scripts). A compromised server can trigger or stop steps and see metadata,
+// but cannot read backups, learn credentials, redirect data to another
+// repository or run arbitrary code on hosts.
 package sard.agent.v1;
 
 import "google/protobuf/duration.proto";
@@ -91,6 +99,13 @@ message RegisterRequest {
   // Operating system and architecture, e.g. "linux", "amd64".
   string os = 5;
   string arch = 6;
+  // Repositories configured on this host; names and metadata only.
+  repeated RepositoryInfo repositories = 7;
+  // Names of secrets available on this host; values never leave it. Lets
+  // the UI show which configurations can run on which agent.
+  repeated string secret_names = 8;
+  // Names of scripts allowlisted on this host for ACTION_RUN.
+  repeated string script_names = 9;
 }
 
 // Plugin is a source plugin available on the agent.
@@ -98,8 +113,8 @@ message Plugin {
   // Unique plugin name, e.g. "postgresql".
   string name = 1;
   // JSON Schema (draft 2020-12) of the plugin configuration; the UI renders
-  // configuration forms from it. Secret fields are declared in the schema
-  // and delivered through RunStep.secrets, not in the configuration.
+  // configuration forms from it. Secret fields hold the name of a secret
+  // stored on the agent host (e.g. "password_ref": "pg-prod"), never a value.
   string config_schema = 2;
   // Plugin version, e.g. "0.1.0".
   string version = 3;
@@ -243,7 +258,8 @@ enum StepStatus {
   STEP_STATUS_CANCELLED = 3;
   // Exceeded RunStep.timeout.
   STEP_STATUS_TIMED_OUT = 4;
-  // Not started: unknown plugin, unsupported action or invalid config.
+  // Not started: unknown plugin, repository, secret or script, unsupported
+  // action or invalid config.
   STEP_STATUS_REJECTED = 5;
 }
 
@@ -302,7 +318,7 @@ enum Action {
   ACTION_RESTORE = 2;
   // Restore into a temporary sandbox and run checks.
   ACTION_VERIFY = 3;
-  // Run a script or hook; no repository involved.
+  // Run a script allowlisted on the agent host; no repository involved.
   ACTION_RUN = 4;
 }
 
@@ -312,19 +328,23 @@ enum Action {
 // is already running or has finished, it must not run it again; it reports
 // the current progress or resends the stored result instead.
 message RunStep {
+  reserved 5, 6;
+  reserved "repository", "secrets";
+
   // Server-generated id; echoed in every progress, log and result message.
   string command_id = 1;
   // Name of the plugin that executes the step, e.g. "postgresql".
   string plugin = 2;
   // Plugin configuration as JSON, valid against the plugin's config_schema.
-  // Contains no secrets and may be logged.
+  // Secrets appear only as names of agent-local secrets, so it holds no
+  // secret values and may be logged. For ACTION_RUN it names an allowlisted
+  // script, never script text.
   string config_json = 3;
   Action action = 4;
-  // Target repository; unset for ACTION_RUN.
-  Repository repository = 5;
-  // Secret values referenced by the plugin schema, by name. Kept in memory
-  // only, never logged or written to disk.
-  map<string, string> secrets = 6;
+  // Name of a repository configured on the agent host; empty for
+  // ACTION_RUN. URL, restic password_file and backend credentials stay on
+  // the host.
+  string repository_name = 10;
   // Snapshot to restore or verify; empty means the latest snapshot matching
   // tags.
   string snapshot_id = 7;
@@ -334,16 +354,17 @@ message RunStep {
   map<string, string> tags = 9;
 }
 
-// Repository describes where restic stores data.
-message Repository {
-  // restic repository string, e.g. "s3:https://host/bucket/path",
-  // "sftp:user@host:/path" or a local path.
-  string url = 1;
-  // restic repository password.
-  string password = 2;
-  // Backend credentials passed to restic as environment variables,
-  // e.g. AWS_ACCESS_KEY_ID. Same handling as RunStep.secrets.
-  map<string, string> env = 3;
+// RepositoryInfo is a repository configured on the agent host, as reported
+// in Register. It carries no URL credentials and no restic password.
+message RepositoryInfo {
+  // Name the server uses in RunStep.repository_name.
+  string name = 1;
+  // Backend kind, e.g. "s3", "sftp", "local".
+  string backend = 2;
+  // restic repository id (from the repository config), not a secret. Lets
+  // the server see how many agents can open the same repository and warn
+  // when the key exists on a single host only.
+  string repository_id = 3;
   // Crypto provider; empty means restic built-in AES. Reserved for GOST.
   string crypto_provider = 4;
 }

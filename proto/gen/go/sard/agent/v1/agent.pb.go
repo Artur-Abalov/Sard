@@ -18,6 +18,14 @@
 //
 // Identity: the server identifies the agent (and its tenant) by the mTLS
 // client certificate, never by fields in messages.
+//
+// Trust model (ADR 0008): the server is a control plane, not a key holder.
+// It decides when to run which step and refers to repositories, secrets and
+// scripts by name only; their definitions and values live on the agent host
+// (restic password_file, backend credentials, source passwords, allowlisted
+// scripts). A compromised server can trigger or stop steps and see metadata,
+// but cannot read backups, learn credentials, redirect data to another
+// repository or run arbitrary code on hosts.
 
 package agentv1
 
@@ -170,7 +178,8 @@ const (
 	StepStatus_STEP_STATUS_CANCELLED StepStatus = 3
 	// Exceeded RunStep.timeout.
 	StepStatus_STEP_STATUS_TIMED_OUT StepStatus = 4
-	// Not started: unknown plugin, unsupported action or invalid config.
+	// Not started: unknown plugin, repository, secret or script, unsupported
+	// action or invalid config.
 	StepStatus_STEP_STATUS_REJECTED StepStatus = 5
 )
 
@@ -230,7 +239,7 @@ const (
 	Action_ACTION_RESTORE     Action = 2
 	// Restore into a temporary sandbox and run checks.
 	Action_ACTION_VERIFY Action = 3
-	// Run a script or hook; no repository involved.
+	// Run a script allowlisted on the agent host; no repository involved.
 	Action_ACTION_RUN Action = 4
 )
 
@@ -419,8 +428,15 @@ type RegisterRequest struct {
 	// behavioural changes that field numbers alone cannot express.
 	ProtocolVersion uint32 `protobuf:"varint,4,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"`
 	// Operating system and architecture, e.g. "linux", "amd64".
-	Os            string `protobuf:"bytes,5,opt,name=os,proto3" json:"os,omitempty"`
-	Arch          string `protobuf:"bytes,6,opt,name=arch,proto3" json:"arch,omitempty"`
+	Os   string `protobuf:"bytes,5,opt,name=os,proto3" json:"os,omitempty"`
+	Arch string `protobuf:"bytes,6,opt,name=arch,proto3" json:"arch,omitempty"`
+	// Repositories configured on this host; names and metadata only.
+	Repositories []*RepositoryInfo `protobuf:"bytes,7,rep,name=repositories,proto3" json:"repositories,omitempty"`
+	// Names of secrets available on this host; values never leave it. Lets
+	// the UI show which configurations can run on which agent.
+	SecretNames []string `protobuf:"bytes,8,rep,name=secret_names,json=secretNames,proto3" json:"secret_names,omitempty"`
+	// Names of scripts allowlisted on this host for ACTION_RUN.
+	ScriptNames   []string `protobuf:"bytes,9,rep,name=script_names,json=scriptNames,proto3" json:"script_names,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -497,14 +513,35 @@ func (x *RegisterRequest) GetArch() string {
 	return ""
 }
 
+func (x *RegisterRequest) GetRepositories() []*RepositoryInfo {
+	if x != nil {
+		return x.Repositories
+	}
+	return nil
+}
+
+func (x *RegisterRequest) GetSecretNames() []string {
+	if x != nil {
+		return x.SecretNames
+	}
+	return nil
+}
+
+func (x *RegisterRequest) GetScriptNames() []string {
+	if x != nil {
+		return x.ScriptNames
+	}
+	return nil
+}
+
 // Plugin is a source plugin available on the agent.
 type Plugin struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Unique plugin name, e.g. "postgresql".
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// JSON Schema (draft 2020-12) of the plugin configuration; the UI renders
-	// configuration forms from it. Secret fields are declared in the schema
-	// and delivered through RunStep.secrets, not in the configuration.
+	// configuration forms from it. Secret fields hold the name of a secret
+	// stored on the agent host (e.g. "password_ref": "pg-prod"), never a value.
 	ConfigSchema string `protobuf:"bytes,2,opt,name=config_schema,json=configSchema,proto3" json:"config_schema,omitempty"`
 	// Plugin version, e.g. "0.1.0".
 	Version string `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
@@ -1669,14 +1706,15 @@ type RunStep struct {
 	// Name of the plugin that executes the step, e.g. "postgresql".
 	Plugin string `protobuf:"bytes,2,opt,name=plugin,proto3" json:"plugin,omitempty"`
 	// Plugin configuration as JSON, valid against the plugin's config_schema.
-	// Contains no secrets and may be logged.
+	// Secrets appear only as names of agent-local secrets, so it holds no
+	// secret values and may be logged. For ACTION_RUN it names an allowlisted
+	// script, never script text.
 	ConfigJson string `protobuf:"bytes,3,opt,name=config_json,json=configJson,proto3" json:"config_json,omitempty"`
 	Action     Action `protobuf:"varint,4,opt,name=action,proto3,enum=sard.agent.v1.Action" json:"action,omitempty"`
-	// Target repository; unset for ACTION_RUN.
-	Repository *Repository `protobuf:"bytes,5,opt,name=repository,proto3" json:"repository,omitempty"`
-	// Secret values referenced by the plugin schema, by name. Kept in memory
-	// only, never logged or written to disk.
-	Secrets map[string]string `protobuf:"bytes,6,rep,name=secrets,proto3" json:"secrets,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Name of a repository configured on the agent host; empty for
+	// ACTION_RUN. URL, restic password_file and backend credentials stay on
+	// the host.
+	RepositoryName string `protobuf:"bytes,10,opt,name=repository_name,json=repositoryName,proto3" json:"repository_name,omitempty"`
 	// Snapshot to restore or verify; empty means the latest snapshot matching
 	// tags.
 	SnapshotId string `protobuf:"bytes,7,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
@@ -1746,18 +1784,11 @@ func (x *RunStep) GetAction() Action {
 	return Action_ACTION_UNSPECIFIED
 }
 
-func (x *RunStep) GetRepository() *Repository {
+func (x *RunStep) GetRepositoryName() string {
 	if x != nil {
-		return x.Repository
+		return x.RepositoryName
 	}
-	return nil
-}
-
-func (x *RunStep) GetSecrets() map[string]string {
-	if x != nil {
-		return x.Secrets
-	}
-	return nil
+	return ""
 }
 
 func (x *RunStep) GetSnapshotId() string {
@@ -1781,37 +1812,38 @@ func (x *RunStep) GetTags() map[string]string {
 	return nil
 }
 
-// Repository describes where restic stores data.
-type Repository struct {
+// RepositoryInfo is a repository configured on the agent host, as reported
+// in Register. It carries no URL credentials and no restic password.
+type RepositoryInfo struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// restic repository string, e.g. "s3:https://host/bucket/path",
-	// "sftp:user@host:/path" or a local path.
-	Url string `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
-	// restic repository password.
-	Password string `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
-	// Backend credentials passed to restic as environment variables,
-	// e.g. AWS_ACCESS_KEY_ID. Same handling as RunStep.secrets.
-	Env map[string]string `protobuf:"bytes,3,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Name the server uses in RunStep.repository_name.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// Backend kind, e.g. "s3", "sftp", "local".
+	Backend string `protobuf:"bytes,2,opt,name=backend,proto3" json:"backend,omitempty"`
+	// restic repository id (from the repository config), not a secret. Lets
+	// the server see how many agents can open the same repository and warn
+	// when the key exists on a single host only.
+	RepositoryId string `protobuf:"bytes,3,opt,name=repository_id,json=repositoryId,proto3" json:"repository_id,omitempty"`
 	// Crypto provider; empty means restic built-in AES. Reserved for GOST.
 	CryptoProvider string `protobuf:"bytes,4,opt,name=crypto_provider,json=cryptoProvider,proto3" json:"crypto_provider,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
 
-func (x *Repository) Reset() {
-	*x = Repository{}
+func (x *RepositoryInfo) Reset() {
+	*x = RepositoryInfo{}
 	mi := &file_sard_agent_v1_agent_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Repository) String() string {
+func (x *RepositoryInfo) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Repository) ProtoMessage() {}
+func (*RepositoryInfo) ProtoMessage() {}
 
-func (x *Repository) ProtoReflect() protoreflect.Message {
+func (x *RepositoryInfo) ProtoReflect() protoreflect.Message {
 	mi := &file_sard_agent_v1_agent_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1823,33 +1855,33 @@ func (x *Repository) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Repository.ProtoReflect.Descriptor instead.
-func (*Repository) Descriptor() ([]byte, []int) {
+// Deprecated: Use RepositoryInfo.ProtoReflect.Descriptor instead.
+func (*RepositoryInfo) Descriptor() ([]byte, []int) {
 	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{21}
 }
 
-func (x *Repository) GetUrl() string {
+func (x *RepositoryInfo) GetName() string {
 	if x != nil {
-		return x.Url
+		return x.Name
 	}
 	return ""
 }
 
-func (x *Repository) GetPassword() string {
+func (x *RepositoryInfo) GetBackend() string {
 	if x != nil {
-		return x.Password
+		return x.Backend
 	}
 	return ""
 }
 
-func (x *Repository) GetEnv() map[string]string {
+func (x *RepositoryInfo) GetRepositoryId() string {
 	if x != nil {
-		return x.Env
+		return x.RepositoryId
 	}
-	return nil
+	return ""
 }
 
-func (x *Repository) GetCryptoProvider() string {
+func (x *RepositoryInfo) GetCryptoProvider() string {
 	if x != nil {
 		return x.CryptoProvider
 	}
@@ -1915,14 +1947,17 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\x0eEnrollResponse\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x122\n" +
 	"\x15certificate_chain_pem\x18\x02 \x01(\tR\x13certificateChainPem\x12\"\n" +
-	"\rca_bundle_pem\x18\x03 \x01(\tR\vcaBundlePem\"\xd2\x01\n" +
+	"\rca_bundle_pem\x18\x03 \x01(\tR\vcaBundlePem\"\xdb\x02\n" +
 	"\x0fRegisterRequest\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12#\n" +
 	"\ragent_version\x18\x02 \x01(\tR\fagentVersion\x12/\n" +
 	"\aplugins\x18\x03 \x03(\v2\x15.sard.agent.v1.PluginR\aplugins\x12)\n" +
 	"\x10protocol_version\x18\x04 \x01(\rR\x0fprotocolVersion\x12\x0e\n" +
 	"\x02os\x18\x05 \x01(\tR\x02os\x12\x12\n" +
-	"\x04arch\x18\x06 \x01(\tR\x04arch\"\x8c\x01\n" +
+	"\x04arch\x18\x06 \x01(\tR\x04arch\x12A\n" +
+	"\frepositories\x18\a \x03(\v2\x1d.sard.agent.v1.RepositoryInfoR\frepositories\x12!\n" +
+	"\fsecret_names\x18\b \x03(\tR\vsecretNames\x12!\n" +
+	"\fscript_names\x18\t \x03(\tR\vscriptNames\"\x8c\x01\n" +
 	"\x06Plugin\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12#\n" +
 	"\rconfig_schema\x18\x02 \x01(\tR\fconfigSchema\x12\x18\n" +
@@ -2002,37 +2037,29 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\brun_step\x18\x01 \x01(\v2\x16.sard.agent.v1.RunStepH\x00R\arunStep\x12<\n" +
 	"\vcancel_step\x18\x02 \x01(\v2\x19.sard.agent.v1.CancelStepH\x00R\n" +
 	"cancelStepB\t\n" +
-	"\amessage\"\x8b\x04\n" +
+	"\amessage\"\x9f\x03\n" +
 	"\aRunStep\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x16\n" +
 	"\x06plugin\x18\x02 \x01(\tR\x06plugin\x12\x1f\n" +
 	"\vconfig_json\x18\x03 \x01(\tR\n" +
 	"configJson\x12-\n" +
-	"\x06action\x18\x04 \x01(\x0e2\x15.sard.agent.v1.ActionR\x06action\x129\n" +
-	"\n" +
-	"repository\x18\x05 \x01(\v2\x19.sard.agent.v1.RepositoryR\n" +
-	"repository\x12=\n" +
-	"\asecrets\x18\x06 \x03(\v2#.sard.agent.v1.RunStep.SecretsEntryR\asecrets\x12\x1f\n" +
+	"\x06action\x18\x04 \x01(\x0e2\x15.sard.agent.v1.ActionR\x06action\x12'\n" +
+	"\x0frepository_name\x18\n" +
+	" \x01(\tR\x0erepositoryName\x12\x1f\n" +
 	"\vsnapshot_id\x18\a \x01(\tR\n" +
 	"snapshotId\x123\n" +
 	"\atimeout\x18\b \x01(\v2\x19.google.protobuf.DurationR\atimeout\x124\n" +
-	"\x04tags\x18\t \x03(\v2 .sard.agent.v1.RunStep.TagsEntryR\x04tags\x1a:\n" +
-	"\fSecretsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a7\n" +
+	"\x04tags\x18\t \x03(\v2 .sard.agent.v1.RunStep.TagsEntryR\x04tags\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd1\x01\n" +
-	"\n" +
-	"Repository\x12\x10\n" +
-	"\x03url\x18\x01 \x01(\tR\x03url\x12\x1a\n" +
-	"\bpassword\x18\x02 \x01(\tR\bpassword\x124\n" +
-	"\x03env\x18\x03 \x03(\v2\".sard.agent.v1.Repository.EnvEntryR\x03env\x12'\n" +
-	"\x0fcrypto_provider\x18\x04 \x01(\tR\x0ecryptoProvider\x1a6\n" +
-	"\bEnvEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"+\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\n" +
+	"repositoryR\asecrets\"\x8c\x01\n" +
+	"\x0eRepositoryInfo\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\abackend\x18\x02 \x01(\tR\abackend\x12#\n" +
+	"\rrepository_id\x18\x03 \x01(\tR\frepositoryId\x12'\n" +
+	"\x0fcrypto_provider\x18\x04 \x01(\tR\x0ecryptoProvider\"+\n" +
 	"\n" +
 	"CancelStep\x12\x1d\n" +
 	"\n" +
@@ -2088,7 +2115,7 @@ func file_sard_agent_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_sard_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_sard_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
+var file_sard_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_sard_agent_v1_agent_proto_goTypes = []any{
 	(StepPhase)(0),                   // 0: sard.agent.v1.StepPhase
 	(LogLevel)(0),                    // 1: sard.agent.v1.LogLevel
@@ -2115,58 +2142,54 @@ var file_sard_agent_v1_agent_proto_goTypes = []any{
 	(*RunOutput)(nil),                // 22: sard.agent.v1.RunOutput
 	(*ConnectResponse)(nil),          // 23: sard.agent.v1.ConnectResponse
 	(*RunStep)(nil),                  // 24: sard.agent.v1.RunStep
-	(*Repository)(nil),               // 25: sard.agent.v1.Repository
+	(*RepositoryInfo)(nil),           // 25: sard.agent.v1.RepositoryInfo
 	(*CancelStep)(nil),               // 26: sard.agent.v1.CancelStep
-	nil,                              // 27: sard.agent.v1.RunStep.SecretsEntry
-	nil,                              // 28: sard.agent.v1.RunStep.TagsEntry
-	nil,                              // 29: sard.agent.v1.Repository.EnvEntry
-	(*durationpb.Duration)(nil),      // 30: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),    // 31: google.protobuf.Timestamp
+	nil,                              // 27: sard.agent.v1.RunStep.TagsEntry
+	(*durationpb.Duration)(nil),      // 28: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),    // 29: google.protobuf.Timestamp
 }
 var file_sard_agent_v1_agent_proto_depIdxs = []int32{
 	7,  // 0: sard.agent.v1.RegisterRequest.plugins:type_name -> sard.agent.v1.Plugin
-	3,  // 1: sard.agent.v1.Plugin.actions:type_name -> sard.agent.v1.Action
-	30, // 2: sard.agent.v1.RegisterResponse.heartbeat_interval:type_name -> google.protobuf.Duration
-	13, // 3: sard.agent.v1.ConnectRequest.heartbeat:type_name -> sard.agent.v1.Heartbeat
-	17, // 4: sard.agent.v1.ConnectRequest.step_result:type_name -> sard.agent.v1.StepResult
-	12, // 5: sard.agent.v1.ConnectRequest.hello:type_name -> sard.agent.v1.Hello
-	14, // 6: sard.agent.v1.ConnectRequest.step_progress:type_name -> sard.agent.v1.StepProgress
-	15, // 7: sard.agent.v1.ConnectRequest.log_chunk:type_name -> sard.agent.v1.LogChunk
-	31, // 8: sard.agent.v1.Heartbeat.sent_at:type_name -> google.protobuf.Timestamp
-	0,  // 9: sard.agent.v1.StepProgress.phase:type_name -> sard.agent.v1.StepPhase
-	31, // 10: sard.agent.v1.StepProgress.sent_at:type_name -> google.protobuf.Timestamp
-	16, // 11: sard.agent.v1.LogChunk.lines:type_name -> sard.agent.v1.LogLine
-	31, // 12: sard.agent.v1.LogLine.time:type_name -> google.protobuf.Timestamp
-	1,  // 13: sard.agent.v1.LogLine.level:type_name -> sard.agent.v1.LogLevel
-	2,  // 14: sard.agent.v1.StepResult.status:type_name -> sard.agent.v1.StepStatus
-	31, // 15: sard.agent.v1.StepResult.started_at:type_name -> google.protobuf.Timestamp
-	31, // 16: sard.agent.v1.StepResult.finished_at:type_name -> google.protobuf.Timestamp
-	18, // 17: sard.agent.v1.StepResult.backup:type_name -> sard.agent.v1.BackupOutput
-	19, // 18: sard.agent.v1.StepResult.restore:type_name -> sard.agent.v1.RestoreOutput
-	20, // 19: sard.agent.v1.StepResult.verify:type_name -> sard.agent.v1.VerifyOutput
-	22, // 20: sard.agent.v1.StepResult.run:type_name -> sard.agent.v1.RunOutput
-	21, // 21: sard.agent.v1.VerifyOutput.checks:type_name -> sard.agent.v1.CheckResult
-	24, // 22: sard.agent.v1.ConnectResponse.run_step:type_name -> sard.agent.v1.RunStep
-	26, // 23: sard.agent.v1.ConnectResponse.cancel_step:type_name -> sard.agent.v1.CancelStep
-	3,  // 24: sard.agent.v1.RunStep.action:type_name -> sard.agent.v1.Action
-	25, // 25: sard.agent.v1.RunStep.repository:type_name -> sard.agent.v1.Repository
-	27, // 26: sard.agent.v1.RunStep.secrets:type_name -> sard.agent.v1.RunStep.SecretsEntry
-	30, // 27: sard.agent.v1.RunStep.timeout:type_name -> google.protobuf.Duration
-	28, // 28: sard.agent.v1.RunStep.tags:type_name -> sard.agent.v1.RunStep.TagsEntry
-	29, // 29: sard.agent.v1.Repository.env:type_name -> sard.agent.v1.Repository.EnvEntry
-	4,  // 30: sard.agent.v1.EnrollmentService.Enroll:input_type -> sard.agent.v1.EnrollRequest
-	6,  // 31: sard.agent.v1.AgentService.Register:input_type -> sard.agent.v1.RegisterRequest
-	11, // 32: sard.agent.v1.AgentService.Connect:input_type -> sard.agent.v1.ConnectRequest
-	9,  // 33: sard.agent.v1.AgentService.RenewCertificate:input_type -> sard.agent.v1.RenewCertificateRequest
-	5,  // 34: sard.agent.v1.EnrollmentService.Enroll:output_type -> sard.agent.v1.EnrollResponse
-	8,  // 35: sard.agent.v1.AgentService.Register:output_type -> sard.agent.v1.RegisterResponse
-	23, // 36: sard.agent.v1.AgentService.Connect:output_type -> sard.agent.v1.ConnectResponse
-	10, // 37: sard.agent.v1.AgentService.RenewCertificate:output_type -> sard.agent.v1.RenewCertificateResponse
-	34, // [34:38] is the sub-list for method output_type
-	30, // [30:34] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	25, // 1: sard.agent.v1.RegisterRequest.repositories:type_name -> sard.agent.v1.RepositoryInfo
+	3,  // 2: sard.agent.v1.Plugin.actions:type_name -> sard.agent.v1.Action
+	28, // 3: sard.agent.v1.RegisterResponse.heartbeat_interval:type_name -> google.protobuf.Duration
+	13, // 4: sard.agent.v1.ConnectRequest.heartbeat:type_name -> sard.agent.v1.Heartbeat
+	17, // 5: sard.agent.v1.ConnectRequest.step_result:type_name -> sard.agent.v1.StepResult
+	12, // 6: sard.agent.v1.ConnectRequest.hello:type_name -> sard.agent.v1.Hello
+	14, // 7: sard.agent.v1.ConnectRequest.step_progress:type_name -> sard.agent.v1.StepProgress
+	15, // 8: sard.agent.v1.ConnectRequest.log_chunk:type_name -> sard.agent.v1.LogChunk
+	29, // 9: sard.agent.v1.Heartbeat.sent_at:type_name -> google.protobuf.Timestamp
+	0,  // 10: sard.agent.v1.StepProgress.phase:type_name -> sard.agent.v1.StepPhase
+	29, // 11: sard.agent.v1.StepProgress.sent_at:type_name -> google.protobuf.Timestamp
+	16, // 12: sard.agent.v1.LogChunk.lines:type_name -> sard.agent.v1.LogLine
+	29, // 13: sard.agent.v1.LogLine.time:type_name -> google.protobuf.Timestamp
+	1,  // 14: sard.agent.v1.LogLine.level:type_name -> sard.agent.v1.LogLevel
+	2,  // 15: sard.agent.v1.StepResult.status:type_name -> sard.agent.v1.StepStatus
+	29, // 16: sard.agent.v1.StepResult.started_at:type_name -> google.protobuf.Timestamp
+	29, // 17: sard.agent.v1.StepResult.finished_at:type_name -> google.protobuf.Timestamp
+	18, // 18: sard.agent.v1.StepResult.backup:type_name -> sard.agent.v1.BackupOutput
+	19, // 19: sard.agent.v1.StepResult.restore:type_name -> sard.agent.v1.RestoreOutput
+	20, // 20: sard.agent.v1.StepResult.verify:type_name -> sard.agent.v1.VerifyOutput
+	22, // 21: sard.agent.v1.StepResult.run:type_name -> sard.agent.v1.RunOutput
+	21, // 22: sard.agent.v1.VerifyOutput.checks:type_name -> sard.agent.v1.CheckResult
+	24, // 23: sard.agent.v1.ConnectResponse.run_step:type_name -> sard.agent.v1.RunStep
+	26, // 24: sard.agent.v1.ConnectResponse.cancel_step:type_name -> sard.agent.v1.CancelStep
+	3,  // 25: sard.agent.v1.RunStep.action:type_name -> sard.agent.v1.Action
+	28, // 26: sard.agent.v1.RunStep.timeout:type_name -> google.protobuf.Duration
+	27, // 27: sard.agent.v1.RunStep.tags:type_name -> sard.agent.v1.RunStep.TagsEntry
+	4,  // 28: sard.agent.v1.EnrollmentService.Enroll:input_type -> sard.agent.v1.EnrollRequest
+	6,  // 29: sard.agent.v1.AgentService.Register:input_type -> sard.agent.v1.RegisterRequest
+	11, // 30: sard.agent.v1.AgentService.Connect:input_type -> sard.agent.v1.ConnectRequest
+	9,  // 31: sard.agent.v1.AgentService.RenewCertificate:input_type -> sard.agent.v1.RenewCertificateRequest
+	5,  // 32: sard.agent.v1.EnrollmentService.Enroll:output_type -> sard.agent.v1.EnrollResponse
+	8,  // 33: sard.agent.v1.AgentService.Register:output_type -> sard.agent.v1.RegisterResponse
+	23, // 34: sard.agent.v1.AgentService.Connect:output_type -> sard.agent.v1.ConnectResponse
+	10, // 35: sard.agent.v1.AgentService.RenewCertificate:output_type -> sard.agent.v1.RenewCertificateResponse
+	32, // [32:36] is the sub-list for method output_type
+	28, // [28:32] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_sard_agent_v1_agent_proto_init() }
@@ -2197,7 +2220,7 @@ func file_sard_agent_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sard_agent_v1_agent_proto_rawDesc), len(file_sard_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   26,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

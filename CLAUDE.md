@@ -34,7 +34,11 @@ deploy/ examples/ docs/ test/e2e/
 4. **The license boundary is a code boundary.** `proto/` and
    `agent/plugins/sdk` are Apache-2.0 so third-party plugins avoid AGPL
    obligations. Nothing Apache-2.0 imports AGPL code.
-5. **Seams are interfaces from day one:** `crypto.Provider` (key handover
+5. **The server is a control plane, not a key holder** (ADR 0008).
+   Repositories, secrets and scripts are defined on the agent host and
+   referenced by name only; keys, credentials and script paths never
+   cross the wire. The product must detect a key held by a single host.
+6. **Seams are interfaces from day one:** `crypto.Provider` (key handover
    to restic) and `sdk.Plugin` (prepare → dump → stream → verify). The
    rest of the agent depends on the interfaces only.
 

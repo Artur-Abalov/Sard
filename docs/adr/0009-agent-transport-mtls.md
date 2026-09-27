@@ -12,7 +12,8 @@
 - `EnrollmentService.Enroll` — только серверный TLS: одноразовый токен + CSR (DER) → `agent_id`, цепочка сертификата, CA bundle. Токен определяет тенанта, агент его не выбирает; приватный ключ не покидает хост.
 - `AgentService` — только mTLS: `Register` (добавлены `protocol_version`, `os`, `arch`, версия и действия плагинов), `Connect`, `RenewCertificate`.
 - Сервер определяет агента и тенанта по клиентскому сертификату, а не по полям сообщений (`Heartbeat.agent_id` убран, номер зарезервирован).
-- Поток: первое сообщение агента — `Hello` со списком выполняющихся команд (примирение после переподключения); вверх — `Heartbeat`, `StepProgress` (фазы prepare → dump → upload/restore → verify), `LogChunk`, `StepResult` с типизированным результатом (`BackupOutput`, `RestoreOutput`, `VerifyOutput` — доказательство «последнего проверенного восстановления», `RunOutput`); вниз — `RunStep` (действие, репозиторий, секреты, снапшот, таймаут, теги) и `CancelStep`. Команды идемпотентны по `command_id`.
+- Поток: первое сообщение агента — `Hello` со списком выполняющихся команд (примирение после переподключения); вверх — `Heartbeat`, `StepProgress` (фазы prepare → dump → upload/restore → verify), `LogChunk`, `StepResult` с типизированным результатом (`BackupOutput`, `RestoreOutput`, `VerifyOutput` — доказательство «последнего проверенного восстановления», `RunOutput`); вниз — `RunStep` (действие, имя репозитория, снапшот, таймаут, теги) и `CancelStep`. Команды идемпотентны по `command_id`.
+- Репозитории, секреты и скрипты передаются только по имени (`RunStep.repository_name`, ссылки в `config_json`, имена скриптов); значения остаются на хосте — ADR 0008.
 - В каркасе все RPC обоих сервисов отвечают `UNIMPLEMENTED` (сервер) / `ErrNotImplemented` (клиент агента); это проверяется тестами.
 
 ## План mTLS (не в каркасе)

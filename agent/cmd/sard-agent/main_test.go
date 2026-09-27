@@ -90,7 +90,9 @@ func TestConfigErrorsExitWithOne(t *testing.T) {
 // With a valid config the agent announces the server and stops at the
 // transport stub, which is not implemented yet.
 func TestValidConfigReachesTheTransportStub(t *testing.T) {
-	code, out, errOut := runAgent("--config", writeConfig(t, "server:\n  address: sard.example.com:9090\n"))
+	cfg := "server:\n  address: sard.example.com:9090\n" +
+		"repositories:\n  - {name: main, url: /srv/restic, password_file: /etc/sard/main.pass}\n"
+	code, out, errOut := runAgent("--config", writeConfig(t, cfg))
 	if code != 1 || out != "sard-agent dev: connecting to sard.example.com:9090\n" || errOut != "sard-agent: register: not implemented\n" {
 		t.Fatalf("code = %d, out = %q, stderr = %q", code, out, errOut)
 	}
