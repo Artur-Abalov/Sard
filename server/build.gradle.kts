@@ -50,6 +50,7 @@ dependencies {
     implementation("io.grpc:grpc-protobuf")
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.bouncycastle:bcpkix-jdk18on:1.86")
+    implementation("com.google.api.grpc:proto-google-common-protos:2.64.1")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-api:3.1.1")
     implementation("tools.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")

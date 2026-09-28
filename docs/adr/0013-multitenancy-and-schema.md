@@ -47,9 +47,11 @@ class HibernateTenantBridge(private val resolver: TenantResolver) : CurrentTenan
 - `system { session -> }` — сессия с зарезервированным `SYSTEM_TENANT_ID` (нулевой UUID; в `tenants` его нет, резолвер его не возвращает). `HibernateTenantBridge.isRoot` истинно только для него, поэтому фильтр снят только в этой сессии. Транзакция `READ ONLY` на уровне PostgreSQL: системная сессия не пишет ничего.
 - Вызовы `system` перечислены здесь; новый вызов — правка этого списка на ревью:
   1. `EnrollmentTokens.ownerOf(hash)` — токен по хэшу до того, как известен тенант.
+  2. `AgentCertificateStandings.of(serial)` — сертификат агента и отзыв его агента по serial при каждом вызове gRPC (S3, ADR 0009); только чтение, возвращает тенанта, агента, `not_after` и отметки отзыва.
 
-  Список проверяет `ArchitectureTest` (S2b) с точностью до файла: вызов `sessions.system` вне `EnrollmentTokens.kt` роняет сборку; второй вызов внутри этого файла ловит ревью.
+  Список проверяет `ArchitectureTest` (S2b) с точностью до файла: вызов `sessions.system` вне `EnrollmentTokens.kt` и `AgentCertificateStandings.kt` роняет сборку; лишний вызов внутри этих файлов ловит ревью.
 - Операции администратора над токенами (`EnrollmentTokens.create`, `list`, `get`, `revoke`, S2b) идут через `inTenant` с тенантом, который вызывающий получил от `TenantResolver`. Будущий REST-слой (D2 → W1b) никогда не берёт тенант из параметра пути.
+- Тенант gRPC-вызова агента (S3) — из его сертификата: перехватчик кладёт `AgentPrincipal` в gRPC `Context`, обработчики `AgentService` ходят в базу через `agents/AgentSessions.inTenant { }` = `TenantSessions.inTenant(principal.tenantId)`. `Context` доходит до обработчика-корутины и всех диспетчеров, на которые он переключается (grpc-kotlin кладёт `GrpcContextElement` в контекст обработчика), в том числе до сообщений стрима, пришедших после открытия, — проверено `AgentAuthIntegrationTest`. Вне аутентифицированного вызова `AgentSessions` бросает исключение. Spring Data-репозитории в обработчиках агента не используются: они идут через резолвер, а не через принципал.
 - Глобальный переключатель фильтра не вводится: всё остальное по-прежнему идёт через резолвер.
 
 ### Правила схемы (для всех таблиц)
@@ -77,7 +79,8 @@ tenants                       глобальная
   id PK, name UNIQUE, created_at
 
 agents                        тенант · реализовано: id, tenant_id, hostname, agent_version, registered_at, last_seen_at
-  + (этап «регистрация») os, arch, protocol_version, revoked_at, deleted_at,
+  + revoked_at (S3: отзыв агента целиком, проверяет перехватчик)
+  + (этап «регистрация») os, arch, protocol_version, deleted_at,
     secret_names TEXT[], script_names TEXT[]          -- снимок из Register, только имена
 
 agent_certificates            тенант · реализовано (S2a) — во время RenewCertificate действуют два сертификата
@@ -187,7 +190,7 @@ Enterprise-модуль хранит свои таблицы в собствен
 - **`DEFAULT` на `agents.tenant_id` в базе.** Ядро молча писало бы в тенант по умолчанию даже из enterprise-сборки с ошибкой в резолвере. Значение по умолчанию используется только для заполнения существующих строк в V2 и сразу снимается.
 
 ## Отложено
-- **Контекст тенанта вне HTTP-запроса.** Поиск токена до тенанта решён (S2a, «Явный тенант и системный доступ»). Остаются скан планировщика по всем тенантам (кандидат — второй вызов `TenantSessions.system`) и тенант gRPC-потока агента — из его сертификата (URI SAN `sard://tenants/<tenant>/agents/<agent>`, ADR 0014), а не из запроса к базе (S3).
+- **Контекст тенанта вне HTTP-запроса.** Поиск токена до тенанта решён (S2a, «Явный тенант и системный доступ»). Тенант gRPC-вызова агента решён в S3 («Явный тенант и системный доступ»): из сертификата, подтверждённого записью `agent_certificates`. Остаётся скан планировщика по всем тенантам (кандидат — ещё один вызов `TenantSessions.system`).
 - **Пользователи и роли.** В ядре — вместе с аутентификацией; вероятная форма — глобальная `users` и `memberships (tenant_id, user_id, role)`: оператор MSP видит нескольких тенантов.
 - **Каналы уведомлений** (токены Telegram, SMTP) — где хранить учётные данные сервера, решим на этапе уведомлений в духе ADR 0008.
 - **`BackupOutput.repository_id`.** `snapshots.repository_id NOT NULL`, а `BackupOutput` в контракте его не несёт; копировать из `agent_repositories`, где id может быть пустым, — значит терять снимки репозиториев с неизвестным id. Нужное аддитивное поле в proto — на этапе «первый бэкап».

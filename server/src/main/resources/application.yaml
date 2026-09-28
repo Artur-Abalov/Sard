@@ -27,6 +27,9 @@ spring:
         bundle: sard-grpc
         client-auth: optional
         secure: true
+      # Reflection would list every service to a caller without a certificate.
+      reflection:
+        enabled: false
 server:
   port: ${SARD_HTTP_PORT:8080}
 sard:

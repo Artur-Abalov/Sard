@@ -44,11 +44,33 @@ interface CertificateAuthority {
     ): IssuedCertificate
 }
 
+private const val SAN_URI = 6
+private const val UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+private val AGENT_URI = Regex("sard://tenants/($UUID_PATTERN)/agents/($UUID_PATTERN)")
+
 /** Who a certificate is issued to; both ids end up in its URI SAN. */
 data class AgentIdentity(
     val tenantId: UUID,
     val agentId: UUID,
-)
+) {
+    /** The URI SAN of this identity (ADR 0014). */
+    fun uri(): String = "sard://tenants/$tenantId/agents/$agentId"
+
+    companion object {
+        /** The identity [uri] names, or null unless it is exactly an agent URI. */
+        fun parse(uri: String): AgentIdentity? =
+            AGENT_URI.matchEntire(uri)?.destructured?.let { (tenant, agent) ->
+                AgentIdentity(UUID.fromString(tenant), UUID.fromString(agent))
+            }
+
+        /** The identity in [certificate]'s URI SAN, or null when it carries no agent URI. */
+        fun of(certificate: X509Certificate): AgentIdentity? =
+            certificate.subjectAlternativeNames
+                .orEmpty()
+                .filter { it[0] == SAN_URI }
+                .firstNotNullOfOrNull { parse(it[1] as String) }
+    }
+}
 
 /** An agent certificate: the chain up to (not including) the root, plus what S2 records. */
 data class IssuedCertificate(

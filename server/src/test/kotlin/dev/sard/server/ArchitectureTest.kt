@@ -27,7 +27,8 @@ private fun withoutComments(text: String): String = text.replace(BLOCK_COMMENT, 
  *     boundary or the `agents/` package that adapts domain errors to it — those four packages
  *     stay usable without a gRPC server, wire format or the agents' translation layer.
  *  b) `TenantSessions.system` (the one call that bypasses the tenant filter) is used only where
- *     ADR 0013 lists it: `EnrollmentTokens.ownerOf`, looking a token up before its tenant is known.
+ *     ADR 0013 lists it: `EnrollmentTokens.ownerOf` (a token before its tenant is known) and
+ *     `AgentCertificateStandings.of` (a certificate by serial during each agent call, S3).
  */
 class ArchitectureTest {
     private val mainRoot: File
@@ -59,9 +60,10 @@ class ArchitectureTest {
     }
 
     @Test
-    fun `sessions system is called only in enrollment EnrollmentTokens (ADR 0013)`() {
-        val allowed = File(mainRoot, "enrollment/EnrollmentTokens.kt")
+    fun `sessions system is called only by the callers ADR 0013 lists`() {
+        val allowed =
+            listOf("agents/AgentCertificateStandings.kt", "enrollment/EnrollmentTokens.kt").map { File(mainRoot, it) }
         val callers = ktFiles(mainRoot).filter { SESSIONS_SYSTEM_CALL.containsMatchIn(it.readText()) }
-        assertEquals(listOf(allowed), callers, "sessions.system callers must match ADR 0013's list exactly")
+        assertEquals(allowed.toSet(), callers.toSet(), "sessions.system callers must match ADR 0013's list exactly")
     }
 }

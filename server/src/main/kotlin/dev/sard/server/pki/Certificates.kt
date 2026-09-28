@@ -62,8 +62,7 @@ internal object Certificates {
         now: Instant,
         random: SecureRandom,
     ): X509Certificate {
-        val uri = "sard://tenants/${agent.tenantId}/agents/${agent.agentId}"
-        val san = GeneralNames(GeneralName(GeneralName.uniformResourceIdentifier, uri))
+        val san = GeneralNames(GeneralName(GeneralName.uniformResourceIdentifier, agent.uri()))
         val profile = Leaf("CN=${agent.agentId}", KeyPurposeId.id_kp_clientAuth, san, now, now + AGENT_VALIDITY)
         return leaf(key, profile, ca, random)
     }
