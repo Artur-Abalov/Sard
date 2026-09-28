@@ -192,13 +192,18 @@ class SessionController(
         httpResponse.status = HttpStatus.NO_CONTENT.value()
     }
 
-    /** Р12: an unauthenticated GET/DELETE also clears the cookie, since it may be a stale one. */
+    /**
+     * Р12: DELETE with a missing or invalid session also clears the cookie, since it may be
+     * a stale one; GET leaves it.
+     */
     @ExceptionHandler(NoSuchSessionException::class)
     fun onNoSuchSession(
         httpRequest: HttpServletRequest,
         httpResponse: HttpServletResponse,
     ) {
-        httpResponse.addHeader(HttpHeaders.SET_COOKIE, clearedSessionCookie(httpRequest.isSecure).toString())
+        if (httpRequest.method == "DELETE") {
+            httpResponse.addHeader(HttpHeaders.SET_COOKIE, clearedSessionCookie(httpRequest.isSecure).toString())
+        }
         val status = HttpStatus.UNAUTHORIZED.value()
         writeProblem(httpResponse, objectMapper, status, "Unauthorized", ErrorCode.UNAUTHENTICATED)
     }

@@ -346,6 +346,21 @@ class AdminLoginIntegrationTest(
     }
 
     @Test
+    fun `signing out with an invalid session still clears the cookie (Р12)`() {
+        val response = send("DELETE", "/api/v1/session", cookie = "forged-session-id")
+        assertEquals(401, response.statusCode())
+        val setCookie = response.headers().firstValue("Set-Cookie").orElseThrow()
+        assertTrue(setCookie.contains("Max-Age=0"), setCookie)
+    }
+
+    @Test
+    fun `an unauthenticated GET does not clear the cookie (only DELETE does, Р12)`() {
+        val response = send("GET", "/api/v1/session", cookie = "forged-session-id")
+        assertEquals(401, response.statusCode())
+        assertTrue(response.headers().firstValue("Set-Cookie").isEmpty)
+    }
+
+    @Test
     fun `signing out ends only its own session`() {
         val s1 = signIn()
         val s2 = signIn()
