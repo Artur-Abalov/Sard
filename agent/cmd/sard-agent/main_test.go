@@ -187,6 +187,22 @@ func TestMainProcess(t *testing.T) {
 	}
 }
 
+// A1: a secret file open to the group or others stops the agent before it
+// tries to connect to anything.
+func TestASecretFileOpenBeyondItsOwnerRefusesStart(t *testing.T) {
+	dir := t.TempDir()
+	keyFile := filepath.Join(dir, "agent.key")
+	if err := os.WriteFile(keyFile, nil, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	cfg := "server:\n  address: sard.example.com:9090\n" +
+		"tls: {ca_file: " + dir + "/ca.pem, cert_file: " + dir + "/agent.pem, key_file: " + keyFile + "}\n"
+	code, _, errOut := runAgent("--config", writeConfig(t, cfg))
+	if code != 1 || !strings.Contains(errOut, "tls.key_file") || !strings.Contains(errOut, keyFile) {
+		t.Fatalf("code = %d, stderr = %q", code, errOut)
+	}
+}
+
 // Without restic.path the agent runs the restic shipped next to it.
 func TestResticPath(t *testing.T) {
 	exe := func() (string, error) { return "/opt/sard/bin/sard-agent", nil }
