@@ -21,3 +21,4 @@
 | [0017](0017-restic-shipped-with-agent.md) | restic поставляется вместе с агентом |
 | [0018](0018-agent-packaging.md) | Упаковка агента: tar.gz, deb, rpm с restic и лицензиями |
 | [0019](0019-rest-contract-stage1.md) | Контракт REST API этапа 1: заглушки на сервере и общие соглашения |
+| [0020](0020-e2e-harness.md) | Сквозные тесты: Testcontainers для JVM, образы из текущего кода |

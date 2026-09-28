@@ -58,6 +58,21 @@
 | kotlin-test-junit5 | 2.4.20 | Apache-2.0 | только тесты | assert-функции |
 | mutflow (плагин, core, runtime, junit6) | 1.5.0 | Apache-2.0 | тесты; `mutflow-core` (аннотации) в runtime-classpath, мутированный код в jar не попадает | мутационное тестирование (ADR 0006) |
 
+## Сквозные тесты (`test/e2e`, Gradle-модуль `:e2e`, только тесты)
+
+Новых библиотек нет — те же версии, что у сервера, через BOM Spring Boot 4.1.1.
+
+| Зависимость | Версия | Лицензия | Зачем |
+|---|---|---|---|
+| proto-jvm (см. выше) | — | Apache-2.0 | клиент `EnrollmentService` и `AgentService` |
+| io.grpc:grpc-netty | 1.83.1 | Apache-2.0 | транспорт gRPC-клиента (у сервера — тот же артефакт в runtime) |
+| org.bouncycastle:bcpkix-jdk18on | 1.86 | Bouncy Castle Licence (MIT) | CSR агента в клиенте Enroll — до `sard-agent enroll` (A2) |
+| org.postgresql:postgresql | 42.7.13 | BSD-2-Clause | запись токена регистрации — до REST (S8b); проверка `agents` после Register/Connect |
+| testcontainers-junit-jupiter, testcontainers-postgresql | 2.0.5 | MIT | контейнеры PostgreSQL, sard-server, sard-agent |
+| kotlin-test-junit5 | 2.4.20 | Apache-2.0 | assert-функции |
+
+Образы: `postgres:18-alpine` (как в `deploy/`), `gcr.io/distroless/static-debian12:nonroot` (Apache-2.0) — база образа агента.
+
 ## Инструменты сборки сервера (в поставку не входят)
 
 | Инструмент | Версия | Лицензия | Зачем |
