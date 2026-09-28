@@ -8,7 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-private val ISOLATED_PACKAGES = listOf("enrollment", "persistence", "pki", "extension")
+private val ISOLATED_PACKAGES = listOf("enrollment", "persistence", "pki", "extension", "registration")
 private val FORBIDDEN_FQN_REFERENCE =
     Regex("""\b(io\.grpc|dev\.sard\.proto|com\.google\.rpc|com\.google\.protobuf|dev\.sard\.server\.agents)\.""")
 private val SESSIONS_SYSTEM_CALL = Regex("""\bsessions\.system\s*[({]""")
@@ -23,8 +23,8 @@ private fun withoutComments(text: String): String = text.replace(BLOCK_COMMENT, 
 /**
  * A dependency-free source scan, not a JVM classpath/reflection check: greps the .kt sources
  * under `src/main/kotlin`. Keeps two boundaries from ADR 0013 and the S2b review honest:
- *  a) `enrollment/`, `persistence/`, `pki/` and `extension/` never import the gRPC/protobuf
- *     boundary or the `agents/` package that adapts domain errors to it — those four packages
+ *  a) `enrollment/`, `persistence/`, `pki/`, `extension/` and `registration/` never import the
+ *     gRPC/protobuf boundary or the `agents/` package that adapts domain errors to it — those packages
  *     stay usable without a gRPC server, wire format or the agents' translation layer.
  *  b) `TenantSessions.system` (the one call that bypasses the tenant filter) is used only where
  *     ADR 0013 lists it: `EnrollmentTokens.ownerOf` (a token before its tenant is known) and
@@ -45,7 +45,7 @@ class ArchitectureTest {
             .toList()
 
     @Test
-    fun `enrollment, persistence, pki and extension reference nothing from the gRPC or agents boundary`() {
+    fun `the domain packages reference nothing from the gRPC or agents boundary`() {
         val offenders = mutableListOf<String>()
         for (pkg in ISOLATED_PACKAGES) {
             for (file in ktFiles(File(mainRoot, pkg))) {

@@ -40,6 +40,8 @@ sard:
   agent:
     # Address agents dial (decision 5, S2b); empty means: first of sard.pki.server-names and the gRPC port.
     endpoint: ${SARD_AGENT_ENDPOINT:}
+    # How often agents send Heartbeat (Register hands it out); also decides when an agent is offline.
+    heartbeat-interval: ${SARD_AGENT_HEARTBEAT_INTERVAL:30s}
 management:
   endpoints:
     web:
