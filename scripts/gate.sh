@@ -9,7 +9,7 @@
 # Modules: proto gen sdk agent cli tools server web.
 # "fast" skips mutation testing. Exit code is non-zero on the first failure.
 set -euo pipefail
-
+export LC_ALL=C.UTF-8
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="$ROOT/.bin"
 

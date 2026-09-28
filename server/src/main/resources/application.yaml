@@ -30,6 +30,15 @@ spring:
       # Reflection would list every service to a caller without a certificate.
       reflection:
         enabled: false
+      # Agents ping every 30 s on their Connect stream (A3); the grpc-java default permits one
+      # ping per 5 min and closes the connection with too_many_pings. The server pings too, so
+      # a half-dead connection is closed within time + timeout (S5a, ADR 00XX-draft stream manager).
+      keepalive:
+        time: 30s
+        timeout: 10s
+        permit:
+          time: 20s
+          without-calls: true
 server:
   port: ${SARD_HTTP_PORT:8080}
 sard:
@@ -40,6 +49,17 @@ sard:
   agent:
     # Address agents dial (decision 5, S2b); empty means: first of sard.pki.server-names and the gRPC port.
     endpoint: ${SARD_AGENT_ENDPOINT:}
+    # How often agents send Heartbeat (Register hands it out, S4a); the stream manager counts in it (S5a).
+    heartbeat-interval: ${SARD_AGENT_HEARTBEAT_INTERVAL:30s}
+    stream:
+      # A session that got a message within this many intervals is alive: a second stream is a duplicate.
+      duplicate-window-heartbeats: 2
+      # A session silent this many intervals is closed; its agent is offline.
+      offline-after-heartbeats: 3
+      hello-timeout: 30s
+      send-queue: 64
+      check-interval: 30s
+      clock-skew-threshold: 30s
 management:
   endpoints:
     web:

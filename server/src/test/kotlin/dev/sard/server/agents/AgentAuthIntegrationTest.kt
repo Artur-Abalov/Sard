@@ -236,11 +236,26 @@ class AgentAuthIntegrationTest(
 
     // --- 4: a live agent passes
 
+    /**
+     * What each method answers an empty message once the interceptor let it through: its handler's
+     * own answer, never an auth refusal. Grows as methods are implemented; the rest are UNIMPLEMENTED.
+     */
+    private val handlerAnswersToEmpty =
+        mapOf(
+            // protocol_version 0 is outside the supported range (S4a).
+            AgentServiceGrpc.getRegisterMethod().fullMethodName to
+                Outcome(Status.Code.FAILED_PRECONDITION, "PROTOCOL_UNSUPPORTED"),
+            // The one empty message is not a Hello (S5a).
+            AgentServiceGrpc.getConnectMethod().fullMethodName to
+                Outcome(Status.Code.FAILED_PRECONDITION, "HELLO_REQUIRED"),
+        )
+
     @Test
     fun `a live agent's certificate passes the interceptor on every AgentService method`() {
         val agent = enrolled(acme)
         for (method in agentMethods()) {
-            assertEquals(Outcome(Status.Code.UNIMPLEMENTED), call(presenting(agent), method), method)
+            val expected = handlerAnswersToEmpty[method] ?: Outcome(Status.Code.UNIMPLEMENTED)
+            assertEquals(expected, call(presenting(agent), method), method)
         }
     }
 

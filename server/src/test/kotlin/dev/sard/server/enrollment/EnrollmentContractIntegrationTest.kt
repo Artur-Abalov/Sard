@@ -160,6 +160,16 @@ class EnrollmentContractIntegrationTest(
     }
 
     @Test
+    fun `Hostname с управляющим символом отклоняется и не расходует токен`() {
+        for (hostname in listOf("db1\u0000", "db\n1", "db1\u007f")) {
+            val issued = newToken()
+            val reason = rejectionReason { enrollment.enroll(issued.reveal(), csr, hostname) }
+            assertEquals(Reason.HOSTNAME_INVALID, reason, hostname)
+        }
+        assertEquals(0, countAgents())
+    }
+
+    @Test
     fun `Отказ по токену важнее невалидного hostname`() {
         val issued = newToken()
         enrollment.enroll(issued.reveal(), csr, "db1")

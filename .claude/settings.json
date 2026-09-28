@@ -68,7 +68,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" && ./scripts/gate.sh all fast 2>&1 | tail -30",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && make gate-fast 2>&1 | tail -30",
             "timeout": 1200
           }
         ]

@@ -22,9 +22,24 @@ S2a отдавал на `Enroll` временные коды: все отказ�
   | `CSR_INVALID` | `INVALID_ARGUMENT` |
   | `INTERNAL_RETRYABLE` | `UNAVAILABLE` |
 
-  Любое непредвиденное исключение становится `INTERNAL_RETRYABLE`; `InvalidCsrException` — `CSR_INVALID`.
-- **Повтор.** `UNAVAILABLE` — единственный код, который стоит повторять; остальные окончательны для данного запроса. Это не значит, что что-либо повторяет вызов автоматически: `sard-agent enroll` (A2b) не повторяет регистрацию сам ни при каком коде, включая `UNAVAILABLE`, — спецификация `docs/specs/agent/agent-enroll.feature` явно требует ровно одного вызова `Enroll` за команду (правило «Отказы сервера объясняются по причине, повторов нет»; проверено `TestTheCommandDoesNotRetryAfterATemporaryFailure`). «Стоит повторять» здесь — это то, что сообщение команды говорит оператору («временная проблема, токен цел, можно повторить»), а не поведение самой команды.
-- **Одна точка перевода** — `agents/EnrollmentStatus.kt`. Доменные пакеты (`enrollment`, `persistence`, `pki`, `extension`) не знают ни `io.grpc`, ни proto, ни `com.google.rpc`/`protobuf`, ни пакета `agents`; это проверяет `ArchitectureTest` сканированием исходников, включая полные имена без `import`. ArchUnit и Konsist не взяты — без новой зависимости.
+  Любое непредвиденное исключение становится `INTERNAL_RETRYABLE`; `InvalidCsrException` — `CSR_INVALID`. `HOSTNAME_INVALID` — hostname пуст, длиннее 253 символов или с управляющим символом (S4a: NUL раньше падал в базе как `INTERNAL_RETRYABLE`).
+- **Таблица `Register`** (S4a; порядок проверок — протокол, затем поля по порядку сообщения; первое нарушение отклоняет весь снимок, снимок в базе не меняется):
+
+  | `reason` | gRPC-код | `ErrorInfo.metadata` |
+  |---|---|---|
+  | `PROTOCOL_UNSUPPORTED` | `FAILED_PRECONDITION` | `min_supported`, `max_supported` |
+  | `HOSTNAME_INVALID` | `INVALID_ARGUMENT` | `field` |
+  | `FIELD_INVALID` | `INVALID_ARGUMENT` | `field` (например `plugins[0].actions`, `repositories[1].backend`) |
+  | `NAME_INVALID` | `INVALID_ARGUMENT` | `field` |
+  | `NAME_DUPLICATE` | `INVALID_ARGUMENT` | `field` |
+  | `SNAPSHOT_TOO_LARGE` | `INVALID_ARGUMENT` | `field`, `limit` |
+  | `CONFIG_SCHEMA_INVALID` | `INVALID_ARGUMENT` | `field` |
+  | `INTERNAL_RETRYABLE` | `UNAVAILABLE` | — |
+
+  Пределы — `registration/SnapshotRules`; поддерживаемые версии протокола — `registration/ProtocolVersions` (одно место). Одна точка перевода — `agents/RegistrationStatus.kt`, текст статуса «register rejected».
+- **Metadata.** `ErrorInfo.metadata` называет поле и предел, но никогда не значение из запроса: запрос пишет хост, который может быть скомпрометирован, а статус попадает в логи. Ключи — `lower_snake_case`; поле — путь в сообщении proto с индексами (`plugins[2].name`).
+- **Повтор.** `UNAVAILABLE` — единственный код, который стоит повторять; остальные коды окончательны для данного запроса. Транспорт агента (A3) повторяет его сам; `sard-agent enroll` (A2b) не повторяет регистрацию ни при каком коде, включая `UNAVAILABLE`, — спецификация `docs/specs/agent/agent-enroll.feature` требует ровно одного вызова `Enroll` за команду (правило «Отказы сервера объясняются по причине, повторов нет»; проверено `TestTheCommandDoesNotRetryAfterATemporaryFailure`): повторять или нет, решает оператор по сообщению команды. **Расхождение (S4a):** транспорт агента A3 на Register останавливается только на `FAILED_PRECONDITION`, `UNAUTHENTICATED` и `PERMISSION_DENIED`, а `INVALID_ARGUMENT` повторяет с задержкой до минуты (`agent/internal/transport/transport.go:273-284`). Невалидную конфигурацию повторять нельзя — исправляется в агенте; серверной защиты от частых повторов нет (решение владельца).
+- **Одна точка перевода** на RPC — `agents/EnrollmentStatus.kt` (Enroll), `agents/RegistrationStatus.kt` (Register). Доменные пакеты (`enrollment`, `persistence`, `pki`, `extension`) не знают ни `io.grpc`, ни proto, ни `com.google.rpc`/`protobuf`, ни пакета `agents`; это проверяет `ArchitectureTest` сканированием исходников, включая полные имена без `import`. ArchUnit и Konsist не взяты — без новой зависимости.
 - **Строка причины на проводе — `Reason.name`.** Переименование константы `EnrollmentRejectedException.Reason` — ломающее изменение контракта с агентом. Строки закреплены литералами в `EnrollmentStatusTest` (по одной на причину плюс замкнутое множество) и в интеграционных тестах контракта; переименование роняет их. Полноту gRPC-кода по причинам проверяет компилятор: исчерпывающий `when` без `else`.
 - **Отмена.** Отмену корутины переводит в `() -> Boolean` только `EnrollmentGrpcService`; `Enrollment` о корутинах не знает. Точка фиксации — проверка отмены после подписи CSR и до записи сертификата: отмена раньше неё откатывает регистрацию, токен остаётся активным. Отмена после неё регистрацию не отменяет — окно между последней проверкой и `COMMIT` закрыть нельзя; это принято решением 7 спецификации (обрыв после фиксации расходует токен, агент остаётся в списке).
 - **Зависимость.** `io.grpc:grpc-protobuf` (Apache-2.0) объявлена явно ради `StatusProto` и `ErrorInfo`; раньше приходила транзитивно через стартер. Запись — `docs/dependencies.md`.
