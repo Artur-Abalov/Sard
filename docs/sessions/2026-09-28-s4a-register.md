@@ -147,5 +147,12 @@
 
 ### Открытое
 - **Неопознанное падение одного теста**: в одном из прогонов шлюза (`329 tests completed, 1 failed`) — имя теста не сохранилось: отчёты перезаписал следующий запуск. Не воспроизвелось в 13 последующих прогонах (шлюз, 4 × полный `:server:test --rerun`, 8 × `RegisterIntegrationTest` + `AgentAuthIntegrationTest`). Прогон шёл сразу после mutflow-прогона одного класса. Полагаю, но не проверил: остаток состояния сборки. Не списываю на «флейк»; если повторится — сохранить `server/build/test-results` до следующего запуска.
-- hostname с NUL-символом проходит правило Enroll (1..253 символа) и уронит запись в PostgreSQL → `UNAVAILABLE` → бесконечный повтор. То же у Enroll сегодня. Правило не менял (решение 8: «как в Enroll»); предлагаю ужесточить общее правило отдельно.
+- ~~hostname с NUL-символом~~ — исправлено, см. «Hostname без управляющих символов».
 - `config_schema` хранится как jsonb: пробелы и порядок ключей не сохраняются, дубликаты ключей — последний. Для UI достаточно; тест сравнивает с `?::jsonb::text`.
+
+### Hostname без управляющих символов (решение владельца после фазы 2)
+- Проблема подтверждена тестом до исправления: hostname `"db1\u0000"` — Enroll отвечал `INTERNAL_RETRYABLE` (UNAVAILABLE), Register — `UNAVAILABLE`/`INTERNAL_RETRYABLE`: PostgreSQL не хранит NUL в TEXT, запись падала как внутренняя ошибка, которую агент повторяет.
+- Спецификация `docs/specs/server/agent-enrollment.feature`: решение 8 и таблица отказов — hostname без управляющих символов (U+0000–U+001F, U+007F–U+009F); новый сценарий. Изменение поведения Enroll: такие hostname теперь `INVALID_ARGUMENT`/`HOSTNAME_INVALID`, токен остаётся активным.
+- `Hostnames.isValid` — плюс `none(Char::isISOControl)`; одно правило для Enroll и Register.
+- Тесты: `enrollment/HostnamesTest` (4, `@MutFlowTest`; границы U+001F/U+0020, U+007E/U+007F, U+009F/U+00A0, кириллица допустима), сценарий в `EnrollmentContractIntegrationTest` (NUL, `\n`, DEL), NUL в `SnapshotRulesTest` и `RegisterIntegrationTest`.
+- `./scripts/gate.sh server fast` — PASSED, 334 теста, покрытие 94.6%. mutflow по `HostnamesTest` и `SnapshotRulesTest` — exit 0 (48 и 1160 запусков).

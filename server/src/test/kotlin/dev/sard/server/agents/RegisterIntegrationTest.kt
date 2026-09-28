@@ -327,6 +327,8 @@ class RegisterIntegrationTest(
                 snapshotB().addPlugins(plugin("unknown", actions = arrayOf(Action.ACTION_UNSPECIFIED))) to
                     ("FIELD_INVALID" to mapOf("field" to "plugins[2].actions")),
                 snapshotB().setHostname("") to ("HOSTNAME_INVALID" to mapOf("field" to "hostname")),
+                // PostgreSQL cannot store NUL: without the rule this was a database error, UNAVAILABLE.
+                snapshotB().setHostname("db1\u0000") to ("HOSTNAME_INVALID" to mapOf("field" to "hostname")),
             )
         for ((request, expected) in cases) {
             val (code, info) = refusal(agent, request)

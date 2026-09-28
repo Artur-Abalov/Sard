@@ -150,6 +150,7 @@ class SnapshotRulesTest {
         val expected = Refusal(Reason.HOSTNAME_INVALID, mapOf("field" to "hostname"))
         assertEquals(expected, refusalOf(snapshot(hostname = "")))
         assertEquals(expected, refusalOf(snapshot(hostname = "h".repeat(254))))
+        assertEquals(expected, refusalOf(snapshot(hostname = "db1\u0000")))
     }
 
     @Test
