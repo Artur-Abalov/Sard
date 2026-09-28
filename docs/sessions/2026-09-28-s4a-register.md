@@ -71,5 +71,81 @@
 
 В `ErrorInfo.metadata` — `field` (например `plugins[2].name`) и `limit`, без значения из запроса.
 
-### Открытые вопросы
-Перечислены в ответе владельцу; ответы — в начале фазы 2.
+### Ответы владельца (контрольная точка 1)
+1. `config_schema` — колонка JSONB в `agent_plugins` (таблица тенанта); глобальной `plugin_schemas` нет.
+2. Предупреждение об общем `repository_id` у разных тенантов — **убрано из S4a**: межтенантного чтения в пути Register нет. Отложено как отдельная задача (отчёт/системная проверка).
+3. Защита от частых повторов на сервере не нужна. Записано как дыра агента — см. «Дыра A3» ниже.
+4. Шов с агентом — интеграционный тест в `server/`, агент собирается **один раз на все тесты**.
+5. Формат имён `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` — принят.
+6. Тесты S3 правятся по мере реализации методов.
+7. Ключи metadata `min_supported`/`max_supported` — да.
+8. `hostname` из Register перезаписывается по правилу Enroll — да.
+9. `sard.agent.heartbeat-interval`, 30s — да.
+
+### Дыра A3: повтор Register при невалидном снимке
+Агент повторяет `INVALID_ARGUMENT` бесконечно с задержкой до 1 мин (`agent/internal/transport/transport.go:273-284`, `IsPermanent` — `:94-96`). Сервер отклоняет снимок целиком, поэтому агент с невалидной конфигурацией будет повторять один и тот же отказ, пока его не остановят. Нельзя повторять с невалидной конфигурацией: `INVALID_ARGUMENT` на Register должен быть окончательным (как требует черновик модели ошибок: «повторяет только `UNAVAILABLE`»). Серверная защита от частых повторов не делается (решение владельца). Исправление — в агенте (A3), вне S4a.
+
+## Фаза 2 — миграция и Register (тесты 1–6)
+
+### Окружение сессии (не в репозитории)
+- JDK 25 из apt (`openjdk-25-jdk-headless` 25.0.4.1), как в журнале каркаса. `LC_ALL=C.UTF-8` — требование `server/build.gradle.kts:34-40`.
+- Docker-демон запущен вручную (`dockerd`); `postgres:18-alpine` взят с `mirror.gcr.io` и перетегирован — Docker Hub отвечал 429. Testcontainers — с `TESTCONTAINERS_RYUK_DISABLED=true`.
+- Maven Central отвечал 429 — init-скрипт Gradle `~/.gradle/init.d/mirror.gradle.kts` с зеркалом `maven-central.storage-download.googleapis.com`, только в этой сессии.
+- Базовый прогон до изменений: `./gradlew :server:test` — exit 0.
+
+### Сделано
+- Миграция `V202609281400__agent_register.sql`: колонки агента `os`, `arch`, `protocol_version` (CHECK > 0), `secret_names`/`script_names TEXT[] NOT NULL DEFAULT '{}'`, `last_register_at`, CHECK согласованности (после Register все поля снимка заданы); таблицы `agent_plugins` и `agent_repositories` — PK `(agent_id, name)`, FK `tenant_id → tenants`, составной FK на `agents (tenant_id, id)` без CASCADE, CHECK формата имён/backend/repository_id/crypto_provider, `actions <@ ARRAY[...]`; индекс `(tenant_id, repository_id)`.
+- Домен `registration/` (без gRPC, добавлен в `ArchitectureTest.ISOLATED_PACKAGES`): `AgentSnapshot`, `ProtocolVersions.SUPPORTED = 1..1` (единственное место), `SnapshotRules` (ограничения), `RegistrationRejectedException`, `Registration` (транзакция).
+- Транзакция: правила до транзакции → `session.find(Agent, id, PESSIMISTIC_WRITE)` → колонки агента → HQL `delete` плагинов и репозиториев → `persist` новых → COMMIT. Любое исключение БД — `INTERNAL_RETRYABLE` (UNAVAILABLE).
+- gRPC: `AgentGrpcService.register` (принципал из Context, диспетчер `agentServiceDispatcher` внедряется), `RegisterRequests.kt` (proto → домен, `uint32` читается беззнаково), `RegistrationStatus` (одна точка перевода: exhaustive `when` без `else`, одно `ErrorInfo`, домен `sard.dev`, metadata `field`/`limit` или `min_supported`/`max_supported`, текст статуса «register rejected» без значений).
+- `sard.agent.heartbeat-interval` (`SARD_AGENT_HEARTBEAT_INTERVAL`, 30s) в `AgentEndpointProperties`, положительность проверяется при старте.
+- Правило hostname вынесено в `enrollment/Hostnames` — Enroll и Register используют одно.
+- Логи: отказ — WARN с agent_id, причиной и metadata (имя поля и предел, без значений); сбой БД — ERROR с исключением.
+
+Ограничения (все — `INVALID_ARGUMENT`, весь Register отклоняется; порядок проверок = порядок полей, протокол первым):
+
+| Что | Предел | reason, metadata |
+|---|---|---|
+| protocol_version | 1..1 | `PROTOCOL_UNSUPPORTED` (FAILED_PRECONDITION), `min_supported`, `max_supported` |
+| hostname | 1..253 символа (как Enroll) | `HOSTNAME_INVALID`, `field` |
+| agent_version, os, arch, версия плагина | `^[!-~]{1,64}$` | `FIELD_INVALID`, `field` |
+| плагинов / репозиториев | 64 / 256 | `SNAPSHOT_TOO_LARGE`, `field`, `limit` |
+| имён секретов / скриптов | 1024 / 1024 | `SNAPSHOT_TOO_LARGE`, `field`, `limit` |
+| config_schema | ≤ 65536 байт UTF-8; одно JSON-значение без хвоста; без `\u0000` (jsonb его не хранит) | `SNAPSHOT_TOO_LARGE` / `CONFIG_SCHEMA_INVALID` |
+| имена (плагин, репозиторий, секрет, скрипт) | `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, без повторов в наборе | `NAME_INVALID` / `NAME_DUPLICATE`, `field` = `plugins[2].name` и т. п. |
+| actions | без UNSPECIFIED/неизвестных и повторов | `FIELD_INVALID` |
+| backend | `^[a-z][a-z0-9]{0,15}$` | `FIELD_INVALID` |
+| repository_id | пусто (→ NULL) или `^[0-9a-f]{64}$` | `FIELD_INVALID` |
+| crypto_provider | пусто (→ NULL) или формат имени | `FIELD_INVALID` |
+
+Общий предел сообщения — 4 МиБ gRPC по умолчанию (не менялся).
+
+### Тесты (сначала тест, потом код)
+- `registration/SnapshotRulesTest` (29, `@MutFlowTest`): каждый предел — ровно на пределе проходит, за ним отказ с причиной и metadata.
+- `agents/RegistrationStatusTest` (9, `@MutFlowTest`): причина → код, литералы строк причин, замкнутое множество причин.
+- `agents/RegisterRequestsTest` (2, `@MutFlowTest`): proto → домен, все значения `Action`.
+- `agents/RegisterIntegrationTest` (8; Testcontainers, gRPC на случайном порту, сертификаты через Enroll, фиксированный `Clock`):
+  1. первый Register сохраняет всё; повторный заменяет наборы целиком; пустой снимок опустошает наборы;
+  2. гонка: тест держит `SELECT … FOR UPDATE` строки агента, запускает два Register с разными снимками, ждёт двух ожидающих по `pg_stat_activity`, отпускает — в БД ровно A или B целиком;
+  3. protocol 0, 2 и `uint32` 4294967295 → FAILED_PRECONDITION, `PROTOCOL_UNSUPPORTED`, диапазон в metadata, снимок не изменился;
+  4. шесть видов нарушений через gRPC → INVALID_ARGUMENT с причиной и `field`, снимок не изменился;
+  5. агенты двух тенантов и сосед в том же тенанте: Register одного не меняет чужие строки; `tenant_id` строк = тенант агента;
+  6. ответ: `agent_id` из сертификата, `heartbeat_interval` = 17s из `sard.agent.heartbeat-interval=17s`.
+- `AgentGrpcFixtures` — хелперы Enroll + mTLS-канал для тестов AgentService (тест S3 не трогал сверх п. 6).
+- Изменены существующие тесты: `AgentAuthIntegrationTest` — Register на пустое сообщение теперь отвечает `FAILED_PRECONDITION`/`PROTOCOL_UNSUPPORTED` (обработчик, а не перехватчик), остальные методы — UNIMPLEMENTED (решение 6); `SardServerIntegrationTest` — список миграций + `202609281400`; `ArchitectureTest` — `registration` в изолированных пакетах.
+
+### Проверка, что тест гонки ловит ошибку (временная правка, откачена)
+- `PESSIMISTIC_WRITE` → `NONE`: тест падает — «the Registers never waited for the agent's row lock» (транзакции ждут не на `agents`, а на FK-блокировке при `insert into agent_plugins`).
+- То же при расширенном условии ожидания (`'%agent%'`): второй Register — `UNAVAILABLE: register rejected` (нарушение PK при вставке после устаревшего delete). Т. е. без блокировки снимки конфликтуют; с ней — 8/8 зелёных.
+
+### Результаты
+- `./scripts/gate.sh server fast` — `gate: PASSED (server, fast)`; покрытие 94.6% (instructions); CRAP ≤ 6, максимум нового кода 5.0 (`pluginActionOf`, `Registration.repositoryRecord`).
+- `./gradlew -Pmutflow.enabled=true :server:test --rerun` — exit 0 (STRICT: выживший мутант роняет сборку). `SnapshotRulesTest` — 1015 запусков в отчёте JUnit, `RegistrationStatusTest` — 126, `RegisterRequestsTest` — 16.
+- `make license-check` — 260 files OK.
+- detekt нашёл 17 замечаний (длина строк, `ThrowsCount`, `TooManyFunctions`, `serialVersionUID`) — исправлены в коде, без подавлений.
+- mutflow не компилировал два `private typealias Reason` в одном пакете `agents` (обычная компиляция их принимала) — в `RegistrationStatus` заменено импортом с псевдонимом.
+
+### Открытое
+- **Неопознанное падение одного теста**: в одном из прогонов шлюза (`329 tests completed, 1 failed`) — имя теста не сохранилось: отчёты перезаписал следующий запуск. Не воспроизвелось в 13 последующих прогонах (шлюз, 4 × полный `:server:test --rerun`, 8 × `RegisterIntegrationTest` + `AgentAuthIntegrationTest`). Прогон шёл сразу после mutflow-прогона одного класса. Полагаю, но не проверил: остаток состояния сборки. Не списываю на «флейк»; если повторится — сохранить `server/build/test-results` до следующего запуска.
+- hostname с NUL-символом проходит правило Enroll (1..253 символа) и уронит запись в PostgreSQL → `UNAVAILABLE` → бесконечный повтор. То же у Enroll сегодня. Правило не менял (решение 8: «как в Enroll»); предлагаю ужесточить общее правило отдельно.
+- `config_schema` хранится как jsonb: пробелы и порядок ключей не сохраняются, дубликаты ключей — последний. Для UI достаточно; тест сравнивает с `?::jsonb::text`.
