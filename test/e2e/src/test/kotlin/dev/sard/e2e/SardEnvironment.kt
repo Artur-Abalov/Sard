@@ -10,7 +10,6 @@ import org.junit.jupiter.api.extension.TestWatcher
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.Network
 import org.testcontainers.containers.output.ToStringConsumer
-import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.postgresql.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 import java.nio.file.Files
@@ -71,13 +70,7 @@ class SardEnvironment(
                 withNetworkAliases(SERVER_ALIAS)
                 withEnv(defaultServerEnv() + serverEnv)
                 withExposedPorts(HTTP_PORT, GRPC_PORT)
-                waitingFor(
-                    Wait
-                        .forHttp("/actuator/health")
-                        .forPort(HTTP_PORT)
-                        .forStatusCode(200)
-                        .withStartupTimeout(STARTUP_TIMEOUT),
-                )
+                waitingFor(HealthyOrExited("/actuator/health", HTTP_PORT).withStartupTimeout(STARTUP_TIMEOUT))
             },
         )
 
