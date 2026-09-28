@@ -4,7 +4,7 @@
 #
 # First `make up`: deploy/.env does not exist yet. Copies deploy/.env.example
 # and replaces its SARD_ADMIN_PASSWORD placeholder with a random value (>= 24
-# characters, well over the 12-character startup minimum, ADR 0020). Prints
+# characters, well over the 12-character startup minimum, ADR 0021). Prints
 # where the password landed, never the password itself (decision Р3).
 set -euo pipefail
 

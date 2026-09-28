@@ -19,7 +19,7 @@ import tools.jackson.databind.ObjectMapper
  * Nothing in the open core reads it back (W1b has one administrator, no per-request
  * principal); it is left in place on purpose as the future seam an enterprise
  * `TenantResolver` can use to read the caller out of an already-validated session,
- * without changing this filter or [dev.sard.server.api.SessionApi] (ADR 0020).
+ * without changing this filter or [dev.sard.server.api.SessionApi] (ADR 0021).
  */
 const val SESSION_REQUEST_ATTRIBUTE = "dev.sard.server.auth.session"
 

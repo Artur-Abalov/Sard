@@ -24,7 +24,7 @@ private const val API_PATTERN = "/api/v1/*"
  * declares `@AutoConfiguration(before = [AdminAuthAutoConfiguration::class])` and
  * registers its own [SessionApi] replaces password sign-in outright: neither
  * [AdminPasswordAuthenticator] nor the default [SessionApi] is created, and the
- * open core's own SARD_ADMIN_PASSWORD requirement never applies (ADR 0020's seam).
+ * open core's own SARD_ADMIN_PASSWORD requirement never applies (ADR 0021's seam).
  * [OriginGuardFilter] (CSRF, К1/Р5) runs before [SessionAuthFilter] (rule 5): a request
  * with a foreign Origin is refused before authentication is even considered.
  */

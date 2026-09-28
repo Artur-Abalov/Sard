@@ -1,7 +1,7 @@
 # Сессия 2026-09-28: W1b — вход администратора по паролю
 
 Ветка: `claude/load-repository-7tynh5`. Спецификации: `docs/specs/server/admin-login.feature`,
-`docs/specs/web/admin-login.feature`, `docs/qa/admin-login.md`. ADR 0020.
+`docs/specs/web/admin-login.feature`, `docs/qa/admin-login.md`. ADR 0021.
 
 ## Сервер (`dev.sard.server.auth`)
 
@@ -130,7 +130,7 @@
   `.env`). `scripts/ensure-admin-password.sh` — новый скрипt, `make up`
   вызывает его вместо голого `cp`: при первом запуске генерирует пароль
   (`openssl rand -hex 16`, 32 символа) и печатает путь к `deploy/.env`, не сам
-  пароль. `README.md`, раздел «Запуск», и ADR 0020.
+  пароль. `README.md`, раздел «Запуск», и ADR 0021.
 
 ## Гейты
 - `./scripts/gate.sh server fast` и `./scripts/gate.sh web fast` — оба
