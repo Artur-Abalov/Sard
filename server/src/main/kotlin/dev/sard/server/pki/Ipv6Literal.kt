@@ -43,7 +43,11 @@ private fun splitEmbeddedIPv4(text: String): HeadAndEmbeddedIPv4? {
     return if ('.' !in tail) {
         HeadAndEmbeddedIPv4(text, null)
     } else {
-        Ipv4Literal.parse(tail)?.let { HeadAndEmbeddedIPv4(text.substring(0, lastColon), it) }
+        // Keep both colons of a "::" immediately before the embedded IPv4 (e.g. "::1.2.3.4"): dropping
+        // the second one would turn the "::" into a single trailing ':' and make the head unparseable.
+        val keepBothColons = text.startsWith("::", lastColon - 1)
+        val head = if (keepBothColons) text.substring(0, lastColon + 1) else text.substring(0, lastColon)
+        Ipv4Literal.parse(tail)?.let { HeadAndEmbeddedIPv4(head, it) }
     }
 }
 
@@ -85,7 +89,7 @@ private fun compressedGroups(
     return parseHextets(sides[0])?.let { left ->
         parseHextets(sides[1])?.let { right ->
             val missing = IPV6_GROUPS - left.size - right.size - ipv4Groups
-            if (missing < 0) null else left + List(missing) { 0 } + right
+            if (missing < 1) null else left + List(missing) { 0 } + right
         }
     }
 }

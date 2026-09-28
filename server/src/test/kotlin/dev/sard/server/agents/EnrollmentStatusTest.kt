@@ -113,6 +113,27 @@ class EnrollmentStatusTest {
     }
 
     @Test
+    fun `the wire reasons are exactly the rejection contract table`() {
+        val expected =
+            setOf(
+                "TOKEN_MALFORMED",
+                "TOKEN_FOREIGN_CA",
+                "TOKEN_UNKNOWN",
+                "TOKEN_USED",
+                "TOKEN_REVOKED",
+                "TOKEN_EXPIRED",
+                "HOSTNAME_INVALID",
+                "CSR_INVALID",
+                "INTERNAL_RETRYABLE",
+            )
+        val actual =
+            Reason.entries
+                .map { errorInfo(exceptionFor(EnrollmentRejectedException(it))).reason }
+                .toSet()
+        assertEquals(expected, actual)
+    }
+
+    @Test
     fun `the status text never contains the cause's message`() {
         val cause = IllegalStateException("disk on fire")
         val exception = exceptionFor(EnrollmentRejectedException(Reason.INTERNAL_RETRYABLE, cause))

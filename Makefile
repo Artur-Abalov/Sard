@@ -11,7 +11,12 @@ GO_MODULES := agent agent/plugins/sdk cli
 # LC_ALL=C.UTF-8: Kotlin test class file names come from Cyrillic spec-quoted
 # titles; the JVM derives file-name encoding (sun.jnu.encoding) from the
 # process locale only, never from JVM flags.
-GRADLE := LC_ALL=C.UTF-8 ./gradlew --no-daemon -q
+# One Gradle build at a time: the SubagentStop hook runs `make gate-fast` after every
+# subagent, and two builds sharing server/build corrupt each other's test results
+# (EOFException reading test-results/binary). flock is absent on macOS; there the
+# lock is skipped.
+BUILD_LOCK := $(if $(shell command -v flock),mkdir -p $(CURDIR)/.gradle && flock -w 1800 $(CURDIR)/.gradle/sard-build.lock,)
+GRADLE := $(BUILD_LOCK) env LC_ALL=C.UTF-8 ./gradlew --no-daemon -q
 # Git ref the proto contract must stay compatible with (buf breaking).
 PROTO_BASE ?= origin/main
 COMPOSE := docker compose -f deploy/docker-compose.yml --env-file deploy/.env
@@ -108,8 +113,8 @@ tools:
 
 ## gate: full quality gate for every module (M=<module> for one)
 gate:
-	LC_ALL=C.UTF-8 ./scripts/gate.sh $(or $(M),all)
+	$(BUILD_LOCK) env LC_ALL=C.UTF-8 ./scripts/gate.sh $(or $(M),all)
 
 ## gate-fast: quality gate without mutation testing
 gate-fast:
-	LC_ALL=C.UTF-8 ./scripts/gate.sh $(or $(M),all) fast
+	$(BUILD_LOCK) env LC_ALL=C.UTF-8 ./scripts/gate.sh $(or $(M),all) fast

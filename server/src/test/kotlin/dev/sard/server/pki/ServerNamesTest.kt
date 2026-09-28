@@ -4,6 +4,7 @@
 package dev.sard.server.pki
 
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -81,5 +82,35 @@ class ServerNamesTest {
                 "1:2:3", // too few groups, no compression
             )
         for (name in malformed) assertFalse(ServerNames.isIpLiteral(name), name)
+    }
+
+    /** Expectations produced by Go 1.27 net.ParseIP — the agent is the verifier. */
+    @Test
+    fun `the IP literal grammar is Go net ParseIP's`() {
+        val goAccepts =
+            listOf(
+                "::1.2.3.4",
+                "1::1.2.3.4",
+                "::0:1.2.3.4",
+                "::ffff:1.2.3.4",
+                "1:2:3:4:5:6:1.2.3.4",
+                "1:2:3:4:5:6:7::",
+                "::",
+                "::1",
+            )
+        val goRejects =
+            listOf(
+                "1:2:3:4::5:6:7:8",
+                "::1:2:3:4:5:6:7:8",
+                "1:2:3:4:5:6:7:8::",
+                "1:2:3:4:5:6::1.2.3.4",
+                "00000::1",
+                ":1:2:3:4:5:6:7",
+                "1:2:3:4:5:6:7:",
+                "::ffff:010.0.0.1",
+            )
+        for (name in goAccepts) assertTrue(ServerNames.isIpLiteral(name), name)
+        for (name in goRejects) assertFalse(ServerNames.isIpLiteral(name), name)
+        assertContentEquals(ByteArray(12) + byteArrayOf(1, 2, 3, 4), ServerNames.ipLiteral("::1.2.3.4"))
     }
 }
