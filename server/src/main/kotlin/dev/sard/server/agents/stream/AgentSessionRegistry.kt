@@ -5,6 +5,7 @@ package dev.sard.server.agents.stream
 
 import java.time.Clock
 import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 
 /** What a Hello got: the agent's slot (maybe from a silent predecessor) or a duplicate refusal. */
@@ -45,7 +46,7 @@ class AgentSessionRegistry(
         synchronized(lock) {
             opened -= stream
             val holder = sessions[stream.agent.agentId]
-            if (holder != null && silentFor(holder) < settings.duplicateWindow) {
+            if (holder != null && since(holder.lastMessageAt) < settings.duplicateWindow) {
                 holder.suspectDuplicate()
                 return Claim.Duplicate
             }
@@ -83,21 +84,22 @@ class AgentSessionRegistry(
     }
 
     /** Online: a session holds the slot and got a message within `offlineAfter`. */
-    fun online(agentId: UUID): Boolean = session(agentId)?.let { silentFor(it) < settings.offlineAfter } ?: false
+    fun online(agentId: UUID): Boolean {
+        val session = session(agentId) ?: return false
+        return since(session.lastMessageAt) < settings.offlineAfter
+    }
 
     /** Closes silent sessions and streams that owe a Hello; returns what it closed. */
     fun sweep(): List<AgentStream> {
         val (expired, helloless) =
             synchronized(lock) {
-                sessions.values.filter { silentFor(it) >= settings.offlineAfter } to
-                    opened.filter { age(it) >= settings.helloTimeout }
+                sessions.values.filter { since(it.lastMessageAt) >= settings.offlineAfter } to
+                    opened.filter { since(it.openedAt) >= settings.helloTimeout }
             }
         expired.forEach { it.close(StreamCloseReason.SESSION_EXPIRED.close()) }
         helloless.forEach { it.close(StreamCloseReason.HELLO_REQUIRED.close()) }
         return expired + helloless
     }
 
-    private fun silentFor(stream: AgentStream): Duration = Duration.between(stream.lastMessageAt, clock.instant())
-
-    private fun age(stream: AgentStream): Duration = Duration.between(stream.openedAt, clock.instant())
+    private fun since(instant: Instant): Duration = Duration.between(instant, clock.instant())
 }

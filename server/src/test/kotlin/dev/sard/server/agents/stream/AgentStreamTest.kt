@@ -106,7 +106,9 @@ class AgentStreamTest {
     fun `the outbox takes up to the queue size, then answers QueueFull`() {
         val stream = stream()
         val message = ConnectResponse.getDefaultInstance()
-        repeat(StreamFixtures.SETTINGS.sendQueue) { assertEquals(SendResult.Queued, stream.offer(message), "message $it") }
+        repeat(StreamFixtures.SETTINGS.sendQueue) {
+            assertEquals(SendResult.Queued, stream.offer(message), "message $it")
+        }
         assertEquals(SendResult.QueueFull, MutFlow.underTest { stream.offer(message) })
     }
 

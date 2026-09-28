@@ -221,4 +221,12 @@ class AgentSessionRegistryTest {
         assertNull(stream.closedBy)
         assertEquals(Claim.Accepted(replaced = null), registry.claim(stream))
     }
+
+    @Test
+    fun `an opened stream is tracked until its Hello`() {
+        val stream = stream()
+        MutFlow.underTest { registry.opened(stream) }
+        clock.now = NOW + SETTINGS.helloTimeout
+        assertEquals(listOf(stream), registry.sweep())
+    }
 }

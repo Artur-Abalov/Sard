@@ -145,7 +145,7 @@ interface AgentSessionListener {                                                
     fun disconnected(agent: ConnectedAgent, reason: String) {}   // имя StreamCloseReason или STREAM_ENDED
     fun duplicateDetected(agent: ConnectedAgent) {}
 }
-AgentSessionRegistry.online(agentId: UUID): Boolean
+AgentSessionRegistry.online(agentId: UUID): Boolean   // в фазе 3 — AgentConnections.online
 ```
 `send(agentId, ConnectResponse): SendResult` — фаза 3.
 
@@ -169,3 +169,76 @@ AgentSessionRegistry.online(agentId: UUID): Boolean
 
 ### Для фазы 3
 `send` с `SendResult`; сверка с БД (пакетный `system`-запрос, `ArchitectureTest` + ADR 0013) и `close(agentId, reason)`; остановка сервера (`SERVER_SHUTTING_DOWN` до остановки gRPC); метрики (`sard.agents.connected`, `sard.agent.clock.skew`, счётчик дубликатов); ADR; тесты 5–8 (8 — с тестовой заглушкой Register).
+
+## Фаза 3 — send, сверка с БД, остановка, метрики, ADR (тесты 5–8)
+
+Тесты писались первыми (`AgentStreamTest`, `AgentSessionRegistryTest`, `SessionRevalidationTest`, `AgentStreamsTest`, затем интеграционные).
+
+### Код
+- `AgentConnections` — фасад для S6/S7/S8b: `send`, `online`, `close(agentId, failure)`, `check()` (сверка с БД, затем `sweep`), `shutdown()`, `reopen()`. Выделен из `AgentStreams` по `TooManyFunctions` (detekt, порог 11): `AgentStreams` — только Connect.
+- `SendResult` (`Queued`, `NotConnected`, `QueueFull`); `AgentStream.offer` — `trySend` в ограниченную очередь сессии; закрытый стрим — `NotConnected`.
+- `SessionRevalidation` — один `BatchStandings.of(serials)` на все сессии, каждую судит `AgentAuthenticator` S3 (те же причины и порядок); `AgentAuthFailure.close()` — `UNAUTHENTICATED` через `AgentAuthStatus`.
+- `AgentCertificateStandings` реализует и `BatchStandings`: HQL `… where c.serial in (:serials)`; строки запроса S3 собраны из общих констант (SQL тот же). Третий вызов `system` — в том же файле: `ArchitectureTest` не меняется (уточнён комментарий), в ADR 0013 — пункт 3.
+- `AgentStreamShutdown` — `ApplicationListener<GrpcServerLifecycleEvent>`: `GrpcServerShutdownEvent` → `shutdown()`, `GrpcServerStartedEvent` → `reopen()`. `GrpcServerLifecycle.getPhase()` = `Integer.MAX_VALUE` (байткод `spring-grpc-core-1.1.1`), то есть gRPC-сервер останавливается первым из `SmartLifecycle`, поэтому своя фаза не годится; событие публикуется в `stopAndReleaseGrpcServer` прямо перед `Server.shutdown()` (там же, байткод).
+- `MicrometerStreamMetrics` — `sard.agents.connected` (gauge по реестру), `sard.agent.duplicate.sessions`, `sard.agent.clock.skew` (модуль, секунды); `MeterRegistry` actuator, без экспортёра.
+- Сборщик вызывает `AgentConnections.check`.
+
+### Точки расширения — итог (для S6, S7)
+```kotlin
+// AgentConnections — бин
+fun send(agentId: UUID, message: ConnectResponse): SendResult   // не ждёт; Queued ≠ доставлено
+fun online(agentId: UUID): Boolean
+fun close(agentId: UUID, failure: AgentAuthFailure): Boolean     // для API отзыва (S8b)
+sealed interface SendResult { Queued; NotConnected; QueueFull }
+// входящие и события — как в фазе 2: CommandReconciliation, StepProgressHandler,
+// StepResultHandler, LogChunkHandler, AgentSessionListener (бины заменяют умолчания)
+```
+
+### Найдено и исправлено: общий статус ломал одновременное закрытие
+Тест 7 падал примерно в каждом третьем прогоне пакета (2 из 6): вместо `UNAVAILABLE`/`SERVER_SHUTTING_DOWN` клиент получал `CANCELLED` через 30 s. Диагностика (временные `println`, откачены): слушатель закрывал оба стрима, корутины ловили отмену с `closedBy=SERVER_SHUTTING_DOWN` и бросали статус; в stderr — `ArrayIndexOutOfBoundsException` в `io.grpc.Metadata.discardAll` из `NettyServerStream$Sink.writeTrailers` при `ServerCallImpl.close` (вызов из grpc-kotlin `ServerCalls.kt:256`). Причина: `closeAll` создавал один `StreamClose` — одно `StatusRuntimeException` с одним объектом трейлеров — на все стримы; grpc-kotlin берёт трейлеры из исключения, gRPC меняет их при записи, `Metadata` не потокобезопасен; `close()` падал, вызов висел до `shutdownNow`. Исправление: `StreamClose.status()` создаёт статус заново на каждый бросок. Регрессия: `StreamStatusTest` (разные трейлеры на каждый вызов), `AgentSessionRegistryTest`, тест 7 с 8 стримами. Контроль: с кэшированным статусом тест 7 падает в 2 из 2 прогонов; с исправлением пакет — 4 из 4 зелёных подряд, затем зелёные прогоны шлюза и mutflow.
+
+Там же найден второй дефект: после остановки gRPC-сервера реестр отклонял новые стримы навсегда, а Spring 7 останавливает и снова запускает lifecycle-бины кэшированных тестовых контекстов (в журнале — «server stopping: 0 agent streams closed» при переключении классов). Исправлено `reopen()` на `GrpcServerStartedEvent`; тесты в `AgentSessionRegistryTest` и `AgentStreamsTest`.
+
+### Тесты 5–8
+- 5 (`AgentStreamIntegrationTest`): `agents.revoked_at` → `UNAUTHENTICATED`/`AGENT_REVOKED` и `disconnected AGENT_REVOKED`; `agent_certificates.revoked_at` → `CERT_REVOKED`; `not_after` = сейчас + 1 s: за секунду до — открыт, после — `CERT_EXPIRED`; сессия другого агента при этом открыта и онлайн. Юнит (`SessionRevalidationTest`, `AgentStreamsTest`): все причины S3, один запрос на все сессии, без сессий — без запроса, отзыв выигрывает у просрочки.
+- 6: `send` доходит в порядке; не подключён — `NotConnected`; агент, не читающий ответы (`disableAutoRequestWithInitial(0)`), с сообщениями по 64 KiB: окно HTTP/2 и буфер gRPC заполняются, затем очередь — первый не-`Queued` ответ `QueueFull`; сообщение другому агенту доходит сразу; после `request(n)` медленный получает свои сообщения, начиная с первого. Первая версия теста проверяла `QueueFull` ещё одной отправкой; в прогоне mutflow писатель успел забрать сообщение, и она вернула `Queued`. Утверждение было неверным (очередь не обязана оставаться полной); тест проверяет первый отказ, без повторных отправок.
+- 7 (`ServerShutdownIntegrationTest`): 8 агентов на связи, `GrpcServerLifecycle.stop()` (тот же путь, что при остановке приложения) → каждый стрим `UNAVAILABLE`/`SERVER_SHUTTING_DOWN`, остановка короче отсрочки 30 s (класс целиком со стартом контекста — около 3 s). Закрыть контекст из теста нельзя — колбэки Spring TestContext падают на закрытом контексте; `@DirtiesContext` выбрасывает его после класса.
+- 8 — ручной прогон шва с настоящим A3 (каркаса `test/e2e` нет). Временный harness (в репозиторий не попал): тест Spring Boot на порту 19443 с `sard.agent.heartbeat-interval=5s`, `check-interval=2s`; **тестовая заглушка Register** — глобальный перехватчик после перехватчика S3 (отозванный агент по-прежнему получает `UNAUTHENTICATED`), отвечает `agent_id` и `heartbeat_interval`; сертификат выпущен настоящим `Enrollment` (у агента пока нет команды enroll — A2), PEM и `agent.yaml` записаны во временный каталог. Агент собран `go build ./cmd/sard-agent` (go1.27.1) и запущен с этим конфигом. Вывод:
+  ```
+  09:21:12.399 enrolled agent 01a0e751-…; waiting for it to connect
+  09:21:13.369 Register from agent 01a0e751-…
+  09:21:13.514 connected
+  09:21:13.550 Hello from 01a0e751-…, running=[]
+  09:21:23.517 last_seen_at 09:21:13.515324Z -> 09:21:23.426590Z
+  09:21:23.517 restarting the gRPC server
+  09:21:23.526 AgentStreams: server stopping: 1 agent streams closed
+  09:21:23.807 disconnected SERVER_SHUTTING_DOWN
+  09:21:26.825 gRPC Server started … port: 19443
+  09:21:28.708 Register from agent 01a0e751-…
+  09:21:28.724 connected
+  09:21:28.729 Hello from 01a0e751-…, running=[]
+  09:21:38.755 heartbeats after restart; revoking the agent
+  09:21:40.494 agent 01a0e751-…: session closed, AGENT_REVOKED
+  агент: sard-agent: register: server refused the agent certificate: rpc error: code = Unauthenticated desc = agent certificate rejected
+  агент: 09:21:53 sard-agent exited with 1
+  ```
+  Проверено: A3 проходит Register → Connect → Hello, шлёт heartbeat (`last_seen_at` движется), переживает перезапуск gRPC-сервера (переподключение через ~2 s после старта) и после отзыва останавливается на отказе Register; поведение A3 менять не нужно. Наблюдение: первый heartbeat A3 приходит чуть раньше полного интервала после Hello (таймер агента стартует после ответа Register), поэтому при троттлинге «не чаще интервала» `last_seen_at` фактически обновляется раз в два интервала (здесь 10 s при 5 s). Онлайн-статус от этого не зависит (он по памяти); для консоли (S5b) `last_seen_at` отстаёт до двух интервалов — решить там, нужен ли допуск.
+  После слияния S4a в `main` заглушку заменит настоящий Register; harness стоит перенести в `test/e2e`, когда появится каркас.
+
+### Проверка
+- `./gradlew :server:test --rerun` — exit 0, 367 тестов, 0 упавших, 0 пропущенных (пакет `stream` — 86).
+- `./scripts/gate.sh server fast` — `PASSED`; покрытие 94.7% (instructions); CRAP ≤ 6 (новый код — максимум 5.0). По пути: `TooManyFunctions` у `AgentStreams` (14) и `AgentSessionRegistry` (12) — выделен `AgentConnections`, два помощника времени слиты в `since`.
+- `./gradlew -Pmutflow.enabled=true :server:test --rerun` — exit 0, 5149 запусков тестов. По пути: выживший мутант в `opened()` (учёт стрима до Hello вызывался вне `MutFlow.underTest`) — добавлен тест.
+- `make license-check` — 272 files OK.
+
+### Итог по Definition of done
+- `./gradlew :server:test` проходит — выше.
+- Агент с пингами каждые 30 s не отключается: `permit.time 20s`, `permit.without-calls true`; тест 1 (пропорция 10 s / 6 s) и контроль с 5 min (`RESOURCE_EXHAUSTED`).
+- Одна сессия на агента; правило дубликата и устаревшей сессии — тесты 3 (юнит и интеграция), ADR 00XX-draft менеджера стримов.
+- Закрытие при отзыве и истечении сертификата без перезапуска — тест 5 и шов (отзыв закрыл сессию за ≤ `check-interval`).
+- Точки расширения S6/S7 с сигнатурами — фазы 2 и 3 выше.
+
+### Хвосты
+- Пометка дубликата в БД и консоли, онлайн-статус в REST — S5b/W2 (решение владельца 2).
+- Register — S4a (`sard.agent.heartbeat-interval` общий); после слияния — шов с настоящим Register.
+- Задержка закрытия после отзыва — до `check-interval` (30 s); мгновенно — через `AgentConnections.close` из будущего API отзыва (S8b).

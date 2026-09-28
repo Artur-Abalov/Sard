@@ -15,10 +15,10 @@ import org.springframework.grpc.server.lifecycle.GrpcServerStartedEvent
  * lifecycle restarts it, e.g. when a cached test context resumes): then streams are accepted again.
  */
 class AgentStreamShutdown(
-    private val streams: AgentStreams,
+    private val connections: AgentConnections,
 ) : ApplicationListener<GrpcServerLifecycleEvent> {
     override fun onApplicationEvent(event: GrpcServerLifecycleEvent) {
-        if (event is GrpcServerShutdownEvent) streams.shutdown()
-        if (event is GrpcServerStartedEvent) streams.reopen()
+        if (event is GrpcServerShutdownEvent) connections.shutdown()
+        if (event is GrpcServerStartedEvent) connections.reopen()
     }
 }

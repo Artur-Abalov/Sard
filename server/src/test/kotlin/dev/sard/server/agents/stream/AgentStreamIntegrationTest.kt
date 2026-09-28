@@ -45,7 +45,7 @@ class AgentStreamIntegrationTest(
     @Autowired private val registry: AgentSessionRegistry,
     @Autowired private val settings: AgentStreamSettings,
     @Autowired private val environment: Environment,
-    @Autowired private val streams: AgentStreams,
+    @Autowired private val connections: AgentConnections,
     @Autowired private val jdbc: JdbcTemplate,
 ) {
     private val clients = StreamClients(ca, enrollment, tokens, jdbc, port)
@@ -188,7 +188,7 @@ class AgentStreamIntegrationTest(
         val agent = clients.enrolled()
         val connection = greeted(agent)
         revokedBy("update agents set revoked_at = ? where id = ?", agent)
-        streams.check()
+        connections.check()
         assertEquals(Ended(Status.Code.UNAUTHENTICATED, "AGENT_REVOKED"), connection.ended())
         recorded.await("${agent.agentId} disconnected AGENT_REVOKED")
     }
@@ -198,7 +198,7 @@ class AgentStreamIntegrationTest(
         val agent = clients.enrolled()
         val connection = greeted(agent)
         revokedBy("update agent_certificates set revoked_at = ? where agent_id = ?", agent)
-        streams.check()
+        connections.check()
         assertEquals(Ended(Status.Code.UNAUTHENTICATED, "CERT_REVOKED"), connection.ended())
     }
 
@@ -208,10 +208,10 @@ class AgentStreamIntegrationTest(
         val connection = greeted(agent)
         val notAfter = Timestamp.from(clock.now + Duration.ofSeconds(1))
         jdbc.update("update agent_certificates set not_after = ? where agent_id = ?", notAfter, agent.agentId)
-        streams.check()
+        connections.check()
         assertTrue(connection.isOpen, "a second before not_after")
         clock.now += Duration.ofSeconds(1)
-        streams.check()
+        connections.check()
         assertEquals(Ended(Status.Code.UNAUTHENTICATED, "CERT_EXPIRED"), connection.ended())
     }
 
@@ -222,7 +222,7 @@ class AgentStreamIntegrationTest(
         val closed = greeted(revoked)
         val open = greeted(bystander)
         revokedBy("update agents set revoked_at = ? where id = ?", revoked)
-        streams.check()
+        connections.check()
         assertEquals(Ended(Status.Code.UNAUTHENTICATED, "AGENT_REVOKED"), closed.ended())
         assertTrue(open.isOpen)
         assertTrue(registry.online(bystander.agentId))
@@ -242,8 +242,8 @@ class AgentStreamIntegrationTest(
     fun `send reaches the agent in order`() {
         val agent = clients.enrolled()
         val connection = greeted(agent)
-        assertEquals(SendResult.Queued, streams.send(agent.agentId, runStep("c-1")))
-        assertEquals(SendResult.Queued, streams.send(agent.agentId, runStep("c-2")))
+        assertEquals(SendResult.Queued, connections.send(agent.agentId, runStep("c-1")))
+        assertEquals(SendResult.Queued, connections.send(agent.agentId, runStep("c-2")))
         val got =
             List(2) {
                 connection.received
@@ -256,7 +256,7 @@ class AgentStreamIntegrationTest(
 
     @Test
     fun `send to an agent that is not connected is NotConnected`() {
-        assertEquals(SendResult.NotConnected, streams.send(clients.enrolled().agentId, runStep("c")))
+        assertEquals(SendResult.NotConnected, connections.send(clients.enrolled().agentId, runStep("c")))
     }
 
     @Test
@@ -268,12 +268,16 @@ class AgentStreamIntegrationTest(
         val quick = greeted(fast)
 
         // The client's flow-control window (1 MiB) and gRPC's buffer fill first, then the queue.
-        val results = generateSequence(0) { it + 1 }.take(MAX_SENDS).map { streams.send(slow.agentId, runStep("s-$it", PADDING)) }
-        val queued = results.takeWhile { it == SendResult.Queued }.count()
-        assertTrue(queued < MAX_SENDS, "the queue never filled")
-        assertEquals(SendResult.QueueFull, streams.send(slow.agentId, runStep("more")))
+        // The writer may still take a message now and then; what matters is the first refusal.
+        val results = mutableListOf<SendResult>()
+        for (i in 0 until MAX_SENDS) {
+            results += connections.send(slow.agentId, runStep("s-$i", PADDING))
+            if (results.last() != SendResult.Queued) break
+        }
+        assertEquals(SendResult.QueueFull, results.last(), "the sender learns the queue is full")
+        val queued = results.size - 1
 
-        assertEquals(SendResult.Queued, streams.send(fast.agentId, runStep("f-1")))
+        assertEquals(SendResult.Queued, connections.send(fast.agentId, runStep("f-1")))
         assertEquals(
             "f-1",
             quick.received

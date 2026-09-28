@@ -123,10 +123,13 @@ private class Recorder :
 private class FakeStandings : BatchStandings {
     val records: MutableMap<String, CertificateStanding> = mutableMapOf()
 
-    override fun of(serials: Collection<String>): Map<String, CertificateStanding> = records.filterKeys { it in serials }
+    override fun of(serials: Collection<String>) = records.filterKeys { it in serials }
 }
 
-private fun runStep(command: String) = ConnectResponse.newBuilder().setRunStep(RunStep.newBuilder().setCommandId(command)).build()
+private fun runStep(command: String): ConnectResponse {
+    val step = RunStep.newBuilder().setCommandId(command)
+    return ConnectResponse.newBuilder().setRunStep(step).build()
+}
 
 private fun hello(vararg running: String) =
     ConnectRequest.newBuilder().setHello(Hello.newBuilder().addAllRunningCommandIds(running.toList())).build()
@@ -182,8 +185,8 @@ class AgentStreamsTest {
             clock,
             Dispatchers.Unconfined,
             StreamExtensions(recorder, recorder, recorder, recorder, listOf(recorder), recorder, recorder),
-            SessionRevalidation(standings, clock),
         )
+    private val connections = AgentConnections(registry, SessionRevalidation(standings, clock))
 
     init {
         val identity = AgentIdentity(tenantId = principal.tenantId, agentId = principal.agentId)
@@ -367,8 +370,8 @@ class AgentStreamsTest {
             val agent = open()
             agent.requests.send(hello())
             recorder.await("hello ")
-            assertEquals(SendResult.Queued, streams.send(principal.agentId, runStep("c-1")))
-            assertEquals(SendResult.Queued, streams.send(principal.agentId, runStep("c-2")))
+            assertEquals(SendResult.Queued, connections.send(principal.agentId, runStep("c-1")))
+            assertEquals(SendResult.Queued, connections.send(principal.agentId, runStep("c-2")))
             agent.requests.close()
             assertEquals(listOf(runStep("c-1"), runStep("c-2")), withTimeout(WAIT_MS) { agent.responses.await() })
         }
@@ -376,10 +379,10 @@ class AgentStreamsTest {
     @Test
     fun `send to an agent without a session is NotConnected, before Hello too`() =
         test {
-            assertEquals(SendResult.NotConnected, streams.send(UUID.randomUUID(), runStep("c")))
+            assertEquals(SendResult.NotConnected, connections.send(UUID.randomUUID(), runStep("c")))
             val agent = open()
             yield()
-            assertEquals(SendResult.NotConnected, streams.send(principal.agentId, runStep("c")))
+            assertEquals(SendResult.NotConnected, connections.send(principal.agentId, runStep("c")))
             agent.requests.close()
             agent.closedWith()
         }
@@ -392,7 +395,7 @@ class AgentStreamsTest {
             recorder.await("hello ")
             standings.records.computeIfPresent(principal.serial) { _, standing -> standing.copy(revokedAt = NOW) }
             clock.now = NOW + SETTINGS.offlineAfter
-            streams.check()
+            connections.check()
             assertEquals(Status.Code.UNAUTHENTICATED to "CERT_REVOKED", agent.closedWith())
             assertEquals("disconnected CERT_REVOKED", recorder.events.last())
         }
@@ -403,21 +406,21 @@ class AgentStreamsTest {
             val agent = open()
             agent.requests.send(hello())
             recorder.await("hello ")
-            streams.check()
+            connections.check()
             assertTrue(registry.online(principal.agentId))
             clock.now = NOW + SETTINGS.offlineAfter
-            streams.check()
+            connections.check()
             assertEquals(Status.Code.UNAVAILABLE to "SESSION_EXPIRED", agent.closedWith())
         }
 
     @Test
     fun `close by agent id ends its session with the auth failure`() =
         test {
-            assertFalse(streams.close(principal.agentId, AgentAuthFailure.AGENT_REVOKED))
+            assertFalse(connections.close(principal.agentId, AgentAuthFailure.AGENT_REVOKED))
             val agent = open()
             agent.requests.send(hello())
             recorder.await("hello ")
-            assertTrue(streams.close(principal.agentId, AgentAuthFailure.AGENT_REVOKED))
+            assertTrue(connections.close(principal.agentId, AgentAuthFailure.AGENT_REVOKED))
             assertEquals(Status.Code.UNAUTHENTICATED to "AGENT_REVOKED", agent.closedWith())
         }
 
@@ -427,7 +430,7 @@ class AgentStreamsTest {
             val agent = open()
             agent.requests.send(hello())
             recorder.await("hello ")
-            streams.shutdown()
+            connections.shutdown()
             assertEquals(Status.Code.UNAVAILABLE to "SERVER_SHUTTING_DOWN", agent.closedWith())
             val late = open()
             assertEquals(Status.Code.UNAVAILABLE to "SERVER_SHUTTING_DOWN", late.closedWith())
@@ -454,8 +457,8 @@ class AgentStreamsTest {
     @Test
     fun `after the server starts again new streams are accepted`() =
         test {
-            streams.shutdown()
-            streams.reopen()
+            connections.shutdown()
+            connections.reopen()
             val agent = open()
             agent.requests.send(hello())
             recorder.await("hello ")

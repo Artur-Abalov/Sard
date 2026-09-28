@@ -86,19 +86,22 @@ class AgentStreamConfiguration {
         clock: Clock,
         @Qualifier("agentStreamDispatcher") dispatcher: CoroutineDispatcher,
         extensions: StreamExtensions,
+    ) = AgentStreams(registry, settings, clock, dispatcher, extensions)
+
+    @Bean
+    fun agentConnections(
+        registry: AgentSessionRegistry,
         tenants: TenantSessions,
-    ): AgentStreams {
-        val revalidation = SessionRevalidation(AgentCertificateStandings(tenants), clock)
-        return AgentStreams(registry, settings, clock, dispatcher, extensions, revalidation)
-    }
+        clock: Clock,
+    ) = AgentConnections(registry, SessionRevalidation(AgentCertificateStandings(tenants), clock))
 
     /** Revocation, certificate expiry and silence are checked every `check-interval`. */
     @Bean
     fun agentStreamSweeper(
-        streams: AgentStreams,
+        connections: AgentConnections,
         settings: AgentStreamSettings,
-    ) = AgentStreamSweeper(settings.checkInterval, streams::check)
+    ) = AgentStreamSweeper(settings.checkInterval, connections::check)
 
     @Bean
-    fun agentStreamShutdown(streams: AgentStreams) = AgentStreamShutdown(streams)
+    fun agentStreamShutdown(connections: AgentConnections) = AgentStreamShutdown(connections)
 }

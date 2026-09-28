@@ -78,7 +78,8 @@ class SessionRevalidationTest {
     fun `a record that now names another agent is an identity mismatch`() {
         val agent = withSerial("6".repeat(32))
         val other = agent.copy(agentId = UUID.randomUUID()).standing()
-        assertEquals(mapOf(agent to AgentAuthFailure.CERT_IDENTITY_MISMATCH), failures(listOf(agent), mapOf(agent.serial to other)))
+        val found = failures(listOf(agent), mapOf(agent.serial to other))
+        assertEquals(mapOf(agent to AgentAuthFailure.CERT_IDENTITY_MISMATCH), found)
     }
 
     @Test
