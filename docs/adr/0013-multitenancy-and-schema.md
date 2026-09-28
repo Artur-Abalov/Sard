@@ -48,7 +48,7 @@ class HibernateTenantBridge(private val resolver: TenantResolver) : CurrentTenan
 - Вызовы `system` перечислены здесь; новый вызов — правка этого списка на ревью:
   1. `EnrollmentTokens.ownerOf(hash)` — токен по хэшу до того, как известен тенант.
 
-  Список проверяет `ArchitectureTest` (S2b): вызов `sessions.system` вне этого места роняет сборку.
+  Список проверяет `ArchitectureTest` (S2b) с точностью до файла: вызов `sessions.system` вне `EnrollmentTokens.kt` роняет сборку; второй вызов внутри этого файла ловит ревью.
 - Операции администратора над токенами (`EnrollmentTokens.create`, `list`, `get`, `revoke`, S2b) идут через `inTenant` с тенантом, который вызывающий получил от `TenantResolver`. Будущий REST-слой (D2 → W1b) никогда не берёт тенант из параметра пути.
 - Глобальный переключатель фильтра не вводится: всё остальное по-прежнему идёт через резолвер.
 
