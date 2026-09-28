@@ -245,6 +245,9 @@ class AgentAuthIntegrationTest(
             // protocol_version 0 is outside the supported range (S4a).
             AgentServiceGrpc.getRegisterMethod().fullMethodName to
                 Outcome(Status.Code.FAILED_PRECONDITION, "PROTOCOL_UNSUPPORTED"),
+            // The one empty message is not a Hello (S5a).
+            AgentServiceGrpc.getConnectMethod().fullMethodName to
+                Outcome(Status.Code.FAILED_PRECONDITION, "HELLO_REQUIRED"),
         )
 
     @Test

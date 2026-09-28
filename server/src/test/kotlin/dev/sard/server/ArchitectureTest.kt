@@ -28,7 +28,8 @@ private fun withoutComments(text: String): String = text.replace(BLOCK_COMMENT, 
  *     stay usable without a gRPC server, wire format or the agents' translation layer.
  *  b) `TenantSessions.system` (the one call that bypasses the tenant filter) is used only where
  *     ADR 0013 lists it: `EnrollmentTokens.ownerOf` (a token before its tenant is known) and
- *     `AgentCertificateStandings.of` (a certificate by serial during each agent call, S3).
+ *     `AgentCertificateStandings.of` (a certificate by serial during each agent call, S3; the serials
+ *     of all open streams on each stream check, S5a).
  */
 class ArchitectureTest {
     private val mainRoot: File
