@@ -62,6 +62,11 @@ fun interface CertificateStandings {
     fun of(serial: String): CertificateStanding?
 }
 
+/** Certificate records for many serials in one lookup, by serial (S5a: open sessions). */
+fun interface BatchStandings {
+    fun of(serials: Collection<String>): Map<String, CertificateStanding>
+}
+
 sealed interface AgentAuthResult {
     data class Accepted(
         val principal: AgentPrincipal,

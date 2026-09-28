@@ -28,9 +28,12 @@ class AgentSessionRegistry(
     private val lock = Any()
     private val opened = LinkedHashSet<AgentStream>()
     private val sessions = HashMap<UUID, AgentStream>()
+    private var closedWith: StreamClose? = null
 
+    /** Tracks a new stream for the hello timeout; after [closeAll] closes it at once. */
     fun opened(stream: AgentStream) {
-        synchronized(lock) { opened += stream }
+        val refusal = synchronized(lock) { closedWith.also { if (it == null) opened += stream } }
+        refusal?.let(stream::close)
     }
 
     /**
@@ -59,6 +62,21 @@ class AgentSessionRegistry(
         }
 
     fun session(agentId: UUID): AgentStream? = synchronized(lock) { sessions[agentId] }
+
+    fun sessions(): List<AgentStream> = synchronized(lock) { sessions.values.toList() }
+
+    fun count(): Int = synchronized(lock) { sessions.size }
+
+    /** Closes every stream with [close] and every stream opened from now on (server stopping). */
+    fun closeAll(close: StreamClose): Int {
+        val all =
+            synchronized(lock) {
+                closedWith = close
+                sessions.values + opened
+            }
+        all.forEach { it.close(close) }
+        return all.size
+    }
 
     /** Online: a session holds the slot and got a message within `offlineAfter`. */
     fun online(agentId: UUID): Boolean = session(agentId)?.let { silentFor(it) < settings.offlineAfter } ?: false

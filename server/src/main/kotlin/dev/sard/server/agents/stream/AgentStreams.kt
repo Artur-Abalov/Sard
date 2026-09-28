@@ -8,6 +8,7 @@ import dev.sard.proto.agent.v1.ConnectRequest
 import dev.sard.proto.agent.v1.ConnectRequest.MessageCase
 import dev.sard.proto.agent.v1.ConnectResponse
 import dev.sard.proto.agent.v1.Heartbeat
+import dev.sard.server.agents.AgentAuthFailure
 import dev.sard.server.agents.AgentPrincipal
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -21,6 +22,7 @@ import org.slf4j.LoggerFactory
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import java.util.UUID
 
 /** The disconnect reason when the agent, not the server, ended the stream. */
 const val STREAM_ENDED = "STREAM_ENDED"
@@ -39,7 +41,47 @@ class AgentStreams(
     private val clock: Clock,
     private val dispatcher: CoroutineDispatcher,
     private val extensions: StreamExtensions,
+    private val revalidation: SessionRevalidation,
 ) {
+    /** Queues [message] for [agentId]'s session; never waits (S6, S7). */
+    fun send(
+        agentId: UUID,
+        message: ConnectResponse,
+    ): SendResult = registry.session(agentId)?.offer(message) ?: SendResult.NotConnected
+
+    fun online(agentId: UUID): Boolean = registry.online(agentId)
+
+    /** Ends [agentId]'s session as refused with [failure], e.g. when it is revoked; false if none. */
+    fun close(
+        agentId: UUID,
+        failure: AgentAuthFailure,
+    ): Boolean {
+        val session = registry.session(agentId) ?: return false
+        session.close(failure.close())
+        return true
+    }
+
+    /**
+     * The periodic check: sessions re-judged against the database first, so a revoked agent is
+     * closed as revoked even when it is also silent; then the expiry and hello-timeout sweep.
+     */
+    fun check() {
+        val sessions = registry.sessions()
+        val failures = revalidation.failures(sessions.map { it.agent })
+        for (session in sessions) {
+            val failure = failures[session.agent] ?: continue
+            log.info("agent {}: session closed, {}", session.agent.agentId, failure)
+            session.close(failure.close())
+        }
+        registry.sweep()
+    }
+
+    /** The server is stopping: every stream ends with UNAVAILABLE so agents reconnect elsewhere. */
+    fun shutdown() {
+        val closed = registry.closeAll(StreamCloseReason.SERVER_SHUTTING_DOWN.close())
+        log.info("server stopping: {} agent streams closed", closed)
+    }
+
     /** Called inside the agent's gRPC Context, where S3's interceptor put its principal. */
     fun connect(requests: Flow<ConnectRequest>): Flow<ConnectResponse> =
         flow {
@@ -129,6 +171,7 @@ class AgentStreams(
     private fun touch(stream: AgentStream) {
         val now = clock.instant()
         if (stream.received(now)) {
+            extensions.metrics.duplicateDetected()
             val agent = stream.agent
             log.warn("agent {}: duplicate session, two hosts present certificate {}", agent.agentId, agent.serial)
             extensions.listeners.forEach { it.duplicateDetected(stream.agent) }
@@ -142,6 +185,7 @@ class AgentStreams(
     ) {
         if (!heartbeat.hasSentAt()) return
         val skew = Duration.between(clock.instant(), heartbeat.sentAt.toInstant())
+        extensions.metrics.clockSkew(skew)
         if (skew.abs() > settings.clockSkewThreshold && stream.firstSkewReport()) {
             log.warn("agent {}: clock skew {} exceeds {}", stream.agent.agentId, skew, settings.clockSkewThreshold)
         }

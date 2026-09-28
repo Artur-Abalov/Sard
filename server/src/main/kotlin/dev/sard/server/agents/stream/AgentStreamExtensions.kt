@@ -8,6 +8,7 @@ import dev.sard.proto.agent.v1.StepProgress
 import dev.sard.proto.agent.v1.StepResult
 import dev.sard.server.agents.AgentPrincipal
 import org.slf4j.LoggerFactory
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
@@ -81,6 +82,14 @@ fun interface LastSeenStore {
     )
 }
 
+/** Stream metrics besides the connected gauge (see `MicrometerStreamMetrics`). */
+interface StreamMetrics {
+    fun duplicateDetected() {}
+
+    /** Agent clock minus server clock at a heartbeat. */
+    fun clockSkew(skew: Duration) {}
+}
+
 /** What the stream manager calls out to; S6 and S7 replace the defaults with beans. */
 data class StreamExtensions(
     val reconciliation: CommandReconciliation,
@@ -89,6 +98,7 @@ data class StreamExtensions(
     val logs: LogChunkHandler,
     val listeners: List<AgentSessionListener>,
     val lastSeen: LastSeenStore,
+    val metrics: StreamMetrics,
 )
 
 /** The defaults until S6 and S7: a debug line with ids only, never message content. */

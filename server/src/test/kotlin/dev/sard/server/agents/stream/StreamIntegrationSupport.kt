@@ -25,6 +25,8 @@ import io.grpc.Status
 import io.grpc.StatusRuntimeException
 import io.grpc.TlsChannelCredentials
 import io.grpc.protobuf.StatusProto
+import io.grpc.stub.ClientCallStreamObserver
+import io.grpc.stub.ClientResponseObserver
 import io.grpc.stub.StreamObserver
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
@@ -126,8 +128,10 @@ class StreamClients(
         jdbc.update("insert into tenants (id, name) values (?, ?)", tenant, "t-$tenant")
     }
 
+    fun closeChannels() = channels.forEach { it.shutdownNow() }
+
     fun close() {
-        channels.forEach { it.shutdownNow() }
+        closeChannels()
         for (table in listOf("agent_certificates", "enrollment_tokens", "agents")) {
             jdbc.update("delete from $table where tenant_id = ?", tenant)
         }
@@ -147,14 +151,16 @@ class StreamClients(
         return TestAgent(tenant, agent.agentId, credentials)
     }
 
+    /** A Connect stream; with [reading] false the client takes no message until [Connection.read]. */
     fun connect(
         agent: TestAgent,
+        reading: Boolean = true,
         tune: (ManagedChannelBuilder<*>) -> Unit = {},
     ): Connection {
         val builder = Grpc.newChannelBuilderForAddress("localhost", port, agent.credentials)
         tune(builder)
         val channel = builder.build().also { channels += it }
-        return Connection(AgentServiceGrpc.newStub(channel))
+        return Connection(AgentServiceGrpc.newStub(channel), reading)
     }
 
     fun lastSeenAt(agent: TestAgent): Instant? =
@@ -175,12 +181,19 @@ data class Ended(
 /** One Connect stream from the agent side. */
 class Connection(
     stub: AgentServiceGrpc.AgentServiceStub,
+    reading: Boolean = true,
 ) {
     val received = LinkedBlockingQueue<ConnectResponse>()
     private val ended = CompletableFuture<Ended>()
+    private val flow = CompletableFuture<ClientCallStreamObserver<ConnectRequest>>()
     private val requests: StreamObserver<ConnectRequest> =
         stub.connect(
-            object : StreamObserver<ConnectResponse> {
+            object : ClientResponseObserver<ConnectRequest, ConnectResponse> {
+                override fun beforeStart(requestStream: ClientCallStreamObserver<ConnectRequest>) {
+                    if (!reading) requestStream.disableAutoRequestWithInitial(0)
+                    flow.complete(requestStream)
+                }
+
                 override fun onNext(value: ConnectResponse) {
                     received += value
                 }
@@ -194,6 +207,9 @@ class Connection(
                 }
             },
         )
+
+    /** Lets [count] more server messages in (only for a connection opened with `reading = false`). */
+    fun read(count: Int) = flow.get().request(count)
 
     val isOpen: Boolean
         get() = !ended.isDone

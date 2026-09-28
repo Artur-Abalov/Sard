@@ -3,6 +3,8 @@
 
 package dev.sard.server.agents.stream
 
+import dev.sard.proto.agent.v1.ConnectResponse
+import dev.sard.proto.agent.v1.RunStep
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
@@ -16,7 +18,9 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.core.env.Environment
 import org.springframework.jdbc.core.JdbcTemplate
+import java.sql.Timestamp
 import java.time.Duration
+import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -35,13 +39,14 @@ class AgentStreamIntegrationTest(
     @Autowired ca: CertificateAuthority,
     @Autowired enrollment: Enrollment,
     @Autowired tokens: EnrollmentTokens,
-    @Autowired jdbc: JdbcTemplate,
     @LocalGrpcServerPort port: Int,
     @Autowired private val clock: MovableClock,
     @Autowired private val recorded: RecordingExtensions,
     @Autowired private val registry: AgentSessionRegistry,
     @Autowired private val settings: AgentStreamSettings,
     @Autowired private val environment: Environment,
+    @Autowired private val streams: AgentStreams,
+    @Autowired private val jdbc: JdbcTemplate,
 ) {
     private val clients = StreamClients(ca, enrollment, tokens, jdbc, port)
 
@@ -170,4 +175,120 @@ class AgentStreamIntegrationTest(
         recorded.await("${agent.agentId} disconnected SESSION_EXPIRED")
         assertFalse(registry.online(agent.agentId))
     }
+
+    // --- 5: revocation and expiry close open sessions, without a restart
+
+    private fun revokedBy(
+        update: String,
+        agent: TestAgent,
+    ) = jdbc.update(update, Timestamp.from(clock.now), agent.agentId)
+
+    @Test
+    fun `revoking the agent closes its open stream with AGENT_REVOKED`() {
+        val agent = clients.enrolled()
+        val connection = greeted(agent)
+        revokedBy("update agents set revoked_at = ? where id = ?", agent)
+        streams.check()
+        assertEquals(Ended(Status.Code.UNAUTHENTICATED, "AGENT_REVOKED"), connection.ended())
+        recorded.await("${agent.agentId} disconnected AGENT_REVOKED")
+    }
+
+    @Test
+    fun `revoking the certificate closes its open stream with CERT_REVOKED`() {
+        val agent = clients.enrolled()
+        val connection = greeted(agent)
+        revokedBy("update agent_certificates set revoked_at = ? where agent_id = ?", agent)
+        streams.check()
+        assertEquals(Ended(Status.Code.UNAUTHENTICATED, "CERT_REVOKED"), connection.ended())
+    }
+
+    @Test
+    fun `reaching not_after closes the open stream with CERT_EXPIRED`() {
+        val agent = clients.enrolled()
+        val connection = greeted(agent)
+        val notAfter = Timestamp.from(clock.now + Duration.ofSeconds(1))
+        jdbc.update("update agent_certificates set not_after = ? where agent_id = ?", notAfter, agent.agentId)
+        streams.check()
+        assertTrue(connection.isOpen, "a second before not_after")
+        clock.now += Duration.ofSeconds(1)
+        streams.check()
+        assertEquals(Ended(Status.Code.UNAUTHENTICATED, "CERT_EXPIRED"), connection.ended())
+    }
+
+    @Test
+    fun `the check leaves the other agents' sessions open`() {
+        val revoked = clients.enrolled()
+        val bystander = clients.enrolled()
+        val closed = greeted(revoked)
+        val open = greeted(bystander)
+        revokedBy("update agents set revoked_at = ? where id = ?", revoked)
+        streams.check()
+        assertEquals(Ended(Status.Code.UNAUTHENTICATED, "AGENT_REVOKED"), closed.ended())
+        assertTrue(open.isOpen)
+        assertTrue(registry.online(bystander.agentId))
+    }
+
+    // --- 6: send, backpressure
+
+    private fun runStep(
+        command: String,
+        padding: Int = 0,
+    ) = ConnectResponse
+        .newBuilder()
+        .setRunStep(RunStep.newBuilder().setCommandId(command).setConfigJson("x".repeat(padding)))
+        .build()
+
+    @Test
+    fun `send reaches the agent in order`() {
+        val agent = clients.enrolled()
+        val connection = greeted(agent)
+        assertEquals(SendResult.Queued, streams.send(agent.agentId, runStep("c-1")))
+        assertEquals(SendResult.Queued, streams.send(agent.agentId, runStep("c-2")))
+        val got =
+            List(2) {
+                connection.received
+                    .poll(WAIT_SECONDS, TimeUnit.SECONDS)
+                    ?.runStep
+                    ?.commandId
+            }
+        assertEquals(listOf("c-1", "c-2"), got)
+    }
+
+    @Test
+    fun `send to an agent that is not connected is NotConnected`() {
+        assertEquals(SendResult.NotConnected, streams.send(clients.enrolled().agentId, runStep("c")))
+    }
+
+    @Test
+    fun `an agent that does not read fills only its own queue, and the sender learns it`() {
+        val slow = clients.enrolled()
+        val fast = clients.enrolled()
+        val stalled = clients.connect(slow, reading = false).also { it.hello() }
+        recorded.await("${slow.agentId} hello ")
+        val quick = greeted(fast)
+
+        // The client's flow-control window (1 MiB) and gRPC's buffer fill first, then the queue.
+        val results = generateSequence(0) { it + 1 }.take(MAX_SENDS).map { streams.send(slow.agentId, runStep("s-$it", PADDING)) }
+        val queued = results.takeWhile { it == SendResult.Queued }.count()
+        assertTrue(queued < MAX_SENDS, "the queue never filled")
+        assertEquals(SendResult.QueueFull, streams.send(slow.agentId, runStep("more")))
+
+        assertEquals(SendResult.Queued, streams.send(fast.agentId, runStep("f-1")))
+        assertEquals(
+            "f-1",
+            quick.received
+                .poll(WAIT_SECONDS, TimeUnit.SECONDS)
+                ?.runStep
+                ?.commandId,
+            "not held up",
+        )
+
+        stalled.read(queued)
+        val first = stalled.received.poll(WAIT_SECONDS, TimeUnit.SECONDS)
+        assertEquals("s-0", first?.runStep?.commandId, "the slow agent still gets its messages, in order")
+        assertTrue(stalled.isOpen)
+    }
 }
+
+private const val PADDING = 64 * 1024
+private const val MAX_SENDS = 1_000

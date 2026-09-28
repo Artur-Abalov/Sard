@@ -3,7 +3,10 @@
 
 package dev.sard.server.agents.stream
 
+import dev.sard.server.agents.AgentCertificateStandings
 import dev.sard.server.agents.AgentSessions
+import dev.sard.server.persistence.TenantSessions
+import io.micrometer.core.instrument.MeterRegistry
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import org.springframework.beans.factory.ObjectProvider
@@ -25,6 +28,7 @@ class InboundHandlers(
     fun extensions(
         listeners: List<AgentSessionListener>,
         lastSeen: LastSeenStore,
+        metrics: StreamMetrics,
     ) = StreamExtensions(
         reconciliation.getIfUnique { LoggingInbound },
         progress.getIfUnique { LoggingInbound },
@@ -32,6 +36,7 @@ class InboundHandlers(
         logs.getIfUnique { LoggingInbound },
         listeners,
         lastSeen,
+        metrics,
     )
 }
 
@@ -63,22 +68,37 @@ class AgentStreamConfiguration {
     ) = InboundHandlers(reconciliation, progress, results, logs)
 
     @Bean
+    fun streamExtensions(
+        inbound: InboundHandlers,
+        listeners: ObjectProvider<AgentSessionListener>,
+        sessions: AgentSessions,
+        meters: MeterRegistry,
+        registry: AgentSessionRegistry,
+    ): StreamExtensions {
+        val metrics = MicrometerStreamMetrics(meters, registry)
+        return inbound.extensions(listeners.orderedStream().toList(), AgentLastSeen(sessions), metrics)
+    }
+
+    @Bean
     fun agentStreams(
         registry: AgentSessionRegistry,
         settings: AgentStreamSettings,
         clock: Clock,
         @Qualifier("agentStreamDispatcher") dispatcher: CoroutineDispatcher,
-        inbound: InboundHandlers,
-        listeners: ObjectProvider<AgentSessionListener>,
-        sessions: AgentSessions,
+        extensions: StreamExtensions,
+        tenants: TenantSessions,
     ): AgentStreams {
-        val extensions = inbound.extensions(listeners.orderedStream().toList(), AgentLastSeen(sessions))
-        return AgentStreams(registry, settings, clock, dispatcher, extensions)
+        val revalidation = SessionRevalidation(AgentCertificateStandings(tenants), clock)
+        return AgentStreams(registry, settings, clock, dispatcher, extensions, revalidation)
     }
 
+    /** Revocation, certificate expiry and silence are checked every `check-interval`. */
     @Bean
     fun agentStreamSweeper(
-        registry: AgentSessionRegistry,
+        streams: AgentStreams,
         settings: AgentStreamSettings,
-    ) = AgentStreamSweeper(settings.checkInterval) { registry.sweep() }
+    ) = AgentStreamSweeper(settings.checkInterval, streams::check)
+
+    @Bean
+    fun agentStreamShutdown(streams: AgentStreams) = AgentStreamShutdown(streams)
 }

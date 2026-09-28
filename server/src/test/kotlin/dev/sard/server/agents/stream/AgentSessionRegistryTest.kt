@@ -176,4 +176,30 @@ class AgentSessionRegistryTest {
         clock.now = NOW + SETTINGS.helloTimeout
         assertEquals(emptyList(), registry.sweep())
     }
+
+    @Test
+    fun `sessions and count cover claimed streams only`() {
+        val session = claimed()
+        registry.opened(stream())
+        assertEquals(listOf(session), MutFlow.underTest { registry.sessions() })
+        assertEquals(1, registry.count())
+    }
+
+    @Test
+    fun `closeAll closes sessions and streams before their Hello`() {
+        val session = claimed()
+        val early = stream()
+        registry.opened(early)
+        MutFlow.underTest { registry.closeAll(StreamCloseReason.SERVER_SHUTTING_DOWN.close()) }
+        assertEquals("SERVER_SHUTTING_DOWN", session.closedBy?.reason)
+        assertEquals("SERVER_SHUTTING_DOWN", early.closedBy?.reason)
+    }
+
+    @Test
+    fun `after closeAll a new stream is closed as soon as it opens`() {
+        registry.closeAll(StreamCloseReason.SERVER_SHUTTING_DOWN.close())
+        val late = stream()
+        MutFlow.underTest { registry.opened(late) }
+        assertEquals("SERVER_SHUTTING_DOWN", late.closedBy?.reason)
+    }
 }

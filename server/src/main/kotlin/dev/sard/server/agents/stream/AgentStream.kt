@@ -59,8 +59,16 @@ class AgentStream(
 
     fun firstSkewReport(): Boolean = !skewReported.getAndSet(true)
 
-    /** Queues a message for the agent; false when the queue is full or the stream is done. */
-    fun offer(message: ConnectResponse): Boolean = outbox.trySend(message).isSuccess
+    /** Queues a message for the agent without waiting (see [SendResult]). */
+    fun offer(message: ConnectResponse): SendResult {
+        if (closedBy != null) return SendResult.NotConnected
+        val sent = outbox.trySend(message)
+        return when {
+            sent.isSuccess -> SendResult.Queued
+            sent.isClosed -> SendResult.NotConnected
+            else -> SendResult.QueueFull
+        }
+    }
 
     /** Ends the stream from the server side; the first reason wins. */
     fun close(reason: StreamClose) {

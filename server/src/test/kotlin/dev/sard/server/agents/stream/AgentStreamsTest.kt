@@ -11,12 +11,17 @@ import dev.sard.proto.agent.v1.Heartbeat
 import dev.sard.proto.agent.v1.Hello
 import dev.sard.proto.agent.v1.LogChunk
 import dev.sard.proto.agent.v1.LogLine
+import dev.sard.proto.agent.v1.RunStep
 import dev.sard.proto.agent.v1.StepProgress
 import dev.sard.proto.agent.v1.StepResult
+import dev.sard.server.agents.AgentAuthFailure
 import dev.sard.server.agents.AgentPrincipal
+import dev.sard.server.agents.BatchStandings
+import dev.sard.server.agents.CertificateStanding
 import dev.sard.server.agents.stream.StreamFixtures.HEARTBEAT
 import dev.sard.server.agents.stream.StreamFixtures.NOW
 import dev.sard.server.agents.stream.StreamFixtures.SETTINGS
+import dev.sard.server.pki.AgentIdentity
 import dev.sard.server.pki.MovableClock
 import io.grpc.Context
 import io.grpc.Metadata
@@ -44,6 +49,7 @@ import java.util.Collections
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
@@ -56,7 +62,8 @@ private class Recorder :
     StepResultHandler,
     LogChunkHandler,
     AgentSessionListener,
-    LastSeenStore {
+    LastSeenStore,
+    StreamMetrics {
     val events: MutableList<String> = Collections.synchronizedList(mutableListOf())
     val signals = Channel<String>(Channel.UNLIMITED)
 
@@ -94,6 +101,10 @@ private class Recorder :
 
     override fun duplicateDetected(agent: ConnectedAgent) = record("duplicate")
 
+    override fun duplicateDetected() = record("metric duplicate")
+
+    override fun clockSkew(skew: Duration) = record("metric skew $skew")
+
     override fun record(
         agent: ConnectedAgent,
         at: Instant,
@@ -107,6 +118,15 @@ private class Recorder :
         }
     }
 }
+
+/** Certificate records by serial; the test's agent starts live. */
+private class FakeStandings : BatchStandings {
+    val records: MutableMap<String, CertificateStanding> = mutableMapOf()
+
+    override fun of(serials: Collection<String>): Map<String, CertificateStanding> = records.filterKeys { it in serials }
+}
+
+private fun runStep(command: String) = ConnectResponse.newBuilder().setRunStep(RunStep.newBuilder().setCommandId(command)).build()
 
 private fun hello(vararg running: String) =
     ConnectRequest.newBuilder().setHello(Hello.newBuilder().addAllRunningCommandIds(running.toList())).build()
@@ -153,6 +173,7 @@ class AgentStreamsTest {
     private val clock = MovableClock(NOW)
     private val recorder = Recorder()
     private val registry = AgentSessionRegistry(clock, SETTINGS)
+    private val standings = FakeStandings()
     private val principal = AgentPrincipal(UUID.randomUUID(), UUID.randomUUID(), "8f0e5c2a9b7d4e6f8a1b2c3d4e5f6a7b")
     private val streams =
         AgentStreams(
@@ -160,8 +181,14 @@ class AgentStreamsTest {
             SETTINGS,
             clock,
             Dispatchers.Unconfined,
-            StreamExtensions(recorder, recorder, recorder, recorder, listOf(recorder), recorder),
+            StreamExtensions(recorder, recorder, recorder, recorder, listOf(recorder), recorder, recorder),
+            SessionRevalidation(standings, clock),
         )
+
+    init {
+        val identity = AgentIdentity(tenantId = principal.tenantId, agentId = principal.agentId)
+        standings.records[principal.serial] = CertificateStanding(identity, NOW + Duration.ofDays(1), null, null)
+    }
 
     private fun CoroutineScope.open(): AgentSide {
         val requests = Channel<ConnectRequest>(Channel.UNLIMITED)
@@ -330,5 +357,97 @@ class AgentStreamsTest {
             } catch (expected: IllegalStateException) {
                 assertTrue("authenticated" in expected.message.orEmpty())
             }
+        }
+
+    // --- phase 3: send, database check, close, shutdown, metrics
+
+    @Test
+    fun `send queues messages the agent receives in order`() =
+        test {
+            val agent = open()
+            agent.requests.send(hello())
+            recorder.await("hello ")
+            assertEquals(SendResult.Queued, streams.send(principal.agentId, runStep("c-1")))
+            assertEquals(SendResult.Queued, streams.send(principal.agentId, runStep("c-2")))
+            agent.requests.close()
+            assertEquals(listOf(runStep("c-1"), runStep("c-2")), withTimeout(WAIT_MS) { agent.responses.await() })
+        }
+
+    @Test
+    fun `send to an agent without a session is NotConnected, before Hello too`() =
+        test {
+            assertEquals(SendResult.NotConnected, streams.send(UUID.randomUUID(), runStep("c")))
+            val agent = open()
+            yield()
+            assertEquals(SendResult.NotConnected, streams.send(principal.agentId, runStep("c")))
+            agent.requests.close()
+            agent.closedWith()
+        }
+
+    @Test
+    fun `the database check closes a session whose certificate was revoked, before the expiry sweep`() =
+        test {
+            val agent = open()
+            agent.requests.send(hello())
+            recorder.await("hello ")
+            standings.records.computeIfPresent(principal.serial) { _, standing -> standing.copy(revokedAt = NOW) }
+            clock.now = NOW + SETTINGS.offlineAfter
+            streams.check()
+            assertEquals(Status.Code.UNAUTHENTICATED to "CERT_REVOKED", agent.closedWith())
+            assertEquals("disconnected CERT_REVOKED", recorder.events.last())
+        }
+
+    @Test
+    fun `the database check leaves a valid session open and still sweeps`() =
+        test {
+            val agent = open()
+            agent.requests.send(hello())
+            recorder.await("hello ")
+            streams.check()
+            assertTrue(registry.online(principal.agentId))
+            clock.now = NOW + SETTINGS.offlineAfter
+            streams.check()
+            assertEquals(Status.Code.UNAVAILABLE to "SESSION_EXPIRED", agent.closedWith())
+        }
+
+    @Test
+    fun `close by agent id ends its session with the auth failure`() =
+        test {
+            assertFalse(streams.close(principal.agentId, AgentAuthFailure.AGENT_REVOKED))
+            val agent = open()
+            agent.requests.send(hello())
+            recorder.await("hello ")
+            assertTrue(streams.close(principal.agentId, AgentAuthFailure.AGENT_REVOKED))
+            assertEquals(Status.Code.UNAUTHENTICATED to "AGENT_REVOKED", agent.closedWith())
+        }
+
+    @Test
+    fun `shutdown closes every stream with SERVER_SHUTTING_DOWN and refuses new ones`() =
+        test {
+            val agent = open()
+            agent.requests.send(hello())
+            recorder.await("hello ")
+            streams.shutdown()
+            assertEquals(Status.Code.UNAVAILABLE to "SERVER_SHUTTING_DOWN", agent.closedWith())
+            val late = open()
+            assertEquals(Status.Code.UNAVAILABLE to "SERVER_SHUTTING_DOWN", late.closedWith())
+        }
+
+    @Test
+    fun `duplicates and clock skew reach the metrics`() =
+        test {
+            val first = open()
+            first.requests.send(hello())
+            recorder.await("hello ")
+            val second = open()
+            second.requests.send(hello())
+            second.closedWith()
+            first.requests.send(heartbeat(NOW - Duration.ofSeconds(5)))
+            first.requests.send(progress("sync"))
+            recorder.await("progress sync")
+            assertTrue("metric duplicate" in recorder.events, recorder.events.toString())
+            assertTrue("metric skew PT-5S" in recorder.events, recorder.events.toString())
+            first.requests.close()
+            first.closedWith()
         }
 }

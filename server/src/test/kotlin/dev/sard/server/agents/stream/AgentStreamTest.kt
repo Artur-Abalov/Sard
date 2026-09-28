@@ -103,10 +103,24 @@ class AgentStreamTest {
     }
 
     @Test
-    fun `the outbox takes up to the queue size, then refuses`() {
+    fun `the outbox takes up to the queue size, then answers QueueFull`() {
         val stream = stream()
         val message = ConnectResponse.getDefaultInstance()
-        repeat(StreamFixtures.SETTINGS.sendQueue) { assertTrue(stream.offer(message), "message $it") }
-        assertFalse(MutFlow.underTest { stream.offer(message) })
+        repeat(StreamFixtures.SETTINGS.sendQueue) { assertEquals(SendResult.Queued, stream.offer(message), "message $it") }
+        assertEquals(SendResult.QueueFull, MutFlow.underTest { stream.offer(message) })
+    }
+
+    @Test
+    fun `a stream the server closed takes nothing`() {
+        val stream = stream()
+        stream.close(StreamCloseReason.SESSION_EXPIRED.close())
+        assertEquals(SendResult.NotConnected, MutFlow.underTest { stream.offer(ConnectResponse.getDefaultInstance()) })
+    }
+
+    @Test
+    fun `a stream the agent ended takes nothing`() {
+        val stream = stream()
+        stream.complete()
+        assertEquals(SendResult.NotConnected, MutFlow.underTest { stream.offer(ConnectResponse.getDefaultInstance()) })
     }
 }
