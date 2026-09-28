@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -19,6 +20,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/enroll"
+	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
@@ -69,6 +73,22 @@ func TestEnrollmentByAnActiveTokenWritesKeyCertificateAndBundle(t *testing.T) {
 	requireCAFingerprint(t, f.h.caFile, f.ca.fingerprint())
 }
 
+// Ключ, записанный командой enroll, проходит проверку при старте (@a1 @fake)
+func TestTheKeyWrittenByEnrollPassesTheStartupCheck(t *testing.T) {
+	f := newSucceedingFakeFixture(t, "a1")
+	code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)
+	if code != exitOK {
+		t.Fatalf("code = %d, want 0; stderr = %q", code, errOut)
+	}
+	cfg, err := config.Load(f.h.configPath)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	if err := secrets.CheckAll(cfg, uint32(os.Getuid()), secrets.RealStat); err != nil {
+		t.Fatalf("secrets.CheckAll: %v", err)
+	}
+}
+
 // Итог успеха называет agent_id, адрес, пути и следующий шаг
 func TestSuccessNamesAgentIDAddressPathsAndNextStep(t *testing.T) {
 	f := newSucceedingFakeFixture(t, "agent-x")
@@ -88,18 +108,27 @@ func TestSuccessNamesAgentIDAddressPathsAndNextStep(t *testing.T) {
 
 // Адрес сервера в виде IPv6 в скобках принимается
 //
-// This sandbox has no IPv6 stack at all (no /proc/net/if_inet6), so a real
-// TLS handshake over [::1] cannot succeed here regardless of the code under
-// test. What is provable without one: --server "[::1]:port" is accepted as
-// a well-formed address and matches server.address, so the command runs
-// every local check and reaches the network stage instead of being refused
-// as a usage error over the address's syntax.
+// This sandbox has no IPv6 stack at all (no /proc/net/if_inet6): a real
+// TCP connection to [::1] cannot succeed here. F6's dial seam stands in
+// for just that one step — the injected DialFunc insists on being asked
+// for the IPv6 address, then hands back a real connection to the fake
+// server's actual (IPv4) listener; everything else, including hostname
+// verification, runs unmodified against a leaf certificate whose SAN is
+// the IPv6 address "::1".
 func TestIPv6ServerAddressInBracketsIsAccepted(t *testing.T) {
-	h := newHost(t, "[::1]:9090")
-	token := newToken(t, strings.Repeat("a", 64))
-	code, _, errOut := runEnrollCmdTest("--config", h.configPath, "--server", "[::1]:9090", "--token", token)
-	if code == exitUsage {
-		t.Fatalf("code = %d (usage), want the IPv6 address accepted and the command to reach the network stage; stderr = %q", code, errOut)
+	ca := newTestCA(t)
+	leaf := chainOf(ca.leaf(t, []string{"::1"}, 0), ca)
+	srv := &enrollServer{}
+	addr := startFakeServer(t, leaf, srv) // 127.0.0.1:<port>
+	srv.answer = succeedingAnswer(ca, "a1")
+	_, port := splitHostPortForTest(t, addr)
+	ipv6Addr := "[::1]:" + port
+	h := newHost(t, ipv6Addr)
+	token := newToken(t, ca.fingerprint())
+
+	code, _, errOut := runEnrollCmdWithDial(dialToInstead(t, ipv6Addr, addr), "--config", h.configPath, "--server", ipv6Addr, "--token", token)
+	if code != exitOK {
+		t.Fatalf("code = %d, want 0; stderr = %q", code, errOut)
 	}
 }
 
@@ -210,17 +239,27 @@ func TestHostnameInAddressesIsComparedCaseInsensitively(t *testing.T) {
 
 // IPv6-адреса сравниваются по значению
 //
-// Same sandbox limitation as above (no IPv6 stack): this proves the address
-// conflict check treats "[::1]" and "[0:0:0:0:0:0:0:1]" as the same address
-// (config.AddressEqual, already unit-tested in agent/internal/config) by
-// checking the command is not refused as a usage error over an address
-// mismatch, without requiring an actual IPv6 handshake to succeed.
+// Same sandbox limitation as above (no IPv6 stack), same seam (F6). This
+// also exercises real value-equality of the two forms twice over: the
+// address conflict check (config.AddressEqual, --server "[::1]" against
+// server.address "[0:0:0:0:0:0:0:1]") and the TLS handshake's own
+// hostname check (crypto/x509.VerifyHostname("0:0:0:0:0:0:0:1") against a
+// certificate whose SAN is the literal IP "::1") — both must agree these
+// are the same address for the command to reach exitOK.
 func TestIPv6AddressesAreComparedByValue(t *testing.T) {
-	h := newHost(t, "[0:0:0:0:0:0:0:1]:9090")
-	token := newToken(t, strings.Repeat("a", 64))
-	code, _, errOut := runEnrollCmdTest("--config", h.configPath, "--server", "[::1]:9090", "--token", token)
-	if code == exitUsage {
-		t.Fatalf("code = %d (usage), want [::1] and [0:0:0:0:0:0:0:1] treated as the same address; stderr = %q", code, errOut)
+	ca := newTestCA(t)
+	leaf := chainOf(ca.leaf(t, []string{"::1"}, 0), ca)
+	srv := &enrollServer{}
+	addr := startFakeServer(t, leaf, srv)
+	srv.answer = succeedingAnswer(ca, "a1")
+	_, port := splitHostPortForTest(t, addr)
+	configAddr := "[0:0:0:0:0:0:0:1]:" + port
+	h := newHost(t, configAddr)
+	token := newToken(t, ca.fingerprint())
+
+	code, _, errOut := runEnrollCmdWithDial(dialToInstead(t, configAddr, addr), "--config", h.configPath, "--server", "[::1]:"+port, "--token", token)
+	if code != exitOK {
+		t.Fatalf("code = %d, want 0; stderr = %q", code, errOut)
 	}
 }
 
@@ -615,15 +654,48 @@ func TestTheServerRefusesTheConnection(t *testing.T) {
 }
 
 // Имя сервера не разрешается
+//
+// F6: CLAUDE.md forbids tests that touch the real network — a name that
+// happens not to resolve today is still a real DNS lookup. The injected
+// DialFunc returns the exact failure a real resolver gives for an unknown
+// name (*net.DNSError, IsNotFound) without performing one.
 func TestTheServerNameDoesNotResolve(t *testing.T) {
-	h := newHost(t, "this-name-does-not-resolve.invalid:9090")
+	h := newHost(t, "sard.example.com:9090")
 	token := newToken(t, strings.Repeat("a", 64))
-	code, _, errOut := runEnrollCmdTest("--config", h.configPath, "--token", token)
+	dial := func(context.Context, string, string) (net.Conn, error) {
+		return nil, &net.DNSError{Err: "no such host", Name: "sard.example.com", IsNotFound: true}
+	}
+	code, _, errOut := runEnrollCmdWithDial(dial, "--config", h.configPath, "--token", token)
 	if code != exitTemporary {
 		t.Fatalf("code = %d, want %d (temporary); stderr = %q", code, exitTemporary, errOut)
 	}
-	if !strings.Contains(errOut, "this-name-does-not-resolve.invalid:9090") {
+	if !strings.Contains(errOut, "sard.example.com:9090") {
 		t.Errorf("stderr does not name the address: %q", errOut)
+	}
+}
+
+// runEnrollCmdWithDial runs the command with a fake DialFunc instead of a
+// real one (F6): needed wherever a scenario cannot be dialed for real in
+// this environment (no IPv6, no DNS lookups in tests) but the rest of the
+// pipeline — including TLS verification — must still run unmodified.
+func runEnrollCmdWithDial(dial enroll.DialFunc, args ...string) (int, string, string) {
+	var out, errOut strings.Builder
+	code := runEnrollWithDeps(context.Background(), args, &out, &errOut, enrollDeps{hostname: fixedHostname, clock: realEnrollClock{}, dial: dial})
+	return code, out.String(), errOut.String()
+}
+
+// dialToInstead returns a DialFunc that insists on being asked to dial
+// want, then connects to actual instead — the seam behind the two IPv6
+// scenarios above: address handling and TLS hostname verification run for
+// real against want, only the raw TCP connection is redirected to a
+// reachable stand-in.
+func dialToInstead(t *testing.T, want, actual string) enroll.DialFunc {
+	t.Helper()
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if addr != want {
+			t.Fatalf("dialed %q, want %q", addr, want)
+		}
+		return enroll.RealDial(ctx, network, actual)
 	}
 }
 

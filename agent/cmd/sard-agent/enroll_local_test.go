@@ -6,6 +6,7 @@ package main
 import (
 	"encoding/base64"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -268,11 +269,25 @@ func TestUnknownFlagOrExtraArgumentIsAUsageError(t *testing.T) {
 
 // Без --config используется конфиг службы по умолчанию
 func TestWithoutConfigTheDefaultServiceConfigIsUsed(t *testing.T) {
-	if got := resolveEnrollConfigPath(""); got != defaultEnrollConfigPath {
-		t.Fatalf("default config path = %q, want %q", got, defaultEnrollConfigPath)
+	// The literal path, not defaultEnrollConfigPath: comparing against the
+	// same constant the code returns would pass even if that constant were
+	// itself wrong (F9). Going through parseEnrollFlags, not
+	// resolveEnrollConfigPath directly, proves the whole flag path reaches
+	// the default — not just the helper in isolation.
+	opts, code := parseEnrollFlags([]string{"--token", "x"}, io.Discard)
+	if code != exitOK {
+		t.Fatalf("code = %d, want 0", code)
 	}
-	if got := resolveEnrollConfigPath("/custom/agent.yaml"); got != "/custom/agent.yaml" {
-		t.Fatalf("explicit config path = %q, want it unchanged", got)
+	if opts.configPath != "/etc/sard/agent.yaml" {
+		t.Fatalf("config path = %q, want /etc/sard/agent.yaml", opts.configPath)
+	}
+
+	opts, code = parseEnrollFlags([]string{"--token", "x", "--config", "/custom/agent.yaml"}, io.Discard)
+	if code != exitOK {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if opts.configPath != "/custom/agent.yaml" {
+		t.Fatalf("config path = %q, want it unchanged", opts.configPath)
 	}
 }
 

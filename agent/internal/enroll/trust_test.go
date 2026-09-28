@@ -185,7 +185,7 @@ func serveGRPC(t *testing.T, cert tls.Certificate) string {
 func TestDialTOFUSucceedsWhenTheFingerprintAndHostnameMatch(t *testing.T) {
 	ca := newTestCA(t)
 	addr := serveGRPC(t, chainOf(ca.leaf(t, []string{"localhost", "127.0.0.1"}, 0), ca))
-	conn, err := enroll.DialTOFU(context.Background(), addr, ca.fingerprint())
+	conn, err := enroll.DialTOFU(context.Background(), enroll.RealDial, addr, ca.fingerprint())
 	if err != nil {
 		t.Fatalf("DialTOFU: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestDialTOFURejectsAMismatchedFingerprintBeforeAnyRequest(t *testing.T) {
 	ca := newTestCA(t)
 	other := newTestCA(t)
 	addr := listenTLS(t, chainOf(ca.leaf(t, []string{"127.0.0.1"}, 0), ca))
-	_, err := enroll.DialTOFU(context.Background(), addr, other.fingerprint())
+	_, err := enroll.DialTOFU(context.Background(), enroll.RealDial, addr, other.fingerprint())
 	requireTrustClass(t, err)
 }
 
@@ -204,7 +204,7 @@ func TestDialTOFURejectsAChainWithoutARoot(t *testing.T) {
 	ca := newTestCA(t)
 	leaf := ca.leaf(t, []string{"127.0.0.1"}, 0) // no root appended
 	addr := listenTLS(t, leaf)
-	_, err := enroll.DialTOFU(context.Background(), addr, ca.fingerprint())
+	_, err := enroll.DialTOFU(context.Background(), enroll.RealDial, addr, ca.fingerprint())
 	requireTrustClass(t, err)
 }
 
@@ -214,21 +214,21 @@ func TestDialTOFURejectsALeafNotSignedByThePinnedRoot(t *testing.T) {
 	leaf := signer.leaf(t, []string{"127.0.0.1"}, 0)
 	leaf.Certificate = append(leaf.Certificate, ca.cert.Raw) // fingerprint matches ca, signature doesn't
 	addr := listenTLS(t, leaf)
-	_, err := enroll.DialTOFU(context.Background(), addr, ca.fingerprint())
+	_, err := enroll.DialTOFU(context.Background(), enroll.RealDial, addr, ca.fingerprint())
 	requireTrustClass(t, err)
 }
 
 func TestDialTOFURejectsAnExpiredServerCertificate(t *testing.T) {
 	ca := newTestCA(t)
 	addr := listenTLS(t, chainOf(ca.leaf(t, []string{"127.0.0.1"}, -time.Hour), ca))
-	_, err := enroll.DialTOFU(context.Background(), addr, ca.fingerprint())
+	_, err := enroll.DialTOFU(context.Background(), enroll.RealDial, addr, ca.fingerprint())
 	requireTrustClass(t, err)
 }
 
 func TestDialTOFURejectsAHostnameNotInTheCertificateAndListsTheCertNames(t *testing.T) {
 	ca := newTestCA(t)
 	addr := listenTLS(t, chainOf(ca.leaf(t, []string{"sard.example.com", "localhost"}, 0), ca))
-	_, err := enroll.DialTOFU(context.Background(), addr, ca.fingerprint())
+	_, err := enroll.DialTOFU(context.Background(), enroll.RealDial, addr, ca.fingerprint())
 	var eerr *enroll.Error
 	if !errors.As(err, &eerr) {
 		t.Fatalf("error type = %T, want *enroll.Error", err)
@@ -243,7 +243,7 @@ func TestDialTOFURejectsAHostnameNotInTheCertificateAndListsTheCertNames(t *test
 
 func TestDialTOFUClassifiesAServerWithoutTLSAsTrust(t *testing.T) {
 	addr := listenNoTLS(t)
-	_, err := enroll.DialTOFU(context.Background(), addr, "0000000000000000000000000000000000000000000000000000000000000000"[:64])
+	_, err := enroll.DialTOFU(context.Background(), enroll.RealDial, addr, "0000000000000000000000000000000000000000000000000000000000000000"[:64])
 	requireTrustClass(t, err)
 }
 
@@ -255,7 +255,7 @@ func TestDialTOFUClassifiesAnUnreachableServerAsTemporaryAndNamesTheAddress(t *t
 	addr := lis.Addr().String()
 	_ = lis.Close() // nobody listens now
 
-	_, derr := enroll.DialTOFU(context.Background(), addr, "0000000000000000000000000000000000000000000000000000000000000000"[:64])
+	_, derr := enroll.DialTOFU(context.Background(), enroll.RealDial, addr, "0000000000000000000000000000000000000000000000000000000000000000"[:64])
 	var eerr *enroll.Error
 	if !errors.As(derr, &eerr) {
 		t.Fatalf("error type = %T, want *enroll.Error", derr)
@@ -272,7 +272,7 @@ func TestDialTOFUClassifiesAContextDeadlineAsTemporary(t *testing.T) {
 	addr := listenIdleTLS(t) // accepts and sits idle, so the dial itself succeeds
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	_, err := enroll.DialTOFU(ctx, addr, "0000000000000000000000000000000000000000000000000000000000000000"[:64])
+	_, err := enroll.DialTOFU(ctx, enroll.RealDial, addr, "0000000000000000000000000000000000000000000000000000000000000000"[:64])
 	var eerr *enroll.Error
 	if !errors.As(err, &eerr) {
 		t.Fatalf("error type = %T, want *enroll.Error", err)
@@ -280,6 +280,51 @@ func TestDialTOFUClassifiesAContextDeadlineAsTemporary(t *testing.T) {
 	if eerr.Class != enroll.ClassTemporary {
 		t.Fatalf("class = %q, want temporary", eerr.Class)
 	}
+}
+
+// intermediateCA issues an intermediate CA certificate signed by ca — used
+// to prove leaf.Verify (F13) builds the chain through it, not just from
+// the leaf straight to the pinned root.
+func (ca *testCA) intermediateCA(t *testing.T) *testCA {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(2),
+		Subject:               pkix.Name{CommonName: "test intermediate CA"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.cert, &key.PublicKey, ca.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &testCA{cert: cert, key: key}
+}
+
+// F13: the chain presented in the handshake may carry an intermediate
+// between the leaf and the pinned root; leaf.Verify must be given it as an
+// Intermediate, not just the pinned root, or a perfectly valid chain fails.
+func TestDialTOFUAcceptsAChainWithAnIntermediateBetweenLeafAndThePinnedRoot(t *testing.T) {
+	root := newTestCA(t)
+	intermediate := root.intermediateCA(t)
+	leaf := intermediate.leaf(t, []string{"127.0.0.1"}, 0)
+	leaf.Certificate = append(leaf.Certificate, intermediate.cert.Raw, root.cert.Raw)
+	addr := serveGRPC(t, leaf)
+	conn, err := enroll.DialTOFU(context.Background(), enroll.RealDial, addr, root.fingerprint())
+	if err != nil {
+		t.Fatalf("DialTOFU: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
 }
 
 func requireTrustClass(t *testing.T, err error) {

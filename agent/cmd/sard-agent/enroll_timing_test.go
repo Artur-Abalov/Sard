@@ -45,7 +45,7 @@ func (c *fakeEnrollClock) fireNow() { c.fire <- time.Now() }
 
 func runEnrollCmdWithClock(clk clock, args ...string) (int, string, string) {
 	var out, errOut strings.Builder
-	code := runEnrollWithClock(context.Background(), args, &out, &errOut, fixedHostname, clk)
+	code := runEnrollWithDeps(context.Background(), args, &out, &errOut, enrollDeps{hostname: fixedHostname, clock: clk, dial: enroll.RealDial})
 	return code, out.String(), errOut.String()
 }
 
@@ -120,7 +120,7 @@ func TestATimeoutAfterSendingEnrollWarnsTheTokenMayHaveBeenSpent(t *testing.T) {
 	var out, errOut strings.Builder
 	done := make(chan int, 1)
 	go func() {
-		code := runEnrollWithClock(context.Background(), []string{"--config", h.configPath, "--token", token}, &out, &errOut, fixedHostname, clk)
+		code := runEnrollWithDeps(context.Background(), []string{"--config", h.configPath, "--token", token}, &out, &errOut, enrollDeps{hostname: fixedHostname, clock: clk, dial: enroll.RealDial})
 		done <- code
 	}()
 	<-srv.started // the server has received the call and is holding it
@@ -218,5 +218,41 @@ func TestConcurrentEnrollmentsOnOneHostDoNotMixFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(enroll.LockPath(f.h.certFile)); !os.IsNotExist(err) {
 		t.Fatal("a lock file was left behind")
+	}
+}
+
+// F2: the existing-identity check runs before the lock is acquired, so two
+// enrollments racing for the same host could both pass it and the second
+// one would overwrite the identity the first just wrote. Re-checking after
+// the lock closes that window.
+func TestASecondEnrollRacingBetweenTheIdentityCheckAndTheLockIsRefused(t *testing.T) {
+	f := newSucceedingFakeFixture(t, "a1")
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	blockedHostname := func() (string, error) {
+		close(entered)
+		<-release
+		return "db1", nil
+	}
+	doneB := make(chan int, 1)
+	go func() {
+		code, _, _ := runEnrollCmdOn(blockedHostname, "--config", f.h.configPath, "--token", f.token)
+		doneB <- code
+	}()
+	<-entered // B's own (first) identity check ran and found nothing; it is now blocked resolving the hostname
+
+	codeA, _, errOutA := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)
+	if codeA != exitOK {
+		t.Fatalf("A: code = %d, want 0; stderr = %q", codeA, errOutA)
+	}
+
+	close(release) // let B proceed into the (now free) lock
+	codeB := <-doneB
+	if codeB != exitIdentityExists {
+		t.Fatalf("B: code = %d, want %d (identity exists)", codeB, exitIdentityExists)
+	}
+	if f.srv.callCount() != 1 {
+		t.Fatalf("server calls = %d, want exactly 1 (only A)", f.srv.callCount())
 	}
 }

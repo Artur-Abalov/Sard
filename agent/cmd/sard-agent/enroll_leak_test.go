@@ -100,6 +100,30 @@ func leakCaseWrite(t *testing.T) leakCase {
 	return leakCase{code, exitWrite, f.token, out, errOut}
 }
 
+// F3: a token pasted without --token (a positional argument), or pasted
+// as the --token-file path by mistake, must never be echoed back.
+func TestPositionalArgumentsAndTokenFilePathsAreNeverEchoedBack(t *testing.T) {
+	f := newLocalFixture(t)
+	t.Run("token pasted without --token", func(t *testing.T) {
+		code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token, f.token)
+		if code != exitUsage {
+			t.Fatalf("code = %d, want usage; stderr = %q", code, errOut)
+		}
+		if strings.Contains(errOut, f.token) || strings.Contains(errOut, "sard_") {
+			t.Errorf("stderr echoed the positional token: %q", errOut)
+		}
+	})
+	t.Run("token pasted as --token-file path", func(t *testing.T) {
+		code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token-file", f.token)
+		if code != exitUsage {
+			t.Fatalf("code = %d, want usage; stderr = %q", code, errOut)
+		}
+		if strings.Contains(errOut, f.token) || strings.Contains(errOut, "sard_") {
+			t.Errorf("stderr echoed the token passed as --token-file: %q", errOut)
+		}
+	})
+}
+
 func leakCaseAgentError(t *testing.T) leakCase {
 	f := newFakeFixture(t, []string{"127.0.0.1"}, failingAnswer(codes.InvalidArgument, "CSR_INVALID"))
 	code, out, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)

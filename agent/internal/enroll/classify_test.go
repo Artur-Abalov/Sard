@@ -51,6 +51,62 @@ func dialClassifyServer(t *testing.T, s *classifyServer) *grpc.ClientConn {
 	return conn
 }
 
+// dialClassifyServerManual is dialClassifyServer, except the caller stops
+// the server by hand instead of on t.Cleanup — needed to drop the
+// connection mid-request.
+func dialClassifyServerManual(t *testing.T, s *classifyServer) (*grpc.ClientConn, func()) {
+	t.Helper()
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := grpc.NewServer()
+	agentv1.RegisterEnrollmentServiceServer(srv, s)
+	go func() { _ = srv.Serve(lis) }()
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return conn, srv.Stop
+}
+
+// F1: a connection dropped after the request was sent must not be confused
+// with an unforeseen server response (В14) — the token's fate is unknown,
+// same as a timeout, not "an updated agent might fix this".
+func TestCallEnrollClassifiesAConnectionDropAfterSendingAsTemporaryWithTokenMaybeSpent(t *testing.T) {
+	started := make(chan struct{})
+	s := &classifyServer{answer: func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+		close(started)
+		select {} // never respond; the server is stopped from outside instead
+	}}
+	conn, stop := dialClassifyServerManual(t, s)
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := enroll.CallEnroll(context.Background(), conn, &agentv1.EnrollRequest{})
+		errCh <- err
+	}()
+	<-started
+	stop() // abruptly closes the listener and every connection
+
+	var err error
+	select {
+	case err = <-errCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("CallEnroll did not return after the server stopped")
+	}
+	var eerr *enroll.Error
+	if !errors.As(err, &eerr) {
+		t.Fatalf("error type = %T, want *enroll.Error", err)
+	}
+	if eerr.Class != enroll.ClassTemporary {
+		t.Fatalf("class = %q, want temporary", eerr.Class)
+	}
+	if !eerr.TokenMaybeSpent {
+		t.Fatal("want TokenMaybeSpent after a connection drop following the request")
+	}
+}
+
 func reasonRefusal(code codes.Code, reason string) error {
 	st, err := status.New(code, "enroll refused").WithDetails(&errdetails.ErrorInfo{Reason: reason, Domain: "sard.dev"})
 	if err != nil {

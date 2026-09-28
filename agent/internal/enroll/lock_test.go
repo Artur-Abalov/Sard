@@ -65,3 +65,24 @@ func TestUnlockRemovesTheLockFile(t *testing.T) {
 		t.Fatalf("lock file still present after unlock: err = %v", err)
 	}
 }
+
+// F5: a lock file left behind by a crashed enroll (nobody holds the kernel
+// flock on it any more) must not wedge every later enroll behind "an
+// enrollment is already in progress" forever.
+func TestLockIgnoresAStaleLockFileFromADeadProcess(t *testing.T) {
+	certFile := filepath.Join(t.TempDir(), "tls.crt")
+	// Nothing has this file open: write it directly, the way a crashed
+	// process's O_CREATE would have left it, with a pid nothing now owns.
+	if err := os.WriteFile(enroll.LockPath(certFile), []byte("999999999\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	unlock, err := enroll.Lock(certFile)
+	if err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+	unlock()
+	if _, err := os.Stat(enroll.LockPath(certFile)); !os.IsNotExist(err) {
+		t.Fatalf("lock file still present after unlock: err = %v", err)
+	}
+}

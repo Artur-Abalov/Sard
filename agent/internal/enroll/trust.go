@@ -17,23 +17,36 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-// DialTOFU connects to address, trusting on first use (ADR 0014, D4.3):
-// the only accepted root is whichever certificate in the presented TLS
-// chain has a SHA-256 SPKI fingerprint equal to fingerprint. The server's
-// leaf certificate must chain to that root and cover the host in address.
-// This check runs to completion, over a raw TLS handshake, before the
-// returned connection is handed to anything that would send the
+// DialFunc opens the raw TCP connection DialTOFU runs its TLS handshake
+// over. Its signature matches (*net.Dialer).DialContext exactly, so
+// production code passes that method value directly; tests inject a fake
+// to avoid the real network (CLAUDE.md) — a DNS failure, an unreachable
+// address, or a connection to a fake server regardless of what address
+// string was asked for.
+type DialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
+
+// RealDial is the production DialFunc: a plain TCP dial.
+func RealDial(ctx context.Context, network, addr string) (net.Conn, error) {
+	return (&net.Dialer{}).DialContext(ctx, network, addr)
+}
+
+// DialTOFU connects to address via dial, trusting on first use (ADR 0014,
+// D4.3): the only accepted root is whichever certificate in the presented
+// TLS chain has a SHA-256 SPKI fingerprint equal to fingerprint. The
+// server's leaf certificate must chain to that root and cover the host in
+// address. This check runs to completion, over a raw TLS handshake, before
+// the returned connection is handed to anything that would send the
 // enrollment token or a CSR: a rejected server never receives either.
 //
 // The returned error is always a *Error with Class ClassTrust (fingerprint
 // or hostname mismatch, or any other TLS failure) or ClassTemporary (the
 // server could not be reached, or ctx ended first).
-func DialTOFU(ctx context.Context, address, fingerprint string) (*grpc.ClientConn, error) {
+func DialTOFU(ctx context.Context, dial DialFunc, address, fingerprint string) (*grpc.ClientConn, error) {
 	host, _, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, &Error{Class: ClassAgentError, msg: "invalid server address " + address}
 	}
-	tlsConn, err := dialAndVerify(ctx, address, host, fingerprint)
+	tlsConn, err := dialAndVerify(ctx, dial, address, host, fingerprint)
 	if err != nil {
 		return nil, err
 	}
@@ -43,8 +56,8 @@ func DialTOFU(ctx context.Context, address, fingerprint string) (*grpc.ClientCon
 // dialAndVerify makes the TCP connection and runs the TLS handshake with
 // the TOFU verifier; the handshake itself, via VerifyPeerCertificate,
 // completes the fingerprint and hostname checks before any RPC exists.
-func dialAndVerify(ctx context.Context, address, host, fingerprint string) (*tls.Conn, error) {
-	rawConn, err := (&net.Dialer{}).DialContext(ctx, "tcp", address)
+func dialAndVerify(ctx context.Context, dial DialFunc, address, host, fingerprint string) (*tls.Conn, error) {
+	rawConn, err := dial(ctx, "tcp", address)
 	if err != nil {
 		return nil, classifyDialError(ctx, err, address)
 	}
@@ -69,9 +82,17 @@ func dialAndVerify(ctx context.Context, address, host, fingerprint string) (*tls
 // newGRPCConn hands the already-verified tlsConn to grpc as-is.
 // grpc.NewClient never dials by itself; an established-but-unused tlsConn
 // would sit open on the server until something closes it, so Connect is
-// called right away.
+// called right away. The target uses the "passthrough" scheme explicitly
+// (not just "address", which grpc-go would otherwise hand to its default
+// resolver): the custom dialer below ignores the target and always returns
+// tlsConn, so resolving it serves no purpose, and a resolution failure —
+// e.g. address is a bare IPv6 literal grpc's own resolver rejects, or a
+// name that does not exist — would otherwise surface as an UNAVAILABLE
+// status with no ErrorInfo before Enroll is ever called, which
+// classifyBareStatus (F1) now reads as "the request was sent, the token
+// may be spent" — exactly backwards for a call that was never made.
 func newGRPCConn(address string, tlsConn *tls.Conn) (*grpc.ClientConn, error) {
-	conn, err := grpc.NewClient(address,
+	conn, err := grpc.NewClient("passthrough:///"+address,
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return tlsConn, nil }),
 		grpc.WithTransportCredentials(tofuCredentials{}),
 	)
@@ -141,7 +162,11 @@ func (v *tofuVerifier) checkChain(leaf *x509.Certificate, candidateRoots []*x509
 	}
 	pool := x509.NewCertPool()
 	pool.AddCert(root)
-	if _, err := leaf.Verify(x509.VerifyOptions{Roots: pool, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); err != nil {
+	intermediates := x509.NewCertPool()
+	for _, c := range candidateRoots {
+		intermediates.AddCert(c)
+	}
+	if _, err := leaf.Verify(x509.VerifyOptions{Roots: pool, Intermediates: intermediates, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); err != nil {
 		return trustError("server certificate does not chain to the pinned CA: %v", err)
 	}
 	if err := leaf.VerifyHostname(v.host); err != nil {

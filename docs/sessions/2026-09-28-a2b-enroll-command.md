@@ -267,3 +267,280 @@ gate: PASSED (agent, fast)
 Дальше — architect: структурный обзор `enroll.go` (599 строк, один файл
 на всю CLI-логику) и границ `agent/internal/enroll` не входит в мандат
 cleaner (только функции, не границы модулей).
+
+## coder: исправления по architect (2026-09-28, коммиты 951279c, c6a112b, 63175b2)
+
+Architect вернул A2a+A2b на доработку (CHANGES REQUIRED) по 13 пунктам
+(F1–F13). Все исправлены, TDD (красный тест зафиксирован перед правкой,
+кроме двух отмеченных ниже мест, где это невозможно или неприменимо).
+
+### F1 (P0) — обрыв соединения после отправки классифицировался как agent-error
+`classifyBareStatus` (`agent/internal/enroll/classify.go`) относил голый
+`UNAVAILABLE` (без `google.rpc.ErrorInfo`) к «непредусмотренному ответу»
+(exit 1), хотя после отправки `Enroll` обрыв соединения — ровно тот же
+случай, что таймаут: судьба токена неизвестна (В14). Добавлен
+`isBareTemporaryCode` (`DeadlineExceeded`, `Canceled`, `Unavailable`) →
+`ClassTemporary`, `TokenMaybeSpent: true`. Тест:
+`TestCallEnrollClassifiesAConnectionDropAfterSendingAsTemporaryWithTokenMaybeSpent`
+(`classify_test.go`) — сервер держит запрос, тест останавливает его
+(`srv.Stop()`) вместо ответа; красный до правки (`class = "agent-error"`),
+зелёный после.
+
+Вместе с F1 — `newGRPCConn` (`trust.go`) теперь строит `grpc.NewClient` с
+целью `"passthrough:///"+address`, а не голым `address`: свой дайлер и так
+игнорирует переданный target (возвращает уже проверенный `*tls.Conn`), но
+без `passthrough` grpc сам пытался бы резолвить `address` через
+дефолтный ресолвер до вызова дайлера — а неудачная резолюция (например,
+IPv6-литерал без поддержки схемой по умолчанию) превращалась бы в голый
+`UNAVAILABLE` без `ErrorInfo` **до** какого-либо реального обращения к
+серверу, и после правки F1 такой отказ ошибочно читался бы как «запрос
+отправлен, токен мог быть потрачен» — ровно наоборот. Отдельного теста
+на этот путь нет (только что добавленный F6-дайлер решает ту же
+проблему на уровне A2b другим способом — гарантированно не резолвит
+адрес вовсе), правка задокументирована в `newGRPCConn`.
+
+### F2 (P0) — гонка между проверкой идентичности и захватом блокировки
+Порядок проверок (В16) ставит «существующая идентичность» раньше
+блокировки (В15): два параллельных `enroll` без `--force` могли оба
+пройти первую проверку (идентичности ещё нет) и второй мог перезаписать
+файлы первого. После `enroll.Lock` в `doEnroll` (`enroll_run.go`) теперь
+повторный вызов `checkExistingIdentity` — то же сообщение, тот же код 4.
+Тест: `TestASecondEnrollRacingBetweenTheIdentityCheckAndTheLockIsRefused`
+(`enroll_timing_test.go`) — инжектированный `hostname` второй команды
+блокируется ровно между первой проверкой идентичности и захватом
+блокировки (закрывает канал `entered`, ждёт `release`); первая команда
+успешно завершается, `release` открывается, вторая должна отказать с
+кодом 4, а сервер — получить ровно один вызов `Enroll`. Красный до
+правки (`code = 0`), зелёный после.
+
+### F3 (P0) — токен утекал через позиционный аргумент и путь --token-file
+Два места эхировали operator-supplied строку без проверки, что это не
+сам токен: `fs.Arg(0)` в сообщении «unexpected argument %q» (токен,
+вставленный без `--token`, оказывался позиционным аргументом) и путь
+`--token-file` в сообщениях `readTokenFile` (если токен по ошибке
+передан как путь к файлу — и текст самой ошибки `os.ReadFile`, `*Path
+Error`, тоже повторяет путь). Позиционные аргументы теперь не эхируются
+вовсе (сообщение — «unexpected extra argument», без значения); путь к
+`--token-file` пропускается через `redactIfToken` (единый хелпер:
+строка с префиксом `sard_` заменяется плейсхолдером), и текст самой
+ошибки ОС — тоже (`redactedFileError`), иначе `*PathError` вернул бы
+путь в открытом виде рядом с уже редактированным. Тест:
+`TestPositionalArgumentsAndTokenFilePathsAreNeverEchoedBack`
+(`enroll_leak_test.go`), два подслучая — красный до правки (оба случая
+печатали токен целиком), зелёный после.
+
+### F4 (P0) — не-файл на месте одного из трёх путей ронял запись и оставлял мусор
+`WriteIdentity` (`agent/internal/enroll/write.go`) не проверяла, что
+целевой путь — обычный файл или отсутствует, до создания временных
+файлов; если, скажем, `ca_file` оказывался непустым каталогом, `rename`
+на него падал уже после того, как `key`/`cert` (по старому порядку
+коммита) были переименованы, а временный файл для `ca` не удалялся —
+именно репродукция из задания. Исправлено по всем четырём пунктам:
+(a) `checkTargetReplaceable` — `Lstat` каждого целевого пути на этапе
+стейджинга, до создания временного файла; путь, существующий не как
+обычный файл, — отказ `ClassWrite` без единого `rename`; (b) порядок
+коммита теперь `CA → key → cert` (`commitOrder`) — сертификат, из
+которого `InspectIdentity` читает `agent_id`, коммитится последним и
+служит единственным маркером «идентичность цела»; (c) при сбое коммита
+удаляются все ещё не переименованные временные файлы **и**, если ни по
+одному из трёх путей раньше ничего не было (`anyTargetExists` == false,
+первая регистрация, не `--force`), откатываются уже переименованные —
+неполная новая идентичность хуже, чем никакой; при `--force`-перезаписи
+откат невозможен (часть трёх `rename` могла уже заменить прежние файлы)
+и не делается — это единственное окно, которое правило 7 не закрывает
+(как и раньше, задокументировано в docstring `WriteIdentity` и в сессии
+A2a); (d) обновлены комментарии `WriteIdentity` и данный файл сессии
+(было: session A2a описывала только старый двухфазный алгоritm без
+Lstat-проверки и без порядка CA-first).
+Тест: `TestWriteIdentityRefusesATargetThatIsANonEmptyDirectory`
+(`write_test.go`) — по каждому из трёх файлов путь становится непустым
+каталогом, ожидается `ClassWrite`, оба других файла отсутствуют, ни
+одного временного `.sard-enroll-*` не осталось. Красный до правки (два
+файла из трёх реально писались, временные оставались), зелёный после.
+Ветка (c) «первая регистрация, откат уже закоммиченного» кодом покрыта
+(`handleCommitFailure`), но отдельным тестом не проверена: чтобы её
+вызвать, `rename` должен провалиться уже после успешного `Lstat`-стейджинга
+(например, TOCTOU-гонка на каталоге между стейджингом и коммитом) — не
+нашёл детерминированного способа воспроизвести это синхронно без
+дополнительного тестового хука внутрь `WriteIdentity`, которого сейчас
+нет; сообщаю честно, не претендую на покрытие. CRAP не пострадал:
+функция вынесена отдельно (`CC=2`), порог 6.0 не превышен даже при 0%
+покрытия этой ветки.
+
+### F5 (P0) — блокировка после падения процесса не освобождалась никогда
+`Lock` (`agent/internal/enroll/lock.go`) создавала файл `O_CREATE|O_EXCL`;
+если процесс падал между созданием файла и `unlock()`, файл оставался
+навсегда, и каждый следующий `enroll` отказывал «уже идёт регистрация»
+без возможности восстановления. Заменено на `syscall.Flock(fd,
+LOCK_EX|LOCK_NB)` на файле, открытом `O_CREATE|O_RDWR`: ядро снимает
+flock автоматически при завершении процесса-владельца, независимо от
+причины; `unlock()` по-прежнему удаляет файл и закрывает дескриптор.
+Тест: `TestLockIgnoresAStaleLockFileFromADeadProcess` (`lock_test.go`) —
+файл блокировки создаётся напрямую (`os.WriteFile`, без `flock`, как
+после падения), `Lock` должен успеть; красный до правки (`Lock` отказывал
+«an enrollment is already in progress»), зелёный после. Существующий
+`TestLockRefusesASecondConcurrentEnroll` остался зелёным без изменений.
+
+### F6 (P1) — два IPv6-теста были ослаблены, DNS-тест стучался в сеть по-настоящему
+Ранее (сессия A2b, п. 8 «Открытые вопросы») два `@fake` IPv6-сценария
+были сужены до `code != exitUsage` вместо `code == exitOK` — недопустимое
+решение по требованию architect. Добавлена точка подмены транспорта в
+`agent/internal/enroll/trust.go`: `type DialFunc func(ctx, network, addr
+string) (net.Conn, error)`, `DialTOFU(ctx, dial DialFunc, address,
+fingerprint string, ...)` — продакшен передаёт `enroll.RealDial`
+(обёртка над `(&net.Dialer{}).DialContext`), CLI прокидывает её как поле
+`enrollDeps.dial` (`agent/cmd/sard-agent/enroll_run.go`). IPv6-тесты
+(`enroll_fake_test.go`) переписаны на `runEnrollCmdWithDial` с
+`dialToInstead(t, want, actual)` — хелпер требует, чтобы DialTOFU попросил
+именно адрес `want` (например, `"[::1]:port"`), и соединяет с реальным
+IPv4-слушателем фейкового сервера; всё остальное, включая TLS
+рукопожатие и проверку hostname по SAN `"::1"` — настоящее. Оба теста
+снова проверяют `code == exitOK`. Тест на несовпадающее DNS-имя
+(`TestTheServerNameDoesNotResolve`) раньше реально резолвил
+`this-name-does-not-resolve.invalid` через системный резолвер (нарушение
+CLAUDE.md: тесты не трогают сеть) — теперь инжектируется дайлер,
+возвращающий `&net.DNSError{Err: "no such host", ..., IsNotFound: true}`
+без единого системного вызова резолвера. Все три теста красные до
+разведения сигнатуры (не компилировались/использовали реальную сеть),
+зелёные после.
+Вместе с F6 — F13 (P0, отдельно не выносился в отдельный пункт задания
+architect, но исправлен той же правкой `trust.go`): `checkChain` передавала
+`x509.VerifyOptions` без `Intermediates`, так что цепочка длиннее
+«лист + корень» (лист, подписанный промежуточным CA, тот — корнем) не
+проходила бы проверку, даже будучи полностью корректной. Добавлен пул
+`Intermediates` из `candidateRoots`. Тест:
+`TestDialTOFUAcceptsAChainWithAnIntermediateBetweenLeafAndThePinnedRoot`
+(`trust_test.go`), новый хелпер `testCA.intermediateCA`; красный до
+правки (`x509: certificate signed by unknown authority`, проверено
+откатом правки и повторным запуском), зелёный после.
+
+### F7 (P1) — не хватало теста на `@a1 @fake` сценарий «ключ enroll проходит A1»
+`TestTheKeyWrittenByEnrollPassesTheStartupCheck` (`enroll_fake_test.go`):
+успешная регистрация против фейкового сервера, затем `secrets.CheckAll`
+на той же конфигурации с реальным `os.Getuid()` и `secrets.RealStat` —
+должен вернуть `nil`. Тест сразу зелёный (правильное поведение уже было
+достигнуто A2a+A2b совместно); добавлен для покрытия сценария, которого
+не хватало по списку S2b/A3-именования.
+
+### F8 (P1) — справка проверялась на «цифра встречается где угодно»
+Старый тест проходил бы, даже если в справке вообще не было бы блока
+кодов выхода (строка `--timeout duration (default 30s)` уже содержит
+цифры 3 и 0). Таблица `enrollClassCodes` (`enroll_report.go`) стала
+единым источником и для `enrollExitCode`, и для текста справки:
+`enrollHelpCodes()` достраивает коды 0 и 4 (не имеющие `enroll.Class`) и
+сортирует. Тест `TestEveryEnrollClassHasAnExitCodeAndTheHelpPrintsIt`
+(`enroll_help_test.go`) проверяет: у каждого из 6 `enroll.Class` — ровно
+одна строка с верным кодом (`enrollExitCode` тоже сверяется), и что
+`--help` печатает буквально `"  <код>  <слово>"` для всех восьми кодов.
+`TestHelpListsFlagsTokenSourcesAndExitCodes` тоже ужесточён тем же
+способом вместо проверки «цифра встречается». Красный до правки (тест
+`TestEveryEnrollClassHasAnExitCodeAndTheHelpPrintsIt` не существовал —
+доказано первым запуском сразу после добавления таблицы, до неё
+`enrollExitCode` был `map`, не поддающийся такой проверке напрямую),
+зелёный после.
+
+### F9 (P1) — тавтологичный тест конфига по умолчанию
+`TestWithoutConfigTheDefaultServiceConfigIsUsed` сравнивал
+`resolveEnrollConfigPath("")` с той же константой
+`defaultEnrollConfigPath`, которую функция и возвращает — тест прошёл бы,
+даже будь константа сама неверна. Переписан на буквальную строку
+`"/etc/sard/agent.yaml"` и вызов `parseEnrollFlags` целиком (а не
+`resolveEnrollConfigPath` в изоляции) — доказывает, что весь путь разбора
+флагов приходит к дефолту, не только сам хелпер. `/etc` не трогается.
+
+### F10 (P1) — не было проверки «InsecureSkipVerify нигде, кроме trust.go»
+`agent/internal/enroll/tlsbypass_test.go`: обходит все не-тестовые `.go`
+файлы модуля `agent` через `go/parser`/`go/ast`, ищет
+`tls.Config{InsecureSkipVerify: ..., ClientSessionCache: ...}` —
+`InsecureSkipVerify` разрешён только в `trust.go` (там же, где
+`VerifyPeerCertificate` делает настоящую проверку), `ClientSessionCache`
+запрещён везде (TLS session resumption пропускает
+`VerifyPeerCertificate` на возобновлённом хендшейке — обошёл бы TOFU).
+Тест проверен на реальное обнаружение: `InsecureSkipVerify` временно
+добавлен в постороннем пакете (`internal/secrets`, файл вне репозитория
+в `git status`), тест упал с точным указанием файла и причины; после
+удаления — снова зелёный.
+
+### F11 (P2) — `enroll.go` был одним файлом на 599 строк
+Разбит по смыслу на три файла в `agent/cmd/sard-agent`:
+`enroll_flags.go` (флаги, `--help`, источник токена), `enroll_run.go`
+(конвейер В16: `enrollDeps{hostname, clock, dial}`,
+`enrollPipelineState`, `doEnroll`/`resolveEnrollLocals`/`dialAndEnroll`),
+`enroll_report.go` (таблица кодов, сообщения). Одиннадцать параметров
+`dialAndEnroll` заменены на `(ctx, enrollPipelineState, stdout, stderr,
+enrollDeps, timeout)`; пятизначный возврат `resolveEnrollLocals` — на
+`(enrollPipelineState, int)`. Заодно исправлен риск паники из отчёта
+architect: `writeIdentityAndReport` игнорировала результат `errors.As`
+(`eerr.Class` на nil-указателе, если `WriteIdentity` вернула бы не
+`*enroll.Error` — сегодня невозможно, но ничем не гарантировано); теперь
+`if errors.As(...) { ... } else { return exitWrite }`, тем же безопасным
+приёмом, что и `reportEnrollError`. Отдельного красного теста на этот
+конкретный `nil`-путь нет: `WriteIdentity` сегодня всегда возвращает
+`*enroll.Error`, воспроизвести иначе для теста означало бы менять
+`agent/internal/enroll` ради недостижимой ветки — правка защитная,
+проверена существующими тестами `writeIdentityAndReport` (не regressed).
+Дубликат doc-комментария (`enroll.go:512-515`, `enrollExitCode` описан
+дважды) исчез вместе с переносом текста в `enroll_report.go`.
+
+### F12 (P2) — неточности в ADR 00XX
+- «Агент повторяет только UNAVAILABLE» переформулировано: это про то,
+  какой код *стоит* повторять (и это сообщает оператору сама команда), а
+  не про то, что что-то повторяет вызов автоматически — `sard-agent
+  enroll` не повторяет регистрацию сам ни при одном коде, спецификация
+  требует ровно одного вызова `Enroll` за команду
+  (`TestTheCommandDoesNotRetryAfterATemporaryFailure`).
+- Утверждение «тем же приёмом, каким `EnrollmentStatus.kt` избегает
+  `mapOf`» было неверным по смыслу (сервер `mapOf` как раз отверг, ADR
+  раздел «Отвергнуто»): переформулировано как «ровно противоположный
+  выбор» с объяснением, почему он оправдан по-другому на стороне Go
+  (нет исчерпывающего `switch` по именованному строковому типу без
+  `default`, поэтому полноту проверяет тест, а не компилятор).
+- Утверждение «полнота проверяется тестом на каждый `enroll.Class`»
+  было декларативным на момент первой сессии (теста не существовало) —
+  теперь ссылается на конкретный `TestEveryEnrollClassHasAnExitCodeAndTheHelpPrintsIt`
+  (добавлен в F8) и потому истинно.
+
+### Проверено
+```
+cd agent && GOWORK='' go test ./...        # все пакеты зелёные
+./scripts/gate.sh agent fast               # см. ниже, PASSED
+make license-check                         # 279 files OK
+```
+
+`gate agent fast`, дословно:
+```
+== gate agent: gofmt, vet, golangci-lint
+0 issues.
+
+== gate agent: tests + coverage >= 80%
+...
+coverage: 95.0%
+
+== gate agent: CRAP <= 6
+    CRAP   CC   COVER  FUNCTION
+     6.0    6  100.0%  cmd/sard-agent/enroll_run.go:resolveEnrollLocals
+     6.0    6  100.0%  internal/config/config.go:Config.validate
+     6.0    6  100.0%  internal/enroll/classify.go:classifyReason
+     6.0    2    0.0%  internal/enroll/write.go:handleCommitFailure
+     6.0    2    0.0%  internal/enroll/write.go:removeCommitted
+     6.0    6  100.0%  internal/executor/command.go:Executor.check
+     6.0    6  100.0%  internal/executor/command.go:Executor.verdict
+     6.0    6  100.0%  internal/executor/executor.go:Executor.Shutdown
+     6.0    6  100.0%  internal/executor/reporter.go:reporter.Progress
+     6.0    6  100.0%  internal/executor/store.go:readRecord
+
+== gate agent: integration tests with the pinned restic
+...
+ok  	github.com/Artur-Abalov/sard/agent/internal/restic	16.766s
+
+gate: PASSED (agent, fast)
+```
+
+### Файлы
+Изменены: `agent/internal/enroll/{classify,lock,trust,write}.go` и их
+тесты, `agent/cmd/sard-agent/{enroll_fake,enroll_help,enroll_leak,
+enroll_local,enroll_timing}_test.go`, `docs/adr/00XX-draft-grpc-error-model.md`.
+Новые: `agent/cmd/sard-agent/{enroll_flags,enroll_run,enroll_report}.go`
+(замена удалённого `enroll.go`), `agent/internal/enroll/tlsbypass_test.go`.
+Не тронуты: `scripts/gate.sh`, `scripts/crap.sh`, `scripts/claude/*`,
+`.claude/settings.json` и прочие защищённые файлы.

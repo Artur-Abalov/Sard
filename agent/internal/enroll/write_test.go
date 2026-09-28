@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/enroll"
@@ -94,6 +95,73 @@ func makeUnwritable(t *testing.T, dir string) {
 	}
 	if err := os.WriteFile(dir, nil, 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// F4: a target path that already exists as something other than a regular
+// file (here: a non-empty directory sitting where ca.crt should go) must
+// fail before any rename, and must not leave the other two files or any
+// .sard-enroll-* temporary behind.
+func TestWriteIdentityRefusesATargetThatIsANonEmptyDirectory(t *testing.T) {
+	for _, broken := range []string{"key", "cert", "ca"} {
+		t.Run(broken, func(t *testing.T) {
+			checkWriteIdentityRefusesANonEmptyDirectoryTarget(t, broken)
+		})
+	}
+}
+
+func checkWriteIdentityRefusesANonEmptyDirectoryTarget(t *testing.T, broken string) {
+	t.Helper()
+	dir := t.TempDir()
+	files := enroll.Files{
+		KeyFile:  filepath.Join(dir, "tls.key"),
+		CertFile: filepath.Join(dir, "tls.crt"),
+		CAFile:   filepath.Join(dir, "ca.crt"),
+	}
+	targets := map[string]string{"key": files.KeyFile, "cert": files.CertFile, "ca": files.CAFile}
+	makeNonEmptyDirectory(t, targets[broken])
+
+	err := enroll.WriteIdentity(files, []byte("key"), []byte("cert"), []byte("ca"))
+	var eerr *enroll.Error
+	if !errors.As(err, &eerr) || eerr.Class != enroll.ClassWrite {
+		t.Fatalf("err = %v, want a ClassWrite *enroll.Error", err)
+	}
+	requireOnlyTheBrokenTargetExists(t, targets, broken)
+	requireNoLeftoverTemps(t, dir)
+}
+
+func makeNonEmptyDirectory(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "not-empty"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func requireOnlyTheBrokenTargetExists(t *testing.T, targets map[string]string, broken string) {
+	t.Helper()
+	for name, path := range targets {
+		if name == broken {
+			continue
+		}
+		if _, statErr := os.Stat(path); statErr == nil {
+			t.Errorf("%s was written even though %s is broken", name, broken)
+		}
+	}
+}
+
+func requireNoLeftoverTemps(t *testing.T, dir string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".sard-enroll-") {
+			t.Errorf("leftover temporary file %s", e.Name())
+		}
 	}
 }
 

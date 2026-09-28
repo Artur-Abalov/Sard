@@ -89,13 +89,19 @@ func errorInfoReason(st *status.Status) (string, bool) {
 }
 
 // classifyBareStatus handles a gRPC failure that carries no sard.dev
-// ErrorInfo: a deadline or cancellation is temporary (and the request was
-// already sent); anything else is an unforeseen response (В4's last row).
+// ErrorInfo: a deadline, a cancellation or the connection dropping
+// (Unavailable) is temporary (В14) and the request was already sent, so
+// the token's fate is unknown; anything else is an unforeseen response
+// (В4's last row).
 func classifyBareStatus(st *status.Status) error {
-	if st.Code() == codes.DeadlineExceeded || st.Code() == codes.Canceled {
+	if isBareTemporaryCode(st.Code()) {
 		return &Error{Class: ClassTemporary, TokenMaybeSpent: true, msg: "enroll: " + st.Code().String()}
 	}
 	return &Error{Class: ClassAgentError, Code: st.Code().String(), msg: "unforeseen server response: " + st.Message()}
+}
+
+func isBareTemporaryCode(c codes.Code) bool {
+	return c == codes.DeadlineExceeded || c == codes.Canceled || c == codes.Unavailable
 }
 
 func classifyReason(code codes.Code, reason string) error {
