@@ -26,7 +26,6 @@ import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectMapper
-import tools.jackson.databind.node.ObjectNode
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -113,7 +112,6 @@ class SardServerIntegrationTest(
         val (code, body) = get("/v3/api-docs")
         assertEquals(200, code)
         assertTrue(body.path("paths").has("/api/v1/status"), "paths: ${body.path("paths")}")
-        (body as ObjectNode).remove("servers") // random test port; not part of the contract
         val out = Path.of("build/openapi/openapi.json")
         Files.createDirectories(out.parent)
         Files.writeString(out, mapper.writerWithDefaultPrettyPrinter().writeValueAsString(body) + "\n")
