@@ -46,7 +46,8 @@
 | spring-boot-starter-flyway + flyway-database-postgresql | 4.1.1 / 12.4.0 | Apache-2.0 | runtime | миграции |
 | org.postgresql:postgresql | 42.7.13 | BSD-2-Clause | runtime | JDBC-драйвер |
 | org.bouncycastle:bcpkix-jdk18on (+ bcprov-jdk18on, bcutil-jdk18on транзитивно) | 1.86 | Bouncy Castle Licence (MIT) | runtime | локальный CA: разбор CSR агента, выпуск X.509 (у JDK нет публичного API для этого) — ADR 0014 |
-| spring-boot-starter-grpc-server (spring-grpc-core 1.1.1, grpc-netty 1.83.1) | 4.1.1 | Apache-2.0 | runtime | gRPC-сервер `AgentService` |
+| spring-boot-starter-grpc-server (spring-grpc-core 1.1.1, grpc-netty 1.83.1) | 4.1.1 | Apache-2.0 | runtime | gRPC-сервер `AgentService`; `grpc-services` из него — health-check (`HealthGrpc` в списке открытых сервисов S3) |
+| com.google.api.grpc:proto-google-common-protos | 2.64.1 (та же, что приходит транзитивно через grpc-protobuf 1.83.1) | Apache-2.0 | runtime | `google.rpc.ErrorInfo` в отказах перехватчика агентов (S3, ADR 0009); объявлена явно, потому что используется напрямую |
 | springdoc-openapi-starter-webmvc-api (без Swagger UI) | 3.1.1 | Apache-2.0 | runtime | `/v3/api-docs`, из него генерируется клиент веба |
 | tools.jackson.module:jackson-module-kotlin | 3.x (BOM) | Apache-2.0 | runtime | JSON для Kotlin-классов |
 | proto-jvm: grpc-protobuf, grpc-stub, grpc-kotlin-stub, protobuf-java, kotlinx-coroutines-core | 1.83.1 / 1.5.0 / 4.35.1 / 1.10.2 | Apache-2.0; protobuf-java — BSD-3-Clause | runtime | JVM-стабы контракта |
