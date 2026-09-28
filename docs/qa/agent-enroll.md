@@ -5,8 +5,8 @@
 формат токена — `docs/specs/enrollment-token.md`. Решения владельца и классы
 кодов выхода — в заголовке спецификации.
 
-Выполнима после реализации A2a (вместе с проверкой прав ключа при старте, @a1)
-и A2b.
+Выполнима после реализации A2a (вместе с проверкой прав секретных файлов при
+старте агента, A1, @a1) и A2b.
 
 Ожидаемый результат указан после «→» в каждом шаге. Любое расхождение — дефект.
 «Хост не изменён» — вывод `snap` совпадает с сохранённым до шага.
@@ -175,22 +175,60 @@ spki() { openssl x509 -in "$1" -pubkey -noout | openssl pkey -pubin -outform DER
 одновременные запуски вручную не воспроизводятся — их проверяют тесты
 сценариев `@fake` с этими названиями.
 
-## Часть 5. Проверка прав ключа при старте агента (@a1)
+## Часть 5. Права секретных файлов при старте агента (A1, @a1)
 
-Агент из части 4 зарегистрирован, файлы в `$H/tls`. `timeout 10` ограничивает
+Агент из части 4 зарегистрирован, файлы в `$H/tls`. Секретные файлы — пути из
+ключей `tls.key_file`, `repositories[].password_file`,
+`repositories[].env_file`, `secrets.<имя>`, `scripts.<имя>`. Требование: ни
+одного бита прав группы и остальных, владелец — пользователь агента.
+`tls.cert_file` и `tls.ca_file` не проверяются. `timeout 10` ограничивает
 успешный запуск: агент работает до сигнала.
 
-41. `chmod 0640 "$H/tls/agent.key"; timeout 10 "$AG" --config "$H/agent.yaml"; echo "exit=$?"`
-    → агент сразу завершается с ошибкой (не `124`); сообщение называет
-    `$H/tls/agent.key`, текущие права `0640` и требуемые `0600`.
-42. То же с `0604` и `0644` → тот же результат с соответствующими правами.
-43. `chmod 0400 "$H/tls/agent.key"; timeout 10 "$AG" --config "$H/agent.yaml"; echo "exit=$?"`
+```bash
+S="$H/sec"; mkdir -m 0700 "$S"
+printf 'repo-pass\n' > "$S/repo.pass"; printf 'AWS_ACCESS_KEY_ID=x\n' > "$S/repo.env"
+printf 'db-pass\n' > "$S/pg"; printf '#!/bin/sh\nexit 0\n' > "$S/maint"
+chmod 0600 "$S/repo.pass" "$S/repo.env" "$S/pg"; chmod 0700 "$S/maint"
+cp "$H/agent.yaml" "$H/a1.yaml"; cat >> "$H/a1.yaml" <<EOF
+repositories:
+  - name: main
+    url: $H/repo
+    password_file: $S/repo.pass
+    env_file: $S/repo.env
+secrets:
+  pg: $S/pg
+scripts:
+  maint: $S/maint
+EOF
+# start — запуск агента с a1.yaml; печатает код выхода и вывод
+start() { timeout 10 "$AG" --config "$H/a1.yaml" 2>&1; echo "exit=$?"; }
+```
+
+41. `start` (все файлы закрыты: ключ `600`, `repo.pass`/`repo.env`/`pg` `600`,
+    `maint` `700`, `agent.pem` и `ca.pem` `644`)
     → агент подключается (в выводе `connecting to localhost:9090`, отказа по
     правам нет), завершается по `timeout` (`exit=124`).
-44. `chmod 0600 "$H/tls/agent.key"` и повторить шаг 43 → тот же результат.
-45. Другой владелец (нужен root): `sudo chown nobody "$H/tls/agent.key"; timeout 10 "$AG" --config "$H/agent.yaml"; echo "exit=$?"; sudo chown "$(id -un)" "$H/tls/agent.key"`
-    → агент сразу завершается с ошибкой; сообщение называет путь, владельца
-    `nobody` и пользователя агента.
+42. Для каждой пары «файл — права» из списка: выставить права, `start`,
+    вернуть исходные права (`600`, у `maint` — `700`):
+    - `$H/tls/agent.key` — `0640`, `0604`, `0644`;
+    - `$S/repo.pass` — `0640`, `0604`;
+    - `$S/repo.env` — `0640`;
+    - `$S/pg` — `0604`;
+    - `$S/maint` — `0750`, `0705`, `0755`.
+
+    → каждый раз агент сразу завершается с ошибкой (не `124`); сообщение
+    называет ключ конфига (`tls.key_file`, `password_file`, `env_file`,
+    `secrets` / `pg`, `scripts` / `maint`), путь файла, текущие права и
+    требование «только владелец».
+43. `chmod 0400 "$H/tls/agent.key" "$S/repo.pass"; chmod 0500 "$S/maint"; start`
+    → агент подключается, `exit=124`. Вернуть `600` / `700`.
+44. Конфиг без `env_file`: `sed -i '/env_file:/d' "$H/a1.yaml"; rm "$S/repo.env"; start`
+    → агент подключается, `exit=124`.
+45. Другой владелец (нужен root): для каждого из `$H/tls/agent.key`,
+    `$S/repo.pass`, `$S/pg`, `$S/maint`:
+    `sudo chown nobody <файл>; start; sudo chown "$(id -un)" <файл>`
+    → агент сразу завершается с ошибкой; сообщение называет ключ конфига,
+    путь, владельца `nobody` и пользователя агента.
 
 ## Часть 6. Секреты не утекают
 
@@ -210,4 +248,4 @@ spki() { openssl x509 -in "$1" -pubkey -noout | openssl pkey -pubin -outform DER
     (команда из консоли как есть, без `--config`) → `exit=0`; владелец файлов —
     `sard-agent`, ключ `600`.
 49. `sudo systemctl restart sard-agent` → служба активна, в журнале нет
-    отказа по правам ключа или по сертификату.
+    отказа по правам секретных файлов или по сертификату.
