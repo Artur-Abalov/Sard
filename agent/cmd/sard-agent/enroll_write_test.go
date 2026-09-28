@@ -204,9 +204,9 @@ func requireFileMode(t *testing.T, path string, want os.FileMode) {
 func TestASuccessfulCommandDoesNotReadStdin(t *testing.T) {
 	f := newSucceedingFakeFixture(t, "a1")
 	// The command under test here is run() (via runEnrollCmdTest), which
-	// never touches os.Stdin at all (see enroll.go): there is nothing to
-	// wire a blocking reader into. Finishing promptly without ever being
-	// given a stdin to read from is itself the proof.
+	// never touches os.Stdin at all (see enroll_run.go): there is nothing
+	// to wire a blocking reader into. Finishing promptly without ever
+	// being given a stdin to read from is itself the proof.
 	done := make(chan int, 1)
 	go func() {
 		code, _, _ := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)

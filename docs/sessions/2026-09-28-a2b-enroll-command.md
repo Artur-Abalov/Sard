@@ -549,3 +549,75 @@ enroll_local,enroll_timing}_test.go`, `docs/adr/00XX-draft-grpc-error-model.md`.
 Добавлен `renameFile` (`internal/enroll/write.go`, package var, по умолчанию `os.Rename`) и `enroll.SetRenameForTest` (`export_test.go`) — детерминированно проваливает конкретный `rename` вместо гонки с файловой системой. Три новых теста в `write_test.go`: `TestWriteIdentityFirstEnrollmentRemovesTheAlreadyCommittedCAWhenKeyFailsToRename`, `TestWriteIdentityFirstEnrollmentRemovesCAAndKeyWhenCertFailsToRename` (оба красные без отката — проверено откатом правки и повторным запуском), `TestWriteIdentityForceOverwriteMidCommitFailureLeavesUnreplacedFilesUntouched` (документированное исключение: уже закоммиченный CA не откатывается при `--force`). `write.go` больше не в таблице CRAP (100% покрытие).
 
 `gate agent fast`: `coverage: 95.5%`; CRAP-таблица без строк `write.go`; `gate: PASSED (agent, fast)`. `make license-check` → `280 files OK`.
+
+### cleaner, круг 2 (2026-09-28, после F1–F13)
+
+Второй проход cleaner по `git diff 63175b2..HEAD -- agent/` (коммиты
+`2d80664`, `dae7c0b`), после того как coder закрыл архитектурные находки
+F1–F13. Область: `agent/cmd/sard-agent/enroll_*.go`,
+`agent/internal/enroll/`.
+
+**BEFORE (`./scripts/crap.sh agent`, функции в задании):**
+
+```
+    CRAP   CC   COVER  FUNCTION
+     6.0    6  100.0%  cmd/sard-agent/enroll_run.go:resolveEnrollLocals
+     6.0    6  100.0%  internal/enroll/classify.go:classifyReason
+     6.0    6  100.0%  internal/secrets/secrets.go:CheckAll
+     6.0    6  100.0%  internal/secrets/secrets.go:secretEntries
+```
+
+**AFTER (после изменений, те же строки):**
+
+```
+    CRAP   CC   COVER  FUNCTION
+     6.0    6  100.0%  cmd/sard-agent/enroll_run.go:resolveEnrollLocals
+     6.0    6  100.0%  internal/enroll/classify.go:classifyReason
+     6.0    6  100.0%  internal/secrets/secrets.go:CheckAll
+     6.0    6  100.0%  internal/secrets/secrets.go:secretEntries
+```
+
+Все четыре — без изменений. Каждая уже является линейной цепочкой guard
+clauses (`resolveEnrollLocals`, `CheckAll`) либо диспетчерской таблицей
+через `switch`/map (`classifyReason`, `secretEntries`); порог гейта —
+`CRAP <= 6`, и 6.0 при 100% покрытии — это ровно `CC`, дальше некуда
+разбивать не породив комбинаторных врапперов ради метрики — ровно то,
+что более ранний architect-обзор в этом репозитории уже запрещал
+(`docs/sessions/...`, F11 обсуждение). Оставлены как есть.
+
+Найденная и устранённая дупликация (не в списке CRAP, но введена
+разбиением `enroll.go` → `enroll_flags.go`/`enroll_run.go`/
+`enroll_report.go`): в `enroll_run.go` три места (`buildIdentityRequest`
+дважды, `writeIdentityAndReport` один раз) печатали идентичное
+`fmt.Fprintf(stderr, "sard-agent enroll: %v\n", err)` и возвращали
+`exitAgentError` для простых локальных ошибок (генерация ключа, CSR,
+PEM-маршалинг — не ответ сервера, тот случай уже обслуживает
+`reportEnrollError` в `enroll_report.go`). Вынесено в
+`reportAgentError(stderr io.Writer, err error) int` в `enroll_run.go`;
+вызовы заменены. Поведение не изменилось (тот же текст, тот же код
+возврата), сложность вызывающих функций не выросла.
+
+Устранена одна устаревшая ссылка на удалённый файл: комментарий в
+`agent/cmd/sard-agent/enroll_write_test.go`
+(`TestASuccessfulCommandDoesNotReadStdin`) говорил "see enroll.go" —
+`enroll.go` был удалён при разбиении на `enroll_flags.go`/
+`enroll_run.go`/`enroll_report.go`; исправлено на `enroll_run.go`, где
+сейчас `doEnroll`/`run()`. Только текст комментария, имя теста не
+менялось.
+
+Остальное просмотренное (`internal/enroll/lock.go`, `trust.go`,
+`write.go`, `classify.go`, все F1–F13-комментарии, тестовые хелперы
+`enroll_helpers_test.go`) — уже консолидировано предыдущим проходом;
+новой дупликации или несогласованных комментариев не найдено.
+
+`./scripts/gate.sh agent fast`:
+
+```
+coverage: 95.5%
+gate: PASSED (agent, fast)
+```
+
+Дальше — architect: структурный обзор круга 2 не требовался (изменения
+чисто локальные, один вынесенный хелпер и один комментарий), но по
+правилу пайплайна ход передаётся architect для итогового структурного
+ревью A2a+A2b после F1–F13.

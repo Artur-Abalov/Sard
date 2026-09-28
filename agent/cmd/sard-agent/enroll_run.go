@@ -191,22 +191,28 @@ func dialAndEnroll(ctx context.Context, st enrollPipelineState, stdout, stderr i
 func buildIdentityRequest(host string, stderr io.Writer) (*ecdsa.PrivateKey, []byte, int) {
 	key, err := enroll.NewIdentityKey()
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: %v\n", err)
-		return nil, nil, exitAgentError
+		return nil, nil, reportAgentError(stderr, err)
 	}
 	csrDER, err := enroll.BuildCSR(key, host)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: %v\n", err)
-		return nil, nil, exitAgentError
+		return nil, nil, reportAgentError(stderr, err)
 	}
 	return key, csrDER, exitOK
+}
+
+// reportAgentError prints a plain local error (key generation, CSR, PEM
+// marshalling — never a server response, which reportEnrollError handles)
+// and returns the exit code every one of them shares (В3): the agent's
+// own fault, not the operator's.
+func reportAgentError(stderr io.Writer, err error) int {
+	_, _ = fmt.Fprintf(stderr, "sard-agent enroll: %v\n", err)
+	return exitAgentError
 }
 
 func writeIdentityAndReport(stdout, stderr io.Writer, cfg config.Config, files enroll.Files, key *ecdsa.PrivateKey, result *enroll.EnrollResult, previousAgentID string) int {
 	keyPEM, err := marshalKeyPEM(key)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: %v\n", err)
-		return exitAgentError
+		return reportAgentError(stderr, err)
 	}
 	if err := enroll.WriteIdentity(files, keyPEM, []byte(result.CertificateChainPEM), []byte(result.CABundlePEM)); err != nil {
 		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: the server enrolled agent %s but writing the identity to disk failed: %v; the enrollment token has been spent, a new one is required\n", result.AgentID, err)
