@@ -28,6 +28,9 @@ class AgentAuthConfiguration {
         clock: Clock,
     ) = AgentAuthenticator(AgentCertificateStandings(sessions), clock)
 
+    @Bean
+    fun agentSessions(sessions: TenantSessions) = AgentSessions(sessions)
+
     /** Global: applies to every service the server binds, first in the chain. */
     @Bean
     @GlobalServerInterceptor

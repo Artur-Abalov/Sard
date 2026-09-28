@@ -20,6 +20,7 @@ import io.grpc.ChannelCredentials
 import io.grpc.Grpc
 import io.grpc.ManagedChannel
 import io.grpc.Metadata
+import io.grpc.MethodDescriptor
 import io.grpc.Status
 import io.grpc.StatusRuntimeException
 import io.grpc.TlsChannelCredentials
@@ -28,6 +29,7 @@ import io.grpc.health.v1.HealthCheckResponse
 import io.grpc.health.v1.HealthGrpc
 import io.grpc.protobuf.StatusProto
 import io.grpc.stub.ClientCalls
+import io.grpc.stub.StreamObserver
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder
@@ -45,6 +47,8 @@ import java.security.spec.ECGenParameterSpec
 import java.time.Clock
 import java.time.Duration
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -296,5 +300,56 @@ class AgentAuthIntegrationTest(
                 "values (?, ?, ?, now(), now() + interval '1 day')"
         jdbc.update(sql, impostor.serial, acme, owner.identity.agentId)
         assertEquals(refused(AgentAuthFailure.CERT_IDENTITY_MISMATCH), call(presenting(impostor), ProbeService.WHOAMI))
+    }
+
+    // --- 6: the agent's tenant in handlers and stream messages
+
+    @Test
+    fun `a coroutine handler on another dispatcher sees only the agent's tenant`() {
+        val acmeAgent = enrolled(acme)
+        val globexAgent = enrolled(globex)
+        val asAcme = call(presenting(acmeAgent), ProbeService.AGENTS)
+        assertEquals(Outcome(Status.Code.OK, body = acmeAgent.identity.agentId.toString()), asAcme)
+        val asGlobex = call(presenting(globexAgent), ProbeService.AGENTS)
+        assertEquals(Outcome(Status.Code.OK, body = globexAgent.identity.agentId.toString()), asGlobex)
+    }
+
+    @Test
+    fun `messages arriving on an open stream are handled in the tenant it was opened with`() {
+        val acmeAgent = enrolled(acme)
+        enrolled(globex)
+        val responses = LinkedBlockingQueue<String>()
+        val closed = CompletableFuture<Status>()
+        val observer =
+            object : StreamObserver<ByteArray> {
+                override fun onNext(value: ByteArray) {
+                    responses.add(String(value))
+                }
+
+                override fun onError(t: Throwable) {
+                    closed.complete(Status.fromThrowable(t))
+                }
+
+                override fun onCompleted() {
+                    closed.complete(Status.OK)
+                }
+            }
+        val method = rawMethod(ProbeService.AGENTS_STREAM, MethodDescriptor.MethodType.BIDI_STREAMING)
+        val stream = channel(presenting(acmeAgent)).newCall(method, CallOptions.DEFAULT)
+        val requests = ClientCalls.asyncBidiStreamingCall(stream, observer)
+        val expected = acmeAgent.identity.agentId.toString()
+        repeat(3) {
+            // Each message is sent only after the previous answer: long after the stream opened.
+            requests.onNext(ByteArray(0))
+            assertEquals(expected, responses.poll(DEADLINE_SECONDS, TimeUnit.SECONDS))
+        }
+        requests.onCompleted()
+        assertEquals(Status.Code.OK, closed.get(DEADLINE_SECONDS, TimeUnit.SECONDS).code)
+    }
+
+    @Test
+    fun `a stream is refused when it opens without a certificate`() {
+        val method = rawMethod(ProbeService.AGENTS_STREAM, MethodDescriptor.MethodType.BIDI_STREAMING)
+        assertEquals(refused(AgentAuthFailure.CERT_MISSING), call(anonymous(), method.fullMethodName))
     }
 }
