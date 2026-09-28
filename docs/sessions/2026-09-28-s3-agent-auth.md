@@ -34,3 +34,48 @@ gRPC и TLS:
 - Проверка — при старте вызова (`interceptCall`), то есть при открытии стрима `Connect`; принципал живёт в `Context` всего вызова.
 - Тенант в обработчиках — см. вопрос 1.
 - Тестовый сервис без proto: `ServerServiceDefinition` с ручными `MethodDescriptor` (unary и bidi) на маршаллере байтов, регистрируется в тестовой конфигурации.
+
+### Решения владельца по вопросам фазы 1
+
+1. Тенант в обработчиках — явно: `AgentPrincipal` из gRPC `Context` → `TenantSessions.inTenant(principal.tenantId)`; `TenantResolver` не трогаем.
+2. Запрос по serial есть; тенант и агент записи обязаны совпасть с URI SAN, иначе `CERT_IDENTITY_MISMATCH`.
+3. Миграция `agents.revoked_at`.
+4. Health — без сертификата; reflection выключен.
+5. Отдельный код `CERT_EXPIRED`.
+6. `proto-google-common-protos` — явная зависимость и строка в `docs/dependencies.md`.
+
+## Фаза 2 — перехватчик, политика, коды отказов (тесты 1–5)
+
+Окружение сессии (в репозиторий не попадает): JDK 25 из apt (`openjdk-25-jdk-headless`), запущен `dockerd`, образ `postgres:18-alpine`; Maven Central отвечал 429 — зеркало Maven Central в `~/.gradle/init.d/mirror.gradle.kts`.
+
+Тесты писались первыми (красный → зелёный): `AgentIdentityTest`, `AgentAuthenticatorTest`, `AgentAuthStatusTest`, затем `AgentAuthIntegrationTest`.
+
+Код:
+- `pki/CertificateAuthority.kt` — `AgentIdentity.uri()`, `parse(uri)` (строго `sard://tenants/<uuid>/agents/<uuid>`, нижний регистр), `of(X509Certificate)`; `Certificates.agent` строит SAN через `uri()` — формат в одном месте.
+- `agents/AgentAuthentication.kt` — `AgentAuthFailure` (`CERT_MISSING, CERT_UNKNOWN, CERT_IDENTITY_MISMATCH, CERT_REVOKED, CERT_EXPIRED, AGENT_REVOKED`), `AgentPrincipal` (+ `Context.Key`), `PresentedCertificate` (serial `toString(16)` — как пишет Enroll), `CertificateStanding`, `AgentAuthenticator`. Порядок проверок: нет сертификата → нет записи → SAN ≠ запись → сертификат отозван → `now >= not_after` записи → агент отозван.
+- `agents/AgentCertificateStandings.kt` — второй вызов `TenantSessions.system`: HQL `AgentCertificateRecord join Agent` по serial (вносится в список ADR 0013 в фазе 3). Кэша нет.
+- `agents/AgentAuthStatus.kt` — `UNAUTHENTICATED`, сообщение `agent certificate rejected`, `ErrorInfo(reason, domain="sard.dev")` через `StatusProto`.
+- `agents/AgentAuthInterceptor.kt` — если сервис не в списке открытых: `TRANSPORT_ATTR_SSL_SESSION` → `peerCertificates[0]` (`SSLPeerUnverifiedException` = нет сертификата) → аутентификатор; успех — `Contexts.interceptCall` с принципалом; отказ — `call.close` + лог `reason, serial, agent, method` (сертификат не логируется).
+- `agents/AgentAuthConfiguration.kt` — `UNAUTHENTICATED_SERVICES = {EnrollmentService, grpc.health.v1.Health}`; перехватчик — `@GlobalServerInterceptor`, `@Order(HIGHEST_PRECEDENCE)`.
+- `V202609281200__agent_revocation.sql` — `agents.revoked_at`; поле `Agent.revokedAt`.
+- `application.yaml` — `spring.grpc.server.reflection.enabled: false` (по метаданным Boot по умолчанию `true`).
+- `server/build.gradle.kts` — `proto-google-common-protos:2.64.1`; `docs/dependencies.md`.
+
+Тесты (`AgentAuthIntegrationTest`, PostgreSQL в Testcontainers, TLS на случайном порту, агенты выпускаются настоящим `Enrollment`, два тенанта на тест):
+1. Каждый метод из `AgentServiceGrpc.getServiceDescriptor().methods` без сертификата → `UNAUTHENTICATED`/`CERT_MISSING`.
+2. `sard.test.v1.Probe` (`ProbeService`, `BindableService` только в тестовой конфигурации, без proto — маршаллер байтов) без сертификата → `CERT_MISSING`.
+3. Enroll без сертификата проходит до конца (агент создан в тенанте токена); health → `SERVING`; reflection → `UNIMPLEMENTED` (не зарегистрирован).
+4. Сертификат живого агента: все методы AgentService → `UNIMPLEMENTED`; `Probe/Whoami` возвращает `tenant/agent/serial` из `Context`.
+5. Отказы: другой CA → `UNAVAILABLE` на рукопожатии (зафиксировано: до перехватчика не доходит); наш CA без записи → `CERT_UNKNOWN`; `revoked_at` сертификата → `CERT_REVOKED`; `not_after` записи в прошлом → `CERT_EXPIRED`; `agents.revoked_at` → `AGENT_REVOKED`; SAN называет другого агента, чем запись → `CERT_IDENTITY_MISMATCH`.
+
+Изменён тест S1: `SardServerIntegrationTest` «agent service answers UNIMPLEMENTED» вызывал AgentService без сертификата; по ADR 0009 теперь это `UNAUTHENTICATED` — ожидание обновлено, «заглушки отвечают UNIMPLEMENTED» проверяет тест 4 с сертификатом. Список миграций в том же классе дополнен `202609281200`.
+
+Не проверено (полагаю): сертификат с истёкшим собственным сроком X.509 отклоняется JSSE на рукопожатии (PKIX проверяет даты). Проверить тестом нельзя без внедрения часов в CA сервера (`Clock.systemUTC()` в `PkiAutoConfiguration`); достижимый путь `CERT_EXPIRED` — `not_after` записи.
+
+Проверка:
+- `./gradlew :server:test` — exit 0, 146 тестов, 0 упавших, 0 пропущенных.
+- `./scripts/gate.sh server fast` — `PASSED`; покрытие 94.4% (instructions); CRAP максимум 6.0 (`OpenApiConfigurationKt.objectSchemas`, существующий), в новом коде ≤ 5. Первый прогон показал CRAP 10 у `authenticate` (CC 10 из-за null-safe ветвлений) — функция разделена на `authenticate` + `judge`.
+- `./gradlew -Pmutflow.enabled=true :server:test --rerun` — exit 0 (ADR 0006: выживший мутант валит сборку); классы `@MutFlowTest` прогнаны многократно (например, 30 запусков тестов `AgentAuthenticatorTest` в отчёте JUnit).
+- `make license-check` — 223 files OK.
+
+Следующее (фаза 3): тенант в обработчиках через `principal` → `inTenant`, тест 6 (JPA в обработчике и в сообщении стрима после открытия; поток обработчика — проверить, что `Context` доходит), ADR 0009 и 0013, заметка для S5 о закрытии стримов при отзыве.

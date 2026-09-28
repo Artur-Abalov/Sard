@@ -84,7 +84,7 @@ class SardServerIntegrationTest(
     @Test
     fun `flyway applied every migration`() {
         val sql = "select version from flyway_schema_history where success order by installed_rank"
-        assertEquals(listOf("1", "2", "202609271200"), jdbc.queryForList(sql, String::class.java))
+        assertEquals(listOf("1", "2", "202609271200", "202609281200"), jdbc.queryForList(sql, String::class.java))
         assertEquals(0, jdbc.queryForObject("select count(*) from agents", Int::class.java))
     }
 
@@ -129,11 +129,12 @@ class SardServerIntegrationTest(
         }
     }
 
+    /** S3: without a client certificate AgentService is refused; AgentAuthIntegrationTest covers the rest. */
     @Test
-    fun `agent service answers UNIMPLEMENTED`() {
+    fun `agent service refuses a caller without a client certificate`() {
         val register = grpcStatus { agentStub(it).register(RegisterRequest.getDefaultInstance()) }
         val renew = grpcStatus { agentStub(it).renewCertificate(RenewCertificateRequest.getDefaultInstance()) }
-        assertEquals(listOf(Status.Code.UNIMPLEMENTED, Status.Code.UNIMPLEMENTED), listOf(register, renew))
+        assertEquals(listOf(Status.Code.UNAUTHENTICATED, Status.Code.UNAUTHENTICATED), listOf(register, renew))
     }
 
     @Test

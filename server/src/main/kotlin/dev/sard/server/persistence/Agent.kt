@@ -12,7 +12,7 @@ import org.springframework.data.jpa.repository.JpaRepository
 import java.time.Instant
 import java.util.UUID
 
-/** A registered agent; table created by Flyway migrations V1, V2 and V202609271200. */
+/** A registered agent; table created by Flyway migrations V1, V2, V202609271200 and V202609281200. */
 @Entity
 @Table(name = "agents")
 class Agent(
@@ -27,6 +27,9 @@ class Agent(
     val registeredAt: Instant,
     @Column(name = "last_seen_at")
     val lastSeenAt: Instant?,
+    /** Set when the agent is revoked: none of its certificates authenticates any more (S3). */
+    @Column(name = "revoked_at")
+    val revokedAt: Instant? = null,
     /** Set by Hibernate from the current tenant on insert (ADR 0013). */
     @TenantId
     @Column(name = "tenant_id", nullable = false, updatable = false)
