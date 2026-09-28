@@ -142,15 +142,8 @@ func parseEnrollFlags(args []string, stderr io.Writer) (enrollOptions, int) {
 		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: unexpected argument %q\n", fs.Arg(0))
 		return enrollOptions{}, exitUsage
 	}
-	if *timeout <= 0 {
-		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: --timeout must be a positive duration, got %q\n", timeout.String())
-		return enrollOptions{}, exitUsage
-	}
-	if *server != "" {
-		if _, _, err := net.SplitHostPort(*server); err != nil {
-			_, _ = fmt.Fprintf(stderr, "sard-agent enroll: --server %q is not a valid host:port address\n", *server)
-			return enrollOptions{}, exitUsage
-		}
+	if code := validateEnrollFlagValues(*timeout, *server, stderr); code != exitOK {
+		return enrollOptions{}, code
 	}
 	set := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
@@ -162,6 +155,24 @@ func parseEnrollFlags(args []string, stderr io.Writer) (enrollOptions, int) {
 		timeout:    *timeout,
 		configPath: resolveEnrollConfigPath(*configPath),
 	}, exitOK
+}
+
+// validateEnrollFlagValues checks the parsed flag values that flag.Parse
+// itself cannot reject: a --timeout that isn't positive, and a --server
+// that isn't a valid host:port address.
+func validateEnrollFlagValues(timeout time.Duration, server string, stderr io.Writer) int {
+	if timeout <= 0 {
+		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: --timeout must be a positive duration, got %q\n", timeout.String())
+		return exitUsage
+	}
+	if server == "" {
+		return exitOK
+	}
+	if _, _, err := net.SplitHostPort(server); err != nil {
+		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: --server %q is not a valid host:port address\n", server)
+		return exitUsage
+	}
+	return exitOK
 }
 
 func resolveEnrollConfigPath(flagValue string) string {
@@ -578,21 +589,18 @@ func spentSuffix(e *enroll.Error) string {
 	return "; the token may have been spent by this attempt — if a retry is refused with TOKEN_USED, get a new token"
 }
 
-// reasonMeaning explains a server refusal reason and whether retrying with
-// the same token can help (rule "Отказы сервера объясняются по причине").
+// reasonMeanings explains a server refusal reason and whether retrying with
+// the same token can help (rule "Отказы сервера объясняются по причине"). A
+// reason absent from the table (default "") means reasonMeaning has nothing
+// to add.
+var reasonMeanings = map[string]string{
+	"TOKEN_UNKNOWN":   "this token was not issued by this server; retrying with it will not help",
+	"TOKEN_USED":      "this token has already been used; retrying with it will not help, get a new token",
+	"TOKEN_EXPIRED":   "this token has expired; retrying with it will not help, get a new token",
+	"TOKEN_REVOKED":   "this token was revoked in the console; retrying with it will not help",
+	"TOKEN_MALFORMED": "the token string looks corrupted from copying; retrying with it will not help",
+}
+
 func reasonMeaning(reason string) string {
-	switch reason {
-	case "TOKEN_UNKNOWN":
-		return "this token was not issued by this server; retrying with it will not help"
-	case "TOKEN_USED":
-		return "this token has already been used; retrying with it will not help, get a new token"
-	case "TOKEN_EXPIRED":
-		return "this token has expired; retrying with it will not help, get a new token"
-	case "TOKEN_REVOKED":
-		return "this token was revoked in the console; retrying with it will not help"
-	case "TOKEN_MALFORMED":
-		return "the token string looks corrupted from copying; retrying with it will not help"
-	default:
-		return ""
-	}
+	return reasonMeanings[reason]
 }
