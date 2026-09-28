@@ -20,3 +20,15 @@ export async function checkSession(): Promise<Session> {
   }
   return data
 }
+
+/** Signs in with [password]; the response carries the outcome (204/401/429) — see Login.tsx. */
+export async function signIn(password: string): Promise<Response> {
+  const { response } = await client.POST('/api/v1/session', { body: { password } })
+  return response
+}
+
+/** Ends the session; the response carries the outcome (204/401) — see Layout.tsx's logout button. */
+export async function signOut(): Promise<Response> {
+  const { response } = await client.DELETE('/api/v1/session')
+  return response
+}

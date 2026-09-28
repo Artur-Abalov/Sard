@@ -9,29 +9,45 @@ import { state } from '../state'
 /** Failed sign-ins before the lockout, its window and its duration (К4: matches the server). */
 export const MAX_FAILED_SIGN_INS = 5
 const WINDOW_MS = 15 * 60_000
-const LOCKOUT_SECONDS = 900
 const IDLE_HOURS = 12
 
-const locked = { headers: { ...PROBLEM.headers, 'Retry-After': String(LOCKOUT_SECONDS) } }
+/** Seconds until the lock lifts, rounded up; null when not locked (Р2, matches LoginAttemptTracker). */
+function retryAfterSeconds(now: number): number | null {
+  const lockedAt = state.lockedAt
+  if (lockedAt === null) return null
+  const unlockAt = lockedAt + WINDOW_MS
+  if (now >= unlockAt) {
+    state.lockedAt = null
+    state.failedSignIns = []
+    return null
+  }
+  return Math.max(Math.ceil((unlockAt - now) / 1000), 1)
+}
 
-function isLocked(now: number): boolean {
+function recordFailure(now: number) {
   state.failedSignIns = state.failedSignIns.filter((at) => now - at < WINDOW_MS)
-  return state.failedSignIns.length >= MAX_FAILED_SIGN_INS
+  state.failedSignIns.push(now)
+  if (state.failedSignIns.length >= MAX_FAILED_SIGN_INS && state.lockedAt === null) {
+    state.lockedAt = now
+  }
 }
 
 export const sessionHandlers = [
   http.post('/api/v1/session', async ({ request, response }) => {
     const now = Date.now()
-    if (isLocked(now)) {
+    const retryAfter = retryAfterSeconds(now)
+    if (retryAfter !== null) {
+      const locked = { headers: { ...PROBLEM.headers, 'Retry-After': String(retryAfter) } }
       return response(429).json(problem(429, 'Too Many Requests', 'too_many_attempts'), locked)
     }
     const { password } = await request.json()
     if (password !== MOCK_PASSWORD) {
-      state.failedSignIns.push(now)
+      recordFailure(now)
       return response(401).json(noSession, PROBLEM)
     }
     state.signedIn = true
     state.failedSignIns = []
+    state.lockedAt = null
     return response(204).empty({
       headers: { 'Set-Cookie': 'sard_session=mock; HttpOnly; SameSite=Strict; Path=/' },
     })

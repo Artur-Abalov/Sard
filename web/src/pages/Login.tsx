@@ -5,9 +5,9 @@ import { Alert, Button, Card, PasswordInput, Stack, Title } from '@mantine/core'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { client } from '../api/client'
 import { formatLockoutMinutes } from '../auth/lockout'
 import { resolveRedirectTarget } from '../auth/redirect'
+import { signIn } from '../auth/session'
 
 type FormError = { kind: 'invalid' } | { kind: 'locked'; minutes: number } | { kind: 'unavailable' }
 
@@ -28,7 +28,7 @@ export function Login() {
     setSubmitting(true)
     setError(null)
     try {
-      const { response } = await client.POST('/api/v1/session', { body: { password } })
+      const response = await signIn(password)
       if (response.status === 204) {
         await navigate({ to: resolveRedirectTarget(search.redirect) })
         return

@@ -11,6 +11,8 @@ export interface MockState {
   signedIn: boolean
   /** Timestamps (ms) of failed sign-ins, pruned to the 15-minute window (К4). */
   failedSignIns: number[]
+  /** When the fifth failure locked sign-in (ms), or null when it is not locked (К4: matches the server). */
+  lockedAt: number | null
   agents: Schemas['AgentDetails'][]
   sources: Schemas['Source'][]
   runs: Schemas['Run'][]
@@ -23,6 +25,7 @@ function fresh(signedIn: boolean): MockState {
   return structuredClone({
     signedIn,
     failedSignIns: [],
+    lockedAt: null,
     agents,
     sources,
     runs,

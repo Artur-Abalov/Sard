@@ -72,6 +72,30 @@ describe('session', () => {
       const response = await api.POST('/api/v1/session', { body: { password: 'nope' } })
       expect(response.response.status).toBe(401)
     })
+
+    test('Retry-After counts down from the fifth failure, like the server', async () => {
+      for (let i = 0; i < 5; i++) await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      vi.advanceTimersByTime(10 * 60_000)
+      const response = await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      expect(response.response.status).toBe(429)
+      expect(response.response.headers.get('Retry-After')).toBe('300')
+    })
+
+    test('Retry-After rounds up to a whole second, like the server', async () => {
+      for (let i = 0; i < 5; i++) await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      vi.advanceTimersByTime(14 * 60_000 + 59_000 + 999)
+      const response = await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      expect(response.response.headers.get('Retry-After')).toBe('1')
+    })
+
+    test('attempts during the lock do not extend it', async () => {
+      for (let i = 0; i < 5; i++) await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      vi.advanceTimersByTime(60_000)
+      await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      vi.advanceTimersByTime(14 * 60_000)
+      const response = await api.POST('/api/v1/session', { body: { password: MOCK_PASSWORD } })
+      expect(response.response.status).toBe(204)
+    })
   })
 
   test('the session cookie has Path=/, and the session names the default tenant with a 12-hour deadline', async () => {

@@ -15,14 +15,14 @@ import { useDisclosure } from '@mantine/hooks'
 import { Outlet, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { client } from './api/client'
+import { signOut } from './auth/session'
 import { languages } from './languages'
 import { NavLink } from './NavLink'
 
-// Ends the session and always leaves for /login without a redirect (Р9з): whether
-// the server answered 204 or 401, there is no session to come back to. A network
-// failure is different (Р9е): the cookie is HttpOnly, so the console cannot clear it
-// itself and must stay put with an error instead of pretending sign-out worked.
+// Ends the session and leaves for /login without a redirect (Р9з) on 204 (signed
+// out) or 401 (already signed out elsewhere) — either way there is no session to
+// come back to. Any other outcome, including a network failure (Р9е: the cookie is
+// HttpOnly, so the console cannot clear it itself), shows an error and stays put.
 function LogoutButton() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -31,8 +31,12 @@ function LogoutButton() {
   async function onClick() {
     setFailed(false)
     try {
-      await client.DELETE('/api/v1/session')
-      await navigate({ to: '/login' })
+      const response = await signOut()
+      if (response.status === 204 || response.status === 401) {
+        await navigate({ to: '/login' })
+      } else {
+        setFailed(true)
+      }
     } catch {
       setFailed(true)
     }
