@@ -31,3 +31,35 @@
 - У агента нет `enroll` и нет проверки отпечатка (A2 не в `main`); версия печатается `sard-agent --version` → `sard-agent <ver>`.
 
 Вопросы и предложение — в ответе на контрольной точке 1.
+
+### Решения по контрольной точке 1 (владелец)
+
+1. Заготовки — классы без тестовых методов, условие и шаги в KDoc и в `test/e2e/README.md`; `@Disabled`/`@EnabledIf` не используются.
+2. Register и Connect с настоящим агентом делаются сейчас (S4a и S5a в `main`).
+3. `test/e2e` — тесты: в `gate.sh` не добавляется, метрики к нему не применяются.
+4. `SARD_ADMIN_PASSWORD` — вне объёма (переменной нет).
+5. Язык — Kotlin/JVM, Gradle-модуль `:e2e` в `test/e2e`.
+
+## Фаза 2 — контейнеры, сеть, CA, дымовой тест
+
+- `settings.gradle.kts`: `:e2e` включается, только если `test/e2e/build.gradle.kts` существует — образ сервера копирует лишь нужное, без `test/`, и Gradle 9 не должен падать на отсутствующем каталоге.
+- `scripts/package-agent.sh`: `DIST` можно переопределить (по умолчанию `dist/`), чтобы `make e2e-images` не стирал `dist/` разработчика.
+- `test/e2e/agent/Dockerfile`: distroless static, раскладка пакета (ADR 0018), контекст — распакованный tar.gz из `package-agent.sh`; restic уже проверен по SHA-256 при упаковке, во время теста ничего не скачивается.
+- `Makefile`: `e2e-images` (buildx-образ сервера из `deploy/server/Dockerfile` c `SARD_VERSION=$(VERSION)`, пакет агента для `E2E_ARCH`, образ агента) и `e2e` (`:e2e:test` с тегами и версией). `E2E_SERVER_BUILD_FLAGS` — место для кэша CI и настроек прокси.
+- `SardEnvironment` — JUnit-расширение на класс: своя сеть, PostgreSQL 18, сервер с `SARD_PKI_SERVER_NAMES=sard-server`, `SARD_AGENT_ENDPOINT=sard-server:9090`, случайные порты хоста, пароль БД случайный. Вывод каждого контейнера копится `ToStringConsumer` с самого старта и при падении теста или старта пишется в `test/e2e/build/e2e-logs/<класс>/<тест|start>/<контейнер>.log` через `Redaction` (токены `sard_…`, PEM-ключи, зарегистрированные секреты).
+- Дымовые тесты: `ServerSmokeTest` (статус и версия по REST; цепочка TLS: SAN содержит `sard-server`, корень = `ca/ca.crt` из каталога CA сервера; Enroll по TLS с доверием к этому CA → INVALID_ARGUMENT), `AgentImageSmokeTest` (`sard-agent --version` = `VERSION`; `restic version` = `restic-version`).
+
+### Ошибка по пути
+
+`apply { withNetwork(network) }` в Kotlin: `network` внутри `apply` — `getNetwork()` самого контейнера (null), оба контейнера попадали в `bridge`, сервер падал с `UnknownHostException: postgres`. Поле переименовано в `sardNetwork`. Попутно проверено: сбор логов при падении старта сработал — логи сервера с причиной легли в `e2e-logs/ServerSmokeTest/start/`.
+
+### Проверки (проведены)
+
+1. `make e2e` дважды подряд без очистки — exit 0 оба раза; во втором прогоне 5 тестов, 0 пропущенных, 0 падений (`test-results`, метки 11:17); после прогона висит только ryuk (завершается сам).
+3. restic в образе — `restic 0.19.1 compiled with go1.26.4 on linux/amd64`, тест сверяет с `version=` из `restic-version`.
+
+### Окружение сессии (в репозиторий не входит)
+
+- Docker-демон запущен вручную (`dockerd`).
+- Прокси: образ сервера собирается с `--network host`, CA прокси — секретом `build-ca` (нужен `CCR Upstream Proxy CA`, не последний в бандле), `JAVA_TOOL_OPTIONS` с прокси; Docker Hub и Maven Central периодически отвечают 429 — сборки повторялись.
+- На хосте JDK 21; JDK 25 взята из `eclipse-temurin:25-jdk` и указана в `~/.gradle/gradle.properties` (`org.gradle.java.installations.paths`).

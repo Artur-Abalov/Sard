@@ -43,7 +43,8 @@ class SardEnvironment(
 ) : BeforeAllCallback,
     AfterAllCallback,
     TestWatcher {
-    private val network = Network.newNetwork()
+    // Not "network": inside a container's apply {} that name is the container's own getNetwork().
+    private val sardNetwork = Network.newNetwork()
     private val dbPassword = randomHex()
     private val secrets = mutableSetOf(dbPassword)
     private val containers = linkedMapOf<String, Tracked>()
@@ -52,7 +53,7 @@ class SardEnvironment(
         track(
             POSTGRES_ALIAS,
             PostgreSQLContainer(DockerImageName.parse(E2e.POSTGRES_IMAGE)).apply {
-                withNetwork(network)
+                withNetwork(sardNetwork)
                 withNetworkAliases(POSTGRES_ALIAS)
                 withDatabaseName("sard")
                 withUsername("sard")
@@ -64,7 +65,7 @@ class SardEnvironment(
         track(
             SERVER_ALIAS,
             GenericContainer<Nothing>(DockerImageName.parse(E2e.serverImage)).apply {
-                withNetwork(network)
+                withNetwork(sardNetwork)
                 withNetworkAliases(SERVER_ALIAS)
                 withEnv(defaultServerEnv() + serverEnv)
                 withExposedPorts(HTTP_PORT, GRPC_PORT)
@@ -86,7 +87,7 @@ class SardEnvironment(
     val grpcPort: Int get() = server.getMappedPort(GRPC_PORT)
 
     /** The Docker network of this installation, for containers a test adds (the agent). */
-    val dockerNetwork: Network get() = network
+    val dockerNetwork: Network get() = sardNetwork
 
     /** Masks [value] in every log this environment writes (tokens, keys a test handles). */
     fun secret(value: String) {
@@ -132,7 +133,7 @@ class SardEnvironment(
 
     override fun afterAll(context: ExtensionContext) {
         containers.values.reversed().forEach { it.container.stop() }
-        network.close()
+        sardNetwork.close()
     }
 
     override fun testFailed(
