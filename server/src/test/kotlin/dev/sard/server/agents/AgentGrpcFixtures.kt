@@ -15,6 +15,7 @@ import io.grpc.TlsChannelCredentials
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder
+import org.springframework.jdbc.core.ConnectionCallback
 import org.springframework.jdbc.core.JdbcTemplate
 import java.security.KeyPair
 import java.security.KeyPairGenerator
@@ -80,10 +81,32 @@ class AgentGrpcFixtures(
 
     override fun close() {
         channels.forEach { it.shutdownNow() }
-        for (tenant in tenants) {
-            for (table in TENANT_TABLES) jdbc.update("delete from $table where tenant_id = ?", tenant)
-            jdbc.update("delete from tenants where id = ?", tenant)
-        }
+        tenants.forEach(::deleteTenant)
+    }
+
+    /**
+     * One transaction that first locks the tenant's agent rows, as Register does: a Register
+     * still in flight on the server (its client already gone) either commits before the lock,
+     * and its rows are deleted here, or waits for it and then finds no agent.
+     */
+    private fun deleteTenant(tenant: UUID) {
+        jdbc.execute(
+            ConnectionCallback { connection ->
+                connection.autoCommit = false
+                try {
+                    for (sql in DELETE_TENANT) {
+                        connection.prepareStatement(sql).use {
+                            it.setObject(1, tenant)
+                            it.execute()
+                        }
+                    }
+                    connection.commit()
+                } finally {
+                    connection.rollback()
+                    connection.autoCommit = true
+                }
+            },
+        )
     }
 
     private companion object {
@@ -92,5 +115,10 @@ class AgentGrpcFixtures(
         /** Children first: every table an agent's enrollment and registration writes. */
         val TENANT_TABLES =
             listOf("agent_plugins", "agent_repositories", "agent_certificates", "enrollment_tokens", "agents")
+
+        val DELETE_TENANT =
+            listOf("select id from agents where tenant_id = ? for update") +
+                TENANT_TABLES.map { "delete from $it where tenant_id = ?" } +
+                "delete from tenants where id = ?"
     }
 }

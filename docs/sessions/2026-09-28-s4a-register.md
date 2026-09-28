@@ -156,3 +156,41 @@
 - `Hostnames.isValid` — плюс `none(Char::isISOControl)`; одно правило для Enroll и Register.
 - Тесты: `enrollment/HostnamesTest` (4, `@MutFlowTest`; границы U+001F/U+0020, U+007E/U+007F, U+009F/U+00A0, кириллица допустима), сценарий в `EnrollmentContractIntegrationTest` (NUL, `\n`, DEL), NUL в `SnapshotRulesTest` и `RegisterIntegrationTest`.
 - `./scripts/gate.sh server fast` — PASSED, 334 теста, покрытие 94.6%. mutflow по `HostnamesTest` и `SnapshotRulesTest` — exit 0 (48 и 1160 запусков).
+
+## Фаза 3 — шов с агентом (тест 7), ADR, журнал
+
+PR [Artur-Abalov/Sard#15](https://github.com/Artur-Abalov/Sard/pull/15) (фазы 1–2 и hostname) слит в `main` (`f4de483`). Фаза 3 — новая ветка `claude/s4a-register-phase3` от `main`: пересоздать прежнюю ветку система прав не дала, другая ветка — решение владельца.
+
+### Сделано
+- `server/build.gradle.kts`: задача `buildTestAgent` (`go build -ldflags "-X main.version=seam-test" ./agent/cmd/sard-agent` в `build/test-agent/`), входы — исходники `agent/`, `proto/gen/go`, `go.work`; `test` от неё зависит и получает путь в `sard.test.agent-binary`. Агент собирается **один раз на сборку** для всех тестов, повторно — только при изменении исходников (решение 4). Go нужен на PATH; в CI у job `server` уже есть `setup-go`.
+- `agents/AgentSeamIntegrationTest`: тест выпускает агенту сертификат через Enroll, пишет CA, сертификат, ключ и YAML-конфиг во временный каталог, запускает настоящий `sard-agent` и ждёт `last_register_at`. Проверяются hostname (как `/proc/sys/kernel/hostname`), версия `seam-test`, `linux`/GOARCH, протокол 1, секрет `pg-prod`, скрипт `pre-dump`, четыре встроенных плагина (`files`, `mysql`, `network`, `postgresql`; версия агента; `backup,restore,verify`; схема — JSON-объект; `tenant_id` агента) и репозиторий `main`/`local` с пустым id (restic намеренно отсутствует — агент объявляет репозиторий без id, `app.go:82-86`).
+- Проверка, что шов настоящий (временная правка, откачена): `ProtocolVersions.SUPPORTED = 2..2` → тест падает с выводом агента:
+  ```
+  sard-agent seam-test: connecting to localhost:37427
+  sard-agent: register: server does not support this agent's protocol version: rpc error: code = FailedPrecondition desc = register rejected
+  ```
+  Агент (A3) на FAILED_PRECONDITION останавливается без повторов — как и ожидалось.
+- ADR 0013: фактическая схема (`agent_plugins.config_schema JSONB` вместо `plugin_schemas`), колонки Register, как Register получает тенант и блокирует агента; в «Отвергнуто» — глобальная `plugin_schemas` по хешу; в «Отложено» — общий `repository_id` у разных тенантов.
+- Черновик модели ошибок: таблица причин Register с кодами и ключами metadata, правило «metadata называет поле и предел, не значение», расхождение A3 с правилом повтора, `HOSTNAME_INVALID` с управляющими символами.
+
+### Найдено и исправлено: гонка в очистке тестов
+- Первый полный шлюз (`./scripts/gate.sh server`, с mutflow): `5509 tests completed, 1 failed` — `AgentSeamIntegrationTest`, в `@AfterTest`: `delete from agents` → `violates foreign key constraint "agent_plugins_agent_fkey"`. Отчёт сохранён.
+- Причина: агент после Register получает UNIMPLEMENTED на Connect и регистрируется снова; процесс остановлен, но Register, уже начатый на сервере, коммитит плагины между `delete from agent_plugins` и `delete from agents` (отдельные автокоммит-операторы).
+- Исправление (`AgentGrpcFixtures.deleteTenant`): удаление тенанта — одна транзакция, которая сначала `select … for update` строки агентов тенанта, как Register: Register в полёте либо закоммитил до блокировки (его строки удаляются), либо ждёт и затем не находит агента.
+- После: 5 × (`AgentSeamIntegrationTest` + `RegisterIntegrationTest`) — exit 0; полный шлюз — `gate: PASSED (server, full)`.
+- Неопознанное падение фазы 2 было до появления теста шва, поэтому эта гонка его не объясняет; пункт остаётся открытым.
+
+### Результаты
+- `./scripts/gate.sh server` (полный, как в CI) — `gate: PASSED (server, full)`: spotless, detekt, тесты, покрытие 94.6% (instructions), CRAP ≤ 6, mutflow без выживших.
+- `make license-check` — OK.
+
+### Итог S4a по definition of done
+- `./gradlew :server:test` проходит; миграция применяется с чистой БД (Testcontainers, `SardServerIntegrationTest` — список миграций).
+- Снимок заменяется атомарно, гонка не смешивает снимки (`RegisterIntegrationTest`, проверено и отключением блокировки).
+- Несовместимый протокол и нарушения ограничений — коды и причины по модели ошибок, записаны в черновике ADR модели ошибок.
+- Настоящий агент проходит Register (`AgentSeamIntegrationTest`).
+
+### Открытое (переносится)
+- A3: `INVALID_ARGUMENT` на Register должен быть окончательным (дыра агента).
+- Неопознанное падение одного теста в фазе 2 (не воспроизводится).
+- Общий `repository_id` у разных тенантов — отдельная задача.
