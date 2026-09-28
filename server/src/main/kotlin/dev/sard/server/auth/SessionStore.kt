@@ -60,6 +60,16 @@ class SessionStore(
         return touched
     }
 
+    /**
+     * The session if [id] names one that is still valid, without touching it: for callers that
+     * know a guard already touched the same session earlier in this request (Р1's extension
+     * happens once, in [SessionAuthFilter], not again here).
+     */
+    fun find(id: String): AdminSession? {
+        val now = clock.instant()
+        return sessions[id]?.takeIf { isValid(it, now) }
+    }
+
     /** True when [id] named a session that was removed. */
     fun remove(id: String): Boolean = sessions.remove(id) != null
 

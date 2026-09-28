@@ -41,7 +41,9 @@ class SessionApiImpl(
         }
 
     override fun getSession(sessionId: String): SessionResponse {
-        val session = sessionStore.touch(sessionId) ?: throw NoSuchSessionException()
+        // Not touch(): SessionAuthFilter already touched this same session earlier in the
+        // request (every guarded route does, Р1) — touching again here would be redundant.
+        val session = sessionStore.find(sessionId) ?: throw NoSuchSessionException()
         return SessionResponse(session.tenantId, sessionStore.expiresAt(session))
     }
 

@@ -119,6 +119,27 @@ class SessionStoreTest {
     }
 
     @Test
+    fun `find does not extend the idle deadline, unlike touch`() {
+        val session = store.create(TENANT)
+        clock.now = LOGIN + Duration.ofHours(11)
+        assertNotNull(store.find(session.id))
+        clock.now = LOGIN + Duration.ofHours(12)
+        assertNull(store.find(session.id))
+    }
+
+    @Test
+    fun `find returns the session unchanged`() {
+        val session = store.create(TENANT)
+        clock.now = LOGIN + Duration.ofHours(1)
+        assertEquals(session, store.find(session.id))
+    }
+
+    @Test
+    fun `find of an unknown session id is null`() {
+        assertNull(store.find("no-such-session"))
+    }
+
+    @Test
     fun `two logins give two sessions valid at once with different ids`() {
         val a = store.create(TENANT)
         val b = store.create(TENANT)
