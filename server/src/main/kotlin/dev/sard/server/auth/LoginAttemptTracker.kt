@@ -67,16 +67,30 @@ class LoginAttemptTracker(
         val state = byAddress.computeIfAbsent(address) { State() }
         synchronized(state) {
             val now = clock.instant()
-            while (state.failures.isNotEmpty() && state.failures.first() <= now - WINDOW) {
-                state.failures.removeFirst()
-            }
+            pruneExpired(state, now)
             state.failures.addLast(now)
-            if (state.failures.size >= MAX_FAILURES && state.lockedAt == null) {
-                state.lockedAt = now
-                return true
-            }
-            return false
+            return locksNow(state, now)
         }
+    }
+
+    /** Drops every failure in [state] that fell out of the window as of [now]. */
+    private fun pruneExpired(
+        state: State,
+        now: Instant,
+    ) {
+        while (state.failures.isNotEmpty() && state.failures.first() <= now - WINDOW) {
+            state.failures.removeFirst()
+        }
+    }
+
+    /** True exactly when [state] just reached the failure threshold and was not already locked. */
+    private fun locksNow(
+        state: State,
+        now: Instant,
+    ): Boolean {
+        if (state.failures.size < MAX_FAILURES || state.lockedAt != null) return false
+        state.lockedAt = now
+        return true
     }
 
     /** A successful sign-in from [address] forgets its failure history. */
