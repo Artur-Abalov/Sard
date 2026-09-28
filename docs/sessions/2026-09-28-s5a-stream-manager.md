@@ -253,3 +253,22 @@ sealed interface SendResult { Queued; NotConnected; QueueFull }
 Интервал heartbeat теперь читается из `AgentEndpointProperties.heartbeatInterval` (привязка S4a), а не через `@Value`: один источник для Register и менеджера стримов.
 
 Проверка после слияния: `./scripts/gate.sh server fast` — `PASSED`, 420 тестов, 0 упавших, 0 пропущенных, покрытие 94.5%; `./gradlew -Pmutflow.enabled=true :server:test --rerun` — exit 0 (6508 запусков); `make license-check` — 292 files OK.
+
+### Шов с настоящим Register (после слияния S4a)
+Тот же временный harness, без заглушки Register (+ `sard.agent.endpoint=localhost:19443`), агент A3 из `agent/cmd/sard-agent`:
+```
+09:47:07.847 enrolled agent 01a0e769-…; waiting for it to connect
+09:47:09.337 connected
+09:47:09.374 Hello from 01a0e769-…, running=[]
+09:47:19.361 last_seen_at 09:47:09.338448Z -> 09:47:19.323258Z
+09:47:19.366 AgentConnections: server stopping: 1 agent streams closed
+09:47:19.567 disconnected SERVER_SHUTTING_DOWN
+09:47:22.589 gRPC server started again
+09:47:27.180 connected
+09:47:27.183 Hello from 01a0e769-…, running=[]
+09:47:37.294 revoking the agent
+09:47:37.971 agent 01a0e769-…: session closed, AGENT_REVOKED
+агент: sard-agent: register: server refused the agent certificate: rpc error: code = Unauthenticated desc = agent certificate rejected
+агент: 09:48:02 sard-agent exited with 1
+```
+Настоящий Register (S4a) → Connect → Hello → heartbeat, перезапуск gRPC-сервера, отзыв — как с заглушкой. Заглушка больше не нужна; harness по-прежнему вне репозитория до каркаса `test/e2e`.
