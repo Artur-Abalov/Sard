@@ -53,6 +53,7 @@ class HibernateTenantBridge(private val resolver: TenantResolver) : CurrentTenan
   Список проверяет `ArchitectureTest` (S2b) с точностью до файла: вызов `sessions.system` вне `EnrollmentTokens.kt` и `AgentCertificateStandings.kt` роняет сборку; лишний вызов внутри этих файлов ловит ревью.
 - Операции администратора над токенами (`EnrollmentTokens.create`, `list`, `get`, `revoke`, S2b) идут через `inTenant` с тенантом, который вызывающий получил от `TenantResolver`. Будущий REST-слой (D2 → W1b) никогда не берёт тенант из параметра пути.
 - Тенант gRPC-вызова агента (S3) — из его сертификата: перехватчик кладёт `AgentPrincipal` в gRPC `Context`, обработчики `AgentService` ходят в базу через `agents/AgentSessions.inTenant { }` = `TenantSessions.inTenant(principal.tenantId)`. `Context` доходит до обработчика-корутины и всех диспетчеров, на которые он переключается (grpc-kotlin кладёт `GrpcContextElement` в контекст обработчика), в том числе до сообщений стрима, пришедших после открытия, — проверено `AgentAuthIntegrationTest`. Вне аутентифицированного вызова `AgentSessions` бросает исключение. Spring Data-репозитории в обработчиках агента не используются: они идут через резолвер, а не через принципал.
+- Register (S4a) пишет снимок через `registration/Registration`, доменный пакет без gRPC: он не может зависеть от `agents/`, поэтому `AgentGrpcService` передаёт ему `principal.tenantId` и `principal.agentId`, а тот открывает `TenantSessions.inTenant(tenantId)` — то же, что `AgentSessions.inTenant`, тенант по-прежнему только из сертификата. Транзакция начинается с блокировки строки агента (`LockModeType.PESSIMISTIC_WRITE`): второй Register того же агента ждёт и заменяет снимок целиком. Наборы заменяются удалением и вставкой, а не слиянием.
 - Глобальный переключатель фильтра не вводится: всё остальное по-прежнему идёт через резолвер.
 
 ### Правила схемы (для всех таблиц)
@@ -73,7 +74,7 @@ class HibernateTenantBridge(private val resolver: TenantResolver) : CurrentTenan
 Мягкое удаление: в Hibernate 7.4 есть `@SoftDelete(strategy = TIMESTAMP)`, но он скрывает строку отовсюду, включая загрузку ссылки из истории (отчёт о запуске удалённого агента должен показать его имя). Выбор между ним и явным фильтром «живых» строк — в спецификации первой фичи удаления, с тестом на загрузку истории.
 
 ### Целевая схема
-Реализовано сейчас: `tenants`, `agents.tenant_id`, `enrollment_tokens`, `agent_certificates`. Остальные таблицы и колонки создаёт миграция той фичи, которой они нужны; её спецификация может уточнить детали, но не правила выше. В листинге `tenant_id` и `UNIQUE (tenant_id, id)` подразумеваются у каждой таблицы тенанта, `→ x` означает составной FK `(tenant_id, x_id) → x (tenant_id, id)`.
+Реализовано сейчас: `tenants`, `agents.tenant_id`, `enrollment_tokens`, `agent_certificates`, снимок Register — колонки `agents` и `agent_plugins`, `agent_repositories` (S4a, `V202609281400__agent_register.sql`). Остальные таблицы и колонки создаёт миграция той фичи, которой они нужны; её спецификация может уточнить детали, но не правила выше. В листинге `tenant_id` и `UNIQUE (tenant_id, id)` подразумеваются у каждой таблицы тенанта, `→ x` означает составной FK `(tenant_id, x_id) → x (tenant_id, id)`.
 
 ```
 tenants                       глобальная
@@ -81,8 +82,10 @@ tenants                       глобальная
 
 agents                        тенант · реализовано: id, tenant_id, hostname, agent_version, registered_at, last_seen_at
   + revoked_at (S3: отзыв агента целиком, проверяет перехватчик)
-  + (этап «регистрация») os, arch, protocol_version, deleted_at,
-    secret_names TEXT[], script_names TEXT[]          -- снимок из Register, только имена
+  + (S4a, реализовано) os, arch, protocol_version, secret_names TEXT[], script_names TEXT[],
+    last_register_at                                  -- снимок из Register, только имена;
+                                                      -- NULL до первого Register, затем все сразу (CHECK)
+  + deleted_at                                        -- ещё не реализовано
 
 agent_certificates            тенант · реализовано (S2a) — во время RenewCertificate действуют два сертификата
   serial TEXT PK (глобальный: сертификат ищется при рукопожатии; 32 hex-цифры), agent_id → agents,
@@ -95,16 +98,16 @@ enrollment_tokens             тенант · реализовано (S2a, S2b)
   CHECK (used_at IS NULL OR revoked_at IS NULL)   -- использован и отозван одновременно не бывает
   -- состояние вычисляется при чтении: использован > отозван > истёк > активен
 
-plugin_schemas                глобальная, адресуется содержимым
-  sha256 BYTEA PK, schema JSONB
-  -- ключ — хеш, а не (name, version): иначе агент одного тенанта мог бы подменить схему другому
+agent_plugins                 тенант, снимок из Register · реализовано (S4a)
+  (agent_id, name) PK, agent_id → agents, version, config_schema JSONB, actions TEXT[]
+  CHECK (actions <@ ARRAY['backup','restore','verify','run'])
+  -- схема хранится в строке своего тенанта: общей таблицы схем нет, подменить чужую нечего
 
-agent_plugins                 тенант, снимок из Register
-  (agent_id, name) PK, agent_id → agents, version, schema_sha256 → plugin_schemas, actions TEXT[]
-
-agent_repositories            тенант, снимок из Register (ADR 0008)
-  (agent_id, name) PK, agent_id → agents, backend, repository_id NULL, crypto_provider
+agent_repositories            тенант, снимок из Register (ADR 0008) · реализовано (S4a)
+  (agent_id, name) PK, agent_id → agents, backend, repository_id NULL, crypto_provider NULL
+  CHECK backend ~ '^[a-z][a-z0-9]{0,15}$', repository_id ~ '^[0-9a-f]{64}$'
   INDEX (tenant_id, repository_id)  -- хранители ключа; удалённые и отозванные агенты не считаются
+  -- repository_id NULL — агент не смог прочитать id; crypto_provider NULL — AES restic
 
 sources                       тенант — что бэкапим
   id PK, agent_id → agents, name, plugin, config JSONB, created_at, updated_at, deleted_at
@@ -187,6 +190,7 @@ Enterprise-модуль хранит свои таблицы в собствен
 - **Каскадное удаление или `SET NULL` из истории.** Отчёт «проверено 12 марта» теряет смысл, если источник проверки исчез или обнулился.
 - **`on_origin_host` колонкой.** Вычисляется из двух неизменных колонок; хранить стоит то, что не вычислить потом, — `key_holders`.
 - **Схемы плагинов с ключом `(name, version)`.** Общая для тенантов таблица с ключом, который присылает агент, позволяет одному тенанту подменить схему другому; ключ по хешу содержимого — нет.
+- **Глобальная `plugin_schemas`, адресуемая хешем (S4a).** Экономит повторы схемы (порядка килобайта на плагин на агента), но это вторая глобальная таблица рядом с `tenants`, которую пишет агент, и исключение из `TenancyIntegrationTest`. Колонка `config_schema JSONB` в `agent_plugins` убирает межтенантную поверхность целиком — решение владельца.
 - **Время агента как ключ секционирования логов.** Строка с неверными часами агента не нашла бы секцию.
 - **`DEFAULT` на `agents.tenant_id` в базе.** Ядро молча писало бы в тенант по умолчанию даже из enterprise-сборки с ошибкой в резолвере. Значение по умолчанию используется только для заполнения существующих строк в V2 и сразу снимается.
 
@@ -195,4 +199,5 @@ Enterprise-модуль хранит свои таблицы в собствен
 - **Пользователи и роли.** В ядре — вместе с аутентификацией; вероятная форма — глобальная `users` и `memberships (tenant_id, user_id, role)`: оператор MSP видит нескольких тенантов.
 - **Каналы уведомлений** (токены Telegram, SMTP) — где хранить учётные данные сервера, решим на этапе уведомлений в духе ADR 0008.
 - **`BackupOutput.repository_id`.** `snapshots.repository_id NOT NULL`, а `BackupOutput` в контракте его не несёт; копировать из `agent_repositories`, где id может быть пустым, — значит терять снимки репозиториев с неизвестным id. Нужное аддитивное поле в proto — на этапе «первый бэкап».
+- **Общий `repository_id` у агентов разных тенантов** (вероятная ошибка конфигурации MSP). Поиск идёт сквозь тенанты, то есть ещё один вызов `system`; в путь Register не включён (S4a, решение владельца) — кандидат на отдельную системную проверку или отчёт.
 - **RLS вторым рубежом** под `@TenantId` — если появится нативный SQL в объёме, который не проверить ревью.

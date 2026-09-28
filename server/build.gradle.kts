@@ -74,8 +74,31 @@ tasks.bootJar {
     archiveFileName = "sard-server.jar"
 }
 
+// The real sard-agent for the agent seam tests (S4a), built once per build and shared by every
+// test that runs it. Needs the Go toolchain on PATH, as CI's server job has (setup-go).
+val testAgentBinary = layout.buildDirectory.file("test-agent/sard-agent")
+val buildTestAgent by tasks.registering(Exec::class) {
+    val repo = rootProject.layout.projectDirectory
+    workingDir = repo.asFile
+    inputs.files(fileTree(repo.dir("agent")) { include("**/*.go", "**/go.mod", "**/go.sum", "**/*.json") })
+    inputs.files(fileTree(repo.dir("proto/gen/go")) { include("**/*.go", "go.mod", "go.sum") })
+    inputs.files(repo.file("go.work"), repo.file("go.work.sum"))
+    outputs.file(testAgentBinary)
+    commandLine(
+        "go",
+        "build",
+        "-ldflags",
+        "-X main.version=seam-test",
+        "-o",
+        testAgentBinary.get().asFile.path,
+        "./agent/cmd/sard-agent",
+    )
+}
+
 tasks.test {
     useJUnitPlatform()
+    dependsOn(buildTestAgent)
+    systemProperty("sard.test.agent-binary", testAgentBinary.get().asFile.path)
     // The CA of integration tests; the default /var/lib/sard/pki is not writable here.
     systemProperty(
         "sard.pki.dir",
