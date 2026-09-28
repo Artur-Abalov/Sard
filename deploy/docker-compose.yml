@@ -30,6 +30,8 @@ services:
       SARD_DB_USER: sard
       SARD_DB_PASSWORD: ${SARD_DB_PASSWORD:?set SARD_DB_PASSWORD in deploy/.env}
       SARD_PKI_SERVER_NAMES: ${SARD_PKI_SERVER_NAMES:-localhost,127.0.0.1,::1}
+      # Address agents dial (decision 5, S2b); unset means the first of the names above and the gRPC port.
+      SARD_AGENT_ENDPOINT: ${SARD_AGENT_ENDPOINT:-}
     volumes:
       # The CA key: its own volume, backed up apart from postgres-data (docs/operations/pki.md).
       - sard-pki:/var/lib/sard/pki

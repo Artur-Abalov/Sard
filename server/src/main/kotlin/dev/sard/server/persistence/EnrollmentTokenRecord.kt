@@ -27,6 +27,11 @@ class EnrollmentTokenRecord(
     var usedAt: Instant? = null,
     @Column(name = "agent_id")
     var agentId: UUID? = null,
+    @Column(name = "revoked_at")
+    var revokedAt: Instant? = null,
+    /** Empty means no label (migration V202609271600, decision 2); never null. */
+    @Column(name = "label", nullable = false)
+    val label: String = "",
     /** Set by Hibernate from the session's tenant on insert (ADR 0013). */
     @TenantId
     @Column(name = "tenant_id", nullable = false, updatable = false)

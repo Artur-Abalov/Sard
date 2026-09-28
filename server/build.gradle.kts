@@ -26,12 +26,28 @@ kotlin {
     }
 }
 
+// Kotlin test class file names come from Cyrillic spec-quoted scenario titles; the
+// JVM derives file-name encoding (sun.jnu.encoding) from the Gradle daemon's locale
+// at startup, not from JVM flags on the compile task. Fail fast with a clear message
+// instead of letting compilation fail (or silently mangle file names) on a stale
+// daemon started without a UTF-8 locale.
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    doFirst {
+        check(System.getProperty("sun.jnu.encoding").equals("UTF-8", ignoreCase = true)) {
+            "$name needs a UTF-8 locale: export LC_ALL=C.UTF-8 and run ./gradlew --stop"
+        }
+    }
+}
+
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.springframework.boot:spring-boot-starter-grpc-server")
+    // Rich gRPC status details (google.rpc.ErrorInfo): already on the classpath transitively
+    // through spring-boot-starter-grpc-server; declared directly because EnrollmentStatus uses it.
+    implementation("io.grpc:grpc-protobuf")
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.bouncycastle:bcpkix-jdk18on:1.86")
     implementation("com.google.api.grpc:proto-google-common-protos:2.64.1")

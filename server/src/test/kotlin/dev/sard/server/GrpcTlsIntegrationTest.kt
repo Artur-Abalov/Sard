@@ -78,8 +78,8 @@ class GrpcTlsIntegrationTest(
 
     @Test
     fun `a client trusting the Sard CA reaches the server without a client certificate`() {
-        // An empty request reaches Enroll, which rejects its missing token.
-        assertEquals(Status.Code.UNAUTHENTICATED, enroll(trusting().build()))
+        // An empty request reaches Enroll, which rejects it as TOKEN_MALFORMED.
+        assertEquals(Status.Code.INVALID_ARGUMENT, enroll(trusting().build()))
     }
 
     /** A2a: a new agent trusts no CA yet and pins the root it finds in the handshake. */
@@ -122,7 +122,7 @@ class GrpcTlsIntegrationTest(
 
     @Test
     fun `a client certificate from the Sard CA is accepted`() {
-        assertEquals(Status.Code.UNAUTHENTICATED, enroll(withClientCertificate(ca)))
+        assertEquals(Status.Code.INVALID_ARGUMENT, enroll(withClientCertificate(ca)))
     }
 
     @Test

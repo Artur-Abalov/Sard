@@ -3,38 +3,141 @@
 
 package dev.sard.server.agents
 
+import com.google.protobuf.Any
+import com.google.rpc.ErrorInfo
 import dev.sard.server.enrollment.EnrollmentRejectedException
-import dev.sard.server.enrollment.EnrollmentRejectedException.Reason
 import dev.sard.server.pki.InvalidCsrException
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import io.grpc.Status
+import io.grpc.Status.Code.INVALID_ARGUMENT
+import io.grpc.Status.Code.UNAUTHENTICATED
+import io.grpc.Status.Code.UNAVAILABLE
+import io.grpc.StatusRuntimeException
+import io.grpc.protobuf.StatusProto
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** Interim mapping (S2a); S2b scenarios fix the final codes and texts. */
+private typealias Reason = EnrollmentRejectedException.Reason
+
+/** Rule "Отказы по токену — окончательный контракт": reason -> code, always with an ErrorInfo of domain sard.dev. */
 @MutFlowTest
 class EnrollmentStatusTest {
+    private fun exceptionFor(error: Throwable): StatusRuntimeException {
+        val exception = MutFlow.underTest { EnrollmentStatus.of(error) }
+        return exception
+    }
+
+    private fun errorInfo(exception: StatusRuntimeException): ErrorInfo {
+        val status = checkNotNull(StatusProto.fromThrowable(exception))
+        val details = status.detailsList.filter { it.`is`(ErrorInfo::class.java) }
+        assertEquals(1, details.size, status.detailsList.toString())
+        return details.single().unpack(ErrorInfo::class.java)
+    }
+
+    private fun assertMapping(
+        error: Throwable,
+        code: Status.Code,
+        reason: String,
+    ) {
+        val exception = exceptionFor(error)
+        assertEquals(code, Status.fromThrowable(exception).code)
+        val info = errorInfo(exception)
+        assertEquals(reason, info.reason)
+        assertEquals("sard.dev", info.domain)
+    }
+
+    /**
+     * The literal wire string is hardcoded here, not derived from [Reason.name]: this pins the
+     * rejection contract table independently of the domain enum (F2 review, EnrollmentStatus.kt).
+     */
+    private fun assertRejected(
+        reason: Reason,
+        code: Status.Code,
+        wireReason: String,
+    ) = assertMapping(EnrollmentRejectedException(reason), code, wireReason)
+
     @Test
-    fun `every token rejection is UNAUTHENTICATED and names its reason`() {
-        for (reason in Reason.entries) {
-            val status = MutFlow.underTest { EnrollmentStatus.of(EnrollmentRejectedException(reason)) }
-            assertEquals(Status.Code.UNAUTHENTICATED, status.code, reason.name)
-            assertEquals("enrollment token rejected: ${reason.name.lowercase()}", status.description)
-        }
+    fun `TOKEN_MALFORMED is INVALID_ARGUMENT`() {
+        assertRejected(Reason.TOKEN_MALFORMED, INVALID_ARGUMENT, "TOKEN_MALFORMED")
     }
 
     @Test
-    fun `a CSR the CA refuses is INVALID_ARGUMENT with the CA's reason`() {
-        val status = MutFlow.underTest { EnrollmentStatus.of(InvalidCsrException("CSR signature does not verify")) }
-        assertEquals(Status.Code.INVALID_ARGUMENT, status.code)
-        assertEquals("CSR signature does not verify", status.description)
+    fun `TOKEN_FOREIGN_CA is UNAUTHENTICATED`() {
+        assertRejected(Reason.TOKEN_FOREIGN_CA, UNAUTHENTICATED, "TOKEN_FOREIGN_CA")
     }
 
     @Test
-    fun `anything else is INTERNAL and reveals nothing`() {
-        val status = MutFlow.underTest { EnrollmentStatus.of(IllegalStateException("row sard_secret")) }
-        assertEquals(Status.Code.INTERNAL, status.code)
-        assertEquals("enrollment failed", status.description)
+    fun `TOKEN_UNKNOWN is UNAUTHENTICATED`() {
+        assertRejected(Reason.TOKEN_UNKNOWN, UNAUTHENTICATED, "TOKEN_UNKNOWN")
+    }
+
+    @Test
+    fun `TOKEN_USED is UNAUTHENTICATED`() {
+        assertRejected(Reason.TOKEN_USED, UNAUTHENTICATED, "TOKEN_USED")
+    }
+
+    @Test
+    fun `TOKEN_REVOKED is UNAUTHENTICATED`() {
+        assertRejected(Reason.TOKEN_REVOKED, UNAUTHENTICATED, "TOKEN_REVOKED")
+    }
+
+    @Test
+    fun `TOKEN_EXPIRED is UNAUTHENTICATED`() {
+        assertRejected(Reason.TOKEN_EXPIRED, UNAUTHENTICATED, "TOKEN_EXPIRED")
+    }
+
+    @Test
+    fun `HOSTNAME_INVALID is INVALID_ARGUMENT`() {
+        assertRejected(Reason.HOSTNAME_INVALID, INVALID_ARGUMENT, "HOSTNAME_INVALID")
+    }
+
+    @Test
+    fun `CSR_INVALID is INVALID_ARGUMENT`() {
+        assertRejected(Reason.CSR_INVALID, INVALID_ARGUMENT, "CSR_INVALID")
+    }
+
+    @Test
+    fun `INTERNAL_RETRYABLE is UNAVAILABLE`() {
+        assertRejected(Reason.INTERNAL_RETRYABLE, UNAVAILABLE, "INTERNAL_RETRYABLE")
+    }
+
+    @Test
+    fun `an unrecognised throwable also maps to INTERNAL_RETRYABLE`() {
+        assertMapping(IllegalStateException("boom"), UNAVAILABLE, "INTERNAL_RETRYABLE")
+    }
+
+    @Test
+    fun `a CSR rejected outside Enrollment still maps to CSR_INVALID`() {
+        assertMapping(InvalidCsrException("bad csr"), INVALID_ARGUMENT, "CSR_INVALID")
+    }
+
+    @Test
+    fun `the wire reasons are exactly the rejection contract table`() {
+        val expected =
+            setOf(
+                "TOKEN_MALFORMED",
+                "TOKEN_FOREIGN_CA",
+                "TOKEN_UNKNOWN",
+                "TOKEN_USED",
+                "TOKEN_REVOKED",
+                "TOKEN_EXPIRED",
+                "HOSTNAME_INVALID",
+                "CSR_INVALID",
+                "INTERNAL_RETRYABLE",
+            )
+        val actual =
+            Reason.entries
+                .map { errorInfo(exceptionFor(EnrollmentRejectedException(it))).reason }
+                .toSet()
+        assertEquals(expected, actual)
+    }
+
+    @Test
+    fun `the status text never contains the cause's message`() {
+        val cause = IllegalStateException("disk on fire")
+        val exception = exceptionFor(EnrollmentRejectedException(Reason.INTERNAL_RETRYABLE, cause))
+        val text = Status.fromThrowable(exception).description.orEmpty()
+        assertEquals(false, "disk on fire" in text)
     }
 }

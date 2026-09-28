@@ -84,7 +84,8 @@ class SardServerIntegrationTest(
     @Test
     fun `flyway applied every migration`() {
         val sql = "select version from flyway_schema_history where success order by installed_rank"
-        assertEquals(listOf("1", "2", "202609271200", "202609281200"), jdbc.queryForList(sql, String::class.java))
+        val versions = listOf("1", "2", "202609271200", "202609271600", "202609281200")
+        assertEquals(versions, jdbc.queryForList(sql, String::class.java))
         assertEquals(0, jdbc.queryForObject("select count(*) from agents", Int::class.java))
     }
 
@@ -139,8 +140,9 @@ class SardServerIntegrationTest(
 
     @Test
     fun `enrollment service rejects a request without a token`() {
+        // TOKEN_MALFORMED (docs/specs/server/agent-enrollment.feature): the empty string is not a token.
         val enroll = grpcStatus { enrollmentStub(it).enroll(EnrollRequest.getDefaultInstance()) }
-        assertEquals(Status.Code.UNAUTHENTICATED, enroll)
+        assertEquals(Status.Code.INVALID_ARGUMENT, enroll)
     }
 
     private fun agentStub(channel: ManagedChannel) = AgentServiceGrpcKt.AgentServiceCoroutineStub(channel)

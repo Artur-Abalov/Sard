@@ -215,6 +215,93 @@ class FileCertificateAuthorityTest {
     }
 
     @Test
+    fun `an IP server name is encoded from the bytes ServerNames parsed`() {
+        // BouncyCastle's own GeneralName string constructor rejects a trailing "::" group
+        // ("1:2:3:4:5:6:7::"); building the SAN from ServerNames' own bytes sidesteps it.
+        // The other three names exercise shapes "1:2:3:4:5:6:7::" alone never reaches: a fully
+        // uncompressed literal with a group above 0xff (so a high byte lands at the right offset),
+        // a "::"-compressed literal with an embedded dotted IPv4 tail, and the maximum IPv4 octet.
+        val names = listOf("1:2:3:4:5:6:7::", "ff00:1:2:3:4:5:6:7", "::ffff:1.2.3.4", "255.255.255.255")
+        val ca = FileCertificateAuthority(dir, names, CLOCK, random())
+        val km = ca.serverKeyManager()
+        val leaf = km.getCertificateChain(km.chooseServerAlias("EC", null, null)).first()
+        val sans = leaf.subjectAlternativeNames.map { it.toList() }
+        assertEquals(
+            listOf(
+                listOf<Any>(SAN_IP, "1:2:3:4:5:6:7:0"),
+                listOf<Any>(SAN_IP, "ff00:1:2:3:4:5:6:7"),
+                listOf<Any>(SAN_IP, "1.2.3.4"),
+                listOf<Any>(SAN_IP, "255.255.255.255"),
+            ),
+            sans,
+        )
+    }
+
+    @Test
+    fun `a renewed server certificate re-encodes every server name shape from its parsed bytes`() {
+        // issueServerKey() (which encodes the SAN) runs from a property initializer on first
+        // construction — code a MutFlow.underTest block cannot wrap directly — but runs again,
+        // reachably, on renewal. Renewal reuses the CA already loaded (no CaDirectory/CaKeyPair
+        // code runs again), so this is the code under test for the parsers themselves, without
+        // constructing a fresh CA and dragging key-generation mutants into this class's report.
+        val clock = MovableClock(NOW)
+        val names =
+            listOf(
+                "1:2:3:4:5:6:7::",
+                "ff00:1:2:3:4:5:6:7",
+                "::1.2.3.4",
+                "1:2:3:4:5:6:1.2.3.4",
+                "255.255.255.255",
+            )
+        val ca = FileCertificateAuthority(dir, names, clock, random())
+        clock.now = NOW + Duration.ofDays(60)
+        assertTrue(MutFlow.underTest { ca.renewServerCertificate() })
+        val km = ca.serverKeyManager()
+        val leaf = km.getCertificateChain(km.chooseServerAlias("EC", null, null)).first()
+        val sans = leaf.subjectAlternativeNames.map { it.toList() }
+        assertEquals(
+            listOf(
+                listOf<Any>(SAN_IP, "1:2:3:4:5:6:7:0"),
+                listOf<Any>(SAN_IP, "ff00:1:2:3:4:5:6:7"),
+                listOf<Any>(SAN_IP, "0:0:0:0:0:0:102:304"),
+                listOf<Any>(SAN_IP, "1:2:3:4:5:6:102:304"),
+                listOf<Any>(SAN_IP, "255.255.255.255"),
+            ),
+            sans,
+        )
+    }
+
+    @Test
+    fun `a server name that is neither an IP literal nor a hostname stops the CA`() {
+        // "1:2:3:4:5:6:7::8" already spells out all 8 groups before the redundant "::"; RFC 4291
+        // requires "::" to represent at least one omitted group, so this must be rejected as
+        // malformed rather than silently accepted with zero groups filled in. "256.0.0.1" has an
+        // out-of-range octet: a hostname regex would also reject its all-digit last label, so the
+        // only way this construction can fail is if ipLiteral itself correctly rejects octet 256.
+        for (name in listOf("999.1.1.1", "fe80::1%eth0", "bad name", "1:2:3:4:5:6:7::8", "256.0.0.1")) {
+            assertFailsWith<IllegalArgumentException>(name) {
+                MutFlow.underTest { FileCertificateAuthority(dir, listOf(name), CLOCK, random()) }
+            }
+        }
+    }
+
+    @Test
+    fun `a name is accepted for being a hostname alone, without also having to be an IP literal`() {
+        // Validation itself, called from the constructor before any CA key material is generated
+        // (see the comment on the renewal test above for why the constructor is the wrapped call
+        // here): neither of the two accept conditions is required to hold for every name.
+        MutFlow.underTest { ServerNames.validate(listOf("localhost")) }
+    }
+
+    @Test
+    fun `a plain hostname with no IP literal in the list is accepted on its own`() {
+        // Mutation coverage of the accept condition itself lives in ServerNamesTest, which calls
+        // ServerNames.validate directly.
+        val ca = FileCertificateAuthority(dir, listOf("localhost"), CLOCK, random())
+        assertTrue(Files.exists(dir.resolve("ca/ca.crt")))
+    }
+
+    @Test
     fun `the server key stays in memory`() {
         ca()
         assertEquals(

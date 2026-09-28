@@ -3,7 +3,6 @@
 
 package dev.sard.server.enrollment
 
-import com.google.protobuf.ByteString
 import dev.sard.proto.agent.v1.EnrollRequest
 import dev.sard.proto.agent.v1.EnrollmentServiceGrpcKt
 import dev.sard.server.TestcontainersConfiguration
@@ -33,7 +32,6 @@ import java.security.SecureRandom
 import java.sql.Timestamp
 import java.time.Clock
 import java.time.Duration
-import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
@@ -44,13 +42,8 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-
-private val NOW: Instant = Instant.parse("2026-09-27T10:00:00Z")
-private val TTL: Duration = Duration.ofHours(1)
-private val WAIT: Duration = Duration.ofSeconds(10)
 
 /** The real file CA, with a switch that holds a signature open until the test lets it go. */
 class GatedCertificateAuthority(
@@ -65,7 +58,7 @@ class GatedCertificateAuthority(
         agent: dev.sard.server.pki.AgentIdentity,
     ): dev.sard.server.pki.IssuedCertificate {
         entered.release()
-        gate?.await(WAIT.toSeconds(), TimeUnit.SECONDS)
+        gate?.await(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS)
         return delegate.issueAgentCertificate(csrDer, agent)
     }
 }
@@ -73,7 +66,7 @@ class GatedCertificateAuthority(
 @TestConfiguration(proxyBeanMethods = false)
 class EnrollmentTestConfiguration {
     @Bean
-    fun clock() = MovableClock(NOW)
+    fun clock() = MovableClock(ENROLLMENT_NOW)
 
     @Bean
     fun certificateAuthority(
@@ -100,23 +93,18 @@ class EnrollmentIntegrationTest(
 
     @BeforeTest
     fun `start at a known instant with a fresh tenant`() {
-        clock.now = NOW
+        clock.now = ENROLLMENT_NOW
         ca.gate = null
         ca.entered.drainPermits()
-        jdbc.update("insert into tenants (id, name) values (?, ?)", acme, "acme-$acme")
+        jdbc.insertTenant(acme)
     }
 
     @AfterTest
     fun `drop everything of the tenant`() {
-        for (table in listOf("agent_certificates", "enrollment_tokens", "agents")) {
-            jdbc.update("delete from $table where tenant_id = ?", acme)
-        }
-        jdbc.update("delete from tenants where id = ?", acme)
+        jdbc.deleteEnrollmentTenantData(acme)
     }
 
-    private fun newToken() = tokens.create(acme, TTL)
-
-    private fun rejection(block: () -> Unit) = assertFailsWith<EnrollmentRejectedException> { block() }.reason
+    private fun newToken() = tokens.create(acme, ENROLLMENT_TOKEN_TTL)
 
     private fun tokenRow(issued: IssuedEnrollmentToken) =
         jdbc.queryForMap("select used_at, agent_id from enrollment_tokens where id = ?", issued.id)
@@ -134,7 +122,7 @@ class EnrollmentIntegrationTest(
     @Test
     fun `an enrolled agent joins the token's tenant with its certificate recorded`() {
         val issued = newToken()
-        clock.now = NOW + Duration.ofMinutes(5)
+        clock.now = ENROLLMENT_NOW + Duration.ofMinutes(5)
         val enrolled = enrollment.enroll(issued.reveal(), csr, "db1")
 
         assertEquals(7, enrolled.agentId.version())
@@ -165,9 +153,8 @@ class EnrollmentIntegrationTest(
     @Test
     fun `a failed signature leaves the token unused and nothing behind`() {
         val issued = newToken()
-        assertFailsWith<dev.sard.server.pki.InvalidCsrException> {
-            enrollment.enroll(issued.reveal(), "not a CSR".toByteArray(), "db1")
-        }
+        val badCsr = "not a CSR".toByteArray()
+        assertEquals(Reason.CSR_INVALID, rejectionReason { enrollment.enroll(issued.reveal(), badCsr, "db1") })
         assertUntouched(issued)
         enrollment.enroll(issued.reveal(), csr, "db1")
         assertEquals(1, count("agents"))
@@ -177,7 +164,7 @@ class EnrollmentIntegrationTest(
     fun `a used token is rejected`() {
         val issued = newToken()
         enrollment.enroll(issued.reveal(), csr, "db1")
-        assertEquals(Reason.USED_TOKEN, rejection { enrollment.enroll(issued.reveal(), csr, "db2") })
+        assertEquals(Reason.TOKEN_USED, rejectionReason { enrollment.enroll(issued.reveal(), csr, "db2") })
         assertEquals(listOf(1, 1), listOf(count("agents"), count("agent_certificates")))
     }
 
@@ -185,10 +172,10 @@ class EnrollmentIntegrationTest(
     fun `a token expires at its expiry instant`() {
         val early = newToken()
         val late = newToken()
-        clock.now = NOW + TTL - Duration.ofMillis(1)
+        clock.now = ENROLLMENT_NOW + ENROLLMENT_TOKEN_TTL - Duration.ofMillis(1)
         enrollment.enroll(early.reveal(), csr, "db1")
-        clock.now = NOW + TTL
-        assertEquals(Reason.EXPIRED_TOKEN, rejection { enrollment.enroll(late.reveal(), csr, "db2") })
+        clock.now = ENROLLMENT_NOW + ENROLLMENT_TOKEN_TTL
+        assertEquals(Reason.TOKEN_EXPIRED, rejectionReason { enrollment.enroll(late.reveal(), csr, "db2") })
         assertEquals(mapOf<String, Any?>("used_at" to null, "agent_id" to null), tokenRow(late))
     }
 
@@ -199,9 +186,9 @@ class EnrollmentIntegrationTest(
         val stranger = EnrollmentToken(secret, CaFingerprint("0".repeat(64))).encode()
         val unknown = EnrollmentToken(EnrollmentSecret.random(SecureRandom()), ca.fingerprint()).encode()
 
-        assertEquals(Reason.MALFORMED_TOKEN, rejection { enrollment.enroll("sard_", csr, "db1") })
-        assertEquals(Reason.FOREIGN_CA, rejection { enrollment.enroll(stranger, csr, "db1") })
-        assertEquals(Reason.UNKNOWN_TOKEN, rejection { enrollment.enroll(unknown, csr, "db1") })
+        assertEquals(Reason.TOKEN_MALFORMED, rejectionReason { enrollment.enroll("sard_", csr, "db1") })
+        assertEquals(Reason.TOKEN_FOREIGN_CA, rejectionReason { enrollment.enroll(stranger, csr, "db1") })
+        assertEquals(Reason.TOKEN_UNKNOWN, rejectionReason { enrollment.enroll(unknown, csr, "db1") })
         assertUntouched(issued)
     }
 
@@ -212,30 +199,20 @@ class EnrollmentIntegrationTest(
         val pool = Executors.newFixedThreadPool(2)
         try {
             val first = pool.submit(Callable { runCatching { enrollment.enroll(token, csr, "first") } })
-            assertTrue(ca.entered.tryAcquire(WAIT.toSeconds(), TimeUnit.SECONDS), "the first never reached the CA")
+            val entered = ca.entered.tryAcquire(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS)
+            assertTrue(entered, "the first never reached the CA")
             val second = pool.submit(Callable { runCatching { enrollment.enroll(token, csr, "second") } })
-            awaitRowLockWait()
+            jdbc.awaitEnrollmentRowLockWait()
             ca.gate?.countDown()
             val results = listOf(first.get(), second.get())
 
             assertTrue(results[0].isSuccess, "the first holds the token: ${results[0]}")
             val loser = results[1].exceptionOrNull()
-            assertEquals(Reason.USED_TOKEN, (loser as EnrollmentRejectedException).reason)
+            assertEquals(Reason.TOKEN_USED, (loser as EnrollmentRejectedException).reason)
             assertEquals(listOf(1, 1), listOf(count("agents"), count("agent_certificates")))
         } finally {
             ca.gate?.countDown()
             pool.shutdownNow()
-        }
-    }
-
-    /** The second transaction is parked on the token's row lock, behind the first. */
-    private fun awaitRowLockWait() {
-        val sql =
-            "select count(*) from pg_stat_activity where wait_event_type = 'Lock' and query like '%enrollment_tokens%'"
-        val deadline = System.nanoTime() + WAIT.toNanos()
-        while (jdbc.queryForObject(sql, Int::class.java) == 0) {
-            check(System.nanoTime() < deadline) { "the second enrollment never waited for the row lock" }
-            Thread.sleep(POLL_MILLIS)
         }
     }
 
@@ -257,21 +234,11 @@ class EnrollmentIntegrationTest(
                 }
             }
 
-    private fun request(
-        token: String,
-        csrDer: ByteArray,
-    ) = EnrollRequest
-        .newBuilder()
-        .setEnrollmentToken(token)
-        .setCsrDer(ByteString.copyFrom(csrDer))
-        .setHostname("db1")
-        .build()
-
     private fun code(result: Result<*>) = (result.exceptionOrNull() as StatusException).status.code
 
     @Test
     fun `Enroll over gRPC answers the agent id, its certificate and the CA bundle`() {
-        val response = grpcEnroll(request(newToken().reveal(), csr)).getOrThrow()
+        val response = grpcEnroll(enrollRequest(newToken().reveal(), csr)).getOrThrow()
         val agentId = UUID.fromString(response.agentId)
         val leaf = certificates(response.certificateChainPem).single()
         assertEquals("CN=$agentId", leaf.subjectX500Principal.name)
@@ -281,12 +248,8 @@ class EnrollmentIntegrationTest(
     @Test
     fun `Enroll over gRPC maps rejections to status codes`() {
         val issued = newToken()
-        assertEquals(Status.Code.UNAUTHENTICATED, code(grpcEnroll(request("nonsense", csr))))
-        assertEquals(Status.Code.INVALID_ARGUMENT, code(grpcEnroll(request(issued.reveal(), ByteArray(3)))))
+        assertEquals(Status.Code.INVALID_ARGUMENT, code(grpcEnroll(enrollRequest("nonsense", csr))))
+        assertEquals(Status.Code.INVALID_ARGUMENT, code(grpcEnroll(enrollRequest(issued.reveal(), ByteArray(3)))))
         assertUntouched(issued)
-    }
-
-    private companion object {
-        const val POLL_MILLIS = 20L
     }
 }

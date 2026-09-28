@@ -3,6 +3,7 @@
 
 package dev.sard.server.pki
 
+import org.bouncycastle.asn1.DEROctetString
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.asn1.x509.BasicConstraints
 import org.bouncycastle.asn1.x509.ExtendedKeyUsage
@@ -32,7 +33,6 @@ private val SERVER_VALIDITY = Duration.ofDays(90)
 
 /** Tolerates clocks behind the server's when checking the root and the server certificate. */
 private val BACKDATE = Duration.ofHours(1)
-private val IPV4 = Regex("""\d{1,3}(\.\d{1,3}){3}""")
 
 /** X.509 profiles of the file CA (ADR 0014). */
 internal object Certificates {
@@ -117,9 +117,15 @@ internal object Certificates {
     /** Random, positive, exactly [SERIAL_BITS] long (RFC 5280 allows up to 20 octets). */
     private fun serial(random: SecureRandom): BigInteger = BigInteger(SERIAL_BITS, random).setBit(SERIAL_BITS - 1)
 
+    // Builds the IP SAN straight from ServerNames' own parsed bytes rather than handing the
+    // string to BouncyCastle's own (looser) GeneralName(tag, String) parser a second time.
     private fun generalName(name: String): GeneralName {
-        val ip = ':' in name || IPV4.matches(name)
-        return GeneralName(if (ip) GeneralName.iPAddress else GeneralName.dNSName, name)
+        val ip = ServerNames.ipLiteral(name)
+        return if (ip != null) {
+            GeneralName(GeneralName.iPAddress, DEROctetString(ip))
+        } else {
+            GeneralName(GeneralName.dNSName, name)
+        }
     }
 
     private fun sign(

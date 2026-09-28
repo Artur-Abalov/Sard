@@ -24,6 +24,10 @@ class FileCertificateAuthority(
     private val clock: Clock,
     private val random: SecureRandom,
 ) : CertificateAuthority {
+    init {
+        ServerNames.validate(serverNames)
+    }
+
     private val ca = CaDirectory(dir, clock).loadOrCreate { CaKeyPair.generate(clock, random) }
     private val bundle = Pem.certificate(ca.certificate)
     private val fingerprint = CaFingerprint.of(ca.certificate)

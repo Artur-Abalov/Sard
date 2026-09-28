@@ -20,7 +20,6 @@ import java.sql.Connection
 import java.sql.SQLException
 import java.time.Clock
 import java.time.Duration
-import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
 import kotlin.test.AfterTest
@@ -35,12 +34,10 @@ import kotlin.test.assertNull
 /** PostgreSQL SQLSTATE for a write inside a read-only transaction. */
 private const val READ_ONLY_SQL_TRANSACTION = "25006"
 
-private val NOW: Instant = Instant.parse("2026-09-27T10:00:00Z")
-
 @TestConfiguration(proxyBeanMethods = false)
 class FixedClockConfiguration {
     @Bean
-    fun clock(): Clock = Clock.fixed(NOW, ZoneOffset.UTC)
+    fun clock(): Clock = Clock.fixed(ENROLLMENT_NOW, ZoneOffset.UTC)
 }
 
 /** Tokens are stored as hashes and found before the tenant is known (ADR 0013), nowhere else. */
@@ -60,7 +57,7 @@ class EnrollmentTokensIntegrationTest(
 
     @BeforeTest
     fun `create a second tenant`() {
-        jdbc.update("insert into tenants (id, name) values (?, ?)", acme, "acme-$acme")
+        jdbc.insertTenant(acme)
     }
 
     @AfterTest
@@ -78,10 +75,10 @@ class EnrollmentTokensIntegrationTest(
         val row = jdbc.queryForMap("select * from enrollment_tokens where id = ?", issued.id)
         assertEquals(acme, row["tenant_id"])
         assertContentEquals(token.secret.hash(), row["token_hash"] as ByteArray)
-        assertEquals(NOW.plus(Duration.ofHours(24)), (row["expires_at"] as java.sql.Timestamp).toInstant())
-        assertEquals(NOW, (row["created_at"] as java.sql.Timestamp).toInstant())
+        assertEquals(ENROLLMENT_NOW.plus(Duration.ofHours(24)), (row["expires_at"] as java.sql.Timestamp).toInstant())
+        assertEquals(ENROLLMENT_NOW, (row["created_at"] as java.sql.Timestamp).toInstant())
         assertEquals(listOf(null, null), listOf(row["used_at"], row["agent_id"]))
-        assertEquals(NOW.plus(Duration.ofHours(24)), issued.expiresAt)
+        assertEquals(ENROLLMENT_NOW.plus(Duration.ofHours(24)), issued.expiresAt)
 
         val secret = issued.reveal().substringAfter("sard_").substringBefore('.')
         val rowSql = "select t::text from enrollment_tokens t where id = ?"
