@@ -49,8 +49,8 @@ sard:
   agent:
     # Address agents dial (decision 5, S2b); empty means: first of sard.pki.server-names and the gRPC port.
     endpoint: ${SARD_AGENT_ENDPOINT:}
-    # Register tells the agent to heartbeat this often (S4a); the stream manager counts in it (S5a).
-    heartbeat-interval: 30s
+    # How often agents send Heartbeat (Register hands it out, S4a); the stream manager counts in it (S5a).
+    heartbeat-interval: ${SARD_AGENT_HEARTBEAT_INTERVAL:30s}
     stream:
       # A session that got a message within this many intervals is alive: a second stream is a duplicate.
       duplicate-window-heartbeats: 2

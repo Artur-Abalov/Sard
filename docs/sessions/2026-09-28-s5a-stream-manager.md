@@ -242,3 +242,14 @@ sealed interface SendResult { Queued; NotConnected; QueueFull }
 - Пометка дубликата в БД и консоли, онлайн-статус в REST — S5b/W2 (решение владельца 2).
 - Register — S4a (`sard.agent.heartbeat-interval` общий); после слияния — шов с настоящим Register.
 - Задержка закрытия после отзыва — до `check-interval` (30 s); мгновенно — через `AgentConnections.close` из будущего API отзыва (S8b).
+
+## Слияние `main` (S4a Register, PR #15)
+
+Конфликты — три, все по местам стыка с S4a:
+- `AgentGrpcService.kt` — оба метода: `register` (S4a) и `connect` (делегирование в `AgentStreams`); конструктор S4a + `streams`.
+- `application.yaml` — строка S4a `heartbeat-interval: ${SARD_AGENT_HEARTBEAT_INTERVAL:30s}` и блок `sard.agent.stream`.
+- `AgentAuthIntegrationTest` — таблица `handlerAnswersToEmpty` из `main` (S4a заменил ту же проверку, что правила фаза 2), в неё добавлен Connect → `FAILED_PRECONDITION`/`HELLO_REQUIRED`.
+
+Интервал heartbeat теперь читается из `AgentEndpointProperties.heartbeatInterval` (привязка S4a), а не через `@Value`: один источник для Register и менеджера стримов.
+
+Проверка после слияния: `./scripts/gate.sh server fast` — `PASSED`, 420 тестов, 0 упавших, 0 пропущенных, покрытие 94.5%; `./gradlew -Pmutflow.enabled=true :server:test --rerun` — exit 0 (6508 запусков); `make license-check` — 292 files OK.

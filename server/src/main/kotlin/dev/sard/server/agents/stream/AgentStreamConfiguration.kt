@@ -5,18 +5,17 @@ package dev.sard.server.agents.stream
 
 import dev.sard.server.agents.AgentCertificateStandings
 import dev.sard.server.agents.AgentSessions
+import dev.sard.server.enrollment.AgentEndpointProperties
 import dev.sard.server.persistence.TenantSessions
 import io.micrometer.core.instrument.MeterRegistry
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Qualifier
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.time.Clock
-import java.time.Duration
 
 /** Handlers S6 and S7 provide as beans; until then [LoggingInbound]. */
 class InboundHandlers(
@@ -46,8 +45,8 @@ class AgentStreamConfiguration {
     @Bean
     fun agentStreamSettings(
         properties: AgentStreamProperties,
-        @Value("\${sard.agent.heartbeat-interval}") heartbeatInterval: Duration,
-    ): AgentStreamSettings = properties.settings(heartbeatInterval)
+        agent: AgentEndpointProperties,
+    ): AgentStreamSettings = properties.settings(agent.heartbeatInterval)
 
     @Bean
     fun agentSessionRegistry(

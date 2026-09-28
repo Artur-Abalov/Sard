@@ -26,7 +26,6 @@ private const val CLAIM =
         "and usedAt is null and revokedAt is null and expiresAt > :now"
 private const val BIND_AGENT = "update EnrollmentTokenRecord set agentId = :agent where id = :id"
 private const val SERIAL_RADIX = 16
-private const val HOSTNAME_MAX_LENGTH = 253
 
 /** What Enroll hands back: the agent's id, its certificate chain and the CA bundle to trust. */
 class EnrolledAgent(
@@ -140,9 +139,7 @@ class Enrollment(
         }
 
     private fun validateHostname(hostname: String) {
-        if (hostname.isEmpty() || hostname.length > HOSTNAME_MAX_LENGTH) {
-            throw EnrollmentRejectedException(Reason.HOSTNAME_INVALID)
-        }
+        if (!Hostnames.isValid(hostname)) throw EnrollmentRejectedException(Reason.HOSTNAME_INVALID)
     }
 
     private fun claim(
