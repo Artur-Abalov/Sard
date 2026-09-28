@@ -98,6 +98,74 @@ data class ConnectedAgent(val agentId: UUID, val tenantId: UUID, val serial: Str
 - `Queued` не гарантирует доставку: при закрытии сессии очередь теряется, S6 восстанавливает состояние по следующему Hello.
 - Обработчики вызываются в контексте вызова (тенант через `AgentSessions`), на внедрённом диспетчере.
 
-### Вопросы владельцу (трудные первыми)
+### Решения владельца по вопросам фазы 1
 
-См. ответ в чате; решения будут записаны здесь.
+1. Ложный дубликат: (а) сервер сам шлёт keepalive (30 s / 10 s) и закрывает полумёртвое соединение; (б) новый стрим при свежей прежней сессии отклоняется, но **факт дубликата фиксируется, только если прежняя сессия получила сообщение после отказа**.
+2. Пометка дубликата — событие `AgentSessionListener`, счётчик, WARN; столбец в БД и REST — S5b.
+3. Шов с A3 — пока тестовая заглушка Register (только в тестах); после слияния S4a в `main` — синхронизация.
+4. Интервал heartbeat — `sard.agent.heartbeat-interval` (им пользуется S4a); остальные настройки — `sard.agent.stream.*`.
+5. Сверка с БД — пакетный запрос через `system` раз в 30 s, проверки S3 в том же порядке; `close(agentId, reason)` для будущего API отзыва — да.
+6. Коды закрытия — по таблице выше.
+7. Слот реестра — на Hello; стрим без Hello закрывается по `hello-timeout`.
+8. `last_seen_at` — на Hello и далее на любое входящее, не чаще интервала; метрики — `MeterRegistry` actuator, без Prometheus.
+9. `send` — `trySend` и `SendResult`, очередь 64.
+
+## Фаза 2 — keepalive, реестр, Hello, heartbeat, онлайн, дубликат (тесты 1–4)
+
+Окружение сессии (в репозиторий не попадает): JDK 25 из apt (`openjdk-25-jdk-headless`), запущен `dockerd`, `LC_ALL=C.UTF-8`. Maven Central отвечал 429; зеркало через init-скрипт Gradle запрещено классификатором среды — зависимости скачались повторным запуском сборки.
+
+Базовый прогон до изменений: `./gradlew :server:test` — exit 0, 281 тест, 0 упавших, 0 пропущенных.
+
+Тесты писались первыми (красный — не компилировались без кода): `StreamStatusTest`, `AgentStreamTest`, `AgentSessionRegistryTest`, `AgentStreamsTest`, затем интеграционные.
+
+### Код (`server/.../agents/stream/`)
+- `StreamCloseReason` — причины закрытия с кодом (таблица фазы 1), `close()` → `StreamClose(reason, status)`; форма статуса — `ErrorInfo` домена `sard.dev`, как в ADR 00XX-draft.
+- `AgentStreamExtensions.kt` — точки расширения (сигнатуры ниже) и `LoggingInbound` (debug, только id и счётчики, без содержимого).
+- `AgentStreamSettings` / `AgentStreamProperties` — `sard.agent.heartbeat-interval` + `sard.agent.stream.*`, окна в интервалах heartbeat, проверка значений при старте.
+- `AgentStream` — одно открытое соединение: `lastMessageAt`, подозрение на дубликат, троттлинг `last_seen_at`, однократный отчёт о расхождении часов, ограниченная очередь исходящих (`offer` для `send` фазы 3), `close` — первая причина выигрывает и отменяет корутину стрима (в том числе если закрытие пришло раньше привязки).
+- `AgentSessionRegistry` — `agent_id → AgentStream` в памяти под одной блокировкой; `opened` (до Hello), `claim` (правило дубликата), `release` (только своего слота), `online`, `sweep` (просрочка и hello-timeout).
+- `AgentStreams` — реализация Connect: читатель на `agentStreamDispatcher` (Dispatchers.IO, бин) обрабатывает сообщения по порядку; поток ответа — единственный писатель, отдаёт очередь по готовности gRPC. Закрытие сервером — отмена корутины и `StatusRuntimeException` с причиной; принципал — из gRPC `Context` (S3), вне аутентифицированного вызова — `IllegalStateException`.
+- `AgentLastSeen` — HQL `update … where last_seen_at is null or < :at` через `AgentSessions.inTenant` (S3), назад не двигает.
+- `AgentStreamSweeper` — `SmartLifecycle`, `check-interval`; сейчас — `registry.sweep()`, в фазе 3 — ещё сверка с БД.
+- `AgentGrpcService.connect` — одна строка делегирования (S4a добавит `register` рядом — конфликт минимален).
+- `application.yaml` — `spring.grpc.server.keepalive.{time: 30s, timeout: 10s, permit.time: 20s, permit.without-calls: true}` (имена проверены по `META-INF/spring-configuration-metadata.json` в `spring-boot-grpc-server-4.1.1.jar`), `sard.agent.heartbeat-interval: 30s`, `sard.agent.stream.*`.
+
+### Точки расширения (для S6, S7)
+
+Вызываются на корутине стрима, по порядку сообщений, на `agentStreamDispatcher`, внутри gRPC `Context` агента (`AgentSessions.inTenant` работает). Исключение из обработчика закрывает стрим; медленный обработчик задерживает только своего агента. Бин заменяет реализацию по умолчанию (`ObjectProvider.getIfUnique`).
+
+```kotlin
+data class ConnectedAgent(val agentId: UUID, val tenantId: UUID, val serial: String)
+fun interface CommandReconciliation { fun onHello(agent: ConnectedAgent, runningCommandIds: List<String>) }  // S6; после занятия слота
+fun interface StepProgressHandler { fun handle(agent: ConnectedAgent, progress: StepProgress) }  // S6
+fun interface StepResultHandler   { fun handle(agent: ConnectedAgent, result: StepResult) }      // S7; ResultAck — его задача
+fun interface LogChunkHandler     { fun handle(agent: ConnectedAgent, chunk: LogChunk) }         // S7
+interface AgentSessionListener {                                                                // любое число бинов
+    fun connected(agent: ConnectedAgent) {}
+    fun disconnected(agent: ConnectedAgent, reason: String) {}   // имя StreamCloseReason или STREAM_ENDED
+    fun duplicateDetected(agent: ConnectedAgent) {}
+}
+AgentSessionRegistry.online(agentId: UUID): Boolean
+```
+`send(agentId, ConnectResponse): SendResult` — фаза 3.
+
+### Правило дубликата (как реализовано)
+На Hello нового стрима: если держатель слота получал сообщение меньше `duplicate-window` назад — новый закрыт `ALREADY_EXISTS`/`AGENT_DUPLICATE_SESSION`, держатель помечен подозрением; **первое же следующее сообщение держателя** — `duplicateDetected` + WARN (один отказ — один отчёт). Иначе держатель закрыт `UNAVAILABLE`/`SESSION_REPLACED`, новый занимает слот; `release` старого слот не освобождает.
+
+### Тесты
+- Юнит (`@MutFlowTest` там, где логика): `StreamStatusTest` (2), `AgentStreamTest` (12), `AgentSessionRegistryTest` (15), `AgentStreamsTest` (12; фейки всех точек расширения, `MovableClock`, без сна — ожидание событий), `AgentStreamPropertiesTest` (6), `AgentStreamSweeperTest` (1).
+- Интеграционные (TLS на случайном порту, PostgreSQL в Testcontainers, агенты через настоящий `Enrollment`, `MovableClock`, `check-interval=1h` — метёт сам тест):
+  - `AgentStreamIntegrationTest` (8): настройки keepalive и heartbeat; тест 2 (не-Hello → `FAILED_PRECONDITION`/`HELLO_REQUIRED`; Hello → сверка получает `cmd-1,cmd-2`, агент онлайн); тест 3 (клон → `ALREADY_EXISTS`/`AGENT_DUPLICATE_SESSION`, после сообщения первого — ровно одно `duplicate`; через `duplicate-window` — прежний `UNAVAILABLE`/`SESSION_REPLACED`, новый принят, событий дубликата и отключения нет); тест 4 (`last_seen_at` в БД: на Hello, не меняется через 29 s, меняется через 30 s; `sweep` за 1 s до `offlineAfter` — жив, на `offlineAfter` — `UNAVAILABLE`/`SESSION_EXPIRED`, `disconnected SESSION_EXPIRED`, не онлайн).
+  - `KeepaliveIntegrationTest` (1), тест 1: клиент grpc-java не пингует чаще 10 s, поэтому пропорция агента (30 s против 20 s) сохранена как 10 s против 6 s; ждёт 40 s реального времени (это часы транспорта, не наши). **Контрольный прогон:** с `permit.time=5m` (значение grpc-java по умолчанию) тест падает — стрим закрыт `RESOURCE_EXHAUSTED` (GOAWAY `too_many_pings`), то есть ровно тот обрыв, который чинит задача; изменение откачено.
+- Hello-timeout проверен в `AgentStreamsTest` (стрим без сообщений закрывается `HELLO_REQUIRED` на границе, за 1 ms до неё — нет) и в `AgentSessionRegistryTest`; интеграционно — нет (нет детерминированного способа дождаться регистрации стрима без сообщений).
+
+### Изменён тест S3
+`AgentAuthIntegrationTest` «a live agent's certificate passes the interceptor on every AgentService method» ожидал `UNIMPLEMENTED` от каждого метода; ADR 0009:17 оговаривал «до S4/S5». Connect теперь реализован, и одно пустое сообщение теста — не Hello: ответ `FAILED_PRECONDITION`/`HELLO_REQUIRED`, который выставляет только обработчик, то есть перехватчик пройден. Ожидание для Connect заменено на него (`pastInterceptor`), остальные методы — `UNIMPLEMENTED`; утверждение не ослаблено. S4a столкнётся с тем же для Register.
+
+### Проверка
+- `./scripts/gate.sh server fast` — `PASSED`; 335 тестов, 0 упавших, 0 пропущенных (из них 54 — пакет `stream`); покрытие 94.0% (instructions); CRAP ≤ 6 (новый код — максимум 5.0, `AgentStreamProperties.validateWindows`). Первые прогоны: CRAP 9.3/8.0 у проверки настроек — разделена на две функции; `tick()` сборщика без покрытия — тест `AgentStreamSweeperTest`.
+- `./gradlew -Pmutflow.enabled=true :server:test --rerun` — exit 0, 4785 запусков тестов. Первый прогон: 5 выживших (`<`→`<=` в `online`, `compareAndSet` в `close`, возвраты `received`/`lastSeenDue`, затем `due`→`!due`) — граничные вызовы стояли вне `MutFlow.underTest`, а отмена корутины при закрытии не проверялась; тесты разделены и усилены, код не менялся.
+- `make license-check` — 264 files OK.
+
+### Для фазы 3
+`send` с `SendResult`; сверка с БД (пакетный `system`-запрос, `ArchitectureTest` + ADR 0013) и `close(agentId, reason)`; остановка сервера (`SERVER_SHUTTING_DOWN` до остановки gRPC); метрики (`sard.agents.connected`, `sard.agent.clock.skew`, счётчик дубликатов); ADR; тесты 5–8 (8 — с тестовой заглушкой Register).

@@ -236,11 +236,22 @@ class AgentAuthIntegrationTest(
 
     // --- 4: a live agent passes
 
+    /**
+     * What a method answers once past the interceptor: Connect is the stream manager (S5a), and
+     * the one empty message [call] sends is not a Hello; the others are stubs until S4a.
+     */
+    private fun pastInterceptor(method: String): Outcome =
+        if (method == AgentServiceGrpc.getConnectMethod().fullMethodName) {
+            Outcome(Status.Code.FAILED_PRECONDITION, "HELLO_REQUIRED")
+        } else {
+            Outcome(Status.Code.UNIMPLEMENTED)
+        }
+
     @Test
     fun `a live agent's certificate passes the interceptor on every AgentService method`() {
         val agent = enrolled(acme)
         for (method in agentMethods()) {
-            assertEquals(Outcome(Status.Code.UNIMPLEMENTED), call(presenting(agent), method), method)
+            assertEquals(pastInterceptor(method), call(presenting(agent), method), method)
         }
     }
 
