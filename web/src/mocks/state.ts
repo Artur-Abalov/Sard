@@ -9,7 +9,8 @@ type Schemas = components['schemas']
 /** What the mock server remembers between requests; reset per test. */
 export interface MockState {
   signedIn: boolean
-  failedSignIns: number
+  /** Timestamps (ms) of failed sign-ins, pruned to the 15-minute window (К4). */
+  failedSignIns: number[]
   agents: Schemas['AgentDetails'][]
   sources: Schemas['Source'][]
   runs: Schemas['Run'][]
@@ -21,7 +22,7 @@ export interface MockState {
 function fresh(signedIn: boolean): MockState {
   return structuredClone({
     signedIn,
-    failedSignIns: 0,
+    failedSignIns: [],
     agents,
     sources,
     runs,
@@ -33,7 +34,7 @@ function fresh(signedIn: boolean): MockState {
 
 export let state: MockState = fresh(false)
 
-/** Back to the fixtures. The dev worker starts signed in (no sign-in page before W1b), tests signed out. */
+/** Back to the fixtures. Both the dev worker and Vitest start signed out (К4). */
 export function resetMockState(options: { signedIn: boolean }): void {
   state = fresh(options.signedIn)
 }

@@ -8,10 +8,13 @@ import { sourceHandlers } from './api/sources'
 import { tokenHandlers } from './api/tokens'
 import { status } from './fixtures'
 import { http } from './http'
+import { originGuardHandlers } from './origin'
 
 // Default responses shared by the dev service worker and the Vitest server.
-// Every endpoint but status needs the mock session (state.ts).
+// Every endpoint but status needs the mock session (state.ts). The Origin guard
+// runs first so a foreign Origin never reaches a resource handler (К1, К4).
 export const handlers = [
+  ...originGuardHandlers,
   http.get('/api/v1/status', ({ response }) => response(200).json(status)),
   ...sessionHandlers,
   ...agentHandlers,

@@ -5,7 +5,21 @@
     "colorScheme": "Theme",
     "light": "Light",
     "dark": "Dark",
-    "auto": "System"
+    "auto": "System",
+    "logout": "Sign out"
+  },
+  "login": {
+    "title": "Sign in",
+    "password": "Password",
+    "submit": "Sign in",
+    "wrongPassword": "Wrong password",
+    "locked": "Too many attempts. Try again in {{minutes}} min",
+    "unavailable": "Server unavailable"
+  },
+  "routeError": {
+    "title": "Could not check the session",
+    "message": "Check your connection and try again",
+    "retry": "Retry"
   },
   "dashboard": {
     "title": "Dashboard",

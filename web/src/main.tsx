@@ -4,14 +4,23 @@
 import '@mantine/core/styles.css'
 import './i18n'
 import { MantineProvider } from '@mantine/core'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { createAppQueryClient } from './auth/queryClient'
 import { createAppRouter } from './router'
 import { defaultColorScheme, theme } from './theme'
 
-const queryClient = new QueryClient()
+// A 401 from any query, anywhere in the app, clears the cache and goes to sign-in
+// with the current page remembered (rule "Ответ 401 во время работы ведёт на вход").
+function handleUnauthenticated() {
+  const { pathname, searchStr } = router.state.location
+  if (pathname === '/login') return
+  void router.navigate({ to: '/login', search: { redirect: pathname + searchStr } })
+}
+
+const queryClient = createAppQueryClient(() => handleUnauthenticated())
 const router = createAppRouter({ queryClient })
 
 // VITE_API_MOCKS=1 npm run dev: API responses come from src/mocks. The check is
