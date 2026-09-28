@@ -49,6 +49,19 @@ func main() {
 type hostnameFunc func() (string, error)
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer, hostname hostnameFunc) int {
+	if isEnrollCommand(args) {
+		return runEnroll(ctx, args[1:], stdout, stderr, hostname)
+	}
+	return runAgentCmd(ctx, args, stdout, stderr, hostname)
+}
+
+func isEnrollCommand(args []string) bool {
+	return len(args) > 0 && args[0] == "enroll"
+}
+
+// runAgentCmd is "sard-agent --config ..." — running the agent itself,
+// A2b's "enroll" subcommand dispatched away above.
+func runAgentCmd(ctx context.Context, args []string, stdout, stderr io.Writer, hostname hostnameFunc) int {
 	fs := flag.NewFlagSet("sard-agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	showVersion := fs.Bool("version", false, "print the version and exit")
