@@ -4,6 +4,8 @@
 package dev.sard.server.auth
 
 import dev.sard.server.pki.MovableClock
+import io.github.anschnapp.mutflow.MutFlow
+import io.github.anschnapp.mutflow.junit.MutFlowTest
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -18,20 +20,27 @@ import kotlin.test.assertTrue
 private val LOGIN: Instant = Instant.parse("2026-10-01T12:00:00Z")
 private val TENANT: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
+@MutFlowTest
 class SessionStoreTest {
     private val clock = MovableClock(LOGIN)
     private val store = SessionStore(clock)
+
+    private fun touch(id: String) = MutFlow.underTest { store.touch(id) }
+
+    private fun find(id: String) = MutFlow.underTest { store.find(id) }
+
+    private fun expiresAt(session: AdminSession) = MutFlow.underTest { store.expiresAt(session) }
 
     @Test
     fun `a session created just now is valid`() {
         val session = store.create(TENANT)
         assertEquals(TENANT, session.tenantId)
-        assertNotNull(store.touch(session.id))
+        assertNotNull(touch(session.id))
     }
 
     @Test
     fun `an unknown session id is not valid`() {
-        assertNull(store.touch("no-such-session"))
+        assertNull(touch("no-such-session"))
     }
 
     @Test
@@ -52,14 +61,14 @@ class SessionStoreTest {
     fun `a session a millisecond before 12 hours idle is still valid`() {
         val session = store.create(TENANT)
         clock.now = LOGIN + Duration.ofHours(12) - Duration.ofMillis(1)
-        assertNotNull(store.touch(session.id))
+        assertNotNull(touch(session.id))
     }
 
     @Test
     fun `a session exactly 12 hours idle is no longer valid`() {
         val session = store.create(TENANT)
         clock.now = LOGIN + Duration.ofHours(12)
-        assertNull(store.touch(session.id))
+        assertNull(touch(session.id))
     }
 
     @Test
@@ -67,9 +76,9 @@ class SessionStoreTest {
         val session = store.create(TENANT)
         val touchTime = LOGIN + Duration.ofHours(11)
         clock.now = touchTime
-        assertNotNull(store.touch(session.id))
+        assertNotNull(touch(session.id))
         clock.now = touchTime + Duration.ofHours(12) - Duration.ofMillis(1)
-        assertNotNull(store.touch(session.id))
+        assertNotNull(touch(session.id))
     }
 
     @Test
@@ -79,10 +88,10 @@ class SessionStoreTest {
         while (now + Duration.ofHours(11) < LOGIN + Duration.ofDays(7)) {
             now += Duration.ofHours(11)
             clock.now = now
-            assertNotNull(store.touch(session.id), "expired too early at $now")
+            assertNotNull(touch(session.id), "expired too early at $now")
         }
         clock.now = LOGIN + Duration.ofDays(7)
-        assertNull(store.touch(session.id))
+        assertNull(touch(session.id))
     }
 
     @Test
@@ -92,25 +101,25 @@ class SessionStoreTest {
         while (now + Duration.ofHours(11) < LOGIN + Duration.ofDays(7)) {
             now += Duration.ofHours(11)
             clock.now = now
-            assertNotNull(store.touch(session.id))
+            assertNotNull(touch(session.id))
         }
-        val touched = assertNotNull(store.touch(session.id))
-        assertEquals(LOGIN + Duration.ofDays(7), store.expiresAt(touched))
+        val touched = assertNotNull(touch(session.id))
+        assertEquals(LOGIN + Duration.ofDays(7), expiresAt(touched))
     }
 
     @Test
     fun `expiresAt without the cap is the touch time plus 12 hours`() {
         val session = store.create(TENANT)
         clock.now = LOGIN + Duration.ofHours(1)
-        val touched = store.touch(session.id)
-        assertEquals(clock.now + Duration.ofHours(12), touched?.let { store.expiresAt(it) })
+        val touched = touch(session.id)
+        assertEquals(clock.now + Duration.ofHours(12), touched?.let { expiresAt(it) })
     }
 
     @Test
     fun `removing a session ends it`() {
         val session = store.create(TENANT)
         assertTrue(store.remove(session.id))
-        assertNull(store.touch(session.id))
+        assertNull(touch(session.id))
     }
 
     @Test
@@ -122,21 +131,21 @@ class SessionStoreTest {
     fun `find does not extend the idle deadline, unlike touch`() {
         val session = store.create(TENANT)
         clock.now = LOGIN + Duration.ofHours(11)
-        assertNotNull(store.find(session.id))
+        assertNotNull(find(session.id))
         clock.now = LOGIN + Duration.ofHours(12)
-        assertNull(store.find(session.id))
+        assertNull(find(session.id))
     }
 
     @Test
     fun `find returns the session unchanged`() {
         val session = store.create(TENANT)
         clock.now = LOGIN + Duration.ofHours(1)
-        assertEquals(session, store.find(session.id))
+        assertEquals(session, find(session.id))
     }
 
     @Test
     fun `find of an unknown session id is null`() {
-        assertNull(store.find("no-such-session"))
+        assertNull(find("no-such-session"))
     }
 
     @Test
@@ -144,7 +153,7 @@ class SessionStoreTest {
         val a = store.create(TENANT)
         val b = store.create(TENANT)
         assertNotEquals(a.id, b.id)
-        assertNotNull(store.touch(a.id))
-        assertNotNull(store.touch(b.id))
+        assertNotNull(touch(a.id))
+        assertNotNull(touch(b.id))
     }
 }

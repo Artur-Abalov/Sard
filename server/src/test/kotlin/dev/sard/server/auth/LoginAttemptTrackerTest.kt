@@ -4,6 +4,8 @@
 package dev.sard.server.auth
 
 import dev.sard.server.pki.MovableClock
+import io.github.anschnapp.mutflow.MutFlow
+import io.github.anschnapp.mutflow.junit.MutFlowTest
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
@@ -19,21 +21,24 @@ private val NOW: Instant = Instant.parse("2026-10-01T12:00:00Z")
 private const val ADDRESS = "203.0.113.10"
 private const val OTHER_ADDRESS = "198.51.100.7"
 
+@MutFlowTest
 class LoginAttemptTrackerTest {
     private val clock = MovableClock(NOW)
     private val tracker = LoginAttemptTracker(clock)
 
-    private fun fail(times: Int) = repeat(times) { tracker.recordFailure(ADDRESS) }
+    private fun fail(times: Int) = repeat(times) { MutFlow.underTest { tracker.recordFailure(ADDRESS) } }
+
+    private fun retryAfterSeconds(address: String = ADDRESS) = MutFlow.underTest { tracker.retryAfterSeconds(address) }
 
     @Test
     fun `a fresh address is not locked`() {
-        assertNull(tracker.retryAfterSeconds(ADDRESS))
+        assertNull(retryAfterSeconds())
     }
 
     @Test
     fun `four failures do not lock`() {
         fail(4)
-        assertNull(tracker.retryAfterSeconds(ADDRESS))
+        assertNull(retryAfterSeconds())
     }
 
     @Test
@@ -41,51 +46,78 @@ class LoginAttemptTrackerTest {
         assertFalse(
             run {
                 fail(3)
-                tracker.recordFailure(ADDRESS)
+                MutFlow.underTest { tracker.recordFailure(ADDRESS) }
             },
         )
-        assertTrue(tracker.recordFailure(ADDRESS))
-        assertFalse(tracker.recordFailure(ADDRESS))
+        assertTrue(MutFlow.underTest { tracker.recordFailure(ADDRESS) })
+        assertFalse(MutFlow.underTest { tracker.recordFailure(ADDRESS) })
     }
 
     @Test
     fun `retryAfterSeconds is 900 right after the fifth failure`() {
         fail(5)
-        assertEquals(900L, tracker.retryAfterSeconds(ADDRESS))
+        assertEquals(900L, retryAfterSeconds())
     }
 
     @Test
     fun `retryAfterSeconds counts down`() {
         fail(5)
         clock.now = NOW + Duration.ofMinutes(10)
-        assertEquals(300L, tracker.retryAfterSeconds(ADDRESS))
+        assertEquals(300L, retryAfterSeconds())
     }
 
     @Test
     fun `retryAfterSeconds rounds up to a whole second`() {
         fail(5)
         clock.now = NOW + Duration.ofMinutes(14) + Duration.ofSeconds(59) + Duration.ofMillis(999)
-        assertEquals(1L, tracker.retryAfterSeconds(ADDRESS))
+        assertEquals(1L, retryAfterSeconds())
     }
 
     @Test
     fun `the lock lifts exactly 15 minutes after the fifth failure`() {
         fail(5)
         clock.now = NOW + Duration.ofMinutes(15)
-        assertNull(tracker.retryAfterSeconds(ADDRESS))
+        assertNull(retryAfterSeconds())
+    }
+
+    @Test
+    fun `a lock that has lifted can be re-triggered by 5 fresh failures`() {
+        fail(5)
+        clock.now = NOW + Duration.ofMinutes(15)
+        assertNull(retryAfterSeconds())
+        assertTrue(fail5AfterLift())
+    }
+
+    private fun fail5AfterLift(): Boolean {
+        repeat(4) { MutFlow.underTest { tracker.recordFailure(ADDRESS) } }
+        return MutFlow.underTest { tracker.recordFailure(ADDRESS) }
     }
 
     @Test
     fun `failed attempts during the lock do not extend it`() {
         fail(5)
         clock.now = NOW + Duration.ofMinutes(1)
-        tracker.recordFailure(ADDRESS)
+        MutFlow.underTest { tracker.recordFailure(ADDRESS) }
         clock.now = NOW + Duration.ofMinutes(5)
-        tracker.recordFailure(ADDRESS)
+        MutFlow.underTest { tracker.recordFailure(ADDRESS) }
         clock.now = NOW + Duration.ofMinutes(14)
-        tracker.recordFailure(ADDRESS)
+        MutFlow.underTest { tracker.recordFailure(ADDRESS) }
         clock.now = NOW + Duration.ofMinutes(15)
-        assertNull(tracker.retryAfterSeconds(ADDRESS))
+        assertNull(retryAfterSeconds())
+    }
+
+    @Test
+    fun `retryAfterSeconds rounds up even when whole seconds remain, not just at the boundary`() {
+        fail(5)
+        clock.now = NOW + Duration.ofMinutes(10) + Duration.ofMillis(1)
+        assertEquals(300L, retryAfterSeconds())
+    }
+
+    @Test
+    fun `retryAfterSeconds rounds up on a single remaining nanosecond, not just deep fractions`() {
+        fail(5)
+        clock.now = NOW + Duration.ofMinutes(10).plusSeconds(1).minusNanos(1)
+        assertEquals(300L, retryAfterSeconds())
     }
 
     @Test
@@ -93,7 +125,7 @@ class LoginAttemptTrackerTest {
         fail(4)
         clock.now = NOW + Duration.ofMinutes(15)
         fail(4)
-        assertNull(tracker.retryAfterSeconds(ADDRESS))
+        assertNull(retryAfterSeconds())
     }
 
     @Test
@@ -101,13 +133,13 @@ class LoginAttemptTrackerTest {
         fail(4)
         tracker.recordSuccess(ADDRESS)
         fail(4)
-        assertNull(tracker.retryAfterSeconds(ADDRESS))
+        assertNull(retryAfterSeconds())
     }
 
     @Test
     fun `locking one address does not affect another`() {
         fail(5)
-        assertNull(tracker.retryAfterSeconds(OTHER_ADDRESS))
+        assertNull(retryAfterSeconds(OTHER_ADDRESS))
     }
 
     @Test

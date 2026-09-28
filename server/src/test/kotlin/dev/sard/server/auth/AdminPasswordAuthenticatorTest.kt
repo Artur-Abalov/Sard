@@ -21,16 +21,25 @@ class AdminPasswordAuthenticatorTest {
 
     @Test
     fun `an unset password refuses to start and names the variable`() {
-        val ex = assertFailsWith<IllegalArgumentException> { AdminPasswordAuthenticator("") }
+        val ex = assertFailsWith<IllegalArgumentException> { MutFlow.underTest { AdminPasswordAuthenticator("") } }
         assertTrue(ex.message!!.contains("SARD_ADMIN_PASSWORD"), ex.message)
         assertTrue(ex.message!!.contains("not set"), ex.message)
     }
 
     @Test
     fun `a password of 11 characters refuses to start and names the minimum`() {
-        val ex = assertFailsWith<IllegalArgumentException> { AdminPasswordAuthenticator("short-pw-11") }
+        val ex =
+            assertFailsWith<IllegalArgumentException> {
+                MutFlow.underTest { AdminPasswordAuthenticator("short-pw-11") }
+            }
         assertTrue(ex.message!!.contains("SARD_ADMIN_PASSWORD"), ex.message)
         assertTrue(ex.message!!.contains("12"), ex.message)
+    }
+
+    @Test
+    fun `a password of 13 characters starts`() {
+        val auth = MutFlow.underTest { AdminPasswordAuthenticator("thirteen-char") }
+        assertTrue(auth.matches("thirteen-char"))
     }
 
     @Test

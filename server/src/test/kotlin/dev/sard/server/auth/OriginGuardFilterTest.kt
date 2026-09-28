@@ -3,6 +3,8 @@
 
 package dev.sard.server.auth
 
+import io.github.anschnapp.mutflow.MutFlow
+import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
 import tools.jackson.databind.ObjectMapper
@@ -14,6 +16,7 @@ import kotlin.test.assertTrue
 private const val API_SOURCES = "/api/v1/sources"
 private const val API_SESSION = "/api/v1/session"
 
+@MutFlowTest
 class OriginGuardFilterTest {
     private val filter = OriginGuardFilter(ObjectMapper())
 
@@ -31,7 +34,7 @@ class OriginGuardFilterTest {
     private fun filtered(request: MockHttpServletRequest): Pair<MockHttpServletResponse, Boolean> {
         val response = MockHttpServletResponse()
         var reachedChain = false
-        filter.doFilter(request, response) { _, _ -> reachedChain = true }
+        MutFlow.underTest { filter.doFilter(request, response) { _, _ -> reachedChain = true } }
         return response to reachedChain
     }
 
