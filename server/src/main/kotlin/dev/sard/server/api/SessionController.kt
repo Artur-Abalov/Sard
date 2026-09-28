@@ -10,14 +10,17 @@ import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.security.SecurityRequirements
 import io.swagger.v3.oas.annotations.tags.Tag
-import org.springframework.http.HttpStatus
+import jakarta.servlet.http.HttpServletRequest
+import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.MediaType
+import org.springframework.http.ResponseEntity
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
 import java.util.UUID
@@ -36,13 +39,24 @@ data class Session(
     val expiresAt: Instant,
 )
 
-/** Administrator session in a cookie (D2); W1b implements it. */
+/**
+ * Administrator session in a cookie (D2, W1b). Methods write status, cookies and the
+ * problem body directly to [HttpServletResponse]: the outcome (204/401/429) is not
+ * known from the request alone, so a fixed `@ResponseStatus` cannot express it.
+ */
 interface SessionApi {
-    fun createSession(request: SessionRequest)
+    fun createSession(
+        request: SessionRequest,
+        httpRequest: HttpServletRequest,
+        httpResponse: HttpServletResponse,
+    )
 
-    fun getSession(): Session
+    fun getSession(httpRequest: HttpServletRequest): ResponseEntity<Session>
 
-    fun deleteSession()
+    fun deleteSession(
+        httpRequest: HttpServletRequest,
+        httpResponse: HttpServletResponse,
+    )
 }
 
 /** HTTP side of the session endpoints. */
@@ -53,7 +67,6 @@ class SessionController(
     private val api: SessionApi,
 ) {
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @ResponseStatus(HttpStatus.NO_CONTENT)
     @SecurityRequirements
     @Operation(summary = "Sign in", description = "Sets the session cookie. The same answer for any wrong password.")
     @ApiResponse(
@@ -62,7 +75,7 @@ class SessionController(
         headers = [
             Header(
                 name = "Set-Cookie",
-                description = "sard_session; HttpOnly; SameSite=Strict",
+                description = "sard_session; HttpOnly; SameSite=Strict; Path=/; Secure when the connection is HTTPS",
                 schema = Schema(type = "string"),
             ),
         ],
@@ -86,15 +99,30 @@ class SessionController(
     )
     fun createSession(
         @RequestBody request: SessionRequest,
-    ): Unit = api.createSession(request)
+        httpRequest: HttpServletRequest,
+        httpResponse: HttpServletResponse,
+    ): Unit = api.createSession(request, httpRequest, httpResponse)
+
+    /**
+     * A body without a usable password (missing, null, not JSON, empty) is rejected the
+     * same as a wrong one (К2): the contract does not change, and the attempt still
+     * counts against the client address.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun onMalformedSignIn(
+        httpRequest: HttpServletRequest,
+        httpResponse: HttpServletResponse,
+    ): Unit = api.createSession(SessionRequest(password = ""), httpRequest, httpResponse)
 
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Current session", description = "401 when there is none or it expired.")
-    fun getSession(): Session = api.getSession()
+    fun getSession(httpRequest: HttpServletRequest): ResponseEntity<Session> = api.getSession(httpRequest)
 
     @DeleteMapping
-    @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Sign out", description = "Ends the session and clears the cookie.")
     @ApiResponse(responseCode = "204", description = "Signed out")
-    fun deleteSession(): Unit = api.deleteSession()
+    fun deleteSession(
+        httpRequest: HttpServletRequest,
+        httpResponse: HttpServletResponse,
+    ): Unit = api.deleteSession(httpRequest, httpResponse)
 }

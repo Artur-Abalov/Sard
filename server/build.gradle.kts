@@ -84,6 +84,12 @@ tasks.test {
             .get()
             .asFile.path,
     )
+    // CSRF tests (W1b) set the Host header explicitly to control the expected Origin;
+    // java.net.http.HttpClient refuses to set it unless this is allowed.
+    systemProperty("jdk.httpclient.allowRestrictedHeaders", "host")
+    // A default so every test that boots the full context, not just the session ones,
+    // does not need its own SARD_ADMIN_PASSWORD; session tests override it per class.
+    environment("SARD_ADMIN_PASSWORD", "test-admin-password-2026")
     finalizedBy(tasks.jacocoTestReport)
 }
 

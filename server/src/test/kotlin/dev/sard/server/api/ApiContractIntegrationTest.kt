@@ -46,15 +46,23 @@ class ApiContractIntegrationTest(
         method: String,
         path: String,
         body: String? = null,
+        cookie: String? = null,
     ): HttpResponse<String> {
         val publisher = body?.let { HttpRequest.BodyPublishers.ofString(it) } ?: HttpRequest.BodyPublishers.noBody()
-        val request =
+        val builder =
             HttpRequest
                 .newBuilder(URI.create("http://localhost:$port$path"))
                 .header("Content-Type", "application/json")
                 .method(method, publisher)
-                .build()
-        return http.send(request, HttpResponse.BodyHandlers.ofString())
+        cookie?.let { builder.header("Cookie", "$SESSION_COOKIE=$it") }
+        return http.send(builder.build(), HttpResponse.BodyHandlers.ofString())
+    }
+
+    /** A fresh session cookie value, signed in with the test admin password (build.gradle.kts). */
+    private fun signIn(): String {
+        val response = send("POST", "/api/v1/session", """{"password":"test-admin-password-2026"}""")
+        val setCookie = response.headers().firstValue("Set-Cookie").orElseThrow()
+        return Regex("$SESSION_COOKIE=([^;]+)").find(setCookie)!!.groupValues[1]
     }
 
     private fun schema(name: String): JsonNode = spec.path("components").path("schemas").path(name)
@@ -212,16 +220,16 @@ class ApiContractIntegrationTest(
         }
     }
 
-    /** Every operation of the spec is here, so a new stub cannot skip this check. */
+    /**
+     * Every operation of the spec but session (W1b implemented it) is here, so a new
+     * stub cannot skip this check.
+     */
     @Test
     fun `stubs answer 501 with a problem until S8b`() {
         val id = "0192f7a0-0000-7000-8000-000000000001"
         val source = """{"name":"n","agentId":"$id","plugin":"files","repositoryName":"r","config":{}}"""
         val calls =
             listOf(
-                Triple("POST", "/api/v1/session", """{"password":"p"}"""),
-                Triple("GET", "/api/v1/session", null),
-                Triple("DELETE", "/api/v1/session", null),
                 Triple("GET", "/api/v1/agents?status=online", null),
                 Triple("GET", "/api/v1/agents/{agentId}", null),
                 Triple("POST", "/api/v1/enrollment-tokens", "{}"),
@@ -239,10 +247,12 @@ class ApiContractIntegrationTest(
                 Triple("GET", "/api/v1/runs/{runId}", null),
                 Triple("GET", "/api/v1/runs/{runId}/steps/{stepId}/logs", null),
             )
+        val implemented = setOf("POST /api/v1/session", "GET /api/v1/session", "DELETE /api/v1/session")
         val stubbed = calls.map { "${it.first} ${it.second.substringBefore('?')}" }.toSet()
-        assertEquals(operations().map { it.first }.toSet() - "GET /api/v1/status", stubbed)
+        assertEquals(operations().map { it.first }.toSet() - "GET /api/v1/status" - implemented, stubbed)
+        val cookie = signIn()
         for ((method, path, body) in calls) {
-            val response = send(method, path.replace(Regex("\\{[^}]+}"), id), body)
+            val response = send(method, path.replace(Regex("\\{[^}]+}"), id), body, cookie)
             assertEquals(501, response.statusCode(), "$method $path: ${response.body()}")
             assertEquals(PROBLEM_JSON, response.headers().firstValue("Content-Type").orElse(""), "$method $path")
             assertEquals("not_implemented", mapper.readTree(response.body()).path("code").asString(), "$method $path")

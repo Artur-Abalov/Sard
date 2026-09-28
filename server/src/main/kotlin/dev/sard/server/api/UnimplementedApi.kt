@@ -7,16 +7,8 @@ import org.springframework.stereotype.Component
 import java.util.UUID
 
 // The stage 1 contract before its implementation: every endpoint answers 501
-// (ADR 0019). W1b, S2b and S8b replace these one at a time with real beans.
-
-@Component
-class UnimplementedSessionApi : SessionApi {
-    override fun createSession(request: SessionRequest) = notImplemented()
-
-    override fun getSession(): Session = notImplemented()
-
-    override fun deleteSession() = notImplemented()
-}
+// (ADR 0019). S2b and S8b replace these one at a time with real beans; W1b already
+// replaced the session endpoints with dev.sard.server.auth.SessionApiImpl.
 
 @Component
 class UnimplementedAgentsApi : AgentsApi {

@@ -51,6 +51,9 @@ enum class ErrorCode {
 
     @JsonProperty("not_implemented")
     NOT_IMPLEMENTED,
+
+    @JsonProperty("origin_rejected")
+    ORIGIN_REJECTED,
 }
 
 private const val TYPE = "URI reference identifying the problem type; about:blank when the status says it all"
