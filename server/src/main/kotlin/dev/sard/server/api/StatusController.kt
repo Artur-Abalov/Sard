@@ -4,7 +4,10 @@
 package dev.sard.server.api
 
 import dev.sard.server.verify.RestoreVerifications
+import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.security.SecurityRequirements
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.boot.info.BuildProperties
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.GetMapping
@@ -25,11 +28,14 @@ data class StatusResponse(
 
 @RestController
 @RequestMapping("/api/v1")
+@Tag(name = "status")
 class StatusController(
     private val build: BuildProperties,
     private val verifications: RestoreVerifications,
 ) {
     @GetMapping("/status", produces = [MediaType.APPLICATION_JSON_VALUE])
+    @SecurityRequirements
+    @Operation(summary = "Server status", description = "Public: the dashboard shows it before sign-in.")
     fun status(): StatusResponse = StatusResponse(build.version ?: UNKNOWN_VERSION, verifications.lastVerifiedAt())
 
     private companion object {

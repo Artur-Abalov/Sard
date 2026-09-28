@@ -4,7 +4,11 @@
 // Compile-time checks only, never run: `npm run typecheck` fails if a mock that
 // matches the OpenAPI schema stops compiling or one that breaks it starts to.
 import { HttpResponse } from 'msw'
+import { enrollmentTokens, sources } from './fixtures'
 import { http } from './http'
+
+const [token] = enrollmentTokens
+const [source] = sources
 
 export const contractChecks = [
   http.get('/api/v1/status', ({ response }) =>
@@ -29,4 +33,44 @@ export const contractChecks = [
 
   // @ts-expect-error: a plain HttpResponse is checked against the schema too
   http.get('/api/v1/status', () => HttpResponse.json({ version: 1 })),
+
+  // A token in the list or card cannot carry its string (S2b: shown once, on creation).
+  http.get('/api/v1/enrollment-tokens', ({ response }) =>
+    // @ts-expect-error: EnrollmentToken has no token property
+    response(200).json({ items: [{ ...token, token: 'sard_x.y' }], nextCursor: null }),
+  ),
+
+  http.get('/api/v1/enrollment-tokens/{tokenId}', ({ response }) =>
+    // @ts-expect-error: EnrollmentToken has no enrollCommand property
+    response(200).json({ ...token, enrollCommand: 'sard-agent enroll' }),
+  ),
+
+  http.post('/api/v1/sources', ({ response }) => {
+    const { repositoryName: _repositoryName, ...withoutRepository } = source
+    // @ts-expect-error: a source always has its repository
+    return response(201).json(withoutRepository)
+  }),
+
+  http.get('/api/v1/runs/{runId}/steps/{stepId}/logs', ({ response }) =>
+    response(200).json({
+      // @ts-expect-error: seq is a number
+      items: [{ seq: '1', time: '2026-09-27T10:00:00Z', level: 'info', text: 'x' }],
+      nextAfterSeq: 1,
+      hasMore: false,
+    }),
+  ),
+
+  // @ts-expect-error: a run of a source is created with POST, there is no PUT
+  http.put('/api/v1/sources/{sourceId}/runs', () => HttpResponse.json({})),
+
+  http.post('/api/v1/sources/{sourceId}/runs', ({ response }) =>
+    // @ts-expect-error: 409 carries the active run's id
+    response(409).json({
+      type: 'about:blank',
+      title: 'Conflict',
+      status: 409,
+      detail: null,
+      code: 'run_active',
+    }),
+  ),
 ]

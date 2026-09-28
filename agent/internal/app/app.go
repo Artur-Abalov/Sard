@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/executor"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
@@ -93,12 +94,9 @@ func (a *Agent) repositoryInfos(ctx context.Context) []*agentv1.RepositoryInfo {
 	return infos
 }
 
-// NoExecutor stands in for the command executor (A4) until it is wired in:
-// nothing runs, nothing is pending, and commands from the server are dropped.
-type NoExecutor struct{}
+// NoHandlers stands in for the plugin handlers (A6) until they are wired in:
+// the executor knows no plugin, so every step is rejected as REJECTED
+// "unknown plugin" without running anything.
+type NoHandlers struct{}
 
-func (NoExecutor) Submit(*agentv1.RunStep)               {}
-func (NoExecutor) Cancel(string)                         {}
-func (NoExecutor) Ack(string) error                      { return nil }
-func (NoExecutor) RunningIDs() []string                  { return nil }
-func (NoExecutor) PendingResults() []*agentv1.StepResult { return nil }
+func (NoHandlers) Handler(string) (executor.Handler, bool) { return nil, false }

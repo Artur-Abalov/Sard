@@ -16,11 +16,20 @@ ARG SARD_VERSION=dev
 # Builds behind a TLS-intercepting proxy: pass JVM proxy settings in
 # JAVA_TOOL_OPTIONS and the proxy CA as the optional "build-ca" secret.
 ARG JAVA_TOOL_OPTIONS=""
+# The Gradle cache mount is empty on a fresh CI runner, so the wrapper
+# downloads its distribution in a single request that a reset connection
+# fails. Only that download is retried (--version needs nothing but the
+# distribution); the build itself runs once, so real failures stay failures.
 RUN --mount=type=cache,target=/root/.gradle \
     --mount=type=secret,id=build-ca,required=false \
     if [ -f /run/secrets/build-ca ]; then \
       keytool -importcert -noprompt -cacerts -storepass changeit -alias build-ca -file /run/secrets/build-ca; \
     fi && \
+    for attempt in 1 2 3 4 5; do \
+      ./gradlew --no-daemon --version >/dev/null && break; \
+      [ "$attempt" -eq 5 ] && exit 1; \
+      echo "Gradle download failed, retrying in $((attempt * 5))s" >&2; sleep $((attempt * 5)); \
+    done && \
     ./gradlew --no-daemon :server:bootJar -PsardVersion="${SARD_VERSION}"
 
 FROM eclipse-temurin:25-jre

@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# Rules for `npm run lint:api` (scripts/lint-api.mjs). Warnings fail too.
+extends:
+  - recommended
+rules:
+  # GET /api/v1/status is public and takes no input: no client error exists
+  # for it. Every other operation has at least 401.
+  operation-4xx-response: off

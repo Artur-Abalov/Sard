@@ -82,6 +82,7 @@
 | react 19.3.0 | MIT | runtime | UI |
 | react-dom 19.3.0 | MIT | runtime | рендеринг в DOM |
 | react-i18next 17.0.15 | MIT | runtime | i18next для React |
+| @redocly/openapi-core 1.34.20 | MIT | сборка/тесты | линтер спецификации `npm run lint:api` (ADR 0019); та же версия, что у openapi-typescript |
 | @tanstack/react-query-devtools 5.104.0 | MIT | сборка/тесты | devtools Query, только в dev (ADR 0015) |
 | @tanstack/react-router-devtools 1.167.2 | MIT | сборка/тесты | devtools роутера, только в dev (ADR 0015) |
 | @tanstack/router-generator 1.167.38 | MIT | сборка/тесты | `npm run gen:routes` и проверка дерева маршрутов в CI (ADR 0015) |

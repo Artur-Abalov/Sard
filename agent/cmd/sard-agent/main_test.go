@@ -12,6 +12,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"io"
 	"math/big"
 	"os"
@@ -114,13 +115,46 @@ func TestValidConfigDialsTheServerUntilStopped(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := "server:\n  address: 127.0.0.1:1\n" +
-		"tls: {ca_file: " + ca + ", cert_file: " + dir + "/agent.pem, key_file: " + dir + "/agent.key}\n"
+		"tls: {ca_file: " + ca + ", cert_file: " + dir + "/agent.pem, key_file: " + dir + "/agent.key}\n" +
+		"executor: {state_dir: " + dir + "/state}\n"
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	var out, errOut bytes.Buffer
 	code := run(ctx, []string{"--config", writeConfig(t, cfg)}, &out, &errOut, fixedHostname)
 	if code != 0 || out.String() != "sard-agent dev: connecting to 127.0.0.1:1\n" || errOut.String() != "" {
 		t.Fatalf("code = %d, out = %q, stderr = %q", code, out.String(), errOut.String())
+	}
+}
+
+// The executor's state dir is checked before the agent connects.
+func TestAnUnusableStateDirStopsBeforeDialing(t *testing.T) {
+	dir := t.TempDir()
+	ca := filepath.Join(dir, "ca.pem")
+	if err := os.WriteFile(ca, selfSignedPEM(t), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := "server:\n  address: 127.0.0.1:1\n" +
+		"tls: {ca_file: " + ca + ", cert_file: " + dir + "/agent.pem, key_file: " + dir + "/agent.key}\n" +
+		"executor: {state_dir: " + ca + "/state}\n" // under a file
+	code, _, errOut := runAgent("--config", writeConfig(t, cfg))
+	if code != 1 || !strings.Contains(errOut, "invalid executor options") {
+		t.Fatalf("code = %d, stderr = %q", code, errOut)
+	}
+}
+
+func TestTheExecutorKnowsTheConfiguredRepositories(t *testing.T) {
+	got := repositoryNames([]config.Repository{{Name: "main"}, {Name: "offsite"}})
+	if strings.Join(got, ",") != "main,offsite" {
+		t.Fatalf("names = %v", got)
+	}
+}
+
+func TestExecutorStateDirDefaultsUnderTheSystemdStateDirectory(t *testing.T) {
+	if got := executorStateDir(""); got != "/var/lib/sard-agent/executor" {
+		t.Errorf("default = %q", got)
+	}
+	if got := executorStateDir("/srv/sard"); got != "/srv/sard" {
+		t.Errorf("configured = %q", got)
 	}
 }
 
