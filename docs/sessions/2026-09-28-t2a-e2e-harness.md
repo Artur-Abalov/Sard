@@ -63,3 +63,27 @@
 - Docker-демон запущен вручную (`dockerd`).
 - Прокси: образ сервера собирается с `--network host`, CA прокси — секретом `build-ca` (нужен `CCR Upstream Proxy CA`, не последний в бандле), `JAVA_TOOL_OPTIONS` с прокси; Docker Hub и Maven Central периодически отвечают 429 — сборки повторялись.
 - На хосте JDK 21; JDK 25 взята из `eclipse-temurin:25-jdk` и указана в `~/.gradle/gradle.properties` (`org.gradle.java.installations.paths`).
+
+## Фаза 3 — помощники, регистрация, настоящий агент, заготовки, CI
+
+- `EnrollmentTokens.create` — единственная точка получения токена (замена на REST, S8b): 32 байта CSPRNG, отпечаток — SPKI корня из цепочки, которую предъявляет порт gRPC, строка `enrollment_tokens` (тенант по умолчанию, `token_hash = SHA-256(секрет)`, `label`, `expires_at`). Токен регистрируется как секрет логов.
+- `AgentEnroller.enroll` — единственная точка регистрации (замена на `sard-agent enroll`, A2): корень из рукопожатия сверяется с отпечатком токена до отправки, ключ P-256 и CSR (BouncyCastle), Enroll по TLS с доверием к закреплённому корню, возвращённый CA сверяется ещё раз. Ключ — секрет логов.
+- Тесты: `RegistrationTest` (выданный сертификат → `RenewCertificate` UNIMPLEMENTED; без сертификата → UNAUTHENTICATED; второй Enroll тем же токеном → UNAUTHENTICATED), `AgentConnectTest` (настоящий агент с файлами tls из `AgentEnroller`; сервер записал `last_register_at` и `last_seen_at`, `agent_version` = `VERSION`, `os` = linux), `EnrollmentTokenFormatTest` (вектор спецификации), `FailureLogsTest` (сломанная конфигурация, маскирование).
+- Отступление от задания: UNIMPLEMENTED проверяется на `RenewCertificate`, а не на Register — Register и Connect уже реализованы (S4a, S5a) и проверяются настоящим агентом.
+- Заготовки — `Pending.kt`: `TransportExecutorPending` (после S6), `FullChainT2Pending` (после S7 и A2), `StreamBreakT3Pending` (после S7); классы без тестовых методов, шаги в KDoc, таблица в `test/e2e/README.md`.
+- `HealthyOrExited` — своя стратегия ожидания: HTTP-ожидание Testcontainers опрашивало упавший контейнер до таймаута (3 мин); теперь отказ конфигурации роняет старт за секунды (`FailureLogsTest` 9,5 с вместо ~3 мин).
+- Gradle очищает `e2e-logs` перед прогоном — артефакт относится только к текущему запуску.
+- CI: задача `e2e` (JDK 25, Go, buildx, `crazy-max/ghaction-github-runtime` для кэша `type=gha` образа сервера, артефакт `e2e-logs` при падении). Образ агента тоже собирается `buildx --load` — с builder'ом docker-container обычный `docker build` не кладёт образ в локальный Docker.
+- ADR 0020; `docs/dependencies.md` — раздел e2e (новых библиотек нет).
+
+### Проверки (проведены)
+
+1. `make e2e` дважды подряд без очистки на `179afae` — exit 0 оба раза, 14 тестов, 0 пропущенных, 0 падений; после прогона остаётся только ryuk (завершается сам).
+2. `FailureLogsTest`: сервер с `SARD_AGENT_ENDPOINT`, не покрытым server-names, не стартует; `e2e-logs/FailureLogsTest/start/` содержит логи сервера и PostgreSQL с причиной, зарегистрированный секрет (сервер цитирует его в ошибке) заменён на `[redacted]`. Дополнительно вручную: `AgentConnectTest` с неверной ожидаемой версией упал, логи трёх контейнеров собраны, grep по артефакту на `sard_…` и `PRIVATE KEY` пуст. Оговорка: настоящие токен и ключ в вывод контейнеров и так не попадают, так что маскирование на живых логах проверено только через зарегистрированный секрет.
+3. restic — см. фазу 2 (тест в каждом прогоне).
+4. `EnrollmentTokenFormatTest`: строка и `token_hash` совпадают с вектором `docs/specs/enrollment-token.md:66-73`.
+
+### Не проверено
+
+- Задача CI `e2e` не запускалась: PR не открыт. Проверено только, что YAML разбирается.
+- Сборка вне этого окружения (без прокси и ручной JDK 25) — полагаю, что работает как в CI, но не прогонял.
