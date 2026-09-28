@@ -16,6 +16,7 @@ import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermissions
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
@@ -63,13 +64,21 @@ class AgentSeamIntegrationTest(
         fixtures.close()
     }
 
-    /** The agent's YAML: its enrolled certificate, one local repository, one secret, one script. */
+    /**
+     * The agent's YAML: its enrolled certificate, one local repository, one secret, one script.
+     * The agent refuses to start when a secret file or script is open to group or others (A1),
+     * so those are written owner-only.
+     */
     private fun config(agent: EnrolledAgent): Path {
         val write = { name: String, text: String -> dir.resolve(name).also { Files.writeString(it, text) } }
+        val ownerOnly = { name: String, text: String, mode: String ->
+            write(name, text).also { Files.setPosixFilePermissions(it, PosixFilePermissions.fromString(mode)) }
+        }
         val caFile = write("ca.pem", ca.caBundlePem())
         val cert = write("agent.pem", agent.chainPem)
-        val key = write("agent.key", Pem.privateKey(agent.keys.private))
-        val password = write("repo.password", "not-a-real-key")
+        val key = ownerOnly("agent.key", Pem.privateKey(agent.keys.private), "rw-------")
+        val password = ownerOnly("repo.password", "not-a-real-key", "rw-------")
+        val script = ownerOnly("pre-dump", "#!/bin/sh\nexit 0\n", "rwx------")
         // restic is deliberately absent: the agent then announces the repository with an empty id.
         val yaml =
             """
@@ -90,7 +99,7 @@ class AgentSeamIntegrationTest(
             secrets:
               pg-prod: ${dir.resolve("pg-prod.secret")}
             scripts:
-              pre-dump: /bin/true
+              pre-dump: $script
             """.trimIndent()
         return write("agent.yaml", yaml)
     }
