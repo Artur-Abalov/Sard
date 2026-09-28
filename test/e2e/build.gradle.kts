@@ -28,6 +28,10 @@ kotlin {
 dependencies {
     testImplementation(project(":proto-jvm"))
     testImplementation("io.grpc:grpc-netty")
+    // Agent key and CSR in the Enroll client until `sard-agent enroll` (A2) replaces it.
+    testImplementation("org.bouncycastle:bcpkix-jdk18on:1.86")
+    // Enrollment tokens are written to the database until the REST endpoint (S8b) exists.
+    testImplementation("org.postgresql:postgresql")
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
     testImplementation("org.testcontainers:testcontainers-postgresql")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
@@ -50,7 +54,10 @@ tasks.test {
     e2eProperties.forEach { (name, default) ->
         systemProperty(name, providers.gradleProperty(name).getOrElse(default))
     }
-    systemProperty("e2e.logsDir", layout.buildDirectory.dir("e2e-logs").get().asFile.path)
+    // Logs of failed tests and starts; emptied first, so the artifact holds this run only.
+    val logsDir = layout.buildDirectory.dir("e2e-logs")
+    doFirst { delete(logsDir) }
+    systemProperty("e2e.logsDir", logsDir.get().asFile.path)
     systemProperty(
         "e2e.resticVersionFile",
         rootProject.file("agent/internal/restic/restic-version").path,

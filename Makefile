@@ -66,7 +66,7 @@ e2e-images: tools
 	rm -rf $(E2E_BUILD)/agent-image && mkdir -p $(E2E_BUILD)/agent-image/empty
 	tar -xzf $(E2E_BUILD)/dist/sard-agent_$(VERSION)_linux_$(E2E_ARCH).tar.gz --strip-components=1 \
 		-C $(E2E_BUILD)/agent-image
-	docker build -f test/e2e/agent/Dockerfile -t $(E2E_AGENT_IMAGE) $(E2E_BUILD)/agent-image
+	docker buildx build --load -f test/e2e/agent/Dockerfile -t $(E2E_AGENT_IMAGE) $(E2E_BUILD)/agent-image
 
 ## e2e: build the images, then run the end-to-end tests (needs Docker)
 e2e: e2e-images

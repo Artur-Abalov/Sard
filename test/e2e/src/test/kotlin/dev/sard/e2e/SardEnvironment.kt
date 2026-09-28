@@ -16,6 +16,8 @@ import org.testcontainers.utility.DockerImageName
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.SecureRandom
+import java.sql.Connection
+import java.sql.DriverManager
 import java.time.Duration
 import java.util.HexFormat
 
@@ -105,23 +107,32 @@ class SardEnvironment(
         return container
     }
 
-    /** Starts PostgreSQL, then the server; on failure writes the logs and rethrows. */
-    fun start(context: ExtensionContext) {
+    /**
+     * Starts PostgreSQL, then the server; on failure writes the logs under
+     * `<logsDir>/<testClass>/start/` and rethrows.
+     */
+    fun start(testClass: String) {
         try {
             postgres.start()
             server.start()
         } catch (e: RuntimeException) {
-            writeLogs(context, "start")
+            writeLogs(testClass, "start")
             throw e
         }
     }
 
-    /** Writes the masked output of every container to `<logsDir>/<class>/<step>/`; returns that directory. */
+    /** Stops every container, the last added first, then removes the network. */
+    fun stop() {
+        containers.values.reversed().forEach { it.container.stop() }
+        sardNetwork.close()
+    }
+
+    /** Writes the masked output of every container to `<logsDir>/<testClass>/<step>/`; returns that directory. */
     fun writeLogs(
-        context: ExtensionContext,
+        testClass: String,
         step: String,
     ): Path {
-        val dir = E2e.logsDir.resolve(context.requiredTestClass.simpleName).resolve(fileName(step))
+        val dir = E2e.logsDir.resolve(testClass).resolve(fileName(step))
         Files.createDirectories(dir)
         containers.forEach { (name, tracked) ->
             Files.writeString(dir.resolve("$name.log"), Redaction.apply(tracked.output.toUtf8String(), secrets))
@@ -129,18 +140,18 @@ class SardEnvironment(
         return dir
     }
 
-    override fun beforeAll(context: ExtensionContext) = start(context)
+    /** A connection to the server's database as its own user, from the host. */
+    fun database(): Connection = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
 
-    override fun afterAll(context: ExtensionContext) {
-        containers.values.reversed().forEach { it.container.stop() }
-        sardNetwork.close()
-    }
+    override fun beforeAll(context: ExtensionContext) = start(context.requiredTestClass.simpleName)
+
+    override fun afterAll(context: ExtensionContext) = stop()
 
     override fun testFailed(
         context: ExtensionContext,
         cause: Throwable?,
     ) {
-        writeLogs(context, context.requiredTestMethod.name)
+        writeLogs(context.requiredTestClass.simpleName, context.requiredTestMethod.name)
     }
 
     private fun defaultServerEnv() =
