@@ -60,9 +60,16 @@ make gate     # полный шлюз качества: покрытие ≥ 80%
 ```bash
 make up                                   # PostgreSQL + sard-server (deploy/.env создаётся из .env.example)
 curl -s localhost:8080/api/v1/status      # {"version":"…","lastVerifiedRestoreAt":null}
-cd web && npm install && npm run dev      # дашборд на http://localhost:5173, API проксируется на :8080
+cd web && npm install && npm run dev      # консоль на http://localhost:5173, API проксируется на :8080
 make down
 ```
+
+Пароль администратора — переменная `SARD_ADMIN_PASSWORD` в `deploy/.env`
+(рядом с `SARD_AGENT_ENDPOINT`), не короче 12 символов; без неё сервер не
+стартует. При первом `make up`, если `deploy/.env` ещё нет, туда записывается
+случайный пароль длиной от 24 символов; команда печатает путь к файлу, но не
+сам пароль (ADR 0020). Консоль открывается со страницы входа; выйти можно
+кнопкой в шапке.
 
 Агент и CLI:
 

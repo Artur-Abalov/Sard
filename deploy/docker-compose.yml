@@ -30,6 +30,9 @@ services:
       SARD_DB_USER: sard
       SARD_DB_PASSWORD: ${SARD_DB_PASSWORD:?set SARD_DB_PASSWORD in deploy/.env}
       SARD_PKI_SERVER_NAMES: ${SARD_PKI_SERVER_NAMES:-localhost,127.0.0.1,::1}
+      # The single administrator's password (ADR 0020); at least 12 Unicode code points,
+      # or the server refuses to start. make up generates one on the first run.
+      SARD_ADMIN_PASSWORD: ${SARD_ADMIN_PASSWORD:?set SARD_ADMIN_PASSWORD in deploy/.env}
       # Address agents dial (decision 5, S2b); unset means the first of the names above and the gRPC port.
       SARD_AGENT_ENDPOINT: ${SARD_AGENT_ENDPOINT:-}
     volumes:

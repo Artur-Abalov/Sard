@@ -82,7 +82,7 @@ openapi:
 
 ## up: start PostgreSQL + sard-server (builds the image on first run)
 up:
-	test -f deploy/.env || cp deploy/.env.example deploy/.env
+	./scripts/ensure-admin-password.sh
 	$(COMPOSE) up -d --wait
 
 ## down: stop the local stack (data volume is kept)
