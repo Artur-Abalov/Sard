@@ -165,6 +165,95 @@ func requireNoLeftoverTemps(t *testing.T, dir string) {
 	}
 }
 
+// F4 follow-up: handleCommitFailure's rollback branches, exercised via a
+// deterministic rename failure (SetRenameForTest) instead of racing the
+// filesystem to fail a specific rename after staging already succeeded.
+
+// First enrollment (nothing existed before): a failure renaming the 2nd
+// file in commit order (CA, key, cert — key is 2nd) must undo the CA that
+// already landed, leave no temporaries, and leave no file at all.
+func TestWriteIdentityFirstEnrollmentRemovesTheAlreadyCommittedCAWhenKeyFailsToRename(t *testing.T) {
+	files := threeFiles(t)
+	restore := enroll.SetRenameForTest(failRenameOnto(t, files.KeyFile))
+	defer restore()
+
+	err := enroll.WriteIdentity(files, []byte("key"), []byte("cert"), []byte("ca"))
+	requireClassWrite(t, err)
+	requireNoneExist(t, files)
+	requireNoLeftoverTemps(t, filepath.Dir(files.KeyFile))
+}
+
+// Same, but the 3rd file in commit order (cert) fails: both CA and key,
+// already committed, must be undone.
+func TestWriteIdentityFirstEnrollmentRemovesCAAndKeyWhenCertFailsToRename(t *testing.T) {
+	files := threeFiles(t)
+	restore := enroll.SetRenameForTest(failRenameOnto(t, files.CertFile))
+	defer restore()
+
+	err := enroll.WriteIdentity(files, []byte("key"), []byte("cert"), []byte("ca"))
+	requireClassWrite(t, err)
+	requireNoneExist(t, files)
+	requireNoLeftoverTemps(t, filepath.Dir(files.KeyFile))
+}
+
+// --force overwrite (a previous identity exists): a mid-commit failure
+// must still remove every not-yet-renamed temporary, but the files that
+// were not yet replaced (key, cert — CA commits first and already landed)
+// keep their previous content. This is the documented exception rule 7
+// cannot close: the CA that did land before the failure is NOT rolled
+// back, unlike the first-enrollment case above, because rolling it back
+// would not restore the guarantee either (some renames may already have
+// replaced the previous identity, so there is nothing safe to revert to).
+func TestWriteIdentityForceOverwriteMidCommitFailureLeavesUnreplacedFilesUntouched(t *testing.T) {
+	files := threeFiles(t)
+	if err := enroll.WriteIdentity(files, []byte("key1"), []byte("cert1"), []byte("ca1")); err != nil {
+		t.Fatalf("first WriteIdentity: %v", err)
+	}
+
+	restore := enroll.SetRenameForTest(failRenameOnto(t, files.KeyFile))
+	defer restore()
+
+	err := enroll.WriteIdentity(files, []byte("key2"), []byte("cert2"), []byte("ca2"))
+	requireClassWrite(t, err)
+
+	// The documented exception: CA already committed before the failure
+	// and is not rolled back.
+	requireContents(t, files.CAFile, "ca2")
+	// Not yet renamed when the failure happened: still the old identity.
+	requireContents(t, files.KeyFile, "key1")
+	requireContents(t, files.CertFile, "cert1")
+	requireNoLeftoverTemps(t, filepath.Dir(files.KeyFile))
+}
+
+// failRenameOnto fails exactly the rename whose destination is target,
+// and performs every other rename for real.
+func failRenameOnto(t *testing.T, target string) func(oldpath, newpath string) error {
+	t.Helper()
+	return func(oldpath, newpath string) error {
+		if newpath == target {
+			return errors.New("simulated rename failure")
+		}
+		return os.Rename(oldpath, newpath)
+	}
+}
+
+func requireClassWrite(t *testing.T, err error) {
+	t.Helper()
+	var eerr *enroll.Error
+	if !errors.As(err, &eerr) || eerr.Class != enroll.ClassWrite {
+		t.Fatalf("err = %v, want a ClassWrite *enroll.Error", err)
+	}
+}
+
+func requireNoneExist(t *testing.T, files enroll.Files) {
+	t.Helper()
+	for _, p := range []string{files.KeyFile, files.CertFile, files.CAFile} {
+		if _, statErr := os.Stat(p); !os.IsNotExist(statErr) {
+			t.Errorf("%s exists, want none of the three", p)
+		}
+	}
+}
+
 func TestWriteIdentityFailureLeavesThePreviousFilesIntact(t *testing.T) {
 	for _, broken := range []string{"key", "cert", "ca"} {
 		t.Run(broken, func(t *testing.T) { checkFailedWriteLeavesFilesIntact(t, broken) })

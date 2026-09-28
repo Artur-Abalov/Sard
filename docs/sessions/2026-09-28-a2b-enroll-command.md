@@ -544,3 +544,8 @@ enroll_local,enroll_timing}_test.go`, `docs/adr/00XX-draft-grpc-error-model.md`.
 (замена удалённого `enroll.go`), `agent/internal/enroll/tlsbypass_test.go`.
 Не тронуты: `scripts/gate.sh`, `scripts/crap.sh`, `scripts/claude/*`,
 `.claude/settings.json` и прочие защищённые файлы.
+
+### Дополнение — покрытие `handleCommitFailure`/`removeCommitted` (2026-09-28, после коммита 2d80664)
+Добавлен `renameFile` (`internal/enroll/write.go`, package var, по умолчанию `os.Rename`) и `enroll.SetRenameForTest` (`export_test.go`) — детерминированно проваливает конкретный `rename` вместо гонки с файловой системой. Три новых теста в `write_test.go`: `TestWriteIdentityFirstEnrollmentRemovesTheAlreadyCommittedCAWhenKeyFailsToRename`, `TestWriteIdentityFirstEnrollmentRemovesCAAndKeyWhenCertFailsToRename` (оба красные без отката — проверено откатом правки и повторным запуском), `TestWriteIdentityForceOverwriteMidCommitFailureLeavesUnreplacedFilesUntouched` (документированное исключение: уже закоммиченный CA не откатывается при `--force`). `write.go` больше не в таблице CRAP (100% покрытие).
+
+`gate agent fast`: `coverage: 95.5%`; CRAP-таблица без строк `write.go`; `gate: PASSED (agent, fast)`. `make license-check` → `280 files OK`.

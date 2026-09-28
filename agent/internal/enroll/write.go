@@ -209,8 +209,13 @@ func stage(path string, data []byte, mode os.FileMode) (string, error) {
 	return name, nil
 }
 
+// renameFile is os.Rename, indirected so tests can fail a specific commit
+// deterministically (export_test.go) instead of racing the filesystem to
+// fail a rename after staging already succeeded.
+var renameFile = os.Rename
+
 func commit(s stagedFile) error {
-	if err := os.Rename(s.tempPath, s.finalPath); err != nil {
+	if err := renameFile(s.tempPath, s.finalPath); err != nil {
 		return err
 	}
 	return syncParent(s.finalPath)
