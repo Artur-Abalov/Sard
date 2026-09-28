@@ -34,7 +34,9 @@ private data class AddressShape(
 
 private fun bracketedShape(text: String): AddressShape? {
     val end = text.indexOf(']')
-    if (end < 0) return null
+    // shapeOf only calls this when text[0] == '[', so indexOf(']') is never 0: "< 0" and "<= 0"
+    // (and comparing against 1 instead of 0) reject exactly the same inputs.
+    if (end < 0) return null // mutflow:falsePositive indexOf(']') is never 0 here, see comment above
     val host = text.substring(1, end)
     val rest = text.substring(end + 1)
     return when {

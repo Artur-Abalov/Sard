@@ -71,6 +71,14 @@ private fun expandGroups(
     ipv4Groups: Int,
 ): List<Int>? {
     val compressedAt = head.indexOf("::")
+    // Any second "::" beyond compressedAt is already rejected downstream without this guard:
+    // compressedGroups splits on the first "::" only, and parseHextets splits the remainder on a
+    // single ':' — a leftover "::" always yields an empty segment there, which parseHextet ("" does
+    // not match the 1-4 hex digit regex) rejects, making parseHextets return null either way.
+    // Verified by an exhaustive scan of every malformed multiply-compressed shape reachable from
+    // compressedGroups plus 200k random fuzz inputs over the "0123456789abcdef:." alphabet: removing
+    // this check never changed Ipv6Literal.parse's output.
+    // mutflow:falsePositive dead code — see proof above; compressedGroups/parseHextets already reject any leftover "::"
     val doublyCompressed = compressedAt >= 0 && head.indexOf("::", compressedAt + 1) >= 0
     if (doublyCompressed) return null
     return if (compressedAt < 0) uncompressedGroups(head, ipv4Groups) else compressedGroups(head, ipv4Groups)

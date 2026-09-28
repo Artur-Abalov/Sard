@@ -112,4 +112,73 @@ class AgentEndpointTest {
         val names = listOf("::ffff:10.0.0.1")
         assertEquals("[::ffff:a00:1]:9090", resolve("[::ffff:a00:1]:9090", names = names).address)
     }
+
+    @Test
+    fun `the maximum IPv4 octet 255 covers its hex-hextet spelling, byte for byte`() {
+        // Forces byte-exact IPv4 parsing of the maximum octet: a fallback to DNS-shaped string
+        // comparison could never match these two different spellings of the same address.
+        assertEquals(
+            "[::ffff:255.255.255.255]:9090",
+            resolve("[::ffff:255.255.255.255]:9090", names = listOf("::ffff:ffff:ffff")).address,
+        )
+    }
+
+    @Test
+    fun `256 does not fit an IPv4 octet and must not be silently accepted as if it wrapped to 0`() {
+        val error =
+            assertFailsWith<InvalidAgentEndpointException> {
+                resolve("256.0.0.1:9090", names = listOf("0.0.0.1"))
+            }
+        assertTrue("256.0.0.1" in error.message.orEmpty(), error.message.orEmpty())
+    }
+
+    @Test
+    fun `a leading double colon before an embedded IPv4 covers the same address spelled in hex hextets`() {
+        // "::1.2.3.4" only parses correctly if the "::" survives the tail split (decision 5в);
+        // matching it against a plainly-spelled hex form forces byte-exact, not string, comparison.
+        assertEquals(
+            "[::1.2.3.4]:9090",
+            resolve("[::1.2.3.4]:9090", names = listOf("0:0:0:0:0:0:102:304")).address,
+        )
+    }
+
+    @Test
+    fun `six hextets plus an embedded IPv4, with no compression, cover the same address in hex hextets`() {
+        // Exercises the exact group-count check (6 hextets + the embedded IPv4's 2 groups == 8)
+        // against a differently-spelled but byte-identical name, so only a byte-correct parse matches.
+        assertEquals(
+            "[1:2:3:4:5:6:1.2.3.4]:9090",
+            resolve("[1:2:3:4:5:6:1.2.3.4]:9090", names = listOf("1:2:3:4:5:6:102:304")).address,
+        )
+    }
+
+    @Test
+    fun `a mid-address compression covers the same address spelled in full, group for group`() {
+        // "1:2::7:8" and "1:2:0:0:0:0:7:8" name the same address only if the compressed form fills
+        // exactly the missing four groups with zero, at the right byte offsets.
+        assertEquals(
+            "[1:2::7:8]:9090",
+            resolve("[1:2::7:8]:9090", names = listOf("1:2:0:0:0:0:7:8")).address,
+        )
+    }
+
+    @Test
+    fun `a compression filling exactly one omitted group covers the same address spelled in full`() {
+        assertEquals(
+            "[1:2:3:4:5:6:7::]:9090",
+            resolve("[1:2:3:4:5:6:7::]:9090", names = listOf("1:2:3:4:5:6:7:0")).address,
+        )
+    }
+
+    @Test
+    fun `a compression that leaves no group to fill is malformed, not a redundant no-op`() {
+        // "1:2:3:4:5:6:7::8" already spells out all 8 groups before the "::"; RFC 4291 requires
+        // "::" to represent at least one omitted group, so this must not be silently accepted as
+        // if it were plain "1:2:3:4:5:6:7:8" with zero groups filled in.
+        val error =
+            assertFailsWith<InvalidAgentEndpointException> {
+                resolve("[1:2:3:4:5:6:7::8]:9090", names = listOf("1:2:3:4:5:6:7:8"))
+            }
+        assertTrue("1:2:3:4:5:6:7::8" in error.message.orEmpty(), error.message.orEmpty())
+    }
 }
