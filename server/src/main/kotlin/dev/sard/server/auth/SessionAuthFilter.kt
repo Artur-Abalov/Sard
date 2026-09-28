@@ -14,7 +14,13 @@ import org.springframework.http.HttpHeaders
 import org.springframework.web.filter.OncePerRequestFilter
 import tools.jackson.databind.ObjectMapper
 
-/** Name of the request attribute [SessionAuthFilter] attaches the touched session under. */
+/**
+ * Name of the request attribute [SessionAuthFilter] attaches the touched session under.
+ * Nothing in the open core reads it back (W1b has one administrator, no per-request
+ * principal); it is left in place on purpose as the future seam an enterprise
+ * `TenantResolver` can use to read the caller out of an already-validated session,
+ * without changing this filter or [dev.sard.server.api.SessionApi] (ADR 0020).
+ */
 const val SESSION_REQUEST_ATTRIBUTE = "dev.sard.server.auth.session"
 
 /** Operations the filter never guards: sign-in itself, and the public status endpoint. */
