@@ -39,10 +39,24 @@ class LoginAttemptTracker(
         block: () -> T,
     ): T {
         val state = byAddress.computeIfAbsent(address) { State() }
+        val result = synchronized(state) { block() }
+        forgetIfInert(address, state)
+        return result
+    }
+
+    /** Bounds the map's size: an address with no failures in the window and no lock is dead weight. */
+    private fun forgetIfInert(
+        address: String,
+        state: State,
+    ) {
         synchronized(state) {
-            return block()
+            pruneExpired(state, clock.instant())
+            if (state.failures.isEmpty() && state.lockedAt == null) byAddress.remove(address, state)
         }
     }
+
+    /** How many addresses are tracked right now, locked or not; for tests only. */
+    internal fun trackedAddresses(): Int = byAddress.size
 
     /** Seconds until [address] may try again, rounded up; null when it is not locked. */
     fun retryAfterSeconds(address: String): Long? {

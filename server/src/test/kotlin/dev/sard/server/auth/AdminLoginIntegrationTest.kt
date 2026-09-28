@@ -4,6 +4,7 @@
 package dev.sard.server.auth
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.api.SESSION_COOKIE
 import dev.sard.server.pki.MovableClock
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -91,7 +92,7 @@ class AdminLoginIntegrationTest(
                 .newBuilder(URI.create("http://localhost:$port$path"))
                 .header("Content-Type", "application/json")
                 .method(method, publisher)
-        cookie?.let { builder.header("Cookie", "$SESSION_COOKIE_NAME=$it") }
+        cookie?.let { builder.header("Cookie", "$SESSION_COOKIE=$it") }
         origin?.let { builder.header("Origin", it) }
         host?.let { builder.header("Host", it) }
         return http.send(builder.build(), HttpResponse.BodyHandlers.ofString())
@@ -105,7 +106,7 @@ class AdminLoginIntegrationTest(
 
     private fun sessionIdOf(response: HttpResponse<String>): String {
         val setCookie = response.headers().firstValue("Set-Cookie").orElseThrow()
-        return Regex("$SESSION_COOKIE_NAME=([^;]*)").find(setCookie)!!.groupValues[1]
+        return Regex("$SESSION_COOKIE=([^;]*)").find(setCookie)!!.groupValues[1]
     }
 
     private fun signIn(): String = sessionIdOf(login())
@@ -120,7 +121,7 @@ class AdminLoginIntegrationTest(
         assertEquals(204, response.statusCode())
         assertTrue(response.body().isEmpty())
         val setCookie = response.headers().firstValue("Set-Cookie").orElseThrow()
-        assertTrue(setCookie.contains("$SESSION_COOKIE_NAME="))
+        assertTrue(setCookie.contains("$SESSION_COOKIE="))
         assertTrue(sessionIdOf(response).isNotEmpty())
     }
 
@@ -320,7 +321,7 @@ class AdminLoginIntegrationTest(
         val response = send("DELETE", "/api/v1/session", cookie = cookie)
         assertEquals(204, response.statusCode())
         val setCookie = response.headers().firstValue("Set-Cookie").orElseThrow()
-        assertTrue(setCookie.contains("$SESSION_COOKIE_NAME="), setCookie)
+        assertTrue(setCookie.contains("$SESSION_COOKIE="), setCookie)
         assertTrue(setCookie.contains("Max-Age=0"), setCookie)
         assertTrue(setCookie.contains("Path=/"), setCookie)
     }
@@ -507,16 +508,59 @@ class AdminLoginIntegrationTest(
         assertEquals(200, send("GET", "/api/v1/session", cookie = cookie, origin = "https://evil.example").statusCode())
     }
 
+    /**
+     * The Origin check runs before the handler is even chosen (rule "Проверка выполняется до
+     * выбора обработчика"): a mutating request is 403 origin_rejected, not 401, even without
+     * a session and even for a PATCH the contract does not map anywhere.
+     */
+    @Test
+    fun `a mutating request with a foreign Origin is 403 even without a session`() {
+        val id = "0192f7a0-0000-7000-8000-000000000201"
+        for ((method, path) in mutatingOriginExamples(id)) {
+            val response = send(method, path, body = "{}", origin = "https://evil.example")
+            assertEquals(403, response.statusCode(), "$method $path")
+            assertEquals("origin_rejected", body(response).path("code").asString(), "$method $path")
+        }
+    }
+
+    @Test
+    fun `a mutating request with a session and a foreign Origin is 403 origin_rejected`() {
+        val cookie = signIn()
+        val id = "0192f7a0-0000-7000-8000-000000000201"
+        for ((method, path) in mutatingOriginExamples(id)) {
+            val response = send(method, path, body = "{}", cookie = cookie, origin = "https://evil.example")
+            assertEquals(403, response.statusCode(), "$method $path")
+            assertEquals("origin_rejected", body(response).path("code").asString(), "$method $path")
+        }
+    }
+
+    /** The spec's own scenario outline examples for "Изменяющий запрос с сессией и чужим Origin отклоняется". */
+    private fun mutatingOriginExamples(sourceId: String): List<Pair<String, String>> =
+        listOf(
+            "POST" to "/api/v1/sources",
+            "PUT" to "/api/v1/sources/$sourceId",
+            "PATCH" to "/api/v1/sources/$sourceId",
+            "DELETE" to "/api/v1/sources/$sourceId",
+            "POST" to "/api/v1/enrollment-tokens",
+            "POST" to "/api/v1/enrollment-tokens/0192f7a0-0000-7000-8000-000000000501/revoke",
+            "POST" to "/api/v1/sources/$sourceId/runs",
+            "DELETE" to "/api/v1/session",
+        )
+
     // ---- Правило: Всё API под /api/v1 требует сессию, кроме входа и статуса ----
 
     @Test
     fun `every operation of the exported spec but sign-in and status is 401 without a session`() {
         val spec = mapper.readTree(send("GET", "/v3/api-docs").body())
         val id = "0192f7a0-0000-7000-8000-000000000001"
-        val public = setOf("post /api/v1/session", "get /api/v1/status")
+        // The filter's own public set (PUBLIC_OPERATIONS, internal) must match the spec's, not a
+        // hardcoded list here: a public operation the spec adds without the filter noticing it
+        // would otherwise pass this test by accident.
+        val public = publicOperationsOf(spec)
+        assertEquals(PUBLIC_OPERATIONS, public)
         for ((path, item) in spec.path("paths").properties()) {
             for ((method, _) in item.properties()) {
-                val key = "$method $path"
+                val key = "${method.uppercase()} $path"
                 if (key in public) continue
                 val concretePath = path.replace(Regex("\\{[^}]+}"), id)
                 val response = send(method.uppercase(), concretePath)
@@ -526,6 +570,18 @@ class AdminLoginIntegrationTest(
             }
         }
     }
+
+    /** Operations the exported OpenAPI declares an empty security requirement for. */
+    private fun publicOperationsOf(spec: JsonNode): Set<String> =
+        spec
+            .path("paths")
+            .properties()
+            .flatMap { (path, item) ->
+                item.properties().mapNotNull { (method, op) ->
+                    val security = op.path("security")
+                    if (security.isArray && security.isEmpty) "${method.uppercase()} $path" else null
+                }
+            }.toSet()
 
     @Test
     fun `an unmapped path under api v1 without a session is 401`() {

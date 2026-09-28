@@ -4,6 +4,7 @@
 package dev.sard.server.auth
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.api.SESSION_COOKIE
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
@@ -51,12 +52,12 @@ class DatabaseUnavailableIntegrationTest(
                 .newBuilder(URI.create("http://localhost:$port$path"))
                 .header("Content-Type", "application/json")
                 .method(method, publisher)
-        cookie?.let { builder.header("Cookie", "$SESSION_COOKIE_NAME=$it") }
+        cookie?.let { builder.header("Cookie", "$SESSION_COOKIE=$it") }
         return http.send(builder.build(), HttpResponse.BodyHandlers.ofString())
     }
 
     private fun sessionIdOf(response: HttpResponse<String>): String =
-        Regex("$SESSION_COOKIE_NAME=([^;]*)").find(response.headers().firstValue("Set-Cookie").orElseThrow())!!.groupValues[1]
+        Regex("$SESSION_COOKIE=([^;]*)").find(response.headers().firstValue("Set-Cookie").orElseThrow())!!.groupValues[1]
 
     @Test
     fun `sign-in and reading the current session work while the database is down`() {

@@ -12,9 +12,12 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirements
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.web.bind.annotation.CookieValue
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
@@ -39,32 +42,52 @@ data class Session(
     val expiresAt: Instant,
 )
 
+/** The outcome of a sign-in attempt (D2, W1b): what the controller answers, not how. */
+sealed interface SignInResult {
+    data class SignedIn(
+        val sessionId: String,
+    ) : SignInResult
+
+    data object WrongPassword : SignInResult
+
+    data class Locked(
+        val retryAfterSeconds: Long,
+    ) : SignInResult
+}
+
+/** No session, or an id that names none that is still valid. */
+class NoSuchSessionException : RuntimeException()
+
 /**
- * Administrator session in a cookie (D2, W1b). Methods write status, cookies and the
- * problem body directly to [HttpServletResponse]: the outcome (204/401/429) is not
- * known from the request alone, so a fixed `@ResponseStatus` cannot express it.
+ * Administrator session (D2, W1b): a domain port with no HTTP types, so it can be
+ * implemented and tested without a servlet request or response, and an enterprise
+ * starter can replace it (e.g. with SSO) without depending on this module's web layer.
  */
 interface SessionApi {
+    /** [previousSessionId] is the id the caller already carried, if any; a successful sign-in ends it. */
     fun createSession(
-        request: SessionRequest,
-        httpRequest: HttpServletRequest,
-        httpResponse: HttpServletResponse,
-    )
+        password: String,
+        clientAddress: String,
+        previousSessionId: String?,
+    ): SignInResult
 
-    fun getSession(httpRequest: HttpServletRequest): ResponseEntity<Session>
+    /** @throws NoSuchSessionException when [sessionId] names no session that is still valid. */
+    fun getSession(sessionId: String): Session
 
+    /** @throws NoSuchSessionException when [sessionId] names no session that is still valid. */
     fun deleteSession(
-        httpRequest: HttpServletRequest,
-        httpResponse: HttpServletResponse,
+        sessionId: String,
+        clientAddress: String,
     )
 }
 
-/** HTTP side of the session endpoints. */
+/** HTTP side of the session endpoints: maps [SignInResult] and [NoSuchSessionException] to status, cookies and body. */
 @RestController
 @RequestMapping("/api/v1/session")
 @Tag(name = "session", description = "Administrator sign-in")
 class SessionController(
     private val api: SessionApi,
+    private val objectMapper: tools.jackson.databind.ObjectMapper,
 ) {
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @SecurityRequirements
@@ -99,9 +122,13 @@ class SessionController(
     )
     fun createSession(
         @RequestBody request: SessionRequest,
+        @CookieValue(SESSION_COOKIE, required = false) previousSessionId: String?,
         httpRequest: HttpServletRequest,
         httpResponse: HttpServletResponse,
-    ): Unit = api.createSession(request, httpRequest, httpResponse)
+    ) {
+        val result = api.createSession(request.password, httpRequest.remoteAddr, previousSessionId)
+        respondToSignIn(result, httpRequest, httpResponse)
+    }
 
     /**
      * A body without a usable password (missing, null, not JSON, empty) is rejected the
@@ -112,17 +139,67 @@ class SessionController(
     fun onMalformedSignIn(
         httpRequest: HttpServletRequest,
         httpResponse: HttpServletResponse,
-    ): Unit = api.createSession(SessionRequest(password = ""), httpRequest, httpResponse)
+    ) {
+        val previousSessionId =
+            httpRequest.cookies
+                .orEmpty()
+                .firstOrNull { it.name == SESSION_COOKIE }
+                ?.value
+        respondToSignIn(api.createSession("", httpRequest.remoteAddr, previousSessionId), httpRequest, httpResponse)
+    }
+
+    private fun respondToSignIn(
+        result: SignInResult,
+        httpRequest: HttpServletRequest,
+        httpResponse: HttpServletResponse,
+    ) {
+        when (result) {
+            is SignInResult.SignedIn -> {
+                val cookie = sessionCookie(result.sessionId, httpRequest.isSecure)
+                httpResponse.addHeader(HttpHeaders.SET_COOKIE, cookie.toString())
+                httpResponse.status = HttpStatus.NO_CONTENT.value()
+            }
+
+            is SignInResult.WrongPassword -> {
+                val status = HttpStatus.UNAUTHORIZED.value()
+                writeProblem(httpResponse, objectMapper, status, "Unauthorized", ErrorCode.UNAUTHENTICATED)
+            }
+
+            is SignInResult.Locked -> {
+                httpResponse.addHeader(HttpHeaders.RETRY_AFTER, result.retryAfterSeconds.toString())
+                val status = HttpStatus.TOO_MANY_REQUESTS.value()
+                writeProblem(httpResponse, objectMapper, status, "Too Many Requests", ErrorCode.TOO_MANY_ATTEMPTS)
+            }
+        }
+    }
 
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Current session", description = "401 when there is none or it expired.")
-    fun getSession(httpRequest: HttpServletRequest): ResponseEntity<Session> = api.getSession(httpRequest)
+    fun getSession(
+        @CookieValue(SESSION_COOKIE, required = false) sessionId: String?,
+    ): ResponseEntity<Session> = ResponseEntity.ok(api.getSession(sessionId ?: throw NoSuchSessionException()))
 
     @DeleteMapping
     @Operation(summary = "Sign out", description = "Ends the session and clears the cookie.")
     @ApiResponse(responseCode = "204", description = "Signed out")
     fun deleteSession(
+        @CookieValue(SESSION_COOKIE, required = false) sessionId: String?,
         httpRequest: HttpServletRequest,
         httpResponse: HttpServletResponse,
-    ): Unit = api.deleteSession(httpRequest, httpResponse)
+    ) {
+        api.deleteSession(sessionId ?: throw NoSuchSessionException(), httpRequest.remoteAddr)
+        httpResponse.addHeader(HttpHeaders.SET_COOKIE, clearedSessionCookie(httpRequest.isSecure).toString())
+        httpResponse.status = HttpStatus.NO_CONTENT.value()
+    }
+
+    /** Р12: an unauthenticated GET/DELETE also clears the cookie, since it may be a stale one. */
+    @ExceptionHandler(NoSuchSessionException::class)
+    fun onNoSuchSession(
+        httpRequest: HttpServletRequest,
+        httpResponse: HttpServletResponse,
+    ) {
+        httpResponse.addHeader(HttpHeaders.SET_COOKIE, clearedSessionCookie(httpRequest.isSecure).toString())
+        val status = HttpStatus.UNAUTHORIZED.value()
+        writeProblem(httpResponse, objectMapper, status, "Unauthorized", ErrorCode.UNAUTHENTICATED)
+    }
 }

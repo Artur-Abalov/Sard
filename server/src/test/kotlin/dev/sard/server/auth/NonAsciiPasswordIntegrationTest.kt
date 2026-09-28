@@ -4,6 +4,7 @@
 package dev.sard.server.auth
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.api.SESSION_COOKIE
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.context.annotation.Import
@@ -42,7 +43,7 @@ class NonAsciiPasswordIntegrationTest(
                 .headers()
                 .firstValue("Set-Cookie")
                 .orElse("")
-                .contains(SESSION_COOKIE_NAME),
+                .contains(SESSION_COOKIE),
         )
     }
 }

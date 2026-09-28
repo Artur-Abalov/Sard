@@ -5,22 +5,20 @@ package dev.sard.server.auth
 
 import dev.sard.server.api.ErrorCode
 import dev.sard.server.api.SESSION_COOKIE
+import dev.sard.server.api.clearedSessionCookie
+import dev.sard.server.api.writeProblem
 import jakarta.servlet.FilterChain
-import jakarta.servlet.http.Cookie
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.HttpHeaders
-import org.springframework.http.ResponseCookie
 import org.springframework.web.filter.OncePerRequestFilter
 import tools.jackson.databind.ObjectMapper
 
 /** Name of the request attribute [SessionAuthFilter] attaches the touched session under. */
 const val SESSION_REQUEST_ATTRIBUTE = "dev.sard.server.auth.session"
 
-/** Same name as the cookie, kept here so test doubles do not need to import the api package. */
-const val SESSION_COOKIE_NAME = SESSION_COOKIE
-
-private val PUBLIC_OPERATIONS = setOf("POST /api/v1/session", "GET /api/v1/status")
+/** Operations the filter never guards: sign-in itself, and the public status endpoint. */
+internal val PUBLIC_OPERATIONS = setOf("POST /api/v1/session", "GET /api/v1/status")
 private const val HTTP_UNAUTHORIZED = 401
 
 /**
@@ -67,27 +65,3 @@ class SessionAuthFilter(
         writeProblem(response, objectMapper, HTTP_UNAUTHORIZED, "Unauthorized", ErrorCode.UNAUTHENTICATED)
     }
 }
-
-/** A cookie that erases [SESSION_COOKIE] in the browser (Р12, logout). */
-fun clearedSessionCookie(secure: Boolean): ResponseCookie =
-    ResponseCookie
-        .from(SESSION_COOKIE, "")
-        .httpOnly(true)
-        .sameSite("Strict")
-        .path("/")
-        .secure(secure)
-        .maxAge(0)
-        .build()
-
-/** A fresh session cookie (Р7: no Max-Age, no Expires). */
-fun sessionCookie(
-    id: String,
-    secure: Boolean,
-): ResponseCookie =
-    ResponseCookie
-        .from(SESSION_COOKIE, id)
-        .httpOnly(true)
-        .sameSite("Strict")
-        .path("/")
-        .secure(secure)
-        .build()

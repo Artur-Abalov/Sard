@@ -3,17 +3,21 @@
 
 package dev.sard.server.auth
 
+import dev.sard.server.ClockAutoConfiguration
+import dev.sard.server.extension.TenancyAutoConfiguration
+import org.springframework.boot.autoconfigure.AutoConfigurations
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
+import tools.jackson.databind.ObjectMapper
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
  * Rule "Сервер не стартует без пароля администратора не короче 12 символов" (@startup).
- * [AdminPasswordAuthenticator] is a plain singleton bean, eagerly created on context
- * refresh; a real [ApplicationContextRunner] exercises the same property resolution and
- * bean-creation failure path the full application goes through, without needing a
- * database or gRPC server for a check that does not depend on either.
+ * Runs the real [AdminAuthAutoConfiguration] (the open core's default), so this
+ * exercises the same property resolution and bean-creation failure path the full
+ * application goes through, without needing a database or gRPC server for a check
+ * that does not depend on either.
  */
 class AdminPasswordStartupTest {
     // The test JVM's own environment always carries SARD_ADMIN_PASSWORD (build.gradle.kts,
@@ -21,7 +25,13 @@ class AdminPasswordStartupTest {
     // explicit empty property, which the production code treats identically (see below).
     private fun runnerWith(password: String): ApplicationContextRunner =
         ApplicationContextRunner()
-            .withBean(AdminPasswordAuthenticator::class.java)
+            .withConfiguration(
+                AutoConfigurations.of(
+                    ClockAutoConfiguration::class.java,
+                    TenancyAutoConfiguration::class.java,
+                    AdminAuthAutoConfiguration::class.java,
+                ),
+            ).withBean(ObjectMapper::class.java, { ObjectMapper() })
             .withPropertyValues("SARD_ADMIN_PASSWORD=$password")
 
     private fun failureMessage(password: String): String {

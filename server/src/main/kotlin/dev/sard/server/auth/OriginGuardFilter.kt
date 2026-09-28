@@ -4,6 +4,7 @@
 package dev.sard.server.auth
 
 import dev.sard.server.api.ErrorCode
+import dev.sard.server.api.writeProblem
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse

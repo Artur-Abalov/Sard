@@ -3,6 +3,7 @@
 
 package dev.sard.server.auth
 
+import dev.sard.server.api.SESSION_COOKIE
 import dev.sard.server.pki.MovableClock
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
@@ -56,7 +57,7 @@ class SessionAuthFilterTest {
     @Test
     fun `an unknown session id is 401`() {
         val request = MockHttpServletRequest("GET", "/api/v1/agents")
-        request.setCookies(jakarta.servlet.http.Cookie(SESSION_COOKIE_NAME, "forged-session-id"))
+        request.setCookies(jakarta.servlet.http.Cookie(SESSION_COOKIE, "forged-session-id"))
         val (response, reached) = filtered(request)
         assertEquals(401, response.status)
         assertNull(reached)
@@ -73,19 +74,19 @@ class SessionAuthFilterTest {
     fun `a valid session passes through and the touched session is attached to the request`() {
         val session = store.create(TENANT)
         val request = MockHttpServletRequest("GET", "/api/v1/agents")
-        request.setCookies(jakarta.servlet.http.Cookie(SESSION_COOKIE_NAME, session.id))
+        request.setCookies(jakarta.servlet.http.Cookie(SESSION_COOKIE, session.id))
         val (_, reached) = filtered(request)
-        assertEquals(session.id, (reached?.getAttribute(SESSION_REQUEST_ATTRIBUTE) as Session?)?.id)
+        assertEquals(session.id, (reached?.getAttribute(SESSION_REQUEST_ATTRIBUTE) as AdminSession?)?.id)
     }
 
     @Test
     fun `DELETE session with an invalid cookie is 401 and clears the cookie`() {
         val request = MockHttpServletRequest("DELETE", "/api/v1/session")
-        request.setCookies(jakarta.servlet.http.Cookie(SESSION_COOKIE_NAME, "forged-session-id"))
+        request.setCookies(jakarta.servlet.http.Cookie(SESSION_COOKIE, "forged-session-id"))
         val (response, reached) = filtered(request)
         assertEquals(401, response.status)
         assertNull(reached)
-        val cookie = response.getCookie(SESSION_COOKIE_NAME)
+        val cookie = response.getCookie(SESSION_COOKIE)
         assertTrue(cookie != null)
         assertEquals("", cookie!!.value)
         assertEquals(0, cookie.maxAge)
@@ -94,7 +95,7 @@ class SessionAuthFilterTest {
     @Test
     fun `GET agents with an invalid cookie does not clear the cookie`() {
         val request = MockHttpServletRequest("GET", "/api/v1/agents")
-        request.setCookies(jakarta.servlet.http.Cookie(SESSION_COOKIE_NAME, "forged-session-id"))
+        request.setCookies(jakarta.servlet.http.Cookie(SESSION_COOKIE, "forged-session-id"))
         val (response, _) = filtered(request)
         assertFalse(response.containsHeader("Set-Cookie"))
     }

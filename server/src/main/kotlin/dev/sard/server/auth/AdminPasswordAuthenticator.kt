@@ -3,8 +3,6 @@
 
 package dev.sard.server.auth
 
-import org.springframework.beans.factory.annotation.Value
-import org.springframework.stereotype.Component
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
@@ -23,9 +21,8 @@ fun sha256(value: String): ByteArray {
  * of the same fixed length with [MessageDigest.isEqual], which the JDK documents as
  * comparing every byte without an early exit (no timing side channel).
  */
-@Component
 class AdminPasswordAuthenticator(
-    @Value("\${SARD_ADMIN_PASSWORD:}") rawPassword: String,
+    rawPassword: String,
 ) {
     private val hash: ByteArray = validateAndHash(rawPassword)
 

@@ -6,6 +6,7 @@ package dev.sard.server.auth
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.api.SESSION_COOKIE
 import dev.sard.server.pki.MovableClock
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -72,7 +73,7 @@ class AdminLoginLoggingIntegrationTest(
                 .newBuilder(URI.create("http://localhost:$port$path"))
                 .header("Content-Type", "application/json")
                 .method(method, publisher)
-        cookie?.let { builder.header("Cookie", "$SESSION_COOKIE_NAME=$it") }
+        cookie?.let { builder.header("Cookie", "$SESSION_COOKIE=$it") }
         return http.send(builder.build(), HttpResponse.BodyHandlers.ofString())
     }
 
@@ -83,7 +84,7 @@ class AdminLoginLoggingIntegrationTest(
 
     private fun sessionIdOf(response: HttpResponse<String>): String {
         val setCookie = response.headers().firstValue("Set-Cookie").orElseThrow()
-        return Regex("$SESSION_COOKIE_NAME=([^;]*)").find(setCookie)!!.groupValues[1]
+        return Regex("$SESSION_COOKIE=([^;]*)").find(setCookie)!!.groupValues[1]
     }
 
     private fun capture(block: () -> Unit): List<String> {

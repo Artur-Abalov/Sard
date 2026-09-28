@@ -15,6 +15,17 @@ private val SESSIONS_SYSTEM_CALL = Regex("""\bsessions\.system\s*[({]""")
 private val LINE_COMMENT = Regex("""//.*$""", RegexOption.MULTILINE)
 private val BLOCK_COMMENT = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
 
+// W1b (B1): the *Api ports (SessionApi and its siblings) stay implementable and
+// testable without a servlet request or response, so an enterprise starter can
+// replace one (e.g. SessionApi with SSO) without depending on this module's web layer.
+private val API_PORT_FORBIDDEN_TYPE =
+    Regex("""\b(HttpServletRequest|HttpServletResponse|ResponseEntity|ResponseCookie)\b""")
+private val AUTH_PACKAGE_REFERENCE = Regex("""\bdev\.sard\.server\.auth\b""")
+private val SESSION_DOMAIN_FORBIDDEN =
+    Regex("""\b(jakarta\.servlet|org\.springframework\.http|org\.springframework\.web)\b""")
+private val SESSION_DOMAIN_FILES =
+    listOf("auth/SessionStore.kt", "auth/LoginAttemptTracker.kt", "auth/AdminPasswordAuthenticator.kt")
+
 /** Source text with `//` and `/* */` comments stripped, so a comment mentioning a forbidden
  * package (e.g. in a KDoc example) never trips the scan, but any real reference — import or
  * fully-qualified use in a function body — does. */
@@ -66,5 +77,55 @@ class ArchitectureTest {
             listOf("agents/AgentCertificateStandings.kt", "enrollment/EnrollmentTokens.kt").map { File(mainRoot, it) }
         val callers = ktFiles(mainRoot).filter { SESSIONS_SYSTEM_CALL.containsMatchIn(it.readText()) }
         assertEquals(allowed.toSet(), callers.toSet(), "sessions.system callers must match ADR 0013's list exactly")
+    }
+
+    /** The text of every `interface *Api { ... }` block, braces balanced, in [file]. */
+    private fun apiPortBlocks(file: File): List<String> {
+        val text = withoutComments(file.readText())
+        val results = mutableListOf<String>()
+        for (match in Regex("""interface \w*Api\b[^{]*\{""").findAll(text)) {
+            var depth = 1
+            var i = match.range.last + 1
+            while (i < text.length && depth > 0) {
+                when (text[i]) {
+                    '{' -> depth++
+                    '}' -> depth--
+                }
+                i++
+            }
+            results += text.substring(match.range.first, i)
+        }
+        return results
+    }
+
+    @Test
+    fun `the Api ports declare no HTTP request, response or Spring web types`() {
+        val offenders = mutableListOf<String>()
+        for (file in ktFiles(File(mainRoot, "api"))) {
+            for (block in apiPortBlocks(file)) {
+                val hits = API_PORT_FORBIDDEN_TYPE.findAll(block).map { it.value }.toSet()
+                if (hits.isNotEmpty()) offenders += "${file.path}: $hits"
+            }
+        }
+        assertTrue(offenders.isEmpty(), "api ports depend on HTTP types:\n${offenders.joinToString("\n")}")
+    }
+
+    @Test
+    fun `the api package never references the auth package`() {
+        val offenders =
+            ktFiles(File(mainRoot, "api")).filter {
+                AUTH_PACKAGE_REFERENCE.containsMatchIn(withoutComments(it.readText()))
+            }
+        assertTrue(offenders.isEmpty(), "api referencing auth:\n${offenders.joinToString("\n") { it.path }}")
+    }
+
+    @Test
+    fun `the session domain classes have no HTTP or Spring web dependency`() {
+        val offenders =
+            SESSION_DOMAIN_FILES
+                .map { File(mainRoot, it) }
+                .filter { SESSION_DOMAIN_FORBIDDEN.containsMatchIn(withoutComments(it.readText())) }
+        val message = "session domain classes depend on HTTP:\n${offenders.joinToString("\n") { it.path }}"
+        assertTrue(offenders.isEmpty(), message)
     }
 }

@@ -20,7 +20,7 @@ private const val NIBBLE_BITS = 4
 private const val HEX_CHARS_PER_BYTE = 2
 
 /** An in-memory server-side administrator session (D2, Р7): no cap on how many, no persistence. */
-data class Session(
+data class AdminSession(
     val id: String,
     val tenantId: UUID,
     val createdAt: Instant,
@@ -36,17 +36,19 @@ class SessionStore(
     private val clock: Clock,
     private val random: SecureRandom = SecureRandom(),
 ) {
-    private val sessions = ConcurrentHashMap<String, Session>()
+    private val sessions = ConcurrentHashMap<String, AdminSession>()
 
-    fun create(tenantId: UUID): Session {
+    /** Also sweeps expired sessions: a cheap, bounded opportunity, since nothing else ever iterates the whole map. */
+    fun create(tenantId: UUID): AdminSession {
         val now = clock.instant()
-        val session = Session(newId(), tenantId, now, now)
+        sweepExpired(now)
+        val session = AdminSession(newId(), tenantId, now, now)
         sessions[session.id] = session
         return session
     }
 
     /** The session if [id] names one that is still valid; touching extends its idle deadline to now. */
-    fun touch(id: String): Session? {
+    fun touch(id: String): AdminSession? {
         val now = clock.instant()
         val valid = sessions[id]?.takeIf { isValid(it, now) }
         if (valid == null) {
@@ -61,17 +63,24 @@ class SessionStore(
     /** True when [id] named a session that was removed. */
     fun remove(id: String): Boolean = sessions.remove(id) != null
 
+    /** How many sessions are tracked right now, expired or not; for tests only. */
+    internal fun trackedSessions(): Int = sessions.size
+
     /** min(last activity + 12h, login + 7d), as shown to the client (Р1). */
-    fun expiresAt(session: Session): Instant {
+    fun expiresAt(session: AdminSession): Instant {
         val idleDeadline = session.lastActivityAt + IDLE_TIMEOUT
         val absoluteDeadline = session.createdAt + ABSOLUTE_TIMEOUT
         return minOf(idleDeadline, absoluteDeadline)
     }
 
     private fun isValid(
-        session: Session,
+        session: AdminSession,
         now: Instant,
     ): Boolean = now.isBefore(expiresAt(session))
+
+    private fun sweepExpired(now: Instant) {
+        sessions.values.removeIf { !isValid(it, now) }
+    }
 
     /** 32 random bytes (256 bits, well over the 128-bit floor) as lowercase hex. */
     private fun newId(): String {

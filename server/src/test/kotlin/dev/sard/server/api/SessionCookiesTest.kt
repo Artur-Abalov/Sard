@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
-package dev.sard.server.auth
+package dev.sard.server.api
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
