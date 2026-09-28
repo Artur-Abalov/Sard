@@ -258,6 +258,91 @@ func TestCallEnrollTimeoutAfterTheRequestWasSentMarksTheTokenMaybeSpent(t *testi
 	}
 }
 
+// CallEnroll must reject a response that is missing exactly one of the
+// three identity fields, even when the other two are present — a response
+// missing only AgentId (say) is just as useless as one missing everything.
+func TestCallEnrollTreatsAResponseMissingExactlyOneIdentityFieldAsAgentError(t *testing.T) {
+	cases := map[string]func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error){
+		"missing AgentId only": func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+			return &agentv1.EnrollResponse{AgentId: "", CertificateChainPem: "cert", CaBundlePem: "ca"}, nil
+		},
+		"missing CertificateChainPem only": func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+			return &agentv1.EnrollResponse{AgentId: "a1", CertificateChainPem: "", CaBundlePem: "ca"}, nil
+		},
+		"missing CaBundlePem only": func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+			return &agentv1.EnrollResponse{AgentId: "a1", CertificateChainPem: "cert", CaBundlePem: ""}, nil
+		},
+	}
+	for name, answer := range cases {
+		t.Run(name, func(t *testing.T) {
+			s := &classifyServer{answer: answer}
+			conn := dialClassifyServer(t, s)
+			_, err := enroll.CallEnroll(context.Background(), conn, &agentv1.EnrollRequest{})
+			var eerr *enroll.Error
+			if !errors.As(err, &eerr) {
+				t.Fatalf("error type = %T, want *enroll.Error", err)
+			}
+			if eerr.Class != enroll.ClassAgentError {
+				t.Fatalf("class = %q, want agent-error", eerr.Class)
+			}
+		})
+	}
+}
+
+// errorInfoReason must only recognize ErrorInfo from the server's own
+// domain (sard.dev); a differently-domained ErrorInfo carrying a
+// coincidentally matching reason string must not be read as if it were the
+// server's own classification (F1's connection-drop fix depends on
+// classifyBareStatus running instead in that case).
+func TestCallEnrollIgnoresErrorInfoFromAForeignDomain(t *testing.T) {
+	s := &classifyServer{answer: func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+		st, err := status.New(codes.Unavailable, "enroll refused").WithDetails(&errdetails.ErrorInfo{Reason: "TOKEN_USED", Domain: "not-sard.example"})
+		if err != nil {
+			panic(err)
+		}
+		return nil, st.Err()
+	}}
+	conn := dialClassifyServer(t, s)
+	_, err := enroll.CallEnroll(context.Background(), conn, &agentv1.EnrollRequest{})
+	var eerr *enroll.Error
+	if !errors.As(err, &eerr) {
+		t.Fatalf("error type = %T, want *enroll.Error", err)
+	}
+	// A foreign-domain ErrorInfo must be ignored entirely: classifyBareStatus
+	// reads the bare Unavailable code as temporary, not classifyReason
+	// reading "TOKEN_USED" as a token refusal.
+	if eerr.Class != enroll.ClassTemporary {
+		t.Fatalf("class = %q, want temporary (foreign-domain ErrorInfo must be ignored)", eerr.Class)
+	}
+	if eerr.Reason == "TOKEN_USED" {
+		t.Fatal("a foreign-domain ErrorInfo's reason must never be read as the server's own classification")
+	}
+}
+
+// isBareTemporaryCode treats a bare (no ErrorInfo) Canceled the same as
+// DeadlineExceeded and Unavailable: all three mean the request's outcome
+// is unknown, not an unforeseen server response. TestCallEnrollClassifiesAConnectionDropAfterSendingAsTemporaryWithTokenMaybeSpent
+// exercises this indirectly (a dropped connection can surface as either
+// Canceled or Unavailable depending on timing) but does not reliably pin
+// down Canceled specifically; this test does, deterministically.
+func TestCallEnrollClassifiesABareCanceledStatusAsTemporary(t *testing.T) {
+	s := &classifyServer{answer: func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+		return nil, status.Error(codes.Canceled, "canceled")
+	}}
+	conn := dialClassifyServer(t, s)
+	_, err := enroll.CallEnroll(context.Background(), conn, &agentv1.EnrollRequest{})
+	var eerr *enroll.Error
+	if !errors.As(err, &eerr) {
+		t.Fatalf("error type = %T, want *enroll.Error", err)
+	}
+	if eerr.Class != enroll.ClassTemporary {
+		t.Fatalf("class = %q, want temporary", eerr.Class)
+	}
+	if !eerr.TokenMaybeSpent {
+		t.Fatal("want TokenMaybeSpent for a bare Canceled status")
+	}
+}
+
 func requireClass(t *testing.T, err error, class enroll.Class, reason string) {
 	t.Helper()
 	var eerr *enroll.Error

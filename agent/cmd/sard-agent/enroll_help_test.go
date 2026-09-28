@@ -42,6 +42,35 @@ func TestHelpListsFlagsTokenSourcesAndExitCodes(t *testing.T) {
 	requireNoneContained(t, strings.ToLower(out), "insecure", "skip", "disable")
 }
 
+// В3 fixes exit code 4 for "identity exists" specifically — a contract
+// value, not whatever the constant happens to hold; every other test in
+// this package compares against exitIdentityExists itself, which would
+// stay green even if the constant's value changed.
+func TestIdentityExistsExitCodeIsFour(t *testing.T) {
+	if exitIdentityExists != 4 {
+		t.Fatalf("exitIdentityExists = %d, want 4 (В3)", exitIdentityExists)
+	}
+	_, out, _ := runEnrollCmdTest("--help")
+	if !strings.Contains(out, "  4  identity exists") {
+		t.Fatalf("help does not print code 4 for identity exists:\n%s", out)
+	}
+}
+
+// hasHelpFlag must recognize each of its three spellings independently —
+// not just when all three happen to be tried together.
+func TestHasHelpFlagRecognizesEachSpellingIndependently(t *testing.T) {
+	for _, spelling := range []string{"-h", "-help", "--help"} {
+		t.Run(spelling, func(t *testing.T) {
+			if !hasHelpFlag([]string{spelling}) {
+				t.Fatalf("hasHelpFlag([%q]) = false, want true", spelling)
+			}
+		})
+	}
+	if hasHelpFlag([]string{"--server", "x"}) {
+		t.Fatal("hasHelpFlag must not fire for an unrelated flag")
+	}
+}
+
 // F8: enrollClassCodes must name every enroll.Class exactly once, at the
 // exit code В3 assigns it, and --help must print each of the eight codes
 // with the word this table gives it — not merely contain the digit

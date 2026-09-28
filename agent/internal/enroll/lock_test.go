@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -80,7 +81,7 @@ func TestLockNeverHasTwoHoldersAtOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for i := 0; i < 5000; i++ {
+			for i := 0; i < 20000; i++ {
 				unlock, err := enroll.Lock(cert)
 				if err != nil {
 					continue
@@ -96,6 +97,86 @@ func TestLockNeverHasTwoHoldersAtOnce(t *testing.T) {
 	wg.Wait()
 	if got := maxHolders.Load(); got > 1 {
 		t.Fatalf("%d holders at once, want at most 1", got)
+	}
+}
+
+// The lock file's content is the holder's pid (so an operator inspecting a
+// stuck lock can tell which process to look at).
+func TestLockWritesThePIDToTheLockFile(t *testing.T) {
+	certFile := filepath.Join(t.TempDir(), "tls.crt")
+	unlock, err := enroll.Lock(certFile)
+	if err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+	defer unlock()
+
+	got, err := os.ReadFile(enroll.LockPath(certFile))
+	if err != nil {
+		t.Fatalf("ReadFile(lock path): %v", err)
+	}
+	want := strconv.Itoa(os.Getpid()) + "\n"
+	if string(got) != want {
+		t.Fatalf("lock file content = %q, want %q", got, want)
+	}
+}
+
+// openFDCount counts this process's open file descriptors via /proc, so a
+// leak (a fd Lock/unlock should have closed but did not) is directly
+// observable without depending on GC or finalizers.
+func openFDCount(t *testing.T) int {
+	t.Helper()
+	entries, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		t.Fatalf("ReadDir(/proc/self/fd): %v", err)
+	}
+	return len(entries)
+}
+
+// Lock must close its file descriptor when a rival already holds the lock —
+// otherwise every refused enroll leaks one fd forever.
+func TestLockDoesNotLeakAFileDescriptorWhenARivalHoldsTheLock(t *testing.T) {
+	certFile := filepath.Join(t.TempDir(), "tls.crt")
+	unlock, err := enroll.Lock(certFile)
+	if err != nil {
+		t.Fatalf("first Lock: %v", err)
+	}
+	defer unlock()
+
+	before := openFDCount(t)
+	for i := 0; i < 200; i++ {
+		if _, err := enroll.Lock(certFile); err == nil {
+			t.Fatal("second Lock unexpectedly succeeded while the first is held")
+		}
+	}
+	after := openFDCount(t)
+	if after > before {
+		t.Fatalf("open fds grew from %d to %d after 200 refused Lock calls", before, after)
+	}
+}
+
+// unlock must close its file descriptor — otherwise every successful
+// enroll leaks one fd forever.
+func TestLockDoesNotLeakAFileDescriptorAcrossManyLockUnlockCycles(t *testing.T) {
+	certFile := filepath.Join(t.TempDir(), "tls.crt")
+	// One warm-up cycle so the lock file already exists before we measure,
+	// matching steady-state behavior.
+	unlock, err := enroll.Lock(certFile)
+	if err != nil {
+		t.Fatalf("warm-up Lock: %v", err)
+	}
+	unlock()
+
+	before := openFDCount(t)
+	for i := 0; i < 200; i++ {
+		unlock, err := enroll.Lock(certFile)
+		if err != nil {
+			t.Fatalf("Lock #%d: %v", i, err)
+		}
+		unlock()
+	}
+	after := openFDCount(t)
+	if after > before {
+		t.Fatalf("open fds grew from %d to %d after 200 Lock/unlock cycles", before, after)
 	}
 }
 

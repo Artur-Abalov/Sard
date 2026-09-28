@@ -40,4 +40,18 @@ func TestErrorTextIncludesTheWrappedCauseAndUnwraps(t *testing.T) {
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("errors.Is did not see through to the wrapped os error: %v", err)
 	}
+	// The message set by CheckWritable ("... is not writable") must appear
+	// in Error() text, not just the class.
+	if !strings.Contains(eerr.Error(), "is not writable") {
+		t.Fatalf("Error() = %q, want the msg text in it too", eerr.Error())
+	}
+	// The wrapped os error's own text must appear in Error() as well, not
+	// just be reachable via Unwrap.
+	wrapped := errors.Unwrap(err)
+	if wrapped == nil {
+		t.Fatal("want a non-nil wrapped error")
+	}
+	if !strings.Contains(eerr.Error(), wrapped.Error()) {
+		t.Fatalf("Error() = %q, want it to contain the wrapped error text %q", eerr.Error(), wrapped.Error())
+	}
 }

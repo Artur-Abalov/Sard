@@ -4,6 +4,8 @@
 package main
 
 import (
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -142,6 +144,38 @@ func TestPositionalArgumentsAndTokenFilePathsAreNeverEchoedBack(t *testing.T) {
 			t.Errorf("stderr echoed the token passed as --token-file: %q", errOut)
 		}
 	})
+}
+
+// В2/F3: parseEnrollFlags must discard the flag package's own error output
+// (fs.SetOutput(io.Discard)) — otherwise a bad --timeout value that
+// contains a token-looking string leaks it to the process's real
+// os.Stderr, verbatim and unredacted, even though the redacted copy this
+// command prints through its own injected stderr writer looks fine.
+func TestFlagPackageErrorOutputIsDiscardedNotLeakedToRealStderr(t *testing.T) {
+	real := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	defer func() { os.Stderr = real }()
+
+	f := newLocalFixture(t)
+	tokenLike := "sard_" + strings.Repeat("A", 43) + "." + strings.Repeat("0", 64)
+	code, _, _ := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token, "--timeout", tokenLike)
+
+	_ = w.Close()
+	os.Stderr = real
+	captured, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code != exitUsage {
+		t.Fatalf("code = %d, want usage", code)
+	}
+	if len(captured) != 0 {
+		t.Fatalf("the real os.Stderr received %q, want nothing (flag's own output must be discarded)", captured)
+	}
 }
 
 func leakCaseAgentError(t *testing.T) leakCase {

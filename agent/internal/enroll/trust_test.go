@@ -14,6 +14,7 @@ import (
 	"errors"
 	"math/big"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -206,6 +207,13 @@ func TestDialTOFURejectsAChainWithoutARoot(t *testing.T) {
 	addr := listenTLS(t, leaf)
 	_, err := enroll.DialTOFU(context.Background(), enroll.RealDial, addr, ca.fingerprint())
 	requireTrustClass(t, err)
+	// The fingerprint check runs before any chain-building attempt (В17):
+	// with only the leaf presented, no candidate can match the pinned
+	// fingerprint, and the message must say so specifically, not the
+	// generic "no certificate at all" defensive message.
+	if !strings.Contains(err.Error(), "fingerprint") {
+		t.Fatalf("error = %q, want it to name the fingerprint mismatch specifically", err.Error())
+	}
 }
 
 func TestDialTOFURejectsALeafNotSignedByThePinnedRoot(t *testing.T) {
@@ -241,6 +249,36 @@ func TestDialTOFURejectsAHostnameNotInTheCertificateAndListsTheCertNames(t *test
 	}
 }
 
+// certNames must list every SAN, IP addresses included, not just the DNS
+// names — the hostname-mismatch message is the operator's only clue to what
+// the server certificate actually covers.
+func TestDialTOFURejectsAHostnameNotInTheCertificateAndListsIPAddressNames(t *testing.T) {
+	ca := newTestCA(t)
+	addr := listenTLS(t, chainOf(ca.leaf(t, []string{"10.0.0.1", "10.0.0.2"}, 0), ca))
+	_, err := enroll.DialTOFU(context.Background(), enroll.RealDial, addr, ca.fingerprint())
+	var eerr *enroll.Error
+	if !errors.As(err, &eerr) {
+		t.Fatalf("error type = %T, want *enroll.Error", err)
+	}
+	if eerr.Class != enroll.ClassTrust {
+		t.Fatalf("class = %q, want trust", eerr.Class)
+	}
+	if len(eerr.Names) != 2 {
+		t.Fatalf("Names = %v, want both IP address SANs listed", eerr.Names)
+	}
+	for _, want := range []string{"10.0.0.1", "10.0.0.2"} {
+		found := false
+		for _, n := range eerr.Names {
+			if n == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("Names = %v, want %q in it", eerr.Names, want)
+		}
+	}
+}
+
 func TestDialTOFUClassifiesAServerWithoutTLSAsTrust(t *testing.T) {
 	addr := listenNoTLS(t)
 	_, err := enroll.DialTOFU(context.Background(), enroll.RealDial, addr, "0000000000000000000000000000000000000000000000000000000000000000"[:64])
@@ -265,6 +303,28 @@ func TestDialTOFUClassifiesAnUnreachableServerAsTemporaryAndNamesTheAddress(t *t
 	}
 	if eerr.Address != addr {
 		t.Fatalf("address = %q, want %q", eerr.Address, addr)
+	}
+}
+
+// classifyDialError must say "timed out" specifically when the context was
+// already done at dial time, not the generic "could not reach the server"
+// message that applies to every other dial failure.
+func TestDialTOFUNamesATimeoutSpecificallyWhenTheContextWasAlreadyDoneAtDialTime(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already done before dial is ever called
+	dialErr := errors.New("simulated dial failure")
+	fakeDial := func(context.Context, string, string) (net.Conn, error) { return nil, dialErr }
+
+	_, err := enroll.DialTOFU(ctx, fakeDial, "127.0.0.1:9999", "0000000000000000000000000000000000000000000000000000000000000000"[:64])
+	var eerr *enroll.Error
+	if !errors.As(err, &eerr) {
+		t.Fatalf("error type = %T, want *enroll.Error", err)
+	}
+	if eerr.Class != enroll.ClassTemporary {
+		t.Fatalf("class = %q, want temporary", eerr.Class)
+	}
+	if !strings.Contains(err.Error(), "timed out connecting") {
+		t.Fatalf("error = %q, want it to say the context timed out, not the generic dial-failure message", err.Error())
 	}
 }
 

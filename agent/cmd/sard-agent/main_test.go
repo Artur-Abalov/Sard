@@ -58,6 +58,22 @@ func TestMissingConfigIsAUsageError(t *testing.T) {
 	}
 }
 
+// "enroll" alone, with no other arguments, must still dispatch to the
+// enroll subcommand (len(args) > 0, not > 1 — a boundary a "just enroll,
+// no flags" invocation is the only way to exercise).
+func TestEnrollWithNoOtherArgumentsDispatchesToEnroll(t *testing.T) {
+	code, _, errOut := runAgent("enroll")
+	if code != exitUsage {
+		t.Fatalf("code = %d, want usage", code)
+	}
+	if strings.Contains(errOut, "--config <path> is required") {
+		t.Fatalf("stderr = %q: dispatched to the agent command, not enroll", errOut)
+	}
+	if !strings.Contains(errOut, "enrollment token") {
+		t.Fatalf("stderr = %q, want the enroll subcommand's own missing-token message", errOut)
+	}
+}
+
 func TestUnknownFlagIsAUsageError(t *testing.T) {
 	code, _, errOut := runAgent("--listen", ":9090")
 	if code != 2 || !strings.Contains(errOut, "flag provided but not defined: -listen") {

@@ -658,3 +658,307 @@ gate: PASSED (agent, fast)
 ```
 
 Файлы: `agent/internal/enroll/{lock,write}.go` + `lock_test.go`, `write_test.go` не тронут дополнительно в этой правке; `agent/cmd/sard-agent/{enroll_flags,enroll_run}.go`, `agent/cmd/sard-agent/{enroll_local,enroll_leak}_test.go`, `docs/operations/agent-enroll.md`. Не тронуты защищённые файлы.
+
+## hardener: mutation testing on the A2a+A2b diff (2026-09-28)
+
+Scope: `git diff 4290579..HEAD -- agent/` — `agent/internal/enroll`,
+`agent/internal/secrets`, `agent/internal/config` (`address.go` only),
+`agent/cmd/sard-agent` (`enroll_flags.go`, `enroll_run.go`,
+`enroll_report.go`, `main.go`'s A1 wiring: `isEnrollCommand`/`runAgentCmd`
+split and the `secrets.CheckAll` call in `start`). `main.go`'s
+pre-existing code (`shutdownTimeout`, `stopExecutor`, `serve`'s
+`ref.Executor`/`agent.Run` lines) is outside this diff and was not
+touched or tested here.
+
+### BEFORE (verbatim `go-mutesting` scores, per package)
+
+```
+internal/enroll:  0.781095 (157 passed, 44 failed, 6 duplicated, total 201)
+internal/secrets: 0.875000 (21 passed, 3 failed, 2 duplicated, total 24)
+internal/config:  0.921053 (35 passed, 3 failed, 0 duplicated, total 38)
+                   — all 3 survivors in address.go, the file in scope
+cmd/sard-agent:    0.725581 (156 passed, 59 failed, 6 duplicated, total 215)
+```
+
+### AFTER (verbatim, clean re-runs after cleanup — see "A go-mutesting
+pitfall" below)
+
+```
+internal/enroll:  0.955224 (192 passed, 9 failed, 6 duplicated, total 201)
+internal/secrets: 0.958333 (23 passed, 1 failed, 2 duplicated, total 24)
+internal/config:  0.947368 (36 passed, 2 failed, 0 duplicated, total 38)
+cmd/sard-agent:    0.930233 (200 passed, 15 failed, 6 duplicated, total 215)
+```
+
+Survivors before → after: enroll 44→9, secrets 3→1, config 3→2,
+cmd/sard-agent 59→15. Every remaining survivor is documented below —
+none is a gap a test failed to close by oversight.
+
+### New tests, by file
+
+`agent/internal/enroll`: `classify_test.go` (missing-one-of-three
+identity fields, foreign-domain ErrorInfo ignored, a bare Canceled status
+classified temporary), `csr_test.go` (key/CSR generation failure, via
+`GODEBUG=cryptocustomrand=1` — see note below), `error_test.go`
+(strengthened to check the msg and wrapped-err text actually appear, not
+just the class), `identity_test.go` (ENOTDIR stat errors surfaced for
+both cert and key files, a PEM block with unparsable DER counted
+Unreadable), `lock_test.go` (pid written to the lock file, fd not leaked
+on a refused Lock or on unlock, the concurrency stress test widened
+4×), `token_test.go` (exact malformed-detail text per violation,
+`isLowerHex`'s asymmetric bug), `trust_test.go` (a bare-Canceled-style
+ctx-already-done dial names "timed out" not the generic message, IP
+address SANs listed by name, the fingerprint-mismatch message says
+"fingerprint" specifically), `trust_internal_test.go` (new file,
+white-box: `tofuVerifier`'s first-verdict-wins, unparsable/zero-cert
+`verify()` calls, `parseCerts` propagates a parse failure,
+`ClientHandshake` rejects a non-`*tls.Conn`), `write_test.go` (an
+ENOTDIR `anyTargetExists` error surfaced, `probeWritable` does not leak
+an fd), `write_internal_test.go` (new file, white-box: `syncParent`
+propagates the real `os.Open` error not a nil-receiver's "invalid
+argument", `stage` removes its temp file when the write itself fails —
+forced via a temporary `RLIMIT_FSIZE=1` + `SIGXFSZ` ignored, restored on
+cleanup).
+
+`agent/internal/secrets`: `secrets_test.go` (a missing file does not
+short-circuit later entries, `RealStat` propagates a stat failure instead
+of touching a nil `FileInfo`).
+
+`agent/internal/config`: `address_test.go` (two identical unparsable
+addresses compare unequal, not "both sides errored so fall through to
+comparing empty leftovers").
+
+`agent/cmd/sard-agent`: `enroll_local_test.go` (the `--server` format
+check is what actually catches a syntactically-unparsable address, not
+the downstream config-mismatch check coincidentally agreeing; the token
+file's own read-failure message vs. its empty-file message;
+`--timeout`'s exact boundary text; the extra-argument message),
+`enroll_help_test.go` (each of `-h`/`-help`/`--help` independently,
+`exitIdentityExists == 4` literally), `enroll_timing_test.go`
+(`30*time.Second` literally, not the constant compared to itself),
+`enroll_leak_test.go` (the flag package's own error output really is
+discarded, not merely re-redacted — proven by redirecting the real
+`os.Stderr` and showing a token-looking `--timeout` value used to leak
+into it before the fix), `main_test.go` (`enroll` alone, no other args,
+still dispatches to the enroll subcommand — the `len(args) > 0`
+boundary), `enroll_report_test.go` (new file: every suffix helper —
+`reasonMeaningSuffix`, `addressSuffix`, `namesSuffix`, `codeSuffix` — for
+both the empty and set cases, `reportEnrollError`'s defensive
+non-`*enroll.Error` branch, `enrollHelpCodes()` has exactly 8 rows
+against a fixed independent list), `enroll_run_test.go` (new file: every
+pipeline early return, proven by checking a message or a side effect a
+downstream, legitimately redundant check could not have produced by
+coincidence — see "A masking pitfall" below; `checkHostnameValid`'s four
+boundaries; the hostname read reaches both the CSR's CommonName and the
+request; a successful enroll actually closes its connection, by fd
+count).
+
+### A go-mutesting pitfall this session hit twice
+
+`go-mutesting` mutates a file in place, runs `go test`, and restores the
+original from its own backup — but if the test run is killed from
+outside (this session's own tooling repeatedly hit an external 590s
+wall-clock cap and moved long runs to background, sometimes leaving the
+mutated file and a stray `*.go.tmp` in the working tree when the restore
+step never got to run). This corrupted two later runs silently: a
+`cmd/sard-agent` "after" run showed `1.000000` (impossible — several
+known-equivalent mutants would have to survive) because it was actually
+run against an already-mutated `main.go`; a full `make gate`-equivalent
+run hung for 10 minutes on `TestAnUnusableStateDirStopsBeforeDialing`
+because `serve()`'s `executor.New` error check was still mutated away
+from a previous interrupted run. Both were caught by `git status`
+showing a modified production file (and a `*.go.tmp`) where none should
+exist, and fixed by restoring from the `.tmp` backup or from `git diff`.
+Every score in this section was re-verified against a run that started
+and ended with `git status --porcelain agent/ | grep -v _test.go` empty.
+
+### A test-masking pitfall (two survivors initially miscounted as killed)
+
+Two early "kills" of `enroll_run.go` survivors turned out to be false:
+`runEnrollWithDeps`'s and `resolveEnrollLocals`'s early returns, when
+removed, fall through into `doEnroll`/`loadEnrollConfig` with a
+**zero-value** `enrollOptions` — and the zero value coincidentally fails
+its own way (no token source, unreadable config path) with the *same
+exit code* the removed early return would have produced. A test that
+only checks the exit code cannot tell "the early return fired" from "a
+downstream check happened to agree." Both tests were rewritten to also
+assert the *specific* message text (and, for one, that the downstream
+message is *absent*) — verified red under the mutation, green without
+it, with the mutated file always restored from `git diff` immediately
+after each manual check.
+
+### Documented survivors — internal/enroll (9)
+
+- **`identity.go.7`, equivalent.** `fileExists("")`'s early `return
+  false, nil` removed falls through to `os.Stat("")`, which itself
+  returns an `IsNotExist`-satisfying error on this platform — same
+  `false, nil` result either way (verified with a one-off Go program).
+- **`lock.go.13`, `.14`, equivalent.** `sameFileAtPath`'s two early
+  `return false` (on `f.Stat()` or `os.Stat(path)` failing) removed
+  falls through to `os.SameFile` with one argument a nil `FileInfo`
+  interface; `os.SameFile`'s own type assertion (`fi.(*fileStat)`)
+  always fails on a nil interface, so it already returns `false` —
+  verified directly against `os.SameFile`.
+- **`lock.go.17`, leak-only, not deterministically testable.** The
+  `!sameFileAtPath` branch's `_ = f.Close()` → `_ = f.Close` is a real
+  fd leak, but triggering `!sameFileAtPath` at all requires the same
+  inode-swap race `TestLockNeverHasTwoHoldersAtOnce` targets (F2); that
+  race is what the mutant itself defends against, not something a test
+  can force synchronously without a hook into `Lock`'s internals, which
+  would be a production-code change out of scope here.
+- **`token.go.12`, equivalent (mathematically).** `decodeSecret`'s
+  `len(secret) != 32` check is unreachable given the caller's own
+  `len(s) != secretLen` (43) guard: any 43-character string that
+  `base64.RawURLEncoding.Strict()` decodes successfully decodes to
+  exactly 32 bytes (43 = 4×10+3, and a 3-character trailing group
+  decodes to exactly 2 bytes) — verified directly.
+- **`trust.go.28`, equivalent.** `checkChain(leaf, certs[1:])` →
+  `checkChain(leaf, certs[0:])` adds the leaf itself to the fingerprint
+  search and `Intermediates` pool; a leaf's SPKI fingerprint cannot
+  equal the pinned root's (different keys) and a non-signing extra
+  certificate in `Intermediates` cannot open a new valid chain — the
+  full suite, including the intermediate-CA test, passes unmodified
+  under this mutation.
+- **`trust.go.32`, `.34`, leak-only, not reliably testable.** Both are a
+  `.Close()` dropped on an error path (`dialAndVerify`'s TLS-handshake
+  failure; `newGRPCConn`'s `grpc.NewClient` failure). `.34`'s path
+  (`grpc.NewClient` failing with fixed, valid args) is not practically
+  reachable at all. `.32`'s path *is* reached by several existing tests,
+  but a 500-iteration fd-count check showed only ~3 stray fds, not a
+  linear leak — `rawConn`/`tlsConn` become unreachable the moment
+  `dialAndVerify` returns an error (nothing holds a reference, unlike
+  `lock.go`'s closures), so Go's own connection/fd bookkeeping appears
+  to reclaim them well within any test loop size that finishes in
+  reasonable time. Matches the A3 session's precedent ("`conn.Close` без
+  вызова — дают только утечку соединения, тестом без goleak не видно").
+- **`write.go.9`, tool noise.** `report.json`'s `mutator.originalSourceCode`
+  and `mutatedSourceCode` for this mutant are byte-for-byte identical —
+  `go-mutesting` produced a no-op mutation (verified via
+  `report.json`, not just the empty diff in `--verbose` output). No test
+  can distinguish identical source from itself; not excluded via config
+  (none exists for this), just documented.
+
+### Documented survivors — internal/secrets (1)
+
+- **`secrets.go.7`, unreachable on this platform.** `RealStat`'s
+  `info.Sys().(*syscall.Stat_t)` type-assertion-failure branch only
+  fires on a non-Unix `GOOS` (Windows, Plan9); on Linux `os.Stat`'s
+  `FileInfo.Sys()` always returns `*syscall.Stat_t`. Same category as
+  identity.go.7 above — a defensive branch for a contract this
+  environment's `os` package always upholds.
+
+### Documented survivors — internal/config (2)
+
+- **`address.go.5`, `.6`, equivalent (mathematically).** `hostEqual`'s
+  `ipA != nil && ipB != nil` short-circuit, with either side's `!= nil`
+  hard-coded to `true`, only differs from the original when exactly one
+  of `a`, `b` parses as an IP and the other does not — but IP parsing is
+  case-invariant, so `strings.EqualFold(a, b)` (the fallback the
+  original takes in that case) can never be `true` when exactly one side
+  parses as an IP (if it were, both sides would have to be the same
+  characters modulo case, and then both would parse, contradiction) —
+  and `net.IP(nil).Equal(x)` is `false` for any `x` (verified directly).
+  Both branches converge to `false` on the only inputs where they could
+  possibly differ.
+
+### Documented survivors — cmd/sard-agent (15)
+
+- **`enroll_flags.go.57`, equivalent.** `fs.Usage = func() {}` dropped:
+  `flag.FlagSet`'s default `Usage` also only ever writes to `fs.Output()`,
+  already `io.Discard` (the line above, not this mutant) — the full
+  suite passes unmodified under this mutation.
+- **`enroll_report.go.0`, equivalent.** `make([]enrollClassCode, 0,
+  len(enrollClassCodes)+2)` → `-2`: a capacity is a preallocation hint,
+  `append` grows regardless; verified against the full suite.
+- **`enroll_report.go.16`, equivalent.** `sort.Slice`'s `<` → `<=`:
+  every code in `enrollHelpCodes()` is distinct (0–7), so no two
+  elements ever compare equal — `<` and `<=` produce the identical
+  order.
+- **`enroll_run.go.0`, `.69`, unreachable given `ParseToken`'s own
+  contract.** `parseEnrollToken`'s `else` branch (a token error that is
+  not a `*enroll.TokenError`) is defensive: `enroll.ParseToken` always
+  wraps failures in `malformed()`, which always returns `*TokenError` —
+  verified against the full suite, which passes unmodified.
+- **`enroll_run.go.17`, `.20`, not deterministically testable without a
+  production seam.** `dialAndEnroll`'s early return after
+  `buildIdentityRequest` fails. Forcing `enroll.NewIdentityKey`/
+  `enroll.BuildCSR` to fail (the `GODEBUG=cryptocustomrand=1` +
+  failing-`rand.Reader` technique `csr_test.go` and this file's own unit
+  test use) also breaks the TLS handshake `DialTOFU` must complete
+  first, since `crypto/tls` reads `rand.Reader` directly, unaffected by
+  that `GODEBUG` gate; a reader that "succeeds N times then fails"
+  cannot be tuned reliably because the same process-wide `rand.Reader`
+  is also read concurrently by the fake server's own certificate
+  issuance in the same test binary. `buildIdentityRequest`'s own
+  contract (return a non-`exitOK` code, propagate it) is covered
+  directly (`TestBuildIdentityRequestPropagatesAKeyGenerationFailure`,
+  kills `.19`); only the caller's *use* of that return in `dialAndEnroll`
+  is what these two mutants remove.
+- **`enroll_run.go.21`, `.24`, equivalent.**
+  `x509.MarshalPKCS8PrivateKey` never fails for a valid
+  `*ecdsa.PrivateKey` (P-256 is always a supported key type) — both
+  `marshalKeyPEM`'s own error branch and `writeIdentityAndReport`'s use
+  of it are unreachable given `NewIdentityKey` only ever produces such a
+  key; verified against the full suite.
+- **`enroll_run.go.23`, equivalent.** `WriteIdentity` (`internal/enroll/
+  write.go`) always returns a `Class: ClassWrite` `*enroll.Error`, so
+  `enrollExitCode(eerr.Class)` always equals the same `exitWrite` the
+  code falls back to anyway — verified against the full suite.
+- **`main.go.26`, `.34`, `.35`, `.43`, `.45`, out of scope.** All five
+  are in `main.go` code this diff did not touch: `shutdownTimeout`'s
+  value (3 arithmetic mutants), the `stop()` call already commented
+  `// equivalent mutant` in the source before this session, and `serve`'s
+  `ref.Executor =` / `err = agent.Run(ctx)` lines. Only `isEnrollCommand`
+  and the `secrets.CheckAll` call in `start` are this diff's A1 wiring;
+  `main.go.32` (the `isEnrollCommand` `len(args) > 0` boundary) *is* in
+  scope and is killed by `TestEnrollWithNoOtherArgumentsDispatchesToEnroll`.
+
+### Verified
+
+```
+cd agent && GOWORK='' go vet ./... && GOWORK='' go test -count=1 -timeout 90s ./...
+# all packages ok
+git status --porcelain agent/ | grep -v _test.go   # empty before and after every score above
+make license-check                                 # 284 files OK
+```
+
+`./scripts/gate.sh agent` (full, mutation testing included), dословно
+(the trailing survivor list is every other package's pre-existing
+`internal/transport`/`internal/executor`/`plugins` mutants — outside
+this diff, not investigated here):
+
+```
+coverage: 97.0%
+
+== gate agent: CRAP <= 6
+    CRAP   CC   COVER  FUNCTION
+     6.0    6  100.0%  cmd/sard-agent/enroll_run.go:resolveEnrollLocals
+     6.0    6  100.0%  internal/config/config.go:Config.validate
+     6.0    6  100.0%  internal/enroll/classify.go:classifyReason
+     6.0    6  100.0%  internal/executor/command.go:Executor.check
+     6.0    6  100.0%  internal/executor/command.go:Executor.verdict
+     6.0    6  100.0%  internal/executor/executor.go:Executor.Shutdown
+     6.0    6  100.0%  internal/executor/reporter.go:reporter.Progress
+     6.0    6  100.0%  internal/executor/store.go:readRecord
+     6.0    6  100.0%  internal/secrets/secrets.go:CheckAll
+     6.0    6  100.0%  internal/secrets/secrets.go:secretEntries
+
+== gate agent: integration tests with the pinned restic
+ok  	github.com/Artur-Abalov/sard/agent/internal/restic	17.376s
+
+== gate agent: mutation score >= 0.80
+mutation score: 0.908756
+
+gate: PASSED (agent, full)
+```
+
+### Files
+
+New: `agent/cmd/sard-agent/{enroll_report,enroll_run}_test.go`,
+`agent/internal/enroll/{trust_internal,write_internal}_test.go`.
+Changed (tests only — every production file this diff touches was
+verified `git diff`-clean before and after each mutation score above):
+`agent/cmd/sard-agent/{enroll_help,enroll_leak,enroll_local,
+enroll_timing,main}_test.go`, `agent/internal/config/address_test.go`,
+`agent/internal/enroll/{classify,csr,error,identity,lock,token,trust,
+write}_test.go`, `agent/internal/secrets/secrets_test.go`.

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -200,6 +201,25 @@ func TestAGenuineStatFailureIsReported(t *testing.T) {
 	}
 }
 
+// A missing file must only skip that one entry, not the rest of the list:
+// a later entry with a genuine violation must still be reported.
+func TestAMissingSecretFileDoesNotShortCircuitLaterEntries(t *testing.T) {
+	files := allOwnerOnly()
+	delete(files, "/etc/sard/agent.key") // first entry: missing, must be skipped
+	bad := files["/etc/sard/main.pass"]  // a later entry: a genuine violation
+	bad.Mode = 0o644
+	files["/etc/sard/main.pass"] = bad
+
+	err := secrets.CheckAll(fullConfig(), agentUID, statOf(files))
+	var serr *secrets.Error
+	if !errors.As(err, &serr) {
+		t.Fatalf("error type = %T, want *secrets.Error (a missing earlier file must not hide a later violation)", err)
+	}
+	if serr.Key != "repositories[0].password_file" {
+		t.Fatalf("key = %q, want repositories[0].password_file", serr.Key)
+	}
+}
+
 func TestRealStatReportsModeAndOwner(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/secret"
@@ -215,6 +235,18 @@ func TestRealStatReportsModeAndOwner(t *testing.T) {
 	}
 	if info.UID != uint32(os.Getuid()) {
 		t.Fatalf("uid = %d, want %d", info.UID, os.Getuid())
+	}
+}
+
+// RealStat must propagate the underlying os.Stat error for a path that does
+// not exist, not proceed to call methods on a nil os.FileInfo.
+func TestRealStatPropagatesAStatFailure(t *testing.T) {
+	_, err := secrets.RealStat(filepath.Join(t.TempDir(), "does-not-exist"))
+	if err == nil {
+		t.Fatal("RealStat: want an error for a missing path")
+	}
+	if !os.IsNotExist(err) {
+		t.Fatalf("err = %v, want the original os.Stat not-exist error", err)
 	}
 }
 

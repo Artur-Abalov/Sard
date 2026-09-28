@@ -33,6 +33,15 @@ func TestAddressEqualRejectsUnparsableAddresses(t *testing.T) {
 	}
 }
 
+// Two identical but unparsable strings must still compare unequal: an
+// early "either side failed to parse" refusal, not a fall-through that
+// ends up comparing the (both empty) leftover host/port pieces.
+func TestAddressEqualRejectsTwoIdenticalUnparsableAddresses(t *testing.T) {
+	if config.AddressEqual("not-a-host-port-pair", "not-a-host-port-pair") {
+		t.Fatal("want not equal: neither side parses as host:port, even though the strings are identical")
+	}
+}
+
 func TestAddressEqualComparesDNSNamesLiterally(t *testing.T) {
 	if config.AddressEqual("backup.example.org:9090", "sard.example.com:9090") {
 		t.Fatal("want not equal: different hosts")

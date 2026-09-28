@@ -143,6 +143,11 @@ func TestTokenFileNotFound(t *testing.T) {
 	if code != exitUsage || !strings.Contains(errOut, missing) {
 		t.Fatalf("code = %d, stderr = %q, want usage naming %q", code, errOut, missing)
 	}
+	// Distinguishes the real os.ReadFile failure from the empty-file
+	// message below, which also happens to echo the path.
+	if !strings.Contains(errOut, "reading --token-file") {
+		t.Fatalf("stderr = %q, want it to say reading the token file failed, not that it is empty", errOut)
+	}
 	f.requireServerNotContacted(t)
 }
 
@@ -249,19 +254,49 @@ func TestUnparsableServerAddressIsAUsageError(t *testing.T) {
 	}
 }
 
+// Addresses that fail net.SplitHostPort's own syntax (as opposed to
+// "sard.example.com:0" or ":65536" above, which parse fine syntactically
+// and are instead caught later, as a config mismatch) must be caught by
+// --server's own format check (validateEnrollFlagValues) specifically —
+// not by some other, coincidentally same-exit-code check downstream
+// (checkAddressConflict also rejects a --server that merely differs from
+// server.address, with a message that also happens to echo addr, so a
+// weaker "contains addr" assertion cannot tell the two apart).
+func TestUnparsableServerAddressIsCaughtByItsOwnFormatCheck(t *testing.T) {
+	for _, addr := range []string{"sard.example.com", "https://sard.example.com:9090", "::1:9090"} {
+		t.Run(addr, func(t *testing.T) {
+			f := newLocalFixture(t)
+			code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--server", addr, "--token", f.token)
+			if code != exitUsage {
+				t.Fatalf("addr %q: code = %d, want usage; stderr = %q", addr, code, errOut)
+			}
+			if !strings.Contains(errOut, "is not a valid host:port address") {
+				t.Errorf("stderr does not say the address is not a valid host:port address: %q", errOut)
+			}
+			f.requireServerNotContacted(t)
+		})
+	}
+}
+
 // Неизвестный флаг или лишний аргумент — ошибка использования
 func TestUnknownFlagOrExtraArgumentIsAUsageError(t *testing.T) {
 	f := newLocalFixture(t)
 	t.Run("с флагом --insecure", func(t *testing.T) {
-		code, _, _ := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token, "--insecure")
+		code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token, "--insecure")
 		if code != exitUsage {
 			t.Fatalf("code = %d, want usage", code)
 		}
+		if errOut == "" {
+			t.Fatal("stderr is empty, want the flag package's own error message")
+		}
 	})
 	t.Run(`с лишним аргументом "extra"`, func(t *testing.T) {
-		code, _, _ := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token, "extra")
+		code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token, "extra")
 		if code != exitUsage {
 			t.Fatalf("code = %d, want usage", code)
+		}
+		if !strings.Contains(errOut, "unexpected extra argument") {
+			t.Fatalf("stderr = %q, want it to say there was an unexpected extra argument", errOut)
 		}
 	})
 	f.requireServerNotContacted(t)
@@ -341,15 +376,38 @@ func writeConfigMissingKey(t *testing.T, h *host, missing string) string {
 
 // Недопустимый таймаут — ошибка использования
 func TestInvalidTimeoutIsAUsageError(t *testing.T) {
-	for _, v := range []string{"0s", "-1s", "abc"} {
+	for _, v := range []string{"0s", "-1s"} {
 		t.Run(v, func(t *testing.T) {
 			f := newLocalFixture(t)
 			code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token, "--timeout", v)
 			if code != exitUsage {
 				t.Fatalf("timeout %q: code = %d, want usage; stderr = %q", v, code, errOut)
 			}
+			// "0s"/"-1s" parse fine as a time.Duration (validateEnrollFlagValues
+			// rejects them for not being positive); this message, not the flag
+			// package's own "invalid value" text, is what must be present.
+			if !strings.Contains(errOut, "must be a positive duration") {
+				t.Fatalf("stderr = %q, want it to say the timeout must be positive", errOut)
+			}
 			f.requireServerNotContacted(t)
 		})
+	}
+	t.Run("abc", func(t *testing.T) {
+		f := newLocalFixture(t)
+		code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token, "--timeout", "abc")
+		if code != exitUsage {
+			t.Fatalf("code = %d, want usage; stderr = %q", code, errOut)
+		}
+		f.requireServerNotContacted(t)
+	})
+}
+
+// The smallest positive timeout (1ns) must be accepted — only <= 0 is a
+// usage error, not <= 1ns.
+func TestASingleNanosecondTimeoutIsAccepted(t *testing.T) {
+	_, code := parseEnrollFlags([]string{"--token", "x", "--timeout", "1ns"}, io.Discard)
+	if code != exitOK {
+		t.Fatalf("code = %d, want 0 (1ns is a positive duration)", code)
 	}
 }
 

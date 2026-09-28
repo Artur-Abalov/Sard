@@ -79,6 +79,52 @@ func TestParseTokenErrorNeverContainsTheToken(t *testing.T) {
 	}
 }
 
+// Each malformed-input class must produce the specific detail text naming
+// the violation actually found, not just any TOKEN_MALFORMED error — a
+// weaker check (reason only) cannot tell "the '.' separator check ran"
+// from "some later, unrelated check happened to fail on the same input".
+func TestParseTokenErrorDetailNamesTheSpecificViolationFound(t *testing.T) {
+	cases := map[string]struct {
+		input      string
+		wantDetail string
+	}{
+		"no dots at all": {
+			input:      "sard_" + strings.Repeat("A", 43) + vectorFingerprint,
+			wantDetail: "one '.' separator",
+		},
+		"two dots": {
+			input:      vectorToken + ".extra",
+			wantDetail: "one '.' separator",
+		},
+		"secret 42 chars": {
+			input:      "sard_" + strings.Repeat("A", 42) + "." + vectorFingerprint,
+			wantDetail: "want 43 characters",
+		},
+		"non base64url secret": {
+			input:      "sard_" + strings.Repeat("+", 43) + "." + vectorFingerprint,
+			wantDetail: "not canonical base64url",
+		},
+		// isLowerHex must reject a byte below '0' (ASCII 0x30) even though
+		// it is <= '9': a naive range check that only tests the upper bound
+		// would wrongly accept it.
+		"fingerprint has a byte below '0'": {
+			input:      "sard_" + strings.Repeat("A", 43) + "." + "/" + vectorFingerprint[1:],
+			wantDetail: "not lowercase hex",
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := enroll.ParseToken(c.input)
+			if err == nil {
+				t.Fatal("ParseToken: want an error")
+			}
+			if !strings.Contains(err.Error(), c.wantDetail) {
+				t.Fatalf("error = %q, want it to contain %q", err.Error(), c.wantDetail)
+			}
+		})
+	}
+}
+
 func TestNormalizeTokenFileDropsOneTrailingNewline(t *testing.T) {
 	cases := map[string][]byte{
 		"LF":   []byte(vectorToken + "\n"),

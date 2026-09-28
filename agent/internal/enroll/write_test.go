@@ -57,6 +57,49 @@ func TestCheckWritableRejectsADirectoryThatIsActuallyAFile(t *testing.T) {
 	}
 }
 
+// anyTargetExists must surface a Lstat error that is not "does not exist"
+// (a broken parent path here) instead of silently treating the target as
+// absent and proceeding to stage over it.
+func TestWriteIdentitySurfacesAnUnexpectedStatErrorFromAnyTargetExists(t *testing.T) {
+	dir := t.TempDir()
+	notADir := filepath.Join(dir, "not-a-dir")
+	if err := os.WriteFile(notADir, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	files := enroll.Files{
+		KeyFile:  filepath.Join(dir, "tls.key"),
+		CertFile: filepath.Join(notADir, "tls.crt"), // parent is a file: ENOTDIR, not ENOENT
+		CAFile:   filepath.Join(dir, "ca.crt"),
+	}
+	err := enroll.WriteIdentity(files, []byte("key"), []byte("cert"), []byte("ca"))
+	var eerr *enroll.Error
+	if !errors.As(err, &eerr) || eerr.Class != enroll.ClassWrite {
+		t.Fatalf("err = %v, want a ClassWrite *enroll.Error", err)
+	}
+	// This exact message only comes from anyTargetExists's own error
+	// propagation, not from stage()'s separate "writing %s failed" path —
+	// it is what proves the Lstat error reached the caller instead of
+	// being silently swallowed.
+	if !strings.Contains(eerr.Error(), "checking the existing identity failed") {
+		t.Fatalf("err = %v, want the anyTargetExists error surfaced specifically", err)
+	}
+}
+
+// CheckWritable's probeWritable must close the temporary file it creates —
+// otherwise every check leaks one fd.
+func TestCheckWritableDoesNotLeakAFileDescriptorWhileProbing(t *testing.T) {
+	before := openFDCount(t)
+	for i := 0; i < 200; i++ {
+		if err := enroll.CheckWritable(threeFiles(t)); err != nil {
+			t.Fatalf("CheckWritable: %v", err)
+		}
+	}
+	after := openFDCount(t)
+	if after > before {
+		t.Fatalf("open fds grew from %d to %d after 200 CheckWritable calls", before, after)
+	}
+}
+
 func TestWriteIdentityWritesAllThreeFilesWithTheirModesRegardlessOfUmask(t *testing.T) {
 	old := setUmask(0o000)
 	defer setUmask(old)

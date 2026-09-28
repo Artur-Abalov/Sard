@@ -71,8 +71,12 @@ func TestWithoutATimeoutFlagTheCommandWaits30Seconds(t *testing.T) {
 		done <- code
 	}()
 	d := clk.waitTimer(t)
-	if d != defaultEnrollTimeout {
-		t.Fatalf("timer duration = %v, want %v", d, defaultEnrollTimeout)
+	// В14's contract value, not whatever defaultEnrollTimeout happens to
+	// hold — comparing against the same constant the code uses would stay
+	// green even if that constant's value drifted from the spec (and from
+	// --help's own "default 30s" text).
+	if d != 30*time.Second {
+		t.Fatalf("timer duration = %v, want 30s", d)
 	}
 	select {
 	case <-done:
