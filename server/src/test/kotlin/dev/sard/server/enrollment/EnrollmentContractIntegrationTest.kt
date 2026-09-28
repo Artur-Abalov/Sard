@@ -221,7 +221,11 @@ class EnrollmentContractIntegrationTest(
     fun `Испорченная копия настоящего токена не трогает его`() {
         val issued = newToken()
         val parsed = EnrollmentToken.parse(issued.reveal())
-        val corrupted = "sard_${parsed.secret.encoded()}.${parsed.fingerprint.hex.uppercase()}"
+        // Same secret, an upper-cased (and thus malformed) fingerprint: derived from the public
+        // token string, not EnrollmentSecret.encoded() (internal — see docs/adr/0006, this class
+        // is not exempt from that boundary).
+        val secretText = issued.reveal().substringAfter("sard_").substringBefore('.')
+        val corrupted = "sard_$secretText.${parsed.fingerprint.hex.uppercase()}"
         assertEquals(Reason.TOKEN_MALFORMED, rejectionReason { enrollment.enroll(corrupted, csr, "db1") })
         val row = jdbc.queryForMap("select used_at, agent_id from enrollment_tokens where id = ?", issued.id)
         assertEquals(mapOf<String, Any?>("used_at" to null, "agent_id" to null), row)

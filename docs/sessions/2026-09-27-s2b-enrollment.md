@@ -52,3 +52,15 @@
 
 ## Не сделано
 - Всё с меткой `@blocked-d2`: REST API токенов и консоль ждут D2 → W1b и S8a.
+
+## hardener (2026-09-28)
+- Прогон прерван перезапуском контейнера; частичная работа уцелела в рабочем дереве, число выживших до начала работы потеряно. Выжившие на момент возобновления → после: `ServerNamesTest` 6 → 0, `AgentEndpointTest` 9 → 0, `FileCertificateAuthorityTest` 18 → 0, `CertificatesTest` — `Certificates.server` раньше не тестировался, 45 мутантов найдены и убиты.
+- `mutflow:falsePositive` (2): `AgentEndpoint.bracketedShape` — `indexOf(']')` там никогда не 0 (строка начинается с `[`); `Ipv6Literal.expandGroups` — проверка `doublyCompressed` недостижима (лишний `::` всегда даёт пустую группу, которую отвергает `parseHextet`). Второе обосновано дублированием конвейера и 200 000 случайных входов, не доказательством.
+- Найдено: `EnrollmentContractIntegrationTest` вызывал `internal`-метод `EnrollmentSecret.encoded()`; mutflow компилирует main вторым модулем (`mutatedMain`) с другим суффиксом имени internal-членов → `NoSuchMethodError` в мутационном прогоне. Исправлено в тесте через публичную строку токена.
+- Код, работающий с базой (`Enrollment`, `EnrollmentTokens`, `TenantSessions`), проверяется только интеграционными тестами Spring — mutflow его не мутирует (ADR 0006), его держит покрытие JaCoCo.
+- `make gate M=server` — `gate: PASSED (server, full)`: покрытие 96.9% (инструкции), CRAP ≤ 6 (худшие — `AgentEndpointResolver.resolve`, `tryParse`, `ServerNames.covers`, по 6.0), выживших нет; 4047 запусков тестов с мутантами, 0 падений. Первый прогон упал с `EOFException` — параллельный запуск хука SubagentStop без блокировки; после очистки — зелёный.
+
+## Рекомендации на потом (не в S2b)
+- coder: удалить мёртвую проверку `doublyCompressed` в `Ipv6Literal.kt` вместе с её `falsePositive`.
+- coder: `CaDirectory.removeStaleStaging()` (S2a, CaDirectory.kt:85-93) — гонка TOCTOU с уборкой staging у параллельного `publish()`: исчезнувшая запись даёт `NoSuchFileException`. Видели один раз в `CaDirectoryTest` при параллельных стартах; нужно терпеть исчезнувшую запись.
+- Владелец: SubagentStop → `make gate-fast` (`.claude/settings.json`), решение по незакоммиченной правке `scripts/gate.sh`, `LC_ALL` в `scripts/crap.sh` и `scripts/claude/on-edit.sh`.
