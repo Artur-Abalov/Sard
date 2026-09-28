@@ -12,6 +12,7 @@
 #   scripts/package-agent.sh              amd64 and arm64
 #   scripts/package-agent.sh arm64        one architecture
 #   VERSION=v1.2.3 scripts/package-agent.sh
+#   DIST=/tmp/out scripts/package-agent.sh amd64   another output directory
 #
 # Every package carries Sard's license (AGPL-3.0), restic's (BSD-2) and the
 # license texts of all Go modules compiled into sard-agent.
@@ -19,7 +20,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="$ROOT/.bin"
-DIST="$ROOT/dist"
+DIST="${DIST:-$ROOT/dist}"
 VERSION="${VERSION:-$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || echo dev)}"
 RESTIC_VERSION="$(sed -n 's/^version=//p' "$ROOT/agent/internal/restic/restic-version")"
 COMMIT="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
