@@ -621,3 +621,40 @@ gate: PASSED (agent, fast)
 чисто локальные, один вынесенный хелпер и один комментарий), но по
 правилу пайплайна ход передаётся architect для итогового структурного
 ревью A2a+A2b после F1–F13.
+
+## coder: architect re-review, три правки (2026-09-28, после коммита a1850b3)
+
+1. **`internal/enroll/lock.go` — гонка `flock` + `unlink` на разблокировке.** Между `Flock` держащего процесса B и `unlink`+`close` процесса A есть окно: B получает `flock` на уже отвязанный inode1, а C тем временем создаёт новый inode2 по тому же пути и получает `flock` на него — два держателя одновременно (architect воспроизвёл стресс-пробой 8×5000). Исправлено: после успешного `Flock` дополнительно сверяется `f.Stat()` (по дескриптору) с `os.Stat(path)` (по пути) через `os.SameFile`; несовпадение — тот же отказ `ClassTemporary` «an enrollment is already in progress». Тест `TestLockNeverHasTwoHoldersAtOnce` (8 горутин × 5000 `Lock`/`unlock`, `maxHolders` через CAS) — красный до правки (`3 holders at once`, воспроизводится за ~0.2 с, число итераций не снижалось — гонка ловится надёжно и быстро), зелёный после (проверено 5 прогонов подряд, `go test -count=5`).
+2. **`internal/enroll/write.go` `CheckWritable` не ловила цель-не-файл до сети.** `checkTargetReplaceable` (не обычный файл — каталог, симлинк) была только внутри `WriteIdentity`, уже после успешного `Enroll`: токен расходовался напрасно (probe architect: `tls.ca_file` — непустой каталог → код 7, сообщение «token has been spent»). Теперь та же проверка выполняется в `CheckWritable` по каждому из трёх путей, до захвата блокировки и обращения к сети; сообщение называет ключ конфига (`tls.ca_file` и т. п.). Проверка в `WriteIdentity` осталась (defence in depth — TOCTOU-гонка между `CheckWritable` и записью). Тест `TestATargetPathThatIsADirectoryIsRefusedBeforeContactingTheServer` (`enroll_local_test.go`) — красный до правки (код 0→ на самом деле сервер успевал ответить, сообщение говорило «the enrollment token has been spent», сервер получал вызов), зелёный после (код 7, сообщение называет `tls.ca_file`, не говорит «spent», сервер не контактирован). `docs/operations/agent-enroll.md` дополнен: путь-не-файл (каталог, симлинк) — отказ до сети, код 7.
+3. **Токен всё ещё утекал через другие флаги (F3 не закрыт полностью).** `validateEnrollFlagValues` эхировала `--server %q` без редактирования; `loadEnrollConfig` эхировала путь `--config` и текст `*PathError`; `checkAddressConflict` эхировала `--server`; `fs.SetOutput(stderr)` пропускала прямиком в stderr сообщение самого пакета `flag` вида `invalid value "sard_…" for flag -timeout: ...`. Исправлено: `redactIfToken` переписан на `regexp` (`sard_\S*`), редактирует токен-подобную подстроку в любом месте строки, не только когда вся строка — токен (это заодно закрыло и текст `*PathError`, убрав отдельный `redactedFileError`); вызов добавлен в `validateEnrollFlagValues`, `loadEnrollConfig` (путь и текст ошибки ОС), `checkAddressConflict`; `fs.SetOutput(io.Discard)` — сообщение `flag.Parse` печатается через собственный код с тем же `redactIfToken`. `--help` не затронут (печатается до `fs.Parse`, отдельным путём в stdout) — существующие тесты справки остались зелёными без изменений. Тест `TestATokenPassedAsAnotherFlagsValueIsNeverEchoedBack` (`enroll_leak_test.go`, три подслучая — `--server`, `--config`, `--timeout`) — красный до правки во всех трёх (токен целиком в stderr), зелёный после.
+
+### Проверено
+```
+cd agent && GOWORK='' go test ./...   # все пакеты зелёные
+./scripts/gate.sh agent fast          # PASSED с первого прогона (fetch-restic не падал)
+make license-check                    # 280 files OK
+```
+
+`gate agent fast`, дословно:
+```
+== gate agent: tests + coverage >= 80%
+...
+coverage: 95.5%
+
+== gate agent: CRAP <= 6
+    CRAP   CC   COVER  FUNCTION
+     6.0    6  100.0%  cmd/sard-agent/enroll_run.go:resolveEnrollLocals
+     6.0    6  100.0%  internal/config/config.go:Config.validate
+     6.0    6  100.0%  internal/enroll/classify.go:classifyReason
+     6.0    6  100.0%  internal/executor/command.go:Executor.check
+     6.0    6  100.0%  internal/executor/command.go:Executor.verdict
+     6.0    6  100.0%  internal/executor/executor.go:Executor.Shutdown
+     6.0    6  100.0%  internal/executor/reporter.go:reporter.Progress
+     6.0    6  100.0%  internal/executor/store.go:readRecord
+     6.0    6  100.0%  internal/secrets/secrets.go:CheckAll
+     6.0    6  100.0%  internal/secrets/secrets.go:secretEntries
+
+gate: PASSED (agent, fast)
+```
+
+Файлы: `agent/internal/enroll/{lock,write}.go` + `lock_test.go`, `write_test.go` не тронут дополнительно в этой правке; `agent/cmd/sard-agent/{enroll_flags,enroll_run}.go`, `agent/cmd/sard-agent/{enroll_local,enroll_leak}_test.go`, `docs/operations/agent-enroll.md`. Не тронуты защищённые файлы.

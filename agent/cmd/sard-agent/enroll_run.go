@@ -269,14 +269,16 @@ func loadEnrollConfig(path string, stderr io.Writer) (config.Config, int) {
 	cfg, err := config.Load(path)
 	if err != nil {
 		if errors.Is(err, config.ErrNoServerAddress) {
-			_, _ = fmt.Fprintf(stderr, "sard-agent enroll: server.address is not set; set it in the agent config %s\n", path)
+			_, _ = fmt.Fprintf(stderr, "sard-agent enroll: server.address is not set; set it in the agent config %s\n", redactIfToken(path))
 			return config.Config{}, exitUsage
 		}
-		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: reading config %s: %v\n", path, err)
+		// A *PathError's own text repeats path — redactIfToken handles
+		// both independently, wherever in the string a token lands (В2).
+		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: reading config %s: %s\n", redactIfToken(path), redactIfToken(err.Error()))
 		return config.Config{}, exitUsage
 	}
 	if key := missingTLSKey(cfg.TLS); key != "" {
-		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: config %s: %s is not set\n", path, key)
+		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: config %s: %s is not set\n", redactIfToken(path), key)
 		return config.Config{}, exitUsage
 	}
 	return cfg, exitOK
@@ -311,7 +313,7 @@ func parseEnrollToken(raw string, stderr io.Writer) (enroll.Token, int) {
 
 func checkAddressConflict(opts enrollOptions, cfg config.Config, stderr io.Writer) int {
 	if opts.serverSet && !config.AddressEqual(opts.server, cfg.Server.Address) {
-		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: --server %s does not match server.address %s in the config; enroll never writes to the config — fix one of the two\n", opts.server, cfg.Server.Address)
+		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: --server %s does not match server.address %s in the config; enroll never writes to the config — fix one of the two\n", redactIfToken(opts.server), cfg.Server.Address)
 		return exitUsage
 	}
 	return exitOK

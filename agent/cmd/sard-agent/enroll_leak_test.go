@@ -100,6 +100,26 @@ func leakCaseWrite(t *testing.T) leakCase {
 	return leakCase{code, exitWrite, f.token, out, errOut}
 }
 
+// В2: a token put into any other flag by mistake is never echoed back.
+func TestATokenPassedAsAnotherFlagsValueIsNeverEchoedBack(t *testing.T) {
+	f := newLocalFixture(t)
+	for name, args := range map[string][]string{
+		"--server":  {"--config", f.h.configPath, "--token", f.token, "--server", f.token},
+		"--config":  {"--config", f.token, "--token", f.token},
+		"--timeout": {"--config", f.h.configPath, "--token", f.token, "--timeout", f.token},
+	} {
+		t.Run(name, func(t *testing.T) {
+			code, out, errOut := runEnrollCmdTest(args...)
+			if code != exitUsage {
+				t.Fatalf("code = %d, want usage; stderr = %q", code, errOut)
+			}
+			if strings.Contains(out+errOut, "sard_") {
+				t.Fatalf("output echoes the token: %q", out+errOut)
+			}
+		})
+	}
+}
+
 // F3: a token pasted without --token (a positional argument), or pasted
 // as the --token-file path by mistake, must never be echoed back.
 func TestPositionalArgumentsAndTokenFilePathsAreNeverEchoedBack(t *testing.T) {

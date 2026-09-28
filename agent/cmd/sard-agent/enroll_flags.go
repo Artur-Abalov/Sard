@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -83,7 +84,11 @@ type enrollOptions struct {
 
 func parseEnrollFlags(args []string, stderr io.Writer) (enrollOptions, int) {
 	fs := flag.NewFlagSet("sard-agent enroll", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	// В2/F3: flag's own error output would echo a bad flag value verbatim
+	// (e.g. "invalid value \"sard_...\" for flag -timeout") if a token
+	// lands in the wrong flag by mistake — discarded here, and replaced
+	// below with the same, redacted, text through our own writer.
+	fs.SetOutput(io.Discard)
 	fs.Usage = func() {}
 	server := fs.String("server", "", "")
 	token := fs.String("token", "", "")
@@ -92,6 +97,7 @@ func parseEnrollFlags(args []string, stderr io.Writer) (enrollOptions, int) {
 	timeout := fs.Duration("timeout", defaultEnrollTimeout, "")
 	configPath := fs.String("config", "", "")
 	if err := fs.Parse(args); err != nil {
+		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: %s\n", redactIfToken(err.Error()))
 		return enrollOptions{}, exitUsage
 	}
 	if fs.NArg() > 0 {
@@ -128,7 +134,7 @@ func validateEnrollFlagValues(timeout time.Duration, server string, stderr io.Wr
 		return exitOK
 	}
 	if _, _, err := net.SplitHostPort(server); err != nil {
-		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: --server %q is not a valid host:port address\n", server)
+		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: --server %q is not a valid host:port address\n", redactIfToken(server))
 		return exitUsage
 	}
 	return exitOK
@@ -193,9 +199,10 @@ func readFromTokenSource(source string, opts enrollOptions, envVal string, stder
 func readTokenFile(path string, stderr io.Writer) (string, int) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		// A *PathError's own text repeats path — printed unredacted, it
-		// would undo redactIfToken(path) right next to it (F3).
-		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: reading --token-file %s: %s\n", redactIfToken(path), redactedFileError(path, err))
+		// A *PathError's own text repeats path — redactIfToken handles
+		// both, so the path and the underlying OS error text are each
+		// redacted independently, wherever in the string a token lands.
+		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: reading --token-file %s: %s\n", redactIfToken(path), redactIfToken(err.Error()))
 		return "", exitUsage
 	}
 	if len(data) == 0 {
@@ -205,23 +212,19 @@ func readTokenFile(path string, stderr io.Writer) (string, int) {
 	return enroll.NormalizeTokenFile(data), exitOK
 }
 
-// redactIfToken hides operator input that looks like a pasted enrollment
-// token string (starts with "sard_") before it is echoed back in a
-// message (F3): the token must never appear in output (В2), even when the
-// operator passed it in the wrong place — e.g. as a --token-file path.
-func redactIfToken(s string) string {
-	if strings.HasPrefix(s, "sard_") {
-		return "<redacted: looks like a token>"
-	}
-	return s
-}
+// tokenPattern matches an enrollment token string (docs/specs/enrollment-token.md)
+// anywhere it appears in a larger string — not just when the whole string
+// is one — so it also catches a token embedded in flag.Parse's or
+// *PathError's own error text ("invalid value \"sard_...\" for flag
+// -timeout: ...", "open sard_...: no such file or directory").
+var tokenPattern = regexp.MustCompile(`sard_\S*`)
 
-// redactedFileError is err's own text, unless path looks like a token: a
-// *PathError's text always repeats the path verbatim, which would leak it
-// right next to redactIfToken(path) in the same message.
-func redactedFileError(path string, err error) string {
-	if strings.HasPrefix(path, "sard_") {
-		return "could not be read"
-	}
-	return err.Error()
+// redactIfToken hides every enrollment-token-looking substring (starting
+// "sard_") in s before it is echoed back in a message (В2, F3): the token
+// must never appear in output, even when the operator passed it in the
+// wrong place — a --token-file path, a --server or --config value, a
+// --timeout that fails to parse as a duration, a stray positional
+// argument.
+func redactIfToken(s string) string {
+	return tokenPattern.ReplaceAllString(s, "<redacted: looks like a token>")
 }

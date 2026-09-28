@@ -516,6 +516,31 @@ func TestAnUnusableDirectoryIsFoundBeforeContactingTheServer(t *testing.T) {
 	}
 }
 
+// В12/В16: a target path that is a directory (or any non-regular file)
+// must be refused before the network, not only inside WriteIdentity after
+// a successful Enroll — which would otherwise spend the token for nothing.
+func TestATargetPathThatIsADirectoryIsRefusedBeforeContactingTheServer(t *testing.T) {
+	f := newLocalFixture(t)
+	if err := os.MkdirAll(f.h.caFile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.h.caFile, "not-empty"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)
+	if code != exitWrite {
+		t.Fatalf("code = %d, want %d (write); stderr = %q", code, exitWrite, errOut)
+	}
+	if !strings.Contains(errOut, "tls.ca_file") {
+		t.Errorf("stderr does not name tls.ca_file: %q", errOut)
+	}
+	if strings.Contains(errOut, "spent") {
+		t.Errorf("stderr claims the token was spent, but the server was never contacted: %q", errOut)
+	}
+	f.requireServerNotContacted(t)
+}
+
 // writeConfigWithMovedFile points which's path at a directory that does not
 // exist: CheckWritable's probe fails there without CreateWritable ever
 // creating it (В12), and — unlike chmod, which root bypasses — this is

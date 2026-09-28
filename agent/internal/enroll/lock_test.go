@@ -7,6 +7,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/enroll"
@@ -63,6 +65,37 @@ func TestUnlockRemovesTheLockFile(t *testing.T) {
 	unlock()
 	if _, err := os.Stat(enroll.LockPath(certFile)); !os.IsNotExist(err) {
 		t.Fatalf("lock file still present after unlock: err = %v", err)
+	}
+}
+
+// В15: at most one holder at any moment, even while holders unlink the lock
+// file on unlock (flock + unlink-on-unlock race: B opens path (inode1), A
+// unlinks and closes, B flocks the now-unlinked inode1, C creates inode2
+// and flocks it — two holders).
+func TestLockNeverHasTwoHoldersAtOnce(t *testing.T) {
+	cert := filepath.Join(t.TempDir(), "agent.pem")
+	var holders, maxHolders atomic.Int32
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 5000; i++ {
+				unlock, err := enroll.Lock(cert)
+				if err != nil {
+					continue
+				}
+				n := holders.Add(1)
+				for m := maxHolders.Load(); n > m && !maxHolders.CompareAndSwap(m, n); m = maxHolders.Load() {
+				}
+				holders.Add(-1)
+				unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if got := maxHolders.Load(); got > 1 {
+		t.Fatalf("%d holders at once, want at most 1", got)
 	}
 }
 

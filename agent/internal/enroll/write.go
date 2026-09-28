@@ -30,7 +30,13 @@ const writeTempPrefix = ".sard-enroll-"
 
 // CheckWritable checks that each of files' directories exists and can be
 // written to, without creating anything (В12: directories are never
-// created by enroll). The first directory that fails is named in the
+// created by enroll), and that each target path is either absent or an
+// ordinary file that a later WriteIdentity could replace — a target that
+// is a directory (or any other non-regular file, e.g. a symlink) would
+// only be caught by WriteIdentity's own checkTargetReplaceable otherwise,
+// after a successful Enroll had already spent the token for nothing
+// (В12, В16: this has to be a local check, before the network). The first
+// path that fails either check is named, by its config key, in the
 // returned ClassWrite *Error.
 func CheckWritable(files Files) error {
 	for _, f := range []struct{ key, path string }{
@@ -38,6 +44,9 @@ func CheckWritable(files Files) error {
 		{"tls.cert_file", files.CertFile},
 		{"tls.ca_file", files.CAFile},
 	} {
+		if err := checkTargetReplaceable(f.path); err != nil {
+			return &Error{Class: ClassWrite, msg: f.key + ": " + f.path + " exists and is not a regular file", err: err}
+		}
 		dir := filepath.Dir(f.path)
 		if err := probeWritable(dir); err != nil {
 			return &Error{Class: ClassWrite, msg: fmt.Sprintf("%s: directory %s is not writable", f.key, dir), err: err}
