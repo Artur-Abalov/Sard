@@ -2,9 +2,10 @@
 
 Сценарии: `docs/specs/server/admin-login.feature`,
 `docs/specs/web/admin-login.feature`. Контракт — OpenAPI S8a и ADR 0019;
-конфликты К1–К4 и открытые вопросы О1–О12 — в заголовке серверной
-спецификации. Шаги, помеченные `[О…]` или `[К…]`, проверяют рекомендованное
-значение и уточняются после решения владельца.
+решения владельца К1–К4 и Р1–Р12 — в заголовке серверной спецификации.
+Пометка `[Р…]` или `[К…]` у шага называет решение, которое он проверяет.
+Изменения контракта (403 `origin_rejected`, описание Set-Cookie) и моков —
+часть этой фичи.
 
 Процедура из трёх частей:
 
@@ -55,7 +56,7 @@ sid() { awk '$6=="sard_session"{print $7}' "$1"; }   # значение sard_ses
    символов; `$DC logs server | grep -c short-pw-11` → `0`.
 3. `SARD_ADMIN_PASSWORD=exactly-12ch $DC up -d --wait server; login exactly-12ch $QA/j0 | head -1`
    → сервер `healthy`; `HTTP/1.1 204`.
-4. `[О6]` `SARD_ADMIN_PASSWORD=паролькирилл $DC up -d --wait server`
+4. `[Р6]` `SARD_ADMIN_PASSWORD=паролькирилл $DC up -d --wait server`
    → сервер `healthy` (12 символов, 24 байта).
 5. `$DC up -d --wait server` (вернуть пароль из `deploy/.env`) → `healthy`.
 
@@ -63,11 +64,11 @@ sid() { awk '$6=="sard_session"{print $7}' "$1"; }   # значение sard_ses
 
 6. `login $PW $QA/j1`
    → `HTTP/1.1 204`, тела нет; `Set-Cookie: sard_session=…` с `HttpOnly`,
-   `SameSite=Strict`, `Path=/`; без `Secure` (HTTP) `[О4]`; без `Max-Age` и
-   `Expires` `[О7]`.
+   `SameSite=Strict`, `Path=/`; без `Secure` (HTTP) `[Р4]`; без `Max-Age` и
+   `Expires` `[Р7]`.
 7. `curl -sS -b $QA/j1 $API/session | jq`
    → `200`, `tenantId` = `00000000-0000-0000-0000-000000000001`, `expiresAt` ≈
-   сейчас + 12 ч `[О1]`.
+   сейчас + 12 ч `[Р1]`.
 8. `curl -sS -i $API/session`
    → `401`, `Content-Type: application/problem+json`, тело с `type`, `title`,
    `status: 401`, `detail`, `code: "unauthenticated"`.
@@ -77,7 +78,7 @@ sid() { awk '$6=="sard_session"{print $7}' "$1"; }   # значение sard_ses
 11. `login $PW $QA/j2 -b 'sard_session=attacker-chosen' | grep -i set-cookie`
     → значение `sard_session` не `attacker-chosen`.
 12. `login $PW $QA/j3; curl -sS -o /dev/null -w '%{http_code}\n' -b $QA/j2 $API/session; curl -sS -o /dev/null -w '%{http_code}\n' -b $QA/j3 $API/session`
-    → `200` и `200` (две сессии одновременно) `[О7]`.
+    → `200` и `200` (две сессии одновременно) `[Р7]`.
 
 ### Неверный пароль
 
@@ -96,13 +97,13 @@ sid() { awk '$6=="sard_session"{print $7}' "$1"; }   # значение sard_ses
 15. `for i in 1 2 3 4 5; do login wrong-password-123 $QA/jx | head -1; done`
     → пять раз `HTTP/1.1 401`.
 16. `login wrong-password-123 $QA/jx | grep -iE '^HTTP|retry-after|"code"'`
-    → `429`, `Retry-After` от 895 до 900 `[О2]`, `code: "too_many_attempts"`.
+    → `429`, `Retry-After` от 895 до 900 `[Р2]`, `code: "too_many_attempts"`.
 17. `login $PW $QA/jx | grep -iE '^HTTP|set-cookie'`
     → `429`, нет `Set-Cookie: sard_session`.
 18. `curl -sS -o /dev/null -w '%{http_code}\n' -b $QA/j3 $API/session`
     → `200`: сессия, выданная до блокировки, действует.
-19. `[О4]` `login $PW $QA/jx -H 'X-Forwarded-For: 192.0.2.99' | head -1` → `429`.
-20. Подождать 15 минут от шага 15. `login $PW $QA/j4 | head -1` → `204` `[О2]`.
+19. `[Р4]` `login $PW $QA/jx -H 'X-Forwarded-For: 192.0.2.99' | head -1` → `429`.
+20. Подождать 15 минут от шага 15. `login $PW $QA/j4 | head -1` → `204` `[Р2]`.
 21. `$DC restart server` → дождаться `healthy`; `curl -sS -o /dev/null -w '%{http_code}\n' -b $QA/j4 $API/session`
     → `401` (перезапуск завершает сессии).
 
@@ -114,23 +115,27 @@ sid() { awk '$6=="sard_session"{print $7}' "$1"; }   # значение sard_ses
     → `401` и `401`.
 24. `curl -sS -i -X DELETE $API/session` → `401`, `code: "unauthenticated"`.
 
-### CSRF `[К1]` `[О5]`
+### CSRF `[К1]` `[Р5]`
 
 25. `login $PW $QA/j6 >/dev/null; curl -sS -i -X DELETE -b $QA/j6 -H 'Origin: https://evil.example' $API/session`
-    → отказ CSRF (статус и `code` — по решению К1), `application/problem+json`;
+    → `403`, `application/problem+json`, `code: "origin_rejected"`, нет `Set-Cookie: sard_session`;
     `curl -sS -o /dev/null -w '%{http_code}\n' -b $QA/j6 $API/session` → `200`.
-26. То же с `-H 'Origin: null'` → отказ CSRF; сессия действует.
-27. То же с `-H 'Origin: http://localhost:9999'` → отказ CSRF; сессия действует.
+26. То же с `-H 'Origin: null'` → `403` `origin_rejected`; сессия действует.
+27. То же с `-H 'Origin: http://localhost:9999'` → `403` `origin_rejected`; сессия действует.
 28. `curl -sS -i -X POST -b $QA/j6 -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{}' $API/sources`
-    → отказ CSRF, не `501`.
+    → `403` `origin_rejected`, не `501`.
 29. `login $PW $QA/j7 -H 'Origin: https://evil.example' | grep -iE '^HTTP|set-cookie'`
-    → отказ CSRF, нет `Set-Cookie: sard_session`.
+    → `403` `origin_rejected`, нет `Set-Cookie: sard_session`.
 30. `curl -sS -o /dev/null -w '%{http_code}\n' -b $QA/j6 -H 'Origin: https://evil.example' $API/session`
     → `200` (чтение не отклоняется).
 31. `curl -sS -o /dev/null -w '%{http_code}\n' -X DELETE -b $QA/j6 -H 'Origin: http://localhost:8080' $API/session`
     → `204`.
 32. `login $PW $QA/j8 >/dev/null; curl -sS -o /dev/null -w '%{http_code}\n' -X DELETE -b $QA/j8 $API/session`
     (без Origin) → `204`.
+32а. `[К1]` `[К3]` `jq -r '.paths[] | to_entries[] | select(.key|test("post|put|patch|delete")) | .value.responses["403"] != null' web/src/api/openapi.json | sort -u`
+    → только `true`; `jq -r '.components.schemas.ErrorCode.enum[]' web/src/api/openapi.json | grep -c origin_rejected` → `1`;
+    `jq -r '.paths["/api/v1/session"].post.responses["204"].headers["Set-Cookie"].description' web/src/api/openapi.json`
+    → называет `HttpOnly`, `SameSite=Strict`, `Path=/` и `Secure` при HTTPS.
 
 ### Защита API
 
@@ -146,7 +151,7 @@ sid() { awk '$6=="sard_session"{print $7}' "$1"; }   # значение sard_ses
 34. `login $PW $QA/j9 >/dev/null; curl -sS -b $QA/j9 $API/agents | jq .code`
     → `"not_implemented"` (заглушка до S8b).
 35. `curl -sS -o /dev/null -w '%{http_code}\n' $API/status` → `200`.
-36. `[О11]` `curl -sS -o /dev/null -w '%{http_code}\n' localhost:8080/actuator/health; curl -sS -o /dev/null -w '%{http_code}\n' localhost:8080/v3/api-docs`
+36. `[Р11]` `curl -sS -o /dev/null -w '%{http_code}\n' localhost:8080/actuator/health; curl -sS -o /dev/null -w '%{http_code}\n' localhost:8080/v3/api-docs`
     → `200` и `200`.
 37. `for p in env configprops httpexchanges metrics heapdump; do curl -sS -o /dev/null -w "$p %{http_code}\n" localhost:8080/actuator/$p; done`
     → каждый `404`.
@@ -157,11 +162,11 @@ sid() { awk '$6=="sard_session"{print $7}' "$1"; }   # значение sard_ses
 
 39. `$DC logs server > $QA/server.log`; в `$QA/server.log` есть записи об
     успешном входе, неудачном входе, выходе и блокировке, в каждой — адрес
-    клиента; запись о блокировке — одна на эпизод шагов 15–17 `[О10]`.
+    клиента; запись о блокировке — одна на эпизод шагов 15–17 `[Р10]`.
 40. `grep -cF "$PW" $QA/server.log; grep -cF wrong-password-123 $QA/server.log; grep -cF QA-ADMIN-PASSWORD-2026 $QA/server.log`
     → `0`, `0`, `0`.
 41. Для каждого значения `sard_session` из `$QA/j*`:
-    `grep -cF "<значение>" $QA/server.log` → `0` `[О10]`.
+    `grep -cF "<значение>" $QA/server.log` → `0` `[Р10]`.
 42. `grep -rlF "$PW" $QA/w* ; curl -sS localhost:8080/actuator | jq -r '._links[].href' | xargs -n1 curl -sS | grep -cF "$PW"`
     → ничего не найдено; `0`.
 
@@ -177,14 +182,14 @@ sid() { awk '$6=="sard_session"{print $7}' "$1"; }   # значение sard_ses
 
 1. Открыть `/agents` → адрес `/login?redirect=%2Fagents`; в Network до
    перехода — только `GET /api/v1/session` (401).
-2. Открыть `/runs?status=failed` → `/login?redirect=%2Fruns%3Fstatus%3Dfailed` `[О9]`.
+2. Открыть `/runs?status=failed` → `/login?redirect=%2Fruns%3Fstatus%3Dfailed` `[Р9]`.
 3. Страница входа → одно поле типа `password`, кнопка входа, поля имени нет;
-   при пустом поле кнопка неактивна `[О9]`.
+   при пустом поле кнопка неактивна `[Р9]`.
 4. Ввести неверный пароль → локализованное сообщение о неверном пароле; адрес
    не изменился, в `redirect` нет вложенного `/login`.
 5. Ввести верный пароль на `/login?redirect=%2Fruns%3Fstatus%3Dfailed`
    → открыта страница запусков с `?status=failed`; адрес не содержит пароля.
-6. Открыть `/login` при действующей сессии → переход на `/` `[О9]`.
+6. Открыть `/login` при действующей сессии → переход на `/` `[Р9]`.
 7. Открыть вручную `/login?redirect=https://evil.example/`, войти → главная
    консоли. Повторить с `//evil.example/agents`, `/\evil.example`,
    `javascript:alert(1)` → каждый раз главная.
@@ -193,20 +198,20 @@ sid() { awk '$6=="sard_session"{print $7}' "$1"; }   # значение sard_ses
    → нет пароля и значения `sard_session`; в Console `document.cookie`
    → без `sard_session`.
 10. Нажать «Выйти» на `/agents` → `DELETE /api/v1/session` 204; адрес `/login`
-    без `redirect` `[О9]`. Кнопка браузера «Назад» → `/login?redirect=%2Fagents`.
+    без `redirect` `[Р9]`. Кнопка браузера «Назад» → `/login?redirect=%2Fagents`.
 11. Войти; в другой вкладке завершить сессию (сервер: `curl -X DELETE` с
     cookie из DevTools или `$DC restart server`; моки: в консоли
     DevTools нет доступа — пропустить) и в первой вкладке перейти на другую
     страницу → переход на `/login?redirect=<текущий путь>`; после входа — назад
     на тот же путь.
 12. Пять раз ввести неверный пароль, затем шестой
-    → сообщение о блокировке с ожиданием 15 минут `[О2]` `[О9]` (на моках — те же
+    → сообщение о блокировке с ожиданием 15 минут `[Р2]` `[Р9]` (на моках — те же
     15 минут `[К4]`).
 13. Сервер: `$DC stop server`; ввести пароль → сообщение о недоступности
     сервера, отличное от сообщения о неверном пароле. Открыть `/agents` при
-    остановленном сервере → экран ошибки с повтором, адрес не меняется `[О9]`.
+    остановленном сервере → экран ошибки с повтором, адрес не меняется `[Р9]`.
     Войти, остановить сервер, нажать «Выйти» → сообщение об ошибке, консоль
-    остаётся на странице `[О9]`. `$DC start server`.
+    остаётся на странице `[Р9]`. `$DC start server`.
 14. Переключить язык RU/EN на странице входа, после ошибки входа, после
     блокировки и в шапке → все надписи и сообщения входа и выхода переведены,
     ключей i18n (`login.…`) на экране нет.
@@ -220,7 +225,7 @@ sid() { awk '$6=="sard_session"{print $7}' "$1"; }   # значение sard_ses
    → ошибка, называющая `SARD_ADMIN_PASSWORD` и `deploy/.env`.
 3. `grep -n -B2 -A1 -E 'SARD_ADMIN_PASSWORD|SARD_AGENT_ENDPOINT' deploy/.env.example`
    → обе переменные с комментариями; у пароля — минимум 12 символов.
-4. `[О3]` `make down; rm deploy/.env; make up 2>&1 | tee $QA/up.log`
+4. `[Р3]` `make down; rm deploy/.env; make up 2>&1 | tee $QA/up.log`
    → `deploy/.env` содержит `SARD_ADMIN_PASSWORD` длиной ≥ 24;
    `grep -cF "$(sed -n 's/^SARD_ADMIN_PASSWORD=//p' deploy/.env)" $QA/up.log` → `0`;
    вывод называет `deploy/.env`; вход этим паролем → `204`.
