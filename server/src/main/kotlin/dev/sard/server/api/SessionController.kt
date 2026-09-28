@@ -4,6 +4,7 @@
 package dev.sard.server.api
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.headers.Header
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
@@ -122,7 +123,8 @@ class SessionController(
     )
     fun createSession(
         @RequestBody request: SessionRequest,
-        @CookieValue(SESSION_COOKIE, required = false) previousSessionId: String?,
+        // The cookie is the `session` security scheme, not a parameter of its own.
+        @Parameter(hidden = true) @CookieValue(SESSION_COOKIE, required = false) previousSessionId: String?,
         httpRequest: HttpServletRequest,
         httpResponse: HttpServletResponse,
     ) {
@@ -176,14 +178,14 @@ class SessionController(
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Current session", description = "401 when there is none or it expired.")
     fun getSession(
-        @CookieValue(SESSION_COOKIE, required = false) sessionId: String?,
+        @Parameter(hidden = true) @CookieValue(SESSION_COOKIE, required = false) sessionId: String?,
     ): ResponseEntity<Session> = ResponseEntity.ok(api.getSession(sessionId ?: throw NoSuchSessionException()))
 
     @DeleteMapping
     @Operation(summary = "Sign out", description = "Ends the session and clears the cookie.")
     @ApiResponse(responseCode = "204", description = "Signed out")
     fun deleteSession(
-        @CookieValue(SESSION_COOKIE, required = false) sessionId: String?,
+        @Parameter(hidden = true) @CookieValue(SESSION_COOKIE, required = false) sessionId: String?,
         httpRequest: HttpServletRequest,
         httpResponse: HttpServletResponse,
     ) {

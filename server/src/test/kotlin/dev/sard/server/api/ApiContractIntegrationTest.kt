@@ -178,6 +178,15 @@ class ApiContractIntegrationTest(
         )
     }
 
+    /** The session cookie is the `session` security scheme, never an operation parameter of its own. */
+    @Test
+    fun `no operation lists the session cookie as a parameter`() {
+        for ((name, op) in operations()) {
+            val cookies = op.path("parameters").filter { it.path("in").asString() == "cookie" }
+            assertTrue(cookies.isEmpty(), "$name: $cookies")
+        }
+    }
+
     /** springdoc drops the implicit 200 once a method declares any @ApiResponse. */
     @Test
     fun `every operation describes its success response`() {
