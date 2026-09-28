@@ -130,6 +130,16 @@
                 }
               }
             }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
           }
         }
       },
@@ -173,6 +183,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -286,6 +306,16 @@
                 }
               }
             }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
           }
         }
       }
@@ -338,6 +368,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -398,7 +438,7 @@
             "description" : "Signed in",
             "headers" : {
               "Set-Cookie" : {
-                "description" : "sard_session; HttpOnly; SameSite=Strict",
+                "description" : "sard_session; HttpOnly; SameSite=Strict; Path=/; Secure when the connection is HTTPS",
                 "style" : "simple",
                 "schema" : {
                   "type" : "string"
@@ -434,6 +474,16 @@
                 }
               }
             }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
           }
         },
         "security" : [ ]
@@ -449,6 +499,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -562,6 +622,16 @@
                 }
               }
             }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
           }
         }
       }
@@ -614,6 +684,16 @@
           },
           "401" : {
             "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -1104,7 +1184,7 @@
       },
       "ErrorCode" : {
         "type" : "string",
-        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented" ]
+        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected" ]
       },
       "Problem" : {
         "type" : "object",
