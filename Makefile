@@ -20,6 +20,14 @@ GRADLE := $(BUILD_LOCK) env LC_ALL=C.UTF-8 ./gradlew --no-daemon -q
 # Git ref the proto contract must stay compatible with (buf breaking).
 PROTO_BASE ?= origin/main
 COMPOSE := docker compose -f deploy/docker-compose.yml --env-file deploy/.env
+# End-to-end tests (test/e2e): images built from the current code.
+E2E_ARCH ?= $(shell go env GOARCH)
+E2E_BUILD := $(CURDIR)/test/e2e/build
+E2E_SERVER_IMAGE ?= sard-server:e2e
+E2E_AGENT_IMAGE ?= sard-agent:e2e
+# Extra `docker buildx build` flags for the server image: a layer cache in CI,
+# proxy settings behind a TLS-intercepting proxy.
+E2E_SERVER_BUILD_FLAGS ?=
 
 GO_TOOLS := \
 	github.com/bufbuild/buf/cmd/buf \
@@ -30,7 +38,7 @@ GO_TOOLS := \
 	github.com/goreleaser/nfpm/v2/cmd/nfpm \
 	./cmd/crap
 
-.PHONY: tools gate gate-fast proto build build-agent build-cli package test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check up down openapi
+.PHONY: tools gate gate-fast proto build build-agent build-cli package e2e e2e-images test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check up down openapi
 
 ## proto: generate Go code from proto/ into proto/gen/go (committed)
 proto: tools
@@ -49,6 +57,21 @@ build-agent:
 ## package: sard-agent + pinned restic as tar.gz, deb and rpm for amd64/arm64 in dist/
 package: tools
 	VERSION=$(VERSION) ./scripts/package-agent.sh
+
+## e2e-images: sard-server and sard-agent images of the current code for the e2e tests
+e2e-images: tools
+	docker buildx build --load $(E2E_SERVER_BUILD_FLAGS) --build-arg SARD_VERSION=$(VERSION) \
+		-f deploy/server/Dockerfile -t $(E2E_SERVER_IMAGE) .
+	DIST=$(E2E_BUILD)/dist VERSION=$(VERSION) ./scripts/package-agent.sh $(E2E_ARCH)
+	rm -rf $(E2E_BUILD)/agent-image && mkdir -p $(E2E_BUILD)/agent-image/empty
+	tar -xzf $(E2E_BUILD)/dist/sard-agent_$(VERSION)_linux_$(E2E_ARCH).tar.gz --strip-components=1 \
+		-C $(E2E_BUILD)/agent-image
+	docker build -f test/e2e/agent/Dockerfile -t $(E2E_AGENT_IMAGE) $(E2E_BUILD)/agent-image
+
+## e2e: build the images, then run the end-to-end tests (needs Docker)
+e2e: e2e-images
+	$(GRADLE) :e2e:test -Pe2e.serverImage=$(E2E_SERVER_IMAGE) -Pe2e.agentImage=$(E2E_AGENT_IMAGE) \
+		-Pe2e.version=$(VERSION)
 
 build-cli:
 	cd cli && go build -ldflags "$(LDFLAGS)" -o bin/sardctl ./cmd/sardctl
