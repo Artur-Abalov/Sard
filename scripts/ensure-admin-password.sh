@@ -14,15 +14,22 @@ ENV_FILE="$ROOT/deploy/.env"
 [ -f "$ENV_FILE" ] && exit 0
 
 cp "$ROOT/deploy/.env.example" "$ENV_FILE"
+chmod 600 "$ENV_FILE"
 
 # 32 hex characters (16 random bytes): well over the 24-character floor,
 # alphanumeric only so it needs no shell quoting inside the .env file.
-password="$(openssl rand -hex 16)"
+# openssl is preferred; od reads the same /dev/urandom when it is absent.
+if command -v openssl >/dev/null 2>&1; then
+  password="$(openssl rand -hex 16)"
+else
+  password="$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')"
+fi
 
 awk -v pw="$password" '
   /^SARD_ADMIN_PASSWORD=/ { print "SARD_ADMIN_PASSWORD=" pw; next }
   { print }
 ' "$ENV_FILE" >"$ENV_FILE.tmp"
 mv "$ENV_FILE.tmp" "$ENV_FILE"
+chmod 600 "$ENV_FILE"
 
 echo "Generated an administrator password in deploy/.env"
