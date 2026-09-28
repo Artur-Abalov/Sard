@@ -10,6 +10,7 @@ import io.grpc.StatusRuntimeException
 import io.grpc.protobuf.StatusProto
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotSame
 
 /** The reasons are wire strings the agent and the console may match on: pinned as literals. */
 class StreamStatusTest {
@@ -38,7 +39,7 @@ class StreamStatusTest {
         for ((reason, wire) in expected) {
             val close = reason.close()
             assertEquals(wire.second, close.reason)
-            assertEquals(wire, wire(close.status), reason.name)
+            assertEquals(wire, wire(close.status()), reason.name)
         }
     }
 
@@ -47,7 +48,22 @@ class StreamStatusTest {
         val status =
             StreamCloseReason.SESSION_EXPIRED
                 .close()
-                .status.status
+                .status()
+                .status
         assertEquals("stream closed: SESSION_EXPIRED", status.description)
+    }
+
+    /**
+     * gRPC mutates trailers while writing them and [io.grpc.Metadata] is not thread-safe: two
+     * streams closed with one shared exception broke each other's close (S5a shutdown test).
+     */
+    @Test
+    fun `every throw gets its own status and trailers`() {
+        val close = StreamCloseReason.SERVER_SHUTTING_DOWN.close()
+        val first = close.status()
+        val second = close.status()
+        assertNotSame(first, second)
+        assertNotSame(first.trailers, second.trailers)
+        assertEquals(wire(first), wire(second))
     }
 }

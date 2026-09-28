@@ -33,14 +33,21 @@ enum class StreamCloseReason(
     SERVER_SHUTTING_DOWN(Status.Code.UNAVAILABLE),
     ;
 
-    fun close(): StreamClose = StreamClose(name, status(code, name, "stream closed: $name"))
+    fun close(): StreamClose = StreamClose(name) { status(code, name, "stream closed: $name") }
 }
 
-/** A server-side end of a stream: the reason for logs and listeners, the status for the agent. */
-data class StreamClose(
+/**
+ * A server-side end of a stream: the reason for logs and listeners, and a fresh status for the
+ * agent on every [status] call. One close may end many streams (server shutdown), and gRPC
+ * mutates a status' trailers while writing them; a shared, non-thread-safe [io.grpc.Metadata]
+ * broke concurrent closes.
+ */
+class StreamClose(
     val reason: String,
-    val status: StatusRuntimeException,
-)
+    private val newStatus: () -> StatusRuntimeException,
+) {
+    fun status(): StatusRuntimeException = newStatus()
+}
 
 /** The ADR 00XX-draft error shape: one ErrorInfo in domain `sard.dev`. */
 internal fun status(

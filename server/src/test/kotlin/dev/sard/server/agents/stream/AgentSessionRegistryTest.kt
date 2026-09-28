@@ -16,6 +16,7 @@ import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -201,5 +202,23 @@ class AgentSessionRegistryTest {
         val late = stream()
         MutFlow.underTest { registry.opened(late) }
         assertEquals("SERVER_SHUTTING_DOWN", late.closedBy?.reason)
+    }
+
+    @Test
+    fun `streams closed together do not share trailers`() {
+        val a = claimed()
+        val b = claimed()
+        registry.closeAll(StreamCloseReason.SERVER_SHUTTING_DOWN.close())
+        assertNotSame(a.closedBy?.status()?.trailers, b.closedBy?.status()?.trailers)
+    }
+
+    @Test
+    fun `after reopen new streams are accepted again`() {
+        registry.closeAll(StreamCloseReason.SERVER_SHUTTING_DOWN.close())
+        MutFlow.underTest { registry.reopen() }
+        val stream = stream()
+        registry.opened(stream)
+        assertNull(stream.closedBy)
+        assertEquals(Claim.Accepted(replaced = null), registry.claim(stream))
     }
 }

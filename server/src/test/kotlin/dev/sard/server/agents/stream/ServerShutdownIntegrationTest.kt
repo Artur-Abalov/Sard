@@ -22,6 +22,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 private val GRACE: Duration = Duration.ofSeconds(30)
+private const val STREAMS = 8
 
 /**
  * Test 7: stopping the gRPC server (Spring gRPC's lifecycle: GrpcServerShutdownEvent, then
@@ -56,7 +57,8 @@ class ServerShutdownIntegrationTest(
     @Test
     fun `stopping the server closes open streams with SERVER_SHUTTING_DOWN`() {
         clients.createTenant()
-        val agents = List(2) { clients.enrolled() }
+        // Several streams closing at once: a shared status once broke their concurrent close.
+        val agents = List(STREAMS) { clients.enrolled() }
         val connections =
             agents.map { agent ->
                 clients.connect(agent).also {

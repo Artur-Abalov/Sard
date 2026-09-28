@@ -15,7 +15,7 @@ import dev.sard.server.pki.AgentIdentity
 import java.time.Clock
 
 /** Closes a stream as the interceptor would have refused it (S3's reasons, UNAUTHENTICATED). */
-fun AgentAuthFailure.close(): StreamClose = StreamClose(name, AgentAuthStatus.of(this))
+fun AgentAuthFailure.close(): StreamClose = StreamClose(name) { AgentAuthStatus.of(this) }
 
 /**
  * Re-judges open sessions against the database with S3's [AgentAuthenticator], so a revoked

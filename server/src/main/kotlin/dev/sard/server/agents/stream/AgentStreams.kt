@@ -82,6 +82,9 @@ class AgentStreams(
         log.info("server stopping: {} agent streams closed", closed)
     }
 
+    /** The server (re)started: streams are accepted again (a stopped server may start again). */
+    fun reopen() = registry.reopen()
+
     /** Called inside the agent's gRPC Context, where S3's interceptor put its principal. */
     fun connect(requests: Flow<ConnectRequest>): Flow<ConnectResponse> =
         flow {
@@ -109,7 +112,7 @@ class AgentStreams(
                 stream.drain { emit(it) }
             }
         } catch (cancelled: CancellationException) {
-            throw stream.closedBy?.status ?: cancelled
+            throw stream.closedBy?.status() ?: cancelled
         }
     }
 
@@ -128,10 +131,10 @@ class AgentStreams(
         stream: AgentStream,
         message: ConnectRequest,
     ) {
-        if (!message.hasHello()) throw StreamCloseReason.HELLO_REQUIRED.close().status
+        if (!message.hasHello()) throw StreamCloseReason.HELLO_REQUIRED.close().status()
         if (registry.claim(stream) == Claim.Duplicate) {
             log.warn("agent {}: second stream refused, its session is alive", stream.agent.agentId)
-            throw StreamCloseReason.AGENT_DUPLICATE_SESSION.close().status
+            throw StreamCloseReason.AGENT_DUPLICATE_SESSION.close().status()
         }
         extensions.listeners.forEach { it.connected(stream.agent) }
         touch(stream)

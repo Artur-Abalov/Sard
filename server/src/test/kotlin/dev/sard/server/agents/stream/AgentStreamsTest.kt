@@ -450,4 +450,17 @@ class AgentStreamsTest {
             first.requests.close()
             first.closedWith()
         }
+
+    @Test
+    fun `after the server starts again new streams are accepted`() =
+        test {
+            streams.shutdown()
+            streams.reopen()
+            val agent = open()
+            agent.requests.send(hello())
+            recorder.await("hello ")
+            assertTrue(registry.online(principal.agentId))
+            agent.requests.close()
+            agent.closedWith()
+        }
 }

@@ -67,7 +67,11 @@ class AgentSessionRegistry(
 
     fun count(): Int = synchronized(lock) { sessions.size }
 
-    /** Closes every stream with [close] and every stream opened from now on (server stopping). */
+    fun reopen() {
+        synchronized(lock) { closedWith = null }
+    }
+
+    /** Closes every stream with [close] and every stream opened until [reopen] (server stopping). */
     fun closeAll(close: StreamClose): Int {
         val all =
             synchronized(lock) {
