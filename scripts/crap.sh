@@ -8,6 +8,7 @@
 #   ./scripts/crap.sh <sdk|agent|cli|tools|server> [top]
 set -euo pipefail
 
+export LC_ALL=C.UTF-8
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="$ROOT/.bin"
 m="${1:?usage: crap.sh <module> [top]}"
