@@ -3,6 +3,8 @@
 
 package dev.sard.e2e
 
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.junit.jupiter.api.extension.RegisterExtension
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.strategy.Wait
@@ -43,7 +45,7 @@ class AgentConnectTest {
             withCopyToContainer(Transferable.of(config(), READABLE), "/etc/sard/agent.yaml")
             withCopyToContainer(Transferable.of(agent.caPem, READABLE), "/etc/sard/ca.pem")
             withCopyToContainer(Transferable.of(agent.chainPem, READABLE), "/etc/sard/agent.pem")
-            withCopyToContainer(Transferable.of(agent.keyPem, READABLE), "/etc/sard/agent.key")
+            withCopyToContainer(OwnedByAgent(agent.keyPem), "/etc/sard/agent.key")
             waitingFor(Wait.forLogMessage(".*connecting to ${SardEnvironment.AGENT_ENDPOINT}.*", 1))
         }
 
@@ -56,6 +58,36 @@ class AgentConnectTest {
           cert_file: /etc/sard/agent.pem
           key_file: /etc/sard/agent.key
         """.trimIndent()
+
+    /**
+     * The key, owned by the image's non-root user and closed to everyone else: the agent refuses
+     * to start with a secret file open to group or others or owned by another user (A1).
+     * Transferable.of cannot set the owner, so the tar entry is written here.
+     */
+    private class OwnedByAgent(
+        content: String,
+    ) : Transferable {
+        private val bytes = content.toByteArray()
+
+        override fun getSize() = bytes.size.toLong()
+
+        override fun getBytes() = bytes
+
+        override fun getFileMode() = OWNER_ONLY
+
+        override fun transferTo(
+            tar: TarArchiveOutputStream,
+            destination: String,
+        ) {
+            val entry = TarArchiveEntry(destination)
+            entry.size = size
+            entry.mode = fileMode
+            entry.setIds(AGENT_UID, AGENT_UID)
+            tar.putArchiveEntry(entry)
+            tar.write(bytes)
+            tar.closeArchiveEntry()
+        }
+    }
 
     private class AgentRow(
         val version: String?,
@@ -93,6 +125,8 @@ class AgentConnectTest {
 
         private const val AGENT_ALIAS = "sard-agent"
         private const val READABLE = 0b110_100_100 // 0644
+        private const val OWNER_ONLY = 0b110_000_000 // 0600
+        private const val AGENT_UID = 65532 // USER of test/e2e/agent/Dockerfile
         private val CONNECT_TIMEOUT = Duration.ofSeconds(60)
         private val POLL = Duration.ofMillis(500)
     }
