@@ -133,6 +133,97 @@
   пароль. `README.md`, раздел «Запуск», и ADR 0021.
 
 ## Гейты
-- `./scripts/gate.sh server fast` и `./scripts/gate.sh web fast` — оба
-  зелёные (детали в отчёте задачи). Мутационное тестирование (не `fast`)
-  не запускалось в этой сессии.
+- На первой реализации `./scripts/gate.sh server fast` и
+  `./scripts/gate.sh web fast` были зелёными; мутационное тестирование тогда
+  не запускалось. Итог после всех этапов — ниже, в «Гейты, итог».
+
+## Архитектор: два раунда правок
+Первый вердикт — CHANGES REQUIRED:
+- B1: `SessionApi` принимал servlet-типы. Порт очищен от HTTP
+  (`SignInResult`: `SignedIn` / `WrongPassword` / `Locked`), отображение в
+  204/401/429 и cookie — в `SessionController`, cookie-билдеры — в
+  `api/SessionCookies.kt`, `writeProblem` — в `api/Problems.kt`. Три правила
+  в `ArchitectureTest`: порты без HTTP-типов, нет ребра `api → auth`, доменные
+  классы `auth` без servlet/HTTP.
+- B2: вход нельзя было заменить enterprise-стартером. Сделан
+  `AdminAuthAutoConfiguration` с `@ConditionalOnMissingBean`,
+  `AdminAuthAutoConfigurationTest`.
+- B3: `deploy/.env.example` содержал рабочий пароль. Значение пустое,
+  `DeployEnvExampleTest`, `chmod 600` и запасной `od` в скрипте.
+- B4: порядок «Origin раньше сессии» держался на комментарии. Добавлены
+  интеграционные тесты 403 `origin_rejected` с сессией и без, включая PATCH.
+- Попутно: `Session` → `AdminSession`, ограничена память `LoginAttemptTracker`
+  и `SessionStore`, список публичных операций сверяется с OpenAPI, моки
+  считают блокировку от пятой неудачи с убывающим `Retry-After`, выход
+  уходит на `/login` только на 204/401.
+
+Второй вердикт — CHANGES REQUIRED:
+- Контракт замены записан в ADR 0021: стартер даёт и `SessionApi`, и бин
+  `sessionAuthFilterRegistration`. Если заменён только `SessionApi`, ядро
+  оставляет свой фильтр и отвечает 401 (fail closed) — закреплено тестами.
+- Абзац про обратный прокси в ADR был неверен; исправлен (см. «Хвосты»),
+  предупреждение добавлено в README.
+- `SessionStore.find()` без продления для GET сессии; cookie очищается
+  только на DELETE (Р12), `SessionControllerTest`.
+
+Третий вердикт — APPROVED.
+
+## Hardener
+- До правок полный `./scripts/gate.sh server` падал ещё без мутантов:
+  `NoSuchMethodError` в тестах, вызывающих `internal`-члены. Причина — у
+  исходного набора `mutatedMain` своё имя Kotlin-модуля, и манглинг
+  `internal`-имён расходился с `main`. Исправлено в `server/build.gradle.kts`:
+  одно `moduleName` для всех `KotlinCompile`. Это дефект сборки, не W1b:
+  полный гейт сервера не проходил бы с любым `internal`-членом в тестах.
+- Выжившие мутанты: 2 в `AdminPasswordAuthenticator` (граница 12
+  символов). Добавлены `@MutFlowTest`/`MutFlow.underTest` в тесты классов
+  `auth` и сессии, новый `WriteProblemTest`, тесты на `Secure` очищенной
+  cookie, на `&&` в условии Р12, на округление `Retry-After` при `nano == 1`.
+  Итог — выживших нет.
+
+## Слияние с main и CI
+- В main тем временем появился ADR 0020 (e2e-стенд): ADR входа
+  перенумерован в 0021, ссылки поправлены.
+- e2e-окружение (`test/e2e/.../SardEnvironment.kt`) передаёт серверу
+  случайный `SARD_ADMIN_PASSWORD` (маскируется в логах): без него сервер не
+  стартует. Сами e2e-тесты ходят только в публичные `/api/v1/status` и
+  `/actuator/health`.
+- CI упал на сверке `web/src/api/openapi.json`: после B1 `@CookieValue` в
+  `SessionController` springdoc выгружал `sard_session` как cookie-параметр
+  трёх операций сессии. Cookie — это схема безопасности `session`, параметр
+  скрыт (`@Parameter(hidden = true)`), тест в `ApiContractIntegrationTest`
+  («no operation lists the session cookie as a parameter»).
+
+## Гейты, итог
+- CI на последнем коммите PR #20 — все 10 проверок зелёные, включая
+  `server` (полный гейт с mutflow) и `e2e`.
+- `./scripts/gate.sh server`: coverage 95.1% (instructions), мутанты — нет
+  выживших, `gate: PASSED (server, full)`. Худший CRAP среди функций W1b —
+  5.0 (`validateAndHash`, `OriginGuardFilter.doFilterInternal`,
+  `SessionAuthFilter.doFilterInternal`).
+- `./scripts/gate.sh web`: 93 теста, lint, tsc, сборка — зелёные.
+
+## Хвосты
+- **Обратный прокси (Р4).** За TLS-терминирующим прокси или прокси,
+  переписывающим `Host`, вход и все изменяющие запросы получают 403
+  `origin_rejected`, а cookie — без `Secure`. Этап 1 поддерживает только
+  прямой доступ к :8080. Доверие к заголовкам прокси — отдельная задача
+  (ADR 0021, «Последствия»; README, «Запуск»).
+- **Консоль при 403 `origin_rejected`.** Спецификация не определяет, что
+  показывает консоль; с того же origin ответа быть не должно. Если
+  понадобится — один сценарий в `docs/specs/web/admin-login.feature`.
+- **`Secure` при настоящем HTTPS** проверен только юнит-тестами (см. «Не
+  сделано» выше).
+- **Ручная QA** (`docs/qa/admin-login.md`, сценарии `@qa-only`, сбой базы)
+  не прогонялась.
+- **OQ-016 в `docs/open-questions.md`** («пользователи и роли — вместе с
+  аутентификацией») устарел: аутентификация этапа 1 сделана, роли и
+  пользователи — enterprise RBAC (ADR 0021, «Отложено»).
+- **`SESSION_REQUEST_ATTRIBUTE`** пока не читается в production-коде —
+  оставлен как точка расширения для enterprise `TenantResolver` (ADR 0021).
+- **Гонка сборок.** `scripts/gate.sh`, `scripts/crap.sh` и прямой `./gradlew`
+  не берут `flock` на `.gradle/sard-build.lock`, в отличие от целей `make`.
+  Параллельный `make gate-fast` из хука SubagentStop рвёт им
+  `server/build/test-results` (`EOFException`, `NoSuchFileException`). Обход
+  в этой сессии — `flock -w 1800 .gradle/sard-build.lock <команда>`; правка
+  скриптов не сделана.
