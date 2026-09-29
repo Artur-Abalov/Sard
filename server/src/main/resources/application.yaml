@@ -32,7 +32,7 @@ spring:
         enabled: false
       # Agents ping every 30 s on their Connect stream (A3); the grpc-java default permits one
       # ping per 5 min and closes the connection with too_many_pings. The server pings too, so
-      # a half-dead connection is closed within time + timeout (S5a, ADR 00XX-draft stream manager).
+      # a half-dead connection is closed within time + timeout (S5a, ADR 0026 stream manager).
       keepalive:
         time: 30s
         timeout: 10s

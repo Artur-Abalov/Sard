@@ -18,7 +18,7 @@ sealed interface Claim {
 }
 
 /**
- * agent_id → its one live session, in memory (stage 1: one server instance, ADR 00XX-draft
+ * agent_id → its one live session, in memory (stage 1: one server instance, ADR 0026
  * stream manager). A stream is a session from its Hello on; before that it is only tracked for
  * the hello timeout. One lock guards both maps; nothing under it blocks.
  */

@@ -49,7 +49,7 @@ class StreamClose(
     fun status(): StatusRuntimeException = newStatus()
 }
 
-/** The ADR 00XX-draft error shape: one ErrorInfo in domain `sard.dev`. */
+/** The ADR 0025 error shape: one ErrorInfo in domain `sard.dev`. */
 internal fun status(
     code: Status.Code,
     reason: String,

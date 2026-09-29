@@ -27,7 +27,7 @@ data class AgentStreamSettings(
     val clockSkewThreshold: Duration,
 )
 
-/** `sard.agent.stream.*`; windows are counted in heartbeat intervals (ADR 00XX-draft stream manager). */
+/** `sard.agent.stream.*`; windows are counted in heartbeat intervals (ADR 0026 stream manager). */
 @ConfigurationProperties("sard.agent.stream")
 data class AgentStreamProperties(
     val duplicateWindowHeartbeats: Int = DUPLICATE_WINDOW_HEARTBEATS,

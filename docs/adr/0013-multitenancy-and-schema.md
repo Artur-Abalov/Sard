@@ -48,7 +48,7 @@ class HibernateTenantBridge(private val resolver: TenantResolver) : CurrentTenan
 - Вызовы `system` перечислены здесь; новый вызов — правка этого списка на ревью:
   1. `EnrollmentTokens.ownerOf(hash)` — токен по хэшу до того, как известен тенант.
   2. `AgentCertificateStandings.of(serial)` — сертификат агента и отзыв его агента по serial при каждом вызове gRPC (S3, ADR 0009); только чтение, возвращает тенанта, агента, `not_after` и отметки отзыва.
-  3. `AgentCertificateStandings.of(serials)` — то же для serial всех открытых стримов `Connect` одним запросом раз в `sard.agent.stream.check-interval` (S5a, ADR 00XX-draft менеджера стримов): отзыв и истечение закрывают уже открытый стрим.
+  3. `AgentCertificateStandings.of(serials)` — то же для serial всех открытых стримов `Connect` одним запросом раз в `sard.agent.stream.check-interval` (S5a, ADR 0026): отзыв и истечение закрывают уже открытый стрим.
 
   Список проверяет `ArchitectureTest` (S2b) с точностью до файла: вызов `sessions.system` вне `EnrollmentTokens.kt` и `AgentCertificateStandings.kt` роняет сборку; лишний вызов внутри этих файлов ловит ревью.
 - Операции администратора над токенами (`EnrollmentTokens.create`, `list`, `get`, `revoke`, S2b) идут через `inTenant` с тенантом, который вызывающий получил от `TenantResolver`. Будущий REST-слой (D2 → W1b) никогда не берёт тенант из параметра пути.
