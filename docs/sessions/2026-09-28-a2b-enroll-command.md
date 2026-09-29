@@ -962,3 +962,11 @@ verified `git diff`-clean before and after each mutation score above):
 enroll_timing,main}_test.go`, `agent/internal/config/address_test.go`,
 `agent/internal/enroll/{classify,csr,error,identity,lock,token,trust,
 write}_test.go`, `agent/internal/secrets/secrets_test.go`.
+
+## После PR #19: слияния с `main` и CI (2026-09-28)
+
+- **Конфликт с `main`** (S4a Register, S5a) — только в `docs/adr/00XX-draft-grpc-error-model.md`. Взяты таблица `Register` и расширенный `HOSTNAME_INVALID` из `main`; пункт «Повтор» объединён: транспорт A3 повторяет `UNAVAILABLE` сам, `sard-agent enroll` не повторяет регистрацию ни при каком коде (`9bfe642`).
+- **CI `server` красный: 421 тест, 1 упал** — `AgentSeamIntegrationTest` (S4a) запускает настоящий агент с `agent.key` и паролем 0644 и скриптом `/bin/true` (root, 0755); проверка A1 из этой ветки отказывала в старте. Исправлена фикстура теста, не проверка: секретные файлы 0600, скрипт 0700 в каталоге теста (`be61ea2`). Воспроизведено локально: без правки — `secret file tls.key_file … has mode -rw-r--r--`, с правкой тест зелёный; `make gate M=server` — `PASSED (server, full)`, покрытие 94.6%.
+- **CI `e2e` красный** после слияния PR #18 (T2a): `AgentConnectTest` кладёт `agent.key` в контейнер 0644 от root, агент работает под uid 65532 — отказ A1. Образ distroless, chown в контейнере невозможен, `Transferable.of` владельца не задаёт — ключ кладётся своей tar-записью 0600 с владельцем 65532 (`4eecbaf`). Полный `make e2e` локально не собрался (Docker Hub 429, TLS-прокси среды внутри сборки образа сервера); проверено узко: образ агента и тот же API `PUT /archive`, что у Testcontainers — ключ 0600/65532 проходит A1 до `connecting to`, 0644/root даёт отказ из CI. В CI `e2e` зелёный.
+- Итог CI на `4eecbaf`: 10 из 10 проверок зелёные; PR #19 слит владельцем 2026-09-29.
+- Оставшиеся хвосты занесены в `docs/open-questions.md`: OQ-026 … OQ-030.
