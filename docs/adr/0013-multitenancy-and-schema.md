@@ -1,6 +1,6 @@
 # 0013 — Мультитенантность и схема БД сервера
 
-- Статус: принято (основа тенантности реализована; остальная схема — целевая, таблицы появляются вместе с фичами; пересмотрено 2026-09-27 по ревью владельца)
+- Статус: принято (основа тенантности реализована; остальная схема — целевая, таблицы появляются вместе с фичами; пересмотрено 2026-09-27 по ревью владельца; `sources` и `runs` уточнены 2026-09-29 решением D6, ADR 0022)
 - Дата: 2026-09-27
 
 ## Контекст
@@ -48,7 +48,7 @@ class HibernateTenantBridge(private val resolver: TenantResolver) : CurrentTenan
 - Вызовы `system` перечислены здесь; новый вызов — правка этого списка на ревью:
   1. `EnrollmentTokens.ownerOf(hash)` — токен по хэшу до того, как известен тенант.
   2. `AgentCertificateStandings.of(serial)` — сертификат агента и отзыв его агента по serial при каждом вызове gRPC (S3, ADR 0009); только чтение, возвращает тенанта, агента, `not_after` и отметки отзыва.
-  3. `AgentCertificateStandings.of(serials)` — то же для serial всех открытых стримов `Connect` одним запросом раз в `sard.agent.stream.check-interval` (S5a, ADR 00XX-draft менеджера стримов): отзыв и истечение закрывают уже открытый стрим.
+  3. `AgentCertificateStandings.of(serials)` — то же для serial всех открытых стримов `Connect` одним запросом раз в `sard.agent.stream.check-interval` (S5a, ADR 0026): отзыв и истечение закрывают уже открытый стрим.
 
   Список проверяет `ArchitectureTest` (S2b) с точностью до файла: вызов `sessions.system` вне `EnrollmentTokens.kt` и `AgentCertificateStandings.kt` роняет сборку; лишний вызов внутри этих файлов ловит ревью.
 - Операции администратора над токенами (`EnrollmentTokens.create`, `list`, `get`, `revoke`, S2b) идут через `inTenant` с тенантом, который вызывающий получил от `TenantResolver`. Будущий REST-слой (D2 → W1b) никогда не берёт тенант из параметра пути.
@@ -110,7 +110,9 @@ agent_repositories            тенант, снимок из Register (ADR 0008
   -- repository_id NULL — агент не смог прочитать id; crypto_provider NULL — AES restic
 
 sources                       тенант — что бэкапим
-  id PK, agent_id → agents, name, plugin, config JSONB, created_at, updated_at, deleted_at
+  id PK, agent_id → agents, name, plugin, config JSONB,
+  repository_name NOT NULL     -- снимки источника живут в одном репозитории (ADR 0022)
+  created_at, updated_at, deleted_at
   UNIQUE (tenant_id, name) WHERE deleted_at IS NULL
 
 workflows                     тенант
@@ -125,12 +127,17 @@ schedules                     тенант
   -- пропущенные за время простоя запуски: run_once — один запуск вместо всех, skip — ни одного.
   -- По умолчанию run_once: для бэкапа поздно лучше, чем никогда.
 
-runs                          тенант — запуск workflow · история
-  id PK, workflow_id → workflows, schedule_id NULL → schedules,
+runs                          тенант — запуск источника (этап 1) или workflow · история
+  id PK, source_id NOT NULL → sources, workflow_id NULL → workflows, schedule_id NULL → schedules,
   trigger CHECK IN ('schedule', 'manual', 'verification'),
-  status  CHECK IN ('queued', 'running', 'succeeded', 'failed', 'cancelled'),
-  definition JSONB (снимок workflow на момент запуска), queued_at, started_at, finished_at
+  status  CHECK IN ('queued', 'dispatched', 'running', 'succeeded', 'failed', 'cancelled'),
+  definition JSONB NULL (снимок workflow на момент запуска), queued_at, started_at, finished_at
+  CHECK (workflow_id IS NOT NULL OR trigger = 'manual')   -- этап 1: неявных workflow нет (ADR 0022)
+  CHECK ((workflow_id IS NULL) = (definition IS NULL))
+  UNIQUE (tenant_id, source_id) WHERE status IN ('queued', 'dispatched', 'running')   -- D6, ADR 0022
+  INDEX (tenant_id, source_id, queued_at DESC)
   INDEX (tenant_id, workflow_id, queued_at DESC)
+  -- workflow из нескольких источников: ограничение D6 переходит на run_steps.source_id (ADR 0022)
 
 run_steps                     тенант — одна команда агенту · история
   id PK (= RunStep.command_id), run_id → runs, ordinal, agent_id → agents,

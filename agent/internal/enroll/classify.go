@@ -15,7 +15,7 @@ import (
 )
 
 // sardErrorDomain is the google.rpc.ErrorInfo domain the server uses
-// (docs/adr/00XX-draft-grpc-error-model.md).
+// (docs/adr/0025-grpc-error-model.md).
 const sardErrorDomain = "sard.dev"
 
 // tokenRefusedReasons: TOKEN_UNKNOWN, TOKEN_USED, TOKEN_EXPIRED and
@@ -43,7 +43,7 @@ type EnrollResult struct {
 
 // CallEnroll sends req over conn — which DialTOFU has already trust-checked
 // — and classifies any failure by the reason string in the server's
-// google.rpc.ErrorInfo (docs/adr/00XX-draft-grpc-error-model.md). This is
+// google.rpc.ErrorInfo (docs/adr/0025-grpc-error-model.md). This is
 // the single point that turns a server response into an *Error; A2b reads
 // only Class and Reason to build its message and pick an exit code. It
 // does not retry: the server's contract promises only UNAVAILABLE is worth

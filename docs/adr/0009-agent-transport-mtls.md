@@ -15,7 +15,7 @@
 - Поток: первое сообщение агента — `Hello` со списком выполняющихся команд (примирение после переподключения); вверх — `Heartbeat`, `StepProgress` (фазы prepare → dump → upload/restore → verify), `LogChunk`, `StepResult` с типизированным результатом (`BackupOutput`, `RestoreOutput`, `VerifyOutput` — доказательство «последнего проверенного восстановления», `RunOutput`); вниз — `RunStep` (действие, имя репозитория, снапшот, таймаут, теги) и `CancelStep`. Команды идемпотентны по `command_id`.
 - Репозитории, секреты и скрипты передаются только по имени (`RunStep.repository_name`, ссылки в `config_json`, имена скриптов); значения остаются на хосте — ADR 0008.
 - В каркасе все RPC обоих сервисов отвечали `UNIMPLEMENTED` (сервер) / `ErrNotImplemented` (клиент агента). С S3 `Enroll` реализован (S2a), а `AgentService` без действующего сертификата отвечает `UNAUTHENTICATED`; с сертификатом живого агента его методы по-прежнему `UNIMPLEMENTED` до S4/S5.
-- `Enroll` (S2a, S2b): отказы — `google.rpc.ErrorInfo` с доменом `sard.dev` по ADR 00XX-draft-grpc-error-model, временное сопоставление S2a заменено.
+- `Enroll` (S2a, S2b): отказы — `google.rpc.ErrorInfo` с доменом `sard.dev` по ADR 0025, временное сопоставление S2a заменено.
 
 ## Адрес для агентов (S2b)
 - Команду `sard-agent enroll --server <адрес> --token <строка>` строит сервер. Адрес — `SARD_AGENT_ENDPOINT` (`sard.agent.endpoint`); если не задан — первое имя из `sard.pki.server-names` и gRPC-порт сервера, IPv6 в скобках.
@@ -46,7 +46,7 @@
   | `AGENT_REVOKED` | `agents.revoked_at` задан |
 
   Держатель сертификата из причины не узнаёт ничего, чего не знал: свой сертификат он видит сам. Сервер пишет в лог причину, serial, agent_id и метод; сертификаты и ключи не логируются.
-- **Стрим.** Проверка выполняется при открытии вызова; принципал (`AgentPrincipal`: agent_id, tenant_id, serial) кладётся в gRPC `Context` и действует до конца вызова, в `Connect` — до закрытия стрима. Закрытие уже открытых стримов при отзыве и истечении `not_after` — S5a: периодическая сверка с БД тем же `AgentAuthenticator` (ADR 00XX-draft менеджера стримов).
+- **Стрим.** Проверка выполняется при открытии вызова; принципал (`AgentPrincipal`: agent_id, tenant_id, serial) кладётся в gRPC `Context` и действует до конца вызова, в `Connect` — до закрытия стрима. Закрытие уже открытых стримов при отзыве и истечении `not_after` — S5a: периодическая сверка с БД тем же `AgentAuthenticator` (ADR 0026).
 
 ## Отвергнуто
 - Сервер подключается к агентам — требует входящих портов на каждом хосте.
