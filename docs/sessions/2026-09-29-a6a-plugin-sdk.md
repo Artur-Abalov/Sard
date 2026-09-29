@@ -146,3 +146,12 @@
   проблемы файлов называют ключ конфига и путь, без содержимого;
   `tlsid_test.go` — P-256, RSA, SEC 1, PKCS #1, цепочка, второй сертификат.
 - `./scripts/gate.sh agent fast` — PASSED (покрытие 97.2%, CRAP ≤ 6).
+- Итоговые команды задачи: `cd agent && go test -race ./...` — exit 0;
+  `go test -tags integration ./...` — exit 0; `./scripts/gate.sh proto` —
+  PASSED (buf lint, buf breaking, сгенерированный код совпадает).
+- Полный гейт: `sdk` — mutation score 0.923077; `agent` — покрытие 97.2%,
+  mutation score 0.901132; `gen`, `cli fast` — PASSED.
+
+### Не проверено здесь
+- Регистрация снимка против живого сервера (e2e T2a): нет Docker-демона;
+  проверит job `e2e` в CI.
