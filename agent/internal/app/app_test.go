@@ -31,12 +31,12 @@ func (f *fakeLink) Run(context.Context) error {
 
 type plugin struct{ name, schema string }
 
-func (p plugin) Name() string                                     { return p.name }
-func (p plugin) ConfigSchema() []byte                             { return []byte(p.schema) }
-func (plugin) Prepare(context.Context, sdk.Config) error          { return nil }
-func (plugin) Dump(context.Context, sdk.Config) (sdk.Dump, error) { return sdk.Dump{}, nil }
-func (plugin) Stream(context.Context, sdk.Dump, io.Writer) error  { return nil }
-func (plugin) Verify(context.Context, sdk.Config, string) error   { return nil }
+func (p plugin) Name() string                                                          { return p.name }
+func (plugin) Version() string                                                         { return "0.9.0" }
+func (p plugin) ConfigSchema() []byte                                                  { return []byte(p.schema) }
+func (plugin) Prepare(context.Context, sdk.Host, sdk.Config) error                     { return nil }
+func (plugin) Dump(context.Context, sdk.Host, sdk.Config) (sdk.Dump, error)            { return sdk.Dump{}, nil }
+func (plugin) Stream(context.Context, sdk.Host, sdk.Config, sdk.Dump, io.Writer) error { return nil }
 
 func newAgent(t *testing.T, link *fakeLink) *app.Agent {
 	t.Helper()

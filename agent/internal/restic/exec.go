@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"syscall"
@@ -28,6 +29,9 @@ type Command struct {
 	Args []string
 	// Env is the complete environment; nothing is inherited from the agent.
 	Env []string
+	// Stdin is the process's standard input; nil is an empty one. An
+	// *os.File is handed to the process as is.
+	Stdin io.Reader
 	// Stdout and Stderr receive each output line without its line ending.
 	// They are called from separate goroutines; a line is valid only
 	// during the call. Nil discards the stream.
@@ -53,7 +57,7 @@ func (p ProcessExecutor) Run(ctx context.Context, c Command) (int, error) {
 	cmd.Env = append([]string{}, c.Env...) // non-nil: an empty Env inherits nothing
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdout, stderr := &lineWriter{emit: c.Stdout}, &lineWriter{emit: c.Stderr}
-	cmd.Stdout, cmd.Stderr = stdout, stderr
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = c.Stdin, stdout, stderr
 	cmd.Cancel = func() error { return signalGroup(cmd.Process.Pid, syscall.SIGTERM) }
 	cmd.WaitDelay = p.grace()
 	if err := cmd.Start(); err != nil {

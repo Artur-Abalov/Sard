@@ -74,7 +74,7 @@ func mustVersions(file string) (pinned, minimum Version) {
 // the binary is older than Minimum. It needs no repository or key.
 func (c *CLI) Version(ctx context.Context) (Version, error) {
 	var out bytes.Buffer
-	if _, err := c.run(ctx, c.baseEnv(), []string{"version"}, collect(&out)); err != nil {
+	if _, err := c.run(ctx, c.baseEnv(), call{args: []string{"version"}, stdout: collect(&out)}); err != nil {
 		return Version{}, err
 	}
 	rest, ok := strings.CutPrefix(out.String(), "restic ")

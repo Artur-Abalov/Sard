@@ -6,6 +6,7 @@ package restic_test
 import (
 	"context"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -32,6 +33,11 @@ type reply struct {
 	code           int
 	err            error
 	during         func() // runs while "restic" is running, e.g. cancel
+	// readStdin makes the fake read stdin to EOF, as restic backup --stdin
+	// does, before it replies. Like restic 0.19, a cancelled context
+	// (SIGTERM) makes it confirm on stderr and keep reading until EOF,
+	// then exit with 130 and no snapshot.
+	readStdin bool
 }
 
 // fakeExec replays golden output instead of starting restic.
@@ -39,13 +45,18 @@ type fakeExec struct {
 	t       *testing.T
 	replies map[string]reply // by subcommand, e.g. "backup"
 	calls   []restic.Command
+	stdin   []byte // what a readStdin reply read
+	killed  bool   // a readStdin reply was stopped before EOF
 }
 
-func (f *fakeExec) Run(_ context.Context, cmd restic.Command) (int, error) {
+func (f *fakeExec) Run(ctx context.Context, cmd restic.Command) (int, error) {
 	f.calls = append(f.calls, cmd)
 	r, ok := f.replies[cmd.Args[0]]
 	if !ok {
 		f.t.Fatalf("unexpected restic %q", cmd.Args)
+	}
+	if r.readStdin && f.readStdin(ctx, cmd) {
+		return 130, nil
 	}
 	feed(f.t, r.stdout, cmd.Stdout)
 	for line := range strings.Lines(r.inline) {
@@ -56,6 +67,23 @@ func (f *fakeExec) Run(_ context.Context, cmd restic.Command) (int, error) {
 		r.during()
 	}
 	return r.code, r.err
+}
+
+// readStdin reads stdin to EOF into f.stdin; true means ctx ended first.
+func (f *fakeExec) readStdin(ctx context.Context, cmd restic.Command) (killed bool) {
+	done := make(chan []byte, 1)
+	go func() {
+		data, _ := io.ReadAll(cmd.Stdin)
+		done <- data
+	}()
+	select {
+	case f.stdin = <-done:
+		return false
+	case <-ctx.Done():
+		cmd.Stderr([]byte("signal terminated received, cleaning up    "))
+		f.stdin, f.killed = <-done, true
+		return true
+	}
 }
 
 func (f *fakeExec) call(sub string) restic.Command {

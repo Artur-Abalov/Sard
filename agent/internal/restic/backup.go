@@ -8,16 +8,26 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
-// BackupRequest says what one `restic backup` stores.
+// BackupRequest says what one `restic backup` stores: Paths, or the
+// stream Stdin writes, stored as one file named StdinFilename.
 type BackupRequest struct {
 	Paths    []string
 	Excludes []string // restic --exclude patterns
 	Tags     []string // no commas: restic splits tags on them
+	// Stdin writes the content to w, restic's stdin, and must return when
+	// ctx is done. Only a nil return ends the stream with EOF; after an
+	// error or cancellation restic is stopped and stores no snapshot.
+	Stdin         func(ctx context.Context, w io.Writer) error
+	StdinFilename string
 }
 
 // Progress is one restic status report.
@@ -101,8 +111,90 @@ func (c *CLI) Backup(ctx context.Context, req BackupRequest, progress func(Progr
 		return BackupSummary{}, err
 	}
 	out := &backupOutput{progress: progress, summary: BackupSummary{RepositoryID: id}}
-	res, err := c.runRepo(ctx, req.args(), out.line)
-	return out.result(res, err)
+	if req.Stdin == nil {
+		return out.result(c.runRepo(ctx, call{args: req.args(), stdout: out.line}))
+	}
+	return out.result(c.backupStdin(ctx, req, out.line))
+}
+
+// streamError marks a cancellation of restic caused by a failed stream.
+type streamError struct{ err error }
+
+func (e *streamError) Error() string { return e.err.Error() }
+
+// stopped is the line restic prints when SIGTERM has cancelled its work;
+// from then on it stores no snapshot.
+var stopped = regexp.MustCompile(`signal \w+ received, cleaning up`)
+
+// backupStdin runs restic with the read end of a pipe as stdin while
+// req.Stdin writes into the other end. Closing the write end is EOF, which
+// restic takes for the end of complete data, so it is closed early only
+// after a successful stream. When restic is being stopped instead, it is
+// closed once restic confirms SIGTERM: restic 0.19 keeps reading stdin
+// until EOF even then. The read end is closed when restic has exited, so a
+// stream still writing fails.
+func (c *CLI) backupStdin(ctx context.Context, req BackupRequest, stdout func([]byte)) (*result, error) {
+	p, err := newStdinPipe()
+	if err != nil {
+		return &result{}, fmt.Errorf("restic backup: %w", err)
+	}
+	defer p.end()
+	resticCtx, stopRestic := context.WithCancelCause(ctx)
+	defer stopRestic(nil)
+	streamCtx, stopStream := context.WithCancel(ctx)
+	go p.feed(streamCtx, req.Stdin, stopRestic)
+	res, err := c.runRepo(resticCtx, call{args: req.args(), stdout: stdout, stdin: p.r, stderr: p.endOnStop(resticCtx)})
+	// Read before the read end closes: a stream that fails on the closed
+	// pipe afterwards did not cause restic to stop.
+	var failed *streamError
+	causedByStream := ctx.Err() == nil && errors.As(context.Cause(resticCtx), &failed)
+	_ = p.r.Close()
+	stopStream()
+	<-p.fed
+	if causedByStream {
+		return res, fmt.Errorf("restic backup: stream: %w", failed.err)
+	}
+	return res, err
+}
+
+// stdinPipe carries a stream to restic's stdin.
+type stdinPipe struct {
+	r, w *os.File
+	once sync.Once
+	fed  chan struct{} // closed when the stream has returned
+}
+
+func newStdinPipe() (*stdinPipe, error) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	return &stdinPipe{r: r, w: w, fed: make(chan struct{})}, nil
+}
+
+// end closes the write end: restic reads EOF.
+func (p *stdinPipe) end() { p.once.Do(func() { _ = p.w.Close() }) }
+
+// feed runs the stream. Only a stream that succeeded before ctx ended
+// gets EOF; a failed one stops restic instead.
+func (p *stdinPipe) feed(ctx context.Context, stream func(context.Context, io.Writer) error, stopRestic context.CancelCauseFunc) {
+	defer close(p.fed)
+	err := stream(ctx, p.w)
+	switch {
+	case err != nil:
+		stopRestic(&streamError{err})
+	case ctx.Err() == nil:
+		p.end()
+	}
+}
+
+// endOnStop ends the stream once restic, being stopped, confirms SIGTERM.
+func (p *stdinPipe) endOnStop(resticCtx context.Context) func(line []byte) {
+	return func(line []byte) {
+		if resticCtx.Err() != nil && stopped.Match(line) {
+			p.end()
+		}
+	}
 }
 
 // exitPartial is restic's exit code for a snapshot written without some files.
@@ -167,13 +259,29 @@ func (m message) summary(repositoryID string) BackupSummary {
 }
 
 func (r BackupRequest) validate() error {
+	if slices.ContainsFunc(r.Tags, badTag) {
+		return fmt.Errorf("%w: empty tag or tag with a comma", ErrInvalidRequest)
+	}
+	if r.Stdin != nil {
+		return r.validateStdin()
+	}
 	switch {
 	case len(r.Paths) == 0:
 		return fmt.Errorf("%w: no paths", ErrInvalidRequest)
 	case slices.Contains(r.Paths, ""):
 		return fmt.Errorf("%w: empty path", ErrInvalidRequest)
-	case slices.ContainsFunc(r.Tags, badTag):
-		return fmt.Errorf("%w: empty tag or tag with a comma", ErrInvalidRequest)
+	case r.StdinFilename != "":
+		return fmt.Errorf("%w: stdin filename without stdin", ErrInvalidRequest)
+	}
+	return nil
+}
+
+func (r BackupRequest) validateStdin() error {
+	switch {
+	case r.StdinFilename == "":
+		return fmt.Errorf("%w: stdin without a filename", ErrInvalidRequest)
+	case len(r.Paths) > 0 || len(r.Excludes) > 0:
+		return fmt.Errorf("%w: stdin with paths or excludes", ErrInvalidRequest)
 	}
 	return nil
 }
@@ -181,10 +289,14 @@ func (r BackupRequest) validate() error {
 func badTag(t string) bool { return t == "" || strings.Contains(t, ",") }
 
 // args puts the paths after "--" so a path starting with "-" is not a flag.
+// The stdin filename is joined to its flag, so "-x" is not parsed as one.
 func (r BackupRequest) args() []string {
 	args := []string{"backup", "--json"}
 	for _, t := range r.Tags {
 		args = append(args, "--tag", t)
+	}
+	if r.Stdin != nil {
+		return append(args, "--stdin", "--stdin-filename="+r.StdinFilename)
 	}
 	for _, e := range r.Excludes {
 		args = append(args, "--exclude", e)

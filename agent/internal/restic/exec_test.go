@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -37,6 +38,11 @@ var helperModes = map[string]func(){
 		fmt.Print("first\nsecond\r\nz") // the last line has no line ending
 		fmt.Fprint(os.Stderr, "\rwarn")
 		os.Exit(3)
+	},
+	"cat": func() {
+		if _, err := io.Copy(os.Stdout, os.Stdin); err != nil {
+			os.Exit(2)
+		}
 	},
 	"tree":  startStubbornChild,
 	"leak":  leaveChildBehind,
@@ -249,4 +255,24 @@ func alive(pid int) bool {
 	// "pid (comm) S ...": the state follows the closing parenthesis.
 	rest := string(stat[strings.LastIndexByte(string(stat), ')')+1:])
 	return !strings.HasPrefix(strings.TrimSpace(rest), "Z")
+}
+
+func TestProcessExecutorFeedsStdin(t *testing.T) {
+	var out lines
+	cmd := helper(t, "cat")
+	cmd.Stdin = strings.NewReader("dump line 1\ndump line 2\n")
+	cmd.Stdout = out.add
+	code, err := restic.ProcessExecutor{}.Run(context.Background(), cmd)
+	if want := []string{"dump line 1", "dump line 2"}; code != 0 || err != nil || !slices.Equal(out.all(), want) {
+		t.Fatalf("code = %d, err = %v, stdout = %q", code, err, out.all())
+	}
+}
+
+func TestProcessExecutorWithoutStdinGivesTheProcessAnEmptyOne(t *testing.T) {
+	var out lines
+	cmd := helper(t, "cat")
+	cmd.Stdout = out.add
+	if code, err := (restic.ProcessExecutor{}).Run(context.Background(), cmd); code != 0 || err != nil || len(out.all()) != 0 {
+		t.Fatalf("code = %d, err = %v, stdout = %q", code, err, out.all())
+	}
 }

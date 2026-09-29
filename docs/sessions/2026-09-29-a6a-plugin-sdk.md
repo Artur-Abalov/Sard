@@ -50,3 +50,60 @@
 - Фазы: Prepare → PREPARING, Dump/Stream → DUMPING, restic → UPLOADING,
   Verify → VERIFYING.
 - `BackupOutput.repository_id = 4` (аддитивно).
+
+### Ответы владельца
+1. Секреты помечаются `"format": "sard-secret"`, имена проверяются при
+   валидации, до `Prepare`.
+2. Адаптер регистрируется для всех встроенных плагинов; actions выводит
+   агент: BACKUP и RESTORE всегда, VERIFY — только у `sdk.Verifier`.
+3. `Plugin.Version()`; встроенные плагины отдают версию агента.
+4. RESTORE в адаптере — да (общий `restic restore`).
+5. Текст об OQ-027 — предложенный: «tls.key_file не соответствует
+   tls.cert_file: регистрация не завершена — повторите `sard-agent enroll
+   --force`»; прогнать через specifier в фазе 3.
+6. Проверка 6: контрактный тест в агенте + job `e2e` в CI.
+7. Теги `k=v`; секрет — байты как есть, читается при каждом запросе;
+   `bytes_total = 0`, когда неизвестно.
+
+## Фаза 2: SDK, stdin в обёртке, тестовый плагин (СТОП)
+
+### Сделано
+- `agent/plugins/sdk`: `Plugin{Name, Version, ConfigSchema, Prepare, Dump,
+  Stream}` с `sdk.Host`, `Verifier`, `Dump{Paths, Excludes, Filename}`,
+  `SecretFormat`, `ConfigError{Violations}`, `SecretError`; реестр
+  отклоняет то, что отклонит Register (S4a). `Stream` получает и конфиг —
+  без него потоковый дамп не построить (изменение против фазы 1).
+- Встроенные плагины: `Version()` = версия агента, `Verify` убран (до
+  этапа 2 они не умеют проверять), `plugins.Registry(version)`.
+- `internal/restic`: `Command.Stdin`, `BackupRequest{Stdin, StdinFilename}`,
+  `--stdin --stdin-filename=`; golden `testdata/backup-stdin.stdout`
+  снят с restic 0.19.1.
+- `internal/pluginhost`: `Secrets`, `CompileSchema`/`Schema.Validate`,
+  `Source.Backup`/`Verify` с фазами; `testplugin` — оба способа, секрет,
+  Verify побайтно.
+- Гейт: интеграционная часть агента запускает и `./internal/pluginhost/...`,
+  с `-race`.
+- ADR 0027; `docs/dependencies.md`: jsonschema — runtime.
+
+### Проверено (`go test -race`, restic 0.19.1)
+- EOF после частичного потока → restic сохраняет обрезанный снимок;
+  SIGTERM до EOF → exit 130 без снимка, но restic ждёт EOF и после
+  SIGTERM (18 с в опыте с FIFO). Отсюда: stdin закрывается только после
+  успешного потока или после строки restic о SIGTERM.
+- Тесты стратегии: 1 — `schema_test.go` (пути `/host`, `/replicas/1/password`,
+  `~0`/`~1`); 2 — `secrets_test.go`, `source_test.go`; 3 —
+  `pluginhost/integration_test.go` (пути и поток → restore → Verify);
+  4 — `TestIntegrationCancellingDuringTheDumpStopsTheDumpAndRestic`
+  (дамп вернул ошибку, снимков 0, блокировок 0, restic не запущен) и
+  restic-уровень `integration_stdin_test.go`.
+- `./scripts/gate.sh sdk fast`, `./scripts/gate.sh agent fast` — PASSED
+  (agent: покрытие 96.9%, CRAP ≤ 6, golangci-lint 0 issues).
+
+### Найдено по дороге
+- Проверка «restic не запущен» в интеграционных тестах видела процессы
+  параллельно идущего пакета; теперь считаются только дочерние процессы
+  теста.
+
+### Открыто
+- Правило 7 CLAUDE.md (runtime-зависимости агента) не упоминает валидатор
+  JSON Schema — решение владельца.

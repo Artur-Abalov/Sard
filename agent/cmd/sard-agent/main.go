@@ -108,7 +108,7 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 	// Repository keys stay on this host (ADR 0008).
 	keys := crypto.NewResticAES(cfg.PasswordFiles())
 	agent := &app.Agent{
-		Plugins:  plugins.Registry(),
+		Plugins:  plugins.Registry(version),
 		Hostname: hostname,
 		Version:  version,
 		OS:       runtime.GOOS,
