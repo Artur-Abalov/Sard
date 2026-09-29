@@ -4,6 +4,7 @@
 import {
   AppShell,
   Burger,
+  Button,
   Group,
   SegmentedControl,
   Title,
@@ -11,10 +12,45 @@ import {
   type MantineColorScheme,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
-import { Outlet } from '@tanstack/react-router'
+import { Outlet, useNavigate } from '@tanstack/react-router'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { signOut } from './auth/session'
 import { languages } from './languages'
 import { NavLink } from './NavLink'
+
+// Ends the session and leaves for /login without a redirect (Р9з) on 204 (signed
+// out) or 401 (already signed out elsewhere) — either way there is no session to
+// come back to. Any other outcome, including a network failure (Р9е: the cookie is
+// HttpOnly, so the console cannot clear it itself), shows an error and stays put.
+function LogoutButton() {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const [failed, setFailed] = useState(false)
+
+  async function onClick() {
+    setFailed(false)
+    try {
+      const response = await signOut()
+      if (response.status === 204 || response.status === 401) {
+        await navigate({ to: '/login' })
+      } else {
+        setFailed(true)
+      }
+    } catch {
+      setFailed(true)
+    }
+  }
+
+  return (
+    <>
+      <Button variant="subtle" onClick={() => void onClick()}>
+        {t('app.logout')}
+      </Button>
+      {failed && <span role="alert">{t('login.unavailable')}</span>}
+    </>
+  )
+}
 
 const schemes: MantineColorScheme[] = ['light', 'dark', 'auto']
 
@@ -47,6 +83,7 @@ function Header({ opened, toggle }: { opened: boolean; toggle: () => void }) {
           onChange={(value) => setColorScheme(value as MantineColorScheme)}
           data={schemes.map((scheme) => ({ value: scheme, label: t(`app.${scheme}`) }))}
         />
+        <LogoutButton />
       </Group>
     </Group>
   )

@@ -26,6 +26,20 @@ kotlin {
     }
 }
 
+// mutflow's "mutatedMain" source set is a separate Kotlin compilation, so by default it
+// gets its own module name and its own mangled names for `internal` declarations (a
+// module-private disambiguation Kotlin adds to the JVM method name). :server:test then
+// runs against a classpath where "main" is swapped for "mutatedMain": any test calling an
+// `internal` member compiled against "main" would otherwise get a NoSuchMethodError against
+// the differently-mangled "mutatedMain" class. Pinning the same module name for every
+// Kotlin compilation of this project (main, mutatedMain, test) keeps the mangled names
+// identical, so the swap does not break `internal` linkage.
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    compilerOptions {
+        moduleName.set("sard_server")
+    }
+}
+
 // Kotlin test class file names come from Cyrillic spec-quoted scenario titles; the
 // JVM derives file-name encoding (sun.jnu.encoding) from the Gradle daemon's locale
 // at startup, not from JVM flags on the compile task. Fail fast with a clear message
@@ -107,6 +121,12 @@ tasks.test {
             .get()
             .asFile.path,
     )
+    // CSRF tests (W1b) set the Host header explicitly to control the expected Origin;
+    // java.net.http.HttpClient refuses to set it unless this is allowed.
+    systemProperty("jdk.httpclient.allowRestrictedHeaders", "host")
+    // A default so every test that boots the full context, not just the session ones,
+    // does not need its own SARD_ADMIN_PASSWORD; session tests override it per class.
+    environment("SARD_ADMIN_PASSWORD", "test-admin-password-2026")
     finalizedBy(tasks.jacocoTestReport)
 }
 

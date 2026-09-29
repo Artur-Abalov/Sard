@@ -5,9 +5,11 @@ package dev.sard.server.api
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import io.swagger.v3.oas.annotations.media.Schema
+import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
 import org.springframework.web.ErrorResponseException
+import tools.jackson.databind.ObjectMapper
 import java.util.UUID
 
 /** Media type of every error body (RFC 9457). */
@@ -51,6 +53,9 @@ enum class ErrorCode {
 
     @JsonProperty("not_implemented")
     NOT_IMPLEMENTED,
+
+    @JsonProperty("origin_rejected")
+    ORIGIN_REJECTED,
 }
 
 private const val TYPE = "URI reference identifying the problem type; about:blank when the status says it all"
@@ -111,4 +116,25 @@ fun notImplemented(): Nothing {
     val problem = ProblemDetail.forStatus(HttpStatus.NOT_IMPLEMENTED)
     problem.setProperty("code", "not_implemented")
     throw ErrorResponseException(HttpStatus.NOT_IMPLEMENTED, problem, null)
+}
+
+/**
+ * Writes an RFC 9457 problem body directly to a servlet response: the single writer for
+ * every filter that must answer before Spring MVC even picks a handler (session auth,
+ * CSRF's Origin guard) and for controller code with a status Spring cannot infer from
+ * the method's return type alone (sign-in's 204/401/429).
+ */
+fun writeProblem(
+    response: HttpServletResponse,
+    objectMapper: ObjectMapper,
+    status: Int,
+    title: String,
+    code: ErrorCode,
+) {
+    val problem = Problem(type = "about:blank", title = title, status = status, detail = null, code = code)
+    response.status = status
+    // Set directly (not response.characterEncoding), so Tomcat does not append ";charset=..." to it:
+    // the contract's Content-Type is exactly "application/problem+json".
+    response.setHeader("Content-Type", PROBLEM_JSON)
+    response.outputStream.write(objectMapper.writeValueAsBytes(problem))
 }

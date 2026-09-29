@@ -57,6 +57,9 @@ class OpenApiConfiguration {
     fun unauthorizedResponses(): OpenApiCustomizer = OpenApiCustomizer(::describeUnauthorized)
 
     @Bean
+    fun originRejectedResponses(): OpenApiCustomizer = OpenApiCustomizer(::describeOriginRejected)
+
+    @Bean
     fun requiredProperties(): OpenApiCustomizer = OpenApiCustomizer(::requireConstructorParameters)
 }
 
@@ -70,6 +73,17 @@ fun describeUnauthorized(api: OpenAPI) {
         .flatMap { it.readOperations() }
         .filter { it.security == null }
         .forEach { it.responses.addApiResponse("401", unauthorized) }
+}
+
+/** Adds 403 origin_rejected to every mutating operation (POST, PUT, PATCH, DELETE), K1. */
+fun describeOriginRejected(api: OpenAPI) {
+    val problem = Content().addMediaType(PROBLEM_JSON, MediaType().schema(Schema<Any>().`$ref`("Problem")))
+    val rejected = ApiResponse().description("Origin does not match the request (CSRF)").content(problem)
+    api.paths.orEmpty().values.forEach { item ->
+        listOfNotNull(item.post, item.put, item.patch, item.delete).forEach { operation ->
+            operation.responses.addApiResponse("403", rejected)
+        }
+    }
 }
 
 /**

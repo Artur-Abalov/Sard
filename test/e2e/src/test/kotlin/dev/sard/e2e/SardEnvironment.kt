@@ -47,7 +47,8 @@ class SardEnvironment(
     // Not "network": inside a container's apply {} that name is the container's own getNetwork().
     private val sardNetwork = Network.newNetwork()
     private val dbPassword = randomHex()
-    private val secrets = mutableSetOf(dbPassword)
+    private val adminPassword = randomHex()
+    private val secrets = mutableSetOf(dbPassword, adminPassword)
     private val containers = linkedMapOf<String, Tracked>()
 
     val postgres: PostgreSQLContainer =
@@ -155,6 +156,8 @@ class SardEnvironment(
             // The server certificate's SAN; the endpoint's host must be one of them.
             "SARD_PKI_SERVER_NAMES" to SERVER_ALIAS,
             "SARD_AGENT_ENDPOINT" to AGENT_ENDPOINT,
+            // The server refuses to start without it (ADR 0021); 32 hex characters.
+            "SARD_ADMIN_PASSWORD" to adminPassword,
         )
 
     private class Tracked(

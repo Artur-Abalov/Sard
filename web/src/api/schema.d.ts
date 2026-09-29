@@ -308,7 +308,7 @@ export interface components {
             };
         };
         /** @enum {string} */
-        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented";
+        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected";
         /** @description An error (RFC 9457) */
         Problem: {
             /** @description URI reference identifying the problem type; about:blank when the status says it all */
@@ -832,6 +832,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Not found in the session's tenant */
             404: {
                 headers: {
@@ -872,6 +881,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -965,6 +983,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Rejected values; errors name the fields */
             422: {
                 headers: {
@@ -998,6 +1025,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1070,7 +1106,7 @@ export interface operations {
             /** @description Signed in */
             204: {
                 headers: {
-                    /** @description sard_session; HttpOnly; SameSite=Strict */
+                    /** @description sard_session; HttpOnly; SameSite=Strict; Path=/; Secure when the connection is HTTPS */
                     "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
@@ -1078,6 +1114,15 @@ export interface operations {
             };
             /** @description Wrong password */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1116,6 +1161,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1191,6 +1245,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Rejected values; errors name the fields */
             422: {
                 headers: {
@@ -1224,6 +1287,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

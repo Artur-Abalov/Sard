@@ -2,7 +2,7 @@
 // Copyright 2026 Artur Abalov
 
 import createClient from 'openapi-fetch'
-import { beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { paths } from '../api/schema'
 import { ids, MOCK_PASSWORD } from './fixtures'
 
@@ -40,9 +40,83 @@ describe('session', () => {
     for (let i = 0; i < 5; i++)
       last = await api.POST('/api/v1/session', { body: { password: 'nope' } })
     expect(last.response.status).toBe(429)
-    expect(Number(last.response.headers.get('Retry-After'))).toBeGreaterThan(0)
+    expect(last.response.headers.get('Retry-After')).toBe('900')
     const right = await api.POST('/api/v1/session', { body: { password: MOCK_PASSWORD } })
     expect(right.response.status).toBe(429)
+  })
+
+  describe('the lock window (К4: matches the server)', () => {
+    beforeEach(() => vi.useFakeTimers())
+    afterEach(() => vi.useRealTimers())
+
+    test('15 minutes after the fifth failure sign-in works again', async () => {
+      for (let i = 0; i < 5; i++) await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      vi.advanceTimersByTime(15 * 60_000)
+      const response = await api.POST('/api/v1/session', { body: { password: MOCK_PASSWORD } })
+      expect(response.response.status).toBe(204)
+    })
+
+    test('failures older than 15 minutes drop out of the window', async () => {
+      for (let i = 0; i < 4; i++) await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      vi.advanceTimersByTime(15 * 60_000)
+      for (let i = 0; i < 4; i++) await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      const response = await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      expect(response.response.status).toBe(401)
+      expect(response.error?.code).toBe('unauthenticated')
+    })
+
+    test('a success clears the failure counter', async () => {
+      for (let i = 0; i < 4; i++) await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      await signIn()
+      for (let i = 0; i < 4; i++) await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      const response = await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      expect(response.response.status).toBe(401)
+    })
+
+    test('Retry-After counts down from the fifth failure, like the server', async () => {
+      for (let i = 0; i < 5; i++) await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      vi.advanceTimersByTime(10 * 60_000)
+      const response = await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      expect(response.response.status).toBe(429)
+      expect(response.response.headers.get('Retry-After')).toBe('300')
+    })
+
+    test('Retry-After rounds up to a whole second, like the server', async () => {
+      for (let i = 0; i < 5; i++) await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      vi.advanceTimersByTime(14 * 60_000 + 59_000 + 999)
+      const response = await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      expect(response.response.headers.get('Retry-After')).toBe('1')
+    })
+
+    test('attempts during the lock do not extend it', async () => {
+      for (let i = 0; i < 5; i++) await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      vi.advanceTimersByTime(60_000)
+      await api.POST('/api/v1/session', { body: { password: 'nope' } })
+      vi.advanceTimersByTime(14 * 60_000)
+      const response = await api.POST('/api/v1/session', { body: { password: MOCK_PASSWORD } })
+      expect(response.response.status).toBe(204)
+    })
+  })
+
+  test('the session cookie has Path=/, and the session names the default tenant with a 12-hour deadline', async () => {
+    const signedIn = await api.POST('/api/v1/session', { body: { password: MOCK_PASSWORD } })
+    expect(signedIn.response.headers.get('Set-Cookie')).toContain('Path=/')
+    const before = Date.now()
+    const { data } = await api.GET('/api/v1/session')
+    expect(data?.tenantId).toBe('0192f7a0-0000-7000-8000-00000000000a')
+    const ttl = Date.parse(data?.expiresAt ?? '') - before
+    expect(Math.abs(ttl - 12 * 3_600_000)).toBeLessThan(60_000)
+  })
+
+  test('a mutating request with a foreign Origin is 403 origin_rejected; the session survives', async () => {
+    await signIn()
+    const response = await fetch(new URL('/api/v1/session', location.origin), {
+      method: 'DELETE',
+      headers: { Origin: 'https://evil.example' },
+    })
+    expect(response.status).toBe(403)
+    expect((await response.json()).code).toBe('origin_rejected')
+    expect((await api.GET('/api/v1/session')).response.status).toBe(200)
   })
 
   test('without a session every protected endpoint answers 401 problem+json', async () => {

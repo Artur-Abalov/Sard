@@ -5,6 +5,8 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { QueryClient } from '@tanstack/react-query'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { guard } from './auth/guard'
+import { http } from './mocks/http'
+import { server } from './mocks/node'
 import { NotFound } from './pages/NotFound'
 import { createAppRouter } from './router'
 
@@ -32,6 +34,14 @@ const sections = [
 describe('routing', () => {
   beforeEach(() => {
     vi.mocked(guard).mockClear()
+    server.use(
+      http.get('/api/v1/session', ({ response }) =>
+        response(200).json({
+          tenantId: '00000000-0000-0000-0000-000000000001',
+          expiresAt: new Date().toISOString(),
+        }),
+      ),
+    )
   })
 
   test.each(sections)('$path opens its section inside the protected layout', async (section) => {

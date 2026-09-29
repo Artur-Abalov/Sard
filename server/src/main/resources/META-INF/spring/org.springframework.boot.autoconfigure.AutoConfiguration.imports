@@ -2,3 +2,4 @@ dev.sard.server.extension.SardExtensionsAutoConfiguration
 dev.sard.server.extension.TenancyAutoConfiguration
 dev.sard.server.pki.PkiAutoConfiguration
 dev.sard.server.ClockAutoConfiguration
+dev.sard.server.auth.AdminAuthAutoConfiguration
