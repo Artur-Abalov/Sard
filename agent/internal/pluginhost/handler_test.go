@@ -1,0 +1,282 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright 2026 Artur Abalov
+
+package pluginhost_test
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"google.golang.org/protobuf/proto"
+
+	"github.com/Artur-Abalov/sard/agent/internal/executor"
+	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
+	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
+	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
+)
+
+var (
+	_ executor.Registry = (*pluginhost.Handlers)(nil)
+	_ executor.Reporter = (*reporter)(nil)
+)
+
+const (
+	backup  = agentv1.Action_ACTION_BACKUP
+	restore = agentv1.Action_ACTION_RESTORE
+	verify  = agentv1.Action_ACTION_VERIFY
+	run     = agentv1.Action_ACTION_RUN
+)
+
+type handlersFixture struct {
+	handlers   *pluginhost.Handlers
+	repo       *repo
+	restoreDir string
+}
+
+func newHandlers(t *testing.T, plugins ...sdk.Plugin) *handlersFixture {
+	t.Helper()
+	reg, err := sdk.NewRegistry(plugins...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &handlersFixture{repo: &repo{}, restoreDir: filepath.Join(t.TempDir(), "restore")}
+	secrets := pluginhost.NewSecrets(map[string]string{"pg": "/etc/sard/pg"}, (&files{data: map[string]string{"/etc/sard/pg": "s3cret"}}).read)
+	repos := func(name string) (restic.Repository, bool) { return f.repo, name == "main" }
+	f.handlers, err = pluginhost.NewHandlers(reg, secrets, repos, f.restoreDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+func (f *handlersFixture) run(t *testing.T, step *agentv1.RunStep) (*agentv1.StepResult, error) {
+	t.Helper()
+	h, ok := f.handlers.Handler(step.GetPlugin())
+	if !ok {
+		t.Fatalf("no handler for %q", step.GetPlugin())
+	}
+	return h.Run(context.Background(), step, &reporter{})
+}
+
+func step(action agentv1.Action, cfg string) *agentv1.RunStep {
+	return &agentv1.RunStep{CommandId: "cmd-1", Plugin: "fake", ConfigJson: cfg, Action: action, RepositoryName: "main"}
+}
+
+func TestHandlersKnowTheRegisteredPluginsOnly(t *testing.T) {
+	f := newHandlers(t, &plugin{})
+	if _, ok := f.handlers.Handler("fake"); !ok {
+		t.Error("no handler for a registered plugin")
+	}
+	if _, ok := f.handlers.Handler("oracle"); ok {
+		t.Error("a handler for an unknown plugin")
+	}
+}
+
+func TestActionsOfAPluginFollowWhatItImplements(t *testing.T) {
+	f := newHandlers(t, &plugin{})
+	h, _ := f.handlers.Handler("fake")
+	if got := h.Actions(); !slices.Equal(got, []agentv1.Action{backup, restore}) {
+		t.Errorf("plugin: %v", got)
+	}
+	f = newHandlers(t, &verifier{})
+	h, _ = f.handlers.Handler("fake")
+	if got := h.Actions(); !slices.Equal(got, []agentv1.Action{backup, restore, verify}) {
+		t.Errorf("verifier: %v", got)
+	}
+}
+
+func TestNewHandlersRejectsAPluginWhoseSchemaDoesNotCompile(t *testing.T) {
+	reg, _ := sdk.NewRegistry(&badSchema{})
+	if _, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), nil, ""); err == nil {
+		t.Fatal("NewHandlers accepted an invalid schema")
+	}
+}
+
+// OQ-018: the backup output carries the repository id restic reported.
+func TestBackupOutputCarriesTheSnapshotAndRepositoryID(t *testing.T) {
+	f := newHandlers(t, &plugin{})
+	st := step(backup, `{}`)
+	st.Tags = map[string]string{"workflow": "nightly", "run": "7"}
+	res, err := f.run(t, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &agentv1.BackupOutput{SnapshotId: "snap", RepositoryId: "repo-id", TotalBytes: 42}
+	if !proto.Equal(res.GetBackup(), want) {
+		t.Errorf("output = %v, want %v", res.GetBackup(), want)
+	}
+	if tags := f.repo.requests[0].Tags; !slices.Equal(tags, []string{"run=7", "workflow=nightly"}) {
+		t.Errorf("tags = %q", tags)
+	}
+}
+
+// A snapshot written without some files is a failure that keeps its output.
+func TestPartialBackupFailsWithItsOutput(t *testing.T) {
+	f := newHandlers(t, &plugin{})
+	f.repo.err, f.repo.partial = &restic.PartialError{}, true
+	res, err := f.run(t, step(backup, `{}`))
+	if !errors.Is(err, restic.ErrUnreadableSource) || errors.Is(err, executor.ErrRejected) || res.GetBackup().GetSnapshotId() != "snap" {
+		t.Fatalf("Run = %v, %v", res, err)
+	}
+}
+
+func TestBackupFailureHasNoOutput(t *testing.T) {
+	f := newHandlers(t, &plugin{})
+	f.repo.err = restic.ErrLocked
+	res, err := f.run(t, step(backup, `{}`))
+	if !errors.Is(err, restic.ErrLocked) || errors.Is(err, executor.ErrRejected) || res != nil {
+		t.Fatalf("Run = %v, %v", res, err)
+	}
+}
+
+// Invalid configs, unknown secrets and tags restic cannot store are
+// rejected before the plugin runs.
+func TestInvalidStepsAreRejectedBeforeThePluginRuns(t *testing.T) {
+	for name, st := range map[string]*agentv1.RunStep{
+		"invalid config":         step(backup, `{"x": 1}`),
+		"unknown secret":         step(backup, `{"token": "mysql"}`),
+		"tag with a comma":       func() *agentv1.RunStep { s := step(backup, `{}`); s.Tags = map[string]string{"a": "b,c"}; return s }(),
+		"tag with an empty key":  func() *agentv1.RunStep { s := step(backup, `{}`); s.Tags = map[string]string{"": "b"}; return s }(),
+		"unknown repository":     func() *agentv1.RunStep { s := step(backup, `{}`); s.RepositoryName = "nas"; return s }(),
+		"unsupported action":     step(run, `{}`),
+		"verify without Verify":  func() *agentv1.RunStep { s := step(verify, `{}`); s.SnapshotId = "snap"; return s }(),
+		"restore without a snap": step(restore, `{}`),
+		"verify without a snap":  step(verify, `{}`),
+	} {
+		p := &plugin{}
+		f := newHandlers(t, p)
+		res, err := f.run(t, st)
+		if !errors.Is(err, executor.ErrRejected) || res != nil {
+			t.Errorf("%s: Run = %v, %v", name, res, err)
+		}
+		if len(p.calls) != 0 || len(f.repo.requests) != 0 || len(f.repo.restores) != 0 {
+			t.Errorf("%s: ran %q, %d backups, %d restores", name, p.calls, len(f.repo.requests), len(f.repo.restores))
+		}
+	}
+}
+
+func TestRejectionNamesTheViolation(t *testing.T) {
+	_, err := newHandlers(t, &plugin{}).run(t, step(backup, `{"token": "mysql"}`))
+	want := `step rejected: invalid plugin config: /token: unknown secret "mysql"`
+	if err == nil || err.Error() != want || !errors.Is(err, sdk.ErrUnknownSecret) {
+		t.Fatalf("err = %v, want %s", err, want)
+	}
+}
+
+func TestRestoreWritesIntoAFreshDirectoryOfTheCommand(t *testing.T) {
+	f := newHandlers(t, &plugin{})
+	st := step(restore, `{}`)
+	st.SnapshotId = "snap"
+	res, err := f.run(t, st)
+	target := filepath.Join(f.restoreDir, "cmd-1")
+	if err != nil || res.GetRestore().GetTarget() != target {
+		t.Fatalf("Run = %v, %v", res, err)
+	}
+	if !slices.Equal(f.repo.restores, []string{"snap " + target}) {
+		t.Errorf("restores = %q", f.repo.restores)
+	}
+	if info, err := os.Stat(target); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("target: %v, %v", info, err)
+	}
+	// The same command id again never restores over the first copy.
+	if _, err := f.run(t, st); err == nil || len(f.repo.restores) != 1 {
+		t.Errorf("second restore: %v, %d restores", err, len(f.repo.restores))
+	}
+}
+
+func TestRestoreRejectsACommandIDThatIsNotADirectoryName(t *testing.T) {
+	for _, id := range []string{"", ".", "..", "a/b", "../x"} {
+		st := step(restore, `{}`)
+		st.SnapshotId, st.CommandId = "snap", id
+		f := newHandlers(t, &plugin{})
+		if _, err := f.run(t, st); !errors.Is(err, executor.ErrRejected) || len(f.repo.restores) != 0 {
+			t.Errorf("%q: err = %v", id, err)
+		}
+	}
+}
+
+func TestRestoreFailure(t *testing.T) {
+	f := newHandlers(t, &plugin{})
+	f.repo.restoreErr = restic.ErrNoRepository
+	st := step(restore, `{}`)
+	st.SnapshotId = "snap"
+	if res, err := f.run(t, st); !errors.Is(err, restic.ErrNoRepository) || res != nil {
+		t.Fatalf("Run = %v, %v", res, err)
+	}
+}
+
+func TestVerifyRestoresChecksAndRemovesTheCopy(t *testing.T) {
+	v := &verifier{}
+	f := newHandlers(t, v)
+	st := step(verify, `{}`)
+	st.SnapshotId = "snap"
+	res, err := f.run(t, st)
+	target := filepath.Join(f.restoreDir, "cmd-1")
+	want := &agentv1.VerifyOutput{SnapshotId: "snap", Checks: []*agentv1.CheckResult{{Name: "fake", Passed: true}}}
+	if err != nil || !proto.Equal(res.GetVerify(), want) {
+		t.Fatalf("Run = %v, %v", res, err)
+	}
+	if !slices.Equal(v.calls, []string{"verify {} " + target}) {
+		t.Errorf("calls = %q", v.calls)
+	}
+	if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the restored copy was kept: %v", err)
+	}
+}
+
+func TestFailedVerificationIsAFailedCheck(t *testing.T) {
+	v := &verifier{err: errors.New("db.sql differs")}
+	f := newHandlers(t, v)
+	st := step(verify, `{}`)
+	st.SnapshotId = "snap"
+	res, err := f.run(t, st)
+	check := res.GetVerify().GetChecks()[0]
+	if !errors.Is(err, v.err) || errors.Is(err, executor.ErrRejected) || check.GetPassed() || !strings.Contains(check.GetDetail(), "differs") {
+		t.Fatalf("Run = %v, %v", res, err)
+	}
+}
+
+func TestVerifyStopsWhenTheRestoreFails(t *testing.T) {
+	v := &verifier{}
+	f := newHandlers(t, v)
+	f.repo.restoreErr = restic.ErrLocked
+	st := step(verify, `{}`)
+	st.SnapshotId = "snap"
+	if res, err := f.run(t, st); !errors.Is(err, restic.ErrLocked) || res != nil || len(v.calls) != 0 {
+		t.Fatalf("Run = %v, %v, calls %q", res, err, v.calls)
+	}
+}
+
+func TestRestoreFailsWhenTheRestoreDirCannotBeCreated(t *testing.T) {
+	f := newHandlers(t, &plugin{})
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reg, _ := sdk.NewRegistry(&plugin{})
+	h, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string) (restic.Repository, bool) { return f.repo, true }, filepath.Join(blocker, "restore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, _ := h.Handler("fake")
+	st := step(restore, `{}`)
+	st.SnapshotId = "snap"
+	if _, err := handler.Run(context.Background(), st, &reporter{}); err == nil || errors.Is(err, executor.ErrRejected) || len(f.repo.restores) != 0 {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestVerifyRejectsAnInvalidConfigBeforeRestoring(t *testing.T) {
+	f := newHandlers(t, &verifier{})
+	st := step(verify, `{"x": 1}`)
+	st.SnapshotId = "snap"
+	if _, err := f.run(t, st); !errors.Is(err, executor.ErrRejected) || len(f.repo.restores) != 0 {
+		t.Fatalf("err = %v, restores %q", err, f.repo.restores)
+	}
+}

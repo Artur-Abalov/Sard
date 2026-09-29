@@ -1347,7 +1347,10 @@ type BackupOutput struct {
 	// Logical size of the backed-up data.
 	TotalBytes uint64 `protobuf:"varint,2,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"`
 	// Bytes actually added to the repository after deduplication.
-	AddedBytes    uint64 `protobuf:"varint,3,opt,name=added_bytes,json=addedBytes,proto3" json:"added_bytes,omitempty"`
+	AddedBytes uint64 `protobuf:"varint,3,opt,name=added_bytes,json=addedBytes,proto3" json:"added_bytes,omitempty"`
+	// restic's id of the repository the snapshot is in (64 lower-case hex
+	// characters), as in RepositoryInfo.repository_id; not a secret.
+	RepositoryId  string `protobuf:"bytes,4,opt,name=repository_id,json=repositoryId,proto3" json:"repository_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1401,6 +1404,13 @@ func (x *BackupOutput) GetAddedBytes() uint64 {
 		return x.AddedBytes
 	}
 	return 0
+}
+
+func (x *BackupOutput) GetRepositoryId() string {
+	if x != nil {
+		return x.RepositoryId
+	}
+	return ""
 }
 
 type RestoreOutput struct {
@@ -2082,14 +2092,15 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\arestore\x18\v \x01(\v2\x1c.sard.agent.v1.RestoreOutputH\x00R\arestore\x125\n" +
 	"\x06verify\x18\f \x01(\v2\x1b.sard.agent.v1.VerifyOutputH\x00R\x06verify\x12,\n" +
 	"\x03run\x18\r \x01(\v2\x18.sard.agent.v1.RunOutputH\x00R\x03runB\b\n" +
-	"\x06outputJ\x04\b\x04\x10\x05R\vsnapshot_id\"q\n" +
+	"\x06outputJ\x04\b\x04\x10\x05R\vsnapshot_id\"\x96\x01\n" +
 	"\fBackupOutput\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
 	"snapshotId\x12\x1f\n" +
 	"\vtotal_bytes\x18\x02 \x01(\x04R\n" +
 	"totalBytes\x12\x1f\n" +
 	"\vadded_bytes\x18\x03 \x01(\x04R\n" +
-	"addedBytes\"'\n" +
+	"addedBytes\x12#\n" +
+	"\rrepository_id\x18\x04 \x01(\tR\frepositoryId\"'\n" +
 	"\rRestoreOutput\x12\x16\n" +
 	"\x06target\x18\x01 \x01(\tR\x06target\"c\n" +
 	"\fVerifyOutput\x12\x1f\n" +

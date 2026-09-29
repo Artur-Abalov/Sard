@@ -79,7 +79,8 @@ server — don't write a test for it in place.
    `Copyright 2026 Artur Abalov`.
 7. **Minimal dependencies.** Each third-party library must be needed now
    and is listed in `docs/dependencies.md` with its license. The agent
-   uses only the Go stdlib, gRPC, protobuf and a YAML parser.
+   uses only the Go stdlib, gRPC, protobuf, a YAML parser and a JSON
+   Schema validator for plugin configs (ADR 0027).
 8. **Every non-trivial decision gets an ADR** in `docs/adr/`; every work
    session appends to `docs/sessions/`.
 

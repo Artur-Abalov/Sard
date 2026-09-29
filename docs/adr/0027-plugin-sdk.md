@@ -52,6 +52,20 @@
   `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, версию вне `^[!-~]{1,64}$`, схему
   больше 64 КиБ, не один JSON-документ или с `\u0000`.
 
+- **Адаптер к исполнителю** (`pluginhost.Handlers`, вместо
+  `app.NoHandlers`). Actions плагина: BACKUP и RESTORE всегда, VERIFY —
+  только у `sdk.Verifier`; в Register уходят эти actions и
+  `Plugin.Version()`. Ошибки `sdk.ErrInvalidConfig` и `sdk.ErrUnknownSecret`
+  оборачиваются в `executor.ErrRejected`, как и теги, которые restic не
+  примет (пустой ключ, запятая). Теги шага — `ключ=значение`, по порядку.
+  Итог restic → `BackupOutput{snapshot_id, total_bytes, added_bytes,
+  repository_id}`; снимок без части файлов — FAILED с выводом.
+- **RESTORE и VERIFY.** Снимок восстанавливается в новый каталог
+  `<executor.state_dir>/restore/<command_id>` (0700), существующий не
+  переиспользуется; `snapshot_id` обязателен. VERIFY проверяет копию
+  плагином и удаляет её. Цель восстановления и «последний снимок по тегам»
+  — OQ-038.
+
 ## Оборотная сторона
 - Между строкой restic о SIGTERM и отменой его контекста — один вызов;
   теоретически restic мог бы успеть сохранить обрезанный снимок, если EOF

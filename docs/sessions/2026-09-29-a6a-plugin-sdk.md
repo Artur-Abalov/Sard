@@ -109,3 +109,40 @@
 ### Открыто
 - Правило 7 CLAUDE.md (runtime-зависимости агента) не упоминает валидатор
   JSON Schema — решение владельца.
+
+## Фаза 3: адаптер, регистрация, proto, проверка ключа и сертификата
+
+### Решение владельца
+- CLAUDE.md, правило 7: к runtime-зависимостям агента добавлен валидатор
+  JSON Schema (ADR 0027).
+
+### Сделано
+- proto: `BackupOutput.repository_id = 4`; `make proto`, `buf lint`,
+  `buf breaking` против `origin/main` — exit 0.
+- `pluginhost.Handlers` — адаптер к `executor.Handler`; `app.NoHandlers`
+  удалён, `sard-agent` регистрирует обработчики всех встроенных плагинов
+  (`plugins.Handlers`). Register: версия — `Plugin.Version()`, actions —
+  из обработчика (встроенные: BACKUP, RESTORE).
+- RESTORE/VERIFY: новый каталог `<state_dir>/restore/<command_id>`,
+  `snapshot_id` обязателен — OQ-038.
+- OQ-027: `internal/tlsid` — сверка открытого ключа первого сертификата
+  `tls.cert_file` с `tls.key_file` после проверки прав A1 и до «connecting
+  to». Схема — specifier: `docs/specs/agent/agent-tls-identity.feature`,
+  `docs/qa/agent-tls-identity.md`; решения С1–С5 ждут утверждения
+  (OQ-039). Отличие от черновика: права в сценарии A1 выводятся как
+  `-rw-r--r--` (формат сообщения A1), строка схемы поправлена.
+- Реестр: OQ-018 и OQ-027 закрыты, OQ-038 и OQ-039 открыты.
+
+### Проверено (`go test -race`)
+- 5: `pluginhost/executor_test.go` — настоящий исполнитель с фейковым
+  Sink: BACKUP → SUCCEEDED с `snapshot_id` и `repository_id`; неизвестный
+  секрет → REJECTED без вывода. `handler_test.go` — REJECTED до запуска
+  плагина для конфига, секрета, тегов, репозитория, действия.
+- 6: `app/register_contract_test.go` — снимок плагинов из реестра против
+  правил `SnapshotRules.kt` (имя, версия, схема, actions, число). Против
+  живого сервера — job `e2e` в CI; здесь Docker-демона нет, не запускал.
+- 7: `cmd/sard-agent/identity_test.go` — ключ другой пары: exit 1, stderr
+  ровно `sard-agent: ` + сообщение, «connecting to» нет, 0 TCP-подключений;
+  проблемы файлов называют ключ конфига и путь, без содержимого;
+  `tlsid_test.go` — P-256, RSA, SEC 1, PKCS #1, цепочка, второй сертификат.
+- `./scripts/gate.sh agent fast` — PASSED (покрытие 97.2%, CRAP ≤ 6).

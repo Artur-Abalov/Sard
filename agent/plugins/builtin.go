@@ -5,6 +5,7 @@
 package plugins
 
 import (
+	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/plugins/files"
 	"github.com/Artur-Abalov/sard/agent/plugins/mysql"
 	"github.com/Artur-Abalov/sard/agent/plugins/network"
@@ -33,4 +34,15 @@ func Registry(agentVersion string) *sdk.Registry {
 		panic(err)
 	}
 	return r
+}
+
+// Handlers adapts the built-in plugins to the executor. It panics when a
+// schema does not compile: a programming error, caught by the contract
+// test in this package.
+func Handlers(r *sdk.Registry, secrets *pluginhost.Secrets, repos pluginhost.Repositories, restoreDir string) *pluginhost.Handlers {
+	h, err := pluginhost.NewHandlers(r, secrets, repos, restoreDir)
+	if err != nil {
+		panic(err)
+	}
+	return h
 }

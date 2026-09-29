@@ -23,8 +23,10 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
+	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
+	"github.com/Artur-Abalov/sard/agent/internal/tlsid"
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
 	"github.com/Artur-Abalov/sard/agent/plugins"
 )
@@ -91,9 +93,7 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 	if err != nil {
 		return err
 	}
-	// A1: refuse to start with a secret file readable beyond its owner, or
-	// owned by someone else, before touching the network (В20).
-	if err := secrets.CheckAll(cfg, uint32(os.Getuid()), secrets.RealStat); err != nil {
+	if err := checkHostFiles(cfg); err != nil {
 		return err
 	}
 	hostname, err := hostnameOf()
@@ -105,27 +105,51 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 	if err != nil {
 		return err
 	}
+	return serve(ctx, cfg, newAgent(cfg, hostname, resticBinary))
+}
+
+// checkHostFiles runs the checks of local files that need no network.
+func checkHostFiles(cfg config.Config) error {
+	// A1: refuse to start with a secret file readable beyond its owner, or
+	// owned by someone else, before touching the network (В20).
+	if err := secrets.CheckAll(cfg, uint32(os.Getuid()), secrets.RealStat); err != nil {
+		return err
+	}
+	// OQ-027: an interrupted `enroll --force` leaves a key that does not
+	// belong to the certificate; say so before dialing.
+	return tlsid.Check(cfg.TLS, os.ReadFile)
+}
+
+// newAgent wires the built-in plugins to restic and the host's secrets.
+func newAgent(cfg config.Config, hostname, resticBinary string) *app.Agent {
 	// Repository keys stay on this host (ADR 0008).
-	keys := crypto.NewResticAES(cfg.PasswordFiles())
-	agent := &app.Agent{
-		Plugins:  plugins.Registry(version),
+	repos := openRepositories(cfg, restic.Options{
+		Binary:   resticBinary,
+		CacheDir: cfg.Restic.CacheDir,
+		Path:     os.Getenv("PATH"),
+		Exec:     restic.ProcessExecutor{},
+		Keys:     crypto.NewResticAES(cfg.PasswordFiles()),
+		ReadFile: os.ReadFile,
+	})
+	registry := plugins.Registry(version)
+	return &app.Agent{
+		Plugins:  registry,
+		Handlers: plugins.Handlers(registry, pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), repos.get, restoreDir(cfg.Executor.StateDir)),
 		Hostname: hostname,
 		Version:  version,
 		OS:       runtime.GOOS,
 		Arch:     runtime.GOARCH,
 		Local:    cfg,
 		RepositoryID: func(ctx context.Context, r config.Repository) (string, error) {
-			return restic.New(restic.Options{
-				Binary:   resticBinary,
-				CacheDir: cfg.Restic.CacheDir,
-				Path:     os.Getenv("PATH"),
-				Exec:     restic.ProcessExecutor{},
-				Keys:     keys,
-				ReadFile: os.ReadFile,
-			}, r).ID(ctx)
+			return repos[r.Name].ID(ctx)
 		},
 	}
-	return serve(ctx, cfg, agent)
+}
+
+// restoreDir holds restored copies, inside the executor's 0700 state dir
+// (the executor reads only its own subdirectories).
+func restoreDir(stateDir string) string {
+	return filepath.Join(executorStateDir(stateDir), "restore")
 }
 
 // serve connects the agent and runs steps until ctx ends. The executor and
@@ -146,7 +170,7 @@ func serve(ctx context.Context, cfg config.Config, agent *app.Agent) error {
 		return err
 	}
 	exec, err := executor.New(executor.Options{
-		Handlers:     app.NoHandlers{}, // plugin handlers arrive with A6
+		Handlers:     agent.Handlers,
 		Sink:         link,
 		StateDir:     executorStateDir(cfg.Executor.StateDir),
 		Repositories: repositoryNames(cfg.Repositories),
@@ -186,6 +210,22 @@ func executorStateDir(configured string) string {
 		return configured
 	}
 	return defaultExecutorStateDir
+}
+
+// resticRepositories opens every configured repository with restic.
+type resticRepositories map[string]*restic.CLI
+
+func openRepositories(cfg config.Config, opts restic.Options) resticRepositories {
+	repos := make(resticRepositories, len(cfg.Repositories))
+	for _, r := range cfg.Repositories {
+		repos[r.Name] = restic.New(opts, r)
+	}
+	return repos
+}
+
+func (r resticRepositories) get(name string) (restic.Repository, bool) {
+	repo, ok := r[name]
+	return repo, ok
 }
 
 func repositoryNames(repos []config.Repository) []string {

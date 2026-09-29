@@ -103,6 +103,10 @@ type repo struct {
 	stdin    bytes.Buffer
 	progress []restic.Progress
 	err      error
+	partial  bool // err comes with the summary, as for restic's exit 3
+
+	restores   []string
+	restoreErr error
 }
 
 var summary = restic.BackupSummary{SnapshotID: "snap", RepositoryID: "repo-id", TotalBytes: 42}
@@ -110,7 +114,10 @@ var summary = restic.BackupSummary{SnapshotID: "snap", RepositoryID: "repo-id", 
 func (r *repo) ID(context.Context) (string, error)   { return "repo-id", nil }
 func (r *repo) Init(context.Context) (string, error) { return "repo-id", nil }
 
-func (r *repo) Restore(context.Context, string, string) error { return nil }
+func (r *repo) Restore(_ context.Context, snapshotID, target string) error {
+	r.restores = append(r.restores, snapshotID+" "+target)
+	return r.restoreErr
+}
 
 func (r *repo) Backup(ctx context.Context, req restic.BackupRequest, progress func(restic.Progress)) (restic.BackupSummary, error) {
 	r.requests = append(r.requests, req)
@@ -122,10 +129,10 @@ func (r *repo) Backup(ctx context.Context, req restic.BackupRequest, progress fu
 	for _, p := range r.progress {
 		progress(p)
 	}
-	if r.err != nil {
+	if r.err != nil && !r.partial {
 		return restic.BackupSummary{}, r.err
 	}
-	return summary, nil
+	return summary, r.err
 }
 
 func newSource(t *testing.T, p sdk.Plugin) *pluginhost.Source {

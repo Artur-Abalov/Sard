@@ -13,7 +13,9 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
+	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/plugins"
+	"github.com/Artur-Abalov/sard/agent/plugins/files"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
@@ -89,4 +91,32 @@ func TestBuiltinPluginsShareTheAgentVersionAndDoNotVerifyYet(t *testing.T) {
 			t.Errorf("%s implements sdk.Verifier before it can verify", p.Name())
 		}
 	}
+}
+
+func TestBuiltinPluginsGetHandlersThatBackUpAndRestore(t *testing.T) {
+	reg := plugins.Registry("1.2.3")
+	h := plugins.Handlers(reg, pluginhost.NewSecrets(nil, nil), nil, t.TempDir())
+	for _, name := range reg.Names() {
+		handler, ok := h.Handler(name)
+		if !ok || len(handler.Actions()) != 2 {
+			t.Errorf("%s: handler %v, %v", name, handler, ok)
+		}
+	}
+}
+
+type badSchema struct{ files.Plugin }
+
+func (badSchema) ConfigSchema() []byte { return []byte(`{"type": 5}`) }
+
+func TestHandlersPanicOnASchemaThatDoesNotCompile(t *testing.T) {
+	reg, err := sdk.NewRegistry(badSchema{files.Plugin{AgentVersion: "1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Error("no panic")
+		}
+	}()
+	plugins.Handlers(reg, pluginhost.NewSecrets(nil, nil), nil, t.TempDir())
 }
