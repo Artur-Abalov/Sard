@@ -8,7 +8,8 @@
 # by name only and never receives URLs, keys, passwords or script paths.
 server:
   address: sard.example.com:9090
-tls: # mTLS is not implemented yet: docs/adr/0009-agent-transport-mtls.md
+tls: # written by `sard-agent enroll` (docs/operations/agent-enroll.md);
+     # run it as the sard-agent user, after creating this directory
   ca_file: /etc/sard/ca.pem
   cert_file: /etc/sard/agent.pem
   key_file: /etc/sard/agent.key

@@ -24,6 +24,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
 	"github.com/Artur-Abalov/sard/agent/plugins"
 )
@@ -48,6 +49,19 @@ func main() {
 type hostnameFunc func() (string, error)
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer, hostname hostnameFunc) int {
+	if isEnrollCommand(args) {
+		return runEnroll(ctx, args[1:], stdout, stderr, hostname)
+	}
+	return runAgentCmd(ctx, args, stdout, stderr, hostname)
+}
+
+func isEnrollCommand(args []string) bool {
+	return len(args) > 0 && args[0] == "enroll"
+}
+
+// runAgentCmd is "sard-agent --config ..." — running the agent itself,
+// A2b's "enroll" subcommand dispatched away above.
+func runAgentCmd(ctx context.Context, args []string, stdout, stderr io.Writer, hostname hostnameFunc) int {
 	fs := flag.NewFlagSet("sard-agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	showVersion := fs.Bool("version", false, "print the version and exit")
@@ -75,6 +89,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, hostname 
 func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf hostnameFunc, executable func() (string, error)) error {
 	cfg, err := config.Load(configPath)
 	if err != nil {
+		return err
+	}
+	// A1: refuse to start with a secret file readable beyond its owner, or
+	// owned by someone else, before touching the network (В20).
+	if err := secrets.CheckAll(cfg, uint32(os.Getuid()), secrets.RealStat); err != nil {
 		return err
 	}
 	hostname, err := hostnameOf()

@@ -58,6 +58,22 @@ func TestMissingConfigIsAUsageError(t *testing.T) {
 	}
 }
 
+// "enroll" alone, with no other arguments, must still dispatch to the
+// enroll subcommand (len(args) > 0, not > 1 — a boundary a "just enroll,
+// no flags" invocation is the only way to exercise).
+func TestEnrollWithNoOtherArgumentsDispatchesToEnroll(t *testing.T) {
+	code, _, errOut := runAgent("enroll")
+	if code != exitUsage {
+		t.Fatalf("code = %d, want usage", code)
+	}
+	if strings.Contains(errOut, "--config <path> is required") {
+		t.Fatalf("stderr = %q: dispatched to the agent command, not enroll", errOut)
+	}
+	if !strings.Contains(errOut, "enrollment token") {
+		t.Fatalf("stderr = %q, want the enroll subcommand's own missing-token message", errOut)
+	}
+}
+
 func TestUnknownFlagIsAUsageError(t *testing.T) {
 	code, _, errOut := runAgent("--listen", ":9090")
 	if code != 2 || !strings.Contains(errOut, "flag provided but not defined: -listen") {
@@ -184,6 +200,22 @@ func TestMainProcess(t *testing.T) {
 	out, err := cmd.Output()
 	if err != nil || string(out) != "sard-agent dev\n" {
 		t.Fatalf("err = %v, out = %q", err, out)
+	}
+}
+
+// A1: a secret file open to the group or others stops the agent before it
+// tries to connect to anything.
+func TestASecretFileOpenBeyondItsOwnerRefusesStart(t *testing.T) {
+	dir := t.TempDir()
+	keyFile := filepath.Join(dir, "agent.key")
+	if err := os.WriteFile(keyFile, nil, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	cfg := "server:\n  address: sard.example.com:9090\n" +
+		"tls: {ca_file: " + dir + "/ca.pem, cert_file: " + dir + "/agent.pem, key_file: " + keyFile + "}\n"
+	code, _, errOut := runAgent("--config", writeConfig(t, cfg))
+	if code != 1 || !strings.Contains(errOut, "tls.key_file") || !strings.Contains(errOut, keyFile) {
+		t.Fatalf("code = %d, stderr = %q", code, errOut)
 	}
 }
 

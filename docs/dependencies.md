@@ -12,6 +12,7 @@
 | agent/plugins/sdk (Apache-2.0) | — | — | — | — | только stdlib |
 | agent | google.golang.org/grpc, google.golang.org/protobuf | см. выше | Apache-2.0, BSD-3-Clause | runtime (через proto/gen/go) | транспорт к серверу |
 | agent | go.yaml.in/yaml/v3 | v3.0.5 | MIT + Apache-2.0 | runtime | чтение YAML-конфига (поддерживаемый преемник архивного gopkg.in/yaml.v3) |
+| agent | google.golang.org/genproto/googleapis/rpc (пакет errdetails) | v0.0.0-20260706201446-f0a921348800 | Apache-2.0 | runtime | разбор `google.rpc.ErrorInfo` в отказах `Enroll` (A2a, домен `sard.dev`, ADR 00XX) — ранее приходила транзитивно через grpc, объявлена явно, так как код использует её типы напрямую |
 | agent | github.com/santhosh-tekuri/jsonschema/v6 | v6.0.3 | Apache-2.0 | **только тесты** | проверка `ConfigSchema()` плагинов по метасхеме draft 2020-12 |
 | cli | github.com/spf13/cobra | v1.10.2 | Apache-2.0 | runtime | дерево подкоманд `sardctl` |
 | cli | github.com/spf13/pflag (транзитивно) | v1.0.9 | BSD-3-Clause | runtime | флаги для cobra |
