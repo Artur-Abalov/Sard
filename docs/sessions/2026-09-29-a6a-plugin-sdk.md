@@ -98,6 +98,8 @@
   restic-уровень `integration_stdin_test.go`.
 - `./scripts/gate.sh sdk fast`, `./scripts/gate.sh agent fast` — PASSED
   (agent: покрытие 96.9%, CRAP ≤ 6, golangci-lint 0 issues).
+- Полный гейт: `sdk` — покрытие 100.0%, mutation score 0.923077;
+  `agent` — покрытие 96.9%, mutation score 0.904077 (go-mutesting).
 
 ### Найдено по дороге
 - Проверка «restic не запущен» в интеграционных тестах видела процессы
