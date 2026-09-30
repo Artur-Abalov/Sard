@@ -28,10 +28,7 @@ func parseRepoFlags(sub string, args []string, stderr io.Writer, deps repoDeps) 
 	fs.Usage = func() {}
 	configPath := fs.String("config", deps.defaultConfig, "")
 	timeout := fs.Duration("timeout", defaultRepoTimeout, "")
-	generate := new(bool)
-	if sub == "init" {
-		generate = fs.Bool("generate-password", false, "")
-	}
+	generate := generateFlag(fs, sub)
 	positional, err := parseInterspersed(fs, args)
 	if err != nil {
 		return repoOptions{}, repoUsage(stderr, sub, err.Error())
@@ -39,14 +36,30 @@ func parseRepoFlags(sub string, args []string, stderr io.Writer, deps repoDeps) 
 	if msg := checkRepoArgs(sub, positional); msg != "" {
 		return repoOptions{}, repoUsage(stderr, sub, msg)
 	}
-	if *timeout <= 0 {
-		return repoOptions{}, repoUsage(stderr, sub, fmt.Sprintf("--timeout must be a positive duration, got %q", timeout.String()))
+	if msg := checkRepoTimeout(*timeout); msg != "" {
+		return repoOptions{}, repoUsage(stderr, sub, msg)
 	}
 	opts := repoOptions{configPath: *configPath, generate: *generate, timeout: *timeout}
 	if len(positional) > 0 {
 		opts.name = positional[0]
 	}
 	return opts, exitOK
+}
+
+// generateFlag registers --generate-password for repo init only.
+func generateFlag(fs *flag.FlagSet, sub string) *bool {
+	if sub == "init" {
+		return fs.Bool("generate-password", false, "")
+	}
+	return new(bool)
+}
+
+// checkRepoTimeout is the message for a --timeout that is not positive.
+func checkRepoTimeout(timeout time.Duration) string {
+	if timeout <= 0 {
+		return fmt.Sprintf("--timeout must be a positive duration, got %q", timeout.String())
+	}
+	return ""
 }
 
 // checkRepoArgs is the message for a wrong number of names: repo init

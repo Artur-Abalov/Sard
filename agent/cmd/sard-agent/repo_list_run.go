@@ -60,11 +60,16 @@ func runRepoList(ctx context.Context, args []string, stdout, stderr io.Writer, d
 		_, _ = fmt.Fprintf(stdout, "no repositories configured in %s\n", opts.configPath)
 		return exitOK
 	}
+	return reportList(ctx, inspectAll(ctx, cfg, binary, deps), stdout, stderr)
+}
+
+// inspectAll is one row per repository of the config, in config order.
+func inspectAll(ctx context.Context, cfg config.Config, binary string, deps repoDeps) []listRow {
 	rows := make([]listRow, len(cfg.Repositories))
 	for i := range cfg.Repositories {
 		rows[i] = inspectRepository(ctx, cfg, binary, i, deps)
 	}
-	return reportList(ctx, rows, stdout, stderr)
+	return rows
 }
 
 // reportList prints the table and one message per problem row; an
@@ -95,10 +100,7 @@ func inspectRepository(ctx context.Context, cfg config.Config, binary string, in
 		row.problem = f
 		return row
 	}
-	target := repoinit.Target{
-		Name: repo.Name, Backend: repo.Backend(), PasswordFile: repo.PasswordFile,
-		Scrub: repoinit.Scrubber(repo.URL, checked.EnvAssignments),
-	}
+	target := repoTarget(repo, checked)
 	row.id, row.initialized, row.problem = repoinit.Inspect(ctx, newRestic(cfg, binary, deps, repo), target)
 	return row
 }

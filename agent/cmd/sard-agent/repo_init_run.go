@@ -90,10 +90,7 @@ func initRepository(ctx context.Context, st initState, opts repoOptions, stdout,
 		}
 		generated = []string{password}
 	}
-	target := repoinit.Target{
-		Name: st.repo.Name, Backend: st.repo.Backend(), PasswordFile: st.repo.PasswordFile,
-		Scrub: repoinit.Scrubber(st.repo.URL, st.checked.EnvAssignments, generated...),
-	}
+	target := repoTarget(st.repo, st.checked, generated...)
 	id, f := repoinit.Create(ctx, newRestic(st.cfg, st.binary, deps, st.repo), target)
 	if f != nil {
 		if generated != nil {
@@ -103,6 +100,15 @@ func initRepository(ctx context.Context, st initState, opts repoOptions, stdout,
 	}
 	printInitSuccess(stdout, st.repo, id, passwordNote(opts.generate, st.checked.PasswordMissing))
 	return exitOK
+}
+
+// repoTarget is what repoinit needs to know of one repository; secrets are
+// values the messages must not show besides the config's own.
+func repoTarget(repo config.Repository, checked repoinit.Checked, secrets ...string) repoinit.Target {
+	return repoinit.Target{
+		Name: repo.Name, Backend: repo.Backend(), PasswordFile: repo.PasswordFile,
+		Scrub: repoinit.Scrubber(repo.URL, checked.EnvAssignments, secrets...),
+	}
 }
 
 // passwordNote says where the password file came from when the operator

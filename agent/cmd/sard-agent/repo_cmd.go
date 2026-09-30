@@ -67,7 +67,8 @@ func runRepo(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 }
 
 func runRepoWithDeps(ctx context.Context, args []string, stdout, stderr io.Writer, deps repoDeps) int {
-	if len(args) == 0 || (args[0] != "init" && args[0] != "list") {
+	run := repoSubcommand(args)
+	if run == nil {
 		_, _ = fmt.Fprintln(stderr, "sard-agent repo: want a subcommand: init or list")
 		return exitUsage
 	}
@@ -75,10 +76,20 @@ func runRepoWithDeps(ctx context.Context, args []string, stdout, stderr io.Write
 		printRepoHelp(stdout, args[0])
 		return exitOK
 	}
-	if args[0] == "list" {
-		return runRepoList(ctx, args[1:], stdout, stderr, deps)
+	return run(ctx, args[1:], stdout, stderr, deps)
+}
+
+// repoSubcommand is the pipeline of args[0], nil for anything but init and list.
+func repoSubcommand(args []string) func(context.Context, []string, io.Writer, io.Writer, repoDeps) int {
+	if len(args) > 0 {
+		switch args[0] {
+		case "init":
+			return runRepoInit
+		case "list":
+			return runRepoList
+		}
 	}
-	return runRepoInit(ctx, args[1:], stdout, stderr, deps)
+	return nil
 }
 
 // newRestic is the wrapper for one repository of the config.
