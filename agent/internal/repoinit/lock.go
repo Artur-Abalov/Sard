@@ -16,10 +16,10 @@ import (
 // ErrLockHeld: another init of the repository is running on this host.
 var ErrLockHeld = errors.New("repository init is already running")
 
-// LockPath is the lock file of repository name: next to its password file,
-// the one directory the operator has made ready for this repository.
-func LockPath(passwordFile, name string) string {
-	return filepath.Join(filepath.Dir(passwordFile), ".sard-init-"+url.PathEscape(name)+".lock")
+// LockPath is the lock file of repository name: in restic.cache_dir, the
+// directory the service user owns and the package prepares (В8а, ADR 0028).
+func LockPath(cacheDir, name string) string {
+	return filepath.Join(cacheDir, ".sard-init-"+url.PathEscape(name)+".lock")
 }
 
 // Lock takes an exclusive lock on path (В8) and returns the function that
@@ -59,11 +59,11 @@ func sameFile(f *os.File, path string) bool {
 	return err == nil && os.SameFile(held, current)
 }
 
-// AcquireLock takes the init lock of a repository (В8). Refusals: another
-// init is running (INIT_IN_PROGRESS), or the lock file cannot be created
-// next to the password file (PASSWORD_FILE_WRITE).
-func AcquireLock(repo config.Repository) (func(), *Failure) {
-	path := LockPath(repo.PasswordFile, repo.Name)
+// AcquireLock takes the init lock of a repository (В8) in cacheDir, which
+// is never created here. Refusals: another init is running
+// (INIT_IN_PROGRESS), or the lock file cannot be created (LOCK_WRITE).
+func AcquireLock(cacheDir string, repo config.Repository) (func(), *Failure) {
+	path := LockPath(cacheDir, repo.Name)
 	unlock, err := Lock(path)
 	switch {
 	case err == nil:
@@ -71,5 +71,5 @@ func AcquireLock(repo config.Repository) (func(), *Failure) {
 	case errors.Is(err, ErrLockHeld):
 		return nil, fail(InitInProgress, "another init of repository %q is running on this host (lock file %s); wait for it and run the command again if needed", repo.Name, path)
 	}
-	return nil, fail(PasswordFileWrite, "cannot create the lock file in the directory %s of password_file: %v", filepath.Dir(repo.PasswordFile), err)
+	return nil, fail(LockWrite, "cannot create the lock file %s in restic.cache_dir %s: %v; the directory must exist and be writable by the user running this command", path, cacheDir, err)
 }

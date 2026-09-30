@@ -83,7 +83,7 @@ S2a отдавал на `Enroll` временные коды: все отказ�
 | 2 | использование | флаги; конфиг; неизвестное имя (`REPOSITORY_UNKNOWN`); `CRYPTO_PROVIDER_UNSUPPORTED`; `PASSWORD_FILE_MISSING`, `PASSWORD_FILE_EMPTY`; нарушение прав или владельца секретного файла (текст A1, без строки причины); `ENV_FILE_MISSING`, `ENV_FILE_INVALID`; пароль не открывает существующий репозиторий (`WRONG_PASSWORD`) |
 | 4 | идентичность есть | репозиторий уже инициализирован, данные не тронуты, id в сообщении (`REPOSITORY_EXISTS`) |
 | 6 | временная | бэкенд недоступен по сети (`BACKEND_UNAVAILABLE`); истёк `--timeout` (`TIMEOUT`); прерывание (`INTERRUPTED`); идёт другой init того же репозитория на хосте (`INIT_IN_PROGRESS`) |
-| 7 | запись | файл пароля (или файл блокировки рядом с ним) нельзя создать (`PASSWORD_FILE_WRITE`) |
+| 7 | запись | файл пароля нельзя создать (`PASSWORD_FILE_WRITE`); файл блокировки в `restic.cache_dir` нельзя создать (`LOCK_WRITE`, ADR 0028) |
 
 Проверки идут в порядке: флаги → конфиг → имя → `crypto_provider` → `password_file` → `env_file` → restic → блокировка → генерация пароля → `restic cat config` → `restic init`; первая сработавшая определяет код. Старт агента сохраняет код 1 для любой ошибки, в том числе для проблем с restic.
 

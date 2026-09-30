@@ -35,12 +35,21 @@ func runRepoInit(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	if code != exitOK {
 		return code
 	}
-	unlock, f := repoinit.AcquireLock(st.repo)
+	unlock, f := repoinit.AcquireLock(cacheDir(st.cfg, deps), st.repo)
 	if f != nil {
 		return reportRepoFailure(stderr, "init", f)
 	}
 	defer unlock()
 	return initRepository(ctx, st, opts, stdout, stderr, deps)
+}
+
+// cacheDir is restic.cache_dir of the config, or the default when unset;
+// it holds the init lock (В8а).
+func cacheDir(cfg config.Config, deps repoDeps) string {
+	if cfg.Restic.CacheDir != "" {
+		return cfg.Restic.CacheDir
+	}
+	return deps.defaultCacheDir
 }
 
 // repoContext bounds the whole command: it ends when timeout runs out on

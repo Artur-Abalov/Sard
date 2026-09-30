@@ -26,10 +26,32 @@ sudo systemctl restart sard-agent
 
 `--config` по умолчанию — `/etc/sard/agent.yaml`. Каталог файла пароля
 команда не создаёт: его нужно создать заранее и отдать пользователю службы
-(`install -d -o sard-agent -g sard-agent -m 0700 /etc/sard`). Рядом с файлом
-пароля на время работы `repo init` появляется файл блокировки
-`.sard-init-<имя>.lock` — он удаляется при выходе; каталог должен быть
-доступен пользователю службы на запись.
+(`install -d -o sard-agent -g sard-agent -m 0700 /etc/sard`). Если файл
+пароля уже есть, `repo init` ничего не пишет в его каталог и права записи
+в него не требует.
+
+### Каталог кэша restic и блокировка
+
+На время работы `repo init` берёт блокировку — файл
+`<restic.cache_dir>/.sard-init-<имя>.lock` (по умолчанию
+`/var/cache/sard/restic`); при любом нормальном завершении файл удаляется,
+оставшийся после аварии никем не удерживаемый файл повтору не мешает.
+`restic.cache_dir` **должен существовать и быть доступен на запись**
+пользователю, который запускает команду; команда его не создаёт. Иначе —
+код 7, `LOCK_WRITE`, в сообщении ключ `restic.cache_dir`, путь и причина ОС;
+файл пароля при этом не создаётся, к бэкенду команда не обращается.
+
+- Пакеты deb и rpm создают `/var/cache/sard/restic` при установке
+  (владелец и группа `sard-agent`, права `0700`), так что `repo init`
+  работает сразу после установки, до первого старта службы. Повторная
+  установка и обновление сохраняют содержимое и возвращают владельца и права;
+  удаление пакета каталог оставляет. Unit задаёт `CacheDirectoryMode=0700`,
+  поэтому старт службы права не меняет.
+- Архив tar.gz каталог не создаёт: создайте его сами, например
+  `install -d -o sard-agent -g sard-agent -m 0700 /var/cache/sard/restic`.
+- Если в конфиге задан другой `restic.cache_dir`, создайте и его так же
+  (и добавьте в `ReadWritePaths` службы, см. unit).
+- `repo list` блокировку не берёт и работает без каталога кэша.
 
 ## `repo init [--config C] [--generate-password] [--timeout 2m] <имя>`
 
@@ -72,14 +94,14 @@ sudo systemctl restart sard-agent
 | 2 | использование     | флаги, конфиг, неизвестное имя, `crypto_provider`, `password_file`, `env_file`, `WRONG_PASSWORD` |
 | 4 | идентичность есть | репозиторий уже инициализирован (`REPOSITORY_EXISTS`) |
 | 6 | временная         | бэкенд недоступен по сети, `TIMEOUT`, `INTERRUPTED`, идёт другой init (`INIT_IN_PROGRESS`) |
-| 7 | запись            | файл пароля не создать (`PASSWORD_FILE_WRITE`) |
+| 7 | запись            | файл пароля не создать (`PASSWORD_FILE_WRITE`); файл блокировки в `restic.cache_dir` не создать (`LOCK_WRITE`) |
 
 Каждый отказ содержит строку причины (`REPOSITORY_UNKNOWN`,
 `CRYPTO_PROVIDER_UNSUPPORTED`, `PASSWORD_FILE_MISSING`, `PASSWORD_FILE_EMPTY`,
 `ENV_FILE_MISSING`, `ENV_FILE_INVALID`, `RESTIC_NOT_FOUND`, `RESTIC_TOO_OLD`,
 `RESTIC_UNUSABLE`, `REPOSITORY_EXISTS`, `WRONG_PASSWORD`, `BACKEND_UNAVAILABLE`,
 `BACKEND_REFUSED`, `INTERRUPTED`, `TIMEOUT`, `INIT_IN_PROGRESS`,
-`PASSWORD_FILE_WRITE`), кроме нарушения прав или владельца секретного файла:
+`PASSWORD_FILE_WRITE`, `LOCK_WRITE`), кроме нарушения прав или владельца секретного файла:
 его команда печатает текстом A1, как при старте агента. Пароль, значения из
 `env_file` и пароль из адреса репозитория в вывод не попадают.
 

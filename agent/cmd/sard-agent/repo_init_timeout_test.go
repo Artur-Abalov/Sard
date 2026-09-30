@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -186,10 +185,5 @@ func TestTheLockDoesNotHinderARepeatAfterTheFirstCommandEnded(t *testing.T) {
 	if strings.Contains(stderr, "INIT_IN_PROGRESS") || code != exitOK {
 		t.Fatalf("code = %d, stderr = %q", code, stderr)
 	}
-	entries, _ := os.ReadDir(h.dir)
-	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), ".lock") {
-			t.Errorf("lock file %s is left", e.Name())
-		}
-	}
+	h.assertNoLockFiles()
 }

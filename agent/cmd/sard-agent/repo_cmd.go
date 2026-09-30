@@ -38,6 +38,8 @@ type repoDeps struct {
 	pathEnv    string
 	// defaultConfig is the config used without --config.
 	defaultConfig string
+	// defaultCacheDir is restic.cache_dir when the config leaves it empty.
+	defaultCacheDir string
 }
 
 func productionRepoDeps() repoDeps {
@@ -52,7 +54,8 @@ func productionRepoDeps() repoDeps {
 		random:     rand.Reader,
 		pathEnv:    os.Getenv("PATH"),
 
-		defaultConfig: defaultEnrollConfigPath,
+		defaultConfig:   defaultEnrollConfigPath,
+		defaultCacheDir: restic.DefaultCacheDir,
 	}
 }
 

@@ -105,14 +105,44 @@ require() {
   done
 }
 
+# forbid fails if any of the given paths is in the listing on stdin.
+forbid() {
+  local what="$1" listing path
+  shift
+  listing="$(cat)"
+  for path in "$@"; do
+    ! grep -qx -- "$path" <<<"$listing" || die "$what: $path must not be packaged"
+  done
+}
+
+# The cache directory is made by postinstall (owner and mode reset on every
+# install, contents kept, left by removal), so no package or archive owns it.
+CACHE_DIR=/var/cache/sard/restic
+POSTINSTALL_LINES=("mkdir -p $CACHE_DIR" "chown sard-agent:sard-agent $CACHE_DIR" "chmod 0700 $CACHE_DIR")
+
+# check_cache_dir verifies the scriptlet text on stdin creates the cache dir.
+check_cache_dir() {
+  local what="$1" script line
+  script="$(cat)"
+  for line in "${POSTINSTALL_LINES[@]}"; do
+    grep -qF -- "$line" <<<"$script" || die "$what: post-install script lacks: $line"
+  done
+}
+
 verify() {
   local arch="$1" name="$2" deb rpm
   tar -tzf "$DIST/$name.tar.gz" | sed "s|^$name/||" | require "$name.tar.gz" "${TAR_FILES[@]}"
+  ! tar -tzf "$DIST/$name.tar.gz" | grep -q 'var/cache' || die "$name.tar.gz: var/cache must not be in the archive"
+  grep -qx 'CacheDirectoryMode=0700' "$ROOT/deploy/agent/sard-agent.service" || die "sard-agent.service: CacheDirectoryMode=0700 missing"
   deb="$(ls "$DIST"/sard-agent_*_"$arch".deb)"
   dpkg-deb -c "$deb" | awk '{print $6}' | sed 's|^\.||' | require "$(basename "$deb")" "${PKG_FILES[@]}"
+  dpkg-deb -c "$deb" | awk '{print $6}' | sed 's|^\.||; s|/$||' | forbid "$(basename "$deb")" /var/cache /var/cache/sard "$CACHE_DIR"
+  dpkg-deb --ctrl-tarfile "$deb" | tar -xO ./postinst | check_cache_dir "$(basename "$deb")"
   rpm="$(ls "$DIST"/sard-agent-*."$( [ "$arch" = amd64 ] && echo x86_64 || echo aarch64)".rpm)"
   if command -v rpm >/dev/null; then
     rpm -qlp "$rpm" 2>/dev/null | require "$(basename "$rpm")" "${PKG_FILES[@]}"
+    rpm -qlp "$rpm" 2>/dev/null | forbid "$(basename "$rpm")" /var/cache /var/cache/sard "$CACHE_DIR"
+    rpm -qp --scripts "$rpm" 2>/dev/null | check_cache_dir "$(basename "$rpm")"
   else
     echo "package-agent: $(basename "$rpm") contents not checked (no rpm tool)"
   fi

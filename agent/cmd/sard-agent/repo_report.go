@@ -58,7 +58,7 @@ var repoInitHelpCodes = []repoHelpCode{
 	{exitUsage, "usage", "flags, config, unknown repository name, crypto_provider, password_file or env_file, or a password that does not open the existing repository"},
 	{exitIdentityExists, "identity exists", "the repository is already initialised; nothing was changed and its repository_id is printed"},
 	{exitTemporary, "temporary", "the backend is unreachable, --timeout ran out, the command was interrupted, or another init of this repository is running; it can be repeated"},
-	{exitWrite, "write", "the password file could not be created"},
+	{exitWrite, "write", "the password file could not be created, or the lock file in restic.cache_dir (LOCK_WRITE: the directory must exist and be writable)"},
 }
 
 func printRepoHelp(stdout io.Writer, sub string) {

@@ -101,3 +101,35 @@
 - F7: `RESTIC_OUTPUT_UNEXPECTED` в строке кода 1 ADR 0025 и в справке
   `repo list` (вместе с `BACKEND_REFUSED`); спецификация не менялась
   (сценарий справки не фиксирует точный список).
+
+## Поправка владельца: блокировка в restic.cache_dir (В8а, В8б, С12–С14, ADR 0028)
+
+Сделано тестом вперёд.
+
+- `repoinit.LockPath(cacheDir, name)` и `AcquireLock(cacheDir, repo)`: файл
+  `<cache_dir>/.sard-init-<имя>.lock`; новая причина `LOCK_WRITE`, класс
+  «запись» (код 7); сообщение называет `restic.cache_dir`, путь и ошибку ОС.
+  Агент каталог не создаёт. `repoDeps.defaultCacheDir` (в бою
+  `restic.DefaultCacheDir`) внедряется в тестах — `/var/cache` хоста не
+  трогается. В тестовом хосте `restic.cache_dir` (K) существует, 0700.
+- Тесты: `agent/cmd/sard-agent/repo_init_lock_test.go` (расположение файла,
+  удаление при завершении, устаревший файл, существующий файл пароля в
+  каталоге 0500 с флагом и без, LOCK_WRITE для «нет каталога / обычный файл /
+  0500», каталог не создаётся, каталог по умолчанию, пароль не создаётся,
+  list без блокировки и без каталога), `repoinit/lock_test.go`,
+  `repoinit/preflight_test.go`.
+- Ограничение: тесты запускаются от root, а root игнорирует права каталога,
+  поэтому вариант «0500» для LOCK_WRITE проверяется только не от root; ветка
+  отказа покрыта вариантами «нет каталога» и «обычный файл».
+- Пакет (В8б): `deploy/agent/postinstall.sh` создаёт каталог (chown
+  sard-agent:sard-agent, chmod 0700; каталог не файл пакета, поэтому
+  переустановка сохраняет содержимое, а удаление его оставляет);
+  `CacheDirectoryMode=0700` в unit; `scripts/package-agent.sh` проверяет:
+  в tar.gz нет `var/cache`, deb/rpm не владеют каталогом, скрипт установки
+  содержит mkdir/chown/chmod, в unit есть `CacheDirectoryMode=0700`. Локально
+  проверены deb и tar.gz; rpm без утилиты rpm не проверялся.
+- Не автоматизировано (только `docs/qa/repo-init.md`): все @package сценарии,
+  требующие настоящей установки, — владелец/права после установки,
+  repo init до первого старта службы, повторная установка, удаление.
+- Документы: ADR 0025 (строка 7), `docs/operations/repo-init.md`, справка
+  `repo init` (код 7).

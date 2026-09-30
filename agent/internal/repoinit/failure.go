@@ -36,6 +36,7 @@ const (
 	Timeout                Reason = "TIMEOUT"
 	InitInProgress         Reason = "INIT_IN_PROGRESS"
 	PasswordFileWrite      Reason = "PASSWORD_FILE_WRITE"
+	LockWrite              Reason = "LOCK_WRITE"
 )
 
 // Class is the kind of a failure; the command maps it to an exit code
@@ -60,7 +61,7 @@ var classes = map[Reason]Class{
 	ResticOutputUnexpected: ClassAgentError, BackendRefused: ClassAgentError,
 	RepositoryExists:   ClassExists,
 	BackendUnavailable: ClassTemporary, Interrupted: ClassTemporary, Timeout: ClassTemporary, InitInProgress: ClassTemporary,
-	PasswordFileWrite: ClassWrite,
+	PasswordFileWrite: ClassWrite, LockWrite: ClassWrite,
 }
 
 // Failure is a refusal the operator is told about.

@@ -12,17 +12,17 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 )
 
-func TestTheLockOfARepositoryLivesNextToItsPasswordFile(t *testing.T) {
-	a := repoinit.LockPath("/etc/sard/main.pass", "main")
-	b := repoinit.LockPath("/etc/sard/main.pass", "offsite")
-	c := repoinit.LockPath("/etc/sard/main.pass", "../evil/x")
-	if filepath.Dir(a) != "/etc/sard" || a == b || filepath.Dir(c) != "/etc/sard" {
+func TestTheLockOfARepositoryLivesInTheCacheDir(t *testing.T) {
+	a := repoinit.LockPath("/var/cache/sard/restic", "main")
+	b := repoinit.LockPath("/var/cache/sard/restic", "offsite")
+	c := repoinit.LockPath("/var/cache/sard/restic", "../evil/x")
+	if a != "/var/cache/sard/restic/.sard-init-main.lock" || a == b || filepath.Dir(c) != "/var/cache/sard/restic" {
 		t.Fatalf("paths = %q %q %q", a, b, c)
 	}
 }
 
 func TestASecondLockOfTheSameRepositoryIsRefusedUntilTheFirstIsReleased(t *testing.T) {
-	path := repoinit.LockPath(filepath.Join(t.TempDir(), "main.pass"), "main")
+	path := repoinit.LockPath(t.TempDir(), "main")
 	unlock, err := repoinit.Lock(path)
 	if err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ func TestASecondLockOfTheSameRepositoryIsRefusedUntilTheFirstIsReleased(t *testi
 }
 
 func TestAStaleLockFileOfADeadProcessDoesNotBlock(t *testing.T) {
-	path := repoinit.LockPath(filepath.Join(t.TempDir(), "main.pass"), "main")
+	path := repoinit.LockPath(t.TempDir(), "main")
 	if err := os.WriteFile(path, []byte("4242\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestAStaleLockFileOfADeadProcessDoesNotBlock(t *testing.T) {
 
 func TestALockInAMissingDirectoryFailsWithoutCreatingIt(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "absent")
-	_, err := repoinit.Lock(repoinit.LockPath(filepath.Join(dir, "main.pass"), "main"))
+	_, err := repoinit.Lock(repoinit.LockPath(dir, "main"))
 	if err == nil || errors.Is(err, repoinit.ErrLockHeld) {
 		t.Fatalf("err = %v", err)
 	}

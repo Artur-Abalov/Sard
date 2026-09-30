@@ -216,6 +216,7 @@ func TestThePasswordFileCreatedByTheCommandPassesTheStartOfTheAgent(t *testing.T
 	r := newRepoHost(t)
 	r.restic.path = script
 	r.deps.exec = r.restic
+	r.deps.defaultCacheDir = r.cacheDir() // the config leaves restic.cache_dir unset
 	var out, errOut bytes.Buffer
 	code := runRepoWithDeps(context.Background(), []string{"init", "--config", cfgPath, "--generate-password", "main"}, &out, &errOut, r.deps)
 	if code != exitOK {

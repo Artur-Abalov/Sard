@@ -244,10 +244,11 @@ type repoHost struct {
 
 func (h *repoHost) path(name string) string { return filepath.Join(h.dir, name) }
 
-func (h *repoHost) pass() string    { return h.path("main.pass") }
-func (h *repoHost) pass2() string   { return h.path("offsite.pass") }
-func (h *repoHost) envFile() string { return h.path("main.env") }
-func (h *repoHost) repoURL() string { return h.path("repo") }
+func (h *repoHost) cacheDir() string { return h.path("cache") }
+func (h *repoHost) pass() string     { return h.path("main.pass") }
+func (h *repoHost) pass2() string    { return h.path("offsite.pass") }
+func (h *repoHost) envFile() string  { return h.path("main.env") }
+func (h *repoHost) repoURL() string  { return h.path("repo") }
 
 const offsiteURL = "rest:http://qa:" + urlMarker + "@127.0.0.1:9/offsite"
 
@@ -268,7 +269,11 @@ func newRepoHost(t *testing.T) *repoHost {
 			{Name: "offsite", URL: offsiteURL, PasswordFile: h.pass2()},
 		},
 	}
+	if err := os.Mkdir(h.cacheDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	h.deps = productionRepoDeps()
+	h.deps.defaultCacheDir = h.path("default-cache")
 	h.deps.clock = h.clock
 	h.deps.exec = h.restic
 	h.deps.executable = func() (string, error) { return h.path("bin/sard-agent"), nil }
