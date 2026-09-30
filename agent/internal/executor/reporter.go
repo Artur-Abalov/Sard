@@ -24,7 +24,7 @@ func (r *reporter) Progress(phase agentv1.StepPhase, processed, total uint64) {
 func (r *reporter) ProgressFiles(phase agentv1.StepPhase, processed, total, files, filesTotal uint64) {
 	r.e.mu.Lock()
 	defer r.e.mu.Unlock()
-	if !r.c.live() || phase == agentv1.StepPhase_STEP_PHASE_ACCEPTED || phase == agentv1.StepPhase_STEP_PHASE_UNSPECIFIED {
+	if !r.c.live() || !reportable(phase) {
 		return
 	}
 	now := r.e.opts.Clock.Now()
@@ -32,6 +32,12 @@ func (r *reporter) ProgressFiles(phase agentv1.StepPhase, processed, total, file
 		return
 	}
 	r.e.send(r.c, now, phase, counters{processed, total, files, filesTotal})
+}
+
+// reportable reports whether a plugin may report the phase: ACCEPTED and
+// UNSPECIFIED belong to the executor.
+func reportable(phase agentv1.StepPhase) bool {
+	return phase != agentv1.StepPhase_STEP_PHASE_ACCEPTED && phase != agentv1.StepPhase_STEP_PHASE_UNSPECIFIED
 }
 
 // Log forwards a line outside the executor's lock: the sink may block for
