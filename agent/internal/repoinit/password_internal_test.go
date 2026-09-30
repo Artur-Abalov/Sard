@@ -30,3 +30,72 @@ func TestAFailedWriteLeavesNoPasswordFile(t *testing.T) {
 		t.Fatal("a broken password file is left behind")
 	}
 }
+
+// modeFile is a freshly created file whose Chmod and Close can fail.
+type modeFile struct {
+	*os.File
+	chmodErr, closeErr error
+}
+
+func (m modeFile) Chmod(mode os.FileMode) error {
+	if m.chmodErr != nil {
+		return m.chmodErr
+	}
+	return m.File.Chmod(mode)
+}
+
+func (m modeFile) Close() error {
+	err := m.File.Close()
+	if m.closeErr != nil {
+		return m.closeErr
+	}
+	return err
+}
+
+func openWith(mode os.FileMode, chmodErr, closeErr error) func(string) (passwordFile, error) {
+	return func(name string) (passwordFile, error) {
+		f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+		return modeFile{f, chmodErr, closeErr}, err
+	}
+}
+
+func TestAPasswordFileIsOwnerOnlyWhateverModeItWasCreatedWith(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "pass")
+	if err := writeNew(openWith(0o200, nil, nil), path, []byte("secret")); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("%v, %v", info, err)
+	}
+}
+
+func TestAPasswordFileThatCannotBeSecuredOrClosedIsNotKept(t *testing.T) {
+	for name, open := range map[string]func(string) (passwordFile, error){
+		"chmod": openWith(0o600, errors.New("operation not permitted"), nil),
+		"close": openWith(0o600, nil, errors.New("disk error")),
+	} {
+		path := filepath.Join(t.TempDir(), "pass")
+		if err := writeNew(open, path, []byte("secret")); err == nil {
+			t.Errorf("%s: the error was lost", name)
+		}
+		if _, err := os.Stat(path); err == nil {
+			t.Errorf("%s: the file is left behind", name)
+		}
+	}
+}
+
+// A failure without a class would exit 0: every reason has one.
+func TestEveryReasonHasAClass(t *testing.T) {
+	reasons := []Reason{RepositoryUnknown, CryptoProviderUnsupported, PasswordFileMissing, PasswordFileEmpty,
+		EnvFileMissing, EnvFileInvalid, SecretFileRejected, ResticNotFound, ResticTooOld, ResticUnusable,
+		ResticOutputUnexpected, RepositoryExists, WrongPassword, BackendUnavailable, BackendRefused,
+		Interrupted, Timeout, InitInProgress, PasswordFileWrite, LockWrite}
+	if len(classes) != len(reasons) {
+		t.Errorf("%d reasons have a class, %d exist", len(classes), len(reasons))
+	}
+	for _, r := range reasons {
+		if fail(r, "x").Class == 0 {
+			t.Errorf("%s has no class", r)
+		}
+	}
+}

@@ -93,3 +93,15 @@ func TestCauseIsResticsFatalMessageWithoutThePrefix(t *testing.T) {
 		t.Errorf("Cause() of a message without the prefix = %q", got)
 	}
 }
+
+// A JSON string cannot span lines: restic's output is kept line by line, so
+// an id cut by a line break is bad output and is not glued back together.
+func TestAnIDSplitOverTwoLinesIsUnexpectedOutput(t *testing.T) {
+	f := newFixture(t, map[string]reply{"cat": {inline: "{\"id\":\"ab\ncd\"}"}, "init": {inline: "{\"id\":\"ab\ncd\"}"}})
+	if id, err := f.build().ID(context.Background()); id != "" || !errors.Is(err, restic.ErrBadOutput) {
+		t.Errorf("ID = %q, %v", id, err)
+	}
+	if id, err := f.build().Init(context.Background()); id != "" || !errors.Is(err, restic.ErrBadOutput) {
+		t.Errorf("Init = %q, %v", id, err)
+	}
+}
