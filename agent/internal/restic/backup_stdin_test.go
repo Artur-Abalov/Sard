@@ -44,7 +44,7 @@ func TestBackupFromStdinStoresTheStreamUnderTheFilename(t *testing.T) {
 	if sum != want {
 		t.Errorf("summary = %+v\nwant      %+v", sum, want)
 	}
-	args := []string{"backup", "--json", "--tag", "run=7", "--stdin", "--stdin-filename=db.sql"}
+	args := []string{"backup", "--json", "--retry-lock", "5m", "--tag", "run=7", "--stdin", "--stdin-filename=db.sql"}
 	if got := f.exec.call("backup").Args; !slices.Equal(got, args) {
 		t.Errorf("args = %q, want %q", got, args)
 	}

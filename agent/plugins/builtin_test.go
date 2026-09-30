@@ -66,6 +66,9 @@ func TestEveryConfigSchemaIsValidJSONSchema(t *testing.T) {
 func TestEveryPluginMethodIsNotImplementedYet(t *testing.T) {
 	ctx := context.Background()
 	for _, p := range plugins.Builtin("1.2.3") {
+		if p.Name() == "files" {
+			continue // written in A6b: plugins/files tests
+		}
 		t.Run(p.Name(), func(t *testing.T) {
 			if err := p.Prepare(ctx, nil, nil); !errors.Is(err, sdk.ErrNotImplemented) {
 				t.Errorf("Prepare: %v", err)
@@ -119,4 +122,15 @@ func TestHandlersPanicOnASchemaThatDoesNotCompile(t *testing.T) {
 		}
 	}()
 	plugins.Handlers(reg, pluginhost.NewSecrets(nil, nil), nil, t.TempDir())
+}
+
+// A version the server's format refuses is a programming error, not a
+// registry without plugins.
+func TestRegistryPanicsOnAnAgentVersionTheRegistryRefuses(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("no panic")
+		}
+	}()
+	plugins.Registry("a version with spaces")
 }

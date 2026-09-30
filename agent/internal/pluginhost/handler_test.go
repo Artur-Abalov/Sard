@@ -6,6 +6,7 @@ package pluginhost_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -123,6 +124,38 @@ func TestPartialBackupFailsWithItsOutput(t *testing.T) {
 	res, err := f.run(t, step(backup, `{}`))
 	if !errors.Is(err, restic.ErrUnreadableSource) || errors.Is(err, executor.ErrRejected) || res.GetBackup().GetSnapshotId() != "snap" {
 		t.Fatalf("Run = %v, %v", res, err)
+	}
+}
+
+// A6b Ф11: what went wrong with the repository names the repository, and the
+// reason survives.
+func TestRepositoryFailuresNameTheRepository(t *testing.T) {
+	for name, cause := range map[string]error{
+		"locked":   restic.ErrLocked,
+		"missing":  restic.ErrNoRepository,
+		"password": restic.ErrWrongPassword,
+		"fatal":    &restic.ExitError{Code: 1, Message: "Fatal: unable to open repository"},
+		"no start": errors.New("restic backup: fork/exec restic: no such file or directory"),
+	} {
+		f := newHandlers(t, &plugin{})
+		f.repo.err = cause
+		res, err := f.run(t, step(backup, `{}`))
+		if !errors.Is(err, cause) || res != nil || !strings.Contains(err.Error(), `repository "main": `) || strings.Contains(err.Error(), "\n") {
+			t.Errorf("%s: Run = %v, %v", name, res, err)
+		}
+	}
+	if !strings.Contains(restic.ErrLocked.Error(), "locked by another process") {
+		t.Errorf("text = %q", restic.ErrLocked)
+	}
+}
+
+func TestPluginFailuresDoNotNameTheRepository(t *testing.T) {
+	f := newHandlers(t, &plugin{prepare: func(context.Context, sdk.Host, sdk.Config) error {
+		return errors.New("/missing: no such file or directory")
+	}})
+	_, err := f.run(t, step(backup, `{}`))
+	if err == nil || strings.Contains(err.Error(), "main") {
+		t.Errorf("err = %v", err)
 	}
 }
 
@@ -278,5 +311,83 @@ func TestVerifyRejectsAnInvalidConfigBeforeRestoring(t *testing.T) {
 	st.SnapshotId = "snap"
 	if _, err := f.run(t, st); !errors.Is(err, executor.ErrRejected) || len(f.repo.restores) != 0 {
 		t.Fatalf("err = %v, restores %q", err, f.repo.restores)
+	}
+}
+
+// deferredRestore is a plugin whose restore is announced but not written
+// yet (A6b Ф5: the files plugin).
+type deferredRestore struct{ plugin }
+
+func (*deferredRestore) RestoreNotImplemented() string {
+	return "restore for the fake plugin is not implemented yet"
+}
+
+func TestRestoreOfAPluginThatCannotRestoreYetFailsWithoutTouchingTheDisk(t *testing.T) {
+	f := newHandlers(t, &deferredRestore{})
+	st := step(restore, `{}`)
+	st.SnapshotId = "abc"
+	res, err := f.run(t, st)
+	if res != nil || err == nil || errors.Is(err, executor.ErrRejected) || err.Error() != "restore for the fake plugin is not implemented yet" {
+		t.Fatalf("Run = %v, %v", res, err)
+	}
+	if len(f.repo.restores) != 0 || len(f.repo.requests) != 0 {
+		t.Errorf("restic ran: %q", f.repo.restores)
+	}
+	if _, err := os.Stat(f.restoreDir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("restore dir: %v", err)
+	}
+}
+
+func TestRestoreOfAPluginThatCannotRestoreYetStillRejectsAMissingSnapshot(t *testing.T) {
+	f := newHandlers(t, &deferredRestore{})
+	if _, err := f.run(t, step(restore, `{}`)); !errors.Is(err, executor.ErrRejected) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestInvalidRequestDoesNotNameTheRepository(t *testing.T) {
+	f := newHandlers(t, &plugin{})
+	f.repo.err = fmt.Errorf("%w: no paths", restic.ErrInvalidRequest)
+	_, err := f.run(t, step(backup, `{}`))
+	if !errors.Is(err, restic.ErrInvalidRequest) || strings.Contains(err.Error(), `repository "main"`) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// Restic saw the files, the repository is fine: the unreadable paths are the
+// news, not the repository.
+func TestPartialBackupDoesNotNameTheRepository(t *testing.T) {
+	f := newHandlers(t, &plugin{})
+	f.repo.err, f.repo.partial = &restic.PartialError{Items: []restic.ItemError{{Item: "/a"}}}, true
+	_, err := f.run(t, step(backup, `{}`))
+	if !errors.Is(err, restic.ErrUnreadableSource) || strings.Contains(err.Error(), `repository "main"`) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// A secret the plugin's config names but the host does not have is the
+// step's fault, like an invalid config.
+func TestAnUnknownSecretRejectsTheStep(t *testing.T) {
+	f := newHandlers(t, &plugin{prepare: func(context.Context, sdk.Host, sdk.Config) error {
+		return fmt.Errorf("token: %w", sdk.ErrUnknownSecret)
+	}})
+	if _, err := f.run(t, step(backup, `{}`)); !errors.Is(err, executor.ErrRejected) || !errors.Is(err, sdk.ErrUnknownSecret) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// The restore starts with a RESTORING report without counters.
+func TestRestoreReportsTheRestoringPhaseBeforeRestic(t *testing.T) {
+	f := newHandlers(t, &plugin{})
+	st := step(restore, `{}`)
+	st.SnapshotId = "snap"
+	h, _ := f.handlers.Handler("fake")
+	var rep reporter
+	if _, err := h.Run(context.Background(), st, &rep); err != nil {
+		t.Fatal(err)
+	}
+	want := []event{{phase: agentv1.StepPhase_STEP_PHASE_RESTORING}}
+	if got := rep.all(); !slices.Equal(got, want) {
+		t.Errorf("events = %+v, want %+v", got, want)
 	}
 }
