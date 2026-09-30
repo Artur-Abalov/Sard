@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 )
 
 // Marker replaces each masked range.
@@ -61,9 +62,15 @@ type Writer struct {
 	dst   io.Writer
 	ac    *automaton
 	state int32
-	pos   int64  // stream bytes consumed
-	base  int64  // stream offset of pend[0]
-	pend  []byte // stream bytes [base, pos) not yet written or dropped
+	pos   int64 // stream bytes consumed
+	base  int64 // stream bytes before base are written out or dropped
+	// Stream bytes [base, pos) are read from the held-back tail pend,
+	// which ends at stream offset curAt, and then from cur, the chunk
+	// being written (starting at curAt). Only the tail is copied.
+	pend  []byte
+	spare []byte // pend's previous buffer, reused for the next tail
+	cur   []byte
+	curAt int64
 	spans []span // sorted, disjoint, non-adjacent; ends <= pos
 	out   []byte
 	err   error
@@ -97,7 +104,7 @@ func (w *Writer) Write(p []byte) (int, error) {
 	if err := w.usable(); err != nil {
 		return 0, err
 	}
-	w.pend = append(w.pend, p...)
+	w.cur, w.curAt = p, w.pos
 	for _, b := range p {
 		w.state = w.ac.step(w.state, b)
 		w.pos++
@@ -108,6 +115,7 @@ func (w *Writer) Write(p []byte) (int, error) {
 	// No value that is still to be matched can start before the current
 	// state's depth: everything left of it is final.
 	w.settle(w.pos - int64(w.ac.depth[w.state]))
+	w.holdTail()
 	if err := w.emit(); err != nil {
 		return 0, err
 	}
@@ -178,7 +186,7 @@ func (w *Writer) settle(final int64) {
 		if sp.end >= final {
 			return // a later match may still extend this span
 		}
-		w.spans = w.spans[1:]
+		w.spans = slices.Delete(w.spans, 0, 1)
 	}
 	w.keep(final)
 }
@@ -186,17 +194,35 @@ func (w *Writer) settle(final int64) {
 // keep writes the pending bytes before offset to the output.
 func (w *Writer) keep(offset int64) {
 	if offset > w.base {
-		w.out = append(w.out, w.pend[:offset-w.base]...)
-		w.drop(offset)
+		w.out = w.appendStream(w.out, w.base, offset)
+		w.base = offset
 	}
 }
 
 // drop discards the pending bytes before offset.
 func (w *Writer) drop(offset int64) {
-	if offset > w.base {
-		w.pend = w.pend[offset-w.base:]
-		w.base = offset
+	w.base = max(w.base, offset)
+}
+
+// holdTail copies the stream bytes [base, pos) out of the current chunk,
+// which the Writer must not retain, into pend.
+func (w *Writer) holdTail() {
+	w.spare = w.appendStream(w.spare[:0], w.base, w.pos)
+	w.pend, w.spare = w.spare, w.pend
+	w.cur, w.curAt = nil, w.pos
+}
+
+// appendStream appends stream bytes [from, to) to dst; from >= base.
+func (w *Writer) appendStream(dst []byte, from, to int64) []byte {
+	if from < w.curAt {
+		tail := w.pend[len(w.pend)-int(w.curAt-from):]
+		dst = append(dst, tail[:min(to, w.curAt)-from]...)
+		if to <= w.curAt {
+			return dst
+		}
+		from = w.curAt
 	}
+	return append(dst, w.cur[from-w.curAt:to-w.curAt]...)
 }
 
 func (w *Writer) emit() error {

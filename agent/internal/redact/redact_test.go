@@ -101,6 +101,14 @@ func TestEveryByteAsOwnChunk(t *testing.T) {
 	}
 }
 
+// Found by the property test: a settled range that lies entirely in the
+// tail held back from the previous chunk.
+func TestSettledRangeInsideHeldTail(t *testing.T) {
+	if got := redactChunks(t, []string{"\n\na"}, "\n\n", "\na"); got != "\n[REDACTED]" {
+		t.Fatalf("got %q", got)
+	}
+}
+
 // writeExpect writes in and checks everything dst has received so far.
 func writeExpect(t *testing.T, w *Writer, out *bytes.Buffer, in, want string) {
 	t.Helper()

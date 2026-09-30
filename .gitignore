@@ -21,4 +21,4 @@ go-mutesting-report.html
 report.json
 
 # rapid writes failing-case replay files next to the tests (mutation runs too)
-testdata/rapid/
+**/testdata/rapid/
