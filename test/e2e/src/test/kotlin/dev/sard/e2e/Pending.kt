@@ -14,7 +14,7 @@ package dev.sard.e2e
  *
  * Enable when: S7a (the server records progress and results, see
  * [ResultAckSeamTest]) is in main and a plugin actually runs a step: every
- * built-in plugin still answers ErrNotImplemented (agent/plugins/*/plugin.go).
+ * built-in plugin still answers ErrNotImplemented (agent/plugins/<name>/plugin.go).
  *
  * Steps:
  * 1. Enroll an agent ([AgentEnroller]) and start it as in [AgentConnectTest],
