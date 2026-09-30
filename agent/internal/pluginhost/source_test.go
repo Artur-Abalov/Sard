@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
@@ -384,3 +385,18 @@ func TestSourceNeedsAValidSchema(t *testing.T) {
 type badSchema struct{ plugin }
 
 func (*badSchema) ConfigSchema() []byte { return []byte(`{"type": 5}`) }
+
+func TestStreamedDumpWithOneFileSystemFailsTheStep(t *testing.T) {
+	p := &plugin{
+		dump: func(context.Context, sdk.Host, sdk.Config) (sdk.Dump, error) {
+			return sdk.Dump{Filename: "db.sql", OneFileSystem: true}, nil
+		},
+		stream: func(context.Context, sdk.Host, sdk.Config, sdk.Dump, io.Writer) error { return nil },
+	}
+	// The real wrapper validates a request before it starts anything.
+	r := restic.New(restic.Options{}, config.Repository{})
+	_, err := newSource(t, p).Backup(context.Background(), []byte(`{}`), r, nil, &reporter{})
+	if !errors.Is(err, restic.ErrInvalidRequest) {
+		t.Errorf("err = %v, want ErrInvalidRequest", err)
+	}
+}

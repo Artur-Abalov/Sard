@@ -6,6 +6,7 @@ package pluginhost_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -341,5 +342,14 @@ func TestRestoreOfAPluginThatCannotRestoreYetStillRejectsAMissingSnapshot(t *tes
 	f := newHandlers(t, &deferredRestore{})
 	if _, err := f.run(t, step(restore, `{}`)); !errors.Is(err, executor.ErrRejected) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestInvalidRequestDoesNotNameTheRepository(t *testing.T) {
+	f := newHandlers(t, &plugin{})
+	f.repo.err = fmt.Errorf("%w: no paths", restic.ErrInvalidRequest)
+	_, err := f.run(t, step(backup, `{}`))
+	if !errors.Is(err, restic.ErrInvalidRequest) || strings.Contains(err.Error(), `repository "main"`) {
+		t.Errorf("err = %v", err)
 	}
 }

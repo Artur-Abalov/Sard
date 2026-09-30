@@ -39,7 +39,8 @@ type Dump struct {
 	// Excludes are restic --exclude patterns applied to Paths.
 	Excludes []string
 	// OneFileSystem keeps restic on the file systems of Paths: it does not
-	// descend into other mounts.
+	// descend into other mounts. Only for a dump by paths: set together
+	// with Filename it fails the step.
 	OneFileSystem bool
 	// Filename is the file name of a streamed dump inside the snapshot,
 	// e.g. "db.sql". Setting it selects streaming.

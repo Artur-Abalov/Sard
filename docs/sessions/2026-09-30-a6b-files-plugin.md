@@ -54,3 +54,11 @@
   на выводе restic 0.19.1 (`testdata/`).
 - Сообщение об ошибке шаблона exclude и о недоступном хранилище получает
   приставку `repository "R": …`, так как код выхода 1 не различает причины.
+
+## Правки по ревью архитектора
+- ADR 0029 фиксирует решения A6b: `RestoreDeferred`, `Dump.OneFileSystem`,
+  `--retry-lock 5m`, Ф12, разбор строки «does not exist, skipping».
+- `OneFileSystem` вместе с `Filename` теперь падает (`ErrInvalidRequest`);
+  такая ошибка не получает приставку `repository "R":`.
+- `agent/plugins/imports_test.go` проверяет, что встроенные плагины зависят
+  только от SDK, а реестр плагинов подключает только `cmd/sard-agent`.

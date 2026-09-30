@@ -87,16 +87,17 @@ func (e *repositoryError) Unwrap() error { return e.err }
 
 // request turns a dump into a restic request.
 func (s *Source) request(h sdk.Host, cfg sdk.Config, d sdk.Dump, tags []string) restic.BackupRequest {
+	req := restic.BackupRequest{Paths: d.Paths, Excludes: d.Excludes, Tags: tags, OneFileSystem: d.OneFileSystem}
 	if !d.Streamed() {
-		return restic.BackupRequest{Paths: d.Paths, Excludes: d.Excludes, Tags: tags, OneFileSystem: d.OneFileSystem}
+		return req
 	}
-	return restic.BackupRequest{
-		Tags:          tags,
-		StdinFilename: d.Filename,
-		Stdin: func(ctx context.Context, w io.Writer) error {
-			return s.plugin.Stream(ctx, h, cfg, d, w)
-		},
+	// Paths, excludes and one-file-system stay in the request so that
+	// restic's validation rejects a dump that mixes them with a stream.
+	req.StdinFilename = d.Filename
+	req.Stdin = func(ctx context.Context, w io.Writer) error {
+		return s.plugin.Stream(ctx, h, cfg, d, w)
 	}
+	return req
 }
 
 // Verify checks a restored copy at restoredPath (VERIFYING). A plugin that

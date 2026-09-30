@@ -102,10 +102,11 @@ func (h *handler) backup(ctx context.Context, step *agentv1.RunStep, repo restic
 }
 
 // nameRepository prefixes a failure of the repository with its name. A
-// snapshot written without some files says which paths, not which repository.
+// snapshot written without some files says which paths, not which repository;
+// an invalid request is the plugin's fault, not the repository's.
 func nameRepository(err error, name string) error {
 	var failure *repositoryError
-	if !errors.As(err, &failure) || errors.Is(err, restic.ErrUnreadableSource) {
+	if !errors.As(err, &failure) || errors.Is(err, restic.ErrUnreadableSource) || errors.Is(err, restic.ErrInvalidRequest) {
 		return err
 	}
 	return fmt.Errorf("repository %q: %w", name, err)

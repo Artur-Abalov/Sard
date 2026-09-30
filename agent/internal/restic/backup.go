@@ -304,8 +304,8 @@ func (r BackupRequest) validateStdin() error {
 	switch {
 	case r.StdinFilename == "":
 		return fmt.Errorf("%w: stdin without a filename", ErrInvalidRequest)
-	case len(r.Paths) > 0 || len(r.Excludes) > 0:
-		return fmt.Errorf("%w: stdin with paths or excludes", ErrInvalidRequest)
+	case len(r.Paths) > 0 || len(r.Excludes) > 0 || r.OneFileSystem:
+		return fmt.Errorf("%w: stdin with paths, excludes or one-file-system", ErrInvalidRequest)
 	}
 	return nil
 }
