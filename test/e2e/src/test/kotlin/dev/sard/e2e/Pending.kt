@@ -12,14 +12,14 @@ package dev.sard.e2e
 /**
  * Transport + executor with the real server (plan, tail 5).
  *
- * Enable when: S6 (the server sends step commands over Connect) is in main;
- * S5a (Connect) already is.
+ * Enable when: S7 (the server records progress and results) is in main. S6a
+ * (steps sent over Connect) is, see [RunStepSeamTest].
  *
  * Steps:
  * 1. Enroll an agent ([AgentEnroller]) and start it as in [AgentConnectTest],
  *    with a local restic repository in the agent config (a volume, password
  *    file in the container).
- * 2. Make the server send one step (the S6 API or its test hook) to that agent.
+ * 2. Make the server send one step to that agent (S8b REST, or rows as in [RunStepSeamTest]).
  * 3. Assert the agent acknowledges it, reports progress and a result on the
  *    stream, and the server stores the result (run/step rows).
  * 4. Restart the agent container mid-step: the executor state dir keeps the

@@ -32,6 +32,7 @@ make e2e-images   # только образы: sard-server:e2e, sard-agent:e2e
 | `AgentImageSmokeTest` | `sard-agent --version` = `VERSION`; `restic version` = `restic-version` |
 | `RegistrationTest` | токен → Enroll → сертификат проходит перехватчик S3 (`RenewCertificate` → UNIMPLEMENTED); без сертификата — UNAUTHENTICATED; токен одноразовый |
 | `AgentConnectTest` | настоящий агент после регистрации выполняет Register и открывает Connect (`agents.last_register_at`, `last_seen_at`) |
+| `RunStepSeamTest` | шаг в `queued` доходит до настоящего агента на Hello (`run_steps.status = dispatched`); агент отклоняет неизвестный плагин, StepResult `REJECTED` доходит до обработчика сервера (строка журнала до S7) |
 | `EnrollmentTokenFormatTest` | помощник токена — тестовый вектор `docs/specs/enrollment-token.md` |
 | `FailureLogsTest` | сломанная конфигурация сервера роняет старт, логи собраны, секреты замаскированы |
 
@@ -48,6 +49,6 @@ make e2e-images   # только образы: sard-server:e2e, sard-agent:e2e
 
 | Сценарий | Условие включения |
 |---|---|
-| `TransportExecutorPending` — транспорт + исполнитель с настоящим сервером (хвост 5) | S6 в `main` (S5a уже есть) |
+| `TransportExecutorPending` — транспорт + исполнитель с настоящим сервером (хвост 5) | S7 в `main` (отправка S6a — `RunStepSeamTest`) |
 | `FullChainT2Pending` — полная цепочка T2: бэкап, снапшот, проверенное восстановление, `lastVerifiedRestoreAt` | S7 и A2 в `main` |
 | `StreamBreakT3Pending` — обрыв стрима T3 | S7 в `main` |

@@ -8,7 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-private val ISOLATED_PACKAGES = listOf("enrollment", "persistence", "pki", "extension", "registration")
+private val ISOLATED_PACKAGES = listOf("enrollment", "persistence", "pki", "extension", "registration", "runs")
 private val FORBIDDEN_FQN_REFERENCE =
     Regex("""\b(io\.grpc|dev\.sard\.proto|com\.google\.rpc|com\.google\.protobuf|dev\.sard\.server\.agents)\.""")
 private val SESSIONS_SYSTEM_CALL = Regex("""\bsessions\.system\s*[({]""")
@@ -34,13 +34,13 @@ private fun withoutComments(text: String): String = text.replace(BLOCK_COMMENT, 
 /**
  * A dependency-free source scan, not a JVM classpath/reflection check: greps the .kt sources
  * under `src/main/kotlin`. Keeps two boundaries from ADR 0013 and the S2b review honest:
- *  a) `enrollment/`, `persistence/`, `pki/`, `extension/` and `registration/` never import the
+ *  a) `enrollment/`, `persistence/`, `pki/`, `extension/`, `registration/` and `runs/` never import the
  *     gRPC/protobuf boundary or the `agents/` package that adapts domain errors to it — those packages
  *     stay usable without a gRPC server, wire format or the agents' translation layer.
  *  b) `TenantSessions.system` (the one call that bypasses the tenant filter) is used only where
  *     ADR 0013 lists it: `EnrollmentTokens.ownerOf` (a token before its tenant is known) and
  *     `AgentCertificateStandings.of` (a certificate by serial during each agent call, S3; the serials
- *     of all open streams on each stream check, S5a).
+ *     of all open streams on each stream check, S5a) and `StepCounts.waiting` (the dispatch metric, S6a).
  */
 class ArchitectureTest {
     private val mainRoot: File
@@ -74,7 +74,8 @@ class ArchitectureTest {
     @Test
     fun `sessions system is called only by the callers ADR 0013 lists`() {
         val allowed =
-            listOf("agents/AgentCertificateStandings.kt", "enrollment/EnrollmentTokens.kt").map { File(mainRoot, it) }
+            listOf("agents/AgentCertificateStandings.kt", "enrollment/EnrollmentTokens.kt", "runs/StepCounts.kt")
+                .map { File(mainRoot, it) }
         val callers = ktFiles(mainRoot).filter { SESSIONS_SYSTEM_CALL.containsMatchIn(it.readText()) }
         assertEquals(allowed.toSet(), callers.toSet(), "sessions.system callers must match ADR 0013's list exactly")
     }

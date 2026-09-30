@@ -49,8 +49,9 @@ class HibernateTenantBridge(private val resolver: TenantResolver) : CurrentTenan
   1. `EnrollmentTokens.ownerOf(hash)` — токен по хэшу до того, как известен тенант.
   2. `AgentCertificateStandings.of(serial)` — сертификат агента и отзыв его агента по serial при каждом вызове gRPC (S3, ADR 0009); только чтение, возвращает тенанта, агента, `not_after` и отметки отзыва.
   3. `AgentCertificateStandings.of(serials)` — то же для serial всех открытых стримов `Connect` одним запросом раз в `sard.agent.stream.check-interval` (S5a, ADR 0026): отзыв и истечение закрывают уже открытый стрим.
+  4. `StepCounts.waiting()` — число шагов в `queued` и `dispatched` по всем тенантам одним запросом раз в `sard.run.dispatch.check-interval` (S6a, метрика отправки): только счётчики, без строк.
 
-  Список проверяет `ArchitectureTest` (S2b) с точностью до файла: вызов `sessions.system` вне `EnrollmentTokens.kt` и `AgentCertificateStandings.kt` роняет сборку; лишний вызов внутри этих файлов ловит ревью.
+  Список проверяет `ArchitectureTest` (S2b) с точностью до файла: вызов `sessions.system` вне `EnrollmentTokens.kt`, `AgentCertificateStandings.kt` и `StepCounts.kt` роняет сборку; лишний вызов внутри этих файлов ловит ревью.
 - Операции администратора над токенами (`EnrollmentTokens.create`, `list`, `get`, `revoke`, S2b) идут через `inTenant` с тенантом, который вызывающий получил от `TenantResolver`. Будущий REST-слой (D2 → W1b) никогда не берёт тенант из параметра пути.
 - Тенант gRPC-вызова агента (S3) — из его сертификата: перехватчик кладёт `AgentPrincipal` в gRPC `Context`, обработчики `AgentService` ходят в базу через `agents/AgentSessions.inTenant { }` = `TenantSessions.inTenant(principal.tenantId)`. `Context` доходит до обработчика-корутины и всех диспетчеров, на которые он переключается (grpc-kotlin кладёт `GrpcContextElement` в контекст обработчика), в том числе до сообщений стрима, пришедших после открытия, — проверено `AgentAuthIntegrationTest`. Вне аутентифицированного вызова `AgentSessions` бросает исключение. Spring Data-репозитории в обработчиках агента не используются: они идут через резолвер, а не через принципал.
 - Register (S4a) пишет снимок через `registration/Registration`, доменный пакет без gRPC: он не может зависеть от `agents/`, поэтому `AgentGrpcService` передаёт ему `principal.tenantId` и `principal.agentId`, а тот открывает `TenantSessions.inTenant(tenantId)` — то же, что `AgentSessions.inTenant`, тенант по-прежнему только из сертификата. Транзакция начинается с блокировки строки агента (`LockModeType.PESSIMISTIC_WRITE`): второй Register того же агента ждёт и заменяет снимок целиком. Наборы заменяются удалением и вставкой, а не слиянием.
@@ -109,13 +110,13 @@ agent_repositories            тенант, снимок из Register (ADR 0008
   INDEX (tenant_id, repository_id)  -- хранители ключа; удалённые и отозванные агенты не считаются
   -- repository_id NULL — агент не смог прочитать id; crypto_provider NULL — AES restic
 
-sources                       тенант — что бэкапим
+sources                       тенант — что бэкапим · реализовано (S6a)
   id PK, agent_id → agents, name, plugin, config JSONB,
   repository_name NOT NULL     -- снимки источника живут в одном репозитории (ADR 0022)
   created_at, updated_at, deleted_at
   UNIQUE (tenant_id, name) WHERE deleted_at IS NULL
 
-workflows                     тенант
+workflows                     тенант · таблица создана в S6a (для runs.workflow_id), сервиса нет
   id PK, name, definition JSONB, created_at, updated_at, deleted_at
   UNIQUE (tenant_id, name) WHERE deleted_at IS NULL
 
@@ -127,19 +128,20 @@ schedules                     тенант
   -- пропущенные за время простоя запуски: run_once — один запуск вместо всех, skip — ни одного.
   -- По умолчанию run_once: для бэкапа поздно лучше, чем никогда.
 
-runs                          тенант — запуск источника (этап 1) или workflow · история
+runs                          тенант — запуск источника (этап 1) или workflow · история · реализовано (S6a; schedule_id — вместе со schedules)
   id PK, source_id NOT NULL → sources, workflow_id NULL → workflows, schedule_id NULL → schedules,
   trigger CHECK IN ('schedule', 'manual', 'verification'),
   status  CHECK IN ('queued', 'dispatched', 'running', 'succeeded', 'failed', 'cancelled'),
-  definition JSONB NULL (снимок workflow на момент запуска), queued_at, started_at, finished_at
+  definition JSONB NULL (снимок workflow на момент запуска), message NULL, queued_at, started_at, finished_at
   CHECK (workflow_id IS NOT NULL OR trigger = 'manual')   -- этап 1: неявных workflow нет (ADR 0022)
   CHECK ((workflow_id IS NULL) = (definition IS NULL))
+  CHECK ((status IN ('queued', 'dispatched', 'running')) = (finished_at IS NULL))
   UNIQUE (tenant_id, source_id) WHERE status IN ('queued', 'dispatched', 'running')   -- D6, ADR 0022
   INDEX (tenant_id, source_id, queued_at DESC)
   INDEX (tenant_id, workflow_id, queued_at DESC)
   -- workflow из нескольких источников: ограничение D6 переходит на run_steps.source_id (ADR 0022)
 
-run_steps                     тенант — одна команда агенту · история
+run_steps                     тенант — одна команда агенту · история · реализовано (S6a)
   id PK (= RunStep.command_id), run_id → runs, ordinal, agent_id → agents,
   source_id NULL → sources, plugin, repository_name, snapshot_id NULL,
   config JSONB NOT NULL        -- RunStep.config_json как отправлен: sources.config может измениться
@@ -150,12 +152,16 @@ run_steps                     тенант — одна команда аген�
   bytes_processed, bytes_total, message,
   output JSONB (BackupOutput | RestoreOutput | VerifyOutput | RunOutput),
   queued_at, dispatched_at, started_at, finished_at
-  CHECK ((action = 'run') = (source_id IS NULL))
+  CHECK ((action = 'run') = (source_id IS NULL)), CHECK ((action = 'run') = (repository_name IS NULL))
+  UNIQUE (tenant_id, run_id, ordinal)
+  INDEX (tenant_id, agent_id, queued_at, id) WHERE status IN ('queued', 'dispatched', 'running')   -- доставка и сверка
   CHECK ((status = 'queued') = (dispatched_at IS NULL))
   CHECK ((status IN ('queued', 'dispatched', 'running')) = (finished_at IS NULL))
-  -- dispatched: отправлен в поток; running: агент прислал ACCEPTED. На Hello шаг в dispatched/running,
-  -- которого нет в running_command_ids, становится lost (не failed: агент не сообщал об ошибке).
-  -- Повторно не отправляется: restore не идемпотентен; повтор решает workflow.
+  -- dispatched: отправлен в поток; running: агент прислал ACCEPTED. На Hello шаг в running, которого нет
+  -- в running_command_ids и который за окно не получил результат, становится lost (не failed: агент не
+  -- сообщал об ошибке) и повторно не отправляется: restore не идемпотентен; повтор решает workflow.
+  -- dispatched, которого нет в Hello, отправляется снова: агент не исполняет известный command_id
+  -- повторно (A4). Правило и окно — черновик ADR S6a (00XX-draft-run-dispatch).
 
 step_logs                     тенант — LogChunk, секционирована PARTITION BY RANGE (received_at)
   (step_id, seq, received_at) PK, step_id → run_steps, received_at, time, level, text

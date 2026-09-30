@@ -1,0 +1,138 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright 2026 Artur Abalov
+
+package dev.sard.server.runs
+
+import dev.sard.server.persistence.RunRecord
+import dev.sard.server.persistence.RunStepRecord
+import dev.sard.server.persistence.SourceRecord
+import dev.sard.server.persistence.TenantSessions
+import dev.sard.server.persistence.UuidV7
+import jakarta.persistence.LockModeType
+import org.hibernate.Session
+import org.hibernate.exception.ConstraintViolationException
+import java.time.Clock
+import java.util.UUID
+
+private const val ACTIVE_RUN_KEY = "runs_active_source_key"
+
+/**
+ * Learns that an agent has a new queued step, once its run is committed; the dispatcher
+ * (agents/dispatch, S6a) sends it if the agent is online. Must not throw: the run exists already.
+ */
+fun interface StepsQueued {
+    fun onQueued(
+        tenantId: UUID,
+        agentId: UUID,
+    )
+
+    companion object {
+        /** Nobody listens: steps wait for the agent's next Hello. */
+        val NONE = StepsQueued { _, _ -> }
+    }
+}
+
+/**
+ * Starts runs of a source (S6a; S8b puts `POST /sources/{id}/runs` in front). One transaction
+ * creates the run and its single backup step in `queued`, with the source's config as of now.
+ * D6 is held by the partial unique index; the check before it only finds the id for the answer.
+ */
+class Runs(
+    private val sessions: TenantSessions,
+    private val clock: Clock,
+    private val ids: UuidV7,
+    private val queued: StepsQueued,
+) {
+    /** A manual run of [sourceId] in [tenantId], the tenant of the caller. */
+    fun start(
+        tenantId: UUID,
+        sourceId: UUID,
+    ): RunView {
+        val run =
+            try {
+                sessions.inTenant(tenantId) { session -> create(session, sourceId) }
+            } catch (e: ConstraintViolationException) {
+                if (e.constraintName != ACTIVE_RUN_KEY) throw e
+                // The run that won the index; if it has finished meanwhile, the source is free again.
+                val active = sessions.inTenant(tenantId) { session -> activeRunOf(session, sourceId) }
+                throw RunActive(active ?: return start(tenantId, sourceId))
+            }
+        queued.onQueued(tenantId, run.agentId)
+        return run
+    }
+
+    private fun create(
+        session: Session,
+        sourceId: UUID,
+    ): RunView {
+        // A shared lock: concurrent starts race on the index, a delete waits for them (and they for it).
+        val source = liveSource(session, sourceId, LockModeType.PESSIMISTIC_READ)
+        AgentOffer.require(session, source.agentId, source.plugin, source.repositoryName)
+        activeRunOf(session, sourceId)?.let { throw RunActive(it) }
+        val now = clock.instant()
+        val run = RunRecord(ids.next(), sourceId, Trigger.MANUAL.stored, RunState.QUEUED.stored, now)
+        val step = backupStep(run, source)
+        session.persist(run)
+        session.persist(step)
+        session.flush()
+        return RunViews.of(run, source.agentId, listOf(step))
+    }
+
+    private fun backupStep(
+        run: RunRecord,
+        source: SourceRecord,
+    ) = RunStepRecord(
+        id = ids.next(),
+        runId = run.id,
+        ordinal = 0,
+        agentId = source.agentId,
+        sourceId = source.id,
+        plugin = source.plugin,
+        action = Action.BACKUP.stored,
+        repositoryName = source.repositoryName,
+        config = source.config,
+        status = StepState.QUEUED.stored,
+        queuedAt = run.queuedAt,
+    )
+}
+
+/** Stored rows to views. */
+internal object RunViews {
+    fun of(
+        run: RunRecord,
+        agentId: UUID,
+        steps: List<RunStepRecord>,
+    ) = RunView(
+        id = run.id,
+        sourceId = run.sourceId,
+        agentId = agentId,
+        trigger = Trigger.of(run.trigger),
+        status = RunState.of(run.status),
+        message = run.message,
+        queuedAt = run.queuedAt,
+        startedAt = run.startedAt,
+        finishedAt = run.finishedAt,
+        steps = steps.map { step(it) },
+    )
+
+    fun step(record: RunStepRecord) =
+        StepView(
+            id = record.id,
+            ordinal = record.ordinal,
+            action = Action.of(record.action),
+            status = StepState.of(record.status),
+            agentId = record.agentId,
+            sourceId = record.sourceId,
+            plugin = record.plugin,
+            repositoryName = record.repositoryName,
+            config = record.config,
+            queuedAt = record.queuedAt,
+            dispatchedAt = record.dispatchedAt,
+            phase = record.phase,
+            bytesProcessed = record.bytesProcessed,
+            bytesTotal = record.bytesTotal,
+            message = record.message,
+            startedAt = record.startedAt,
+            finishedAt = record.finishedAt,
+        )
+}
