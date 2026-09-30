@@ -73,20 +73,31 @@ func mustVersions(file string) (pinned, minimum Version) {
 // Version runs `restic version` and fails with ErrUnsupportedVersion when
 // the binary is older than Minimum. It needs no repository or key.
 func (c *CLI) Version(ctx context.Context) (Version, error) {
-	var out bytes.Buffer
-	if _, err := c.run(ctx, c.baseEnv(), call{args: []string{"version"}, stdout: collect(&out)}); err != nil {
-		return Version{}, err
-	}
-	rest, ok := strings.CutPrefix(out.String(), "restic ")
-	if !ok {
-		return Version{}, fmt.Errorf("restic version: %w: not a restic version", ErrBadOutput)
-	}
-	v, err := parseVersion(rest)
+	v, _, err := c.probe(ctx)
 	if err != nil {
-		return Version{}, fmt.Errorf("restic version: %w", err)
+		return Version{}, err
 	}
 	if v.Less(Minimum) {
 		return v, fmt.Errorf("%w: restic %s is older than the minimum %s", ErrUnsupportedVersion, v, Minimum)
 	}
 	return v, nil
+}
+
+// probe runs `restic version`; raw is the version as restic printed it,
+// e.g. "0.19.2-dev".
+func (c *CLI) probe(ctx context.Context) (v Version, raw string, err error) {
+	var out bytes.Buffer
+	if _, err := c.run(ctx, c.baseEnv(), call{args: []string{"version"}, stdout: collect(&out)}); err != nil {
+		return Version{}, "", err
+	}
+	rest, ok := strings.CutPrefix(out.String(), "restic ")
+	if !ok {
+		return Version{}, "", fmt.Errorf("restic version: %w: not a restic version", ErrBadOutput)
+	}
+	v, err = parseVersion(rest)
+	if err != nil {
+		return Version{}, "", fmt.Errorf("restic version: %w", err)
+	}
+	raw, _, _ = strings.Cut(rest, " ")
+	return v, raw, nil
 }

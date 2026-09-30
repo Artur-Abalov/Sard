@@ -261,3 +261,39 @@ func TestRepositoryWithoutEnvFileNeedsNoEnvFile(t *testing.T) {
 		t.Fatalf("CheckAll: %v", err)
 	}
 }
+
+// A5b: repo init checks one file with the same texts A1 uses at start.
+func TestCheckFileUsesTheA1Messages(t *testing.T) {
+	stat := statOf(map[string]secrets.Info{
+		"/p/wide":  {Mode: 0o640, UID: agentUID},
+		"/p/alien": {Mode: 0o600, UID: 0},
+		"/p/ok":    {Mode: 0o400, UID: agentUID},
+	})
+	var e *secrets.Error
+	err := secrets.CheckFile("repositories[1].password_file", "/p/wide", agentUID, stat)
+	want := "secret file repositories[1].password_file (/p/wide) has mode -rw-r-----: it must not be readable or writable by group or others (owner bits only)"
+	if !errors.As(err, &e) || err.Error() != want {
+		t.Errorf("mode: %v", err)
+	}
+	err = secrets.CheckFile("repositories[1].env_file", "/p/alien", agentUID, stat)
+	if !errors.As(err, &e) || !strings.Contains(err.Error(), "is owned by uid 0, not the agent's uid 1000") {
+		t.Errorf("owner: %v", err)
+	}
+	if err := secrets.CheckFile("k", "/p/ok", agentUID, stat); err != nil {
+		t.Errorf("owner read-only: %v", err)
+	}
+	if err := secrets.CheckFile("k", "/p/absent", agentUID, stat); err != nil {
+		t.Errorf("absent: %v", err)
+	}
+}
+
+func TestRealStatReportsTheSize(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "f")
+	if err := os.WriteFile(path, []byte("abc"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := secrets.RealStat(path)
+	if err != nil || info.Size != 3 {
+		t.Fatalf("info = %+v, err = %v", info, err)
+	}
+}

@@ -54,6 +54,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, hostname 
 	if isEnrollCommand(args) {
 		return runEnroll(ctx, args[1:], stdout, stderr, hostname)
 	}
+	if isRepoCommand(args) {
+		return runRepo(ctx, args[1:], stdout, stderr)
+	}
 	return runAgentCmd(ctx, args, stdout, stderr, hostname)
 }
 
@@ -96,15 +99,16 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 	if err := checkHostFiles(cfg); err != nil {
 		return err
 	}
+	// A5b: no usable restic, no start — before the network (С5).
+	resticBinary, err := checkRestic(ctx, cfg, configPath, executable, restic.ProcessExecutor{})
+	if err != nil {
+		return err
+	}
 	hostname, err := hostnameOf()
 	if err != nil {
 		return fmt.Errorf("hostname: %w", err)
 	}
 	_, _ = fmt.Fprintf(stdout, "sard-agent %s: connecting to %s\n", version, cfg.Server.Address)
-	resticBinary, err := resticPath(cfg.Restic.Path, executable)
-	if err != nil {
-		return err
-	}
 	return serve(ctx, cfg, newAgent(cfg, hostname, resticBinary))
 }
 
@@ -245,6 +249,10 @@ func resticPath(configured string, executable func() (string, error)) (string, e
 	self, err := executable()
 	if err != nil {
 		return "", fmt.Errorf("restic.path: %w", err)
+	}
+	// The restic next to the real file, not next to a symlink to it.
+	if real, err := filepath.EvalSymlinks(self); err == nil {
+		self = real
 	}
 	return filepath.Join(filepath.Dir(self), "restic"), nil
 }

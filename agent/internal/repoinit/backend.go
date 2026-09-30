@@ -1,0 +1,182 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright 2026 Artur Abalov
+
+package repoinit
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"net/url"
+	"strings"
+
+	"github.com/Artur-Abalov/sard/agent/internal/redact"
+	"github.com/Artur-Abalov/sard/agent/internal/restic"
+)
+
+// ErrTimeout is the cause the command cancels its context with when
+// --timeout runs out; any other cancellation is an interrupt.
+var ErrTimeout = errors.New("timeout")
+
+// Target is the repository a failure is about.
+type Target struct {
+	Name         string
+	Backend      string
+	PasswordFile string
+	// Scrub removes secrets from text taken from restic.
+	Scrub func(string) string
+}
+
+// Inspect asks restic whether the repository is initialised: its id if so.
+func Inspect(ctx context.Context, r restic.Repository, t Target) (id string, initialized bool, f *Failure) {
+	id, err := r.ID(ctx)
+	switch {
+	case err == nil:
+		return id, true, nil
+	case ctx.Err() == nil && errors.Is(err, restic.ErrNoRepository):
+		return "", false, nil
+	}
+	return "", false, FromRestic(ctx, err, t)
+}
+
+// Create initialises the repository unless it exists (С10: restic cat
+// config first, then init) and returns the new id.
+func Create(ctx context.Context, r restic.Repository, t Target) (string, *Failure) {
+	id, initialized, f := Inspect(ctx, r, t)
+	if f != nil {
+		return "", f
+	}
+	if initialized {
+		return "", existsFailure(t, id)
+	}
+	id, err := r.Init(ctx)
+	if err == nil {
+		return id, nil
+	}
+	if ctx.Err() == nil && errors.Is(err, restic.ErrRepositoryExists) {
+		existing, _ := r.ID(ctx) // a repository created in the meantime; its id is a courtesy
+		return "", existsFailure(t, existing)
+	}
+	return "", withPartialNote(FromRestic(ctx, err, t))
+}
+
+func existsFailure(t Target, id string) *Failure {
+	f := fail(RepositoryExists, "a repository is already initialised at the address of %q; nothing was changed", t.Name)
+	f.ID = id
+	if id != "" {
+		f.Detail += " (repository_id " + id + ")"
+	}
+	return f
+}
+
+// withPartialNote adds what an operator must know when init was stopped.
+func withPartialNote(f *Failure) *Failure {
+	if f.Reason == Timeout || f.Reason == Interrupted {
+		f.Detail += "; the repository may have been created partially, run the command again"
+	}
+	return f
+}
+
+// resticReasons maps what restic said to a Reason; the first match wins.
+var resticReasons = []struct {
+	err    error
+	reason Reason
+}{
+	{restic.ErrWrongPassword, WrongPassword},
+	{restic.ErrEmptyPassword, PasswordFileEmpty},
+	{restic.ErrNetwork, BackendUnavailable},
+	{restic.ErrBadOutput, ResticOutputUnexpected},
+}
+
+// FromRestic explains an error of the restic wrapper. Text taken from
+// restic goes through t.Scrub: it may echo the address or an env_file value.
+func FromRestic(ctx context.Context, err error, t Target) *Failure {
+	if f := fromContext(ctx); f != nil {
+		f.Detail += " while working with the backend " + t.Backend
+		return f
+	}
+	for _, r := range resticReasons {
+		if errors.Is(err, r.err) {
+			return describe(r.reason, err, t)
+		}
+	}
+	return describe(BackendRefused, err, t)
+}
+
+func fromContext(ctx context.Context) *Failure {
+	switch {
+	case ctx.Err() == nil:
+		return nil
+	case errors.Is(context.Cause(ctx), ErrTimeout):
+		return fail(Timeout, "the command ran out of time (--timeout)")
+	}
+	return fail(Interrupted, "the command was interrupted")
+}
+
+// Interruption reports how ctx ended: nil while it is running.
+func Interruption(ctx context.Context) *Failure { return fromContext(ctx) }
+
+func describe(reason Reason, err error, t Target) *Failure {
+	cause := t.Scrub(causeOf(err))
+	switch reason {
+	case WrongPassword:
+		return fail(reason, "a repository already exists at the address of %q, and the password file %s does not open it", t.Name, t.PasswordFile)
+	case PasswordFileEmpty:
+		return fail(reason, "restic refuses an empty password: the password file %s holds no password", t.PasswordFile)
+	case BackendUnavailable:
+		return fail(reason, "backend %s: %s; the command can be repeated", t.Backend, cause)
+	case ResticOutputUnexpected:
+		return fail(reason, "restic printed no repository id; check the repository with `sard-agent repo list`")
+	}
+	return fail(reason, "backend %s: %s", t.Backend, cause)
+}
+
+// causeOf is restic's own fatal message if it printed one.
+func causeOf(err error) string {
+	var exit *restic.ExitError
+	if !errors.As(err, &exit) || exit.Message == "" {
+		return err.Error()
+	}
+	return strings.TrimSpace(strings.ReplaceAll(exit.Message, "Fatal: ", ""))
+}
+
+// Scrubber returns a function that masks the secrets of a repository in
+// text: the values of its env_file, the password in its address and the
+// extra values (a password the command generated).
+func Scrubber(repoURL string, envAssignments []string, extra ...string) func(string) string {
+	var values [][]byte
+	add := func(v string) {
+		if v != "" {
+			values = append(values, []byte(v))
+		}
+	}
+	for _, kv := range envAssignments {
+		_, v, _ := strings.Cut(kv, "=")
+		add(v)
+	}
+	add(urlPassword(repoURL))
+	for _, v := range extra {
+		add(v)
+	}
+	return func(s string) string {
+		var out bytes.Buffer
+		w, err := redact.New(&out, values)
+		if err != nil {
+			return redact.Marker
+		}
+		_, _ = w.Write([]byte(s))
+		_ = w.Close()
+		return out.String()
+	}
+}
+
+// urlPassword is the password of "backend:scheme://user:password@host/path".
+func urlPassword(repoURL string) string {
+	_, rest, _ := strings.Cut(repoURL, ":")
+	u, err := url.Parse(rest)
+	if err != nil || u.User == nil {
+		return ""
+	}
+	password, _ := u.User.Password()
+	return password
+}

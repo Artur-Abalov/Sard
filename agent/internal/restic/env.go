@@ -100,3 +100,14 @@ func checkEnvLine(line string) error {
 	}
 	return nil
 }
+
+// ParseEnvFile checks the contents of an env_file the way restic will get
+// it and returns its assignments. An error names the line and the variable,
+// never a value.
+func ParseEnvFile(data []byte) ([]string, error) {
+	env, err := parseEnv(string(data))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrInvalidEnvFile, err.Error())
+	}
+	return env, nil
+}

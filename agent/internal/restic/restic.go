@@ -13,6 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
@@ -60,11 +62,16 @@ type Options struct {
 // Errors for restic's documented exit codes and for output the wrapper
 // cannot trust.
 var (
-	ErrNoRepository   = errors.New("repository does not exist")      // exit 10
-	ErrLocked         = errors.New("repository is locked")           // exit 11
-	ErrWrongPassword  = errors.New("wrong password or no key found") // exit 12
-	ErrBadOutput      = errors.New("unexpected restic output")
-	ErrInvalidRequest = errors.New("invalid request")
+	ErrNoRepository  = errors.New("repository does not exist")      // exit 10
+	ErrLocked        = errors.New("repository is locked")           // exit 11
+	ErrWrongPassword = errors.New("wrong password or no key found") // exit 12
+	ErrBadOutput     = errors.New("unexpected restic output")
+	// Exit code 1 with a recognised message (restic 0.19.1, A5b): the
+	// errors also carry the *ExitError.
+	ErrRepositoryExists = errors.New("repository already exists")
+	ErrEmptyPassword    = errors.New("empty password")
+	ErrNetwork          = errors.New("network failure")
+	ErrInvalidRequest   = errors.New("invalid request")
 )
 
 // ExitError is a restic failure without a more specific error.
@@ -246,7 +253,36 @@ func (r *result) err() error {
 	case 12:
 		err = ErrWrongPassword
 	default:
-		err = &ExitError{Code: r.code, Message: r.fatal}
+		err = r.exitError()
 	}
 	return fmt.Errorf("%s: %w", r.cmd, err)
+}
+
+// exitError is the error for any other exit code; a fatal message the
+// agent knows how to read adds a sentinel next to the *ExitError.
+func (r *result) exitError() error {
+	exit := &ExitError{Code: r.code, Message: r.fatal}
+	if kind := fatalKind(r.fatal); kind != nil {
+		return fmt.Errorf("%w: %w", kind, exit)
+	}
+	return exit
+}
+
+// networkCauses are the messages of a backend that cannot be reached.
+var networkCauses = []string{
+	"connection refused", "no such host", "i/o timeout", "network is unreachable",
+	"no route to host", "connection reset by peer", "connection timed out", "TLS handshake timeout",
+}
+
+// fatalKind recognises restic's fatal message; nil for the unknown ones.
+func fatalKind(msg string) error {
+	switch {
+	case strings.Contains(msg, "config file already exists"):
+		return ErrRepositoryExists
+	case strings.Contains(msg, "an empty password is not allowed"):
+		return ErrEmptyPassword
+	case slices.ContainsFunc(networkCauses, func(c string) bool { return strings.Contains(msg, c) }):
+		return ErrNetwork
+	}
+	return nil
 }

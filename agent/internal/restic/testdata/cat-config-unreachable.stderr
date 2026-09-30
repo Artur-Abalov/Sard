@@ -1,0 +1,5 @@
+Stat(<config/>) returned error, retrying after 576.547778ms: Head "http://qa:***@127.0.0.1:9/offsite/config": dial tcp 127.0.0.1:9: connect: connection refused
+Stat(<config/>) returned error, retrying after 2.164361378s: Head "http://qa:***@127.0.0.1:9/offsite/config": dial tcp 127.0.0.1:9: connect: connection refused
+signal terminated received, cleaning up 
+Fatal: unable to open config file: context canceled
+rest:http://qa:***@127.0.0.1:9/offsite/

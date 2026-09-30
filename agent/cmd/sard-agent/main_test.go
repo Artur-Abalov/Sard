@@ -90,8 +90,15 @@ func TestUnknownFlagAfterConfigStopsBeforeStarting(t *testing.T) {
 	}
 }
 
+// withRestic is the YAML that points restic.path at a restic of the pinned
+// version: since A5b the agent does not start without a usable one.
+func withRestic(t *testing.T) string {
+	t.Helper()
+	return "restic: {path: " + resticScript(t, filepath.Join(t.TempDir(), "restic"), restic.Pinned.String()) + "}\n"
+}
+
 func TestHostnameFailure(t *testing.T) {
-	cfg := writeConfig(t, "server:\n  address: sard.example.com:9090\n")
+	cfg := writeConfig(t, "server:\n  address: sard.example.com:9090\n"+withRestic(t))
 	broken := func() (string, error) { return "", errors.New("uname failed") }
 	code, _, errOut := runAgentOn(broken, "--config", cfg)
 	if code != 1 || errOut != "sard-agent: hostname: uname failed\n" {
@@ -115,7 +122,7 @@ func TestConfigErrorsExitWithOne(t *testing.T) {
 
 // Without tls.* the agent cannot dial and says which setting is missing.
 func TestConfigWithoutTLSStopsBeforeDialing(t *testing.T) {
-	cfg := "server:\n  address: sard.example.com:9090\n"
+	cfg := "server:\n  address: sard.example.com:9090\n" + withRestic(t)
 	code, _, errOut := runAgent("--config", writeConfig(t, cfg))
 	if code != 1 || errOut != "sard-agent: invalid transport options: tls.ca_file is required\n" {
 		t.Fatalf("code = %d, stderr = %q", code, errOut)
@@ -130,7 +137,7 @@ func TestValidConfigDialsTheServerUntilStopped(t *testing.T) {
 	ca := writeIdentity(t, dir)
 	cfg := "server:\n  address: 127.0.0.1:1\n" +
 		"tls: {ca_file: " + ca + ", cert_file: " + dir + "/agent.pem, key_file: " + dir + "/agent.key}\n" +
-		"executor: {state_dir: " + dir + "/state}\n"
+		"executor: {state_dir: " + dir + "/state}\n" + withRestic(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	var out, errOut bytes.Buffer
@@ -146,7 +153,7 @@ func TestAnUnusableStateDirStopsBeforeDialing(t *testing.T) {
 	ca := writeIdentity(t, dir)
 	cfg := "server:\n  address: 127.0.0.1:1\n" +
 		"tls: {ca_file: " + ca + ", cert_file: " + dir + "/agent.pem, key_file: " + dir + "/agent.key}\n" +
-		"executor: {state_dir: " + ca + "/state}\n" // under a file
+		"executor: {state_dir: " + ca + "/state}\n" + withRestic(t) // under a file
 	code, _, errOut := runAgent("--config", writeConfig(t, cfg))
 	if code != 1 || !strings.Contains(errOut, "invalid executor options") {
 		t.Fatalf("code = %d, stderr = %q", code, errOut)
