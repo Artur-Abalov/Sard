@@ -186,6 +186,11 @@ message StepProgress {
   // Expected total bytes; 0 when unknown.
   uint64 bytes_total = 4;
   google.protobuf.Timestamp sent_at = 5;
+  // Files processed so far in the current phase; 0 when the phase counts no
+  // files or restic has not reported any yet.
+  uint64 files_processed = 6;
+  // Expected total files; 0 when unknown.
+  uint64 files_total = 7;
 }
 
 // StepPhase follows the plugin interface prepare -> dump -> stream -> verify.

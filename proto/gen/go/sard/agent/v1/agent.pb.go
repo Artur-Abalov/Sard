@@ -993,8 +993,13 @@ type StepProgress struct {
 	// Bytes processed so far in the current phase.
 	BytesProcessed uint64 `protobuf:"varint,3,opt,name=bytes_processed,json=bytesProcessed,proto3" json:"bytes_processed,omitempty"`
 	// Expected total bytes; 0 when unknown.
-	BytesTotal    uint64                 `protobuf:"varint,4,opt,name=bytes_total,json=bytesTotal,proto3" json:"bytes_total,omitempty"`
-	SentAt        *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=sent_at,json=sentAt,proto3" json:"sent_at,omitempty"`
+	BytesTotal uint64                 `protobuf:"varint,4,opt,name=bytes_total,json=bytesTotal,proto3" json:"bytes_total,omitempty"`
+	SentAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=sent_at,json=sentAt,proto3" json:"sent_at,omitempty"`
+	// Files processed so far in the current phase; 0 when the phase counts no
+	// files or restic has not reported any yet.
+	FilesProcessed uint64 `protobuf:"varint,6,opt,name=files_processed,json=filesProcessed,proto3" json:"files_processed,omitempty"`
+	// Expected total files; 0 when unknown.
+	FilesTotal    uint64 `protobuf:"varint,7,opt,name=files_total,json=filesTotal,proto3" json:"files_total,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1062,6 +1067,20 @@ func (x *StepProgress) GetSentAt() *timestamppb.Timestamp {
 		return x.SentAt
 	}
 	return nil
+}
+
+func (x *StepProgress) GetFilesProcessed() uint64 {
+	if x != nil {
+		return x.FilesProcessed
+	}
+	return 0
+}
+
+func (x *StepProgress) GetFilesTotal() uint64 {
+	if x != nil {
+		return x.FilesTotal
+	}
+	return 0
 }
 
 // LogChunk carries log lines of one command, batched by the agent.
@@ -2060,7 +2079,7 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\x05Hello\x12.\n" +
 	"\x13running_command_ids\x18\x01 \x03(\tR\x11runningCommandIds\"P\n" +
 	"\tHeartbeat\x123\n" +
-	"\asent_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x06sentAtJ\x04\b\x01\x10\x02R\bagent_id\"\xdc\x01\n" +
+	"\asent_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x06sentAtJ\x04\b\x01\x10\x02R\bagent_id\"\xa6\x02\n" +
 	"\fStepProgress\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12.\n" +
@@ -2068,7 +2087,10 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\x0fbytes_processed\x18\x03 \x01(\x04R\x0ebytesProcessed\x12\x1f\n" +
 	"\vbytes_total\x18\x04 \x01(\x04R\n" +
 	"bytesTotal\x123\n" +
-	"\asent_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\x06sentAt\"W\n" +
+	"\asent_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\x06sentAt\x12'\n" +
+	"\x0ffiles_processed\x18\x06 \x01(\x04R\x0efilesProcessed\x12\x1f\n" +
+	"\vfiles_total\x18\a \x01(\x04R\n" +
+	"filesTotal\"W\n" +
 	"\bLogChunk\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12,\n" +
