@@ -161,3 +161,30 @@ class Runs { fun start(tenantId: UUID, sourceId: UUID): RunView }
 - Контроли: без фильтра `running_command_ids` в `onHello` сначала упал только 1 тест — выяснилось, что юнит-тест делал Hello и тик на двух разных экземплярах диспетчера, а интеграционный не двигал часы перед повторным Hello (время отправки = время Hello, повтор не срабатывал и без фильтра). Тесты исправлены; повторный контроль — падают 3 теста (юнит и интеграционный), код восстановлен.
 - `./scripts/gate.sh server fast` — `gate: PASSED (server, fast)`: 674 теста, 0 упавших, покрытие 95.4% (instructions), CRAP ≤ 6 (новый код — максимум 6.0: `AgentOffer.require`, `RunState.following`).
 - mutflow (`-Pmutflow.enabled=true :server:test --rerun`): первый прогон — 4 выживших: граница `lost-after-heartbeats >= 1` (вызов вне `MutFlow.underTest`) и две записи в журнал (сбой `onQueued`, отметка «потерян») — журнал теперь проверяется через `ListAppender`, добавлен тест «результат закрыл шаг до окна — в журнале ничего». Второй прогон — exit 0, 8376 запусков, выживших нет.
+- 9 — `RunStepSeamTest` (e2e, настоящий агент): строки `sources`/`runs`/`run_steps` (плагин `absent`) вставлены SQL до запуска агента; после Register и Hello шаг — `dispatched`; в журнале сервера — `agent <id> result of command <step>: STEP_STATUS_REJECTED` (`LoggingInbound`, debug через `LOGGING_LEVEL_DEV_SARD_SERVER_AGENTS_STREAM`). Текст «unknown plugin» сервер до S7 не журналирует (только id и статус), агент тоже; что отказ именно по плагину — по порядку проверок `agent/internal/executor/command.go:93` (плагин раньше репозитория) — вывод из кода, не наблюдение.
+- `make e2e` (с `E2E_SERVER_BUILD_FLAGS='--network host --secret id=build-ca,src=/root/.ccr/agent-proxy-ca.crt --build-arg JAVA_TOOL_OPTIONS=…proxy…'`, как в T2a) — exit 0, версия `ec26fe4`: 15 тестов в 7 классах, 0 упавших (`AgentConnectTest` 1, `AgentImageSmokeTest` 2, `EnrollmentTokenFormatTest` 3, `FailureLogsTest` 2, `RegistrationTest` 3, `RunStepSeamTest` 1, `ServerSmokeTest` 3). Первая сборка образа без CA прокси упала на PKIX в загрузке Gradle.
+- `make license-check` — 435 files OK.
+
+### Стыки для S7
+```kotlin
+class StepTransitions : DispatchLedger {
+    fun accepted(tenantId: UUID, stepId: UUID, phase: String): Boolean        // dispatched → running; run → running, started_at
+    fun finished(tenantId: UUID, stepId: UUID, outcome: StepOutcome): Boolean // dispatched|running → final; run → RunState.following
+    // false: шаг уже закрыт (другим результатом или окном lost) — S7 отвечает ResultAck и ничего не пишет (proto ResultAck; решение 6)
+}
+data class StepOutcome(val status: StepState, val message: String?)          // только финальный status
+const val LOST_MESSAGE = "agent lost the step"
+```
+- «Результат пришёл» — статус шага в базе: окно делает `running → lost` условно, после `finished` оно ничего не меняет.
+- Прогресс (`phase`, `bytes_*`) — отдельные условные обновления S7 по `running`; столбцы есть, сущность их не пишет.
+- S7 заменяет `StepResultHandler`/`StepProgressHandler` из `LoggingInbound` своими бинами; `CommandReconciliation` уже занят диспетчером.
+- До S7 шаг, на который агент ответил, остаётся `dispatched`, и источник не запускается снова (D6).
+
+### Стыки для S8b
+- Сервисы и ошибки — раздел фазы 2; `Runs.start` после фиксации вызывает `StepsQueued.onQueued` — диспетчер отправляет шаг онлайн-агенту, ошибки отправки не доходят до вызывающего.
+- Чтение запусков (`RunsApi.listRuns/getRun`) — `RunViews.of`/`RunViews.step` над `RunRecord`/`RunStepRecord`; сервиса чтения нет.
+
+### Открыто
+- Кандидаты в потерянные живут в памяти одного узла (ADR 0026); при HA — вместе с реестром сессий.
+- Шаги, созданные в одну миллисекунду, упорядочены по UUIDv7 со случайной частью — порядок создания внутри миллисекунды не гарантирован.
+- Черновик ADR `00XX-draft-run-dispatch.md` — номер при слиянии.
