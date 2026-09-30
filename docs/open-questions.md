@@ -49,7 +49,6 @@
 | OQ-036 | `scripts/gate.sh`, `scripts/crap.sh` и прямой `./gradlew` не берут `flock` на `.gradle/sard-build.lock`, в отличие от целей `make`. Параллельный `make gate-fast` из хука SubagentStop рвёт им `server/build/test-results` (`EOFException`, `NoSuchFileException`). Обход — `flock -w 1800 .gradle/sard-build.lock <команда>`. Кандидат — брать блокировку в самих скриптах (`scripts/gate.sh` защищён, правит владелец). | дыра | владелец (инструменты) | `Makefile:16-19`; журнал W1b:224 |
 | OQ-037 | REST API токенов регистрации не реализован: `EnrollmentTokensController` — контракт S8a, единственная реализация `EnrollmentTokensApi` — `UnimplementedEnrollmentTokensApi`, все четыре операции отвечают 501. W1b снял только блокер `@blocked-d2` (сессия администратора); сценарии с этим тегом ждут S8b. Прежняя запись «закрыто» в этом реестре была ошибкой. | задача | S8b | `server/src/main/kotlin/dev/sard/server/api/UnimplementedApi.kt:24-37`; `EnrollmentTokensController.kt:79-83`; `docs/specs/server/agent-enrollment.feature:86` |
 | OQ-038 | RESTORE агента восстанавливает только в новый каталог `<executor.state_dir>/restore/<command_id>` (0700) и требует `snapshot_id`: цель восстановления (путь, база) и «последний снимок по тегам» из `RunStep` не определены. VERIFY восстанавливает туда же и удаляет копию. | вопрос | A6b / поведенческая схема восстановления | `agent/internal/pluginhost/handler.go:159,173`; ADR 0027 |
-| OQ-039 | Решения specifier С1–С5 в `docs/specs/agent/agent-tls-identity.feature` (порядок проверок, код выхода 1, ошибки файлов, «первый сертификат», префикс `sard-agent: `) реализованы, но ждут утверждения владельцем. | вопрос | владелец | `docs/specs/agent/agent-tls-identity.feature:24-44`; журнал A6a |
 
 ## Закрыто при сверке
 
@@ -58,6 +57,7 @@
 | Суть | Чем закрыто |
 |---|---|
 | OQ-018. `BackupOutput.repository_id` нет в proto, а `snapshots.repository_id NOT NULL`. | `proto/sard/agent/v1/agent.proto:275` (`repository_id = 4`, аддитивно, `buf breaking` проходит); агент заполняет его из итогов restic: `agent/internal/pluginhost/handler.go:104`; тест `TestBackupOutputCarriesTheSnapshotAndRepositoryID`. Запись в `snapshots` — S7. |
+| OQ-039. Решения specifier С1–С5 по проверке ключа и сертификата ждали утверждения. | Владелец утвердил 2026-09-30: `docs/specs/agent/agent-tls-identity.feature:13,24`. |
 | OQ-027. Ключ не от сертификата после прерванного `enroll --force` агент при старте не распознавал. | `agent/internal/tlsid/tlsid.go:22,43`, вызов до подключения — `agent/cmd/sard-agent/main.go:120`; схема `docs/specs/agent/agent-tls-identity.feature`, тесты `agent/cmd/sard-agent/identity_test.go`, `agent/internal/tlsid/tlsid_test.go`. |
 
 ### 2026-09-29, `ff97ae1` (X2)
