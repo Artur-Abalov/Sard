@@ -1,7 +1,7 @@
 # QA: плагин `files` агента (A6b)
 
-Сценарии: `docs/specs/agent/files-plugin.feature` (черновик, ждёт
-утверждения владельцем; решения Ф1–Ф18 — OQ-040…OQ-045). Здесь вручную
+Сценарии: `docs/specs/agent/files-plugin.feature` (решения владельца по
+OQ-040…OQ-045 приняты 2026-09-30; Ф5 изменено: RESTORE объявлен, но пустой). Здесь вручную
 проходятся сценарии с тегом `@qa`; остальные проверяют тесты `@unit`,
 `@restic`, `@register`, `@doc` с теми же названиями.
 
@@ -11,7 +11,8 @@
 - **Часть 1 — Register и схема** выполнима после A6b.
 - **Часть 2 — шаг BACKUP** выполнима только после S6a (запуск прогона
   `POST /api/v1/sources/{id}/runs` отправляет RunStep агенту) и S7 (приём
-  результата); до этого бэкап проверяют только тесты (Ф18, OQ-045). Сквозной
+  результата); до этого бэкап и пустое восстановление проверяют только тесты
+  (Ф18, OQ-045). Отображение снимка у FAILED-шага в REST — S7/S8 (OQ-046). Сквозной
   автоматический вариант — T2b.
 - **Часть 3 — документация** выполнима после A6b.
 
@@ -57,7 +58,7 @@ AGENT=$($PSQL "select id from agents order by created_at desc limit 1")
 ## Часть 1. Register и схема
 
 4. `$PSQL "select array_to_string(actions, ',') from agent_plugins where agent_id='$AGENT' and name='files'"`
-   → ровно `backup`.
+   → ровно `backup,restore`.
 5. `$PSQL "select version from agent_plugins where agent_id='$AGENT' and name='files'"`
    → совпадает с `"$AG" --version`.
 6. `$PSQL "select config_schema from agent_plugins where agent_id='$AGENT' and name='files'" > $QA/schema.json; wc -c < $QA/schema.json`
@@ -67,7 +68,7 @@ AGENT=$($PSQL "select id from agents order by created_at desc limit 1")
    и непустой массив `e`; `d` у `exclude` содержит ссылку на документацию
    restic об исключениях.
 8. `jq '.properties | to_entries[] | {k: .key, ru: .value["x-sard-i18n"].ru}' $QA/schema.json`
-   (только при решении Ф3 / OQ-042) → у каждого поля непустые `ru.title` и
+   (Ф3, OQ-042) → у каждого поля непустые `ru.title` и
    `ru.description`, текст на русском.
 
 ## Часть 2. Шаг BACKUP (после S6a и S7)
@@ -107,8 +108,9 @@ snaps() { rs snapshots --json | jq length; }
     `backup` — `null`. После шага `chmod 0700 $QA/locked`.
 14. **Нечитаемые файлы внутри дерева.** `mkdir -p $D/bad; for i in $(seq 1 11); do printf '%s' "$S" > $D/bad/f$i; chmod 0000 $D/bad/f$i; done; N0=$(snaps); run $(src "{\"paths\":[\"$D\"]}")`
     → `failed`; `message` содержит `11`, называет ровно 10 путей
-    `$D/bad/f…` и не содержит `$S`; `backup.snapshotId` непустой
-    (требует правки REST, OQ-040) и есть в `rs snapshots`; `snaps` = `N0+1`.
+    `$D/bad/f…` и не содержит `$S`; `snaps` = `N0+1` (снимок сохранён);
+    `backup.snapshotId` непустой и равен `rs snapshots --json | jq -r '.[-1].id'`
+    — эта проверка выполнима только после правки REST в S7/S8 (OQ-046).
     После шага `chmod 0600 $D/bad/*`.
 15. **Симлинк внутри дерева.** `printf '%s' "$S-link" > $QA/outside; ln -s $QA/outside $D/link; run $(src "{\"paths\":[\"$D\"]}")`
     → `succeeded`; `rs ls -l latest | grep "$D/link"` — строка с типом `l`
@@ -137,6 +139,13 @@ snaps() { rs snapshots --json | jq length; }
 20. **Содержимое не утекает.** `curl -sS -b $QA/jf "$API/runs?limit=100" | jq -r '.items[].message' | grep -cF "$S"` → `0`;
     для каждого прогона части 2 (id шага — `curl -sS -b $QA/jf $API/runs/$RUN | jq -r '.steps[0].id'`)
     `curl -sS -b $QA/jf "$API/runs/$RUN/steps/<step-id>/logs" | grep -cF "$S"` → `0`.
+20а. **Пустое восстановление** (Ф5; выполнимо, когда сервер умеет отправить
+    агенту шаг RESTORE для источника files). Перед шагом
+    `find $H/state | sort > $QA/state0`; отправить RESTORE снимка из шага 9
+    → шаг `failed`; `message` говорит, что восстановление для плагина files
+    ещё не реализовано; `pgrep -f 'restic.*restore'` во время шага — пусто;
+    `find $H/state | sort | diff $QA/state0 -` показывает не больше чем файл
+    сохранённого результата шага, каталога `$H/state/restore/<id шага>` нет.
 
 ## Часть 3. Документация
 
