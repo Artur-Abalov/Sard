@@ -49,6 +49,9 @@ type fakeFS struct {
 	reads   []string // paths opened
 	lstats  []string
 	listing []string // directories whose list was read
+	listN   []int    // how many names each read asked for
+	opened  int
+	closed  int
 }
 
 func newFS() *fakeFS { return &fakeFS{nodes: map[string]node{}} }
@@ -104,7 +107,7 @@ func (f *fakeFS) Lstat(name string) (fs.FileInfo, error) {
 
 func (f *fakeFS) Readlink(name string) (string, error) {
 	n, ok := f.nodes[name]
-	if !ok || n.mode&fs.ModeSymlink == 0 {
+	if !ok || n.mode&fs.ModeSymlink == 0 || n.target == "" {
 		return "", pathError("readlink", name, syscall.EINVAL)
 	}
 	return n.target, nil
@@ -123,13 +126,15 @@ func (f *fakeFS) Open(name string) (files.File, error) {
 	}
 	f.mu.Lock()
 	f.reads = append(f.reads, name)
+	f.opened++
 	f.mu.Unlock()
 	return &fakeFile{fs: f, name: name, err: n.listErr}, nil
 }
 
-func (f *fakeFile) Readdirnames(int) ([]string, error) {
+func (f *fakeFile) Readdirnames(n int) ([]string, error) {
 	f.fs.mu.Lock()
 	f.fs.listing = append(f.fs.listing, f.name)
+	f.fs.listN = append(f.fs.listN, n)
 	f.fs.mu.Unlock()
 	if f.err != nil {
 		return nil, f.err
@@ -137,7 +142,12 @@ func (f *fakeFile) Readdirnames(int) ([]string, error) {
 	return nil, io.EOF
 }
 
-func (*fakeFile) Close() error { return nil }
+func (f *fakeFile) Close() error {
+	f.fs.mu.Lock()
+	f.fs.closed++
+	f.fs.mu.Unlock()
+	return nil
+}
 
 // --- restic
 

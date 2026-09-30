@@ -400,3 +400,22 @@ func TestStreamedDumpWithOneFileSystemFailsTheStep(t *testing.T) {
 		t.Errorf("err = %v, want ErrInvalidRequest", err)
 	}
 }
+
+// A dump by paths and a stream at once is not something restic can do: the
+// step fails, the paths and patterns are not silently dropped.
+func TestStreamedDumpWithPathsOrExcludesFailsTheStep(t *testing.T) {
+	for name, d := range map[string]sdk.Dump{
+		"paths":    {Filename: "db.sql", Paths: []string{"/srv"}},
+		"excludes": {Filename: "db.sql", Excludes: []string{"*.tmp"}},
+	} {
+		p := &plugin{
+			dump:   func(context.Context, sdk.Host, sdk.Config) (sdk.Dump, error) { return d, nil },
+			stream: func(context.Context, sdk.Host, sdk.Config, sdk.Dump, io.Writer) error { return nil },
+		}
+		r := restic.New(restic.Options{}, config.Repository{})
+		_, err := newSource(t, p).Backup(context.Background(), []byte(`{}`), r, nil, &reporter{})
+		if !errors.Is(err, restic.ErrInvalidRequest) {
+			t.Errorf("%s: err = %v, want ErrInvalidRequest", name, err)
+		}
+	}
+}

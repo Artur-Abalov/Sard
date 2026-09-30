@@ -25,9 +25,11 @@ func isConcretePlugin(pkg string) bool {
 func isSDK(pkg string) bool { return pkg == sdkPkg || strings.HasPrefix(pkg, sdkPkg+"/") }
 
 // leavesTheSDK reports whether plugin pkg imports something of the agent
-// other than the SDK and its own subpackages.
+// other than the SDK and its own subpackages. Scope: the test inspects
+// only .Imports (production code), deliberately not test imports.
 func leavesTheSDK(pkg, imp string) bool {
-	return isConcretePlugin(pkg) && !isSDK(imp) && !strings.HasPrefix(imp, pkg)
+	ownSubpackage := imp == pkg || strings.HasPrefix(imp, pkg+"/")
+	return isConcretePlugin(pkg) && !isSDK(imp) && !ownSubpackage
 }
 
 // violation says which rule the import of imp by pkg breaks, or "".

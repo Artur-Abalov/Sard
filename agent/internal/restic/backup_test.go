@@ -252,3 +252,36 @@ func TestBackupIgnoresOtherMessages(t *testing.T) {
 		t.Fatalf("summary = %+v, err = %v", sum, err)
 	}
 }
+
+// Ten distinct paths are all named; "first ten" is only for more.
+func TestPartialErrorWithTenPathsNamesThemAllWithoutFirstTen(t *testing.T) {
+	var items []restic.ItemError
+	for i := 1; i <= 10; i++ {
+		items = append(items, restic.ItemError{Item: fmt.Sprintf("/d/f%d", i)})
+	}
+	got := (&restic.PartialError{Items: items}).Error()
+	if !strings.Contains(got, "unreadable paths (10): ") || strings.Contains(got, "first") || !strings.HasSuffix(got, `"/d/f10"`) {
+		t.Errorf("text = %q", got)
+	}
+}
+
+// Restic exits 1 having only said that a path is gone, without a fatal
+// message: the error is the exit code, no half-sentence with a path list.
+func TestBackupFailureWithoutAFatalMessageDoesNotListPaths(t *testing.T) {
+	f := backupFixture(t, reply{stderr: "backup-gone-only.stderr", code: 1})
+	_, err := f.build().Backup(context.Background(), request, nil)
+	if err == nil || err.Error() != "restic backup: exit code 1" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// A process that could not be waited for, while the step was cancelled, is
+// a cancellation, not the failure of the wait.
+func TestBackupCancelledWhileResticFailsToReportItsExitIsACancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f := backupFixture(t, reply{code: 0, err: errors.New("wait failed"), during: cancel})
+	if _, err := f.build().Backup(ctx, request, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v", err)
+	}
+}

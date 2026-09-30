@@ -353,3 +353,41 @@ func TestInvalidRequestDoesNotNameTheRepository(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// Restic saw the files, the repository is fine: the unreadable paths are the
+// news, not the repository.
+func TestPartialBackupDoesNotNameTheRepository(t *testing.T) {
+	f := newHandlers(t, &plugin{})
+	f.repo.err, f.repo.partial = &restic.PartialError{Items: []restic.ItemError{{Item: "/a"}}}, true
+	_, err := f.run(t, step(backup, `{}`))
+	if !errors.Is(err, restic.ErrUnreadableSource) || strings.Contains(err.Error(), `repository "main"`) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// A secret the plugin's config names but the host does not have is the
+// step's fault, like an invalid config.
+func TestAnUnknownSecretRejectsTheStep(t *testing.T) {
+	f := newHandlers(t, &plugin{prepare: func(context.Context, sdk.Host, sdk.Config) error {
+		return fmt.Errorf("token: %w", sdk.ErrUnknownSecret)
+	}})
+	if _, err := f.run(t, step(backup, `{}`)); !errors.Is(err, executor.ErrRejected) || !errors.Is(err, sdk.ErrUnknownSecret) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// The restore starts with a RESTORING report without counters.
+func TestRestoreReportsTheRestoringPhaseBeforeRestic(t *testing.T) {
+	f := newHandlers(t, &plugin{})
+	st := step(restore, `{}`)
+	st.SnapshotId = "snap"
+	h, _ := f.handlers.Handler("fake")
+	var rep reporter
+	if _, err := h.Run(context.Background(), st, &rep); err != nil {
+		t.Fatal(err)
+	}
+	want := []event{{phase: agentv1.StepPhase_STEP_PHASE_RESTORING}}
+	if got := rep.all(); !slices.Equal(got, want) {
+		t.Errorf("events = %+v, want %+v", got, want)
+	}
+}

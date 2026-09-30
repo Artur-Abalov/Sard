@@ -75,15 +75,16 @@ func TestTheLimitsOfPathsAndPatternsAreTheirBoundary(t *testing.T) {
 		cfg    string
 		status agentv1.StepStatus
 	}{
-		"64 existing directories":  {paths(many(64)...), succeeded},
-		"65 paths":                 {paths(many(65)...), rejected},
-		"a missing path of 4096":   {paths(long(4096)), failed},
-		"a path of 4097 bytes":     {paths(long(4097)), rejected},
-		"256 patterns":             {patterns(256, 1), succeeded},
-		"257 patterns":             {patterns(257, 1), rejected},
-		"a pattern of 1024 bytes":  {patterns(1, 1024), succeeded},
-		"a pattern of 1025 bytes":  {patterns(1, 1025), rejected},
-		"a path of 2049 two-byte ": {paths("/" + strings.Repeat("é", 2048)), rejected},
+		"64 existing directories":                   {paths(many(64)...), succeeded},
+		"65 paths":                                  {paths(many(65)...), rejected},
+		"a missing path of 4096":                    {paths(long(4096)), failed},
+		"a path of 4097 bytes":                      {paths(long(4097)), rejected},
+		"256 patterns":                              {patterns(256, 1), succeeded},
+		"257 patterns":                              {patterns(257, 1), rejected},
+		"a pattern of 1024 bytes":                   {patterns(1, 1024), succeeded},
+		"a pattern of 1025 bytes":                   {patterns(1, 1025), rejected},
+		"a pattern of 1025 bytes in 513 characters": {`{"paths": ["/d"], "exclude": ["` + strings.Repeat("é", 512) + `a"]}`, rejected},
+		"a path of 2049 two-byte ":                  {paths("/" + strings.Repeat("é", 2048)), rejected},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := newRig(t)
@@ -183,6 +184,9 @@ func TestAPathThatFailsTheCheckIsNamedWithItsReasonAndNothingIsBackedUp(t *testi
 		{"/unlistable", "permission denied", func(f *fakeFS) {
 			f.set("/unlistable", node{mode: fs.ModeDir, listErr: denied("readdirent", "/unlistable")})
 		}},
+		{"/unowned", "permission denied", func(f *fakeFS) {
+			f.set("/unowned", node{mode: 0o644, openErr: pathError("open", "/unowned", 1)}) // EPERM
+		}},
 		{"/broken", "input/output error", func(f *fakeFS) {
 			f.set("/broken", node{mode: fs.ModeDir, openErr: pathError("open", "/broken", 5)}) // EIO
 		}},
@@ -193,7 +197,10 @@ func TestAPathThatFailsTheCheckIsNamedWithItsReasonAndNothingIsBackedUp(t *testi
 			tc.setup(r.fs)
 			res := r.run(step(paths("/D", tc.path)))
 			want(t, res, failed)
-			mentions(t, res.GetMessage(), fmt.Sprintf("%q", tc.path), tc.reason)
+			wantMsg := fmt.Sprintf("prepare: paths that cannot be backed up (1): %q: %s", tc.path, tc.reason)
+			if res.GetMessage() != wantMsg {
+				t.Errorf("message = %q, want %q", res.GetMessage(), wantMsg)
+			}
 			omits(t, res.GetMessage(), `"/D"`)
 			oneLine(t, res.GetMessage())
 			noOutput(t, res)
@@ -229,11 +236,24 @@ func TestMoreThanTenFailedPathsNameTheFirstTenAndTheirNumber(t *testing.T) {
 	}
 	res := r.run(step(paths(list...)))
 	want(t, res, failed)
-	mentions(t, res.GetMessage(), "(12)", `"/p1"`, `"/p10"`)
+	mentions(t, res.GetMessage(), "(12), first 10:", `"/p1"`, `"/p10"`)
 	omits(t, res.GetMessage(), `"/p11"`, `"/p12"`)
 	if first, tenth := strings.Index(res.GetMessage(), `"/p1"`), strings.Index(res.GetMessage(), `"/p10"`); first > tenth {
 		t.Errorf("paths are not in the order of the config: %q", res.GetMessage())
 	}
+}
+
+// Exactly ten failed paths are all named; "first ten" is only for more.
+func TestTenFailedPathsAreAllNamedWithoutFirstTen(t *testing.T) {
+	r := newRig(t)
+	var list []string
+	for i := 1; i <= 10; i++ {
+		list = append(list, fmt.Sprintf("/p%d", i))
+	}
+	res := r.run(step(paths(list...)))
+	want(t, res, failed)
+	mentions(t, res.GetMessage(), "(10):", `"/p10"`)
+	omits(t, res.GetMessage(), "first")
 }
 
 // Scenario: Проверка путей не читает содержимое файлов.
@@ -266,7 +286,8 @@ func TestAListedSymbolicLinkWhoseTargetCannotBeReadIsStillNamed(t *testing.T) {
 	r.fs.set("/data", node{mode: fs.ModeSymlink})
 	res := r.run(step(paths("/data")))
 	want(t, res, failed)
-	mentions(t, res.GetMessage(), `"/data"`, "symbolic link")
+	mentions(t, res.GetMessage(), `"/data": is a symbolic link; back up the path it points to`)
+	omits(t, res.GetMessage(), `to ""`)
 }
 
 // A directory that opens is fine, so is a file; an empty directory too.
@@ -277,6 +298,12 @@ func TestReadableFilesAndDirectoriesPassTheCheck(t *testing.T) {
 	want(t, r.run(step(paths("/D", "/E", "/F", "/sock"))), succeeded)
 	if len(r.fs.reads) != 3 || len(r.fs.listing) != 2 {
 		t.Errorf("opened %v, listed %v", r.fs.reads, r.fs.listing)
+	}
+	if !slices.Equal(r.fs.listN, []int{1, 1}) {
+		t.Errorf("a directory is asked for %v names, want one each", r.fs.listN)
+	}
+	if r.fs.opened != r.fs.closed {
+		t.Errorf("opened %d, closed %d", r.fs.opened, r.fs.closed)
 	}
 }
 
