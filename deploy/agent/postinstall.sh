@@ -14,7 +14,7 @@ fi
 # Runs on install and on upgrade: contents are kept, owner and mode are reset.
 # Not a package file: removing the package leaves the directory (ADR 0018).
 mkdir -p /var/cache/sard/restic
-chown sard-agent:sard-agent /var/cache/sard/restic
+chown sard-agent:"$(id -gn sard-agent)" /var/cache/sard/restic
 chmod 0700 /var/cache/sard/restic
 if command -v systemctl >/dev/null && [ -d /run/systemd/system ]; then
   systemctl daemon-reload || true

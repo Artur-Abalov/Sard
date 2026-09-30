@@ -276,9 +276,23 @@ func newRepoHost(t *testing.T) *repoHost {
 	h.deps.defaultCacheDir = h.path("default-cache")
 	h.deps.clock = h.clock
 	h.deps.exec = h.restic
+	h.deps.openLock = openAsNonRoot
 	h.deps.executable = func() (string, error) { return h.path("bin/sard-agent"), nil }
 	h.saveConfig()
 	return h
+}
+
+// openAsNonRoot is os.OpenFile as the kernel answers a user other than root:
+// creating a file in a directory without the owner write bit is EACCES. The
+// tests may run as root, which ignores directory modes.
+func openAsNonRoot(name string, flag int, perm os.FileMode) (*os.File, error) {
+	if flag&os.O_CREATE != 0 {
+		dir := filepath.Dir(name)
+		if info, err := os.Stat(dir); err == nil && info.IsDir() && info.Mode().Perm()&0o200 == 0 {
+			return nil, &fs.PathError{Op: "open", Path: name, Err: syscall.EACCES}
+		}
+	}
+	return os.OpenFile(name, flag, perm)
 }
 
 func (h *repoHost) write(path, content string, mode os.FileMode) {

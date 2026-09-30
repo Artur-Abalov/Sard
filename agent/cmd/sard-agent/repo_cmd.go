@@ -35,7 +35,9 @@ type repoDeps struct {
 	readFile   func(name string) ([]byte, error)
 	writeNew   func(path string, data []byte) error
 	random     io.Reader
-	pathEnv    string
+	// openLock opens the init lock file.
+	openLock repoinit.OpenFunc
+	pathEnv  string
 	// defaultConfig is the config used without --config.
 	defaultConfig string
 	// defaultCacheDir is restic.cache_dir when the config leaves it empty.
@@ -52,6 +54,7 @@ func productionRepoDeps() repoDeps {
 		readFile:   os.ReadFile,
 		writeNew:   repoinit.WriteNew,
 		random:     rand.Reader,
+		openLock:   os.OpenFile,
 		pathEnv:    os.Getenv("PATH"),
 
 		defaultConfig:   defaultEnrollConfigPath,

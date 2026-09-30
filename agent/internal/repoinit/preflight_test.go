@@ -6,6 +6,7 @@ package repoinit_test
 import (
 	"errors"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -149,12 +150,12 @@ func TestAnUnknownRepositoryListsTheKnownNames(t *testing.T) {
 func TestAcquireLockRefusesASecondInit(t *testing.T) {
 	cache := t.TempDir()
 	r := config.Repository{Name: "main"}
-	unlock, f := repoinit.AcquireLock(cache, r)
+	unlock, f := repoinit.AcquireLock(os.OpenFile, cache, r)
 	if f != nil {
 		t.Fatal(f)
 	}
 	defer unlock()
-	_, f = repoinit.AcquireLock(cache, r)
+	_, f = repoinit.AcquireLock(os.OpenFile, cache, r)
 	if f == nil || f.Reason != repoinit.InitInProgress || f.Class != repoinit.ClassTemporary {
 		t.Fatalf("%v", f)
 	}
@@ -162,7 +163,7 @@ func TestAcquireLockRefusesASecondInit(t *testing.T) {
 
 func TestAcquireLockNamesTheCacheDirItCannotUse(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "absent")
-	_, f := repoinit.AcquireLock(dir, config.Repository{Name: "main"})
+	_, f := repoinit.AcquireLock(os.OpenFile, dir, config.Repository{Name: "main"})
 	if f == nil || f.Reason != repoinit.LockWrite || f.Class != repoinit.ClassWrite ||
 		!strings.Contains(f.Detail, "restic.cache_dir") || !strings.Contains(f.Detail, dir) || !strings.Contains(f.Detail, "no such file") {
 		t.Fatalf("%v", f)

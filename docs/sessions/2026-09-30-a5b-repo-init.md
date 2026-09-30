@@ -133,3 +133,23 @@
   repo init до первого старта службы, повторная установка, удаление.
 - Документы: ADR 0025 (строка 7), `docs/operations/repo-init.md`, справка
   `repo init` (код 7).
+
+## Доработка по ревью архитектора (CHANGES REQUIRED)
+
+- A: обход `Geteuid()==0 { continue }` удалён. `repoinit.OpenFunc`
+  проведён через `Lock`/`AcquireLock`, `repoDeps.openLock` (os.OpenFile в
+  production). В `newRepoHost` стоит `openAsNonRoot`: отказ EACCES при
+  O_CREATE в каталоге без бита записи владельца, иначе os.OpenFile. Вариант
+  «0500» проверяет «permission denied» и от root. Демонстрация от root:
+  блокировка рядом с файлом пароля (временно) ломает
+  `TestAnExistingPasswordFileInAReadOnlyDirectoryDoesNotHinderInit`
+  (`exit code = 7, want 0`); откат выполнен. Тест-шов
+  `repoinit/seam_test.go` (go/parser): вне `password.go` нет `os.OpenFile`.
+  Тест umask перенесён: хост создаётся до umask 0277, иначе каталог кэша
+  лишается бита записи (как и для не-root в ядре).
+- B: тест закрепляет `defaultCacheDir == /var/cache/sard/restic`.
+- C: `REQUIRE_RPM` в `scripts/package-agent.sh`, CI ставит `rpm`; ADR 0018.
+- D: ADR 0018 «уточнено ADR 0028»; `chown sard-agent:"$(id -gn sard-agent)"`
+  в postinstall и в проверке скрипта.
+- Ограничение про root в этой сессии снято: см. пункт A.
+

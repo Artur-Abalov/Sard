@@ -35,7 +35,7 @@ func runRepoInit(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	if code != exitOK {
 		return code
 	}
-	unlock, f := repoinit.AcquireLock(cacheDir(st.cfg, deps), st.repo)
+	unlock, f := repoinit.AcquireLock(deps.openLock, cacheDir(st.cfg, deps), st.repo)
 	if f != nil {
 		return reportRepoFailure(stderr, "init", f)
 	}

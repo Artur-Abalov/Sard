@@ -23,18 +23,18 @@ func TestTheLockOfARepositoryLivesInTheCacheDir(t *testing.T) {
 
 func TestASecondLockOfTheSameRepositoryIsRefusedUntilTheFirstIsReleased(t *testing.T) {
 	path := repoinit.LockPath(t.TempDir(), "main")
-	unlock, err := repoinit.Lock(path)
+	unlock, err := repoinit.Lock(os.OpenFile, path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repoinit.Lock(path); !errors.Is(err, repoinit.ErrLockHeld) {
+	if _, err := repoinit.Lock(os.OpenFile, path); !errors.Is(err, repoinit.ErrLockHeld) {
 		t.Fatalf("second lock: %v", err)
 	}
 	unlock()
 	if _, err := os.Stat(path); err == nil {
 		t.Fatal("the lock file is left behind")
 	}
-	again, err := repoinit.Lock(path)
+	again, err := repoinit.Lock(os.OpenFile, path)
 	if err != nil {
 		t.Fatalf("after release: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestAStaleLockFileOfADeadProcessDoesNotBlock(t *testing.T) {
 	if err := os.WriteFile(path, []byte("4242\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	unlock, err := repoinit.Lock(path)
+	unlock, err := repoinit.Lock(os.OpenFile, path)
 	if err != nil {
 		t.Fatalf("lock over a stale file: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestAStaleLockFileOfADeadProcessDoesNotBlock(t *testing.T) {
 
 func TestALockInAMissingDirectoryFailsWithoutCreatingIt(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "absent")
-	_, err := repoinit.Lock(repoinit.LockPath(dir, "main"))
+	_, err := repoinit.Lock(os.OpenFile, repoinit.LockPath(dir, "main"))
 	if err == nil || errors.Is(err, repoinit.ErrLockHeld) {
 		t.Fatalf("err = %v", err)
 	}

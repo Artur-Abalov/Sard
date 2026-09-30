@@ -160,13 +160,13 @@ func TestALockFileThatCannotBeCreatedIsAWriteError(t *testing.T) {
 		arrange(h)
 		before := h.snapshot()
 		code, _, stderr := h.initCmd()
-		if name == "read only" && os.Geteuid() == 0 {
-			continue // root ignores directory permissions; the missing and file cases cover the failure path
-		}
 		assertCode(t, code, exitWrite)
 		assertReason(t, stderr, "LOCK_WRITE")
 		assertReason(t, stderr, "restic.cache_dir")
 		assertReason(t, stderr, h.cacheDir())
+		if name == "read only" {
+			assertReason(t, stderr, "permission denied")
+		}
 		h.assertNoBackendCalls()
 		h.assertUnchanged(before)
 		_ = os.Chmod(h.cacheDir(), 0o700)
@@ -209,6 +209,13 @@ func TestThePasswordFileIsNotCreatedWhenTheLockCannotBeTaken(t *testing.T) {
 	assertReason(t, stderr, "LOCK_WRITE")
 	if _, err := os.Stat(h.pass()); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("stat P: %v", err)
+	}
+}
+
+// Каталог кэша по умолчанию — каталог кэша службы
+func TestTheProductionDefaultCacheDirIsTheServiceCacheDir(t *testing.T) {
+	if got := productionRepoDeps().defaultCacheDir; got != "/var/cache/sard/restic" {
+		t.Fatalf("default cache dir = %q", got)
 	}
 }
 

@@ -118,7 +118,7 @@ forbid() {
 # The cache directory is made by postinstall (owner and mode reset on every
 # install, contents kept, left by removal), so no package or archive owns it.
 CACHE_DIR=/var/cache/sard/restic
-POSTINSTALL_LINES=("mkdir -p $CACHE_DIR" "chown sard-agent:sard-agent $CACHE_DIR" "chmod 0700 $CACHE_DIR")
+POSTINSTALL_LINES=("mkdir -p $CACHE_DIR" 'chown sard-agent:"$(id -gn sard-agent)" '"$CACHE_DIR" "chmod 0700 $CACHE_DIR")
 
 # check_cache_dir verifies the scriptlet text on stdin creates the cache dir.
 check_cache_dir() {
@@ -144,6 +144,7 @@ verify() {
     rpm -qlp "$rpm" 2>/dev/null | forbid "$(basename "$rpm")" /var/cache /var/cache/sard "$CACHE_DIR"
     rpm -qp --scripts "$rpm" 2>/dev/null | check_cache_dir "$(basename "$rpm")"
   else
+    [ -z "${REQUIRE_RPM:-}" ] || die "rpm tool required (REQUIRE_RPM set)"
     echo "package-agent: $(basename "$rpm") contents not checked (no rpm tool)"
   fi
 }

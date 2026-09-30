@@ -51,9 +51,9 @@ func TestWithTheGenerateFlagAMissingPasswordFileIsCreatedAndTheRepositoryInitial
 // Созданный файл пароля закрыт от всех, кроме владельца, при любой umask
 func TestTheCreatedPasswordFileIsOwnerOnlyWhateverTheUmask(t *testing.T) {
 	for _, umask := range []int{0o000, 0o277} {
-		old := syscall.Umask(umask)
-		h := newRepoHost(t)
+		h := newRepoHost(t) // before the umask: it would strip the write bit of the cache dir
 		h.removePass()
+		old := syscall.Umask(umask)
 		code, _, _ := h.initCmd("--generate-password")
 		syscall.Umask(old)
 		assertCode(t, code, exitOK)
