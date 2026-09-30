@@ -457,6 +457,27 @@ func TestProgressIsLimitedToOnePerIntervalExceptPhaseChanges(t *testing.T) {
 	f.sink.quiet(t)
 }
 
+// A6b Ф4: file counters travel with the byte counters and share their rate limit.
+func TestFileCountersReachTheSinkWithTheByteCounters(t *testing.T) {
+	f := setup(t, nil)
+	f.e.Submit(backup("c1"))
+	accepted(t, f.sink, "c1")
+	c := f.files.next(t)
+
+	c.r.ProgressFiles(uploading, 100, 1024, 3, 9)
+	p := f.sink.progress(t)
+	if p.GetBytesProcessed() != 100 || p.GetBytesTotal() != 1024 || p.GetFilesProcessed() != 3 || p.GetFilesTotal() != 9 {
+		t.Fatalf("progress = %v", p)
+	}
+	c.r.Progress(uploading, 200, 1024) // a plain update carries no file counters
+	f.sink.quiet(t)                    // and is rate limited like any other
+	f.clock.Advance(time.Second)
+	c.r.Progress(uploading, 300, 1024)
+	if p := f.sink.progress(t); p.GetFilesProcessed() != 0 || p.GetFilesTotal() != 0 || p.GetBytesProcessed() != 300 {
+		t.Fatalf("progress = %v", p)
+	}
+}
+
 func TestLogLinesOfARunningStepReachTheSink(t *testing.T) {
 	f := setup(t, nil)
 	f.e.Submit(backup("c1"))

@@ -23,6 +23,8 @@ type BackupRequest struct {
 	Paths    []string
 	Excludes []string // restic --exclude patterns
 	Tags     []string // no commas: restic splits tags on them
+	// OneFileSystem keeps restic from crossing into other file systems.
+	OneFileSystem bool
 	// Stdin writes the content to w, restic's stdin, and must return when
 	// ctx is done. Only a nil return ends the stream with EOF; after an
 	// error or cancellation restic is stopped and stores no snapshot.
@@ -60,8 +62,30 @@ type PartialError struct {
 	Items []ItemError
 }
 
+// maxNamedPaths is how many unreadable paths the error text names.
+const maxNamedPaths = 10
+
+// Error counts the distinct paths restic reported, in the order of their
+// first report (a path that failed at scan and at archival counts once),
+// and names the first ten, quoted, so the text is one line.
 func (e *PartialError) Error() string {
-	return fmt.Sprintf("%s (%d errors)", ErrUnreadableSource, len(e.Items))
+	var paths []string
+	seen := make(map[string]bool)
+	for _, it := range e.Items {
+		if !seen[it.Item] {
+			seen[it.Item] = true
+			paths = append(paths, it.Item)
+		}
+	}
+	head := fmt.Sprintf("unreadable paths (%d)", len(paths))
+	if len(paths) > maxNamedPaths {
+		head += fmt.Sprintf(", first %d", maxNamedPaths)
+		paths = paths[:maxNamedPaths]
+	}
+	for i, p := range paths {
+		paths[i] = fmt.Sprintf("%q", p)
+	}
+	return fmt.Sprintf("%s: %s: %s", ErrUnreadableSource, head, strings.Join(paths, ", "))
 }
 
 func (e *PartialError) Is(target error) bool { return target == ErrUnreadableSource }
@@ -288,15 +312,22 @@ func (r BackupRequest) validateStdin() error {
 
 func badTag(t string) bool { return t == "" || strings.Contains(t, ",") }
 
+// lockWait is how long restic waits for a locked repository before it
+// gives up with exit code 11 (A6b Ф10); the step timeout applies meanwhile.
+const lockWait = "5m"
+
 // args puts the paths after "--" so a path starting with "-" is not a flag.
 // The stdin filename is joined to its flag, so "-x" is not parsed as one.
 func (r BackupRequest) args() []string {
-	args := []string{"backup", "--json"}
+	args := []string{"backup", "--json", "--retry-lock", lockWait}
 	for _, t := range r.Tags {
 		args = append(args, "--tag", t)
 	}
 	if r.Stdin != nil {
 		return append(args, "--stdin", "--stdin-filename="+r.StdinFilename)
+	}
+	if r.OneFileSystem {
+		args = append(args, "--one-file-system")
 	}
 	for _, e := range r.Excludes {
 		args = append(args, "--exclude", e)

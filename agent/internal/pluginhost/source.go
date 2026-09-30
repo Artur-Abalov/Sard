@@ -18,6 +18,7 @@ import (
 // executor's Reporter implements it.
 type Reporter interface {
 	Progress(phase agentv1.StepPhase, bytesProcessed, bytesTotal uint64)
+	ProgressFiles(phase agentv1.StepPhase, bytesProcessed, bytesTotal, filesProcessed, filesTotal uint64)
 	Log(level agentv1.LogLevel, text string)
 }
 
@@ -68,15 +69,26 @@ func (s *Source) Backup(ctx context.Context, cfg sdk.Config, repo restic.Reposit
 		return restic.BackupSummary{}, fmt.Errorf("dump: %w", err)
 	}
 	h.enter(agentv1.StepPhase_STEP_PHASE_UPLOADING)
-	return repo.Backup(ctx, s.request(h, cfg, d, tags), func(p restic.Progress) {
-		r.Progress(agentv1.StepPhase_STEP_PHASE_UPLOADING, p.BytesDone, p.TotalBytes)
+	sum, err := repo.Backup(ctx, s.request(h, cfg, d, tags), func(p restic.Progress) {
+		r.ProgressFiles(agentv1.StepPhase_STEP_PHASE_UPLOADING, p.BytesDone, p.TotalBytes, p.FilesDone, p.TotalFiles)
 	})
+	if err != nil {
+		err = &repositoryError{err}
+	}
+	return sum, err
 }
+
+// repositoryError marks a failure of restic or of the repository, as
+// opposed to one of the plugin, so that the handler can name the repository.
+type repositoryError struct{ err error }
+
+func (e *repositoryError) Error() string { return e.err.Error() }
+func (e *repositoryError) Unwrap() error { return e.err }
 
 // request turns a dump into a restic request.
 func (s *Source) request(h sdk.Host, cfg sdk.Config, d sdk.Dump, tags []string) restic.BackupRequest {
 	if !d.Streamed() {
-		return restic.BackupRequest{Paths: d.Paths, Excludes: d.Excludes, Tags: tags}
+		return restic.BackupRequest{Paths: d.Paths, Excludes: d.Excludes, Tags: tags, OneFileSystem: d.OneFileSystem}
 	}
 	return restic.BackupRequest{
 		Tags:          tags,

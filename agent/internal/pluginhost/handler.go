@@ -94,10 +94,21 @@ func (h *handler) backup(ctx context.Context, step *agentv1.RunStep, repo restic
 		return nil, rejected(err)
 	}
 	sum, err := h.src.Backup(ctx, sdk.Config(step.GetConfigJson()), repo, tags, r)
+	err = nameRepository(err, step.GetRepositoryName())
 	if sum.SnapshotID == "" {
 		return nil, classify(err)
 	}
 	return &agentv1.StepResult{Output: &agentv1.StepResult_Backup{Backup: BackupOutput(sum)}}, classify(err)
+}
+
+// nameRepository prefixes a failure of the repository with its name. A
+// snapshot written without some files says which paths, not which repository.
+func nameRepository(err error, name string) error {
+	var failure *repositoryError
+	if !errors.As(err, &failure) || errors.Is(err, restic.ErrUnreadableSource) {
+		return err
+	}
+	return fmt.Errorf("repository %q: %w", name, err)
 }
 
 // BackupOutput maps restic's summary to the protocol (OQ-018).
@@ -123,7 +134,18 @@ func resticTags(tags map[string]string) ([]string, error) {
 	return out, nil
 }
 
+// RestoreDeferred is implemented by a plugin that announces the restore
+// action before it can restore (A6b Ф5). The step fails with the message,
+// restic does not run and nothing changes on disk. A request without a
+// snapshot_id is still rejected first.
+type RestoreDeferred interface {
+	RestoreNotImplemented() string
+}
+
 func (h *handler) restore(ctx context.Context, step *agentv1.RunStep, repo restic.Repository, r executor.Reporter) (*agentv1.StepResult, error) {
+	if d, ok := h.src.Plugin().(RestoreDeferred); ok && step.GetSnapshotId() != "" {
+		return nil, errors.New(d.RestoreNotImplemented())
+	}
 	target, err := h.restoreSnapshot(ctx, step, repo, r)
 	if err != nil {
 		return nil, err

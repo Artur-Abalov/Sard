@@ -6,7 +6,9 @@ package restic_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
@@ -74,18 +76,44 @@ func TestBackupArguments(t *testing.T) {
 		Paths:    []string{"/srv/data", "-odd-name"},
 		Excludes: []string{"*.tmp", "/srv/data/cache"},
 		Tags:     []string{"sard", "job:nightly"},
+
+		OneFileSystem: true,
 	}
 	if _, err := f.build().Backup(context.Background(), req, nil); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{
-		"backup", "--json",
+		"backup", "--json", "--retry-lock", "5m",
 		"--tag", "sard", "--tag", "job:nightly",
+		"--one-file-system",
 		"--exclude", "*.tmp", "--exclude", "/srv/data/cache",
 		"--", "/srv/data", "-odd-name",
 	}
 	if got := f.exec.call("backup").Args; !slices.Equal(got, want) {
 		t.Fatalf("args = %q", got)
+	}
+}
+
+// A6b Ф2: restic crosses file systems unless the request forbids it.
+func TestBackupCrossesFileSystemsByDefault(t *testing.T) {
+	f := backupFixture(t, reply{stdout: "backup-ok.stdout"})
+	if _, err := f.build().Backup(context.Background(), request, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.exec.call("backup").Args; slices.Contains(got, "--one-file-system") {
+		t.Fatalf("args = %q", got)
+	}
+}
+
+// A6b Ф12: once restic has exited 0 with a summary the snapshot exists, even
+// if the step was cancelled a moment before the wrapper looked.
+func TestBackupCancelledAfterResticSavedTheSnapshotKeepsTheSummary(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f := backupFixture(t, reply{stdout: "backup-ok.stdout", during: cancel})
+	sum, err := f.build().Backup(ctx, request, nil)
+	if err != nil || sum.SnapshotID == "" {
+		t.Fatalf("summary = %+v, err = %v", sum, err)
 	}
 }
 
@@ -108,11 +136,32 @@ func TestBackupWithUnreadableFilesReturnsSummaryAndPartialError(t *testing.T) {
 	if !slices.Equal(partial.Items, want) {
 		t.Errorf("items = %+v", partial.Items)
 	}
-	if err.Error() != "restic backup: at least one source file could not be read (3 errors)" {
+	// A6b Ф1: the path that failed at scan and at archival counts once.
+	if want := `restic backup: at least one source file could not be read: unreadable paths (2): "/tmp/sardcap2/data/locked", "/tmp/sardcap2/data/sub/unreadable.txt"`; err.Error() != want {
 		t.Errorf("text = %q", err.Error())
 	}
 	if len(f.stderr) != 4 {
 		t.Errorf("stderr lines = %d, want 4", len(f.stderr))
+	}
+}
+
+func TestPartialErrorNamesTheFirstTenDistinctPathsAndTheirNumber(t *testing.T) {
+	var items []restic.ItemError
+	for i := 1; i <= 11; i++ {
+		p := fmt.Sprintf("/d/f%d", i)
+		items = append(items, restic.ItemError{Item: p, During: "scan"}, restic.ItemError{Item: p, During: "archival"})
+	}
+	got := (&restic.PartialError{Items: items}).Error()
+	if !strings.HasPrefix(got, `at least one source file could not be read: unreadable paths (11), first 10: "/d/f1", "/d/f2"`) ||
+		!strings.HasSuffix(got, `"/d/f10"`) || strings.Contains(got, "f11") {
+		t.Errorf("text = %q", got)
+	}
+}
+
+func TestPartialErrorTextIsOneLineWhateverTheFileName(t *testing.T) {
+	got := (&restic.PartialError{Items: []restic.ItemError{{Item: "/d/a\nb"}}}).Error()
+	if strings.ContainsAny(got, "\n") || !strings.Contains(got, `"/d/a\nb"`) {
+		t.Errorf("text = %q", got)
 	}
 }
 
@@ -130,10 +179,36 @@ func TestBackupExitingWithoutSummaryIsAnError(t *testing.T) {
 	}
 }
 
+// Golden (restic 0.19.1): the only path is gone; restic names it in a plain
+// line, and the error keeps the name (A6b Ф15).
 func TestBackupFailure(t *testing.T) {
 	f := backupFixture(t, reply{stderr: "backup-missing.stderr", code: 1})
 	_, err := f.build().Backup(context.Background(), request, nil)
-	if err == nil || err.Error() != "restic backup: exit code 1: Fatal: all source directories/files do not exist" {
+	if err == nil || err.Error() != `restic backup: exit code 1: Fatal: all source directories/files do not exist: "/tmp/sardcap2/nonexistent"` {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// Golden (restic 0.19.1): one of two paths is gone. restic saves the other
+// one and exits 3 without an error item, only a plain line naming the path.
+func TestBackupWithAPathThatVanishedIsPartialAndNamesThePath(t *testing.T) {
+	f := backupFixture(t, reply{stdout: "backup-vanished.stdout", stderr: "backup-vanished.stderr", code: 3})
+	sum, err := f.build().Backup(context.Background(), request, nil)
+	var partial *restic.PartialError
+	if sum.SnapshotID == "" || !errors.As(err, &partial) || len(partial.Items) != 1 || partial.Items[0].Item != "/srv/gone" {
+		t.Fatalf("summary = %+v, err = %v", sum, err)
+	}
+	if !strings.Contains(err.Error(), `unreadable paths (1): "/srv/gone"`) {
+		t.Errorf("text = %q", err)
+	}
+}
+
+// Golden (restic 0.19.1): restic's fatal message has a line break in it; the
+// error text is one line and keeps the pattern (A6b Ф17).
+func TestBackupWithAnExcludePatternResticRefusesFailsWithOneLine(t *testing.T) {
+	f := backupFixture(t, reply{stderr: "backup-bad-exclude.stderr", code: 1})
+	_, err := f.build().Backup(context.Background(), restic.BackupRequest{Paths: []string{"/srv"}, Excludes: []string{"["}}, nil)
+	if err == nil || err.Error() != "restic backup: exit code 1: Fatal: --exclude: invalid pattern(s) provided: [" {
 		t.Fatalf("err = %v", err)
 	}
 }
