@@ -91,3 +91,49 @@ class StepTransitions(sessions: TenantSessions, clock: Clock) {
 **Метрики**: gauge `sard.run.steps.queued`, `sard.run.steps.dispatched`; счётчики `sard.run.steps.redispatched`, `sard.run.steps.dispatch.failed`.
 
 Фаза 1 закончена — СТОП до ревью проекта.
+
+## Фаза 2 — миграция, сервисы источников и запусков (2026-09-30)
+
+Ревью проекта фазы 1 — «Пошел» (владелец).
+
+### Окружение сессии
+- Docker не был запущен — `dockerd` поднят вручную; JDK 25 поставлен из apt (`openjdk-25-jdk-headless`, после `apt-get update`); Gradle требует `LC_ALL=C.UTF-8`. Maven Central один раз ответил 429 — прошло само при повторе.
+
+### Сделано
+- `V202609301200__runs.sql`: `workflows` (без сервиса), `sources`, `runs`, `run_steps` — как в проекте фазы 1. Сверх проекта: `sources.name` 1..200 символов (как метка токена), `run_steps_repository_check` (`repository_name` NULL ровно для `run`, как в REST `RunStep.repositoryName`), неотрицательные `bytes_*`, `ordinal >= 0`.
+- `persistence/RunRecords.kt`: `SourceRecord`, `RunRecord`, `RunStepRecord`; изменяемые поля шага сущностью не пишутся (`insertable/updatable = false`) — только условными обновлениями (фаза 3).
+- Пакет `runs/` (изолирован в `ArchitectureTest`): `Sources` (create, replace, delete, get, list), `Runs.start`, `StepsQueued`, ошибки `RunsException`: `SourceNotFound` (в т. ч. удалённый), `SourceNameTaken`, `UnknownAgent` (нет или отозван), `UnknownPlugin`, `UnknownRepository`, `RunActive(activeRunId)`.
+- `Runs.start`: одна транзакция — блокировка строки источника `FOR SHARE` (`PESSIMISTIC_READ`), проверка снимка агента, предварительный поиск активного запуска, вставка `runs` + шага `backup` в `queued` с копией `config`, `flush`. Нарушение `runs_active_source_key` → `RunActive` с id победителя из новой транзакции; если победитель уже завершился — повтор запуска. `StepsQueued.onQueued` — после фиксации. Удаление источника — `FOR UPDATE` и отказ `RunActive`.
+- ADR 0013: таблицы отмечены реализованными, отличия схемы, правило `lost` по решению 4.
+- `SardServerIntegrationTest`: список миграций дополнен новой.
+
+### Проверка
+- `RunSchemaIntegrationTest` (9): D6 для каждого активного статуса, финальные не мешают, CHECK статусов и времён, `workflow_id`/`trigger`, повтор имени после удаления, `config` — объект.
+- `SourcesIntegrationTest` (12): хранение и чтение, отказы по снимку агента (в т. ч. агент другого тенанта и отозванный), имя, замена целиком, удаление, удаление при активном запуске, чужой тенант, список.
+- `RunsIntegrationTest` (14) — тесты постановки 1, 7, 8:
+  - 1: 8 параллельных запусков — ровно один run и один шаг, остальные `RunActive` с его id; после финального статуса новый запуск разрешён. В одном прогоне один из семи проигравших дошёл до индекса (в журнале теста `duplicate key ... "runs_active_source_key"`), остальных остановила проверка — поэтому добавлены два детерминированных теста индекса: незакоммиченная вставка в соседней транзакции, `start` ждёт на индексе (`pg_stat_activity`), после `commit` — `RunActive` с id соседа, после `rollback` — запуск создан.
+  - Контроль: с неверным именем ограничения в `Runs` падают тест гонки и тест индекса (2 из 14); код восстановлен.
+  - 7: источник другого тенанта — `SourceNotFound`, запусков нет; тенанты запускаются независимо.
+  - 8: удалённый источник, репозиторий или плагин, которых нет в последнем Register, отозванный агент — типизированные ошибки, запуск не создан, `onQueued` не вызван.
+- `RunModelTest` (`@MutFlowTest`, 6): хранимые значения перечислений = списки CHECK, обратное чтение, неизвестное значение — ошибка, `toString` без `config`.
+- `./scripts/gate.sh server fast` — `gate: PASSED (server, fast)`: 628 тестов, покрытие 95.0% (instructions), CRAP ≤ 6 (новый код — максимум 6.0, `AgentOffer.require`).
+- `./gradlew --no-daemon -q -Pmutflow.enabled=true :server:test --rerun` — exit 0, 7555 прогонов тестов, выживших нет.
+- По пути: detekt `ThrowsCount` в `AgentOffer.require` — один `throw` после `when`; ktlint (предел 140) склеивал переносы, detekt (120) их требовал — строки переписаны без переносов выражений.
+
+### Стыки для S8b (реализованы)
+```kotlin
+class Sources {
+    fun create(tenantId: UUID, draft: SourceDraft): SourceView
+    fun replace(tenantId: UUID, sourceId: UUID, draft: SourceDraft): SourceView
+    fun delete(tenantId: UUID, sourceId: UUID)
+    fun get(tenantId: UUID, sourceId: UUID): SourceView
+    fun list(tenantId: UUID, agentId: UUID?, after: UUID?, limit: Int): List<SourceView>  // по id
+}
+class Runs { fun start(tenantId: UUID, sourceId: UUID): RunView }
+// SourceDraft.config / SourceView.config — JSON-текст объекта; S8b сериализует Map через Jackson.
+// Ошибки → S8a: SourceNotFound 404; SourceNameTaken 422 validation_failed (name); UnknownAgent/
+// UnknownPlugin/UnknownRepository 422 unknown_*; RunActive 409 run_active + activeRunId.
+// Не сделано (S8b): проверка config по configSchema, курсор списка поверх `after`, чтение runs.
+```
+
+Фаза 2 закончена — СТОП до ревью.
