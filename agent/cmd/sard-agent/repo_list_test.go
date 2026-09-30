@@ -128,6 +128,7 @@ func TestTheListHelpDescribesColumnsFlagsAndExitCodes(t *testing.T) {
 	for _, want := range []string{
 		"NAME", "BACKEND", "STATUS", "REPOSITORY_ID", "initialized", "not-initialized",
 		"--config", "--timeout", "first problem row",
+		"BACKEND_REFUSED", "RESTIC_OUTPUT_UNEXPECTED",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("help does not contain %q:\n%s", want, stdout)

@@ -95,7 +95,7 @@ Exit codes:
 
 var repoListHelpCodes = []repoHelpCode{
 	{exitOK, "success", "the state of every repository is known (initialised or not), or --help"},
-	{exitAgentError, "agent error", "restic is missing, too old or unusable; or the first permanent problem row is an agent error (the backend refused, unexpected restic output)"},
+	{exitAgentError, "agent error", "restic is missing, too old or unusable; or the first permanent problem row is an agent error (BACKEND_REFUSED: the backend refused; RESTIC_OUTPUT_UNEXPECTED: unexpected restic output)"},
 	{exitUsage, "usage", "flags or config; or the first permanent problem row is a usage problem (crypto_provider, password_file, env_file, wrong password)"},
 	{exitTemporary, "temporary", "every problem row is temporary (backend unreachable, --timeout ran out), or the command was interrupted"},
 }

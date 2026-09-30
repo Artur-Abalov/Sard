@@ -88,3 +88,31 @@ func TestParseEnvFileReturnsTheAssignmentsAndNamesTheBadLine(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckErrorTextAndUnwrapPerProblem(t *testing.T) {
+	cause := errors.New("boom")
+	cases := []struct {
+		name string
+		ce   *restic.CheckError
+		text string
+		is   error
+	}{
+		{"too old", &restic.CheckError{Problem: restic.TooOld, Binary: "/b/restic", Found: "0.18.1", Minimum: restic.Minimum},
+			"restic 0.18.1 at /b/restic is older than the minimum " + restic.Minimum.String(), restic.ErrUnsupportedVersion},
+		{"not found", &restic.CheckError{Problem: restic.NotFound, Binary: "/b/restic", Err: fs.ErrNotExist},
+			"restic at /b/restic is not found: file does not exist", fs.ErrNotExist},
+		{"unusable", &restic.CheckError{Problem: restic.Unusable, Binary: "/b/restic", Err: cause},
+			"restic at /b/restic is unusable: boom", cause},
+	}
+	for _, c := range cases {
+		if got := c.ce.Error(); got != c.text {
+			t.Errorf("%s: Error() = %q, want %q", c.name, got, c.text)
+		}
+		if !errors.Is(c.ce, c.is) {
+			t.Errorf("%s: does not wrap %v", c.name, c.is)
+		}
+	}
+	if errors.Is(cases[0].ce, cause) || cases[0].ce.Unwrap() != restic.ErrUnsupportedVersion {
+		t.Error("TooOld must unwrap to ErrUnsupportedVersion only")
+	}
+}

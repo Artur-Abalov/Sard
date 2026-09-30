@@ -137,7 +137,7 @@ func causeOf(err error) string {
 	if !errors.As(err, &exit) || exit.Message == "" {
 		return err.Error()
 	}
-	return strings.TrimSpace(strings.ReplaceAll(exit.Message, "Fatal: ", ""))
+	return exit.Cause()
 }
 
 // Scrubber returns a function that masks the secrets of a repository in

@@ -42,7 +42,10 @@ func NewResticAES(passwordFiles map[string]string) Provider {
 	return resticAES{passwordFiles: passwordFiles}
 }
 
-func (resticAES) Name() string { return "restic-aes" }
+// ResticAESName is the name of the built-in provider.
+const ResticAESName = "restic-aes"
+
+func (resticAES) Name() string { return ResticAESName }
 
 func (p resticAES) RepositoryKey(_ context.Context, repository string) (Key, error) {
 	file, ok := p.passwordFiles[repository]

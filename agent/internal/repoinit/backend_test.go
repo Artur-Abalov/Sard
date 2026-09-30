@@ -88,7 +88,7 @@ func TestFromResticMapsEachAnswerToItsReasonAndClass(t *testing.T) {
 }
 
 func TestBackendMessagesNameTheTypeAndScrubTheCause(t *testing.T) {
-	f := repoinit.FromRestic(t.Context(), exitErr("Fatal: Fatal: key SECRET rejected", nil), target)
+	f := repoinit.FromRestic(t.Context(), exitErr("Fatal: key SECRET rejected", nil), target)
 	if want := "BACKEND_REFUSED: backend s3: key [x] rejected"; f.Error() != want {
 		t.Errorf("refused: %q", f.Error())
 	}

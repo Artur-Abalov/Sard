@@ -85,3 +85,19 @@
 бэкенда», «существующий репозиторий»: логика уже была написана как одно целое
 вместе с `Create`/`FromRestic`); их состоятельность проверена ниже гейтом и
 интеграционными тестами с настоящим restic.
+
+## Правки по замечаниям architect (CHANGES REQUIRED)
+
+- F1: `repo_password_read_test.go` — repo init (обычный, `--generate-password`
+  с новым и существующим файлом) и repo list не читают файл пароля через
+  `deps.readFile`; каждый вызов restic, кроме `version`, получает
+  `RESTIC_PASSWORD_FILE`.
+- F2: `crypto.ResticAESName` — единственное имя встроенного провайдера;
+  `repoinit` использует его, тест Preflight принимает `Name()` провайдера.
+- F3: `repoinit/restic_test.go` (FromCheck/notFound, все ветки) и таблица
+  `CheckError.Error`/`Unwrap` в `restic/check_test.go`.
+- F6: снятие префикса `Fatal: ` — метод `restic.ExitError.Cause()`;
+  `Message` не менялся, вывод команд прежний.
+- F7: `RESTIC_OUTPUT_UNEXPECTED` в строке кода 1 ADR 0025 и в справке
+  `repo list` (вместе с `BACKEND_REFUSED`); спецификация не менялась
+  (сценарий справки не фиксирует точный список).

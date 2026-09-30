@@ -9,13 +9,10 @@ import (
 	"io/fs"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/crypto"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 )
-
-// builtinProvider is the name of the only crypto.Provider of stage 1
-// (agent/internal/crypto.NewResticAES); an empty crypto_provider means it.
-const builtinProvider = "restic-aes"
 
 // Host is how the local checks look at the host's files.
 type Host struct {
@@ -37,8 +34,8 @@ type Checked struct {
 // repository only. index is the repository's position in the config, as
 // in A1's messages. With createPassword a missing password file passes.
 func Preflight(h Host, repo config.Repository, index int, createPassword bool) (Checked, *Failure) {
-	if p := repo.CryptoProvider; p != "" && p != builtinProvider {
-		return Checked{}, fail(CryptoProviderUnsupported, "crypto_provider %q of repository %q is not supported; stage 1 supports only the built-in restic encryption (%s, or leave crypto_provider empty)", p, repo.Name, builtinProvider)
+	if p := repo.CryptoProvider; p != "" && p != crypto.ResticAESName {
+		return Checked{}, fail(CryptoProviderUnsupported, "crypto_provider %q of repository %q is not supported; stage 1 supports only the built-in restic encryption (%s, or leave crypto_provider empty)", p, repo.Name, crypto.ResticAESName)
 	}
 	missing, f := checkPasswordFile(h, repo, index, createPassword)
 	if f != nil {

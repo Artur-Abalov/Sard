@@ -88,6 +88,11 @@ func (e *ExitError) Error() string {
 	return fmt.Sprintf("exit code %d: %s", e.Code, e.Message)
 }
 
+// Cause is Message without restic's "Fatal: " prefix and surrounding space.
+func (e *ExitError) Cause() string {
+	return strings.TrimSpace(strings.TrimPrefix(e.Message, "Fatal: "))
+}
+
 // CLI runs the restic binary for one repository configured on this host.
 type CLI struct {
 	opts Options

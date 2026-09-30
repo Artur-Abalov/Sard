@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/crypto"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 )
@@ -190,5 +191,16 @@ func TestCreatePasswordReportsAGeneratorFailureAsNoWriteFailure(t *testing.T) {
 	var f *repoinit.Failure
 	if err == nil || errors.As(err, &f) {
 		t.Fatalf("%v", err)
+	}
+}
+
+func TestPreflightAcceptsTheNameOfTheBuiltInProvider(t *testing.T) {
+	r := repo
+	r.CryptoProvider = crypto.NewResticAES(nil).Name()
+	if _, f := repoinit.Preflight(goodHost().host(), r, 0, false); f != nil {
+		t.Fatalf("%v", f)
+	}
+	if crypto.ResticAESName != "restic-aes" {
+		t.Fatalf("ResticAESName = %q", crypto.ResticAESName)
 	}
 }

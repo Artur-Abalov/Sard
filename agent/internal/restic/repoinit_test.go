@@ -70,3 +70,26 @@ func TestOtherBackendFailuresAreNotNetworkFailures(t *testing.T) {
 		}
 	}
 }
+
+// Golden: restic prefixes its fatal message with "Fatal: "; Cause is the
+// message without it, and Message keeps restic's own text.
+func TestCauseIsResticsFatalMessageWithoutThePrefix(t *testing.T) {
+	f := newFixture(t, map[string]reply{"cat": {stderr: "wrong-password.stderr", code: 1}})
+	_, err := f.build().ID(context.Background())
+	var exitErr *restic.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("err = %v", err)
+	}
+	if exitErr.Cause() != "wrong password or no key found" {
+		t.Errorf("Cause() = %q", exitErr.Cause())
+	}
+	if exitErr.Message != "Fatal: wrong password or no key found" {
+		t.Errorf("Message = %q", exitErr.Message)
+	}
+	if got := (&restic.ExitError{Code: 1}).Cause(); got != "" {
+		t.Errorf("Cause() without a message = %q", got)
+	}
+	if got := (&restic.ExitError{Code: 1, Message: " plain "}).Cause(); got != "plain" {
+		t.Errorf("Cause() of a message without the prefix = %q", got)
+	}
+}
