@@ -2,7 +2,9 @@
 
 Сценарии: `docs/specs/agent/repo-init.feature`. Ответы владельца на вопросы
 В1–В9 — 2026-09-30; спецификация в целом, решения С1–С11 и Л1–Л10 ждут
-утверждения владельцем. Классы и номера кодов выхода — A2b
+утверждения владельцем. Поправка 2026-09-30 (решение владельца В8а, ADR 0028):
+блокировка init — в `restic.cache_dir`, причина `LOCK_WRITE`; решения С12–С14
+ждут утверждения. Классы и номера кодов выхода — A2b
 (`docs/specs/agent/agent-enroll.feature`, В3; ADR 0025).
 
 Выполнима после реализации A5b. Ожидаемый результат указан после «→» в
@@ -12,12 +14,13 @@
 или непригоден; несетевой отказ бэкенда), `2` использование (в том числе
 неверный пароль существующего репозитория), `4` репозиторий уже
 инициализирован, `6` временная (сеть, таймаут, прерывание, идёт другой init),
-`7` запись (файл пароля не создать).
+`7` запись (файл пароля не создать — `PASSWORD_FILE_WRITE`; файл блокировки в
+`restic.cache_dir` не создать — `LOCK_WRITE`).
 
 Коды выхода repo list: `0` состояние всех репозиториев известно; иначе код
 класса первой по порядку конфига постоянной проблемы строки (`1` или `2`);
 `6`, если все проблемы временные; `2` / `1` — ошибка флагов или конфига /
-непригодный restic (таблица не печатается).
+непригодный restic (таблица не печатается). repo list блокировку не берёт.
 
 ## Подготовка
 
@@ -32,7 +35,7 @@ AG=$PWD/agent/bin/sard-agent
 RV=$(sed -n 's/^version=//p' agent/internal/restic/restic-version)      # 0.19.1
 RMIN=$(sed -n 's/^min_version=//p' agent/internal/restic/restic-version) # 0.19.0
 RB=$PWD/.bin/restic/$RV/linux_$(go env GOARCH)/restic
-QA=$(mktemp -d); H=$QA/host; mkdir -m 0700 "$H" "$H/sec"
+QA=$(mktemp -d); H=$QA/host; mkdir -m 0700 "$H" "$H/sec" "$QA/cache"
 printf 'PASS-MARKER-%s\n' "$RANDOM$RANDOM" > "$H/sec/main.pass"; PASS=$(cat "$H/sec/main.pass")
 printf 'AWS_SECRET_ACCESS_KEY=ENV-MARKER-%s\n' "$RANDOM" > "$H/sec/main.env"; ENVV=$(cut -d= -f2 "$H/sec/main.env")
 printf 'offsite-pass\n' > "$H/sec/offsite.pass"
@@ -67,6 +70,8 @@ rl() { "$AG" repo list --config "$H/agent.yaml" "$@" >"$QA/out" 2>"$QA/err"; ech
 snap() { find "$H/sec" "$H/agent.yaml" -printf '%m %u %p\n' | sort; sha256sum "$H"/sec/* "$H/agent.yaml"; }
 repo() { [ -d "$H/repo" ] && (cd "$H/repo" && find . -type f -exec sha256sum {} + | sort) || echo "no repo"; }
 fake() { printf '#!/bin/sh\necho "restic %s compiled with go1.22.1 on linux/amd64"\n' "$1" > "$QA/restic-$1"; chmod 0755 "$QA/restic-$1"; echo "$QA/restic-$1"; }
+# locks — число файлов блокировки init в кэше и рядом с файлами паролей (С14)
+locks() { find "$QA/cache" "$H/sec" -maxdepth 1 -name '.sard-init-*' 2>/dev/null | wc -l; }
 ```
 
 1. `"$AG" repo init --help; echo "exit=$?"`
@@ -84,7 +89,7 @@ fake() { printf '#!/bin/sh\necho "restic %s compiled with go1.22.1 on linux/amd6
 ## Часть 1. Отказы repo init до обращения к бэкенду
 
 Перед частью: `snap > "$QA/s0"`. В каждом шаге этой части дополнительно:
-`repo` → `no repo`; `snap | diff - "$QA/s0"` → пусто.
+`repo` → `no repo`; `snap | diff - "$QA/s0"` → пусто; `locks` → `0`.
 
 3. `"$AG" repo --config "$H/agent.yaml"`; `init` (без имени);
    `init main extra`; `init --insecure main`; `init --timeout 0s main`;
@@ -120,11 +125,11 @@ fake() { printf '#!/bin/sh\necho "restic %s compiled with go1.22.1 on linux/amd6
 14. Права чужого репозитория не проверяются (исключение из инварианта части —
     репозиторий создаётся):
     `chmod 0644 "$H/sec/offsite.pass"; init main; chmod 0600 "$H/sec/offsite.pass"`
-    → `exit=0`. Затем `rm -rf "$H/repo"`.
+    → `exit=0`; `locks` → `0`. Затем `rm -rf "$H/repo"`.
 
 ## Часть 2. restic не найден, устарел, непригоден
 
-После каждого шага `repo` → `no repo`; в конце части `mkcfg "$RB"`.
+После каждого шага `repo` → `no repo`, `locks` → `0`; в конце части `mkcfg "$RB"`.
 
 15. `mkcfg "$QA/nope-restic"; init main`
     → `exit=1`; `RESTIC_NOT_FOUND`, `restic.path`, `$QA/nope-restic`, `$RMIN`.
@@ -148,12 +153,14 @@ fake() { printf '#!/bin/sh\necho "restic %s compiled with go1.22.1 on linux/amd6
     → `exit=0`; stdout содержит `main`, `local`, repository_id из 64
     шестнадцатеричных символов (далее `X`), путь `$H/sec/main.pass`, фразы
     `only on this host` и `unrecoverable`, совет перезапустить службу
-    `sard-agent`, чтобы сервер получил repository_id.
+    `sard-agent`, чтобы сервер получил repository_id; `locks` → `0`.
 21. `RESTIC_PASSWORD_FILE="$H/sec/main.pass" "$RB" -r "$H/repo" cat config | jq -r .id`
     → `X`.
-22. `snap | diff - "$QA/s0"` → пусто (конфиг и файлы паролей не изменились).
+22. `snap | diff - "$QA/s0"` → пусто (конфиг и файлы паролей не изменились,
+    рядом с ними нет новых файлов).
 23. `repo > "$QA/r1"; init main`
-    → `exit=4`; `REPOSITORY_EXISTS` и `X`; `repo | diff - "$QA/r1"` → пусто.
+    → `exit=4`; `REPOSITORY_EXISTS` и `X`; `repo | diff - "$QA/r1"` → пусто;
+    `locks` → `0`.
 24. `cp "$H/sec/main.pass" "$QA/p.bak"; printf 'other\n' > "$H/sec/main.pass"; init main; cp "$QA/p.bak" "$H/sec/main.pass"`
     → `exit=2`; `WRONG_PASSWORD`; сказано, что по адресу уже есть репозиторий,
     а файл пароля его не открывает; `repo | diff - "$QA/r1"` → пусто.
@@ -167,7 +174,7 @@ fake() { printf '#!/bin/sh\necho "restic %s compiled with go1.22.1 on linux/amd6
     `rm -rf "$H/repo"; cp "$H/sec/main.pass" "$QA/p.bak"; printf '\n' > "$H/sec/main.pass"; init main; cp "$QA/p.bak" "$H/sec/main.pass"`
     → код не `0`; `repo` → `no repo` или в каталоге нет файла `config`.
 
-## Часть 4. Генерация пароля
+## Часть 4. Генерация пароля и каталог файла пароля
 
 29. `rm -rf "$H/repo"; mv "$H/sec/main.pass" "$QA/p.bak"; (umask 000; init --generate-password main)`
     → `exit=0`; stdout говорит, что файл пароля создан этой командой;
@@ -180,47 +187,78 @@ fake() { printf '#!/bin/sh\necho "restic %s compiled with go1.22.1 on linux/amd6
 31. `chmod 0644 "$H/sec/main.pass"; init --generate-password main; chmod 0600 "$H/sec/main.pass"`
     → `exit=2` (A1); файл не изменился.
 32. Каталог недоступен на запись: `rm "$H/sec/main.pass"; chmod 0500 "$H/sec"; init --generate-password main; chmod 0700 "$H/sec"`
-    → `exit=7`; `PASSWORD_FILE_WRITE` и каталог; файла нет.
+    → `exit=7`; `PASSWORD_FILE_WRITE` и каталог; файла нет; `locks` → `0`.
     Каталога нет: в конфиге `password_file: $QA/nodir/main.pass`, `init --generate-password main`
-    → `exit=7`; `ls -d "$QA/nodir"` → нет каталога. Вернуть `mkcfg "$RB"`.
+    → `exit=7`; `PASSWORD_FILE_WRITE`; `ls -d "$QA/nodir"` → нет каталога.
+    Вернуть `mkcfg "$RB"`.
 33. Неудача после генерации: `rm -rf "$H/repo" "$H/sec/main.pass"; sed -i "s|url: $H/repo|url: rest:http://127.0.0.1:9/main|" "$H/agent.yaml"; init --generate-password main`
     → `exit=6`; `BACKEND_UNAVAILABLE`; `stat -c %a "$H/sec/main.pass"` → `600`;
-    сообщение говорит, что созданный файл пароля сохранён.
+    сообщение говорит, что созданный файл пароля сохранён; `locks` → `0`.
     Вернуть: `mkcfg "$RB"; mv "$QA/p.bak" "$H/sec/main.pass"`.
+34. Существующий файл пароля в каталоге только для чтения (В8а):
+    `rm -rf "$H/repo"; snap > "$QA/s1"; chmod 0500 "$H/sec"; init main`
+    → `exit=0`; в выводе нет `PASSWORD_FILE_WRITE` и `LOCK_WRITE`.
+    `rm -rf "$H/repo"; init --generate-password main`
+    → `exit=0`; stdout говорит, что использован существующий файл.
+    Затем `chmod 0700 "$H/sec"; snap | diff - "$QA/s1"` → пусто; `locks` → `0`.
+    Затем `rm -rf "$H/repo"`.
 
-## Часть 5. Таймаут, прерывание, одновременный запуск
+## Часть 5. Таймаут, прерывание, одновременный запуск, блокировка
 
 Неотвечающий адрес: `10.255.255.1` (пакеты теряются). Перед частью:
 `mkcfg "$RB"; rm -rf "$H/repo"; sed -i "s|url: $H/repo|url: rest:http://10.255.255.1:8000/main|" "$H/agent.yaml"`.
 
-34. `time init --timeout 5s main`
+35. `time init --timeout 5s main`
     → завершается примерно через 5 с, `exit=6`, `TIMEOUT`; сказано, что
-    репозиторий мог быть создан частично; `pgrep -f "$RB"` → пусто.
-35. `time init main` (без `--timeout`)
+    репозиторий мог быть создан частично; `pgrep -f "$RB"` → пусто;
+    `locks` → `0`.
+36. `time init main` (без `--timeout`)
     → завершается примерно через 2 мин, не раньше, `exit=6`, `TIMEOUT`.
-36. `"$AG" repo init --config "$H/agent.yaml" main & P=$!; sleep 3; kill -INT $P; wait $P; echo "exit=$?"`
+37. `"$AG" repo init --config "$H/agent.yaml" main & P=$!; sleep 3; kill -INT $P; wait $P; echo "exit=$?"`
     → `exit=6`; `INTERRUPTED`; сказано, что репозиторий мог быть создан
-    частично и команду нужно повторить; `pgrep -f "$RB"` → пусто.
-37. Одновременный запуск: `"$AG" repo init --config "$H/agent.yaml" main & P=$!; sleep 1; init main; kill -INT $P; wait $P`
-    → вторая команда сразу `exit=6`, `INIT_IN_PROGRESS`. Затем `init --timeout 2s main`
-    → нет `INIT_IN_PROGRESS` (блокировка снята), `exit=6`, `TIMEOUT`.
-38. Разные репозитории: `"$AG" repo init --config "$H/agent.yaml" main & P=$!; sleep 1; init offsite; kill -INT $P; wait $P`
+    частично и команду нужно повторить; `pgrep -f "$RB"` → пусто;
+    `locks` → `0`.
+38. Одновременный запуск и место блокировки:
+    `"$AG" repo init --config "$H/agent.yaml" main & P=$!; sleep 1`;
+    `ls -A "$QA/cache" | grep -c '^\.sard-init-main\.lock$'` → `1`;
+    `ls -A "$H/sec" | grep -c '^\.sard-init-'` → `0`;
+    `init main` → сразу `exit=6`, `INIT_IN_PROGRESS`;
+    `kill -INT $P; wait $P`. Затем `init --timeout 2s main`
+    → нет `INIT_IN_PROGRESS` (блокировка снята), `exit=6`, `TIMEOUT`;
+    `locks` → `0`.
+39. Разные репозитории: `"$AG" repo init --config "$H/agent.yaml" main & P=$!; sleep 1; init offsite; kill -INT $P; wait $P`
     → вторая команда без `INIT_IN_PROGRESS` (`exit=6`, `BACKEND_UNAVAILABLE`).
+40. Оставшийся файл блокировки, который никто не удерживает:
+    `printf '999999\n' > "$QA/cache/.sard-init-main.lock"; init --timeout 2s main`
+    → нет `INIT_IN_PROGRESS`, `exit=6`, `TIMEOUT`; `locks` → `0`.
+41. Каталога кэша нет (`LOCK_WRITE`, С13):
+    `sed -i "s|cache_dir: .*|cache_dir: $QA/nocache|" "$H/agent.yaml"; snap > "$QA/s2"; init main`
+    → сразу (без ожидания бэкенда) `exit=7`; `LOCK_WRITE`, `restic.cache_dir`,
+    `$QA/nocache`; `ls -d "$QA/nocache"` → нет каталога;
+    `snap | diff - "$QA/s2"` → пусто. Вернуть `mkcfg "$RB"` и снова
+    `sed` адреса из преамбулы части.
+42. Каталог кэша недоступен на запись, пароль не генерируется:
+    `mv "$H/sec/main.pass" "$QA/p.bak"; chmod 0500 "$QA/cache"; init --generate-password main; chmod 0700 "$QA/cache"`
+    → сразу `exit=7`; `LOCK_WRITE`, `restic.cache_dir`, `$QA/cache`;
+    `ls "$H/sec/main.pass"` → нет файла; `locks` → `0`.
+    Вернуть: `mv "$QA/p.bak" "$H/sec/main.pass"`.
+43. Путь кэша — обычный файл: `: > "$QA/cfile"; sed -i "s|cache_dir: .*|cache_dir: $QA/cfile|" "$H/agent.yaml"; init main`
+    → сразу `exit=7`; `LOCK_WRITE` и `$QA/cfile`.
     Вернуть: `mkcfg "$RB"`.
 
 ## Часть 6. Недоступный и отказывающий бэкенд
 
-39. `init offsite` (REST на закрытом порту 9, пароль `$URLM` в адресе)
+44. `init offsite` (REST на закрытом порту 9, пароль `$URLM` в адресе)
     → `exit=6`; `BACKEND_UNAVAILABLE`, тип `rest`, причина от restic
     (`connection refused`), совет повторить; `grep -cF "$URLM" "$QA/all"` → `0`.
-40. Неверные учётные данные S3 (MinIO):
+45. Неверные учётные данные S3 (MinIO):
     `docker run -d --rm --name qa-minio -p 19000:9000 -e MINIO_ROOT_USER=qaadmin -e MINIO_ROOT_PASSWORD=qaadmin-secret minio/minio server /data`;
     дождаться порта; в конфиге у `main`: `url: s3:http://127.0.0.1:19000/qa-bucket`,
     в `main.env`: `AWS_ACCESS_KEY_ID=wrong` и `AWS_SECRET_ACCESS_KEY=$ENVV`;
     `init main`
     → `exit=1`; `BACKEND_REFUSED`, тип `s3`, причина от restic;
-    `grep -cF "$ENVV" "$QA/all"` → `0`.
-41. Верные учётные данные (`qaadmin` / `qaadmin-secret` в `main.env`): `init main`
+    `grep -cF "$ENVV" "$QA/all"` → `0`; `locks` → `0`.
+46. Верные учётные данные (`qaadmin` / `qaadmin-secret` в `main.env`): `init main`
     → `exit=0`, тип `s3`. `docker stop qa-minio`; `init main`
     → `exit=6`, `BACKEND_UNAVAILABLE`. Вернуть конфиг (`mkcfg "$RB"`) и `main.env`.
 
@@ -228,34 +266,41 @@ fake() { printf '#!/bin/sh\necho "restic %s compiled with go1.22.1 on linux/amd6
 
 Перед частью: `mkcfg "$RB"; rm -rf "$H/repo"; init main` (запомнить `X`).
 
-42. `rl`
+47. `rl`
     → `exit=6`; первая строка stdout — `NAME BACKEND STATUS REPOSITORY_ID`;
     строка `main local initialized X`; строка `offsite rest BACKEND_UNAVAILABLE -`;
     в stderr сообщение, начинающееся с `offsite`; `grep -cF "$URLM" "$QA/all"` → `0`;
-    stdout не содержит `$H/repo`.
-43. Убрать `offsite` из конфига (`sed -i '/name: offsite/,/offsite.pass/d' "$H/agent.yaml"`),
+    stdout не содержит `$H/repo`; `locks` → `0`.
+48. Убрать `offsite` из конфига (`sed -i '/name: offsite/,/offsite.pass/d' "$H/agent.yaml"`),
     добавить репозиторий `spare` с `url: $QA/spare`, `password_file: $H/sec/offsite.pass`; `rl`
     → `exit=0`; `main … initialized X`, `spare local not-initialized -`;
     `ls "$QA/spare"` → нет каталога (список ничего не создаёт).
-44. `chmod 0644 "$H/sec/offsite.pass"; rl; chmod 0600 "$H/sec/offsite.pass"`
+49. `chmod 0644 "$H/sec/offsite.pass"; rl; chmod 0600 "$H/sec/offsite.pass"`
     → `exit=2`; `spare … SECRET_FILE_REJECTED -`; `main` по-прежнему
     `initialized X`; stderr содержит текст A1 о файле.
-45. `printf 'other\n' > "$QA/o.pass"; chmod 0600 "$QA/o.pass"`; у `main`
+50. `printf 'other\n' > "$QA/o.pass"; chmod 0600 "$QA/o.pass"`; у `main`
     `password_file: $QA/o.pass`; `rl`
     → `exit=2`; `main local WRONG_PASSWORD -`.
     Вернуть `password_file` main.
-46. Порядок кодов: у `main` — `url: rest:http://127.0.0.1:9/main`, у `spare` —
+51. Порядок кодов: у `main` — `url: rest:http://127.0.0.1:9/main`, у `spare` —
     `password_file` на несуществующий файл; `rl`
     → `exit=2` (постоянная проблема важнее временной); `main … BACKEND_UNAVAILABLE`,
     `spare … PASSWORD_FILE_MISSING`.
-47. Таймаут списка: у `main` — `url: rest:http://10.255.255.1:8000/main`,
+52. Таймаут списка: у `main` — `url: rest:http://10.255.255.1:8000/main`,
     `spare` — исправный; `time rl --timeout 3s`
     → примерно 3 с, `exit=6`; `main … TIMEOUT -`, `spare … not-initialized -`.
-48. `rl extra` → `exit=2`; `rl --json` → `exit=2`; `rl --timeout 0s` → `exit=2`.
-49. Конфиг без `repositories`: `rl` → `exit=0`; stdout говорит, что
+53. `rl extra` → `exit=2`; `rl --json` → `exit=2`; `rl --timeout 0s` → `exit=2`.
+54. Конфиг без `repositories`: `rl` → `exit=0`; stdout говорит, что
     репозиториев не задано.
-50. `sleep 600 | "$AG" repo list --config "$H/agent.yaml"; echo "exit=$?"`
+55. `sleep 600 | "$AG" repo list --config "$H/agent.yaml"; echo "exit=$?"`
     → завершается, не дожидаясь ввода.
+56. Список не берёт блокировку: `mkcfg "$RB"; sed -i "s|url: $H/repo|url: rest:http://10.255.255.1:8000/main|" "$H/agent.yaml"`;
+    `"$AG" repo init --config "$H/agent.yaml" main & P=$!; sleep 1; time rl --timeout 3s`
+    → список завершается примерно через 3 с, пока `repo init` ещё работает
+    (`kill -0 $P` → успех); в выводе списка нет `INIT_IN_PROGRESS` и
+    `LOCK_WRITE`. Затем `kill -INT $P; wait $P`.
+57. Список без каталога кэша: `mkcfg "$RB"; sed -i "s|cache_dir: .*|cache_dir: $QA/nocache|" "$H/agent.yaml"; rl`
+    → в выводе нет `LOCK_WRITE`; строка `main` — `initialized X`.
     Вернуть: `mkcfg "$RB"`.
 
 ## Часть 8. Старт агента
@@ -263,55 +308,69 @@ fake() { printf '#!/bin/sh\necho "restic %s compiled with go1.22.1 on linux/amd6
 Сервер не нужен для отказов: агент должен завершиться до сети.
 `start` — `timeout 10 "$AG" --config "$H/agent.yaml" >"$QA/sout" 2>"$QA/serr"; echo "exit=$?"; cat "$QA/sout" "$QA/serr"`.
 
-51. `mkcfg "$QA/nope-restic"; start`
+58. `mkcfg "$QA/nope-restic"; start`
     → сразу `exit=1`; stderr начинается с `sard-agent: `, содержит
     `RESTIC_NOT_FOUND`, `restic.path`, путь, `$RMIN`; в stdout нет `connecting to`.
-52. `mkcfg ""; start` → `exit=1`; путь `$PWD/agent/bin/restic`, «restic.path не задан».
-53. `mkcfg "$(fake 0.18.1)"; start` → `exit=1`; `RESTIC_TOO_OLD`, `0.18.1`, `$RMIN`.
-54. `mkcfg "$QA/hello"; start` → `exit=1`; `RESTIC_UNUSABLE`, путь.
-55. Порядок: `mkcfg "$QA/nope-restic"; chmod 0644 "$H/sec/main.pass"; start; chmod 0600 "$H/sec/main.pass"`
+59. `mkcfg ""; start` → `exit=1`; путь `$PWD/agent/bin/restic`, «restic.path не задан».
+60. `mkcfg "$(fake 0.18.1)"; start` → `exit=1`; `RESTIC_TOO_OLD`, `0.18.1`, `$RMIN`.
+61. `mkcfg "$QA/hello"; start` → `exit=1`; `RESTIC_UNUSABLE`, путь.
+62. Порядок: `mkcfg "$QA/nope-restic"; chmod 0644 "$H/sec/main.pass"; start; chmod 0600 "$H/sec/main.pass"`
     → `exit=1`; сообщение A1 о `password_file`; `RESTIC_NOT_FOUND` нет.
-56. Для `mkcfg "$(fake 0.19.0)"`, `mkcfg "$(fake 0.20.0)"` и `mkcfg "$RB"`:
+63. Для `mkcfg "$(fake 0.19.0)"`, `mkcfg "$(fake 0.20.0)"` и `mkcfg "$RB"`:
     выполнить части «Подготовка» и 2 `docs/qa/agent-enroll.md` для этого
     `$H` (сервер поднят, агент зарегистрирован), `start`
     → в stdout `connecting to`, `exit=124`, `RESTIC_TOO_OLD` нет.
-57. enroll без restic: `mkcfg "$QA/nope-restic"`, новый токен, `rm "$H"/tls/*`;
+64. enroll без restic: `mkcfg "$QA/nope-restic"`, новый токен, `rm "$H"/tls/*`;
     `"$AG" enroll --config "$H/agent.yaml" --token <токен>` (адрес сервера в
     конфиге) → `exit=0`.
 
 ## Часть 9. Сервер получает repository_id (хост с пакетом deb/rpm)
 
-58. На хосте с установленным пакетом агент зарегистрирован, служба запущена;
+65. На хосте с установленным пакетом агент зарегистрирован, служба запущена
+    (systemd создал `/var/cache/sard/restic`, владелец `sard-agent`);
     в `/etc/sard/agent.yaml` репозиторий `main` с локальным `url`, каталог для
     файла пароля создан для пользователя службы:
     `sudo install -d -o sard-agent -g sard-agent -m 0700 /etc/sard/restic`;
     `password_file: /etc/sard/restic/main.pass`. Перезапустить службу.
     `$PSQL "select name, backend, repository_id from agent_repositories where agent_id = '<id>'"`
     → `main | local | ` (id пуст).
-59. `sudo -u sard-agent sard-agent repo init --generate-password main`
+66. `sudo -u sard-agent sard-agent repo init --generate-password main`
     → `exit=0`; владелец файла пароля — `sard-agent`, права `600`; вывод
-    называет repository_id `X`. `sudo -u sard-agent sard-agent repo list`
+    называет repository_id `X`; `sudo ls -A /var/cache/sard/restic | grep -c '^\.sard-init-'`
+    → `0`. `sudo -u sard-agent sard-agent repo list`
     → `main local initialized X`.
-60. До перезапуска: запрос шага 58 → id по-прежнему пуст (конфиг не
+67. До перезапуска: запрос шага 65 → id по-прежнему пуст (конфиг не
     перечитывается; при обрыве связи id может прийти раньше — это не дефект).
-61. `sudo systemctl restart sard-agent`; запрос шага 58 → `main | local | X`.
-62. От root без `sudo -u`: `sudo sard-agent repo init --generate-password other`
-    (второй репозиторий в конфиге) → файл пароля принадлежит `root`;
+68. `sudo systemctl restart sard-agent`; запрос шага 65 → `main | local | X`.
+69. Файл пароля в каталоге root (В8а): второй репозиторий `third` в конфиге с
+    локальным `url` и `password_file: /etc/sard/third.pass`;
+    `stat -c '%U %a' /etc/sard` → `root 755`;
+    `head -c 32 /dev/urandom | base64 | sudo install -o sard-agent -g sard-agent -m 0600 /dev/stdin /etc/sard/third.pass`;
+    `sudo -u sard-agent sard-agent repo init third`
+    → `exit=0`; в выводе нет `PASSWORD_FILE_WRITE` и `LOCK_WRITE`;
+    `sudo ls -A /etc/sard | grep -c '^\.sard-init-'` → `0`.
+70. От root без `sudo -u`: `sudo sard-agent repo init --generate-password other`
+    (ещё один репозиторий в конфиге) → файл пароля принадлежит `root`;
+    `sudo ls -A /var/cache/sard/restic | grep -c '^\.sard-init-'` → `0`;
     `sudo systemctl restart sard-agent` → служба не стартует, в журнале
     сообщение A1 о владельце файла. Это ожидаемо и описано в
     `docs/operations/repo-init.md`.
-63. `docs/operations/repo-init.md` существует и говорит: выполнять команды от
+71. `docs/operations/repo-init.md` существует и говорит: выполнять команды от
     имени пользователя службы (`sudo -u sard-agent`); сохранить копию файла
-    пароля вне хоста; перезапустить службу после инициализации; таблицы кодов
-    выхода repo init и repo list совпадают со справками.
+    пароля вне хоста; перезапустить службу после инициализации;
+    `restic.cache_dir` должен существовать и быть доступен на запись
+    пользователю команды (пакет: создаётся при старте службы; другой путь —
+    создать самому), иначе `LOCK_WRITE`; таблицы кодов выхода repo init и
+    repo list совпадают со справками.
 
 ## Часть 10. Секреты не утекают
 
-64. `grep -cF "$PASS" "$QA/all"` → `0`; `grep -cF "$ENVV" "$QA/all"` → `0`;
+72. `grep -cF "$PASS" "$QA/all"` → `0`; `grep -cF "$ENVV" "$QA/all"` → `0`;
     `grep -cF "$URLM" "$QA/all"` → `0`; то же для `$QA/serr`.
 
 Вручную не воспроизводятся и проверяются тестами `@local` с теми же
 названиями: гонка «репозиторий создан между проверкой и init», непредусмотренный
 вывод restic, restic, печатающий значения из `env_file`, `BACKEND_REFUSED` в
 строке списка, прерывание списка, агент через символьную ссылку с restic в
-каталоге настоящего файла.
+каталоге настоящего файла, блокировка в каталоге кэша по умолчанию при
+незаданном `restic.cache_dir`.
