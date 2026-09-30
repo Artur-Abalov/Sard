@@ -2,9 +2,11 @@
 
 Сценарии: `docs/specs/agent/repo-init.feature`. Ответы владельца на вопросы
 В1–В9 — 2026-09-30; спецификация в целом, решения С1–С11 и Л1–Л10 ждут
-утверждения владельцем. Поправка 2026-09-30 (решение владельца В8а, ADR 0028):
-блокировка init — в `restic.cache_dir`, причина `LOCK_WRITE`; решения С12–С14
-ждут утверждения. Классы и номера кодов выхода — A2b
+утверждения владельцем. Поправка 2026-09-30 (решения владельца В8а и В8б,
+ADR 0028): блокировка init — в `restic.cache_dir`, причина `LOCK_WRITE`;
+пакеты deb/rpm создают `/var/cache/sard/restic` при установке. Поправка и
+решения С12–С14 утверждены владельцем 2026-09-30 (передано координатором).
+Классы и номера кодов выхода — A2b
 (`docs/specs/agent/agent-enroll.feature`, В3; ADR 0025).
 
 Выполнима после реализации A5b. Ожидаемый результат указан после «→» в
@@ -324,10 +326,38 @@ locks() { find "$QA/cache" "$H/sec" -maxdepth 1 -name '.sard-init-*' 2>/dev/null
     `"$AG" enroll --config "$H/agent.yaml" --token <токен>` (адрес сервера в
     конфиге) → `exit=0`.
 
-## Часть 9. Сервер получает repository_id (хост с пакетом deb/rpm)
+## Часть 9. Пакет deb/rpm: каталог кэша и repository_id на сервере
 
-65. На хосте с установленным пакетом агент зарегистрирован, служба запущена
-    (systemd создал `/var/cache/sard/restic`, владелец `sard-agent`);
+Пакет — из `make package` (`dist/`). Шаги 65а–65д — в чистом контейнере
+дистрибутива (Debian 12 для deb, Rocky 9 для rpm) с systemd, служба не
+включена и не запускалась; выполнить для каждого формата.
+
+65а. `ls -d /var/cache/sard/restic` → нет каталога. Установить пакет
+     (`apt install ./dist/sard-agent_*.deb` или `dnf install ./dist/sard-agent-*.rpm`)
+     → `stat -c '%U %G %a' /var/cache/sard/restic` → `sard-agent sard-agent 700`;
+     `systemctl is-active sard-agent` → `inactive`.
+65б. До первого старта службы: `/etc/sard/agent.yaml` с `server.address`,
+     `tls.*` и репозиторием `main` (`url: /srv/qa-repo`, каталог `/srv`
+     доступен на запись `sard-agent`, `password_file: /etc/sard/restic/main.pass`,
+     `sudo install -d -o sard-agent -g sard-agent -m 0700 /etc/sard/restic`),
+     без `restic.cache_dir`;
+     `sudo -u sard-agent sard-agent repo init --generate-password main; echo "exit=$?"`
+     → `exit=0`; в выводе нет `LOCK_WRITE`;
+     `sudo ls -A /var/cache/sard/restic | grep -c '^\.sard-init-'` → `0`;
+     `systemctl is-active sard-agent` → `inactive`.
+65в. `sudo touch /var/cache/sard/restic/F; sudo chown root:root /var/cache/sard/restic; sudo chmod 0755 /var/cache/sard/restic`;
+     переустановить пакет (`apt install --reinstall …` / `dnf reinstall …`)
+     → `ls /var/cache/sard/restic/F` → есть;
+     `stat -c '%U %G %a' /var/cache/sard/restic` → `sard-agent sard-agent 700`.
+65г. После регистрации агента (`docs/qa/agent-enroll.md`)
+     `sudo systemctl start sard-agent`
+     → `stat -c '%a' /var/cache/sard/restic` → `700` (старт службы права не
+     меняет).
+65д. Удалить пакет (`apt remove sard-agent` / `dnf remove sard-agent`)
+     → `ls /var/cache/sard/restic/F` → есть.
+     Архив: `tar tzf dist/sard-agent_*_linux_amd64.tar.gz | grep -c 'var/cache'` → `0`.
+
+65. На хосте с установленным пакетом агент зарегистрирован, служба запущена;
     в `/etc/sard/agent.yaml` репозиторий `main` с локальным `url`, каталог для
     файла пароля создан для пользователя службы:
     `sudo install -d -o sard-agent -g sard-agent -m 0700 /etc/sard/restic`;
@@ -359,8 +389,9 @@ locks() { find "$QA/cache" "$H/sec" -maxdepth 1 -name '.sard-init-*' 2>/dev/null
     имени пользователя службы (`sudo -u sard-agent`); сохранить копию файла
     пароля вне хоста; перезапустить службу после инициализации;
     `restic.cache_dir` должен существовать и быть доступен на запись
-    пользователю команды (пакет: создаётся при старте службы; другой путь —
-    создать самому), иначе `LOCK_WRITE`; таблицы кодов выхода repo init и
+    пользователю команды (пакет deb/rpm создаёт каталог по умолчанию при
+    установке; архив tar.gz или другой путь — создать самому, владелец —
+    пользователь службы, права 0700), иначе `LOCK_WRITE`; таблицы кодов выхода repo init и
     repo list совпадают со справками.
 
 ## Часть 10. Секреты не утекают

@@ -29,4 +29,4 @@
 | [0025](0025-grpc-error-model.md) | Модель ошибок gRPC: `google.rpc.ErrorInfo` с доменом `sard.dev` |
 | [0026](0026-agent-stream-manager.md) | Менеджер стримов агентов: реестр в памяти и правило дубликата |
 | [0027](0027-plugin-sdk.md) | SDK плагинов-источников: шаги, два способа бэкапа, валидация, секреты |
-| [0028](0028-repo-init-lock.md) | Блокировка `sard-agent repo init` в `restic.cache_dir` (предложено) |
+| [0028](0028-repo-init-lock.md) | Блокировка `sard-agent repo init` в `restic.cache_dir` |
