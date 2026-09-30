@@ -33,8 +33,9 @@ import (
 )
 
 type itRepo struct {
-	cli *restic.CLI
-	dir string
+	cli      *restic.CLI
+	dir      string
+	password string // the password file
 }
 
 func pinnedRestic(t *testing.T) string {
@@ -56,7 +57,7 @@ func newRepo(t *testing.T) itRepo {
 	if err := os.WriteFile(password, []byte("integration\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	r := itRepo{dir: filepath.Join(tmp, "repo")}
+	r := itRepo{dir: filepath.Join(tmp, "repo"), password: password}
 	r.cli = restic.New(restic.Options{
 		Binary:   pinnedRestic(t),
 		CacheDir: filepath.Join(tmp, "cache"),
