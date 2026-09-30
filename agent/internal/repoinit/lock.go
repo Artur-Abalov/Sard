@@ -5,12 +5,13 @@ package repoinit
 
 import (
 	"errors"
-	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"syscall"
+
+	"github.com/Artur-Abalov/sard/agent/internal/config"
 )
 
 // ErrLockHeld: another init of the repository is running on this host.
