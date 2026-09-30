@@ -19,11 +19,27 @@ class RunsConfiguration {
         clock: Clock,
     ) = Sources(sessions, clock, UuidV7(clock, SecureRandom()))
 
+    /** Every [RunFinishedListener] bean (S9) hears each finished run. */
+    @Bean
+    fun runAnnouncer(
+        sessions: TenantSessions,
+        listeners: ObjectProvider<RunFinishedListener>,
+    ) = RunAnnouncer(sessions, RunFinishedPublisher(listeners.orderedStream().toList()))
+
     @Bean
     fun stepTransitions(
         sessions: TenantSessions,
         clock: Clock,
-    ) = StepTransitions(sessions, clock)
+        announcer: RunAnnouncer,
+    ) = StepTransitions(sessions, clock, announcer)
+
+    @Bean
+    fun stepResults(
+        sessions: TenantSessions,
+        clock: Clock,
+        transitions: StepTransitions,
+        announcer: RunAnnouncer,
+    ) = StepResults(sessions, clock, UuidV7(clock, SecureRandom()), transitions, announcer)
 
     @Bean
     fun stepCounts(sessions: TenantSessions) = StepCounts(sessions)

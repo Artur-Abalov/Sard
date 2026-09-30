@@ -9,6 +9,7 @@ import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.fail
 
 /**
@@ -18,10 +19,9 @@ import kotlin.test.fail
  * before running anything: REJECTED with "unknown plugin" (the executor checks the plugin
  * first, agent/internal/executor/command.go).
  *
- * Until S7 the server's result handler only logs ids and the status (LoggingInbound, debug):
- * that line is the evidence, and the step stays dispatched. The run rows are written by SQL
- * because the REST API for runs comes with S8b and a test hook on the server is ruled out
- * (ADR 0020); the rows are what `Runs.start` writes.
+ * Since S7a the result is recorded: the step is rejected with the agent's message and its run
+ * failed. The run rows are written by SQL because the REST API for runs comes with S8b and a
+ * test hook on the server is ruled out (ADR 0020); the rows are what `Runs.start` writes.
  */
 class RunStepSeamTest {
     @Test
@@ -31,9 +31,8 @@ class RunStepSeamTest {
 
         sard.track(AgentContainer.ALIAS, AgentContainer.of(sard, agent)).start()
 
-        await("step $stepId dispatched") { statusOf(stepId) == "dispatched" }
-        val handled = "agent ${agent.agentId} result of command $stepId: STEP_STATUS_REJECTED"
-        await("'$handled' in the server log") { handled in sard.server.logs }
+        await("step $stepId rejected") { statusOf(stepId) == "rejected" }
+        assertEquals(listOf("unknown plugin \"$PLUGIN\"", "failed"), messageAndRunStatus(stepId))
     }
 
     /** A source whose plugin the agent lacks, its manual run and the run's queued backup step. */
@@ -92,6 +91,15 @@ class RunStepSeamTest {
             }
         }
 
+    private fun messageAndRunStatus(stepId: UUID): List<String?> =
+        sard.database().use { connection ->
+            val sql = "SELECT s.message, r.status FROM run_steps s JOIN runs r ON r.id = s.run_id WHERE s.id = ?"
+            connection.prepareStatement(sql).use { query ->
+                query.setObject(1, stepId)
+                query.executeQuery().use { if (it.next()) listOf(it.getString(1), it.getString(2)) else emptyList() }
+            }
+        }
+
     private fun await(
         what: String,
         condition: () -> Boolean,
@@ -110,11 +118,7 @@ class RunStepSeamTest {
 
         @JvmField
         @RegisterExtension
-        val sard =
-            SardEnvironment(
-                // LoggingInbound, the result handler until S7, logs at debug.
-                mapOf("LOGGING_LEVEL_DEV_SARD_SERVER_AGENTS_STREAM" to "DEBUG"),
-            )
+        val sard = SardEnvironment()
 
         private val TIMEOUT = Duration.ofSeconds(60)
         private val POLL = Duration.ofMillis(500)

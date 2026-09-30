@@ -163,19 +163,21 @@ run_steps                     тенант — одна команда аген�
   -- dispatched, которого нет в Hello, отправляется снова: агент не исполняет известный command_id
   -- повторно (A4). Правило и окно — черновик ADR S6a (00XX-draft-run-dispatch).
 
-step_logs                     тенант — LogChunk, секционирована PARTITION BY RANGE (received_at)
-  (step_id, seq, received_at) PK, step_id → run_steps, received_at, time, level, text
+step_logs                     тенант — LogChunk, секционирована PARTITION BY RANGE (received_at) · реализовано (S7a)
+  (tenant_id, step_id, seq, received_at) PK, (tenant_id, step_id) → run_steps, received_at, time, level, text
+  -- seq выдаёт сервер (в LogChunk его нет) из run_steps.log_lines; лимиты — run_steps.log_bytes, log_truncated
   -- ключ секционирования — время сервера, а не агента: часы агента могут врать,
   -- и строка не нашла бы секцию. Секции месячные, сервер создаёт их заранее;
   -- срок хранения — sard.logs.retention (по умолчанию 90 дней), истёкшие секции удаляются
   -- целиком (DROP), без DELETE. Срок глобальный: секционирование по времени не делит тенантов.
 
-snapshots                     тенант — снимки restic, созданные Sard · история
+snapshots                     тенант — снимки restic, созданные Sard · история · реализовано (S7a)
   id PK, source_id NOT NULL → sources, step_id NOT NULL → run_steps, agent_id → agents,
   repository_name, repository_id NOT NULL, snapshot_id, total_bytes, added_bytes, created_at,
   forgotten_at                 -- restic forget удалил снимок; проверка не выдаётся за живую
   UNIQUE (tenant_id, repository_id, snapshot_id)
   UNIQUE (tenant_id, id, source_id)   -- цель FK из restore_verifications
+  UNIQUE (tenant_id, step_id)         -- S7a: один снимок на шаг; repository_name — из шага, в BackupOutput его нет
 
 restore_verifications         тенант — доказательство восстановимости (ADR 0008, п. 3) · история
   id PK, (snapshot_id, source_id) → snapshots (id, source_id), step_id → run_steps,
@@ -211,6 +213,6 @@ Enterprise-модуль хранит свои таблицы в собствен
 - **Контекст тенанта вне HTTP-запроса.** Поиск токена до тенанта решён (S2a, «Явный тенант и системный доступ»). Тенант gRPC-вызова агента решён в S3 («Явный тенант и системный доступ»): из сертификата, подтверждённого записью `agent_certificates`. Остаётся скан планировщика по всем тенантам (кандидат — ещё один вызов `TenantSessions.system`).
 - **Пользователи и роли.** В ядре — вместе с аутентификацией; вероятная форма — глобальная `users` и `memberships (tenant_id, user_id, role)`: оператор MSP видит нескольких тенантов.
 - **Каналы уведомлений** (токены Telegram, SMTP) — где хранить учётные данные сервера, решим на этапе уведомлений в духе ADR 0008.
-- **`BackupOutput.repository_id`.** `snapshots.repository_id NOT NULL`, а `BackupOutput` в контракте его не несёт; копировать из `agent_repositories`, где id может быть пустым, — значит терять снимки репозиториев с неизвестным id. Нужное аддитивное поле в proto — на этапе «первый бэкап».
+- ~~**`BackupOutput.repository_id`.**~~ Решено: поле `repository_id = 4` добавлено в proto (A6a, OQ-018), S7a пишет его в `snapshots`.
 - **Общий `repository_id` у агентов разных тенантов** (вероятная ошибка конфигурации MSP). Поиск идёт сквозь тенанты, то есть ещё один вызов `system`; в путь Register не включён (S4a, решение владельца) — кандидат на отдельную системную проверку или отчёт.
 - **RLS вторым рубежом** под `@TenantId` — если появится нативный SQL в объёме, который не проверить ревью.
