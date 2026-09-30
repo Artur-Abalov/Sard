@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
@@ -24,9 +25,10 @@ type Repository interface {
 	ID(ctx context.Context) (string, error)
 	// Init creates the repository and returns its id.
 	Init(ctx context.Context) (string, error)
-	// Backup stores req.Paths as a new snapshot. progress, if not nil, is
-	// called as restic reports it. When some files could not be read the
-	// snapshot exists anyway: the summary is returned with a *PartialError.
+	// Backup stores req.Paths, or the stream req.Stdin, as a new snapshot.
+	// progress, if not nil, is called as restic reports it. When some files
+	// could not be read the snapshot exists anyway: the summary is returned
+	// with a *PartialError.
 	Backup(ctx context.Context, req BackupRequest, progress func(Progress)) (BackupSummary, error)
 	// Restore writes snapshot snapshotID into the target directory.
 	Restore(ctx context.Context, snapshotID, target string) error
@@ -105,7 +107,7 @@ func New(opts Options, repo config.Repository) *CLI {
 // ID runs `restic cat config` and returns the repository id.
 func (c *CLI) ID(ctx context.Context) (string, error) {
 	var out bytes.Buffer
-	if _, err := c.runRepo(ctx, []string{"cat", "config"}, collect(&out)); err != nil {
+	if _, err := c.runRepo(ctx, call{args: []string{"cat", "config"}, stdout: collect(&out)}); err != nil {
 		return "", err
 	}
 	var cfg struct {
@@ -118,7 +120,7 @@ func (c *CLI) ID(ctx context.Context) (string, error) {
 // Init runs `restic init` and returns the new repository's id.
 func (c *CLI) Init(ctx context.Context) (string, error) {
 	var out bytes.Buffer
-	if _, err := c.runRepo(ctx, []string{"init", "--json"}, collect(&out)); err != nil {
+	if _, err := c.runRepo(ctx, call{args: []string{"init", "--json"}, stdout: collect(&out)}); err != nil {
 		return "", err
 	}
 	var msg struct {
@@ -141,22 +143,31 @@ func (c *CLI) Restore(ctx context.Context, snapshotID, target string) error {
 	if snapshotID == "" || target == "" {
 		return fmt.Errorf("%w: snapshot and target are required", ErrInvalidRequest)
 	}
-	_, err := c.runRepo(ctx, []string{"restore", "--json", "--target", target, "--", snapshotID}, nil)
+	_, err := c.runRepo(ctx, call{args: []string{"restore", "--json", "--target", target, "--", snapshotID}})
 	return err
 }
 
+// call is one restic invocation; zero fields discard or leave empty.
+type call struct {
+	args   []string
+	stdout func(line []byte)
+	stdin  io.Reader
+	// stderr sees each stderr line after the wrapper has.
+	stderr func(line []byte)
+}
+
 // runRepo runs a restic command against the repository.
-func (c *CLI) runRepo(ctx context.Context, args []string, stdout func([]byte)) (*result, error) {
+func (c *CLI) runRepo(ctx context.Context, cl call) (*result, error) {
 	env, err := c.repoEnv(ctx)
 	if err != nil {
 		return &result{}, err
 	}
-	return c.run(ctx, env, args, stdout)
+	return c.run(ctx, env, cl)
 }
 
 // run runs a restic command and turns a non-zero exit code into an error.
-func (c *CLI) run(ctx context.Context, env, args []string, stdout func([]byte)) (*result, error) {
-	res, err := c.start(ctx, env, args, stdout)
+func (c *CLI) run(ctx context.Context, env []string, cl call) (*result, error) {
+	res, err := c.start(ctx, env, cl)
 	if err != nil {
 		return res, err
 	}
@@ -164,14 +175,15 @@ func (c *CLI) run(ctx context.Context, env, args []string, stdout func([]byte)) 
 }
 
 // start runs restic; the error covers only a failed start or cancellation.
-func (c *CLI) start(ctx context.Context, env, args []string, stdout func([]byte)) (*result, error) {
-	res := &result{cmd: "restic " + args[0]}
+func (c *CLI) start(ctx context.Context, env []string, cl call) (*result, error) {
+	res := &result{cmd: "restic " + cl.args[0]}
 	code, err := c.opts.Exec.Run(ctx, Command{
 		Path:   c.opts.Binary,
-		Args:   args,
+		Args:   cl.args,
 		Env:    env,
-		Stdout: stdout,
-		Stderr: res.stderr(c.opts.OnStderr),
+		Stdin:  cl.stdin,
+		Stdout: cl.stdout,
+		Stderr: res.stderr(c.opts.OnStderr, cl.stderr),
 	})
 	res.code = code
 	if ctxErr := ctx.Err(); ctxErr != nil {
@@ -199,9 +211,12 @@ type result struct {
 	items []ItemError // per-file errors of backup --json
 }
 
-func (r *result) stderr(forward func(string)) func([]byte) {
+func (r *result) stderr(forward func(string), observe func([]byte)) func([]byte) {
 	return func(line []byte) {
 		forward(string(line))
+		if observe != nil {
+			observe(line)
+		}
 		var msg message
 		if json.Unmarshal(line, &msg) != nil {
 			if bytes.HasPrefix(line, []byte("Fatal: ")) {

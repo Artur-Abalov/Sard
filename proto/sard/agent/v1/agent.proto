@@ -270,6 +270,9 @@ message BackupOutput {
   uint64 total_bytes = 2;
   // Bytes actually added to the repository after deduplication.
   uint64 added_bytes = 3;
+  // restic's id of the repository the snapshot is in (64 lower-case hex
+  // characters), as in RepositoryInfo.repository_id; not a secret.
+  string repository_id = 4;
 }
 
 message RestoreOutput {

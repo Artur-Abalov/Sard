@@ -16,14 +16,6 @@ import (
 // ProtocolVersion is the version of the agent contract this agent speaks.
 const ProtocolVersion = 1
 
-// builtinActions are the actions every built-in plugin exposes through
-// sdk.Plugin (prepare → dump → stream for backup and restore, verify).
-var builtinActions = []agentv1.Action{
-	agentv1.Action_ACTION_BACKUP,
-	agentv1.Action_ACTION_RESTORE,
-	agentv1.Action_ACTION_VERIFY,
-}
-
 // Link is the connection to the server (transport.Transport).
 type Link interface {
 	Run(ctx context.Context) error
@@ -31,8 +23,10 @@ type Link interface {
 
 // Agent is the running agent.
 type Agent struct {
-	Link     Link
-	Plugins  *sdk.Registry
+	Link    Link
+	Plugins *sdk.Registry
+	// Handlers run the plugins' steps; their actions are announced.
+	Handlers executor.Registry
 	Hostname string
 	Version  string
 	// OS and Arch are runtime.GOOS and runtime.GOARCH in production.
@@ -70,9 +64,8 @@ func (a *Agent) RegisterRequest(ctx context.Context) *agentv1.RegisterRequest {
 		req.Plugins = append(req.Plugins, &agentv1.Plugin{
 			Name:         name,
 			ConfigSchema: string(p.ConfigSchema()),
-			// Built-in plugins ship with the agent and share its version.
-			Version: a.Version,
-			Actions: builtinActions,
+			Version:      p.Version(),
+			Actions:      a.actions(name),
 		})
 	}
 	return req
@@ -94,9 +87,11 @@ func (a *Agent) repositoryInfos(ctx context.Context) []*agentv1.RepositoryInfo {
 	return infos
 }
 
-// NoHandlers stands in for the plugin handlers (A6) until they are wired in:
-// the executor knows no plugin, so every step is rejected as REJECTED
-// "unknown plugin" without running anything.
-type NoHandlers struct{}
-
-func (NoHandlers) Handler(string) (executor.Handler, bool) { return nil, false }
+// actions are what the plugin's handler runs; none without a handler.
+func (a *Agent) actions(plugin string) []agentv1.Action {
+	h, ok := a.Handlers.Handler(plugin)
+	if !ok {
+		return nil
+	}
+	return h.Actions()
+}

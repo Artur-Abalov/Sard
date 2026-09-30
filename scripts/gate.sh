@@ -81,14 +81,16 @@ gate_go() {
 }
 
 # Integration tests run the pinned restic (agent/internal/restic/restic-version)
-# against a local repository in temporary directories.
+# against a local repository in temporary directories: the wrapper itself
+# and plugins driven through pluginhost.
+AGENT_INTEGRATION_PKGS=(./internal/restic/... ./internal/pluginhost/...)
 gate_agent_integration() {
   local dir="$ROOT/agent"
   say agent "integration tests with the pinned restic"
   "$ROOT/scripts/fetch-restic.sh" || die "agent: fetch restic"
-  (cd "$dir" && go vet -tags integration ./internal/restic/...) || die "agent: go vet (integration)"
-  (cd "$dir" && "$BIN/golangci-lint" run --build-tags integration --config "$ROOT/.golangci.yml" ./internal/restic/...) || die "agent: golangci-lint (integration)"
-  (cd "$dir" && go test -count=1 -tags integration ./internal/restic/...) || die "agent: integration tests"
+  (cd "$dir" && go vet -tags integration "${AGENT_INTEGRATION_PKGS[@]}") || die "agent: go vet (integration)"
+  (cd "$dir" && "$BIN/golangci-lint" run --build-tags integration --config "$ROOT/.golangci.yml" "${AGENT_INTEGRATION_PKGS[@]}") || die "agent: golangci-lint (integration)"
+  (cd "$dir" && go test -count=1 -race -tags integration "${AGENT_INTEGRATION_PKGS[@]}") || die "agent: integration tests"
 }
 
 gate_gen() {

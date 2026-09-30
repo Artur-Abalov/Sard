@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Test source",
+  "type": "object",
+  "properties": {
+    "mode": { "enum": ["paths", "stream"], "title": "Backup mode" },
+    "source": { "type": "string", "minLength": 1, "title": "Directory (paths) or file (stream)" },
+    "exclude": { "type": "array", "items": { "type": "string" }, "title": "Exclude patterns" },
+    "token": { "type": "string", "format": "sard-secret", "title": "Secret that must not be empty" }
+  },
+  "required": ["mode", "source"],
+  "additionalProperties": false
+}

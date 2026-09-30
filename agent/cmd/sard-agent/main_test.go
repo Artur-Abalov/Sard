@@ -13,6 +13,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"io"
 	"math/big"
 	"os"
@@ -126,10 +127,7 @@ func TestConfigWithoutTLSStopsBeforeDialing(t *testing.T) {
 // and a stop is a clean exit.
 func TestValidConfigDialsTheServerUntilStopped(t *testing.T) {
 	dir := t.TempDir()
-	ca := filepath.Join(dir, "ca.pem")
-	if err := os.WriteFile(ca, selfSignedPEM(t), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	ca := writeIdentity(t, dir)
 	cfg := "server:\n  address: 127.0.0.1:1\n" +
 		"tls: {ca_file: " + ca + ", cert_file: " + dir + "/agent.pem, key_file: " + dir + "/agent.key}\n" +
 		"executor: {state_dir: " + dir + "/state}\n"
@@ -145,10 +143,7 @@ func TestValidConfigDialsTheServerUntilStopped(t *testing.T) {
 // The executor's state dir is checked before the agent connects.
 func TestAnUnusableStateDirStopsBeforeDialing(t *testing.T) {
 	dir := t.TempDir()
-	ca := filepath.Join(dir, "ca.pem")
-	if err := os.WriteFile(ca, selfSignedPEM(t), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	ca := writeIdentity(t, dir)
 	cfg := "server:\n  address: 127.0.0.1:1\n" +
 		"tls: {ca_file: " + ca + ", cert_file: " + dir + "/agent.pem, key_file: " + dir + "/agent.key}\n" +
 		"executor: {state_dir: " + ca + "/state}\n" // under a file
@@ -162,6 +157,25 @@ func TestTheExecutorKnowsTheConfiguredRepositories(t *testing.T) {
 	got := repositoryNames([]config.Repository{{Name: "main"}, {Name: "offsite"}})
 	if strings.Join(got, ",") != "main,offsite" {
 		t.Fatalf("names = %v", got)
+	}
+}
+
+func TestEveryConfiguredRepositoryIsOpenedByName(t *testing.T) {
+	repos := openRepositories(config.Config{Repositories: []config.Repository{{Name: "main"}, {Name: "offsite"}}}, restic.Options{})
+	if _, ok := repos.get("offsite"); !ok || len(repos) != 2 {
+		t.Errorf("repositories = %v", repos)
+	}
+	if _, ok := repos.get("nas"); ok {
+		t.Error("an unconfigured repository was found")
+	}
+}
+
+func TestRestoredCopiesLiveInTheExecutorStateDir(t *testing.T) {
+	if got := restoreDir(""); got != "/var/lib/sard-agent/executor/restore" {
+		t.Errorf("default = %q", got)
+	}
+	if got := restoreDir("/srv/sard"); got != "/srv/sard/restore" {
+		t.Errorf("configured = %q", got)
 	}
 }
 

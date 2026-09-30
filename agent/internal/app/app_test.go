@@ -14,6 +14,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/app"
 	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/executor"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
@@ -31,12 +32,27 @@ func (f *fakeLink) Run(context.Context) error {
 
 type plugin struct{ name, schema string }
 
-func (p plugin) Name() string                                     { return p.name }
-func (p plugin) ConfigSchema() []byte                             { return []byte(p.schema) }
-func (plugin) Prepare(context.Context, sdk.Config) error          { return nil }
-func (plugin) Dump(context.Context, sdk.Config) (sdk.Dump, error) { return sdk.Dump{}, nil }
-func (plugin) Stream(context.Context, sdk.Dump, io.Writer) error  { return nil }
-func (plugin) Verify(context.Context, sdk.Config, string) error   { return nil }
+// handlers offers a handler with the given actions per plugin name.
+type handlers map[string][]agentv1.Action
+
+func (h handlers) Handler(name string) (executor.Handler, bool) {
+	actions, ok := h[name]
+	return actionsOnly(actions), ok
+}
+
+type actionsOnly []agentv1.Action
+
+func (a actionsOnly) Actions() []agentv1.Action { return a }
+func (actionsOnly) Run(context.Context, *agentv1.RunStep, executor.Reporter) (*agentv1.StepResult, error) {
+	return nil, nil
+}
+
+func (p plugin) Name() string                                                          { return p.name }
+func (plugin) Version() string                                                         { return "0.9.0" }
+func (p plugin) ConfigSchema() []byte                                                  { return []byte(p.schema) }
+func (plugin) Prepare(context.Context, sdk.Host, sdk.Config) error                     { return nil }
+func (plugin) Dump(context.Context, sdk.Host, sdk.Config) (sdk.Dump, error)            { return sdk.Dump{}, nil }
+func (plugin) Stream(context.Context, sdk.Host, sdk.Config, sdk.Dump, io.Writer) error { return nil }
 
 func newAgent(t *testing.T, link *fakeLink) *app.Agent {
 	t.Helper()
@@ -60,7 +76,8 @@ func newAgent(t *testing.T, link *fakeLink) *app.Agent {
 		return "", sdk.ErrNotImplemented
 	}
 	return &app.Agent{
-		Link: link, Plugins: reg, Hostname: "db1", Version: "1.2.3", OS: "linux", Arch: "amd64",
+		Link: link, Plugins: reg, Handlers: handlers{"files": {agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE}},
+		Hostname: "db1", Version: "1.2.3", OS: "linux", Arch: "amd64",
 		Local: local, RepositoryID: repoID,
 	}
 }
@@ -84,7 +101,9 @@ func TestRegisterRequestAnnouncesPluginsWithSchemasSortedByName(t *testing.T) {
 	for _, p := range registered(t).GetPlugins() {
 		got = append(got, fmt.Sprintf("%s@%s=%s %v", p.GetName(), p.GetVersion(), p.GetConfigSchema(), p.GetActions()))
 	}
-	want := `files@1.2.3={"b":2} [ACTION_BACKUP ACTION_RESTORE ACTION_VERIFY]|mysql@1.2.3={"a":1} [ACTION_BACKUP ACTION_RESTORE ACTION_VERIFY]`
+	// Each plugin has its own version and the actions of its handler; a
+	// plugin without a handler offers none.
+	want := `files@0.9.0={"b":2} [ACTION_BACKUP ACTION_RESTORE]|mysql@0.9.0={"a":1} []`
 	if strings.Join(got, "|") != want {
 		t.Errorf("plugins = %v", got)
 	}
@@ -123,8 +142,3 @@ func TestRunConnectsThroughTheLink(t *testing.T) {
 }
 
 // Until the executor (A4) is wired in, nothing runs and commands are dropped.
-func TestNoHandlersKnowsNoPlugin(t *testing.T) {
-	if h, ok := (app.NoHandlers{}).Handler("files"); ok || h != nil {
-		t.Fatal("NoHandlers offers a handler")
-	}
-}

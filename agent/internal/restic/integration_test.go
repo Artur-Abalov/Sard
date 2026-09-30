@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
@@ -235,7 +236,8 @@ func TestIntegrationCancelledBackup(t *testing.T) {
 	}
 }
 
-// running lists live (non-zombie) processes of the executable bin.
+// running lists live (non-zombie) processes of the executable bin started
+// by this test process; test binaries of other packages run in parallel.
 func running(bin string) []string {
 	var pids []string
 	entries, _ := os.ReadDir("/proc")
@@ -244,9 +246,23 @@ func running(bin string) []string {
 		if err != nil {
 			continue
 		}
-		if exe, err := os.Readlink(filepath.Join("/proc", e.Name(), "exe")); err == nil && exe == bin && alive(pid) {
+		if exe, err := os.Readlink(filepath.Join("/proc", e.Name(), "exe")); err == nil && exe == bin && alive(pid) && parent(pid) == os.Getpid() {
 			pids = append(pids, e.Name())
 		}
 	}
 	return pids
+}
+
+// parent reads the parent pid from /proc/<pid>/stat: "pid (comm) S ppid ...".
+func parent(pid int) int {
+	stat, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+	if err != nil {
+		return -1
+	}
+	fields := strings.Fields(string(stat[bytes.LastIndexByte(stat, ')')+1:]))
+	if len(fields) < 2 {
+		return -1
+	}
+	ppid, _ := strconv.Atoi(fields[1])
+	return ppid
 }

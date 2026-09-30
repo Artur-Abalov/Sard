@@ -30,7 +30,6 @@
 | OQ-015 | Скан планировщика по всем тенантам: кандидат — ещё один вызов `TenantSessions.system`. | отложено | планировщик | ADR 0013, «Отложено» |
 | OQ-016 | Пользователи и роли (`users`, `memberships`). Аутентификация этапа 1 (W1b) сделана без них: один администратор, пароль из окружения; пользователи и роли ушли в enterprise RBAC. | отложено | enterprise RBAC | ADR 0013, «Отложено»; ADR 0021:129 |
 | OQ-017 | Где хранить учётные данные каналов уведомлений (Telegram, SMTP). | отложено | этап уведомлений | ADR 0013, «Отложено» |
-| OQ-018 | `BackupOutput.repository_id` нет в proto, а `snapshots.repository_id NOT NULL`. Нужно аддитивное поле. | отложено | этап «первый бэкап» | ADR 0013, «Отложено» |
 | OQ-019 | RLS вторым рубежом под `@TenantId`. | отложено | если появится нативный SQL | ADR 0013, «Отложено» |
 | OQ-020 | ГОСТ: `crypto_provider` зарезервирован, нужен отдельный ADR. | отложено | позже | ADR 0008, «Отложено» |
 | OQ-021 | Эскроу ключей репозиториев у доверенного хранителя. | отложено | позже | ADR 0008, «Отложено» |
@@ -39,7 +38,6 @@
 | OQ-024 | Подпись пакетов и репозиториев apt/yum; публикация пакетов в релизах GitHub. | отложено | — | ADR 0018, «Отложено» |
 | OQ-025 | Литерал в конструкторе перечисления причин (`enum class Reason(val code: String)`) — если понадобится независимость имён причин от провода. | отложено | владелец | ADR 0025, «Отложено» |
 | OQ-026 | `redactIfToken` в `sard-agent enroll` вычищает токен по шаблону `sard_\S*` и съедает знак сразу за токеном (двоеточие, закрывающую кавычку) и безобидные пути вида `/etc/sard_agent/…`. Утечки нет, портится только текст сообщения. Шаблон по алфавиту токена: `sard_[A-Za-z0-9_-]*(?:\.[0-9a-f]*)?`. | дыра | A2 (агент) | `agent/cmd/sard-agent/enroll_flags.go:215-219`; журнал A2b, третье ревью architect |
-| OQ-027 | Падение `enroll --force` между переименованиями ключа и сертификата оставляет новый ключ со старым сертификатом (окно правила 7, задокументировано). Агент при старте это не распознаёт: нужна проверка, что открытый ключ сертификата совпадает с ключом, с понятным сообщением «незавершённая регистрация». | задача | A6 / старт агента | `agent/internal/enroll/write.go:86`; журнал A2b, ревью architect (F4) |
 | OQ-028 | e2e-тест кладёт ключ, сертификат и CA в контейнер агента вручную, а не через настоящий `sard-agent enroll`. 8 сценариев `@e2e` спецификации `enroll` не автоматизированы, есть только ручные шаги QA. Ручная процедура QA целиком не проходилась; поведение от имени не-root и с IPv6 проверено только тестами на подменах (среда разработки — root, без IPv6). | задача | T2 | `test/e2e/src/test/kotlin/dev/sard/e2e/AgentConnectTest.kt:26`; `docs/specs/agent/agent-enroll.feature:144`; `docs/qa/agent-enroll.md` |
 | OQ-029 | CLAUDE.md, правило 7: агенту разрешены «stdlib, gRPC, protobuf и YAML-парсер», а A2a объявил прямую зависимость `google.golang.org/genproto/googleapis/rpc` (`errdetails.ErrorInfo`, часть модели статусов gRPC, уже была транзитивной). Architect счёл её допустимой; уточнить формулировку правила («gRPC, включая типы статусов `google.rpc`»). | вопрос | владелец | `docs/dependencies.md:15`; журнал A2b, первое ревью architect |
 | OQ-030 | `go-mutesting`, прерванный снаружи (таймаут, перезапуск контейнера), может оставить в дереве мутированный файл и `*.go.tmp`; гейт после этого даёт ложный счёт или зависает. Сейчас защищает только ручная проверка `git status --porcelain agent/ \| grep -v _test.go` перед доверием к счёту и перед коммитом. Кандидат — проверка чистоты дерева в начале и в конце шага мутаций `scripts/gate.sh` (защищённый файл, правит владелец). | дыра | владелец (инструменты) | журнал A2b, раздел hardener, «pitfalls» |
@@ -50,8 +48,17 @@
 | OQ-035 | `SESSION_REQUEST_ATTRIBUTE` выставляется `SessionAuthFilter`, но в production-коде не читается — оставлен как точка расширения для принципала enterprise `TenantResolver`. Если к RBAC не понадобится — убрать. | отложено | enterprise RBAC | `server/src/main/kotlin/dev/sard/server/auth/SessionAuthFilter.kt:24,59`; ADR 0021:89; журнал W1b:222 |
 | OQ-036 | `scripts/gate.sh`, `scripts/crap.sh` и прямой `./gradlew` не берут `flock` на `.gradle/sard-build.lock`, в отличие от целей `make`. Параллельный `make gate-fast` из хука SubagentStop рвёт им `server/build/test-results` (`EOFException`, `NoSuchFileException`). Обход — `flock -w 1800 .gradle/sard-build.lock <команда>`. Кандидат — брать блокировку в самих скриптах (`scripts/gate.sh` защищён, правит владелец). | дыра | владелец (инструменты) | `Makefile:16-19`; журнал W1b:224 |
 | OQ-037 | REST API токенов регистрации не реализован: `EnrollmentTokensController` — контракт S8a, единственная реализация `EnrollmentTokensApi` — `UnimplementedEnrollmentTokensApi`, все четыре операции отвечают 501. W1b снял только блокер `@blocked-d2` (сессия администратора); сценарии с этим тегом ждут S8b. Прежняя запись «закрыто» в этом реестре была ошибкой. | задача | S8b | `server/src/main/kotlin/dev/sard/server/api/UnimplementedApi.kt:24-37`; `EnrollmentTokensController.kt:79-83`; `docs/specs/server/agent-enrollment.feature:86` |
+| OQ-038 | RESTORE агента восстанавливает только в новый каталог `<executor.state_dir>/restore/<command_id>` (0700) и требует `snapshot_id`: цель восстановления (путь, база) и «последний снимок по тегам» из `RunStep` не определены. VERIFY восстанавливает туда же и удаляет копию. | вопрос | A6b / поведенческая схема восстановления | `agent/internal/pluginhost/handler.go:159,173`; ADR 0027 |
+| OQ-039 | Решения specifier С1–С5 в `docs/specs/agent/agent-tls-identity.feature` (порядок проверок, код выхода 1, ошибки файлов, «первый сертификат», префикс `sard-agent: `) реализованы, но ждут утверждения владельцем. | вопрос | владелец | `docs/specs/agent/agent-tls-identity.feature:24-44`; журнал A6a |
 
 ## Закрыто при сверке
+
+### 2026-09-29, A6a (ветка `claude/agent-plugin-sdk-0q6asa`)
+
+| Суть | Чем закрыто |
+|---|---|
+| OQ-018. `BackupOutput.repository_id` нет в proto, а `snapshots.repository_id NOT NULL`. | `proto/sard/agent/v1/agent.proto:275` (`repository_id = 4`, аддитивно, `buf breaking` проходит); агент заполняет его из итогов restic: `agent/internal/pluginhost/handler.go:104`; тест `TestBackupOutputCarriesTheSnapshotAndRepositoryID`. Запись в `snapshots` — S7. |
+| OQ-027. Ключ не от сертификата после прерванного `enroll --force` агент при старте не распознавал. | `agent/internal/tlsid/tlsid.go:22,43`, вызов до подключения — `agent/cmd/sard-agent/main.go:120`; схема `docs/specs/agent/agent-tls-identity.feature`, тесты `agent/cmd/sard-agent/identity_test.go`, `agent/internal/tlsid/tlsid_test.go`. |
 
 ### 2026-09-29, `ff97ae1` (X2)
 

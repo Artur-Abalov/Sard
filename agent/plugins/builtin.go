@@ -5,6 +5,7 @@
 package plugins
 
 import (
+	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/plugins/files"
 	"github.com/Artur-Abalov/sard/agent/plugins/mysql"
 	"github.com/Artur-Abalov/sard/agent/plugins/network"
@@ -12,18 +13,36 @@ import (
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
-// Builtin returns the plugins compiled into the agent.
-func Builtin() []sdk.Plugin {
-	return []sdk.Plugin{postgresql.Plugin{}, mysql.Plugin{}, files.Plugin{}, network.Plugin{}}
+// Builtin returns the plugins compiled into the agent; they share the
+// agent's version.
+func Builtin(agentVersion string) []sdk.Plugin {
+	return []sdk.Plugin{
+		postgresql.Plugin{AgentVersion: agentVersion},
+		mysql.Plugin{AgentVersion: agentVersion},
+		files.Plugin{AgentVersion: agentVersion},
+		network.Plugin{AgentVersion: agentVersion},
+	}
 }
 
 // Registry returns a registry of the built-in plugins. It panics on a
-// duplicate or empty name: that is a programming error, caught by the
-// contract test in this package.
-func Registry() *sdk.Registry {
-	r, err := sdk.NewRegistry(Builtin()...)
+// plugin the registry refuses (a duplicate or invalid name, an invalid
+// version or schema): that is a programming error, caught by the contract
+// test in this package, or an agent version outside the server's format.
+func Registry(agentVersion string) *sdk.Registry {
+	r, err := sdk.NewRegistry(Builtin(agentVersion)...)
 	if err != nil {
 		panic(err)
 	}
 	return r
+}
+
+// Handlers adapts the built-in plugins to the executor. It panics when a
+// schema does not compile: a programming error, caught by the contract
+// test in this package.
+func Handlers(r *sdk.Registry, secrets *pluginhost.Secrets, repos pluginhost.Repositories, restoreDir string) *pluginhost.Handlers {
+	h, err := pluginhost.NewHandlers(r, secrets, repos, restoreDir)
+	if err != nil {
+		panic(err)
+	}
+	return h
 }
