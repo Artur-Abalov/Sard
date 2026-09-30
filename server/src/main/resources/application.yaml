@@ -60,6 +60,12 @@ sard:
       send-queue: 64
       check-interval: 30s
       clock-skew-threshold: 30s
+  run:
+    dispatch:
+      # A running step absent from the agent's Hello is lost after this many heartbeat intervals
+      # without a result (S6a); the check runs every sard.agent.stream.check-interval unless
+      # sard.run.dispatch.check-interval is set.
+      lost-after-heartbeats: 2
 management:
   endpoints:
     web:

@@ -33,6 +33,7 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Primary
 import org.springframework.jdbc.core.JdbcTemplate
 import java.security.KeyPair
 import java.security.KeyPairGenerator
@@ -102,7 +103,9 @@ class StreamTestConfiguration {
     @Bean
     fun clock() = MovableClock(Instant.now().truncatedTo(ChronoUnit.SECONDS))
 
+    /** Primary: S6a's dispatcher is a CommandReconciliation too, and these tests watch the extension points. */
     @Bean
+    @Primary
     fun recordingExtensions() = RecordingExtensions()
 }
 

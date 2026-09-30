@@ -42,6 +42,29 @@ class RunModelTest {
     }
 
     @Test
+    fun `a step is active while queued, dispatched or running`() {
+        val active = MutFlow.underTest { StepState.entries.filter { it.active } }
+        assertEquals(listOf(StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING), active)
+    }
+
+    @Test
+    fun `a run follows its single step, and every failure of the step fails the run`() {
+        val expected =
+            mapOf(
+                StepState.QUEUED to RunState.QUEUED,
+                StepState.DISPATCHED to RunState.DISPATCHED,
+                StepState.RUNNING to RunState.RUNNING,
+                StepState.SUCCEEDED to RunState.SUCCEEDED,
+                StepState.FAILED to RunState.FAILED,
+                StepState.CANCELLED to RunState.CANCELLED,
+                StepState.TIMED_OUT to RunState.FAILED,
+                StepState.REJECTED to RunState.FAILED,
+                StepState.LOST to RunState.FAILED,
+            )
+        for ((step, run) in expected) assertEquals(run, MutFlow.underTest { RunState.following(step) }, "$step")
+    }
+
+    @Test
     fun `triggers and actions are the schema's and read back`() {
         val triggers = MutFlow.underTest { Trigger.entries.map { it.stored } }
         assertEquals(listOf("schedule", "manual", "verification"), triggers)

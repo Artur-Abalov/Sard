@@ -22,7 +22,7 @@ import java.util.UUID
  */
 internal object EnrollmentTokens {
     /** The open core's only tenant (`TenantResolver.DEFAULT_TENANT_ID`, V2__tenants.sql). */
-    private val DEFAULT_TENANT: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
+    val DEFAULT_TENANT: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
     private const val SECRET_BYTES = 32
     private val random = SecureRandom()
 

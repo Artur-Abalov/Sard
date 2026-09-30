@@ -137,3 +137,27 @@ class Runs { fun start(tenantId: UUID, sourceId: UUID): RunView }
 ```
 
 Фаза 2 закончена — СТОП до ревью.
+
+## Фаза 3 — отправка, доставка при подключении, сверка по Hello (2026-09-30)
+
+Ревью фазы 2 — «Пошел» (владелец).
+
+### Сделано
+- `runs/StepTransitions` (реализует `DispatchLedger`): каждый переход — один нативный `UPDATE` шага с `tenant_id` и ожидаемым статусом в `WHERE` (ADR 0013, правило 8) и, если строка сдвинулась, `UPDATE` запуска в той же транзакции по `RunState.following`: `claim` (queued → dispatched), `release` (dispatched → queued), `redispatch` (dispatched, отправлен раньше Hello → dispatched_at = now), `lost` (running → lost, `LOST_MESSAGE`), для S7 — `accepted` (dispatched → running) и `finished` (dispatched|running → финальный). `active(tenant, agent)` — активные шаги агента по `queued_at, id`.
+- `runs/StepCounts.waiting()` — четвёртый вызов `TenantSessions.system` (ADR 0013, список; `ArchitectureTest`).
+- `agents/dispatch/`: `StepDispatcher` (onQueued, onHello, tick; замок на агента; отправка вне транзакций), `LostStepWatch` (кандидаты в памяти), `RunSteps.of` (шаг → proto `RunStep`: command_id = id шага, plugin, config_json, action, repository_name; без timeout и tags), `ConnectionLinks` (над `AgentConnections` и реестром), `MicrometerDispatchMetrics`, `DispatchConfiguration` — бины `CommandReconciliation`, `StepsQueued`, второй `AgentStreamSweeper` для тика.
+- Настройки: `sard.run.dispatch.lost-after-heartbeats` (2; в проекте фазы 1 называлась `lost-after` — переименована по образцу `sard.agent.stream.*-heartbeats`), `sard.run.dispatch.check-interval` (не задана — `sard.agent.stream.check-interval`). В `application.yaml`.
+- Тест S5a: `StreamTestConfiguration.recordingExtensions` помечен `@Primary` — иначе при двух `CommandReconciliation` `getIfUnique` отдаёт `LoggingInbound`, и тесты S5a не видят событий Hello. Поведение тестов S5a не менялось.
+- e2e: `AgentContainer` вынесен из `AgentConnectTest` (без изменения его проверок), `EnrollmentTokens.DEFAULT_TENANT` открыт, `RunStepSeamTest` (тест 9), README и `Pending.kt` обновлены.
+
+### Проверка (тесты постановки)
+- 2 — `DispatchIntegrationTest` (настоящий gRPC-сервер S5a, клиент в тесте, mTLS): онлайн-агент получает `RunStep` с command_id = id шага, плагином, конфигом, репозиторием и `ACTION_BACKUP`; шаг и запуск — `dispatched`, `dispatched_at` = часы.
+- 3 — офлайн: три шага в `queued`; после Hello — три `RunStep` в порядке создания, все `dispatched`, больше ничего.
+- 4 — отказ сессии: `StepDispatcherTest` (фейки) — `QueueFull` и `NotConnected` возвращают шаг в `queued`, раунд останавливается, счётчик; интеграционно — шаг, возвращённый в `queued` у онлайн-агента, доставляется следующим тиком. Настоящий `QueueFull` через gRPC не воспроизводился: маленькие `RunStep` не заполняют окно HTTP/2 (S5a заполнял сообщениями по 64 KiB).
+- 5 — сверка: перечисленный в Hello шаг не отправляется повторно; `dispatched`, которого нет в Hello, отправляется снова (`dispatched_at` обновлён, `sard.run.steps.redispatched` + 1); `running` без Hello — `running` за секунду до окна, `lost` и запуск `failed` по окну, повторно не отправляется; с результатом в окне (`finished`) — остаётся `succeeded`.
+- 6 — гонка: `StepTransitionsIntegrationTest` — оба порядка детерминированы (результат первым — `lost` ничего не меняет; `lost` первым — поздний результат ничего не меняет), 10 раундов параллельных `lost` и `finished`: ровно один `true`, статусы шага и запуска — победителя.
+- 7 — тенант: агент тенанта B после Hello и тика не получает шаг тенанта A, тот остаётся `queued`; все переходы и `active` с чужим тенантом — `false`/пусто.
+- Метрика: после тика `sard.run.steps.queued` = 1, `sard.run.steps.dispatched` = 1.
+- Контроли: без фильтра `running_command_ids` в `onHello` сначала упал только 1 тест — выяснилось, что юнит-тест делал Hello и тик на двух разных экземплярах диспетчера, а интеграционный не двигал часы перед повторным Hello (время отправки = время Hello, повтор не срабатывал и без фильтра). Тесты исправлены; повторный контроль — падают 3 теста (юнит и интеграционный), код восстановлен.
+- `./scripts/gate.sh server fast` — `gate: PASSED (server, fast)`: 674 теста, 0 упавших, покрытие 95.4% (instructions), CRAP ≤ 6 (новый код — максимум 6.0: `AgentOffer.require`, `RunState.following`).
+- mutflow (`-Pmutflow.enabled=true :server:test --rerun`): первый прогон — 4 выживших: граница `lost-after-heartbeats >= 1` (вызов вне `MutFlow.underTest`) и две записи в журнал (сбой `onQueued`, отметка «потерян») — журнал теперь проверяется через `ListAppender`, добавлен тест «результат закрыл шаг до окна — в журнале ничего». Второй прогон — exit 0, 8376 запусков, выживших нет.

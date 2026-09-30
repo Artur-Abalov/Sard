@@ -21,16 +21,28 @@ enum class RunState(
 
     companion object {
         fun of(stored: String): RunState = entries.single { it.stored == stored }
+
+        /** A stage 1 run has one step: it follows it; any failure of the step fails the run (S8a, answer 2). */
+        fun following(step: StepState): RunState =
+            when (step) {
+                StepState.QUEUED -> QUEUED
+                StepState.DISPATCHED -> DISPATCHED
+                StepState.RUNNING -> RUNNING
+                StepState.SUCCEEDED -> SUCCEEDED
+                StepState.CANCELLED -> CANCELLED
+                StepState.FAILED, StepState.TIMED_OUT, StepState.REJECTED, StepState.LOST -> FAILED
+            }
     }
 }
 
 /** A step's status as stored; the proto's final states plus the server's own (ADR 0013, S8a). */
 enum class StepState(
     val stored: String,
+    val active: Boolean = false,
 ) {
-    QUEUED("queued"),
-    DISPATCHED("dispatched"),
-    RUNNING("running"),
+    QUEUED("queued", true),
+    DISPATCHED("dispatched", true),
+    RUNNING("running", true),
     SUCCEEDED("succeeded"),
     FAILED("failed"),
     CANCELLED("cancelled"),

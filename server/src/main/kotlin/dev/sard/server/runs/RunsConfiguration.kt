@@ -20,6 +20,15 @@ class RunsConfiguration {
     ) = Sources(sessions, clock, UuidV7(clock, SecureRandom()))
 
     @Bean
+    fun stepTransitions(
+        sessions: TenantSessions,
+        clock: Clock,
+    ) = StepTransitions(sessions, clock)
+
+    @Bean
+    fun stepCounts(sessions: TenantSessions) = StepCounts(sessions)
+
+    @Bean
     fun runs(
         sessions: TenantSessions,
         clock: Clock,
