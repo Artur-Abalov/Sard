@@ -4,7 +4,12 @@
 package dev.sard.server.agents.results
 
 import dev.sard.proto.agent.v1.BackupOutput
+import dev.sard.proto.agent.v1.ConnectRequest
 import dev.sard.proto.agent.v1.ConnectResponse
+import dev.sard.proto.agent.v1.LogChunk
+import dev.sard.proto.agent.v1.LogLevel
+import dev.sard.proto.agent.v1.StepPhase
+import dev.sard.proto.agent.v1.StepProgress
 import dev.sard.proto.agent.v1.StepResult
 import dev.sard.proto.agent.v1.StepStatus
 import dev.sard.server.TestcontainersConfiguration
@@ -18,6 +23,7 @@ import dev.sard.server.agents.stream.WAIT_SECONDS
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.pki.CertificateAuthority
+import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.RunView
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.SourceDraft
@@ -38,6 +44,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
+import dev.sard.proto.agent.v1.LogLine as ProtoLogLine
 
 private const val REPOSITORY_ID = "5f0c3e2d9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d"
 private const val POLL_MILLIS = 20L
@@ -59,6 +66,7 @@ class ResultsIntegrationTest(
     @Autowired tokens: EnrollmentTokens,
     @LocalGrpcServerPort port: Int,
     @Autowired private val hellos: ReconciledHellos,
+    @Autowired private val clock: MovableClock,
     @Autowired private val registry: AgentSessionRegistry,
     @Autowired private val sources: Sources,
     @Autowired private val runs: Runs,
@@ -79,7 +87,8 @@ class ResultsIntegrationTest(
         jdbc.update("drop trigger if exists snapshots_fail on snapshots")
         for (tenant in listOf(clients, other)) {
             tenant.closeChannels()
-            val tables = listOf("snapshots", "run_steps", "runs", "sources", "agent_plugins", "agent_repositories")
+            val runTables = listOf("snapshots", "step_logs", "run_steps", "runs", "sources")
+            val tables = runTables + listOf("agent_plugins", "agent_repositories")
             for (table in tables) jdbc.update("delete from $table where tenant_id = ?", tenant.tenant)
             tenant.close()
         }
@@ -249,6 +258,135 @@ class ResultsIntegrationTest(
         assertEquals(row, jdbc.queryForMap("select * from run_steps where id = ?", step))
         assertEquals(1, snapshots(run))
         assertEquals(before + 1, counted("repeated"))
+    }
+
+    // --- 4: progress
+
+    private fun Connection.progress(
+        step: UUID,
+        phase: StepPhase,
+        processed: Long,
+    ) = send(
+        ConnectRequest
+            .newBuilder()
+            .setStepProgress(
+                StepProgress
+                    .newBuilder()
+                    .setCommandId(step.toString())
+                    .setPhase(phase)
+                    .setBytesProcessed(processed)
+                    .setBytesTotal(1_000),
+            ).build(),
+    )
+
+    /** Waits until [read] gives [expected]: messages of one stream are handled in order, but after the send returns. */
+    private fun <T> eventually(
+        expected: T,
+        read: () -> T,
+    ) {
+        val deadline = System.nanoTime() + Duration.ofSeconds(WAIT_SECONDS).toNanos()
+        while (read() != expected && System.nanoTime() < deadline) Thread.sleep(POLL_MILLIS)
+        assertEquals(expected, read())
+    }
+
+    private fun progressOf(step: UUID): List<Any?> {
+        val row = jdbc.queryForMap("select status, phase, bytes_processed from run_steps where id = ?", step)
+        return listOf(row["status"], row["phase"], row["bytes_processed"])
+    }
+
+    @Test
+    fun `the first progress starts the step and its run, the next after the interval is written`() {
+        val agent = agent()
+        val connection = greeted(clients, agent)
+        val run = dispatched(agent, connection)
+        val step = run.steps.single().id
+
+        connection.progress(step, StepPhase.STEP_PHASE_ACCEPTED, 0)
+        eventually(listOf<Any?>("running", "accepted", 0L)) { progressOf(step) }
+        assertEquals("running", statuses(run)[1])
+
+        connection.progress(step, StepPhase.STEP_PHASE_ACCEPTED, 5)
+        connection.handled(step)
+        assertEquals(listOf<Any?>("running", "accepted", 0L), progressOf(step))
+        clock.now = clock.now + Duration.ofSeconds(5)
+        connection.progress(step, StepPhase.STEP_PHASE_ACCEPTED, 7)
+
+        eventually(listOf<Any?>("running", "accepted", 7L)) { progressOf(step) }
+    }
+
+    @Test
+    fun `progress within the interval is not written, a result behind it shows it was handled`() {
+        val agent = agent()
+        val connection = greeted(clients, agent)
+        val step = dispatched(agent, connection).steps.single().id
+        connection.progress(step, StepPhase.STEP_PHASE_UPLOADING, 10)
+        eventually(listOf<Any?>("running", "uploading", 10L)) { progressOf(step) }
+
+        connection.progress(step, StepPhase.STEP_PHASE_UPLOADING, 20)
+        connection.progress(step, StepPhase.STEP_PHASE_UPLOADING, 30)
+        connection.result(
+            StepResult
+                .newBuilder()
+                .setCommandId(step.toString())
+                .setStatus(StepStatus.STEP_STATUS_FAILED)
+                .build(),
+        )
+        connection.nextAck()
+
+        assertEquals(listOf<Any?>("failed", "uploading", 10L), progressOf(step))
+    }
+
+    // --- 5: logs
+
+    private fun Connection.log(
+        step: UUID,
+        vararg texts: String,
+    ) = send(
+        ConnectRequest
+            .newBuilder()
+            .setLogChunk(
+                LogChunk
+                    .newBuilder()
+                    .setCommandId(step.toString())
+                    .addAllLines(
+                        texts.map {
+                            ProtoLogLine
+                                .newBuilder()
+                                .setLevel(LogLevel.LOG_LEVEL_INFO)
+                                .setText(it)
+                                .build()
+                        },
+                    ),
+            ).build(),
+    )
+
+    /** A barrier: one of a stream's messages is handled after all before it, so once this line is stored, they were. */
+    private fun Connection.handled(step: UUID) {
+        val marker = UUID.randomUUID().toString()
+        log(step, marker)
+        eventually(1) {
+            val sql = "select count(*) from step_logs where step_id = ? and text = ?"
+            jdbc.queryForObject(sql, Int::class.java, step, marker)
+        }
+    }
+
+    @Test
+    fun `lines of several chunks in a row keep their order under the server's sequence`() {
+        val agent = agent()
+        val connection = greeted(clients, agent)
+        val step = dispatched(agent, connection).steps.single().id
+
+        connection.log(step, "one", "two")
+        connection.log(step, "three")
+        connection.log(step, "four", "five", "six")
+
+        val texts = listOf("one", "two", "three", "four", "five", "six")
+        val expected = texts.mapIndexed { i, text -> listOf<Any?>(i + 1L, text) }
+        eventually(expected) {
+            jdbc
+                .queryForList("select seq, text from step_logs where step_id = ? order by seq", step)
+                .map { listOf(it["seq"], it["text"]) }
+        }
     }
 
     // --- 3: someone else's command

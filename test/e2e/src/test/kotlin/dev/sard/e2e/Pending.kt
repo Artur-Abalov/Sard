@@ -12,8 +12,9 @@ package dev.sard.e2e
 /**
  * Transport + executor with the real server (plan, tail 5).
  *
- * Enable when: S7 (the server records progress and results) is in main. S6a
- * (steps sent over Connect) is, see [RunStepSeamTest].
+ * Enable when: S7a (the server records progress and results, see
+ * [ResultAckSeamTest]) is in main and a plugin actually runs a step: every
+ * built-in plugin still answers ErrNotImplemented (agent/plugins/*/plugin.go).
  *
  * Steps:
  * 1. Enroll an agent ([AgentEnroller]) and start it as in [AgentConnectTest],

@@ -4,7 +4,6 @@
 package dev.sard.e2e
 
 import org.junit.jupiter.api.extension.RegisterExtension
-import java.sql.Timestamp
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -27,69 +26,13 @@ class RunStepSeamTest {
     @Test
     fun `a queued step reaches the real agent on Hello and its rejection reaches the server`() {
         val agent = AgentEnroller.enroll(sard, EnrollmentTokens.create(sard))
-        val stepId = queueStep(UUID.fromString(agent.agentId))
+        val stepId = RunRows.queueStep(sard, UUID.fromString(agent.agentId), PLUGIN)
 
         sard.track(AgentContainer.ALIAS, AgentContainer.of(sard, agent)).start()
 
-        await("step $stepId rejected") { statusOf(stepId) == "rejected" }
+        await("step $stepId rejected") { RunRows.statusOf(sard, stepId) == "rejected" }
         assertEquals(listOf("unknown plugin \"$PLUGIN\"", "failed"), messageAndRunStatus(stepId))
     }
-
-    /** A source whose plugin the agent lacks, its manual run and the run's queued backup step. */
-    private fun queueStep(agentId: UUID): UUID {
-        val (source, run, step) = List(3) { UUID.randomUUID() }
-        val now = Timestamp.from(Instant.now())
-        sard.database().use { connection ->
-            fun insert(
-                sql: String,
-                vararg values: Any,
-            ) = connection.prepareStatement(sql).use { statement ->
-                values.forEachIndexed { i, value -> statement.setObject(i + 1, value) }
-                statement.executeUpdate()
-            }
-            insert(
-                """
-                INSERT INTO sources (id, tenant_id, agent_id, name, plugin, config, repository_name,
-                                     created_at, updated_at)
-                VALUES (?, ?, ?, 'seam', '$PLUGIN', '{}'::jsonb, 'main', ?, ?)
-                """.trimIndent(),
-                source,
-                EnrollmentTokens.DEFAULT_TENANT,
-                agentId,
-                now,
-                now,
-            )
-            insert(
-                "INSERT INTO runs (id, tenant_id, source_id, trigger, status, queued_at) VALUES (?, ?, ?, 'manual', 'queued', ?)",
-                run,
-                EnrollmentTokens.DEFAULT_TENANT,
-                source,
-                now,
-            )
-            insert(
-                """
-                INSERT INTO run_steps (id, tenant_id, run_id, ordinal, agent_id, source_id, plugin, action,
-                                       repository_name, config, status, queued_at)
-                VALUES (?, ?, ?, 0, ?, ?, '$PLUGIN', 'backup', 'main', '{}'::jsonb, 'queued', ?)
-                """.trimIndent(),
-                step,
-                EnrollmentTokens.DEFAULT_TENANT,
-                run,
-                agentId,
-                source,
-                now,
-            )
-        }
-        return step
-    }
-
-    private fun statusOf(stepId: UUID): String? =
-        sard.database().use { connection ->
-            connection.prepareStatement("SELECT status FROM run_steps WHERE id = ?").use { query ->
-                query.setObject(1, stepId)
-                query.executeQuery().use { if (it.next()) it.getString(1) else null }
-            }
-        }
 
     private fun messageAndRunStatus(stepId: UUID): List<String?> =
         sard.database().use { connection ->

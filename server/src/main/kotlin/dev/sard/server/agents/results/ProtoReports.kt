@@ -3,11 +3,18 @@
 
 package dev.sard.server.agents.results
 
+import dev.sard.proto.agent.v1.LogChunk
+import dev.sard.proto.agent.v1.LogLevel
+import dev.sard.proto.agent.v1.StepPhase
+import dev.sard.proto.agent.v1.StepProgress
 import dev.sard.proto.agent.v1.StepResult
 import dev.sard.proto.agent.v1.StepStatus
+import dev.sard.server.runs.LogLine
+import dev.sard.server.runs.ProgressReport
 import dev.sard.server.runs.StepOutput
 import dev.sard.server.runs.StepReport
 import dev.sard.server.runs.StepState
+import java.time.Instant
 
 /**
  * StepResult → the domain's [StepReport], field by field; whether it fits the step is the
@@ -16,6 +23,37 @@ import dev.sard.server.runs.StepState
  */
 object ProtoReports {
     fun of(result: StepResult) = StepReport(status(result.status), result.message, output(result))
+
+    /** A phase by its name (the schema's CHECK list); a total of 0 is unknown (proto), a negative counter too. */
+    fun progress(progress: StepProgress) =
+        ProgressReport(
+            phase(progress.phase),
+            progress.bytesProcessed.takeIf { it >= 0 },
+            progress.bytesTotal.takeIf { it > 0 },
+        )
+
+    /** Lines in the chunk's order; a line without a time keeps none, one without a level is info. */
+    fun lines(chunk: LogChunk) =
+        chunk.linesList.map { line ->
+            val time = if (line.hasTime()) Instant.ofEpochSecond(line.time.seconds, line.time.nanos.toLong()) else null
+            LogLine(time, level(line.level), line.text)
+        }
+
+    /** A phase by the name the schema stores (`accepted`, …, `verifying`). */
+    private fun phase(phase: StepPhase): String? =
+        if (phase == StepPhase.STEP_PHASE_UNSPECIFIED || phase == StepPhase.UNRECOGNIZED) {
+            null
+        } else {
+            phase.name.removePrefix("STEP_PHASE_").lowercase()
+        }
+
+    private fun level(level: LogLevel): String =
+        when (level) {
+            LogLevel.LOG_LEVEL_DEBUG -> "debug"
+            LogLevel.LOG_LEVEL_INFO, LogLevel.LOG_LEVEL_UNSPECIFIED, LogLevel.UNRECOGNIZED -> "info"
+            LogLevel.LOG_LEVEL_WARN -> "warn"
+            LogLevel.LOG_LEVEL_ERROR -> "error"
+        }
 
     private fun status(status: StepStatus): StepState? =
         when (status) {
