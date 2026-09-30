@@ -5,10 +5,18 @@
 # (scripts/gate.sh, thresholds defined there).
 name: CI
 
+# A change that touches only documentation runs no job: nothing in the
+# gates reads docs/ or Markdown (license-check skips them too).
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
 
 permissions:
   contents: read
