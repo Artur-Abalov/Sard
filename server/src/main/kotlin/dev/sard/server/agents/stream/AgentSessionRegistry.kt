@@ -89,6 +89,10 @@ class AgentSessionRegistry(
         return since(session.lastMessageAt) < settings.offlineAfter
     }
 
+    /** The agents that are online now (see [online]). */
+    fun onlineIds(): Set<UUID> =
+        synchronized(lock) { sessions.filterValues { since(it.lastMessageAt) < settings.offlineAfter }.keys.toSet() }
+
     /** Closes silent sessions and streams that owe a Hello; returns what it closed. */
     fun sweep(): List<AgentStream> {
         val (expired, helloless) =

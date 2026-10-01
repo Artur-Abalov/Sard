@@ -44,7 +44,7 @@ class ApiSerializationIntegrationTest(
     private val schema = mapOf("type" to "object", "properties" to mapOf("paths" to mapOf("type" to "array")))
 
     private val summary =
-        AgentSummary(id, "db1", AgentStatus.ONLINE, "0.1.0", "linux", "amd64", at, at, revokedAt = null)
+        AgentSummary(id, "db1", AgentStatus.ONLINE, "0.1.0", "linux", "amd64", at, at, revokedAt = null, duplicateSessionAt = at)
     private val step =
         RunStep(
             id,
@@ -86,7 +86,7 @@ class ApiSerializationIntegrationTest(
             finishedAt = null,
         )
     private val source = Source(id, "etc", id, "files", "local", mapOf("paths" to listOf("/etc")), at, at)
-    private val token = EnrollmentToken(id, EnrollmentTokenStatus.USED, at, at, at, revokedAt = null, agentId = id)
+    private val token = EnrollmentToken(id, EnrollmentTokenStatus.USED, at, at, at, revokedAt = null, agentId = id, label = null)
     private val snapshot = Snapshot(id, "4f1c", id, id, id, id, "local", "a1b2", 10, 2, at, forgottenAt = null)
     private val summaryRun = RunSummary(id, id, id, RunTrigger.MANUAL, RunStatus.FAILED, "boom", at, at, at)
 
@@ -106,6 +106,7 @@ class ApiSerializationIntegrationTest(
                 at,
                 lastSeenAt = null,
                 revokedAt = at,
+                duplicateSessionAt = null,
                 protocolVersion = 1,
                 plugins = listOf(AgentPlugin("files", "0.1.0", listOf(StepAction.BACKUP), schema)),
                 repositories = listOf(AgentRepository("local", "local", repositoryId = null, "file")),
@@ -113,7 +114,7 @@ class ApiSerializationIntegrationTest(
                 scriptNames = listOf("flush"),
             ),
             CreateEnrollmentTokenRequest(ttlSeconds = 3600),
-            CreatedEnrollmentToken(id, "sard_x.y", "sard-agent enroll --server s:9090 --token sard_x.y", at),
+            CreatedEnrollmentToken(id, "sard_x.y", "sard-agent enroll --server s:9090 --token sard_x.y", at, false),
             EnrollmentTokenPage(listOf(token), nextCursor = null),
             SourceInput("etc", id, "files", "local", mapOf("paths" to listOf("/etc"))),
             source,

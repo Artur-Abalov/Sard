@@ -29,6 +29,11 @@ data class CreateEnrollmentTokenRequest(
         maximum = "604800",
     )
     val ttlSeconds: Long? = null,
+    @field:Schema(
+        description = "What the token is for, shown in the list; up to 200 characters, empty means none",
+        maxLength = 200,
+    )
+    val label: String? = null,
 )
 
 @Schema(description = "A created token: the only response with the token string (docs/specs/enrollment-token.md)")
@@ -39,7 +44,12 @@ data class CreatedEnrollmentToken(
     @field:Schema(description = "Ready-to-run command: sard-agent enroll --server <address> --token <token>")
     val enrollCommand: String,
     val expiresAt: Instant,
-)
+    @field:Schema(description = "false when the address in the command is derived from the server names, not set")
+    val agentEndpointConfigured: Boolean,
+) {
+    // Never the token: Spring logs the body it writes at DEBUG.
+    override fun toString() = "CreatedEnrollmentToken(id=$id, expiresAt=$expiresAt)"
+}
 
 @Schema(description = "An enrollment token without its string")
 data class EnrollmentToken(
@@ -52,6 +62,8 @@ data class EnrollmentToken(
     val revokedAt: Instant?,
     @field:Schema(description = "The agent enrolled with it; set when status is used")
     val agentId: UUID?,
+    @field:Schema(description = "What the token is for; null when it has no label")
+    val label: String?,
 )
 
 @Schema(description = "A page of enrollment tokens")
@@ -91,7 +103,9 @@ class EnrollmentTokensController(
     ): CreatedEnrollmentToken = api.createEnrollmentToken(request)
 
     @GetMapping
+    @ResponseStatus(HttpStatus.OK)
     @Operation(summary = "List tokens", description = "Newest first.")
+    @Unprocessable
     fun listEnrollmentTokens(
         @RequestParam(required = false) status: EnrollmentTokenStatus?,
         @PageCursor @RequestParam(required = false) cursor: String?,

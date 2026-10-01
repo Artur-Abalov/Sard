@@ -26,6 +26,9 @@ class AgentConnections(
 
     fun online(agentId: UUID): Boolean = registry.online(agentId)
 
+    /** Every agent that is online now. */
+    fun onlineIds(): Set<UUID> = registry.onlineIds()
+
     /** Ends [agentId]'s session as refused with [failure], e.g. when it is revoked; false if none. */
     fun close(
         agentId: UUID,

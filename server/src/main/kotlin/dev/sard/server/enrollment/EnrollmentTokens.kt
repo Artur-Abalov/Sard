@@ -4,6 +4,7 @@
 package dev.sard.server.enrollment
 
 import dev.sard.server.persistence.EnrollmentTokenRecord
+import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.CertificateAuthority
@@ -14,11 +15,13 @@ import java.time.Instant
 import java.util.UUID
 
 private const val BY_HASH = "from EnrollmentTokenRecord where tokenHash = :hash"
-private const val BY_TENANT = "from EnrollmentTokenRecord order by createdAt desc, id desc"
 private const val REVOKE =
-    "update EnrollmentTokenRecord set revokedAt = :now where id = :id and usedAt is null and revokedAt is null"
+    "update EnrollmentTokenRecord set revokedAt = :now " +
+        "where id = :id and usedAt is null and revokedAt is null and expiresAt > :now"
 private const val LABEL_MAX_LENGTH = 200
-private val DEFAULT_TTL: Duration = Duration.ofHours(24)
+
+/** The lifetime of a token created without one (decision 1). */
+val DEFAULT_TTL: Duration = Duration.ofHours(24)
 private val MIN_TTL: Duration = Duration.ofMinutes(5)
 private val MAX_TTL: Duration = Duration.ofDays(7)
 
@@ -34,6 +37,9 @@ class IssuedEnrollmentToken(
 
     /** The ready-made `sard-agent enroll` invocation (decision 5); the console never builds it itself. */
     fun command(): String = endpoint.enrollCommand(token)
+
+    /** Whether the address in [command] was named by the operator (SARD_AGENT_ENDPOINT) and not guessed (S8b В3). */
+    fun endpointConfigured(): Boolean = endpoint.explicit
 
     override fun toString() = "IssuedEnrollmentToken(id=$id, expiresAt=$expiresAt)"
 }
@@ -62,11 +68,12 @@ class EnrollmentTokenValidationException(
     message: String,
 ) : IllegalArgumentException(message)
 
-/** Why [EnrollmentTokens.revoke] refused (decision 6: "использован" or "уже отозван"). */
-enum class RevokeRejection { USED, ALREADY_REVOKED }
+/** Why [EnrollmentTokens.revoke] refused (decision 6, S8b В1: "использован" or "истёк"). */
+enum class RevokeRejection { USED, EXPIRED }
 
 /** The outcome of [EnrollmentTokens.revoke]. */
 sealed interface RevokeResult {
+    /** Revoked now, or earlier: revoking a revoked token succeeds and keeps its [revokedAt]. */
     data class Revoked(
         val revokedAt: Instant,
     ) : RevokeResult
@@ -112,13 +119,36 @@ class EnrollmentTokens(
         return IssuedEnrollmentToken(record.id, record.expiresAt, token, endpoint)
     }
 
-    /** Every token of [tenantId], newest first (decision 9); completed tokens are kept forever. */
-    fun list(tenantId: UUID): List<EnrollmentTokenSummary> =
+    /**
+     * Tokens of [tenantId] in [state] (all when null), newest first (decision 9), after [after] if
+     * given, at most [limit]; completed tokens are kept forever.
+     */
+    fun list(
+        tenantId: UUID,
+        state: EnrollmentTokenState? = null,
+        after: PageKey? = null,
+        limit: Int = Int.MAX_VALUE,
+    ): List<EnrollmentTokenSummary> =
         sessions.inTenant(tenantId) { session ->
-            session
-                .createSelectionQuery(BY_TENANT, EnrollmentTokenRecord::class.java)
-                .list()
-                .map { summaryOf(it) }
+            val conditions = listOfNotNull(state?.let(::condition), after?.let { PageKey.condition("createdAt") })
+            val where = conditions.takeIf { it.isNotEmpty() }?.joinToString(" and ", "where ").orEmpty()
+            val query =
+                session.createSelectionQuery(
+                    "from EnrollmentTokenRecord $where order by createdAt desc, id desc",
+                    EnrollmentTokenRecord::class.java,
+                )
+            if (":now" in where) query.setParameter("now", clock.instant())
+            after?.bind(query)
+            query.setMaxResults(limit).list().map { summaryOf(it) }
+        }
+
+    /** The HQL of a state, the same as [EnrollmentTokenState.of] computes it. */
+    private fun condition(state: EnrollmentTokenState): String =
+        when (state) {
+            EnrollmentTokenState.ACTIVE -> "usedAt is null and revokedAt is null and expiresAt > :now"
+            EnrollmentTokenState.USED -> "usedAt is not null"
+            EnrollmentTokenState.EXPIRED -> "usedAt is null and revokedAt is null and expiresAt <= :now"
+            EnrollmentTokenState.REVOKED -> "usedAt is null and revokedAt is not null"
         }
 
     /** A single token of [tenantId] by id, or null if it does not exist in this tenant. */
@@ -131,10 +161,10 @@ class EnrollmentTokens(
         }
 
     /**
-     * Revokes [id] of [tenantId] unless it is already used or already revoked (decision 6);
-     * an expired but unused token can still be revoked. The update is guarded the same way as
-     * Enroll's claim, so a revoke racing a registration for the same token is decided by whoever
-     * commits first, never by which one merely read the row first.
+     * Revokes [id] of [tenantId]: only an active token can be revoked (decision 6, S8b В1); a used or
+     * an expired one is refused with the reason, a revoked one stays as it is and the call succeeds.
+     * The update is guarded the same way as Enroll's claim, so a revoke racing a registration for the
+     * same token is decided by whoever commits first, never by which one merely read the row first.
      */
     fun revoke(
         tenantId: UUID,
@@ -150,10 +180,11 @@ class EnrollmentTokens(
                     .executeUpdate()
             if (revoked == 1) return@inTenant RevokeResult.Revoked(now)
             val record = session.find(EnrollmentTokenRecord::class.java, id) ?: return@inTenant RevokeResult.NotFound
+            val revokedAt = record.revokedAt
             when {
                 record.usedAt != null -> RevokeResult.Rejected(RevokeRejection.USED)
-                record.revokedAt != null -> RevokeResult.Rejected(RevokeRejection.ALREADY_REVOKED)
-                else -> error("token ${record.id} matched neither the update nor a known rejection reason")
+                revokedAt != null -> RevokeResult.Revoked(revokedAt)
+                else -> RevokeResult.Rejected(RevokeRejection.EXPIRED)
             }
         }
 
