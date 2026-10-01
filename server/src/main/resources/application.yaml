@@ -66,6 +66,17 @@ sard:
       # without a result (S6a); the check runs every sard.agent.stream.check-interval unless
       # sard.run.dispatch.check-interval is set.
       lost-after-heartbeats: 2
+    progress:
+      # Byte counters of one step reach the database at most this often; a new phase at once (S7a).
+      write-interval: 5s
+  logs:
+    # Longer lines are cut and marked (bytes of UTF-8 text); past the step's total, one mark and
+    # every later line of the step is dropped (S7a).
+    max-line-bytes: 8192
+    max-step-bytes: 16777216
+    # step_logs has monthly partitions; the server keeps this many months ahead of the current one.
+    partitions-ahead-months: 2
+    partitions-check-interval: 1d
 management:
   endpoints:
     web:

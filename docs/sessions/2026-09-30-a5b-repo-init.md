@@ -4,7 +4,7 @@
 получены; решения specifier С1–С11 и Л1–Л10 утверждены владельцем — по
 заданию). Строится на A5a (`agent/internal/restic`), A1 (`internal/secrets`,
 `internal/config`), A2b (соглашения CLI, ADR 0025). `crypto_provider` при
-старте агента (OQ-047) вне задачи.
+старте агента (OQ-050) вне задачи.
 
 ## Что сделано
 

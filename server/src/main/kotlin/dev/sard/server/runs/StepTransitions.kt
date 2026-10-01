@@ -27,7 +27,9 @@ private const val ACCEPT =
     "update run_steps set status = 'running', phase = :phase, started_at = :now $STEP and status = 'dispatched'"
 private const val MESSAGE = "message = cast(:message as text), finished_at = :now"
 private const val CLOSE = "update run_steps set status = :status, $MESSAGE $STEP"
-private const val FINISH = "$CLOSE and status in ('dispatched', 'running')"
+private const val FINISH =
+    "update run_steps set status = :status, $MESSAGE, output = cast(:output as jsonb) $STEP " +
+        "and status in ('dispatched', 'running')"
 private const val LOSE = "$CLOSE and status = 'running'"
 
 private const val OF_STEP = "where tenant_id = :tenant and id = (select run_id from run_steps $STEP)"
@@ -84,11 +86,13 @@ interface DispatchLedger {
  * Every status change of a step after it is queued, each one a guarded update in its own
  * transaction: the step row only moves from the status the caller expects (zero rows: another
  * path moved it first, and its state stays), and the run follows it in the same transaction.
- * S7 calls [accepted] and [finished]; the dispatcher calls the rest.
+ * S7 calls [accepted] and, through [StepResults], [finish]; the dispatcher calls the rest. A move
+ * that finishes the run publishes [RunFinished] after its commit.
  */
 class StepTransitions(
     private val sessions: TenantSessions,
     private val clock: Clock,
+    private val announcer: RunAnnouncer = RunAnnouncer(sessions, RunFinishedPublisher.NONE),
 ) : DispatchLedger {
     override fun active(
         tenantId: UUID,
@@ -125,20 +129,40 @@ class StepTransitions(
         phase: String,
     ) = move(tenantId, stepId, StepState.RUNNING, ACCEPT, RUN_STARTED, mapOf("phase" to phase))
 
-    /** dispatched or running → [outcome] (S7: a StepResult); false for a step already closed. */
+    /** dispatched or running → [outcome] (a StepResult without output); false for a step already closed. */
     fun finished(
         tenantId: UUID,
         stepId: UUID,
         outcome: StepOutcome,
     ): Boolean {
-        val message = outcome.message?.ifEmpty { null }
-        return move(tenantId, stepId, outcome.status, FINISH, RUN_FINISHED, mapOf("message" to message))
+        val moved = sessions.inTenant(tenantId) { finish(it, tenantId, stepId, outcome, output = null) }
+        if (moved) announcer.announce(tenantId, stepId)
+        return moved
+    }
+
+    /**
+     * dispatched or running → [outcome] with [output] (JSON) inside the caller's transaction, so
+     * that S7 records the rest of the result with it; the caller announces the run after commit.
+     */
+    fun finish(
+        session: Session,
+        tenantId: UUID,
+        stepId: UUID,
+        outcome: StepOutcome,
+        output: String?,
+    ): Boolean {
+        val values = mapOf("message" to outcome.message?.ifEmpty { null }, "output" to output)
+        return session.move(tenantId, stepId, outcome.status, FINISH, RUN_FINISHED, values)
     }
 
     override fun lost(
         tenantId: UUID,
         stepId: UUID,
-    ) = move(tenantId, stepId, StepState.LOST, LOSE, RUN_FINISHED, mapOf("message" to LOST_MESSAGE))
+    ): Boolean {
+        val moved = move(tenantId, stepId, StepState.LOST, LOSE, RUN_FINISHED, mapOf("message" to LOST_MESSAGE))
+        if (moved) announcer.announce(tenantId, stepId)
+        return moved
+    }
 
     private fun move(
         tenantId: UUID,
@@ -147,29 +171,37 @@ class StepTransitions(
         step: String,
         run: String?,
         extra: Map<String, Any?> = emptyMap(),
-    ): Boolean =
-        sessions.inTenant(tenantId) { session ->
-            val values =
-                mapOf(
-                    "tenant" to tenantId,
-                    "step" to stepId,
-                    "now" to clock.instant(),
-                    "status" to to.stored,
-                    "run" to RunState.following(to).stored,
-                ) + extra
-            val moved = session.execute(step, values) == 1
-            if (moved && run != null) session.execute(run, values)
-            moved
-        }
+    ): Boolean = sessions.inTenant(tenantId) { it.move(tenantId, stepId, to, step, run, extra) }
 
-    /** Binds the [values] that [sql] names; the message is typed so that NULL binds as text. */
+    private fun Session.move(
+        tenantId: UUID,
+        stepId: UUID,
+        to: StepState,
+        step: String,
+        run: String?,
+        extra: Map<String, Any?>,
+    ): Boolean {
+        val values =
+            mapOf(
+                "tenant" to tenantId,
+                "step" to stepId,
+                "now" to clock.instant(),
+                "status" to to.stored,
+                "run" to RunState.following(to).stored,
+            ) + extra
+        val moved = execute(step, values) == 1
+        if (moved && run != null) execute(run, values)
+        return moved
+    }
+
+    /** Binds the [values] that [sql] names; text values are typed so that NULL binds as text. */
     private fun Session.execute(
         sql: String,
         values: Map<String, Any?>,
     ): Int {
         val query = createNativeMutationQuery(sql)
         for ((name, value) in values.filterKeys { ":$it" in sql }) {
-            if (name == "message") {
+            if (name in TEXT_VALUES) {
                 query.setParameter(name, value as String?, String::class.java)
             } else {
                 query.setParameter(name, value)
@@ -178,3 +210,5 @@ class StepTransitions(
         return query.executeUpdate()
     }
 }
+
+private val TEXT_VALUES = setOf("message", "output")
