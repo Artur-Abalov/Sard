@@ -216,4 +216,93 @@ class AgentStepsApiIntegrationTest(
         assertEquals(mapper.readTree("""{"paths":["/var/www"]}"""), mapper.readTree(fake.nextRunStep().configJson))
         assertTrue(world.count("run_steps", tenant) == 2)
     }
+
+    // --- The agent row's lock orders a revocation and a run being started, deterministically
+
+    /** Holds [mode] lock on the agent's row in an open transaction until [release]; the server's writers wait. */
+    private fun <T> holdingAgentRow(
+        mode: String,
+        release: (java.sql.Connection) -> Unit,
+        whileHeld: () -> T,
+    ): T =
+        world.jdbc.dataSource!!.connection.use { blocker ->
+            blocker.autoCommit = false
+            blocker.prepareStatement("select id from agents where id = ? $mode").use {
+                it.setObject(1, agent.agentId)
+                it.executeQuery().close()
+            }
+            val result = whileHeld()
+            release(blocker)
+            blocker.commit()
+            result
+        }
+
+    /** Waits until [count] statements that begin with [verb] wait for a lock on the agents table. */
+    private fun awaitLockWaiters(
+        count: Int,
+        verb: String = "select",
+    ) {
+        val sql =
+            "select count(*) from pg_stat_activity where wait_event_type = 'Lock' and query like '%agents%' " +
+                "and lower(query) like '$verb%'"
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(RACE_SECONDS)
+        while (world.jdbc.queryForObject(sql, Int::class.java)!! < count) {
+            check(System.nanoTime() < deadline) { "nobody waited for the agent's row lock" }
+            Thread.sleep(LOCK_POLL_MILLIS)
+        }
+    }
+
+    @Test
+    fun `a run being started waits for a revocation holding the agent and is refused after it`() {
+        val source = source("etc")
+        val pool = Executors.newSingleThreadExecutor()
+        val response =
+            holdingAgentRow(
+                "for no key update",
+                {
+                    it.createStatement().use { s ->
+                        s.executeUpdate("update agents set revoked_at = now() where id = '${agent.agentId}'")
+                    }
+                },
+            ) {
+                val started = pool.submit(Callable { start(source) })
+                awaitLockWaiters(1)
+                started
+            }.get(RACE_SECONDS, TimeUnit.SECONDS)
+        pool.shutdown()
+
+        assertEquals(409, response.status)
+        assertEquals("agent_revoked", response.code)
+        assertEquals(0, world.count("runs", tenant))
+    }
+
+    @Test
+    fun `a revocation waits for a run being started and then loses its step`() {
+        val source = source("etc")
+        val run = start(source).json.path("id").asString()
+        val pool = Executors.newSingleThreadExecutor()
+        val response =
+            holdingAgentRow("for share", {}) {
+                val revoked = pool.submit(Callable { revoke() })
+                // The revocation asks for the row lock first (a select); an update that waited would be too late.
+                awaitLockWaiters(1, "select")
+                revoked
+            }.get(RACE_SECONDS, TimeUnit.SECONDS)
+        pool.shutdown()
+
+        assertEquals(200, response.status)
+        assertEquals(
+            "lost",
+            card(run)
+                .path("steps")
+                .get(0)
+                .path("status")
+                .asString(),
+        )
+        assertEquals("agent revoked", card(run).path("message").asString())
+    }
+
+    private companion object {
+        const val LOCK_POLL_MILLIS = 20L
+    }
 }

@@ -3,12 +3,12 @@
 
 package dev.sard.server.api
 
-import dev.sard.server.agents.AgentCard
-import dev.sard.server.agents.AgentPluginView
-import dev.sard.server.agents.AgentRow
-import dev.sard.server.agents.Agents
-import dev.sard.server.agents.Connectivity
 import dev.sard.server.extension.TenantResolver
+import dev.sard.server.fleet.AgentCard
+import dev.sard.server.fleet.AgentPluginView
+import dev.sard.server.fleet.AgentRow
+import dev.sard.server.fleet.Agents
+import dev.sard.server.fleet.Connectivity
 import dev.sard.server.persistence.PageKey
 import org.springframework.stereotype.Component
 import tools.jackson.databind.JsonNode
@@ -82,7 +82,7 @@ class AgentsApiImpl(
                     it.name,
                     it.backend,
                     it.repositoryId,
-                    it.cryptoProvider ?: BUILT_IN_PROVIDER,
+                    it.cryptoProvider,
                 )
             },
             card.secretNames,
@@ -102,9 +102,6 @@ class AgentsApiImpl(
     private fun schemaOf(node: JsonNode) = if (node.isObject) mapper.convertValue(node, SCHEMA) else emptyMap()
 
     private companion object {
-        /** The provider of a repository that names none: restic's own AES (ADR 0008, agent crypto.ResticAESName). */
-        const val BUILT_IN_PROVIDER = "restic-aes"
-
         val SCHEMA = object : tools.jackson.core.type.TypeReference<Map<String, Any?>>() {}
     }
 }

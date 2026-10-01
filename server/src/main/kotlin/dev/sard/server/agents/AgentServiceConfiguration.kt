@@ -3,7 +3,8 @@
 
 package dev.sard.server.agents
 
-import dev.sard.server.agents.stream.AgentConnections
+import dev.sard.server.fleet.AgentPresence
+import dev.sard.server.fleet.Agents
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.registration.Registration
 import dev.sard.server.runs.RunAnnouncer
@@ -24,10 +25,10 @@ class AgentServiceConfiguration {
     @Bean
     fun agents(
         sessions: TenantSessions,
-        connections: AgentConnections,
+        presence: AgentPresence,
         announcer: RunAnnouncer,
         clock: Clock,
-    ) = Agents(sessions, connections, announcer, clock)
+    ) = Agents(sessions, presence, announcer, clock)
 
     /** A duplicate session the stream manager confirmed is marked on the agent (S8b В4). */
     @Bean

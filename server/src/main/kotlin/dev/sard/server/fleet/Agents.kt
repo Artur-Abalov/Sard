@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
-package dev.sard.server.agents
+package dev.sard.server.fleet
 
-import dev.sard.server.agents.stream.AgentConnections
 import dev.sard.server.persistence.Agent
 import dev.sard.server.persistence.AgentCertificateRecord
 import dev.sard.server.persistence.AgentPluginRecord
@@ -23,8 +22,21 @@ private const val BY_AGENT = "from AgentPluginRecord where agentId = :agent orde
 private const val REPOSITORIES = "from AgentRepositoryRecord where agentId = :agent order by name"
 private const val REVOKE_CERTIFICATES =
     "update AgentCertificateRecord set revokedAt = :now where agentId = :agent and revokedAt is null"
+
+/** The name of the built-in provider (agent `crypto.ResticAESName`). */
+private const val BUILT_IN_PROVIDER = "restic-aes"
 private val NOBODY = setOf(UUID(0, 0))
 private const val MARK_DUPLICATE = "update Agent set duplicateSessionAt = :now where id = :agent"
+
+/** Which agents are connected, and the one thing the server does to a connection: refuse a revoked agent's. */
+interface AgentPresence {
+    fun online(agentId: UUID): Boolean
+
+    fun onlineIds(): Set<UUID>
+
+    /** Ends the agent's open stream because it was revoked; nothing if it has none. */
+    fun disconnectRevoked(agentId: UUID)
+}
 
 /** What an agent is, without what it announced in Register: a row of the list. */
 data class AgentRow(
@@ -52,7 +64,8 @@ data class AgentRepositoryView(
     val name: String,
     val backend: String,
     val repositoryId: String?,
-    val cryptoProvider: String?,
+    /** The provider that hands the key to restic; restic's own AES when the repository names none (ADR 0008). */
+    val cryptoProvider: String,
 )
 
 /** An agent with what its last Register announced. */
@@ -76,12 +89,12 @@ enum class Connectivity { ONLINE, OFFLINE }
  */
 class Agents(
     private val sessions: TenantSessions,
-    private val connections: AgentConnections,
+    private val presence: AgentPresence,
     private val announcer: RunAnnouncer,
     private val clock: Clock,
 ) {
     /** Online: the stream manager has a live session of a not revoked agent. */
-    fun online(row: AgentRow): Boolean = row.revokedAt == null && connections.online(row.id)
+    fun online(row: AgentRow): Boolean = row.revokedAt == null && presence.online(row.id)
 
     /** Agents newest first by registration, [after] the key given, in [connectivity] if given, at most [limit]. */
     fun list(
@@ -96,7 +109,7 @@ class Agents(
             val hql = "from Agent ${hqlWhere(conditions)} order by registeredAt desc, id desc"
             val query = session.createSelectionQuery(hql, Agent::class.java)
             // An empty list is no valid IN list: a placeholder id that no agent has stands for "nobody".
-            if (connectivity != null) query.setParameterList("online", connections.onlineIds().ifEmpty { NOBODY })
+            if (connectivity != null) query.setParameterList("online", presence.onlineIds().ifEmpty { NOBODY })
             after?.bind(query)
             query.setMaxResults(limit).list().map { rowOf(it) }
         }
@@ -133,7 +146,7 @@ class Agents(
                 val agent = session.find(Agent::class.java, agentId, LockModeType.PESSIMISTIC_WRITE)
                 agent?.let { it to revokeIn(session, tenantId, it) }
             } ?: return null
-        connections.close(agentId, AgentAuthFailure.AGENT_REVOKED)
+        presence.disconnectRevoked(agentId)
         revoked.second.forEach { announcer.announce(tenantId, it) }
         return get(tenantId, agentId)
     }
@@ -203,7 +216,14 @@ class Agents(
             rowOf(agent),
             agent.protocolVersion,
             plugins.map { AgentPluginView(it.name, it.version, it.actions, it.configSchema) },
-            repositories.map { AgentRepositoryView(it.name, it.backend, it.repositoryId, it.cryptoProvider) },
+            repositories.map {
+                AgentRepositoryView(
+                    it.name,
+                    it.backend,
+                    it.repositoryId,
+                    it.cryptoProvider ?: BUILT_IN_PROVIDER,
+                )
+            },
             agent.secretNames,
             agent.scriptNames,
         )

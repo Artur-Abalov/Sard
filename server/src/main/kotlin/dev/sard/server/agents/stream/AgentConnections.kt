@@ -5,6 +5,7 @@ package dev.sard.server.agents.stream
 
 import dev.sard.proto.agent.v1.ConnectResponse
 import dev.sard.server.agents.AgentAuthFailure
+import dev.sard.server.fleet.AgentPresence
 import org.slf4j.LoggerFactory
 import java.util.UUID
 
@@ -17,22 +18,26 @@ private val log = LoggerFactory.getLogger(AgentConnections::class.java)
 class AgentConnections(
     private val registry: AgentSessionRegistry,
     private val revalidation: SessionRevalidation,
-) {
+) : AgentPresence {
     /** Queues [message] for [agentId]'s session; never waits (see [SendResult]). */
     fun send(
         agentId: UUID,
         message: ConnectResponse,
     ): SendResult = registry.session(agentId)?.offer(message) ?: SendResult.NotConnected
 
-    fun online(agentId: UUID): Boolean = registry.online(agentId)
+    override fun online(agentId: UUID): Boolean = registry.online(agentId)
 
     /** Every agent that is online now. */
-    fun onlineIds(): Set<UUID> =
+    override fun onlineIds(): Set<UUID> =
         registry
             .sessions()
             .map { it.agent.agentId }
             .filter(registry::online)
             .toSet()
+
+    override fun disconnectRevoked(agentId: UUID) {
+        close(agentId, AgentAuthFailure.AGENT_REVOKED)
+    }
 
     /** Ends [agentId]'s session as refused with [failure], e.g. when it is revoked; false if none. */
     fun close(
