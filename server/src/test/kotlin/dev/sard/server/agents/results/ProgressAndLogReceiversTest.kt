@@ -194,6 +194,41 @@ class ProgressAndLogReceiversTest {
         assertEquals(ProgressReport("uploading", null, null), report)
     }
 
+    // --- files counters (S8b В9)
+
+    private fun files(
+        processed: Long,
+        total: Long,
+    ) = MutFlow
+        .underTest {
+            ProtoReports.progress(
+                StepProgress
+                    .newBuilder()
+                    .setFilesProcessed(processed)
+                    .setFilesTotal(total)
+                    .build(),
+            )
+        }.let { it.filesProcessed to it.filesTotal }
+
+    @Test
+    fun `files counters are kept as reported`() {
+        assertEquals(6L to 7L, files(6, 7))
+        assertEquals(3L to 3L, files(3, 3))
+        assertEquals(0L to 5L, files(0, 5))
+        assertEquals(3L to null, files(3, 0))
+    }
+
+    @Test
+    fun `no files reported at all is unknown, not zero`() {
+        assertEquals(null to null, files(0, 0))
+    }
+
+    @Test
+    fun `a counter above the signed range, which reads negative, is unknown`() {
+        assertEquals(null to null, files(-1, -1))
+        assertEquals(null to 4L, files(-1, 4))
+    }
+
     @Test
     fun `progress the gate holds back is not written`() {
         gate.admitted = false

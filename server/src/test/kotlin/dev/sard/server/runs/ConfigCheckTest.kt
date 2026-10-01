@@ -51,7 +51,14 @@ class ConfigCheckTest {
     @Test
     fun `a secret field must name a secret of the agent`() {
         assertEquals(emptyList(), fields(SECRET_SCHEMA, """{"password":"db-password"}""", setOf("db-password")))
-        val violations = ConfigCheck.violations(SECRET_SCHEMA, """{"password":"other"}""", setOf("db-password"))
+        val violations =
+            MutFlow.underTest {
+                ConfigCheck.violations(
+                    SECRET_SCHEMA,
+                    """{"password":"other"}""",
+                    setOf("db-password"),
+                )
+            }
         assertEquals(listOf("config/password"), violations.map { it.field })
         assertTrue("\"other\"" in violations.single().message, violations.single().message)
     }
@@ -83,7 +90,14 @@ class ConfigCheckTest {
             "http://127.0.0.1:1/schema.json",
             "https://example.invalid/x.json",
         )) {
-            val violations = ConfigCheck.violations("""{"${'$'}ref":"$reference"}""", "{}", emptySet())
+            val violations =
+                MutFlow.underTest {
+                    ConfigCheck.violations(
+                        """{"${'$'}ref":"$reference"}""",
+                        "{}",
+                        emptySet(),
+                    )
+                }
 
             assertEquals(listOf("config"), violations.map { it.field }, reference)
             assertEquals(
@@ -103,5 +117,25 @@ class ConfigCheckTest {
             """.trimIndent()
 
         assertEquals(listOf("config/p"), fields(schema, """{"p":"etc"}"""))
+    }
+
+    /** What the validator would load from the classpath of this server (or any file) must stay out of reach. */
+    @Test
+    fun `a reference to a resource outside the schema is not loaded, even a resource that exists`() {
+        val schema = """{"${'$'}ref":"classpath:schemas/string-only.json"}"""
+
+        val violations = MutFlow.underTest { ConfigCheck.violations(schema, "{}", emptySet()) }
+
+        assertEquals("the plugin's config schema is not a valid JSON Schema", violations.single().message)
+    }
+
+    @Test
+    fun `a schema that only fails when it is used, a pattern that is no regex, is refused as a schema`() {
+        val schema = """{"properties":{"a":{"pattern":"("}}}"""
+
+        val violations = MutFlow.underTest { ConfigCheck.violations(schema, """{"a":"x"}""", emptySet()) }
+
+        assertEquals(listOf("config"), violations.map { it.field })
+        assertEquals("the plugin's config schema is not a valid JSON Schema", violations.single().message)
     }
 }

@@ -79,8 +79,7 @@ internal object ConfigCheck {
 
     /** The schema comes from an agent host, which may be compromised: a `$ref` resolves inside the schema only. */
     private fun noLoading(loader: com.networknt.schema.resource.SchemaLoader.Builder) {
-        loader.fetchRemoteResources(false)
-        loader.resourceLoaders { it.values { loaders -> loaders.clear() } }
+        loader.block { true }
     }
 
     private fun field(pointer: String) = ROOT + pointer
