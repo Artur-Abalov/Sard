@@ -14,7 +14,10 @@ import org.springframework.data.jpa.repository.JpaRepository
 import java.time.Instant
 import java.util.UUID
 
-/** A registered agent; table created by Flyway migrations V1, V2, V202609271200, V202609281200, V202609281400 and V202610011200. */
+/**
+ * A registered agent; table created by Flyway migrations V1, V2, V202609271200, V202609281200, V202609281400
+ * and V202610011200.
+ */
 @Entity
 @Table(name = "agents")
 class Agent(

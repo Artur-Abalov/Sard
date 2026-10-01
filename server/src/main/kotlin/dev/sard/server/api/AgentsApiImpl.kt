@@ -46,7 +46,7 @@ class AgentsApiImpl(
             AgentStatus.OFFLINE -> Connectivity.OFFLINE
         }
 
-    private fun statusOf(row: AgentRow): AgentStatus = if (agents.online(row)) AgentStatus.ONLINE else AgentStatus.OFFLINE
+    private fun statusOf(row: AgentRow) = if (agents.online(row)) AgentStatus.ONLINE else AgentStatus.OFFLINE
 
     private fun summaryOf(row: AgentRow) =
         AgentSummary(
@@ -77,7 +77,14 @@ class AgentsApiImpl(
             row.duplicateSessionAt,
             card.protocolVersion,
             card.plugins.map(::pluginOf),
-            card.repositories.map { AgentRepository(it.name, it.backend, it.repositoryId, it.cryptoProvider ?: BUILT_IN_PROVIDER) },
+            card.repositories.map {
+                AgentRepository(
+                    it.name,
+                    it.backend,
+                    it.repositoryId,
+                    it.cryptoProvider ?: BUILT_IN_PROVIDER,
+                )
+            },
             card.secretNames,
             card.scriptNames,
         )
@@ -92,7 +99,7 @@ class AgentsApiImpl(
         )
 
     /** A config schema is a JSON object; anything else a host announced has no fields to show. */
-    private fun schemaOf(node: JsonNode): Map<String, Any?> = if (node.isObject) mapper.convertValue(node, SCHEMA) else emptyMap()
+    private fun schemaOf(node: JsonNode) = if (node.isObject) mapper.convertValue(node, SCHEMA) else emptyMap()
 
     private companion object {
         /** The provider of a repository that names none: restic's own AES (ADR 0008, agent crypto.ResticAESName). */

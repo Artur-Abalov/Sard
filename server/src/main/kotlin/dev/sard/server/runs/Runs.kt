@@ -19,7 +19,8 @@ import java.util.UUID
 
 private const val ACTIVE_RUN_KEY = "runs_active_source_key"
 private const val STEPS_OF = "from RunStepRecord where runId = :run order by ordinal"
-private const val LIST_RUNS = "select r, s.agentId from RunRecord r join RunStepRecord s on s.runId = r.id and s.ordinal = 0"
+private const val LIST_RUNS =
+    "select r, s.agentId from RunRecord r join RunStepRecord s on s.runId = r.id and s.ordinal = 0"
 private val JSON = JsonMapper.builder().build()
 
 /**
@@ -100,7 +101,13 @@ class Runs(
     ): RunView? =
         sessions.inTenant(tenantId) { session ->
             val run = session.find(RunRecord::class.java, runId) ?: return@inTenant null
-            val steps = session.createSelectionQuery(STEPS_OF, RunStepRecord::class.java).setParameter("run", runId).list()
+            val steps =
+                session
+                    .createSelectionQuery(
+                        STEPS_OF,
+                        RunStepRecord::class.java,
+                    ).setParameter("run", runId)
+                    .list()
             RunViews.of(run, steps.first().agentId, steps)
         }
 
@@ -117,7 +124,11 @@ class Runs(
         sessions.inTenant(tenantId) { session ->
             val conditions = filter.conditions() + listOfNotNull(after?.let { PageKey.condition("r.queuedAt", "r.id") })
             val where = conditions.takeIf { it.isNotEmpty() }?.joinToString(" and ", "where ").orEmpty()
-            val query = session.createSelectionQuery("$LIST_RUNS $where order by r.queuedAt desc, r.id desc", Array<Any?>::class.java)
+            val query =
+                session.createSelectionQuery(
+                    "$LIST_RUNS $where order by r.queuedAt desc, r.id desc",
+                    Array<Any?>::class.java,
+                )
             filter.bind(query)
             after?.bind(query)
             query.setMaxResults(limit).list().map { RunViews.of(it[0] as RunRecord, it[1] as UUID, emptyList()) }
@@ -201,15 +212,17 @@ internal object RunViews {
             backup = backupOf(record.output),
         )
 
-    /** The backup output of a step, null for any other output, none, or one that does not read. */
-    private fun backupOf(output: String?): BackupResult? {
-        val node = output?.let { JSON.readTree(it) } ?: return null
-        if (node.path("kind").asString() != Action.BACKUP.stored) return null
-        return BackupResult(
-            node.path("snapshotId").asString(),
-            node.path("totalBytes").asLong(),
-            node.path("addedBytes").asLong(),
-            node.path("repositoryId").asString(),
-        )
-    }
+    /** The backup output of a step, null for any other output or none. */
+    private fun backupOf(output: String?): BackupResult? =
+        output
+            ?.let { JSON.readTree(it) }
+            ?.takeIf { it.path("kind").asString() == Action.BACKUP.stored }
+            ?.let {
+                BackupResult(
+                    it.path("snapshotId").asString(),
+                    it.path("totalBytes").asLong(),
+                    it.path("addedBytes").asLong(),
+                    it.path("repositoryId").asString(),
+                )
+            }
 }

@@ -39,11 +39,21 @@ internal object AgentOffer {
         repositoryName: String,
         lock: LockModeType = LockModeType.NONE,
     ): Offered {
-        val agent = session.find(Agent::class.java, agentId, lock) ?: throw UnknownAgent(agentId)
-        if (agent.revokedAt != null) throw AgentRevoked(agentId)
-        val offered = session.find(AgentPluginRecord::class.java, AgentOwnedKey(agentId, plugin)) ?: throw UnknownPlugin(plugin)
+        val agent = liveAgent(session, agentId, lock)
+        val announced =
+            session.find(AgentPluginRecord::class.java, AgentOwnedKey(agentId, plugin)) ?: throw UnknownPlugin(plugin)
         session.find(AgentRepositoryRecord::class.java, AgentOwnedKey(agentId, repositoryName))
             ?: throw UnknownRepository(repositoryName)
-        return Offered(offered.configSchema, agent.secretNames.toSet())
+        return Offered(announced.configSchema, agent.secretNames.toSet())
+    }
+
+    private fun liveAgent(
+        session: Session,
+        agentId: UUID,
+        lock: LockModeType,
+    ): Agent {
+        val agent = session.find(Agent::class.java, agentId, lock) ?: throw UnknownAgent(agentId)
+        if (agent.revokedAt != null) throw AgentRevoked(agentId)
+        return agent
     }
 }

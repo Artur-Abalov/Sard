@@ -128,7 +128,10 @@ class EnrollmentTokensApiIntegrationTest(
         val id = created.path("id").asString()
 
         val bodies =
-            listOf(world.api.get("/api/v1/enrollment-tokens", admin).body, world.api.get("/api/v1/enrollment-tokens/$id", admin).body)
+            listOf(
+                world.api.get("/api/v1/enrollment-tokens", admin).body,
+                world.api.get("/api/v1/enrollment-tokens/$id", admin).body,
+            )
 
         for (body in bodies) {
             assertTrue(token !in body && secret !in body && "enrollCommand" !in body, body)

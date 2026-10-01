@@ -41,7 +41,10 @@ class RunsApiImpl(
         return RunPage(slice.items.map(RunMapping::summary), slice.nextCursor)
     }
 
-    override fun getRun(runId: UUID): Run = RunMapping.run(runs.get(tenants.currentTenantId(), runId) ?: throw ResourceNotFound())
+    override fun getRun(runId: UUID): Run {
+        val run = runs.get(tenants.currentTenantId(), runId) ?: throw ResourceNotFound()
+        return RunMapping.run(run)
+    }
 
     override fun listStepLogs(
         runId: UUID,
@@ -49,11 +52,18 @@ class RunsApiImpl(
         afterSeq: Long,
         limit: Int,
     ): LogPage {
-        if (limit !in 1..MAX_LOG_LIMIT) throw RequestInvalid("limit", "must be between 1 and $MAX_LOG_LIMIT")
-        if (afterSeq < 0) throw RequestInvalid("afterSeq", "must not be negative")
+        requireLogPage(afterSeq, limit)
         val read = logs.read(tenants.currentTenantId(), runId, stepId, afterSeq, limit) ?: throw ResourceNotFound()
         val lines = read.lines.map { LogLine(it.seq, it.time, LogLevel.valueOf(it.level.uppercase()), it.text) }
         return LogPage(lines, read.lines.lastOrNull()?.seq ?: afterSeq, read.hasMore, read.truncated)
+    }
+
+    private fun requireLogPage(
+        afterSeq: Long,
+        limit: Int,
+    ) {
+        if (limit !in 1..MAX_LOG_LIMIT) throw RequestInvalid("limit", "must be between 1 and $MAX_LOG_LIMIT")
+        if (afterSeq < 0) throw RequestInvalid("afterSeq", "must not be negative")
     }
 
     private fun stateOf(status: RunStatus): RunState =

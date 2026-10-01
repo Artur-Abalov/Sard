@@ -64,18 +64,33 @@ class ConfigCheckTest {
 
     @Test
     fun `the message names the rule and never repeats a value of the config`() {
-        val message = ConfigCheck.violations(FILES, """{"paths":["/etc"],"x-secret-key":"hunter2"}""", emptySet()).single().message
+        val message =
+            ConfigCheck
+                .violations(
+                    FILES,
+                    """{"paths":["/etc"],"x-secret-key":"hunter2"}""",
+                    emptySet(),
+                ).single()
+                .message
         assertTrue("hunter2" !in message, message)
     }
 
     /** A schema comes from the agent host, which may be compromised: the server never fetches what it points to. */
     @Test
     fun `a schema that refers outside itself is refused, nothing is fetched`() {
-        for (reference in listOf("file:///etc/hostname", "http://127.0.0.1:1/schema.json", "https://example.invalid/x.json")) {
+        for (reference in listOf(
+            "file:///etc/hostname",
+            "http://127.0.0.1:1/schema.json",
+            "https://example.invalid/x.json",
+        )) {
             val violations = ConfigCheck.violations("""{"${'$'}ref":"$reference"}""", "{}", emptySet())
 
             assertEquals(listOf("config"), violations.map { it.field }, reference)
-            assertEquals("the plugin's config schema is not a valid JSON Schema", violations.single().message, reference)
+            assertEquals(
+                "the plugin's config schema is not a valid JSON Schema",
+                violations.single().message,
+                reference,
+            )
         }
     }
 

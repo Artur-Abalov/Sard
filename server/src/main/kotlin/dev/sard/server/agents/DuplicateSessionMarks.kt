@@ -19,6 +19,12 @@ class DuplicateSessionMarks(
 ) : AgentSessionListener {
     override fun duplicateDetected(agent: ConnectedAgent) {
         runCatching { agents.markDuplicate(agent.tenantId, agent.agentId) }
-            .onFailure { log.warn("agent {}: duplicate session not marked: {}", agent.agentId, it.javaClass.simpleName) }
+            .onFailure {
+                log.warn(
+                    "agent {}: duplicate session not marked: {}",
+                    agent.agentId,
+                    it.javaClass.simpleName,
+                )
+            }
     }
 }

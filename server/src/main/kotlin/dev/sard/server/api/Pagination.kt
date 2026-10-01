@@ -77,7 +77,13 @@ private fun decode(
     val key =
         runCatching {
             val parts = String(Base64.getUrlDecoder().decode(cursor)).split('|')
-            if (parts.size == SEPARATORS && parts[0] == kind.tag) PageKey(Instant.parse(parts[1]), UUID.fromString(parts[2])) else null
+            if (parts.size == SEPARATORS &&
+                parts[0] == kind.tag
+            ) {
+                PageKey(Instant.parse(parts[1]), UUID.fromString(parts[2]))
+            } else {
+                null
+            }
         }.getOrNull()
     return key ?: throw RequestInvalid("cursor", "is not a cursor of this list")
 }

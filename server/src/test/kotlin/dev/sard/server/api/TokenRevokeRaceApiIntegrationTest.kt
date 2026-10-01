@@ -62,7 +62,13 @@ class TokenRevokeRaceApiIntegrationTest(
             assertTrue(ca.entered.tryAcquire(WAIT_SECONDS, TimeUnit.SECONDS), "the registration never reached the CA")
             val revocation =
                 pool.submit(
-                    Callable { api.post("/api/v1/enrollment-tokens/${created.path("id").asString()}/revoke", admin, null) },
+                    Callable {
+                        api.post(
+                            "/api/v1/enrollment-tokens/${created.path("id").asString()}/revoke",
+                            admin,
+                            null,
+                        )
+                    },
                 )
             jdbc.awaitEnrollmentRowLockWait(Duration.ofSeconds(WAIT_SECONDS))
             ca.gate?.countDown()

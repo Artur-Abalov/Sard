@@ -62,41 +62,13 @@ internal object RunMapping {
             view.finishedAt,
         )
 
-    private fun trigger(trigger: Trigger): RunTrigger =
-        when (trigger) {
-            Trigger.SCHEDULE -> RunTrigger.SCHEDULE
-            Trigger.MANUAL -> RunTrigger.MANUAL
-            Trigger.VERIFICATION -> RunTrigger.VERIFICATION
-        }
+    // The domain's enums and the contract's have the same constants: one name is one value. RunMappingTest
+    // checks every constant of both, so a new one cannot be forgotten on either side.
+    private fun trigger(trigger: Trigger): RunTrigger = RunTrigger.valueOf(trigger.name)
 
-    private fun status(state: RunState): RunStatus =
-        when (state) {
-            RunState.QUEUED -> RunStatus.QUEUED
-            RunState.DISPATCHED -> RunStatus.DISPATCHED
-            RunState.RUNNING -> RunStatus.RUNNING
-            RunState.SUCCEEDED -> RunStatus.SUCCEEDED
-            RunState.FAILED -> RunStatus.FAILED
-            RunState.CANCELLED -> RunStatus.CANCELLED
-        }
+    private fun status(state: RunState): RunStatus = RunStatus.valueOf(state.name)
 
-    private fun action(action: Action): StepAction =
-        when (action) {
-            Action.BACKUP -> StepAction.BACKUP
-            Action.RESTORE -> StepAction.RESTORE
-            Action.VERIFY -> StepAction.VERIFY
-            Action.RUN -> StepAction.RUN
-        }
+    private fun action(action: Action): StepAction = StepAction.valueOf(action.name)
 
-    private fun stepStatus(state: StepState): StepStatus =
-        when (state) {
-            StepState.QUEUED -> StepStatus.QUEUED
-            StepState.DISPATCHED -> StepStatus.DISPATCHED
-            StepState.RUNNING -> StepStatus.RUNNING
-            StepState.SUCCEEDED -> StepStatus.SUCCEEDED
-            StepState.FAILED -> StepStatus.FAILED
-            StepState.CANCELLED -> StepStatus.CANCELLED
-            StepState.TIMED_OUT -> StepStatus.TIMED_OUT
-            StepState.REJECTED -> StepStatus.REJECTED
-            StepState.LOST -> StepStatus.LOST
-        }
+    private fun stepStatus(state: StepState): StepStatus = StepStatus.valueOf(state.name)
 }

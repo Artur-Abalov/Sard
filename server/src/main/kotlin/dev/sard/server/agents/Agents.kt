@@ -11,7 +11,7 @@ import dev.sard.server.persistence.AgentRepositoryRecord
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.runs.RunAnnouncer
-import dev.sard.server.runs.StepTransitions
+import dev.sard.server.runs.StepRevocation
 import jakarta.persistence.LockModeType
 import org.hibernate.Session
 import java.time.Clock
@@ -75,7 +75,6 @@ enum class Connectivity { ONLINE, OFFLINE }
 class Agents(
     private val sessions: TenantSessions,
     private val connections: AgentConnections,
-    private val steps: StepTransitions,
     private val announcer: RunAnnouncer,
     private val clock: Clock,
 ) {
@@ -97,7 +96,11 @@ class Agents(
                     connectivityCondition(connectivity, online),
                 )
             val where = conditions.takeIf { it.isNotEmpty() }?.joinToString(" and ", "where ").orEmpty()
-            val query = session.createSelectionQuery("from Agent $where order by registeredAt desc, id desc", Agent::class.java)
+            val query =
+                session.createSelectionQuery(
+                    "from Agent $where order by registeredAt desc, id desc",
+                    Agent::class.java,
+                )
             after?.bind(query)
             if (":online" in where) query.setParameterList("online", online)
             query.setMaxResults(limit).list().map { rowOf(it) }
@@ -117,7 +120,12 @@ class Agents(
     fun get(
         tenantId: UUID,
         agentId: UUID,
-    ): AgentCard? = sessions.inTenant(tenantId) { session -> session.find(Agent::class.java, agentId)?.let { cardOf(session, it) } }
+    ): AgentCard? =
+        sessions.inTenant(tenantId) { session ->
+            session.find(Agent::class.java, agentId)?.let {
+                cardOf(session, it)
+            }
+        }
 
     /**
      * Revokes [agentId]: its certificates and the agent itself, its queued, dispatched and running steps
@@ -152,7 +160,7 @@ class Agents(
             .setParameter("now", now)
             .setParameter("agent", agent.id)
             .executeUpdate()
-        return steps.revokeAgent(session, tenantId, agent.id, now)
+        return StepRevocation.loseSteps(session, tenantId, agent.id, now)
     }
 
     /** Records a confirmed duplicate session of [agentId] at the clock's time (ADR 0026, rule 2). */
@@ -186,7 +194,13 @@ class Agents(
         session: Session,
         agent: Agent,
     ): AgentCard {
-        val plugins = session.createSelectionQuery(BY_AGENT, AgentPluginRecord::class.java).setParameter("agent", agent.id).list()
+        val plugins =
+            session
+                .createSelectionQuery(
+                    BY_AGENT,
+                    AgentPluginRecord::class.java,
+                ).setParameter("agent", agent.id)
+                .list()
         val repositories =
             session
                 .createSelectionQuery(

@@ -54,7 +54,7 @@ class RunsGrpcApiIntegrationTest(
     fun `drop the tenants`() = world.close()
 
     private fun source(name: String = "etc"): String {
-        val body = """{"name":"$name","agentId":"${agent.agentId}","plugin":"files","repositoryName":"qa","config":{"paths":["/etc"]}}"""
+        val body = sourceJson(name, agent.agentId)
         return world.api
             .post("/api/v1/sources", admin, body)
             .json
@@ -139,7 +139,11 @@ class RunsGrpcApiIntegrationTest(
     fun `Успешный шаг показывает вывод бэкапа`() {
         val started = started()
         fake.progress(started.step)
-        fake.result(started.step, StepStatus.STEP_STATUS_SUCCEEDED, backup = FakeAgent.backup("a1b2c3", 1000, 10, REPOSITORY_ID))
+        fake.result(
+            started.step,
+            StepStatus.STEP_STATUS_SUCCEEDED,
+            backup = FakeAgent.backup("a1b2c3", 1000, 10, REPOSITORY_ID),
+        )
 
         val card = eventually { card(started.run).also { assertEquals("succeeded", it.path("status").asString()) } }
 
@@ -162,7 +166,8 @@ class RunsGrpcApiIntegrationTest(
                 Triple(StepStatus.STEP_STATUS_FAILED, "restic exited 1", "restic exited 1") to "failed",
                 Triple(StepStatus.STEP_STATUS_REJECTED, "unknown plugin files", "unknown plugin files") to "rejected",
                 Triple(StepStatus.STEP_STATUS_TIMED_OUT, "deadline exceeded", "deadline exceeded") to "timed_out",
-                Triple(StepStatus.STEP_STATUS_SUCCEEDED, "", "invalid result: a succeeded backup without its output") to "failed",
+                Triple(StepStatus.STEP_STATUS_SUCCEEDED, "", "invalid result: a succeeded backup without its output") to
+                    "failed",
             )
         for ((index, case) in cases.withIndex()) {
             val (result, stepStatus) = case
@@ -246,9 +251,18 @@ class RunsGrpcApiIntegrationTest(
         eventually { assertEquals("running", stepOf(started.run).path("status").asString()) }
         world.forceRun(UUID.fromString(started.run), "lost", "agent lost the step")
 
-        fake.result(started.step, StepStatus.STEP_STATUS_SUCCEEDED, backup = FakeAgent.backup("a1b2c3", repository = REPOSITORY_ID))
+        fake.result(
+            started.step,
+            StepStatus.STEP_STATUS_SUCCEEDED,
+            backup = FakeAgent.backup("a1b2c3", repository = REPOSITORY_ID),
+        )
 
-        val step = eventually { stepOf(started.run).also { assertEquals("a1b2c3", it.path("backup").path("snapshotId").asString()) } }
+        val step =
+            eventually {
+                stepOf(
+                    started.run,
+                ).also { assertEquals("a1b2c3", it.path("backup").path("snapshotId").asString()) }
+            }
         assertEquals("lost", step.path("status").asString())
         assertEquals("agent lost the step", step.path("message").asString())
     }
@@ -257,7 +271,11 @@ class RunsGrpcApiIntegrationTest(
     fun `Снимок источника показывает репозиторий, идентификаторы и объёмы`() {
         val started = started()
         fake.progress(started.step)
-        fake.result(started.step, StepStatus.STEP_STATUS_SUCCEEDED, backup = FakeAgent.backup("a1b2c3", 1000, 10, REPOSITORY_ID))
+        fake.result(
+            started.step,
+            StepStatus.STEP_STATUS_SUCCEEDED,
+            backup = FakeAgent.backup("a1b2c3", 1000, 10, REPOSITORY_ID),
+        )
 
         val snapshot = eventually { snapshots(started.source).also { assertEquals(1, it.size()) } }.get(0)
 
@@ -275,7 +293,11 @@ class RunsGrpcApiIntegrationTest(
         )
         assertEquals(
             listOf(1000L, 10L, false),
-            listOf(snapshot.path("totalBytes").asLong(), snapshot.path("addedBytes").asLong(), snapshot.path("partial").asBoolean()),
+            listOf(
+                snapshot.path("totalBytes").asLong(),
+                snapshot.path("addedBytes").asLong(),
+                snapshot.path("partial").asBoolean(),
+            ),
         )
         assertTrue(snapshot.path("forgottenAt").isNull)
         assertEquals(T0.toString(), snapshot.path("createdAt").asString())
@@ -308,7 +330,10 @@ class RunsGrpcApiIntegrationTest(
         fake.progress(started.step)
         fake.log(started.step, listOf(FakeAgent.line("я".repeat(4500))))
 
-        val text = eventually { logsOf(started).path("items").also { assertEquals(1, it.size()) } }.get(0).path("text").asString()
+        val text =
+            eventually {
+                logsOf(started).path("items").also { assertEquals(1, it.size()) }
+            }.get(0).path("text").asString()
 
         assertEquals("я".repeat(4096) + "…[truncated]", text)
     }
@@ -323,7 +348,13 @@ class RunsGrpcApiIntegrationTest(
         var seq = 0L
         var json: JsonNode
         do {
-            json = eventually { logsOf(started, "?afterSeq=$seq&limit=1000").also { assertTrue(it.path("truncated").asBoolean()) } }
+            json =
+                eventually {
+                    logsOf(
+                        started,
+                        "?afterSeq=$seq&limit=1000",
+                    ).also { assertTrue(it.path("truncated").asBoolean()) }
+                }
             assertTrue(json.path("truncated").asBoolean())
             seq = json.path("nextAfterSeq").asLong()
         } while (json.path("hasMore").asBoolean())
@@ -331,7 +362,10 @@ class RunsGrpcApiIntegrationTest(
         val last = json.path("items").list().last()
         assertEquals("warn", last.path("level").asString())
         assertTrue(last.path("time").isNull)
-        assertEquals("log truncated at 16777216 bytes; later lines of this step are dropped", last.path("text").asString())
+        assertEquals(
+            "log truncated at 16777216 bytes; later lines of this step are dropped",
+            last.path("text").asString(),
+        )
     }
 
     @Test
@@ -339,7 +373,11 @@ class RunsGrpcApiIntegrationTest(
         val started = started()
         fake.progress(started.step)
         fake.log(started.step, listOf(FakeAgent.line("one"), FakeAgent.line("two")))
-        fake.result(started.step, StepStatus.STEP_STATUS_SUCCEEDED, backup = FakeAgent.backup(repository = REPOSITORY_ID))
+        fake.result(
+            started.step,
+            StepStatus.STEP_STATUS_SUCCEEDED,
+            backup = FakeAgent.backup(repository = REPOSITORY_ID),
+        )
         val read = eventually { logsOf(started).also { assertEquals(2, it.path("items").size()) } }
         eventually { assertEquals("succeeded", card(started.run).path("status").asString()) }
         val cursor = read.path("nextAfterSeq").asLong()

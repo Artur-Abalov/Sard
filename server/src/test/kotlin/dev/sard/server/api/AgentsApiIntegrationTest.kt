@@ -67,7 +67,11 @@ class AgentsApiIntegrationTest(
 
     @Test
     fun `Карточка агента содержит имена секретов и скриптов, но не значения`() {
-        val agent = world.agent(tenant, snapshotOf(secretNames = listOf("db-password"), scriptNames = listOf("pre-dump")))
+        val agent =
+            world.agent(
+                tenant,
+                snapshotOf(secretNames = listOf("db-password"), scriptNames = listOf("pre-dump")),
+            )
 
         val json = card(agent.agentId).json
 
@@ -147,7 +151,11 @@ class AgentsApiIntegrationTest(
     @Test
     fun `Агент без открытого стрима офлайн, даже если lastSeenAt только что`() {
         val agent = world.agent(tenant)
-        world.jdbc.update("update agents set last_seen_at = ? where id = ?", Timestamp.from(T0.minusSeconds(1)), agent.agentId)
+        world.jdbc.update(
+            "update agents set last_seen_at = ? where id = ?",
+            Timestamp.from(T0.minusSeconds(1)),
+            agent.agentId,
+        )
 
         val json = card(agent.agentId).json
 
@@ -291,7 +299,8 @@ class AgentsApiIntegrationTest(
         val before = T0.minus(Duration.ofDays(1))
         for ((serial, revoked) in listOf("a".repeat(32) to null, "b".repeat(32) to Timestamp.from(before))) {
             world.jdbc.update(
-                "insert into agent_certificates (serial, tenant_id, agent_id, issued_at, not_after, revoked_at) values (?, ?, ?, ?, ?, ?)",
+                "insert into agent_certificates (serial, tenant_id, agent_id, issued_at, not_after, revoked_at) " +
+                    "values (?, ?, ?, ?, ?, ?)",
                 serial,
                 tenant,
                 agent.agentId,
@@ -346,7 +355,11 @@ class AgentsApiIntegrationTest(
     fun `Повторный отзыв агента отвечает 200 и ничего не меняет`() {
         val agent = world.agent(tenant)
         revoke(agent.agentId)
-        val certificates = world.jdbc.queryForList("select serial, revoked_at from agent_certificates where agent_id = ?", agent.agentId)
+        val certificates =
+            world.jdbc.queryForList(
+                "select serial, revoked_at from agent_certificates where agent_id = ?",
+                agent.agentId,
+            )
         clock.now = T0.plus(Duration.ofHours(1))
 
         val response = revoke(agent.agentId)
@@ -355,7 +368,10 @@ class AgentsApiIntegrationTest(
         assertEquals(T0.toString(), response.json.path("revokedAt").asString())
         assertEquals(
             certificates,
-            world.jdbc.queryForList("select serial, revoked_at from agent_certificates where agent_id = ?", agent.agentId),
+            world.jdbc.queryForList(
+                "select serial, revoked_at from agent_certificates where agent_id = ?",
+                agent.agentId,
+            ),
         )
     }
 

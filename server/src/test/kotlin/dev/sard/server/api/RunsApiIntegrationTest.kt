@@ -25,7 +25,7 @@ import kotlin.test.assertTrue
 
 private const val RACE_SECONDS = 20L
 
-/** Rules "Не больше одного активного запуска на источник" and "Удаление источника мягкое, при активном запуске запрещено". */
+/** Rules "Не больше одного активного запуска на источник" and "Удаление источника мягкое ... запрещено". */
 @RestApiTest
 class RunsApiIntegrationTest(
     @Autowired ca: CertificateAuthority,
@@ -47,7 +47,7 @@ class RunsApiIntegrationTest(
     fun `drop the tenants`() = world.close()
 
     private fun source(name: String = "etc"): String {
-        val body = """{"name":"$name","agentId":"${agent.agentId}","plugin":"files","repositoryName":"qa","config":{"paths":["/etc"]}}"""
+        val body = sourceJson(name, agent.agentId)
         return world.api
             .post("/api/v1/sources", admin, body)
             .json
@@ -70,7 +70,12 @@ class RunsApiIntegrationTest(
 
         assertEquals(201, response.status)
         val json = response.json
-        assertEquals(listOf("manual", "queued", T0.toString()), listOf("trigger", "status", "queuedAt").map { json.path(it).asString() })
+        assertEquals(
+            listOf("manual", "queued", T0.toString()),
+            listOf("trigger", "status", "queuedAt").map {
+                json.path(it).asString()
+            },
+        )
         assertEquals(source, json.path("sourceId").asString())
         assertEquals(agent.agentId.toString(), json.path("agentId").asString())
         val step = json.path("steps").single()
@@ -131,7 +136,12 @@ class RunsApiIntegrationTest(
         val created = responses.single { it.status == 201 }
         val refused = responses.filter { it.status == 409 }
         assertEquals(9, refused.size)
-        assertTrue(refused.all { it.code == "run_active" && it.json.path("activeRunId").asString() == created.json.path("id").asString() })
+        assertTrue(
+            refused.all {
+                it.code == "run_active" &&
+                    it.json.path("activeRunId").asString() == created.json.path("id").asString()
+            },
+        )
         assertEquals(1, world.count("runs", tenant))
     }
 

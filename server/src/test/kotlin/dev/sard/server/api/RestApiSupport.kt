@@ -68,6 +68,16 @@ class RestApiTestConfiguration {
     fun reconciledHellos(dispatcher: StepDispatcher) = ReconciledHellos(dispatcher)
 }
 
+/** The JSON of a source of the files plugin on repository "qa", as a client sends it. */
+fun sourceJson(
+    name: String,
+    agentId: UUID,
+    path: String = "/etc",
+): String {
+    val config = """{"paths":["$path"]}"""
+    return """{"name":"$name","agentId":"$agentId","plugin":"files","repositoryName":"qa","config":$config}"""
+}
+
 /** The elements of a JSON array (Jackson's own `map` and `filter` are not Kotlin's). */
 fun JsonNode.list(): List<JsonNode> = iterator().asSequence().toList()
 

@@ -172,7 +172,10 @@ class SourcesApiIntegrationTest(
     fun `Конфиг, ссылающийся на неизвестный секрет, отклоняется`() {
         world.register(
             agent,
-            snapshotOf(plugins = listOf(filesPlugin(name = "pg", schema = SECRET_SCHEMA)), secretNames = listOf("db-password")),
+            snapshotOf(
+                plugins = listOf(filesPlugin(name = "pg", schema = SECRET_SCHEMA)),
+                secretNames = listOf("db-password"),
+            ),
         )
 
         val response = create(body(plugin = "pg", config = """{"password":"other-password"}"""))
@@ -192,7 +195,10 @@ class SourcesApiIntegrationTest(
     fun `Конфиг с известным секретом принимается`() {
         world.register(
             agent,
-            snapshotOf(plugins = listOf(filesPlugin(name = "pg", schema = SECRET_SCHEMA)), secretNames = listOf("db-password")),
+            snapshotOf(
+                plugins = listOf(filesPlugin(name = "pg", schema = SECRET_SCHEMA)),
+                secretNames = listOf("db-password"),
+            ),
         )
 
         val response = create(body(plugin = "pg", config = """{"password":"db-password"}"""))

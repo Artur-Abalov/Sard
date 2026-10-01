@@ -46,7 +46,7 @@ class RunsReadApiIntegrationTest(
         name: String = "etc",
         on: UUID = agent.agentId,
     ): String {
-        val body = """{"name":"$name","agentId":"$on","plugin":"files","repositoryName":"qa","config":{"paths":["/etc"]}}"""
+        val body = sourceJson(name, on)
         return world.api
             .post("/api/v1/sources", admin, body)
             .json
@@ -169,7 +169,11 @@ class RunsReadApiIntegrationTest(
         assertEquals(1, card.path("steps").size())
         val step = card.path("steps").get(0)
         assertEquals(
-            world.jdbc.queryForObject("select id from run_steps where run_id = ?", String::class.java, UUID.fromString(run)),
+            world.jdbc.queryForObject(
+                "select id from run_steps where run_id = ?",
+                String::class.java,
+                UUID.fromString(run),
+            ),
             step.path("id").asString(),
         )
     }
@@ -179,7 +183,7 @@ class RunsReadApiIntegrationTest(
         val other = world.agent(tenant)
         val s = source()
         val run = start(s).also { world.forceRun(UUID.fromString(it), "succeeded") }
-        val body = """{"name":"etc","agentId":"${other.agentId}","plugin":"files","repositoryName":"qa","config":{"paths":["/etc"]}}"""
+        val body = sourceJson("etc", other.agentId)
         assertEquals(200, world.api.send("PUT", "/api/v1/sources/$s", admin, body).status)
 
         val card = world.api.get("/api/v1/runs/$run", admin).json

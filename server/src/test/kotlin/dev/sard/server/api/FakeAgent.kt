@@ -45,7 +45,8 @@ class FakeAgent(
     /** The next RunStep the server sends. */
     fun nextRunStep(): RunStep {
         while (true) {
-            val message = checkNotNull(connection.received.poll(WAIT.toSeconds(), TimeUnit.SECONDS)) { "no RunStep within $WAIT" }
+            val message =
+                checkNotNull(connection.received.poll(WAIT.toSeconds(), TimeUnit.SECONDS)) { "no RunStep within $WAIT" }
             if (message.hasRunStep()) return message.runStep
         }
     }
@@ -110,8 +111,9 @@ class FakeAgent(
                 .newBuilder()
                 .setLevel(level)
                 .setText(text)
-                .also { builder -> time?.let { builder.setTime(Timestamp.newBuilder().setSeconds(it.epochSecond).setNanos(it.nano)) } }
-                .build()
+                .also { builder ->
+                    time?.let { builder.setTime(Timestamp.newBuilder().setSeconds(it.epochSecond).setNanos(it.nano)) }
+                }.build()
 
         fun backup(
             snapshot: String = "a1b2c3",

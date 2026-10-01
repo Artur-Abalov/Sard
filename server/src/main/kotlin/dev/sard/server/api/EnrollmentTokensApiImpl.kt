@@ -46,13 +46,17 @@ class EnrollmentTokensApiImpl(
         return EnrollmentTokenPage(slice.items.map(::cardOf), slice.nextCursor)
     }
 
-    override fun getEnrollmentToken(tokenId: UUID): EnrollmentToken =
-        cardOf(tokens.get(tenants.currentTenantId(), tokenId) ?: throw ResourceNotFound())
+    override fun getEnrollmentToken(tokenId: UUID): EnrollmentToken = card(tenants.currentTenantId(), tokenId)
+
+    private fun card(
+        tenant: UUID,
+        tokenId: UUID,
+    ): EnrollmentToken = cardOf(tokens.get(tenant, tokenId) ?: throw ResourceNotFound())
 
     override fun revokeEnrollmentToken(tokenId: UUID): EnrollmentToken {
         val tenant = tenants.currentTenantId()
         return when (val result = tokens.revoke(tenant, tokenId, clock.instant())) {
-            is RevokeResult.Revoked -> cardOf(tokens.get(tenant, tokenId) ?: throw ResourceNotFound())
+            is RevokeResult.Revoked -> card(tenant, tokenId)
             is RevokeResult.Rejected -> throw conflict(result.reason, tokens.get(tenant, tokenId))
             RevokeResult.NotFound -> throw ResourceNotFound()
         }

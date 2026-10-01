@@ -115,7 +115,12 @@ class UnavailableApiIntegrationTest(
         assertTrue(stream.isOpen)
         databaseUp()
         assertTrue(
-            world.jdbc.queryForObject("select revoked_at from agents where id = ?", java.sql.Timestamp::class.java, agent.agentId) == null,
+            world.jdbc.queryForObject(
+                "select revoked_at from agents where id = ?",
+                java.sql.Timestamp::class.java,
+                agent.agentId,
+            ) ==
+                null,
         )
         assertEquals(
             0,

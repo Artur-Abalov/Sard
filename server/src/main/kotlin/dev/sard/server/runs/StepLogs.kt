@@ -28,7 +28,7 @@ private const val STEP_OF_RUN = "select log_truncated from run_steps where tenan
 private const val READ =
     "select seq, time, level, text from step_logs where tenant_id = ? and step_id = ? and seq > ? order by seq limit ?"
 
-/** A line of a step's log as stored: [seq] is the server's numbering, [time] the agent's (null: the server wrote it). */
+/** A line of a step's log as stored: [seq] is the server's numbering, [time] the agent's (null: the server's own). */
 data class LoggedLine(
     val seq: Long,
     val time: Instant?,

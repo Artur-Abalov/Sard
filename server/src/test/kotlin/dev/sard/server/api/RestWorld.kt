@@ -93,7 +93,12 @@ class RestWorld(
     /** An administrator of a new tenant. */
     fun admin(tenant: UUID = tenant()): ApiSession = api.signIn(tenant)
 
-    private fun newKeys() = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
+    private fun newKeys() =
+        KeyPairGenerator
+            .getInstance("EC")
+            .apply {
+                initialize(ECGenParameterSpec("secp256r1"))
+            }.generateKeyPair()
 
     private fun csrOf(keys: java.security.KeyPair): ByteArray {
         val signer = JcaContentSignerBuilder("SHA256withECDSA").build(keys.private)
@@ -154,7 +159,8 @@ class RestWorld(
         val started = if (status in setOf("queued", "dispatched")) null else time
         val finished = if (status in setOf("queued", "dispatched", "running")) null else time
         jdbc.update(
-            "update run_steps set status = ?, message = ?, dispatched_at = ?, started_at = ?, finished_at = ? where run_id = ?",
+            "update run_steps set status = ?, message = ?, dispatched_at = ?, started_at = ?, finished_at = ? " +
+                "where run_id = ?",
             status,
             message,
             dispatched,
@@ -183,7 +189,8 @@ class RestWorld(
         val at = java.sql.Timestamp.from(clock.now)
         for (seq in from until from + count) {
             jdbc.update(
-                "insert into step_logs (tenant_id, step_id, seq, received_at, time, level, text) values (?, ?, ?, ?, ?, 'info', ?)",
+                "insert into step_logs (tenant_id, step_id, seq, received_at, time, level, text) " +
+                    "values (?, ?, ?, ?, ?, 'info', ?)",
                 tenant,
                 step,
                 seq.toLong(),
@@ -203,8 +210,9 @@ class RestWorld(
         at: java.time.Instant = clock.now,
     ) {
         jdbc.update(
-            "insert into snapshots (id, tenant_id, source_id, step_id, agent_id, repository_name, repository_id, snapshot_id, " +
-                "total_bytes, added_bytes, created_at) select ?, tenant_id, source_id, id, agent_id, 'qa', ?, ?, 1000, 10, ? " +
+            "insert into snapshots (id, tenant_id, source_id, step_id, agent_id, repository_name, repository_id, " +
+                "snapshot_id, total_bytes, added_bytes, created_at) " +
+                "select ?, tenant_id, source_id, id, agent_id, 'qa', ?, ?, 1000, 10, ? " +
                 "from run_steps where id = ? and tenant_id = ?",
             UUID.randomUUID(),
             "r".repeat(64),

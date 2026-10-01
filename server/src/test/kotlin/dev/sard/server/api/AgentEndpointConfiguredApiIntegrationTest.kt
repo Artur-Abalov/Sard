@@ -31,6 +31,9 @@ class AgentEndpointConfiguredApiIntegrationTest(
         assertEquals(201, response.status)
         assertEquals(true, response.json.path("agentEndpointConfigured").asBoolean())
         val token = response.json.path("token").asString()
-        assertEquals("sard-agent enroll --server localhost:9090 --token $token", response.json.path("enrollCommand").asString())
+        assertEquals(
+            "sard-agent enroll --server localhost:9090 --token $token",
+            response.json.path("enrollCommand").asString(),
+        )
     }
 }

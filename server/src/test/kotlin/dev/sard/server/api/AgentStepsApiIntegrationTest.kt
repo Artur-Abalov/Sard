@@ -106,7 +106,12 @@ class AgentStepsApiIntegrationTest(
                     .asString(),
             )
         }
-        for ((_, source) in sources) assertEquals(204, world.api.send("DELETE", "/api/v1/sources/$source", admin).status)
+        for ((_, source) in sources) {
+            assertEquals(
+                204,
+                world.api.send("DELETE", "/api/v1/sources/$source", admin).status,
+            )
+        }
     }
 
     @Test
@@ -116,7 +121,11 @@ class AgentStepsApiIntegrationTest(
         val run = start(source).json.path("id").asString()
         val step = fake.nextStep()
         fake.progress(step)
-        fake.result(step, StepStatus.STEP_STATUS_SUCCEEDED, backup = FakeAgent.backup(repository = "r0".padEnd(64, '0')))
+        fake.result(
+            step,
+            StepStatus.STEP_STATUS_SUCCEEDED,
+            backup = FakeAgent.backup(repository = "r0".padEnd(64, '0')),
+        )
         eventually { assertEquals("succeeded", card(run).path("status").asString()) }
 
         revoke()
@@ -172,7 +181,10 @@ class AgentStepsApiIntegrationTest(
         }
         assertEquals(
             0,
-            world.jdbc.queryForObject("select count(*) from runs where status in ('queued', 'dispatched', 'running')", Int::class.java),
+            world.jdbc.queryForObject(
+                "select count(*) from runs where status in ('queued', 'dispatched', 'running')",
+                Int::class.java,
+            ),
         )
         assertEquals(204, world.api.send("DELETE", "/api/v1/sources/$source", admin).status)
     }

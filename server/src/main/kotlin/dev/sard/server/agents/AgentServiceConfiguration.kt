@@ -7,7 +7,6 @@ import dev.sard.server.agents.stream.AgentConnections
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.registration.Registration
 import dev.sard.server.runs.RunAnnouncer
-import dev.sard.server.runs.StepTransitions
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import org.springframework.context.annotation.Bean
@@ -26,10 +25,9 @@ class AgentServiceConfiguration {
     fun agents(
         sessions: TenantSessions,
         connections: AgentConnections,
-        steps: StepTransitions,
         announcer: RunAnnouncer,
         clock: Clock,
-    ) = Agents(sessions, connections, steps, announcer, clock)
+    ) = Agents(sessions, connections, announcer, clock)
 
     /** A duplicate session the stream manager confirmed is marked on the agent (S8b В4). */
     @Bean

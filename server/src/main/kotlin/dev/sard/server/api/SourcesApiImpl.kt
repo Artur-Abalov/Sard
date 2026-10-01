@@ -43,7 +43,10 @@ class SourcesApiImpl(
         return SourcePage(slice.items.map(::sourceOf), slice.nextCursor)
     }
 
-    override fun createSource(source: SourceInput): Source = sourceOf(sources.create(tenants.currentTenantId(), draftOf(source)))
+    override fun createSource(source: SourceInput): Source {
+        val created = sources.create(tenants.currentTenantId(), draftOf(source))
+        return sourceOf(created)
+    }
 
     override fun getSource(sourceId: UUID): Source = sourceOf(sources.get(tenants.currentTenantId(), sourceId))
 
@@ -72,7 +75,8 @@ class SourcesApiImpl(
         limit: Int,
     ): SnapshotPage {
         val page = pageRequest(CursorKind.SNAPSHOTS, cursor, limit)
-        val rows = snapshots.ofSource(tenants.currentTenantId(), sourceId, page.after, page.fetch) ?: throw ResourceNotFound()
+        val rows =
+            snapshots.ofSource(tenants.currentTenantId(), sourceId, page.after, page.fetch) ?: throw ResourceNotFound()
         val slice = page.slice(rows) { PageKey(it.createdAt, it.id) }
         return SnapshotPage(slice.items.map(::snapshotOf), slice.nextCursor)
     }

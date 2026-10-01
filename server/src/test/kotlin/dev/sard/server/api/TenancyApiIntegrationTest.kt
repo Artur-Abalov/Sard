@@ -62,7 +62,12 @@ class TenancyApiIntegrationTest(
                 .json
                 .path("id")
                 .asString()
-        val step = world.jdbc.queryForObject("select id from run_steps where run_id = ?", String::class.java, UUID.fromString(run))!!
+        val step =
+            world.jdbc.queryForObject(
+                "select id from run_steps where run_id = ?",
+                String::class.java,
+                UUID.fromString(run),
+            )!!
     }
 
     private fun body(
@@ -154,7 +159,13 @@ class TenancyApiIntegrationTest(
 
         for ((method, path, body) in byId) {
             val response = world.api.send(method, path, foreign.admin, body)
-            val unknown = world.api.send(method, path.replace(Regex("[0-9a-f]{8}-[0-9a-f-]{27}"), randomId.toString()), foreign.admin, body)
+            val unknown =
+                world.api.send(
+                    method,
+                    path.replace(Regex("[0-9a-f]{8}-[0-9a-f-]{27}"), randomId.toString()),
+                    foreign.admin,
+                    body,
+                )
 
             assertEquals(404, response.status, "$method $path: $response")
             assertEquals("not_found", response.code)
@@ -289,6 +300,9 @@ class TenancyApiIntegrationTest(
         val run = world.api.post("/api/v1/sources/${owned.source}/runs", adminA, null)
 
         assertEquals(listOf(422, 422, 409), listOf(create.status, replace.status, run.status))
-        assertEquals(listOf("agent_revoked", "agent_revoked", "agent_revoked"), listOf(create.code, replace.code, run.code))
+        assertEquals(
+            listOf("agent_revoked", "agent_revoked", "agent_revoked"),
+            listOf(create.code, replace.code, run.code),
+        )
     }
 }

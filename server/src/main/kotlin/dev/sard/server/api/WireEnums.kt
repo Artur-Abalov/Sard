@@ -52,7 +52,10 @@ class WireEnumBinding {
     @InitBinder
     fun bind(binder: WebDataBinder) {
         binder.registerCustomEditor(AgentStatus::class.java, WireEnumEditor(AgentStatus::class.java))
-        binder.registerCustomEditor(EnrollmentTokenStatus::class.java, WireEnumEditor(EnrollmentTokenStatus::class.java))
+        binder.registerCustomEditor(
+            EnrollmentTokenStatus::class.java,
+            WireEnumEditor(EnrollmentTokenStatus::class.java),
+        )
         binder.registerCustomEditor(RunStatus::class.java, WireEnumEditor(RunStatus::class.java))
     }
 }

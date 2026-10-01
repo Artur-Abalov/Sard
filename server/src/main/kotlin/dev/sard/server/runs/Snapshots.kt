@@ -49,8 +49,10 @@ class Snapshots(
             val paging = after?.let { " and ${PageKey.condition("s.createdAt", "s.id")}" }.orEmpty()
             val query =
                 session
-                    .createSelectionQuery("$OF_SOURCE$paging order by s.createdAt desc, s.id desc", Array<Any?>::class.java)
-                    .setParameter("source", sourceId)
+                    .createSelectionQuery(
+                        "$OF_SOURCE$paging order by s.createdAt desc, s.id desc",
+                        Array<Any?>::class.java,
+                    ).setParameter("source", sourceId)
             after?.bind(query)
             query.setMaxResults(limit).list().map { viewOf(it[0] as SnapshotRecord, it[1] as UUID) }
         }

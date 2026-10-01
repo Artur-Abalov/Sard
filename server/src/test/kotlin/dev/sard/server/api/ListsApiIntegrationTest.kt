@@ -75,7 +75,12 @@ class ListsApiIntegrationTest(
 
         fun newSnapshot(): String {
             val run = newRun()
-            val step = world.jdbc.queryForObject("select id from run_steps where run_id = ?", UUID::class.java, UUID.fromString(run))!!
+            val step =
+                world.jdbc.queryForObject(
+                    "select id from run_steps where run_id = ?",
+                    UUID::class.java,
+                    UUID.fromString(run),
+                )!!
             world.insertSnapshot(tenant, step, "snap-${counter++}")
             return world.jdbc.queryForObject("select id from snapshots where step_id = ?", String::class.java, step)!!
         }

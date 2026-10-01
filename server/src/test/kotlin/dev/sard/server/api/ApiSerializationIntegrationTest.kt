@@ -44,7 +44,18 @@ class ApiSerializationIntegrationTest(
     private val schema = mapOf("type" to "object", "properties" to mapOf("paths" to mapOf("type" to "array")))
 
     private val summary =
-        AgentSummary(id, "db1", AgentStatus.ONLINE, "0.1.0", "linux", "amd64", at, at, revokedAt = null, duplicateSessionAt = at)
+        AgentSummary(
+            id,
+            "db1",
+            AgentStatus.ONLINE,
+            "0.1.0",
+            "linux",
+            "amd64",
+            at,
+            at,
+            revokedAt = null,
+            duplicateSessionAt = at,
+        )
     private val step =
         RunStep(
             id,
@@ -90,8 +101,10 @@ class ApiSerializationIntegrationTest(
             finishedAt = null,
         )
     private val source = Source(id, "etc", id, "files", "local", mapOf("paths" to listOf("/etc")), at, at)
-    private val token = EnrollmentToken(id, EnrollmentTokenStatus.USED, at, at, at, revokedAt = null, agentId = id, label = null)
-    private val snapshot = Snapshot(id, "4f1c", id, id, id, id, "local", "a1b2", 10, 2, at, forgottenAt = null, partial = false)
+    private val token =
+        EnrollmentToken(id, EnrollmentTokenStatus.USED, at, at, at, revokedAt = null, agentId = id, label = null)
+    private val snapshot =
+        Snapshot(id, "4f1c", id, id, id, id, "local", "a1b2", 10, 2, at, forgottenAt = null, partial = false)
     private val summaryRun = RunSummary(id, id, id, RunTrigger.MANUAL, RunStatus.FAILED, "boom", at, at, at)
 
     private val samples: List<Any> =
@@ -137,7 +150,12 @@ class ApiSerializationIntegrationTest(
                 listOf(step, queuedStep),
             ),
             RunPage(listOf(summaryRun), nextCursor = null),
-            LogPage(listOf(LogLine(1, null, LogLevel.INFO, "started")), nextAfterSeq = 1, hasMore = false, truncated = false),
+            LogPage(
+                listOf(LogLine(1, null, LogLevel.INFO, "started")),
+                nextAfterSeq = 1,
+                hasMore = false,
+                truncated = false,
+            ),
             Problem("about:blank", "Not Found", 404, detail = null, ErrorCode.NOT_FOUND),
             ValidationProblem(
                 "about:blank",

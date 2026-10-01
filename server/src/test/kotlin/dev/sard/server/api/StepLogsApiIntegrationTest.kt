@@ -47,7 +47,7 @@ class StepLogsApiIntegrationTest(
     )
 
     private fun step(name: String = "etc"): Step {
-        val body = """{"name":"$name","agentId":"${agent.agentId}","plugin":"files","repositoryName":"qa","config":{"paths":["/etc"]}}"""
+        val body = sourceJson(name, agent.agentId)
         val source =
             world.api
                 .post("/api/v1/sources", admin, body)
@@ -60,7 +60,12 @@ class StepLogsApiIntegrationTest(
                 .json
                 .path("id")
                 .asString()
-        val step = world.jdbc.queryForObject("select id from run_steps where run_id = ?", String::class.java, UUID.fromString(run))!!
+        val step =
+            world.jdbc.queryForObject(
+                "select id from run_steps where run_id = ?",
+                String::class.java,
+                UUID.fromString(run),
+            )!!
         return Step(run, step)
     }
 
