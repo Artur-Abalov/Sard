@@ -195,6 +195,26 @@ class RestWorld(
         jdbc.update("update run_steps set log_lines = log_lines + ? where id = ?", count.toLong(), step)
     }
 
+    /** A snapshot of the step (its run's source) as S7a would have recorded it, at [at]. */
+    fun insertSnapshot(
+        tenant: UUID,
+        step: UUID,
+        name: String,
+        at: java.time.Instant = clock.now,
+    ) {
+        jdbc.update(
+            "insert into snapshots (id, tenant_id, source_id, step_id, agent_id, repository_name, repository_id, snapshot_id, " +
+                "total_bytes, added_bytes, created_at) select ?, tenant_id, source_id, id, agent_id, 'qa', ?, ?, 1000, 10, ? " +
+                "from run_steps where id = ? and tenant_id = ?",
+            UUID.randomUUID(),
+            "r".repeat(64),
+            name,
+            java.sql.Timestamp.from(at),
+            step,
+            tenant,
+        )
+    }
+
     fun count(
         table: String,
         tenant: UUID,

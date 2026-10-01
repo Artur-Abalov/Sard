@@ -230,17 +230,18 @@ class ApiContractIntegrationTest(
     }
 
     /**
-     * Every operation of the spec but session (W1b implemented it) is here, so a new
-     * stub cannot skip this check.
+     * Every operation of the spec but session and status is here, so a new operation cannot skip this
+     * check; none answers 501 any more (S8b replaced the stubs).
      */
     @Test
-    fun `stubs answer 501 with a problem until S8b`() {
+    fun `no operation of the contract answers 501 not_implemented`() {
         val id = "0192f7a0-0000-7000-8000-000000000001"
         val source = """{"name":"n","agentId":"$id","plugin":"files","repositoryName":"r","config":{}}"""
         val calls =
             listOf(
                 Triple("GET", "/api/v1/agents?status=online", null),
                 Triple("GET", "/api/v1/agents/{agentId}", null),
+                Triple("POST", "/api/v1/agents/{agentId}/revoke", null),
                 Triple("POST", "/api/v1/enrollment-tokens", "{}"),
                 Triple("GET", "/api/v1/enrollment-tokens?status=active", null),
                 Triple("GET", "/api/v1/enrollment-tokens/{tokenId}", null),
@@ -257,14 +258,13 @@ class ApiContractIntegrationTest(
                 Triple("GET", "/api/v1/runs/{runId}/steps/{stepId}/logs", null),
             )
         val implemented = setOf("POST /api/v1/session", "GET /api/v1/session", "DELETE /api/v1/session")
-        val stubbed = calls.map { "${it.first} ${it.second.substringBefore('?')}" }.toSet()
-        assertEquals(operations().map { it.first }.toSet() - "GET /api/v1/status" - implemented, stubbed)
+        val listed = calls.map { "${it.first} ${it.second.substringBefore('?')}" }.toSet()
+        assertEquals(operations().map { it.first }.toSet() - "GET /api/v1/status" - implemented, listed)
         val cookie = signIn()
         for ((method, path, body) in calls) {
             val response = send(method, path.replace(Regex("\\{[^}]+}"), id), body, cookie)
-            assertEquals(501, response.statusCode(), "$method $path: ${response.body()}")
-            assertEquals(PROBLEM_JSON, response.headers().firstValue("Content-Type").orElse(""), "$method $path")
-            assertEquals("not_implemented", mapper.readTree(response.body()).path("code").asString(), "$method $path")
+            assertTrue(response.statusCode() != 501, "$method $path: ${response.body()}")
+            assertTrue(!response.body().contains("not_implemented"), "$method $path: ${response.body()}")
         }
     }
 

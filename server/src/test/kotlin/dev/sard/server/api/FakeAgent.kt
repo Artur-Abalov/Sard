@@ -9,6 +9,7 @@ import dev.sard.proto.agent.v1.ConnectRequest
 import dev.sard.proto.agent.v1.LogChunk
 import dev.sard.proto.agent.v1.LogLevel
 import dev.sard.proto.agent.v1.LogLine
+import dev.sard.proto.agent.v1.RunStep
 import dev.sard.proto.agent.v1.StepPhase
 import dev.sard.proto.agent.v1.StepProgress
 import dev.sard.proto.agent.v1.StepResult
@@ -41,13 +42,16 @@ fun <T> eventually(
 class FakeAgent(
     private val connection: Connection,
 ) {
-    /** The command id of the next RunStep the server sends. */
-    fun nextStep(): String {
+    /** The next RunStep the server sends. */
+    fun nextRunStep(): RunStep {
         while (true) {
             val message = checkNotNull(connection.received.poll(WAIT.toSeconds(), TimeUnit.SECONDS)) { "no RunStep within $WAIT" }
-            if (message.hasRunStep()) return message.runStep.commandId
+            if (message.hasRunStep()) return message.runStep
         }
     }
+
+    /** The command id of the next RunStep the server sends. */
+    fun nextStep(): String = nextRunStep().commandId
 
     fun progress(
         step: String,
