@@ -58,3 +58,37 @@
 **Политика повторов (В8).** 2xx — `delivered`; 429 — ждать `retry_after` (не больше 1 ч), попытка не считается; 5xx, сеть, таймаут — задержка 10 с·2ⁿ⁻¹ до 10 мин, не больше 8 попыток; 4xx кроме 429 — `failed` с причиной; не успели за 24 ч от создания — `expired`.
 
 **Схема** `notification_deliveries`: `tenant_id`, `id`, `run_id`, `channel` (`CHECK` по регулярному выражению: каналы расширяемы), `status` (`pending|delivered|skipped|failed|expired`), `attempts`, `next_attempt_at`, `created_at`, `finished_at`, `last_error`; `UNIQUE (tenant_id, run_id, channel)`, FK `(tenant_id, run_id) → runs`. Частичный индекс по `runs.finished_at` для планировщика.
+
+## Фаза 2 — очередь, подписка, клиент Bot API
+
+### Сделано
+- Миграция `V202610011200__notifications.sql`: `notification_deliveries` (ключ `UNIQUE (tenant_id, run_id, channel)`, FK `(tenant_id, run_id) → runs`, `CHECK` финала по `finished_at`), частичные индексы `notification_deliveries_due_idx` и `runs_finished_at_idx`. `TenantSchemaRulesTest` проходит без правок.
+- `notify/`:
+  - `Notifications.kt` — `RunNotice` (вход форматтера), `Message` из частей `Text|Bold|Code` (только простой текст), `NotificationFormatter` (S9b; `null` — уведомлять не нужно → `skipped`), `NotificationChannel`, `SendOutcome`.
+  - `RetryPolicy.kt` — политика В8, чистая функция.
+  - `Deliveries.kt` — очередь: `unplanned`/`due`/`pending` через `sessions.system` (В2; ADR 0013 пункт 5, `ArchitectureTest`), `plan`/`claim`/`record` — условные операторы в `inTenant`.
+  - `NotificationService.kt` — `tick()`: план по каждому каналу, затем отправка; аренда строки на время попытки.
+  - `NotificationLoop.kt` — свой поток `sard-notifications`, `wake()` из `RunFinishedListener`.
+  - `telegram/` — `TelegramBotApi` (JDK `HttpClient`, `BotToken`), `TelegramHtml` (экранирование и лимит 4096), `TelegramChannel`.
+  - `NotifyConfiguration.kt` — `sard.notify.*`, `SARD_TELEGRAM_BOT_TOKEN`/`SARD_TELEGRAM_CHAT_ID` через `@Value`, метрики `sard.notify.{sent,retries,undelivered}` с тегом `channel` и датчик `sard.notify.pending`.
+- Заготовка `notify/Notifier.kt` (`send(subject, body)`) удалена: её заменили `NotificationChannel` и `Message`.
+- `StepTransitions`, `StepResults`, `RunFinished` — без изменений (S7a сохранён).
+
+### Отступления от плана фаз
+- Рендер HTML (экранирование, лимит) сделан в фазе 2: без него канал не отправляет. Его тесты (`TelegramHtmlTest`) — это тест 4 стратегии, уже зелёный.
+- Проверка «без бота» на уровне настроек (`TelegramSettingsTest`) — тоже здесь: без неё `telegramChannel` не проходил CRAP. Предупреждение в логе при старте и отсутствие строк без канала — фаза 3.
+- `NotificationLoop` повторяет устройство `AgentStreamSweeper` (поток с фиксированной задержкой), но имеет `wake()` и своё имя потока. Обобщать чужой класс — не роль coder; кандидат для cleaner.
+
+### Проверено (команды и результат)
+- `./gradlew :server:test --tests 'dev.sard.server.notify.*'` — exit 0: `RetryPolicyTest`, `TelegramBotApiTest`, `TelegramHtmlTest`, `TelegramSettingsTest`, `NotificationLoopTest`, `NotificationsIntegrationTest` (Testcontainers).
+  - Тест 1: 429 с `retry_after` (попытка не считается, ждёт 37 с), 500 — задержки 10, 20, 40, 80, 160, 320, 600 с и `failed` после 8 попыток, 400 — `failed` после одного запроса, истечение через 24 ч.
+  - Тест 2: запуск зафиксирован без работающего отправителя → новый экземпляр сервиса отправляет; отправитель «упал» после аренды → повтор после `sard.notify.lease`.
+  - Тест 3: транзакция финализации (`StepTransitions.finish` в `inTenant`) откатилась → запуск остался `running`, строк и запросов нет.
+- `./gradlew :server:detekt` — exit 0. `./gradlew :server:spotlessApply` применён.
+- Полный `./gradlew :server:test`: 1 падение — `AgentSeamIntegrationTest` («the real agent registers its snapshot…»): агент выходит с `RESTIC_NOT_FOUND`, потому что тест намеренно указывает `restic.path` на несуществующий файл, а с A5b (`59775f4`) агент проверяет restic при старте. **На `origin/main` падает так же** (запущено в отдельном worktree). К S9a не относится; не чинил — вопрос владельцу.
+- Покрытие и CRAP сняты с отчёта JaCoCo полного прогона (`:server:test` с `ignoreFailures` только локально, через init-скрипт вне репозитория, чтобы отчёт собрался несмотря на падение выше): инструкции сервера 94,86 %, `notify` 94,47 %, `notify/telegram` 97,07 %; `.bin/crap -threshold 6` — ни одной функции `notify` выше порога (выше были `TelegramBotApi.outcome`, `telegramChannel`, `RetrySettings.validated`, `TelegramCredentials.configured` — разделены).
+- Мутационное тестирование (mutflow) не запускалось — фаза hardener.
+
+### Не проверено / полагаю
+- Поведение за HTTP-прокси в проде: клиент берёт `ProxySelector.getDefault()` (системные свойства `https.proxyHost`); тестами не покрыто.
+- Нагрузка: планировщик берёт до `sard.notify.batch` запусков на канал за тик; при большом потоке завершений очередь догоняет за несколько тиков — не измерялось.

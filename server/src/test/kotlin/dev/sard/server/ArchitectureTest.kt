@@ -74,8 +74,12 @@ class ArchitectureTest {
     @Test
     fun `sessions system is called only by the callers ADR 0013 lists`() {
         val allowed =
-            listOf("agents/AgentCertificateStandings.kt", "enrollment/EnrollmentTokens.kt", "runs/StepCounts.kt")
-                .map { File(mainRoot, it) }
+            listOf(
+                "agents/AgentCertificateStandings.kt",
+                "enrollment/EnrollmentTokens.kt",
+                "notify/Deliveries.kt",
+                "runs/StepCounts.kt",
+            ).map { File(mainRoot, it) }
         val callers = ktFiles(mainRoot).filter { SESSIONS_SYSTEM_CALL.containsMatchIn(it.readText()) }
         assertEquals(allowed.toSet(), callers.toSet(), "sessions.system callers must match ADR 0013's list exactly")
     }
