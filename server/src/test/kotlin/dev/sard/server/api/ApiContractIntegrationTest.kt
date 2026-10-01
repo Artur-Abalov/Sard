@@ -79,6 +79,14 @@ class ApiContractIntegrationTest(
             .map { it.name.removePrefix(prefix).lowercase() }
     }
 
+    /** The console's client is generated from web/src/api/openapi.json: it must be this server's document (`make openapi`). */
+    @Test
+    fun `the exported document is the one the console is generated from`() {
+        val committed = mapper.readTree(java.io.File("../web/src/api/openapi.json"))
+
+        assertEquals(committed, spec)
+    }
+
     @Test
     fun `step phase, log level and action are the proto values`() {
         assertEquals(protoValues(ProtoStepPhase.entries.toTypedArray()), enumValues("StepPhase"))

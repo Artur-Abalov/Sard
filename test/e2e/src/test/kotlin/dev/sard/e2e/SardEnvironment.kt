@@ -47,7 +47,8 @@ class SardEnvironment(
     // Not "network": inside a container's apply {} that name is the container's own getNetwork().
     private val sardNetwork = Network.newNetwork()
     private val dbPassword = randomHex()
-    private val adminPassword = randomHex()
+    /** The administrator's password (`SARD_ADMIN_PASSWORD`), for signing in to the REST API. */
+    internal val adminPassword = randomHex()
     private val secrets = mutableSetOf(dbPassword, adminPassword)
     private val containers = linkedMapOf<String, Tracked>()
 
