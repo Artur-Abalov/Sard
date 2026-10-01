@@ -113,6 +113,12 @@ tasks.test {
     useJUnitPlatform()
     dependsOn(buildTestAgent)
     systemProperty("sard.test.agent-binary", testAgentBinary.get().asFile.path)
+    // The agent refuses to start without a restic it accepts (A5b, ADR 0017); the seam tests
+    // give it a stand-in that reports the minimum version from this file.
+    systemProperty(
+        "sard.test.restic-version-file",
+        rootProject.file("agent/internal/restic/restic-version").path,
+    )
     // The CA of integration tests; the default /var/lib/sard/pki is not writable here.
     systemProperty(
         "sard.pki.dir",
