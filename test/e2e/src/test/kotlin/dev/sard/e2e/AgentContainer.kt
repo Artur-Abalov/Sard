@@ -21,15 +21,22 @@ internal object AgentContainer {
     private const val OWNER_ONLY = 0b110_000_000 // 0600
     private const val AGENT_UID = 65532 // USER of test/e2e/agent/Dockerfile
 
+    /**
+     * [local] is appended to the config (repositories, secrets); [ownedFiles] (path to content)
+     * are written 0600 and owned by the agent, as the agent requires of secret files (A1).
+     */
     fun of(
         sard: SardEnvironment,
         agent: AgentCredentials,
+        local: String = "",
+        ownedFiles: Map<String, String> = emptyMap(),
     ): GenericContainer<*> =
         GenericContainer<Nothing>(DockerImageName.parse(E2e.agentImage)).apply {
             withNetwork(sard.dockerNetwork)
             withNetworkAliases(ALIAS)
             // Readable by the image's non-root user; the container is thrown away with the test.
-            withCopyToContainer(Transferable.of(config(), READABLE), "/etc/sard/agent.yaml")
+            withCopyToContainer(Transferable.of(config() + local, READABLE), "/etc/sard/agent.yaml")
+            ownedFiles.forEach { (path, content) -> withCopyToContainer(OwnedByAgent(content), path) }
             withCopyToContainer(Transferable.of(agent.caPem, READABLE), "/etc/sard/ca.pem")
             withCopyToContainer(Transferable.of(agent.chainPem, READABLE), "/etc/sard/agent.pem")
             withCopyToContainer(OwnedByAgent(agent.keyPem), "/etc/sard/agent.key")
@@ -44,7 +51,7 @@ internal object AgentContainer {
           ca_file: /etc/sard/ca.pem
           cert_file: /etc/sard/agent.pem
           key_file: /etc/sard/agent.key
-        """.trimIndent()
+        """.trimIndent() + "\n"
 
     /**
      * The key, owned by the image's non-root user and closed to everyone else: the agent refuses

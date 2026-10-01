@@ -12,11 +12,12 @@ import java.util.UUID
  * a test hook on the server is ruled out (ADR 0020). Shared by the seam tests of S6a and S7a.
  */
 internal object RunRows {
-    /** A source with [plugin], its manual run and the run's queued backup step; returns the step's id. */
+    /** A source with [plugin] and [config], its manual run and the run's queued backup step; returns the step's id. */
     fun queueStep(
         sard: SardEnvironment,
         agentId: UUID,
         plugin: String,
+        config: String = "{}",
     ): UUID {
         val (source, run, step) = List(3) { UUID.randomUUID() }
         val now = Timestamp.from(Instant.now())
@@ -32,12 +33,13 @@ internal object RunRows {
                 """
                 INSERT INTO sources (id, tenant_id, agent_id, name, plugin, config, repository_name,
                                      created_at, updated_at)
-                VALUES (?, ?, ?, 'seam', ?, '{}'::jsonb, 'main', ?, ?)
+                VALUES (?, ?, ?, 'seam', ?, ?::jsonb, 'main', ?, ?)
                 """.trimIndent(),
                 source,
                 EnrollmentTokens.DEFAULT_TENANT,
                 agentId,
                 plugin,
+                config,
                 now,
                 now,
             )
@@ -52,7 +54,7 @@ internal object RunRows {
                 """
                 INSERT INTO run_steps (id, tenant_id, run_id, ordinal, agent_id, source_id, plugin, action,
                                        repository_name, config, status, queued_at)
-                VALUES (?, ?, ?, 0, ?, ?, ?, 'backup', 'main', '{}'::jsonb, 'queued', ?)
+                VALUES (?, ?, ?, 0, ?, ?, ?, 'backup', 'main', ?::jsonb, 'queued', ?)
                 """.trimIndent(),
                 step,
                 EnrollmentTokens.DEFAULT_TENANT,
@@ -60,6 +62,7 @@ internal object RunRows {
                 agentId,
                 source,
                 plugin,
+                config,
                 now,
             )
         }
