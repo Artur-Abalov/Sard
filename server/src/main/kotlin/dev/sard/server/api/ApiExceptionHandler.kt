@@ -4,6 +4,14 @@
 package dev.sard.server.api
 
 import dev.sard.server.enrollment.EnrollmentTokenValidationException
+import dev.sard.server.runs.AgentRevoked
+import dev.sard.server.runs.InvalidConfig
+import dev.sard.server.runs.RunActive
+import dev.sard.server.runs.SourceNameTaken
+import dev.sard.server.runs.SourceNotFound
+import dev.sard.server.runs.UnknownAgent
+import dev.sard.server.runs.UnknownPlugin
+import dev.sard.server.runs.UnknownRepository
 import jakarta.persistence.PersistenceException
 import org.hibernate.HibernateException
 import org.slf4j.LoggerFactory
@@ -53,6 +61,43 @@ class ApiExceptionHandler {
         val field = if (e.field == "ttl") "ttlSeconds" else e.field
         return unprocessable(ErrorCode.VALIDATION_FAILED, listOf(FieldError(field, e.message.orEmpty())))
     }
+
+    @ExceptionHandler(SourceNotFound::class)
+    fun sourceNotFound(): ResponseEntity<Problem> = notFound()
+
+    @ExceptionHandler(UnknownAgent::class)
+    fun unknownAgent() = refused(ErrorCode.UNKNOWN_AGENT, "agentId", "names no agent of this tenant")
+
+    @ExceptionHandler(AgentRevoked::class)
+    fun agentRevoked() = refused(ErrorCode.AGENT_REVOKED, "agentId", "names a revoked agent")
+
+    @ExceptionHandler(UnknownPlugin::class)
+    fun unknownPlugin() = refused(ErrorCode.UNKNOWN_PLUGIN, "plugin", "is not offered by the agent")
+
+    @ExceptionHandler(UnknownRepository::class)
+    fun unknownRepository() = refused(ErrorCode.UNKNOWN_REPOSITORY, "repositoryName", "is not a repository of the agent")
+
+    @ExceptionHandler(SourceNameTaken::class)
+    fun nameTaken() = refused(ErrorCode.VALIDATION_FAILED, "name", "is taken by another source")
+
+    @ExceptionHandler(InvalidConfig::class)
+    fun invalidConfig(e: InvalidConfig) = unprocessable(ErrorCode.INVALID_CONFIG, e.violations.map { FieldError(it.field, it.message) })
+
+    private fun refused(
+        code: ErrorCode,
+        field: String,
+        message: String,
+    ) = unprocessable(code, listOf(FieldError(field, message)))
+
+    @ExceptionHandler(RunActive::class)
+    fun runActive(e: RunActive): ResponseEntity<RunActiveProblem> {
+        val status = HttpStatus.CONFLICT
+        val body = RunActiveProblem(ABOUT_BLANK, "Conflict", status.value(), null, ErrorCode.RUN_ACTIVE, e.activeRunId)
+        return ResponseEntity.status(status).contentType(PROBLEM).body(body)
+    }
+
+    @ExceptionHandler(RunRefused::class)
+    fun runRefused(e: RunRefused): ResponseEntity<Problem> = problem(HttpStatus.CONFLICT, "Conflict", e.code)
 
     @ExceptionHandler(TokenConflict::class)
     fun tokenConflict(e: TokenConflict): ResponseEntity<TokenConflictProblem> {

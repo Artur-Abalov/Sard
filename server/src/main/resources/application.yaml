@@ -77,6 +77,11 @@ sard:
     # step_logs has monthly partitions; the server keeps this many months ahead of the current one.
     partitions-ahead-months: 2
     partitions-check-interval: 1d
+logging:
+  level:
+    # At DEBUG Hibernate prints the whole state of every entity it flushes: a source's config and a
+    # step's output would reach the log (S8b: config values never do). Its own diagnostics stay at INFO.
+    org.hibernate.orm.core: INFO
 management:
   endpoints:
     web:

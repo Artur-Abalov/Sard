@@ -11,10 +11,12 @@ import dev.sard.server.persistence.UuidV7
 import jakarta.persistence.LockModeType
 import org.hibernate.Session
 import org.hibernate.exception.ConstraintViolationException
+import tools.jackson.databind.json.JsonMapper
 import java.time.Clock
 import java.util.UUID
 
 private const val ACTIVE_RUN_KEY = "runs_active_source_key"
+private val JSON = JsonMapper.builder().build()
 
 /**
  * Learns that an agent has a new queued step, once its run is committed; the dispatcher
@@ -67,7 +69,7 @@ class Runs(
     ): RunView {
         // A shared lock: concurrent starts race on the index, a delete waits for them (and they for it).
         val source = liveSource(session, sourceId, LockModeType.PESSIMISTIC_READ)
-        AgentOffer.require(session, source.agentId, source.plugin, source.repositoryName)
+        AgentOffer.require(session, source.agentId, source.plugin, source.repositoryName, LockModeType.PESSIMISTIC_READ)
         activeRunOf(session, sourceId)?.let { throw RunActive(it) }
         val now = clock.instant()
         val run = RunRecord(ids.next(), sourceId, Trigger.MANUAL.stored, RunState.QUEUED.stored, now)
@@ -134,5 +136,20 @@ internal object RunViews {
             message = record.message,
             startedAt = record.startedAt,
             finishedAt = record.finishedAt,
+            filesProcessed = record.filesProcessed,
+            filesTotal = record.filesTotal,
+            backup = backupOf(record.output),
         )
+
+    /** The backup output of a step, null for any other output, none, or one that does not read. */
+    private fun backupOf(output: String?): BackupResult? {
+        val node = output?.let { JSON.readTree(it) } ?: return null
+        if (node.path("kind").asString() != Action.BACKUP.stored) return null
+        return BackupResult(
+            node.path("snapshotId").asString(),
+            node.path("totalBytes").asLong(),
+            node.path("addedBytes").asLong(),
+            node.path("repositoryId").asString(),
+        )
+    }
 }

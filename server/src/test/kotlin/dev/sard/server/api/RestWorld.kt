@@ -139,6 +139,40 @@ class RestWorld(
 
     fun connect(agent: TestAgent): Connection = clients.connect(agent)
 
+    /**
+     * Puts the run and its steps into [status] as the dispatcher and the result receiver would leave them,
+     * at [at]; `lost`, `failed`, `rejected` and `timed_out` finish them with [message].
+     */
+    fun forceRun(
+        runId: UUID,
+        status: String,
+        message: String? = null,
+        at: java.time.Instant = clock.now,
+    ) {
+        val time = java.sql.Timestamp.from(at)
+        val dispatched = if (status == "queued") null else time
+        val started = if (status in setOf("queued", "dispatched")) null else time
+        val finished = if (status in setOf("queued", "dispatched", "running")) null else time
+        jdbc.update(
+            "update run_steps set status = ?, message = ?, dispatched_at = ?, started_at = ?, finished_at = ? where run_id = ?",
+            status,
+            message,
+            dispatched,
+            started,
+            finished,
+            runId,
+        )
+        val runStatus = if (status in setOf("lost", "rejected", "timed_out")) "failed" else status
+        jdbc.update(
+            "update runs set status = ?, message = ?, started_at = ?, finished_at = ? where id = ?",
+            runStatus,
+            message,
+            started,
+            finished,
+            runId,
+        )
+    }
+
     fun count(
         table: String,
         tenant: UUID,

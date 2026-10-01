@@ -14,39 +14,13 @@ import java.util.UUID
 // replaced the session endpoints with dev.sard.server.auth.SessionApiImpl.
 
 @Component
-class UnimplementedSourcesApi : SourcesApi {
-    override fun listSources(
-        agentId: UUID?,
-        cursor: String?,
-        limit: Int,
-    ): SourcePage = notImplemented()
-
-    override fun createSource(source: SourceInput): Source = notImplemented()
-
-    override fun getSource(sourceId: UUID): Source = notImplemented()
-
-    override fun replaceSource(
-        sourceId: UUID,
-        source: SourceInput,
-    ): Source = notImplemented()
-
-    override fun deleteSource(sourceId: UUID) = notImplemented()
-
-    override fun startRun(sourceId: UUID): Run = notImplemented()
-
-    override fun listSourceSnapshots(
-        sourceId: UUID,
-        cursor: String?,
-        limit: Int,
-    ): SnapshotPage = notImplemented()
-}
-
-@Component
 class UnimplementedRunsApi : RunsApi {
     override fun listRuns(
         sourceId: UUID?,
         agentId: UUID?,
         status: List<RunStatus>?,
+        queuedFrom: java.time.Instant?,
+        queuedTo: java.time.Instant?,
         cursor: String?,
         limit: Int,
     ): RunPage = notImplemented()
@@ -62,7 +36,7 @@ class UnimplementedRunsApi : RunsApi {
 }
 
 /** Body of a stub whose behavior S8b implements. */
-private fun notImplemented(): Nothing {
+fun notImplemented(): Nothing {
     val problem = ProblemDetail.forStatus(HttpStatus.NOT_IMPLEMENTED)
     problem.setProperty("code", "not_implemented")
     throw ErrorResponseException(HttpStatus.NOT_IMPLEMENTED, problem, null)

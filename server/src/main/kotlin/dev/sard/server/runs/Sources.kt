@@ -3,6 +3,7 @@
 
 package dev.sard.server.runs
 
+import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.SourceRecord
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
@@ -52,7 +53,7 @@ class Sources(
     ): SourceView =
         nameGuarded(draft.name) {
             sessions.inTenant(tenantId) { session ->
-                AgentOffer.require(session, draft.agentId, draft.plugin, draft.repositoryName)
+                AgentOffer.require(session, draft.agentId, draft.plugin, draft.repositoryName).requireConfig(draft.config)
                 val now = clock.instant()
                 val record =
                     with(draft) { SourceRecord(ids.next(), agentId, name, plugin, config, repositoryName, now, now) }
@@ -71,7 +72,7 @@ class Sources(
         nameGuarded(draft.name) {
             sessions.inTenant(tenantId) { session ->
                 val record = liveSource(session, sourceId, LockModeType.PESSIMISTIC_WRITE)
-                AgentOffer.require(session, draft.agentId, draft.plugin, draft.repositoryName)
+                AgentOffer.require(session, draft.agentId, draft.plugin, draft.repositoryName).requireConfig(draft.config)
                 record.name = draft.name
                 record.agentId = draft.agentId
                 record.plugin = draft.plugin
@@ -100,23 +101,23 @@ class Sources(
         sourceId: UUID,
     ): SourceView = sessions.inTenant(tenantId) { session -> viewOf(liveSource(session, sourceId, LockModeType.NONE)) }
 
-    /** Live sources ordered by id, after the id [after] if given, of [agentId] if given; at most [limit]. */
+    /** Live sources, newest first, after the position [after] if given, of [agentId] if given; at most [limit]. */
     fun list(
         tenantId: UUID,
         agentId: UUID?,
-        after: UUID?,
+        after: PageKey?,
         limit: Int,
     ): List<SourceView> =
         sessions.inTenant(tenantId) { session ->
             val conditions =
-                listOfNotNull("deletedAt is null", agentId?.let { "agentId = :agent" }, after?.let { "id > :after" })
+                listOfNotNull("deletedAt is null", agentId?.let { "agentId = :agent" }, after?.let { PageKey.condition("createdAt") })
             val query =
                 session.createSelectionQuery(
-                    "from SourceRecord where ${conditions.joinToString(" and ")} order by id",
+                    "from SourceRecord where ${conditions.joinToString(" and ")} order by createdAt desc, id desc",
                     SourceRecord::class.java,
                 )
             agentId?.let { query.setParameter("agent", it) }
-            after?.let { query.setParameter("after", it) }
+            after?.bind(query)
             query.setMaxResults(limit).list().map { viewOf(it) }
         }
 

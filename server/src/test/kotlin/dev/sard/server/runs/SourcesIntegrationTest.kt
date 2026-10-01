@@ -4,6 +4,7 @@
 package dev.sard.server.runs
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.persistence.PageKey
 import dev.sard.server.pki.MovableClock
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -81,9 +82,9 @@ class SourcesIntegrationTest(
     }
 
     @Test
-    fun `a revoked agent is unknown`() {
+    fun `a revoked agent is refused as revoked, not as unknown`() {
         jdbc.update("update agents set revoked_at = now() where id = ?", tenant.agentId)
-        assertFailsWith<UnknownAgent> { sources.create(tenant.id, tenant.draft()) }
+        assertFailsWith<AgentRevoked> { sources.create(tenant.id, tenant.draft()) }
     }
 
     @Test
@@ -158,17 +159,20 @@ class SourcesIntegrationTest(
     }
 
     @Test
-    fun `list pages by id, filters by agent and stays in the tenant`() {
+    fun `list pages newest first, filters by agent and stays in the tenant`() {
         tenant.insertAgent(secondAgent)
         val a = sources.create(tenant.id, tenant.draft("a"))
+        clock.now = RUNS_NOW + Duration.ofMinutes(1)
         val b = sources.create(tenant.id, tenant.draft("b", secondAgent))
+        clock.now = RUNS_NOW + Duration.ofMinutes(2)
         val c = sources.create(tenant.id, tenant.draft("c"))
         sources.create(other.id, other.draft())
-        val ids = listOf(a, b, c).map { it.id }.sorted()
+        val newestFirst = listOf(c, b, a)
 
-        assertEquals(ids, sources.list(tenant.id, null, null, 50).map { it.id })
-        assertEquals(ids.take(2), sources.list(tenant.id, null, null, 2).map { it.id })
-        assertEquals(ids.drop(1), sources.list(tenant.id, null, ids[0], 50).map { it.id })
+        assertEquals(newestFirst.map { it.id }, sources.list(tenant.id, null, null, 50).map { it.id })
+        assertEquals(newestFirst.take(2).map { it.id }, sources.list(tenant.id, null, null, 2).map { it.id })
+        val after = PageKey(c.createdAt, c.id)
+        assertEquals(listOf(b.id, a.id), sources.list(tenant.id, null, after, 50).map { it.id })
         assertEquals(listOf(b.id), sources.list(tenant.id, secondAgent, null, 50).map { it.id })
     }
 }

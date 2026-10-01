@@ -253,7 +253,7 @@ fun captureLogs(block: () -> Unit): List<String> {
         root.level = level
     }
     return appender.list.flatMap { event ->
-        listOfNotNull(event.formattedMessage) +
+        listOfNotNull("[${event.loggerName}] ${event.formattedMessage}") +
             generateSequence(event.throwableProxy) { it.cause }.mapNotNull { it.message }
     }
 }
