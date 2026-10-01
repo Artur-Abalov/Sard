@@ -14,14 +14,27 @@ function summary(run: Schemas['Run']): Schemas['RunSummary'] {
   return rest
 }
 
+/** Queued at or after [from] and before [to]; an absent bound is open. */
+function queuedWithin(run: Schemas['Run'], from: string | null, to: string | null) {
+  const queued = Date.parse(run.queuedAt)
+  return (from === null || queued >= Date.parse(from)) && (to === null || queued < Date.parse(to))
+}
+
 function matches(
   run: Schemas['Run'],
-  filter: { sourceId: string | null; agentId: string | null; status: string[] },
+  filter: {
+    sourceId: string | null
+    agentId: string | null
+    status: string[]
+    queuedFrom: string | null
+    queuedTo: string | null
+  },
 ) {
   return (
     (filter.sourceId === null || run.sourceId === filter.sourceId) &&
     (filter.agentId === null || run.agentId === filter.agentId) &&
-    (filter.status.length === 0 || filter.status.includes(run.status))
+    (filter.status.length === 0 || filter.status.includes(run.status)) &&
+    queuedWithin(run, filter.queuedFrom, filter.queuedTo)
   )
 }
 
@@ -32,6 +45,8 @@ export const runHandlers = [
       sourceId: query.get('sourceId'),
       agentId: query.get('agentId'),
       status: query.getAll('status'),
+      queuedFrom: query.get('queuedFrom'),
+      queuedTo: query.get('queuedTo'),
     }
     const runs = state.runs.filter((r) => matches(r, filter)).map(summary)
     return response(200).json(pageOf(runs, query.get('cursor'), Number(query.get('limit') ?? 50)))

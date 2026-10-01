@@ -133,6 +133,7 @@ describe('session', () => {
       api.DELETE('/api/v1/session'),
       api.GET('/api/v1/agents'),
       api.GET('/api/v1/agents/{agentId}', { params: { path: { agentId: ids.dbAgent } } }),
+      api.POST('/api/v1/agents/{agentId}/revoke', { params: { path: { agentId: ids.dbAgent } } }),
       api.POST('/api/v1/enrollment-tokens', { body: {} }),
       api.GET('/api/v1/enrollment-tokens'),
       api.GET('/api/v1/enrollment-tokens/{tokenId}', {
@@ -396,5 +397,101 @@ describe('enrollment tokens', () => {
   test('an unknown token is 404', async () => {
     const { response } = await api.GET('/api/v1/enrollment-tokens/{tokenId}', tokenPath(unknownId))
     expect(response.status).toBe(404)
+  })
+})
+
+describe('agent revocation, soft delete and the new fields (S8b)', () => {
+  beforeEach(signIn)
+  const agentPath = (agentId: string) => ({ params: { path: { agentId } } })
+
+  test('revoking an agent keeps it in the list as revoked and offline; again changes nothing', async () => {
+    const first = await api.POST('/api/v1/agents/{agentId}/revoke', agentPath(ids.dbAgent))
+    expect(first.data).toMatchObject({ status: 'offline' })
+    expect(first.data?.revokedAt).toBeTruthy()
+    const again = await api.POST('/api/v1/agents/{agentId}/revoke', agentPath(ids.dbAgent))
+    expect(again.data?.revokedAt).toBe(first.data?.revokedAt)
+    const listed = must(await api.GET('/api/v1/agents')).items.find((a) => a.id === ids.dbAgent)
+    expect(listed).toMatchObject({ status: 'offline', duplicateSessionAt: null })
+    expect(listed?.revokedAt).toBe(first.data?.revokedAt)
+  })
+
+  test('an unknown agent is 404 on revoke', async () => {
+    const { response } = await api.POST('/api/v1/agents/{agentId}/revoke', agentPath(unknownId))
+    expect(response.status).toBe(404)
+  })
+
+  test('a revoked agent cannot be named by a source (422) and its source cannot start (409)', async () => {
+    await api.POST('/api/v1/agents/{agentId}/revoke', agentPath(ids.dbAgent))
+    const input = {
+      name: 'x',
+      agentId: ids.dbAgent,
+      plugin: 'files',
+      repositoryName: 'local',
+      config: {},
+    }
+    const created = await api.POST('/api/v1/sources', { body: input })
+    expect(created.response.status).toBe(422)
+    expect(created.error).toMatchObject({ code: 'agent_revoked' })
+    const run = await api.POST('/api/v1/sources/{sourceId}/runs', {
+      params: { path: { sourceId: ids.homeSource } },
+    })
+    expect(run.response.status).toBe(201)
+    await api.POST('/api/v1/agents/{agentId}/revoke', agentPath(ids.webAgent))
+    const second = await api.POST('/api/v1/sources/{sourceId}/runs', {
+      params: { path: { sourceId: ids.etcSource } },
+    })
+    expect(second.response.status).toBe(409)
+  })
+
+  test('a deleted source keeps its runs and snapshots; its card is 404', async () => {
+    const path = { params: { path: { sourceId: ids.homeSource } } }
+    expect((await api.DELETE('/api/v1/sources/{sourceId}', path)).response.status).toBe(204)
+    expect((await api.GET('/api/v1/sources/{sourceId}', path)).response.status).toBe(404)
+    expect((await api.GET('/api/v1/sources/{sourceId}/snapshots', path)).response.status).toBe(200)
+    const unknown = { params: { path: { sourceId: unknownId } } }
+    expect((await api.GET('/api/v1/sources/{sourceId}/snapshots', unknown)).response.status).toBe(
+      404,
+    )
+  })
+
+  test('a started run has its first step at ordinal 0', async () => {
+    const run = must(
+      await api.POST('/api/v1/sources/{sourceId}/runs', {
+        params: { path: { sourceId: ids.homeSource } },
+      }),
+    )
+    expect(run.steps[0].ordinal).toBe(0)
+  })
+
+  test('a token label is kept, empty means none, more than 200 characters is 422', async () => {
+    const labelled = must(await api.POST('/api/v1/enrollment-tokens', { body: { label: 'db1' } }))
+    const card = must(
+      await api.GET('/api/v1/enrollment-tokens/{tokenId}', {
+        params: { path: { tokenId: labelled.id } },
+      }),
+    )
+    expect(card.label).toBe('db1')
+    expect(labelled.agentEndpointConfigured).toBe(false)
+    const empty = must(await api.POST('/api/v1/enrollment-tokens', { body: { label: '' } }))
+    const emptyCard = must(
+      await api.GET('/api/v1/enrollment-tokens/{tokenId}', {
+        params: { path: { tokenId: empty.id } },
+      }),
+    )
+    expect(emptyCard.label).toBeNull()
+    const long = await api.POST('/api/v1/enrollment-tokens', { body: { label: 'x'.repeat(201) } })
+    expect(long.response.status).toBe(422)
+    expect(long.error).toMatchObject({ errors: [{ field: 'label' }] })
+  })
+
+  test('runs are filtered by the time they were queued: from included, to excluded', async () => {
+    const queued = (await api.GET('/api/v1/runs')).data?.items.map((r) => r.queuedAt) ?? []
+    const [newest, middle] = queued
+    const found = must(
+      await api.GET('/api/v1/runs', {
+        params: { query: { queuedFrom: middle, queuedTo: newest } },
+      }),
+    )
+    expect(found.items.map((r) => r.queuedAt)).toEqual([middle])
   })
 })

@@ -38,7 +38,12 @@ describe('logPage', () => {
   })
 
   test('past the end: no lines, the same afterSeq to poll again', () => {
-    expect(logPage(lines, 5, 10)).toEqual({ items: [], nextAfterSeq: 5, hasMore: false })
+    expect(logPage(lines, 5, 10)).toEqual({
+      items: [],
+      nextAfterSeq: 5,
+      hasMore: false,
+      truncated: false,
+    })
   })
 
   test('exactly limit lines left is the end', () => {
