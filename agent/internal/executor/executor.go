@@ -49,6 +49,9 @@ type Handler interface {
 // Reporter is how a running handler reports progress and log lines.
 type Reporter interface {
 	Progress(phase agentv1.StepPhase, bytesProcessed, bytesTotal uint64)
+	// ProgressFiles is Progress with the number of files processed and
+	// expected, for phases that count files.
+	ProgressFiles(phase agentv1.StepPhase, bytesProcessed, bytesTotal, filesProcessed, filesTotal uint64)
 	Log(level agentv1.LogLevel, text string)
 }
 

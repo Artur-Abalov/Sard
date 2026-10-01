@@ -17,16 +17,27 @@ type reporter struct {
 
 // Progress forwards at most one update per ProgressInterval; a new phase always passes.
 func (r *reporter) Progress(phase agentv1.StepPhase, processed, total uint64) {
+	r.ProgressFiles(phase, processed, total, 0, 0)
+}
+
+// ProgressFiles is Progress with file counters; both share the rate limit.
+func (r *reporter) ProgressFiles(phase agentv1.StepPhase, processed, total, files, filesTotal uint64) {
 	r.e.mu.Lock()
 	defer r.e.mu.Unlock()
-	if !r.c.live() || phase == agentv1.StepPhase_STEP_PHASE_ACCEPTED || phase == agentv1.StepPhase_STEP_PHASE_UNSPECIFIED {
+	if !r.c.live() || !reportable(phase) {
 		return
 	}
 	now := r.e.opts.Clock.Now()
 	if phase == r.c.progress.GetPhase() && now.Sub(r.c.sentAt) < r.e.opts.ProgressInterval {
 		return
 	}
-	r.e.send(r.c, now, phase, processed, total)
+	r.e.send(r.c, now, phase, counters{processed, total, files, filesTotal})
+}
+
+// reportable reports whether a plugin may report the phase: ACCEPTED and
+// UNSPECIFIED belong to the executor.
+func reportable(phase agentv1.StepPhase) bool {
+	return phase != agentv1.StepPhase_STEP_PHASE_ACCEPTED && phase != agentv1.StepPhase_STEP_PHASE_UNSPECIFIED
 }
 
 // Log forwards a line outside the executor's lock: the sink may block for

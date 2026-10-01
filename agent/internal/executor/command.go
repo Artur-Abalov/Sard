@@ -81,7 +81,7 @@ func (e *Executor) accept(step *agentv1.RunStep) {
 	}
 	c.state = queued
 	e.queue = append(e.queue, c)
-	e.send(c, e.opts.Clock.Now(), agentv1.StepPhase_STEP_PHASE_ACCEPTED, 0, 0)
+	e.send(c, e.opts.Clock.Now(), agentv1.StepPhase_STEP_PHASE_ACCEPTED, counters{})
 	e.dispatch()
 }
 
@@ -291,13 +291,18 @@ func (e *Executor) stopTimers(c *command) {
 	}
 }
 
+// counters are the amounts a progress report carries.
+type counters struct{ bytes, bytesTotal, files, filesTotal uint64 }
+
 // send reports progress and remembers it for duplicates and rate limiting.
-func (e *Executor) send(c *command, now time.Time, phase agentv1.StepPhase, processed, total uint64) {
+func (e *Executor) send(c *command, now time.Time, phase agentv1.StepPhase, n counters) {
 	p := &agentv1.StepProgress{
 		CommandId:      c.step.GetCommandId(),
 		Phase:          phase,
-		BytesProcessed: processed,
-		BytesTotal:     total,
+		BytesProcessed: n.bytes,
+		BytesTotal:     n.bytesTotal,
+		FilesProcessed: n.files,
+		FilesTotal:     n.filesTotal,
 		SentAt:         timestamppb.New(now),
 	}
 	c.progress, c.sentAt = p, now

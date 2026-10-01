@@ -3,8 +3,49 @@
   "title": "Files",
   "type": "object",
   "properties": {
-    "paths": { "type": "array", "title": "Paths", "items": { "type": "string" }, "minItems": 1 },
-    "exclude": { "type": "array", "title": "Exclude patterns", "items": { "type": "string" } }
+    "paths": {
+      "type": "array",
+      "title": "Paths",
+      "description": "Absolute paths of the directories and files on the host to back up. At least one, at most 64, without repeats; a path may not lie inside another one of the list. The agent user must be able to read them.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Пути",
+          "description": "Абсолютные пути каталогов и файлов на хосте, которые нужно сохранить. Не меньше одного и не больше 64, без повторов; один путь списка не может лежать внутри другого. Пользователь агента должен иметь право их читать."
+        }
+      },
+      "items": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^/[^\\x00]*$" },
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "examples": [["/etc", "/var/www"]]
+    },
+    "exclude": {
+      "type": "array",
+      "title": "Exclude patterns",
+      "description": "restic patterns of files and directories to leave out of the snapshot, for example *.log. The syntax is described at https://restic.readthedocs.io/en/stable/040_backup.html#excluding-files",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Исключения",
+          "description": "Шаблоны restic для файлов и каталогов, которые не попадут в снимок, например *.log. Синтаксис описан в https://restic.readthedocs.io/en/stable/040_backup.html#excluding-files"
+        }
+      },
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^[^\\x00]+$" },
+      "maxItems": 256,
+      "examples": [["*.log", "/var/www/cache"]]
+    },
+    "one_file_system": {
+      "type": "boolean",
+      "title": "Stay on one file system",
+      "description": "When on, restic does not descend into directories that belong to other file systems (mounts). Off by default: restic crosses file system boundaries.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Не выходить за пределы файловой системы",
+          "description": "Если включено, restic не заходит в каталоги других файловых систем (точки монтирования). По умолчанию выключено: restic переходит на другие файловые системы."
+        }
+      },
+      "default": false,
+      "examples": [true]
+    }
   },
   "required": ["paths"],
   "additionalProperties": false

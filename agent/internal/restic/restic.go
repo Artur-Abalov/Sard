@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
@@ -60,9 +61,9 @@ type Options struct {
 // Errors for restic's documented exit codes and for output the wrapper
 // cannot trust.
 var (
-	ErrNoRepository   = errors.New("repository does not exist")      // exit 10
-	ErrLocked         = errors.New("repository is locked")           // exit 11
-	ErrWrongPassword  = errors.New("wrong password or no key found") // exit 12
+	ErrNoRepository   = errors.New("repository does not exist")               // exit 10
+	ErrLocked         = errors.New("repository is locked by another process") // exit 11
+	ErrWrongPassword  = errors.New("wrong password or no key found")          // exit 12
 	ErrBadOutput      = errors.New("unexpected restic output")
 	ErrInvalidRequest = errors.New("invalid request")
 )
@@ -186,7 +187,8 @@ func (c *CLI) start(ctx context.Context, env []string, cl call) (*result, error)
 		Stderr: res.stderr(c.opts.OnStderr, cl.stderr),
 	})
 	res.code = code
-	if ctxErr := ctx.Err(); ctxErr != nil {
+	// A process that exited 0 finished its work, whenever ctx ended.
+	if ctxErr := ctx.Err(); ctxErr != nil && (code != 0 || err != nil) {
 		return res, fmt.Errorf("%s: %w", res.cmd, ctxErr)
 	}
 	if err != nil {
@@ -219,9 +221,7 @@ func (r *result) stderr(forward func(string), observe func([]byte)) func([]byte)
 		}
 		var msg message
 		if json.Unmarshal(line, &msg) != nil {
-			if bytes.HasPrefix(line, []byte("Fatal: ")) {
-				r.fatal = string(line)
-			}
+			r.plain(line)
 			return
 		}
 		switch msg.Type {
@@ -230,6 +230,18 @@ func (r *result) stderr(forward func(string), observe func([]byte)) func([]byte)
 		case "exit_error":
 			r.fatal = msg.Message
 		}
+	}
+}
+
+// missing is the end of the plain line restic prints for a path that is gone.
+const missing = " does not exist, skipping"
+
+// plain reads a line of restic that is not JSON.
+func (r *result) plain(line []byte) {
+	if bytes.HasPrefix(line, []byte("Fatal: ")) {
+		r.fatal = string(line)
+	} else if path, ok := bytes.CutSuffix(line, []byte(missing)); ok {
+		r.items = append(r.items, ItemError{Item: string(path), During: "scan", Message: "does not exist"})
 	}
 }
 
@@ -246,7 +258,24 @@ func (r *result) err() error {
 	case 12:
 		err = ErrWrongPassword
 	default:
-		err = &ExitError{Code: r.code, Message: r.fatal}
+		err = &ExitError{Code: r.code, Message: r.fatalLine()}
 	}
 	return fmt.Errorf("%s: %w", r.cmd, err)
+}
+
+// fatalLine is restic's fatal message on one line, followed by the paths it
+// reported as missing: the message alone does not say which.
+func (r *result) fatalLine() string {
+	msg := strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(r.fatal)
+	if msg == "" {
+		return ""
+	}
+	if len(r.items) > 0 {
+		paths := make([]string, len(r.items))
+		for i, it := range r.items {
+			paths[i] = fmt.Sprintf("%q", it.Item)
+		}
+		msg += ": " + strings.Join(paths, ", ")
+	}
+	return msg
 }
