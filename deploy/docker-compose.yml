@@ -35,6 +35,9 @@ services:
       SARD_ADMIN_PASSWORD: ${SARD_ADMIN_PASSWORD:?set SARD_ADMIN_PASSWORD in deploy/.env}
       # Address agents dial (decision 5, S2b); unset means the first of the names above and the gRPC port.
       SARD_AGENT_ENDPOINT: ${SARD_AGENT_ENDPOINT:-}
+      # Telegram notifications (S9a); both empty means notifications are off, with a warning.
+      SARD_TELEGRAM_BOT_TOKEN: ${SARD_TELEGRAM_BOT_TOKEN:-}
+      SARD_TELEGRAM_CHAT_ID: ${SARD_TELEGRAM_CHAT_ID:-}
     volumes:
       # The CA key: its own volume, backed up apart from postgres-data (docs/operations/pki.md).
       - sard-pki:/var/lib/sard/pki

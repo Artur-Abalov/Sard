@@ -113,6 +113,26 @@ class TelegramBotApiTest {
     }
 
     @Test
+    fun `a description that echoes the token is scrubbed`() {
+        val encoded = TEST_TOKEN.replace(":", "%3A")
+        fake.reply(FakeBotApi.error(401, "Unauthorized: bot$TEST_TOKEN and $encoded"))
+        val outcome = assertIs<SendOutcome.Rejected>(api().sendMessage(CHAT, "x"))
+        assertEquals("HTTP 401: Unauthorized: bot[REDACTED] and [REDACTED]", outcome.reason)
+    }
+
+    @Test
+    fun `a URI the client cannot use is rejected without the token`() {
+        val outcome = assertIs<SendOutcome.Rejected>(api(URI.create("ftp://127.0.0.1:1")).sendMessage(CHAT, "x"))
+        assertTrue(TEST_TOKEN !in outcome.reason, outcome.reason)
+        assertTrue(outcome.reason.startsWith("invalid request"), outcome.reason)
+    }
+
+    @Test
+    fun `the token prints redacted`() {
+        assertEquals("BotToken([REDACTED])", BotToken(TEST_TOKEN).toString())
+    }
+
+    @Test
     fun `a token in the wrong format is refused without echoing it`() {
         val error = assertFailsWith<IllegalArgumentException> { BotToken("not a token") }
         assertTrue("not a token" !in error.message.orEmpty(), error.message)

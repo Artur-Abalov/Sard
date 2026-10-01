@@ -92,3 +92,28 @@
 ### Не проверено / полагаю
 - Поведение за HTTP-прокси в проде: клиент берёт `ProxySelector.getDefault()` (системные свойства `https.proxyHost`); тестами не покрыто.
 - Нагрузка: планировщик берёт до `sard.notify.batch` запусков на канал за тик; при большом потоке завершений очередь догоняет за несколько тиков — не измерялось.
+
+## Фаза 3 — экранирование, защита токена, режим без бота, метрики
+
+Владелец на контрольной точке 2: «пофиг на этот тест» (`AgentSeamIntegrationTest`, красный и на `main`), делать фазу 3.
+
+### Сделано
+- **Токен.** `TelegramBotApi` строит запрос внутри `try`: `IllegalArgumentException` клиента JDK печатает URI целиком, с токеном, — теперь это исход `Rejected("invalid request: …")`, очищенный от токена. `sard.notify.telegram.api-url` — только `http`/`https`. `TelegramCredentials.toString` прячет токен; токен читается через `@Value`, не через `@ConfigurationProperties`.
+- **Без бота.** `activeChannels(channels, formatter)` — нет канала или нет форматтера (S9b) → активных каналов нет, предупреждение в журнале, план ничего не создаёт.
+- **Метрики** проверены и модульно (`SimpleMeterRegistry`), и в интеграции (приращения `sent`, `retries`, `undelivered{reason=failed}`, датчик `pending`).
+- **Развёртывание.** `deploy/.env.example` (`SARD_TELEGRAM_BOT_TOKEN=` пустой, `SARD_TELEGRAM_CHAT_ID` закомментирован; `DeployEnvExampleTest`), `deploy/docker-compose.yml`, раздел `sard.notify` в `application.yaml`, `docs/operations/notifications.md`.
+- **Документы.** Черновик ADR `docs/adr/00XX-draft-notifications.md`. Реестр: OQ-047 и OQ-017 закрыты (раздел «2026-10-01, S9a»), открыт OQ-051 (очистка `notification_deliveries`, ответ В9). Ссылки в ADR 0013 («Отложено», каналы уведомлений) и в черновике S7a (OQ-047 закрыт иначе).
+
+### Проверено (команды и результат)
+- Тест 4: `TelegramHtmlTest` — экранирование `&`, `<`, `>` во всех частях, лимит 4096 видимых символов с `…`, суррогатная пара не разрывается, теги парные.
+- Тест 5: `NotificationsIntegrationTest` «the bot token never reaches the logs or the database…» — журнал захвачен `OutputCaptureExtension` при `logging.level.dev.sard.server.notify=TRACE`; ответы 500 и 401 с токеном в `description`, 429, затем успешная доставка. Токена (и формы `%3A`) нет ни в журнале, ни в `last_error`; что ошибка вообще залогирована, проверено (`HTTP 401: Unauthorized: bot[REDACTED]`). Модульно — `TelegramBotApiTest` (описание с токеном, непригодный URI, `toString`).
+- Тест 6: `NotificationsWithoutBotIntegrationTest` — контекст без `SARD_TELEGRAM_*` стартует, в журнале предупреждение, после трёх завершённых запусков и трёх тиков строк в `notification_deliveries` нет, `sard.notify.pending` = 0. `NotifySetupTest` — без канала, без форматтера, с обоими.
+- `./gradlew :server:spotlessCheck :server:detekt` — exit 0; `make license-check` — 538 файлов OK.
+- Полный `./gradlew :server:test` (через локальный init-скрипт с `ignoreFailures`, чтобы собрать JaCoCo): 838 тестов, 1 падение — `AgentSeamIntegrationTest` (то же, что на `main`, см. фазу 2). Без init-скрипта `./gradlew :server:test` завершается с ошибкой из-за этого теста.
+- JaCoCo (инструкции): сервер 94,97 %, `notify` 95,02 %, `notify/telegram` 97,35 %. `.bin/crap -threshold 6`: функций `notify` выше порога нет (максимум 5,4 — `closedStatus`).
+
+### Не проверено / открыто
+- **Мутационное тестирование.** mutflow оценивает только классы с `@MutFlowTest`; в тестах `notify` его нет, значит mutflow этот код не проверяет. Это работа hardener (`/ship-feature`, последний шаг).
+- Работа за HTTP-прокси в эксплуатации (`ProxySelector.getDefault()`) тестами не покрыта.
+- Настоящий Telegram не вызывался: только fake Bot API.
+- Сервис рассчитан на один экземпляр сервера (ADR 0026); аренда защищает строку от двойной отправки и при нескольких, но это не проверялось.

@@ -7,6 +7,7 @@ import dev.sard.server.notify.telegram.TEST_TOKEN
 import dev.sard.server.notify.telegram.TelegramChannel
 import org.junit.jupiter.api.Test
 import tools.jackson.databind.json.JsonMapper
+import java.net.URI
 import java.time.Duration
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -61,6 +62,18 @@ class TelegramSettingsTest {
         assertFailsWith<IllegalArgumentException> {
             telegramChannel(credentials, TelegramProperties(requestTimeout = Duration.ZERO), JSON)
         }
+    }
+
+    @Test
+    fun `the Bot API address must be http or https`() {
+        val credentials = TelegramCredentials(TEST_TOKEN, "-100")
+        val error =
+            assertFailsWith<IllegalArgumentException> {
+                telegramChannel(credentials, TelegramProperties(apiUrl = URI.create("ftp://example.com")), JSON)
+            }
+        assertEquals("sard.notify.telegram.api-url must be an http or https URL", error.message)
+        val plainHttp = TelegramProperties(URI.create("http://127.0.0.1"))
+        assertIs<TelegramChannel>(telegramChannel(credentials, plainHttp, JSON))
     }
 
     @Test

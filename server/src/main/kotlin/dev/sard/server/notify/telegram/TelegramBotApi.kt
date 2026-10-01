@@ -70,15 +70,8 @@ class TelegramBotApi(
                     "link_preview_options" to mapOf("is_disabled" to true),
                 ),
             )
-        val request =
-            HttpRequest
-                .newBuilder(baseUri.resolve(token.path("sendMessage")))
-                .timeout(requestTimeout)
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .build()
         return try {
-            val response = http.send(request, HttpResponse.BodyHandlers.ofString())
+            val response = http.send(request(body), HttpResponse.BodyHandlers.ofString())
             outcome(response.statusCode(), parse(response.body()))
         } catch (_: HttpTimeoutException) {
             SendOutcome.Transient("timeout")
@@ -87,8 +80,20 @@ class TelegramBotApi(
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
             SendOutcome.Transient("interrupted")
+        } catch (e: IllegalArgumentException) {
+            // The JDK client names the full URI, token included, when it cannot use it.
+            SendOutcome.Rejected(reason("invalid request: ${e.javaClass.simpleName}", e.message))
         }
     }
+
+    /** Inside the caller's try: a URI the client cannot use fails here, with the token in the message. */
+    private fun request(body: String): HttpRequest =
+        HttpRequest
+            .newBuilder(baseUri.resolve(token.path("sendMessage")))
+            .timeout(requestTimeout)
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build()
 
     private fun outcome(
         status: Int,

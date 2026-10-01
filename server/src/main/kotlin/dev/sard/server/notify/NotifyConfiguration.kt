@@ -31,6 +31,8 @@ import java.util.concurrent.atomic.AtomicLong
 private val log = LoggerFactory.getLogger(NotifyConfiguration::class.java)
 
 private val RETRY_DEFAULTS = RetrySettings()
+private const val NO_FORMATTER = "Notifications are off: no NotificationFormatter bean (S9b)"
+private val WEB_SCHEMES = setOf("http", "https")
 private const val TOKEN_VARIABLE = "SARD_TELEGRAM_BOT_TOKEN"
 private const val CHAT_VARIABLE = "SARD_TELEGRAM_CHAT_ID"
 private const val NEEDS_BOTH = "Telegram needs $TOKEN_VARIABLE and $CHAT_VARIABLE;"
@@ -102,6 +104,7 @@ fun telegramChannel(
     json: ObjectMapper,
 ): TelegramChannel? {
     val (token, chat) = credentials.configured() ?: return null
+    require(properties.apiUrl.scheme in WEB_SCHEMES) { "sard.notify.telegram.api-url must be an http or https URL" }
     require(properties.connectTimeout.isPositive) { "sard.notify.telegram.connect-timeout must be positive" }
     require(properties.requestTimeout.isPositive) { "sard.notify.telegram.request-timeout must be positive" }
     val http =
@@ -113,6 +116,20 @@ fun telegramChannel(
             .build()
     return TelegramChannel(TelegramBotApi(http, properties.apiUrl, token, properties.requestTimeout, json), chat)
 }
+
+/**
+ * The channels the queue works with. Without a channel or without a formatter (S9b) it works
+ * with none: the server starts, nothing is planned, and the log says why (ADR 0024).
+ */
+fun activeChannels(
+    channels: List<NotificationChannel>,
+    formatter: NotificationFormatter?,
+): List<NotificationChannel> =
+    when {
+        channels.isEmpty() -> emptyList<NotificationChannel>().also { log.warn(NO_CHANNEL) }
+        formatter == null -> emptyList<NotificationChannel>().also { log.warn(NO_FORMATTER) }
+        else -> channels.also { log.info("Notifications go through {}", channels.map { it.name }) }
+    }
 
 /** Micrometer meters of the notification queue. */
 class MicrometerNotifyMetrics(
@@ -173,14 +190,9 @@ class NotifyConfiguration {
         val telegram = telegramChannel(credentials, properties.telegram, json)
         val channels = listOfNotNull(telegram) + extraChannels.orderedStream().toList()
         val chosen = formatter.ifAvailable
-        when {
-            channels.isEmpty() -> log.warn(NO_CHANNEL)
-            chosen == null -> log.warn("Notifications are off: no NotificationFormatter bean (S9b)")
-            else -> log.info("Notifications go through {}", channels.map { it.name })
-        }
         return NotificationService(
             Deliveries(sessions, UuidV7(clock, SecureRandom())),
-            if (chosen == null) emptyList() else channels,
+            activeChannels(channels, chosen),
             chosen ?: NotificationFormatter { null },
             RetryPolicy(properties.retry()),
             properties.queue(),

@@ -22,10 +22,14 @@ import dev.sard.server.runs.StepReport
 import dev.sard.server.runs.StepResults
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepTransitions
+import io.micrometer.core.instrument.MeterRegistry
 import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.boot.test.system.CapturedOutput
+import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
@@ -42,6 +46,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 private const val CHAT = "-100777"
@@ -69,10 +74,13 @@ class NotifyTestConfiguration {
  * S9a, test strategy 1–3: finished runs reach a fake Telegram at least once, through the outbox
  * that the background tick fills from committed runs (OQ-047, answer В4).
  */
+@ExtendWith(OutputCaptureExtension::class)
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = [
         "spring.grpc.server.port=0",
+        // Everything the notification code could say, so that test 5 sees it.
+        "logging.level.dev.sard.server.notify=TRACE",
         "sard.notify.tick-interval=1h",
         "SARD_TELEGRAM_BOT_TOKEN=$TEST_TOKEN",
         "SARD_TELEGRAM_CHAT_ID=$CHAT",
@@ -88,6 +96,7 @@ class NotificationsIntegrationTest(
     @Autowired private val results: StepResults,
     @Autowired private val sessions: TenantSessions,
     @Autowired private val clock: MovableClock,
+    @Autowired private val meters: MeterRegistry,
     @Autowired private val jdbc: JdbcTemplate,
 ) {
     private val tenant = RunsTenant(jdbc)
@@ -289,6 +298,67 @@ class NotificationsIntegrationTest(
 
         assertEquals(0, deliveries(tenant))
         assertEquals(0, fake.requests.size)
+    }
+
+    // --- 5. The bot token stays out of logs, errors and the database ---
+
+    @Test
+    fun `the bot token never reaches the logs or the database, on success or failure`(output: CapturedOutput) {
+        val failing = finished(name = "failing")
+        fake.reply(
+            FakeBotApi.error(500, "upstream said bot$TEST_TOKEN"),
+            FakeBotApi.tooMany(1),
+            FakeBotApi.error(401, "Unauthorized: bot$TEST_TOKEN"),
+        )
+        service.tick()
+        later(Duration.ofSeconds(10))
+        service.tick()
+        later(Duration.ofSeconds(1))
+        service.tick()
+        val delivered = finished(name = "fine")
+        service.tick()
+
+        assertEquals("failed", delivery(failing)["status"])
+        assertEquals("delivered", delivery(delivered)["status"])
+        assertTrue("HTTP 401: Unauthorized: bot[REDACTED]" in output.all, "the failure itself is logged")
+        val encoded = TEST_TOKEN.replace(":", "%3A")
+        for (secret in listOf(TEST_TOKEN, encoded)) {
+            assertFalse(secret in output.all, "the token is in the log")
+            val stored = jdbc.queryForList("select last_error from notification_deliveries", String::class.java)
+            assertFalse(stored.any { it != null && secret in it }, "the token is in last_error: $stored")
+        }
+    }
+
+    // --- Metrics (answer В11) ---
+
+    @Test
+    fun `the queue counts what it sent, retried and gave up on, per channel`() {
+        fun count(
+            name: String,
+            vararg tags: String,
+        ) = meters
+            .find(name)
+            .tags(*tags)
+            .counter()
+            ?.count() ?: 0.0
+        val sent = count("sard.notify.sent", "channel", "telegram")
+        val retried = count("sard.notify.retries", "channel", "telegram")
+        val failed = count("sard.notify.undelivered", "channel", "telegram", "reason", "failed")
+        fake.reply(FakeBotApi.error(502, "Bad Gateway"), FakeBotApi.error(400, "Bad Request"))
+        val bad = finished(name = "bad")
+
+        service.tick()
+        assertEquals(1.0, meters.get("sard.notify.pending").gauge().value())
+        later(Duration.ofSeconds(10))
+        service.tick()
+        finished(name = "good")
+        service.tick()
+
+        assertEquals("failed", delivery(bad)["status"])
+        assertEquals(sent + 1, count("sard.notify.sent", "channel", "telegram"))
+        assertEquals(retried + 1, count("sard.notify.retries", "channel", "telegram"))
+        assertEquals(failed + 1, count("sard.notify.undelivered", "channel", "telegram", "reason", "failed"))
+        assertEquals(0.0, meters.get("sard.notify.pending").gauge().value())
     }
 
     // --- 2. A crash after the run committed ---
