@@ -1,10 +1,7 @@
 # QA: REST API этапа 1 (S8b)
 
-Сценарии: `docs/specs/server/rest-api.feature` (черновик, ждёт утверждения
-владельца). Контракт — OpenAPI S8a (ADR 0019), экспорт `web/src/api/openapi.json`.
-Пометка `[Вn]` у шага называет вопрос владельцу, от ответа на который зависит
-ожидаемый результат; шаг записан по рекомендуемому варианту и после ответа
-владельца правится вместе со спецификацией.
+Сценарии: `docs/specs/server/rest-api.feature` (утверждена владельцем
+2026-10-01). Контракт — OpenAPI S8a (ADR 0019), экспорт `web/src/api/openapi.json`.
 
 Ожидаемый результат указан после «→» в каждом шаге. Любое расхождение — дефект.
 
@@ -56,7 +53,7 @@ RESTIC=$PWD/.bin/restic
 5. `a POST /enrollment-tokens '{}' | tee $QA/t1`
    → `HTTP 201`; `token` вида `sard_<43>.<64>`; `enrollCommand` =
    `sard-agent enroll --server localhost:9090 --token <token>`;
-   `expiresAt` ≈ сейчас + 24 ч; `[В3]` `agentEndpointConfigured` = `false`.
+   `expiresAt` ≈ сейчас + 24 ч; `agentEndpointConfigured` = `false`.
 6. `T1=$(body < $QA/t1 | jq -r .token); TID=$(body < $QA/t1 | jq -r .id)`;
    `a GET /enrollment-tokens | body | grep -cF "$T1"; a GET /enrollment-tokens/$TID | body | grep -cF "$T1"`
    → `0` и `0`; карточка — `status` `active`.
@@ -65,13 +62,13 @@ RESTIC=$PWD/.bin/restic
 8. `a POST /enrollment-tokens '{"ttlSeconds":299}'; a POST /enrollment-tokens '{"ttlSeconds":604801}'`
    → оба `HTTP 422`, `code` `validation_failed`, `errors[0].field` = `ttlSeconds`;
    новых токенов нет.
-9. `[В2]` `a POST /enrollment-tokens "{\"label\":\"$(printf 'x%.0s' $(seq 200))\"}" | tail -1`
+9. `a POST /enrollment-tokens "{\"label\":\"$(printf 'x%.0s' $(seq 200))\"}" | tail -1`
    → `HTTP 201`, в списке `label` из 200 символов; с 201 символом → `HTTP 422`, поле `label`;
    с `""` → `201`, `label` = `null`.
 10. Отозвать: `a POST /enrollment-tokens/$TID/revoke` → `HTTP 200`, `status` `revoked`, `revokedAt` задан.
-11. `[В1]` Повторно `a POST /enrollment-tokens/$TID/revoke` → `HTTP 200`, `revokedAt` тот же, что в шаге 10.
+11. Повторно `a POST /enrollment-tokens/$TID/revoke` → `HTTP 200`, `revokedAt` тот же, что в шаге 10.
 12. `a POST /enrollment-tokens/$(cat /proc/sys/kernel/random/uuid)/revoke` → `HTTP 404`, `code` `not_found`.
-13. `[В1]` Истёкший: `T5=$(a POST /enrollment-tokens '{"ttlSeconds":300}' | body | jq -r .id)`; подождать 5 мин;
+13. Истёкший: `T5=$(a POST /enrollment-tokens '{"ttlSeconds":300}' | body | jq -r .id)`; подождать 5 мин;
     `a POST /enrollment-tokens/$T5/revoke` → `HTTP 409`, `code` `token_expired`, `agentId` `null`.
 14. `a GET '/enrollment-tokens?status=revoked' | body | jq '[.items[].status] | unique'` → `["revoked"]`.
 15. `$DC logs server | grep -cF "$T1"` → `0`; то же для секрета (часть между `sard_` и `.`) → `0`.
@@ -107,7 +104,7 @@ sleep 5; X=$(a GET /agents | body | jq -r '.items[0].id')
 
 16. `a GET /agents/$X | body | jq '{status, agentVersion, os, arch, plugins: [.plugins[].name], repositories: [.repositories[].name], secretNames, revokedAt, duplicateSessionAt}'`
     → `status` `online`; версия, `linux`, архитектура хоста; `plugins` содержит `files`;
-    `repositories` = `["qa"]`; `revokedAt` `null`; `[В4]` `duplicateSessionAt` `null`.
+    `repositories` = `["qa"]`; `revokedAt` `null`; `duplicateSessionAt` `null`.
 17. `a GET /agents/$X | body | grep -c secret-value-QA-9d2e` → `0`.
 18. `a GET '/agents?status=online' | body | jq -r '.items[].id'` → содержит `$X`;
     `?status=offline` → не содержит.
@@ -122,7 +119,7 @@ sleep 5; X=$(a GET /agents | body | jq -r '.items[0].id')
 21. То же с `"agentId":"<случайный uuid>"` → `HTTP 422`, `unknown_agent`, поле `agentId`;
     с `"plugin":"postgres"` → `unknown_plugin`, поле `plugin`;
     с `"repositoryName":"offsite"` → `unknown_repository`, поле `repositoryName`.
-22. `[В15]` С `"config":{"paths":["etc"],"one_file_system":"yes"}`
+22. С `"config":{"paths":["etc"],"one_file_system":"yes"}`
     → `HTTP 422`, `invalid_config`, `errors[].field` = `config/one_file_system`, `config/paths/0`.
 23. С `"config":{}` → `HTTP 422`, `invalid_config`; с `"config":{"paths":["/etc"],"compression":"max"}` → `HTTP 422`, `invalid_config`.
 24. Повторить шаг 20 с тем же `name` → `HTTP 422`, `validation_failed`, поле `name`.
@@ -140,9 +137,9 @@ sleep 5; X=$(a GET /agents | body | jq -r '.items[0].id')
     (если запуск уже успел закончиться — повторить с остановленным агентом, шаг 33).
 31. Дождаться: `until a GET /runs/$RUN | body | jq -e '.status|IN("succeeded","failed")'; do sleep 2; done`
     → `succeeded`; у шага `backup.snapshotId` = последний снимок `restic -r $R snapshots --json`,
-    `[В8]` `backup.repositoryId` = `id` из `restic -r $R cat config`.
+    `backup.repositoryId` = `id` из `restic -r $R cat config`.
 32. `a GET "/runs/$RUN/steps/$STEP/logs?limit=1" | body | jq '{n: (.items|length), nextAfterSeq, hasMore, truncated}'`
-    → `n` 1, `nextAfterSeq` = `seq` строки, `hasMore` `true`; `[В10]` `truncated` `false`;
+    → `n` 1, `nextAfterSeq` = `seq` строки, `hasMore` `true`; `truncated` `false`;
     `?afterSeq=<последний seq>` → `items` пуст, `hasMore` `false`.
 33. Остановить агента (`kill $AGPID`), `a POST /sources/$S/runs` → `HTTP 201`, `queued`;
     через 60 с всё ещё `queued`; запустить агента → запуск доходит до `succeeded`.
@@ -150,21 +147,21 @@ sleep 5; X=$(a GET /agents | body | jq -r '.items[0].id')
     → снимок из шага 33 первым; `repositoryName` `qa`, `repositoryId` как в шаге 31.
 35. `a GET "/runs?sourceId=$S&status=succeeded" | body | jq '.items|length'` → `2`;
     `a GET '/runs?status=failed&status=succeeded'` → только эти два статуса.
-36. `[В11]` `a GET "/runs?queuedFrom=$(date -u -d '-1 min' +%FT%TZ)"` → только запуски последней минуты.
-37. `[В8]` Неуспешный бэкап со снимком: `chmod 000 $QA/tree/a.txt; echo b > $QA/tree/b.txt`; запустить `$S`
+36. `a GET "/runs?queuedFrom=$(date -u -d '-1 min' +%FT%TZ)"` → только запуски последней минуты.
+37. Неуспешный бэкап со снимком: `chmod 000 $QA/tree/a.txt; echo b > $QA/tree/b.txt`; запустить `$S`
     → шаг `failed`, `message` называет нечитаемый файл; `backup.snapshotId` задан;
     снимок с этим `snapshotId` есть в `GET /sources/$S/snapshots`, `partial` `true`. Вернуть `chmod 644`.
 38. Запуск источника из шага 27 → шаг `rejected`, `message` — текст агента; запуск `failed`.
-39. `[В9]` Во время долгого бэкапа (дерево из 50 000 файлов) `a GET /runs/<id>` несколько раз
+39. Во время долгого бэкапа (дерево из 50 000 файлов) `a GET /runs/<id>` несколько раз
     → `phase` `uploading`, растущие `bytesProcessed`, `filesProcessed`; `filesTotal` не `null` к концу.
 40. Удаление: во время идущего запуска `a DELETE /sources/$S` → `HTTP 409`, `run_active`; после
     завершения → `HTTP 204`; `a GET /sources/$S` → `404`; `a GET "/runs?sourceId=$S"` — запуски на месте;
-    `[В7]` `a GET /sources/$S/snapshots` → `HTTP 200`, снимки на месте.
+    `a GET /sources/$S/snapshots` → `HTTP 200`, снимки на месте.
 41. Новый источник `etc` с тем же именем → `HTTP 201`.
 
 ## Часть 6. Пометка дубликата
 
-42. `[В4]` Клон: `cp -a $H $QA/clone; sed -i "s|$H|$QA/clone|g" $QA/clone/agent.yaml; $AG --config $QA/clone/agent.yaml > $QA/clone.out 2>&1 & CLPID=$!`;
+42. Клон: `cp -a $H $QA/clone; sed -i "s|$H|$QA/clone|g" $QA/clone/agent.yaml; $AG --config $QA/clone/agent.yaml > $QA/clone.out 2>&1 & CLPID=$!`;
     подождать 90 с → в `$QA/clone.out` отказ `AGENT_DUPLICATE_SESSION`;
     `a GET /agents/$X | body | jq -r .duplicateSessionAt` — время, не `null`; то же в `GET /agents`.
 43. `kill $CLPID; $DC restart server`; дождаться `healthy`; войти снова (Подготовка, `curl … /session`)
@@ -178,9 +175,9 @@ sleep 5; X=$(a GET /agents | body | jq -r '.items[0].id')
     (не через минуту периодической проверки).
 45. `$PSQL "select count(*) from agent_certificates where agent_id='$X' and revoked_at is null"` → `0`.
 46. Агент пытается переподключиться → в логе агента `UNAUTHENTICATED`, `CERT_REVOKED`; `status` остаётся `offline`.
-47. `[В5]` Шаг запуска из шага 44 → `lost`, `message` `agent revoked`; запуск `failed`.
+47. Шаг запуска из шага 44 → `lost`, `message` `agent revoked`; запуск `failed`.
 48. Повторно `a POST /agents/$X/revoke` → `HTTP 200`, `revokedAt` прежний.
-49. `[В6]` `a POST /sources/<источник агента X>/runs` → `HTTP 409`, `code` `agent_revoked`;
+49. `a POST /sources/<источник агента X>/runs` → `HTTP 409`, `code` `agent_revoked`;
     создание источника с `agentId` `$X` → `HTTP 422`, `agent_revoked`.
 50. `a GET /agents` → `$X` в списке с `revokedAt`; `GET /runs?agentId=$X`, карточки и логи,
     `GET /sources/<id>/snapshots` → `200` с прежними данными.
@@ -190,9 +187,9 @@ sleep 5; X=$(a GET /agents | body | jq -r '.items[0].id')
 51. Создать 60 токенов (`for i in $(seq 60); do a POST /enrollment-tokens '{}' >/dev/null; done`);
     `a GET '/enrollment-tokens?limit=50'` → 50 элементов и `nextCursor`; следующая страница с этим `cursor`
     → остаток, `nextCursor` `null`; объединение страниц без повторов, число = всего токенов.
-52. `[В13]` `a GET '/agents?limit=0'`, `?limit=201`, `?cursor=garbage`, `/runs?status=done`
+52. `a GET '/agents?limit=0'`, `?limit=201`, `?cursor=garbage`, `/runs?status=done`
     → каждый `HTTP 422`, `validation_failed`, поле — имя параметра. `a GET /sources/not-a-uuid` → `HTTP 404`.
-53. `[В14]` `$DC stop postgres; a GET /agents` → `HTTP 503`, `code` `unavailable`, тело без
+53. `$DC stop postgres; a GET /agents` → `HTTP 503`, `code` `unavailable`, тело без
     текста исключения; `$DC start postgres`, дождаться `healthy` → `HTTP 200`.
 
 ## Часть 9. Консоль и e2e
