@@ -11,6 +11,7 @@ import dev.sard.proto.agent.v1.ConnectResponse
 import dev.sard.proto.agent.v1.Heartbeat
 import dev.sard.proto.agent.v1.Hello
 import dev.sard.proto.agent.v1.StepProgress
+import dev.sard.proto.agent.v1.StepResult
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.pki.CertificateAuthority
@@ -230,6 +231,8 @@ class Connection(
 
     fun progress(command: String) =
         send(ConnectRequest.newBuilder().setStepProgress(StepProgress.newBuilder().setCommandId(command)).build())
+
+    fun result(result: StepResult) = send(ConnectRequest.newBuilder().setStepResult(result).build())
 
     fun ended(seconds: Long = WAIT_SECONDS): Ended = ended.get(seconds, TimeUnit.SECONDS)
 
