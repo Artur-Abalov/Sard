@@ -7,6 +7,7 @@ import dev.sard.proto.agent.v1.BackupOutput
 import dev.sard.proto.agent.v1.CheckResult
 import dev.sard.proto.agent.v1.RestoreOutput
 import dev.sard.proto.agent.v1.RunOutput
+import dev.sard.proto.agent.v1.StepProgress
 import dev.sard.proto.agent.v1.StepResult
 import dev.sard.proto.agent.v1.StepStatus
 import dev.sard.proto.agent.v1.VerifyOutput
@@ -91,5 +92,39 @@ class ProtoReportsTest {
         val output = MutFlow.underTest { ProtoReports.of(builder().setBackup(backup).build()) }.output
 
         assertEquals(StepOutput.Backup("s", -1, 0, "r"), output)
+    }
+
+    // --- StepProgress files counters (S8b В9)
+
+    private fun files(
+        processed: Long,
+        total: Long,
+    ) = MutFlow
+        .underTest {
+            ProtoReports.progress(
+                StepProgress
+                    .newBuilder()
+                    .setFilesProcessed(processed)
+                    .setFilesTotal(total)
+                    .build(),
+            )
+        }.let { it.filesProcessed to it.filesTotal }
+
+    @Test
+    fun `files counters are kept as reported`() {
+        assertEquals(6L to 7L, files(6, 7))
+        assertEquals(0L to 5L, files(0, 5))
+        assertEquals(3L to null, files(3, 0))
+    }
+
+    @Test
+    fun `no files reported at all is unknown, not zero`() {
+        assertEquals(null to null, files(0, 0))
+    }
+
+    @Test
+    fun `a counter above the signed range, which reads negative, is unknown`() {
+        assertEquals(null to null, files(-1, -1))
+        assertEquals(null to 4L, files(-1, 4))
     }
 }

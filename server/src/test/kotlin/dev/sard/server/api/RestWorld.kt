@@ -173,6 +173,28 @@ class RestWorld(
         )
     }
 
+    /** [count] log lines "line N" for the step, numbered from [from], as S7a stores them. */
+    fun insertLogs(
+        step: UUID,
+        tenant: UUID,
+        count: Int,
+        from: Int = 1,
+    ) {
+        val at = java.sql.Timestamp.from(clock.now)
+        for (seq in from until from + count) {
+            jdbc.update(
+                "insert into step_logs (tenant_id, step_id, seq, received_at, time, level, text) values (?, ?, ?, ?, ?, 'info', ?)",
+                tenant,
+                step,
+                seq.toLong(),
+                at,
+                at,
+                "line $seq",
+            )
+        }
+        jdbc.update("update run_steps set log_lines = log_lines + ? where id = ?", count.toLong(), step)
+    }
+
     fun count(
         table: String,
         tenant: UUID,

@@ -3,6 +3,7 @@
 
 package dev.sard.server.runs
 
+import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.RunRecord
 import dev.sard.server.persistence.RunStepRecord
 import dev.sard.server.persistence.SourceRecord
@@ -13,9 +14,12 @@ import org.hibernate.Session
 import org.hibernate.exception.ConstraintViolationException
 import tools.jackson.databind.json.JsonMapper
 import java.time.Clock
+import java.time.Instant
 import java.util.UUID
 
 private const val ACTIVE_RUN_KEY = "runs_active_source_key"
+private const val STEPS_OF = "from RunStepRecord where runId = :run order by ordinal"
+private const val LIST_RUNS = "select r, s.agentId from RunRecord r join RunStepRecord s on s.runId = r.id and s.ordinal = 0"
 private val JSON = JsonMapper.builder().build()
 
 /**
@@ -31,6 +35,32 @@ fun interface StepsQueued {
     companion object {
         /** Nobody listens: steps wait for the agent's next Hello. */
         val NONE = StepsQueued { _, _ -> }
+    }
+}
+
+/** Which runs a list shows: all conditions together; [statuses] are alternatives; [queuedTo] is exclusive. */
+data class RunFilter(
+    val sourceId: UUID? = null,
+    val agentId: UUID? = null,
+    val statuses: Set<RunState> = emptySet(),
+    val queuedFrom: Instant? = null,
+    val queuedTo: Instant? = null,
+) {
+    internal fun conditions(): List<String> =
+        listOfNotNull(
+            sourceId?.let { "r.sourceId = :source" },
+            agentId?.let { "s.agentId = :agent" },
+            statuses.takeIf { it.isNotEmpty() }?.let { "r.status in :statuses" },
+            queuedFrom?.let { "r.queuedAt >= :from" },
+            queuedTo?.let { "r.queuedAt < :to" },
+        )
+
+    internal fun bind(query: org.hibernate.query.SelectionQuery<*>) {
+        sourceId?.let { query.setParameter("source", it) }
+        agentId?.let { query.setParameter("agent", it) }
+        if (statuses.isNotEmpty()) query.setParameterList("statuses", statuses.map { it.stored })
+        queuedFrom?.let { query.setParameter("from", it) }
+        queuedTo?.let { query.setParameter("to", it) }
     }
 }
 
@@ -62,6 +92,36 @@ class Runs(
         queued.onQueued(tenantId, run.agentId)
         return run
     }
+
+    /** The run [runId] of the tenant with its steps; null if there is none (a deleted source's run is one). */
+    fun get(
+        tenantId: UUID,
+        runId: UUID,
+    ): RunView? =
+        sessions.inTenant(tenantId) { session ->
+            val run = session.find(RunRecord::class.java, runId) ?: return@inTenant null
+            val steps = session.createSelectionQuery(STEPS_OF, RunStepRecord::class.java).setParameter("run", runId).list()
+            RunViews.of(run, steps.first().agentId, steps)
+        }
+
+    /**
+     * Runs newest first, those matching [filter], after [after] if given, at most [limit], without their
+     * steps. A run's agent is the agent of its step, not its source's current agent (S8b В16).
+     */
+    fun list(
+        tenantId: UUID,
+        filter: RunFilter,
+        after: PageKey?,
+        limit: Int,
+    ): List<RunView> =
+        sessions.inTenant(tenantId) { session ->
+            val conditions = filter.conditions() + listOfNotNull(after?.let { PageKey.condition("r.queuedAt", "r.id") })
+            val where = conditions.takeIf { it.isNotEmpty() }?.joinToString(" and ", "where ").orEmpty()
+            val query = session.createSelectionQuery("$LIST_RUNS $where order by r.queuedAt desc, r.id desc", Array<Any?>::class.java)
+            filter.bind(query)
+            after?.bind(query)
+            query.setMaxResults(limit).list().map { RunViews.of(it[0] as RunRecord, it[1] as UUID, emptyList()) }
+        }
 
     private fun create(
         session: Session,

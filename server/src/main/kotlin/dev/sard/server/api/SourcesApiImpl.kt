@@ -7,6 +7,8 @@ import dev.sard.server.extension.TenantResolver
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.runs.AgentRevoked
 import dev.sard.server.runs.Runs
+import dev.sard.server.runs.SnapshotView
+import dev.sard.server.runs.Snapshots
 import dev.sard.server.runs.SourceDraft
 import dev.sard.server.runs.SourceView
 import dev.sard.server.runs.Sources
@@ -26,6 +28,7 @@ private val CONFIG = object : TypeReference<Map<String, Any?>>() {}
 class SourcesApiImpl(
     private val sources: Sources,
     private val runs: Runs,
+    private val snapshots: Snapshots,
     private val tenants: TenantResolver,
     private val mapper: ObjectMapper,
 ) : SourcesApi {
@@ -67,7 +70,29 @@ class SourcesApiImpl(
         sourceId: UUID,
         cursor: String?,
         limit: Int,
-    ): SnapshotPage = notImplemented()
+    ): SnapshotPage {
+        val page = pageRequest(CursorKind.SNAPSHOTS, cursor, limit)
+        val rows = snapshots.ofSource(tenants.currentTenantId(), sourceId, page.after, page.fetch) ?: throw ResourceNotFound()
+        val slice = page.slice(rows) { PageKey(it.createdAt, it.id) }
+        return SnapshotPage(slice.items.map(::snapshotOf), slice.nextCursor)
+    }
+
+    private fun snapshotOf(view: SnapshotView) =
+        Snapshot(
+            view.id,
+            view.snapshotId,
+            view.sourceId,
+            view.runId,
+            view.stepId,
+            view.agentId,
+            view.repositoryName,
+            view.repositoryId,
+            view.totalBytes,
+            view.addedBytes,
+            view.createdAt,
+            view.forgottenAt,
+            view.partial,
+        )
 
     /** What the request itself must satisfy; whether the agent offers it is the domain's check. */
     private fun draftOf(input: SourceInput): SourceDraft {
