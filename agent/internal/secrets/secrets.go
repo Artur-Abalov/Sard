@@ -24,6 +24,7 @@ const groupOtherBits = 0o077
 type Info struct {
 	Mode fs.FileMode
 	UID  uint32
+	Size int64
 }
 
 // StatFunc looks up Info for path; injectable so tests do not depend on
@@ -40,7 +41,7 @@ func RealStat(path string) (Info, error) {
 	if !ok {
 		return Info{}, fmt.Errorf("secrets: %s: cannot determine the file owner on this platform", path)
 	}
-	return Info{Mode: info.Mode(), UID: stat.Uid}, nil
+	return Info{Mode: info.Mode(), UID: stat.Uid, Size: info.Size()}, nil
 }
 
 // Error is CheckAll's typed refusal: it names the offending config key,
@@ -106,21 +107,27 @@ func secretEntries(cfg config.Config) []entry {
 // and the requirement (В20).
 func CheckAll(cfg config.Config, agentUID uint32, stat StatFunc) error {
 	for _, e := range secretEntries(cfg) {
-		info, err := stat(e.path)
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				// A missing file is not a permission problem; whatever tries
-				// to use it (transport, executor, restic) reports that.
-				continue
-			}
-			return &Error{Key: e.key, Path: e.path, err: err}
+		if err := CheckFile(e.key, e.path, agentUID, stat); err != nil {
+			return err
 		}
-		if info.Mode.Perm()&groupOtherBits != 0 {
-			return &Error{Key: e.key, Path: e.path, Mode: info.Mode.Perm(), modeIsSet: true}
-		}
-		if info.UID != agentUID {
-			return &Error{Key: e.key, Path: e.path, Owner: info.UID, WantOwner: agentUID, ownerIsSet: true}
-		}
+	}
+	return nil
+}
+
+// CheckFile is CheckAll for one file, key naming it in the message. A
+// missing file passes: whatever uses it reports that.
+func CheckFile(key, path string, agentUID uint32, stat StatFunc) error {
+	info, err := stat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	switch {
+	case err != nil:
+		return &Error{Key: key, Path: path, err: err}
+	case info.Mode.Perm()&groupOtherBits != 0:
+		return &Error{Key: key, Path: path, Mode: info.Mode.Perm(), modeIsSet: true}
+	case info.UID != agentUID:
+		return &Error{Key: key, Path: path, Owner: info.UID, WantOwner: agentUID, ownerIsSet: true}
 	}
 	return nil
 }

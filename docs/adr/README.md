@@ -31,3 +31,4 @@
 | [0027](0027-plugin-sdk.md) | SDK плагинов-источников: шаги, два способа бэкапа, валидация, секреты |
 | [0028](0028-schema-i18n-x-sard-i18n.md) | Переводы `config_schema` плагинов: ключ `x-sard-i18n` |
 | [0029](0029-files-plugin-agent-decisions.md) | Плагин files (A6b): RestoreDeferred, OneFileSystem, `--retry-lock`, Ф12, разбор stderr |
+| [0030](0030-repo-init-lock.md) | Блокировка `sard-agent repo init` в `restic.cache_dir` |

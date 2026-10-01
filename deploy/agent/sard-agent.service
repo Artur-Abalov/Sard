@@ -26,6 +26,8 @@ PrivateTmp=true
 # drop-in (systemctl edit sard-agent) with ReadWritePaths=<that directory>.
 StateDirectory=sard-agent
 CacheDirectory=sard/restic
+# Keep the directory private as the package made it: systemd would set 0755.
+CacheDirectoryMode=0700
 
 [Install]
 WantedBy=multi-user.target

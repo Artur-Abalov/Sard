@@ -70,7 +70,11 @@ jobs:
           if [ "${{ matrix.module }}" = agent ]; then ./agent/bin/sard-agent --version; else ./cli/bin/sardctl version; fi
       - name: Package the agent with restic (tar.gz, deb, rpm)
         if: matrix.module == 'agent'
-        run: make package
+        env:
+          REQUIRE_RPM: "1"
+        run: |
+          sudo apt-get install -y rpm
+          make package
       - uses: actions/upload-artifact@v7
         if: matrix.module == 'agent'
         with:

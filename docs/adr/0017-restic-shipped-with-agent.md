@@ -25,8 +25,12 @@
 - Путь к restic — `restic.path` в конфиге агента; по умолчанию `restic`
   рядом с бинарником `sard-agent`. Кэш — `restic.cache_dir`, по умолчанию
   `/var/cache/sard/restic`.
-- При запуске версия проверяется функцией `CLI.Version()` (ошибка
-  `ErrUnsupportedVersion`); сообщение оператору — задача A5b.
+- При запуске агента, а также перед `sard-agent repo init` и `repo list`,
+  restic проверяется функцией `CLI.Check()` (A5b, поверх `CLI.Version()`):
+  бинарник не найден, непригоден или старше `min_version` — агент не
+  стартует, сообщение называет путь, причину и версии (`RESTIC_NOT_FOUND`,
+  `RESTIC_UNUSABLE`, `RESTIC_TOO_OLD`). Версия новее закреплённой
+  принимается без предупреждения.
 - restic лицензирован BSD-2: текст лицензии лежит в
   `third_party/restic/LICENSE` и кладётся рядом с бинарником
   (`LICENSE.restic`); упаковка — ADR 0018.
