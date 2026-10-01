@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
@@ -21,10 +22,11 @@ import (
 
 // event is one Reporter call.
 type event struct {
-	phase       agentv1.StepPhase
-	done, total uint64
-	level       agentv1.LogLevel
-	text        string
+	phase             agentv1.StepPhase
+	done, total       uint64
+	files, filesTotal uint64
+	level             agentv1.LogLevel
+	text              string
 }
 
 type reporter struct {
@@ -33,9 +35,13 @@ type reporter struct {
 }
 
 func (r *reporter) Progress(phase agentv1.StepPhase, done, total uint64) {
+	r.ProgressFiles(phase, done, total, 0, 0)
+}
+
+func (r *reporter) ProgressFiles(phase agentv1.StepPhase, done, total, files, filesTotal uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.events = append(r.events, event{phase: phase, done: done, total: total})
+	r.events = append(r.events, event{phase: phase, done: done, total: total, files: files, filesTotal: filesTotal})
 }
 
 func (r *reporter) Log(level agentv1.LogLevel, text string) {
@@ -172,6 +178,23 @@ func TestBackupByPathsRunsPrepareDumpAndResticInPhases(t *testing.T) {
 	}
 }
 
+// A6b Ф4: restic's file counters reach the reporter with the byte counters.
+func TestFileCountersOfResticAreReportedWhileUploading(t *testing.T) {
+	r := &repo{progress: []restic.Progress{{BytesDone: 100, TotalBytes: 1024, FilesDone: 1, TotalFiles: 9}, {BytesDone: 1024, TotalBytes: 1024, FilesDone: 9, TotalFiles: 9}}}
+	var rep reporter
+	if _, err := newSource(t, &plugin{}).Backup(context.Background(), []byte(`{}`), r, nil, &rep); err != nil {
+		t.Fatal(err)
+	}
+	got := rep.all()
+	want := []event{
+		{phase: uploading, done: 100, total: 1024, files: 1, filesTotal: 9},
+		{phase: uploading, done: 1024, total: 1024, files: 9, filesTotal: 9},
+	}
+	if !slices.Equal(got[len(got)-2:], want) {
+		t.Errorf("events = %+v", got)
+	}
+}
+
 func TestBackupByPathsAsksResticForThePathsOfTheDump(t *testing.T) {
 	r := &repo{}
 	if _, err := newSource(t, &plugin{}).Backup(context.Background(), []byte(`{}`), r, []string{"run=7"}, &reporter{}); err != nil {
@@ -184,6 +207,19 @@ func TestBackupByPathsAsksResticForThePathsOfTheDump(t *testing.T) {
 	}
 	if req.Stdin != nil || req.StdinFilename != "" {
 		t.Errorf("a dump by paths is streamed: %+v", req)
+	}
+}
+
+func TestOneFileSystemOfTheDumpReachesRestic(t *testing.T) {
+	p := &plugin{dump: func(context.Context, sdk.Host, sdk.Config) (sdk.Dump, error) {
+		return sdk.Dump{Paths: []string{"/srv"}, OneFileSystem: true}, nil
+	}}
+	r := &repo{}
+	if _, err := newSource(t, p).Backup(context.Background(), []byte(`{}`), r, nil, &reporter{}); err != nil {
+		t.Fatal(err)
+	}
+	if !r.requests[0].OneFileSystem {
+		t.Errorf("request = %+v", r.requests[0])
 	}
 }
 
@@ -349,3 +385,37 @@ func TestSourceNeedsAValidSchema(t *testing.T) {
 type badSchema struct{ plugin }
 
 func (*badSchema) ConfigSchema() []byte { return []byte(`{"type": 5}`) }
+
+func TestStreamedDumpWithOneFileSystemFailsTheStep(t *testing.T) {
+	p := &plugin{
+		dump: func(context.Context, sdk.Host, sdk.Config) (sdk.Dump, error) {
+			return sdk.Dump{Filename: "db.sql", OneFileSystem: true}, nil
+		},
+		stream: func(context.Context, sdk.Host, sdk.Config, sdk.Dump, io.Writer) error { return nil },
+	}
+	// The real wrapper validates a request before it starts anything.
+	r := restic.New(restic.Options{}, config.Repository{})
+	_, err := newSource(t, p).Backup(context.Background(), []byte(`{}`), r, nil, &reporter{})
+	if !errors.Is(err, restic.ErrInvalidRequest) {
+		t.Errorf("err = %v, want ErrInvalidRequest", err)
+	}
+}
+
+// A dump by paths and a stream at once is not something restic can do: the
+// step fails, the paths and patterns are not silently dropped.
+func TestStreamedDumpWithPathsOrExcludesFailsTheStep(t *testing.T) {
+	for name, d := range map[string]sdk.Dump{
+		"paths":    {Filename: "db.sql", Paths: []string{"/srv"}},
+		"excludes": {Filename: "db.sql", Excludes: []string{"*.tmp"}},
+	} {
+		p := &plugin{
+			dump:   func(context.Context, sdk.Host, sdk.Config) (sdk.Dump, error) { return d, nil },
+			stream: func(context.Context, sdk.Host, sdk.Config, sdk.Dump, io.Writer) error { return nil },
+		}
+		r := restic.New(restic.Options{}, config.Repository{})
+		_, err := newSource(t, p).Backup(context.Background(), []byte(`{}`), r, nil, &reporter{})
+		if !errors.Is(err, restic.ErrInvalidRequest) {
+			t.Errorf("%s: err = %v, want ErrInvalidRequest", name, err)
+		}
+	}
+}

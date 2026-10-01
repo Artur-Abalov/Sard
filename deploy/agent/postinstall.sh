@@ -4,7 +4,7 @@
 #
 # Package post-install: the unprivileged user the systemd unit runs as, and
 # restic's cache directory (restic.cache_dir default), which "sard-agent repo
-# init" needs before the service has ever started (docs/adr/0028-repo-init-lock.md).
+# init" needs before the service has ever started (docs/adr/0030-repo-init-lock.md).
 # The service is not enabled: it needs /etc/sard/agent.yaml first.
 set -e
 if ! getent passwd sard-agent >/dev/null; then

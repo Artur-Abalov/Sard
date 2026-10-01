@@ -4,7 +4,7 @@
 получены; решения specifier С1–С11 и Л1–Л10 утверждены владельцем — по
 заданию). Строится на A5a (`agent/internal/restic`), A1 (`internal/secrets`,
 `internal/config`), A2b (соглашения CLI, ADR 0025). `crypto_provider` при
-старте агента (OQ-040) вне задачи.
+старте агента (OQ-047) вне задачи.
 
 ## Что сделано
 
@@ -102,7 +102,7 @@
   `repo list` (вместе с `BACKEND_REFUSED`); спецификация не менялась
   (сценарий справки не фиксирует точный список).
 
-## Поправка владельца: блокировка в restic.cache_dir (В8а, В8б, С12–С14, ADR 0028)
+## Поправка владельца: блокировка в restic.cache_dir (В8а, В8б, С12–С14, ADR 0030)
 
 Сделано тестом вперёд.
 
@@ -149,7 +149,7 @@
   лишается бита записи (как и для не-root в ядре).
 - B: тест закрепляет `defaultCacheDir == /var/cache/sard/restic`.
 - C: `REQUIRE_RPM` в `scripts/package-agent.sh`, CI ставит `rpm`; ADR 0018.
-- D: ADR 0018 «уточнено ADR 0028»; `chown sard-agent:"$(id -gn sard-agent)"`
+- D: ADR 0018 «уточнено ADR 0030»; `chown sard-agent:"$(id -gn sard-agent)"`
   в postinstall и в проверке скрипта.
 - Ограничение про root в этой сессии снято: см. пункт A.
 

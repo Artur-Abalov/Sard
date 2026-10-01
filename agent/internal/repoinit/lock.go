@@ -18,7 +18,7 @@ import (
 var ErrLockHeld = errors.New("repository init is already running")
 
 // LockPath is the lock file of repository name: in restic.cache_dir, the
-// directory the service user owns and the package prepares (В8а, ADR 0028).
+// directory the service user owns and the package prepares (В8а, ADR 0030).
 func LockPath(cacheDir, name string) string {
 	return filepath.Join(cacheDir, ".sard-init-"+url.PathEscape(name)+".lock")
 }

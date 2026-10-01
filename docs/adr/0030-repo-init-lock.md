@@ -1,4 +1,4 @@
-# 0028 — Блокировка `sard-agent repo init` в `restic.cache_dir`
+# 0030 — Блокировка `sard-agent repo init` в `restic.cache_dir`
 
 - Статус: принято (решение владельца 2026-09-30, передано координатором)
 - Дата: 2026-09-30
