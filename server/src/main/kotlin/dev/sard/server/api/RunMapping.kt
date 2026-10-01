@@ -68,6 +68,9 @@ internal object RunMapping {
 
     private fun status(state: RunState): RunStatus = RunStatus.valueOf(state.name)
 
+    /** The domain's state of a status a client filters by. */
+    fun state(status: RunStatus): RunState = RunState.valueOf(status.name)
+
     private fun action(action: Action): StepAction = StepAction.valueOf(action.name)
 
     private fun stepStatus(state: StepState): StepStatus = StepStatus.valueOf(state.name)

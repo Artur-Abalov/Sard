@@ -10,6 +10,7 @@ import dev.sard.server.persistence.AgentPluginRecord
 import dev.sard.server.persistence.AgentRepositoryRecord
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.TenantSessions
+import dev.sard.server.persistence.hqlWhere
 import dev.sard.server.runs.RunAnnouncer
 import dev.sard.server.runs.StepRevocation
 import jakarta.persistence.LockModeType
@@ -22,6 +23,7 @@ private const val BY_AGENT = "from AgentPluginRecord where agentId = :agent orde
 private const val REPOSITORIES = "from AgentRepositoryRecord where agentId = :agent order by name"
 private const val REVOKE_CERTIFICATES =
     "update AgentCertificateRecord set revokedAt = :now where agentId = :agent and revokedAt is null"
+private val NOBODY = setOf(UUID(0, 0))
 private const val MARK_DUPLICATE = "update Agent set duplicateSessionAt = :now where id = :agent"
 
 /** What an agent is, without what it announced in Register: a row of the list. */
@@ -89,32 +91,21 @@ class Agents(
         limit: Int,
     ): List<AgentRow> =
         sessions.inTenant(tenantId) { session ->
-            val online = connections.onlineIds()
             val conditions =
-                listOfNotNull(
-                    after?.let { PageKey.condition("registeredAt") },
-                    connectivityCondition(connectivity, online),
-                )
-            val where = conditions.takeIf { it.isNotEmpty() }?.joinToString(" and ", "where ").orEmpty()
-            val query =
-                session.createSelectionQuery(
-                    "from Agent $where order by registeredAt desc, id desc",
-                    Agent::class.java,
-                )
+                listOfNotNull(after?.let { PageKey.condition("registeredAt") }, connectivityCondition(connectivity))
+            val hql = "from Agent ${hqlWhere(conditions)} order by registeredAt desc, id desc"
+            val query = session.createSelectionQuery(hql, Agent::class.java)
+            // An empty list is no valid IN list: a placeholder id that no agent has stands for "nobody".
+            if (connectivity != null) query.setParameterList("online", connections.onlineIds().ifEmpty { NOBODY })
             after?.bind(query)
-            if (":online" in where) query.setParameterList("online", online)
             query.setMaxResults(limit).list().map { rowOf(it) }
         }
 
-    /** An empty set matches nothing for ONLINE and everything for OFFLINE, so no condition is needed there. */
-    private fun connectivityCondition(
-        connectivity: Connectivity?,
-        online: Set<UUID>,
-    ): String? =
-        when {
-            connectivity == null -> null
-            connectivity == Connectivity.ONLINE -> "id in :online".takeIf { online.isNotEmpty() } ?: "1 = 0"
-            else -> "id not in :online".takeIf { online.isNotEmpty() }
+    private fun connectivityCondition(connectivity: Connectivity?): String? =
+        when (connectivity) {
+            null -> null
+            Connectivity.ONLINE -> "id in :online"
+            Connectivity.OFFLINE -> "id not in :online"
         }
 
     fun get(

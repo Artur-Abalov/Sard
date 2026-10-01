@@ -93,6 +93,11 @@ class RunMappingTest {
     }
 
     @Test
+    fun `every status a client filters by is a state of the domain`() {
+        for (status in RunStatus.entries) assertEquals(status.name, MutFlow.underTest { RunMapping.state(status) }.name)
+    }
+
+    @Test
     fun `a step carries every field of the domain's`() {
         val mapped = MutFlow.underTest { RunMapping.step(step()) }
 

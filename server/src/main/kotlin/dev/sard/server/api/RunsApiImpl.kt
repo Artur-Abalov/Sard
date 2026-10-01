@@ -6,7 +6,6 @@ package dev.sard.server.api
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.runs.RunFilter
-import dev.sard.server.runs.RunState
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.StepLogs
 import org.springframework.stereotype.Component
@@ -35,7 +34,7 @@ class RunsApiImpl(
         if (queuedFrom != null && queuedTo != null && queuedFrom.isAfter(queuedTo)) {
             throw RequestInvalid("queuedFrom", "must not be later than queuedTo")
         }
-        val filter = RunFilter(sourceId, agentId, status.orEmpty().map(::stateOf).toSet(), queuedFrom, queuedTo)
+        val filter = RunFilter(sourceId, agentId, status.orEmpty().map(RunMapping::state).toSet(), queuedFrom, queuedTo)
         val rows = runs.list(tenants.currentTenantId(), filter, page.after, page.fetch)
         val slice = page.slice(rows) { PageKey(it.queuedAt, it.id) }
         return RunPage(slice.items.map(RunMapping::summary), slice.nextCursor)
@@ -65,14 +64,4 @@ class RunsApiImpl(
         if (limit !in 1..MAX_LOG_LIMIT) throw RequestInvalid("limit", "must be between 1 and $MAX_LOG_LIMIT")
         if (afterSeq < 0) throw RequestInvalid("afterSeq", "must not be negative")
     }
-
-    private fun stateOf(status: RunStatus): RunState =
-        when (status) {
-            RunStatus.QUEUED -> RunState.QUEUED
-            RunStatus.DISPATCHED -> RunState.DISPATCHED
-            RunStatus.RUNNING -> RunState.RUNNING
-            RunStatus.SUCCEEDED -> RunState.SUCCEEDED
-            RunStatus.FAILED -> RunState.FAILED
-            RunStatus.CANCELLED -> RunState.CANCELLED
-        }
 }

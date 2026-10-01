@@ -9,6 +9,7 @@ import dev.sard.server.persistence.RunStepRecord
 import dev.sard.server.persistence.SourceRecord
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
+import dev.sard.server.persistence.hqlWhere
 import jakarta.persistence.LockModeType
 import org.hibernate.Session
 import org.hibernate.exception.ConstraintViolationException
@@ -47,21 +48,31 @@ data class RunFilter(
     val queuedFrom: Instant? = null,
     val queuedTo: Instant? = null,
 ) {
-    internal fun conditions(): List<String> =
-        listOfNotNull(
-            sourceId?.let { "r.sourceId = :source" },
-            agentId?.let { "s.agentId = :agent" },
-            statuses.takeIf { it.isNotEmpty() }?.let { "r.status in :statuses" },
-            queuedFrom?.let { "r.queuedAt >= :from" },
-            queuedTo?.let { "r.queuedAt < :to" },
-        )
+    /** A condition of the list and the value of its parameter; a filter that is not given has no value. */
+    private class Term(
+        val condition: String,
+        val name: String,
+        val value: Any?,
+    )
+
+    private fun terms(): List<Term> =
+        listOf(
+            Term("r.sourceId = :source", "source", sourceId),
+            Term("s.agentId = :agent", "agent", agentId),
+            Term("r.status in :statuses", "statuses", statuses.map { it.stored }.ifEmpty { null }),
+            Term("r.queuedAt >= :from", "from", queuedFrom),
+            Term("r.queuedAt < :to", "to", queuedTo),
+        ).filter { it.value != null }
+
+    internal fun conditions(): List<String> = terms().map { it.condition }
 
     internal fun bind(query: org.hibernate.query.SelectionQuery<*>) {
-        sourceId?.let { query.setParameter("source", it) }
-        agentId?.let { query.setParameter("agent", it) }
-        if (statuses.isNotEmpty()) query.setParameterList("statuses", statuses.map { it.stored })
-        queuedFrom?.let { query.setParameter("from", it) }
-        queuedTo?.let { query.setParameter("to", it) }
+        for (term in terms()) {
+            when (val value = term.value) {
+                is List<*> -> query.setParameterList(term.name, value)
+                else -> query.setParameter(term.name, value)
+            }
+        }
     }
 }
 
@@ -123,7 +134,7 @@ class Runs(
     ): List<RunView> =
         sessions.inTenant(tenantId) { session ->
             val conditions = filter.conditions() + listOfNotNull(after?.let { PageKey.condition("r.queuedAt", "r.id") })
-            val where = conditions.takeIf { it.isNotEmpty() }?.joinToString(" and ", "where ").orEmpty()
+            val where = hqlWhere(conditions)
             val query =
                 session.createSelectionQuery(
                     "$LIST_RUNS $where order by r.queuedAt desc, r.id desc",

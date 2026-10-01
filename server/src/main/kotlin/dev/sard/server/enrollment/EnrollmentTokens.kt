@@ -7,6 +7,7 @@ import dev.sard.server.persistence.EnrollmentTokenRecord
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
+import dev.sard.server.persistence.hqlWhere
 import dev.sard.server.pki.CertificateAuthority
 import java.security.SecureRandom
 import java.time.Clock
@@ -130,17 +131,20 @@ class EnrollmentTokens(
         limit: Int = Int.MAX_VALUE,
     ): List<EnrollmentTokenSummary> =
         sessions.inTenant(tenantId) { session ->
-            val conditions = listOfNotNull(state?.let(::condition), after?.let { PageKey.condition("createdAt") })
-            val where = conditions.takeIf { it.isNotEmpty() }?.joinToString(" and ", "where ").orEmpty()
-            val query =
-                session.createSelectionQuery(
-                    "from EnrollmentTokenRecord $where order by createdAt desc, id desc",
-                    EnrollmentTokenRecord::class.java,
-                )
-            if (":now" in where) query.setParameter("now", clock.instant())
+            val hql = listQuery(state, after)
+            val query = session.createSelectionQuery(hql, EnrollmentTokenRecord::class.java)
+            if (":now" in hql) query.setParameter("now", clock.instant())
             after?.bind(query)
             query.setMaxResults(limit).list().map { summaryOf(it) }
         }
+
+    private fun listQuery(
+        state: EnrollmentTokenState?,
+        after: PageKey?,
+    ): String {
+        val where = hqlWhere(listOfNotNull(state?.let(::condition), after?.let { PageKey.condition("createdAt") }))
+        return "from EnrollmentTokenRecord $where order by createdAt desc, id desc"
+    }
 
     /** The HQL of a state, the same as [EnrollmentTokenState.of] computes it. */
     private fun condition(state: EnrollmentTokenState): String =
