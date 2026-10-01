@@ -61,3 +61,106 @@
 меньше чем через 1 с после предыдущего, теряется (нет досылки).
 
 ### Вопросы владельцу — см. ответ в чате; ответы записать сюда.
+
+### Ответы владельца (2026-10-01)
+1. Набор значений — временное правило (б): все `secrets:` агента, `env_file`
+   и пароль из URL репозитория шага; за интерфейсом, A7b заменит.
+2. stderr restic подключить к логам шага; строка сырая, уровень WARN для
+   ошибок, INFO для остального.
+3. `StepResult.message` и `CheckResult.detail` маскировать.
+4. stderr — один поток на шаг, маскирование до разбиения на строки;
+   `Host.Log` — каждый вызов отдельно.
+5. `redact.Compile → *Set`, `Set.NewWriter` — да.
+6. Значения не прочитались — шаг не запускать, в тексте имя секрета, шаг
+   падает. (Толкование: FAILED, не REJECTED: это неисправность хоста, а не
+   неверный конфиг с сервера.)
+7. Маскировщик живёт в исполнителе; хвост — вне мьютекса, до `Result`.
+8. Короткие значения — предупреждение в журнал агента с именем секрета.
+9. OQ-006 закрыть; потерю последнего отчёта фазы завести отдельным OQ.
+10. Работать в `claude/cool-cray-h11smy`.
+
+## Фаза 2: подключение, поставщик значений, тесты 1–3 (СТОП)
+
+Решения и причины — ADR 0031.
+
+### Сделано
+- `redact`: `Compile(values, opts) (*Set, error)`, `Set.NewWriter`,
+  `Set.Mask` (nil-набор возвращает текст как есть); `New` — обёртка, repoinit
+  не менялся по поведению.
+- `steplog.Lines` (новый пакет): потоковое маскирование → разбиение на строки
+  (без `\r`, ≤ 8192 байт, невалидный UTF-8 → U+FFFD); после `Close` запись
+  отбрасывается без ошибки; потокобезопасен.
+- `executor`: `Options.Secrets` (`Secrets.For(step)`), `Options.OutputLevel`,
+  `Reporter.Output()`; `prepare` до обработчика, `Lines.Close` после него вне
+  мьютекса и до результата; асинхронный `Close` в `giveUp`; `maskResult` в
+  `finish` (сообщение и `CheckResult.detail`) до записи на диск.
+- `restic`: `Command.StderrCopy` (сырой stderr через `io.MultiWriter`),
+  `Options.Stderr`, `CLI.WithStderr`, `ErrorLine`.
+- `pluginhost`: `Repositories(name, stderr)`, `OutputLevel`.
+- `stepsecrets` (новый пакет): реализация `executor.Secrets` по правилу (б).
+- `config.URLPassword` перенесён из `repoinit` (общий для двух мест).
+- `main`: `Secrets: stepsecrets.New(cfg, os.ReadFile)`,
+  `OutputLevel: pluginhost.OutputLevel`, `get(name, stderr)` →
+  `CLI.WithStderr`.
+
+### Тесты по стратегии (проверил запуском)
+1. Источники: `Host.Log` (`TestThePluginsLogLinesAreMasked`), вывод
+   инструмента с разрывом значения между порциями и по байту
+   (`TestToolOutputIsMaskedAcrossWritesAndCutIntoWholeLines`,
+   `TestASecretSplitAcrossLogChunksNeverReachesTheSink`), сообщение
+   результата, в том числе сохранённое на диск
+   (`TestTheResultMessageIsMaskedBeforeItIsSentOrStored`), паника
+   (`TestAPanicValueIsMasked`), `CheckResult.detail`. Настоящий restic 0.19.1:
+   `TestResticStderrReachesTheStepLogMasked` (тег integration) — путь
+   несуществующего репозитория содержит секрет агента; в логе
+   `Fatal: … repo-[REDACTED]/config …` с уровнем WARN, значения нет ни в
+   строках, ни в результате.
+2. Хвост: отмена, таймаут, паника — строка с маркером приходит до
+   результата; `giveUp` — после результата, поздний вывод отброшен.
+3. Порядок и неизменность строк без секретов — `steplog`
+   (`TestLinesWithoutSecretsPassUnchangedAndInOrder`,
+   `TestConcurrentCloseNeverLeaksOrTearsALine`), исполнитель
+   (`TestWithoutValuesLinesPassUnchanged`).
+- Поставщик: все секреты, `env_file` и URL только репозитория шага,
+  `password_file` не открывается, ошибки без путей и значений — 100%
+  покрытия пакета.
+
+### Проверено
+- `go test -race ./...` в `agent/` — ok; исполнитель `-race -count=10` — ok.
+- `./scripts/gate.sh agent fast` — PASSED (покрытие 98.0%, CRAP ≤ 6,
+  integration-тесты с restic 0.19.1).
+- go-mutesting по новым и изменённым пакетам: `steplog` + `stepsecrets` —
+  выживших нет после правок (убраны две эквивалентные ветки: проверка
+  `closed` в `Close`, ранний возврат без репозитория); `redact` 0.955
+  (211/221; 10 выживших — те же эквивалентные, что в A7a; новая
+  эквивалентная `err != nil` в `Compile` убрана упрощением условия);
+  `config.URLPassword`: эквивалентная проверка `u.User == nil` убрана
+  (`(*Userinfo).Password` безопасен для nil).
+
+- `./scripts/gate.sh agent` (полный) — PASSED: покрытие 98.0%, CRAP ≤ 6,
+  integration-тесты, mutation score 0.925285.
+- go-mutesting по изменённым файлам (`redaction.go`, `reporter.go`,
+  `command.go`, `executor.go`, `handler.go`, `exec.go`, `restic.go`,
+  `backend.go`, `main.go`): выжившие в моих строках — только в
+  `executor/redaction.go` (фильтр пустых значений `len > 0` → `>= 0`,
+  `> -1`, `> 1`). Это была дыра в тестах: пустое значение рядом с
+  настоящим отключало бы весь набор. Добавлен
+  `TestAnEmptySecretDoesNotDisableTheOthers`; `redaction.go` — 1.0.
+  Остальные выжившие (`executor.go`: константа `defaultRetention`, логи
+  ошибок удаления; `handler.go:199,203`; `exec.go:77-78`) — в строках,
+  которые A7c не менял.
+- После добавления теста: `./scripts/gate.sh agent fast` — PASSED.
+
+### Попутно
+- `transport.TestOutboxLogWaitsForSpace` упал один раз в гейте:
+  `sent ["log c1 1 2" "log c1 3"]`. Причина в самом тесте: `drain` читает
+  очередь циклом, а `next()` освобождает место и будит ожидающий `Log("3")`
+  между двумя чтениями. Тест теперь берёт одно сообщение. Повтором (7500
+  прогонов старой версии под нагрузкой) не воспроизвелось — причина выведена
+  из вывода и кода, не из воспроизведения.
+- Прерванный таймаутом прогон гейта (10 мин) и мой прерванный go-mutesting
+  оставили мутанты в `cmd/sard-agent/enroll_run.go` и
+  `internal/executor/command.go` (рядом `.go.tmp`). Оригиналы восстановлены,
+  сверены с `HEAD`/текущей правкой; повторный прогон гейта шёл только после
+  этого. Вывод: go-mutesting не прерывать и не запускать параллельно с
+  тестами.

@@ -425,3 +425,39 @@ func mustTime(t *testing.T, s string) time.Time {
 	}
 	return v
 }
+
+func TestWithStderrCopiesStderrOfEveryCommandAndLeavesTheOriginalAlone(t *testing.T) {
+	f := newFixture(t, map[string]reply{"restore": {}})
+	var raw strings.Builder
+	cli := f.build()
+	if err := cli.WithStderr(&raw).Restore(context.Background(), "abc", "/tmp/t"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.exec.call("restore").StderrCopy; got != &raw {
+		t.Fatalf("StderrCopy = %v", got)
+	}
+	f.exec.calls = nil
+	if err := cli.Restore(context.Background(), "abc", "/tmp/t"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.exec.call("restore").StderrCopy; got != nil {
+		t.Fatalf("the original CLI copies stderr to %v", got)
+	}
+}
+
+func TestErrorLinesAreTheOnesTheWrapperReadsAsErrors(t *testing.T) {
+	cases := map[string]bool{
+		`{"message_type":"error","error":{"message":"denied"}}`: true,
+		`{"message_type":"exit_error","message":"Fatal: x"}`:    true,
+		"Fatal: wrong password":                                 true,
+		"/srv/gone does not exist, skipping":                    true,
+		`{"message_type":"status"}`:                             false,
+		"signal terminated received, cleaning up":               false,
+		"Fatal:no space":                                        false,
+	}
+	for line, want := range cases {
+		if got := restic.ErrorLine(line); got != want {
+			t.Errorf("ErrorLine(%q) = %v, want %v", line, got, want)
+		}
+	}
+}

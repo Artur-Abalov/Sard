@@ -37,6 +37,9 @@ type Command struct {
 	// during the call. Nil discards the stream.
 	Stdout func(line []byte)
 	Stderr func(line []byte)
+	// StderrCopy, if not nil, receives stderr unchanged, before it is
+	// split into lines (the step's log masks it as a stream, A7c).
+	StderrCopy io.Writer
 }
 
 // DefaultGrace is how long a cancelled process may take to exit after
@@ -58,6 +61,9 @@ func (p ProcessExecutor) Run(ctx context.Context, c Command) (int, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdout, stderr := &lineWriter{emit: c.Stdout}, &lineWriter{emit: c.Stderr}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = c.Stdin, stdout, stderr
+	if c.StderrCopy != nil {
+		cmd.Stderr = io.MultiWriter(c.StderrCopy, stderr)
+	}
 	cmd.Cancel = func() error { return signalGroup(cmd.Process.Pid, syscall.SIGTERM) }
 	cmd.WaitDelay = p.grace()
 	if err := cmd.Start(); err != nil {

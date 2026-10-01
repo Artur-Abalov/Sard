@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"slices"
 	"sync"
@@ -52,7 +53,25 @@ type Reporter interface {
 	// ProgressFiles is Progress with the number of files processed and
 	// expected, for phases that count files.
 	ProgressFiles(phase agentv1.StepPhase, bytesProcessed, bytesTotal, filesProcessed, filesTotal uint64)
+	// Log sends a line written by the plugin; the step's secrets are masked.
 	Log(level agentv1.LogLevel, text string)
+	// Output takes the raw output of a tool the step runs (restic's
+	// stderr): it is masked, cut into lines and logged at OutputLevel.
+	// Writes never fail; after the step finished they are discarded.
+	Output() io.Writer
+}
+
+// Secret is a value a step's log lines and result must not contain.
+type Secret struct {
+	Name  string // for diagnostics; never the value
+	Value []byte
+}
+
+// Secrets says which values to mask for a step (A7c). An error keeps the
+// step from starting: it fails with the error's text, which names the
+// secret and never contains a value.
+type Secrets interface {
+	For(step *agentv1.RunStep) ([]Secret, error)
 }
 
 // Registry finds the handler of a plugin by name.
@@ -103,6 +122,10 @@ type Options struct {
 	StateDir string   // required: unacknowledged results live here (0700)
 	// Repositories are the repository names configured on this host.
 	Repositories []string
+	// Secrets are masked in each step's log lines and result; nil masks nothing.
+	Secrets Secrets
+	// OutputLevel is the level of a line of a tool's output; default INFO.
+	OutputLevel func(line string) agentv1.LogLevel
 
 	MaxParallel      int           // steps running at once; default 1
 	MaxQueue         int           // steps waiting; default 16; beyond it → REJECTED
@@ -188,6 +211,9 @@ func withDefaults(o *Options) {
 	}
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
+	}
+	if o.OutputLevel == nil {
+		o.OutputLevel = func(string) agentv1.LogLevel { return agentv1.LogLevel_LOG_LEVEL_INFO }
 	}
 }
 

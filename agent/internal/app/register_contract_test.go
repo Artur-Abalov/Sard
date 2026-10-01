@@ -6,6 +6,7 @@ package app_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"regexp"
 	"slices"
 	"strings"
@@ -38,7 +39,7 @@ const (
 func TestBuiltinPluginsPassTheServersRegisterRules(t *testing.T) {
 	for _, version := range []string{"dev", agentVersionInRelease} {
 		reg := plugins.Registry(version)
-		handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string) (restic.Repository, bool) { return nil, false }, t.TempDir())
+		handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string, io.Writer) (restic.Repository, bool) { return nil, false }, t.TempDir())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -83,7 +84,7 @@ func checkPlugin(t *testing.T, p *agentv1.Plugin) {
 // the agent, and a schema that is ready for the console's form.
 func TestRegisterAnnouncesTheFilesPlugin(t *testing.T) {
 	reg := plugins.Registry(agentVersionInRelease)
-	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string) (restic.Repository, bool) { return nil, false }, t.TempDir())
+	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string, io.Writer) (restic.Repository, bool) { return nil, false }, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

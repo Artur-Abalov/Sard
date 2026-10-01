@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -32,7 +33,21 @@ type event struct {
 type reporter struct {
 	mu     sync.Mutex
 	events []event
+	output strings.Builder
 }
+
+// Output is the step's tool output; tests read it with outputText.
+func (r *reporter) Output() io.Writer { return writerFunc(r.write) }
+
+func (r *reporter) write(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.output.Write(p)
+}
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
 
 func (r *reporter) Progress(phase agentv1.StepPhase, done, total uint64) {
 	r.ProgressFiles(phase, done, total, 0, 0)
@@ -48,6 +63,12 @@ func (r *reporter) Log(level agentv1.LogLevel, text string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.events = append(r.events, event{level: level, text: text})
+}
+
+func (r *reporter) outputText() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.output.String()
 }
 
 func (r *reporter) all() []event {
