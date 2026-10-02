@@ -36,70 +36,122 @@ type Source struct {
 	read    func(name string) ([]byte, error)
 	log     *slog.Logger
 
-	mu    sync.Mutex
-	short map[string]bool // values that were short when last read
+	mu     sync.Mutex
+	short  map[string]bool // values that were short when last read
+	broken map[string]bool // foreign sources that were unusable when last read
 }
 
 // New returns the Source of cfg; read reads a file, log gets the warnings.
 func New(cfg config.Config, read func(name string) ([]byte, error), log *slog.Logger) *Source {
-	return &Source{secrets: cfg.Secrets, keyFile: cfg.TLS.KeyFile, repos: cfg.Repositories, read: read, log: log, short: map[string]bool{}}
+	return &Source{secrets: cfg.Secrets, keyFile: cfg.TLS.KeyFile, repos: cfg.Repositories, read: read, log: log, short: map[string]bool{}, broken: map[string]bool{}}
+}
+
+// problem is a source that could not be read or parsed. A secret problem
+// always fails a step; a foreign problem (the agent key, the env_file of a
+// repository) fails only the step that uses that repository (OQ-088).
+type problem struct {
+	key  string // what the warning names: "tls.key_file" or the repository
+	repo string // the repository of an env_file, "" for the others
+	soft bool
+	err  error
 }
 
 // For implements executor.Secrets. Errors name the secret or the
 // repository, never a value or a path.
 func (s *Source) For(step *agentv1.RunStep) ([]executor.Secret, error) {
-	out, errs := s.gather()
-	if len(errs) > 0 {
-		return nil, errs[0]
-	}
-	// A step without a known repository gets the zero one: no URL password.
-	for _, repo := range s.repos {
-		if repo.Name != step.GetRepositoryName() {
-			continue
+	out, problems := s.gather()
+	var foreign []problem
+	for _, p := range problems {
+		if !p.soft || p.repo == step.GetRepositoryName() {
+			return nil, p.err
 		}
-		if p := config.URLPassword(repo.URL); p != "" {
-			out = append(out, executor.Secret{Name: fmt.Sprintf("url of repository %q", repo.Name), Value: []byte(p)})
-		}
+		foreign = append(foreign, p)
 	}
+	s.warnForeign(foreign)
+	out = append(out, s.urlPassword(step.GetRepositoryName())...)
 	s.warnShort(out)
 	return out, nil
+}
+
+// urlPassword is the password in the URL of the named repository; a step
+// without a known repository gets none.
+func (s *Source) urlPassword(name string) []executor.Secret {
+	for _, repo := range s.repos {
+		if p := config.URLPassword(repo.URL); repo.Name == name && p != "" {
+			return []executor.Secret{{Name: fmt.Sprintf("url of repository %q", repo.Name), Value: []byte(p)}}
+		}
+	}
+	return nil
 }
 
 // Audit is the check at agent start: it reads every file the values come
 // from and warns about the short values and about the files it cannot read.
 // It stops nothing: a step that needs an unreadable file fails later.
 func (s *Source) Audit() {
-	out, errs := s.gather()
-	for _, err := range errs {
-		s.log.Warn("cannot read a file of masked values; steps will fail until it is readable", "error", err)
+	out, problems := s.gather()
+	var foreign []problem
+	for _, p := range problems {
+		if p.soft {
+			foreign = append(foreign, p)
+			continue
+		}
+		s.log.Warn("cannot read a file of masked values; steps will fail until it is readable", "error", p.err)
 	}
+	s.warnForeign(foreign)
 	s.warnShort(out)
 }
 
-// gather reads every value of the agent; it goes on after an error.
-func (s *Source) gather() ([]executor.Secret, []error) {
-	var out []executor.Secret
-	var errs []error
-	add := func(secrets []executor.Secret, err error) {
-		out = append(out, secrets...)
-		if err != nil {
-			errs = append(errs, err)
+// warnForeign warns once about each foreign source that broke, and forgets the
+// sources that are fine again, so a new break is warned about anew.
+func (s *Source) warnForeign(broken []problem) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := map[string]bool{}
+	for _, p := range broken {
+		now[p.key] = true
+		if !s.broken[p.key] {
+			s.log.Warn("cannot use a file of masked values; its values are not masked until it is readable", "error", p.err)
 		}
 	}
+	s.broken = now
+}
+
+// gather reads every value of the agent; it goes on after an error.
+func (s *Source) gather() ([]executor.Secret, []problem) {
+	out, problems := s.secretFiles()
+	if s.keyFile != "" {
+		secrets, err := s.file("tls.key_file", "tls.key_file", s.keyFile)
+		out = append(out, secrets...)
+		if err != nil {
+			problems = append(problems, problem{key: "tls.key_file", soft: true, err: err})
+		}
+	}
+	for _, repo := range s.repos {
+		secrets, err := s.envFile(repo)
+		out = append(out, secrets...)
+		if err != nil {
+			problems = append(problems, problem{key: "env_file of " + repo.Name, repo: repo.Name, soft: true, err: err})
+		}
+	}
+	return out, problems
+}
+
+// secretFiles reads the files of the agent's secrets: that is the only kind
+// of source whose failure always fails a step.
+func (s *Source) secretFiles() ([]executor.Secret, []problem) {
+	var out []executor.Secret
+	var problems []problem
 	for _, name := range slices.Sorted(maps.Keys(s.secrets)) {
 		secrets, err := s.file("secret "+name, fmt.Sprintf("secret %q", name), s.secrets[name])
 		if len(secrets) > 0 {
 			secrets[0].Ref = name
 		}
-		add(secrets, err)
+		out = append(out, secrets...)
+		if err != nil {
+			problems = append(problems, problem{err: err})
+		}
 	}
-	if s.keyFile != "" {
-		add(s.file("tls.key_file", "tls.key_file", s.keyFile))
-	}
-	for _, repo := range s.repos {
-		add(s.envFile(repo))
-	}
-	return out, errs
+	return out, problems
 }
 
 // file reads one value; a secret file usually ends with a line break the

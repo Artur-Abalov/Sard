@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
@@ -167,24 +168,6 @@ func TestAnUnknownRepositoryAddsNoURLPassword(t *testing.T) {
 	}
 }
 
-func TestAnUnreadableEnvFileOfAnotherRepositoryFailsTheStepToo(t *testing.T) {
-	f := allFiles()
-	delete(f, "/etc/sard/other.env")
-	_, err := newSource(cfg(), f.read).For(step("plain"))
-	if err == nil || err.Error() != `cannot read env_file of repository "other": file does not exist` {
-		t.Fatalf("err = %v", err)
-	}
-}
-
-func TestAnUnreadableAgentKeyIsNamedWithoutItsPath(t *testing.T) {
-	f := allFiles()
-	delete(f, "/etc/sard/agent.key")
-	_, err := newSource(cfg(), f.read).For(step("main"))
-	if err == nil || err.Error() != "cannot read tls.key_file: file does not exist" {
-		t.Fatalf("err = %v", err)
-	}
-}
-
 func TestAnAgentWithoutAKeyFileMasksNoKey(t *testing.T) {
 	c := cfg()
 	c.TLS.KeyFile = ""
@@ -338,5 +321,144 @@ func TestAReplacedSecretFileIsPickedUpByTheNextStep(t *testing.T) {
 	got, err := src.For(step("main"))
 	if err != nil || !slices.Contains(values(t, got), "secret pg=new-pg-secret") {
 		t.Fatalf("values = %q, err = %v", values(t, got), err)
+	}
+}
+
+// --- OQ-088: a source the step does not depend on warns and does not fail it
+
+// foreign is cfg() with a log; the step runs on "plain", so other.env and the
+// agent key are sources it does not depend on.
+func foreign(t *testing.T) (*stepsecrets.Source, files, *bytes.Buffer) {
+	t.Helper()
+	var buf bytes.Buffer
+	f := allFiles()
+	return stepsecrets.New(cfg(), f.read, slog.New(slog.NewTextHandler(&buf, nil))), f, &buf
+}
+
+func TestAnUnreadableEnvFileOfAnotherRepositoryWarnsOnceWithoutThePathAndFailsNothing(t *testing.T) {
+	src, f, buf := foreign(t)
+	delete(f, "/etc/sard/other.env")
+	got, err := src.For(step("plain"))
+	log := buf.String()
+	if err != nil || strings.Count(log, "level=WARN") != 1 || !strings.Contains(log, `repository \"other\"`) ||
+		!strings.Contains(log, "env_file") || strings.Contains(log, "other.env") {
+		t.Fatalf("err = %v, log:\n%s", err, log)
+	}
+	for _, v := range values(t, got) {
+		if strings.Contains(v, "other") {
+			t.Fatalf("masks %q of an unreadable file", v)
+		}
+	}
+}
+
+func TestAnInvalidEnvFileOfAnotherRepositoryWarnsWithoutItsContent(t *testing.T) {
+	src, f, buf := foreign(t)
+	f["/etc/sard/other.env"] = "ENV2-MARKER no equals sign\n"
+	_, err := src.For(step("plain"))
+	log := buf.String()
+	if err != nil || strings.Count(log, "level=WARN") != 1 || !strings.Contains(log, "env_file") || strings.Contains(log, "ENV2-MARKER") {
+		t.Fatalf("err = %v, log:\n%s", err, log)
+	}
+}
+
+func TestAnUnreadableEnvFileOfTheStepRepositoryFailsTheStepWhateverItsName(t *testing.T) {
+	src, f, buf := foreign(t)
+	delete(f, "/etc/sard/other.env")
+	_, err := src.For(step("other"))
+	if err == nil || err.Error() != `cannot read env_file of repository "other": file does not exist` || buf.Len() != 0 {
+		t.Fatalf("err = %v, log:\n%s", err, buf.String())
+	}
+}
+
+func TestAnUnreadableAgentKeyWarnsOnceWithoutThePathAndFailsNothing(t *testing.T) {
+	src, f, buf := foreign(t)
+	delete(f, "/etc/sard/agent.key")
+	got, err := src.For(step("main"))
+	log := buf.String()
+	if err != nil || strings.Count(log, "level=WARN") != 1 || !strings.Contains(log, "tls.key_file") || strings.Contains(log, "agent.key") {
+		t.Fatalf("err = %v, log:\n%s", err, log)
+	}
+	for _, v := range values(t, got) {
+		if strings.HasPrefix(v, "tls.key_file") {
+			t.Fatalf("masks %q of an unreadable file", v)
+		}
+	}
+}
+
+func TestTheWarningAboutAForeignFileIsNotRepeatedOnLaterSteps(t *testing.T) {
+	src, f, buf := foreign(t)
+	delete(f, "/etc/sard/other.env")
+	for range 3 {
+		if _, err := src.For(step("plain")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := strings.Count(buf.String(), "level=WARN"); got != 1 {
+		t.Fatalf("%d warnings:\n%s", got, buf.String())
+	}
+}
+
+func TestAForeignFileUnreadableAtStartIsNotWarnedAboutAgainOnSteps(t *testing.T) {
+	src, f, buf := foreign(t)
+	delete(f, "/etc/sard/other.env")
+	src.Audit()
+	for range 2 {
+		if _, err := src.For(step("plain")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := strings.Count(buf.String(), `repository \"other\"`); got != 1 {
+		t.Fatalf("%d warnings:\n%s", got, buf.String())
+	}
+}
+
+func TestParallelStepsGiveOneWarningAboutAForeignFile(t *testing.T) {
+	src, f, buf := foreign(t)
+	delete(f, "/etc/sard/other.env")
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = src.For(step("plain"))
+		}()
+	}
+	wg.Wait()
+	if got := strings.Count(buf.String(), "level=WARN"); got != 1 {
+		t.Fatalf("%d warnings:\n%s", got, buf.String())
+	}
+}
+
+func TestAForeignFileThatIsReadableAgainIsMaskedSilentlyFromTheNextStep(t *testing.T) {
+	src, f, buf := foreign(t)
+	saved := f["/etc/sard/other.env"]
+	delete(f, "/etc/sard/other.env")
+	if _, err := src.For(step("plain")); err != nil {
+		t.Fatal(err)
+	}
+	warnings := strings.Count(buf.String(), "level=WARN")
+	f["/etc/sard/other.env"] = saved
+	got, err := src.For(step("plain"))
+	if err != nil || !slices.Contains(values(t, got), `env_file of repository "other": OTHER=other-secret`) ||
+		strings.Count(buf.String(), "level=WARN") != warnings {
+		t.Fatalf("values = %q, err = %v, log:\n%s", values(t, got), err, buf.String())
+	}
+}
+
+func TestAForeignFileThatBreaksAgainIsWarnedAboutAgain(t *testing.T) {
+	src, f, buf := foreign(t)
+	saved := f["/etc/sard/other.env"]
+	for _, content := range []string{"", saved, ""} {
+		if content == "" {
+			delete(f, "/etc/sard/other.env")
+		} else {
+			f["/etc/sard/other.env"] = content
+		}
+		if _, err := src.For(step("plain")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := strings.Count(buf.String(), `repository \"other\"`); got != 2 {
+		t.Fatalf("%d warnings:\n%s", got, buf.String())
 	}
 }

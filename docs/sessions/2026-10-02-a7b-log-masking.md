@@ -87,3 +87,45 @@ ADR 0033 дополнен разделом «Изменения A7b» (новы�
 менялось). QA — часть 3а, шаг 27. Реестр — OQ-088. Решение coder «нечитаемый
 `env_file` любого репозитория и `tls.key_file` валят шаг» отменяется для
 чужих источников; следующий шаг — coder.
+
+## Роль: coder (OQ-088)
+
+`stepsecrets.Source` разделяет сбои источников: нечитаемый файл `secrets:` и
+`env_file` репозитория шага валят шаг, как раньше; нечитаемый или неверный
+`env_file` другого репозитория и нечитаемый `tls.key_file` — одно предупреждение
+(`Source.warnForeign`, состояние «сейчас сломан» под мьютексом, общее для
+`Audit` и `For`), значения такого источника в набор шага не входят. Сломавшийся
+снова источник предупреждается заново. Документ оператора и ADR 0033 обновлены.
+
+| Сценарии @oq-088 | Тесты (`agent/internal/stepsecrets/source_test.go`) |
+|---|---|
+| нечитаемый env_file другого репозитория не валит шаг, значения не маскируются; предупреждение без пути | `TestAnUnreadableEnvFileOfAnotherRepositoryWarnsOnceWithoutThePathAndFailsNothing` |
+| неверный env_file другого репозитория | `TestAnInvalidEnvFileOfAnotherRepositoryWarnsWithoutItsContent` |
+| нечитаемый env_file репозитория шага (offsite) валит шаг | `TestAnUnreadableEnvFileOfTheStepRepositoryFailsTheStepWhateverItsName` |
+| нечитаемый tls.key_file: не валит, одно предупреждение без пути | `TestAnUnreadableAgentKeyWarnsOnceWithoutThePathAndFailsNothing` |
+| не повторяется на шагах | `TestTheWarningAboutAForeignFileIsNotRepeatedOnLaterSteps` |
+| нечитаемый при старте | `TestAForeignFileUnreadableAtStartIsNotWarnedAboutAgainOnSteps` |
+| параллельные шаги | `TestParallelStepsGiveOneWarningAboutAForeignFile` |
+| снова читаемый — маскируется молча | `TestAForeignFileThatIsReadableAgainIsMaskedSilentlyFromTheNextStep` |
+| снова нечитаемый — новое предупреждение | `TestAForeignFileThatBreaksAgainIsWarnedAboutAgain` |
+| @doc «маскируется не всё» | `doc_test.go: TestTheDocumentationSaysWhatIsNotMasked` |
+
+«Лог шага содержит маркер на месте T» и «плагин вызывался» следуют из набора
+значений: исполнитель не менялся, интерфейс `executor.Secrets` тоже.
+
+### Ворота после OQ-088 (как напечатали инструменты)
+- `LC_ALL=C.UTF-8 ./scripts/gate.sh agent fast`: `coverage: 98.1%`, `0 issues.`,
+  `gate: PASSED (agent, fast)`; первый прогон показал CRAP 8.0 у `Source.gather`
+  и 7.0 у `Source.For`, исправлено выделением `secretFiles` и `urlPassword`.
+  Один из ранних прогонов упал на `TestDialTOFUClassifiesAContextDeadlineAsTemporary`
+  (пакет `enroll`, окно 50 мс) под нагрузкой; отдельно и в повторном прогоне ворот зелёный.
+- `LC_ALL=C.UTF-8 ./scripts/gate.sh server fast`: `gate: PASSED (server, fast)`
+  (`coverage: 96.2% (instructions)`; `RunsGrpcApiIntegrationTest`: tests="17" failures="0").
+  Первый прогон упал на `NoSuchFileException ... in-progress-results-generic.bin`
+  (сбой Gradle, параллельно шла другая сборка); повтор зелёный.
+- sdk не менялся.
+- `StepLogRedactionTest` с агентом, собранным после OQ-088 (образ агента пересобран,
+  образ сервера — из предыдущего прогона): `tests="1" failures="0" errors="0"`, `BUILD SUCCESSFUL`.
+- `make license-check`: `license-check: 593 files OK`.
+
+Следующий шаг: cleaner.
