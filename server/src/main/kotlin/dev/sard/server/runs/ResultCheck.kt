@@ -108,9 +108,17 @@ object ResultCheck {
         if (status == null || status.active || status == StepState.LOST) return invalid("no final status")
         val problem = problem(action, report.output)
         return when {
-            problem == null -> Verdict(StepOutcome(status, report.message), marked(report.output, status), invalid = null)
-            status == StepState.SUCCEEDED -> invalid(problem)
-            else -> Verdict(StepOutcome(status, report.message), null, invalid = null)
+            problem == null -> {
+                Verdict(StepOutcome(status, report.message), marked(report.output, status), invalid = null)
+            }
+
+            status == StepState.SUCCEEDED -> {
+                invalid(problem)
+            }
+
+            else -> {
+                Verdict(StepOutcome(status, report.message), null, invalid = null)
+            }
         }
     }
 

@@ -144,7 +144,9 @@ class Runs(
                 )
             filter.bind(query)
             after?.bind(query)
-            query.setMaxResults(limit).list().map { RunViews.of(it[0] as RunRecord, it[1] as UUID, it[2] as SourceRecord, emptyList()) }
+            query.setMaxResults(limit).list().map {
+                RunViews.of(it[0] as RunRecord, it[1] as UUID, it[2] as SourceRecord, emptyList())
+            }
         }
 
     private fun create(
