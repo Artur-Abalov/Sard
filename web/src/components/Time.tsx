@@ -14,9 +14,10 @@ export function Time({ value }: { value: string | null }) {
   if (value === null) {
     return <Mono>{EMPTY}</Mono>
   }
+  const exact = format.time(value)
   return (
-    <Tooltip label={format.time(value)}>
-      <Text span style={tabularNums} tabIndex={0} aria-label={format.time(value)}>
+    <Tooltip label={exact}>
+      <Text span style={tabularNums} tabIndex={0} aria-label={exact}>
         <time dateTime={value}>{format.relative(value)}</time>
       </Text>
     </Tooltip>
