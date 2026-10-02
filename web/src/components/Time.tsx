@@ -16,7 +16,7 @@ export function Time({ value }: { value: string | null }) {
   }
   return (
     <Tooltip label={format.time(value)}>
-      <Text span style={tabularNums}>
+      <Text span style={tabularNums} tabIndex={0} aria-label={format.time(value)}>
         <time dateTime={value}>{format.relative(value)}</time>
       </Text>
     </Tooltip>

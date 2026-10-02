@@ -324,7 +324,9 @@ export const theme = createTheme({
         th: { fontWeight: 600, textTransform: 'none', color: 'var(--sard-text-muted)' },
       },
     }),
-    Tooltip: Tooltip.extend({ defaultProps: { openDelay: 200 } }),
+    Tooltip: Tooltip.extend({
+      defaultProps: { openDelay: 200, events: { hover: true, focus: true, touch: true } },
+    }),
   },
 })
 

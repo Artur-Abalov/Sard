@@ -210,4 +210,8 @@ describe('design tokens', () => {
     expect(light['--mantine-color-anchor']).toBe('var(--sard-text)')
     expect(full.components.Anchor.defaultProps.underline).toBe('hover')
   })
+
+  test('a tooltip opens on keyboard focus too', () => {
+    expect(full.components.Tooltip.defaultProps.events).toMatchObject({ hover: true, focus: true })
+  })
 })
