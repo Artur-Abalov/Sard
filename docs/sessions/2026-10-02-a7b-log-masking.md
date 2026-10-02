@@ -149,3 +149,56 @@ ADR 0033 дополнен разделом «Изменения A7b» (новы�
 `gate: PASSED (agent, fast)`. Server не менялся.
 
 Следующий шаг: architect.
+
+## hardener
+
+Инструмент: `go-mutesting` (agent, sdk), mutflow (server). `LC_ALL=C.UTF-8`.
+
+Первый прогон `./scripts/gate.sh agent` упёрся в лимит времени оболочки (мутационный этап идёт
+больше часа), поэтому `go-mutesting ./...` запускался напрямую в `agent/` и в `agent/plugins/sdk`.
+
+| Модуль | Выживших до | Выживших после | Счёт после (печатает ворота) |
+|---|---|---|---|
+| sdk | `The mutation score is 1.000000 (39 passed, 0 failed, 1 duplicated, 0 skipped, total is 39)`: 0 | 0 | `mutation score: 1.000000` |
+| server (mutflow) | 0 (702 discovered, 702 killed, 0 survived, сумма по `build/test-results/test/*.xml`) | 0 | ворота прошли, код не менялся |
+| agent | `The mutation score is 0.937023 (1964 passed, 132 failed, 127 duplicated, 0 skipped, total is 2096)` | 151 строка `FAIL` в выводе ворот | `mutation score: 0.927958` |
+
+Рост числа `FAIL` в agent (132 -> 151) не регрессия: 23 новых строки относятся к `cmd/sard-agent`,
+которым тесты (около 5.7 с) в первом прогоне, шедшем параллельно с gradle-воротами server,
+не укладывались в `-timeout 10s` у go-mutesting, и все мутанты были "убиты" таймаутом. Повторный
+прогон только `./cmd/...` без нагрузки: `The mutation score is 0.938503 (351 passed, 23 failed,
+13 duplicated, 0 skipped, total is 374)`. Эти выжившие в коде до A7b (enroll, repo, main,
+`shutdownTimeout`, `ref.Executor = exec`), мутанты `enroll/identity.go.9` и `enroll/trust.go.32`
+в втором прогоне не выжили без изменений кода (зависят от нагрузки). Совет: гонять мутационный
+этап без параллельной нагрузки.
+
+Выжившие в файлах A7b (до): `redact/base64.go.11, .15, .16, .24`, `redact/redact.go.40-42`,
+`stepsecrets/source.go.27, .41, .46, .49`. Убиты тестами (поведение, не мутант):
+
+- `TestABase64TextShorterThanFourCharactersIsNotSearchedFor` (`redact/base64_test.go`): значение из
+  двух байт, его 3-символьные base64-формы без `=` не маскируются, форма с `=` маскируется
+  (убивает `minBase64 = 3`).
+- `TestAOneCharacterSecretIsWarnedAbout` (убивает `len(v.Value) > 1`).
+- `TestTheCheckAtStartWarnsAboutAnUnreadableEnvFileWithoutThePath`,
+  `TestTheCheckAtStartWarnsAboutAnUnreadableAgentKeyWithoutThePath`,
+  `TestTheCheckAtStartWarnsAboutAnUnreadableSecretAndAForeignFileAlike`
+  (`stepsecrets/source_test.go`): `Audit` сам предупреждает о нечитаемых чужих файлах и ключе
+  агента, без пути (убивают `warnForeign` как no-op, пропуск `append` и `break` вместо `continue`).
+
+Эквивалентные мутанты (остались, исключений в конфигурации нет):
+
+- `redact/base64.go.15, .16, .24`: `from := (8*shift + 5) / 6` при `shift` из {0, 1, 2} даёт 0, 2, 3;
+  замены `7*`, `+ 4`, `9*` дают те же значения. Предложение coder: таблица `[]int{0, 2, 3}[shift]`
+  или константы вместо формулы.
+- `redact/redact.go.40` (`offset >= w.base` в `keep`), `.41` (`from <= w.curAt`), `.42` (`to < w.curAt`
+  в `appendStream`): на границе добавляется ноль байт, результат тот же. `.42` это ранний возврат
+  как оптимизация. Предложение coder: убрать избыточность или оставить как есть.
+
+Выжившие вне A7b (executor.go, store.go, pluginhost, testplugin, transport, restic, enroll,
+repoinit, tlsid, redact/automaton.go и др., полный список в выводе ворот) не трогались: ворота
+требуют только 0.80. Строк, затронутых A7b, в `executor`, `pluginhost/source.go`, `main.go` (кроме
+перечисленных выше) среди выживших нет. Выживший `main.go.51` (`ref.Executor = exec`) вне диффа A7b.
+
+Ворота (после): `gate: PASSED (agent, full)` (`coverage: 98.1%`, `mutation score: 0.927958`),
+`gate: PASSED (sdk, full)` (`coverage: 100.0%`, `mutation score: 1.000000`),
+`gate: PASSED (server, full)` (`coverage: 96.2% (instructions)`). Ошибок 429 при загрузке не было.

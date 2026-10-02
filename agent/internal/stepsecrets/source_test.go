@@ -462,3 +462,46 @@ func TestAForeignFileThatBreaksAgainIsWarnedAboutAgain(t *testing.T) {
 		t.Fatalf("%d warnings:\n%s", got, buf.String())
 	}
 }
+
+// --- the check at start covers every kind of source
+
+func TestAOneCharacterSecretIsWarnedAbout(t *testing.T) {
+	w := warnSetup(t, map[string]string{"one": "x"}, "")
+	w.src.Audit()
+	if w.count("level=WARN") != 1 || !strings.Contains(w.buf.String(), "less readable") {
+		t.Fatalf("log:\n%s", w.buf.String())
+	}
+}
+
+func TestTheCheckAtStartWarnsAboutAnUnreadableEnvFileWithoutThePath(t *testing.T) {
+	src, f, buf := foreign(t)
+	delete(f, "/etc/sard/other.env")
+	src.Audit()
+	log := buf.String()
+	if strings.Count(log, "level=WARN") != 1 || !strings.Contains(log, `repository \"other\"`) || strings.Contains(log, "other.env") {
+		t.Fatalf("log:\n%s", log)
+	}
+}
+
+func TestTheCheckAtStartWarnsAboutAnUnreadableAgentKeyWithoutThePath(t *testing.T) {
+	src, f, buf := foreign(t)
+	delete(f, "/etc/sard/agent.key")
+	src.Audit()
+	log := buf.String()
+	if strings.Count(log, "level=WARN") != 1 || !strings.Contains(log, "tls.key_file") || strings.Contains(log, "agent.key") {
+		t.Fatalf("log:\n%s", log)
+	}
+}
+
+func TestTheCheckAtStartWarnsAboutAnUnreadableSecretAndAForeignFileAlike(t *testing.T) {
+	src, f, buf := foreign(t)
+	delete(f, "/etc/sard/other.env")
+	delete(f, "/etc/sard/agent.key")
+	for _, path := range cfg().Secrets {
+		delete(f, path)
+	}
+	src.Audit()
+	if got, want := strings.Count(buf.String(), "level=WARN"), len(cfg().Secrets)+2; got != want {
+		t.Fatalf("%d warnings, want %d:\n%s", got, want, buf.String())
+	}
+}

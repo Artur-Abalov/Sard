@@ -118,3 +118,15 @@ func TestBase64OfAMultilineKeyOnOneLineIsOneMarker(t *testing.T) {
 		t.Fatalf("Mask = %q", got)
 	}
 }
+
+func TestABase64TextShorterThanFourCharactersIsNotSearchedFor(t *testing.T) {
+	s := mustCompile(t, "ab")
+	for _, text := range []string{"xYWIx", "xhYgx"} { // "ab" unpadded, and after two bytes
+		if got := s.Mask(text); got != text {
+			t.Errorf("Mask(%q) = %q, the text is too short to be masked", text, got)
+		}
+	}
+	if got := s.Mask("x YWI= x"); got != "x [REDACTED] x" {
+		t.Errorf("padded form: Mask = %q", got)
+	}
+}
