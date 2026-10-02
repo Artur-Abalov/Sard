@@ -1,0 +1,116 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright 2026 Artur Abalov */
+/* Reference only: this file is NOT imported by the app. The tokens are implemented in web/src/theme.ts
+   (ADR 0035); keep the two in step when the design changes. */
+/* Sard design tokens — v0.1 (черновик). Тема: тёмная по умолчанию, светлая через data-theme="light" или системную настройку. */
+:root {
+  /* Палитра бренда */
+  --sard-graphite-950: #0B0C0E;
+  --sard-graphite-900: #121416;
+  --sard-graphite-850: #1A1D20;
+  --sard-graphite-700: #262A2E;
+  --sard-graphite-600: #3A3F44;
+  --sard-graphite-400: #8C8983;
+  --sard-silk-200: #B9B6AE;
+  --sard-silk-50: #ECEAE4;
+  --sard-amber-500: #E8B04B;   /* «нить» — акцент бренда */
+  --sard-amber-700: #B5791A;   /* акцент на светлом фоне */
+
+  /* Семантика статусов: всегда вместе с иконкой и текстом, не только цветом */
+  --sard-status-verified: #5FBF8A;   /* восстановление проверено */
+  --sard-status-ok: #7FA6D9;         /* бэкап есть, проверки ещё не было */
+  --sard-status-stale: #E0893A;      /* бэкап устарел / отчёт не пришёл вовремя */
+  --sard-status-failed: #E5604E;     /* бэкап или проверка упали */
+  --sard-status-paused: #8C8983;     /* источник выключен */
+
+  /* Роли (тёмная тема) */
+  --sard-bg: var(--sard-graphite-900);
+  --sard-bg-sunken: var(--sard-graphite-950);
+  --sard-surface: var(--sard-graphite-850);
+  --sard-border: var(--sard-graphite-700);
+  --sard-border-strong: var(--sard-graphite-600);
+  --sard-text: var(--sard-silk-50);
+  --sard-text-muted: var(--sard-silk-200);
+  --sard-text-subtle: var(--sard-graphite-400);
+  --sard-accent: var(--sard-amber-500);
+  --sard-on-accent: var(--sard-graphite-900);
+  --sard-focus: var(--sard-amber-500);
+
+  /* Типографика */
+  --sard-font-brand: "Unbounded", "Segoe UI", system-ui, sans-serif;  /* только логотип и крупные заголовки маркетинга */
+  --sard-font-ui: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --sard-font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --sard-text-xs: 12px;
+  --sard-text-sm: 13px;
+  --sard-text-md: 14px;   /* базовый размер интерфейса */
+  --sard-text-lg: 16px;
+  --sard-text-xl: 20px;
+  --sard-text-2xl: 26px;
+  --sard-text-metric: 40px; /* «последнее проверенное восстановление» */
+  --sard-leading-tight: 1.25;
+  --sard-leading-ui: 1.45;
+
+  /* Отступы: шаг 4px */
+  --sard-space-1: 4px;
+  --sard-space-2: 8px;
+  --sard-space-3: 12px;
+  --sard-space-4: 16px;
+  --sard-space-5: 24px;
+  --sard-space-6: 32px;
+  --sard-space-7: 48px;
+
+  /* Скругления: по иерархии, не одно на всё */
+  --sard-radius-sm: 4px;    /* бейджи, поля */
+  --sard-radius-md: 8px;    /* кнопки, меню */
+  --sard-radius-lg: 12px;   /* панели */
+  --sard-radius-pill: 999px;
+
+  --sard-shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.35); /* только всплывающие элементы */
+  --sard-duration: 150ms;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --sard-bg: #F3F4F5;
+    --sard-bg-sunken: #E8EAEC;
+    --sard-surface: #FFFFFF;
+    --sard-border: #D9DCDF;
+    --sard-border-strong: #BFC4C9;
+    --sard-text: #14171A;
+    --sard-text-muted: #454B52;
+    --sard-text-subtle: #6B7178;
+    --sard-accent: var(--sard-amber-700);
+    --sard-on-accent: #FFFFFF;
+    --sard-focus: var(--sard-amber-700);
+    --sard-status-verified: #23854F;
+    --sard-status-ok: #3567A8;
+    --sard-status-stale: #B05E14;
+    --sard-status-failed: #C23A28;
+    --sard-status-paused: #6B7178;
+    --sard-shadow-pop: 0 8px 24px rgba(20, 23, 26, 0.14);
+  }
+}
+
+:root[data-theme="light"] {
+  --sard-bg: #F3F4F5;
+  --sard-bg-sunken: #E8EAEC;
+  --sard-surface: #FFFFFF;
+  --sard-border: #D9DCDF;
+  --sard-border-strong: #BFC4C9;
+  --sard-text: #14171A;
+  --sard-text-muted: #454B52;
+  --sard-text-subtle: #6B7178;
+  --sard-accent: var(--sard-amber-700);
+  --sard-on-accent: #FFFFFF;
+  --sard-focus: var(--sard-amber-700);
+  --sard-status-verified: #23854F;
+  --sard-status-ok: #3567A8;
+  --sard-status-stale: #B05E14;
+  --sard-status-failed: #C23A28;
+  --sard-status-paused: #6B7178;
+  --sard-shadow-pop: 0 8px 24px rgba(20, 23, 26, 0.14);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --sard-duration: 0ms; }
+}

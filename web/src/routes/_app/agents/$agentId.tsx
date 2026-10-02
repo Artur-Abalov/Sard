@@ -2,8 +2,8 @@
 // Copyright 2026 Artur Abalov
 
 import { createFileRoute } from '@tanstack/react-router'
-import { Agents } from '../../pages/Agents'
+import { Agent } from '../../../pages/Agent'
 
-export const Route = createFileRoute('/_app/agents')({
-  component: Agents,
+export const Route = createFileRoute('/_app/agents/$agentId')({
+  component: Agent,
 })

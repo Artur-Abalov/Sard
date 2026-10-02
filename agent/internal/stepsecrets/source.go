@@ -48,7 +48,7 @@ func New(cfg config.Config, read func(name string) ([]byte, error), log *slog.Lo
 
 // problem is a source that could not be read or parsed. A secret problem
 // always fails a step; a foreign problem (the agent key, the env_file of a
-// repository) fails only the step that uses that repository (OQ-088).
+// repository) fails only the step that uses that repository (OQ-125).
 type problem struct {
 	key  string // what the warning names: "tls.key_file" or the repository
 	repo string // the repository of an env_file, "" for the others

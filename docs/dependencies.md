@@ -94,6 +94,8 @@
 |---|---|---|---|
 | @mantine/core 9.6.3 | MIT | runtime | UI-кит (ADR 0003) |
 | @mantine/hooks 9.6.3 | MIT | runtime | хуки Mantine (требование @mantine/core) |
+| @fontsource/ibm-plex-sans 5.3.0 | OFL-1.1 | runtime | шрифт интерфейса по docs/design/DESIGN.md; самохостинг без обращений к CDN (агент и сервер работают в закрытых контурах); подключены только начертания 400 и 600, кириллица и латиница (ADR 0035) |
+| @fontsource/jetbrains-mono 5.3.0 | OFL-1.1 | runtime | моноширинный шрифт для хостов, путей, команд, хэшей, размеров и времени; начертание 400, кириллица и латиница (ADR 0035) |
 | @tanstack/react-query 5.104.0 | MIT | runtime | загрузка и кеширование данных API |
 | @tanstack/react-router 1.170.39 | MIT | runtime | типизированная маршрутизация (ADR 0015) |
 | i18next 26.4.2 | MIT | runtime | локализация ru/en |

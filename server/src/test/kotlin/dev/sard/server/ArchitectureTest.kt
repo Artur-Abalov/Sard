@@ -96,6 +96,13 @@ class ArchitectureTest {
         assertEquals(allowed.toSet(), callers.toSet(), "sessions.system callers must match ADR 0013's list exactly")
     }
 
+    @Test
+    fun `StepResults takes partial from the verdict and does not judge the status itself`() {
+        val text = withoutComments(File(mainRoot, "runs/StepResults.kt").readText())
+
+        assertTrue("StepState.SUCCEEDED" !in text, "partial is decided by ResultCheck only (ADR 0034)")
+    }
+
     /** The text of every `interface *Api { ... }` block, braces balanced, in [file]. */
     private fun apiPortBlocks(file: File): List<String> {
         val text = withoutComments(file.readText())

@@ -64,7 +64,7 @@ func TestTheDocumentationSaysWhatIsNotMasked(t *testing.T) {
 		"пробел",                   // whitespace around the value is part of it
 		"Host.Log",                 // multiline text in one call
 		"порядок строк",            // the order across sources
-		"нечитаемого `env_file` другого репозитория", // OQ-088: a foreign file
+		"нечитаемого `env_file` другого репозитория", // OQ-125: a foreign file
 		"не маскируются, пока файл не прочитается",   // its values are not masked
 		"предупреждение в журнал агента",             // and the agent warns
 	)

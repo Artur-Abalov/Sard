@@ -293,7 +293,7 @@ func TestAnUnreadableFileAtStartIsNamedWithoutItsPathAndStopsNothing(t *testing.
 	}
 }
 
-// OQ-085: the executor hands the plugin the content it read for masking.
+// OQ-122: the executor hands the plugin the content it read for masking.
 func TestAConfiguredSecretCarriesItsNameAndTheFileContentForThePlugin(t *testing.T) {
 	got, err := newSource(cfg(), allFiles().read).For(step("main"))
 	if err != nil {
@@ -324,7 +324,7 @@ func TestAReplacedSecretFileIsPickedUpByTheNextStep(t *testing.T) {
 	}
 }
 
-// --- OQ-088: a source the step does not depend on warns and does not fail it
+// --- OQ-125: a source the step does not depend on warns and does not fail it
 
 // foreign is cfg() with a log; the step runs on "plain", so other.env and the
 // agent key are sources it does not depend on.

@@ -47,13 +47,13 @@ class RunMappingTest {
         finishedAt = null,
         filesProcessed = 3,
         filesTotal = 4,
-        backup = BackupResult("snap", 10, 5, "repo"),
+        backup = BackupResult("snap", 10, 5, "repo", partial = true),
     )
 
     private fun run(
         status: RunState = RunState.RUNNING,
         trigger: Trigger = Trigger.MANUAL,
-    ) = RunView(ID, ID, ID, trigger, status, "m", AT, AT, null, listOf(step()))
+    ) = RunView(ID, ID, "etc", true, ID, trigger, status, "m", AT, AT, null, listOf(step()))
 
     @Test
     fun `every status, trigger and action of the domain has its name in the contract`() {
@@ -106,7 +106,7 @@ class RunMappingTest {
             listOf(1L, 2L, 3L, 4L),
             listOf(mapped.bytesProcessed, mapped.bytesTotal, mapped.filesProcessed, mapped.filesTotal),
         )
-        assertEquals(BackupOutput("snap", 10, 5, "repo"), mapped.backup)
+        assertEquals(BackupOutput("snap", 10, 5, "repo", partial = true), mapped.backup)
         assertEquals(listOf("files", "qa", "m"), listOf(mapped.plugin, mapped.repositoryName, mapped.message))
         assertEquals(
             listOf(AT, AT, AT, null),
@@ -128,5 +128,14 @@ class RunMappingTest {
         val summary = MutFlow.underTest { RunMapping.summary(run()) }
         assertEquals(listOf(ID, ID, ID, "m"), listOf(summary.id, summary.sourceId, summary.agentId, summary.message))
         assertEquals(listOf(AT, AT, null), listOf(summary.queuedAt, summary.startedAt, summary.finishedAt))
+    }
+
+    @Test
+    fun `a run and its summary name their source and say whether it was deleted`() {
+        val full = MutFlow.underTest { RunMapping.run(run()) }
+        val summary = MutFlow.underTest { RunMapping.summary(run()) }
+
+        assertEquals(listOf("etc", true), listOf(full.sourceName, full.sourceDeleted))
+        assertEquals(listOf("etc", true), listOf(summary.sourceName, summary.sourceDeleted))
     }
 }

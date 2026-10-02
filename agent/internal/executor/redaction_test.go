@@ -286,7 +286,7 @@ func TestAnEmptySecretDoesNotDisableTheOthers(t *testing.T) {
 	wantLog(t, f.sink, "c1", info, "a[REDACTED]b")
 }
 
-// OQ-085: Host.Secret answers from the read that built the masker.
+// OQ-122: Host.Secret answers from the read that built the masker.
 func TestTheHandlerGetsTheContentTheMaskerWasBuiltFrom(t *testing.T) {
 	_, tune := withSecrets(
 		executor.Secret{Name: "secret tok", Ref: "tok", Value: []byte(secretValue), Content: []byte(secretValue + "\n")},

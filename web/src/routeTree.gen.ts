@@ -16,10 +16,15 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
-import { Route as AppAgentsRouteImport } from './routes/_app/agents'
-import { Route as AppSourcesRouteImport } from './routes/_app/sources'
+import { Route as AppTokensRouteImport } from './routes/_app/tokens'
+import { Route as AppAgentsIndexRouteImport } from './routes/_app/agents/index'
+import { Route as AppAgentsAgentIdRouteImport } from './routes/_app/agents/$agentId'
 import { Route as AppRunsIndexRouteImport } from './routes/_app/runs/index'
 import { Route as AppRunsRunIdRouteImport } from './routes/_app/runs/$runId'
+import { Route as AppSourcesIndexRouteImport } from './routes/_app/sources/index'
+import { Route as AppSourcesNewRouteImport } from './routes/_app/sources/new'
+import { Route as AppSourcesSourceIdIndexRouteImport } from './routes/_app/sources/$sourceId/index'
+import { Route as AppSourcesSourceIdEditRouteImport } from './routes/_app/sources/$sourceId/edit'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -35,14 +40,19 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
-const AppAgentsRoute = AppAgentsRouteImport.update({
-  id: '/agents',
-  path: '/agents',
+const AppTokensRoute = AppTokensRouteImport.update({
+  id: '/tokens',
+  path: '/tokens',
   getParentRoute: () => AppRoute,
 } as any)
-const AppSourcesRoute = AppSourcesRouteImport.update({
-  id: '/sources',
-  path: '/sources',
+const AppAgentsIndexRoute = AppAgentsIndexRouteImport.update({
+  id: '/agents/',
+  path: '/agents/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAgentsAgentIdRoute = AppAgentsAgentIdRouteImport.update({
+  id: '/agents/$agentId',
+  path: '/agents/$agentId',
   getParentRoute: () => AppRoute,
 } as any)
 const AppRunsIndexRoute = AppRunsIndexRouteImport.update({
@@ -55,47 +65,109 @@ const AppRunsRunIdRoute = AppRunsRunIdRouteImport.update({
   path: '/runs/$runId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSourcesIndexRoute = AppSourcesIndexRouteImport.update({
+  id: '/sources/',
+  path: '/sources/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSourcesNewRoute = AppSourcesNewRouteImport.update({
+  id: '/sources/new',
+  path: '/sources/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSourcesSourceIdIndexRoute = AppSourcesSourceIdIndexRouteImport.update({
+  id: '/sources/$sourceId/',
+  path: '/sources/$sourceId/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSourcesSourceIdEditRoute = AppSourcesSourceIdEditRouteImport.update({
+  id: '/sources/$sourceId/edit',
+  path: '/sources/$sourceId/edit',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
-  '/agents': typeof AppAgentsRoute
-  '/sources': typeof AppSourcesRoute
+  '/tokens': typeof AppTokensRoute
+  '/agents/$agentId': typeof AppAgentsAgentIdRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
+  '/sources/new': typeof AppSourcesNewRoute
+  '/agents/': typeof AppAgentsIndexRoute
   '/runs/': typeof AppRunsIndexRoute
+  '/sources/': typeof AppSourcesIndexRoute
+  '/sources/$sourceId/edit': typeof AppSourcesSourceIdEditRoute
+  '/sources/$sourceId/': typeof AppSourcesSourceIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
-  '/agents': typeof AppAgentsRoute
-  '/sources': typeof AppSourcesRoute
+  '/tokens': typeof AppTokensRoute
   '/': typeof AppIndexRoute
+  '/agents/$agentId': typeof AppAgentsAgentIdRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
+  '/sources/new': typeof AppSourcesNewRoute
+  '/agents': typeof AppAgentsIndexRoute
   '/runs': typeof AppRunsIndexRoute
+  '/sources': typeof AppSourcesIndexRoute
+  '/sources/$sourceId/edit': typeof AppSourcesSourceIdEditRoute
+  '/sources/$sourceId': typeof AppSourcesSourceIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
-  '/_app/agents': typeof AppAgentsRoute
-  '/_app/sources': typeof AppSourcesRoute
+  '/_app/tokens': typeof AppTokensRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/agents/$agentId': typeof AppAgentsAgentIdRoute
   '/_app/runs/$runId': typeof AppRunsRunIdRoute
+  '/_app/sources/new': typeof AppSourcesNewRoute
+  '/_app/agents/': typeof AppAgentsIndexRoute
   '/_app/runs/': typeof AppRunsIndexRoute
+  '/_app/sources/': typeof AppSourcesIndexRoute
+  '/_app/sources/$sourceId/edit': typeof AppSourcesSourceIdEditRoute
+  '/_app/sources/$sourceId/': typeof AppSourcesSourceIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/agents' | '/sources' | '/runs/$runId' | '/runs/'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/tokens'
+    | '/agents/$agentId'
+    | '/runs/$runId'
+    | '/sources/new'
+    | '/agents/'
+    | '/runs/'
+    | '/sources/'
+    | '/sources/$sourceId/edit'
+    | '/sources/$sourceId/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/agents' | '/sources' | '/' | '/runs/$runId' | '/runs'
+  to:
+    | '/login'
+    | '/tokens'
+    | '/'
+    | '/agents/$agentId'
+    | '/runs/$runId'
+    | '/sources/new'
+    | '/agents'
+    | '/runs'
+    | '/sources'
+    | '/sources/$sourceId/edit'
+    | '/sources/$sourceId'
   id:
     | '__root__'
     | '/_app'
     | '/login'
-    | '/_app/agents'
-    | '/_app/sources'
+    | '/_app/tokens'
     | '/_app/'
+    | '/_app/agents/$agentId'
     | '/_app/runs/$runId'
+    | '/_app/sources/new'
+    | '/_app/agents/'
     | '/_app/runs/'
+    | '/_app/sources/'
+    | '/_app/sources/$sourceId/edit'
+    | '/_app/sources/$sourceId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -126,18 +198,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/agents': {
-      id: '/_app/agents'
-      path: '/agents'
-      fullPath: '/agents'
-      preLoaderRoute: typeof AppAgentsRouteImport
+    '/_app/tokens': {
+      id: '/_app/tokens'
+      path: '/tokens'
+      fullPath: '/tokens'
+      preLoaderRoute: typeof AppTokensRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/sources': {
-      id: '/_app/sources'
-      path: '/sources'
-      fullPath: '/sources'
-      preLoaderRoute: typeof AppSourcesRouteImport
+    '/_app/agents/': {
+      id: '/_app/agents/'
+      path: '/agents'
+      fullPath: '/agents/'
+      preLoaderRoute: typeof AppAgentsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/agents/$agentId': {
+      id: '/_app/agents/$agentId'
+      path: '/agents/$agentId'
+      fullPath: '/agents/$agentId'
+      preLoaderRoute: typeof AppAgentsAgentIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/runs/': {
@@ -154,23 +233,61 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRunsRunIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/sources/': {
+      id: '/_app/sources/'
+      path: '/sources'
+      fullPath: '/sources/'
+      preLoaderRoute: typeof AppSourcesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/sources/new': {
+      id: '/_app/sources/new'
+      path: '/sources/new'
+      fullPath: '/sources/new'
+      preLoaderRoute: typeof AppSourcesNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/sources/$sourceId/': {
+      id: '/_app/sources/$sourceId/'
+      path: '/sources/$sourceId'
+      fullPath: '/sources/$sourceId/'
+      preLoaderRoute: typeof AppSourcesSourceIdIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/sources/$sourceId/edit': {
+      id: '/_app/sources/$sourceId/edit'
+      path: '/sources/$sourceId/edit'
+      fullPath: '/sources/$sourceId/edit'
+      preLoaderRoute: typeof AppSourcesSourceIdEditRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
-  AppAgentsRoute: typeof AppAgentsRoute
-  AppSourcesRoute: typeof AppSourcesRoute
+  AppTokensRoute: typeof AppTokensRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppAgentsAgentIdRoute: typeof AppAgentsAgentIdRoute
   AppRunsRunIdRoute: typeof AppRunsRunIdRoute
+  AppSourcesNewRoute: typeof AppSourcesNewRoute
+  AppAgentsIndexRoute: typeof AppAgentsIndexRoute
   AppRunsIndexRoute: typeof AppRunsIndexRoute
+  AppSourcesIndexRoute: typeof AppSourcesIndexRoute
+  AppSourcesSourceIdEditRoute: typeof AppSourcesSourceIdEditRoute
+  AppSourcesSourceIdIndexRoute: typeof AppSourcesSourceIdIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
-  AppAgentsRoute: AppAgentsRoute,
-  AppSourcesRoute: AppSourcesRoute,
+  AppTokensRoute: AppTokensRoute,
   AppIndexRoute: AppIndexRoute,
+  AppAgentsAgentIdRoute: AppAgentsAgentIdRoute,
   AppRunsRunIdRoute: AppRunsRunIdRoute,
+  AppSourcesNewRoute: AppSourcesNewRoute,
+  AppAgentsIndexRoute: AppAgentsIndexRoute,
   AppRunsIndexRoute: AppRunsIndexRoute,
+  AppSourcesIndexRoute: AppSourcesIndexRoute,
+  AppSourcesSourceIdEditRoute: AppSourcesSourceIdEditRoute,
+  AppSourcesSourceIdIndexRoute: AppSourcesSourceIdIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

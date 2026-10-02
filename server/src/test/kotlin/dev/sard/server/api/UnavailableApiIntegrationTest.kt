@@ -88,6 +88,17 @@ class UnavailableApiIntegrationTest(
     }
 
     @Test
+    fun `Обзор при недоступной базе отвечает 503 без подробностей`() {
+        databaseDown()
+
+        val response = world.api.get("/api/v1/overview", admin)
+
+        assertEquals(503, response.status)
+        assertEquals("unavailable", response.code)
+        assertFalse(FAILURE in response.body)
+    }
+
+    @Test
     fun `Отказ базы при создании токена не выдаёт строку`() {
         databaseDown()
 

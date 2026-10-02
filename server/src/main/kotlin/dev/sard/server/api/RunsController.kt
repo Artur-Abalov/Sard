@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
 import java.util.UUID
 
+private const val SOURCE_NAME = "The source's current name; for a deleted source, its name when it was deleted"
 private const val MESSAGE = "Why it failed, was rejected or lost; null on success"
 
 @Schema(description = "A run in the list")
@@ -25,6 +26,10 @@ data class RunSummary(
     val id: UUID,
     @field:Schema(description = "The source the run backs up")
     val sourceId: UUID,
+    @field:Schema(description = SOURCE_NAME)
+    val sourceName: String,
+    @field:Schema(description = "The source was deleted; its runs and snapshots stay")
+    val sourceDeleted: Boolean,
     @field:Schema(description = "The source's agent")
     val agentId: UUID,
     val trigger: RunTrigger,
@@ -44,6 +49,12 @@ data class BackupOutput(
     val addedBytes: Long,
     @field:Schema(description = "restic repository id; the same key held by several hosts shares it (ADR 0008)")
     val repositoryId: String,
+    @field:Schema(
+        description =
+            "The result that brought this output failed: the snapshot is usable but incomplete, like " +
+                "Snapshot.partial",
+    )
+    val partial: Boolean,
 )
 
 @Schema(description = "One command to the agent")
@@ -86,6 +97,10 @@ data class RunStep(
 data class Run(
     val id: UUID,
     val sourceId: UUID,
+    @field:Schema(description = SOURCE_NAME)
+    val sourceName: String,
+    @field:Schema(description = "The source was deleted; its runs and snapshots stay")
+    val sourceDeleted: Boolean,
     val agentId: UUID,
     val trigger: RunTrigger,
     val status: RunStatus,

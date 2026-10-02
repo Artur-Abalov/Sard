@@ -157,7 +157,7 @@ class StepResults(
                 .setParameter("totalBytes", backup.totalBytes)
                 .setParameter("addedBytes", backup.addedBytes)
                 .setParameter("now", clock.instant())
-                .setParameter("partial", verdict.outcome.status != StepState.SUCCEEDED)
+                .setParameter("partial", backup.partial)
                 .executeUpdate()
         if (inserted == 0) {
             log.warn("snapshot {} of step {} is already recorded for another step", backup.snapshotId, step.id)

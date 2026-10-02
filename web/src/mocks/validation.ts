@@ -32,8 +32,12 @@ export function validateSource(
   const agent = agents.find((a) => a.id === source.agentId)
   if (agent === undefined) return rejected('unknown_agent', 'agentId', 'no such agent')
   if (agent.revokedAt !== null) return rejected('agent_revoked', 'agentId', 'the agent is revoked')
-  if (!agent.plugins.some((p) => p.name === source.plugin)) {
-    return rejected('unknown_plugin', 'plugin', `the agent has no plugin ${source.plugin}`)
+  if (!agent.plugins.some((p) => p.name === source.plugin && p.actions.includes('backup'))) {
+    return rejected(
+      'unknown_plugin',
+      'plugin',
+      `the agent has no plugin ${source.plugin} that offers backup`,
+    )
   }
   if (!agent.repositories.some((r) => r.name === source.repositoryName)) {
     return rejected(

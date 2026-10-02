@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
+import '@fontsource/ibm-plex-sans/cyrillic-400.css'
+import '@fontsource/ibm-plex-sans/cyrillic-600.css'
+import '@fontsource/ibm-plex-sans/latin-400.css'
+import '@fontsource/ibm-plex-sans/latin-600.css'
+import '@fontsource/jetbrains-mono/cyrillic-400.css'
+import '@fontsource/jetbrains-mono/latin-400.css'
 import '@mantine/core/styles.css'
 import './i18n'
 import { MantineProvider } from '@mantine/core'
@@ -10,7 +16,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createAppQueryClient } from './auth/queryClient'
 import { createAppRouter } from './router'
-import { defaultColorScheme, theme } from './theme'
+import { cssVariablesResolver, defaultColorScheme, reducedMotionCss, theme } from './theme'
 
 // A 401 from any query, anywhere in the app, clears the cache and goes to sign-in
 // with the current page remembered (rule "Ответ 401 во время работы ведёт на вход").
@@ -36,7 +42,12 @@ async function enableMocks() {
 void enableMocks().then(() =>
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <MantineProvider theme={theme} defaultColorScheme={defaultColorScheme}>
+      <MantineProvider
+        theme={theme}
+        cssVariablesResolver={cssVariablesResolver}
+        defaultColorScheme={defaultColorScheme}
+      >
+        <style>{reducedMotionCss}</style>
         <QueryClientProvider client={queryClient}>
           <RouterProvider router={router} />
         </QueryClientProvider>

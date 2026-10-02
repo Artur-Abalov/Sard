@@ -29,6 +29,15 @@ class ResultCheckTest {
     }
 
     @Test
+    fun `a backup output is partial exactly when its result failed`() {
+        val failed = check(Action.BACKUP, StepState.FAILED, BACKUP, "2 files unreadable")
+        val succeeded = check(Action.BACKUP, StepState.SUCCEEDED, BACKUP)
+
+        assertEquals(BACKUP.copy(partial = true), failed.output)
+        assertEquals(BACKUP.copy(partial = false), succeeded.output)
+    }
+
+    @Test
     fun `a backup that added nothing, of nothing, is still a snapshot`() {
         val empty = BACKUP.copy(totalBytes = 0, addedBytes = 0)
 
@@ -123,7 +132,7 @@ class ResultCheckTest {
         val expected =
             listOf(
                 """{"kind":"backup","snapshotId":"4a3b2c1d","totalBytes":1000,"addedBytes":100,""" +
-                    """"repositoryId":"$REPOSITORY_ID"}""",
+                    """"repositoryId":"$REPOSITORY_ID","partial":false}""",
                 """{"kind":"restore","target":"/r"}""",
                 """{"kind":"verify","snapshotId":"4a","checks":[{"name":"read-data","passed":false,""" +
                     """"detail":"pack 1f: \"bad\""}]}""",

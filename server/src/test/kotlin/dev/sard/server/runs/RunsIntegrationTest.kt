@@ -67,7 +67,19 @@ class RunsIntegrationTest(
         val run = runs.start(tenant.id, source.id)
 
         assertEquals(
-            RunView(run.id, source.id, tenant.agentId, Trigger.MANUAL, RunState.QUEUED, null, RUNS_NOW, null, null),
+            RunView(
+                run.id,
+                source.id,
+                source.name,
+                false,
+                tenant.agentId,
+                Trigger.MANUAL,
+                RunState.QUEUED,
+                null,
+                RUNS_NOW,
+                null,
+                null,
+            ),
             run.copy(steps = emptyList()),
         )
         val step = run.steps.single()

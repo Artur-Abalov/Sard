@@ -333,7 +333,7 @@ func TestResticFailureIsReturned(t *testing.T) {
 	}
 }
 
-// OQ-085: within a step the plugin gets the value the masker was built from.
+// OQ-122: within a step the plugin gets the value the masker was built from.
 func TestHostGivesTheValueTheStepStartedWithEvenIfTheFileChanged(t *testing.T) {
 	var value []byte
 	p := &plugin{prepare: func(_ context.Context, h sdk.Host, _ sdk.Config) error {

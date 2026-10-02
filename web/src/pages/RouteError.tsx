@@ -4,6 +4,7 @@
 import { Alert, Button, Stack } from '@mantine/core'
 import { useRouter } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
+import { tones } from '../theme'
 
 // Shown when a protected page's session check fails for a reason other than "no
 // session" (network, 5xx): the URL does not change and a retry re-runs beforeLoad
@@ -14,7 +15,7 @@ export function RouteError() {
   const router = useRouter()
   return (
     <Stack align="center" justify="center" mih="100vh">
-      <Alert color="red" title={t('routeError.title')}>
+      <Alert color={tones.error} title={t('routeError.title')}>
         {t('routeError.message')}
       </Alert>
       <Button onClick={() => void router.invalidate()}>{t('routeError.retry')}</Button>
