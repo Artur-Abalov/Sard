@@ -6,6 +6,7 @@ package dev.sard.e2e
 import org.junit.jupiter.api.extension.RegisterExtension
 import java.time.Duration
 import java.time.Instant
+import java.util.Base64
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertFalse
@@ -14,9 +15,10 @@ import kotlin.test.fail
 
 /**
  * A7c strategy 4, the real agent and restic: a files step whose repository path holds the value
- * of one of the agent's secrets. The repository does not exist, so restic fails and prints the
- * path on stderr; the agent masks the value before the lines leave the host (ADR 0033). The
- * server's `step_logs` carry the marker and never the value, nor does the step's message.
+ * of one of the agent's secrets, as is and as standard base64 (A7b). The repository does not
+ * exist, so restic fails and prints the path on stderr; the agent masks the value before the
+ * lines leave the host (ADR 0033). The server's `step_logs` carry the marker and never the
+ * value, nor does the step's message.
  */
 class StepLogRedactionTest {
     @Test
@@ -30,9 +32,10 @@ class StepLogRedactionTest {
         await("a masked line of step $stepId") { logsOf(stepId).any { MARKER in it } }
 
         val logs = logsOf(stepId)
-        assertTrue(logs.none { SECRET in it }, "the value reached step_logs: $logs")
-        assertTrue(logs.any { "repo-$MARKER" in it }, "no line names the masked repository: $logs")
-        assertFalse(SECRET in messageOf(stepId).orEmpty(), "the value reached the step's message")
+        val message = messageOf(stepId).orEmpty()
+        assertTrue(logs.none { SECRET in it || SECRET_BASE64 in it }, "the value reached step_logs: $logs")
+        assertTrue(logs.any { "repo-$MARKER-$MARKER" in it }, "no line names the masked repository: $logs")
+        assertFalse(SECRET in message || SECRET_BASE64 in message, "the value reached the step's message")
     }
 
     private fun logsOf(stepId: UUID): List<String> =
@@ -66,13 +69,14 @@ class StepLogRedactionTest {
     companion object {
         private const val SECRET = "e2e-hunter2-very-secret"
         private const val MARKER = "[REDACTED]"
+        private val SECRET_BASE64 = Base64.getEncoder().encodeToString(SECRET.toByteArray())
 
         /** A repository that does not exist under the agent's state dir; its path holds the secret. */
         private val LOCAL =
             """
             repositories:
               - name: main
-                url: /var/lib/sard-agent/repo-$SECRET
+                url: /var/lib/sard-agent/repo-$SECRET-$SECRET_BASE64
                 password_file: /etc/sard/main.pass
             secrets:
               token: /etc/sard/token
