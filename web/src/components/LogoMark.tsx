@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
+import { logoNodeFill } from '../theme'
+
 const SIZE = 24
 
 // The logo mark of docs/design/logo.svg: a hexagonal web whose lines follow the text color
@@ -19,7 +21,7 @@ export function LogoMark() {
         <line x1="100" y1="100" x2="54" y2="179.7" />
         <line x1="100" y1="100" x2="146" y2="179.7" />
       </g>
-      <circle cx="140" cy="30.7" r="14" fill="var(--sard-accent)" />
+      <circle cx="140" cy="30.7" r="14" fill={logoNodeFill} />
     </svg>
   )
 }

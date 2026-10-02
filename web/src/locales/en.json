@@ -47,7 +47,7 @@
   },
   "agents": {
     "title": "Agents",
-    "duplicateAt": "Duplicate, last seen {{time}}",
+    "duplicateAt": "Duplicate, last seen <when/>",
     "empty": "There are no agents yet. An agent registers with a token.",
     "host": "Host",
     "lastSeen": "Last seen",
@@ -57,7 +57,7 @@
     "repoInitHint": "This repository has no id yet: initialize it on the agent host.",
     "repoInitPage": "Open an agent that has a repository marked \"not initialized\", run sard-agent repo init <name> on its host and restart the agent service.",
     "repoInitRestart": "After it, restart the agent service so that it reports the repository.",
-    "revokedAt": "Revoked {{time}}",
+    "revokedAt": "Revoked <when/>",
     "status": "Status",
     "version": "Version"
   },

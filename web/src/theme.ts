@@ -2,6 +2,7 @@
 // Copyright 2026 Artur Abalov
 
 import {
+  Anchor,
   Badge,
   Button,
   Card,
@@ -104,7 +105,20 @@ const light: Tokens = {
 
 // Equal to docs/design/tokens.css (a test keeps them so): the shared tokens and the dark roles
 // together are its first block, the light roles are its light block.
-export const tokens = { shared, dark, light }
+const reducedMotion: Tokens = { '--sard-duration': '0ms' }
+
+export const tokens = { shared, dark, light, reducedMotion }
+
+// The reduced-motion override of tokens.css: Mantine's resolver has no media queries, so
+// main.tsx puts this in a <style>. ":root:root" outranks the variables the resolver emits.
+export const reducedMotionCss = `@media (prefers-reduced-motion: reduce) { :root:root { ${Object.entries(
+  reducedMotion,
+)
+  .map(([name, value]) => `${name}: ${value}`)
+  .join('; ')} } }`
+
+// The node of the logo mark is the accent of the scheme.
+export const logoNodeFill = 'var(--sard-accent)'
 
 // "--sard-text-md" -> its value, for the places that need a plain value (Mantine's scales).
 function scale(prefix: string): Record<string, string> {
@@ -177,7 +191,7 @@ const mantineRoles: Tokens = {
   '--mantine-color-bright': 'var(--sard-text)',
   '--mantine-color-dimmed': 'var(--sard-text-muted)',
   '--mantine-color-placeholder': 'var(--sard-text-subtle)',
-  '--mantine-color-anchor': 'var(--sard-accent)',
+  '--mantine-color-anchor': 'var(--sard-text)',
   '--mantine-color-default': 'var(--sard-surface)',
   '--mantine-color-default-hover': 'var(--sard-bg-sunken)',
   '--mantine-color-default-color': 'var(--sard-text)',
@@ -253,6 +267,7 @@ export const theme = createTheme({
   },
   primaryShade: 6,
   components: {
+    Anchor: Anchor.extend({ defaultProps: { underline: 'hover' } }),
     Badge: Badge.extend({
       defaultProps: { variant: 'light', radius: 'sm' },
       // Sentence case, never clipped: the label is as wide as its text.

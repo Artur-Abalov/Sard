@@ -8,7 +8,9 @@ import { DEFAULT_THEME, mergeMantineTheme } from '@mantine/core'
 import { readFileSync } from 'node:fs'
 import {
   cssVariablesResolver,
+  logoNodeFill,
   logLevelColors,
+  reducedMotionCss,
   statusVisual,
   statusVisuals,
   theme,
@@ -125,8 +127,8 @@ describe('design tokens', () => {
 
     expect(resolved.variables['--sard-radius-md']).toBe('8px')
     expect(resolved.dark['--sard-bg']).toBe('var(--sard-graphite-900)')
-    expect(resolved.light['--sard-bg']).toBe('#F3F4F5')
-    expect(resolved.light['--sard-status-ok']).toBe('#3567A8')
+    expect(resolved.light['--sard-bg']).toBe(referenceTokens('light')['--sard-bg'])
+    expect(resolved.light['--sard-status-ok']).toBe(referenceTokens('light')['--sard-status-ok'])
   })
 
   test('Mantine reads its page, text, border and accent from the roles', () => {
@@ -164,5 +166,48 @@ describe('design tokens', () => {
     expect(theme.shadows?.sm).toBe('none')
     expect(theme.shadows?.md).toBe('var(--sard-shadow-pop)')
     expect(theme.respectReducedMotion).toBe(true)
+  })
+
+  test('reduced motion zeroes the duration, as docs/design/tokens.css does', () => {
+    const css = readFileSync(new URL('../../docs/design/tokens.css', import.meta.url), 'utf8')
+    const block = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'))
+
+    expect(block).toMatch(/--sard-duration:\s*0ms/)
+    expect(tokens.reducedMotion).toEqual({ '--sard-duration': '0ms' })
+    expect(reducedMotionCss).toContain('@media (prefers-reduced-motion: reduce)')
+    expect(reducedMotionCss).toContain('--sard-duration: 0ms')
+  })
+
+  test.each(['dark', 'light'] as const)(
+    'the focus ring of the %s scheme is the accent, which Mantine draws it with',
+    (scheme) => {
+      const roles = scheme === 'dark' ? { ...tokens.shared, ...tokens.dark } : tokens.light
+
+      expect(roles['--sard-focus']).toBe(roles['--sard-accent'])
+    },
+  )
+
+  test('every color of the neutral palettes is a token value', () => {
+    const values = new Set(
+      [...Object.values(referenceTokens('dark')), ...Object.values(referenceTokens('light'))].map(
+        (value) => value.toUpperCase(),
+      ),
+    )
+
+    for (const color of [...(theme.colors?.dark ?? []), ...(theme.colors?.gray ?? [])]) {
+      expect(values, color).toContain(color.toUpperCase())
+    }
+  })
+
+  test('the logo node takes the accent of the scheme', () => {
+    expect(logoNodeFill).toBe('var(--sard-accent)')
+  })
+
+  test('links are in the text color, the accent is kept for the primary button, focus and navigation', () => {
+    const { dark, light } = cssVariablesResolver(full)
+
+    expect(dark['--mantine-color-anchor']).toBe('var(--sard-text)')
+    expect(light['--mantine-color-anchor']).toBe('var(--sard-text)')
+    expect(full.components.Anchor.defaultProps.underline).toBe('hover')
   })
 })

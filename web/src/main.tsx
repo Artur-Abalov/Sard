@@ -16,7 +16,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createAppQueryClient } from './auth/queryClient'
 import { createAppRouter } from './router'
-import { cssVariablesResolver, defaultColorScheme, theme } from './theme'
+import { cssVariablesResolver, defaultColorScheme, reducedMotionCss, theme } from './theme'
 
 // A 401 from any query, anywhere in the app, clears the cache and goes to sign-in
 // with the current page remembered (rule "Ответ 401 во время работы ведёт на вход").
@@ -47,6 +47,7 @@ void enableMocks().then(() =>
         cssVariablesResolver={cssVariablesResolver}
         defaultColorScheme={defaultColorScheme}
       >
+        <style>{reducedMotionCss}</style>
         <QueryClientProvider client={queryClient}>
           <RouterProvider router={router} />
         </QueryClientProvider>
