@@ -26,6 +26,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
+	"github.com/Artur-Abalov/sard/agent/internal/stepsecrets"
 	"github.com/Artur-Abalov/sard/agent/internal/tlsid"
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
 	"github.com/Artur-Abalov/sard/agent/plugins"
@@ -178,8 +179,11 @@ func serve(ctx context.Context, cfg config.Config, agent *app.Agent) error {
 		Sink:         link,
 		StateDir:     executorStateDir(cfg.Executor.StateDir),
 		Repositories: repositoryNames(cfg.Repositories),
-		MaxParallel:  cfg.Executor.MaxParallel,
-		Logger:       slog.Default(),
+		// A7c: the step's secrets are masked in its logs and result.
+		Secrets:     stepsecrets.New(cfg, os.ReadFile),
+		OutputLevel: pluginhost.OutputLevel,
+		MaxParallel: cfg.Executor.MaxParallel,
+		Logger:      slog.Default(),
 	})
 	if err != nil {
 		return err
@@ -227,9 +231,13 @@ func openRepositories(cfg config.Config, opts restic.Options) resticRepositories
 	return repos
 }
 
-func (r resticRepositories) get(name string) (restic.Repository, bool) {
+// get returns the repository of a step, its stderr copied to the step's log.
+func (r resticRepositories) get(name string, stderr io.Writer) (restic.Repository, bool) {
 	repo, ok := r[name]
-	return repo, ok
+	if !ok {
+		return nil, false
+	}
+	return repo.WithStderr(stderr), true
 }
 
 func repositoryNames(repos []config.Repository) []string {

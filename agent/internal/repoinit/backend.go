@@ -7,9 +7,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"net/url"
 	"strings"
 
+	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/redact"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 )
@@ -154,7 +154,7 @@ func Scrubber(repoURL string, envAssignments []string, extra ...string) func(str
 		_, v, _ := strings.Cut(kv, "=")
 		add(v)
 	}
-	add(urlPassword(repoURL))
+	add(config.URLPassword(repoURL))
 	for _, v := range extra {
 		add(v)
 	}
@@ -168,15 +168,4 @@ func Scrubber(repoURL string, envAssignments []string, extra ...string) func(str
 		_ = w.Close()
 		return out.String()
 	}
-}
-
-// urlPassword is the password of "backend:scheme://user:password@host/path".
-func urlPassword(repoURL string) string {
-	_, rest, _ := strings.Cut(repoURL, ":")
-	u, err := url.Parse(rest)
-	if err != nil || u.User == nil {
-		return ""
-	}
-	password, _ := u.User.Password()
-	return password
 }

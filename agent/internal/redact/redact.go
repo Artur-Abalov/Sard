@@ -15,6 +15,7 @@
 package redact
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -77,24 +78,70 @@ type Writer struct {
 	done  bool
 }
 
-// New returns a Writer masking values (copied; the caller may clear its
-// own copies afterwards) on the way to dst.
-func New(dst io.Writer, values [][]byte, opts ...Option) (*Writer, error) {
+// Set is a compiled list of values to mask. It is read-only once built,
+// so one Set serves any number of Writers at once.
+type Set struct {
+	ac *automaton
+}
+
+// Compile builds the matcher for values (copied; the caller may clear its
+// own copies afterwards). Without values it returns a nil Set, which masks
+// nothing: callers skip the matcher entirely.
+func Compile(values [][]byte, opts ...Option) (*Set, error) {
 	var c config
 	for _, o := range opts {
 		o(&c)
 	}
+	patterns, err := patternsOf(values, c.onShort)
+	if len(patterns) == 0 { // also on an error
+		return nil, err
+	}
+	return &Set{ac: newAutomaton(patterns)}, nil
+}
+
+// patternsOf returns the variants of every value, reporting short ones to onShort.
+func patternsOf(values [][]byte, onShort func(index, length int)) ([][]byte, error) {
 	var patterns [][]byte
 	for i, v := range values {
 		if len(v) == 0 {
 			return nil, fmt.Errorf("redact: value %d: %w", i, ErrEmptyValue)
 		}
-		if len(v) < ShortValueLen && c.onShort != nil {
-			c.onShort(i, len(v))
+		if len(v) < ShortValueLen && onShort != nil {
+			onShort(i, len(v))
 		}
 		patterns = append(patterns, variants(v)...)
 	}
-	return &Writer{dst: dst, ac: newAutomaton(patterns)}, nil
+	return patterns, nil
+}
+
+// NewWriter returns a Writer masking the set's values on the way to dst.
+func (s *Set) NewWriter(dst io.Writer) *Writer {
+	return &Writer{dst: dst, ac: s.ac}
+}
+
+// Mask returns text with every value masked; a nil Set returns it as is.
+func (s *Set) Mask(text string) string {
+	if s == nil {
+		return text
+	}
+	var out bytes.Buffer
+	w := s.NewWriter(&out)
+	_, _ = w.Write([]byte(text)) // a bytes.Buffer does not fail
+	_ = w.Close()
+	return out.String()
+}
+
+// New returns a Writer masking values (copied; the caller may clear its
+// own copies afterwards) on the way to dst.
+func New(dst io.Writer, values [][]byte, opts ...Option) (*Writer, error) {
+	s, err := Compile(values, opts...)
+	if err != nil {
+		return nil, err
+	}
+	if s == nil {
+		s = &Set{ac: newAutomaton(nil)}
+	}
+	return s.NewWriter(dst), nil
 }
 
 // Write masks p and writes out everything that can no longer be part of

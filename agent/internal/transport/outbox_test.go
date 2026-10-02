@@ -134,7 +134,9 @@ func TestOutboxLogWaitsForSpace(t *testing.T) {
 		t.Fatal("Log did not wait for space")
 	case <-time.After(50 * time.Millisecond):
 	}
-	equal(t, drain(o), "log c1 1 2")
+	// One message only: draining would race with the Log it wakes up.
+	msg, _ := o.next()
+	equal(t, []string{describe(msg)}, "log c1 1 2")
 	<-written
 	equal(t, drain(o), "log c1 3")
 }

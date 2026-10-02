@@ -11,6 +11,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/Artur-Abalov/sard/agent/internal/redact"
+	"github.com/Artur-Abalov/sard/agent/internal/steplog"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -39,6 +41,9 @@ type command struct {
 	checks  int
 	waited  time.Duration
 	started time.Time
+
+	mask *redact.Set    // the step's secrets; nil masks nothing
+	out  *steplog.Lines // the step's tool output; nil before prepare
 
 	progress *agentv1.StepProgress // last sent
 	sentAt   time.Time
@@ -165,7 +170,13 @@ func (e *Executor) expire(c *command, cause *stopCause) {
 }
 
 func (e *Executor) run(ctx context.Context, c *command) {
-	ret := e.call(ctx, c)
+	ret := returned{err: e.prepare(c)}
+	if ret.err == nil {
+		ret = e.call(ctx, c)
+	}
+	// The held-back tail goes out before the result, outside the lock:
+	// the sink may block.
+	c.out.Close()
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if !c.live() {
@@ -266,10 +277,16 @@ func (e *Executor) recheck(c *command, delay time.Duration) {
 func (e *Executor) giveUp(c *command, message string) {
 	e.opts.Logger.Warn("giving up on a plugin that ignores cancellation", "command_id", c.step.GetCommandId())
 	e.finish(c, e.outcome(c, c.cause.status, message))
+	if c.out != nil {
+		// Its tail follows the result (Sink allows that for a plugin given
+		// up on); the lock is held and the sink may block.
+		go c.out.Close()
+	}
 }
 
 // finish records the result, reports it and frees the slot.
 func (e *Executor) finish(c *command, r *agentv1.StepResult) {
+	maskResult(c.mask, r)
 	e.stopTimers(c)
 	if c.live() {
 		e.active--
