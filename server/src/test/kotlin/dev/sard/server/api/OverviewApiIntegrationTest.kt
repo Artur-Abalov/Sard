@@ -132,10 +132,27 @@ class OverviewApiIntegrationTest(
     @Test
     fun `Обзор не содержит агентов другого тенанта`() {
         val other = world.tenant()
-        online(world.agent(other))
+        val otherAdmin = world.admin(other)
+        val agent = world.agent(other, snapshotOf(repositories = listOf(initializedRepository())))
+        online(agent)
         world.agent(other)
+        world.api.post("/api/v1/enrollment-tokens", otherAdmin)
+        val otherSource =
+            world.api
+                .post("/api/v1/sources", otherAdmin, sourceJson("etc", agent.agentId))
+                .json
+                .path("id")
+                .asString()
+        val run =
+            world.api
+                .post("/api/v1/sources/$otherSource/runs", otherAdmin, null)
+                .json
+                .path("id")
+                .asString()
+        world.forceRun(UUID.fromString(run), "succeeded")
+        assertEquals(true, steps(overview(otherAdmin)).getValue("complete"))
 
-        val json = overview(world.admin(tenant))
+        val json = overview(admin)
 
         assertEquals(0 to 0, counts(json))
         assertEquals(false, steps(json).getValue("complete"))

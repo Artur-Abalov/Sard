@@ -55,3 +55,13 @@ export const logLevelColors: Record<string, string> = {
   warn: 'yellow',
   error: 'red',
 }
+
+// Semantic tones: components say what a message means, the theme says how it looks.
+export const tones = {
+  error: 'red',
+  warning: 'yellow',
+  notice: 'orange',
+  info: 'blue',
+  success: 'green',
+  neutral: 'gray',
+} as const

@@ -3,6 +3,7 @@
 
 import { ActionIcon, Button, Group, Stack, Text, TextInput } from '@mantine/core'
 import { useTranslation } from 'react-i18next'
+import { tones } from '../theme'
 
 // An array of strings edited by adding and removing elements; an error may belong to the whole
 // list or to one element (its index).
@@ -60,7 +61,7 @@ export function StringListEditor({
         </Group>
       ))}
       {error && (
-        <Text size="xs" c="red" role="alert">
+        <Text size="xs" c={tones.error} role="alert">
           {error}
         </Text>
       )}

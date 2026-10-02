@@ -4,6 +4,7 @@
 import { Button, Group, Modal, Stack } from '@mantine/core'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { tones } from '../theme'
 
 // A confirmation that names its consequences. Nothing is sent until the confirm button is
 // pressed; Escape and Cancel close it (Mantine returns the focus to the opening button).
@@ -33,7 +34,7 @@ export function ConfirmModal({
           <Button variant="default" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button color="red" loading={busy} onClick={onConfirm}>
+          <Button color={tones.error} loading={busy} onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </Group>

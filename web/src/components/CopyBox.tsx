@@ -4,6 +4,7 @@
 import { Button, Code, Group, Stack, Text } from '@mantine/core'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { tones } from '../theme'
 
 // A value to copy, with its own copy button. Where the clipboard is not available (a page
 // opened over plain HTTP) it says so and selects the whole value for copying by hand.
@@ -41,7 +42,7 @@ export function CopyBox({ value, label }: { value: string; label: string }) {
         </Text>
       )}
       {state === 'refused' && (
-        <Text size="xs" c="red" role="alert">
+        <Text size="xs" c={tones.error} role="alert">
           {t('common.copyFailed')}
         </Text>
       )}

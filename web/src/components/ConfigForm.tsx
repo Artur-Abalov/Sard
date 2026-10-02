@@ -13,6 +13,7 @@ import {
 } from '../schemaForm'
 import { StringListEditor } from './StringListEditor'
 import { useErrorText } from './useErrorText'
+import { tones } from '../theme'
 
 type Errors = Record<string, ErrorText[]>
 
@@ -143,7 +144,7 @@ export function ConfigForm({
   return (
     <Stack>
       {whole && (
-        <Text c="red" role="alert">
+        <Text c={tones.error} role="alert">
           {whole}
         </Text>
       )}

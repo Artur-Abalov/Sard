@@ -9,6 +9,7 @@ import { ApiError, call } from '../api/call'
 import { client } from '../api/client'
 import { ErrorBlock } from './ErrorBlock'
 import { AppLink } from './links'
+import { tones } from '../theme'
 
 // The run that is going already, from a 409 run_active; null for any other answer.
 function activeRunOf(error: unknown): string | null {
@@ -39,7 +40,7 @@ export function RunBackupButton({ sourceId }: { sourceId: string }) {
         {t('sources.runBackup')}
       </Button>
       {active !== null && (
-        <Alert color="blue" role="status">
+        <Alert color={tones.info} role="status">
           {t('sources.alreadyRunning')}{' '}
           <AppLink to="/runs/$runId" params={{ runId: active }}>
             {t('sources.openRun')}

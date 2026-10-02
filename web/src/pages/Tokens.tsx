@@ -37,6 +37,7 @@ import { usePaged } from '../components/usePaged'
 import { EMPTY } from '../format'
 import { canRevokeToken, ttlSeconds, type TtlUnit } from '../tokens'
 import { useFormat } from '../useFormat'
+import { tones } from '../theme'
 
 const route = getRouteApi('/_app/tokens')
 
@@ -48,15 +49,15 @@ function TokenOutcome({ token }: { token: EnrollmentToken | undefined }) {
   switch (token?.status) {
     case 'used':
       return (
-        <Alert color="green">
+        <Alert color={tones.success}>
           {t('tokens.agentConnected')}{' '}
           {token.agentId !== null && <AgentName agentId={token.agentId} />}
         </Alert>
       )
     case 'expired':
-      return <Alert color="orange">{t('tokens.expiredNow')}</Alert>
+      return <Alert color={tones.notice}>{t('tokens.expiredNow')}</Alert>
     case 'revoked':
-      return <Alert color="orange">{t('tokens.revokedNow')}</Alert>
+      return <Alert color={tones.notice}>{t('tokens.revokedNow')}</Alert>
     default:
       return <Text>{t('tokens.waiting')}</Text>
   }
@@ -78,11 +79,11 @@ function CreatedToken({ created }: { created: Created }) {
   const format = useFormat()
   return (
     <Stack>
-      <Alert color="yellow">{t('tokens.shownOnce')}</Alert>
+      <Alert color={tones.warning}>{t('tokens.shownOnce')}</Alert>
       <CopyBox value={created.token} label={t('tokens.token')} />
       <CopyBox value={created.enrollCommand} label={t('tokens.command')} />
       {!created.agentEndpointConfigured && (
-        <Alert color="orange">{t('tokens.endpointDerived')}</Alert>
+        <Alert color={tones.notice}>{t('tokens.endpointDerived')}</Alert>
       )}
       <Text size="sm">{t('tokens.expiresAt', { time: format.time(created.expiresAt) })}</Text>
       <TokenProgress tokenId={created.id} />
@@ -175,7 +176,7 @@ function RevokeRefused({ error }: { error: ApiError }) {
   const { t } = useTranslation()
   const body = error.body as { agentId?: string | null } | undefined
   return (
-    <Alert color="orange">
+    <Alert color={tones.notice}>
       {error.failure.kind === 'problem' && error.failure.code === 'token_used'
         ? t('tokens.alreadyUsed')
         : t('tokens.alreadyExpired')}{' '}
@@ -200,7 +201,7 @@ function RevokeButton({ token }: { token: EnrollmentToken }) {
   })
   return (
     <>
-      <Button color="red" variant="light" size="xs" onClick={open}>
+      <Button color={tones.error} variant="light" size="xs" onClick={open}>
         {t('tokens.revoke')}
       </Button>
       <ConfirmModal
@@ -258,7 +259,7 @@ export function Tokens() {
         <Title order={2}>{t('tokens.title')}</Title>
         <Button onClick={() => setOpened(true)}>{t('tokens.create')}</Button>
       </Group>
-      {hint === 'enroll' && <Alert color="blue">{t('tokens.enrollHint')}</Alert>}
+      {hint === 'enroll' && <Alert color={tones.info}>{t('tokens.enrollHint')}</Alert>}
       <CreateTokenModal
         opened={opened}
         onClose={() => {

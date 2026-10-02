@@ -7,6 +7,7 @@ import type { components } from '../api/schema'
 import { useFormat } from '../useFormat'
 import { AppLink } from './links'
 import { StatusBadge } from './StatusBadge'
+import { tones } from '../theme'
 
 type RunSummary = components['schemas']['RunSummary']
 
@@ -20,7 +21,7 @@ export function SourceLabel({
   if (run.sourceDeleted) {
     return (
       <>
-        {run.sourceName} <Badge color="gray">{t('runs.sourceDeleted')}</Badge>
+        {run.sourceName} <Badge color={tones.neutral}>{t('runs.sourceDeleted')}</Badge>
       </>
     )
   }

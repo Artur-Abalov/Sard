@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next'
 import { formatLockoutMinutes } from '../auth/lockout'
 import { resolveRedirectTarget } from '../auth/redirect'
 import { signIn } from '../auth/session'
+import { tones } from '../theme'
 
 type FormError = { kind: 'invalid' } | { kind: 'locked'; minutes: number } | { kind: 'unavailable' }
 
@@ -54,11 +55,15 @@ export function Login() {
         <form onSubmit={(event) => void onSubmit(event)}>
           <Stack>
             <Title order={2}>{t('login.title')}</Title>
-            {error?.kind === 'invalid' && <Alert color="red">{t('login.wrongPassword')}</Alert>}
-            {error?.kind === 'locked' && (
-              <Alert color="red">{t('login.locked', { minutes: error.minutes })}</Alert>
+            {error?.kind === 'invalid' && (
+              <Alert color={tones.error}>{t('login.wrongPassword')}</Alert>
             )}
-            {error?.kind === 'unavailable' && <Alert color="red">{t('login.unavailable')}</Alert>}
+            {error?.kind === 'locked' && (
+              <Alert color={tones.error}>{t('login.locked', { minutes: error.minutes })}</Alert>
+            )}
+            {error?.kind === 'unavailable' && (
+              <Alert color={tones.error}>{t('login.unavailable')}</Alert>
+            )}
             <PasswordInput
               label={t('login.password')}
               value={password}

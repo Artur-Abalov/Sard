@@ -16,6 +16,7 @@ import { StatusBadge } from '../components/StatusBadge'
 import { usePaged } from '../components/usePaged'
 import { EMPTY } from '../format'
 import { useFormat } from '../useFormat'
+import { tones } from '../theme'
 
 const route = getRouteApi('/_app/agents/')
 
@@ -63,7 +64,7 @@ export function Agents() {
   return (
     <Stack>
       <Title order={2}>{t('agents.title')}</Title>
-      {hint === 'repo-init' && <Alert color="blue">{t('agents.repoInitPage')}</Alert>}
+      {hint === 'repo-init' && <Alert color={tones.info}>{t('agents.repoInitPage')}</Alert>}
       <PagedList
         paged={paged}
         empty={

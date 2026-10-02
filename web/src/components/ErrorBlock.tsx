@@ -4,13 +4,14 @@
 import { Alert, Button, Group } from '@mantine/core'
 import { useTranslation } from 'react-i18next'
 import { describeError } from '../api/call'
+import { tones } from '../theme'
 
 // A failed request as a localized message by its machine code, with a retry when asked to.
 export function ErrorBlock({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   const { t } = useTranslation()
   const message = describeError(error)
   return (
-    <Alert color="red" role="alert">
+    <Alert color={tones.error} role="alert">
       <Group justify="space-between">
         <span>{t(message.key, message.params)}</span>
         {onRetry && (

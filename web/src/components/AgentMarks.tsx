@@ -5,6 +5,7 @@ import { Badge, Group } from '@mantine/core'
 import { useTranslation } from 'react-i18next'
 import type { components } from '../api/schema'
 import { useFormat } from '../useFormat'
+import { tones } from '../theme'
 
 type Agent = Pick<components['schemas']['AgentSummary'], 'revokedAt' | 'duplicateSessionAt'>
 
@@ -15,10 +16,12 @@ export function AgentMarks({ agent }: { agent: Agent }) {
   return (
     <Group gap="xs">
       {agent.revokedAt !== null && (
-        <Badge color="red">{t('agents.revokedAt', { time: format.time(agent.revokedAt) })}</Badge>
+        <Badge color={tones.error}>
+          {t('agents.revokedAt', { time: format.time(agent.revokedAt) })}
+        </Badge>
       )}
       {agent.duplicateSessionAt !== null && (
-        <Badge color="orange">
+        <Badge color={tones.notice}>
           {t('agents.duplicateAt', { time: format.time(agent.duplicateSessionAt) })}
         </Badge>
       )}

@@ -14,6 +14,7 @@ import { AppLink, ButtonLink } from '../components/links'
 import { PagedList } from '../components/PagedList'
 import { RunBackupButton } from '../components/RunBackupButton'
 import { usePaged } from '../components/usePaged'
+import { tones } from '../theme'
 
 const route = getRouteApi('/_app/sources/')
 
@@ -74,7 +75,7 @@ export function Sources() {
         <Title order={2}>{t('sources.title')}</Title>
         <ButtonLink to="/sources/new">{t('sources.create')}</ButtonLink>
       </Group>
-      {hint === 'run-backup' && <Alert color="blue">{t('sources.runBackupHint')}</Alert>}
+      {hint === 'run-backup' && <Alert color={tones.info}>{t('sources.runBackupHint')}</Alert>}
       <PagedList paged={paged} empty={<NoSources />}>
         {(sources) => (
           <Table>

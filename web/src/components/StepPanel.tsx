@@ -10,6 +10,7 @@ import { partialNoteShown, stepNoteShown } from '../stepNotes'
 import { useFormat } from '../useFormat'
 import { StatusBadge } from './StatusBadge'
 import { StepLogView } from './StepLogView'
+import { tones } from '../theme'
 
 // The reason the server gave, as it gave it, under the words that say what kind of end it was.
 function Reason({ step }: { step: RunStep }) {
@@ -17,7 +18,7 @@ function Reason({ step }: { step: RunStep }) {
   const explained = stepNoteShown(step.status)
   if (!explained && step.message === null) return null
   return (
-    <Alert color="red">
+    <Alert color={tones.error}>
       {explained && <Text size="sm">{t(`run.stepNote.${step.status}`)}</Text>}
       {step.message !== null && <Text>{step.message}</Text>}
     </Alert>
@@ -66,7 +67,7 @@ function BackupBlock({ step }: { step: RunStep }) {
         <Text size="sm">{t('run.added', { size: format.bytes(backup.addedBytes) })}</Text>
       </Group>
       {partialNoteShown(step) && (
-        <Alert color="yellow" mt="xs">
+        <Alert color={tones.warning} mt="xs">
           {t('run.partialNote')}
         </Alert>
       )}

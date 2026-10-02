@@ -21,6 +21,7 @@ import { StatusBadge } from '../components/StatusBadge'
 import { usePaged } from '../components/usePaged'
 import { EMPTY } from '../format'
 import { useFormat } from '../useFormat'
+import { tones } from '../theme'
 
 const route = getRouteApi('/_app/agents/$agentId')
 
@@ -36,9 +37,9 @@ function Repositories({ agent }: { agent: AgentDetails }) {
               <Text fw={500}>{repository.name}</Text>
               <Text c="dimmed">{repository.backend}</Text>
               {repository.repositoryId === null ? (
-                <Badge color="yellow">{t('agent.notInitialized')}</Badge>
+                <Badge color={tones.warning}>{t('agent.notInitialized')}</Badge>
               ) : (
-                <Badge color="green">
+                <Badge color={tones.success}>
                   {t('agent.initialized', { id: repository.repositoryId })}
                 </Badge>
               )}
@@ -95,7 +96,7 @@ function Plugins({ agent }: { agent: AgentDetails }) {
 function Snapshot({ agent }: { agent: AgentDetails }) {
   const { t } = useTranslation()
   if (agent.protocolVersion === null) {
-    return <Alert color="blue">{t('agent.neverRegistered')}</Alert>
+    return <Alert color={tones.info}>{t('agent.neverRegistered')}</Alert>
   }
   return (
     <>
@@ -110,7 +111,7 @@ function Snapshot({ agent }: { agent: AgentDetails }) {
 function DuplicateNote() {
   const { t } = useTranslation()
   return (
-    <Alert color="orange" title={t('agent.duplicateTitle')}>
+    <Alert color={tones.notice} title={t('agent.duplicateTitle')}>
       <Text size="sm">{t('agent.duplicateWhy')}</Text>
       <AppLink to="/tokens" search={{ create: true }}>
         {t('dashboard.issueToken')}
@@ -172,7 +173,7 @@ function RevokeButton({ agent }: { agent: AgentDetails }) {
   })
   return (
     <>
-      <Button color="red" variant="light" onClick={open}>
+      <Button color={tones.error} variant="light" onClick={open}>
         {t('agent.revoke')}
       </Button>
       <ConfirmModal

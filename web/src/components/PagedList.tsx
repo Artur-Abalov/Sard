@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { ErrorBlock } from './ErrorBlock'
 import { PagedFooter } from './PagedFooter'
 import type { Paged } from './usePaged'
+import { tones } from '../theme'
 
 // A paged list's states: loading, the error with a retry, the empty state, or the items in the
 // order of the server's answers with "Show more" while there is a next page. A failed refresh
@@ -29,7 +30,7 @@ export function PagedList<T>({
   }
   return (
     <>
-      {query.isError && <Alert color="yellow">{t('common.notUpdating')}</Alert>}
+      {query.isError && <Alert color={tones.warning}>{t('common.notUpdating')}</Alert>}
       {items.length === 0 ? empty : children(items)}
       <PagedFooter
         hasNext={query.hasNextPage}

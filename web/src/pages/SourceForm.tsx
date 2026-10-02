@@ -35,6 +35,7 @@ import {
   withPlugin,
   type Draft,
 } from '../sourceDraft'
+import { tones } from '../theme'
 
 const newRoute = getRouteApi('/_app/sources/new')
 const editRoute = getRouteApi('/_app/sources/$sourceId/edit')
@@ -103,10 +104,10 @@ function RepositorySelect({ draft, onChange, agent, errors }: Props) {
         error={text(errors.repository)}
       />
       {agent !== undefined && repositories.length === 0 && (
-        <Alert color="blue">{t('form.noRepositories')}</Alert>
+        <Alert color={tones.info}>{t('form.noRepositories')}</Alert>
       )}
       {chosen?.repositoryId === null && (
-        <Alert color="yellow" title={t('form.notInitializedTitle')}>
+        <Alert color={tones.warning} title={t('form.notInitializedTitle')}>
           <RepoInitHint repository={chosen.name} />
         </Alert>
       )}
@@ -148,7 +149,7 @@ function Notes({ agent }: { agent: AgentDetails | undefined }) {
   const { t } = useTranslation()
   if (agent === undefined) return null
   return offeredPlugins(agent).length === 0 ? (
-    <Alert color="blue">{t('form.noPlugins')}</Alert>
+    <Alert color={tones.info}>{t('form.noPlugins')}</Alert>
   ) : null
 }
 
@@ -226,7 +227,7 @@ function canSave(agent: AgentDetails | undefined): boolean {
 function PluginGone({ draft, missing }: { draft: Draft; missing: string | null }) {
   const { t } = useTranslation()
   if (missing === null || draft.plugin !== '') return null
-  return <Alert color="yellow">{t('form.pluginGone', { plugin: missing })}</Alert>
+  return <Alert color={tones.warning}>{t('form.pluginGone', { plugin: missing })}</Alert>
 }
 
 // The source form in both its uses: the draft starts from [initial]; [sourceId] is null for a new source.
@@ -258,9 +259,9 @@ function SourceEditor({
       <Notes agent={agent} />
       <PluginSelect {...props} />
       <RepositorySelect {...props} />
-      {errors.form && <Alert color="red">{text(errors.form)}</Alert>}
+      {errors.form && <Alert color={tones.error}>{text(errors.form)}</Alert>}
       <ConfigSection {...props} />
-      {form.jsonRefused && <Alert color="red">{t('form.jsonInvalid')}</Alert>}
+      {form.jsonRefused && <Alert color={tones.error}>{t('form.jsonInvalid')}</Alert>}
       <SaveErrors error={form.save.error} failures={form.failures} />
       <Group>
         <Button loading={form.save.isPending} disabled={!canSave(agent)} onClick={form.submit}>

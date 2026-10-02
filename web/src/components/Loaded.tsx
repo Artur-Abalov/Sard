@@ -7,6 +7,7 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ErrorBlock } from './ErrorBlock'
 import { ErrorOrNotFound } from './ErrorOrNotFound'
+import { tones } from '../theme'
 
 // A query's states: loading, an error with a retry, or its data. When a refresh fails
 // the data stays on the page and a note says it is not being updated.
@@ -24,7 +25,7 @@ export function Loaded<T>({
   if (query.data !== undefined) {
     return (
       <>
-        {query.isError && <Alert color="yellow">{t('common.notUpdating')}</Alert>}
+        {query.isError && <Alert color={tones.warning}>{t('common.notUpdating')}</Alert>}
         {children(query.data)}
       </>
     )

@@ -8,6 +8,7 @@ import { EMPTY } from '../format'
 import { useFormat } from '../useFormat'
 import { ErrorBlock } from './ErrorBlock'
 import { useStepLog } from './useStepLog'
+import { tones } from '../theme'
 
 // The log of one step as the server has it: lines in seq order with their time and level, the text
 // untouched (secrets are masked by the agent, markup is shown as text). A line the server wrote
@@ -33,7 +34,7 @@ export function StepLogView({
   }
   return (
     <Stack gap="xs">
-      {log.truncated && <Alert color="yellow">{t('run.logTruncated')}</Alert>}
+      {log.truncated && <Alert color={tones.warning}>{t('run.logTruncated')}</Alert>}
       {log.error !== null && <ErrorBlock error={log.error} onRetry={() => void more()} />}
       {log.lines.length === 0 ? (
         <Text c="dimmed">{t('run.noLogLines')}</Text>

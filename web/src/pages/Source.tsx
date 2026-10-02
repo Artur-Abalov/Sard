@@ -21,6 +21,7 @@ import { PagedList } from '../components/PagedList'
 import { RunBackupButton } from '../components/RunBackupButton'
 import { usePaged } from '../components/usePaged'
 import { useFormat } from '../useFormat'
+import { tones } from '../theme'
 
 const route = getRouteApi('/_app/sources/$sourceId/')
 
@@ -36,7 +37,7 @@ function SnapshotRow({ snapshot }: { snapshot: Snapshot }) {
         {snapshot.partial && (
           <>
             {' '}
-            <Badge color="yellow" title={t('source.partialWhy')}>
+            <Badge color={tones.warning} title={t('source.partialWhy')}>
               {t('source.partial')}
             </Badge>
           </>
@@ -112,7 +113,7 @@ function DeleteRefused({ error }: { error: unknown }) {
     error.failure.code === 'run_active'
   if (!active) return <ErrorBlock error={error} />
   return (
-    <Alert color="blue" role="status">
+    <Alert color={tones.info} role="status">
       {t('source.deleteActive')}{' '}
       {body?.activeRunId && (
         <AppLink to="/runs/$runId" params={{ runId: body.activeRunId }}>
@@ -141,7 +142,7 @@ function DeleteButton({ source }: { source: SourceModel }) {
   })
   return (
     <>
-      <Button color="red" variant="light" onClick={open}>
+      <Button color={tones.error} variant="light" onClick={open}>
         {t('source.delete')}
       </Button>
       <ConfirmModal

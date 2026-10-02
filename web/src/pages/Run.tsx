@@ -15,6 +15,7 @@ import { StatusBadge } from '../components/StatusBadge'
 import { StepPanel } from '../components/StepPanel'
 import { waitsForAgent } from '../stepNotes'
 import { useFormat } from '../useFormat'
+import { tones } from '../theme'
 
 const route = getRouteApi('/_app/runs/$runId')
 
@@ -24,7 +25,7 @@ function WaitingForAgent({ run }: { run: RunModel }) {
   const agent = useQuery(agentQuery(run.agentId))
   if (!waitsForAgent(run.status, agent.data?.status)) return null
   return (
-    <Alert color="blue" role="status">
+    <Alert color={tones.info} role="status">
       {t('run.waitingForAgent')} <AgentName agentId={run.agentId} />
     </Alert>
   )
