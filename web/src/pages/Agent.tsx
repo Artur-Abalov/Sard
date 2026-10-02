@@ -20,8 +20,9 @@ import { RepoInitHint } from '../components/RepoInitHint'
 import { StatusBadge } from '../components/StatusBadge'
 import { usePaged } from '../components/usePaged'
 import { EMPTY } from '../format'
-import { useFormat } from '../useFormat'
 import { tones } from '../theme'
+import { Mono } from '../components/Mono'
+import { Time } from '../components/Time'
 
 const route = getRouteApi('/_app/agents/$agentId')
 
@@ -34,7 +35,7 @@ function Repositories({ agent }: { agent: AgentDetails }) {
         {agent.repositories.map((repository) => (
           <Stack key={repository.name} gap="xs">
             <Group>
-              <Text fw={500}>{repository.name}</Text>
+              <Mono fw={500}>{repository.name}</Mono>
               <Text c="dimmed">{repository.backend}</Text>
               {repository.repositoryId === null ? (
                 <Badge color={tones.warning}>{t('agent.notInitialized')}</Badge>
@@ -62,7 +63,9 @@ function Names({ title, names }: { title: string; names: string[] }) {
       ) : (
         <List>
           {names.map((name) => (
-            <List.Item key={name}>{name}</List.Item>
+            <List.Item key={name}>
+              <Mono>{name}</Mono>
+            </List.Item>
           ))}
         </List>
       )}
@@ -79,8 +82,12 @@ function Plugins({ agent }: { agent: AgentDetails }) {
         <Table.Tbody>
           {agent.plugins.map((plugin) => (
             <Table.Tr key={plugin.name}>
-              <Table.Td>{plugin.name}</Table.Td>
-              <Table.Td>{plugin.version}</Table.Td>
+              <Table.Td>
+                <Mono>{plugin.name}</Mono>
+              </Table.Td>
+              <Table.Td>
+                <Mono>{plugin.version}</Mono>
+              </Table.Td>
               <Table.Td>
                 {plugin.actions.map((action) => t(`enum.StepAction.${action}`)).join(', ')}
               </Table.Td>
@@ -173,7 +180,7 @@ function RevokeButton({ agent }: { agent: AgentDetails }) {
   })
   return (
     <>
-      <Button color={tones.error} variant="light" onClick={open}>
+      <Button variant="default" c={tones.error} onClick={open}>
         {t('agent.revoke')}
       </Button>
       <ConfirmModal
@@ -197,13 +204,14 @@ function RevokeButton({ agent }: { agent: AgentDetails }) {
 
 function Facts({ agent }: { agent: AgentDetails }) {
   const { t } = useTranslation()
-  const format = useFormat()
   return (
     <Table>
       <Table.Tbody>
         <Table.Tr>
           <Table.Th>{t('agents.version')}</Table.Th>
-          <Table.Td>{agent.agentVersion ?? EMPTY}</Table.Td>
+          <Table.Td>
+            <Mono>{agent.agentVersion ?? EMPTY}</Mono>
+          </Table.Td>
         </Table.Tr>
         <Table.Tr>
           <Table.Th>{t('agents.os')}</Table.Th>
@@ -212,12 +220,18 @@ function Facts({ agent }: { agent: AgentDetails }) {
         <Table.Tr>
           <Table.Th>{t('agents.lastSeen')}</Table.Th>
           <Table.Td>
-            {agent.lastSeenAt === null ? t('agents.neverConnected') : format.time(agent.lastSeenAt)}
+            {agent.lastSeenAt === null ? (
+              t('agents.neverConnected')
+            ) : (
+              <Time value={agent.lastSeenAt} />
+            )}
           </Table.Td>
         </Table.Tr>
         <Table.Tr>
           <Table.Th>{t('agent.registeredAt')}</Table.Th>
-          <Table.Td>{format.time(agent.registeredAt)}</Table.Td>
+          <Table.Td>
+            <Time value={agent.registeredAt} />
+          </Table.Td>
         </Table.Tr>
       </Table.Tbody>
     </Table>

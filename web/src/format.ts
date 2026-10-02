@@ -104,3 +104,32 @@ export function formatFiles(
     total: number.format(total),
   })
 }
+
+const SECONDS_PER_DAY = 86_400
+// Closer than this to now, either way, is "just now": clocks of browser and server differ a little.
+const NOW_WINDOW_SECONDS = 5
+
+// How far a distance in seconds reaches before the next unit takes over.
+const RELATIVE_UNITS = [
+  { unit: 'd', seconds: SECONDS_PER_DAY },
+  { unit: 'h', seconds: SECONDS_PER_HOUR },
+  { unit: 'min', seconds: SECONDS_PER_MINUTE },
+  { unit: 's', seconds: 1 },
+] as const
+
+// A timestamp as its distance from now: "3 h ago", "in 2 h", "just now"; no time -> EMPTY.
+// The exact value belongs in a tooltip (formatTimestamp). The unit is the largest that fits, rounded down.
+export function formatRelative(value: string | null, now: number, language: string): string {
+  const then = value === null ? Number.NaN : Date.parse(value)
+  if (Number.isNaN(then)) {
+    return EMPTY
+  }
+  const { relativeTime, units } = dictionary(language)
+  const seconds = Math.floor(Math.abs(now - then) / 1000)
+  if (seconds < NOW_WINDOW_SECONDS) {
+    return relativeTime.now
+  }
+  const { unit, seconds: size } = RELATIVE_UNITS.find((u) => seconds >= u.seconds)!
+  const distance = `${Math.floor(seconds / size)} ${units[unit]}`
+  return fill(now >= then ? relativeTime.ago : relativeTime.in, { value: distance })
+}

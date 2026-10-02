@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "Sard",
+    "title": "sard",
     "language": "Язык",
     "colorScheme": "Тема",
     "light": "Светлая",
@@ -96,9 +96,15 @@
     "MiB": "МиБ",
     "GiB": "ГиБ",
     "TiB": "ТиБ",
+    "d": "д",
     "h": "ч",
     "min": "мин",
     "s": "с"
+  },
+  "relativeTime": {
+    "ago": "{{value}} назад",
+    "in": "через {{value}}",
+    "now": "только что"
   },
   "filesCount": {
     "ofTotal": "{{processed}} из {{total}} файлов",
@@ -219,20 +225,20 @@
     "schema": "Схема конфигурации"
   },
   "run": {
-    "added": "Добавлено: {{size}}",
-    "bytesOf": "{{processed}} из {{total}}",
-    "duration": "Длительность: {{value}}",
+    "added": "Добавлено: <m>{{size}}</m>",
+    "bytesOf": "<m>{{processed}}</m> из <m>{{total}}</m>",
+    "duration": "Длительность: <m>{{value}}</m>",
     "log": "Лог",
     "logTruncated": "Сервер усёк лог шага по пределу размера.",
     "noLogLines": "Строк пока нет.",
     "partialNote": "Снимок пригоден для восстановления, но часть данных в него не попала.",
-    "repository": "Репозиторий: {{name}}",
+    "repository": "Репозиторий: <m>{{name}}</m>",
     "snapshot": "Снимок",
     "stepNote": {
       "lost": "Связь с агентом пропала во время выполнения шага.",
       "rejected": "Агент отказался выполнять шаг."
     },
-    "total": "Всего: {{size}}",
+    "total": "Всего: <m>{{size}}</m>",
     "trigger": "Запущен",
     "waitingForAgent": "Запуск начнётся, когда агент подключится:"
   },

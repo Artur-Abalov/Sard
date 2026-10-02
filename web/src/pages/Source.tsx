@@ -22,6 +22,8 @@ import { RunBackupButton } from '../components/RunBackupButton'
 import { usePaged } from '../components/usePaged'
 import { useFormat } from '../useFormat'
 import { tones } from '../theme'
+import { Mono } from '../components/Mono'
+import { Time } from '../components/Time'
 
 const route = getRouteApi('/_app/sources/$sourceId/')
 
@@ -43,10 +45,18 @@ function SnapshotRow({ snapshot }: { snapshot: Snapshot }) {
           </>
         )}
       </Table.Td>
-      <Table.Td>{snapshot.repositoryName}</Table.Td>
-      <Table.Td>{format.bytes(snapshot.totalBytes)}</Table.Td>
-      <Table.Td>{format.bytes(snapshot.addedBytes)}</Table.Td>
-      <Table.Td>{format.time(snapshot.createdAt)}</Table.Td>
+      <Table.Td>
+        <Mono>{snapshot.repositoryName}</Mono>
+      </Table.Td>
+      <Table.Td ta="right">
+        <Mono>{format.bytes(snapshot.totalBytes)}</Mono>
+      </Table.Td>
+      <Table.Td ta="right">
+        <Mono>{format.bytes(snapshot.addedBytes)}</Mono>
+      </Table.Td>
+      <Table.Td>
+        <Time value={snapshot.createdAt} />
+      </Table.Td>
       <Table.Td>
         <AppLink to="/runs/$runId" params={{ runId: snapshot.runId }}>
           {t('runs.open')}
@@ -86,8 +96,8 @@ function Snapshots({ sourceId }: { sourceId: string }) {
               <Table.Tr>
                 <Table.Th>{t('source.snapshot')}</Table.Th>
                 <Table.Th>{t('sources.repository')}</Table.Th>
-                <Table.Th>{t('source.total')}</Table.Th>
-                <Table.Th>{t('source.added')}</Table.Th>
+                <Table.Th ta="right">{t('source.total')}</Table.Th>
+                <Table.Th ta="right">{t('source.added')}</Table.Th>
                 <Table.Th>{t('source.createdAt')}</Table.Th>
                 <Table.Th />
               </Table.Tr>
@@ -142,7 +152,7 @@ function DeleteButton({ source }: { source: SourceModel }) {
   })
   return (
     <>
-      <Button color={tones.error} variant="light" onClick={open}>
+      <Button variant="default" c={tones.error} onClick={open}>
         {t('source.delete')}
       </Button>
       <ConfirmModal
@@ -162,7 +172,6 @@ function DeleteButton({ source }: { source: SourceModel }) {
 
 function SourceCard({ source }: { source: SourceModel }) {
   const { t } = useTranslation()
-  const format = useFormat()
   return (
     <Stack>
       <Group>
@@ -183,15 +192,21 @@ function SourceCard({ source }: { source: SourceModel }) {
           </Table.Tr>
           <Table.Tr>
             <Table.Th>{t('sources.plugin')}</Table.Th>
-            <Table.Td>{source.plugin}</Table.Td>
+            <Table.Td>
+              <Mono>{source.plugin}</Mono>
+            </Table.Td>
           </Table.Tr>
           <Table.Tr>
             <Table.Th>{t('sources.repository')}</Table.Th>
-            <Table.Td>{source.repositoryName}</Table.Td>
+            <Table.Td>
+              <Mono>{source.repositoryName}</Mono>
+            </Table.Td>
           </Table.Tr>
           <Table.Tr>
             <Table.Th>{t('source.updatedAt')}</Table.Th>
-            <Table.Td>{format.time(source.updatedAt)}</Table.Td>
+            <Table.Td>
+              <Time value={source.updatedAt} />
+            </Table.Td>
           </Table.Tr>
         </Table.Tbody>
       </Table>

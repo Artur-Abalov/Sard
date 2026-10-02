@@ -15,6 +15,7 @@ import { PagedList } from '../components/PagedList'
 import { RunBackupButton } from '../components/RunBackupButton'
 import { usePaged } from '../components/usePaged'
 import { tones } from '../theme'
+import { Mono } from '../components/Mono'
 
 const route = getRouteApi('/_app/sources/')
 
@@ -44,14 +45,18 @@ function SourceRow({ source }: { source: Source }) {
     <Table.Tr>
       <Table.Td>
         <AppLink to="/sources/$sourceId" params={{ sourceId: source.id }}>
-          {source.name}
+          <Mono>{source.name}</Mono>
         </AppLink>
       </Table.Td>
       <Table.Td>
         <AgentName agentId={source.agentId} />
       </Table.Td>
-      <Table.Td>{source.plugin}</Table.Td>
-      <Table.Td>{source.repositoryName}</Table.Td>
+      <Table.Td>
+        <Mono>{source.plugin}</Mono>
+      </Table.Td>
+      <Table.Td>
+        <Mono>{source.repositoryName}</Mono>
+      </Table.Td>
       <Table.Td>
         <RunBackupButton sourceId={source.id} />
       </Table.Td>

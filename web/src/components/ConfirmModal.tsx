@@ -34,7 +34,7 @@ export function ConfirmModal({
           <Button variant="default" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button color={tones.error} loading={busy} onClick={onConfirm}>
+          <Button variant="default" c={tones.error} loading={busy} onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </Group>

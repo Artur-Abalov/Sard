@@ -8,6 +8,7 @@ import {
   formatDuration,
   formatFiles,
   formatPercent,
+  formatRelative,
   formatTimestamp,
 } from './format'
 
@@ -95,5 +96,53 @@ describe('formatFiles', () => {
   test('English', () => {
     expect(formatFiles(1200, 3400, 'en')).toBe('1,200 of 3,400 files')
     expect(formatFiles(1200, null, 'en')).toBe('1,200 files')
+  })
+})
+
+describe('formatRelative', () => {
+  const now = Date.parse('2026-09-27T10:00:00Z')
+  const ago = (seconds: number) => new Date(now - seconds * 1000).toISOString()
+
+  test.each([
+    [5, '5 s ago'],
+    [59, '59 s ago'],
+    [60, '1 min ago'],
+    [3599, '59 min ago'],
+    [3600, '1 h ago'],
+    [3 * 3600 + 1200, '3 h ago'],
+    [86_399, '23 h ago'],
+    [86_400, '1 d ago'],
+    [10 * 86_400, '10 d ago'],
+  ])('%s seconds back in English is %s', (seconds, text) => {
+    expect(formatRelative(ago(seconds), now, 'en')).toBe(text)
+  })
+
+  test.each([
+    [59, '59 с назад'],
+    [120, '2 мин назад'],
+    [3 * 3600, '3 ч назад'],
+    [2 * 86_400, '2 д назад'],
+  ])('%s seconds back in Russian is %s', (seconds, text) => {
+    expect(formatRelative(ago(seconds), now, 'ru')).toBe(text)
+  })
+
+  test('a moment this close, either way, is just now', () => {
+    expect(formatRelative(ago(4), now, 'en')).toBe('just now')
+    expect(formatRelative(ago(-4), now, 'en')).toBe('just now')
+    expect(formatRelative(ago(0), now, 'ru')).toBe('только что')
+  })
+
+  test('a moment ahead is counted forward, for a token that expires', () => {
+    expect(formatRelative(ago(-2 * 3600), now, 'en')).toBe('in 2 h')
+    expect(formatRelative(ago(-90), now, 'ru')).toBe('через 1 мин')
+  })
+
+  test('no time, or one that is not a time, is the placeholder', () => {
+    expect(formatRelative(null, now, 'en')).toBe(EMPTY)
+    expect(formatRelative('not a time', now, 'en')).toBe(EMPTY)
+  })
+
+  test('an unknown language reads as English', () => {
+    expect(formatRelative(ago(3600), now, 'xx')).toBe('1 h ago')
   })
 })

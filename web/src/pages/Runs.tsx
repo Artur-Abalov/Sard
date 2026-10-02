@@ -50,6 +50,7 @@ function Filters({ filter, runs }: { filter: RunFilter; runs: RunSummary[] | und
   return (
     <Group align="flex-end">
       <Select
+        w={260}
         label={t('runs.source')}
         clearable
         data={options}
@@ -57,6 +58,7 @@ function Filters({ filter, runs }: { filter: RunFilter; runs: RunSummary[] | und
         onChange={(sourceId) => go({ ...filter, sourceId })}
       />
       <MultiSelect
+        w={360}
         label={t('runs.status')}
         clearable
         data={RUN_STATUSES.map((value) => ({ value, label: t(`enum.RunStatus.${value}`) }))}

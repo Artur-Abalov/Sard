@@ -15,19 +15,19 @@ import { PagedList } from '../components/PagedList'
 import { StatusBadge } from '../components/StatusBadge'
 import { usePaged } from '../components/usePaged'
 import { EMPTY } from '../format'
-import { useFormat } from '../useFormat'
 import { tones } from '../theme'
+import { Mono } from '../components/Mono'
+import { Time } from '../components/Time'
 
 const route = getRouteApi('/_app/agents/')
 
 function AgentRow({ agent }: { agent: components['schemas']['AgentSummary'] }) {
   const { t } = useTranslation()
-  const format = useFormat()
   return (
     <Table.Tr>
       <Table.Td>
         <AppLink to="/agents/$agentId" params={{ agentId: agent.id }}>
-          {agent.hostname}
+          <Mono>{agent.hostname}</Mono>
         </AppLink>
       </Table.Td>
       <Table.Td>
@@ -39,10 +39,12 @@ function AgentRow({ agent }: { agent: components['schemas']['AgentSummary'] }) {
             {t('agents.neverConnected')}
           </Text>
         ) : (
-          format.time(agent.lastSeenAt)
+          <Time value={agent.lastSeenAt} />
         )}
       </Table.Td>
-      <Table.Td>{agent.agentVersion ?? EMPTY}</Table.Td>
+      <Table.Td>
+        <Mono>{agent.agentVersion ?? EMPTY}</Mono>
+      </Table.Td>
       <Table.Td>{agent.os === null ? EMPTY : `${agent.os} ${agent.arch ?? ''}`}</Table.Td>
       <Table.Td>
         <AgentMarks agent={agent} />

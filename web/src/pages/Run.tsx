@@ -14,8 +14,8 @@ import { SourceLabel } from '../components/RunsTable'
 import { StatusBadge } from '../components/StatusBadge'
 import { StepPanel } from '../components/StepPanel'
 import { waitsForAgent } from '../stepNotes'
-import { useFormat } from '../useFormat'
 import { tones } from '../theme'
+import { Time } from '../components/Time'
 
 const route = getRouteApi('/_app/runs/$runId')
 
@@ -33,7 +33,6 @@ function WaitingForAgent({ run }: { run: RunModel }) {
 
 function RunCard({ run }: { run: RunModel }) {
   const { t } = useTranslation()
-  const format = useFormat()
   return (
     <Stack>
       <Group>
@@ -52,7 +51,9 @@ function RunCard({ run }: { run: RunModel }) {
           </Table.Tr>
           <Table.Tr>
             <Table.Th>{t('runs.queuedAt')}</Table.Th>
-            <Table.Td>{format.time(run.queuedAt)}</Table.Td>
+            <Table.Td>
+              <Time value={run.queuedAt} />
+            </Table.Td>
           </Table.Tr>
           <Table.Tr>
             <Table.Th>{t('sources.agent')}</Table.Th>

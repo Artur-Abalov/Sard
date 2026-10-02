@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "Sard",
+    "title": "sard",
     "language": "Language",
     "colorScheme": "Theme",
     "light": "Light",
@@ -96,9 +96,15 @@
     "MiB": "MiB",
     "GiB": "GiB",
     "TiB": "TiB",
+    "d": "d",
     "h": "h",
     "min": "min",
     "s": "s"
+  },
+  "relativeTime": {
+    "ago": "{{value}} ago",
+    "in": "in {{value}}",
+    "now": "just now"
   },
   "filesCount": {
     "ofTotal": "{{processed}} of {{total}} files",
@@ -219,20 +225,20 @@
     "schema": "Schema of the config"
   },
   "run": {
-    "added": "Added: {{size}}",
-    "bytesOf": "{{processed}} of {{total}}",
-    "duration": "Duration: {{value}}",
+    "added": "Added: <m>{{size}}</m>",
+    "bytesOf": "<m>{{processed}}</m> of <m>{{total}}</m>",
+    "duration": "Duration: <m>{{value}}</m>",
     "log": "Log",
     "logTruncated": "The server cut this step’s log at its size limit.",
     "noLogLines": "There are no lines yet.",
     "partialNote": "The snapshot can be restored, but part of the data did not get into it.",
-    "repository": "Repository: {{name}}",
+    "repository": "Repository: <m>{{name}}</m>",
     "snapshot": "Snapshot",
     "stepNote": {
       "lost": "The connection with the agent was lost while the step was running.",
       "rejected": "The agent refused to run the step."
     },
-    "total": "Total: {{size}}",
+    "total": "Total: <m>{{size}}</m>",
     "trigger": "Started by",
     "waitingForAgent": "The run starts when the agent connects:"
   },

@@ -2,12 +2,13 @@
 // Copyright 2026 Artur Abalov
 
 import { Alert, Badge, Card, Code, Group, Progress, Stack, Text, Title } from '@mantine/core'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 import type { RunStep } from '../api/queries'
 import { formatPercent } from '../format'
 import { stepPollInterval } from '../polling'
 import { partialNoteShown, stepNoteShown } from '../stepNotes'
 import { useFormat } from '../useFormat'
+import { Mono } from './Mono'
 import { StatusBadge } from './StatusBadge'
 import { StepLogView } from './StepLogView'
 import { tones } from '../theme'
@@ -27,7 +28,6 @@ function Reason({ step }: { step: RunStep }) {
 
 // Bytes, percent and files of the step so far; the percent only while the total is known.
 function Progress_({ step }: { step: RunStep }) {
-  const { t } = useTranslation()
   const format = useFormat()
   const percent = formatPercent(step.bytesProcessed, step.bytesTotal)
   const files = format.files(step.filesProcessed, step.filesTotal)
@@ -36,13 +36,19 @@ function Progress_({ step }: { step: RunStep }) {
     <Stack gap={4}>
       {step.bytesProcessed !== null && (
         <Text>
-          {step.bytesTotal === null
-            ? format.bytes(step.bytesProcessed)
-            : t('run.bytesOf', {
+          {step.bytesTotal === null ? (
+            <Mono>{format.bytes(step.bytesProcessed)}</Mono>
+          ) : (
+            <Trans
+              i18nKey="run.bytesOf"
+              values={{
                 processed: format.bytes(step.bytesProcessed),
                 total: format.bytes(step.bytesTotal),
-              })}
-          {percent !== null && ` — ${percent}%`}
+              }}
+              components={{ m: <Mono /> }}
+            />
+          )}
+          {percent !== null && <Mono>{` — ${percent}%`}</Mono>}
         </Text>
       )}
       {percent !== null && <Progress value={percent} aria-label={`${percent}%`} />}
@@ -62,9 +68,27 @@ function BackupBlock({ step }: { step: RunStep }) {
       <Title order={5}>{t('run.snapshot')}</Title>
       <Group>
         <Code>{backup.snapshotId}</Code>
-        <Text size="sm">{t('run.repository', { name: step.repositoryName ?? '' })}</Text>
-        <Text size="sm">{t('run.total', { size: format.bytes(backup.totalBytes) })}</Text>
-        <Text size="sm">{t('run.added', { size: format.bytes(backup.addedBytes) })}</Text>
+        <Text size="sm">
+          <Trans
+            i18nKey="run.repository"
+            values={{ name: step.repositoryName ?? '' }}
+            components={{ m: <Mono /> }}
+          />
+        </Text>
+        <Text size="sm">
+          <Trans
+            i18nKey="run.total"
+            values={{ size: format.bytes(backup.totalBytes) }}
+            components={{ m: <Mono /> }}
+          />
+        </Text>
+        <Text size="sm">
+          <Trans
+            i18nKey="run.added"
+            values={{ size: format.bytes(backup.addedBytes) }}
+            components={{ m: <Mono /> }}
+          />
+        </Text>
       </Group>
       {partialNoteShown(step) && (
         <Alert color={tones.warning} mt="xs">
@@ -88,7 +112,11 @@ export function StepPanel({ runId, step }: { runId: string; step: RunStep }) {
             <Badge variant="outline">{t(`enum.StepPhase.${step.phase}`)}</Badge>
           )}
           <Text size="sm">
-            {t('run.duration', { value: format.duration(step.startedAt, step.finishedAt) })}
+            <Trans
+              i18nKey="run.duration"
+              values={{ value: format.duration(step.startedAt, step.finishedAt) }}
+              components={{ m: <Mono /> }}
+            />
           </Text>
         </Group>
         <Progress_ step={step} />

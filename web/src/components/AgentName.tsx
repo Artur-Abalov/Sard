@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { agentQuery } from '../api/queries'
 import { shortId } from '../tokens'
 import { AppLink } from './links'
+import { Mono } from './Mono'
 
 const NAME_STALE_MS = 60_000
 
@@ -15,7 +16,7 @@ export function AgentName({ agentId }: { agentId: string }) {
   const agent = useQuery({ ...agentQuery(agentId), staleTime: NAME_STALE_MS })
   return (
     <AppLink to="/agents/$agentId" params={{ agentId }}>
-      {agent.data?.hostname ?? shortId(agentId)}
+      <Mono>{agent.data?.hostname ?? shortId(agentId)}</Mono>
     </AppLink>
   )
 }

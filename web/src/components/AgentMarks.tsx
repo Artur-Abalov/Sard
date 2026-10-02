@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import type { components } from '../api/schema'
 import { useFormat } from '../useFormat'
 import { tones } from '../theme'
+import { StatusIcon } from './StatusIcon'
 
 type Agent = Pick<components['schemas']['AgentSummary'], 'revokedAt' | 'duplicateSessionAt'>
 
@@ -16,13 +17,21 @@ export function AgentMarks({ agent }: { agent: Agent }) {
   return (
     <Group gap="xs">
       {agent.revokedAt !== null && (
-        <Badge color={tones.error}>
-          {t('agents.revokedAt', { time: format.time(agent.revokedAt) })}
+        <Badge
+          color={tones.error}
+          title={format.time(agent.revokedAt)}
+          leftSection={<StatusIcon name="x-circle" />}
+        >
+          {t('agents.revokedAt', { time: format.relative(agent.revokedAt) })}
         </Badge>
       )}
       {agent.duplicateSessionAt !== null && (
-        <Badge color={tones.notice}>
-          {t('agents.duplicateAt', { time: format.time(agent.duplicateSessionAt) })}
+        <Badge
+          color={tones.notice}
+          title={format.time(agent.duplicateSessionAt)}
+          leftSection={<StatusIcon name="clock" />}
+        >
+          {t('agents.duplicateAt', { time: format.relative(agent.duplicateSessionAt) })}
         </Badge>
       )}
     </Group>

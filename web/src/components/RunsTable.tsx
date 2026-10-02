@@ -4,10 +4,11 @@
 import { Badge, Table } from '@mantine/core'
 import { useTranslation } from 'react-i18next'
 import type { components } from '../api/schema'
-import { useFormat } from '../useFormat'
 import { AppLink } from './links'
 import { StatusBadge } from './StatusBadge'
 import { tones } from '../theme'
+import { Mono } from './Mono'
+import { Time } from './Time'
 
 type RunSummary = components['schemas']['RunSummary']
 
@@ -21,13 +22,13 @@ export function SourceLabel({
   if (run.sourceDeleted) {
     return (
       <>
-        {run.sourceName} <Badge color={tones.neutral}>{t('runs.sourceDeleted')}</Badge>
+        <Mono>{run.sourceName}</Mono> <Badge color={tones.neutral}>{t('runs.sourceDeleted')}</Badge>
       </>
     )
   }
   return (
     <AppLink to="/sources/$sourceId" params={{ sourceId: run.sourceId }}>
-      {run.sourceName}
+      <Mono>{run.sourceName}</Mono>
     </AppLink>
   )
 }
@@ -35,7 +36,6 @@ export function SourceLabel({
 // Runs in the order the server gave them: source, status, when queued, a link to the card.
 export function RunsTable({ runs }: { runs: RunSummary[] }) {
   const { t } = useTranslation()
-  const format = useFormat()
   return (
     <Table>
       <Table.Thead>
@@ -55,7 +55,9 @@ export function RunsTable({ runs }: { runs: RunSummary[] }) {
             <Table.Td>
               <StatusBadge group="RunStatus" value={run.status} />
             </Table.Td>
-            <Table.Td>{format.time(run.queuedAt)}</Table.Td>
+            <Table.Td>
+              <Time value={run.queuedAt} />
+            </Table.Td>
             <Table.Td>
               <AppLink to="/runs/$runId" params={{ runId: run.id }}>
                 {t('runs.open')}

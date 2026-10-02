@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
-import { Alert, Badge, Button, Group, Loader, Stack, Table, Text } from '@mantine/core'
+import { Alert, Badge, Box, Button, Group, Loader, Stack, Text } from '@mantine/core'
 import { useTranslation } from 'react-i18next'
-import { logLevelColors } from '../theme'
+import { codeBlock, logLevelColors, tabularNums, tones } from '../theme'
 import { EMPTY } from '../format'
 import { useFormat } from '../useFormat'
 import { ErrorBlock } from './ErrorBlock'
+import { Mono } from './Mono'
 import { useStepLog } from './useStepLog'
-import { tones } from '../theme'
 
 // The log of one step as the server has it: lines in seq order with their time and level, the text
 // untouched (secrets are masked by the agent, markup is shown as text). A line the server wrote
@@ -39,25 +39,23 @@ export function StepLogView({
       {log.lines.length === 0 ? (
         <Text c="dimmed">{t('run.noLogLines')}</Text>
       ) : (
-        <Table withRowBorders={false} verticalSpacing={2}>
-          <Table.Tbody>
+        <Box style={codeBlock} p="xs">
+          <Stack gap={2} w="max-content" miw="100%">
             {log.lines.map((line) => (
-              <Table.Tr key={line.seq}>
-                <Table.Td w={170}>{line.time === null ? EMPTY : format.time(line.time)}</Table.Td>
-                <Table.Td w={90}>
-                  <Badge color={logLevelColors[line.level]} variant="light">
+              <Group key={line.seq} gap="sm" wrap="nowrap" align="flex-start">
+                <Mono w={190} style={{ ...tabularNums, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  {line.time === null ? EMPTY : format.time(line.time)}
+                </Mono>
+                <Box w={140} style={{ flexShrink: 0 }}>
+                  <Badge color={logLevelColors[line.level]}>
                     {t(`enum.LogLevel.${line.level}`)}
                   </Badge>
-                </Table.Td>
-                <Table.Td>
-                  <Text span ff="monospace" size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-                    {line.text}
-                  </Text>
-                </Table.Td>
-              </Table.Tr>
+                </Box>
+                <Mono style={{ ...tabularNums, whiteSpace: 'pre' }}>{line.text}</Mono>
+              </Group>
             ))}
-          </Table.Tbody>
-        </Table>
+          </Stack>
+        </Box>
       )}
       {log.hasMore && (
         <Group>

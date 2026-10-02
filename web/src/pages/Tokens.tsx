@@ -38,6 +38,7 @@ import { EMPTY } from '../format'
 import { canRevokeToken, ttlSeconds, type TtlUnit } from '../tokens'
 import { useFormat } from '../useFormat'
 import { tones } from '../theme'
+import { Time } from '../components/Time'
 
 const route = getRouteApi('/_app/tokens')
 
@@ -201,7 +202,7 @@ function RevokeButton({ token }: { token: EnrollmentToken }) {
   })
   return (
     <>
-      <Button color={tones.error} variant="light" size="xs" onClick={open}>
+      <Button variant="default" c={tones.error} size="xs" onClick={open}>
         {t('tokens.revoke')}
       </Button>
       <ConfirmModal
@@ -226,15 +227,18 @@ function RevokeButton({ token }: { token: EnrollmentToken }) {
 }
 
 function TokenRow({ token }: { token: EnrollmentToken }) {
-  const format = useFormat()
   return (
     <Table.Tr>
       <Table.Td>
         <StatusBadge group="EnrollmentTokenStatus" value={token.status} />
       </Table.Td>
       <Table.Td>{token.label ?? EMPTY}</Table.Td>
-      <Table.Td>{format.time(token.createdAt)}</Table.Td>
-      <Table.Td>{format.time(token.expiresAt)}</Table.Td>
+      <Table.Td>
+        <Time value={token.createdAt} />
+      </Table.Td>
+      <Table.Td>
+        <Time value={token.expiresAt} />
+      </Table.Td>
       <Table.Td>{token.agentId === null ? EMPTY : <AgentName agentId={token.agentId} />}</Table.Td>
       <Table.Td>{canRevokeToken(token.status) && <RevokeButton token={token} />}</Table.Td>
     </Table.Tr>
