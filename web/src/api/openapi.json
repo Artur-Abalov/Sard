@@ -1311,6 +1311,46 @@
         }
       }
     },
+    "/api/v1/overview" : {
+      "get" : {
+        "tags" : [ "overview" ],
+        "summary" : "Overview",
+        "description" : "Agent counts of the tenant and the state of the five first steps.",
+        "operationId" : "overview",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Overview"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/enrollment-tokens/{tokenId}" : {
       "get" : {
         "tags" : [ "enrollment-tokens" ],
@@ -1705,9 +1745,13 @@
           "repositoryId" : {
             "type" : "string",
             "description" : "restic repository id; the same key held by several hosts shares it (ADR 0008)"
+          },
+          "partial" : {
+            "type" : "boolean",
+            "description" : "The result that brought this output failed: the snapshot is usable but incomplete, like Snapshot.partial"
           }
         },
-        "required" : [ "addedBytes", "repositoryId", "snapshotId", "totalBytes" ]
+        "required" : [ "addedBytes", "partial", "repositoryId", "snapshotId", "totalBytes" ]
       },
       "Run" : {
         "type" : "object",
@@ -1720,6 +1764,14 @@
           "sourceId" : {
             "type" : "string",
             "format" : "uuid"
+          },
+          "sourceName" : {
+            "type" : "string",
+            "description" : "The source's current name; for a deleted source, its name when it was deleted"
+          },
+          "sourceDeleted" : {
+            "type" : "boolean",
+            "description" : "The source was deleted; its runs and snapshots stay"
           },
           "agentId" : {
             "type" : "string",
@@ -1754,7 +1806,7 @@
             }
           }
         },
-        "required" : [ "agentId", "finishedAt", "id", "message", "queuedAt", "sourceId", "startedAt", "status", "steps", "trigger" ]
+        "required" : [ "agentId", "finishedAt", "id", "message", "queuedAt", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "steps", "trigger" ]
       },
       "RunStatus" : {
         "type" : "string",
@@ -2282,6 +2334,14 @@
             "format" : "uuid",
             "description" : "The source the run backs up"
           },
+          "sourceName" : {
+            "type" : "string",
+            "description" : "The source's current name; for a deleted source, its name when it was deleted"
+          },
+          "sourceDeleted" : {
+            "type" : "boolean",
+            "description" : "The source was deleted; its runs and snapshots stay"
+          },
           "agentId" : {
             "type" : "string",
             "format" : "uuid",
@@ -2310,7 +2370,7 @@
             "format" : "date-time"
           }
         },
-        "required" : [ "agentId", "finishedAt", "id", "message", "queuedAt", "sourceId", "startedAt", "status", "trigger" ]
+        "required" : [ "agentId", "finishedAt", "id", "message", "queuedAt", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "trigger" ]
       },
       "LogLevel" : {
         "type" : "string",
@@ -2365,6 +2425,57 @@
           }
         },
         "required" : [ "hasMore", "items", "nextAfterSeq", "truncated" ]
+      },
+      "FirstSteps" : {
+        "type" : "object",
+        "description" : "The first steps of a tenant, each marked by the server by its own rule; recomputed per request",
+        "properties" : {
+          "tokenIssued" : {
+            "type" : "boolean",
+            "description" : "At least one enrollment token was created, in any status"
+          },
+          "agentConnected" : {
+            "type" : "boolean",
+            "description" : "A not revoked agent has sent Hello at least once"
+          },
+          "repositoryInitialized" : {
+            "type" : "boolean",
+            "description" : "A not revoked agent's last Register has a repository with a repositoryId"
+          },
+          "sourceCreated" : {
+            "type" : "boolean",
+            "description" : "At least one source is not deleted"
+          },
+          "backupSucceeded" : {
+            "type" : "boolean",
+            "description" : "At least one run, of any source or agent, has succeeded"
+          },
+          "complete" : {
+            "type" : "boolean",
+            "description" : "All five steps are done"
+          }
+        },
+        "required" : [ "agentConnected", "backupSucceeded", "complete", "repositoryInitialized", "sourceCreated", "tokenIssued" ]
+      },
+      "Overview" : {
+        "type" : "object",
+        "description" : "What the console's overview page shows besides the lists",
+        "properties" : {
+          "agentsOnline" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Not revoked agents that are online, as in the agent list"
+          },
+          "agentsTotal" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Not revoked agents"
+          },
+          "firstSteps" : {
+            "$ref" : "#/components/schemas/FirstSteps"
+          }
+        },
+        "required" : [ "agentsOnline", "agentsTotal", "firstSteps" ]
       },
       "EnrollmentTokenPage" : {
         "type" : "object",

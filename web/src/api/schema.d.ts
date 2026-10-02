@@ -261,6 +261,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Overview
+         * @description Agent counts of the tenant and the state of the five first steps.
+         */
+        get: operations["overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/enrollment-tokens/{tokenId}": {
         parameters: {
             query?: never;
@@ -424,6 +444,8 @@ export interface components {
             addedBytes: number;
             /** @description restic repository id; the same key held by several hosts shares it (ADR 0008) */
             repositoryId: string;
+            /** @description The result that brought this output failed: the snapshot is usable but incomplete, like Snapshot.partial */
+            partial: boolean;
         };
         /** @description A run with its steps */
         Run: {
@@ -431,6 +453,10 @@ export interface components {
             id: string;
             /** Format: uuid */
             sourceId: string;
+            /** @description The source's current name; for a deleted source, its name when it was deleted */
+            sourceName: string;
+            /** @description The source was deleted; its runs and snapshots stay */
+            sourceDeleted: boolean;
             /** Format: uuid */
             agentId: string;
             trigger: components["schemas"]["RunTrigger"];
@@ -718,6 +744,10 @@ export interface components {
              * @description The source the run backs up
              */
             sourceId: string;
+            /** @description The source's current name; for a deleted source, its name when it was deleted */
+            sourceName: string;
+            /** @description The source was deleted; its runs and snapshots stay */
+            sourceDeleted: boolean;
             /**
              * Format: uuid
              * @description The source's agent
@@ -764,6 +794,35 @@ export interface components {
             hasMore: boolean;
             /** @description The server cut this step's log at its size limit; the last line says so */
             truncated: boolean;
+        };
+        /** @description The first steps of a tenant, each marked by the server by its own rule; recomputed per request */
+        FirstSteps: {
+            /** @description At least one enrollment token was created, in any status */
+            tokenIssued: boolean;
+            /** @description A not revoked agent has sent Hello at least once */
+            agentConnected: boolean;
+            /** @description A not revoked agent's last Register has a repository with a repositoryId */
+            repositoryInitialized: boolean;
+            /** @description At least one source is not deleted */
+            sourceCreated: boolean;
+            /** @description At least one run, of any source or agent, has succeeded */
+            backupSucceeded: boolean;
+            /** @description All five steps are done */
+            complete: boolean;
+        };
+        /** @description What the console's overview page shows besides the lists */
+        Overview: {
+            /**
+             * Format: int32
+             * @description Not revoked agents that are online, as in the agent list
+             */
+            agentsOnline: number;
+            /**
+             * Format: int32
+             * @description Not revoked agents
+             */
+            agentsTotal: number;
+            firstSteps: components["schemas"]["FirstSteps"];
         };
         /** @description A page of enrollment tokens */
         EnrollmentTokenPage: {
@@ -1816,6 +1875,44 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    overview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Overview"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */
