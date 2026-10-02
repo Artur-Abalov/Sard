@@ -30,6 +30,22 @@ describe('validateSource', () => {
     }
   })
 
+  test('a plugin that does not offer backup is refused at the plugin, like the server does (K17)', () => {
+    const problem = validateSource({ ...valid, plugin: 'hooks' }, agents)
+
+    expect(problem).toMatchObject({
+      status: 422,
+      code: 'unknown_plugin',
+      errors: [{ field: 'plugin' }],
+    })
+  })
+
+  test('the plugin is checked before the repository', () => {
+    const problem = validateSource({ ...valid, plugin: 'hooks', repositoryName: 's3' }, agents)
+
+    expect(problem?.code).toBe('unknown_plugin')
+  })
+
   test('the repository must be one the agent reported, not another agent', () => {
     const problem = validateSource(
       { ...valid, agentId: ids.webAgent, repositoryName: 'offsite' },
