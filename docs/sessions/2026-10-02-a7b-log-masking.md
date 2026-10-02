@@ -129,3 +129,23 @@ ADR 0033 дополнен разделом «Изменения A7b» (новы�
 - `make license-check`: `license-check: 593 files OK`.
 
 Следующий шаг: cleaner.
+
+## cleaner
+
+Рефакторинг не нужен: изменений кода нет. Метрики (`LC_ALL=C.UTF-8 ./scripts/crap.sh agent`),
+до и после идентичны, так как код не менялся:
+
+| Функция | CRAP до | CRAP после |
+|---|---|---|
+| максимум по модулю agent (`resolveEnrollLocals`, `Config.validate`, `Executor.compile`, `Executor.check`, ...) | 6.0 (CC 6, 100.0%) | 6.0 (CC 6, 100.0%) |
+| функций с CRAP > 6 | 0 | 0 |
+
+Файлы A7b: `Executor.compile` (redaction.go) 6.0, остальные функции `redact`, `stepsecrets`
+(`secretFiles`, `urlPassword` уже выделены в coder-этапе) ниже порога и в верхние строки списка не попали.
+Размеры: `stepsecrets/source.go` 209 строк, `redact/*.go` без тестов 476 строк суммарно, дублирования,
+требующего выделения, нет.
+
+Ворота: `LC_ALL=C.UTF-8 ./scripts/gate.sh agent fast`: `coverage: 98.1%`, `0 issues.`,
+`gate: PASSED (agent, fast)`. Server не менялся.
+
+Следующий шаг: architect.
