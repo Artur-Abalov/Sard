@@ -103,10 +103,11 @@ const light: Tokens = {
   '--sard-shadow-pop': '0 8px 24px rgba(20, 23, 26, 0.14)',
 }
 
-// Equal to docs/design/tokens.css (a test keeps them so): the shared tokens and the dark roles
-// together are its first block, the light roles are its light block.
 const reducedMotion: Tokens = { '--sard-duration': '0ms' }
 
+// Equal to docs/design/tokens.css (a test keeps them so): the shared tokens and the dark roles
+// together are its first block, the light roles are its light block, the reduced-motion
+// tokens its media query.
 export const tokens = { shared, dark, light, reducedMotion }
 
 // The reduced-motion override of tokens.css: Mantine's resolver has no media queries, so
