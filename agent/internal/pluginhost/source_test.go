@@ -34,6 +34,13 @@ type reporter struct {
 	mu     sync.Mutex
 	events []event
 	output strings.Builder
+	// snapshot is what the executor read when the step started.
+	snapshot map[string][]byte
+}
+
+func (r *reporter) Secret(name string) ([]byte, bool) {
+	v, ok := r.snapshot[name]
+	return v, ok
 }
 
 // Output is the step's tool output; tests read it with outputText.
@@ -323,6 +330,22 @@ func TestResticFailureIsReturned(t *testing.T) {
 	r := &repo{err: restic.ErrLocked}
 	if _, err := newSource(t, &plugin{}).Backup(context.Background(), []byte(`{}`), r, nil, &reporter{}); !errors.Is(err, restic.ErrLocked) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// OQ-122: within a step the plugin gets the value the masker was built from.
+func TestHostGivesTheValueTheStepStartedWithEvenIfTheFileChanged(t *testing.T) {
+	var value []byte
+	p := &plugin{prepare: func(_ context.Context, h sdk.Host, _ sdk.Config) error {
+		value, _ = h.Secret("pg") // the file now holds "s3cret"
+		return nil
+	}}
+	rep := &reporter{snapshot: map[string][]byte{"pg": []byte("old-value")}}
+	if _, err := newSource(t, p).Backup(context.Background(), []byte(`{}`), &repo{}, nil, rep); err != nil {
+		t.Fatal(err)
+	}
+	if string(value) != "old-value" {
+		t.Fatalf("Secret = %q", value)
 	}
 }
 

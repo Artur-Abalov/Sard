@@ -34,6 +34,6 @@
 | [0030](0030-repo-init-lock.md) | Блокировка `sard-agent repo init` в `restic.cache_dir` |
 | [0031](0031-server-config-validation.md) | Проверка конфига источника на сервере: JSON Schema 2020-12 |
 | [0032](0032-rest-api-stage1-implementation.md) | Реализация REST API этапа 1 (S8b) |
-| [0033](0033-step-log-redaction.md) | Маскирование логов и результата шага на агенте (A7c) |
+| [0033](0033-step-log-redaction.md) | Маскирование логов и результата шага на агенте (A7c, A7b) |
 | [0034](0034-console-w2-decisions.md) | Консоль W2: признак `partial`, обзор по запросу, адресная строка |
 | [0035](0035-console-design-system.md) | Дизайн-система консоли: токены в `theme.ts`, шрифты, статусы этапа 1 |

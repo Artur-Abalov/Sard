@@ -68,13 +68,16 @@ const (
 // concurrent use.
 type Host interface {
 	// Secret returns the value of the named secret, read from its file on
-	// the agent host at the time of the call. An unknown name is a
+	// the agent host. Within one step it is the value the step started with,
+	// the one the agent masks in the step's log. An unknown name is a
 	// *SecretError. The value must never be logged.
 	Secret(name string) ([]byte, error)
 	// Progress reports the progress of the current step; total is 0 when
 	// unknown.
 	Progress(done, total uint64)
-	// Log sends a line to the step's log on the server.
+	// Log sends a line to the step's log on the server. The agent masks the
+	// step's secrets in text, each call on its own: write multiline text in
+	// one call, a secret split between calls is not found.
 	Log(level Level, text string)
 }
 

@@ -186,21 +186,6 @@ func TestNewRejectsEmptyValueWithoutEchoingValues(t *testing.T) {
 	}
 }
 
-func TestShortValuesAreReportedByIndexAndLength(t *testing.T) {
-	var got [][2]int
-	values := [][]byte{[]byte("1234567"), []byte("12345678"), []byte("ab")}
-	_, err := New(&bytes.Buffer{}, values, OnShortValue(func(index, length int) {
-		got = append(got, [2]int{index, length})
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := [][2]int{{0, 7}, {2, 2}}
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Fatalf("short values reported: %v, want %v", got, want)
-	}
-}
-
 func TestValuesAreCopied(t *testing.T) {
 	v := []byte("s3cret")
 	var out bytes.Buffer

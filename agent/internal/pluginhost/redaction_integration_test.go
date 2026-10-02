@@ -7,7 +7,9 @@ package pluginhost_test
 
 import (
 	"context"
+	"encoding/base64"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,7 +47,7 @@ func (s *logSink) Log(_ string, l *agentv1.LogLine) {
 // lines nor its result carry the value; the lines carry the marker.
 func TestResticStderrReachesTheStepLogMasked(t *testing.T) {
 	const value = "hunter2-very-secret"
-	exec, sink, tmp := maskingAgent(t, value)
+	exec, sink, tmp := maskingAgent(t, value, value)
 	exec.Submit(&agentv1.RunStep{
 		CommandId: "c1", Plugin: "files", Action: agentv1.Action_ACTION_BACKUP, RepositoryName: "main",
 		ConfigJson: `{"paths":["` + tmp + `"]}`,
@@ -57,13 +59,30 @@ func TestResticStderrReachesTheStepLogMasked(t *testing.T) {
 	sink.wantMasked(t, value)
 }
 
+// A7b: restic reports the repository path with the base64url of the secret
+// (padded); the marker replaces it and the value is nowhere.
+func TestBase64OfASecretInResticStderrIsMasked(t *testing.T) {
+	const value = "hunter2-very-secret?"
+	exec, sink, tmp := maskingAgent(t, value, base64.URLEncoding.EncodeToString([]byte(value)))
+	exec.Submit(&agentv1.RunStep{
+		CommandId: "c1", Plugin: "files", Action: agentv1.Action_ACTION_BACKUP, RepositoryName: "main",
+		ConfigJson: `{"paths":["` + tmp + `"]}`,
+	})
+	r := <-sink.results
+	if r.GetStatus() != agentv1.StepStatus_STEP_STATUS_FAILED || strings.Contains(r.GetMessage(), value) {
+		t.Fatalf("result = %v", r)
+	}
+	sink.wantMasked(t, value)
+	sink.wantMasked(t, base64.URLEncoding.EncodeToString([]byte(value)))
+}
+
 // maskingAgent wires the files plugin, the pinned restic and the executor
 // as main does; the repository's path, which does not exist, holds value,
 // and so does the agent's secret "token".
-func maskingAgent(t *testing.T, value string) (*executor.Executor, *logSink, string) {
+func maskingAgent(t *testing.T, value, inPath string) (*executor.Executor, *logSink, string) {
 	t.Helper()
 	tmp := t.TempDir()
-	repo := config.Repository{Name: "main", URL: filepath.Join(tmp, "repo-"+value), PasswordFile: secretFile(t, tmp, "password", "integration\n")}
+	repo := config.Repository{Name: "main", URL: filepath.Join(tmp, "repo-"+inPath), PasswordFile: secretFile(t, tmp, "password", "integration\n")}
 	cfg := config.Config{Secrets: map[string]string{"token": secretFile(t, tmp, "token", value+"\n")}, Repositories: []config.Repository{repo}}
 	cli := restic.New(restic.Options{
 		Binary:   pinnedRestic(t),
@@ -91,7 +110,7 @@ func maskingAgent(t *testing.T, value string) (*executor.Executor, *logSink, str
 		Sink:         sink,
 		StateDir:     filepath.Join(tmp, "state"),
 		Repositories: []string{"main"},
-		Secrets:      stepsecrets.New(cfg, os.ReadFile),
+		Secrets:      stepsecrets.New(cfg, os.ReadFile, slog.New(slog.NewTextHandler(io.Discard, nil))),
 		OutputLevel:  pluginhost.OutputLevel,
 	})
 	if err != nil {

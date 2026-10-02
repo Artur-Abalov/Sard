@@ -34,7 +34,7 @@ make e2e-images   # только образы: sard-server:e2e, sard-agent:e2e
 | `AgentConnectTest` | настоящий агент после регистрации выполняет Register и открывает Connect (`agents.last_register_at`, `last_seen_at`) |
 | `RunStepSeamTest` | шаг в `queued` доходит до настоящего агента на Hello; агент отклоняет неизвестный плагин, сервер записывает `REJECTED`: шаг `rejected` с `unknown plugin "absent"`, запуск `failed` (S7a) |
 | `ResultAckSeamTest` | S7a, тест 8: отклонённый шаг записан, `ResultAck` дошёл до агента (надгробие `acked/<sha256>.json` в каталоге исполнителя, `results/` пуст), после перезапуска контейнера агент результат не повторяет |
-| `StepLogRedactionTest` | A7c, тест 4: шаг files с настоящим restic; путь несуществующего репозитория содержит значение секрета агента; restic падает, в `step_logs` строка с `repo-[REDACTED]`, значения нет ни в `step_logs`, ни в сообщении шага |
+| `StepLogRedactionTest` | A7c, тест 4, A7b: шаг files с настоящим restic; путь несуществующего репозитория содержит значение секрета агента как есть и в стандартном base64; restic падает, в `step_logs` строка с `repo-[REDACTED]`, значения нет ни в `step_logs`, ни в сообщении шага |
 | `EnrollmentTokenFormatTest` | помощник токена — тестовый вектор `docs/specs/enrollment-token.md` |
 | `FailureLogsTest` | сломанная конфигурация сервера роняет старт, логи собраны, секреты замаскированы |
 

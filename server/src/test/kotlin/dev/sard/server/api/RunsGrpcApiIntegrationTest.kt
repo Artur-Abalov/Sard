@@ -391,6 +391,55 @@ class RunsGrpcApiIntegrationTest(
         assertEquals(listOf("a", "b", "c"), more.pluck("items", "text"))
     }
 
+    // --- Правило "Сервер хранит логи шагов без повторного маскирования" (A7b)
+
+    private fun storedTexts(started: Started): List<String> =
+        world.jdbc
+            .queryForList(
+                "select text from step_logs where step_id = ? order by seq",
+                String::class.java,
+                UUID.fromString(started.step),
+            ).filterNotNull()
+
+    private fun assertLineKeptAsSent(text: String) {
+        val started = started()
+        fake.progress(started.step)
+        fake.log(started.step, listOf(FakeAgent.line(text)))
+
+        val items = eventually { logsOf(started).path("items").also { assertEquals(1, it.size()) } }
+
+        assertEquals(text, items.get(0).path("text").asString())
+        assertEquals(listOf(text), storedTexts(started))
+    }
+
+    @Test
+    fun `Строка с маркером хранится и отдаётся без изменений`() = assertLineKeptAsSent("Fatal repo-[REDACTED]/config")
+
+    @Test
+    fun `Строка, похожая на секрет, хранится без изменений`() =
+        assertLineKeptAsSent(
+            "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY Authorization Basic dXNlcjpwYXNz",
+        )
+
+    @Test
+    fun `Сообщение результата шага хранится без изменений`() {
+        val started = started()
+        fake.progress(started.step)
+        val message = "open repo-[REDACTED]/config failed"
+        fake.result(started.step, StepStatus.STEP_STATUS_FAILED, message)
+
+        val card = eventually { card(started.run).also { assertEquals("failed", it.path("status").asString()) } }
+
+        assertEquals(
+            message,
+            card
+                .path("steps")
+                .get(0)
+                .path("message")
+                .asString(),
+        )
+    }
+
     private companion object {
         /** 17 MiB of 8 KiB lines, above the 16 MiB limit of a step's log. */
         const val LINES_OVER_LIMIT = 2200
