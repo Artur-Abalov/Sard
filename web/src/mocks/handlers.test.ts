@@ -4,7 +4,9 @@
 import createClient from 'openapi-fetch'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { paths } from '../api/schema'
-import { ids, MOCK_PASSWORD } from './fixtures'
+import filesSchema from '../../../agent/plugins/files/schema.json'
+import { agents, ids, MOCK_PASSWORD, runs, snapshots, stepLogs } from './fixtures'
+import { state } from './state'
 
 // The mock API as W2 pages see it: the typed client against the MSW handlers.
 // vitest.setup.ts resets the mock state (signed out) after every test.
@@ -172,14 +174,16 @@ describe('with a session', () => {
 
   test('agents: one online, one offline, the card carries plugins, repositories and names', async () => {
     const { data } = await api.GET('/api/v1/agents')
-    expect(data?.items.map((a) => a.status).sort()).toEqual(['offline', 'online'])
+    expect(data?.items.filter((a) => a.status === 'online').map((a) => a.hostname)).toEqual([
+      'db1.example.com',
+    ])
     const online = await api.GET('/api/v1/agents', { params: { query: { status: 'online' } } })
     expect(online.data?.items.map((a) => a.id)).toEqual([ids.dbAgent])
     const card = await api.GET('/api/v1/agents/{agentId}', {
       params: { path: { agentId: ids.dbAgent } },
     })
     expect(card.data?.plugins[0].configSchema).toMatchObject({ type: 'object' })
-    expect(card.data?.secretNames).toEqual(['pg-password'])
+    expect(card.data?.secretNames).toEqual(['pg-password', 'api-token'])
     const missing = await api.GET('/api/v1/agents/{agentId}', {
       params: { path: { agentId: unknownId } },
     })
@@ -212,18 +216,33 @@ describe('with a session', () => {
     expect(response.status).toBe(404)
   })
 
-  test('runs: succeeded, failed and running; filters and pages', async () => {
+  test('runs: every status, filters and pages', async () => {
     const all = must(await api.GET('/api/v1/runs')).items
-    expect(all.map((r) => r.status)).toEqual(['running', 'failed', 'succeeded'])
+    expect(all.map((r) => r.status)).toEqual([
+      'queued',
+      'running',
+      'failed',
+      'failed',
+      'failed',
+      'failed',
+      'failed',
+      'succeeded',
+      'succeeded',
+    ])
     const finished = must(
       await api.GET('/api/v1/runs', { params: { query: { status: ['succeeded', 'failed'] } } }),
     )
-    expect(finished.items.map((r) => r.id)).toEqual([ids.failedRun, ids.succeededRun])
-    const first = must(await api.GET('/api/v1/runs', { params: { query: { limit: 2 } } }))
-    const cursor = first.nextCursor ?? 'missing'
-    const rest = must(await api.GET('/api/v1/runs', { params: { query: { limit: 2, cursor } } }))
-    expect([...first.items, ...rest.items].map((r) => r.id)).toEqual(all.map((r) => r.id))
-    expect(rest.nextCursor).toBeNull()
+    expect(finished.items.map((r) => r.id)).toEqual(
+      all.filter((r) => r.status !== 'queued' && r.status !== 'running').map((r) => r.id),
+    )
+    const first = must(await api.GET('/api/v1/runs', { params: { query: { limit: 20 } } }))
+    expect(first.nextCursor).toBeNull()
+    const head = must(await api.GET('/api/v1/runs', { params: { query: { limit: 2 } } }))
+    const cursor = head.nextCursor ?? 'missing'
+    const next = must(await api.GET('/api/v1/runs', { params: { query: { limit: 2, cursor } } }))
+    expect([...head.items, ...next.items].map((r) => r.id)).toEqual(
+      all.slice(0, 4).map((r) => r.id),
+    )
     const run = must(
       await api.GET('/api/v1/runs/{runId}', { params: { path: { runId: ids.failedRun } } }),
     )
@@ -258,7 +277,7 @@ describe('with a session', () => {
   test('snapshots of a source', async () => {
     const path = { params: { path: { sourceId: ids.etcSource } } }
     const { data } = await api.GET('/api/v1/sources/{sourceId}/snapshots', path)
-    expect(data?.items.map((s) => s.snapshotId)).toEqual(['4f1c2a9e'])
+    expect(data?.items.map((s) => s.snapshotId)).toEqual(['a1b2c3', '4f1c2a9e'])
   })
 })
 
@@ -454,6 +473,15 @@ describe('agent revocation, soft delete and the new fields (S8b)', () => {
     )
   })
 
+  test('a started run names its source', async () => {
+    const run = must(
+      await api.POST('/api/v1/sources/{sourceId}/runs', {
+        params: { path: { sourceId: ids.homeSource } },
+      }),
+    )
+    expect(run).toMatchObject({ sourceName: 'web2 /home', sourceDeleted: false })
+  })
+
   test('a started run has its first step at ordinal 0', async () => {
     const run = must(
       await api.POST('/api/v1/sources/{sourceId}/runs', {
@@ -493,5 +521,186 @@ describe('agent revocation, soft delete and the new fields (S8b)', () => {
       }),
     )
     expect(found.items.map((r) => r.queuedAt)).toEqual([middle])
+  })
+})
+
+describe('W2 mocks', () => {
+  beforeEach(signIn)
+  const agentPath = (agentId: string) => ({ params: { path: { agentId } } })
+  const overview = async () => must(await api.GET('/api/v1/overview'))
+  const marks = (steps: Awaited<ReturnType<typeof overview>>['firstSteps']) =>
+    Object.entries(steps)
+      .filter(([, done]) => !done)
+      .map(([step]) => step)
+
+  test('the files schema of the mocks is the agent’s', () => {
+    for (const agent of agents) {
+      for (const plugin of agent.plugins.filter((p) => p.name === 'files')) {
+        expect(plugin.configSchema).toEqual(filesSchema)
+      }
+    }
+    expect(agents.some((a) => a.plugins.some((p) => p.name === 'files'))).toBe(true)
+  })
+
+  test('the fixtures cover the states of W2', () => {
+    expect(agents.some((a) => a.revokedAt !== null)).toBe(true)
+    expect(agents.some((a) => a.duplicateSessionAt !== null)).toBe(true)
+    expect(agents.some((a) => a.protocolVersion === null && a.plugins.length === 0)).toBe(true)
+    expect(agents.some((a) => a.repositories.some((r) => r.repositoryId === null))).toBe(true)
+    const steps = runs.flatMap((r) => r.steps)
+    for (const status of ['lost', 'rejected', 'timed_out'] as const) {
+      expect(
+        steps.some((s) => s.status === status),
+        status,
+      ).toBe(true)
+    }
+    const backups = steps.flatMap((s) => (s.backup === null ? [] : [{ step: s, backup: s.backup }]))
+    expect(backups.some((b) => b.step.status === 'failed' && b.backup.partial)).toBe(true)
+    expect(backups.some((b) => b.step.status === 'lost' && !b.backup.partial)).toBe(true)
+    expect(snapshots.some((s) => s.partial)).toBe(true)
+    expect(runs.every((r) => r.sourceName !== '' && typeof r.sourceDeleted === 'boolean')).toBe(
+      true,
+    )
+    const lines = Object.values(stepLogs)
+    expect(lines.some((l) => l.at(-1)?.time === null)).toBe(true)
+    expect(lines.some((l) => l.some((line) => line.text.includes('[REDACTED]')))).toBe(true)
+    const offline = agents.filter((a) => a.status === 'offline').map((a) => a.id)
+    const queued = runs.filter((r) => r.status === 'queued')
+    expect(queued.some((r) => offline.includes(r.agentId))).toBe(true)
+  })
+
+  test('revoking an agent turns its active steps into lost and fails their runs', async () => {
+    await api.POST('/api/v1/agents/{agentId}/revoke', agentPath(ids.dbAgent))
+
+    const run = must(
+      await api.GET('/api/v1/runs/{runId}', { params: { path: { runId: ids.runningRun } } }),
+    )
+    expect(run).toMatchObject({ status: 'failed', message: 'agent revoked' })
+    expect(run.finishedAt).toBeTruthy()
+    expect(run.steps[0]).toMatchObject({ status: 'lost', message: 'agent revoked' })
+    expect(run.steps[0].finishedAt).toBeTruthy()
+  })
+
+  test('the overview counts the agents that are not revoked', async () => {
+    const { agentsOnline, agentsTotal } = await overview()
+    const live = agents.filter((a) => a.revokedAt === null)
+    expect({ agentsOnline, agentsTotal }).toEqual({
+      agentsOnline: live.filter((a) => a.status === 'online').length,
+      agentsTotal: live.length,
+    })
+    expect(agentsTotal).toBeLessThan(agents.length)
+    await api.POST('/api/v1/agents/{agentId}/revoke', agentPath(ids.dbAgent))
+    expect(await overview()).toMatchObject({ agentsOnline: 0, agentsTotal: agentsTotal - 1 })
+  })
+
+  test('the overview marks the first steps by the rules of the server', async () => {
+    const all = (await overview()).firstSteps
+    expect(all).toEqual({
+      tokenIssued: true,
+      agentConnected: true,
+      repositoryInitialized: true,
+      sourceCreated: true,
+      backupSucceeded: true,
+      complete: true,
+    })
+
+    state.deletedSources.push(...state.sources.splice(0))
+    expect(marks((await overview()).firstSteps)).toEqual(['sourceCreated', 'complete'])
+
+    for (const agent of state.agents) agent.revokedAt = '2026-09-27T09:00:00Z'
+    expect(marks((await overview()).firstSteps)).toEqual([
+      'agentConnected',
+      'repositoryInitialized',
+      'sourceCreated',
+      'complete',
+    ])
+
+    state.tokens = state.tokens.filter((t) => t.status === 'revoked')
+    state.agents = []
+    state.sources = []
+    state.runs = []
+    expect(marks((await overview()).firstSteps)).toEqual([
+      'agentConnected',
+      'repositoryInitialized',
+      'sourceCreated',
+      'backupSucceeded',
+      'complete',
+    ])
+
+    state.tokens = []
+    expect((await overview()).firstSteps).toEqual({
+      tokenIssued: false,
+      agentConnected: false,
+      repositoryInitialized: false,
+      sourceCreated: false,
+      backupSucceeded: false,
+      complete: false,
+    })
+  })
+
+  test('a deleted source keeps its name in its runs, which are marked deleted', async () => {
+    const run = state.runs.find((r) => r.id === ids.runningRun)
+    if (run === undefined) throw new Error('no fixture run')
+    Object.assign(run, { status: 'succeeded' })
+    run.steps[0].status = 'succeeded'
+    await api.DELETE('/api/v1/sources/{sourceId}', {
+      params: { path: { sourceId: ids.etcSource } },
+    })
+
+    const listed = must(await api.GET('/api/v1/runs')).items.find((r) => r.id === ids.runningRun)
+    const card = must(
+      await api.GET('/api/v1/runs/{runId}', { params: { path: { runId: ids.runningRun } } }),
+    )
+
+    for (const item of [listed, card]) {
+      expect(item).toMatchObject({ sourceName: 'db1 /etc', sourceDeleted: true })
+    }
+  })
+
+  test('a renamed source is named by its new name in its runs', async () => {
+    const source = must(
+      await api.GET('/api/v1/sources/{sourceId}', {
+        params: { path: { sourceId: ids.etcSource } },
+      }),
+    )
+    await api.PUT('/api/v1/sources/{sourceId}', {
+      params: { path: { sourceId: ids.etcSource } },
+      body: { ...source, name: 'etc-main' },
+    })
+
+    const card = must(
+      await api.GET('/api/v1/runs/{runId}', { params: { path: { runId: ids.failedRun } } }),
+    )
+
+    expect(card).toMatchObject({ sourceName: 'etc-main', sourceDeleted: false })
+  })
+
+  test('the backup output of a failed step is partial like its snapshot', async () => {
+    const run = must(
+      await api.GET('/api/v1/runs/{runId}', { params: { path: { runId: ids.partialRun } } }),
+    )
+    const step = run.steps[0]
+    const snapshot = must(
+      await api.GET('/api/v1/sources/{sourceId}/snapshots', {
+        params: { path: { sourceId: run.sourceId } },
+      }),
+    ).items.find((s) => s.stepId === step.id)
+
+    expect(step.status).toBe('failed')
+    expect(step.backup?.partial).toBe(true)
+    expect(snapshot?.partial).toBe(true)
+  })
+
+  test('the log that the server cut says so', async () => {
+    const { data } = await api.GET('/api/v1/runs/{runId}/steps/{stepId}/logs', {
+      params: { path: { runId: ids.timedOutRun, stepId: ids.timedOutStep } },
+    })
+
+    expect(data?.truncated).toBe(true)
+    expect(data?.items.at(-1)?.time).toBeNull()
+    const other = await api.GET('/api/v1/runs/{runId}/steps/{stepId}/logs', {
+      params: { path: { runId: ids.failedRun, stepId: ids.failedStep } },
+    })
+    expect(other.data?.truncated).toBe(false)
   })
 })

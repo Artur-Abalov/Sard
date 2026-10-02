@@ -2,7 +2,15 @@
 // Copyright 2026 Artur Abalov
 
 import type { components } from '../api/schema'
-import { agents, enrollmentTokens, runs, snapshots, sources, stepLogs } from './fixtures'
+import {
+  agents,
+  deletedSources,
+  enrollmentTokens,
+  runs,
+  snapshots,
+  sources,
+  stepLogs,
+} from './fixtures'
 
 type Schemas = components['schemas']
 
@@ -30,7 +38,7 @@ function fresh(signedIn: boolean): MockState {
     lockedAt: null,
     agents,
     sources,
-    deletedSources: [],
+    deletedSources,
     runs,
     snapshots,
     stepLogs,

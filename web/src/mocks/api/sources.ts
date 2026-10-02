@@ -43,6 +43,8 @@ function queuedRun(source: Schemas['Source']): Schemas['Run'] {
   const run: Schemas['Run'] = {
     id: crypto.randomUUID(),
     sourceId: source.id,
+    sourceName: source.name,
+    sourceDeleted: false,
     agentId: source.agentId,
     trigger: 'manual',
     status: 'queued',

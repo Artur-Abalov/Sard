@@ -21,7 +21,7 @@ describe('validateSource', () => {
   test('each unknown reference names its field and code', () => {
     const cases = [
       [{ agentId: '0192f7a0-0000-7000-8000-00000000ffff' }, 'unknown_agent', 'agentId'],
-      [{ plugin: 'postgres' }, 'unknown_plugin', 'plugin'],
+      [{ plugin: 'absent' }, 'unknown_plugin', 'plugin'],
       [{ repositoryName: 's3' }, 'unknown_repository', 'repositoryName'],
     ] as const
     for (const [change, code, field] of cases) {

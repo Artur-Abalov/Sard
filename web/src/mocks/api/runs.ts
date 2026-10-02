@@ -9,8 +9,15 @@ import { state } from '../state'
 
 type Schemas = components['schemas']
 
+/** The run as the server shows it: the source's current name, or its name when it was deleted. */
+function named(run: Schemas['Run']): Schemas['Run'] {
+  const live = state.sources.find((s) => s.id === run.sourceId)
+  const source = live ?? state.deletedSources.find((s) => s.id === run.sourceId)
+  return { ...run, sourceName: source?.name ?? run.sourceName, sourceDeleted: live === undefined }
+}
+
 function summary(run: Schemas['Run']): Schemas['RunSummary'] {
-  const { steps: _steps, ...rest } = run
+  const { steps: _steps, ...rest } = named(run)
   return rest
 }
 
@@ -55,7 +62,9 @@ export const runHandlers = [
   http.get('/api/v1/runs/{runId}', ({ params, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
     const run = state.runs.find((r) => r.id === params.runId)
-    return run === undefined ? response(404).json(notFound, PROBLEM) : response(200).json(run)
+    return run === undefined
+      ? response(404).json(notFound, PROBLEM)
+      : response(200).json(named(run))
   }),
 
   http.get('/api/v1/runs/{runId}/steps/{stepId}/logs', ({ params, query, response }) => {
