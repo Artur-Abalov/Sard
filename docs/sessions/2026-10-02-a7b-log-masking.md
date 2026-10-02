@@ -46,7 +46,7 @@ ADR 0033 дополнен разделом «Изменения A7b» (новы�
 | паника в журнале агента, значения не в журнале на всех путях, сохранённый результат | `TestAPanicValueIsMaskedInTheAgentLogToo`, `TestAStepThatPrintsSecretsOnEveryPathLeavesNoValueInTheAgentLog`, `TestTheResultMessageIsMaskedBeforeItIsSentOrStored` |
 | @doc | `agent/internal/stepsecrets/doc_test.go` |
 | @e2e | `test/e2e/.../StepLogRedactionTest.kt` расширен (путь репозитория содержит секрет как есть и в base64); **не запускался**: в среде нет Docker |
-| сервер (три сценария) | `RunsGrpcApiIntegrationTest.kt`: `Строка с маркером хранится и отдаётся без изменений`, `Строка, похожая на секрет, хранится без изменений`, `Сообщение результата шага хранится без изменений`; компилируются, `spotlessCheck` и `detekt` проходят, **не запускались** (нет Docker) |
+| сервер (три сценария) | `RunsGrpcApiIntegrationTest.kt`: `Строка с маркером хранится и отдаётся без изменений`, `Строка, похожая на секрет, хранится без изменений`, `Сообщение результата шага хранится без изменений`; компилируются, `spotlessCheck` и `detekt` проходят, **не запускались** (на момент написания Docker не было; прогнано ниже) |
 
 Сценарии «Агент сообщает серверу имена секретов, но не значения» и «Неверный
 файл окружения» проверены существующими тестами A1/A7c, новых тестов не потребовали
@@ -63,8 +63,17 @@ ADR 0033 дополнен разделом «Изменения A7b» (новы�
   `./scripts/gate.sh server fast` не запускался: тесты сервера требуют Docker.
 - Мутационное тестирование — не в `fast`; следующий шаг — cleaner/hardener.
 
+### Прогон после появления Docker
+- `LC_ALL=C.UTF-8 ./scripts/gate.sh server fast`: `coverage: 96.2% (instructions)`,
+  максимум CRAP в таблице `6.0`, `gate: PASSED (server, fast)`. Три новых серверных теста вошли в прогон.
+- `StepLogRedactionTest` (`./gradlew :e2e:test --tests '*StepLogRedactionTest*'`):
+  `a secret restic prints reaches step_logs as REDACTED() PASSED`, `BUILD SUCCESSFUL`.
+  Образы собраны вручную по шагам `make e2e-images`: сборка server-образа внутри Docker
+  упирается в 429 Maven Central (ограничение среды), поэтому jar собран на хосте
+  (`./gradlew :server:bootJar --offline`) и положен в runtime-стадию того же Dockerfile;
+  агент — `scripts/package-agent.sh` и `test/e2e/agent/Dockerfile` как в Makefile.
+
 ### Осталось
-- Прогнать серверные тесты и `StepLogRedactionTest` там, где есть Docker.
 - Мутационный прогон (`./scripts/gate.sh agent`) — hardener.
 
 ## Роль: specifier (уточнение после coder, OQ-088)
