@@ -208,3 +208,17 @@
 - OQ-006 закрыт, остаток — OQ-069.
 - `gate.sh agent` (полный) — PASSED (фаза 2; после него код агента менялся
   только тестом, `gate.sh agent fast` — PASSED); `make e2e` — exit 0.
+
+## 2026-10-02: слияние с main (конфликт в PR #31)
+
+- Конфликты только в документах: `docs/adr/README.md` и
+  `docs/open-questions.md`. В main S8b заняла ADR 0031–0032 и OQ-051…068.
+  ADR A7c переименован в 0033 (`0033-step-log-redaction.md`), строки A7c в
+  реестре — OQ-069 (последний отчёт фазы) и OQ-070 (временное правило
+  набора значений); ссылки в этом журнале и в `StepLogRedactionTest`
+  исправлены. `RunRows.kt` и `test/e2e/README.md` слились сами.
+- main не менял `agent/`. Проверено на `970b84e`: `go test ./...` в
+  `agent/` — ok; `:e2e:compileTestKotlin` — ok; `license-check` — 570 OK;
+  `make e2e` — exit 0, 17 тестов в 9 классах, 0 упавших
+  (`StepLogRedactionTest` 1/1). Первая попытка упала на сборке образа
+  сервера: после перезапуска контейнера прокси сменил порт.
