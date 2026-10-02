@@ -23,6 +23,8 @@ sealed interface StepOutput {
         val addedBytes: Long,
         /** restic's repository id, which identifies the repository wherever it is reached from. */
         val repositoryId: String,
+        /** The result that brought it failed: the snapshot is usable but incomplete (same as the snapshot's). */
+        val partial: Boolean = false,
     ) : StepOutput {
         override val kind = Action.BACKUP
 
@@ -32,6 +34,7 @@ sealed interface StepOutput {
                 "totalBytes" to totalBytes,
                 "addedBytes" to addedBytes,
                 "repositoryId" to repositoryId,
+                "partial" to partial,
             )
 
         /** Why this output cannot prove a snapshot, or null when it can. */
@@ -100,16 +103,29 @@ object ResultCheck {
     fun of(
         action: Action,
         report: StepReport,
+    ): Verdict = report.status?.takeIf(::isFinal)?.let { judge(it, action, report) } ?: invalid("no final status")
+
+    private fun judge(
+        status: StepState,
+        action: Action,
+        report: StepReport,
     ): Verdict {
-        val status = report.status
-        if (status == null || status.active || status == StepState.LOST) return invalid("no final status")
+        val outcome = StepOutcome(status, report.message)
         val problem = problem(action, report.output)
         return when {
-            problem == null -> Verdict(StepOutcome(status, report.message), report.output, invalid = null)
+            problem == null -> Verdict(outcome, marked(report.output, status), invalid = null)
             status == StepState.SUCCEEDED -> invalid(problem)
-            else -> Verdict(StepOutcome(status, report.message), null, invalid = null)
+            else -> Verdict(outcome, null, invalid = null)
         }
     }
+
+    private fun isFinal(status: StepState) = !status.active && status != StepState.LOST
+
+    /** A backup output learns whether its result failed; other outputs are as they came. */
+    private fun marked(
+        output: StepOutput?,
+        status: StepState,
+    ): StepOutput? = if (output is StepOutput.Backup) output.copy(partial = status != StepState.SUCCEEDED) else output
 
     private fun problem(
         action: Action,

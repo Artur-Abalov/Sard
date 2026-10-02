@@ -2,6 +2,7 @@
 // Copyright 2026 Artur Abalov
 
 import { agentHandlers } from './api/agents'
+import { overviewHandlers } from './api/overview'
 import { runHandlers } from './api/runs'
 import { sessionHandlers } from './api/session'
 import { sourceHandlers } from './api/sources'
@@ -17,6 +18,7 @@ export const handlers = [
   ...originGuardHandlers,
   http.get('/api/v1/status', ({ response }) => response(200).json(status)),
   ...sessionHandlers,
+  ...overviewHandlers,
   ...agentHandlers,
   ...tokenHandlers,
   ...sourceHandlers,

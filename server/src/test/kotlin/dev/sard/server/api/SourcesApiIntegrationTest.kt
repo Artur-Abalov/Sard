@@ -7,6 +7,7 @@ import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.registration.PluginAction
 import dev.sard.server.registration.Registration
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
@@ -366,6 +367,92 @@ class SourcesApiIntegrationTest(
             assertEquals(code, response.code)
         }
         assertEquals(before, world.api.get("/api/v1/sources/$id", admin).json)
+    }
+
+    private fun registerPlugins(
+        host: dev.sard.server.agents.stream.TestAgent,
+        vararg plugins: dev.sard.server.registration.PluginEntry,
+    ) = world.register(host, snapshotOf(plugins = plugins.toList()))
+
+    private fun sourceCount() =
+        world.api
+            .get("/api/v1/sources", admin)
+            .json
+            .path("items")
+            .size()
+
+    @Test
+    fun `Создание источника с плагином без действия backup отклоняется`() {
+        registerPlugins(agent, filesPlugin(), filesPlugin("hooks", actions = listOf(PluginAction.RUN)))
+
+        assertRefused(create(body(plugin = "hooks")), "unknown_plugin", "plugin")
+        assertEquals(0, sourceCount())
+    }
+
+    @Test
+    fun `Создание источника с плагином без действий отклоняется`() {
+        registerPlugins(agent, filesPlugin("hooks", actions = emptyList()))
+
+        assertRefused(create(body(plugin = "hooks")), "unknown_plugin", "plugin")
+    }
+
+    @Test
+    fun `Плагин, перечисляющий backup, принимается`() {
+        val cases =
+            listOf(
+                listOf(PluginAction.BACKUP),
+                listOf(PluginAction.BACKUP, PluginAction.RESTORE),
+                listOf(PluginAction.RUN, PluginAction.VERIFY, PluginAction.RESTORE, PluginAction.BACKUP),
+            )
+        for ((index, actions) in cases.withIndex()) {
+            registerPlugins(agent, filesPlugin(actions = actions))
+
+            assertEquals(201, create(body(name = "etc-$index")).status, actions.toString())
+        }
+    }
+
+    @Test
+    fun `Изменение источника на плагин без действия backup отклоняется`() {
+        registerPlugins(agent, filesPlugin(), filesPlugin("hooks", actions = listOf(PluginAction.RUN)))
+        val id = create().json.path("id").asString()
+        val before = world.api.get("/api/v1/sources/$id", admin).json
+
+        assertRefused(replace(id, body(plugin = "hooks")), "unknown_plugin", "plugin")
+        assertEquals(before, world.api.get("/api/v1/sources/$id", admin).json)
+    }
+
+    @Test
+    fun `Сохранённый источник, чей плагин перестал объявлять backup, отклоняется при следующем изменении`() {
+        val id = create().json.path("id").asString()
+        val before = world.api.get("/api/v1/sources/$id", admin).json
+        registerPlugins(agent, filesPlugin(actions = listOf(PluginAction.RESTORE)))
+
+        assertRefused(replace(id, body(name = "renamed")), "unknown_plugin", "plugin")
+        assertEquals(before, world.api.get("/api/v1/sources/$id", admin).json)
+    }
+
+    @Test
+    fun `Изменение источника с плагином, объявляющим backup, принимается`() {
+        val id = create().json.path("id").asString()
+
+        val response = replace(id, body(config = """{"paths":["/var/www"]}"""))
+
+        assertEquals(200, response.status)
+    }
+
+    @Test
+    fun `Отозванный агент проверяется раньше действий плагина`() {
+        registerPlugins(agent, filesPlugin("hooks", actions = listOf(PluginAction.RUN)))
+        world.api.post("/api/v1/agents/${agent.agentId}/revoke", admin, null)
+
+        assertRefused(create(body(plugin = "hooks")), "agent_revoked", "agentId")
+    }
+
+    @Test
+    fun `Плагин без backup проверяется раньше репозитория`() {
+        registerPlugins(agent, filesPlugin("hooks", actions = listOf(PluginAction.RUN)))
+
+        assertRefused(create(body(plugin = "hooks", repository = "offsite")), "unknown_plugin", "plugin")
     }
 
     @Test

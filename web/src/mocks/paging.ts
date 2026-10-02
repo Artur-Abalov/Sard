@@ -29,6 +29,7 @@ export function logPage(
     items,
     nextAfterSeq: items.length > 0 ? items[items.length - 1].seq : afterSeq,
     hasMore: after.length > limit,
-    truncated: false,
+    // The server cuts a log at its size limit and ends it with a line of its own, which has no time.
+    truncated: lines.at(-1)?.time === null,
   }
 }

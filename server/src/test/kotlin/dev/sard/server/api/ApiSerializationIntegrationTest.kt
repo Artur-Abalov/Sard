@@ -72,7 +72,7 @@ class ApiSerializationIntegrationTest(
             filesProcessed = 3,
             filesTotal = 4,
             message = null,
-            backup = BackupOutput("4f1c", 10, 2, "a1b2"),
+            backup = BackupOutput("4f1c", 10, 2, "a1b2", partial = false),
             at,
             at,
             at,
@@ -105,11 +105,13 @@ class ApiSerializationIntegrationTest(
         EnrollmentToken(id, EnrollmentTokenStatus.USED, at, at, at, revokedAt = null, agentId = id, label = null)
     private val snapshot =
         Snapshot(id, "4f1c", id, id, id, id, "local", "a1b2", 10, 2, at, forgottenAt = null, partial = false)
-    private val summaryRun = RunSummary(id, id, id, RunTrigger.MANUAL, RunStatus.FAILED, "boom", at, at, at)
+    private val summaryRun =
+        RunSummary(id, id, "etc", false, id, RunTrigger.MANUAL, RunStatus.FAILED, "boom", at, at, at)
 
     private val samples: List<Any> =
         listOf(
             StatusResponse("1.0.0", lastVerifiedRestoreAt = null),
+            Overview(1, 3, FirstSteps(true, true, false, false, false, complete = false)),
             SessionRequest("secret"),
             Session(id, at),
             AgentPage(listOf(summary), nextCursor = "c2"),
@@ -140,6 +142,8 @@ class ApiSerializationIntegrationTest(
             Run(
                 id,
                 id,
+                "etc",
+                false,
                 id,
                 RunTrigger.MANUAL,
                 RunStatus.RUNNING,
@@ -271,6 +275,7 @@ class ApiSerializationIntegrationTest(
         val NESTED =
             setOf(
                 "AgentSummary",
+                "FirstSteps",
                 "AgentPlugin",
                 "AgentRepository",
                 "EnrollmentToken",

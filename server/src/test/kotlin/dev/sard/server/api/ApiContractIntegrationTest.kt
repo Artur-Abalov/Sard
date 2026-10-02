@@ -88,6 +88,38 @@ class ApiContractIntegrationTest(
     }
 
     @Test
+    fun `the overview, the run's source name and the backup output's partial are in the contract`() {
+        val operation = spec.path("paths").path("/api/v1/overview").path("get")
+
+        assertEquals(
+            listOf("200", "401", "503"),
+            operation
+                .path("responses")
+                .propertyNames()
+                .toList()
+                .sorted(),
+        )
+        assertEquals(listOf("overview"), operation.path("tags").strings())
+
+        fun required(name: String) = schema(name).path("required").strings().toSet()
+        assertEquals(setOf("agentsOnline", "agentsTotal", "firstSteps"), required("Overview"))
+        val steps = setOf("tokenIssued", "agentConnected", "repositoryInitialized", "sourceCreated", "backupSucceeded")
+        assertEquals(steps + "complete", required("FirstSteps"))
+        for (name in listOf("RunSummary", "Run")) {
+            assertTrue(required(name).containsAll(setOf("sourceName", "sourceDeleted")), name)
+        }
+        assertTrue("partial" in required("BackupOutput"))
+        assertEquals(
+            "int32",
+            schema("Overview")
+                .path("properties")
+                .path("agentsOnline")
+                .path("format")
+                .asString(),
+        )
+    }
+
+    @Test
     fun `step phase, log level and action are the proto values`() {
         assertEquals(protoValues(ProtoStepPhase.entries.toTypedArray()), enumValues("StepPhase"))
         assertEquals(protoValues(ProtoLogLevel.entries.toTypedArray()), enumValues("LogLevel"))
@@ -247,6 +279,7 @@ class ApiContractIntegrationTest(
         val source = """{"name":"n","agentId":"$id","plugin":"files","repositoryName":"r","config":{}}"""
         val calls =
             listOf(
+                Triple("GET", "/api/v1/overview", null),
                 Triple("GET", "/api/v1/agents?status=online", null),
                 Triple("GET", "/api/v1/agents/{agentId}", null),
                 Triple("POST", "/api/v1/agents/{agentId}/revoke", null),

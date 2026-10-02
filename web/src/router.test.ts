@@ -25,8 +25,13 @@ async function load(path: string) {
 
 const sections = [
   { path: '/', routeId: '/_app/' },
-  { path: '/agents', routeId: '/_app/agents' },
-  { path: '/sources', routeId: '/_app/sources' },
+  { path: '/agents', routeId: '/_app/agents/' },
+  { path: '/agents/7', routeId: '/_app/agents/$agentId' },
+  { path: '/tokens', routeId: '/_app/tokens' },
+  { path: '/sources', routeId: '/_app/sources/' },
+  { path: '/sources/new', routeId: '/_app/sources/new' },
+  { path: '/sources/7', routeId: '/_app/sources/$sourceId/' },
+  { path: '/sources/7/edit', routeId: '/_app/sources/$sourceId/edit' },
   { path: '/runs', routeId: '/_app/runs/' },
   { path: '/runs/42', routeId: '/_app/runs/$runId' },
 ] as const
@@ -60,6 +65,57 @@ describe('routing', () => {
   test('a run card receives its id from the path', async () => {
     const router = await load('/runs/42')
     expect(router.state.matches.at(-1)?.params).toEqual({ runId: '42' })
+  })
+
+  test('the run filter is read from the address', async () => {
+    const source = '0192f7a0-0000-7000-8000-000000000201'
+    const router = await load(`/runs?status=failed&status=running&sourceId=${source}`)
+    expect(router.state.matches.at(-1)?.search).toEqual({
+      status: ['failed', 'running'],
+      sourceId: source,
+    })
+    expect(router.state.location.searchStr).toBe(`?status=failed&status=running&sourceId=${source}`)
+  })
+
+  test('what is not valid in the run filter is dropped', async () => {
+    const router = await load('/runs')
+    const validate = router.routesById['/_app/runs/'].options.validateSearch as (
+      search: Record<string, unknown>,
+    ) => unknown
+    expect(validate({ status: ['failed', 'done'], sourceId: 'not-a-uuid' })).toEqual({
+      status: ['failed'],
+    })
+    expect(validate({ status: 'done' })).toEqual({})
+  })
+
+  test('a single status in the address is a filter of one', async () => {
+    const router = await load('/runs?status=failed')
+    expect(router.state.matches.at(-1)?.search).toEqual({ status: ['failed'] })
+  })
+
+  test('the pages that a checklist leads to take their hints from the address', async () => {
+    expect((await load('/tokens?create=true&hint=enroll')).state.matches.at(-1)?.search).toEqual({
+      create: true,
+      hint: 'enroll',
+    })
+    expect((await load('/agents?hint=repo-init')).state.matches.at(-1)?.search).toEqual({
+      hint: 'repo-init',
+    })
+    expect((await load('/sources?hint=run-backup')).state.matches.at(-1)?.search).toEqual({
+      hint: 'run-backup',
+    })
+    const router = await load('/agents')
+    const validate = router.routesById['/_app/agents/'].options.validateSearch as (
+      search: Record<string, unknown>,
+    ) => unknown
+    expect(validate({ hint: 'other' })).toEqual({})
+  })
+
+  test('a new source can start with an agent', async () => {
+    const router = await load('/sources/new?agentId=0192f7a0-0000-7000-8000-000000000101')
+    expect(router.state.matches.at(-1)?.search).toEqual({
+      agentId: '0192f7a0-0000-7000-8000-000000000101',
+    })
   })
 
   test('an unknown path matches only the root, which renders the 404 page', async () => {

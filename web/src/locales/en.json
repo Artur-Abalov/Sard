@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "Sard",
+    "title": "sard",
     "language": "Language",
     "colorScheme": "Theme",
     "light": "Light",
@@ -22,29 +22,280 @@
     "retry": "Retry"
   },
   "dashboard": {
-    "title": "Dashboard",
-    "lastVerifiedRestore": "Last verified restore: {{value}}",
+    "title": "Overview",
     "serverVersion": "Server version: {{version}}",
-    "loading": "Loading…",
-    "error": "Server unavailable"
+    "agentsOnline": "{{online}} of {{total}} online",
+    "allRuns": "All runs",
+    "createSource": "Create a source",
+    "done": "done",
+    "firstSteps": "First steps",
+    "issueToken": "Issue a token",
+    "noAgents": "There are no agents yet. Issue a token to connect the first one.",
+    "noRuns": "There are no runs yet.",
+    "notDone": "not done",
+    "recentRuns": "Recent runs",
+    "steps": {
+      "tokenIssued": "A token is issued",
+      "agentConnected": "An agent has connected",
+      "repositoryInitialized": "A repository is initialized",
+      "sourceCreated": "A source is created",
+      "backupSucceeded": "The first backup succeeded"
+    }
   },
   "nav": {
     "toggle": "Toggle navigation"
   },
   "agents": {
-    "title": "Agents"
+    "title": "Agents",
+    "duplicateAt": "Duplicate, last seen <when/>",
+    "empty": "There are no agents yet. An agent registers with a token.",
+    "host": "Host",
+    "lastSeen": "Last seen",
+    "neverConnected": "has not connected yet",
+    "os": "OS",
+    "repoInitCommand": "Command on the host",
+    "repoInitHint": "This repository has no id yet: initialize it on the agent host.",
+    "repoInitPage": "Open an agent that has a repository marked \"not initialized\", run sard-agent repo init <name> on its host and restart the agent service.",
+    "repoInitRestart": "After it, restart the agent service so that it reports the repository.",
+    "revokedAt": "Revoked <when/>",
+    "status": "Status",
+    "version": "Version"
   },
   "sources": {
-    "title": "Sources"
+    "title": "Sources",
+    "agent": "Agent",
+    "alreadyRunning": "A backup of this source is already running.",
+    "create": "Create a source",
+    "empty": "There are no sources yet. Create one to back something up.",
+    "name": "Name",
+    "needAgent": "A source belongs to an agent. Issue a token and connect an agent first.",
+    "openRun": "Open the run",
+    "plugin": "Plugin",
+    "repository": "Repository",
+    "runBackup": "Run backup",
+    "runBackupHint": "Press \"Run backup\" on a source to make the first backup."
   },
   "runs": {
-    "title": "Runs"
-  },
-  "run": {
-    "title": "Run {{runId}}"
+    "title": "Runs",
+    "empty": "There are no runs yet. A backup is started from a source.",
+    "noMatch": "No run matches the filter.",
+    "open": "Open",
+    "queuedAt": "Queued",
+    "resetFilters": "Reset filters",
+    "source": "Source",
+    "sourceDeleted": "deleted",
+    "status": "Status"
   },
   "notFound": {
     "title": "Page not found",
     "home": "Go to the dashboard"
+  },
+  "units": {
+    "B": "B",
+    "KiB": "KiB",
+    "MiB": "MiB",
+    "GiB": "GiB",
+    "TiB": "TiB",
+    "d": "d",
+    "h": "h",
+    "min": "min",
+    "s": "s"
+  },
+  "relativeTime": {
+    "ago": "{{value}} ago",
+    "in": "in {{value}}",
+    "now": "just now"
+  },
+  "filesCount": {
+    "ofTotal": "{{processed}} of {{total}} files",
+    "processed": "{{processed}} files"
+  },
+  "errors": {
+    "not_found": "Not found",
+    "validation_failed": "The values are not acceptable",
+    "unknown_agent": "The agent does not exist",
+    "agent_revoked": "The agent is revoked",
+    "unknown_plugin": "The agent does not offer this plugin",
+    "unknown_repository": "The agent does not report this repository",
+    "invalid_config": "The source config is not valid",
+    "run_active": "The source already has a run in progress",
+    "token_used": "The token is already used",
+    "token_expired": "The token has expired",
+    "origin_rejected": "The request was rejected: the origin does not match",
+    "unavailable": "The server is temporarily unavailable, try again",
+    "not_implemented": "Not implemented",
+    "unauthenticated": "The session has ended",
+    "too_many_attempts": "Too many attempts, try again later",
+    "generic": "The request failed ({{detail}})",
+    "network": "The server is unavailable"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "copied": "Copied",
+    "copy": "Copy",
+    "copyFailed": "Could not copy; the text is selected, copy it by hand",
+    "loading": "Loading…",
+    "notUpdating": "The data is not being updated right now",
+    "retry": "Retry",
+    "showMore": "Show more"
+  },
+  "agent": {
+    "duplicateTitle": "Duplicate session",
+    "duplicateWhy": "Most likely the host was cloned together with the agent certificate. On the clone issue a new token and register the agent with the --force flag.",
+    "initialized": "initialized, id {{id}}",
+    "neverRegistered": "The agent has not connected yet, so it has not reported its plugins and repositories.",
+    "noSources": "The agent has no sources.",
+    "none": "None",
+    "notInitialized": "not initialized",
+    "plugins": "Plugins",
+    "registeredAt": "Registered",
+    "repositories": "Repositories",
+    "revoke": "Revoke",
+    "revokeConnection": "The agent’s connection is closed at once.",
+    "revokeHistory": "The history of runs and snapshots stays.",
+    "revokeRuns": "New runs of its sources become impossible.",
+    "revokeTitle": "Revoke {{host}}?",
+    "scripts": "Scripts",
+    "secrets": "Secrets",
+    "sources": "Sources"
+  },
+  "tokens": {
+    "title": "Enrollment tokens",
+    "agent": "Agent",
+    "agentConnected": "The agent has connected.",
+    "alreadyExpired": "The token has already expired.",
+    "alreadyUsed": "The token has already been used.",
+    "command": "Command to run on the host",
+    "create": "Create a token",
+    "createTitle": "New enrollment token",
+    "createdAt": "Created",
+    "empty": "A token lets one agent register once. Create the first one.",
+    "endpointDerived": "The address in the command is derived from the names in the server certificate. Set SARD_AGENT_ENDPOINT to name it explicitly.",
+    "enrollHint": "Create a token and run the enroll command on the agent host.",
+    "expiredNow": "The token has expired. Create a new one.",
+    "expires": "Expires",
+    "expiresAt": "Valid until {{time}}",
+    "label": "Label",
+    "revoke": "Revoke",
+    "revokeText": "A revoked token can no longer be used to register an agent.",
+    "revokeTitle": "Revoke the token?",
+    "revokedNow": "The token was revoked.",
+    "shownOnce": "The token string is shown once. Copy it now: it cannot be shown again.",
+    "status": "Status",
+    "token": "Token",
+    "ttl": "Lifetime",
+    "ttlHint": "By default 24 hours",
+    "ttlUnit": "Unit of the lifetime",
+    "units": {
+      "minutes": "minutes",
+      "hours": "hours",
+      "days": "days"
+    },
+    "waiting": "Waiting for the agent to connect…"
+  },
+  "source": {
+    "added": "Added",
+    "config": "Config",
+    "createdAt": "Time",
+    "delete": "Delete",
+    "deleteActive": "The source has a run in progress. It can be deleted when the run ends.",
+    "deleteText": "Its runs and snapshots stay in the history.",
+    "deleteTitle": "Delete {{name}}?",
+    "edit": "Edit",
+    "noSnapshots": "Snapshots appear after a backup.",
+    "partial": "incomplete",
+    "partialWhy": "The snapshot can be restored, but part of the data did not get into it.",
+    "snapshot": "Snapshot",
+    "snapshots": "Snapshots",
+    "total": "Total",
+    "updatedAt": "Updated"
+  },
+  "form": {
+    "add": "Add",
+    "chooseSecret": "Choose a secret",
+    "config": "Config",
+    "jsonConfig": "The schema of this plugin cannot be shown as a form. Edit the whole config as JSON.",
+    "jsonInvalid": "The config is not a JSON object, nothing was sent.",
+    "noPlugins": "The agent has not reported its plugins yet, so a source cannot be created for it.",
+    "noRepositories": "A repository is defined in the agent configuration on the host and initialized with sard-agent repo init.",
+    "notInitializedTitle": "A backup will not pass until the repository is initialized",
+    "pluginGone": "The agent no longer offers the plugin {{plugin}}. Choose a plugin again.",
+    "remove": "Remove",
+    "save": "Save",
+    "schema": "Schema of the config"
+  },
+  "run": {
+    "added": "Added: <m>{{size}}</m>",
+    "bytesOf": "<m>{{processed}}</m> of <m>{{total}}</m>",
+    "duration": "Duration: <m>{{value}}</m>",
+    "log": "Log",
+    "logTruncated": "The server cut this step’s log at its size limit.",
+    "noLogLines": "There are no lines yet.",
+    "partialNote": "The snapshot can be restored, but part of the data did not get into it.",
+    "repository": "Repository: <m>{{name}}</m>",
+    "snapshot": "Snapshot",
+    "stepNote": {
+      "lost": "The connection with the agent was lost while the step was running.",
+      "rejected": "The agent refused to run the step."
+    },
+    "total": "Total: <m>{{size}}</m>",
+    "trigger": "Started by",
+    "waitingForAgent": "The run starts when the agent connects:"
+  },
+  "enum": {
+    "RunStatus": {
+      "queued": "queued",
+      "dispatched": "sent to the agent",
+      "running": "running",
+      "succeeded": "succeeded",
+      "failed": "error",
+      "cancelled": "cancelled"
+    },
+    "StepStatus": {
+      "queued": "queued",
+      "dispatched": "sent to the agent",
+      "running": "running",
+      "succeeded": "succeeded",
+      "failed": "error",
+      "cancelled": "cancelled",
+      "timed_out": "timed out",
+      "rejected": "rejected",
+      "lost": "lost"
+    },
+    "StepPhase": {
+      "accepted": "accepted",
+      "preparing": "preparing",
+      "dumping": "dumping",
+      "uploading": "uploading",
+      "restoring": "restoring",
+      "verifying": "verifying"
+    },
+    "EnrollmentTokenStatus": {
+      "active": "active",
+      "used": "used",
+      "expired": "expired",
+      "revoked": "revoked"
+    },
+    "AgentStatus": {
+      "online": "online",
+      "offline": "offline"
+    },
+    "LogLevel": {
+      "debug": "debug",
+      "info": "info",
+      "warn": "warning",
+      "error": "error"
+    },
+    "StepAction": {
+      "backup": "backup",
+      "restore": "restore",
+      "verify": "verify",
+      "run": "run a command"
+    },
+    "RunTrigger": {
+      "schedule": "schedule",
+      "manual": "manual",
+      "verification": "verification"
+    }
   }
 }

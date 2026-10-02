@@ -149,12 +149,13 @@ class RunsGrpcApiIntegrationTest(
 
         val backup = card.path("steps").get(0).path("backup")
         assertEquals(
-            listOf("a1b2c3", 1000L, 10L, REPOSITORY_ID),
+            listOf("a1b2c3", 1000L, 10L, REPOSITORY_ID, false),
             listOf(
                 backup.path("snapshotId").asString(),
                 backup.path("totalBytes").asLong(),
                 backup.path("addedBytes").asLong(),
                 backup.path("repositoryId").asString(),
+                backup.path("partial").asBoolean(true),
             ),
         )
     }
@@ -214,6 +215,7 @@ class RunsGrpcApiIntegrationTest(
         assertEquals("2 files unreadable", step.path("message").asString())
         assertEquals("a1b2c3", step.path("backup").path("snapshotId").asString())
         assertEquals(REPOSITORY_ID, step.path("backup").path("repositoryId").asString())
+        assertTrue(step.path("backup").path("partial").asBoolean())
         val snapshot = snapshots(started.source).get(0)
         assertEquals(
             listOf("a1b2c3", REPOSITORY_ID, started.step, true),
@@ -265,6 +267,7 @@ class RunsGrpcApiIntegrationTest(
             }
         assertEquals("lost", step.path("status").asString())
         assertEquals("agent lost the step", step.path("message").asString())
+        assertEquals(false, step.path("backup").path("partial").asBoolean(true))
     }
 
     @Test

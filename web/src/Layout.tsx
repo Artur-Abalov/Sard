@@ -3,11 +3,11 @@
 
 import {
   AppShell,
+  Box,
   Burger,
   Button,
   Group,
   SegmentedControl,
-  Title,
   useMantineColorScheme,
   type MantineColorScheme,
 } from '@mantine/core'
@@ -16,8 +16,10 @@ import { Outlet, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { signOut } from './auth/session'
+import { Wordmark } from './components/Wordmark'
 import { languages } from './languages'
 import { NavLink } from './NavLink'
+import { contentMaxWidth } from './theme'
 
 // Ends the session and leaves for /login without a redirect (Р9з) on 204 (signed
 // out) or 401 (already signed out elsewhere) — either way there is no session to
@@ -68,7 +70,7 @@ function Header({ opened, toggle }: { opened: boolean; toggle: () => void }) {
           size="sm"
           aria-label={t('nav.toggle')}
         />
-        <Title order={3}>{t('app.title')}</Title>
+        <Wordmark />
       </Group>
       <Group>
         <SegmentedControl
@@ -100,6 +102,7 @@ function Navigation({ onNavigate }: { onNavigate: () => void }) {
         activeOptions={{ exact: true }}
       />
       <NavLink to="/agents" label={t('agents.title')} onClick={onNavigate} />
+      <NavLink to="/tokens" label={t('tokens.title')} onClick={onNavigate} />
       <NavLink to="/sources" label={t('sources.title')} onClick={onNavigate} />
       <NavLink to="/runs" label={t('runs.title')} onClick={onNavigate} />
     </>
@@ -122,7 +125,9 @@ export function Layout() {
         <Navigation onNavigate={close} />
       </AppShell.Navbar>
       <AppShell.Main>
-        <Outlet />
+        <Box maw={contentMaxWidth}>
+          <Outlet />
+        </Box>
       </AppShell.Main>
     </AppShell>
   )

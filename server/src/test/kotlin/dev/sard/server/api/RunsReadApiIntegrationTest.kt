@@ -153,6 +153,54 @@ class RunsReadApiIntegrationTest(
         assertEquals(listOf(run), ids(""))
     }
 
+    private fun named(run: String): List<Pair<String, Boolean>> =
+        listOf(
+            world.api
+                .get("/api/v1/runs", admin)
+                .json
+                .path("items")
+                .list()
+                .single { it.path("id").asString() == run },
+            world.api.get("/api/v1/runs/$run", admin).json,
+        ).map { it.path("sourceName").asString() to it.path("sourceDeleted").asBoolean(true) }
+
+    @Test
+    fun `Список и карточка запуска называют источник`() {
+        val run = start(source("etc"))
+
+        assertEquals(listOf("etc" to false, "etc" to false), named(run))
+    }
+
+    @Test
+    fun `Переименованный источник называется новым именем`() {
+        val s = source("etc")
+        val run = start(s)
+        val body = sourceJson("etc-main", agent.agentId)
+        assertEquals(200, world.api.send("PUT", "/api/v1/sources/$s", admin, body).status)
+
+        assertEquals(listOf("etc-main" to false, "etc-main" to false), named(run))
+    }
+
+    @Test
+    fun `Запуск удалённого источника называет его имя и пометку удаления`() {
+        val s = source("etc")
+        val run = start(s).also { world.forceRun(UUID.fromString(it), "succeeded") }
+        world.api.send("DELETE", "/api/v1/sources/$s", admin)
+
+        assertEquals(listOf("etc" to true, "etc" to true), named(run))
+    }
+
+    @Test
+    fun `Новый источник с именем удалённого не путается с ним`() {
+        val old = source("etc")
+        val r = start(old).also { world.forceRun(UUID.fromString(it), "succeeded") }
+        world.api.send("DELETE", "/api/v1/sources/$old", admin)
+        val q = start(source("etc"))
+
+        assertEquals(listOf("etc" to true, "etc" to true), named(r))
+        assertEquals(listOf("etc" to false, "etc" to false), named(q))
+    }
+
     @Test
     fun `Элемент списка запусков не содержит шагов, карточка содержит`() {
         val run = start(source())

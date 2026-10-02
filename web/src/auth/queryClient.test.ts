@@ -47,4 +47,15 @@ describe('createAppQueryClient', () => {
       .catch(() => undefined)
     expect(onUnauthenticated).not.toHaveBeenCalled()
   })
+
+  test('a 401 from a mutation calls the handler too', async () => {
+    const onUnauthenticated = vi.fn()
+    const queryClient = createAppQueryClient(onUnauthenticated)
+    await queryClient
+      .getMutationCache()
+      .build(queryClient, { mutationFn: () => Promise.reject(new UnauthenticatedError()) })
+      .execute(undefined)
+      .catch(() => undefined)
+    expect(onUnauthenticated).toHaveBeenCalledTimes(1)
+  })
 })

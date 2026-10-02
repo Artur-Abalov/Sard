@@ -16,6 +16,8 @@ internal object RunMapping {
         Run(
             view.id,
             view.sourceId,
+            view.sourceName,
+            view.sourceDeleted,
             view.agentId,
             trigger(view.trigger),
             status(view.status),
@@ -30,6 +32,8 @@ internal object RunMapping {
         RunSummary(
             view.id,
             view.sourceId,
+            view.sourceName,
+            view.sourceDeleted,
             view.agentId,
             trigger(view.trigger),
             status(view.status),
@@ -55,7 +59,7 @@ internal object RunMapping {
             view.filesProcessed,
             view.filesTotal,
             view.message,
-            view.backup?.let { BackupOutput(it.snapshotId, it.totalBytes, it.addedBytes, it.repositoryId) },
+            view.backup?.let { BackupOutput(it.snapshotId, it.totalBytes, it.addedBytes, it.repositoryId, it.partial) },
             view.queuedAt,
             view.dispatchedAt,
             view.startedAt,
