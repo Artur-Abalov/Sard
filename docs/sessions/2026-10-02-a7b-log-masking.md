@@ -202,3 +202,12 @@ repoinit, tlsid, redact/automaton.go и др., полный список в вы
 Ворота (после): `gate: PASSED (agent, full)` (`coverage: 98.1%`, `mutation score: 0.927958`),
 `gate: PASSED (sdk, full)` (`coverage: 100.0%`, `mutation score: 1.000000`),
 `gate: PASSED (server, full)` (`coverage: 96.2% (instructions)`). Ошибок 429 при загрузке не было.
+
+## Итог и дефекты
+
+Конвейер пройден полностью: specifier → coder → cleaner → architect (APPROVED) → hardener.
+Найденные по ходу дефекты и задачи, не вошедшие в A7b, записаны в `docs/open-questions.md`:
+OQ-089 (путь хоста в ошибке `pluginhost.Secrets.Secret`, ADR 0008), OQ-090 (нет теста списка
+зависимостей агента, ADR 0027), OQ-091 (эквивалентные мутанты в `redact`), OQ-092 (нестабильный
+сетевой тест `enroll`), OQ-093 (мутационный этап агента хрупок под нагрузкой), OQ-094 (выжившие
+мутанты в коде до A7b), OQ-095 (`make e2e` не работает в облачной среде из-за 429).
