@@ -113,6 +113,14 @@ data class SourceView(
     override fun toString() = "SourceView(id=$id, name=$name, agentId=$agentId, plugin=$plugin)"
 }
 
+/** What a backup step produced, from its stored output. */
+data class BackupResult(
+    val snapshotId: String,
+    val totalBytes: Long,
+    val addedBytes: Long,
+    val repositoryId: String,
+)
+
 /** A run with its steps; stage 1 runs have exactly one. */
 data class RunView(
     val id: UUID,
@@ -146,6 +154,10 @@ data class StepView(
     val message: String? = null,
     val startedAt: Instant? = null,
     val finishedAt: Instant? = null,
+    val filesProcessed: Long? = null,
+    val filesTotal: Long? = null,
+    /** The valid backup output the agent sent, whatever the step's status (S8b В8); null if none. */
+    val backup: BackupResult? = null,
 ) {
     override fun toString() = "StepView(id=$id, action=$action, status=$status, agentId=$agentId)"
 }

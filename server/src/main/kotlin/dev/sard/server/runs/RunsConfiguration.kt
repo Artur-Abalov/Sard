@@ -118,6 +118,9 @@ class RunsConfiguration {
     ) = StepLogPartitions(jdbc, clock, properties.monthsAhead(), properties.checkInterval())
 
     @Bean
+    fun snapshots(sessions: TenantSessions) = Snapshots(sessions)
+
+    @Bean
     fun stepCounts(sessions: TenantSessions) = StepCounts(sessions)
 
     @Bean

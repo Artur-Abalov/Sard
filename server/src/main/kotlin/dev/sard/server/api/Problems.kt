@@ -6,9 +6,6 @@ package dev.sard.server.api
 import com.fasterxml.jackson.annotation.JsonProperty
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.servlet.http.HttpServletResponse
-import org.springframework.http.HttpStatus
-import org.springframework.http.ProblemDetail
-import org.springframework.web.ErrorResponseException
 import tools.jackson.databind.ObjectMapper
 import java.util.UUID
 
@@ -56,6 +53,12 @@ enum class ErrorCode {
 
     @JsonProperty("origin_rejected")
     ORIGIN_REJECTED,
+
+    @JsonProperty("agent_revoked")
+    AGENT_REVOKED,
+
+    @JsonProperty("unavailable")
+    UNAVAILABLE,
 }
 
 private const val TYPE = "URI reference identifying the problem type; about:blank when the status says it all"
@@ -110,13 +113,6 @@ data class TokenConflictProblem(
     @field:Schema(description = "The agent enrolled with the token; set when code is token_used")
     val agentId: UUID?,
 )
-
-/** Body of a stub whose behavior S8b implements. */
-fun notImplemented(): Nothing {
-    val problem = ProblemDetail.forStatus(HttpStatus.NOT_IMPLEMENTED)
-    problem.setProperty("code", "not_implemented")
-    throw ErrorResponseException(HttpStatus.NOT_IMPLEMENTED, problem, null)
-}
 
 /**
  * Writes an RFC 9457 problem body directly to a servlet response: the single writer for

@@ -3,44 +3,59 @@
 
 package dev.sard.e2e
 
+import java.net.CookieManager
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.security.MessageDigest
-import java.security.SecureRandom
-import java.sql.Timestamp
 import java.time.Duration
-import java.time.Instant
 import java.util.Base64
 import java.util.UUID
 
 /**
- * Creates enrollment tokens the way an operator would get them.
- *
- * REPLACEMENT POINT (S8b): [create] is the only place tests get a token. While
- * `POST /api/v1/enrollment-tokens` answers 501, it writes the row the server's
- * token service writes, strictly by docs/specs/enrollment-token.md. Once S8b is
- * in main, replace its body with that POST (`{"ttlSeconds": ...}` → `token`)
- * and delete [insert]; [format] and [hash] then only serve the vector test.
+ * Creates enrollment tokens the way an operator does: signs in to the server's REST API as the
+ * administrator and asks `POST /api/v1/enrollment-tokens` for one (S8b). Nothing here writes to the
+ * database; [format] and [hash] only serve the vector test of docs/specs/enrollment-token.md.
  */
 internal object EnrollmentTokens {
     /** The open core's only tenant (`TenantResolver.DEFAULT_TENANT_ID`, V2__tenants.sql). */
     val DEFAULT_TENANT: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
     private const val SECRET_BYTES = 32
-    private val random = SecureRandom()
+    private val TOKEN = Regex("\"token\"\\s*:\\s*\"(sard_[A-Za-z0-9_-]{43}\\.[0-9a-f]{64})\"")
 
     /**
-     * A fresh single-use token for [env]'s server, valid for [ttl]. The
-     * fingerprint is the root of the chain the gRPC port presents, as an agent
-     * would pin it. The token is registered as a secret of [env]'s logs.
+     * A fresh single-use token for [env]'s server, valid for [ttl], from the REST API. The token is
+     * registered as a secret of [env]'s logs.
      */
     fun create(
         env: SardEnvironment,
         ttl: Duration = Duration.ofHours(1),
         label: String = "e2e",
     ): String {
-        val secret = ByteArray(SECRET_BYTES).also(random::nextBytes)
-        val fingerprint = ServerTls.fingerprint(ServerTls.presentedChain(env).last())
-        insert(env, hash(secret), ttl, label)
-        return format(secret, fingerprint).also(env::secret)
+        val http = HttpClient.newBuilder().cookieHandler(CookieManager()).build()
+        val signIn = post(http, env, "/api/v1/session", """{"password":"${env.adminPassword}"}""")
+        check(signIn.statusCode() == HTTP_NO_CONTENT) { "sign-in answered ${signIn.statusCode()}" }
+        val created = post(http, env, "/api/v1/enrollment-tokens", """{"ttlSeconds":${ttl.seconds},"label":"$label"}""")
+        check(created.statusCode() == HTTP_CREATED) { "creating a token answered ${created.statusCode()}" }
+        val token = checkNotNull(TOKEN.find(created.body())) { "the answer has no token" }.groupValues[1]
+        return token.also(env::secret)
     }
+
+    private fun post(
+        http: HttpClient,
+        env: SardEnvironment,
+        path: String,
+        body: String,
+    ): HttpResponse<String> =
+        http.send(
+            HttpRequest
+                .newBuilder(URI.create(env.httpBase + path))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build(),
+            HttpResponse.BodyHandlers.ofString(),
+        )
 
     /** `sard_<base64url secret, no padding>.<fingerprint>` (spec: "Формат"). */
     fun format(
@@ -54,29 +69,6 @@ internal object EnrollmentTokens {
     /** `token_hash`: SHA-256 of the 32 raw secret bytes, not of the string (spec: "Хранение"). */
     fun hash(secret: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(secret)
 
-    private fun insert(
-        env: SardEnvironment,
-        tokenHash: ByteArray,
-        ttl: Duration,
-        label: String,
-    ) {
-        val now = Instant.now()
-        env.database().use { connection ->
-            connection
-                .prepareStatement(
-                    """
-                    INSERT INTO enrollment_tokens (id, tenant_id, token_hash, expires_at, created_at, label)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """.trimIndent(),
-                ).use { insert ->
-                    insert.setObject(1, UUID.randomUUID())
-                    insert.setObject(2, DEFAULT_TENANT)
-                    insert.setBytes(3, tokenHash)
-                    insert.setTimestamp(4, Timestamp.from(now + ttl))
-                    insert.setTimestamp(5, Timestamp.from(now))
-                    insert.setString(6, label)
-                    insert.executeUpdate()
-                }
-        }
-    }
+    private const val HTTP_NO_CONTENT = 204
+    private const val HTTP_CREATED = 201
 }

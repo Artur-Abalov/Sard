@@ -32,6 +32,12 @@ private fun agentBinary(): Path {
     return Path.of(path).also { check(Files.isExecutable(it)) { "no agent binary at $it" } }
 }
 
+/** The oldest restic the agent accepts: `min_version=` in agent/internal/restic/restic-version. */
+private fun resticMinVersion(): String {
+    val path = checkNotNull(System.getProperty("sard.test.restic-version-file")) { "run through Gradle" }
+    return Files.readAllLines(Path.of(path)).single { it.startsWith("min_version=") }.removePrefix("min_version=")
+}
+
 /**
  * S4a, verification strategy 7: the real Go sard-agent (A3), holding a certificate from
  * Enroll, registers against the server built from this code. Nothing is faked on the agent
@@ -67,7 +73,8 @@ class AgentSeamIntegrationTest(
     /**
      * The agent's YAML: its enrolled certificate, one local repository, one secret, one script.
      * The agent refuses to start when a secret file or script is open to group or others (A1),
-     * so those are written owner-only.
+     * so those are written owner-only. It also refuses to start without a restic it accepts
+     * (A5b), so restic is a stand-in that passes `restic version` and fails everything else.
      */
     private fun config(agent: EnrolledAgent): Path {
         val write = { name: String, text: String -> dir.resolve(name).also { Files.writeString(it, text) } }
@@ -79,7 +86,15 @@ class AgentSeamIntegrationTest(
         val key = ownerOnly("agent.key", Pem.privateKey(agent.keys.private), "rw-------")
         val password = ownerOnly("repo.password", "not-a-real-key", "rw-------")
         val script = ownerOnly("pre-dump", "#!/bin/sh\nexit 0\n", "rwx------")
-        // restic is deliberately absent: the agent then announces the repository with an empty id.
+        // No repository is reachable through this restic: the agent announces it with an empty id.
+        val resticScript =
+            """
+            #!/bin/sh
+            [ "$1" = version ] && echo "restic ${resticMinVersion()} compiled with go" && exit 0
+            echo "Fatal: not a real restic" >&2
+            exit 1
+            """.trimIndent() + "\n"
+        val restic = ownerOnly("restic", resticScript, "rwx------")
         val yaml =
             """
             server:
@@ -89,7 +104,7 @@ class AgentSeamIntegrationTest(
               cert_file: $cert
               key_file: $key
             restic:
-              path: ${dir.resolve("no-restic")}
+              path: $restic
             executor:
               state_dir: ${dir.resolve("state")}
             repositories:

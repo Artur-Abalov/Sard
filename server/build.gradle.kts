@@ -66,6 +66,7 @@ dependencies {
     implementation("org.bouncycastle:bcpkix-jdk18on:1.86")
     implementation("com.google.api.grpc:proto-google-common-protos:2.64.1")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-api:3.1.1")
+    implementation("com.networknt:json-schema-validator:3.0.8")
     implementation("tools.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation(project(":proto-jvm"))
@@ -113,6 +114,12 @@ tasks.test {
     useJUnitPlatform()
     dependsOn(buildTestAgent)
     systemProperty("sard.test.agent-binary", testAgentBinary.get().asFile.path)
+    // The agent refuses to start without a restic it accepts (A5b, ADR 0017); the seam tests
+    // give it a stand-in that reports the minimum version from this file.
+    systemProperty(
+        "sard.test.restic-version-file",
+        rootProject.file("agent/internal/restic/restic-version").path,
+    )
     // The CA of integration tests; the default /var/lib/sard/pki is not writable here.
     systemProperty(
         "sard.pki.dir",

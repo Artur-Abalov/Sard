@@ -4,7 +4,7 @@
 import type { components } from '../../api/schema'
 import { http } from '../http'
 import { pageOf } from '../paging'
-import { noSession, notFound, PROBLEM, runActive } from '../problems'
+import { noSession, notFound, PROBLEM, problem, runActive } from '../problems'
 import { state } from '../state'
 import { validateSource } from '../validation'
 
@@ -21,7 +21,7 @@ function queuedRun(source: Schemas['Source']): Schemas['Run'] {
   const now = new Date().toISOString()
   const step: Schemas['RunStep'] = {
     id: crypto.randomUUID(),
-    ordinal: 1,
+    ordinal: 0,
     action: 'backup',
     status: 'queued',
     phase: null,
@@ -31,6 +31,8 @@ function queuedRun(source: Schemas['Source']): Schemas['Run'] {
     repositoryName: source.repositoryName,
     bytesProcessed: null,
     bytesTotal: null,
+    filesProcessed: null,
+    filesTotal: null,
     message: null,
     backup: null,
     queuedAt: now,
@@ -70,7 +72,7 @@ export const sourceHandlers = [
     if (invalid !== null) return response(422).json(invalid, PROBLEM)
     const now = new Date().toISOString()
     const source = { ...input, id: crypto.randomUUID(), createdAt: now, updatedAt: now }
-    state.sources.push(source)
+    state.sources.unshift(source)
     return response(201).json(source)
   }),
 
@@ -97,7 +99,8 @@ export const sourceHandlers = [
     if (index < 0) return response(404).json(notFound, PROBLEM)
     const active = activeRun(params.sourceId)
     if (active !== undefined) return response(409).json(runActive(active.id), PROBLEM)
-    state.sources.splice(index, 1)
+    // Soft: the source leaves the list and the card, its runs and snapshots stay.
+    state.deletedSources.push(...state.sources.splice(index, 1))
     return response(204).empty()
   }),
 
@@ -107,6 +110,9 @@ export const sourceHandlers = [
     if (source === undefined) return response(404).json(notFound, PROBLEM)
     const active = activeRun(source.id)
     if (active !== undefined) return response(409).json(runActive(active.id), PROBLEM)
+    const agent = state.agents.find((a) => a.id === source.agentId)
+    if (agent?.revokedAt != null)
+      return response(409).json(problem(409, 'Conflict', 'agent_revoked'), PROBLEM)
     const run = queuedRun(source)
     state.runs.unshift(run)
     return response(201).json(run)
@@ -114,8 +120,9 @@ export const sourceHandlers = [
 
   http.get('/api/v1/sources/{sourceId}/snapshots', ({ params, query, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
-    if (!state.sources.some((s) => s.id === params.sourceId))
-      return response(404).json(notFound, PROBLEM)
+    // The snapshots of a deleted source stay (В7); a source that never existed is not found.
+    const known = [...state.sources, ...state.deletedSources]
+    if (!known.some((s) => s.id === params.sourceId)) return response(404).json(notFound, PROBLEM)
     const snapshots = state.snapshots.filter((s) => s.sourceId === params.sourceId)
     return response(200).json(
       pageOf(snapshots, query.get('cursor'), Number(query.get('limit') ?? 50)),

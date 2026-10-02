@@ -4,6 +4,7 @@
 package dev.sard.server.api
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
@@ -35,7 +36,10 @@ data class SourceInput(
     val repositoryName: String,
     @field:Schema(description = CONFIG)
     val config: Map<String, Any?>,
-)
+) {
+    // Spring logs the bodies it reads and writes at DEBUG: never the config (its values stay out of the log).
+    override fun toString() = "SourceInput(name=$name, agentId=$agentId, plugin=$plugin)"
+}
 
 @Schema(description = "A backup source")
 data class Source(
@@ -49,7 +53,9 @@ data class Source(
     val config: Map<String, Any?>,
     val createdAt: Instant,
     val updatedAt: Instant,
-)
+) {
+    override fun toString() = "Source(id=$id, name=$name, agentId=$agentId, plugin=$plugin)"
+}
 
 @Schema(description = "A page of sources")
 data class SourcePage(
@@ -75,6 +81,8 @@ data class Snapshot(
     val createdAt: Instant,
     @field:Schema(description = "When restic forget removed it; null while it exists")
     val forgottenAt: Instant?,
+    @field:Schema(description = "The backup failed after saving it (some files unreadable): usable, but incomplete")
+    val partial: Boolean,
 )
 
 @Schema(description = "A page of snapshots")
@@ -119,7 +127,9 @@ class SourcesController(
     private val api: SourcesApi,
 ) {
     @GetMapping
-    @Operation(summary = "List sources")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "List sources", description = "Newest first.")
+    @Unprocessable
     fun listSources(
         @RequestParam(required = false) agentId: UUID?,
         @PageCursor @RequestParam(required = false) cursor: String?,
@@ -131,8 +141,8 @@ class SourcesController(
     @Operation(
         summary = "Create a source",
         description =
-            "422 codes: unknown_agent, unknown_plugin, unknown_repository, invalid_config, " +
-                "validation_failed.",
+            "422 codes: unknown_agent, agent_revoked, unknown_plugin, unknown_repository, invalid_config " +
+                "(errors name config/<JSON Pointer>), validation_failed.",
     )
     @Unprocessable
     fun createSource(
@@ -171,18 +181,31 @@ class SourcesController(
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(
         summary = "Back up the source now",
-        description = "Queues a manual backup run; it waits for an offline agent. One active run per source (D6).",
+        description =
+            "Queues a manual backup run; it waits for an offline agent. One active run per source (D6). 409 " +
+                "also when the agent is revoked (agent_revoked) or its last Register no longer offers the " +
+                "plugin (unknown_plugin) or the repository (unknown_repository).",
     )
     @NotFound
-    @RunActive
+    @ApiResponse(
+        responseCode = "409",
+        description = "The source has an active run (activeRunId), or the run cannot start (code)",
+        content = [
+            Content(
+                mediaType = PROBLEM_JSON,
+                schema = Schema(anyOf = [RunActiveProblem::class, Problem::class]),
+            ),
+        ],
+    )
     fun startRun(
         @PathVariable sourceId: UUID,
     ): Run = api.startRun(sourceId)
 
     @GetMapping("/{sourceId}/snapshots")
     @ResponseStatus(HttpStatus.OK)
-    @Operation(summary = "Snapshots of the source", description = "Newest first.")
+    @Operation(summary = "Snapshots of the source", description = "Newest first; also of a deleted source.")
     @NotFound
+    @Unprocessable
     fun listSourceSnapshots(
         @PathVariable sourceId: UUID,
         @PageCursor @RequestParam(required = false) cursor: String?,

@@ -32,4 +32,6 @@
 | [0028](0028-schema-i18n-x-sard-i18n.md) | Переводы `config_schema` плагинов: ключ `x-sard-i18n` |
 | [0029](0029-files-plugin-agent-decisions.md) | Плагин files (A6b): RestoreDeferred, OneFileSystem, `--retry-lock`, Ф12, разбор stderr |
 | [0030](0030-repo-init-lock.md) | Блокировка `sard-agent repo init` в `restic.cache_dir` |
-| [0031](0031-step-log-redaction.md) | Маскирование логов и результата шага на агенте (A7c) |
+| [0031](0031-server-config-validation.md) | Проверка конфига источника на сервере: JSON Schema 2020-12 |
+| [0032](0032-rest-api-stage1-implementation.md) | Реализация REST API этапа 1 (S8b) |
+| [0033](0033-step-log-redaction.md) | Маскирование логов и результата шага на агенте (A7c) |

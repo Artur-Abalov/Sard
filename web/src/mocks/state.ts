@@ -15,6 +15,8 @@ export interface MockState {
   lockedAt: number | null
   agents: Schemas['AgentDetails'][]
   sources: Schemas['Source'][]
+  /** Deleted sources: gone from the list and the card, their runs and snapshots stay (soft delete, К13). */
+  deletedSources: Schemas['Source'][]
   runs: Schemas['Run'][]
   snapshots: Schemas['Snapshot'][]
   stepLogs: Record<string, Schemas['LogLine'][]>
@@ -28,6 +30,7 @@ function fresh(signedIn: boolean): MockState {
     lockedAt: null,
     agents,
     sources,
+    deletedSources: [],
     runs,
     snapshots,
     stepLogs,

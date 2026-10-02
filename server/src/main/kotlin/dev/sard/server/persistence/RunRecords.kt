@@ -123,6 +123,17 @@ class RunStepRecord(
     @Column(insertable = false, updatable = false)
     val message: String? = null
 
+    @Column(name = "files_processed", insertable = false, updatable = false)
+    val filesProcessed: Long? = null
+
+    @Column(name = "files_total", insertable = false, updatable = false)
+    val filesTotal: Long? = null
+
+    /** What the agent's StepResult produced, as S7a stored it: JSON text. Never logged. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(insertable = false, updatable = false)
+    val output: String? = null
+
     @Column(name = "dispatched_at", insertable = false, updatable = false)
     val dispatchedAt: Instant? = null
 

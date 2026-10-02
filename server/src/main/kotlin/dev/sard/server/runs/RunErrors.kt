@@ -20,7 +20,7 @@ class SourceNameTaken(
     val name: String,
 ) : RunsException("a source named $name exists")
 
-/** No such agent in the tenant, or it is revoked (422 unknown_agent). */
+/** No such agent in the tenant (422 unknown_agent). */
 class UnknownAgent(
     val agentId: UUID,
 ) : RunsException("no agent $agentId")
@@ -39,3 +39,19 @@ class UnknownRepository(
 class RunActive(
     val activeRunId: UUID,
 ) : RunsException("run $activeRunId is active")
+
+/** The agent is revoked (422 agent_revoked when a source names it, 409 when a run of its source starts). */
+class AgentRevoked(
+    val agentId: UUID,
+) : RunsException("agent $agentId is revoked")
+
+/** One thing wrong with a source's config: [field] is `config` plus the JSON Pointer of the value. */
+data class ConfigViolation(
+    val field: String,
+    val message: String,
+)
+
+/** The config does not fit the plugin's schema or names an unknown secret (422 invalid_config). */
+class InvalidConfig(
+    val violations: List<ConfigViolation>,
+) : RunsException("the config has ${violations.size} violations")

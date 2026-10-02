@@ -15,7 +15,7 @@ import kotlin.test.fail
 /**
  * A7c strategy 4, the real agent and restic: a files step whose repository path holds the value
  * of one of the agent's secrets. The repository does not exist, so restic fails and prints the
- * path on stderr; the agent masks the value before the lines leave the host (ADR 0031). The
+ * path on stderr; the agent masks the value before the lines leave the host (ADR 0033). The
  * server's `step_logs` carry the marker and never the value, nor does the step's message.
  */
 class StepLogRedactionTest {
