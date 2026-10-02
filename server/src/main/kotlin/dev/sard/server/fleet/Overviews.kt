@@ -24,7 +24,7 @@ data class FirstSteps(
     val backupSucceeded: Boolean,
 ) {
     val complete: Boolean
-        get() = tokenIssued && agentConnected && repositoryInitialized && sourceCreated && backupSucceeded
+        get() = listOf(tokenIssued, agentConnected, repositoryInitialized, sourceCreated, backupSucceeded).all { it }
 }
 
 /** What the overview page shows: agents counted without the revoked ones, and the first steps. */

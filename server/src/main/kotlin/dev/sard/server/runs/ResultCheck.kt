@@ -103,24 +103,23 @@ object ResultCheck {
     fun of(
         action: Action,
         report: StepReport,
+    ): Verdict = report.status?.takeIf(::isFinal)?.let { judge(it, action, report) } ?: invalid("no final status")
+
+    private fun judge(
+        status: StepState,
+        action: Action,
+        report: StepReport,
     ): Verdict {
-        val status = report.status
-        if (status == null || status.active || status == StepState.LOST) return invalid("no final status")
+        val outcome = StepOutcome(status, report.message)
         val problem = problem(action, report.output)
         return when {
-            problem == null -> {
-                Verdict(StepOutcome(status, report.message), marked(report.output, status), invalid = null)
-            }
-
-            status == StepState.SUCCEEDED -> {
-                invalid(problem)
-            }
-
-            else -> {
-                Verdict(StepOutcome(status, report.message), null, invalid = null)
-            }
+            problem == null -> Verdict(outcome, marked(report.output, status), invalid = null)
+            status == StepState.SUCCEEDED -> invalid(problem)
+            else -> Verdict(outcome, null, invalid = null)
         }
     }
+
+    private fun isFinal(status: StepState) = !status.active && status != StepState.LOST
 
     /** A backup output learns whether its result failed; other outputs are as they came. */
     private fun marked(
