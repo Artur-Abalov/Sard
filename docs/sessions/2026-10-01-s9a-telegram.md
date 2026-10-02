@@ -62,7 +62,7 @@
 ## Фаза 2 — очередь, подписка, клиент Bot API
 
 ### Сделано
-- Миграция `V202610011200__notifications.sql`: `notification_deliveries` (ключ `UNIQUE (tenant_id, run_id, channel)`, FK `(tenant_id, run_id) → runs`, `CHECK` финала по `finished_at`), частичные индексы `notification_deliveries_due_idx` и `runs_finished_at_idx`. `TenantSchemaRulesTest` проходит без правок.
+- Миграция `V202610021200__notifications.sql` (при слиянии с `main` переименована из `V202610011200`: эту версию занял S8b): `notification_deliveries` (ключ `UNIQUE (tenant_id, run_id, channel)`, FK `(tenant_id, run_id) → runs`, `CHECK` финала по `finished_at`), частичные индексы `notification_deliveries_due_idx` и `runs_finished_at_idx`. `TenantSchemaRulesTest` проходит без правок.
 - `notify/`:
   - `Notifications.kt` — `RunNotice` (вход форматтера), `Message` из частей `Text|Bold|Code` (только простой текст), `NotificationFormatter` (S9b; `null` — уведомлять не нужно → `skipped`), `NotificationChannel`, `SendOutcome`.
   - `RetryPolicy.kt` — политика В8, чистая функция.
@@ -102,7 +102,7 @@
 - **Без бота.** `activeChannels(channels, formatter)` — нет канала или нет форматтера (S9b) → активных каналов нет, предупреждение в журнале, план ничего не создаёт.
 - **Метрики** проверены и модульно (`SimpleMeterRegistry`), и в интеграции (приращения `sent`, `retries`, `undelivered{reason=failed}`, датчик `pending`).
 - **Развёртывание.** `deploy/.env.example` (`SARD_TELEGRAM_BOT_TOKEN=` пустой, `SARD_TELEGRAM_CHAT_ID` закомментирован; `DeployEnvExampleTest`), `deploy/docker-compose.yml`, раздел `sard.notify` в `application.yaml`, `docs/operations/notifications.md`.
-- **Документы.** Черновик ADR `docs/adr/00XX-draft-notifications.md`. Реестр: OQ-047 и OQ-017 закрыты (раздел «2026-10-01, S9a»), открыт OQ-051 (очистка `notification_deliveries`, ответ В9). Ссылки в ADR 0013 («Отложено», каналы уведомлений) и в черновике S7a (OQ-047 закрыт иначе).
+- **Документы.** Черновик ADR `docs/adr/00XX-draft-notifications.md`. Реестр: OQ-047 и OQ-017 закрыты (раздел «2026-10-01, S9a»), открыт OQ-069 (очистка `notification_deliveries`, ответ В9). Ссылки в ADR 0013 («Отложено», каналы уведомлений) и в черновике S7a (OQ-047 закрыт иначе).
 
 ### Проверено (команды и результат)
 - Тест 4: `TelegramHtmlTest` — экранирование `&`, `<`, `>` во всех частях, лимит 4096 видимых символов с `…`, суррогатная пара не разрывается, теги парные.

@@ -42,6 +42,8 @@ data class BackupOutput(
     val snapshotId: String,
     val totalBytes: Long,
     val addedBytes: Long,
+    @field:Schema(description = "restic repository id; the same key held by several hosts shares it (ADR 0008)")
+    val repositoryId: String,
 )
 
 @Schema(description = "One command to the agent")
@@ -62,9 +64,17 @@ data class RunStep(
     val bytesProcessed: Long?,
     @field:Schema(description = "null while unknown")
     val bytesTotal: Long?,
+    @field:Schema(description = "Files processed so far in the current phase; null until reported")
+    val filesProcessed: Long?,
+    @field:Schema(description = "Files expected in the current phase; null while unknown")
+    val filesTotal: Long?,
     @field:Schema(description = MESSAGE)
     val message: String?,
-    @field:Schema(description = "Set when a backup step succeeded")
+    @field:Schema(
+        description =
+            "Set when the step sent a valid backup output, whatever its status: a failed backup that saved a " +
+                "snapshot shows it, and a lost step shows a late one",
+    )
     val backup: BackupOutput?,
     val queuedAt: Instant,
     val dispatchedAt: Instant?,
@@ -98,8 +108,8 @@ data class RunPage(
 data class LogLine(
     @field:Schema(description = "Position in the step's log, assigned by the server; increasing, starts at 1")
     val seq: Long,
-    @field:Schema(description = "Time on the agent")
-    val time: Instant,
+    @field:Schema(description = "Time on the agent; null for a line the server wrote itself (the truncation mark)")
+    val time: Instant?,
     val level: LogLevel,
     @field:Schema(description = "Secret values are redacted by the agent")
     val text: String,
@@ -112,6 +122,8 @@ data class LogPage(
     val nextAfterSeq: Long,
     @field:Schema(description = "More lines are there already; false is the end for now, poll to follow a step")
     val hasMore: Boolean,
+    @field:Schema(description = "The server cut this step's log at its size limit; the last line says so")
+    val truncated: Boolean,
 )
 
 /** What the run endpoints do; S8b implements it. */
@@ -120,6 +132,8 @@ interface RunsApi {
         sourceId: UUID?,
         agentId: UUID?,
         status: List<RunStatus>?,
+        queuedFrom: Instant?,
+        queuedTo: Instant?,
         cursor: String?,
         limit: Int,
     ): RunPage
@@ -141,14 +155,27 @@ class RunsController(
     private val api: RunsApi,
 ) {
     @GetMapping
-    @Operation(summary = "List runs", description = "Newest first. Filters combine with AND; status values with OR.")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(
+        summary = "List runs",
+        description =
+            "Newest first. Filters combine with AND; status values with OR. agentId is the agent that ran " +
+                "the step, not the source's current agent.",
+    )
+    @Unprocessable
     fun listRuns(
         @RequestParam(required = false) sourceId: UUID?,
         @RequestParam(required = false) agentId: UUID?,
         @RequestParam(required = false) status: List<RunStatus>?,
+        @Parameter(description = "Queued at or after this time")
+        @RequestParam(required = false)
+        queuedFrom: Instant?,
+        @Parameter(description = "Queued before this time; must not be earlier than queuedFrom")
+        @RequestParam(required = false)
+        queuedTo: Instant?,
         @PageCursor @RequestParam(required = false) cursor: String?,
         @PageLimit @RequestParam(defaultValue = DEFAULT_LIMIT) limit: Int,
-    ): RunPage = api.listRuns(sourceId, agentId, status, cursor, limit)
+    ): RunPage = api.listRuns(sourceId, agentId, status, queuedFrom, queuedTo, cursor, limit)
 
     @GetMapping("/{runId}")
     @ResponseStatus(HttpStatus.OK)
@@ -162,6 +189,7 @@ class RunsController(
     @ResponseStatus(HttpStatus.OK)
     @Operation(summary = "Log of a step", description = "Lines with seq > afterSeq, oldest first.")
     @NotFound
+    @Unprocessable
     fun listStepLogs(
         @PathVariable runId: UUID,
         @PathVariable stepId: UUID,

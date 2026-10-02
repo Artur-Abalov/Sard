@@ -12,7 +12,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * One notification of one run through one channel (migration V202610011200, S9a). Rows are
+ * One notification of one run through one channel (migration V202610021200, S9a). Rows are
  * written and moved only by guarded native statements in `notify/Deliveries`, so the entity
  * serves reads and the schema validation.
  */

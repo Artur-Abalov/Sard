@@ -23,3 +23,7 @@
 - **`requiredMode = REQUIRED` на каждом поле.** Около 150 аннотаций, которые повторяют типы Kotlin. Забытая аннотация незаметно делает поле необязательным.
 - **`@redocly/cli`.** Тянет redoc, react, styled-components и OpenTelemetry ради одной команды `lint`. `openapi-core` уже стоял транзитивно через openapi-typescript.
 - **Выдуманный 4xx у `/status` ради правила линтера.** Контракт описывал бы несуществующий ответ.
+
+## Обновление, 2026-10-01 (S8b)
+Заглушки заменены реализациями (ADR 0032, `UnimplementedApi.kt` удалён): `ApiContractIntegrationTest`
+теперь проверяет, что ни одна операция не отвечает 501. Значение `not_implemented` осталось в `ErrorCode`.

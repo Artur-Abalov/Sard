@@ -29,5 +29,6 @@ export function logPage(
     items,
     nextAfterSeq: items.length > 0 ? items[items.length - 1].seq : afterSeq,
     hasMore: after.length > limit,
+    truncated: false,
   }
 }

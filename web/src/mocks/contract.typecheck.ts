@@ -63,7 +63,7 @@ export const contractChecks = [
   // @ts-expect-error: a run of a source is created with POST, there is no PUT
   http.put('/api/v1/sources/{sourceId}/runs', () => HttpResponse.json({})),
 
-  http.post('/api/v1/sources/{sourceId}/runs', ({ response }) =>
+  http.delete('/api/v1/sources/{sourceId}', ({ response }) =>
     // @ts-expect-error: 409 carries the active run's id
     response(409).json({
       type: 'about:blank',

@@ -8,7 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-private val ISOLATED_PACKAGES = listOf("enrollment", "persistence", "pki", "extension", "registration", "runs")
+private val ISOLATED_PACKAGES = listOf("enrollment", "persistence", "pki", "extension", "registration", "runs", "fleet")
 private val FORBIDDEN_FQN_REFERENCE =
     Regex("""\b(io\.grpc|dev\.sard\.proto|com\.google\.rpc|com\.google\.protobuf|dev\.sard\.server\.agents)\.""")
 private val SESSIONS_SYSTEM_CALL = Regex("""\bsessions\.system\s*[({]""")
@@ -69,6 +69,18 @@ class ArchitectureTest {
             }
         }
         assertTrue(offenders.isEmpty(), "forbidden references:\n${offenders.joinToString("\n")}")
+    }
+
+    @Test
+    fun `the api package references nothing from the gRPC or agents boundary`() {
+        val offenders =
+            ktFiles(File(mainRoot, "api")).flatMap { file ->
+                FORBIDDEN_FQN_REFERENCE
+                    .findAll(withoutComments(file.readText()))
+                    .map { "${file.path}: ${it.groupValues[1]}." }
+                    .toList()
+            }
+        assertTrue(offenders.isEmpty(), "api referencing the agent boundary:\n${offenders.joinToString("\n")}")
     }
 
     @Test

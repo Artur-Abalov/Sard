@@ -35,12 +35,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List sources */
+        /**
+         * List sources
+         * @description Newest first.
+         */
         get: operations["listSources"];
         put?: never;
         /**
          * Create a source
-         * @description 422 codes: unknown_agent, unknown_plugin, unknown_repository, invalid_config, validation_failed.
+         * @description 422 codes: unknown_agent, agent_revoked, unknown_plugin, unknown_repository, invalid_config (errors name config/<JSON Pointer>), validation_failed.
          */
         post: operations["createSource"];
         delete?: never;
@@ -60,7 +63,7 @@ export interface paths {
         put?: never;
         /**
          * Back up the source now
-         * @description Queues a manual backup run; it waits for an offline agent. One active run per source (D6).
+         * @description Queues a manual backup run; it waits for an offline agent. One active run per source (D6). 409 also when the agent is revoked (agent_revoked) or its last Register no longer offers the plugin (unknown_plugin) or the repository (unknown_repository).
          */
         post: operations["startRun"];
         delete?: never;
@@ -141,6 +144,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agents/{agentId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke an agent
+         * @description Revokes all its certificates and closes its open stream at once; its queued, dispatched and running steps become lost. Its history stays. Revoking a revoked agent is a no-op and answers 200.
+         */
+        post: operations["revokeAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/status": {
         parameters: {
             query?: never;
@@ -170,7 +193,7 @@ export interface paths {
         };
         /**
          * Snapshots of the source
-         * @description Newest first.
+         * @description Newest first; also of a deleted source.
          */
         get: operations["listSourceSnapshots"];
         put?: never;
@@ -190,7 +213,7 @@ export interface paths {
         };
         /**
          * List runs
-         * @description Newest first. Filters combine with AND; status values with OR.
+         * @description Newest first. Filters combine with AND; status values with OR. agentId is the agent that ran the step, not the source's current agent.
          */
         get: operations["listRuns"];
         put?: never;
@@ -262,7 +285,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List agents */
+        /**
+         * List agents
+         * @description Newest first.
+         */
         get: operations["listAgents"];
         put?: never;
         post?: never;
@@ -308,7 +334,7 @@ export interface components {
             };
         };
         /** @enum {string} */
-        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected";
+        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "unavailable";
         /** @description An error (RFC 9457) */
         Problem: {
             /** @description URI reference identifying the problem type; about:blank when the status says it all */
@@ -396,6 +422,8 @@ export interface components {
             totalBytes: number;
             /** Format: int64 */
             addedBytes: number;
+            /** @description restic repository id; the same key held by several hosts shares it (ADR 0008) */
+            repositoryId: string;
         };
         /** @description A run with its steps */
         Run: {
@@ -449,9 +477,19 @@ export interface components {
              * @description null while unknown
              */
             bytesTotal: number | null;
+            /**
+             * Format: int64
+             * @description Files processed so far in the current phase; null until reported
+             */
+            filesProcessed: number | null;
+            /**
+             * Format: int64
+             * @description Files expected in the current phase; null while unknown
+             */
+            filesTotal: number | null;
             /** @description Why it failed, was rejected or lost; null on success */
             message: string | null;
-            /** @description Set when a backup step succeeded */
+            /** @description Set when the step sent a valid backup output, whatever its status: a failed backup that saved a snapshot shows it, and a lost step shows a late one */
             backup: components["schemas"]["BackupOutput"] | null;
             /** Format: date-time */
             queuedAt: string;
@@ -482,6 +520,8 @@ export interface components {
              * @description Lifetime in seconds: from 5 minutes to 7 days; 24 hours when omitted
              */
             ttlSeconds?: number | null;
+            /** @description What the token is for, shown in the list; up to 200 characters, empty means none */
+            label?: string | null;
         };
         /** @description A created token: the only response with the token string (docs/specs/enrollment-token.md) */
         CreatedEnrollmentToken: {
@@ -493,6 +533,8 @@ export interface components {
             enrollCommand: string;
             /** Format: date-time */
             expiresAt: string;
+            /** @description false when the address in the command is derived from the server names, not set */
+            agentEndpointConfigured: boolean;
         };
         /** @description The token can no longer be revoked (RFC 9457) */
         TokenConflictProblem: {
@@ -536,9 +578,66 @@ export interface components {
              * @description The agent enrolled with it; set when status is used
              */
             agentId: string | null;
+            /** @description What the token is for; null when it has no label */
+            label: string | null;
         };
         /** @enum {string} */
         EnrollmentTokenStatus: "active" | "used" | "expired" | "revoked";
+        /** @description An agent with what it reported in its last Register */
+        AgentDetails: {
+            /** Format: uuid */
+            id: string;
+            hostname: string;
+            status: components["schemas"]["AgentStatus"];
+            agentVersion: string | null;
+            os: string | null;
+            arch: string | null;
+            /** Format: date-time */
+            registeredAt: string;
+            /** Format: date-time */
+            lastSeenAt: string | null;
+            /** Format: date-time */
+            revokedAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the server last confirmed a duplicate session, two hosts with one certificate (ADR 0026); null if never. Not cleared by the server
+             */
+            duplicateSessionAt: string | null;
+            /**
+             * Format: int32
+             * @description Protocol version of the last Register; null until the first one
+             */
+            protocolVersion: number | null;
+            plugins: components["schemas"]["AgentPlugin"][];
+            repositories: components["schemas"]["AgentRepository"][];
+            /** @description Names of secrets defined on the host; values never leave it (ADR 0008) */
+            secretNames: string[];
+            /** @description Names of allowlisted scripts on the host; paths never leave it (ADR 0008) */
+            scriptNames: string[];
+        };
+        /** @description A plugin the agent offers */
+        AgentPlugin: {
+            name: string;
+            version: string;
+            actions: components["schemas"]["StepAction"][];
+            /** @description JSON Schema (draft 2020-12) of a source's config; secret fields hold a secret name */
+            configSchema: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description A restic repository defined on the agent host (ADR 0008); no credentials */
+        AgentRepository: {
+            /** @description Name a source refers to */
+            name: string;
+            /** @description Storage backend, e.g. local, sftp, s3 */
+            backend: string;
+            /** @description restic repository id; null while the repository is not initialized */
+            repositoryId: string | null;
+            /** @description crypto.Provider that hands the key to restic */
+            cryptoProvider: string;
+        };
+        /** @enum {string} */
+        AgentStatus: "online" | "offline";
         StatusResponse: {
             /** @description sard-server version */
             version: string;
@@ -582,6 +681,8 @@ export interface components {
              * @description When restic forget removed it; null while it exists
              */
             forgottenAt: string | null;
+            /** @description The backup failed after saving it (some files unreadable): usable, but incomplete */
+            partial: boolean;
         };
         /** @description A page of snapshots */
         SnapshotPage: {
@@ -644,9 +745,9 @@ export interface components {
             seq: number;
             /**
              * Format: date-time
-             * @description Time on the agent
+             * @description Time on the agent; null for a line the server wrote itself (the truncation mark)
              */
-            time: string;
+            time: string | null;
             level: components["schemas"]["LogLevel"];
             /** @description Secret values are redacted by the agent */
             text: string;
@@ -661,6 +762,8 @@ export interface components {
             nextAfterSeq: number;
             /** @description More lines are there already; false is the end for now, poll to follow a step */
             hasMore: boolean;
+            /** @description The server cut this step's log at its size limit; the last line says so */
+            truncated: boolean;
         };
         /** @description A page of enrollment tokens */
         EnrollmentTokenPage: {
@@ -668,8 +771,6 @@ export interface components {
             /** @description Pass as cursor to get the next page; null on the last page */
             nextCursor: string | null;
         };
-        /** @enum {string} */
-        AgentStatus: "online" | "offline";
         /** @description A page of agents */
         AgentPage: {
             items: components["schemas"]["AgentSummary"][];
@@ -701,54 +802,11 @@ export interface components {
              * @description When its certificates were revoked; null if not revoked
              */
             revokedAt: string | null;
-        };
-        /** @description An agent with what it reported in its last Register */
-        AgentDetails: {
-            /** Format: uuid */
-            id: string;
-            hostname: string;
-            status: components["schemas"]["AgentStatus"];
-            agentVersion: string | null;
-            os: string | null;
-            arch: string | null;
-            /** Format: date-time */
-            registeredAt: string;
-            /** Format: date-time */
-            lastSeenAt: string | null;
-            /** Format: date-time */
-            revokedAt: string | null;
             /**
-             * Format: int32
-             * @description Protocol version of the last Register; null until the first one
+             * Format: date-time
+             * @description When the server last confirmed a duplicate session, two hosts with one certificate (ADR 0026); null if never. Not cleared by the server
              */
-            protocolVersion: number | null;
-            plugins: components["schemas"]["AgentPlugin"][];
-            repositories: components["schemas"]["AgentRepository"][];
-            /** @description Names of secrets defined on the host; values never leave it (ADR 0008) */
-            secretNames: string[];
-            /** @description Names of allowlisted scripts on the host; paths never leave it (ADR 0008) */
-            scriptNames: string[];
-        };
-        /** @description A plugin the agent offers */
-        AgentPlugin: {
-            name: string;
-            version: string;
-            actions: components["schemas"]["StepAction"][];
-            /** @description JSON Schema (draft 2020-12) of a source's config; secret fields hold a secret name */
-            configSchema: {
-                [key: string]: unknown;
-            };
-        };
-        /** @description A restic repository defined on the agent host (ADR 0008); no credentials */
-        AgentRepository: {
-            /** @description Name a source refers to */
-            name: string;
-            /** @description Storage backend, e.g. local, sftp, s3 */
-            backend: string;
-            /** @description restic repository id; null while the repository is not initialized */
-            repositoryId: string | null;
-            /** @description crypto.Provider that hands the key to restic */
-            cryptoProvider: string;
+            duplicateSessionAt: string | null;
         };
     };
     responses: never;
@@ -790,6 +848,15 @@ export interface operations {
             };
             /** @description Not found in the session's tenant */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -859,6 +926,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ValidationProblem"];
                 };
             };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     deleteSource: {
@@ -915,6 +991,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["RunActiveProblem"];
                 };
             };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listSources: {
@@ -943,6 +1028,24 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1001,6 +1104,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ValidationProblem"];
                 };
             };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     startRun: {
@@ -1050,13 +1162,22 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The source has an active run (D6) */
+            /** @description The source has an active run (activeRunId), or the run cannot start (code) */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["RunActiveProblem"];
+                    "application/problem+json": components["schemas"]["RunActiveProblem"] | components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -1081,6 +1202,15 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1141,6 +1271,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     deleteSession: {
@@ -1177,6 +1316,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listEnrollmentTokens: {
@@ -1205,6 +1353,24 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1261,6 +1427,15 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -1321,6 +1496,73 @@ export interface operations {
                     "application/problem+json": components["schemas"]["TokenConflictProblem"];
                 };
             };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    revokeAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentDetails"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found in the session's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     status: {
@@ -1339,6 +1581,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -1386,6 +1637,24 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listRuns: {
@@ -1394,6 +1663,10 @@ export interface operations {
                 sourceId?: string;
                 agentId?: string;
                 status?: components["schemas"]["RunStatus"][];
+                /** @description Queued at or after this time */
+                queuedFrom?: string;
+                /** @description Queued before this time; must not be earlier than queuedFrom */
+                queuedTo?: string;
                 /** @description nextCursor of the previous page; omit for the first page */
                 cursor?: string;
                 /** @description Page size */
@@ -1416,6 +1689,24 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1456,6 +1747,15 @@ export interface operations {
             };
             /** @description Not found in the session's tenant */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1509,6 +1809,24 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getEnrollmentToken: {
@@ -1542,6 +1860,15 @@ export interface operations {
             };
             /** @description Not found in the session's tenant */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1584,6 +1911,24 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getAgent: {
@@ -1617,6 +1962,15 @@ export interface operations {
             };
             /** @description Not found in the session's tenant */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

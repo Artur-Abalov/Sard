@@ -57,6 +57,7 @@ export const agents: Schemas['AgentDetails'][] = [
     registeredAt: '2026-09-20T09:00:00Z',
     lastSeenAt: '2026-09-27T09:59:50Z',
     revokedAt: null,
+    duplicateSessionAt: null,
     protocolVersion: 1,
     plugins: [
       {
@@ -83,6 +84,7 @@ export const agents: Schemas['AgentDetails'][] = [
     registeredAt: '2026-09-21T12:00:00Z',
     lastSeenAt: '2026-09-26T18:30:00Z',
     revokedAt: null,
+    duplicateSessionAt: null,
     protocolVersion: 1,
     plugins: [{ name: 'files', version: '0.1.0', actions: ['backup'], configSchema: filesSchema }],
     repositories: [
@@ -123,7 +125,7 @@ function backupStep(
 ): Schemas['RunStep'] {
   return {
     id,
-    ordinal: 1,
+    ordinal: 0,
     action: 'backup',
     status,
     phase: 'accepted',
@@ -133,6 +135,8 @@ function backupStep(
     repositoryName: 'local',
     bytesProcessed: null,
     bytesTotal: null,
+    filesProcessed: null,
+    filesTotal: null,
     message: null,
     backup: null,
     queuedAt: times.queuedAt,
@@ -164,6 +168,8 @@ export const runs: Schemas['Run'][] = [
         phase: 'uploading',
         bytesProcessed: 734_003_200,
         bytesTotal: 2_147_483_648,
+        filesProcessed: 1_200,
+        filesTotal: 3_400,
       },
     ],
   },
@@ -209,7 +215,12 @@ export const runs: Schemas['Run'][] = [
         phase: 'uploading',
         bytesProcessed: 52_428_800,
         bytesTotal: 52_428_800,
-        backup: { snapshotId: '4f1c2a9e', totalBytes: 52_428_800, addedBytes: 1_048_576 },
+        backup: {
+          snapshotId: '4f1c2a9e',
+          totalBytes: 52_428_800,
+          addedBytes: 1_048_576,
+          repositoryId: '5a1f0c3e9b',
+        },
       },
     ],
   },
@@ -229,6 +240,7 @@ export const snapshots: Schemas['Snapshot'][] = [
     addedBytes: 1_048_576,
     createdAt: '2026-09-25T21:02:30Z',
     forgottenAt: null,
+    partial: false,
   },
 ]
 
@@ -275,6 +287,7 @@ export const enrollmentTokens: Schemas['EnrollmentToken'][] = [
     usedAt: null,
     revokedAt: null,
     agentId: null,
+    label: null,
   },
   {
     id: ids.revokedToken,
@@ -284,6 +297,7 @@ export const enrollmentTokens: Schemas['EnrollmentToken'][] = [
     usedAt: null,
     revokedAt: '2026-09-24T09:30:00Z',
     agentId: null,
+    label: null,
   },
   {
     id: ids.expiredToken,
@@ -293,6 +307,7 @@ export const enrollmentTokens: Schemas['EnrollmentToken'][] = [
     usedAt: null,
     revokedAt: null,
     agentId: null,
+    label: null,
   },
   {
     id: ids.usedToken,
@@ -302,5 +317,6 @@ export const enrollmentTokens: Schemas['EnrollmentToken'][] = [
     usedAt: '2026-09-20T09:00:00Z',
     revokedAt: null,
     agentId: ids.dbAgent,
+    label: null,
   },
 ]

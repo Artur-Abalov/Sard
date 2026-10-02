@@ -97,6 +97,11 @@ sard:
       api-url: https://api.telegram.org
       connect-timeout: 5s
       request-timeout: 10s
+logging:
+  level:
+    # At DEBUG Hibernate prints the whole state of every entity it flushes: a source's config and a
+    # step's output would reach the log (S8b: config values never do). Its own diagnostics stay at INFO.
+    org.hibernate.orm.core: INFO
 management:
   endpoints:
     web:

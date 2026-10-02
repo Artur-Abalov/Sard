@@ -60,6 +60,9 @@ class OpenApiConfiguration {
     fun originRejectedResponses(): OpenApiCustomizer = OpenApiCustomizer(::describeOriginRejected)
 
     @Bean
+    fun unavailableResponses(): OpenApiCustomizer = OpenApiCustomizer(::describeUnavailable)
+
+    @Bean
     fun requiredProperties(): OpenApiCustomizer = OpenApiCustomizer(::requireConstructorParameters)
 }
 
@@ -84,6 +87,18 @@ fun describeOriginRejected(api: OpenAPI) {
             operation.responses.addApiResponse("403", rejected)
         }
     }
+}
+
+/** Adds 503 unavailable to every operation under /api/v1: the database is down (S8b В14, К11). */
+fun describeUnavailable(api: OpenAPI) {
+    val problem = Content().addMediaType(PROBLEM_JSON, MediaType().schema(Schema<Any>().`$ref`("Problem")))
+    val unavailable = ApiResponse().description("The database is unavailable; nothing was changed").content(problem)
+    api.paths
+        .orEmpty()
+        .filterKeys { it.startsWith("/api/v1/") }
+        .values
+        .flatMap { it.readOperations() }
+        .forEach { it.responses.addApiResponse("503", unavailable) }
 }
 
 /**

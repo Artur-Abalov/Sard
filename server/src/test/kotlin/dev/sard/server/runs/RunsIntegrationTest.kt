@@ -264,7 +264,7 @@ class RunsIntegrationTest(
         val source = source()
         jdbc.update("update agents set revoked_at = now() where id = ?", tenant.agentId)
 
-        assertFailsWith<UnknownAgent> { runs.start(tenant.id, source.id) }
+        assertFailsWith<AgentRevoked> { runs.start(tenant.id, source.id) }
         assertEquals(0, tenant.count("runs"))
     }
 

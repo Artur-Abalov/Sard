@@ -11,6 +11,8 @@ private const val MAX_PORT = 65535
 /** The address agents dial to reach this server (decision 5): host:port as it goes into the enroll command. */
 data class AgentEndpoint(
     val address: String,
+    /** True when SARD_AGENT_ENDPOINT named it; false when it is derived from the server names (S8b В3). */
+    val explicit: Boolean = false,
 ) {
     fun enrollCommand(token: String): String = "sard-agent enroll --server $address --token $token"
 }
@@ -108,7 +110,7 @@ object AgentEndpointResolver {
                     "sard.pki.server-names: ${serverNames.joinToString()}",
             )
         }
-        return AgentEndpoint("${parsed.prefixAsGiven}:${parsed.port}")
+        return AgentEndpoint("${parsed.prefixAsGiven}:${parsed.port}", explicit = true)
     }
 
     private fun covered(

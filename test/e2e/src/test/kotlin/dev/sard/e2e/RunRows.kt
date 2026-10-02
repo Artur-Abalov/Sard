@@ -8,8 +8,9 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Run rows written by SQL, as `Runs.start` writes them: the REST API for runs comes with S8b and
- * a test hook on the server is ruled out (ADR 0020). Shared by the seam tests of S6a and S7a.
+ * Run rows written by SQL, as `Runs.start` writes them. The REST API refuses what the seam tests
+ * need (a source whose plugin the agent does not offer, S8b `unknown_plugin`), and a test hook on
+ * the server is ruled out (ADR 0020). Shared by the seam tests of S6a and S7a.
  */
 internal object RunRows {
     /** A source with [plugin], its manual run and the run's queued backup step; returns the step's id. */

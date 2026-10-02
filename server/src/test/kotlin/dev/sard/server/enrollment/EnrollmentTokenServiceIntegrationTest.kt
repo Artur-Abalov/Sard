@@ -315,12 +315,14 @@ class EnrollmentTokenServiceIntegrationTest(
     }
 
     @Test
-    fun `Администратор отзывает истёкший неиспользованный токен`() {
+    fun `Истёкший токен отозвать нельзя`() {
         val issued = tokens.create(tenantA, Duration.ofMinutes(5))
         clock.now = NOW + Duration.ofMinutes(10)
         val result = tokens.revoke(tenantA, issued.id, clock.now)
-        assertEquals(RevokeResult.Revoked(clock.now), result)
-        assertEquals(EnrollmentTokenState.REVOKED, tokens.get(tenantA, issued.id)?.state)
+        assertEquals(RevokeResult.Rejected(RevokeRejection.EXPIRED), result)
+        val card = tokens.get(tenantA, issued.id)
+        assertEquals(EnrollmentTokenState.EXPIRED, card?.state)
+        assertNull(card?.revokedAt)
     }
 
     @Test
@@ -332,12 +334,12 @@ class EnrollmentTokenServiceIntegrationTest(
     }
 
     @Test
-    fun `Повторный отзыв токена отклоняется`() {
+    fun `Повторный отзыв токена ничего не меняет`() {
         val issued = tokens.create(tenantA, Duration.ofHours(1))
         tokens.revoke(tenantA, issued.id, NOW)
         clock.now = NOW + Duration.ofMinutes(10)
         val result = tokens.revoke(tenantA, issued.id, clock.now)
-        assertEquals(RevokeResult.Rejected(RevokeRejection.ALREADY_REVOKED), result)
+        assertEquals(RevokeResult.Revoked(NOW), result)
         assertEquals(NOW, tokens.get(tenantA, issued.id)?.revokedAt)
     }
 

@@ -57,7 +57,9 @@ class DatabaseUnavailableIntegrationTest(
     }
 
     private fun sessionIdOf(response: HttpResponse<String>): String =
-        Regex("$SESSION_COOKIE=([^;]*)").find(response.headers().firstValue("Set-Cookie").orElseThrow())!!.groupValues[1]
+        Regex(
+            "$SESSION_COOKIE=([^;]*)",
+        ).find(response.headers().firstValue("Set-Cookie").orElseThrow())!!.groupValues[1]
 
     @Test
     fun `sign-in and reading the current session work while the database is down`() {
