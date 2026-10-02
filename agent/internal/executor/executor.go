@@ -53,6 +53,9 @@ type Reporter interface {
 	// ProgressFiles is Progress with the number of files processed and
 	// expected, for phases that count files.
 	ProgressFiles(phase agentv1.StepPhase, bytesProcessed, bytesTotal, filesProcessed, filesTotal uint64)
+	// Secret returns the content of the configured secret as it was read
+	// when the step started (a copy); false for a name that is not offered.
+	Secret(name string) ([]byte, bool)
 	// Log sends a line written by the plugin; the step's secrets are masked.
 	Log(level agentv1.LogLevel, text string)
 	// Output takes the raw output of a tool the step runs (restic's
@@ -65,6 +68,12 @@ type Reporter interface {
 type Secret struct {
 	Name  string // for diagnostics; never the value
 	Value []byte
+	// Ref is the name by which a plugin asks for this secret (Host.Secret);
+	// empty for values no plugin can ask for. Within a step the plugin gets
+	// Content, the very read that Value was taken from, so that it cannot
+	// print a value the masker does not know.
+	Ref     string
+	Content []byte
 }
 
 // Secrets says which values to mask for a step (A7c). An error keeps the

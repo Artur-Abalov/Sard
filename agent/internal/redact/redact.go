@@ -20,14 +20,15 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"unicode/utf8"
 )
 
 // Marker replaces each masked range.
 const Marker = "[REDACTED]"
 
-// ShortValueLen: values shorter than this are masked all the same, but
-// reported through OnShortValue — they are likely to mask innocent text.
-const ShortValueLen = 8
+// ShortValueLen: values shorter than this many characters are masked all the
+// same, but are likely to mask innocent text; see IsShort.
+const ShortValueLen = 4
 
 var (
 	// ErrEmptyValue: an empty value would match everywhere.
@@ -36,17 +37,13 @@ var (
 	ErrClosed = errors.New("redact: writer is closed")
 )
 
-type config struct {
-	onShort func(index, length int)
-}
-
-// Option configures New.
-type Option func(*config)
-
-// OnShortValue registers f to be called, from New, with the index and
-// length of every value shorter than ShortValueLen.
-func OnShortValue(f func(index, length int)) Option {
-	return func(c *config) { c.onShort = f }
+// IsShort reports whether v has fewer than ShortValueLen Unicode code
+// points; a value that is not valid UTF-8 is measured in bytes.
+func IsShort(v []byte) bool {
+	if utf8.Valid(v) {
+		return utf8.RuneCount(v) < ShortValueLen
+	}
+	return len(v) < ShortValueLen
 }
 
 // span is a range [start, end) of stream offsets to mask; marked is set
@@ -87,29 +84,23 @@ type Set struct {
 // Compile builds the matcher for values (copied; the caller may clear its
 // own copies afterwards). Without values it returns a nil Set, which masks
 // nothing: callers skip the matcher entirely.
-func Compile(values [][]byte, opts ...Option) (*Set, error) {
-	var c config
-	for _, o := range opts {
-		o(&c)
-	}
-	patterns, err := patternsOf(values, c.onShort)
+func Compile(values [][]byte) (*Set, error) {
+	patterns, err := patternsOf(values)
 	if len(patterns) == 0 { // also on an error
 		return nil, err
 	}
 	return &Set{ac: newAutomaton(patterns)}, nil
 }
 
-// patternsOf returns the variants of every value, reporting short ones to onShort.
-func patternsOf(values [][]byte, onShort func(index, length int)) ([][]byte, error) {
+// patternsOf returns the variants of every value.
+func patternsOf(values [][]byte) ([][]byte, error) {
 	var patterns [][]byte
 	for i, v := range values {
 		if len(v) == 0 {
 			return nil, fmt.Errorf("redact: value %d: %w", i, ErrEmptyValue)
 		}
-		if len(v) < ShortValueLen && onShort != nil {
-			onShort(i, len(v))
-		}
 		patterns = append(patterns, variants(v)...)
+		patterns = append(patterns, base64Forms(v)...)
 	}
 	return patterns, nil
 }
@@ -133,8 +124,8 @@ func (s *Set) Mask(text string) string {
 
 // New returns a Writer masking values (copied; the caller may clear its
 // own copies afterwards) on the way to dst.
-func New(dst io.Writer, values [][]byte, opts ...Option) (*Writer, error) {
-	s, err := Compile(values, opts...)
+func New(dst io.Writer, values [][]byte) (*Writer, error) {
+	s, err := Compile(values)
 	if err != nil {
 		return nil, err
 	}

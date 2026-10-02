@@ -164,6 +164,9 @@ func restoreDir(stateDir string) string {
 // executor before it starts.
 func serve(ctx context.Context, cfg config.Config, agent *app.Agent) error {
 	ref := &executorRef{}
+	// A7b: the step's secrets are masked in its logs and result.
+	masking := stepsecrets.New(cfg, os.ReadFile, slog.Default())
+	masking.Audit()
 	link, err := transport.New(transport.Options{
 		Address:  cfg.Server.Address,
 		TLS:      cfg.TLS,
@@ -179,11 +182,10 @@ func serve(ctx context.Context, cfg config.Config, agent *app.Agent) error {
 		Sink:         link,
 		StateDir:     executorStateDir(cfg.Executor.StateDir),
 		Repositories: repositoryNames(cfg.Repositories),
-		// A7c: the step's secrets are masked in its logs and result.
-		Secrets:     stepsecrets.New(cfg, os.ReadFile),
-		OutputLevel: pluginhost.OutputLevel,
-		MaxParallel: cfg.Executor.MaxParallel,
-		Logger:      slog.Default(),
+		Secrets:      masking,
+		OutputLevel:  pluginhost.OutputLevel,
+		MaxParallel:  cfg.Executor.MaxParallel,
+		Logger:       slog.Default(),
 	})
 	if err != nil {
 		return err

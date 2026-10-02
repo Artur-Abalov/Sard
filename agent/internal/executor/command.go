@@ -42,8 +42,9 @@ type command struct {
 	waited  time.Duration
 	started time.Time
 
-	mask *redact.Set    // the step's secrets; nil masks nothing
-	out  *steplog.Lines // the step's tool output; nil before prepare
+	mask *redact.Set       // the step's secrets; nil masks nothing
+	refs map[string][]byte // what Host.Secret returns, by name
+	out  *steplog.Lines    // the step's tool output; nil before prepare
 
 	progress *agentv1.StepProgress // last sent
 	sentAt   time.Time
@@ -198,7 +199,12 @@ func (e *Executor) call(ctx context.Context, c *command) (ret returned) {
 	defer func() {
 		if v := recover(); v != nil {
 			ret.panicked = v
-			e.opts.Logger.Error("plugin panicked", "command_id", c.step.GetCommandId(), "panic", v, "stack", string(debug.Stack()))
+			// The value may quote a secret: the agent's log is masked too.
+			e.mu.Lock()
+			mask := c.mask
+			e.mu.Unlock()
+			e.opts.Logger.Error("plugin panicked", "command_id", c.step.GetCommandId(),
+				"panic", mask.Mask(fmt.Sprint(v)), "stack", mask.Mask(string(debug.Stack())))
 		}
 	}()
 	ret.result, ret.err = c.handler.Run(ctx, c.step, &reporter{e: e, c: c})

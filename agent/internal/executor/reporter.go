@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"bytes"
 	"io"
 
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
@@ -56,6 +57,14 @@ func (r *reporter) Log(level agentv1.LogLevel, text string) {
 		return
 	}
 	r.e.opts.Sink.Log(r.c.step.GetCommandId(), &agentv1.LogLine{Time: timestamppb.New(now), Level: level, Text: mask.Mask(text)})
+}
+
+// Secret answers from the contents read when the step started (OQ-085).
+func (r *reporter) Secret(name string) ([]byte, bool) {
+	r.e.mu.Lock()
+	defer r.e.mu.Unlock()
+	content, ok := r.c.refs[name]
+	return bytes.Clone(content), ok
 }
 
 // Output is the step's tool output, opened before the handler started.

@@ -46,16 +46,6 @@ func TestCompileRejectsEmptyValueWithoutEchoingValues(t *testing.T) {
 	}
 }
 
-func TestCompileReportsShortValues(t *testing.T) {
-	var got []string
-	_, err := Compile([][]byte{[]byte("long-enough"), []byte("short")}, OnShortValue(func(i, n int) {
-		got = append(got, fmt.Sprintf("%d:%d", i, n))
-	}))
-	if err != nil || len(got) != 1 || got[0] != "1:5" {
-		t.Fatalf("short = %v, err = %v", got, err)
-	}
-}
-
 func TestMaskMasksEveryVariantAndLeavesOtherTextAlone(t *testing.T) {
 	s := mustCompile(t, "p@ss word")
 	cases := map[string]string{

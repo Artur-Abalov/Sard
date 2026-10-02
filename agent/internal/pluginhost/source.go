@@ -20,6 +20,8 @@ type Reporter interface {
 	Progress(phase agentv1.StepPhase, bytesProcessed, bytesTotal uint64)
 	ProgressFiles(phase agentv1.StepPhase, bytesProcessed, bytesTotal, filesProcessed, filesTotal uint64)
 	Log(level agentv1.LogLevel, text string)
+	// Secret is the content of a secret as the step started with it.
+	Secret(name string) ([]byte, bool)
 }
 
 // Source is a plugin ready to run on this host: its schema compiled
@@ -127,7 +129,14 @@ func (h *host) enter(phase agentv1.StepPhase) {
 	h.r.Progress(phase, 0, 0)
 }
 
-func (h *host) Secret(name string) ([]byte, error) { return h.secrets.Secret(name) }
+// Secret gives the value the step started with, the one the log masker knows;
+// a name the step did not start with is read from its file.
+func (h *host) Secret(name string) ([]byte, error) {
+	if v, ok := h.r.Secret(name); ok {
+		return v, nil
+	}
+	return h.secrets.Secret(name)
+}
 
 func (h *host) Progress(done, total uint64) {
 	h.r.Progress(agentv1.StepPhase(h.phase.Load()), done, total)
