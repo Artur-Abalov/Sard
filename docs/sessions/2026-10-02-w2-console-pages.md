@@ -86,8 +86,8 @@ Docker-демон в облачном контейнере запущен вру
 - **Токены** — в `web/src/theme.ts`, `cssVariablesResolver` выдаёт `--sard-*` и направляет на них
   переменные Mantine; `theme.test.ts` сверяет токены с `docs/design/tokens.css`.
 - **Шрифты** — `@fontsource/ibm-plex-sans` (400, 600) и `@fontsource/jetbrains-mono` (400),
-  cyrillic + latin, самохостинг; Unbounded и `logo.svg` не подключены (OQ-105): в шапке `sard`
-  строчными и пустой `LogoMark`.
+  cyrillic + latin, самохостинг; Unbounded не подключён (OQ-105). Логотип от владельца встроен
+  в шапку (`LogoMark`, inline SVG, узел `--sard-accent`), он же фавикон.
 - **Статусы** по решению владельца без зелёного: успех — синий, потеряно и таймаут — оранжевый,
   отказ — красный, «в пути» — нейтральный; иконки — SVG (`StatusIcon`).
 - **Время** — `formatRelative` (тесты первыми: ru и en, границы секунд, минут, часов и суток,
