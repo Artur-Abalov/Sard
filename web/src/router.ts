@@ -4,6 +4,7 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { createRouter, type RouterHistory } from '@tanstack/react-router'
 import { routeTree } from './routeTree.gen'
+import { parseSearch, stringifySearch } from './searchParams'
 
 export interface RouterContext {
   queryClient: QueryClient
@@ -19,6 +20,8 @@ export function createAppRouter({ queryClient, history }: Options) {
     routeTree,
     history,
     context: { queryClient },
+    parseSearch,
+    stringifySearch,
     defaultPreload: 'intent',
     // TanStack Query owns freshness, so the router never serves a stale preload.
     defaultPreloadStaleTime: 0,

@@ -100,6 +100,7 @@ function Navigation({ onNavigate }: { onNavigate: () => void }) {
         activeOptions={{ exact: true }}
       />
       <NavLink to="/agents" label={t('agents.title')} onClick={onNavigate} />
+      <NavLink to="/tokens" label={t('tokens.title')} onClick={onNavigate} />
       <NavLink to="/sources" label={t('sources.title')} onClick={onNavigate} />
       <NavLink to="/runs" label={t('runs.title')} onClick={onNavigate} />
     </>
