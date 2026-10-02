@@ -271,11 +271,11 @@ class AdminLoginIntegrationTest(
     }
 
     @Test
-    fun `a request that gets 501 also extends the idle deadline`() {
+    fun `a request that gets 200 from a stage 1 endpoint also extends the idle deadline`() {
         val cookie = signIn()
         movable.now = LOGIN + Duration.ofHours(11)
-        val stub = send("GET", "/api/v1/agents", cookie = cookie)
-        assertEquals(501, stub.statusCode())
+        val endpoint = send("GET", "/api/v1/agents", cookie = cookie)
+        assertEquals(200, endpoint.statusCode())
         movable.now = LOGIN + Duration.ofHours(22) + Duration.ofHours(1) - Duration.ofMillis(1)
         assertEquals(200, send("GET", "/api/v1/session", cookie = cookie).statusCode())
     }
@@ -609,10 +609,10 @@ class AdminLoginIntegrationTest(
     }
 
     @Test
-    fun `a stub still answers 501 with a session`() {
+    fun `a stage 1 endpoint answers 200 with a session`() {
         val cookie = signIn()
         val response = send("GET", "/api/v1/agents", cookie = cookie)
-        assertEquals(501, response.statusCode())
+        assertEquals(200, response.statusCode())
     }
 
     @Test

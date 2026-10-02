@@ -10,12 +10,17 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
 import java.util.UUID
+
+private const val DUPLICATE_SESSION_AT =
+    "When the server last confirmed a duplicate session, two hosts with one certificate (ADR 0026); " +
+        "null if never. Not cleared by the server"
 
 @Schema(description = "An agent in the list")
 data class AgentSummary(
@@ -34,6 +39,8 @@ data class AgentSummary(
     val lastSeenAt: Instant?,
     @field:Schema(description = "When its certificates were revoked; null if not revoked")
     val revokedAt: Instant?,
+    @field:Schema(description = DUPLICATE_SESSION_AT)
+    val duplicateSessionAt: Instant?,
 )
 
 @Schema(description = "A plugin the agent offers")
@@ -68,6 +75,8 @@ data class AgentDetails(
     val registeredAt: Instant,
     val lastSeenAt: Instant?,
     val revokedAt: Instant?,
+    @field:Schema(description = DUPLICATE_SESSION_AT)
+    val duplicateSessionAt: Instant?,
     @field:Schema(description = "Protocol version of the last Register; null until the first one")
     val protocolVersion: Int?,
     val plugins: List<AgentPlugin>,
@@ -94,6 +103,8 @@ interface AgentsApi {
     ): AgentPage
 
     fun getAgent(agentId: UUID): AgentDetails
+
+    fun revokeAgent(agentId: UUID): AgentDetails
 }
 
 @RestController
@@ -103,7 +114,9 @@ class AgentsController(
     private val api: AgentsApi,
 ) {
     @GetMapping
-    @Operation(summary = "List agents")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "List agents", description = "Newest first.")
+    @Unprocessable
     fun listAgents(
         @RequestParam(required = false) status: AgentStatus?,
         @PageCursor @RequestParam(required = false) cursor: String?,
@@ -117,4 +130,17 @@ class AgentsController(
     fun getAgent(
         @PathVariable agentId: UUID,
     ): AgentDetails = api.getAgent(agentId)
+
+    @PostMapping("/{agentId}/revoke")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(
+        summary = "Revoke an agent",
+        description =
+            "Revokes all its certificates and closes its open stream at once; its queued, dispatched and running " +
+                "steps become lost. Its history stays. Revoking a revoked agent is a no-op and answers 200.",
+    )
+    @NotFound
+    fun revokeAgent(
+        @PathVariable agentId: UUID,
+    ): AgentDetails = api.revokeAgent(agentId)
 }

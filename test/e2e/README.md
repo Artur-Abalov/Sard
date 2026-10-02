@@ -39,9 +39,10 @@ make e2e-images   # только образы: sard-server:e2e, sard-agent:e2e
 
 ## Точки замены
 
+`EnrollmentTokens.create` берёт токен у `POST /api/v1/enrollment-tokens` (вход администратором паролем стенда, S8b); в базу тесты за токенами не ходят.
+
 | Помощник | Сейчас | Заменить на | Когда |
 |---|---|---|---|
-| `EnrollmentTokens.create` | строка в `enrollment_tokens` строго по спецификации | `POST /api/v1/enrollment-tokens` | S8b в `main` |
 | `AgentEnroller.enroll` | минимальный клиент Enroll: ключ P-256, CSR, сверка отпечатка | `sard-agent enroll` в контейнере агента, файлы читаются обратно | A2 в `main` |
 
 ## Заготовки (`Pending.kt`)

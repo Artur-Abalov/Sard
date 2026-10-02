@@ -20,8 +20,8 @@ private const val KEEP_LATE =
         "where tenant_id = :tenant and id = :step and status = 'lost' and output is null"
 private const val SNAPSHOT =
     "insert into snapshots (id, tenant_id, source_id, step_id, agent_id, repository_name, repository_id, " +
-        "snapshot_id, total_bytes, added_bytes, created_at) values (:id, :tenant, :source, :step, :agent, " +
-        ":repositoryName, :repositoryId, :snapshotId, :totalBytes, :addedBytes, :now) on conflict do nothing"
+        "snapshot_id, total_bytes, added_bytes, created_at, partial) values (:id, :tenant, :source, :step, :agent, " +
+        ":repositoryName, :repositoryId, :snapshotId, :totalBytes, :addedBytes, :now, :partial) on conflict do nothing"
 
 /** What [StepResults.record] did with a result; every case but an exception is acknowledged. */
 sealed interface Recorded {
@@ -143,7 +143,6 @@ class StepResults(
         verdict: Verdict,
     ) {
         val backup = verdict.output as? StepOutput.Backup ?: return
-        if (verdict.outcome.status != StepState.SUCCEEDED) return
         val inserted =
             session
                 .createNativeMutationQuery(SNAPSHOT)
@@ -158,6 +157,7 @@ class StepResults(
                 .setParameter("totalBytes", backup.totalBytes)
                 .setParameter("addedBytes", backup.addedBytes)
                 .setParameter("now", clock.instant())
+                .setParameter("partial", verdict.outcome.status != StepState.SUCCEEDED)
                 .executeUpdate()
         if (inserted == 0) {
             log.warn("snapshot {} of step {} is already recorded for another step", backup.snapshotId, step.id)

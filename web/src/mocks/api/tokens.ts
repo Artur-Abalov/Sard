@@ -6,7 +6,7 @@ import { http } from '../http'
 import { pageOf } from '../paging'
 import { noSession, notFound, PROBLEM, problem } from '../problems'
 import { state } from '../state'
-import { validateTtl } from '../validation'
+import { validateLabel, validateTtl } from '../validation'
 
 type Schemas = components['schemas']
 
@@ -33,8 +33,8 @@ function conflict(token: Schemas['EnrollmentToken']): Schemas['TokenConflictProb
 export const tokenHandlers = [
   http.post('/api/v1/enrollment-tokens', async ({ request, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
-    const { ttlSeconds } = await request.json()
-    const invalid = validateTtl(ttlSeconds)
+    const { ttlSeconds, label } = await request.json()
+    const invalid = validateTtl(ttlSeconds) ?? validateLabel(label)
     if (invalid !== null) return response(422).json(invalid, PROBLEM)
     const now = new Date()
     const expiresAt = new Date(
@@ -51,9 +51,16 @@ export const tokenHandlers = [
       usedAt: null,
       revokedAt: null,
       agentId: null,
+      label: label === undefined || label === '' ? null : label,
     })
     const enrollCommand = `sard-agent enroll --server ${GRPC_ADDRESS} --token ${token}`
-    return response(201).json({ id, token, enrollCommand, expiresAt })
+    return response(201).json({
+      id,
+      token,
+      enrollCommand,
+      expiresAt,
+      agentEndpointConfigured: false,
+    })
   }),
 
   http.get('/api/v1/enrollment-tokens', ({ query, response }) => {

@@ -13,14 +13,18 @@ private const val OWN_STATUS =
 private const val UPDATE =
     "update run_steps set phase = coalesce(cast(:phase as text), phase), " +
         "bytes_processed = coalesce(cast(:processed as bigint), bytes_processed), " +
-        "bytes_total = coalesce(cast(:total as bigint), bytes_total) " +
+        "bytes_total = coalesce(cast(:total as bigint), bytes_total), " +
+        "files_processed = coalesce(cast(:filesProcessed as bigint), files_processed), " +
+        "files_total = coalesce(cast(:filesTotal as bigint), files_total) " +
         "where tenant_id = :tenant and id = :step and status = 'running'"
 
-/** A StepProgress as the domain sees it; null is "unknown" (proto: UNSPECIFIED phase, total 0). */
+/** A StepProgress as the domain sees it; null is "unknown" (proto: UNSPECIFIED phase, a total of 0). */
 data class ProgressReport(
     val phase: String?,
     val bytesProcessed: Long?,
     val bytesTotal: Long?,
+    val filesProcessed: Long? = null,
+    val filesTotal: Long? = null,
 )
 
 enum class ProgressWritten {
@@ -94,6 +98,8 @@ class StepProgressWrites(
                 .setParameter("phase", report.phase, String::class.java)
                 .setParameter("processed", report.bytesProcessed, Long::class.javaObjectType)
                 .setParameter("total", report.bytesTotal, Long::class.javaObjectType)
+                .setParameter("filesProcessed", report.filesProcessed, Long::class.javaObjectType)
+                .setParameter("filesTotal", report.filesTotal, Long::class.javaObjectType)
                 .setParameter("tenant", tenantId)
                 .setParameter("step", stepId)
                 .executeUpdate() == 1

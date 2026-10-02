@@ -10,9 +10,30 @@ import { state } from '../state'
 type Schemas = components['schemas']
 
 function summary(agent: Schemas['AgentDetails']): Schemas['AgentSummary'] {
-  const { id, hostname, status, agentVersion, os, arch, registeredAt, lastSeenAt, revokedAt } =
-    agent
-  return { id, hostname, status, agentVersion, os, arch, registeredAt, lastSeenAt, revokedAt }
+  const {
+    id,
+    hostname,
+    status,
+    agentVersion,
+    os,
+    arch,
+    registeredAt,
+    lastSeenAt,
+    revokedAt,
+    duplicateSessionAt,
+  } = agent
+  return {
+    id,
+    hostname,
+    status,
+    agentVersion,
+    os,
+    arch,
+    registeredAt,
+    lastSeenAt,
+    revokedAt,
+    duplicateSessionAt,
+  }
 }
 
 export const agentHandlers = [
@@ -27,5 +48,15 @@ export const agentHandlers = [
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
     const agent = state.agents.find((a) => a.id === params.agentId)
     return agent === undefined ? response(404).json(notFound, PROBLEM) : response(200).json(agent)
+  }),
+
+  http.post('/api/v1/agents/{agentId}/revoke', ({ params, response }) => {
+    if (!state.signedIn) return response(401).json(noSession, PROBLEM)
+    const agent = state.agents.find((a) => a.id === params.agentId)
+    if (agent === undefined) return response(404).json(notFound, PROBLEM)
+    // Revoking a revoked agent changes nothing; otherwise it goes offline for good.
+    if (agent.revokedAt === null)
+      Object.assign(agent, { revokedAt: new Date().toISOString(), status: 'offline' })
+    return response(200).json(agent)
   }),
 ]

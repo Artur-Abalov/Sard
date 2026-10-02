@@ -7,6 +7,7 @@ type Schemas = components['schemas']
 
 export const MIN_TTL_SECONDS = 300
 export const MAX_TTL_SECONDS = 604_800
+export const MAX_LABEL_LENGTH = 200
 
 function rejected(
   code: Schemas['ErrorCode'],
@@ -30,6 +31,7 @@ export function validateSource(
 ): Schemas['ValidationProblem'] | null {
   const agent = agents.find((a) => a.id === source.agentId)
   if (agent === undefined) return rejected('unknown_agent', 'agentId', 'no such agent')
+  if (agent.revokedAt !== null) return rejected('agent_revoked', 'agentId', 'the agent is revoked')
   if (!agent.plugins.some((p) => p.name === source.plugin)) {
     return rejected('unknown_plugin', 'plugin', `the agent has no plugin ${source.plugin}`)
   }
@@ -54,4 +56,12 @@ export function validateTtl(
     'ttlSeconds',
     `from ${MIN_TTL_SECONDS} to ${MAX_TTL_SECONDS} seconds`,
   )
+}
+
+/** A token's label: up to 200 characters, or omitted. */
+export function validateLabel(
+  label: string | null | undefined,
+): Schemas['ValidationProblem'] | null {
+  if (label === null || label === undefined || label.length <= MAX_LABEL_LENGTH) return null
+  return rejected('validation_failed', 'label', `at most ${MAX_LABEL_LENGTH} characters`)
 }

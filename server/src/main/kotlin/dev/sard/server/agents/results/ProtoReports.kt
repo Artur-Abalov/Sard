@@ -24,13 +24,24 @@ import java.time.Instant
 object ProtoReports {
     fun of(result: StepResult) = StepReport(status(result.status), result.message, output(result))
 
-    /** A phase by its name (the schema's CHECK list); a total of 0 is unknown (proto), a negative counter too. */
+    /**
+     * A phase by its name (the schema's CHECK list); a total of 0 is unknown (proto), a negative counter too. Files
+     * processed 0 with no total means the phase counts no files or restic has reported none yet: unknown.
+     */
     fun progress(progress: StepProgress) =
         ProgressReport(
             phase(progress.phase),
-            progress.bytesProcessed.takeIf { it >= 0 },
-            progress.bytesTotal.takeIf { it > 0 },
+            counter(progress.bytesProcessed),
+            counter(progress.bytesTotal, unknown = progress.bytesTotal == 0L),
+            counter(progress.filesProcessed, unknown = progress.filesProcessed + progress.filesTotal == 0L),
+            counter(progress.filesTotal, unknown = progress.filesTotal == 0L),
         )
+
+    /** A uint64 counter as a signed long: one above the signed range reads negative and is unknown, as is [unknown]. */
+    private fun counter(
+        value: Long,
+        unknown: Boolean = false,
+    ): Long? = if (value < 0 || unknown) null else value
 
     /** Lines in the chunk's order; a line without a time keeps none, one without a level is info. */
     fun lines(chunk: LogChunk) =
