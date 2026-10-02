@@ -141,7 +141,8 @@ class SourcesController(
     @Operation(
         summary = "Create a source",
         description =
-            "422 codes: unknown_agent, agent_revoked, unknown_plugin, unknown_repository, invalid_config " +
+            "422 codes: unknown_agent, agent_revoked, unknown_plugin (or the plugin does not offer backup), " +
+                "unknown_repository, invalid_config " +
                 "(errors name config/<JSON Pointer>), validation_failed.",
     )
     @Unprocessable
@@ -159,7 +160,10 @@ class SourcesController(
 
     @PutMapping("/{sourceId}", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.OK)
-    @Operation(summary = "Replace a source", description = "The same 422 codes as creation.")
+    @Operation(
+        summary = "Replace a source",
+        description = "The same 422 codes as creation, unknown_plugin included when the plugin does not offer backup.",
+    )
     @NotFound
     @Unprocessable
     fun replaceSource(

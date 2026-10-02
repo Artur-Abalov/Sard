@@ -29,7 +29,8 @@ internal class Offered(
  */
 internal object AgentOffer {
     /**
-     * Refuses, in this order, an unknown agent, a revoked one, an unknown plugin, an unknown repository.
+     * Refuses, in this order, an unknown agent, a revoked one, an unknown plugin (with [requireBackup], also one
+     * that does not list backup), an unknown repository.
      * [lock] is taken on the agent's row: a run being started shares it, so it cannot slip past a revocation.
      */
     fun require(
@@ -38,13 +39,27 @@ internal object AgentOffer {
         plugin: String,
         repositoryName: String,
         lock: LockModeType = LockModeType.NONE,
+        requireBackup: Boolean = false,
     ): Offered {
         val agent = liveAgent(session, agentId, lock)
-        val announced =
-            session.find(AgentPluginRecord::class.java, AgentOwnedKey(agentId, plugin)) ?: throw UnknownPlugin(plugin)
+        val announced = announcedPlugin(session, agentId, plugin, requireBackup)
         session.find(AgentRepositoryRecord::class.java, AgentOwnedKey(agentId, repositoryName))
             ?: throw UnknownRepository(repositoryName)
         return Offered(announced.configSchema, agent.secretNames.toSet())
+    }
+
+    // A source of stage 1 backs up: a plugin that does not list backup is as good as unknown (W2 K17).
+    private fun announcedPlugin(
+        session: Session,
+        agentId: UUID,
+        plugin: String,
+        requireBackup: Boolean,
+    ): AgentPluginRecord {
+        val announced = session.find(AgentPluginRecord::class.java, AgentOwnedKey(agentId, plugin))
+        if (announced == null || (requireBackup && Action.BACKUP.stored !in announced.actions)) {
+            throw UnknownPlugin(plugin)
+        }
+        return announced
     }
 
     private fun liveAgent(

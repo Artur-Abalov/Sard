@@ -14,7 +14,7 @@ export interface paths {
         get: operations["getSource"];
         /**
          * Replace a source
-         * @description The same 422 codes as creation.
+         * @description The same 422 codes as creation, unknown_plugin included when the plugin does not offer backup.
          */
         put: operations["replaceSource"];
         post?: never;
@@ -43,7 +43,7 @@ export interface paths {
         put?: never;
         /**
          * Create a source
-         * @description 422 codes: unknown_agent, agent_revoked, unknown_plugin, unknown_repository, invalid_config (errors name config/<JSON Pointer>), validation_failed.
+         * @description 422 codes: unknown_agent, agent_revoked, unknown_plugin (or the plugin does not offer backup), unknown_repository, invalid_config (errors name config/<JSON Pointer>), validation_failed.
          */
         post: operations["createSource"];
         delete?: never;
