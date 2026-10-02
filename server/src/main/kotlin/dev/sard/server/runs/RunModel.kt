@@ -119,12 +119,16 @@ data class BackupResult(
     val totalBytes: Long,
     val addedBytes: Long,
     val repositoryId: String,
+    val partial: Boolean = false,
 )
 
 /** A run with its steps; stage 1 runs have exactly one. */
 data class RunView(
     val id: UUID,
     val sourceId: UUID,
+    /** The source's current name; a deleted source's name at the time it was deleted. */
+    val sourceName: String,
+    val sourceDeleted: Boolean,
     val agentId: UUID,
     val trigger: Trigger,
     val status: RunState,

@@ -21,7 +21,8 @@ import java.util.UUID
 private const val ACTIVE_RUN_KEY = "runs_active_source_key"
 private const val STEPS_OF = "from RunStepRecord where runId = :run order by ordinal"
 private const val LIST_RUNS =
-    "select r, s.agentId from RunRecord r join RunStepRecord s on s.runId = r.id and s.ordinal = 0"
+    "select r, s.agentId, src from RunRecord r join RunStepRecord s on s.runId = r.id and s.ordinal = 0 " +
+        "join SourceRecord src on src.id = r.sourceId"
 private val JSON = JsonMapper.builder().build()
 
 /**
@@ -119,7 +120,8 @@ class Runs(
                         RunStepRecord::class.java,
                     ).setParameter("run", runId)
                     .list()
-            RunViews.of(run, steps.first().agentId, steps)
+            val source = session.find(SourceRecord::class.java, run.sourceId)!!
+            RunViews.of(run, steps.first().agentId, source, steps)
         }
 
     /**
@@ -142,7 +144,7 @@ class Runs(
                 )
             filter.bind(query)
             after?.bind(query)
-            query.setMaxResults(limit).list().map { RunViews.of(it[0] as RunRecord, it[1] as UUID, emptyList()) }
+            query.setMaxResults(limit).list().map { RunViews.of(it[0] as RunRecord, it[1] as UUID, it[2] as SourceRecord, emptyList()) }
         }
 
     private fun create(
@@ -159,7 +161,7 @@ class Runs(
         session.persist(run)
         session.persist(step)
         session.flush()
-        return RunViews.of(run, source.agentId, listOf(step))
+        return RunViews.of(run, source.agentId, source, listOf(step))
     }
 
     private fun backupStep(
@@ -185,10 +187,13 @@ internal object RunViews {
     fun of(
         run: RunRecord,
         agentId: UUID,
+        source: SourceRecord,
         steps: List<RunStepRecord>,
     ) = RunView(
         id = run.id,
         sourceId = run.sourceId,
+        sourceName = source.name,
+        sourceDeleted = source.deletedAt != null,
         agentId = agentId,
         trigger = Trigger.of(run.trigger),
         status = RunState.of(run.status),
@@ -234,6 +239,7 @@ internal object RunViews {
                     it.path("totalBytes").asLong(),
                     it.path("addedBytes").asLong(),
                     it.path("repositoryId").asString(),
+                    it.path("partial").asBoolean(false),
                 )
             }
 }
