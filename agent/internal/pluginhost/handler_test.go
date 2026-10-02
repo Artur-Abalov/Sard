@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -38,6 +39,7 @@ type handlersFixture struct {
 	handlers   *pluginhost.Handlers
 	repo       *repo
 	restoreDir string
+	stderr     []io.Writer // what each repository lookup was given
 }
 
 func newHandlers(t *testing.T, plugins ...sdk.Plugin) *handlersFixture {
@@ -48,7 +50,10 @@ func newHandlers(t *testing.T, plugins ...sdk.Plugin) *handlersFixture {
 	}
 	f := &handlersFixture{repo: &repo{}, restoreDir: filepath.Join(t.TempDir(), "restore")}
 	secrets := pluginhost.NewSecrets(map[string]string{"pg": "/etc/sard/pg"}, (&files{data: map[string]string{"/etc/sard/pg": "s3cret"}}).read)
-	repos := func(name string) (restic.Repository, bool) { return f.repo, name == "main" }
+	repos := func(name string, stderr io.Writer) (restic.Repository, bool) {
+		f.stderr = append(f.stderr, stderr)
+		return f.repo, name == "main"
+	}
 	f.handlers, err = pluginhost.NewHandlers(reg, secrets, repos, f.restoreDir)
 	if err != nil {
 		t.Fatal(err)
@@ -63,6 +68,25 @@ func (f *handlersFixture) run(t *testing.T, step *agentv1.RunStep) (*agentv1.Ste
 		t.Fatalf("no handler for %q", step.GetPlugin())
 	}
 	return h.Run(context.Background(), step, &reporter{})
+}
+
+// restic writes its stderr to the step's tool output (A7c).
+func TestTheRepositoryOfAStepWritesStderrToTheStepsOutput(t *testing.T) {
+	f := newHandlers(t, &plugin{})
+	h, _ := f.handlers.Handler("fake")
+	r := &reporter{}
+	if _, err := h.Run(context.Background(), step(backup, `{}`), r); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.stderr) != 1 {
+		t.Fatalf("lookups = %d", len(f.stderr))
+	}
+	if _, err := f.stderr[0].Write([]byte("Fatal: x\n")); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.outputText(); got != "Fatal: x\n" {
+		t.Fatalf("output = %q", got)
+	}
 }
 
 func step(action agentv1.Action, cfg string) *agentv1.RunStep {
@@ -293,7 +317,7 @@ func TestRestoreFailsWhenTheRestoreDirCannotBeCreated(t *testing.T) {
 		t.Fatal(err)
 	}
 	reg, _ := sdk.NewRegistry(&plugin{})
-	h, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string) (restic.Repository, bool) { return f.repo, true }, filepath.Join(blocker, "restore"))
+	h, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string, io.Writer) (restic.Repository, bool) { return f.repo, true }, filepath.Join(blocker, "restore"))
 	if err != nil {
 		t.Fatal(err)
 	}

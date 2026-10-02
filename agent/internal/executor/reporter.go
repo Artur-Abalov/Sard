@@ -4,6 +4,8 @@
 package executor
 
 import (
+	"io"
+
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -43,13 +45,22 @@ func reportable(phase agentv1.StepPhase) bool {
 // Log forwards a line outside the executor's lock: the sink may block for
 // back pressure (the transport's log queue), and that must slow down only this
 // plugin, never Submit, Cancel or the RunningIDs of the next Hello.
+// Each call is masked on its own: a value split across two calls is not
+// found (A7c).
 func (r *reporter) Log(level agentv1.LogLevel, text string) {
 	r.e.mu.Lock()
-	live := r.c.live()
+	live, mask := r.c.live(), r.c.mask
 	now := r.e.opts.Clock.Now()
 	r.e.mu.Unlock()
 	if !live {
 		return
 	}
-	r.e.opts.Sink.Log(r.c.step.GetCommandId(), &agentv1.LogLine{Time: timestamppb.New(now), Level: level, Text: text})
+	r.e.opts.Sink.Log(r.c.step.GetCommandId(), &agentv1.LogLine{Time: timestamppb.New(now), Level: level, Text: mask.Mask(text)})
+}
+
+// Output is the step's tool output, opened before the handler started.
+func (r *reporter) Output() io.Writer {
+	r.e.mu.Lock()
+	defer r.e.mu.Unlock()
+	return r.c.out
 }

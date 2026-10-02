@@ -57,6 +57,9 @@ type Options struct {
 	ReadFile func(name string) ([]byte, error)
 	// OnStderr receives every stderr line of restic, for the agent's logs.
 	OnStderr func(line string)
+	// Stderr, if not nil, receives restic's stderr unchanged: the log of
+	// the step that runs it (see WithStderr).
+	Stderr io.Writer
 }
 
 // Errors for restic's documented exit codes and for output the wrapper
@@ -114,6 +117,14 @@ func New(opts Options, repo config.Repository) *CLI {
 		opts.OnStderr = func(string) {}
 	}
 	return &CLI{opts: opts, repo: repo}
+}
+
+// WithStderr returns a copy of the CLI whose restic processes also write
+// their stderr, unchanged, to w; the CLI itself is not changed.
+func (c *CLI) WithStderr(w io.Writer) *CLI {
+	opts := c.opts
+	opts.Stderr = w
+	return &CLI{opts: opts, repo: c.repo}
 }
 
 // ID runs `restic cat config` and returns the repository id.
@@ -190,12 +201,13 @@ func (c *CLI) run(ctx context.Context, env []string, cl call) (*result, error) {
 func (c *CLI) start(ctx context.Context, env []string, cl call) (*result, error) {
 	res := &result{cmd: "restic " + cl.args[0]}
 	code, err := c.opts.Exec.Run(ctx, Command{
-		Path:   c.opts.Binary,
-		Args:   cl.args,
-		Env:    env,
-		Stdin:  cl.stdin,
-		Stdout: cl.stdout,
-		Stderr: res.stderr(c.opts.OnStderr, cl.stderr),
+		Path:       c.opts.Binary,
+		Args:       cl.args,
+		Env:        env,
+		Stdin:      cl.stdin,
+		Stdout:     cl.stdout,
+		Stderr:     res.stderr(c.opts.OnStderr, cl.stderr),
+		StderrCopy: c.opts.Stderr,
 	})
 	res.code = code
 	// A process that exited 0 finished its work, whenever ctx ended.
@@ -242,6 +254,17 @@ func (r *result) stderr(forward func(string), observe func([]byte)) func([]byte)
 			r.fatal = msg.Message
 		}
 	}
+}
+
+// ErrorLine reports whether a line of restic's stderr is one the wrapper
+// reads as an error: a JSON error or exit_error, a fatal message or a
+// missing path.
+func ErrorLine(line string) bool {
+	var msg message
+	if json.Unmarshal([]byte(line), &msg) == nil {
+		return msg.Type == "error" || msg.Type == "exit_error"
+	}
+	return strings.HasPrefix(line, "Fatal: ") || strings.HasSuffix(line, missing)
 }
 
 // missing is the end of the plain line restic prints for a path that is gone.

@@ -276,3 +276,19 @@ func TestProcessExecutorWithoutStdinGivesTheProcessAnEmptyOne(t *testing.T) {
 		t.Fatalf("code = %d, err = %v, stdout = %q", code, err, out.all())
 	}
 }
+
+func TestProcessExecutorCopiesStderrUnchanged(t *testing.T) {
+	var errOut lines
+	var raw strings.Builder
+	cmd := helper(t, "output")
+	cmd.Stderr, cmd.StderrCopy = errOut.add, &raw
+	if code, err := (restic.ProcessExecutor{}).Run(context.Background(), cmd); code != 3 || err != nil {
+		t.Fatalf("code = %d, err = %v", code, err)
+	}
+	if raw.String() != "\rwarn" {
+		t.Errorf("copy = %q", raw.String())
+	}
+	if want := []string{"warn"}; !slices.Equal(errOut.all(), want) {
+		t.Errorf("stderr = %q, want %q", errOut.all(), want)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -18,8 +19,9 @@ import (
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
-// Repositories returns the restic repository configured under name.
-type Repositories func(name string) (restic.Repository, bool)
+// Repositories returns the restic repository configured under name, its
+// stderr copied to the step's output (A7c).
+type Repositories func(name string, stderr io.Writer) (restic.Repository, bool)
 
 // Handlers adapts the plugins of a registry to the executor.
 type Handlers struct {
@@ -74,7 +76,7 @@ func (h *handler) Run(ctx context.Context, step *agentv1.RunStep, r executor.Rep
 	if !slices.Contains(h.Actions(), step.GetAction()) {
 		return nil, rejected(fmt.Errorf("plugin %q does not support %s", h.src.Plugin().Name(), step.GetAction()))
 	}
-	repo, ok := h.repos(step.GetRepositoryName())
+	repo, ok := h.repos(step.GetRepositoryName(), r.Output())
 	if !ok {
 		return nil, rejected(fmt.Errorf("unknown repository %q", step.GetRepositoryName()))
 	}
@@ -210,6 +212,15 @@ func classify(err error) error {
 		return rejected(err)
 	}
 	return err
+}
+
+// OutputLevel is the log level of a line of restic's stderr: WARN for the
+// errors restic reports, INFO for the rest.
+func OutputLevel(line string) agentv1.LogLevel {
+	if restic.ErrorLine(line) {
+		return agentv1.LogLevel_LOG_LEVEL_WARN
+	}
+	return agentv1.LogLevel_LOG_LEVEL_INFO
 }
 
 func rejected(err error) error { return fmt.Errorf("%w: %w", executor.ErrRejected, err) }
