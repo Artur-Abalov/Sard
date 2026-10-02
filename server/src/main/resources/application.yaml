@@ -77,6 +77,26 @@ sard:
     # step_logs has monthly partitions; the server keeps this many months ahead of the current one.
     partitions-ahead-months: 2
     partitions-check-interval: 1d
+  notify:
+    # Notifications about finished runs (S9a). The Telegram bot comes from SARD_TELEGRAM_BOT_TOKEN
+    # and SARD_TELEGRAM_CHAT_ID only, never from this file; without them notifications are off.
+    # A background tick plans one delivery per finished run and channel, then sends what is due.
+    tick-interval: 10s
+    batch: 100
+    # A delivery is held this long per attempt; a server that dies mid-send sends again after it.
+    lease: 5m
+    # 5xx, network and timeouts: initial-delay doubling up to max-delay, at most max-attempts.
+    initial-delay: 10s
+    max-delay: 10m
+    max-attempts: 8
+    # A 429 waits Telegram's retry_after, at most this long, and does not count as an attempt.
+    max-retry-after: 1h
+    # Runs finished longer ago are not told about; a delivery not made within it expires.
+    ttl: 24h
+    telegram:
+      api-url: https://api.telegram.org
+      connect-timeout: 5s
+      request-timeout: 10s
 logging:
   level:
     # At DEBUG Hibernate prints the whole state of every entity it flushes: a source's config and a

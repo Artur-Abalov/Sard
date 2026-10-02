@@ -29,6 +29,13 @@ class DeployEnvExampleTest {
     }
 
     @Test
+    fun `SARD_TELEGRAM_BOT_TOKEN is an empty placeholder, and the chat id goes with it`() {
+        val value = lines.first { it.startsWith("SARD_TELEGRAM_BOT_TOKEN=") }.substringAfter("=")
+        assertEquals("", value)
+        assertTrue(lines.any { it.contains("SARD_TELEGRAM_CHAT_ID=") }, lines.joinToString("\n"))
+    }
+
+    @Test
     fun `SARD_ADMIN_PASSWORD is commented with the minimum length, next to SARD_AGENT_ENDPOINT`() {
         val text = lines.joinToString("\n")
         assertTrue(text.contains("SARD_ADMIN_PASSWORD"), text)
