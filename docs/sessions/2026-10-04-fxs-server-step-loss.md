@@ -171,6 +171,25 @@ create index run_steps_lost_deadline_idx on run_steps (lost_deadline)
 - `StepLossHooksTest`: 2.
 - Проверка на красное: когда `StepLossOnDisconnect` ничего не делает,
   `DispatchIntegrationTest` даёт `20 tests completed, 10 failed`.
+- Существующие тесты, которые изменило согласованное правило (В1): `lost`
+  требует наступившего срока, `dispatched` с наступившим сроком тоже
+  становится lost.
+  - `StepTransitionsIntegrationTest`: тест «dispatched никогда не lost»
+    заменён на «dispatched со сроком — lost, queued — никогда». Добавлен тест
+    «отправка, прогресс, результат снимают срок».
+  - `StepTransitionsIntegrationTest` и `StepResultsIntegrationTest`: тестам,
+    где `lost` должен выиграть или участвовать в гонке, ставится наступивший
+    срок (`due(step)`). Без него оба теста гонки оставались зелёными, но
+    ничего не проверяли: `lost` всегда проигрывал.
+  - `SardServerIntegrationTest`: в список миграций добавлена `202610041200`.
+- Прогоны гейта:
+  - первый упал на detekt (см. выше);
+  - второй — 143 падения с `NoClassDefFoundError` на нетронутых классах.
+    `./scripts/gate.sh` я запускал напрямую, мимо `flock` из Makefile, а
+    хук в это время шёл через `make gate-fast`. После этого гейт запускается
+    только через `make gate M=server`;
+  - третий, под блокировкой: `1085 tests completed, 6 failed`. Все шесть —
+    тесты из списка выше, они исправлены.
 - Отступление от правила 3: тесты и код написаны до первого прогона,
   красного прогона до кода не было. Вместо него — проверка выше, с
   отключённым слушателем.

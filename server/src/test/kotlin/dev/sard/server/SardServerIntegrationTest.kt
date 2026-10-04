@@ -86,7 +86,7 @@ class SardServerIntegrationTest(
         val sql = "select version from flyway_schema_history where success order by installed_rank"
         val versions =
             listOf("1", "2", "202609271200", "202609271600", "202609281200", "202609281400") +
-                listOf("202609301200", "202609301800", "202610011200", "202610011300", "202610021200")
+                listOf("202609301200", "202609301800", "202610011200", "202610011300", "202610021200", "202610041200")
         assertEquals(versions, jdbc.queryForList(sql, String::class.java))
         assertEquals(0, jdbc.queryForObject("select count(*) from agents", Int::class.java))
     }
