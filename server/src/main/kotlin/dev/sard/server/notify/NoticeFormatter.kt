@@ -10,149 +10,15 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.math.BigDecimal
 import java.math.RoundingMode
-import java.net.URI
 import java.time.Duration
 import java.time.Instant
-import java.util.UUID
 
 private const val BINARY = 1024
 private const val SECONDS_PER_MINUTE = 60L
 private const val SECONDS_PER_HOUR = 3600L
 private const val NEWLINE = "\n"
-private val WEB_SCHEMES = setOf("http", "https")
 private const val MAX_REASON = 500
 private const val ELLIPSIS = "…"
-
-/** The language of notifications (`sard.notify.language`, S9b). */
-enum class NoticeLanguage(
-    val code: String,
-) {
-    EN("en"),
-    RU("ru"),
-    ;
-
-    companion object {
-        /** The language named by the setting; empty means the default, English. */
-        fun of(setting: String): NoticeLanguage {
-            val code = setting.trim().ifEmpty { EN.code }
-            return requireNotNull(entries.firstOrNull { it.code == code }) {
-                "sard.notify.language must be one of ${entries.joinToString { it.code }}, not \"$code\""
-            }
-        }
-    }
-}
-
-/** The public address of the console (`sard.console.public-url`, S9b), without trailing slashes. */
-class ConsoleUrl private constructor(
-    private val base: String,
-) {
-    fun run(runId: UUID): String = "$base/runs/$runId"
-
-    companion object {
-        /** The address, or null when the setting is empty; anything but an http(s) address with a host fails. */
-        fun parse(setting: String): ConsoleUrl? =
-            setting
-                .trim()
-                .takeIf { it.isNotEmpty() }
-                ?.let { ConsoleUrl(checked(it).trimEnd('/')) }
-
-        private fun checked(address: String): String {
-            val uri = runCatching { URI(address) }.getOrNull()
-            require(uri != null && webAddress(uri) && plain(uri)) {
-                "sard.console.public-url must be an absolute http or https address with a host, " +
-                    "without a query or a fragment, not \"$address\""
-            }
-            return address
-        }
-
-        private fun webAddress(uri: URI) = uri.scheme in WEB_SCHEMES && !uri.host.isNullOrEmpty()
-
-        private fun plain(uri: URI) = uri.rawQuery == null && uri.rawFragment == null
-    }
-}
-
-/** The words of one language; the names of sources and agents are never translated. */
-private class Wording(
-    val agent: String,
-    val duration: String,
-    val total: String,
-    val added: String,
-    val run: String,
-    val reason: String,
-    val notGiven: String,
-    val fullText: String,
-    val connectionLost: String,
-    val snapshotMade: String,
-    val units: List<String>,
-    val decimalSeparator: Char,
-    val durationUnits: List<String>,
-    val headlines: Map<StepState, Headline>,
-)
-
-private data class Headline(
-    val icon: String,
-    val text: String,
-)
-
-private val EN =
-    Wording(
-        agent = "Agent: ",
-        duration = "Duration: ",
-        total = "Total: ",
-        added = ", added: ",
-        run = "Run: ",
-        reason = "Reason: ",
-        notGiven = "Reason: not given",
-        fullText = "The full text is in the console.",
-        connectionLost =
-            "The connection to the agent was interrupted while the step was running. The next run can be started.",
-        snapshotMade =
-            "The snapshot was created and can be restored, but part of the data did not get into it.",
-        units = listOf("B", "KiB", "MiB", "GiB", "TiB"),
-        decimalSeparator = '.',
-        durationUnits = listOf("s", "min", "h"),
-        headlines =
-            mapOf(
-                StepState.SUCCEEDED to Headline("✅", "Backup succeeded"),
-                StepState.FAILED to Headline("❌", "Backup failed"),
-                StepState.REJECTED to Headline("❌", "Backup rejected by the agent"),
-                StepState.LOST to Headline("❌", "Backup lost"),
-                StepState.TIMED_OUT to Headline("❌", "Backup timed out"),
-                StepState.CANCELLED to Headline("⏹", "Backup cancelled"),
-            ),
-    )
-
-private val RU =
-    Wording(
-        agent = "Агент: ",
-        duration = "Длительность: ",
-        total = "Всего: ",
-        added = ", добавлено: ",
-        run = "Запуск: ",
-        reason = "Причина: ",
-        notGiven = "Причина: не указана",
-        fullText = "Полный текст — в консоли.",
-        connectionLost = "Связь с агентом прервалась, пока шаг выполнялся. Можно запустить бэкап снова.",
-        snapshotMade = "Снимок создан и пригоден для восстановления, но часть данных в него не попала.",
-        units = listOf("Б", "КиБ", "МиБ", "ГиБ", "ТиБ"),
-        decimalSeparator = ',',
-        durationUnits = listOf("с", "мин", "ч"),
-        headlines =
-            mapOf(
-                StepState.SUCCEEDED to Headline("✅", "Бэкап выполнен"),
-                StepState.FAILED to Headline("❌", "Бэкап завершился ошибкой"),
-                StepState.REJECTED to Headline("❌", "Бэкап отклонён агентом"),
-                StepState.LOST to Headline("❌", "Бэкап потерян"),
-                StepState.TIMED_OUT to Headline("❌", "Бэкап прерван по таймауту"),
-                StepState.CANCELLED to Headline("⏹", "Бэкап отменён"),
-            ),
-    )
-
-private fun wording(language: NoticeLanguage): Wording =
-    when (language) {
-        NoticeLanguage.EN -> EN
-        NoticeLanguage.RU -> RU
-    }
 
 /** What a finished run looks like in a message (S9b); the wording is the specification's, per language. */
 class RunNoticeFormatter(
@@ -205,9 +71,7 @@ class RunNoticeFormatter(
     }
 
     private fun limited(text: String): String =
-        if (text.codePointCount(0, text.length) <=
-            MAX_REASON
-        ) {
+        if (text.codePointCount(0, text.length) <= MAX_REASON) {
             text
         } else {
             text.substring(0, text.offsetByCodePoints(0, MAX_REASON)) + ELLIPSIS
