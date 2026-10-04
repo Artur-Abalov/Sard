@@ -3,6 +3,8 @@
 
 package dev.sard.e2e
 
+import com.github.dockerjava.api.model.Bind
+import com.github.dockerjava.api.model.Volume
 import org.junit.jupiter.api.extension.AfterAllCallback
 import org.junit.jupiter.api.extension.BeforeAllCallback
 import org.junit.jupiter.api.extension.ExtensionContext
@@ -33,7 +35,10 @@ import java.util.HexFormat
  * ```
  *
  * Nothing is shared between classes: no fixed container names, host ports are
- * random, the server's CA is created on its first start. When a test or the
+ * random, the server's CA is created on its first start. As in
+ * deploy/docker-compose.yml, the CA ([PKI_DIR]) and the database's data live on
+ * volumes of their own, so [recreateServer] gives a new server container the
+ * same CA (T3s, stand limit С1). When a test or the
  * start fails, the output of every container, with secrets masked, goes to
  * `test/e2e/build/e2e-logs/<class>/<test>/<container>.log`.
  *
@@ -54,6 +59,10 @@ class SardEnvironment(
     private val containers = linkedMapOf<String, Tracked>()
     private val volumes = mutableListOf<String>()
 
+    // Created in [start], when Docker is up; the containers mount them on creation.
+    private lateinit var pkiVolume: String
+    private lateinit var dbVolume: String
+
     val postgres: PostgreSQLContainer =
         track(
             POSTGRES_ALIAS,
@@ -63,6 +72,7 @@ class SardEnvironment(
                 withDatabaseName("sard")
                 withUsername("sard")
                 withPassword(dbPassword)
+                withCreateContainerCmdModifier { it.hostConfig?.withBinds(Bind(dbVolume, Volume(PG_DATA_DIR))) }
             },
         )
 
@@ -74,6 +84,7 @@ class SardEnvironment(
                 withNetworkAliases(SERVER_ALIAS)
                 withEnv(defaultServerEnv() + serverEnv)
                 withExposedPorts(HTTP_PORT, GRPC_PORT)
+                withCreateContainerCmdModifier { it.hostConfig?.withBinds(Bind(pkiVolume, Volume(PKI_DIR))) }
                 waitingFor(HealthyOrExited("/actuator/health", HTTP_PORT).withStartupTimeout(STARTUP_TIMEOUT))
             },
         )
@@ -122,12 +133,24 @@ class SardEnvironment(
      */
     fun start(testClass: String) {
         try {
+            pkiVolume = volume()
+            dbVolume = volume()
             postgres.start()
             server.start()
         } catch (e: RuntimeException) {
             writeLogs(testClass, "start")
             throw e
         }
+    }
+
+    /**
+     * Removes the server's container and starts a new one from the same image, env, network alias
+     * and volumes: the CA and the database survive, the host ports change ([httpBase], [grpcPort]
+     * follow). Agents dial the alias, so they see a server that went away and came back.
+     */
+    fun recreateServer() {
+        server.stop()
+        server.start()
     }
 
     /** Stops every container, the last added first, then removes the volumes and the network. */
@@ -191,8 +214,14 @@ class SardEnvironment(
         /** What agents inside the network dial; also the name the server certificate carries. */
         const val AGENT_ENDPOINT = "$SERVER_ALIAS:$GRPC_PORT"
 
-        /** Where the server keeps its CA (`SARD_PKI_DIR`, ADR 0014). */
-        const val CA_CERT_PATH = "/var/lib/sard/pki/ca/ca.crt"
+        /** Where the server keeps its PKI (`SARD_PKI_DIR`, ADR 0014): a volume, as `sard-pki` in deploy/. */
+        const val PKI_DIR = "/var/lib/sard/pki"
+
+        /** Where the server keeps its CA. */
+        const val CA_CERT_PATH = "$PKI_DIR/ca/ca.crt"
+
+        /** The data volume of the postgres:18 image (PGDATA is a directory below it). */
+        private const val PG_DATA_DIR = "/var/lib/postgresql"
 
         private val STARTUP_TIMEOUT = Duration.ofMinutes(3)
         private val random = SecureRandom()

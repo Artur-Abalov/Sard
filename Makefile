@@ -62,7 +62,7 @@ package: tools
 e2e-images: tools
 	docker buildx build --load $(E2E_SERVER_BUILD_FLAGS) --build-arg SARD_VERSION=$(VERSION) \
 		-f deploy/server/Dockerfile -t $(E2E_SERVER_IMAGE) .
-	DIST=$(E2E_BUILD)/dist VERSION=$(VERSION) ./scripts/package-agent.sh $(E2E_ARCH)
+	GO_TAGS=e2e DIST=$(E2E_BUILD)/dist VERSION=$(VERSION) ./scripts/package-agent.sh $(E2E_ARCH)
 	rm -rf $(E2E_BUILD)/agent-image && mkdir -p $(E2E_BUILD)/agent-image/empty
 	tar -xzf $(E2E_BUILD)/dist/sard-agent_$(VERSION)_linux_$(E2E_ARCH).tar.gz --strip-components=1 \
 		-C $(E2E_BUILD)/agent-image
