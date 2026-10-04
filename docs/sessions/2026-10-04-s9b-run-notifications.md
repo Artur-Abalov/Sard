@@ -47,10 +47,15 @@
 - Ручная процедура `docs/qa/run-notifications.md` не проходилась (по постановке задачи).
 
 ## Правки по замечаниям architect (CHANGES REQUIRED)
-- Заголовок шага — исчерпывающий `when` по `StepState` (`enHeadline`, `ruHeadline` в `NoticeWording.kt`) вместо
+- Заголовок шага — исчерпывающий `when` по `StepState` (`Wording.headline` и `Verdicts` в `NoticeWording.kt`) вместо
   карты; `outcome()` без `else`, активные состояния — `error(...)`. Тексты не менялись.
 - Тесты `RunNoticeFormatterTest`: у каждого завершённого состояния свой заголовок на каждом языке;
   активное состояние даёт `null`; список в «Без значка…» — `StepState.entries.filterNot { it.active }`.
 - `ArchitectureTest`: файлы notify без привязки к Telegram; `notify` добавлен в `ISOLATED_PACKAGES`.
 - ADR 00XX: устранено устаревшее утверждение про отсутствие форматтера, добавлен раздел «S9b: форматтер».
 - KDoc `RunNotice.startedAt` исправлен. Пункты 4, 5, 7 оставлены cleaner.
+
+## Cleaner, раунд 2 (e4aea6e)
+- Убрана недостижимая ветка «без форматтера»: `notificationService` принимает `NotificationFormatter` напрямую.
+- `WEB_SCHEMES` вынесен в общее место и используется повторно.
+- Общие тестовые заготовки каналов вынесены в `NoticeFixtures.kt`.

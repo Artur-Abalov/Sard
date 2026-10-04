@@ -13,8 +13,7 @@ private val ISOLATED_PACKAGES =
 private val FORBIDDEN_FQN_REFERENCE =
     Regex("""\b(io\.grpc|dev\.sard\.proto|com\.google\.rpc|com\.google\.protobuf|dev\.sard\.server\.agents)\.""")
 private val TELEGRAM_REFERENCE = Regex("""\b(dev\.sard\.server\.notify\.telegram|Telegram\w*)\b""")
-private val CHANNEL_NEUTRAL_NOTIFY_FILES =
-    listOf("NoticeFormatter.kt", "NoticeSettings.kt", "NoticeWording.kt", "Notifications.kt")
+private const val NOTIFY_COMPOSITION_ROOT = "NotifyConfiguration.kt"
 private val SESSIONS_SYSTEM_CALL = Regex("""\bsessions\.system\s*[({]""")
 private val LINE_COMMENT = Regex("""//.*$""", RegexOption.MULTILINE)
 private val BLOCK_COMMENT = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
@@ -38,9 +37,10 @@ private fun withoutComments(text: String): String = text.replace(BLOCK_COMMENT, 
 /**
  * A dependency-free source scan, not a JVM classpath/reflection check: greps the .kt sources
  * under `src/main/kotlin`. Keeps two boundaries from ADR 0013 and the S2b review honest:
- *  a) `enrollment/`, `persistence/`, `pki/`, `extension/`, `registration/` and `runs/` never import the
- *     gRPC/protobuf boundary or the `agents/` package that adapts domain errors to it — those packages
- *     stay usable without a gRPC server, wire format or the agents' translation layer.
+ *  a) `enrollment/`, `persistence/`, `pki/`, `extension/`, `registration/`, `runs/`, `fleet/` and
+ *     `notify/` never import the gRPC/protobuf boundary or the `agents/` package that adapts
+ *     domain errors to it — those packages stay usable without a gRPC server, wire format or
+ *     the agents' translation layer.
  *  b) `TenantSessions.system` (the one call that bypasses the tenant filter) is used only where
  *     ADR 0013 lists it: `EnrollmentTokens.ownerOf` (a token before its tenant is known) and
  *     `AgentCertificateStandings.of` (a certificate by serial during each agent call, S3; the serials
@@ -78,13 +78,15 @@ class ArchitectureTest {
     @Test
     fun `the channel-neutral notify files reference nothing from Telegram`() {
         val offenders =
-            CHANNEL_NEUTRAL_NOTIFY_FILES.flatMap { name ->
-                val file = File(mainRoot, "notify/$name")
-                TELEGRAM_REFERENCE
-                    .findAll(withoutComments(file.readText()))
-                    .map { "${file.path}: ${it.value}" }
-                    .toList()
-            }
+            File(mainRoot, "notify")
+                .listFiles { f -> f.isFile && f.extension == "kt" && f.name != NOTIFY_COMPOSITION_ROOT }
+                .orEmpty()
+                .flatMap { file ->
+                    TELEGRAM_REFERENCE
+                        .findAll(withoutComments(file.readText()))
+                        .map { "${file.path}: ${it.value}" }
+                        .toList()
+                }
         assertTrue(offenders.isEmpty(), "telegram in channel-neutral code:\n${offenders.joinToString("\n")}")
     }
 
