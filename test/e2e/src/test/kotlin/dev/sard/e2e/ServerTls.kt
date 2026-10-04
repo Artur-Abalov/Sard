@@ -3,10 +3,15 @@
 
 package dev.sard.e2e
 
+import dev.sard.proto.agent.v1.AgentServiceGrpcKt
+import dev.sard.proto.agent.v1.RenewCertificateRequest
 import io.grpc.ChannelCredentials
 import io.grpc.Grpc
 import io.grpc.ManagedChannel
+import io.grpc.Status
+import io.grpc.StatusException
 import io.grpc.TlsChannelCredentials
+import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayInputStream
 import java.security.MessageDigest
 import java.security.cert.CertificateFactory
@@ -55,6 +60,27 @@ internal object ServerTls {
             .newChannelBuilderForAddress(env.grpcHost, env.grpcPort, credentials)
             .overrideAuthority(SardEnvironment.AGENT_ENDPOINT)
             .build()
+
+    /**
+     * The status AgentService.RenewCertificate answers with [credentials]. It is the one method
+     * still unimplemented: UNIMPLEMENTED proves the call passed agent authentication (S3), while
+     * a call the interceptor refuses is UNAUTHENTICATED.
+     */
+    fun renewCertificateStatus(
+        env: SardEnvironment,
+        credentials: ChannelCredentials,
+    ): Status.Code {
+        val channel = channel(env, credentials)
+        try {
+            val stub = AgentServiceGrpcKt.AgentServiceCoroutineStub(channel)
+            val failure =
+                runCatching { runBlocking { stub.renewCertificate(RenewCertificateRequest.getDefaultInstance()) } }
+                    .exceptionOrNull()
+            return (failure as StatusException).status.code
+        } finally {
+            channel.shutdownNow()
+        }
+    }
 
     private object TrustAll : X509TrustManager {
         override fun checkClientTrusted(
