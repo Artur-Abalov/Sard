@@ -62,13 +62,13 @@ ADR: `docs/adr/00XX-draft-agent-release.md` (D12). Спецификации `fea
 
 Проверено (команда → результат):
 - `REQUIRE_RPM=1 VERSION=v0.0.1 scripts/package-agent.sh` → exit 0, 6 пакетов, манифест,
-  суммы; повтор с `GOFLAGS=-a` в другой каталог → `diff SHA256SUMS` пусто (тот же
-  каталог исходников; сборка на другом пути — в CI-задаче `reproduce`, локально не проверял).
+  суммы; повтор с `GOFLAGS=-a` в другой каталог → `diff SHA256SUMS` пусто; сборка
+  коммита `837fd1a` из `git worktree` по другому пути и из основного дерева → `diff` пусто.
+  Разные машины — CI-задача `reproduce`, локально не проверял.
 - `scripts/test-release-signing.sh <dist> v0.0.1` → exit 0: правильный релиз принят;
   отказ с ожидаемой причиной для: байт в deb, подмена `SHA256SUMS` без ключа, чужой
   ключ, подпись другой версии, нет файла, лишний файл, нет подписи.
-- `scripts/test-agent-install.sh ubuntu:24.04` (N=v0.0.1 → N+1=v0.0.2) → exit 0;
-  `ubuntu:22.04` → exit 0 (отдельным запуском). Пользователь, каталоги и права, юнит
+- `scripts/test-agent-install.sh ubuntu:22.04 ubuntu:24.04` (N=v0.0.1 → N+1=v0.0.2) → exit 0. Пользователь, каталоги и права, юнит
   `disabled`/`inactive`, `enroll` и `repo init` от `sard-agent`, служба, агент online с
   v0.0.1; после обновления — юнит `enabled`, тот же агент online с v0.0.2, конфиг, ключи,
   пароль, состояние и каталоги не изменились.
