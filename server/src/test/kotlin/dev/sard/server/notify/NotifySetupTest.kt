@@ -3,6 +3,8 @@
 
 package dev.sard.server.notify
 
+import io.github.anschnapp.mutflow.MutFlow
+import io.github.anschnapp.mutflow.junit.MutFlowTest
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -19,18 +21,19 @@ private class NamedChannel(
 }
 
 /** S9a, test strategy 6 and metrics: what the queue works with, and what it counts. */
+@MutFlowTest
 @ExtendWith(OutputCaptureExtension::class)
 class NotifySetupTest {
     @Test
     fun `without a channel nothing is active and the log says so`(output: CapturedOutput) {
-        assertEquals(emptyList(), activeChannels(emptyList()))
+        assertEquals(emptyList(), MutFlow.underTest { activeChannels(emptyList()) })
         assertTrue("Notifications are off: no channel (SARD_TELEGRAM_BOT_TOKEN, SARD_TELEGRAM_CHAT_ID)" in output.out)
     }
 
     @Test
     fun `with both every channel is active`(output: CapturedOutput) {
         val channels = listOf(NamedChannel("telegram"), NamedChannel("webhook"))
-        assertEquals(channels, activeChannels(channels))
+        assertEquals(channels, MutFlow.underTest { activeChannels(channels) })
         assertTrue("Notifications go through [telegram, webhook]" in output.out)
         assertFalse("Notifications are off" in output.out)
     }

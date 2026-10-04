@@ -67,3 +67,17 @@
   проверку исчерпывающности компилятором.
 - Сужение `outcome()` не делалось: потребовался бы отдельный тип «завершённое состояние», это не упрощение.
 - `./scripts/gate.sh server fast`: PASSED.
+
+## Hardener (мутационное тестирование S9b)
+- До (`-Pmutflow.enabled=true :server:test --rerun`, exit 0): `RunNoticeFormatterTest` 56 мутантов / 56 убито / 0 выжило;
+  `NoticeSettingsTest` 12 / 12 / 0. Выживших нет.
+- Пробел покрытия: `activeChannels` (NotifyConfiguration.kt) тестировался `NotifySetupTest` без `@MutFlowTest` — 0 мутаций.
+  Тест помечен `@MutFlowTest`, вызовы обёрнуты в `MutFlow.underTest { }`: 3 мутанта, 3 убито, 0 выжило.
+- `Deliveries.notice` (обогащение `RunNotice`: stepStatus, startedAt, backup) и `NoticeFormatterConfiguration.noticeFormatter`:
+  в добавленных S9b строках нет операторов, которые мутирует mutflow (присваивания, `?.let`, вызовы конструктора).
+  Пробный `@MutFlowTest` над `Deliveries.claim` нашёл 11 мутантов, из них 2 выжили, оба вне S9b и недостижимы через
+  `RunNotice`: `Runs.kt:244` (`partial` у BackupResult, уже убивается в `W2MutationTest`) и `HibernateTenantBridge.kt:25`
+  (`isRoot`). Пробный класс удалён: он не проверял бы S9b. Поведение обогащения проверяют интеграционные тесты
+  (`RunNotificationsIntegrationTest`). Мутанты `Deliveries.kt:144,151` (S9a, `claim`) не покрыты mutflow — вне объёма S9b.
+- После: выживших 0; `./scripts/gate.sh server` — `gate: PASSED (server, full)`, coverage 96.4% (instructions), CRAP максимум 6.0.
+- Продакшен-код не менялся.
