@@ -1,8 +1,8 @@
 # QA: уведомления о запусках в Telegram (S9b)
 
-Сценарии: `docs/specs/server/run-notifications.feature`. Спецификация —
-черновик, ждёт утверждения владельцем; шаги с пометкой `(Р…)` проверяют
-рекомендацию specifier и меняются вместе с решением владельца. Доставка
+Сценарии: `docs/specs/server/run-notifications.feature` (утверждена
+владельцем 2026-10-04, решения Р1–Р10; язык по умолчанию — en). Шаги с
+пометкой `(Р…)` проверяют соответствующее решение владельца. Доставка
 (очередь, повторы, Bot API) — S9a, черновик ADR `docs/adr/00XX-draft-notifications.md`.
 
 Здесь вручную проходятся сценарии с тегом `@qa` и сквозной путь «кнопка в
@@ -21,12 +21,13 @@
 1. Выполнить «Подготовку» из `docs/qa/files-plugin.md` (сервер, агент,
    репозиторий `qa`, переменные `AG`, `H`, `QA`, `DC`, `PSQL`, `API`, `AGENT`,
    `D`, функции `src`, `run`, `rs`; сессия в `$QA/jf`).
-2. Включить бота, публичный адрес консоли и язык по умолчанию:
+2. Включить бота, публичный адрес консоли и русский язык (по умолчанию
+   en, Р2; части 1–2 проверяют русские тексты, часть 3 — умолчание):
 
 ```bash
 TG_TOKEN='<токен бота>'; TG_CHAT='<id чата>'
 sed -i '/^#\? *SARD_TELEGRAM_BOT_TOKEN=/d; /^#\? *SARD_TELEGRAM_CHAT_ID=/d; /^#\? *SARD_CONSOLE_PUBLIC_URL=/d; /^#\? *SARD_NOTIFY_LANGUAGE=/d' deploy/.env
-printf 'SARD_TELEGRAM_BOT_TOKEN=%s\nSARD_TELEGRAM_CHAT_ID=%s\nSARD_CONSOLE_PUBLIC_URL=http://localhost:5173/\n' "$TG_TOKEN" "$TG_CHAT" >> deploy/.env
+printf 'SARD_TELEGRAM_BOT_TOKEN=%s\nSARD_TELEGRAM_CHAT_ID=%s\nSARD_CONSOLE_PUBLIC_URL=http://localhost:5173/\nSARD_NOTIFY_LANGUAGE=ru\n' "$TG_TOKEN" "$TG_CHAT" >> deploy/.env
 $DC up -d --wait server
 # dlv <run-id> — статус доставки уведомления запуска
 dlv() { $PSQL "select status||'|'||attempts||'|'||coalesce(last_error,'') from notification_deliveries where run_id='$1'"; }
@@ -101,15 +102,16 @@ waitdlv() { for i in $(seq 1 60); do s=$(dlv $1); case $s in pending*|'') sleep 
 
 ## Часть 3. Без ссылки, другой язык, адрес запроса
 
-13. Убрать адрес консоли и включить английский:
-    `sed -i '/^SARD_CONSOLE_PUBLIC_URL=/d' deploy/.env; echo SARD_NOTIFY_LANGUAGE=en >> deploy/.env; $DC up -d --wait server`.
+13. Убрать адрес консоли и настройку языка — проверить умолчание en (Р2):
+    `sed -i '/^SARD_CONSOLE_PUBLIC_URL=/d; /^SARD_NOTIFY_LANGUAGE=/d' deploy/.env; $DC up -d --wait server`.
     Запустить бэкап запросом с чужим хостом:
     `RUN=$(curl -sS -b $QA/jf -X POST $API/sources/<id источника qa-ok>/runs -H 'X-Forwarded-Host: evil.example' -H 'X-Forwarded-Proto: https' | jq -r .id)`;
     дождаться завершения, `waitdlv $RUN`
     → сообщение начинается с `✅ Backup succeeded: qa-ok`; строки
     `Agent:`, `Duration:`, `Total: 1 KiB, added: …`, последняя —
     `Run: $RUN`; ссылки нет, `evil.example` нигде нет.
-14. Вернуть язык: `sed -i '/^SARD_NOTIFY_LANGUAGE=/d' deploy/.env`.
+14. Вернуть русский язык (части 4–5 ждут русских текстов):
+    `echo SARD_NOTIFY_LANGUAGE=ru >> deploy/.env`.
     `SARD_NOTIFY_LANGUAGE=de $DC up -d server; sleep 20; $DC logs server | tail -50`
     → сервер не стартует; сообщение называет `sard.notify.language` и `ru`, `en`.
 15. `SARD_CONSOLE_PUBLIC_URL=sard.example.com $DC up -d server; sleep 20; $DC logs server | tail -50`
@@ -147,7 +149,9 @@ waitdlv() { for i in $(seq 1 60); do s=$(dlv $1); case $s in pending*|'') sleep 
 ## Часть 6. Документация и развёртывание
 
 20. `docs/operations/notifications.md` → описывает тексты сообщений (оба
-    языка, по итогам), `SARD_CONSOLE_PUBLIC_URL` и `SARD_NOTIFY_LANGUAGE`;
+    языка, по итогам), `SARD_CONSOLE_PUBLIC_URL` и `SARD_NOTIFY_LANGUAGE`
+    (значения `en` — по умолчанию — и `ru`); говорит, что запуски не вручную
+    на этапе 1 не уведомляются;
     строки «До S9b … no NotificationFormatter bean» нет.
 21. `grep -E 'SARD_CONSOLE_PUBLIC_URL|SARD_NOTIFY_LANGUAGE' deploy/.env.example`
     → обе переменные есть, закомментированы или пусты, с пояснением.
