@@ -4,6 +4,7 @@
 package dev.sard.server.notify
 
 import dev.sard.server.runs.RunState
+import dev.sard.server.runs.StepState
 import dev.sard.server.runs.Trigger
 import java.time.Duration
 import java.time.Instant
@@ -26,6 +27,18 @@ data class RunNotice(
     val sourceName: String,
     val agentId: UUID,
     val agentHostname: String,
+    /** The status of the run's only step (stage 1): the run's [status] cannot tell failed from lost. */
+    val stepStatus: StepState,
+    /** When the agent began the step; null for a step that never started (rejected before ACCEPTED). */
+    val startedAt: Instant?,
+    /** The step's backup output, if it has one: kept even when the step failed after saving a snapshot. */
+    val backup: BackupSizes?,
+)
+
+/** How much a backup saw and how much of it was new, in bytes. */
+data class BackupSizes(
+    val totalBytes: Long,
+    val addedBytes: Long,
 )
 
 /**

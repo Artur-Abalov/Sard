@@ -38,6 +38,8 @@ services:
       # Telegram notifications (S9a); both empty means notifications are off, with a warning.
       SARD_TELEGRAM_BOT_TOKEN: ${SARD_TELEGRAM_BOT_TOKEN:-}
       SARD_TELEGRAM_CHAT_ID: ${SARD_TELEGRAM_CHAT_ID:-}
+      SARD_CONSOLE_PUBLIC_URL: ${SARD_CONSOLE_PUBLIC_URL:-}
+      SARD_NOTIFY_LANGUAGE: ${SARD_NOTIFY_LANGUAGE:-}
     volumes:
       # The CA key: its own volume, backed up apart from postgres-data (docs/operations/pki.md).
       - sard-pki:/var/lib/sard/pki
