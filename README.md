@@ -119,6 +119,24 @@ Agent and CLI:
 ./cli/bin/sardctl version
 ```
 
+## Verifying releases
+
+Agent releases (tar.gz, deb, rpm for linux/amd64 and arm64) are signed with
+the Sard release key, [minisign](https://jedisct1.github.io/minisign/)
+(Ed25519), over `SHA256SUMS`. Take the key from this repository, not from the
+server you downloaded the package from: `deploy/release/sard-release.pub`.
+
+| | |
+|---|---|
+| Key ID | _set when the owner generates the key_ |
+| Public key | _set when the owner generates the key_ |
+
+```bash
+minisign -Vm SHA256SUMS -p sard-release.pub && sha256sum -c --ignore-missing SHA256SUMS
+```
+
+Details and the release process: `docs/release.md`.
+
 ## Documentation
 
 - [docs/adr/](docs/adr/README.md): architecture decision records

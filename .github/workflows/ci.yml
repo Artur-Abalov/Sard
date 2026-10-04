@@ -75,6 +75,13 @@ jobs:
         run: |
           sudo apt-get install -y rpm
           make package
+      # The release signature refuses forgeries (docs/adr/00XX-draft-agent-release.md);
+      # a throwaway key, the real one is used by release.yml only.
+      - name: Release signature checks
+        if: matrix.module == 'agent'
+        run: |
+          sudo apt-get install -y minisign
+          scripts/test-release-signing.sh dist "$(sed -n 's/^  "version": "\(.*\)",$/\1/p' dist/manifest.json)"
       - uses: actions/upload-artifact@v7
         if: matrix.module == 'agent'
         with:
@@ -83,6 +90,7 @@ jobs:
             dist/*.tar.gz
             dist/*.deb
             dist/*.rpm
+            dist/manifest.json
             dist/SHA256SUMS
 
   server:
