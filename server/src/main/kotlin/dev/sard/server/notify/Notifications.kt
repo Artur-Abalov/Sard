@@ -29,7 +29,7 @@ data class RunNotice(
     val agentHostname: String,
     /** The status of the run's only step (stage 1): the run's [status] cannot tell failed from lost. */
     val stepStatus: StepState,
-    /** When the agent began the step; null for a step that never started (rejected before ACCEPTED). */
+    /** The run's `started_at`; null when the step never started (rejected before ACCEPTED). */
     val startedAt: Instant?,
     /** The step's backup output, if it has one: kept even when the step failed after saving a snapshot. */
     val backup: BackupSizes?,

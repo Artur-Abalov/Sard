@@ -189,15 +189,33 @@ class RunNoticeFormatterTest {
     fun `Без значка заголовки успеха и ошибки всё равно различаются`() {
         for (language in NoticeLanguage.entries) {
             val words =
-                listOf(
-                    StepState.SUCCEEDED,
-                    StepState.FAILED,
-                    StepState.REJECTED,
-                    StepState.LOST,
-                    StepState.TIMED_OUT,
-                    StepState.CANCELLED,
-                ).map { format(notice(it, source = "x"), language).lines().first().substringAfter(' ') }
+                StepState.entries
+                    .filterNot { it.active }
+                    .map { format(notice(it, source = "x"), language).lines().first().substringAfter(' ') }
             assertEquals(words.size, words.toSet().size, "$language: $words")
+        }
+    }
+
+    @Test
+    fun `У каждого завершённого состояния шага свой заголовок на каждом языке`() {
+        for (language in NoticeLanguage.entries) {
+            val headlines =
+                StepState.entries.filterNot { it.active }.map { step ->
+                    format(notice(step, source = "x"), language).lines().first()
+                }
+            assertEquals(headlines.size, headlines.toSet().size, "$language: $headlines")
+            assertTrue(headlines.all { it.endsWith(": x") }, "$language: $headlines")
+        }
+    }
+
+    @Test
+    fun `Активное состояние шага не уведомляется ни на одном языке`() {
+        for (language in NoticeLanguage.entries) {
+            val formatter = RunNoticeFormatter(language, null)
+            for (step in StepState.entries.filter { it.active }) {
+                val active = notice(step)
+                assertNull(MutFlow.underTest { formatter.format(active) }, "$language $step")
+            }
         }
     }
 

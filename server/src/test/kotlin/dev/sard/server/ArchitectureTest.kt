@@ -8,9 +8,13 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-private val ISOLATED_PACKAGES = listOf("enrollment", "persistence", "pki", "extension", "registration", "runs", "fleet")
+private val ISOLATED_PACKAGES =
+    listOf("enrollment", "persistence", "pki", "extension", "registration", "runs", "fleet", "notify")
 private val FORBIDDEN_FQN_REFERENCE =
     Regex("""\b(io\.grpc|dev\.sard\.proto|com\.google\.rpc|com\.google\.protobuf|dev\.sard\.server\.agents)\.""")
+private val TELEGRAM_REFERENCE = Regex("""\b(dev\.sard\.server\.notify\.telegram|Telegram\w*)\b""")
+private val CHANNEL_NEUTRAL_NOTIFY_FILES =
+    listOf("NoticeFormatter.kt", "NoticeSettings.kt", "NoticeWording.kt", "Notifications.kt")
 private val SESSIONS_SYSTEM_CALL = Regex("""\bsessions\.system\s*[({]""")
 private val LINE_COMMENT = Regex("""//.*$""", RegexOption.MULTILINE)
 private val BLOCK_COMMENT = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
@@ -69,6 +73,19 @@ class ArchitectureTest {
             }
         }
         assertTrue(offenders.isEmpty(), "forbidden references:\n${offenders.joinToString("\n")}")
+    }
+
+    @Test
+    fun `the channel-neutral notify files reference nothing from Telegram`() {
+        val offenders =
+            CHANNEL_NEUTRAL_NOTIFY_FILES.flatMap { name ->
+                val file = File(mainRoot, "notify/$name")
+                TELEGRAM_REFERENCE
+                    .findAll(withoutComments(file.readText()))
+                    .map { "${file.path}: ${it.value}" }
+                    .toList()
+            }
+        assertTrue(offenders.isEmpty(), "telegram in channel-neutral code:\n${offenders.joinToString("\n")}")
     }
 
     @Test

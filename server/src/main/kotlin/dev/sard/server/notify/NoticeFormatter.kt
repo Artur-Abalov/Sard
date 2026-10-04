@@ -28,7 +28,7 @@ class RunNoticeFormatter(
     private val words = wording(language)
 
     override fun format(notice: RunNotice): Message? {
-        val headline = words.headlines[notice.stepStatus]
+        val headline = words.headline(notice.stepStatus)
         return if (notice.trigger == Trigger.MANUAL && headline != null) compose(notice, headline) else null
     }
 
@@ -53,9 +53,21 @@ class RunNoticeFormatter(
     private fun outcome(notice: RunNotice): List<List<Message.Part>> {
         val sizes = notice.backup?.let(::sizesLine)
         return when (notice.stepStatus) {
-            StepState.SUCCEEDED -> listOfNotNull(sizes)
-            StepState.LOST -> reasonLines(notice.message) + listOf(listOf(Message.Text(words.connectionLost)))
-            else -> reasonLines(notice.message) + snapshotLines(sizes)
+            StepState.SUCCEEDED -> {
+                listOfNotNull(sizes)
+            }
+
+            StepState.LOST -> {
+                reasonLines(notice.message) + listOf(listOf(Message.Text(words.connectionLost)))
+            }
+
+            StepState.FAILED, StepState.REJECTED, StepState.TIMED_OUT, StepState.CANCELLED -> {
+                reasonLines(notice.message) + snapshotLines(sizes)
+            }
+
+            StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING -> {
+                error("a finished run has no active step: ${notice.stepStatus}")
+            }
         }
     }
 
@@ -121,7 +133,7 @@ class RunNoticeFormatter(
     }
 }
 
-/** The formatter bean (S9b): without it notifications are off; a bad setting stops the start. */
+/** The formatter bean (S9b): always present; a bad setting stops the start. */
 @Configuration(proxyBeanMethods = false)
 class NoticeFormatterConfiguration {
     @Bean

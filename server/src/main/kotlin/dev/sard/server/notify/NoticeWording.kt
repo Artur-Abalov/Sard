@@ -20,8 +20,61 @@ internal class Wording(
     val units: List<String>,
     val decimalSeparator: Char,
     val durationUnits: List<String>,
-    val headlines: Map<StepState, Headline>,
-)
+    val verdicts: Verdicts,
+) {
+    /** The headline of a finished step; null for a step still active (nothing to announce). */
+    fun headline(step: StepState): Headline? =
+        when (step) {
+            StepState.SUCCEEDED -> {
+                Headline("✅", verdicts.succeeded)
+            }
+
+            StepState.CANCELLED -> {
+                Headline("⏹", verdicts.cancelled)
+            }
+
+            StepState.FAILED, StepState.REJECTED, StepState.LOST, StepState.TIMED_OUT -> {
+                Headline("❌", verdicts.failure(step))
+            }
+
+            StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING -> {
+                null
+            }
+        }
+}
+
+/** What each finished step is called in a headline. */
+internal class Verdicts(
+    val succeeded: String,
+    val failed: String,
+    val rejected: String,
+    val lost: String,
+    val timedOut: String,
+    val cancelled: String,
+) {
+    fun failure(step: StepState): String =
+        when (step) {
+            StepState.FAILED -> {
+                failed
+            }
+
+            StepState.REJECTED -> {
+                rejected
+            }
+
+            StepState.LOST -> {
+                lost
+            }
+
+            StepState.TIMED_OUT -> {
+                timedOut
+            }
+
+            StepState.SUCCEEDED, StepState.CANCELLED, StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING -> {
+                error("not a failure: $step")
+            }
+        }
+}
 
 internal data class Headline(
     val icon: String,
@@ -45,14 +98,14 @@ private val EN =
         units = listOf("B", "KiB", "MiB", "GiB", "TiB"),
         decimalSeparator = '.',
         durationUnits = listOf("s", "min", "h"),
-        headlines =
-            mapOf(
-                StepState.SUCCEEDED to Headline("✅", "Backup succeeded"),
-                StepState.FAILED to Headline("❌", "Backup failed"),
-                StepState.REJECTED to Headline("❌", "Backup rejected by the agent"),
-                StepState.LOST to Headline("❌", "Backup lost"),
-                StepState.TIMED_OUT to Headline("❌", "Backup timed out"),
-                StepState.CANCELLED to Headline("⏹", "Backup cancelled"),
+        verdicts =
+            Verdicts(
+                succeeded = "Backup succeeded",
+                failed = "Backup failed",
+                rejected = "Backup rejected by the agent",
+                lost = "Backup lost",
+                timedOut = "Backup timed out",
+                cancelled = "Backup cancelled",
             ),
     )
 
@@ -71,14 +124,14 @@ private val RU =
         units = listOf("Б", "КиБ", "МиБ", "ГиБ", "ТиБ"),
         decimalSeparator = ',',
         durationUnits = listOf("с", "мин", "ч"),
-        headlines =
-            mapOf(
-                StepState.SUCCEEDED to Headline("✅", "Бэкап выполнен"),
-                StepState.FAILED to Headline("❌", "Бэкап завершился ошибкой"),
-                StepState.REJECTED to Headline("❌", "Бэкап отклонён агентом"),
-                StepState.LOST to Headline("❌", "Бэкап потерян"),
-                StepState.TIMED_OUT to Headline("❌", "Бэкап прерван по таймауту"),
-                StepState.CANCELLED to Headline("⏹", "Бэкап отменён"),
+        verdicts =
+            Verdicts(
+                succeeded = "Бэкап выполнен",
+                failed = "Бэкап завершился ошибкой",
+                rejected = "Бэкап отклонён агентом",
+                lost = "Бэкап потерян",
+                timedOut = "Бэкап прерван по таймауту",
+                cancelled = "Бэкап отменён",
             ),
     )
 
