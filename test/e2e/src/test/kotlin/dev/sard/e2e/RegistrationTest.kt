@@ -3,54 +3,23 @@
 
 package dev.sard.e2e
 
-import dev.sard.proto.agent.v1.AgentServiceGrpcKt
-import dev.sard.proto.agent.v1.RenewCertificateRequest
-import io.grpc.ChannelCredentials
 import io.grpc.Status
-import io.grpc.StatusException
-import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.extension.RegisterExtension
+import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Token → Enroll → the issued certificate is accepted by the agent
- * authentication interceptor (S3). RenewCertificate is the one AgentService
- * method still unimplemented: reaching its UNIMPLEMENTED proves the call passed
- * authentication; without a certificate the same call is UNAUTHENTICATED.
+ * The agent authentication interceptor (S3) from outside: AgentService refuses a caller without
+ * a client certificate. That a certificate issued by `sard-agent enroll` passes is a scenario of
+ * the enroll spec ([AgentEnrollTest]); a token used twice is refused there too (TOKEN_USED).
  */
 class RegistrationTest {
     @Test
-    fun `a certificate issued by Enroll passes agent authentication`() {
-        val agent = AgentEnroller.enroll(sard, EnrollmentTokens.create(sard))
-        assertEquals(Status.Code.UNIMPLEMENTED, renewCertificate(agent.channelCredentials()))
-    }
-
-    @Test
     fun `without a client certificate AgentService is UNAUTHENTICATED`() {
-        val caPem = AgentEnroller.enroll(sard, EnrollmentTokens.create(sard)).caPem
-        assertEquals(Status.Code.UNAUTHENTICATED, renewCertificate(ServerTls.trusting(caPem).build()))
-    }
-
-    @Test
-    fun `a token enrolls one agent only`() {
-        val token = EnrollmentTokens.create(sard)
-        AgentEnroller.enroll(sard, token)
-        val second = runCatching { AgentEnroller.enroll(sard, token) }.exceptionOrNull()
-        assertEquals(Status.Code.UNAUTHENTICATED, (second as StatusException).status.code, second.toString())
-    }
-
-    private fun renewCertificate(credentials: ChannelCredentials): Status.Code {
-        val channel = ServerTls.channel(sard, credentials)
-        try {
-            val stub = AgentServiceGrpcKt.AgentServiceCoroutineStub(channel)
-            val failure =
-                runCatching { runBlocking { stub.renewCertificate(RenewCertificateRequest.getDefaultInstance()) } }
-                    .exceptionOrNull()
-            return (failure as StatusException).status.code
-        } finally {
-            channel.shutdownNow()
-        }
+        val root = ServerTls.presentedChain(sard).last()
+        val caPem = "-----BEGIN CERTIFICATE-----\n" + Base64.getMimeEncoder().encodeToString(root.encoded) + "\n-----END CERTIFICATE-----\n"
+        assertEquals(Status.Code.UNAUTHENTICATED, ServerTls.renewCertificateStatus(sard, ServerTls.trusting(caPem).build()))
     }
 
     companion object {

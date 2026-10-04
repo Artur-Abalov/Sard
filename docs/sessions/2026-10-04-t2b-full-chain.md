@@ -136,6 +136,74 @@
 **Общий помощник ожидания** `Await.until(what, timeout) { … }` — новые тесты;
 копии в существующих тестах не трогаю (сохранить существующее).
 
-### Вопросы владельцу (трудные первыми)
+### Ответы владельца (2026-10-04)
+1. `RegistrationTest` — вариант (а): регистрация только через `sard-agent enroll`,
+   Kotlin-клиент удаляется; проверка повторного токена — сценарий `TOKEN_USED`.
+2. Автоматизировать все сценарии `@e2e` `enroll` (13 случаев), OQ-028 поправить.
+3. Сценарий repo-init «после `repo init` и перезапуска агента сервер знает
+   `repository_id`» — включить в цепочку.
+4. Перезапуск посреди шага — оставить для T3 (в `Pending.kt`).
+5. Сравнение — пути, типы, побайтовое содержимое; без прав, времени и симлинков.
+6. Контроль теста — юнит-тест сравнителя и один ручной прогон с порчей.
+7. Реестр — закрыть OQ-028, OQ-046, снять устаревшее условие OQ-045.
 
-См. сообщение в чате; ответы — ниже, после ревью.
+## Фаза 2 — регистрация через enroll, сценарии `@e2e`, транспорт + исполнитель
+
+Ревью фазы 1 — ответы выше, «Пошёл».
+
+### Сделано
+- **Хост агента** `AgentHost`: два именованных тома (`/var/lib/sard-agent`,
+  `/var/cache/sard/restic`), каждая команда — контейнер образа на них с
+  программой в точке входа; готовность разового контейнера — «остановился»
+  (своя `StartupCheckStrategy`, код выхода оценивает тест). Конфиг одинаков для
+  всех команд, файлы TLS — на томе состояния. Тома создаёт и удаляет
+  `SardEnvironment.volume()` (с метками сессии Testcontainers для Ryuk).
+- **Одна точка регистрации** `AgentEnroller`: `sard-agent enroll --server
+  sard-server:9090 --token-file /etc/sard/token` (токен файлом 0600, не в
+  командной строке), agent_id — из строки итога «Enrolled as agent …».
+  Kotlin-клиент Enroll удалён, `bcpkix` убран из `:e2e` и `docs/dependencies.md`.
+  `AgentContainer.of(agent, files)` — агент на томах хоста; вызовы в
+  `AgentConnectTest`, `RunStepSeamTest`, `ResultAckSeamTest`,
+  `StepLogRedactionTest` поменялись только сигнатурой, проверки те же.
+- `RegistrationTest` — оставлена серверная проверка «без сертификата —
+  UNAUTHENTICATED» (корень берётся из рукопожатия); `renewCertificateStatus`
+  перенесён в `ServerTls`.
+- `SardApi` — REST от имени администратора (вход, cookie); `EnrollmentTokens`
+  поверх него: `issue` (id + токен), `status`, `agentOf`, `revoke`; `expire` —
+  единственная запись в БД (сдвиг `created_at`/`expires_at` в прошлое).
+- `Await` — общий опрос с таймаутом для новых тестов; копии в старых не тронуты.
+- `AgentEnrollTest` — 12 случаев, `AgentEnrollRetryableTest` — 1 (остановка
+  PostgreSQL `docker stop`/`start`, своя установка). Имена тестов — названия
+  сценариев; у структуры — «название — пример».
+- `FullChainTest` — «транспорт + исполнитель»: enroll → `repo init main
+  --generate-password` → агент → `POST /api/v1/sources` и `/runs` → шаг files
+  `succeeded`, `started_at` есть (прогресс дошёл), `output.repositoryId` = id
+  из Register, запуск `succeeded`, строка `snapshots`, надгробие
+  `acked/<sha256>.json` есть, `results/` — нет. `Backups` — помощник REST и
+  чтения записей сервера.
+- `Pending.kt`: `TransportExecutorPending` удалён; шаг «перезапуск посреди
+  шага» перенесён в `StreamBreakT3Pending`. `FullChainT2Pending` — в фазе 3.
+- Спецификация `agent-enroll.feature:144-146` — пометка, что все `@e2e`
+  автоматизированы и где. Реестр: OQ-028 закрыт, OQ-045 — условие снято.
+  README e2e — новые классы, раздел «Хост агента и регистрация».
+
+### Проверено (запуском)
+- `make e2e-images` (флаги сборки с прокси, как в прошлых сессиях) — exit 0
+  с первой попытки, 429 не было; версия образов `d081cc3`.
+- `./gradlew :e2e:test` — 29 тестов в 13 классах. Первый прогон без
+  `-Pe2e.version`: 3 падения проверок версии (`AgentConnectTest`,
+  `AgentImageSmokeTest`, `ServerSmokeTest` ждали `dev`, образы — `d081cc3`).
+  Повтор трёх классов с `-Pe2e.version=d081cc3` — зелёные. Остальные 26 —
+  зелёные в первом прогоне. Новые классы: `AgentEnrollTest` 12/12 (дважды),
+  `AgentEnrollRetryableTest` 1/1 (дважды: отдельно и в общем прогоне),
+  `FullChainTest` 1/1 (дважды).
+- В `AgentEnrollRetryableTest` при остановленной БД сервер ответил
+  `INTERNAL_RETRYABLE` (код 6) — проверяется строкой в stderr.
+- Контроль: из «уже использован» убрана первая регистрация — тест падает
+  `expected: <3> but was: <0>`; файл восстановлен.
+- `make license-check` — 675 files OK. Линтеров на `:e2e` нет (spotless и
+  detekt к модулю не подключены).
+
+### Не проверено
+- `make e2e` целиком (сборка образов + тесты одной командой) и job `e2e` в
+  CI — после фазы 3.

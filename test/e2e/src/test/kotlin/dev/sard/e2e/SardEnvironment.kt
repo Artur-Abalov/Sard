@@ -7,6 +7,7 @@ import org.junit.jupiter.api.extension.AfterAllCallback
 import org.junit.jupiter.api.extension.BeforeAllCallback
 import org.junit.jupiter.api.extension.ExtensionContext
 import org.junit.jupiter.api.extension.TestWatcher
+import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.Network
 import org.testcontainers.containers.output.ToStringConsumer
@@ -51,6 +52,7 @@ class SardEnvironment(
     internal val adminPassword = randomHex()
     private val secrets = mutableSetOf(dbPassword, adminPassword)
     private val containers = linkedMapOf<String, Tracked>()
+    private val volumes = mutableListOf<String>()
 
     val postgres: PostgreSQLContainer =
         track(
@@ -103,6 +105,18 @@ class SardEnvironment(
     }
 
     /**
+     * A new named Docker volume, removed with the environment (and by the Testcontainers reaper if
+     * the run dies first): an agent host's disk that outlives the containers run on it.
+     */
+    fun volume(): String {
+        val name = "sard-e2e-${randomHex()}"
+        val labels = DockerClientFactory.DEFAULT_LABELS + (DockerClientFactory.TESTCONTAINERS_SESSION_ID_LABEL to DockerClientFactory.SESSION_ID)
+        DockerClientFactory.instance().client().createVolumeCmd().withName(name).withLabels(labels).exec()
+        volumes += name
+        return name
+    }
+
+    /**
      * Starts PostgreSQL, then the server; on failure writes the logs under
      * `<logsDir>/<testClass>/start/` and rethrows.
      */
@@ -116,9 +130,11 @@ class SardEnvironment(
         }
     }
 
-    /** Stops every container, the last added first, then removes the network. */
+    /** Stops every container, the last added first, then removes the volumes and the network. */
     fun stop() {
         containers.values.reversed().forEach { it.container.stop() }
+        val docker = DockerClientFactory.instance().client()
+        volumes.forEach { runCatching { docker.removeVolumeCmd(it).exec() } }
         sardNetwork.close()
     }
 
