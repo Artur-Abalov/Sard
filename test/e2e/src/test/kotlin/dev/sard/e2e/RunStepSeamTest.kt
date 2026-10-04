@@ -28,7 +28,7 @@ class RunStepSeamTest {
         val agent = AgentEnroller.enroll(sard, EnrollmentTokens.create(sard))
         val stepId = RunRows.queueStep(sard, UUID.fromString(agent.agentId), PLUGIN)
 
-        sard.track(AgentContainer.ALIAS, AgentContainer.of(sard, agent)).start()
+        sard.track(AgentContainer.ALIAS, AgentContainer.of(agent)).start()
 
         await("step $stepId rejected") { RunRows.statusOf(sard, stepId) == "rejected" }
         assertEquals(listOf("unknown plugin \"$PLUGIN\"", "failed"), messageAndRunStatus(stepId))
