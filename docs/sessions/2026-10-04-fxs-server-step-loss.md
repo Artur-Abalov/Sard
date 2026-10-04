@@ -240,3 +240,12 @@ create index run_steps_lost_deadline_idx on run_steps (lost_deadline)
   статусам.
 - Для `runId` обновлены конструкторы `StepView` в `RunMappingTest`,
   `RunModelTest`, `RunsIntegrationTest` и `DispatchFakes`.
+
+### Проверка
+
+- Первый прогон гейта Фазы 3 упал на компиляции: двоеточие в имени теста
+  (`DispatchPartsTest`). Исправлено.
+- `make gate M=server` (полный, с мутациями): `gate: PASSED (server, full)`.
+  Покрытие `96.4% (instructions)`. CRAP <= 6: функций FXs в первых десяти
+  строках нет. mutflow — без выживших.
+- Не проверено: e2e на контейнерах (`make e2e`, задача T3) и CI.
