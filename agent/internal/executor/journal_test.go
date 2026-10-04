@@ -303,3 +303,55 @@ func TestAnUnreadableJournalDirStopsTheStart(t *testing.T) {
 		t.Fatal("New reads a journal that is not a directory")
 	}
 }
+
+// idsInDirOrder returns two ids whose state files sort first-then-second,
+// the order a directory is read in.
+func idsInDirOrder(f *fixture) (first, second string) {
+	first, second = "a", "b"
+	if filepath.Base(fileOf(f, "journal", first)) > filepath.Base(fileOf(f, "journal", second)) {
+		return second, first
+	}
+	return first, second
+}
+
+func TestAJournalLeftoverDoesNotHideTheInterruptedStepsAfterIt(t *testing.T) {
+	f := setup(t, nil)
+	leftover, cut := idsInDirOrder(f)
+	runOnce(t, f, leftover)
+	for _, id := range []string{leftover, cut} {
+		writeState(t, fileOf(f, "journal", id), `{"version":1,"command_id":"`+id+`","accepted_at":"2026-10-04T10:00:00Z"}`)
+	}
+	f.restart(t)
+	wantResult(t, pendingResult(t, f.e, leftover), leftover, succeeded, "")
+	wantResult(t, pendingResult(t, f.e, cut), cut, failed, interrupted)
+}
+
+func TestALeftoverThatCannotBeRemovedIsReported(t *testing.T) {
+	f := setup(t, nil)
+	runOnce(t, f, "c1")
+	if err := f.e.Ack("c1"); err != nil {
+		t.Fatal(err)
+	}
+	stuck := fileOf(f, "results", "c1") // a non-empty directory where the leftover result was
+	if err := os.MkdirAll(filepath.Join(stuck, "x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	f.restart(t)
+	if !strings.Contains(f.log.String(), "cannot remove an acknowledged result") {
+		t.Fatalf("log:\n%s", f.log)
+	}
+}
+
+func TestAnUnreadableJournalEntryIsReportedWithItsOwnError(t *testing.T) {
+	f := setup(t, nil)
+	writeState(t, fileOf(f, "journal", "bad"), "{not json")
+	if err := os.Mkdir(fileOf(f, "journal", "dir"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	f.restart(t)
+	for _, want := range []string{"invalid character", "is a directory"} {
+		if !strings.Contains(f.log.String(), want) {
+			t.Errorf("log lacks %q:\n%s", want, f.log)
+		}
+	}
+}

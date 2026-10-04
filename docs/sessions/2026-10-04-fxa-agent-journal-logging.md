@@ -148,3 +148,22 @@
   шаг всё равно FAILED D13 — снимок в репозитории останется (связать его с
   шагом — Д5, вне задачи).
 - Один лишний fsync на шаг (перезапись при старте) под замком исполнителя.
+
+### Гейт и мутации (фаза 2)
+
+- `cd agent && go test -race ./...` — exit 0.
+- `./scripts/gate.sh agent` (полный) — `gate: PASSED (agent, full)`, mutation
+  score 0.926749. Первый прогон оборвался на лимите фоновой задачи и оставил
+  мутант в `repo_list_run.go`; файл восстановлен из резервной копии
+  go-mutesting (совпадала с HEAD), гейт перезапущен целиком.
+- go-mutesting с `--debug` по `store.go`, `command.go`, `executor.go`:
+  0.895 (257/287). Выжившие в новом коде: `continue`→`break` в
+  `interrupted`, лог `dropLeftover`, две ошибки `readEntry` — добавлены
+  `TestAJournalLeftoverDoesNotHideTheInterruptedStepsAfterIt`,
+  `TestALeftoverThatCannotBeRemovedIsReported`,
+  `TestAnUnreadableJournalEntryIsReportedWithItsOwnError`; все четыре мутанта
+  проверены вручную — убиты.
+- Не убиты (нельзя без внедрения сбоя под root, тот же класс, что прежние
+  выжившие в `write`/`restore`): ошибка `json.Marshal` записи журнала
+  (`store.go`, `journal`), сбой `ReadDir` при успешном `MkdirAll`
+  (`store.go`, `scan`; `executor.go`, `restore` после `loadJournal`).
