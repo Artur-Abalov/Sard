@@ -371,7 +371,7 @@ class NotificationsIntegrationTest(
         val restarted =
             NotificationService(
                 Deliveries(sessions, UuidV7(clock, SecureRandom())),
-                listOf(RecordingChannel()),
+                listOf(CapturingChannel()),
                 { Message(Message.Text("after restart")) },
                 RetryPolicy(RetrySettings()),
                 QueueSettings(batch = 10, lease = LEASE, ttl = Duration.ofHours(24)),
@@ -422,13 +422,6 @@ class NotificationsIntegrationTest(
         assertEquals("running", jdbc.queryForObject("select status from runs where id = ?", String::class.java, run.id))
         assertEquals(0, deliveries(tenant))
         assertEquals(0, fake.requests.size)
-    }
-
-    /** Stands in for another process's channel: delivers everything. */
-    private class RecordingChannel : NotificationChannel {
-        override val name = "telegram"
-
-        override fun send(message: Message) = SendOutcome.Delivered
     }
 
     @Test

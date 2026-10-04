@@ -18,27 +18,19 @@ private class NamedChannel(
     override fun send(message: Message) = SendOutcome.Delivered
 }
 
-private val SAY_NOTHING = NotificationFormatter { null }
-
 /** S9a, test strategy 6 and metrics: what the queue works with, and what it counts. */
 @ExtendWith(OutputCaptureExtension::class)
 class NotifySetupTest {
     @Test
     fun `without a channel nothing is active and the log says so`(output: CapturedOutput) {
-        assertEquals(emptyList(), activeChannels(emptyList(), SAY_NOTHING))
+        assertEquals(emptyList(), activeChannels(emptyList()))
         assertTrue("Notifications are off: no channel (SARD_TELEGRAM_BOT_TOKEN, SARD_TELEGRAM_CHAT_ID)" in output.out)
-    }
-
-    @Test
-    fun `without a formatter nothing is active and the log names S9b`(output: CapturedOutput) {
-        assertEquals(emptyList(), activeChannels(listOf(NamedChannel("telegram")), formatter = null))
-        assertTrue("Notifications are off: no NotificationFormatter bean (S9b)" in output.out)
     }
 
     @Test
     fun `with both every channel is active`(output: CapturedOutput) {
         val channels = listOf(NamedChannel("telegram"), NamedChannel("webhook"))
-        assertEquals(channels, activeChannels(channels, SAY_NOTHING))
+        assertEquals(channels, activeChannels(channels))
         assertTrue("Notifications go through [telegram, webhook]" in output.out)
         assertFalse("Notifications are off" in output.out)
     }

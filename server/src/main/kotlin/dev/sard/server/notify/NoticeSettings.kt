@@ -6,7 +6,8 @@ package dev.sard.server.notify
 import java.net.URI
 import java.util.UUID
 
-private val WEB_SCHEMES = setOf("http", "https")
+/** The URL schemes of a web address; shared by the notification settings. */
+internal val WEB_SCHEMES = setOf("http", "https")
 
 /** The language of notifications (`sard.notify.language`, S9b). */
 enum class NoticeLanguage(

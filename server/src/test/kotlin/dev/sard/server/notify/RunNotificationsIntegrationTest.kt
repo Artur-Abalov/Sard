@@ -42,8 +42,8 @@ import kotlin.test.assertTrue
 private const val CHAT = "-100777"
 private const val CONSOLE = "https://sard.example.com"
 private const val REPOSITORY_ID = "5f0c3e2d9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d"
-private val JSON = JsonMapper.builder().build()
 private val SNAPSHOT = StepOutput.Backup("4a3b2c1d", 1_610_612_736, 12_897_485, REPOSITORY_ID)
+private val JSON = JsonMapper.builder().build()
 private val SUCCEEDED = StepReport(StepState.SUCCEEDED, null, SNAPSHOT)
 private const val NOT_MANUAL_WORKFLOW =
     "insert into workflows (id, tenant_id, name, definition, created_at, updated_at) " +
@@ -136,15 +136,9 @@ class RunNotificationsIntegrationTest(
         source: String = "db-main",
     ) = finished(StepReport(StepState.FAILED, message, output), source)
 
-    /** The text a person sees in Telegram: tags removed, entities decoded. */
-    private fun shown(index: Int = 0): String =
-        sent(index)
-            .replace(Regex("<[^>]*>"), "")
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-            .replace("&amp;", "&")
+    private fun shown(index: Int = 0): String = fake.shownText(index)
 
-    private fun sent(index: Int = 0): String = JSON.readTree(fake.requests[index].body).path("text").asString()
+    private fun sent(index: Int = 0): String = fake.sentHtml(index)
 
     private fun status(run: UUID) =
         jdbc.queryForObject("select status from notification_deliveries where run_id = ?", String::class.java, run)

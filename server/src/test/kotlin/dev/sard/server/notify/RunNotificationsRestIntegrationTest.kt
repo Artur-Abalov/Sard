@@ -161,21 +161,7 @@ class RunNotificationsRestIntegrationTest(
 
         withoutLink.tick()
 
-        val shown =
-            channel.sent
-                .single()
-                .parts
-                .joinToString("") { it.text }
+        val shown = channel.sent.single().plainText()
         assertFalse(EVIL in shown || "http" in shown, shown)
-    }
-
-    private class CapturingChannel : NotificationChannel {
-        val sent = mutableListOf<Message>()
-        override val name = "telegram"
-
-        override fun send(message: Message): SendOutcome {
-            sent += message
-            return SendOutcome.Delivered
-        }
     }
 }
