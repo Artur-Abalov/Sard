@@ -9,9 +9,7 @@ import dev.sard.server.agents.stream.SendResult
 import dev.sard.server.runs.Action
 import dev.sard.server.runs.StepView
 import dev.sard.server.runs.WaitingSteps
-import java.time.Instant
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 import dev.sard.proto.agent.v1.Action as ProtoAction
 
 /** The agent sessions as dispatch needs them; over AgentConnections and the registry in production. */
@@ -58,38 +56,4 @@ object RunSteps {
             Action.VERIFY -> ProtoAction.ACTION_VERIFY
             Action.RUN -> ProtoAction.ACTION_RUN
         }
-}
-
-/**
- * Running steps a Hello did not list, per agent, until their deadline (S6a ADR draft). In memory:
- * one server (ADR 0026); after a restart the agent's next Hello rebuilds the list.
- */
-class LostStepWatch {
-    private class Expected(
-        val tenantId: UUID,
-        val steps: List<UUID>,
-        val deadline: Instant,
-    )
-
-    private val byAgent = ConcurrentHashMap<UUID, Expected>()
-
-    /** Replaces what the agent's last Hello left expected. */
-    fun expect(
-        agent: ConnectedAgent,
-        steps: List<UUID>,
-        deadline: Instant,
-    ) {
-        if (steps.isEmpty()) {
-            byAgent.remove(agent.agentId)
-        } else {
-            byAgent[agent.agentId] = Expected(agent.tenantId, steps, deadline)
-        }
-    }
-
-    /** Steps whose deadline has come, as (tenant, step); each one is handed out once. */
-    fun due(now: Instant): List<Pair<UUID, UUID>> =
-        byAgent.entries
-            .filter { (_, expected) -> !now.isBefore(expected.deadline) }
-            .filter { (agent, expected) -> byAgent.remove(agent, expected) }
-            .flatMap { (_, expected) -> expected.steps.map { expected.tenantId to it } }
 }

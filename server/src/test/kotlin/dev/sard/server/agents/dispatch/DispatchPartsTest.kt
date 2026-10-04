@@ -46,29 +46,6 @@ class DispatchPartsTest {
     }
 
     @Test
-    fun `the watch hands out steps whose deadline has come, once`() {
-        val watch = LostStepWatch()
-        watch.expect(AGENT, listOf(UUID(0, 1), UUID(0, 2)), DISPATCH_NOW + LOST_AFTER)
-
-        assertEquals(emptyList(), MutFlow.underTest { watch.due(DISPATCH_NOW + LOST_AFTER - Duration.ofMillis(1)) })
-        val due = MutFlow.underTest { watch.due(DISPATCH_NOW + LOST_AFTER) }
-        assertEquals(listOf(TENANT to UUID(0, 1), TENANT to UUID(0, 2)), due)
-        assertEquals(emptyList(), watch.due(DISPATCH_NOW + LOST_AFTER))
-    }
-
-    @Test
-    fun `a new expectation replaces the agent's last one, an empty one clears it`() {
-        val watch = LostStepWatch()
-        watch.expect(AGENT, listOf(UUID(0, 1)), DISPATCH_NOW)
-        MutFlow.underTest { watch.expect(AGENT, listOf(UUID(0, 2)), DISPATCH_NOW) }
-        assertEquals(listOf(TENANT to UUID(0, 2)), watch.due(DISPATCH_NOW))
-
-        watch.expect(AGENT, listOf(UUID(0, 3)), DISPATCH_NOW)
-        MutFlow.underTest { watch.expect(AGENT, emptyList(), DISPATCH_NOW) }
-        assertEquals(emptyList(), watch.due(DISPATCH_NOW))
-    }
-
-    @Test
     fun `the lost window is two heartbeats by default, the check interval the stream's`() {
         val heartbeat = Duration.ofSeconds(30)
         val settings = MutFlow.underTest { DispatchProperties().settings(heartbeat, Duration.ofSeconds(15)) }

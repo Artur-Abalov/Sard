@@ -105,6 +105,72 @@ create index run_steps_lost_deadline_idx on run_steps (lost_deadline)
 - Базовый `./gradlew :server:test --offline` на чистом `main` — результат
   ниже, когда закончится.
 
-## Вопросы владельцу
+## Решения владельца (2026-10-04)
 
-См. сессию. Ответы записать сюда.
+| # | Вопрос | Решение |
+|---|---|---|
+| В1 | `dispatched`/`running` → `lost` по сроку меняет черновик ADR S6a | да: новый переход только по сроку, ADR переписать |
+| В2 | срок при старте сервера | старт **заменяет** срок (старт + окно); `min` — в пределах жизни процесса; SERVER_SHUTTING_DOWN срок не ставит |
+| В3 | порядок при старте | `SmartLifecycle` с фазой раньше gRPC-сервера |
+| В4 | «не позже окна» | да: не позже окна + интервала проверки |
+| В5 | `sard.source` у шага RUN | пустое значение |
+| В6 | имя метрики | `sard.run.finished` |
+| В7 | тест перезапуска | новый `StepDispatcher` над той же БД, без второго контекста |
+| В8 | ветка | работать на текущей (`claude/gallant-wozniak-hb0wl1`) |
+
+## Фаза 2 — срок в БД, проверка по БД, удаление watch (ждёт ревью)
+
+### Сделано
+
+- Миграция `V202610041200__lost_deadline.sql`: `run_steps.lost_deadline` и
+  частичный индекс по шагам `dispatched`/`running` с заданным сроком.
+- `runs/StepTransitions.kt`:
+  - `LOSE` теперь `status in ('dispatched','running') and lost_deadline <= :now`;
+  - `CLAIM`, `RELEASE`, `REDISPATCH`, `ACCEPT`, `FINISH` и UPDATE прогресса
+    (`StepProgressWrites`) снимают срок в том же операторе, что и свой переход.
+- `runs/StepDeadlines.kt`, интерфейс `LostDeadlines`:
+  - системные чтения `overdue(now)` и `holders()`, только пары «тенант, id».
+    Добавлены в список ADR 0013 (п. 6) и в `ArchitectureTest`;
+  - записи в тенанте шага: `expectAll`, `expect` (`least()` пропускает NULL,
+    ранний срок сохраняется, Д2), `confirm` (снять), `restart` (заменить).
+  - Первая версия держала записи в `StepTransitions`. detekt дал
+    `TooManyFunctions` (17 при пределе 11), поэтому срок вынесен в отдельный
+    класс. Порог не менялся.
+- `StepDispatcher`:
+  - `LostStepWatch` удалён;
+  - `onHello` снимает срок у шагов из Hello и ставит срок `running`, которых
+    там нет;
+  - новый `onDisconnected`: любая причина, кроме SERVER_SHUTTING_DOWN;
+    ошибка пишется в лог на error и не бросается;
+  - новый `onStart`;
+  - `tick` берёт кандидатов из БД.
+- `agents/dispatch/StepLossHooks.kt`: `StepLossOnDisconnect`
+  (`AgentSessionListener`) и `StepLossOnStart` (`SmartLifecycle`, фаза
+  `DEFAULT_PHASE - 1`). У `GrpcServerLifecycle.getPhase()` — `Integer.MAX_VALUE`
+  (`javap`, spring-grpc-core 1.1.1).
+
+### Тесты (проверено прогоном)
+
+- `StepDispatcherTest`: 23, из них 8 новых или переписанных. Конец сессии даёт
+  окно, затем lost (dispatched и running). Каждая причина конца, кроме
+  остановки сервера. Hello без шага не отодвигает срок. Частые Hello не
+  откладывают потерю. Старт заменяет срок. Hello со шагом снимает срок. Гонка
+  «результат между чтением и переходом». Ошибка записи срока.
+- `DispatchIntegrationTest`: 20, из них 11 новых, на PostgreSQL и настоящих
+  потоках Connect:
+  1. Агент не вернулся: `running` и `dispatched` → lost, запуск failed,
+     новый запуск источника разрешён.
+  2. Перезапуск: новый `StepDispatcher` над той же БД, простой 10 окон. После
+     старта шаг ещё `running`, через окно от старта — lost.
+     SERVER_SHUTTING_DOWN срок не ставит.
+  3. Три переподключения через ¼ окна без шага: срок остаётся первым, lost
+     по нему.
+  4. Hello со шагом, прогресс и повторная отправка снимают срок. Гонка в обе
+     стороны: кто первым прошёл условное обновление, тот и победил. До срока
+     шаг не lost.
+- `StepLossHooksTest`: 2.
+- Проверка на красное: когда `StepLossOnDisconnect` ничего не делает,
+  `DispatchIntegrationTest` даёт `20 tests completed, 10 failed`.
+- Отступление от правила 3: тесты и код написаны до первого прогона,
+  красного прогона до кода не было. Вместо него — проверка выше, с
+  отключённым слушателем.

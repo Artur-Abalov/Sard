@@ -8,6 +8,8 @@ import dev.sard.server.agents.stream.ConnectedAgent
 import dev.sard.server.agents.stream.SendResult
 import dev.sard.server.runs.Action
 import dev.sard.server.runs.DispatchLedger
+import dev.sard.server.runs.InTenant
+import dev.sard.server.runs.LostDeadlines
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepView
 import dev.sard.server.runs.WaitingSteps
@@ -39,12 +41,20 @@ internal fun step(
     dispatchedAt = dispatchedAt,
 )
 
-/** The guarded transitions of StepTransitions over a list kept in creation order. */
+/**
+ * The guarded transitions of StepTransitions over a list kept in creation order, with the lost
+ * deadline of each step (FXs: `run_steps.lost_deadline`) and the system reads of StepDeadlines.
+ */
 internal class FakeLedger(
     vararg steps: StepView,
-) : DispatchLedger {
+    private val now: () -> Instant = { DISPATCH_NOW },
+) : DispatchLedger,
+    LostDeadlines {
     val steps = steps.toMutableList()
     val calls = mutableListOf<String>()
+    val deadlines = mutableMapOf<UUID, Instant>()
+
+    fun deadline(n: Long) = deadlines[UUID(0, n)]
 
     fun status(n: Long) = steps.single { it.id == UUID(0, n) }.status
 
@@ -68,12 +78,14 @@ internal class FakeLedger(
         tenantId: UUID,
         stepId: UUID,
     ) = move(stepId, setOf(StepState.QUEUED)) { it.copy(status = StepState.DISPATCHED, dispatchedAt = DISPATCH_NOW) }
+        .also { if (it) deadlines.remove(stepId) }
         .also { calls += "claim ${stepId.leastSignificantBits}" }
 
     override fun release(
         tenantId: UUID,
         stepId: UUID,
     ) = move(stepId, setOf(StepState.DISPATCHED)) { it.copy(status = StepState.QUEUED, dispatchedAt = null) }
+        .also { if (it) deadlines.remove(stepId) }
         .also { calls += "release ${stepId.leastSignificantBits}" }
 
     override fun redispatch(
@@ -83,6 +95,7 @@ internal class FakeLedger(
     ): Boolean {
         val sent = steps.single { it.id == stepId }.dispatchedAt
         val moved = sent != null && sent < sentBefore && move(stepId, setOf(StepState.DISPATCHED)) { it }
+        if (moved) deadlines.remove(stepId)
         calls += "redispatch ${stepId.leastSignificantBits} $moved"
         return moved
     }
@@ -90,9 +103,53 @@ internal class FakeLedger(
     override fun lost(
         tenantId: UUID,
         stepId: UUID,
-    ) = move(stepId, setOf(StepState.RUNNING)) { it.copy(status = StepState.LOST) }
-        .also { calls += "lost ${stepId.leastSignificantBits} $it" }
+    ): Boolean {
+        val due = deadlines[stepId]?.let { !now().isBefore(it) } == true
+        return (due && move(stepId, IN_FLIGHT) { it.copy(status = StepState.LOST) })
+            .also { calls += "lost ${stepId.leastSignificantBits} $it" }
+    }
+
+    private fun inFlight(agentId: UUID) = steps.filter { it.agentId == agentId && it.status in IN_FLIGHT }.map { it.id }
+
+    override fun expectAll(
+        tenantId: UUID,
+        agentId: UUID,
+        deadline: Instant,
+    ) = earliest(inFlight(agentId), deadline)
+
+    override fun expect(
+        tenantId: UUID,
+        agentId: UUID,
+        stepIds: Collection<UUID>,
+        deadline: Instant,
+    ) = earliest(inFlight(agentId).filter { it in stepIds }, deadline)
+
+    override fun confirm(
+        tenantId: UUID,
+        agentId: UUID,
+        stepIds: Collection<UUID>,
+    ) = inFlight(agentId).filter { it in stepIds && deadlines.remove(it) != null }.size
+
+    override fun restart(
+        tenantId: UUID,
+        agentId: UUID,
+        deadline: Instant,
+    ) = inFlight(agentId).onEach { deadlines[it] = deadline }.size
+
+    private fun earliest(
+        ids: List<UUID>,
+        deadline: Instant,
+    ) = ids.onEach { id -> deadlines.merge(id, deadline) { old, new -> minOf(old, new) } }.size
+
+    override fun overdue(now: Instant) =
+        steps
+            .filter { it.status in IN_FLIGHT && deadlines[it.id]?.let { d -> !now.isBefore(d) } == true }
+            .map { InTenant(TENANT, it.id) }
+
+    override fun holders() = steps.filter { it.status in IN_FLIGHT }.map { InTenant(TENANT, it.agentId) }.distinct()
 }
+
+private val IN_FLIGHT = setOf(StepState.DISPATCHED, StepState.RUNNING)
 
 /** Sessions as the dispatcher sees them: who is online, what each send returns. */
 internal class FakeLinks : AgentLinks {

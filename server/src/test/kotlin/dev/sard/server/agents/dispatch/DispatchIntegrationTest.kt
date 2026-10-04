@@ -18,11 +18,14 @@ import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.runs.ProgressReport
 import dev.sard.server.runs.RunView
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.SourceDraft
 import dev.sard.server.runs.Sources
+import dev.sard.server.runs.StepDeadlines
 import dev.sard.server.runs.StepOutcome
+import dev.sard.server.runs.StepProgressWrites
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepTransitions
 import io.micrometer.core.instrument.MeterRegistry
@@ -45,7 +48,10 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 private const val POLL_MILLIS = 20L
 private val QUIET: Duration = Duration.ofMillis(300)
@@ -81,7 +87,7 @@ class DispatchTestConfiguration {
     fun reconciledHellos(dispatcher: StepDispatcher) = ReconciledHellos(dispatcher)
 }
 
-/** S6a tests 2-5 and 7 over the real server: TLS, PostgreSQL, Connect streams opened by the test. */
+/** S6a tests 2-5 and 7, FXs tests 1-4, over the real server: TLS, PostgreSQL, Connect streams opened by the test. */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     // The periodic checks stay out of the way; the tests tick by hand after moving the clock.
@@ -101,6 +107,8 @@ class DispatchIntegrationTest(
     @Autowired private val sources: Sources,
     @Autowired private val runs: Runs,
     @Autowired private val steps: StepTransitions,
+    @Autowired private val deadlines: StepDeadlines,
+    @Autowired private val progress: StepProgressWrites,
     @Autowired private val meters: MeterRegistry,
     @Autowired private val jdbc: JdbcTemplate,
 ) {
@@ -183,6 +191,31 @@ class DispatchIntegrationTest(
 
     private fun status(stepId: UUID): Map<String, Any?> =
         jdbc.queryForMap("select status, dispatched_at from run_steps where id = ?", stepId)
+
+    private fun deadline(stepId: UUID): Instant? =
+        jdbc
+            .queryForObject("select lost_deadline from run_steps where id = ?", Timestamp::class.java, stepId)
+            ?.toInstant()
+
+    /** The session's end reaches the listener just after the registry lets the slot go. */
+    private fun awaitDeadline(stepId: UUID): Instant {
+        val until = System.nanoTime() + Duration.ofSeconds(WAIT_SECONDS).toNanos()
+        while (deadline(stepId) == null) {
+            check(System.nanoTime() < until) { "step $stepId got no lost deadline" }
+            Thread.sleep(POLL_MILLIS)
+        }
+        return checkNotNull(deadline(stepId))
+    }
+
+    /** A running step of [agent] whose session then ended. */
+    private fun runningThenLeft(agent: TestAgent): RunView {
+        val connection = greeted(clients, agent)
+        val run = run(agent)
+        connection.nextStep()
+        steps.accepted(clients.tenant, run.steps.single().id, "accepted")
+        connection.leave(agent)
+        return run
+    }
 
     private fun runStatus(runId: UUID): String? {
         val sql = "select status from runs where id = ?"
@@ -321,6 +354,181 @@ class DispatchIntegrationTest(
         dispatcher.tick()
 
         assertEquals("succeeded", status(stepId)["status"])
+    }
+
+    // --- FXs 1: an agent that does not come back
+
+    @Test
+    fun `a running step of an agent that never comes back is lost one window after its session ended`() {
+        val agent = agent()
+        val run = runningThenLeft(agent)
+        val stepId = run.steps.single().id
+        assertEquals(clock.now + settings.lostAfter, awaitDeadline(stepId))
+
+        clock.now += settings.lostAfter - Duration.ofSeconds(1)
+        dispatcher.tick()
+        assertEquals("running", status(stepId)["status"])
+
+        clock.now += Duration.ofSeconds(1)
+        dispatcher.tick()
+
+        assertEquals(listOf("lost", "failed"), listOf(status(stepId)["status"], runStatus(run.id)))
+        val next = runs.start(agent.tenantId, run.sourceId)
+        assertEquals("queued", runStatus(next.id), "the source runs again")
+    }
+
+    @Test
+    fun `a dispatched step of an agent that never comes back is lost too`() {
+        val agent = agent()
+        val connection = greeted(clients, agent)
+        val stepId = run(agent).steps.single().id
+        connection.nextStep()
+        connection.leave(agent)
+        awaitDeadline(stepId)
+
+        clock.now += settings.lostAfter
+        dispatcher.tick()
+
+        assertEquals("lost", status(stepId)["status"])
+    }
+
+    // --- FXs 2: a server restart, the agent away
+
+    @Test
+    fun `after a restart a step in flight gets a fresh window from the start, then is lost`() {
+        val agent = agent()
+        val stepId = runningThenLeft(agent).steps.single().id
+        awaitDeadline(stepId)
+        clock.now += settings.lostAfter.multipliedBy(10)
+        // The new process: a dispatcher over the same database, no agent connected yet.
+        val restarted =
+            StepDispatcher(steps, deadlines, FakeLinks(), clock, settings.lostAfter, RecordingDispatchMetrics()) {
+                dev.sard.server.runs
+                    .WaitingSteps(0, 0)
+            }
+
+        restarted.onStart()
+        restarted.tick()
+        assertEquals("running", status(stepId)["status"], "the server's downtime is not the agent's")
+        assertEquals(clock.now + settings.lostAfter, deadline(stepId))
+
+        clock.now += settings.lostAfter
+        restarted.tick()
+        assertEquals("lost", status(stepId)["status"])
+    }
+
+    @Test
+    fun `a server that stops sets no deadline, its start does`() {
+        val agent = agent()
+        val connection = greeted(clients, agent)
+        val stepId = run(agent).steps.single().id
+        connection.nextStep()
+
+        dispatcher.onDisconnected(ConnectedAgent(agent.agentId, agent.tenantId, ""), "SERVER_SHUTTING_DOWN")
+
+        assertNull(deadline(stepId))
+    }
+
+    // --- FXs 3: reconnects more often than the window
+
+    @Test
+    fun `reconnects without the step more often than the window do not postpone its loss`() {
+        val agent = agent()
+        val stepId = runningThenLeft(agent).steps.single().id
+        val first = awaitDeadline(stepId)
+        repeat(3) {
+            clock.now += settings.lostAfter.dividedBy(4)
+            greeted(clients, agent).leave(agent)
+        }
+        assertEquals(first, deadline(stepId))
+
+        clock.now = first
+        dispatcher.tick()
+
+        assertEquals("lost", status(stepId)["status"])
+    }
+
+    // --- FXs 4: what clears the deadline, and the race with a result
+
+    @Test
+    fun `a Hello that lists the step clears its deadline, and it is not lost`() {
+        val agent = agent()
+        val stepId = runningThenLeft(agent).steps.single().id
+        awaitDeadline(stepId)
+
+        greeted(clients, agent, stepId)
+        clock.now += settings.lostAfter
+        dispatcher.tick()
+
+        assertNull(deadline(stepId))
+        assertEquals("running", status(stepId)["status"])
+    }
+
+    @Test
+    fun `progress before the deadline clears it`() {
+        val agent = agent()
+        val stepId = runningThenLeft(agent).steps.single().id
+        awaitDeadline(stepId)
+
+        progress.write(agent.tenantId, agent.agentId, stepId, ProgressReport("uploading", 10, 100))
+        clock.now += settings.lostAfter
+        dispatcher.tick()
+
+        assertNull(deadline(stepId))
+        assertEquals("running", status(stepId)["status"])
+    }
+
+    @Test
+    fun `a dispatched step sent again after a Hello has no deadline`() {
+        val agent = agent()
+        val first = greeted(clients, agent)
+        val stepId = run(agent).steps.single().id
+        first.nextStep()
+        first.leave(agent)
+        awaitDeadline(stepId)
+        clock.now += Duration.ofSeconds(1)
+
+        greeted(clients, agent).nextStep()
+
+        assertNull(deadline(stepId))
+    }
+
+    @Test
+    fun `a result after the deadline but before the check wins, the check then moves nothing`() {
+        val agent = agent()
+        val run = runningThenLeft(agent)
+        val stepId = run.steps.single().id
+        awaitDeadline(stepId)
+        clock.now += settings.lostAfter
+
+        assertTrue(steps.finished(clients.tenant, stepId, StepOutcome(StepState.SUCCEEDED, null)))
+        assertFalse(steps.lost(clients.tenant, stepId))
+
+        assertEquals(listOf("succeeded", "succeeded"), listOf(status(stepId)["status"], runStatus(run.id)))
+    }
+
+    @Test
+    fun `a check before the result wins, the late result moves nothing`() {
+        val agent = agent()
+        val run = runningThenLeft(agent)
+        val stepId = run.steps.single().id
+        awaitDeadline(stepId)
+        clock.now += settings.lostAfter
+
+        assertTrue(steps.lost(clients.tenant, stepId))
+        assertFalse(steps.finished(clients.tenant, stepId, StepOutcome(StepState.SUCCEEDED, null)))
+
+        assertEquals(listOf("lost", "failed"), listOf(status(stepId)["status"], runStatus(run.id)))
+    }
+
+    @Test
+    fun `a step before its deadline is not lost, whoever asks`() {
+        val agent = agent()
+        val stepId = runningThenLeft(agent).steps.single().id
+        assertNotNull(awaitDeadline(stepId))
+
+        assertFalse(steps.lost(clients.tenant, stepId))
+        assertEquals(emptyList(), deadlines.overdue(clock.now).filter { it.id == stepId })
     }
 
     // --- 7: tenants
