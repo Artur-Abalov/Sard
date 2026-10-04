@@ -59,3 +59,11 @@
 - Убрана недостижимая ветка «без форматтера»: `notificationService` принимает `NotificationFormatter` напрямую.
 - `WEB_SCHEMES` вынесен в общее место и используется повторно.
 - Общие тестовые заготовки каналов вынесены в `NoticeFixtures.kt`.
+
+## Cleaner, раунд 3 (N1: `Verdicts.failure()`) — без изменений кода
+- Замер до: `Verdicts.failure` CRAP 5.5 (CC 5), `Wording.headline` 4.0 (CC 4), `RunNoticeFormatter.outcome` 5.1 (CC 5).
+- Прямое отображение FAILED/REJECTED/LOST/TIMED_OUT в `Wording.headline` даёт 8 ветвей одного `when`
+  (раньше 7 ветвей дали CRAP 7 и провалили gate), поэтому `failure()` оставлен; замена на таблицу `Map` убрала бы
+  проверку исчерпывающности компилятором.
+- Сужение `outcome()` не делалось: потребовался бы отдельный тип «завершённое состояние», это не упрощение.
+- `./scripts/gate.sh server fast`: PASSED.
