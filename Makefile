@@ -19,7 +19,9 @@ BUILD_LOCK := $(if $(shell command -v flock),mkdir -p $(CURDIR)/.gradle && flock
 GRADLE := $(BUILD_LOCK) env LC_ALL=C.UTF-8 ./gradlew --no-daemon -q
 # Git ref the proto contract must stay compatible with (buf breaking).
 PROTO_BASE ?= origin/main
-COMPOSE := docker compose -f deploy/docker-compose.yml --env-file deploy/.env
+# Local stack: the server image is built from this checkout
+# (docker-compose.build.yml), so the release version in deploy/.env is unused.
+COMPOSE := env SARD_VERSION=dev docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file deploy/.env
 # End-to-end tests (test/e2e): images built from the current code.
 E2E_ARCH ?= $(shell go env GOARCH)
 E2E_BUILD := $(CURDIR)/test/e2e/build

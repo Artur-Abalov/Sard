@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# Smoke check of a running sard-server (release.yml, after the quickstart or
+# the offline installation): health is UP, the version is the expected one,
+# the administrator can sign in, and the agent port answers TLS with a
+# certificate for the expected name, signed by the server's own CA.
+#
+# Usage: scripts/smoke-server.sh <env-file> <expected-version> [http-base] [grpc-host:port]
+#   env-file: the deploy .env (SARD_ADMIN_PASSWORD is read from it)
+set -euo pipefail
+
+[ $# -ge 2 ] || { echo "usage: $0 <env-file> <version> [http-base] [grpc-host:port]" >&2; exit 2; }
+env_file="$1" version="$2"
+http="${3:-http://localhost:8080}"
+grpc="${4:-localhost:9090}"
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+password="$(sed -n 's/^SARD_ADMIN_PASSWORD=//p' "$env_file")"
+[ -n "$password" ] || fail "SARD_ADMIN_PASSWORD is empty in $env_file"
+
+curl -fsS "$http/actuator/health" | grep -q '"status":"UP"' || fail "health is not UP"
+echo "ok: health UP"
+
+status="$(curl -fsS "$http/api/v1/status")"
+echo "$status" | grep -q "\"version\":\"$version\"" || fail "version: want $version, got $status"
+echo "ok: version $version"
+
+code="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+  --data-binary @- "$http/api/v1/session" <<<"{\"password\":\"$password\"}")"
+[ "$code" = 204 ] || fail "sign-in answered $code, want 204"
+echo "ok: administrator sign-in"
+
+# The server sends its whole chain, root included: the last certificate is
+# the Sard CA, and the leaf must verify against it for the dialed name.
+host="${grpc%:*}"
+openssl s_client -connect "$grpc" -servername "$host" -alpn h2 -showcerts </dev/null \
+  >"$work/handshake" 2>/dev/null || fail "no TLS handshake on $grpc"
+awk '/-----BEGIN CERTIFICATE-----/{n++; f="'"$work"'/cert" n ".pem"} f{print > f} /-----END CERTIFICATE-----/{f=""}' "$work/handshake"
+ca="$(ls "$work"/cert*.pem | sort -V | tail -1)"
+openssl x509 -in "$ca" -noout -subject | grep -q 'Sard CA' || fail "last certificate on $grpc is not the Sard CA"
+# An IP literal (127.0.0.1, ::1) is an IP SAN, checked with -verify_ip.
+check=-verify_hostname
+[[ "$host" =~ ^[0-9.]+$ || "$host" == *:* ]] && check=-verify_ip
+openssl verify -CAfile "$ca" "$check" "${host//[\[\]]/}" "$work/cert1.pem" >/dev/null \
+  || fail "agent port certificate does not verify for $host"
+grep -q '^ALPN protocol: h2' "$work/handshake" || fail "agent port did not negotiate h2"
+echo "ok: agent port TLS, h2, certificate for $host signed by the Sard CA"

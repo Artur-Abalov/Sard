@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# Local development: build sard-server from this checkout instead of pulling
+# the published image. make up adds this file on top of docker-compose.yml.
+services:
+  server:
+    image: sard-server:dev
+    build:
+      context: ..
+      dockerfile: deploy/server/Dockerfile

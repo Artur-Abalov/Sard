@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# Build context of deploy/server/Dockerfile is the repository root: send only
+# what its COPY lines read, so node_modules, .git and build output stay out.
+*
+!gradlew
+!settings.gradle.kts
+!build.gradle.kts
+!gradle.properties
+!gradle/
+!proto/sard/
+!proto/jvm/
+!server/
+**/build/
+**/.gradle/
+**/.kotlin/

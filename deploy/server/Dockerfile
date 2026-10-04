@@ -4,8 +4,11 @@
 #
 # sard-server image. Build context: repository root.
 #   docker build -f deploy/server/Dockerfile -t sard-server:dev .
+# Multi-arch (release.yml): docker buildx build --platform linux/amd64,linux/arm64 ...
+# The jar does not depend on the CPU, so it is built once, on the builder's
+# own platform; only the runtime stage exists per target platform.
 
-FROM eclipse-temurin:25-jdk AS build
+FROM --platform=$BUILDPLATFORM eclipse-temurin:25-jdk AS build
 WORKDIR /src
 COPY gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
 COPY gradle gradle
@@ -33,10 +36,25 @@ RUN --mount=type=cache,target=/root/.gradle \
     ./gradlew --no-daemon :server:bootJar -PsardVersion="${SARD_VERSION}"
 
 FROM eclipse-temurin:25-jre
+ARG SARD_VERSION=dev
+LABEL org.opencontainers.image.title="sard-server" \
+      org.opencontainers.image.description="Sard backup orchestrator: control-plane server" \
+      org.opencontainers.image.source="https://github.com/Artur-Abalov/Sard" \
+      org.opencontainers.image.licenses="AGPL-3.0-only" \
+      org.opencontainers.image.version="${SARD_VERSION}"
 RUN useradd --system --uid 10001 --no-create-home sard \
  && install -d -o sard -g sard -m 0700 /var/lib/sard/pki
 COPY --from=build /src/server/build/libs/sard-server.jar /app/sard-server.jar
 USER sard
+# The CA key and certificate (docs/operations/pki.md). Without a mounted volume
+# Docker creates an anonymous one, so the CA outlives a container re-creation
+# only when an operator names the volume, as deploy/docker-compose.yml does.
+VOLUME ["/var/lib/sard/pki"]
 # 8080: REST API and Actuator; 9090: gRPC for agents.
 EXPOSE 8080 9090
+# The JRE image has bash but no curl; SARD_HTTP_PORT moves the HTTP port.
+# Health details are off (application.yaml), so the body carries only the
+# overall status: {"groups":[...],"status":"UP"}.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=60s --retries=3 \
+  CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/${SARD_HTTP_PORT:-8080} && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '\"status\":\"UP\"' <&3"]
 ENTRYPOINT ["java", "-jar", "/app/sard-server.jar"]
