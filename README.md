@@ -128,8 +128,8 @@ server you downloaded the package from: `deploy/release/sard-release.pub`.
 
 | | |
 |---|---|
-| Key ID | _set when the owner generates the key_ |
-| Public key | _set when the owner generates the key_ |
+| Key ID | `DF5D5B6DB257DBFA` |
+| Public key | `RWT621eybVtd38CL7B33xZrcc8ArYiPt3GlKXyJuk9ZQzDnoUV+kLi2d` |
 
 ```bash
 minisign -Vm SHA256SUMS -p sard-release.pub && sha256sum -c --ignore-missing SHA256SUMS

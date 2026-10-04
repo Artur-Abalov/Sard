@@ -92,3 +92,41 @@ ADR: `docs/adr/00XX-draft-agent-release.md` (D12). Спецификации `fea
 
 Для владельца перед первым релизом: сгенерировать ключ и настроить репозиторий по
 `docs/release.md`; без `deploy/release/sard-release.pub` задача `sign` падает.
+
+## Фаза 3 — образ сервера, раздача, ADR, реестр
+
+Ответы владельца: публичный ключ прислан (`DF5D5B6DB257DBFA`); раздачу делать сейчас,
+TDD, без `/ship-feature` (уточнение ответа В12).
+
+Сделано:
+- `deploy/release/sard-release.pub`, ID и ключ — в `README.md` и `docs/release.md`.
+- `deploy/server/Dockerfile`: стадия `agent-packages` — `AGENT_PACKAGES` (по умолчанию `dist/`),
+  проверка версии манифеста против `SARD_VERSION` и `sha256sum --check --strict`, в образ — только
+  файлы из `SHA256SUMS` и подпись, `/usr/share/sard/agent-packages/`.
+- `make image`, `make up` зависит от `make package` и передаёт `SARD_VERSION` в compose;
+  `make e2e-images` собирает пакеты до образа сервера (`AGENT_PACKAGES=test/e2e/build/dist`).
+- Сервер, пакет `downloads`: `AgentPackageCatalog` (версия, схема, имена файлов, ETag),
+  `AgentPackageHeaders` (Cache-Control, Content-Type), `AgentPackageDirectory` (загрузка и
+  проверка каталога при старте), `AgentPackagesHandler` (`ResourceHttpRequestHandler`: Range,
+  HEAD, ETag, Last-Modified; только файлы релиза), `AgentDownloadsConfiguration`
+  (`sard.agent-packages.enabled|dir`, `SARD_AGENT_DOWNLOADS`, `SARD_AGENT_PACKAGES_DIR`).
+  Тесты сервера идут с `SARD_AGENT_DOWNLOADS=false`, кроме `AgentDownloads*IntegrationTest`.
+- `scripts/test-image-packages.sh` (тест 6), задача CI `image` собирает пакеты, гоняет тест 6
+  и собирает образ; `release.yml` — задача `image`: образ из подписанных файлов, проверка
+  подписи в образе, публикация в GHCR (`:vX.Y.Z` и `:X.Y.Z`).
+- ADR дополнен (образ, раздача, последствия), OQ-024 закрыт, `deploy/.env.example` и compose —
+  `SARD_AGENT_DOWNLOADS`.
+
+Проверено:
+- `./gradlew :server:test --tests 'dev.sard.server.downloads.*'` → 28 тестов, 0 упавших
+  (тест 5: манифест без сессии, `application/json`, `no-cache`, ETag = SHA-256; каждый пакет
+  совпадает с суммой манифеста и строкой `SHA256SUMS`, `immutable`; Range `bytes=10-19` → 206;
+  `If-None-Match` → 304; HEAD; файл вне релиза, корень, обход пути → 4xx; выключено → 404).
+- `./scripts/gate.sh server` → `gate: PASSED (server, full)`: покрытие 96.3% (инструкции),
+  CRAP ≤ 6, mutflow без выживших. По пути: CRAP 7 у `AgentPackageCatalog.of` и
+  `AgentPackageHeaders.mediaType` — разнесены; выживший мутант «удалена проверка формы манифеста»
+  в `AgentPackageDirectoryTest` — добавлен тест имени файла вне каталога.
+- `make package VERSION=v0.0.1 && scripts/test-image-packages.sh v0.0.1` → exit 0: своя версия
+  собирается; другая версия — отказ с обеими версиями; изменённый пакет — `FAILED`; пустой
+  каталог — «run make package».
+- `make license-check` → 683 files OK; shellcheck — чисто; `git diff origin/main -- agent/` пусто.

@@ -13,8 +13,9 @@
 | | |
 |---|---|
 | Файл | `deploy/release/sard-release.pub` |
-| ID ключа | _появится после генерации ключа владельцем_ |
-| Публичный ключ | _появится после генерации ключа владельцем_ |
+| ID ключа | `DF5D5B6DB257DBFA` |
+| Публичный ключ | `RWT621eybVtd38CL7B33xZrcc8ArYiPt3GlKXyJuk9ZQzDnoUV+kLi2d` |
+| С | 2026-10-04 |
 
 ## Проверить релиз
 
@@ -31,6 +32,21 @@ sha256sum -c --ignore-missing SHA256SUMS         # скачанные файлы
 
 Сборка воспроизводима: `git checkout vX.Y.Z && make package VERSION=vX.Y.Z`
 даёт тот же `SHA256SUMS` при тех же версиях Go и restic.
+
+## Раздача сервером
+
+Сервер версии N раздаёт пакеты агента версии N из своего образа, без
+сессии и без обращения к внешней сети:
+
+```bash
+curl -fsSO http://sard.example.com:8080/downloads/agent/manifest.json        # версия, артефакты, суммы
+curl -fsSO http://sard.example.com:8080/downloads/agent/SHA256SUMS
+curl -fsSO http://sard.example.com:8080/downloads/agent/SHA256SUMS.minisig
+curl -fsSO http://sard.example.com:8080/downloads/agent/sard-agent_X.Y.Z_amd64.deb
+```
+
+Проверка — как выше, ключом из репозитория: сервер раздаёт подпись, но не
+подписывает. `SARD_AGENT_DOWNLOADS=false` выключает раздачу (404).
 
 ## Настройка (один раз, владелец)
 

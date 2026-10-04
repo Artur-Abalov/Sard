@@ -6,7 +6,8 @@
 #   build ×2 ─┬─ reproduce  (two independent builds, same SHA256SUMS; tamper tests)
 #             └─ install    (deb on Debian/Ubuntu with systemd: install, enroll, upgrade)
 #                   └─ sign     (environment "release": the only job that sees the key)
-#                         └─ publish  (GitHub release with the signed files)
+#                         ├─ publish  (GitHub release with the signed files)
+#                         └─ image    (sard-server of this version with the signed packages, GHCR)
 #
 # Trust: the minisign key is a secret of the "release" environment, which only
 # v* tags may use and which waits for the owner's approval. Pull requests
@@ -119,7 +120,9 @@ jobs:
       - name: package to upgrade from
         run: DIST="$PWD/dist-old" make package VERSION=upgrade-base
       - name: server image
-        run: docker build --build-arg SARD_VERSION="$VERSION" -f deploy/server/Dockerfile -t sard-server:e2e .
+        run: |
+          docker build --build-arg SARD_VERSION="$VERSION" --build-arg AGENT_PACKAGES=dist-new \
+            -f deploy/server/Dockerfile -t sard-server:e2e .
       - name: install, enroll, upgrade
         run: OLD_DIST=dist-old NEW_DIST=dist-new scripts/test-agent-install.sh "${{ matrix.distro }}"
 
@@ -176,3 +179,38 @@ jobs:
           gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$VERSION" \
             --notes "Signed with the Sard release key (deploy/release/sard-release.pub, docs/release.md). Verify: minisign -Vm SHA256SUMS -p sard-release.pub && sha256sum -c SHA256SUMS" \
             dist/*
+
+  image:
+    needs: sign
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release
+          path: dist
+      - name: minisign
+        run: sudo apt-get update && sudo apt-get install -y minisign
+      - name: verify again
+        run: scripts/release-verify.sh dist "$VERSION" deploy/release/sard-release.pub
+      # The server hands out exactly these signed files (deploy/server/Dockerfile).
+      - name: build sard-server
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sard-server"
+          echo "IMAGE=$IMAGE" >>"$GITHUB_ENV"
+          docker build --build-arg SARD_VERSION="$VERSION" -f deploy/server/Dockerfile \
+            -t "$IMAGE:$VERSION" -t "$IMAGE:${VERSION#v}" .
+          docker run --rm --entrypoint test "$IMAGE:$VERSION" -f /usr/share/sard/agent-packages/SHA256SUMS.minisig
+      - name: push
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:$VERSION"
+          docker push "$IMAGE:${VERSION#v}"
+          docker logout ghcr.io

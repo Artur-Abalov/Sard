@@ -145,8 +145,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: tools/go.mod
+          cache-dependency-path: "**/go.sum"
+      # The image carries the agent packages of its own version (docs/adr/00XX-draft-agent-release.md).
+      - name: Agent packages
+        run: make package VERSION=ci
+      - name: The image refuses agent packages of another version or not matching SHA256SUMS
+        run: scripts/test-image-packages.sh ci
       - name: Build sard-server image
-        run: docker build -f deploy/server/Dockerfile -t sard-server:ci .
+        run: docker build --build-arg SARD_VERSION=ci -f deploy/server/Dockerfile -t sard-server:ci .
 
   e2e:
     # End-to-end tests (test/e2e): PostgreSQL, sard-server and sard-agent as
