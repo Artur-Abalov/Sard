@@ -288,7 +288,8 @@
 #   @start        запуск агента (run с --config C) с фейковым сервером по TLS,
 #                 который считает подключения (как agent-tls-identity)
 #   @fake         фейковый gRPC-сервер регистрации, как @fake в agent-enroll.feature
-#   @e2e          настоящий sard-server (docs/qa/repo-init.md)
+#   @e2e          настоящий sard-server (docs/qa/repo-init.md); автоматизирован
+#                 в test/e2e FullChainTest (T2b, служба агента — контейнер)
 #   @package      собранный пакет deb или rpm (make package), установленный в
 #                 чистый контейнер дистрибутива без запущенной службы; проверки
 #                 scripts/package-agent.sh или теста пакета

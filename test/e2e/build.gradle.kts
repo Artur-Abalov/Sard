@@ -28,9 +28,7 @@ kotlin {
 dependencies {
     testImplementation(project(":proto-jvm"))
     testImplementation("io.grpc:grpc-netty")
-    // Agent key and CSR in the Enroll client until `sard-agent enroll` (A2) replaces it.
-    testImplementation("org.bouncycastle:bcpkix-jdk18on:1.86")
-    // The database is read (and run rows seeded) directly; enrollment tokens come from the REST API (S8b).
+    // The database is read (and the seam tests' run rows seeded) directly; tokens, sources and runs come from the REST API (S8b).
     testImplementation("org.postgresql:postgresql")
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
     testImplementation("org.testcontainers:testcontainers-postgresql")

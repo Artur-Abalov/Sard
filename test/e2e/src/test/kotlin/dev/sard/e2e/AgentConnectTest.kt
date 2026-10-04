@@ -23,7 +23,7 @@ class AgentConnectTest {
     @Test
     fun `an enrolled agent registers and connects its stream`() {
         val agent = AgentEnroller.enroll(sard, EnrollmentTokens.create(sard))
-        sard.track(AgentContainer.ALIAS, AgentContainer.of(sard, agent)).start()
+        sard.track(AgentContainer.ALIAS, AgentContainer.of(agent)).start()
 
         val row = awaitConnected(UUID.fromString(agent.agentId))
         assertEquals(E2e.version, row.version)
