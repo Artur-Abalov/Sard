@@ -86,4 +86,65 @@
 Не логируются: прогресс, строки шага, stderr restic, `config_json`, пути
 файлов секретов и паролей.
 
-## Вопросы владельцу — см. ответ в чате; ответы впишу сюда.
+### Ответы владельца (2026-10-04)
+
+1. Реестр — `t3-defects.md` прислан; кладу в `docs/qa/t3-defects.md`.
+2. Приём результата для шага в `lost` — отдельная серверная задача (FXs).
+3. Журнал перезаписывается при старте обработчика (`started_at` — настоящий).
+4. Журнал не записался → REJECTED «cannot record the command: …».
+5. Логгер с `command_id` доходит до `restic.CLI`; старт и код выхода — для
+   всех команд restic.
+6. `restic.Options.OnStderr` удалить.
+7. Сценарий — новый `docs/specs/agent/step-execution.feature`, связь с
+   тестами комментариями `// Scenario:`.
+8. Без `/ship-feature`; полный гейт `agent` с мутациями.
+9. Ошибки соединения логируются как есть (код gRPC и текст).
+10. Уровень — info.
+
+## Фаза 2: журнал, прерванные при старте, дедупликация
+
+### Что сделано
+
+| Что | Где |
+|---|---|
+| `journal/` в хранилище, запись `entry` (version 1), общий `scan` для трёх каталогов | `agent/internal/executor/store.go` |
+| приём: `check` → `record` (журнал) → очередь → ACCEPTED; ошибка журнала → REJECTED | `command.go`, `accept`, `record` |
+| старт: перезапись журнала со `started_at`; ошибка → warn, шаг идёт | `command.go`, `start` |
+| результат: `save` — сначала результат, потом удаление записи журнала; результат не сохранился → запись остаётся | `command.go`, `save` |
+| при старте: запись без результата → FAILED D13 (`started_at` из журнала, `finished_at` — момент старта), сохраняется и уходит как неподтверждённый; запись рядом с результатом или надгробием — остаток, удаляется | `executor.go`, `restore`, `interrupted` |
+| комментарий `ShutdownAbort` | `executor.go` |
+
+Дедупликация отдельного кода не потребовала: прерванная команда при старте
+сразу `finished`, повторный RunStep идёт в существующий `repeat`.
+
+### Тесты (`agent/internal/executor/journal_test.go`)
+
+Написаны до кода и на старом коде падали (проверил: `git stash` кода,
+`go test` — 13 FAIL; потом один тест разбит на два ради gocyclo ≤ 8), на
+новом проходят.
+
+| Проверка стратегии | Тест |
+|---|---|
+| 1, точка 0 (до записи журнала, оборванный `.tmp-*`) | `TestAStepThatCrashedBeforeItsJournalEntryRunsOnceWhenSentAgain` |
+| 1, точка 1 (журнал есть, ACCEPTED не ушёл) | `TestAJournalEntryWrittenJustBeforeTheCrashBecomesAFailure` |
+| 1, точки 2–3 (в очереди и во время выполнения): FAILED D13, `started_at`, нет в `RunningIDs` | `TestAStepInterruptedByARestartFailsOnceWithTheD13Message` |
+| 2 (повторный RunStep, в том числе после второго перезапуска), обработчик не вызывается дважды | `TestAStepInterruptedByARestartNeverRunsAgain` |
+| 1, точки 4 и 7 (результат + остаток журнала) | `TestAResultSavedJustBeforeTheCrashWinsOverItsJournalEntry` |
+| 1, надгробие + остаток журнала | `TestAnAcknowledgedCommandWinsOverItsJournalEntry` |
+| 1, точки 5–6 | прежние `TestAnUnacknowledgedResultSurvivesARestartAndIsNeverRunAgain`, `TestAckedWinsOverResultsLeftByACrashBetweenTheTwoWrites` |
+| 3, хранилище без `journal/` | `TestAStateDirWithoutAJournalIsReadAndKeepsItsResults` |
+| права 0700/0600; в записи нет конфига, тегов, репозитория, плагина | `TestJournalEntriesAreOwnerOnly`, `TestAJournalEntryHoldsNoStepConfig` |
+| сбои записи | `TestACommandThatCannotBeJournaledIsRejectedWithoutRunning`, `TestAJournalThatBreaksAfterAcceptLetsTheStepsRunAndIsReported`, `TestAnInterruptedStepWhoseFailureCannotBeSavedIsStillReported` |
+| повреждённые и будущие версии записей, каталог-файл | `TestCorruptOrUnknownJournalEntriesAreKeptAndReported`, `TestAnUnreadableJournalDirStopsTheStart` |
+
+«Аварийная остановка» в тестах — `ShutdownAbort` и новый исполнитель на том
+же каталоге (как `fixture.restart`): результатов не пишет, как убитый
+процесс. Остановка посреди `writeAtomic` смоделирована оставленным
+`.tmp-*`; сам `writeAtomic` не менялся.
+
+### Известное поведение
+
+- Если restic успел записать снимок, а агент умер до сохранения результата,
+  шаг всё равно FAILED D13 — снимок в репозитории останется (связать его с
+  шагом — Д5, вне задачи).
+- Один лишний fsync на шаг (перезапись при старте) под замком исполнителя.

@@ -21,12 +21,19 @@ import (
 
 // State directory layout (all owner-only: results may name paths and repositories):
 //
+//	<dir>/journal/<key>.json  accepted, no result yet     {"version":1,"command_id":"…","accepted_at":"…","started_at":"…"}
 //	<dir>/results/<key>.json  finished, waiting for Ack   {"version":1,"result":{…}}
 //	<dir>/acked/<key>.json    acknowledged (tombstone)    {"version":1,"acked_at":"…","result":{…}}
+//
+// A journal entry is written before ACCEPTED is reported and removed once
+// the result is saved; one found at start is a step the agent was killed
+// in (D13). It holds no config: only the id and the times. A state dir
+// without journal/ (written before it existed) is read as it is.
 //
 // <key> is hex(SHA-256(command_id)): the id comes from the server and may hold
 // "/" or "..". Every file is written to a temporary name, fsynced and renamed.
 const (
+	journalDir    = "journal"
 	resultsDir    = "results"
 	ackedDir      = "acked"
 	recordVersion = 1
@@ -34,6 +41,14 @@ const (
 	stateFileMode = 0o600
 	stateDirMode  = 0o700
 )
+
+// entry is a journal record: a command accepted and not yet finished.
+type entry struct {
+	Version    int        `json:"version"`
+	CommandID  string     `json:"command_id"`
+	AcceptedAt time.Time  `json:"accepted_at"`
+	StartedAt  *time.Time `json:"started_at,omitempty"`
+}
 
 type record struct {
 	Version int             `json:"version"`
@@ -54,7 +69,7 @@ type store struct {
 
 // openStore creates the directories owner-only and refuses a state dir others can reach.
 func openStore(dir string) (*store, error) {
-	for _, sub := range []string{"", resultsDir, ackedDir} {
+	for _, sub := range []string{"", journalDir, resultsDir, ackedDir} {
 		if err := os.MkdirAll(filepath.Join(dir, sub), stateDirMode); err != nil {
 			return nil, fmt.Errorf("%w: state dir: %w", ErrInvalidOptions, err)
 		}
@@ -76,6 +91,15 @@ func key(commandID string) string {
 
 func (s *store) path(sub, commandID string) string {
 	return filepath.Join(s.dir, sub, key(commandID))
+}
+
+// journal records an accepted command; started is nil until its handler starts.
+func (s *store) journal(commandID string, accepted time.Time, started *time.Time) error {
+	data, err := json.Marshal(entry{Version: recordVersion, CommandID: commandID, AcceptedAt: accepted, StartedAt: started})
+	if err != nil {
+		return err
+	}
+	return writeAtomic(filepath.Join(s.dir, journalDir), key(commandID), data)
 }
 
 // saveResult records a finished command.
@@ -141,6 +165,34 @@ func syncDir(dir string) error {
 	return errors.Join(d.Sync(), d.Close())
 }
 
+// loadJournal reads the journal like load reads the results.
+func (s *store) loadJournal(bad func(path string, err error)) ([]entry, error) {
+	var found []entry
+	err := s.scan(journalDir, bad, func(path string) error {
+		e, err := readEntry(path)
+		if err == nil {
+			found = append(found, e)
+		}
+		return err
+	})
+	return found, err
+}
+
+func readEntry(path string) (entry, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return entry{}, err
+	}
+	var e entry
+	if err := json.Unmarshal(data, &e); err != nil {
+		return entry{}, err
+	}
+	if e.Version != recordVersion {
+		return entry{}, fmt.Errorf("%w %d", errUnknownVersion, e.Version)
+	}
+	return e, nil
+}
+
 // load reads both directories. Partial writes are removed; unreadable files are
 // kept for inspection and reported through bad.
 func (s *store) load(bad func(path string, err error)) (map[string]stored, error) {
@@ -154,23 +206,32 @@ func (s *store) load(bad func(path string, err error)) (map[string]stored, error
 }
 
 func (s *store) loadDir(sub string, found map[string]stored, bad func(string, error)) error {
+	return s.scan(sub, bad, func(path string) error {
+		st, err := readRecord(path)
+		if err == nil {
+			found[st.result.GetCommandId()] = st
+		}
+		return err
+	})
+}
+
+// scan reads every file of sub: partial writes are removed, files read
+// fails on are kept and reported through bad.
+func (s *store) scan(sub string, bad func(string, error), read func(path string) error) error {
 	dir := filepath.Join(s.dir, sub)
-	entries, err := os.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return err
 	}
-	for _, entry := range entries {
-		path := filepath.Join(dir, entry.Name())
-		if strings.HasPrefix(entry.Name(), tempPrefix) {
+	for _, file := range files {
+		path := filepath.Join(dir, file.Name())
+		if strings.HasPrefix(file.Name(), tempPrefix) {
 			_ = os.Remove(path)
 			continue
 		}
-		st, err := readRecord(path)
-		if err != nil {
+		if err := read(path); err != nil {
 			bad(path, err)
-			continue
 		}
-		found[st.result.GetCommandId()] = st
 	}
 	return nil
 }
