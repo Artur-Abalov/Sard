@@ -37,7 +37,7 @@
 
 Состояния стрима `Connect`:
 
-```
+```text
 Opened ──Hello──▶ Active ──▶ Closed(reason)
   │  (первое сообщение не Hello / нет Hello за hello-timeout)
   └──────────────────────────▶ Closed(HELLO_REQUIRED)
@@ -147,6 +147,7 @@ interface AgentSessionListener {                                                
 }
 AgentSessionRegistry.online(agentId: UUID): Boolean   // в фазе 3 — AgentConnections.online
 ```
+
 `send(agentId, ConnectResponse): SendResult` — фаза 3.
 
 ### Правило дубликата (как реализовано)
@@ -184,6 +185,7 @@ AgentSessionRegistry.online(agentId: UUID): Boolean   // в фазе 3 — Agent
 - Сборщик вызывает `AgentConnections.check`.
 
 ### Точки расширения — итог (для S6, S7)
+
 ```kotlin
 // AgentConnections — бин
 fun send(agentId: UUID, message: ConnectResponse): SendResult   // не ждёт; Queued ≠ доставлено
@@ -204,7 +206,8 @@ sealed interface SendResult { Queued; NotConnected; QueueFull }
 - 6: `send` доходит в порядке; не подключён — `NotConnected`; агент, не читающий ответы (`disableAutoRequestWithInitial(0)`), с сообщениями по 64 KiB: окно HTTP/2 и буфер gRPC заполняются, затем очередь — первый не-`Queued` ответ `QueueFull`; сообщение другому агенту доходит сразу; после `request(n)` медленный получает свои сообщения, начиная с первого. Первая версия теста проверяла `QueueFull` ещё одной отправкой; в прогоне mutflow писатель успел забрать сообщение, и она вернула `Queued`. Утверждение было неверным (очередь не обязана оставаться полной); тест проверяет первый отказ, без повторных отправок.
 - 7 (`ServerShutdownIntegrationTest`): 8 агентов на связи, `GrpcServerLifecycle.stop()` (тот же путь, что при остановке приложения) → каждый стрим `UNAVAILABLE`/`SERVER_SHUTTING_DOWN`, остановка короче отсрочки 30 s (класс целиком со стартом контекста — около 3 s). Закрыть контекст из теста нельзя — колбэки Spring TestContext падают на закрытом контексте; `@DirtiesContext` выбрасывает его после класса.
 - 8 — ручной прогон шва с настоящим A3 (каркаса `test/e2e` нет). Временный harness (в репозиторий не попал): тест Spring Boot на порту 19443 с `sard.agent.heartbeat-interval=5s`, `check-interval=2s`; **тестовая заглушка Register** — глобальный перехватчик после перехватчика S3 (отозванный агент по-прежнему получает `UNAUTHENTICATED`), отвечает `agent_id` и `heartbeat_interval`; сертификат выпущен настоящим `Enrollment` (у агента пока нет команды enroll — A2), PEM и `agent.yaml` записаны во временный каталог. Агент собран `go build ./cmd/sard-agent` (go1.27.1) и запущен с этим конфигом. Вывод:
-  ```
+
+  ```text
   09:21:12.399 enrolled agent 01a0e751-…; waiting for it to connect
   09:21:13.369 Register from agent 01a0e751-…
   09:21:13.514 connected
@@ -222,6 +225,7 @@ sealed interface SendResult { Queued; NotConnected; QueueFull }
   агент: sard-agent: register: server refused the agent certificate: rpc error: code = Unauthenticated desc = agent certificate rejected
   агент: 09:21:53 sard-agent exited with 1
   ```
+
   Проверено: A3 проходит Register → Connect → Hello, шлёт heartbeat (`last_seen_at` движется), переживает перезапуск gRPC-сервера (переподключение через ~2 s после старта) и после отзыва останавливается на отказе Register; поведение A3 менять не нужно. Наблюдение: первый heartbeat A3 приходит чуть раньше полного интервала после Hello (таймер агента стартует после ответа Register), поэтому при троттлинге «не чаще интервала» `last_seen_at` фактически обновляется раз в два интервала (здесь 10 s при 5 s). Онлайн-статус от этого не зависит (он по памяти); для консоли (S5b) `last_seen_at` отстаёт до двух интервалов — решить там, нужен ли допуск.
   После слияния S4a в `main` заглушку заменит настоящий Register; harness стоит перенести в `test/e2e`, когда появится каркас.
 
@@ -256,7 +260,8 @@ sealed interface SendResult { Queued; NotConnected; QueueFull }
 
 ### Шов с настоящим Register (после слияния S4a)
 Тот же временный harness, без заглушки Register (+ `sard.agent.endpoint=localhost:19443`), агент A3 из `agent/cmd/sard-agent`:
-```
+
+```text
 09:47:07.847 enrolled agent 01a0e769-…; waiting for it to connect
 09:47:09.337 connected
 09:47:09.374 Hello from 01a0e769-…, running=[]
@@ -271,4 +276,5 @@ sealed interface SendResult { Queued; NotConnected; QueueFull }
 агент: sard-agent: register: server refused the agent certificate: rpc error: code = Unauthenticated desc = agent certificate rejected
 агент: 09:48:02 sard-agent exited with 1
 ```
+
 Настоящий Register (S4a) → Connect → Hello → heartbeat, перезапуск gRPC-сервера, отзыв — как с заглушкой. Заглушка больше не нужна; harness по-прежнему вне репозитория до каркаса `test/e2e`.

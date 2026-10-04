@@ -98,4 +98,3 @@ Docker-демон в облачном контейнере запущен вру
   пустого тега языка там быть не может; причина — TanStack Devtools (только dev), вопрос закрыт.
 - Не сделано, внесено в реестр: OQ-099…OQ-105.
 - Гейт: `./scripts/gate.sh web fast` — `gate: PASSED (web, fast)`; `make license-check` — OK.
-

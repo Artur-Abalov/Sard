@@ -152,4 +152,3 @@
 - D: ADR 0018 «уточнено ADR 0030»; `chown sard-agent:"$(id -gn sard-agent)"`
   в postinstall и в проверке скрипта.
 - Ограничение про root в этой сессии снято: см. пункт A.
-

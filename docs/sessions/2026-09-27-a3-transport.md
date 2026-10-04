@@ -46,6 +46,7 @@
 
 **Границы `transport`** (совпадают с методами `*executor.Executor` из A4, чтобы
 он подключался без адаптера):
+
 ```go
 // Commands receives what the server sends; called from the receive loop.
 type Commands interface {
@@ -59,6 +60,7 @@ type State interface {
     PendingResults() []*agentv1.StepResult
 }
 ```
+
 `transport.Link` реализует `Sink` A4 (`Progress`, `Result`, `Log`) — не
 блокируя.
 
@@ -221,6 +223,7 @@ type State interface {
 - `app.Link` теперь `Run(ctx)`; `main` завершается с кодом 0 при остановке.
 
 ### Интерфейсы границ и заметка для интеграции с A4
+
 ```go
 // transport → исполнитель (A4 реализует; совпадает с методами *executor.Executor)
 type Commands interface {
@@ -237,6 +240,7 @@ func (t *Transport) Progress(p *agentv1.StepProgress)          // не блок�
 func (t *Transport) Result(r *agentv1.StepResult)              // не блокирует, не теряется
 func (t *Transport) Log(commandID string, line *agentv1.LogLine) // БЛОКИРУЕТ при полной очереди
 ```
+
 Для интеграции (после слияния A3 и A4), в `main`:
 `exec := executor.New(Options{Sink: link, ...})`, `transport.Options{Commands:
 exec, State: exec}` — цикл зависимостей разрывается созданием транспорта

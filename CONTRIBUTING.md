@@ -35,10 +35,12 @@ Kotlin хранит своё старое окружение, поэтому е�
 - **Kotlin:** ktlint через Spotless (`./gradlew :server:spotlessApply`), detekt. Диспетчеры корутин инжектируются.
 - **Веб:** oxlint + Prettier (`npm run format`), в веб-интерфейсе нет бизнес-логики.
 - **Каждый исходный файл** начинается со SPDX-заголовка и строки copyright:
-  ```
+
+  ```text
   // SPDX-License-Identifier: AGPL-3.0-only      (Apache-2.0 в proto/ и agent/plugins/sdk/)
   // Copyright 2026 Artur Abalov
   ```
+
   Проверка — `make license-check`.
 - **Зависимости минимальны.** Каждая новая библиотека добавляется в [docs/dependencies.md](docs/dependencies.md) с лицензией и причиной. Лицензия должна быть совместима с AGPL-3.0 (ядро) или с Apache-2.0 (SDK, proto).
 - **Нетривиальные решения** оформляются ADR в [docs/adr/](docs/adr/).

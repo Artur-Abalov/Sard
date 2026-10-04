@@ -9,10 +9,12 @@
 1. Создайте бота у @BotFather и получите токен вида `123456789:AA…`.
 2. Добавьте бота в чат или канал и узнайте его id (у групп и каналов он отрицательный, например `-1001234567890`).
 3. В `deploy/.env` задайте оба значения и перезапустите сервер (`make down && make up`):
-   ```
+
+   ```text
    SARD_TELEGRAM_BOT_TOKEN=123456789:AA…
    SARD_TELEGRAM_CHAT_ID=-1001234567890
    ```
+
 4. В журнале сервера при старте — `Notifications go through [telegram]`.
 
 Одно из двух значений без другого — сервер не стартует и называет недостающую переменную. Оба пустые — сервер стартует, уведомления выключены, в журнале `Notifications are off: no channel …`. На этапе 1 один чат получает уведомления всех тенантов.
@@ -27,10 +29,12 @@
 ## Наблюдать
 - Метрики: `sard.notify.sent`, `sard.notify.retries`, `sard.notify.undelivered` (теги `channel`, `reason=failed|expired`), `sard.notify.pending`.
 - Почему не доставлено:
+
   ```sql
   select run_id, channel, status, attempts, last_error, created_at
   from notification_deliveries where status in ('failed', 'expired') order by created_at desc;
   ```
+
   `last_error` — HTTP-статус и описание Telegram; токена в нём нет.
 
 ## Безопасность

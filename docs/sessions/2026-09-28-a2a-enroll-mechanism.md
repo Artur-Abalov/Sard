@@ -72,7 +72,7 @@ CLI-команда `sard-agent enroll` (A2b) в этой сессии не ре�
 ## Решения и почему
 
 1. **`DialTOFU` делает TLS-рукопожатие вручную** (`net.Dialer.DialContext`
-   + `tls.Client(...).HandshakeContext`), а не через `grpc.NewClient` с
+   - `tls.Client(...).HandshakeContext`), а не через `grpc.NewClient` с
    `VerifyPeerCertificate`. Причина: `grpc.NewClient` ленив (не
    подключается, пока не вызван RPC), и нет способа гарантировать, что
    проверка отпечатка завершилась до того, как что-то отправит токен —

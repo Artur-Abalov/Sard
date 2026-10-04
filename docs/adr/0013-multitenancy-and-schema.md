@@ -15,6 +15,7 @@ Sard управляет бэкапами многих клиентов (MSP, х�
 - Переход на enterprise — это установка стартера, а не миграция данных: существующие строки уже принадлежат тенанту по умолчанию, который становится первым тенантом.
 
 ### Шов
+
 ```kotlin
 // extension/TenantResolver.kt — точка расширения, как SardExtension
 fun interface TenantResolver {
@@ -36,6 +37,7 @@ class HibernateTenantBridge(private val resolver: TenantResolver) : CurrentTenan
     override fun validateExistingCurrentSessions() = true
 }
 ```
+
 - `TenantResolver` живёт в `extension/`, потому что это контракт для enterprise-стартеров; Hibernate о нём знает только через мост в `persistence/`. Остальной код Hibernate не видит.
 - **Порядок автоконфигураций — часть контракта.** `@ConditionalOnMissingBean` в автоконфигурации видит только бины, объявленные раньше. Enterprise-стартер обязан объявить `@AutoConfiguration(before = [TenancyAutoConfiguration::class])`, иначе в контексте окажутся два резолвера. Проверяется `TenancyAutoConfigurationTest` через `AutoConfigurations.of(...)`, который соблюдает порядок так же, как приложение.
 - Enterprise-резолвер при отсутствии тенанта в контексте **бросает исключение**, а не возвращает значение по умолчанию: ошибка закрывает доступ, а не открывает чужие данные.
@@ -78,7 +80,7 @@ class HibernateTenantBridge(private val resolver: TenantResolver) : CurrentTenan
 ### Целевая схема
 Реализовано сейчас: `tenants`, `agents.tenant_id`, `enrollment_tokens`, `agent_certificates`, снимок Register — колонки `agents` и `agent_plugins`, `agent_repositories` (S4a, `V202609281400__agent_register.sql`). Остальные таблицы и колонки создаёт миграция той фичи, которой они нужны; её спецификация может уточнить детали, но не правила выше. В листинге `tenant_id` и `UNIQUE (tenant_id, id)` подразумеваются у каждой таблицы тенанта, `→ x` означает составной FK `(tenant_id, x_id) → x (tenant_id, id)`.
 
-```
+```text
 tenants                       глобальная
   id PK, name UNIQUE, created_at
 
