@@ -162,6 +162,8 @@ data class StepView(
     val filesTotal: Long? = null,
     /** The valid backup output the agent sent, whatever the step's status (S8b В8); null if none. */
     val backup: BackupResult? = null,
+    /** The run the step belongs to; the agent tags its snapshot with it (FXs Д5). */
+    val runId: UUID,
 ) {
     override fun toString() = "StepView(id=$id, action=$action, status=$status, agentId=$agentId)"
 }

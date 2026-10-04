@@ -81,6 +81,17 @@
 
 ## Закрыто при сверке
 
+### 2026-10-04, FXs (сервер: потеря шага по сроку в БД, теги снимков, след RunFinished; ветка `claude/gallant-wozniak-hb0wl1`)
+
+Дефекты из сверки T3 (`t3-defects.md`, 2026-10-04, `main` @ `2a21a0f`). Найдены чтением кода; исправление проверено тестами сервера на PostgreSQL. На контейнерах (e2e) не проверено, это T3.
+
+| Суть | Чем закрыто |
+|---|---|
+| OQ-133. Д1. Шаг `running` не становится `lost`, если агент не вернулся. Срок заводился только по Hello и хранился в памяти (`LostStepWatch`), поэтому после перезапуска сервера без возврата агента шаг тоже висел. Источник оставался с активным запуском навсегда. | Срок потери в базе: `run_steps.lost_deadline` (миграция `V202610041200__lost_deadline.sql`). Ставится при конце сессии и при старте сервера, проверяется тиком по базе; `dispatched` и `running` → `lost`, запуск `failed`. `agents/dispatch/StepDispatcher.kt`, `StepLossHooks.kt`, `runs/StepDeadlines.kt`. Тесты: `DispatchIntegrationTest` (агент не вернулся, перезапуск после простоя в 10 окон), `StepDispatcherTest`. Черновик ADR `docs/adr/00XX-draft-run-dispatch.md`. |
+| OQ-134. Д2. Агент, который часто переподключается, бесконечно откладывал `lost`: каждый Hello заменял срок. | Ранний срок сохраняется (`least(lost_deadline, :deadline)`) при конце сессии и при Hello без шага; заменяет его только старт сервера. Тесты: `DispatchIntegrationTest` (три переподключения через ¼ окна — lost по первому сроку), `StepDispatcherTest`. |
+| OQ-135. Д5. Снимок restic нельзя было связать с шагом: сервер не заполнял `RunStep.tags`. | `RunSteps.of` передаёт `sard.step`, `sard.run`, `sard.source` (у шага RUN — пустое значение, решение владельца В5). Агент принимает такие теги (`pluginhost/handler.go`, `resticTags`: непустой ключ, без запятых). `agents/dispatch/DispatchParts.kt`; тесты `DispatchPartsTest`, `DispatchIntegrationTest`. |
+| OQ-136. Д6. RunFinished не оставлял проверяемого следа: только событие в памяти. | `RunFinishedTrace` (слушатель): строка info `run {id} finished: {status}` и счётчик `sard.run.finished{status}` на каждую публикацию. `runs/RunFinishedTrace.kt`, бин в `agents/results/ResultsConfiguration.kt`; тесты `RunFinishedTraceTest`, `DispatchIntegrationTest` (+1 к счётчику на запуск). |
+
 ### 2026-10-02, спецификация A7b (маскирование секретов в логах шагов)
 
 | Суть | Чем закрыто |

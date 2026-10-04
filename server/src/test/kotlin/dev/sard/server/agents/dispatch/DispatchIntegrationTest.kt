@@ -217,6 +217,13 @@ class DispatchIntegrationTest(
         return run
     }
 
+    private fun finishedCount(status: String) =
+        meters
+            .find("sard.run.finished")
+            .tag("status", status)
+            .counter()
+            ?.count() ?: 0.0
+
     private fun runStatus(runId: UUID): String? {
         val sql = "select status from runs where id = ?"
         return jdbc.queryForObject(sql, String::class.java, runId)
@@ -238,6 +245,13 @@ class DispatchIntegrationTest(
             listOf(step.commandId, step.plugin, step.repositoryName, step.action),
         )
         assertEquals("""{"database": "prod-db"}""", step.configJson)
+        val tags =
+            mapOf(
+                "sard.step" to stepId.toString(),
+                "sard.run" to run.id.toString(),
+                "sard.source" to run.sourceId.toString(),
+            )
+        assertEquals(tags, step.tagsMap, "FXs Д5: the snapshot names its step, run and source")
         assertEquals(mapOf("status" to "dispatched", "dispatched_at" to Timestamp.from(clock.now)), status(stepId))
         assertEquals("dispatched", runStatus(run.id))
     }
@@ -364,6 +378,7 @@ class DispatchIntegrationTest(
         val run = runningThenLeft(agent)
         val stepId = run.steps.single().id
         assertEquals(clock.now + settings.lostAfter, awaitDeadline(stepId))
+        val failedBefore = finishedCount("failed")
 
         clock.now += settings.lostAfter - Duration.ofSeconds(1)
         dispatcher.tick()
@@ -373,6 +388,8 @@ class DispatchIntegrationTest(
         dispatcher.tick()
 
         assertEquals(listOf("lost", "failed"), listOf(status(stepId)["status"], runStatus(run.id)))
+        dispatcher.tick()
+        assertEquals(failedBefore + 1, finishedCount("failed"), "FXs Д6: one RunFinished for the run")
         val next = runs.start(agent.tenantId, run.sourceId)
         assertEquals("queued", runStatus(next.id), "the source runs again")
     }

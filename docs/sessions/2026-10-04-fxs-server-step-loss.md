@@ -197,3 +197,46 @@ create index run_steps_lost_deadline_idx on run_steps (lost_deadline)
 - Отступление от правила 3: тесты и код написаны до первого прогона,
   красного прогона до кода не было. Вместо него — проверка выше, с
   отключённым слушателем.
+
+## Фаза 3 — теги, след RunFinished, ADR, реестр
+
+### Сделано
+
+- Д5:
+  - `StepView.runId` (из `RunStepRecord.runId`);
+  - `RunSteps.of` передаёт `sard.step`, `sard.run`, `sard.source`. У шага RUN
+    значение `sard.source` пустое (В5);
+  - правила агента проверены по коду: `pluginhost/handler.go`, `resticTags`
+    отклоняет пустой ключ и запятую в ключе или значении. Пустое значение
+    даёт тег `sard.source=`, `restic/backup.go`, `badTag` пропускает непустую
+    строку.
+- Д6:
+  - `runs/RunFinishedTrace.kt` — `RunFinishedListener`: строка info
+    `run {id} finished: {status}` и `RunFinishedCounter`;
+  - Micrometer-реализация — бин `runFinishedTrace` в `ResultsConfiguration`,
+    счётчик `sard.run.finished{status}` (В6). В `runs/` Micrometer не
+    импортируется, как и раньше;
+  - `RunAnnouncer` собирает всех слушателей, отдельной связки не нужно.
+- Черновик ADR `00XX-draft-run-dispatch.md`:
+  - таблица переходов: `dispatched`/`running` → `lost` по сроку;
+  - раздел «Срок потери — в базе»: таблица событий, ранний срок, замена при
+    старте, фаза старта;
+  - решение D13;
+  - в «Отвергнуто» пересмотрены «`dispatched` без Hello → `lost`» и
+    «Кандидаты в базе», который стал «Кандидаты в памяти».
+- Реестр: OQ-133…136 (Д1, Д2, Д5, Д6) закрыты в разделе «2026-10-04, FXs».
+
+### Тесты
+
+- `DispatchPartsTest`:
+  - RunStep несёт три тега;
+  - у шага RUN `sard.source` пустой, ключи непустые, запятых нет.
+- `DispatchIntegrationTest`:
+  - RunStep, который пришёл агенту по потоку, несёт теги шага, запуска и
+    источника;
+  - потеря шага даёт ровно +1 к `sard.run.finished{status=failed}`, повторный
+    тик ничего не добавляет.
+- `RunFinishedTraceTest`: две публикации — две строки info и два счёта по
+  статусам.
+- Для `runId` обновлены конструкторы `StepView` в `RunMappingTest`,
+  `RunModelTest`, `RunsIntegrationTest` и `DispatchFakes`.

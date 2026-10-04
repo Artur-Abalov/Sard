@@ -10,6 +10,7 @@ import dev.sard.server.agents.stream.LogChunkHandler
 import dev.sard.server.agents.stream.StepProgressHandler
 import dev.sard.server.agents.stream.StepResultHandler
 import dev.sard.server.runs.ProgressThrottle
+import dev.sard.server.runs.RunFinishedTrace
 import dev.sard.server.runs.StepLogs
 import dev.sard.server.runs.StepProgressWrites
 import dev.sard.server.runs.StepResults
@@ -71,4 +72,15 @@ class ResultsConfiguration {
             },
             MicrometerResultMetrics(meters),
         )
+
+    /** `sard.run.finished{status}` (FXs Д6), next to the step result outcomes it follows. */
+    @Bean
+    fun runFinishedTrace(meters: MeterRegistry) =
+        RunFinishedTrace { status ->
+            Counter
+                .builder("sard.run.finished")
+                .tag("status", status.stored)
+                .register(meters)
+                .increment()
+        }
 }

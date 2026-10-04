@@ -37,8 +37,17 @@ interface DispatchMetrics {
     fun waiting(steps: WaitingSteps)
 }
 
-/** A step as the agent receives it (agent.proto RunStep); no timeout (the agent's maximum) and no tags. */
+/**
+ * A step as the agent receives it (agent.proto RunStep); no timeout (the agent's maximum). The tags
+ * reach the restic snapshot as `key=value` (FXs Д5): a snapshot names its step, run and source.
+ * UUIDs hold no comma, the one character the agent refuses; a script step has no source, its tag
+ * is empty (owner decision В5).
+ */
 object RunSteps {
+    const val STEP_TAG = "sard.step"
+    const val RUN_TAG = "sard.run"
+    const val SOURCE_TAG = "sard.source"
+
     fun of(step: StepView): RunStep =
         RunStep
             .newBuilder()
@@ -47,6 +56,9 @@ object RunSteps {
             .setConfigJson(step.config)
             .setAction(actionOf(step.action))
             .setRepositoryName(step.repositoryName.orEmpty())
+            .putTags(STEP_TAG, step.id.toString())
+            .putTags(RUN_TAG, step.runId.toString())
+            .putTags(SOURCE_TAG, step.sourceId?.toString().orEmpty())
             .build()
 
     private fun actionOf(action: Action): ProtoAction =

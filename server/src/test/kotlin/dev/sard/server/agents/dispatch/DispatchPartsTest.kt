@@ -12,6 +12,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import dev.sard.proto.agent.v1.Action as ProtoAction
 
 @MutFlowTest
@@ -26,8 +27,19 @@ class DispatchPartsTest {
                 .setConfigJson("""{"n": 1}""")
                 .setAction(ProtoAction.ACTION_BACKUP)
                 .setRepositoryName("main")
+                .putTags("sard.step", UUID(0, 1).toString())
+                .putTags("sard.run", UUID(8, 1).toString())
+                .putTags("sard.source", UUID(9, 1).toString())
                 .build()
         assertEquals(expected, MutFlow.underTest { RunSteps.of(step(1)) })
+    }
+
+    @Test
+    fun `a script step has no source, its source tag is empty, which restic and the agent accept`() {
+        val command = MutFlow.underTest { RunSteps.of(step(1).copy(action = Action.RUN, sourceId = null)) }
+        assertEquals("", command.tagsMap["sard.source"])
+        assertEquals(setOf("sard.step", "sard.run", "sard.source"), command.tagsMap.keys)
+        assertTrue(command.tagsMap.all { (k, v) -> k.isNotEmpty() && ',' !in k + v }, "agent: pluginhost.resticTags")
     }
 
     @Test
