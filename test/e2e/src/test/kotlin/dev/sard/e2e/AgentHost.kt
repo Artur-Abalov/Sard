@@ -6,6 +6,7 @@ package dev.sard.e2e
 import com.github.dockerjava.api.DockerClient
 import com.github.dockerjava.api.model.Bind
 import com.github.dockerjava.api.model.Volume
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.output.OutputFrame
 import org.testcontainers.containers.startupcheck.StartupCheckStrategy
@@ -104,6 +105,29 @@ internal class AgentHost(
         check(exit.code == 0) { "copying to $destination: restic version exited ${exit.code}" }
     }
 
+    /**
+     * `restic restore <snapshotId>` from the repository at [repository] into a fresh directory on
+     * this host, then the restored copy of [path] read back: relative path to bytes, null for a
+     * directory, [path] itself left out. The password file goes to restic by path; the test never
+     * reads it.
+     */
+    fun restore(
+        repository: String,
+        passwordFile: String,
+        snapshotId: String,
+        path: String,
+    ): Map<String, ByteArray?> {
+        val target = "$STATE_DIR/restored-$snapshotId"
+        var tree: Map<String, ByteArray?> = emptyMap()
+        val exit =
+            run(
+                AgentImage.RESTIC_BINARY, "restore", snapshotId, "--repo", repository, "--password-file", passwordFile,
+                "--no-cache", "--target", target,
+            ) { c -> tree = readTree(c, target + path) }
+        check(exit.code == 0) { "restic restore exited ${exit.code}: ${exit.stderr}" }
+        return tree
+    }
+
     /** The bytes of [path] on this host (read through a container of the image: `docker cp`). */
     fun read(path: String): ByteArray {
         var bytes: ByteArray? = null
@@ -128,6 +152,23 @@ internal class AgentHost(
             ownedFiles.forEach { (path, content) -> withCopyToContainer(TarFiles.ownedByAgent(content), path) }
             waitingFor(Wait.forLogMessage(".*connecting to ${SardEnvironment.AGENT_ENDPOINT}.*", 1))
         }
+
+    /** The tree at [path] in [container] (`docker cp` as a tar): relative path to bytes, null for a directory. */
+    private fun readTree(
+        container: GenericContainer<*>,
+        path: String,
+    ): Map<String, ByteArray?> {
+        val tree = linkedMapOf<String, ByteArray?>()
+        container.dockerClient.copyArchiveFromContainerCmd(container.containerId, path).exec().use { stream ->
+            val tar = TarArchiveInputStream(stream, Charsets.UTF_8.name())
+            generateSequence { tar.nextEntry }.forEach { entry ->
+                // Entries are named from the copied directory's own name: "data/nested/...".
+                val relative = entry.name.substringAfter('/', "").trimEnd('/')
+                if (relative.isNotEmpty()) tree[relative] = if (entry.isDirectory) null else tar.readAllBytes()
+            }
+        }
+        return tree
+    }
 
     private fun container(): GenericContainer<*> =
         GenericContainer<Nothing>(DockerImageName.parse(E2e.agentImage)).apply {

@@ -89,19 +89,31 @@ internal object Backups {
             Snapshot(it.getString(1), it.getString(2), it.getBoolean(3))
         }
 
+    /** A repository as the agent's last Register reported it; [id] is null while the agent could not read one. */
+    class Repository(
+        val backend: String,
+        val id: String?,
+    )
+
+    fun repository(
+        env: SardEnvironment,
+        agentId: String,
+        name: String,
+    ): Repository? =
+        env.database().use { connection ->
+            connection.prepareStatement("SELECT backend, repository_id FROM agent_repositories WHERE agent_id = ? AND name = ?").use { q ->
+                q.setObject(1, UUID.fromString(agentId))
+                q.setString(2, name)
+                q.executeQuery().use { if (it.next()) Repository(it.getString(1), it.getString(2)) else null }
+            }
+        }
+
     /** The repository_id the agent's last Register reported for [name], or null while it has none. */
     fun repositoryId(
         env: SardEnvironment,
         agentId: String,
         name: String,
-    ): String? =
-        env.database().use { connection ->
-            connection.prepareStatement("SELECT repository_id FROM agent_repositories WHERE agent_id = ? AND name = ?").use { q ->
-                q.setObject(1, UUID.fromString(agentId))
-                q.setString(2, name)
-                q.executeQuery().use { if (it.next()) it.getString(1) else null }
-            }
-        }
+    ): String? = repository(env, agentId, name)?.id
 
     /** Whether the agent has registered and has been seen on its stream. */
     fun connected(

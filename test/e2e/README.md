@@ -33,7 +33,8 @@ make e2e-images   # только образы: sard-server:e2e, sard-agent:e2e
 | `RegistrationTest` | перехватчик S3: без сертификата клиента `AgentService` — UNAUTHENTICATED |
 | `AgentEnrollTest` | сценарии `@e2e` `docs/specs/agent/agent-enroll.feature` (имена тестов — названия сценариев): `sard-agent enroll` пишет ключ, сертификат и бандл, агент в тенанте токена с именем хоста, сервер принимает выданный сертификат; испорченный токен, существующая идентичность, чужой отпечаток не расходуют токен; `--force`; отказы `TOKEN_USED/UNKNOWN/EXPIRED/REVOKED` |
 | `AgentEnrollRetryableTest` | сценарий `@e2e` «После INTERNAL_RETRYABLE тем же токеном можно зарегистрироваться»: PostgreSQL остановлен — код 6, запущен — код 0 (своя установка) |
-| `FullChainTest` | T2b: `sard-agent enroll` → `repo init` → источник и запуск через REST → шаг files с restic `succeeded`, прогресс дошёл (`started_at`), снимок с `repository_id` из Register, `ResultAck` дошёл (надгробие) |
+| `FullChainTest` | T2b, полная цепочка: `sard-agent enroll`, агент до репозитория, `repo init` и перезапуск — сервер знает `repository_id` (сценарий `@e2e` `repo-init.feature`); источник и запуск через REST; шаг files `succeeded`, снимок; `restic restore` — дерево побайтово равно эталону, снятому до бэкапа (размеры от 0 до 3 МиБ, вложенность, не-ASCII имя; исключённые каталог и файл отсутствуют). Транспорт + исполнитель: прогресс дошёл, `ResultAck` дошёл (надгробие). Отрицательные пути: несуществующий путь — `failed` с путём, без снимка; нечитаемый файл — `failed` с путём, снимок `partial`, восстановление даёт читаемые файлы |
+| `TreeDiffTest` | сравнитель деревьев `FullChainTest` без контейнеров: испорченный байт, пропавший, лишний, усечённый файл, файл вместо каталога — различия |
 | `AgentConnectTest` | настоящий агент после `sard-agent enroll` выполняет Register и открывает Connect (`agents.last_register_at`, `last_seen_at`) |
 | `RunStepSeamTest` | шаг в `queued` доходит до настоящего агента на Hello; агент отклоняет неизвестный плагин, сервер записывает `REJECTED`: шаг `rejected` с `unknown plugin "absent"`, запуск `failed` (S7a) |
 | `ResultAckSeamTest` | S7a, тест 8: отклонённый шаг записан, `ResultAck` дошёл до агента (надгробие `acked/<sha256>.json` в каталоге исполнителя, `results/` пуст), после перезапуска контейнера агент результат не повторяет |
@@ -57,9 +58,8 @@ make e2e-images   # только образы: sard-server:e2e, sard-agent:e2e
 
 ## Заготовки (`Pending.kt`)
 
-Классы без тестовых методов: ничего не отключено, запускать пока нечего. Шаги — в KDoc.
+Классы без тестовых методов: ничего не отключено, запускать пока нечего. Шаги — в KDoc. Проверка восстановления сервером (`lastVerifiedRestoreAt`) в контракт этапа 1 не входит и заготовки не имеет.
 
 | Сценарий | Условие включения |
 |---|---|
-| `FullChainT2Pending` — полная цепочка T2: бэкап, снапшот, проверенное восстановление, `lastVerifiedRestoreAt` | S7 и A2 в `main` |
 | `StreamBreakT3Pending` — обрыв стрима T3; перезапуск агента посреди шага | задача T3 |

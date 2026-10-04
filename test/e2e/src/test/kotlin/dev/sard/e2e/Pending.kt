@@ -10,27 +10,6 @@ package dev.sard.e2e
 // own file. The list is mirrored in test/e2e/README.md.
 
 /**
- * T2, the full chain (test/e2e/README.md): token → enroll → workflow → restic
- * snapshot → verified restore → `lastVerifiedRestoreAt`.
- *
- * Enable when: S7 (runs driven by the server) is in main, and A2 so that
- * enrollment goes through `sard-agent enroll` ([AgentEnroller] replaced).
- *
- * Steps:
- * 1. Add a source PostgreSQL container and a local restic repository to the
- *    environment's network.
- * 2. Create a token ([EnrollmentTokens], by then the S8b REST call), enroll and
- *    start the agent.
- * 3. Start `examples/workflows/postgres-nightly.yaml` through the REST API.
- * 4. Assert a snapshot exists in the repository and no backup data passed
- *    through the server (server container has no repository access).
- * 5. Run restore verification; assert `/api/v1/status` reports a non-empty
- *    `lastVerifiedRestoreAt`.
- * The behaviour scenarios are written separately (out of T2a scope).
- */
-class FullChainT2Pending
-
-/**
  * T3, stream break: the Connect stream is cut while a run is in progress.
  *
  * Enable when: T3 is taken up (S7 is in main; a files step runs, see [FullChainTest]).
