@@ -216,8 +216,11 @@ func readTokenFile(path string, stderr io.Writer) (string, int) {
 // anywhere it appears in a larger string — not just when the whole string
 // is one — so it also catches a token embedded in flag.Parse's or
 // *PathError's own error text ("invalid value \"sard_...\" for flag
-// -timeout: ...", "open sard_...: no such file or directory").
-var tokenPattern = regexp.MustCompile(`sard_\S*`)
+// -timeout: ...", "open sard_...: no such file or directory"). It follows
+// the token's alphabet — the secret in base64url, then "." and the hex
+// fingerprint — so the characters around a token stay. A path such as
+// /etc/sard_agent/x is redacted as well; the owner accepted that (OQ-026).
+var tokenPattern = regexp.MustCompile(`sard_[A-Za-z0-9_-]+(?:\.[0-9a-fA-F]*)?`)
 
 // redactIfToken hides every enrollment-token-looking substring (starting
 // "sard_") in s before it is echoed back in a message (В2, F3): the token

@@ -89,11 +89,14 @@ var (
 	// ErrNotAuthorized: Register answered UNAUTHENTICATED or PERMISSION_DENIED,
 	// e.g. a revoked or expired agent certificate.
 	ErrNotAuthorized = errors.New("server refused the agent certificate")
+	// ErrRegistrationInvalid: Register answered INVALID_ARGUMENT, e.g. a
+	// duplicate repository name; the server will say the same next time.
+	ErrRegistrationInvalid = errors.New("server rejected the agent's registration")
 )
 
 // IsPermanent reports whether reconnecting cannot help.
 func IsPermanent(err error) bool {
-	return errors.Is(err, ErrIncompatibleProtocol) || errors.Is(err, ErrNotAuthorized)
+	return errors.Is(err, ErrIncompatibleProtocol) || errors.Is(err, ErrNotAuthorized) || errors.Is(err, ErrRegistrationInvalid)
 }
 
 // Options configure a Transport. Clock may be nil.
@@ -292,6 +295,8 @@ func registerError(ctx context.Context, err error) error {
 		return ctx.Err()
 	}
 	switch status.Code(err) {
+	case codes.InvalidArgument:
+		return fmt.Errorf("register: %w: %w", ErrRegistrationInvalid, err)
 	case codes.FailedPrecondition:
 		return fmt.Errorf("register: %w: %w", ErrIncompatibleProtocol, err)
 	case codes.Unauthenticated, codes.PermissionDenied:

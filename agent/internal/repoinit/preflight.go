@@ -34,8 +34,8 @@ type Checked struct {
 // repository only. index is the repository's position in the config, as
 // in A1's messages. With createPassword a missing password file passes.
 func Preflight(h Host, repo config.Repository, index int, createPassword bool) (Checked, *Failure) {
-	if p := repo.CryptoProvider; p != "" && p != crypto.ResticAESName {
-		return Checked{}, fail(CryptoProviderUnsupported, "crypto_provider %q of repository %q is not supported; stage 1 supports only the built-in restic encryption (%s, or leave crypto_provider empty)", p, repo.Name, crypto.ResticAESName)
+	if f := CheckCryptoProvider(repo); f != nil {
+		return Checked{}, f
 	}
 	missing, f := checkPasswordFile(h, repo, index, createPassword)
 	if f != nil {
@@ -43,6 +43,15 @@ func Preflight(h Host, repo config.Repository, index int, createPassword bool) (
 	}
 	env, f := checkEnvFile(h, repo, index)
 	return Checked{EnvAssignments: env, PasswordMissing: missing}, f
+}
+
+// CheckCryptoProvider refuses a repository whose crypto_provider is
+// anything but empty or the built-in restic encryption (stage 1).
+func CheckCryptoProvider(repo config.Repository) *Failure {
+	if p := repo.CryptoProvider; p != "" && p != crypto.ResticAESName {
+		return fail(CryptoProviderUnsupported, "crypto_provider %q of repository %q is not supported; stage 1 supports only the built-in restic encryption (%s, or leave crypto_provider empty)", p, repo.Name, crypto.ResticAESName)
+	}
+	return nil
 }
 
 func rejected(err error) *Failure {

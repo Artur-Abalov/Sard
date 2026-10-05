@@ -28,3 +28,16 @@ func checkRestic(ctx context.Context, cfg config.Config, configPath string, exec
 	}
 	return binary, err
 }
+
+// checkCryptoProviders refuses to start while a repository asks for
+// encryption the agent cannot do; the first one in config order is named.
+// It is a check of the service's start, not of config.Load: repo init and
+// repo list report the same reason themselves.
+func checkCryptoProviders(cfg config.Config) error {
+	for _, r := range cfg.Repositories {
+		if f := repoinit.CheckCryptoProvider(r); f != nil {
+			return f
+		}
+	}
+	return nil
+}

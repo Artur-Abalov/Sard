@@ -4,7 +4,9 @@
 package pluginhost
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
@@ -36,7 +38,17 @@ func (s *Secrets) Secret(name string) ([]byte, error) {
 	}
 	value, err := s.read(path)
 	if err != nil {
-		return nil, fmt.Errorf("secret %q: %w", name, err)
+		return nil, fmt.Errorf("secret %q: %w", name, withoutPath(err))
 	}
 	return value, nil
+}
+
+// withoutPath drops the path from a file error: only names leave the host
+// (ADR 0008).
+func withoutPath(err error) error {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return pe.Err
+	}
+	return err
 }

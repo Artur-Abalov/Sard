@@ -39,6 +39,9 @@ const (
 	exitOK    = 0
 	exitError = 1
 	exitUsage = 2
+	// exitRefused: the server refused the agent for good (EX_CONFIG).
+	// sard-agent.service has RestartPreventExitStatus=78.
+	exitRefused = 78
 )
 
 func main() {
@@ -85,6 +88,10 @@ func runAgentCmd(ctx context.Context, args []string, stdout, stderr io.Writer, h
 		return exitUsage
 	}
 	if err := start(ctx, *configPath, stdout, hostname, os.Executable); err != nil {
+		if transport.IsPermanent(err) {
+			_, _ = fmt.Fprintln(stderr, "sard-agent:", transport.RefusalLine(err))
+			return exitRefused
+		}
 		_, _ = fmt.Fprintln(stderr, "sard-agent:", err)
 		return exitError
 	}
@@ -95,6 +102,10 @@ func runAgentCmd(ctx context.Context, args []string, stdout, stderr io.Writer, h
 func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf hostnameFunc, executable func() (string, error)) error {
 	cfg, err := config.Load(configPath)
 	if err != nil {
+		return err
+	}
+	// OQ-050: before any file or the network (Р7).
+	if err := checkCryptoProviders(cfg); err != nil {
 		return err
 	}
 	if err := checkHostFiles(cfg); err != nil {

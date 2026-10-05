@@ -57,13 +57,29 @@ func TestUnknownSecretIsATypedError(t *testing.T) {
 	}
 }
 
-func TestUnreadableSecretNamesTheSecretAndItsFileOnly(t *testing.T) {
+func TestUnreadableSecretNamesTheSecretAndKeepsTheCause(t *testing.T) {
 	s := pluginhost.NewSecrets(map[string]string{"pg": "/etc/sard/pg"}, (&files{}).read)
 	_, err := s.Secret("pg")
 	if !errors.Is(err, fs.ErrNotExist) || errors.Is(err, sdk.ErrUnknownSecret) {
 		t.Fatalf("err = %v", err)
 	}
-	if !strings.HasPrefix(err.Error(), `secret "pg": open /etc/sard/pg`) {
+	if !strings.HasPrefix(err.Error(), `secret "pg": `) {
 		t.Errorf("Error() = %q", err.Error())
+	}
+}
+
+// OQ-126: only names leave the host (ADR 0008), so the file's path is not
+// in the error, while the secret's name and the cause are.
+func TestUnreadableSecretErrorHasNoHostPath(t *testing.T) {
+	read := func(string) ([]byte, error) {
+		return nil, &fs.PathError{Op: "open", Path: "/etc/x", Err: fs.ErrPermission}
+	}
+	s := pluginhost.NewSecrets(map[string]string{"pg": "/etc/x"}, read)
+	_, err := s.Secret("pg")
+	if err == nil || strings.Contains(err.Error(), "/etc/x") {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(err.Error(), `"pg"`) || !errors.Is(err, fs.ErrPermission) {
+		t.Errorf("err = %v: the name and the cause must stay", err)
 	}
 }
