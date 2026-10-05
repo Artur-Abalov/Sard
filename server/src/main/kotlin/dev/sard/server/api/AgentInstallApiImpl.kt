@@ -37,7 +37,7 @@ class AgentInstallApiImpl(
             arch,
             format,
             info.signed,
-            ReleaseKey(key.id, key.publicKey),
+            key.toWire(),
             MANUAL_INSTALL_DOC,
             info.steps.map { it.toWire() },
         )
@@ -58,10 +58,10 @@ class AgentInstallApiImpl(
             arch,
             format,
             info.signed,
-            ReleaseKey(key.id, key.publicKey),
+            key.toWire(),
             MANUAL_INSTALL_DOC,
             info.steps.map { it.toWire() },
-            info.reason?.let { enumValueOf<UpgradeReason>(it.name) },
+            info.reason?.twin<UpgradeReason>(),
         )
     }
 }
@@ -75,3 +75,5 @@ private fun InstallFormat.toDomain(): DomainFormat = twin()
 private fun FetchTool.toDomain(): DomainFetch = twin()
 
 private fun DomainStep.toWire() = InstallStep(kind.twin(), commands, optional)
+
+private fun DomainKey.toWire() = ReleaseKey(id, publicKey)
