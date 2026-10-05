@@ -97,7 +97,10 @@
 #   В8. Блокировка на хосте по имени репозитория; второй одновременный init
 #       того же репозитория — код 6, причина INIT_IN_PROGRESS, до обращения к
 #       бэкенду; разные репозитории друг другу не мешают.
-#   В9. crypto_provider при старте агента — отдельная задача, вне фичи.
+#   В9. crypto_provider при старте агента — отдельная задача, вне фичи;
+#       специфицирована в docs/specs/agent/agent-start-refusals.feature (OQ-050,
+#       правило «Неподдерживаемый crypto_provider останавливает агента до
+#       подключения»).
 #   В8а. Поправка к В8 (2026-09-30, ADR 0030). Файл блокировки лежит в
 #       restic.cache_dir (по умолчанию /var/cache/sard/restic,
 #       agent/internal/config/config.go, restic.DefaultCacheDir), а не рядом с
@@ -142,7 +145,8 @@
 #       генерация пароля → проверка
 #       репозитория на бэкенде → init. --timeout отсчитывается от запуска.
 #       Порядок старта агента: конфиг → A1 → tls (agent-tls-identity) →
-#       restic → строка «connecting to» и сеть.
+#       restic → строка «connecting to» и сеть. Дополнено Р7
+#       agent-start-refusals.feature: crypto_provider — сразу после конфига.
 #   С6. Проверка restic при старте безусловна: агент без репозиториев в
 #       конфиге тоже не стартует без пригодного restic. enroll и --version
 #       restic не требуют.
@@ -265,7 +269,10 @@
 #       ADR 0025 нужно дополнить таблицами repo init и repo list (В3–В6, Л8).
 #   П6. crypto_provider: конфиг принимает любое значение, агент всегда
 #       использует встроенный AES (main.go:131) и сообщает серверу настроенное
-#       значение (app.go:84) — вне фичи, OQ-050.
+#       значение (app.go:84) — вне фичи, OQ-050. Старт агента с
+#       неподдерживаемым crypto_provider — docs/specs/agent/agent-start-refusals.feature;
+#       причина CRYPTO_PROVIDER_UNSUPPORTED и код 2 repo init и repo list не
+#       меняются (проверка не в config.Load).
 #
 # Классы кодов выхода (номера A2b без изменений)
 #   | код | класс A2b         | repo init                                             | repo list (Л8)                      |
