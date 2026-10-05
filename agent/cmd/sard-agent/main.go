@@ -135,6 +135,7 @@ func newAgent(cfg config.Config, hostname, resticBinary string) *app.Agent {
 		Exec:     restic.ProcessExecutor{},
 		Keys:     crypto.NewResticAES(cfg.PasswordFiles()),
 		ReadFile: os.ReadFile,
+		Logger:   slog.Default(),
 	})
 	registry := plugins.Registry(version)
 	return &app.Agent{
@@ -173,6 +174,7 @@ func serve(ctx context.Context, cfg config.Config, agent *app.Agent) error {
 		Register: agent.RegisterRequest,
 		Commands: ref,
 		State:    ref,
+		Logger:   slog.Default(),
 	})
 	if err != nil {
 		return err
@@ -233,13 +235,14 @@ func openRepositories(cfg config.Config, opts restic.Options) resticRepositories
 	return repos
 }
 
-// get returns the repository of a step, its stderr copied to the step's log.
-func (r resticRepositories) get(name string, stderr io.Writer) (restic.Repository, bool) {
+// get returns the repository of a step: its stderr copied to the step's
+// log, its runs of restic logged with the step's command_id.
+func (r resticRepositories) get(name, commandID string, stderr io.Writer) (restic.Repository, bool) {
 	repo, ok := r[name]
 	if !ok {
 		return nil, false
 	}
-	return repo.WithStderr(stderr), true
+	return repo.ForStep(commandID, stderr), true
 }
 
 func repositoryNames(repos []config.Repository) []string {

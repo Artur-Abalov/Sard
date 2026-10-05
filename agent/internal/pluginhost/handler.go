@@ -19,9 +19,10 @@ import (
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
-// Repositories returns the restic repository configured under name, its
-// stderr copied to the step's output (A7c).
-type Repositories func(name string, stderr io.Writer) (restic.Repository, bool)
+// Repositories returns the restic repository configured under name for the
+// step commandID: its stderr copied to the step's output (A7c), its runs of
+// restic logged with the command_id.
+type Repositories func(name, commandID string, stderr io.Writer) (restic.Repository, bool)
 
 // Handlers adapts the plugins of a registry to the executor.
 type Handlers struct {
@@ -76,7 +77,7 @@ func (h *handler) Run(ctx context.Context, step *agentv1.RunStep, r executor.Rep
 	if !slices.Contains(h.Actions(), step.GetAction()) {
 		return nil, rejected(fmt.Errorf("plugin %q does not support %s", h.src.Plugin().Name(), step.GetAction()))
 	}
-	repo, ok := h.repos(step.GetRepositoryName(), r.Output())
+	repo, ok := h.repos(step.GetRepositoryName(), step.GetCommandId(), r.Output())
 	if !ok {
 		return nil, rejected(fmt.Errorf("unknown repository %q", step.GetRepositoryName()))
 	}
