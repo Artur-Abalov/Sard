@@ -228,6 +228,7 @@ internal object RunViews {
             filesProcessed = record.filesProcessed,
             filesTotal = record.filesTotal,
             backup = backupOf(record.output),
+            runId = record.runId,
         )
 
     /** The backup output of a step, null for any other output or none. */

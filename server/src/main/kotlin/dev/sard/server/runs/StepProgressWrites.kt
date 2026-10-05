@@ -9,13 +9,14 @@ import java.util.UUID
 private const val OWN_STATUS =
     "select status from run_steps where tenant_id = :tenant and id = :step and agent_id = :agent"
 
-// A value the agent does not know (null) keeps the last one; only a running step moves.
+// A value the agent does not know (null) keeps the last one; only a running step moves. Progress
+// proves the agent has the step: it has no lost deadline (FXs).
 private const val UPDATE =
     "update run_steps set phase = coalesce(cast(:phase as text), phase), " +
         "bytes_processed = coalesce(cast(:processed as bigint), bytes_processed), " +
         "bytes_total = coalesce(cast(:total as bigint), bytes_total), " +
         "files_processed = coalesce(cast(:filesProcessed as bigint), files_processed), " +
-        "files_total = coalesce(cast(:filesTotal as bigint), files_total) " +
+        "files_total = coalesce(cast(:filesTotal as bigint), files_total), lost_deadline = null " +
         "where tenant_id = :tenant and id = :step and status = 'running'"
 
 /** A StepProgress as the domain sees it; null is "unknown" (proto: UNSPECIFIED phase, a total of 0). */
