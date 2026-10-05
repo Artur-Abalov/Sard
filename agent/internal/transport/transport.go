@@ -136,19 +136,23 @@ func New(opts Options) (*Transport, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidOptions, err)
 	}
-	if opts.Clock == nil {
-		opts.Clock = realClock{}
-	}
-	if opts.Rand == nil {
-		opts.Rand = rand.Float64
-	}
-	if opts.LogQueue <= 0 {
-		opts.LogQueue = DefaultLogQueue
-	}
-	if opts.Logger == nil {
-		opts.Logger = slog.New(slog.DiscardHandler)
-	}
+	withDefaults(&opts)
 	return &Transport{opts: opts, creds: credentials.NewTLS(cfg), out: newOutbox(opts.LogQueue)}, nil
+}
+
+func withDefaults(o *Options) {
+	if o.Clock == nil {
+		o.Clock = realClock{}
+	}
+	if o.Rand == nil {
+		o.Rand = rand.Float64
+	}
+	if o.LogQueue <= 0 {
+		o.LogQueue = DefaultLogQueue
+	}
+	if o.Logger == nil {
+		o.Logger = slog.New(slog.DiscardHandler)
+	}
 }
 
 // Progress reports how far a command got; only the latest report per

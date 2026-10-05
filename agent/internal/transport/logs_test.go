@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/Artur-Abalov/sard/agent/internal/transport"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
@@ -104,4 +105,31 @@ func TestAPermanentRefusalIsLoggedAsAnError(t *testing.T) {
 		t.Fatal("Run returned nil")
 	}
 	r.logs.wait(t, "ERROR the server refused the agent; not reconnecting")
+}
+
+func TestATransportWithoutALoggerStillConnects(t *testing.T) {
+	r := newRig(t)
+	tr, err := transport.New(transport.Options{
+		Address: r.server.addr,
+		TLS:     r.ca.agentFiles(t, r.ca),
+		Register: func(context.Context) *agentv1.RegisterRequest {
+			return &agentv1.RegisterRequest{Hostname: "db1", ProtocolVersion: 1}
+		},
+		Commands: r.commands,
+		State:    r.state,
+		Clock:    r.clock,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- tr.Connect(context.Background()) }()
+	ss := r.server.next(t)
+	if ss.read(t).GetHello() == nil {
+		t.Fatal("stream did not open with Hello")
+	}
+	close(ss.done)
+	if err := wait(t, done); err == nil {
+		t.Fatal("Connect returned nil after the stream ended")
+	}
 }
