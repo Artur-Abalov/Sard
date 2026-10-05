@@ -64,7 +64,7 @@ image: package
 
 ## e2e-images: sard-server and sard-agent images of the current code for the e2e tests
 e2e-images: tools
-	DIST=$(E2E_BUILD)/dist VERSION=$(VERSION) ./scripts/package-agent.sh $(E2E_ARCH)
+	GO_TAGS=e2e DIST=$(E2E_BUILD)/dist VERSION=$(VERSION) ./scripts/package-agent.sh $(E2E_ARCH)
 	docker buildx build --load $(E2E_SERVER_BUILD_FLAGS) --build-arg SARD_VERSION=$(VERSION) \
 		--build-arg AGENT_PACKAGES=test/e2e/build/dist -f deploy/server/Dockerfile -t $(E2E_SERVER_IMAGE) .
 	rm -rf $(E2E_BUILD)/agent-image && mkdir -p $(E2E_BUILD)/agent-image/empty
