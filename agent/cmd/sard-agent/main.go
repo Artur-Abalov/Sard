@@ -88,14 +88,20 @@ func runAgentCmd(ctx context.Context, args []string, stdout, stderr io.Writer, h
 		return exitUsage
 	}
 	if err := start(ctx, *configPath, stdout, hostname, os.Executable); err != nil {
-		if transport.IsPermanent(err) {
-			_, _ = fmt.Fprintln(stderr, "sard-agent:", transport.RefusalLine(err))
-			return exitRefused
-		}
-		_, _ = fmt.Fprintln(stderr, "sard-agent:", err)
-		return exitError
+		return reportFailure(stderr, err)
 	}
 	return exitOK
+}
+
+// reportFailure prints why the agent stopped and picks the exit code: a
+// permanent refusal by the server is told apart from any other error.
+func reportFailure(stderr io.Writer, err error) int {
+	if transport.IsPermanent(err) {
+		_, _ = fmt.Fprintln(stderr, "sard-agent:", transport.RefusalLine(err))
+		return exitRefused
+	}
+	_, _ = fmt.Fprintln(stderr, "sard-agent:", err)
+	return exitError
 }
 
 // start is the composition root: the only place that knows concrete types.
@@ -104,11 +110,7 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 	if err != nil {
 		return err
 	}
-	// OQ-050: before any file or the network (Р7).
-	if err := checkCryptoProviders(cfg); err != nil {
-		return err
-	}
-	if err := checkHostFiles(cfg); err != nil {
+	if err := checkLocal(cfg); err != nil {
 		return err
 	}
 	// A5b: no usable restic, no start — before the network (С5).
@@ -122,6 +124,15 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 	}
 	_, _ = fmt.Fprintf(stdout, "sard-agent %s: connecting to %s\n", version, cfg.Server.Address)
 	return serve(ctx, cfg, newAgent(cfg, hostname, resticBinary))
+}
+
+// checkLocal runs the checks that need no network. OQ-050: the repositories'
+// encryption comes first, before any file (Р7).
+func checkLocal(cfg config.Config) error {
+	if err := checkCryptoProviders(cfg); err != nil {
+		return err
+	}
+	return checkHostFiles(cfg)
 }
 
 // checkHostFiles runs the checks of local files that need no network.

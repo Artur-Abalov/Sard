@@ -6,14 +6,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
-	"math/big"
 	"net"
 	"os"
 	"path/filepath"
@@ -67,8 +60,9 @@ func newRefusalHost(t *testing.T, reply func(ctx context.Context) error) *refusa
 	t.Helper()
 	dir := t.TempDir()
 	writeIdentity(t, dir)
-	caPEM, cert := refusalCA(t)
-	writeFile(t, filepath.Join(dir, "ca.pem"), caPEM, 0o600)
+	ca := newTestCA(t)
+	cert := ca.leaf(t, []string{"127.0.0.1"}, 0)
+	writeFile(t, filepath.Join(dir, "ca.pem"), []byte(ca.pem()), 0o600)
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -88,33 +82,6 @@ func (h *refusalHost) configFor(address string) string {
 	return writeConfig(h.t, "server:\n  address: "+address+"\n"+
 		"tls: {ca_file: "+h.dir+"/ca.pem, cert_file: "+h.dir+"/agent.pem, key_file: "+h.dir+"/agent.key}\n"+
 		"executor: {state_dir: "+h.dir+"/state}\n"+h.restic)
-}
-
-// refusalCA returns a CA certificate and a server certificate for 127.0.0.1.
-func refusalCA(t *testing.T) ([]byte, tls.Certificate) {
-	t.Helper()
-	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	caTmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "test CA"}, NotBefore: time.Now().Add(-time.Hour),
-		NotAfter: time.Now().Add(time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
-	caDER, err := x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, &caKey.PublicKey, caKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ca, _ := x509.ParseCertificate(caDER)
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tmpl := &x509.Certificate{SerialNumber: big.NewInt(2), NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
-		IPAddresses: []net.IP{net.ParseIP("127.0.0.1")}, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, KeyUsage: x509.KeyUsageDigitalSignature}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca, &key.PublicKey, caKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER}), tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
 }
 
 // runAgent starts the agent and stops it after limit; it returns early when the agent exits.
