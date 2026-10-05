@@ -67,3 +67,12 @@ func TestAStartWithoutInterruptedStepsSaysNothingAboutThem(t *testing.T) {
 		t.Fatalf("log:\n%s", f.log)
 	}
 }
+
+func TestASingleInterruptedStepIsLoggedToo(t *testing.T) {
+	f := setup(t, nil)
+	f.e.Submit(backup("c1"))
+	accepted(t, f.sink, "c1")
+	f.files.next(t)
+	f.restart(t)
+	wantLogged(t, f, `msg="interrupted steps reported as failed" count=1 command_ids=[c1]`)
+}

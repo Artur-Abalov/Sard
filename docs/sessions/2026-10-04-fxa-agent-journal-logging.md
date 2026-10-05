@@ -208,3 +208,24 @@ status=STEP_STATUS_REJECTED` уже есть, причина (текст рез�
 `TestBackupWithUnreadableFilesReturnsSummaryAndPartialError`), заменены
 проверками журнала: удалена сама возможность, не проверка. Интеграционные
 тесты restic и pluginhost пишут stderr restic в `t.Output()`.
+
+### Гейт и мутации (фаза 3)
+
+- `cd agent && go test -race ./...` — exit 0.
+- Первый полный гейт: FAILED на CRAP — `transport.New` 7 (CC 7) из-за
+  умолчания логгера. Умолчания вынесены в `withDefaults` (`2456030`); тест
+  `TestATransportWithoutALoggerStillConnects` (мутант «нет умолчания»
+  проверен вручную — убит).
+- Второй полный гейт: gofmt/vet/golangci-lint — 0 issues; покрытие 98.1%;
+  CRAP ≤ 6; интеграционные тесты с restic — ok. Этап мутаций прерван
+  перезапуском контейнера (оставленный мутант `repo_cmd.go` восстановлен из
+  резервной копии go-mutesting, совпадала с HEAD). Полный результат гейта —
+  job `go (agent)` в CI.
+- go-mutesting с `--debug` по `transport.go`, `restic.go`, `command.go`,
+  `executor.go`: 0.915 (397/434). В новом коде выжил один мутант —
+  `len(ids) > 0` → `> 1` в `interrupted`; добавлен
+  `TestASingleInterruptedStepIsLoggedToo`, мутант проверен вручную — убит.
+  Остальные выжившие — в строках, которые фаза 3 не меняла (или перенесла
+  без изменений: умолчания `Rand`/`LogQueue` в `withDefaults`).
+- CI `server` на `9d7ec8b`: повторный прогон зелёный — падение было
+  нестабильным серверным тестом, не этим PR.
