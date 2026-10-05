@@ -12,6 +12,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"net"
 	"os"
@@ -110,6 +111,10 @@ type Options struct {
 	Rand func() float64
 	// LogQueue is how many log lines may wait to be sent; zero is DefaultLogQueue.
 	LogQueue int
+	// Logger receives the life of the connection: streams opened and lost,
+	// reconnects, Hello, results sent and acknowledged. Never a message's
+	// content. Nil discards.
+	Logger *slog.Logger
 }
 
 // Transport connects the agent to the server. Its Progress, Result and Log
@@ -140,6 +145,9 @@ func New(opts Options) (*Transport, error) {
 	if opts.LogQueue <= 0 {
 		opts.LogQueue = DefaultLogQueue
 	}
+	if opts.Logger == nil {
+		opts.Logger = slog.New(slog.DiscardHandler)
+	}
 	return &Transport{opts: opts, creds: credentials.NewTLS(cfg), out: newOutbox(opts.LogQueue)}, nil
 }
 
@@ -167,27 +175,32 @@ func (t *Transport) Run(ctx context.Context) error {
 	for {
 		started := t.opts.Clock.Now()
 		err := t.Connect(ctx)
-		if stop, err := stopReconnecting(ctx, err); stop {
+		if stop, err := t.stopReconnecting(ctx, err); stop {
 			return err
 		}
 		if t.opts.Clock.Now().Sub(started) >= HealthyStream {
 			attempt = 0
 		}
-		if !t.sleep(ctx, t.backoff(attempt)) {
+		delay := t.backoff(attempt)
+		t.opts.Logger.Info("reconnecting", "attempt", attempt+1, "delay", delay)
+		if !t.sleep(ctx, delay) {
 			return nil
 		}
 		attempt++
 	}
 }
 
-// stopReconnecting: a stopped agent returns nil, a permanent refusal its error.
-func stopReconnecting(ctx context.Context, err error) (bool, error) {
+// stopReconnecting: a stopped agent returns nil, a permanent refusal its
+// error; any other end of a connection is logged and retried.
+func (t *Transport) stopReconnecting(ctx context.Context, err error) (bool, error) {
 	if ctx.Err() != nil {
 		return true, nil
 	}
 	if IsPermanent(err) {
+		t.opts.Logger.Error("the server refused the agent; not reconnecting", "error", err)
 		return true, err
 	}
+	t.opts.Logger.Info("connection to the server lost", "code", status.Code(err).String(), "error", err)
 	return false, nil
 }
 
@@ -305,7 +318,10 @@ func (t *Transport) serve(parent context.Context, client agentv1.AgentServiceCli
 	if err := stream.Send(&agentv1.ConnectRequest{Message: &agentv1.ConnectRequest_Hello{Hello: hello}}); err != nil {
 		return streamError(parent, err)
 	}
-	t.out.startStream(t.opts.State.PendingResults())
+	pending := t.opts.State.PendingResults()
+	t.opts.Logger.Info("connected to the server", "heartbeat", interval)
+	t.opts.Logger.Info("hello sent", "running", len(hello.GetRunningCommandIds()), "pending_results", len(pending))
+	t.out.startStream(pending)
 	errs := make(chan error, 2)
 	go func() { errs <- t.receive(stream) }()
 	go func() { errs <- t.send(ctx, stream, interval) }()
@@ -335,6 +351,7 @@ func (t *Transport) receive(stream agentv1.AgentService_ConnectClient) error {
 		case *agentv1.ConnectResponse_CancelStep:
 			t.opts.Commands.Cancel(m.CancelStep.GetCommandId())
 		case *agentv1.ConnectResponse_ResultAck:
+			t.opts.Logger.Info("result acknowledged", "command_id", m.ResultAck.GetCommandId())
 			t.out.ack(m.ResultAck.GetCommandId())
 			// An ack for an unknown command is the executor's no-op.
 			_ = t.opts.Commands.Ack(m.ResultAck.GetCommandId())
@@ -390,6 +407,9 @@ func (s *sender) sendNext() (bool, error) {
 	if err := s.stream.Send(msg); err != nil {
 		s.t.out.requeue(msg)
 		return true, err
+	}
+	if r := msg.GetStepResult(); r != nil {
+		s.t.opts.Logger.Info("result sent", "command_id", r.GetCommandId(), "status", r.GetStatus().String())
 	}
 	return true, nil
 }

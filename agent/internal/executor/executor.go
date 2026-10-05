@@ -334,6 +334,13 @@ func (e *Executor) restore() error {
 // interrupted fails the journaled steps the previous run did not finish
 // (D13); an entry next to a result or tombstone is a leftover of a crash.
 func (e *Executor) interrupted(journal []entry) {
+	var ids []string
+	defer func() {
+		if len(ids) > 0 {
+			slices.Sort(ids)
+			e.opts.Logger.Info("interrupted steps reported as failed", "count", len(ids), "command_ids", ids)
+		}
+	}()
 	for _, j := range journal {
 		if e.cmds[j.CommandID] != nil {
 			e.dropLeftover(journalDir, j.CommandID, "cannot remove the journal entry")
@@ -346,6 +353,7 @@ func (e *Executor) interrupted(journal []entry) {
 		c.result = e.outcome(c, agentv1.StepStatus_STEP_STATUS_FAILED, interruptedMessage)
 		e.cmds[j.CommandID] = c
 		e.save(c.result)
+		ids = append(ids, j.CommandID)
 	}
 }
 

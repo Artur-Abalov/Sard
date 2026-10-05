@@ -65,7 +65,7 @@ func newRepo(t *testing.T) itRepo {
 		Exec:     restic.ProcessExecutor{},
 		Keys:     crypto.NewResticAES(map[string]string{"it": password}),
 		ReadFile: os.ReadFile,
-		OnStderr: func(line string) { t.Logf("restic stderr: %s", line) },
+		Stderr:   t.Output(),
 	}, config.Repository{Name: "it", URL: r.dir, PasswordFile: password})
 	if _, err := r.cli.Init(context.Background()); err != nil {
 		t.Fatal(err)

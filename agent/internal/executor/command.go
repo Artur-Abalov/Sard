@@ -98,6 +98,7 @@ func (e *Executor) accept(step *agentv1.RunStep) {
 	}
 	c.state = queued
 	e.queue = append(e.queue, c)
+	e.opts.Logger.Info("step accepted", "command_id", step.GetCommandId(), "plugin", step.GetPlugin(), "action", step.GetAction().String())
 	e.send(c, e.opts.Clock.Now(), agentv1.StepPhase_STEP_PHASE_ACCEPTED, counters{})
 	e.dispatch()
 }
@@ -146,10 +147,13 @@ func (e *Executor) checkRepository(step *agentv1.RunStep) string {
 
 // repeat answers a duplicate command_id without running anything.
 func (e *Executor) repeat(c *command) {
+	id := c.step.GetCommandId()
 	switch {
 	case c.state == finished:
+		e.opts.Logger.Info("repeated command", "command_id", id, "answer", "result")
 		e.opts.Sink.Result(c.result)
 	case c.progress != nil:
+		e.opts.Logger.Info("repeated command", "command_id", id, "answer", "progress")
 		e.opts.Sink.Progress(c.progress)
 	}
 }
@@ -172,6 +176,7 @@ func (e *Executor) start(c *command) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	c.state, c.cancel, c.started = running, cancel, e.opts.Clock.Now()
 	e.active++
+	e.opts.Logger.Info("step started", "command_id", c.step.GetCommandId())
 	if err := e.store.journal(c.step.GetCommandId(), c.accepted, &c.started); err != nil {
 		// The entry of the accept stays: after a crash the failure lacks started_at.
 		e.opts.Logger.Warn("cannot record the start of the step", "command_id", c.step.GetCommandId(), "error", err)
@@ -323,6 +328,7 @@ func (e *Executor) finish(c *command, r *agentv1.StepResult) {
 		e.active--
 	}
 	c.state, c.result = finished, r
+	e.opts.Logger.Info("step finished", "command_id", r.GetCommandId(), "status", r.GetStatus().String())
 	e.save(r)
 	e.opts.Sink.Result(r)
 	e.dispatch()

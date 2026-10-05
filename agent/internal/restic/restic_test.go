@@ -4,10 +4,12 @@
 package restic_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -134,11 +136,11 @@ func (f files) read(name string) ([]byte, error) {
 }
 
 type fixture struct {
-	exec   *fakeExec
-	stderr []string
-	files  files
-	keys   fakeKeys
-	repo   config.Repository
+	exec  *fakeExec
+	log   bytes.Buffer
+	files files
+	keys  fakeKeys
+	repo  config.Repository
 }
 
 func newFixture(t *testing.T, replies map[string]reply) *fixture {
@@ -158,7 +160,7 @@ func (f *fixture) build() *restic.CLI {
 		Exec:     f.exec,
 		Keys:     f.keys,
 		ReadFile: f.files.read,
-		OnStderr: func(line string) { f.stderr = append(f.stderr, line) },
+		Logger:   slog.New(slog.NewTextHandler(&f.log, nil)),
 	}, f.repo)
 }
 
@@ -252,20 +254,61 @@ func TestExecutorFailureIsReturned(t *testing.T) {
 	}
 }
 
-func TestStderrLinesReachTheCallback(t *testing.T) {
+// Scenario: Запуски restic видны в журнале агента, вывод restic — нет
+func TestTheLogTellsEachResticCommandAndItsExitCodeButNotItsOutput(t *testing.T) {
 	f := newFixture(t, map[string]reply{"cat": {stderr: "no-repository.stderr", code: 10}})
-	_, _ = f.build().ID(context.Background())
-	want := []string{
-		"Fatal: repository does not exist: unable to open config file: stat /tmp/sardcap2/norepo/config: no such file or directory",
-		"Is there a repository at the following location?",
-		"/tmp/sardcap2/repo/../norepo",
+	var raw bytes.Buffer
+	_, _ = f.build().ForStep("c1", &raw).ID(context.Background())
+	log := f.log.String()
+	for _, want := range []string{
+		`level=INFO msg="restic started" command_id=c1 command=cat`,
+		`level=INFO msg="restic exited" command_id=c1 command=cat exit_code=10`,
+	} {
+		if !strings.Contains(log, want) {
+			t.Errorf("log lacks %q:\n%s", want, log)
+		}
 	}
-	if !slices.Equal(f.stderr, want) {
-		t.Fatalf("stderr = %q", f.stderr)
+	// restic's stderr goes to the step's log only, where it is masked (A7c).
+	for _, leak := range []string{"repository does not exist", "/tmp/sardcap2", "/srv/restic/main", "config"} {
+		if strings.Contains(strings.ReplaceAll(log, "command=cat", ""), leak) {
+			t.Errorf("log holds %q:\n%s", leak, log)
+		}
 	}
 }
 
-func TestStderrCallbackIsOptional(t *testing.T) {
+func TestAResticThatCannotStartIsLoggedWithTheError(t *testing.T) {
+	f := newFixture(t, map[string]reply{"cat": {code: -1, err: fs.ErrNotExist}})
+	_, _ = f.build().ID(context.Background())
+	if want := `msg="restic exited" command=cat exit_code=-1 error=`; !strings.Contains(f.log.String(), want) {
+		t.Fatalf("log lacks %q:\n%s", want, f.log.String())
+	}
+}
+
+func TestForStepLeavesTheOriginalAlone(t *testing.T) {
+	f := newFixture(t, map[string]reply{"cat": catConfig})
+	cli := f.build()
+	var raw bytes.Buffer
+	cli.ForStep("c1", &raw)
+	if _, err := cli.ID(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(f.log.String(), "c1") || f.exec.call("cat").StderrCopy != nil {
+		t.Fatalf("the original names the step: %s", f.log.String())
+	}
+}
+
+func TestForStepCopiesStderrToTheStep(t *testing.T) {
+	f := newFixture(t, map[string]reply{"cat": catConfig})
+	var raw bytes.Buffer
+	if _, err := f.build().ForStep("c1", &raw).ID(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.exec.call("cat").StderrCopy; got != &raw {
+		t.Fatalf("StderrCopy = %v", got)
+	}
+}
+
+func TestALoggerIsOptional(t *testing.T) {
 	f := newFixture(t, map[string]reply{"cat": {stderr: "wrong-password.stderr", code: 12}})
 	cli := restic.New(restic.Options{Exec: f.exec, Keys: f.keys, ReadFile: f.files.read}, f.repo)
 	if _, err := cli.ID(context.Background()); !errors.Is(err, restic.ErrWrongPassword) {

@@ -167,3 +167,44 @@
   выжившие в `write`/`restore`): ошибка `json.Marshal` записи журнала
   (`store.go`, `journal`), сбой `ReadDir` при успешном `MkdirAll`
   (`store.go`, `scan`; `executor.go`, `restore` после `loadJournal`).
+
+## Фаза 3: журнал агента, спецификация, реестр (2026-10-05)
+
+CI `server` на `9d7ec8b` упал на mutflow (4 из 11085, имён в логе нет). PR
+сервер не трогает, на `2e70ef2` с той же базой `server` прошёл — комментарий
+в PR #41, упавший job перезапущен один раз после конца run.
+
+### Что сделано
+
+| Что | Где |
+|---|---|
+| `transport.Options.Logger`: `connected to the server` (heartbeat), `hello sent` (running, pending_results), `result sent` (command_id, status), `result acknowledged` (command_id), `connection to the server lost` (code, error), `reconnecting` (attempt, delay), ERROR при окончательном отказе | `agent/internal/transport/transport.go` |
+| исполнитель: `step accepted` (command_id, plugin, action), `step started`, `step finished` (status), `repeated command` (answer: result/progress), `interrupted steps reported as failed` (count, command_ids, отсортированы) | `agent/internal/executor/command.go`, `executor.go` |
+| restic: `Options.Logger`, `restic started`/`restic exited` (command, exit_code, error при сбое запуска); `CLI.ForStep(commandID, stderr)`; `Options.OnStderr` удалён (ответ 6) | `agent/internal/restic/restic.go` |
+| `pluginhost.Repositories` получает command_id шага | `agent/internal/pluginhost/handler.go` |
+| сборка: `slog.Default()` в транспорт и restic, `get` → `ForStep` | `agent/cmd/sard-agent/main.go` |
+| спецификация: 11 сценариев, каждый связан с тестом `// Scenario:` (проверено скриптом в обе стороны) | `docs/specs/agent/step-execution.feature` |
+| реестр: Д3, Д4 закрыты со ссылками | `docs/qa/t3-defects.md` |
+| ADR (черновик, номер при слиянии) | `docs/adr/00XX-draft-agent-command-journal.md` |
+
+Отказ при приёме отдельной строкой не пишется: `step finished
+status=STEP_STATUS_REJECTED` уже есть, причина (текст результата) в журнал
+агента не идёт. Это отступление от таблицы фазы 1.
+
+### Тест 4 стратегии
+
+- `agent/internal/transport/logs_test.go` — записывающий `slog.Handler`;
+  строки на подключение, Hello, отправку результата, ResultAck, обрыв (код),
+  переподключение (попытка 1, 1 s); текст результата («hunter2») в журнал не
+  попал; код Unavailable при отказе Register; ERROR при PermissionDenied.
+- `agent/internal/executor/logs_test.go` — приём, повтор (progress, result),
+  старт, завершение, REJECTED, прерванные при старте; конфиг шага в журнал не
+  попал.
+- `agent/internal/restic/restic_test.go` — старт и код выхода с command_id;
+  stderr restic, путь репозитория и аргументы в журнал не попали.
+
+Тесты, проверявшие удалённый `OnStderr` (`TestStderrLinesReachTheCallback`,
+`TestStderrCallbackIsOptional`, счётчик строк в
+`TestBackupWithUnreadableFilesReturnsSummaryAndPartialError`), заменены
+проверками журнала: удалена сама возможность, не проверка. Интеграционные
+тесты restic и pluginhost пишут stderr restic в `t.Output()`.

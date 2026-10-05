@@ -40,6 +40,7 @@ type handlersFixture struct {
 	repo       *repo
 	restoreDir string
 	stderr     []io.Writer // what each repository lookup was given
+	commands   []string
 }
 
 func newHandlers(t *testing.T, plugins ...sdk.Plugin) *handlersFixture {
@@ -50,8 +51,9 @@ func newHandlers(t *testing.T, plugins ...sdk.Plugin) *handlersFixture {
 	}
 	f := &handlersFixture{repo: &repo{}, restoreDir: filepath.Join(t.TempDir(), "restore")}
 	secrets := pluginhost.NewSecrets(map[string]string{"pg": "/etc/sard/pg"}, (&files{data: map[string]string{"/etc/sard/pg": "s3cret"}}).read)
-	repos := func(name string, stderr io.Writer) (restic.Repository, bool) {
+	repos := func(name, commandID string, stderr io.Writer) (restic.Repository, bool) {
 		f.stderr = append(f.stderr, stderr)
+		f.commands = append(f.commands, commandID)
 		return f.repo, name == "main"
 	}
 	f.handlers, err = pluginhost.NewHandlers(reg, secrets, repos, f.restoreDir)
@@ -78,8 +80,8 @@ func TestTheRepositoryOfAStepWritesStderrToTheStepsOutput(t *testing.T) {
 	if _, err := h.Run(context.Background(), step(backup, `{}`), r); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.stderr) != 1 {
-		t.Fatalf("lookups = %d", len(f.stderr))
+	if len(f.stderr) != 1 || f.commands[0] != "cmd-1" {
+		t.Fatalf("lookups = %d, for %q", len(f.stderr), f.commands)
 	}
 	if _, err := f.stderr[0].Write([]byte("Fatal: x\n")); err != nil {
 		t.Fatal(err)
@@ -317,7 +319,7 @@ func TestRestoreFailsWhenTheRestoreDirCannotBeCreated(t *testing.T) {
 		t.Fatal(err)
 	}
 	reg, _ := sdk.NewRegistry(&plugin{})
-	h, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string, io.Writer) (restic.Repository, bool) { return f.repo, true }, filepath.Join(blocker, "restore"))
+	h, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return f.repo, true }, filepath.Join(blocker, "restore"))
 	if err != nil {
 		t.Fatal(err)
 	}

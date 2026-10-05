@@ -78,7 +78,8 @@ func resentAsInterrupted(t *testing.T, f *fixture, ids ...string) {
 	}
 }
 
-// Scenario: Перезапуск агента посреди шага.
+// Scenario: Шаг, прерванный перезапуском агента во время выполнения, проваливается с сообщением D13
+// Scenario: Шаг из очереди при перезапуске агента проваливается без времени старта
 func TestAStepInterruptedByARestartFailsOnceWithTheD13Message(t *testing.T) {
 	f := setup(t, nil)
 	started, restarted := interruptMidStep(t, f)
@@ -104,7 +105,7 @@ func TestAStepInterruptedByARestartFailsOnceWithTheD13Message(t *testing.T) {
 	})
 }
 
-// Scenario: Перезапуск агента посреди шага.
+// Scenario: Повторная отправка прерванного шага не запускает его снова
 func TestAStepInterruptedByARestartNeverRunsAgain(t *testing.T) {
 	f := setup(t, nil)
 	interruptMidStep(t, f)
@@ -117,6 +118,7 @@ func TestAStepInterruptedByARestartNeverRunsAgain(t *testing.T) {
 	}
 }
 
+// Scenario: Шаг, не успевший попасть в журнал, выполняется при повторной отправке один раз
 func TestAStepThatCrashedBeforeItsJournalEntryRunsOnceWhenSentAgain(t *testing.T) {
 	f := setup(t, nil)
 	partial := filepath.Join(f.opts.StateDir, "journal", ".tmp-42")
@@ -146,6 +148,7 @@ func TestAJournalEntryWrittenJustBeforeTheCrashBecomesAFailure(t *testing.T) {
 	f.files.idle(t)
 }
 
+// Scenario: Результат, сохранённый до перезапуска, важнее записи о принятии
 func TestAResultSavedJustBeforeTheCrashWinsOverItsJournalEntry(t *testing.T) {
 	f := setup(t, nil)
 	f.e.Submit(backup("c1"))
@@ -183,6 +186,7 @@ func TestAnAcknowledgedCommandWinsOverItsJournalEntry(t *testing.T) {
 	wantFiles(t, map[string]bool{fileOf(f, "journal", "c1"): false})
 }
 
+// Scenario: Агент читает каталог состояния прежней версии
 func TestAStateDirWithoutAJournalIsReadAndKeepsItsResults(t *testing.T) {
 	f := setup(t, nil)
 	if err := os.RemoveAll(filepath.Join(f.opts.StateDir, "journal")); err != nil { // the layout before the journal
@@ -230,6 +234,7 @@ func TestAJournalEntryHoldsNoStepConfig(t *testing.T) {
 	}
 }
 
+// Scenario: Команду, которую нельзя записать на диск, агент отклоняет
 func TestACommandThatCannotBeJournaledIsRejectedWithoutRunning(t *testing.T) {
 	f := setup(t, nil)
 	breakDir(t, f, "journal")
