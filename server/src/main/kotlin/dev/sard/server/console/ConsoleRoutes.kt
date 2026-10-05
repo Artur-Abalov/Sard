@@ -36,10 +36,20 @@ class ConsoleRoutes(
         path: String,
     ): ConsoleRoute =
         when {
-            path.split('/').getOrNull(1) in OWNED_SEGMENTS -> ConsoleRoute.PassThrough
+            firstSegment(path) in OWNED_SEGMENTS -> ConsoleRoute.PassThrough
             method !in SERVED_METHODS -> ConsoleRoute.MethodNotAllowed
             else -> servedRoute(path)
         }
+
+    /**
+     * The first segment as the container sees it: path parameters (`;x`) dropped.
+     * Doubled slashes never get this far: the container answers them before the filter (integration test).
+     */
+    private fun firstSegment(path: String): String? =
+        path
+            .split('/')
+            .getOrNull(1)
+            ?.substringBefore(';')
 
     private fun servedRoute(path: String): ConsoleRoute {
         val relative = path.removePrefix("/")

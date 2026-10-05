@@ -6,6 +6,7 @@ package dev.sard.server.console
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.springframework.core.io.ClassPathResource
+import org.springframework.core.io.FileUrlResource
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
 import kotlin.test.Test
@@ -36,6 +37,7 @@ class ConsoleFilterTest {
     private fun serve(
         uri: String,
         method: String = "GET",
+        filter: ConsoleFilter = this.filter,
     ): Served {
         val response = MockHttpServletResponse()
         var reached = false
@@ -156,5 +158,15 @@ class ConsoleFilterTest {
     @Test
     fun `a malformed escape is a 404`() {
         assertEquals(404, serve("/agents/%zz").response.status)
+    }
+
+    @Test
+    fun `a double encoded dot segment does not leave a file location of the bundle`() {
+        val onDisk = ConsoleFilter(ConsoleBundle(FileUrlResource(ClassPathResource(FIXTURES).url)))
+        listOf("/assets/%252e%252e/%252e%252e/application.yaml", "/%252e%252e/application.yaml").forEach {
+            val served = serve(it, filter = onDisk)
+            assertEquals(404, served.response.status, it)
+            assertFalse(served.response.contentAsString.contains("fixture-secret"), it)
+        }
     }
 }

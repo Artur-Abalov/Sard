@@ -12,6 +12,10 @@ class ConsoleBundle(
     /** True when the bundle has its page: a server built without the console has none (Р3). */
     val isAvailable: Boolean get() = file("index.html") != null
 
-    /** The readable file at [path] relative to the root; a directory or a missing file is null. */
-    fun file(path: String): Resource? = root.createRelative(path).takeIf { it.isReadable }
+    /**
+     * The readable file at [path] relative to the root; a directory or a missing file is null.
+     * A path with a percent sign is never a file: a file: or URL resource decodes it once more
+     * and `%2e%2e` would step out of the root.
+     */
+    fun file(path: String): Resource? = if ('%' in path) null else root.createRelative(path).takeIf { it.isReadable }
 }

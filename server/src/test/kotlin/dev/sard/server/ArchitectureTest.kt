@@ -11,6 +11,8 @@ import kotlin.test.assertTrue
 private val ISOLATED_PACKAGES = listOf("enrollment", "persistence", "pki", "extension", "registration", "runs", "fleet")
 private val FORBIDDEN_FQN_REFERENCE =
     Regex("""\b(io\.grpc|dev\.sard\.proto|com\.google\.rpc|com\.google\.protobuf|dev\.sard\.server\.agents)\.""")
+private val OTHER_SERVER_PACKAGE = Regex("""\bdev\.sard\.server\.(?!console\b)\w+""")
+private val CONSOLE_PACKAGE_REFERENCE = Regex("""\bdev\.sard\.server\.console\b""")
 private val SESSIONS_SYSTEM_CALL = Regex("""\bsessions\.system\s*[({]""")
 private val LINE_COMMENT = Regex("""//.*$""", RegexOption.MULTILINE)
 private val BLOCK_COMMENT = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
@@ -151,5 +153,28 @@ class ArchitectureTest {
                 .filter { SESSION_DOMAIN_FORBIDDEN.containsMatchIn(withoutComments(it.readText())) }
         val message = "session domain classes depend on HTTP:\n${offenders.joinToString("\n") { it.path }}"
         assertTrue(offenders.isEmpty(), message)
+    }
+
+    @Test
+    fun `the console package references no other server package`() {
+        val offenders =
+            ktFiles(File(mainRoot, "console")).filter {
+                OTHER_SERVER_PACKAGE.containsMatchIn(withoutComments(it.readText()))
+            }
+        assertTrue(offenders.isEmpty(), "console referencing the server:\n${offenders.joinToString("\n") { it.path }}")
+    }
+
+    @Test
+    fun `no other package references the console package`() {
+        val offenders =
+            ktFiles(mainRoot).filter { file ->
+                file
+                    .relativeTo(mainRoot)
+                    .path
+                    .startsWith("console")
+                    .not() &&
+                    CONSOLE_PACKAGE_REFERENCE.containsMatchIn(withoutComments(file.readText()))
+            }
+        assertTrue(offenders.isEmpty(), "references to console:\n${offenders.joinToString("\n") { it.path }}")
     }
 }

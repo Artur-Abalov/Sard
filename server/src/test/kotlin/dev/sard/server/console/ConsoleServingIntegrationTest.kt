@@ -250,6 +250,22 @@ class ConsoleServingIntegrationTest(
     }
 
     @Test
+    fun `Путь API с параметром сегмента не отдаёт страницу консоли`() {
+        listOf(
+            "/api;x/v1/status",
+            "/actuator;x/health",
+            "/v3;x/api-docs",
+            "/api/v1;x/status",
+            "//api/v1/status",
+            "/api//v1/status",
+        ).forEach {
+            val response = http.get(it)
+            assertFalse(response.body().contains(FIXTURE_PAGE_MARK), it)
+            assertNull(response.header("Content-Security-Policy"), it)
+        }
+    }
+
+    @Test
     fun `Документ OpenAPI не описывает пути консоли`() {
         val document = mapper.readTree(http.get("/v3/api-docs").body())
         document.path("paths").propertyNames().forEach { assertTrue(it.startsWith("/api/v1/"), it) }
