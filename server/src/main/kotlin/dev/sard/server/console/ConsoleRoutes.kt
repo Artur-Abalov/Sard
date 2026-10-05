@@ -42,14 +42,10 @@ class ConsoleRoutes(
         }
 
     /**
-     * The first segment as the container sees it: path parameters (`;x`) dropped.
-     * Doubled slashes never get this far: the container answers them before the filter (integration test).
+     * The first segment of the container-normalized path (doubled slashes and path parameters already gone),
+     * the same path the dispatcher and the auth filters see.
      */
-    private fun firstSegment(path: String): String? =
-        path
-            .split('/')
-            .getOrNull(1)
-            ?.substringBefore(';')
+    private fun firstSegment(path: String): String? = path.split('/').getOrNull(1)
 
     private fun servedRoute(path: String): ConsoleRoute {
         val relative = path.removePrefix("/")

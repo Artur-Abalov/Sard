@@ -7,8 +7,6 @@ import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.web.filter.OncePerRequestFilter
-import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
 
 /** Serves the console from a [ConsoleBundle] (Р4-Р6 of docs/specs/server/console-serving.feature). */
 class ConsoleFilter(
@@ -45,16 +43,9 @@ class ConsoleFilter(
         }
     }
 
+    /** Routes on the container-normalized path (no doubled slashes, no `;x`), as the API filters see it. */
     private fun routeOf(request: HttpServletRequest): ConsoleRoute =
-        decoded(request.requestURI)?.let { routes.route(request.method, it) } ?: ConsoleRoute.NotFound
-
-    /** The path as the client meant it: percent escapes decoded (a plus stays a plus); null when malformed. */
-    private fun decoded(uri: String): String? =
-        try {
-            URLDecoder.decode(uri.replace("+", "%2B"), StandardCharsets.UTF_8)
-        } catch (_: IllegalArgumentException) {
-            null
-        }
+        routes.route(request.method, request.servletPath + (request.pathInfo ?: ""))
 
     private fun send(
         request: HttpServletRequest,

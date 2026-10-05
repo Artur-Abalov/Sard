@@ -9,6 +9,7 @@ import org.springframework.core.io.ClassPathResource
 import org.springframework.core.io.FileUrlResource
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
+import java.net.URLDecoder
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -34,6 +35,7 @@ class ConsoleFilterTest {
 
     private fun fixture(path: String): ByteArray = ClassPathResource(FIXTURES + path).inputStream.use { it.readBytes() }
 
+    /** The container decodes the servlet path once; the mock does too. */
     private fun serve(
         uri: String,
         method: String = "GET",
@@ -41,7 +43,9 @@ class ConsoleFilterTest {
     ): Served {
         val response = MockHttpServletResponse()
         var reached = false
-        MutFlow.underTest { filter.doFilter(MockHttpServletRequest(method, uri), response) { _, _ -> reached = true } }
+        val request = MockHttpServletRequest(method, uri)
+        request.servletPath = URLDecoder.decode(uri.substringBefore('?'), Charsets.UTF_8)
+        MutFlow.underTest { filter.doFilter(request, response) { _, _ -> reached = true } }
         return Served(response, reached)
     }
 
@@ -138,6 +142,24 @@ class ConsoleFilterTest {
     }
 
     @Test
+    fun `an owned path goes on whatever the raw request URI looks like once the container normalized it`() {
+        mapOf(
+            "//api/v1/status" to "/api/v1/status",
+            "/;x/actuator/health" to "/actuator/health",
+            "/api;x/v1/status" to "/api/v1/status",
+            "///v3/api-docs" to "/v3/api-docs",
+        ).forEach { (uri, servletPath) ->
+            val request = MockHttpServletRequest("GET", uri)
+            request.servletPath = servletPath
+            val response = MockHttpServletResponse()
+            var reached = false
+            MutFlow.underTest { filter.doFilter(request, response) { _, _ -> reached = true } }
+            assertEquals(true, reached, uri)
+            assertNull(response.getHeader("Content-Security-Policy"), uri)
+        }
+    }
+
+    @Test
     fun `an encoded dot segment cannot reach a file outside the bundle`() {
         listOf(
             "/assets/%2e%2e/application.yaml",
@@ -153,11 +175,6 @@ class ConsoleFilterTest {
     @Test
     fun `an encoded path is decoded before it is looked up`() {
         assertContentEquals(fixture("favicon.svg"), serve("/favicon%2Esvg").response.contentAsByteArray)
-    }
-
-    @Test
-    fun `a malformed escape is a 404`() {
-        assertEquals(404, serve("/agents/%zz").response.status)
     }
 
     @Test

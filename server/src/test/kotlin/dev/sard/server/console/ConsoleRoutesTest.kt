@@ -59,14 +59,6 @@ class ConsoleRoutesTest {
     }
 
     @Test
-    fun `a path parameter on an excluded segment does not make it a console path`() {
-        assertEquals(ConsoleRoute.PassThrough, route("/api;x/v1/session", method = "POST"))
-        listOf("/api;x/v1/status", "/actuator;x/health", "/v3;x/api-docs", "/api/v1;x/status").forEach {
-            assertEquals(ConsoleRoute.PassThrough, route(it), it)
-        }
-    }
-
-    @Test
     fun `a method other than GET and HEAD on a console path is not allowed`() {
         listOf(
             "POST" to "/",

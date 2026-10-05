@@ -342,6 +342,25 @@
         | /api/v1;x/status    |
         | //api/v1/status     |
         | /api//v1/status     |
+        | //actuator/health   |
+        | /;x/actuator/health |
+        | //v3/api-docs       |
+        | ///v3/api-docs      |
+
+    @http
+    Структура сценария: Путь API с лишним слэшем или параметром сегмента с cookie не отдаёт страницу консоли
+      Дано сервер с консолью
+      И клиент вошёл с заданным паролем и получил сессию S
+      Когда клиент запрашивает GET <путь> с сессией S
+      Тогда Content-Type ответа — не text/html
+      И в ответе нет заголовка Content-Security-Policy
+
+      Примеры:
+        | путь                |
+        | //api/v1/status     |
+        | /api//v1/status     |
+        | /api;x/v1/status    |
+        | /;x/api/v1/status   |
 
     @http
     Сценарий: Документ OpenAPI не описывает пути консоли

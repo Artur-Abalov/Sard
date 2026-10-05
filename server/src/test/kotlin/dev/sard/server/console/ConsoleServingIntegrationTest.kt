@@ -258,8 +258,23 @@ class ConsoleServingIntegrationTest(
             "/api/v1;x/status",
             "//api/v1/status",
             "/api//v1/status",
+            "//actuator/health",
+            "/;x/actuator/health",
+            "//v3/api-docs",
+            "///v3/api-docs",
         ).forEach {
             val response = http.get(it)
+            assertFalse(response.body().contains(FIXTURE_PAGE_MARK), it)
+            assertNull(response.header("Content-Security-Policy"), it)
+        }
+    }
+
+    @Test
+    fun `Путь API с лишним слэшем или параметром сегмента с cookie не отдаёт страницу консоли`() {
+        val cookie = http.signIn()
+        listOf("//api/v1/status", "/api//v1/status", "/api;x/v1/status", "/;x/api/v1/status").forEach {
+            val response = http.get(it, cookie = cookie)
+            assertFalse(response.header("Content-Type").orEmpty().startsWith("text/html"), it)
             assertFalse(response.body().contains(FIXTURE_PAGE_MARK), it)
             assertNull(response.header("Content-Security-Policy"), it)
         }
