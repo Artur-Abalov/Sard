@@ -4,7 +4,7 @@
 #
 # Smoke check of a running sard-server (release.yml, after the quickstart or
 # the offline installation): health is UP, the version is the expected one,
-# the administrator can sign in, and the agent port answers TLS with a
+# the console is served and is of that version, the administrator can sign in, and the agent port answers TLS with a
 # certificate for the expected name, signed by the server's own CA.
 #
 # Usage: scripts/smoke-server.sh <env-file> <expected-version> [http-base] [grpc-host:port]
@@ -29,6 +29,17 @@ echo "ok: health UP"
 status="$(curl -fsS "$http/api/v1/status")"
 echo "$status" | grep -q "\"version\":\"$version\"" || fail "version: want $version, got $status"
 echo "ok: version $version"
+
+# The console (S10): the page is HTML with the version of this build, and the script
+# it loads is served.
+curl -fsS -D "$work/page.headers" -o "$work/page.html" "$http/" || fail "the console page is not served"
+grep -qi '^content-type: text/html' "$work/page.headers" || fail "the console page is not text/html"
+grep -qF "<meta name=\"sard-version\" content=\"$version\"" "$work/page.html" \
+  || fail "console version: want $version, got $(grep -o '<meta name="sard-version"[^>]*>' "$work/page.html" || echo none)"
+script="$(grep -oE '/assets/[^"]+\.js' "$work/page.html" | head -1)"
+[ -n "$script" ] || fail "the console page references no script under /assets/"
+curl -fsS -o /dev/null "$http$script" || fail "console script $script is not served"
+echo "ok: console served, version $version, script $script"
 
 code="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
   --data-binary @- "$http/api/v1/session" <<<"{\"password\":\"$password\"}")"

@@ -8,7 +8,8 @@
 #                SHA256SUMS (a tag with "-" is a pre-release)
 #   4. verify    on clean runners of both architectures: the README quickstart
 #                against the published image, and the offline archive with
-#                no registry pulls; scripts/smoke-server.sh checks both.
+#                no registry pulls; scripts/smoke-server.sh checks both, console
+#                page and its version included (ADR 0037).
 name: Release
 
 on:
@@ -42,7 +43,8 @@ jobs:
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] \
             || { echo "tag $GITHUB_REF_NAME is not vX.Y.Z[-pre]" >&2; exit 1; }
           echo "version=$version" >>"$GITHUB_OUTPUT"
-      # The runtime stage runs useradd for arm64; the jar is built natively.
+      # The runtime stage runs useradd for arm64; the jar is built natively (console included:
+      # the Dockerfile's "web" stage runs on the builder's platform too).
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3

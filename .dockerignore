@@ -2,7 +2,8 @@
 # Copyright 2026 Artur Abalov
 #
 # Build context of deploy/server/Dockerfile is the repository root: send only
-# what its COPY lines read, so node_modules, .git and build output stay out.
+# what its COPY lines read, so node_modules, .git and build output stay out
+# (web/ is the console's source; its node_modules and dist are rebuilt in the image).
 *
 !gradlew
 !settings.gradle.kts
@@ -12,6 +13,10 @@
 !proto/sard/
 !proto/jvm/
 !server/
+!web/
+web/node_modules/
+web/dist/
+!agent/plugins/files/schema.json
 **/build/
 **/.gradle/
 **/.kotlin/

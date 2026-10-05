@@ -47,11 +47,11 @@ proto: tools
 	cd proto && $(BIN)/buf generate
 	cd proto/gen/go && go mod tidy
 
-## build: build every part
+## build: build every part; the console (web/dist) goes into the server jar (S10, ADR 0037)
 build: build-agent build-cli
-	$(GRADLE) :server:bootJar -PsardVersion=$(VERSION)
 	$(MAKE) web-deps
-	cd web && npm run build
+	cd web && SARD_VERSION=$(VERSION) npm run build
+	$(GRADLE) :server:bootJar -PsardVersion=$(VERSION) -PsardConsoleDist=web/dist
 
 build-agent:
 	cd agent && go build -ldflags "$(LDFLAGS)" -o bin/sard-agent ./cmd/sard-agent

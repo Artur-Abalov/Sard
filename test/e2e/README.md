@@ -29,6 +29,7 @@ make e2e-images   # только образы: sard-server:e2e, sard-agent:e2e
 | Класс | Что |
 |---|---|
 | `ServerSmokeTest` | `/api/v1/status` — 200 и версия сборки; порт gRPC — TLS, SAN `sard-server`, корень = `ca/ca.crt` сервера; Enroll доступен по TLS |
+| `ConsoleImageTest` | сценарии `@e2e` `docs/specs/server/console-serving.feature`: `GET /` образа — HTML с `meta sard-version` = `VERSION` и `/api/v1/status` с той же версией; каждый `src`/`href` под `/assets/` страницы отдаётся с `immutable`; воркера моков `/mockServiceWorker.js` нет |
 | `AgentImageSmokeTest` | `sard-agent --version` = `VERSION`; `restic version` = `restic-version` |
 | `RegistrationTest` | перехватчик S3: без сертификата клиента `AgentService` — UNAUTHENTICATED |
 | `AgentEnrollTest` | сценарии `@e2e` `docs/specs/agent/agent-enroll.feature` (имена тестов — названия сценариев): `sard-agent enroll` пишет ключ, сертификат и бандл, агент в тенанте токена с именем хоста, сервер принимает выданный сертификат; испорченный токен, существующая идентичность, чужой отпечаток не расходуют токен; `--force`; отказы `TOKEN_USED/UNKNOWN/EXPIRED/REVOKED` |

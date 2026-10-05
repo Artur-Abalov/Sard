@@ -136,6 +136,8 @@ jobs:
   image:
     # The release build (release.yml) without the push: both architectures,
     # so a Dockerfile change that breaks arm64 fails here, not on a tag.
+    # The same Dockerfile builds the console (its "web" stage) into the jar (ADR 0037):
+    # no separate web step is needed here.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

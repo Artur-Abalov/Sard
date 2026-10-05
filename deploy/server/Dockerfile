@@ -7,6 +7,25 @@
 # Multi-arch (release.yml): docker buildx build --platform linux/amd64,linux/arm64 ...
 # The jar does not depend on the CPU, so it is built once, on the builder's
 # own platform; only the runtime stage exists per target platform.
+# The console (web/) is built here too, from the same context, in the "web" stage and
+# bundled into the jar (ADR 0037); Node and the sources never reach the final image.
+
+FROM --platform=$BUILDPLATFORM node:24-slim AS web
+WORKDIR /src/web
+# Builds behind a TLS-intercepting proxy: the standard HTTPS_PROXY build argument and the
+# same optional "build-ca" secret as the "build" stage (npm reads NODE_EXTRA_CA_CERTS).
+COPY web/package.json web/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    --mount=type=secret,id=build-ca,required=false \
+    if [ -f /run/secrets/build-ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/build-ca; fi && \
+    npm ci --no-audit --no-fund
+COPY web ./
+# The only file outside web/ that "tsc -b" (the typecheck in npm run build) reads: the files plugin's
+# config schema, which the console's tests import.
+COPY agent/plugins/files/schema.json /src/agent/plugins/files/schema.json
+# The version is written into index.html (<meta name="sard-version">), as into the jar below.
+ARG SARD_VERSION=dev
+RUN SARD_VERSION="${SARD_VERSION}" npm run build
 
 FROM --platform=$BUILDPLATFORM eclipse-temurin:25-jdk AS build
 WORKDIR /src
@@ -15,6 +34,7 @@ COPY gradle gradle
 COPY proto/sard proto/sard
 COPY proto/jvm proto/jvm
 COPY server server
+COPY --from=web /src/web/dist console-dist
 ARG SARD_VERSION=dev
 # Builds behind a TLS-intercepting proxy: pass JVM proxy settings in
 # JAVA_TOOL_OPTIONS and the proxy CA as the optional "build-ca" secret.
@@ -33,7 +53,7 @@ RUN --mount=type=cache,target=/root/.gradle \
       [ "$attempt" -eq 5 ] && exit 1; \
       echo "Gradle download failed, retrying in $((attempt * 5))s" >&2; sleep $((attempt * 5)); \
     done && \
-    ./gradlew --no-daemon :server:bootJar -PsardVersion="${SARD_VERSION}"
+    ./gradlew --no-daemon :server:bootJar -PsardVersion="${SARD_VERSION}" -PsardConsoleDist=/src/console-dist
 
 FROM eclipse-temurin:25-jre
 ARG SARD_VERSION=dev
