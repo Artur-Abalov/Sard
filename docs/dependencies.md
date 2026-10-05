@@ -79,6 +79,7 @@
 | kotlin-test-junit5 | 2.4.20 | Apache-2.0 | assert-функции |
 
 Образы: `postgres:18-alpine` (как в `deploy/`), `gcr.io/distroless/static-debian12:nonroot` (Apache-2.0) — база образа агента.
+`nicolaka/netshoot:v0.14` (Apache-2.0) — только `iptables` в сетевом пространстве контейнера агента: односторонний обрыв связи в T3 (`Interruptions.block`).
 
 ## Инструменты сборки сервера (в поставку не входят)
 

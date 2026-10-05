@@ -4,6 +4,7 @@
 package dev.sard.e2e
 
 import com.github.dockerjava.api.model.Bind
+import com.github.dockerjava.api.model.ExposedPort
 import com.github.dockerjava.api.model.Volume
 import org.junit.jupiter.api.extension.AfterAllCallback
 import org.junit.jupiter.api.extension.BeforeAllCallback
@@ -15,6 +16,10 @@ import org.testcontainers.containers.Network
 import org.testcontainers.containers.output.ToStringConsumer
 import org.testcontainers.postgresql.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.SecureRandom
@@ -57,6 +62,8 @@ class SardEnvironment(
     internal val adminPassword = randomHex()
     private val secrets = mutableSetOf(dbPassword, adminPassword)
     private val containers = linkedMapOf<String, Tracked>()
+    // Output of server containers [recreateServer] removed; [serverLogs] starts with it.
+    private val retiredServerLogs = StringBuilder()
     private val volumes = mutableListOf<String>()
 
     // Created in [start], when Docker is up; the containers mount them on creation.
@@ -90,11 +97,19 @@ class SardEnvironment(
         )
 
     /** Base URL of the REST API as the host sees it. */
-    val httpBase: String get() = "http://${server.host}:${server.getMappedPort(HTTP_PORT)}"
+    val httpBase: String get() = "http://${server.host}:${hostPort(HTTP_PORT)}"
 
     /** The gRPC port for agents as the host sees it; TLS names are those of [AGENT_ENDPOINT]. */
     val grpcHost: String get() = server.host
-    val grpcPort: Int get() = server.getMappedPort(GRPC_PORT)
+    val grpcPort: Int get() = hostPort(GRPC_PORT)
+
+    // Read from Docker each time, not from the start's cached inspect: a restart may move the port.
+    private fun hostPort(port: Int): Int =
+        server.currentContainerInfo.networkSettings.ports.bindings
+            .getValue(ExposedPort.tcp(port))
+            .first()
+            .hostPortSpec
+            .toInt()
 
     /** The Docker network of this installation, for containers a test adds (the agent). */
     val dockerNetwork: Network get() = sardNetwork
@@ -149,9 +164,29 @@ class SardEnvironment(
      * follow). Agents dial the alias, so they see a server that went away and came back.
      */
     fun recreateServer() {
+        retiredServerLogs.append(server.logs)
         server.stop()
         server.start()
     }
+
+    /**
+     * `docker restart` of the server's container: the same container, so the same volumes, alias
+     * and log. The host ports may change; [httpBase] and [grpcPort] follow. Returns once the
+     * server's health answers 200 again.
+     */
+    fun restartServer() {
+        server.dockerClient.restartContainerCmd(server.containerId).exec()
+        val health = HttpClient.newHttpClient()
+        Await.until("health of the restarted server", STARTUP_TIMEOUT) {
+            runCatching {
+                val request = HttpRequest.newBuilder(URI.create("$httpBase/actuator/health")).timeout(Duration.ofSeconds(1)).build()
+                health.send(request, HttpResponse.BodyHandlers.discarding()).statusCode()
+            }.getOrNull() == 200
+        }
+    }
+
+    /** Everything every server container of this installation has written so far, unmasked. */
+    fun serverLogs(): String = retiredServerLogs.toString() + server.logs
 
     /** Stops every container, the last added first, then removes the volumes and the network. */
     fun stop() {
