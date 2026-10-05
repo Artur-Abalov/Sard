@@ -102,7 +102,7 @@
 - **Без бота.** `activeChannels(channels, formatter)` — нет канала или нет форматтера (S9b) → активных каналов нет, предупреждение в журнале, план ничего не создаёт.
 - **Метрики** проверены и модульно (`SimpleMeterRegistry`), и в интеграции (приращения `sent`, `retries`, `undelivered{reason=failed}`, датчик `pending`).
 - **Развёртывание.** `deploy/.env.example` (`SARD_TELEGRAM_BOT_TOKEN=` пустой, `SARD_TELEGRAM_CHAT_ID` закомментирован; `DeployEnvExampleTest`), `deploy/docker-compose.yml`, раздел `sard.notify` в `application.yaml`, `docs/operations/notifications.md`.
-- **Документы.** Черновик ADR `docs/adr/00XX-draft-notifications.md`. Реестр: OQ-047 и OQ-017 закрыты (раздел «2026-10-01, S9a»), открыт OQ-071 (очистка `notification_deliveries`, ответ В9). Ссылки в ADR 0013 («Отложено», каналы уведомлений) и в черновике S7a (OQ-047 закрыт иначе).
+- **Документы.** Черновик ADR `docs/adr/0039-notifications.md`. Реестр: OQ-047 и OQ-017 закрыты (раздел «2026-10-01, S9a»), открыт OQ-071 (очистка `notification_deliveries`, ответ В9). Ссылки в ADR 0013 («Отложено», каналы уведомлений) и в черновике S7a (OQ-047 закрыт иначе).
 
 ### Проверено (команды и результат)
 - Тест 4: `TelegramHtmlTest` — экранирование `&`, `<`, `>` во всех частях, лимит 4096 видимых символов с `…`, суррогатная пара не разрывается, теги парные.

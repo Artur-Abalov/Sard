@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
 private val log = LoggerFactory.getLogger(StepDispatcher::class.java)
 
 /**
- * Sends steps to agents and reconciles them on Hello (S6a ADR draft). Each step is claimed in
+ * Sends steps to agents and reconciles them on Hello (ADR 0037). Each step is claimed in
  * the database before it is sent and released when the session refuses it, so two paths never
  * send one step; the sends themselves run outside any transaction. Work on one agent is
  * serialized; every write is in that agent's tenant.

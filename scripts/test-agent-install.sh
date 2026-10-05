@@ -3,7 +3,7 @@
 # Copyright 2026 Artur Abalov
 #
 # Installs and upgrades the sard-agent deb on clean Debian/Ubuntu hosts with
-# systemd as PID 1, against a real sard-server (docs/adr/00XX-draft-agent-release.md):
+# systemd as PID 1, against a real sard-server (docs/adr/0040-agent-release.md):
 #
 #   1. install N: user, directories and their owners and modes, the unit is
 #      neither enabled nor running;

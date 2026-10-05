@@ -41,7 +41,7 @@ private val RELEASE: Path =
 
 /**
  * The server hands out the agent packages of its own version without a session
- * (docs/adr/00XX-draft-agent-release.md): `/downloads/agent/<file>`.
+ * (docs/adr/0040-agent-release.md): `/downloads/agent/<file>`.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,

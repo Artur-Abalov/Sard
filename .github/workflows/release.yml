@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright 2026 Artur Abalov
 #
-# Agent release for a tag vX.Y.Z (docs/adr/00XX-draft-agent-release.md):
+# Agent release for a tag vX.Y.Z (docs/adr/0040-agent-release.md):
 #
 #   build ×2 ─┬─ reproduce  (two independent builds, same SHA256SUMS; tamper tests)
 #             └─ install    (deb on Debian/Ubuntu with systemd: install, enroll, upgrade)

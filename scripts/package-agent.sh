@@ -20,7 +20,7 @@
 # Every package carries Sard's license (AGPL-3.0), restic's (BSD-2) and the
 # license texts of all Go modules compiled into sard-agent.
 #
-# The output is reproducible (docs/adr/00XX-draft-agent-release.md):
+# The output is reproducible (docs/adr/0040-agent-release.md):
 # every timestamp is SOURCE_DATE_EPOCH, the commit time unless set, so two
 # builds of one commit produce the same SHA256SUMS.
 set -euo pipefail
@@ -207,7 +207,7 @@ for arch in "$@"; do
   esac
 done
 # manifest prints manifest.json, the machine-readable release description the
-# server hands out (docs/adr/00XX-draft-agent-release.md).
+# server hands out (docs/adr/0040-agent-release.md).
 manifest() {
   local f sep="" arch format
   printf '{\n  "schema": 1,\n  "version": "%s",\n  "package_version": "%s",\n' "$VERSION" "$(pkg_version)"

@@ -185,7 +185,7 @@ CI `server` на `9d7ec8b` упал на mutflow (4 из 11085, имён в ло
 | сборка: `slog.Default()` в транспорт и restic, `get` → `ForStep` | `agent/cmd/sard-agent/main.go` |
 | спецификация: 11 сценариев, каждый связан с тестом `// Scenario:` (проверено скриптом в обе стороны) | `docs/specs/agent/step-execution.feature` |
 | реестр: Д3, Д4 закрыты со ссылками | `docs/qa/t3-defects.md` |
-| ADR (черновик, номер при слиянии) | `docs/adr/00XX-draft-agent-command-journal.md` |
+| ADR (черновик, номер при слиянии) | `docs/adr/0041-agent-command-journal.md` |
 
 Отказ при приёме отдельной строкой не пишется: `step finished
 status=STEP_STATUS_REJECTED` уже есть, причина (текст результата) в журнал

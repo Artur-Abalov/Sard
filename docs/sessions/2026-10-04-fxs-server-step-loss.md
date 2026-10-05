@@ -21,7 +21,7 @@
   (`runs/StepTransitions.kt:33`). Запуск уходит в `failed` через
   `RUN_FINISHED`, затем `announcer.announce` публикует RunFinished.
 - Черновик ADR явно **отвергает** `dispatched → lost`
-  (`docs/adr/00XX-draft-run-dispatch.md`, «Отвергнуто», первый пункт) и
+  (`docs/adr/0037-run-dispatch.md`, «Отвергнуто», первый пункт) и
   срок в БД («Кандидаты в базе»). Эта задача меняет оба решения, см. В1.
 - `TenantSessions.system` только читает (`persistence/TenantSessions.kt:38`,
   `SET TRANSACTION READ ONLY`). Его вызовы перечислены в ADR 0013 и
@@ -217,7 +217,7 @@ create index run_steps_lost_deadline_idx on run_steps (lost_deadline)
     счётчик `sard.run.finished{status}` (В6). В `runs/` Micrometer не
     импортируется, как и раньше;
   - `RunAnnouncer` собирает всех слушателей, отдельной связки не нужно.
-- Черновик ADR `00XX-draft-run-dispatch.md`:
+- Черновик ADR `0037-run-dispatch.md`:
   - таблица переходов: `dispatched`/`running` → `lost` по сроку;
   - раздел «Срок потери — в базе»: таблица событий, ранний срок, замена при
     старте, фаза старта;

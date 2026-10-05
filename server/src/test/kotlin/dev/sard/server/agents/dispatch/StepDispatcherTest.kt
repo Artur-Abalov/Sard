@@ -17,7 +17,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** The dispatch rules of the S6a ADR draft and the FXs lost deadline, against fake transitions and sessions. */
+/** The dispatch rules of ADR 0037 and the FXs lost deadline, against fake transitions and sessions. */
 @MutFlowTest
 class StepDispatcherTest {
     private val clock = MovableClock(DISPATCH_NOW)
