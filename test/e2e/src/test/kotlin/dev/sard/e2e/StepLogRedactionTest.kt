@@ -23,10 +23,10 @@ import kotlin.test.fail
 class StepLogRedactionTest {
     @Test
     fun `a secret restic prints reaches step_logs as REDACTED`() {
-        val agent = AgentEnroller.enroll(sard, EnrollmentTokens.create(sard))
+        val agent = AgentEnroller.enroll(sard, EnrollmentTokens.create(sard), local = LOCAL)
         val stepId = RunRows.queueStep(sard, UUID.fromString(agent.agentId), "files", """{"paths":["/etc/sard/agent.yaml"]}""")
         val files = mapOf("/etc/sard/token" to "$SECRET\n", "/etc/sard/main.pass" to "e2e-password\n")
-        sard.track(AgentContainer.ALIAS, AgentContainer.of(sard, agent, LOCAL, files)).start()
+        sard.track(AgentContainer.ALIAS, AgentContainer.of(agent, files)).start()
 
         await("step $stepId failed") { RunRows.statusOf(sard, stepId) == "failed" }
         await("a masked line of step $stepId") { logsOf(stepId).any { MARKER in it } }

@@ -12,6 +12,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import dev.sard.proto.agent.v1.Action as ProtoAction
 
 @MutFlowTest
@@ -26,8 +27,19 @@ class DispatchPartsTest {
                 .setConfigJson("""{"n": 1}""")
                 .setAction(ProtoAction.ACTION_BACKUP)
                 .setRepositoryName("main")
+                .putTags("sard.step", UUID(0, 1).toString())
+                .putTags("sard.run", UUID(8, 1).toString())
+                .putTags("sard.source", UUID(9, 1).toString())
                 .build()
         assertEquals(expected, MutFlow.underTest { RunSteps.of(step(1)) })
+    }
+
+    @Test
+    fun `a script step has no source, its source tag is empty, which restic and the agent accept`() {
+        val command = MutFlow.underTest { RunSteps.of(step(1).copy(action = Action.RUN, sourceId = null)) }
+        assertEquals("", command.tagsMap["sard.source"])
+        assertEquals(setOf("sard.step", "sard.run", "sard.source"), command.tagsMap.keys)
+        assertTrue(command.tagsMap.all { (k, v) -> k.isNotEmpty() && ',' !in k + v }, "agent: pluginhost.resticTags")
     }
 
     @Test
@@ -43,29 +55,6 @@ class DispatchPartsTest {
             val command = MutFlow.underTest { RunSteps.of(step(1).copy(action = action, repositoryName = null)) }
             assertEquals(listOf<Any>(proto, ""), listOf(command.action, command.repositoryName))
         }
-    }
-
-    @Test
-    fun `the watch hands out steps whose deadline has come, once`() {
-        val watch = LostStepWatch()
-        watch.expect(AGENT, listOf(UUID(0, 1), UUID(0, 2)), DISPATCH_NOW + LOST_AFTER)
-
-        assertEquals(emptyList(), MutFlow.underTest { watch.due(DISPATCH_NOW + LOST_AFTER - Duration.ofMillis(1)) })
-        val due = MutFlow.underTest { watch.due(DISPATCH_NOW + LOST_AFTER) }
-        assertEquals(listOf(TENANT to UUID(0, 1), TENANT to UUID(0, 2)), due)
-        assertEquals(emptyList(), watch.due(DISPATCH_NOW + LOST_AFTER))
-    }
-
-    @Test
-    fun `a new expectation replaces the agent's last one, an empty one clears it`() {
-        val watch = LostStepWatch()
-        watch.expect(AGENT, listOf(UUID(0, 1)), DISPATCH_NOW)
-        MutFlow.underTest { watch.expect(AGENT, listOf(UUID(0, 2)), DISPATCH_NOW) }
-        assertEquals(listOf(TENANT to UUID(0, 2)), watch.due(DISPATCH_NOW))
-
-        watch.expect(AGENT, listOf(UUID(0, 3)), DISPATCH_NOW)
-        MutFlow.underTest { watch.expect(AGENT, emptyList(), DISPATCH_NOW) }
-        assertEquals(emptyList(), watch.due(DISPATCH_NOW))
     }
 
     @Test

@@ -46,6 +46,11 @@ sard:
     # Holds the CA key; back it up separately from the database (docs/operations/pki.md).
     dir: ${SARD_PKI_DIR:/var/lib/sard/pki}
     server-names: ${SARD_PKI_SERVER_NAMES:localhost,127.0.0.1,::1}
+  agent-packages:
+    # /downloads/agent/: the agent packages of this server's version, baked into the image
+    # (docs/adr/00XX-draft-agent-release.md). On without a valid release, the server does not start.
+    enabled: ${SARD_AGENT_DOWNLOADS:true}
+    dir: ${SARD_AGENT_PACKAGES_DIR:/usr/share/sard/agent-packages}
   agent:
     # Address agents dial (decision 5, S2b); empty means: first of sard.pki.server-names and the gRPC port.
     endpoint: ${SARD_AGENT_ENDPOINT:}

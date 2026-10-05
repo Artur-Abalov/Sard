@@ -94,7 +94,20 @@ class RunModelTest {
         val id = java.util.UUID(0, 1)
         val source = SourceView(id, "prod-db", id, "postgresql", "main", CONFIG, RUNS_NOW, RUNS_NOW)
         val step =
-            StepView(id, 0, Action.BACKUP, StepState.QUEUED, id, id, "postgresql", "main", CONFIG, RUNS_NOW, null)
+            StepView(
+                id,
+                0,
+                Action.BACKUP,
+                StepState.QUEUED,
+                id,
+                id,
+                "postgresql",
+                "main",
+                CONFIG,
+                RUNS_NOW,
+                null,
+                runId = id,
+            )
         val records =
             listOf(
                 dev.sard.server.persistence

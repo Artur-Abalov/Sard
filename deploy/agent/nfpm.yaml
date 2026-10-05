@@ -53,3 +53,8 @@ contents:
 scripts:
   postinstall: ${ROOT}/deploy/agent/postinstall.sh
   preremove: ${ROOT}/deploy/agent/preremove.sh
+
+# Reproducible builds: file and package times come from SOURCE_DATE_EPOCH,
+# the build host is fixed (scripts/package-agent.sh).
+rpm:
+  buildhost: sard-release

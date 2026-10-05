@@ -110,6 +110,7 @@ class ArchitectureTest {
                 "enrollment/EnrollmentTokens.kt",
                 "notify/Deliveries.kt",
                 "runs/StepCounts.kt",
+                "runs/StepDeadlines.kt",
             ).map { File(mainRoot, it) }
         val callers = ktFiles(mainRoot).filter { SESSIONS_SYSTEM_CALL.containsMatchIn(it.readText()) }
         assertEquals(allowed.toSet(), callers.toSet(), "sessions.system callers must match ADR 0013's list exactly")

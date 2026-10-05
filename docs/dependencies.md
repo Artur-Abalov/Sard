@@ -29,6 +29,12 @@
 | github.com/avito-tech/go-mutesting | v0.0.0-20251226130216-48d0401f00fb | MIT | мутационное тестирование Go |
 | github.com/goreleaser/nfpm/v2 | v2.47.0 | MIT | сборка deb и rpm агента (`make package`); запускается, в пакеты не попадает |
 
+## Инструменты релиза (из apt раннера, не в `tools/go.mod`)
+
+| Инструмент | Версия | Лицензия | Зачем |
+|---|---|---|---|
+| minisign | из Ubuntu 24.04 (0.11) | ISC | подпись и проверка `SHA256SUMS` релиза агента; запускается, в пакеты не попадает (`docs/adr/00XX-draft-agent-release.md`) |
+
 ## Поставляется вместе с агентом (не линкуется)
 
 | Программа | Версия | Лицензия | Зачем |
@@ -68,8 +74,7 @@
 |---|---|---|---|
 | proto-jvm (см. выше) | — | Apache-2.0 | клиент `EnrollmentService` и `AgentService` |
 | io.grpc:grpc-netty | 1.83.1 | Apache-2.0 | транспорт gRPC-клиента (у сервера — тот же артефакт в runtime) |
-| org.bouncycastle:bcpkix-jdk18on | 1.86 | Bouncy Castle Licence (MIT) | CSR агента в клиенте Enroll — до `sard-agent enroll` (A2) |
-| org.postgresql:postgresql | 42.7.13 | BSD-2-Clause | запись токена регистрации — до REST (S8b); проверка `agents` после Register/Connect |
+| org.postgresql:postgresql | 42.7.13 | BSD-2-Clause | чтение записей сервера (агенты, шаги, снимки, логи); строки запуска швов S6a/S7a; истечение токена |
 | testcontainers-junit-jupiter, testcontainers-postgresql | 2.0.5 | MIT | контейнеры PostgreSQL, sard-server, sard-agent |
 | kotlin-test-junit5 | 2.4.20 | Apache-2.0 | assert-функции |
 

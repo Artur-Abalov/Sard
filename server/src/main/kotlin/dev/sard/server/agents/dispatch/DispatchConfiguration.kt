@@ -11,7 +11,9 @@ import dev.sard.server.agents.stream.AgentStreamSettings
 import dev.sard.server.agents.stream.AgentStreamSweeper
 import dev.sard.server.agents.stream.CommandReconciliation
 import dev.sard.server.agents.stream.SendResult
+import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.runs.StepCounts
+import dev.sard.server.runs.StepDeadlines
 import dev.sard.server.runs.StepTransitions
 import dev.sard.server.runs.StepsQueued
 import dev.sard.server.runs.WaitingSteps
@@ -30,7 +32,7 @@ import java.util.concurrent.atomic.AtomicLong
 private const val LOST_AFTER_HEARTBEATS = 2
 
 data class DispatchSettings(
-    /** How long a running step absent from Hello waits for its result before it is lost. */
+    /** How long a step in flight waits for its agent after its session ended or a Hello missed it (FXs). */
     val lostAfter: Duration,
     /** How often the window is checked and queued steps of online agents are retried. */
     val checkInterval: Duration,
@@ -103,8 +105,12 @@ class DispatchConfiguration {
     ) = properties.settings(stream.heartbeatInterval, stream.checkInterval)
 
     @Bean
+    fun stepDeadlines(sessions: TenantSessions) = StepDeadlines(sessions)
+
+    @Bean
     fun stepDispatcher(
         transitions: StepTransitions,
+        deadlines: StepDeadlines,
         connections: AgentConnections,
         registry: AgentSessionRegistry,
         clock: Clock,
@@ -113,6 +119,7 @@ class DispatchConfiguration {
         counts: StepCounts,
     ) = StepDispatcher(
         transitions,
+        deadlines,
         ConnectionLinks(connections, registry),
         clock,
         settings.lostAfter,
@@ -123,6 +130,12 @@ class DispatchConfiguration {
     /** S5a's extension point: called once per stream, after Hello, in the agent's gRPC Context. */
     @Bean
     fun commandReconciliation(dispatcher: StepDispatcher) = CommandReconciliation(dispatcher::onHello)
+
+    @Bean
+    fun stepLossOnDisconnect(dispatcher: StepDispatcher) = StepLossOnDisconnect(dispatcher)
+
+    @Bean
+    fun stepLossOnStart(dispatcher: StepDispatcher) = StepLossOnStart(dispatcher::onStart)
 
     @Bean
     fun stepsQueued(dispatcher: StepDispatcher) = StepsQueued(dispatcher::onQueued)

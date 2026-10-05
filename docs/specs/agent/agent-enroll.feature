@@ -141,7 +141,9 @@
 #               временном каталоге теста, сервер-заглушка фиксирует число вызовов
 #   @fake       фейковый gRPC-сервер по TLS в процессе теста (как тесты A3) с
 #               тестовым CA; отвечает заданным статусом и google.rpc.ErrorInfo
-#   @e2e        настоящий sard-server (test/e2e и docs/qa/agent-enroll.md)
+#   @e2e        настоящий sard-server (test/e2e и docs/qa/agent-enroll.md);
+#               автоматизированы все: test/e2e AgentEnrollTest и
+#               AgentEnrollRetryableTest, имена тестов — названия сценариев (T2b)
 #   @a1         проверка прав секретных файлов при старте агента (sard-agent --config);
 #               реализуется вместе с A2a
 #

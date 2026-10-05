@@ -134,6 +134,8 @@ tasks.test {
     // A default so every test that boots the full context, not just the session ones,
     // does not need its own SARD_ADMIN_PASSWORD; session tests override it per class.
     environment("SARD_ADMIN_PASSWORD", "test-admin-password-2026")
+    // No agent release next to the test server; AgentDownloadsIntegrationTest switches downloads on.
+    environment("SARD_AGENT_DOWNLOADS", "false")
     finalizedBy(tasks.jacocoTestReport)
 }
 

@@ -34,7 +34,7 @@ class ResultAckSeamTest {
     fun `a rejected step is recorded, acknowledged and never sent again`() {
         val agent = AgentEnroller.enroll(sard, EnrollmentTokens.create(sard))
         val stepId = RunRows.queueStep(sard, UUID.fromString(agent.agentId), PLUGIN)
-        val container = sard.track(AgentContainer.ALIAS, AgentContainer.of(sard, agent)).apply { start() }
+        val container = sard.track(AgentContainer.ALIAS, AgentContainer.of(agent)).apply { start() }
 
         await("step $stepId rejected") { RunRows.statusOf(sard, stepId) == "rejected" }
         assertEquals("failed", runStatusOf(stepId))
