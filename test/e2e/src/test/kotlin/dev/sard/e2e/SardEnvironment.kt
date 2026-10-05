@@ -204,10 +204,18 @@ class SardEnvironment(
         val dir = E2e.logsDir.resolve(testClass).resolve(fileName(step))
         Files.createDirectories(dir)
         containers.forEach { (name, tracked) ->
-            Files.writeString(dir.resolve("$name.log"), Redaction.apply(tracked.output.toUtf8String(), secrets))
+            Files.writeString(dir.resolve("$name.log"), Redaction.apply(output(tracked), secrets))
         }
         return dir
     }
+
+    // The consumer stops following a container at its restart; `docker logs` has every start of
+    // it, as long as the container exists (the server's: every container of it).
+    private fun output(tracked: Tracked): String =
+        runCatching { if (tracked.container === server) serverLogs() else tracked.container.logs }
+            .getOrNull()
+            ?.takeIf { it.isNotEmpty() }
+            ?: tracked.output.toUtf8String()
 
     /** A connection to the server's database as its own user, from the host. */
     fun database(): Connection = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)

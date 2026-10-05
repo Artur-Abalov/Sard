@@ -24,15 +24,29 @@ internal object Interruptions {
     /** An image with iptables (Docker Hub; the cloud workaround of OQ-132 pulls it via mirror.gcr.io and tags it). */
     const val FIREWALL_IMAGE = "nicolaka/netshoot:v0.14"
 
-    /** Which way packets between an agent and the server's gRPC port are dropped. */
+    /**
+     * Which way the data between an agent and the server's gRPC port is dropped. Only segments
+     * that carry data are: without the other side's bare TCP acks the open direction could send no
+     * more than its congestion window (found on the first run of case 6). A bare ack is at most 80
+     * bytes (IP, TCP, timestamps, SACK) and has no PSH; a TLS record is longer, and the last
+     * segment of each write has PSH.
+     */
     enum class Direction(
-        val rule: List<String>,
+        vararg val rules: List<String>,
     ) {
         /** The agent's messages (progress, results, heartbeats) are lost; the server's commands arrive. */
-        TO_SERVER(listOf("OUTPUT", "-p", "tcp", "--dport", "${SardEnvironment.GRPC_PORT}", "-j", "DROP")),
+        TO_SERVER(
+            listOf("OUTPUT", "-p", "tcp", "--dport", "${SardEnvironment.GRPC_PORT}", "--tcp-flags", "PSH", "PSH", "-j", "DROP"),
+            listOf("OUTPUT", "-p", "tcp", "--dport", "${SardEnvironment.GRPC_PORT}", "-m", "length", "--length", "81:65535", "-j", "DROP"),
+        ),
 
-        /** The server's messages (commands, ResultAck) are lost; the agent's arrive. */
-        TO_AGENT(listOf("INPUT", "-p", "tcp", "--sport", "${SardEnvironment.GRPC_PORT}", "-j", "DROP")),
+        /**
+         * The server's messages (commands, ResultAck) are lost; the agent's arrive.
+         */
+        TO_AGENT(
+            listOf("INPUT", "-p", "tcp", "--sport", "${SardEnvironment.GRPC_PORT}", "--tcp-flags", "PSH", "PSH", "-j", "DROP"),
+            listOf("INPUT", "-p", "tcp", "--sport", "${SardEnvironment.GRPC_PORT}", "-m", "length", "--length", "81:65535", "-j", "DROP"),
+        ),
     }
 
     /** Takes [agent] off the environment's network: nothing passes either way until [reconnect]. */
@@ -66,7 +80,7 @@ internal object Interruptions {
     fun block(
         agent: GenericContainer<*>,
         direction: Direction,
-    ) = iptables(agent, listOf("-A") + direction.rule)
+    ) = direction.rules.forEach { iptables(agent, listOf("-A") + it) }
 
     /** Removes every rule [block] added. */
     fun unblock(agent: GenericContainer<*>) = iptables(agent, listOf("-F"))
