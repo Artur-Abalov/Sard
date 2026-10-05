@@ -77,10 +77,15 @@
 | OQ-131 | Выжившие мутанты агента в коде до A7b: 23 при тихом прогоне `./cmd/...` (enroll, repo, `main.go`: `shutdownTimeout`, `main.go.51` `ref.Executor = exec`) и другие из вывода `./scripts/gate.sh agent`. Порог 0.80 не нарушен, но это непроверенное поведение. | задача | агент, hardener | `docs/sessions/2026-10-02-a7b-log-masking.md`, раздел hardener |
 | OQ-132 | `make e2e` (и `make e2e-images`) не работает в облачной среде Claude Code: сборка образа сервера в Docker получает 429 от Maven Central (плагин mutflow) и Docker Hub. В A7b образы собраны вручную (jar с хоста через `bootJar --offline`, `--network host`, CA прокси). На CI не влияет. Варианты: кэш Gradle в сборке образа, зеркало, документированный обходной путь в `test/e2e/README.md`. | задача | инструменты | `docs/sessions/2026-10-02-a7b-log-masking.md`, разделы coder |
 | OQ-133 | Пути TLS агента расходятся: `deploy/agent/agent.example.yaml:13-15` — `/etc/sard/{ca.pem,agent.pem,agent.key}`, `docs/operations/agent-enroll.md:21,72` — `/etc/sard/tls/...`. Демо и `docs/operator/` должны давать один путь. | дефект | до `docs/demo.md` (X1 фаза 3) | X1 фаза 1 |
-| OQ-134 | Консоль не отдаётся сервером и не входит в образ: на установленном из образа сервере её нет (только `npm run dev`). Владелец решил отдавать SPA сервером (статика в jar, `index.html` на неизвестные пути — роутер на browser history) — отдельная задача через `/ship-feature`. | задача | до демо этапа 1 | ADR 0036, «Последствия»; X1 фаза 1 |
 | OQ-135 | Консоль за Cloudflare (план владельца: OCI + Cloudflare). Проксирование Cloudflare по HTTP к серверу ломает вход (OQ-031). Предполагаемый путь без изменения кода — Full (strict): TLS на HTTP-порту сервера (`SERVER_SSL_*`, сертификат Cloudflare Origin CA), Cloudflare передаёт `Host` без изменений; healthcheck — на отдельный порт Actuator. Не проверено. Порт агентов — отдельным DNS-именем без проксирования Cloudflare. | вопрос | до развёртывания в OCI | X1, обсуждение с владельцем |
 
 ## Закрыто при сверке
+
+### 2026-10-05, S10 (ветка `claude/determined-volta-pg43zw`)
+
+| Суть | Чем закрыто |
+|---|---|
+| OQ-134. Консоль не отдаётся сервером и не входит в образ. | Сделано в S10: консоль лежит в jar (`console/`, Gradle `-PsardConsoleDist`), её отдаёт `ConsoleFilter`, стадия `web` в `deploy/server/Dockerfile` собирает её для образа; [ADR 0037](adr/0037-console-served-by-server.md). |
 
 ### 2026-10-04, T2b (ветка `claude/compassionate-noether-9osu5a`)
 

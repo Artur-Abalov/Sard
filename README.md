@@ -134,7 +134,8 @@ gate is not accepted.
 ```bash
 make up                                   # PostgreSQL + sard-server built from this checkout (deploy/.env is created from .env.example)
 curl -s localhost:8080/api/v1/status      # {"version":"…","lastVerifiedRestoreAt":null}
-cd web && npm install && npm run dev      # console at http://localhost:5173, API proxied to :8080
+# the console itself is served by the server at http://localhost:8080 (it is in the image)
+cd web && npm install && npm run dev      # development: console at http://localhost:5173, API proxied to :8080
 make down
 ```
 
