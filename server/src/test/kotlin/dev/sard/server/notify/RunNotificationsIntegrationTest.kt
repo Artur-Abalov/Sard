@@ -29,6 +29,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import tools.jackson.databind.json.JsonMapper
+import java.sql.Timestamp
 import java.time.Duration
 import java.util.UUID
 import kotlin.test.AfterTest
@@ -123,6 +124,8 @@ class RunNotificationsIntegrationTest(
         if (started) assertTrue(steps.accepted(tenant.id, step, "accepted"))
         clock.now = RUNS_NOW.plusSeconds(155)
         if (report == null) {
+            // The lost deadline has come (FXs): lost() only takes a step whose deadline is due.
+            jdbc.update("update run_steps set lost_deadline = ? where id = ?", Timestamp.from(clock.now), step)
             assertTrue(steps.lost(tenant.id, step))
         } else {
             results.record(tenant.id, tenant.agentId, step, report)
