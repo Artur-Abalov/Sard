@@ -9,7 +9,23 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 private val ISOLATED_PACKAGES =
-    listOf("enrollment", "persistence", "pki", "extension", "registration", "runs", "fleet", "notify")
+    listOf(
+        "enrollment",
+        "persistence",
+        "pki",
+        "extension",
+        "registration",
+        "runs",
+        "fleet",
+        "notify",
+        "install",
+        "downloads",
+    )
+
+// downloads/ is itself an HTTP handler (it serves the package files), so it is web by purpose.
+private val WIRE_FREE_PACKAGES = ISOLATED_PACKAGES - "downloads"
+private val WIRE_ANNOTATION_REFERENCE =
+    Regex("""\b(com\.fasterxml\.jackson\.annotation|io\.swagger|org\.springframework\.web|jakarta\.servlet)\b""")
 private val FORBIDDEN_FQN_REFERENCE =
     Regex("""\b(io\.grpc|dev\.sard\.proto|com\.google\.rpc|com\.google\.protobuf|dev\.sard\.server\.agents)\.""")
 private val TELEGRAM_REFERENCE = Regex("""\b(dev\.sard\.server\.notify\.telegram|Telegram\w*)\b""")
@@ -73,6 +89,20 @@ class ArchitectureTest {
             }
         }
         assertTrue(offenders.isEmpty(), "forbidden references:\n${offenders.joinToString("\n")}")
+    }
+
+    @Test
+    fun `the domain packages carry no wire or HTTP annotations`() {
+        val offenders =
+            WIRE_FREE_PACKAGES.flatMap { pkg ->
+                ktFiles(File(mainRoot, pkg)).flatMap { file ->
+                    WIRE_ANNOTATION_REFERENCE
+                        .findAll(withoutComments(file.readText()))
+                        .map { "${file.path}: ${it.value}" }
+                        .toList()
+                }
+            }
+        assertTrue(offenders.isEmpty(), "wire concerns in the domain:\n${offenders.joinToString("\n")}")
     }
 
     @Test

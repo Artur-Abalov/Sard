@@ -46,7 +46,7 @@ private fun installs(offer: AgentOffer) =
         offer,
         InstallCommands(
             DownloadsUrl.resolve("", AgentEndpoint("sard.corp.example:9090"), 8080),
-            "sard.corp.example:9090",
+            AgentEndpoint("sard.corp.example:9090"),
             KEY,
         ),
     )

@@ -32,7 +32,7 @@ class InstallConfiguration {
         downloads: DownloadsUrl,
         endpoint: AgentEndpoint,
         key: ReleaseKey,
-    ): AgentInstalls = AgentInstalls(offer, InstallCommands(downloads, endpoint.address, key))
+    ): AgentInstalls = AgentInstalls(offer, InstallCommands(downloads, endpoint, key))
 
     @Bean
     fun agentVersions(offer: AgentOffer): AgentVersions = AgentVersions(offer.version)

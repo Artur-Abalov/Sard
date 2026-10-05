@@ -3,12 +3,6 @@
 
 package dev.sard.server.api
 
-import dev.sard.server.install.FetchTool
-import dev.sard.server.install.InstallArch
-import dev.sard.server.install.InstallFormat
-import dev.sard.server.install.InstallStep
-import dev.sard.server.install.ReleaseKey
-import dev.sard.server.install.UpgradeReason
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.tags.Tag

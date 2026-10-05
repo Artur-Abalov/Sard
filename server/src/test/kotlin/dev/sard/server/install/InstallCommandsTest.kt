@@ -17,7 +17,7 @@ private val KEY = ReleaseKey("DF5D5B6DB257DBFA", "RWT621eybVtd38CL7B33xZrcc8ArYi
 private val BASE = DownloadsUrl.resolve("", AgentEndpoint("sard.corp.example:9090"), 8080)
 private const val ADDRESS = "sard.corp.example:9090"
 
-private fun commands() = InstallCommands(BASE, ADDRESS, KEY)
+private fun commands() = InstallCommands(BASE, AgentEndpoint(ADDRESS), KEY)
 
 private fun deb(
     signed: Boolean = true,

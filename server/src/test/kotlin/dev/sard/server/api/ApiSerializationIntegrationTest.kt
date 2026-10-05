@@ -4,12 +4,6 @@
 package dev.sard.server.api
 
 import dev.sard.server.TestcontainersConfiguration
-import dev.sard.server.install.InstallArch
-import dev.sard.server.install.InstallFormat
-import dev.sard.server.install.InstallStep
-import dev.sard.server.install.ReleaseKey
-import dev.sard.server.install.StepKind
-import dev.sard.server.install.UpgradeReason
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort

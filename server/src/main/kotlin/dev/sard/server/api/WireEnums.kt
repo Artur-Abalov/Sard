@@ -4,9 +4,6 @@
 package dev.sard.server.api
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import dev.sard.server.install.FetchTool
-import dev.sard.server.install.InstallArch
-import dev.sard.server.install.InstallFormat
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.convert.converter.Converter
 import org.springframework.core.convert.converter.ConverterFactory

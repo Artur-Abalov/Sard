@@ -128,8 +128,7 @@ private fun requiredParameters(type: KClass<*>): List<String>? =
         .mapNotNull { it.name }
         .ifEmpty { null }
 
-/** The packages whose classes are wire types: the API's own and the install block's (its steps and key). */
-private val WIRE_PACKAGES = listOf(OpenApiConfiguration::class.java.packageName, "dev.sard.server.install")
+/** Schemas are named after the classes of the API's own package, the only one with wire types. */
+private val WIRE_PACKAGE = OpenApiConfiguration::class.java.packageName
 
-private fun apiClass(name: String): KClass<*>? =
-    WIRE_PACKAGES.firstNotNullOfOrNull { pkg -> runCatching { Class.forName("$pkg.$name").kotlin }.getOrNull() }
+private fun apiClass(name: String): KClass<*>? = runCatching { Class.forName("$WIRE_PACKAGE.$name").kotlin }.getOrNull()

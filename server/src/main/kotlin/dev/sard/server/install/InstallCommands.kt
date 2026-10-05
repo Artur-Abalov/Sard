@@ -31,13 +31,13 @@ data class ReleasePackage(
 
 /**
  * Shell commands of the install and upgrade blocks (U1b), built from the address the packages are
- * fetched from ([downloads]), the address agents dial ([serverAddress], as in the enroll command) and
+ * fetched from ([downloads]), the address agents dial ([endpoint], as in the enroll command) and
  * the release key. Only the commands of a Debian-family host's base system; the layout of the archive
  * is the layout of the deb (В3), so the steps after the install are the same.
  */
 class InstallCommands(
     private val downloads: DownloadsUrl,
-    private val serverAddress: String,
+    private val endpoint: AgentEndpoint,
     private val key: ReleaseKey,
 ) {
     fun install(pkg: ReleasePackage): List<InstallStep> =
@@ -94,11 +94,11 @@ class InstallCommands(
 
     private fun dpkg(pkg: ReleasePackage) = "sudo dpkg -i ${pkg.file}"
 
-    private fun enroll() = AgentEndpoint(serverAddress).enrollCommand(TOKEN_PLACEHOLDER)
+    private fun enroll() = endpoint.enrollCommand(TOKEN_PLACEHOLDER)
 
     /** The example becomes agent.yaml only if there is none: an operator's file is never overwritten. */
     private fun configure(): String {
-        val sed = "sed -i \"s|address: $EXAMPLE_ADDRESS|address: $serverAddress|\" $CONFIG"
+        val sed = "sed -i \"s|address: $EXAMPLE_ADDRESS|address: ${endpoint.address}|\" $CONFIG"
         return "sudo sh -c '[ -e $CONFIG ] || { cp $EXAMPLE $CONFIG && $sed; }'"
     }
 
