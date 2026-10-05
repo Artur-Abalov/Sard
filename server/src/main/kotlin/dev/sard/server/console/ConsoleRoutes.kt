@@ -41,14 +41,16 @@ class ConsoleRoutes(
             else -> servedRoute(path)
         }
 
-    private fun servedRoute(path: String): ConsoleRoute =
-        when {
+    private fun servedRoute(path: String): ConsoleRoute {
+        val relative = path.removePrefix("/")
+        return when {
             leavesBundle(path) -> ConsoleRoute.NotFound
             path == "/index.html" -> ConsoleRoute.Page
-            exists(path.removePrefix("/")) -> ConsoleRoute.File(path.removePrefix("/"))
+            exists(relative) -> ConsoleRoute.File(relative)
             isFileName(path) -> ConsoleRoute.NotFound
             else -> ConsoleRoute.Page
         }
+    }
 
     /** A missing file is a 404, never the page: a dot in the last segment, or anywhere under /assets/. */
     private fun isFileName(path: String): Boolean = path.startsWith("/assets/") || '.' in path.substringAfterLast('/')

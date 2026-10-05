@@ -21,9 +21,7 @@ class ConsoleFilter(
         response: HttpServletResponse,
         filterChain: FilterChain,
     ) {
-        val path = decoded(request.requestURI)
-        val route = if (path == null) ConsoleRoute.NotFound else routes.route(request.method, path)
-        when (route) {
+        when (val route = routeOf(request)) {
             ConsoleRoute.PassThrough -> {
                 filterChain.doFilter(request, response)
             }
@@ -46,6 +44,9 @@ class ConsoleFilter(
             }
         }
     }
+
+    private fun routeOf(request: HttpServletRequest): ConsoleRoute =
+        decoded(request.requestURI)?.let { routes.route(request.method, it) } ?: ConsoleRoute.NotFound
 
     /** The path as the client meant it: percent escapes decoded (a plus stays a plus); null when malformed. */
     private fun decoded(uri: String): String? =
