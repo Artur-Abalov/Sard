@@ -31,8 +31,6 @@ import java.util.concurrent.atomic.AtomicLong
 private val log = LoggerFactory.getLogger(NotifyConfiguration::class.java)
 
 private val RETRY_DEFAULTS = RetrySettings()
-private const val NO_FORMATTER = "Notifications are off: no NotificationFormatter bean (S9b)"
-private val WEB_SCHEMES = setOf("http", "https")
 private const val TOKEN_VARIABLE = "SARD_TELEGRAM_BOT_TOKEN"
 private const val CHAT_VARIABLE = "SARD_TELEGRAM_CHAT_ID"
 private const val NEEDS_BOTH = "Telegram needs $TOKEN_VARIABLE and $CHAT_VARIABLE;"
@@ -118,17 +116,14 @@ fun telegramChannel(
 }
 
 /**
- * The channels the queue works with. Without a channel or without a formatter (S9b) it works
- * with none: the server starts, nothing is planned, and the log says why (ADR 0024).
+ * The channels the queue works with. Without a channel it works with none: the server starts,
+ * nothing is planned, and the log says why (ADR 0024).
  */
-fun activeChannels(
-    channels: List<NotificationChannel>,
-    formatter: NotificationFormatter?,
-): List<NotificationChannel> =
-    when {
-        channels.isEmpty() -> emptyList<NotificationChannel>().also { log.warn(NO_CHANNEL) }
-        formatter == null -> emptyList<NotificationChannel>().also { log.warn(NO_FORMATTER) }
-        else -> channels.also { log.info("Notifications go through {}", channels.map { it.name }) }
+fun activeChannels(channels: List<NotificationChannel>): List<NotificationChannel> =
+    if (channels.isEmpty()) {
+        emptyList<NotificationChannel>().also { log.warn(NO_CHANNEL) }
+    } else {
+        channels.also { log.info("Notifications go through {}", channels.map { it.name }) }
     }
 
 /** Micrometer meters of the notification queue. */
@@ -173,8 +168,8 @@ class NotifyConfiguration {
     ) = TelegramCredentials(botToken, chatId)
 
     /**
-     * The queue works only with a channel and a formatter (S9b); without either it plans nothing,
-     * so nothing piles up, and runs finished within the time to live are told about once both exist.
+     * The queue works only with a channel; without one it plans nothing, so nothing piles up,
+     * and runs finished within the time to live are told about once one exists.
      */
     @Bean
     fun notificationService(
@@ -184,16 +179,15 @@ class NotifyConfiguration {
         credentials: TelegramCredentials,
         json: ObjectMapper,
         extraChannels: ObjectProvider<NotificationChannel>,
-        formatter: ObjectProvider<NotificationFormatter>,
+        formatter: NotificationFormatter,
         meters: MeterRegistry,
     ): NotificationService {
         val telegram = telegramChannel(credentials, properties.telegram, json)
         val channels = listOfNotNull(telegram) + extraChannels.orderedStream().toList()
-        val chosen = formatter.ifAvailable
         return NotificationService(
             Deliveries(sessions, UuidV7(clock, SecureRandom())),
-            activeChannels(channels, chosen),
-            chosen ?: NotificationFormatter { null },
+            activeChannels(channels),
+            formatter,
             RetryPolicy(properties.retry()),
             properties.queue(),
             clock,

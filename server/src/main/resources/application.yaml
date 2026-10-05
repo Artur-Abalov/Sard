@@ -82,7 +82,14 @@ sard:
     # step_logs has monthly partitions; the server keeps this many months ahead of the current one.
     partitions-ahead-months: 2
     partitions-check-interval: 1d
+  console:
+    # Where people open the console, as the notification link: <address>/runs/<runId>. Empty means no link.
+    # An absolute http or https address with a host, without a query or a fragment; the server does not
+    # start with anything else (S9b, docs/operations/notifications.md). Never taken from request headers.
+    public-url: ${SARD_CONSOLE_PUBLIC_URL:}
   notify:
+    # The language of notification texts: en or ru; the server does not start with anything else (S9b).
+    language: ${SARD_NOTIFY_LANGUAGE:en}
     # Notifications about finished runs (S9a). The Telegram bot comes from SARD_TELEGRAM_BOT_TOKEN
     # and SARD_TELEGRAM_CHAT_ID only, never from this file; without them notifications are off.
     # A background tick plans one delivery per finished run and channel, then sends what is due.
