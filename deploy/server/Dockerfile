@@ -34,6 +34,8 @@ COPY gradle gradle
 COPY proto/sard proto/sard
 COPY proto/jvm proto/jvm
 COPY server server
+# The key the console shows next to the signature step is a resource of the server (U1b).
+COPY deploy/release/sard-release.pub deploy/release/sard-release.pub
 ARG SARD_VERSION=dev
 # Builds behind a TLS-intercepting proxy: pass JVM proxy settings in
 # JAVA_TOOL_OPTIONS and the proxy CA as the optional "build-ca" secret.

@@ -45,6 +45,37 @@ class AgentPackageDirectoryTest {
     }
 
     @Test
+    fun `the catalog knows the restic version and the package of each architecture and format`() {
+        val catalog = MutFlow.underTest { load() }
+        assertEquals("0.19.1", catalog.resticVersion)
+        assertEquals("sard-agent_v1.2.3_amd64.deb", catalog.fileOf("amd64", "deb"))
+        assertEquals("sard-agent_v1.2.3_linux_arm64.tar.gz", catalog.fileOf("arm64", "tar.gz"))
+        assertNull(catalog.fileOf("arm64", "deb"))
+        assertNull(catalog.fileOf("386", "deb"))
+    }
+
+    @Test
+    fun `the catalog says whether the release is signed`() {
+        assertEquals(false, MutFlow.underTest { load() }.signed)
+        dir.resolve("SHA256SUMS.minisig").writeText("untrusted comment: signature\n")
+        assertEquals(true, MutFlow.underTest { load() }.signed)
+    }
+
+    @Test
+    fun `a manifest without the restic version stops the server`() {
+        val manifest = dir.resolve("manifest.json")
+        manifest.writeText(manifest.readText().replace("restic_version", "restic_v"))
+        assertContains(refusal(), "\"restic_version\" is missing")
+    }
+
+    @Test
+    fun `an artifact without its architecture stops the server`() {
+        val manifest = dir.resolve("manifest.json")
+        manifest.writeText(manifest.readText().replace("\"arch\"", "\"cpu\""))
+        assertContains(refusal(), "\"arch\" is missing")
+    }
+
+    @Test
     fun `a signed release serves its signature`() {
         dir.resolve("SHA256SUMS.minisig").writeText("untrusted comment: signature\n")
         val catalog = MutFlow.underTest { load() }

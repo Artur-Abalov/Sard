@@ -14,6 +14,9 @@ data class AgentEndpoint(
     /** True when SARD_AGENT_ENDPOINT named it; false when it is derived from the server names (S8b В3). */
     val explicit: Boolean = false,
 ) {
+    /** The host as it goes into a URL: an IPv6 literal keeps its brackets. */
+    val host: String get() = address.substringBeforeLast(':')
+
     fun enrollCommand(token: String): String = "sard-agent enroll --server $address --token $token"
 }
 

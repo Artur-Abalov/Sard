@@ -4,6 +4,9 @@
 package dev.sard.server.api
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import dev.sard.server.install.FetchTool
+import dev.sard.server.install.InstallArch
+import dev.sard.server.install.InstallFormat
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.convert.converter.Converter
 import org.springframework.core.convert.converter.ConverterFactory
@@ -57,6 +60,9 @@ class WireEnumBinding {
             WireEnumEditor(EnrollmentTokenStatus::class.java),
         )
         binder.registerCustomEditor(RunStatus::class.java, WireEnumEditor(RunStatus::class.java))
+        binder.registerCustomEditor(InstallArch::class.java, WireEnumEditor(InstallArch::class.java))
+        binder.registerCustomEditor(InstallFormat::class.java, WireEnumEditor(InstallFormat::class.java))
+        binder.registerCustomEditor(FetchTool::class.java, WireEnumEditor(FetchTool::class.java))
     }
 }
 

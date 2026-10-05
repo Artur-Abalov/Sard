@@ -51,6 +51,11 @@ sard:
     # (docs/adr/00XX-draft-agent-release.md). On without a valid release, the server does not start.
     enabled: ${SARD_AGENT_DOWNLOADS:true}
     dir: ${SARD_AGENT_PACKAGES_DIR:/usr/share/sard/agent-packages}
+    # Where hosts fetch the packages from, as in the install commands of the console (U1b). An absolute http or
+    # https address without a query or a fragment; the server does not start with anything else. Empty means:
+    # http, the host of the address agents dial (SARD_AGENT_ENDPOINT) and SARD_HTTP_PORT. Never taken from
+    # request headers.
+    downloads-url: ${SARD_AGENT_DOWNLOADS_URL:}
   agent:
     # Address agents dial (decision 5, S2b); empty means: first of sard.pki.server-names and the gRPC port.
     endpoint: ${SARD_AGENT_ENDPOINT:}

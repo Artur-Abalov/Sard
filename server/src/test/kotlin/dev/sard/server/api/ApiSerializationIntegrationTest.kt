@@ -4,6 +4,12 @@
 package dev.sard.server.api
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.install.InstallArch
+import dev.sard.server.install.InstallFormat
+import dev.sard.server.install.InstallStep
+import dev.sard.server.install.ReleaseKey
+import dev.sard.server.install.StepKind
+import dev.sard.server.install.UpgradeReason
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
@@ -55,6 +61,7 @@ class ApiSerializationIntegrationTest(
             at,
             revokedAt = null,
             duplicateSessionAt = at,
+            outdated = false,
         )
     private val step =
         RunStep(
@@ -131,6 +138,30 @@ class ApiSerializationIntegrationTest(
                 repositories = listOf(AgentRepository("local", "local", repositoryId = null, "file")),
                 secretNames = listOf("pg"),
                 scriptNames = listOf("flush"),
+                outdated = true,
+            ),
+            AgentInstall(
+                downloadsEnabled = true,
+                agentVersion = "v1.4.0",
+                resticVersion = null,
+                InstallArch.ARM64,
+                InstallFormat.TAR,
+                signed = false,
+                ReleaseKey("DF5D5B6DB257DBFA", "RWT621eybVtd38CL7B33xZrcc8ArYiPt3GlKXyJuk9ZQzDnoUV+kLi2d"),
+                manualInstallDoc = "https://example.com/doc",
+                steps = listOf(InstallStep(StepKind.REPO_INIT, listOf("true"), optional = false)),
+            ),
+            AgentUpgrade(
+                downloadsEnabled = true,
+                agentVersion = "v1.4.0",
+                resticVersion = "0.19.1",
+                arch = null,
+                InstallFormat.DEB,
+                signed = true,
+                ReleaseKey("DF5D5B6DB257DBFA", "RWT621eybVtd38CL7B33xZrcc8ArYiPt3GlKXyJuk9ZQzDnoUV+kLi2d"),
+                manualInstallDoc = "https://example.com/doc",
+                steps = emptyList(),
+                reason = UpgradeReason.ARCH_UNKNOWN,
             ),
             CreateEnrollmentTokenRequest(ttlSeconds = 3600),
             CreatedEnrollmentToken(id, "sard_x.y", "sard-agent enroll --server s:9090 --token sard_x.y", at, false),
@@ -275,6 +306,8 @@ class ApiSerializationIntegrationTest(
         val NESTED =
             setOf(
                 "AgentSummary",
+                "InstallStep",
+                "ReleaseKey",
                 "FirstSteps",
                 "AgentPlugin",
                 "AgentRepository",
