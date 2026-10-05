@@ -3,6 +3,9 @@
 
 package dev.sard.server.install
 
+import dev.sard.server.enrollment.AgentEndpoint
+import dev.sard.server.enrollment.asServiceUser
+
 private const val USER = "sard-agent"
 private const val UNIT = "sard-agent.service"
 private const val SUMS = "SHA256SUMS"
@@ -91,9 +94,7 @@ class InstallCommands(
 
     private fun dpkg(pkg: ReleasePackage) = "sudo dpkg -i ${pkg.file}"
 
-    private fun enroll() = asServiceUser("enroll --server $serverAddress --token $TOKEN_PLACEHOLDER")
-
-    private fun asServiceUser(command: String) = "sudo -u $USER $USER $command"
+    private fun enroll() = AgentEndpoint(serverAddress).enrollCommand(TOKEN_PLACEHOLDER)
 
     /** The example becomes agent.yaml only if there is none: an operator's file is never overwritten. */
     private fun configure(): String {

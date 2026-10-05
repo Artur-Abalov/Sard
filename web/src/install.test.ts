@@ -28,7 +28,8 @@ describe('the text a step copies', () => {
 })
 
 describe('the steps of the token dialog', () => {
-  const enrollCommand = 'sard-agent enroll --server sard.example.com:9090 --token sard_x.y'
+  const enrollCommand =
+    'sudo -u sard-agent sard-agent enroll --server sard.example.com:9090 --token sard_x.y'
 
   test('keep the order and every step but enroll as the server sent them', () => {
     const shown = withEnrollCommand(steps, enrollCommand)

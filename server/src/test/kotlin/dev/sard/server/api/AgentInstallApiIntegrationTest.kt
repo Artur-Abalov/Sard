@@ -204,6 +204,18 @@ class AgentInstallApiIntegrationTest(
     }
 
     @Test
+    fun `Шаг enroll совпадает с командой из ответа создания токена, кроме строки токена`() {
+        val created = world.api.post("/api/v1/enrollment-tokens", admin, "{}").json
+        val command = created.path("enrollCommand").asString()
+        val token = created.path("token").asString()
+
+        val enroll = commands(install(), "enroll").single()
+
+        assertEquals(command.replace(token, "<TOKEN>"), enroll)
+        assertTrue(enroll.startsWith("sudo -u sard-agent sard-agent enroll --server "), enroll)
+    }
+
+    @Test
     fun `Без SARD_AGENT_ENDPOINT в enroll стоит первое имя сертификата`() {
         val enroll = commands(install(), "enroll").single()
 

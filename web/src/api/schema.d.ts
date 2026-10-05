@@ -595,7 +595,7 @@ export interface components {
             id: string;
             /** @description sard_<secret>.<CA fingerprint>; shown once, the server keeps only its hash */
             token: string;
-            /** @description Ready-to-run command: sard-agent enroll --server <address> --token <token> */
+            /** @description Ready-to-run command: sudo -u sard-agent sard-agent enroll --server <address> --token <token> */
             enrollCommand: string;
             /** Format: date-time */
             expiresAt: string;
