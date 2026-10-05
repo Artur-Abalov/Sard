@@ -3,9 +3,11 @@
 
 package dev.sard.e2e
 
+import com.github.dockerjava.api.model.Bind
 import com.github.dockerjava.api.model.Capability
 import com.github.dockerjava.api.model.ContainerNetwork
 import com.github.dockerjava.api.model.HostConfig
+import com.github.dockerjava.api.model.Volume
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.GenericContainer
 
@@ -18,10 +20,14 @@ import org.testcontainers.containers.GenericContainer
  *   `NET_ADMIN`); the agent image is distroless and has no iptables. TCP data in the open
  *   direction still arrives: dropping what the server sends lets the agent's messages reach it,
  *   and the reverse. The rules live in the namespace, so a restart of the agent drops them.
- * - [restart] / [stop]: `docker restart` / `docker stop` of any container.
+ * - [restart] / [stop] / [kill] / [start]: `docker restart` / `stop` / `kill` / `start` of any container.
+ * - [erase]: a path on a stopped agent's disk removed, from a helper container on its volume.
  */
 internal object Interruptions {
-    /** An image with iptables (Docker Hub; the cloud workaround of OQ-132 pulls it via mirror.gcr.io and tags it). */
+    /**
+     * The helper image: iptables, and a shell's tools for the agent's disk (Docker Hub; the cloud
+     * workaround of OQ-132 pulls it via mirror.gcr.io and tags it).
+     */
     const val FIREWALL_IMAGE = "nicolaka/netshoot:v0.14"
 
     /**
@@ -95,9 +101,44 @@ internal object Interruptions {
         container.dockerClient.stopContainerCmd(container.containerId).exec()
     }
 
+    /**
+     * `docker kill` (SIGKILL): the process dies at once, as in a crash or a power cut; nothing it
+     * would do on SIGTERM happens. Start it again with [start].
+     */
+    fun kill(container: GenericContainer<*>) {
+        container.dockerClient.killContainerCmd(container.containerId).exec()
+    }
+
+    /** `docker start` of a stopped container. */
+    fun start(container: GenericContainer<*>) {
+        container.dockerClient.startContainerCmd(container.containerId).exec()
+    }
+
+    /**
+     * Deletes [path] (under [AgentHost.STATE_DIR]) from [host]'s disk while its agent is stopped: a
+     * host that lost its disk, or was reinstalled, as far as that path goes (case 8: the executor's
+     * journal).
+     */
+    fun erase(
+        agent: GenericContainer<*>,
+        host: AgentHost,
+        path: String,
+    ) {
+        require(path.startsWith(AgentHost.STATE_DIR + "/")) { "$path is not on the agent's state volume" }
+        helper(agent, "rm", listOf("-rf", path)) { it.withBinds(Bind(host.state, Volume(AgentHost.STATE_DIR))) }
+    }
+
     private fun iptables(
         agent: GenericContainer<*>,
         args: List<String>,
+    ) = helper(agent, "iptables", args) { it.withNetworkMode("container:${agent.containerId}").withCapAdd(Capability.NET_ADMIN) }
+
+    /** Runs [program] with [args] to completion in a container of [FIREWALL_IMAGE] set up by [host]; fails unless it exits 0. */
+    private fun helper(
+        agent: GenericContainer<*>,
+        program: String,
+        args: List<String>,
+        host: (HostConfig) -> HostConfig,
     ) {
         val docker = agent.dockerClient
         DockerClientFactory.instance().checkAndPullImage(docker, FIREWALL_IMAGE)
@@ -105,17 +146,16 @@ internal object Interruptions {
         val helper =
             docker
                 .createContainerCmd(FIREWALL_IMAGE)
-                .withEntrypoint("iptables")
+                .withEntrypoint(program)
                 .withCmd(args)
                 .withLabels(labels)
-                .withHostConfig(
-                    HostConfig.newHostConfig().withNetworkMode("container:${agent.containerId}").withCapAdd(Capability.NET_ADMIN),
-                ).exec()
+                .withHostConfig(host(HostConfig.newHostConfig()))
+                .exec()
                 .id
         try {
             docker.startContainerCmd(helper).exec()
             val code = docker.waitContainerCmd(helper).start().awaitStatusCode()
-            check(code == 0) { "iptables ${args.joinToString(" ")} exited $code" }
+            check(code == 0) { "$program ${args.joinToString(" ")} exited $code" }
         } finally {
             docker.removeContainerCmd(helper).withForce(true).exec()
         }

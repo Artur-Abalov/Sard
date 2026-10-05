@@ -7,13 +7,7 @@ import dev.sard.e2e.Interruptions.Direction
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.extension.RegisterExtension
 import org.testcontainers.containers.GenericContainer
-import java.security.MessageDigest
-import java.sql.Timestamp
 import java.time.Duration
-import java.time.Instant
-import java.time.OffsetDateTime
-import java.util.HexFormat
-import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,36 +15,39 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * T3: the link between agent and server breaks while an `e2e-slow` backup runs, and the backup
- * still ends once: one `restic backup`, one snapshot, one result, one RunFinished ([ExactlyOnce]).
+ * T3: the link between agent and server breaks, or the agent restarts, while an `e2e-slow`
+ * backup runs, and the backup still ends once: never a second backup, never a lost or doubled
+ * result ([ExactlyOnce]: `restic backup` runs, tagged snapshots, RunFinished).
  *
  * The lost window of this stand is long ([LOST_WINDOW]): the agent's reconnect backoff (1 s
  * doubling to 60 s, full jitter, transport.go) may take tens of seconds after the server is back,
- * and a step must not be lost for that. The short window is for the cases
- * where the agent does not come back (7–9).
- * Each test enrolls its own agent; the server is shared, restarted by two of them.
+ * and a step must not be lost for that. The short window is for the cases where the agent does
+ * not come back ([StepLossTest]). Each test enrolls its own agent; the server is shared,
+ * restarted by two of them.
  */
 @Timeout(value = 5, unit = TimeUnit.MINUTES)
 class StreamBreakTest {
+    private val rows = StepRows(sard)
+
     /** Case 1: a network cut longer than the server's offline threshold, shorter than the lost window. */
     @Test
     fun `a network cut shorter than the lost window leaves one succeeded step`() {
-        val stand = agent("cut")
-        val started = backup(stand, STEP_SECONDS)
+        val stand = T3Agent.start(sard, "cut")
+        val started = stand.backup(STEP_SECONDS)
 
-        val cutAt = databaseNow()
+        val cutAt = rows.now()
         Interruptions.cut(sard, stand.container)
         // The server closes the silent session after OFFLINE and starts the step's lost window.
-        val deadline = Await.value("the lost deadline the server sets when the session ends", OFFLINE.multipliedBy(3)) { lostDeadline(started.stepId) }
-        val cutFor = Duration.between(cutAt, databaseNow())
-        Interruptions.reconnect(sard, stand.container, stand.agent.host.hostname)
+        val deadline = Await.value("the lost deadline the server sets when the session ends", OFFLINE.multipliedBy(3)) { rows.lostDeadline(started.stepId) }
+        val cutFor = Duration.between(cutAt, rows.now())
+        Interruptions.reconnect(sard, stand.container, stand.hostname)
 
         assertTrue(cutFor < LOST_WINDOW, "the cut lasted $cutFor, not shorter than the lost window $LOST_WINDOW")
         val window = Duration.between(cutAt, deadline)
         assertTrue(window >= LOST_WINDOW && window <= LOST_WINDOW + OFFLINE.multipliedBy(2), "lost deadline $window after the cut, want $LOST_WINDOW + up to the offline threshold")
         val step = Backups.awaitFinished(sard, started.stepId, STEP_TIMEOUT)
         assertEquals("succeeded", step.status, step.message)
-        assertTrue(finishedAt(started.stepId) > cutAt, "the step finished before the cut")
+        assertTrue(rows.finishedAt(started.stepId) > cutAt, "the step finished before the cut")
         assertTrue(ExactlyOnce.count(stand.once.agentLog(), "connection to the server lost") >= 1, "the agent did not notice the cut")
         assertSentOnce(stand, started)
         stand.once.assertOne(started)
@@ -69,6 +66,109 @@ class StreamBreakTest {
     }
 
     /**
+     * Case 4 (D13, FXa): the agent's process is killed while the step runs and started again. Its
+     * journal holds the step, so it reports it FAILED with the D13 message right after its Hello,
+     * long before the lost window would; restic is not run again. The source is free: its next
+     * run succeeds.
+     */
+    @Test
+    fun `an agent killed mid-step fails the step at once with the D13 message and the next run succeeds`() {
+        agentStopsMidStep("killed", INTERRUPTED) { container ->
+            Interruptions.kill(container)
+            Interruptions.start(container)
+        }
+    }
+
+    /**
+     * Case 4, a graceful restart (`docker restart`: SIGTERM, as `systemctl restart`): the agent
+     * stops restic itself and saves the step FAILED with its shutdown message (A4), which it sends
+     * after the Hello. The same guarantees as a kill; only the message differs (OQ-139).
+     */
+    @Test
+    fun `an agent restarted gracefully mid-step fails the step at once and the next run succeeds`() {
+        agentStopsMidStep("restarted", SHUTTING_DOWN) { container -> Interruptions.restart(container) }
+    }
+
+    /** Case 4: [restart] takes the agent down while restic backs the step up and brings it back. */
+    private fun agentStopsMidStep(
+        name: String,
+        message: String,
+        restart: (GenericContainer<*>) -> Unit,
+    ) {
+        val stand = T3Agent.start(sard, name)
+        val started = stand.backup(STEP_SECONDS)
+        Await.until("restic backup of step ${started.stepId}") { stand.once.resticBackups(started.stepId) == 1 }
+
+        val restartAt = rows.now()
+        restart(stand.container)
+        val step = Backups.awaitFinished(sard, started.stepId, STEP_TIMEOUT)
+
+        assertEquals("failed", step.status, step.message)
+        assertEquals(message, step.message)
+        val tookFor = Duration.between(restartAt, rows.finishedAt(started.stepId))
+        assertTrue(tookFor < LOST_WINDOW.dividedBy(2), "the failure came $tookFor after the restart: the server waited for the lost window")
+        assertEquals("failed", rows.runStatus(started.runId))
+        assertSentOnce(stand, started)
+        stand.once.assertOne(started, snapshots = 0)
+
+        assertNextRunSucceeds(stand, started)
+    }
+
+    /**
+     * Case 5, the command reached the journal: the agent accepted the step and started restic,
+     * but its ACCEPTED never reached the server (iptables drops the agent's data), so the step is
+     * still dispatched when the agent's process is killed and started again. After the Hello the server sends it again (it is
+     * absent from the Hello); either way the agent answers with the journaled FAILED (D13) and
+     * runs nothing a second time.
+     */
+    @Test
+    fun `an agent killed with a dispatched step in its journal fails the step without a second backup`() {
+        val stand = T3Agent.start(sard, "journaled")
+        Interruptions.block(stand.container, Direction.TO_SERVER)
+        val started = stand.backupNoWait(STEP_SECONDS)
+        Await.until("restic backup of step ${started.stepId}") { stand.once.resticBackups(started.stepId) == 1 }
+        assertEquals("dispatched", RunRows.statusOf(sard, started.stepId), "the agent's ACCEPTED got through the block")
+
+        Interruptions.kill(stand.container)
+        Interruptions.start(stand.container)
+        // The new start gives the container a new network namespace without the rules; flush anyway.
+        Interruptions.unblock(stand.container)
+        val step = Backups.awaitFinished(sard, started.stepId, STEP_TIMEOUT)
+
+        assertEquals("failed", step.status, step.message)
+        assertEquals(INTERRUPTED, step.message)
+        assertEquals(1, stand.once.agentLines("step accepted", started.stepId), "the agent accepted the step again")
+        assertEquals(1, stand.once.agentLines("step started", started.stepId), "the agent started the step again")
+        stand.once.assertOne(started, snapshots = 0)
+
+        assertNextRunSucceeds(stand, started)
+    }
+
+    /**
+     * Case 5, the command did not reach the journal: the agent is off the network when the server
+     * sends the step (its session is not closed yet, so the step is dispatched into a dead
+     * connection), restarts without it, and comes back. The server sends the step again after the
+     * Hello, and it runs once.
+     */
+    @Test
+    fun `an agent restarted before a dispatched step reached it runs the step sent again once`() {
+        val stand = T3Agent.start(sard, "unjournaled")
+        Interruptions.cut(sard, stand.container)
+        val started = stand.backupNoWait(STEP_SECONDS)
+        stand.awaitStatus(started.stepId, "dispatched")
+
+        Interruptions.restart(stand.container)
+        Interruptions.reconnect(sard, stand.container, stand.hostname)
+        val step = Backups.awaitFinished(sard, started.stepId, STEP_TIMEOUT)
+
+        assertEquals("succeeded", step.status, step.message)
+        assertEquals(1, ExactlyOnce.count(sard.serverLogs(), "step ${started.stepId} sent again"), "sends again of the step")
+        assertEquals(1, stand.once.agentLines("step accepted", started.stepId), "the agent accepted the step more than once")
+        assertEquals(0, ExactlyOnce.count(stand.once.agentLog(), "interrupted steps reported as failed"), "the step reached the journal before the restart")
+        stand.once.assertOne(started)
+    }
+
+    /**
      * Case 6: the backup ends and its result reaches the server, but the ResultAck does not reach
      * the agent (iptables drops what the server sends). The agent drops the dead stream, sends the
      * result again on the next one, the server records nothing new and acknowledges, and the agent
@@ -76,8 +176,8 @@ class StreamBreakTest {
      */
     @Test
     fun `a result whose ack is lost is sent again, recorded once, and then no more`() {
-        val stand = agent("ack")
-        val started = backup(stand, SHORT_STEP_SECONDS)
+        val stand = T3Agent.start(sard, "ack")
+        val started = stand.backup(SHORT_STEP_SECONDS)
         val drops = ExactlyOnce.count(stand.once.agentLog(), "connection to the server lost")
 
         Interruptions.block(stand.container, Direction.TO_AGENT)
@@ -92,8 +192,8 @@ class StreamBreakTest {
         Await.until("the ack of the repeated result", RECONNECT_TIMEOUT) { stand.once.agentLines("result acknowledged", started.stepId) == 1 }
         assertEquals(2, stand.once.agentLines("result sent", started.stepId), "results sent in all")
         assertEquals(1, ExactlyOnce.count(sard.serverLogs(), "repeated the result of step ${started.stepId}"), "repeats the server saw")
-        assertTrue(stand.container.holds("acked", started.stepId), "no tombstone of ${started.stepId}: the agent would send it again")
-        assertFalse(stand.container.holds("results", started.stepId), "the agent still holds the result of ${started.stepId} to send")
+        assertTrue(stand.holds("acked", started.stepId), "no tombstone of ${started.stepId}: the agent would send it again")
+        assertFalse(stand.holds("results", started.stepId), "the agent still holds the result of ${started.stepId} to send")
         assertEquals("succeeded", RunRows.statusOf(sard, started.stepId))
         stand.once.assertOne(started)
     }
@@ -103,12 +203,12 @@ class StreamBreakTest {
         name: String,
         away: () -> Unit,
     ) {
-        val stand = agent(name)
-        val started = backup(stand, STEP_SECONDS)
+        val stand = T3Agent.start(sard, name)
+        val started = stand.backup(STEP_SECONDS)
 
-        val awayAt = databaseNow()
+        val awayAt = rows.now()
         away()
-        Await.until("Register of the agent after the server came back", RECONNECT_TIMEOUT) { registeredAfter(stand.agent.agentId, awayAt) }
+        Await.until("Register of the agent after the server came back", RECONNECT_TIMEOUT) { rows.registeredAfter(stand.agent.agentId, awayAt) }
         val step = Backups.awaitFinished(sard, started.stepId, STEP_TIMEOUT)
 
         assertEquals("succeeded", step.status, step.message)
@@ -119,89 +219,23 @@ class StreamBreakTest {
 
     /** The agent took the step once and never got it again (A4 dedup would log a repeated command). */
     private fun assertSentOnce(
-        stand: Stand,
+        stand: T3Agent,
         started: Backups.Started,
     ) {
         assertEquals(1, stand.once.agentLines("step accepted", started.stepId), "the agent accepted the step more than once")
         assertEquals(0, stand.once.agentLines("repeated command", started.stepId), "the server sent the step again")
     }
 
-    private class Stand(
-        val agent: EnrolledAgent,
-        val container: GenericContainer<*>,
-        val once: ExactlyOnce,
-    )
-
-    /** An enrolled agent with a local repository, running and registered. */
-    private fun agent(hostname: String): Stand {
-        val agent = AgentEnroller.enroll(sard, EnrollmentTokens.create(sard), hostname = hostname, local = LOCAL)
-        val init = agent.host.repoInit(REPOSITORY, "--generate-password")
-        assertEquals(0, init.code, init.stderr)
-        val container = sard.track("agent-$hostname", AgentContainer.of(agent)).apply { start() }
-        Await.until("repository_id of $REPOSITORY in Register") { Backups.repositoryId(sard, agent.agentId, REPOSITORY) != null }
-        return Stand(agent, container, ExactlyOnce(sard, container, agent.host, REPOSITORY_URL, PASSWORD_FILE))
+    /** The source is not blocked: a new run of it is accepted and its backup succeeds. */
+    private fun assertNextRunSucceeds(
+        stand: T3Agent,
+        previous: Backups.Started,
+    ) {
+        val next = Backups.run(sard, previous.sourceId)
+        val step = Backups.awaitFinished(sard, next.stepId, STEP_TIMEOUT)
+        assertEquals("succeeded", step.status, step.message)
+        stand.once.assertOne(next)
     }
-
-    /** Starts an `e2e-slow` backup of about [seconds] and returns once the step runs. */
-    private fun backup(
-        stand: Stand,
-        seconds: Int,
-    ): Backups.Started {
-        val config = """{"size":${seconds * RATE},"rate":$RATE,"chunk":$CHUNK,"seed":$SEED}"""
-        val started = Backups.start(sard, stand.agent.agentId, stand.agent.host.hostname, config, plugin = "e2e-slow")
-        Await.until("step ${started.stepId} running") { RunRows.statusOf(sard, started.stepId) == "running" }
-        return started
-    }
-
-    /** Whether the agent's executor holds [stepId]'s file in [dir] (store.go; docker cp, the image has no shell). */
-    private fun GenericContainer<*>.holds(
-        dir: String,
-        stepId: UUID,
-    ): Boolean {
-        val digest = MessageDigest.getInstance("SHA-256").digest(stepId.toString().toByteArray())
-        val path = "${AgentHost.EXECUTOR_DIR}/$dir/${HexFormat.of().formatHex(digest)}.json"
-        return runCatching { copyFileFromContainer(path) { it.readAllBytes() } }.isSuccess
-    }
-
-    private fun lostDeadline(stepId: UUID): Instant? =
-        one("SELECT lost_deadline FROM run_steps WHERE id = ?", stepId) { it.getObject(1, OffsetDateTime::class.java)?.toInstant() }
-
-    private fun finishedAt(stepId: UUID): Instant =
-        checkNotNull(one("SELECT finished_at FROM run_steps WHERE id = ?", stepId) { it.getObject(1, OffsetDateTime::class.java)?.toInstant() })
-
-    private fun registeredAfter(
-        agentId: String,
-        instant: Instant,
-    ): Boolean =
-        sard.database().use { connection ->
-            connection.prepareStatement("SELECT 1 FROM agents WHERE id = ? AND last_register_at > ?").use { q ->
-                q.setObject(1, UUID.fromString(agentId))
-                q.setTimestamp(2, Timestamp.from(instant))
-                q.executeQuery().use { it.next() }
-            }
-        }
-
-    private fun databaseNow(): Instant =
-        sard.database().use { connection ->
-            connection.createStatement().use { statement ->
-                statement.executeQuery("SELECT now()").use {
-                    it.next()
-                    it.getObject(1, OffsetDateTime::class.java).toInstant()
-                }
-            }
-        }
-
-    private fun <T> one(
-        sql: String,
-        id: UUID,
-        read: (java.sql.ResultSet) -> T?,
-    ): T? =
-        sard.database().use { connection ->
-            connection.prepareStatement(sql).use { q ->
-                q.setObject(1, id)
-                q.executeQuery().use { if (it.next()) read(it) else null }
-            }
-        }
 
     companion object {
         private val HEARTBEAT: Duration = Duration.ofSeconds(5)
@@ -212,6 +246,12 @@ class StreamBreakTest {
 
         /** A step in flight without its agent is lost after this (S6a, FXs). */
         private val LOST_WINDOW: Duration = HEARTBEAT.multipliedBy(LOST_AFTER_HEARTBEATS)
+
+        /** The D13 failure the agent reports for a step its killed process left (executor/command.go). */
+        const val INTERRUPTED = "interrupted: agent restarted before the step finished"
+
+        /** The failure the agent saves for a step it stops on SIGTERM (executor/command.go, A4). */
+        const val SHUTTING_DOWN = "agent is shutting down"
 
         @JvmField
         @RegisterExtension
@@ -226,33 +266,17 @@ class StreamBreakTest {
                 ),
             )
 
-        /** Long enough for a cut or a server restart to land mid-step. */
+        /** Long enough for a cut, a restart or a server restart to land mid-step. */
         private const val STEP_SECONDS = 30
 
         /**
          * Case 6: the result must be sent before the blocked stream dies. gRPC drops a connection
-         * whose data stays unacknowledged for the keepalive timeout (10 s, transport.go); the step
-         * ends a few seconds after the block.
+         * that reads nothing for the keepalive time plus timeout (30 + 10 s, transport.go), at the
+         * earliest 10 s after the block; the step ends a few seconds after it.
          */
         private const val SHORT_STEP_SECONDS = 4
 
         private val STEP_TIMEOUT: Duration = Duration.ofMinutes(2)
         private val RECONNECT_TIMEOUT: Duration = Duration.ofMinutes(2)
-
-        private const val RATE = 1 shl 20
-        private const val CHUNK = 64 shl 10
-        private const val SEED = 20261005L
-
-        private const val REPOSITORY = "main"
-        private const val REPOSITORY_URL = "${AgentHost.STATE_DIR}/repo"
-        private const val PASSWORD_FILE = "${AgentHost.STATE_DIR}/$REPOSITORY.pass"
-
-        private val LOCAL =
-            """
-            repositories:
-              - name: $REPOSITORY
-                url: $REPOSITORY_URL
-                password_file: $PASSWORD_FILE
-            """.trimIndent() + "\n"
     }
 }

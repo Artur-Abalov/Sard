@@ -71,12 +71,20 @@ internal class ExactlyOnce(
             }
         }
 
-    /** One backup run, one snapshot (in the repository and on the server), one RunFinished. */
-    fun assertOne(started: Backups.Started) {
+    /**
+     * One backup run, [snapshots] snapshots (in the repository and on the server: one for a
+     * finished backup, none for an interrupted one), one RunFinished. [backups] is the number of
+     * `restic backup` runs: one, or none when the step never got that far.
+     */
+    fun assertOne(
+        started: Backups.Started,
+        snapshots: Int = 1,
+        backups: Int = 1,
+    ) {
         val step = started.stepId
-        assertEquals(1, resticBackups(step), "restic backup runs of step $step in the agent's log")
-        assertEquals(1, taggedSnapshots(step), "snapshots tagged $STEP_TAG=$step in the repository")
-        assertEquals(1, snapshotRows(step), "snapshot rows of step $step on the server")
+        assertEquals(backups, resticBackups(step), "restic backup runs of step $step in the agent's log")
+        assertEquals(snapshots, taggedSnapshots(step), "snapshots tagged $STEP_TAG=$step in the repository")
+        assertEquals(snapshots, snapshotRows(step), "snapshot rows of step $step on the server")
         assertEquals(1, runFinished(started.runId), "RunFinished of run ${started.runId} in the server's log")
         assertEquals(true, runEnded(started.runId), "runs.finished_at of run ${started.runId}")
     }
