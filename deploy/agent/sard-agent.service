@@ -24,6 +24,8 @@ PrivateTmp=true
 # (restic.cache_dir), created and made writable by systemd. ProtectSystem
 # keeps every other path read-only: a different restic.cache_dir needs a
 # drop-in (systemctl edit sard-agent) with ReadWritePaths=<that directory>.
+# So does a local repository (a plain path as url): restic locks it even
+# to read its config, and waits for a writable lock forever.
 StateDirectory=sard-agent
 CacheDirectory=sard/restic
 # Keep the directory private as the package made it: systemd would set 0755.

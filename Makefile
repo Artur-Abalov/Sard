@@ -38,7 +38,7 @@ GO_TOOLS := \
 	github.com/goreleaser/nfpm/v2/cmd/nfpm \
 	./cmd/crap
 
-.PHONY: tools gate gate-fast proto build build-agent build-cli package e2e e2e-images test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check up down openapi
+.PHONY: tools gate gate-fast proto build build-agent build-cli package image e2e e2e-images test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check up down openapi
 
 ## proto: generate Go code from proto/ into proto/gen/go (committed)
 proto: tools
@@ -58,11 +58,15 @@ build-agent:
 package: tools
 	VERSION=$(VERSION) ./scripts/package-agent.sh
 
+## image: sard-server image of the current code with its agent packages (make package first)
+image: package
+	docker build --build-arg SARD_VERSION=$(VERSION) -f deploy/server/Dockerfile -t sard-server:dev .
+
 ## e2e-images: sard-server and sard-agent images of the current code for the e2e tests
 e2e-images: tools
-	docker buildx build --load $(E2E_SERVER_BUILD_FLAGS) --build-arg SARD_VERSION=$(VERSION) \
-		-f deploy/server/Dockerfile -t $(E2E_SERVER_IMAGE) .
 	GO_TAGS=e2e DIST=$(E2E_BUILD)/dist VERSION=$(VERSION) ./scripts/package-agent.sh $(E2E_ARCH)
+	docker buildx build --load $(E2E_SERVER_BUILD_FLAGS) --build-arg SARD_VERSION=$(VERSION) \
+		--build-arg AGENT_PACKAGES=test/e2e/build/dist -f deploy/server/Dockerfile -t $(E2E_SERVER_IMAGE) .
 	rm -rf $(E2E_BUILD)/agent-image && mkdir -p $(E2E_BUILD)/agent-image/empty
 	tar -xzf $(E2E_BUILD)/dist/sard-agent_$(VERSION)_linux_$(E2E_ARCH).tar.gz --strip-components=1 \
 		-C $(E2E_BUILD)/agent-image
@@ -103,10 +107,10 @@ openapi:
 	$(MAKE) web-deps
 	cd web && npm run gen:api
 
-## up: start PostgreSQL + sard-server (builds the image on first run)
-up:
+## up: start PostgreSQL + sard-server (builds the image, with the agent packages of dist/, on first run)
+up: package
 	./scripts/ensure-admin-password.sh
-	$(COMPOSE) up -d --wait
+	SARD_VERSION=$(VERSION) $(COMPOSE) up -d --wait
 
 ## down: stop the local stack (data volume is kept)
 down:

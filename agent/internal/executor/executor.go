@@ -120,7 +120,7 @@ const (
 	// for them within the grace checks and the context.
 	ShutdownImmediate
 	// ShutdownAbort cancels running steps and returns at once without results;
-	// after a restart the server learns of them from Hello.
+	// after a restart they are reported as interrupted (FAILED, D13).
 	ShutdownAbort
 )
 
@@ -304,11 +304,17 @@ func (e *Executor) PendingResults() []*agentv1.StepResult {
 	return pending
 }
 
-// restore loads what the previous run left: results to resend and tombstones.
+// restore loads what the previous run left: results to resend, tombstones,
+// and journaled steps without a result, which become interrupted failures.
 func (e *Executor) restore() error {
-	found, err := e.store.load(func(path string, err error) {
+	bad := func(path string, err error) {
 		e.opts.Logger.Warn("unreadable state file kept", "path", path, "error", err)
-	})
+	}
+	found, err := e.store.load(bad)
+	if err != nil {
+		return err
+	}
+	journal, err := e.store.loadJournal(bad)
 	if err != nil {
 		return err
 	}
@@ -317,17 +323,44 @@ func (e *Executor) restore() error {
 		c.acked, c.ackedAt = !st.ackedAt.IsZero(), st.ackedAt
 		e.cmds[id] = c
 		if c.acked {
-			e.dropLeftover(id)
+			e.dropLeftover(resultsDir, id, "cannot remove an acknowledged result")
 		}
 	}
+	e.interrupted(journal)
 	e.sweep()
 	return nil
 }
 
-// dropLeftover removes a result a crash left next to its tombstone.
-func (e *Executor) dropLeftover(commandID string) {
-	if err := e.store.remove(resultsDir, commandID); err != nil {
-		e.opts.Logger.Warn("cannot remove an acknowledged result", "command_id", commandID, "error", err)
+// interrupted fails the journaled steps the previous run did not finish
+// (D13); an entry next to a result or tombstone is a leftover of a crash.
+func (e *Executor) interrupted(journal []entry) {
+	var ids []string
+	defer func() {
+		if len(ids) > 0 {
+			slices.Sort(ids)
+			e.opts.Logger.Info("interrupted steps reported as failed", "count", len(ids), "command_ids", ids)
+		}
+	}()
+	for _, j := range journal {
+		if e.cmds[j.CommandID] != nil {
+			e.dropLeftover(journalDir, j.CommandID, "cannot remove the journal entry")
+			continue
+		}
+		c := &command{step: &agentv1.RunStep{CommandId: j.CommandID}, state: finished}
+		if j.StartedAt != nil {
+			c.started = *j.StartedAt
+		}
+		c.result = e.outcome(c, agentv1.StepStatus_STEP_STATUS_FAILED, interruptedMessage)
+		e.cmds[j.CommandID] = c
+		e.save(c.result)
+		ids = append(ids, j.CommandID)
+	}
+}
+
+// dropLeftover removes a file a crash left next to the one that wins.
+func (e *Executor) dropLeftover(sub, commandID, problem string) {
+	if err := e.store.remove(sub, commandID); err != nil {
+		e.opts.Logger.Warn(problem, "command_id", commandID, "error", err)
 	}
 }
 

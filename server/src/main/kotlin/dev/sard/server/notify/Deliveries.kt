@@ -5,10 +5,12 @@ package dev.sard.server.notify
 
 import dev.sard.server.persistence.Agent
 import dev.sard.server.persistence.RunRecord
+import dev.sard.server.persistence.RunStepRecord
 import dev.sard.server.persistence.SourceRecord
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.runs.RunState
+import dev.sard.server.runs.RunViews
 import dev.sard.server.runs.Trigger
 import org.hibernate.Session
 import java.time.Instant
@@ -55,8 +57,7 @@ private const val CLAIM = """
     update notification_deliveries set next_attempt_at = :until
     where tenant_id = :tenant and id = :id and status = 'pending' and next_attempt_at <= :now"""
 
-private const val FIRST_STEP_AGENT =
-    "select s.agentId from RunStepRecord s where s.runId = :run order by s.ordinal"
+private const val FIRST_STEP = "from RunStepRecord s where s.runId = :run order by s.ordinal"
 
 private const val GUARD = "where tenant_id = :tenant and id = :id and status = 'pending'"
 
@@ -193,13 +194,15 @@ class Deliveries(
     ): RunNotice {
         val run = session.find(RunRecord::class.java, runId)
         val source = session.find(SourceRecord::class.java, run.sourceId)
-        val agentId =
+        val step =
             session
-                .createSelectionQuery(FIRST_STEP_AGENT, UUID::class.java)
+                .createSelectionQuery(FIRST_STEP, RunStepRecord::class.java)
                 .setParameter("run", runId)
                 .setMaxResults(1)
                 .singleResult
+        val agentId = step.agentId
         val agent = session.find(Agent::class.java, agentId)
+        val stepView = RunViews.step(step)
         return RunNotice(
             tenantId = tenantId,
             runId = runId,
@@ -212,6 +215,9 @@ class Deliveries(
             sourceName = source.name,
             agentId = agentId,
             agentHostname = agent.hostname,
+            stepStatus = stepView.status,
+            startedAt = run.startedAt,
+            backup = stepView.backup?.let { BackupSizes(it.totalBytes, it.addedBytes) },
         )
     }
 }

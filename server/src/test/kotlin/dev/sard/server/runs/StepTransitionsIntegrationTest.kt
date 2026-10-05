@@ -73,6 +73,10 @@ class StepTransitionsIntegrationTest(
         id: UUID,
     ): Map<String, Any?> = jdbc.queryForMap("select * from $table where id = ?", id)
 
+    /** The step's lost deadline has come (FXs: set by StepDeadlines when its agent went away). */
+    private fun due(step: UUID) =
+        jdbc.update("update run_steps set lost_deadline = ? where id = ?", java.sql.Timestamp.from(clock.now), step)
+
     private fun instant(value: Any?): Instant? = (value as Timestamp?)?.toInstant()
 
     private fun running(run: RunView): UUID {
@@ -186,17 +190,22 @@ class StepTransitionsIntegrationTest(
     }
 
     @Test
-    fun `a running step becomes lost and fails its run, a dispatched or closed one does not`() {
+    fun `a running step becomes lost once its deadline has come and fails its run, once`() {
         val run = started()
-        steps.claim(tenant.id, stepOf(run))
-        assertFalse(steps.lost(tenant.id, stepOf(run)), "dispatched steps are sent again, never lost")
-        steps.accepted(tenant.id, stepOf(run), "accepted")
+        val step = running(run)
+        assertFalse(steps.lost(tenant.id, step), "no deadline: the agent has not gone away")
+        jdbc.update(
+            "update run_steps set lost_deadline = ? where id = ?",
+            java.sql.Timestamp.from(RUNS_NOW + LATER),
+            step,
+        )
+        assertFalse(steps.lost(tenant.id, step), "the deadline has not come")
         clock.now = RUNS_NOW + LATER
 
-        assertTrue(steps.lost(tenant.id, stepOf(run)))
-        assertFalse(steps.lost(tenant.id, stepOf(run)))
+        assertTrue(steps.lost(tenant.id, step))
+        assertFalse(steps.lost(tenant.id, step))
 
-        val stepRow = row("run_steps", stepOf(run))
+        val stepRow = row("run_steps", step)
         assertEquals(
             listOf<Any?>("lost", LOST_MESSAGE, clock.now),
             listOf(stepRow["status"], stepRow["message"], instant(stepRow["finished_at"])),
@@ -206,8 +215,43 @@ class StepTransitionsIntegrationTest(
     }
 
     @Test
+    fun `a dispatched step whose deadline has come is lost too, a queued one never`() {
+        val queued = stepOf(started("queued"))
+        due(queued)
+        assertFalse(steps.lost(tenant.id, queued))
+
+        val run = started()
+        steps.claim(tenant.id, stepOf(run))
+        due(stepOf(run))
+
+        assertTrue(steps.lost(tenant.id, stepOf(run)))
+        val stored = listOf(row("run_steps", stepOf(run))["status"], row("runs", run.id)["status"])
+        assertEquals(listOf<Any?>("lost", "failed"), stored)
+    }
+
+    @Test
+    fun `a send, progress or a result clears the deadline`() {
+        val step = stepOf(started())
+        steps.claim(tenant.id, step)
+        due(step)
+        steps.release(tenant.id, step)
+        assertNull(row("run_steps", step)["lost_deadline"], "release")
+        steps.claim(tenant.id, step)
+        due(step)
+        assertTrue(steps.redispatch(tenant.id, step, clock.now + LATER))
+        assertNull(row("run_steps", step)["lost_deadline"], "redispatch")
+        due(step)
+        steps.accepted(tenant.id, step, "accepted")
+        assertNull(row("run_steps", step)["lost_deadline"], "accepted")
+        due(step)
+        steps.finished(tenant.id, step, StepOutcome(StepState.SUCCEEDED, null))
+        assertNull(row("run_steps", step)["lost_deadline"], "result")
+    }
+
+    @Test
     fun `a result that arrived first keeps its state, the window finds nothing to mark`() {
         val step = running(started())
+        due(step)
         assertTrue(steps.finished(tenant.id, step, StepOutcome(StepState.SUCCEEDED, null)))
         assertFalse(steps.lost(tenant.id, step))
         assertEquals("succeeded", row("run_steps", step)["status"])
@@ -216,6 +260,7 @@ class StepTransitionsIntegrationTest(
     @Test
     fun `a step marked lost first stays lost, a late result changes nothing`() {
         val step = running(started())
+        due(step)
         assertTrue(steps.lost(tenant.id, step))
         assertFalse(steps.finished(tenant.id, step, StepOutcome(StepState.SUCCEEDED, null)))
         assertEquals("lost", row("run_steps", step)["status"])
@@ -228,6 +273,7 @@ class StepTransitionsIntegrationTest(
             repeat(RACE_ROUNDS) { round ->
                 val run = started("race-$round")
                 val step = running(run)
+                due(step)
                 val go = CountDownLatch(1)
                 val lost =
                     pool.submit(

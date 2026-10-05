@@ -96,6 +96,7 @@ class RunsIntegrationTest(
                 source.config,
                 RUNS_NOW,
                 null,
+                runId = run.id,
             )
         assertEquals(expected, step)
         val row =

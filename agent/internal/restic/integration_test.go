@@ -64,7 +64,7 @@ func newRealRepo(t *testing.T) realRepo {
 		Exec:     restic.ProcessExecutor{},
 		Keys:     crypto.NewResticAES(map[string]string{"it": password}),
 		ReadFile: os.ReadFile,
-		OnStderr: func(line string) { t.Logf("restic stderr: %s", line) },
+		Stderr:   t.Output(),
 	}, repo)
 	return r
 }
