@@ -272,6 +272,8 @@ class ConsoleServingIntegrationTest(
     @Test
     fun `Путь API с лишним слэшем или параметром сегмента с cookie не отдаёт страницу консоли`() {
         val cookie = http.signIn()
+        assertEquals(401, http.get("/api/v1/agents").statusCode())
+        assertEquals(200, http.get("/api/v1/agents", cookie = cookie).statusCode())
         listOf("//api/v1/status", "/api//v1/status", "/api;x/v1/status", "/;x/api/v1/status").forEach {
             val response = http.get(it, cookie = cookie)
             assertFalse(response.header("Content-Type").orEmpty().startsWith("text/html"), it)
