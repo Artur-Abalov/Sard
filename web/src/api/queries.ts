@@ -5,6 +5,7 @@ import { queryOptions } from '@tanstack/react-query'
 import { runPollInterval, tokenPollInterval } from '../polling'
 import { call } from './call'
 import { client } from './client'
+import type { InstallChoice } from '../install'
 import type { components } from './schema'
 
 type Schemas = components['schemas']
@@ -47,6 +48,29 @@ export const tokenQuery = (tokenId: string, enabled: boolean) =>
       call(client.GET('/api/v1/enrollment-tokens/{tokenId}', { params: { path: { tokenId } } })),
     enabled,
     refetchInterval: (query) => tokenPollInterval(query.state.data?.status),
+  })
+
+// How to install an agent from this server (U1b). Versions rarely change: a minute is fresh enough.
+export const installQuery = (choice: InstallChoice) =>
+  queryOptions({
+    queryKey: ['agent-install', choice.arch, choice.format, choice.fetch],
+    queryFn: () => call(client.GET('/api/v1/agent-install', { params: { query: choice } })),
+    staleTime: 60_000,
+  })
+
+export const upgradeQuery = (
+  agentId: string,
+  format: InstallChoice['format'],
+  fetch: InstallChoice['fetch'],
+) =>
+  queryOptions({
+    queryKey: ['agent-upgrade', agentId, format, fetch],
+    queryFn: () =>
+      call(
+        client.GET('/api/v1/agents/{agentId}/upgrade', {
+          params: { path: { agentId }, query: { format, fetch } },
+        }),
+      ),
   })
 
 export const agentPickerQuery = () =>

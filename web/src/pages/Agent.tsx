@@ -10,6 +10,7 @@ import { call } from '../api/call'
 import { client } from '../api/client'
 import { agentQuery, PAGE_SIZE, type AgentDetails } from '../api/queries'
 import { AgentMarks } from '../components/AgentMarks'
+import { AgentUpgradeBlock } from '../components/AgentUpgradeBlock'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorBlock } from '../components/ErrorBlock'
@@ -248,6 +249,7 @@ function AgentCard({ agent }: { agent: AgentDetails }) {
         {agent.revokedAt === null && <RevokeButton agent={agent} />}
       </Group>
       {agent.duplicateSessionAt !== null && <DuplicateNote />}
+      {agent.outdated && <AgentUpgradeBlock agent={agent} />}
       <Facts agent={agent} />
       <Snapshot agent={agent} />
       <AgentSources agentId={agent.id} />

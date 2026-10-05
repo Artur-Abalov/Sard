@@ -335,6 +335,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agents/{agentId}/upgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Upgrade an agent
+         * @description The commands to bring an installed agent to the version of this server's packages.
+         */
+        get: operations["agentUpgrade"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent-install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Install an agent
+         * @description Versions and shell commands, step by step, to install an agent from this server's packages. The enroll step holds a placeholder: a token string is never in the answer.
+         */
+        get: operations["agentInstall"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -640,6 +680,8 @@ export interface components {
             secretNames: string[];
             /** @description Names of allowlisted scripts on the host; paths never leave it (ADR 0008) */
             scriptNames: string[];
+            /** @description True when the agent and the server's packages are both releases (vX.Y.Z) and the agent's version is lower by semver; false when it is newer, unknown or not a release */
+            outdated: boolean;
         };
         /** @description A plugin the agent offers */
         AgentPlugin: {
@@ -866,6 +908,71 @@ export interface components {
              * @description When the server last confirmed a duplicate session, two hosts with one certificate (ADR 0026); null if never. Not cleared by the server
              */
             duplicateSessionAt: string | null;
+            /** @description True when the agent and the server's packages are both releases (vX.Y.Z) and the agent's version is lower by semver; false when it is newer, unknown or not a release */
+            outdated: boolean;
+        };
+        /** @enum {string} */
+        InstallFormat: "deb" | "tar";
+        /** @enum {string} */
+        FetchTool: "curl" | "wget";
+        /** @description How to upgrade one agent: the same as an install, for the architecture of its last Register */
+        AgentUpgrade: {
+            /** @description False when the server hands out no packages (SARD_AGENT_DOWNLOADS=false): there are no steps then */
+            downloadsEnabled: boolean;
+            /** @description Version of the packages the server hands out; its own version when it hands out none */
+            agentVersion: string;
+            /** @description Version of the restic in those packages; null when downloads are off */
+            resticVersion: string | null;
+            /** @description GOARCH of the agent's last Register; null if it never sent one */
+            arch: string | null;
+            format: components["schemas"]["InstallFormat"];
+            /** @description Whether the release has SHA256SUMS.minisig; without it there is no signature step */
+            signed: boolean;
+            /** @description The key the packages are signed with, from the server build: the console tells to compare it with README.md */
+            releaseKey: components["schemas"]["ReleaseKey"];
+            /** @description Link to the documentation of the manual installation, for when there are no steps */
+            manualInstallDoc: string;
+            /** @description Steps in the order to run them; empty when there is nothing to run; kinds: download, checksum, signature, upgrade, restart */
+            steps: components["schemas"]["InstallStep"][];
+            /** @description Why there are no steps although downloads are on; null otherwise */
+            reason: components["schemas"]["UpgradeReason"] | null;
+        };
+        /** @description One step of the block: shell commands to run in order, as one unit */
+        InstallStep: {
+            kind: components["schemas"]["StepKind"];
+            /** @description Shell commands of the step, the same for every language of the console */
+            commands: string[];
+            /** @description True when the step may be skipped (the signature check) */
+            optional: boolean;
+        };
+        ReleaseKey: {
+            id: string;
+            publicKey: string;
+        };
+        /** @enum {string} */
+        StepKind: "download" | "checksum" | "signature" | "install" | "configure" | "enroll" | "repo-init" | "start" | "upgrade" | "restart";
+        /** @enum {string} */
+        UpgradeReason: "arch_unknown" | "arch_unavailable";
+        /** @enum {string} */
+        InstallArch: "amd64" | "arm64";
+        /** @description How to install an agent on a new host: versions and the commands, step by step */
+        AgentInstall: {
+            /** @description False when the server hands out no packages (SARD_AGENT_DOWNLOADS=false): there are no steps then */
+            downloadsEnabled: boolean;
+            /** @description Version of the packages the server hands out; its own version when it hands out none */
+            agentVersion: string;
+            /** @description Version of the restic in those packages; null when downloads are off */
+            resticVersion: string | null;
+            arch: components["schemas"]["InstallArch"];
+            format: components["schemas"]["InstallFormat"];
+            /** @description Whether the release has SHA256SUMS.minisig; without it there is no signature step */
+            signed: boolean;
+            /** @description The key the packages are signed with, from the server build: the console tells to compare it with README.md */
+            releaseKey: components["schemas"]["ReleaseKey"];
+            /** @description Link to the documentation of the manual installation, for when there are no steps */
+            manualInstallDoc: string;
+            /** @description Steps in the order to run them; empty when there is nothing to run; kinds: download, checksum, signature, install, configure, enroll, repo-init, start */
+            steps: components["schemas"]["InstallStep"][];
         };
     };
     responses: never;
@@ -2064,6 +2171,118 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    agentUpgrade: {
+        parameters: {
+            query?: {
+                format?: components["schemas"]["InstallFormat"];
+                fetch?: components["schemas"]["FetchTool"];
+            };
+            header?: never;
+            path: {
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentUpgrade"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found in the session's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    agentInstall: {
+        parameters: {
+            query?: {
+                arch?: components["schemas"]["InstallArch"];
+                format?: components["schemas"]["InstallFormat"];
+                fetch?: components["schemas"]["FetchTool"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentInstall"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */

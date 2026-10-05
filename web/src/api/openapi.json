@@ -1544,6 +1544,166 @@
           }
         }
       }
+    },
+    "/api/v1/agents/{agentId}/upgrade" : {
+      "get" : {
+        "tags" : [ "agent-install" ],
+        "summary" : "Upgrade an agent",
+        "description" : "The commands to bring an installed agent to the version of this server's packages.",
+        "operationId" : "agentUpgrade",
+        "parameters" : [ {
+          "name" : "agentId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "format",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "$ref" : "#/components/schemas/InstallFormat",
+            "default" : "deb"
+          }
+        }, {
+          "name" : "fetch",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "$ref" : "#/components/schemas/FetchTool",
+            "default" : "curl"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AgentUpgrade"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent-install" : {
+      "get" : {
+        "tags" : [ "agent-install" ],
+        "summary" : "Install an agent",
+        "description" : "Versions and shell commands, step by step, to install an agent from this server's packages. The enroll step holds a placeholder: a token string is never in the answer.",
+        "operationId" : "agentInstall",
+        "parameters" : [ {
+          "name" : "arch",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "$ref" : "#/components/schemas/InstallArch",
+            "default" : "amd64"
+          }
+        }, {
+          "name" : "format",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "$ref" : "#/components/schemas/InstallFormat",
+            "default" : "deb"
+          }
+        }, {
+          "name" : "fetch",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "$ref" : "#/components/schemas/FetchTool",
+            "default" : "curl"
+          }
+        } ],
+        "responses" : {
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AgentInstall"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components" : {
@@ -2124,9 +2284,13 @@
             "items" : {
               "type" : "string"
             }
+          },
+          "outdated" : {
+            "type" : "boolean",
+            "description" : "True when the agent and the server's packages are both releases (vX.Y.Z) and the agent's version is lower by semver; false when it is newer, unknown or not a release"
           }
         },
-        "required" : [ "agentVersion", "arch", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "plugins", "protocolVersion", "registeredAt", "repositories", "revokedAt", "scriptNames", "secretNames", "status" ]
+        "required" : [ "agentVersion", "arch", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "plugins", "protocolVersion", "registeredAt", "repositories", "revokedAt", "scriptNames", "secretNames", "status" ]
       },
       "AgentPlugin" : {
         "type" : "object",
@@ -2556,9 +2720,163 @@
             "type" : [ "string", "null" ],
             "format" : "date-time",
             "description" : "When the server last confirmed a duplicate session, two hosts with one certificate (ADR 0026); null if never. Not cleared by the server"
+          },
+          "outdated" : {
+            "type" : "boolean",
+            "description" : "True when the agent and the server's packages are both releases (vX.Y.Z) and the agent's version is lower by semver; false when it is newer, unknown or not a release"
           }
         },
-        "required" : [ "agentVersion", "arch", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "registeredAt", "revokedAt", "status" ]
+        "required" : [ "agentVersion", "arch", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "registeredAt", "revokedAt", "status" ]
+      },
+      "InstallFormat" : {
+        "type" : "string",
+        "enum" : [ "deb", "tar" ]
+      },
+      "FetchTool" : {
+        "type" : "string",
+        "enum" : [ "curl", "wget" ]
+      },
+      "AgentUpgrade" : {
+        "type" : "object",
+        "description" : "How to upgrade one agent: the same as an install, for the architecture of its last Register",
+        "properties" : {
+          "downloadsEnabled" : {
+            "type" : "boolean",
+            "description" : "False when the server hands out no packages (SARD_AGENT_DOWNLOADS=false): there are no steps then"
+          },
+          "agentVersion" : {
+            "type" : "string",
+            "description" : "Version of the packages the server hands out; its own version when it hands out none"
+          },
+          "resticVersion" : {
+            "type" : [ "string", "null" ],
+            "description" : "Version of the restic in those packages; null when downloads are off"
+          },
+          "arch" : {
+            "type" : [ "string", "null" ],
+            "description" : "GOARCH of the agent's last Register; null if it never sent one"
+          },
+          "format" : {
+            "$ref" : "#/components/schemas/InstallFormat"
+          },
+          "signed" : {
+            "type" : "boolean",
+            "description" : "Whether the release has SHA256SUMS.minisig; without it there is no signature step"
+          },
+          "releaseKey" : {
+            "$ref" : "#/components/schemas/ReleaseKey",
+            "description" : "The key the packages are signed with, from the server build: the console tells to compare it with README.md"
+          },
+          "manualInstallDoc" : {
+            "type" : "string",
+            "description" : "Link to the documentation of the manual installation, for when there are no steps"
+          },
+          "steps" : {
+            "type" : "array",
+            "description" : "Steps in the order to run them; empty when there is nothing to run; kinds: download, checksum, signature, upgrade, restart",
+            "items" : {
+              "$ref" : "#/components/schemas/InstallStep"
+            }
+          },
+          "reason" : {
+            "description" : "Why there are no steps although downloads are on; null otherwise",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/UpgradeReason"
+            }, {
+              "type" : "null"
+            } ]
+          }
+        },
+        "required" : [ "agentVersion", "arch", "downloadsEnabled", "format", "manualInstallDoc", "reason", "releaseKey", "resticVersion", "signed", "steps" ]
+      },
+      "InstallStep" : {
+        "type" : "object",
+        "description" : "One step of the block: shell commands to run in order, as one unit",
+        "properties" : {
+          "kind" : {
+            "$ref" : "#/components/schemas/StepKind"
+          },
+          "commands" : {
+            "type" : "array",
+            "description" : "Shell commands of the step, the same for every language of the console",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "optional" : {
+            "type" : "boolean",
+            "description" : "True when the step may be skipped (the signature check)"
+          }
+        },
+        "required" : [ "commands", "kind", "optional" ]
+      },
+      "ReleaseKey" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string"
+          },
+          "publicKey" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "id", "publicKey" ]
+      },
+      "StepKind" : {
+        "type" : "string",
+        "enum" : [ "download", "checksum", "signature", "install", "configure", "enroll", "repo-init", "start", "upgrade", "restart" ]
+      },
+      "UpgradeReason" : {
+        "type" : "string",
+        "enum" : [ "arch_unknown", "arch_unavailable" ]
+      },
+      "InstallArch" : {
+        "type" : "string",
+        "enum" : [ "amd64", "arm64" ]
+      },
+      "AgentInstall" : {
+        "type" : "object",
+        "description" : "How to install an agent on a new host: versions and the commands, step by step",
+        "properties" : {
+          "downloadsEnabled" : {
+            "type" : "boolean",
+            "description" : "False when the server hands out no packages (SARD_AGENT_DOWNLOADS=false): there are no steps then"
+          },
+          "agentVersion" : {
+            "type" : "string",
+            "description" : "Version of the packages the server hands out; its own version when it hands out none"
+          },
+          "resticVersion" : {
+            "type" : [ "string", "null" ],
+            "description" : "Version of the restic in those packages; null when downloads are off"
+          },
+          "arch" : {
+            "$ref" : "#/components/schemas/InstallArch"
+          },
+          "format" : {
+            "$ref" : "#/components/schemas/InstallFormat"
+          },
+          "signed" : {
+            "type" : "boolean",
+            "description" : "Whether the release has SHA256SUMS.minisig; without it there is no signature step"
+          },
+          "releaseKey" : {
+            "$ref" : "#/components/schemas/ReleaseKey",
+            "description" : "The key the packages are signed with, from the server build: the console tells to compare it with README.md"
+          },
+          "manualInstallDoc" : {
+            "type" : "string",
+            "description" : "Link to the documentation of the manual installation, for when there are no steps"
+          },
+          "steps" : {
+            "type" : "array",
+            "description" : "Steps in the order to run them; empty when there is nothing to run; kinds: download, checksum, signature, install, configure, enroll, repo-init, start",
+            "items" : {
+              "$ref" : "#/components/schemas/InstallStep"
+            }
+          }
+        },
+        "required" : [ "agentVersion", "arch", "downloadsEnabled", "format", "manualInstallDoc", "releaseKey", "resticVersion", "signed", "steps" ]
       }
     },
     "securitySchemes" : {
