@@ -1,0 +1,216 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# Agent release for a tag vX.Y.Z (docs/adr/00XX-draft-agent-release.md):
+#
+#   build ×2 ─┬─ reproduce  (two independent builds, same SHA256SUMS; tamper tests)
+#             └─ install    (deb on Debian/Ubuntu with systemd: install, enroll, upgrade)
+#                   └─ sign     (environment "release": the only job that sees the key)
+#                         ├─ publish  (GitHub release with the signed files)
+#                         └─ image    (sard-server of this version with the signed packages, GHCR)
+#
+# Trust: the minisign key is a secret of the "release" environment, which only
+# v* tags may use and which waits for the owner's approval. Pull requests
+# (from forks too) never run this workflow; no job uses pull_request_target.
+# Every third-party action is pinned to a commit; the signing job runs only
+# minisign from the runner's apt and scripts/release-sign.sh of the tagged
+# commit. Anyone who can push a v* tag or change main can change what is
+# signed: both are restricted to the owner (docs/release.md).
+name: release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  VERSION: ${{ github.ref_name }}
+
+jobs:
+  build:
+    name: build ${{ matrix.build }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        build: [a, b]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/go.mod
+          cache: false
+      - name: rpm and gpg
+        run: sudo apt-get update && sudo apt-get install -y rpm gnupg
+      # restic's release key, accepted only if it has the fingerprint pinned in
+      # agent/internal/restic/restic-version (ADR 0017): fetch-restic.sh checks the signer.
+      - name: restic signing key
+        run: |
+          fpr="$(sed -n 's/^signing_key_fingerprint=//p' agent/internal/restic/restic-version)"
+          curl -fsSL "https://keys.openpgp.org/vks/v1/by-fingerprint/$fpr" -o "$RUNNER_TEMP/restic.asc"
+      - name: package
+        env:
+          REQUIRE_RPM: "1"
+          REQUIRE_SIGNATURE: "1"
+          RESTIC_SIGNING_KEY: ${{ runner.temp }}/restic.asc
+        run: make package VERSION="$VERSION"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-${{ matrix.build }}
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/manifest.json
+            dist/SHA256SUMS
+          if-no-files-found: error
+
+  reproduce:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: dist-*
+          path: builds
+      - name: two builds, one SHA256SUMS
+        run: diff builds/dist-a/SHA256SUMS builds/dist-b/SHA256SUMS
+      - name: minisign
+        run: sudo apt-get update && sudo apt-get install -y minisign
+      - name: forgeries are refused (throwaway key)
+        run: scripts/test-release-signing.sh builds/dist-a "$VERSION"
+
+  install:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: ["debian:12", "debian:13", "ubuntu:22.04", "ubuntu:24.04"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/go.mod
+          cache: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: dist-a
+          path: dist-new
+      # The version upgraded from: the same commit as an older package
+      # (0.0.0~dev… sorts below any release), so the upgrade path is this
+      # release's own install and remove scripts.
+      - name: package to upgrade from
+        run: DIST="$PWD/dist-old" make package VERSION=upgrade-base
+      - name: server image
+        run: |
+          docker build --build-arg SARD_VERSION="$VERSION" --build-arg AGENT_PACKAGES=dist-new \
+            -f deploy/server/Dockerfile -t sard-server:e2e .
+      - name: install, enroll, upgrade
+        run: OLD_DIST=dist-old NEW_DIST=dist-new scripts/test-agent-install.sh "${{ matrix.distro }}"
+
+  sign:
+    needs: [reproduce, install]
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: dist-a
+          path: dist
+      - name: minisign
+        run: sudo apt-get update && sudo apt-get install -y minisign
+      - name: sign SHA256SUMS
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: scripts/release-sign.sh dist "$VERSION"
+      - name: verify with the published key
+        run: scripts/release-verify.sh dist "$VERSION" deploy/release/sard-release.pub
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: sign
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release
+          path: dist
+      - name: minisign
+        run: sudo apt-get update && sudo apt-get install -y minisign
+      - name: verify again
+        run: scripts/release-verify.sh dist "$VERSION" deploy/release/sard-release.pub
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$VERSION" \
+            --notes "Signed with the Sard release key (deploy/release/sard-release.pub, docs/release.md). Verify: minisign -Vm SHA256SUMS -p sard-release.pub && sha256sum -c SHA256SUMS" \
+            dist/*
+
+  image:
+    needs: sign
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release
+          path: dist
+      - name: minisign
+        run: sudo apt-get update && sudo apt-get install -y minisign
+      - name: verify again
+        run: scripts/release-verify.sh dist "$VERSION" deploy/release/sard-release.pub
+      # The server hands out exactly these signed files (deploy/server/Dockerfile).
+      - name: build sard-server
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sard-server"
+          echo "IMAGE=$IMAGE" >>"$GITHUB_ENV"
+          docker build --build-arg SARD_VERSION="$VERSION" -f deploy/server/Dockerfile \
+            -t "$IMAGE:$VERSION" -t "$IMAGE:${VERSION#v}" .
+          docker run --rm --entrypoint test "$IMAGE:$VERSION" -f /usr/share/sard/agent-packages/SHA256SUMS.minisig
+      - name: push
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:$VERSION"
+          docker push "$IMAGE:${VERSION#v}"
+          docker logout ghcr.io

@@ -25,6 +25,9 @@ services:
     build:
       context: ..
       dockerfile: deploy/server/Dockerfile
+      args:
+        # The agent packages in dist/ must be of this version (make up passes it).
+        SARD_VERSION: ${SARD_VERSION:-dev}
     environment:
       SARD_DB_URL: jdbc:postgresql://postgres:5432/sard
       SARD_DB_USER: sard
@@ -38,6 +41,8 @@ services:
       # Telegram notifications (S9a); both empty means notifications are off, with a warning.
       SARD_TELEGRAM_BOT_TOKEN: ${SARD_TELEGRAM_BOT_TOKEN:-}
       SARD_TELEGRAM_CHAT_ID: ${SARD_TELEGRAM_CHAT_ID:-}
+      # /downloads/agent/: the agent packages baked into the image (docs/release.md).
+      SARD_AGENT_DOWNLOADS: ${SARD_AGENT_DOWNLOADS:-true}
     volumes:
       # The CA key: its own volume, backed up apart from postgres-data (docs/operations/pki.md).
       - sard-pki:/var/lib/sard/pki
