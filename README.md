@@ -42,8 +42,10 @@ The last command prints the server's version. The administrator password is
 `127.0.0.1:8080` only, because it is plain HTTP; the agents' port 9090
 (gRPC, mutual TLS) is open to the network. Before enrolling agents from other
 hosts, put the name they dial into `SARD_PKI_SERVER_NAMES` in `.env` and run
-`docker compose up -d` again: see the comments in `.env` and
-[docs/operations/pki.md](docs/operations/pki.md). Every release also carries
+`docker compose up -d` again: see the comments in `.env` and the operator
+guide, [docs/operator/](docs/operator/README.md) (in Russian). The whole
+stage 1 demo, from a clean VM to a restored file, is
+[docs/demo.md](docs/demo.md). Every release also carries
 an offline archive of both images, for hosts without registry access:
 
 ```bash
@@ -180,6 +182,8 @@ Details and the release process: `docs/release.md`.
 
 ## Documentation
 
+- [docs/demo.md](docs/demo.md): stage 1 demo, step by step: server, agent, backup, Telegram, restore
+- [docs/operator/](docs/operator/README.md): running the server: requirements, install, configuration, TLS, backup, upgrade, troubleshooting
 - [docs/adr/](docs/adr/README.md): architecture decision records
 - [docs/specs/](docs/specs/): Gherkin specifications per module
 - [docs/sessions/](docs/sessions/): work session log
