@@ -52,7 +52,10 @@ private class ProxiedClient(
     }
 }
 
-private fun setCookieOf(response: HttpResponse<String>): String = response.headers().firstValue("Set-Cookie").orElseThrow()
+private fun setCookieOf(response: HttpResponse<String>): String {
+    val headers = response.headers()
+    return headers.firstValue("Set-Cookie").orElseThrow()
+}
 
 private fun capture(block: () -> Unit): List<String> {
     val root = org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME) as ch.qos.logback.classic.Logger
