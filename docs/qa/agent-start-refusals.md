@@ -7,7 +7,7 @@
 Ожидаемый результат указан после «→» в каждом шаге. Любое расхождение — дефект.
 Суффикс строки отказа Register (далее `SUF`) — дословно:
 
-```
+```text
 not reconnecting: fix the cause, then restart the agent
 ```
 
