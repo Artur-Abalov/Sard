@@ -3,16 +3,19 @@
 # Copyright 2026 Artur Abalov
 #
 # Installs and upgrades the sard-agent deb on clean Debian/Ubuntu hosts with
-# systemd as PID 1, against a real sard-server (docs/adr/0040-agent-release.md):
+# systemd as PID 1, against a real sard-server (docs/adr/0041-agent-release.md):
 #
 #   1. install N: user, directories and their owners and modes, the unit is
-#      neither enabled nor running;
+#      neither enabled nor running and, left alone for 60 s, never restarts
+#      (NRestarts 0, empty journal); the output names the next step: the enroll
+#      command as sard-agent and the console for the token string (U1b);
 #   2. as an administrator would: agent.yaml, "sudo -u sard-agent sard-agent
 #      enroll", "sudo -u sard-agent sard-agent repo init", then the service;
 #      the agent comes online with version N;
 #   3. upgrade to N+1: configuration, keys, the repository password and the
-#      directories are unchanged, the service still enabled, and the same
-#      agent comes back online with version N+1.
+#      directories are unchanged, the service still enabled, the output says
+#      nothing about enrollment, and the same agent comes back online with
+#      version N+1.
 #
 #   OLD_DIST=dist-n NEW_DIST=dist-n1 scripts/test-agent-install.sh debian:12 ubuntu:24.04
 #
@@ -94,7 +97,11 @@ api() {
 }
 
 check_fresh_install() {
-  on_host "DEBIAN_FRONTEND=noninteractive apt-get install -y -q /tmp/old.deb >/dev/null"
+  local output
+  output="$(on_host "DEBIAN_FRONTEND=noninteractive apt-get install -y -q /tmp/old.deb 2>&1")" || die "install of the old deb: $output"
+  grep -q 'sudo -u sard-agent sard-agent enroll --server' <<<"$output" || die "the install does not print the enroll command: $output"
+  grep -qi 'console' <<<"$output" || die "the install does not point to the console for the token: $output"
+  say "ok: the first install prints the next step"
   expect "service user" "getent passwd sard-agent | cut -d: -f6,7" "/var/lib/sard-agent:/usr/sbin/nologin"
   expect "/etc/sard" "stat -c '%U:%G %a' /etc/sard" "root:sard-agent 750"
   expect "/etc/sard/tls" "stat -c '%U:%G %a' /etc/sard/tls" "sard-agent:sard-agent 700"
@@ -103,6 +110,10 @@ check_fresh_install() {
   expect "unit enabled" "systemctl is-enabled sard-agent" "disabled"
   expect "unit active" "systemctl is-active sard-agent" "inactive"
   expect "no agent.yaml" "test -e /etc/sard/agent.yaml && echo present || echo absent" "absent"
+  # Not enrolled, so not started: nothing may restart the unit in a loop meanwhile.
+  sleep 60
+  expect "no restarts without enrollment" "systemctl show -p NRestarts --value sard-agent" "0"
+  expect "empty journal of the unit" "journalctl -u sard-agent --no-pager -q | wc -l" "0"
 }
 
 # configure_and_enroll: what docs/operations/agent-enroll.md and repo-init.md tell an administrator.
@@ -165,7 +176,10 @@ check_upgrade() {
   local before after id_before
   before="$(snapshot)"
   id_before="$AGENT_ID"
-  on_host "DEBIAN_FRONTEND=noninteractive apt-get install -y -q /tmp/new.deb >/dev/null"
+  local output
+  output="$(on_host "DEBIAN_FRONTEND=noninteractive apt-get install -y -q /tmp/new.deb 2>&1")" || die "upgrade to the new deb: $output"
+  ! grep -qi 'enroll' <<<"$output" || die "the upgrade talks about enrollment: $output"
+  say "ok: the upgrade does not print the enroll hint"
   expect "installed version" "dpkg-query -W -f '\${Version}' sard-agent" "$(dpkg-deb -f "$NEW_DEB" Version)"
   expect "unit enabled after upgrade" "systemctl is-enabled sard-agent" "enabled"
   wait_online "$NEW_VERSION"

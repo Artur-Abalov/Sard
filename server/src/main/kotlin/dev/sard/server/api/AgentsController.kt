@@ -22,6 +22,10 @@ private const val DUPLICATE_SESSION_AT =
     "When the server last confirmed a duplicate session, two hosts with one certificate (ADR 0026); " +
         "null if never. Not cleared by the server"
 
+private const val OUTDATED =
+    "True when the agent and the server's packages are both releases (vX.Y.Z) and the agent's version is lower " +
+        "by semver; false when it is newer, unknown or not a release"
+
 @Schema(description = "An agent in the list")
 data class AgentSummary(
     val id: UUID,
@@ -41,6 +45,8 @@ data class AgentSummary(
     val revokedAt: Instant?,
     @field:Schema(description = DUPLICATE_SESSION_AT)
     val duplicateSessionAt: Instant?,
+    @field:Schema(description = OUTDATED)
+    val outdated: Boolean,
 )
 
 @Schema(description = "A plugin the agent offers")
@@ -85,6 +91,8 @@ data class AgentDetails(
     val secretNames: List<String>,
     @field:Schema(description = "Names of allowlisted scripts on the host; paths never leave it (ADR 0008)")
     val scriptNames: List<String>,
+    @field:Schema(description = OUTDATED)
+    val outdated: Boolean,
 )
 
 @Schema(description = "A page of agents")

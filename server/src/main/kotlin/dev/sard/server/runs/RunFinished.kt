@@ -38,7 +38,7 @@ fun interface RunFinishedListener {
  * Hands [RunFinished] to every listener. A failing listener is logged and skipped: the run is
  * already final and the agent's ResultAck must not wait on a subscriber. Delivery is at most
  * once for now (a crash between commit and publish loses the event); S9 needs at least once
- * (S7a, answer 4; ADR 0038).
+ * (S7a, answer 4; ADR 0039).
  */
 class RunFinishedPublisher(
     private val listeners: List<RunFinishedListener>,

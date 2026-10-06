@@ -155,6 +155,7 @@ export const agents: Schemas['AgentDetails'][] = [
     lastSeenAt: '2026-09-27T09:59:50Z',
     revokedAt: null,
     duplicateSessionAt: null,
+    outdated: false,
     protocolVersion: 1,
     plugins: [
       filesPlugin,
@@ -173,13 +174,14 @@ export const agents: Schemas['AgentDetails'][] = [
     id: ids.webAgent,
     hostname: 'web2.example.com',
     status: 'offline',
-    agentVersion: '0.1.0',
+    agentVersion: 'v1.3.2',
     os: 'linux',
     arch: 'arm64',
     registeredAt: '2026-09-21T12:00:00Z',
     lastSeenAt: '2026-09-26T18:30:00Z',
     revokedAt: null,
     duplicateSessionAt: null,
+    outdated: true,
     protocolVersion: 1,
     plugins: [{ ...filesPlugin, actions: ['backup'] }],
     repositories: [
@@ -199,6 +201,7 @@ export const agents: Schemas['AgentDetails'][] = [
     lastSeenAt: '2026-09-15T10:00:00Z',
     revokedAt: '2026-09-16T08:00:00Z',
     duplicateSessionAt: null,
+    outdated: false,
     protocolVersion: 1,
     plugins: [filesPlugin],
     repositories: [
@@ -218,6 +221,7 @@ export const agents: Schemas['AgentDetails'][] = [
     lastSeenAt: '2026-09-27T08:00:00Z',
     revokedAt: null,
     duplicateSessionAt: '2026-09-27T08:05:00Z',
+    outdated: false,
     protocolVersion: 1,
     plugins: [filesPlugin],
     repositories: [
@@ -237,6 +241,7 @@ export const agents: Schemas['AgentDetails'][] = [
     lastSeenAt: null,
     revokedAt: null,
     duplicateSessionAt: null,
+    outdated: false,
     protocolVersion: null,
     plugins: [],
     repositories: [],

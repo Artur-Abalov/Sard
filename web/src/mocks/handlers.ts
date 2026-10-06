@@ -2,6 +2,7 @@
 // Copyright 2026 Artur Abalov
 
 import { agentHandlers } from './api/agents'
+import { installHandlers } from './api/install'
 import { overviewHandlers } from './api/overview'
 import { runHandlers } from './api/runs'
 import { sessionHandlers } from './api/session'
@@ -20,6 +21,7 @@ export const handlers = [
   ...sessionHandlers,
   ...overviewHandlers,
   ...agentHandlers,
+  ...installHandlers,
   ...tokenHandlers,
   ...sourceHandlers,
   ...runHandlers,

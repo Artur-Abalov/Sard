@@ -167,7 +167,7 @@ message Hello {
   // listed ones. A command the server believes running but absent here
   // becomes lost ("agent lost the step", its run fails) unless its result
   // arrives within one loss window; one it dispatched but absent here is
-  // sent again (ADR 0037).
+  // sent again (ADR 0038).
   repeated string running_command_ids = 1;
 }
 

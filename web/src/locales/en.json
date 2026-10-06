@@ -59,7 +59,9 @@
     "repoInitRestart": "After it, restart the agent service so that it reports the repository.",
     "revokedAt": "Revoked <when/>",
     "status": "Status",
-    "version": "Version"
+    "version": "Version",
+    "outdated": "Update available: {{version}}",
+    "outdatedPlain": "Update available"
   },
   "sources": {
     "title": "Sources",
@@ -296,6 +298,90 @@
       "schedule": "schedule",
       "manual": "manual",
       "verification": "verification"
+    }
+  },
+  "install": {
+    "title": "Install an agent",
+    "show": "Show the commands",
+    "hide": "Hide the commands",
+    "versions": "The server hands out sard-agent {{agent}} with restic {{restic}}.",
+    "archLabel": "Architecture",
+    "formatLabel": "Package",
+    "fetchLabel": "Download with",
+    "arch": {
+      "amd64": "amd64 (x86-64)",
+      "arm64": "arm64 (aarch64)"
+    },
+    "format": {
+      "deb": "deb — Debian, Ubuntu, Astra",
+      "tar": "tar.gz — other Linux with systemd"
+    },
+    "fetch": {
+      "curl": "curl",
+      "wget": "wget"
+    },
+    "optional": "optional",
+    "commands": "Commands",
+    "noSteps": "The release has no package for this choice.",
+    "off": "Package downloads are switched off by the server setting SARD_AGENT_DOWNLOADS=false, so there are no commands to show here. Install the agent by hand.",
+    "manual": "Manual installation",
+    "unsigned": "This build of the server hands out unsigned packages, so there is no signature step. Releases of Sard are signed.",
+    "keyId": "Key ID",
+    "keyString": "Public key",
+    "keyCheck": "Compare the key ID and the string with the README.md of the repository before you rely on them. The key comes from this server, so without the comparison the check proves nothing.",
+    "keyDoc": "README.md, “Verifying releases”",
+    "keyNeeds": "The step needs the minisign utility on the host.",
+    "steps": {
+      "download": {
+        "title": "Download the package",
+        "text": "The package, SHA256SUMS and its signature are fetched from this server. The host needs access to this server only."
+      },
+      "checksum": {
+        "title": "Check the checksum",
+        "text": "Compares the package with its line in SHA256SUMS. Anything but OK means the file is damaged."
+      },
+      "signature": {
+        "title": "Check the signature",
+        "text": "Checks that SHA256SUMS is signed with the Sard release key. Without it the file is only compared with a sum that came from the same server."
+      },
+      "install": {
+        "title": "Install the agent",
+        "text": "Installs the package as root. The service is neither enabled nor started: it needs the configuration and a registration first."
+      },
+      "configure": {
+        "title": "Create the configuration",
+        "text": "Copies the example to /etc/sard/agent.yaml, only if there is no such file, and puts this server's address in it. Then open the file and describe your repository: its address and the files with its password and keys stay on the host."
+      },
+      "enroll": {
+        "title": "Register the agent",
+        "text": "Run it as the sard-agent user, the one the service runs as: the identity files must belong to it. The token is shown once, when you create it in Tokens."
+      },
+      "repo-init": {
+        "title": "Create the repository",
+        "text": "Creates the restic repository named in agent.yaml with a generated password. Keep the password file: without it the backups cannot be restored."
+      },
+      "start": {
+        "title": "Start the service",
+        "text": "Enables the service and starts it. The agent connects to the server and appears in the list."
+      },
+      "upgrade": {
+        "title": "Update the agent",
+        "text": "Replaces the agent and restic with the new version. The configuration and keys stay as they are."
+      },
+      "restart": {
+        "title": "Restart the service",
+        "text": "Restarts the service only if it is running."
+      }
+    },
+    "reason": {
+      "arch_unknown": "The agent has not connected yet, so its architecture is unknown and there are no commands. Update it by hand.",
+      "arch_unavailable": "The release has no package for this agent's architecture. Update it by hand."
+    },
+    "upgrade": {
+      "title": "Update the agent",
+      "available": "The server hands out sard-agent {{agent}}, this agent runs an older version.",
+      "remind": "Update when the agent has no active runs: restarting it interrupts them.",
+      "debNote": "A deb package replaces the program only: the configuration, keys and the repository password stay as they are."
     }
   }
 }

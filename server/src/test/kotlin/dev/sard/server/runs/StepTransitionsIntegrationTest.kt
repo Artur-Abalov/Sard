@@ -30,7 +30,7 @@ private const val RACE_ROUNDS = 10
 private val LATER: Duration = Duration.ofSeconds(7)
 
 /**
- * Guarded step transitions (ADR 0037): each one names the status it expects, so dispatch,
+ * Guarded step transitions (ADR 0038): each one names the status it expects, so dispatch,
  * reconciliation and S7 never overwrite each other; the run follows its step in the same transaction.
  */
 @SpringBootTest(

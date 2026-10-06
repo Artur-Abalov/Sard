@@ -18,37 +18,36 @@ import java.nio.file.Path
 /**
  * `sard.agent-packages.enabled` (SARD_AGENT_DOWNLOADS, default true) and `.dir`
  * (SARD_AGENT_PACKAGES_DIR, default /usr/share/sard/agent-packages, where the image puts them).
+ * `.downloads-url` (SARD_AGENT_DOWNLOADS_URL): where hosts fetch the packages from when that is not
+ * the HTTP port of the host agents dial (U1b); empty means that; validated by [dev.sard.server.install.DownloadsUrl].
  */
 @ConfigurationProperties("sard.agent-packages")
 data class AgentPackagesProperties(
     val enabled: Boolean = true,
     val dir: Path = Path.of("/usr/share/sard/agent-packages"),
+    val downloadsUrl: String = "",
 )
 
 /**
  * `/downloads/agent/<file>`: the agent packages of this server's version, without a session —
- * hosts download them before they have anything (docs/adr/0040-agent-release.md). The path
+ * hosts download them before they have anything (docs/adr/0041-agent-release.md). The path
  * is outside `/api/v1`, so the admin session and origin filters do not apply. Switched on, the
  * server starts only with a valid release of its own version; switched off, the path is 404.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AgentPackagesProperties::class)
 class AgentDownloadsConfiguration {
+    /** The release to hand out, read and checked before anything is served; none when downloads are off. */
     @Bean
-    fun agentDownloadsMapping(
+    fun agentOffer(
         properties: AgentPackagesProperties,
         build: BuildProperties,
         mapper: ObjectMapper,
-    ): HandlerMapping = SimpleUrlHandlerMapping(handlers(properties, build.version ?: "unknown", mapper), ORDER)
-
-    private fun handlers(
-        properties: AgentPackagesProperties,
-        version: String,
-        mapper: ObjectMapper,
-    ): Map<String, Any> {
+    ): AgentOffer {
+        val version = build.version ?: "unknown"
         if (!properties.enabled) {
             log.info("Agent downloads are off (SARD_AGENT_DOWNLOADS=false)")
-            return emptyMap()
+            return AgentOffer.Withheld(version)
         }
         val catalog = AgentPackageDirectory.load(properties.dir, version, mapper)
         log.info(
@@ -58,8 +57,23 @@ class AgentDownloadsConfiguration {
             catalog.files.size,
             properties.dir,
         )
-        return mapOf(PATH to AgentPackagesHandler(properties.dir, catalog))
+        return AgentOffer.Serving(catalog)
     }
+
+    @Bean
+    fun agentDownloadsMapping(
+        properties: AgentPackagesProperties,
+        offer: AgentOffer,
+    ): HandlerMapping = SimpleUrlHandlerMapping(handlers(properties, offer), ORDER)
+
+    private fun handlers(
+        properties: AgentPackagesProperties,
+        offer: AgentOffer,
+    ): Map<String, Any> =
+        when (offer) {
+            is AgentOffer.Withheld -> emptyMap()
+            is AgentOffer.Serving -> mapOf(PATH to AgentPackagesHandler(properties.dir, offer.catalog))
+        }
 
     private companion object {
         const val PATH = "/downloads/agent/**"

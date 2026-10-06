@@ -10,7 +10,7 @@ import java.time.Clock
 import java.time.Instant
 import java.util.UUID
 
-/** The message of a step the agent lost (ADR 0037; REST shows it in RunStep.message). */
+/** The message of a step the agent lost (ADR 0038; REST shows it in RunStep.message). */
 const val LOST_MESSAGE = "agent lost the step"
 
 private const val ACTIVE =

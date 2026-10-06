@@ -3,7 +3,7 @@
 # Copyright 2026 Artur Abalov
 #
 # Shows that the release signature guarantees something
-# (docs/adr/0040-agent-release.md): signs a copy of a built
+# (docs/adr/0041-agent-release.md): signs a copy of a built
 # release with a throwaway test key, made here and never stored, then checks
 # that scripts/release-verify.sh accepts it and refuses every forgery.
 #

@@ -48,9 +48,14 @@ sard:
     server-names: ${SARD_PKI_SERVER_NAMES:localhost,127.0.0.1,::1}
   agent-packages:
     # /downloads/agent/: the agent packages of this server's version, baked into the image
-    # (docs/adr/0040-agent-release.md). On without a valid release, the server does not start.
+    # (docs/adr/0041-agent-release.md). On without a valid release, the server does not start.
     enabled: ${SARD_AGENT_DOWNLOADS:true}
     dir: ${SARD_AGENT_PACKAGES_DIR:/usr/share/sard/agent-packages}
+    # Where hosts fetch the packages from, as in the install commands of the console (U1b). An absolute http or
+    # https address without a query or a fragment; the server does not start with anything else. Empty means:
+    # http, the host of the address agents dial (SARD_AGENT_ENDPOINT) and SARD_HTTP_PORT. Never taken from
+    # request headers.
+    downloads-url: ${SARD_AGENT_DOWNLOADS_URL:}
   agent:
     # Address agents dial (decision 5, S2b); empty means: first of sard.pki.server-names and the gRPC port.
     endpoint: ${SARD_AGENT_ENDPOINT:}

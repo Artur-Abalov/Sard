@@ -2,15 +2,35 @@
 // Copyright 2026 Artur Abalov
 
 import { Badge, Group } from '@mantine/core'
-import { Trans } from 'react-i18next'
+import { useQuery } from '@tanstack/react-query'
+import { Trans, useTranslation } from 'react-i18next'
+import { installQuery } from '../api/queries'
 import type { components } from '../api/schema'
+import { INSTALL_DEFAULTS } from '../install'
 import { tones } from '../theme'
 import { StatusIcon } from './StatusIcon'
 import { Time } from './Time'
 
-type Agent = Pick<components['schemas']['AgentSummary'], 'revokedAt' | 'duplicateSessionAt'>
+type Agent = Pick<
+  components['schemas']['AgentSummary'],
+  'revokedAt' | 'duplicateSessionAt' | 'outdated'
+>
 
-// The notes an agent carries beside its status: revoked, and a confirmed duplicate session (S5b).
+// An update is available: a notice, not an error - the agent works. The version offered is the one
+// of the install block's answer (the server's), shown once it is known.
+function OutdatedMark() {
+  const { t } = useTranslation()
+  const install = useQuery(installQuery(INSTALL_DEFAULTS))
+  return (
+    <Badge color={tones.notice} leftSection={<StatusIcon name="arrow" />}>
+      {install.data === undefined
+        ? t('agents.outdatedPlain')
+        : t('agents.outdated', { version: install.data.agentVersion })}
+    </Badge>
+  )
+}
+
+// The notes an agent carries beside its status: revoked, a confirmed duplicate session (S5b), outdated.
 export function AgentMarks({ agent }: { agent: Agent }) {
   return (
     <Group gap="xs">
@@ -30,6 +50,7 @@ export function AgentMarks({ agent }: { agent: Agent }) {
           />
         </Badge>
       )}
+      {agent.outdated && <OutdatedMark />}
     </Group>
   )
 }

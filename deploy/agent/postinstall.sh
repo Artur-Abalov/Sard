@@ -15,7 +15,8 @@
 #   never touches them: they hold the agent's keys.
 #
 # The service is not enabled: it needs /etc/sard/agent.yaml and an enrolled
-# identity first. An upgrade restarts it only if it is running.
+# identity first. An upgrade restarts it only if it is running. The first
+# install prints the next step (U1b); an upgrade says nothing about enrollment.
 set -e
 
 first_install=no
@@ -45,4 +46,18 @@ done
 if command -v systemctl >/dev/null && [ -d /run/systemd/system ]; then
   systemctl daemon-reload || true
   [ "$first_install" = yes ] || systemctl try-restart sard-agent.service || true
+fi
+
+if [ "$first_install" = yes ]; then
+  cat <<'NEXT'
+
+sard-agent is installed and not started: it needs a configuration and an identity first.
+Next, take a token in the Sard console (Tokens, Create a token) and register this host
+as the service user (the console shows the full command):
+
+  sudo -u sard-agent sard-agent enroll --server <address of the Sard server> --token <token>
+
+The steps from the configuration to the start of the service:
+https://github.com/Artur-Abalov/sard/blob/main/docs/operations/agent-install.md
+NEXT
 fi

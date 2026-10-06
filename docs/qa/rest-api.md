@@ -52,7 +52,7 @@ RESTIC=$PWD/.bin/restic
 
 5. `a POST /enrollment-tokens '{}' | tee $QA/t1`
    → `HTTP 201`; `token` вида `sard_<43>.<64>`; `enrollCommand` =
-   `sard-agent enroll --server localhost:9090 --token <token>`;
+   `sudo -u sard-agent sard-agent enroll --server localhost:9090 --token <token>`;
    `expiresAt` ≈ сейчас + 24 ч; `agentEndpointConfigured` = `false`.
 6. `T1=$(body < $QA/t1 | jq -r .token); TID=$(body < $QA/t1 | jq -r .id)`;
    `a GET /enrollment-tokens | body | grep -cF "$T1"; a GET /enrollment-tokens/$TID | body | grep -cF "$T1"`
@@ -97,7 +97,7 @@ executor:
   state_dir: $H/state
 EOF
 CMD=$(a POST /enrollment-tokens '{}' | body | jq -r .enrollCommand)
-$AG ${CMD#sard-agent } --config $H/agent.yaml
+$AG ${CMD#sudo -u sard-agent sard-agent } --config $H/agent.yaml
 $AG --config $H/agent.yaml > $QA/agent.out 2>&1 & AGPID=$!
 sleep 5; X=$(a GET /agents | body | jq -r '.items[0].id')
 ```
