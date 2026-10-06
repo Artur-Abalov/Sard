@@ -22,8 +22,11 @@ private val ISOLATED_PACKAGES =
         "downloads",
     )
 
-// downloads/ is itself an HTTP handler (it serves the package files), so it is web by purpose.
-private val WIRE_FREE_PACKAGES = ISOLATED_PACKAGES - "downloads"
+// downloads/ holds both domain types and the HTTP adapter that serves the package files. Only the
+// files that actually import org.springframework.web / jakarta.servlet are web by purpose:
+// AgentPackagesHandler.kt and AgentDownloadsConfiguration.kt. The rest of the package is scanned.
+private val WIRE_EXEMPT_FILES = setOf("AgentPackagesHandler.kt", "AgentDownloadsConfiguration.kt")
+private val WIRE_FREE_PACKAGES = ISOLATED_PACKAGES
 private val WIRE_ANNOTATION_REFERENCE =
     Regex("""\b(com\.fasterxml\.jackson\.annotation|io\.swagger|org\.springframework\.web|jakarta\.servlet)\b""")
 private val FORBIDDEN_FQN_REFERENCE =
@@ -95,7 +98,7 @@ class ArchitectureTest {
     fun `the domain packages carry no wire or HTTP annotations`() {
         val offenders =
             WIRE_FREE_PACKAGES.flatMap { pkg ->
-                ktFiles(File(mainRoot, pkg)).flatMap { file ->
+                ktFiles(File(mainRoot, pkg)).filter { it.name !in WIRE_EXEMPT_FILES }.flatMap { file ->
                     WIRE_ANNOTATION_REFERENCE
                         .findAll(withoutComments(file.readText()))
                         .map { "${file.path}: ${it.value}" }
