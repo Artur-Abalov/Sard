@@ -7,7 +7,7 @@ import jakarta.servlet.http.HttpServletRequest
 
 /**
  * The client's address for rate limiting and logging (Р4): the TCP connection's own
- * remote address. X-Forwarded-For and X-Forwarded-Proto are not trusted; a reverse
- * proxy in front of Sard is a separate, later task.
+ * remote address. With SARD_FORWARD_HEADERS=native Tomcat has already replaced it with
+ * the address from X-Forwarded-For of a trusted proxy (ADR 0045).
  */
 fun clientAddress(request: HttpServletRequest): String = request.remoteAddr
