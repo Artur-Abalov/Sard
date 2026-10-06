@@ -77,8 +77,9 @@ start_host() {
     --cgroupns=host --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
     "sard-pkgtest:${distro//:/-}" >/dev/null
   wait_for "systemd on $distro" 'systemctl is-system-running | grep -Eq "running|degraded"'
-  docker cp "$OLD_DEB" "$HOST:/tmp/old.deb"
-  docker cp "$NEW_DEB" "$HOST:/tmp/new.deb"
+  # Not /tmp: Debian 13 mounts a tmpfs there at boot, over what docker cp writes.
+  docker cp "$OLD_DEB" "$HOST:/root/old.deb"
+  docker cp "$NEW_DEB" "$HOST:/root/new.deb"
 }
 
 # wait_for <what> <host command>: up to 120 s.
@@ -98,7 +99,7 @@ api() {
 
 check_fresh_install() {
   local output
-  output="$(on_host "DEBIAN_FRONTEND=noninteractive apt-get install -y -q /tmp/old.deb 2>&1")" || die "install of the old deb: $output"
+  output="$(on_host "DEBIAN_FRONTEND=noninteractive apt-get install -y -q /root/old.deb 2>&1")" || die "install of the old deb: $output"
   grep -q 'sudo -u sard-agent sard-agent enroll --server' <<<"$output" || die "the install does not print the enroll command: $output"
   grep -qi 'console' <<<"$output" || die "the install does not point to the console for the token: $output"
   say "ok: the first install prints the next step"
@@ -177,7 +178,7 @@ check_upgrade() {
   before="$(snapshot)"
   id_before="$AGENT_ID"
   local output
-  output="$(on_host "DEBIAN_FRONTEND=noninteractive apt-get install -y -q /tmp/new.deb 2>&1")" || die "upgrade to the new deb: $output"
+  output="$(on_host "DEBIAN_FRONTEND=noninteractive apt-get install -y -q /root/new.deb 2>&1")" || die "upgrade to the new deb: $output"
   ! grep -qi 'enroll' <<<"$output" || die "the upgrade talks about enrollment: $output"
   say "ok: the upgrade does not print the enroll hint"
   expect "installed version" "dpkg-query -W -f '\${Version}' sard-agent" "$(dpkg-deb -f "$NEW_DEB" Version)"
