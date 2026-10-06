@@ -91,4 +91,23 @@
   - `sard-agent` в `sard-agent:e2e` совпадает с бинарником из tar.gz
     `make package`;
   - стадии `web` и `build` не выполнялись.
-- `make e2e-test`: см. ниже.
+- `make e2e-test` (`VERSION=localci1`, образы из `e2e-assemble`), первый прогон —
+  55 тестов, 3 упали:
+  - `RunStepSeamTest`, новый тест: `RunRows.queueStep` писал источник с
+    фиксированным именем `seam`, а имя уникально в тенанте. Второй шаг в той же
+    установке нарушал ограничение. Исправлено: имя теперь `seam-<id источника>`.
+  - `StepLossTest`, 2 теста: Docker Hub ответил 429 на `nicolaka/netshoot:v0.14`.
+    Это ограничение среды. Образ скачан заранее.
+
+  Повторный прогон `RunStepSeamTest`, `ResultAckSeamTest`,
+  `StepLogRedactionTest`, `StepLossTest`: 7 тестов, 0 упавших. Остальные 15
+  классов зелёные в первом прогоне: `SlowStreamTest` и `StreamBreakTest` (8) —
+  на образе стенда, остальные — на релизном агенте.
+- Контроль теста: `RunStepSeamTest` с `-Pe2e.agentImage=sard-agent-stand:e2e`
+  падает. Агент стенда принимает `e2e-slow`, шаг упирается в
+  `unknown repository "main"`, а тест ждёт `unknown plugin "e2e-slow"`.
+  Значит, тест отличает релизного агента от агента стенда.
+
+## Открытое
+
+- В CI новый граф задач ещё не прогонялся: это проверит первый PR или push.
