@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# Documentation checks: Markdown lint (.markdownlint-cli2.jsonc) and links.
+# Links are checked offline: relative files and #fragments inside the
+# repository, so a slow or blocked external site never fails the build.
+# Both tools run here only; they are not dependencies of anything Sard ships.
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/*.md"
+      - ".markdownlint-cli2.jsonc"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "**/*.md"
+      - ".markdownlint-cli2.jsonc"
+      - ".github/workflows/docs.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  markdownlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - run: npx --yes markdownlint-cli2@0.18.1 "**/*.md"
+
+  links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: lycheeverse/lychee-action@v2
+        with:
+          lycheeVersion: v0.24.2
+          args: >-
+            --offline --include-fragments --no-progress
+            --exclude-path node_modules --exclude-path web/dist
+            './**/*.md'
+          fail: true

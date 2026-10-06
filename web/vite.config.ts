@@ -7,6 +7,7 @@ import { createReadStream } from 'node:fs'
 import { createRequire } from 'node:module'
 import type { Plugin } from 'vite'
 import { defineConfig } from 'vitest/config'
+import { stampVersion, versionOf } from './src/buildVersion.ts'
 
 // The dev server proxies API calls to a locally running sard-server.
 const server = process.env.SARD_SERVER_URL ?? 'http://localhost:8080'
@@ -27,6 +28,15 @@ function mockServiceWorker(): Plugin {
   }
 }
 
+// Writes the build's version (SARD_VERSION, dev by default) into index.html, where the
+// server's image check reads it to prove the console and the server come from one build.
+function sardVersion(): Plugin {
+  return {
+    name: 'sard:version',
+    transformIndexHtml: (html) => stampVersion(html, versionOf(process.env.SARD_VERSION)),
+  }
+}
+
 export default defineConfig({
   plugins: [
     // Generates src/routes -> src/routeTree.gen.ts (settings in tsr.config.json);
@@ -34,6 +44,7 @@ export default defineConfig({
     tanstackRouter({ target: 'react' }),
     react(),
     mockServiceWorker(),
+    sardVersion(),
   ],
   server: {
     proxy: {

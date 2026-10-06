@@ -40,7 +40,7 @@ waitdlv() { for i in $(seq 1 60); do s=$(dlv $1); case $s in pending*|'') sleep 
 
 ## Часть 1. Успех
 
-3. В консоли (`cd web && npm run dev`, http://localhost:5173) создать
+3. В консоли (`cd web && npm run dev`, <http://localhost:5173>) создать
    источник `qa-ok` агента с плагином `files`, путями `[$D]`, репозиторием
    `qa`, и нажать «Запустить бэкап». Запомнить id запуска из адреса страницы
    (`RUN=…`). Закрыть вкладку консоли.

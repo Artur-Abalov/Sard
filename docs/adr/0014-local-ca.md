@@ -74,6 +74,7 @@ SPKI берётся из байтов сертификата, а не из `Publ
 Один порт, TLS всегда (plaintext-режима нет). `PkiAutoConfiguration` регистрирует SSL-бандл `sard-grpc` через `SslBundleRegistrar`. Ключ берётся из `serverKeyManager()` без копирования, поэтому перевыпуск действует на новые рукопожатия. Доверие для клиентских сертификатов — только CA Sard.
 
 `application.yaml`:
+
 ```yaml
 spring.grpc.server.ssl:
   bundle: sard-grpc

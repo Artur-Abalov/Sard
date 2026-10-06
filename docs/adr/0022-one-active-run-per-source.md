@@ -22,7 +22,7 @@ S6 создаёт таблицы `sources`, `runs`, `run_steps` и отправ�
 ### Правка целевой схемы ADR 0013
 Внесена в ADR 0013 этим же изменением; таблицы появляются в миграции S6.
 
-```
+```text
 sources      + repository_name NOT NULL                    -- имя из снимка Register агента
 runs         + source_id NOT NULL → sources
              workflow_id NULL → workflows

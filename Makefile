@@ -19,7 +19,10 @@ BUILD_LOCK := $(if $(shell command -v flock),mkdir -p $(CURDIR)/.gradle && flock
 GRADLE := $(BUILD_LOCK) env LC_ALL=C.UTF-8 ./gradlew --no-daemon -q
 # Git ref the proto contract must stay compatible with (buf breaking).
 PROTO_BASE ?= origin/main
-COMPOSE := docker compose -f deploy/docker-compose.yml --env-file deploy/.env
+# Local stack: the server image is built from this checkout
+# (docker-compose.build.yml) with the agent packages of dist/, so its version is
+# this checkout's VERSION, not the release version in deploy/.env.
+COMPOSE := env SARD_VERSION=$(VERSION) docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file deploy/.env
 # End-to-end tests (test/e2e): images built from the current code.
 E2E_ARCH ?= $(shell go env GOARCH)
 E2E_BUILD := $(CURDIR)/test/e2e/build
@@ -45,11 +48,11 @@ proto: tools
 	cd proto && $(BIN)/buf generate
 	cd proto/gen/go && go mod tidy
 
-## build: build every part
+## build: build every part; the console (web/dist) goes into the server jar (S10, ADR 0040)
 build: build-agent build-cli
-	$(GRADLE) :server:bootJar -PsardVersion=$(VERSION)
 	$(MAKE) web-deps
-	cd web && npm run build
+	cd web && SARD_VERSION=$(VERSION) npm run build
+	$(GRADLE) :server:bootJar -PsardVersion=$(VERSION) -PsardConsoleDist=web/dist
 
 build-agent:
 	cd agent && go build -ldflags "$(LDFLAGS)" -o bin/sard-agent ./cmd/sard-agent
@@ -110,7 +113,7 @@ openapi:
 ## up: start PostgreSQL + sard-server (builds the image, with the agent packages of dist/, on first run)
 up: package
 	./scripts/ensure-admin-password.sh
-	SARD_VERSION=$(VERSION) $(COMPOSE) up -d --wait
+	$(COMPOSE) up -d --wait
 
 ## down: stop the local stack (data volume is kept)
 down:

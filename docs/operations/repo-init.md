@@ -64,6 +64,7 @@ sudo systemctl restart sard-agent
   [Service]
   ReadWritePaths=/srv/sard-repo
   ```
+
 - `repo list` блокировку не берёт и работает без каталога кэша.
 
 ## `repo init [--config C] [--generate-password] [--timeout 2m] <имя>`

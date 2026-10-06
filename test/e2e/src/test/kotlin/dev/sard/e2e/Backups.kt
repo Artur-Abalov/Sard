@@ -50,7 +50,15 @@ internal object Backups {
                 "/api/v1/sources",
                 """{"name":"$name","agentId":"$agentId","plugin":"$plugin","repositoryName":"$repository","config":$configJson}""",
             )
-        val sourceId = UUID.fromString(source.require("id"))
+        return run(env, UUID.fromString(source.require("id")), api)
+    }
+
+    /** Starts a run of the existing source [sourceId], as the console's "run now" does; the API answers 201. */
+    fun run(
+        env: SardEnvironment,
+        sourceId: UUID,
+        api: SardApi = SardApi(env),
+    ): Started {
         val runId = UUID.fromString(api.created("/api/v1/sources/$sourceId/runs").require("id"))
         val stepId = Await.value("the step of run $runId") { query(env, "SELECT id FROM run_steps WHERE run_id = ?", runId) { it.getObject(1, UUID::class.java) } }
         return Started(sourceId, runId, stepId)

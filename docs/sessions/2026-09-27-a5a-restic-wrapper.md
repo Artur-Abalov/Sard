@@ -37,7 +37,7 @@
   linux/arm64, отпечаток ключа подписи. Читают скрипт, пакет `restic`
   (`//go:embed`) и интеграционный тест.
 - `scripts/fetch-restic.sh [amd64] [arm64]` → `.bin/restic/<ver>/linux_<arch>/restic`
-  + `LICENSE.restic`. Каталог `.bin/` уже в `.gitignore`.
+  - `LICENSE.restic`. Каталог `.bin/` уже в `.gitignore`.
 - Текст BSD-2 лицензии restic закоммичен в `third_party/restic/LICENSE`
   (из модуля `github.com/restic/restic@v0.19.1`, sha256 `6f08a01a…f897`):
   raw.githubusercontent.com закрыт, а при поставке текст нужен рядом с бинарником.
@@ -70,6 +70,7 @@
   `total_bytes`, `bytes_restored`.
 
 ### Дизайн (на ревью)
+
 ```go
 // Executor запускает процесс; настоящий — ProcessExecutor (Setpgid,
 // отмена: SIGTERM группе, через Grace — SIGKILL группе). Тесты — фейк.
@@ -114,6 +115,7 @@ type BackupSummary struct {
 type PartialError struct{ Items []ItemError } // Is(ErrUnreadableSource)
 // Коды 10/11/12 → ErrNoRepository, ErrLocked, ErrWrongPassword; иначе *ExitError{Code}.
 ```
+
 - Окружение restic: `PATH=<PATH агента>`, `HOME=<cache_dir>`,
   `RESTIC_CACHE_DIR=<cache_dir>`, `Key.Env` от `crypto.Provider`
   (`RESTIC_PASSWORD_FILE`), переменные `env_file`. Репозиторий — флагом `-r`.
