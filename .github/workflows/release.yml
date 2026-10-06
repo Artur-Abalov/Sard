@@ -63,9 +63,7 @@ jobs:
       # restic's release key, accepted only if it has the fingerprint pinned in
       # agent/internal/restic/restic-version (ADR 0017): fetch-restic.sh checks the signer.
       - name: restic signing key
-        run: |
-          fpr="$(sed -n 's/^signing_key_fingerprint=//p' agent/internal/restic/restic-version)"
-          curl -fsSL "https://keys.openpgp.org/vks/v1/by-fingerprint/$fpr" -o "$RUNNER_TEMP/restic.asc"
+        run: cp agent/internal/restic/restic-signing-key.asc "$RUNNER_TEMP/restic.asc"
       - name: package
         env:
           REQUIRE_RPM: "1"
