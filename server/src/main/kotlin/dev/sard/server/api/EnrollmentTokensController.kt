@@ -41,7 +41,9 @@ data class CreatedEnrollmentToken(
     val id: UUID,
     @field:Schema(description = "sard_<secret>.<CA fingerprint>; shown once, the server keeps only its hash")
     val token: String,
-    @field:Schema(description = "Ready-to-run command: sard-agent enroll --server <address> --token <token>")
+    @field:Schema(
+        description = "Ready-to-run command: sudo -u sard-agent sard-agent enroll --server <address> --token <token>",
+    )
     val enrollCommand: String,
     val expiresAt: Instant,
     @field:Schema(description = "false when the address in the command is derived from the server names, not set")

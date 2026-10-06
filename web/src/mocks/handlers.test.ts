@@ -340,6 +340,71 @@ describe('sources', () => {
   })
 })
 
+describe('agent install', () => {
+  beforeEach(signIn)
+
+  test('the details answer with the arch and format asked for, the steps of the block', async () => {
+    const { data } = await api.GET('/api/v1/agent-install', {
+      params: { query: { arch: 'arm64', format: 'tar' } },
+    })
+    expect(data).toMatchObject({ arch: 'arm64', format: 'tar', downloadsEnabled: true })
+    expect(data?.steps.map((step) => step.kind)).toEqual([
+      'download',
+      'checksum',
+      'signature',
+      'install',
+      'configure',
+      'enroll',
+      'repo-init',
+      'start',
+    ])
+    expect(data?.steps[0].commands[0]).toContain('arm64.tar.gz')
+  })
+
+  test('the defaults are deb and amd64, and the answer holds no token string', async () => {
+    const { data } = await api.GET('/api/v1/agent-install')
+    expect(data).toMatchObject({ arch: 'amd64', format: 'deb' })
+    expect(JSON.stringify(data)).not.toContain('sard_')
+  })
+
+  test('an unknown architecture is 422 naming the field', async () => {
+    const { response, error } = await api.GET('/api/v1/agent-install', {
+      params: { query: { arch: 'riscv64' as 'amd64' } },
+    })
+    expect(response.status).toBe(422)
+    expect(error).toMatchObject({ errors: [{ field: 'arch' }] })
+  })
+
+  test('without a session it is 401', async () => {
+    await api.DELETE('/api/v1/session')
+    expect((await api.GET('/api/v1/agent-install')).response.status).toBe(401)
+  })
+
+  test('the upgrade of an agent uses its architecture; an agent that never registered has a reason', async () => {
+    const web = await api.GET('/api/v1/agents/{agentId}/upgrade', {
+      params: { path: { agentId: ids.webAgent } },
+    })
+    expect(web.data?.arch).toBe('arm64')
+    expect(web.data?.steps[0].commands[0]).toContain('arm64')
+    const bare = await api.GET('/api/v1/agents/{agentId}/upgrade', {
+      params: { path: { agentId: ids.bareAgent } },
+    })
+    expect(bare.data).toMatchObject({ steps: [], reason: 'arch_unknown' })
+  })
+
+  test('the upgrade of an unknown agent is 404', async () => {
+    const { response } = await api.GET('/api/v1/agents/{agentId}/upgrade', {
+      params: { path: { agentId: unknownId } },
+    })
+    expect(response.status).toBe(404)
+  })
+
+  test('the list marks the outdated agent and no other', async () => {
+    const list = must(await api.GET('/api/v1/agents'))
+    expect(list.items.filter((a) => a.outdated).map((a) => a.id)).toEqual([ids.webAgent])
+  })
+})
+
 describe('enrollment tokens', () => {
   beforeEach(signIn)
   const tokenPath = (tokenId: string) => ({ params: { path: { tokenId } } })
@@ -368,7 +433,7 @@ describe('enrollment tokens', () => {
     const { data } = await api.POST('/api/v1/enrollment-tokens', { body: {} })
     expect(data?.token).toMatch(/^sard_[A-Za-z0-9_-]{43}\.[0-9a-f]{64}$/)
     expect(data?.enrollCommand).toBe(
-      `sard-agent enroll --server sard.example.com:9090 --token ${data?.token}`,
+      `sudo -u sard-agent sard-agent enroll --server sard.example.com:9090 --token ${data?.token}`,
     )
     const ttl = Date.parse(data?.expiresAt ?? '') - before
     expect(Math.abs(ttl - 86_400_000)).toBeLessThan(60_000)

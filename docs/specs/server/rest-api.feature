@@ -462,7 +462,7 @@
       Когда администратор тенанта по умолчанию создаёт токен с телом пустого объекта
       Тогда ответ 201
       И token разбирается по docs specs enrollment-token
-      И enrollCommand равна "sard-agent enroll --server " плюс адрес для агентов плюс " --token " плюс token
+      И enrollCommand равна "sudo -u sard-agent sard-agent enroll --server " плюс адрес для агентов плюс " --token " плюс token
       И expiresAt равно T0 плюс 24 часа
 
     @http

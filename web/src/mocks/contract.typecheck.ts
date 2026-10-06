@@ -42,7 +42,7 @@ export const contractChecks = [
 
   http.get('/api/v1/enrollment-tokens/{tokenId}', ({ response }) =>
     // @ts-expect-error: EnrollmentToken has no enrollCommand property
-    response(200).json({ ...token, enrollCommand: 'sard-agent enroll' }),
+    response(200).json({ ...token, enrollCommand: 'sudo -u sard-agent sard-agent enroll' }),
   ),
 
   http.post('/api/v1/sources', ({ response }) => {

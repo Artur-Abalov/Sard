@@ -46,7 +46,8 @@ curl -fsSO http://sard.example.com:8080/downloads/agent/sard-agent_X.Y.Z_amd64.d
 ```
 
 Проверка — как выше, ключом из репозитория: сервер раздаёт подпись, но не
-подписывает. `SARD_AGENT_DOWNLOADS=false` выключает раздачу (404).
+подписывает. `SARD_AGENT_DOWNLOADS=false` выключает раздачу (404). Адрес, с которого консоль
+предлагает скачивать пакеты, — `SARD_AGENT_DOWNLOADS_URL` (`docs/operations/agent-install.md`).
 
 ## Настройка (один раз, владелец)
 

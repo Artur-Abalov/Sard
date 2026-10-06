@@ -57,7 +57,10 @@ class EnrollmentTokensApiIntegrationTest(
         val token = response.json.path("token").asString()
         EnrollmentToken.parse(token)
         val command = response.json.path("enrollCommand").asString()
-        assertTrue(command.startsWith("sard-agent enroll --server ") && command.endsWith(" --token $token"), command)
+        assertTrue(
+            command.startsWith("sudo -u sard-agent sard-agent enroll --server ") && command.endsWith(" --token $token"),
+            command,
+        )
         assertEquals(T0.plus(Duration.ofHours(24)).toString(), response.json.path("expiresAt").asString())
     }
 

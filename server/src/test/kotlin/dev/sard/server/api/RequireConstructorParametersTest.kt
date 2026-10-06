@@ -42,6 +42,18 @@ class RequireConstructorParametersTest {
     }
 
     @Test
+    fun `the install package's wire types are required too`() {
+        val step = objectSchema("kind", "commands", "optional")
+        val key = objectSchema("id", "publicKey")
+        val api = OpenAPI().components(Components().addSchemas("InstallStep", step).addSchemas("ReleaseKey", key))
+
+        MutFlow.underTest { requireConstructorParameters(api) }
+
+        assertEquals(listOf("commands", "kind", "optional"), step.required)
+        assertEquals(listOf("id", "publicKey"), key.required)
+    }
+
+    @Test
     fun `schemas that are not classes of the api package are left alone`() {
         val unknown = objectSchema("a")
         val enum = StringSchema()

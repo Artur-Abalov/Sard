@@ -57,6 +57,9 @@ class WireEnumBinding {
             WireEnumEditor(EnrollmentTokenStatus::class.java),
         )
         binder.registerCustomEditor(RunStatus::class.java, WireEnumEditor(RunStatus::class.java))
+        binder.registerCustomEditor(InstallArch::class.java, WireEnumEditor(InstallArch::class.java))
+        binder.registerCustomEditor(InstallFormat::class.java, WireEnumEditor(InstallFormat::class.java))
+        binder.registerCustomEditor(FetchTool::class.java, WireEnumEditor(FetchTool::class.java))
     }
 }
 

@@ -282,6 +282,8 @@ class ApiContractIntegrationTest(
                 Triple("GET", "/api/v1/overview", null),
                 Triple("GET", "/api/v1/agents?status=online", null),
                 Triple("GET", "/api/v1/agents/{agentId}", null),
+                Triple("GET", "/api/v1/agents/{agentId}/upgrade", null),
+                Triple("GET", "/api/v1/agent-install", null),
                 Triple("POST", "/api/v1/agents/{agentId}/revoke", null),
                 Triple("POST", "/api/v1/enrollment-tokens", "{}"),
                 Triple("GET", "/api/v1/enrollment-tokens?status=active", null),

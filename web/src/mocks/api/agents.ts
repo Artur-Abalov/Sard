@@ -21,6 +21,7 @@ function summary(agent: Schemas['AgentDetails']): Schemas['AgentSummary'] {
     lastSeenAt,
     revokedAt,
     duplicateSessionAt,
+    outdated,
   } = agent
   return {
     id,
@@ -33,6 +34,7 @@ function summary(agent: Schemas['AgentDetails']): Schemas['AgentSummary'] {
     lastSeenAt,
     revokedAt,
     duplicateSessionAt,
+    outdated,
   }
 }
 

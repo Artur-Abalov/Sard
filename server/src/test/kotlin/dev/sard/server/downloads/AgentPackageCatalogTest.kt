@@ -13,14 +13,18 @@ import kotlin.test.assertNull
 
 private const val DEB = "sard-agent_1.2.3_amd64.deb"
 private const val TAR = "sard-agent_v1.2.3_linux_arm64.tar.gz"
-private val ARTIFACTS = listOf(AgentArtifact(DEB, 10, "d".repeat(64)), AgentArtifact(TAR, 20, "a".repeat(64)))
+private val ARTIFACTS =
+    listOf(
+        AgentArtifact(DEB, 10, "d".repeat(64), "amd64", "deb"),
+        AgentArtifact(TAR, 20, "a".repeat(64), "arm64", "tar.gz"),
+    )
 private val METADATA = mapOf(AgentPackageCatalog.MANIFEST to "m".repeat(64), AgentPackageCatalog.SUMS to "s".repeat(64))
 
 private fun manifest(
     version: String = "v1.2.3",
     schema: Int = 1,
     artifacts: List<AgentArtifact> = ARTIFACTS,
-) = AgentManifest(schema, version, artifacts)
+) = AgentManifest(schema, version, "0.19.1", artifacts)
 
 @MutFlowTest
 class AgentPackageCatalogTest {
@@ -71,7 +75,7 @@ class AgentPackageCatalogTest {
     @Test
     fun `a file name that is not a plain name is refused`() {
         for (name in listOf("../etc/passwd", "a/b.deb", "", ".hidden", "a b.deb")) {
-            val bad = manifest(artifacts = listOf(AgentArtifact(name, 1, "d".repeat(64))))
+            val bad = manifest(artifacts = listOf(AgentArtifact(name, 1, "d".repeat(64), "amd64", "deb")))
             val e =
                 assertFailsWith<AgentPackagesUnavailable>(name) {
                     MutFlow.underTest { AgentPackageCatalog.of(bad, "v1.2.3", METADATA) }

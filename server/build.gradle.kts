@@ -192,6 +192,15 @@ spotless {
     }
 }
 
+// The key the agent packages are signed with is the repository's own file; the console shows it (U1b, В5).
+val releaseKey = rootProject.layout.projectDirectory.file("deploy/release/sard-release.pub")
+tasks.processResources {
+    from(releaseKey) { into("release") }
+}
+tasks.matching { it.name == "processMutatedMainResources" }.configureEach {
+    (this as Copy).from(releaseKey) { into("release") }
+}
+
 mutflow {
     targets = listOf("dev.sard.server.**")
 }
