@@ -93,7 +93,7 @@ gate_agent_integration() {
   (cd "$dir" && go test -count=1 -race -tags integration "${AGENT_INTEGRATION_PKGS[@]}") || die "agent: integration tests"
 }
 
-# The e2e stand's agent build (tag e2e, make e2e-images) adds its plugins to
+# The e2e stand's agent build (tag e2e, make package-stand) adds its plugins to
 # the registry (agent/plugins/stand_e2e.go); a release build never does.
 gate_agent_stand() {
   local dir="$ROOT/agent"

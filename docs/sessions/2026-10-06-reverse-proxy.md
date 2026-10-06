@@ -37,7 +37,7 @@
 - `deploy/docker-compose.yml` и `deploy/.env.example`: переменная и предупреждение
   «8080 только на loopback».
 - `ClientAddress.kt`: KDoc описывает новое поведение.
-- ADR 0045, отметка в ADR 0021, `docs/adr/README.md`.
+- ADR 0046, отметка в ADR 0021, `docs/adr/README.md`.
 - `docs/operator/03-configuration.md` и `04-tls-and-names.md`: раздел про
   прокси, настройки для Cloudflare Tunnel, nginx и Caddy, проверка через `curl`.
   README тоже обновлён.
@@ -58,3 +58,9 @@
   документации самих прокси.
 - Сеть compose, отличная от `172.16.0.0/12` (свой `default-address-pools`). Там
   прокси на хосте может оказаться недоверенным.
+
+## Слияние с `main`
+
+В `main` влит PR #47, он занял ADR 0045 (`0045-build-once.md`). ADR этой
+сессии перенумерован в 0046, ссылки обновлены. Конфликт был только в
+`docs/adr/README.md`.

@@ -10,7 +10,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
-// stand returns the e2e stand's plugins; only `make e2e-images` builds
+// stand returns the e2e stand's plugins; only `make package-stand` builds
 // with the "e2e" tag (T3s).
 func stand(agentVersion string) []sdk.Plugin {
 	return []sdk.Plugin{e2eslow.Plugin{AgentVersion: agentVersion}}

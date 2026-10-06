@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 <!-- Copyright 2026 Artur Abalov -->
 
-# 0045 — Консоль за обратным прокси: forward-headers Spring Boot
+# 0046 — Консоль за обратным прокси: forward-headers Spring Boot
 
 - Статус: принято; решение владельца — 2026-10-06 (развёртывание в OCI за Cloudflare Tunnel)
 - Дата: 2026-10-06

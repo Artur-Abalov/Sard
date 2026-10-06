@@ -86,9 +86,9 @@
 
 | Суть | Чем закрыто |
 |---|---|
-| OQ-031. За TLS-терминирующим прокси вход и изменяющие запросы получали 403 `origin_rejected`, cookie без `Secure`, адрес клиента — адрес прокси. | ADR 0045: `SARD_FORWARD_HEADERS=native` (`server/src/main/resources/application.yaml`, `deploy/docker-compose.yml`), доверие к `X-Forwarded-Proto`/`X-Forwarded-For` от loopback и частных адресов; `ReverseProxyIntegrationTest`. Прокси, переписывающий `Host`, по-прежнему не поддерживается — требование к прокси в `docs/operator/04-tls-and-names.md`. |
+| OQ-031. За TLS-терминирующим прокси вход и изменяющие запросы получали 403 `origin_rejected`, cookie без `Secure`, адрес клиента — адрес прокси. | ADR 0046: `SARD_FORWARD_HEADERS=native` (`server/src/main/resources/application.yaml`, `deploy/docker-compose.yml`), доверие к `X-Forwarded-Proto`/`X-Forwarded-For` от loopback и частных адресов; `ReverseProxyIntegrationTest`. Прокси, переписывающий `Host`, по-прежнему не поддерживается — требование к прокси в `docs/operator/04-tls-and-names.md`. |
 | OQ-033. `Secure` у `sard_session` проверен только юнит-тестами. | `ReverseProxyIntegrationTest`, «sign-in behind a TLS-terminating proxy succeeds with a Secure cookie»: реальный Tomcat, `X-Forwarded-Proto: https`. TLS на самом HTTP-порту по-прежнему не настраивается. |
-| OQ-142. Консоль за Cloudflare. | Cloudflare Tunnel и `SARD_FORWARD_HEADERS=native` (ADR 0045); проверено владельцем на OCI 2026-10-06. Порт агентов — отдельное имя «серым облаком», `docs/operator/04-tls-and-names.md`. |
+| OQ-142. Консоль за Cloudflare. | Cloudflare Tunnel и `SARD_FORWARD_HEADERS=native` (ADR 0046); проверено владельцем на OCI 2026-10-06. Порт агентов — отдельное имя «серым облаком», `docs/operator/04-tls-and-names.md`. |
 
 ### 2026-10-06, X1 документация (ветка `claude/determined-volta-pg43zw`)
 

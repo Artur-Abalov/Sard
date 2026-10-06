@@ -16,6 +16,7 @@ import kotlin.test.assertEquals
 /**
  * T3: an enrolled agent with a local repository, running and registered, whose backups are
  * `e2e-slow` steps of a chosen length ([SlowStreamTest]); [once] counts what one step left behind.
+ * Its host runs the stand's agent image, the only one with `e2e-slow` (ADR 0036, 0045).
  */
 internal class T3Agent private constructor(
     private val sard: SardEnvironment,
@@ -78,7 +79,8 @@ internal class T3Agent private constructor(
             sard: SardEnvironment,
             hostname: String,
         ): T3Agent {
-            val agent = AgentEnroller.enroll(sard, EnrollmentTokens.create(sard), hostname = hostname, local = LOCAL)
+            val agent =
+                AgentEnroller.enroll(sard, EnrollmentTokens.create(sard), hostname = hostname, local = LOCAL, image = E2e.standAgentImage)
             val init = agent.host.repoInit(REPOSITORY, "--generate-password")
             assertEquals(0, init.code, init.stderr)
             val container = sard.track("agent-$hostname", AgentContainer.of(agent)).apply { start() }

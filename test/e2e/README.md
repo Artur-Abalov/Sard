@@ -6,18 +6,28 @@
 устройство — ADR 0020.
 
 ```bash
-make e2e          # собрать оба образа, прогнать :e2e:test (нужен Docker)
-make e2e-images   # только образы: sard-server:e2e, sard-agent:e2e
+make e2e            # собрать артефакты один раз, собрать из них образы, прогнать :e2e:test (нужен Docker)
+make e2e-images     # только артефакты и образы: sard-server:e2e, sard-agent:e2e, sard-agent-stand:e2e
+make e2e-assemble   # только образы, из готовых DIST, STAND_DIST, SERVER_JAR_DIR (ничего не компилирует)
+make e2e-test       # только тесты, на уже собранных образах
 ```
 
-- Образ сервера — `deploy/server/Dockerfile`; флаги сборки (кэш CI, прокси) —
-  `E2E_SERVER_BUILD_FLAGS`.
-- Образ агента — `test/e2e/agent/Dockerfile` из tar.gz `scripts/package-agent.sh`
-  с `GO_TAGS=e2e` (для `E2E_ARCH`, по умолчанию архитектура хоста): агент стенда
-  дополнительно содержит плагин `e2e-slow` (ADR 0036; в `make package` его нет,
-  скрипт это проверяет), статический агент и restic
-  версии из `agent/internal/restic/restic-version`, проверенный по SHA-256 при
-  упаковке. Во время теста ничего не скачивается.
+Собрать один раз, тестировать собранное (ADR 0045): тесты получают те же пакеты
+агента и тот же jar, что уходят в выпуск. Сборки внутри тестов нет. В CI задача
+`e2e` скачивает образ сервера из `server-image` и пакеты из `packages`.
+
+- Образ сервера — `deploy/server/Dockerfile`, собранный из готового jar
+  (`make server-jar`, `--build-context server-jar=…`) и релизных пакетов агента.
+  Флаги сборки jar (кэш CI, прокси) — `SERVER_BUILD_FLAGS`.
+- Образ агента `sard-agent:e2e` — `test/e2e/agent/Dockerfile` из tar.gz `make package`
+  (для `E2E_ARCH`, по умолчанию архитектура хоста): тот самый агент, что
+  поставляется, статический, и restic версии из
+  `agent/internal/restic/restic-version`, проверенный по SHA-256 при упаковке. На
+  нём идут все классы, кроме T3. Во время теста ничего не скачивается.
+- Образ стенда `sard-agent-stand:e2e` — тот же Dockerfile из tar.gz
+  `make package-stand` (`GO_TAGS=e2e`): релизный агент плюс плагин `e2e-slow`
+  (ADR 0036). Его запускают только `T3Agent` и `SlowStreamTest`. В выпуск он не
+  попадает: `make package` его не линкует, и скрипт это проверяет.
 - Каждый класс получает свою установку (`SardEnvironment`): своя сеть, порты
   хоста случайные, CA создаётся сервером при старте. Тесты не зависят от
   порядка и от уже запущенных контейнеров.
@@ -50,7 +60,7 @@ make e2e-images   # только образы: sard-server:e2e, sard-agent:e2e
 | `StepLossTest` | T3, окно потери 10 с (heartbeat 5 с × 2): (7) агент остановлен и не вернулся — шаг `lost` через окно, запуск `failed`, новый запуск источника принят (`queued`); (8) агент перезапускается чаще окна, журнал исполнителя стёрт между перезапусками — `lost` по первому сроку, следующий запуск `succeeded`; (9) агента нет, сервер перезапущен — `lost` через окно от старта сервера (FXs, Д1, Д2) |
 | `TreeDiffTest` | сравнитель деревьев `FullChainTest` без контейнеров: испорченный байт, пропавший, лишний, усечённый файл, файл вместо каталога — различия |
 | `AgentConnectTest` | настоящий агент после `sard-agent enroll` выполняет Register и открывает Connect (`agents.last_register_at`, `last_seen_at`) |
-| `RunStepSeamTest` | шаг в `queued` доходит до настоящего агента на Hello; агент отклоняет неизвестный плагин, сервер записывает `REJECTED`: шаг `rejected` с `unknown plugin "absent"`, запуск `failed` (S7a) |
+| `RunStepSeamTest` | шаг в `queued` доходит до настоящего агента на Hello; агент отклоняет неизвестный плагин, сервер записывает `REJECTED`: шаг `rejected` с `unknown plugin "absent"`, запуск `failed` (S7a). Агент набора — релизная сборка: `e2e-slow` он тоже отклоняет как неизвестный (ADR 0045) |
 | `ResultAckSeamTest` | S7a, тест 8: отклонённый шаг записан, `ResultAck` дошёл до агента (надгробие `acked/<sha256>.json` в каталоге исполнителя, `results/` пуст), после перезапуска контейнера агент результат не повторяет |
 | `StepLogRedactionTest` | A7c, тест 4, A7b: шаг files с настоящим restic; путь несуществующего репозитория содержит значение секрета агента как есть и в стандартном base64; restic падает, в `step_logs` строка с `repo-[REDACTED]`, значения нет ни в `step_logs`, ни в сообщении шага |
 | `EnrollmentTokenFormatTest` | помощник токена — тестовый вектор `docs/specs/enrollment-token.md` |

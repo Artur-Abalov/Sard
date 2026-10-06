@@ -111,8 +111,18 @@ tasks.processResources {
 }
 
 // The real sard-agent for the agent seam tests (S4a), built once per build and shared by every
-// test that runs it. Needs the Go toolchain on PATH, as CI's server job has (setup-go).
+// test that runs it. Needs the Go toolchain on PATH. CI does not build it here: it passes the
+// agent of its release packages, -PsardTestAgentBinary and the version it was built with,
+// -PsardTestAgentVersion, so the seam tests run the agent that ships (ADR 0045).
 val testAgentBinary = layout.buildDirectory.file("test-agent/sard-agent")
+val prebuiltTestAgent: String? = providers.gradleProperty("sardTestAgentBinary").orNull
+val testAgentVersion: String =
+    if (prebuiltTestAgent == null) {
+        "seam-test"
+    } else {
+        providers.gradleProperty("sardTestAgentVersion").orNull
+            ?: error("-PsardTestAgentBinary needs -PsardTestAgentVersion, the version that agent was built with")
+    }
 val buildTestAgent by tasks.registering(Exec::class) {
     val repo = rootProject.layout.projectDirectory
     workingDir = repo.asFile
@@ -124,7 +134,7 @@ val buildTestAgent by tasks.registering(Exec::class) {
         "go",
         "build",
         "-ldflags",
-        "-X main.version=seam-test",
+        "-X main.version=$testAgentVersion",
         "-o",
         testAgentBinary.get().asFile.path,
         "./agent/cmd/sard-agent",
@@ -133,8 +143,9 @@ val buildTestAgent by tasks.registering(Exec::class) {
 
 tasks.test {
     useJUnitPlatform()
-    dependsOn(buildTestAgent)
-    systemProperty("sard.test.agent-binary", testAgentBinary.get().asFile.path)
+    if (prebuiltTestAgent == null) dependsOn(buildTestAgent)
+    systemProperty("sard.test.agent-binary", prebuiltTestAgent ?: testAgentBinary.get().asFile.path)
+    systemProperty("sard.test.agent-version", testAgentVersion)
     // The agent refuses to start without a restic it accepts (A5b, ADR 0017); the seam tests
     // give it a stand-in that reports the minimum version from this file.
     systemProperty(

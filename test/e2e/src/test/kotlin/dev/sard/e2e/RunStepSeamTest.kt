@@ -25,13 +25,26 @@ import kotlin.test.fail
 class RunStepSeamTest {
     @Test
     fun `a queued step reaches the real agent on Hello and its rejection reaches the server`() {
-        val agent = AgentEnroller.enroll(sard, EnrollmentTokens.create(sard))
-        val stepId = RunRows.queueStep(sard, UUID.fromString(agent.agentId), PLUGIN)
+        assertRejected(PLUGIN)
+    }
 
-        sard.track(AgentContainer.ALIAS, AgentContainer.of(agent)).start()
+    /**
+     * ADR 0045: the suite runs the release agent, the one `make package` ships; only the T3
+     * classes run the stand's build ([E2e.standAgentImage]), which adds `e2e-slow` (ADR 0036).
+     */
+    @Test
+    fun `the agent of the suite is the release build without the stand plugin`() {
+        assertRejected(STAND_PLUGIN)
+    }
+
+    private fun assertRejected(plugin: String) {
+        val agent = AgentEnroller.enroll(sard, EnrollmentTokens.create(sard), hostname = "e2e-agent-$plugin")
+        val stepId = RunRows.queueStep(sard, UUID.fromString(agent.agentId), plugin)
+
+        sard.track("${AgentContainer.ALIAS}-$plugin", AgentContainer.of(agent)).start()
 
         await("step $stepId rejected") { RunRows.statusOf(sard, stepId) == "rejected" }
-        assertEquals(listOf("unknown plugin \"$PLUGIN\"", "failed"), messageAndRunStatus(stepId))
+        assertEquals(listOf("unknown plugin \"$plugin\"", "failed"), messageAndRunStatus(stepId))
     }
 
     private fun messageAndRunStatus(stepId: UUID): List<String?> =
@@ -58,6 +71,9 @@ class RunStepSeamTest {
     companion object {
         /** A plugin no agent has (built in are postgresql, mysql, files and network). */
         private const val PLUGIN = "absent"
+
+        /** The plugin only the stand's build links (agent/plugins/stand_e2e.go). */
+        private const val STAND_PLUGIN = "e2e-slow"
 
         @JvmField
         @RegisterExtension

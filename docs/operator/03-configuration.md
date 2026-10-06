@@ -35,7 +35,7 @@
 | `SARD_NOTIFY_LANGUAGE` | язык уведомлений: `en` или `ru`, иначе сервер не стартует | `en` | `ru` |
 | `SARD_AGENT_DOWNLOADS` | раздача пакетов агента по `/downloads/agent/` без сессии; `false` — путь отвечает 404 | `true` | `false` |
 | `SARD_AGENT_DOWNLOADS_URL` | адрес, с которого хосты скачивают пакеты в командах установки консоли; абсолютный `http`/`https` без запроса и фрагмента | пусто: `http://<хост из SARD_AGENT_ENDPOINT>:8080` | `https://sard.example.com` |
-| `SARD_FORWARD_HEADERS` | `native` — сервер за обратным прокси, завершающим TLS: схема и адрес клиента берутся из `X-Forwarded-Proto` и `X-Forwarded-For` прокси с loopback или частного адреса ([раздел 4](04-tls-and-names.md), ADR 0045); `none` — эти заголовки игнорируются; другие значения не поддерживаются | `none` | `native` |
+| `SARD_FORWARD_HEADERS` | `native` — сервер за обратным прокси, завершающим TLS: схема и адрес клиента берутся из `X-Forwarded-Proto` и `X-Forwarded-For` прокси с loopback или частного адреса ([раздел 4](04-tls-and-names.md), ADR 0046); `none` — эти заголовки игнорируются; другие значения не поддерживаются | `none` | `native` |
 | `SARD_AGENT_PACKAGES_DIR` | каталог пакетов агента внутри контейнера; менять не нужно | `/usr/share/sard/agent-packages` | — |
 | `SARD_PKI_DIR` | каталог CA внутри контейнера; в compose на нём том `sard_sard-pki` | `/var/lib/sard/pki` | — |
 | `SARD_HTTP_PORT` | HTTP-порт внутри контейнера | `8080` | — |

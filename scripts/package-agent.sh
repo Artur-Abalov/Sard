@@ -14,7 +14,7 @@
 #   scripts/package-agent.sh arm64        one architecture
 #   VERSION=v1.2.3 scripts/package-agent.sh
 #   DIST=/tmp/out scripts/package-agent.sh amd64   another output directory
-#   GO_TAGS=e2e DIST=... scripts/package-agent.sh  e2e stand build (make e2e-images
+#   GO_TAGS=e2e DIST=... scripts/package-agent.sh  e2e stand build (make package-stand
 #                                                   only): links the stand's plugins
 #
 # Every package carries Sard's license (AGPL-3.0), restic's (BSD-2) and the

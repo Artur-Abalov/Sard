@@ -32,6 +32,8 @@ internal class AgentHost(
     private val sardEnv: SardEnvironment,
     val hostname: String = "e2e-agent",
     val local: String = "",
+    /** The agent image every command of this host runs: [E2e.agentImage] unless T3 needs the stand's. */
+    private val image: String = E2e.agentImage,
 ) {
     /** The volume mounted at [STATE_DIR]: state, TLS files, repository, the executor's journal. */
     val state = sardEnv.volume()
@@ -172,7 +174,7 @@ internal class AgentHost(
     }
 
     private fun container(): GenericContainer<*> =
-        GenericContainer<Nothing>(DockerImageName.parse(E2e.agentImage)).apply {
+        GenericContainer<Nothing>(DockerImageName.parse(image)).apply {
             withNetwork(sardEnv.dockerNetwork)
             withNetworkAliases(hostname)
             withCopyToContainer(Transferable.of(config(), TarFiles.READABLE), CONFIG)

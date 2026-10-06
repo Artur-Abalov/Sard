@@ -35,14 +35,15 @@ internal class EnrolledAgent(
 internal object AgentEnroller {
     private val ENROLLED = Regex("^Enrolled as agent ([0-9a-f-]{36})$", RegexOption.MULTILINE)
 
-    /** A new host named [hostname] with [local] config, enrolled with [token]; fails unless enroll exits 0. */
+    /** A new host named [hostname] with [local] config and [image], enrolled with [token]; fails unless enroll exits 0. */
     fun enroll(
         env: SardEnvironment,
         token: String,
         hostname: String = "e2e-agent",
         local: String = "",
+        image: String = E2e.agentImage,
     ): EnrolledAgent {
-        val host = AgentHost(env, hostname, local)
+        val host = AgentHost(env, hostname, local, image)
         return EnrolledAgent(enroll(host, token), host)
     }
 

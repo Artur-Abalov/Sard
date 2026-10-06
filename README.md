@@ -152,7 +152,7 @@ login page; the sign-out button is in the header.
 Behind a TLS-terminating reverse proxy (Cloudflare Tunnel, nginx, Caddy) set
 `SARD_FORWARD_HEADERS=native` in `deploy/.env` and keep port 8080 on the
 loopback; without it login and every mutating request answer 403
-`origin_rejected` ([ADR 0045](docs/adr/0045-reverse-proxy-forward-headers.md),
+`origin_rejected` ([ADR 0046](docs/adr/0046-reverse-proxy-forward-headers.md),
 [docs/operator/04-tls-and-names.md](docs/operator/04-tls-and-names.md)).
 
 Agent and CLI:

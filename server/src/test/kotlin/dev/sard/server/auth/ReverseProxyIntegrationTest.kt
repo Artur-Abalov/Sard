@@ -72,7 +72,7 @@ private fun capture(block: () -> Unit): List<String> {
 }
 
 /**
- * ADR 0045: with SARD_FORWARD_HEADERS=native the server takes the scheme and the client
+ * ADR 0046: with SARD_FORWARD_HEADERS=native the server takes the scheme and the client
  * address from X-Forwarded-Proto and X-Forwarded-For of a proxy on a trusted address (the
  * test client connects from 127.0.0.1, which Tomcat trusts by default).
  */
@@ -128,7 +128,7 @@ class ReverseProxyIntegrationTest(
     }
 }
 
-/** ADR 0045: without SARD_FORWARD_HEADERS proxy headers are ignored, as in ADR 0021 (Р4). */
+/** ADR 0046: without SARD_FORWARD_HEADERS proxy headers are ignored, as in ADR 0021 (Р4). */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = ["spring.grpc.server.port=0", "SARD_ADMIN_PASSWORD=$PASSWORD"],

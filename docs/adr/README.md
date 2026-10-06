@@ -46,4 +46,5 @@
 | [0042](0042-notifications.md) | Доставка уведомлений о запусках: очередь `notification_deliveries`, Telegram (S9a) |
 | [0043](0043-agent-release.md) | Подписанные пакеты агента и их раздача сервером (U1a, D12) |
 | [0044](0044-agent-command-journal.md) | Журнал принятых команд агента: провал при перезапуске (D13), журнал агента (FXa) |
-| [0045](0045-reverse-proxy-forward-headers.md) | Консоль за обратным прокси: `SARD_FORWARD_HEADERS=native` (forward-headers Spring Boot) |
+| [0045](0045-build-once.md) | Собрать один раз, тестировать собранное: одна сборка агента и jar на прогон, e2e на релизном агенте |
+| [0046](0046-reverse-proxy-forward-headers.md) | Консоль за обратным прокси: `SARD_FORWARD_HEADERS=native` (forward-headers Spring Boot) |

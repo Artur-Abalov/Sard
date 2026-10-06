@@ -16,6 +16,13 @@
 # own platform; only the runtime stage exists per target platform.
 # The console (web/) is built here too, from the same context, in the "web" stage and
 # bundled into the jar (ADR 0040); Node and the sources never reach the final image.
+#
+# Build once, test that (ADR 0045): the jar is the "server-jar" stage, which CI and
+# release.yml build once and export, then hand back to every image they test or
+# publish, so the build stages do not run again:
+#   docker buildx build --target server-jar -o type=local,dest=build/server-jar ...   (make server-jar)
+#   docker buildx build --build-context server-jar=build/server-jar ...              (make server-image)
+# Without --build-context the stage builds from source, as `docker compose build` does.
 
 # The packages are files for every architecture, so this stage, like the two
 # build stages, runs once on the builder's platform.
@@ -81,6 +88,11 @@ RUN --mount=type=cache,target=/root/.gradle \
     done && \
     ./gradlew --no-daemon :server:bootJar -PsardVersion="${SARD_VERSION}" -PsardConsoleDist=/src/console-dist
 
+# The jar alone: the export target of `make server-jar`, and the stage a named build
+# context replaces with that export.
+FROM scratch AS server-jar
+COPY --from=build /src/server/build/libs/sard-server.jar /sard-server.jar
+
 FROM eclipse-temurin:25-jre
 ARG SARD_VERSION=dev
 LABEL org.opencontainers.image.title="sard-server" \
@@ -90,7 +102,7 @@ LABEL org.opencontainers.image.title="sard-server" \
       org.opencontainers.image.version="${SARD_VERSION}"
 RUN useradd --system --uid 10001 --no-create-home sard \
  && install -d -o sard -g sard -m 0700 /var/lib/sard/pki
-COPY --from=build /src/server/build/libs/sard-server.jar /app/sard-server.jar
+COPY --from=server-jar /sard-server.jar /app/sard-server.jar
 COPY --from=agent-packages /out/ /usr/share/sard/agent-packages/
 USER sard
 # The CA key and certificate (docs/operations/pki.md). Without a mounted volume
