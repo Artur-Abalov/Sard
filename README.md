@@ -15,9 +15,49 @@ workflows, schedules, restore verification, reports and multi-tenancy.
 > REST API, admin login and Telegram notifications are in place; the product is
 > not production-ready yet.
 
+## Quickstart: a server in 10 minutes
+
+On a Linux host (amd64 or arm64) with Docker Engine and the Compose plugin,
+`curl` and `openssl`. This runs sard-server and PostgreSQL from the published
+image of release `SARD_TAG`
+([releases](https://github.com/Artur-Abalov/Sard/releases)); change only
+that line to install another release.
+
+<!-- quickstart:begin -->
+```bash
+SARD_TAG=v0.0.1-rc.1
+mkdir -p ~/sard && cd ~/sard
+curl -fsSLO "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/docker-compose.yml"
+curl -fsSL -o .env "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/sard.env.example"
+sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" \
+       -e "s/^SARD_ADMIN_PASSWORD=.*/SARD_ADMIN_PASSWORD=$(openssl rand -hex 16)/" .env
+chmod 600 .env
+docker compose up -d --wait
+curl -fsS http://localhost:8080/api/v1/status
+```
+<!-- quickstart:end -->
+
+The last command prints the server's version. The administrator password is
+`SARD_ADMIN_PASSWORD` in `~/sard/.env`. The REST API listens on
+`127.0.0.1:8080` only, because it is plain HTTP; the agents' port 9090
+(gRPC, mutual TLS) is open to the network. Before enrolling agents from other
+hosts, put the name they dial into `SARD_PKI_SERVER_NAMES` in `.env` and run
+`docker compose up -d` again: see the comments in `.env` and
+[docs/operations/pki.md](docs/operations/pki.md). Every release also carries
+an offline archive of both images, for hosts without registry access:
+
+```bash
+gunzip -c sard-<VERSION>-images-linux-<ARCH>.tar.gz | docker load
+docker compose up -d --wait --pull never
+```
+
+The CA key lives in the `sard_sard-pki` volume and the database in
+`sard_postgres-data`; both survive `docker compose down` and are removed by
+`docker compose down -v` only.
+
 ## Architecture
 
-```
+```text
              browser / sardctl
                     │ REST /api/v1
                     ▼
@@ -92,9 +132,10 @@ gate is not accepted.
 ## Running
 
 ```bash
-make up                                   # PostgreSQL + sard-server (deploy/.env is created from .env.example)
+make up                                   # PostgreSQL + sard-server built from this checkout (deploy/.env is created from .env.example)
 curl -s localhost:8080/api/v1/status      # {"version":"…","lastVerifiedRestoreAt":null}
-cd web && npm install && npm run dev      # console at http://localhost:5173, API proxied to :8080
+# the console itself is served by the server at http://localhost:8080 (it is in the image)
+cd web && npm install && npm run dev      # development: console at http://localhost:5173, API proxied to :8080
 make down
 ```
 

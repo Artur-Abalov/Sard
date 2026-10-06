@@ -46,7 +46,7 @@
 
 ### Формат (предложение)
 
-```
+```text
 <dir>/journal/<key>.json  принят, результата нет
   {"version":1,"command_id":"…","accepted_at":"…","started_at":"…"}
 ```

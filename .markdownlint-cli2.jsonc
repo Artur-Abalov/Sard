@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright 2026 Artur Abalov
+//
+// Markdown lint (docs workflow). The rules turned off below are the house
+// style of these documents, not defects: hard-wrapped prose with long table
+// rows and links, lists and headings packed without blank lines, ordered
+// lists that keep their numbering across interruptions, and repeated
+// "Фаза N" headings under different parents in session logs, bold labels
+// for sub-groups inside a section, and tabs inside code blocks (Makefile
+// and Go snippets keep them), and code spans that end in a meaningful space
+// (log prefixes such as `Fatal: `).
+{
+  "config": {
+    "default": true,
+    "MD013": false,
+    "MD022": false,
+    "MD032": false,
+    "MD029": false,
+    "MD024": { "siblings_only": true },
+    "MD036": false,
+    "MD038": false,
+    "MD010": { "code_blocks": false }
+  },
+  "ignores": ["**/node_modules/**", "web/dist/**", "**/build/**", ".claude/**", "CLAUDE.md"]
+}

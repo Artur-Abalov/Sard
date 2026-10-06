@@ -143,7 +143,7 @@ CLI-команда `sard-agent enroll` в `agent/cmd/sard-agent`:
 
 ## Как проверено
 
-```
+```text
 cd agent && GOWORK='' go test ./...                 # все пакеты зелёные
 ./scripts/gate.sh agent fast                        # PASSED, ниже — вывод
 make license-check                                  # 276 files OK
@@ -259,7 +259,7 @@ make license-check                                  # 276 files OK
 `./scripts/gate.sh agent fast` — `PASSED`; покрытие и CRAP-таблица — см.
 ниже, дословный вывод.
 
-```
+```text
 coverage: 95.3%
 gate: PASSED (agent, fast)
 ```
@@ -501,14 +501,16 @@ architect: `writeIdentityAndReport` игнорировала результат 
   (добавлен в F8) и потому истинно.
 
 ### Проверено
-```
+
+```text
 cd agent && GOWORK='' go test ./...        # все пакеты зелёные
 ./scripts/gate.sh agent fast               # см. ниже, PASSED
 make license-check                         # 279 files OK
 ```
 
 `gate agent fast`, дословно:
-```
+
+```text
 == gate agent: gofmt, vet, golangci-lint
 0 issues.
 
@@ -559,7 +561,7 @@ F1–F13. Область: `agent/cmd/sard-agent/enroll_*.go`,
 
 **BEFORE (`./scripts/crap.sh agent`, функции в задании):**
 
-```
+```text
     CRAP   CC   COVER  FUNCTION
      6.0    6  100.0%  cmd/sard-agent/enroll_run.go:resolveEnrollLocals
      6.0    6  100.0%  internal/enroll/classify.go:classifyReason
@@ -569,7 +571,7 @@ F1–F13. Область: `agent/cmd/sard-agent/enroll_*.go`,
 
 **AFTER (после изменений, те же строки):**
 
-```
+```text
     CRAP   CC   COVER  FUNCTION
      6.0    6  100.0%  cmd/sard-agent/enroll_run.go:resolveEnrollLocals
      6.0    6  100.0%  internal/enroll/classify.go:classifyReason
@@ -612,7 +614,7 @@ PEM-маршалинг — не ответ сервера, тот случай �
 
 `./scripts/gate.sh agent fast`:
 
-```
+```text
 coverage: 95.5%
 gate: PASSED (agent, fast)
 ```
@@ -629,14 +631,16 @@ gate: PASSED (agent, fast)
 3. **Токен всё ещё утекал через другие флаги (F3 не закрыт полностью).** `validateEnrollFlagValues` эхировала `--server %q` без редактирования; `loadEnrollConfig` эхировала путь `--config` и текст `*PathError`; `checkAddressConflict` эхировала `--server`; `fs.SetOutput(stderr)` пропускала прямиком в stderr сообщение самого пакета `flag` вида `invalid value "sard_…" for flag -timeout: ...`. Исправлено: `redactIfToken` переписан на `regexp` (`sard_\S*`), редактирует токен-подобную подстроку в любом месте строки, не только когда вся строка — токен (это заодно закрыло и текст `*PathError`, убрав отдельный `redactedFileError`); вызов добавлен в `validateEnrollFlagValues`, `loadEnrollConfig` (путь и текст ошибки ОС), `checkAddressConflict`; `fs.SetOutput(io.Discard)` — сообщение `flag.Parse` печатается через собственный код с тем же `redactIfToken`. `--help` не затронут (печатается до `fs.Parse`, отдельным путём в stdout) — существующие тесты справки остались зелёными без изменений. Тест `TestATokenPassedAsAnotherFlagsValueIsNeverEchoedBack` (`enroll_leak_test.go`, три подслучая — `--server`, `--config`, `--timeout`) — красный до правки во всех трёх (токен целиком в stderr), зелёный после.
 
 ### Проверено
-```
+
+```text
 cd agent && GOWORK='' go test ./...   # все пакеты зелёные
 ./scripts/gate.sh agent fast          # PASSED с первого прогона (fetch-restic не падал)
 make license-check                    # 280 files OK
 ```
 
 `gate agent fast`, дословно:
-```
+
+```text
 == gate agent: tests + coverage >= 80%
 ...
 coverage: 95.5%
@@ -672,7 +676,7 @@ touched or tested here.
 
 ### BEFORE (verbatim `go-mutesting` scores, per package)
 
-```
+```text
 internal/enroll:  0.781095 (157 passed, 44 failed, 6 duplicated, total 201)
 internal/secrets: 0.875000 (21 passed, 3 failed, 2 duplicated, total 24)
 internal/config:  0.921053 (35 passed, 3 failed, 0 duplicated, total 38)
@@ -683,7 +687,7 @@ cmd/sard-agent:    0.725581 (156 passed, 59 failed, 6 duplicated, total 215)
 ### AFTER (verbatim, clean re-runs after cleanup — see "A go-mutesting
 pitfall" below)
 
-```
+```text
 internal/enroll:  0.955224 (192 passed, 9 failed, 6 duplicated, total 201)
 internal/secrets: 0.958333 (23 passed, 1 failed, 2 duplicated, total 24)
 internal/config:  0.947368 (36 passed, 2 failed, 0 duplicated, total 38)
@@ -915,7 +919,7 @@ after each manual check.
 
 ### Verified
 
-```
+```text
 cd agent && GOWORK='' go vet ./... && GOWORK='' go test -count=1 -timeout 90s ./...
 # all packages ok
 git status --porcelain agent/ | grep -v _test.go   # empty before and after every score above
@@ -927,7 +931,7 @@ make license-check                                 # 284 files OK
 `internal/transport`/`internal/executor`/`plugins` mutants — outside
 this diff, not investigated here):
 
-```
+```text
 coverage: 97.0%
 
 == gate agent: CRAP <= 6

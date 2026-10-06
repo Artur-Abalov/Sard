@@ -13,7 +13,7 @@ CI run 82 (`main` @ `993456b`), job `server`: `./scripts/gate.sh server` → `77
 ## Причина
 `AgentSeamIntegrationTest.the real agent registers its snapshot with a certificate from Enroll`:
 
-```
+```text
 sard-agent: RESTIC_NOT_FOUND: restic was not found at …/no-restic (restic.path in …/agent.yaml)
 ```
 

@@ -56,6 +56,7 @@
 - `agents/dispatch/` — отправка, сверка (`CommandReconciliation`), тик, метрика; зависит от `runs/` и `agents/stream/`.
 
 **Стыки для S8b** (тенант передаёт вызывающий из `TenantResolver`, как `EnrollmentTokens`)
+
 ```kotlin
 class Sources(sessions: TenantSessions, clock: Clock, ids: UuidV7) {
     fun create(tenantId: UUID, draft: SourceDraft): SourceView
@@ -78,6 +79,7 @@ fun interface StepsQueued { fun onQueued(tenantId: UUID, agentId: UUID) }  // р
 ```
 
 **Стык для S7**
+
 ```kotlin
 class StepTransitions(sessions: TenantSessions, clock: Clock) {
     fun accepted(tenantId: UUID, stepId: UUID, phase: String): Boolean             // dispatched → running
@@ -85,6 +87,7 @@ class StepTransitions(sessions: TenantSessions, clock: Clock) {
     fun lost(tenantId: UUID, stepId: UUID): Boolean                                // running → lost (окно)
 }
 ```
+
 Каждый переход — один условный `UPDATE` шага и запуска в одной транзакции; `false` — статус уже сменил другой путь.
 
 **Настройки**: `sard.run.dispatch.lost-after` (по умолчанию 2 × `sard.agent.heartbeat-interval`), `sard.run.dispatch.check-interval` (по умолчанию `sard.agent.stream.check-interval`).
@@ -121,6 +124,7 @@ class StepTransitions(sessions: TenantSessions, clock: Clock) {
 - По пути: detekt `ThrowsCount` в `AgentOffer.require` — один `throw` после `when`; ktlint (предел 140) склеивал переносы, detekt (120) их требовал — строки переписаны без переносов выражений.
 
 ### Стыки для S8b (реализованы)
+
 ```kotlin
 class Sources {
     fun create(tenantId: UUID, draft: SourceDraft): SourceView
@@ -166,6 +170,7 @@ class Runs { fun start(tenantId: UUID, sourceId: UUID): RunView }
 - `make license-check` — 435 files OK.
 
 ### Стыки для S7
+
 ```kotlin
 class StepTransitions : DispatchLedger {
     fun accepted(tenantId: UUID, stepId: UUID, phase: String): Boolean        // dispatched → running; run → running, started_at
@@ -175,6 +180,7 @@ class StepTransitions : DispatchLedger {
 data class StepOutcome(val status: StepState, val message: String?)          // только финальный status
 const val LOST_MESSAGE = "agent lost the step"
 ```
+
 - «Результат пришёл» — статус шага в базе: окно делает `running → lost` условно, после `finished` оно ничего не меняет.
 - Прогресс (`phase`, `bytes_*`) — отдельные условные обновления S7 по `running`; столбцы есть, сущность их не пишет.
 - S7 заменяет `StepResultHandler`/`StepProgressHandler` из `LoggingInbound` своими бинами; `CommandReconciliation` уже занят диспетчером.

@@ -1,17 +1,22 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright 2026 Artur Abalov
 #
-# Local stack: PostgreSQL + sard-server. Secrets come from deploy/.env
-# (copy deploy/.env.example); make up does that on first run.
+# PostgreSQL + sard-server from the published image. Settings and secrets come
+# from deploy/.env (copy deploy/.env.example). Local development builds the
+# image from source instead: make up adds deploy/docker-compose.build.yml.
+#
+# The project name fixes the volume names (sard_postgres-data, sard_sard-pki):
+# renaming it leaves the existing data behind.
 name: sard
 
 services:
   postgres:
-    image: postgres:18-alpine
+    image: ${SARD_POSTGRES_IMAGE:-postgres:18-alpine}
+    restart: unless-stopped
     environment:
       POSTGRES_DB: sard
       POSTGRES_USER: sard
-      POSTGRES_PASSWORD: ${SARD_DB_PASSWORD:?set SARD_DB_PASSWORD in deploy/.env}
+      POSTGRES_PASSWORD: ${SARD_DB_PASSWORD:?set SARD_DB_PASSWORD in .env}
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
@@ -21,21 +26,16 @@ services:
       retries: 30
 
   server:
-    image: sard-server:dev
-    build:
-      context: ..
-      dockerfile: deploy/server/Dockerfile
-      args:
-        # The agent packages in dist/ must be of this version (make up passes it).
-        SARD_VERSION: ${SARD_VERSION:-dev}
+    image: ${SARD_IMAGE:-ghcr.io/artur-abalov/sard-server}:${SARD_VERSION:?set SARD_VERSION in .env}
+    restart: unless-stopped
     environment:
       SARD_DB_URL: jdbc:postgresql://postgres:5432/sard
       SARD_DB_USER: sard
-      SARD_DB_PASSWORD: ${SARD_DB_PASSWORD:?set SARD_DB_PASSWORD in deploy/.env}
+      SARD_DB_PASSWORD: ${SARD_DB_PASSWORD:?set SARD_DB_PASSWORD in .env}
       SARD_PKI_SERVER_NAMES: ${SARD_PKI_SERVER_NAMES:-localhost,127.0.0.1,::1}
-      # The single administrator's password (ADR 0020); at least 12 Unicode code points,
+      # The single administrator's password (ADR 0021); at least 12 Unicode code points,
       # or the server refuses to start. make up generates one on the first run.
-      SARD_ADMIN_PASSWORD: ${SARD_ADMIN_PASSWORD:?set SARD_ADMIN_PASSWORD in deploy/.env}
+      SARD_ADMIN_PASSWORD: ${SARD_ADMIN_PASSWORD:?set SARD_ADMIN_PASSWORD in .env}
       # Address agents dial (decision 5, S2b); unset means the first of the names above and the gRPC port.
       SARD_AGENT_ENDPOINT: ${SARD_AGENT_ENDPOINT:-}
       # Telegram notifications (S9a); both empty means notifications are off, with a warning.
@@ -52,14 +52,18 @@ services:
       # The CA key: its own volume, backed up apart from postgres-data (docs/operations/pki.md).
       - sard-pki:/var/lib/sard/pki
     ports:
-      - "8080:8080"
-      - "9090:9090"
+      # REST API and console sessions. Plain HTTP, so by default only on the
+      # host's loopback; SARD_HTTP_PUBLISH widens it.
+      - "${SARD_HTTP_PUBLISH:-127.0.0.1:8080}:8080"
+      # Agents: gRPC with mutual TLS. Publish it as is; a proxy that terminates
+      # TLS here breaks the agents' client certificates.
+      - "${SARD_GRPC_PUBLISH:-9090}:9090"
     depends_on:
       postgres:
         condition: service_healthy
+    # The image's HEALTHCHECK with a shorter interval, so `up --wait` returns
+    # soon after the server is ready.
     healthcheck:
-      # The JRE image has bash but no curl.
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /actuator/health HTTP/1.0\r\n\r\n' >&3 && grep -q UP <&3"]
       interval: 3s
       timeout: 3s
       retries: 40

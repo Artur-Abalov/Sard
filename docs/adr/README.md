@@ -39,3 +39,5 @@
 | [0035](0035-console-design-system.md) | Дизайн-система консоли: токены в `theme.ts`, шрифты, статусы этапа 1 |
 | [0036](0036-e2e-stand-plugin-build-tag.md) | Плагин стенда e2e (`e2e-slow`) за тегом сборки; CA и база стенда в томах (T3s) |
 | [0037](0037-agent-install-from-server.md) | Установка агента с сервера: адрес раздачи, версии, ключ релизов (U1b) |
+| [0039](0039-server-image-release.md) | Образ сервера и релиз: GHCR, amd64 и arm64, офлайн-архив |
+| [0040](0040-console-served-by-server.md) | Консоль отдаёт sard-server и она входит в образ: jar, SPA-fallback, кэш, CSP, версия |

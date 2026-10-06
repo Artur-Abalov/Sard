@@ -165,10 +165,12 @@ PR [Artur-Abalov/Sard#15](https://github.com/Artur-Abalov/Sard/pull/15) (фаз�
 - `server/build.gradle.kts`: задача `buildTestAgent` (`go build -ldflags "-X main.version=seam-test" ./agent/cmd/sard-agent` в `build/test-agent/`), входы — исходники `agent/`, `proto/gen/go`, `go.work`; `test` от неё зависит и получает путь в `sard.test.agent-binary`. Агент собирается **один раз на сборку** для всех тестов, повторно — только при изменении исходников (решение 4). Go нужен на PATH; в CI у job `server` уже есть `setup-go`.
 - `agents/AgentSeamIntegrationTest`: тест выпускает агенту сертификат через Enroll, пишет CA, сертификат, ключ и YAML-конфиг во временный каталог, запускает настоящий `sard-agent` и ждёт `last_register_at`. Проверяются hostname (как `/proc/sys/kernel/hostname`), версия `seam-test`, `linux`/GOARCH, протокол 1, секрет `pg-prod`, скрипт `pre-dump`, четыре встроенных плагина (`files`, `mysql`, `network`, `postgresql`; версия агента; `backup,restore,verify`; схема — JSON-объект; `tenant_id` агента) и репозиторий `main`/`local` с пустым id (restic намеренно отсутствует — агент объявляет репозиторий без id, `app.go:82-86`).
 - Проверка, что шов настоящий (временная правка, откачена): `ProtocolVersions.SUPPORTED = 2..2` → тест падает с выводом агента:
-  ```
+
+  ```text
   sard-agent seam-test: connecting to localhost:37427
   sard-agent: register: server does not support this agent's protocol version: rpc error: code = FailedPrecondition desc = register rejected
   ```
+
   Агент (A3) на FAILED_PRECONDITION останавливается без повторов — как и ожидалось.
 - ADR 0013: фактическая схема (`agent_plugins.config_schema JSONB` вместо `plugin_schemas`), колонки Register, как Register получает тенант и блокирует агента; в «Отвергнуто» — глобальная `plugin_schemas` по хешу; в «Отложено» — общий `repository_id` у разных тенантов.
 - Черновик модели ошибок: таблица причин Register с кодами и ключами metadata, правило «metadata называет поле и предел, не значение», расхождение A3 с правилом повтора, `HOSTNAME_INVALID` с управляющими символами.
