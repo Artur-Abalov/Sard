@@ -75,6 +75,13 @@ jobs:
         run: |
           sudo apt-get install -y rpm
           make package
+      # The release signature refuses forgeries (docs/adr/00XX-draft-agent-release.md);
+      # a throwaway key, the real one is used by release.yml only.
+      - name: Release signature checks
+        if: matrix.module == 'agent'
+        run: |
+          sudo apt-get install -y minisign
+          scripts/test-release-signing.sh dist "$(sed -n 's/^  "version": "\(.*\)",$/\1/p' dist/manifest.json)"
       - uses: actions/upload-artifact@v7
         if: matrix.module == 'agent'
         with:
@@ -83,6 +90,7 @@ jobs:
             dist/*.tar.gz
             dist/*.deb
             dist/*.rpm
+            dist/manifest.json
             dist/SHA256SUMS
 
   server:
@@ -136,16 +144,25 @@ jobs:
   image:
     # The release build (release.yml) without the push: both architectures,
     # so a Dockerfile change that breaks arm64 fails here, not on a tag.
-    # The same Dockerfile builds the console (its "web" stage) into the jar (ADR 0037):
+    # The same Dockerfile builds the console (its "web" stage) into the jar (ADR 0038):
     # no separate web step is needed here.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: tools/go.mod
+          cache-dependency-path: "**/go.sum"
+      # The image carries the agent packages of its own version (docs/adr/00XX-draft-agent-release.md).
+      - name: Agent packages
+        run: make package VERSION=ci
+      - name: The image refuses agent packages of another version or not matching SHA256SUMS
+        run: scripts/test-image-packages.sh ci
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Build sard-server image for amd64 and arm64
         run: >-
-          docker buildx build --platform linux/amd64,linux/arm64
+          docker buildx build --platform linux/amd64,linux/arm64 --build-arg SARD_VERSION=ci
           -f deploy/server/Dockerfile -t sard-server:ci .
       # The template leaves the administrator password empty on purpose.
       - name: Compose files resolve with the env template
@@ -153,7 +170,7 @@ jobs:
           SARD_ADMIN_PASSWORD: compose-config-check
         run: |
           docker compose -f deploy/docker-compose.yml --env-file deploy/.env.example config --quiet
-          env SARD_VERSION=dev docker compose -f deploy/docker-compose.yml \
+          env SARD_VERSION=ci docker compose -f deploy/docker-compose.yml \
             -f deploy/docker-compose.build.yml --env-file deploy/.env.example config --quiet
 
   e2e:

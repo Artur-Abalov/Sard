@@ -1,153 +1,328 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright 2026 Artur Abalov
 #
-# Release of a version tag (v0.0.1, v0.0.1-rc.1):
-#   1. image     sard-server for linux/amd64 and linux/arm64 -> ghcr.io
-#   2. offline   docker save of sard-server + PostgreSQL per architecture
-#   3. release   GitHub Release: offline archives, compose file, env template,
-#                SHA256SUMS (a tag with "-" is a pre-release)
-#   4. verify    on clean runners of both architectures: the README quickstart
-#                against the published image, and the offline archive with
-#                no registry pulls; scripts/smoke-server.sh checks both, console
-#                page and its version included (ADR 0037).
-name: Release
+# Release for a tag vX.Y.Z or a pre-release vX.Y.Z-<pre> such as v0.0.1-rc.1
+# (docs/adr/00XX-draft-agent-release.md, ADR 0037):
+#
+#   build ×2 ─┬─ reproduce  (two independent builds, same SHA256SUMS; tamper tests)
+#             └─ install    (deb on Debian/Ubuntu with systemd: install, enroll, upgrade)
+#                   └─ sign     (environment "release": the only job that sees the key)
+#                         ├─ publish  (GitHub release with the signed files; "-" makes it a pre-release)
+#                         └─ image    (sard-server for amd64 and arm64 with the signed packages
+#                               │      and the console, GHCR)
+#                               └─ offline ×2 (docker save of sard-server + PostgreSQL per arch)
+#                                     └─ server-assets (offline archives, compose file, env
+#                                           │           template, SHA256SUMS.server → the release)
+#                                           ├─ verify-quickstart ×2 (README quickstart, clean runner)
+#                                           └─ verify-offline ×2    (archive, --pull never)
+#
+# The signed SHA256SUMS covers the agent packages only; the server assets have
+# their own SHA256SUMS.server. The image carries the signed packages, and the
+# server serves them (docs/release.md).
+# Trust: the minisign key is a secret of the "release" environment, which only
+# v* tags may use and which waits for the owner's approval. Pull requests
+# (from forks too) never run this workflow; no job uses pull_request_target.
+# Every third-party action is pinned to a commit; the signing job runs only
+# minisign from the runner's apt and scripts/release-sign.sh of the tagged
+# commit. Anyone who can push a v* tag or change main can change what is
+# signed: both are restricted to the owner (docs/release.md).
+name: release
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-*"]
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 env:
-  IMAGE: ghcr.io/artur-abalov/sard-server
+  VERSION: ${{ github.ref_name }}
 
 jobs:
+  build:
+    name: build ${{ matrix.build }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        build: [a, b]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/go.mod
+          cache: false
+      - name: rpm and gpg
+        run: sudo apt-get update && sudo apt-get install -y rpm gnupg
+      # restic's release key, accepted only if it has the fingerprint pinned in
+      # agent/internal/restic/restic-version (ADR 0017): fetch-restic.sh checks the signer.
+      - name: restic signing key
+        run: |
+          fpr="$(sed -n 's/^signing_key_fingerprint=//p' agent/internal/restic/restic-version)"
+          curl -fsSL "https://keys.openpgp.org/vks/v1/by-fingerprint/$fpr" -o "$RUNNER_TEMP/restic.asc"
+      - name: package
+        env:
+          REQUIRE_RPM: "1"
+          REQUIRE_SIGNATURE: "1"
+          RESTIC_SIGNING_KEY: ${{ runner.temp }}/restic.asc
+        run: make package VERSION="$VERSION"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-${{ matrix.build }}
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/manifest.json
+            dist/SHA256SUMS
+          if-no-files-found: error
+
+  reproduce:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: dist-*
+          path: builds
+      - name: two builds, one SHA256SUMS
+        run: diff builds/dist-a/SHA256SUMS builds/dist-b/SHA256SUMS
+      - name: minisign
+        run: sudo apt-get update && sudo apt-get install -y minisign
+      - name: forgeries are refused (throwaway key)
+        run: scripts/test-release-signing.sh builds/dist-a "$VERSION"
+
+  install:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: ["debian:12", "debian:13", "ubuntu:22.04", "ubuntu:24.04"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/go.mod
+          cache: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: dist-a
+          path: dist-new
+      # The version upgraded from: the same commit as an older package
+      # (0.0.0~dev… sorts below any release), so the upgrade path is this
+      # release's own install and remove scripts.
+      - name: package to upgrade from
+        run: DIST="$PWD/dist-old" make package VERSION=upgrade-base
+      - name: server image
+        run: |
+          docker build --build-arg SARD_VERSION="$VERSION" --build-arg AGENT_PACKAGES=dist-new \
+            -f deploy/server/Dockerfile -t sard-server:e2e .
+      - name: install, enroll, upgrade
+        run: OLD_DIST=dist-old NEW_DIST=dist-new scripts/test-agent-install.sh "${{ matrix.distro }}"
+
+  sign:
+    needs: [reproduce, install]
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: dist-a
+          path: dist
+      - name: minisign
+        run: sudo apt-get update && sudo apt-get install -y minisign
+      - name: sign SHA256SUMS
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: scripts/release-sign.sh dist "$VERSION"
+      - name: verify with the published key
+        run: scripts/release-verify.sh dist "$VERSION" deploy/release/sard-release.pub
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: sign
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release
+          path: dist
+      - name: minisign
+        run: sudo apt-get update && sudo apt-get install -y minisign
+      - name: verify again
+        run: scripts/release-verify.sh dist "$VERSION" deploy/release/sard-release.pub
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=()
+          [[ "$VERSION" == *-* ]] && prerelease=(--prerelease)
+          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$VERSION" "${prerelease[@]}" \
+            --notes "Signed with the Sard release key (deploy/release/sard-release.pub, docs/release.md). Verify: minisign -Vm SHA256SUMS -p sard-release.pub && sha256sum -c SHA256SUMS" \
+            dist/*
+
   image:
-    runs-on: ubuntu-latest
+    needs: sign
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
-    outputs:
-      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
-      - id: version
-        name: Version from the tag
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release
+          path: dist
+      - name: minisign
+        run: sudo apt-get update && sudo apt-get install -y minisign
+      - name: verify again
+        run: scripts/release-verify.sh dist "$VERSION" deploy/release/sard-release.pub
+      # vX.Y.Z-pre and X.Y.Z-pre always; X.Y and latest only for a release.
+      - name: image tags
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] \
-            || { echo "tag $GITHUB_REF_NAME is not vX.Y.Z[-pre]" >&2; exit 1; }
-          echo "version=$version" >>"$GITHUB_OUTPUT"
-      # The runtime stage runs useradd for arm64; the jar is built natively (console included:
-      # the Dockerfile's "web" stage runs on the builder's platform too).
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sard-server"
+          plain="${VERSION#v}"
+          tags="$image:$VERSION,$image:$plain"
+          if [[ "$VERSION" != *-* ]]; then tags="$tags,$image:${plain%.*},$image:latest"; fi
+          { echo "IMAGE=$image"; echo "TAGS=$tags"; } >>"$GITHUB_ENV"
+      # The runtime stage runs useradd for arm64; the jar, the console and the
+      # package check run once, natively (deploy/server/Dockerfile).
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      # X.Y.Z always; X.Y and latest only for a release, never a pre-release.
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE }}
-          flavor: latest=false
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(github.ref_name, '-') }}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
-      - uses: docker/build-push-action@v6
+          password: ${{ github.token }}
+      # The server hands out exactly these signed files (deploy/server/Dockerfile).
+      - name: build and push sard-server for amd64 and arm64
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: deploy/server/Dockerfile
           platforms: linux/amd64,linux/arm64
-          build-args: SARD_VERSION=${{ steps.version.outputs.version }}
+          build-args: SARD_VERSION=${{ env.VERSION }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=sard-server-release
-          cache-to: type=gha,scope=sard-server-release,mode=max
+          tags: ${{ env.TAGS }}
+      - name: the published image carries the signed packages, on both architectures
+        run: |
+          for platform in linux/amd64 linux/arm64; do
+            docker run --rm --platform "$platform" --entrypoint test "$IMAGE:$VERSION" \
+              -f /usr/share/sard/agent-packages/SHA256SUMS.minisig
+          done
 
   offline:
     needs: image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     strategy:
       matrix:
         arch: [amd64, arm64]
     steps:
-      - uses: actions/checkout@v7
-      - run: scripts/offline-archive.sh "${{ needs.image.outputs.version }}" "${{ matrix.arch }}" dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: scripts/offline-archive.sh "${VERSION#v}" "${{ matrix.arch }}" offline
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: offline-${{ matrix.arch }}
-          path: dist/
+          path: offline/
           if-no-files-found: error
 
-  release:
-    needs: [image, offline]
-    runs-on: ubuntu-latest
+  server-assets:
+    needs: [publish, offline]
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: offline-*
-          path: dist
+          path: assets
           merge-multiple: true
-      - name: Compose file and env template of this version
+      - name: compose file, env template of this version, checksums
         run: |
-          cp deploy/docker-compose.yml dist/docker-compose.yml
-          sed "s/^SARD_VERSION=.*/SARD_VERSION=${{ needs.image.outputs.version }}/" \
-            deploy/.env.example >dist/sard.env.example
-          grep -qx "SARD_VERSION=${{ needs.image.outputs.version }}" dist/sard.env.example
-          (cd dist && sha256sum -- * >SHA256SUMS && cat SHA256SUMS)
-      - name: GitHub Release
+          cp deploy/docker-compose.yml assets/docker-compose.yml
+          sed "s/^SARD_VERSION=.*/SARD_VERSION=${VERSION#v}/" deploy/.env.example >assets/sard.env.example
+          grep -qx "SARD_VERSION=${VERSION#v}" assets/sard.env.example
+          (cd assets && sha256sum -- * >SHA256SUMS.server && cat SHA256SUMS.server)
+      - name: attach to the release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          prerelease=()
-          [[ "$GITHUB_REF_NAME" == *-* ]] && prerelease=(--prerelease)
-          gh release create "$GITHUB_REF_NAME" dist/* "${prerelease[@]}" \
-            --verify-tag --generate-notes --title "Sard $GITHUB_REF_NAME"
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$VERSION" --repo "$GITHUB_REPOSITORY" assets/*
 
   verify-quickstart:
     # The README quickstart, run verbatim (only SARD_TAG is set to this tag)
     # on a clean runner with Docker, anonymously against the public registry.
-    needs: [image, release]
+    needs: server-assets
     strategy:
       fail-fast: false
       matrix:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Extract the quickstart from README.md
         run: |
           awk '/<!-- quickstart:begin -->/{f=1; next} /<!-- quickstart:end -->/{f=0} f' README.md \
             | awk '/^```bash$/{f=1; next} /^```$/{f=0} f' \
-            | sed "s/^SARD_TAG=.*/SARD_TAG=$GITHUB_REF_NAME/" >"$RUNNER_TEMP/quickstart.sh"
-          grep -q "^SARD_TAG=$GITHUB_REF_NAME$" "$RUNNER_TEMP/quickstart.sh"
+            | sed "s/^SARD_TAG=.*/SARD_TAG=$VERSION/" >"$RUNNER_TEMP/quickstart.sh"
+          grep -q "^SARD_TAG=$VERSION$" "$RUNNER_TEMP/quickstart.sh"
           cat "$RUNNER_TEMP/quickstart.sh"
       - name: Run the quickstart
         run: |
           start=$(date +%s)
           bash -euo pipefail "$RUNNER_TEMP/quickstart.sh"
           echo "quickstart took $(( $(date +%s) - start ))s" | tee -a "$GITHUB_STEP_SUMMARY"
-      - run: scripts/smoke-server.sh ~/sard/.env "${{ needs.image.outputs.version }}"
+      - run: scripts/smoke-server.sh ~/sard/.env "$VERSION"
       - if: failure()
         run: cd ~/sard && docker compose logs --no-color
 
   verify-offline:
     # The offline archive from the release: checksums, docker load, start
     # with --pull never, so not a single image comes from a registry.
-    needs: [image, release]
+    needs: server-assets
     strategy:
       fail-fast: false
       matrix:
@@ -155,22 +330,25 @@ jobs:
           - { runner: ubuntu-24.04, arch: amd64 }
           - { runner: ubuntu-24.04-arm, arch: arm64 }
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      VERSION: ${{ needs.image.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Download the release assets
         run: |
           mkdir -p "$RUNNER_TEMP/offline" && cd "$RUNNER_TEMP/offline"
-          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-            --pattern "sard-$VERSION-images-linux-${{ matrix.arch }}.tar.gz" \
-            --pattern docker-compose.yml --pattern sard.env.example --pattern SHA256SUMS
-          sha256sum --check --ignore-missing SHA256SUMS
+          gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" \
+            --pattern "sard-${VERSION#v}-images-linux-${{ matrix.arch }}.tar.gz" \
+            --pattern docker-compose.yml --pattern sard.env.example --pattern SHA256SUMS.server
+          sha256sum --check --ignore-missing SHA256SUMS.server
       - name: Load and start without a registry
         working-directory: ${{ runner.temp }}/offline
         run: |
-          gunzip -c "sard-$VERSION-images-linux-${{ matrix.arch }}.tar.gz" | docker load
+          gunzip -c "sard-${VERSION#v}-images-linux-${{ matrix.arch }}.tar.gz" | docker load
           cp sard.env.example .env
           sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" \
                  -e "s/^SARD_ADMIN_PASSWORD=.*/SARD_ADMIN_PASSWORD=$(openssl rand -hex 16)/" .env

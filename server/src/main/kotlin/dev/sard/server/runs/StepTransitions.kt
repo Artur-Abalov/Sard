@@ -17,20 +17,24 @@ private const val ACTIVE =
     "from RunStepRecord where agentId = :agent and status in ('queued', 'dispatched', 'running') order by queuedAt, id"
 
 // Native SQL names tenant_id explicitly (ADR 0013, rule 8); every WHERE names the status it expects.
+// A step the agent touches, or that is sent, has no lost deadline (FXs): only LOSE leaves it set.
 private const val STEP = "where tenant_id = :tenant and id = :step"
-private const val CLAIM = "update run_steps set status = 'dispatched', dispatched_at = :now $STEP and status = 'queued'"
-private const val SET_QUEUED = "set status = 'queued', dispatched_at = null"
+private const val NO_DEADLINE = "lost_deadline = null"
+private const val CLAIM =
+    "update run_steps set status = 'dispatched', dispatched_at = :now, $NO_DEADLINE $STEP and status = 'queued'"
+private const val SET_QUEUED = "set status = 'queued', dispatched_at = null, $NO_DEADLINE"
 private const val RELEASE = "update run_steps $SET_QUEUED $STEP and status = 'dispatched'"
 private const val REDISPATCH =
-    "update run_steps set dispatched_at = :now $STEP and status = 'dispatched' and dispatched_at < :before"
+    "update run_steps set dispatched_at = :now, $NO_DEADLINE $STEP and status = 'dispatched' and dispatched_at < :before"
 private const val ACCEPT =
-    "update run_steps set status = 'running', phase = :phase, started_at = :now $STEP and status = 'dispatched'"
+    "update run_steps set status = 'running', phase = :phase, started_at = :now, $NO_DEADLINE " +
+        "$STEP and status = 'dispatched'"
 private const val MESSAGE = "message = cast(:message as text), finished_at = :now"
 private const val CLOSE = "update run_steps set status = :status, $MESSAGE $STEP"
 private const val FINISH =
-    "update run_steps set status = :status, $MESSAGE, output = cast(:output as jsonb) $STEP " +
+    "update run_steps set status = :status, $MESSAGE, output = cast(:output as jsonb), $NO_DEADLINE $STEP " +
         "and status in ('dispatched', 'running')"
-private const val LOSE = "$CLOSE and status = 'running'"
+private const val LOSE = "$CLOSE and status in ('dispatched', 'running') and lost_deadline <= :now"
 
 private const val OF_STEP = "where tenant_id = :tenant and id = (select run_id from run_steps $STEP)"
 private const val RUN_STATUS = "update runs set status = :run $OF_STEP"
@@ -75,7 +79,7 @@ interface DispatchLedger {
         sentBefore: Instant,
     ): Boolean
 
-    /** running → lost: the agent did not list it in Hello and no result came within the window. */
+    /** dispatched or running → lost: its lost deadline has come and the agent did not report it (FXs). */
     fun lost(
         tenantId: UUID,
         stepId: UUID,

@@ -20,8 +20,9 @@ GRADLE := $(BUILD_LOCK) env LC_ALL=C.UTF-8 ./gradlew --no-daemon -q
 # Git ref the proto contract must stay compatible with (buf breaking).
 PROTO_BASE ?= origin/main
 # Local stack: the server image is built from this checkout
-# (docker-compose.build.yml), so the release version in deploy/.env is unused.
-COMPOSE := env SARD_VERSION=dev docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file deploy/.env
+# (docker-compose.build.yml) with the agent packages of dist/, so its version is
+# this checkout's VERSION, not the release version in deploy/.env.
+COMPOSE := env SARD_VERSION=$(VERSION) docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file deploy/.env
 # End-to-end tests (test/e2e): images built from the current code.
 E2E_ARCH ?= $(shell go env GOARCH)
 E2E_BUILD := $(CURDIR)/test/e2e/build
@@ -40,14 +41,14 @@ GO_TOOLS := \
 	github.com/goreleaser/nfpm/v2/cmd/nfpm \
 	./cmd/crap
 
-.PHONY: tools gate gate-fast proto build build-agent build-cli package e2e e2e-images test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check up down openapi
+.PHONY: tools gate gate-fast proto build build-agent build-cli package image e2e e2e-images test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check up down openapi
 
 ## proto: generate Go code from proto/ into proto/gen/go (committed)
 proto: tools
 	cd proto && $(BIN)/buf generate
 	cd proto/gen/go && go mod tidy
 
-## build: build every part; the console (web/dist) goes into the server jar (S10, ADR 0037)
+## build: build every part; the console (web/dist) goes into the server jar (S10, ADR 0038)
 build: build-agent build-cli
 	$(MAKE) web-deps
 	cd web && SARD_VERSION=$(VERSION) npm run build
@@ -60,11 +61,15 @@ build-agent:
 package: tools
 	VERSION=$(VERSION) ./scripts/package-agent.sh
 
+## image: sard-server image of the current code with its agent packages (make package first)
+image: package
+	docker build --build-arg SARD_VERSION=$(VERSION) -f deploy/server/Dockerfile -t sard-server:dev .
+
 ## e2e-images: sard-server and sard-agent images of the current code for the e2e tests
 e2e-images: tools
+	GO_TAGS=e2e DIST=$(E2E_BUILD)/dist VERSION=$(VERSION) ./scripts/package-agent.sh $(E2E_ARCH)
 	docker buildx build --load $(E2E_SERVER_BUILD_FLAGS) --build-arg SARD_VERSION=$(VERSION) \
-		-f deploy/server/Dockerfile -t $(E2E_SERVER_IMAGE) .
-	DIST=$(E2E_BUILD)/dist VERSION=$(VERSION) ./scripts/package-agent.sh $(E2E_ARCH)
+		--build-arg AGENT_PACKAGES=test/e2e/build/dist -f deploy/server/Dockerfile -t $(E2E_SERVER_IMAGE) .
 	rm -rf $(E2E_BUILD)/agent-image && mkdir -p $(E2E_BUILD)/agent-image/empty
 	tar -xzf $(E2E_BUILD)/dist/sard-agent_$(VERSION)_linux_$(E2E_ARCH).tar.gz --strip-components=1 \
 		-C $(E2E_BUILD)/agent-image
@@ -105,8 +110,8 @@ openapi:
 	$(MAKE) web-deps
 	cd web && npm run gen:api
 
-## up: start PostgreSQL + sard-server (builds the image on first run)
-up:
+## up: start PostgreSQL + sard-server (builds the image, with the agent packages of dist/, on first run)
+up: package
 	./scripts/ensure-admin-password.sh
 	$(COMPOSE) up -d --wait
 

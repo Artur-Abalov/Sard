@@ -130,6 +130,11 @@ class StepResultsIntegrationTest(
 
     private fun json(value: Any?) = value?.let { JSON.readTree(it.toString()) }
 
+    /** The step's lost deadline has come (FXs: set by StepDeadlines when its agent went away). */
+    private fun due(step: UUID) {
+        jdbc.update("update run_steps set lost_deadline = ? where id = ?", Timestamp.from(clock.now), step)
+    }
+
     @Test
     fun `a succeeded backup closes the step and the run and records its snapshot`() {
         val (run, step) = running()
@@ -305,6 +310,7 @@ class StepResultsIntegrationTest(
     @Test
     fun `the lost window publishes RunFinished for the failed run`() {
         val (run, step) = running()
+        due(step)
 
         assertTrue(steps.lost(tenant.id, step))
 
@@ -316,6 +322,7 @@ class StepResultsIntegrationTest(
     @Test
     fun `a late result keeps the step lost and records its output and snapshot once`() {
         val (run, step) = running()
+        due(step)
         steps.lost(tenant.id, step)
         val runBefore = row("runs", run.id)
 
@@ -333,6 +340,7 @@ class StepResultsIntegrationTest(
     @Test
     fun `a late invalid or failed result keeps nothing`() {
         val (_, step) = running()
+        due(step)
         steps.lost(tenant.id, step)
 
         assertEquals(Recorded.Late(kept = false), record(step, StepReport(StepState.SUCCEEDED, null, null)))
@@ -351,6 +359,7 @@ class StepResultsIntegrationTest(
             val step = run.steps.single().id
             steps.claim(tenant.id, step)
             steps.accepted(tenant.id, step, "accepted")
+            due(step)
             val pool = Executors.newFixedThreadPool(2)
             val start = CountDownLatch(1)
             try {

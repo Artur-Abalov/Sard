@@ -89,7 +89,7 @@ tasks.bootJar {
     archiveFileName = "sard-server.jar"
 }
 
-// The console (S10, ADR 0037): the jar carries web/dist under console/ only when -PsardConsoleDist=<dir>
+// The console (S10, ADR 0038): the jar carries web/dist under console/ only when -PsardConsoleDist=<dir>
 // names a finished build (make build and the image's Dockerfile do); without it the jar has no console
 // and needs no Node. A directory without index.html fails the build, naming the property and the directory.
 val consoleDist = providers.gradleProperty("sardConsoleDist")
@@ -155,6 +155,8 @@ tasks.test {
     // A default so every test that boots the full context, not just the session ones,
     // does not need its own SARD_ADMIN_PASSWORD; session tests override it per class.
     environment("SARD_ADMIN_PASSWORD", "test-admin-password-2026")
+    // No agent release next to the test server; AgentDownloadsIntegrationTest switches downloads on.
+    environment("SARD_AGENT_DOWNLOADS", "false")
     finalizedBy(tasks.jacocoTestReport)
 }
 

@@ -65,7 +65,10 @@ class NotificationsWithoutBotIntegrationTest(
 
         repeat(3) { service.tick() }
 
-        assertTrue("Notifications are off: no channel" in output.all, "the startup warning is logged")
+        val off = "Notifications are off: no channel (SARD_TELEGRAM_BOT_TOKEN, SARD_TELEGRAM_CHAT_ID)"
+        assertEquals(1, output.all.lines().count { off in it }, "the startup warning is logged once")
+        val problems = output.all.lines().filter { (" WARN " in it || " ERROR " in it) && ".server.notify." in it }
+        assertEquals(1, problems.size, "no other warning or error of the notification code: $problems")
         val total = jdbc.queryForObject("select count(*) from notification_deliveries", Int::class.java)
         assertEquals(0, total)
         assertEquals(0.0, meters.get("sard.notify.pending").gauge().value())

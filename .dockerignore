@@ -1,22 +1,21 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright 2026 Artur Abalov
 #
-# Build context of deploy/server/Dockerfile is the repository root: send only
-# what its COPY lines read, so node_modules, .git and build output stay out
-# (web/ is the console's source; its node_modules and dist are rebuilt in the image).
-*
-!gradlew
-!settings.gradle.kts
-!build.gradle.kts
-!gradle.properties
-!gradle/
-!proto/sard/
-!proto/jvm/
-!server/
-!web/
-web/node_modules/
+# Build context of deploy/server/Dockerfile is the repository root. Kept out:
+# history, dependencies and build output that the image rebuilds itself
+# (web/node_modules and web/dist are rebuilt in the "web" stage, the jar in
+# "build"). Agent packages stay in: AGENT_PACKAGES points at dist/, dist-new/,
+# test/e2e/build/dist or a directory under test/packages/build.
+.git/
+.bin/
+.gradle/
+.kotlin/
+**/node_modules/
 web/dist/
-!agent/plugins/files/schema.json
-**/build/
-**/.gradle/
-**/.kotlin/
+build/
+server/build/
+proto/jvm/build/
+test/e2e/build/*
+!test/e2e/build/dist/
+agent/bin/
+cli/bin/

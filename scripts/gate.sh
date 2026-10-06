@@ -67,7 +67,7 @@ gate_go() {
   awk -v t="$total" -v min="$COVERAGE_MIN" 'BEGIN { exit !(t >= min) }' || die "$m: coverage ${total}% < ${COVERAGE_MIN}%"
   say "$m" "CRAP <= $CRAP_MAX"
   "$BIN/crap" -go-profile "$profile" -go-src "$dir" -threshold "$CRAP_MAX" || die "$m: CRAP"
-  [ "$m" = agent ] && gate_agent_integration
+  [ "$m" = agent ] && gate_agent_integration && gate_agent_stand
   [ "$mode" = fast ] && return 0
   say "$m" "mutation score >= $MUTATION_MIN"
   local log score
@@ -91,6 +91,16 @@ gate_agent_integration() {
   (cd "$dir" && go vet -tags integration "${AGENT_INTEGRATION_PKGS[@]}") || die "agent: go vet (integration)"
   (cd "$dir" && "$BIN/golangci-lint" run --build-tags integration --config "$ROOT/.golangci.yml" "${AGENT_INTEGRATION_PKGS[@]}") || die "agent: golangci-lint (integration)"
   (cd "$dir" && go test -count=1 -race -tags integration "${AGENT_INTEGRATION_PKGS[@]}") || die "agent: integration tests"
+}
+
+# The e2e stand's agent build (tag e2e, make e2e-images) adds its plugins to
+# the registry (agent/plugins/stand_e2e.go); a release build never does.
+gate_agent_stand() {
+  local dir="$ROOT/agent"
+  say agent "e2e stand build (tag e2e)"
+  (cd "$dir" && go vet -tags e2e ./plugins/...) || die "agent: go vet (e2e)"
+  (cd "$dir" && "$BIN/golangci-lint" run --build-tags e2e --config "$ROOT/.golangci.yml" ./plugins/...) || die "agent: golangci-lint (e2e)"
+  (cd "$dir" && go test -count=1 -tags e2e ./plugins/...) || die "agent: tests (e2e)"
 }
 
 gate_gen() {

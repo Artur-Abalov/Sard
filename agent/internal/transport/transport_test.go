@@ -6,6 +6,7 @@ package transport_test
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -44,6 +45,7 @@ type rig struct {
 	clock    *fakeClock
 	commands *commands
 	state    *state
+	logs     *recorder
 	tr       *transport.Transport
 }
 
@@ -57,7 +59,7 @@ func newRig(t *testing.T) *rig {
 // server's certificate comes from serverCA.
 func newRigWith(t *testing.T, ca, serverCA *authority) *rig {
 	t.Helper()
-	r := &rig{ca: ca, server: startServer(t, ca, serverCA), clock: newClock(), commands: newCommands(), state: &state{}}
+	r := &rig{ca: ca, server: startServer(t, ca, serverCA), clock: newClock(), commands: newCommands(), state: &state{}, logs: &recorder{}}
 	r.commands.state = r.state
 	tr, err := transport.New(transport.Options{
 		Address: r.server.addr,
@@ -70,6 +72,7 @@ func newRigWith(t *testing.T, ca, serverCA *authority) *rig {
 		Clock:    r.clock,
 		Rand:     func() float64 { return 1 }, // the backoff's upper bound
 		LogQueue: 4,
+		Logger:   slog.New(r.logs),
 	})
 	if err != nil {
 		t.Fatal(err)

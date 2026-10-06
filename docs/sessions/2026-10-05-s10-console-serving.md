@@ -1,7 +1,7 @@
 # Сессия 2026-10-05: S10 — сервер отдаёт консоль, консоль в образе
 
 Ветка `claude/determined-volta-pg43zw`. Спецификация `docs/specs/server/console-serving.feature`,
-QA `docs/qa/console-serving.md`, решение — [ADR 0037](../adr/0037-console-served-by-server.md).
+QA `docs/qa/console-serving.md`, решение — [ADR 0038](../adr/0038-console-served-by-server.md).
 
 ## Решения владельца (2026-10-05)
 

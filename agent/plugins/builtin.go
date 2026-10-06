@@ -14,14 +14,15 @@ import (
 )
 
 // Builtin returns the plugins compiled into the agent; they share the
-// agent's version.
+// agent's version. A build with the "e2e" tag adds the e2e stand's plugins
+// (stand_e2e.go); a release build has none (stand.go).
 func Builtin(agentVersion string) []sdk.Plugin {
-	return []sdk.Plugin{
+	return append([]sdk.Plugin{
 		postgresql.Plugin{AgentVersion: agentVersion},
 		mysql.Plugin{AgentVersion: agentVersion},
 		files.Plugin{AgentVersion: agentVersion},
 		network.Plugin{AgentVersion: agentVersion},
-	}
+	}, stand(agentVersion)...)
 }
 
 // Registry returns a registry of the built-in plugins. It panics on a

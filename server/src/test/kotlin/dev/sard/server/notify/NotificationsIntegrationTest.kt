@@ -32,6 +32,7 @@ import org.springframework.boot.test.system.CapturedOutput
 import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
+import org.springframework.context.annotation.Primary
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -56,10 +57,11 @@ private val JSON = JsonMapper.builder().build()
 private val LEASE: Duration = Duration.ofMinutes(5)
 private const val BY_RUN = "select * from notification_deliveries where run_id = ?"
 
-/** Says what the run is, so a test can tell messages apart. */
+/** Says what the run is, so a test can tell messages apart; it takes the place of the real formatter. */
 @TestConfiguration(proxyBeanMethods = false)
 class NotifyTestConfiguration {
     @Bean
+    @Primary
     fun formatter() =
         NotificationFormatter { notice ->
             if (notice.sourceName.startsWith("quiet")) {
@@ -369,7 +371,7 @@ class NotificationsIntegrationTest(
         val restarted =
             NotificationService(
                 Deliveries(sessions, UuidV7(clock, SecureRandom())),
-                listOf(RecordingChannel()),
+                listOf(CapturingChannel()),
                 { Message(Message.Text("after restart")) },
                 RetryPolicy(RetrySettings()),
                 QueueSettings(batch = 10, lease = LEASE, ttl = Duration.ofHours(24)),
@@ -422,13 +424,6 @@ class NotificationsIntegrationTest(
         assertEquals(0, fake.requests.size)
     }
 
-    /** Stands in for another process's channel: delivers everything. */
-    private class RecordingChannel : NotificationChannel {
-        override val name = "telegram"
-
-        override fun send(message: Message) = SendOutcome.Delivered
-    }
-
     @Test
     fun `the notice carries the run, its source and its agent`() {
         val run = finished()
@@ -446,5 +441,51 @@ class NotificationsIntegrationTest(
         assertEquals("db1", notice.agentHostname)
         assertEquals(RUNS_NOW, notice.finishedAt)
         assertEquals(null, due.claim(delivery, clock.now, clock.now + LEASE), "a claimed delivery is not due")
+    }
+
+    private fun noticeOf(run: UUID): RunNotice {
+        val queue = Deliveries(sessions, UuidV7(clock, SecureRandom()))
+        queue.plan(tenant.id, listOf(run), "test-channel", clock.now)
+        val due = queue.due(clock.now, listOf("test-channel"), 10).single()
+        return queue.claim(due, clock.now, clock.now + LEASE)!!
+    }
+
+    @Test
+    fun `the notice carries the step status, its start and the backup output`() {
+        val notice = noticeOf(finished())
+
+        assertEquals(StepState.SUCCEEDED, notice.stepStatus)
+        assertEquals(RUNS_NOW, notice.startedAt)
+        assertEquals(BackupSizes(totalBytes = 1_000, addedBytes = 100), notice.backup)
+    }
+
+    @Test
+    fun `the notice of a failed step keeps the backup output the step left`() {
+        val run = runs.start(tenant.id, sources.create(tenant.id, tenant.draft()).id)
+        val step = run.steps.single().id
+        assertTrue(steps.claim(tenant.id, step))
+        assertTrue(steps.accepted(tenant.id, step, "accepted"))
+        val failed = StepReport(StepState.FAILED, "11 files could not be read", SUCCEEDED.output)
+        results.record(tenant.id, tenant.agentId, step, failed)
+
+        val notice = noticeOf(run.id)
+
+        assertEquals(StepState.FAILED, notice.stepStatus)
+        assertEquals("11 files could not be read", notice.message)
+        assertEquals(BackupSizes(totalBytes = 1_000, addedBytes = 100), notice.backup)
+    }
+
+    @Test
+    fun `the notice of a step rejected before it started has no start and no output`() {
+        val run = runs.start(tenant.id, sources.create(tenant.id, tenant.draft()).id)
+        val step = run.steps.single().id
+        assertTrue(steps.claim(tenant.id, step))
+        results.record(tenant.id, tenant.agentId, step, StepReport(StepState.REJECTED, "unknown plugin", null))
+
+        val notice = noticeOf(run.id)
+
+        assertEquals(StepState.REJECTED, notice.stepStatus)
+        assertEquals(null, notice.startedAt)
+        assertEquals(null, notice.backup)
     }
 }

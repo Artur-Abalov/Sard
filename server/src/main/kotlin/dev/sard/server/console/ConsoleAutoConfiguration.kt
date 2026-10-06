@@ -14,7 +14,7 @@ import org.springframework.core.io.ResourceLoader
 private val log = LoggerFactory.getLogger(ConsoleAutoConfiguration::class.java)
 
 /**
- * Serves the console (the Vite build, `web/dist`) from the same port as the API (S10, ADR 0037).
+ * Serves the console (the Vite build, `web/dist`) from the same port as the API (S10, ADR 0038).
  * The bundle sits inside the jar under `console/` when Gradle was given `-PsardConsoleDist`;
  * `sard.console.location` points elsewhere for tests and is not an operator setting.
  * Without a bundle the filter is not registered and console paths answer 404 as before (Р3).

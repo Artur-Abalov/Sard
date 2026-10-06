@@ -14,13 +14,16 @@
 (`sard-agent`, см. `deploy/agent/sard-agent.service`) — иначе файлы будут
 принадлежать не тому пользователю, и служба откажется стартовать (проверка
 A1: секретные файлы не должны быть доступны никому, кроме владельца).
-Каталоги для `tls.*` пакет не создаёт (вне A2b) — создать их и назначить
-владельца нужно до запуска `enroll`:
+Пакеты deb и rpm при первой установке создают каталог `/etc/sard/tls`
+(владелец `sard-agent`, права `0700`), куда указывают пути `tls.*` из
+примера конфига, а `/etc/sard` отдают группе `sard-agent` (`root:sard-agent`,
+`0750`); обновление пакета эти каталоги не трогает. После установки из
+архива tar.gz или при других путях `tls.*` каталог нужно создать самому:
 
 ```bash
-sudo install -d -o sard-agent -g sard-agent -m 0700 /etc/sard/tls
+sudo install -d -o sard-agent -g sard-agent -m 0700 /etc/sard/tls   # только для tar.gz
 sudo -u sard-agent sard-agent enroll --server <адрес> --token <строка из консоли>
-sudo systemctl restart sard-agent
+sudo systemctl enable --now sard-agent
 ```
 
 Пути `tls.*` и `server.address` берутся из `/etc/sard/agent.yaml`

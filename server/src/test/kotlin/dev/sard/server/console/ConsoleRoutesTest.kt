@@ -32,7 +32,7 @@ class ConsoleRoutesTest {
     }
 
     @Test
-    fun `api actuator and openapi paths are left to their owners by segment`() {
+    fun `api actuator openapi and agent download paths are left to their owners by segment`() {
         listOf(
             "/api",
             "/api/",
@@ -43,6 +43,9 @@ class ConsoleRoutesTest {
             "/actuator/env",
             "/v3",
             "/v3/api-docs",
+            "/downloads",
+            "/downloads/agent/",
+            "/downloads/agent/sard-agent_0.0.1_linux_amd64.tar.gz",
         ).forEach { assertEquals(ConsoleRoute.PassThrough, route(it), it) }
     }
 
@@ -51,6 +54,7 @@ class ConsoleRoutesTest {
         assertEquals(ConsoleRoute.Page, route("/apiary"))
         assertEquals(ConsoleRoute.Page, route("/v3d"))
         assertEquals(ConsoleRoute.Page, route("/actuators/x"))
+        assertEquals(ConsoleRoute.Page, route("/downloadsx"))
     }
 
     @Test

@@ -140,8 +140,8 @@ func TestBackupWithUnreadableFilesReturnsSummaryAndPartialError(t *testing.T) {
 	if want := `restic backup: at least one source file could not be read: unreadable paths (2): "/tmp/sardcap2/data/locked", "/tmp/sardcap2/data/sub/unreadable.txt"`; err.Error() != want {
 		t.Errorf("text = %q", err.Error())
 	}
-	if len(f.stderr) != 4 {
-		t.Errorf("stderr lines = %d, want 4", len(f.stderr))
+	if want := `msg="restic exited" command=backup exit_code=3`; !strings.Contains(f.log.String(), want) {
+		t.Errorf("log lacks %q:\n%s", want, f.log.String())
 	}
 }
 

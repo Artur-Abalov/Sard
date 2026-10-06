@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Slow stream (e2e stand only)",
+  "type": "object",
+  "properties": {
+    "size": { "type": "integer", "minimum": 1, "title": "Bytes to stream" },
+    "rate": { "type": "integer", "minimum": 1, "title": "Bytes per second" },
+    "chunk": { "type": "integer", "minimum": 1, "title": "Bytes per write and progress report" },
+    "seed": { "type": "integer", "minimum": 0, "title": "Seed of the data" }
+  },
+  "required": ["size", "rate", "chunk"],
+  "additionalProperties": false
+}

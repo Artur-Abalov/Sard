@@ -25,8 +25,11 @@ sudo systemctl restart sard-agent
 ```
 
 `--config` по умолчанию — `/etc/sard/agent.yaml`. Каталог файла пароля
-команда не создаёт: его нужно создать заранее и отдать пользователю службы
-(`install -d -o sard-agent -g sard-agent -m 0700 /etc/sard`). Если файл
+команда не создаёт. Пакеты deb и rpm при первой установке создают для этого
+`/etc/sard/secrets` (владелец `sard-agent`, права `0700`) — туда указывают
+`password_file` и `env_file` в примере конфига. При установке из tar.gz или
+другом каталоге создайте его сами и отдайте пользователю службы
+(`install -d -o sard-agent -g sard-agent -m 0700 /etc/sard/secrets`). Если файл
 пароля уже есть, `repo init` ничего не пишет в его каталог и права записи
 в него не требует.
 
@@ -51,6 +54,17 @@ sudo systemctl restart sard-agent
   `install -d -o sard-agent -g sard-agent -m 0700 /var/cache/sard/restic`.
 - Если в конфиге задан другой `restic.cache_dir`, создайте и его так же
   (и добавьте в `ReadWritePaths` службы, см. unit).
+- Локальный репозиторий (`url` — путь на этом хосте) служба под
+  `ProtectSystem=strict` видит только на чтение, а restic берёт в нём
+  блокировку даже для чтения конфига и ждёт её бесконечно: агент при старте
+  зависает. Добавьте каталог репозитория в `ReadWritePaths`
+  (`sudo systemctl edit sard-agent`):
+
+  ```ini
+  [Service]
+  ReadWritePaths=/srv/sard-repo
+  ```
+
 - `repo list` блокировку не берёт и работает без каталога кэша.
 
 ## `repo init [--config C] [--generate-password] [--timeout 2m] <имя>`

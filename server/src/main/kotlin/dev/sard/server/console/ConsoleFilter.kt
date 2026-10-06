@@ -63,7 +63,7 @@ class ConsoleFilter(
     private fun cacheControlOf(path: String): String = if (path.startsWith("assets/")) IMMUTABLE else "no-cache"
 }
 
-/** Р6. HSTS is not set: TLS ends in front of the server (ADR 0036). 'unsafe-inline' for styles is Mantine's need. */
+/** Р6. HSTS is not set: TLS ends in front of the server (ADR 0037). 'unsafe-inline' for styles is Mantine's need. */
 private val SECURITY_HEADERS =
     mapOf(
         "X-Content-Type-Options" to "nosniff",

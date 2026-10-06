@@ -26,7 +26,9 @@ sealed interface ConsoleRoute {
 val SERVED_METHODS = listOf("GET", "HEAD")
 private val FORBIDDEN_CHARS = setOf('\\', '\u0000')
 private val DOT_SEGMENTS = setOf("..", ".")
-private val OWNED_SEGMENTS = setOf("api", "actuator", "v3")
+
+// /downloads: the agent packages the server hands out (U1a, AgentDownloadsConfiguration).
+private val OWNED_SEGMENTS = setOf("api", "actuator", "v3", "downloads")
 
 class ConsoleRoutes(
     private val exists: (String) -> Boolean,

@@ -15,7 +15,9 @@ package dev.sard.e2e
  * Enable when: T3 is taken up (S7 is in main; a files step runs, see [FullChainTest]).
  *
  * Steps:
- * 1. Start a long files step as in [FullChainTest] (a tree large enough to outlast the cut).
+ * 1. Start a long step of the `e2e-slow` plugin as in [SlowStreamTest] (its duration is size/rate,
+ *    not the amount of data; T3s). To restart the server instead, use
+ *    [SardEnvironment.recreateServer]: the CA and the database survive ([ServerRecreateTest]).
  * 2. Cut the agent off the network (`docker network disconnect`) for longer
  *    than the heartbeat interval, then reconnect it.
  * 3. Assert the server marks the agent offline and back online, the agent

@@ -34,13 +34,14 @@ type command struct {
 	handler Handler
 	state   state
 
-	cancel  context.CancelCauseFunc
-	cause   *stopCause
-	timer   Timer
-	grace   Timer
-	checks  int
-	waited  time.Duration
-	started time.Time
+	cancel   context.CancelCauseFunc
+	cause    *stopCause
+	timer    Timer
+	grace    Timer
+	checks   int
+	waited   time.Duration
+	accepted time.Time // when it was journaled
+	started  time.Time
 
 	mask *redact.Set       // the step's secrets; nil masks nothing
 	refs map[string][]byte // what Host.Secret returns, by name
@@ -65,6 +66,10 @@ func (s *stopCause) Error() string { return s.message }
 
 const shutdownMessage = "agent is shutting down"
 
+// interruptedMessage is the D13 failure of a step the agent was killed in;
+// the console and notifications show it, so it does not change.
+const interruptedMessage = "interrupted: agent restarted before the step finished"
+
 func cancelledByServer() *stopCause {
 	return &stopCause{agentv1.StepStatus_STEP_STATUS_CANCELLED, "cancelled by the server"}
 }
@@ -78,15 +83,22 @@ func timedOut(message string, limit time.Duration) *stopCause {
 }
 
 // accept validates a new step and either queues it (ACCEPTED) or rejects it.
+// A queued step is journaled first: if the agent dies before its result is
+// saved, the next start reports it as interrupted instead of running it again.
 func (e *Executor) accept(step *agentv1.RunStep) {
 	c := &command{step: step}
 	e.cmds[step.GetCommandId()] = c
-	if reason := e.check(c); reason != "" {
+	reason := e.check(c)
+	if reason == "" {
+		reason = e.record(c)
+	}
+	if reason != "" {
 		e.finish(c, e.outcome(c, agentv1.StepStatus_STEP_STATUS_REJECTED, reason))
 		return
 	}
 	c.state = queued
 	e.queue = append(e.queue, c)
+	e.opts.Logger.Info("step accepted", "command_id", step.GetCommandId(), "plugin", step.GetPlugin(), "action", step.GetAction().String())
 	e.send(c, e.opts.Clock.Now(), agentv1.StepPhase_STEP_PHASE_ACCEPTED, counters{})
 	e.dispatch()
 }
@@ -111,6 +123,16 @@ func (e *Executor) check(c *command) string {
 	return ""
 }
 
+// record journals an accepted step; a step that cannot be journaled is
+// refused, since nothing has been done yet.
+func (e *Executor) record(c *command) string {
+	c.accepted = e.opts.Clock.Now()
+	if err := e.store.journal(c.step.GetCommandId(), c.accepted, nil); err != nil {
+		return fmt.Sprintf("cannot record the command: %v", err)
+	}
+	return ""
+}
+
 // checkRepository: data actions need a known repository; a script may name one or none.
 func (e *Executor) checkRepository(step *agentv1.RunStep) string {
 	name := step.GetRepositoryName()
@@ -125,10 +147,13 @@ func (e *Executor) checkRepository(step *agentv1.RunStep) string {
 
 // repeat answers a duplicate command_id without running anything.
 func (e *Executor) repeat(c *command) {
+	id := c.step.GetCommandId()
 	switch {
 	case c.state == finished:
+		e.opts.Logger.Info("repeated command", "command_id", id, "answer", "result")
 		e.opts.Sink.Result(c.result)
 	case c.progress != nil:
+		e.opts.Logger.Info("repeated command", "command_id", id, "answer", "progress")
 		e.opts.Sink.Progress(c.progress)
 	}
 }
@@ -151,6 +176,11 @@ func (e *Executor) start(c *command) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	c.state, c.cancel, c.started = running, cancel, e.opts.Clock.Now()
 	e.active++
+	e.opts.Logger.Info("step started", "command_id", c.step.GetCommandId())
+	if err := e.store.journal(c.step.GetCommandId(), c.accepted, &c.started); err != nil {
+		// The entry of the accept stays: after a crash the failure lacks started_at.
+		e.opts.Logger.Warn("cannot record the start of the step", "command_id", c.step.GetCommandId(), "error", err)
+	}
 	limit, cause := e.timeout(c.step)
 	c.timer = e.opts.Clock.AfterFunc(limit, func() { e.expire(c, cause) })
 	go e.run(ctx, c)
@@ -298,12 +328,25 @@ func (e *Executor) finish(c *command, r *agentv1.StepResult) {
 		e.active--
 	}
 	c.state, c.result = finished, r
-	if err := e.store.saveResult(r); err != nil {
-		e.opts.Logger.Error("cannot save the result; it is kept in memory only", "command_id", r.GetCommandId(), "error", err)
-	}
+	e.opts.Logger.Info("step finished", "command_id", r.GetCommandId(), "status", r.GetStatus().String())
+	e.save(r)
 	e.opts.Sink.Result(r)
 	e.dispatch()
 	e.signalIdle()
+}
+
+// save stores a result and then drops the command's journal entry; a crash
+// in between leaves both, and loading prefers the result. A result that
+// cannot be saved keeps the entry: after a restart the step is interrupted.
+func (e *Executor) save(r *agentv1.StepResult) {
+	id := r.GetCommandId()
+	if err := e.store.saveResult(r); err != nil {
+		e.opts.Logger.Error("cannot save the result; it is kept in memory only", "command_id", id, "error", err)
+		return
+	}
+	if err := e.store.remove(journalDir, id); err != nil {
+		e.opts.Logger.Warn("cannot remove the journal entry", "command_id", id, "error", err)
+	}
 }
 
 func (e *Executor) stopTimers(c *command) {

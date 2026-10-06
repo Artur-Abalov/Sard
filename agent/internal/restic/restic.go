@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"slices"
 	"strings"
 
@@ -55,8 +56,10 @@ type Options struct {
 	Keys crypto.Provider
 	// ReadFile reads the repository's env_file.
 	ReadFile func(name string) ([]byte, error)
-	// OnStderr receives every stderr line of restic, for the agent's logs.
-	OnStderr func(line string)
+	// Logger receives the start and the exit code of every restic command,
+	// never its arguments or output (restic's stderr belongs to the step's
+	// log, where it is masked). Nil discards.
+	Logger *slog.Logger
 	// Stderr, if not nil, receives restic's stderr unchanged: the log of
 	// the step that runs it (see WithStderr).
 	Stderr io.Writer
@@ -113,8 +116,8 @@ func New(opts Options, repo config.Repository) *CLI {
 	if opts.Path == "" {
 		opts.Path = DefaultPath
 	}
-	if opts.OnStderr == nil {
-		opts.OnStderr = func(string) {}
+	if opts.Logger == nil {
+		opts.Logger = slog.New(slog.DiscardHandler)
 	}
 	return &CLI{opts: opts, repo: repo}
 }
@@ -125,6 +128,15 @@ func (c *CLI) WithStderr(w io.Writer) *CLI {
 	opts := c.opts
 	opts.Stderr = w
 	return &CLI{opts: opts, repo: c.repo}
+}
+
+// ForStep returns a copy of the CLI for one step: its log lines name the
+// step's command_id and its restic processes also write their stderr,
+// unchanged, to stderr (see WithStderr). The CLI itself is not changed.
+func (c *CLI) ForStep(commandID string, stderr io.Writer) *CLI {
+	step := c.WithStderr(stderr)
+	step.opts.Logger = c.opts.Logger.With("command_id", commandID)
+	return step
 }
 
 // ID runs `restic cat config` and returns the repository id.
@@ -200,16 +212,18 @@ func (c *CLI) run(ctx context.Context, env []string, cl call) (*result, error) {
 // start runs restic; the error covers only a failed start or cancellation.
 func (c *CLI) start(ctx context.Context, env []string, cl call) (*result, error) {
 	res := &result{cmd: "restic " + cl.args[0]}
+	c.opts.Logger.Info("restic started", "command", cl.args[0])
 	code, err := c.opts.Exec.Run(ctx, Command{
 		Path:       c.opts.Binary,
 		Args:       cl.args,
 		Env:        env,
 		Stdin:      cl.stdin,
 		Stdout:     cl.stdout,
-		Stderr:     res.stderr(c.opts.OnStderr, cl.stderr),
+		Stderr:     res.stderr(cl.stderr),
 		StderrCopy: c.opts.Stderr,
 	})
 	res.code = code
+	c.exited(cl.args[0], code, err)
 	// A process that exited 0 finished its work, whenever ctx ended.
 	if ctxErr := ctx.Err(); ctxErr != nil && (code != 0 || err != nil) {
 		return res, fmt.Errorf("%s: %w", res.cmd, ctxErr)
@@ -218,6 +232,14 @@ func (c *CLI) start(ctx context.Context, env []string, cl call) (*result, error)
 		return res, fmt.Errorf("%s: %w", res.cmd, err)
 	}
 	return res, nil
+}
+
+func (c *CLI) exited(command string, code int, err error) {
+	if err != nil {
+		c.opts.Logger.Info("restic exited", "command", command, "exit_code", code, "error", err)
+		return
+	}
+	c.opts.Logger.Info("restic exited", "command", command, "exit_code", code)
 }
 
 // collect appends stdout lines to buf.
@@ -236,9 +258,8 @@ type result struct {
 	items []ItemError // per-file errors of backup --json
 }
 
-func (r *result) stderr(forward func(string), observe func([]byte)) func([]byte) {
+func (r *result) stderr(observe func([]byte)) func([]byte) {
 	return func(line []byte) {
-		forward(string(line))
 		if observe != nil {
 			observe(line)
 		}

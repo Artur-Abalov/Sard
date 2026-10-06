@@ -169,10 +169,10 @@ func TestTheExecutorKnowsTheConfiguredRepositories(t *testing.T) {
 
 func TestEveryConfiguredRepositoryIsOpenedByName(t *testing.T) {
 	repos := openRepositories(config.Config{Repositories: []config.Repository{{Name: "main"}, {Name: "offsite"}}}, restic.Options{})
-	if _, ok := repos.get("offsite", nil); !ok || len(repos) != 2 {
+	if _, ok := repos.get("offsite", "c1", nil); !ok || len(repos) != 2 {
 		t.Errorf("repositories = %v", repos)
 	}
-	if _, ok := repos.get("nas", nil); ok {
+	if _, ok := repos.get("nas", "c1", nil); ok {
 		t.Error("an unconfigured repository was found")
 	}
 }

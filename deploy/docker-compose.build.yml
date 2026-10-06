@@ -9,3 +9,6 @@ services:
     build:
       context: ..
       dockerfile: deploy/server/Dockerfile
+      args:
+        # The agent packages in dist/ must be of this version (make up passes it).
+        SARD_VERSION: ${SARD_VERSION:-dev}
