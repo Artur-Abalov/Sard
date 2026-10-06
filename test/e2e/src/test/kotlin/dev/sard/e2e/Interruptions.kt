@@ -109,6 +109,14 @@ internal object Interruptions {
         container.dockerClient.killContainerCmd(container.containerId).exec()
     }
 
+    /**
+     * Pulls [FIREWALL_IMAGE] now, if Docker does not have it: a first [block] or [erase] would
+     * otherwise pull it (hundreds of MB) inside the interval a test times (case 8).
+     */
+    fun prepare(container: GenericContainer<*>) {
+        DockerClientFactory.instance().checkAndPullImage(container.dockerClient, FIREWALL_IMAGE)
+    }
+
     /** `docker start` of a stopped container. */
     fun start(container: GenericContainer<*>) {
         container.dockerClient.startContainerCmd(container.containerId).exec()
@@ -141,7 +149,7 @@ internal object Interruptions {
         host: (HostConfig) -> HostConfig,
     ) {
         val docker = agent.dockerClient
-        DockerClientFactory.instance().checkAndPullImage(docker, FIREWALL_IMAGE)
+        prepare(agent)
         val labels = DockerClientFactory.DEFAULT_LABELS + (DockerClientFactory.TESTCONTAINERS_SESSION_ID_LABEL to DockerClientFactory.SESSION_ID)
         val helper =
             docker

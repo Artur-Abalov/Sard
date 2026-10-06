@@ -70,7 +70,10 @@ internal class T3Agent private constructor(
                 password_file: $PASSWORD_FILE
             """.trimIndent() + "\n"
 
-        /** Enrolls [hostname], initialises its repository, starts its agent and waits for its Register. */
+        /**
+         * Enrolls [hostname], initialises its repository, starts its agent and waits for its
+         * Register; the helper image of [Interruptions] is pulled here, outside any timed interval.
+         */
         fun start(
             sard: SardEnvironment,
             hostname: String,
@@ -80,6 +83,7 @@ internal class T3Agent private constructor(
             assertEquals(0, init.code, init.stderr)
             val container = sard.track("agent-$hostname", AgentContainer.of(agent)).apply { start() }
             Await.until("repository_id of $REPOSITORY in Register") { Backups.repositoryId(sard, agent.agentId, REPOSITORY) != null }
+            Interruptions.prepare(container)
             return T3Agent(sard, agent, container)
         }
 
