@@ -43,7 +43,7 @@
 13. E2E: строки вставляются SQL с `plugin = 'absent'`, результат наблюдается по журналу сервера (debug для логгера обработчика).
 
 ### Проект (на ревью)
-Решения, машина состояний и правило сверки — `docs/adr/00XX-draft-run-dispatch.md`.
+Решения, машина состояний и правило сверки — `docs/adr/0038-run-dispatch.md`.
 
 **Миграция `V202609301200__runs.sql`** (правила ADR 0013: `tenant_id` FK, `UNIQUE (tenant_id, id)`, составные FK без CASCADE, `TIMESTAMPTZ`, `TEXT CHECK IN`):
 - `workflows`: `id, tenant_id, name, definition JSONB NOT NULL, created_at, updated_at, deleted_at`; `UNIQUE (tenant_id, name) WHERE deleted_at IS NULL`.
@@ -193,4 +193,4 @@ const val LOST_MESSAGE = "agent lost the step"
 ### Открыто
 - Кандидаты в потерянные живут в памяти одного узла (ADR 0026); при HA — вместе с реестром сессий.
 - Шаги, созданные в одну миллисекунду, упорядочены по UUIDv7 со случайной частью — порядок создания внутри миллисекунды не гарантирован.
-- Черновик ADR `00XX-draft-run-dispatch.md` — номер при слиянии.
+- Черновик ADR `0038-run-dispatch.md` — номер при слиянии.

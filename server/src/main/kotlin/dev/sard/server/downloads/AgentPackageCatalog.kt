@@ -3,7 +3,7 @@
 
 package dev.sard.server.downloads
 
-/** The agent packages cannot be served: the server does not start (docs/adr/00XX-draft-agent-release.md). */
+/** The agent packages cannot be served: the server does not start (docs/adr/0043-agent-release.md). */
 class AgentPackagesUnavailable(
     message: String,
     cause: Throwable? = null,

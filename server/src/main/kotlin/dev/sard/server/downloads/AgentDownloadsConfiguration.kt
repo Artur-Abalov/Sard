@@ -30,7 +30,7 @@ data class AgentPackagesProperties(
 
 /**
  * `/downloads/agent/<file>`: the agent packages of this server's version, without a session —
- * hosts download them before they have anything (docs/adr/00XX-draft-agent-release.md). The path
+ * hosts download them before they have anything (docs/adr/0043-agent-release.md). The path
  * is outside `/api/v1`, so the admin session and origin filters do not apply. Switched on, the
  * server starts only with a valid release of its own version; switched off, the path is 404.
  */

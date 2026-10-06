@@ -207,3 +207,15 @@ func TestARepositoryWithoutAnEnvFileIsInitialised(t *testing.T) {
 	code, _, _ := h.initCmd()
 	assertCode(t, code, exitOK)
 }
+
+// Scenario: repo init одного репозитория не спотыкается о crypto_provider другого
+func TestRepoInitOfOneRepositoryIgnoresTheCryptoProviderOfAnother(t *testing.T) {
+	h := newRepoHost(t)
+	h.cfg.Repositories[1].CryptoProvider = "gost"
+	h.saveConfig()
+	code, _, stderr := h.initCmd()
+	assertCode(t, code, exitOK)
+	if strings.Contains(stderr, "CRYPTO_PROVIDER_UNSUPPORTED") {
+		t.Errorf("stderr = %q", stderr)
+	}
+}

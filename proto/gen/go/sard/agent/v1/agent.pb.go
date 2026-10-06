@@ -894,9 +894,11 @@ func (*ConnectRequest_LogChunk) isConnectRequest_Message() {}
 // reconnect.
 type Hello struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Commands still running on the agent. The server marks commands it
-	// believes are running but absent here as failed ("agent lost the step"),
-	// and must not resend the listed ones.
+	// Commands queued or running on the agent. The server must not resend the
+	// listed ones. A command the server believes running but absent here
+	// becomes lost ("agent lost the step", its run fails) unless its result
+	// arrives within one loss window; one it dispatched but absent here is
+	// sent again (ADR 0038).
 	RunningCommandIds []string `protobuf:"bytes,1,rep,name=running_command_ids,json=runningCommandIds,proto3" json:"running_command_ids,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache

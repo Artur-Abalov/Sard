@@ -2,7 +2,7 @@
 # Copyright 2026 Artur Abalov
 #
 # Release for a tag vX.Y.Z or a pre-release vX.Y.Z-<pre> such as v0.0.1-rc.1
-# (docs/adr/00XX-draft-agent-release.md, ADR 0039):
+# (docs/adr/0043-agent-release.md, ADR 0039):
 #
 #   build ×2 ─┬─ reproduce  (two independent builds, same SHA256SUMS; tamper tests)
 #             └─ install    (deb on Debian/Ubuntu with systemd: install, enroll, upgrade)

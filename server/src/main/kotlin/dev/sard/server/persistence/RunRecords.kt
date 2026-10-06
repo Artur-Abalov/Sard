@@ -75,7 +75,7 @@ class RunRecord(
 
 /**
  * One command to an agent; [id] is RunStep.command_id. Status changes only through guarded
- * updates (the S6a ADR draft), never through this entity, so its mutable columns are read-only here.
+ * updates (ADR 0038), never through this entity, so its mutable columns are read-only here.
  */
 @Entity
 @Table(name = "run_steps")

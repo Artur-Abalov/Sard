@@ -3,7 +3,7 @@
 
 # Релиз агента и проверка подписи
 
-Решение — `docs/adr/00XX-draft-agent-release.md`. Релиз выпускает тег
+Решение — `docs/adr/0043-agent-release.md`. Релиз выпускает тег
 `vX.Y.Z`: `.github/workflows/release.yml` собирает пакеты агента дважды,
 сверяет суммы, проверяет подделки и установку deb, подписывает `SHA256SUMS`
 ключом релизов и публикует GitHub Release.

@@ -133,12 +133,13 @@ type fakeServer struct {
 	agentv1.UnimplementedAgentServiceServer
 	addr string
 
-	mu         sync.Mutex
-	register   func() (*agentv1.RegisterResponse, error)
-	registered []*agentv1.RegisterRequest
-	verified   []bool // per Register: client certificate verified by the CA
-	connects   int
-	streams    chan *serverStream
+	mu          sync.Mutex
+	register    func() (*agentv1.RegisterResponse, error)
+	registered  []*agentv1.RegisterRequest
+	verified    []bool // per Register: client certificate verified by the CA
+	connects    int
+	closeStream error // what Connect returns when the call ends from the server side
+	streams     chan *serverStream
 }
 
 // serverStream is one Connect call as the test sees it.
@@ -211,7 +212,7 @@ func (s *fakeServer) Connect(stream grpc.BidiStreamingServer[agentv1.ConnectRequ
 				return err
 			}
 		case <-ss.done:
-			return nil
+			return s.closeStream
 		case <-stream.Context().Done():
 			return nil
 		}

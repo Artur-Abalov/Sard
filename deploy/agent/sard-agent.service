@@ -16,6 +16,10 @@ Group=sard-agent
 ExecStart=/usr/bin/sard-agent --config /etc/sard/agent.yaml
 Restart=on-failure
 RestartSec=10s
+# Exit 78: the server refused the agent for good (INVALID_ARGUMENT,
+# FAILED_PRECONDITION, UNAUTHENTICATED, PERMISSION_DENIED on Register).
+# Fix the cause shown in the journal, then restart the service by hand.
+RestartPreventExitStatus=78
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only

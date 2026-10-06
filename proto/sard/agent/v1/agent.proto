@@ -163,9 +163,11 @@ message ConnectRequest {
 // Hello opens the stream and lets the server reconcile state after a
 // reconnect.
 message Hello {
-  // Commands still running on the agent. The server marks commands it
-  // believes are running but absent here as failed ("agent lost the step"),
-  // and must not resend the listed ones.
+  // Commands queued or running on the agent. The server must not resend the
+  // listed ones. A command the server believes running but absent here
+  // becomes lost ("agent lost the step", its run fails) unless its result
+  // arrives within one loss window; one it dispatched but absent here is
+  // sent again (ADR 0038).
   repeated string running_command_ids = 1;
 }
 
