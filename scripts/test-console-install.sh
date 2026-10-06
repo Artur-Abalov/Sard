@@ -38,7 +38,8 @@ RUN_ID="sard-console-$$"
 NET="$RUN_ID"
 HOST="$RUN_ID-host"
 WORK="$(mktemp -d)"
-WORKDIR=/tmp/install
+# Not /tmp: Debian 13 mounts a tmpfs there at boot, over what docker cp writes.
+WORKDIR=/root/install
 
 die() { echo "test-console-install: FAIL: $*" >&2; exit 1; }
 say() { echo "test-console-install: $*"; }
@@ -85,8 +86,9 @@ start_host() {
   docker run -d --name "$HOST" --hostname agent-host --network "$NET" --privileged \
     --cgroupns=host --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
     "sard-pkgtest:${distro//:/-}" >/dev/null
-  wait_for "systemd on $distro" 'systemctl is-system-running | grep -Eq "running|degraded"'
+  # Before any on_host: it runs in WORKDIR, and docker exec fails while that is missing.
   docker exec "$HOST" mkdir -p "$WORKDIR"
+  wait_for "systemd on $distro" 'systemctl is-system-running | grep -Eq "running|degraded"'
   # An internal network: the host reaches the server and nothing else.
   ! docker exec "$HOST" curl -sS -m 5 -o /dev/null https://github.com 2>/dev/null || die "the host reaches the internet"
 }
