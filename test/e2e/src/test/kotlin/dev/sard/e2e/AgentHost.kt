@@ -33,7 +33,8 @@ internal class AgentHost(
     val hostname: String = "e2e-agent",
     val local: String = "",
 ) {
-    private val state = sardEnv.volume()
+    /** The volume mounted at [STATE_DIR]: state, TLS files, repository, the executor's journal. */
+    val state = sardEnv.volume()
     private val cache = sardEnv.volume()
     private var runs = 0
 
