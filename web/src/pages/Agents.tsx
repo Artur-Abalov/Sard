@@ -8,6 +8,7 @@ import { call } from '../api/call'
 import { client } from '../api/client'
 import { PAGE_SIZE } from '../api/queries'
 import type { components } from '../api/schema'
+import { AgentInstallBlock } from '../components/AgentInstallBlock'
 import { AgentMarks } from '../components/AgentMarks'
 import { EmptyState } from '../components/EmptyState'
 import { AppLink, ButtonLink } from '../components/links'
@@ -70,31 +71,37 @@ export function Agents() {
       <PagedList
         paged={paged}
         empty={
-          <EmptyState text={t('agents.empty')}>
-            <ButtonLink to="/tokens" search={{ create: true }}>
-              {t('dashboard.issueToken')}
-            </ButtonLink>
-          </EmptyState>
+          <>
+            <EmptyState text={t('agents.empty')}>
+              <ButtonLink to="/tokens" search={{ create: true }}>
+                {t('dashboard.issueToken')}
+              </ButtonLink>
+            </EmptyState>
+            <AgentInstallBlock open />
+          </>
         }
       >
         {(agents) => (
-          <Table>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t('agents.host')}</Table.Th>
-                <Table.Th>{t('agents.status')}</Table.Th>
-                <Table.Th>{t('agents.lastSeen')}</Table.Th>
-                <Table.Th>{t('agents.version')}</Table.Th>
-                <Table.Th>{t('agents.os')}</Table.Th>
-                <Table.Th />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {agents.map((agent) => (
-                <AgentRow key={agent.id} agent={agent} />
-              ))}
-            </Table.Tbody>
-          </Table>
+          <>
+            <Table>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t('agents.host')}</Table.Th>
+                  <Table.Th>{t('agents.status')}</Table.Th>
+                  <Table.Th>{t('agents.lastSeen')}</Table.Th>
+                  <Table.Th>{t('agents.version')}</Table.Th>
+                  <Table.Th>{t('agents.os')}</Table.Th>
+                  <Table.Th />
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {agents.map((agent) => (
+                  <AgentRow key={agent.id} agent={agent} />
+                ))}
+              </Table.Tbody>
+            </Table>
+            <AgentInstallBlock />
+          </>
         )}
       </PagedList>
     </Stack>

@@ -25,6 +25,7 @@ import { fieldFailures } from '../errors'
 import { mapField } from '../fieldPath'
 import { PAGE_SIZE, tokenQuery, type EnrollmentToken } from '../api/queries'
 import type { components } from '../api/schema'
+import { AgentInstallBlock } from '../components/AgentInstallBlock'
 import { AgentName } from '../components/AgentName'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { CopyBox } from '../components/CopyBox'
@@ -88,6 +89,7 @@ function CreatedToken({ created }: { created: Created }) {
       )}
       <Text size="sm">{t('tokens.expiresAt', { time: format.time(created.expiresAt) })}</Text>
       <TokenProgress tokenId={created.id} />
+      <AgentInstallBlock open enrollCommand={created.enrollCommand} />
     </Stack>
   )
 }

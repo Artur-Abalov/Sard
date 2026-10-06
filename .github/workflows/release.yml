@@ -2,7 +2,7 @@
 # Copyright 2026 Artur Abalov
 #
 # Release for a tag vX.Y.Z or a pre-release vX.Y.Z-<pre> such as v0.0.1-rc.1
-# (docs/adr/00XX-draft-agent-release.md, ADR 0037):
+# (docs/adr/00XX-draft-agent-release.md, ADR 0039):
 #
 #   build ×2 ─┬─ reproduce  (two independent builds, same SHA256SUMS; tamper tests)
 #             └─ install    (deb on Debian/Ubuntu with systemd: install, enroll, upgrade)
@@ -135,6 +135,11 @@ jobs:
             -f deploy/server/Dockerfile -t sard-server:e2e .
       - name: install, enroll, upgrade
         run: OLD_DIST=dist-old NEW_DIST=dist-new scripts/test-agent-install.sh "${{ matrix.distro }}"
+      # The commands the console shows (U1b), run as the server answers them.
+      - name: install and upgrade by the console's steps
+        run: |
+          scripts/test-console-install.sh "${{ matrix.distro }}"
+          UPGRADE=1 OLD_DIST=dist-old scripts/test-console-install.sh "${{ matrix.distro }}"
 
   sign:
     needs: [reproduce, install]

@@ -52,7 +52,8 @@ fun snapshotOf(
     secretNames: List<String> = listOf("db-password"),
     scriptNames: List<String> = emptyList(),
     version: String = "0.4.0",
-) = AgentSnapshot("db1", version, 1, "linux", "amd64", plugins, repositories, secretNames, scriptNames)
+    arch: String = "amd64",
+) = AgentSnapshot("db1", version, 1, "linux", arch, plugins, repositories, secretNames, scriptNames)
 
 fun filesPlugin(
     name: String = "files",

@@ -24,7 +24,7 @@
    переменные `DC`, `PSQL`, `DEFAULT`, `QA`, `F`, функции `new_token`,
    `hash_of`, `token_row`). Сервер поднят с именами `localhost,127.0.0.1,::1`,
    `SARD_AGENT_ENDPOINT` не задан — команда консоли:
-   `sard-agent enroll --server localhost:9090 --token <строка>`.
+   `sudo -u sard-agent sard-agent enroll --server localhost:9090 --token <строка>`.
 2. Собрать агента и подготовить «хост»:
 
 ```bash

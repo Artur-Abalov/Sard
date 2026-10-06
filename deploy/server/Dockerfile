@@ -15,7 +15,7 @@
 # The jar does not depend on the CPU, so it is built once, on the builder's
 # own platform; only the runtime stage exists per target platform.
 # The console (web/) is built here too, from the same context, in the "web" stage and
-# bundled into the jar (ADR 0038); Node and the sources never reach the final image.
+# bundled into the jar (ADR 0040); Node and the sources never reach the final image.
 
 # The packages are files for every architecture, so this stage, like the two
 # build stages, runs once on the builder's platform.
@@ -59,6 +59,8 @@ COPY proto/sard proto/sard
 COPY proto/jvm proto/jvm
 COPY server server
 COPY --from=web /src/web/dist console-dist
+# The key the console shows next to the signature step is a resource of the server (U1b).
+COPY deploy/release/sard-release.pub deploy/release/sard-release.pub
 ARG SARD_VERSION=dev
 # Builds behind a TLS-intercepting proxy: pass JVM proxy settings in
 # JAVA_TOOL_OPTIONS and the proxy CA as the optional "build-ca" secret.

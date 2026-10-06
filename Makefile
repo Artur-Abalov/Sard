@@ -48,7 +48,7 @@ proto: tools
 	cd proto && $(BIN)/buf generate
 	cd proto/gen/go && go mod tidy
 
-## build: build every part; the console (web/dist) goes into the server jar (S10, ADR 0038)
+## build: build every part; the console (web/dist) goes into the server jar (S10, ADR 0040)
 build: build-agent build-cli
 	$(MAKE) web-deps
 	cd web && SARD_VERSION=$(VERSION) npm run build

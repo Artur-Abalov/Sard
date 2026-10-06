@@ -79,6 +79,7 @@
 | OQ-137 | Пути TLS агента расходятся: `deploy/agent/agent.example.yaml:13-15` — `/etc/sard/{ca.pem,agent.pem,agent.key}`, `docs/operations/agent-enroll.md:21,72` — `/etc/sard/tls/...`. Демо и `docs/operator/` должны давать один путь. | дефект | до `docs/demo.md` (X1 фаза 3) | X1 фаза 1 |
 | OQ-139 | Консоль за Cloudflare (план владельца: OCI + Cloudflare). Проксирование Cloudflare по HTTP к серверу ломает вход (OQ-031). Предполагаемый путь без изменения кода — Full (strict): TLS на HTTP-порту сервера (`SERVER_SSL_*`, сертификат Cloudflare Origin CA), Cloudflare передаёт `Host` без изменений; healthcheck — на отдельный порт Actuator. Не проверено. Порт агентов — отдельным DNS-именем без проксирования Cloudflare. | вопрос | до развёртывания в OCI | X1, обсуждение с владельцем |
 | OQ-140 | Пакет агента предрелиза получает версию `0.0.0~dev.v0.0.1.rc.1`: `pkg_version` в `scripts/package-agent.sh:45-51` разбирает только `vX.Y.Z`. Порядок обновлений верный (ниже `0.0.1`), но имя неинформативно; естественная форма — `0.0.1~rc.1`. Появилось, когда `release.yml` стал принимать `vX.Y.Z-<pre>` (решение владельца, X1). | вопрос | до первого rc для внешних пользователей | `.github/workflows/release.yml`, триггер; X1 |
+| OQ-141 | Порт 8080 в `deploy/docker-compose.yml` по умолчанию слушает только `127.0.0.1` (ADR 0039: по нему открытым текстом идёт пароль администратора), а команды установки агента U1b по умолчанию качают пакеты с `http://<SARD_AGENT_ENDPOINT>:8080` (`SARD_AGENT_DOWNLOADS_URL`). С настройками по умолчанию установка с другого хоста не работает: нужно открыть 8080 (`SARD_HTTP_PUBLISH=0.0.0.0:8080`) или задать `SARD_AGENT_DOWNLOADS_URL` на адрес с TLS. Решение для демо и для `docs/operator/` — за владельцем. | вопрос | до `docs/demo.md` | слияние X1/S10 с U1b |
 
 ## Закрыто при сверке
 
@@ -86,7 +87,7 @@
 
 | Суть | Чем закрыто |
 |---|---|
-| OQ-138. Консоль не отдаётся сервером и не входит в образ. | Сделано в S10: консоль лежит в jar (`console/`, Gradle `-PsardConsoleDist`), её отдаёт `ConsoleFilter`, стадия `web` в `deploy/server/Dockerfile` собирает её для образа; [ADR 0038](adr/0038-console-served-by-server.md). |
+| OQ-138. Консоль не отдаётся сервером и не входит в образ. | Сделано в S10: консоль лежит в jar (`console/`, Gradle `-PsardConsoleDist`), её отдаёт `ConsoleFilter`, стадия `web` в `deploy/server/Dockerfile` собирает её для образа; [ADR 0040](adr/0040-console-served-by-server.md). |
 
 ### 2026-10-04, FXs (сервер: потеря шага по сроку в БД, теги снимков, след RunFinished; ветка `claude/gallant-wozniak-hb0wl1`)
 

@@ -14,12 +14,16 @@ data class AgentArtifact(
     val file: String,
     val size: Long,
     val sha256: String,
+    val arch: String,
+    /** As manifest.json names it: `deb`, `rpm` or `tar.gz`. */
+    val format: String,
 )
 
 /** What the server needs of `manifest.json`; the rest is for its readers (the console, people). */
 data class AgentManifest(
     val schema: Int,
     val version: String,
+    val resticVersion: String,
     val artifacts: List<AgentArtifact>,
 )
 
@@ -29,12 +33,23 @@ data class AgentManifest(
  */
 class AgentPackageCatalog private constructor(
     val version: String,
+    val resticVersion: String,
+    private val artifacts: List<AgentArtifact>,
     private val etags: Map<String, String>,
 ) {
     /** Every file name that may be requested. */
     val files: Set<String> get() = etags.keys
 
     fun etag(file: String): String? = etags[file]
+
+    /** Whether the release carries a signature of SHA256SUMS. */
+    val signed: Boolean get() = SIGNATURE in etags
+
+    /** The package for [arch] and [format] (manifest.json's names), or null if the release has none. */
+    fun fileOf(
+        arch: String,
+        format: String,
+    ): String? = artifacts.firstOrNull { it.arch == arch && it.format == format }?.file
 
     companion object {
         const val MANIFEST = "manifest.json"
@@ -55,7 +70,8 @@ class AgentPackageCatalog private constructor(
                 "agent packages are version ${manifest.version}, the server is $serverVersion"
             }
             val packages = manifest.artifacts.associate { it.file to it.sha256 }
-            return AgentPackageCatalog(manifest.version, packages + metadata)
+            val etags = packages + metadata
+            return AgentPackageCatalog(manifest.version, manifest.resticVersion, manifest.artifacts, etags)
         }
 
         private fun requireMetadata(metadata: Map<String, String>) {

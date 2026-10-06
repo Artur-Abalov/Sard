@@ -9,6 +9,7 @@ import dev.sard.server.fleet.AgentPluginView
 import dev.sard.server.fleet.AgentRow
 import dev.sard.server.fleet.Agents
 import dev.sard.server.fleet.Connectivity
+import dev.sard.server.install.AgentVersions
 import dev.sard.server.persistence.PageKey
 import org.springframework.stereotype.Component
 import tools.jackson.databind.JsonNode
@@ -21,6 +22,7 @@ class AgentsApiImpl(
     private val agents: Agents,
     private val tenants: TenantResolver,
     private val mapper: ObjectMapper,
+    private val versions: AgentVersions,
 ) : AgentsApi {
     override fun listAgents(
         status: AgentStatus?,
@@ -60,6 +62,7 @@ class AgentsApiImpl(
             row.lastSeenAt,
             row.revokedAt,
             row.duplicateSessionAt,
+            versions.outdated(row.agentVersion),
         )
 
     private fun detailsOf(card: AgentCard): AgentDetails {
@@ -87,6 +90,7 @@ class AgentsApiImpl(
             },
             card.secretNames,
             card.scriptNames,
+            versions.outdated(row.agentVersion),
         )
     }
 

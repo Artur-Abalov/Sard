@@ -17,8 +17,11 @@
 #      сценарием, когда появится аудит.
 #   4. Отпечаток чужого CA: UNAUTHENTICATED, причина TOKEN_FOREIGN_CA, токен не
 #      тронут. Добавлено строкой в контракт отказов.
-#   5. Команду «sard-agent enroll --server <адрес> --token <строка>» целиком
-#      собирает сервер из явной настройки публичного gRPC-адреса для агентов
+#   5. Команду «sudo -u sard-agent sard-agent enroll --server <адрес> --token
+#      <строка>» целиком собирает сервер (префикс sudo -u sard-agent — решение
+#      владельца 2026-10-05 в U1b, docs/specs/server/agent-install.feature:
+#      регистрация от root оставляет файлы личности, которые служба от имени
+#      sard-agent не читает; прежде команда была без префикса) из явной настройки публичного gRPC-адреса для агентов
 #      (например SARD_AGENT_ENDPOINT). Результат создания токена на уровне
 #      сервиса уже содержит готовую команду; консоль её никогда не собирает.
 #      Адрес для агентов:
@@ -135,7 +138,7 @@
     @service
     Сценарий: Результат создания токена содержит команду регистрации с настроенным адресом
       Когда администратор тенанта "A" создаёт токен
-      Тогда результат содержит команду "sard-agent enroll --server sard.example.com:9090 --token S"
+      Тогда результат содержит команду "sudo -u sard-agent sard-agent enroll --server sard.example.com:9090 --token S"
       И S в команде — строка токена из того же результата
 
     @service
@@ -187,19 +190,19 @@
       И имена в сертификате сервера — "sard.example.com", "localhost" и "127.0.0.1"
       И gRPC-порт сервера 9090
       Когда сервер стартует и администратор тенанта "A" создаёт токен
-      Тогда результат содержит команду "sard-agent enroll --server sard.example.com:9090 --token S"
+      Тогда результат содержит команду "sudo -u sard-agent sard-agent enroll --server sard.example.com:9090 --token S"
 
     @startup @service
     Сценарий: Заданный адрес с хостом из сертификата попадает в команду как есть
       Дано SARD_AGENT_ENDPOINT задан как "localhost:19090"
       Когда сервер стартует и администратор тенанта "A" создаёт токен
-      Тогда результат содержит команду "sard-agent enroll --server localhost:19090 --token S"
+      Тогда результат содержит команду "sudo -u sard-agent sard-agent enroll --server localhost:19090 --token S"
 
     @startup @service
     Сценарий: Адрес с IP-адресом из сертификата принимается
       Дано SARD_AGENT_ENDPOINT задан как "127.0.0.1:9090"
       Когда сервер стартует и администратор тенанта "A" создаёт токен
-      Тогда результат содержит команду "sard-agent enroll --server 127.0.0.1:9090 --token S"
+      Тогда результат содержит команду "sudo -u sard-agent sard-agent enroll --server 127.0.0.1:9090 --token S"
 
     @startup
     Сценарий: Адрес с хостом вне сертификата не даёт серверу стартовать
@@ -221,26 +224,26 @@
       Дано SARD_AGENT_ENDPOINT не задан
       И имена в сертификате сервера — "::1" и "localhost"
       Когда сервер стартует и администратор тенанта "A" создаёт токен
-      Тогда результат содержит команду "sard-agent enroll --server [::1]:9090 --token S"
+      Тогда результат содержит команду "sudo -u sard-agent sard-agent enroll --server [::1]:9090 --token S"
 
     @startup @service
     Сценарий: Адрес без порта получает порт gRPC сервера
       Дано SARD_AGENT_ENDPOINT задан как "sard.example.com"
       Когда сервер стартует и администратор тенанта "A" создаёт токен
-      Тогда результат содержит команду "sard-agent enroll --server sard.example.com:9090 --token S"
+      Тогда результат содержит команду "sudo -u sard-agent sard-agent enroll --server sard.example.com:9090 --token S"
 
     @startup @service
     Сценарий: Имя хоста сверяется с сертификатом без учёта регистра
       Дано SARD_AGENT_ENDPOINT задан как "SARD.Example.com:9090"
       Когда сервер стартует и администратор тенанта "A" создаёт токен
-      Тогда результат содержит команду "sard-agent enroll --server SARD.Example.com:9090 --token S"
+      Тогда результат содержит команду "sudo -u sard-agent sard-agent enroll --server SARD.Example.com:9090 --token S"
 
     @startup @service
     Сценарий: IPv6-адрес в скобках сверяется с сертификатом по значению
       Дано имена в сертификате сервера — "sard.example.com" и "::1"
       И SARD_AGENT_ENDPOINT задан как "[0:0:0:0:0:0:0:1]:9090"
       Когда сервер стартует и администратор тенанта "A" создаёт токен
-      Тогда результат содержит команду "sard-agent enroll --server [0:0:0:0:0:0:0:1]:9090 --token S"
+      Тогда результат содержит команду "sudo -u sard-agent sard-agent enroll --server [0:0:0:0:0:0:0:1]:9090 --token S"
 
     @startup
     Структура сценария: Неразбираемый адрес для агентов не даёт серверу стартовать

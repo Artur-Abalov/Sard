@@ -89,7 +89,7 @@ tasks.bootJar {
     archiveFileName = "sard-server.jar"
 }
 
-// The console (S10, ADR 0038): the jar carries web/dist under console/ only when -PsardConsoleDist=<dir>
+// The console (S10, ADR 0040): the jar carries web/dist under console/ only when -PsardConsoleDist=<dir>
 // names a finished build (make build and the image's Dockerfile do); without it the jar has no console
 // and needs no Node. A directory without index.html fails the build, naming the property and the directory.
 val consoleDist = providers.gradleProperty("sardConsoleDist")
@@ -211,6 +211,15 @@ spotless {
         target("*.gradle.kts")
         ktlint()
     }
+}
+
+// The key the agent packages are signed with is the repository's own file; the console shows it (U1b, В5).
+val releaseKey = rootProject.layout.projectDirectory.file("deploy/release/sard-release.pub")
+tasks.processResources {
+    from(releaseKey) { into("release") }
+}
+tasks.matching { it.name == "processMutatedMainResources" }.configureEach {
+    (this as Copy).from(releaseKey) { into("release") }
 }
 
 mutflow {

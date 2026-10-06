@@ -64,12 +64,15 @@ object AgentPackageDirectory {
         AgentManifest(
             schema = field(root, "schema").asInt(),
             version = field(root, "version").asString(),
+            resticVersion = field(root, "restic_version").asString(),
             artifacts =
                 field(root, "artifacts").iterator().asSequence().toList().map {
                     AgentArtifact(
                         file = field(it, "file").asString(),
                         size = field(it, "size").asLong(),
                         sha256 = field(it, "sha256").asString(),
+                        arch = field(it, "arch").asString(),
+                        format = field(it, "format").asString(),
                     )
                 },
         )

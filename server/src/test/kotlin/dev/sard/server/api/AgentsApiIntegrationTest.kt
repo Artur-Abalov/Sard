@@ -94,6 +94,7 @@ class AgentsApiIntegrationTest(
                 "repositories",
                 "secretNames",
                 "scriptNames",
+                "outdated",
             ),
             json.propertyNames().toSet(),
         )
@@ -137,6 +138,22 @@ class AgentsApiIntegrationTest(
             assertTrue(json.path(field).isEmpty, field)
         }
         assertEquals("offline", json.path("status").asString())
+    }
+
+    @Test
+    fun `Нерелизная сборка сервера не помечает никого`() {
+        val agent = world.agent(tenant, snapshotOf(version = "v1.3.2"))
+
+        assertFalse(card(agent.agentId).json.path("outdated").asBoolean())
+        assertFalse(listed(agent.agentId).path("outdated").asBoolean())
+    }
+
+    @Test
+    fun `Устаревшая версия агента не мешает его работе`() {
+        val agent = world.agent(tenant, snapshotOf(version = "v0.0.1"))
+        online(agent)
+
+        assertEquals("online", card(agent.agentId).json.path("status").asString())
     }
 
     @Test

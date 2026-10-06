@@ -9,7 +9,26 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 private val ISOLATED_PACKAGES =
-    listOf("enrollment", "persistence", "pki", "extension", "registration", "runs", "fleet", "notify")
+    listOf(
+        "enrollment",
+        "persistence",
+        "pki",
+        "extension",
+        "registration",
+        "runs",
+        "fleet",
+        "notify",
+        "install",
+        "downloads",
+    )
+
+// downloads/ holds both domain types and the HTTP adapter that serves the package files. Only the
+// files that actually import org.springframework.web / jakarta.servlet are web by purpose:
+// AgentPackagesHandler.kt and AgentDownloadsConfiguration.kt. The rest of the package is scanned.
+private val WIRE_EXEMPT_FILES = setOf("AgentPackagesHandler.kt", "AgentDownloadsConfiguration.kt")
+private val WIRE_FREE_PACKAGES = ISOLATED_PACKAGES
+private val WIRE_ANNOTATION_REFERENCE =
+    Regex("""\b(com\.fasterxml\.jackson\.annotation|io\.swagger|org\.springframework\.web|jakarta\.servlet)\b""")
 private val FORBIDDEN_FQN_REFERENCE =
     Regex("""\b(io\.grpc|dev\.sard\.proto|com\.google\.rpc|com\.google\.protobuf|dev\.sard\.server\.agents)\.""")
 private val OTHER_SERVER_PACKAGE = Regex("""\bdev\.sard\.server\.(?!console\b)\w+""")
@@ -75,6 +94,20 @@ class ArchitectureTest {
             }
         }
         assertTrue(offenders.isEmpty(), "forbidden references:\n${offenders.joinToString("\n")}")
+    }
+
+    @Test
+    fun `the domain packages carry no wire or HTTP annotations`() {
+        val offenders =
+            WIRE_FREE_PACKAGES.flatMap { pkg ->
+                ktFiles(File(mainRoot, pkg)).filter { it.name !in WIRE_EXEMPT_FILES }.flatMap { file ->
+                    WIRE_ANNOTATION_REFERENCE
+                        .findAll(withoutComments(file.readText()))
+                        .map { "${file.path}: ${it.value}" }
+                        .toList()
+                }
+            }
+        assertTrue(offenders.isEmpty(), "wire concerns in the domain:\n${offenders.joinToString("\n")}")
     }
 
     @Test

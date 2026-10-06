@@ -105,7 +105,7 @@ fun describeUnavailable(api: OpenAPI) {
  * Kotlin nullability does not reach springdoc (its model resolver reads classes
  * through Jackson 2, the Kotlin module here is for Jackson 3). A property is
  * required when its constructor parameter has no default; a nullable one is then
- * present and null. Schemas are matched to classes of this package by name.
+ * present and null. Schemas are matched to classes of the wire packages by name.
  */
 fun requireConstructorParameters(api: OpenAPI) {
     for ((name, schema) in objectSchemas(api)) {
@@ -128,5 +128,7 @@ private fun requiredParameters(type: KClass<*>): List<String>? =
         .mapNotNull { it.name }
         .ifEmpty { null }
 
-private fun apiClass(name: String): KClass<*>? =
-    runCatching { Class.forName("${OpenApiConfiguration::class.java.packageName}.$name").kotlin }.getOrNull()
+/** Schemas are named after the classes of the API's own package, the only one with wire types. */
+private val WIRE_PACKAGE = OpenApiConfiguration::class.java.packageName
+
+private fun apiClass(name: String): KClass<*>? = runCatching { Class.forName("$WIRE_PACKAGE.$name").kotlin }.getOrNull()
