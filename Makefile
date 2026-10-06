@@ -23,14 +23,26 @@ PROTO_BASE ?= origin/main
 # (docker-compose.build.yml) with the agent packages of dist/, so its version is
 # this checkout's VERSION, not the release version in deploy/.env.
 COMPOSE := env SARD_VERSION=$(VERSION) docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file deploy/.env
-# End-to-end tests (test/e2e): images built from the current code.
+# Build once, test that (docs/adr/0045-build-once.md): each artifact is built by
+# one target into one place; images, tests and releases take it from there.
+# Release agent packages (make package): DIST, for ARCHES (empty: amd64 and arm64).
+# DIST must be inside the repository: the server image copies it from the build context.
+DIST ?= $(CURDIR)/dist
+ARCHES ?=
+# The server jar, console included, exported from deploy/server/Dockerfile (make server-jar).
+SERVER_JAR_DIR ?= $(CURDIR)/build/server-jar
+SERVER_IMAGE ?= sard-server:dev
+# Extra `docker buildx build` flags for the jar: a layer cache in CI, proxy
+# settings behind a TLS-intercepting proxy.
+SERVER_BUILD_FLAGS ?=
+# End-to-end tests (test/e2e): images assembled from the artifacts above.
 E2E_ARCH ?= $(shell go env GOARCH)
 E2E_BUILD := $(CURDIR)/test/e2e/build
+# The e2e stand's agent (GO_TAGS=e2e, ADR 0036): the T3 classes only, never shipped.
+STAND_DIST ?= $(E2E_BUILD)/stand-dist
 E2E_SERVER_IMAGE ?= sard-server:e2e
 E2E_AGENT_IMAGE ?= sard-agent:e2e
-# Extra `docker buildx build` flags for the server image: a layer cache in CI,
-# proxy settings behind a TLS-intercepting proxy.
-E2E_SERVER_BUILD_FLAGS ?=
+E2E_STAND_AGENT_IMAGE ?= sard-agent-stand:e2e
 
 GO_TOOLS := \
 	github.com/bufbuild/buf/cmd/buf \
@@ -41,7 +53,7 @@ GO_TOOLS := \
 	github.com/goreleaser/nfpm/v2/cmd/nfpm \
 	./cmd/crap
 
-.PHONY: tools gate gate-fast proto build build-agent build-cli package image e2e e2e-images test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check up down openapi
+.PHONY: tools gate gate-fast proto build build-agent build-cli package package-stand server-jar server-image image e2e e2e-images e2e-assemble e2e-agent-images e2e-test test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check up down openapi
 
 ## proto: generate Go code from proto/ into proto/gen/go (committed)
 proto: tools
@@ -57,28 +69,61 @@ build: build-agent build-cli
 build-agent:
 	cd agent && go build -ldflags "$(LDFLAGS)" -o bin/sard-agent ./cmd/sard-agent
 
-## package: sard-agent + pinned restic as tar.gz, deb and rpm for amd64/arm64 in dist/
+## package: sard-agent + pinned restic as tar.gz, deb and rpm in DIST (ARCHES, default amd64 and arm64)
 package: tools
-	VERSION=$(VERSION) ./scripts/package-agent.sh
+	DIST=$(abspath $(DIST)) VERSION=$(VERSION) ./scripts/package-agent.sh $(ARCHES)
 
-## image: sard-server image of the current code with its agent packages (make package first)
-image: package
-	docker build --build-arg SARD_VERSION=$(VERSION) -f deploy/server/Dockerfile -t sard-server:dev .
+## package-stand: the e2e stand's agent packages (GO_TAGS=e2e, ADR 0036) for E2E_ARCH in STAND_DIST
+package-stand: tools
+	GO_TAGS=e2e DIST=$(abspath $(STAND_DIST)) VERSION=$(VERSION) ./scripts/package-agent.sh $(E2E_ARCH)
 
-## e2e-images: sard-server and sard-agent images of the current code for the e2e tests
-e2e-images: tools
-	GO_TAGS=e2e DIST=$(E2E_BUILD)/dist VERSION=$(VERSION) ./scripts/package-agent.sh $(E2E_ARCH)
-	docker buildx build --load $(E2E_SERVER_BUILD_FLAGS) --build-arg SARD_VERSION=$(VERSION) \
-		--build-arg AGENT_PACKAGES=test/e2e/build/dist -f deploy/server/Dockerfile -t $(E2E_SERVER_IMAGE) .
-	rm -rf $(E2E_BUILD)/agent-image && mkdir -p $(E2E_BUILD)/agent-image/empty
-	tar -xzf $(E2E_BUILD)/dist/sard-agent_$(VERSION)_linux_$(E2E_ARCH).tar.gz --strip-components=1 \
-		-C $(E2E_BUILD)/agent-image
-	docker buildx build --load -f test/e2e/agent/Dockerfile -t $(E2E_AGENT_IMAGE) $(E2E_BUILD)/agent-image
+## server-jar: build sard-server.jar, console included, once into SERVER_JAR_DIR
+server-jar:
+	docker buildx build $(SERVER_BUILD_FLAGS) --build-arg SARD_VERSION=$(VERSION) --target server-jar \
+		-o type=local,dest=$(SERVER_JAR_DIR) -f deploy/server/Dockerfile .
+
+## server-image: assemble sard-server from SERVER_JAR_DIR and the packages in DIST; compiles nothing
+server-image:
+	docker buildx build --load --build-context server-jar=$(SERVER_JAR_DIR) --build-arg SARD_VERSION=$(VERSION) \
+		--build-arg AGENT_PACKAGES=$(patsubst $(CURDIR)/%,%,$(abspath $(DIST))) \
+		-f deploy/server/Dockerfile -t $(SERVER_IMAGE) .
+
+## image: sard-server image of the current code with its agent packages
+image: package server-jar
+	$(MAKE) server-image
+
+# agent_image: the e2e agent image (test/e2e/agent/Dockerfile) of the tar.gz in
+# $(1) for E2E_ARCH, tagged $(2), laid out in E2E_BUILD/$(3).
+define agent_image
+	rm -rf $(E2E_BUILD)/$(3) && mkdir -p $(E2E_BUILD)/$(3)/empty
+	tar -xzf $(1)/sard-agent_$(VERSION)_linux_$(E2E_ARCH).tar.gz --strip-components=1 -C $(E2E_BUILD)/$(3)
+	docker buildx build --load -f test/e2e/agent/Dockerfile -t $(2) $(E2E_BUILD)/$(3)
+endef
+
+## e2e-images: build the release and stand packages and the jar once, then assemble the e2e images
+e2e-images:
+	$(MAKE) package DIST=$(E2E_BUILD)/dist ARCHES=$(E2E_ARCH)
+	$(MAKE) package-stand
+	$(MAKE) server-jar
+	$(MAKE) e2e-assemble DIST=$(E2E_BUILD)/dist
+
+## e2e-assemble: the e2e images from built artifacts only (DIST, STAND_DIST, SERVER_JAR_DIR)
+e2e-assemble: e2e-agent-images
+	$(MAKE) server-image SERVER_IMAGE=$(E2E_SERVER_IMAGE)
+
+## e2e-agent-images: the release and the stand agent images from the tar.gz in DIST and STAND_DIST
+e2e-agent-images:
+	$(call agent_image,$(DIST),$(E2E_AGENT_IMAGE),agent-image)
+	$(call agent_image,$(STAND_DIST),$(E2E_STAND_AGENT_IMAGE),stand-agent-image)
+
+## e2e-test: the end-to-end tests against the assembled images (needs Docker)
+e2e-test:
+	$(GRADLE) :e2e:test -Pe2e.serverImage=$(E2E_SERVER_IMAGE) -Pe2e.agentImage=$(E2E_AGENT_IMAGE) \
+		-Pe2e.standAgentImage=$(E2E_STAND_AGENT_IMAGE) -Pe2e.version=$(VERSION)
 
 ## e2e: build the images, then run the end-to-end tests (needs Docker)
 e2e: e2e-images
-	$(GRADLE) :e2e:test -Pe2e.serverImage=$(E2E_SERVER_IMAGE) -Pe2e.agentImage=$(E2E_AGENT_IMAGE) \
-		-Pe2e.version=$(VERSION)
+	$(MAKE) e2e-test
 
 build-cli:
 	cd cli && go build -ldflags "$(LDFLAGS)" -o bin/sardctl ./cmd/sardctl

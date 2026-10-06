@@ -34,11 +34,13 @@ internal object RunRows {
                 """
                 INSERT INTO sources (id, tenant_id, agent_id, name, plugin, config, repository_name,
                                      created_at, updated_at)
-                VALUES (?, ?, ?, 'seam', ?, ?::jsonb, 'main', ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?::jsonb, 'main', ?, ?)
                 """.trimIndent(),
                 source,
                 EnrollmentTokens.DEFAULT_TENANT,
                 agentId,
+                // Names are unique per tenant: one per step, so a class may queue several.
+                "seam-$source",
                 plugin,
                 config,
                 now,

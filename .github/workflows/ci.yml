@@ -3,6 +3,14 @@
 #
 # Every job runs the same quality gate as a developer does locally
 # (scripts/gate.sh, thresholds defined there).
+#
+# Build once, test that (docs/adr/0045-build-once.md): every shipped artifact
+# is built by exactly one job and handed on as a workflow artifact; the jobs
+# that test it download it and build nothing of it again.
+#
+#   packages ──┬── server        seam tests run the packaged agent
+#              ├── server-image  jar once (console included), image from that jar
+#              └──────┴── e2e    that image; agent images from the packages
 name: CI
 
 # A change that touches only documentation runs no job: nothing in the
@@ -20,6 +28,11 @@ on:
 
 permissions:
   contents: read
+
+# One version for every artifact of a run: the packages, the jar and the
+# images agree on it, and the image refuses packages of another version.
+env:
+  VERSION: ${{ github.sha }}
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -63,27 +76,45 @@ jobs:
           go-version-file: tools/go.mod
           cache-dependency-path: "**/go.sum"
       - run: ./scripts/gate.sh ${{ matrix.module }}
-      - name: Build binaries
-        if: matrix.module == 'agent' || matrix.module == 'cli'
+      # The agent is built for shipping by the packages job only.
+      - name: Build sardctl
+        if: matrix.module == 'cli'
         run: |
-          make build-${{ matrix.module }}
-          if [ "${{ matrix.module }}" = agent ]; then ./agent/bin/sard-agent --version; else ./cli/bin/sardctl version; fi
-      - name: Package the agent with restic (tar.gz, deb, rpm)
-        if: matrix.module == 'agent'
+          make build-cli
+          ./cli/bin/sardctl version
+
+  packages:
+    # The only build of sard-agent in this workflow: the release packages every
+    # later job tests, plus the e2e stand's build (GO_TAGS=e2e, ADR 0036), which
+    # only the T3 e2e classes run and which is never shipped.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: tools/go.mod
+          cache-dependency-path: "**/go.sum"
+      - name: rpm and minisign
+        run: sudo apt-get update && sudo apt-get install -y rpm minisign
+      - name: Package the agent with restic (tar.gz, deb, rpm; amd64 and arm64)
         env:
           REQUIRE_RPM: "1"
+        run: make package
+      - name: The packaged agent reports the version it was built with
         run: |
-          sudo apt-get install -y rpm
-          make package
+          mkdir -p "$RUNNER_TEMP/agent"
+          tar -xzf "dist/sard-agent_${VERSION}_linux_amd64.tar.gz" --strip-components=1 -C "$RUNNER_TEMP/agent"
+          test "$("$RUNNER_TEMP/agent/sard-agent" --version)" = "sard-agent $VERSION"
       # The release signature refuses forgeries (docs/adr/0043-agent-release.md);
       # a throwaway key, the real one is used by release.yml only.
       - name: Release signature checks
-        if: matrix.module == 'agent'
-        run: |
-          sudo apt-get install -y minisign
-          scripts/test-release-signing.sh dist "$(sed -n 's/^  "version": "\(.*\)",$/\1/p' dist/manifest.json)"
+        run: scripts/test-release-signing.sh dist "$VERSION"
+      # The image carries the agent packages of its own version (docs/adr/0043-agent-release.md).
+      - name: The image refuses agent packages of another version or not matching SHA256SUMS
+        run: scripts/test-image-packages.sh "$VERSION"
+      - name: The e2e stand's agent packages
+        run: make package-stand
       - uses: actions/upload-artifact@v7
-        if: matrix.module == 'agent'
         with:
           name: sard-agent-packages
           path: |
@@ -92,8 +123,15 @@ jobs:
             dist/*.rpm
             dist/manifest.json
             dist/SHA256SUMS
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sard-agent-stand
+          path: test/e2e/build/stand-dist/
+          if-no-files-found: error
 
   server:
+    needs: packages
     runs-on: ubuntu-latest
     env:
       # Kotlin test class file names come from Cyrillic spec-quoted titles; the
@@ -111,6 +149,19 @@ jobs:
         with:
           go-version-file: tools/go.mod
           cache-dependency-path: "**/go.sum"
+      - uses: actions/download-artifact@v7
+        with:
+          name: sard-agent-packages
+          path: dist
+      # The seam tests run the packaged agent instead of building their own (server/build.gradle.kts).
+      - name: The agent of the packages for the seam tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/seam-agent"
+          tar -xzf "dist/sard-agent_${VERSION}_linux_amd64.tar.gz" --strip-components=1 -C "$RUNNER_TEMP/seam-agent"
+          {
+            echo "ORG_GRADLE_PROJECT_sardTestAgentBinary=$RUNNER_TEMP/seam-agent/sard-agent"
+            echo "ORG_GRADLE_PROJECT_sardTestAgentVersion=$VERSION"
+          } >>"$GITHUB_ENV"
       # Testcontainers uses the runner's Docker.
       - run: ./scripts/gate.sh server
       - name: OpenAPI document used by the web client is up to date
@@ -141,29 +192,47 @@ jobs:
           git diff --exit-code -- src/routeTree.gen.ts
       - run: ./scripts/gate.sh web
 
-  image:
-    # The release build (release.yml) without the push: both architectures,
-    # so a Dockerfile change that breaks arm64 fails here, not on a tag.
-    # The same Dockerfile builds the console (its "web" stage) into the jar (ADR 0040):
-    # no separate web step is needed here.
+  server-image:
+    # The only build of the server jar (console included, ADR 0040) in this
+    # workflow, from deploy/server/Dockerfile as release.yml builds it. Every
+    # image below is assembled from that jar and the packages: both
+    # architectures, so a Dockerfile change that breaks arm64 fails here, not on
+    # a tag, and the amd64 image the e2e job runs.
+    needs: packages
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: tools/go.mod
-          cache-dependency-path: "**/go.sum"
-      # The image carries the agent packages of its own version (docs/adr/0043-agent-release.md).
-      - name: Agent packages
-        run: make package VERSION=ci
-      - name: The image refuses agent packages of another version or not matching SHA256SUMS
-        run: scripts/test-image-packages.sh ci
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
-      - name: Build sard-server image for amd64 and arm64
+      # Lets `docker buildx build` in the Makefile reach the GitHub Actions cache.
+      - uses: crazy-max/ghaction-github-runtime@v3
+      - uses: actions/download-artifact@v7
+        with:
+          name: sard-agent-packages
+          path: dist
+      - name: Server jar
         run: >-
-          docker buildx build --platform linux/amd64,linux/arm64 --build-arg SARD_VERSION=ci
-          -f deploy/server/Dockerfile -t sard-server:ci .
+          make server-jar
+          SERVER_BUILD_FLAGS="--cache-from type=gha,scope=sard-server
+          --cache-to type=gha,scope=sard-server,mode=max"
+      - name: sard-server for amd64 and arm64 from that jar
+        run: >-
+          docker buildx build --platform linux/amd64,linux/arm64 --build-context server-jar=build/server-jar
+          --build-arg SARD_VERSION="$VERSION" -f deploy/server/Dockerfile .
+      - name: sard-server for the e2e tests
+        run: |
+          make server-image SERVER_IMAGE=sard-server:e2e
+          docker save -o "$RUNNER_TEMP/sard-server-image.tar" sard-server:e2e
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sard-server-jar
+          path: build/server-jar/sard-server.jar
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sard-server-image
+          path: ${{ runner.temp }}/sard-server-image.tar
+          if-no-files-found: error
       # The template leaves the administrator password empty on purpose.
       - name: Compose files resolve with the env template
         env:
@@ -174,9 +243,11 @@ jobs:
             -f deploy/docker-compose.build.yml --env-file deploy/.env.example config --quiet
 
   e2e:
-    # End-to-end tests (test/e2e): PostgreSQL, sard-server and sard-agent as
-    # containers built from this commit. Logs of every container of a failed
-    # test, secrets masked, are uploaded as an artifact.
+    # End-to-end tests (test/e2e): PostgreSQL, the sard-server image of the
+    # server-image job and agent images of the packages job; nothing of them is
+    # built here. Logs of every container of a failed test, secrets masked, are
+    # uploaded as an artifact.
+    needs: [packages, server-image]
     runs-on: ubuntu-latest
     env:
       LC_ALL: C.UTF-8
@@ -191,14 +262,23 @@ jobs:
         with:
           go-version-file: tools/go.mod
           cache-dependency-path: "**/go.sum"
-      - uses: docker/setup-buildx-action@v3
-      # Lets `docker buildx build` in the Makefile reach the GitHub Actions cache.
-      - uses: crazy-max/ghaction-github-runtime@v3
-      - name: make e2e
-        run: >-
-          make e2e
-          E2E_SERVER_BUILD_FLAGS="--cache-from type=gha,scope=sard-server-e2e
-          --cache-to type=gha,scope=sard-server-e2e,mode=max"
+      - uses: actions/download-artifact@v7
+        with:
+          name: sard-agent-packages
+          path: dist
+      - uses: actions/download-artifact@v7
+        with:
+          name: sard-agent-stand
+          path: test/e2e/build/stand-dist
+      - uses: actions/download-artifact@v7
+        with:
+          name: sard-server-image
+          path: ${{ runner.temp }}
+      - name: Images
+        run: |
+          docker load -i "$RUNNER_TEMP/sard-server-image.tar"
+          make e2e-agent-images DIST=dist
+      - run: make e2e-test
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

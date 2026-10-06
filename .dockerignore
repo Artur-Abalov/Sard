@@ -4,8 +4,10 @@
 # Build context of deploy/server/Dockerfile is the repository root. Kept out:
 # history, dependencies and build output that the image rebuilds itself
 # (web/node_modules and web/dist are rebuilt in the "web" stage, the jar in
-# "build"). Agent packages stay in: AGENT_PACKAGES points at dist/, dist-new/,
-# test/e2e/build/dist or a directory under test/packages/build.
+# "build"). A jar built once (make server-jar, build/server-jar) comes in as
+# its own build context, not through this one (ADR 0045). Agent packages stay
+# in: AGENT_PACKAGES points at dist/, dist-new/, test/e2e/build/dist or a
+# directory under test/packages/build.
 .git/
 .bin/
 .gradle/

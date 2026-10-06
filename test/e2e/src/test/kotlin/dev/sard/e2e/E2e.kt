@@ -9,7 +9,11 @@ import java.nio.file.Path
 /** Settings `make e2e` passes to the test JVM (test/e2e/build.gradle.kts). */
 internal object E2e {
     val serverImage: String get() = property("e2e.serverImage")
+    /** The agent of the release packages (`make package`), the one every class runs but T3's. */
     val agentImage: String get() = property("e2e.agentImage")
+
+    /** The stand's agent (`GO_TAGS=e2e`, ADR 0036): the release agent plus `e2e-slow`, for T3 only. */
+    val standAgentImage: String get() = property("e2e.standAgentImage")
 
     /** The version both images were built with (`VERSION` in the Makefile). */
     val version: String get() = property("e2e.version")

@@ -37,11 +37,13 @@ dependencies {
 }
 
 // Image tags and the expected versions come from `make e2e`; the defaults match
-// a manual `make e2e-images` with VERSION unset.
+// a manual `make e2e-images` with VERSION unset. agentImage carries the release
+// packages, standAgentImage the stand's build for T3 (ADR 0036, 0045).
 val e2eProperties =
     mapOf(
         "e2e.serverImage" to "sard-server:e2e",
         "e2e.agentImage" to "sard-agent:e2e",
+        "e2e.standAgentImage" to "sard-agent-stand:e2e",
         "e2e.version" to "dev",
     )
 
