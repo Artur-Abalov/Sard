@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
 
 /**
  * T3s, stand limit С3: a backup that lasts as long as its config says, whatever the data. The
- * agent image of the stand is built with the "e2e" tag and so offers the `e2e-slow` plugin
+ * stand's agent image ([E2e.standAgentImage]) is built with the "e2e" tag and so offers the `e2e-slow` plugin
  * (agent/plugins/e2eslow): it streams [SIZE] bytes of seeded data at [RATE] bytes per second
  * through restic's stdin and reports progress like any plugin. The step lasts SIZE/RATE ±10%
  * on the server's clock (`started_at`, the first progress, to `finished_at`, the result), and
@@ -25,7 +25,8 @@ import kotlin.test.assertTrue
 class SlowStreamTest {
     @Test
     fun `a slow stream lasts size over rate, makes a snapshot and restores the seeded bytes`() {
-        val agent = AgentEnroller.enroll(sard, EnrollmentTokens.create(sard), hostname = "slow", local = LOCAL)
+        val agent =
+            AgentEnroller.enroll(sard, EnrollmentTokens.create(sard), hostname = "slow", local = LOCAL, image = E2e.standAgentImage)
         val init = agent.host.repoInit(REPOSITORY, "--generate-password")
         assertEquals(0, init.code, init.stderr)
         sard.track("agent-slow", AgentContainer.of(agent)).start()

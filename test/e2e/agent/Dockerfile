@@ -3,9 +3,10 @@
 # Copyright 2026 Artur Abalov
 #
 # sard-agent image for the end-to-end tests. Build context: the unpacked
-# release tarball of `scripts/package-agent.sh` (static sard-agent + pinned,
-# checksum-verified restic, ADR 0017/0018), with an empty directory "empty/"
-# added — `make e2e-images` prepares it. Nothing is downloaded here.
+# tarball of `make package` (release) or `make package-stand` (T3's stand,
+# ADR 0036): static sard-agent + pinned, checksum-verified restic, ADR 0017/0018,
+# with an empty directory "empty/" added — `make e2e-agent-images` prepares it
+# from packages already built (ADR 0045). Nothing is compiled or downloaded here.
 
 FROM gcr.io/distroless/static-debian12:nonroot
 # The layout of the deb/rpm packages (ADR 0018).

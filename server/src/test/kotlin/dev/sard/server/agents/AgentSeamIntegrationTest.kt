@@ -26,11 +26,14 @@ import kotlin.test.assertEquals
 private val REGISTER_WAIT: Duration = Duration.ofSeconds(30)
 private const val POLL_MILLIS = 100L
 
-/** The binary Gradle's buildTestAgent task built once for every test of this run. */
+/** The agent binary of this run: built once by Gradle's buildTestAgent, or CI's packaged agent (ADR 0045). */
 private fun agentBinary(): Path {
     val path = checkNotNull(System.getProperty("sard.test.agent-binary")) { "run through Gradle's buildTestAgent" }
     return Path.of(path).also { check(Files.isExecutable(it)) { "no agent binary at $it" } }
 }
+
+/** The version [agentBinary] was built with and reports in Register. */
+private fun agentVersion(): String = checkNotNull(System.getProperty("sard.test.agent-version")) { "run via Gradle" }
 
 /** The oldest restic the agent accepts: `min_version=` in agent/internal/restic/restic-version. */
 private fun resticMinVersion(): String {
@@ -152,7 +155,7 @@ class AgentSeamIntegrationTest(
         val expectedRow =
             mapOf(
                 "hostname" to Files.readString(Path.of("/proc/sys/kernel/hostname")).trim(),
-                "agent_version" to "seam-test",
+                "agent_version" to agentVersion(),
                 "os" to "linux",
                 "arch" to goArch(),
                 "protocol_version" to 1,
@@ -171,7 +174,7 @@ class AgentSeamIntegrationTest(
         // Built-in plugins cannot verify a restored copy yet, so they offer no verify (A6a, ADR 0027).
         val expectedPlugins =
             listOf("files", "mysql", "network", "postgresql").map {
-                listOf(it, "seam-test", "backup,restore", "object", tenant)
+                listOf(it, agentVersion(), "backup,restore", "object", tenant)
             }
         assertEquals(expectedPlugins, plugins.map { it.values.toList() })
 
