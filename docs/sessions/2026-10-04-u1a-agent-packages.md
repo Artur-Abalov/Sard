@@ -5,7 +5,7 @@
 
 Ветка: `claude/amazing-lovelace-sl6i68` (ответ В14: работать в текущей, не в
 `feat/u1a-agent-packages`). База — `main @ 2a21a0f`.
-ADR: `docs/adr/0041-agent-release.md` (D12). Спецификации `features/U1b-agent-download.md`
+ADR: `docs/adr/0043-agent-release.md` (D12). Спецификации `features/U1b-agent-download.md`
 и `features/` в репозитории нет.
 
 ## Фаза 1 — исследование и контрольная точка 1

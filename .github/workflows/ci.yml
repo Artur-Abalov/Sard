@@ -75,7 +75,7 @@ jobs:
         run: |
           sudo apt-get install -y rpm
           make package
-      # The release signature refuses forgeries (docs/adr/0041-agent-release.md);
+      # The release signature refuses forgeries (docs/adr/0043-agent-release.md);
       # a throwaway key, the real one is used by release.yml only.
       - name: Release signature checks
         if: matrix.module == 'agent'
@@ -149,7 +149,7 @@ jobs:
         with:
           go-version-file: tools/go.mod
           cache-dependency-path: "**/go.sum"
-      # The image carries the agent packages of its own version (docs/adr/0041-agent-release.md).
+      # The image carries the agent packages of its own version (docs/adr/0043-agent-release.md).
       - name: Agent packages
         run: make package VERSION=ci
       - name: The image refuses agent packages of another version or not matching SHA256SUMS

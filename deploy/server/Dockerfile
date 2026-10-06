@@ -7,7 +7,7 @@
 #   docker build --build-arg SARD_VERSION=<v> -f deploy/server/Dockerfile -t sard-server:dev .
 #
 # The image carries the sard-agent packages of its own version and serves
-# them (docs/adr/0041-agent-release.md); nothing is downloaded at run
+# them (docs/adr/0043-agent-release.md); nothing is downloaded at run
 # time. They come from `make package` (AGENT_PACKAGES, default dist/): the
 # build fails unless their version is SARD_VERSION and every file matches
 # SHA256SUMS. A release adds SHA256SUMS.minisig, made by release.yml.

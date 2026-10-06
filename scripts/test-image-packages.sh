@@ -4,7 +4,7 @@
 #
 # The server image carries only agent packages of its own version, intact
 # (deploy/server/Dockerfile, stage agent-packages;
-# docs/adr/0041-agent-release.md). Builds that stage alone, no Gradle:
+# docs/adr/0043-agent-release.md). Builds that stage alone, no Gradle:
 #
 #   scripts/test-image-packages.sh <version>      after make package VERSION=<version>
 #

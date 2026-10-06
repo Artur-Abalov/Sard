@@ -48,7 +48,7 @@ sard:
     server-names: ${SARD_PKI_SERVER_NAMES:localhost,127.0.0.1,::1}
   agent-packages:
     # /downloads/agent/: the agent packages of this server's version, baked into the image
-    # (docs/adr/0041-agent-release.md). On without a valid release, the server does not start.
+    # (docs/adr/0043-agent-release.md). On without a valid release, the server does not start.
     enabled: ${SARD_AGENT_DOWNLOADS:true}
     dir: ${SARD_AGENT_PACKAGES_DIR:/usr/share/sard/agent-packages}
     # Where hosts fetch the packages from, as in the install commands of the console (U1b). An absolute http or

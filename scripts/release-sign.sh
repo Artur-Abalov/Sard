@@ -10,7 +10,7 @@
 # Writes <dist>/SHA256SUMS.minisig with the trusted comment
 # "sard-agent <version>", so a signature cannot be passed off for another
 # version. Run by the release workflow only (.github/workflows/release.yml,
-# docs/adr/0041-agent-release.md): the key lives in the
+# docs/adr/0043-agent-release.md): the key lives in the
 # "release" environment's secrets, is written to a private temporary file for
 # the one minisign call and removed on exit. It never reaches the logs, the
 # repository or an artifact.
