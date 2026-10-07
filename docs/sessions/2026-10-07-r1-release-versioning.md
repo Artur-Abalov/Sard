@@ -192,3 +192,55 @@ Linux / Rocky с SELinux. Закрывает OQ-143.
 - Не прогонялось: `scripts/test-console-install.sh` (rpm-хост Rocky, нужен
   Docker с systemd и образ сервера) — CI/релиз; ручная QA
   `docs/qa/agent-install.md`.
+
+### Решение владельца: Oracle Linux и ВМ — убрать (2026-10-07)
+
+«Убрать всё Oracle»: скрипт ВМ, образ OL9, задача `selinux-vm`, `oraclelinux:9`
+в матрицах удалены (`f26bd5e`). rpm проверяется в контейнере Rocky 9
+(`install` релиза, `install-rpm` CI). SELinux автоматически не проверяется —
+OQ-159.
+
+### `/quick-fix`: программы агента в `/usr/libexec/sard`
+
+- Владелец: «Делаем», «Делай»; совместимость с `v0.0.1-rc1` не нужна («это был
+  демо релиз и им пользовался только я»).
+- **coder** (`06dd9ae`): nfpm, `PKG_FILES`, команды архива консоли (U1b),
+  e2e-образ, документы и спецификация. `gate: PASSED (agent, fast)`; server
+  fast — PASSED (96,6 %) после запуска Docker. Проверено: обновление deb
+  beta.1 (`/usr/lib/sard`) → beta.3 (`/usr/libexec/sard`) на Ubuntu 24.04 —
+  тот же агент в сети с beta.3, конфиг, ключи и пароль не изменились; тест
+  ловил поставляемый `agent.example.yaml` — исключён из снимка (`6208ace`).
+  rpm-обновление здесь не прогнать (зеркала Rocky — 403).
+- **cleaner**: без правок; CRAP server и agent — максимум 6.0.
+- **architect**: CHANGES REQUIRED — (1) обновление архива со старой
+  раскладки, (2) образец конфига закреплял `restic.path`, (3) две строки
+  спецификации со старым путём, (4) снимок в `test-console-install.sh`.
+  (1) и хосты rc1 из (2) — вне объёма по решению владельца.
+- **coder** (`ec5b171`): `restic.path` в образце закомментирован, тест
+  `TestExampleConfigDoesNotPinResticPath` (красный → зелёный); спецификация;
+  снимок; строка в ADR. **cleaner** (`d1a56fa`): `etc_sard_sums`.
+- **architect**: APPROVED. **hardener** не запускался (`/quick-fix`; новый код —
+  тест, конфиг и shell).
+
+### Слияние с `main` (F2, PR #50)
+
+F2 занял ADR 0047 (стенд S3/SFTP) и OQ до 157: ADR версий R1 — **0048**
+(ссылки поправлены только в строках R1). `package-agent.sh` держит обе
+проверки. Пакет теперь зависит от `openssh-client(s)`; `rpm -U` её не ставит —
+в `host-rpm.Dockerfile` добавлен `openssh-clients`, консольная часть — к OQ-157.
+Проверено после слияния: `test-release-version.sh` — all checks passed;
+`license-check` — 797 files OK; `make package` (amd64) — содержимое проверено,
+rpm требует `openssh-clients`; `:server:spotlessCheck :server:detekt` — ok.
+
+### Реестр
+
+OQ-143 закрыт; OQ-158 (суммы rc1 на GitHub) закрыт решением; новые OQ-159
+(SELinux не проверяется), OQ-160 (консоль при формате, которого нет в релизе);
+OQ-157 дополнен для rpm.
+
+### Не сделано / не проверено
+
+- Тег `v0.1.0-beta.1` ставит владелец; `release.yml` с новыми задачами
+  (`version`, rpm в `install`) и `install-rpm` в CI ни разу не запускались.
+- `scripts/test-console-install.sh` для rpm не запускался (нужен хост Rocky).
+- Ручная QA `docs/qa/agent-install.md`.
