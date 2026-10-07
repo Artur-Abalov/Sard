@@ -42,7 +42,8 @@ func compileSchema(t *testing.T, p sdk.Plugin) *jsonschema.Schema {
 }
 
 // Every plugin's ConfigSchema must be a valid draft 2020-12 JSON Schema of
-// an object with 2..4 fields: the UI renders forms from it.
+// an object with at least 2 fields: the UI renders forms from it. (The upper
+// bound of 4 fields of the stub era is gone: the postgresql plugin of F1 has 12.)
 func TestEveryConfigSchemaIsValidJSONSchema(t *testing.T) {
 	for _, p := range plugins.Builtin("1.2.3") {
 		t.Run(p.Name(), func(t *testing.T) {
@@ -50,18 +51,21 @@ func TestEveryConfigSchemaIsValidJSONSchema(t *testing.T) {
 			if s.Types == nil || !slices.Contains(s.Types.ToStrings(), "object") {
 				t.Errorf("schema root must be an object, got %v", s.Types)
 			}
-			if n := len(s.Properties); n < 2 || n > 4 {
-				t.Errorf("schema has %d fields, want 2..4", n)
+			if n := len(s.Properties); n < 2 {
+				t.Errorf("schema has %d fields, want at least 2", n)
 			}
 		})
 	}
 }
 
+// written are the plugins whose methods are no longer stubs.
+var written = []string{"files", "postgresql", "e2e-slow"}
+
 func TestEveryPluginMethodIsNotImplementedYet(t *testing.T) {
 	ctx := context.Background()
 	for _, p := range plugins.Builtin("1.2.3") {
-		if p.Name() == "files" || p.Name() == "e2e-slow" {
-			continue // written: plugins/files (A6b) and plugins/e2eslow (T3s) tests
+		if slices.Contains(written, p.Name()) {
+			continue // written: plugins/files (A6b), plugins/postgresql (F1) and plugins/e2eslow (T3s) tests
 		}
 		t.Run(p.Name(), func(t *testing.T) {
 			if err := p.Prepare(ctx, nil, nil); !errors.Is(err, sdk.ErrNotImplemented) {
