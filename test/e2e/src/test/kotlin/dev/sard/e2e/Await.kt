@@ -21,6 +21,19 @@ internal object Await {
         value(what, timeout) { if (condition()) Unit else null }
     }
 
+    /** Polls [condition] for all of [duration]; fails naming [what] the first time it does not hold. */
+    fun during(
+        what: String,
+        duration: Duration,
+        condition: () -> Boolean,
+    ) {
+        val end = Instant.now() + duration
+        while (Instant.now() < end) {
+            if (!condition()) fail("$what stopped holding before $duration passed")
+            Thread.sleep(POLL.toMillis())
+        }
+    }
+
     /** Polls [read] until it returns a value and returns it; fails naming [what] after [timeout]. */
     fun <T : Any> value(
         what: String,

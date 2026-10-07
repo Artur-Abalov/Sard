@@ -52,7 +52,7 @@ class ResultAckSeamTest {
         assertEquals(listOf("rejected", "failed"), listOf(RunRows.statusOf(sard, stepId), runStatusOf(stepId)))
     }
 
-    /** Whether the agent's executor holds [stepId]'s file in [dir] (docker cp; the image has no shell). */
+    /** Whether the agent's executor holds [stepId]'s file in [dir] (docker cp, as the tests never exec into the agent). */
     private fun GenericContainer<*>.has(
         dir: String,
         stepId: UUID,
