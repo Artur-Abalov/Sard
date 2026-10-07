@@ -47,17 +47,12 @@ func (c *hostCmd) printKeyWarning(name string) {
 // addLocked takes the config lock, then the init lock of the name (Р10),
 // looks at the config once more and connects the repository.
 func (c *hostCmd) addLocked(ctx context.Context, st *addState) int {
-	unlock, f := c.lock()
-	if f != nil {
-		return c.fail(f)
-	}
-	defer unlock()
-	if f := c.load(); f != nil {
-		return c.fail(f)
-	}
-	if _, f := c.planRepository(st.name, st.url); f != nil {
-		return c.fail(f)
-	}
+	return c.underConfigLock(
+		func() (f *repoinit.Failure) { _, f = c.planRepository(st.name, st.url); return f },
+		func() int { return c.underInitLock(ctx, st) })
+}
+
+func (c *hostCmd) underInitLock(ctx context.Context, st *addState) int {
 	unlockInit, f := repoinit.AcquireLock(c.deps.openLock, cacheDir(c.cfg, c.deps), config.Repository{Name: st.name})
 	if f != nil {
 		return c.fail(f)

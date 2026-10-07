@@ -83,19 +83,10 @@ func firstFailure(fs ...*repoinit.Failure) *repoinit.Failure {
 // setSecretLocked takes the lock, looks at the config once more and
 // writes.
 func (c *hostCmd) setSecretLocked(name string, value []byte) int {
-	unlock, f := c.lock()
-	if f != nil {
-		return c.fail(f)
-	}
-	defer unlock()
-	if f := c.load(); f != nil {
-		return c.fail(f)
-	}
-	plan, f := c.planSecret(name)
-	if f != nil {
-		return c.fail(f)
-	}
-	return c.storeSecret(name, value, plan)
+	var plan secretPlan
+	return c.underConfigLock(
+		func() (f *repoinit.Failure) { plan, f = c.planSecret(name); return f },
+		func() int { return c.storeSecret(name, value, plan) })
 }
 
 func (c *hostCmd) storeSecret(name string, value []byte, plan secretPlan) int {

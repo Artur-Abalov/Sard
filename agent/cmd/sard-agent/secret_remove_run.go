@@ -47,18 +47,18 @@ type removeSpec struct {
 	summary func()
 }
 
-// planFor reads the config and decides what the command is to do.
-func (c *hostCmd) planFor(sp removeSpec) (removal, *repoinit.Failure) {
-	if f := c.load(); f != nil {
-		return nothingToRemove, f
-	}
+// planFor decides, from the config as it is now, what the command is to do.
+func (sp removeSpec) planFor() (removal, *repoinit.Failure) {
 	return planRemoval(sp.kind, sp.name, sp.source(), sp.own)
 }
 
 // remove is the pipeline of every remove command: config, decision, lock,
 // the decision again under the lock, files, audit, applying.
 func (c *hostCmd) remove(sp removeSpec) int {
-	what, f := c.planFor(sp)
+	if f := c.load(); f != nil {
+		return c.fail(f)
+	}
+	what, f := sp.planFor()
 	switch {
 	case f != nil:
 		return c.fail(f)
@@ -76,18 +76,18 @@ func (c *hostCmd) nothingToRemove(sp removeSpec) int {
 func capitalised(s string) string { return strings.ToUpper(s[:1]) + s[1:] }
 
 func (c *hostCmd) removeLocked(sp removeSpec) int {
-	unlock, f := c.lock()
-	if f != nil {
-		return c.fail(f)
-	}
-	defer unlock()
-	what, f := c.planFor(sp)
-	switch {
-	case f != nil:
-		return c.fail(f)
-	case what == nothingToRemove:
-		return c.nothingToRemove(sp)
-	}
+	var what removal
+	return c.underConfigLock(
+		func() (f *repoinit.Failure) { what, f = sp.planFor(); return f },
+		func() int {
+			if what == nothingToRemove {
+				return c.nothingToRemove(sp)
+			}
+			return c.removeFiles(sp)
+		})
+}
+
+func (c *hostCmd) removeFiles(sp removeSpec) int {
 	if err := sp.files(); err != nil {
 		return c.fail(writeFailed(err))
 	}

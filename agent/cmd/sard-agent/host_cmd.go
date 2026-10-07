@@ -114,6 +114,24 @@ func (c *hostCmd) lock() (func(), *repoinit.Failure) {
 	return hostsetup.LockConfig(c.deps.openLock, c.layout)
 }
 
+// underConfigLock is the frame of every command that changes the config:
+// the lock (Р10), the config read again under it, the decision (plan; a
+// failure ends the command), then act while the lock is held.
+func (c *hostCmd) underConfigLock(plan func() *repoinit.Failure, act func() int) int {
+	unlock, f := c.lock()
+	if f != nil {
+		return c.fail(f)
+	}
+	defer unlock()
+	if f := c.load(); f != nil {
+		return c.fail(f)
+	}
+	if f := plan(); f != nil {
+		return c.fail(f)
+	}
+	return act()
+}
+
 // writeFailed is CONFIG_WRITE: the message names the file or directory.
 func writeFailed(err error) *repoinit.Failure {
 	return repoinit.Fail(repoinit.ConfigWrite, "%v", err)
