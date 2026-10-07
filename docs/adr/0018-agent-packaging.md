@@ -16,7 +16,7 @@ ADR 0017: restic поставляется вместе с агентом. Нуж
   статический. restic — официальный релиз, полученный `fetch-restic.sh` с
   проверкой SHA-256 (ADR 0017).
 - Раскладка deb/rpm: `/usr/libexec/sard/{sard-agent,restic}` (до v0.1.0 была
-  `/usr/lib/sard/`; перенос — ADR 0047, причина — SELinux), ссылка
+  `/usr/lib/sard/`; перенос — ADR 0048, причина — SELinux), ссылка
   `/usr/bin/sard-agent`, unit `/usr/lib/systemd/system/sard-agent.service`,
   пример конфига `/etc/sard/agent.example.yaml` (config, не перезаписывается),
   лицензии в `/usr/share/doc/sard-agent/`. `os.Executable()` на Linux

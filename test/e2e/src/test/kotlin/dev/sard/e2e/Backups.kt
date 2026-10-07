@@ -132,6 +132,24 @@ internal object Backups {
             true
         } ?: false
 
+    /** The bytes the step reported as processed (its last progress), 0 before any. */
+    fun bytesProcessed(
+        env: SardEnvironment,
+        stepId: UUID,
+    ): Long = query(env, "SELECT bytes_processed FROM run_steps WHERE id = ?", stepId) { it.getLong(1) } ?: 0
+
+    /** The lines of the step's log on the server (`step_logs`), in order: what the console shows. */
+    fun logs(
+        env: SardEnvironment,
+        stepId: UUID,
+    ): List<String> =
+        env.database().use { connection ->
+            connection.prepareStatement("SELECT text FROM step_logs WHERE step_id = ? ORDER BY seq").use { q ->
+                q.setObject(1, stepId)
+                q.executeQuery().use { rows -> generateSequence { if (rows.next()) rows.getString(1) else null }.toList() }
+            }
+        }
+
     private fun <T> query(
         env: SardEnvironment,
         sql: String,

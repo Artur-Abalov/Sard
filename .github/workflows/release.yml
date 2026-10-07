@@ -2,7 +2,7 @@
 # Copyright 2026 Artur Abalov
 #
 # Release for a tag vX.Y.Z or a pre-release vX.Y.Z-beta.N / vX.Y.Z-rc.N
-# (docs/adr/0043-agent-release.md, ADR 0039, docs/adr/0047-release-versions.md):
+# (docs/adr/0043-agent-release.md, ADR 0039, docs/adr/0048-release-versions.md):
 #
 #   version     (the tag is a release tag, else nothing is built)
 #   build ×2 ─┬─ reproduce  (two independent builds, same SHA256SUMS; tamper tests)

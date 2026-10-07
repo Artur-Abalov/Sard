@@ -30,7 +30,7 @@ private enum class Stage {
 }
 
 /**
- * A release version by SemVer 2.0 (ADR 0047). A build from git (`v1.3.2-5-gabc1234`), `dev`, a tag the
+ * A release version by SemVer 2.0 (ADR 0048). A build from git (`v1.3.2-5-gabc1234`), `dev`, a tag the
  * release rule refuses (`v0.0.1-rc1`) and a number too big for a Long are none.
  */
 private data class ReleaseVersion(

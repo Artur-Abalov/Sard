@@ -18,6 +18,15 @@ vendor: Sard
 homepage: https://github.com/Artur-Abalov/sard
 license: AGPL-3.0-only AND BSD-2-Clause
 
+# restic's sftp backend runs the system ssh client (docs/adr/0047-e2e-storage-backends.md).
+overrides:
+  deb:
+    depends:
+      - openssh-client
+  rpm:
+    depends:
+      - openssh-clients
+
 contents:
   # restic is found next to sard-agent (docs/adr/0017-restic-shipped-with-agent.md).
   - src: ${STAGE}/sard-agent

@@ -9,7 +9,7 @@
 # and nothing else (an internal Docker network, no internet):
 #
 #   - deb on Ubuntu 24.04, the tar.gz archive on Debian 12 and rpm on Rocky
-#     and AlmaLinux (format=rpm, R1, ADR 0047), amd64: every
+#     and AlmaLinux (format=rpm, R1, ADR 0048), amd64: every
 #     step but the signature one exits 0, the agent comes online with the
 #     version of the packages; configure does not overwrite an edited
 #     agent.yaml; after the archive's install the layout of the deb is there;

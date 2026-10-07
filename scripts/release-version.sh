@@ -3,7 +3,7 @@
 # Copyright 2026 Artur Abalov
 #
 # The one rule from a git tag to the versions of a release
-# (docs/adr/0047-release-versions.md). Every other script and workflow asks
+# (docs/adr/0048-release-versions.md). Every other script and workflow asks
 # this one instead of parsing a version itself.
 #
 #   release-version.sh check TAG          exit 0 for a release tag, else name the form and exit 1

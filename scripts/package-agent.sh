@@ -20,7 +20,7 @@
 #
 # <version> in file names is VERSION as given (the tag); the version inside a
 # deb or rpm is scripts/release-version.sh's (v0.1.0-beta.1 → 0.1.0~beta.1,
-# docs/adr/0047-release-versions.md).
+# docs/adr/0048-release-versions.md).
 #
 # Every package carries Sard's license (AGPL-3.0), restic's (BSD-2) and the
 # license texts of all Go modules compiled into sard-agent.
@@ -47,7 +47,7 @@ die() { echo "package-agent: $*" >&2; exit 1; }
 
 RELEASE_VERSION="$ROOT/scripts/release-version.sh"
 # The deb/rpm version of VERSION: a release tag's own (0.1.0~beta.1), anything
-# else 0.0.0~dev.<description>, below any release (docs/adr/0047-release-versions.md).
+# else 0.0.0~dev.<description>, below any release (docs/adr/0048-release-versions.md).
 PKG_VERSION="$("$RELEASE_VERSION" package "$VERSION")"
 
 # third_party_licenses prints the license files of every non-Sard module
@@ -168,6 +168,8 @@ verify() {
   dpkg-deb -c "$deb" | awk '{print $6}' | sed 's|^\.||' | require "$(basename "$deb")" "${PKG_FILES[@]}"
   dpkg-deb -c "$deb" | awk '{print $6}' | sed 's|^\.||; s|/$||' | forbid "$(basename "$deb")" /var/cache /var/cache/sard "$CACHE_DIR"
   dpkg-deb --ctrl-tarfile "$deb" | tar -xO ./postinst | check_cache_dir "$(basename "$deb")"
+  # restic's sftp backend runs ssh (ADR 0047).
+  [ "$(dpkg-deb -f "$deb" Depends)" = openssh-client ] || die "$(basename "$deb"): Depends must be openssh-client"
   rpm="$DIST/$("$RELEASE_VERSION" rpm-file "$VERSION" "$arch")"
   [ -f "$rpm" ] || die "$(basename "$rpm") missing"
   if command -v rpm >/dev/null; then
@@ -176,6 +178,7 @@ verify() {
     rpm -qlp "$rpm" 2>/dev/null | require "$(basename "$rpm")" "${PKG_FILES[@]}"
     rpm -qlp "$rpm" 2>/dev/null | forbid "$(basename "$rpm")" /var/cache /var/cache/sard "$CACHE_DIR"
     rpm -qp --scripts "$rpm" 2>/dev/null | check_cache_dir "$(basename "$rpm")"
+    rpm -qp --requires "$rpm" 2>/dev/null | grep -qx 'openssh-clients' || die "$(basename "$rpm"): must require openssh-clients"
   else
     [ -z "${REQUIRE_RPM:-}" ] || die "rpm tool required (REQUIRE_RPM set)"
     echo "package-agent: $(basename "$rpm") contents not checked (no rpm tool)"
@@ -193,7 +196,7 @@ package_arch() {
   # nfpm does not expand variables in file paths: render the config.
   sed -e "s|\${STAGE}|$dir|g" -e "s|\${ARCH}|$arch|g" -e "s|\${ROOT}|$ROOT|g" \
     -e "s|\${PKG_VERSION}|$PKG_VERSION|g" "$ROOT/deploy/agent/nfpm.yaml" >"$dir.nfpm.yaml"
-  # File names carry VERSION, never "~" (docs/adr/0047-release-versions.md).
+  # File names carry VERSION, never "~" (docs/adr/0048-release-versions.md).
   "$BIN/nfpm" package --config "$dir.nfpm.yaml" --packager deb \
     --target "$DIST/$("$RELEASE_VERSION" deb-file "$VERSION" "$arch")" >/dev/null
   "$BIN/nfpm" package --config "$dir.nfpm.yaml" --packager rpm \

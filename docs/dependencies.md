@@ -41,6 +41,8 @@
 |---|---|---|---|
 | restic (официальный бинарник релиза) | 0.19.1 (`agent/internal/restic/restic-version`) | BSD-2-Clause | хранение, дедупликация и шифрование бэкапов; ADR 0017, 0018. Текст лицензии — `third_party/restic/LICENSE`, в пакете — `LICENSE.restic` |
 
+Зависимость пакета (ставит менеджер пакетов хоста, не поставляется): `openssh-client` (deb) / `openssh-clients` (rpm), OpenSSH, BSD — `ssh` для бэкенда `sftp:` restic; ADR 0047.
+
 ## Сервер (Kotlin, Gradle)
 
 Версии без явного номера управляются BOM Spring Boot 4.1.1. Лицензии — из POM на Maven Central.
@@ -78,7 +80,8 @@
 | testcontainers-junit-jupiter, testcontainers-postgresql | 2.0.5 | MIT | контейнеры PostgreSQL, sard-server, sard-agent |
 | kotlin-test-junit5 | 2.4.20 | Apache-2.0 | assert-функции |
 
-Образы: `postgres:18-alpine` (как в `deploy/`), `gcr.io/distroless/static-debian12:nonroot` (Apache-2.0) — база образа агента.
+Образы: `postgres:18-alpine` (как в `deploy/`), `ubuntu:24.04` с `openssh-client`/`openssh-server` из архива Ubuntu — база образов агента и SFTP-сервера стенда (ADR 0047).
+`dxflrs/garage:v2.1.0` (AGPL-3.0) — S3-хранилище стенда (ADR 0047), только запускается.
 `nicolaka/netshoot:v0.14` (Apache-2.0) — только `iptables` в сетевом пространстве контейнера агента: односторонний обрыв связи в T3 (`Interruptions.block`).
 
 ## Инструменты сборки сервера (в поставку не входят)

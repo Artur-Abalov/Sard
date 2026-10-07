@@ -99,7 +99,7 @@ class InstallCommands(
 
     private fun dpkg(pkg: ReleasePackage) = "sudo dpkg -i ${pkg.file}"
 
-    /** `rpm -Uvh` of a local file needs no repositories, unlike `dnf install ./file` (ADR 0047). */
+    /** `rpm -Uvh` of a local file needs no repositories, unlike `dnf install ./file` (ADR 0048). */
     private fun rpm(pkg: ReleasePackage) = "sudo rpm -Uvh ${pkg.file}"
 
     private fun enroll() = endpoint.enrollCommand(TOKEN_PLACEHOLDER)

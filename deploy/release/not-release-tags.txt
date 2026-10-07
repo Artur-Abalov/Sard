@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright 2026 Artur Abalov
 #
-# Tags that are NOT releases (docs/adr/0047-release-versions.md): the release
+# Tags that are NOT releases (docs/adr/0048-release-versions.md): the release
 # rule refuses them and the console never marks an agent outdated by them.
 # One list for both sides: scripts/test-release-version.sh and the server's
 # AgentVersionsTest read it. Lines starting with # are comments.

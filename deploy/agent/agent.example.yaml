@@ -26,7 +26,9 @@ restic: # restic ships with the agent: docs/adr/0017-restic-shipped-with-agent.m
   # path: /usr/libexec/sard/restic    # default: "restic" next to the sard-agent binary
   cache_dir: /var/cache/sard/restic   # default; also restic's HOME. Under the packaged
                                       # systemd unit another path needs ReadWritePaths=
-                                      # in a drop-in (see sard-agent.service).
+                                      # in a drop-in (see sard-agent.service). Not ssh's
+                                      # home: sftp keys and known_hosts are in
+                                      # /var/lib/sard-agent/.ssh (docs/operator/05a-storage.md).
 executor:
   state_dir: /var/lib/sard-agent/executor  # default; results wait here (0700) until the server acks them
   max_parallel: 1                          # steps running at once; default 1

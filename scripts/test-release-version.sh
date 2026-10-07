@@ -3,7 +3,7 @@
 # Copyright 2026 Artur Abalov
 #
 # Tests scripts/release-version.sh, the one rule from a git tag to every
-# version of a release (docs/adr/0047-release-versions.md):
+# version of a release (docs/adr/0048-release-versions.md):
 #
 #   1. which tags are releases (vX.Y.Z, vX.Y.Z-beta.N, vX.Y.Z-rc.N) and which
 #      are refused (rc1 without a dot, alpha, leading zeros, git describe);

@@ -4,7 +4,7 @@
 #
 # Installs and upgrades the sard-agent deb on clean Debian/Ubuntu hosts, and
 # the rpm on clean Rocky Linux/AlmaLinux hosts, with systemd as PID 1,
-# against a real sard-server (docs/adr/0043-agent-release.md, ADR 0047):
+# against a real sard-server (docs/adr/0043-agent-release.md, ADR 0048):
 #
 #   1. install N: user, directories and their owners and modes, the unit is
 #      neither enabled nor running and, left alone for 60 s, never restarts
@@ -13,7 +13,7 @@
 #   2. as an administrator would: agent.yaml, "sudo -u sard-agent sard-agent
 #      enroll", "sudo -u sard-agent sard-agent repo init", then the service;
 #      the agent comes online with version N;
-#   3. upgrade to N+1 (a newer package version, ADR 0047: 0.1.0~beta.1 →
+#   3. upgrade to N+1 (a newer package version, ADR 0048: 0.1.0~beta.1 →
 #      0.1.0~beta.2 …): configuration, keys, the repository password and the
 #      directories are unchanged, the service still enabled, the output says
 #      nothing about enrollment, and the same agent comes back online with

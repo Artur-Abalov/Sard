@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright 2026 Artur Abalov
 #
-# Release tags in ascending order (docs/adr/0047-release-versions.md): each is
+# Release tags in ascending order (docs/adr/0048-release-versions.md): each is
 # newer than every line above it. scripts/test-release-version.sh checks that
 # dpkg and rpm order their package versions so, the server's tests that the
 # console's "update available" does (U1b). Lines starting with # are comments.

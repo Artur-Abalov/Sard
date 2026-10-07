@@ -13,7 +13,7 @@
 
 ## Схема версий
 
-Решение — `docs/adr/0047-release-versions.md`, правило —
+Решение — `docs/adr/0048-release-versions.md`, правило —
 `scripts/release-version.sh`. Путь к выпуску:
 
 ```text

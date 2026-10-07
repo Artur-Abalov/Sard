@@ -98,7 +98,7 @@ jobs:
       - name: rpm and minisign
         run: sudo apt-get update && sudo apt-get install -y rpm minisign
       # One rule from a tag to every version; dpkg and rpm order pre-releases
-      # below their release (docs/adr/0047-release-versions.md).
+      # below their release (docs/adr/0048-release-versions.md).
       - name: Release version rule
         run: scripts/test-release-version.sh
       - name: Package the agent with restic (tar.gz, deb, rpm; amd64 and arm64)
@@ -295,7 +295,7 @@ jobs:
 
   install-rpm:
     # The rpm installed, enrolled and upgraded on Rocky 9
-    # with systemd, as release.yml's install job does on a tag (ADR 0047): here
+    # with systemd, as release.yml's install job does on a tag (ADR 0048): here
     # so that a pull request sees it. This workflow's packages are a
     # development version (0.0.0~dev.<sha>), which no fixed fixture sorts below
     # in both dpkg and rpm; so the packaged rpm is installed and a fixture of

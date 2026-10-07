@@ -12,7 +12,7 @@ enum class InstallArch(
     ARM64("arm64"),
 }
 
-/** What the console offers: a deb package, an rpm package or the tar.gz archive (ADR 0047). */
+/** What the console offers: a deb package, an rpm package or the tar.gz archive (ADR 0048). */
 enum class InstallFormat(
     /** The name of the format in manifest.json. */
     val manifestName: String,

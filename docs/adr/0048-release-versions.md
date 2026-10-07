@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 <!-- Copyright 2026 Artur Abalov -->
 
-# 0047 — Версии релизов: beta, rc и порядок в deb и rpm
+# 0048 — Версии релизов: beta, rc и порядок в deb и rpm
 
 - Статус: принято (решения владельца 2026-10-07, журнал `docs/sessions/2026-10-07-r1-release-versioning.md`)
 - Дата: 2026-10-07

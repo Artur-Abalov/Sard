@@ -19,7 +19,7 @@ enum class InstallArch {
     ARM64,
 }
 
-/** What the console offers: a deb package, an rpm package or the tar.gz archive (ADR 0047). */
+/** What the console offers: a deb package, an rpm package or the tar.gz archive (ADR 0048). */
 @Schema(enumAsRef = true)
 enum class InstallFormat {
     @JsonProperty("deb")
