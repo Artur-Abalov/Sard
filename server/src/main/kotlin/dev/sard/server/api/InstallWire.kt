@@ -19,11 +19,14 @@ enum class InstallArch {
     ARM64,
 }
 
-/** What the console offers: a deb package or the tar.gz archive. RPM stays in the release but is not offered. */
+/** What the console offers: a deb package, an rpm package or the tar.gz archive (ADR 0047). */
 @Schema(enumAsRef = true)
 enum class InstallFormat {
     @JsonProperty("deb")
     DEB,
+
+    @JsonProperty("rpm")
+    RPM,
 
     @JsonProperty("tar")
     TAR,

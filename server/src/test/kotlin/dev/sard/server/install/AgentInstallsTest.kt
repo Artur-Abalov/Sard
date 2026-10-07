@@ -54,6 +54,33 @@ private fun installs(offer: AgentOffer) =
 /** The rules of the install block that do not depend on the HTTP layer: what the release and the setting give. */
 @MutFlowTest
 class AgentInstallsTest {
+    @Test
+    fun `Выбор rpm берёт имя файла из манифеста, а не строит его`() {
+        val rpm = AgentArtifact("sard-agent-v1.4.0.aarch64.rpm", 1, SHA, "arm64", "rpm")
+        val offer = AgentOffer.Serving(catalog(artifacts = listOf(rpm)))
+        val info = MutFlow.underTest { installs(offer).install(InstallArch.ARM64, InstallFormat.RPM, FetchTool.CURL) }
+        assertEquals("sard-agent-v1.4.0.aarch64.rpm", downloadedPackage(info))
+        assertEquals(StepKind.INSTALL, info.steps[3].kind)
+    }
+
+    @Test
+    fun `Выбор rpm без rpm в релизе даёт пустой список шагов`() {
+        val info = install(arch = InstallArch.ARM64, format = InstallFormat.RPM)
+        assertEquals(true, info.downloadsEnabled)
+        assertEquals(emptyList(), info.steps)
+    }
+
+    @Test
+    fun `Обновление rpm берёт архитектуру агента, а без rpm в релизе даёт arch_unavailable`() {
+        val info = upgrade("amd64", format = InstallFormat.RPM)
+        assertEquals("sard-agent_v1.4.0_linux_amd64.rpm", downloadedPackage(info))
+        assertNull(info.reason)
+
+        val missing = upgrade("arm64", format = InstallFormat.RPM)
+        assertEquals(emptyList(), missing.steps)
+        assertEquals(UpgradeReason.ARCH_UNAVAILABLE, missing.reason)
+    }
+
     private val serving = installs(AgentOffer.Serving(catalog()))
     private val withheld = installs(AgentOffer.Withheld("v1.4.0"))
 

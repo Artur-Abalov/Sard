@@ -107,6 +107,16 @@ class AgentInstallApiIntegrationTest(
     }
 
     @Test
+    fun `Выбор rpm для amd64 даёт rpm и установку через rpm Uvh`() {
+        val response = install("?arch=amd64&format=rpm")
+
+        assertEquals(200, response.status)
+        assertEquals("rpm", response.json.path("format").asString())
+        assertEquals("sard-agent-1.4.0-1.amd64.rpm", commands(response, "download").first().substringAfterLast('/'))
+        assertEquals(listOf("sudo rpm -Uvh sard-agent-1.4.0-1.amd64.rpm"), commands(response, "install"))
+    }
+
+    @Test
     fun `Неизвестная архитектура отклоняется`() {
         val response = install("?arch=riscv64")
 
@@ -116,7 +126,7 @@ class AgentInstallApiIntegrationTest(
 
     @Test
     fun `Неизвестный формат отклоняется`() {
-        for (format in listOf("rpm", "zip")) {
+        for (format in listOf("zip", "RPM")) {
             val response = install("?format=$format")
 
             assertEquals(422, response.status, format)
@@ -319,6 +329,16 @@ class AgentInstallApiIntegrationTest(
     }
 
     @Test
+    fun `Обновление rpm ставит пакет поверх через rpm Uvh без удаления`() {
+        val agent = world.agent(tenant, snapshotOf(arch = "amd64"))
+
+        val response = upgrade(agent.agentId, "?format=rpm")
+
+        assertEquals(listOf("download", "checksum", "signature", "upgrade"), kinds(response))
+        assertEquals(listOf("sudo rpm -Uvh sard-agent-1.4.0-1.amd64.rpm"), commands(response, "upgrade"))
+    }
+
+    @Test
     fun `Обновление из архива заменяет бинарники и перезапускает работающую службу`() {
         val agent = world.agent(tenant, snapshotOf(arch = "amd64"))
 
@@ -378,7 +398,7 @@ class AgentInstallApiIntegrationTest(
     fun `Обновление с неизвестным форматом отвечает 422`() {
         val agent = world.agent(tenant, snapshotOf())
 
-        val response = upgrade(agent.agentId, "?format=rpm")
+        val response = upgrade(agent.agentId, "?format=zip")
 
         assertEquals(422, response.status)
         assertEquals(listOf("format"), response.errorFields())
