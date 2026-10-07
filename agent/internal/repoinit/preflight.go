@@ -62,6 +62,11 @@ func checkPasswordFile(h Host, repo config.Repository, index int, createPassword
 	if err := secrets.CheckFile(key, repo.PasswordFile, h.UID, h.Stat); err != nil {
 		return false, rejected(err)
 	}
+	return passwordFileState(h, repo, createPassword)
+}
+
+// passwordFileState: the file exists and is not empty, or is to be created.
+func passwordFileState(h Host, repo config.Repository, createPassword bool) (missing bool, f *Failure) {
 	info, err := h.Stat(repo.PasswordFile)
 	switch {
 	case errors.Is(err, fs.ErrNotExist) && createPassword:

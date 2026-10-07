@@ -109,13 +109,18 @@ func (c *hostCmd) storeSecret(name string, value []byte, plan secretPlan) int {
 	if err := c.writeSecret(valueFile, fragment, value, yamlBody, sameValue); err != nil {
 		return c.fail(writeFailed(err))
 	}
-	action := "added"
-	if plan.ownFragment {
-		action = "updated"
-	}
+	action := secretAction(plan)
 	c.record("secret", name, action)
 	_, _ = fmt.Fprintf(c.stdout, "Secret %q %s.\n  value file: %s\n  defined in: %s\n", name, action, valueFile, fragment)
 	return c.finish()
+}
+
+// secretAction names what the command did to a secret it wrote.
+func secretAction(plan secretPlan) string {
+	if plan.ownFragment {
+		return "updated"
+	}
+	return "added"
 }
 
 // finish applies the change: its failure is the command's.

@@ -169,18 +169,25 @@ func resolveEnrollLocals(opts enrollOptions, stderr io.Writer) (enrollPipelineSt
 	if code != exitOK {
 		return enrollPipelineState{}, code
 	}
-	tok, code := parseEnrollToken(rawToken, stderr)
+	tok, code := parseAndCheckToken(rawToken, opts, cfg, stderr)
 	if code != exitOK {
 		return enrollPipelineState{}, code
-	}
-	if c := checkAddressConflict(opts, cfg, stderr); c != exitOK {
-		return enrollPipelineState{}, c
 	}
 	previousAgentID, code := checkExistingIdentity(cfg, opts.force, stderr)
 	if code != exitOK {
 		return enrollPipelineState{}, code
 	}
 	return enrollPipelineState{rawToken: rawToken, cfg: cfg, tok: tok, previousAgentID: previousAgentID}, exitOK
+}
+
+// parseAndCheckToken parses the token, then checks the address against the
+// config.
+func parseAndCheckToken(rawToken string, opts enrollOptions, cfg config.Config, stderr io.Writer) (enroll.Token, int) {
+	tok, code := parseEnrollToken(rawToken, stderr)
+	if code != exitOK {
+		return tok, code
+	}
+	return tok, checkAddressConflict(opts, cfg, stderr)
 }
 
 // resolveEnrollHostname reads the OS hostname and checks it locally (В6):

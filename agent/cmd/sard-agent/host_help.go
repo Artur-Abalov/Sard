@@ -119,20 +119,32 @@ system log (tag sard-agent).
 
 ` + applyingHelp
 
+var repoHelpPrinters = map[string]func(io.Writer){
+	"list":     printRepoListHelp,
+	"add":      printRepoAddHelp,
+	"show":     printRepoShowHelp,
+	"remove":   printRepoRemoveHelp,
+	"password": printRepoPasswordHelp,
+}
+
 func printRepoHelp(stdout io.Writer, sub string) {
-	switch sub {
-	case "list":
-		printRepoListHelp(stdout)
-	case "add":
-		printHelp(stdout, "repo add [flags] <name> <address>", repoAddHelpText, []repoHelpCode{
-			codeOK, codeRestart,
-			usageCode("flags, rights (PRIVILEGES_REQUIRED, SERVICE_USER_UNKNOWN), NAME_INVALID, BACKEND_NOT_SUPPORTED, LOCAL_PATH_INVALID, config, DEFINED_IN_CONFIG, SECRET_SOURCE_MISSING, WRONG_PASSWORD"),
-			codeConflict, codeLocked, codeWrite,
-		})
-	case "show":
-		printRepoShowHelp(stdout)
-	case "remove":
-		printHelp(stdout, "repo remove [flags] <name>", `Takes a repository out of this host's configuration: removes its fragment, its
+	if printer, ok := repoHelpPrinters[sub]; ok {
+		printer(stdout)
+		return
+	}
+	printRepoInitHelp(stdout)
+}
+
+func printRepoAddHelp(stdout io.Writer) {
+	printHelp(stdout, "repo add [flags] <name> <address>", repoAddHelpText, []repoHelpCode{
+		codeOK, codeRestart,
+		usageCode("flags, rights (PRIVILEGES_REQUIRED, SERVICE_USER_UNKNOWN), NAME_INVALID, BACKEND_NOT_SUPPORTED, LOCAL_PATH_INVALID, config, DEFINED_IN_CONFIG, SECRET_SOURCE_MISSING, WRONG_PASSWORD"),
+		codeConflict, codeLocked, codeWrite,
+	})
+}
+
+func printRepoRemoveHelp(stdout io.Writer) {
+	printHelp(stdout, "repo remove [flags] <name>", `Takes a repository out of this host's configuration: removes its fragment, its
 env_file (if it lies in the secrets directory and nothing else uses it) and its
 systemd drop-in. restic is not called, the data in the storage is not touched,
 and the password file stays: adding the same address again attaches the
@@ -144,10 +156,12 @@ Flags:
   --no-restart      do not restart the service, say how to
 
 `+sudoHelp+"\n"+applyingHelp, []repoHelpCode{
-			codeOK, codeRestart, usageCode("flags, rights (PRIVILEGES_REQUIRED, SERVICE_USER_UNKNOWN), config, DEFINED_IN_CONFIG"), codeLocked, codeWrite,
-		})
-	case "password":
-		printHelp(stdout, "repo password <name> --reveal [flags]", `Prints the password file of a repository to standard output, byte for byte, with
+		codeOK, codeRestart, usageCode("flags, rights (PRIVILEGES_REQUIRED, SERVICE_USER_UNKNOWN), config, DEFINED_IN_CONFIG"), codeLocked, codeWrite,
+	})
+}
+
+func printRepoPasswordHelp(stdout io.Writer) {
+	printHelp(stdout, "repo password <name> --reveal [flags]", `Prints the password file of a repository to standard output, byte for byte, with
 a warning on stderr: the password is then on the screen, in the history of the
 terminal and in the output of scripts. Without --reveal nothing is printed
 (REVEAL_REQUIRED). The backend is not called. Every reveal is written to the
@@ -158,9 +172,6 @@ Flags:
   --reveal          really print the password
 
 `+readOnlyHelp, []repoHelpCode{codeOK, usageCode("flags, rights (PRIVILEGES_REQUIRED), REVEAL_REQUIRED, config, REPOSITORY_UNKNOWN, PASSWORD_FILE_MISSING")})
-	default:
-		printRepoInitHelp(stdout)
-	}
 }
 
 func printRepoShowHelp(stdout io.Writer) {

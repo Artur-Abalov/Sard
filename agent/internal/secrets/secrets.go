@@ -86,17 +86,24 @@ func secretEntries(cfg config.Config) []entry {
 	if cfg.TLS.KeyFile != "" {
 		entries = append(entries, entry{"tls.key_file", cfg.TLS.KeyFile})
 	}
-	for i, r := range cfg.Repositories {
-		entries = append(entries, entry{RepositoryKey(i, r, "password_file"), r.PasswordFile})
-		if r.EnvFile != "" {
-			entries = append(entries, entry{RepositoryKey(i, r, "env_file"), r.EnvFile})
-		}
-	}
+	entries = append(entries, repositoryEntries(cfg.Repositories)...)
 	for _, name := range cfg.SecretNames() {
 		entries = append(entries, entry{keyIn("secrets."+name, cfg.SecretSource(name), cfg.Path()), cfg.Secrets[name]})
 	}
 	for _, name := range cfg.ScriptNames() {
 		entries = append(entries, entry{"scripts." + name, cfg.Scripts[name]})
+	}
+	return entries
+}
+
+// repositoryEntries lists the password and env files of the repositories.
+func repositoryEntries(repos []config.Repository) []entry {
+	var entries []entry
+	for i, r := range repos {
+		entries = append(entries, entry{RepositoryKey(i, r, "password_file"), r.PasswordFile})
+		if r.EnvFile != "" {
+			entries = append(entries, entry{RepositoryKey(i, r, "env_file"), r.EnvFile})
+		}
 	}
 	return entries
 }

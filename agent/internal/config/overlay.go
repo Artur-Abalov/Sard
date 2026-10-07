@@ -173,16 +173,30 @@ func namesOf(c Config, path string) map[string]string {
 }
 
 func merge(c Config, frag fragment, file string, owners map[string]string) (Config, error) {
+	if err := c.mergeRepositories(frag, file, owners); err != nil {
+		return Config{}, err
+	}
+	if err := c.mergeSecrets(frag, file, owners); err != nil {
+		return Config{}, err
+	}
+	return c, nil
+}
+
+func (c *Config) mergeRepositories(frag fragment, file string, owners map[string]string) error {
 	for _, r := range frag.Repositories {
 		if err := claim(owners, "repository", r.Name, file); err != nil {
-			return Config{}, err
+			return err
 		}
 		r.Fragment = file
 		c.Repositories = append(c.Repositories, r)
 	}
+	return nil
+}
+
+func (c *Config) mergeSecrets(frag fragment, file string, owners map[string]string) error {
 	for _, name := range sortedKeys(frag.Secrets) {
 		if err := claim(owners, "secret", name, file); err != nil {
-			return Config{}, err
+			return err
 		}
 		if c.Secrets == nil {
 			c.Secrets = map[string]string{}
@@ -190,7 +204,7 @@ func merge(c Config, frag fragment, file string, owners map[string]string) (Conf
 		c.Secrets[name] = frag.Secrets[name]
 		c.src.secrets[name] = file
 	}
-	return c, nil
+	return nil
 }
 
 // claim records file as the definition of the name, or reports who has it.
