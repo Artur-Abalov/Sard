@@ -40,16 +40,20 @@ func (p Plugin) childEnv(password []byte) []string {
 	var out []string
 	for _, kv := range p.environ() {
 		name, _, _ := strings.Cut(kv, "=")
-		if strings.HasPrefix(name, "PG") || name == "LC_ALL" || name == "LC_MESSAGES" {
-			continue
+		if !dropped(name) {
+			out = append(out, kv)
 		}
-		out = append(out, kv)
 	}
 	out = append(out, "LC_MESSAGES=C")
 	if password != nil {
 		out = append(out, "PGPASSWORD="+string(password))
 	}
 	return out
+}
+
+// dropped tells the variables childEnv does not pass on.
+func dropped(name string) bool {
+	return strings.HasPrefix(name, "PG") || name == "LC_ALL" || name == "LC_MESSAGES"
 }
 
 // outcome is how a run of a tool ended.

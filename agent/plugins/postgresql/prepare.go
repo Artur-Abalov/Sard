@@ -59,10 +59,7 @@ func (p Plugin) check(ctx context.Context, h sdk.Host, c config, t tools, passwo
 	if err != nil {
 		return checked{}, err
 	}
-	if err := checkVersions(pgDump, role.server); err != nil {
-		return checked{}, err
-	}
-	if err := checkRole(h, c, role); err != nil {
+	if err := checkServer(h, c, pgDump, role); err != nil {
 		return checked{}, err
 	}
 	done := checked{server: role.server, pgDump: pgDump}
@@ -70,6 +67,14 @@ func (p Plugin) check(ctx context.Context, h sdk.Host, c config, t tools, passwo
 		done.pgDumpall, err = p.checkPgDumpall(ctx, h, t, role.server)
 	}
 	return done, err
+}
+
+// checkServer applies the checks that need the answer of the probe.
+func checkServer(h sdk.Host, c config, pgDump version, r role) error {
+	if err := checkVersions(pgDump, r.server); err != nil {
+		return err
+	}
+	return checkRole(h, c, r)
 }
 
 // password reads the secret of the config: its content without the line
@@ -149,10 +154,13 @@ func checkVersions(pgDump, server version) error {
 // checkRole fails a request for role passwords without a superuser and warns
 // about a role that may not read every table (F1 ПГ2, ПГ17c).
 func checkRole(h sdk.Host, c config, r role) error {
-	if c.globals() && c.GlobalsRolePasswords && !r.super {
+	if r.super {
+		return nil
+	}
+	if c.globals() && c.GlobalsRolePasswords {
 		return fmt.Errorf("role %q is not a superuser: globals_role_passwords needs a superuser", r.name)
 	}
-	if !r.super && !r.readsData {
+	if !r.readsData {
 		h.Log(sdk.LevelWarn, fmt.Sprintf("role %q is not a superuser and not a member of pg_read_all_data: pg_dump fails on a table it cannot read", r.name))
 	}
 	return nil
