@@ -185,6 +185,7 @@ func TestLoad(t *testing.T) {
 		t.Fatalf("missing file err = %v", err)
 	}
 }
+
 func TestExampleConfigDoesNotPinResticPath(t *testing.T) {
 	data, err := os.ReadFile("../../../deploy/agent/agent.example.yaml")
 	if err != nil {
