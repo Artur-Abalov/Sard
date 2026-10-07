@@ -2,7 +2,7 @@
 
 Сценарии: `docs/specs/agent/postgresql-plugin.feature` (утверждено
 владельцем 2026-10-07: решения ПГ1–ПГ22 и ПГ17a–ПГ17j приняты, ПГ17
-изменено; OQ-154…OQ-161). Здесь вручную проходятся сценарии с тегом
+изменено; OQ-154…OQ-165). Здесь вручную проходятся сценарии с тегом
 `@qa`; остальные проверяют тесты `@unit`, `@restic`, `@register`, `@doc`,
 `@e2e` с теми же названиями.
 
@@ -124,16 +124,23 @@ done
     `globals_role_passwords` и суперпользователя; `snaps` = `N0`.
 12б. **Без глобальных объектов.** `N0=$(snaps); run $(src "$(cfg '{"include_globals":false}')")`
     → `succeeded`; `snaps` = `N0+1`; `rs ls latest` — только `/app.dump`.
-13. **Таблица без права чтения.** `A -c "revoke pg_read_all_data from backup"; N0=$(snaps); run $SRC`
+13. **Таблица без права чтения.** Отдельная роль `limited` без
+    `pg_read_all_data` (с тем же паролем `$P`, поэтому подходит секрет
+    `pg-app`), которой выдано чтение всего, кроме `secret_t`:
+
+```bash
+A -c "create role limited login password \$\$$P\$\$"
+A -d app -c "grant usage on schema audit to limited; grant select on t, audit.a, public.log_x, s to limited"
+N0=$(snaps); run $(src "$(cfg '{"user":"limited"}')")
+```
+
     → `failed`; `message` называет `pg_dump` и `secret_t`
     (`permission denied`); `backup` — `null`; `snaps` = `N0`;
     `rs list locks | wc -l` → `0`. В логе шага
     (`curl -sS -b $QA/jf "$API/runs/$RUN/steps/<step-id>/logs"`) есть строка
-    WARN, называющая `backup` и `pg_read_all_data`.
-    Затем `run $(src "$(cfg '{"exclude_tables":["secret_t"]}')")` при тех же
-    правах — только если остальные таблицы роль читает: сначала
-    `A -d app -c "grant usage on schema audit to backup; grant select on t, audit.a, public.log_x, s to backup"`
-    → `succeeded`. Вернуть: `A -c "grant pg_read_all_data to backup"`.
+    WARN, называющая `limited` и `pg_read_all_data`.
+    Затем `run $(src "$(cfg '{"user":"limited","exclude_tables":["secret_t"]}')")`
+    → `succeeded`. Роль `backup` в этом шаге не меняется.
 
 ## Часть 3. Отказы подготовки
 
@@ -174,17 +181,16 @@ ln -sf "$(command -v psql)" $QA/oldpg/psql; chmod +x $QA/oldpg/pg_dump
     → `failed`; `message` называет `pg_dump` и потерю соединения;
     `snaps` = `N0`; `rs list locks | wc -l` → `0`;
     `pgrep -f 'pg_dump|restic.*backup'` → пусто. `docker start qa-pg`, дождаться `pg_isready`.
-21. **Отмена.** Запустить прогон `$SRC` и в фазе `uploading` отменить его
-    через консоль или API отмены
-    → `cancelled`; `snaps` не изменилось; блокировок нет;
-    `pgrep -f 'pg_dump|restic.*backup'` → пусто; через 10 с
-    `A -At -c "select count(*) from pg_stat_activity where application_name='sard-agent'"` → `0`.
-22. **Таймаут.** Как шаг 21, но без отмены и с таймаутом шага 3 с
-    → `timed_out`; проверки как в шаге 21.
+21. **Отмена и таймаут — через API не проверяются.** Сервер не даёт
+    REST-отмены прогона, не присылает агенту CancelStep и не задаёт
+    timeout шага (`DispatchParts.kt`). Пока на сервере нет отмены и
+    таймаута (OQ-162), это проверяют только тесты агента `@unit` и
+    `@restic`; в QA шаг пропускается.
+22. (Удалён вместе с шагом 21: таймаут шага через API не задаётся.)
 
 ## Часть 5. Пароль не утекает
 
-23. **Список процессов.** Во время прогона из шага 21 (до отмены):
+23. **Список процессов.** Во время прогона `run $SRC` по увеличенной базе из шага 19 (в фазе `uploading`):
     `for p in $(pgrep -f 'pg_dump|psql'); do tr '\0' ' ' < /proc/$p/cmdline; echo; done | grep -cF "$P"`
     → `0`; в строках видно `--dbname=` с `host=`, `dbname=`, без `password`.
     От другого пользователя хоста (`sudo -u nobody`):
