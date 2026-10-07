@@ -145,6 +145,11 @@ func (c *hostCmd) firstCandidate(st *addState) (candidate, *refusal.Failure) {
 	case c.exists(st.final(c)):
 		return candidate{path: st.final(c)}, nil
 	}
+	return c.generated(st)
+}
+
+// generated is a new password, made up by the command.
+func (c *hostCmd) generated(st *addState) (candidate, *refusal.Failure) {
 	password, err := repoinit.NewPassword(c.deps.random)
 	if err != nil {
 		return candidate{}, refusal.Fail(refusal.PasswordFileWrite, "%v", err)
