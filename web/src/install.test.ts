@@ -3,7 +3,9 @@
 
 import { describe, expect, test } from 'vitest'
 import type { components } from './api/schema'
-import { stepText, withEnrollCommand } from './install'
+import en from './locales/en.json'
+import ru from './locales/ru.json'
+import { FORMATS, keepsConfiguration, stepText, withEnrollCommand } from './install'
 
 type Step = components['schemas']['InstallStep']
 
@@ -48,5 +50,26 @@ describe('the steps of the token dialog', () => {
 
   test('are the same steps when there is no enroll step (downloads are off)', () => {
     expect(withEnrollCommand([], enrollCommand)).toEqual([])
+  })
+})
+
+describe('the package formats of the choice', () => {
+  test('are deb, rpm and tar.gz in this order', () => {
+    expect(FORMATS).toEqual(['deb', 'rpm', 'tar'])
+  })
+
+  test('each has a caption in both languages, rpm naming RHEL, Oracle Linux and Rocky', () => {
+    for (const format of FORMATS) {
+      expect(en.install.format[format]).toBeTruthy()
+      expect(ru.install.format[format]).toBeTruthy()
+    }
+    expect(en.install.format.rpm).toBe('rpm — RHEL, Oracle Linux, Rocky')
+    expect(ru.install.format.rpm).toBe('rpm — RHEL, Oracle Linux, Rocky')
+  })
+
+  test('deb and rpm replace only the program, the archive is not said to', () => {
+    expect(keepsConfiguration('deb')).toBe(true)
+    expect(keepsConfiguration('rpm')).toBe(true)
+    expect(keepsConfiguration('tar')).toBe(false)
   })
 })

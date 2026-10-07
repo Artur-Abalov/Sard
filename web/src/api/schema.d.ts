@@ -912,7 +912,7 @@ export interface components {
             outdated: boolean;
         };
         /** @enum {string} */
-        InstallFormat: "deb" | "tar";
+        InstallFormat: "deb" | "rpm" | "tar";
         /** @enum {string} */
         FetchTool: "curl" | "wget";
         /** @description How to upgrade one agent: the same as an install, for the architecture of its last Register */

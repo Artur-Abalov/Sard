@@ -7,7 +7,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { upgradeQuery, type AgentDetails } from '../api/queries'
 import type { components } from '../api/schema'
-import { INSTALL_DEFAULTS } from '../install'
+import { INSTALL_DEFAULTS, keepsConfiguration } from '../install'
 import { tones } from '../theme'
 import { DownloadsOff } from './DownloadsOff'
 import { ErrorBlock } from './ErrorBlock'
@@ -51,7 +51,9 @@ function UpgradeBody({ agent }: { agent: AgentDetails }) {
       <Text size="sm">{t('install.upgrade.available', { agent: upgrade.agentVersion })}</Text>
       <Alert color={tones.notice}>{t('install.upgrade.remind')}</Alert>
       <InstallChoices choice={choice} onChange={setChoice} withArch={false} />
-      {choice.format === 'deb' && <Text size="sm">{t('install.upgrade.debNote')}</Text>}
+      {keepsConfiguration(choice.format) && (
+        <Text size="sm">{t('install.upgrade.packageNote')}</Text>
+      )}
       <InstallSteps steps={upgrade.steps} signed={upgrade.signed} releaseKey={upgrade.releaseKey} />
     </Stack>
   )

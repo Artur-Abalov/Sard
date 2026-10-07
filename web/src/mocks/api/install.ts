@@ -21,13 +21,19 @@ const KEY: Schemas['ReleaseKey'] = {
 }
 
 const ARCHES = ['amd64', 'arm64']
-const FORMATS = ['deb', 'tar']
+const FORMATS = ['deb', 'rpm', 'tar']
+const RPM_ARCH: Record<string, string> = { amd64: 'x86_64', arm64: 'aarch64' }
 const FETCHES = ['curl', 'wget']
 
 function file(arch: string, format: string): string {
-  return format === 'deb'
-    ? `sard-agent_1.4.0_${arch}.deb`
-    : `sard-agent_${AGENT_VERSION}_linux_${arch}.tar.gz`
+  if (format === 'deb') return `sard-agent_1.4.0_${arch}.deb`
+  if (format === 'rpm') return `sard-agent-${AGENT_VERSION}.${RPM_ARCH[arch]}.rpm`
+  return `sard-agent_${AGENT_VERSION}_linux_${arch}.tar.gz`
+}
+
+// What puts the package on the host: dpkg for a deb, rpm -Uvh for an rpm (the archive has its own steps).
+function installCommand(arch: string, format: string): string {
+  return `sudo ${format === 'rpm' ? 'rpm -Uvh' : 'dpkg -i'} ${file(arch, format)}`
 }
 
 function step(kind: Step['kind'], commands: string[], optional = false): Step {
@@ -55,7 +61,7 @@ function installSteps(arch: string, format: string, fetch: string): Step[] {
   const user = 'sudo -u sard-agent sard-agent'
   return [
     ...verification(arch, format, fetch),
-    step('install', [`sudo dpkg -i ${file(arch, format)}`]),
+    step('install', [installCommand(arch, format)]),
     step('configure', ['sudo cp -n /etc/sard/agent.example.yaml /etc/sard/agent.yaml']),
     step('enroll', [`${user} enroll --server sard.example.com:9090 --token <TOKEN>`]),
     step('repo-init', [`${user} repo init --generate-password main`]),
@@ -64,10 +70,7 @@ function installSteps(arch: string, format: string, fetch: string): Step[] {
 }
 
 function upgradeSteps(arch: string, format: string, fetch: string): Step[] {
-  return [
-    ...verification(arch, format, fetch),
-    step('upgrade', [`sudo dpkg -i ${file(arch, format)}`]),
-  ]
+  return [...verification(arch, format, fetch), step('upgrade', [installCommand(arch, format)])]
 }
 
 function refused(field: string): Schemas['ValidationProblem'] {

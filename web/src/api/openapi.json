@@ -2730,7 +2730,7 @@
       },
       "InstallFormat" : {
         "type" : "string",
-        "enum" : [ "deb", "tar" ]
+        "enum" : [ "deb", "rpm", "tar" ]
       },
       "FetchTool" : {
         "type" : "string",

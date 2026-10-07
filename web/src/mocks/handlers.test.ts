@@ -361,6 +361,28 @@ describe('agent install', () => {
     expect(data?.steps[0].commands[0]).toContain('arm64.tar.gz')
   })
 
+  test('the details of rpm install the file with rpm -Uvh', async () => {
+    const { data } = await api.GET('/api/v1/agent-install', {
+      params: { query: { arch: 'arm64', format: 'rpm' } },
+    })
+    expect(data).toMatchObject({ arch: 'arm64', format: 'rpm' })
+    expect(data?.steps.find((step) => step.kind === 'install')?.commands).toEqual([
+      'sudo rpm -Uvh sard-agent-v1.4.0.aarch64.rpm',
+    ])
+  })
+
+  test('the upgrade of an agent in rpm is rpm -Uvh of its architecture', async () => {
+    const agent = state.agents.find((a) => a.arch === 'amd64')
+    expect(agent).toBeDefined()
+    const { data } = await api.GET('/api/v1/agents/{agentId}/upgrade', {
+      params: { path: { agentId: agent!.id }, query: { format: 'rpm' } },
+    })
+    expect(data?.format).toBe('rpm')
+    expect(data?.steps.find((step) => step.kind === 'upgrade')?.commands).toEqual([
+      'sudo rpm -Uvh sard-agent-v1.4.0.x86_64.rpm',
+    ])
+  })
+
   test('the defaults are deb and amd64, and the answer holds no token string', async () => {
     const { data } = await api.GET('/api/v1/agent-install')
     expect(data).toMatchObject({ arch: 'amd64', format: 'deb' })
