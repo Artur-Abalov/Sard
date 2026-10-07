@@ -48,3 +48,5 @@
 | [0044](0044-agent-command-journal.md) | Журнал принятых команд агента: провал при перезапуске (D13), журнал агента (FXa) |
 | [0045](0045-build-once.md) | Собрать один раз, тестировать собранное: одна сборка агента и jar на прогон, e2e на релизном агенте |
 | [0046](0046-reverse-proxy-forward-headers.md) | Консоль за обратным прокси: `SARD_FORWARD_HEADERS=native` (forward-headers Spring Boot) |
+| [0047](0047-agent-config-overlay.md) | Каталог фрагментов конфига агента `agent.d`: файл на репозиторий и секрет, `DUPLICATE_NAME`, права и порядок записи (A8a) |
+| [0048](0048-agent-privilege-model.md) | Права запуска команд агента: `sudo` для изменений, пользователь службы читает; restic от его имени; аудит в syslog (A8a) |
