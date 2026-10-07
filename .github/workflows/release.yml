@@ -6,7 +6,7 @@
 #
 #   version     (the tag is a release tag, else nothing is built)
 #   build ×2 ─┬─ reproduce  (two independent builds, same SHA256SUMS; tamper tests)
-#   server-jar┼─ install    (deb on Debian/Ubuntu, rpm on Oracle Linux/Rocky, systemd: install, enroll, upgrade)
+#   server-jar┼─ install    (deb on Debian/Ubuntu, rpm on Rocky, systemd: install, enroll, upgrade)
 #             └─ e2e        (test/e2e against the image of these packages and this jar)
 #                   └─ sign     (environment "release": the only job that sees the key)
 #                         ├─ publish  (GitHub release with the signed files; "-" makes it a pre-release)
@@ -158,8 +158,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # deb on Debian/Ubuntu, rpm on Oracle Linux/Rocky (scripts/test-agent-install.sh).
-        distro: ["debian:12", "debian:13", "ubuntu:22.04", "ubuntu:24.04", "oraclelinux:9", "rockylinux/rockylinux:9"]
+        # deb on Debian/Ubuntu, rpm on Rocky (scripts/test-agent-install.sh).
+        distro: ["debian:12", "debian:13", "ubuntu:22.04", "ubuntu:24.04", "rockylinux/rockylinux:9"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

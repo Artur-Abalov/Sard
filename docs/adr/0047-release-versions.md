@@ -55,14 +55,20 @@
   выпущенного rc1) — ниже всех. Тест сервера читает тот же файл (признак
   «доступно обновление», SemVer 2.0 с предрелизами).
 - **RPM:** ставится и обновляется (`rpm -Uvh`, работает без репозиториев) в
-  проверках `install` релиза и в задаче `install-rpm` CI на Oracle Linux 9 и
-  Rocky 9 в контейнерах с systemd; консоль предлагает rpm рядом с deb и tar.gz.
-- **SELinux** — свойство ядра хоста: в контейнере на раннере Ubuntu режим
-  enforcing недостижим. Проверка enforcing и отсутствия отказов
-  (`ausearch -m avc`) — `scripts/test-agent-install-vm.sh`: ВМ Oracle Linux 9
-  (шаблон KVM с cloud-init, образ и SHA-256 закреплены в
-  `test/packages/vm-image.env`) под qemu. Решение владельца: если ВМ в CI не
-  заработает — проверку убрать, а не держать нерабочей.
+  проверках `install` релиза и в задаче `install-rpm` CI на Rocky 9 в
+  контейнере с systemd; консоль предлагает rpm рядом с deb и tar.gz.
+- **Программы агента — в `/usr/libexec/sard/`**, а не в `/usr/lib/sard/`.
+  Проверка на ВМ Oracle Linux 9 с SELinux enforcing (журнал сессии) показала:
+  политика метит `/usr/lib/sard/*` как `lib_t`, systemd не переводит процесс
+  из такого файла в домен служб `unconfined_service_t`, агент остаётся в
+  `init_t` и не может запустить restic (`permission denied`, отказ скрыт
+  `dontaudit`). У `/usr/libexec/*` метка `bin_t` без настройки, переход есть.
+  Ссылка `/usr/bin/sard-agent` остаётся. Выпущенный rpm `v0.0.1-rc1` на
+  хостах с SELinux службу не запускает.
+- **SELinux автоматически не проверяется** (решение владельца 2026-10-07:
+  проверки на Oracle Linux и ВМ убраны). В контейнере SELinux выключен при
+  любом образе, поэтому `install-rpm` дефект выше не видит; проверка на
+  настоящем хосте RHEL-семейства — ручная (`docs/qa/agent-install.md`).
 
 ## Последствия
 

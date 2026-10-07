@@ -3,7 +3,7 @@
 # Copyright 2026 Artur Abalov
 #
 # Installs and upgrades the sard-agent deb on clean Debian/Ubuntu hosts, and
-# the rpm on clean Oracle Linux/Rocky Linux hosts, with systemd as PID 1,
+# the rpm on clean Rocky Linux/AlmaLinux hosts, with systemd as PID 1,
 # against a real sard-server (docs/adr/0043-agent-release.md, ADR 0047):
 #
 #   1. install N: user, directories and their owners and modes, the unit is
@@ -19,22 +19,14 @@
 #      nothing about enrollment, and the same agent comes back online with
 #      version N+1.
 #
-#   OLD_DIST=dist-n NEW_DIST=dist-n1 scripts/test-agent-install.sh debian:12 oraclelinux:9
+#   OLD_DIST=dist-n NEW_DIST=dist-n1 scripts/test-agent-install.sh debian:12 rockylinux/rockylinux:9
 #
-# The image name picks the package: oraclelinux, rockylinux and almalinux get
+# The image name picks the package: rockylinux and almalinux get
 # the rpm (rpm -U, as on a host without repositories), every other the deb.
 # OLD_DIST and NEW_DIST hold the amd64 packages of two versions (scripts/package-agent.sh);
 # SERVER_IMAGE (default sard-server:e2e) is the server, run with PostgreSQL.
 # Needs Docker with privileged containers (systemd). HOST_BUILD_FLAGS are
 # extra `docker build` flags for the host image (a proxy, for instance).
-#
-# AGENT_HOST_SSH="<ssh arguments>" uses a machine instead of a container: a
-# virtual machine of scripts/test-agent-install-vm.sh, which reaches the
-# server through ports 8080 and 9090 published on the loopback of this host
-# (sard-server in its /etc/hosts). EXPECT_SELINUX=enforcing then also
-# requires SELinux enforcing and no denial (ausearch -m avc) after the
-# install and after the upgrade: a container cannot show either, its host's
-# kernel decides (docs/adr/0047-release-versions.md).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -58,7 +50,7 @@ NEW_PACKAGE_VERSION="$(manifest_field "$NEW_DIST" package_version)"
 # use_family <distro image>: the package, the host image and the commands of its family.
 use_family() {
   case "$1" in
-    *oraclelinux:* | *rockylinux:* | *almalinux:*)
+    *rockylinux:* | *almalinux:*)
       FAMILY=rpm
       OLD_PKG="$(ls "$OLD_DIST"/sard-agent-*.x86_64.rpm)"
       NEW_PKG="$(ls "$NEW_DIST"/sard-agent-*.x86_64.rpm)"
@@ -84,15 +76,7 @@ cleanup() {
 # KEEP=1 leaves the containers of a failed run for a look around.
 trap '[ -n "${KEEP:-}" ] || cleanup' EXIT
 
-if [ -n "${AGENT_HOST_SSH:-}" ]; then
-  # shellcheck disable=SC2086 # AGENT_HOST_SSH is a list of ssh arguments
-  on_host() { ssh -n $AGENT_HOST_SSH "$1"; }
-  # shellcheck disable=SC2086
-  copy_to_host() { ssh $AGENT_HOST_SSH "cat >'$2'" <"$1"; }
-else
-  on_host() { docker exec "$HOST" sh -c "$1"; }
-  copy_to_host() { docker cp "$1" "$HOST:$2"; }
-fi
+on_host() { docker exec "$HOST" sh -c "$1"; }
 
 # expect <what> <command> <wanted output>
 expect() {
@@ -106,9 +90,7 @@ start_server() {
   docker network create "$NET" >/dev/null
   docker run -d --name "$RUN_ID-db" --network "$NET" --network-alias db \
     -e POSTGRES_DB=sard -e POSTGRES_USER=sard -e POSTGRES_PASSWORD=sard "$POSTGRES_IMAGE" >/dev/null
-  local publish=()
-  [ -z "${AGENT_HOST_SSH:-}" ] || publish=(-p 127.0.0.1:8080:8080 -p 127.0.0.1:9090:9090)
-  docker run -d --name "$RUN_ID-server" --network "$NET" --network-alias sard-server "${publish[@]}" \
+  docker run -d --name "$RUN_ID-server" --network "$NET" --network-alias sard-server \
     -e SARD_DB_URL=jdbc:postgresql://db:5432/sard -e SARD_DB_USER=sard -e SARD_DB_PASSWORD=sard \
     -e SARD_PKI_SERVER_NAMES=sard-server -e SARD_AGENT_ENDPOINT=sard-server:9090 \
     -e SARD_ADMIN_PASSWORD="$ADMIN_PASSWORD" "$SERVER_IMAGE" >/dev/null
@@ -116,12 +98,6 @@ start_server() {
 
 start_host() {
   local distro="$1"
-  if [ -n "${AGENT_HOST_SSH:-}" ]; then
-    wait_for "the machine" true
-    copy_to_host "$OLD_PKG" "/root/old.$FAMILY"
-    copy_to_host "$NEW_PKG" "/root/new.$FAMILY"
-    return
-  fi
   local tag="sard-pkgtest:${distro//[:\/]/-}"
   docker build -q ${HOST_BUILD_FLAGS:-} --build-arg DISTRO="$distro" -t "$tag" \
     -f "$ROOT/test/packages/$HOST_DOCKERFILE" "$ROOT/test/packages" >/dev/null
@@ -130,8 +106,8 @@ start_host() {
     "$tag" >/dev/null
   wait_for "systemd on $distro" 'systemctl is-system-running | grep -Eq "running|degraded"'
   # Not /tmp: Debian 13 mounts a tmpfs there at boot, over what docker cp writes.
-  copy_to_host "$OLD_PKG" "/root/old.$FAMILY"
-  copy_to_host "$NEW_PKG" "/root/new.$FAMILY"
+  docker cp "$OLD_PKG" "$HOST:/root/old.$FAMILY"
+  docker cp "$NEW_PKG" "$HOST:/root/new.$FAMILY"
 }
 
 # wait_for <what> <host command>: up to 120 s.
@@ -167,15 +143,6 @@ check_fresh_install() {
   sleep 60
   expect "no restarts without enrollment" "systemctl show -p NRestarts --value sard-agent" "0"
   expect "empty journal of the unit" "journalctl -u sard-agent --no-pager -q | wc -l" "0"
-}
-
-# check_selinux <when>: with EXPECT_SELINUX=enforcing, SELinux enforces and
-# has denied nothing since boot; the context sard-agent runs in is reported.
-check_selinux() {
-  [ "${EXPECT_SELINUX:-}" = enforcing ] || return 0
-  expect "SELinux $1" "getenforce" "Enforcing"
-  expect "SELinux denials $1" "ausearch -m avc,user_avc,selinux_err -ts boot 2>&1" "<no matches>"
-  say "sard-agent runs as: $(on_host "ps -eZ | awk '/sard-agent\$/ {print \$1}'" || true)"
 }
 
 # configure_and_enroll: what docs/operations/agent-enroll.md and repo-init.md tell an administrator.
@@ -224,8 +191,6 @@ wait_online() {
     sleep 2
   done
   on_host "systemctl status sard-agent --no-pager; journalctl -u sard-agent --no-pager | tail -30" || true
-  [ "${EXPECT_SELINUX:-}" != enforcing ] ||
-    on_host "ausearch -m avc,user_avc,selinux_err -ts boot -i 2>&1 | tail -40; ls -Z /usr/lib/sard" || true
   die "agent not online with $1: $agents"
 }
 
@@ -262,9 +227,7 @@ for distro in "$@"; do
   start_host "$distro"
   check_fresh_install
   configure_and_enroll
-  check_selinux "after install"
   check_upgrade
-  check_selinux "after upgrade"
   cleanup
 done
 say "all hosts passed"

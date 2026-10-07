@@ -7,7 +7,7 @@
 `vX.Y.Z`, `vX.Y.Z-beta.N` или `vX.Y.Z-rc.N` (схема версий ниже):
 `.github/workflows/release.yml` проверяет тег, собирает пакеты агента дважды,
 сверяет суммы, собирает jar сервера один раз, проверяет подделки, установку и
-обновление deb (Debian, Ubuntu) и rpm (Oracle Linux 9, Rocky 9) и e2e на образе
+обновление deb (Debian, Ubuntu) и rpm (Rocky 9) и e2e на образе
 из этого jar и этих пакетов, подписывает `SHA256SUMS` ключом релизов и
 публикует GitHub Release и образ из того же jar (ADR 0045).
 

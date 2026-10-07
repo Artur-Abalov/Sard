@@ -8,8 +8,8 @@
 # server answers them, in order, on hosts that have access to the Sard server
 # and nothing else (an internal Docker network, no internet):
 #
-#   - deb on Ubuntu 24.04, the tar.gz archive on Debian 12 and rpm on Oracle
-#     Linux, Rocky and AlmaLinux (format=rpm, R1, ADR 0047), amd64: every
+#   - deb on Ubuntu 24.04, the tar.gz archive on Debian 12 and rpm on Rocky
+#     and AlmaLinux (format=rpm, R1, ADR 0047), amd64: every
 #     step but the signature one exits 0, the agent comes online with the
 #     version of the packages; configure does not overwrite an edited
 #     agent.yaml; after the archive's install the layout of the deb is there;
@@ -21,8 +21,8 @@
 #     bring it online with the new version, the same agentId, and
 #     /etc/sard/agent.yaml, tls and secrets unchanged.
 #
-#   SERVER_IMAGE=sard-server:e2e scripts/test-console-install.sh [ubuntu:24.04 debian:12 oraclelinux:9]
-#   UPGRADE=1 OLD_DIST=dist-old SERVER_IMAGE=sard-server:e2e scripts/test-console-install.sh debian:12 oraclelinux:9
+#   SERVER_IMAGE=sard-server:e2e scripts/test-console-install.sh [ubuntu:24.04 debian:12 rockylinux/rockylinux:9]
+#   UPGRADE=1 OLD_DIST=dist-old SERVER_IMAGE=sard-server:e2e scripts/test-console-install.sh debian:12 rockylinux/rockylinux:9
 #
 # SERVER_IMAGE is a server with the agent packages of the version to install
 # (scripts/test-agent-install.sh builds the same setup). Needs Docker with
@@ -45,7 +45,7 @@ WORKDIR=/root/install
 # use_family <distro image>: the format the console is asked for and the host image of its family.
 use_family() {
   case "$1" in
-    *oraclelinux:* | *rockylinux:* | *almalinux:*)
+    *rockylinux:* | *almalinux:*)
       FAMILY=rpm
       HOST_DOCKERFILE=host-rpm.Dockerfile
       OLD_GLOB='sard-agent-*.x86_64.rpm'
