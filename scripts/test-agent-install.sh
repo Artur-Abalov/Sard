@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright 2026 Artur Abalov
 #
-# Installs and upgrades the sard-agent deb on clean Debian/Ubuntu hosts with
-# systemd as PID 1, against a real sard-server (docs/adr/0043-agent-release.md):
+# Installs and upgrades the sard-agent deb on clean Debian/Ubuntu hosts, and
+# the rpm on clean Oracle Linux/Rocky Linux hosts, with systemd as PID 1,
+# against a real sard-server (docs/adr/0043-agent-release.md, ADR 0047):
 #
 #   1. install N: user, directories and their owners and modes, the unit is
 #      neither enabled nor running and, left alone for 60 s, never restarts
@@ -12,14 +13,17 @@
 #   2. as an administrator would: agent.yaml, "sudo -u sard-agent sard-agent
 #      enroll", "sudo -u sard-agent sard-agent repo init", then the service;
 #      the agent comes online with version N;
-#   3. upgrade to N+1: configuration, keys, the repository password and the
+#   3. upgrade to N+1 (a newer package version, ADR 0047: 0.1.0~beta.1 →
+#      0.1.0~beta.2 …): configuration, keys, the repository password and the
 #      directories are unchanged, the service still enabled, the output says
 #      nothing about enrollment, and the same agent comes back online with
 #      version N+1.
 #
-#   OLD_DIST=dist-n NEW_DIST=dist-n1 scripts/test-agent-install.sh debian:12 ubuntu:24.04
+#   OLD_DIST=dist-n NEW_DIST=dist-n1 scripts/test-agent-install.sh debian:12 oraclelinux:9
 #
-# OLD_DIST and NEW_DIST hold the amd64 deb of two versions (scripts/package-agent.sh);
+# The image name picks the package: oraclelinux, rockylinux and almalinux get
+# the rpm (rpm -U, as on a host without repositories), every other the deb.
+# OLD_DIST and NEW_DIST hold the amd64 packages of two versions (scripts/package-agent.sh);
 # SERVER_IMAGE (default sard-server:e2e) is the server, run with PostgreSQL.
 # Needs Docker with privileged containers (systemd). HOST_BUILD_FLAGS are
 # extra `docker build` flags for the host image (a proxy, for instance).
@@ -37,10 +41,33 @@ die() { echo "test-agent-install: FAIL: $*" >&2; exit 1; }
 say() { echo "test-agent-install: $*"; }
 
 [ "$#" -gt 0 ] || die "usage: OLD_DIST=… NEW_DIST=… test-agent-install.sh <distro image>..."
-OLD_DEB="$(ls "${OLD_DIST:?OLD_DIST not set}"/sard-agent_*_amd64.deb)"
-NEW_DEB="$(ls "${NEW_DIST:?NEW_DIST not set}"/sard-agent_*_amd64.deb)"
-OLD_VERSION="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "$OLD_DIST/manifest.json")"
-NEW_VERSION="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "$NEW_DIST/manifest.json")"
+manifest_field() { sed -n "s/^  \"$2\": \"\(.*\)\",\$/\1/p" "$1/manifest.json"; }
+OLD_VERSION="$(manifest_field "${OLD_DIST:?OLD_DIST not set}" version)"
+NEW_VERSION="$(manifest_field "${NEW_DIST:?NEW_DIST not set}" version)"
+NEW_PACKAGE_VERSION="$(manifest_field "$NEW_DIST" package_version)"
+[ -n "$OLD_VERSION" ] && [ -n "$NEW_PACKAGE_VERSION" ] || die "no version in the manifests of $OLD_DIST, $NEW_DIST"
+
+# use_family <distro image>: the package, the host image and the commands of its family.
+use_family() {
+  case "$1" in
+    *oraclelinux:* | *rockylinux:* | *almalinux:*)
+      FAMILY=rpm
+      OLD_PKG="$(ls "$OLD_DIST"/sard-agent-*.x86_64.rpm)"
+      NEW_PKG="$(ls "$NEW_DIST"/sard-agent-*.x86_64.rpm)"
+      HOST_DOCKERFILE=host-rpm.Dockerfile
+      INSTALL='rpm -Uvh'
+      INSTALLED_VERSION="rpm -q --qf '%{VERSION}' sard-agent"
+      ;;
+    *)
+      FAMILY=deb
+      OLD_PKG="$(ls "$OLD_DIST"/sard-agent_*_amd64.deb)"
+      NEW_PKG="$(ls "$NEW_DIST"/sard-agent_*_amd64.deb)"
+      HOST_DOCKERFILE=host.Dockerfile
+      INSTALL='DEBIAN_FRONTEND=noninteractive apt-get install -y -q'
+      INSTALLED_VERSION="dpkg-query -W -f '\${Version}' sard-agent"
+      ;;
+  esac
+}
 
 cleanup() {
   docker rm -f "$HOST" "$RUN_ID-server" "$RUN_ID-db" >/dev/null 2>&1 || true
@@ -71,15 +98,16 @@ start_server() {
 
 start_host() {
   local distro="$1"
-  docker build -q ${HOST_BUILD_FLAGS:-} --build-arg DISTRO="$distro" -t "sard-pkgtest:${distro//:/-}" \
-    -f "$ROOT/test/packages/host.Dockerfile" "$ROOT/test/packages" >/dev/null
+  local tag="sard-pkgtest:${distro//[:\/]/-}"
+  docker build -q ${HOST_BUILD_FLAGS:-} --build-arg DISTRO="$distro" -t "$tag" \
+    -f "$ROOT/test/packages/$HOST_DOCKERFILE" "$ROOT/test/packages" >/dev/null
   docker run -d --name "$HOST" --hostname agent-host --network "$NET" --privileged \
     --cgroupns=host --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
-    "sard-pkgtest:${distro//:/-}" >/dev/null
+    "$tag" >/dev/null
   wait_for "systemd on $distro" 'systemctl is-system-running | grep -Eq "running|degraded"'
   # Not /tmp: Debian 13 mounts a tmpfs there at boot, over what docker cp writes.
-  docker cp "$OLD_DEB" "$HOST:/root/old.deb"
-  docker cp "$NEW_DEB" "$HOST:/root/new.deb"
+  docker cp "$OLD_PKG" "$HOST:/root/old.$FAMILY"
+  docker cp "$NEW_PKG" "$HOST:/root/new.$FAMILY"
 }
 
 # wait_for <what> <host command>: up to 120 s.
@@ -99,7 +127,7 @@ api() {
 
 check_fresh_install() {
   local output
-  output="$(on_host "DEBIAN_FRONTEND=noninteractive apt-get install -y -q /root/old.deb 2>&1")" || die "install of the old deb: $output"
+  output="$(on_host "$INSTALL /root/old.$FAMILY 2>&1")" || die "install of the old $FAMILY: $output"
   grep -q 'sudo -u sard-agent sard-agent enroll --server' <<<"$output" || die "the install does not print the enroll command: $output"
   grep -qi 'console' <<<"$output" || die "the install does not point to the console for the token: $output"
   say "ok: the first install prints the next step"
@@ -178,10 +206,10 @@ check_upgrade() {
   before="$(snapshot)"
   id_before="$AGENT_ID"
   local output
-  output="$(on_host "DEBIAN_FRONTEND=noninteractive apt-get install -y -q /root/new.deb 2>&1")" || die "upgrade to the new deb: $output"
+  output="$(on_host "$INSTALL /root/new.$FAMILY 2>&1")" || die "upgrade to the new $FAMILY: $output"
   ! grep -qi 'enroll' <<<"$output" || die "the upgrade talks about enrollment: $output"
   say "ok: the upgrade does not print the enroll hint"
-  expect "installed version" "dpkg-query -W -f '\${Version}' sard-agent" "$(dpkg-deb -f "$NEW_DEB" Version)"
+  expect "installed version" "$INSTALLED_VERSION" "$NEW_PACKAGE_VERSION"
   expect "unit enabled after upgrade" "systemctl is-enabled sard-agent" "enabled"
   wait_online "$NEW_VERSION"
   [ "$AGENT_ID" = "$id_before" ] || die "upgrade changed the agent: $id_before → $AGENT_ID"
@@ -193,7 +221,8 @@ check_upgrade() {
 
 # Every host gets its own server and database: exactly one agent to look at.
 for distro in "$@"; do
-  say "=== $distro: install $OLD_VERSION, enroll, upgrade to $NEW_VERSION"
+  use_family "$distro"
+  say "=== $distro ($FAMILY): install $OLD_VERSION, enroll, upgrade to $NEW_VERSION"
   start_server
   start_host "$distro"
   check_fresh_install
