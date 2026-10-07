@@ -41,6 +41,10 @@ spring:
           without-calls: true
 server:
   port: ${SARD_HTTP_PORT:8080}
+  # Behind a TLS-terminating reverse proxy (Cloudflare Tunnel, nginx, Caddy): native takes the scheme and
+  # the client address from X-Forwarded-Proto and X-Forwarded-For of a proxy on a loopback or private
+  # address (ADR 0046). none (default) ignores those headers; other values are not supported.
+  forward-headers-strategy: ${SARD_FORWARD_HEADERS:none}
 sard:
   pki:
     # Holds the CA key; back it up separately from the database (docs/operations/pki.md).

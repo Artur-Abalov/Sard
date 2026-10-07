@@ -48,6 +48,8 @@ services:
       # Where hosts fetch them from in the install commands of the console (U1b); empty means
       # http, the host of the address agents dial and the HTTP port.
       SARD_AGENT_DOWNLOADS_URL: ${SARD_AGENT_DOWNLOADS_URL:-}
+      # native behind a TLS-terminating reverse proxy on this host (ADR 0046); empty means none.
+      SARD_FORWARD_HEADERS: ${SARD_FORWARD_HEADERS:-none}
     volumes:
       # The CA key: its own volume, backed up apart from postgres-data (docs/operations/pki.md).
       - sard-pki:/var/lib/sard/pki
