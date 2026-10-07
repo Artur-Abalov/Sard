@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -76,7 +77,7 @@ func (o outcome) failure() error {
 // run starts a tool. Its stderr goes to the log of the step line by line,
 // WARN for the lines that report an error or a warning (F1 ПГ22).
 func (p Plugin) run(ctx context.Context, h sdk.Host, path string, args, environ []string, stdout io.Writer) outcome {
-	o := outcome{tool: toolName(path)}
+	o := outcome{tool: filepath.Base(path)}
 	var last, lastError string
 	var mu sync.Mutex
 	code, err := p.runner().Run(ctx, Cmd{Path: path, Args: args, Env: environ, Stdout: stdout, Stderr: func(line string) {
@@ -97,13 +98,6 @@ func (p Plugin) run(ctx context.Context, h sdk.Host, path string, args, environ 
 	o.code, o.err = code, err
 	o.reason = cut(firstNonEmpty(lastError, last))
 	return o
-}
-
-func toolName(path string) string {
-	if i := strings.LastIndexByte(path, '/'); i >= 0 {
-		return path[i+1:]
-	}
-	return path
 }
 
 func firstNonEmpty(a, b string) string {

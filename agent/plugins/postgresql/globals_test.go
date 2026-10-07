@@ -5,10 +5,13 @@ package postgresql_test
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"io/fs"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Scenario: Бэкап по умолчанию даёт снимок базы и связанный снимок глобальных объектов.
@@ -169,7 +172,7 @@ func TestPgDumpallFailureFailsTheStepWithoutAnySnapshot(t *testing.T) {
 			}
 			_, err := c.Stdout.Write([]byte("x"))
 			return 0, err
-		}, "64 MiB"},
+		}, "larger than 64 MiB"},
 		{"killed", func(context.Context, plugCmd) (int, error) { return -1, errKilled }, "signal: killed"},
 	}
 	for _, c := range cases {
@@ -286,5 +289,123 @@ func TestCancelWhilePgDumpallRunsLeavesNoSnapshot(t *testing.T) {
 	<-stopped
 	if len(r.restic.run) != 0 || len(r.proc.ran("pg_dump")) != 0 {
 		t.Errorf("restic ran %d times, pg_dump %d", len(r.restic.run), len(r.proc.ran("pg_dump")))
+	}
+}
+
+// Exactly 64 MiB of global objects is kept.
+func TestGlobalsOfExactlyTheLimitAreKept(t *testing.T) {
+	chunk := []byte(strings.Repeat("x", 1<<20))
+	r := newRig(t)
+	r.proc.on("pg_dumpall", func(_ context.Context, c plugCmd) (int, error) {
+		for i := 0; i < 64; i++ {
+			if n, err := c.Stdout.Write(chunk); err != nil || n != len(chunk) {
+				return -1, err
+			}
+		}
+		return 0, nil
+	})
+	want(t, r.backup(kg()), succeeded)
+	if len(r.restic.stdin) != 2 || len(r.restic.stdin[1]) != 64<<20 {
+		t.Errorf("snapshots %d", len(r.restic.stdin))
+	}
+}
+
+// One byte more is not kept: pg_dumpall is told that nothing of the last
+// write was taken, and a process that does not notice is stopped.
+func TestMoreThanTheLimitOfGlobalsStopsPgDumpall(t *testing.T) {
+	chunk := []byte(strings.Repeat("x", 1<<20))
+	r := newRig(t)
+	var wrote int
+	var failedWrite error
+	stopped := make(chan struct{})
+	r.proc.on("pg_dumpall", func(ctx context.Context, c plugCmd) (int, error) {
+		for i := 0; i < 64; i++ {
+			_, _ = c.Stdout.Write(chunk)
+		}
+		wrote, failedWrite = c.Stdout.Write([]byte("x"))
+		select {
+		case <-ctx.Done():
+			close(stopped)
+			return -1, errTerminated
+		case <-time.After(5 * time.Second):
+			return 0, nil
+		}
+	})
+	want(t, r.backup(kg()), failed)
+	if wrote != 0 || failedWrite == nil {
+		t.Errorf("the last write: %d, %v", wrote, failedWrite)
+	}
+	select {
+	case <-stopped:
+	default:
+		t.Error("pg_dumpall was not stopped")
+	}
+}
+
+// The tools are looked for again by Dump: what vanished since Prepare is
+// reported by name.
+func TestDumpFailsWhenPgDumpallVanishedAfterPrepare(t *testing.T) {
+	files := &fakeFS{nodes: map[string]fs.FileMode{"/usr/bin": fs.ModeDir | 0o755}}
+	files.install("/usr/bin", "pg_dump", "psql", "pg_dumpall")
+	d := newDirect()
+	d.plugin.FS = files
+	cfg := cfgOf(kg())
+	ctx := context.Background()
+	if err := d.plugin.Prepare(ctx, d.host, cfg); err != nil {
+		t.Fatal(err)
+	}
+	delete(files.nodes, "/usr/bin/pg_dumpall")
+	if _, err := d.plugin.Dump(ctx, d.host, cfg); err == nil || !strings.Contains(err.Error(), "pg_dumpall") {
+		t.Errorf("Dump: %v", err)
+	}
+}
+
+// A secret that cannot be read by Dump fails the dump of the global objects.
+func TestDumpFailsWhenTheSecretCannotBeReadAfterPrepare(t *testing.T) {
+	d := newDirect()
+	h := &flakyHost{reads: 1}
+	cfg := cfgOf(kg())
+	ctx := context.Background()
+	if err := d.plugin.Prepare(ctx, h, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.plugin.Dump(ctx, h, cfg); err == nil || !strings.Contains(err.Error(), "pg-app") {
+		t.Errorf("Dump: %v", err)
+	}
+}
+
+// flakyHost answers Secret [reads] times, then fails.
+type flakyHost struct {
+	host
+	reads int
+}
+
+func (h *flakyHost) Secret(name string) ([]byte, error) {
+	if h.reads == 0 {
+		return nil, fmt.Errorf("secret %q: gone", name)
+	}
+	h.reads--
+	return h.host.Secret(name)
+}
+
+// Without the global objects the role passwords have nothing to do: a role that
+// is no superuser is not refused for them.
+func TestRolePasswordsAreNotAskedWhenGlobalsAreOff(t *testing.T) {
+	r := newRig(t)
+	want(t, r.backup(k(o{"globals_role_passwords": true})), succeeded)
+	if len(r.proc.ran("pg_dumpall")) != 0 {
+		t.Error("pg_dumpall was started")
+	}
+}
+
+// A secret that cannot be read stops Prepare with the reason of the host.
+func TestPrepareFailsWhenTheSecretCannotBeRead(t *testing.T) {
+	d := newDirect()
+	err := d.plugin.Prepare(context.Background(), &flakyHost{reads: 0}, cfgOf(k()))
+	if err == nil || !strings.Contains(err.Error(), "gone") {
+		t.Errorf("Prepare: %v", err)
+	}
+	if d.proc.started() != 0 {
+		t.Errorf("processes started: %d", d.proc.started())
 	}
 }

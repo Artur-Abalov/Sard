@@ -225,6 +225,16 @@ func TestSuperuserGetsNoWarning(t *testing.T) {
 	}
 }
 
+// A superuser who is not a member of pg_read_all_data reads everything anyway.
+func TestSuperuserWithoutMembershipGetsNoWarning(t *testing.T) {
+	r := newRig(t)
+	r.proc.on("psql", say(psqlRow(180000, true, false, "postgres"), nil, 0))
+	want(t, r.backup(k()), succeeded)
+	if w := r.sink.warnings(); len(w) != 0 {
+		t.Errorf("warnings = %q", w)
+	}
+}
+
 // The role name may hold the separator of the row.
 func TestRoleNameMayContainTheSeparatorOfTheAnswer(t *testing.T) {
 	r := newRig(t)
@@ -294,6 +304,7 @@ func TestEmptySecretOrOneWithNULFailsTheStepBeforeConnecting(t *testing.T) {
 		{"empty", "", "is empty"},
 		{"a line ending", "\n", "is empty"},
 		{"NUL", "ab\x00cd", "contains a NUL byte"},
+		{"NUL first", "\x00abcd", "contains a NUL byte"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

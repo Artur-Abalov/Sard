@@ -56,13 +56,15 @@ type archive struct {
 
 	head       []byte // the first bytes, until the signature is checked
 	checked    bool
-	total      int
+	written    bool // pg_dump wrote at least a byte
 	writeErr   error
 	notArchive bool
 }
 
 func (a *archive) Write(p []byte) (int, error) {
-	a.total += len(p)
+	if len(p) > 0 {
+		a.written = true
+	}
 	if !a.checked {
 		a.head = append(a.head, p...)
 		if len(a.head) < len(archiveSignature) {
@@ -119,7 +121,7 @@ func (a *archive) interrupted(ctx context.Context) error {
 // complete checks what pg_dump wrote when it exited with 0.
 func (a *archive) complete() error {
 	switch {
-	case a.total == 0:
+	case !a.written:
 		return errors.New("pg_dump failed: empty output")
 	case !a.checked:
 		return errors.New("pg_dump failed: the output is not a custom-format archive")

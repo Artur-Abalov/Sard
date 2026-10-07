@@ -4,8 +4,10 @@
 package postgresql_test
 
 import (
+	"context"
 	"errors"
 	"io/fs"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -215,4 +217,117 @@ func TestOldPgDumpIsReportedBeforeAMissingPgDumpall(t *testing.T) {
 	want(t, res, failed)
 	mentions(t, res.GetMessage(), "pg_dump 16.4", "18.0", "install pg_dump 18 or newer")
 	r.noDump(t)
+}
+
+// The message of a failed tool is its own name, the exit code and its words.
+func TestMessageOfAFailedToolIsExact(t *testing.T) {
+	r := newRig(t)
+	r.proc.on("pg_dump --version", fail("error while loading shared libraries: libpq.so.5"))
+	res := r.backup(k())
+	want(t, res, failed)
+	const text = "prepare: pg_dump failed (exit code 1): error while loading shared libraries: libpq.so.5"
+	if res.GetMessage() != text {
+		t.Errorf("message = %q, want %q", res.GetMessage(), text)
+	}
+}
+
+// Empty lines of stderr are not lines of the log.
+func TestEmptyLinesOfStderrAreNotLogged(t *testing.T) {
+	r := newRig(t)
+	r.proc.on("pg_dump", func(ctx context.Context, c plugCmd) (int, error) {
+		c.Stderr("")
+		c.Stderr("   ")
+		c.Stderr("pg_dump: dumping")
+		return say(archive(100), nil, 0)(ctx, c)
+	})
+	want(t, r.backup(k()), succeeded)
+	for _, l := range r.sink.lines() {
+		if strings.TrimSpace(l.Text) == "" {
+			t.Errorf("an empty line in the log: %+v", r.sink.lines())
+		}
+	}
+}
+
+// The quote of an error is cut above 512 bytes, with an ellipsis, and not below.
+func TestQuoteOfAnErrorIsCutAboveTheLimit(t *testing.T) {
+	for _, n := range []int{511, 512, 513} {
+		line := "psql: error: " + strings.Repeat("y", n-len("psql: error: "))
+		r := newRig(t)
+		r.proc.on("psql", say("", []string{line}, 2))
+		res := r.backup(k())
+		want(t, res, failed)
+		quote := strings.TrimPrefix(res.GetMessage(), "prepare: psql failed (exit code 2): ")
+		wantQuote := line
+		if n > 512 {
+			wantQuote = line[:512] + "..."
+		}
+		if quote != wantQuote {
+			t.Errorf("%d bytes: quote of %d bytes, want %d", n, len(quote), len(wantQuote))
+		}
+	}
+}
+
+// A tool that fails without a word is named by its exit code alone.
+func TestToolThatFailsWithoutAWordIsNamedByItsExitCode(t *testing.T) {
+	r := newRig(t)
+	r.proc.on("psql", say("", nil, 3))
+	res := r.backup(k())
+	want(t, res, failed)
+	if res.GetMessage() != "prepare: psql failed (exit code 3)" {
+		t.Errorf("message = %q", res.GetMessage())
+	}
+}
+
+// The line that names the error is quoted wherever it is among the lines, and
+// the lines that report an error or a warning are WARN, the others INFO.
+func TestQuoteIsTheLineThatNamesTheErrorAndThoseLinesAreWarnings(t *testing.T) {
+	r := newRig(t)
+	r.proc.on("psql", say("", []string{
+		"psql: error: connection to server failed: FATAL:  password authentication failed",
+		"DETAIL:  Connection matched pg_hba.conf line 1",
+		"FATAL:  the second one",
+		"HINT:  nothing to add",
+		"psql: warning: something odd",
+	}, 2))
+	res := r.backup(k())
+	want(t, res, failed)
+	mentions(t, res.GetMessage(), "FATAL:  the second one")
+	levels := map[string]agentv1.LogLevel{}
+	for _, l := range r.sink.lines() {
+		levels[l.Text] = l.Level
+	}
+	warn, info := agentv1.LogLevel_LOG_LEVEL_WARN, agentv1.LogLevel_LOG_LEVEL_INFO
+	for text, level := range map[string]agentv1.LogLevel{
+		"psql: error: connection to server failed: FATAL:  password authentication failed": warn,
+		"FATAL:  the second one":                         warn,
+		"psql: warning: something odd":                   warn,
+		"DETAIL:  Connection matched pg_hba.conf line 1": info,
+		"HINT:  nothing to add":                          info,
+	} {
+		if levels[text] != level {
+			t.Errorf("%q is logged at %v, want %v", text, levels[text], level)
+		}
+	}
+	// A line with only FATAL: is an error line as well.
+	only := newRig(t)
+	only.proc.on("psql", say("", []string{"FATAL:  the database system is shutting down", "DETAIL:  after it"}, 2))
+	mentions(t, only.backup(k()).GetMessage(), "the database system is shutting down")
+}
+
+// The agent's variables of libpq are dropped wherever they are in its environment.
+func TestPGVariablesAreDroppedWhereverTheyAre(t *testing.T) {
+	r := newRig(t)
+	r.env = []string{"PGHOST=other", "PATH=/usr/bin", "PGSSLMODE=disable", "HOME=/var/lib/sard", "LC_ALL=ru_RU.UTF-8", "TZ=UTC"}
+	want(t, r.backup(k()), succeeded)
+	c := r.proc.ran("psql")[0]
+	for _, kv := range []string{"PATH=/usr/bin", "HOME=/var/lib/sard", "TZ=UTC"} {
+		if !slices.Contains(c.Env, kv) {
+			t.Errorf("env %q lacks %s", c.Env, kv)
+		}
+	}
+	for _, name := range []string{"PGHOST", "PGSSLMODE", "LC_ALL"} {
+		if _, ok := c.env(name); ok {
+			t.Errorf("%s reached psql", name)
+		}
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"slices"
 	"strings"
@@ -29,6 +30,7 @@ var helperModes = map[string]func(){
 		fmt.Fprint(os.Stderr, "first\nsecond")
 		os.Exit(3)
 	},
+	"lines": func() { fmt.Fprint(os.Stderr, "one\ntwo\n") },
 	"env": func() {
 		for _, kv := range os.Environ() {
 			fmt.Println(kv)
@@ -36,6 +38,16 @@ var helperModes = map[string]func(){
 	},
 	"selfkill": func() { _ = syscall.Kill(os.Getpid(), syscall.SIGKILL) },
 	"sleep":    func() { time.Sleep(time.Minute) },
+	// leak leaves a child of its process group behind and exits; the child's
+	// pid is the only thing it prints.
+	"leak": func() {
+		child := exec.Command(os.Args[0], "-test.run=^TestHelperProcess$")
+		child.Env = []string{helperEnv + "=sleep"}
+		if child.Start() != nil {
+			os.Exit(2)
+		}
+		fmt.Println(child.Process.Pid)
+	},
 	"stubborn": func() {
 		signal.Ignore(syscall.SIGTERM)
 		fmt.Println("ready")
@@ -76,6 +88,20 @@ func (l *lines) list() []string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return slices.Clone(l.got)
+}
+
+// The last line of stderr, with a line ending or without, is one line, and an
+// output that ends with a line ending leaves no empty line behind.
+func TestProcessRunnerSplitsStderrIntoLines(t *testing.T) {
+	var err lines
+	c := helper(t, "lines")
+	c.Stderr = err.add
+	if code, runErr := (postgresql.ProcessRunner{}).Run(context.Background(), c); code != 0 || runErr != nil {
+		t.Fatalf("code %d, err %v", code, runErr)
+	}
+	if got := err.list(); !slices.Equal(got, []string{"one", "two"}) {
+		t.Errorf("stderr lines = %q", got)
+	}
 }
 
 func TestProcessRunnerReturnsTheExitCodeAndTheOutput(t *testing.T) {
@@ -154,6 +180,25 @@ func TestProcessRunnerKillsAProcessThatIgnoresSigtermAfterTheGrace(t *testing.T)
 	case <-time.After(10 * time.Second):
 		t.Fatal("the process was not killed")
 	}
+}
+
+// A process of the group the tool left behind is killed when the tool exits.
+func TestProcessRunnerKillsWhatTheToolLeftBehind(t *testing.T) {
+	var out bytes.Buffer
+	c := helper(t, "leak")
+	c.Stdout = &out
+	if code, err := (postgresql.ProcessRunner{Grace: 200 * time.Millisecond}).Run(context.Background(), c); code != 0 || err != nil {
+		t.Fatalf("code %d, err %v", code, err)
+	}
+	pid := strings.TrimSpace(out.String())
+	waitFor(t, "the child to die", func() bool {
+		stat, err := os.ReadFile("/proc/" + pid + "/stat")
+		if err != nil {
+			return true // gone
+		}
+		fields := strings.Fields(string(stat[bytes.LastIndexByte(stat, ')')+1:]))
+		return len(fields) > 0 && fields[0] == "Z" // killed, not yet reaped
+	})
 }
 
 type writerFunc func([]byte) (int, error)

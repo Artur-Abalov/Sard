@@ -9,7 +9,9 @@ import (
 	"errors"
 	"io/fs"
 	"maps"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Artur-Abalov/sard/agent/plugins/postgresql"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
@@ -143,4 +145,103 @@ func (d *direct) dumpOf(t *testing.T, cfg sdk.Config) sdk.Dump {
 		t.Fatal(err)
 	}
 	return dump
+}
+
+// A dump that cannot be passed on stops pg_dump and is reported as such.
+func TestStreamThatCannotBePassedOnStopsPgDump(t *testing.T) {
+	d := newDirect()
+	stopped := make(chan struct{})
+	d.proc.on("pg_dump", func(ctx context.Context, c plugCmd) (int, error) {
+		_, _ = c.Stdout.Write([]byte(archive(100)))
+		select {
+		case <-ctx.Done():
+			close(stopped)
+			return -1, errTerminated
+		case <-time.After(5 * time.Second):
+			return 0, nil
+		}
+	})
+	cfg := cfgOf(k())
+	dump := d.dumpOf(t, cfg)
+	broken := errors.New("the pipe is closed")
+	err := d.plugin.Stream(context.Background(), d.host, cfg, dump, failingWriter{broken})
+	if !errors.Is(err, broken) || !strings.Contains(err.Error(), "cannot pass the dump to restic") {
+		t.Errorf("Stream: %v", err)
+	}
+	wantClosed(t, stopped, "pg_dump was not stopped")
+}
+
+type failingWriter struct{ err error }
+
+func (w failingWriter) Write([]byte) (int, error) { return 0, w.err }
+
+// The signature is judged as soon as its five bytes are there.
+func TestOutputOfExactlyTheSignatureIsPassedOn(t *testing.T) {
+	d := newDirect()
+	d.proc.on("pg_dump", say("PGDMP", nil, 0))
+	cfg := cfgOf(k())
+	dump := d.dumpOf(t, cfg)
+	var out bytes.Buffer
+	if err := d.plugin.Stream(context.Background(), d.host, cfg, dump, &out); err != nil || out.String() != "PGDMP" {
+		t.Errorf("Stream: %v, %q", err, out.String())
+	}
+}
+
+// The signature may arrive in pieces.
+func TestSignatureInPiecesIsPassedOnWhole(t *testing.T) {
+	d := newDirect()
+	d.proc.on("pg_dump", func(_ context.Context, c plugCmd) (int, error) {
+		for _, piece := range []string{"PG", "D", "MP-and-", "the rest"} {
+			if _, err := c.Stdout.Write([]byte(piece)); err != nil {
+				return -1, err
+			}
+		}
+		return 0, nil
+	})
+	cfg := cfgOf(k())
+	dump := d.dumpOf(t, cfg)
+	var out bytes.Buffer
+	if err := d.plugin.Stream(context.Background(), d.host, cfg, dump, &out); err != nil || out.String() != "PGDMP-and-the rest" {
+		t.Errorf("Stream: %v, %q", err, out.String())
+	}
+}
+
+// The first bytes of an output that is no archive are refused, the writer is
+// told nothing of them was taken, and pg_dump, if it goes on, is stopped.
+func TestOutputThatIsNoArchiveIsRefusedAndPgDumpStopped(t *testing.T) {
+	d := newDirect()
+	var wrote int
+	var failedWrite error
+	stopped := make(chan struct{})
+	d.proc.on("pg_dump", func(ctx context.Context, c plugCmd) (int, error) {
+		wrote, failedWrite = c.Stdout.Write([]byte("-- plain SQL dump\n"))
+		select {
+		case <-ctx.Done():
+			close(stopped)
+			return -1, errTerminated
+		case <-time.After(5 * time.Second):
+			return 0, nil
+		}
+	})
+	cfg := cfgOf(k())
+	dump := d.dumpOf(t, cfg)
+	var out bytes.Buffer
+	err := d.plugin.Stream(context.Background(), d.host, cfg, dump, &out)
+	if err == nil || !strings.Contains(err.Error(), "not a custom-format archive") || out.Len() != 0 {
+		t.Errorf("Stream: %v, %q", err, out.String())
+	}
+	if wrote != 0 || failedWrite == nil {
+		t.Errorf("the write: %d, %v", wrote, failedWrite)
+	}
+	wantClosed(t, stopped, "pg_dump was not stopped")
+}
+
+// wantClosed fails the test unless ch is closed.
+func wantClosed(t *testing.T, ch <-chan struct{}, message string) {
+	t.Helper()
+	select {
+	case <-ch:
+	default:
+		t.Error(message)
+	}
 }

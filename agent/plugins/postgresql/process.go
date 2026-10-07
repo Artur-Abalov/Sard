@@ -40,13 +40,19 @@ func (r ProcessRunner) Run(ctx context.Context, c Cmd) (int, error) {
 	err := cmd.Wait()
 	_ = signalGroup(cmd.Process.Pid, syscall.SIGKILL)
 	stderr.flush()
-	if cmd.ProcessState == nil { // Wait failed before the process was reaped
-		return -1, err
+	return exitOf(cmd.ProcessState, err)
+}
+
+// exitOf is the exit code of a process that exited; for one killed by a
+// signal or not reaped it is -1 and what happened ("signal: killed").
+func exitOf(state *os.ProcessState, waitErr error) (int, error) {
+	switch {
+	case state == nil: // Wait failed before the process was reaped
+		return -1, waitErr
+	case state.Exited():
+		return state.ExitCode(), nil
 	}
-	if !cmd.ProcessState.Exited() {
-		return -1, errors.New(cmd.ProcessState.String()) // "signal: killed"
-	}
-	return cmd.ProcessState.ExitCode(), nil
+	return -1, errors.New(state.String())
 }
 
 func (r ProcessRunner) grace() time.Duration {

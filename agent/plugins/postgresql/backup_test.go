@@ -27,6 +27,7 @@ func TestVersionsAreReadFromTheAnswersOfPgDumpAndTheServer(t *testing.T) {
 		{"pg_dump (PostgreSQL) 17.2 (Ubuntu 17.2-1.pgdg24.04+1)", 160004, "17.2", "16.4"},
 		{"pg_dump (PostgreSQL) 18beta1", 140013, "18beta1", "14.13"},
 		{"pg_dump (PostgreSQL) 18rc1", 180000, "18rc1", "18.0"},
+		{"pg_dump (PostgreSQL) 14.2", 149999, "14.2", "14.9999"},
 	}
 	for _, c := range cases {
 		t.Run(c.tool+" "+c.server, func(t *testing.T) {
