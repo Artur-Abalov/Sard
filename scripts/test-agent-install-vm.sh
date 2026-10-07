@@ -64,7 +64,8 @@ bootcmd:
 CLOUD
 printf 'instance-id: sard-pkgtest\nlocal-hostname: agent-host\n' >"$WORK/meta-data"
 cloud-localds "$WORK/seed.iso" "$WORK/user-data" "$WORK/meta-data"
-qemu-img create -q -f qcow2 -F qcow2 -b "$image" "$WORK/disk.qcow2" 20G
+# The size is the image's own: a smaller disk cuts the LVM volume short.
+qemu-img create -q -f qcow2 -F qcow2 -b "$image" "$WORK/disk.qcow2"
 
 accel=tcg
 if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then accel=kvm; fi
