@@ -4,7 +4,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -691,4 +693,28 @@ func TestAPasswordFileAnotherKeyRefersToIsNotTakenOver(t *testing.T) {
 	}
 	h.assertNoBackendCalls()
 	h.assertHostUnchanged(before)
+}
+
+func TestAPathWithAControlCharacterIsRefusedAndLeavesNoDropIn(t *testing.T) {
+	for _, path := range []string{"/srv/a\nExecStartPre=+/bin/true", "/srv/a\tb", "/srv/a\x7fb", "/srv/a\x00b"} {
+		h := newSetupHost(t)
+		before := h.hostTree()
+		code, _, stderr := h.sudo("repo", "add", "extra", path, "--config", "C")
+		assertRefusal(t, code, stderr, exitUsage, "LOCAL_PATH_INVALID")
+		h.assertAbsent(h.dropIns())
+		h.assertHostUnchanged(before)
+	}
+}
+
+func TestAnAddressInTheSummaryNeverShowsACredential(t *testing.T) {
+	h := newSetupHost(t)
+	c := newHostCmd("repo add", hostOptions{configPath: h.cfgPath}, hostsetup.Principal{}, &bytes.Buffer{}, &bytes.Buffer{}, h.deps)
+	var out bytes.Buffer
+	c.stdout = &out
+	st := &addState{name: "extra", url: "rest:https://u:" + urlMarker + "@rest.example.com/extra", id: "X"}
+	c.printAdded(st)
+	c.printUnchanged(st, "X")
+	if strings.Contains(out.String(), urlMarker) || !strings.Contains(out.String(), "u:***@rest.example.com") {
+		t.Fatalf("output %q", out.String())
+	}
 }

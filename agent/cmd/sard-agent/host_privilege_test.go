@@ -140,3 +140,38 @@ func TestRepoInitFromTheServiceUserLeavesTheOwnerAlone(t *testing.T) {
 		t.Fatalf("%d owner changes", n)
 	}
 }
+
+// ADR 0048, Р4: the owner is given to the temporary file; the final path is
+// never the property of root, not even for a moment.
+func TestRepoInitUnderSudoGivesTheOwnerBeforeThePasswordFileTakesItsPath(t *testing.T) {
+	h := newSetupHost(t)
+	final := h.path("secrets/new.pass")
+	h.cfg.Repositories[0].PasswordFile = final
+	h.saveConfig()
+	code, _, stderr := h.sudo("repo", "init", "--generate-password", "--config", "C", "base")
+	assertCode(t, code, exitOK)
+	for _, e := range h.fsys.events {
+		if strings.HasPrefix(e, "chown "+final+" ") {
+			t.Fatalf("the final path was given its owner after it was made: %v", h.fsys.events)
+		}
+	}
+	h.assertOwner(final, serviceUID)
+	h.assertMode(final, 0o600)
+	h.assertNoTemporaryFiles(h.secretsDir())
+	if stderr != "" {
+		t.Fatalf("stderr %q", stderr)
+	}
+}
+
+func TestRepoInitUnderSudoNeverReplacesAPasswordFileThatAppearsMeanwhile(t *testing.T) {
+	h := newSetupHost(t)
+	final := h.path("secrets/new.pass")
+	h.cfg.Repositories[0].PasswordFile = final
+	h.saveConfig()
+	h.fsys.failOn, h.fsys.failPath = "link", "new.pass"
+	code, _, stderr := h.sudo("repo", "init", "--generate-password", "--config", "C", "base")
+	assertCode(t, code, exitWrite)
+	assertReason(t, stderr, "PASSWORD_FILE_WRITE")
+	h.assertAbsent(final)
+	h.assertNoTemporaryFiles(h.secretsDir())
+}

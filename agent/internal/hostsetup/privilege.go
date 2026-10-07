@@ -6,7 +6,7 @@ package hostsetup
 import (
 	"errors"
 
-	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 )
 
 // User is a user of this host, as /etc/passwd and /etc/group know it.
@@ -57,7 +57,7 @@ type Request struct {
 
 // Authorize applies the privilege rule (Р5): root may do anything, the
 // service user may read, anyone else may not run the command.
-func Authorize(r Request) (Principal, *repoinit.Failure) {
+func Authorize(r Request) (Principal, *refusal.Failure) {
 	service, err := r.Lookup(r.ServiceUser)
 	switch {
 	case r.EUID == 0:
@@ -65,12 +65,12 @@ func Authorize(r Request) (Principal, *repoinit.Failure) {
 	case err == nil && service.UID == r.EUID && !r.Mutating:
 		return Principal{Role: RoleService, Service: service}, nil
 	}
-	return Principal{}, repoinit.Fail(repoinit.PrivilegesRequired, "this user may not run this command; run it with sudo: sudo sard-agent %s", r.Command)
+	return Principal{}, refusal.Fail(refusal.PrivilegesRequired, "this user may not run this command; run it with sudo: sudo sard-agent %s", r.Command)
 }
 
-func authorizeRoot(r Request, service User, err error) (Principal, *repoinit.Failure) {
+func authorizeRoot(r Request, service User, err error) (Principal, *refusal.Failure) {
 	if err != nil && r.NeedsUser {
-		return Principal{}, repoinit.Fail(repoinit.ServiceUserUnknown, "the service user %q cannot be found on this host (%v); create it, or set service.user in the agent config", r.ServiceUser, err)
+		return Principal{}, refusal.Fail(refusal.ServiceUserUnknown, "the service user %q cannot be found on this host (%v); create it, or set service.user in the agent config", r.ServiceUser, err)
 	}
 	if err != nil {
 		service = User{}

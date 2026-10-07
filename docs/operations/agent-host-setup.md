@@ -74,6 +74,9 @@ list` и `secret list` тоже отказывают. Команды **нико�
 
 Имя репозитория и секрета, которое принимают изменяющие команды, — 1–64
 символа из `A–Z a–z 0–9 - _`, первый — буква или цифра (`NAME_INVALID`).
+Имя, начинающееся с `-`, команда читает как флаг: чтобы получить
+`NAME_INVALID`, а не ошибку флага, поставьте его после `--`
+(`sudo sard-agent secret set --stdin -- -db`).
 
 ## Секреты
 
@@ -194,7 +197,9 @@ sudo journalctl -t sard-agent --since today
 # repository main password revealed by alice (uid 1000)
 ```
 
-В строке — действие, вид, имя и кто (`SUDO_USER` и `SUDO_UID`, иначе
+Строки идут с facility `LOG_AUTHPRIV`: на хостах с rsyslog они лежат в
+`/var/log/secure` (RHEL) или `/var/log/auth.log` (Debian), а
+`journalctl -t sard-agent` показывает их всегда. В строке — действие, вид, имя и кто (`SUDO_USER` и `SUDO_UID`, иначе
 пользователь процесса); значений, адресов с учётными данными и содержимого
 файлов нет. Если syslog недоступен, изменение выполняется, а stderr
 предупреждает.

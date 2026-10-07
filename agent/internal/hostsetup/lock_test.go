@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
-	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 )
 
 func newLayoutWithDir(t *testing.T) hostsetup.Layout {
@@ -30,7 +30,7 @@ func TestSecondConfigLockIsRefusedAtOnce(t *testing.T) {
 	}
 	defer unlock()
 	_, f = hostsetup.LockConfig(os.OpenFile, l)
-	if f == nil || f.Reason != repoinit.ConfigLocked || f.Class != repoinit.ClassTemporary || !strings.Contains(f.Detail, l.LockFile()) {
+	if f == nil || f.Reason != refusal.ConfigLocked || f.Class != refusal.ClassTemporary || !strings.Contains(f.Detail, l.LockFile()) {
 		t.Fatalf("second lock: %+v", f)
 	}
 }
@@ -73,7 +73,7 @@ func TestAConfigLockThatCannotBeCreatedIsAWriteFailure(t *testing.T) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: syscall.EACCES}
 	}
 	_, f := hostsetup.LockConfig(denied, l)
-	if f == nil || f.Reason != repoinit.ConfigWrite || !strings.Contains(f.Detail, l.LockFile()) {
+	if f == nil || f.Reason != refusal.ConfigWrite || !strings.Contains(f.Detail, l.LockFile()) {
 		t.Fatalf("refusal %+v", f)
 	}
 }

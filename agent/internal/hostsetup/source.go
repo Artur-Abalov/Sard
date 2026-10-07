@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 )
 
 // MaxSecretSize is the largest secret value a command accepts (Р7).
@@ -45,9 +45,9 @@ type Source struct {
 
 // CheckSources refuses two sources at once (SECRET_SOURCE_CONFLICT); it
 // reads nothing, so a command can run it with its other flag checks.
-func CheckSources(o SourceOptions) *repoinit.Failure {
+func CheckSources(o SourceOptions) *refusal.Failure {
 	if o.Stdin && o.File != "" {
-		return repoinit.Fail(repoinit.SecretSourceConflict, "give the value one way only: %s or %s, not both", o.Flags.Stdin, o.Flags.File)
+		return refusal.Fail(refusal.SecretSourceConflict, "give the value one way only: %s or %s, not both", o.Flags.Stdin, o.Flags.File)
 	}
 	return nil
 }
@@ -56,25 +56,25 @@ func CheckSources(o SourceOptions) *repoinit.Failure {
 // and as typed, without the line break, at the terminal (Н10). Without a
 // flag and without a terminal nothing is read (SECRET_SOURCE_MISSING).
 // Messages never contain the value.
-func (s Source) Read(o SourceOptions) ([]byte, *repoinit.Failure) {
+func (s Source) Read(o SourceOptions) ([]byte, *refusal.Failure) {
 	value, f := s.fetch(o)
 	if f != nil {
 		return nil, f
 	}
 	switch {
 	case len(value) == 0:
-		return nil, repoinit.Fail(repoinit.SecretEmpty, "the value is empty")
+		return nil, refusal.Fail(refusal.SecretEmpty, "the value is empty")
 	case len(value) > MaxSecretSize:
 		return nil, tooLarge()
 	}
 	return value, nil
 }
 
-func tooLarge() *repoinit.Failure {
-	return repoinit.Fail(repoinit.SecretTooLarge, "the value is larger than %d bytes", MaxSecretSize)
+func tooLarge() *refusal.Failure {
+	return refusal.Fail(refusal.SecretTooLarge, "the value is larger than %d bytes", MaxSecretSize)
 }
 
-func (s Source) fetch(o SourceOptions) ([]byte, *repoinit.Failure) {
+func (s Source) fetch(o SourceOptions) ([]byte, *refusal.Failure) {
 	switch {
 	case o.Stdin:
 		return readLimited(s.Stdin, "standard input")
@@ -83,13 +83,13 @@ func (s Source) fetch(o SourceOptions) ([]byte, *repoinit.Failure) {
 	case s.Terminal != nil:
 		return askTwice(s.Terminal, o.Subject)
 	}
-	return nil, repoinit.Fail(repoinit.SecretSourceMissing, "there is no terminal to ask for the value and no source was given: use %s (standard input) or %s <path>", o.Flags.Stdin, o.Flags.File)
+	return nil, refusal.Fail(refusal.SecretSourceMissing, "there is no terminal to ask for the value and no source was given: use %s (standard input) or %s <path>", o.Flags.Stdin, o.Flags.File)
 }
 
-func (s Source) readFile(path string) ([]byte, *repoinit.Failure) {
+func (s Source) readFile(path string) ([]byte, *refusal.Failure) {
 	f, err := s.Open(path)
 	if err != nil {
-		return nil, repoinit.Fail(repoinit.SecretSourceMissing, "cannot read %s: %v", path, err)
+		return nil, refusal.Fail(refusal.SecretSourceMissing, "cannot read %s: %v", path, err)
 	}
 	defer func() { _ = f.Close() }()
 	return readLimited(f, path)
@@ -97,16 +97,16 @@ func (s Source) readFile(path string) ([]byte, *repoinit.Failure) {
 
 // readLimited reads at most one byte more than the limit: enough to tell
 // "too large" without reading all of a huge input.
-func readLimited(r io.Reader, name string) ([]byte, *repoinit.Failure) {
+func readLimited(r io.Reader, name string) ([]byte, *refusal.Failure) {
 	data, err := io.ReadAll(io.LimitReader(r, MaxSecretSize+1))
 	if err != nil {
-		return nil, repoinit.Fail(repoinit.SecretSourceMissing, "cannot read %s: %v", name, err)
+		return nil, refusal.Fail(refusal.SecretSourceMissing, "cannot read %s: %v", name, err)
 	}
 	return data, nil
 }
 
 // askTwice asks for the value twice; two different answers are refused.
-func askTwice(t Terminal, subject string) ([]byte, *repoinit.Failure) {
+func askTwice(t Terminal, subject string) ([]byte, *refusal.Failure) {
 	first, err := t.ReadSecret(fmt.Sprintf("Value for %s: ", subject))
 	if err != nil {
 		return nil, terminalFailed(err)
@@ -116,11 +116,11 @@ func askTwice(t Terminal, subject string) ([]byte, *repoinit.Failure) {
 		return nil, terminalFailed(err)
 	}
 	if !bytes.Equal(first, second) {
-		return nil, repoinit.Fail(repoinit.SecretMismatch, "the two values differ; nothing was changed")
+		return nil, refusal.Fail(refusal.SecretMismatch, "the two values differ; nothing was changed")
 	}
 	return first, nil
 }
 
-func terminalFailed(err error) *repoinit.Failure {
-	return repoinit.Fail(repoinit.SecretSourceMissing, "cannot read the value from the terminal: %v", err)
+func terminalFailed(err error) *refusal.Failure {
+	return refusal.Fail(refusal.SecretSourceMissing, "cannot read the value from the terminal: %v", err)
 }

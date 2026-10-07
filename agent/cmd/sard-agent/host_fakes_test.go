@@ -184,6 +184,49 @@ func (f *fakeFS) Remove(path string) error {
 	return f.OS.Remove(path)
 }
 
+func (f *fakeFS) Link(oldpath, newpath string) error {
+	if err := f.fails("link", newpath); err != nil {
+		return err
+	}
+	if err := f.OS.Link(oldpath, newpath); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if o, ok := f.owners[oldpath]; ok {
+		f.owners[newpath] = o
+	}
+	f.events = append(f.events, "link "+oldpath+" "+newpath)
+	return nil
+}
+
+func (f *fakeFS) OpenRoot(path string) (hostsetup.Root, error) {
+	root, err := f.OS.OpenRoot(path)
+	if err != nil {
+		return nil, err
+	}
+	return &fakeRoot{Root: root, base: path, fsys: f}, nil
+}
+
+// fakeRoot records the owner changes made inside a Root.
+type fakeRoot struct {
+	hostsetup.Root
+	base string
+	fsys *fakeFS
+}
+
+func (r *fakeRoot) Lchown(name string, uid, gid int) error {
+	full := filepath.Join(r.base, name)
+	if err := r.fsys.fails("chown", full); err != nil {
+		return err
+	}
+	if err := r.fsys.nthChown(full); err != nil {
+		return err
+	}
+	r.fsys.setOwner(full, uid, gid)
+	return nil
+}
+
 func (f *fakeFS) ReadDir(path string) ([]fs.DirEntry, error) {
 	if err := f.fails("readdir", path); err != nil {
 		return nil, err

@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
-	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 )
 
 // scriptedTerminal answers each prompt with the next value of its script
@@ -73,7 +73,7 @@ func TestFileIsStoredByteForByteAndNotChanged(t *testing.T) {
 func TestMissingFileIsRefusedWithItsPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "absent")
 	_, f := source(nil, nil).Read(hostsetup.SourceOptions{File: path, Flags: flagNames})
-	if f == nil || f.Class != repoinit.ClassUsage || !strings.Contains(f.Detail, path) || !strings.Contains(f.Detail, "no such file") {
+	if f == nil || f.Class != refusal.ClassUsage || !strings.Contains(f.Detail, path) || !strings.Contains(f.Detail, "no such file") {
 		t.Fatalf("refusal = %+v", f)
 	}
 }
@@ -109,7 +109,7 @@ func TestTerminalAsksTwiceWithoutEchoAndKeepsTheLineAsTyped(t *testing.T) {
 func TestTerminalValuesThatDifferAreRefused(t *testing.T) {
 	term := &scriptedTerminal{values: []string{"SECRET-MARKER-1", "SECRET-MARKER-2"}}
 	_, f := source(nil, term).Read(hostsetup.SourceOptions{Flags: flagNames})
-	if f == nil || f.Reason != repoinit.SecretMismatch || strings.Contains(f.Error(), "MARKER") {
+	if f == nil || f.Reason != refusal.SecretMismatch || strings.Contains(f.Error(), "MARKER") {
 		t.Fatalf("refusal = %+v", f)
 	}
 }
@@ -117,7 +117,7 @@ func TestTerminalValuesThatDifferAreRefused(t *testing.T) {
 func TestTerminalThatFailsIsRefusedWithoutAValue(t *testing.T) {
 	term := &scriptedTerminal{err: errors.New("terminal gone")}
 	_, f := source(nil, term).Read(hostsetup.SourceOptions{Flags: flagNames})
-	if f == nil || f.Class != repoinit.ClassUsage || !strings.Contains(f.Detail, "terminal gone") {
+	if f == nil || f.Class != refusal.ClassUsage || !strings.Contains(f.Detail, "terminal gone") {
 		t.Fatalf("refusal = %+v", f)
 	}
 }
@@ -160,7 +160,7 @@ func (s *failSecond) ReadSecret(string) ([]byte, error) {
 
 func TestWithoutFlagAndWithoutTerminalTheInputIsNeverRead(t *testing.T) {
 	_, f := source(neverClosed{t}, nil).Read(hostsetup.SourceOptions{Flags: flagNames})
-	if f == nil || f.Reason != repoinit.SecretSourceMissing {
+	if f == nil || f.Reason != refusal.SecretSourceMissing {
 		t.Fatalf("refusal = %+v", f)
 	}
 	for _, want := range []string{"--stdin", "--from-file"} {
@@ -179,7 +179,7 @@ func TestMissingSourceNamesThePasswordFlagsOfRepoAdd(t *testing.T) {
 
 func TestTwoSourcesAreRefusedBeforeAnythingIsRead(t *testing.T) {
 	f := hostsetup.CheckSources(hostsetup.SourceOptions{Stdin: true, File: "F", Flags: flagNames})
-	if f == nil || f.Reason != repoinit.SecretSourceConflict {
+	if f == nil || f.Reason != refusal.SecretSourceConflict {
 		t.Fatalf("refusal = %+v", f)
 	}
 	if hostsetup.CheckSources(hostsetup.SourceOptions{Stdin: true, Flags: flagNames}) != nil || hostsetup.CheckSources(hostsetup.SourceOptions{File: "F", Flags: flagNames}) != nil || hostsetup.CheckSources(hostsetup.SourceOptions{Flags: flagNames}) != nil {
@@ -189,12 +189,12 @@ func TestTwoSourcesAreRefusedBeforeAnythingIsRead(t *testing.T) {
 
 func TestEmptyValueIsRefused(t *testing.T) {
 	_, f := source(strings.NewReader(""), nil).Read(hostsetup.SourceOptions{Stdin: true, Flags: flagNames})
-	if f == nil || f.Reason != repoinit.SecretEmpty {
+	if f == nil || f.Reason != refusal.SecretEmpty {
 		t.Fatalf("refusal = %+v", f)
 	}
 	term := &scriptedTerminal{values: []string{"", ""}}
 	_, f = source(nil, term).Read(hostsetup.SourceOptions{Flags: flagNames})
-	if f == nil || f.Reason != repoinit.SecretEmpty {
+	if f == nil || f.Reason != refusal.SecretEmpty {
 		t.Fatalf("terminal: refusal = %+v", f)
 	}
 }
@@ -205,7 +205,7 @@ func TestLargestValueIsAcceptedAndOneByteMoreIsRefused(t *testing.T) {
 		t.Fatalf("65536 bytes: len %d, refusal %v", len(got), f)
 	}
 	_, f = source(bytes.NewReader(bytes.Repeat([]byte("a"), 65537)), nil).Read(hostsetup.SourceOptions{Stdin: true, Flags: flagNames})
-	if f == nil || f.Reason != repoinit.SecretTooLarge || !strings.Contains(f.Detail, "65536") {
+	if f == nil || f.Reason != refusal.SecretTooLarge || !strings.Contains(f.Detail, "65536") {
 		t.Fatalf("65537 bytes: refusal = %+v", f)
 	}
 }
@@ -216,7 +216,7 @@ func TestFileOfTheLimitAndOverIsJudgedLikeStdin(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, f := source(nil, nil).Read(hostsetup.SourceOptions{File: path, Flags: flagNames})
-	if f == nil || f.Reason != repoinit.SecretTooLarge {
+	if f == nil || f.Reason != refusal.SecretTooLarge {
 		t.Fatalf("refusal = %+v", f)
 	}
 }
@@ -224,7 +224,7 @@ func TestFileOfTheLimitAndOverIsJudgedLikeStdin(t *testing.T) {
 func TestTooLargeTerminalValueIsRefused(t *testing.T) {
 	big := strings.Repeat("a", 65537)
 	_, f := source(nil, &scriptedTerminal{values: []string{big, big}}).Read(hostsetup.SourceOptions{Flags: flagNames})
-	if f == nil || f.Reason != repoinit.SecretTooLarge {
+	if f == nil || f.Reason != refusal.SecretTooLarge {
 		t.Fatalf("refusal = %+v", f)
 	}
 }
@@ -235,7 +235,7 @@ func (failingReader) Read([]byte) (int, error) { return 0, errors.New("read brok
 
 func TestStdinThatFailsIsRefusedWithoutItsContent(t *testing.T) {
 	_, f := source(failingReader{}, nil).Read(hostsetup.SourceOptions{Stdin: true, Flags: flagNames})
-	if f == nil || f.Class != repoinit.ClassUsage || !strings.Contains(f.Detail, "read broke") {
+	if f == nil || f.Class != refusal.ClassUsage || !strings.Contains(f.Detail, "read broke") {
 		t.Fatalf("refusal = %+v", f)
 	}
 }

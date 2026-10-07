@@ -67,3 +67,14 @@ func TestDropInWriteFailuresNameThePath(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestDropInEscapesWhatSystemdWouldInterpret(t *testing.T) {
+	dir := t.TempDir()
+	d := hostsetup.DropIn{FS: hostsetup.OS{}, Dir: dir}
+	ok(t, d.Write("x", `/srv/a b%c\d`))
+	data, err := os.ReadFile(d.Path("x"))
+	ok(t, err)
+	if !strings.Contains(string(data), "ReadWritePaths=/srv/a\\x20b%%c\\\\d\n") {
+		t.Fatalf("drop-in %q", data)
+	}
+}

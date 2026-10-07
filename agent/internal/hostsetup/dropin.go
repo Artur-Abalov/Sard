@@ -27,13 +27,19 @@ func (d DropIn) Write(name, repositoryPath string) error {
 	if _, err := EnsureDir(d.FS, d.Dir, Attrs{Mode: 0o755}); err != nil {
 		return err
 	}
-	// systemd splits the value at white space: a space is \x20.
 	content := "# Written by sard-agent repo add; removed by sard-agent repo remove.\n[Service]\nReadWritePaths=" +
-		strings.ReplaceAll(repositoryPath, " ", `\x20`) + "\n"
+		systemdEscape(repositoryPath) + "\n"
 	return WriteFile(d.FS, d.Path(name), []byte(content), Attrs{Mode: 0o644})
 }
 
 // Remove deletes the drop-in; it reports whether there was one.
 func (d DropIn) Remove(name string) (bool, error) {
 	return RemoveFile(d.FS, d.Path(name))
+}
+
+// systemdEscape makes a path a value systemd reads back as it is: the
+// backslash first, then the space (systemd splits at white space) and the
+// percent sign (a specifier).
+func systemdEscape(path string) string {
+	return strings.NewReplacer(`\`, `\\`, " ", `\x20`, "%", "%%").Replace(path)
 }

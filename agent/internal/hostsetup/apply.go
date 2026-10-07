@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 )
 
 // Unit is the systemd unit of the agent service.
@@ -32,9 +32,9 @@ type Systemd interface {
 }
 
 // Reload makes systemd read the unit files again (a drop-in changed).
-func Reload(sd Systemd) *repoinit.Failure {
+func Reload(sd Systemd) *refusal.Failure {
 	if err := sd.DaemonReload(); err != nil {
-		return repoinit.Fail(repoinit.ServiceRestartFailed, "systemctl daemon-reload failed: %v", err)
+		return refusal.Fail(refusal.ServiceRestartFailed, "systemctl daemon-reload failed: %v", err)
 	}
 	return nil
 }
@@ -53,7 +53,7 @@ type Applier struct {
 // Apply decides in the order of Р8 and tells the operator what happened
 // on w. Only a failed restart is a failure; every postponed restart is an
 // instruction.
-func (a Applier) Apply(w io.Writer) *repoinit.Failure {
+func (a Applier) Apply(w io.Writer) *refusal.Failure {
 	switch {
 	case a.NoRestart:
 		_, _ = fmt.Fprintf(w, "Not restarted (--no-restart): for the change to take effect run `%s`.\n", restartCommand)
@@ -65,7 +65,7 @@ func (a Applier) Apply(w io.Writer) *repoinit.Failure {
 	return nil
 }
 
-func (a Applier) applyToService(w io.Writer) *repoinit.Failure {
+func (a Applier) applyToService(w io.Writer) *refusal.Failure {
 	active, err := a.Systemd.Active(Unit)
 	switch {
 	case err != nil:
@@ -78,7 +78,7 @@ func (a Applier) applyToService(w io.Writer) *repoinit.Failure {
 	return a.restartIfIdle(w)
 }
 
-func (a Applier) restartIfIdle(w io.Writer) *repoinit.Failure {
+func (a Applier) restartIfIdle(w io.Writer) *refusal.Failure {
 	journal := filepath.Join(a.StateDir, "journal")
 	steps, err := countSteps(a.FS, journal)
 	switch {
@@ -92,9 +92,9 @@ func (a Applier) restartIfIdle(w io.Writer) *repoinit.Failure {
 	return nil
 }
 
-func (a Applier) restart(w io.Writer) *repoinit.Failure {
+func (a Applier) restart(w io.Writer) *refusal.Failure {
 	if err := a.Systemd.Restart(Unit); err != nil {
-		return repoinit.Fail(repoinit.ServiceRestartFailed, "systemctl restart %s failed: %v; the change is saved, see `journalctl -u sard-agent`", Unit, err)
+		return refusal.Fail(refusal.ServiceRestartFailed, "systemctl restart %s failed: %v; the change is saved, see `journalctl -u sard-agent`", Unit, err)
 	}
 	_, _ = fmt.Fprintf(w, "Service %s restarted.\n", Unit)
 	return nil

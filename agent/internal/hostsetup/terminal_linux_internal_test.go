@@ -69,3 +69,14 @@ func TestTcsetOnAFileThatIsNotATerminalFails(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+type endless struct{}
+
+func (endless) Read(p []byte) (int, error) { p[0] = 'a'; return 1, nil }
+
+func TestReadLineStopsOneByteBeyondTheLargestSecret(t *testing.T) {
+	got, err := readLine(endless{})
+	if err != nil || len(got) != MaxSecretSize+1 {
+		t.Fatalf("read %d bytes, err %v", len(got), err)
+	}
+}

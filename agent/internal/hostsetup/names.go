@@ -6,7 +6,7 @@ package hostsetup
 import (
 	"regexp"
 
-	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 )
 
 // namePattern is Р2: 1-64 characters of A-Z a-z 0-9 - _, the first a
@@ -22,9 +22,9 @@ func ValidName(name string) bool {
 
 // CheckName is the refusal NAME_INVALID for a name of the given kind
 // ("secret" or "repository"), nil for a valid one.
-func CheckName(kind, name string) *repoinit.Failure {
+func CheckName(kind, name string) *refusal.Failure {
 	if ValidName(name) {
 		return nil
 	}
-	return repoinit.Fail(repoinit.NameInvalid, "%s name %q is not valid: use 1-64 characters from A-Z a-z 0-9 - _, the first a letter or digit", kind, name)
+	return refusal.Fail(refusal.NameInvalid, "%s name %q is not valid: use 1-64 characters from A-Z a-z 0-9 - _, the first a letter or digit", kind, name)
 }

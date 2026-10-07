@@ -67,20 +67,34 @@ func (t TTY) ReadSecret(prompt string) (value []byte, err error) {
 
 // readLine reads up to the line break, one byte at a time: nothing past
 // the line is consumed.
+// It stops one byte past MaxSecretSize: more is refused anyway, and a
+// stream that never breaks its line must not fill the memory.
 func readLine(r io.Reader) ([]byte, error) {
 	var line []byte
 	b := make([]byte, 1)
 	for {
 		n, err := r.Read(b)
-		switch {
-		case n == 1 && b[0] == '\n':
-			return line, nil
-		case n == 1:
-			line = append(line, b[0])
-		case err != nil:
+		if n == 1 {
+			var done bool
+			if line, done = take(line, b[0]); done {
+				return line, nil
+			}
+			continue
+		}
+		if err != nil {
 			return endOfInput(line, err)
 		}
 	}
+}
+
+// take adds a byte to the line; done is true at the line break and when
+// the line is longer than a secret may be.
+func take(line []byte, c byte) (_ []byte, done bool) {
+	if c == '\n' {
+		return line, true
+	}
+	line = append(line, c)
+	return line, len(line) > MaxSecretSize
 }
 
 // endOfInput: a last line without its break is a line; nothing at all is

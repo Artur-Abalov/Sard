@@ -6,6 +6,7 @@ package hostsetup
 import (
 	"fmt"
 	"io"
+	"strconv"
 )
 
 // Auditor takes one audit line (the system log, tag sard-agent, Р9).
@@ -36,7 +37,17 @@ func ActorFrom(getenv func(string) string, processName string, processUID uint32
 // the name and the action ("added", "password revealed"). It holds no
 // values, no addresses and no file contents.
 func Audit(a Auditor, who Actor, kind, name, action string) error {
-	return a.Write(fmt.Sprintf("%s %s %s by %s (uid %s)", kind, name, action, who.Name, who.UID))
+	return a.Write(fmt.Sprintf("%s %s %s by %s (uid %s)", kind, auditName(name), action, who.Name, who.UID))
+}
+
+// auditName is the name as it is, unless it holds anything but plain
+// characters: then it is quoted, so that a line break in a name of the
+// config cannot make a second line of the log.
+func auditName(name string) string {
+	if quoted := strconv.Quote(name); quoted != `"`+name+`"` {
+		return quoted
+	}
+	return name
 }
 
 // Record is Audit that cannot fail the command: a system log that is not

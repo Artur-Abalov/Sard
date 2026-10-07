@@ -97,3 +97,14 @@ func TestRecordWritesOneLineAndStaysQuiet(t *testing.T) {
 		t.Fatalf("warning %q, lines %q", warn.String(), sl.lines)
 	}
 }
+
+func TestAnAuditNameWithALineBreakCannotMakeASecondLine(t *testing.T) {
+	sl := &fakeSyslog{}
+	ok(t, hostsetup.Audit(sl, hostsetup.Actor{Name: "a", UID: "1"}, "secret", "db\nsecret x added by root (uid 0)", "added"))
+	if len(sl.lines) != 1 || strings.Contains(sl.lines[0], "\n") {
+		t.Fatalf("lines %q", sl.lines)
+	}
+	if !strings.Contains(sl.lines[0], `"db\nsecret x added by root (uid 0)"`) {
+		t.Fatalf("line %q", sl.lines[0])
+	}
+}

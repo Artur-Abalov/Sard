@@ -30,9 +30,13 @@ func (c *hostCmd) reportUnchanged(ctx context.Context, st *addState) bool {
 	if !initialized {
 		return false
 	}
-	_, _ = fmt.Fprintf(c.stdout, "Repository %q unchanged: already connected to %s.\n  repository_id: %s\n", st.name, st.url, id)
-	c.printKeyWarning(st.name)
+	c.printUnchanged(st, id)
 	return true
+}
+
+func (c *hostCmd) printUnchanged(st *addState, id string) {
+	_, _ = fmt.Fprintf(c.stdout, "Repository %q unchanged: already connected to %s.\n  repository_id: %s\n", st.name, config.RedactURL(st.url), id)
+	c.printKeyWarning(st.name)
 }
 
 func (c *hostCmd) printKeyWarning(name string) {
@@ -278,7 +282,7 @@ func (c *hostCmd) printAdded(st *addState) {
 		what = "Result: attached an existing repository."
 	}
 	_, _ = fmt.Fprintf(c.stdout, "Repository %q added.\n  backend:       local\n  address:       %s\n  repository_id: %s\n  password file: %s%s\n%s\n",
-		st.name, st.url, st.id, st.final(c), generatedNote(st), what)
+		st.name, config.RedactURL(st.url), st.id, st.final(c), generatedNote(st), what)
 	c.printKeyWarning(st.name)
 	_, _ = fmt.Fprintln(c.stdout, "\nWARNING: this repository is on this host: its backups are lost together with this host. Add a repository on another host or in cloud storage as well.")
 }

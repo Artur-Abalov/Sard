@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 )
 
@@ -39,7 +40,24 @@ type FS interface {
 	Stat(path string) (fs.FileInfo, error)
 	ReadFile(path string) ([]byte, error)
 	ReadDir(path string) ([]fs.DirEntry, error)
+	// Link makes newpath another name of oldpath; it fails if newpath exists.
+	Link(oldpath, newpath string) error
+	// OpenRoot opens a directory for work that must not leave it: names
+	// given to the Root are relative and never resolve outside it.
+	OpenRoot(path string) (Root, error)
 }
+
+// Root is a directory tree that cannot be escaped by swapping a directory
+// for a symbolic link while it is being walked (os.Root).
+type Root interface {
+	Lchown(name string, uid, gid int) error
+	ReadDir(name string) ([]fs.DirEntry, error)
+	Close() error
+}
+
+type osRoot struct{ *os.Root }
+
+func (r osRoot) ReadDir(name string) ([]fs.DirEntry, error) { return fs.ReadDir(r.FS(), name) }
 
 // OS is FS on the host's own file system.
 type OS struct{}
@@ -70,6 +88,18 @@ func (OS) ReadFile(path string) ([]byte, error) { return os.ReadFile(path) }
 
 // ReadDir implements FS.
 func (OS) ReadDir(path string) ([]fs.DirEntry, error) { return os.ReadDir(path) }
+
+// Link implements FS.
+func (OS) Link(oldpath, newpath string) error { return os.Link(oldpath, newpath) }
+
+// OpenRoot implements FS.
+func (OS) OpenRoot(path string) (Root, error) {
+	r, err := os.OpenRoot(path)
+	if err != nil {
+		return nil, err
+	}
+	return osRoot{r}, nil
+}
 
 // SyncDir implements FS.
 func (OS) SyncDir(dir string) error {
@@ -205,17 +235,31 @@ func RemoveFile(fsys FS, path string) (bool, error) {
 }
 
 // ChownTree gives root and everything below it, symbolic links as
-// themselves, to the owner; modes are not touched (Н7).
+// themselves, to the owner; modes are not touched (Н7). The walk happens
+// inside an opened Root, so a directory swapped for a link to somewhere
+// else while it runs cannot take it out of the tree.
 func ChownTree(fsys FS, root string, uid, gid int) error {
 	if err := fsys.Chown(root, uid, gid); err != nil {
 		return &WriteError{Path: root, Op: "change owner of", Err: err}
 	}
-	entries, err := fsys.ReadDir(root)
+	r, err := fsys.OpenRoot(root)
 	if err != nil {
 		return &WriteError{Path: root, Op: "read directory", Err: err}
 	}
+	defer func() { _ = r.Close() }()
+	return chownDir(r, root, ".", uid, gid)
+}
+
+// chownDir changes the entries of dir (a name inside r); base is the path
+// of r, for messages.
+func chownDir(r Root, base, dir string, uid, gid int) error {
+	entries, err := r.ReadDir(dir)
+	if err != nil {
+		return &WriteError{Path: filepath.Join(base, dir), Op: "read directory", Err: err}
+	}
 	for _, e := range entries {
-		if err := chownEntry(fsys, filepath.Join(root, e.Name()), e.IsDir(), uid, gid); err != nil {
+		name := path.Join(dir, e.Name())
+		if err := chownEntry(r, base, name, e.IsDir(), uid, gid); err != nil {
 			return err
 		}
 	}
@@ -223,12 +267,27 @@ func ChownTree(fsys FS, root string, uid, gid int) error {
 }
 
 // chownEntry changes one entry of a tree; a directory is entered.
-func chownEntry(fsys FS, path string, isDir bool, uid, gid int) error {
-	if isDir {
-		return ChownTree(fsys, path, uid, gid)
+func chownEntry(r Root, base, name string, isDir bool, uid, gid int) error {
+	if err := r.Lchown(name, uid, gid); err != nil {
+		return &WriteError{Path: filepath.Join(base, name), Op: "change owner of", Err: err}
 	}
-	if err := fsys.Chown(path, uid, gid); err != nil {
-		return &WriteError{Path: path, Op: "change owner of", Err: err}
+	if isDir {
+		return chownDir(r, base, name, uid, gid)
+	}
+	return nil
+}
+
+// CommitNewFile gives the staged file the name path unless something has
+// it already (link, not rename: the link fails with an exists error), then
+// drops the staged name. The target never exists with another owner.
+func CommitNewFile(fsys FS, tmp, path string) error {
+	err := fsys.Link(tmp, path)
+	_ = fsys.Remove(tmp)
+	if err != nil {
+		return &WriteError{Path: path, Op: "create", Err: err}
+	}
+	if err := fsys.SyncDir(filepath.Dir(path)); err != nil {
+		return &WriteError{Path: path, Op: "sync", Err: err}
 	}
 	return nil
 }

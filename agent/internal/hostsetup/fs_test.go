@@ -151,6 +151,43 @@ func (r *recordingFS) Chown(path string, uid, gid int) error {
 	return nil
 }
 
+func (r *recordingFS) Link(oldpath, newpath string) error {
+	if err := r.OS.Link(oldpath, newpath); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	if o, ok := r.owners[oldpath]; ok {
+		r.owners[newpath] = o
+	}
+	r.mu.Unlock()
+	r.note("link %s %s", oldpath, newpath)
+	return nil
+}
+
+func (r *recordingFS) OpenRoot(path string) (hostsetup.Root, error) {
+	root, err := r.OS.OpenRoot(path)
+	if err != nil {
+		return nil, err
+	}
+	return &recordingRoot{Root: root, base: path, fsys: r}, nil
+}
+
+// recordingRoot records the owner changes made inside a Root.
+type recordingRoot struct {
+	hostsetup.Root
+	base string
+	fsys *recordingFS
+}
+
+func (r *recordingRoot) Lchown(name string, uid, gid int) error {
+	full := filepath.Join(r.base, name)
+	if err := r.fsys.fails("chown", full); err != nil {
+		return err
+	}
+	r.fsys.setOwner(full, uid, gid)
+	return nil
+}
+
 // leftovers are the entries of dir that are not in want.
 func leftovers(t *testing.T, dir string, want ...string) []string {
 	t.Helper()
@@ -488,5 +525,68 @@ func TestSyncDirOfAMissingDirectoryIsTheOpenError(t *testing.T) {
 	err := hostsetup.OS{}.SyncDir(filepath.Join(t.TempDir(), "absent"))
 	if err == nil || !strings.Contains(err.Error(), "no such file") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// swappingFS swaps the directory "sub" of the tree for a link to a place
+// outside it right after the tree has been listed, and records where every
+// owner change really lands.
+type swappingFS struct {
+	hostsetup.OS
+	outside string
+	landed  []string
+}
+
+func (f *swappingFS) OpenRoot(path string) (hostsetup.Root, error) {
+	root, err := f.OS.OpenRoot(path)
+	if err != nil {
+		return nil, err
+	}
+	return &swappingRoot{Root: root, base: path, fsys: f}, nil
+}
+
+type swappingRoot struct {
+	hostsetup.Root
+	base    string
+	fsys    *swappingFS
+	swapped bool
+}
+
+func (r *swappingRoot) ReadDir(name string) ([]fs.DirEntry, error) {
+	entries, err := r.Root.ReadDir(name)
+	if name == "." && !r.swapped {
+		r.swapped = true
+		sub := filepath.Join(r.base, "sub")
+		_ = os.RemoveAll(sub)
+		_ = os.Symlink(r.fsys.outside, sub)
+	}
+	return entries, err
+}
+
+func (r *swappingRoot) Lchown(name string, uid, gid int) error {
+	if err := r.Root.Lchown(name, os.Getuid(), os.Getgid()); err != nil {
+		return err
+	}
+	dir, err := filepath.EvalSymlinks(filepath.Dir(filepath.Join(r.base, name)))
+	if err == nil {
+		r.fsys.landed = append(r.fsys.landed, filepath.Join(dir, filepath.Base(name)))
+	}
+	return err
+}
+
+func TestChownTreeNeverLeavesTheTreeThroughASwappedDirectory(t *testing.T) {
+	base := t.TempDir()
+	root, outside := filepath.Join(base, "repo"), filepath.Join(base, "etc")
+	ok(t, os.MkdirAll(filepath.Join(root, "sub"), 0o755))
+	ok(t, os.WriteFile(filepath.Join(root, "sub", "inner"), nil, 0o600))
+	ok(t, os.MkdirAll(outside, 0o755))
+	ok(t, os.WriteFile(filepath.Join(outside, "passwd"), nil, 0o600))
+	fsys := &swappingFS{outside: outside}
+	_ = hostsetup.ChownTree(fsys, root, 990, 990)
+	resolvedRoot, _ := filepath.EvalSymlinks(root)
+	for _, p := range fsys.landed {
+		if !strings.HasPrefix(p, resolvedRoot+string(filepath.Separator)) && p != resolvedRoot {
+			t.Errorf("an owner change landed outside the tree: %s", p)
+		}
 	}
 }

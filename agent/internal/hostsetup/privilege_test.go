@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
-	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 )
 
 // lookup is a host with the given users.
@@ -44,7 +44,7 @@ func TestRootMayRunAnyCommandAndGetsTheServiceUser(t *testing.T) {
 
 func TestRootWithoutAServiceUserOnTheHostIsRefused(t *testing.T) {
 	_, f := hostsetup.Authorize(request(0, true))
-	if f == nil || f.Reason != repoinit.ServiceUserUnknown || !strings.Contains(f.Detail, "sard-agent") {
+	if f == nil || f.Reason != refusal.ServiceUserUnknown || !strings.Contains(f.Detail, "sard-agent") {
 		t.Fatalf("refusal = %+v", f)
 	}
 }
@@ -62,7 +62,7 @@ func TestAServiceUserLookupThatFailsOtherwiseIsReportedAsUnknown(t *testing.T) {
 	req := request(0, true)
 	req.Lookup = func(string) (hostsetup.User, error) { return hostsetup.User{}, errors.New("nss broke") }
 	_, f := hostsetup.Authorize(req)
-	if f == nil || f.Reason != repoinit.ServiceUserUnknown || !strings.Contains(f.Detail, "nss broke") {
+	if f == nil || f.Reason != refusal.ServiceUserUnknown || !strings.Contains(f.Detail, "nss broke") {
 		t.Fatalf("refusal = %+v", f)
 	}
 }
@@ -73,7 +73,7 @@ func TestServiceUserMayReadButNotChange(t *testing.T) {
 		t.Fatalf("read: principal %+v, refusal %v", p, f)
 	}
 	_, f = hostsetup.Authorize(request(990, true, serviceUser))
-	if f == nil || f.Reason != repoinit.PrivilegesRequired {
+	if f == nil || f.Reason != refusal.PrivilegesRequired {
 		t.Fatalf("change: refusal = %+v", f)
 	}
 	for _, want := range []string{"run it with sudo", "sudo sard-agent secret set db --stdin"} {
@@ -86,7 +86,7 @@ func TestServiceUserMayReadButNotChange(t *testing.T) {
 func TestAnyOtherUserIsRefusedWithTheSudoHint(t *testing.T) {
 	for _, mutating := range []bool{true, false} {
 		_, f := hostsetup.Authorize(request(1000, mutating, serviceUser))
-		if f == nil || f.Reason != repoinit.PrivilegesRequired || !strings.Contains(f.Detail, "sudo sard-agent secret set db --stdin") {
+		if f == nil || f.Reason != refusal.PrivilegesRequired || !strings.Contains(f.Detail, "sudo sard-agent secret set db --stdin") {
 			t.Fatalf("mutating=%v: refusal = %+v", mutating, f)
 		}
 	}
@@ -94,7 +94,7 @@ func TestAnyOtherUserIsRefusedWithTheSudoHint(t *testing.T) {
 
 func TestWhenTheServiceUserDoesNotExistNobodyButRootMayRun(t *testing.T) {
 	_, f := hostsetup.Authorize(request(990, false))
-	if f == nil || f.Reason != repoinit.PrivilegesRequired {
+	if f == nil || f.Reason != refusal.PrivilegesRequired {
 		t.Fatalf("refusal = %+v", f)
 	}
 }
@@ -138,7 +138,7 @@ func TestAServiceUserLookupThatFailsGivesNoServiceUserToRoot(t *testing.T) {
 func TestAServiceUserLookupThatFailsNeverMakesTheCallerTheServiceUser(t *testing.T) {
 	req := request(990, false)
 	req.Lookup = func(string) (hostsetup.User, error) { return serviceUser, errors.New("half an answer") }
-	if _, f := hostsetup.Authorize(req); f == nil || f.Reason != repoinit.PrivilegesRequired {
+	if _, f := hostsetup.Authorize(req); f == nil || f.Reason != refusal.PrivilegesRequired {
 		t.Fatalf("refusal %+v", f)
 	}
 }

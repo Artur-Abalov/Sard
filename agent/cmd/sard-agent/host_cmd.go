@@ -44,22 +44,22 @@ func report(stderr io.Writer, words string, f *repoinit.Failure) int {
 	return repoClassCodes[f.Class]
 }
 
-// ownedWriter is writeNew that hands the file it creates to the service
-// user when the command runs as root (Р24): a failed hand-over leaves no
-// file.
+// ownedWriter is writeNew that, when the command runs as root, hands the
+// file to the service user before it has its name (Р24, ADR 0048): a
+// temporary file gets the owner and the mode, then is linked to the final
+// path, which fails if something is there already, exactly as writeNew
+// does. The final path is never root's.
 func ownedWriter(deps hostDeps, who hostsetup.Principal) func(path string, data []byte) error {
 	if who.Role != hostsetup.RoleRoot {
 		return deps.writeNew
 	}
+	attrs := hostsetup.Attrs{UID: int(who.Service.UID), GID: int(who.Service.GID), Mode: 0o600}
 	return func(path string, data []byte) error {
-		if err := deps.writeNew(path, data); err != nil {
+		tmp, err := hostsetup.StageFile(deps.fs, path, data, attrs)
+		if err != nil {
 			return err
 		}
-		if err := deps.fs.Chown(path, int(who.Service.UID), int(who.Service.GID)); err != nil {
-			_ = deps.fs.Remove(path)
-			return err
-		}
-		return nil
+		return hostsetup.CommitNewFile(deps.fs, tmp, path)
 	}
 }
 

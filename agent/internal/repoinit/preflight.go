@@ -9,6 +9,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 )
@@ -54,7 +55,7 @@ func CheckCryptoProvider(repo config.Repository) *Failure {
 }
 
 func rejected(err error) *Failure {
-	return &Failure{Reason: SecretFileRejected, Class: classes[SecretFileRejected], Detail: err.Error()}
+	return &Failure{Reason: SecretFileRejected, Class: refusal.ClassOf(SecretFileRejected), Detail: err.Error()}
 }
 
 func checkPasswordFile(h Host, repo config.Repository, index int, createPassword bool) (missing bool, f *Failure) {

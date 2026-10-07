@@ -154,6 +154,10 @@ func TestAPasswordFileThatCannotBeCreatedIsAWriteError(t *testing.T) {
 	}
 	unwritable := func(h *repoHost) string {
 		h.deps.writeNew = func(string, []byte) error { return &os.PathError{Op: "open", Path: h.pass(), Err: syscall.EACCES} }
+		// Run as root the file is made through the file system instead.
+		fsys := newFakeFS()
+		fsys.failOn = "createtemp"
+		h.deps.fs = fsys
 		h.removePass()
 		return h.dir
 	}

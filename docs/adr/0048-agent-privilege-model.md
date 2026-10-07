@@ -41,7 +41,9 @@
 - **Терминал без эха** — `ioctl` `TCGETS`/`TCSETS` из `syscall` (Linux); новых
   зависимостей нет (ADR 0027, CLAUDE.md, правило 7).
 - **Аудит** — одна строка в системный журнал (`log/syslog`, тег `sard-agent`,
-  `journalctl -t sard-agent`) на каждое изменение и каждый `--reveal`: что
+  `journalctl -t sard-agent`; facility `LOG_AUTHPRIV`, поэтому на хостах с
+  rsyslog строки попадают в `/var/log/secure` или `auth.log`, а
+  `journalctl -t sard-agent` работает всегда) на каждое изменение и каждый `--reveal`: что
   сделано, вид, имя, кто (`SUDO_USER` и `SUDO_UID`, иначе пользователь
   процесса). Значений, адресов с учётными данными и содержимого файлов в
   строке нет. Недоступный syslog — предупреждение в stderr, изменение

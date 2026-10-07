@@ -52,6 +52,7 @@ Flags:
   (without --stdin and --from-file, with no terminal: SECRET_SOURCE_MISSING)
 
 The name is 1-64 characters of A-Z a-z 0-9 - _, the first a letter or digit.
+(a name that starts with - is read as a flag: put it after --).
 The value is not empty and up to 65536 bytes. With printf '%s' no line break
 is stored. The same value again changes nothing (unchanged).
 

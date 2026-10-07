@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"path/filepath"
+	"strings"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
@@ -49,6 +50,9 @@ func (c *hostCmd) checkAddress() (string, *repoinit.Failure) {
 	}
 	if kind := (config.Repository{URL: c.opts.address}).Backend(); kind != "local" {
 		return "", repoinit.Fail(repoinit.BackendNotSupported, "the address is of kind %q: for now only a local path is supported, an absolute path of a directory on this host", kind)
+	}
+	if hasControlCharacter(c.opts.address) {
+		return "", repoinit.Fail(repoinit.LocalPathInvalid, "%q holds a control character", c.opts.address)
 	}
 	return c.checkLocalPath(c.opts.address)
 }
@@ -179,4 +183,10 @@ func (c *hostCmd) resticFor(st *addState, passwordFile string) (repoinit.Target,
 	repo := config.Repository{Name: st.name, URL: st.url, PasswordFile: passwordFile}
 	target := repoTarget(repo, repoinit.Checked{}, string(st.provided), st.generated)
 	return target, newRestic(c.cfg, st.binary, c.deps, repo, runAs(c.who))
+}
+
+// hasControlCharacter: a line break in a path would start a new line of the
+// systemd drop-in.
+func hasControlCharacter(path string) bool {
+	return strings.ContainsFunc(path, func(r rune) bool { return r < 0x20 || r == 0x7f })
 }

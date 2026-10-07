@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
-	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 )
 
 // fakeSystemd records what it was asked.
@@ -74,7 +74,7 @@ func stateDir(t *testing.T, journal ...string) string {
 	return s
 }
 
-func apply(t *testing.T, sd *fakeSystemd, fsys hostsetup.FS, s string, noRestart bool) (string, *repoinit.Failure) {
+func apply(t *testing.T, sd *fakeSystemd, fsys hostsetup.FS, s string, noRestart bool) (string, *refusal.Failure) {
 	t.Helper()
 	var out bytes.Buffer
 	f := hostsetup.Applier{Systemd: sd, FS: fsys, StateDir: s, NoRestart: noRestart}.Apply(&out)
@@ -165,7 +165,7 @@ func TestAMissingStateDirectoryMeansNoSteps(t *testing.T) {
 func TestAFailedRestartIsAnAgentErrorThatPointsAtTheJournal(t *testing.T) {
 	sd := &fakeSystemd{present: true, active: true, restartErr: errors.New("exit status 1")}
 	_, f := apply(t, sd, hostsetup.OS{}, stateDir(t), false)
-	if f == nil || f.Reason != repoinit.ServiceRestartFailed || f.Class != repoinit.ClassAgentError || !strings.Contains(f.Detail, "journalctl -u sard-agent") {
+	if f == nil || f.Reason != refusal.ServiceRestartFailed || f.Class != refusal.ClassAgentError || !strings.Contains(f.Detail, "journalctl -u sard-agent") {
 		t.Fatalf("refusal %+v", f)
 	}
 }
@@ -195,7 +195,7 @@ func TestReloadIsOneCallAndItsFailureIsAWriteProblemOfTheService(t *testing.T) {
 		t.Fatalf("calls %v, refusal %v", sd.calls, f)
 	}
 	sd = &fakeSystemd{present: true, reloadErr: errors.New("busy")}
-	if f := hostsetup.Reload(sd); f == nil || f.Reason != repoinit.ServiceRestartFailed || !strings.Contains(f.Detail, "daemon-reload") {
+	if f := hostsetup.Reload(sd); f == nil || f.Reason != refusal.ServiceRestartFailed || !strings.Contains(f.Detail, "daemon-reload") {
 		t.Fatalf("refusal %+v", f)
 	}
 }
