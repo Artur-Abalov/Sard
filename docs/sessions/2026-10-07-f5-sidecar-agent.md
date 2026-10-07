@@ -53,3 +53,85 @@
 ### Предложения на контрольную точку 1
 
 См. ответ владельцу в сессии; решения будут записаны ниже.
+
+## Решения владельца (контрольная точка 1)
+
+1. Ключ CA у соседа — риск принят сейчас; в F6 — крупное предупреждение.
+2. Сосед — под uid сервера 10001, том CA `:ro`.
+3. Канал токена — общий том сервера и соседа, файл 0600, токен вида `self`.
+4. Роль PostgreSQL — отдельной миграцией; скрипт — только если миграция не
+   выйдет.
+5. Пароль роли — файловый секрет, который получает только сосед (вариант а).
+6. Ограничение D8 — в F6, не в F5.
+7. После отзыва `sard-self` — повторная регистрация автоматически; отзыв —
+   с отдельным подтверждением.
+8. Имя сервиса compose — в сертификате сервера.
+9. Клиента PostgreSQL в образе нет.
+10. Один образ агента для поставки и e2e.
+11. Конфиг соседа — в образе, том конфига заполняется из него.
+12. Обновление проверять с образа 0.0.1-rc1 из ghcr, иначе — из тега.
+
+## Фаза 2: образ, compose, роль
+
+Окружение: `dockerd` вручную, базовые образы — с `mirror.gcr.io`. Сборка jar в
+Docker упала на 429 от Maven Central. jar собран на хосте
+(`./gradlew :server:bootJar`) и передан в образ через `make server-image`, как
+в CI (ADR 0045). Версия образов — `0.0.0-f5`.
+
+### Сделано
+
+- `deploy/agent/Dockerfile` — один образ агента: перенесён из `test/e2e/agent/`.
+  - Контекст — каталог `make package`. Ставка `unpack` проверяет `SHA256SUMS`
+    и распаковывает tar.gz архитектуры цели.
+  - Добавлен пользователь `sard-self` (10001), конфиг `/etc/sard/self/agent.yaml`
+    и каталоги состояния.
+  - `Makefile` (`agent_image`) собирает из каталога tar.gz без распаковки.
+- `release.yml`, job `image`: сборка и публикация `sard-agent` amd64 и arm64
+  из проверенного `dist`, затем проверка `--version` на обеих архитектурах.
+  `scripts/offline-archive.sh` добавляет образ агента в офлайн-архив.
+- `deploy/docker-compose.yml`:
+  - сервис `self-agent` (hostname `sard-self`, uid 10001, `read_only`,
+    `cap_drop: ALL`, `no-new-privileges`);
+  - тома `sard-self-config`, `sard-self-state`, `sard-pki:…:ro`;
+  - `,server` в `SARD_PKI_SERVER_NAMES`.
+  - `docker-compose.build.yml` собирает `self-agent` из `dist/`.
+- Миграция `V202610071200__self_dump_role.sql`, тест
+  `SelfDumpRoleIntegrationTest` (сначала красный: роли нет).
+
+### Проверки (прогон)
+
+| Что | Результат |
+|---|---|
+| Сборка образа агента, amd64 | собран; `sard-agent 0.0.0-f5`, `restic 0.19.1` |
+| Подменённый tar.gz | сборка падает: `sard-agent_0.0.0-f5_linux_amd64.tar.gz: FAILED` |
+| arm64 локально | **не проверено**: в этой машине нет binfmt/QEMU; в release.yml — `setup-qemu-action` |
+| `make e2e-agent-images` | оба образа агента собраны; образ SFTP стенда упал на CA прокси в apt — окружение, не изменение |
+| `SelfDumpRoleIntegrationTest` | 6/6 зелёные |
+| Проверка 1 (частично): чистый `docker compose up` | postgres и server healthy; `self-agent` перезапускается: без сертификата агент выходит с кодом 1 — самостоятельная регистрация в фазе 3 |
+| Проверка 3: CA в соседе | uid 10001 читает `ca.key`; `touch`, дописать, `rm` в `ca/` → `Read-only file system`; корневая ФС тоже только на чтение |
+| Проверка 3: роль на стенде (пароль задан вручную на время пробы) | `select` — да; после `set default_transaction_read_only=off`: INSERT/UPDATE/DELETE/TRUNCATE → `permission denied for table`, CREATE TABLE → `permission denied for schema public`, CREATE TEMP → `permission denied to create temporary tables`, `lo_create` → `permission denied for function` |
+
+### Найдено: файловый секрет Compose не годится для пароля роли
+
+Compose вне Swarm монтирует файловый секрет как bind mount с владельцем и
+правами файла хоста. `uid`, `gid` и `mode` в длинной записи он молча
+игнорирует. Проба: файл 0600 root на хосте, контейнер под 10001 с `uid: "10001"`,
+`mode: 0400` → `-rw------- 0 0`, `Permission denied`.
+
+Агент требует, чтобы файл секрета принадлежал ему и был закрыт для группы и
+остальных (`agent/internal/secrets`). Значит, решение 5(а) работает, только
+если на хосте сделать `chown 10001` (нужен root) или открыть файл всем на
+чтение. Вопрос — владельцу.
+
+### Состояние ветки после фазы 2
+
+- `./gradlew :server:spotlessCheck :server:detekt :server:test` — exit 0,
+  1372 теста, 0 упавших. Первый прогон дал 3 падения:
+  - `SardServerIntegrationTest` — список миграций, исправлен;
+  - два `BindException` в `EnrollmentTokenSchemaIntegrationTest` — порт 9090
+    держал мой стенд compose. После его остановки тест зелёный.
+- `license-check` — OK.
+- **Ветку нельзя выпускать до фазы 3.** `docker compose up --wait` с этим
+  compose не дождётся `self-agent`: без самостоятельной регистрации агент
+  без сертификата выходит, и контейнер перезапускается.
+- `make e2e-test` в этой фазе не запускался (проверка — в фазе 3).

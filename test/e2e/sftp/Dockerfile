@@ -9,7 +9,7 @@
 # openssh-server generates on install; a test reads its public half.
 
 FROM ubuntu:24.04
-# Builds behind a TLS-intercepting proxy: as test/e2e/agent/Dockerfile.
+# Builds behind a TLS-intercepting proxy: as deploy/agent/Dockerfile.
 RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
     if [ -f /run/secrets/build-ca ]; then \
       sed -i 's|http://|https://|' /etc/apt/sources.list.d/ubuntu.sources; \

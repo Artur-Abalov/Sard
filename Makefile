@@ -97,12 +97,11 @@ server-image:
 image: package server-jar
 	$(MAKE) server-image
 
-# agent_image: the e2e agent image (test/e2e/agent/Dockerfile) of the tar.gz in
-# $(1) for E2E_ARCH, tagged $(2), laid out in E2E_BUILD/$(3).
+# agent_image: the agent image (deploy/agent/Dockerfile) of the tar.gz in $(1)
+# for E2E_ARCH, tagged $(2); the build context is $(1) itself.
 define agent_image
-	rm -rf $(E2E_BUILD)/$(3) && mkdir -p $(E2E_BUILD)/$(3)/empty
-	tar -xzf $(1)/sard-agent_$(VERSION)_linux_$(E2E_ARCH).tar.gz --strip-components=1 -C $(E2E_BUILD)/$(3)
-	docker buildx build $(E2E_BUILD_FLAGS) --load -f test/e2e/agent/Dockerfile -t $(2) $(E2E_BUILD)/$(3)
+	docker buildx build $(E2E_BUILD_FLAGS) --load --platform linux/$(E2E_ARCH) --build-arg SARD_VERSION=$(VERSION) \
+		-f deploy/agent/Dockerfile -t $(2) $(1)
 endef
 
 ## e2e-images: build the release and stand packages and the jar once, then assemble the e2e images
@@ -118,8 +117,8 @@ e2e-assemble: e2e-agent-images
 
 ## e2e-agent-images: the release and the stand agent images from the tar.gz in DIST and STAND_DIST, and the stand's SFTP server
 e2e-agent-images:
-	$(call agent_image,$(DIST),$(E2E_AGENT_IMAGE),agent-image)
-	$(call agent_image,$(STAND_DIST),$(E2E_STAND_AGENT_IMAGE),stand-agent-image)
+	$(call agent_image,$(DIST),$(E2E_AGENT_IMAGE))
+	$(call agent_image,$(STAND_DIST),$(E2E_STAND_AGENT_IMAGE))
 	docker buildx build $(E2E_BUILD_FLAGS) --load -t $(E2E_SFTP_IMAGE) test/e2e/sftp
 
 ## e2e-test: the end-to-end tests against the assembled images (needs Docker)

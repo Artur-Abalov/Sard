@@ -9,7 +9,7 @@ import org.testcontainers.containers.startupcheck.OneShotStartupCheckStrategy
 import org.testcontainers.utility.DockerImageName
 import java.time.Duration
 
-/** The sard-agent image (test/e2e/agent/Dockerfile), laid out as the packages install it (ADR 0018). */
+/** The sard-agent image (deploy/agent/Dockerfile), laid out as the packages install it (ADR 0018). */
 internal object AgentImage {
     const val AGENT_BINARY = "/usr/lib/sard/sard-agent"
     const val RESTIC_BINARY = "/usr/lib/sard/restic"

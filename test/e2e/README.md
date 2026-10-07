@@ -19,8 +19,9 @@ make e2e-test       # только тесты, на уже собранных о
 - Образ сервера — `deploy/server/Dockerfile`, собранный из готового jar
   (`make server-jar`, `--build-context server-jar=…`) и релизных пакетов агента.
   Флаги сборки jar (кэш CI, прокси) — `SERVER_BUILD_FLAGS`.
-- Образ агента `sard-agent:e2e` — `test/e2e/agent/Dockerfile` из tar.gz `make package`
-  (для `E2E_ARCH`, по умолчанию архитектура хоста): тот самый агент, что
+- Образ агента `sard-agent:e2e` — `deploy/agent/Dockerfile` из tar.gz `make package`
+  (для `E2E_ARCH`, по умолчанию архитектура хоста): тот же образ, что публикуется
+  как `sard-agent` для агента-соседа (F5), и тот самый агент, что
   поставляется, статический, и restic версии из
   `agent/internal/restic/restic-version`, проверенный по SHA-256 при упаковке. На
   нём идут все классы, кроме T3. Во время теста ничего не скачивается.

@@ -5,8 +5,8 @@
 # from deploy/.env (copy deploy/.env.example). Local development builds the
 # image from source instead: make up adds deploy/docker-compose.build.yml.
 #
-# The project name fixes the volume names (sard_postgres-data, sard_sard-pki):
-# renaming it leaves the existing data behind.
+# The project name fixes the volume names (sard_postgres-data, sard_sard-pki,
+# sard_sard-self-*): renaming it leaves the existing data behind.
 name: sard
 
 services:
@@ -32,7 +32,8 @@ services:
       SARD_DB_URL: jdbc:postgresql://postgres:5432/sard
       SARD_DB_USER: sard
       SARD_DB_PASSWORD: ${SARD_DB_PASSWORD:?set SARD_DB_PASSWORD in .env}
-      SARD_PKI_SERVER_NAMES: ${SARD_PKI_SERVER_NAMES:-localhost,127.0.0.1,::1}
+      # "server", the name of this service, is always among them: the agent next to it (self-agent) dials it.
+      SARD_PKI_SERVER_NAMES: ${SARD_PKI_SERVER_NAMES:-localhost,127.0.0.1,::1},server
       # The single administrator's password (ADR 0021); at least 12 Unicode code points,
       # or the server refuses to start. make up generates one on the first run.
       SARD_ADMIN_PASSWORD: ${SARD_ADMIN_PASSWORD:?set SARD_ADMIN_PASSWORD in .env}
@@ -71,6 +72,34 @@ services:
       retries: 40
       start_period: 10s
 
+  # sard-self: the agent that backs up this installation (docs/operations/self-agent.md).
+  # It reads the database through a read-only role and the CA directory through a
+  # read-only mount, and dials the server over this compose network, as any agent does.
+  self-agent:
+    image: ${SARD_AGENT_IMAGE:-ghcr.io/artur-abalov/sard-agent}:${SARD_VERSION:?set SARD_VERSION in .env}
+    restart: unless-stopped
+    hostname: sard-self
+    # The server's uid: the CA directory is 0700 and its files 0600, owned by it.
+    user: "10001:10001"
+    command: ["--config", "/etc/sard/self/agent.yaml"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      # Its config; the first start copies the image's /etc/sard/self (no repositories).
+      - sard-self-config:/etc/sard/self
+      # Its certificate, key, results awaiting the server and restic's cache: a re-created
+      # container is the same agent.
+      - sard-self-state:/var/lib/sard-self
+      - sard-pki:/var/lib/sard/pki:ro
+    tmpfs:
+      - /tmp
+    depends_on:
+      server:
+        condition: service_healthy
+
 volumes:
   postgres-data:
   sard-pki:
+  sard-self-config:
+  sard-self-state:

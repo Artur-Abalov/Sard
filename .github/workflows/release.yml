@@ -10,8 +10,9 @@
 #                   └─ sign     (environment "release": the only job that sees the key)
 #                         ├─ publish  (GitHub release with the signed files; "-" makes it a pre-release)
 #                         └─ image    (sard-server for amd64 and arm64: the tested jar, console
-#                               │      included, and the signed packages, GHCR)
-#                               └─ offline ×2 (docker save of sard-server + PostgreSQL per arch)
+#                               │      included, and the signed packages; sard-agent of the same
+#                               │      signed tarballs, the agent next to the server; GHCR)
+#                               └─ offline ×2 (docker save of sard-server, sard-agent + PostgreSQL per arch)
 #                                     └─ server-assets (offline archives, compose file, env
 #                                           │           template, SHA256SUMS.server → the release)
 #                                           ├─ verify-quickstart ×2 (README quickstart, clean runner)
@@ -305,10 +306,15 @@ jobs:
       - name: image tags
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sard-server"
+          agent="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sard-agent"
           plain="${VERSION#v}"
           tags="$image:$VERSION,$image:$plain"
-          if [[ "$VERSION" != *-* ]]; then tags="$tags,$image:${plain%.*},$image:latest"; fi
-          { echo "IMAGE=$image"; echo "TAGS=$tags"; } >>"$GITHUB_ENV"
+          agent_tags="$agent:$VERSION,$agent:$plain"
+          if [[ "$VERSION" != *-* ]]; then
+            tags="$tags,$image:${plain%.*},$image:latest"
+            agent_tags="$agent_tags,$agent:${plain%.*},$agent:latest"
+          fi
+          { echo "IMAGE=$image"; echo "TAGS=$tags"; echo "AGENT_IMAGE=$agent"; echo "AGENT_TAGS=$agent_tags"; } >>"$GITHUB_ENV"
       # The runtime stage runs useradd for arm64; the package check runs once,
       # natively, and the jar comes from the server-jar job (deploy/server/Dockerfile).
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
@@ -334,6 +340,22 @@ jobs:
           for platform in linux/amd64 linux/arm64; do
             docker run --rm --platform "$platform" --entrypoint test "$IMAGE:$VERSION" \
               -f /usr/share/sard/agent-packages/SHA256SUMS.minisig
+          done
+      # The agent next to the server in docker-compose.yml (docs/operations/self-agent.md):
+      # the same version, unpacked from the signed tarballs verified above.
+      - name: build and push sard-agent for amd64 and arm64
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: dist
+          file: deploy/agent/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          build-args: SARD_VERSION=${{ env.VERSION }}
+          push: true
+          tags: ${{ env.AGENT_TAGS }}
+      - name: the published agent image is this version, on both architectures
+        run: |
+          for platform in linux/amd64 linux/arm64; do
+            docker run --rm --platform "$platform" "$AGENT_IMAGE:$VERSION" --version | grep -qx "sard-agent $VERSION"
           done
 
   offline:
