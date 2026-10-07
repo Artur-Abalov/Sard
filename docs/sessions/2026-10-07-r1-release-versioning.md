@@ -163,3 +163,32 @@ Linux / Rocky с SELinux. Закрывает OQ-143.
   на Debian/Ubuntu дефект не виден.
 - Стенд: overlay ВМ меньше образа (20G при 37 ГиБ) обрезал том LVM — dracut не
   находил `vg_main` (исправлено, `3d217bc`).
+
+### `/ship-feature` — итог (rpm в консоли, порядок предрелизов)
+
+- **coder** (`e20db0d`, `dfed5af`, `39a9486`, `244a80d`): `InstallFormat.RPM`,
+  `sudo rpm -Uvh` в установке и обновлении; `AgentVersions` — SemVer 2.0 с
+  предрелизами по правилу тегов, тест читает `deploy/release/version-order.txt`;
+  rpm в консоли и моках; `test-console-install.sh` для rpm-хостов. Гейты
+  server fast (96,6 %) и web fast — PASSED.
+- **cleaner**: без правок; худший CRAP R1 — 6.0 (`AgentInstalls.upgrade`).
+- **architect**: CHANGES REQUIRED — F1 (правило «обновление сохраняет
+  конфиг» в вебе), F2 (два расходящихся списка нерелизных тегов), F3 (нет
+  теста rpm arm64 при обновлении); R4, R5 рекомендованы.
+- **coder** (`8606207`): F2 — общий `deploy/release/not-release-tags.txt`
+  (21 тег) для сервера и `test-release-version.sh`; F3; R4 (домен не
+  ссылается на `api`); R5 (форматы консоли = enum контракта).
+- **specifier** (R1-F1, утверждено владельцем: «Переноси на сервер»,
+  «Погнал»): поле `keepsConfiguration` ответа обновления, решает сервер;
+  [з] без команд — false, [и] обязательное, не null.
+- **coder** (`afaa016`): `InstallFormat.keepsConfiguration`,
+  `AgentInstalls.keeps`, поле `AgentUpgrade`, консоль только показывает.
+- **cleaner**: без правок; CRAP R1 — максимум 6.0 (`AgentInstalls.upgrade`).
+- **architect**: APPROVED.
+- **hardener**: выживших 0 → 0 (`AgentVersionsTest` 12/12,
+  `AgentInstallsTest` 21/21, `InstallCommandsTest` 10/10); `make gate M=server`
+  — `coverage: 96.6% (instructions)`, `gate: PASSED (server, full)`;
+  `make gate M=web` — `gate: PASSED (web, full)`.
+- Не прогонялось: `scripts/test-console-install.sh` (rpm-хост Rocky, нужен
+  Docker с systemd и образ сервера) — CI/релиз; ручная QA
+  `docs/qa/agent-install.md`.
