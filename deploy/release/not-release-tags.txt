@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# Tags that are NOT releases (docs/adr/0047-release-versions.md): the release
+# rule refuses them and the console never marks an agent outdated by them.
+# One list for both sides: scripts/test-release-version.sh and the server's
+# AgentVersionsTest read it. Lines starting with # are comments.
+v0.0.1-rc1
+v0.1.0-rc
+v0.1.0-beta
+v0.1.0-alpha.1
+v0.1.0-rc.0
+v0.1.0-beta.0
+v0.1.0-rc.01
+v01.0.0
+v0.01.0
+0.1.0
+0.0.9
+v0.1
+v0.1.0-RC.1
+v0.1.0-rc.1.1
+v0.1.0+build
+v0.1.0-beta.1-5-gabc1234
+v0.0.9-beta.1-5-gabc1234
+v0.0.9-5-gabc1234
+0.0.0-dev
+upgrade-base
+dev

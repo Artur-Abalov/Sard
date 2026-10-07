@@ -318,6 +318,19 @@ class AgentInstallApiIntegrationTest(
     }
 
     @Test
+    fun `Обновление rpm берёт архитектуру из последнего Register агента`() {
+        val agent = world.agent(tenant, snapshotOf(arch = "arm64"))
+
+        val response = upgrade(agent.agentId, "?format=rpm")
+
+        assertEquals(200, response.status)
+        assertEquals(
+            "sard-agent-1.4.0-1.arm64.rpm",
+            commands(response, "download").first().substringAfterLast('/'),
+        )
+    }
+
+    @Test
     fun `Обновление deb ставит пакет поверх без удаления`() {
         val agent = world.agent(tenant, snapshotOf(arch = "amd64"))
 

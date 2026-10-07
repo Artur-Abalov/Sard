@@ -35,9 +35,13 @@ command -v rpm >/dev/null || { echo "test-release-version: rpm required" >&2; ex
 for tag in v0.1.0 v0.1.0-beta.1 v0.1.0-rc.1 v0.1.0-rc.10 v10.20.30-beta.99 v1.0.0; do
   "$RV" check "$tag" >/dev/null 2>&1 || fail "check $tag: refused, want accepted"
 done
-for tag in v0.0.1-rc1 v0.1.0-rc v0.1.0-beta v0.1.0-alpha.1 v0.1.0-rc.0 v0.1.0-rc.01 \
-  v01.0.0 v0.01.0 0.1.0 v0.1 v0.1.0-RC.1 v0.1.0-rc.1.1 v0.1.0+build v0.1.0-beta.1-5-gabc1234 \
-  "v0.1.0 " "" upgrade-base dev; do
+refused=()
+NOT_RELEASES="$ROOT/deploy/release/not-release-tags.txt"
+while read -r tag; do
+  refused+=("$tag")
+done < <(grep -v '^#' "$NOT_RELEASES" | grep .)
+[ "${#refused[@]}" -ge 15 ] || fail "too few tags read from $NOT_RELEASES"
+for tag in "${refused[@]}" "v0.1.0 " ""; do
   if "$RV" check "$tag" >/dev/null 2>&1; then
     fail "check '$tag': accepted, want refused"
   fi

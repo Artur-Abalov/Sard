@@ -139,6 +139,17 @@ class AgentVersionsTest {
     }
 
     @Test
+    fun `Теги из общего списка нерелизных не являются релизами ни у агента, ни у сервера`() {
+        val path = checkNotNull(System.getProperty("sard.test.not-release-tags-file")) { "run through Gradle" }
+        val tags = File(path).readLines().map(String::trim).filter { it.isNotEmpty() && !it.startsWith("#") }
+        assertTrue(tags.size >= 15, "the list has ${tags.size} tags")
+        for (tag in tags) {
+            assertEquals(false, outdated(tag, offered = "v99.0.0"), "agent $tag")
+            assertEquals(false, outdated("v0.0.0-beta.1", offered = tag), "offered $tag")
+        }
+    }
+
+    @Test
     fun `Число больше Long в версии не делает её релизной`() {
         assertEquals(false, outdated("v0.1.0-beta.99999999999999999999", offered = "v0.1.0"))
         assertEquals(false, outdated("v0.1.0", offered = "v99999999999999999999.0.0"))
