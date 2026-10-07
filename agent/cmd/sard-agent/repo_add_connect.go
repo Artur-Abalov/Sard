@@ -49,7 +49,10 @@ func (c *hostCmd) printKeyWarning(name string) {
 // looks at the config once more and connects the repository.
 func (c *hostCmd) addLocked(ctx context.Context, st *addState) int {
 	return c.underConfigLock(
-		func() (f *refusal.Failure) { _, f = c.planRepository(st.name, st.url); return f },
+		func() (f *refusal.Failure) {
+			_, f = hostsetup.PlanRepository(c.cfg, c.layout, st.name, st.url)
+			return f
+		},
 		func() int { return c.underInitLock(ctx, st) })
 }
 

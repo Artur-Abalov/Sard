@@ -13,28 +13,6 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 )
 
-// secretPlan is what the config says about the secret a command is
-// about to change.
-type secretPlan struct {
-	// ownFragment is true if the secret is defined in the fragment this
-	// command writes.
-	ownFragment bool
-}
-
-// planSecret is the decision of Р12: a name defined elsewhere is refused,
-// and so is a value file that another key of the config uses.
-func (c *hostCmd) planSecret(name string) (secretPlan, *refusal.Failure) {
-	source := c.cfg.SecretSource(name)
-	own := c.layout.SecretFragment(name)
-	if source != "" && source != own {
-		return secretPlan{}, refusal.Fail(refusal.DefinedInConfig, "secret %q is defined in %s; commands never change it, edit that file instead", name, source)
-	}
-	if key := hostsetup.ReferencedBy(c.cfg, c.layout.SecretFile(name), hostsetup.SecretKey(name)); key != "" {
-		return secretPlan{}, refusal.Fail(refusal.PathInUse, "%s is used by %s and would be overwritten", c.layout.SecretFile(name), key)
-	}
-	return secretPlan{ownFragment: source == own}, nil
-}
-
 // runSecretSet is "sard-agent secret set <name>": args excludes "set". The
 // checks come in the order of Р14: flags, rights, name, config, conflicts,
 // the value, lock, writing, audit, applying.
@@ -60,7 +38,7 @@ func (c *hostCmd) setSecret() int {
 	if f := firstFailure(hostsetup.CheckName("secret", name), c.load()); f != nil {
 		return c.fail(f)
 	}
-	if _, f := c.planSecret(name); f != nil {
+	if _, f := hostsetup.PlanSecret(c.cfg, c.layout, name); f != nil {
 		return c.fail(f)
 	}
 	value, f := c.readSource(sourceOptions(c.opts))
@@ -83,17 +61,17 @@ func firstFailure(fs ...*refusal.Failure) *refusal.Failure {
 // setSecretLocked takes the lock, looks at the config once more and
 // writes.
 func (c *hostCmd) setSecretLocked(name string, value []byte) int {
-	var plan secretPlan
+	var plan hostsetup.SecretPlan
 	return c.underConfigLock(
-		func() (f *refusal.Failure) { plan, f = c.planSecret(name); return f },
+		func() (f *refusal.Failure) { plan, f = hostsetup.PlanSecret(c.cfg, c.layout, name); return f },
 		func() int { return c.storeSecret(name, value, plan) })
 }
 
-func (c *hostCmd) storeSecret(name string, value []byte, plan secretPlan) int {
+func (c *hostCmd) storeSecret(name string, value []byte, plan hostsetup.SecretPlan) int {
 	valueFile, fragment := c.layout.SecretFile(name), c.layout.SecretFragment(name)
 	yamlBody := hostsetup.SecretYAML(name, valueFile)
 	sameValue := c.fileHolds(valueFile, value)
-	if plan.ownFragment && sameValue && c.fileHolds(fragment, yamlBody) {
+	if plan.OwnFragment && sameValue && c.fileHolds(fragment, yamlBody) {
 		_, _ = fmt.Fprintf(c.stdout, "Secret %q unchanged: the value file %s already holds this value.\n", name, valueFile)
 		return exitOK
 	}
@@ -107,8 +85,8 @@ func (c *hostCmd) storeSecret(name string, value []byte, plan secretPlan) int {
 }
 
 // secretAction names what the command did to a secret it wrote.
-func secretAction(plan secretPlan) string {
-	if plan.ownFragment {
+func secretAction(plan hostsetup.SecretPlan) string {
+	if plan.OwnFragment {
 		return "updated"
 	}
 	return "added"

@@ -75,42 +75,9 @@ func (c *hostCmd) checkLocalPath(path string) (string, *refusal.Failure) {
 	return path, nil
 }
 
-type addPlan int
-
-const (
-	addNew addPlan = iota
-	// addUnchanged: the fragment of this command already connects this address.
-	addUnchanged
-)
-
-// planRepository is Р12 and Р11 for a repository: a name defined elsewhere
-// is refused, the same name at another address is a conflict, the same
-// address again changes nothing.
-func (c *hostCmd) planRepository(name, url string) (addPlan, *refusal.Failure) {
-	source := c.cfg.RepositorySource(name)
-	if key := hostsetup.ReferencedBy(c.cfg, c.layout.PasswordFile(name), hostsetup.RepositoryKey(name, "password_file")); key != "" {
-		return addNew, refusal.Fail(refusal.PathInUse, "%s is used by %s and would be taken over", c.layout.PasswordFile(name), key)
-	}
-	switch {
-	case source == "":
-		return addNew, nil
-	case source != c.layout.RepositoryFragment(name):
-		return addNew, refusal.Fail(refusal.DefinedInConfig, "repository %q is defined in %s; commands never change it, edit that file instead", name, source)
-	}
-	if current := c.repository(name); filepath.Clean(current.URL) != url {
-		return addNew, refusal.Fail(refusal.RepositoryConflict, "repository %q is already connected to %s; to connect it to another address run `sudo sard-agent repo remove %s` first", name, config.RedactURL(current.URL), name)
-	}
-	return addUnchanged, nil
-}
-
 // repository is the repository of the config by name.
 func (c *hostCmd) repository(name string) config.Repository {
-	for _, r := range c.cfg.Repositories {
-		if r.Name == name {
-			return r
-		}
-	}
-	return config.Repository{}
+	return hostsetup.RepositoryNamed(c.cfg, name)
 }
 
 // runRepoAdd is "sard-agent repo add <name> <address>": args excludes "add".
@@ -143,7 +110,7 @@ func (c *hostCmd) addChecked(ctx context.Context, url string) int {
 	if f := c.load(); f != nil {
 		return c.fail(f)
 	}
-	plan, f := c.planRepository(c.opts.name, url)
+	plan, f := hostsetup.PlanRepository(c.cfg, c.layout, c.opts.name, url)
 	if f != nil {
 		return c.fail(f)
 	}
@@ -152,7 +119,7 @@ func (c *hostCmd) addChecked(ctx context.Context, url string) int {
 
 // addPlanned checks restic, reads the password flags and handles the
 // unchanged case; anything else is connected under the locks.
-func (c *hostCmd) addPlanned(ctx context.Context, url string, plan addPlan) int {
+func (c *hostCmd) addPlanned(ctx context.Context, url string, plan hostsetup.AddPlan) int {
 	binary, err := checkRestic(ctx, c.cfg, c.opts.configPath, c.deps.executable, c.deps.exec, runAs(c.who))
 	if err != nil {
 		return reportRepoError(ctx, c.stderr, "add", err)
@@ -161,7 +128,7 @@ func (c *hostCmd) addPlanned(ctx context.Context, url string, plan addPlan) int 
 	if f := c.readGivenPassword(st); f != nil {
 		return c.fail(f)
 	}
-	if plan == addUnchanged && c.reportUnchanged(ctx, st) {
+	if plan == hostsetup.AddUnchanged && c.reportUnchanged(ctx, st) {
 		return exitOK
 	}
 	return c.addLocked(ctx, st)

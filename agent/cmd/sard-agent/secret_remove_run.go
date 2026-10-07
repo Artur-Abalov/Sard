@@ -13,26 +13,6 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 )
 
-// removal is what a remove command finds in the config.
-type removal int
-
-const (
-	nothingToRemove removal = iota
-	removeOwn
-)
-
-// planRemoval: a name defined in the main config or in a fragment this
-// command did not write is refused (Р12).
-func planRemoval(kind, name, source, own string) (removal, *refusal.Failure) {
-	switch {
-	case source == "":
-		return nothingToRemove, nil
-	case source != own:
-		return nothingToRemove, refusal.Fail(refusal.DefinedInConfig, "%s %q is defined in %s; commands never change it, edit that file instead", kind, name, source)
-	}
-	return removeOwn, nil
-}
-
 // removeSpec is what a remove command takes away: the name, who defines
 // it and what goes with it.
 type removeSpec struct {
@@ -48,8 +28,8 @@ type removeSpec struct {
 }
 
 // planFor decides, from the config as it is now, what the command is to do.
-func (sp removeSpec) planFor() (removal, *refusal.Failure) {
-	return planRemoval(sp.kind, sp.name, sp.source(), sp.own)
+func (sp removeSpec) planFor() (hostsetup.Removal, *refusal.Failure) {
+	return hostsetup.PlanRemoval(sp.kind, sp.name, sp.source(), sp.own)
 }
 
 // remove is the pipeline of every remove command: config, decision, lock,
@@ -62,7 +42,7 @@ func (c *hostCmd) remove(sp removeSpec) int {
 	switch {
 	case f != nil:
 		return c.fail(f)
-	case what == nothingToRemove:
+	case what == hostsetup.NothingToRemove:
 		return c.nothingToRemove(sp)
 	}
 	return c.removeLocked(sp)
@@ -76,11 +56,11 @@ func (c *hostCmd) nothingToRemove(sp removeSpec) int {
 func capitalised(s string) string { return strings.ToUpper(s[:1]) + s[1:] }
 
 func (c *hostCmd) removeLocked(sp removeSpec) int {
-	var what removal
+	var what hostsetup.Removal
 	return c.underConfigLock(
 		func() (f *refusal.Failure) { what, f = sp.planFor(); return f },
 		func() int {
-			if what == nothingToRemove {
+			if what == hostsetup.NothingToRemove {
 				return c.nothingToRemove(sp)
 			}
 			return c.removeFiles(sp)
