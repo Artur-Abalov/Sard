@@ -34,7 +34,7 @@ func Lock(open OpenFunc, path string) (unlock func(), err error) {
 	}
 	// A holder that just released may have removed the file this lock is
 	// on; the lock counts only if the file is still the one at path.
-	if !sameFile(f, path) {
+	if !SameFileAtPath(f, path) {
 		_ = f.Close()
 		return nil, ErrLockHeld
 	}
@@ -44,8 +44,6 @@ func Lock(open OpenFunc, path string) (unlock func(), err error) {
 		_ = f.Close()
 	}, nil
 }
-
-func sameFile(f *os.File, path string) bool { return SameFileAtPath(f, path) }
 
 // OpenLockFile opens the lock file without following a link and checks it
 // is a plain file of its own.
