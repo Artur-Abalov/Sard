@@ -169,7 +169,14 @@ printf '[Service]\\nReadWritePaths=/srv/sard-repo\\n' >/etc/systemd/system/sard-
   api POST /api/v1/session "{\"password\":\"$ADMIN_PASSWORD\"}" >/dev/null
   token="$(api POST /api/v1/enrollment-tokens '{}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)"
   [ -n "$token" ] || die "no enrollment token from the server"
-  on_host "cd / && sudo -u sard-agent sard-agent enroll --token '$token'" || die "enroll as sard-agent"
+  on_host "cd / && sudo -u sard-agent sard-agent enroll --token '$token'" || {
+    # What sudo's PAM stack saw: the accounts, their shadow entries, the stack.
+    on_host "rpm -q sudo pam shadow-utils setup 2>/dev/null || dpkg -l sudo libpam-modules 2>/dev/null | tail -2
+      ls -l /etc/passwd /etc/shadow; grep -E '^(root|sard-agent):' /etc/passwd
+      grep -E '^(root|sard-agent):' /etc/shadow | cut -d: -f1,3-; cat /etc/pam.d/sudo
+      journalctl --no-pager -n 15 | grep -iE 'sudo|pam'" || true
+    die "enroll as sard-agent"
+  }
   on_host "cd / && sudo -u sard-agent sard-agent repo init --generate-password main" || die "repo init as sard-agent"
   expect "agent key" "stat -c '%U %a' /etc/sard/tls/agent.key" "sard-agent 600"
   expect "repository password" "stat -c '%U %a' /etc/sard/secrets/main.pass" "sard-agent 600"
