@@ -9,22 +9,23 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 )
 
 // repoClassCodes is the one place a failure class becomes an exit code;
 // the numbers are A2b's (docs/adr/0025-grpc-error-model.md).
-var repoClassCodes = map[repoinit.Class]int{
-	repoinit.ClassAgentError: exitAgentError,
-	repoinit.ClassUsage:      exitUsage,
-	repoinit.ClassExists:     exitIdentityExists,
-	repoinit.ClassTemporary:  exitTemporary,
-	repoinit.ClassWrite:      exitWrite,
+var repoClassCodes = map[refusal.Class]int{
+	refusal.ClassAgentError: exitAgentError,
+	refusal.ClassUsage:      exitUsage,
+	refusal.ClassExists:     exitIdentityExists,
+	refusal.ClassTemporary:  exitTemporary,
+	refusal.ClassWrite:      exitWrite,
 }
 
 // reportRepoError prints an error that is not a Failure yet: an agent error.
 func reportRepoError(ctx context.Context, stderr io.Writer, sub string, err error) int {
-	var f *repoinit.Failure
+	var f *refusal.Failure
 	if f = repoinit.Interruption(ctx); f != nil || errors.As(err, &f) {
 		return report(stderr, "repo "+sub, f)
 	}

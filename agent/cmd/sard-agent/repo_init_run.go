@@ -11,6 +11,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 )
 
@@ -154,7 +155,7 @@ func loadConfigFor(words, path string, stderr io.Writer) (config.Config, int) {
 
 // findRepository looks the repository up by its exact name; the index is
 // the one A1's messages use (repositories[i]).
-func findRepository(cfg config.Config, name, configPath string) (config.Repository, int, *repoinit.Failure) {
+func findRepository(cfg config.Config, name, configPath string) (config.Repository, int, *refusal.Failure) {
 	for i, r := range cfg.Repositories {
 		if r.Name == name {
 			return r, i, nil

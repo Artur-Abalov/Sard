@@ -10,7 +10,7 @@ import (
 	"io"
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
-	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 )
 
 // secretPlan is what the config says about the secret a command is
@@ -23,14 +23,14 @@ type secretPlan struct {
 
 // planSecret is the decision of Р12: a name defined elsewhere is refused,
 // and so is a value file that another key of the config uses.
-func (c *hostCmd) planSecret(name string) (secretPlan, *repoinit.Failure) {
+func (c *hostCmd) planSecret(name string) (secretPlan, *refusal.Failure) {
 	source := c.cfg.SecretSource(name)
 	own := c.layout.SecretFragment(name)
 	if source != "" && source != own {
-		return secretPlan{}, repoinit.Fail(repoinit.DefinedInConfig, "secret %q is defined in %s; commands never change it, edit that file instead", name, source)
+		return secretPlan{}, refusal.Fail(refusal.DefinedInConfig, "secret %q is defined in %s; commands never change it, edit that file instead", name, source)
 	}
 	if key := hostsetup.ReferencedBy(c.cfg, c.layout.SecretFile(name), hostsetup.SecretKey(name)); key != "" {
-		return secretPlan{}, repoinit.Fail(repoinit.PathInUse, "%s is used by %s and would be overwritten", c.layout.SecretFile(name), key)
+		return secretPlan{}, refusal.Fail(refusal.PathInUse, "%s is used by %s and would be overwritten", c.layout.SecretFile(name), key)
 	}
 	return secretPlan{ownFragment: source == own}, nil
 }
@@ -71,7 +71,7 @@ func (c *hostCmd) setSecret() int {
 }
 
 // firstFailure is the first of the failures that is not nil.
-func firstFailure(fs ...*repoinit.Failure) *repoinit.Failure {
+func firstFailure(fs ...*refusal.Failure) *refusal.Failure {
 	for _, f := range fs {
 		if f != nil {
 			return f
@@ -85,7 +85,7 @@ func firstFailure(fs ...*repoinit.Failure) *repoinit.Failure {
 func (c *hostCmd) setSecretLocked(name string, value []byte) int {
 	var plan secretPlan
 	return c.underConfigLock(
-		func() (f *repoinit.Failure) { plan, f = c.planSecret(name); return f },
+		func() (f *refusal.Failure) { plan, f = c.planSecret(name); return f },
 		func() int { return c.storeSecret(name, value, plan) })
 }
 

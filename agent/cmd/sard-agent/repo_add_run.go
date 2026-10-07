@@ -13,6 +13,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 )
@@ -44,22 +45,22 @@ func passwordSource(o hostOptions) hostsetup.SourceOptions {
 // checkAddress is Р14 from the name to the path: the name, the kind of the
 // address (only a local path in A8a, Р17) and the path. It returns the
 // path as it will be written to the fragment.
-func (c *hostCmd) checkAddress() (string, *repoinit.Failure) {
+func (c *hostCmd) checkAddress() (string, *refusal.Failure) {
 	if f := hostsetup.CheckName("repository", c.opts.name); f != nil {
 		return "", f
 	}
 	if kind := (config.Repository{URL: c.opts.address}).Backend(); kind != "local" {
-		return "", repoinit.Fail(repoinit.BackendNotSupported, "the address is of kind %q: for now only a local path is supported, an absolute path of a directory on this host", kind)
+		return "", refusal.Fail(refusal.BackendNotSupported, "the address is of kind %q: for now only a local path is supported, an absolute path of a directory on this host", kind)
 	}
 	if hasControlCharacter(c.opts.address) {
-		return "", repoinit.Fail(repoinit.LocalPathInvalid, "%q holds a control character", c.opts.address)
+		return "", refusal.Fail(refusal.LocalPathInvalid, "%q holds a control character", c.opts.address)
 	}
 	return c.checkLocalPath(c.opts.address)
 }
 
-func (c *hostCmd) checkLocalPath(path string) (string, *repoinit.Failure) {
+func (c *hostCmd) checkLocalPath(path string) (string, *refusal.Failure) {
 	if !filepath.IsAbs(path) {
-		return "", repoinit.Fail(repoinit.LocalPathInvalid, "%q is not an absolute path", path)
+		return "", refusal.Fail(refusal.LocalPathInvalid, "%q is not an absolute path", path)
 	}
 	path = filepath.Clean(path)
 	info, err := c.deps.fs.Stat(path)
@@ -67,9 +68,9 @@ func (c *hostCmd) checkLocalPath(path string) (string, *repoinit.Failure) {
 	case errors.Is(err, fs.ErrNotExist):
 		return path, nil
 	case err != nil:
-		return "", repoinit.Fail(repoinit.LocalPathInvalid, "%s cannot be looked at: %v", path, err)
+		return "", refusal.Fail(refusal.LocalPathInvalid, "%s cannot be looked at: %v", path, err)
 	case !info.IsDir():
-		return "", repoinit.Fail(repoinit.LocalPathInvalid, "%s exists and is not a directory", path)
+		return "", refusal.Fail(refusal.LocalPathInvalid, "%s exists and is not a directory", path)
 	}
 	return path, nil
 }
@@ -85,19 +86,19 @@ const (
 // planRepository is Р12 and Р11 for a repository: a name defined elsewhere
 // is refused, the same name at another address is a conflict, the same
 // address again changes nothing.
-func (c *hostCmd) planRepository(name, url string) (addPlan, *repoinit.Failure) {
+func (c *hostCmd) planRepository(name, url string) (addPlan, *refusal.Failure) {
 	source := c.cfg.RepositorySource(name)
 	if key := hostsetup.ReferencedBy(c.cfg, c.layout.PasswordFile(name), hostsetup.RepositoryKey(name, "password_file")); key != "" {
-		return addNew, repoinit.Fail(repoinit.PathInUse, "%s is used by %s and would be taken over", c.layout.PasswordFile(name), key)
+		return addNew, refusal.Fail(refusal.PathInUse, "%s is used by %s and would be taken over", c.layout.PasswordFile(name), key)
 	}
 	switch {
 	case source == "":
 		return addNew, nil
 	case source != c.layout.RepositoryFragment(name):
-		return addNew, repoinit.Fail(repoinit.DefinedInConfig, "repository %q is defined in %s; commands never change it, edit that file instead", name, source)
+		return addNew, refusal.Fail(refusal.DefinedInConfig, "repository %q is defined in %s; commands never change it, edit that file instead", name, source)
 	}
 	if current := c.repository(name); filepath.Clean(current.URL) != url {
-		return addNew, repoinit.Fail(repoinit.RepositoryConflict, "repository %q is already connected to %s; to connect it to another address run `sudo sard-agent repo remove %s` first", name, config.RedactURL(current.URL), name)
+		return addNew, refusal.Fail(refusal.RepositoryConflict, "repository %q is already connected to %s; to connect it to another address run `sudo sard-agent repo remove %s` first", name, config.RedactURL(current.URL), name)
 	}
 	return addUnchanged, nil
 }
@@ -168,7 +169,7 @@ func (c *hostCmd) addPlanned(ctx context.Context, url string, plan addPlan) int 
 
 // readGivenPassword reads the password the flags name; the terminal is
 // asked later, and only for a repository that exists.
-func (c *hostCmd) readGivenPassword(st *addState) *repoinit.Failure {
+func (c *hostCmd) readGivenPassword(st *addState) *refusal.Failure {
 	o := passwordSource(c.opts)
 	if !o.Stdin && o.File == "" {
 		return nil

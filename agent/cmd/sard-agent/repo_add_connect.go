@@ -12,6 +12,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 )
 
@@ -48,7 +49,7 @@ func (c *hostCmd) printKeyWarning(name string) {
 // looks at the config once more and connects the repository.
 func (c *hostCmd) addLocked(ctx context.Context, st *addState) int {
 	return c.underConfigLock(
-		func() (f *repoinit.Failure) { _, f = c.planRepository(st.name, st.url); return f },
+		func() (f *refusal.Failure) { _, f = c.planRepository(st.name, st.url); return f },
 		func() int { return c.underInitLock(ctx, st) })
 }
 
@@ -78,8 +79,8 @@ func (c *hostCmd) connectAndWrite(ctx context.Context, st *addState) int {
 
 // failConnect reports a failure of the backend; the password file the
 // command left is named: the command used it, a repeat will too (Р16).
-func (c *hostCmd) failConnect(ctx context.Context, st *addState, f *repoinit.Failure) int {
-	if _, err := c.deps.fs.Stat(st.final(c)); err == nil && repoinit.Interruption(ctx) == nil && f.Class == repoinit.ClassAgentError {
+func (c *hostCmd) failConnect(ctx context.Context, st *addState, f *refusal.Failure) int {
+	if _, err := c.deps.fs.Stat(st.final(c)); err == nil && repoinit.Interruption(ctx) == nil && f.Class == refusal.ClassAgentError {
 		_, _ = fmt.Fprintf(c.stderr, "sard-agent repo add: the password file %s was kept and will be used when the command is repeated\n", st.final(c))
 	}
 	return c.fail(f)
@@ -131,7 +132,7 @@ type candidate struct {
 
 // firstCandidate is the password to try first: the one given, else the
 // file a failed command left, else a new one (Р15, Р16).
-func (c *hostCmd) firstCandidate(st *addState) (candidate, *repoinit.Failure) {
+func (c *hostCmd) firstCandidate(st *addState) (candidate, *refusal.Failure) {
 	if _, err := hostsetup.EnsureDir(c.deps.fs, c.layout.SecretsDir(), c.serviceOwner(0o700)); err != nil {
 		return candidate{}, writeFailed(err)
 	}
@@ -143,7 +144,7 @@ func (c *hostCmd) firstCandidate(st *addState) (candidate, *repoinit.Failure) {
 	}
 	password, err := repoinit.NewPassword(c.deps.random)
 	if err != nil {
-		return candidate{}, repoinit.Fail(repoinit.PasswordFileWrite, "%v", err)
+		return candidate{}, refusal.Fail(refusal.PasswordFileWrite, "%v", err)
 	}
 	st.generated = password
 	return c.stage(st, []byte(password+"\n"), false)
@@ -155,7 +156,7 @@ func (c *hostCmd) exists(path string) bool {
 }
 
 // stage writes the password to a temporary file in the secrets directory.
-func (c *hostCmd) stage(st *addState, password []byte, given bool) (candidate, *repoinit.Failure) {
+func (c *hostCmd) stage(st *addState, password []byte, given bool) (candidate, *refusal.Failure) {
 	tmp, err := hostsetup.StageFile(c.deps.fs, st.final(c), password, c.serviceOwner(0o600))
 	if err != nil {
 		return candidate{}, writeFailed(err)
@@ -164,7 +165,7 @@ func (c *hostCmd) stage(st *addState, password []byte, given bool) (candidate, *
 }
 
 // commit makes the candidate the password file.
-func (c *hostCmd) commit(st *addState, cand candidate) *repoinit.Failure {
+func (c *hostCmd) commit(st *addState, cand candidate) *refusal.Failure {
 	if cand.staged == "" {
 		return nil
 	}
@@ -182,14 +183,14 @@ func (c *hostCmd) discard(cand candidate) {
 
 // outcome of trying a candidate.
 type outcome struct {
-	f *repoinit.Failure
+	f *refusal.Failure
 	// needPassword: the repository exists and the candidate does not open it.
 	needPassword bool
 }
 
 // connect finds out whether the repository exists and either attaches it
 // or creates it (С10 of repo-init.feature).
-func (c *hostCmd) connect(ctx context.Context, st *addState) *repoinit.Failure {
+func (c *hostCmd) connect(ctx context.Context, st *addState) *refusal.Failure {
 	cand, f := c.firstCandidate(st)
 	if f != nil {
 		return f
@@ -223,9 +224,9 @@ func (c *hostCmd) try(ctx context.Context, st *addState, cand candidate) outcome
 // rejected: the repository could not be opened with the candidate. A
 // password nobody chose that does not open an existing repository means
 // the operator has to give one.
-func (c *hostCmd) rejected(cand candidate, f *repoinit.Failure) outcome {
+func (c *hostCmd) rejected(cand candidate, f *refusal.Failure) outcome {
 	c.discard(cand)
-	if f.Reason == repoinit.WrongPassword && !cand.given {
+	if f.Reason == refusal.WrongPassword && !cand.given {
 		return outcome{needPassword: true}
 	}
 	return outcome{f: f}
@@ -245,7 +246,7 @@ func (c *hostCmd) accepted(ctx context.Context, st *addState, cand candidate, id
 }
 
 // create makes the repository with the password file now in place.
-func (c *hostCmd) create(ctx context.Context, st *addState) *repoinit.Failure {
+func (c *hostCmd) create(ctx context.Context, st *addState) *refusal.Failure {
 	target, cli := c.resticFor(st, st.final(c))
 	id, f := repoinit.Create(ctx, cli, target)
 	st.id = id
@@ -254,7 +255,7 @@ func (c *hostCmd) create(ctx context.Context, st *addState) *repoinit.Failure {
 
 // writeRepository writes the drop-in (on a systemd host) and the fragment,
 // the fragment last (Р4).
-func (c *hostCmd) writeRepository(st *addState) *repoinit.Failure {
+func (c *hostCmd) writeRepository(st *addState) *refusal.Failure {
 	if c.deps.systemd.Present() {
 		dropIn := hostsetup.DropIn{FS: c.deps.fs, Dir: c.deps.dropInDir}
 		if err := dropIn.Write(st.name, st.url); err != nil {

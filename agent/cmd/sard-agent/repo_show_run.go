@@ -10,6 +10,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 )
 
@@ -45,7 +46,7 @@ func showRepository(ctx context.Context, cfg config.Config, repo config.Reposito
 		return reportRepoError(ctx, stderr, "show", err)
 	}
 	row := inspectRepository(ctx, cfg, binary, index, who, deps)
-	if f := repoinit.Interruption(ctx); f != nil && f.Reason == repoinit.Interrupted {
+	if f := repoinit.Interruption(ctx); f != nil && f.Reason == refusal.Interrupted {
 		return report(stderr, "repo show", f)
 	}
 	printCard(stdout, repo, row, opts.json)

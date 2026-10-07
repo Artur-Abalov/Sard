@@ -33,7 +33,7 @@ type Checked struct {
 // crypto_provider, then the password file and the env file of this
 // repository only. index is the repository's position in the config, as
 // in A1's messages. With createPassword a missing password file passes.
-func Preflight(h Host, repo config.Repository, index int, createPassword bool) (Checked, *Failure) {
+func Preflight(h Host, repo config.Repository, index int, createPassword bool) (Checked, *refusal.Failure) {
 	if f := CheckCryptoProvider(repo); f != nil {
 		return Checked{}, f
 	}
@@ -47,18 +47,18 @@ func Preflight(h Host, repo config.Repository, index int, createPassword bool) (
 
 // CheckCryptoProvider refuses a repository whose crypto_provider is
 // anything but empty or the built-in restic encryption (stage 1).
-func CheckCryptoProvider(repo config.Repository) *Failure {
+func CheckCryptoProvider(repo config.Repository) *refusal.Failure {
 	if p := repo.CryptoProvider; p != "" && p != crypto.ResticAESName {
-		return fail(CryptoProviderUnsupported, "crypto_provider %q of repository %q is not supported; stage 1 supports only the built-in restic encryption (%s, or leave crypto_provider empty)", p, repo.Name, crypto.ResticAESName)
+		return refusal.Fail(refusal.CryptoProviderUnsupported, "crypto_provider %q of repository %q is not supported; stage 1 supports only the built-in restic encryption (%s, or leave crypto_provider empty)", p, repo.Name, crypto.ResticAESName)
 	}
 	return nil
 }
 
-func rejected(err error) *Failure {
-	return &Failure{Reason: SecretFileRejected, Class: refusal.ClassOf(SecretFileRejected), Detail: err.Error()}
+func rejected(err error) *refusal.Failure {
+	return &refusal.Failure{Reason: refusal.SecretFileRejected, Class: refusal.ClassOf(refusal.SecretFileRejected), Detail: err.Error()}
 }
 
-func checkPasswordFile(h Host, repo config.Repository, index int, createPassword bool) (missing bool, f *Failure) {
+func checkPasswordFile(h Host, repo config.Repository, index int, createPassword bool) (missing bool, f *refusal.Failure) {
 	key := secrets.RepositoryKey(index, repo, "password_file")
 	if err := secrets.CheckFile(key, repo.PasswordFile, h.UID, h.Stat); err != nil {
 		return false, rejected(err)
@@ -67,20 +67,20 @@ func checkPasswordFile(h Host, repo config.Repository, index int, createPassword
 }
 
 // passwordFileState: the file exists and is not empty, or is to be created.
-func passwordFileState(h Host, repo config.Repository, createPassword bool) (missing bool, f *Failure) {
+func passwordFileState(h Host, repo config.Repository, createPassword bool) (missing bool, f *refusal.Failure) {
 	info, err := h.Stat(repo.PasswordFile)
 	switch {
 	case errors.Is(err, fs.ErrNotExist) && createPassword:
 		return true, nil
 	case err != nil:
-		return false, fail(PasswordFileMissing, "password_file %s of repository %q does not exist; create it, or run `sard-agent repo init --generate-password %s` to have the command create it", repo.PasswordFile, repo.Name, repo.Name)
+		return false, refusal.Fail(refusal.PasswordFileMissing, "password_file %s of repository %q does not exist; create it, or run `sard-agent repo init --generate-password %s` to have the command create it", repo.PasswordFile, repo.Name, repo.Name)
 	case info.Size == 0:
-		return false, fail(PasswordFileEmpty, "password_file %s of repository %q is empty", repo.PasswordFile, repo.Name)
+		return false, refusal.Fail(refusal.PasswordFileEmpty, "password_file %s of repository %q is empty", repo.PasswordFile, repo.Name)
 	}
 	return false, nil
 }
 
-func checkEnvFile(h Host, repo config.Repository, index int) ([]string, *Failure) {
+func checkEnvFile(h Host, repo config.Repository, index int) ([]string, *refusal.Failure) {
 	if repo.EnvFile == "" {
 		return nil, nil
 	}
@@ -90,11 +90,11 @@ func checkEnvFile(h Host, repo config.Repository, index int) ([]string, *Failure
 	}
 	data, err := h.ReadFile(repo.EnvFile)
 	if err != nil {
-		return nil, fail(EnvFileMissing, "env_file %s of repository %q cannot be read: %v", repo.EnvFile, repo.Name, err)
+		return nil, refusal.Fail(refusal.EnvFileMissing, "env_file %s of repository %q cannot be read: %v", repo.EnvFile, repo.Name, err)
 	}
 	env, err := restic.ParseEnvFile(data)
 	if err != nil {
-		return nil, fail(EnvFileInvalid, "env_file %s of repository %q: %v", repo.EnvFile, repo.Name, err)
+		return nil, refusal.Fail(refusal.EnvFileInvalid, "env_file %s of repository %q: %v", repo.EnvFile, repo.Name, err)
 	}
 	return env, nil
 }

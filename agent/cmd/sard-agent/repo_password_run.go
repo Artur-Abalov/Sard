@@ -11,7 +11,7 @@ import (
 	"io/fs"
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
-	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 )
 
 // runRepoPassword is "sard-agent repo password <name> --reveal": the
@@ -27,7 +27,7 @@ func runRepoPassword(_ context.Context, args []string, stdout, stderr io.Writer,
 		return report(stderr, "repo password", f)
 	}
 	if !opts.reveal {
-		return report(stderr, "repo password", repoinit.Fail(repoinit.RevealRequired, "the password is shown on the screen only on request: add --reveal"))
+		return report(stderr, "repo password", refusal.Fail(refusal.RevealRequired, "the password is shown on the screen only on request: add --reveal"))
 	}
 	return revealPassword(opts, who, stdout, stderr, deps)
 }
@@ -53,9 +53,9 @@ func revealPassword(opts hostOptions, who hostsetup.Principal, stdout, stderr io
 	return exitOK
 }
 
-func passwordFileFailure(path string, err error) *repoinit.Failure {
+func passwordFileFailure(path string, err error) *refusal.Failure {
 	if errors.Is(err, fs.ErrNotExist) {
-		return repoinit.Fail(repoinit.PasswordFileMissing, "the password file %s does not exist", path)
+		return refusal.Fail(refusal.PasswordFileMissing, "the password file %s does not exist", path)
 	}
-	return repoinit.Fail(repoinit.PasswordFileMissing, "the password file %s cannot be read: %v", path, err)
+	return refusal.Fail(refusal.PasswordFileMissing, "the password file %s cannot be read: %v", path, err)
 }

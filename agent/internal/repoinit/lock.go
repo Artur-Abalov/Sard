@@ -30,14 +30,14 @@ func LockPath(cacheDir, name string) string {
 // AcquireLock takes the init lock of a repository (В8) in cacheDir, which
 // is never created here. Refusals: another init is running
 // (INIT_IN_PROGRESS), or the lock file cannot be created (LOCK_WRITE).
-func AcquireLock(open OpenFunc, cacheDir string, repo config.Repository) (func(), *Failure) {
+func AcquireLock(open OpenFunc, cacheDir string, repo config.Repository) (func(), *refusal.Failure) {
 	path := LockPath(cacheDir, repo.Name)
 	unlock, err := Lock(open, path)
 	switch {
 	case err == nil:
 		return unlock, nil
 	case errors.Is(err, ErrLockHeld):
-		return nil, fail(InitInProgress, "another init of repository %q is running on this host (lock file %s); wait for it and run the command again if needed", repo.Name, path)
+		return nil, refusal.Fail(refusal.InitInProgress, "another init of repository %q is running on this host (lock file %s); wait for it and run the command again if needed", repo.Name, path)
 	}
-	return nil, fail(LockWrite, "cannot create the lock file %s in restic.cache_dir %s: %v; the directory must exist and be writable by the user running this command", path, cacheDir, err)
+	return nil, refusal.Fail(refusal.LockWrite, "cannot create the lock file %s in restic.cache_dir %s: %v; the directory must exist and be writable by the user running this command", path, cacheDir, err)
 }

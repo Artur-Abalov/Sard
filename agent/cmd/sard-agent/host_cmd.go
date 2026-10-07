@@ -11,14 +11,14 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
-	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 )
 
 // authorize applies the privilege rule (Р5) right after the flags are
 // parsed, before the config is read: only the service.user key is peeked
 // at, to know who the service user is.
-func authorize(deps hostDeps, words string, opts hostOptions, mutating, needsUser bool) (hostsetup.Principal, *repoinit.Failure) {
+func authorize(deps hostDeps, words string, opts hostOptions, mutating, needsUser bool) (hostsetup.Principal, *refusal.Failure) {
 	command := strings.Join(append([]string{words}, opts.args...), " ")
 	return hostsetup.Authorize(privilegeRequest(deps.euid, deps.lookupUser, opts.configPath, command, mutating, needsUser))
 }
@@ -46,7 +46,7 @@ func runAs(who hostsetup.Principal) *restic.RunAs {
 }
 
 // report prints a refusal of the command and returns its exit code.
-func report(stderr io.Writer, words string, f *repoinit.Failure) int {
+func report(stderr io.Writer, words string, f *refusal.Failure) int {
 	_, _ = fmt.Fprintf(stderr, "sard-agent %s: %s\n", words, f)
 	return repoClassCodes[f.Class]
 }
@@ -85,11 +85,11 @@ func newHostCmd(words string, opts hostOptions, who hostsetup.Principal, stdout,
 	return &hostCmd{words: words, deps: deps, stdout: stdout, stderr: stderr, opts: opts, who: who, layout: hostsetup.Layout{Config: opts.configPath}}
 }
 
-func (c *hostCmd) fail(f *repoinit.Failure) int { return report(c.stderr, c.words, f) }
+func (c *hostCmd) fail(f *refusal.Failure) int { return report(c.stderr, c.words, f) }
 
 // load reads the config again (the first read is before the lock, the
 // second under it); a problem is a usage error (В6).
-func (c *hostCmd) load() *repoinit.Failure {
+func (c *hostCmd) load() *refusal.Failure {
 	cfg, err := config.Load(c.opts.configPath)
 	if err != nil {
 		return usageFailureOf("reading config %s: %v", c.opts.configPath, err)
@@ -98,8 +98,8 @@ func (c *hostCmd) load() *repoinit.Failure {
 	return nil
 }
 
-func usageFailureOf(format string, args ...any) *repoinit.Failure {
-	return &repoinit.Failure{Class: repoinit.ClassUsage, Detail: fmt.Sprintf(format, args...)}
+func usageFailureOf(format string, args ...any) *refusal.Failure {
+	return &refusal.Failure{Class: refusal.ClassUsage, Detail: fmt.Sprintf(format, args...)}
 }
 
 // serviceOwner is the owner of what the service must be able to use.
@@ -114,7 +114,7 @@ func (c *hostCmd) fragmentOwner() hostsetup.Attrs {
 }
 
 // lock makes agent.d and takes the lock of config changes (Р10).
-func (c *hostCmd) lock() (func(), *repoinit.Failure) {
+func (c *hostCmd) lock() (func(), *refusal.Failure) {
 	if _, err := hostsetup.EnsureDir(c.deps.fs, c.layout.FragmentDir(), hostsetup.Attrs{UID: 0, GID: int(c.who.Service.GID), Mode: 0o750}); err != nil {
 		return nil, writeFailed(err)
 	}
@@ -124,7 +124,7 @@ func (c *hostCmd) lock() (func(), *repoinit.Failure) {
 // underConfigLock is the frame of every command that changes the config:
 // the lock (Р10), the config read again under it, the decision (plan; a
 // failure ends the command), then act while the lock is held.
-func (c *hostCmd) underConfigLock(plan func() *repoinit.Failure, act func() int) int {
+func (c *hostCmd) underConfigLock(plan func() *refusal.Failure, act func() int) int {
 	unlock, f := c.lock()
 	if f != nil {
 		return c.fail(f)
@@ -140,8 +140,8 @@ func (c *hostCmd) underConfigLock(plan func() *repoinit.Failure, act func() int)
 }
 
 // writeFailed is CONFIG_WRITE: the message names the file or directory.
-func writeFailed(err error) *repoinit.Failure {
-	return repoinit.Fail(repoinit.ConfigWrite, "%v", err)
+func writeFailed(err error) *refusal.Failure {
+	return refusal.Fail(refusal.ConfigWrite, "%v", err)
 }
 
 // record writes the audit line of a change (Р9).
@@ -152,7 +152,7 @@ func (c *hostCmd) record(kind, name, action string) {
 }
 
 // apply makes the change take effect (Р8) and tells the operator how.
-func (c *hostCmd) apply() *repoinit.Failure {
+func (c *hostCmd) apply() *refusal.Failure {
 	return hostsetup.Applier{
 		Systemd:   c.deps.systemd,
 		FS:        c.deps.fs,
@@ -167,7 +167,7 @@ func sourceOptions(o hostOptions) hostsetup.SourceOptions {
 }
 
 // readSource reads the value; the terminal is asked only when no flag was given.
-func (c *hostCmd) readSource(o hostsetup.SourceOptions) ([]byte, *repoinit.Failure) {
+func (c *hostCmd) readSource(o hostsetup.SourceOptions) ([]byte, *refusal.Failure) {
 	src := hostsetup.Source{Stdin: c.deps.stdin, Open: c.deps.openFile}
 	if c.deps.terminal != nil && !o.Stdin && o.File == "" {
 		src.Terminal = c.deps.terminal(c.stderr)

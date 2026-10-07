@@ -14,7 +14,7 @@ import (
 
 // checkRestic finds the restic binary and makes sure it is usable and not
 // older than the minimum (С6, С7): the path, or the error — a
-// *repoinit.Failure for a binary that cannot be used.
+// *refusal.Failure for a binary that cannot be used.
 func checkRestic(ctx context.Context, cfg config.Config, configPath string, executable func() (string, error), exec restic.Executor, as *restic.RunAs) (string, error) {
 	binary, err := resticPath(cfg.Restic.Path, executable)
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 )
@@ -70,12 +71,12 @@ func TestACancelledCommandNeverTakesResticsAnswerForANormalOne(t *testing.T) {
 	exists := fmt.Errorf("restic init: %w", restic.ErrRepositoryExists)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, ok, f := repoinit.Inspect(ctx, &fakeRepo{idErrs: []error{noRepo}}, target); ok || f == nil || f.Reason != repoinit.Interrupted {
+	if _, ok, f := repoinit.Inspect(ctx, &fakeRepo{idErrs: []error{noRepo}}, target); ok || f == nil || f.Reason != refusal.Interrupted {
 		t.Errorf("inspect: %v %v", ok, f)
 	}
 	live, cancelLive := context.WithCancel(t.Context())
 	r := &cancelOnInit{fakeRepo: &fakeRepo{idErrs: []error{noRepo, nil}, id: "abc", initErr: exists}, cancel: cancelLive}
-	if _, f := repoinit.Create(live, r, target); f == nil || f.Reason != repoinit.Interrupted || f.ID != "" {
+	if _, f := repoinit.Create(live, r, target); f == nil || f.Reason != refusal.Interrupted || f.ID != "" {
 		t.Errorf("create: %+v", f)
 	}
 }
@@ -94,7 +95,7 @@ func (c *cancelOnInit) Init(ctx context.Context) (string, error) {
 
 func TestInspectRefusesAnAnswerThatIsNotAMissingRepository(t *testing.T) {
 	id, ok, f := repoinit.Inspect(t.Context(), &fakeRepo{idErrs: []error{exitErr("Access Denied", nil)}}, target)
-	if id != "" || ok || f == nil || f.Reason != repoinit.BackendRefused {
+	if id != "" || ok || f == nil || f.Reason != refusal.BackendRefused {
 		t.Fatalf("%q %v %v", id, ok, f)
 	}
 }
@@ -102,7 +103,7 @@ func TestInspectRefusesAnAnswerThatIsNotAMissingRepository(t *testing.T) {
 func TestCreateStopsAtAFailedInspectionWithoutInitialising(t *testing.T) {
 	r := &fakeRepo{idErrs: []error{exitErr("Access Denied", nil)}, initID: "new"}
 	id, f := repoinit.Create(t.Context(), r, target)
-	if id != "" || f == nil || f.Reason != repoinit.BackendRefused || r.initRuns != 0 {
+	if id != "" || f == nil || f.Reason != refusal.BackendRefused || r.initRuns != 0 {
 		t.Fatalf("%q %v %d", id, f, r.initRuns)
 	}
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 )
 
@@ -20,7 +21,7 @@ type listRow struct {
 	name, backend string
 	id            string
 	initialized   bool
-	problem       *repoinit.Failure
+	problem       *refusal.Failure
 	// definedIn is the file of the config that defines the repository.
 	definedIn string
 }
@@ -87,7 +88,7 @@ func inspectAll(ctx context.Context, cfg config.Config, binary string, who hosts
 // reportList prints the table and one message per problem row; an
 // interrupt prints no table (Л9).
 func reportList(ctx context.Context, rows []listRow, asJSON bool, stdout, stderr io.Writer) int {
-	if f := repoinit.Interruption(ctx); f != nil && f.Reason == repoinit.Interrupted {
+	if f := repoinit.Interruption(ctx); f != nil && f.Reason == refusal.Interrupted {
 		return report(stderr, "repo list", f)
 	}
 	if asJSON {
@@ -137,7 +138,7 @@ func listExitCode(rows []listRow) int {
 	for _, r := range rows {
 		switch {
 		case r.problem == nil:
-		case r.problem.Class != repoinit.ClassTemporary:
+		case r.problem.Class != refusal.ClassTemporary:
 			return repoClassCodes[r.problem.Class]
 		default:
 			code = exitTemporary
