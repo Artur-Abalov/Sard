@@ -128,9 +128,9 @@ class InstallCommandsTest {
                 "tar -xzf $TAR",
                 "sudo sh -c 'grep -q \"^sard-agent:\" /etc/passwd || useradd --system --no-create-home " +
                     "--home-dir /var/lib/sard-agent --shell /usr/sbin/nologin --user-group sard-agent'",
-                "sudo install -d -m 0755 /usr/lib/sard",
-                "sudo install -m 0755 $dir/sard-agent $dir/restic /usr/lib/sard/",
-                "sudo cp -sf /usr/lib/sard/sard-agent /usr/bin/sard-agent",
+                "sudo install -d -m 0755 /usr/libexec/sard",
+                "sudo install -m 0755 $dir/sard-agent $dir/restic /usr/libexec/sard/",
+                "sudo cp -sf /usr/libexec/sard/sard-agent /usr/bin/sard-agent",
                 "sudo install -m 0644 $dir/sard-agent.service /usr/lib/systemd/system/sard-agent.service",
                 "sudo install -d -o root -g sard-agent -m 0750 /etc/sard",
                 "sudo install -d -o sard-agent -g sard-agent -m 0700 " +
@@ -277,7 +277,7 @@ class InstallCommandsTest {
             steps.map { it.kind },
         )
         assertEquals(
-            listOf("tar -xzf $TAR", "sudo install -m 0755 $dir/sard-agent $dir/restic /usr/lib/sard/"),
+            listOf("tar -xzf $TAR", "sudo install -m 0755 $dir/sard-agent $dir/restic /usr/libexec/sard/"),
             steps.lines(StepKind.UPGRADE),
         )
         assertEquals(listOf("sudo systemctl try-restart sard-agent.service"), steps.lines(StepKind.RESTART))

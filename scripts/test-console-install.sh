@@ -219,7 +219,7 @@ check_archive_layout() {
   [ "$(on_host "stat -c '%a %U' /etc/sard/tls /etc/sard/secrets /var/cache/sard/restic | sort -u")" = "700 sard-agent" ] ||
     die "tls, secrets and the restic cache are not 0700 sard-agent"
   [ "$(on_host "stat -c '%U:%G %a' /etc/sard")" = "root:sard-agent 750" ] || die "/etc/sard is not root:sard-agent 0750"
-  [ "$(on_host 'readlink /usr/bin/sard-agent')" = /usr/lib/sard/sard-agent ] ||
+  [ "$(on_host 'readlink /usr/bin/sard-agent')" = /usr/libexec/sard/sard-agent ] ||
     die "/usr/bin/sard-agent is not the link of the deb"
   say "ok: the archive gives the layout of the deb"
 }

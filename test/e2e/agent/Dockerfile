@@ -10,12 +10,12 @@
 
 FROM gcr.io/distroless/static-debian12:nonroot
 # The layout of the deb/rpm packages (ADR 0018).
-COPY sard-agent restic /usr/lib/sard/
+COPY sard-agent restic /usr/libexec/sard/
 COPY LICENSE LICENSE.restic THIRD_PARTY_LICENSES NOTICE /usr/share/doc/sard-agent/
 COPY agent.example.yaml /etc/sard/
 # Default state and cache directories of the agent config, writable by the agent.
 COPY --chown=65532:65532 --chmod=0700 empty/ /var/lib/sard-agent/
 COPY --chown=65532:65532 --chmod=0700 empty/ /var/cache/sard/restic/
 USER 65532:65532
-ENTRYPOINT ["/usr/lib/sard/sard-agent"]
+ENTRYPOINT ["/usr/libexec/sard/sard-agent"]
 CMD ["--config", "/etc/sard/agent.yaml"]

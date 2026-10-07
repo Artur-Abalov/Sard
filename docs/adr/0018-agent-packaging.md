@@ -15,12 +15,13 @@ ADR 0017: restic поставляется вместе с агентом. Нуж
 - Бинарник: `CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=…"`,
   статический. restic — официальный релиз, полученный `fetch-restic.sh` с
   проверкой SHA-256 (ADR 0017).
-- Раскладка deb/rpm: `/usr/lib/sard/{sard-agent,restic}`, ссылка
+- Раскладка deb/rpm: `/usr/libexec/sard/{sard-agent,restic}` (до v0.1.0 была
+  `/usr/lib/sard/`; перенос — ADR 0047, причина — SELinux), ссылка
   `/usr/bin/sard-agent`, unit `/usr/lib/systemd/system/sard-agent.service`,
   пример конфига `/etc/sard/agent.example.yaml` (config, не перезаписывается),
   лицензии в `/usr/share/doc/sard-agent/`. `os.Executable()` на Linux
   разыменовывает ссылку, поэтому `restic.path` по умолчанию —
-  `/usr/lib/sard/restic`.
+  `/usr/libexec/sard/restic`.
 - Лицензии в каждом пакете: `LICENSE` (AGPL-3.0 Sard), `LICENSE.restic`,
   `THIRD_PARTY_LICENSES` (собирается из кэша модулей по
   `go list -deps` для целевой архитектуры; модуль без файла лицензии

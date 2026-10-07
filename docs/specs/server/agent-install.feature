@@ -119,7 +119,7 @@
 #       правит сам — адрес и учётные данные хранилища сервер не знает,
 #       ADR 0008.)
 #   В3. Архив. (Команды для архива дают ту же раскладку, что deb: пользователь
-#       sard-agent, /usr/lib/sard, ссылка /usr/bin/sard-agent, unit,
+#       sard-agent, /usr/libexec/sard, ссылка /usr/bin/sard-agent, unit,
 #       /etc/sard 0750, tls и secrets 0700, кэш restic 0700, — чтобы шаги
 #       configure, enroll, repo-init, start были одинаковы.)
 #   В4. «Устарел». (outdated = true, только если обе версии — релизные

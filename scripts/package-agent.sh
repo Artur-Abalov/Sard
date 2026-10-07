@@ -6,7 +6,7 @@
 # (docs/adr/0018-agent-packaging.md) into dist/:
 #
 #   sard-agent_<version>_linux_<arch>.tar.gz   binaries, licenses, config, unit
-#   sard-agent_<version>_<arch>.deb            /usr/lib/sard, systemd unit
+#   sard-agent_<version>_<arch>.deb            /usr/libexec/sard, systemd unit
 #   sard-agent-<version>.<x86_64|aarch64>.rpm  the same for rpm
 #   manifest.json                              version, restic, protocol, artifacts
 #   SHA256SUMS                                 over all of the above
@@ -103,7 +103,7 @@ stage() {
 # and to / in deb/rpm.
 TAR_FILES=(sard-agent restic LICENSE LICENSE.restic THIRD_PARTY_LICENSES NOTICE agent.example.yaml sard-agent.service)
 PKG_FILES=(
-  /usr/lib/sard/sard-agent /usr/lib/sard/restic /usr/bin/sard-agent
+  /usr/libexec/sard/sard-agent /usr/libexec/sard/restic /usr/bin/sard-agent
   /usr/lib/systemd/system/sard-agent.service /etc/sard/agent.example.yaml
   /usr/share/doc/sard-agent/LICENSE /usr/share/doc/sard-agent/LICENSE.restic
   /usr/share/doc/sard-agent/THIRD_PARTY_LICENSES /usr/share/doc/sard-agent/NOTICE

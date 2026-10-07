@@ -196,7 +196,7 @@ class AgentInstallApiIntegrationTest(
         val install = commands(install("?format=tar"), "install")
 
         assertTrue(install.any { "useradd" in it && "sard-agent" in it }, install.toString())
-        assertTrue(install.any { it.contains("/usr/lib/sard/") && it.contains("restic") }, install.toString())
+        assertTrue(install.any { it.contains("/usr/libexec/sard/") && it.contains("restic") }, install.toString())
         assertTrue(install.any { "/usr/lib/systemd/system/sard-agent.service" in it }, install.toString())
     }
 

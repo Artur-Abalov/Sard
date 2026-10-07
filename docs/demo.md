@@ -248,7 +248,7 @@ sudo cat /etc/sard/secrets/restic-main.pass
 
 ```bash
 sudo mkdir -p /srv/demo-data
-sudo cp -r /usr/lib/sard /srv/demo-data/programs
+sudo cp -r /usr/libexec/sard /srv/demo-data/programs
 sudo sh -c 'head -c 20M /dev/urandom > /srv/demo-data/random.bin'
 echo "demo $(date -u +%FT%TZ)" | sudo tee /srv/demo-data/hello.txt
 sudo chmod -R a+rX /srv/demo-data
@@ -315,7 +315,7 @@ umask 077
 cat > /tmp/sard-pass-copy        # вставьте строку из менеджера паролей, Enter, затем Ctrl+D
 sudo install -o sard-agent -g sard-agent -m 0600 /tmp/sard-pass-copy /var/tmp/sard-pass-copy
 rm /tmp/sard-pass-copy
-R="sudo -u sard-agent /usr/lib/sard/restic -r /srv/sard-repo/main --password-file /var/tmp/sard-pass-copy --cache-dir /var/cache/sard/restic"
+R="sudo -u sard-agent /usr/libexec/sard/restic -r /srv/sard-repo/main --password-file /var/tmp/sard-pass-copy --cache-dir /var/cache/sard/restic"
 $R snapshots
 sudo install -d -o sard-agent -g sard-agent -m 0700 /var/tmp/sard-restore
 $R restore latest --target /var/tmp/sard-restore
@@ -383,7 +383,7 @@ amd64, Docker 29.6.2), без времени на чтение и ввод; ша
 | 3. Токен и установка агента | 3 мин | <1 с | — | шага подписи нет: локальные пакеты не подписаны |
 | 4. Регистрация | 1 мин | 1 с | — | — |
 | 5. Репозиторий и копия пароля | 3 мин | 8 с | — | найден OQ-153: без удаления примера секрета каждый шаг падает — удаление внесено в текст |
-| 6. Данные и источник | 2 мин | 1 с | — | `/usr/share/doc` пуст в контейнерном Ubuntu — источник данных заменён на `/usr/lib/sard` |
+| 6. Данные и источник | 2 мин | 1 с | — | `/usr/share/doc` пуст в контейнерном Ubuntu — источник данных заменён на `/usr/libexec/sard` |
 | 7. Бэкап кнопкой | 1 мин | 2 с | — | — |
 | 8. Уведомление в Telegram | 1 мин | — (бота на стенде нет) | — | не проверено |
 | 9. Восстановление | 2 мин | 2 с | — | — |

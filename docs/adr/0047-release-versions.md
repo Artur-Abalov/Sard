@@ -57,7 +57,7 @@
 - **RPM:** ставится и обновляется (`rpm -Uvh`, работает без репозиториев) в
   проверках `install` релиза и в задаче `install-rpm` CI на Rocky 9 в
   контейнере с systemd; консоль предлагает rpm рядом с deb и tar.gz.
-- **Программы агента — в `/usr/libexec/sard/`**, а не в `/usr/lib/sard/`.
+- **Программы агента — в `/usr/libexec/sard/`** (сделано), а не в `/usr/lib/sard/`.
   Проверка на ВМ Oracle Linux 9 с SELinux enforcing (журнал сессии) показала:
   политика метит `/usr/lib/sard/*` как `lib_t`, systemd не переводит процесс
   из такого файла в домен служб `unconfined_service_t`, агент остаётся в
