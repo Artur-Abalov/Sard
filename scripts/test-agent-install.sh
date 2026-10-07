@@ -224,6 +224,8 @@ wait_online() {
     sleep 2
   done
   on_host "systemctl status sard-agent --no-pager; journalctl -u sard-agent --no-pager | tail -30" || true
+  [ "${EXPECT_SELINUX:-}" != enforcing ] ||
+    on_host "ausearch -m avc,user_avc,selinux_err -ts boot -i 2>&1 | tail -40; ls -Z /usr/lib/sard" || true
   die "agent not online with $1: $agents"
 }
 
