@@ -63,7 +63,7 @@ func TestStageRemovesItsTemporaryFileWhenWritingTheDataFails(t *testing.T) {
 	dir := t.TempDir()
 	data := []byte(strings.Repeat("x", 4096)) // well past the 1-byte limit
 
-	name, err := stage(filepath.Join(dir, "tls.key"), data, keyMode)
+	name, err := stage(filepath.Join(dir, "tls.key"), data, keyMode, nil)
 	if err == nil {
 		t.Fatal("stage: want an error when the write exceeds RLIMIT_FSIZE")
 	}

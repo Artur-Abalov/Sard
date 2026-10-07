@@ -34,6 +34,10 @@ type fakeFS struct {
 	// "rename", "createtemp", "mkdir", "syncdir", "readdir"); failPath
 	// limits it to paths that contain it.
 	failOn, failPath string
+	// failChownAt, if not zero, makes the owner change with this number
+	// (counted from 1, all paths) fail.
+	failChownAt int
+	chownCalls  int
 	// created lists every file and directory this fake made, as a path.
 	created []string
 	// opened lists the files of the secrets directory that were opened for reading.
@@ -101,6 +105,9 @@ func (f *fakeFile) Chown(uid, gid int) error {
 	if err := f.fsys.fails("chown", f.Name()); err != nil {
 		return err
 	}
+	if err := f.fsys.nthChown(f.Name()); err != nil {
+		return err
+	}
 	f.fsys.setOwner(f.Name(), uid, gid)
 	return nil
 }
@@ -150,8 +157,22 @@ func (f *fakeFS) Mkdir(path string, perm os.FileMode) error {
 	return f.OS.Mkdir(path, perm)
 }
 
+// nthChown fails the owner change that failChownAt names.
+func (f *fakeFS) nthChown(path string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.chownCalls++
+	if f.failChownAt != 0 && f.chownCalls == f.failChownAt {
+		return &fs.PathError{Op: "chown", Path: path, Err: errFakeFailure}
+	}
+	return nil
+}
+
 func (f *fakeFS) Chown(path string, uid, gid int) error {
 	if err := f.fails("chown", path); err != nil {
+		return err
+	}
+	if err := f.nthChown(path); err != nil {
 		return err
 	}
 	f.setOwner(path, uid, gid)

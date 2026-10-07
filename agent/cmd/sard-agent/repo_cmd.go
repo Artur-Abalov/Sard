@@ -33,7 +33,7 @@ func runRepo(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 func runRepoWithDeps(ctx context.Context, args []string, stdout, stderr io.Writer, deps hostDeps) int {
 	run := repoSubcommand(args)
 	if run == nil {
-		_, _ = fmt.Fprintln(stderr, "sard-agent repo: want a subcommand: init or list")
+		_, _ = fmt.Fprintln(stderr, "sard-agent repo: want a subcommand: init, list, add, show, remove or password")
 		return exitUsage
 	}
 	if hasHelpFlag(args[1:]) {
@@ -43,17 +43,15 @@ func runRepoWithDeps(ctx context.Context, args []string, stdout, stderr io.Write
 	return run(ctx, args[1:], stdout, stderr, deps)
 }
 
-// repoSubcommand is the pipeline of args[0], nil for anything but init and list.
-func repoSubcommand(args []string) func(context.Context, []string, io.Writer, io.Writer, hostDeps) int {
-	if len(args) > 0 {
-		switch args[0] {
-		case "init":
-			return runRepoInit
-		case "list":
-			return runRepoList
-		}
+// repoSubcommand is the pipeline of args[0], nil for an unknown subcommand.
+func repoSubcommand(args []string) hostCommand {
+	if len(args) == 0 {
+		return nil
 	}
-	return nil
+	return map[string]hostCommand{
+		"init": runRepoInit, "list": runRepoList, "add": runRepoAdd,
+		"show": runRepoShow, "remove": runRepoRemove, "password": runRepoPassword,
+	}[args[0]]
 }
 
 // newRestic is the wrapper for one repository of the config.
@@ -63,7 +61,7 @@ func newRestic(cfg config.Config, binary string, deps hostDeps, repo config.Repo
 		CacheDir: cfg.Restic.CacheDir,
 		Path:     deps.pathEnv,
 		Exec:     deps.exec,
-		Keys:     crypto.NewResticAES(cfg.PasswordFiles()),
+		Keys:     crypto.NewResticAES(map[string]string{repo.Name: repo.PasswordFile}),
 		ReadFile: deps.readFile,
 		RunAs:    as,
 	}, repo)

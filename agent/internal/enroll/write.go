@@ -86,11 +86,27 @@ func probeWritable(dir string) error {
 // this is the one window rule 7 cannot fully close (documented in
 // docs/sessions/2026-09-28-a2a-enroll-mechanism.md).
 func WriteIdentity(files Files, key, cert, ca []byte) error {
+	return WriteIdentityAs(files, key, cert, ca, nil)
+}
+
+// Owner is who the written files belong to when the command runs as root:
+// the service user (Р25 of docs/specs/agent/host-setup.feature). Chown is
+// os.Lchown in production; it is a field so a test is not root.
+type Owner struct {
+	UID, GID int
+	Chown    func(path string, uid, gid int) error
+}
+
+// WriteIdentityAs is WriteIdentity with an owner for the files: each
+// temporary file gets it before it is renamed, so no target path ever
+// belongs to the user who ran the command. A nil owner leaves the files
+// with the user who ran it.
+func WriteIdentityAs(files Files, key, cert, ca []byte, owner *Owner) error {
 	hadPrevious, err := anyTargetExists(files)
 	if err != nil {
 		return &Error{Class: ClassWrite, msg: "checking the existing identity failed", err: err}
 	}
-	staged, err := stageAll(files, key, cert, ca)
+	staged, err := stageAll(files, key, cert, ca, owner)
 	if err != nil {
 		removeAll(staged)
 		return err
@@ -137,7 +153,7 @@ type stagedFile struct {
 	finalPath string
 }
 
-func stageAll(files Files, key, cert, ca []byte) ([]stagedFile, error) {
+func stageAll(files Files, key, cert, ca []byte, owner *Owner) ([]stagedFile, error) {
 	specs := []struct {
 		path string
 		data []byte
@@ -152,7 +168,7 @@ func stageAll(files Files, key, cert, ca []byte) ([]stagedFile, error) {
 		if err := checkTargetReplaceable(s.path); err != nil {
 			return staged, &Error{Class: ClassWrite, msg: s.path + " exists and is not a regular file", err: err}
 		}
-		tmp, err := stage(s.path, s.data, s.mode)
+		tmp, err := stage(s.path, s.data, s.mode, owner)
 		if err != nil {
 			return staged, &Error{Class: ClassWrite, msg: "writing " + s.path + " failed", err: err}
 		}
@@ -202,7 +218,7 @@ func removeCommitted(committed []stagedFile) {
 	}
 }
 
-func stage(path string, data []byte, mode os.FileMode) (string, error) {
+func stage(path string, data []byte, mode os.FileMode, owner *Owner) (string, error) {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, writeTempPrefix+"*")
 	if err != nil {
@@ -210,12 +226,20 @@ func stage(path string, data []byte, mode os.FileMode) (string, error) {
 	}
 	name := tmp.Name()
 	_, werr := tmp.Write(data)
-	err = errors.Join(werr, tmp.Chmod(mode), tmp.Sync(), tmp.Close())
+	err = errors.Join(werr, giveTo(owner, name), tmp.Chmod(mode), tmp.Sync(), tmp.Close())
 	if err != nil {
 		_ = os.Remove(name)
 		return "", err
 	}
 	return name, nil
+}
+
+// giveTo changes the owner of a temporary file, if there is an owner.
+func giveTo(owner *Owner, path string) error {
+	if owner == nil {
+		return nil
+	}
+	return owner.Chown(path, owner.UID, owner.GID)
 }
 
 // renameFile is os.Rename, indirected so tests can fail a specific commit

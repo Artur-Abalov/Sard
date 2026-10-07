@@ -46,10 +46,14 @@ func golden(t *testing.T, name string) string {
 
 // fakeRepo is the state of one repository behind the fake restic.
 type fakeRepo struct {
+	// password, if not empty, is what the password file must hold for the
+	// repository to open; init sets it from the file it is given.
+	password      string
 	id            string
 	initialized   bool
 	wrongPassword bool   // cat config: the password does not open it
 	fatal         string // every repository command fails with this message
+	initFatal     string // init fails with this message
 	hangCat       bool   // cat config never finishes
 	hangInit      bool   // init never finishes
 	raceExists    bool   // cat config: none; init: the config file already exists
@@ -65,6 +69,8 @@ type fakeCall struct {
 	passwordFile string
 	env          []string
 	runAs        *restic.RunAs
+	// password is what the password file held when restic ran.
+	password string
 }
 
 // fakeRestic replays the golden output of restic 0.19.1 (as the A5a
@@ -115,12 +121,22 @@ func (f *fakeRestic) Run(ctx context.Context, cmd restic.Command) (int, error) {
 	sub := cmd.Args[0]
 	url := envValue(cmd.Env, "RESTIC_REPOSITORY")
 	f.mu.Lock()
-	f.calls = append(f.calls, fakeCall{sub: sub, repository: url, passwordFile: envValue(cmd.Env, "RESTIC_PASSWORD_FILE"), env: cmd.Env, runAs: cmd.RunAs})
+	f.calls = append(f.calls, fakeCall{sub: sub, repository: url, passwordFile: envValue(cmd.Env, "RESTIC_PASSWORD_FILE"), env: cmd.Env, runAs: cmd.RunAs, password: passwordOf(cmd.Env)})
 	f.mu.Unlock()
 	if sub == "version" {
 		return f.printVersion(cmd)
 	}
 	return f.runRepoCommand(ctx, cmd, sub, f.repo(url))
+}
+
+// passwordOf is the content of the password file of a restic call, without
+// the line break; "" if there is none.
+func passwordOf(env []string) string {
+	data, err := os.ReadFile(envValue(env, "RESTIC_PASSWORD_FILE"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimRight(string(data), "\r\n")
 }
 
 func (f *fakeRestic) printVersion(cmd restic.Command) (int, error) {
@@ -168,7 +184,7 @@ func (f *fakeRestic) cat(ctx context.Context, cmd restic.Command, r *fakeRepo) (
 	switch {
 	case r.hangCat:
 		return f.hang(ctx, r)
-	case r.wrongPassword:
+	case r.wrongPassword || (r.password != "" && r.initialized && r.password != passwordOf(cmd.Env)):
 		lines(cmd.Stderr, golden(f.t, "wrong-password.stderr"))
 		return 12, nil
 	case !r.initialized || r.raceExists:
@@ -180,6 +196,10 @@ func (f *fakeRestic) cat(ctx context.Context, cmd restic.Command, r *fakeRepo) (
 }
 
 func (f *fakeRestic) init(ctx context.Context, cmd restic.Command, r *fakeRepo) (int, error) {
+	if r.initFatal != "" {
+		cmd.Stderr([]byte("Fatal: " + r.initFatal))
+		return 1, nil
+	}
 	if r.hangInit {
 		close(r.initEntered)
 		return f.hang(ctx, r)
@@ -193,6 +213,7 @@ func (f *fakeRestic) init(ctx context.Context, cmd restic.Command, r *fakeRepo) 
 		return 0, nil
 	}
 	r.initialized = true
+	r.password = passwordOf(cmd.Env)
 	lines(cmd.Stdout, strings.ReplaceAll(golden(f.t, "init.json"), goldenID, r.id))
 	return 0, nil
 }

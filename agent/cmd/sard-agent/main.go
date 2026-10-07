@@ -61,6 +61,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, hostname 
 	if isRepoCommand(args) {
 		return runRepo(ctx, args[1:], stdout, stderr)
 	}
+	if isSecretCommand(args) {
+		return runSecret(ctx, args[1:], stdout, stderr)
+	}
 	return runAgentCmd(ctx, args, stdout, stderr, hostname)
 }
 

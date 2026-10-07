@@ -106,25 +106,44 @@ type Attrs struct {
 // content and no temporary file (a failed directory sync comes after the
 // rename: the new content is in place).
 func WriteFile(fsys FS, path string, data []byte, a Attrs) error {
-	dir := filepath.Dir(path)
-	tmp, err := fsys.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	tmp, err := StageFile(fsys, path, data, a)
 	if err != nil {
-		return &WriteError{Path: path, Op: "create", Err: err}
+		return err
+	}
+	return CommitFile(fsys, tmp, path)
+}
+
+// StageFile writes data to a temporary file next to path, with its owner
+// and mode, and returns the temporary name. Until CommitFile the path
+// itself is untouched; DiscardFile gives the temporary file up.
+func StageFile(fsys FS, path string, data []byte, a Attrs) (string, error) {
+	tmp, err := fsys.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return "", &WriteError{Path: path, Op: "create", Err: err}
 	}
 	if err := fill(tmp, data, a); err != nil {
 		_ = tmp.Close()
 		_ = fsys.Remove(tmp.Name())
-		return &WriteError{Path: path, Op: "write", Err: err}
+		return "", &WriteError{Path: path, Op: "write", Err: err}
 	}
-	if err := fsys.Rename(tmp.Name(), path); err != nil {
-		_ = fsys.Remove(tmp.Name())
+	return tmp.Name(), nil
+}
+
+// CommitFile renames the staged file onto path and makes the directory
+// entry durable; a failed rename removes the staged file.
+func CommitFile(fsys FS, tmp, path string) error {
+	if err := fsys.Rename(tmp, path); err != nil {
+		_ = fsys.Remove(tmp)
 		return &WriteError{Path: path, Op: "rename", Err: err}
 	}
-	if err := fsys.SyncDir(dir); err != nil {
+	if err := fsys.SyncDir(filepath.Dir(path)); err != nil {
 		return &WriteError{Path: path, Op: "sync", Err: err}
 	}
 	return nil
 }
+
+// DiscardFile removes a staged file that will not be committed.
+func DiscardFile(fsys FS, tmp string) { _ = fsys.Remove(tmp) }
 
 // fill gives the temporary file its owner and mode, then its content.
 func fill(f File, data []byte, a Attrs) error {

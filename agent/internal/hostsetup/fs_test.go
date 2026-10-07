@@ -419,3 +419,59 @@ func TestOSFileSystemChangesOwnerModeAndRemoves(t *testing.T) {
 	ok(t, real.Chmod(path, 0o640))
 	ok(t, real.Remove(path))
 }
+
+func TestStagedFileIsOwnedAndFilledBeforeItIsCommitted(t *testing.T) {
+	dir := t.TempDir()
+	rfs := newRecordingFS()
+	final := filepath.Join(dir, "restic-x.pass")
+	tmp, err := hostsetup.StageFile(rfs, final, []byte("candidate"), hostsetup.Attrs{UID: 990, GID: 990, Mode: 0o600})
+	ok(t, err)
+	if filepath.Dir(tmp) != dir || tmp == final {
+		t.Fatalf("temporary file %s", tmp)
+	}
+	if data, _ := os.ReadFile(tmp); string(data) != "candidate" {
+		t.Fatalf("content %q", data)
+	}
+	if o, _ := rfs.ownerOf(tmp); o != (owner{990, 990}) {
+		t.Fatalf("owner %+v", o)
+	}
+	if _, err := os.Stat(final); !os.IsNotExist(err) {
+		t.Fatal("the target exists before the commit")
+	}
+	ok(t, hostsetup.CommitFile(rfs, tmp, final))
+	if data, _ := os.ReadFile(final); string(data) != "candidate" {
+		t.Fatalf("committed content %q", data)
+	}
+	if o, _ := rfs.ownerOf(final); o != (owner{990, 990}) {
+		t.Fatalf("committed owner %+v", o)
+	}
+	if extra := leftovers(t, dir, "restic-x.pass"); len(extra) != 0 {
+		t.Fatalf("leftovers %v", extra)
+	}
+}
+
+func TestADiscardedStagedFileLeavesNothing(t *testing.T) {
+	dir := t.TempDir()
+	tmp, err := hostsetup.StageFile(hostsetup.OS{}, filepath.Join(dir, "x"), []byte("v"), hostsetup.Attrs{Mode: 0o600})
+	ok(t, err)
+	hostsetup.DiscardFile(hostsetup.OS{}, tmp)
+	if extra := leftovers(t, dir); len(extra) != 0 {
+		t.Fatalf("leftovers %v", extra)
+	}
+}
+
+func TestAFailedCommitRemovesTheStagedFile(t *testing.T) {
+	dir := t.TempDir()
+	final := filepath.Join(dir, "x")
+	tmp, err := hostsetup.StageFile(hostsetup.OS{}, final, []byte("v"), hostsetup.Attrs{Mode: 0o600})
+	ok(t, err)
+	rfs := newRecordingFS()
+	rfs.failOn = "rename"
+	var we *hostsetup.WriteError
+	if err := hostsetup.CommitFile(rfs, tmp, final); !errors.As(err, &we) || we.Path != final {
+		t.Fatalf("err = %v", err)
+	}
+	if extra := leftovers(t, dir); len(extra) != 0 {
+		t.Fatalf("leftovers %v", extra)
+	}
+}
