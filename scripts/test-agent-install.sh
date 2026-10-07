@@ -195,10 +195,12 @@ wait_online() {
 }
 
 # snapshot: owner, mode and content of everything the upgrade must keep.
+# agent.example.yaml is the package's own file, not the administrator's: a
+# new version may ship a new one (an unedited conffile is replaced).
 snapshot() {
   on_host 'find /etc/sard /srv/sard-repo /var/lib/sard-agent /var/cache/sard -xdev \
       -printf "%p %u:%g %m\n" | grep -v "^/var/cache/sard/restic/" | sort
-    find /etc/sard /srv/sard-repo -type f -exec sha256sum {} + | sort'
+    find /etc/sard /srv/sard-repo -type f ! -name agent.example.yaml -exec sha256sum {} + | sort'
 }
 
 check_upgrade() {
