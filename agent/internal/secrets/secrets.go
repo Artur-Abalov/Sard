@@ -10,6 +10,7 @@ package secrets
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"syscall"
@@ -151,6 +152,55 @@ func CheckFile(key, path string, agentUID uint32, stat StatFunc) error {
 		return &Error{Key: key, Path: path, Mode: info.Mode.Perm(), modeIsSet: true}
 	case info.UID != agentUID:
 		return &Error{Key: key, Path: path, Owner: info.UID, WantOwner: agentUID, ownerIsSet: true}
+	}
+	return nil
+}
+
+// MaxOwnedSize bounds what ReadOwned reads: the files it serves (env_file,
+// password_file) are a few lines.
+const MaxOwnedSize = 1 << 20
+
+// ReadOwned reads a secret file the way A1 allows it to be: a regular file
+// owned by uid with no group or other bits. The file is opened without
+// following a link and without blocking (a FIFO planted in its place does
+// not hang the command), and what it is is judged from the descriptor, not
+// from a name that may have been swapped meanwhile. It is for commands that
+// run as root and read what the service user can write to.
+func ReadOwned(path string, uid uint32) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NOCTTY|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if err := checkOwned(path, info, uid); err != nil {
+		return nil, err
+	}
+	return readBounded(f, path)
+}
+
+// readBounded reads the whole file, or fails if it is longer than the limit.
+func readBounded(f *os.File, path string) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(f, MaxOwnedSize+1))
+	if err == nil && len(data) > MaxOwnedSize {
+		return nil, fmt.Errorf("secret file %s is larger than %d bytes", path, MaxOwnedSize)
+	}
+	return data, err
+}
+
+// checkOwned is A1's rule applied to an opened file.
+func checkOwned(path string, info fs.FileInfo, uid uint32) error {
+	st, ok := info.Sys().(*syscall.Stat_t)
+	switch {
+	case !info.Mode().IsRegular() || !ok:
+		return fmt.Errorf("secret file %s is not a regular file", path)
+	case info.Mode().Perm()&groupOtherBits != 0:
+		return &Error{Path: path, Mode: info.Mode().Perm(), modeIsSet: true}
+	case st.Uid != uid:
+		return &Error{Path: path, Owner: st.Uid, WantOwner: uid, ownerIsSet: true}
 	}
 	return nil
 }

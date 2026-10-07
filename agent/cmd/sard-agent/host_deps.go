@@ -27,8 +27,11 @@ type hostDeps struct {
 	euid     uint32
 	stat     secrets.StatFunc
 	readFile func(name string) ([]byte, error)
-	writeNew func(path string, data []byte) error
-	random   io.Reader
+	// readOwned reads a secret file as A1 allows it to be: a plain file of
+	// the given uid, no group or other bits (secrets.ReadOwned).
+	readOwned func(path string, uid uint32) ([]byte, error)
+	writeNew  func(path string, data []byte) error
+	random    io.Reader
 	// openLock opens the init lock file and the config lock file.
 	openLock repoinit.OpenFunc
 	pathEnv  string
@@ -64,6 +67,7 @@ func productionHostDeps() hostDeps {
 		euid:       uint32(os.Geteuid()),
 		stat:       secrets.RealStat,
 		readFile:   os.ReadFile,
+		readOwned:  secrets.ReadOwned,
 		writeNew:   repoinit.WriteNew,
 		random:     rand.Reader,
 		openLock:   os.OpenFile,
@@ -86,5 +90,10 @@ func productionHostDeps() hostDeps {
 }
 
 func (d hostDeps) host(serviceUID uint32) repoinit.Host {
-	return repoinit.Host{UID: serviceUID, Stat: d.stat, ReadFile: d.readFile}
+	return repoinit.Host{UID: serviceUID, Stat: d.stat, ReadFile: d.ownedReader(serviceUID)}
+}
+
+// ownedReader reads files as the service user owns them (A1).
+func (d hostDeps) ownedReader(uid uint32) func(string) ([]byte, error) {
+	return func(path string) ([]byte, error) { return d.readOwned(path, uid) }
 }

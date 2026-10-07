@@ -62,10 +62,19 @@ func newRestic(cfg config.Config, binary string, deps hostDeps, repo config.Repo
 		Path:     deps.pathEnv,
 		Exec:     deps.exec,
 		Keys:     crypto.NewResticAES(map[string]string{repo.Name: repo.PasswordFile}),
-		ReadFile: deps.readFile,
+		ReadFile: deps.ownedReader(runUID(deps, as)),
 		RunAs:    as,
 	}, repo)
 }
 
 // defaultRepoTimeout bounds the whole command unless --timeout says otherwise (В7).
 const defaultRepoTimeout = 2 * time.Minute
+
+// runUID is the user restic runs as: the one asked for under sudo, the
+// caller (the service user) otherwise.
+func runUID(deps hostDeps, as *restic.RunAs) uint32 {
+	if as != nil {
+		return as.UID
+	}
+	return deps.euid
+}

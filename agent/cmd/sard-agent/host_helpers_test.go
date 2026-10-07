@@ -56,6 +56,15 @@ type setupHost struct {
 	hung   *hungInput
 	env    map[string]string
 	people []hostsetup.User
+	// readOwned and plainReads are the paths read through the owner-checked
+	// read (with the uid asked for) and through the plain one.
+	readOwned  []ownedRead
+	plainReads []string
+}
+
+type ownedRead struct {
+	path string
+	uid  uint32
 }
 
 func (h *setupHost) secretsDir() string { return h.path("secrets") }
@@ -87,6 +96,11 @@ func newSetupHost(t *testing.T) *setupHost {
 	h.deps.getenv = func(k string) string { return h.env[k] }
 	h.deps.processUser = func() (string, uint32) { return "root", 0 }
 	h.deps.stdin = h.stdin
+	h.deps.readFile = func(p string) ([]byte, error) { h.plainReads = append(h.plainReads, p); return os.ReadFile(p) }
+	h.deps.readOwned = func(p string, uid uint32) ([]byte, error) {
+		h.readOwned = append(h.readOwned, ownedRead{p, uid})
+		return os.ReadFile(p)
+	}
 	h.deps.terminal = func(io.Writer) hostsetup.Terminal { return nil }
 	h.deps.openFile = func(p string) (io.ReadCloser, error) { return os.Open(p) }
 	h.deps.lookupUser = func(name string) (hostsetup.User, error) { return users(h.people...)(name) }

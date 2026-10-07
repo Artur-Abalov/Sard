@@ -213,7 +213,7 @@ func TestThePasswordOfAFragmentRepositoryCanBeRevealed(t *testing.T) {
 
 func TestAPasswordFileThatCannotBeReadIsRefusedWithItsPath(t *testing.T) {
 	h := newSetupHost(t)
-	h.deps.readFile = func(string) ([]byte, error) { return nil, os.ErrPermission }
+	h.deps.readOwned = func(string, uint32) ([]byte, error) { return nil, os.ErrPermission }
 	code, _, stderr := h.sudo("repo", "password", "base", "--reveal", "--config", "C")
 	assertCode(t, code, exitUsage)
 	if !strings.Contains(stderr, h.path("secrets/base.pass")) {
@@ -223,3 +223,40 @@ func TestAPasswordFileThatCannotBeReadIsRefusedWithItsPath(t *testing.T) {
 
 // Rule "repo remove убирает репозиторий только из настройки хоста" is in
 // host_repo_add_test.go: it starts from a repository added by repo add.
+
+// The env_file is read by root and handed to restic, which runs as the
+// service user: it must be read as A1 allows it to be (a plain file of the
+// service user), never by a bare path.
+func TestAnEnvFileIsReadOnlyThroughTheOwnerCheckedRead(t *testing.T) {
+	h := newSetupHost(t)
+	env := h.path("secrets/base.env")
+	h.write(env, "AWS_SECRET_ACCESS_KEY="+envMarker+"\n", 0o600)
+	h.cfg.Repositories[0].EnvFile = env
+	h.saveConfig()
+	h.base().initialized = true
+	code, stdout, stderr := h.sudo("repo", "show", "base", "--config", "C")
+	assertCode(t, code, exitOK)
+	assertNoSecrets(t, stdout, stderr)
+	if len(h.readOwned) == 0 {
+		t.Fatal("the env_file was not read")
+	}
+	for _, r := range h.readOwned {
+		if r.uid != serviceUID {
+			t.Errorf("%s was read for uid %d, want %d", r.path, r.uid, serviceUID)
+		}
+	}
+	for _, p := range h.plainReads {
+		if p == env {
+			t.Fatal("the env_file was read by its bare path")
+		}
+	}
+}
+
+func TestThePasswordIsRevealedThroughTheOwnerCheckedReadToo(t *testing.T) {
+	h := newSetupHost(t)
+	code, stdout, _ := h.sudo("repo", "password", "base", "--reveal", "--config", "C")
+	assertCode(t, code, exitOK)
+	if stdout != passMarker+"\n" || len(h.readOwned) != 1 || h.readOwned[0].uid != serviceUID {
+		t.Fatalf("stdout %q, reads %+v", stdout, h.readOwned)
+	}
+}

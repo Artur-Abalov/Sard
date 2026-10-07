@@ -6,11 +6,12 @@ package enroll
 import (
 	"errors"
 	"fmt"
-	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"os"
 	"path/filepath"
 	"strconv"
 	"syscall"
+
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 )
 
 const lockSuffix = ".sard-enroll.lock"

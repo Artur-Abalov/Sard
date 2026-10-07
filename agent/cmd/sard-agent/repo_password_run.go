@@ -42,7 +42,7 @@ func revealPassword(opts hostOptions, who hostsetup.Principal, stdout, stderr io
 	if f != nil {
 		return report(stderr, "repo password", f)
 	}
-	data, err := deps.readFile(repo.PasswordFile)
+	data, err := readPasswordFile(deps, who, repo.PasswordFile)
 	if err != nil {
 		return report(stderr, "repo password", passwordFileFailure(repo.PasswordFile, err))
 	}
@@ -51,6 +51,16 @@ func revealPassword(opts hostOptions, who hostsetup.Principal, stdout, stderr io
 	_, _ = stdout.Write(data)
 	_, _ = fmt.Fprintln(stderr, "warning: the password of this repository is now on your screen, in your terminal history and in the output of any script that captures it")
 	return exitOK
+}
+
+// readPasswordFile reads the password file as A1 allows it to be (a plain
+// file of the service user). Root without a service user on the host, which
+// may still reveal (Р5), has no owner to ask for and reads it as it is.
+func readPasswordFile(deps hostDeps, who hostsetup.Principal, path string) ([]byte, error) {
+	if who.Service.Name == "" {
+		return deps.readFile(path)
+	}
+	return deps.readOwned(path, who.Service.UID)
 }
 
 func passwordFileFailure(path string, err error) *refusal.Failure {
