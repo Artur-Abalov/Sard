@@ -33,7 +33,7 @@ func runRepoInit(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	}
 	who, f := authorize(deps, "repo init", opts, false, true)
 	if f != nil {
-		return reportRepoFailure(stderr, "init", f)
+		return report(stderr, "repo init", f)
 	}
 	ctx, cancel := repoContext(ctx, deps.clock, opts.timeout)
 	defer cancel(nil)
@@ -43,7 +43,7 @@ func runRepoInit(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	}
 	unlock, f := repoinit.AcquireLock(deps.openLock, cacheDir(st.cfg, deps), st.repo)
 	if f != nil {
-		return reportRepoFailure(stderr, "init", f)
+		return report(stderr, "repo init", f)
 	}
 	defer unlock()
 	return initRepository(ctx, st, opts, stdout, stderr, deps)
@@ -81,11 +81,11 @@ func prepareInit(ctx context.Context, opts hostOptions, who hostsetup.Principal,
 	}
 	repo, index, f := findRepository(cfg, opts.name, opts.configPath)
 	if f != nil {
-		return initState{}, reportRepoFailure(stderr, "init", f)
+		return initState{}, report(stderr, "repo init", f)
 	}
 	checked, f := repoinit.Preflight(deps.host(who.Service.UID), repo, index, opts.generate)
 	if f != nil {
-		return initState{}, reportRepoFailure(stderr, "init", f)
+		return initState{}, report(stderr, "repo init", f)
 	}
 	binary, err := checkRestic(ctx, cfg, opts.configPath, deps.executable, deps.exec, runAs(who))
 	if err != nil {
@@ -111,7 +111,7 @@ func initRepository(ctx context.Context, st initState, opts hostOptions, stdout,
 		if generated != nil {
 			_, _ = fmt.Fprintf(stderr, "sard-agent repo init: the password file %s created by this command was kept and will be used when the command is repeated\n", st.repo.PasswordFile)
 		}
-		return reportRepoFailure(stderr, "init", f)
+		return report(stderr, "repo init", f)
 	}
 	printInitSuccess(stdout, st.repo, id, passwordNote(opts.generate, st.checked.PasswordMissing))
 	return exitOK

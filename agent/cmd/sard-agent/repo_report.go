@@ -22,18 +22,11 @@ var repoClassCodes = map[repoinit.Class]int{
 	repoinit.ClassWrite:      exitWrite,
 }
 
-// reportRepoFailure prints the refusal of "sard-agent repo <sub>" and
-// returns its exit code.
-func reportRepoFailure(stderr io.Writer, sub string, f *repoinit.Failure) int {
-	_, _ = fmt.Fprintf(stderr, "sard-agent repo %s: %s\n", sub, f)
-	return repoClassCodes[f.Class]
-}
-
 // reportRepoError prints an error that is not a Failure yet: an agent error.
 func reportRepoError(ctx context.Context, stderr io.Writer, sub string, err error) int {
 	var f *repoinit.Failure
 	if f = repoinit.Interruption(ctx); f != nil || errors.As(err, &f) {
-		return reportRepoFailure(stderr, sub, f)
+		return report(stderr, "repo "+sub, f)
 	}
 	_, _ = fmt.Fprintf(stderr, "sard-agent repo %s: %v\n", sub, err)
 	return exitAgentError

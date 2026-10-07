@@ -51,7 +51,7 @@ func runRepoList(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	}
 	who, f := authorize(deps, "repo list", opts, false, true)
 	if f != nil {
-		return reportRepoFailure(stderr, "list", f)
+		return report(stderr, "repo list", f)
 	}
 	ctx, cancel := repoContext(ctx, deps.clock, opts.timeout)
 	defer cancel(nil)
@@ -88,7 +88,7 @@ func inspectAll(ctx context.Context, cfg config.Config, binary string, who hosts
 // interrupt prints no table (Л9).
 func reportList(ctx context.Context, rows []listRow, asJSON bool, stdout, stderr io.Writer) int {
 	if f := repoinit.Interruption(ctx); f != nil && f.Reason == repoinit.Interrupted {
-		return reportRepoFailure(stderr, "list", f)
+		return report(stderr, "repo list", f)
 	}
 	if asJSON {
 		printListJSON(stdout, rows)

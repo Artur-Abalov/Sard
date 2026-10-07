@@ -23,7 +23,7 @@ func runRepoShow(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	}
 	who, f := authorize(deps, "repo show", opts, false, true)
 	if f != nil {
-		return reportRepoFailure(stderr, "show", f)
+		return report(stderr, "repo show", f)
 	}
 	ctx, cancel := repoContext(ctx, deps.clock, opts.timeout)
 	defer cancel(nil)
@@ -33,7 +33,7 @@ func runRepoShow(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	}
 	repo, index, f := findRepository(cfg, opts.name, opts.configPath)
 	if f != nil {
-		return reportRepoFailure(stderr, "show", f)
+		return report(stderr, "repo show", f)
 	}
 	return showRepository(ctx, cfg, repo, index, who, opts, stdout, stderr, deps)
 }
@@ -46,7 +46,7 @@ func showRepository(ctx context.Context, cfg config.Config, repo config.Reposito
 	}
 	row := inspectRepository(ctx, cfg, binary, index, who, deps)
 	if f := repoinit.Interruption(ctx); f != nil && f.Reason == repoinit.Interrupted {
-		return reportRepoFailure(stderr, "show", f)
+		return report(stderr, "repo show", f)
 	}
 	printCard(stdout, repo, row, opts.json)
 	if row.problem != nil {
