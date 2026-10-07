@@ -115,9 +115,10 @@ func Fail(reason Reason, format string, args ...any) *Failure {
 	return fail(reason, format, args...)
 }
 
-// Error is "REASON: detail"; A1's texts stand alone, as they do at start.
+// Error is "REASON: detail"; A1's texts stand alone, as they do at start,
+// and so does the text of a failure that has no reason (a config error).
 func (f *Failure) Error() string {
-	if f.Reason == SecretFileRejected {
+	if f.Reason == SecretFileRejected || f.Reason == "" {
 		return f.Detail
 	}
 	return string(f.Reason) + ": " + f.Detail

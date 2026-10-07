@@ -49,7 +49,8 @@ func TestEachUsageErrorSaysWhatIsWrong(t *testing.T) {
 		{[]string{"init", "--config", "C"}, "sard-agent repo init: the name of a repository of the agent config is required: sard-agent repo init [flags] <name>\n"},
 		{[]string{"init", "--config", "C", "main", "extra"}, "sard-agent repo init: unexpected extra argument\n"},
 		{[]string{"init", "--config", "C", "--insecure", "main"}, "sard-agent repo init: flag provided but not defined: -insecure\n"},
-		{[]string{"list", "--config", "C", "--json"}, "sard-agent repo list: flag provided but not defined: -json\n"},
+		{[]string{"list", "--config", "C", "--json", "main"}, "sard-agent repo list: unexpected extra argument\n"},
+		{[]string{"list", "--config", "C", "--insecure"}, "sard-agent repo list: flag provided but not defined: -insecure\n"},
 		{[]string{"list", "--config", "C", "--timeout", "0s"}, "sard-agent repo list: --timeout must be a positive duration, got \"0s\"\n"},
 		{[]string{"init", "--config", "C", "--timeout", "-3s", "main"}, "sard-agent repo init: --timeout must be a positive duration, got \"-3s\"\n"},
 	}

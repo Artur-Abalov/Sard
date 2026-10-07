@@ -64,6 +64,7 @@ type fakeCall struct {
 	repository   string
 	passwordFile string
 	env          []string
+	runAs        *restic.RunAs
 }
 
 // fakeRestic replays the golden output of restic 0.19.1 (as the A5a
@@ -114,7 +115,7 @@ func (f *fakeRestic) Run(ctx context.Context, cmd restic.Command) (int, error) {
 	sub := cmd.Args[0]
 	url := envValue(cmd.Env, "RESTIC_REPOSITORY")
 	f.mu.Lock()
-	f.calls = append(f.calls, fakeCall{sub: sub, repository: url, passwordFile: envValue(cmd.Env, "RESTIC_PASSWORD_FILE"), env: cmd.Env})
+	f.calls = append(f.calls, fakeCall{sub: sub, repository: url, passwordFile: envValue(cmd.Env, "RESTIC_PASSWORD_FILE"), env: cmd.Env, runAs: cmd.RunAs})
 	f.mu.Unlock()
 	if sub == "version" {
 		return f.printVersion(cmd)
@@ -239,7 +240,7 @@ type repoHost struct {
 	cfgPath string
 	restic  *fakeRestic
 	clock   *fakeEnrollClock
-	deps    repoDeps
+	deps    hostDeps
 }
 
 func (h *repoHost) path(name string) string { return filepath.Join(h.dir, name) }
@@ -272,7 +273,8 @@ func newRepoHost(t *testing.T) *repoHost {
 	if err := os.Mkdir(h.cacheDir(), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	h.deps = productionRepoDeps()
+	h.deps = productionHostDeps()
+	useTestServiceUser(&h.deps)
 	h.deps.defaultCacheDir = h.path("default-cache")
 	h.deps.clock = h.clock
 	h.deps.exec = h.restic

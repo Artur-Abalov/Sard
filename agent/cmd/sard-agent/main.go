@@ -114,7 +114,7 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 		return err
 	}
 	// A5b: no usable restic, no start — before the network (С5).
-	resticBinary, err := checkRestic(ctx, cfg, configPath, executable, restic.ProcessExecutor{})
+	resticBinary, err := checkRestic(ctx, cfg, configPath, executable, restic.ProcessExecutor{}, nil)
 	if err != nil {
 		return err
 	}

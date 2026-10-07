@@ -10,6 +10,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 )
 
@@ -20,6 +21,8 @@ type listRow struct {
 	id            string
 	initialized   bool
 	problem       *repoinit.Failure
+	// definedIn is the file of the config that defines the repository.
+	definedIn string
 }
 
 // status is the STATUS column (Л3).
@@ -41,10 +44,14 @@ func (r listRow) repositoryID() string {
 }
 
 // runRepoList is "sard-agent repo list ...": args excludes "list".
-func runRepoList(ctx context.Context, args []string, stdout, stderr io.Writer, deps repoDeps) int {
+func runRepoList(ctx context.Context, args []string, stdout, stderr io.Writer, deps hostDeps) int {
 	opts, code := parseRepoFlags("list", args, stderr, deps)
 	if code != exitOK {
 		return code
+	}
+	who, f := authorize(deps, "repo list", opts, false, true)
+	if f != nil {
+		return reportRepoFailure(stderr, "list", f)
 	}
 	ctx, cancel := repoContext(ctx, deps.clock, opts.timeout)
 	defer cancel(nil)
@@ -52,33 +59,37 @@ func runRepoList(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	if code != exitOK {
 		return code
 	}
-	binary, err := checkRestic(ctx, cfg, opts.configPath, deps.executable, deps.exec)
+	binary, err := checkRestic(ctx, cfg, opts.configPath, deps.executable, deps.exec, runAs(who))
 	if err != nil {
 		return reportRepoError(ctx, stderr, "list", err)
 	}
-	if len(cfg.Repositories) == 0 {
+	if len(cfg.Repositories) == 0 && !opts.json {
 		_, _ = fmt.Fprintf(stdout, "no repositories configured in %s\n", opts.configPath)
 		return exitOK
 	}
-	return reportList(ctx, inspectAll(ctx, cfg, binary, deps), stdout, stderr)
+	return reportList(ctx, inspectAll(ctx, cfg, binary, who, deps), opts.json, stdout, stderr)
 }
 
 // inspectAll is one row per repository of the config, in config order.
-func inspectAll(ctx context.Context, cfg config.Config, binary string, deps repoDeps) []listRow {
+func inspectAll(ctx context.Context, cfg config.Config, binary string, who hostsetup.Principal, deps hostDeps) []listRow {
 	rows := make([]listRow, len(cfg.Repositories))
 	for i := range cfg.Repositories {
-		rows[i] = inspectRepository(ctx, cfg, binary, i, deps)
+		rows[i] = inspectRepository(ctx, cfg, binary, i, who, deps)
 	}
 	return rows
 }
 
 // reportList prints the table and one message per problem row; an
 // interrupt prints no table (Л9).
-func reportList(ctx context.Context, rows []listRow, stdout, stderr io.Writer) int {
+func reportList(ctx context.Context, rows []listRow, asJSON bool, stdout, stderr io.Writer) int {
 	if f := repoinit.Interruption(ctx); f != nil && f.Reason == repoinit.Interrupted {
 		return reportRepoFailure(stderr, "list", f)
 	}
-	printListTable(stdout, rows)
+	if asJSON {
+		printListJSON(stdout, rows)
+	} else {
+		printListTable(stdout, rows)
+	}
 	for _, r := range rows {
 		if r.problem != nil {
 			_, _ = fmt.Fprintf(stderr, "%s: %s\n", r.name, r.problem)
@@ -89,10 +100,10 @@ func reportList(ctx context.Context, rows []listRow, stdout, stderr io.Writer) i
 
 // inspectRepository is one row (Л6): the checks of repo init before the
 // backend, then restic cat config. Once ctx has ended nothing more runs.
-func inspectRepository(ctx context.Context, cfg config.Config, binary string, index int, deps repoDeps) listRow {
+func inspectRepository(ctx context.Context, cfg config.Config, binary string, index int, who hostsetup.Principal, deps hostDeps) listRow {
 	repo := cfg.Repositories[index]
-	row := listRow{name: repo.Name, backend: repo.Backend()}
-	checked, f := repoinit.Preflight(deps.host(), repo, index, false)
+	row := listRow{name: repo.Name, backend: repo.Backend(), definedIn: cfg.RepositorySource(repo.Name)}
+	checked, f := repoinit.Preflight(deps.host(who.Service.UID), repo, index, false)
 	if f == nil {
 		f = repoinit.Interruption(ctx)
 	}
@@ -101,7 +112,7 @@ func inspectRepository(ctx context.Context, cfg config.Config, binary string, in
 		return row
 	}
 	target := repoTarget(repo, checked)
-	row.id, row.initialized, row.problem = repoinit.Inspect(ctx, newRestic(cfg, binary, deps, repo), target)
+	row.id, row.initialized, row.problem = repoinit.Inspect(ctx, newRestic(cfg, binary, deps, repo, runAs(who)), target)
 	return row
 }
 

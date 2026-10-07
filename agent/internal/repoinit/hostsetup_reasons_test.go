@@ -45,3 +45,10 @@ func TestFailureErrorIsReasonAndDetail(t *testing.T) {
 		t.Fatalf("Error() = %q", got)
 	}
 }
+
+func TestAFailureWithoutAReasonIsItsDetailAlone(t *testing.T) {
+	f := &repoinit.Failure{Class: repoinit.ClassUsage, Detail: "reading config x: boom"}
+	if f.Error() != "reading config x: boom" {
+		t.Fatalf("Error() = %q", f.Error())
+	}
+}
