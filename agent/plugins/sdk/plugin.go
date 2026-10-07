@@ -104,6 +104,12 @@ type Host interface {
 	Log(level Level, text string)
 }
 
+// Per-step state. Within one step the agent passes the same Host to Prepare,
+// Dump and Stream, and calls Dump after every Prepare that returned nil, even
+// when the step's context was cancelled meanwhile. Hosts of different steps
+// are distinct values comparable with ==, so a plugin may keep per-step state
+// keyed by its Host; it must remove that state in Dump.
+
 // Plugin is a backup source: a database, a directory tree, a device config.
 type Plugin interface {
 	// Name is the unique plugin identifier, e.g. "postgresql".

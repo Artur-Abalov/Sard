@@ -23,11 +23,12 @@ const archiveSignature = "PGDMP"
 // Stream); the global objects are dumped now, into memory, and stored as an
 // extra snapshot after the dump of the database (F1 ПГ14, ПГ17).
 func (p Plugin) Dump(ctx context.Context, h sdk.Host, cfg sdk.Config) (sdk.Dump, error) {
+	// First, so that no failure below leaves the state of the step behind.
+	v, ok := prepared.LoadAndDelete(h)
 	c, err := parse(cfg)
 	if err != nil {
 		return sdk.Dump{}, err
 	}
-	v, ok := prepared.LoadAndDelete(h)
 	if !ok {
 		return sdk.Dump{}, errNotPrepared
 	}
