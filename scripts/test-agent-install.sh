@@ -27,6 +27,14 @@
 # SERVER_IMAGE (default sard-server:e2e) is the server, run with PostgreSQL.
 # Needs Docker with privileged containers (systemd). HOST_BUILD_FLAGS are
 # extra `docker build` flags for the host image (a proxy, for instance).
+#
+# AGENT_HOST_SSH="<ssh arguments>" uses a machine instead of a container: a
+# virtual machine of scripts/test-agent-install-vm.sh, which reaches the
+# server through ports 8080 and 9090 published on the loopback of this host
+# (sard-server in its /etc/hosts). EXPECT_SELINUX=enforcing then also
+# requires SELinux enforcing and no denial (ausearch -m avc) after the
+# install and after the upgrade: a container cannot show either, its host's
+# kernel decides (docs/adr/0047-release-versions.md).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -76,7 +84,15 @@ cleanup() {
 # KEEP=1 leaves the containers of a failed run for a look around.
 trap '[ -n "${KEEP:-}" ] || cleanup' EXIT
 
-on_host() { docker exec "$HOST" sh -c "$1"; }
+if [ -n "${AGENT_HOST_SSH:-}" ]; then
+  # shellcheck disable=SC2086 # AGENT_HOST_SSH is a list of ssh arguments
+  on_host() { ssh -n $AGENT_HOST_SSH "$1"; }
+  # shellcheck disable=SC2086
+  copy_to_host() { ssh $AGENT_HOST_SSH "cat >'$2'" <"$1"; }
+else
+  on_host() { docker exec "$HOST" sh -c "$1"; }
+  copy_to_host() { docker cp "$1" "$HOST:$2"; }
+fi
 
 # expect <what> <command> <wanted output>
 expect() {
@@ -90,7 +106,9 @@ start_server() {
   docker network create "$NET" >/dev/null
   docker run -d --name "$RUN_ID-db" --network "$NET" --network-alias db \
     -e POSTGRES_DB=sard -e POSTGRES_USER=sard -e POSTGRES_PASSWORD=sard "$POSTGRES_IMAGE" >/dev/null
-  docker run -d --name "$RUN_ID-server" --network "$NET" --network-alias sard-server \
+  local publish=()
+  [ -z "${AGENT_HOST_SSH:-}" ] || publish=(-p 127.0.0.1:8080:8080 -p 127.0.0.1:9090:9090)
+  docker run -d --name "$RUN_ID-server" --network "$NET" --network-alias sard-server "${publish[@]}" \
     -e SARD_DB_URL=jdbc:postgresql://db:5432/sard -e SARD_DB_USER=sard -e SARD_DB_PASSWORD=sard \
     -e SARD_PKI_SERVER_NAMES=sard-server -e SARD_AGENT_ENDPOINT=sard-server:9090 \
     -e SARD_ADMIN_PASSWORD="$ADMIN_PASSWORD" "$SERVER_IMAGE" >/dev/null
@@ -98,6 +116,12 @@ start_server() {
 
 start_host() {
   local distro="$1"
+  if [ -n "${AGENT_HOST_SSH:-}" ]; then
+    wait_for "the machine" true
+    copy_to_host "$OLD_PKG" "/root/old.$FAMILY"
+    copy_to_host "$NEW_PKG" "/root/new.$FAMILY"
+    return
+  fi
   local tag="sard-pkgtest:${distro//[:\/]/-}"
   docker build -q ${HOST_BUILD_FLAGS:-} --build-arg DISTRO="$distro" -t "$tag" \
     -f "$ROOT/test/packages/$HOST_DOCKERFILE" "$ROOT/test/packages" >/dev/null
@@ -106,8 +130,8 @@ start_host() {
     "$tag" >/dev/null
   wait_for "systemd on $distro" 'systemctl is-system-running | grep -Eq "running|degraded"'
   # Not /tmp: Debian 13 mounts a tmpfs there at boot, over what docker cp writes.
-  docker cp "$OLD_PKG" "$HOST:/root/old.$FAMILY"
-  docker cp "$NEW_PKG" "$HOST:/root/new.$FAMILY"
+  copy_to_host "$OLD_PKG" "/root/old.$FAMILY"
+  copy_to_host "$NEW_PKG" "/root/new.$FAMILY"
 }
 
 # wait_for <what> <host command>: up to 120 s.
@@ -143,6 +167,15 @@ check_fresh_install() {
   sleep 60
   expect "no restarts without enrollment" "systemctl show -p NRestarts --value sard-agent" "0"
   expect "empty journal of the unit" "journalctl -u sard-agent --no-pager -q | wc -l" "0"
+}
+
+# check_selinux <when>: with EXPECT_SELINUX=enforcing, SELinux enforces and
+# has denied nothing since boot; the context sard-agent runs in is reported.
+check_selinux() {
+  [ "${EXPECT_SELINUX:-}" = enforcing ] || return 0
+  expect "SELinux $1" "getenforce" "Enforcing"
+  expect "SELinux denials $1" "ausearch -m avc,user_avc,selinux_err -ts boot 2>&1" "<no matches>"
+  say "sard-agent runs as: $(on_host "ps -eZ | awk '/sard-agent\$/ {print \$1}'" || true)"
 }
 
 # configure_and_enroll: what docs/operations/agent-enroll.md and repo-init.md tell an administrator.
@@ -227,7 +260,9 @@ for distro in "$@"; do
   start_host "$distro"
   check_fresh_install
   configure_and_enroll
+  check_selinux "after install"
   check_upgrade
+  check_selinux "after upgrade"
   cleanup
 done
 say "all hosts passed"

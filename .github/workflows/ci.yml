@@ -10,8 +10,9 @@
 #
 #   packages ──┬── server        seam tests run the packaged agent
 #              ├── server-image  jar once (console included), image from that jar
-#              └──────┴── e2e    that image; agent images from the packages
-#              └──────┴── install-rpm  the rpm on Oracle Linux/Rocky, systemd
+#              ├──────┼── e2e          that image; agent images from the packages
+#              ├──────┼── install-rpm  the rpm on Oracle Linux/Rocky, systemd
+#              └──────┴── selinux-vm   the same on an Oracle Linux 9 VM, SELinux enforcing
 name: CI
 
 # A change that touches only documentation runs no job: nothing in the
@@ -330,3 +331,40 @@ jobs:
         run: make package DIST="$PWD/dist-new" ARCHES=amd64 VERSION=v99.0.0
       - name: install, enroll, upgrade
         run: OLD_DIST=dist-old NEW_DIST=dist-new scripts/test-agent-install.sh "${{ matrix.distro }}"
+
+  selinux-vm:
+    # SELinux enforcing needs a kernel of its own: the same install, enroll and
+    # upgrade as install-rpm, on an Oracle Linux 9 virtual machine (qemu with
+    # the runner's KVM), and no denial in the audit log (ADR 0047).
+    needs: [packages, server-image]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: tools/go.mod
+          cache-dependency-path: "**/go.sum"
+      - name: KVM for the runner user, qemu, rpm
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils cloud-image-utils rpm
+          test -w /dev/kvm
+      - uses: actions/download-artifact@v7
+        with:
+          name: sard-agent-packages
+          path: dist-old
+      - uses: actions/download-artifact@v7
+        with:
+          name: sard-server-image
+          path: ${{ runner.temp }}
+      - run: docker load -i "$RUNNER_TEMP/sard-server-image.tar"
+      - name: package to upgrade to
+        env:
+          REQUIRE_RPM: "1"
+        run: make package DIST="$PWD/dist-new" ARCHES=amd64 VERSION=v99.0.0
+      - name: install, enroll, upgrade with SELinux enforcing
+        run: OLD_DIST=dist-old NEW_DIST=dist-new scripts/test-agent-install-vm.sh
