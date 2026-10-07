@@ -63,8 +63,13 @@ func OpenDir(fsys FS, path string, mk *Make) (Dir, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	return walk(cur, components(path), mk)
+}
+
+// walk opens the names one after the other from cur, which it closes along
+// with every directory it passes; it returns the paths it had to create.
+func walk(cur Dir, names []string, mk *Make) (Dir, []string, error) {
 	var created []string
-	names := components(path)
 	for i, name := range names {
 		next, made, err := step(cur, name, mk, i == len(names)-1)
 		_ = cur.Close()
