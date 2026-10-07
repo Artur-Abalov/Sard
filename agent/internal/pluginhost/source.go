@@ -64,31 +64,50 @@ func (s *Source) Backup(ctx context.Context, cfg sdk.Config, repo restic.Reposit
 		return restic.BackupSummary{}, err
 	}
 	h := &host{secrets: s.secrets, r: r}
-	h.enter(agentv1.StepPhase_STEP_PHASE_PREPARING)
-	if err := s.plugin.Prepare(ctx, h, cfg); err != nil {
-		return restic.BackupSummary{}, fmt.Errorf("prepare: %w", err)
-	}
-	h.enter(agentv1.StepPhase_STEP_PHASE_DUMPING)
-	d, err := s.plugin.Dump(ctx, h, cfg)
+	d, err := s.prepareAndDump(ctx, h, cfg)
 	if err != nil {
-		return restic.BackupSummary{}, fmt.Errorf("dump: %w", err)
+		return restic.BackupSummary{}, err
 	}
 	merged, err := s.withPluginTags(tags, d.Tags)
 	if err != nil {
 		return restic.BackupSummary{}, err
 	}
 	h.enter(agentv1.StepPhase_STEP_PHASE_UPLOADING)
+	sum, err := s.upload(ctx, h, cfg, repo, d, merged, r)
+	if err != nil {
+		return sum, err
+	}
+	return s.backupExtra(ctx, repo, tags, sum, d.Extra)
+}
+
+// upload stores the dump itself: the paths or the stream. A failure of the
+// stream is the plugin's, any other the repository's.
+func (s *Source) upload(ctx context.Context, h *host, cfg sdk.Config, repo restic.Repository, d sdk.Dump, tags []string, r Reporter) (restic.BackupSummary, error) {
 	var streamErr error
-	sum, err := repo.Backup(ctx, s.request(h, cfg, d, merged, &streamErr), func(p restic.Progress) {
+	sum, err := repo.Backup(ctx, s.request(h, cfg, d, tags, &streamErr), func(p restic.Progress) {
 		r.ProgressFiles(agentv1.StepPhase_STEP_PHASE_UPLOADING, p.BytesDone, p.TotalBytes, p.FilesDone, p.TotalFiles)
 	})
 	switch {
-	case err != nil && streamErr != nil && errors.Is(err, streamErr):
+	case err == nil:
+		return sum, nil
+	case streamErr != nil && errors.Is(err, streamErr):
 		return sum, err // the plugin's failure, not the repository's
-	case err != nil:
-		return sum, &repositoryError{err}
 	}
-	return s.backupExtra(ctx, repo, tags, sum, d.Extra)
+	return sum, &repositoryError{err}
+}
+
+// prepareAndDump runs Prepare (PREPARING) and Dump (DUMPING).
+func (s *Source) prepareAndDump(ctx context.Context, h *host, cfg sdk.Config) (sdk.Dump, error) {
+	h.enter(agentv1.StepPhase_STEP_PHASE_PREPARING)
+	if err := s.plugin.Prepare(ctx, h, cfg); err != nil {
+		return sdk.Dump{}, fmt.Errorf("prepare: %w", err)
+	}
+	h.enter(agentv1.StepPhase_STEP_PHASE_DUMPING)
+	d, err := s.plugin.Dump(ctx, h, cfg)
+	if err != nil {
+		return sdk.Dump{}, fmt.Errorf("dump: %w", err)
+	}
+	return d, nil
 }
 
 // backupExtra stores the extra files of a dump, each as a snapshot of its own
