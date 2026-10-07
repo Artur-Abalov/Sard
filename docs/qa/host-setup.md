@@ -96,6 +96,9 @@ pid() { systemctl show -p MainPID --value sard-agent; }
    → `exit=2`; `PRIVILEGES_REQUIRED`, `sudo`.
 3. `sudo -u sard-agent $AG secret list; echo "exit=$?"` → `exit=0`.
 4. `snap > "$OUT/s0"`; повторить шаги 1–3; `snap | diff - "$OUT/s0"` → пусто.
+4а. Посторонний с отсутствующим конфигом (поправка П1):
+    `$AG secret list --config /nonexistent.yaml; echo "exit=$?"` → `exit=2`,
+    `PRIVILEGES_REQUIRED`, ошибки конфига нет.
 
 ## Часть 2. Секреты
 
@@ -112,7 +115,8 @@ pid() { systemctl show -p MainPID --value sard-agent; }
    → `root sard-agent 750` и `root sard-agent 640`;
    `sudo cmp <(printf '%s' "$SECRET") /etc/sard/secrets/db` → совпадают;
    `audit "$T"` → одна строка с `secret db`, `added`, вашим именем и uid, без
-   `$SECRET`; основной конфиг не изменён (`sudo sha256sum /etc/sard/agent.yaml`
+   `$SECRET`; `sudo journalctl -t sard-agent --since "$T" -o json | jq -r '[.SYSLOG_FACILITY, .PRIORITY] | @tsv'`
+   → `10	5` (authpriv, notice; поправка П8); основной конфиг не изменён (`sudo sha256sum /etc/sard/agent.yaml`
    до и после).
 8. С терминала: `sudo $AG secret set db2` → дважды запрос без эха (символы не
    видны); ввести разные значения → `exit=2`, `SECRET_MISMATCH`, файла
@@ -130,7 +134,9 @@ pid() { systemctl show -p MainPID --value sard-agent; }
     → `exit=2`, `SECRET_TOO_LARGE`; то же с 65536 байтами → `exit=0`
     (затем `sudo $AG secret remove big`).
 13. Имена: `printf x | sudo $AG secret set ../x --stdin`, `… set db.pass …`,
-    `… set -db …` → `exit=2`, `NAME_INVALID`.
+    `printf x | sudo $AG secret set --stdin -- -db` → `exit=2`, `NAME_INVALID`.
+    `printf x | sudo $AG secret set -db --stdin` → `exit=2` без `NAME_INVALID`
+    (разобрано как флаг, поправка П3).
 14. `sudo $AG secret list` → `exit=0`; заголовок `NAME DEFINED_IN`, строки
     `db`, `db2`, `db3` с `/etc/sard/agent.d/secret-….yaml`; значений нет.
     `sudo $AG secret list --json | jq -r '.secrets[].name'` → `db db2 db3`.
