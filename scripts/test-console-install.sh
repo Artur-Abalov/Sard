@@ -270,7 +270,9 @@ upgrade_flow() {
   if [[ "$old_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     [ "$(api GET /api/v1/agents | jq -r '.items[0].outdated')" = true ] || die "the old agent is not marked outdated"
   fi
-  before="$(on_host 'find /etc/sard -type f -exec sha256sum {} + | sort')"
+  # agent.example.yaml is the package's own file, not the administrator's: a
+  # new version may ship a new one (an unedited conffile is replaced).
+  before="$(on_host 'find /etc/sard -type f ! -name agent.example.yaml -exec sha256sum {} + | sort')"
   id="$AGENT_ID"
   STEPS="$(steps "/api/v1/agents/$id/upgrade?format=$FAMILY")"
   say "upgrade steps: $(kinds_of "$STEPS")"
@@ -278,7 +280,7 @@ upgrade_flow() {
   run_steps download checksum upgrade
   wait_online "$new_version"
   [ "$AGENT_ID" = "$id" ] || die "the upgrade changed the agent: $id -> $AGENT_ID"
-  after="$(on_host 'find /etc/sard -type f -exec sha256sum {} + | sort')"
+  after="$(on_host 'find /etc/sard -type f ! -name agent.example.yaml -exec sha256sum {} + | sort')"
   [ "$before" = "$after" ] || die "the upgrade changed files of /etc/sard"
   [ "$(api GET /api/v1/agents | jq -r '.items[0].outdated')" = false ] || die "the upgraded agent is still marked outdated"
   say "ok: same agent, new version, configuration and keys unchanged"

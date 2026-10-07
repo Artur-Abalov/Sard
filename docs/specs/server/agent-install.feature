@@ -364,7 +364,7 @@
     @http
     Сценарий: Установка из архива даёт ту же раскладку, что deb
       Когда администратор запрашивает сведения об установке с format tar
-      Тогда шаг install создаёт пользователя sard-agent, кладёт sard-agent и restic в usr lib sard и ставит unit
+      Тогда шаг install создаёт пользователя sard-agent, кладёт sard-agent и restic в usr libexec sard и ставит unit
       И создаёт каталоги etc sard tls, etc sard secrets и кэш restic с владельцем sard-agent и правами 0700
 
     # [В2]
@@ -702,7 +702,7 @@
     Сценарий: Обновление из архива заменяет бинарники и перезапускает работающую службу
       Дано агент X прислал Register с arch amd64
       Когда администратор запрашивает обновление агента X в формате tar
-      Тогда шаги заменяют usr lib sard sard-agent и usr lib sard restic
+      Тогда шаги заменяют usr libexec sard sard-agent и usr libexec sard restic
       И последний шаг перезапускает службу, только если она работает
 
     # [Р1]

@@ -185,3 +185,16 @@ func TestLoad(t *testing.T) {
 		t.Fatalf("missing file err = %v", err)
 	}
 }
+func TestExampleConfigDoesNotPinResticPath(t *testing.T) {
+	data, err := os.ReadFile("../../../deploy/agent/agent.example.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Restic.Path != "" {
+		t.Errorf("example pins restic.path = %q; restic must be found next to sard-agent (ADR 0017)", cfg.Restic.Path)
+	}
+}
