@@ -118,3 +118,20 @@ func TestFailedExtraFileKeepsTheMainSnapshotAndNamesTheFile(t *testing.T) {
 		t.Errorf("summary = %+v", sum)
 	}
 }
+
+// F1 ПГ11, ПГ17f: a tag of an extra file that is a tag of the step fails the
+// step after the main snapshot: the file is not stored, the result keeps the
+// main snapshot and the error names the tag.
+func TestExtraFileTagOfAStepTagFailsKeepingTheMainSnapshot(t *testing.T) {
+	r := &seqRepo{sums: []restic.BackupSummary{{SnapshotID: "main", RepositoryID: "rid", TotalBytes: 100}, {SnapshotID: "globals", TotalBytes: 5}}}
+	sum, err := newSource(t, withExtra(globals)).Backup(context.Background(), []byte(`{}`), r, []string{"run=7", "fake.format=x"}, &reporter{})
+	if err == nil || !strings.Contains(err.Error(), "fake.format") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(r.requests) != 1 {
+		t.Errorf("restic backups = %d, want 1", len(r.requests))
+	}
+	if sum.SnapshotID != "main" || sum.TotalBytes != 100 {
+		t.Errorf("summary = %+v, want the main snapshot only", sum)
+	}
+}
