@@ -178,12 +178,15 @@ verify() {
   dpkg-deb -c "$deb" | awk '{print $6}' | sed 's|^\.||' | require "$(basename "$deb")" "${PKG_FILES[@]}"
   dpkg-deb -c "$deb" | awk '{print $6}' | sed 's|^\.||; s|/$||' | forbid "$(basename "$deb")" /var/cache /var/cache/sard "$CACHE_DIR"
   dpkg-deb --ctrl-tarfile "$deb" | tar -xO ./postinst | check_cache_dir "$(basename "$deb")"
+  # restic's sftp backend runs ssh (ADR 0047).
+  [ "$(dpkg-deb -f "$deb" Depends)" = openssh-client ] || die "$(basename "$deb"): Depends must be openssh-client"
   dpkg-deb -f "$deb" Suggests | check_suggests "$(basename "$deb")" postgresql-client "$(dpkg-deb -f "$deb" Depends Pre-Depends Recommends)"
   rpm="$(ls "$DIST"/sard-agent-*."$( [ "$arch" = amd64 ] && echo x86_64 || echo aarch64)".rpm)"
   if command -v rpm >/dev/null; then
     rpm -qlp "$rpm" 2>/dev/null | require "$(basename "$rpm")" "${PKG_FILES[@]}"
     rpm -qlp "$rpm" 2>/dev/null | forbid "$(basename "$rpm")" /var/cache /var/cache/sard "$CACHE_DIR"
     rpm -qp --scripts "$rpm" 2>/dev/null | check_cache_dir "$(basename "$rpm")"
+    rpm -qp --requires "$rpm" 2>/dev/null | grep -qx 'openssh-clients' || die "$(basename "$rpm"): must require openssh-clients"
     rpm -qp --suggests "$rpm" 2>/dev/null | check_suggests "$(basename "$rpm")" postgresql "$(rpm -qp --requires --recommends "$rpm" 2>/dev/null)"
   else
     [ -z "${REQUIRE_RPM:-}" ] || die "rpm tool required (REQUIRE_RPM set)"

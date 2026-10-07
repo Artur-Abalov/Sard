@@ -5,7 +5,7 @@
 
 Ветка `ccr-879211c4-z3mifb`, база — `main` @ `73f5be5` (утверждённая спецификация F1).
 Спецификация — `docs/specs/agent/postgresql-plugin.feature`, процедура —
-`docs/qa/postgresql-plugin.md`, решения — `docs/adr/0047-postgresql-plugin.md`.
+`docs/qa/postgresql-plugin.md`, решения — `docs/adr/0048-postgresql-plugin.md`.
 
 ## Что сделано
 
@@ -20,7 +20,7 @@
   память), Stream (`pg_dump` потоком в restic, проверка `PGDMP`), собственный
   запуск процессов, RESTORE отложен.
 - **упаковка**: `Suggests` в deb и rpm; проверка в `scripts/package-agent.sh`.
-- **docs**: `docs/plugins/postgresql.md`, ADR 0047, пример
+- **docs**: `docs/plugins/postgresql.md`, ADR 0048, пример
   `examples/workflows/postgres-nightly.yaml`, `docs/dependencies.md`.
 - **e2e**: образ агента на `postgres:18` и `postgres:14`
   (`test/e2e/agent/Dockerfile.postgres`, `make e2e-pg-agent-images`),

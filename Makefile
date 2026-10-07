@@ -46,6 +46,11 @@ E2E_STAND_AGENT_IMAGE ?= sard-agent-stand:e2e
 # The agent on the official postgres image (F1 ПГ20): pg_dump 18, and 14 for the old-client scenario.
 E2E_PG18_AGENT_IMAGE ?= sard-agent-pg18:e2e
 E2E_PG14_AGENT_IMAGE ?= sard-agent-pg14:e2e
+# The stand's SFTP server (test/e2e/sftp, ADR 0047).
+E2E_SFTP_IMAGE ?= sard-sftp:e2e
+# Extra `docker buildx build` flags for the stand images (apt): proxy settings
+# and the "build-ca" secret behind a TLS-intercepting proxy.
+E2E_BUILD_FLAGS ?=
 
 GO_TOOLS := \
 	github.com/bufbuild/buf/cmd/buf \
@@ -101,7 +106,7 @@ image: package server-jar
 define agent_image
 	rm -rf $(E2E_BUILD)/$(3) && mkdir -p $(E2E_BUILD)/$(3)/empty
 	tar -xzf $(1)/sard-agent_$(VERSION)_linux_$(E2E_ARCH).tar.gz --strip-components=1 -C $(E2E_BUILD)/$(3)
-	docker buildx build --load $(5) -f $(or $(4),test/e2e/agent/Dockerfile) -t $(2) $(E2E_BUILD)/$(3)
+	docker buildx build $(E2E_BUILD_FLAGS) --load $(5) -f $(or $(4),test/e2e/agent/Dockerfile) -t $(2) $(E2E_BUILD)/$(3)
 endef
 
 ## e2e-images: build the release and stand packages and the jar once, then assemble the e2e images
@@ -115,10 +120,11 @@ e2e-images:
 e2e-assemble: e2e-agent-images e2e-pg-agent-images
 	$(MAKE) server-image SERVER_IMAGE=$(E2E_SERVER_IMAGE)
 
-## e2e-agent-images: the release and the stand agent images from the tar.gz in DIST and STAND_DIST
+## e2e-agent-images: the release and the stand agent images from the tar.gz in DIST and STAND_DIST, and the stand's SFTP server
 e2e-agent-images:
 	$(call agent_image,$(DIST),$(E2E_AGENT_IMAGE),agent-image)
 	$(call agent_image,$(STAND_DIST),$(E2E_STAND_AGENT_IMAGE),stand-agent-image)
+	docker buildx build $(E2E_BUILD_FLAGS) --load -t $(E2E_SFTP_IMAGE) test/e2e/sftp
 
 ## e2e-pg-agent-images: the agent on postgres:18 and on postgres:14 (test/e2e/agent/Dockerfile.postgres) from the tar.gz in DIST
 e2e-pg-agent-images:
@@ -128,8 +134,8 @@ e2e-pg-agent-images:
 ## e2e-test: the end-to-end tests against the assembled images (needs Docker)
 e2e-test:
 	$(GRADLE) :e2e:test -Pe2e.serverImage=$(E2E_SERVER_IMAGE) -Pe2e.agentImage=$(E2E_AGENT_IMAGE) \
-		-Pe2e.standAgentImage=$(E2E_STAND_AGENT_IMAGE) -Pe2e.pg18AgentImage=$(E2E_PG18_AGENT_IMAGE) \
-		-Pe2e.pg14AgentImage=$(E2E_PG14_AGENT_IMAGE) -Pe2e.version=$(VERSION)
+		-Pe2e.standAgentImage=$(E2E_STAND_AGENT_IMAGE) -Pe2e.sftpImage=$(E2E_SFTP_IMAGE) \
+		-Pe2e.pg18AgentImage=$(E2E_PG18_AGENT_IMAGE) -Pe2e.pg14AgentImage=$(E2E_PG14_AGENT_IMAGE) -Pe2e.version=$(VERSION)
 
 ## e2e: build the images, then run the end-to-end tests (needs Docker)
 e2e: e2e-images

@@ -2,7 +2,7 @@
 
 Сценарии: `docs/specs/agent/postgresql-plugin.feature` (утверждено
 владельцем 2026-10-07: решения ПГ1–ПГ22 и ПГ17a–ПГ17j приняты, ПГ17
-изменено; OQ-154…OQ-165). Здесь вручную проходятся сценарии с тегом
+изменено; OQ-158…OQ-169). Здесь вручную проходятся сценарии с тегом
 `@qa`; остальные проверяют тесты `@unit`, `@restic`, `@register`, `@doc`,
 `@e2e` с теми же названиями.
 
@@ -112,13 +112,13 @@ for p in "55432 app" "55433 restored"; do
 done
 ```
 
-    → psql с глобальными объектами печатает лишь ошибки «role "postgres"
-    already exists» (если есть), остальное без `ERROR`; `head` печатает
-    `PGDMP`; `rc=0`; обе базы дают одинаковые `100000|<md5>`, `42`,
-    владелец `app_owner`, одинаковый список ролей и членство `app_rw>app_owner`.
-    `PGPASSWORD=qa-rw-pass psql -h 127.0.0.1 -p 55433 -U app_rw -d restored -c 'select 1'`
-    → вход отклонён (роль без пароля, ПГ17c); после
-    `q 55433 restored "alter role app_rw password 'qa-rw-pass'"` — вход проходит.
+   → psql с глобальными объектами печатает лишь ошибки «role "postgres"
+   already exists» (если есть), остальное без `ERROR`; `head` печатает
+   `PGDMP`; `rc=0`; обе базы дают одинаковые `100000|<md5>`, `42`,
+   владелец `app_owner`, одинаковый список ролей и членство `app_rw>app_owner`.
+   `PGPASSWORD=qa-rw-pass psql -h 127.0.0.1 -p 55433 -U app_rw -d restored -c 'select 1'`
+   → вход отклонён (роль без пароля, ПГ17c); после
+   `q 55433 restored "alter role app_rw password 'qa-rw-pass'"` — вход проходит.
 12а. **Пароли ролей без суперпользователя.** `N0=$(snaps); run $(src "$(cfg '{"globals_role_passwords":true}')")`
     → `failed`; `phase` `preparing`; `message` называет роль `backup`,
     `globals_role_passwords` и суперпользователя; `snaps` = `N0`.
@@ -134,13 +134,13 @@ A -d app -c "grant usage on schema audit to limited; grant select on t, audit.a,
 N0=$(snaps); run $(src "$(cfg '{"user":"limited"}')")
 ```
 
-    → `failed`; `message` называет `pg_dump` и `secret_t`
-    (`permission denied`); `backup` — `null`; `snaps` = `N0`;
-    `rs list locks | wc -l` → `0`. В логе шага
-    (`curl -sS -b $QA/jf "$API/runs/$RUN/steps/<step-id>/logs"`) есть строка
-    WARN, называющая `limited` и `pg_read_all_data`.
-    Затем `run $(src "$(cfg '{"user":"limited","exclude_tables":["secret_t"]}')")`
-    → `succeeded`. Роль `backup` в этом шаге не меняется.
+   → `failed`; `message` называет `pg_dump` и `secret_t`
+   (`permission denied`); `backup` — `null`; `snaps` = `N0`;
+   `rs list locks | wc -l` → `0`. В логе шага
+   (`curl -sS -b $QA/jf "$API/runs/$RUN/steps/<step-id>/logs"`) есть строка
+   WARN, называющая `limited` и `pg_read_all_data`.
+   Затем `run $(src "$(cfg '{"user":"limited","exclude_tables":["secret_t"]}')")`
+   → `succeeded`. Роль `backup` в этом шаге не меняется.
 
 ## Часть 3. Отказы подготовки
 
@@ -168,9 +168,9 @@ mkdir -p $QA/oldpg; printf '#!/bin/sh\necho "pg_dump (PostgreSQL) 16.4"\n' > $QA
 ln -sf "$(command -v psql)" $QA/oldpg/psql; chmod +x $QA/oldpg/pg_dump
 ```
 
-    `run $(src "$(cfg "{\"pg_dump_path\":\"$QA/oldpg/pg_dump\"}")")`
-    → `failed`; `message` содержит `16.4` и `18.`, говорит поставить
-    `pg_dump 18` или новее или задать `pg_dump_path`.
+   `run $(src "$(cfg "{\"pg_dump_path\":\"$QA/oldpg/pg_dump\"}")")`
+   → `failed`; `message` содержит `16.4` и `18.`, говорит поставить
+   `pg_dump 18` или новее или задать `pg_dump_path`.
 
 ## Часть 4. Сбой и остановка во время дампа
 
@@ -184,7 +184,7 @@ ln -sf "$(command -v psql)" $QA/oldpg/psql; chmod +x $QA/oldpg/pg_dump
 21. **Отмена и таймаут — через API не проверяются.** Сервер не даёт
     REST-отмены прогона, не присылает агенту CancelStep и не задаёт
     timeout шага (`DispatchParts.kt`). Пока на сервере нет отмены и
-    таймаута (OQ-162), это проверяют только тесты агента `@unit` и
+    таймаута (OQ-166), это проверяют только тесты агента `@unit` и
     `@restic`; в QA шаг пропускается.
 22. (Удалён вместе с шагом 21: таймаут шага через API не задаётся.)
 

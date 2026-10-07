@@ -21,6 +21,9 @@ internal object E2e {
      */
     fun pgAgentImage(major: Int): String = property("e2e.pg${major}AgentImage")
 
+    /** The stand's SFTP server (test/e2e/sftp, ADR 0047). */
+    val sftpImage: String get() = property("e2e.sftpImage")
+
     /** The version both images were built with (`VERSION` in the Makefile). */
     val version: String get() = property("e2e.version")
 

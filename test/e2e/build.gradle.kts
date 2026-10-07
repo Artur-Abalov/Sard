@@ -47,6 +47,7 @@ val e2eProperties =
         "e2e.standAgentImage" to "sard-agent-stand:e2e",
         "e2e.pg18AgentImage" to "sard-agent-pg18:e2e",
         "e2e.pg14AgentImage" to "sard-agent-pg14:e2e",
+        "e2e.sftpImage" to "sard-sftp:e2e",
         "e2e.version" to "dev",
     )
 

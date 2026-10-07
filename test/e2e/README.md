@@ -24,6 +24,17 @@ make e2e-test       # только тесты, на уже собранных о
   поставляется, статический, и restic версии из
   `agent/internal/restic/restic-version`, проверенный по SHA-256 при упаковке. На
   нём идут все классы, кроме T3. Во время теста ничего не скачивается.
+  База — хост, каким его ждёт пакет (ADR 0047): Ubuntu 24.04 с `openssh-client`
+  (зависимость пакета, `sftp:` restic запускает `ssh`) и пользователь службы
+  `sard-agent` (uid 65532) с домашним каталогом `/var/lib/sard-agent`.
+- Хранилища стенда (ADR 0047): S3 — Garage `dxflrs/garage:v2.1.0` (`GarageS3`:
+  бакеты и ключи через `garage` CLI), SFTP — образ `sard-sftp:e2e` из
+  `test/e2e/sftp/Dockerfile` (`SftpServer`), его собирает `make e2e-agent-images`.
+- Сборка образов стенда за прокси с подменой TLS: `E2E_BUILD_FLAGS="--network host
+  --build-arg https_proxy=… --secret id=build-ca,src=<CA прокси>"`. Локально
+  BuildKit может взять старый бинарник из контекста при той же длине и mtime
+  (воспроизводимые tar.gz): после пересборки пакетов с другой `VERSION` —
+  `touch` по `test/e2e/build/agent-image`.
 - Образы агента для плагина `postgresql` `sard-agent-pg18:e2e` и `sard-agent-pg14:e2e`
   (`make e2e-pg-agent-images`, F1 ПГ20) — `test/e2e/agent/Dockerfile.postgres` на
   официальных `postgres:18` и `postgres:14`: тот же `sard-agent` и restic из tar.gz
@@ -63,6 +74,10 @@ make e2e-test       # только тесты, на уже собранных о
 | `AgentEnrollTest` | сценарии `@e2e` `docs/specs/agent/agent-enroll.feature` (имена тестов — названия сценариев): `sard-agent enroll` пишет ключ, сертификат и бандл, агент в тенанте токена с именем хоста, сервер принимает выданный сертификат; испорченный токен, существующая идентичность, чужой отпечаток не расходуют токен; `--force`; отказы `TOKEN_USED/UNKNOWN/EXPIRED/REVOKED` |
 | `AgentEnrollRetryableTest` | сценарий `@e2e` «После INTERNAL_RETRYABLE тем же токеном можно зарегистрироваться»: PostgreSQL остановлен — код 6, запущен — код 0 (своя установка) |
 | `FullChainTest` | T2b, полная цепочка: `sard-agent enroll`, агент до репозитория, `repo init` и перезапуск — сервер знает `repository_id` (сценарий `@e2e` `repo-init.feature`); источник и запуск через REST; шаг files `succeeded`, снимок; `restic restore` — дерево побайтово равно эталону, снятому до бэкапа (размеры от 0 до 3 МиБ, вложенность, не-ASCII имя; исключённые каталог и файл отсутствуют). Транспорт + исполнитель: прогресс дошёл, `ResultAck` дошёл (надгробие). Отрицательные пути: несуществующий путь — `failed` с путём, без снимка; нечитаемый файл — `failed` с путём, снимок `partial`, восстановление даёт читаемые файлы |
+| `StorageChainTest` | F2, цепочка `FullChainTest` (`Chain`) с репозиторием на удалённом хранилище: S3 (бакет Garage, ключ только в `env_file` агента, 0600) и SFTP (ключ `ssh-keygen` пользователя службы и `known_hosts` в `/var/lib/sard-agent/.ssh`). `repo init` — backend `s3`/`sftp` на сервере; бэкап через REST `succeeded`, снимок; `restic restore` — дерево побайтово равно эталону |
+| `StorageFailureTest` | F2, отказы хранилища: S3 — неверный секрет (`Access Denied` в сообщении), ключ без записи (`Operation is not allowed for this key` в журнале), бакета нет (`repository does not exist`); SFTP — ключ не принят, ключ хоста неизвестен, сервер выключен (сообщение `unable to start the sftp session`), каталог только на чтение (`permission denied` в журнале), каталога нет. Каждый — `failed` за 60 с; после исправления следующий запуск того же источника `succeeded`. Причина в сообщении есть не всегда — OQ-155 |
+| `StorageOutageTest` | F2, хранилище пропадает посреди бэкапа `e2e-slow` (20 с, образ стенда; прогресс > 2 МиБ — restic уже пишет): S3 остановлен на 30 с — шаг ждёт (`running` всё время) и `succeeded`; SFTP остановлен — `failed` с `ssh command exited`, после старта — `succeeded`; SFTP вне сети с `ServerAliveInterval` в `~/.ssh/config` — `failed`, после возврата — `succeeded`; без него — `running` 80 с после отключения, после возврата сети тот же шаг `succeeded` (OQ-154) |
+| `StorageLockTest` | F2, блокировки restic в репозитории SFTP: бэкап, убитый вместе с агентом (`docker kill`), оставляет блокировку — следующий бэкап `succeeded`; убитый `restic check` оставляет исключительную — шаг сразу `failed`, `restic cat: repository is locked by another process` (OQ-156), после `restic unlock --remove-all` — `succeeded` |
 | `PostgresqlSourceTest` | F1, сценарии `@e2e` `docs/specs/agent/postgresql-plugin.feature` (имена тестов — названия сценариев), PostgreSQL 18 и агент на `postgres:18` (`sard-agent-pg18:e2e`, `test/e2e/agent/Dockerfile.postgres`, ПГ20): сервер отказывает источнику с неизвестным секретом (422 у `config/password_ref`); отказы подключения и входа с причиной PostgreSQL (пароль, база, роль, `CONNECT`, `pg_hba`, имя хоста, порт, TLS, имя в сертификате, чужой CA); `pg_dump` 14 против сервера 18; таблица без `SELECT` и исключение; пустая база; шаблон без совпадений; два источника на одну базу; пароля нет в списке процессов, логах шага и агента; сервер убит посреди дампа — `failed`, снимков и блокировок нет |
 | `PostgresqlRestoreTest` | F1: бэкап по умолчанию и восстановление руками по `docs/plugins/postgresql.md` в чистый PostgreSQL 14 и 18 (сначала `app.globals.sql` через `psql`, затем `pg_restore` в новую базу): строки и md5 таблиц, последовательность, большой объект, роли (атрибуты, членство, настройки) и владельцы совпадают; с `globals_role_passwords` роль входит прежним паролем, без него — нет, а в `app.globals.sql` нет `SCRAM-SHA-256`; исключённые схема и таблица не восстанавливаются |
 | `ServerRecreateTest` | T3s, С1: контейнер сервера пересоздан (`recreateServer`): отпечаток CA прежний; агент, не перезапускавшийся и не регистрировавшийся заново, снова выполняет Register и открывает поток (`last_register_at`, `last_seen_at` после пересоздания), агент в базе один |
@@ -81,9 +96,9 @@ make e2e-test       # только тесты, на уже собранных о
 
 `AgentHost` — диск хоста с пакетом агента: два именованных тома Docker в
 `/var/lib/sard-agent` (состояние, файлы TLS, репозиторий, данные) и
-`/var/cache/sard/restic`. В образе нет оболочки, поэтому каждая команда
-оператора — отдельный контейнер образа на этих томах с программой в точке
-входа: `sard-agent enroll`, `sard-agent repo init`, `restic`, и сам агент.
+`/var/cache/sard/restic`. Каждая команда оператора — отдельный контейнер образа
+на этих томах от имени пользователя службы с программой в точке входа:
+`sard-agent enroll`, `sard-agent repo init`, `restic`, `ssh-keygen`, и сам агент.
 
 Регистрация — только `sard-agent enroll` (`AgentEnroller`, токен файлом, не в
 командной строке); файлы TLS вручную никто не кладёт. Токены, источники и
