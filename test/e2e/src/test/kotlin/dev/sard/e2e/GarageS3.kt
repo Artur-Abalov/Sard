@@ -33,7 +33,8 @@ internal class GarageS3(
         override fun toString() = "Key(id=$id)"
     }
 
-    private val container: GenericContainer<*> =
+    /** The node's container, for [Interruptions.stop] and [Interruptions.start]. */
+    val container: GenericContainer<*> =
         GenericContainer<Nothing>(DockerImageName.parse(IMAGE)).apply {
             withNetwork(sardEnv.dockerNetwork)
             withNetworkAliases(ALIAS)
@@ -62,8 +63,26 @@ internal class GarageS3(
         val out = garage("key", "create", name)
         val key = Key(field(out, "Key ID"), field(out, "Secret key"))
         sardEnv.secret(key.secret)
-        garage("bucket", "allow", "--read", *(if (write) arrayOf("--write") else emptyArray()), bucket, "--key", name)
+        allow(bucket, name, write)
         return key
+    }
+
+    /** Gives key [name] read access to [bucket], and write access if [write]. */
+    fun allow(
+        bucket: String,
+        name: String,
+        write: Boolean,
+    ) {
+        garage("bucket", "allow", "--read", *(if (write) arrayOf("--write") else emptyArray()), bucket, "--key", name)
+    }
+
+    /** Takes back key [name]'s write access to [bucket] (or all access, unless [write]). */
+    fun deny(
+        bucket: String,
+        name: String,
+        write: Boolean,
+    ) {
+        garage("bucket", "deny", *(if (write) arrayOf("--write") else arrayOf("--read", "--write")), bucket, "--key", name)
     }
 
     /** The restic repository string of [path] in [bucket], as the agent on the network reaches it. */

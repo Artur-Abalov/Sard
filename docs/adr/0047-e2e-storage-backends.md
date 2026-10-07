@@ -69,3 +69,11 @@ restic `sftp:` запускает внешний `ssh`. В пакете аген
 - В образе стенда появляется оболочка. Тесты по-прежнему не делают
   `docker exec` в агента (ADR 0020), а комментарии «в образе нет оболочки» в
   `test/e2e` правятся.
+- Что проверено и что найдено в фазе 3 F2:
+  - отказы — `StorageFailureTest`, `StorageOutageTest`, `StorageLockTest`;
+  - причина не всегда в сообщении шага — OQ-155;
+  - `--retry-lock` не срабатывает из-за `restic cat` — OQ-156;
+  - `dpkg -i` не ставит `openssh-client` — OQ-157.
+
+  Обход молчаливого обрыва SFTP — `ServerAliveInterval` в
+  `/var/lib/sard-agent/.ssh/config`, `docs/operator/05a-storage.md`.

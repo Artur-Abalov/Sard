@@ -81,6 +81,22 @@ internal class AgentHost(
     }
 
     /**
+     * Starts [command] on this host and returns while it runs, for a test to interrupt it
+     * ([Interruptions.kill]): an operator's command that never finished. Tracked by the environment.
+     */
+    fun launch(
+        vararg command: String,
+        env: Map<String, String> = emptyMap(),
+    ): GenericContainer<*> {
+        val name = "$hostname-run-${++runs}"
+        return sardEnv.track(name, container()).apply {
+            withEnv(env)
+            withCreateContainerCmdModifier { it.withEntrypoint(*command) }
+            start()
+        }
+    }
+
+    /**
      * `sard-agent enroll --server <endpoint> --token-file <file> [flags]`: the operator's command
      * from the console, with the token in a file so it never shows up in the container's command.
      */

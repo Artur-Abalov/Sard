@@ -15,7 +15,8 @@ import org.testcontainers.utility.DockerImageName
 internal class SftpServer(
     private val sardEnv: SardEnvironment,
 ) {
-    private val container: GenericContainer<*> =
+    /** The server's container, for [Interruptions.stop] and [Interruptions.start]. */
+    val container: GenericContainer<*> =
         GenericContainer<Nothing>(DockerImageName.parse(E2e.sftpImage)).apply {
             withNetwork(sardEnv.dockerNetwork)
             withNetworkAliases(ALIAS)
@@ -25,15 +26,35 @@ internal class SftpServer(
     /** Starts the server; tracked by the environment. */
     fun start(): SftpServer = apply { sardEnv.track(ALIAS, container).start() }
 
-    /** Lets [publicKey] (an OpenSSH public key line) log in as [USER]. */
+    private val authorized = linkedSetOf<String>()
+
+    /** Lets [publicKey] (an OpenSSH public key line) log in as [USER], besides the keys already let in. */
     fun authorize(publicKey: String) {
-        container.copyFileToContainer(Transferable.of(publicKey.trim() + "\n", TarFiles.READABLE), "/etc/ssh/authorized_keys/$USER")
+        authorized += publicKey.trim()
+        writeAuthorizedKeys()
+    }
+
+    /** Takes [publicKey] off [USER]'s authorized keys. */
+    fun revoke(publicKey: String) {
+        authorized -= publicKey.trim()
+        writeAuthorizedKeys()
+    }
+
+    private fun writeAuthorizedKeys() {
+        val content = authorized.joinToString("") { "$it\n" }
+        container.copyFileToContainer(Transferable.of(content, TarFiles.READABLE), "/etc/ssh/authorized_keys/$USER")
     }
 
     /** The server's host key as a known_hosts line for [ALIAS]: what the operator verifies and trusts. */
     fun knownHostsLine(): String {
         val key = container.copyFileFromContainer(HOST_KEY) { String(it.readAllBytes()) }.trim().split(' ')
         return "$ALIAS ${key[0]} ${key[1]}\n"
+    }
+
+    /** Runs [command] as root on the server (the storage admin's shell); fails unless it exits 0. */
+    fun exec(vararg command: String) {
+        val result = container.execInContainer(*command)
+        check(result.exitCode == 0) { "${command.joinToString(" ")} exited ${result.exitCode}: ${result.stderr}" }
     }
 
     /** The restic repository string of [directory] on this server. */
