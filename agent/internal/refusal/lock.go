@@ -21,7 +21,7 @@ type OpenFunc func(name string, flag int, perm os.FileMode) (*os.File, error)
 // releases it and removes the file. flock(2) goes away with the process
 // however it ends, so the file of a dead process never blocks anyone.
 func Lock(open OpenFunc, path string) (unlock func(), err error) {
-	f, err := open(path, os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := OpenLockFile(open, path)
 	if err != nil {
 		return nil, err
 	}
@@ -45,11 +45,53 @@ func Lock(open OpenFunc, path string) (unlock func(), err error) {
 	}, nil
 }
 
-func sameFile(f *os.File, path string) bool {
+func sameFile(f *os.File, path string) bool { return SameFileAtPath(f, path) }
+
+// OpenLockFile opens the lock file without following a link and checks it
+// is a plain file of its own.
+func OpenLockFile(open OpenFunc, path string) (*os.File, error) {
+	f, err := open(path, LockFlags, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := CheckLockFile(f); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return f, nil
+}
+
+// LockFlags open a lock file that may lie in a directory the service user
+// writes while the command runs as root: a symbolic link planted at the
+// path is refused (O_NOFOLLOW), not written through.
+const LockFlags = os.O_CREATE | os.O_RDWR | syscall.O_NOFOLLOW | syscall.O_NOCTTY | syscall.O_CLOEXEC
+
+// ErrUnsafeLockFile: the lock file is not a plain file of its own.
+var ErrUnsafeLockFile = errors.New("the lock file is not a regular file with a single name (a link was planted?)")
+
+// CheckLockFile refuses an opened lock file that is not a regular file
+// with one name (one that was just removed is the lock's own race, answered
+// by SameFileAtPath): a hard link planted to another file would have the lock
+// write into it.
+func CheckLockFile(f *os.File) error {
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	st, isStat := info.Sys().(*syscall.Stat_t)
+	if !info.Mode().IsRegular() || !isStat || st.Nlink > 1 {
+		return ErrUnsafeLockFile
+	}
+	return nil
+}
+
+// SameFileAtPath says whether f is still the file at path, looked at
+// without following a link.
+func SameFileAtPath(f *os.File, path string) bool {
 	held, err := f.Stat()
 	if err != nil {
 		return false
 	}
-	current, err := os.Stat(path)
+	current, err := os.Lstat(path)
 	return err == nil && os.SameFile(held, current)
 }

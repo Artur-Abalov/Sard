@@ -19,5 +19,6 @@ func testEnrollDeps(hostname hostnameFunc) enrollDeps {
 		euid:       testServiceUID,
 		lookupUser: users(hostsetup.User{Name: "sard-agent", UID: testServiceUID, GID: testServiceUID}),
 		fs:         hostsetup.OS{},
+		chownFile:  chownOpenFile,
 	}
 }

@@ -91,10 +91,10 @@ func WriteIdentity(files Files, key, cert, ca []byte) error {
 
 // Owner is who the written files belong to when the command runs as root:
 // the service user (Р25 of docs/specs/agent/host-setup.feature). Chown is
-// os.Lchown in production; it is a field so a test is not root.
+// fchown of the open file in production; it is a field so a test is not root.
 type Owner struct {
 	UID, GID int
-	Chown    func(path string, uid, gid int) error
+	Chown    func(f *os.File, uid, gid int) error
 }
 
 // WriteIdentityAs is WriteIdentity with an owner for the files: each
@@ -226,7 +226,7 @@ func stage(path string, data []byte, mode os.FileMode, owner *Owner) (string, er
 	}
 	name := tmp.Name()
 	_, werr := tmp.Write(data)
-	err = errors.Join(werr, giveTo(owner, name), tmp.Chmod(mode), tmp.Sync(), tmp.Close())
+	err = errors.Join(werr, giveTo(owner, tmp), tmp.Chmod(mode), tmp.Sync(), tmp.Close())
 	if err != nil {
 		_ = os.Remove(name)
 		return "", err
@@ -235,11 +235,14 @@ func stage(path string, data []byte, mode os.FileMode, owner *Owner) (string, er
 }
 
 // giveTo changes the owner of a temporary file, if there is an owner.
-func giveTo(owner *Owner, path string) error {
+// It goes through the open file (fchown), never through its path: the
+// directory belongs to the service user, who could swap the path for a
+// link to a file of root's between the creation and the change.
+func giveTo(owner *Owner, f *os.File) error {
 	if owner == nil {
 		return nil
 	}
-	return owner.Chown(path, owner.UID, owner.GID)
+	return owner.Chown(f, owner.UID, owner.GID)
 }
 
 // renameFile is os.Rename, indirected so tests can fail a specific commit

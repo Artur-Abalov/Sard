@@ -28,6 +28,7 @@ func rootEnrollDeps(fsys *fakeFS, people ...hostsetup.User) enrollDeps {
 	d.euid = 0
 	d.lookupUser = users(people...)
 	d.fs = fsys
+	d.chownFile = fsys.chownFile
 	return d
 }
 

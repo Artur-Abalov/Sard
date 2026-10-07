@@ -6,6 +6,7 @@ package enroll
 import (
 	"errors"
 	"fmt"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -33,9 +34,9 @@ func LockPath(certFile string) string {
 // acquires the lock straight away.
 func Lock(certFile string) (unlock func(), err error) {
 	path := LockPath(certFile)
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := refusal.OpenLockFile(os.OpenFile, path)
 	if err != nil {
-		return nil, &Error{Class: ClassWrite, msg: "creating the lock file " + path + " failed", err: err}
+		return nil, &Error{Class: ClassWrite, msg: "the lock file " + path + " cannot be created or used", err: err}
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		_ = f.Close()
@@ -53,7 +54,7 @@ func Lock(certFile string) (unlock func(), err error) {
 	// at path, after the flock succeeded, closes that window: an open fd
 	// and a path both name a file by inode, and they must name the same
 	// one for the flock to mean anything about path.
-	if !sameFileAtPath(f, path) {
+	if !refusal.SameFileAtPath(f, path) {
 		_ = f.Close()
 		return nil, alreadyInProgress(path)
 	}
@@ -66,17 +67,4 @@ func Lock(certFile string) (unlock func(), err error) {
 
 func alreadyInProgress(path string) error {
 	return &Error{Class: ClassTemporary, msg: "an enrollment is already in progress on this host (lock file " + path + ")"}
-}
-
-// sameFileAtPath reports whether f still names the file currently at path.
-func sameFileAtPath(f *os.File, path string) bool {
-	fInfo, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	pathInfo, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return os.SameFile(fInfo, pathInfo)
 }

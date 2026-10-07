@@ -51,12 +51,14 @@ type enrollDeps struct {
 	euid       uint32
 	lookupUser hostsetup.LookupFunc
 	fs         hostsetup.FS
+	// chownFile gives an open file to the service user (fchown).
+	chownFile func(f *os.File, uid, gid int) error
 }
 
 func productionEnrollDeps(hostname hostnameFunc) enrollDeps {
 	return enrollDeps{
 		hostname: hostname, clock: realEnrollClock{}, dial: enroll.RealDial,
-		euid: uint32(os.Geteuid()), lookupUser: hostsetup.LookupOS, fs: hostsetup.OS{},
+		euid: uint32(os.Geteuid()), lookupUser: hostsetup.LookupOS, fs: hostsetup.OS{}, chownFile: chownOpenFile,
 	}
 }
 

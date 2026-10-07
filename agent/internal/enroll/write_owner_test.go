@@ -21,7 +21,8 @@ type chownLog struct {
 	failAt  int // the owner change with this number (1 is the key, 2 the certificate, 3 the CA bundle) fails
 }
 
-func (c *chownLog) chown(path string, uid, gid int) error {
+func (c *chownLog) chown(f *os.File, uid, gid int) error {
+	path := f.Name()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.calls++
@@ -126,5 +127,30 @@ func TestWithoutAnOwnerNothingIsChanged(t *testing.T) {
 	dir := t.TempDir()
 	if err := enroll.WriteIdentityAs(filesIn(dir), []byte("k"), []byte("c"), []byte("a"), nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The owner is changed through the open temporary file: a path swapped for
+// a hard link to a file of root's between the creation and the change does
+// not make that file the service user's.
+func TestTheOwnerIsChangedOnTheOpenFileAndNotOnWhatItsPathLeadsTo(t *testing.T) {
+	dir := t.TempDir()
+	victim := filepath.Join(dir, "victim")
+	if err := os.WriteFile(victim, []byte("root:x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	victimInfo, _ := os.Stat(victim)
+	var reached bool
+	owner := &enroll.Owner{UID: 990, GID: 990, Chown: func(f *os.File, _, _ int) error {
+		_ = os.Remove(f.Name())
+		_ = os.Link(victim, f.Name())
+		if info, err := f.Stat(); err == nil && os.SameFile(info, victimInfo) {
+			reached = true
+		}
+		return nil
+	}}
+	_ = enroll.WriteIdentityAs(filesIn(dir), []byte("k"), []byte("c"), []byte("a"), owner)
+	if reached {
+		t.Fatal("the owner change was handed the victim")
 	}
 }

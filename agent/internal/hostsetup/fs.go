@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"syscall"
 )
 
 // File is a file being written: what os.File offers, so a test can make
@@ -33,10 +34,8 @@ type FS interface {
 	Remove(path string) error
 	// SyncDir makes the entries of dir durable.
 	SyncDir(dir string) error
-	Mkdir(path string, perm os.FileMode) error
 	// Chown is lchown: a symbolic link itself changes owner.
 	Chown(path string, uid, gid int) error
-	Chmod(path string, mode os.FileMode) error
 	Stat(path string) (fs.FileInfo, error)
 	// OpenRootDir opens "/" as a Dir, the start of a walk that never
 	// follows a symbolic link (OpenDir).
@@ -53,6 +52,7 @@ type FS interface {
 // Root is a directory tree that cannot be escaped by swapping a directory
 // for a symbolic link while it is being walked (os.Root).
 type Root interface {
+	Lstat(name string) (fs.FileInfo, error)
 	Stat(name string) (fs.FileInfo, error)
 	Lchown(name string, uid, gid int) error
 	ReadDir(name string) ([]fs.DirEntry, error)
@@ -75,14 +75,8 @@ func (OS) Rename(oldpath, newpath string) error { return os.Rename(oldpath, newp
 // Remove implements FS.
 func (OS) Remove(path string) error { return os.Remove(path) }
 
-// Mkdir implements FS.
-func (OS) Mkdir(path string, perm os.FileMode) error { return os.Mkdir(path, perm) }
-
 // Chown implements FS.
 func (OS) Chown(path string, uid, gid int) error { return os.Lchown(path, uid, gid) }
-
-// Chmod implements FS.
-func (OS) Chmod(path string, mode os.FileMode) error { return os.Chmod(path, mode) }
 
 // Stat implements FS.
 func (OS) Stat(path string) (fs.FileInfo, error) { return os.Stat(path) }
@@ -209,20 +203,29 @@ func EnsureDir(fsys FS, path string, a Attrs) (bool, error) {
 	case !errors.Is(err, fs.ErrNotExist):
 		return false, &WriteError{Path: path, Op: "create directory", Err: err}
 	}
-	return true, makeDir(fsys, path, a)
+	return true, makeInParent(fsys, path, a)
 }
 
-func makeDir(fsys FS, path string, a Attrs) error {
-	for _, step := range []func() error{
-		func() error { return fsys.Mkdir(path, a.Mode) },
-		func() error { return fsys.Chown(path, a.UID, a.GID) },
-		func() error { return fsys.Chmod(path, a.Mode) },
-	} {
-		if err := step(); err != nil {
-			return &WriteError{Path: path, Op: "create directory", Err: err}
-		}
+// makeInParent makes the last component of path inside its parent, which
+// is held open: mkdirat, openat, fchown, fchmod, never by path (R3). The
+// parent is walked without following a link; links in the part of the path
+// that already exists, such as a /etc/sard that is itself a link, are
+// resolved first, and a component swapped meanwhile fails the walk.
+func makeInParent(fsys FS, path string, a Attrs) error {
+	parent, err := filepath.EvalSymlinks(filepath.Dir(path))
+	if err != nil {
+		return &WriteError{Path: path, Op: "create directory", Err: err}
 	}
-	return nil
+	dir, _, err := OpenDir(fsys, parent, nil)
+	if err != nil {
+		return &WriteError{Path: path, Op: "create directory", Err: err}
+	}
+	defer func() { _ = dir.Close() }()
+	made, err := makeComponent(dir, filepath.Base(path), a)
+	if err != nil {
+		return err
+	}
+	return made.Close()
 }
 
 // RemoveFile removes the file; a missing one is not an error. It reports
@@ -307,6 +310,9 @@ func chownDir(r Root, base, dir string, uid, gid int) error {
 
 // chownEntry changes one entry of a tree; a directory is entered.
 func chownEntry(r Root, base, name string, isDir bool, uid, gid int) error {
+	if !isDir && hasAnotherName(r, name) {
+		return nil
+	}
 	if err := r.Lchown(name, uid, gid); err != nil {
 		return &WriteError{Path: filepath.Join(base, name), Op: "change owner of", Err: err}
 	}
@@ -314,6 +320,18 @@ func chownEntry(r Root, base, name string, isDir bool, uid, gid int) error {
 		return chownDir(r, base, name, uid, gid)
 	}
 	return nil
+}
+
+// hasAnotherName says whether the entry is a regular file with more than
+// one name: it may be a hard link planted to a file outside the tree, and
+// its owner is not changed. (restic makes no hard links.)
+func hasAnotherName(r Root, name string) bool {
+	info, err := r.Lstat(name)
+	if err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	return ok && st.Nlink > 1
 }
 
 // CommitNewFile gives the staged file the name path unless something has

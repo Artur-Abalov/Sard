@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
 
 	"github.com/Artur-Abalov/sard/agent/internal/enroll"
@@ -20,7 +21,7 @@ func enrollOwner(who hostsetup.Principal, deps enrollDeps) *enroll.Owner {
 	if who.Role != hostsetup.RoleRoot {
 		return nil
 	}
-	return &enroll.Owner{UID: int(who.Service.UID), GID: int(who.Service.GID), Chown: deps.fs.Chown}
+	return &enroll.Owner{UID: int(who.Service.UID), GID: int(who.Service.GID), Chown: deps.chownFile}
 }
 
 // tlsDir is the directory of one tls.* file and the key that names it.
@@ -109,3 +110,6 @@ func removeTLSDirs(fsys hostsetup.FS, dirs []string) {
 		_ = fsys.Remove(dirs[i])
 	}
 }
+
+// chownOpenFile is fchown: the file, not whatever its name leads to.
+func chownOpenFile(f *os.File, uid, gid int) error { return f.Chown(uid, gid) }

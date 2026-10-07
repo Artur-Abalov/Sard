@@ -148,13 +148,6 @@ func (f *fakeFS) SyncDir(dir string) error {
 	return f.OS.SyncDir(dir)
 }
 
-func (f *fakeFS) Mkdir(path string, perm os.FileMode) error {
-	if err := f.fails("mkdir", path); err != nil {
-		return err
-	}
-	return f.OS.Mkdir(path, perm)
-}
-
 // nthChown fails the owner change that failChownAt names.
 func (f *fakeFS) nthChown(path string) error {
 	f.mu.Lock()
@@ -163,6 +156,19 @@ func (f *fakeFS) nthChown(path string) error {
 	if f.failChownAt != 0 && f.chownCalls == f.failChownAt {
 		return &fs.PathError{Op: "chown", Path: path, Err: errFakeFailure}
 	}
+	return nil
+}
+
+// chownFile records the owner of an open file by its name.
+func (f *fakeFS) chownFile(file *os.File, uid, gid int) error {
+	path := file.Name()
+	if err := f.fails("chown", path); err != nil {
+		return err
+	}
+	if err := f.nthChown(path); err != nil {
+		return err
+	}
+	f.setOwner(path, uid, gid)
 	return nil
 }
 

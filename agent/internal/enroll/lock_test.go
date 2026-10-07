@@ -200,3 +200,44 @@ func TestLockIgnoresAStaleLockFileFromADeadProcess(t *testing.T) {
 		t.Fatalf("lock file still present after unlock: err = %v", err)
 	}
 }
+
+// The directory of the certificate belongs to the service user, the
+// enrollment may run as root: no write through a link planted there.
+func TestLockNeverWritesThroughALink(t *testing.T) {
+	cases := map[string]func(dir, lock, victim string) error{
+		"a symbolic link to a file": func(_, lock, victim string) error { return os.Symlink(victim, lock) },
+		"a dangling symbolic link":  func(dir, lock, _ string) error { return os.Symlink(filepath.Join(dir, "created-by-root"), lock) },
+		"a hard link":               func(_, lock, victim string) error { return os.Link(victim, lock) },
+	}
+	for name, plant := range cases {
+		t.Run(name, func(t *testing.T) { assertLockRefusedBehindLink(t, plant) })
+	}
+}
+
+func assertLockRefusedBehindLink(t *testing.T, plant func(dir, lock, victim string) error) {
+	t.Helper()
+	dir := t.TempDir()
+	cert := filepath.Join(dir, "agent.pem")
+	victim, lock := filepath.Join(dir, "victim"), enroll.LockPath(cert)
+	if err := os.WriteFile(victim, []byte("root:x:0:0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := plant(dir, lock, victim); err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := enroll.Lock(cert)
+	var eerr *enroll.Error
+	if err == nil {
+		unlock()
+		t.Fatal("the lock was taken through the link")
+	}
+	if !errors.As(err, &eerr) || eerr.Class != enroll.ClassWrite {
+		t.Fatalf("err = %v", err)
+	}
+	if data, _ := os.ReadFile(victim); string(data) != "root:x:0:0\n" {
+		t.Fatalf("the victim was written: %q", data)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "created-by-root")); err == nil {
+		t.Fatal("the target of the dangling link was created")
+	}
+}

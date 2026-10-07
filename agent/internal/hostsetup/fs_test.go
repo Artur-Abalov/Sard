@@ -135,13 +135,6 @@ func (r *recordingFS) SyncDir(dir string) error {
 	return r.OS.SyncDir(dir)
 }
 
-func (r *recordingFS) Mkdir(path string, perm os.FileMode) error {
-	if err := r.fails("mkdir", path); err != nil {
-		return err
-	}
-	return r.OS.Mkdir(path, perm)
-}
-
 func (r *recordingFS) Chown(path string, uid, gid int) error {
 	if err := r.fails("chown", path); err != nil {
 		return err
@@ -491,7 +484,6 @@ func TestOSFileSystemChangesOwnerModeAndRemoves(t *testing.T) {
 	ok(t, os.WriteFile(path, nil, 0o600))
 	var real hostsetup.OS
 	ok(t, real.Chown(path, os.Getuid(), os.Getgid()))
-	ok(t, real.Chmod(path, 0o640))
 	ok(t, real.Remove(path))
 }
 
@@ -861,5 +853,70 @@ func (noRootDirFS) OpenRootDir() (hostsetup.Dir, error) { return nil, errors.New
 func TestOpenDirReportsARootThatCannotBeOpened(t *testing.T) {
 	if _, _, err := hostsetup.OpenDir(noRootDirFS{}, "/x", nil); err == nil || !strings.Contains(err.Error(), "no root") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// The new directory is swapped for a link to somewhere else right after it
+// is made; its mode and owner must be set on the directory held, never on
+// whatever the path leads to afterwards.
+func TestEnsureDirNeverChangesWhatALinkPointsTo(t *testing.T) {
+	base := t.TempDir()
+	outside := filepath.Join(base, "etc")
+	ok(t, os.Mkdir(outside, 0o755))
+	ok(t, os.Chmod(outside, 0o755))
+	made := filepath.Join(base, "tls")
+	swapped := false
+	swap := func(p string) {
+		if p == made {
+			swapped = true
+			ok(t, os.Rename(p, p+".moved"))
+			ok(t, os.Symlink(outside, p))
+		}
+	}
+	created, err := hostsetup.EnsureDir(hookFS{after: swap}, made, hostsetup.Attrs{Mode: 0o700})
+	ok(t, err)
+	if !created || !swapped {
+		t.Fatalf("created %v, swapped %v: the test proves nothing", created, swapped)
+	}
+	assertDirMode(t, outside, 0o755)
+	assertDirMode(t, made+".moved", 0o700)
+}
+
+func TestEnsureDirThroughALinkedParentOfTheConfigStillWorks(t *testing.T) {
+	base := t.TempDir()
+	real, link := filepath.Join(base, "real"), filepath.Join(base, "etc-sard")
+	ok(t, os.Mkdir(real, 0o755))
+	ok(t, os.Symlink(real, link))
+	created, err := hostsetup.EnsureDir(newRecordingFS(), filepath.Join(link, "agent.d"), hostsetup.Attrs{Mode: 0o750})
+	if err != nil || !created {
+		t.Fatalf("created %v, err %v", created, err)
+	}
+	assertDirMode(t, filepath.Join(real, "agent.d"), 0o750)
+}
+
+func TestEnsureDirOfAParentThatDoesNotExistIsAWriteError(t *testing.T) {
+	var we *hostsetup.WriteError
+	_, err := hostsetup.EnsureDir(newRecordingFS(), filepath.Join(t.TempDir(), "no", "dir"), hostsetup.Attrs{Mode: 0o700})
+	if !errors.As(err, &we) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// A hard link planted in the tree to a file that is not the tree's would
+// hand that file over: files with more than one name are left alone.
+func TestChownTreeLeavesAFileWithAnotherNameAlone(t *testing.T) {
+	base := t.TempDir()
+	root, victim := filepath.Join(base, "repo"), filepath.Join(base, "shadow")
+	ok(t, os.Mkdir(root, 0o755))
+	ok(t, os.WriteFile(victim, []byte("root:x"), 0o600))
+	ok(t, os.WriteFile(filepath.Join(root, "own"), nil, 0o600))
+	ok(t, os.Link(victim, filepath.Join(root, "planted")))
+	rfs := newRecordingFS()
+	ok(t, hostsetup.ChownTree(rfs, root, 990, 990))
+	if _, changed := rfs.ownerOf(filepath.Join(root, "planted")); changed {
+		t.Fatal("the planted hard link was given away")
+	}
+	if _, changed := rfs.ownerOf(filepath.Join(root, "own")); !changed {
+		t.Fatal("a plain file was not given")
 	}
 }
