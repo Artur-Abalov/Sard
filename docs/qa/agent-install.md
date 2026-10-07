@@ -7,7 +7,9 @@
 `docs/specs/web/agent-install.feature`, `docs/specs/agent/agent-install.feature`.
 Пометка `[ВN]` у шага называет решение владельца 2026-10-05 из заголовка
 серверной спецификации, которое шаг проверяет; `[Р1]`, `[Р2]` — решения
-поправки R1 (2026-10-07): rpm в консоли и сравнение предрелизов (части 6–9).
+поправки R1 (2026-10-07): rpm в консоли и сравнение предрелизов (части 6–9);
+`[Р3]` — поправка R1-F1: признак `keepsConfiguration` решает сервер (шаги 27,
+30, 37, 60 и часть 10).
 
 Ожидаемый результат — после «→». Любое расхождение — дефект.
 
@@ -110,13 +112,22 @@ V=$(curl -sS http://localhost:8080/downloads/agent/manifest.json | jq -r .versio
     `v0.0.1`, `outdated: true` `[В4]`.
 27. `api "$API/agents/<id>/upgrade?format=deb" | jq -r '.steps[].kind'` →
     `download checksum upgrade` (и `signature` в подписанном образе); пакет —
-    архитектуры агента.
+    архитектуры агента. `[Р3]`
+    `for f in deb rpm tar; do api "$API/agents/<id>/upgrade?format=$f" | jq .keepsConfiguration; done`
+    → `true`, `true`, `false`. `api "$API/agent-install" | jq 'has("keepsConfiguration")'`
+    → `false` (К1 не меняется).
 28. Выполнить шаги на хосте → агент онлайн с тем же `id`, версия `v0.0.2`;
     `outdated: false`; `sha256sum /etc/sard/agent.yaml /etc/sard/tls/* /etc/sard/secrets/*`
     до и после совпадает; в выводе установки нет команды `enroll` `[В8]`.
 29. Агент, приславший `agent_version` `v0.0.3` (сборка новее) → `outdated: false`;
     `v0.0.1-3-gabc1234` → `false`.
 30. `api -o /dev/null -w '%{http_code}\n' "$API/agents/00000000-0000-7000-8000-000000000000/upgrade"` → `404`.
+    `[Р3]` `[Р-specifier з]` Агент с токеном, но без Register (зарегистрировать
+    `enroll` и не запускать службу):
+    `api "$API/agents/<id>/upgrade?format=deb" | jq '{reason, keepsConfiguration}'`
+    → `arch_unknown`, `false`. С `SARD_AGENT_DOWNLOADS=false` для агента из
+    шага 26: `api "$API/agents/<id>/upgrade?format=deb" | jq '{downloadsEnabled, keepsConfiguration}'`
+    → `false`, `false`.
 
 ## Часть 5. Консоль (дважды: на моках `VITE_API_MOCKS=1` и против `make up`)
 
@@ -135,7 +146,8 @@ V=$(curl -sS http://localhost:8080/downloads/agent/manifest.json | jq -r .versio
 36. `[В7]` С агентами в тенанте → блок на `/agents` свёрнут и раскрывается.
 37. Устаревший агент из части 4 → в списке пометка «доступно обновление» с
     версией, цвет notice, статус «онлайн». Карточка — шаги обновления, напоминание
-    об активных запусках, для deb — пояснение о конфиге и ключах. Неустаревший —
+    об активных запусках, для deb — пояснение о конфиге и ключах (в Network
+    ответ `upgrade` содержит `keepsConfiguration: true`) `[Р3]`. Неустаревший —
     блока нет.
 38. `SARD_AGENT_DOWNLOADS=false` → блок объясняет, что раздача выключена, есть
     ссылка на документацию, команд и выбора нет.
@@ -231,8 +243,22 @@ V=$(curl -sS http://localhost:8080/downloads/agent/manifest.json | jq -r .versio
     `sudo rpm -Uvh …`.
 60. Карточка устаревшего агента, выбрать rpm → шаги обновления из ответа и
     пояснение, что пакет заменяет только программу; для tar.gz пояснения нет.
+    `[Р3]` В Network у ответа `upgrade?format=rpm` — `keepsConfiguration: true`,
+    у `format=tar` — `false`.
 61. Агент из шага 52 (`v0.1.0-beta.1` при сервере `v0.1.0-beta.2`) → в списке
     пометка «доступно обновление» с версией `v0.1.0-beta.2`; агент `v0.0.1-rc1`
     — без пометки.
 62. Языки RU и EN для шагов 58–61 → нет ключей i18n и текста другого языка,
     кроме команд, имён файлов и версий.
+
+## Часть 10. Консоль: пояснение о конфигурации решает сервер `[Р3]`
+
+63. На моках (`VITE_API_MOCKS=1`) изменить ответ обновления в
+    `web/src/mocks/api/install.ts` так, чтобы для `format=deb` было
+    `keepsConfiguration: false`; открыть карточку устаревшего агента с
+    выбранным deb → шаги обновления есть, пояснения о конфигурации и ключах
+    нет. Изменить для `format=tar` на `true`, выбрать tar.gz → пояснение
+    есть. Вернуть файл.
+64. На моках агент без архитектуры (не присылал Register) → в карточке
+    объяснение причины `arch_unknown`, ни одной команды и нет пояснения о
+    конфигурации; в Network — `keepsConfiguration: false`.
