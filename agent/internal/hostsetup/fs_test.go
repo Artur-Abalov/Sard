@@ -164,6 +164,44 @@ func (r *recordingFS) Link(oldpath, newpath string) error {
 	return nil
 }
 
+func (r *recordingFS) OpenRootDir() (hostsetup.Dir, error) {
+	d, err := r.OS.OpenRootDir()
+	if err != nil {
+		return nil, err
+	}
+	return recordingDir{Dir: d, fsys: r}, nil
+}
+
+// recordingDir records the owner changes and the creations of a walk.
+type recordingDir struct {
+	hostsetup.Dir
+	fsys *recordingFS
+}
+
+func (d recordingDir) wrap(next hostsetup.Dir, err error) (hostsetup.Dir, error) {
+	if err != nil {
+		return nil, err
+	}
+	return recordingDir{Dir: next, fsys: d.fsys}, nil
+}
+
+func (d recordingDir) Open(name string) (hostsetup.Dir, error) { return d.wrap(d.Dir.Open(name)) }
+
+func (d recordingDir) Mkdir(name string, perm os.FileMode) (hostsetup.Dir, error) {
+	if err := d.fsys.fails("mkdir", filepath.Join(d.Path(), name)); err != nil {
+		return nil, err
+	}
+	return d.wrap(d.Dir.Mkdir(name, perm))
+}
+
+func (d recordingDir) Chown(uid, gid int) error {
+	if err := d.fsys.fails("chown", d.Path()); err != nil {
+		return err
+	}
+	d.fsys.setOwner(d.Path(), uid, gid)
+	return nil
+}
+
 func (r *recordingFS) OpenRoot(path string) (hostsetup.Root, error) {
 	root, err := r.OS.OpenRoot(path)
 	if err != nil {
@@ -601,14 +639,13 @@ func TestChownTreeRefusesARootThatIsASymbolicLink(t *testing.T) {
 	ok(t, os.MkdirAll(target, 0o755))
 	ok(t, os.WriteFile(filepath.Join(target, "passwd"), nil, 0o600))
 	ok(t, os.Symlink(target, link))
-	fsys := &swappingFS{outside: target}
 	rfs := newRecordingFS()
 	err := hostsetup.ChownTree(rfs, link, 990, 990)
 	var we *hostsetup.WriteError
 	if !errors.As(err, &we) || !strings.Contains(err.Error(), "symbolic link") {
 		t.Fatalf("err = %v", err)
 	}
-	if len(rfs.owners) != 0 || len(fsys.landed) != 0 {
+	if len(rfs.owners) != 0 {
 		t.Fatalf("an owner change landed behind the link: %v", rfs.owners)
 	}
 }
@@ -629,6 +666,200 @@ func TestChownTreeRefusesARootReplacedWhileItIsOpened(t *testing.T) {
 	ok(t, os.Mkdir(other, 0o755))
 	err := hostsetup.ChownTree(otherRootFS{other: other}, root, 990, 990)
 	if err == nil || !strings.Contains(err.Error(), "replaced") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// hookFS runs after on every directory the walk opens or makes, with its
+// path, so a test can swap it for a link the way the service user could.
+type hookFS struct {
+	hostsetup.OS
+	after func(path string)
+}
+
+func (f hookFS) OpenRootDir() (hostsetup.Dir, error) {
+	d, err := f.OS.OpenRootDir()
+	if err != nil {
+		return nil, err
+	}
+	return hookDir{Dir: d, fsys: f}, nil
+}
+
+type hookDir struct {
+	hostsetup.Dir
+	fsys hookFS
+}
+
+func (d hookDir) done(next hostsetup.Dir, err error) (hostsetup.Dir, error) {
+	if err != nil {
+		return nil, err
+	}
+	d.fsys.after(next.Path())
+	return hookDir{Dir: next, fsys: d.fsys}, nil
+}
+
+func (d hookDir) Open(name string) (hostsetup.Dir, error) { return d.done(d.Dir.Open(name)) }
+
+func (d hookDir) Mkdir(name string, perm os.FileMode) (hostsetup.Dir, error) {
+	return d.done(d.Dir.Mkdir(name, perm))
+}
+
+// Chown does not change the owner (a test is not root).
+func (d hookDir) Chown(int, int) error { return nil }
+
+// linkLayout is base/home/repos -> base/var, with base/var/backups.
+func linkLayout(t *testing.T) (base string) {
+	t.Helper()
+	base = t.TempDir()
+	ok(t, os.MkdirAll(filepath.Join(base, "home"), 0o755))
+	ok(t, os.MkdirAll(filepath.Join(base, "var", "backups"), 0o755))
+	ok(t, os.Symlink(filepath.Join(base, "var"), filepath.Join(base, "home", "repos")))
+	return base
+}
+
+func TestChownTreeRefusesAPathThatPassesThroughASymbolicLink(t *testing.T) {
+	base := linkLayout(t)
+	rfs := newRecordingFS()
+	link := filepath.Join(base, "home", "repos")
+	err := hostsetup.ChownTree(rfs, filepath.Join(link, "backups"), 990, 990)
+	var nd *hostsetup.NotDirError
+	if !errors.As(err, &nd) || !nd.Symlink || nd.Path != link {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(err.Error(), link+" is a symbolic link; give the resolved path") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(rfs.owners) != 0 {
+		t.Fatalf("owners changed: %v", rfs.owners)
+	}
+}
+
+func TestOpenDirNeverCreatesBehindASymbolicLink(t *testing.T) {
+	base := linkLayout(t)
+	mk := &hostsetup.Make{Parents: hostsetup.Attrs{Mode: 0o755}, Last: hostsetup.Attrs{Mode: 0o700}}
+	_, _, err := hostsetup.OpenDir(newRecordingFS(), filepath.Join(base, "home", "repos", "new", "deeper"), mk)
+	var nd *hostsetup.NotDirError
+	if !errors.As(err, &nd) {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(base, "var", "new")); err == nil {
+		t.Fatal("a directory was created behind the link")
+	}
+}
+
+func TestOpenDirRefusesAFileInTheWayAndAnUnknownRelativePath(t *testing.T) {
+	base := t.TempDir()
+	ok(t, os.WriteFile(filepath.Join(base, "f"), nil, 0o600))
+	var nd *hostsetup.NotDirError
+	_, _, err := hostsetup.OpenDir(newRecordingFS(), filepath.Join(base, "f", "x"), nil)
+	if !errors.As(err, &nd) || nd.Symlink || !strings.Contains(err.Error(), "is not a directory") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, _, err := hostsetup.OpenDir(newRecordingFS(), "relative", nil); err == nil {
+		t.Fatal("a relative path was walked")
+	}
+}
+
+func TestOpenDirCreatesMissingComponentsWithTheirOwnersAndReportsThem(t *testing.T) {
+	base := t.TempDir()
+	rfs := newRecordingFS()
+	mk := &hostsetup.Make{Parents: hostsetup.Attrs{Mode: 0o755}, Last: hostsetup.Attrs{UID: 990, GID: 990, Mode: 0o700}}
+	target := filepath.Join(base, "a", "b", "repo")
+	d, created, err := hostsetup.OpenDir(rfs, target, mk)
+	ok(t, err)
+	_ = d.Close()
+	want := []string{filepath.Join(base, "a"), filepath.Join(base, "a", "b"), target}
+	if strings.Join(created, "|") != strings.Join(want, "|") {
+		t.Fatalf("created %v", created)
+	}
+	assertDirMode(t, filepath.Join(base, "a"), 0o755)
+	assertDirMode(t, target, 0o700)
+	if o, _ := rfs.ownerOf(target); o != (owner{990, 990}) {
+		t.Fatalf("owner %+v", o)
+	}
+}
+
+func assertDirMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != want {
+		t.Fatalf("%s: %v %v", path, info, err)
+	}
+}
+
+func TestOpenDirOfAMissingPathWithoutMakeIsNotExist(t *testing.T) {
+	_, _, err := hostsetup.OpenDir(newRecordingFS(), filepath.Join(t.TempDir(), "absent", "x"), nil)
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestACreationFailureNamesTheDirectory(t *testing.T) {
+	base := t.TempDir()
+	rfs := newRecordingFS()
+	rfs.failOn, rfs.failPath = "mkdir", "b"
+	_, created, err := hostsetup.OpenDir(rfs, filepath.Join(base, "a", "b"), &hostsetup.Make{Parents: hostsetup.Attrs{Mode: 0o755}, Last: hostsetup.Attrs{Mode: 0o700}})
+	var we *hostsetup.WriteError
+	if !errors.As(err, &we) || we.Path != filepath.Join(base, "a", "b") || len(created) != 1 {
+		t.Fatalf("err = %v, created %v", err, created)
+	}
+}
+
+// A component swapped for a link after it was opened does not redirect what
+// comes next: the held descriptor wins.
+func TestAComponentSwappedForALinkAfterItIsOpenedDoesNotRedirectTheWalk(t *testing.T) {
+	base := t.TempDir()
+	outside := filepath.Join(base, "outside")
+	ok(t, os.Mkdir(outside, 0o755))
+	ok(t, os.MkdirAll(filepath.Join(base, "a"), 0o755))
+	swap := func(p string) {
+		if p == filepath.Join(base, "a") {
+			ok(t, os.Rename(p, p+".moved"))
+			ok(t, os.Symlink(outside, p))
+		}
+	}
+	mk := &hostsetup.Make{Parents: hostsetup.Attrs{Mode: 0o755}, Last: hostsetup.Attrs{Mode: 0o700}}
+	d, _, err := hostsetup.OpenDir(hookFS{after: swap}, filepath.Join(base, "a", "b"), mk)
+	ok(t, err)
+	_ = d.Close()
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Fatalf("something was created behind the link: %v", entries)
+	}
+	if _, err := os.Stat(filepath.Join(base, "a.moved", "b")); err != nil {
+		t.Fatalf("the directory was not made in the directory that was held: %v", err)
+	}
+}
+
+// A directory just made and swapped for a link redirects neither the owner
+// change nor the next creation.
+func TestADirectoryMadeAndSwappedForALinkRedirectsNothing(t *testing.T) {
+	base := t.TempDir()
+	outside := filepath.Join(base, "outside")
+	ok(t, os.Mkdir(outside, 0o755))
+	made := filepath.Join(base, "a")
+	swap := func(p string) {
+		if p == made {
+			ok(t, os.Rename(p, p+".moved"))
+			ok(t, os.Symlink(outside, p))
+		}
+	}
+	mk := &hostsetup.Make{Parents: hostsetup.Attrs{Mode: 0o755}, Last: hostsetup.Attrs{UID: 990, GID: 990, Mode: 0o700}}
+	d, _, err := hostsetup.OpenDir(hookFS{after: swap}, filepath.Join(made, "b"), mk)
+	ok(t, err)
+	_ = d.Close()
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Fatalf("something was created behind the link: %v", entries)
+	}
+	if _, err := os.Stat(filepath.Join(made+".moved", "b")); err != nil {
+		t.Fatalf("the next directory was not made inside the made one: %v", err)
+	}
+}
+
+type noRootDirFS struct{ hostsetup.OS }
+
+func (noRootDirFS) OpenRootDir() (hostsetup.Dir, error) { return nil, errors.New("no root") }
+
+func TestOpenDirReportsARootThatCannotBeOpened(t *testing.T) {
+	if _, _, err := hostsetup.OpenDir(noRootDirFS{}, "/x", nil); err == nil || !strings.Contains(err.Error(), "no root") {
 		t.Fatalf("err = %v", err)
 	}
 }

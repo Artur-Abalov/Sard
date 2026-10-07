@@ -67,7 +67,7 @@ func TestRepoAddHelpDescribesTheAddressTheApplyingAndTheSudo(t *testing.T) {
 	h := newSetupHost(t)
 	code, stdout, _ := h.sudo("repo", "add", "--help")
 	assertCode(t, code, exitOK)
-	for _, want := range []string{"only a local path", "through sudo", "sard-agent.service", "a step is running", "D13"} {
+	for _, want := range []string{"only a local path", "through sudo", "symbolic link", "/run, not /var/run", "sard-agent.service", "a step is running", "D13"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("help lacks %q:\n%s", want, stdout)
 		}

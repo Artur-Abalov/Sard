@@ -200,6 +200,47 @@ func (f *fakeFS) Link(oldpath, newpath string) error {
 	return nil
 }
 
+func (f *fakeFS) OpenRootDir() (hostsetup.Dir, error) {
+	d, err := f.OS.OpenRootDir()
+	if err != nil {
+		return nil, err
+	}
+	return fakeDir{Dir: d, fsys: f}, nil
+}
+
+// fakeDir records the owner changes and the creations of a walk.
+type fakeDir struct {
+	hostsetup.Dir
+	fsys *fakeFS
+}
+
+func (d fakeDir) wrap(next hostsetup.Dir, err error) (hostsetup.Dir, error) {
+	if err != nil {
+		return nil, err
+	}
+	return fakeDir{Dir: next, fsys: d.fsys}, nil
+}
+
+func (d fakeDir) Open(name string) (hostsetup.Dir, error) { return d.wrap(d.Dir.Open(name)) }
+
+func (d fakeDir) Mkdir(name string, perm os.FileMode) (hostsetup.Dir, error) {
+	if err := d.fsys.fails("mkdir", filepath.Join(d.Path(), name)); err != nil {
+		return nil, err
+	}
+	return d.wrap(d.Dir.Mkdir(name, perm))
+}
+
+func (d fakeDir) Chown(uid, gid int) error {
+	if err := d.fsys.fails("chown", d.Path()); err != nil {
+		return err
+	}
+	if err := d.fsys.nthChown(d.Path()); err != nil {
+		return err
+	}
+	d.fsys.setOwner(d.Path(), uid, gid)
+	return nil
+}
+
 func (f *fakeFS) OpenRoot(path string) (hostsetup.Root, error) {
 	root, err := f.OS.OpenRoot(path)
 	if err != nil {

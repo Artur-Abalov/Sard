@@ -38,8 +38,9 @@ type FS interface {
 	Chown(path string, uid, gid int) error
 	Chmod(path string, mode os.FileMode) error
 	Stat(path string) (fs.FileInfo, error)
-	// Lstat is Stat that does not follow a symbolic link at the end of path.
-	Lstat(path string) (fs.FileInfo, error)
+	// OpenRootDir opens "/" as a Dir, the start of a walk that never
+	// follows a symbolic link (OpenDir).
+	OpenRootDir() (Dir, error)
 	ReadFile(path string) ([]byte, error)
 	ReadDir(path string) ([]fs.DirEntry, error)
 	// Link makes newpath another name of oldpath; it fails if newpath exists.
@@ -91,9 +92,6 @@ func (OS) ReadFile(path string) ([]byte, error) { return os.ReadFile(path) }
 
 // ReadDir implements FS.
 func (OS) ReadDir(path string) ([]fs.DirEntry, error) { return os.ReadDir(path) }
-
-// Lstat implements FS.
-func (OS) Lstat(path string) (fs.FileInfo, error) { return os.Lstat(path) }
 
 // Link implements FS.
 func (OS) Link(oldpath, newpath string) error { return os.Link(oldpath, newpath) }
@@ -260,34 +258,35 @@ func ChownTree(fsys FS, root string, uid, gid int) error {
 	return chownDir(r, root, ".", uid, gid)
 }
 
-// lookAtRoot is the file info of root, which must be a directory itself.
-func lookAtRoot(fsys FS, root string) (fs.FileInfo, error) {
-	info, err := fsys.Lstat(root)
-	if err != nil {
-		return nil, &WriteError{Path: root, Op: "look at", Err: err}
-	}
-	if !info.IsDir() {
-		return nil, &WriteError{Path: root, Op: "change owner of", Err: errors.New("is a symbolic link or not a directory; give the directory itself")}
-	}
-	return info, nil
-}
-
-// openTreeRoot opens root after checking it is a real directory.
+// openTreeRoot opens root for the walk, after checking that no component
+// of its path is a link (OpenDir) and that the directory opened by name is
+// the one held: a path swapped in between is refused.
 func openTreeRoot(fsys FS, root string) (Root, error) {
-	before, err := lookAtRoot(fsys, root)
+	held, _, err := OpenDir(fsys, root, nil)
 	if err != nil {
-		return nil, err
+		return nil, &WriteError{Path: root, Op: "change owner of", Err: err}
 	}
+	defer func() { _ = held.Close() }()
 	r, err := fsys.OpenRoot(root)
 	if err != nil {
 		return nil, &WriteError{Path: root, Op: "read directory", Err: err}
 	}
-	after, err := r.Stat(".")
-	if err != nil || !os.SameFile(before, after) {
+	if !sameDir(held, r) {
 		_ = r.Close()
 		return nil, &WriteError{Path: root, Op: "change owner of", Err: errors.New("was replaced while it was opened")}
 	}
 	return r, nil
+}
+
+// sameDir says whether the held directory and the Root opened by name are
+// one and the same directory.
+func sameDir(held Dir, r Root) bool {
+	before, err := held.Stat()
+	if err != nil {
+		return false
+	}
+	after, err := r.Stat(".")
+	return err == nil && os.SameFile(before, after)
 }
 
 // chownDir changes the entries of dir (a name inside r); base is the path

@@ -63,27 +63,26 @@ func (c *hostCmd) checkLocalPath(path string) (string, *refusal.Failure) {
 		return "", refusal.Fail(refusal.LocalPathInvalid, "%q is not an absolute path", path)
 	}
 	path = filepath.Clean(path)
-	info, err := c.deps.fs.Lstat(path)
-	if errors.Is(err, fs.ErrNotExist) {
+	d, _, err := hostsetup.OpenDir(c.deps.fs, path, nil)
+	if err == nil {
+		_ = d.Close()
 		return path, nil
 	}
-	if f := notADirectory(path, info, err); f != nil {
-		return "", f
-	}
-	return path, nil
+	return path, pathRefusal(path, err)
 }
 
-// notADirectory refuses what is at path unless it is a real directory.
-func notADirectory(path string, info fs.FileInfo, err error) *refusal.Failure {
+// pathRefusal tells why the walk of a path stopped: a component that is
+// missing is no refusal (the command creates it); a link or a file in the
+// way is, and so is a path that cannot be looked at.
+func pathRefusal(path string, err error) *refusal.Failure {
+	var notDir *hostsetup.NotDirError
 	switch {
-	case err != nil:
-		return refusal.Fail(refusal.LocalPathInvalid, "%s cannot be looked at: %v", path, err)
-	case info.Mode()&fs.ModeSymlink != 0:
-		return refusal.Fail(refusal.LocalPathInvalid, "%s is a symbolic link; give the directory it points to", path)
-	case !info.IsDir():
-		return refusal.Fail(refusal.LocalPathInvalid, "%s exists and is not a directory", path)
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case errors.As(err, &notDir):
+		return refusal.Fail(refusal.LocalPathInvalid, "%s", notDir)
 	}
-	return nil
+	return refusal.Fail(refusal.LocalPathInvalid, "%s cannot be looked at: %v", path, err)
 }
 
 // repository is the repository of the config by name.

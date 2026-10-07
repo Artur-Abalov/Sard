@@ -736,3 +736,26 @@ func TestAnAddressThatIsASymbolicLinkIsRefusedAndNothingIsChanged(t *testing.T) 
 		t.Fatal("the directory behind the link was given away")
 	}
 }
+
+func TestAnAddressThatPassesThroughASymbolicLinkIsRefusedAndNothingIsChanged(t *testing.T) {
+	h := newSetupHost(t)
+	real := h.path("var")
+	ok(t, os.MkdirAll(filepath.Join(real, "backups"), 0o755))
+	ok(t, os.MkdirAll(h.path("home"), 0o755))
+	link := h.path("home/repos")
+	ok(t, os.Symlink(real, link))
+	before := h.hostTree()
+	for _, address := range []string{filepath.Join(link, "backups"), filepath.Join(link, "new")} {
+		code, _, stderr := h.sudo("repo", "add", "extra", address, "--config", "C")
+		assertRefusal(t, code, stderr, exitUsage, "LOCAL_PATH_INVALID")
+		if !strings.Contains(stderr, link+" is a symbolic link; give the resolved path") {
+			t.Fatalf("stderr %q", stderr)
+		}
+	}
+	h.assertNoBackendCalls()
+	h.assertAbsent(h.path("agent.d/repo-extra.yaml"), h.dropIns(), filepath.Join(real, "new"))
+	h.assertHostUnchanged(before)
+	if _, ok := h.fsys.ownerOf(filepath.Join(real, "backups")); ok {
+		t.Fatal("the directory behind the link was given away")
+	}
+}

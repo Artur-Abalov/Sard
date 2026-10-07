@@ -5,10 +5,8 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io/fs"
-	"path/filepath"
+	"slices"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
@@ -92,34 +90,19 @@ func (c *hostCmd) failConnect(ctx context.Context, st *addState, f *refusal.Fail
 // prepareRepositoryDir makes the directory of a local repository ready
 // for the service user (Р13): missing parents are root's, 0755; the
 // repository directory itself is the service user's, 0700; an existing
-// one gets the service user as owner, recursively, modes untouched.
+// one gets the service user as owner, recursively, modes untouched. The
+// path is walked without ever following a symbolic link (R2, ADR 0048),
+// so neither the creation nor the change of owner can be sent elsewhere.
 func (c *hostCmd) prepareRepositoryDir(path string) error {
-	if _, err := c.deps.fs.Lstat(path); err == nil {
-		return hostsetup.ChownTree(c.deps.fs, path, int(c.who.Service.UID), int(c.who.Service.GID))
+	d, created, err := hostsetup.OpenDir(c.deps.fs, path, &hostsetup.Make{Parents: hostsetup.Attrs{Mode: 0o755}, Last: c.serviceOwner(0o700)})
+	if err != nil {
+		return err
 	}
-	missing := c.missingDirs(path)
-	for i, dir := range missing {
-		attrs := hostsetup.Attrs{Mode: 0o755}
-		if i == len(missing)-1 {
-			attrs = c.serviceOwner(0o700)
-		}
-		if _, err := hostsetup.EnsureDir(c.deps.fs, dir, attrs); err != nil {
-			return err
-		}
+	_ = d.Close()
+	if slices.Contains(created, path) {
+		return nil
 	}
-	return nil
-}
-
-// missingDirs lists the directories of path that do not exist, outermost first.
-func (c *hostCmd) missingDirs(path string) []string {
-	var missing []string
-	for dir := path; dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
-		if _, err := c.deps.fs.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
-			break
-		}
-		missing = append([]string{dir}, missing...)
-	}
-	return missing
+	return hostsetup.ChownTree(c.deps.fs, path, int(c.who.Service.UID), int(c.who.Service.GID))
 }
 
 // candidate is a password file the repository is tried with.

@@ -112,6 +112,11 @@ Flags:
   --no-restart                 do not restart the service, say how to
   --timeout duration           how long the whole command may take (default 2m)
 
+The address must not pass through a symbolic link, in any component, and must
+be given in its resolved form (/run, not /var/run): the command refuses a link
+(LOCAL_PATH_INVALID) so that nobody can redirect the creation of directories
+and the change of owner, which it makes as root, to another place.
+
 The same name and address again changes nothing (unchanged).
 
 Run it through sudo (as root); the files it creates belong to the service user
