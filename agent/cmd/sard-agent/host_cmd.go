@@ -19,14 +19,21 @@ import (
 // parsed, before the config is read: only the service.user key is peeked
 // at, to know who the service user is.
 func authorize(deps hostDeps, words string, opts hostOptions, mutating, needsUser bool) (hostsetup.Principal, *repoinit.Failure) {
-	return hostsetup.Authorize(hostsetup.Request{
-		EUID:        deps.euid,
-		ServiceUser: config.PeekServiceUser(opts.configPath),
-		Lookup:      deps.lookupUser,
+	command := strings.Join(append([]string{words}, opts.args...), " ")
+	return hostsetup.Authorize(privilegeRequest(deps.euid, deps.lookupUser, opts.configPath, command, mutating, needsUser))
+}
+
+// privilegeRequest is what the privilege rule is asked about: who runs
+// the command, who the service user is, what the operator would type.
+func privilegeRequest(euid uint32, lookup hostsetup.LookupFunc, configPath, command string, mutating, needsUser bool) hostsetup.Request {
+	return hostsetup.Request{
+		EUID:        euid,
+		ServiceUser: config.PeekServiceUser(configPath),
+		Lookup:      lookup,
 		Mutating:    mutating,
 		NeedsUser:   needsUser,
-		Command:     strings.Join(append([]string{words}, opts.args...), " "),
-	})
+		Command:     command,
+	}
 }
 
 // runAs is who restic runs as: the service user under sudo, the caller

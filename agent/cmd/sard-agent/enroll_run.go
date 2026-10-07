@@ -75,13 +75,7 @@ func runEnrollWithDeps(ctx context.Context, args []string, stdout, stderr io.Wri
 	if code != exitOK {
 		return code
 	}
-	who, f := hostsetup.Authorize(hostsetup.Request{
-		EUID:        deps.euid,
-		ServiceUser: config.PeekServiceUser(opts.configPath),
-		Lookup:      deps.lookupUser,
-		NeedsUser:   true,
-		Command:     "enroll --server <address> --token <token>",
-	})
+	who, f := hostsetup.Authorize(privilegeRequest(deps.euid, deps.lookupUser, opts.configPath, "enroll --server <address> --token <token>", false, true))
 	if f != nil {
 		return report(stderr, "enroll", f)
 	}
