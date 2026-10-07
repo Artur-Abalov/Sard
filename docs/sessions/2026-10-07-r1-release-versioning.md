@@ -135,3 +135,31 @@ Linux / Rocky с SELinux. Закрывает OQ-143.
   Long — не релиз; подпись rpm «RHEL, Oracle Linux, Rocky»; пояснение про конфиг
   — для deb и rpm. Не решено: что консоль показывает при пустом списке шагов
   (формата нет в релизе) — в реестр.
+
+### ВМ Oracle Linux 9, SELinux enforcing — находка (проверено на ВМ, qemu TCG)
+
+- `scripts/test-agent-install-vm.sh`: ВМ OL9U8 (шаблон KVM) загружается,
+  cloud-init, ssh; установка rpm, права, enroll и repo init от `sard-agent` —
+  проходят. **Служба не выходит в сеть:** `RESTIC_UNUSABLE: … fork/exec
+  /usr/lib/sard/restic: permission denied`, перезапуск по кругу.
+- Причина (каждый шаг проверен на ВМ):
+  - `ls -Z`: `/usr/lib/sard/{sard-agent,restic}` — `lib_t` (политика по
+    умолчанию для `/usr/lib`); ссылка `/usr/bin/sard-agent` — `bin_t`, но
+    SELinux берёт метку цели ссылки;
+  - под systemd агент работает в **`init_t`** (`ps -eZ`), а не в
+    `unconfined_service_t`: переход домена при запуске из `init_t` есть для
+    `bin_t`, для `lib_t` нет (`/usr/bin/id` под тем же `systemd-run` —
+    `unconfined_service_t`);
+  - из `init_t` запуск restic запрещён, отказ скрыт `dontaudit` (в `ausearch`
+    пусто даже после `semodule -DB`); `setenforce 0` — restic запускается;
+  - вне systemd (`sudo -u sard-agent`, `setpriv`) — `unconfined_t`, работает,
+    поэтому `enroll` и `repo init` проходили;
+  - `chcon -t bin_t` на оба файла → служба в `unconfined_service_t`, restic
+    работает, агент подключился и прислал Hello.
+- `matchpathcon`: `/usr/libexec/sard/*` и `/usr/bin/*` — `bin_t`,
+  `/usr/lib/sard/*` — `lib_t`.
+- Следствие: выпущенный rpm `v0.0.1-rc1` на RHEL-совместимом хосте с SELinux
+  (по умолчанию enforcing) не запускает службу. В контейнерах (SELinux нет) и
+  на Debian/Ubuntu дефект не виден.
+- Стенд: overlay ВМ меньше образа (20G при 37 ГиБ) обрезал том LVM — dracut не
+  находил `vg_main` (исправлено, `3d217bc`).
