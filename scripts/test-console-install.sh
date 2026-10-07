@@ -8,7 +8,8 @@
 # server answers them, in order, on hosts that have access to the Sard server
 # and nothing else (an internal Docker network, no internet):
 #
-#   - deb on Ubuntu 24.04 and the tar.gz archive on Debian 12, amd64: every
+#   - deb on Ubuntu 24.04, the tar.gz archive on Debian 12 and rpm on Oracle
+#     Linux, Rocky and AlmaLinux (format=rpm, R1, ADR 0047), amd64: every
 #     step but the signature one exits 0, the agent comes online with the
 #     version of the packages; configure does not overwrite an edited
 #     agent.yaml; after the archive's install the layout of the deb is there;
@@ -16,12 +17,12 @@
 #     the runner's copy of the downloaded files: exit 0 and the trusted
 #     comment "sard-agent <version>", non-zero once SHA256SUMS is altered;
 #   - UPGRADE=1 (needs OLD_DIST, the packages of the previous version): an agent
-#     installed from the old deb is marked outdated; the steps of its upgrade
+#     installed from the old package (deb or rpm, by the host) is marked outdated; the steps of its upgrade
 #     bring it online with the new version, the same agentId, and
 #     /etc/sard/agent.yaml, tls and secrets unchanged.
 #
-#   SERVER_IMAGE=sard-server:e2e scripts/test-console-install.sh [ubuntu:24.04 debian:12]
-#   UPGRADE=1 OLD_DIST=dist-old SERVER_IMAGE=sard-server:e2e scripts/test-console-install.sh debian:12
+#   SERVER_IMAGE=sard-server:e2e scripts/test-console-install.sh [ubuntu:24.04 debian:12 oraclelinux:9]
+#   UPGRADE=1 OLD_DIST=dist-old SERVER_IMAGE=sard-server:e2e scripts/test-console-install.sh debian:12 oraclelinux:9
 #
 # SERVER_IMAGE is a server with the agent packages of the version to install
 # (scripts/test-agent-install.sh builds the same setup). Needs Docker with
@@ -40,6 +41,24 @@ HOST="$RUN_ID-host"
 WORK="$(mktemp -d)"
 # Not /tmp: Debian 13 mounts a tmpfs there at boot, over what docker cp writes.
 WORKDIR=/root/install
+
+# use_family <distro image>: the format the console is asked for and the host image of its family.
+use_family() {
+  case "$1" in
+    *oraclelinux:* | *rockylinux:* | *almalinux:*)
+      FAMILY=rpm
+      HOST_DOCKERFILE=host-rpm.Dockerfile
+      OLD_GLOB='sard-agent-*.x86_64.rpm'
+      INSTALL_OLD='rpm -Uvh'
+      ;;
+    *)
+      FAMILY=deb
+      HOST_DOCKERFILE=host.Dockerfile
+      OLD_GLOB='sard-agent_*_amd64.deb'
+      INSTALL_OLD='DEBIAN_FRONTEND=noninteractive apt-get install -y -q'
+      ;;
+  esac
+}
 
 die() { echo "test-console-install: FAIL: $*" >&2; exit 1; }
 say() { echo "test-console-install: $*"; }
@@ -82,7 +101,7 @@ start_server() {
 start_host() {
   local distro="$1"
   docker build -q ${HOST_BUILD_FLAGS:-} --build-arg DISTRO="$distro" -t "sard-pkgtest:${distro//:/-}" \
-    -f "$ROOT/test/packages/host.Dockerfile" "$ROOT/test/packages" >/dev/null
+    -f "$ROOT/test/packages/$HOST_DOCKERFILE" "$ROOT/test/packages" >/dev/null
   docker run -d --name "$HOST" --hostname agent-host --network "$NET" --privileged \
     --cgroupns=host --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
     "sard-pkgtest:${distro//:/-}" >/dev/null
@@ -232,16 +251,16 @@ install_flow() {
 }
 
 upgrade_flow() {
-  local distro="$1" old_deb old_version before after id new_version
-  old_deb="$(ls "${OLD_DIST:?OLD_DIST not set}"/sard-agent_*_amd64.deb)"
+  local distro="$1" old_pkg old_version before after id new_version
+  old_pkg="$(ls "${OLD_DIST:?OLD_DIST not set}"/$OLD_GLOB)"
   old_version="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "$OLD_DIST/manifest.json")"
   say "=== $distro: upgrade from $old_version with the steps of the agent's card"
   start_server
   start_host "$distro"
-  docker cp "$old_deb" "$HOST:$WORKDIR/old.deb"
+  docker cp "$old_pkg" "$HOST:$WORKDIR/old.$FAMILY"
   sign_in
-  on_host "DEBIAN_FRONTEND=noninteractive apt-get install -y -q $WORKDIR/old.deb >/dev/null"
-  STEPS="$(steps "/api/v1/agent-install")"
+  on_host "$INSTALL_OLD $WORKDIR/old.$FAMILY >/dev/null"
+  STEPS="$(steps "/api/v1/agent-install?format=$FAMILY")"
   new_token
   run_steps configure
   edit_repository
@@ -253,9 +272,9 @@ upgrade_flow() {
   fi
   before="$(on_host 'find /etc/sard -type f -exec sha256sum {} + | sort')"
   id="$AGENT_ID"
-  STEPS="$(steps "/api/v1/agents/$id/upgrade?format=deb")"
+  STEPS="$(steps "/api/v1/agents/$id/upgrade?format=$FAMILY")"
   say "upgrade steps: $(kinds_of "$STEPS")"
-  new_version="$(api GET "/api/v1/agents/$id/upgrade?format=deb" | jq -r .agentVersion)"
+  new_version="$(api GET "/api/v1/agents/$id/upgrade?format=$FAMILY" | jq -r .agentVersion)"
   run_steps download checksum upgrade
   wait_online "$new_version"
   [ "$AGENT_ID" = "$id" ] || die "the upgrade changed the agent: $id -> $AGENT_ID"
@@ -268,8 +287,11 @@ upgrade_flow() {
 
 [ "$#" -gt 0 ] || set -- ubuntu:24.04 debian:12
 for distro in "$@"; do
+  use_family "$distro"
   if [ -n "${UPGRADE:-}" ]; then
     upgrade_flow "$distro"
+  elif [ "$FAMILY" = rpm ]; then
+    install_flow "$distro" rpm
   elif [[ "$distro" == ubuntu* ]]; then
     install_flow "$distro" deb
   else
