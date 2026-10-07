@@ -205,7 +205,7 @@ pid() { systemctl show -p MainPID --value sard-agent; }
     `grep -c URL-MARKER "$OUT/all"` → `0` (выполнять через `run`).
 29. Путь: `sudo $AG repo add r1 relative` → `exit=2`, `LOCAL_PATH_INVALID`;
     `sudo $AG repo add r2 /etc/hostname` → `exit=2`, `LOCAL_PATH_INVALID`.
-29а. (П10 — предложено, ждёт подтверждения владельца.) Символьная ссылка:
+29а. (П10.) Символьная ссылка:
     `sudo ln -s /etc /srv/sard/link; snap > "$OUT/s1"; sudo find /etc -printf '%u %p\n' | sort > "$OUT/etc0"`;
     `sudo $AG repo add r4 /srv/sard/link; echo "exit=$?"`
     → `exit=2`; `LOCAL_PATH_INVALID`; сообщение содержит
@@ -213,6 +213,18 @@ pid() { systemctl show -p MainPID --value sard-agent; }
     `snap | diff - "$OUT/s1"` → пусто (нет `repo-r4.yaml`, нет `sard-repo-r4.conf`);
     `sudo find /etc -printf '%u %p\n' | sort | diff - "$OUT/etc0"` → пусто
     (владельцы в `/etc` не менялись). `sudo rm /srv/sard/link`.
+29б. (П11.) Ссылка в родительском компоненте:
+    `sudo rm -rf /var/lib/sard-agent/repos; sudo ln -s /var /var/lib/sard-agent/repos`;
+    `snap > "$OUT/s2"; sudo find /var -xdev -printf '%u %g %p\n' 2>/dev/null | sort > "$OUT/var0"`;
+    `sudo $AG repo add r5 /var/lib/sard-agent/repos/backups; echo "exit=$?"`
+    → `exit=2`; `LOCAL_PATH_INVALID`; сообщение содержит
+    `/var/lib/sard-agent/repos is a symbolic link; give the resolved path`;
+    `sudo find /var -xdev -printf '%u %g %p\n' 2>/dev/null | sort | diff - "$OUT/var0"`
+    → пусто (никаких смен владельца и новых каталогов в `/var`);
+    `snap | diff - "$OUT/s2"` → пусто. `sudo rm /var/lib/sard-agent/repos`.
+29в. (П11.) Адрес через системную ссылку: `ls -ld /var/run` → ссылка на `/run`;
+    `sudo $AG repo add r6 /var/run/sard-qa; echo "exit=$?"` → `exit=2`,
+    `LOCAL_PATH_INVALID`, называет `/var/run`; `ls -d /run/sard-qa` → нет.
 30. `sudo $AG repo show main` → `exit=0`; `local`, `/srv/sard/main`,
     `initialized`, `X`, `/etc/sard/secrets/restic-main.pass`,
     `/etc/sard/agent.d/repo-main.yaml`. `sudo $AG repo show main --json | jq -r .repository_id` → `X`.
