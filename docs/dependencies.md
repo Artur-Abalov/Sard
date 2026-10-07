@@ -15,6 +15,7 @@
 | agent | google.golang.org/genproto/googleapis/rpc (пакет errdetails) | v0.0.0-20260706201446-f0a921348800 | Apache-2.0 | runtime | разбор `google.rpc.ErrorInfo` в отказах `Enroll` (A2a, домен `sard.dev`, ADR 0025) — ранее приходила транзитивно через grpc, объявлена явно, так как код использует её типы напрямую |
 | agent | github.com/santhosh-tekuri/jsonschema/v6 | v6.0.3 | Apache-2.0 | runtime | валидация `config_json` по `ConfigSchema()` плагина (draft 2020-12), формат `sard-secret`; ADR 0027 |
 | agent | pgregory.net/rapid | v1.3.0 | MPL-2.0 (без приложения B «Incompatible With Secondary Licenses», совместима с AGPL-3.0) | только тесты, в бинарник не попадает | тесты свойств `internal/redact` (A7a): случайные тексты и разбиения на порции с уменьшением контрпримера; своих зависимостей нет |
+| agent (плагин postgresql, F1) | — | — | — | — | только stdlib; драйвера PostgreSQL нет: `psql`, `pg_dump`, `pg_dumpall` — программы хоста (пакет `postgresql-client`), в сборку и в пакеты агента не входят, deb и rpm их только предлагают (`Suggests`); ADR 0047 |
 | cli | github.com/spf13/cobra | v1.10.2 | Apache-2.0 | runtime | дерево подкоманд `sardctl` |
 | cli | github.com/spf13/pflag (транзитивно) | v1.0.9 | BSD-3-Clause | runtime | флаги для cobra |
 

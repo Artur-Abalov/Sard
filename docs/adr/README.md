@@ -48,3 +48,4 @@
 | [0044](0044-agent-command-journal.md) | Журнал принятых команд агента: провал при перезапуске (D13), журнал агента (FXa) |
 | [0045](0045-build-once.md) | Собрать один раз, тестировать собранное: одна сборка агента и jar на прогон, e2e на релизном агенте |
 | [0046](0046-reverse-proxy-forward-headers.md) | Консоль за обратным прокси: `SARD_FORWARD_HEADERS=native` (forward-headers Spring Boot) |
+| [0047](0047-postgresql-plugin.md) | Плагин postgresql (F1): `psql` с хоста, `Dump.Tags` и `Dump.Extra`, глобальные объекты вторым снимком |

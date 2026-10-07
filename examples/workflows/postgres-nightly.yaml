@@ -19,13 +19,14 @@ spec:
         args: [on]
 
     - name: dump
-      plugin: postgresql
+      plugin: postgresql          # docs/plugins/postgresql.md
       config:                    # validated against the plugin's ConfigSchema
-        host: localhost
-        port: 5432
-        database: billing
-        user: backup
+        host: /var/run/postgresql # a socket directory (TLS is off there), or a host name
+        database: billing         # one database per source
+        user: backup              # LOGIN and pg_read_all_data
         password_ref: pg-billing  # secret name on the agent host, never the value
+        exclude_tables: ["public.log_*"]
+        include_globals: true     # roles of the cluster as a second, linked snapshot
 
     - name: store
       repository: main           # defined on the agent host with its key (ADR 0008);
