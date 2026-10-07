@@ -145,13 +145,19 @@ func CheckFile(key, path string, agentUID uint32, stat StatFunc) error {
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
-	switch {
-	case err != nil:
+	if err != nil {
 		return &Error{Key: key, Path: path, err: err}
-	case info.Mode.Perm()&groupOtherBits != 0:
-		return &Error{Key: key, Path: path, Mode: info.Mode.Perm(), modeIsSet: true}
-	case info.UID != agentUID:
-		return &Error{Key: key, Path: path, Owner: info.UID, WantOwner: agentUID, ownerIsSet: true}
+	}
+	return judge(key, path, info.Mode.Perm(), info.UID, agentUID)
+}
+
+// judge is A1's rule: no group or other bits, owned by want.
+func judge(key, path string, perm fs.FileMode, uid, want uint32) error {
+	switch {
+	case perm&groupOtherBits != 0:
+		return &Error{Key: key, Path: path, Mode: perm, modeIsSet: true}
+	case uid != want:
+		return &Error{Key: key, Path: path, Owner: uid, WantOwner: want, ownerIsSet: true}
 	}
 	return nil
 }
@@ -194,13 +200,8 @@ func readBounded(f *os.File, path string) ([]byte, error) {
 // checkOwned is A1's rule applied to an opened file.
 func checkOwned(path string, info fs.FileInfo, uid uint32) error {
 	st, ok := info.Sys().(*syscall.Stat_t)
-	switch {
-	case !info.Mode().IsRegular() || !ok:
+	if !info.Mode().IsRegular() || !ok {
 		return fmt.Errorf("secret file %s is not a regular file", path)
-	case info.Mode().Perm()&groupOtherBits != 0:
-		return &Error{Path: path, Mode: info.Mode().Perm(), modeIsSet: true}
-	case st.Uid != uid:
-		return &Error{Path: path, Owner: st.Uid, WantOwner: uid, ownerIsSet: true}
 	}
-	return nil
+	return judge("", path, info.Mode().Perm(), st.Uid, uid)
 }
