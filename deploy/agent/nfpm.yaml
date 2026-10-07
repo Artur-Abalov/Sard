@@ -50,6 +50,15 @@ contents:
     dst: /usr/share/doc/sard-agent/NOTICE
     file_info: {mode: 0644}
 
+# Optional: the postgresql plugin runs the host's pg_dump and psql (F1 ПГ21,
+# docs/plugins/postgresql.md). An agent without databases needs no client,
+# so there is no hard dependency; the names differ between the families.
+overrides:
+  deb:
+    suggests: [postgresql-client]
+  rpm:
+    suggests: [postgresql]
+
 scripts:
   postinstall: ${ROOT}/deploy/agent/postinstall.sh
   preremove: ${ROOT}/deploy/agent/preremove.sh
