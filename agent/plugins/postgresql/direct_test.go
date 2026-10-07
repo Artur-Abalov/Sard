@@ -245,3 +245,17 @@ func wantClosed(t *testing.T, ch <-chan struct{}, message string) {
 		t.Error(message)
 	}
 }
+
+// A secret that cannot be read stops the stream with the reason of the host.
+func TestStreamFailsWhenTheSecretCannotBeRead(t *testing.T) {
+	d := newDirect()
+	h := &flakyHost{reads: 1}
+	cfg := cfgOf(k())
+	if err := d.plugin.Prepare(context.Background(), h, cfg); err != nil {
+		t.Fatal(err)
+	}
+	err := d.plugin.Stream(context.Background(), h, cfg, sdk.Dump{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "gone") {
+		t.Errorf("Stream: %v", err)
+	}
+}

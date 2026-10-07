@@ -30,7 +30,8 @@ var helperModes = map[string]func(){
 		fmt.Fprint(os.Stderr, "first\nsecond")
 		os.Exit(3)
 	},
-	"lines": func() { fmt.Fprint(os.Stderr, "one\ntwo\n") },
+	"lines":   func() { fmt.Fprint(os.Stderr, "one\ntwo\n") },
+	"partial": func() { fmt.Fprint(os.Stderr, "one\nx") },
 	"env": func() {
 		for _, kv := range os.Environ() {
 			fmt.Println(kv)
@@ -100,6 +101,19 @@ func TestProcessRunnerSplitsStderrIntoLines(t *testing.T) {
 		t.Fatalf("code %d, err %v", code, runErr)
 	}
 	if got := err.list(); !slices.Equal(got, []string{"one", "two"}) {
+		t.Errorf("stderr lines = %q", got)
+	}
+}
+
+// The last line without a line ending is a line, even of one byte.
+func TestProcessRunnerEmitsALastLineOfOneByte(t *testing.T) {
+	var err lines
+	c := helper(t, "partial")
+	c.Stderr = err.add
+	if code, runErr := (postgresql.ProcessRunner{}).Run(context.Background(), c); code != 0 || runErr != nil {
+		t.Fatalf("code %d, err %v", code, runErr)
+	}
+	if got := err.list(); !slices.Equal(got, []string{"one", "x"}) {
 		t.Errorf("stderr lines = %q", got)
 	}
 }

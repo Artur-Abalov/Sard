@@ -166,6 +166,7 @@ func TestPgDumpFailureFailsTheStepAndLeavesNoSnapshot(t *testing.T) {
 		{"no output", say("", nil, 0), "empty output"},
 		{"plain SQL", say("-- plain SQL\n", nil, 0), "not a custom-format archive"},
 		{"short, not an archive", say("PGDM", nil, 0), "not a custom-format archive"},
+		{"one byte, not an archive", say("P", nil, 0), "not a custom-format archive"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -331,3 +331,15 @@ func TestPGVariablesAreDroppedWhereverTheyAre(t *testing.T) {
 		}
 	}
 }
+
+// An empty entry of PATH is the current directory for a shell, and is not
+// searched: a pg_dump there is not the one of the host's tools.
+func TestEmptyEntryOfPathIsNotTheCurrentDirectory(t *testing.T) {
+	r := newRig(t)
+	r.fs.nodes["pg_dump"] = 0o755
+	r.fs.nodes["psql"] = 0o755
+	r.env = []string{"PATH=:/nonexistent", "HOME=/var/lib/sard"}
+	res := r.backup(k())
+	want(t, res, failed)
+	mentions(t, res.GetMessage(), "pg_dump not found")
+}

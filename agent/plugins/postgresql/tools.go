@@ -115,8 +115,6 @@ func reason(err error) string {
 	switch {
 	case errors.Is(err, fs.ErrNotExist), errors.Is(err, syscall.ENOTDIR):
 		return "no such file or directory"
-	case errors.Is(err, fs.ErrPermission):
-		return "permission denied"
 	}
 	var pathErr *fs.PathError
 	if errors.As(err, &pathErr) {
