@@ -9,6 +9,7 @@ import (
 	"io"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 )
 
@@ -34,6 +35,11 @@ func runRepoShow(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	if f != nil {
 		return reportRepoFailure(stderr, "show", f)
 	}
+	return showRepository(ctx, cfg, repo, index, who, opts, stdout, stderr, deps)
+}
+
+// showRepository asks restic once and prints the card.
+func showRepository(ctx context.Context, cfg config.Config, repo config.Repository, index int, who hostsetup.Principal, opts hostOptions, stdout, stderr io.Writer, deps hostDeps) int {
 	binary, err := checkRestic(ctx, cfg, opts.configPath, deps.executable, deps.exec, runAs(who))
 	if err != nil {
 		return reportRepoError(ctx, stderr, "show", err)

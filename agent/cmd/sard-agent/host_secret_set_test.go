@@ -151,17 +151,27 @@ func TestMissingValueFileIsRefusedWithItsPath(t *testing.T) {
 
 // Rule "secret set добавляет секрет отдельными файлами с правами A1".
 
-func TestNewSecretIsAValueFileAndAFragment(t *testing.T) {
+func TestNewSecretIsAValueFileOfTheServiceUser(t *testing.T) {
 	h := newSetupHost(t)
-	mainBefore := h.fileContent(h.cfgPath)
 	code, stdout, stderr := h.set("db", "SECRET-MARKER")
 	assertCode(t, code, exitOK)
 	if stderr != "" {
 		t.Fatalf("stderr %q", stderr)
 	}
-	value, fragment := h.path("secrets/db"), h.path("agent.d/secret-db.yaml")
+	value := h.path("secrets/db")
 	h.assertOwner(value, serviceUID)
 	h.assertMode(value, 0o600)
+	if !strings.Contains(stdout, "db") || !strings.Contains(stdout, value) {
+		t.Fatalf("stdout %q", stdout)
+	}
+	h.assertValuesHidden(stdout, stderr)
+}
+
+func TestNewSecretIsAFragmentOfRootReadableByTheService(t *testing.T) {
+	h := newSetupHost(t)
+	mainBefore := h.fileContent(h.cfgPath)
+	h.set("db", "SECRET-MARKER")
+	fragment := h.path("agent.d/secret-db.yaml")
 	if o, _ := h.fsys.ownerOf(fragment); o != (ownerRec{0, serviceUID}) {
 		t.Fatalf("fragment owner %+v", o)
 	}
@@ -170,16 +180,12 @@ func TestNewSecretIsAValueFileAndAFragment(t *testing.T) {
 		t.Fatalf("agent.d owner %+v", o)
 	}
 	h.assertMode(h.agentD(), 0o750)
-	if body := h.fileContent(fragment); !strings.Contains(body, "secrets:") || !strings.Contains(body, "db: "+value) {
+	if body := h.fileContent(fragment); !strings.Contains(body, "secrets:") || !strings.Contains(body, "db: "+h.path("secrets/db")) {
 		t.Fatalf("fragment %q", body)
 	}
 	if h.fileContent(h.cfgPath) != mainBefore {
 		t.Fatal("the main config changed")
 	}
-	if !strings.Contains(stdout, "db") || !strings.Contains(stdout, value) {
-		t.Fatalf("stdout %q", stdout)
-	}
-	h.assertValuesHidden(stdout, stderr)
 }
 
 func TestCreatedFilesDoNotDependOnTheUmask(t *testing.T) {
@@ -212,33 +218,32 @@ func ok(t *testing.T, err error) {
 	}
 }
 
+// tempFileDirs are the directories of the temporary files the fake file
+// system made, one entry per file.
+func (h *setupHost) tempFileDirs() []string {
+	var dirs []string
+	for _, e := range h.fsys.events {
+		if fields := strings.Fields(e); fields[0] == "createtemp" {
+			dirs = append(dirs, filepath.Dir(fields[1]))
+		}
+	}
+	return dirs
+}
+
 func TestTemporaryFilesLiveInTheDirectoryOfTheirTarget(t *testing.T) {
 	h := newSetupHost(t)
 	code, _, _ := h.set("db", "SECRET-MARKER")
 	assertCode(t, code, exitOK)
-	temps := 0
-	for _, e := range h.fsys.events {
-		fields := strings.Fields(e)
-		if fields[0] != "createtemp" {
-			continue
-		}
-		temps++
-		dir := filepath.Dir(fields[1])
+	dirs := h.tempFileDirs()
+	if len(dirs) != 2 {
+		t.Fatalf("%d temporary files, want one per file written", len(dirs))
+	}
+	for _, dir := range dirs {
 		if dir != h.secretsDir() && dir != h.agentD() {
-			t.Errorf("a temporary file outside the target directories: %s", fields[1])
+			t.Errorf("a temporary file outside the target directories: %s", dir)
 		}
 	}
-	if temps != 2 {
-		t.Fatalf("%d temporary files, want one per file written", temps)
-	}
-	for _, dir := range []string{h.secretsDir(), h.agentD()} {
-		entries, _ := os.ReadDir(dir)
-		for _, e := range entries {
-			if strings.Contains(e.Name(), ".tmp-") {
-				t.Errorf("%s was left in %s", e.Name(), dir)
-			}
-		}
-	}
+	h.assertNoTemporaryFiles(h.secretsDir(), h.agentD())
 }
 
 func TestRepeatingTheSameValueChangesNothing(t *testing.T) {
@@ -336,14 +341,7 @@ func TestAFailedWriteLeavesNoTracesAndTheOldValue(t *testing.T) {
 			if got := h.fileContent(h.path("secrets/db")); got != "SECRET-MARKER-1" {
 				t.Fatalf("stored %q", got)
 			}
-			for _, dir := range []string{h.secretsDir(), h.agentD()} {
-				entries, _ := os.ReadDir(dir)
-				for _, e := range entries {
-					if strings.Contains(e.Name(), ".tmp-") {
-						t.Errorf("%s left in %s", e.Name(), dir)
-					}
-				}
-			}
+			h.assertNoTemporaryFiles(h.secretsDir(), h.agentD())
 			if h.sd.touched() {
 				t.Fatalf("systemctl: %v", h.sd.calls)
 			}

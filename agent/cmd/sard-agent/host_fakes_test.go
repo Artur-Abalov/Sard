@@ -38,9 +38,7 @@ type fakeFS struct {
 	// (counted from 1, all paths) fail.
 	failChownAt int
 	chownCalls  int
-	// created lists every file and directory this fake made, as a path.
-	created []string
-	// opened lists the files of the secrets directory that were opened for reading.
+	// events lists the owner changes, renames and temporary files, in order.
 	events []string
 }
 

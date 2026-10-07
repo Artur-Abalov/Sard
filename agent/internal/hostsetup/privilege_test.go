@@ -117,3 +117,28 @@ func TestEnrollStyleCommandRunsAsRootOrServiceUser(t *testing.T) {
 		t.Fatalf("root refused: %v", f)
 	}
 }
+
+func TestTheZeroRoleIsNeitherRootNorTheServiceUser(t *testing.T) {
+	var zero hostsetup.Principal
+	if zero.Role == hostsetup.RoleRoot || zero.Role == hostsetup.RoleService {
+		t.Fatalf("zero role %v", zero.Role)
+	}
+}
+
+func TestAServiceUserLookupThatFailsGivesNoServiceUserToRoot(t *testing.T) {
+	req := request(0, false)
+	req.NeedsUser = false
+	req.Lookup = func(string) (hostsetup.User, error) { return serviceUser, errors.New("half an answer") }
+	p, f := hostsetup.Authorize(req)
+	if f != nil || p.Service != (hostsetup.User{}) {
+		t.Fatalf("principal %+v, refusal %v", p, f)
+	}
+}
+
+func TestAServiceUserLookupThatFailsNeverMakesTheCallerTheServiceUser(t *testing.T) {
+	req := request(990, false)
+	req.Lookup = func(string) (hostsetup.User, error) { return serviceUser, errors.New("half an answer") }
+	if _, f := hostsetup.Authorize(req); f == nil || f.Reason != repoinit.PrivilegesRequired {
+		t.Fatalf("refusal %+v", f)
+	}
+}

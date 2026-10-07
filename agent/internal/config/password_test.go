@@ -36,6 +36,7 @@ func TestRedactURLHidesThePasswordOfTheUserinfoAndNothingElse(t *testing.T) {
 		"sftp:backup@nas.example.com:/main":                "sftp:backup@nas.example.com:/main",
 		"rest:https://a@b:pw@host/p@th":                    "rest:https://a@b:***@host/p@th",
 		"rest:https://host/p:q@r":                          "rest:https://host/p:q@r",
+		"rest:https://u:p@host/u:p@x":                      "rest:https://u:***@host/u:p@x",
 		"rest:%zz":                                         "rest:%zz",
 	}
 	for url, want := range cases {

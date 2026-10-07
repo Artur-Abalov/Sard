@@ -66,11 +66,9 @@ func SecretYAML(name, path string) []byte {
 	return marshal(map[string]map[string]string{"secrets": {name: path}})
 }
 
+// marshal cannot fail: v is a map or a slice of strings.
 func marshal(v any) []byte {
-	data, err := yaml.Marshal(v)
-	if err != nil { // a map of strings always marshals
-		panic(fmt.Sprintf("hostsetup: marshalling a fragment: %v", err))
-	}
+	data, _ := yaml.Marshal(v)
 	return append([]byte(fragmentHeader), data...)
 }
 

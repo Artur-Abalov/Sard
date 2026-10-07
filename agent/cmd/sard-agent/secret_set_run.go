@@ -50,18 +50,24 @@ func runSecretSet(_ context.Context, args []string, stdout, stderr io.Writer, de
 	if f != nil {
 		return report(stderr, "secret set", f)
 	}
-	c := newHostCmd("secret set", opts, who, stdout, stderr, deps)
-	if f := firstFailure(hostsetup.CheckName("secret", opts.name), c.load()); f != nil {
+	return newHostCmd("secret set", opts, who, stdout, stderr, deps).setSecret()
+}
+
+// setSecret is runSecretSet from the name on: the config, the conflicts,
+// the value, then the lock and the writing.
+func (c *hostCmd) setSecret() int {
+	name := c.opts.name
+	if f := firstFailure(hostsetup.CheckName("secret", name), c.load()); f != nil {
 		return c.fail(f)
 	}
-	if _, f := c.planSecret(opts.name); f != nil {
+	if _, f := c.planSecret(name); f != nil {
 		return c.fail(f)
 	}
-	value, f := c.readSource(sourceOptions(opts))
+	value, f := c.readSource(sourceOptions(c.opts))
 	if f != nil {
 		return c.fail(f)
 	}
-	return c.setSecretLocked(opts.name, value)
+	return c.setSecretLocked(name, value)
 }
 
 // firstFailure is the first of the failures that is not nil.

@@ -38,7 +38,6 @@ var base64URL43 = regexp.MustCompile(`^[A-Za-z0-9_-]{43}\n$`)
 
 func TestAnEmptyRepositoryIsCreatedWithAGeneratedPassword(t *testing.T) {
 	h := newSetupHost(t)
-	mainBefore := h.fileContent(h.cfgPath)
 	code, stdout, stderr := h.add()
 	assertCode(t, code, exitOK)
 	if stderr != "" {
@@ -52,16 +51,29 @@ func TestAnEmptyRepositoryIsCreatedWithAGeneratedPassword(t *testing.T) {
 	if !base64URL43.MatchString(h.fileContent(pass)) {
 		t.Fatalf("password file %q", h.fileContent(pass))
 	}
+	h.assertValuesHidden(stdout, stderr)
+}
+
+func TestResticOpensTheNewRepositoryWithTheGeneratedPasswordFile(t *testing.T) {
+	h := newSetupHost(t)
+	h.add()
 	for _, c := range h.restic.callsTo(h.extraDir(), "cat") {
 		if c.passwordFile == "" || c.password == "" {
 			t.Fatalf("restic cat ran without the password: %+v", c)
 		}
 	}
+	pass := h.path("secrets/restic-extra.pass")
 	if got := h.restic.callsTo(h.extraDir(), "init"); len(got) != 1 || got[0].passwordFile != pass {
 		t.Fatalf("restic init: %+v", got)
 	}
+}
+
+func TestTheFragmentOfANewRepositoryIsWrittenAndTheMainConfigIsNot(t *testing.T) {
+	h := newSetupHost(t)
+	mainBefore := h.fileContent(h.cfgPath)
+	h.add()
 	fragment := h.fileContent(h.path("agent.d/repo-extra.yaml"))
-	for _, want := range []string{"name: extra", "url: " + h.extraDir(), "password_file: " + pass} {
+	for _, want := range []string{"name: extra", "url: " + h.extraDir(), "password_file: " + h.path("secrets/restic-extra.pass")} {
 		if !strings.Contains(fragment, want) {
 			t.Errorf("fragment lacks %q:\n%s", want, fragment)
 		}
@@ -69,7 +81,6 @@ func TestAnEmptyRepositoryIsCreatedWithAGeneratedPassword(t *testing.T) {
 	if h.fileContent(h.cfgPath) != mainBefore {
 		t.Fatal("the main config changed")
 	}
-	h.assertValuesHidden(stdout, stderr)
 }
 
 func TestTheSummaryNamesTheRepositoryAndAsksForACopyOfThePassword(t *testing.T) {
@@ -665,4 +676,19 @@ func TestADropInThatCannotBeRemovedIsAWriteError(t *testing.T) {
 	h.fsys.failOn, h.fsys.failPath = "remove", "sard-repo-extra.conf"
 	code, _, stderr := h.sudo("repo", "remove", "extra", "--config", "C")
 	assertRefusal(t, code, stderr, exitWrite, "CONFIG_WRITE")
+}
+
+func TestAPasswordFileAnotherKeyRefersToIsNotTakenOver(t *testing.T) {
+	h := newSetupHost(t)
+	h.cfg.Repositories[0].PasswordFile = h.path("secrets/restic-extra.pass")
+	h.saveConfig()
+	h.write(h.path("secrets/restic-extra.pass"), "the password of base\n", 0o600)
+	before := h.hostTree()
+	code, _, stderr := h.add()
+	assertRefusal(t, code, stderr, exitUsage, "PATH_IN_USE")
+	if !strings.Contains(stderr, "password_file") || !strings.Contains(stderr, "base") {
+		t.Fatalf("stderr %q", stderr)
+	}
+	h.assertNoBackendCalls()
+	h.assertHostUnchanged(before)
 }

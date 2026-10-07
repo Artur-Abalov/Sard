@@ -134,6 +134,13 @@ func doEnroll(ctx context.Context, opts enrollOptions, who hostsetup.Principal, 
 	if code != exitOK {
 		return code
 	}
+	return enrollWritable(ctx, st, opts, stdout, stderr, deps)
+}
+
+// enrollWritable is the rest of doEnroll, once the directories of tls.*
+// are there: their writability, the lock, the identity check again and
+// the network.
+func enrollWritable(ctx context.Context, st enrollPipelineState, opts enrollOptions, stdout, stderr io.Writer, deps enrollDeps) int {
 	unlock, code := lockForWriting(st.files, stderr)
 	if code != exitOK {
 		return code

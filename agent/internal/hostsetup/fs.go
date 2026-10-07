@@ -215,15 +215,20 @@ func ChownTree(fsys FS, root string, uid, gid int) error {
 		return &WriteError{Path: root, Op: "read directory", Err: err}
 	}
 	for _, e := range entries {
-		path := filepath.Join(root, e.Name())
-		if e.IsDir() {
-			err = ChownTree(fsys, path, uid, gid)
-		} else if cerr := fsys.Chown(path, uid, gid); cerr != nil {
-			err = &WriteError{Path: path, Op: "change owner of", Err: cerr}
-		}
-		if err != nil {
+		if err := chownEntry(fsys, filepath.Join(root, e.Name()), e.IsDir(), uid, gid); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// chownEntry changes one entry of a tree; a directory is entered.
+func chownEntry(fsys FS, path string, isDir bool, uid, gid int) error {
+	if isDir {
+		return ChownTree(fsys, path, uid, gid)
+	}
+	if err := fsys.Chown(path, uid, gid); err != nil {
+		return &WriteError{Path: path, Op: "change owner of", Err: err}
 	}
 	return nil
 }

@@ -120,9 +120,14 @@ func countSteps(fsys FS, journal string) (int, error) {
 	}
 	n := 0
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") && !strings.HasPrefix(e.Name(), ".") {
+		if isJournalEntry(e) {
 			n++
 		}
 	}
 	return n, nil
+}
+
+// isJournalEntry: a file *.json that is not a temporary one.
+func isJournalEntry(e fs.DirEntry) bool {
+	return !e.IsDir() && strings.HasSuffix(e.Name(), ".json") && !strings.HasPrefix(e.Name(), ".")
 }

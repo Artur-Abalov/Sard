@@ -55,6 +55,11 @@ func runRepoList(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	}
 	ctx, cancel := repoContext(ctx, deps.clock, opts.timeout)
 	defer cancel(nil)
+	return listRepositories(ctx, opts, who, stdout, stderr, deps)
+}
+
+// listRepositories reads the config, checks restic and prints the rows.
+func listRepositories(ctx context.Context, opts hostOptions, who hostsetup.Principal, stdout, stderr io.Writer, deps hostDeps) int {
 	cfg, code := loadRepoConfig("list", opts.configPath, stderr)
 	if code != exitOK {
 		return code

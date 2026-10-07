@@ -287,3 +287,34 @@ func TestPeekServiceUserIgnoresEveryProblemOfTheFile(t *testing.T) {
 		t.Fatalf("missing file: peeked %q, want the default", got)
 	}
 }
+
+func TestAnUnknownRepositoryHasNoSource(t *testing.T) {
+	h := newOverlayHost(t, mainYAML)
+	cfg, err := config.Load(h.main)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.RepositorySource("nope"); got != "" {
+		t.Fatalf("source %q", got)
+	}
+	if got := cfg.Path(); got != h.main {
+		t.Fatalf("path %q", got)
+	}
+}
+
+func TestSecretsOfFragmentsAreEnoughWithoutSecretsInTheMainConfig(t *testing.T) {
+	h := newOverlayHost(t, "server:\n  address: sard.example.com:9090\n")
+	h.write("agent.d/secret-db.yaml", "secrets:\n  db: /x/db\n")
+	cfg, err := config.Load(h.main)
+	if err != nil || cfg.Secrets["db"] != "/x/db" {
+		t.Fatalf("secrets %v, err %v", cfg.Secrets, err)
+	}
+}
+
+func TestLoadRefusesAMainConfigThatIsInvalidBeforeLookingAtFragments(t *testing.T) {
+	h := newOverlayHost(t, "repositories: []\n")
+	h.write("agent.d/repo-x.yaml", "server: {}\n")
+	if _, err := config.Load(h.main); !errors.Is(err, config.ErrNoServerAddress) {
+		t.Fatalf("err = %v", err)
+	}
+}

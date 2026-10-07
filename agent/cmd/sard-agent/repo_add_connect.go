@@ -215,14 +215,26 @@ func (c *hostCmd) connect(ctx context.Context, st *addState) *repoinit.Failure {
 func (c *hostCmd) try(ctx context.Context, st *addState, cand candidate) outcome {
 	target, cli := c.resticFor(st, cand.path)
 	id, initialized, f := repoinit.Inspect(ctx, cli, target)
-	switch {
-	case f != nil && f.Reason == repoinit.WrongPassword && !cand.given:
-		c.discard(cand)
-		return outcome{needPassword: true}
-	case f != nil:
-		c.discard(cand)
-		return outcome{f: f}
+	if f != nil {
+		return c.rejected(cand, f)
 	}
+	return c.accepted(ctx, st, cand, id, initialized)
+}
+
+// rejected: the repository could not be opened with the candidate. A
+// password nobody chose that does not open an existing repository means
+// the operator has to give one.
+func (c *hostCmd) rejected(cand candidate, f *repoinit.Failure) outcome {
+	c.discard(cand)
+	if f.Reason == repoinit.WrongPassword && !cand.given {
+		return outcome{needPassword: true}
+	}
+	return outcome{f: f}
+}
+
+// accepted: the candidate becomes the password file; the repository is
+// attached if it was there, created if it was not.
+func (c *hostCmd) accepted(ctx context.Context, st *addState, cand candidate, id string, initialized bool) outcome {
 	if f := c.commit(st, cand); f != nil {
 		return outcome{f: f}
 	}

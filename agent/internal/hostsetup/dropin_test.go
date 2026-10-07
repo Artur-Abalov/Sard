@@ -63,7 +63,7 @@ func TestDropInWriteFailuresNameThePath(t *testing.T) {
 	rfs.failOn = "mkdir"
 	dir := filepath.Join(t.TempDir(), "d")
 	err := hostsetup.DropIn{FS: rfs, Dir: dir}.Write("x", "/srv/x")
-	if err == nil || !strings.Contains(err.Error(), dir) {
+	if err == nil || !strings.Contains(err.Error(), dir) || !strings.Contains(err.Error(), "create directory") {
 		t.Fatalf("err = %v", err)
 	}
 }

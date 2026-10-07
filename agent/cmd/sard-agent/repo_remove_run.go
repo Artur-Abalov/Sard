@@ -27,44 +27,15 @@ func runRepoRemove(_ context.Context, args []string, stdout, stderr io.Writer, d
 		return report(stderr, "repo remove", f)
 	}
 	c := newHostCmd("repo remove", opts, who, stdout, stderr, deps)
-	if f := c.load(); f != nil {
-		return c.fail(f)
-	}
-	what, f := planRemoval("repository", opts.name, c.cfg.RepositorySource(opts.name), c.layout.RepositoryFragment(opts.name))
-	if f != nil {
-		return c.fail(f)
-	}
-	if what == nothingToRemove {
-		_, _ = fmt.Fprintf(stdout, "Repository %q is not connected: nothing to remove.\n", opts.name)
-		return exitOK
-	}
-	return c.removeRepositoryLocked(opts.name)
-}
-
-func (c *hostCmd) removeRepositoryLocked(name string) int {
-	unlock, f := c.lock()
-	if f != nil {
-		return c.fail(f)
-	}
-	defer unlock()
-	if f := c.load(); f != nil {
-		return c.fail(f)
-	}
-	what, f := planRemoval("repository", name, c.cfg.RepositorySource(name), c.layout.RepositoryFragment(name))
-	if f != nil {
-		return c.fail(f)
-	}
-	if what == nothingToRemove {
-		_, _ = fmt.Fprintf(c.stdout, "Repository %q is not connected: nothing to remove.\n", name)
-		return exitOK
-	}
-	repo := c.repository(name)
-	if err := c.removeRepositoryFiles(repo.Name, repo.EnvFile); err != nil {
-		return c.fail(writeFailed(err))
-	}
-	c.record("repository", name, "removed")
-	c.printRemoved(name)
-	return c.finish()
+	name := opts.name
+	return c.remove(removeSpec{
+		kind: "repository", name: name, own: c.layout.RepositoryFragment(name),
+		source: func() string { return c.cfg.RepositorySource(name) },
+		files: func() error {
+			return c.removeRepositoryFiles(name, c.repository(name).EnvFile)
+		},
+		summary: func() { c.printRemoved(name) },
+	})
 }
 
 // removeRepositoryFiles removes the fragment first, then the env_file when
@@ -79,6 +50,12 @@ func (c *hostCmd) removeRepositoryFiles(name, envFile string) error {
 			return err
 		}
 	}
+	return c.removeDropIn(name)
+}
+
+// removeDropIn removes the drop-in of the repository and has systemd read
+// the unit files again.
+func (c *hostCmd) removeDropIn(name string) error {
 	removed, err := hostsetup.DropIn{FS: c.deps.fs, Dir: c.deps.dropInDir}.Remove(name)
 	if err != nil || !removed || !c.deps.systemd.Present() {
 		return err

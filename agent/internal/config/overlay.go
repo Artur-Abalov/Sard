@@ -209,14 +209,8 @@ func readFragment(file string) (fragment, error) {
 	if err != nil {
 		return fragment{}, fmt.Errorf("reading fragment %s: %w", file, err)
 	}
-	var keys map[string]yaml.Node
-	if err := yaml.Unmarshal(data, &keys); err != nil {
-		return fragment{}, fmt.Errorf("parsing fragment %s: %w", file, err)
-	}
-	for _, key := range slices.Sorted(mapKeys(keys)) {
-		if key != "repositories" && key != "secrets" {
-			return fragment{}, &FragmentError{File: file, Key: key}
-		}
+	if err := checkFragmentKeys(file, data); err != nil {
+		return fragment{}, err
 	}
 	var frag fragment
 	dec := yaml.NewDecoder(bytes.NewReader(data))
@@ -225,6 +219,21 @@ func readFragment(file string) (fragment, error) {
 		return fragment{}, fmt.Errorf("parsing fragment %s: %w", file, err)
 	}
 	return frag, nil
+}
+
+// checkFragmentKeys refuses a fragment with a key other than repositories
+// and secrets; the first such key in name order is the one named.
+func checkFragmentKeys(file string, data []byte) error {
+	var keys map[string]yaml.Node
+	if err := yaml.Unmarshal(data, &keys); err != nil {
+		return fmt.Errorf("parsing fragment %s: %w", file, err)
+	}
+	for _, key := range slices.Sorted(mapKeys(keys)) {
+		if key != "repositories" && key != "secrets" {
+			return &FragmentError{File: file, Key: key}
+		}
+	}
+	return nil
 }
 
 func mapKeys(m map[string]yaml.Node) func(yield func(string) bool) {

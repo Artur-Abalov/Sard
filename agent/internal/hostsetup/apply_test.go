@@ -111,7 +111,7 @@ func TestOneRunningStepIsInTheSingular(t *testing.T) {
 
 func TestTemporaryFilesOfTheJournalAreNotSteps(t *testing.T) {
 	sd := &fakeSystemd{present: true, active: true}
-	if _, f := apply(t, sd, hostsetup.OS{}, stateDir(t, ".tmp-123", "notes.txt"), false); f != nil || !sd.restarted() {
+	if _, f := apply(t, sd, hostsetup.OS{}, stateDir(t, ".tmp-123", ".a.json", "notes.txt"), false); f != nil || !sd.restarted() {
 		t.Fatalf("calls %v, refusal %v", sd.calls, f)
 	}
 }

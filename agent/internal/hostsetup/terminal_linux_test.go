@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
@@ -87,6 +88,23 @@ func TestTerminalIsReadWithoutEchoAndPutBack(t *testing.T) {
 	}
 	if !strings.Contains(spy.promptSeen.String(), "Value: ") {
 		t.Fatalf("prompt %q", spy.promptSeen.String())
+	}
+}
+
+// Only the line break of what the operator types is echoed, so that the
+// next line of output starts on a fresh line; the secret itself never is.
+func TestOnlyTheLineBreakOfTheSecretIsEchoed(t *testing.T) {
+	master, slave := openPTY(t)
+	spy := &promptSpy{t: t, slave: slave, master: master, typed: "SECRET-MARKER"}
+	got, err := hostsetup.StdinTerminal(slave, spy).ReadSecret("Value: ")
+	if err != nil || string(got) != "SECRET-MARKER" {
+		t.Fatalf("got %q, err %v", got, err)
+	}
+	ok(t, master.SetReadDeadline(time.Now().Add(5*time.Second)))
+	buf := make([]byte, 64)
+	n, err := master.Read(buf)
+	if err != nil || string(buf[:n]) != "\r\n" {
+		t.Fatalf("echoed %q, err %v", buf[:n], err)
 	}
 }
 

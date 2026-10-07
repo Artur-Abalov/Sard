@@ -73,8 +73,25 @@ func TestFileIsStoredByteForByteAndNotChanged(t *testing.T) {
 func TestMissingFileIsRefusedWithItsPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "absent")
 	_, f := source(nil, nil).Read(hostsetup.SourceOptions{File: path, Flags: flagNames})
-	if f == nil || f.Class != repoinit.ClassUsage || !strings.Contains(f.Detail, path) {
+	if f == nil || f.Class != repoinit.ClassUsage || !strings.Contains(f.Detail, path) || !strings.Contains(f.Detail, "no such file") {
 		t.Fatalf("refusal = %+v", f)
+	}
+}
+
+type closeSpy struct {
+	io.Reader
+	closed *bool
+}
+
+func (c closeSpy) Close() error { *c.closed = true; return nil }
+
+func TestTheValueFileIsClosedAfterItIsRead(t *testing.T) {
+	var closed bool
+	src := hostsetup.Source{Open: func(string) (io.ReadCloser, error) {
+		return closeSpy{Reader: strings.NewReader("v"), closed: &closed}, nil
+	}}
+	if got, f := src.Read(hostsetup.SourceOptions{File: "F", Flags: flagNames}); f != nil || string(got) != "v" || !closed {
+		t.Fatalf("got %q, refusal %v, closed %v", got, f, closed)
 	}
 }
 
@@ -103,6 +120,24 @@ func TestTerminalThatFailsIsRefusedWithoutAValue(t *testing.T) {
 	if f == nil || f.Class != repoinit.ClassUsage || !strings.Contains(f.Detail, "terminal gone") {
 		t.Fatalf("refusal = %+v", f)
 	}
+}
+
+func TestTerminalFailingOnTheFirstAskIsRefusedWithoutAskingAgain(t *testing.T) {
+	term := &failFirst{}
+	_, f := source(nil, term).Read(hostsetup.SourceOptions{Flags: flagNames})
+	if f == nil || !strings.Contains(f.Detail, "first ask failed") || term.n != 1 {
+		t.Fatalf("refusal %+v after %d asks", f, term.n)
+	}
+}
+
+type failFirst struct{ n int }
+
+func (s *failFirst) ReadSecret(string) ([]byte, error) {
+	s.n++
+	if s.n == 1 {
+		return nil, errors.New("first ask failed")
+	}
+	return []byte("x"), nil
 }
 
 func TestTerminalFailingOnTheSecondAskIsRefused(t *testing.T) {

@@ -31,8 +31,10 @@ type listJSON struct {
 
 // Правило "repo list показывает репозитории фрагментов и умеет JSON".
 
-// Список репозиториев в JSON
-func TestRepoListInJSON(t *testing.T) {
+// listAsJSON is repo list --json of C with an initialised base and the
+// repository extra of a fragment; it returns the fragment's path too.
+func listAsJSON(t *testing.T) (*setupHost, listJSON, string) {
+	t.Helper()
 	h := newSetupHost(t)
 	h.base().initialized = true
 	fragment := h.extraFragment()
@@ -45,11 +47,25 @@ func TestRepoListInJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil || len(got.Repositories) != 2 {
 		t.Fatalf("stdout %q, err %v", stdout, err)
 	}
-	base, extra := got.Repositories[0], got.Repositories[1]
-	if base.Name != "base" || base.Backend != "local" || base.Status != "initialized" || base.RepositoryID == nil || *base.RepositoryID != h.base().id || base.DefinedIn != h.cfgPath {
+	return h, got, fragment
+}
+
+// Список репозиториев в JSON: основной конфиг
+func TestRepoListInJSONDescribesTheRepositoryOfTheMainConfig(t *testing.T) {
+	h, got, _ := listAsJSON(t)
+	base := got.Repositories[0]
+	if base.Name != "base" || base.Backend != "local" || base.Status != "initialized" || base.DefinedIn != h.cfgPath {
 		t.Fatalf("base: %+v", base)
 	}
-	if extra.Name != "extra" || extra.DefinedIn != fragment {
+	if base.RepositoryID == nil || *base.RepositoryID != h.base().id {
+		t.Fatalf("base id: %v", base.RepositoryID)
+	}
+}
+
+// Список репозиториев в JSON: фрагмент
+func TestRepoListInJSONNamesTheFragmentOfARepository(t *testing.T) {
+	_, got, fragment := listAsJSON(t)
+	if extra := got.Repositories[1]; extra.Name != "extra" || extra.DefinedIn != fragment {
 		t.Fatalf("extra: %+v", extra)
 	}
 }

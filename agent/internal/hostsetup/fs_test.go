@@ -438,6 +438,14 @@ func TestStagedFileIsOwnedAndFilledBeforeItIsCommitted(t *testing.T) {
 	if _, err := os.Stat(final); !os.IsNotExist(err) {
 		t.Fatal("the target exists before the commit")
 	}
+}
+
+func TestACommittedStagedFileIsTheTargetWithItsOwner(t *testing.T) {
+	dir := t.TempDir()
+	rfs := newRecordingFS()
+	final := filepath.Join(dir, "restic-x.pass")
+	tmp, err := hostsetup.StageFile(rfs, final, []byte("candidate"), hostsetup.Attrs{UID: 990, GID: 990, Mode: 0o600})
+	ok(t, err)
 	ok(t, hostsetup.CommitFile(rfs, tmp, final))
 	if data, _ := os.ReadFile(final); string(data) != "candidate" {
 		t.Fatalf("committed content %q", data)
@@ -473,5 +481,12 @@ func TestAFailedCommitRemovesTheStagedFile(t *testing.T) {
 	}
 	if extra := leftovers(t, dir); len(extra) != 0 {
 		t.Fatalf("leftovers %v", extra)
+	}
+}
+
+func TestSyncDirOfAMissingDirectoryIsTheOpenError(t *testing.T) {
+	err := hostsetup.OS{}.SyncDir(filepath.Join(t.TempDir(), "absent"))
+	if err == nil || !strings.Contains(err.Error(), "no such file") {
+		t.Fatalf("err = %v", err)
 	}
 }

@@ -83,6 +83,9 @@ const (
 // address again changes nothing.
 func (c *hostCmd) planRepository(name, url string) (addPlan, *repoinit.Failure) {
 	source := c.cfg.RepositorySource(name)
+	if key := hostsetup.ReferencedBy(c.cfg, c.layout.PasswordFile(name), hostsetup.RepositoryKey(name, "password_file")); key != "" {
+		return addNew, repoinit.Fail(repoinit.PathInUse, "%s is used by %s and would be taken over", c.layout.PasswordFile(name), key)
+	}
 	switch {
 	case source == "":
 		return addNew, nil
@@ -139,6 +142,12 @@ func (c *hostCmd) addChecked(ctx context.Context, url string) int {
 	if f != nil {
 		return c.fail(f)
 	}
+	return c.addPlanned(ctx, url, plan)
+}
+
+// addPlanned checks restic, reads the password flags and handles the
+// unchanged case; anything else is connected under the locks.
+func (c *hostCmd) addPlanned(ctx context.Context, url string, plan addPlan) int {
 	binary, err := checkRestic(ctx, c.cfg, c.opts.configPath, c.deps.executable, c.deps.exec, runAs(c.who))
 	if err != nil {
 		return reportRepoError(ctx, c.stderr, "add", err)

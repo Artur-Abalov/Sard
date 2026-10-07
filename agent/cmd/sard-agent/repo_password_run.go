@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 
+	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 )
 
@@ -28,6 +29,11 @@ func runRepoPassword(_ context.Context, args []string, stdout, stderr io.Writer,
 	if !opts.reveal {
 		return report(stderr, "repo password", repoinit.Fail(repoinit.RevealRequired, "the password is shown on the screen only on request: add --reveal"))
 	}
+	return revealPassword(opts, who, stdout, stderr, deps)
+}
+
+// revealPassword prints the password file and audits it.
+func revealPassword(opts hostOptions, who hostsetup.Principal, stdout, stderr io.Writer, deps hostDeps) int {
 	cfg, code := loadConfigFor("repo password", opts.configPath, stderr)
 	if code != exitOK {
 		return code

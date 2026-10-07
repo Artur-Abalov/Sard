@@ -34,6 +34,10 @@ func TestSyslogAuditorSendsTheLineWithTheTag(t *testing.T) {
 		t.Fatal(err)
 	}
 	msg := string(buf[:n])
+	// <85> is facility authpriv (10 * 8) and severity notice (5).
+	if !strings.HasPrefix(msg, "<85>") {
+		t.Errorf("message %q: want facility authpriv and severity notice", msg)
+	}
 	for _, want := range []string{"sard-agent", "secret db added by alice (uid 1000)"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message %q lacks %q", msg, want)
