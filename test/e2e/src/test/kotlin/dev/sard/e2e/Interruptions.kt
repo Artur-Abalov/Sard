@@ -17,7 +17,7 @@ import org.testcontainers.containers.GenericContainer
  * - [cut] / [reconnect]: `docker network disconnect` / `connect`, both directions at once.
  * - [block] / [unblock]: one direction only, by iptables in the agent container's network
  *   namespace, run from a helper container ([FIREWALL_IMAGE], `--network container:<agent>`,
- *   `NET_ADMIN`); the agent image is distroless and has no iptables. TCP data in the open
+ *   `NET_ADMIN`); the agent image has no iptables. TCP data in the open
  *   direction still arrives: dropping what the server sends lets the agent's messages reach it,
  *   and the reverse. The rules live in the namespace, so a restart of the agent drops them.
  * - [restart] / [stop] / [kill] / [start]: `docker restart` / `stop` / `kill` / `start` of any container.

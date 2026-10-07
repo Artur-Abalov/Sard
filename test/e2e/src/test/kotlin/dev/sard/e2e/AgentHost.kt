@@ -19,9 +19,10 @@ import java.time.Duration
  * One agent host: the disk of a machine with the agent package installed, and every command an
  * operator runs on it. The disk is two named volumes mounted where the package keeps its state
  * and the restic cache (`/var/lib/sard-agent`, `/var/cache/sard/restic`; Docker fills a fresh
- * volume with the image's directory, owner 65532, mode 0700). The image has no shell, so each
- * command is a container of the agent image on those volumes with the program as its entry
- * point: `sard-agent enroll`, `sard-agent repo init`, `restic restore`, and the agent itself.
+ * volume with the image's directory, owner 65532, mode 0700). Each command is a container of the
+ * agent image on those volumes with the program as its entry point, as the service user:
+ * `sard-agent enroll`, `sard-agent repo init`, `restic restore`, `ssh-keygen`, and the agent itself
+ * (ADR 0020; the image is a host with openssh-client since ADR 0047).
  *
  * The config is the same for every command: `server.address`, the tls files on the state volume
  * (where `sard-agent enroll` writes them), plus [local] (repositories, secrets). Its copy in each
@@ -51,12 +52,13 @@ internal class AgentHost(
 
     /**
      * Runs [command] (the program and its arguments) to completion. [files] are copied in first
-     * (a path in the container to its content and owner). [inspect] sees the stopped container
-     * before it is removed (`docker cp` works on it).
+     * (a path in the container to its content and owner); [env] is its environment. [inspect] sees
+     * the stopped container before it is removed (`docker cp` works on it).
      */
     fun run(
         vararg command: String,
         files: Map<String, Transferable> = emptyMap(),
+        env: Map<String, String> = emptyMap(),
         timeout: Duration = RUN_TIMEOUT,
         inspect: (GenericContainer<*>) -> Unit = {},
     ): Exit {
@@ -64,6 +66,7 @@ internal class AgentHost(
         container().use { container ->
             sardEnv.track(name, container)
             files.forEach { (path, content) -> container.withCopyToContainer(content, path) }
+            container.withEnv(env)
             container.withCreateContainerCmdModifier { it.withEntrypoint(*command) }
             container.withStartupCheckStrategy(Exited.withTimeout(timeout))
             container.start()
@@ -112,13 +115,14 @@ internal class AgentHost(
      * `restic restore <snapshotId>` from the repository at [repository] into a fresh directory on
      * this host, then the restored copy of [path] read back: relative path to bytes, null for a
      * directory, [path] itself left out. The password file goes to restic by path; the test never
-     * reads it.
+     * reads it. [env] carries the backend's credentials (an S3 key), as the repository's env_file does.
      */
     fun restore(
         repository: String,
         passwordFile: String,
         snapshotId: String,
         path: String,
+        env: Map<String, String> = emptyMap(),
     ): Map<String, ByteArray?> {
         val target = "$STATE_DIR/restored-$snapshotId"
         var tree: Map<String, ByteArray?> = emptyMap()
@@ -126,6 +130,7 @@ internal class AgentHost(
             run(
                 AgentImage.RESTIC_BINARY, "restore", snapshotId, "--repo", repository, "--password-file", passwordFile,
                 "--no-cache", "--target", target,
+                env = env,
             ) { c -> tree = readTree(c, target + path) }
         check(exit.code == 0) { "restic restore exited ${exit.code}: ${exit.stderr}" }
         return tree
@@ -137,6 +142,19 @@ internal class AgentHost(
         val exit = run(AgentImage.RESTIC_BINARY, "version") { c -> bytes = c.copyFileFromContainer(path) { it.readAllBytes() } }
         check(exit.code == 0) { "reading $path: restic version exited ${exit.code}" }
         return checkNotNull(bytes)
+    }
+
+    /**
+     * The service user's SSH client setup for an SFTP repository, as an operator does it: `~/.ssh`
+     * (the user's home, [STATE_DIR]: ssh reads passwd, not the HOME the agent gives restic) with
+     * [knownHosts], the server keys the operator verified, then `ssh-keygen` as the service user.
+     * Returns the public key to authorize on the server.
+     */
+    fun sshClient(knownHosts: String): String {
+        put(SSH_DIR, TarFiles(listOf(TarFiles.Entry("", null, TarFiles.OWNER_DIR), TarFiles.Entry("known_hosts", knownHosts.toByteArray(), TarFiles.READABLE))))
+        val keygen = run("/usr/bin/ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", hostname, "-f", "$SSH_DIR/id_ed25519")
+        check(keygen.code == 0) { "ssh-keygen exited ${keygen.code}: ${keygen.stderr}" }
+        return String(read("$SSH_DIR/id_ed25519.pub"))
     }
 
     /** What `sard-agent enroll` left on this host; the key is registered as a log secret. */
@@ -212,6 +230,9 @@ internal class AgentHost(
         const val CA_FILE = "$STATE_DIR/ca.pem"
         const val CERT_FILE = "$STATE_DIR/agent.pem"
         const val KEY_FILE = "$STATE_DIR/agent.key"
+
+        /** The service user's `~/.ssh`: its home is [STATE_DIR] (deploy/agent/postinstall.sh). */
+        const val SSH_DIR = "$STATE_DIR/.ssh"
 
         /** The executor's state dir: the agent's default (agent/cmd/sard-agent/main.go). */
         const val EXECUTOR_DIR = "$STATE_DIR/executor"

@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# sshd of the e2e stand's SFTP server: keys only, sftp only (ADR 0047).
+HostKey /etc/ssh/ssh_host_ed25519_key
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile /etc/ssh/authorized_keys/%u
+ForceCommand internal-sftp
+Subsystem sftp internal-sftp
