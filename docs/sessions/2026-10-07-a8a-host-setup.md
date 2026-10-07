@@ -138,3 +138,4 @@
   копирования) — не менялись. `docs/demo.md`, шаг 5: ручная правка конфига
   убрана, репозиторий добавляет `sudo sard-agent repo add`.
 - OQ-153 закрыт в `docs/open-questions.md`.
+- Шаг консоли `REPO_INIT` (`repo init --generate-password main`) теперь ссылается на несуществующий репозиторий: OQ-158 (дефект, A8e).

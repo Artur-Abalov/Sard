@@ -198,8 +198,10 @@ sudo -u sard-agent sard-agent enroll --server <sard.example.com>:9090 --token <�
 
 **Что делать.** В примере конфига нет ни репозиториев, ни секретов: в демо
 репозиторий — каталог на хосте агента, его добавляет команда
-([настройка хоста агента](operations/agent-host-setup.md)). На хосте агента
-шаги консоли «Создайте репозиторий» и «Запустите службу» выглядят так:
+([настройка хоста агента](operations/agent-host-setup.md)). Шаг консоли
+«Создайте репозиторий» (`repo init --generate-password main`) пока не подходит:
+в примере конфига нет репозитория `main` (до A8e, OQ-158). Вместо него на хосте
+агента:
 
 ```bash
 sudo sard-agent repo add main /srv/sard-repo/main
