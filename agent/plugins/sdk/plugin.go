@@ -45,6 +45,29 @@ type Dump struct {
 	// Filename is the file name of a streamed dump inside the snapshot,
 	// e.g. "db.sql". Setting it selects streaming.
 	Filename string
+	// Tags are snapshot tags of the plugin: the agent stores them in restic
+	// as "<plugin name>.<key>=<value>" after the step's own tags, e.g.
+	// "postgresql.server_version=16.4". A key that makes a tag the step
+	// already has fails the step before restic runs. Keys and values must
+	// not contain commas.
+	Tags map[string]string
+	// Extra are small files stored after the main snapshot, each as a
+	// snapshot of its own (restic stores one stdin file per snapshot).
+	Extra []ExtraFile
+}
+
+// ExtraFile is a small file a plugin stores in addition to its main dump,
+// e.g. the global objects of a database cluster. The agent saves it only
+// after the main snapshot succeeded, as a snapshot with the step's tags, the
+// file's Tags and "<plugin name>.main_snapshot=<id of the main snapshot>".
+// The content is held in memory: keep it small.
+type ExtraFile struct {
+	// Name is the file name inside the snapshot.
+	Name string
+	// Content is the file's bytes.
+	Content []byte
+	// Tags are added to the snapshot like Dump.Tags, with the same prefix.
+	Tags map[string]string
 }
 
 // Streamed reports whether the dump is written by Stream.

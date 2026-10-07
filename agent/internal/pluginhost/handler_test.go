@@ -417,3 +417,36 @@ func TestRestoreReportsTheRestoringPhaseBeforeRestic(t *testing.T) {
 		t.Errorf("events = %+v, want %+v", got, want)
 	}
 }
+
+// A dump that fails while streaming is the plugin's failure: the message does
+// not blame the repository. A repository that fails while the plugin is still
+// writing is the repository's.
+func TestStreamFailureDoesNotNameTheRepository(t *testing.T) {
+	broken := errors.New("pg_dump failed: connection lost")
+	f := newHandlers(t, streamer(func(context.Context, sdk.Host, sdk.Config, sdk.Dump, io.Writer) error { return broken }))
+	_, err := f.run(t, step(backup, `{}`))
+	if !errors.Is(err, broken) || strings.Contains(err.Error(), `repository "main"`) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestRepositoryFailureDuringAStreamNamesTheRepository(t *testing.T) {
+	f := newHandlers(t, streamer(func(_ context.Context, _ sdk.Host, _ sdk.Config, _ sdk.Dump, w io.Writer) error {
+		_, err := w.Write([]byte("x"))
+		return err
+	}))
+	f.repo.err = restic.ErrLocked
+	_, err := f.run(t, step(backup, `{}`))
+	if !errors.Is(err, restic.ErrLocked) || !strings.Contains(err.Error(), `repository "main": `) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func streamer(stream func(context.Context, sdk.Host, sdk.Config, sdk.Dump, io.Writer) error) *plugin {
+	return &plugin{
+		dump: func(context.Context, sdk.Host, sdk.Config) (sdk.Dump, error) {
+			return sdk.Dump{Filename: "db.dump"}, nil
+		},
+		stream: stream,
+	}
+}

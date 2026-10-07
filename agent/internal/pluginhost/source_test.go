@@ -463,3 +463,30 @@ func TestStreamedDumpWithPathsOrExcludesFailsTheStep(t *testing.T) {
 		}
 	}
 }
+
+// F1 ПГ11: the tags of the dump follow the tags of the step, as
+// "<plugin>.<key>=<value>", sorted.
+func TestTagsOfTheDumpFollowTheTagsOfTheStep(t *testing.T) {
+	p := &plugin{dump: func(context.Context, sdk.Host, sdk.Config) (sdk.Dump, error) {
+		return sdk.Dump{Paths: []string{"/srv"}, Tags: map[string]string{"b": "2", "a": "1"}}, nil
+	}}
+	r := &repo{}
+	if _, err := newSource(t, p).Backup(context.Background(), []byte(`{}`), r, []string{"run=7"}, &reporter{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := r.requests[0].Tags, []string{"run=7", "fake.a=1", "fake.b=2"}; !slices.Equal(got, want) {
+		t.Errorf("tags = %q, want %q", got, want)
+	}
+}
+
+// F1 ПГ11: a plugin tag that is a tag of the step fails the step before restic.
+func TestPluginTagOfAStepTagFailsBeforeRestic(t *testing.T) {
+	p := &plugin{dump: func(context.Context, sdk.Host, sdk.Config) (sdk.Dump, error) {
+		return sdk.Dump{Paths: []string{"/srv"}, Tags: map[string]string{"format": "custom"}}, nil
+	}}
+	r := &repo{}
+	_, err := newSource(t, p).Backup(context.Background(), []byte(`{}`), r, []string{"run=7", "fake.format=x"}, &reporter{})
+	if err == nil || !strings.Contains(err.Error(), "fake.format") || len(r.requests) != 0 {
+		t.Fatalf("err = %v, requests = %d", err, len(r.requests))
+	}
+}
