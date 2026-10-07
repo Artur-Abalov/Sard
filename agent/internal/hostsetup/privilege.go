@@ -19,7 +19,7 @@ type User struct {
 var ErrNoUser = errors.New("no such user")
 
 // LookupFunc finds a user by name (os/user in production: no cgo, so
-// users of LDAP and SSSD are not seen, ADR 0048).
+// users of LDAP and SSSD are not seen, ADR 0049).
 type LookupFunc func(name string) (User, error)
 
 // Role is how the command may act on the host.

@@ -44,6 +44,7 @@ val e2eProperties =
         "e2e.serverImage" to "sard-server:e2e",
         "e2e.agentImage" to "sard-agent:e2e",
         "e2e.standAgentImage" to "sard-agent-stand:e2e",
+        "e2e.sftpImage" to "sard-sftp:e2e",
         "e2e.version" to "dev",
     )
 

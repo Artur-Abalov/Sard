@@ -15,12 +15,12 @@
   `repositories` и `secrets`, порядок файлов по именам, `DUPLICATE_NAME` с
   обоими файлами, ключ `service.user` (только в основном конфиге).
   `Repository.Fragment` и `Config.SecretSource` помнят, откуда пришло
-  определение; сообщения A1 называют файл фрагмента. ADR 0047.
+  определение; сообщения A1 называют файл фрагмента. ADR 0048.
 - **`internal/hostsetup`** (новый пакет): правило прав, источники секрета,
   атомарная запись с владельцем, блокировка конфига, политика перезапуска по
   журналу FXa, аудит, `systemctl`, терминал без эха через `ioctl` из
   `syscall` (новых зависимостей нет), drop-in systemd. Всё, что трогает хост,
-  — за интерфейсами (`FS`, `Systemd`, `Auditor`, `Terminal`, `LookupFunc`). ADR 0048.
+  — за интерфейсами (`FS`, `Systemd`, `Auditor`, `Terminal`, `LookupFunc`). ADR 0049.
 - **Команды.** `secret set|list|remove`; `repo add` (локальный путь,
   заглушка `BACKEND_NOT_SUPPORTED`), `repo show`, `repo remove`,
   `repo password --reveal`; `--json` у `repo list`, `repo show`, `secret list`;
@@ -33,7 +33,7 @@
 - **Упаковка и документы.** `deploy/agent/postinstall.sh` и
   `scripts/test-postinstall.sh` без `sudo -u`; `docs/operations/agent-host-setup.md`
   (новая), правки `agent-enroll.md`, `agent-install.md`, `repo-init.md`,
-  `docs/operator/05-agents.md`; ADR 0047 и 0048.
+  `docs/operator/05-agents.md`; ADR 0048 и 0049.
 
 ## Порядок работы
 

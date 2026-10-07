@@ -141,7 +141,7 @@ func TestRepoInitFromTheServiceUserLeavesTheOwnerAlone(t *testing.T) {
 	}
 }
 
-// ADR 0048, Р4: the owner is given to the temporary file; the final path is
+// ADR 0049, Р4: the owner is given to the temporary file; the final path is
 // never the property of root, not even for a moment.
 func TestRepoInitUnderSudoGivesTheOwnerBeforeThePasswordFileTakesItsPath(t *testing.T) {
 	h := newSetupHost(t)

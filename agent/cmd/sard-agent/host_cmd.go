@@ -52,7 +52,7 @@ func report(stderr io.Writer, words string, f *refusal.Failure) int {
 }
 
 // ownedWriter is writeNew that, when the command runs as root, hands the
-// file to the service user before it has its name (Р24, ADR 0048): a
+// file to the service user before it has its name (Р24, ADR 0049): a
 // temporary file gets the owner and the mode, then is linked to the final
 // path, which fails if something is there already, exactly as writeNew
 // does. The final path is never root's.

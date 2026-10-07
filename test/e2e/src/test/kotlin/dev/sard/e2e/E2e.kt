@@ -15,6 +15,9 @@ internal object E2e {
     /** The stand's agent (`GO_TAGS=e2e`, ADR 0036): the release agent plus `e2e-slow`, for T3 only. */
     val standAgentImage: String get() = property("e2e.standAgentImage")
 
+    /** The stand's SFTP server (test/e2e/sftp, ADR 0047). */
+    val sftpImage: String get() = property("e2e.sftpImage")
+
     /** The version both images were built with (`VERSION` in the Makefile). */
     val version: String get() = property("e2e.version")
 

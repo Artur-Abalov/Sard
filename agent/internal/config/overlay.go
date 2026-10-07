@@ -21,7 +21,7 @@ import (
 const DefaultServiceUser = "sard-agent"
 
 // FragmentDir is the directory of config fragments, next to the main
-// config (docs/adr/0047-agent-config-overlay.md).
+// config (docs/adr/0048-agent-config-overlay.md).
 const FragmentDir = "agent.d"
 
 // fragmentSuffix marks a file of FragmentDir the agent reads; anything

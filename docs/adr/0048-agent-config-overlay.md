@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 <!-- Copyright 2026 Artur Abalov -->
 
-# 0047 — Каталог фрагментов конфига агента `agent.d`
+# 0048 — Каталог фрагментов конфига агента `agent.d`
 
 - Статус: принято (A8a); решения владельца — 2026-10-07 (`docs/specs/agent/host-setup.feature`, Р1–Р4, Р10–Р12)
 - Дата: 2026-10-07

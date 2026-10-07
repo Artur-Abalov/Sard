@@ -35,7 +35,9 @@
    Репозиторий в облачном хранилище (`s3:…`, `sftp:…`) пока описывается в
    секции `repositories` файла `/etc/sard/agent.yaml` (адрес, `password_file`,
    `env_file` с ключами) и создаётся `sudo sard-agent repo init
-   --generate-password main`. Все команды, права и коды выхода —
+   --generate-password main`. S3 и SFTP — [раздел 5a](05a-storage.md):
+   `env_file`, ключ SSH и `known_hosts` пользователя службы. Все команды,
+   права и коды выхода —
    [настройка хоста](../operations/agent-host-setup.md),
    [репозиторий](../operations/repo-init.md).
 5. **Копия пароля репозитория вне хоста.** `repo add` и `repo init

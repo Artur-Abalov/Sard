@@ -113,18 +113,13 @@ class FullChainTest {
     /** An enrolled host with its repository initialised and the agent connected, the repository_id known to the server. */
     private fun readyAgent(hostname: String): Pair<EnrolledAgent, GenericContainer<*>> {
         val agent = AgentEnroller.enroll(sard, EnrollmentTokens.create(sard), hostname = hostname, local = LOCAL)
-        val init = agent.host.repoInit(REPOSITORY, "--generate-password")
-        assertEquals(0, init.code, init.stderr)
-        val container = sard.track("agent-$hostname", AgentContainer.of(agent)).apply { start() }
-        Await.until("repository_id of $REPOSITORY in Register of $hostname") { Backups.repositoryId(sard, agent.agentId, REPOSITORY) != null }
-        return agent to container
+        return agent to Chain.ready(sard, agent)
     }
 
-    /** files plugin config (agent/plugins/files/config.go). */
     private fun config(
         path: String,
         exclude: List<String> = emptyList(),
-    ) = """{"paths":["$path"],"exclude":[${exclude.joinToString(",") { "\"$it\"" }}]}"""
+    ) = Chain.files(path, exclude)
 
     /**
      * Whether the agent's executor holds [stepId]'s file in [dir] (agent/internal/executor/store.go):
@@ -145,22 +140,16 @@ class FullChainTest {
         @RegisterExtension
         val sard = SardEnvironment()
 
-        private const val SEED = 20261004
-        private const val REPOSITORY = "main"
-        private const val DATA = "${AgentHost.STATE_DIR}/data"
+        private const val SEED = Chain.SEED
+        private const val REPOSITORY = Chain.REPOSITORY
+        private const val DATA = Chain.DATA
         private const val REPOSITORY_URL = "${AgentHost.STATE_DIR}/repo"
-        private const val PASSWORD_FILE = "${AgentHost.STATE_DIR}/$REPOSITORY.pass"
+        private const val PASSWORD_FILE = Chain.PASSWORD_FILE
 
         /** The summary of `sard-agent repo init` (agent/cmd/sard-agent/repo_init_run.go). */
         private val INIT_ID = Regex("repository_id: ([0-9a-f]{64})")
         private val INIT_BACKEND = Regex("backend: +([a-z0-9]+)")
 
-        private val LOCAL =
-            """
-            repositories:
-              - name: $REPOSITORY
-                url: $REPOSITORY_URL
-                password_file: $PASSWORD_FILE
-            """.trimIndent() + "\n"
+        private val LOCAL = Chain.repository(REPOSITORY_URL)
     }
 }

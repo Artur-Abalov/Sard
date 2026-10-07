@@ -41,7 +41,7 @@ internal class T3Agent private constructor(
         status: String,
     ) = Await.until("step $stepId $status") { RunRows.statusOf(sard, stepId) == status }
 
-    /** Whether the agent's executor holds [stepId]'s file in [dir] (store.go; docker cp, the image has no shell). */
+    /** Whether the agent's executor holds [stepId]'s file in [dir] (store.go; docker cp, as the tests never exec into the agent). */
     fun holds(
         dir: String,
         stepId: UUID,
