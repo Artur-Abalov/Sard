@@ -96,6 +96,10 @@ jobs:
           cache-dependency-path: "**/go.sum"
       - name: rpm and minisign
         run: sudo apt-get update && sudo apt-get install -y rpm minisign
+      # One rule from a tag to every version; dpkg and rpm order pre-releases
+      # below their release (docs/adr/0047-release-versions.md).
+      - name: Release version rule
+        run: scripts/test-release-version.sh
       - name: Package the agent with restic (tar.gz, deb, rpm; amd64 and arm64)
         env:
           REQUIRE_RPM: "1"

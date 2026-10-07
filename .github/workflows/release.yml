@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright 2026 Artur Abalov
 #
-# Release for a tag vX.Y.Z or a pre-release vX.Y.Z-<pre> such as v0.0.1-rc.1
-# (docs/adr/0043-agent-release.md, ADR 0039):
+# Release for a tag vX.Y.Z or a pre-release vX.Y.Z-beta.N / vX.Y.Z-rc.N
+# (docs/adr/0043-agent-release.md, ADR 0039, docs/adr/0047-release-versions.md):
 #
+#   version     (the tag is a release tag, else nothing is built)
 #   build ×2 ─┬─ reproduce  (two independent builds, same SHA256SUMS; tamper tests)
 #   server-jar┼─ install    (deb on Debian/Ubuntu with systemd: install, enroll, upgrade)
 #             └─ e2e        (test/e2e against the image of these packages and this jar)
@@ -48,8 +49,22 @@ env:
   VERSION: ${{ github.ref_name }}
 
 jobs:
+  # The tag pattern above lets through v0.0.1-rc1 and the like; this job is
+  # the rule (scripts/release-version.sh), and every other job waits for it.
+  version:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: the tag is a release tag
+        run: scripts/release-version.sh check "$VERSION"
+
   build:
     name: build ${{ matrix.build }}
+    needs: version
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -99,6 +114,7 @@ jobs:
 
   # The only build of the server jar (console included) of this release.
   server-jar:
+    needs: version
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -305,7 +321,7 @@ jobs:
       - name: image tags
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sard-server"
-          plain="${VERSION#v}"
+          plain="$(scripts/release-version.sh image "$VERSION")"
           tags="$image:$VERSION,$image:$plain"
           if [[ "$VERSION" != *-* ]]; then tags="$tags,$image:${plain%.*},$image:latest"; fi
           { echo "IMAGE=$image"; echo "TAGS=$tags"; } >>"$GITHUB_ENV"
