@@ -119,3 +119,23 @@
   сервер, веб и e2e-скрипты с `sudo -u` на `sudo sard-agent`.
 - **Замечание о гейте:** параллельные прогоны `gate.sh`/`crap.sh` портят
   общий файл покрытия (видели 0% и 71.1%); запускать по одному.
+
+## FXc: пример конфига без репозиториев и секретов
+
+- `deploy/agent/agent.example.yaml`: `repositories`, `secrets` и `scripts`
+  закомментированы как образец формата (решение О1); комментарий называет
+  `sudo sard-agent repo add` / `secret set` и `docs/operations/agent-host-setup.md`,
+  говорит, что S3 и SFTP пока пишутся в `repositories` вручную. Устаревший
+  комментарий у `tls:` исправлен (`sudo sard-agent enroll` сам создаёт
+  `/etc/sard/tls`).
+- `scripts` тоже закомментированы: маскирование журналов читает файл каждого
+  скрипта конфига как секрет (`agent/internal/secrets/secrets.go`), поэтому
+  отсутствующий файл скрипта ломает каждый шаг так же, как секрета.
+- Тест `agent/internal/config/example_test.go`: пример загружается и не
+  определяет ни репозиториев, ни секретов, ни скриптов.
+- `scripts/test-agent-install.sh`, e2e и тесты `InstallCommands` пример
+  содержимым не используют (пишут свои конфиги / проверяют только команды
+  копирования) — не менялись. `docs/demo.md`, шаг 5: ручная правка конфига
+  убрана, репозиторий добавляет `sudo sard-agent repo add`.
+- OQ-153 закрыт в `docs/open-questions.md`.
+
