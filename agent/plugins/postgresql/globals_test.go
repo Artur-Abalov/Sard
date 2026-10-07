@@ -388,13 +388,12 @@ func (h *flakyHost) Secret(name string) ([]byte, error) {
 	return h.host.Secret(name)
 }
 
-// Without the global objects the role passwords have nothing to do: a role that
-// is no superuser is not refused for them.
-func TestRolePasswordsAreNotAskedWhenGlobalsAreOff(t *testing.T) {
+// Scenario: Пароли ролей без глобальных объектов ничего не меняют.
+func TestПаролиРолейБезГлобальныхОбъектовНичегоНеМеняют(t *testing.T) {
 	r := newRig(t)
 	want(t, r.backup(k(o{"globals_role_passwords": true})), succeeded)
-	if len(r.proc.ran("pg_dumpall")) != 0 {
-		t.Error("pg_dumpall was started")
+	if len(r.proc.ran("pg_dumpall")) != 0 || len(r.restic.backups()) != 1 {
+		t.Errorf("pg_dumpall runs %d, restic backups %d", len(r.proc.ran("pg_dumpall")), len(r.restic.backups()))
 	}
 }
 

@@ -207,15 +207,17 @@ func TestLongErrorLineIsCutInTheMessage(t *testing.T) {
 	oneLine(t, res.GetMessage())
 }
 
-// QA step 18: a pg_dump that is too old is reported with both versions even
-// when no pg_dumpall lies beside it; the global objects come after.
-func TestOldPgDumpIsReportedBeforeAMissingPgDumpall(t *testing.T) {
+// Scenario: Несовпадение версий сообщается раньше отсутствия pg_dumpall.
+func TestНесовпадениеВерсийСообщаетсяРаньшеОтсутствияPgDumpall(t *testing.T) {
 	r := newRig(t)
 	delete(r.fs.nodes, "/usr/bin/pg_dumpall")
 	r.proc.on("pg_dump --version", say("pg_dump (PostgreSQL) 16.4\n", nil, 0))
 	res := r.backup(kg())
 	want(t, res, failed)
-	mentions(t, res.GetMessage(), "pg_dump 16.4", "18.0", "install pg_dump 18 or newer")
+	mentions(t, res.GetMessage(), "16.4", "18.0", "install pg_dump 18 or newer")
+	if strings.Contains(res.GetMessage(), "pg_dumpall") {
+		t.Errorf("the message names pg_dumpall: %q", res.GetMessage())
+	}
 	r.noDump(t)
 }
 
