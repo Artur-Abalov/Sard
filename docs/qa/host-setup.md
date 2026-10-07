@@ -1,8 +1,10 @@
 # QA: настройка хоста агента командами `sard-agent` (A8a)
 
-Сценарии: `docs/specs/agent/host-setup.feature`. **Черновик: спецификация ждёт
-утверждения владельцем**, ответы на открытые вопросы могут изменить шаги
-(особенно Н1, Н4–Н10). Классы и номера кодов выхода — A2b (ADR 0025).
+Сценарии: `docs/specs/agent/host-setup.feature`. Срез A8a утверждён; ответы
+владельца на О1–О5, Н1–Н12 переданы координатором 2026-10-07 и внесены в
+спецификацию. Открыт только Н13 (каталог `tls.*` при `enroll` под sudo): до
+ответа шаг 0в проверяет поведение В12 A2b. Классы и номера кодов выхода — A2b
+(ADR 0025).
 
 Выполнима после реализации A8a. Ожидаемый результат — после «→». Любое
 расхождение — дефект.
@@ -21,11 +23,11 @@
 - **Rocky 9** (или Oracle Linux 9), `getenforce` → `Enforcing`.
 
 На каждой: пакет агента из `make package` установлен (`apt install ./dist/…deb`
-или `dnf install ./dist/…rpm`), `sard-server` доступен (`make up` на другой
-машине или `docs/operator/02-install.md`), агент зарегистрирован по
-`docs/qa/agent-enroll.md`, служба запущена (`systemctl is-active sard-agent` →
-`active`). В `/etc/sard/agent.yaml` нет ключей `repositories` и `secrets`
-(см. открытый вопрос О1). Оператор — обычный пользователь с `sudo`.
+или `dnf install ./dist/…rpm`) на чистую ВМ, `sard-server` доступен
+(`make up` на другой машине или `docs/operator/02-install.md`); агент
+регистрируется в части 0 этой процедуры. В `/etc/sard/agent.yaml` есть
+`server.address` и `tls.*` в `/etc/sard/tls`, нет ключей `repositories` и
+`secrets` (ответ О1). Оператор — обычный пользователь с `sudo`.
 
 ```bash
 AG=sard-agent
@@ -37,6 +39,39 @@ snap() { sudo find /etc/sard /etc/systemd/system/sard-agent.service.d -printf '%
 audit() { sudo journalctl -t sard-agent --since "$1" --no-pager -o cat; }
 pid() { systemctl show -p MainPID --value sard-agent; }
 ```
+
+## Часть 0. Установка и регистрация под sudo (Р25)
+
+0а. Вывод первой установки пакета (`apt install …` / `dnf install …`,
+    сохранить в `$OUT/install.txt`) → содержит
+    `sudo sard-agent enroll --server`; `grep -c 'sudo -u' "$OUT/install.txt"` → `0`.
+0б. Взять токен в консоли. Посторонний пользователь:
+    `sard-agent enroll --server <адрес> --token <строка>; echo "exit=$?"`
+    (без sudo) → `exit=2`; `PRIVILEGES_REQUIRED`; подсказка
+    `sudo sard-agent enroll`, без `sudo -u`; в консоли токен активен, агентов
+    не прибавилось; строка токена в выводе не встречается.
+0в. Н13, поведение до ответа владельца (В12):
+    `sudo mv /etc/sard/tls /etc/sard/tls.bak; sudo sard-agent enroll --server <адрес> --token <строка>; echo "exit=$?"`
+    → `exit=7`, сообщение называет `/etc/sard/tls`; `ls -d /etc/sard/tls` →
+    нет каталога; токен активен. Вернуть: `sudo mv /etc/sard/tls.bak /etc/sard/tls`.
+0г. `T=$(date '+%F %T'); sudo sard-agent enroll --server <адрес> --token <строка>; echo "exit=$?"`
+    → `exit=0`; `sudo stat -c '%U %G %a %n' /etc/sard/tls/*` →
+    `sard-agent sard-agent 600 …agent.key`, `sard-agent sard-agent 644 …agent.pem`,
+    `sard-agent sard-agent 644 …ca.pem`; других файлов в `/etc/sard/tls` нет;
+    `audit "$T"` → пусто (enroll строк аудита не пишет).
+0д. `sudo systemctl enable --now sard-agent; sleep 3; systemctl is-active sard-agent`
+    → `active`; агент в консоли в сети.
+0е. `--force` под sudo: `sudo chown root:root /etc/sard/tls/agent.key; sudo chmod 0644 /etc/sard/tls/agent.key`;
+    новый токен; `sudo sard-agent enroll --force --server <адрес> --token <строка>`
+    → `exit=0`; `sudo stat -c '%U %a' /etc/sard/tls/agent.key` → `sard-agent 600`;
+    `sudo systemctl restart sard-agent` → `active`. (Старый агент в консоли
+    офлайн — отозвать.)
+0ж. `sard-agent enroll --help` → содержит `sudo sard-agent enroll`, говорит,
+    что файлы `tls.*` получают владельцем пользователя службы; `sudo -u` нет.
+0з. `docs/operations/agent-enroll.md` и `docs/operations/agent-install.md` не
+    содержат `sudo -u` и `install -d`… для `/etc/sard/tls` в пути пакета
+    deb/rpm; регистрация — `sudo sard-agent enroll`. (Для tar.gz до ответа на
+    Н13 создание каталога `/etc/sard/tls` в документе остаётся.)
 
 ## Часть 1. Права запуска
 
@@ -182,7 +217,7 @@ pid() { systemctl show -p MainPID --value sard-agent; }
 
 ## Часть 5. SELinux (только Rocky/Oracle Linux)
 
-36. `sudo ls -Z /etc/sard/agent.d /etc/sard/secrets` → те же метки, что даёт
+36. `sudo ls -Z /etc/sard/tls /etc/sard/agent.d /etc/sard/secrets` → те же метки, что даёт
     `sudo restorecon -nv -R /etc/sard` (вывод `restorecon -nv` пуст — менять
     нечего).
 37. `sudo systemctl restart sard-agent; sleep 3; systemctl is-active sard-agent`
@@ -202,7 +237,7 @@ pid() { systemctl show -p MainPID --value sard-agent; }
 
 ## Часть 7. Справка и утечки
 
-40. Для `secret set`, `secret list`, `secret remove`, `repo add`, `repo show`,
+40. Для `enroll`, `secret set`, `secret list`, `secret remove`, `repo add`, `repo show`,
     `repo remove`, `repo password`, `repo list`: `$AG <команда> --help` →
     `exit=0`; флаги из сценария «Справка команды…», сказано, нужен ли sudo,
     коды выхода.
@@ -212,4 +247,6 @@ pid() { systemctl show -p MainPID --value sard-agent; }
 Вручную не воспроизводятся и проверяются тестами `@local` с теми же
 названиями: сбои fsync, rename и смены владельца при записи, недоступный
 syslog, нечитаемый журнал команд, неудачный `systemctl restart`, отсутствие
-systemd, `umask 000`, отсутствующий пользователь службы, `service.user`.
+systemd, `umask 000`, отсутствующий пользователь службы, `service.user`,
+сбой смены владельца файлов `tls.*` после регистрации и при `--force`,
+порядок «смена владельца до переименования» у `enroll`.
