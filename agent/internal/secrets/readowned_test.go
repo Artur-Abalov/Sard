@@ -6,6 +6,7 @@ package secrets_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -86,4 +87,37 @@ func TestReadOwnedReadsAtMostTheLimitPlusOne(t *testing.T) {
 	if _, err := secrets.ReadOwned(big, uint32(os.Getuid())); err == nil {
 		t.Fatal("a file over the limit was read")
 	}
+}
+
+func TestReadOwnedReadsUpToTheLimitAndRefusesOneByteMore(t *testing.T) {
+	const limit = 1 << 20 // a megabyte: the contract, not the name of the constant
+	dir, self := t.TempDir(), uint32(os.Getuid())
+	atLimit := plainFile(t, dir, "at", strings.Repeat("a", limit), 0o600)
+	if got, err := secrets.ReadOwned(atLimit, self); err != nil || len(got) != limit {
+		t.Fatalf("a file of exactly the limit: %d bytes, %v", len(got), err)
+	}
+	over := plainFile(t, dir, "over", strings.Repeat("a", limit+1), 0o600)
+	if got, err := secrets.ReadOwned(over, self); err == nil || got != nil || !strings.Contains(err.Error(), "larger than") {
+		t.Fatalf("a file one byte over the limit: %d bytes, %v", len(got), err)
+	}
+}
+
+func TestReadOwnedClosesTheFileItOpened(t *testing.T) {
+	dir, self := t.TempDir(), uint32(os.Getuid())
+	good, bad := plainFile(t, dir, "good", "x", 0o600), plainFile(t, dir, "bad", "x", 0o644)
+	before := openFDs(t)
+	_, _ = secrets.ReadOwned(good, self)
+	_, _ = secrets.ReadOwned(bad, self)
+	if after := openFDs(t); after != before {
+		t.Fatalf("open descriptors: %d before, %d after", before, after)
+	}
+}
+
+func openFDs(t *testing.T) int {
+	t.Helper()
+	entries, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(entries)
 }

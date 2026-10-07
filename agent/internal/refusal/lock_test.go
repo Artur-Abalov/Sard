@@ -4,8 +4,10 @@
 package refusal_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
@@ -51,6 +53,136 @@ func TestLockOfAPlainFileStillWorks(t *testing.T) {
 		t.Fatal(err)
 	}
 	unlock()
+}
+
+func openFDs(t *testing.T) int {
+	t.Helper()
+	entries, err := os.ReadDir("/proc/self/fd")
+	ok(t, err)
+	return len(entries)
+}
+
+func TestLockCreatesTheFileAndNamesItsHolder(t *testing.T) {
+	lock := filepath.Join(t.TempDir(), ".sard.lock")
+	unlock, err := refusal.Lock(os.OpenFile, lock)
+	ok(t, err)
+	defer unlock()
+	data, err := os.ReadFile(lock)
+	ok(t, err)
+	if string(data) != strconv.Itoa(os.Getpid())+"\n" {
+		t.Fatalf("lock file = %q", data)
+	}
+	if info, err := os.Stat(lock); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("lock mode = %v, %v", info, err)
+	}
+}
+
+func TestLockHeldByAnotherIsRefusedAndLeavesTheHoldersFile(t *testing.T) {
+	lock := filepath.Join(t.TempDir(), ".sard.lock")
+	unlock, err := refusal.Lock(os.OpenFile, lock)
+	ok(t, err)
+	defer unlock()
+	before := openFDs(t)
+	second, err := refusal.Lock(os.OpenFile, lock)
+	if second != nil || !errors.Is(err, refusal.ErrLockHeld) {
+		t.Fatalf("second lock taken = %v, %v", second != nil, err)
+	}
+	if openFDs(t) != before {
+		t.Fatal("the refused lock left its file open")
+	}
+	if _, err := os.Stat(lock); err != nil {
+		t.Fatalf("the holder's lock file is gone: %v", err)
+	}
+}
+
+func TestUnlockRemovesTheFileClosesItAndLetsTheNextHolderIn(t *testing.T) {
+	lock := filepath.Join(t.TempDir(), ".sard.lock")
+	before := openFDs(t)
+	unlock, err := refusal.Lock(os.OpenFile, lock)
+	ok(t, err)
+	unlock()
+	if _, err := os.Lstat(lock); !os.IsNotExist(err) {
+		t.Fatalf("the lock file stays after unlock: %v", err)
+	}
+	if openFDs(t) != before {
+		t.Fatal("unlock left the file open")
+	}
+	again, err := refusal.Lock(os.OpenFile, lock)
+	ok(t, err)
+	again()
+}
+
+func TestLockOpenErrorIsReturnedAsIs(t *testing.T) {
+	boom := errors.New("no write access")
+	open := func(string, int, os.FileMode) (*os.File, error) { return nil, boom }
+	if unlock, err := refusal.Lock(open, "x"); unlock != nil || !errors.Is(err, boom) {
+		t.Fatalf("Lock taken = %v, %v", unlock != nil, err)
+	}
+	if f, err := refusal.OpenLockFile(open, "x"); f != nil || !errors.Is(err, boom) {
+		t.Fatalf("OpenLockFile = %v, %v", f, err)
+	}
+}
+
+// A holder that released between our open and our flock removed the file
+// we hold: the lock on it means nothing.
+func TestLockOnAFileRemovedUnderneathIsRefused(t *testing.T) {
+	lock := filepath.Join(t.TempDir(), ".sard.lock")
+	open := func(name string, flag int, perm os.FileMode) (*os.File, error) {
+		f, err := os.OpenFile(name, flag, perm)
+		ok(t, err)
+		ok(t, os.Remove(name))
+		return f, nil
+	}
+	before := openFDs(t)
+	unlock, err := refusal.Lock(open, lock)
+	if unlock != nil || !errors.Is(err, refusal.ErrLockHeld) {
+		t.Fatalf("Lock taken = %v, %v", unlock != nil, err)
+	}
+	if openFDs(t) != before {
+		t.Fatal("the refused lock left its file open")
+	}
+}
+
+func TestOpenLockFileRefusesAFileThatIsNotRegularAndClosesIt(t *testing.T) {
+	open := func(string, int, os.FileMode) (*os.File, error) { return os.OpenFile(os.DevNull, os.O_RDWR, 0) }
+	before := openFDs(t)
+	f, err := refusal.OpenLockFile(open, "x")
+	if f != nil || !errors.Is(err, refusal.ErrUnsafeLockFile) {
+		t.Fatalf("OpenLockFile = %v, %v", f, err)
+	}
+	if openFDs(t) != before {
+		t.Fatal("the refused file was left open")
+	}
+}
+
+func TestCheckLockFileOfAClosedFileIsTheStatError(t *testing.T) {
+	f, err := os.Create(filepath.Join(t.TempDir(), "x"))
+	ok(t, err)
+	ok(t, f.Close())
+	if err := refusal.CheckLockFile(f); err == nil || errors.Is(err, refusal.ErrUnsafeLockFile) {
+		t.Fatalf("err = %v", err)
+	}
+	if refusal.SameFileAtPath(f, f.Name()) {
+		t.Fatal("a closed file is the file at its path")
+	}
+}
+
+func TestSameFileAtPathIsTheFileItselfNotAReplacement(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "x")
+	f, err := os.Create(path)
+	ok(t, err)
+	defer func() { _ = f.Close() }()
+	if !refusal.SameFileAtPath(f, path) {
+		t.Fatal("the file is not itself")
+	}
+	ok(t, os.Remove(path))
+	if refusal.SameFileAtPath(f, path) {
+		t.Fatal("a removed file is still at its path")
+	}
+	ok(t, os.WriteFile(path, nil, 0o600))
+	if refusal.SameFileAtPath(f, path) {
+		t.Fatal("a replacement is the held file")
+	}
 }
 
 func ok(t *testing.T, err error) {

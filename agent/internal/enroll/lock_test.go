@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -239,5 +240,47 @@ func assertLockRefusedBehindLink(t *testing.T, plant func(dir, lock, victim stri
 	}
 	if _, err := os.Lstat(filepath.Join(dir, "created-by-root")); err == nil {
 		t.Fatal("the target of the dangling link was created")
+	}
+}
+
+// A lock file removed between Lock's open and its flock (a holder that just
+// released) is refused, and the descriptor of that refused file is closed.
+// The garbage collector is off so that a leaked descriptor is not closed by
+// a finalizer before it is counted.
+func TestLockOfAFileRemovedUnderneathDoesNotLeakAFileDescriptor(t *testing.T) {
+	defer debug.SetGCPercent(debug.SetGCPercent(-1))
+	certFile := filepath.Join(t.TempDir(), "tls.crt")
+	path := enroll.LockPath(certFile)
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_ = os.Remove(path)
+			}
+		}
+	}()
+	before := openFDCount(t)
+	refused := 0
+	for i := 0; i < 20000; i++ {
+		unlock, err := enroll.Lock(certFile)
+		if err != nil {
+			refused++
+			continue
+		}
+		unlock()
+	}
+	close(stop)
+	<-done
+	if after := openFDCount(t); after > before {
+		t.Fatalf("open fds grew from %d to %d across %d refused Lock calls", before, after, refused)
+	}
+	t.Logf("%d of the Lock calls were refused", refused)
+	if refused == 0 {
+		t.Fatal("the race was not hit: the test proves nothing")
 	}
 }

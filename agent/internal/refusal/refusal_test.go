@@ -23,3 +23,19 @@ func TestEveryReasonHasAClass(t *testing.T) {
 		}
 	}
 }
+
+func TestFailureTextIsReasonAndDetailExceptForTheTwoThatStandAlone(t *testing.T) {
+	cases := []struct {
+		f    *Failure
+		want string
+	}{
+		{Fail(WrongPassword, "wrong %s", "key"), "WRONG_PASSWORD: wrong key"},
+		{Fail(SecretFileRejected, "mode 0644"), "mode 0644"},
+		{&Failure{Detail: "bad config"}, "bad config"},
+	}
+	for _, c := range cases {
+		if got := c.f.Error(); got != c.want {
+			t.Errorf("Error() = %q, want %q", got, c.want)
+		}
+	}
+}

@@ -277,7 +277,13 @@ func TestPeekServiceUserIgnoresEveryProblemOfTheFile(t *testing.T) {
 	if got := config.PeekServiceUser(h.main); got != "backup" {
 		t.Fatalf("peeked %q, want backup", got)
 	}
-	for name, body := range map[string]string{"invalid yaml": "service: [", "no key": "server: {address: a:1}\n"} {
+	for name, body := range map[string]string{
+		"invalid yaml": "service: [",
+		"no key":       "server: {address: a:1}\n",
+		// what was read before the file turned out to be wrong is not trusted
+		"a user named twice":       "service:\n  user: backup\n  user: other\n",
+		"a user then a wrong type": "service:\n  user: backup\nserver: [\n",
+	} {
 		bad := newOverlayHost(t, body)
 		if got := config.PeekServiceUser(bad.main); got != config.DefaultServiceUser {
 			t.Errorf("%s: peeked %q, want the default", name, got)

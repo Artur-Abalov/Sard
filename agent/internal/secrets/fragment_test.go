@@ -82,3 +82,22 @@ func TestMainConfigMessagesStayAsTheyWere(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// A secret of the main config is named without a file: only a fragment's
+// secret is named "in" its file.
+func TestSecretOfTheMainConfigIsNamedWithoutAFile(t *testing.T) {
+	main := filepath.Join(t.TempDir(), "agent.yaml")
+	body := "server: {address: 'a:1'}\nsecrets:\n  db: /p/db\n"
+	if err := os.WriteFile(main, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(main)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat := statOf(map[string]secrets.Info{"/p/db": {Mode: 0o640, UID: agentUID}})
+	err = secrets.CheckAll(cfg, agentUID, stat)
+	if err == nil || !strings.HasPrefix(err.Error(), "secret file secrets.db (/p/db) has mode") {
+		t.Fatalf("err = %v", err)
+	}
+}
