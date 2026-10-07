@@ -105,8 +105,6 @@ start_host() {
     --cgroupns=host --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
     "$tag" >/dev/null
   wait_for "systemd on $distro" 'systemctl is-system-running | grep -Eq "running|degraded"'
-  # What root may do in this container: sudo's PAM reads /etc/shadow (mode 0000) as root.
-  say "root in the host: $(on_host 'grep CapEff /proc/self/status; head -c0 /etc/shadow && echo shadow readable' 2>&1 | tr '\n' ' ')"
   # Not /tmp: Debian 13 mounts a tmpfs there at boot, over what docker cp writes.
   docker cp "$OLD_PKG" "$HOST:/root/old.$FAMILY"
   docker cp "$NEW_PKG" "$HOST:/root/new.$FAMILY"
@@ -176,15 +174,7 @@ printf '[Service]\\nReadWritePaths=/srv/sard-repo\\n' >/etc/systemd/system/sard-
     on_host "rpm -q sudo pam shadow-utils setup 2>/dev/null || dpkg -l sudo libpam-modules 2>/dev/null | tail -2
       ls -l /etc/passwd /etc/shadow; grep -E '^(root|sard-agent):' /etc/passwd
       grep -E '^(root|sard-agent):' /etc/shadow | cut -d: -f1,3-; cat /etc/pam.d/sudo
-      journalctl --no-pager -n 15 | grep -iE 'sudo|pam' | sed 's/--token [^ ]*/--token ***/'
-      ls /sys/fs/selinux 2>&1 | head -2
-      su -s /bin/sh sard-agent -c true; echo su=\$?
-      runuser -u sard-agent -- true; echo runuser=\$?
-      useradd -m sardprobe && echo 'sardprobe ALL=(ALL) NOPASSWD: ALL' >/etc/sudoers.d/sardprobe &&
-        runuser -u sardprobe -- sudo -n -u sard-agent true; echo admin_sudo=\$?
-      echo 'Debug sudo /tmp/sudo-debug all@debug' >/etc/sudo.conf
-      sudo -u sard-agent true; echo root_sudo=\$?
-      grep -iE 'pam|account|acct' /tmp/sudo-debug | tail -25" || true
+      journalctl --no-pager -n 15 | grep -iE 'sudo|pam' | sed 's/--token [^ ]*/--token ***/'" || true
     die "enroll as sard-agent"
   }
   on_host "cd / && sudo -u sard-agent sard-agent repo init --generate-password main" || die "repo init as sard-agent"

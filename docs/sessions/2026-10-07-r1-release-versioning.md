@@ -244,3 +244,21 @@ OQ-157 дополнен для rpm.
   (`version`, rpm в `install`) и `install-rpm` в CI ни разу не запускались.
 - `scripts/test-console-install.sh` для rpm не запускался (нужен хост Rocky).
 - Ручная QA `docs/qa/agent-install.md`.
+
+### CI PR #53: `install-rpm` на Rocky 9
+
+- Первый прогон новой задачи: rpm ставится, `sudo -u sard-agent sard-agent
+  enroll` от root падает: «sudo: PAM account management error: Authentication
+  service cannot retrieve authentication info».
+- Диагностика в CI (`b932c3e`, `727bd73`, `67f0126`): `sudo-1.9.17p2-3.el9_8.3`,
+  `pam-1.5.1-28.el9`; записи `root` и `sard-agent` в `/etc/passwd` и
+  `/etc/shadow` есть; у root `CapEff: 000001ffffffffff`, `/etc/shadow`
+  читается; `/sys/fs/selinux` нет; `su` и `runuser` в `sard-agent` — 0;
+  `sudo` от обычного администратора — тот же отказ. Локально тот же `sudo`
+  (из OL9) в образе Rocky с systemd — работает.
+- Обход в тестовом хосте: `Defaults !pam_acct_mgmt`
+  (`test/packages/host-rpm.Dockerfile`); `visudo -c` и `sudo -u` проверены
+  локально. Причина внутри `sudo` не найдена — OQ-161.
+- Ошибка по ходу: диагностика `b932c3e` вывела в лог CI токен регистрации
+  тестового сервера (одноразовый, сервер удаляется с задачей); с `727bd73`
+  токен маскируется.

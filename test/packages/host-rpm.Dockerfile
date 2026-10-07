@@ -11,6 +11,12 @@ ARG DISTRO=rockylinux/rockylinux:9
 FROM ${DISTRO}
 RUN dnf install -y --setopt=install_weak_deps=False \
       systemd sudo /usr/bin/curl findutils procps-ng shadow-utils openssh-clients && \
-    dnf clean all
+    dnf clean all && \
+    printf 'Defaults !pam_acct_mgmt\n' >/etc/sudoers.d/container && chmod 0440 /etc/sudoers.d/container
+# sudo (1.9.17p2-3.el9_8.3) in this container on GitHub's runners fails PAM
+# account management for every user ("Authentication service cannot retrieve
+# authentication info") while su and runuser pass the same stack, and the
+# same sudo build passes locally (OQ-161). Only that check is turned off: the
+# commands of the docs and the console still run through sudo as written.
 STOPSIGNAL SIGRTMIN+3
 CMD ["/usr/sbin/init"]
