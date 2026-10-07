@@ -1,10 +1,8 @@
 # QA: настройка хоста агента командами `sard-agent` (A8a)
 
-Сценарии: `docs/specs/agent/host-setup.feature`. Срез A8a утверждён; ответы
-владельца на О1–О5, Н1–Н12 переданы координатором 2026-10-07 и внесены в
-спецификацию. Открыт только Н13 (каталог `tls.*` при `enroll` под sudo): до
-ответа шаг 0в проверяет поведение В12 A2b. Классы и номера кодов выхода — A2b
-(ADR 0025).
+Сценарии: `docs/specs/agent/host-setup.feature`. Срез A8a утверждён владельцем
+2026-10-07; ответы на О1–О5, Н1–Н13 внесены в спецификацию. Классы и номера
+кодов выхода — A2b (ADR 0025).
 
 Выполнима после реализации A8a. Ожидаемый результат — после «→». Любое
 расхождение — дефект.
@@ -50,12 +48,27 @@ pid() { systemctl show -p MainPID --value sard-agent; }
     (без sudo) → `exit=2`; `PRIVILEGES_REQUIRED`; подсказка
     `sudo sard-agent enroll`, без `sudo -u`; в консоли токен активен, агентов
     не прибавилось; строка токена в выводе не встречается.
-0в. Н13, поведение до ответа владельца (В12):
-    `sudo mv /etc/sard/tls /etc/sard/tls.bak; sudo sard-agent enroll --server <адрес> --token <строка>; echo "exit=$?"`
-    → `exit=7`, сообщение называет `/etc/sard/tls`; `ls -d /etc/sard/tls` →
-    нет каталога; токен активен. Вернуть: `sudo mv /etc/sard/tls.bak /etc/sard/tls`.
+0в. Каталог `tls.*` (Р25а, поправка В12). Перед шагом
+    `sudo mv /etc/sard/tls /etc/sard/tls.bak`.
+    1) Промежуточного каталога нет: `sudo sed 's|/etc/sard/tls/|/etc/sard/qa-missing/tls/|' /etc/sard/agent.yaml | sudo tee /etc/sard/qa.yaml >/dev/null`;
+       `sudo sard-agent enroll --config /etc/sard/qa.yaml --server <адрес> --token <строка>; echo "exit=$?"`
+       → `exit=7`; сообщение называет `tls.key_file` и `/etc/sard/qa-missing`;
+       `ls -d /etc/sard/qa-missing` → нет каталога; токен в консоли активен,
+       агентов не прибавилось. `sudo rm /etc/sard/qa.yaml`.
+    2) Неудачная регистрация не оставляет каталога: создать в консоли токен и
+       отозвать его;
+       `sudo sard-agent enroll --server <адрес> --token <отозванный>; echo "exit=$?"`
+       → `exit=3`; `ls -d /etc/sard/tls` → нет каталога.
+    3) От пользователя службы каталог не создаётся (В12):
+       `sudo -u sard-agent sard-agent enroll --server <адрес> --token <строка>; echo "exit=$?"`
+       → `exit=7`, сообщение называет `/etc/sard/tls`; каталога нет; токен
+       активен.
+    Каталог `/etc/sard/tls.bak` не возвращать: шаг 0г создаёт `/etc/sard/tls`
+    сам. В конце части `sudo rm -r /etc/sard/tls.bak`.
 0г. `T=$(date '+%F %T'); sudo sard-agent enroll --server <адрес> --token <строка>; echo "exit=$?"`
-    → `exit=0`; `sudo stat -c '%U %G %a %n' /etc/sard/tls/*` →
+    (каталога `/etc/sard/tls` нет после шага 0в)
+    → `exit=0`; `sudo stat -c '%U %G %a' /etc/sard/tls` → `sard-agent sard-agent 700`;
+    `sudo stat -c '%U %G %a %n' /etc/sard/tls/*` →
     `sard-agent sard-agent 600 …agent.key`, `sard-agent sard-agent 644 …agent.pem`,
     `sard-agent sard-agent 644 …ca.pem`; других файлов в `/etc/sard/tls` нет;
     `audit "$T"` → пусто (enroll строк аудита не пишет).
@@ -69,9 +82,10 @@ pid() { systemctl show -p MainPID --value sard-agent; }
 0ж. `sard-agent enroll --help` → содержит `sudo sard-agent enroll`, говорит,
     что файлы `tls.*` получают владельцем пользователя службы; `sudo -u` нет.
 0з. `docs/operations/agent-enroll.md` и `docs/operations/agent-install.md` не
-    содержат `sudo -u` и `install -d`… для `/etc/sard/tls` в пути пакета
-    deb/rpm; регистрация — `sudo sard-agent enroll`. (Для tar.gz до ответа на
-    Н13 создание каталога `/etc/sard/tls` в документе остаётся.)
+    содержат `sudo -u` и `install -d` для `/etc/sard/tls` (ни для пакета, ни
+    для tar.gz); регистрация — `sudo sard-agent enroll`; сказано, что под sudo
+    команда создаёт отсутствующий последний каталог `tls.*`, но не
+    промежуточные.
 
 ## Часть 1. Права запуска
 
