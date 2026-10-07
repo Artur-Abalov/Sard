@@ -63,16 +63,27 @@ func (c *hostCmd) checkLocalPath(path string) (string, *refusal.Failure) {
 		return "", refusal.Fail(refusal.LocalPathInvalid, "%q is not an absolute path", path)
 	}
 	path = filepath.Clean(path)
-	info, err := c.deps.fs.Stat(path)
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
+	info, err := c.deps.fs.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
 		return path, nil
-	case err != nil:
-		return "", refusal.Fail(refusal.LocalPathInvalid, "%s cannot be looked at: %v", path, err)
-	case !info.IsDir():
-		return "", refusal.Fail(refusal.LocalPathInvalid, "%s exists and is not a directory", path)
+	}
+	if f := notADirectory(path, info, err); f != nil {
+		return "", f
 	}
 	return path, nil
+}
+
+// notADirectory refuses what is at path unless it is a real directory.
+func notADirectory(path string, info fs.FileInfo, err error) *refusal.Failure {
+	switch {
+	case err != nil:
+		return refusal.Fail(refusal.LocalPathInvalid, "%s cannot be looked at: %v", path, err)
+	case info.Mode()&fs.ModeSymlink != 0:
+		return refusal.Fail(refusal.LocalPathInvalid, "%s is a symbolic link; give the directory it points to", path)
+	case !info.IsDir():
+		return refusal.Fail(refusal.LocalPathInvalid, "%s exists and is not a directory", path)
+	}
+	return nil
 }
 
 // repository is the repository of the config by name.

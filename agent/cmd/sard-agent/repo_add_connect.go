@@ -94,7 +94,7 @@ func (c *hostCmd) failConnect(ctx context.Context, st *addState, f *refusal.Fail
 // repository directory itself is the service user's, 0700; an existing
 // one gets the service user as owner, recursively, modes untouched.
 func (c *hostCmd) prepareRepositoryDir(path string) error {
-	if _, err := c.deps.fs.Stat(path); err == nil {
+	if _, err := c.deps.fs.Lstat(path); err == nil {
 		return hostsetup.ChownTree(c.deps.fs, path, int(c.who.Service.UID), int(c.who.Service.GID))
 	}
 	missing := c.missingDirs(path)

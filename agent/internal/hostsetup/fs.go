@@ -38,6 +38,8 @@ type FS interface {
 	Chown(path string, uid, gid int) error
 	Chmod(path string, mode os.FileMode) error
 	Stat(path string) (fs.FileInfo, error)
+	// Lstat is Stat that does not follow a symbolic link at the end of path.
+	Lstat(path string) (fs.FileInfo, error)
 	ReadFile(path string) ([]byte, error)
 	ReadDir(path string) ([]fs.DirEntry, error)
 	// Link makes newpath another name of oldpath; it fails if newpath exists.
@@ -50,6 +52,7 @@ type FS interface {
 // Root is a directory tree that cannot be escaped by swapping a directory
 // for a symbolic link while it is being walked (os.Root).
 type Root interface {
+	Stat(name string) (fs.FileInfo, error)
 	Lchown(name string, uid, gid int) error
 	ReadDir(name string) ([]fs.DirEntry, error)
 	Close() error
@@ -88,6 +91,9 @@ func (OS) ReadFile(path string) ([]byte, error) { return os.ReadFile(path) }
 
 // ReadDir implements FS.
 func (OS) ReadDir(path string) ([]fs.DirEntry, error) { return os.ReadDir(path) }
+
+// Lstat implements FS.
+func (OS) Lstat(path string) (fs.FileInfo, error) { return os.Lstat(path) }
 
 // Link implements FS.
 func (OS) Link(oldpath, newpath string) error { return os.Link(oldpath, newpath) }
@@ -238,16 +244,50 @@ func RemoveFile(fsys FS, path string) (bool, error) {
 // themselves, to the owner; modes are not touched (Н7). The walk happens
 // inside an opened Root, so a directory swapped for a link to somewhere
 // else while it runs cannot take it out of the tree.
+//
+// The root itself must be a directory and not a link to one: a link would
+// hand over whatever it points to. The directory opened is checked to be
+// the one that was looked at, so it cannot be swapped in between.
 func ChownTree(fsys FS, root string, uid, gid int) error {
-	if err := fsys.Chown(root, uid, gid); err != nil {
+	r, err := openTreeRoot(fsys, root)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = r.Close() }()
+	if err := r.Lchown(".", uid, gid); err != nil {
 		return &WriteError{Path: root, Op: "change owner of", Err: err}
+	}
+	return chownDir(r, root, ".", uid, gid)
+}
+
+// lookAtRoot is the file info of root, which must be a directory itself.
+func lookAtRoot(fsys FS, root string) (fs.FileInfo, error) {
+	info, err := fsys.Lstat(root)
+	if err != nil {
+		return nil, &WriteError{Path: root, Op: "look at", Err: err}
+	}
+	if !info.IsDir() {
+		return nil, &WriteError{Path: root, Op: "change owner of", Err: errors.New("is a symbolic link or not a directory; give the directory itself")}
+	}
+	return info, nil
+}
+
+// openTreeRoot opens root after checking it is a real directory.
+func openTreeRoot(fsys FS, root string) (Root, error) {
+	before, err := lookAtRoot(fsys, root)
+	if err != nil {
+		return nil, err
 	}
 	r, err := fsys.OpenRoot(root)
 	if err != nil {
-		return &WriteError{Path: root, Op: "read directory", Err: err}
+		return nil, &WriteError{Path: root, Op: "read directory", Err: err}
 	}
-	defer func() { _ = r.Close() }()
-	return chownDir(r, root, ".", uid, gid)
+	after, err := r.Stat(".")
+	if err != nil || !os.SameFile(before, after) {
+		_ = r.Close()
+		return nil, &WriteError{Path: root, Op: "change owner of", Err: errors.New("was replaced while it was opened")}
+	}
+	return r, nil
 }
 
 // chownDir changes the entries of dir (a name inside r); base is the path

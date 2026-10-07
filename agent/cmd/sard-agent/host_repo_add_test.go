@@ -718,3 +718,21 @@ func TestAnAddressInTheSummaryNeverShowsACredential(t *testing.T) {
 		t.Fatalf("output %q", out.String())
 	}
 }
+
+func TestAnAddressThatIsASymbolicLinkIsRefusedAndNothingIsChanged(t *testing.T) {
+	h := newSetupHost(t)
+	target := h.path("elsewhere")
+	ok(t, os.Mkdir(target, 0o755))
+	ok(t, os.Symlink(target, h.extraDir()))
+	before := h.hostTree()
+	code, _, stderr := h.add()
+	assertRefusal(t, code, stderr, exitUsage, "LOCAL_PATH_INVALID")
+	if !strings.Contains(stderr, "symbolic link") {
+		t.Fatalf("stderr %q", stderr)
+	}
+	h.assertAbsent(h.path("agent.d/repo-extra.yaml"), h.dropIns())
+	h.assertHostUnchanged(before)
+	if _, ok := h.fsys.ownerOf(target); ok {
+		t.Fatal("the directory behind the link was given away")
+	}
+}

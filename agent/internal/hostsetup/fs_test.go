@@ -535,6 +535,7 @@ type swappingFS struct {
 	hostsetup.OS
 	outside string
 	landed  []string
+	swapped bool
 }
 
 func (f *swappingFS) OpenRoot(path string) (hostsetup.Root, error) {
@@ -547,15 +548,14 @@ func (f *swappingFS) OpenRoot(path string) (hostsetup.Root, error) {
 
 type swappingRoot struct {
 	hostsetup.Root
-	base    string
-	fsys    *swappingFS
-	swapped bool
+	base string
+	fsys *swappingFS
 }
 
 func (r *swappingRoot) ReadDir(name string) ([]fs.DirEntry, error) {
 	entries, err := r.Root.ReadDir(name)
-	if name == "." && !r.swapped {
-		r.swapped = true
+	if name == "." && !r.fsys.swapped {
+		r.fsys.swapped = true
 		sub := filepath.Join(r.base, "sub")
 		_ = os.RemoveAll(sub)
 		_ = os.Symlink(r.fsys.outside, sub)
@@ -567,9 +567,10 @@ func (r *swappingRoot) Lchown(name string, uid, gid int) error {
 	if err := r.Root.Lchown(name, os.Getuid(), os.Getgid()); err != nil {
 		return err
 	}
-	dir, err := filepath.EvalSymlinks(filepath.Dir(filepath.Join(r.base, name)))
+	full := filepath.Join(r.base, name) // "." is the tree itself
+	dir, err := filepath.EvalSymlinks(filepath.Dir(full))
 	if err == nil {
-		r.fsys.landed = append(r.fsys.landed, filepath.Join(dir, filepath.Base(name)))
+		r.fsys.landed = append(r.fsys.landed, filepath.Join(dir, filepath.Base(full)))
 	}
 	return err
 }
@@ -583,10 +584,51 @@ func TestChownTreeNeverLeavesTheTreeThroughASwappedDirectory(t *testing.T) {
 	ok(t, os.WriteFile(filepath.Join(outside, "passwd"), nil, 0o600))
 	fsys := &swappingFS{outside: outside}
 	_ = hostsetup.ChownTree(fsys, root, 990, 990)
+	if !fsys.swapped {
+		t.Fatal("the swap did not happen: the test proves nothing")
+	}
 	resolvedRoot, _ := filepath.EvalSymlinks(root)
 	for _, p := range fsys.landed {
 		if !strings.HasPrefix(p, resolvedRoot+string(filepath.Separator)) && p != resolvedRoot {
 			t.Errorf("an owner change landed outside the tree: %s", p)
 		}
+	}
+}
+
+func TestChownTreeRefusesARootThatIsASymbolicLink(t *testing.T) {
+	base := t.TempDir()
+	target, link := filepath.Join(base, "etc"), filepath.Join(base, "backup")
+	ok(t, os.MkdirAll(target, 0o755))
+	ok(t, os.WriteFile(filepath.Join(target, "passwd"), nil, 0o600))
+	ok(t, os.Symlink(target, link))
+	fsys := &swappingFS{outside: target}
+	rfs := newRecordingFS()
+	err := hostsetup.ChownTree(rfs, link, 990, 990)
+	var we *hostsetup.WriteError
+	if !errors.As(err, &we) || !strings.Contains(err.Error(), "symbolic link") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(rfs.owners) != 0 || len(fsys.landed) != 0 {
+		t.Fatalf("an owner change landed behind the link: %v", rfs.owners)
+	}
+}
+
+// otherRootFS opens another directory than the one asked for, as if the
+// root had been replaced between the look and the opening.
+type otherRootFS struct {
+	hostsetup.OS
+	other string
+}
+
+func (f otherRootFS) OpenRoot(string) (hostsetup.Root, error) { return f.OS.OpenRoot(f.other) }
+
+func TestChownTreeRefusesARootReplacedWhileItIsOpened(t *testing.T) {
+	base := t.TempDir()
+	root, other := filepath.Join(base, "repo"), filepath.Join(base, "other")
+	ok(t, os.Mkdir(root, 0o755))
+	ok(t, os.Mkdir(other, 0o755))
+	err := hostsetup.ChownTree(otherRootFS{other: other}, root, 990, 990)
+	if err == nil || !strings.Contains(err.Error(), "replaced") {
+		t.Fatalf("err = %v", err)
 	}
 }
