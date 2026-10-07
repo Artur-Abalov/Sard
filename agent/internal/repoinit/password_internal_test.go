@@ -89,7 +89,10 @@ func TestEveryReasonHasAClass(t *testing.T) {
 	reasons := []Reason{RepositoryUnknown, CryptoProviderUnsupported, PasswordFileMissing, PasswordFileEmpty,
 		EnvFileMissing, EnvFileInvalid, SecretFileRejected, ResticNotFound, ResticTooOld, ResticUnusable,
 		ResticOutputUnexpected, RepositoryExists, WrongPassword, BackendUnavailable, BackendRefused,
-		Interrupted, Timeout, InitInProgress, PasswordFileWrite, LockWrite}
+		Interrupted, Timeout, InitInProgress, PasswordFileWrite, LockWrite,
+		PrivilegesRequired, ServiceUserUnknown, NameInvalid, DefinedInConfig, PathInUse, SecretSourceMissing,
+		SecretSourceConflict, SecretEmpty, SecretTooLarge, SecretMismatch, BackendNotSupported,
+		LocalPathInvalid, RevealRequired, RepositoryConflict, ConfigLocked, ConfigWrite, ServiceRestartFailed}
 	if len(classes) != len(reasons) {
 		t.Errorf("%d reasons have a class, %d exist", len(classes), len(reasons))
 	}

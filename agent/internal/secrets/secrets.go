@@ -87,18 +87,34 @@ func secretEntries(cfg config.Config) []entry {
 		entries = append(entries, entry{"tls.key_file", cfg.TLS.KeyFile})
 	}
 	for i, r := range cfg.Repositories {
-		entries = append(entries, entry{fmt.Sprintf("repositories[%d].password_file", i), r.PasswordFile})
+		entries = append(entries, entry{RepositoryKey(i, r, "password_file"), r.PasswordFile})
 		if r.EnvFile != "" {
-			entries = append(entries, entry{fmt.Sprintf("repositories[%d].env_file", i), r.EnvFile})
+			entries = append(entries, entry{RepositoryKey(i, r, "env_file"), r.EnvFile})
 		}
 	}
 	for _, name := range cfg.SecretNames() {
-		entries = append(entries, entry{"secrets." + name, cfg.Secrets[name]})
+		entries = append(entries, entry{keyIn("secrets."+name, cfg.SecretSource(name), cfg.Path()), cfg.Secrets[name]})
 	}
 	for _, name := range cfg.ScriptNames() {
 		entries = append(entries, entry{"scripts." + name, cfg.Scripts[name]})
 	}
 	return entries
+}
+
+// RepositoryKey names a file key of repository index in A1's messages:
+// "repositories[1].password_file", followed by the fragment that defines
+// the repository when it is not one of the main config.
+func RepositoryKey(index int, r config.Repository, field string) string {
+	return keyIn(fmt.Sprintf("repositories[%d].%s", index, field), r.Fragment, "")
+}
+
+// keyIn adds " in <file>" to key when the definition is in a file other
+// than the main config.
+func keyIn(key, file, mainFile string) string {
+	if file == "" || file == mainFile {
+		return key
+	}
+	return key + " in " + file
 }
 
 // CheckAll verifies every secret file in cfg has no group or other

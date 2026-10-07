@@ -5,7 +5,6 @@ package repoinit
 
 import (
 	"errors"
-	"fmt"
 	"io/fs"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
@@ -59,7 +58,7 @@ func rejected(err error) *Failure {
 }
 
 func checkPasswordFile(h Host, repo config.Repository, index int, createPassword bool) (missing bool, f *Failure) {
-	key := fmt.Sprintf("repositories[%d].password_file", index)
+	key := secrets.RepositoryKey(index, repo, "password_file")
 	if err := secrets.CheckFile(key, repo.PasswordFile, h.UID, h.Stat); err != nil {
 		return false, rejected(err)
 	}
@@ -79,7 +78,7 @@ func checkEnvFile(h Host, repo config.Repository, index int) ([]string, *Failure
 	if repo.EnvFile == "" {
 		return nil, nil
 	}
-	key := fmt.Sprintf("repositories[%d].env_file", index)
+	key := secrets.RepositoryKey(index, repo, "env_file")
 	if err := secrets.CheckFile(key, repo.EnvFile, h.UID, h.Stat); err != nil {
 		return nil, rejected(err)
 	}

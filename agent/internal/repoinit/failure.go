@@ -39,6 +39,27 @@ const (
 	LockWrite              Reason = "LOCK_WRITE"
 )
 
+// The reasons of the host-setup commands (A8a, docs/specs/agent/host-setup.feature).
+const (
+	PrivilegesRequired   Reason = "PRIVILEGES_REQUIRED"
+	ServiceUserUnknown   Reason = "SERVICE_USER_UNKNOWN"
+	NameInvalid          Reason = "NAME_INVALID"
+	DefinedInConfig      Reason = "DEFINED_IN_CONFIG"
+	PathInUse            Reason = "PATH_IN_USE"
+	SecretSourceMissing  Reason = "SECRET_SOURCE_MISSING"
+	SecretSourceConflict Reason = "SECRET_SOURCE_CONFLICT"
+	SecretEmpty          Reason = "SECRET_EMPTY"
+	SecretTooLarge       Reason = "SECRET_TOO_LARGE"
+	SecretMismatch       Reason = "SECRET_MISMATCH"
+	BackendNotSupported  Reason = "BACKEND_NOT_SUPPORTED"
+	LocalPathInvalid     Reason = "LOCAL_PATH_INVALID"
+	RevealRequired       Reason = "REVEAL_REQUIRED"
+	RepositoryConflict   Reason = "REPOSITORY_CONFLICT"
+	ConfigLocked         Reason = "CONFIG_LOCKED"
+	ConfigWrite          Reason = "CONFIG_WRITE"
+	ServiceRestartFailed Reason = "SERVICE_RESTART_FAILED"
+)
+
 // Class is the kind of a failure; the command maps it to an exit code
 // (the numbers are A2b's, docs/adr/0025-grpc-error-model.md).
 type Class int
@@ -62,6 +83,16 @@ var classes = map[Reason]Class{
 	RepositoryExists:   ClassExists,
 	BackendUnavailable: ClassTemporary, Interrupted: ClassTemporary, Timeout: ClassTemporary, InitInProgress: ClassTemporary,
 	PasswordFileWrite: ClassWrite, LockWrite: ClassWrite,
+
+	PrivilegesRequired: ClassUsage, ServiceUserUnknown: ClassUsage, NameInvalid: ClassUsage,
+	DefinedInConfig: ClassUsage, PathInUse: ClassUsage,
+	SecretSourceMissing: ClassUsage, SecretSourceConflict: ClassUsage, SecretEmpty: ClassUsage,
+	SecretTooLarge: ClassUsage, SecretMismatch: ClassUsage,
+	BackendNotSupported: ClassUsage, LocalPathInvalid: ClassUsage, RevealRequired: ClassUsage,
+	RepositoryConflict:   ClassExists,
+	ConfigLocked:         ClassTemporary,
+	ConfigWrite:          ClassWrite,
+	ServiceRestartFailed: ClassAgentError,
 }
 
 // Failure is a refusal the operator is told about.
@@ -76,6 +107,12 @@ type Failure struct {
 
 func fail(reason Reason, format string, args ...any) *Failure {
 	return &Failure{Reason: reason, Class: classes[reason], Detail: fmt.Sprintf(format, args...)}
+}
+
+// Fail is a refusal with the class of its reason; the host-setup commands
+// build theirs with it.
+func Fail(reason Reason, format string, args ...any) *Failure {
+	return fail(reason, format, args...)
 }
 
 // Error is "REASON: detail"; A1's texts stand alone, as they do at start.
