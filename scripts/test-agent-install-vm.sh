@@ -12,7 +12,8 @@
 #
 #   OLD_DIST=dist-n NEW_DIST=dist-n1 scripts/test-agent-install-vm.sh
 #
-# VM_CACHE (default ~/.cache/sard-vm) keeps the downloaded image; SERVER_IMAGE
+# KEEP=1 leaves the machine and the containers of a failed run up for a look
+# around (the ssh command is printed). VM_CACHE (default ~/.cache/sard-vm) keeps the downloaded image; SERVER_IMAGE
 # as for test-agent-install.sh. Ports 8080, 9090 and 2222 of this host's
 # loopback must be free. Needs qemu-system-x86_64, qemu-img, cloud-localds.
 set -euo pipefail
@@ -33,6 +34,10 @@ done
 WORK="$(mktemp -d)"
 QEMU_PID=""
 cleanup() {
+  if [ -n "${KEEP:-}" ]; then
+    say "KEEP set: the machine stays up (qemu pid $QEMU_PID); ssh ${SSH_ARGS:-}"
+    return
+  fi
   [ -z "$QEMU_PID" ] || kill "$QEMU_PID" 2>/dev/null || true
   rm -rf "$WORK"
 }
