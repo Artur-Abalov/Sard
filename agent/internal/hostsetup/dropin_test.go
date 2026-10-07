@@ -43,7 +43,7 @@ func TestDropInGrantsWriteAccessToTheRepositoryPath(t *testing.T) {
 
 func TestDropInRemoveReportsWhetherThereWasOne(t *testing.T) {
 	dir := t.TempDir()
-	d := hostsetup.DropIn{FS: hostsetup.OS{}, Dir: dir}
+	d := hostsetup.DropIn{FS: newRecordingFS(), Dir: dir}
 	if removed, err := d.Remove("extra"); err != nil || removed {
 		t.Fatalf("removed %v, err %v", removed, err)
 	}
@@ -70,7 +70,7 @@ func TestDropInWriteFailuresNameThePath(t *testing.T) {
 
 func TestDropInEscapesWhatSystemdWouldInterpret(t *testing.T) {
 	dir := t.TempDir()
-	d := hostsetup.DropIn{FS: hostsetup.OS{}, Dir: dir}
+	d := hostsetup.DropIn{FS: newRecordingFS(), Dir: dir}
 	ok(t, d.Write("x", `/srv/a b%c\d`))
 	data, err := os.ReadFile(d.Path("x"))
 	ok(t, err)

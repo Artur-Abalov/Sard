@@ -182,7 +182,7 @@ func TestAfterRepoAddTheAgentTellsTheServerTheRepositoryID(t *testing.T) {
 		"tls: {ca_file: "+h.dir+"/ca.pem, cert_file: "+h.dir+"/agent.pem, key_file: "+h.dir+"/agent.key}\n"+
 		"executor: {state_dir: "+h.dir+"/state}\nrestic: {path: "+script+", cache_dir: "+t.TempDir()+"}\n")
 	deps, _ := hostDepsFor(t)
-	deps.exec = restic.ProcessExecutor{}
+	deps.exec = keepsTheCaller{t: t, want: restic.RunAs{UID: uint32(os.Getuid()), GID: uint32(os.Getgid())}}
 	deps.executable = func() (string, error) { return script, nil }
 	repoDir := filepath.Join(t.TempDir(), "repo-extra")
 	var out, errOut bytes.Buffer

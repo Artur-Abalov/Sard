@@ -329,9 +329,10 @@ func TestAFailureLeavesTheOldContentAndNoTemporaryFile(t *testing.T) {
 }
 
 func TestEnsureDirCreatesWithOwnerAndModeWhateverTheUmask(t *testing.T) {
-	old := syscall.Umask(0o777)
+	parent := t.TempDir()
+	old := syscall.Umask(0o077) // not 0o777: a directory nobody may open cannot be opened by its owner either, only by root
 	defer syscall.Umask(old)
-	dir := filepath.Join(t.TempDir(), "agent.d")
+	dir := filepath.Join(parent, "agent.d")
 	rfs := newRecordingFS()
 	created, err := hostsetup.EnsureDir(rfs, dir, hostsetup.Attrs{UID: 0, GID: 990, Mode: 0o750})
 	if err != nil || !created {
@@ -527,7 +528,7 @@ func TestACommittedStagedFileIsTheTargetWithItsOwner(t *testing.T) {
 
 func TestADiscardedStagedFileLeavesNothing(t *testing.T) {
 	dir := t.TempDir()
-	tmp, err := hostsetup.StageFile(hostsetup.OS{}, filepath.Join(dir, "x"), []byte("v"), hostsetup.Attrs{Mode: 0o600})
+	tmp, err := hostsetup.StageFile(hostsetup.OS{}, filepath.Join(dir, "x"), []byte("v"), hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid(), Mode: 0o600})
 	ok(t, err)
 	hostsetup.DiscardFile(hostsetup.OS{}, tmp)
 	if extra := leftovers(t, dir); len(extra) != 0 {
@@ -538,7 +539,7 @@ func TestADiscardedStagedFileLeavesNothing(t *testing.T) {
 func TestAFailedCommitRemovesTheStagedFile(t *testing.T) {
 	dir := t.TempDir()
 	final := filepath.Join(dir, "x")
-	tmp, err := hostsetup.StageFile(hostsetup.OS{}, final, []byte("v"), hostsetup.Attrs{Mode: 0o600})
+	tmp, err := hostsetup.StageFile(hostsetup.OS{}, final, []byte("v"), hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid(), Mode: 0o600})
 	ok(t, err)
 	rfs := newRecordingFS()
 	rfs.failOn = "rename"

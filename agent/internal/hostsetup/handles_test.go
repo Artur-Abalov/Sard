@@ -170,13 +170,13 @@ func TestStageFileThatFailsToWriteClosesAndRemovesTheTemporaryFile(t *testing.T)
 func TestCommitNewFileDropsTheStagedNameWhateverTheOutcome(t *testing.T) {
 	dir := t.TempDir()
 	final := filepath.Join(dir, "x")
-	tmp, err := hostsetup.StageFile(hostsetup.OS{}, final, []byte("new"), hostsetup.Attrs{Mode: 0o600})
+	tmp, err := hostsetup.StageFile(hostsetup.OS{}, final, []byte("new"), hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid(), Mode: 0o600})
 	ok(t, err)
 	ok(t, hostsetup.CommitNewFile(hostsetup.OS{}, tmp, final))
 	if extra := leftovers(t, dir, "x"); len(extra) != 0 {
 		t.Fatalf("after a commit: leftovers %v", extra)
 	}
-	tmp, err = hostsetup.StageFile(hostsetup.OS{}, final, []byte("newer"), hostsetup.Attrs{Mode: 0o600})
+	tmp, err = hostsetup.StageFile(hostsetup.OS{}, final, []byte("newer"), hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid(), Mode: 0o600})
 	ok(t, err)
 	var we *hostsetup.WriteError
 	if err := hostsetup.CommitNewFile(hostsetup.OS{}, tmp, final); !errors.As(err, &we) || !errors.Is(err, fs.ErrExist) {

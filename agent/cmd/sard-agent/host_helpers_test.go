@@ -15,6 +15,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
+	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 )
 
@@ -248,3 +249,20 @@ func (h *setupHost) holdConfigLock() func() {
 }
 
 type secretsInfo = secrets.Info
+
+// keepsTheCaller runs the real restic as the user of the test, after
+// checking that the command asked for the service user: a test is not root
+// and cannot become another user.
+type keepsTheCaller struct {
+	restic.ProcessExecutor
+	t    *testing.T
+	want restic.RunAs
+}
+
+func (e keepsTheCaller) Run(ctx context.Context, cmd restic.Command) (int, error) {
+	if cmd.RunAs == nil || *cmd.RunAs != e.want {
+		e.t.Errorf("restic %v ran as %+v, want %+v", cmd.Args, cmd.RunAs, e.want)
+	}
+	cmd.RunAs = nil
+	return e.ProcessExecutor.Run(ctx, cmd)
+}

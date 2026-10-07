@@ -6,7 +6,6 @@
 package main
 
 import (
-	"context"
 	"os"
 	"strings"
 	"testing"
@@ -17,23 +16,6 @@ import (
 
 // Integration tests of repo add with the pinned restic and a local
 // repository in D: the scenarios tagged @integration of host-setup.feature.
-
-// keepsTheCaller runs the real restic as the user of the test, after
-// checking that the command asked for the service user: a test is not root
-// and cannot become another user.
-type keepsTheCaller struct {
-	restic.ProcessExecutor
-	t    *testing.T
-	want restic.RunAs
-}
-
-func (e keepsTheCaller) Run(ctx context.Context, cmd restic.Command) (int, error) {
-	if cmd.RunAs == nil || *cmd.RunAs != e.want {
-		e.t.Errorf("restic %v ran as %+v, want %+v", cmd.Args, cmd.RunAs, e.want)
-	}
-	cmd.RunAs = nil
-	return e.ProcessExecutor.Run(ctx, cmd)
-}
 
 func realSetupHost(t *testing.T) *setupHost {
 	t.Helper()
