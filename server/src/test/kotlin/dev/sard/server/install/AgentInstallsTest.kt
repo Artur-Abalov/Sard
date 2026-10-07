@@ -228,4 +228,34 @@ class AgentInstallsTest {
             assertNull(info.reason)
         }
     }
+
+    @Test
+    fun `Обновление deb и rpm сохраняет конфигурацию и ключи, а из архива не обещает`() {
+        assertEquals(true, upgrade("amd64", format = InstallFormat.DEB).keepsConfiguration)
+        assertEquals(true, upgrade("amd64", format = InstallFormat.RPM).keepsConfiguration)
+        assertEquals(false, upgrade("amd64", format = InstallFormat.TAR).keepsConfiguration)
+    }
+
+    @Test
+    fun `Признак сохранения конфигурации не зависит от архитектуры`() {
+        val full = installs(AgentOffer.Serving(catalog(artifacts = ARTIFACTS + artifact("arm64", "rpm", "rpm"))))
+        val flags = InstallFormat.entries.map { upgrade("arm64", full, it).keepsConfiguration }
+        assertEquals(listOf(true, true, false), flags)
+    }
+
+    @Test
+    fun `Обновление без rpm в релизе для архитектуры агента не обещает сохранить конфигурацию`() {
+        val info = upgrade("arm64", format = InstallFormat.RPM)
+        assertEquals(UpgradeReason.ARCH_UNAVAILABLE, info.reason)
+        assertEquals(false, info.keepsConfiguration)
+    }
+
+    @Test
+    fun `Обновление без команд не обещает сохранить конфигурацию при любом формате`() {
+        for (format in InstallFormat.entries) {
+            assertEquals(false, upgrade("386", format = format).keepsConfiguration, "arch_unavailable $format")
+            assertEquals(false, upgrade(null, format = format).keepsConfiguration, "arch_unknown $format")
+            assertEquals(false, upgrade("amd64", withheld, format).keepsConfiguration, "downloads off $format")
+        }
+    }
 }

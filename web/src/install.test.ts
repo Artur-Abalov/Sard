@@ -6,7 +6,7 @@ import type { components } from './api/schema'
 import openapi from './api/openapi.json'
 import en from './locales/en.json'
 import ru from './locales/ru.json'
-import { FORMATS, keepsConfiguration, stepText, withEnrollCommand } from './install'
+import { FORMATS, stepText, withEnrollCommand } from './install'
 
 type Step = components['schemas']['InstallStep']
 
@@ -66,11 +66,5 @@ describe('the package formats of the choice', () => {
     }
     expect(en.install.format.rpm).toBe('rpm — RHEL, Oracle Linux, Rocky')
     expect(ru.install.format.rpm).toBe('rpm — RHEL, Oracle Linux, Rocky')
-  })
-
-  test('deb and rpm replace only the program, the archive is not said to', () => {
-    expect(keepsConfiguration('deb')).toBe(true)
-    expect(keepsConfiguration('rpm')).toBe(true)
-    expect(keepsConfiguration('tar')).toBe(false)
   })
 })

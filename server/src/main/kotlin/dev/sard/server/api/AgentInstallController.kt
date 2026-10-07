@@ -69,6 +69,13 @@ data class AgentUpgrade(
     val steps: List<InstallStep>,
     @field:Schema(description = "Why there are no steps although downloads are on; null otherwise")
     val reason: UpgradeReason?,
+    @field:Schema(
+        description =
+            "True when the upgrade replaces only the program and leaves the configuration and keys " +
+                "(deb and rpm); false for the archive and whenever there are no steps",
+        requiredMode = Schema.RequiredMode.REQUIRED,
+    )
+    val keepsConfiguration: Boolean,
 )
 
 /** What the install endpoints do; [AgentInstallApiImpl] implements it. */

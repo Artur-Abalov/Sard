@@ -16,10 +16,12 @@ enum class InstallArch(
 enum class InstallFormat(
     /** The name of the format in manifest.json. */
     val manifestName: String,
+    /** Whether an upgrade in this format leaves /etc/sard (configuration, keys) alone; only deb, rpm are verified. */
+    val keepsConfiguration: Boolean,
 ) {
-    DEB("deb"),
-    RPM("rpm"),
-    TAR("tar.gz"),
+    DEB("deb", true),
+    RPM("rpm", true),
+    TAR("tar.gz", false),
 }
 
 /** The tool the commands download with. */

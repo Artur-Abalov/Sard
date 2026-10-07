@@ -21,12 +21,6 @@ export const ARCHES: Schemas['InstallArch'][] = ['amd64', 'arm64']
 export const FORMATS: Schemas['InstallFormat'][] = ['deb', 'rpm', 'tar']
 export const FETCHES: Schemas['FetchTool'][] = ['curl', 'wget']
 
-// Whether the note "the package replaces only the program" is shown: deb and rpm share the
-// postinstall and preremove scripts, the archive replaces files by the commands of the step.
-export function keepsConfiguration(format: Schemas['InstallFormat']): boolean {
-  return format === 'deb' || format === 'rpm'
-}
-
 // Where the release key is published outside the server: the section of the repository's README.
 export const RELEASE_KEY_DOC = 'https://github.com/Artur-Abalov/sard#verifying-releases'
 

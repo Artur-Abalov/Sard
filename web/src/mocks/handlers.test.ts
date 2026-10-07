@@ -383,6 +383,26 @@ describe('agent install', () => {
     ])
   })
 
+  test('Мок отдаёт признак сохранения конфигурации по формату', async () => {
+    const agent = state.agents.find((a) => a.arch === 'amd64')
+    expect(agent).toBeDefined()
+    const flags: (boolean | undefined)[] = []
+    for (const format of ['deb', 'rpm', 'tar'] as const) {
+      const { data } = await api.GET('/api/v1/agents/{agentId}/upgrade', {
+        params: { path: { agentId: agent!.id }, query: { format } },
+      })
+      flags.push(data?.keepsConfiguration)
+    }
+    expect(flags).toEqual([true, true, false])
+  })
+
+  test('Мок без команд обновления отдаёт keepsConfiguration false', async () => {
+    const { data } = await api.GET('/api/v1/agents/{agentId}/upgrade', {
+      params: { path: { agentId: ids.bareAgent }, query: { format: 'deb' } },
+    })
+    expect(data).toMatchObject({ reason: 'arch_unknown', keepsConfiguration: false })
+  })
+
   test('the defaults are deb and amd64, and the answer holds no token string', async () => {
     const { data } = await api.GET('/api/v1/agent-install')
     expect(data).toMatchObject({ arch: 'amd64', format: 'deb' })

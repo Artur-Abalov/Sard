@@ -114,6 +114,8 @@ function upgradeOf(
     manualInstallDoc: DOC,
     steps: available ? upgradeSteps(arch, format, fetch) : [],
     reason: available ? null : arch === null ? 'arch_unknown' : 'arch_unavailable',
+    // What the server decides: deb and rpm keep /etc/sard, the archive does not promise it, no commands promise nothing.
+    keepsConfiguration: available && format !== 'tar',
   }
 }
 

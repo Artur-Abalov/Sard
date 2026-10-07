@@ -384,6 +384,48 @@ class AgentInstallApiIntegrationTest(
         assertTrue(response.json.path("arch").isNull)
     }
 
+    private fun keeps(
+        arch: String,
+        format: String,
+    ) = upgrade(world.agent(tenant, snapshotOf(arch = arch)).agentId, "?format=$format")
+        .json
+        .path("keepsConfiguration")
+        .asBoolean(true)
+
+    @Test
+    fun `Обновление deb сохраняет конфигурацию и ключи`() = assertTrue(keeps("amd64", "deb"))
+
+    @Test
+    fun `Обновление rpm сохраняет конфигурацию и ключи`() = assertTrue(keeps("amd64", "rpm"))
+
+    @Test
+    fun `Обновление из архива не обещает сохранить конфигурацию и ключи`() = assertFalse(keeps("amd64", "tar"))
+
+    @Test
+    fun `Признак сохранения конфигурации не зависит от архитектуры`() {
+        assertEquals(listOf(true, true, false), listOf("deb", "rpm", "tar").map { keeps("arm64", it) })
+    }
+
+    @Test
+    fun `Обновление без команд для архитектуры без пакета не обещает сохранить конфигурацию`() {
+        val agent = world.agent(tenant, snapshotOf(arch = "386"))
+
+        val json = upgrade(agent.agentId, "?format=deb").json
+
+        assertEquals("arch_unavailable", json.path("reason").asString())
+        assertFalse(json.path("keepsConfiguration").asBoolean(true))
+    }
+
+    @Test
+    fun `Обновление агента без Register не обещает сохранить конфигурацию`() {
+        val agent = world.enroll(tenant)
+
+        val json = upgrade(agent.agentId, "?format=deb").json
+
+        assertEquals("arch_unknown", json.path("reason").asString())
+        assertFalse(json.path("keepsConfiguration").asBoolean(true))
+    }
+
     @Test
     fun `Обновление неизвестного агента отвечает 404`() {
         val response = upgrade(UUID.randomUUID())
