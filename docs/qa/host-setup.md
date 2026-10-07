@@ -205,6 +205,14 @@ pid() { systemctl show -p MainPID --value sard-agent; }
     `grep -c URL-MARKER "$OUT/all"` → `0` (выполнять через `run`).
 29. Путь: `sudo $AG repo add r1 relative` → `exit=2`, `LOCAL_PATH_INVALID`;
     `sudo $AG repo add r2 /etc/hostname` → `exit=2`, `LOCAL_PATH_INVALID`.
+29а. (П10 — предложено, ждёт подтверждения владельца.) Символьная ссылка:
+    `sudo ln -s /etc /srv/sard/link; snap > "$OUT/s1"; sudo find /etc -printf '%u %p\n' | sort > "$OUT/etc0"`;
+    `sudo $AG repo add r4 /srv/sard/link; echo "exit=$?"`
+    → `exit=2`; `LOCAL_PATH_INVALID`; сообщение содержит
+    `/srv/sard/link is a symbolic link; give the directory it points to`;
+    `snap | diff - "$OUT/s1"` → пусто (нет `repo-r4.yaml`, нет `sard-repo-r4.conf`);
+    `sudo find /etc -printf '%u %p\n' | sort | diff - "$OUT/etc0"` → пусто
+    (владельцы в `/etc` не менялись). `sudo rm /srv/sard/link`.
 30. `sudo $AG repo show main` → `exit=0`; `local`, `/srv/sard/main`,
     `initialized`, `X`, `/etc/sard/secrets/restic-main.pass`,
     `/etc/sard/agent.d/repo-main.yaml`. `sudo $AG repo show main --json | jq -r .repository_id` → `X`.
