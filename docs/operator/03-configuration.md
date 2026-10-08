@@ -37,6 +37,7 @@
 | `SARD_AGENT_DOWNLOADS_URL` | адрес, с которого хосты скачивают пакеты в командах установки консоли; абсолютный `http`/`https` без запроса и фрагмента | пусто: `http://<хост из SARD_AGENT_ENDPOINT>:8080` | `https://sard.example.com` |
 | `SARD_FORWARD_HEADERS` | `native` — сервер за обратным прокси, завершающим TLS: схема и адрес клиента берутся из `X-Forwarded-Proto` и `X-Forwarded-For` прокси с loopback или частного адреса ([раздел 4](04-tls-and-names.md), ADR 0046); `none` — эти заголовки игнорируются; другие значения не поддерживаются | `none` | `native` |
 | `SARD_AGENT_PACKAGES_DIR` | каталог пакетов агента внутри контейнера; менять не нужно | `/usr/share/sard/agent-packages` | — |
+| `SARD_PKI_IMPORT_DIR` | каталог с CA старого сервера (`ca/ca.crt`, `ca/ca.key`, права только владельцу), который сервер принимает при первом старте, пока в `SARD_PKI_DIR` нет CA; пусто — сервер создаёт новый CA. Монтируется через `docker-compose.override.yml`, [раздел 8](08-migrate-and-remove.md) | пусто | `/var/lib/sard/pki-import` |
 | `SARD_PKI_DIR` | каталог CA внутри контейнера; в compose на нём том `sard_sard-pki` | `/var/lib/sard/pki` | — |
 | `SARD_HTTP_PORT` | HTTP-порт внутри контейнера | `8080` | — |
 | `SARD_GRPC_PORT` | порт агентов внутри контейнера | `9090` | — |
