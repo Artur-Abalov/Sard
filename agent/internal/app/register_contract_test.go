@@ -80,9 +80,9 @@ func checkPlugin(t *testing.T, p *agentv1.Plugin) {
 	}
 }
 
-// A6b: Register announces backup and restore for files, with the version of
-// the agent, and a schema that is ready for the console's form.
-func TestRegisterAnnouncesTheFilesPlugin(t *testing.T) {
+// A6b, F1: Register announces backup and restore for files and postgresql,
+// with the version of the agent.
+func TestRegisterAnnouncesTheBackupAndRestoreOfFilesAndPostgresql(t *testing.T) {
 	reg := plugins.Registry(agentVersionInRelease)
 	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return nil, false }, t.TempDir())
 	if err != nil {
@@ -90,15 +90,22 @@ func TestRegisterAnnouncesTheFilesPlugin(t *testing.T) {
 	}
 	a := &app.Agent{Plugins: reg, Handlers: handlers, Hostname: "db1", Version: agentVersionInRelease, OS: "linux", Arch: "amd64",
 		RepositoryID: func(context.Context, config.Repository) (string, error) { return "", nil }}
+	found := map[string]bool{}
 	for _, p := range a.RegisterRequest(context.Background()).GetPlugins() {
-		if p.GetName() != "files" {
-			continue
+		if p.GetName() == "files" || p.GetName() == "postgresql" {
+			found[p.GetName()] = true
+			checkBackupAndRestore(t, p)
 		}
-		wantActions := []agentv1.Action{agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE}
-		if !slices.Equal(p.GetActions(), wantActions) || p.GetVersion() != agentVersionInRelease {
-			t.Errorf("files: actions %v, version %q", p.GetActions(), p.GetVersion())
-		}
-		return
 	}
-	t.Fatal("no files plugin in Register")
+	if !found["files"] || !found["postgresql"] {
+		t.Fatalf("Register announces %v", found)
+	}
+}
+
+func checkBackupAndRestore(t *testing.T, p *agentv1.Plugin) {
+	t.Helper()
+	wantActions := []agentv1.Action{agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE}
+	if !slices.Equal(p.GetActions(), wantActions) || p.GetVersion() != agentVersionInRelease {
+		t.Errorf("%s: actions %v, version %q", p.GetName(), p.GetActions(), p.GetVersion())
+	}
 }

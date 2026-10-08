@@ -463,3 +463,71 @@ func TestStreamedDumpWithPathsOrExcludesFailsTheStep(t *testing.T) {
 		}
 	}
 }
+
+// F1 ПГ11: the tags of the dump follow the tags of the step, as
+// "<plugin>.<key>=<value>", sorted.
+func TestTagsOfTheDumpFollowTheTagsOfTheStep(t *testing.T) {
+	p := &plugin{dump: func(context.Context, sdk.Host, sdk.Config) (sdk.Dump, error) {
+		return sdk.Dump{Paths: []string{"/srv"}, Tags: map[string]string{"b": "2", "a": "1"}}, nil
+	}}
+	r := &repo{}
+	if _, err := newSource(t, p).Backup(context.Background(), []byte(`{}`), r, []string{"run=7"}, &reporter{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := r.requests[0].Tags, []string{"run=7", "fake.a=1", "fake.b=2"}; !slices.Equal(got, want) {
+		t.Errorf("tags = %q, want %q", got, want)
+	}
+}
+
+// F1 ПГ11: a plugin tag that is a tag of the step fails the step before restic.
+func TestPluginTagOfAStepTagFailsBeforeRestic(t *testing.T) {
+	p := &plugin{dump: func(context.Context, sdk.Host, sdk.Config) (sdk.Dump, error) {
+		return sdk.Dump{Paths: []string{"/srv"}, Tags: map[string]string{"format": "custom"}}, nil
+	}}
+	r := &repo{}
+	_, err := newSource(t, p).Backup(context.Background(), []byte(`{}`), r, []string{"run=7", "fake.format=x"}, &reporter{})
+	if err == nil || !strings.Contains(err.Error(), "fake.format") || len(r.requests) != 0 {
+		t.Fatalf("err = %v, requests = %d", err, len(r.requests))
+	}
+}
+
+// The Host is the step's: the same in Prepare, Dump and Stream, another in the next step.
+func TestOneStepHasOneHostAndTwoStepsTwo(t *testing.T) {
+	var hosts [2][]sdk.Host
+	for i := range hosts {
+		p := &plugin{
+			prepare: func(_ context.Context, h sdk.Host, _ sdk.Config) error { hosts[i] = append(hosts[i], h); return nil },
+			dump: func(_ context.Context, h sdk.Host, _ sdk.Config) (sdk.Dump, error) {
+				hosts[i] = append(hosts[i], h)
+				return sdk.Dump{Filename: "db.sql"}, nil
+			},
+			stream: func(_ context.Context, h sdk.Host, _ sdk.Config, _ sdk.Dump, _ io.Writer) error {
+				hosts[i] = append(hosts[i], h)
+				return nil
+			},
+		}
+		if _, err := newSource(t, p).Backup(context.Background(), []byte(`{}`), &repo{}, nil, &reporter{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, hs := range hosts {
+		if len(hs) != 3 || hs[0] != hs[1] || hs[1] != hs[2] {
+			t.Errorf("step %d: hosts %v", i, hs)
+		}
+	}
+	if hosts[0][0] == hosts[1][0] {
+		t.Error("two steps share a Host")
+	}
+}
+
+// Dump follows every Prepare that returned nil, also when the context was cancelled inside it.
+func TestDumpFollowsASuccessfulPrepareOfACancelledStep(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	p := &plugin{prepare: func(context.Context, sdk.Host, sdk.Config) error { cancel(); return nil }}
+	if _, err := newSource(t, p).Backup(ctx, []byte(`{}`), &repo{}, nil, &reporter{}); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"prepare {}", "dump {}"}; !slices.Equal(p.calls, want) {
+		t.Errorf("calls = %q, want %q", p.calls, want)
+	}
+}

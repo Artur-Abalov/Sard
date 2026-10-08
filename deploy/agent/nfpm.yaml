@@ -19,13 +19,18 @@ homepage: https://github.com/Artur-Abalov/sard
 license: AGPL-3.0-only AND BSD-2-Clause
 
 # restic's sftp backend runs the system ssh client (docs/adr/0047-e2e-storage-backends.md).
+# Optional: the postgresql plugin runs the host's pg_dump and psql (F1 ПГ21,
+# docs/plugins/postgresql.md). An agent without databases needs no client,
+# so there is no hard dependency; the names differ between the families.
 overrides:
   deb:
     depends:
       - openssh-client
+    suggests: [postgresql-client]
   rpm:
     depends:
       - openssh-clients
+    suggests: [postgresql]
 
 contents:
   # restic is found next to sard-agent (docs/adr/0017-restic-shipped-with-agent.md).

@@ -5,8 +5,11 @@ package pluginhost
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 	"sync/atomic"
 
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
@@ -61,23 +64,92 @@ func (s *Source) Backup(ctx context.Context, cfg sdk.Config, repo restic.Reposit
 		return restic.BackupSummary{}, err
 	}
 	h := &host{secrets: s.secrets, r: r}
+	d, err := s.prepareAndDump(ctx, h, cfg)
+	if err != nil {
+		return restic.BackupSummary{}, err
+	}
+	merged, err := s.withPluginTags(tags, d.Tags)
+	if err != nil {
+		return restic.BackupSummary{}, err
+	}
+	h.enter(agentv1.StepPhase_STEP_PHASE_UPLOADING)
+	sum, err := s.upload(ctx, h, cfg, repo, d, merged, r)
+	if err != nil {
+		return sum, err
+	}
+	return s.backupExtra(ctx, repo, tags, sum, d.Extra)
+}
+
+// upload stores the dump itself: the paths or the stream. A failure of the
+// stream is the plugin's, any other the repository's.
+func (s *Source) upload(ctx context.Context, h *host, cfg sdk.Config, repo restic.Repository, d sdk.Dump, tags []string, r Reporter) (restic.BackupSummary, error) {
+	var streamErr error
+	sum, err := repo.Backup(ctx, s.request(h, cfg, d, tags, &streamErr), func(p restic.Progress) {
+		r.ProgressFiles(agentv1.StepPhase_STEP_PHASE_UPLOADING, p.BytesDone, p.TotalBytes, p.FilesDone, p.TotalFiles)
+	})
+	switch {
+	case err == nil:
+		return sum, nil
+	case streamErr != nil && errors.Is(err, streamErr):
+		return sum, err // the plugin's failure, not the repository's
+	}
+	return sum, &repositoryError{err}
+}
+
+// prepareAndDump runs Prepare (PREPARING) and Dump (DUMPING).
+func (s *Source) prepareAndDump(ctx context.Context, h *host, cfg sdk.Config) (sdk.Dump, error) {
 	h.enter(agentv1.StepPhase_STEP_PHASE_PREPARING)
 	if err := s.plugin.Prepare(ctx, h, cfg); err != nil {
-		return restic.BackupSummary{}, fmt.Errorf("prepare: %w", err)
+		return sdk.Dump{}, fmt.Errorf("prepare: %w", err)
 	}
 	h.enter(agentv1.StepPhase_STEP_PHASE_DUMPING)
 	d, err := s.plugin.Dump(ctx, h, cfg)
 	if err != nil {
-		return restic.BackupSummary{}, fmt.Errorf("dump: %w", err)
+		return sdk.Dump{}, fmt.Errorf("dump: %w", err)
 	}
-	h.enter(agentv1.StepPhase_STEP_PHASE_UPLOADING)
-	sum, err := repo.Backup(ctx, s.request(h, cfg, d, tags), func(p restic.Progress) {
-		r.ProgressFiles(agentv1.StepPhase_STEP_PHASE_UPLOADING, p.BytesDone, p.TotalBytes, p.FilesDone, p.TotalFiles)
-	})
-	if err != nil {
-		err = &repositoryError{err}
+	return d, nil
+}
+
+// backupExtra stores the extra files of a dump, each as a snapshot of its own
+// linked to the main snapshot main. The result is the main summary with the
+// bytes of the extra snapshots added; a failure keeps the main summary.
+func (s *Source) backupExtra(ctx context.Context, repo restic.Repository, step []string, main restic.BackupSummary, extra []sdk.ExtraFile) (restic.BackupSummary, error) {
+	sum := main
+	for _, f := range extra {
+		tags, err := s.withPluginTags(step, f.Tags)
+		if err != nil {
+			return main, err
+		}
+		tags = append(tags, s.plugin.Name()+".main_snapshot="+main.SnapshotID)
+		got, err := repo.Backup(ctx, restic.BackupRequest{Tags: tags, StdinFilename: f.Name, Stdin: func(_ context.Context, w io.Writer) error {
+			_, err := w.Write(f.Content)
+			return err
+		}}, nil)
+		if err != nil {
+			return main, &repositoryError{fmt.Errorf("snapshot of %q: %w", f.Name, err)}
+		}
+		sum.TotalBytes += got.TotalBytes
+		sum.AddedBytes += got.AddedBytes
+		sum.AddedBytesRaw += got.AddedBytesRaw
 	}
-	return sum, err
+	return sum, nil
+}
+
+// withPluginTags returns the tags of the step followed by the sorted tags of
+// a plugin, "<plugin>.<key>=<value>". A plugin tag the step already has is an
+// error.
+func (s *Source) withPluginTags(step []string, tags map[string]string) ([]string, error) {
+	out := slices.Clone(step)
+	added := make([]string, 0, len(tags))
+	for k, v := range tags {
+		key := s.plugin.Name() + "." + k
+		if slices.ContainsFunc(step, func(t string) bool { return strings.HasPrefix(t, key+"=") }) {
+			return nil, fmt.Errorf("tag %q of the plugin is a tag of the step", key)
+		}
+		added = append(added, key+"="+v)
+	}
+	slices.Sort(added)
+	return append(out, added...), nil
 }
 
 // repositoryError marks a failure of restic or of the repository, as
@@ -88,7 +160,8 @@ func (e *repositoryError) Error() string { return e.err.Error() }
 func (e *repositoryError) Unwrap() error { return e.err }
 
 // request turns a dump into a restic request.
-func (s *Source) request(h sdk.Host, cfg sdk.Config, d sdk.Dump, tags []string) restic.BackupRequest {
+// A failure of the stream is also stored in *streamErr.
+func (s *Source) request(h sdk.Host, cfg sdk.Config, d sdk.Dump, tags []string, streamErr *error) restic.BackupRequest {
 	req := restic.BackupRequest{Paths: d.Paths, Excludes: d.Excludes, Tags: tags, OneFileSystem: d.OneFileSystem}
 	if !d.Streamed() {
 		return req
@@ -97,7 +170,9 @@ func (s *Source) request(h sdk.Host, cfg sdk.Config, d sdk.Dump, tags []string) 
 	// restic's validation rejects a dump that mixes them with a stream.
 	req.StdinFilename = d.Filename
 	req.Stdin = func(ctx context.Context, w io.Writer) error {
-		return s.plugin.Stream(ctx, h, cfg, d, w)
+		err := s.plugin.Stream(ctx, h, cfg, d, w)
+		*streamErr = err
+		return err
 	}
 	return req
 }

@@ -1,31 +1,192 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "PostgreSQL",
+  "description": "A logical dump of one PostgreSQL database (pg_dump, custom format) and of the global objects of its cluster. Needs pg_dump and psql on the host.",
   "type": "object",
   "properties": {
     "host": {
       "type": "string",
-      "title": "Host[:port]",
-      "default": "localhost:5432"
+      "title": "Host",
+      "description": "Host name, IPv4 or IPv6 address (without brackets) of the server, or the absolute path of the directory of its Unix socket, such as /var/run/postgresql. At most 255 bytes; no comma, @ or space.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Хост",
+          "description": "Имя хоста, адрес IPv4 или IPv6 (без скобок) сервера либо абсолютный путь каталога его сокета Unix, например /var/run/postgresql. Не больше 255 байт; без запятой, @ и пробела."
+        }
+      },
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^(/[^,@\\s\\x00]*|[^,@\\s/\\x00]+)$",
+      "examples": ["db.example.com", "10.0.0.5", "::1", "/var/run/postgresql"]
+    },
+    "port": {
+      "type": "integer",
+      "title": "Port",
+      "description": "TCP port of the server, or the number in the name of the socket file .s.PGSQL.<port> when the host is a socket directory. 5432 by default.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Порт",
+          "description": "Порт TCP сервера либо номер в имени файла сокета .s.PGSQL.<порт>, когда хост — каталог сокета. По умолчанию 5432."
+        }
+      },
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 5432,
+      "examples": [5432, 6432]
     },
     "database": {
       "type": "string",
-      "title": "Database"
+      "title": "Database",
+      "description": "Name of the database to dump: one database per source. At most 63 bytes.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "База данных",
+          "description": "Имя базы, которую нужно выгрузить: одна база на источник. Не больше 63 байт."
+        }
+      },
+      "minLength": 1,
+      "maxLength": 63,
+      "pattern": "^[^\\x00]+$",
+      "examples": ["app"]
     },
     "user": {
       "type": "string",
-      "title": "User"
+      "title": "User",
+      "description": "Role the agent signs in as. It needs LOGIN and, to read every table, the pg_read_all_data role. At most 63 bytes.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Пользователь",
+          "description": "Роль, под которой агент входит в базу. Нужны LOGIN и, чтобы читать все таблицы, роль pg_read_all_data. Не больше 63 байт."
+        }
+      },
+      "minLength": 1,
+      "maxLength": 63,
+      "pattern": "^[^\\x00]+$",
+      "examples": ["backup"]
     },
     "password_ref": {
       "type": "string",
+      "format": "sard-secret",
       "title": "Password secret",
-      "description": "Name of a secret defined on the agent host (secrets: in agent.yaml); never the value."
+      "description": "Name of a secret defined on the agent host (secrets: in agent.yaml) whose file holds the role's password; never the password itself.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Секрет с паролем",
+          "description": "Имя секрета, заданного на хосте агента (secrets: в agent.yaml), в файле которого лежит пароль роли; не сам пароль."
+        }
+      },
+      "examples": ["pg-app"]
+    },
+    "tls_mode": {
+      "type": "string",
+      "enum": ["disable", "require", "verify-full"],
+      "title": "TLS mode",
+      "description": "disable: no TLS. require: TLS without checking the server's certificate. verify-full: TLS with the certificate and the host name checked. Default: require for a TCP host, disable for a socket directory, where only disable works.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Режим TLS",
+          "description": "disable: без TLS. require: TLS без проверки сертификата сервера. verify-full: TLS с проверкой сертификата и имени хоста. По умолчанию require для хоста TCP и disable для каталога сокета, где работает только disable."
+        }
+      },
+      "examples": ["verify-full", "disable"]
+    },
+    "tls_root_cert": {
+      "type": "string",
+      "title": "CA certificate",
+      "description": "Absolute path, on the agent host, of the file with the CA certificate that signed the server's certificate. Only with verify-full; without it libpq reads ~/.postgresql/root.crt of the agent user.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Сертификат CA",
+          "description": "Абсолютный путь на хосте агента файла с сертификатом CA, подписавшего сертификат сервера. Только с verify-full; без него libpq читает ~/.postgresql/root.crt пользователя агента."
+        }
+      },
+      "minLength": 2,
+      "maxLength": 4096,
+      "pattern": "^/[^\\x00]+$",
+      "examples": ["/etc/sard/pg-ca.pem"]
+    },
+    "exclude_schemas": {
+      "type": "array",
+      "title": "Excluded schemas",
+      "description": "Patterns of schemas to leave out of the dump (pg_dump --exclude-schema), for example audit_*. At most 256, each 1 to 1024 bytes, without repeats. The syntax is described at https://www.postgresql.org/docs/current/app-pgdump.html (the option --exclude-schema, patterns as in psql). A pattern that matches nothing is not an error.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Исключаемые схемы",
+          "description": "Шаблоны схем, которые не попадут в дамп (pg_dump --exclude-schema), например audit_*. Не больше 256, каждый от 1 до 1024 байт, без повторов. Синтаксис описан в https://www.postgresql.org/docs/current/app-pgdump.html (параметр --exclude-schema, шаблоны как в psql). Шаблон, которому ничего не соответствует, не ошибка."
+        }
+      },
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^[^\\x00]+$" },
+      "maxItems": 256,
+      "uniqueItems": true,
+      "examples": [["audit", "tmp_*"]]
+    },
+    "exclude_tables": {
+      "type": "array",
+      "title": "Excluded tables",
+      "description": "Patterns of tables, views, sequences and foreign tables to leave out of the dump (pg_dump --exclude-table), for example public.log_*. At most 256, each 1 to 1024 bytes, without repeats. The syntax is described at https://www.postgresql.org/docs/current/app-pgdump.html (the option --exclude-table, patterns as in psql). A pattern that matches nothing is not an error.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Исключаемые таблицы",
+          "description": "Шаблоны таблиц, представлений, последовательностей и внешних таблиц, которые не попадут в дамп (pg_dump --exclude-table), например public.log_*. Не больше 256, каждый от 1 до 1024 байт, без повторов. Синтаксис описан в https://www.postgresql.org/docs/current/app-pgdump.html (параметр --exclude-table, шаблоны как в psql). Шаблон, которому ничего не соответствует, не ошибка."
+        }
+      },
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^[^\\x00]+$" },
+      "maxItems": 256,
+      "uniqueItems": true,
+      "examples": [["public.log_*", "sessions"]]
+    },
+    "pg_dump_path": {
+      "type": "string",
+      "title": "pg_dump path",
+      "description": "Absolute path of the pg_dump executable. psql and pg_dumpall are taken from the same directory. Without it pg_dump is searched in the PATH of the agent. It must not be older than the server (the major version counts).",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Путь к pg_dump",
+          "description": "Абсолютный путь исполняемого файла pg_dump. psql и pg_dumpall берутся из того же каталога. Без него pg_dump ищется в PATH агента. Он не должен быть старше сервера (сравнивается старший номер версии)."
+        }
+      },
+      "minLength": 2,
+      "maxLength": 4096,
+      "pattern": "^/[^\\x00]+$",
+      "examples": ["/usr/lib/postgresql/18/bin/pg_dump"]
+    },
+    "include_globals": {
+      "type": "boolean",
+      "title": "Dump global objects",
+      "description": "When on (the default), the roles and other global objects of the cluster (pg_dumpall --globals-only) are stored in a second snapshot linked to the dump of the database. Off: one snapshot, pg_dumpall is not used.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Выгружать глобальные объекты",
+          "description": "Если включено (по умолчанию), роли и другие глобальные объекты кластера (pg_dumpall --globals-only) сохраняются вторым снимком, связанным со снимком базы. Выключено: один снимок, pg_dumpall не используется."
+        }
+      },
+      "default": true,
+      "examples": [false]
+    },
+    "globals_role_passwords": {
+      "type": "boolean",
+      "title": "Dump role passwords",
+      "description": "When on, the snapshot of the global objects holds the password hashes of the roles (offline guessing of the passwords becomes possible for whoever reads the repository) and the role must be a superuser. Off by default: roles are restored without passwords.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Выгружать пароли ролей",
+          "description": "Если включено, в снимок глобальных объектов попадут хэши паролей ролей (кто прочитает репозиторий, сможет подбирать пароли офлайн), а роль должна быть суперпользователем. По умолчанию выключено: роли восстанавливаются без паролей."
+        }
+      },
+      "default": false,
+      "examples": [true]
     }
   },
-  "required": [
-    "database",
-    "user",
-    "password_ref"
+  "required": ["host", "database", "user", "password_ref"],
+  "allOf": [
+    {
+      "if": { "properties": { "host": { "pattern": "^/" } }, "required": ["host"] },
+      "then": { "properties": { "tls_mode": { "const": "disable" } } }
+    },
+    {
+      "if": { "properties": { "tls_mode": { "const": "verify-full" } }, "required": ["tls_mode"] },
+      "else": { "properties": { "tls_root_cert": false } }
+    }
   ],
   "additionalProperties": false
 }

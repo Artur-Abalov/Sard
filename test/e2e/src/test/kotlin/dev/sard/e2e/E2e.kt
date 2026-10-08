@@ -15,6 +15,12 @@ internal object E2e {
     /** The stand's agent (`GO_TAGS=e2e`, ADR 0036): the release agent plus `e2e-slow`, for T3 only. */
     val standAgentImage: String get() = property("e2e.standAgentImage")
 
+    /**
+     * The release agent on the official `postgres:<major>` image (F1 ПГ20), whose pg_dump, psql and
+     * pg_dumpall are of that major version: 18 and 14.
+     */
+    fun pgAgentImage(major: Int): String = property("e2e.pg${major}AgentImage")
+
     /** The stand's SFTP server (test/e2e/sftp, ADR 0047). */
     val sftpImage: String get() = property("e2e.sftpImage")
 
@@ -32,6 +38,9 @@ internal object E2e {
                 .removePrefix("version=")
 
     const val POSTGRES_IMAGE = "postgres:18-alpine"
+
+    /** The server a source of the postgresql plugin backs up: the official image of [major]. */
+    fun pgServerImage(major: Int): String = "postgres:$major"
 
     private fun property(name: String): String =
         requireNotNull(System.getProperty(name)) { "system property $name is not set: run the tests with `make e2e`" }
