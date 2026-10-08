@@ -51,7 +51,7 @@ function UpgradeBody({ agent }: { agent: AgentDetails }) {
       <Text size="sm">{t('install.upgrade.available', { agent: upgrade.agentVersion })}</Text>
       <Alert color={tones.notice}>{t('install.upgrade.remind')}</Alert>
       <InstallChoices choice={choice} onChange={setChoice} withArch={false} />
-      {choice.format === 'deb' && <Text size="sm">{t('install.upgrade.debNote')}</Text>}
+      {upgrade.keepsConfiguration && <Text size="sm">{t('install.upgrade.packageNote')}</Text>}
       <InstallSteps steps={upgrade.steps} signed={upgrade.signed} releaseKey={upgrade.releaseKey} />
     </Stack>
   )

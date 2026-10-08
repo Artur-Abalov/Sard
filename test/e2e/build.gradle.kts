@@ -38,12 +38,15 @@ dependencies {
 
 // Image tags and the expected versions come from `make e2e`; the defaults match
 // a manual `make e2e-images` with VERSION unset. agentImage carries the release
-// packages, standAgentImage the stand's build for T3 (ADR 0036, 0045).
+// packages, standAgentImage the stand's build for T3 (ADR 0036, 0045), pg18AgentImage and
+// pg14AgentImage the release agent on the official postgres images (F1 ПГ20).
 val e2eProperties =
     mapOf(
         "e2e.serverImage" to "sard-server:e2e",
         "e2e.agentImage" to "sard-agent:e2e",
         "e2e.standAgentImage" to "sard-agent-stand:e2e",
+        "e2e.pg18AgentImage" to "sard-agent-pg18:e2e",
+        "e2e.pg14AgentImage" to "sard-agent-pg14:e2e",
         "e2e.sftpImage" to "sard-sftp:e2e",
         "e2e.version" to "dev",
     )

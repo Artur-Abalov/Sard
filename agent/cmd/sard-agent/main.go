@@ -61,6 +61,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, hostname 
 	if isRepoCommand(args) {
 		return runRepo(ctx, args[1:], stdout, stderr)
 	}
+	if isSecretCommand(args) {
+		return runSecret(ctx, args[1:], stdout, stderr)
+	}
 	return runAgentCmd(ctx, args, stdout, stderr, hostname, realSelfEnrollDeps(hostname))
 }
 
@@ -118,7 +121,7 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 		return err
 	}
 	// A5b: no usable restic, no start — before the network (С5).
-	resticBinary, err := checkRestic(ctx, cfg, configPath, executable, restic.ProcessExecutor{})
+	resticBinary, err := checkRestic(ctx, cfg, configPath, executable, restic.ProcessExecutor{}, nil)
 	if err != nil {
 		return err
 	}

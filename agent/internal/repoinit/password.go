@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"io"
 	"os"
 	"path/filepath"
@@ -68,7 +69,7 @@ func CreatePassword(write func(path string, data []byte) error, random io.Reader
 		return "", err
 	}
 	if err := write(repo.PasswordFile, []byte(password+"\n")); err != nil {
-		return "", fail(PasswordFileWrite, "cannot create the password file %s in the directory %s: %v", repo.PasswordFile, filepath.Dir(repo.PasswordFile), err)
+		return "", refusal.Fail(refusal.PasswordFileWrite, "cannot create the password file %s in the directory %s: %v", repo.PasswordFile, filepath.Dir(repo.PasswordFile), err)
 	}
 	return password, nil
 }

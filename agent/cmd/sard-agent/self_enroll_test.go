@@ -60,7 +60,7 @@ func selfDepsFor(clk clock) selfEnrollDeps {
 		writeFile: os.WriteFile,
 		clock:     clk,
 		inspect:   enroll.InspectIdentity,
-		enroll:    enrollDeps{hostname: func() (string, error) { return "sard-self", nil }, clock: realEnrollClock{}, dial: enroll.RealDial},
+		enroll:    testEnrollDeps(func() (string, error) { return "sard-self", nil }),
 	}
 }
 

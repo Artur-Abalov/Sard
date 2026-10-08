@@ -12,6 +12,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 private const val DEB = "sard-agent_v1.4.0_linux_amd64.deb"
+private const val RPM = "sard-agent-v1.4.0.x86_64.rpm"
 private const val TAR = "sard-agent_v1.4.0_linux_arm64.tar.gz"
 private val KEY = ReleaseKey("DF5D5B6DB257DBFA", "RWT621eybVtd38CL7B33xZrcc8ArYiPt3GlKXyJuk9ZQzDnoUV+kLi2d")
 private val BASE = DownloadsUrl.resolve("", AgentEndpoint("sard.corp.example:9090"), 8080)
@@ -23,6 +24,11 @@ private fun deb(
     signed: Boolean = true,
     fetch: FetchTool = FetchTool.CURL,
 ) = ReleasePackage(DEB, InstallFormat.DEB, signed, fetch)
+
+private fun rpm(
+    signed: Boolean = true,
+    fetch: FetchTool = FetchTool.CURL,
+) = ReleasePackage(RPM, InstallFormat.RPM, signed, fetch)
 
 private fun tar(
     signed: Boolean = true,
@@ -122,9 +128,9 @@ class InstallCommandsTest {
                 "tar -xzf $TAR",
                 "sudo sh -c 'grep -q \"^sard-agent:\" /etc/passwd || useradd --system --no-create-home " +
                     "--home-dir /var/lib/sard-agent --shell /usr/sbin/nologin --user-group sard-agent'",
-                "sudo install -d -m 0755 /usr/lib/sard",
-                "sudo install -m 0755 $dir/sard-agent $dir/restic /usr/lib/sard/",
-                "sudo cp -sf /usr/lib/sard/sard-agent /usr/bin/sard-agent",
+                "sudo install -d -m 0755 /usr/libexec/sard",
+                "sudo install -m 0755 $dir/sard-agent $dir/restic /usr/libexec/sard/",
+                "sudo cp -sf /usr/libexec/sard/sard-agent /usr/bin/sard-agent",
                 "sudo install -m 0644 $dir/sard-agent.service /usr/lib/systemd/system/sard-agent.service",
                 "sudo install -d -o root -g sard-agent -m 0750 /etc/sard",
                 "sudo install -d -o sard-agent -g sard-agent -m 0700 " +
@@ -185,12 +191,14 @@ class InstallCommandsTest {
                 "cp",
                 "sed",
                 "dpkg",
+                "rpm",
                 "systemctl",
                 "sudo",
                 "sard-agent",
             )
         val wget = FetchTool.WGET
-        val packages = listOf(deb(), deb(fetch = wget), tar(), tar(fetch = wget), deb(signed = false))
+        val packages =
+            listOf(deb(), deb(fetch = wget), rpm(), rpm(fetch = wget), tar(), tar(fetch = wget), deb(signed = false))
         for (pkg in packages) {
             for (step in install(pkg) + upgrade(pkg)) {
                 if (step.kind == StepKind.SIGNATURE) continue
@@ -217,6 +225,42 @@ class InstallCommandsTest {
     }
 
     @Test
+    fun `Шаги rpm идут в том же порядке, что шаги deb`() {
+        assertEquals(INSTALL_KINDS, install(rpm()).map { it.kind })
+    }
+
+    @Test
+    fun `Скачивание и проверка суммы rpm устроены как у deb`() {
+        val base = "http://sard.corp.example:8080/downloads/agent"
+        assertEquals(
+            listOf("curl -fsSLO $base/$RPM", "curl -fsSLO $base/SHA256SUMS", "curl -fsSLO $base/SHA256SUMS.minisig"),
+            install(rpm()).lines(StepKind.DOWNLOAD),
+        )
+        assertEquals(listOf("grep '  $RPM\$' SHA256SUMS | sha256sum -c -"), install(rpm()).lines(StepKind.CHECKSUM))
+    }
+
+    @Test
+    fun `Установка rpm ставит локальный файл через rpm Uvh без репозиториев`() {
+        assertEquals(listOf("sudo rpm -Uvh $RPM"), install(rpm()).lines(StepKind.INSTALL))
+    }
+
+    @Test
+    fun `Шаги после установки rpm совпадают с шагами deb`() {
+        val after = listOf(StepKind.CONFIGURE, StepKind.ENROLL, StepKind.REPO_INIT, StepKind.START)
+        for (kind in after) assertEquals(install(deb()).lines(kind), install(rpm()).lines(kind), kind.name)
+    }
+
+    @Test
+    fun `Обновление rpm ставит пакет поверх через rpm Uvh без удаления`() {
+        val steps = upgrade(rpm())
+        val kinds = listOf(StepKind.DOWNLOAD, StepKind.CHECKSUM, StepKind.SIGNATURE, StepKind.UPGRADE)
+        assertEquals(kinds, steps.map { it.kind })
+        assertEquals(listOf("sudo rpm -Uvh $RPM"), steps.lines(StepKind.UPGRADE))
+        val text = steps.flatMap { it.commands }.joinToString("\n")
+        assertFalse("rpm -e" in text || "dnf" in text || "yum" in text || "/etc/sard" in text, text)
+    }
+
+    @Test
     fun `Обновление без подписи не даёт шага подписи`() {
         assertEquals(
             listOf(StepKind.DOWNLOAD, StepKind.CHECKSUM, StepKind.UPGRADE),
@@ -233,7 +277,7 @@ class InstallCommandsTest {
             steps.map { it.kind },
         )
         assertEquals(
-            listOf("tar -xzf $TAR", "sudo install -m 0755 $dir/sard-agent $dir/restic /usr/lib/sard/"),
+            listOf("tar -xzf $TAR", "sudo install -m 0755 $dir/sard-agent $dir/restic /usr/libexec/sard/"),
             steps.lines(StepKind.UPGRADE),
         )
         assertEquals(listOf("sudo systemctl try-restart sard-agent.service"), steps.lines(StepKind.RESTART))

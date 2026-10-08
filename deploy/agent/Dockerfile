@@ -60,7 +60,7 @@ RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
  && useradd --system --uid 10001 --gid 10001 --no-create-home --home-dir /var/lib/sard-self \
       --shell /usr/sbin/nologin sard-self
 # The layout of the deb/rpm packages (ADR 0018).
-COPY --from=unpack /out/sard-agent /out/restic /usr/lib/sard/
+COPY --from=unpack /out/sard-agent /out/restic /usr/libexec/sard/
 COPY --from=unpack /out/LICENSE /out/LICENSE.restic /out/THIRD_PARTY_LICENSES /out/NOTICE /usr/share/doc/sard-agent/
 COPY --from=unpack /out/agent.example.yaml /etc/sard/
 # Default state and cache directories of the agent config, writable by the agent.
@@ -78,6 +78,8 @@ COPY --chmod=0644 <<EOF /etc/sard/self/agent.yaml
 # Everything it writes lives in the sard-self-state volume, mounted at
 # /var/lib/sard-self; it runs as the server's uid, 10001, so that it can read
 # the CA directory the compose file mounts read-only.
+service:
+  user: sard-self # uid 10001: sard-agent repo, secret and enroll accept it as the service user
 server:
   address: server:9090 # the compose service; "server" is among the names of its certificate
 tls: # written by the agent's own enrollment
@@ -96,5 +98,5 @@ COPY --from=unpack --chown=10001:10001 --chmod=0700 /empty/ /var/lib/sard-self/t
 COPY --from=unpack --chown=10001:10001 --chmod=0700 /empty/ /var/lib/sard-self/executor/
 COPY --from=unpack --chown=10001:10001 --chmod=0700 /empty/ /var/lib/sard-self/restic-cache/
 USER 65532:65532
-ENTRYPOINT ["/usr/lib/sard/sard-agent"]
+ENTRYPOINT ["/usr/libexec/sard/sard-agent"]
 CMD ["--config", "/etc/sard/agent.yaml"]

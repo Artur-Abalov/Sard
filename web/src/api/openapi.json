@@ -2756,7 +2756,7 @@
       },
       "InstallFormat" : {
         "type" : "string",
-        "enum" : [ "deb", "tar" ]
+        "enum" : [ "deb", "rpm", "tar" ]
       },
       "FetchTool" : {
         "type" : "string",
@@ -2811,9 +2811,13 @@
             }, {
               "type" : "null"
             } ]
+          },
+          "keepsConfiguration" : {
+            "type" : "boolean",
+            "description" : "True when the upgrade replaces only the program and leaves the configuration and keys (deb and rpm); false for the archive and whenever there are no steps"
           }
         },
-        "required" : [ "agentVersion", "arch", "downloadsEnabled", "format", "manualInstallDoc", "reason", "releaseKey", "resticVersion", "signed", "steps" ]
+        "required" : [ "agentVersion", "arch", "downloadsEnabled", "format", "keepsConfiguration", "manualInstallDoc", "reason", "releaseKey", "resticVersion", "signed", "steps" ]
       },
       "InstallStep" : {
         "type" : "object",

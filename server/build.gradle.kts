@@ -152,6 +152,10 @@ tasks.test {
         "sard.test.restic-version-file",
         rootProject.file("agent/internal/restic/restic-version").path,
     )
+    // The release order of versions, shared with the dpkg and rpm checks (ADR 0048).
+    systemProperty("sard.test.version-order-file", rootProject.file("deploy/release/version-order.txt").path)
+    // Tags that are not releases, shared with scripts/test-release-version.sh (ADR 0048).
+    systemProperty("sard.test.not-release-tags-file", rootProject.file("deploy/release/not-release-tags.txt").path)
     // The CA of integration tests; the default /var/lib/sard/pki is not writable here.
     systemProperty(
         "sard.pki.dir",

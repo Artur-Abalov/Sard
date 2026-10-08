@@ -26,8 +26,8 @@
 
 Хост агента может быть за NAT (дома): агент сам подключается к серверу, входящие
 порты на нём не нужны. Хранилище бэкапов в демо — каталог на диске самого
-хоста агента (`/srv/sard-repo`); S3 и SFTP подключаются так же, другим адресом
-репозитория.
+хоста агента (`/srv/sard-repo`); S3 и SFTP пока прописываются в `repositories` вручную
+([хранилища](operator/05a-storage.md)).
 
 ## Шаг 0. Подготовка ВМ и имени
 
@@ -196,40 +196,32 @@ sudo -u sard-agent sard-agent enroll --server <sard.example.com>:9090 --token <�
 
 ## Шаг 5. Репозиторий и копия пароля вне хоста
 
-**Что делать.** Пример конфига смотрит в S3; в демо репозиторий — каталог на
-хосте агента. Заодно из конфига убираются примеры секрета `pg-billing` и
-скрипта `app-maintenance`: файла секрета нет, и с ним падает **каждый** шаг
-(«log redaction: cannot read secret "pg-billing"», OQ-153). На хосте агента:
+**Что делать.** В примере конфига нет ни репозиториев, ни секретов: в демо
+репозиторий — каталог на хосте агента, его добавляет команда
+([настройка хоста агента](operations/agent-host-setup.md)). Шаг консоли
+«Создайте репозиторий» (`repo init --generate-password main`) пока не подходит:
+в примере конфига нет репозитория `main` (до A8e, OQ-162). Вместо него на хосте
+агента:
 
 ```bash
-sudo install -d -o sard-agent -g sard-agent -m 0700 /srv/sard-repo
-sudo sed -i -e 's|url: s3:https://s3.example.com/backups/db1|url: /srv/sard-repo/main|' \
-            -e '/env_file: \/etc\/sard\/secrets\/restic-main.env/d' \
-            -e '/^  pg-billing: /d' -e '/^  app-maintenance: /d' /etc/sard/agent.yaml
-sudo mkdir -p /etc/systemd/system/sard-agent.service.d
-printf '[Service]\nReadWritePaths=/srv/sard-repo\n' | sudo tee /etc/systemd/system/sard-agent.service.d/repo.conf
-sudo systemctl daemon-reload
-grep -A3 'repositories:' /etc/sard/agent.yaml
-```
-
-Затем шаги консоли «Создайте репозиторий» и «Запустите службу»:
-
-```bash
-sudo -u sard-agent sard-agent repo init --generate-password main
+sudo sard-agent repo add main /srv/sard-repo/main
 sudo systemctl enable --now sard-agent.service
 ```
+
+`repo add` создаёт каталог, репозиторий restic с сгенерированным паролем и
+drop-in `ReadWritePaths=` для службы.
 
 И сразу — **копия пароля репозитория вне хоста**:
 
 ```bash
-sudo cat /etc/sard/secrets/restic-main.pass
+sudo sard-agent repo password main --reveal
 ```
 
 Строку сохраните в менеджер паролей как «Sard demo — restic main». Без неё
 потеря хоста агента — потеря бэкапов: ключ есть только на нём. Шаг 9
 восстанавливает именно по этой копии.
 
-**Что должно получиться.** `repo init` сообщает, что репозиторий создан, и
+**Что должно получиться.** `repo add` сообщает, что репозиторий создан, и
 напоминает сохранить пароль; `systemctl status sard-agent` — `active
 (running)`. В консоли: агент `demo-host` «в сети», на главной отмечены «Агент
 подключился» и «Репозиторий инициализирован».
@@ -248,7 +240,7 @@ sudo cat /etc/sard/secrets/restic-main.pass
 
 ```bash
 sudo mkdir -p /srv/demo-data
-sudo cp -r /usr/lib/sard /srv/demo-data/programs
+sudo cp -r /usr/libexec/sard /srv/demo-data/programs
 sudo sh -c 'head -c 20M /dev/urandom > /srv/demo-data/random.bin'
 echo "demo $(date -u +%FT%TZ)" | sudo tee /srv/demo-data/hello.txt
 sudo chmod -R a+rX /srv/demo-data
@@ -265,7 +257,7 @@ sudo chmod -R a+rX /srv/demo-data
 
 **Если не получилось.** Консоль не принимает конфигурацию — путь должен быть
 абсолютным ([плагин files](plugins/files.md)). Нет репозитория `main` в списке —
-агент не перезапускался после `repo init` (`sudo systemctl restart
+агент не перезапускался после `repo add` (`sudo systemctl restart
 sard-agent`).
 
 ## Шаг 7. Бэкап кнопкой
@@ -281,7 +273,7 @@ sard-agent`).
 **Время.** ~1 мин (оценка).
 
 **Если не получилось.** «ошибка» с «log redaction: cannot read secret» — в
-`/etc/sard/agent.yaml` остался пример секрета (шаг 5). «ошибка» с «permission denied» — файлы не читаются
+`/etc/sard/agent.yaml` описан секрет или скрипт, файла которого нет. «ошибка» с «permission denied» — файлы не читаются
 пользователем `sard-agent` (`chmod -R a+rX`). «потерян» — агент пропал во время
 шага. Журнал шага в консоли показывает вывод restic.
 
@@ -315,7 +307,7 @@ umask 077
 cat > /tmp/sard-pass-copy        # вставьте строку из менеджера паролей, Enter, затем Ctrl+D
 sudo install -o sard-agent -g sard-agent -m 0600 /tmp/sard-pass-copy /var/tmp/sard-pass-copy
 rm /tmp/sard-pass-copy
-R="sudo -u sard-agent /usr/lib/sard/restic -r /srv/sard-repo/main --password-file /var/tmp/sard-pass-copy --cache-dir /var/cache/sard/restic"
+R="sudo -u sard-agent /usr/libexec/sard/restic -r /srv/sard-repo/main --password-file /var/tmp/sard-pass-copy --cache-dir /var/cache/sard/restic"
 $R snapshots
 sudo install -d -o sard-agent -g sard-agent -m 0700 /var/tmp/sard-restore
 $R restore latest --target /var/tmp/sard-restore
@@ -383,7 +375,7 @@ amd64, Docker 29.6.2), без времени на чтение и ввод; ша
 | 3. Токен и установка агента | 3 мин | <1 с | — | шага подписи нет: локальные пакеты не подписаны |
 | 4. Регистрация | 1 мин | 1 с | — | — |
 | 5. Репозиторий и копия пароля | 3 мин | 8 с | — | найден OQ-153: без удаления примера секрета каждый шаг падает — удаление внесено в текст |
-| 6. Данные и источник | 2 мин | 1 с | — | `/usr/share/doc` пуст в контейнерном Ubuntu — источник данных заменён на `/usr/lib/sard` |
+| 6. Данные и источник | 2 мин | 1 с | — | `/usr/share/doc` пуст в контейнерном Ubuntu — источник данных заменён на `/usr/libexec/sard` |
 | 7. Бэкап кнопкой | 1 мин | 2 с | — | — |
 | 8. Уведомление в Telegram | 1 мин | — (бота на стенде нет) | — | не проверено |
 | 9. Восстановление | 2 мин | 2 с | — | — |

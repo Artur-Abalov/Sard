@@ -10,7 +10,8 @@
 #
 #   packages ──┬── server        seam tests run the packaged agent
 #              ├── server-image  jar once (console included), image from that jar
-#              └──────┴── e2e    that image; agent images from the packages
+#              ├──────┼── e2e          that image; agent images from the packages
+#              └──────┴── install-rpm  the rpm on Rocky 9 with systemd
 name: CI
 
 # A change that touches only documentation runs no job: nothing in the
@@ -96,6 +97,10 @@ jobs:
           cache-dependency-path: "**/go.sum"
       - name: rpm and minisign
         run: sudo apt-get update && sudo apt-get install -y rpm minisign
+      # One rule from a tag to every version; dpkg and rpm order pre-releases
+      # below their release (docs/adr/0048-release-versions.md).
+      - name: Release version rule
+        run: scripts/test-release-version.sh
       - name: Package the agent with restic (tar.gz, deb, rpm; amd64 and arm64)
         env:
           REQUIRE_RPM: "1"
@@ -277,7 +282,7 @@ jobs:
       - name: Images
         run: |
           docker load -i "$RUNNER_TEMP/sard-server-image.tar"
-          make e2e-agent-images DIST=dist
+          make e2e-agent-images e2e-pg-agent-images DIST=dist
       - run: make e2e-test
       - if: failure()
         uses: actions/upload-artifact@v4
@@ -287,3 +292,42 @@ jobs:
             test/e2e/build/e2e-logs/
             test/e2e/build/reports/tests/
           if-no-files-found: ignore
+
+  install-rpm:
+    # The rpm installed, enrolled and upgraded on Rocky 9
+    # with systemd, as release.yml's install job does on a tag (ADR 0048): here
+    # so that a pull request sees it. This workflow's packages are a
+    # development version (0.0.0~dev.<sha>), which no fixed fixture sorts below
+    # in both dpkg and rpm; so the packaged rpm is installed and a fixture of
+    # the same commit, v99.0.0, is the upgrade: the shipped package's install,
+    # and its scripts on upgrade, run.
+    needs: [packages, server-image]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: ["rockylinux/rockylinux:9"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: tools/go.mod
+          cache-dependency-path: "**/go.sum"
+      - uses: actions/download-artifact@v7
+        with:
+          name: sard-agent-packages
+          path: dist-old
+      - uses: actions/download-artifact@v7
+        with:
+          name: sard-server-image
+          path: ${{ runner.temp }}
+      - run: docker load -i "$RUNNER_TEMP/sard-server-image.tar"
+      - name: rpm
+        run: sudo apt-get update && sudo apt-get install -y rpm
+      - name: package to upgrade to
+        env:
+          REQUIRE_RPM: "1"
+        run: make package DIST="$PWD/dist-new" ARCHES=amd64 VERSION=v99.0.0
+      - name: install, enroll, upgrade
+        run: OLD_DIST=dist-old NEW_DIST=dist-new scripts/test-agent-install.sh "${{ matrix.distro }}"
+

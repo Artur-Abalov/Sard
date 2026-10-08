@@ -18,10 +18,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/enroll"
+	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
@@ -44,18 +46,26 @@ type enrollDeps struct {
 	hostname hostnameFunc
 	clock    clock
 	dial     enroll.DialFunc
+	// euid, lookupUser and fs decide who runs the command and hand what it
+	// writes to the service user (A8a, Р25).
+	euid       uint32
+	lookupUser hostsetup.LookupFunc
+	fs         hostsetup.FS
+	// chownFile gives an open file to the service user (fchown).
+	chownFile func(f *os.File, uid, gid int) error
+}
+
+func productionEnrollDeps(hostname hostnameFunc) enrollDeps {
+	return enrollDeps{
+		hostname: hostname, clock: realEnrollClock{}, dial: enroll.RealDial,
+		euid: uint32(os.Geteuid()), lookupUser: hostsetup.LookupOS, fs: hostsetup.OS{}, chownFile: chownOpenFile,
+	}
 }
 
 // runEnroll is "sard-agent enroll ...": args excludes the "enroll" word
 // itself. It never reads stdin.
 func runEnroll(ctx context.Context, args []string, stdout, stderr io.Writer, hostname hostnameFunc) int {
-	return runEnrollWithDeps(ctx, args, stdout, stderr, realEnrollDeps(hostname))
-}
-
-// realEnrollDeps is the production wiring, shared by "enroll" and the
-// self-enroll step.
-func realEnrollDeps(hostname hostnameFunc) enrollDeps {
-	return enrollDeps{hostname: hostname, clock: realEnrollClock{}, dial: enroll.RealDial}
+	return runEnrollWithDeps(ctx, args, stdout, stderr, productionEnrollDeps(hostname))
 }
 
 func runEnrollWithDeps(ctx context.Context, args []string, stdout, stderr io.Writer, deps enrollDeps) int {
@@ -67,7 +77,11 @@ func runEnrollWithDeps(ctx context.Context, args []string, stdout, stderr io.Wri
 	if code != exitOK {
 		return code
 	}
-	return doEnroll(ctx, opts, stdout, stderr, deps)
+	who, f := hostsetup.Authorize(privilegeRequest(deps.euid, deps.lookupUser, opts.configPath, "enroll --server <address> --token <token>", false, true))
+	if f != nil {
+		return report(stderr, "enroll", f)
+	}
+	return doEnroll(ctx, opts, who, stdout, stderr, deps)
 }
 
 // enrollPipelineState is what one pipeline call accumulates as it passes
@@ -82,6 +96,9 @@ type enrollPipelineState struct {
 	previousAgentID string
 	host            string
 	files           enroll.Files
+	// owner is who the files belong to: the service user under root, nil
+	// when the command runs as the service user.
+	owner *enroll.Owner
 }
 
 // doEnroll runs the checks in the order В16 fixes: flags (already done by
@@ -89,7 +106,7 @@ type enrollPipelineState struct {
 // existing identity → hostname → writable directories → existing identity
 // again (F2, now that the lock rules out a race) → network → CA
 // fingerprint → server certificate name → Enroll response → write.
-func doEnroll(ctx context.Context, opts enrollOptions, stdout, stderr io.Writer, deps enrollDeps) int {
+func doEnroll(ctx context.Context, opts enrollOptions, who hostsetup.Principal, stdout, stderr io.Writer, deps enrollDeps) (code int) {
 	st, code := resolveEnrollLocals(opts, stderr)
 	if code != exitOK {
 		return code
@@ -100,6 +117,26 @@ func doEnroll(ctx context.Context, opts enrollOptions, stdout, stderr io.Writer,
 	}
 	st.host = host
 	st.files = enroll.Files{KeyFile: st.cfg.TLS.KeyFile, CertFile: st.cfg.TLS.CertFile, CAFile: st.cfg.TLS.CAFile}
+	st.owner = enrollOwner(who, deps)
+	// Р25а: under root the missing last directory of a tls.* path is made;
+	// a command that does not succeed takes it away again (it runs after
+	// the lock is released, the lock file lives in one of these directories).
+	created, code := ensureTLSDirs(st.files, who, deps, stderr)
+	defer func() {
+		if code != exitOK {
+			removeTLSDirs(deps.fs, created)
+		}
+	}()
+	if code != exitOK {
+		return code
+	}
+	return enrollWritable(ctx, st, opts, stdout, stderr, deps)
+}
+
+// enrollWritable is the rest of doEnroll, once the directories of tls.*
+// are there: their writability, the lock, the identity check again and
+// the network.
+func enrollWritable(ctx context.Context, st enrollPipelineState, opts enrollOptions, stdout, stderr io.Writer, deps enrollDeps) int {
 	unlock, code := lockForWriting(st.files, stderr)
 	if code != exitOK {
 		return code
@@ -128,18 +165,25 @@ func resolveEnrollLocals(opts enrollOptions, stderr io.Writer) (enrollPipelineSt
 	if code != exitOK {
 		return enrollPipelineState{}, code
 	}
-	tok, code := parseEnrollToken(rawToken, stderr)
+	tok, code := parseAndCheckToken(rawToken, opts, cfg, stderr)
 	if code != exitOK {
 		return enrollPipelineState{}, code
-	}
-	if c := checkAddressConflict(opts, cfg, stderr); c != exitOK {
-		return enrollPipelineState{}, c
 	}
 	previousAgentID, code := checkExistingIdentity(cfg, opts.force, stderr)
 	if code != exitOK {
 		return enrollPipelineState{}, code
 	}
 	return enrollPipelineState{rawToken: rawToken, cfg: cfg, tok: tok, previousAgentID: previousAgentID}, exitOK
+}
+
+// parseAndCheckToken parses the token, then checks the address against the
+// config.
+func parseAndCheckToken(rawToken string, opts enrollOptions, cfg config.Config, stderr io.Writer) (enroll.Token, int) {
+	tok, code := parseEnrollToken(rawToken, stderr)
+	if code != exitOK {
+		return tok, code
+	}
+	return tok, checkAddressConflict(opts, cfg, stderr)
 }
 
 // resolveEnrollHostname reads the OS hostname and checks it locally (В6):
@@ -188,7 +232,7 @@ func dialAndEnroll(ctx context.Context, st enrollPipelineState, stdout, stderr i
 	if err != nil {
 		return reportEnrollError(stderr, err)
 	}
-	return writeIdentityAndReport(stdout, stderr, st.cfg, st.files, key, result, st.previousAgentID)
+	return writeIdentityAndReport(stdout, stderr, st, key, result)
 }
 
 // buildIdentityRequest generates the fresh key and CSR every enrollment
@@ -215,12 +259,13 @@ func reportAgentError(stderr io.Writer, err error) int {
 	return exitAgentError
 }
 
-func writeIdentityAndReport(stdout, stderr io.Writer, cfg config.Config, files enroll.Files, key *ecdsa.PrivateKey, result *enroll.EnrollResult, previousAgentID string) int {
+func writeIdentityAndReport(stdout, stderr io.Writer, st enrollPipelineState, key *ecdsa.PrivateKey, result *enroll.EnrollResult) int {
+	cfg, files, previousAgentID := st.cfg, st.files, st.previousAgentID
 	keyPEM, err := marshalKeyPEM(key)
 	if err != nil {
 		return reportAgentError(stderr, err)
 	}
-	if err := enroll.WriteIdentity(files, keyPEM, []byte(result.CertificateChainPEM), []byte(result.CABundlePEM)); err != nil {
+	if err := enroll.WriteIdentityAs(files, keyPEM, []byte(result.CertificateChainPEM), []byte(result.CABundlePEM), st.owner); err != nil {
 		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: the server enrolled agent %s but writing the identity to disk failed: %v; the enrollment token has been spent, a new one is required\n", result.AgentID, err)
 		// F11: errors.As's result was ignored here, so a WriteIdentity
 		// failure that was not a *enroll.Error (none is today, but nothing

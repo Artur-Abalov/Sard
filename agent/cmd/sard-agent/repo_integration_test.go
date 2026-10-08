@@ -46,8 +46,8 @@ func realHost(t *testing.T) *repoHost {
 	h.cfg.Restic.Path = pinnedRestic(t)
 	h.cfg.Repositories[1].URL = h.path("repo-offsite")
 	h.saveConfig()
-	h.deps = productionRepoDeps()
-	h.deps.uid = uint32(os.Getuid())
+	h.deps = productionHostDeps()
+	useTestServiceUser(&h.deps)
 	return h
 }
 

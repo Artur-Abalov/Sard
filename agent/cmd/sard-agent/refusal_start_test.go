@@ -35,10 +35,13 @@ type tlsServer struct {
 	reply    func(ctx context.Context) error
 	registry atomic.Int32
 	connects atomic.Int32
+	// last is the latest RegisterRequest.
+	last atomic.Pointer[agentv1.RegisterRequest]
 }
 
-func (s *tlsServer) Register(ctx context.Context, _ *agentv1.RegisterRequest) (*agentv1.RegisterResponse, error) {
+func (s *tlsServer) Register(ctx context.Context, req *agentv1.RegisterRequest) (*agentv1.RegisterResponse, error) {
 	s.registry.Add(1)
+	s.last.Store(req)
 	return nil, s.reply(ctx)
 }
 
@@ -54,6 +57,8 @@ type refusalHost struct {
 	server *tlsServer
 	cfg    string
 	restic string
+	// address is where the server listens.
+	address string
 }
 
 func newRefusalHost(t *testing.T, reply func(ctx context.Context) error) *refusalHost {
@@ -73,7 +78,8 @@ func newRefusalHost(t *testing.T, reply func(ctx context.Context) error) *refusa
 	go func() { _ = g.Serve(lis) }()
 	t.Cleanup(g.Stop)
 	h := &refusalHost{t: t, dir: dir, server: srv, restic: withRestic(t)}
-	h.cfg = h.configFor(lis.Addr().String())
+	h.address = lis.Addr().String()
+	h.cfg = h.configFor(h.address)
 	return h
 }
 

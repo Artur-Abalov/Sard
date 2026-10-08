@@ -11,8 +11,8 @@ import java.time.Duration
 
 /** The sard-agent image (deploy/agent/Dockerfile), laid out as the packages install it (ADR 0018). */
 internal object AgentImage {
-    const val AGENT_BINARY = "/usr/lib/sard/sard-agent"
-    const val RESTIC_BINARY = "/usr/lib/sard/restic"
+    const val AGENT_BINARY = "/usr/libexec/sard/sard-agent"
+    const val RESTIC_BINARY = "/usr/libexec/sard/restic"
 
     /** Runs [command] in a fresh container of the image to completion and returns its stdout. */
     fun run(vararg command: String): String {

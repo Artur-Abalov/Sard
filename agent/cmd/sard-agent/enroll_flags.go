@@ -50,6 +50,13 @@ Registers this host as a new agent identity with sard-server and writes the
 key, certificate and CA bundle named by tls.* in the agent config. Never
 reads stdin and never changes the config file.
 
+Run it with sudo: sudo sard-agent enroll --server <address> --token <token>.
+The files tls.* then belong to the service user (sard-agent, or service.user
+of the config), the key readable by it alone (0600); a missing last
+directory of a tls.* path is created for it (0700), a missing parent is not.
+Run as the service user itself it works as it always did. Anyone else is
+refused with PRIVILEGES_REQUIRED, exit code 2, before the token is read.
+
 Flags:
   --server string      server address; if given, must match server.address in --config
   --token string        enrollment token

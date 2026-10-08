@@ -680,7 +680,9 @@ func TestTheServerNameDoesNotResolve(t *testing.T) {
 // pipeline — including TLS verification — must still run unmodified.
 func runEnrollCmdWithDial(dial enroll.DialFunc, args ...string) (int, string, string) {
 	var out, errOut strings.Builder
-	code := runEnrollWithDeps(context.Background(), args, &out, &errOut, enrollDeps{hostname: fixedHostname, clock: realEnrollClock{}, dial: dial})
+	deps := testEnrollDeps(fixedHostname)
+	deps.dial = dial
+	code := runEnrollWithDeps(context.Background(), args, &out, &errOut, deps)
 	return code, out.String(), errOut.String()
 }
 

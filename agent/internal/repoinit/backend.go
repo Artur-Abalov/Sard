@@ -11,6 +11,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/redact"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 )
 
@@ -28,7 +29,7 @@ type Target struct {
 }
 
 // Inspect asks restic whether the repository is initialised: its id if so.
-func Inspect(ctx context.Context, r restic.Repository, t Target) (id string, initialized bool, f *Failure) {
+func Inspect(ctx context.Context, r restic.Repository, t Target) (id string, initialized bool, f *refusal.Failure) {
 	id, err := r.ID(ctx)
 	switch {
 	case err == nil:
@@ -41,7 +42,7 @@ func Inspect(ctx context.Context, r restic.Repository, t Target) (id string, ini
 
 // Create initialises the repository unless it exists (С10: restic cat
 // config first, then init) and returns the new id.
-func Create(ctx context.Context, r restic.Repository, t Target) (string, *Failure) {
+func Create(ctx context.Context, r restic.Repository, t Target) (string, *refusal.Failure) {
 	id, initialized, f := Inspect(ctx, r, t)
 	if f != nil {
 		return "", f
@@ -60,8 +61,8 @@ func Create(ctx context.Context, r restic.Repository, t Target) (string, *Failur
 	return "", withPartialNote(FromRestic(ctx, err, t))
 }
 
-func existsFailure(t Target, id string) *Failure {
-	f := fail(RepositoryExists, "a repository is already initialised at the address of %q; nothing was changed", t.Name)
+func existsFailure(t Target, id string) *refusal.Failure {
+	f := refusal.Fail(refusal.RepositoryExists, "a repository is already initialised at the address of %q; nothing was changed", t.Name)
 	f.ID = id
 	if id != "" {
 		f.Detail += " (repository_id " + id + ")"
@@ -70,8 +71,8 @@ func existsFailure(t Target, id string) *Failure {
 }
 
 // withPartialNote adds what an operator must know when init was stopped.
-func withPartialNote(f *Failure) *Failure {
-	if f.Reason == Timeout || f.Reason == Interrupted {
+func withPartialNote(f *refusal.Failure) *refusal.Failure {
+	if f.Reason == refusal.Timeout || f.Reason == refusal.Interrupted {
 		f.Detail += "; the repository may have been created partially, run the command again"
 	}
 	return f
@@ -80,17 +81,17 @@ func withPartialNote(f *Failure) *Failure {
 // resticReasons maps what restic said to a Reason; the first match wins.
 var resticReasons = []struct {
 	err    error
-	reason Reason
+	reason refusal.Reason
 }{
-	{restic.ErrWrongPassword, WrongPassword},
-	{restic.ErrEmptyPassword, PasswordFileEmpty},
-	{restic.ErrNetwork, BackendUnavailable},
-	{restic.ErrBadOutput, ResticOutputUnexpected},
+	{restic.ErrWrongPassword, refusal.WrongPassword},
+	{restic.ErrEmptyPassword, refusal.PasswordFileEmpty},
+	{restic.ErrNetwork, refusal.BackendUnavailable},
+	{restic.ErrBadOutput, refusal.ResticOutputUnexpected},
 }
 
 // FromRestic explains an error of the restic wrapper. Text taken from
 // restic goes through t.Scrub: it may echo the address or an env_file value.
-func FromRestic(ctx context.Context, err error, t Target) *Failure {
+func FromRestic(ctx context.Context, err error, t Target) *refusal.Failure {
 	if f := fromContext(ctx); f != nil {
 		f.Detail += " while working with the backend " + t.Backend
 		return f
@@ -100,35 +101,35 @@ func FromRestic(ctx context.Context, err error, t Target) *Failure {
 			return describe(r.reason, err, t)
 		}
 	}
-	return describe(BackendRefused, err, t)
+	return describe(refusal.BackendRefused, err, t)
 }
 
-func fromContext(ctx context.Context) *Failure {
+func fromContext(ctx context.Context) *refusal.Failure {
 	switch {
 	case ctx.Err() == nil:
 		return nil
 	case errors.Is(context.Cause(ctx), ErrTimeout):
-		return fail(Timeout, "the command ran out of time (--timeout)")
+		return refusal.Fail(refusal.Timeout, "the command ran out of time (--timeout)")
 	}
-	return fail(Interrupted, "the command was interrupted")
+	return refusal.Fail(refusal.Interrupted, "the command was interrupted")
 }
 
 // Interruption reports how ctx ended: nil while it is running.
-func Interruption(ctx context.Context) *Failure { return fromContext(ctx) }
+func Interruption(ctx context.Context) *refusal.Failure { return fromContext(ctx) }
 
-func describe(reason Reason, err error, t Target) *Failure {
+func describe(reason refusal.Reason, err error, t Target) *refusal.Failure {
 	cause := t.Scrub(causeOf(err))
 	switch reason {
-	case WrongPassword:
-		return fail(reason, "a repository already exists at the address of %q, and the password file %s does not open it", t.Name, t.PasswordFile)
-	case PasswordFileEmpty:
-		return fail(reason, "restic refuses an empty password: the password file %s holds no password", t.PasswordFile)
-	case BackendUnavailable:
-		return fail(reason, "backend %s: %s; the command can be repeated", t.Backend, cause)
-	case ResticOutputUnexpected:
-		return fail(reason, "restic printed no repository id; check the repository with `sard-agent repo list`")
+	case refusal.WrongPassword:
+		return refusal.Fail(reason, "a repository already exists at the address of %q, and the password file %s does not open it", t.Name, t.PasswordFile)
+	case refusal.PasswordFileEmpty:
+		return refusal.Fail(reason, "restic refuses an empty password: the password file %s holds no password", t.PasswordFile)
+	case refusal.BackendUnavailable:
+		return refusal.Fail(reason, "backend %s: %s; the command can be repeated", t.Backend, cause)
+	case refusal.ResticOutputUnexpected:
+		return refusal.Fail(reason, "restic printed no repository id; check the repository with `sard-agent repo list`")
 	}
-	return fail(reason, "backend %s: %s", t.Backend, cause)
+	return refusal.Fail(reason, "backend %s: %s", t.Backend, cause)
 }
 
 // causeOf is restic's own fatal message if it printed one.

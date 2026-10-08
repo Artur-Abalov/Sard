@@ -33,6 +33,7 @@ private val WIRE_ANNOTATION_REFERENCE =
 private val FORBIDDEN_FQN_REFERENCE =
     Regex("""\b(io\.grpc|dev\.sard\.proto|com\.google\.rpc|com\.google\.protobuf|dev\.sard\.server\.agents)\.""")
 private val OTHER_SERVER_PACKAGE = Regex("""\bdev\.sard\.server\.(?!console\b)\w+""")
+private val API_PACKAGE_REFERENCE = Regex("""\bdev\.sard\.server\.api\b""")
 private val CONSOLE_PACKAGE_REFERENCE = Regex("""\bdev\.sard\.server\.console\b""")
 private val TELEGRAM_REFERENCE = Regex("""\b(dev\.sard\.server\.notify\.telegram|Telegram\w*)\b""")
 private const val NOTIFY_COMPOSITION_ROOT = "NotifyConfiguration.kt"
@@ -98,6 +99,17 @@ class ArchitectureTest {
             }
         }
         assertTrue(offenders.isEmpty(), "forbidden references:\n${offenders.joinToString("\n")}")
+    }
+
+    @Test
+    fun `the domain packages never reference the api package`() {
+        val offenders =
+            ISOLATED_PACKAGES.flatMap { pkg ->
+                ktFiles(File(mainRoot, pkg)).filter {
+                    API_PACKAGE_REFERENCE.containsMatchIn(withoutComments(it.readText()))
+                }
+            }
+        assertTrue(offenders.isEmpty(), "domain referencing api:\n${offenders.joinToString("\n") { it.path }}")
     }
 
     @Test

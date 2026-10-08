@@ -81,7 +81,7 @@ PY
   # (localhost is in the old certificate).
   raw="$(printf '%s' "$old_token" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
   docker run --rm --network "container:$(cd "$old" && docker compose ps -q server)" --user 0 --entrypoint sh \
-    "$SARD_AGENT_IMAGE:$SARD_VERSION" -c "mkdir -p /tmp/o/tls && printf 'server:\n  address: localhost:9090\ntls:\n  ca_file: /tmp/o/tls/ca.pem\n  cert_file: /tmp/o/tls/agent.pem\n  key_file: /tmp/o/tls/agent.key\n' >/tmp/o/agent.yaml && /usr/lib/sard/sard-agent enroll --config /tmp/o/agent.yaml --token '$raw'" \
+    "$SARD_AGENT_IMAGE:$SARD_VERSION" -c "mkdir -p /tmp/o/tls && printf 'server:\n  address: localhost:9090\ntls:\n  ca_file: /tmp/o/tls/ca.pem\n  cert_file: /tmp/o/tls/agent.pem\n  key_file: /tmp/o/tls/agent.key\n' >/tmp/o/agent.yaml && /usr/libexec/sard/sard-agent enroll --config /tmp/o/agent.yaml --token '$raw'" \
     >"$work/old-enroll.log" 2>&1 || fail "5: enrolling an agent on the old version: $(cat "$work/old-enroll.log")"
   old_agents="$(get /agents | python3 -c 'import json,sys; print(" ".join(sorted(a["id"] for a in json.load(sys.stdin)["items"])))')"
   [ -n "$old_agents" ] || fail "5: no agent on the old version"
@@ -147,7 +147,7 @@ pass "4: the channel is mounted by server and self-agent only, read-only in self
 set +e
 docker compose run --rm --no-deps -T --entrypoint sh self-agent -c \
   "mkdir -p /tmp/o/tls && sed 's|/var/lib/sard-self/tls|/tmp/o/tls|' /etc/sard/self/agent.yaml | grep -v 'sard-db' | grep -v '^secrets:' >/tmp/o/agent.yaml && \
-   /usr/lib/sard/sard-agent enroll --config /tmp/o/agent.yaml --token '$captured'" >"$work/reuse.log" 2>&1
+   /usr/libexec/sard/sard-agent enroll --config /tmp/o/agent.yaml --token '$captured'" >"$work/reuse.log" 2>&1
 code=$?
 set -e
 [ "$code" -eq 3 ] || fail "4: reusing the built-in token from another container exited $code, not 3"

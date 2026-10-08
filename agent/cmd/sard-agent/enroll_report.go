@@ -32,7 +32,7 @@ type enrollClassCode struct {
 // enrollHelpCodes.
 var enrollClassCodes = []enrollClassCode{
 	{enroll.ClassAgentError, exitAgentError, "agent error", "an unforeseen server response, or a local problem only an updated agent fixes"},
-	{enroll.ClassUsage, exitUsage, "usage", "bad flags, token source, config, token format, or a --server/config address mismatch"},
+	{enroll.ClassUsage, exitUsage, "usage", "bad flags, token source, config, token format, a --server/config address mismatch, or a user who is neither root nor the service user (PRIVILEGES_REQUIRED, SERVICE_USER_UNKNOWN)"},
 	{enroll.ClassTokenRefused, exitTokenRefused, "token refused", "TOKEN_UNKNOWN, TOKEN_USED, TOKEN_EXPIRED, or TOKEN_REVOKED"},
 	{enroll.ClassTrust, exitTrust, "trust", "the server's CA fingerprint or hostname could not be verified"},
 	{enroll.ClassTemporary, exitTemporary, "temporary", "the server was unreachable, timed out, or another enrollment is already running"},

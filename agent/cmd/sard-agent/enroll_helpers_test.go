@@ -232,6 +232,7 @@ func succeedingAnswer(ca *testCA, agentID string) func(*agentv1.EnrollRequest) (
 // directory it points at. Each of the three tls.* files lives in its own
 // subdirectory so a test can make exactly one of them unwritable.
 type host struct {
+	testing    *testing.T
 	dir        string
 	configPath string
 	keyDir     string
@@ -255,6 +256,7 @@ func newHost(t *testing.T, address string) *host {
 		}
 	}
 	h := &host{
+		testing:  t,
 		dir:      dir,
 		keyDir:   keyDir,
 		certDir:  certDir,

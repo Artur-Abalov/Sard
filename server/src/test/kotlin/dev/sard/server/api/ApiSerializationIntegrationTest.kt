@@ -158,6 +158,7 @@ class ApiSerializationIntegrationTest(
                 manualInstallDoc = "https://example.com/doc",
                 steps = emptyList(),
                 reason = UpgradeReason.ARCH_UNKNOWN,
+                keepsConfiguration = false,
             ),
             CreateEnrollmentTokenRequest(ttlSeconds = 3600),
             CreatedEnrollmentToken(id, "sard_x.y", "sard-agent enroll --server s:9090 --token sard_x.y", at, false),

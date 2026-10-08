@@ -3,7 +3,10 @@
 
 import { describe, expect, test } from 'vitest'
 import type { components } from './api/schema'
-import { stepText, withEnrollCommand } from './install'
+import openapi from './api/openapi.json'
+import en from './locales/en.json'
+import ru from './locales/ru.json'
+import { FORMATS, stepText, withEnrollCommand } from './install'
 
 type Step = components['schemas']['InstallStep']
 
@@ -48,5 +51,20 @@ describe('the steps of the token dialog', () => {
 
   test('are the same steps when there is no enroll step (downloads are off)', () => {
     expect(withEnrollCommand([], enrollCommand)).toEqual([])
+  })
+})
+
+describe('the package formats of the choice', () => {
+  test('are the formats of the API contract, in its order', () => {
+    expect(FORMATS).toEqual(openapi.components.schemas.InstallFormat.enum)
+  })
+
+  test('each has a caption in both languages, rpm naming RHEL, Oracle Linux and Rocky', () => {
+    for (const format of FORMATS) {
+      expect(en.install.format[format]).toBeTruthy()
+      expect(ru.install.format[format]).toBeTruthy()
+    }
+    expect(en.install.format.rpm).toBe('rpm — RHEL, Oracle Linux, Rocky')
+    expect(ru.install.format.rpm).toBe('rpm — RHEL, Oracle Linux, Rocky')
   })
 })

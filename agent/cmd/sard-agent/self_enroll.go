@@ -21,6 +21,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/enroll"
+	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 )
 
 const (
@@ -47,7 +48,7 @@ func realSelfEnrollDeps(hostname hostnameFunc) selfEnrollDeps {
 		writeFile: os.WriteFile,
 		clock:     realEnrollClock{},
 		inspect:   enroll.InspectIdentity,
-		enroll:    realEnrollDeps(hostname),
+		enroll:    productionEnrollDeps(hostname),
 	}
 }
 
@@ -164,7 +165,10 @@ func (s *selfEnroller) spent(raw string) bool {
 // existing identity, then records the token as spent.
 func (s *selfEnroller) enrollWith(ctx context.Context, raw string) selfOutcome {
 	opts := enrollOptions{token: raw, tokenSet: true, force: true, timeout: defaultEnrollTimeout, configPath: s.configPath}
-	if code := doEnroll(ctx, opts, io.Discard, s.stderr, s.deps.enroll); code != exitOK {
+	// The running agent enrolls as itself: it neither creates directories nor
+	// hands files to another user, as enroll does only under root (A8a, Р25).
+	self := hostsetup.Principal{Role: hostsetup.RoleService}
+	if code := doEnroll(ctx, opts, self, io.Discard, s.stderr, s.deps.enroll); code != exitOK {
 		return selfOutcome{outcomeExit, code}
 	}
 	status, err := s.deps.inspect(s.cfg.TLS)

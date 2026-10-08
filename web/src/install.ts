@@ -18,7 +18,7 @@ export interface InstallChoice {
 export const INSTALL_DEFAULTS: InstallChoice = { arch: 'amd64', format: 'deb', fetch: 'curl' }
 
 export const ARCHES: Schemas['InstallArch'][] = ['amd64', 'arm64']
-export const FORMATS: Schemas['InstallFormat'][] = ['deb', 'tar']
+export const FORMATS: Schemas['InstallFormat'][] = ['deb', 'rpm', 'tar']
 export const FETCHES: Schemas['FetchTool'][] = ['curl', 'wget']
 
 // Where the release key is published outside the server: the section of the repository's README.

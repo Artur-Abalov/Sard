@@ -6,7 +6,10 @@
 Сценарии: `docs/specs/server/agent-install.feature`,
 `docs/specs/web/agent-install.feature`, `docs/specs/agent/agent-install.feature`.
 Пометка `[ВN]` у шага называет решение владельца 2026-10-05 из заголовка
-серверной спецификации, которое шаг проверяет.
+серверной спецификации, которое шаг проверяет; `[Р1]`, `[Р2]` — решения
+поправки R1 (2026-10-07): rpm в консоли и сравнение предрелизов (части 6–9);
+`[Р3]` — поправка R1-F1: признак `keepsConfiguration` решает сервер (шаги 27,
+30, 37, 60 и часть 10).
 
 Ожидаемый результат — после «→». Любое расхождение — дефект.
 
@@ -42,7 +45,8 @@ V=$(curl -sS http://localhost:8080/downloads/agent/manifest.json | jq -r .versio
 5. `api "$API/agent-install?arch=arm64&format=tar" | jq -r '.steps[0].commands[]'`
    → скачивается `sard-agent_${V}_linux_arm64.tar.gz`.
 6. `api -o /dev/null -w '%{http_code}\n' "$API/agent-install?arch=riscv64"` → `422`,
-   ошибка у поля `arch`; то же `format=rpm` → `422`, поле `format`.
+   ошибка у поля `arch`; то же `format=zip` → `422`, поле `format`.
+   `format=rpm` — `200` (поправка R1, шаги 41–44).
 7. `api "$API/agent-install" | jq -r '.steps[] | select(.kind=="enroll") | .commands[]'`
    → `sudo -u sard-agent sard-agent enroll --server localhost:9090 --token <...>`
    с заполнителем; адрес совпадает с `enrollCommand` из
@@ -108,13 +112,22 @@ V=$(curl -sS http://localhost:8080/downloads/agent/manifest.json | jq -r .versio
     `v0.0.1`, `outdated: true` `[В4]`.
 27. `api "$API/agents/<id>/upgrade?format=deb" | jq -r '.steps[].kind'` →
     `download checksum upgrade` (и `signature` в подписанном образе); пакет —
-    архитектуры агента.
+    архитектуры агента. `[Р3]`
+    `for f in deb rpm tar; do api "$API/agents/<id>/upgrade?format=$f" | jq .keepsConfiguration; done`
+    → `true`, `true`, `false`. `api "$API/agent-install" | jq 'has("keepsConfiguration")'`
+    → `false` (К1 не меняется).
 28. Выполнить шаги на хосте → агент онлайн с тем же `id`, версия `v0.0.2`;
     `outdated: false`; `sha256sum /etc/sard/agent.yaml /etc/sard/tls/* /etc/sard/secrets/*`
     до и после совпадает; в выводе установки нет команды `enroll` `[В8]`.
 29. Агент, приславший `agent_version` `v0.0.3` (сборка новее) → `outdated: false`;
     `v0.0.1-3-gabc1234` → `false`.
 30. `api -o /dev/null -w '%{http_code}\n' "$API/agents/00000000-0000-7000-8000-000000000000/upgrade"` → `404`.
+    `[Р3]` `[Р-specifier з]` Агент с токеном, но без Register (зарегистрировать
+    `enroll` и не запускать службу):
+    `api "$API/agents/<id>/upgrade?format=deb" | jq '{reason, keepsConfiguration}'`
+    → `arch_unknown`, `false`. С `SARD_AGENT_DOWNLOADS=false` для агента из
+    шага 26: `api "$API/agents/<id>/upgrade?format=deb" | jq '{downloadsEnabled, keepsConfiguration}'`
+    → `false`, `false`.
 
 ## Часть 5. Консоль (дважды: на моках `VITE_API_MOCKS=1` и против `make up`)
 
@@ -133,7 +146,8 @@ V=$(curl -sS http://localhost:8080/downloads/agent/manifest.json | jq -r .versio
 36. `[В7]` С агентами в тенанте → блок на `/agents` свёрнут и раскрывается.
 37. Устаревший агент из части 4 → в списке пометка «доступно обновление» с
     версией, цвет notice, статус «онлайн». Карточка — шаги обновления, напоминание
-    об активных запусках, для deb — пояснение о конфиге и ключах. Неустаревший —
+    об активных запусках, для deb — пояснение о конфиге и ключах (в Network
+    ответ `upgrade` содержит `keepsConfiguration: true`) `[Р3]`. Неустаревший —
     блока нет.
 38. `SARD_AGENT_DOWNLOADS=false` → блок объясняет, что раздача выключена, есть
     ссылка на документацию, команд и выбора нет.
@@ -141,3 +155,110 @@ V=$(curl -sS http://localhost:8080/downloads/agent/manifest.json | jq -r .versio
     показан.
 40. Язык RU, шаги 31–38 → нет ключей i18n и английского текста, кроме команд,
     имён файлов и версий. То же для EN — нет русского.
+
+## Часть 6. RPM: REST (поправка R1) `[Р1]`
+
+Подготовка как в начале; дополнительно — контейнер Rocky Linux 9 с systemd без
+выхода в интернет и с отключёнными репозиториями (`dnf config-manager
+--set-disabled '*'` или пустой `/etc/yum.repos.d/`), сеть только до сервера.
+
+41. `api "$API/agent-install?format=rpm" | jq '{format, arch}'` → `rpm`, `amd64`.
+    `api "$API/agent-install?format=rpm" | jq -r '.steps[].kind'` → по строке
+    `download checksum install configure enroll repo-init start` (в релизном
+    образе — `signature` после `checksum`).
+42. `api "$API/agent-install?format=rpm" | jq -r '.steps[0].commands[0]'` → ссылка
+    на файл, имя которого равно
+    `curl -sS http://localhost:8080/downloads/agent/manifest.json | jq -r '.artifacts[] | select(.arch=="amd64" and .format=="rpm") | .file'`
+    (для релиза — `sard-agent-${V}.x86_64.rpm`); то же с `arch=arm64` → файл
+    `.aarch64.rpm` из манифеста.
+43. `api "$API/agent-install?format=rpm" | jq -r '.steps[] | select(.kind=="install") | .commands[]'`
+    → ровно одна строка `sudo rpm -Uvh <файл из шага 42>`.
+    `api "$API/agent-install?format=rpm" | grep -cE 'dnf|yum|zypper'` → `0`.
+44. Шаги `configure`, `enroll`, `repo-init`, `start` у `format=rpm` и `format=deb`
+    совпадают: `diff <(api "$API/agent-install?format=rpm" | jq '[.steps[] | select(.kind|IN("configure","enroll","repo-init","start"))]') <(api "$API/agent-install?format=deb" | jq '[.steps[] | select(.kind|IN("configure","enroll","repo-init","start"))]')`
+    → пусто, код `0`.
+45. С `fetch=wget`: `api "$API/agent-install?format=rpm&fetch=wget" | jq -r '.steps[0].commands[]' | grep -c curl`
+    → `0`.
+46. Образ, в манифесте которого нет rpm для arm64 (собрать `dist/` и удалить
+    строку rpm arm64 из `manifest.json` и `SHA256SUMS`, без подписи):
+    `api "$API/agent-install?arch=arm64&format=rpm" | jq '{downloadsEnabled, steps}'`
+    → `true`, `[]`; обновление arm64-агента с `format=rpm` → `steps: []`,
+    `reason: "arch_unavailable"`.
+
+## Часть 7. RPM: хост Rocky Linux 9 `[Р1]`
+
+47. В контейнере Rocky выполнить шаги `download`, `checksum`, `install` из шага
+    41 → коды `0`; `sha256sum` печатает `<файл>: OK`; в выводе установки —
+    команда `enroll` от имени `sard-agent`.
+48. `systemctl is-enabled sard-agent; systemctl is-active sard-agent` →
+    `disabled`, `inactive`; через 60 с `NRestarts=0`;
+    `stat -c '%a %U' /etc/sard/tls /etc/sard/secrets /var/cache/sard/restic`
+    → `700 sard-agent` у каждого.
+49. Шаги `configure`, `enroll` (токен из консоли), `repo-init`, `start` → коды
+    `0`; агент онлайн в консоли с версией `$V`. `curl -m 5 https://github.com`
+    из контейнера → ошибка (сети нет), а шаги прошли.
+50. Обновление: поставить на хосте rpm версии `v0.0.1` по шагам 47–49, сервер
+    `v0.0.2`. Сохранить `sha256sum /etc/sard/agent.yaml /etc/sard/tls/* /etc/sard/secrets/*`.
+    `api "$API/agents/<id>/upgrade?format=rpm" | jq -r '.steps[].kind'` →
+    `download checksum upgrade` (+ `signature` в подписанном образе); шаг
+    `upgrade` — `sudo rpm -Uvh <файл>`. Выполнить шаги → код `0`, в выводе нет
+    `enroll`; `systemctl is-active sard-agent` → `active` без ручного
+    перезапуска; агент онлайн с тем же `id` и версией `v0.0.2`; суммы файлов
+    совпадают с сохранёнными.
+51. Пакеты предрелизов (собрать `make package` с `VERSION=v0.1.0-beta.1`, затем
+    `v0.1.0-beta.2`; затем `v0.1.0-rc.10` и `v0.1.0`): `sudo rpm -Uvh` более
+    новой поверх старой → код `0`; `rpm -q --qf '%{VERSION}\n' sard-agent` →
+    `0.1.0~beta.2`, затем `0.1.0`.
+
+## Часть 8. «Доступно обновление» для предрелизов `[Р2]`
+
+Агентов с нужной версией можно получить без пакетов: собрать агента с
+`-ldflags "-X main.version=<версия>"` и зарегистрировать по части 2, либо на
+моках консоли подставить версии в фикстуры. Для каждой строки — сервер
+указанной версии (образ с пакетами этой версии), затем
+`api "$API/agents" | jq '.items[] | {agentVersion, outdated}'`.
+
+52. Сервер `v0.1.0-beta.2`: агент `v0.1.0-beta.1` → `outdated: true`; агент
+    `v0.1.0-beta.2` → `false`; агент `v0.1.0-beta.10` → `false`.
+53. Сервер `v0.1.0-rc.1`: агент `v0.1.0-beta.10` → `true`; агент `v0.0.1-rc1`
+    (выпущенный тег вне правила) → `false`; агент `v0.1.0-beta.1-5-gabc1234`
+    → `false`.
+54. Сервер `v0.1.0`: агент `v0.1.0-rc.10` → `true`; агент `v0.1.0-alpha.1` →
+    `false`; агент `dev` → `false`.
+55. Сервер `v0.0.1-rc1` (тег вне правила): агент `v0.0.1-beta.1` → `false`.
+56. Тот же сервер `v0.1.0-rc.1` с `SARD_AGENT_DOWNLOADS=false`: агент
+    `v0.1.0-beta.3` → `true`.
+57. Порядок совпадает с пакетами: `scripts/test-release-version.sh` → код `0`,
+    и тест сервера, читающий `deploy/release/version-order.txt`, зелёный
+    (`./gradlew :server:test --tests '*AgentVersions*'`). Добавить в файл
+    строку не по порядку (например, `v0.0.5` в конец) → оба теста падают;
+    вернуть файл.
+
+## Часть 9. Консоль: rpm `[Р1]`
+
+58. Блок установки → выбор формата: `deb`, `rpm`, `tar.gz` по порядку; у rpm
+    подпись «RHEL, Oracle Linux, Rocky»; по умолчанию выбран deb.
+59. Выбрать rpm → в Network запрос `agent-install?...format=rpm...`; команды на
+    экране совпадают с ответом символ в символ, шаг установки —
+    `sudo rpm -Uvh …`.
+60. Карточка устаревшего агента, выбрать rpm → шаги обновления из ответа и
+    пояснение, что пакет заменяет только программу; для tar.gz пояснения нет.
+    `[Р3]` В Network у ответа `upgrade?format=rpm` — `keepsConfiguration: true`,
+    у `format=tar` — `false`.
+61. Агент из шага 52 (`v0.1.0-beta.1` при сервере `v0.1.0-beta.2`) → в списке
+    пометка «доступно обновление» с версией `v0.1.0-beta.2`; агент `v0.0.1-rc1`
+    — без пометки.
+62. Языки RU и EN для шагов 58–61 → нет ключей i18n и текста другого языка,
+    кроме команд, имён файлов и версий.
+
+## Часть 10. Консоль: пояснение о конфигурации решает сервер `[Р3]`
+
+63. На моках (`VITE_API_MOCKS=1`) изменить ответ обновления в
+    `web/src/mocks/api/install.ts` так, чтобы для `format=deb` было
+    `keepsConfiguration: false`; открыть карточку устаревшего агента с
+    выбранным deb → шаги обновления есть, пояснения о конфигурации и ключах
+    нет. Изменить для `format=tar` на `true`, выбрать tar.gz → пояснение
+    есть. Вернуть файл.
+64. На моках агент без архитектуры (не присылал Register) → в карточке
+    объяснение причины `arch_unknown`, ни одной команды и нет пояснения о
+    конфигурации; в Network — `keepsConfiguration: false`.
