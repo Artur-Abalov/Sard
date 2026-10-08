@@ -44,5 +44,7 @@
   начинается с местного времени самого `after`, которое отсекается
   сравнением. `Due` зависит от интерфейса `Fires`, тест — на фейках.
 - CRAP по `scheduler` (`.bin/crap`, JaCoCo по тестам пакета): максимум 4.6
-  (`CronSchedule.nextInRealTime`), порог 6. Полный `make gate M=server` не
-  запускался — требует Docker для Testcontainers всего сервера.
+  (`CronSchedule.nextInRealTime`), порог 6. `ArchitectureTest` и
+  `make license-check` зелёные. Полный `make gate M=server` не запускался.
+  Docker в контейнере сессии не запущен по умолчанию; `dockerd` стартует
+  вручную — для Testcontainers фазы 2.
