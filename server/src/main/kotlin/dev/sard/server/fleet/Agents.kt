@@ -26,6 +26,7 @@ private const val REVOKE_CERTIFICATES =
 /** The name of the built-in provider (agent `crypto.ResticAESName`). */
 private const val BUILT_IN_PROVIDER = "restic-aes"
 private val NOBODY = setOf(UUID(0, 0))
+private const val LIVE_BUILTIN_AGENTS = "select count(a) from Agent a where a.builtin = true and a.revokedAt is null"
 private const val MARK_DUPLICATE = "update Agent set duplicateSessionAt = :now where id = :agent"
 
 /** Which agents are connected, and the one thing the server does to a connection: refuse a revoked agent's. */
@@ -137,6 +138,12 @@ class Agents(
             null -> null
             Connectivity.ONLINE -> "id in :online"
             Connectivity.OFFLINE -> "id not in :online"
+        }
+
+    /** Whether the tenant has a built-in agent that is not revoked (the rule [revoke] asks confirmation for). */
+    fun builtinLive(tenantId: UUID): Boolean =
+        sessions.inTenant(tenantId) { session ->
+            session.createSelectionQuery(LIVE_BUILTIN_AGENTS, java.lang.Long::class.java).singleResult.toLong() > 0
         }
 
     fun get(

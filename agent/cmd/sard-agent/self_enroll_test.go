@@ -18,6 +18,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 
+	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/enroll"
 )
 
@@ -58,6 +59,7 @@ func selfDepsFor(clk clock) selfEnrollDeps {
 		readFile:  os.ReadFile,
 		writeFile: os.WriteFile,
 		clock:     clk,
+		inspect:   enroll.InspectIdentity,
 		enroll:    enrollDeps{hostname: func() (string, error) { return "sard-self", nil }, clock: realEnrollClock{}, dial: enroll.RealDial},
 	}
 }
@@ -231,6 +233,39 @@ func TestAMarkerWriteFailureIsAWriteError(t *testing.T) {
 	}
 	requireCertKeyMatch(t, f.h.certFile, f.h.keyFile)
 	requireNoLeak(t, f.token, r, f.h)
+}
+
+// Регистрация прошла, но личность после неё не читается — ошибка агента,
+// сообщение называет файл сертификата, id не печатается пустым
+func TestAnIdentityUnreadableAfterEnrollingIsAnAgentErrorNamingTheCertFile(t *testing.T) {
+	f := newSucceedingFakeFixture(t, "a1")
+	p := writeTokenFile(t, f.h, f.token)
+	d := selfDepsFor(newTickClock())
+	d.inspect = func(config.TLS) (enroll.IdentityStatus, error) {
+		return enroll.IdentityStatus{}, errors.New("stat failed")
+	}
+	r := runSelfStep(context.Background(), f.h.configPath, p, d)
+	if r.proceed || r.code != exitAgentError {
+		t.Fatalf("%+v", r)
+	}
+	if !strings.Contains(r.errOut, f.h.certFile) || strings.Contains(r.out, "enrolled as agent") {
+		t.Fatalf("stdout=%q stderr=%q", r.out, r.errOut)
+	}
+	requireNoLeak(t, f.token, r, f.h)
+}
+
+// Личность читается без ошибки, но id в сертификате нет — то же самое
+func TestAnEmptyAgentIdAfterEnrollingIsAnAgentErrorNamingTheCertFile(t *testing.T) {
+	f := newSucceedingFakeFixture(t, "a1")
+	p := writeTokenFile(t, f.h, f.token)
+	d := selfDepsFor(newTickClock())
+	d.inspect = func(config.TLS) (enroll.IdentityStatus, error) {
+		return enroll.IdentityStatus{Exists: true}, nil
+	}
+	r := runSelfStep(context.Background(), f.h.configPath, p, d)
+	if r.proceed || r.code != exitAgentError || !strings.Contains(r.errOut, f.h.certFile) {
+		t.Fatalf("%+v", r)
+	}
 }
 
 // Без файла токена агент с идентичностью стартует как обычно

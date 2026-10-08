@@ -37,6 +37,7 @@ type selfEnrollDeps struct {
 	readFile  func(path string) ([]byte, error)
 	writeFile func(path string, data []byte, perm os.FileMode) error
 	clock     clock
+	inspect   func(config.TLS) (enroll.IdentityStatus, error)
 	enroll    enrollDeps
 }
 
@@ -45,6 +46,7 @@ func realSelfEnrollDeps(hostname hostnameFunc) selfEnrollDeps {
 		readFile:  os.ReadFile,
 		writeFile: os.WriteFile,
 		clock:     realEnrollClock{},
+		inspect:   enroll.InspectIdentity,
 		enroll:    enrollDeps{hostname: hostname, clock: realEnrollClock{}, dial: enroll.RealDial},
 	}
 }
@@ -165,7 +167,11 @@ func (s *selfEnroller) enrollWith(ctx context.Context, raw string) selfOutcome {
 	if code := doEnroll(ctx, opts, io.Discard, s.stderr, s.deps.enroll); code != exitOK {
 		return selfOutcome{outcomeExit, code}
 	}
-	status, _ := enroll.InspectIdentity(s.cfg.TLS)
+	status, err := s.deps.inspect(s.cfg.TLS)
+	if err != nil || status.AgentID == "" {
+		_, _ = fmt.Fprintf(s.stderr, "sard-agent: enrolled but the agent id could not be read from %s: %v\n", s.cfg.TLS.CertFile, err)
+		return selfOutcome{outcomeExit, exitAgentError}
+	}
 	if err := s.deps.writeFile(s.markerPath(), []byte(tokenDigest(raw)), tokenMarkerMode); err != nil {
 		_, _ = fmt.Fprintf(s.stderr, "sard-agent: enrolled as agent %s but writing the token marker %s failed: %v\n", status.AgentID, s.markerPath(), err)
 		return selfOutcome{outcomeExit, exitWrite}

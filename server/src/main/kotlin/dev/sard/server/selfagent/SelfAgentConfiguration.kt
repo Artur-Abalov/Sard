@@ -5,7 +5,7 @@ package dev.sard.server.selfagent
 
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.extension.TenantResolver
-import dev.sard.server.persistence.TenantSessions
+import dev.sard.server.fleet.Agents
 import org.postgresql.PGConnection
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -18,7 +18,6 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ThreadFactory
 import javax.sql.DataSource
 
-private const val LIVE_BUILTIN_AGENTS = "select count(a) from Agent a where a.builtin = true and a.revokedAt is null"
 private const val SCRAM = "scram-sha-256"
 
 /** A built-in token with less than this left is replaced: the agent must have time to use it (Р1). */
@@ -37,12 +36,9 @@ private class DefaultTenantTokens(
 }
 
 private class DefaultTenantAgents(
-    private val sessions: TenantSessions,
+    private val agents: Agents,
 ) : BuiltinAgents {
-    override fun live(): Boolean =
-        sessions.inTenant(TenantResolver.DEFAULT_TENANT_ID) { session ->
-            session.createSelectionQuery(LIVE_BUILTIN_AGENTS, java.lang.Long::class.java).singleResult.toLong() > 0
-        }
+    override fun live(): Boolean = agents.builtinLive(TenantResolver.DEFAULT_TENANT_ID)
 }
 
 /** The role's password goes to the server as a SCRAM verifier computed here, never as text in SQL. */
@@ -75,8 +71,8 @@ class SelfAgentConfiguration {
     fun selfAgentCheck(
         channel: SelfChannel,
         tokens: EnrollmentTokens,
-        sessions: TenantSessions,
-    ) = SelfAgentCheck(channel, DefaultTenantTokens(tokens), DefaultTenantAgents(sessions))
+        agents: Agents,
+    ) = SelfAgentCheck(channel, DefaultTenantTokens(tokens), DefaultTenantAgents(agents))
 
     @Bean
     @ConditionalOnExpression("'\${sard.self-agent.dir:}' != ''")
