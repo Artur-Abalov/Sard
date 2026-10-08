@@ -12,10 +12,11 @@
 `docs/specs/agent/host-setup.feature`; ADR 0049 (каталог `agent.d`) и 0050
 (права запуска); ручная проверка — `docs/qa/host-setup.md`.
 
-Решения о репозиториях s3 и sftp — срез A8b: пока `repo add` подключает только
-**локальный путь**; любой другой адрес отказывает с `BACKEND_NOT_SUPPORTED`.
-Для облачного хранилища репозиторий по-прежнему описывают в `agent.yaml`
-(`docs/operations/repo-init.md`).
+`repo add` подключает **локальный путь** и **S3** (срез A8b-1, раздел «Репозиторий
+S3» ниже). Адреса `sftp:` и остальных видов (`rest:`, `b2:`, `azure:`, `gs:`,
+`swift:`, `rclone:`) отказывают с `BACKEND_NOT_SUPPORTED`; репозиторий SFTP пока
+описывают в `agent.yaml` руками (`docs/operator/05a-storage.md`,
+`docs/operations/repo-init.md`).
 
 ## Кто запускает
 
@@ -61,6 +62,7 @@ service:
 | `/etc/sard/agent.d/secret-<имя>.yaml` | секрет | `root:sard-agent`, `0640` |
 | `/etc/sard/secrets/<имя>` | значение секрета | `sard-agent`, `0600` |
 | `/etc/sard/secrets/restic-<имя>.pass` | пароль репозитория | `sard-agent`, `0600` |
+| `/etc/sard/secrets/restic-<имя>.env` | ключи репозитория S3 (A8b) | `sard-agent`, `0600` |
 | `/etc/systemd/system/sard-agent.service.d/sard-repo-<имя>.conf` | `ReadWritePaths` каталога репозитория | `root`, `0644` |
 
 Агент читает основной файл, затем фрагменты `agent.d/*.yaml` в порядке имён
@@ -111,7 +113,7 @@ sudo sard-agent secret remove <имя> [--no-restart]
 ## Локальный репозиторий
 
 ```bash
-sudo sard-agent repo add <имя> <абсолютный путь> [--password-stdin | --password-from-file <путь>] [--no-restart] [--timeout 2m]
+sudo sard-agent repo add <имя> <абсолютный путь> [--password-stdin | --password-from-file <путь>] [--no-restart] [--timeout 2m] [--connect-timeout 30s]
 sudo sard-agent repo list [--json]
 sudo sard-agent repo show <имя> [--json]
 sudo sard-agent repo password <имя> --reveal
@@ -171,6 +173,75 @@ init мог записать ключ этим паролем), фрагмент
 BACKEND STATUS REPOSITORY_ID` (в `--json` ещё и `defined_in`). `--json` у `repo list`, `repo show` и `secret list` печатает один
 объект JSON в stdout; ошибки по-прежнему текстом в stderr, коды выхода те же.
 
+## Репозиторий S3
+
+```bash
+sudo sard-agent repo add <имя> s3:https://<хост>[:<порт>]/<бакет>[/<путь>] \
+  --access-key-id <id> [--region <регион>] \
+  [--secret-key-stdin | --secret-key-from-file <путь>] \
+  [--password-stdin | --password-from-file <путь>] [--no-restart] [--timeout 2m] [--connect-timeout 30s]
+```
+
+Адрес — формат restic (с `https`, с `http` и предупреждением о передаче без TLS,
+или без схемы); учётных данных в нём нет (`ADDRESS_INVALID`: нет хоста или
+бакета, другая схема, `user:pass@`, управляющий символ, хост с `-` в начале).
+
+- **Ключи.** `--access-key-id` обязателен (1–128 печатных символов ASCII без
+  пробелов). Секретный ключ — один источник из трёх: `--secret-key-stdin`,
+  `--secret-key-from-file` или терминал (дважды, без эха); значением флага или
+  аргументом он не передаётся. Один перевод строки в конце отбрасывается (`\n`
+  или `\r\n`), любой другой управляющий символ — `SECRET_INVALID`; пусто —
+  `SECRET_EMPTY`, больше 65536 байт — `SECRET_TOO_LARGE`. `--secret-key-stdin`
+  вместе с `--password-stdin` — `SECRET_SOURCE_CONFLICT`. `--region`:
+  `a–z 0–9 -`, до 64 символов.
+- **`env`-файл.** `secrets/restic-<имя>.env`, владелец и группа — пользователь
+  службы, `0600`: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, с `--region` —
+  `AWS_DEFAULT_REGION`. Он пишется временным файлом (владелец и права выставляются
+  до записи содержимого) и становится `env`-файлом в тот же момент, что и файл
+  пароля, после того как restic принял ключи. Существующий `env`-файл под root
+  читается только через проверку владельца и прав (`SECRET_FILE_REJECTED`,
+  если файл не принадлежит пользователю службы, открыт другим, это ссылка или
+  не обычный файл; такой файл не меняется). Файл, на который ссылается другой
+  ключ конфига, — `PATH_IN_USE`.
+- **Проверка.** `restic cat config` от имени пользователя службы с ключами
+  кандидата. Репозитория нет (код 10 restic) — `restic init`, со
+  сгенерированным паролем, как для локального пути; репозиторий есть — нужен
+  его пароль, как выше. Отказ хранилища относится к классу
+  (`S3_KEY_REJECTED`, `STORAGE_ACCESS_DENIED`, `BUCKET_NOT_FOUND`,
+  `BACKEND_UNAVAILABLE`, `WRONG_PASSWORD`, `BACKEND_REFUSED`); сообщение
+  называет причину, адрес (пароль скрыт), очищенную строку restic и что делать.
+  Таблица причин — `docs/operator/05a-storage.md`.
+- **`--connect-timeout`** (по умолчанию `30s`; для любого вида адреса,
+  в том числе локального пути) ограничивает первое обращение к хранилищу:
+  restic получает SIGTERM, а через 10 секунд SIGKILL; код 6,
+  `BACKEND_UNAVAILABLE`, в сообщении последняя причина повтора, которую restic
+  успел напечатать. `restic init` и проверку пароля после первого ответа он не
+  ограничивает, их ограничивает `--timeout`; он объемлет всё. Время, которое
+  команда ждёт ответа оператора на терминале, не входит ни в тот, ни в другой.
+- **Следов нет**, пока кандидат не принят: ни `env`-файла, ни файла пароля, ни
+  фрагмента, ни временных файлов, `systemctl` не вызывается, строки аудита нет.
+  После принятия ключей и отказа `restic init` `env`-файл и файл пароля остаются
+  и используются повтором без вопросов.
+- **Повтор.** Тот же адрес, тот же `--access-key-id`, тот же `--region` и
+  либо ни одного источника секретного ключа (терминал не спрашивается), либо
+  тот же ключ — `unchanged`: ничего не записано, нет строки аудита и перезапуска.
+  Другие ключи или регион подключённого имени проверяются так же, как новые;
+  принятые заменяют `env`-файл атомарно (`credentials updated`, строка аудита
+  `repository <имя> credentials updated`, службу не перезапускают: `env`-файл
+  читается на каждом шаге); отклонённые оставляют `env`-файл как был. Другой
+  адрес для того же имени — `REPOSITORY_CONFLICT`.
+- **Итог** называет имя, `backend: s3`, адрес (пароль скрыт), `repository_id`,
+  `env`-файл и файл пароля, «created» или «attached» и напоминает о копии
+  пароля (`repo password <имя> --reveal`); предупреждения о бэкапе на этом же
+  хосте нет. Drop-in systemd для S3 не пишется. `repo remove` удаляет
+  фрагмент и `env`-файл, файл пароля оставляет.
+- **Аудит.** `repository <имя> added` или `repository <имя> credentials
+  updated`; ключей, паролей и адресов с учётными данными в строке нет. Секретный
+  ключ и пароль нигде не появляются: ни в выводе, ни в аргументах процессов, ни
+  в журналах; ключи получает только restic, окружением из `env`-файла.
+- **Бакет.** Если бакета нет, `restic init` создаёт его сам, когда ключ вправе
+  создавать бакеты (Н19). Агент бакеты не создаёт и не проверяет заранее.
+
 ## Применение изменения и перезапуск
 
 После изменения, в этом порядке:
@@ -224,9 +295,9 @@ sudo journalctl -t sard-agent --since today
 |---|---|---|
 | 0 | успех | изменение применено или не требовалось; чтение; `--help` |
 | 1 | ошибка агента | restic не найден, старый, непригоден; `BACKEND_REFUSED`; `SERVICE_RESTART_FAILED` |
-| 2 | использование | флаги, `PRIVILEGES_REQUIRED`, `SERVICE_USER_UNKNOWN`, `NAME_INVALID`, конфиг и `DUPLICATE_NAME`, `DEFINED_IN_CONFIG`, `PATH_IN_USE`, `SECRET_SOURCE_MISSING`, `SECRET_SOURCE_CONFLICT`, `SECRET_EMPTY`, `SECRET_TOO_LARGE`, `SECRET_MISMATCH`, `BACKEND_NOT_SUPPORTED`, `LOCAL_PATH_INVALID`, `WRONG_PASSWORD`, `REPOSITORY_UNKNOWN`, `REVEAL_REQUIRED`, `PASSWORD_FILE_MISSING` |
+| 2 | использование | флаги, `PRIVILEGES_REQUIRED`, `SERVICE_USER_UNKNOWN`, `NAME_INVALID`, конфиг и `DUPLICATE_NAME`, `DEFINED_IN_CONFIG`, `PATH_IN_USE`, `SECRET_SOURCE_MISSING`, `SECRET_SOURCE_CONFLICT`, `SECRET_EMPTY`, `SECRET_TOO_LARGE`, `SECRET_MISMATCH`, `SECRET_INVALID`, `SECRET_FILE_REJECTED`, `BACKEND_NOT_SUPPORTED`, `ADDRESS_INVALID`, `LOCAL_PATH_INVALID`, `WRONG_PASSWORD`, `S3_KEY_REJECTED`, `STORAGE_ACCESS_DENIED`, `BUCKET_NOT_FOUND`, `REPOSITORY_UNKNOWN`, `REVEAL_REQUIRED`, `PASSWORD_FILE_MISSING` |
 | 4 | идентичность есть | `REPOSITORY_CONFLICT`: имя уже подключено к другому адресу |
-| 6 | временная | `BACKEND_UNAVAILABLE`, `TIMEOUT`, `INTERRUPTED`, `CONFIG_LOCKED`, `INIT_IN_PROGRESS` |
+| 6 | временная | `BACKEND_UNAVAILABLE` (в том числе `--connect-timeout`), `TIMEOUT`, `INTERRUPTED`, `CONFIG_LOCKED`, `INIT_IN_PROGRESS` |
 | 7 | запись | `CONFIG_WRITE` (каталог или файл `agent.d`, `secrets`, drop-in, каталог репозитория, смена владельца), `LOCK_WRITE` |
 
 Таблица каждой команды — в её `--help`.
