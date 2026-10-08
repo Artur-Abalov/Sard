@@ -82,26 +82,50 @@ func (o outcome) failure() error {
 // WARN for the lines that report an error or a warning (F1 ПГ22).
 func (p Plugin) run(ctx context.Context, h sdk.Host, path string, args, environ []string, stdout io.Writer) outcome {
 	o := outcome{tool: filepath.Base(path)}
-	var last, lastError string
-	var mu sync.Mutex
+	quote := &quoter{detailPrefix: o.tool + ": detail: "}
 	code, err := p.runner().Run(ctx, Cmd{Path: path, Args: args, Env: environ, Stdout: stdout, Stderr: func(line string) {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			return
 		}
 		h.Log(logLevel(line), line)
-		mu.Lock()
-		defer mu.Unlock()
-		last = line
-		if isError(line) {
-			lastError = line
-		}
+		quote.add(line)
 	}})
-	mu.Lock()
-	defer mu.Unlock()
-	o.code, o.err = code, err
-	o.reason = cut(firstNonEmpty(lastError, last))
+	o.code, o.err, o.reason = code, err, quote.reason()
 	return o
+}
+
+// quoter picks, from the stderr of a tool, the line that names the error and
+// the first line "<tool>: detail: …" after it.
+type quoter struct {
+	detailPrefix string
+
+	mu                  sync.Mutex
+	last, errLine, more string
+}
+
+func (q *quoter) add(line string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.last = line
+	switch {
+	case isError(line):
+		q.errLine, q.more = line, ""
+	case q.errLine != "" && q.more == "" && strings.HasPrefix(line, q.detailPrefix):
+		q.more = strings.TrimPrefix(line, q.detailPrefix)
+	}
+}
+
+// reason is the quote of the error, cut to a length, and its detail, if any,
+// cut separately: "<quote> — detail: <text>".
+func (q *quoter) reason() string {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	quote := cut(firstNonEmpty(q.errLine, q.last))
+	if q.more == "" {
+		return quote
+	}
+	return quote + " — detail: " + cut(q.more)
 }
 
 func firstNonEmpty(a, b string) string {
