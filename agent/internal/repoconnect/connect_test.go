@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
@@ -299,5 +300,122 @@ func ok(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// failingCreate fails the temporary files whose name contains match.
+type failingCreate struct {
+	hostsetup.OS
+	match string
+}
+
+func (f failingCreate) CreateTemp(dir, pattern string) (hostsetup.File, error) {
+	if strings.Contains(pattern, f.match) {
+		return nil, errors.New("injected")
+	}
+	return f.OS.CreateTemp(dir, pattern)
+}
+
+func TestATemporaryFileThatCannotBeMadeIsAWriteErrorThatNamesTheFile(t *testing.T) {
+	for match, name := range map[string]string{"restic-extra.env": "restic-extra.env", "restic-extra.pass": "restic-extra.pass"} {
+		w := newWorld(t)
+		w.conn.FS = failingCreate{match: match}
+		w.conn.Env = &repoconnect.EnvFile{Final: w.env(), Content: []byte("AWS_ACCESS_KEY_ID=K\n")}
+		f := w.conn.Connect(t.Context())
+		if f == nil || f.Reason != refusal.ConfigWrite || !strings.Contains(f.Detail, name) {
+			t.Errorf("%s: failure %v", match, f)
+		}
+		if names := w.leftovers(); len(names) != 0 {
+			t.Errorf("%s: files %v", match, names)
+		}
+	}
+}
+
+func TestASecretsDirectoryThatCannotBeMadeIsAWriteError(t *testing.T) {
+	for _, withEnv := range []bool{false, true} {
+		w := newWorld(t)
+		ok(t, os.WriteFile(filepath.Join(w.dir, "file"), nil, 0o600))
+		w.conn.SecretsDir = filepath.Join(w.dir, "file", "secrets")
+		if withEnv {
+			w.conn.Env = &repoconnect.EnvFile{Final: w.env(), Content: []byte("AWS_ACCESS_KEY_ID=K\n")}
+		}
+		if f := w.conn.Connect(t.Context()); f == nil || f.Reason != refusal.ConfigWrite {
+			t.Errorf("env %v: failure %v", withEnv, f)
+		}
+	}
+}
+
+func TestAPasswordThatCannotBeMadeUpIsAPasswordFileWriteError(t *testing.T) {
+	w := newWorld(t)
+	w.conn.Random = strings.NewReader("")
+	if f := w.conn.Connect(t.Context()); f == nil || f.Reason != refusal.PasswordFileWrite {
+		t.Fatalf("failure %v", f)
+	}
+}
+
+func TestAPasswordTheOperatorCannotGiveEndsTheCommand(t *testing.T) {
+	w := newWorld(t)
+	w.repo.initialized, w.repo.password = true, "other"
+	w.conn.AskPassword = func() ([]byte, *refusal.Failure) {
+		return nil, refusal.Fail(refusal.SecretSourceMissing, "no terminal")
+	}
+	if f := w.conn.Connect(t.Context()); f == nil || f.Reason != refusal.SecretSourceMissing {
+		t.Fatalf("failure %v", f)
+	}
+	if names := w.leftovers(); len(names) != 0 {
+		t.Fatalf("files %v", names)
+	}
+}
+
+func TestAnAskedPasswordThatCannotBeStagedIsAWriteError(t *testing.T) {
+	w := newWorld(t)
+	w.repo.initialized, w.repo.password = true, "asked"
+	w.conn.AskPassword = func() ([]byte, *refusal.Failure) {
+		w.conn.FS = failingCreate{match: "restic-extra.pass"}
+		return []byte("asked\n"), nil
+	}
+	if f := w.conn.Connect(t.Context()); f == nil || f.Reason != refusal.ConfigWrite {
+		t.Fatalf("failure %v", f)
+	}
+}
+
+func TestOnlyTheFirstAccessIsLimitedByTheConnectTimeout(t *testing.T) {
+	w := newWorld(t)
+	w.repo.initialized, w.repo.password = true, "asked"
+	clock := &stepClock{fire: make(chan time.Time, 1)}
+	w.conn.Bound = repoconnect.Bound{Clock: clock, Timeout: time.Minute}
+	if f := w.conn.Connect(t.Context()); f != nil {
+		t.Fatal(f)
+	}
+	if len(w.repo.files) != 2 || len(clock.asked) != 1 {
+		t.Fatalf("restic ran %d times, the clock was asked %v", len(w.repo.files), clock.asked)
+	}
+}
+
+func TestAWrongPasswordNobodyChoseIsNotFinalButAWrongGivenOneIs(t *testing.T) {
+	w := newWorld(t)
+	w.repo.initialized, w.repo.password = true, "asked"
+	w.conn.AskPassword = func() ([]byte, *refusal.Failure) { return []byte("still wrong\n"), nil }
+	f := w.conn.Connect(t.Context())
+	if f == nil || f.Reason != refusal.WrongPassword {
+		t.Fatalf("failure %v", f)
+	}
+	if names := w.leftovers(); len(names) != 0 {
+		t.Fatalf("files %v", names)
+	}
+}
+
+func TestAFailedCommitOfThePasswordFileIsAWriteErrorAndLeavesNoTemporaryFile(t *testing.T) {
+	w := newWorld(t)
+	w.conn.FS = failingFS{failRename: "restic-extra.pass"}
+	f := w.conn.Connect(t.Context())
+	if f == nil || f.Reason != refusal.ConfigWrite || !strings.Contains(f.Detail, "restic-extra.pass") {
+		t.Fatalf("failure %v", f)
+	}
+	if names := w.leftovers(); len(names) != 0 {
+		t.Fatalf("files %v", names)
+	}
+	if w.repo.inits != 0 {
+		t.Fatal("init ran")
 	}
 }

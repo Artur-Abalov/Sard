@@ -163,3 +163,47 @@ func TestTheKeyOfAnEnvFileIsFoundAgain(t *testing.T) {
 		t.Fatalf("id %q region %q", id, region)
 	}
 }
+
+func TestThePortsAtTheEdgesOfTheRangeAreAccepted(t *testing.T) {
+	for _, address := range []string{"s3:https://s3.example.com:1/b", "s3:https://s3.example.com:65535/b", "s3:https://s3.example.com:2/b", "s3:https://s3.example.com:65534/b"} {
+		if _, f := hostsetup.CheckS3Address(address); f != nil {
+			t.Errorf("%s: %v", address, f)
+		}
+	}
+	for _, address := range []string{"s3:https://s3.example.com:0/b", "s3:https://s3.example.com:65536/b", "s3:https://s3.example.com:/b", "s3:https://s3.example.com:-1/b"} {
+		if _, f := hostsetup.CheckS3Address(address); f == nil || !strings.Contains(f.Detail, "port") {
+			t.Errorf("%s: %v", address, f)
+		}
+	}
+}
+
+func TestAnAddressWithoutAHostSaysSo(t *testing.T) {
+	_, f := hostsetup.CheckS3Address("s3:https:///bucket-b/extra")
+	if f == nil || !strings.Contains(f.Detail, "names no host") {
+		t.Fatalf("%v", f)
+	}
+}
+
+func TestATextAfterTheBracketOfAnIPv6HostIsNotAPort(t *testing.T) {
+	for _, address := range []string{"s3:https://[::1]x/b", "s3:https://[::1/b", "s3:https://[]/b"} {
+		if _, f := hostsetup.CheckS3Address(address); f == nil || !strings.Contains(f.Detail, "host") {
+			t.Errorf("%s: %v", address, f)
+		}
+	}
+	if got, f := hostsetup.CheckS3Address("s3:https://[::1]:9000/b"); f != nil || got.Host != "[::1]:9000" {
+		t.Errorf("%+v %v", got, f)
+	}
+}
+
+func TestTheMessageHidesWhatItCannotRedactAndRedactsWhatItCan(t *testing.T) {
+	for _, c := range []struct{ address, shown, hidden string }{
+		{"s3:backup@s3.example.com/b", "credentials", "backup@"},
+		{"s3:https://u:SECRET@s3.example.com/b", "u:***@s3.example.com", "SECRET"},
+		{"s3:https://s3.example.com/", "s3:https://s3.example.com/", "\x00"},
+	} {
+		_, f := hostsetup.CheckS3Address(c.address)
+		if f == nil || !strings.Contains(f.Detail, c.shown) || strings.Contains(f.Detail, c.hidden) {
+			t.Errorf("%s: %v", c.address, f)
+		}
+	}
+}

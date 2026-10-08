@@ -136,3 +136,12 @@ func TestTheLogKeepsTheTailOfWhatWasWritten(t *testing.T) {
 		t.Fatalf("kept %d bytes", len(got))
 	}
 }
+
+func TestTheSmallestTimeoutIsStillALimit(t *testing.T) {
+	clock := &stepClock{fire: make(chan time.Time, 1)}
+	repo := &fakeRepo{initialized: true, id: "ID-1", current: &repoconnect.Files{Password: "/nonexistent"}}
+	_, _, _ = repoconnect.Bound{Clock: clock, Timeout: time.Nanosecond}.Inspect(t.Context(), repo, target, &repoconnect.Log{})
+	if len(clock.asked) != 1 {
+		t.Fatalf("timers %v", clock.asked)
+	}
+}

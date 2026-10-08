@@ -35,6 +35,7 @@ func TestTheRefusalOfAnS3StorageHasItsClassAndCause(t *testing.T) {
 		{"Fatal: Stat: SignatureDoesNotMatch: x", nil, refusal.S3KeyRejected, refusal.ClassUsage, "SignatureDoesNotMatch"},
 		{"unable to create lock in backend: client.PutObject: Forbidden: Operation is not allowed for this key.", nil, refusal.StorageAccessDenied, refusal.ClassUsage, "Operation is not allowed for this key"},
 		{"Fatal: create repository at s3:https://s3.example.com/bucket-b/extra failed: The specified bucket does not exist", nil, refusal.BucketNotFound, refusal.ClassUsage, "bucket-b"},
+		{"Fatal: create repository at s3:http://garage:3900/absent/main failed: Bucket not found: absent", nil, refusal.BucketNotFound, refusal.ClassUsage, "bucket-b"},
 		{"Fatal: Stat: NoSuchBucket: x", nil, refusal.BucketNotFound, refusal.ClassUsage, "bucket-b"},
 		{"Fatal: Stat: Get \"https://s3.example.com/bucket-b/extra/config\": dial tcp: lookup s3.example.com: no such host", restic.ErrNetwork, refusal.BackendUnavailable, refusal.ClassTemporary, "no such host"},
 		{"Fatal: unable to open config file: Stat: unexpected response 418", nil, refusal.BackendRefused, refusal.ClassAgentError, "unexpected response 418"},

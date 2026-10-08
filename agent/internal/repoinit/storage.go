@@ -16,7 +16,7 @@ import (
 // problem too. The exact strings were measured on the F2 stand.
 var (
 	keyRejectedCauses   = []string{"invalidaccesskeyid", "signaturedoesnotmatch", "does not exist in our records", "signature we calculated does not match"}
-	bucketMissingCauses = []string{"nosuchbucket", "bucket does not exist"}
+	bucketMissingCauses = []string{"nosuchbucket", "bucket does not exist", "bucket not found"}
 	accessDeniedCauses  = []string{"access denied", "accessdenied", "forbidden", "permission denied"}
 )
 
