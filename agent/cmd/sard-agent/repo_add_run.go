@@ -163,8 +163,8 @@ func runRepoAdd(ctx context.Context, args []string, stdout, stderr io.Writer, de
 	if f != nil {
 		return c.fail(f)
 	}
-	ctx, c.budget = newBudget(ctx, deps.clock, opts.timeout)
-	defer c.budget.cancel(nil)
+	ctx, c.budget = repoconnect.NewBudget(ctx, deps.clock, opts.timeout)
+	defer c.budget.Cancel(nil)
 	return c.addChecked(ctx, url)
 }
 
