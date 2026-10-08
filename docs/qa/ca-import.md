@@ -190,10 +190,12 @@ CAEXT=(-addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCe
    (файлы личности агента — `docs/operations/agent-enroll.md`); то же на H2.
 4. На B: шаги 1–3 раздела 2 **без запуска**, старый `.env` вместо нового.
    Подготовить источник по `docs/operator/08`:
+
    ```bash
    cd ~/sard && mkdir pki-import && tar -C pki-import -xzf sard-pki-*.tgz
    sudo chown -R 10001:10001 pki-import && sudo chmod 700 pki-import pki-import/ca && sudo chmod 600 pki-import/ca/*
    ```
+
    и `docker-compose.override.yml` из раздела 8 (монтирование `./pki-import`
    только для чтения, `SARD_PKI_IMPORT_DIR`).
    `sudo find pki-import -printf '%p %m %u %T@\n' > /tmp/src.before; sudo sha256sum pki-import/ca/* >> /tmp/src.before`.
