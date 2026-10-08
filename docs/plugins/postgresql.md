@@ -4,7 +4,7 @@
 custom) потоком в репозиторий restic: на диске хоста дамп не появляется. Роли и другие
 глобальные объекты кластера (`pg_dumpall --globals-only`) он сохраняет вторым снимком,
 связанным с первым. Спецификация — `docs/specs/agent/postgresql-plugin.feature`, ручная
-проверка — `docs/qa/postgresql-plugin.md`, решения — `docs/adr/0048-postgresql-plugin.md`.
+проверка — `docs/qa/postgresql-plugin.md`, решения — `docs/adr/0049-postgresql-plugin.md`.
 
 Не входит в плагин: проверка восстановления в песочнице (этап 2), кластеры и реплики,
 WAL, `pg_basebackup`, PITR, автоматическое восстановление (пока его делают руками, см.

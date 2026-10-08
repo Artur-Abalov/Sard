@@ -262,6 +262,15 @@ class ApiContractIntegrationTest(
     }
 
     @Test
+    fun `Признак сохранения конфигурации в схеме обновления обязателен и не бывает null`() {
+        assertTrue("keepsConfiguration" in schema("AgentUpgrade").path("required").strings())
+        val property = schema("AgentUpgrade").path("properties").path("keepsConfiguration")
+        assertEquals("boolean", property.path("type").asString())
+        assertFalse(property.has("nullable"), "$property")
+        assertFalse(schema("AgentInstall").path("properties").has("keepsConfiguration"))
+    }
+
+    @Test
     fun `a source requires its agent and repository`() {
         for (name in listOf("SourceInput", "Source")) {
             val required = schema(name).path("required").strings()

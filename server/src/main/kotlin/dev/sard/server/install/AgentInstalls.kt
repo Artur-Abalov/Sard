@@ -14,6 +14,8 @@ data class InstallInfo(
     val steps: List<InstallStep>,
     /** Why an upgrade has no steps although downloads are on; always null for an install. */
     val reason: UpgradeReason? = null,
+    /** Whether the upgrade keeps the configuration and keys; false when there are no steps to promise it for. */
+    val keepsConfiguration: Boolean = false,
 )
 
 /**
@@ -55,9 +57,15 @@ class AgentInstalls(
             is AgentOffer.Serving -> {
                 val file = arch?.let { offer.catalog.fileOf(it, format.manifestName) }
                 val steps = file?.let { commands.upgrade(releasePackage(offer, it, format, fetch)) }.orEmpty()
-                serving(offer, steps, if (file == null) missing(arch) else null)
+                val reason = if (file == null) missing(arch) else null
+                serving(offer, steps, reason, keeps(format, steps))
             }
         }
+
+    private fun keeps(
+        format: InstallFormat,
+        steps: List<InstallStep>,
+    ) = format.keepsConfiguration && steps.isNotEmpty()
 
     private fun missing(arch: String?) =
         when (arch) {
@@ -76,7 +84,16 @@ class AgentInstalls(
         offer: AgentOffer.Serving,
         steps: List<InstallStep>,
         reason: UpgradeReason?,
-    ) = InstallInfo(true, offer.version, offer.catalog.resticVersion, offer.catalog.signed, steps, reason)
+        keepsConfiguration: Boolean = false,
+    ) = InstallInfo(
+        true,
+        offer.version,
+        offer.catalog.resticVersion,
+        offer.catalog.signed,
+        steps,
+        reason,
+        keepsConfiguration,
+    )
 
     private fun withheld(offer: AgentOffer.Withheld) = InstallInfo(false, offer.version, null, false, emptyList())
 }

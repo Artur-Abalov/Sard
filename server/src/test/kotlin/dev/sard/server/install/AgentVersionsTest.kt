@@ -5,8 +5,10 @@ package dev.sard.server.install
 
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /** Rule "Агент старше раздаваемой версии помечен как устаревший" (В4). */
 @MutFlowTest
@@ -64,5 +66,93 @@ class AgentVersionsTest {
     fun `Нерелизная сборка сервера не помечает никого`() {
         assertEquals(false, outdated("v1.3.2", offered = "0.0.0-dev"))
         assertEquals(false, outdated("v1.3.2", offered = "dev"))
+    }
+
+    @Test
+    fun `Порядок сравнения совпадает с цепочкой version-order`() {
+        val path = checkNotNull(System.getProperty("sard.test.version-order-file")) { "run through Gradle" }
+        val chain = File(path).readLines().map(String::trim).filter { it.isNotEmpty() && !it.startsWith("#") }
+        assertTrue(chain.size >= 10, "the chain has ${chain.size} versions")
+        for ((i, agent) in chain.withIndex()) {
+            for ((j, offered) in chain.withIndex()) {
+                assertEquals(i < j, outdated(agent, offered), "agent $agent, offered $offered")
+            }
+        }
+    }
+
+    @Test
+    fun `Номер предрелиза сравнивается как число`() {
+        assertEquals(true, outdated("v0.1.0-beta.2", offered = "v0.1.0-beta.10"))
+        assertEquals(false, outdated("v0.1.0-beta.10", offered = "v0.1.0-beta.2"))
+        assertEquals(true, outdated("v0.1.0-rc.2", offered = "v0.1.0-rc.10"))
+    }
+
+    @Test
+    fun `Бета старше rc той же версии`() {
+        assertEquals(true, outdated("v0.1.0-beta.10", offered = "v0.1.0-rc.1"))
+        assertEquals(false, outdated("v0.1.0-rc.1", offered = "v0.1.0-beta.10"))
+    }
+
+    @Test
+    fun `Предрелиз старше релиза той же версии`() {
+        assertEquals(true, outdated("v0.1.0-rc.10", offered = "v0.1.0"))
+        assertEquals(false, outdated("v0.1.0", offered = "v0.1.0-rc.10"))
+    }
+
+    @Test
+    fun `Предрелиз следующей версии новее предыдущего релиза`() {
+        assertEquals(true, outdated("v0.1.0", offered = "v0.1.1-beta.1"))
+        assertEquals(false, outdated("v0.2.0-beta.1", offered = "v0.1.0"))
+    }
+
+    @Test
+    fun `Одинаковые предрелизы не устарели`() {
+        assertEquals(false, outdated("v0.1.0-beta.1", offered = "v0.1.0-beta.1"))
+    }
+
+    @Test
+    fun `Версия агента вне правила тегов релиза не помечается`() {
+        val notReleases =
+            listOf(
+                "v0.0.1-rc1",
+                "v0.1.0-alpha.1",
+                "v0.1.0-rc",
+                "v0.1.0-beta.0",
+                "v0.1.0-rc.01",
+                "v0.01.0",
+                "v0.1.0-RC.1",
+                "v0.1.0-rc.1.1",
+                "v0.1.0+build",
+                "0.0.9",
+                "v0.0.9-beta.1-5-gabc1234",
+                "v0.0.9-5-gabc1234",
+                "dev",
+                "",
+            )
+        for (agent in notReleases) assertEquals(false, outdated(agent, offered = "v0.1.0"), agent)
+    }
+
+    @Test
+    fun `Сервер с версией вне правила тегов релиза не помечает никого`() {
+        val notReleases = listOf("v0.0.1-rc1", "v0.1.0-alpha.1", "v0.1.0-beta.1-5-gabc1234", "0.0.0-dev")
+        for (offered in notReleases) assertEquals(false, outdated("v0.0.1-beta.1", offered), offered)
+    }
+
+    @Test
+    fun `Теги из общего списка нерелизных не являются релизами ни у агента, ни у сервера`() {
+        val path = checkNotNull(System.getProperty("sard.test.not-release-tags-file")) { "run through Gradle" }
+        val tags = File(path).readLines().map(String::trim).filter { it.isNotEmpty() && !it.startsWith("#") }
+        assertTrue(tags.size >= 15, "the list has ${tags.size} tags")
+        for (tag in tags) {
+            assertEquals(false, outdated(tag, offered = "v99.0.0"), "agent $tag")
+            assertEquals(false, outdated("v0.0.0-beta.1", offered = tag), "offered $tag")
+        }
+    }
+
+    @Test
+    fun `Число больше Long в версии не делает её релизной`() {
+        assertEquals(false, outdated("v0.1.0-beta.99999999999999999999", offered = "v0.1.0"))
+        assertEquals(false, outdated("v0.1.0", offered = "v99999999999999999999.0.0"))
+        assertEquals(false, outdated("v0.1.0-beta.1", offered = "v0.1.0-beta.99999999999999999999"))
     }
 }

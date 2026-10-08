@@ -12,13 +12,16 @@ enum class InstallArch(
     ARM64("arm64"),
 }
 
-/** What the console offers: a deb package or the tar.gz archive. RPM stays in the release but is not offered. */
+/** What the console offers: a deb package, an rpm package or the tar.gz archive (ADR 0048). */
 enum class InstallFormat(
     /** The name of the format in manifest.json. */
     val manifestName: String,
+    /** Whether an upgrade in this format leaves /etc/sard (configuration, keys) alone; only deb, rpm are verified. */
+    val keepsConfiguration: Boolean,
 ) {
-    DEB("deb"),
-    TAR("tar.gz"),
+    DEB("deb", true),
+    RPM("rpm", true),
+    TAR("tar.gz", false),
 }
 
 /** The tool the commands download with. */

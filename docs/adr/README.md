@@ -49,4 +49,5 @@
 | [0045](0045-build-once.md) | Собрать один раз, тестировать собранное: одна сборка агента и jar на прогон, e2e на релизном агенте |
 | [0046](0046-reverse-proxy-forward-headers.md) | Консоль за обратным прокси: `SARD_FORWARD_HEADERS=native` (forward-headers Spring Boot) |
 | [0047](0047-e2e-storage-backends.md) | Стенд S3 (Garage) и SFTP в e2e; `openssh-client` — зависимость агента (F2) |
-| [0048](0048-postgresql-plugin.md) | Плагин postgresql (F1): `psql` с хоста, `Dump.Tags` и `Dump.Extra`, глобальные объекты вторым снимком |
+| [0048](0048-release-versions.md) | Версии релизов: `vX.Y.Z-beta.N`/`-rc.N`, deb/rpm `X.Y.Z~pre`, имена файлов без `~`, rpm в проверках, `/usr/libexec/sard` |
+| [0049](0049-postgresql-plugin.md) | Плагин postgresql (F1): `psql` с хоста, `Dump.Tags` и `Dump.Extra`, глобальные объекты вторым снимком |

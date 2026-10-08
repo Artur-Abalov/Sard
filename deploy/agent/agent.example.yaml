@@ -23,7 +23,7 @@ secrets:
 scripts:
   app-maintenance: /usr/local/bin/app-maintenance
 restic: # restic ships with the agent: docs/adr/0017-restic-shipped-with-agent.md
-  path: /usr/lib/sard/restic          # default: "restic" next to the sard-agent binary
+  # path: /usr/libexec/sard/restic    # default: "restic" next to the sard-agent binary
   cache_dir: /var/cache/sard/restic   # default; also restic's HOME. Under the packaged
                                       # systemd unit another path needs ReadWritePaths=
                                       # in a drop-in (see sard-agent.service). Not ssh's
