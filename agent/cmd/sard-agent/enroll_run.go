@@ -49,7 +49,13 @@ type enrollDeps struct {
 // runEnroll is "sard-agent enroll ...": args excludes the "enroll" word
 // itself. It never reads stdin.
 func runEnroll(ctx context.Context, args []string, stdout, stderr io.Writer, hostname hostnameFunc) int {
-	return runEnrollWithDeps(ctx, args, stdout, stderr, enrollDeps{hostname: hostname, clock: realEnrollClock{}, dial: enroll.RealDial})
+	return runEnrollWithDeps(ctx, args, stdout, stderr, realEnrollDeps(hostname))
+}
+
+// realEnrollDeps is the production wiring, shared by "enroll" and the
+// self-enroll step.
+func realEnrollDeps(hostname hostnameFunc) enrollDeps {
+	return enrollDeps{hostname: hostname, clock: realEnrollClock{}, dial: enroll.RealDial}
 }
 
 func runEnrollWithDeps(ctx context.Context, args []string, stdout, stderr io.Writer, deps enrollDeps) int {

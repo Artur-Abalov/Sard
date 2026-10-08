@@ -47,7 +47,7 @@ func realSelfEnrollDeps(hostname hostnameFunc) selfEnrollDeps {
 		writeFile: os.WriteFile,
 		clock:     realEnrollClock{},
 		inspect:   enroll.InspectIdentity,
-		enroll:    enrollDeps{hostname: hostname, clock: realEnrollClock{}, dial: enroll.RealDial},
+		enroll:    realEnrollDeps(hostname),
 	}
 }
 

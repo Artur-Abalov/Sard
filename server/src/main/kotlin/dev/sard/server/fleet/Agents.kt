@@ -26,8 +26,13 @@ private const val REVOKE_CERTIFICATES =
 /** The name of the built-in provider (agent `crypto.ResticAESName`). */
 private const val BUILT_IN_PROVIDER = "restic-aes"
 private val NOBODY = setOf(UUID(0, 0))
+
+/** The HQL twin of [liveBuiltin]: change one, change the other. */
 private const val LIVE_BUILTIN_AGENTS = "select count(a) from Agent a where a.builtin = true and a.revokedAt is null"
 private const val MARK_DUPLICATE = "update Agent set duplicateSessionAt = :now where id = :agent"
+
+/** The rule "a built-in agent that is not revoked"; [LIVE_BUILTIN_AGENTS] states it in HQL. */
+private fun Agent.liveBuiltin(): Boolean = builtin && revokedAt == null
 
 /** Which agents are connected, and the one thing the server does to a connection: refuse a revoked agent's. */
 interface AgentPresence {
@@ -191,7 +196,7 @@ class Agents(
     ): Attempt {
         // The lock orders this against a run being started for the agent (Runs.start shares it).
         val agent = session.find(Agent::class.java, agentId, LockModeType.PESSIMISTIC_WRITE) ?: return Attempt.Missing
-        val unconfirmed = agent.builtin && agent.revokedAt == null && confirmation != SELF_AGENT_CONFIRMATION
+        val unconfirmed = agent.liveBuiltin() && confirmation != SELF_AGENT_CONFIRMATION
         return if (unconfirmed) Attempt.Unconfirmed else Attempt.Done(revokeIn(session, tenantId, agent))
     }
 
