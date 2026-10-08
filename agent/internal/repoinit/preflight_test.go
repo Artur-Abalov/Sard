@@ -13,6 +13,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 )
@@ -75,29 +76,29 @@ func TestPreflightRefusesEachProblemWithItsReason(t *testing.T) {
 	cases := []struct {
 		name    string
 		arrange func(h files, r *config.Repository, create *bool)
-		reason  repoinit.Reason
-		class   repoinit.Class
+		reason  refusal.Reason
+		class   refusal.Class
 		text    string
 	}{
 		{"provider", func(_ files, r *config.Repository, _ *bool) { r.CryptoProvider = "gost" },
-			repoinit.CryptoProviderUnsupported, repoinit.ClassUsage, `"gost"`},
+			refusal.CryptoProviderUnsupported, refusal.ClassUsage, `"gost"`},
 		{"no password file", func(h files, _ *config.Repository, _ *bool) { delete(h.info, "/etc/sard/main.pass") },
-			repoinit.PasswordFileMissing, repoinit.ClassUsage, "--generate-password"},
+			refusal.PasswordFileMissing, refusal.ClassUsage, "--generate-password"},
 		{"empty password file", func(h files, _ *config.Repository, _ *bool) {
 			h.info["/etc/sard/main.pass"] = secrets.Info{Mode: 0o600, UID: uid}
-		}, repoinit.PasswordFileEmpty, repoinit.ClassUsage, "is empty"},
+		}, refusal.PasswordFileEmpty, refusal.ClassUsage, "is empty"},
 		{"wide password file", func(h files, _ *config.Repository, _ *bool) {
 			h.info["/etc/sard/main.pass"] = secrets.Info{Mode: 0o640, UID: uid, Size: 1}
-		}, repoinit.SecretFileRejected, repoinit.ClassUsage, "repositories[3].password_file"},
+		}, refusal.SecretFileRejected, refusal.ClassUsage, "repositories[3].password_file"},
 		{"env file of another owner", func(h files, _ *config.Repository, _ *bool) {
 			h.info["/etc/sard/main.env"] = secrets.Info{Mode: 0o600, UID: 0, Size: 1}
-		}, repoinit.SecretFileRejected, repoinit.ClassUsage, "repositories[3].env_file"},
+		}, refusal.SecretFileRejected, refusal.ClassUsage, "repositories[3].env_file"},
 		{"no env file", func(h files, _ *config.Repository, _ *bool) { delete(h.data, "/etc/sard/main.env") },
-			repoinit.EnvFileMissing, repoinit.ClassUsage, "env_file"},
+			refusal.EnvFileMissing, refusal.ClassUsage, "env_file"},
 		{"bad env file", func(h files, _ *config.Repository, _ *bool) {
 			h.data["/etc/sard/main.env"] = "A=b\nLD_PRELOAD=ENV-MARKER\n"
 		},
-			repoinit.EnvFileInvalid, repoinit.ClassUsage, "line 2"},
+			refusal.EnvFileInvalid, refusal.ClassUsage, "line 2"},
 	}
 	for _, c := range cases {
 		h, r, create := goodHost(), repo, false
@@ -122,7 +123,7 @@ func TestPreflightChecksTheProviderBeforeTheFiles(t *testing.T) {
 	r := repo
 	r.CryptoProvider = "gost"
 	_, f := repoinit.Preflight(files{}.host(), r, 0, false)
-	if f.Reason != repoinit.CryptoProviderUnsupported {
+	if f.Reason != refusal.CryptoProviderUnsupported {
 		t.Fatalf("%v", f)
 	}
 }
@@ -138,7 +139,7 @@ func TestASecretFileRejectionIsPrintedAsA1WroteIt(t *testing.T) {
 
 func TestAnUnknownRepositoryListsTheKnownNames(t *testing.T) {
 	f := repoinit.UnknownRepository("backup", "/etc/sard/agent.yaml", []string{"main", "offsite"})
-	if f.Reason != repoinit.RepositoryUnknown || f.Class != repoinit.ClassUsage ||
+	if f.Reason != refusal.RepositoryUnknown || f.Class != refusal.ClassUsage ||
 		f.Error() != `REPOSITORY_UNKNOWN: no repository named "backup" in /etc/sard/agent.yaml; configured repositories: main, offsite` {
 		t.Errorf("%q", f.Error())
 	}
@@ -156,7 +157,7 @@ func TestAcquireLockRefusesASecondInit(t *testing.T) {
 	}
 	defer unlock()
 	_, f = repoinit.AcquireLock(os.OpenFile, cache, r)
-	if f == nil || f.Reason != repoinit.InitInProgress || f.Class != repoinit.ClassTemporary {
+	if f == nil || f.Reason != refusal.InitInProgress || f.Class != refusal.ClassTemporary {
 		t.Fatalf("%v", f)
 	}
 }
@@ -164,7 +165,7 @@ func TestAcquireLockRefusesASecondInit(t *testing.T) {
 func TestAcquireLockNamesTheCacheDirItCannotUse(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "absent")
 	_, f := repoinit.AcquireLock(os.OpenFile, dir, config.Repository{Name: "main"})
-	if f == nil || f.Reason != repoinit.LockWrite || f.Class != repoinit.ClassWrite ||
+	if f == nil || f.Reason != refusal.LockWrite || f.Class != refusal.ClassWrite ||
 		!strings.Contains(f.Detail, "restic.cache_dir") || !strings.Contains(f.Detail, dir) || !strings.Contains(f.Detail, "no such file") {
 		t.Fatalf("%v", f)
 	}
@@ -182,8 +183,8 @@ func TestCreatePasswordWritesThePassword(t *testing.T) {
 func TestCreatePasswordExplainsAWriteFailure(t *testing.T) {
 	failing := func(string, []byte) error { return fs.ErrPermission }
 	_, err := repoinit.CreatePassword(failing, strings.NewReader(strings.Repeat("k", 32)), repo)
-	var f *repoinit.Failure
-	if !errors.As(err, &f) || f.Reason != repoinit.PasswordFileWrite || !strings.Contains(f.Detail, "/etc/sard") {
+	var f *refusal.Failure
+	if !errors.As(err, &f) || f.Reason != refusal.PasswordFileWrite || !strings.Contains(f.Detail, "/etc/sard") {
 		t.Fatalf("%v", err)
 	}
 }
@@ -191,7 +192,7 @@ func TestCreatePasswordExplainsAWriteFailure(t *testing.T) {
 func TestCreatePasswordReportsAGeneratorFailureAsNoWriteFailure(t *testing.T) {
 	write := func(string, []byte) error { t.Fatal("nothing must be written"); return nil }
 	_, err := repoinit.CreatePassword(write, strings.NewReader("short"), repo)
-	var f *repoinit.Failure
+	var f *refusal.Failure
 	if err == nil || errors.As(err, &f) {
 		t.Fatalf("%v", err)
 	}

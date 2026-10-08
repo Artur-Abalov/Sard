@@ -7,8 +7,9 @@ import "time"
 
 // Internals exposed to the external tests of this package.
 var (
-	SignalGroup  = signalGroup
-	MustVersions = mustVersions
+	SignalGroup   = signalGroup
+	MustVersions  = mustVersions
+	CredentialFor = credentialFor
 )
 
 func (p ProcessExecutor) GraceForTest() time.Duration { return p.grace() }

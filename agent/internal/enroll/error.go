@@ -81,3 +81,9 @@ func trustError(format string, a ...any) *Error {
 func temporaryError(address, format string, a ...any) *Error {
 	return &Error{Class: ClassTemporary, Address: address, msg: fmt.Sprintf(format, a...)}
 }
+
+// NewWriteError is a ClassWrite error for a local problem the command
+// found itself, such as a missing directory.
+func NewWriteError(msg string, err error) *Error {
+	return &Error{Class: ClassWrite, msg: msg, err: err}
+}

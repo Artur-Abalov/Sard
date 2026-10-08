@@ -19,6 +19,10 @@ func (h *repoHost) watchReads() *[]string {
 		read = append(read, name)
 		return os.ReadFile(name)
 	}
+	h.deps.readOwned = func(name string, _ uint32) ([]byte, error) {
+		read = append(read, name)
+		return os.ReadFile(name)
+	}
 	return &read
 }
 

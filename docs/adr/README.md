@@ -50,4 +50,6 @@
 | [0046](0046-reverse-proxy-forward-headers.md) | Консоль за обратным прокси: `SARD_FORWARD_HEADERS=native` (forward-headers Spring Boot) |
 | [0047](0047-e2e-storage-backends.md) | Стенд S3 (Garage) и SFTP в e2e; `openssh-client` — зависимость агента (F2) |
 | [0048](0048-release-versions.md) | Версии релизов: `vX.Y.Z-beta.N`/`-rc.N`, deb/rpm `X.Y.Z~pre`, имена файлов без `~`, rpm в проверках, `/usr/libexec/sard` |
-| [0049](0049-postgresql-plugin.md) | Плагин postgresql (F1): `psql` с хоста, `Dump.Tags` и `Dump.Extra`, глобальные объекты вторым снимком |
+| [0049](0049-agent-config-overlay.md) | Каталог фрагментов конфига агента `agent.d`: файл на репозиторий и секрет, `DUPLICATE_NAME`, права и порядок записи (A8a) |
+| [0050](0050-agent-privilege-model.md) | Права запуска команд агента: `sudo` для изменений, пользователь службы читает; restic от его имени; аудит в syslog (A8a) |
+| [0051](0051-postgresql-plugin.md) | Плагин postgresql (F1): `psql` с хоста, `Dump.Tags` и `Dump.Extra`, глобальные объекты вторым снимком |

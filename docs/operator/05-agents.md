@@ -14,30 +14,39 @@
    шаги на хосте по порядку. Хосту нужен доступ только к серверу
    ([раздел 4](04-tls-and-names.md), «Раздача пакетов агента»). Подробно и
    вручную, без консоли, — [установка агента](../operations/agent-install.md).
-3. **Репозиторий.** Перед шагом «Создайте репозиторий» поправьте секцию
-   `repositories` в `/etc/sard/agent.yaml` под своё хранилище: адрес restic
-   (`s3:…`, `sftp:…`, локальный путь), `password_file` и, для облачных
-   хранилищ, `env_file` с ключами. Локальный путь требует разрешения на запись
-   для службы — `ReadWritePaths` ([репозиторий агента](../operations/repo-init.md),
-   «Каталог кэша restic и блокировка»). S3 и SFTP — [раздел 5a](05a-storage.md):
-   `env_file`, ключ SSH и `known_hosts` пользователя службы.
-4. **Регистрация и репозиторий** — от имени пользователя службы:
+3. **Регистрация** — через `sudo`: файлы идентичности получает пользователь
+   службы, отсутствующий каталог `/etc/sard/tls` команда создаёт сама:
 
    ```bash
-   sudo -u sard-agent sard-agent enroll --server <sard.example.com>:9090 --token <токен>
-   sudo -u sard-agent sard-agent repo init --generate-password main
+   sudo sard-agent enroll --server <sard.example.com>:9090 --token <токен>
+   ```
+
+   Коды выхода и что с ними делать — [регистрация](../operations/agent-enroll.md).
+4. **Репозиторий и секреты** — тоже через `sudo`. Локальное хранилище одной
+   командой (создаёт каталог, пароль, разрешение записи для службы и файл
+   рядом с конфигом, `agent.yaml` не меняется):
+
+   ```bash
+   sudo sard-agent repo add main /srv/sard/main
+   printf '%s' "$PG_PASSWORD" | sudo sard-agent secret set pg-prod --stdin
    sudo systemctl enable --now sard-agent.service
    ```
 
-   Коды выхода и что с ними делать — [регистрация](../operations/agent-enroll.md),
+   Репозиторий в облачном хранилище (`s3:…`, `sftp:…`) пока описывается в
+   секции `repositories` файла `/etc/sard/agent.yaml` (адрес, `password_file`,
+   `env_file` с ключами) и создаётся `sudo sard-agent repo init
+   --generate-password main`. S3 и SFTP — [раздел 5a](05a-storage.md):
+   `env_file`, ключ SSH и `known_hosts` пользователя службы. Все команды,
+   права и коды выхода —
+   [настройка хоста](../operations/agent-host-setup.md),
    [репозиторий](../operations/repo-init.md).
-5. **Копия пароля репозитория вне хоста.** `repo init --generate-password`
-   создаёт ключ restic только на этом хосте
+5. **Копия пароля репозитория вне хоста.** `repo add` и `repo init
+   --generate-password` создают ключ restic только на этом хосте
    (`/etc/sard/secrets/restic-main.pass`). Без копии потеря хоста — потеря
-   бэкапов: сохраните содержимое файла в менеджер паролей или сейф.
+   бэкапов: сохраните пароль в менеджер паролей или сейф.
 
    ```bash
-   sudo cat /etc/sard/secrets/restic-main.pass
+   sudo sard-agent repo password main --reveal
    ```
 
 6. **Проверка.** Агент появляется в «Агентах» со статусом «в сети»; на
@@ -46,6 +55,8 @@
 
 После `repo init` службу перезапускают (`sudo systemctl restart sard-agent`),
 если она уже работала: сервер узнаёт о репозитории только при подключении.
+`repo add`, `secret set` и `secret remove` делают это сами, если нет идущих
+шагов (`--no-restart` отменяет перезапуск).
 
 ## Повторная регистрация и клоны
 

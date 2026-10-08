@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 )
 
@@ -19,25 +21,30 @@ type initState struct {
 	repo    config.Repository
 	checked repoinit.Checked
 	binary  string
+	who     hostsetup.Principal
 }
 
 // runRepoInit is "sard-agent repo init ...": args excludes "init". The
 // checks run in the order of С5: flags, config, name, crypto_provider,
 // password_file, env_file, restic, lock, password generation, backend.
-func runRepoInit(ctx context.Context, args []string, stdout, stderr io.Writer, deps repoDeps) int {
+func runRepoInit(ctx context.Context, args []string, stdout, stderr io.Writer, deps hostDeps) int {
 	opts, code := parseRepoFlags("init", args, stderr, deps)
 	if code != exitOK {
 		return code
 	}
+	who, f := authorize(deps, "repo init", opts, false, true)
+	if f != nil {
+		return report(stderr, "repo init", f)
+	}
 	ctx, cancel := repoContext(ctx, deps.clock, opts.timeout)
 	defer cancel(nil)
-	st, code := prepareInit(ctx, opts, stderr, deps)
+	st, code := prepareInit(ctx, opts, who, stderr, deps)
 	if code != exitOK {
 		return code
 	}
 	unlock, f := repoinit.AcquireLock(deps.openLock, cacheDir(st.cfg, deps), st.repo)
 	if f != nil {
-		return reportRepoFailure(stderr, "init", f)
+		return report(stderr, "repo init", f)
 	}
 	defer unlock()
 	return initRepository(ctx, st, opts, stdout, stderr, deps)
@@ -45,7 +52,7 @@ func runRepoInit(ctx context.Context, args []string, stdout, stderr io.Writer, d
 
 // cacheDir is restic.cache_dir of the config, or the default when unset;
 // it holds the init lock (В8а).
-func cacheDir(cfg config.Config, deps repoDeps) string {
+func cacheDir(cfg config.Config, deps hostDeps) string {
 	if cfg.Restic.CacheDir != "" {
 		return cfg.Restic.CacheDir
 	}
@@ -68,44 +75,44 @@ func repoContext(ctx context.Context, clk clock, timeout time.Duration) (context
 }
 
 // prepareInit runs the checks that come before the lock.
-func prepareInit(ctx context.Context, opts repoOptions, stderr io.Writer, deps repoDeps) (initState, int) {
+func prepareInit(ctx context.Context, opts hostOptions, who hostsetup.Principal, stderr io.Writer, deps hostDeps) (initState, int) {
 	cfg, code := loadRepoConfig("init", opts.configPath, stderr)
 	if code != exitOK {
 		return initState{}, code
 	}
 	repo, index, f := findRepository(cfg, opts.name, opts.configPath)
 	if f != nil {
-		return initState{}, reportRepoFailure(stderr, "init", f)
+		return initState{}, report(stderr, "repo init", f)
 	}
-	checked, f := repoinit.Preflight(deps.host(), repo, index, opts.generate)
+	checked, f := repoinit.Preflight(deps.host(who.Service.UID), repo, index, opts.generate)
 	if f != nil {
-		return initState{}, reportRepoFailure(stderr, "init", f)
+		return initState{}, report(stderr, "repo init", f)
 	}
-	binary, err := checkRestic(ctx, cfg, opts.configPath, deps.executable, deps.exec)
+	binary, err := checkRestic(ctx, cfg, opts.configPath, deps.executable, deps.exec, runAs(who))
 	if err != nil {
 		return initState{}, reportRepoError(ctx, stderr, "init", err)
 	}
-	return initState{cfg: cfg, repo: repo, checked: checked, binary: binary}, exitOK
+	return initState{cfg: cfg, repo: repo, checked: checked, binary: binary, who: who}, exitOK
 }
 
 // initRepository generates the password if asked, then creates the
 // repository and reports.
-func initRepository(ctx context.Context, st initState, opts repoOptions, stdout, stderr io.Writer, deps repoDeps) int {
+func initRepository(ctx context.Context, st initState, opts hostOptions, stdout, stderr io.Writer, deps hostDeps) int {
 	var generated []string
 	if st.checked.PasswordMissing {
-		password, err := repoinit.CreatePassword(deps.writeNew, deps.random, st.repo)
+		password, err := repoinit.CreatePassword(ownedWriter(deps, st.who), deps.random, st.repo)
 		if err != nil {
 			return reportRepoError(ctx, stderr, "init", err)
 		}
 		generated = []string{password}
 	}
 	target := repoTarget(st.repo, st.checked, generated...)
-	id, f := repoinit.Create(ctx, newRestic(st.cfg, st.binary, deps, st.repo), target)
+	id, f := repoinit.Create(ctx, newRestic(st.cfg, st.binary, deps, st.repo, runAs(st.who)), target)
 	if f != nil {
 		if generated != nil {
 			_, _ = fmt.Fprintf(stderr, "sard-agent repo init: the password file %s created by this command was kept and will be used when the command is repeated\n", st.repo.PasswordFile)
 		}
-		return reportRepoFailure(stderr, "init", f)
+		return report(stderr, "repo init", f)
 	}
 	printInitSuccess(stdout, st.repo, id, passwordNote(opts.generate, st.checked.PasswordMissing))
 	return exitOK
@@ -134,16 +141,21 @@ func passwordNote(generate, created bool) string {
 
 // loadRepoConfig reads the agent config; every problem is a usage error (В6).
 func loadRepoConfig(sub, path string, stderr io.Writer) (config.Config, int) {
+	return loadConfigFor("repo "+sub, path, stderr)
+}
+
+// loadConfigFor is loadRepoConfig for any command.
+func loadConfigFor(words, path string, stderr io.Writer) (config.Config, int) {
 	cfg, err := config.Load(path)
 	if err != nil {
-		return config.Config{}, repoUsage(stderr, sub, fmt.Sprintf("reading config %s: %v", path, err))
+		return config.Config{}, usageFailure(stderr, words, fmt.Sprintf("reading config %s: %v", path, err))
 	}
 	return cfg, exitOK
 }
 
 // findRepository looks the repository up by its exact name; the index is
 // the one A1's messages use (repositories[i]).
-func findRepository(cfg config.Config, name, configPath string) (config.Repository, int, *repoinit.Failure) {
+func findRepository(cfg config.Config, name, configPath string) (config.Repository, int, *refusal.Failure) {
 	for i, r := range cfg.Repositories {
 		if r.Name == name {
 			return r, i, nil

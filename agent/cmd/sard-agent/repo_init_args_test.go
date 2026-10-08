@@ -124,7 +124,7 @@ func TestFlagsAreAcceptedAfterTheRepositoryName(t *testing.T) {
 // Без флага конфига используется конфиг службы по умолчанию
 func TestWithoutTheConfigFlagTheServiceConfigIsUsed(t *testing.T) {
 	h := newRepoHost(t)
-	if got := productionRepoDeps().defaultConfig; got != "/etc/sard/agent.yaml" {
+	if got := productionHostDeps().defaultConfig; got != "/etc/sard/agent.yaml" {
 		t.Fatalf("default config = %q", got)
 	}
 	h.deps.defaultConfig = h.cfgPath

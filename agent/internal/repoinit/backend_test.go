@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 )
@@ -69,15 +70,15 @@ func TestFromResticMapsEachAnswerToItsReasonAndClass(t *testing.T) {
 	cases := []struct {
 		name   string
 		err    error
-		reason repoinit.Reason
-		class  repoinit.Class
+		reason refusal.Reason
+		class  refusal.Class
 	}{
-		{"wrong password", fmt.Errorf("x: %w", restic.ErrWrongPassword), repoinit.WrongPassword, repoinit.ClassUsage},
-		{"empty password", exitErr("an empty password is not allowed", restic.ErrEmptyPassword), repoinit.PasswordFileEmpty, repoinit.ClassUsage},
-		{"network", exitErr("dial tcp: connection refused", restic.ErrNetwork), repoinit.BackendUnavailable, repoinit.ClassTemporary},
-		{"bad output", fmt.Errorf("x: %w", restic.ErrBadOutput), repoinit.ResticOutputUnexpected, repoinit.ClassAgentError},
-		{"anything else", exitErr("Access Denied", nil), repoinit.BackendRefused, repoinit.ClassAgentError},
-		{"locked", fmt.Errorf("x: %w", restic.ErrLocked), repoinit.BackendRefused, repoinit.ClassAgentError},
+		{"wrong password", fmt.Errorf("x: %w", restic.ErrWrongPassword), refusal.WrongPassword, refusal.ClassUsage},
+		{"empty password", exitErr("an empty password is not allowed", restic.ErrEmptyPassword), refusal.PasswordFileEmpty, refusal.ClassUsage},
+		{"network", exitErr("dial tcp: connection refused", restic.ErrNetwork), refusal.BackendUnavailable, refusal.ClassTemporary},
+		{"bad output", fmt.Errorf("x: %w", restic.ErrBadOutput), refusal.ResticOutputUnexpected, refusal.ClassAgentError},
+		{"anything else", exitErr("Access Denied", nil), refusal.BackendRefused, refusal.ClassAgentError},
+		{"locked", fmt.Errorf("x: %w", restic.ErrLocked), refusal.BackendRefused, refusal.ClassAgentError},
 	}
 	for _, c := range cases {
 		f := repoinit.FromRestic(t.Context(), c.err, target)
@@ -114,16 +115,16 @@ func TestACancelledContextIsATimeoutOrAnInterruptNamingTheBackend(t *testing.T) 
 	timedOut, cancel := context.WithCancelCause(t.Context())
 	cancel(repoinit.ErrTimeout)
 	f := repoinit.FromRestic(timedOut, errors.New("ignored"), target)
-	if f.Reason != repoinit.Timeout || f.Class != repoinit.ClassTemporary || !strings.Contains(f.Detail, "backend s3") {
+	if f.Reason != refusal.Timeout || f.Class != refusal.ClassTemporary || !strings.Contains(f.Detail, "backend s3") {
 		t.Errorf("timeout: %+v", f)
 	}
 	interrupted, cancel2 := context.WithCancel(t.Context())
 	cancel2()
 	f = repoinit.FromRestic(interrupted, errors.New("ignored"), target)
-	if f.Reason != repoinit.Interrupted || !strings.Contains(f.Detail, "backend s3") {
+	if f.Reason != refusal.Interrupted || !strings.Contains(f.Detail, "backend s3") {
 		t.Errorf("interrupt: %+v", f)
 	}
-	if repoinit.Interruption(t.Context()) != nil || repoinit.Interruption(timedOut).Reason != repoinit.Timeout {
+	if repoinit.Interruption(t.Context()) != nil || repoinit.Interruption(timedOut).Reason != refusal.Timeout {
 		t.Error("Interruption disagrees with FromRestic")
 	}
 }
@@ -140,7 +141,7 @@ func TestCreateInitialisesAnAbsentRepository(t *testing.T) {
 func TestCreateNeverInitialisesAnExistingRepository(t *testing.T) {
 	r := &fakeRepo{idErrs: []error{nil}, id: "abc"}
 	id, f := repoinit.Create(t.Context(), r, target)
-	if id != "" || f.Reason != repoinit.RepositoryExists || f.Class != repoinit.ClassExists || f.ID != "abc" || !strings.Contains(f.Detail, "abc") || r.initRuns != 0 {
+	if id != "" || f.Reason != refusal.RepositoryExists || f.Class != refusal.ClassExists || f.ID != "abc" || !strings.Contains(f.Detail, "abc") || r.initRuns != 0 {
 		t.Fatalf("%q %+v %d", id, f, r.initRuns)
 	}
 }
@@ -150,12 +151,12 @@ func TestCreateReportsARepositoryThatAppearedBeforeInit(t *testing.T) {
 	exists := fmt.Errorf("restic init: %w", restic.ErrRepositoryExists)
 	r := &fakeRepo{idErrs: []error{noRepo, nil}, id: "abc", initErr: exists}
 	_, f := repoinit.Create(t.Context(), r, target)
-	if f.Reason != repoinit.RepositoryExists || f.ID != "abc" {
+	if f.Reason != refusal.RepositoryExists || f.ID != "abc" {
 		t.Fatalf("%+v", f)
 	}
 	r = &fakeRepo{idErrs: []error{noRepo, noRepo}, initErr: exists}
 	_, f = repoinit.Create(t.Context(), r, target)
-	if f.Reason != repoinit.RepositoryExists || f.ID != "" || strings.Contains(f.Detail, "repository_id") {
+	if f.Reason != refusal.RepositoryExists || f.ID != "" || strings.Contains(f.Detail, "repository_id") {
 		t.Fatalf("without an id: %+v", f)
 	}
 }
@@ -164,7 +165,7 @@ func TestCreateExplainsAnInitFailure(t *testing.T) {
 	noRepo := fmt.Errorf("restic cat: %w", restic.ErrNoRepository)
 	r := &fakeRepo{idErrs: []error{noRepo}, initErr: exitErr("Access Denied", nil)}
 	_, f := repoinit.Create(t.Context(), r, target)
-	if f.Reason != repoinit.BackendRefused || strings.Contains(f.Detail, "partially") {
+	if f.Reason != refusal.BackendRefused || strings.Contains(f.Detail, "partially") {
 		t.Fatalf("%+v", f)
 	}
 }
@@ -173,7 +174,7 @@ func TestAStoppedInitMayHaveCreatedTheRepositoryPartially(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(t.Context())
 	r := &cancellingRepo{cancel: func() { cancel(repoinit.ErrTimeout) }}
 	_, f := repoinit.Create(ctx, r, target)
-	if f.Reason != repoinit.Timeout || !strings.Contains(f.Detail, "may have been created partially") || !strings.Contains(f.Detail, "run the command again") {
+	if f.Reason != refusal.Timeout || !strings.Contains(f.Detail, "may have been created partially") || !strings.Contains(f.Detail, "run the command again") {
 		t.Fatalf("%+v", f)
 	}
 }

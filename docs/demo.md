@@ -26,8 +26,8 @@
 
 Хост агента может быть за NAT (дома): агент сам подключается к серверу, входящие
 порты на нём не нужны. Хранилище бэкапов в демо — каталог на диске самого
-хоста агента (`/srv/sard-repo`); S3 и SFTP подключаются так же, другим адресом
-репозитория.
+хоста агента (`/srv/sard-repo`); S3 и SFTP пока прописываются в `repositories` вручную
+([хранилища](operator/05a-storage.md)).
 
 ## Шаг 0. Подготовка ВМ и имени
 
@@ -196,40 +196,32 @@ sudo -u sard-agent sard-agent enroll --server <sard.example.com>:9090 --token <�
 
 ## Шаг 5. Репозиторий и копия пароля вне хоста
 
-**Что делать.** Пример конфига смотрит в S3; в демо репозиторий — каталог на
-хосте агента. Заодно из конфига убираются примеры секрета `pg-billing` и
-скрипта `app-maintenance`: файла секрета нет, и с ним падает **каждый** шаг
-(«log redaction: cannot read secret "pg-billing"», OQ-153). На хосте агента:
+**Что делать.** В примере конфига нет ни репозиториев, ни секретов: в демо
+репозиторий — каталог на хосте агента, его добавляет команда
+([настройка хоста агента](operations/agent-host-setup.md)). Шаг консоли
+«Создайте репозиторий» (`repo init --generate-password main`) пока не подходит:
+в примере конфига нет репозитория `main` (до A8e, OQ-162). Вместо него на хосте
+агента:
 
 ```bash
-sudo install -d -o sard-agent -g sard-agent -m 0700 /srv/sard-repo
-sudo sed -i -e 's|url: s3:https://s3.example.com/backups/db1|url: /srv/sard-repo/main|' \
-            -e '/env_file: \/etc\/sard\/secrets\/restic-main.env/d' \
-            -e '/^  pg-billing: /d' -e '/^  app-maintenance: /d' /etc/sard/agent.yaml
-sudo mkdir -p /etc/systemd/system/sard-agent.service.d
-printf '[Service]\nReadWritePaths=/srv/sard-repo\n' | sudo tee /etc/systemd/system/sard-agent.service.d/repo.conf
-sudo systemctl daemon-reload
-grep -A3 'repositories:' /etc/sard/agent.yaml
-```
-
-Затем шаги консоли «Создайте репозиторий» и «Запустите службу»:
-
-```bash
-sudo -u sard-agent sard-agent repo init --generate-password main
+sudo sard-agent repo add main /srv/sard-repo/main
 sudo systemctl enable --now sard-agent.service
 ```
+
+`repo add` создаёт каталог, репозиторий restic с сгенерированным паролем и
+drop-in `ReadWritePaths=` для службы.
 
 И сразу — **копия пароля репозитория вне хоста**:
 
 ```bash
-sudo cat /etc/sard/secrets/restic-main.pass
+sudo sard-agent repo password main --reveal
 ```
 
 Строку сохраните в менеджер паролей как «Sard demo — restic main». Без неё
 потеря хоста агента — потеря бэкапов: ключ есть только на нём. Шаг 9
 восстанавливает именно по этой копии.
 
-**Что должно получиться.** `repo init` сообщает, что репозиторий создан, и
+**Что должно получиться.** `repo add` сообщает, что репозиторий создан, и
 напоминает сохранить пароль; `systemctl status sard-agent` — `active
 (running)`. В консоли: агент `demo-host` «в сети», на главной отмечены «Агент
 подключился» и «Репозиторий инициализирован».
@@ -265,7 +257,7 @@ sudo chmod -R a+rX /srv/demo-data
 
 **Если не получилось.** Консоль не принимает конфигурацию — путь должен быть
 абсолютным ([плагин files](plugins/files.md)). Нет репозитория `main` в списке —
-агент не перезапускался после `repo init` (`sudo systemctl restart
+агент не перезапускался после `repo add` (`sudo systemctl restart
 sard-agent`).
 
 ## Шаг 7. Бэкап кнопкой
@@ -281,7 +273,7 @@ sard-agent`).
 **Время.** ~1 мин (оценка).
 
 **Если не получилось.** «ошибка» с «log redaction: cannot read secret» — в
-`/etc/sard/agent.yaml` остался пример секрета (шаг 5). «ошибка» с «permission denied» — файлы не читаются
+`/etc/sard/agent.yaml` описан секрет или скрипт, файла которого нет. «ошибка» с «permission denied» — файлы не читаются
 пользователем `sard-agent` (`chmod -R a+rX`). «потерян» — агент пропал во время
 шага. Журнал шага в консоли показывает вывод restic.
 

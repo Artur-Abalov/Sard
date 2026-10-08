@@ -11,56 +11,14 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
-	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
-	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 )
-
-// repoDeps is everything "sard-agent repo ..." reaches outside its
-// arguments; tests substitute restic, the clock and the file system.
-type repoDeps struct {
-	clock      clock
-	exec       restic.Executor
-	executable func() (string, error)
-	uid        uint32
-	stat       secrets.StatFunc
-	readFile   func(name string) ([]byte, error)
-	writeNew   func(path string, data []byte) error
-	random     io.Reader
-	// openLock opens the init lock file.
-	openLock repoinit.OpenFunc
-	pathEnv  string
-	// defaultConfig is the config used without --config.
-	defaultConfig string
-	// defaultCacheDir is restic.cache_dir when the config leaves it empty.
-	defaultCacheDir string
-}
-
-func productionRepoDeps() repoDeps {
-	return repoDeps{
-		clock:      realEnrollClock{},
-		exec:       restic.ProcessExecutor{},
-		executable: os.Executable,
-		uid:        uint32(os.Getuid()),
-		stat:       secrets.RealStat,
-		readFile:   os.ReadFile,
-		writeNew:   repoinit.WriteNew,
-		random:     rand.Reader,
-		openLock:   os.OpenFile,
-		pathEnv:    os.Getenv("PATH"),
-
-		defaultConfig:   defaultEnrollConfigPath,
-		defaultCacheDir: restic.DefaultCacheDir,
-	}
-}
 
 func isRepoCommand(args []string) bool {
 	return len(args) > 0 && args[0] == "repo"
@@ -69,13 +27,13 @@ func isRepoCommand(args []string) bool {
 // runRepo is "sard-agent repo ...": args excludes the "repo" word itself.
 // It never reads stdin.
 func runRepo(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	return runRepoWithDeps(ctx, args, stdout, stderr, productionRepoDeps())
+	return runRepoWithDeps(ctx, args, stdout, stderr, productionHostDeps())
 }
 
-func runRepoWithDeps(ctx context.Context, args []string, stdout, stderr io.Writer, deps repoDeps) int {
+func runRepoWithDeps(ctx context.Context, args []string, stdout, stderr io.Writer, deps hostDeps) int {
 	run := repoSubcommand(args)
 	if run == nil {
-		_, _ = fmt.Fprintln(stderr, "sard-agent repo: want a subcommand: init or list")
+		_, _ = fmt.Fprintln(stderr, "sard-agent repo: want a subcommand: init, list, add, show, remove or password")
 		return exitUsage
 	}
 	if hasHelpFlag(args[1:]) {
@@ -85,34 +43,38 @@ func runRepoWithDeps(ctx context.Context, args []string, stdout, stderr io.Write
 	return run(ctx, args[1:], stdout, stderr, deps)
 }
 
-// repoSubcommand is the pipeline of args[0], nil for anything but init and list.
-func repoSubcommand(args []string) func(context.Context, []string, io.Writer, io.Writer, repoDeps) int {
-	if len(args) > 0 {
-		switch args[0] {
-		case "init":
-			return runRepoInit
-		case "list":
-			return runRepoList
-		}
+// repoSubcommand is the pipeline of args[0], nil for an unknown subcommand.
+func repoSubcommand(args []string) hostCommand {
+	if len(args) == 0 {
+		return nil
 	}
-	return nil
+	return map[string]hostCommand{
+		"init": runRepoInit, "list": runRepoList, "add": runRepoAdd,
+		"show": runRepoShow, "remove": runRepoRemove, "password": runRepoPassword,
+	}[args[0]]
 }
 
 // newRestic is the wrapper for one repository of the config.
-func newRestic(cfg config.Config, binary string, deps repoDeps, repo config.Repository) *restic.CLI {
+func newRestic(cfg config.Config, binary string, deps hostDeps, repo config.Repository, as *restic.RunAs) *restic.CLI {
 	return restic.New(restic.Options{
 		Binary:   binary,
 		CacheDir: cfg.Restic.CacheDir,
 		Path:     deps.pathEnv,
 		Exec:     deps.exec,
-		Keys:     crypto.NewResticAES(cfg.PasswordFiles()),
-		ReadFile: deps.readFile,
+		Keys:     crypto.NewResticAES(map[string]string{repo.Name: repo.PasswordFile}),
+		ReadFile: deps.ownedReader(runUID(deps, as)),
+		RunAs:    as,
 	}, repo)
 }
 
 // defaultRepoTimeout bounds the whole command unless --timeout says otherwise (В7).
 const defaultRepoTimeout = 2 * time.Minute
 
-func (d repoDeps) host() repoinit.Host {
-	return repoinit.Host{UID: d.uid, Stat: d.stat, ReadFile: d.readFile}
+// runUID is the user restic runs as: the one asked for under sudo, the
+// caller (the service user) otherwise.
+func runUID(deps hostDeps, as *restic.RunAs) uint32 {
+	if as != nil {
+		return as.UID
+	}
+	return deps.euid
 }

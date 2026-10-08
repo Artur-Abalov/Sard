@@ -8,20 +8,28 @@
 # by name only and never receives URLs, keys, passwords or script paths.
 server:
   address: sard.example.com:9090
-tls: # written by `sard-agent enroll` (docs/operations/agent-enroll.md), run
-     # as the sard-agent user; deb/rpm create /etc/sard/tls for it
+tls: # written by `sudo sard-agent enroll` (docs/operations/agent-enroll.md),
+     # which creates /etc/sard/tls itself
   ca_file: /etc/sard/tls/ca.pem
   cert_file: /etc/sard/tls/agent.pem
   key_file: /etc/sard/tls/agent.key
-repositories:
-  - name: main
-    url: s3:https://s3.example.com/backups/db1
-    password_file: /etc/sard/secrets/restic-main.pass # restic key, handed to restic by path
-    env_file: /etc/sard/secrets/restic-main.env # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-secrets:
-  pg-billing: /etc/sard/secrets/pg-billing      # referenced as "password_ref": "pg-billing"
-scripts:
-  app-maintenance: /usr/local/bin/app-maintenance
+# Repositories, secrets and scripts are not defined here: this file is copied
+# as-is to /etc/sard/agent.yaml, and every file named below must exist, or the
+# agent fails the steps (log redaction reads all of them). Add them with
+#   sudo sard-agent repo add <name> <address>     (local directory repository)
+#   sudo sard-agent secret set <name>
+# (docs/operations/agent-host-setup.md). S3 and SFTP repositories are for now
+# written into `repositories` by hand (docs/operator/05a-storage.md). The format:
+#
+# repositories:
+#   - name: main
+#     url: s3:https://s3.example.com/backups/db1
+#     password_file: /etc/sard/secrets/restic-main.pass # restic key, handed to restic by path
+#     env_file: /etc/sard/secrets/restic-main.env # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+# secrets:
+#   pg-billing: /etc/sard/secrets/pg-billing    # referenced as "password_ref": "pg-billing"
+# scripts:
+#   app-maintenance: /usr/local/bin/app-maintenance  # the file must exist
 restic: # restic ships with the agent: docs/adr/0017-restic-shipped-with-agent.md
   # path: /usr/libexec/sard/restic    # default: "restic" next to the sard-agent binary
   cache_dir: /var/cache/sard/restic   # default; also restic's HOME. Under the packaged

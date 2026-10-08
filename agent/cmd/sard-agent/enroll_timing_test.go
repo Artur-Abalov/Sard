@@ -45,7 +45,9 @@ func (c *fakeEnrollClock) fireNow() { c.fire <- time.Now() }
 
 func runEnrollCmdWithClock(clk clock, args ...string) (int, string, string) {
 	var out, errOut strings.Builder
-	code := runEnrollWithDeps(context.Background(), args, &out, &errOut, enrollDeps{hostname: fixedHostname, clock: clk, dial: enroll.RealDial})
+	deps := testEnrollDeps(fixedHostname)
+	deps.clock = clk
+	code := runEnrollWithDeps(context.Background(), args, &out, &errOut, deps)
 	return code, out.String(), errOut.String()
 }
 
@@ -124,7 +126,9 @@ func TestATimeoutAfterSendingEnrollWarnsTheTokenMayHaveBeenSpent(t *testing.T) {
 	var out, errOut strings.Builder
 	done := make(chan int, 1)
 	go func() {
-		code := runEnrollWithDeps(context.Background(), []string{"--config", h.configPath, "--token", token}, &out, &errOut, enrollDeps{hostname: fixedHostname, clock: clk, dial: enroll.RealDial})
+		deps := testEnrollDeps(fixedHostname)
+		deps.clock = clk
+		code := runEnrollWithDeps(context.Background(), []string{"--config", h.configPath, "--token", token}, &out, &errOut, deps)
 		done <- code
 	}()
 	<-srv.started // the server has received the call and is holding it
@@ -146,7 +150,7 @@ func TestInterruptingTheCommandDoesNotChangeTheHost(t *testing.T) {
 	var out, errOut strings.Builder
 	done := make(chan int, 1)
 	go func() {
-		code := runEnroll(ctx, []string{"--config", h.configPath, "--token", token}, &out, &errOut, fixedHostname)
+		code := runEnrollWithDeps(ctx, []string{"--config", h.configPath, "--token", token}, &out, &errOut, testEnrollDeps(fixedHostname))
 		done <- code
 	}()
 	<-srv.started

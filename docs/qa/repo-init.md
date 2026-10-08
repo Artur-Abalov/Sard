@@ -9,6 +9,12 @@ ADR 0030): блокировка init — в `restic.cache_dir`, причина `
 Классы и номера кодов выхода — A2b
 (`docs/specs/agent/agent-enroll.feature`, В3; ADR 0025).
 
+Поправка A8a (2026-10-07, `docs/specs/agent/host-setup.feature`, Р21, Р24,
+Н1): в конфиге QA `service.user` — пользователь, выполняющий QA, иначе
+команды отказывают `PRIVILEGES_REQUIRED`; `repo list --json` допустим
+(шаг 53); `repo init` под `sudo` создаёт файл пароля для `sard-agent`
+(шаг 70).
+
 Выполнима после реализации A5b. Ожидаемый результат указан после «→» в
 каждом шаге. Любое расхождение — дефект.
 
@@ -62,6 +68,8 @@ repositories:
 restic:
   path: $1
   cache_dir: $QA/cache
+service:
+  user: $(id -un)   # A8a, Н1: пользователь QA — «пользователь службы»
 EOF
 [ -n "$1" ] || sed -i '/^  path: $/d' "$H/agent.yaml"; }
 mkcfg "$RB"
@@ -84,9 +92,14 @@ locks() { find "$QA/cache" "$H/sec" -maxdepth 1 -name '.sard-init-*' 2>/dev/null
    ключа нет.
 2. `"$AG" repo list --help; echo "exit=$?"`
    → `exit=0`; справка называет колонки `NAME BACKEND STATUS REPOSITORY_ID`,
-   значения `initialized` и `not-initialized`, флаги `--config` и
-   `--timeout`, коды `0`, `1`, `2`, `6` и правило выбора кода при проблемах
-   строк.
+   значения `initialized` и `not-initialized`, флаги `--config`,
+   `--timeout` и `--json` (поправка Л4а), коды `0`, `1`, `2`, `6` и правило
+   выбора кода при проблемах строк.
+2а. (A8a, Р24) Посторонний пользователь: `sed 's/^  user: .*/  user: sard-agent/' "$H/agent.yaml" > "$QA/other.yaml"`;
+   `"$AG" repo list --config "$QA/other.yaml"; echo "exit=$?"` и
+   `"$AG" repo init --config "$QA/other.yaml" main; echo "exit=$?"`
+   → каждый раз `exit=2`, `PRIVILEGES_REQUIRED`, подсказка `sudo`; `repo` →
+   `no repo`.
 
 ## Часть 1. Отказы repo init до обращения к бэкенду
 
@@ -291,7 +304,11 @@ locks() { find "$QA/cache" "$H/sec" -maxdepth 1 -name '.sard-init-*' 2>/dev/null
 52. Таймаут списка: у `main` — `url: rest:http://10.255.255.1:8000/main`,
     `spare` — исправный; `time rl --timeout 3s`
     → примерно 3 с, `exit=6`; `main … TIMEOUT -`, `spare … not-initialized -`.
-53. `rl extra` → `exit=2`; `rl --json` → `exit=2`; `rl --timeout 0s` → `exit=2`.
+53. `rl extra` → `exit=2`; `rl --json extra` → `exit=2`; `rl --timeout 0s` → `exit=2`.
+    `rl --json` (Л4а) → код тот же, что у `rl` без флага; stdout — один
+    объект JSON: `jq -r '.repositories[] | [.name, .status, (.repository_id // "null")] | @tsv' "$QA/out"`
+    → по строке на репозиторий, у неинициализированного `null`;
+    `jq -r '.repositories[].defined_in' "$QA/out"` → `$H/agent.yaml`.
 54. Конфиг без `repositories`: `rl` → `exit=0`; stdout говорит, что
     репозиториев не задано.
 55. `sleep 600 | "$AG" repo list --config "$H/agent.yaml"; echo "exit=$?"`
@@ -379,14 +396,19 @@ locks() { find "$QA/cache" "$H/sec" -maxdepth 1 -name '.sard-init-*' 2>/dev/null
     `sudo -u sard-agent sard-agent repo init third`
     → `exit=0`; в выводе нет `PASSWORD_FILE_WRITE` и `LOCK_WRITE`;
     `sudo ls -A /etc/sard | grep -c '^\.sard-init-'` → `0`.
-70. От root без `sudo -u`: `sudo sard-agent repo init --generate-password other`
-    (ещё один репозиторий в конфиге) → файл пароля принадлежит `root`;
+70. Под sudo (поправка A8a, Р24): `sudo sard-agent repo init --generate-password other`
+    (ещё один репозиторий в конфиге, локальный `url` в каталоге с
+    `ReadWritePaths`) → `exit=0`;
+    `sudo stat -c '%U %a' /etc/sard/secrets/other.pass` (путь из конфига) →
+    `sard-agent 600`;
+    `sudo find /var/cache/sard/restic <url other> -not -user sard-agent` → пусто;
     `sudo ls -A /var/cache/sard/restic | grep -c '^\.sard-init-'` → `0`;
-    `sudo systemctl restart sard-agent` → служба не стартует, в журнале
-    сообщение A1 о владельце файла. Это ожидаемо и описано в
-    `docs/operations/repo-init.md`.
-71. `docs/operations/repo-init.md` существует и говорит: выполнять команды от
-    имени пользователя службы (`sudo -u sard-agent`); сохранить копию файла
+    `sudo systemctl restart sard-agent` → служба активна, в журнале нет
+    сообщения A1.
+71. `docs/operations/repo-init.md` существует и говорит: выполнять команды
+    через `sudo sard-agent …` (для новых репозиториев — `sudo sard-agent repo add`,
+    `docs/operations/agent-host-setup.md`), запуск от пользователя службы
+    допустим; `sudo -u` в документе нет; сохранить копию файла
     пароля вне хоста; перезапустить службу после инициализации;
     `restic.cache_dir` должен существовать и быть доступен на запись
     пользователю команды (пакет deb/rpm создаёт каталог по умолчанию при

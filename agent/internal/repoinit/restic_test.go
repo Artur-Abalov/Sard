@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 )
@@ -20,21 +21,21 @@ func TestFromCheckExplainsEachProblemOfTheResticBinary(t *testing.T) {
 		name       string
 		ce         *restic.CheckError
 		configured bool
-		reason     repoinit.Reason
+		reason     refusal.Reason
 		contains   []string
 	}{
 		{"not found at the configured path", &restic.CheckError{Problem: restic.NotFound, Binary: bin, Err: fs.ErrNotExist}, true,
-			repoinit.ResticNotFound, []string{bin, "restic.path in " + cfg, minimum}},
+			refusal.ResticNotFound, []string{bin, "restic.path in " + cfg, minimum}},
 		{"not found next to the binary", &restic.CheckError{Problem: restic.NotFound, Binary: bin, Err: fs.ErrNotExist}, false,
-			repoinit.ResticNotFound, []string{bin, "next to the sard-agent binary", "restic.path is not set", cfg, minimum}},
+			refusal.ResticNotFound, []string{bin, "next to the sard-agent binary", "restic.path is not set", cfg, minimum}},
 		{"too old", &restic.CheckError{Problem: restic.TooOld, Binary: bin, Found: "0.18.1", Minimum: restic.Minimum}, true,
-			repoinit.ResticTooOld, []string{"0.18.1", bin, minimum, restic.Pinned.String(), cfg}},
+			refusal.ResticTooOld, []string{"0.18.1", bin, minimum, restic.Pinned.String(), cfg}},
 		{"unusable", &restic.CheckError{Problem: restic.Unusable, Binary: bin, Err: errors.New("exit code 1")}, false,
-			repoinit.ResticUnusable, []string{bin, "cannot be used as restic", "exit code 1"}},
+			refusal.ResticUnusable, []string{bin, "cannot be used as restic", "exit code 1"}},
 	}
 	for _, c := range cases {
 		f := repoinit.FromCheck(c.ce, c.configured, cfg)
-		if f.Reason != c.reason || f.Class != repoinit.ClassAgentError {
+		if f.Reason != c.reason || f.Class != refusal.ClassAgentError {
 			t.Errorf("%s: reason %v class %v", c.name, f.Reason, f.Class)
 		}
 		for _, want := range c.contains {
