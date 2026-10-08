@@ -61,6 +61,15 @@ const (
 	ServiceRestartFailed Reason = "SERVICE_RESTART_FAILED"
 )
 
+// The reasons of repo add for remote storage (A8b, Р28, Р29, Р34).
+const (
+	AddressInvalid      Reason = "ADDRESS_INVALID"
+	SecretInvalid       Reason = "SECRET_INVALID"
+	S3KeyRejected       Reason = "S3_KEY_REJECTED"
+	StorageAccessDenied Reason = "STORAGE_ACCESS_DENIED"
+	BucketNotFound      Reason = "BUCKET_NOT_FOUND"
+)
+
 // Class is the kind of a failure; the command maps it to an exit code
 // (the numbers are A2b's, docs/adr/0025-grpc-error-model.md).
 type Class int
@@ -94,6 +103,9 @@ var classes = map[Reason]Class{
 	ConfigLocked:         ClassTemporary,
 	ConfigWrite:          ClassWrite,
 	ServiceRestartFailed: ClassAgentError,
+
+	AddressInvalid: ClassUsage, SecretInvalid: ClassUsage, S3KeyRejected: ClassUsage,
+	StorageAccessDenied: ClassUsage, BucketNotFound: ClassUsage,
 }
 
 // Failure is a refusal the operator is told about.

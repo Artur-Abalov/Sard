@@ -47,9 +47,10 @@ type fakeExec struct {
 	t       *testing.T
 	replies map[string]reply // by subcommand, e.g. "backup"
 	calls   []restic.Command
-	stdin   []byte // what a readStdin reply read
-	killed  bool   // a readStdin reply was stopped before EOF
-	fatal   string // stderr line printed by every reply, for synthetic cases
+	stdin   []byte   // what a readStdin reply read
+	killed  bool     // a readStdin reply was stopped before EOF
+	fatal   string   // stderr line printed by every reply, for synthetic cases
+	lines   []string // more stderr lines, printed after fatal
 }
 
 func (f *fakeExec) Run(ctx context.Context, cmd restic.Command) (int, error) {
@@ -68,6 +69,9 @@ func (f *fakeExec) Run(ctx context.Context, cmd restic.Command) (int, error) {
 	feed(f.t, r.stderr, cmd.Stderr)
 	if f.fatal != "" {
 		cmd.Stderr([]byte(f.fatal))
+	}
+	for _, l := range f.lines {
+		cmd.Stderr([]byte(l))
 	}
 	if r.during != nil {
 		r.during()
