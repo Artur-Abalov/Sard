@@ -309,7 +309,7 @@ export interface paths {
          * CA of the server
          * @description The fingerprint of the CA, whatever its origin. Requires an administrator session.
          */
-        get: operations["info"];
+        get: operations["getCa"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2112,7 +2112,7 @@ export interface operations {
             };
         };
     };
-    info: {
+    getCa: {
         parameters: {
             query?: never;
             header?: never;

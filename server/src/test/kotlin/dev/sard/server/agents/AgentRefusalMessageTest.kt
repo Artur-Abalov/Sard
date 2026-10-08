@@ -23,6 +23,11 @@ class AgentRefusalMessageTest {
         val line = message(Rejected(AgentAuthFailure.CERT_UNKNOWN, "8f0e", AGENT.agentId, AGENT.tenantId))
         val expected = "reason=CERT_UNKNOWN serial=8f0e agent=${AGENT.agentId} tenant=${AGENT.tenantId} method=$METHOD"
         assertTrue(expected in line, line)
+        val documented =
+            "agent call refused: reason=CERT_UNKNOWN serial=8f0e agent=${AGENT.agentId} " +
+                "tenant=${AGENT.tenantId} method=$METHOD: " +
+                "the certificate was issued by this server's CA, but the database has no record of it: "
+        assertTrue(line.startsWith(documented), line)
         assertTrue("issued by this server's CA" in line, line)
         assertTrue("no record" in line, line)
         assertTrue("not restored or was restored from a copy older than the agent's enrollment" in line, line)

@@ -35,6 +35,7 @@ class CaInfoController(
     @GetMapping
     @ResponseStatus(HttpStatus.OK)
     @Operation(
+        operationId = "getCa",
         summary = "CA of the server",
         description = "The fingerprint of the CA, whatever its origin. Requires an administrator session.",
     )

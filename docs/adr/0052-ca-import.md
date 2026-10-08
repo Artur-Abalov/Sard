@@ -48,8 +48,11 @@ CA старого, а агенты и неиспользованные токе�
   победителя. Сбой записи — `IMPORT_WRITE_FAILED` с именем каталога CA.
 - **Порядок со стартом сервера**: адрес для агентов (`SARD_AGENT_ENDPOINT`)
   проверяется до касания каталога CA, чтобы старт, упавший на нём, не оставлял
-  импортированного CA (`PkiAutoConfiguration` запрашивает `AgentEndpoint`
-  раньше `FileCertificateAuthority`).
+  импортированного CA. Связь обращена: `pki` объявляет `fun interface CaStartPrecondition`,
+  `PkiAutoConfiguration.certificateAuthority` вызывает все такие бины раньше
+  `FileCertificateAuthority`, а `enrollment` регистрирует `agentEndpointBeforeCa`
+  (получение бина `AgentEndpoint` и есть проверка). `pki` не знает про `enrollment`;
+  `PackageCycleTest` следит, чтобы циклов между срезами не было.
 - **Отпечаток** (Р7, OQ-181): лог каждого старта — `CA fingerprint=… origin=generated|existing`
   или `CA imported from <путь>: fingerprint=… origin=imported`. Консоль —
   страница токенов, для любого CA; API — `GET /api/v1/ca` (`{fingerprint}`) только с

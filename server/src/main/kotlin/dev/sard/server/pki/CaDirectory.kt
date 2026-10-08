@@ -24,6 +24,7 @@ import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import java.time.Clock
 import java.time.Duration
+import java.time.Instant
 
 /** The layout of the CA directory, shared with [CaImportSource], which reads the same layout. */
 internal const val CA = "ca"
@@ -141,7 +142,9 @@ class CaDirectory(
         Files.list(dir).use { entries ->
             entries
                 .filter { it.fileName.toString().startsWith(STAGING) }
-                .filter { Files.getLastModifiedTime(it).toInstant() < cutoff }
+                // File.lastModified is 0 for a staging directory a concurrent starter just removed or published:
+                // it counts as stale and deleting it is a no-op, where Files.getLastModifiedTime would throw.
+                .filter { Instant.ofEpochMilli(it.toFile().lastModified()) < cutoff }
                 .forEach { it.toFile().deleteRecursively() }
         }
     }

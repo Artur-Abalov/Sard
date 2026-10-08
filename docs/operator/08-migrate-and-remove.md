@@ -92,7 +92,7 @@ CA на новую машину переносится **импортом**: н�
 Если имя уже указывает на новый сервер, а база ещё не восстановлена, агент
 получает отказ `CERT_UNKNOWN` и **останавливается** (код выхода 78, systemd не
 перезапускает его). В логе сервера:
-`agent call refused: reason=CERT_UNKNOWN serial=… agent=… tenant=…: the certificate was issued by this server's CA, but the database has no record of it`.
+`agent call refused: reason=CERT_UNKNOWN serial=… agent=… tenant=… method=…: the certificate was issued by this server's CA, but the database has no record of it: the database was not restored or was restored from a copy older than the agent's enrollment`.
 Остановите сервер, восстановите базу (шаг 4), запустите сервер и на хосте
 каждого агента выполните:
 

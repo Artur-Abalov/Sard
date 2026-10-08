@@ -3,7 +3,6 @@
 
 package dev.sard.server.pki
 
-import dev.sard.server.enrollment.AgentEndpoint
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.AutoConfiguration
@@ -58,11 +57,11 @@ class PkiAutoConfiguration {
     @ConditionalOnMissingBean
     fun certificateAuthority(
         properties: PkiProperties,
-        agentEndpoint: ObjectProvider<AgentEndpoint>,
+        preconditions: ObjectProvider<CaStartPrecondition>,
     ): CertificateAuthority {
-        // The address agents dial is checked against the server names before the CA directory is touched,
-        // so a start that fails on it leaves no imported CA behind (ADR 0052).
-        agentEndpoint.ifAvailable
+        // Other slices (the address agents dial, for one) register a CaStartPrecondition; all of them hold
+        // before the CA directory is touched, so a start that fails on one leaves no imported CA (ADR 0052).
+        preconditions.orderedStream().forEach { it.check() }
         val importDir = properties.importDir.takeIf { it.isNotBlank() }?.let { Path.of(it) }
         val names = properties.serverNames
         return FileCertificateAuthority(properties.dir, names, Clock.systemUTC(), SecureRandom(), importDir)

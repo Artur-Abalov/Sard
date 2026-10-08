@@ -88,4 +88,17 @@ class PkiAutoConfigurationImportTest {
         assertTrue(generateSequence(failure) { it.cause }.any { it is InvalidAgentEndpointException }, "$failure")
         assertTrue(Files.notExists(dir.resolve("ca")), "the CA was imported before the address was checked")
     }
+
+    @Test
+    fun `a failing start precondition stops the start before the CA directory is touched`() {
+        CaImportFixtures.source(importDir, original)
+        var failure: Throwable? = null
+        runner()
+            .withUserConfiguration(EagerCaConfiguration::class.java)
+            .withBean(CaStartPrecondition::class.java, { CaStartPrecondition { error("refused") } })
+            .withPropertyValues("sard.pki.import-dir=$importDir")
+            .run { failure = it.startupFailure }
+        assertTrue(generateSequence(failure) { it.cause }.any { it.message == "refused" }, "$failure")
+        assertTrue(Files.notExists(dir.resolve("ca")), "the CA was imported before the precondition held")
+    }
 }

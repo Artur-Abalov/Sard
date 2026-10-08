@@ -55,7 +55,9 @@ openssl x509 -in ca/ca.crt -pubkey -noout | openssl pkey -pubin -outform DER | s
 ```
 
 Эта команда печатает отпечаток — его же содержат токены регистрации; он же в логе
-каждого старта сервера (`CA fingerprint=… origin=generated|imported|existing`) и на
+каждого старта сервера (для созданного и существующего CA
+`CA fingerprint=… origin=generated|existing`, для импортированного
+`CA imported from <путь>: fingerprint=… origin=imported`) и на
 странице «Токены» консоли. Встроенный отпечаток openssl считает хэш всего сертификата,
 это другое число.
 
