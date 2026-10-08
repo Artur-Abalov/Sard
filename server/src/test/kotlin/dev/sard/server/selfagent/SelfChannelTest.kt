@@ -3,6 +3,8 @@
 
 package dev.sard.server.selfagent
 
+import io.github.anschnapp.mutflow.MutFlow
+import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
@@ -17,6 +19,7 @@ import kotlin.test.assertTrue
 private val PASSWORD = "0123456789abcdef".repeat(4)
 
 /** Rules "Заданный, но непригодный канал..." and "Пароль роли sard_self ... хранит только в канале" (files). */
+@MutFlowTest
 class SelfChannelTest {
     @TempDir
     lateinit var dir: Path
@@ -27,7 +30,10 @@ class SelfChannelTest {
 
     private fun perms(path: Path) = PosixFilePermissions.toString(Files.getPosixFilePermissions(path))
 
-    private fun message(path: Path) = assertFailsWith<IllegalStateException> { SelfChannel(path) }.message.orEmpty()
+    private fun message(path: Path): String {
+        val refused = assertFailsWith<IllegalStateException> { MutFlow.underTest { SelfChannel(path) } }
+        return refused.message.orEmpty()
+    }
 
     private fun assertNamesDirAndDocs(
         message: String,
@@ -58,20 +64,20 @@ class SelfChannelTest {
 
     @Test
     fun `Проверка каталога не оставляет в нём файлов`() {
-        channel()
+        MutFlow.underTest { SelfChannel(dir) }
         assertEquals(emptyList(), names())
     }
 
     @Test
     fun `Пароля в пустом канале нет`() {
-        assertNull(channel().readPassword())
+        assertNull(MutFlow.underTest { channel().readPassword() })
     }
 
     @Test
     fun `Записанный пароль читается, лежит без перевода строки с правами 0600`() {
         val channel = channel()
-        channel.writePassword(PASSWORD)
-        assertEquals(PASSWORD, channel.readPassword())
+        MutFlow.underTest { channel.writePassword(PASSWORD) }
+        assertEquals(PASSWORD, MutFlow.underTest { channel.readPassword() })
         assertEquals(PASSWORD, Files.readString(dir.resolve("db-password")))
         assertEquals("rw-------", perms(dir.resolve("db-password")))
         assertEquals(listOf("db-password"), names())
@@ -80,8 +86,8 @@ class SelfChannelTest {
     @Test
     fun `Запись пароля заменяет прежний файл целиком`() {
         val channel = channel()
-        channel.writePassword("x".repeat(100))
-        channel.writePassword(PASSWORD)
+        MutFlow.underTest { channel.writePassword("x".repeat(100)) }
+        MutFlow.underTest { channel.writePassword(PASSWORD) }
         assertEquals(PASSWORD, Files.readString(dir.resolve("db-password")))
         assertEquals(listOf("db-password"), names())
     }
@@ -99,20 +105,20 @@ class SelfChannelTest {
             )
         for (text in corrupted) {
             Files.writeString(dir.resolve("db-password"), text)
-            assertNull(channel().readPassword(), "'$text'")
+            assertNull(MutFlow.underTest { channel().readPassword() }, "'$text'")
         }
     }
 
     @Test
     fun `Токена в пустом канале нет`() {
-        assertNull(channel().readToken())
+        assertNull(MutFlow.underTest { channel().readToken() })
     }
 
     @Test
     fun `Записанный токен читается, лежит без перевода строки с правами 0600`() {
         val channel = channel()
-        channel.writeToken("sard_token")
-        assertEquals("sard_token", channel.readToken())
+        MutFlow.underTest { channel.writeToken("sard_token") }
+        assertEquals("sard_token", MutFlow.underTest { channel.readToken() })
         assertEquals("sard_token", Files.readString(dir.resolve("enroll-token")))
         assertEquals("rw-------", perms(dir.resolve("enroll-token")))
         assertEquals(listOf("enroll-token"), names())
@@ -121,14 +127,14 @@ class SelfChannelTest {
     @Test
     fun `Удаление токена убирает файл, а без файла ничего не делает`() {
         val channel = channel()
-        channel.writeToken("sard_token")
-        channel.deleteToken()
+        MutFlow.underTest { channel.writeToken("sard_token") }
+        MutFlow.underTest { channel.deleteToken() }
         assertFalse(Files.exists(dir.resolve("enroll-token")))
-        channel.deleteToken()
+        MutFlow.underTest { channel.deleteToken() }
     }
 
     @Test
     fun `Путь файла токена - enroll-token в каталоге канала`() {
-        assertEquals(dir.resolve("enroll-token"), channel().tokenFile)
+        assertEquals(dir.resolve("enroll-token"), MutFlow.underTest { channel().tokenFile })
     }
 }

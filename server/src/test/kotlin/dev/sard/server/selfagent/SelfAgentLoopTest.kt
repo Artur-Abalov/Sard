@@ -3,6 +3,8 @@
 
 package dev.sard.server.selfagent
 
+import io.github.anschnapp.mutflow.MutFlow
+import io.github.anschnapp.mutflow.junit.MutFlowTest
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ScheduledExecutorService
@@ -34,6 +36,7 @@ private class RecordingScheduler : ScheduledThreadPoolExecutor(1) {
 }
 
 /** Rule "Проверка повторяется с заданным интервалом" and "Первая проверка выполняется при старте сервера". */
+@MutFlowTest
 class SelfAgentLoopTest {
     @Test
     fun `Цикл сначала готовит канал, затем сразу проверяет и повторяет проверку с заданным интервалом`() {
@@ -41,15 +44,15 @@ class SelfAgentLoopTest {
         val events = mutableListOf<String>()
         val loop = SelfAgentLoop(Duration.ofSeconds(5), { scheduler }, { events += "setup" }, { events += "check" })
 
-        loop.start()
+        MutFlow.underTest { loop.start() }
         try {
             assertEquals(listOf("setup"), events)
             assertEquals(listOf(Triple(0L, 5000L, TimeUnit.MILLISECONDS)), scheduler.requests)
-            assertTrue(loop.isRunning)
+            assertTrue(MutFlow.underTest { loop.isRunning })
         } finally {
-            loop.stop()
+            MutFlow.underTest { loop.stop() }
         }
-        assertFalse(loop.isRunning)
+        assertFalse(MutFlow.underTest { loop.isRunning })
         assertTrue(scheduler.isShutdown)
     }
 
@@ -63,11 +66,11 @@ class SelfAgentLoopTest {
                 ticks.countDown()
             }
 
-        loop.start()
+        MutFlow.underTest { loop.start() }
         try {
             assertTrue(ticks.await(10, TimeUnit.SECONDS))
         } finally {
-            loop.stop()
+            MutFlow.underTest { loop.stop() }
         }
         assertFalse(Thread.currentThread().name in names)
     }
@@ -77,9 +80,9 @@ class SelfAgentLoopTest {
         val created = mutableListOf<ScheduledExecutorService>()
         val loop = SelfAgentLoop(Duration.ofSeconds(1), { ScheduledThreadPoolExecutor(1).also(created::add) }, {}, {})
 
-        loop.stop()
+        MutFlow.underTest { loop.stop() }
 
-        assertFalse(loop.isRunning)
+        assertFalse(MutFlow.underTest { loop.isRunning })
         assertEquals(emptyList(), created)
     }
 }

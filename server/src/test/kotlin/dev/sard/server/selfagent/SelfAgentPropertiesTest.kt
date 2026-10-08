@@ -3,6 +3,8 @@
 
 package dev.sard.server.selfagent
 
+import io.github.anschnapp.mutflow.MutFlow
+import io.github.anschnapp.mutflow.junit.MutFlowTest
 import java.nio.file.Path
 import java.time.Duration
 import kotlin.test.Test
@@ -12,21 +14,23 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Rules "Без канала механизм встроенного агента выключен" and "Проверка повторяется с заданным интервалом". */
+@MutFlowTest
 class SelfAgentPropertiesTest {
     @Test
     fun `Незаданный или пустой SARD_SELF_DIR выключает механизм`() {
-        assertNull(SelfAgentProperties().settings())
-        assertNull(SelfAgentProperties(dir = "").settings())
+        assertNull(MutFlow.underTest { SelfAgentProperties().settings() })
+        assertNull(MutFlow.underTest { SelfAgentProperties(dir = "").settings() })
     }
 
     @Test
     fun `Интервал проверки по умолчанию - 15 секунд`() {
-        assertEquals(Duration.ofSeconds(15), SelfAgentProperties(dir = "/d").settings()?.checkInterval)
+        val settings = MutFlow.underTest { SelfAgentProperties(dir = "/d").settings() }
+        assertEquals(Duration.ofSeconds(15), settings?.checkInterval)
     }
 
     @Test
     fun `Интервал проверки и каталог берутся из настроек`() {
-        val settings = SelfAgentProperties(dir = "/d", checkInterval = "5s").settings()
+        val settings = MutFlow.underTest { SelfAgentProperties(dir = "/d", checkInterval = "5s").settings() }
         assertEquals(Duration.ofSeconds(5), settings?.checkInterval)
         assertEquals(Path.of("/d"), settings?.dir)
     }
@@ -36,7 +40,7 @@ class SelfAgentPropertiesTest {
         for (value in listOf("0s", "-5s", "abc")) {
             val message =
                 assertFailsWith<IllegalArgumentException> {
-                    SelfAgentProperties(dir = "/d", checkInterval = value).settings()
+                    MutFlow.underTest { SelfAgentProperties(dir = "/d", checkInterval = value).settings() }
                 }.message.orEmpty()
             assertTrue("SARD_SELF_CHECK_INTERVAL" in message && "\"$value\"" in message, message)
         }
@@ -44,6 +48,6 @@ class SelfAgentPropertiesTest {
 
     @Test
     fun `Недопустимый интервал не мешает серверу без канала`() {
-        assertNull(SelfAgentProperties(dir = "", checkInterval = "abc").settings())
+        assertNull(MutFlow.underTest { SelfAgentProperties(dir = "", checkInterval = "abc").settings() })
     }
 }

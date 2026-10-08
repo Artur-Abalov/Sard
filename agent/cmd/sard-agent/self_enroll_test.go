@@ -119,6 +119,9 @@ func TestAgentWithoutIdentityEnrollsByTheTokenFileAndWritesTheMarker(t *testing.
 	if st, _ := os.Stat(markerOf(f.h)); st.Mode().Perm() != 0o600 {
 		t.Fatalf("marker mode = %v", st.Mode().Perm())
 	}
+	if r.out != "sard-agent: enrolled as agent a1\n" {
+		t.Fatalf("stdout = %q", r.out)
+	}
 	requireNoLeak(t, f.token, r, f.h)
 }
 
@@ -213,8 +216,11 @@ func TestAnUnreadableTokenFileIsAUsageError(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := runSelfStep(context.Background(), f.h.configPath, p, selfDepsFor(newTickClock()))
-	if r.proceed || r.code != exitUsage || !strings.Contains(r.errOut, p) || f.srv.calls.Load() != 0 {
+	if r.proceed || r.code != exitUsage || f.srv.calls.Load() != 0 {
 		t.Fatalf("%+v", r)
+	}
+	if !strings.Contains(r.errOut, "reading the enrollment token file "+p) || strings.Contains(r.errOut, "is empty") {
+		t.Fatalf("stderr = %q", r.errOut)
 	}
 }
 
@@ -480,5 +486,76 @@ func TestAConfigErrorWithTheFlagIsReportedLikeWithoutIt(t *testing.T) {
 	code := runAgentCmd(context.Background(), []string{"--config", filepath.Join(t.TempDir(), "none.yaml"), "--enroll-token-file", "x"}, &out, &errOut, fixedHostname, selfDepsFor(newTickClock()))
 	if code != exitError || errOut.Len() == 0 {
 		t.Fatalf("code=%d stderr=%q", code, errOut.String())
+	}
+}
+
+// Когда шаг самоорегистрации не даёт продолжить, команда агента завершается
+// его кодом и обычный старт не выполняется
+func TestAgentCommandExitsWithTheCodeOfAStepThatDoesNotProceed(t *testing.T) {
+	f := newSucceedingFakeFixture(t, "a1")
+	p := writeTokenFile(t, f.h, "")
+	var out, errOut bytes.Buffer
+	code := runAgentCmd(context.Background(), []string{"--config", f.h.configPath, "--enroll-token-file", p}, &out, &errOut, fixedHostname, selfDepsFor(newTickClock()))
+	if code != exitUsage || !strings.Contains(errOut.String(), "is empty") || strings.Contains(errOut.String(), "tls.cert_file") {
+		t.Fatalf("code=%d stderr=%q", code, errOut.String())
+	}
+	if out.Len() != 0 || f.srv.calls.Load() != 0 {
+		t.Fatalf("stdout=%q calls=%d", out.String(), f.srv.calls.Load())
+	}
+}
+
+// Конфиг, который не читается, — ошибка запуска, продолжать нечем
+func TestAConfigThatCannotBeLoadedStopsTheStepWithTheStartErrorCode(t *testing.T) {
+	r := runSelfStep(context.Background(), filepath.Join(t.TempDir(), "none.yaml"), "x", selfDepsFor(newTickClock()))
+	if r.proceed || r.code != exitError || r.errOut == "" || r.out != "" {
+		t.Fatalf("%+v", r)
+	}
+}
+
+// Без cert_file или без key_file регистрироваться некуда: шаг ничего не
+// делает и не мешает обычному старту, который назовёт недостающий ключ
+func TestWithoutACertOrKeyFileInTheConfigTheStepDoesNothing(t *testing.T) {
+	for _, missing := range []string{"cert_file", "key_file"} {
+		f := newSucceedingFakeFixture(t, "a1")
+		p := writeTokenFile(t, f.h, f.token)
+		if missing == "cert_file" {
+			f.h.certFile = ""
+		} else {
+			f.h.keyFile = ""
+		}
+		cfg := f.h.writeConfig(t, f.h.address)
+		r := runSelfStep(context.Background(), cfg, p, selfDepsFor(newTickClock()))
+		if !r.proceed || r.code != exitOK || r.out != "" || r.errOut != "" || f.srv.calls.Load() != 0 {
+			t.Fatalf("without %s: %+v (calls %d)", missing, r, f.srv.calls.Load())
+		}
+	}
+}
+
+// Личность, которую нельзя проверить, и нет токена — ошибка агента
+func TestAnIdentityThatCannotBeInspectedWithoutATokenIsAnAgentError(t *testing.T) {
+	f := newSucceedingFakeFixture(t, "a1")
+	blocker := filepath.Join(f.h.dir, "blocker")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f.h.certFile = filepath.Join(blocker, "agent.pem")
+	cfg := f.h.writeConfig(t, f.h.address)
+	r := runSelfStep(context.Background(), cfg, filepath.Join(f.h.dir, "no-token"), selfDepsFor(newTickClock()))
+	if r.proceed || r.code != exitAgentError || !strings.Contains(r.errOut, "checking the existing identity") {
+		t.Fatalf("%+v", r)
+	}
+}
+
+// Ошибка чтения личности после регистрации перевешивает известный id
+func TestAnInspectionErrorAfterEnrollingIsAnAgentErrorEvenWithAnId(t *testing.T) {
+	f := newSucceedingFakeFixture(t, "a1")
+	p := writeTokenFile(t, f.h, f.token)
+	d := selfDepsFor(newTickClock())
+	d.inspect = func(config.TLS) (enroll.IdentityStatus, error) {
+		return enroll.IdentityStatus{Exists: true, AgentID: "a1"}, errors.New("stat failed")
+	}
+	r := runSelfStep(context.Background(), f.h.configPath, p, d)
+	if r.proceed || r.code != exitAgentError || !strings.Contains(r.errOut, "stat failed") || r.out != "" {
+		t.Fatalf("%+v", r)
 	}
 }

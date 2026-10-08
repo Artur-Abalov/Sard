@@ -7,10 +7,14 @@ import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentToken
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.enrollment.TokenServiceTestConfiguration
+import dev.sard.server.enrollment.deleteEnrollmentTenantData
+import dev.sard.server.enrollment.insertTenant
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.resource
+import io.github.anschnapp.mutflow.MutFlow
+import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
@@ -29,6 +33,7 @@ import java.sql.DriverManager
 import java.sql.SQLException
 import java.time.Duration
 import java.time.Instant
+import java.util.UUID
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -40,6 +45,7 @@ import kotlin.test.assertTrue
 
 private val T0: Instant = Instant.parse("2026-10-08T12:00:00Z")
 private val DEFAULT_TENANT = TenantResolver.DEFAULT_TENANT_ID
+private val MARGIN: Duration = Duration.ofMinutes(10)
 private val FORMAT = Regex("[0-9a-f]{64}")
 
 /** PostgreSQL that logs every statement, to prove the role's password never reaches its log. */
@@ -57,6 +63,7 @@ class StatementLoggingPostgres {
  * store and the real role. Rules "Пароль роли sard_self ...", "Проверка ... " and "Регистрация по встроенному
  * токену ..." of docs/specs/server/self-agent.feature.
  */
+@MutFlowTest
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = ["spring.grpc.server.port=0", "sard.self-agent.check-interval=1h"],
@@ -95,6 +102,8 @@ class SelfAgentWiringIntegrationTest(
         }
     }
 
+    private fun runCheck() = MutFlow.underTest { check.run() }
+
     private fun clean() {
         val tenant = DEFAULT_TENANT
         jdbc.update("delete from agent_certificates where agent_id in (select id from agents where builtin)")
@@ -126,7 +135,7 @@ class SelfAgentWiringIntegrationTest(
     @Test
     fun `Роль, которой нет, даёт ошибку SQL, по которой сервер предупреждает`() {
         val roles = ScramRolePasswords(dataSource)
-        val failure = assertFailsWith<SQLException> { roles.set("no_such_role", "0".repeat(64)) }
+        val failure = assertFailsWith<SQLException> { MutFlow.underTest { roles.set("no_such_role", "0".repeat(64)) } }
 
         assertEquals("42704", failure.sqlState)
     }
@@ -138,7 +147,7 @@ class SelfAgentWiringIntegrationTest(
 
     @Test
     fun `В канале нет файлов, кроме db-password и enroll-token`() {
-        check.run()
+        runCheck()
 
         val names = Files.list(channel).use { files -> files.map { it.fileName.toString() }.sorted().toList() }
         assertEquals(listOf("db-password", "enroll-token"), names)
@@ -146,7 +155,7 @@ class SelfAgentWiringIntegrationTest(
 
     @Test
     fun `Проверка выпускает встроенный токен тенанта по умолчанию на час, а файл содержит его строку`() {
-        check.run()
+        runCheck()
 
         assertEquals(1, builtinTokens())
         val expiresAt =
@@ -166,16 +175,16 @@ class SelfAgentWiringIntegrationTest(
 
     @Test
     fun `Токен за миллисекунду до запаса не заменяется, на запасе заменяется`() {
-        check.run()
+        runCheck()
         val first = tokenOnDisk()
 
         clock.now = T0 + Duration.ofMinutes(50) - Duration.ofMillis(1)
-        check.run()
+        runCheck()
         assertEquals(first, tokenOnDisk())
         assertEquals(1, builtinTokens())
 
         clock.now = T0 + Duration.ofMinutes(50)
-        check.run()
+        runCheck()
         assertTrue(tokenOnDisk() != first)
         assertEquals(2, builtinTokens())
         assertEquals(1, count("select count(*) from enrollment_tokens where builtin and revoked_at is null"))
@@ -183,10 +192,10 @@ class SelfAgentWiringIntegrationTest(
 
     @Test
     fun `Агент, зарегистрированный по токену из файла, встроенный, и после этого файл удаляется`() {
-        check.run()
+        runCheck()
 
         enrollment.enroll(tokenOnDisk(), resource("agent-p256.csr"), "sard-self")
-        check.run()
+        runCheck()
 
         assertEquals(1, count("select count(*) from agents where builtin and revoked_at is null"))
         assertFalse(Files.exists(tokenFile))
@@ -195,15 +204,48 @@ class SelfAgentWiringIntegrationTest(
 
     @Test
     fun `После отзыва встроенного агента проверка выпускает новый токен`() {
-        check.run()
+        runCheck()
         enrollment.enroll(tokenOnDisk(), resource("agent-p256.csr"), "sard-self")
-        check.run()
+        runCheck()
         jdbc.update("update agents set revoked_at = ? where builtin", java.sql.Timestamp.from(T0))
 
-        check.run()
+        runCheck()
 
         assertNotNull(EnrollmentToken.parse(tokenOnDisk()))
         assertEquals(2, builtinTokens())
+    }
+
+    @Test
+    fun `Файл с токеном, строка которого нарушает формат, заменяется`() {
+        runCheck()
+        val active = tokenOnDisk()
+
+        for (broken in listOf(active.dropLast(1) + "G", active.dropLast(1), "sard_" + active.drop(6))) {
+            Files.writeString(tokenFile, broken)
+
+            runCheck()
+
+            assertTrue(tokenOnDisk() != broken, broken)
+            assertTrue(tokens.builtinUsable(DEFAULT_TENANT, EnrollmentToken.parse(tokenOnDisk()).secret.hash(), MARGIN))
+        }
+    }
+
+    @Test
+    fun `Встроенные токены и агенты другого тенанта не влияют на проверку`() {
+        val other = UUID.randomUUID()
+        jdbc.insertTenant(other)
+        try {
+            enrollment.enroll(tokens.replaceBuiltin(other).reveal(), resource("agent-p256.csr"), "sard-self")
+            val foreign = tokens.replaceBuiltin(other).reveal()
+            Files.writeString(tokenFile, foreign)
+
+            runCheck()
+
+            assertTrue(tokenOnDisk() != foreign)
+            assertTrue(tokens.builtinUsable(DEFAULT_TENANT, EnrollmentToken.parse(tokenOnDisk()).secret.hash(), MARGIN))
+        } finally {
+            jdbc.deleteEnrollmentTenantData(other)
+        }
     }
 
     companion object {

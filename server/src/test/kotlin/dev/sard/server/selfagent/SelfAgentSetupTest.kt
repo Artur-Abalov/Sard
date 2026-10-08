@@ -4,6 +4,8 @@
 package dev.sard.server.selfagent
 
 import ch.qos.logback.classic.Level
+import io.github.anschnapp.mutflow.MutFlow
+import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
@@ -18,6 +20,7 @@ private val PASSWORD = "0123456789abcdef".repeat(4)
 private val FORMAT = Regex("[0-9a-f]{64}")
 
 /** Rule "Пароль роли sard_self генерирует сервер и хранит только в канале" (the file and the call to the role). */
+@MutFlowTest
 class SelfAgentSetupTest {
     @TempDir
     lateinit var dir: Path
@@ -35,7 +38,7 @@ class SelfAgentSetupTest {
 
     @Test
     fun `Первый старт пишет пароль из 64 шестнадцатеричных символов и задаёт его роли`() {
-        setup().run()
+        MutFlow.underTest { setup().run() }
 
         val written = Files.readString(file)
         assertTrue(FORMAT.matches(written), written)
@@ -46,8 +49,8 @@ class SelfAgentSetupTest {
     fun `Корректный пароль сохраняется и задаётся роли при каждом старте`() {
         Files.writeString(file, PASSWORD)
 
-        setup().run()
-        setup().run()
+        MutFlow.underTest { setup().run() }
+        MutFlow.underTest { setup().run() }
 
         assertEquals(PASSWORD, Files.readString(file))
         assertEquals(listOf("sard_self" to PASSWORD, "sard_self" to PASSWORD), applied)
@@ -58,7 +61,7 @@ class SelfAgentSetupTest {
         for (content in listOf("", PASSWORD.drop(1), PASSWORD + "0", PASSWORD.uppercase(), PASSWORD + "\n")) {
             Files.writeString(file, content)
 
-            setup().run()
+            MutFlow.underTest { setup().run() }
 
             val written = Files.readString(file)
             assertTrue(FORMAT.matches(written), "'$content' -> '$written'")
@@ -71,8 +74,8 @@ class SelfAgentSetupTest {
     fun `Пароли разных установок различаются`() {
         val other = Files.createDirectory(dir.resolve("other"))
 
-        setup().run()
-        setup(other).run()
+        MutFlow.underTest { setup().run() }
+        MutFlow.underTest { setup(other).run() }
 
         assertNotEquals(Files.readString(file), Files.readString(other.resolve("db-password")))
     }
@@ -81,7 +84,7 @@ class SelfAgentSetupTest {
     fun `Недоступная роль даёт одну строку WARN со ссылкой на документ, файл записан, пароля в логе нет`() {
         failure = SQLException("role \"sard_self\" does not exist", "42704")
 
-        val lines = captureEvents { setup().run() }
+        val lines = captureEvents { MutFlow.underTest { setup().run() } }
 
         val password = Files.readString(file)
         assertTrue(FORMAT.matches(password))

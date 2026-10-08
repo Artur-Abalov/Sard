@@ -7,6 +7,8 @@ import ch.qos.logback.classic.Level
 import dev.sard.server.enrollment.EnrollmentSecret
 import dev.sard.server.enrollment.EnrollmentToken
 import dev.sard.server.pki.CaFingerprint
+import io.github.anschnapp.mutflow.MutFlow
+import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
@@ -61,6 +63,7 @@ private class FakeAgents : BuiltinAgents {
 }
 
 /** Rule "Проверка выпускает встроенный токен, только пока нет живого встроенного агента": one check. */
+@MutFlowTest
 class SelfAgentCheckTest {
     @TempDir
     lateinit var dir: Path
@@ -75,7 +78,7 @@ class SelfAgentCheckTest {
 
     @Test
     fun `Проверка без встроенного агента и без файла выпускает токен и пишет его без перевода строки`() {
-        check.run()
+        MutFlow.underTest { check.run() }
 
         assertEquals(1, tokens.issued.get())
         assertEquals(tokenOf(1), Files.readString(file))
@@ -84,9 +87,9 @@ class SelfAgentCheckTest {
     @Test
     fun `Пригодный токен в файле не заменяется`() {
         val token = tokens.preIssued()
-        channel.writeToken(token)
+        MutFlow.underTest { channel.writeToken(token) }
 
-        check.run()
+        MutFlow.underTest { check.run() }
 
         assertEquals(1, tokens.issued.get())
         assertEquals(token, Files.readString(file))
@@ -96,7 +99,7 @@ class SelfAgentCheckTest {
     fun `Токен базы без файла заменяется новым`() {
         tokens.preIssued()
 
-        check.run()
+        MutFlow.underTest { check.run() }
 
         assertEquals(2, tokens.issued.get())
         assertEquals(tokenOf(2), Files.readString(file))
@@ -114,10 +117,10 @@ class SelfAgentCheckTest {
             )
         for (content in contents) {
             val active = tokens.preIssued()
-            channel.writeToken(content(active))
+            MutFlow.underTest { channel.writeToken(content(active)) }
             val before = tokens.issued.get()
 
-            check.run()
+            MutFlow.underTest { check.run() }
 
             assertEquals(before + 1, tokens.issued.get(), content(active))
             assertEquals(tokenOf(before + 1), Files.readString(file))
@@ -126,7 +129,7 @@ class SelfAgentCheckTest {
 
     @Test
     fun `Десять проверок подряд выпускают один токен`() {
-        repeat(10) { check.run() }
+        repeat(10) { MutFlow.underTest { check.run() } }
 
         assertEquals(1, tokens.issued.get())
         assertEquals(tokenOf(1), Files.readString(file))
@@ -156,10 +159,10 @@ class SelfAgentCheckTest {
 
     @Test
     fun `Живой встроенный агент удаляет файл токена и ничего не выпускает`() {
-        channel.writeToken(tokenOf(7))
+        MutFlow.underTest { channel.writeToken(tokenOf(7)) }
         agents.live = true
 
-        check.run()
+        MutFlow.underTest { check.run() }
 
         assertFalse(Files.exists(file))
         assertEquals(0, tokens.issued.get())
@@ -169,7 +172,7 @@ class SelfAgentCheckTest {
     fun `Живой встроенный агент без файла токена ничего не меняет`() {
         agents.live = true
 
-        check.run()
+        MutFlow.underTest { check.run() }
 
         assertFalse(Files.exists(file))
         assertEquals(0, tokens.issued.get())
@@ -178,17 +181,17 @@ class SelfAgentCheckTest {
     @Test
     fun `Отозванный встроенный агент не мешает выпуску`() {
         agents.live = true
-        check.run()
+        MutFlow.underTest { check.run() }
         agents.live = false
 
-        check.run()
+        MutFlow.underTest { check.run() }
 
         assertEquals(tokenOf(1), Files.readString(file))
     }
 
     @Test
     fun `Запись файла токена отмечается в логе без строки токена`() {
-        val lines = captureEvents { check.run() }
+        val lines = captureEvents { MutFlow.underTest { check.run() } }
 
         val written = lines.filter { "built-in agent enrollment token written to " in it.text }
         assertEquals(1, written.size)
@@ -200,10 +203,10 @@ class SelfAgentCheckTest {
     @Test
     fun `Отказ базы не меняет канал, даёт одну строку WARN и не бросает`() {
         val token = tokens.preIssued()
-        channel.writeToken(token)
+        MutFlow.underTest { channel.writeToken(token) }
         agents.failWith = IllegalStateException("database down: $token")
 
-        val lines = captureEvents { check.run() }
+        val lines = captureEvents { MutFlow.underTest { check.run() } }
 
         assertEquals(token, Files.readString(file))
         val warnings = lines.filter { it.level == Level.WARN }
@@ -215,11 +218,11 @@ class SelfAgentCheckTest {
     @Test
     fun `Отказ базы при выпуске не оставляет файла, а после восстановления проверка выпускает токен`() {
         tokens.failWith = IllegalStateException("database down")
-        check.run()
+        MutFlow.underTest { check.run() }
         assertFalse(Files.exists(file))
 
         tokens.failWith = null
-        check.run()
+        MutFlow.underTest { check.run() }
 
         assertEquals(tokenOf(1), Files.readString(file))
     }
