@@ -59,6 +59,9 @@ enum class ErrorCode {
 
     @JsonProperty("unavailable")
     UNAVAILABLE,
+
+    @JsonProperty("self_agent_confirmation_required")
+    SELF_AGENT_CONFIRMATION_REQUIRED,
 }
 
 private const val TYPE = "URI reference identifying the problem type; about:blank when the status says it all"

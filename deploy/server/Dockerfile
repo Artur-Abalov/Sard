@@ -101,7 +101,7 @@ LABEL org.opencontainers.image.title="sard-server" \
       org.opencontainers.image.licenses="AGPL-3.0-only" \
       org.opencontainers.image.version="${SARD_VERSION}"
 RUN useradd --system --uid 10001 --no-create-home sard \
- && install -d -o sard -g sard -m 0700 /var/lib/sard/pki
+ && install -d -o sard -g sard -m 0700 /var/lib/sard/pki /var/lib/sard/self
 COPY --from=server-jar /sard-server.jar /app/sard-server.jar
 COPY --from=agent-packages /out/ /usr/share/sard/agent-packages/
 USER sard
@@ -109,6 +109,10 @@ USER sard
 # Docker creates an anonymous one, so the CA outlives a container re-creation
 # only when an operator names the volume, as deploy/docker-compose.yml does.
 VOLUME ["/var/lib/sard/pki"]
+# The channel to the agent next to the server (SARD_SELF_DIR, docs/operations/self-agent.md): the
+# password of the database role it dumps with and its enrollment token. Not a VOLUME: without
+# SARD_SELF_DIR the mechanism is off and the directory stays empty; deploy/docker-compose.yml names
+# the volume and sets the variable.
 # 8080: REST API and Actuator; 9090: gRPC for agents.
 EXPOSE 8080 9090
 # The JRE image has bash but no curl; SARD_HTTP_PORT moves the HTTP port.

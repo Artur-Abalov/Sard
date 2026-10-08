@@ -32,6 +32,9 @@ class EnrollmentTokenRecord(
     /** Empty means no label (migration V202609271600, decision 2); never null. */
     @Column(name = "label", nullable = false)
     val label: String = "",
+    /** Written by the server for the agent next to it (migration V202610081200); REST never shows it. */
+    @Column(name = "builtin", nullable = false, updatable = false)
+    val builtin: Boolean = false,
     /** Set by Hibernate from the session's tenant on insert (ADR 0013). */
     @TenantId
     @Column(name = "tenant_id", nullable = false, updatable = false)

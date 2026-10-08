@@ -49,6 +49,8 @@ data class AgentRow(
     val lastSeenAt: Instant?,
     val revokedAt: Instant?,
     val duplicateSessionAt: Instant?,
+    /** The agent next to the server, enrolled with a built-in token (docs/specs/server/self-agent.feature). */
+    val builtin: Boolean,
 )
 
 /** A plugin the agent announced; [configSchema] is the JSON text it sent. */
@@ -77,6 +79,22 @@ data class AgentCard(
     val secretNames: List<String>,
     val scriptNames: List<String>,
 )
+
+/** The outcome of [Agents.revoke]. */
+sealed interface AgentRevocation {
+    /** Revoked now, or earlier: revoking a revoked agent changes nothing. */
+    data class Revoked(
+        val card: AgentCard,
+    ) : AgentRevocation
+
+    data object NotFound : AgentRevocation
+
+    /** A live built-in agent is revoked only with [SELF_AGENT_CONFIRMATION]; nothing was changed. */
+    data object ConfirmationRequired : AgentRevocation
+}
+
+/** What an administrator must pass as `confirm` to revoke a live built-in agent; compared exactly. */
+const val SELF_AGENT_CONFIRMATION = "sard-self"
 
 /** Which agents a list shows by their connection; null of it shows all. */
 enum class Connectivity { ONLINE, OFFLINE }
@@ -134,21 +152,50 @@ class Agents(
     /**
      * Revokes [agentId]: its certificates and the agent itself, its queued, dispatched and running steps
      * become lost (their runs failed, S8b В5), then its open stream is closed as AGENT_REVOKED. Revoking
-     * a revoked agent changes nothing. Null when the tenant has no such agent.
+     * a revoked agent changes nothing. A live built-in agent is revoked only when [confirmation] is
+     * [SELF_AGENT_CONFIRMATION]; without it nothing changes.
      */
     fun revoke(
         tenantId: UUID,
         agentId: UUID,
-    ): AgentCard? {
-        val revoked =
-            sessions.inTenant(tenantId) { session ->
-                // The lock orders this against a run being started for the agent (Runs.start shares it).
-                val agent = session.find(Agent::class.java, agentId, LockModeType.PESSIMISTIC_WRITE)
-                agent?.let { it to revokeIn(session, tenantId, it) }
-            } ?: return null
-        presence.disconnectRevoked(agentId)
-        revoked.second.forEach { announcer.announce(tenantId, it) }
-        return get(tenantId, agentId)
+        confirmation: String?,
+    ): AgentRevocation =
+        when (val attempt = sessions.inTenant(tenantId) { attemptIn(it, tenantId, agentId, confirmation) }) {
+            Attempt.Missing -> {
+                AgentRevocation.NotFound
+            }
+
+            Attempt.Unconfirmed -> {
+                AgentRevocation.ConfirmationRequired
+            }
+
+            is Attempt.Done -> {
+                presence.disconnectRevoked(agentId)
+                attempt.lostRuns.forEach { announcer.announce(tenantId, it) }
+                get(tenantId, agentId)?.let { AgentRevocation.Revoked(it) } ?: AgentRevocation.NotFound
+            }
+        }
+
+    private fun attemptIn(
+        session: Session,
+        tenantId: UUID,
+        agentId: UUID,
+        confirmation: String?,
+    ): Attempt {
+        // The lock orders this against a run being started for the agent (Runs.start shares it).
+        val agent = session.find(Agent::class.java, agentId, LockModeType.PESSIMISTIC_WRITE) ?: return Attempt.Missing
+        val unconfirmed = agent.builtin && agent.revokedAt == null && confirmation != SELF_AGENT_CONFIRMATION
+        return if (unconfirmed) Attempt.Unconfirmed else Attempt.Done(revokeIn(session, tenantId, agent))
+    }
+
+    private sealed interface Attempt {
+        data object Missing : Attempt
+
+        data object Unconfirmed : Attempt
+
+        data class Done(
+            val lostRuns: List<UUID>,
+        ) : Attempt
     }
 
     private fun revokeIn(
@@ -192,6 +239,7 @@ class Agents(
             agent.lastSeenAt,
             agent.revokedAt,
             agent.duplicateSessionAt,
+            agent.builtin,
         )
 
     private fun cardOf(

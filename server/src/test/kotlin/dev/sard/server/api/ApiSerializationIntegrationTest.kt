@@ -56,6 +56,7 @@ class ApiSerializationIntegrationTest(
             revokedAt = null,
             duplicateSessionAt = at,
             outdated = false,
+            builtin = true,
         )
     private val step =
         RunStep(
@@ -133,6 +134,7 @@ class ApiSerializationIntegrationTest(
                 secretNames = listOf("pg"),
                 scriptNames = listOf("flush"),
                 outdated = true,
+                builtin = false,
             ),
             AgentInstall(
                 downloadsEnabled = true,

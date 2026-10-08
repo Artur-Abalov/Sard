@@ -88,6 +88,8 @@ restic:
   cache_dir: /var/lib/sard-self/restic-cache
 executor:
   state_dir: /var/lib/sard-self/executor
+secrets: # the password of the database role sard_self, written by the server into the channel volume
+  sard-db: /run/sard-self/db-password
 EOF
 COPY --from=unpack --chown=10001:10001 --chmod=0700 /empty/ /var/lib/sard-self/
 COPY --from=unpack --chown=10001:10001 --chmod=0700 /empty/ /var/lib/sard-self/tls/

@@ -51,9 +51,13 @@ services:
       SARD_AGENT_DOWNLOADS_URL: ${SARD_AGENT_DOWNLOADS_URL:-}
       # native behind a TLS-terminating reverse proxy on this host (ADR 0046); empty means none.
       SARD_FORWARD_HEADERS: ${SARD_FORWARD_HEADERS:-none}
+      # The channel to self-agent: the server writes the password of the sard_self role and the agent's
+      # enrollment token here; only this service and self-agent mount the volume.
+      SARD_SELF_DIR: /var/lib/sard/self
     volumes:
       # The CA key: its own volume, backed up apart from postgres-data (docs/operations/pki.md).
       - sard-pki:/var/lib/sard/pki
+      - sard-self-channel:/var/lib/sard/self
     ports:
       # REST API and console sessions. Plain HTTP, so by default only on the
       # host's loopback; SARD_HTTP_PUBLISH widens it.
@@ -75,13 +79,15 @@ services:
   # sard-self: the agent that backs up this installation (docs/operations/self-agent.md).
   # It reads the database through a read-only role and the CA directory through a
   # read-only mount, and dials the server over this compose network, as any agent does.
+  # It enrolls itself: the server writes its one-time token into the sard-self-channel
+  # volume, which this service mounts read-only (no SARD_ENROLL_TOKEN here).
   self-agent:
     image: ${SARD_AGENT_IMAGE:-ghcr.io/artur-abalov/sard-agent}:${SARD_VERSION:?set SARD_VERSION in .env}
     restart: unless-stopped
     hostname: sard-self
     # The server's uid: the CA directory is 0700 and its files 0600, owned by it.
     user: "10001:10001"
-    command: ["--config", "/etc/sard/self/agent.yaml"]
+    command: ["--config", "/etc/sard/self/agent.yaml", "--enroll-token-file", "/run/sard-self/enroll-token"]
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
@@ -92,6 +98,8 @@ services:
       # container is the same agent.
       - sard-self-state:/var/lib/sard-self
       - sard-pki:/var/lib/sard/pki:ro
+      # The server's channel: the enrollment token and the database role's password, read-only.
+      - sard-self-channel:/run/sard-self:ro
     tmpfs:
       - /tmp
     depends_on:
@@ -101,5 +109,6 @@ services:
 volumes:
   postgres-data:
   sard-pki:
+  sard-self-channel:
   sard-self-config:
   sard-self-state:

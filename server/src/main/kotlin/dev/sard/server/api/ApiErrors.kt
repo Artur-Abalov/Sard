@@ -34,3 +34,6 @@ class TokenConflict(
 class RunRefused(
     val code: ErrorCode,
 ) : RuntimeException(code.name)
+
+/** A live built-in agent is revoked without the confirmation (409 self_agent_confirmation_required). */
+class SelfAgentConfirmationRequired : RuntimeException()

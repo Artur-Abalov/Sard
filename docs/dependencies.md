@@ -54,7 +54,7 @@
 | spring-boot-starter-actuator | 4.1.1 | Apache-2.0 | runtime | `/actuator/health` |
 | spring-boot-starter-data-jpa (Hibernate ORM 7.4, jakarta.persistence-api 3.2) | 4.1.1 | Apache-2.0; persistence-api — EPL-2.0 **или** EDL-1.0 (BSD-3), используем EDL | runtime | таблица `agents` |
 | spring-boot-starter-flyway + flyway-database-postgresql | 4.1.1 / 12.4.0 | Apache-2.0 | runtime | миграции |
-| org.postgresql:postgresql | 42.7.13 | BSD-2-Clause | runtime | JDBC-драйвер |
+| org.postgresql:postgresql | 42.7.13 | BSD-2-Clause | runtime; в коде — только PGConnection.alterUserPassword (пароль роли sard_self, SCRAM на стороне клиента) | JDBC-драйвер |
 | org.bouncycastle:bcpkix-jdk18on (+ bcprov-jdk18on, bcutil-jdk18on транзитивно) | 1.86 | Bouncy Castle Licence (MIT) | runtime | локальный CA: разбор CSR агента, выпуск X.509 (у JDK нет публичного API для этого) — ADR 0014 |
 | spring-boot-starter-grpc-server (spring-grpc-core 1.1.1, grpc-netty 1.83.1) | 4.1.1 | Apache-2.0 | runtime | gRPC-сервер `AgentService`; `grpc-services` из него — health-check (`HealthGrpc` в списке открытых сервисов S3) |
 | io.grpc:grpc-protobuf (+ com.google.api.grpc:proto-google-common-protos транзитивно) | 1.83.1 / 2.64.1 | Apache-2.0 | runtime | `google.rpc.ErrorInfo` в деталях статуса Enroll (S2b, контракт отказов) — уже транзитивная зависимость spring-boot-starter-grpc-server, объявлена явно, так как код использует её классы напрямую |

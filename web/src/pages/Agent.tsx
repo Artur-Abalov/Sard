@@ -1,10 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
-import { Alert, Badge, Button, Card, Group, List, Stack, Table, Text, Title } from '@mantine/core'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Group,
+  List,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+  Title,
+} from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { call } from '../api/call'
 import { client } from '../api/client'
@@ -21,6 +34,7 @@ import { RepoInitHint } from '../components/RepoInitHint'
 import { StatusBadge } from '../components/StatusBadge'
 import { usePaged } from '../components/usePaged'
 import { EMPTY } from '../format'
+import { canConfirmRevoke, revokeQuery, SELF_AGENT_CONFIRMATION } from '../selfAgent'
 import { tones } from '../theme'
 import { Mono } from '../components/Mono'
 import { Time } from '../components/Time'
@@ -166,17 +180,22 @@ function RevokeButton({ agent }: { agent: AgentDetails }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [opened, { open, close }] = useDisclosure()
+  const [typed, setTyped] = useState('')
+  const closeAndForget = () => {
+    setTyped('')
+    close()
+  }
   const revoke = useMutation({
     mutationFn: () =>
       call(
         client.POST('/api/v1/agents/{agentId}/revoke', {
-          params: { path: { agentId: agent.id } },
+          params: { path: { agentId: agent.id }, query: revokeQuery(agent.builtin, typed) },
         }),
       ),
     onSuccess: (revoked) => {
       queryClient.setQueryData(agentQuery(agent.id).queryKey, revoked)
       void queryClient.invalidateQueries({ queryKey: ['agents'] })
-      close()
+      closeAndForget()
     },
   })
   return (
@@ -189,14 +208,24 @@ function RevokeButton({ agent }: { agent: AgentDetails }) {
         title={t('agent.revokeTitle', { host: agent.hostname })}
         confirmLabel={t('agent.revoke')}
         busy={revoke.isPending}
+        disabled={!canConfirmRevoke(agent.builtin, typed)}
         onConfirm={() => revoke.mutate()}
-        onClose={close}
+        onClose={closeAndForget}
       >
         <List>
           <List.Item>{t('agent.revokeConnection')}</List.Item>
           <List.Item>{t('agent.revokeRuns')}</List.Item>
           <List.Item>{t('agent.revokeHistory')}</List.Item>
         </List>
+        {agent.builtin && (
+          <TextInput
+            label={t('agent.revokeConfirmLabel')}
+            placeholder={SELF_AGENT_CONFIRMATION}
+            value={typed}
+            onChange={(event) => setTyped(event.currentTarget.value)}
+            data-autofocus
+          />
+        )}
         {revoke.isError && <ErrorBlock error={revoke.error} />}
       </ConfirmModal>
     </>
