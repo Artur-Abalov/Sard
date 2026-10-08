@@ -11,7 +11,9 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
+	"github.com/Artur-Abalov/sard/agent/internal/repoconnect"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
+	"github.com/Artur-Abalov/sard/agent/internal/restic"
 )
 
 // reportUnchanged is the repeat of a command that already succeeded
@@ -105,143 +107,26 @@ func (c *hostCmd) prepareRepositoryDir(path string) error {
 	return hostsetup.ChownTree(c.deps.fs, path, int(c.who.Service.UID), int(c.who.Service.GID))
 }
 
-// candidate is a password file the repository is tried with.
-type candidate struct {
-	// path is what restic gets.
-	path string
-	// staged is the temporary file that becomes the password file when the
-	// repository accepts it; empty for the file already in place.
-	staged string
-	// given: the operator chose this password, so a refusal is final.
-	given bool
-}
-
-// firstCandidate is the password to try first: the one given, else the
-// file a failed command left, else a new one (Р15, Р16).
-func (c *hostCmd) firstCandidate(st *addState) (candidate, *refusal.Failure) {
-	if _, err := hostsetup.EnsureDir(c.deps.fs, c.layout.SecretsDir(), c.serviceOwner(0o700)); err != nil {
-		return candidate{}, writeFailed(err)
-	}
-	switch {
-	case st.provided != nil:
-		return c.stage(st, st.provided, true)
-	case c.exists(st.final(c)):
-		return candidate{path: st.final(c)}, nil
-	}
-	return c.generated(st)
-}
-
-// generated is a new password, made up by the command.
-func (c *hostCmd) generated(st *addState) (candidate, *refusal.Failure) {
-	password, err := repoinit.NewPassword(c.deps.random)
-	if err != nil {
-		return candidate{}, refusal.Fail(refusal.PasswordFileWrite, "%v", err)
-	}
-	st.generated = password
-	return c.stage(st, []byte(password+"\n"), false)
-}
-
-func (c *hostCmd) exists(path string) bool {
-	_, err := c.deps.fs.Stat(path)
-	return err == nil
-}
-
-// stage writes the password to a temporary file in the secrets directory.
-func (c *hostCmd) stage(st *addState, password []byte, given bool) (candidate, *refusal.Failure) {
-	tmp, err := hostsetup.StageFile(c.deps.fs, st.final(c), password, c.serviceOwner(0o600))
-	if err != nil {
-		return candidate{}, writeFailed(err)
-	}
-	return candidate{path: tmp, staged: tmp, given: given}, nil
-}
-
-// commit makes the candidate the password file.
-func (c *hostCmd) commit(st *addState, cand candidate) *refusal.Failure {
-	if cand.staged == "" {
-		return nil
-	}
-	if err := hostsetup.CommitFile(c.deps.fs, cand.staged, st.final(c)); err != nil {
-		return writeFailed(err)
-	}
-	return nil
-}
-
-func (c *hostCmd) discard(cand candidate) {
-	if cand.staged != "" {
-		hostsetup.DiscardFile(c.deps.fs, cand.staged)
-	}
-}
-
-// outcome of trying a candidate.
-type outcome struct {
-	f *refusal.Failure
-	// needPassword: the repository exists and the candidate does not open it.
-	needPassword bool
-}
-
 // connect finds out whether the repository exists and either attaches it
 // or creates it (С10 of repo-init.feature).
 func (c *hostCmd) connect(ctx context.Context, st *addState) *refusal.Failure {
-	cand, f := c.firstCandidate(st)
-	if f != nil {
-		return f
-	}
-	out := c.try(ctx, st, cand)
-	if !out.needPassword {
-		return out.f
-	}
-	password, f := c.readSource(passwordSource(c.opts))
-	if f != nil {
-		return f
-	}
-	st.provided = password
-	if cand, f = c.stage(st, password, true); f != nil {
-		return f
-	}
-	return c.try(ctx, st, cand).f
+	return c.connector(st).Connect(ctx)
 }
 
-// try opens the repository with the candidate: it is attached if it is
-// there, created if it is not.
-func (c *hostCmd) try(ctx context.Context, st *addState, cand candidate) outcome {
-	target, cli := c.resticFor(st, cand.path)
-	id, initialized, f := repoinit.Inspect(ctx, cli, target)
-	if f != nil {
-		return c.rejected(cand, f)
+// connector is the connection of the repository of st to this host.
+func (c *hostCmd) connector(st *addState) *repoconnect.Connector {
+	return &repoconnect.Connector{
+		FS:         c.deps.fs,
+		Random:     c.deps.random,
+		SecretsDir: c.layout.SecretsDir(),
+		Final:      st.final(c),
+		Owner:      c.serviceOwner,
+		Open: func(passwordFile string) (repoinit.Target, restic.Repository) {
+			return c.resticFor(st, passwordFile)
+		},
+		AskPassword: func() ([]byte, *refusal.Failure) { return c.readSource(passwordSource(c.opts)) },
+		State:       &st.State,
 	}
-	return c.accepted(ctx, st, cand, id, initialized)
-}
-
-// rejected: the repository could not be opened with the candidate. A
-// password nobody chose that does not open an existing repository means
-// the operator has to give one.
-func (c *hostCmd) rejected(cand candidate, f *refusal.Failure) outcome {
-	c.discard(cand)
-	if f.Reason == refusal.WrongPassword && !cand.given {
-		return outcome{needPassword: true}
-	}
-	return outcome{f: f}
-}
-
-// accepted: the candidate becomes the password file; the repository is
-// attached if it was there, created if it was not.
-func (c *hostCmd) accepted(ctx context.Context, st *addState, cand candidate, id string, initialized bool) outcome {
-	if f := c.commit(st, cand); f != nil {
-		return outcome{f: f}
-	}
-	if initialized {
-		st.id, st.attached = id, true
-		return outcome{}
-	}
-	return outcome{f: c.create(ctx, st)}
-}
-
-// create makes the repository with the password file now in place.
-func (c *hostCmd) create(ctx context.Context, st *addState) *refusal.Failure {
-	target, cli := c.resticFor(st, st.final(c))
-	id, f := repoinit.Create(ctx, cli, target)
-	st.id = id
-	return f
 }
 
 // writeRepository writes the drop-in (on a systemd host) and the fragment,
@@ -265,18 +150,18 @@ func (c *hostCmd) writeRepository(st *addState) *refusal.Failure {
 
 func (c *hostCmd) printAdded(st *addState) {
 	what := "Result: created a new repository."
-	if st.attached {
+	if st.Attached {
 		what = "Result: attached an existing repository."
 	}
 	_, _ = fmt.Fprintf(c.stdout, "Repository %q added.\n  backend:       local\n  address:       %s\n  repository_id: %s\n  password file: %s%s\n%s\n",
-		st.name, config.RedactURL(st.url), st.id, st.final(c), generatedNote(st), what)
+		st.name, config.RedactURL(st.url), st.ID, st.final(c), generatedNote(st), what)
 	c.printKeyWarning(st.name)
 	_, _ = fmt.Fprintln(c.stdout, "\nWARNING: this repository is on this host: its backups are lost together with this host. Add a repository on another host or in cloud storage as well.")
 }
 
 // generatedNote says so when the command made the password up.
 func generatedNote(st *addState) string {
-	if st.generated != "" {
+	if st.Generated != "" {
 		return " (generated by this command)"
 	}
 	return ""

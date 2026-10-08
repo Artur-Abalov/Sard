@@ -14,6 +14,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
+	"github.com/Artur-Abalov/sard/agent/internal/repoconnect"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 )
@@ -22,13 +23,8 @@ import (
 type addState struct {
 	name, url string
 	binary    string
-	// provided is the password the operator gave (nil: none yet).
-	provided []byte
-	// generated is the password this command made up.
-	generated string
-	id        string
-	// attached: the repository existed, it was not created.
-	attached bool
+	// State is what the connection learns: the passwords and the id.
+	repoconnect.State
 }
 
 func (s *addState) final(c *hostCmd) string { return c.layout.PasswordFile(s.name) }
@@ -152,14 +148,14 @@ func (c *hostCmd) readGivenPassword(st *addState) *refusal.Failure {
 		return nil
 	}
 	value, f := c.readSource(o)
-	st.provided = value
+	st.Provided = value
 	return f
 }
 
 // restic is the wrapper for the repository opened with the password file path.
 func (c *hostCmd) resticFor(st *addState, passwordFile string) (repoinit.Target, restic.Repository) {
 	repo := config.Repository{Name: st.name, URL: st.url, PasswordFile: passwordFile}
-	target := repoTarget(repo, repoinit.Checked{}, string(st.provided), st.generated)
+	target := repoTarget(repo, repoinit.Checked{}, string(st.Provided), st.Generated)
 	return target, newRestic(c.cfg, st.binary, c.deps, repo, runAs(c.who))
 }
 

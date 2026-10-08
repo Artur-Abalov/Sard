@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Artur-Abalov/sard/agent/internal/repoconnect"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 )
 
@@ -711,7 +712,7 @@ func TestAnAddressInTheSummaryNeverShowsACredential(t *testing.T) {
 	c := newHostCmd("repo add", hostOptions{configPath: h.cfgPath}, hostsetup.Principal{}, &bytes.Buffer{}, &bytes.Buffer{}, h.deps)
 	var out bytes.Buffer
 	c.stdout = &out
-	st := &addState{name: "extra", url: "rest:https://u:" + urlMarker + "@rest.example.com/extra", id: "X"}
+	st := &addState{name: "extra", url: "rest:https://u:" + urlMarker + "@rest.example.com/extra", State: repoconnect.State{ID: "X"}}
 	c.printAdded(st)
 	c.printUnchanged(st, "X")
 	if strings.Contains(out.String(), urlMarker) || !strings.Contains(out.String(), "u:***@rest.example.com") {
