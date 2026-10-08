@@ -18,12 +18,11 @@ class CronScheduleTest {
         zone: String,
         from: String,
         count: Int,
-    ): List<Instant> {
-        val schedule = CronSchedule.parse(cron, zone)
-        return MutFlow.underTest {
+    ): List<Instant> =
+        MutFlow.underTest {
+            val schedule = CronSchedule.parse(cron, zone)
             generateSequence(schedule.nextAfter(Instant.parse(from))) { schedule.nextAfter(it) }.take(count).toList()
         }
-    }
 
     private fun instants(vararg values: String) = values.map(Instant::parse)
 

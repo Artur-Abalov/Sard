@@ -31,7 +31,7 @@ sealed interface Due {
         const val MISSED_COUNT_LIMIT = 10_000
 
         fun of(
-            schedule: CronSchedule,
+            schedule: Fires,
             nextRunAt: Instant,
             now: Instant,
         ): Due =
@@ -42,7 +42,7 @@ sealed interface Due {
             }
 
         private fun passed(
-            schedule: CronSchedule,
+            schedule: Fires,
             first: Instant,
             now: Instant,
         ): Int =

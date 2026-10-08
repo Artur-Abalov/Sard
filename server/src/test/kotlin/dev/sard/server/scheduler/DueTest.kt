@@ -6,19 +6,20 @@ package dev.sard.server.scheduler
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /** What a schedule owes at a moment (D16, F3a answer 7): nothing, one fire, or one catch-up for a downtime. */
 @MutFlowTest
 class DueTest {
-    private val everyMinute = CronSchedule.parse("* * * * *", "UTC")
+    private val everyMinute = Fires { it.truncatedTo(ChronoUnit.MINUTES).plus(1, ChronoUnit.MINUTES) }
     private val at = Instant.parse("2026-10-08T10:00:00Z")
 
     private fun due(
         nextRunAt: Instant,
         now: Instant,
-        schedule: CronSchedule = everyMinute,
+        schedule: Fires = everyMinute,
     ) = MutFlow.underTest { Due.of(schedule, nextRunAt, now) }
 
     @Test
@@ -33,7 +34,7 @@ class DueTest {
 
     @Test
     fun `a late fire whose successor is still ahead is on time, however late`() {
-        val daily = CronSchedule.parse("0 3 * * *", "UTC")
+        val daily = Fires { it.truncatedTo(ChronoUnit.DAYS).plus(1, ChronoUnit.DAYS).plus(3, ChronoUnit.HOURS) }
         val nextRunAt = Instant.parse("2026-10-08T03:00:00Z")
         val now = Instant.parse("2026-10-09T02:59:59Z")
         assertEquals(Due.OnTime(nextRunAt, Instant.parse("2026-10-09T03:00:00Z")), due(nextRunAt, now, daily))

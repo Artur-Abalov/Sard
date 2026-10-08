@@ -18,6 +18,12 @@ class InvalidSchedule(
     cause: Throwable? = null,
 ) : RuntimeException(message, cause)
 
+/** When a schedule fires; the scheduler depends on this, tests on fakes. */
+fun interface Fires {
+    /** The first fire strictly after [after]. */
+    fun nextAfter(after: Instant): Instant
+}
+
 /**
  * A standard 5-field cron read in an IANA zone (F3a, decisions 5 and 6). Spring's [CronExpression]
  * matches the fields; this class adds what standard (Vixie) cron does and Spring does not:
@@ -32,9 +38,8 @@ class CronSchedule private constructor(
     val zone: ZoneId,
     private val expressions: List<CronExpression>,
     private val wallClock: Boolean,
-) {
-    /** The first fire strictly after [after]. */
-    fun nextAfter(after: Instant): Instant = if (wallClock) nextOnWallClock(after) else nextInRealTime(after)
+) : Fires {
+    override fun nextAfter(after: Instant): Instant = if (wallClock) nextOnWallClock(after) else nextInRealTime(after)
 
     private fun nextInRealTime(after: Instant): Instant {
         val zoned = after.atZone(zone)
@@ -42,11 +47,12 @@ class CronSchedule private constructor(
     }
 
     /**
-     * Local times at or before [after] once mapped (a gap collapsed onto its transition, the second
-     * occurrence of an overlap) are skipped; a DST shift skips at most a couple of hours of minutes.
+     * Walks local times from [after]'s own, which maps back to [after] or earlier and so never
+     * qualifies. Local times at or before [after] once mapped (a gap collapsed onto its transition,
+     * the second occurrence of an overlap) are skipped; a DST shift skips at most a few hours of them.
      */
     private fun nextOnWallClock(after: Instant): Instant =
-        generateSequence(nextLocal(LocalDateTime.ofInstant(after, zone)), ::nextLocal)
+        generateSequence(LocalDateTime.ofInstant(after, zone), ::nextLocal)
             .take(SKIPPED_LOCAL_LIMIT)
             .map(::earliestInstant)
             .first { it > after }
