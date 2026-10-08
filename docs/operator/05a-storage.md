@@ -225,7 +225,7 @@ restic берёт в репозитории блокировку (`locks/`). П�
 репозиторием точно не работает (ни на этом хосте, ни на других):
 
 ```bash
-sudo -u sard-agent sh -c 'set -a; . /etc/sard/secrets/restic-main.env; exec /usr/lib/sard/restic \
+sudo -u sard-agent sh -c 'set -a; . /etc/sard/secrets/restic-main.env; exec /usr/libexec/sard/restic \
   --repo <url> --password-file /etc/sard/secrets/restic-main.pass unlock --remove-all'
 ```
 
