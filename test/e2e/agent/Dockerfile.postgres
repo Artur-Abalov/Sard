@@ -12,7 +12,7 @@
 
 ARG BASE_IMAGE=postgres:18
 FROM ${BASE_IMAGE}
-COPY sard-agent restic /usr/lib/sard/
+COPY sard-agent restic /usr/libexec/sard/
 COPY LICENSE LICENSE.restic THIRD_PARTY_LICENSES NOTICE /usr/share/doc/sard-agent/
 COPY agent.example.yaml /etc/sard/
 # The user of the packages: uid 65532, as the files the tests hand to the agent
@@ -21,5 +21,5 @@ RUN useradd --system --uid 65532 --user-group --home-dir /var/lib/sard-agent --n
 COPY --chown=65532:65532 --chmod=0700 empty/ /var/lib/sard-agent/
 COPY --chown=65532:65532 --chmod=0700 empty/ /var/cache/sard/restic/
 USER 65532:65532
-ENTRYPOINT ["/usr/lib/sard/sard-agent"]
+ENTRYPOINT ["/usr/libexec/sard/sard-agent"]
 CMD ["--config", "/etc/sard/agent.yaml"]
