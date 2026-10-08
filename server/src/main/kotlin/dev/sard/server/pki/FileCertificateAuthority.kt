@@ -73,7 +73,7 @@ class FileCertificateAuthority(
     /** Never prints key material. */
     override fun toString() = "FileCertificateAuthority(${fingerprint.hex})"
 
-    /** The fingerprint with the origin of the CA, at every start, so a restored server can be compared with the old one. */
+    /** The fingerprint with the origin of the CA, at every start: a moved server can be compared with the old. */
     private fun logStart(
         fingerprint: CaFingerprint,
         origin: CaOrigin,

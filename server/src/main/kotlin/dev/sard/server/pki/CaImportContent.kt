@@ -11,12 +11,8 @@ import java.nio.file.Path
 import java.security.PrivateKey
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
-import java.time.Instant
-import java.util.Base64
 
-private const val KEY_CERT_SIGN = 5
 private const val SUPPORTED = "ECDSA P-256"
-private const val BEGIN = "-----BEGIN"
 private val EC_PUBLIC_KEY = ASN1ObjectIdentifier("1.2.840.10045.2.1")
 private val RSA_ENCRYPTION = ASN1ObjectIdentifier("1.2.840.113549.1.1.1")
 private const val P256 = "1.2.840.10045.3.1.7"
@@ -32,74 +28,41 @@ internal class CaImportContent(
     private val keyPath: Path,
 ) {
     fun certificate(text: String): X509Certificate {
-        val der = single("CERTIFICATE", text)
+        val der = singlePemBlock("CERTIFICATE", text)
         return runCatching { x509(der) }.getOrNull()
-            ?: refuse(CaImportRefusal.CA_CERT_INVALID, "$certPath is not exactly one X.509 certificate in PEM")
+            ?: throw refusal(CaImportRefusal.CA_CERT_INVALID, "$certPath is not exactly one X.509 certificate in PEM")
     }
 
     fun key(text: String): PrivateKey {
-        val info =
-            runCatching { PrivateKeyInfo.getInstance(single("PRIVATE KEY", text)) }.getOrNull()
-                ?: refuse(CaImportRefusal.CA_KEY_INVALID, "$keyPath is not an unencrypted PKCS#8 PEM key (BEGIN PRIVATE KEY)")
+        val info = pkcs8(text)
+        requireSupported(info)
+        return runCatching { JcaPEMKeyConverter().getPrivateKey(info) }.getOrNull() ?: throw notPkcs8()
+    }
+
+    private fun pkcs8(text: String): PrivateKeyInfo =
+        runCatching { PrivateKeyInfo.getInstance(singlePemBlock("PRIVATE KEY", text)) }.getOrNull() ?: throw notPkcs8()
+
+    private fun requireSupported(info: PrivateKeyInfo) {
         val kind = describe(info)
         if (kind != SUPPORTED) {
-            refuse(CaImportRefusal.CA_KEY_UNSUPPORTED, "$keyPath is $kind, only ECDSA P-256 is supported")
+            throw refusal(CaImportRefusal.CA_KEY_UNSUPPORTED, "$keyPath is $kind, only ECDSA P-256 is supported")
         }
-        return runCatching { JcaPEMKeyConverter().getPrivateKey(info) }.getOrNull()
-            ?: refuse(CaImportRefusal.CA_KEY_INVALID, "$keyPath is not an unencrypted PKCS#8 PEM key (BEGIN PRIVATE KEY)")
     }
+
+    private fun notPkcs8(): CaImportRefused =
+        refusal(CaImportRefusal.CA_KEY_INVALID, "$keyPath is not an unencrypted PKCS#8 PEM key (BEGIN PRIVATE KEY)")
 
     fun requireMatch(
         certificate: X509Certificate,
         key: PrivateKey,
     ) {
         if (!Keys.matches(certificate, key)) {
-            refuse(CaImportRefusal.CA_KEY_MISMATCH, "$keyPath is not the key of the certificate $certPath")
+            throw refusal(CaImportRefusal.CA_KEY_MISMATCH, "$keyPath is not the key of the certificate $certPath")
         }
-    }
-
-    /** Self-signed, `CA:TRUE`, `keyCertSign` if the extension is there, valid at [now], in this order. */
-    fun requireUsableCa(
-        certificate: X509Certificate,
-        now: Instant,
-    ) {
-        val subject = certificate.subjectX500Principal
-        if (runCatching { certificate.verify(certificate.publicKey) }.isFailure) {
-            refuse(CaImportRefusal.CA_NOT_SELF_SIGNED, "$certPath: subject $subject, issuer ${certificate.issuerX500Principal}")
-        }
-        if (certificate.basicConstraints < 0) {
-            refuse(CaImportRefusal.CA_NOT_A_CA, "$certPath: $subject has no basicConstraints CA:TRUE")
-        }
-        if (certificate.keyUsage?.get(KEY_CERT_SIGN) == false) {
-            refuse(CaImportRefusal.CA_KEY_USAGE, "$certPath: keyUsage of $subject lacks keyCertSign")
-        }
-        requireValidAt(certificate, now)
-    }
-
-    private fun requireValidAt(
-        certificate: X509Certificate,
-        now: Instant,
-    ) {
-        val notBefore = certificate.notBefore.toInstant()
-        val notAfter = certificate.notAfter.toInstant()
-        if (now < notBefore) {
-            refuse(CaImportRefusal.CA_NOT_YET_VALID, "$certPath: notBefore is $notBefore, the server clock shows $now")
-        }
-        if (now >= notAfter) refuse(CaImportRefusal.CA_EXPIRED, "$certPath: notAfter is $notAfter")
     }
 
     private fun x509(der: ByteArray) =
         CertificateFactory.getInstance("X.509").generateCertificate(ByteArrayInputStream(der)) as X509Certificate
-
-    /** The DER of the one PEM block of [type] in [text]; null when there is not exactly one block and nothing else. */
-    private fun single(
-        type: String,
-        text: String,
-    ): ByteArray {
-        val blocks = Regex("$BEGIN $type-----(.*?)-----END $type-----", RegexOption.DOT_MATCHES_ALL).findAll(text).toList()
-        val only = blocks.singleOrNull()?.takeIf { text.split(BEGIN).size == 2 }
-        return only?.let { runCatching { Base64.getMimeDecoder().decode(it.groupValues[1]) }.getOrNull() } ?: ByteArray(0)
-    }
 
     private fun describe(info: PrivateKeyInfo): String {
         val algorithm = info.privateKeyAlgorithm
@@ -110,8 +73,8 @@ internal class CaImportContent(
         }
     }
 
-    private fun refuse(
+    private fun refusal(
         reason: CaImportRefusal,
         detail: String,
-    ): Nothing = throw CaImportRefused(reason, detail, source)
+    ): CaImportRefused = CaImportRefused(reason, detail, source)
 }

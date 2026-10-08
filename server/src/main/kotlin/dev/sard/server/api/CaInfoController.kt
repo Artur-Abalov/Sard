@@ -17,8 +17,9 @@ import org.springframework.web.bind.annotation.RestController
 @Schema(description = "The CA of this server; public data, but only for a signed-in administrator")
 data class CaInfo(
     @field:Schema(
-        description = "SHA-256 of the root's DER SubjectPublicKeyInfo, 64 lower-case hex characters: the part of an " +
-            "enrollment token after the last dot",
+        description =
+            "SHA-256 of the root's DER SubjectPublicKeyInfo, 64 lower-case hex characters: the part of an " +
+                "enrollment token after the last dot",
         example = "8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f",
     )
     val fingerprint: String,

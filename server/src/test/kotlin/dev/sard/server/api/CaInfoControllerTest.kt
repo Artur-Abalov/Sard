@@ -20,7 +20,8 @@ class CaInfoControllerTest {
 
     @Test
     fun `the CA information carries the fingerprint the tokens carry`() {
-        val ca = FileCertificateAuthority(tmp.resolve("pki"), PkiFixtures.SERVER_NAMES, PkiFixtures.CLOCK, PkiFixtures.random())
+        val names = PkiFixtures.SERVER_NAMES
+        val ca = FileCertificateAuthority(tmp.resolve("pki"), names, PkiFixtures.CLOCK, PkiFixtures.random())
         val info = MutFlow.underTest { CaInfoController(ca).info() }
         assertEquals(CaInfo(ca.fingerprint().hex), info)
         assertEquals(64, info.fingerprint.length)

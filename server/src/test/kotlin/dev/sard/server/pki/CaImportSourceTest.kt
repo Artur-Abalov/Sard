@@ -17,8 +17,8 @@ import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @MutFlowTest
@@ -29,7 +29,7 @@ class CaImportSourceTest {
 
     private val root get() = tmp.resolve("import")
 
-    private fun read(at: Path = root): CaKeyPair = MutFlow.underTest { CaImportSource(at, CLOCK).read() }
+    private fun read(at: Path = root): ImportedCa = MutFlow.underTest { CaImportSource(at, CLOCK).read() }
 
     private fun refusal(
         at: Path = root,
@@ -50,7 +50,7 @@ class CaImportSourceTest {
         CaImportFixtures.source(root, original)
         val read = read()
         assertContentEquals(original.certificate.encoded, read.certificate.encoded)
-        assertContentEquals(original.privateKey.encoded, read.privateKey.encoded)
+        assertContentEquals(original.privateKey.encoded, read.key.encoded)
     }
 
     @Test
@@ -86,15 +86,17 @@ class CaImportSourceTest {
     fun `a file or directory the server cannot read is refused naming it`() {
         CaImportFixtures.source(root, CaImportFixtures.original())
         val key = root.resolve("ca/ca.key")
-        val unreadable = assertFailsWith<CaImportRefused> {
-            MutFlow.underTest { CaImportSource(root, CLOCK, isReadable = { it != key }).read() }
-        }
+        val unreadable =
+            assertFailsWith<CaImportRefused> {
+                MutFlow.underTest { CaImportSource(root, CLOCK, isReadable = { it != key }).read() }
+            }
         assertEquals(CaImportRefusal.IMPORT_FILE_UNREADABLE, unreadable.reason)
         assertTrue(key.toString() in unreadable.message.orEmpty(), unreadable.message)
         for (path in listOf(root, root.resolve("ca"), root.resolve("ca/ca.crt"))) {
-            val e = assertFailsWith<CaImportRefused> {
-                MutFlow.underTest { CaImportSource(root, CLOCK, isReadable = { it != path }).read() }
-            }
+            val e =
+                assertFailsWith<CaImportRefused> {
+                    MutFlow.underTest { CaImportSource(root, CLOCK, isReadable = { it != path }).read() }
+                }
             assertEquals(CaImportRefusal.IMPORT_FILE_UNREADABLE, e.reason, path.toString())
             assertTrue(path.toString() in e.message.orEmpty(), e.message)
         }
@@ -169,13 +171,16 @@ class CaImportSourceTest {
     fun `a key placed where the certificate belongs is refused without quoting it`() {
         CaImportFixtures.source(root, originalKeyPem, originalCertPem)
         val message = refusal(reason = CaImportRefusal.CA_CERT_INVALID)
-        for (line in CaImportFixtures.keyFragments(originalKeyPem)) assertTrue(line !in message, "key line in: $message")
+        for (line in CaImportFixtures.keyFragments(originalKeyPem)) {
+            assertTrue(line !in message, "key line in: $message")
+        }
         assertTrue("PRIVATE KEY" !in message, message)
     }
 
     @Test
     fun `a key file that is empty, encrypted, SEC1 or garbled is refused naming PKCS 8 PEM`() {
-        val garbled = originalKeyPem.lines().let { l -> (listOf(l[0], "AAAA" + l[1].drop(4)) + l.drop(2)).joinToString("\n") }
+        val lines = originalKeyPem.lines()
+        val garbled = (listOf(lines[0], "AAAA" + lines[1].drop(4)) + lines.drop(2)).joinToString("\n")
         val keys =
             listOf(
                 "",
@@ -213,14 +218,16 @@ class CaImportSourceTest {
     fun `a key of another certificate is refused naming both files`() {
         CaImportFixtures.source(root, originalCertPem, Pem.privateKey(CaImportFixtures.p256().private))
         val message = refusal(reason = CaImportRefusal.CA_KEY_MISMATCH)
-        assertTrue(root.resolve("ca/ca.key").toString() in message && root.resolve("ca/ca.crt").toString() in message, message)
+        val both = listOf("ca/ca.key", "ca/ca.crt").all { root.resolve(it).toString() in message }
+        assertTrue(both, message)
     }
 
     private fun importing(
         profile: CaImportFixtures.Profile,
         keys: java.security.KeyPair = CaImportFixtures.p256(),
     ) {
-        CaImportFixtures.source(root, Pem.certificate(CaImportFixtures.certificate(keys, profile)), Pem.privateKey(keys.private))
+        val certificate = Pem.certificate(CaImportFixtures.certificate(keys, profile))
+        CaImportFixtures.source(root, certificate, Pem.privateKey(keys.private))
     }
 
     private fun refusedWith(
@@ -242,14 +249,16 @@ class CaImportSourceTest {
     @Test
     fun `a self-signed certificate that is not a CA is refused naming its subject`() {
         for (flag in listOf(false, null)) {
-            val message = refusedWith(CaImportFixtures.Profile(subject = "CN=qa-leaf", basicConstraints = flag), CaImportRefusal.CA_NOT_A_CA)
+            val profile = CaImportFixtures.Profile(subject = "CN=qa-leaf", basicConstraints = flag)
+            val message = refusedWith(profile, CaImportRefusal.CA_NOT_A_CA)
             assertTrue("CN=qa-leaf" in message, message)
         }
     }
 
     @Test
     fun `a key usage without keyCertSign is refused, no key usage extension is accepted`() {
-        val message = refusedWith(CaImportFixtures.Profile(keyUsage = KeyUsage.digitalSignature), CaImportRefusal.CA_KEY_USAGE)
+        val profile = CaImportFixtures.Profile(keyUsage = KeyUsage.digitalSignature)
+        val message = refusedWith(profile, CaImportRefusal.CA_KEY_USAGE)
         assertTrue("keyCertSign" in message, message)
         importing(CaImportFixtures.Profile(keyUsage = null))
         read()
@@ -267,7 +276,8 @@ class CaImportSourceTest {
     @Test
     fun `a CA whose notAfter is now or past is refused naming notAfter`() {
         for (notAfter in listOf("2026-10-08T12:00:00Z", "2025-01-01T00:00:00Z")) {
-            val message = refusedWith(CaImportFixtures.Profile(notAfter = Instant.parse(notAfter)), CaImportRefusal.CA_EXPIRED)
+            val profile = CaImportFixtures.Profile(notAfter = Instant.parse(notAfter))
+            val message = refusedWith(profile, CaImportRefusal.CA_EXPIRED)
             assertTrue(notAfter in message, message)
         }
         importing(CaImportFixtures.Profile(notAfter = Instant.parse("2026-10-08T12:00:01Z")))
@@ -276,17 +286,22 @@ class CaImportSourceTest {
 
     @Test
     fun `the first failing check names the reason, a mismatch comes before an expiry`() {
-        val expired = CaImportFixtures.certificate(CaImportFixtures.p256(), CaImportFixtures.Profile(notAfter = Instant.parse("2025-01-01T00:00:00Z")))
+        val expired =
+            CaImportFixtures.certificate(
+                CaImportFixtures.p256(),
+                CaImportFixtures.Profile(notAfter = Instant.parse("2025-01-01T00:00:00Z")),
+            )
         CaImportFixtures.source(root, Pem.certificate(expired), Pem.privateKey(CaImportFixtures.p256().private))
         val message = refusal(reason = CaImportRefusal.CA_KEY_MISMATCH)
         assertTrue("CA_EXPIRED" !in message, message)
     }
 
     @Test
-    fun `a CA with 90 days or less left is accepted with a warning naming notAfter and the days left`(output: CapturedOutput) {
+    fun `a CA with 90 days or less left is accepted with a warning naming notAfter and days`(output: CapturedOutput) {
         importing(CaImportFixtures.Profile(notAfter = Instant.parse("2027-01-06T12:00:00Z")))
         read()
-        assertTrue(output.all.lines().any { "WARN" in it && "CA expires 2027-01-06T12:00:00Z, 90 days left" in it }, output.all)
+        val warned = output.all.lines().any { "WARN" in it && "CA expires 2027-01-06T12:00:00Z, 90 days left" in it }
+        assertTrue(warned, output.all)
         importing(CaImportFixtures.Profile(notAfter = Instant.parse("2026-10-09T12:00:00Z")))
         read()
         assertTrue("CA expires 2026-10-09T12:00:00Z, 1 day left" in output.all, output.all)
@@ -327,5 +342,11 @@ class CaImportSourceTest {
         val line = output.all.lines().single { "CA import skipped" in it }
         assertTrue("WARN" in line && "SARD_PKI_IMPORT_DIR" in line && root.toString() in line, line)
         assertTrue("remove SARD_PKI_IMPORT_DIR" in line, line)
+    }
+
+    @Test
+    fun `a CA with a path length limit of zero is still a CA`() {
+        importing(CaImportFixtures.Profile(pathLength = 0))
+        read()
     }
 }

@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.PrivateKey
 import java.security.cert.X509Certificate
 import java.time.Clock
 import java.time.Duration
@@ -20,6 +21,30 @@ private const val CA = "ca"
 private const val CERT = "ca.crt"
 private const val KEY = "ca.key"
 
+/** The two things a CA directory needs from a source of a CA to import (ADR 0052). */
+interface CaImport {
+    /** The CA to take, or throws [CaImportRefused] for the first check it fails. */
+    fun read(): ImportedCa
+
+    /** A CA is already in the CA directory: the same one is fine, another one stops the start. */
+    fun reconcile(present: CaFingerprint)
+
+    /** The refusal for a CA directory that could not be written. */
+    fun writeFailed(
+        caDirectory: Path,
+        cause: IOException,
+    ): CaImportRefused
+}
+
+/** A certificate and key read from a source; [CaKeyPair] checks that they belong together. */
+class ImportedCa(
+    val certificate: X509Certificate,
+    internal val key: PrivateKey,
+) {
+    /** Never prints the key. */
+    override fun toString() = "ImportedCa(${certificate.subjectX500Principal})"
+}
+
 /**
  * The CA to import: `<root>/ca/{ca.crt,ca.key}`, the layout of the CA directory (ADR 0052). Read only; nothing
  * in [root] is ever modified. Only these two files are read.
@@ -28,15 +53,16 @@ class CaImportSource(
     private val root: Path,
     private val clock: Clock,
     private val isReadable: (Path) -> Boolean = Files::isReadable,
-) {
+) : CaImport {
     private val caDir = root.resolve(CA)
     private val certPath = caDir.resolve(CERT)
     private val keyPath = caDir.resolve(KEY)
     private val content = CaImportContent(root, certPath, keyPath)
+    private val profile = CaImportProfile(root, certPath)
     private val paths = listOf(root, caDir, certPath, keyPath)
 
     /** The CA of the source, or throws [CaImportRefused] for the first check it fails. */
-    fun read(): CaKeyPair {
+    override fun read(): ImportedCa {
         requireDirectory()
         requireFile(certPath)
         requireFile(keyPath)
@@ -45,9 +71,9 @@ class CaImportSource(
         val certificate = content.certificate(text(certPath))
         val key = content.key(text(keyPath))
         content.requireMatch(certificate, key)
-        content.requireUsableCa(certificate, clock.instant())
+        profile.requireUsableCa(certificate, clock.instant())
         warnIfExpiresSoon(certificate)
-        return CaKeyPair(certificate, key)
+        return ImportedCa(certificate, key)
     }
 
     private fun warnIfExpiresSoon(certificate: X509Certificate) {
@@ -63,33 +89,39 @@ class CaImportSource(
         try {
             String(Files.readAllBytes(path), Charsets.ISO_8859_1)
         } catch (_: IOException) {
-            refuse(CaImportRefusal.IMPORT_FILE_UNREADABLE, "$path cannot be read by the server")
+            throw refusal(CaImportRefusal.IMPORT_FILE_UNREADABLE, "$path cannot be read by the server")
         }
 
     /**
      * A CA is already in the CA directory. The same one as in the source: nothing to import. Another one: the
      * server does not start. A source that cannot be read: the setting is stale, the server starts and says so.
      */
-    fun reconcile(present: CaFingerprint) {
+    override fun reconcile(present: CaFingerprint) {
         val theirs = runCatching { CaFingerprint.of(content.certificate(text(certPath))) }.getOrNull()
         when {
-            theirs == null ->
+            theirs == null -> {
                 log.warn(
                     "CA import skipped: a CA is already present and SARD_PKI_IMPORT_DIR={} cannot be read; " +
                         "remove SARD_PKI_IMPORT_DIR",
                     root,
                 )
-            theirs == present -> log.info("CA import not needed: the CA {} is already present", present.hex)
-            else ->
-                refuse(
+            }
+
+            theirs == present -> {
+                log.info("CA import not needed: the CA {} is already present", present.hex)
+            }
+
+            else -> {
+                throw refusal(
                     CaImportRefusal.CA_ALREADY_PRESENT,
                     "the CA directory holds ${present.hex}, the source holds ${theirs.hex}",
                 )
+            }
         }
     }
 
     /** The CA directory could not be written; the refusal names it, never a file's content. */
-    fun writeFailed(
+    override fun writeFailed(
         caDirectory: Path,
         cause: IOException,
     ): CaImportRefused =
@@ -100,25 +132,28 @@ class CaImportSource(
         )
 
     private fun requireDirectory() {
-        if (!Files.isDirectory(root)) refuse(CaImportRefusal.IMPORT_SOURCE_MISSING, "$root does not exist or is not a directory")
+        if (!Files.isDirectory(root)) {
+            throw refusal(CaImportRefusal.IMPORT_SOURCE_MISSING, "$root does not exist or is not a directory")
+        }
     }
 
     private fun requireReadable() {
-        paths.firstOrNull { !isReadable(it) }?.let { refuse(CaImportRefusal.IMPORT_FILE_UNREADABLE, "$it cannot be read by the server") }
+        val unreadable = paths.firstOrNull { !isReadable(it) } ?: return
+        throw refusal(CaImportRefusal.IMPORT_FILE_UNREADABLE, "$unreadable cannot be read by the server")
     }
 
     private fun requireOwnerOnly() {
         for (path in paths) {
-            ownerOnlyViolation(path)?.let { refuse(CaImportRefusal.IMPORT_PERMISSIONS_TOO_OPEN, it) }
+            ownerOnlyViolation(path)?.let { throw refusal(CaImportRefusal.IMPORT_PERMISSIONS_TOO_OPEN, it) }
         }
     }
 
     private fun requireFile(path: Path) {
-        if (!Files.isRegularFile(path)) refuse(CaImportRefusal.IMPORT_FILE_MISSING, "expected $path")
+        if (!Files.isRegularFile(path)) throw refusal(CaImportRefusal.IMPORT_FILE_MISSING, "expected $path")
     }
 
-    private fun refuse(
+    private fun refusal(
         reason: CaImportRefusal,
         detail: String,
-    ): Nothing = throw CaImportRefused(reason, detail, root)
+    ): CaImportRefused = CaImportRefused(reason, detail, root)
 }

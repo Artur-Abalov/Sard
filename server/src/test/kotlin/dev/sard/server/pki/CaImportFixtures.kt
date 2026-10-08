@@ -64,6 +64,7 @@ object CaImportFixtures {
         val notBefore: Instant = ISSUED,
         val notAfter: Instant = TEN_YEARS,
         val basicConstraints: Boolean? = true,
+        val pathLength: Int? = null,
         val keyUsage: Int? = KeyUsage.keyCertSign or KeyUsage.cRLSign,
     )
 
@@ -82,11 +83,16 @@ object CaImportFixtures {
                 X500Name(profile.subject),
                 spki,
             )
-        profile.basicConstraints?.let { builder.addExtension(Extension.basicConstraints, true, BasicConstraints(it)) }
+        profile.basicConstraints?.let {
+            val limit = profile.pathLength
+            val constraints = if (it && limit != null) BasicConstraints(limit) else BasicConstraints(it)
+            builder.addExtension(Extension.basicConstraints, true, constraints)
+        }
         profile.keyUsage?.let { builder.addExtension(Extension.keyUsage, true, KeyUsage(it)) }
         val signer = profile.signer ?: keys.private
         val algorithm = if (signer.algorithm == "RSA") "SHA256withRSA" else "SHA256withECDSA"
-        return JcaX509CertificateConverter().getCertificate(builder.build(JcaContentSignerBuilder(algorithm).build(signer)))
+        val content = JcaContentSignerBuilder(algorithm).build(signer)
+        return JcaX509CertificateConverter().getCertificate(builder.build(content))
     }
 
     /** `<root>/ca/{ca.crt,ca.key}` with the permissions the server demands: 0700 directories, 0600 files. */
@@ -123,5 +129,5 @@ object CaImportFixtures {
     }
 
     /** Every line of the key's base64 body and its PEM text: what must never reach a log or an error. */
-    fun keyFragments(keyPem: String): List<String> = keyPem.lines().filter { it.isNotBlank() && !it.startsWith("-----") }
+    fun keyFragments(keyPem: String): List<String> = keyPem.lines().filter { it.isNotBlank() && "-----" !in it }
 }

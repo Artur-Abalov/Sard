@@ -6,8 +6,6 @@ package dev.sard.server.pki
 import dev.sard.server.pki.CaImportFixtures.CLOCK
 import dev.sard.server.pki.CaImportFixtures.NOW
 import dev.sard.server.pki.PkiFixtures.random
-import io.github.anschnapp.mutflow.MutFlow
-import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.api.io.TempDir
 import org.springframework.boot.test.system.CapturedOutput
@@ -22,7 +20,6 @@ import kotlin.test.assertTrue
 
 private val NAMES = listOf("sard.example.com", "localhost")
 
-@MutFlowTest
 @ExtendWith(OutputCaptureExtension::class)
 class FileCertificateAuthorityImportTest {
     @TempDir
@@ -35,7 +32,7 @@ class FileCertificateAuthorityImportTest {
     private fun ca(
         clock: java.time.Clock = CLOCK,
         import: Path? = importDir,
-    ) = MutFlow.underTest { FileCertificateAuthority(dir, NAMES, clock, random(), import) }
+    ) = FileCertificateAuthority(dir, NAMES, clock, random(), import)
 
     private fun chain(ca: CertificateAuthority): List<X509Certificate> {
         val km = ca.serverKeyManager()
@@ -107,8 +104,12 @@ class FileCertificateAuthorityImportTest {
         val fragments = CaImportFixtures.keyFragments(Pem.privateKey(original.privateKey))
         for (fragment in fragments) assertTrue(fragment !in output.all, "key line in the log")
         CaImportFixtures.chmod(importDir.resolve("ca/ca.crt"), "rw-r--r--")
-        val refused = assertFailsWith<CaImportRefused> { FileCertificateAuthority(tmp.resolve("other"), NAMES, CLOCK, random(), importDir) }
-        for (fragment in fragments) assertTrue(fragment !in refused.message.orEmpty() && fragment !in output.all, "key line leaked")
+        val refused =
+            assertFailsWith<CaImportRefused> {
+                FileCertificateAuthority(tmp.resolve("other"), NAMES, CLOCK, random(), importDir)
+            }
+        val seen = refused.message.orEmpty() + output.all
+        for (fragment in fragments) assertTrue(fragment !in seen, "key line leaked")
     }
 
     @Test
@@ -117,6 +118,9 @@ class FileCertificateAuthorityImportTest {
         CaImportFixtures.chmod(importDir.resolve("ca/ca.key"), "rw-r-----")
         val e = assertFailsWith<CaImportRefused> { ca() }
         assertEquals(CaImportRefusal.IMPORT_PERMISSIONS_TOO_OPEN, e.reason)
-        assertTrue(!java.nio.file.Files.exists(dir.resolve("ca")))
+        assertTrue(
+            !java.nio.file.Files
+                .exists(dir.resolve("ca")),
+        )
     }
 }

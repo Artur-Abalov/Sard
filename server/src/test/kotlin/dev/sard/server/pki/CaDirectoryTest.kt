@@ -151,4 +151,24 @@ class CaDirectoryTest {
             assertTrue(violation != null && mode in violation, "$mode: $violation")
         }
     }
+
+    @Test
+    fun `the start that publishes the CA reports it generated, the start that loses the race reports it existing`() {
+        val winner = generate()
+        val loser = generate()
+        val first = MutFlow.underTest { CaDirectory(dir, CLOCK).open(null) { winner } }
+        assertEquals(CaOrigin.GENERATED, first.origin)
+        assertEquals(CaOrigin.EXISTING, MutFlow.underTest { CaDirectory(dir, CLOCK).open(null) { loser } }.origin)
+
+        val raced = tmp.resolve("raced")
+        val lost =
+            MutFlow.underTest {
+                CaDirectory(raced, CLOCK).open(null) {
+                    CaDirectory(raced, CLOCK).loadOrCreate { winner }
+                    loser
+                }
+            }
+        assertEquals(CaOrigin.EXISTING, lost.origin)
+        assertEquals(CaFingerprint.of(winner.certificate), CaFingerprint.of(lost.pair.certificate))
+    }
 }

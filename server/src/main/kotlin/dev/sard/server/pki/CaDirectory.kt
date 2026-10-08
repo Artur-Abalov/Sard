@@ -78,7 +78,7 @@ class CaDirectory(
      * generated one. A CA that is there stays; a [source] must then name the same CA or the start is refused.
      */
     fun open(
-        source: CaImportSource?,
+        source: CaImport?,
         generate: () -> CaKeyPair,
     ): OpenedCa {
         writing(source) {
@@ -87,7 +87,7 @@ class CaDirectory(
         requireOwnerOnly(dir)
         writing(source, ::removeStaleStaging)
         if (Files.exists(ca)) return existing(source)
-        val pair = source?.read() ?: generate()
+        val pair = source?.read()?.let { CaKeyPair(it.certificate, it.key) } ?: generate()
         val published = writing(source) { publish(pair) }
         val origin =
             when {
@@ -98,7 +98,7 @@ class CaDirectory(
         return OpenedCa(load(), origin)
     }
 
-    private fun existing(source: CaImportSource?): OpenedCa {
+    private fun existing(source: CaImport?): OpenedCa {
         val pair = load()
         source?.reconcile(CaFingerprint.of(pair.certificate))
         return OpenedCa(pair, CaOrigin.EXISTING)
@@ -106,7 +106,7 @@ class CaDirectory(
 
     /** A failed write while importing is a refusal that names the directory; otherwise the failure is passed on. */
     private fun <T> writing(
-        source: CaImportSource?,
+        source: CaImport?,
         action: () -> T,
     ): T =
         try {
@@ -169,6 +169,7 @@ class CaDirectory(
         ownerOnlyViolation(path)?.let { throw InsecureKeyStorageException(it) }
     }
 }
+
 private fun write(
     path: Path,
     text: String,

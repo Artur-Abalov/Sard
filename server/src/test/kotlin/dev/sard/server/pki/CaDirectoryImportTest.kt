@@ -5,8 +5,6 @@ package dev.sard.server.pki
 
 import dev.sard.server.pki.CaImportFixtures.CLOCK
 import dev.sard.server.pki.CaImportFixtures.NOW
-import io.github.anschnapp.mutflow.MutFlow
-import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.api.io.TempDir
 import org.springframework.boot.test.system.CapturedOutput
@@ -25,7 +23,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
-@MutFlowTest
 @ExtendWith(OutputCaptureExtension::class)
 class CaDirectoryImportTest {
     @TempDir
@@ -34,11 +31,11 @@ class CaDirectoryImportTest {
     private val dir get() = tmp.resolve("pki")
     private val importDir get() = tmp.resolve("import")
     private val original = CaImportFixtures.original()
+    private val generated = CaImportFixtures.original()
 
     private fun source() = CaImportSource(importDir, CLOCK)
 
-    private fun open(source: CaImportSource? = source()): OpenedCa =
-        MutFlow.underTest { CaDirectory(dir, CLOCK).open(source) { CaImportFixtures.original() } }
+    private fun open(source: CaImportSource? = source()): OpenedCa = CaDirectory(dir, CLOCK).open(source) { generated }
 
     private fun perms(path: Path) = PosixFilePermissions.toString(Files.getPosixFilePermissions(path))
 
@@ -46,8 +43,11 @@ class CaDirectoryImportTest {
     private fun snapshot(root: Path): List<String> =
         Files.walk(root).use { entries ->
             entries
-                .map { "$it ${perms(it)} ${Files.getLastModifiedTime(it)} ${if (Files.isRegularFile(it)) Files.readString(it).hashCode() else ""}" }
-                .sorted()
+                .map {
+                    "$it ${perms(
+                        it,
+                    )} ${Files.getLastModifiedTime(it)} ${if (Files.isRegularFile(it)) Files.readString(it).hashCode() else ""}"
+                }.sorted()
                 .toList()
         }
 
@@ -60,8 +60,16 @@ class CaDirectoryImportTest {
         val opened = open()
         assertEquals(CaOrigin.IMPORTED, opened.origin)
         assertContentEquals(original.certificate.encoded, opened.pair.certificate.encoded)
-        assertContentEquals(original.certificate.encoded, Files.readAllBytes(dir.resolve("ca/ca.crt")).let { PkiFixtures.certificate(String(it)).encoded })
-        assertEquals(listOf("rwx------", "rwx------", "rw-------", "rw-------"), listOf(dir, dir.resolve("ca"), dir.resolve("ca/ca.key"), dir.resolve("ca/ca.crt")).map(::perms))
+        assertContentEquals(
+            original.certificate.encoded,
+            Files.readAllBytes(dir.resolve("ca/ca.crt")).let {
+                PkiFixtures.certificate(String(it)).encoded
+            },
+        )
+        assertEquals(
+            listOf("rwx------", "rwx------", "rw-------", "rw-------"),
+            listOf(dir, dir.resolve("ca"), dir.resolve("ca/ca.key"), dir.resolve("ca/ca.crt")).map(::perms),
+        )
         assertEquals(listOf("ca"), entries(dir))
         assertEquals(listOf("ca.crt", "ca.key"), entries(dir.resolve("ca")))
         assertEquals(Pem.privateKey(original.privateKey), Files.readString(dir.resolve("ca/ca.key")))
@@ -127,8 +135,13 @@ class CaDirectoryImportTest {
     fun `a write that fails leaves no partial import and names the CA directory`() {
         CaImportFixtures.source(importDir, original)
         val before = snapshot(importDir)
-        val failing = { path: Path, _: String -> if (path.fileName.toString() == "ca.key") throw IOException("No space left on device") }
-        val e = assertFailsWith<CaImportRefused> { MutFlow.underTest { CaDirectory(dir, CLOCK, failing).open(source()) { error("never") } } }
+        val failing = { path: Path, _: String ->
+            if (path.fileName.toString() == "ca.key") throw IOException("No space left on device")
+        }
+        val e =
+            assertFailsWith<CaImportRefused> {
+                CaDirectory(dir, CLOCK, failing).open(source()) { error("never") }
+            }
         assertEquals(CaImportRefusal.IMPORT_WRITE_FAILED, e.reason)
         val message = e.message.orEmpty()
         assertTrue(dir.toString() in message && "No space left on device" in message, message)
@@ -141,9 +154,10 @@ class CaDirectoryImportTest {
     fun `a CA directory that cannot be created is a write failure of the import`() {
         CaImportFixtures.source(importDir, original)
         val blocker = Files.createFile(tmp.resolve("blocker"))
-        val e = assertFailsWith<CaImportRefused> {
-            MutFlow.underTest { CaDirectory(blocker.resolve("pki"), CLOCK).open(source()) { error("never") } }
-        }
+        val e =
+            assertFailsWith<CaImportRefused> {
+                CaDirectory(blocker.resolve("pki"), CLOCK).open(source()) { error("never") }
+            }
         assertEquals(CaImportRefusal.IMPORT_WRITE_FAILED, e.reason)
         assertTrue(blocker.resolve("pki").toString() in e.message.orEmpty(), e.message)
     }

@@ -64,7 +64,8 @@ class PkiAutoConfiguration {
         // so a start that fails on it leaves no imported CA behind (ADR 0052).
         agentEndpoint.ifAvailable
         val importDir = properties.importDir.takeIf { it.isNotBlank() }?.let { Path.of(it) }
-        return FileCertificateAuthority(properties.dir, properties.serverNames, Clock.systemUTC(), SecureRandom(), importDir)
+        val names = properties.serverNames
+        return FileCertificateAuthority(properties.dir, names, Clock.systemUTC(), SecureRandom(), importDir)
     }
 
     /** Server key from the CA; client certificates, when presented, must chain to it. */

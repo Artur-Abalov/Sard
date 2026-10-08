@@ -102,7 +102,8 @@ class AgentAuthenticator(
     ): AgentAuthResult {
         if (standing == null) {
             val claimed = presented.identity
-            return AgentAuthResult.Rejected(AgentAuthFailure.CERT_UNKNOWN, presented.serial, claimed?.agentId, claimed?.tenantId)
+            val failure = AgentAuthFailure.CERT_UNKNOWN
+            return AgentAuthResult.Rejected(failure, presented.serial, claimed?.agentId, claimed?.tenantId)
         }
         val identity = standing.identity
         return when (val failure = failureOf(presented, standing)) {
