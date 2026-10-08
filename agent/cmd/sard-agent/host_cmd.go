@@ -79,6 +79,10 @@ type hostCmd struct {
 	who            hostsetup.Principal
 	layout         hostsetup.Layout
 	cfg            config.Config
+	// s3 is the address of an s3: repository, once it is checked.
+	s3 hostsetup.S3Address
+	// budget is the time --timeout allows; nil outside repo add.
+	budget *budget
 }
 
 func newHostCmd(words string, opts hostOptions, who hostsetup.Principal, stdout, stderr io.Writer, deps hostDeps) *hostCmd {
@@ -171,6 +175,9 @@ func (c *hostCmd) readSource(o hostsetup.SourceOptions) ([]byte, *refusal.Failur
 	src := hostsetup.Source{Stdin: c.deps.stdin, Open: c.deps.openFile}
 	if c.deps.terminal != nil && !o.Stdin && o.File == "" {
 		src.Terminal = c.deps.terminal(c.stderr)
+		if c.budget != nil && src.Terminal != nil {
+			src.Terminal = waiting{Terminal: src.Terminal, b: c.budget}
+		}
 	}
 	return src.Read(o)
 }

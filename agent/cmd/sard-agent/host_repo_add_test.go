@@ -326,27 +326,6 @@ func TestAnAddressedNameOfTheMainConfigIsRefused(t *testing.T) {
 	h.assertHostUnchanged(before)
 }
 
-func TestOtherBackendsAreAStubInThisSlice(t *testing.T) {
-	cases := map[string]string{
-		"s3:https://s3.example.com/bucket/extra":                  "s3",
-		"sftp:backup@nas.example.com:/extra":                      "sftp",
-		"rest:https://u:" + urlMarker + "@rest.example.com/extra": "rest",
-		"b2:bucket:extra": "b2",
-	}
-	for address, kind := range cases {
-		h := newSetupHost(t)
-		before := h.hostTree()
-		code, stdout, stderr := h.sudo("repo", "add", "extra", address, "--config", "C")
-		assertRefusal(t, code, stderr, exitUsage, "BACKEND_NOT_SUPPORTED")
-		if !strings.Contains(stderr, kind) || !strings.Contains(stderr, "only a local path") {
-			t.Errorf("stderr %q", stderr)
-		}
-		h.assertNoBackendCalls()
-		h.assertHostUnchanged(before)
-		h.assertValuesHidden(stdout, stderr)
-	}
-}
-
 func TestUnusableLocalPathsAreRefused(t *testing.T) {
 	h := newSetupHost(t)
 	h.write(h.path("file"), "x", 0o600)

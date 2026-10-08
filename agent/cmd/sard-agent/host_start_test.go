@@ -197,3 +197,38 @@ func TestAfterRepoAddTheAgentTellsTheServerTheRepositoryID(t *testing.T) {
 		t.Fatalf("register request %v", req)
 	}
 }
+
+// A8b: the agent started after "repo add" of an s3: address.
+func TestAfterRepoAddOfS3TheAgentTellsTheServerTheBackendAndTheID(t *testing.T) {
+	h := newRefusalHost(t, unavailable)
+	id := strings.Repeat("cd", 32)
+	script := resticAnswering(t, id)
+	h.cfg = writeConfig(t, "server:\n  address: "+h.address+"\n"+
+		"tls: {ca_file: "+h.dir+"/ca.pem, cert_file: "+h.dir+"/agent.pem, key_file: "+h.dir+"/agent.key}\n"+
+		"executor: {state_dir: "+h.dir+"/state}\nrestic: {path: "+script+", cache_dir: "+t.TempDir()+"}\n")
+	deps, _ := hostDepsFor(t)
+	deps.exec = keepsTheCaller{t: t, want: restic.RunAs{UID: uint32(os.Getuid()), GID: uint32(os.Getgid())}}
+	deps.executable = func() (string, error) { return script, nil }
+	deps.stdin = strings.NewReader(s3Marker)
+	password := filepath.Join(t.TempDir(), "password")
+	writeFile(t, password, []byte("PASS\n"), 0o600)
+	var out, errOut bytes.Buffer
+	code := runRepoWithDeps(context.Background(), []string{"add", "extra", s3Address, "--access-key-id", keyID1,
+		"--secret-key-stdin", "--password-from-file", password, "--config", h.cfg}, &out, &errOut, deps)
+	assertCode(t, code, exitOK)
+	cfg, err := config.Load(h.cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := secrets.CheckAll(cfg, uint32(os.Getuid()), secrets.RealStat); err != nil {
+		t.Fatalf("A1: %v (stderr %q)", err, errOut.String())
+	}
+	h.run(time.Second)
+	req := h.server.last.Load()
+	if req == nil || len(req.GetRepositories()) != 1 {
+		t.Fatalf("register request %v", req)
+	}
+	if r := req.GetRepositories()[0]; r.GetName() != "extra" || r.GetBackend() != "s3" || r.GetRepositoryId() != id {
+		t.Fatalf("repository %v", r)
+	}
+}

@@ -26,6 +26,23 @@ type State struct {
 	Attached bool
 }
 
+// Files are the files restic gets to open the repository.
+type Files struct {
+	// Password is the password file.
+	Password string
+	// Env is the env file of the backend; empty for none.
+	Env string
+}
+
+// EnvFile is the env file of an S3 repository (Р30).
+type EnvFile struct {
+	// Final is where the env file lives.
+	Final string
+	// Content is the env file the operator's keys make. Nil: the file in
+	// place is used as it is.
+	Content []byte
+}
+
 // Connector connects one repository.
 type Connector struct {
 	FS hostsetup.FS
@@ -35,27 +52,58 @@ type Connector struct {
 	SecretsDir string
 	// Final is the password file of the repository.
 	Final string
+	// Env is the env file of the repository, nil if it has none.
+	Env *EnvFile
 	// Owner gives the owner of what the service must be able to use, with
 	// the mode asked for.
 	Owner func(mode os.FileMode) hostsetup.Attrs
-	// Open is restic for the repository opened with the password file path,
-	// and the target its failures are described for.
-	Open func(passwordFile string) (repoinit.Target, restic.Repository)
+	// Open is restic for the repository opened with the files, writing
+	// its stderr also to the writer, and the target its failures are
+	// described for.
+	Open func(files Files, stderr io.Writer) (repoinit.Target, restic.Repository)
 	// AskPassword gives the password of an existing repository: from a
 	// flag, or from the terminal.
 	AskPassword func() ([]byte, *refusal.Failure)
+	// Bound limits the first access to the storage.
+	Bound Bound
 	*State
+
+	// env is the env file candidate; accessed: the first access is made.
+	env      candidate
+	accessed bool
 }
 
-// candidate is a password file the repository is tried with.
+// candidate is a file the repository is tried with.
 type candidate struct {
 	// path is what restic gets.
 	path string
-	// staged is the temporary file that becomes the password file when the
+	// staged is the temporary file that becomes the final file when the
 	// repository accepts it; empty for the file already in place.
 	staged string
 	// given: the operator chose this password, so a refusal is final.
 	given bool
+}
+
+// stageEnv writes the keys to a temporary file in the secrets directory,
+// with the owner and the mode before the content; without keys the env
+// file in place is the candidate.
+func (c *Connector) stageEnv() *refusal.Failure {
+	if c.Env == nil {
+		return nil
+	}
+	if c.Env.Content == nil {
+		c.env = candidate{path: c.Env.Final}
+		return nil
+	}
+	if _, err := hostsetup.EnsureDir(c.FS, c.SecretsDir, c.Owner(0o700)); err != nil {
+		return writeFailed(err)
+	}
+	tmp, err := hostsetup.StageFile(c.FS, c.Env.Final, c.Env.Content, c.Owner(0o600))
+	if err != nil {
+		return writeFailed(err)
+	}
+	c.env = candidate{path: tmp, staged: tmp}
+	return nil
 }
 
 // firstCandidate is the password to try first: the one given, else the
@@ -97,8 +145,15 @@ func (c *Connector) stage(password []byte, given bool) (candidate, *refusal.Fail
 	return candidate{path: tmp, staged: tmp, given: given}, nil
 }
 
-// commit makes the candidate the password file.
+// commit makes the candidates the env file and the password file: the env
+// file first, so that a failure of it leaves no password file behind.
 func (c *Connector) commit(cand candidate) *refusal.Failure {
+	if c.env.staged != "" {
+		if err := hostsetup.CommitFile(c.FS, c.env.staged, c.Env.Final); err != nil {
+			return writeFailed(err)
+		}
+		c.env.staged = ""
+	}
 	if cand.staged == "" {
 		return nil
 	}
@@ -124,34 +179,62 @@ type outcome struct {
 // Connect finds out whether the repository exists and either attaches it
 // or creates it (С10 of repo-init.feature).
 func (c *Connector) Connect(ctx context.Context) *refusal.Failure {
+	if f := c.stageEnv(); f != nil {
+		return f
+	}
+	defer c.discardEnv()
 	cand, f := c.firstCandidate()
 	if f != nil {
 		return f
 	}
-	out := c.try(ctx, cand)
-	if !out.needPassword {
+	if out := c.try(ctx, cand); !out.needPassword {
 		return out.f
 	}
+	return c.tryAskedPassword(ctx)
+}
+
+// tryAskedPassword: the repository exists and the password nobody chose
+// does not open it; the operator gives one.
+func (c *Connector) tryAskedPassword(ctx context.Context) *refusal.Failure {
 	password, f := c.AskPassword()
 	if f != nil {
 		return f
 	}
 	c.Provided = password
-	if cand, f = c.stage(password, true); f != nil {
+	cand, f := c.stage(password, true)
+	if f != nil {
 		return f
 	}
 	return c.try(ctx, cand).f
 }
 
+// discardEnv gives up the staged env file, if it was not committed.
+func (c *Connector) discardEnv() {
+	if c.env.staged != "" {
+		hostsetup.DiscardFile(c.FS, c.env.staged)
+	}
+}
+
 // try opens the repository with the candidate: it is attached if it is
 // there, created if it is not.
 func (c *Connector) try(ctx context.Context, cand candidate) outcome {
-	target, cli := c.Open(cand.path)
-	id, initialized, f := repoinit.Inspect(ctx, cli, target)
+	id, initialized, f := c.inspect(ctx, Files{Password: cand.path, Env: c.env.path})
 	if f != nil {
 		return c.rejected(cand, f)
 	}
 	return c.accepted(ctx, cand, id, initialized)
+}
+
+// inspect asks whether the repository is there; the first time within the
+// time the storage is given to answer (Р33).
+func (c *Connector) inspect(ctx context.Context, files Files) (string, bool, *refusal.Failure) {
+	var log Log
+	target, cli := c.Open(files, &log)
+	if c.accessed {
+		return repoinit.Inspect(ctx, cli, target)
+	}
+	c.accessed = true
+	return c.Bound.Inspect(ctx, cli, target, &log)
 }
 
 // rejected: the repository could not be opened with the candidate. A
@@ -169,6 +252,7 @@ func (c *Connector) rejected(cand candidate, f *refusal.Failure) outcome {
 // attached if it was there, created if it was not.
 func (c *Connector) accepted(ctx context.Context, cand candidate, id string, initialized bool) outcome {
 	if f := c.commit(cand); f != nil {
+		c.discard(cand)
 		return outcome{f: f}
 	}
 	if initialized {
@@ -180,10 +264,18 @@ func (c *Connector) accepted(ctx context.Context, cand candidate, id string, ini
 
 // create makes the repository with the password file now in place.
 func (c *Connector) create(ctx context.Context) *refusal.Failure {
-	target, cli := c.Open(c.Final)
+	target, cli := c.Open(Files{Password: c.Final, Env: c.envFinal()}, nil)
 	id, f := repoinit.Create(ctx, cli, target)
 	c.ID = id
 	return f
+}
+
+// envFinal is the env file restic gets once the files are in place.
+func (c *Connector) envFinal() string {
+	if c.Env == nil {
+		return ""
+	}
+	return c.Env.Final
 }
 
 // writeFailed is CONFIG_WRITE: the message names the file or directory.

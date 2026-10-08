@@ -22,13 +22,15 @@ type fakeEnrollClock struct {
 }
 
 func newFakeEnrollClock() *fakeEnrollClock {
-	return &fakeEnrollClock{added: make(chan time.Duration, 4), fire: make(chan time.Time, 4)}
+	return &fakeEnrollClock{added: make(chan time.Duration, 64), fire: make(chan time.Time, 4)}
 }
 
 func (c *fakeEnrollClock) After(d time.Duration) <-chan time.Time {
 	c.added <- d
 	return c.fire
 }
+
+func (c *fakeEnrollClock) Now() time.Time { return time.Now() }
 
 func (c *fakeEnrollClock) waitTimer(t *testing.T) time.Duration {
 	t.Helper()

@@ -30,11 +30,16 @@ import (
 // clock abstracts time.After so --timeout can be tested without waiting.
 type clock interface {
 	After(d time.Duration) <-chan time.Time
+	// Now is the time on this clock; repo add uses it to leave the time
+	// the operator spends at the terminal out of --timeout.
+	Now() time.Time
 }
 
 type realEnrollClock struct{}
 
 func (realEnrollClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
+
+func (realEnrollClock) Now() time.Time { return time.Now() }
 
 // enrollDeps is every dependency doEnroll's pipeline reaches outside its
 // own arguments: production always builds the real ones (runEnroll);

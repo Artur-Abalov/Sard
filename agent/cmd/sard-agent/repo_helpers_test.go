@@ -55,16 +55,23 @@ type fakeRepo struct {
 	fatal         string // every repository command fails with this message
 	initFatal     string // init fails with this message
 	hangCat       bool   // cat config never finishes
-	hangInit      bool   // init never finishes
-	raceExists    bool   // cat config: none; init: the config file already exists
-	initNoID      bool   // init succeeds but prints no id
-	initEntered   chan struct{}
-	terminated    bool
+	hangLine      string // cat config prints this line to stderr before it hangs
+	// initGate, if not nil, holds init until it is closed.
+	initGate    chan struct{}
+	hangInit    bool // init never finishes
+	raceExists  bool // cat config: none; init: the config file already exists
+	initNoID    bool // init succeeds but prints no id
+	initEntered chan struct{}
+	terminated  bool
+	// script, if not nil, answers a restic command before the rest of the
+	// fake does: the stderr line to print and the exit code, handled true.
+	script func(sub string, env []string) (line string, code int, handled bool)
 }
 
 // fakeCall is one restic invocation.
 type fakeCall struct {
 	sub          string
+	args         []string
 	repository   string
 	passwordFile string
 	env          []string
@@ -119,14 +126,29 @@ func (f *fakeRestic) Run(ctx context.Context, cmd restic.Command) (int, error) {
 		return -1, &fs.PathError{Op: "fork/exec", Path: cmd.Path, Err: syscall.ENOENT}
 	}
 	sub := cmd.Args[0]
+	cmd.Stderr = alsoCopied(cmd)
 	url := envValue(cmd.Env, "RESTIC_REPOSITORY")
 	f.mu.Lock()
-	f.calls = append(f.calls, fakeCall{sub: sub, repository: url, passwordFile: envValue(cmd.Env, "RESTIC_PASSWORD_FILE"), env: cmd.Env, runAs: cmd.RunAs, password: passwordOf(cmd.Env)})
+	f.calls = append(f.calls, fakeCall{sub: sub, args: append([]string(nil), cmd.Args...), repository: url, passwordFile: envValue(cmd.Env, "RESTIC_PASSWORD_FILE"), env: cmd.Env, runAs: cmd.RunAs, password: passwordOf(cmd.Env)})
 	f.mu.Unlock()
 	if sub == "version" {
 		return f.printVersion(cmd)
 	}
 	return f.runRepoCommand(ctx, cmd, sub, f.repo(url))
+}
+
+// alsoCopied is the stderr callback of cmd that feeds StderrCopy as well, as
+// the real executor does with the stream it copies unchanged.
+func alsoCopied(cmd restic.Command) func([]byte) {
+	if cmd.StderrCopy == nil {
+		return cmd.Stderr
+	}
+	return func(line []byte) {
+		if cmd.Stderr != nil {
+			cmd.Stderr(line)
+		}
+		_, _ = cmd.StderrCopy.Write(append(append([]byte(nil), line...), '\n'))
+	}
 }
 
 // passwordOf is the content of the password file of a restic call, without
@@ -158,6 +180,12 @@ func lines(cb func([]byte), text string) {
 }
 
 func (f *fakeRestic) runRepoCommand(ctx context.Context, cmd restic.Command, sub string, r *fakeRepo) (int, error) {
+	if r.script != nil {
+		if line, code, handled := r.script(sub, cmd.Env); handled {
+			cmd.Stderr([]byte(line))
+			return code, nil
+		}
+	}
 	switch {
 	case r.fatal != "":
 		cmd.Stderr([]byte("Fatal: " + r.fatal))
@@ -171,8 +199,12 @@ func (f *fakeRestic) runRepoCommand(ctx context.Context, cmd restic.Command, sub
 	return 0, nil
 }
 
-// hang blocks like a restic waiting for its backend, until SIGTERM.
-func (f *fakeRestic) hang(ctx context.Context, r *fakeRepo) (int, error) {
+// hang blocks like a restic waiting for its backend, until SIGTERM; it
+// prints line first, if there is one.
+func (f *fakeRestic) hang(ctx context.Context, cmd restic.Command, r *fakeRepo, line string) (int, error) {
+	if line != "" {
+		cmd.Stderr([]byte(line))
+	}
 	<-ctx.Done()
 	f.mu.Lock()
 	r.terminated = true
@@ -183,7 +215,7 @@ func (f *fakeRestic) hang(ctx context.Context, r *fakeRepo) (int, error) {
 func (f *fakeRestic) cat(ctx context.Context, cmd restic.Command, r *fakeRepo) (int, error) {
 	switch {
 	case r.hangCat:
-		return f.hang(ctx, r)
+		return f.hang(ctx, cmd, r, r.hangLine)
 	case r.wrongPassword || (r.password != "" && r.initialized && r.password != passwordOf(cmd.Env)):
 		lines(cmd.Stderr, golden(f.t, "wrong-password.stderr"))
 		return 12, nil
@@ -202,7 +234,10 @@ func (f *fakeRestic) init(ctx context.Context, cmd restic.Command, r *fakeRepo) 
 	}
 	if r.hangInit {
 		close(r.initEntered)
-		return f.hang(ctx, r)
+		return f.hang(ctx, cmd, r, "")
+	}
+	if r.initGate != nil && !r.passedGate(ctx) {
+		return -1, nil
 	}
 	if r.initialized || r.raceExists {
 		lines(cmd.Stderr, golden(f.t, "init-exists.stderr"))
@@ -216,6 +251,16 @@ func (f *fakeRestic) init(ctx context.Context, cmd restic.Command, r *fakeRepo) 
 	r.password = passwordOf(cmd.Env)
 	lines(cmd.Stdout, strings.ReplaceAll(golden(f.t, "init.json"), goldenID, r.id))
 	return 0, nil
+}
+
+// passedGate waits for the gate of init to open; false if ctx ended first.
+func (r *fakeRepo) passedGate(ctx context.Context) bool {
+	select {
+	case <-r.initGate:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 func (f *fakeRestic) subs() []string {
