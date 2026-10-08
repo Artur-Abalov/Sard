@@ -25,9 +25,10 @@ import java.security.cert.X509Certificate
 import java.time.Clock
 import java.time.Duration
 
-private const val CA = "ca"
-private const val CERT = "ca.crt"
-private const val KEY = "ca.key"
+/** The layout of the CA directory, shared with [CaImportSource], which reads the same layout. */
+internal const val CA = "ca"
+internal const val CERT = "ca.crt"
+internal const val KEY = "ca.key"
 private val OWNER = setOf(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE)
 private val OWNER_DIR = PosixFilePermissions.asFileAttribute(OWNER)
 private val OWNER_FILE = PosixFilePermissions.asFileAttribute(setOf(OWNER_READ, OWNER_WRITE))
@@ -89,13 +90,16 @@ class CaDirectory(
         if (Files.exists(ca)) return existing(source)
         val pair = source?.read()?.let { CaKeyPair(it.certificate, it.key) } ?: generate()
         val published = writing(source) { publish(pair) }
-        val origin =
-            when {
-                !published -> CaOrigin.EXISTING
-                source == null -> CaOrigin.GENERATED
-                else -> CaOrigin.IMPORTED
-            }
-        return OpenedCa(load(), origin)
+        return OpenedCa(load(), originOf(published, source))
+    }
+
+    private fun originOf(
+        published: Boolean,
+        source: CaImport?,
+    ) = when {
+        !published -> CaOrigin.EXISTING
+        source == null -> CaOrigin.GENERATED
+        else -> CaOrigin.IMPORTED
     }
 
     private fun existing(source: CaImport?): OpenedCa {

@@ -17,10 +17,6 @@ private val log = LoggerFactory.getLogger(CaImportSource::class.java)
 /** A CA with this much or less left is imported with a warning (ADR 0052). */
 private val WARN_WITHIN = Duration.ofDays(90)
 
-private const val CA = "ca"
-private const val CERT = "ca.crt"
-private const val KEY = "ca.key"
-
 /** The two things a CA directory needs from a source of a CA to import (ADR 0052). */
 interface CaImport {
     /** The CA to take, or throws [CaImportRefused] for the first check it fails. */
