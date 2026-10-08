@@ -168,10 +168,10 @@ class PostgresqlSourceTest {
         bigDatabase()
         val started = agent.backup("ps-${UUID.randomUUID()}", PgAgent.configK(database = "big"))
         Await.until("the phase UPLOADING of step ${started.stepId}") { agent.phase(started) == "uploading" }
-        val processes = agent.processes()
+        // The phase starts before pg_dump does: look until it is in the list.
+        val processes = Await.value("pg_dump in the process list of the agent's container") { agent.processes().takeIf { "--dbname=host=" in it } }
+        val step = agent.finish(started) // also when an assertion below fails: no step runs on into the next test
         assertFalse(PG_PASSWORD in processes, "the password is in the command line of a process: $processes")
-        assertTrue("--dbname=host=" in processes, "no pg_dump with a connection string in the process list: $processes")
-        val step = agent.finish(started)
         assertEquals("succeeded", step.status, step.message)
         assertFalse(PG_PASSWORD in step.message.orEmpty())
         assertFalse(PG_PASSWORD in stepLog(started), "the password is in the log of the step")
@@ -185,7 +185,10 @@ class PostgresqlSourceTest {
         victim.sql(BIG_TABLE, database = "big")
         val before = agent.snapshots().size
         val started = agent.backup("victim-${UUID.randomUUID()}", PgAgent.configK(database = "big", host = "db-victim"))
-        Await.until("the phase UPLOADING of step ${started.stepId}") { agent.phase(started) == "uploading" }
+        // The phase starts before pg_dump connects: kill the server while a table is being copied.
+        Await.until("pg_dump copying a table of the victim") {
+            victim.query("select count(*) from pg_stat_activity where application_name = 'sard-agent' and query like 'COPY%'", "postgres") != "0"
+        }
         victim.container.dockerClient.killContainerCmd(victim.container.containerId).exec()
         val step = agent.finish(started)
         assertEquals("failed", step.status, step.message)

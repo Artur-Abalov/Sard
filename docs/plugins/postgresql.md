@@ -49,6 +49,18 @@ GRANT pg_read_all_data TO backup;
 ALTER ROLE backup BYPASSRLS;
 ```
 
+`pg_read_all_data` не покрывает большие объекты (large objects): чтение объекта проверяет
+его собственные права, и `pg_dump` базы с большим объектом чужого владельца падает с
+`could not open large object …: permission denied for large object …`. Если в базе есть
+большие объекты, задайте роли режим совместимости: он отключает проверку прав на
+большие объекты только в сеансах этой роли.
+
+```sql
+ALTER ROLE backup SET lo_compat_privileges = on;
+```
+
+Вместо этого можно выдать `GRANT SELECT ON LARGE OBJECT <oid> TO backup` на каждый объект.
+
 Права на отдельные таблицы проверяет сам `pg_dump`: он берёт `ACCESS SHARE` на каждую
 выгружаемую таблицу до выгрузки данных. Таблица без права `SELECT` — шаг FAILED, снимка
 нет, сообщение называет причину `pg_dump` и таблицу. Такую таблицу можно исключить

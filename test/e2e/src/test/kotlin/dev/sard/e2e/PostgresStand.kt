@@ -78,7 +78,13 @@ internal class PgServer(
      */
     fun seed() {
         val q = "\$\$"
-        sql("create role backup login password $q$PG_PASSWORD$q", "grant pg_read_all_data to backup", "create database app")
+        sql(
+            "create role backup login password $q$PG_PASSWORD$q",
+            "grant pg_read_all_data to backup",
+            // pg_read_all_data does not cover large objects (docs/plugins/postgresql.md).
+            "alter role backup set lo_compat_privileges = on",
+            "create database app",
+        )
         sql(
             "create role app_owner nologin",
             "create role app_rw login password 'qa-rw-pass' in role app_owner",

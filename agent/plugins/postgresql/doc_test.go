@@ -34,6 +34,7 @@ func TestTheDocumentationExplainsTheRoleAndTheSecret(t *testing.T) {
 		"CREATE ROLE backup LOGIN",         // the role with LOGIN
 		"GRANT pg_read_all_data TO backup", // and the right to read
 		"BYPASSRLS",                        // with row level security
+		"lo_compat_privileges",             // and large objects, which pg_read_all_data does not cover
 		"secrets:",                         // the secret in agent.yaml
 		"agent.yaml",                       //
 		"0600",                             // the file of the secret
