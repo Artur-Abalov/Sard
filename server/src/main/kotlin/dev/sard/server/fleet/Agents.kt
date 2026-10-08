@@ -34,6 +34,12 @@ private const val MARK_DUPLICATE = "update Agent set duplicateSessionAt = :now w
 /** The rule "a built-in agent that is not revoked"; [LIVE_BUILTIN_AGENTS] states it in HQL. */
 private fun Agent.liveBuiltin(): Boolean = builtin && revokedAt == null
 
+/** Whether revoking with [confirmation] is refused: a live built-in agent needs [SELF_AGENT_CONFIRMATION]. */
+internal fun Agent.revocationUnconfirmed(confirmation: String?): Boolean {
+    val confirmed = confirmation == SELF_AGENT_CONFIRMATION
+    return liveBuiltin() && !confirmed
+}
+
 /** Which agents are connected, and the one thing the server does to a connection: refuse a revoked agent's. */
 interface AgentPresence {
     fun online(agentId: UUID): Boolean
@@ -196,8 +202,10 @@ class Agents(
     ): Attempt {
         // The lock orders this against a run being started for the agent (Runs.start shares it).
         val agent = session.find(Agent::class.java, agentId, LockModeType.PESSIMISTIC_WRITE) ?: return Attempt.Missing
-        val unconfirmed = agent.liveBuiltin() && confirmation != SELF_AGENT_CONFIRMATION
-        return if (unconfirmed) Attempt.Unconfirmed else Attempt.Done(revokeIn(session, tenantId, agent))
+        return when {
+            agent.revocationUnconfirmed(confirmation) -> Attempt.Unconfirmed
+            else -> Attempt.Done(revokeIn(session, tenantId, agent))
+        }
     }
 
     private sealed interface Attempt {

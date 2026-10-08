@@ -50,10 +50,12 @@ class AgentsBuiltinLiveIntegrationTest(
 
     private fun builtinLive() = MutFlow.underTest { agents.builtinLive(tenant) }
 
+    // Not under mutflow: whether a revocation needs the confirmation is RevocationConfirmationTest's, and a
+    // revocation closes the stream asynchronously, past what a mutant run can observe.
     private fun revoke(
         agent: UUID,
         confirmation: String?,
-    ) = MutFlow.underTest { agents.revoke(tenant, agent, confirmation) }
+    ) = agents.revoke(tenant, agent, confirmation)
 
     private fun revokedAt(agent: UUID) = MutFlow.underTest { agents.get(tenant, agent) }?.row?.revokedAt
 
