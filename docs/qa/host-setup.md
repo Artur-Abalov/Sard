@@ -2,8 +2,9 @@
 
 Сценарии: `docs/specs/agent/host-setup.feature`. Срез A8a утверждён владельцем
 2026-10-07; ответы на О1–О5, Н1–Н13 внесены в спецификацию. Срез A8b (части
-8–10 ниже) специфицирован 2026-10-08 и ещё не утверждён (Н14–Н25); шаги,
-зависящие от ответа, помечены «(Н<номер>)». Классы и номера кодов выхода —
+8–11 ниже) утверждён владельцем 2026-10-08 (Н14–Н25); шаги, которые проверяют
+решение по ответу, помечены «(Н<номер>)». Шаблоны адресов провайдеров A8b-3
+(часть 11) ждут подтверждения владельца. Классы и номера кодов выхода —
 A2b (ADR 0025); A8b добавляет к `repo add` код `5` (доверие: ключ хоста
 SFTP).
 
@@ -463,12 +464,34 @@ sshsnap() { sudo find "$HOME_SA/.ssh" -printf '%u %g %m %n %s %p\n' 2>/dev/null 
     коды `0 1 2 4 5 6 7`; сказано, что ключ хоста не принимается без
     подтверждения.
 
+## Часть 11. Предустановки провайдеров (A8b-3, Р50)
+
+Выполнима, когда владелец подтвердил шаблоны адресов. Нужны бакет и ключ у
+AWS (`$AWSB`, регион `$AWSR`, ключ `$AWSKID`, секрет в `$OUT/awssec`) и, по
+возможности, у Backblaze B2 (`$B2B`, `$B2R` вида `us-west-004`, `$B2KID`,
+`$OUT/b2sec`).
+
+72. `run sudo $AG repo add p1 s3:$AWSB/p1 --provider aws --access-key-id $AWSKID --secret-key-from-file "$OUT/awssec"`
+    → `exit=2`, сообщение называет `--region`; файлов `restic-p1.*` нет.
+73. `run sudo $AG repo add p1 s3:$AWSB/p1 --provider aws --region $AWSR --access-key-id $AWSKID --secret-key-from-file "$OUT/awssec"`
+    → `exit=0`, «created»; `sudo grep url /etc/sard/agent.d/repo-p1.yaml` →
+    `s3:https://s3.$AWSR.amazonaws.com/$AWSB/p1`;
+    `sudo grep -c "AWS_DEFAULT_REGION=$AWSR" /etc/sard/secrets/restic-p1.env` → `1`;
+    бэкап `p1` из консоли → `succeeded`.
+74. То же для B2: `--provider b2 --region $B2R` → `exit=0`; url
+    `s3:https://s3.$B2R.backblazeb2.com/$B2B/p2`; бэкап → `succeeded`.
+75. `run sudo $AG repo add p3 s3:$AWSB/p3 --provider yandex --region ru-central1 --access-key-id $AWSKID --secret-key-from-file "$OUT/awssec"`
+    → `exit=2`, сообщение перечисляет `aws` и `b2`.
+76. `run sudo $AG repo add p4 s3:https://s3.example.com/$AWSB/p4 --provider aws --region $AWSR --access-key-id $AWSKID --secret-key-from-file "$OUT/awssec"`
+    → `exit=2`, называет `--provider` и хост в адресе.
+77. `grep -cF "$(cat "$OUT/awssec")" "$OUT/all"` → `0`.
+
 Вручную не воспроизводятся и проверяются тестами `@local` с теми же
 названиями (A8b): подмена каталога `~/.ssh` ссылкой между открытием и
 записью, FIFO в `~/.ssh`, `umask 000` для env-файла и файлов ssh, сбои
 fchown, rename и fsync в `~/.ssh` и `secrets`, отказ `ssh-keygen`, SIGKILL
 restic после SIGTERM по таймауту подключения, хешированные записи
-`known_hosts`, IPv6 в адресе SFTP, предустановки `--provider` (Н15).
+`known_hosts`, IPv6 в адресе SFTP, регион провайдера, которого нет.
 
 Вручную не воспроизводятся и проверяются тестами `@local` с теми же
 названиями: сбои fsync, rename и смены владельца при записи, недоступный
