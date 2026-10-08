@@ -101,7 +101,7 @@ var ErrInvalidRestic = errors.New("want an absolute path")
 var ErrInvalidExecutor = errors.New("invalid executor setting")
 
 // Load reads and validates the file at path, then adds the fragments of
-// the agent.d directory next to it (ADR 0048). Every error of a fragment
+// the agent.d directory next to it (ADR 0049). Every error of a fragment
 // names its file.
 func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)

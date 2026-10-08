@@ -62,6 +62,7 @@ class AgentInstallApiImpl(
             MANUAL_INSTALL_DOC,
             info.steps.map { it.toWire() },
             info.reason?.twin<UpgradeReason>(),
+            info.keepsConfiguration,
         )
     }
 }

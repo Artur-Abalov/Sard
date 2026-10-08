@@ -6,7 +6,8 @@
 # (docs/adr/0018-agent-packaging.md) into dist/:
 #
 #   sard-agent_<version>_linux_<arch>.tar.gz   binaries, licenses, config, unit
-#   sard-agent_<version>_<arch>.deb / .rpm     /usr/lib/sard, systemd unit
+#   sard-agent_<version>_<arch>.deb            /usr/libexec/sard, systemd unit
+#   sard-agent-<version>.<x86_64|aarch64>.rpm  the same for rpm
 #   manifest.json                              version, restic, protocol, artifacts
 #   SHA256SUMS                                 over all of the above
 #
@@ -16,6 +17,10 @@
 #   DIST=/tmp/out scripts/package-agent.sh amd64   another output directory
 #   GO_TAGS=e2e DIST=... scripts/package-agent.sh  e2e stand build (make package-stand
 #                                                   only): links the stand's plugins
+#
+# <version> in file names is VERSION as given (the tag); the version inside a
+# deb or rpm is scripts/release-version.sh's (v0.1.0-beta.1 → 0.1.0~beta.1,
+# docs/adr/0048-release-versions.md).
 #
 # Every package carries Sard's license (AGPL-3.0), restic's (BSD-2) and the
 # license texts of all Go modules compiled into sard-agent.
@@ -40,15 +45,10 @@ GO_TAGS="${GO_TAGS:-}"
 
 die() { echo "package-agent: $*" >&2; exit 1; }
 
-# pkg_version turns a git description into a deb/rpm version: v1.2.3 → 1.2.3,
-# anything else → 0.0.0~dev.<description>, which sorts below any release.
-pkg_version() {
-  if [[ "$VERSION" =~ ^v?([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-    echo "${BASH_REMATCH[1]}"
-  else
-    echo "0.0.0~dev.${VERSION//[^A-Za-z0-9.]/.}"
-  fi
-}
+RELEASE_VERSION="$ROOT/scripts/release-version.sh"
+# The deb/rpm version of VERSION: a release tag's own (0.1.0~beta.1), anything
+# else 0.0.0~dev.<description>, below any release (docs/adr/0048-release-versions.md).
+PKG_VERSION="$("$RELEASE_VERSION" package "$VERSION")"
 
 # third_party_licenses prints the license files of every non-Sard module
 # linked into sard-agent for GOOS=linux GOARCH=$1; a module without one fails.
@@ -103,7 +103,7 @@ stage() {
 # and to / in deb/rpm.
 TAR_FILES=(sard-agent restic LICENSE LICENSE.restic THIRD_PARTY_LICENSES NOTICE agent.example.yaml sard-agent.service)
 PKG_FILES=(
-  /usr/lib/sard/sard-agent /usr/lib/sard/restic /usr/bin/sard-agent
+  /usr/libexec/sard/sard-agent /usr/libexec/sard/restic /usr/bin/sard-agent
   /usr/lib/systemd/system/sard-agent.service /etc/sard/agent.example.yaml
   /usr/share/doc/sard-agent/LICENSE /usr/share/doc/sard-agent/LICENSE.restic
   /usr/share/doc/sard-agent/THIRD_PARTY_LICENSES /usr/share/doc/sard-agent/NOTICE
@@ -163,14 +163,18 @@ verify() {
   tar -tzf "$DIST/$name.tar.gz" | sed "s|^$name/||" | require "$name.tar.gz" "${TAR_FILES[@]}"
   ! tar -tzf "$DIST/$name.tar.gz" | grep -q 'var/cache' || die "$name.tar.gz: var/cache must not be in the archive"
   grep -qx 'CacheDirectoryMode=0700' "$ROOT/deploy/agent/sard-agent.service" || die "sard-agent.service: CacheDirectoryMode=0700 missing"
-  deb="$(ls "$DIST"/sard-agent_*_"$arch".deb)"
+  deb="$DIST/$("$RELEASE_VERSION" deb-file "$VERSION" "$arch")"
+  [ "$(dpkg-deb -f "$deb" Version)" = "$PKG_VERSION" ] || die "$(basename "$deb"): version $(dpkg-deb -f "$deb" Version), want $PKG_VERSION"
   dpkg-deb -c "$deb" | awk '{print $6}' | sed 's|^\.||' | require "$(basename "$deb")" "${PKG_FILES[@]}"
   dpkg-deb -c "$deb" | awk '{print $6}' | sed 's|^\.||; s|/$||' | forbid "$(basename "$deb")" /var/cache /var/cache/sard "$CACHE_DIR"
   dpkg-deb --ctrl-tarfile "$deb" | tar -xO ./postinst | check_cache_dir "$(basename "$deb")"
   # restic's sftp backend runs ssh (ADR 0047).
   [ "$(dpkg-deb -f "$deb" Depends)" = openssh-client ] || die "$(basename "$deb"): Depends must be openssh-client"
-  rpm="$(ls "$DIST"/sard-agent-*."$( [ "$arch" = amd64 ] && echo x86_64 || echo aarch64)".rpm)"
+  rpm="$DIST/$("$RELEASE_VERSION" rpm-file "$VERSION" "$arch")"
+  [ -f "$rpm" ] || die "$(basename "$rpm") missing"
   if command -v rpm >/dev/null; then
+    [ "$(rpm -qp --qf '%{VERSION}' "$rpm" 2>/dev/null)" = "$PKG_VERSION" ] ||
+      die "$(basename "$rpm"): version $(rpm -qp --qf '%{VERSION}' "$rpm" 2>/dev/null), want $PKG_VERSION"
     rpm -qlp "$rpm" 2>/dev/null | require "$(basename "$rpm")" "${PKG_FILES[@]}"
     rpm -qlp "$rpm" 2>/dev/null | forbid "$(basename "$rpm")" /var/cache /var/cache/sard "$CACHE_DIR"
     rpm -qp --scripts "$rpm" 2>/dev/null | check_cache_dir "$(basename "$rpm")"
@@ -191,10 +195,12 @@ package_arch() {
     --mtime="@$SOURCE_DATE_EPOCH" --format=gnu -cf - "$name" | gzip -n -9 >"$DIST/$name.tar.gz"
   # nfpm does not expand variables in file paths: render the config.
   sed -e "s|\${STAGE}|$dir|g" -e "s|\${ARCH}|$arch|g" -e "s|\${ROOT}|$ROOT|g" \
-    -e "s|\${PKG_VERSION}|$(pkg_version)|g" "$ROOT/deploy/agent/nfpm.yaml" >"$dir.nfpm.yaml"
-  for format in deb rpm; do
-    "$BIN/nfpm" package --config "$dir.nfpm.yaml" --packager "$format" --target "$DIST/" >/dev/null
-  done
+    -e "s|\${PKG_VERSION}|$PKG_VERSION|g" "$ROOT/deploy/agent/nfpm.yaml" >"$dir.nfpm.yaml"
+  # File names carry VERSION, never "~" (docs/adr/0048-release-versions.md).
+  "$BIN/nfpm" package --config "$dir.nfpm.yaml" --packager deb \
+    --target "$DIST/$("$RELEASE_VERSION" deb-file "$VERSION" "$arch")" >/dev/null
+  "$BIN/nfpm" package --config "$dir.nfpm.yaml" --packager rpm \
+    --target "$DIST/$("$RELEASE_VERSION" rpm-file "$VERSION" "$arch")" >/dev/null
   verify "$arch" "$name"
   echo "package-agent: $arch done, contents checked"
 }
@@ -213,7 +219,7 @@ done
 # server hands out (docs/adr/0043-agent-release.md).
 manifest() {
   local f sep="" arch format
-  printf '{\n  "schema": 1,\n  "version": "%s",\n  "package_version": "%s",\n' "$VERSION" "$(pkg_version)"
+  printf '{\n  "schema": 1,\n  "version": "%s",\n  "package_version": "%s",\n' "$VERSION" "$PKG_VERSION"
   printf '  "commit": "%s",\n  "restic_version": "%s",\n  "protocol_version": %s,\n  "artifacts": [' \
     "$COMMIT" "$RESTIC_VERSION" "$PROTOCOL_VERSION"
   for f in *.tar.gz *.deb *.rpm; do

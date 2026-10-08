@@ -10,7 +10,7 @@ private const val USER = "sard-agent"
 private const val UNIT = "sard-agent.service"
 private const val SUMS = "SHA256SUMS"
 private const val SIGNATURE = "SHA256SUMS.minisig"
-private const val LIB = "/usr/lib/sard"
+private const val LIB = "/usr/libexec/sard"
 private const val CONFIG = "/etc/sard/agent.yaml"
 private const val EXAMPLE = "/etc/sard/agent.example.yaml"
 private const val EXAMPLE_ADDRESS = "sard.example.com:9090"
@@ -32,7 +32,7 @@ data class ReleasePackage(
 /**
  * Shell commands of the install and upgrade blocks (U1b), built from the address the packages are
  * fetched from ([downloads]), the address agents dial ([endpoint], as in the enroll command) and
- * the release key. Only the commands of a Debian-family host's base system; the layout of the archive
+ * the release key. Only the commands of a Debian- or RHEL-family host's base system; the layout of the archive
  * is the layout of the deb (В3), so the steps after the install are the same.
  */
 class InstallCommands(
@@ -55,6 +55,10 @@ class InstallCommands(
             when (pkg.format) {
                 InstallFormat.DEB -> {
                     listOf(step(StepKind.UPGRADE, listOf(dpkg(pkg))))
+                }
+
+                InstallFormat.RPM -> {
+                    listOf(step(StepKind.UPGRADE, listOf(rpm(pkg))))
                 }
 
                 InstallFormat.TAR -> {
@@ -89,10 +93,14 @@ class InstallCommands(
     private fun installCommands(pkg: ReleasePackage): List<String> =
         when (pkg.format) {
             InstallFormat.DEB -> listOf(dpkg(pkg))
+            InstallFormat.RPM -> listOf(rpm(pkg))
             InstallFormat.TAR -> ArchiveCommands.unpack(pkg) + ArchiveCommands.layout(pkg)
         }
 
     private fun dpkg(pkg: ReleasePackage) = "sudo dpkg -i ${pkg.file}"
+
+    /** `rpm -Uvh` of a local file needs no repositories, unlike `dnf install ./file` (ADR 0048). */
+    private fun rpm(pkg: ReleasePackage) = "sudo rpm -Uvh ${pkg.file}"
 
     private fun enroll() = endpoint.enrollCommand(TOKEN_PLACEHOLDER)
 

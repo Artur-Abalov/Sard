@@ -91,7 +91,7 @@ func (c *hostCmd) failConnect(ctx context.Context, st *addState, f *refusal.Fail
 // for the service user (Р13): missing parents are root's, 0755; the
 // repository directory itself is the service user's, 0700; an existing
 // one gets the service user as owner, recursively, modes untouched. The
-// path is walked without ever following a symbolic link (R2, ADR 0049),
+// path is walked without ever following a symbolic link (R2, ADR 0050),
 // so neither the creation nor the change of owner can be sent elsewhere.
 func (c *hostCmd) prepareRepositoryDir(path string) error {
 	d, created, err := hostsetup.OpenDir(c.deps.fs, path, &hostsetup.Make{Parents: hostsetup.Attrs{Mode: 0o755}, Last: c.serviceOwner(0o700)})

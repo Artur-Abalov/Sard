@@ -912,7 +912,7 @@ export interface components {
             outdated: boolean;
         };
         /** @enum {string} */
-        InstallFormat: "deb" | "tar";
+        InstallFormat: "deb" | "rpm" | "tar";
         /** @enum {string} */
         FetchTool: "curl" | "wget";
         /** @description How to upgrade one agent: the same as an install, for the architecture of its last Register */
@@ -936,6 +936,8 @@ export interface components {
             steps: components["schemas"]["InstallStep"][];
             /** @description Why there are no steps although downloads are on; null otherwise */
             reason: components["schemas"]["UpgradeReason"] | null;
+            /** @description True when the upgrade replaces only the program and leaves the configuration and keys (deb and rpm); false for the archive and whenever there are no steps */
+            keepsConfiguration: boolean;
         };
         /** @description One step of the block: shell commands to run in order, as one unit */
         InstallStep: {

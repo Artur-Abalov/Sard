@@ -71,9 +71,9 @@ tar -xzf sard-agent_<версия>_linux_<архитектура>.tar.gz
 cd sard-agent_<версия>_linux_<архитектура>
 sudo useradd --system --no-create-home --home-dir /var/lib/sard-agent \
   --shell /usr/sbin/nologin --user-group sard-agent
-sudo install -d -m 0755 /usr/lib/sard
-sudo install -m 0755 sard-agent restic /usr/lib/sard/
-sudo ln -sf /usr/lib/sard/sard-agent /usr/bin/sard-agent
+sudo install -d -m 0755 /usr/libexec/sard
+sudo install -m 0755 sard-agent restic /usr/libexec/sard/
+sudo ln -sf /usr/libexec/sard/sard-agent /usr/bin/sard-agent
 sudo install -m 0644 sard-agent.service /usr/lib/systemd/system/sard-agent.service
 sudo install -d -o root -g sard-agent -m 0750 /etc/sard
 sudo install -d -o sard-agent -g sard-agent -m 0700 /var/cache/sard/restic
@@ -104,7 +104,7 @@ sudo systemctl enable --now sard-agent.service
 
 deb: `sudo dpkg -i <новый .deb>` — ставит поверх, не трогает `/etc/sard` и ключи,
 перезапускает службу, если она работает. tar.gz: распаковать, заменить
-`/usr/lib/sard/sard-agent` и `/usr/lib/sard/restic`
-(`sudo install -m 0755 sard-agent restic /usr/lib/sard/`) и
+`/usr/libexec/sard/sard-agent` и `/usr/libexec/sard/restic`
+(`sudo install -m 0755 sard-agent restic /usr/libexec/sard/`) и
 `sudo systemctl try-restart sard-agent.service`. Обновляйте, когда у агента нет
 активных запусков: перезапуск их прерывает.
