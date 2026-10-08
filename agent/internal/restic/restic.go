@@ -63,6 +63,8 @@ type Options struct {
 	// Stderr, if not nil, receives restic's stderr unchanged: the log of
 	// the step that runs it (see WithStderr).
 	Stderr io.Writer
+	// RunAs, if not nil, is the user restic runs as (Р6 of A8a).
+	RunAs *RunAs
 }
 
 // Errors for restic's documented exit codes and for output the wrapper
@@ -221,6 +223,7 @@ func (c *CLI) start(ctx context.Context, env []string, cl call) (*result, error)
 		Stdout:     cl.stdout,
 		Stderr:     res.stderr(cl.stderr),
 		StderrCopy: c.opts.Stderr,
+		RunAs:      c.opts.RunAs,
 	})
 	res.code = code
 	c.exited(cl.args[0], code, err)

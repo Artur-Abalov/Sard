@@ -144,7 +144,7 @@ func TestTheListHelpDescribesColumnsFlagsAndExitCodes(t *testing.T) {
 func TestAMalformedListInvocationIsAUsageError(t *testing.T) {
 	for _, args := range [][]string{
 		{"list", "--config", "C", "main"},
-		{"list", "--config", "C", "--json"},
+		{"list", "--config", "C", "--json", "main"}, // --json is allowed since A8a (Л4а), a name is not
 		{"list", "--config", "C", "--timeout", "0s"},
 		{"list", "--config", "C", "--generate-password"},
 	} {

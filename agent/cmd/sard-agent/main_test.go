@@ -70,8 +70,10 @@ func TestEnrollWithNoOtherArgumentsDispatchesToEnroll(t *testing.T) {
 	if strings.Contains(errOut, "--config <path> is required") {
 		t.Fatalf("stderr = %q: dispatched to the agent command, not enroll", errOut)
 	}
-	if !strings.Contains(errOut, "enrollment token") {
-		t.Fatalf("stderr = %q, want the enroll subcommand's own missing-token message", errOut)
+	// Whoever runs the test, the enroll subcommand answers first, with a
+	// refusal of the right to run (A8a) before it asks for a token.
+	if !strings.HasPrefix(errOut, "sard-agent enroll: ") {
+		t.Fatalf("stderr = %q, want the enroll subcommand's own message", errOut)
 	}
 }
 

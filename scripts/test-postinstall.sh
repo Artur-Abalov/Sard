@@ -9,7 +9,7 @@
 #   scripts/test-postinstall.sh [<image>]      default debian:12
 #
 # - first install (deb "configure", rpm "1"): the next step is printed, the
-#   enroll command as the service user and where the token comes from;
+#   enroll command through sudo (no "sudo -u") and where the token comes from;
 # - an upgrade (deb "configure <old>", rpm "2"): no word about registration;
 # - either way the unit is neither enabled nor started by the script.
 set -euo pipefail
@@ -27,7 +27,8 @@ run_script() {
 expect_hint() {
   local out
   out="$(run_script "$@")" || die "$*: the script failed: $out"
-  grep -q 'sudo -u sard-agent sard-agent enroll --server' <<<"$out" || die "$*: no enroll command as sard-agent in: $out"
+  grep -q 'sudo sard-agent enroll --server' <<<"$out" || die "$*: no enroll command through sudo in: $out"
+  ! grep -q 'sudo -u' <<<"$out" || die "$*: the hint still says sudo -u: $out"
   grep -qi 'console' <<<"$out" || die "$*: no mention of the console (the token) in: $out"
   ! grep -qi 'systemctl' <<<"$out" || die "$*: the script runs or advises systemctl before enrollment: $out"
   echo "ok: $* prints the next step"

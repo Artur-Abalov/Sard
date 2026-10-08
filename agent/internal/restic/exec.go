@@ -40,6 +40,21 @@ type Command struct {
 	// StderrCopy, if not nil, receives stderr unchanged, before it is
 	// split into lines (the step's log masks it as a stream, A7c).
 	StderrCopy io.Writer
+	// RunAs, if not nil, is the user and group the process runs as: the
+	// agent runs restic as the service user when a command runs as root.
+	RunAs *RunAs
+}
+
+// RunAs is a user and a group to run a process as. Supplementary groups
+// are dropped.
+type RunAs struct{ UID, GID uint32 }
+
+// credentialFor is the process credential for RunAs; nil for nobody.
+func credentialFor(r *RunAs) *syscall.Credential {
+	if r == nil {
+		return nil
+	}
+	return &syscall.Credential{Uid: r.UID, Gid: r.GID, Groups: []uint32{}}
 }
 
 // DefaultGrace is how long a cancelled process may take to exit after
@@ -58,7 +73,7 @@ type ProcessExecutor struct {
 func (p ProcessExecutor) Run(ctx context.Context, c Command) (int, error) {
 	cmd := exec.CommandContext(ctx, c.Path, c.Args...)
 	cmd.Env = append([]string{}, c.Env...) // non-nil: an empty Env inherits nothing
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Credential: credentialFor(c.RunAs)}
 	stdout, stderr := &lineWriter{emit: c.Stdout}, &lineWriter{emit: c.Stderr}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = c.Stdin, stdout, stderr
 	if c.StderrCopy != nil {

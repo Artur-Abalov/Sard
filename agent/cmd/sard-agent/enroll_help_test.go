@@ -18,8 +18,7 @@ func runEnrollCmdTest(args ...string) (int, string, string) {
 
 func runEnrollCmdOn(hostname hostnameFunc, args ...string) (int, string, string) {
 	var out, errOut strings.Builder
-	all := append([]string{"enroll"}, args...)
-	code := run(context.Background(), all, &out, &errOut, hostname)
+	code := runEnrollWithDeps(context.Background(), args, &out, &errOut, testEnrollDeps(hostname))
 	return code, out.String(), errOut.String()
 }
 

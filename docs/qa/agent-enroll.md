@@ -38,6 +38,8 @@ tls:
   ca_file: $H/tls/ca.pem
   cert_file: $H/tls/agent.pem
   key_file: $H/tls/agent.key
+service:
+  user: $(id -un)   # A8a, Р25/Н1: QA без root идёт от «пользователя службы»
 EOF
 # cfg <адрес> — копия конфига с другим server.address, печатает путь
 cfg() { f="$QA/cfg-$RANDOM.yaml"; sed "s|address: localhost:9090|address: $1|" "$H/agent.yaml" > "$f"; echo "$f"; }
@@ -236,16 +238,26 @@ start() { timeout 10 "$AG" --config "$H/a1.yaml" 2>&1; echo "exit=$?"; }
     секрета (`s=${tok#sard_}; s=${s%%.*}`): `grep -cF "<строка или секрет>" "$QA/all"` → `0`.
 47. `grep -c 'PRIVATE KEY' "$QA/all"` → `0`.
 
-## Часть 7. От имени пользователя службы (хост с пакетом deb/rpm)
+## Часть 7. Под sudo и от имени пользователя службы (хост с пакетом deb/rpm)
 
-Каталог для файлов `tls.*`, доступный на запись пользователю `sard-agent`,
-пакет не создаёт — это упаковка, вне A2b; здесь он создаётся вручную.
+Поправка A8a (Р25 `docs/specs/agent/host-setup.feature`). Пакет deb/rpm при
+первой установке создаёт `/etc/sard/tls` (владелец `sard-agent`, `0700`).
+Команда консоли (S2b) пока по-прежнему начинается с `sudo -u sard-agent` —
+её смена на `sudo sard-agent` вне A8a; шаг 48а проверяет, что она работает.
 
-48. `sudo install -d -o sard-agent -g sard-agent -m 0700 /etc/sard/tls`; в
-    `/etc/sard/agent.yaml` — `server.address` из команды консоли и пути `tls.*`
-    в `/etc/sard/tls`;
+48. В `/etc/sard/agent.yaml` — `server.address` из команды консоли и пути
+    `tls.*` в `/etc/sard/tls`;
+    `sudo sard-agent enroll --server <адрес> --token <строка>; echo "exit=$?"`
+    → `exit=0`; `sudo stat -c '%U %G %a' /etc/sard/tls/agent.key /etc/sard/tls/agent.pem /etc/sard/tls/ca.pem`
+    → `sard-agent sard-agent 600`, `sard-agent sard-agent 644`,
+    `sard-agent sard-agent 644`; `sudo ls -A /etc/sard/tls` — только эти три файла.
+48а. Совместимость: `sudo rm /etc/sard/tls/*`, новый токен;
     `sudo -u sard-agent sard-agent enroll --server <адрес> --token <строка>`
-    (команда из консоли как есть, без `--config`) → `exit=0`; владелец файлов —
-    `sard-agent`, ключ `600`.
+    (команда из консоли как есть) → `exit=0`; владелец файлов — `sard-agent`,
+    ключ `600`.
+48б. Посторонний пользователь: `sard-agent enroll --server <адрес> --token <новая строка>; echo "exit=$?"`
+    (обычный пользователь, без sudo) → `exit=2`, `PRIVILEGES_REQUIRED`,
+    подсказка `sudo sard-agent enroll`, без `sudo -u`; токен в консоли
+    по-прежнему активен.
 49. `sudo systemctl restart sard-agent` → служба активна, в журнале нет
     отказа по правам секретных файлов или по сертификату.

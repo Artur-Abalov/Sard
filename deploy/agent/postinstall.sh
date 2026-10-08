@@ -10,9 +10,10 @@
 #   init" needs before the service has ever started (docs/adr/0030-repo-init-lock.md),
 #   owner and mode reset on every install;
 # - on the first install only: /etc/sard readable by the group sard-agent, and
-#   the directories "sard-agent enroll" (tls/) and "repo init
-#   --generate-password" (secrets/) write into as the service user. An upgrade
-#   never touches them: they hold the agent's keys.
+#   the directories of the service user's own files, tls/ (the identity,
+#   "sudo sard-agent enroll") and secrets/ (the values and passwords of
+#   "sard-agent secret" and "repo add"). An upgrade never touches them: they
+#   hold the agent's keys.
 #
 # The service is not enabled: it needs /etc/sard/agent.yaml and an enrolled
 # identity first. An upgrade restarts it only if it is running. The first
@@ -53,9 +54,9 @@ if [ "$first_install" = yes ]; then
 
 sard-agent is installed and not started: it needs a configuration and an identity first.
 Next, take a token in the Sard console (Tokens, Create a token) and register this host
-as the service user (the console shows the full command):
+(the files of the identity then belong to the service user, sard-agent):
 
-  sudo -u sard-agent sard-agent enroll --server <address of the Sard server> --token <token>
+  sudo sard-agent enroll --server <address of the Sard server> --token <token>
 
 The steps from the configuration to the start of the service:
 https://github.com/Artur-Abalov/sard/blob/main/docs/operations/agent-install.md

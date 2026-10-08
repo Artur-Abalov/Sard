@@ -55,3 +55,14 @@ func TestErrorTextIncludesTheWrappedCauseAndUnwraps(t *testing.T) {
 		t.Fatalf("Error() = %q, want it to contain the wrapped error text %q", eerr.Error(), wrapped.Error())
 	}
 }
+
+func TestNewWriteErrorIsAClassWriteErrorWithItsMessageAndCause(t *testing.T) {
+	cause := errors.New("no such file")
+	err := enroll.NewWriteError("tls.key_file: the directory /etc does not exist", cause)
+	if err.Class != enroll.ClassWrite || !errors.Is(err, cause) || !strings.Contains(err.Error(), "tls.key_file: the directory /etc does not exist") {
+		t.Fatalf("err = %+v (%v)", err, err)
+	}
+	if enroll.NewWriteError("x", nil).Error() != "write: x" {
+		t.Fatal("a write error without a cause reads wrongly")
+	}
+}

@@ -33,6 +33,10 @@ type Config struct {
 	Scripts  map[string]string `yaml:"scripts"`
 	Restic   Restic            `yaml:"restic"`
 	Executor Executor          `yaml:"executor"`
+	// Service names the user the service runs as (main config only).
+	Service Service `yaml:"service"`
+
+	src sources
 }
 
 // Executor tunes how steps run. Both fields are optional.
@@ -79,6 +83,9 @@ type Repository struct {
 	EnvFile string `yaml:"env_file"`
 	// CryptoProvider selects the crypto.Provider; empty means restic AES.
 	CryptoProvider string `yaml:"crypto_provider"`
+	// Fragment is the agent.d file that defines the repository; empty for
+	// one of the main config.
+	Fragment string `yaml:"-"`
 }
 
 // ErrNoServerAddress is returned when server.address is missing.
@@ -93,13 +100,19 @@ var ErrInvalidRestic = errors.New("want an absolute path")
 // ErrInvalidExecutor is returned for a relative executor.state_dir or a negative executor.max_parallel.
 var ErrInvalidExecutor = errors.New("invalid executor setting")
 
-// Load reads and validates the file at path.
+// Load reads and validates the file at path, then adds the fragments of
+// the agent.d directory next to it (ADR 0049). Every error of a fragment
+// names its file.
 func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, err
 	}
-	return Parse(data)
+	c, err := Parse(data)
+	if err != nil {
+		return Config{}, err
+	}
+	return overlay(c, path)
 }
 
 // Parse decodes YAML strictly (unknown keys are errors) and validates it.
@@ -123,9 +136,18 @@ func (c Config) validate() error {
 	if err := c.Executor.validate(); err != nil {
 		return err
 	}
+	return c.validateRepositories()
+}
+
+// validateRepositories checks every repository; one of a fragment is
+// reported with the fragment's path.
+func (c Config) validateRepositories() error {
 	var seen []string
 	for i, r := range c.Repositories {
 		if err := r.validate(seen); err != nil {
+			if r.Fragment != "" {
+				return fmt.Errorf("%s: repositories[%d]: %w", r.Fragment, i, err)
+			}
 			return fmt.Errorf("repositories[%d]: %w", i, err)
 		}
 		seen = append(seen, r.Name)

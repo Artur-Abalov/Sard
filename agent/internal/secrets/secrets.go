@@ -10,6 +10,7 @@ package secrets
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"syscall"
@@ -86,19 +87,42 @@ func secretEntries(cfg config.Config) []entry {
 	if cfg.TLS.KeyFile != "" {
 		entries = append(entries, entry{"tls.key_file", cfg.TLS.KeyFile})
 	}
-	for i, r := range cfg.Repositories {
-		entries = append(entries, entry{fmt.Sprintf("repositories[%d].password_file", i), r.PasswordFile})
-		if r.EnvFile != "" {
-			entries = append(entries, entry{fmt.Sprintf("repositories[%d].env_file", i), r.EnvFile})
-		}
-	}
+	entries = append(entries, repositoryEntries(cfg.Repositories)...)
 	for _, name := range cfg.SecretNames() {
-		entries = append(entries, entry{"secrets." + name, cfg.Secrets[name]})
+		entries = append(entries, entry{keyIn("secrets."+name, cfg.SecretSource(name), cfg.Path()), cfg.Secrets[name]})
 	}
 	for _, name := range cfg.ScriptNames() {
 		entries = append(entries, entry{"scripts." + name, cfg.Scripts[name]})
 	}
 	return entries
+}
+
+// repositoryEntries lists the password and env files of the repositories.
+func repositoryEntries(repos []config.Repository) []entry {
+	var entries []entry
+	for i, r := range repos {
+		entries = append(entries, entry{RepositoryKey(i, r, "password_file"), r.PasswordFile})
+		if r.EnvFile != "" {
+			entries = append(entries, entry{RepositoryKey(i, r, "env_file"), r.EnvFile})
+		}
+	}
+	return entries
+}
+
+// RepositoryKey names a file key of repository index in A1's messages:
+// "repositories[1].password_file", followed by the fragment that defines
+// the repository when it is not one of the main config.
+func RepositoryKey(index int, r config.Repository, field string) string {
+	return keyIn(fmt.Sprintf("repositories[%d].%s", index, field), r.Fragment, "")
+}
+
+// keyIn adds " in <file>" to key when the definition is in a file other
+// than the main config.
+func keyIn(key, file, mainFile string) string {
+	if file == "" || file == mainFile {
+		return key
+	}
+	return key + " in " + file
 }
 
 // CheckAll verifies every secret file in cfg has no group or other
@@ -121,13 +145,63 @@ func CheckFile(key, path string, agentUID uint32, stat StatFunc) error {
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
-	switch {
-	case err != nil:
+	if err != nil {
 		return &Error{Key: key, Path: path, err: err}
-	case info.Mode.Perm()&groupOtherBits != 0:
-		return &Error{Key: key, Path: path, Mode: info.Mode.Perm(), modeIsSet: true}
-	case info.UID != agentUID:
-		return &Error{Key: key, Path: path, Owner: info.UID, WantOwner: agentUID, ownerIsSet: true}
+	}
+	return judge(key, path, info.Mode.Perm(), info.UID, agentUID)
+}
+
+// judge is A1's rule: no group or other bits, owned by want.
+func judge(key, path string, perm fs.FileMode, uid, want uint32) error {
+	switch {
+	case perm&groupOtherBits != 0:
+		return &Error{Key: key, Path: path, Mode: perm, modeIsSet: true}
+	case uid != want:
+		return &Error{Key: key, Path: path, Owner: uid, WantOwner: want, ownerIsSet: true}
 	}
 	return nil
+}
+
+// MaxOwnedSize bounds what ReadOwned reads: the files it serves (env_file,
+// password_file) are a few lines.
+const MaxOwnedSize = 1 << 20
+
+// ReadOwned reads a secret file the way A1 allows it to be: a regular file
+// owned by uid with no group or other bits. The file is opened without
+// following a link and without blocking (a FIFO planted in its place does
+// not hang the command), and what it is is judged from the descriptor, not
+// from a name that may have been swapped meanwhile. It is for commands that
+// run as root and read what the service user can write to.
+func ReadOwned(path string, uid uint32) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NOCTTY|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if err := checkOwned(path, info, uid); err != nil {
+		return nil, err
+	}
+	return readBounded(f, path)
+}
+
+// readBounded reads the whole file, or fails if it is longer than the limit.
+func readBounded(f *os.File, path string) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(f, MaxOwnedSize+1))
+	if err == nil && len(data) > MaxOwnedSize {
+		return nil, fmt.Errorf("secret file %s is larger than %d bytes", path, MaxOwnedSize)
+	}
+	return data, err
+}
+
+// checkOwned is A1's rule applied to an opened file.
+func checkOwned(path string, info fs.FileInfo, uid uint32) error {
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !info.Mode().IsRegular() || !ok {
+		return fmt.Errorf("secret file %s is not a regular file", path)
+	}
+	return judge("", path, info.Mode().Perm(), st.Uid, uid)
 }

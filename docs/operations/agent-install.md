@@ -76,7 +76,7 @@ sudo install -m 0755 sard-agent restic /usr/libexec/sard/
 sudo ln -sf /usr/libexec/sard/sard-agent /usr/bin/sard-agent
 sudo install -m 0644 sard-agent.service /usr/lib/systemd/system/sard-agent.service
 sudo install -d -o root -g sard-agent -m 0750 /etc/sard
-sudo install -d -o sard-agent -g sard-agent -m 0700 /etc/sard/tls /etc/sard/secrets /var/cache/sard/restic
+sudo install -d -o sard-agent -g sard-agent -m 0700 /var/cache/sard/restic
 sudo install -m 0644 agent.example.yaml /etc/sard/agent.example.yaml
 sudo systemctl daemon-reload
 ```
@@ -85,15 +85,19 @@ sudo systemctl daemon-reload
 
 ```bash
 sudo cp -n /etc/sard/agent.example.yaml /etc/sard/agent.yaml    # не перезаписывает ваш файл
-sudoedit /etc/sard/agent.yaml     # server.address и ваш репозиторий (адрес, файлы пароля и ключей)
-sudo -u sard-agent sard-agent enroll --server <адрес сервера> --token <токен из консоли>
-sudo -u sard-agent sard-agent repo init --generate-password <имя репозитория>
+sudoedit /etc/sard/agent.yaml     # server.address и пути tls.*; репозитории и секреты добавляют команды ниже
+sudo sard-agent enroll --server <адрес сервера> --token <токен из консоли>
+sudo sard-agent repo add main /srv/sard/main        # локальный репозиторий: создаёт его, пароль и фрагмент agent.d
 sudo systemctl enable --now sard-agent.service
 ```
 
-Регистрацию и создание репозитория выполняйте от имени `sard-agent`: файлы
-идентичности и пароль должен читать пользователь службы
-(`docs/operations/agent-enroll.md`, `docs/operations/repo-init.md`). Репозитории,
+Регистрацию, секреты и локальные репозитории выполняйте через `sudo`: команды
+сами отдают созданные файлы пользователю службы `sard-agent`, создают
+отсутствующий последний каталог `tls.*` и каталог `secrets`, а файлы пишут
+рядом с основным конфигом, не меняя его (`docs/operations/agent-enroll.md`,
+`docs/operations/agent-host-setup.md`). Репозиторий в облачном хранилище пока
+описывается в `agent.yaml` и создаётся `sudo sard-agent repo init
+--generate-password <имя>` (`docs/operations/repo-init.md`). Репозитории,
 пароли и ключи остаются на хосте; сервер знает только их имена (ADR 0008).
 
 ## Обновление

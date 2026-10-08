@@ -214,7 +214,7 @@ func TestThePasswordFileIsNotCreatedWhenTheLockCannotBeTaken(t *testing.T) {
 
 // Каталог кэша по умолчанию — каталог кэша службы
 func TestTheProductionDefaultCacheDirIsTheServiceCacheDir(t *testing.T) {
-	if got := productionRepoDeps().defaultCacheDir; got != "/var/cache/sard/restic" {
+	if got := productionHostDeps().defaultCacheDir; got != "/var/cache/sard/restic" {
 		t.Fatalf("default cache dir = %q", got)
 	}
 }
