@@ -21,6 +21,26 @@ internal object Keys {
             initialize(ECGenParameterSpec("secp256r1"), random)
             generateKeyPair()
         }
+
+    /** True when [key] signs what [certificate]'s public key verifies; false for a key of another kind. */
+    fun matches(
+        certificate: X509Certificate,
+        key: PrivateKey,
+    ): Boolean =
+        runCatching {
+            val probe = certificate.encoded
+            val signed =
+                Signature.getInstance(SIGNATURE).run {
+                    initSign(key)
+                    update(probe)
+                    sign()
+                }
+            Signature.getInstance(SIGNATURE).run {
+                initVerify(certificate.publicKey)
+                update(probe)
+                verify(signed)
+            }
+        }.getOrDefault(false)
 }
 
 /** The root certificate with its private key; refuses anything that is not a self-signed CA holding that key. */
@@ -32,25 +52,10 @@ class CaKeyPair(
         val name = certificate.subjectX500Principal
         check(selfSigned()) { "CA certificate $name is not self-signed" }
         check(certificate.basicConstraints >= 0) { "CA certificate $name is not a CA" }
-        check(matches()) { "CA key does not match the CA certificate $name" }
+        check(Keys.matches(certificate, privateKey)) { "CA key does not match the CA certificate $name" }
     }
 
     private fun selfSigned() = runCatching { certificate.verify(certificate.publicKey) }.isSuccess
-
-    private fun matches(): Boolean {
-        val probe = certificate.encoded
-        val signed =
-            Signature.getInstance(Keys.SIGNATURE).run {
-                initSign(privateKey)
-                update(probe)
-                sign()
-            }
-        return Signature.getInstance(Keys.SIGNATURE).run {
-            initVerify(certificate.publicKey)
-            update(probe)
-            verify(signed)
-        }
-    }
 
     /** Never prints the key. */
     override fun toString() = "CaKeyPair(${certificate.subjectX500Principal})"

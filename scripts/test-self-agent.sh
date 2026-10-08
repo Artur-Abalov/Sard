@@ -17,7 +17,8 @@
 #
 # Usage: SARD_IMAGE=sard-server SARD_AGENT_IMAGE=sard-agent SARD_VERSION=<tag> \
 #          [UPGRADE_FROM=sard-server:rc1] scripts/test-self-agent.sh <workdir>
-# The stack uses the fixed project name "sard": it removes that project's volumes.
+# The stack uses the fixed project name "sard": it removes that project's volumes. A pass
+# takes the stack down; a failure leaves it up for a look (compose.log in <workdir>).
 set -euo pipefail
 
 [ $# -eq 1 ] || { echo "usage: $0 <workdir>" >&2; exit 2; }
@@ -168,4 +169,5 @@ pass "revoke: 409 without confirm, 200 with it, 200 again for the revoked agent"
 next="$(wait_online 180)" || fail "no new built-in agent within 180 s after the revoke"
 [ "$next" != "$id" ] || fail "the revoked agent is online again"
 pass "revoke: the sidecar enrolled again by itself as $next"
+docker compose down -v --remove-orphans >/dev/null 2>&1 # it holds ports 8080 and 9090 of the host
 echo "PASSED"

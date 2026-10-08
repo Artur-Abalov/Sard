@@ -136,6 +136,17 @@ class CaDirectoryTest {
     }
 
     @Test
+    fun `a staging entry that vanishes while the start looks at it is left alone and the start succeeds`() {
+        val pair = generate()
+        Files.createDirectories(dir, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
+        // A dangling link: its mtime read fails with NoSuchFileException, as for an entry just moved away.
+        Files.createSymbolicLink(dir.resolve(".tmp-gone"), Path.of("does-not-exist"))
+        val opened = MutFlow.underTest { CaDirectory(dir, CLOCK).loadOrCreate { pair } }
+        assertEquals(pair.certificate, opened.certificate)
+        assertTrue(Files.isSymbolicLink(dir.resolve(".tmp-gone")))
+    }
+
+    @Test
     fun `owner-only paths pass the permission check`() {
         val ownerOnly = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"))
         val file = Files.createFile(tmp.resolve("k"), ownerOnly)
@@ -150,5 +161,25 @@ class CaDirectoryTest {
             val violation = MutFlow.underTest { ownerOnlyViolation(file) }
             assertTrue(violation != null && mode in violation, "$mode: $violation")
         }
+    }
+
+    @Test
+    fun `the start that publishes the CA reports it generated, the start that loses the race reports it existing`() {
+        val winner = generate()
+        val loser = generate()
+        val first = MutFlow.underTest { CaDirectory(dir, CLOCK).open(null) { winner } }
+        assertEquals(CaOrigin.GENERATED, first.origin)
+        assertEquals(CaOrigin.EXISTING, MutFlow.underTest { CaDirectory(dir, CLOCK).open(null) { loser } }.origin)
+
+        val raced = tmp.resolve("raced")
+        val lost =
+            MutFlow.underTest {
+                CaDirectory(raced, CLOCK).open(null) {
+                    CaDirectory(raced, CLOCK).loadOrCreate { winner }
+                    loser
+                }
+            }
+        assertEquals(CaOrigin.EXISTING, lost.origin)
+        assertEquals(CaFingerprint.of(winner.certificate), CaFingerprint.of(lost.pair.certificate))
     }
 }

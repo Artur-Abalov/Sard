@@ -50,6 +50,9 @@ sard:
     # Holds the CA key; back it up separately from the database (docs/operations/pki.md).
     dir: ${SARD_PKI_DIR:/var/lib/sard/pki}
     server-names: ${SARD_PKI_SERVER_NAMES:localhost,127.0.0.1,::1}
+    # A CA to take at the first start, when dir holds none: <import-dir>/ca/ca.crt and ca.key, owner-only
+    # (docs/operator/08-migrate-and-remove.md, ADR 0052). Empty means: generate a new CA.
+    import-dir: ${SARD_PKI_IMPORT_DIR:}
   agent-packages:
     # /downloads/agent/: the agent packages of this server's version, baked into the image
     # (docs/adr/0043-agent-release.md). On without a valid release, the server does not start.

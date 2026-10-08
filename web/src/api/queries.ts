@@ -50,6 +50,14 @@ export const tokenQuery = (tokenId: string, enabled: boolean) =>
     refetchInterval: (query) => tokenPollInterval(query.state.data?.status),
   })
 
+// The CA of this server: its fingerprint ends every enrollment token (F8).
+export const caQuery = () =>
+  queryOptions({
+    queryKey: ['ca'],
+    queryFn: () => call(client.GET('/api/v1/ca')),
+    staleTime: 60_000,
+  })
+
 // How to install an agent from this server (U1b). Versions rarely change: a minute is fresh enough.
 export const installQuery = (choice: InstallChoice) =>
   queryOptions({

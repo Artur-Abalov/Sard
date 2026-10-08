@@ -3,6 +3,7 @@
 
 package dev.sard.e2e
 
+import com.github.dockerjava.api.model.AccessMode
 import com.github.dockerjava.api.model.Bind
 import com.github.dockerjava.api.model.ExposedPort
 import com.github.dockerjava.api.model.Volume
@@ -14,6 +15,7 @@ import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.Network
 import org.testcontainers.containers.output.ToStringConsumer
+import org.testcontainers.containers.startupcheck.OneShotStartupCheckStrategy
 import org.testcontainers.postgresql.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 import java.net.URI
@@ -170,6 +172,48 @@ class SardEnvironment(
     }
 
     /**
+     * A move to a new machine (F8, ADR 0052): the CA of the running server is copied, owner-only and
+     * owned by the server's user, into a volume of its own; the server is replaced by one with an empty
+     * CA volume that imports from there (`SARD_PKI_IMPORT_DIR`, mounted read-only). The database,
+     * the network alias and so the agents stay: the new server is "B" with a restored database.
+     * Returns the fingerprint of the CA both servers share.
+     */
+    fun moveServerImportingCa(): String {
+        val oldCa = ServerTls.fingerprint(ServerTls.presentedChain(this).last())
+        val importVolume = volume()
+        copyCaTo(importVolume)
+        retiredServerLogs.append(server.logs)
+        server.stop()
+        pkiVolume = volume()
+        server.withEnv("SARD_PKI_IMPORT_DIR", IMPORT_DIR)
+        server.withCreateContainerCmdModifier {
+            val host = checkNotNull(it.hostConfig)
+            host.withBinds(*host.binds, Bind(importVolume, Volume(IMPORT_DIR), AccessMode.ro))
+        }
+        server.start()
+        return oldCa
+    }
+
+    /** The old server's `ca` directory in [importVolume], as docs/operator/08 prepares it. */
+    private fun copyCaTo(importVolume: String) {
+        val copy =
+            GenericContainer<Nothing>(DockerImageName.parse(E2e.serverImage)).apply {
+                withCreateContainerCmdModifier {
+                    it.withUser("0").withEntrypoint("sh")
+                    it.hostConfig?.withBinds(Bind(pkiVolume, Volume("/pki"), AccessMode.ro), Bind(importVolume, Volume("/import")))
+                }
+                withCommand(
+                    "-c",
+                    "mkdir -p /import/ca && cp /pki/ca/ca.crt /pki/ca/ca.key /import/ca/ && chown -R 10001:10001 /import" +
+                        " && chmod 700 /import /import/ca && chmod 600 /import/ca/*",
+                )
+                withStartupCheckStrategy(OneShotStartupCheckStrategy())
+            }
+        copy.start()
+        copy.stop()
+    }
+
+    /**
      * `docker restart` of the server's container: the same container, so the same volumes, alias
      * and log. The host ports may change; [httpBase] and [grpcPort] follow. Returns once the
      * server's health answers 200 again.
@@ -259,6 +303,9 @@ class SardEnvironment(
 
         /** Where the server keeps its PKI (`SARD_PKI_DIR`, ADR 0014): a volume, as `sard-pki` in deploy/. */
         const val PKI_DIR = "/var/lib/sard/pki"
+
+        /** Where the import source is mounted in the new server (`SARD_PKI_IMPORT_DIR`, F8). */
+        const val IMPORT_DIR = "/var/lib/sard/pki-import"
 
         /** Where the server keeps its CA. */
         const val CA_CERT_PATH = "$PKI_DIR/ca/ca.crt"

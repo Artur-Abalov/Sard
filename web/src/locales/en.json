@@ -165,6 +165,8 @@
     "sources": "Sources"
   },
   "tokens": {
+    "caFingerprint": "CA fingerprint of the server",
+    "caFingerprintHint": "Matches the part of an enrollment token after the last dot and the fingerprint in the server's start log.",
     "title": "Enrollment tokens",
     "agent": "Agent",
     "agentConnected": "The agent has connected.",

@@ -4,6 +4,7 @@
 package dev.sard.server.pki
 
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.ssl.SslBundleRegistrar
@@ -33,12 +34,16 @@ const val GRPC_SSL_BUNDLE = "sard-grpc"
 
 private val log = LoggerFactory.getLogger(PkiAutoConfiguration::class.java)
 
-/** `sard.pki.*`: where the file CA keeps its key and which names the server certificate carries. */
+/**
+ * `sard.pki.*`: where the file CA keeps its key and which names the server certificate carries.
+ * [importDir] (SARD_PKI_IMPORT_DIR): a CA to take at the first start, empty means none (ADR 0052).
+ */
 @ConfigurationProperties("sard.pki")
 data class PkiProperties(
     val dir: Path,
     val serverNames: List<String>,
     val renewalCheckInterval: Duration = Duration.ofDays(1),
+    val importDir: String = "",
 )
 
 /**
@@ -50,8 +55,17 @@ data class PkiProperties(
 class PkiAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
-    fun certificateAuthority(properties: PkiProperties): CertificateAuthority =
-        FileCertificateAuthority(properties.dir, properties.serverNames, Clock.systemUTC(), SecureRandom())
+    fun certificateAuthority(
+        properties: PkiProperties,
+        preconditions: ObjectProvider<CaStartPrecondition>,
+    ): CertificateAuthority {
+        // Other slices (the address agents dial, for one) register a CaStartPrecondition; all of them hold
+        // before the CA directory is touched, so a start that fails on one leaves no imported CA (ADR 0052).
+        preconditions.orderedStream().forEach { it.check() }
+        val importDir = properties.importDir.takeIf { it.isNotBlank() }?.let { Path.of(it) }
+        val names = properties.serverNames
+        return FileCertificateAuthority(properties.dir, names, Clock.systemUTC(), SecureRandom(), importDir)
+    }
 
     /** Server key from the CA; client certificates, when presented, must chain to it. */
     @Bean

@@ -114,6 +114,7 @@ class ApiSerializationIntegrationTest(
         listOf(
             StatusResponse("1.0.0", lastVerifiedRestoreAt = null),
             Overview(1, 3, FirstSteps(true, true, false, false, false, complete = false)),
+            CaInfo("8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f"),
             SessionRequest("secret"),
             Session(id, at),
             AgentPage(listOf(summary), nextCursor = "c2"),
