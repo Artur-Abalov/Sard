@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
+	"github.com/Artur-Abalov/sard/agent/internal/repoconnect"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
@@ -19,7 +20,7 @@ import (
 // clock, the user lookup, the file system, systemd, the system log and the
 // terminal.
 type hostDeps struct {
-	clock      clock
+	clock      repoconnect.TimeClock
 	exec       restic.Executor
 	executable func() (string, error)
 	// euid is the effective user id of the process: the right to run a

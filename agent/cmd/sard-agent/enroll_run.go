@@ -30,9 +30,6 @@ import (
 // clock abstracts time.After so --timeout can be tested without waiting.
 type clock interface {
 	After(d time.Duration) <-chan time.Time
-	// Now is the time on this clock; repo add uses it to leave the time
-	// the operator spends at the terminal out of --timeout.
-	Now() time.Time
 }
 
 type realEnrollClock struct{}

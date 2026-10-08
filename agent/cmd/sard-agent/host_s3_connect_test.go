@@ -478,3 +478,62 @@ func TestARepeatThatTheStorageRefusesIsNotASuccess(t *testing.T) {
 	code, _, stderr := h.sudo("repo", "add", "extra", s3Address, "--access-key-id", keyID1, "--config", "C")
 	assertRefusal(t, code, stderr, exitUsage, "STORAGE_ACCESS_DENIED")
 }
+
+// F1: a change of keys touches the env file only.
+
+func TestNewKeysThatSeeNoRepositoryLeaveAConnectedS3RepositoryAlone(t *testing.T) {
+	h := newSetupHost(t)
+	h.connectedS3()
+	h.s3Repo().script = func(sub string, env []string) (string, int, bool) {
+		return "", 10, sub == "cat" && envValue(env, "AWS_ACCESS_KEY_ID") == "KEY-ID-2"
+	}
+	before := h.hostTree()
+	inits := len(h.restic.callsTo(s3Address, "init"))
+	h.stdinIs(s3Marker + "-2")
+	code, stdout, stderr := h.sudo("repo", "add", "extra", s3Address, "--access-key-id", "KEY-ID-2", "--secret-key-stdin", "--config", "C")
+	assertRefusal(t, code, stderr, exitIdentityExists, "REPOSITORY_CONFLICT")
+	if len(h.restic.callsTo(s3Address, "init")) != inits {
+		t.Fatal("restic init ran")
+	}
+	h.assertHostUnchanged(before)
+	h.assertS3ValuesHidden(stdout, stderr)
+}
+
+func TestAChangeOfKeysNeverAsksForOrReplacesThePassword(t *testing.T) {
+	h := newSetupHost(t)
+	h.connectedS3()
+	h.write(h.path("secrets/restic-extra.pass"), "not-the-password\n", 0o600)
+	term := h.terminalIs()
+	before := h.hostTree()
+	h.stdinIs(s3Marker + "-2")
+	code, _, stderr := h.sudo("repo", "add", "extra", s3Address, "--access-key-id", "KEY-ID-2", "--secret-key-stdin", "--config", "C")
+	assertRefusal(t, code, stderr, exitUsage, "WRONG_PASSWORD")
+	if len(term.prompts) != 0 {
+		t.Fatalf("the terminal was asked: %q", term.prompts)
+	}
+	h.assertHostUnchanged(before)
+}
+
+func TestAPasswordFlagWithAChangeOfKeysIsAUsageError(t *testing.T) {
+	h := newSetupHost(t)
+	h.connectedS3()
+	src := h.path("outside/F")
+	h.write(src, "other\n", 0o600)
+	h.hung = &hungInput{}
+	before := h.hostTree()
+	for _, flags := range [][]string{{"--password-from-file", src}, {"--password-stdin"}} {
+		h.stdinIs(s3Marker + "-2")
+		args := append([]string{"repo", "add", "extra", s3Address, "--access-key-id", "KEY-ID-2", "--config", "C"}, flags...)
+		if flags[0] == "--password-from-file" {
+			args = append(args, "--secret-key-stdin")
+		} else {
+			args = append(args, "--secret-key-from-file", src)
+		}
+		code, _, stderr := h.sudo(args...)
+		assertCode(t, code, exitUsage)
+		if !strings.Contains(stderr, flags[0]) {
+			t.Errorf("%v: stderr %q", flags, stderr)
+		}
+	}
+	h.assertHostUnchanged(before)
+}

@@ -1,0 +1,147 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright 2026 Artur Abalov
+
+package repoconnect_test
+
+import (
+	"context"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/Artur-Abalov/sard/agent/internal/repoconnect"
+	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
+)
+
+// handClock is a TimeClock that moves only when a test says so.
+type handClock struct {
+	mu     sync.Mutex
+	now    time.Time
+	timers []*handTimer
+	asked  []time.Duration
+}
+
+type handTimer struct {
+	at time.Time
+	ch chan time.Time
+}
+
+func newHandClock() *handClock { return &handClock{now: time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)} }
+
+func (c *handClock) After(d time.Duration) <-chan time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t := &handTimer{at: c.now.Add(d), ch: make(chan time.Time, 1)}
+	c.timers = append(c.timers, t)
+	c.asked = append(c.asked, d)
+	return t.ch
+}
+
+func (c *handClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *handClock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+	for _, t := range c.timers {
+		if !t.at.After(c.now) {
+			select {
+			case t.ch <- c.now:
+			default:
+			}
+		}
+	}
+}
+
+func (c *handClock) lastAsked() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.asked[len(c.asked)-1]
+}
+
+// slowTerm lets a long time pass while the operator answers.
+type slowTerm struct {
+	clock *handClock
+	wait  time.Duration
+}
+
+func (s slowTerm) ReadSecret(string) ([]byte, error) {
+	s.clock.advance(s.wait)
+	return []byte("x"), nil
+}
+
+func stillOpen(t *testing.T, ctx context.Context) {
+	t.Helper()
+	select {
+	case <-ctx.Done():
+		t.Fatalf("the budget ended: %v", context.Cause(ctx))
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestTheBudgetEndsTheContextWithTheTimeoutCauseWhenItRunsOut(t *testing.T) {
+	clock := newHandClock()
+	ctx, b := repoconnect.NewBudget(t.Context(), clock, 10*time.Second)
+	defer b.Cancel(nil)
+	clock.advance(9 * time.Second)
+	stillOpen(t, ctx)
+	clock.advance(time.Second)
+	select {
+	case <-ctx.Done():
+	case <-time.After(3 * time.Second):
+		t.Fatal("the budget did not end")
+	}
+	if context.Cause(ctx) != repoinit.ErrTimeout {
+		t.Fatalf("cause %v", context.Cause(ctx))
+	}
+}
+
+func TestTheTimeTheOperatorTakesAtTheTerminalIsNotDeducted(t *testing.T) {
+	clock := newHandClock()
+	ctx, b := repoconnect.NewBudget(t.Context(), clock, 10*time.Second)
+	defer b.Cancel(nil)
+	term := repoconnect.Waiting(slowTerm{clock: clock, wait: time.Hour}, b)
+	if _, err := term.ReadSecret("p"); err != nil {
+		t.Fatal(err)
+	}
+	// The timer that fell due while the command waited does not end it.
+	stillOpen(t, ctx)
+	clock.advance(10 * time.Second)
+	select {
+	case <-ctx.Done():
+	case <-time.After(3 * time.Second):
+		t.Fatal("the budget did not end after what was left")
+	}
+}
+
+func TestATimerThatFiresAfterThePauseDoesNotCancel(t *testing.T) {
+	clock := newHandClock()
+	ctx, b := repoconnect.NewBudget(t.Context(), clock, 10*time.Second)
+	defer b.Cancel(nil)
+	// The wait is exactly the budget: the old timer falls due inside ReadSecret.
+	term := repoconnect.Waiting(slowTerm{clock: clock, wait: 10 * time.Second}, b)
+	for range 20 {
+		if _, err := term.ReadSecret("p"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stillOpen(t, ctx)
+}
+
+func TestTheTimeLeftAfterTheWaitIsTheTimeLeftBeforeIt(t *testing.T) {
+	clock := newHandClock()
+	_, b := repoconnect.NewBudget(t.Context(), clock, 10*time.Second)
+	defer b.Cancel(nil)
+	clock.advance(4 * time.Second)
+	term := repoconnect.Waiting(slowTerm{clock: clock, wait: time.Hour}, b)
+	if _, err := term.ReadSecret("p"); err != nil {
+		t.Fatal(err)
+	}
+	if got := clock.lastAsked(); got != 6*time.Second {
+		t.Fatalf("timer re-armed for %v, want 6s", got)
+	}
+}

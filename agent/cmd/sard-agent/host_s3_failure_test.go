@@ -81,3 +81,15 @@ func TestNoLineOfTheAuditAndNoOutputOfASuccessfulS3CommandShowsASecret(t *testin
 		}
 	}
 }
+
+func TestAPasswordWithSpacesAroundItIsScrubbedToo(t *testing.T) {
+	h := newSetupHost(t)
+	h.s3Repo().answers("cat", "Fatal: the storage said "+passMarker, 1)
+	h.stdinIs("  " + passMarker + " \t\n")
+	key := h.path("outside/key")
+	h.write(key, s3Marker, 0o600)
+	code, stdout, stderr := h.sudo("repo", "add", "extra", s3Address, "--access-key-id", keyID1,
+		"--secret-key-from-file", key, "--password-stdin", "--config", "C")
+	assertCode(t, code, exitAgentError)
+	h.assertS3ValuesHidden(stdout, stderr)
+}

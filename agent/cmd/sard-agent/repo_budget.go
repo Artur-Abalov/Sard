@@ -12,7 +12,7 @@ import (
 
 // repoContext bounds the whole command: it ends when timeout runs out on
 // clk (cause repoinit.ErrTimeout) or when ctx ends (an interrupt).
-func repoContext(ctx context.Context, clk clock, timeout time.Duration) (context.Context, context.CancelCauseFunc) {
+func repoContext(ctx context.Context, clk repoconnect.TimeClock, timeout time.Duration) (context.Context, context.CancelCauseFunc) {
 	ctx, b := repoconnect.NewBudget(ctx, clk, timeout)
 	return ctx, b.Cancel
 }

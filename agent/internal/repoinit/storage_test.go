@@ -4,7 +4,10 @@
 package repoinit_test
 
 import (
+	"fmt"
+	"os"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
@@ -102,5 +105,32 @@ func TestTheLastRetryReasonIsTakenFromResticsStderr(t *testing.T) {
 	}
 	if got := repoinit.RetryReason("nothing to retry\n"); got != "" {
 		t.Errorf("reason = %q", got)
+	}
+}
+
+// F3: only what restic said decides the class, and not the address in it.
+func TestTheAddressInTheCauseDoesNotDecideTheClass(t *testing.T) {
+	for _, addr := range []string{
+		"s3:https://forbidden.example.com/accessdenied/extra",
+		"https://s3.example.com/nosuchbucket/config",
+		"s3:s3.example.com/Access-Denied",
+	} {
+		f := repoinit.FromRestic(t.Context(), exitErr("Fatal: unable to open config file: Stat: Get \""+addr+"\": unexpected response 418", nil), remote)
+		if f.Reason != refusal.BackendRefused {
+			t.Errorf("%s: %+v", addr, f)
+		}
+	}
+}
+
+func TestAnErrorOfTheAgentIsNotARefusalOfTheStorage(t *testing.T) {
+	for _, err := range []error{
+		fmt.Errorf("env_file: open /etc/sard/secrets/x.env: permission denied"),
+		fmt.Errorf("restic cat: %w", &os.PathError{Op: "fork/exec", Path: "/usr/libexec/sard/restic", Err: syscall.EACCES}),
+		exitErr("", nil),
+	} {
+		f := repoinit.FromRestic(t.Context(), err, remote)
+		if f.Reason != refusal.BackendRefused {
+			t.Errorf("%v: %+v", err, f)
+		}
 	}
 }

@@ -164,10 +164,12 @@ func (c *hostCmd) connector(st *addState) *repoconnect.Connector {
 		},
 		AskPassword: func() ([]byte, *refusal.Failure) { return c.readSource(passwordSource(c.opts)) },
 		Bound:       c.bound(),
+		KeysOnly:    st.rotation,
+		Owned:       c.owned(),
 		State:       &st.State,
 	}
 	if st.isS3() {
-		conn.Env = &repoconnect.EnvFile{Final: c.layout.EnvFile(st.name), Content: st.s3.content}
+		conn.Env = &repoconnect.EnvFile{Final: c.layout.EnvFile(st.name), Content: st.s3.Content}
 	}
 	return conn
 }

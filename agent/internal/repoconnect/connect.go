@@ -66,6 +66,16 @@ type Connector struct {
 	AskPassword func() ([]byte, *refusal.Failure)
 	// Bound limits the first access to the storage.
 	Bound Bound
+	// KeysOnly: the repository is connected already and only the keys in
+	// the env file change (Н17). The password file in place is the only
+	// candidate and is never written, a wrong password is final and never
+	// asked again, a repository that is not there is a refusal, and init
+	// never runs.
+	KeysOnly bool
+	// Owned reads a file in place as the service user owns it. A leftover
+	// password file is judged by it like the env file (O1); nil: its
+	// existence is all that is looked at.
+	Owned Owned
 	*State
 
 	// env is the env file candidate; accessed: the first access is made.
@@ -112,10 +122,14 @@ func (c *Connector) firstCandidate() (candidate, *refusal.Failure) {
 	if _, err := hostsetup.EnsureDir(c.FS, c.SecretsDir, c.Owner(0o700)); err != nil {
 		return candidate{}, writeFailed(err)
 	}
-	switch {
-	case c.Provided != nil:
+	if c.Provided != nil {
 		return c.stage(c.Provided, true)
-	case c.exists(c.Final):
+	}
+	found, f := c.inPlace(c.Final)
+	switch {
+	case f != nil:
+		return candidate{}, f
+	case found:
 		return candidate{path: c.Final}, nil
 	}
 	return c.generated()
@@ -131,9 +145,15 @@ func (c *Connector) generated() (candidate, *refusal.Failure) {
 	return c.stage([]byte(password+"\n"), false)
 }
 
-func (c *Connector) exists(path string) bool {
+// inPlace says whether the file is there; one that cannot be read as a
+// secret of the service user is SECRET_FILE_REJECTED.
+func (c *Connector) inPlace(path string) (bool, *refusal.Failure) {
+	if c.Owned != nil {
+		_, found, f := ReadInPlace(c.Owned, path)
+		return found, f
+	}
 	_, err := c.FS.Stat(path)
-	return err == nil
+	return err == nil, nil
 }
 
 // stage writes the password to a temporary file in the secrets directory.
@@ -183,6 +203,9 @@ func (c *Connector) Connect(ctx context.Context) *refusal.Failure {
 		return f
 	}
 	defer c.discardEnv()
+	if c.KeysOnly {
+		return c.connectKeysOnly(ctx)
+	}
 	cand, f := c.firstCandidate()
 	if f != nil {
 		return f
@@ -191,6 +214,29 @@ func (c *Connector) Connect(ctx context.Context) *refusal.Failure {
 		return out.f
 	}
 	return c.tryAskedPassword(ctx)
+}
+
+// connectKeysOnly tries the new keys with the password file in place.
+func (c *Connector) connectKeysOnly(ctx context.Context) *refusal.Failure {
+	found, f := c.inPlace(c.Final)
+	if f != nil {
+		return f
+	}
+	if !found {
+		return refusal.Fail(refusal.PasswordFileMissing, "the password file %s of the connected repository is missing; nothing was changed", c.Final)
+	}
+	id, initialized, f := c.inspect(ctx, Files{Password: c.Final, Env: c.env.path})
+	switch {
+	case f != nil:
+		return f
+	case !initialized:
+		return refusal.Fail(refusal.RepositoryConflict, "the new keys see no repository at the address; a connected repository is never created again by a change of keys, nothing was changed")
+	}
+	if f := c.commit(candidate{}); f != nil {
+		return f
+	}
+	c.ID, c.Attached = id, true
+	return nil
 }
 
 // tryAskedPassword: the repository exists and the password nobody chose

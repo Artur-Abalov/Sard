@@ -419,3 +419,95 @@ func TestAFailedCommitOfThePasswordFileIsAWriteErrorAndLeavesNoTemporaryFile(t *
 		t.Fatal("init ran")
 	}
 }
+
+// F1: in KeysOnly mode only the env file is written, the repository is
+// never created and the operator is never asked.
+func TestKeysOnlyNeverStagesThePasswordFileNorCreatesTheRepository(t *testing.T) {
+	w := newWorld(t)
+	recorder := &recordingFS{}
+	w.conn.FS = recorder
+	ok(t, os.MkdirAll(w.conn.SecretsDir, 0o700))
+	ok(t, os.WriteFile(w.conn.Final, []byte("pw\n"), 0o600))
+	w.conn.KeysOnly = true
+	w.conn.Env = &repoconnect.EnvFile{Final: w.env(), Content: []byte("AWS_ACCESS_KEY_ID=K\n")}
+
+	f := w.conn.Connect(t.Context()) // the repository is not there
+	if f == nil || f.Reason != refusal.RepositoryConflict {
+		t.Fatalf("failure %v", f)
+	}
+	if w.repo.inits != 0 || w.asks != 0 {
+		t.Fatalf("inits %d asks %d", w.repo.inits, w.asks)
+	}
+	for _, name := range recorder.created {
+		if strings.Contains(name, "restic-extra.pass") {
+			t.Errorf("the password file was staged: %s", name)
+		}
+	}
+	w.assertNothingWrittenButThePassword()
+}
+
+func (w *world) assertNothingWrittenButThePassword() {
+	w.t.Helper()
+	if _, err := os.Stat(w.env()); err == nil {
+		w.t.Error("the env file was written")
+	}
+	if got := w.content(w.conn.Final); got != "pw\n" {
+		w.t.Errorf("password file %q", got)
+	}
+}
+
+func TestKeysOnlyCommitsTheEnvFileWhenTheRepositoryOpens(t *testing.T) {
+	w := newWorld(t)
+	ok(t, os.MkdirAll(w.conn.SecretsDir, 0o700))
+	ok(t, os.WriteFile(w.conn.Final, []byte("pw\n"), 0o600))
+	w.repo.initialized, w.repo.password = true, "pw"
+	w.conn.KeysOnly = true
+	w.conn.Env = &repoconnect.EnvFile{Final: w.env(), Content: []byte("AWS_ACCESS_KEY_ID=K\n")}
+	if f := w.conn.Connect(t.Context()); f != nil {
+		t.Fatal(f)
+	}
+	if w.content(w.env()) != "AWS_ACCESS_KEY_ID=K\n" || w.content(w.conn.Final) != "pw\n" || !w.conn.Attached || w.repo.inits != 0 {
+		t.Fatalf("state %+v", w.conn.State)
+	}
+}
+
+func TestKeysOnlyTreatsAWrongPasswordAsFinalAndAMissingPasswordFileAsMissing(t *testing.T) {
+	w := newWorld(t)
+	w.conn.KeysOnly = true
+	if f := w.conn.Connect(t.Context()); f == nil || f.Reason != refusal.PasswordFileMissing {
+		t.Fatalf("failure %v", f)
+	}
+	ok(t, os.MkdirAll(w.conn.SecretsDir, 0o700))
+	ok(t, os.WriteFile(w.conn.Final, []byte("other\n"), 0o600))
+	w.repo.initialized, w.repo.password = true, "pw"
+	if f := w.conn.Connect(t.Context()); f == nil || f.Reason != refusal.WrongPassword || w.asks != 0 {
+		t.Fatalf("failure %v asks %d", f, w.asks)
+	}
+}
+
+// recordingFS notes the temporary files made.
+type recordingFS struct {
+	hostsetup.OS
+	created []string
+}
+
+func (r *recordingFS) CreateTemp(dir, pattern string) (hostsetup.File, error) {
+	r.created = append(r.created, pattern)
+	return r.OS.CreateTemp(dir, pattern)
+}
+
+func TestKeysOnlyReportsAnEnvFileThatCannotBeCommitted(t *testing.T) {
+	w := newWorld(t)
+	w.conn.FS = failingFS{failRename: "restic-extra.env"}
+	ok(t, os.MkdirAll(w.conn.SecretsDir, 0o700))
+	ok(t, os.WriteFile(w.conn.Final, []byte("pw\n"), 0o600))
+	w.repo.initialized, w.repo.password = true, "pw"
+	w.conn.KeysOnly = true
+	w.conn.Env = &repoconnect.EnvFile{Final: w.env(), Content: []byte("AWS_ACCESS_KEY_ID=K\n")}
+	if f := w.conn.Connect(t.Context()); f == nil || f.Reason != refusal.ConfigWrite || w.conn.Attached {
+		t.Fatalf("failure %v", f)
+	}
+	if names := w.leftovers(); len(names) != 1 {
+		t.Fatalf("files %v", names)
+	}
+}

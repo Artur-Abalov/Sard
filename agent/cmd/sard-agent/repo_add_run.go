@@ -27,7 +27,7 @@ type addState struct {
 	// State is what the connection learns: the passwords and the id.
 	repoconnect.State
 	// s3 is the access to an s3: repository, nil for another kind.
-	s3 *s3Access
+	s3 *repoconnect.S3Access
 	// rotation: the repository is connected already, the keys change (Н17).
 	rotation bool
 }
@@ -189,10 +189,10 @@ func (c *hostCmd) addPlanned(ctx context.Context, url string, plan hostsetup.Add
 		return reportRepoError(ctx, c.stderr, "add", err)
 	}
 	st := &addState{name: c.opts.name, url: url, binary: binary}
-	if f := c.readGivenPassword(st); f != nil {
+	if f := c.prepareAccess(st, plan); f != nil {
 		return c.fail(f)
 	}
-	if f := c.prepareAccess(st, plan); f != nil {
+	if f := c.readGivenPassword(st); f != nil {
 		return c.fail(f)
 	}
 	if code, done := c.repeatOf(ctx, st, plan); done {
@@ -209,7 +209,15 @@ func (c *hostCmd) prepareAccess(st *addState, plan hostsetup.AddPlan) *refusal.F
 	if f := c.prepareS3(st); f != nil {
 		return f
 	}
-	st.rotation = plan == hostsetup.AddUnchanged && !st.s3.same
+	st.rotation = plan == hostsetup.AddUnchanged && !st.s3.Same
+	return c.refuseKeysWithPassword(st)
+}
+
+// refuseKeysWithPassword: a change of keys never touches the password.
+func (c *hostCmd) refuseKeysWithPassword(st *addState) *refusal.Failure {
+	if st.rotation && (c.opts.passwordStdin || c.opts.passwordFromFile != "") {
+		return usageFailureOf("a change of the keys of a connected repository does not take a password: drop --password-stdin and --password-from-file")
+	}
 	return nil
 }
 
@@ -240,8 +248,8 @@ func (c *hostCmd) readGivenPassword(st *addState) *refusal.Failure {
 func (c *hostCmd) resticFor(st *addState, files repoconnect.Files, stderr io.Writer) (repoinit.Target, restic.Repository) {
 	repo := config.Repository{Name: st.name, URL: st.url, PasswordFile: files.Password, EnvFile: files.Env}
 	checked := repoinit.Checked{EnvAssignments: st.secretAssignments()}
-	// restic takes the password without the line break at the end of the file.
-	password := strings.TrimRight(string(st.Provided), "\r\n")
+	// restic takes the password without the white space around it in the file.
+	password := strings.TrimSpace(string(st.Provided))
 	target := repoTarget(repo, checked, string(st.Provided), password, st.Generated)
 	target.Where = config.RedactURL(st.url)
 	if st.isS3() {
