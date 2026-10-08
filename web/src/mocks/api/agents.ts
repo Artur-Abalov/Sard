@@ -5,6 +5,7 @@ import type { components } from '../../api/schema'
 import { http } from '../http'
 import { pageOf } from '../paging'
 import { noSession, notFound, problem, PROBLEM } from '../problems'
+import { SELF_AGENT_CONFIRMATION } from '../../selfAgent'
 import { state } from '../state'
 
 type Schemas = components['schemas']
@@ -73,7 +74,11 @@ export const agentHandlers = [
     const agent = state.agents.find((a) => a.id === params.agentId)
     if (agent === undefined) return response(404).json(notFound, PROBLEM)
     // A live built-in agent is revoked only with the exact confirmation; nothing changes without it.
-    if (agent.builtin && agent.revokedAt === null && query.get('confirm') !== 'sard-self') {
+    if (
+      agent.builtin &&
+      agent.revokedAt === null &&
+      query.get('confirm') !== SELF_AGENT_CONFIRMATION
+    ) {
       return response(409).json(
         problem(409, 'Conflict', 'self_agent_confirmation_required'),
         PROBLEM,
