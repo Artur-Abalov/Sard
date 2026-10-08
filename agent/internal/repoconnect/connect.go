@@ -255,11 +255,7 @@ func (c *Connector) tryAskedPassword(ctx context.Context) *refusal.Failure {
 }
 
 // discardEnv gives up the staged env file, if it was not committed.
-func (c *Connector) discardEnv() {
-	if c.env.staged != "" {
-		hostsetup.DiscardFile(c.FS, c.env.staged)
-	}
-}
+func (c *Connector) discardEnv() { c.discard(c.env) }
 
 // try opens the repository with the candidate: it is attached if it is
 // there, created if it is not.
