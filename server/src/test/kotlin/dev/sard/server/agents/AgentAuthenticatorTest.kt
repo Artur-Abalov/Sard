@@ -52,9 +52,10 @@ class AgentAuthenticatorTest {
     }
 
     @Test
-    fun `a serial with no record is CERT_UNKNOWN and logs the agent the certificate claims`() {
+    fun `a serial with no record is CERT_UNKNOWN and logs the agent and tenant the certificate claims`() {
         val stranger = PresentedCertificate("1".repeat(32), AGENT)
-        assertEquals(Rejected(AgentAuthFailure.CERT_UNKNOWN, stranger.serial, AGENT.agentId), authenticate(stranger))
+        val expected = Rejected(AgentAuthFailure.CERT_UNKNOWN, stranger.serial, AGENT.agentId, AGENT.tenantId)
+        assertEquals(expected, authenticate(stranger))
         val anonymous = PresentedCertificate("1".repeat(32), identity = null)
         assertEquals(Rejected(AgentAuthFailure.CERT_UNKNOWN, anonymous.serial, null), authenticate(anonymous))
     }

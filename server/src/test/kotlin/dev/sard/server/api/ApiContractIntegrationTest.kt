@@ -289,6 +289,7 @@ class ApiContractIntegrationTest(
         val calls =
             listOf(
                 Triple("GET", "/api/v1/overview", null),
+                Triple("GET", "/api/v1/ca", null),
                 Triple("GET", "/api/v1/agents?status=online", null),
                 Triple("GET", "/api/v1/agents/{agentId}", null),
                 Triple("GET", "/api/v1/agents/{agentId}/upgrade", null),

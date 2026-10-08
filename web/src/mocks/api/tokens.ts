@@ -13,7 +13,7 @@ type Schemas = components['schemas']
 const DEFAULT_TTL_SECONDS = 86_400
 const GRPC_ADDRESS = 'sard.example.com:9090'
 // The CA fingerprint of docs/specs/enrollment-token.md's test vector.
-const FINGERPRINT = '8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f'
+export const FINGERPRINT = '8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f'
 
 /** A token string of the documented format: sard_<43 base64url chars>.<64 hex>. */
 function tokenString(): string {
@@ -31,6 +31,10 @@ function conflict(token: Schemas['EnrollmentToken']): Schemas['TokenConflictProb
 }
 
 export const tokenHandlers = [
+  http.get('/api/v1/ca', ({ response }) => {
+    if (!state.signedIn) return response(401).json(noSession, PROBLEM)
+    return response(200).json({ fingerprint: FINGERPRINT })
+  }),
   http.post('/api/v1/enrollment-tokens', async ({ request, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
     const { ttlSeconds, label } = await request.json()

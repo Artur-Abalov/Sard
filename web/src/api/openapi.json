@@ -1409,6 +1409,46 @@
         }
       }
     },
+    "/api/v1/ca" : {
+      "get" : {
+        "tags" : [ "ca" ],
+        "summary" : "CA of the server",
+        "description" : "The fingerprint of the CA, whatever its origin. Requires an administrator session.",
+        "operationId" : "getCa",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CaInfo"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/agents" : {
       "get" : {
         "tags" : [ "agents" ],
@@ -2657,6 +2697,18 @@
           }
         },
         "required" : [ "items", "nextCursor" ]
+      },
+      "CaInfo" : {
+        "type" : "object",
+        "description" : "The CA of this server; public data, but only for a signed-in administrator",
+        "properties" : {
+          "fingerprint" : {
+            "type" : "string",
+            "description" : "SHA-256 of the root's DER SubjectPublicKeyInfo, 64 lower-case hex characters: the part of an enrollment token after the last dot",
+            "example" : "8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f"
+          }
+        },
+        "required" : [ "fingerprint" ]
       },
       "AgentPage" : {
         "type" : "object",
