@@ -30,12 +30,12 @@ overrides:
 contents:
   # restic is found next to sard-agent (docs/adr/0017-restic-shipped-with-agent.md).
   - src: ${STAGE}/sard-agent
-    dst: /usr/lib/sard/sard-agent
+    dst: /usr/libexec/sard/sard-agent
     file_info: {mode: 0755}
   - src: ${STAGE}/restic
-    dst: /usr/lib/sard/restic
+    dst: /usr/libexec/sard/restic
     file_info: {mode: 0755}
-  - src: /usr/lib/sard/sard-agent
+  - src: /usr/libexec/sard/sard-agent
     dst: /usr/bin/sard-agent
     type: symlink
   - src: ${STAGE}/sard-agent.service

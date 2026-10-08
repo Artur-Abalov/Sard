@@ -107,6 +107,16 @@ class AgentInstallApiIntegrationTest(
     }
 
     @Test
+    fun `Выбор rpm для amd64 даёт rpm и установку через rpm Uvh`() {
+        val response = install("?arch=amd64&format=rpm")
+
+        assertEquals(200, response.status)
+        assertEquals("rpm", response.json.path("format").asString())
+        assertEquals("sard-agent-1.4.0-1.amd64.rpm", commands(response, "download").first().substringAfterLast('/'))
+        assertEquals(listOf("sudo rpm -Uvh sard-agent-1.4.0-1.amd64.rpm"), commands(response, "install"))
+    }
+
+    @Test
     fun `Неизвестная архитектура отклоняется`() {
         val response = install("?arch=riscv64")
 
@@ -116,7 +126,7 @@ class AgentInstallApiIntegrationTest(
 
     @Test
     fun `Неизвестный формат отклоняется`() {
-        for (format in listOf("rpm", "zip")) {
+        for (format in listOf("zip", "RPM")) {
             val response = install("?format=$format")
 
             assertEquals(422, response.status, format)
@@ -186,7 +196,7 @@ class AgentInstallApiIntegrationTest(
         val install = commands(install("?format=tar"), "install")
 
         assertTrue(install.any { "useradd" in it && "sard-agent" in it }, install.toString())
-        assertTrue(install.any { it.contains("/usr/lib/sard/") && it.contains("restic") }, install.toString())
+        assertTrue(install.any { it.contains("/usr/libexec/sard/") && it.contains("restic") }, install.toString())
         assertTrue(install.any { "/usr/lib/systemd/system/sard-agent.service" in it }, install.toString())
     }
 
@@ -308,6 +318,19 @@ class AgentInstallApiIntegrationTest(
     }
 
     @Test
+    fun `Обновление rpm берёт архитектуру из последнего Register агента`() {
+        val agent = world.agent(tenant, snapshotOf(arch = "arm64"))
+
+        val response = upgrade(agent.agentId, "?format=rpm")
+
+        assertEquals(200, response.status)
+        assertEquals(
+            "sard-agent-1.4.0-1.arm64.rpm",
+            commands(response, "download").first().substringAfterLast('/'),
+        )
+    }
+
+    @Test
     fun `Обновление deb ставит пакет поверх без удаления`() {
         val agent = world.agent(tenant, snapshotOf(arch = "amd64"))
 
@@ -316,6 +339,16 @@ class AgentInstallApiIntegrationTest(
         assertEquals(listOf("download", "checksum", "signature", "upgrade"), kinds(response))
         assertEquals(listOf("sudo dpkg -i $DEB"), commands(response, "upgrade"))
         assertFalse("/etc/sard" in response.body)
+    }
+
+    @Test
+    fun `Обновление rpm ставит пакет поверх через rpm Uvh без удаления`() {
+        val agent = world.agent(tenant, snapshotOf(arch = "amd64"))
+
+        val response = upgrade(agent.agentId, "?format=rpm")
+
+        assertEquals(listOf("download", "checksum", "signature", "upgrade"), kinds(response))
+        assertEquals(listOf("sudo rpm -Uvh sard-agent-1.4.0-1.amd64.rpm"), commands(response, "upgrade"))
     }
 
     @Test
@@ -351,6 +384,48 @@ class AgentInstallApiIntegrationTest(
         assertTrue(response.json.path("arch").isNull)
     }
 
+    private fun keeps(
+        arch: String,
+        format: String,
+    ) = upgrade(world.agent(tenant, snapshotOf(arch = arch)).agentId, "?format=$format")
+        .json
+        .path("keepsConfiguration")
+        .asBoolean(true)
+
+    @Test
+    fun `Обновление deb сохраняет конфигурацию и ключи`() = assertTrue(keeps("amd64", "deb"))
+
+    @Test
+    fun `Обновление rpm сохраняет конфигурацию и ключи`() = assertTrue(keeps("amd64", "rpm"))
+
+    @Test
+    fun `Обновление из архива не обещает сохранить конфигурацию и ключи`() = assertFalse(keeps("amd64", "tar"))
+
+    @Test
+    fun `Признак сохранения конфигурации не зависит от архитектуры`() {
+        assertEquals(listOf(true, true, false), listOf("deb", "rpm", "tar").map { keeps("arm64", it) })
+    }
+
+    @Test
+    fun `Обновление без команд для архитектуры без пакета не обещает сохранить конфигурацию`() {
+        val agent = world.agent(tenant, snapshotOf(arch = "386"))
+
+        val json = upgrade(agent.agentId, "?format=deb").json
+
+        assertEquals("arch_unavailable", json.path("reason").asString())
+        assertFalse(json.path("keepsConfiguration").asBoolean(true))
+    }
+
+    @Test
+    fun `Обновление агента без Register не обещает сохранить конфигурацию`() {
+        val agent = world.enroll(tenant)
+
+        val json = upgrade(agent.agentId, "?format=deb").json
+
+        assertEquals("arch_unknown", json.path("reason").asString())
+        assertFalse(json.path("keepsConfiguration").asBoolean(true))
+    }
+
     @Test
     fun `Обновление неизвестного агента отвечает 404`() {
         val response = upgrade(UUID.randomUUID())
@@ -378,7 +453,7 @@ class AgentInstallApiIntegrationTest(
     fun `Обновление с неизвестным форматом отвечает 422`() {
         val agent = world.agent(tenant, snapshotOf())
 
-        val response = upgrade(agent.agentId, "?format=rpm")
+        val response = upgrade(agent.agentId, "?format=zip")
 
         assertEquals(422, response.status)
         assertEquals(listOf("format"), response.errorFields())

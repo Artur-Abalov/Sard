@@ -103,4 +103,14 @@ class AgentInstallOffApiIntegrationTest(
         assertEquals(emptyList(), response.json.path("steps").list())
         assertTrue(response.json.path("reason").isNull)
     }
+
+    @Test
+    fun `При выключенной раздаче обновление не обещает сохранить конфигурацию`() {
+        val agent = world.agent(tenant, snapshotOf())
+
+        val json = world.api.get("/api/v1/agents/${agent.agentId}/upgrade?format=deb", admin).json
+
+        assertFalse(json.path("downloadsEnabled").asBoolean())
+        assertFalse(json.path("keepsConfiguration").asBoolean(true))
+    }
 }

@@ -39,7 +39,7 @@ secrets:
 scripts:
   app-maintenance: /usr/local/bin/app-maintenance
 restic:
-  path: /usr/lib/sard/restic
+  path: /usr/libexec/sard/restic
   cache_dir: /var/cache/sard/restic
 executor:
   state_dir: /var/lib/sard-agent/executor
@@ -60,7 +60,7 @@ func TestParseReadsAllFields(t *testing.T) {
 		},
 		Secrets:  map[string]string{"pg-prod": "/etc/sard/secrets/pg-prod", "mikrotik-ssh": "/etc/sard/secrets/mikrotik.key"},
 		Scripts:  map[string]string{"app-maintenance": "/usr/local/bin/app-maintenance"},
-		Restic:   config.Restic{Path: "/usr/lib/sard/restic", CacheDir: "/var/cache/sard/restic"},
+		Restic:   config.Restic{Path: "/usr/libexec/sard/restic", CacheDir: "/var/cache/sard/restic"},
 		Executor: config.Executor{StateDir: "/var/lib/sard-agent/executor", MaxParallel: 2},
 	}
 	if !reflect.DeepEqual(c, want) {
@@ -183,5 +183,19 @@ func TestLoad(t *testing.T) {
 	}
 	if _, err := config.Load(path + ".missing"); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("missing file err = %v", err)
+	}
+}
+
+func TestExampleConfigDoesNotPinResticPath(t *testing.T) {
+	data, err := os.ReadFile("../../../deploy/agent/agent.example.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Restic.Path != "" {
+		t.Errorf("example pins restic.path = %q; restic must be found next to sard-agent (ADR 0017)", cfg.Restic.Path)
 	}
 }
