@@ -2,8 +2,8 @@
 
 Сценарии: `docs/specs/server/self-agent.feature`,
 `docs/specs/agent/self-agent.feature`, `docs/specs/web/self-agent.feature`
-(черновик, ждёт утверждения владельцем). Решения владельца и specifier — в
-заголовке серверной спецификации. Контекст — `docs/adr/00XX-draft-self-agent.md`,
+(решения владельца, включая О1–О4, переданы координатором 2026-10-08). Решения
+владельца и specifier — в заголовке серверной спецификации. Контекст — `docs/adr/00XX-draft-self-agent.md`,
 `docs/sessions/2026-10-07-f5-sidecar-agent.md`.
 
 Ожидаемый результат указан после «→» в каждом шаге. Любое расхождение — дефект.
@@ -71,6 +71,10 @@ chan() { $DC exec -T server ls -la /var/lib/sard/self; }
 13. `$PSQL "select count(*) from agents where builtin and revoked_at is null"` → `1`;
     `btokens` → `1`; `$PSQL "select count(*) from enrollment_tokens where builtin and used_at is not null"` → `1`.
 
+13а. (О4) `a GET /overview | body | jq '{agentsOnline, agentsTotal, t: .firstSteps.tokenIssued, a: .firstSteps.agentConnected}'`
+     → `agentsOnline: 1`, `agentsTotal: 1`, `t: false` (обычных токенов ещё нет),
+     `a: true`.
+
 ## Часть 2. Пересоздание контейнера соседа (проверка 2)
 
 14. `B=$(btokens); $DC up -d --force-recreate self-agent`; повторять `builtin` до 1 минуты
@@ -103,6 +107,17 @@ chan() { $DC exec -T server ls -la /var/lib/sard/self; }
     `a POST /enrollment-tokens/$TID/revoke | tail -1` → `HTTP 404 application/problem+json`;
     `$PSQL "select revoked_at is null from enrollment_tokens where id = '$TID'"` → `t`.
 23. `a POST /enrollment-tokens '{"builtin":true}'; btokens` → встроенных токенов по-прежнему `1`.
+
+23а. (О2) Файл токена пропал: `docker run --rm -u 10001 -v sard_sard-self-channel:/c alpine rm /c/enroll-token`;
+     подождать 20 с (больше интервала проверки 15 с)
+     → `chan` — `enroll-token` снова есть; `S2=$($DC exec -T server cat /var/lib/sard/self/enroll-token)` отличается от `$S`;
+     `$PSQL "select revoked_at is not null from enrollment_tokens where id = '$TID'"` → `t`;
+     `btokens` → на 1 больше, чем в шаге 23; пригодный встроенный токен один:
+     `$PSQL "select count(*) from enrollment_tokens where builtin and used_at is null and revoked_at is null"` → `1`.
+23б. (О2) Файл с чужой строкой: `docker run --rm -u 10001 -v sard_sard-self-channel:/c alpine sh -c 'printf garbage > /c/enroll-token'`;
+     подождать 20 с → файл снова содержит строку токена формата шага 19, отличную от `$S2`;
+     прежний токен отозван (как в 23а). Далее `S=$($DC exec -T server cat /var/lib/sard/self/enroll-token)` —
+     строка, по которой сосед зарегистрируется в шаге 24.
 24. `$DC up -d --wait self-agent`; повторять `builtin` до 2 минут → один элемент,
     `online`. `chan` → `enroll-token` нет (удалён не позднее 15 с после регистрации).
 25. Попытка с «другого хоста»: собрать агента (`make build`), конфиг во временном
@@ -132,6 +147,10 @@ chan() { $DC exec -T server ls -la /var/lib/sard/self; }
     → `revokedAt` не `null`, `status` = `offline`, `builtin` = `true`.
 33. Повторять `a GET /agents | body | jq -c '[.items[] | select(.builtin) | {id, status, revokedAt}]'` до 2 минут
     → два элемента: `X` с `revokedAt` и `offline`; новый `Y` ≠ `X`, `online`, `revokedAt` = `null`.
+
+33а. (О1) `R=$(a GET /agents/$X | body | jq -r .revokedAt); a POST /agents/$X/revoke | tail -1; a GET /agents/$X | body | jq -r .revokedAt`
+     → `HTTP 200 application/json`; `revokedAt` равно `$R` (повторный отзыв без
+     `confirm` ничего не меняет).
 34. `$DC logs self-agent | grep -E 'CERT_REVOKED|AGENT_REVOKED'` → строки отказа прежней
     личности есть; `$DC logs self-agent | grep -cE 'sard_[A-Za-z0-9_-]{43}\.'` → `0` (строки токена нет).
 35. `chan` → `enroll-token` нет; `$PSQL "select count(*) from agents where builtin and revoked_at is null"` → `1`.
@@ -199,4 +218,17 @@ chan() { $DC exec -T server ls -la /var/lib/sard/self; }
     строк `WARN` со ссылкой на `docs/operations/self-agent.md` и строки
     `built-in agent enrollment token written`.
 53. Через 1 минуту `$PSQL "select count(*) from enrollment_tokens where builtin and created_at > now() - interval '2 minutes'"`
+    → `0`.
+
+### Непригодный канал (О3)
+
+Тот же запуск сервера вне compose, что в шаге 52, но с `SARD_SELF_DIR`:
+
+54. `SARD_SELF_DIR=$QA/nope` (каталога нет) → сервер не стартует, процесс
+    завершается с ненулевым кодом; сообщение называет `$QA/nope` и
+    `docs/operations/self-agent.md`.
+55. `touch $QA/file; SARD_SELF_DIR=$QA/file` → то же, сообщение называет `$QA/file`.
+56. `mkdir -m 0500 $QA/ro; SARD_SELF_DIR=$QA/ro` → то же, сообщение называет `$QA/ro`;
+    `ls -A $QA/ro` → пусто.
+57. После шагов 54–56 `$PSQL "select count(*) from enrollment_tokens where builtin and created_at > now() - interval '5 minutes'"`
     → `0`.
