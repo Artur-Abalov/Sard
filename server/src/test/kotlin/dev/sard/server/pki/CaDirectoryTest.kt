@@ -136,6 +136,17 @@ class CaDirectoryTest {
     }
 
     @Test
+    fun `a staging entry that vanishes while the start looks at it is left alone and the start succeeds`() {
+        val pair = generate()
+        Files.createDirectories(dir, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
+        // A dangling link: its mtime read fails with NoSuchFileException, as for an entry just moved away.
+        Files.createSymbolicLink(dir.resolve(".tmp-gone"), Path.of("does-not-exist"))
+        val opened = MutFlow.underTest { CaDirectory(dir, CLOCK).loadOrCreate { pair } }
+        assertEquals(pair.certificate, opened.certificate)
+        assertTrue(Files.isSymbolicLink(dir.resolve(".tmp-gone")))
+    }
+
+    @Test
     fun `owner-only paths pass the permission check`() {
         val ownerOnly = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"))
         val file = Files.createFile(tmp.resolve("k"), ownerOnly)

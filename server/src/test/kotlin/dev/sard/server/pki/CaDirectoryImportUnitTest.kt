@@ -114,6 +114,14 @@ class CaDirectoryImportUnitTest {
     }
 
     @Test
+    fun `a staging entry that vanishes while the start looks at it does not fail the import`() {
+        ownerOnlyDir()
+        Files.createSymbolicLink(dir.resolve(".tmp-gone"), Path.of("does-not-exist"))
+        assertEquals(CaOrigin.IMPORTED, open(imported()).origin)
+        assertTrue(Files.isSymbolicLink(dir.resolve(".tmp-gone")))
+    }
+
+    @Test
     fun `a CA directory open to others is refused before anything is read from the source`() {
         ownerOnlyDir()
         Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("rwxr-x---"))

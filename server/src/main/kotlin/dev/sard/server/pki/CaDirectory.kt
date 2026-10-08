@@ -10,6 +10,7 @@ import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.FileSystemException
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardOpenOption.CREATE_NEW
@@ -142,12 +143,21 @@ class CaDirectory(
         Files.list(dir).use { entries ->
             entries
                 .filter { it.fileName.toString().startsWith(STAGING) }
-                // File.lastModified is 0 for a staging directory a concurrent starter just removed or published:
-                // it counts as stale and deleting it is a no-op, where Files.getLastModifiedTime would throw.
-                .filter { Instant.ofEpochMilli(it.toFile().lastModified()) < cutoff }
+                .filter { isStale(it, cutoff) }
                 .forEach { it.toFile().deleteRecursively() }
         }
     }
+
+    /** Gone already (a concurrent start published or removed it): not ours to clean. Other failures stop the start. */
+    private fun isStale(
+        path: Path,
+        cutoff: Instant,
+    ): Boolean =
+        try {
+            Files.getLastModifiedTime(path).toInstant() < cutoff
+        } catch (_: NoSuchFileException) {
+            false
+        }
 
     /** Makes the rename durable; not observable without a crash, so no test covers it. */
     private fun syncDirectory() { // mutflow:falsePositive fsync changes nothing observable without an OS crash
