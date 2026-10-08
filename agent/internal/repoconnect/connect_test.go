@@ -28,6 +28,8 @@ type fakeRepo struct {
 	password    string
 	id          string
 	initErr     error
+	// idErr is what asking for the id fails with, before any password is looked at.
+	idErr error
 	// files are the files the repository was opened with, in order.
 	files []repoconnect.Files
 	// passwordSeen is the content of the password file at each call.
@@ -41,6 +43,8 @@ func (r *fakeRepo) ID(context.Context) (string, error) {
 	got := strings.TrimSpace(string(data))
 	r.passwordSeen = append(r.passwordSeen, got)
 	switch {
+	case r.idErr != nil:
+		return "", r.idErr
 	case !r.initialized:
 		return "", fmt.Errorf("restic cat: %w", restic.ErrNoRepository)
 	case got != r.password:
@@ -339,8 +343,13 @@ func TestASecretsDirectoryThatCannotBeMadeIsAWriteError(t *testing.T) {
 		if withEnv {
 			w.conn.Env = &repoconnect.EnvFile{Final: w.env(), Content: []byte("AWS_ACCESS_KEY_ID=K\n")}
 		}
-		if f := w.conn.Connect(t.Context()); f == nil || f.Reason != refusal.ConfigWrite {
-			t.Errorf("env %v: failure %v", withEnv, f)
+		f := w.conn.Connect(t.Context())
+		if f == nil || f.Reason != refusal.ConfigWrite {
+			t.Fatalf("env %v: failure %v", withEnv, f)
+		}
+		// The directory is what could not be made: no file was tried in it.
+		if want := "create directory " + w.conn.SecretsDir; !strings.HasPrefix(f.Detail, want) || len(w.repo.files) != 0 {
+			t.Errorf("env %v: detail %q, restic opened %d times", withEnv, f.Detail, len(w.repo.files))
 		}
 	}
 }
@@ -509,5 +518,41 @@ func TestKeysOnlyReportsAnEnvFileThatCannotBeCommitted(t *testing.T) {
 	}
 	if names := w.leftovers(); len(names) != 1 {
 		t.Fatalf("files %v", names)
+	}
+}
+
+func TestAFailureThatIsNotAWrongPasswordIsNeverAnOccasionToAsk(t *testing.T) {
+	w := newWorld(t)
+	w.repo.idErr = &restic.ExitError{Code: 1, Message: "Fatal: unable to open config file: unexpected response 418"}
+	f := w.conn.Connect(t.Context())
+	if f == nil || f.Reason != refusal.BackendRefused || w.asks != 0 {
+		t.Fatalf("failure %v, asks %d", f, w.asks)
+	}
+	if names := w.leftovers(); len(names) != 0 {
+		t.Fatalf("files %v", names)
+	}
+}
+
+// removingFS notes the files taken away.
+type removingFS struct {
+	hostsetup.OS
+	removed []string
+}
+
+func (r *removingFS) Remove(path string) error {
+	r.removed = append(r.removed, path)
+	return r.OS.Remove(path)
+}
+
+func TestWhatWasCommittedIsNotTakenAwayAgain(t *testing.T) {
+	w := newWorld(t)
+	fsys := &removingFS{}
+	w.conn.FS = fsys
+	w.conn.Env = &repoconnect.EnvFile{Final: w.env(), Content: []byte("AWS_ACCESS_KEY_ID=K\n")}
+	if f := w.conn.Connect(t.Context()); f != nil {
+		t.Fatal(f)
+	}
+	if len(fsys.removed) != 0 {
+		t.Fatalf("removed %v", fsys.removed)
 	}
 }

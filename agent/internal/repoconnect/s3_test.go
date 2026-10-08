@@ -69,6 +69,7 @@ func TestWithoutASourceAnotherIDOrRegionOrNoFileAsksForTheSecretKey(t *testing.T
 		{[]byte(inPlaceEnv), "KEY-ID-1", "r2"},
 		{[]byte(inPlaceEnv), "KEY-ID-1", ""},
 		{nil, "KEY-ID-1", "r1"},
+		{nil, "", ""},
 	} {
 		var asked int
 		a, f := repoconnect.ChooseS3Env(c.inPlace, c.id, c.region, false, givenKey("NEW", &asked))
@@ -115,6 +116,19 @@ func TestAFileThatCannotBeReadAsASecretIsRejectedWithItsPath(t *testing.T) {
 		if found || f == nil || f.Reason != refusal.SecretFileRejected || f.Class != refusal.ClassUsage || !strings.Contains(f.Detail, "SECRET_FILE_REJECTED") || !strings.Contains(f.Detail, "/p") {
 			t.Errorf("%v: %v", err, f)
 		}
+	}
+}
+
+// Л5: A1's own text of a rejected secret file is told as it is.
+func TestTheTextOfARejectedSecretFileIsA1sOwn(t *testing.T) {
+	err := &secrets.Error{Path: "/p", Key: "k"}
+	_, _, f := repoconnect.ReadInPlace(reading(err, ""), "/p")
+	if f == nil || f.Detail != "SECRET_FILE_REJECTED: "+err.Error() || strings.Contains(f.Detail, "cannot be read as a secret file") {
+		t.Fatalf("%v", f)
+	}
+	_, _, f = repoconnect.ReadInPlace(reading(errors.New("boom"), ""), "/p")
+	if f == nil || f.Detail != "SECRET_FILE_REJECTED: /p cannot be read as a secret file: boom" {
+		t.Fatalf("%v", f)
 	}
 }
 

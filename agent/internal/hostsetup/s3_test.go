@@ -20,6 +20,7 @@ func TestTheFormsOfAnS3AddressAreAccepted(t *testing.T) {
 		"s3:http://10.0.0.5:3900/bucket-b/extra":    {Host: "10.0.0.5:3900", Bucket: "bucket-b", Insecure: true},
 		"s3:https://[2001:db8::1]:9000/bucket-b":    {Host: "[2001:db8::1]:9000", Bucket: "bucket-b"},
 		"s3:s3.example.com:9000/bucket-b/a/b/c/d/e": {Host: "s3.example.com:9000", Bucket: "bucket-b"},
+		"s3:https://[::1]/bucket-b":                 {Host: "[::1]", Bucket: "bucket-b"},
 	} {
 		got, f := hostsetup.CheckS3Address(address)
 		if f != nil || got != want {

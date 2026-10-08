@@ -79,6 +79,12 @@ func TestPlanRepository(t *testing.T) {
 			t.Fatalf("plan = %v, failure = %v", p, f)
 		}
 	})
+	t.Run("the same local path written unclean is the same address", func(t *testing.T) {
+		cfg, l := planWithFragment(t, "/srv/x/../r/")
+		if p, f := hostsetup.PlanRepository(cfg, l, "r", "/srv/r"); f != nil || p != hostsetup.AddUnchanged {
+			t.Fatalf("plan = %v, failure = %v", p, f)
+		}
+	})
 	t.Run("another address", func(t *testing.T) {
 		cfg, l := planWithFragment(t, "/srv/r")
 		_, f := hostsetup.PlanRepository(cfg, l, "r", "/srv/other")

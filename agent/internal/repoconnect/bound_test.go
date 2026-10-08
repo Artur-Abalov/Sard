@@ -145,3 +145,61 @@ func TestTheSmallestTimeoutIsStillALimit(t *testing.T) {
 		t.Fatalf("timers %v", clock.asked)
 	}
 }
+
+// answeringRepo answers once the limited context has ended, as a storage
+// that was slow but did answer; and may wait for the test before it does.
+type answeringRepo struct {
+	restic.Repository
+	seen    chan struct{}
+	release chan struct{}
+	err     error
+}
+
+func (a *answeringRepo) ID(ctx context.Context) (string, error) {
+	<-ctx.Done()
+	close(a.seen)
+	<-a.release
+	if a.err != nil {
+		return "", a.err
+	}
+	return "ID-1", nil
+}
+
+func TestAnAnswerThatArrivesAfterTheLimitIsStillTheAnswer(t *testing.T) {
+	clock := &stepClock{fire: make(chan time.Time, 1)}
+	repo := &answeringRepo{seen: make(chan struct{}), release: make(chan struct{})}
+	type result struct {
+		id string
+		ok bool
+		f  *refusal.Failure
+	}
+	done := make(chan result, 1)
+	go func() {
+		id, ok, f := repoconnect.Bound{Clock: clock, Timeout: time.Second}.Inspect(t.Context(), repo, target, &repoconnect.Log{})
+		done <- result{id, ok, f}
+	}()
+	clock.fire <- time.Now()
+	<-repo.seen
+	close(repo.release)
+	if r := <-done; r.f != nil || !r.ok || r.id != "ID-1" {
+		t.Fatalf("%+v", r)
+	}
+}
+
+func TestACommandStoppedAfterTheLimitFiredIsInterruptedNotUnanswered(t *testing.T) {
+	clock := &stepClock{fire: make(chan time.Time, 1)}
+	repo := &answeringRepo{seen: make(chan struct{}), release: make(chan struct{}), err: fmt.Errorf("restic cat: %w", context.Canceled)}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan *refusal.Failure, 1)
+	go func() {
+		_, _, f := repoconnect.Bound{Clock: clock, Timeout: time.Second}.Inspect(ctx, repo, target, &repoconnect.Log{})
+		done <- f
+	}()
+	clock.fire <- time.Now()
+	<-repo.seen
+	cancel()
+	close(repo.release)
+	if f := <-done; f == nil || f.Reason != refusal.Interrupted {
+		t.Fatalf("failure %+v", f)
+	}
+}

@@ -5,6 +5,7 @@ package repoconnect_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -143,5 +144,28 @@ func TestTheTimeLeftAfterTheWaitIsTheTimeLeftBeforeIt(t *testing.T) {
 	}
 	if got := clock.lastAsked(); got != 6*time.Second {
 		t.Fatalf("timer re-armed for %v, want 6s", got)
+	}
+}
+
+func TestTheTimeLeftNeverGoesBelowNothing(t *testing.T) {
+	clock := newHandClock()
+	_, b := repoconnect.NewBudget(t.Context(), clock, 10*time.Second)
+	defer b.Cancel(nil)
+	clock.advance(11 * time.Second)
+	term := repoconnect.Waiting(slowTerm{clock: clock, wait: time.Second}, b)
+	if _, err := term.ReadSecret("p"); err != nil {
+		t.Fatal(err)
+	}
+	if got := clock.lastAsked(); got != 0 {
+		t.Fatalf("timer re-armed for %v, want none left", got)
+	}
+}
+
+func TestCancelEndsTheContextWithTheCauseGiven(t *testing.T) {
+	cause := errors.New("stopped by the test")
+	ctx, b := repoconnect.NewBudget(t.Context(), newHandClock(), time.Hour)
+	b.Cancel(cause)
+	if ctx.Err() == nil || context.Cause(ctx) != cause {
+		t.Fatalf("ctx %v, cause %v", ctx.Err(), context.Cause(ctx))
 	}
 }
