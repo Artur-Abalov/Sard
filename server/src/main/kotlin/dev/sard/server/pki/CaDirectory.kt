@@ -5,6 +5,7 @@ package dev.sard.server.pki
 
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.FileSystemException
@@ -50,6 +51,15 @@ fun ownerOnlyViolation(path: Path): String? {
     }
 }
 
+/** Where the CA of a start came from; the server logs it with the fingerprint at every start (ADR 0052). */
+enum class CaOrigin { GENERATED, IMPORTED, EXISTING }
+
+/** The CA a start works with and where it came from. */
+class OpenedCa(
+    val pair: CaKeyPair,
+    val origin: CaOrigin,
+)
+
 /**
  * `<dir>/ca/{ca.crt,ca.key}`, owner-only. The `ca` directory appears by one atomic
  * rename, so concurrent first starts end up with the same CA: the loser loads the winner's.
@@ -57,26 +67,66 @@ fun ownerOnlyViolation(path: Path): String? {
 class CaDirectory(
     private val dir: Path,
     private val clock: Clock,
+    private val writeFile: (Path, String) -> Unit = ::write,
 ) {
     private val ca = dir.resolve(CA)
 
-    fun loadOrCreate(generate: () -> CaKeyPair): CaKeyPair {
-        if (Files.notExists(dir)) Files.createDirectories(dir, OWNER_DIR)
+    fun loadOrCreate(generate: () -> CaKeyPair): CaKeyPair = open(null, generate).pair
+
+    /**
+     * The CA of this directory. Empty directory: the CA of [source] when there is one (ADR 0052), else a
+     * generated one. A CA that is there stays; a [source] must then name the same CA or the start is refused.
+     */
+    fun open(
+        source: CaImportSource?,
+        generate: () -> CaKeyPair,
+    ): OpenedCa {
+        writing(source) {
+            if (Files.notExists(dir)) Files.createDirectories(dir, OWNER_DIR)
+        }
         requireOwnerOnly(dir)
-        removeStaleStaging()
-        if (Files.notExists(ca)) publish(generate())
-        return load()
+        writing(source, ::removeStaleStaging)
+        if (Files.exists(ca)) return existing(source)
+        val pair = source?.read() ?: generate()
+        val published = writing(source) { publish(pair) }
+        val origin =
+            when {
+                !published -> CaOrigin.EXISTING
+                source == null -> CaOrigin.GENERATED
+                else -> CaOrigin.IMPORTED
+            }
+        return OpenedCa(load(), origin)
     }
 
-    private fun publish(pair: CaKeyPair) {
+    private fun existing(source: CaImportSource?): OpenedCa {
+        val pair = load()
+        source?.reconcile(CaFingerprint.of(pair.certificate))
+        return OpenedCa(pair, CaOrigin.EXISTING)
+    }
+
+    /** A failed write while importing is a refusal that names the directory; otherwise the failure is passed on. */
+    private fun <T> writing(
+        source: CaImportSource?,
+        action: () -> T,
+    ): T =
+        try {
+            action()
+        } catch (e: IOException) {
+            throw source?.writeFailed(dir, e) ?: e
+        }
+
+    /** True when this call published [pair], false when another start did first. */
+    private fun publish(pair: CaKeyPair): Boolean {
         val staging = Files.createTempDirectory(dir, STAGING, OWNER_DIR)
         try {
-            write(staging.resolve(KEY), Pem.privateKey(pair.privateKey))
-            write(staging.resolve(CERT), Pem.certificate(pair.certificate))
+            writeFile(staging.resolve(KEY), Pem.privateKey(pair.privateKey))
+            writeFile(staging.resolve(CERT), Pem.certificate(pair.certificate))
             Files.move(staging, ca, ATOMIC_MOVE)
             syncDirectory()
+            return true
         } catch (e: FileSystemException) {
             if (Files.notExists(ca)) throw e
+            return false
         } finally {
             staging.toFile().deleteRecursively()
         }
@@ -118,14 +168,13 @@ class CaDirectory(
     private fun requireOwnerOnly(path: Path) {
         ownerOnlyViolation(path)?.let { throw InsecureKeyStorageException(it) }
     }
-
-    private fun write(
-        path: Path,
-        text: String,
-    ) {
-        FileChannel.open(path, setOf(CREATE_NEW, WRITE), OWNER_FILE).use {
-            it.write(ByteBuffer.wrap(text.toByteArray()))
-            it.force(true)
-        }
+}
+private fun write(
+    path: Path,
+    text: String,
+) {
+    FileChannel.open(path, setOf(CREATE_NEW, WRITE), OWNER_FILE).use {
+        it.write(ByteBuffer.wrap(text.toByteArray()))
+        it.force(true)
     }
 }

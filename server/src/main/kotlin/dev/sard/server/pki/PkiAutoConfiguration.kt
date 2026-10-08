@@ -3,7 +3,9 @@
 
 package dev.sard.server.pki
 
+import dev.sard.server.enrollment.AgentEndpoint
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.ssl.SslBundleRegistrar
@@ -33,12 +35,16 @@ const val GRPC_SSL_BUNDLE = "sard-grpc"
 
 private val log = LoggerFactory.getLogger(PkiAutoConfiguration::class.java)
 
-/** `sard.pki.*`: where the file CA keeps its key and which names the server certificate carries. */
+/**
+ * `sard.pki.*`: where the file CA keeps its key and which names the server certificate carries.
+ * [importDir] (SARD_PKI_IMPORT_DIR): a CA to take at the first start, empty means none (ADR 0052).
+ */
 @ConfigurationProperties("sard.pki")
 data class PkiProperties(
     val dir: Path,
     val serverNames: List<String>,
     val renewalCheckInterval: Duration = Duration.ofDays(1),
+    val importDir: String = "",
 )
 
 /**
@@ -50,8 +56,16 @@ data class PkiProperties(
 class PkiAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
-    fun certificateAuthority(properties: PkiProperties): CertificateAuthority =
-        FileCertificateAuthority(properties.dir, properties.serverNames, Clock.systemUTC(), SecureRandom())
+    fun certificateAuthority(
+        properties: PkiProperties,
+        agentEndpoint: ObjectProvider<AgentEndpoint>,
+    ): CertificateAuthority {
+        // The address agents dial is checked against the server names before the CA directory is touched,
+        // so a start that fails on it leaves no imported CA behind (ADR 0052).
+        agentEndpoint.ifAvailable
+        val importDir = properties.importDir.takeIf { it.isNotBlank() }?.let { Path.of(it) }
+        return FileCertificateAuthority(properties.dir, properties.serverNames, Clock.systemUTC(), SecureRandom(), importDir)
+    }
 
     /** Server key from the CA; client certificates, when presented, must chain to it. */
     @Bean
