@@ -8,7 +8,16 @@ import { tones } from '../theme'
 
 // A value to copy, with its own copy button. Where the clipboard is not available (a page
 // opened over plain HTTP) it says so and selects the whole value for copying by hand.
-export function CopyBox({ value, label }: { value: string; label: string }) {
+export function CopyBox({
+  value,
+  label,
+  unbroken = false,
+}: {
+  value: string
+  label: string
+  // Keep the value on one line (a fingerprint is compared by eye), scrolling instead of wrapping.
+  unbroken?: boolean
+}) {
   const { t } = useTranslation()
   const text = useRef<HTMLElement>(null)
   const [state, setState] = useState<'idle' | 'copied' | 'refused'>('idle')
@@ -29,7 +38,15 @@ export function CopyBox({ value, label }: { value: string; label: string }) {
         {label}
       </Text>
       <Group align="flex-start" wrap="nowrap">
-        <Code ref={text} block style={{ flex: 1, wordBreak: 'break-all' }}>
+        <Code
+          ref={text}
+          block
+          style={
+            unbroken
+              ? { flex: 1, whiteSpace: 'nowrap', overflowX: 'auto' }
+              : { flex: 1, wordBreak: 'break-all' }
+          }
+        >
           {value}
         </Code>
         <Button variant="default" size="xs" onClick={() => void copy()}>

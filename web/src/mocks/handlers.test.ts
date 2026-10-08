@@ -631,6 +631,21 @@ describe('agent revocation, soft delete and the new fields (S8b)', () => {
   })
 })
 
+describe('F8 CA mock', () => {
+  const FINGERPRINT = '8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f'
+
+  test('the mock gives the fingerprint of the test vector, and token strings end with it', async () => {
+    await signIn()
+    expect(must(await api.GET('/api/v1/ca')).fingerprint).toBe(FINGERPRINT)
+    const created = must(await api.POST('/api/v1/enrollment-tokens', { body: {} }))
+    expect(created.token.endsWith(`.${FINGERPRINT}`)).toBe(true)
+  })
+
+  test('without a session the CA is refused', async () => {
+    expect((await api.GET('/api/v1/ca')).response.status).toBe(401)
+  })
+})
+
 describe('W2 mocks', () => {
   beforeEach(signIn)
   const agentPath = (agentId: string) => ({ params: { path: { agentId } } })

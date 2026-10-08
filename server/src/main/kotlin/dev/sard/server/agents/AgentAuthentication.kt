@@ -72,11 +72,12 @@ sealed interface AgentAuthResult {
         val principal: AgentPrincipal,
     ) : AgentAuthResult
 
-    /** [serial] and [agentId] are only for the log; the caller sees [failure] alone. */
+    /** [serial], [agentId] and [tenantId] are only for the log; the caller sees [failure] alone. */
     data class Rejected(
         val failure: AgentAuthFailure,
         val serial: String?,
         val agentId: UUID?,
+        val tenantId: UUID? = null,
     ) : AgentAuthResult
 }
 
@@ -100,8 +101,9 @@ class AgentAuthenticator(
         standing: CertificateStanding?,
     ): AgentAuthResult {
         if (standing == null) {
-            val claimed = presented.identity?.agentId
-            return AgentAuthResult.Rejected(AgentAuthFailure.CERT_UNKNOWN, presented.serial, claimed)
+            val claimed = presented.identity
+            val failure = AgentAuthFailure.CERT_UNKNOWN
+            return AgentAuthResult.Rejected(failure, presented.serial, claimed?.agentId, claimed?.tenantId)
         }
         val identity = standing.identity
         return when (val failure = failureOf(presented, standing)) {

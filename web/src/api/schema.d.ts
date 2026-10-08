@@ -298,6 +298,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ca": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * CA of the server
+         * @description The fingerprint of the CA, whatever its origin. Requires an administrator session.
+         */
+        get: operations["getCa"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agents": {
         parameters: {
             query?: never;
@@ -871,6 +891,14 @@ export interface components {
             items: components["schemas"]["EnrollmentToken"][];
             /** @description Pass as cursor to get the next page; null on the last page */
             nextCursor: string | null;
+        };
+        /** @description The CA of this server; public data, but only for a signed-in administrator */
+        CaInfo: {
+            /**
+             * @description SHA-256 of the root's DER SubjectPublicKeyInfo, 64 lower-case hex characters: the part of an enrollment token after the last dot
+             * @example 8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f
+             */
+            fingerprint: string;
         };
         /** @description A page of agents */
         AgentPage: {
@@ -2066,6 +2094,44 @@ export interface operations {
             };
             /** @description Not found in the session's tenant */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getCa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaInfo"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -33,6 +33,9 @@ services:
       SARD_DB_USER: sard
       SARD_DB_PASSWORD: ${SARD_DB_PASSWORD:?set SARD_DB_PASSWORD in .env}
       SARD_PKI_SERVER_NAMES: ${SARD_PKI_SERVER_NAMES:-localhost,127.0.0.1,::1}
+      # A CA to take at the first start (a move to a new machine, ADR 0052): the path inside the container
+      # where docker-compose.override.yml mounts it (docs/operator/08-migrate-and-remove.md). Empty means none.
+      SARD_PKI_IMPORT_DIR: ${SARD_PKI_IMPORT_DIR:-}
       # The single administrator's password (ADR 0021); at least 12 Unicode code points,
       # or the server refuses to start. make up generates one on the first run.
       SARD_ADMIN_PASSWORD: ${SARD_ADMIN_PASSWORD:?set SARD_ADMIN_PASSWORD in .env}
