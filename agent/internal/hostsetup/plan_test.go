@@ -5,6 +5,7 @@ package hostsetup_test
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
@@ -129,4 +130,54 @@ func TestRepositoryNamed(t *testing.T) {
 	if got := hostsetup.RepositoryNamed(cfg, "zz"); got.Name != "" {
 		t.Errorf("unknown name gave %+v", got)
 	}
+}
+
+// A8b, Р30, Р45: an S3 address is compared as given, not as a path, and the
+// env file of the name is not taken from another key.
+func TestPlanRepositoryForAnS3Address(t *testing.T) {
+	const s3 = "s3:https://s3.example.com/bucket-b/extra"
+	t.Run("the same address again is unchanged", func(t *testing.T) {
+		cfg, l := planWithEnvFragment(t, s3)
+		if p, f := hostsetup.PlanRepository(cfg, l, "r", s3); f != nil || p != hostsetup.AddUnchanged {
+			t.Fatalf("plan = %v, failure = %v", p, f)
+		}
+	})
+	t.Run("another bucket is a conflict that shows the current address", func(t *testing.T) {
+		cfg, l := planWithEnvFragment(t, s3)
+		_, f := hostsetup.PlanRepository(cfg, l, "r", "s3:https://s3.example.com/bucket-b/other")
+		wantReason(t, f, refusal.RepositoryConflict)
+		if !strings.Contains(f.Detail, s3) {
+			t.Fatalf("detail %q", f.Detail)
+		}
+	})
+	t.Run("the env file is used by another key", func(t *testing.T) {
+		cfg, l := loadPlanConfig(t, "", map[string][]byte{})
+		cfg.Repositories = []config.Repository{{Name: "base", URL: "/b", PasswordFile: "/p", EnvFile: l.EnvFile("r")}}
+		_, f := hostsetup.PlanRepository(cfg, l, "r", s3)
+		wantReason(t, f, refusal.PathInUse)
+		if !strings.Contains(f.Detail, `env_file of repository "base"`) {
+			t.Fatalf("detail %q", f.Detail)
+		}
+	})
+	t.Run("a local repository does not care about the env file", func(t *testing.T) {
+		cfg, l := loadPlanConfig(t, "", map[string][]byte{})
+		cfg.Repositories = []config.Repository{{Name: "base", URL: "/b", PasswordFile: "/p", EnvFile: l.EnvFile("r")}}
+		if _, f := hostsetup.PlanRepository(cfg, l, "r", "/srv/r"); f != nil {
+			t.Fatalf("failure = %v", f)
+		}
+	})
+}
+
+func planWithEnvFragment(t *testing.T, url string) (config.Config, hostsetup.Layout) {
+	t.Helper()
+	l := hostsetup.Layout{Config: filepath.Join(t.TempDir(), "agent.yaml")}
+	writeAll(t, map[string][]byte{
+		l.Config:                  []byte("server: {address: 'a:1'}\n"),
+		l.RepositoryFragment("r"): hostsetup.RepositoryYAMLWithEnv("r", url, l.PasswordFile("r"), l.EnvFile("r")),
+	})
+	cfg, err := config.Load(l.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg, l
 }
