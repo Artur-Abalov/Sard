@@ -23,7 +23,7 @@ import { ApiError, call } from '../api/call'
 import { client } from '../api/client'
 import { fieldFailures } from '../errors'
 import { mapField } from '../fieldPath'
-import { PAGE_SIZE, tokenQuery, type EnrollmentToken } from '../api/queries'
+import { caQuery, PAGE_SIZE, tokenQuery, type EnrollmentToken } from '../api/queries'
 import type { components } from '../api/schema'
 import { AgentInstallBlock } from '../components/AgentInstallBlock'
 import { AgentName } from '../components/AgentName'
@@ -247,6 +247,23 @@ function TokenRow({ token }: { token: EnrollmentToken }) {
   )
 }
 
+// The CA fingerprint the server sends as is: it ends every token and opens the server's start log.
+// A failed load shows its own message and leaves the token list alone.
+function CaFingerprint() {
+  const { t } = useTranslation()
+  const ca = useQuery(caQuery())
+  if (ca.isError) return <ErrorBlock error={ca.error} onRetry={() => void ca.refetch()} />
+  if (ca.data === undefined) return null
+  return (
+    <Stack gap={4}>
+      <CopyBox value={ca.data.fingerprint} label={t('tokens.caFingerprint')} unbroken />
+      <Text size="xs" c="dimmed">
+        {t('tokens.caFingerprintHint')}
+      </Text>
+    </Stack>
+  )
+}
+
 export function Tokens() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -265,6 +282,7 @@ export function Tokens() {
         <Title order={2}>{t('tokens.title')}</Title>
         <Button onClick={() => setOpened(true)}>{t('tokens.create')}</Button>
       </Group>
+      <CaFingerprint />
       {hint === 'enroll' && <Alert color={tones.info}>{t('tokens.enrollHint')}</Alert>}
       <CreateTokenModal
         opened={opened}
