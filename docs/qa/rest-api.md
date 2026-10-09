@@ -17,15 +17,14 @@
 ```bash
 make down; rm -f deploy/.env
 cp deploy/.env.example deploy/.env
-sed -i 's/^#\? *SARD_ADMIN_PASSWORD=.*/SARD_ADMIN_PASSWORD=qa-admin-password-2026/' deploy/.env
-grep -q '^SARD_ADMIN_PASSWORD=' deploy/.env || echo 'SARD_ADMIN_PASSWORD=qa-admin-password-2026' >> deploy/.env
 make up && make build
 DC="docker compose -f deploy/docker-compose.yml --env-file deploy/.env"
 PSQL="$DC exec -T postgres psql -U sard -d sard -At -c"
 API=http://localhost:8080/api/v1
 QA=$(mktemp -d); J=$QA/jar
-curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$API/session" -H 'Content-Type: application/json' \
-  -d '{"password":"qa-admin-password-2026"}' -c $J
+# мастер первого запуска по коду из лога сервера (docs/qa/onboarding-setup.md); пароль QA задаётся здесь
+source scripts/lib/setup-wizard.sh
+SARD_WIZARD_COOKIES=$J sard_complete_wizard http://localhost:8080 qa-admin-password-2026 $DC logs server && echo 204
 # a <метод> <путь> [тело] — запрос с сессией; печатает тело, затем строку "HTTP <код> <Content-Type>"
 a() { curl -sS -X "$1" "$API$2" -b $J ${3:+-H 'Content-Type: application/json' -d "$3"} \
   -w '\nHTTP %{http_code} %{content_type}\n'; }
@@ -36,7 +35,7 @@ AG=$PWD/agent/bin/sard-agent
 RESTIC=$PWD/.bin/restic
 ```
 
-→ вход печатает `204`, `make build` завершается.
+→ мастер печатает `204` (последний шаг открывает сессию в `$J`), `make build` завершается.
 
 ## Часть 1. Без сессии и Origin
 

@@ -36,13 +36,14 @@
 ```bash
 make down; rm -f deploy/.env
 cp deploy/.env.example deploy/.env
-sed -i 's/^#\? *SARD_ADMIN_PASSWORD=.*/SARD_ADMIN_PASSWORD=qa-admin-password-2026/' deploy/.env
-grep -q '^SARD_ADMIN_PASSWORD=' deploy/.env || echo 'SARD_ADMIN_PASSWORD=qa-admin-password-2026' >> deploy/.env
 make up
 DC="docker compose -f deploy/docker-compose.yml --env-file deploy/.env"
 API=http://localhost:8080/api/v1
 PW=qa-admin-password-2026
 QA=$(mktemp -d)
+# мастер первого запуска по коду из лога сервера (docs/qa/onboarding-setup.md); пароль QA задаётся здесь
+source scripts/lib/setup-wizard.sh
+sard_complete_wizard http://localhost:8080 "$PW" $DC logs server
 login() {  # login <password> <cookie-jar> [extra curl args] — печатает заголовки и тело
   curl -sS -i -X POST "$API/session" -H 'Content-Type: application/json' \
     -d "{\"password\":\"$1\"}" -c "$2" "${@:3}"
@@ -50,11 +51,14 @@ login() {  # login <password> <cookie-jar> [extra curl args] — печатае�
 sid() { awk '$6=="sard_session"{print $7}' "$1"; }   # значение sard_session из jar
 ```
 
-→ `make up` завершается, сервер `healthy`.
+→ `make up` завершается, сервер `healthy`; мастер завершается без ошибки (пароль администратора — `$PW`).
 
 ## Часть 1. REST API
 
 ### Старт сервера
+
+> Шаги 1–5 заменены F4a: пароля в окружении нет, их проверки — часть 5
+> процедуры `docs/qa/onboarding-setup.md`. Ниже — история.
 
 1. `$DC stop server; SARD_ADMIN_PASSWORD= $DC up -d server; sleep 20; $DC ps server; $DC logs server | tail -50`
    → сервер не стартует; в логе сообщение называет `SARD_ADMIN_PASSWORD` и
@@ -225,6 +229,9 @@ sid() { awk '$6=="sard_session"{print $7}' "$1"; }   # значение sard_ses
     ключей i18n (`login.…`) на экране нет.
 
 ## Часть 3. Развёртывание, документация, ADR
+
+> Шаги 1–5 заменены F4a (compose, `.env.example`, README и `make up` без пароля —
+> часть 5 процедуры `docs/qa/onboarding-setup.md`). Ниже — история.
 
 1. `grep -n SARD_ADMIN_PASSWORD deploy/docker-compose.yml`
    → строка в `environment` сервиса `server` со ссылкой `${SARD_ADMIN_PASSWORD…}`

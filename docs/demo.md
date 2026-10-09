@@ -81,8 +81,7 @@ mkdir -p ~/sard && cd ~/sard
 curl -fsSLO "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/docker-compose.yml"
 curl -fsSL -o .env "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/sard.env.example"
 chmod 600 .env
-sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" \
-       -e "s/^SARD_ADMIN_PASSWORD=.*/SARD_ADMIN_PASSWORD=$(openssl rand -hex 16)/" .env
+sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" .env
 cat >> .env <<EOF
 SARD_PKI_SERVER_NAMES=$SARD_NAME
 SARD_AGENT_ENDPOINT=$SARD_NAME:9090
@@ -110,13 +109,14 @@ printf 'SARD_TELEGRAM_BOT_TOKEN=%s\nSARD_TELEGRAM_CHAT_ID=%s\n' "$TG_TOKEN" <cha
 ```bash
 docker compose up -d --wait
 curl -fsS http://localhost:8080/api/v1/status; echo
-grep '^SARD_ADMIN_PASSWORD=' .env
+docker compose logs server | grep "SARD SETUP CODE"
 ```
 
 **Что должно получиться.** `docker compose up` заканчивается строками
 `Container sard-server-1 Healthy`; статус —
-`{"version":"v0.0.1-rc.1","lastVerifiedRestoreAt":null}`. Пароль
-администратора сохраните в менеджер паролей.
+`{"version":"v0.0.1-rc.1","lastVerifiedRestoreAt":null}`; в логе есть строка
+`SARD SETUP CODE: XXXX-XXXX-…` — код первого запуска. Пароля администратора
+пока нет: его задают в мастере на шаге 2.
 
 **Время.** ~3 мин (оценка): скачивание образов ~1,2 ГБ, старт сервера — 13 с
 (замер на amd64 после скачивания).
@@ -126,7 +126,7 @@ grep '^SARD_ADMIN_PASSWORD=' .env
 «Сервер не стартует»). `manifest unknown` при скачивании — релиз ещё не
 опубликован или пакет в реестре приватный.
 
-## Шаг 2. Вход в консоль
+## Шаг 2. Первый запуск и вход в консоль
 
 **Что делать.** На ноутбуке:
 
@@ -134,8 +134,12 @@ grep '^SARD_ADMIN_PASSWORD=' .env
 ssh -N -L 8080:127.0.0.1:8080 <пользователь>@<sard.example.com>
 ```
 
-Оставьте туннель открытым, откройте в браузере `http://localhost:8080` и
-войдите паролем администратора.
+Оставьте туннель открытым и откройте в браузере `http://localhost:8080`: пока
+администратора нет, консоль сама ведёт на мастер `/setup`. Введите код из строки
+`SARD SETUP CODE` (её печатает `docker compose logs server`; код действует 24
+часа, после истечения `docker compose restart server` печатает новый), посмотрите
+CA сервера и задайте пароль администратора (12–1024 символа) — сохраните его в
+менеджер паролей. Мастер сразу открывает консоль; дальше вход — этим паролем.
 
 **Что должно получиться.** Главная страница с блоком «Первые шаги»: «Токен
 выпущен», «Агент подключился», «Репозиторий инициализирован», «Источник

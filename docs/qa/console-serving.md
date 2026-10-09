@@ -72,12 +72,15 @@ Firefox. Команды запускаются из корня репозито�
 ```bash
 V=0.0.0-qa
 docker build -f deploy/server/Dockerfile --build-arg SARD_VERSION=$V -t sard-server:$V .
-make down; [ -f deploy/.env ] || ./scripts/ensure-admin-password.sh
+make down; [ -f deploy/.env ] || ./scripts/ensure-env.sh
 DC="env SARD_IMAGE=sard-server SARD_VERSION=$V docker compose -f deploy/docker-compose.yml --env-file deploy/.env"
 $DC up -d --wait
 H=http://localhost:8080
-PW=$(sed -n 's/^SARD_ADMIN_PASSWORD=//p' deploy/.env)
 QA=$(mktemp -d)
+# мастер первого запуска по коду из лога сервера (docs/qa/onboarding-setup.md)
+source scripts/lib/setup-wizard.sh
+PW=qa-admin-password-2026
+SARD_WIZARD_COOKIES="$QA/jar" sard_complete_wizard http://localhost:8080 "$PW" $DC logs server && echo 204
 hdr() { curl -sS -o /dev/null -D - "$@"; }      # только заголовки
 code() { curl -sS -o /dev/null -w '%{http_code} %{content_type}\n' "$@"; }
 ```
@@ -193,7 +196,7 @@ Network, «Preserve log» включён.
     (убедиться, что `command -v node` в этом окружении пусто) → успешно.
 33. `./gradlew -q :server:bootJar && unzip -l server/build/libs/sard-server.jar | grep -c 'console/index.html'` → `0`.
 34. `[Р3]` Запустить этот jar в сети compose рядом с базой, на порту 8081:
-    `docker run -d --name sard-nc --network sard_default -p 127.0.0.1:8081:8080 -v $PWD/server/build/libs:/app:ro -e SARD_ADMIN_PASSWORD=$PW -e SARD_DB_URL=jdbc:postgresql://postgres:5432/sard -e SARD_DB_PASSWORD=$(sed -n 's/^SARD_DB_PASSWORD=//p' deploy/.env) -e SARD_PKI_DIR=/tmp/pki eclipse-temurin:25-jre java -jar /app/sard-server.jar; sleep 30`
+    `docker run -d --name sard-nc --network sard_default -p 127.0.0.1:8081:8080 -v $PWD/server/build/libs:/app:ro -e SARD_DB_URL=jdbc:postgresql://postgres:5432/sard -e SARD_DB_PASSWORD=$(sed -n 's/^SARD_DB_PASSWORD=//p' deploy/.env) -v sard_sard-pki:/pki -e SARD_PKI_DIR=/pki eclipse-temurin:25-jre java -jar /app/sard-server.jar; sleep 30`
     → `code localhost:8081/` и `code localhost:8081/agents` — `404`, тип не `text/html`;
     `code localhost:8081/api/v1/status` — `200`;
     `docker logs sard-nc 2>&1 | grep -i console` → ровно одна запись INFO о том,

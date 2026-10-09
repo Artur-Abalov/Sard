@@ -26,7 +26,8 @@ journalctl -u sard-agent --since '-1h'
 
 | В логе | Что сделать |
 |---|---|
-| `SARD_ADMIN_PASSWORD is not set` / `must be at least 12 characters` | задать пароль в `.env` ([раздел 3](03-configuration.md)) |
+| `CA startup refused: … CA origin is not recorded` (`CA_ORIGIN_NOT_RECORDED`) | в каталоге CA лежит CA, о происхождении которого база ничего не знает: том CA и том базы взяты из разных установок или базу восстановили из старого дампа. Тома базы и каталога CA восстанавливают из бэкапа одного момента или переустанавливают вместе: `docker compose down -v` (данные установки пропадут), затем чистый запуск и мастер |
+| `CA startup refused: CA directory is empty … the database says the CA is in use` (`CA_MISSING`) | том CA пуст, а база уже выдала сертификаты агентам или шаг CA мастера выполнен. Верните CA из бэкапа: каталог с `ca/ca.crt` и `ca/ca.key` — в `SARD_PKI_IMPORT_DIR` ([раздел 8](08-migrate-and-remove.md)). Бэкапа нет — тома базы и каталога CA переустанавливают вместе: `docker compose down -v` (данные установки пропадут), агенты регистрируются заново |
 | `SARD_AGENT_ENDPOINT host '…' is not covered by any of …` | добавить хост в `SARD_PKI_SERVER_NAMES` или поправить `SARD_AGENT_ENDPOINT` |
 | `SARD_AGENT_ENDPOINT is not a valid host or host:port` | без схемы и пути: `sard.example.com:9090` |
 | `… SARD_TELEGRAM_CHAT_ID is not set` (или `BOT_TOKEN`) | задать обе переменные Telegram или очистить обе |
@@ -49,7 +50,17 @@ journalctl -u sard-agent --since '-1h'
 | `CA import refused: CA_ALREADY_PRESENT` | в `SARD_PKI_DIR` уже другой CA, чем в источнике (сообщение называет оба отпечатка): уберите `SARD_PKI_IMPORT_DIR` или очистите том, если это ошибочный старт |
 | права каталога PKI шире владельца | восстановление ключа CA с неверными правами: повторить команду `chown`/`chmod` из [раздела 6](06-data-and-backup.md#восстановление) |
 | ошибка подключения к базе, `password authentication failed` | `SARD_DB_PASSWORD` в `.env` не совпадает с паролем, с которым том базы создан впервые: том помнит первый пароль |
-| `set SARD_… in .env` от `docker compose` | обязательная переменная пустая: `SARD_VERSION`, `SARD_DB_PASSWORD`, `SARD_ADMIN_PASSWORD` |
+| `set SARD_… in .env` от `docker compose` | обязательная переменная пустая: `SARD_VERSION`, `SARD_DB_PASSWORD` |
+
+## Консоль: первый запуск и вход
+
+| Что видно | Что сделать |
+|---|---|
+| вход отвечает `setup_required` (409), консоль открывает `/setup` | пароля администратора ещё нет: найдите код настройки (`docker compose logs server \| grep "SARD SETUP CODE"`) и пройдите мастер ([раздел 2](02-install.md), шаг 5) |
+| мастер: «кода нет» или «код истёк» | `docker compose restart server` печатает новый код (старый действует до рестарта) |
+| ввод кода отвечает `setup_completed` (409) | администратор уже задан: войдите паролем. Пароль потерян — [восстановление доступа](10-security.md#восстановление-доступа) |
+| `too_many_attempts` (429) при вводе кода или пароля | пять неудач за 15 минут блокируют адрес на 15 минут; ждите время из сообщения |
+| мастер на шаге CA: «заменить CA импортом нельзя» | агенту уже выдан сертификат или шаг CA нажат: CA меняют только переездом ([раздел 8](08-migrate-and-remove.md)) |
 
 ## Агент не подключается
 

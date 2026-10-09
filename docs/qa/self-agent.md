@@ -25,8 +25,6 @@
 DC="docker compose -f deploy/docker-compose.yml --env-file deploy/.env"
 $DC down -v                                   # тома установки удаляются: чистый старт
 rm -f deploy/.env; cp deploy/.env.example deploy/.env
-sed -i 's/^#\? *SARD_ADMIN_PASSWORD=.*/SARD_ADMIN_PASSWORD=qa-admin-password-2026/' deploy/.env
-grep -q '^SARD_ADMIN_PASSWORD=' deploy/.env || echo 'SARD_ADMIN_PASSWORD=qa-admin-password-2026' >> deploy/.env
 PSQL="$DC exec -T postgres psql -U sard -d sard -At -c"
 API=http://localhost:8080/api/v1
 QA=$(mktemp -d); J=$QA/jar
@@ -47,8 +45,11 @@ chan() { $DC exec -T server ls -la /var/lib/sard/self; }
    → завершается с кодом 0 не позднее чем через 3 минуты; `$DC ps` — `postgres`,
    `server`, `self-agent` в состоянии `running`, у `postgres` и `server` —
    `healthy`.
-2. `login` → `204`.
-3. `builtin` (повторять до 2 минут после шага 1)
+2. До мастера в канале нет токена (`chan` — только `db-password`) и сосед ждёт. Мастер
+   по коду из лога (F4a; шаг CA выдаёт встроенный токен): `source scripts/lib/setup-wizard.sh;
+   sard_complete_wizard http://localhost:8080 qa-admin-password-2026 $DC logs server`
+   → код возврата 0; `login` → `204`.
+3. `builtin` (повторять до 3 минут после шага 2)
    → ровно один элемент: `hostname` = `sard-self`, `status` = `online`,
    `revokedAt` = `null`. Запомнить `X=<id>`.
 4. `a GET /agents | body | jq '[.items[] | {hostname, builtin}]'`

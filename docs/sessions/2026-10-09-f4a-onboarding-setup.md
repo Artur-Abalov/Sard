@@ -382,7 +382,7 @@ Spring Security без изменения поведения (тесты W1b —
 (`CaStartupIntegrationTest` — гонка за схему, `OnboardingDatabaseDownIntegrationTest` — пул
 после возврата базы), которые теперь ждут):
 
-```
+```text
 == gate server: spotless, detekt, tests, coverage >= 80%
 coverage: 96.7% (instructions)
 == gate server: CRAP <= 6
@@ -394,7 +394,7 @@ gate: PASSED (server, fast)
 
 `./scripts/gate.sh web fast`:
 
-```
+```text
  Test Files  33 passed (33)
       Tests  444 passed (444)
 gate: PASSED (web, fast)
