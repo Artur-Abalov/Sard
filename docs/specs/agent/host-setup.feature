@@ -20,7 +20,9 @@
 # рекомендации; Н15 — российские предустановки не сейчас, вместо них aws и
 # ещё один западный провайдер). Значения адресов и регионов A8b-3 ЖДУТ
 # подтверждения владельца; A8b-3 идёт последним и не задерживает A8b-1 и
-# A8b-2.
+# A8b-2. Поправки после реализации A8b-1 — П12–П17 (подтверждены владельцем
+# 2026-10-09).
+# Ход: A8b-1 РЕАЛИЗОВАН, ждёт e2e на стенде (@stand); A8b-2 и A8b-3 — нет.
 #
 # Опирается на (готово): A1 (проверка прав секретных файлов,
 # agent/internal/secrets/secrets.go, CheckAll/CheckFile), A2b (классы и номера
@@ -530,9 +532,9 @@
 #       сети), команда продолжается. Адрес пишется во фрагмент как дан.
 #   Р29. Ключ S3 (правило 3 описания, Н4). --access-key-id <id> — идентификатор
 #       ключа, не секрет, передаётся флагом; 1–128 печатных символов ASCII
-#       без пробелов, иначе ошибка использования, называющая флаг. Для
-#       первого подключения обязателен (нет — ошибка использования с
-#       названием флага). Секретный ключ — только --secret-key-stdin,
+#       без пробелов, иначе ошибка использования, называющая флаг.
+#       Обязателен всегда, и при повторе (нет — ошибка использования с
+#       названием флага; П14). Секретный ключ — только --secret-key-stdin,
 #       --secret-key-from-file или терминал без эха, дважды (Р7, П4);
 #       значения флагом нет. Не больше одного источника из stdin:
 #       --secret-key-stdin вместе с --password-stdin — SECRET_SOURCE_CONFLICT.
@@ -892,6 +894,55 @@
 #   Н25. ADR. → coder пишет ADR 0051 «Настройка клиента SSH пользователя
 #       службы командой repo add» (Р37–Р41, модель угроз записи root в
 #       ~/.ssh) и дополняет ADR 0050 строкой про ~/.ssh.
+#
+# ---------------------------------------------------------------------------
+# Поправки A8b-1 после реализации (вопросы coder, подтверждены владельцем
+# 2026-10-09: «Да на все 5»; переданы координатором). Где поправка
+# расходится с решением выше, действует поправка.
+#
+#   П12 (к Р34, Р16, Р30). Отказ init после принятого кандидата
+#       (STORAGE_ACCESS_DENIED, BUCKET_NOT_FOUND и любой другой отказ restic
+#       init, в том числе для SFTP) оставляет env-файл и файл пароля: они
+#       стали файлами до init (Р30), повтор их использует (Р16, Р45).
+#       Сообщение «файлы сохранены и будут использованы при повторе»
+#       печатается при любом отказе init, после которого они остались, —
+#       не только класса «ошибка агента» (как сейчас в failConnect), — но не
+#       при TIMEOUT и INTERRUPTED (у них своя приписка withPartialNote).
+#       Отказ первого обращения (cat config) по-прежнему не оставляет
+#       ничего (Р35).
+#   П13 (к Р34, Р47). Значения, вырезанные из текста restic и ssh
+#       (Scrubber), заменяются маркером redact.Marker «[REDACTED]». «***» —
+#       только пароль в адресе (config.RedactURL, Р18, Р28).
+#   П14 (к Р29, Р45). --access-key-id обязателен всегда, и при повторе.
+#       Секретного ключа из флагов или терминала нет, а меняется регион (или
+#       идентификатор ключа) — секретный ключ спрашивается снова (терминал
+#       или SECRET_SOURCE_MISSING). Под root env-файл никогда не собирается
+#       из уже лежащего env-файла: секрет для нового env-файла приходит
+#       только от оператора. Повтор без изменений (тот же идентификатор и
+#       регион, без источника секрета) — «unchanged» по Р45, env-файл только
+#       проверяется, не переписывается.
+#   П15 (к Н17). Смена ключей подключённого репозитория: если с новыми
+#       ключами restic отвечает «нет репозитория» (код 10) —
+#       REPOSITORY_CONFLICT (класс «идентичность есть», код 4), сообщение
+#       говорит, что с новыми ключами репозитория по адресу не видно; init
+#       не выполняется никогда; временный env-файл удалён, env-файл и файл
+#       пароля не изменены, аудита и перезапуска нет.
+#   П16 (к Н17, П2). При смене ключей пароль берётся только из файла
+#       пароля фрагмента: --password-stdin или --password-from-file вместе
+#       со сменой ключей — ошибка использования (код 2), называющая флаг.
+#       Проверяется, как только известно, что это смена ключей (после
+#       чтения конфига, П2), и до чтения любого секрета: стандартный ввод и
+#       файлы источников не читаются. Сменой ключей считается фрагмент того
+#       же имени с тем же адресом и другим идентификатором ключа, регионом
+#       или секретом.
+#   П17 (к Н17, Р15, Р30). Смена ключей с файлом пароля фрагмента, который
+#       не открывает репозиторий, — WRONG_PASSWORD, окончательно: терминал
+#       не спрашивается (пароль задан конфигом, а не оператором).
+#       Файла пароля нет — PASSWORD_FILE_MISSING (класс «использование»),
+#       restic не вызывается. Оставшийся файл пароля (Р16), который не
+#       проходит проверку A1 (владелец, права, обычный файл, без ссылки —
+#       secrets.ReadOwned), — SECRET_FILE_REJECTED; файл не удаляется и не
+#       меняется.
 #
 # ---------------------------------------------------------------------------
 # Классы кодов выхода A8b (номера A2b; дополняют таблицу A8a)
@@ -2508,8 +2559,9 @@
         | A_S3           | --replace-host-key                  | --replace-host-key       |
         | D/repo-extra   | --host-key-fingerprint FP-ED        | --host-key-fingerprint   |
 
+    # Изменено П14: --access-key-id обязателен всегда.
     @local
-    Сценарий: Первое подключение S3 без идентификатора ключа — ошибка использования с названием флага
+    Сценарий: Подключение S3 без идентификатора ключа — ошибка использования с названием флага
       Когда оператор выполняет repo add extra A_S3 --secret-key-stdin со вводом S3-MARKER
       Тогда код выхода класса «использование»
       И сообщение называет "--access-key-id"
@@ -2902,6 +2954,103 @@
       И содержимое D/secrets/restic-extra.env не изменилось
       И в D/secrets нет временных файлов
 
+    # П15
+    @local
+    Сценарий: Новые ключи, которые не видят репозитория, — отказ без следов и без init
+      Дано оператор выполнил S3-команду
+      И restic с ключом KEY-ID-2 отвечает на cat config кодом 10
+      Когда оператор выполняет repo add extra A_S3 --access-key-id KEY-ID-2 --secret-key-stdin со вводом S3-MARKER-2
+      Тогда код выхода класса «идентичность есть»
+      И сообщение называет причину REPOSITORY_CONFLICT и говорит, что с новыми ключами репозитория по адресу A_S3 не видно
+      И restic не получил вызова init
+      И содержимое D/secrets/restic-extra.env и D/secrets/restic-extra.pass не изменилось
+      И в D/secrets нет временных файлов
+      И фейк syslog не получил строк
+      И systemctl не вызывался
+
+    # П14
+    @local
+    Структура сценария: Смена только региона без источника секрета снова спрашивает секретный ключ
+      Дано оператор выполнил S3-команду с --region ru-central1
+      И <ввод>
+      Когда оператор выполняет repo add extra A_S3 --access-key-id KEY-ID-1 --region ru-central2
+      Тогда <итог>
+      И файл D/secrets/restic-extra.env не прочитан для сборки нового env-файла
+
+      Примеры:
+        | ввод                                                        | итог                                                                                               |
+        | стандартный ввод — терминал, оператор дважды вводит S3-MARKER | терминал запросил секретный ключ два раза, env-файл содержит "AWS_DEFAULT_REGION=ru-central2"        |
+        | стандартный ввод — канал, который никогда не закрывается    | код выхода класса «использование», причина SECRET_SOURCE_MISSING, env-файл не изменился             |
+
+    # П14
+    @local
+    Сценарий: Повтор подключения S3 без идентификатора ключа — ошибка использования
+      Дано оператор выполнил S3-команду
+      Когда оператор выполняет repo add extra A_S3
+      Тогда код выхода класса «использование»
+      И сообщение называет "--access-key-id"
+      И хост не изменён
+
+    # П16
+    @local
+    Структура сценария: Источник пароля вместе со сменой ключей — ошибка использования до чтения секретов
+      Дано оператор выполнил S3-команду
+      Когда оператор выполняет repo add extra A_S3 --access-key-id KEY-ID-2 --secret-key-from-file F <флаг пароля>
+      Тогда код выхода класса «использование»
+      И сообщение называет <флаг-имя> и говорит, что при смене ключей пароль берётся из файла пароля репозитория
+      И F не открывался и стандартный ввод не читался
+      И restic не вызывался кроме version
+      И хост не изменён
+
+      Примеры:
+        | флаг пароля               | флаг-имя             |
+        | --password-stdin          | --password-stdin     |
+        | --password-from-file P    | --password-from-file |
+
+    # П17
+    @local
+    Сценарий: Смена ключей при неверном пароле в файле пароля — WRONG_PASSWORD без вопроса на терминале
+      Дано оператор выполнил S3-команду
+      И файл D/secrets/restic-extra.pass затем заменён другим паролем
+      И стандартный ввод — терминал
+      И restic с ключом KEY-ID-2 и этим паролем отвечает кодом 12
+      Когда оператор выполняет repo add extra A_S3 --access-key-id KEY-ID-2 --secret-key-from-file F
+      Тогда код выхода класса «использование»
+      И сообщение называет причину WRONG_PASSWORD и путь D/secrets/restic-extra.pass
+      И терминал ничего не запрашивал
+      И содержимое D/secrets/restic-extra.env и D/secrets/restic-extra.pass не изменилось
+      И в D/secrets нет временных файлов
+
+    # П17
+    @local
+    Сценарий: Смена ключей без файла пароля — PASSWORD_FILE_MISSING
+      Дано оператор выполнил S3-команду
+      И файла D/secrets/restic-extra.pass затем нет
+      Когда оператор выполняет repo add extra A_S3 --access-key-id KEY-ID-2 --secret-key-from-file F
+      Тогда код выхода класса «использование»
+      И сообщение называет причину PASSWORD_FILE_MISSING и путь D/secrets/restic-extra.pass
+      И restic не вызывался кроме version
+      И содержимое D/secrets/restic-extra.env не изменилось
+
+    # П17
+    @local
+    Структура сценария: Оставшийся файл пароля, не прошедший проверку A1, — отказ, файл сохраняется
+      Дано после неудачного init repo add extra остался файл D/secrets/restic-extra.pass
+      И <нарушение>
+      Когда оператор выполняет S3-команду
+      Тогда код выхода класса «использование»
+      И сообщение называет причину SECRET_FILE_REJECTED и путь D/secrets/restic-extra.pass
+      И файл D/secrets/restic-extra.pass на месте с тем же содержимым, владельцем и правами
+      И restic не вызывался кроме version
+      И файла D/agent.d/repo-extra.yaml нет
+
+      Примеры:
+        | нарушение                                                                  |
+        | D/secrets/restic-extra.pass принадлежит uid 1000                           |
+        | D/secrets/restic-extra.pass имеет права 0644                               |
+        | D/secrets/restic-extra.pass — символьная ссылка на файл вне D              |
+        | D/secrets/restic-extra.pass — каталог                                      |
+
     @local
     Сценарий: То же имя с другим адресом S3 — отказ
       Дано оператор выполнил S3-команду
@@ -3056,9 +3205,11 @@
   # A8b-1 (S3), A8b-2 (SFTP) — Р34
   Правило: Отказ хранилища называет свой класс и причину
 
+    # Изменено П12 (ответ владельца 2026-10-09): отказы init — отдельная
+    # структура ниже, файлы остаются.
     @local
-    Структура сценария: Отказ хранилища S3 называет причину и что делать
-      Дано restic на <команда restic> печатает <строка> и завершается кодом 1
+    Структура сценария: Отказ хранилища S3 при первом обращении называет причину и что делать
+      Дано restic на cat config печатает <строка> и завершается кодом 1
       Когда оператор выполняет S3-команду
       Тогда код выхода класса <класс>
       И сообщение называет причину <причина> и содержит <текст>
@@ -3067,15 +3218,33 @@
       И значения не раскрыты
 
       Примеры:
-        | команда restic | строка                                                                                                                     | класс            | причина               | текст                                       |
-        | cat config     | "Fatal: unable to open config file: Stat: Access Denied."                                                                  | «использование»  | STORAGE_ACCESS_DENIED | "Access Denied"                             |
-        | cat config     | "Fatal: unable to open config file: Stat: The Access Key Id you provided does not exist in our records."                   | «использование»  | S3_KEY_REJECTED       | "does not exist in our records"             |
-        | cat config     | "Fatal: unable to open config file: Stat: The request signature we calculated does not match the signature you provided."  | «использование»  | S3_KEY_REJECTED       | "signature"                                 |
-        | cat config     | "unable to create lock in backend: client.PutObject: Forbidden: Operation is not allowed for this key."                    | «использование»  | STORAGE_ACCESS_DENIED | "Operation is not allowed for this key"     |
-        | init           | "Fatal: create repository at s3:https://s3.example.com/bucket-b/extra failed: client.PutObject: Forbidden: Operation is not allowed for this key." | «использование» | STORAGE_ACCESS_DENIED | "Operation is not allowed for this key" |
-        | init           | "Fatal: create repository at s3:https://s3.example.com/bucket-b/extra failed: The specified bucket does not exist"         | «использование»  | BUCKET_NOT_FOUND      | "bucket-b"                                  |
-        | cat config     | "Fatal: unable to open config file: Stat: Get \"https://s3.example.com/bucket-b/extra/config\": dial tcp: lookup s3.example.com: no such host" | «временная» | BACKEND_UNAVAILABLE | "no such host" |
-        | cat config     | "Fatal: unable to open config file: Stat: unexpected response 418"                                                        | «ошибка агента»  | BACKEND_REFUSED       | "unexpected response 418"                   |
+        | строка                                                                                                                     | класс            | причина               | текст                                       |
+        | "Fatal: unable to open config file: Stat: Access Denied."                                                                  | «использование»  | STORAGE_ACCESS_DENIED | "Access Denied"                             |
+        | "Fatal: unable to open config file: Stat: The Access Key Id you provided does not exist in our records."                   | «использование»  | S3_KEY_REJECTED       | "does not exist in our records"             |
+        | "Fatal: unable to open config file: Stat: The request signature we calculated does not match the signature you provided."  | «использование»  | S3_KEY_REJECTED       | "signature"                                 |
+        | "unable to create lock in backend: client.PutObject: Forbidden: Operation is not allowed for this key."                    | «использование»  | STORAGE_ACCESS_DENIED | "Operation is not allowed for this key"     |
+        | "Fatal: unable to open config file: Stat: Get \"https://s3.example.com/bucket-b/extra/config\": dial tcp: lookup s3.example.com: no such host" | «временная» | BACKEND_UNAVAILABLE | "no such host" |
+        | "Fatal: unable to open config file: Stat: unexpected response 418"                                                        | «ошибка агента»  | BACKEND_REFUSED       | "unexpected response 418"                   |
+
+    # П12
+    @local
+    Структура сценария: Отказ хранилища S3 при создании репозитория оставляет env-файл и пароль для повтора
+      Дано restic отвечает на cat config кодом 10
+      И restic init печатает <строка> и завершается кодом 1
+      Когда оператор выполняет S3-команду
+      Тогда код выхода класса «использование»
+      И сообщение называет причину <причина> и содержит <текст>
+      И файлы D/secrets/restic-extra.env и D/secrets/restic-extra.pass существуют, принадлежат uid 990, права 0600
+      И сообщение говорит, что файлы сохранены и будут использованы при повторе
+      И файла D/agent.d/repo-extra.yaml нет
+      И в D/secrets нет временных файлов
+      И systemctl не вызывался
+      И значения не раскрыты
+
+      Примеры:
+        | строка                                                                                                                                             | причина               | текст                                   |
+        | "Fatal: create repository at s3:https://s3.example.com/bucket-b/extra failed: client.PutObject: Forbidden: Operation is not allowed for this key." | STORAGE_ACCESS_DENIED | "Operation is not allowed for this key" |
+        | "Fatal: create repository at s3:https://s3.example.com/bucket-b/extra failed: The specified bucket does not exist"                                 | BUCKET_NOT_FOUND      | "bucket-b"                              |
 
     @local
     Сценарий: Отказ доступа S3 называет обе возможные причины и бакет
@@ -3088,7 +3257,10 @@
     Сценарий: Текст restic в сообщении очищен от ключа S3 и пароля
       Дано restic на cat config печатает строку, содержащую S3-MARKER и PASS-MARKER, и завершается кодом 1
       Когда оператор выполняет S3-команду с --password-stdin вместо --secret-key-stdin и секретным ключом из файла
-      Тогда сообщение содержит "***"
+      # Изменено П13: маркер очистки — redact.Marker «[REDACTED]»; «***» —
+      # только для пароля в адресе (config.RedactURL).
+      Тогда сообщение содержит "[REDACTED]" на месте S3-MARKER и PASS-MARKER
+      И сообщение не содержит "***"
       И значения не раскрыты
 
     @local
@@ -3109,19 +3281,28 @@
         | "ssh: connect to host nas.example.com port 22: Connection refused"             | «временная»     | BACKEND_UNAVAILABLE    | "Connection refused"           |
         | "ssh: connect to host nas.example.com port 22: Connection timed out"           | «временная»     | BACKEND_UNAVAILABLE    | "Connection timed out"         |
 
+    # Изменено П12: отказ init оставляет файл пароля (Р16).
     @local
-    Структура сценария: Каталог SFTP без нужных прав — отказ доступа с причиной
+    Сценарий: Каталог SFTP без права записи при первом обращении — отказ доступа без следов
       Дано ключ хоста известен, ключ SSH есть и вход принимается
-      И restic на <команда restic> печатает <строка> и завершается кодом 1
+      И restic на cat config печатает "unable to create lock in backend: OpenFile /srv/extra/locks/1a2b: permission denied" и завершается кодом 1
       Когда оператор выполняет SFTP-команду
       Тогда код выхода класса «использование»
       И сообщение называет причину STORAGE_ACCESS_DENIED, "permission denied" и каталог "/srv/extra"
       И файлов D/secrets/restic-extra.pass и D/agent.d/repo-extra.yaml нет
 
-      Примеры:
-        | команда restic | строка                                                                                                    |
-        | init           | "Fatal: create repository at sftp:backup@nas.example.com:/srv/extra failed: sftp: MkdirAll /srv/extra/keys: permission denied" |
-        | cat config     | "unable to create lock in backend: OpenFile /srv/extra/locks/1a2b: permission denied"                     |
+    # П12
+    @local
+    Сценарий: Каталог SFTP без права записи при создании — отказ доступа, пароль остаётся для повтора
+      Дано ключ хоста известен, ключ SSH есть и вход принимается
+      И restic отвечает на cat config кодом 10
+      И restic init печатает "Fatal: create repository at sftp:backup@nas.example.com:/srv/extra failed: sftp: MkdirAll /srv/extra/keys: permission denied" и завершается кодом 1
+      Когда оператор выполняет SFTP-команду
+      Тогда код выхода класса «использование»
+      И сообщение называет причину STORAGE_ACCESS_DENIED, "permission denied" и каталог "/srv/extra"
+      И файл D/secrets/restic-extra.pass существует, принадлежит uid 990, права 0600
+      И сообщение говорит, что файл пароля сохранён и будет использован при повторе
+      И файла D/agent.d/repo-extra.yaml нет
 
     @stand
     Структура сценария: Отказ S3 на стенде Garage называет причину

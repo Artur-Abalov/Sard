@@ -4,7 +4,9 @@
 2026-10-07; ответы на О1–О5, Н1–Н13 внесены в спецификацию. Срез A8b (части
 8–11 ниже) утверждён владельцем 2026-10-08 (Н14–Н25); шаги, которые проверяют
 решение по ответу, помечены «(Н<номер>)». Шаблоны адресов провайдеров A8b-3
-(часть 11) ждут подтверждения владельца. Классы и номера кодов выхода —
+(часть 11) ждут подтверждения владельца. Поправки П12–П17 (2026-10-09)
+учтены в шагах 51, 54а, 54б. A8b-1 реализован; его e2e на стенде ещё не
+прогнаны. Классы и номера кодов выхода —
 A2b (ADR 0025); A8b добавляет к `repo add` код `5` (доверие: ключ хоста
 SFTP).
 
@@ -344,7 +346,10 @@ SEC_MARK=$(cat "$OUT/ksec")              # только для grep утечек
     → `exit=2`, `STORAGE_ACCESS_DENIED`, в сообщении строка restic о блокировке
     (`unable to create lock`), не только `exit code 1`.
 51. Нет бакета: `run sudo $AG repo add s4 s3:$S3/$NOB/s4 --access-key-id $KID --secret-key-from-file "$OUT/ksec"`
-    → `exit=2`, `BUCKET_NOT_FOUND`, имя `$NOB` (Н19).
+    → `exit=2`, `BUCKET_NOT_FOUND`, имя `$NOB` (Н19); сообщение говорит, что
+    файлы сохранены для повтора; `sudo stat -c '%U %a' /etc/sard/secrets/restic-s4.env /etc/sard/secrets/restic-s4.pass`
+    → `sard-agent 600` дважды; `/etc/sard/agent.d/repo-s4.yaml` нет (П12).
+    Убрать: `sudo rm /etc/sard/secrets/restic-s4.env /etc/sard/secrets/restic-s4.pass`.
 52. Недоступное хранилище: `time run sudo $AG repo add s5 s3:https://192.0.2.1/$B/s5 --access-key-id $KID --secret-key-from-file "$OUT/ksec" --connect-timeout 10s`
     → `exit=6`, `BACKEND_UNAVAILABLE`, `did not answer within 10s`,
     `--connect-timeout`; `real` меньше 25 с; файлов `restic-s5.*` и
@@ -360,6 +365,17 @@ SEC_MARK=$(cat "$OUT/ksec")              # только для grep утечек
     → `exit=0`, `credentials updated`, служба не перезапущена;
     `audit` → `repository s1 credentials updated`; следующий бэкап `s1` →
     `succeeded`.
+54а. (П14–П17) `sudo $AG repo add s1 s3:$S3/$B/s1` → `exit=2`, называет
+    `--access-key-id`. `sudo $AG repo add s1 s3:$S3/$B/s1 --access-key-id $KID2 --region <другой регион> </dev/null`
+    → `exit=2`, `SECRET_SOURCE_MISSING`; env-файл не изменился
+    (`sudo sha256sum` до и после). `sudo $AG repo add s1 s3:$S3/$B/s1 --access-key-id $KID --secret-key-from-file "$OUT/ksec" --password-from-file "$OUT/s1.pass"`
+    → `exit=2`, называет `--password-from-file`. Ключ другого бакета
+    `$KIDX` (секрет в `$OUT/ksecx`), где по пути `s1` пусто:
+    `sudo $AG repo add s1 s3:$S3/$B/s1 --access-key-id $KIDX --secret-key-from-file "$OUT/ksecx"`
+    → `exit=4`, `REPOSITORY_CONFLICT`; env-файл и пароль `s1` не изменились,
+    в хранилище нового репозитория не появилось.
+54б. (П13) В выводе отказов шагов 49–54а значения ключей заменены
+    `[REDACTED]`; `***` встречается только в адресах с паролем.
 55. Утечки: `grep -cF "$SEC_MARK" "$OUT/all"` → `0`;
     `sudo journalctl -t sard-agent --no-pager | grep -cF "$SEC_MARK"` → `0`;
     во время шага 45 в другом терминале `ps -eo args | grep -cF "$SEC_MARK"`
