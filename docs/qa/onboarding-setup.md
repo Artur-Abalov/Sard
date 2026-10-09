@@ -5,20 +5,23 @@
 
 Сценарии: `docs/specs/server/onboarding-setup.feature`,
 `docs/specs/web/onboarding-setup.feature`. Контракт К1–К9, решения владельца
-и решения specifier Р1–Р17 — в заголовке серверной спецификации; решения
+и решения specifier Р1–Р19 — в заголовке серверной спецификации; решения
 консоли Рк1–Рк8 — в заголовке веб-спецификации. Шаг с пометкой `[OQ-NNN]`
 меняется вместе с решением по этому вопросу (`docs/open-questions.md`).
 
-Поправка 2026-10-09: обратной совместимости нет; OQ-198. Установка версии до
-F4a (0.0.1-rc1, 0.1.0-beta.N) не обновляется, а переустанавливается с новыми
-томами, поэтому проверки обновления в процедуре нет.
+Поправка 2026-10-09: обратной совместимости с версиями до 0.1.0-beta нет;
+OQ-198, OQ-199. Установка 0.0.1-rc1 не обновляется, а переустанавливается с
+новыми томами. Первая бета 0.1.0-beta.N уже содержит F4a; обновление с неё
+сохраняет данные и состояние онбординга — его проверяет часть 5 процедуры
+`docs/qa/self-agent.md`, когда первая бета выпущена. Здесь проверки обновления
+нет.
 
 Процедура из пяти частей:
 
 - **Часть 1 — REST API и лог сервера** (`curl`) на чистой установке compose.
 - **Часть 2 — консоль**, дважды: на моках и против сервера.
-- **Часть 3 — замена CA импортом и нечитаемый источник до шага ca** (правило
-  F8, изменённое F4a; OQ-198).
+- **Часть 3 — замена CA импортом, нечитаемый источник до шага ca, тома CA и
+  базы вместе** (правило F8, изменённое F4a; OQ-198, OQ-199).
 - **Часть 4 — восстановление доступа** (`admin-reset`).
 - **Часть 5 — установка, автоматизация, документация.**
 
@@ -241,15 +244,15 @@ pkicrt() { docker run --rm --user 0 --entrypoint cat -v sard_sard-pki:/pki:ro "$
 4. `echo | openssl s_client -connect localhost:9090 -alpn h2 -showcerts 2>/dev/null | awk '/BEGIN/{n++} n==2' | sed '/END/q' > $QA/root.pem; fp $QA/root.pem`
    → `$F`.
 5. Ввести новый код; `curl -sS -b <jar> $API/onboarding | jq -c .ca` → `fingerprint` `$F`, `origin` `imported`.
-6. `[OQ-190]` Повторить шаг 2 с третьим CA `H` → по решению OQ-190: заменён
-   (`replaced=$F`) или `CA_ALREADY_PRESENT`.
+6. `[OQ-190]` Повторить шаг 2 с третьим CA `H` → заменён (`replaced=$F`;
+   OQ-190 утверждён как предложено).
 7. Подтвердить CA в мастере (`POST /onboarding/ca`). Повторить шаг 2 с другим
    источником → сервер не стартует; `CA import refused`, `CA_ALREADY_PRESENT`,
    оба отпечатка, `onboarding step ca is complete`,
    `docs/operator/08-migrate-and-remove.md`; каталог CA не изменился.
 8. Причина `agent certificates issued` вручную не проверяется: без
    enterprise-замены `SessionApi` сертификатов агентов до шага ca быть не может
-   (стенда обновления больше нет). Её проверяет тест «Выданный сертификат агента
+   (обновление с версий до F4a не поддерживается). Её проверяет тест «Выданный сертификат агента
    запрещает замену CA».
 9. Источник с ключом от другого сертификата (`src mism $QA/f.crt <другой ключ>`)
    на чистой установке → `CA_KEY_MISMATCH`, каталог CA — прежний `$G`.
@@ -283,6 +286,40 @@ pkicrt() { docker run --rm --user 0 --entrypoint cat -v sard_sard-pki:/pki:ro "$
     → `healthy`; в логе этого старта WARN: импорт пропущен, CA уже есть,
     называет `SARD_PKI_IMPORT_DIR`; `pkicrt $QA/n.crt; fp $QA/n.crt` → `$G`.
     Вернуть стенд без override.
+
+### Тома CA и базы — вместе `[OQ-199]` `[Р19]`
+
+Стенд после шага 16: шаг ca выполнен, CA `$G`, мастер дальше не проходить.
+
+17. Копия CA на случай возврата:
+    `sudo mkdir -p $QA/gbak; docker run --rm --user 0 --entrypoint tar -v sard_sard-pki:/pki:ro "$IMAGE" -C /pki -cf - ca | sudo tar -C $QA/gbak -xf -; seal $QA/gbak; fp $QA/gbak/ca/ca.crt`
+    → `$G`.
+18. Пересоздать только том базы:
+    `$DC rm -sf server self-agent postgres; docker volume rm sard_postgres-data; $DC up -d --wait postgres; $DC up -d server; sleep 30; $DC ps -a server; $DC logs --since 1m server 2>&1 | grep 'CA startup refused'`
+    → сервер не работает (не `healthy`, перезапускается или вышел); строка
+    `CA startup refused` с `CA_ORIGIN_NOT_RECORDED`, отпечатком `$G`, путём
+    `/var/lib/sard/pki/ca`, `CA origin is not recorded in the database`,
+    `server volumes are reinstalled together` и
+    `docs/operator/09-troubleshooting.md`.
+    `$DC logs --since 1m server 2>&1 | grep -cE "$RE"` → `0`;
+    `pkicrt $QA/n.crt; fp $QA/n.crt` → `$G`;
+    `$DC exec -T postgres psql -U sard -d sard -Atc "select count(*) from ca_origins"` → `0`.
+19. То же с источником, где тот же CA: `QA_SRC="$QA/gbak" $DC -f "$QA/override.yml" up -d --force-recreate server; sleep 30`
+    → сервер не работает; `CA startup refused`, `CA_ORIGIN_NOT_RECORDED`; замены и
+    `CA imported from` в логе этого старта нет; каталог CA — прежний `$G`.
+20. Переустановить тома вместе: `make down; docker volume rm sard_postgres-data sard_sard-pki sard_sard-self-channel sard_sard-self-config sard_sard-self-state; make up`
+    → `healthy`, новая строка кода. Ввести код и подтвердить CA (`POST /onboarding/ca` → `204`).
+    `pkicrt $QA/g2.crt; G2=$(fp $QA/g2.crt); sudo rm -rf $QA/gbak; sudo mkdir -p $QA/gbak; docker run --rm --user 0 --entrypoint tar -v sard_sard-pki:/pki:ro "$IMAGE" -C /pki -cf - ca | sudo tar -C $QA/gbak -xf -; seal $QA/gbak`.
+21. Пересоздать только том CA, без источника:
+    `$DC rm -sf server self-agent; docker volume rm sard_sard-pki; $DC up -d server; sleep 30; $DC logs --since 1m server 2>&1 | grep 'CA startup refused'`
+    → сервер не работает; `CA startup refused` с `CA_MISSING`,
+    `CA directory is empty`, `onboarding step ca is complete`,
+    `SARD_PKI_IMPORT_DIR`, `server volumes are reinstalled together`;
+    `docker run --rm --user 0 --entrypoint ls -v sard_sard-pki:/pki:ro "$IMAGE" -A /pki` → нет `ca`.
+22. Вернуть CA из копии: `QA_SRC="$QA/gbak" $DC -f "$QA/override.yml" up -d --force-recreate --wait server`
+    → `healthy`; `CA imported from` с `fingerprint=$G2`; `pkicrt $QA/n.crt; fp $QA/n.crt` → `$G2`;
+    `$DC up -d --wait` → `self-agent` снова `online` (повторять до 3 минут).
+23. Вернуть стенд без override: `$DC up -d --force-recreate --wait server` → `healthy`, отпечаток `$G2`.
 
 ## Часть 4. Восстановление доступа `[Р10]`
 
@@ -334,15 +371,22 @@ pkicrt() { docker run --rm --user 0 --entrypoint cat -v sard_sard-pki:/pki:ro "$
 6. `docs/operator/02-install.md` — первый запуск по коду; `03-configuration.md` —
    нет `SARD_ADMIN_PASSWORD`; `10-security.md` — Argon2id, смена пароля в
    консоли, раздел «Восстановление доступа» с `admin-reset` и `restart`;
-   `07-upgrade.md` — установка версии до F4a (0.0.1-rc1, 0.1.0-beta.N) не
-   обновляется, а переустанавливается с новыми томами (`docker compose down -v`);
+   `07-upgrade.md` — установка версии до 0.1.0-beta (0.0.1-rc1) не
+   обновляется, а переустанавливается с новыми томами (`docker compose down -v`),
+   а обновление с 0.1.0-beta.N и новее сохраняет данные, пароль администратора и
+   пройденный мастер;
    `09-troubleshooting.md` — `setup_required`, `setup_completed`, ссылка на
-   восстановление доступа; `docs/demo.md` — первый запуск по коду.
+   восстановление доступа; `CA_ORIGIN_NOT_RECORDED` и `CA_MISSING` `[OQ-199]` —
+   восстановить тома базы и CA из бэкапа одного момента или переустановить их
+   вместе (`docker compose down -v`), у `CA_MISSING` — вернуть CA через
+   `SARD_PKI_IMPORT_DIR`; `docs/demo.md` — первый запуск по коду.
 7. `scripts/smoke-server.sh` на чистом стенде → находит код в
    `docker compose logs server`, проходит мастер, входит; код выхода `0`.
 8. `make e2e` → тесты сценариев `@e2e` серверной спецификации проходят
    (чистая установка, восстановление доступа, sard-self после шага ca).
 9. ADR F4a есть в `docs/adr/` и `docs/adr/README.md`; разделы «Контекст»,
-   «Решение», «Отвергнуто», «Последствия»; «Последствия» говорят, что установка
-   версии до F4a переустанавливается с новыми томами; ADR 0021 помечен как
+   «Решение», «Отвергнуто», «Последствия»; «Решение» называет отказы
+   `CA_ORIGIN_NOT_RECORDED` и `CA_MISSING`; «Последствия» говорят, что установка
+   версии до 0.1.0-beta переустанавливается с новыми томами, а с 0.1.0-beta.N
+   обновление сохраняет состояние онбординга; ADR 0021 помечен как
    частично заменённый, ADR 0052 ссылается на F4a.

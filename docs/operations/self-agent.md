@@ -104,9 +104,15 @@ REVOKE EXECUTE ON FUNCTION lo_create(oid), lo_creat(integer), lo_from_bytea(oid,
 Пароль — содержимое файла `db-password` из `SARD_SELF_DIR`. Задайте его через
 `\password sard_self` в psql: так он не попадёт в журнал запросов PostgreSQL.
 
-## Обновление с 0.0.1-rc1
+## Обновление
 
-Тома `sard_postgres-data` и `sard_sard-pki` те же. Новый compose добавляет тома
-`sard_sard-self-*` и сервис `self-agent`. После `docker compose up -d` с новым
-файлом и версией миграции создают роль, а сосед регистрируется сам. Данные и
-агенты остаются на месте.
+Обновление поддерживается с 0.1.0-beta.N и новее: в них сосед уже есть. Тома
+`sard_postgres-data`, `sard_sard-pki` и `sard_sard-self-*` те же. После
+`docker compose up -d` с новым файлом и версией миграции применяются; данные,
+агенты, встроенный агент `sard-self` и пройденный мастер первого запуска
+остаются на месте, новый встроенный токен не выпускается.
+
+Установку 0.0.1-rc1 не обновляют, а переустанавливают с новыми томами
+(`docker compose down -v`, `docs/operator/07-upgrade.md`). Сервер на её томах не
+стартует: CA есть, а происхождение его в базе не записано
+(`CA_ORIGIN_NOT_RECORDED`, `docs/operator/09-troubleshooting.md`).
