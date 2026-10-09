@@ -226,9 +226,13 @@ func TestAProviderPresetExpandsTheAddressFromTheRegion(t *testing.T) {
 func TestAnUnusableProviderPresetIsAUsageErrorThatNamesWhatIsWrong(t *testing.T) {
 	for _, c := range []struct{ provider, region, address, names string }{
 		{"yandex", "ru-central1", "s3:bucket-b/extra", "aws, b2"},
-		{"aws", "", "s3:bucket-b/extra", "--region"},
-		{"b2", "", "s3:bucket-b/extra", "--region"},
+		{"aws", "", "s3:bucket-b/extra", "--provider aws needs --region"},
+		{"b2", "", "s3:bucket-b/extra", "--provider b2 needs --region"},
 		{"aws", "EU Central", "s3:bucket-b/extra", "--region"},
+		{"aws", "us-east-1.evil.com/x", "s3:bucket-b/extra", "--region"},
+		{"aws", "a@b", "s3:bucket-b/extra", "--region"},
+		{"aws", "eu/central", "s3:bucket-b/extra", "--region"},
+		{"b2", "us-east-1.evil.com/x", "s3:bucket-b/extra", "--region"},
 		{"aws", "eu-central-1", "s3:https://s3.example.com/bucket-b/extra", "scheme or a host"},
 		{"aws", "eu-central-1", "s3:https://bucket-b", "scheme or a host"},
 		{"aws", "eu-central-1", "s3:", "bucket"},

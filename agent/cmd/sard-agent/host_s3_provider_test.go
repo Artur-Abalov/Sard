@@ -43,11 +43,14 @@ func TestAnUnusableProviderCombinationIsAUsageErrorWithoutTouchingTheStorage(t *
 		names   string
 	}{
 		{"s3:bucket-b/extra", []string{"--provider", "yandex", "--region", "ru-central1"}, "aws, b2"},
-		{"s3:bucket-b/extra", []string{"--provider", "aws"}, "--region"},
-		{"s3:bucket-b/extra", []string{"--provider", "b2"}, "--region"},
+		{"s3:bucket-b/extra", []string{"--provider", "aws"}, "--provider aws needs --region"},
+		{"s3:bucket-b/extra", []string{"--provider", "b2"}, "--provider b2 needs --region"},
 		{s3Address, []string{"--provider", "aws", "--region", "eu-central-1"}, "host"},
 		{"s3:https://bucket-b", []string{"--provider", "aws", "--region", "eu-central-1"}, "scheme"},
 		{"s3:bucket-b/extra", []string{"--provider", "aws", "--region", "EU Central"}, "--region"},
+		{"s3:bucket-b/extra", []string{"--provider", "aws", "--region", "us-east-1.evil.com/x"}, "--region"},
+		{"s3:bucket-b/extra", []string{"--provider", "aws", "--region", "a@b"}, "--region"},
+		{"s3:bucket-b/extra", []string{"--provider", "b2", "--region", "eu/central"}, "--region"},
 		{"s3:", []string{"--provider", "aws", "--region", "eu-central-1"}, "bucket"},
 		{"LOCAL", []string{"--provider", "aws", "--region", "eu-central-1"}, "--provider"},
 	} {
