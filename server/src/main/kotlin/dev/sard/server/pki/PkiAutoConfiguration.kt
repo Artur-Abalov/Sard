@@ -58,13 +58,19 @@ class PkiAutoConfiguration {
     fun certificateAuthority(
         properties: PkiProperties,
         preconditions: ObjectProvider<CaStartPrecondition>,
+        ledger: CaLedger,
+        replacements: ObjectProvider<CaReplacementListener>,
     ): CertificateAuthority {
-        // Other slices (the address agents dial, for one) register a CaStartPrecondition; all of them hold
+        // The ledger is the database, migrated (F4a, Р19): what the CA directory must agree with. Other slices (the address agents dial, for one) register a CaStartPrecondition; all of them hold
         // before the CA directory is touched, so a start that fails on one leaves no imported CA (ADR 0052).
         preconditions.orderedStream().forEach { it.check() }
         val importDir = properties.importDir.takeIf { it.isNotBlank() }?.let { Path.of(it) }
         val names = properties.serverNames
-        return FileCertificateAuthority(properties.dir, names, Clock.systemUTC(), SecureRandom(), importDir)
+        val listener =
+            CaReplacementListener { previous, current ->
+                replacements.orderedStream().forEach { it.replaced(previous, current) }
+            }
+        return FileCertificateAuthority(properties.dir, names, Clock.systemUTC(), SecureRandom(), ledger, importDir, listener)
     }
 
     /** Server key from the CA; client certificates, when presented, must chain to it. */

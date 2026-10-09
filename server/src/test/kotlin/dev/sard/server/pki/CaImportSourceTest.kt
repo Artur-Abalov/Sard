@@ -19,6 +19,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @MutFlowTest
@@ -315,33 +316,124 @@ class CaImportSourceTest {
         assertFalse("CA expires" in output.all, output.all)
     }
 
-    private fun reconcile(present: CaFingerprint) = MutFlow.underTest { CaImportSource(root, CLOCK).reconcile(present) }
+    private fun reconcile(
+        present: CaFingerprint,
+        usage: CaUsage = CaUsage.STEP_CA_COMPLETE,
+    ) = MutFlow.underTest { CaImportSource(root, CLOCK).reconcile(present, usage) }
+
+    private val other = CaFingerprint.of(CaImportFixtures.original().certificate)
 
     @Test
     fun `the same CA already present needs no import and says so at INFO`(output: CapturedOutput) {
         CaImportFixtures.source(root, original)
         val fingerprint = CaFingerprint.of(original.certificate)
-        reconcile(fingerprint)
+        assertNull(reconcile(fingerprint))
         val line = output.all.lines().single { "CA import not needed" in it }
         assertTrue("INFO" in line && fingerprint.hex in line, line)
     }
 
     @Test
-    fun `another CA already present is refused naming both fingerprints`() {
+    fun `another CA already present is refused naming both fingerprints, the reason and the migration guide`() {
         CaImportFixtures.source(root, original)
-        val present = CaFingerprint.of(CaImportFixtures.original().certificate)
-        val e = assertFailsWith<CaImportRefused> { reconcile(present) }
+        val e = assertFailsWith<CaImportRefused> { reconcile(other) }
         assertEquals(CaImportRefusal.CA_ALREADY_PRESENT, e.reason)
         val message = e.message.orEmpty()
-        assertTrue(present.hex in message && CaFingerprint.of(original.certificate).hex in message, message)
+        assertTrue(other.hex in message && CaFingerprint.of(original.certificate).hex in message, message)
+        assertTrue("onboarding step ca is complete" in message, message)
+        assertTrue("docs/operator/08-migrate-and-remove.md" in message, message)
     }
 
     @Test
-    fun `a source that cannot be read while a CA is present only warns`(output: CapturedOutput) {
-        reconcile(CaFingerprint.of(original.certificate))
+    fun `a source that cannot be read while the step ca is done only warns`(output: CapturedOutput) {
+        assertNull(reconcile(CaFingerprint.of(original.certificate)))
         val line = output.all.lines().single { "CA import skipped" in it }
         assertTrue("WARN" in line && "SARD_PKI_IMPORT_DIR" in line && root.toString() in line, line)
         assertTrue("remove SARD_PKI_IMPORT_DIR" in line, line)
+    }
+
+    @Test
+    fun `a source with too open permissions does not stop a server whose step ca is done`() {
+        CaImportFixtures.source(root, original)
+        CaImportFixtures.chmod(root.resolve("ca/ca.key"), "rw-r-----")
+
+        assertNull(reconcile(CaFingerprint.of(original.certificate)))
+    }
+
+    @Test
+    fun `before the step ca another CA replaces the present one`() {
+        CaImportFixtures.source(root, original)
+
+        val replacement = reconcile(other, CaUsage.NONE)
+
+        assertEquals(CaFingerprint.of(original.certificate), CaFingerprint.of(checkNotNull(replacement).certificate))
+    }
+
+    @Test
+    fun `before the step ca the same CA needs no import`(output: CapturedOutput) {
+        CaImportFixtures.source(root, original)
+        val fingerprint = CaFingerprint.of(original.certificate)
+
+        assertNull(reconcile(fingerprint, CaUsage.NONE))
+
+        assertTrue("CA import not needed" in output.all, output.all)
+    }
+
+    @Test
+    fun `before the step ca every refusal of the table stops the start, the same CA or not`() {
+        val fingerprint = CaFingerprint.of(original.certificate)
+        val e1 = assertFailsWith<CaImportRefused> { reconcile(fingerprint, CaUsage.NONE) }
+        assertEquals(CaImportRefusal.IMPORT_SOURCE_MISSING, e1.reason)
+
+        CaImportFixtures.source(root, original)
+        Files.delete(root.resolve("ca/ca.crt"))
+        val e2 = assertFailsWith<CaImportRefused> { reconcile(fingerprint, CaUsage.NONE) }
+        assertEquals(CaImportRefusal.IMPORT_FILE_MISSING, e2.reason)
+
+        CaImportFixtures.source(root, original)
+        CaImportFixtures.chmod(root.resolve("ca/ca.key"), "rw-r-----")
+        val e3 = assertFailsWith<CaImportRefused> { reconcile(fingerprint, CaUsage.NONE) }
+        assertEquals(CaImportRefusal.IMPORT_PERMISSIONS_TOO_OPEN, e3.reason)
+    }
+
+    @Test
+    fun `with agent certificates issued another CA is refused for that reason`() {
+        CaImportFixtures.source(root, original)
+
+        val e = assertFailsWith<CaImportRefused> { reconcile(other, CaUsage.AGENT_CERTIFICATES) }
+
+        assertEquals(CaImportRefusal.CA_ALREADY_PRESENT, e.reason)
+        assertTrue("agent certificates issued" in e.message.orEmpty(), e.message)
+        assertTrue("docs/operator/08-migrate-and-remove.md" in e.message.orEmpty(), e.message)
+    }
+
+    @Test
+    fun `with agent certificates issued the same CA needs no import and a missing source still stops the start`() {
+        CaImportFixtures.source(root, original)
+        assertNull(reconcile(CaFingerprint.of(original.certificate), CaUsage.AGENT_CERTIFICATES))
+
+        Files.delete(root.resolve("ca/ca.crt"))
+        val e = assertFailsWith<CaImportRefused> { reconcile(other, CaUsage.AGENT_CERTIFICATES) }
+        assertEquals(CaImportRefusal.IMPORT_FILE_MISSING, e.reason)
+    }
+
+    @Test
+    fun `a CA to replace that expires soon warns, a source that only is checked does not`(output: CapturedOutput) {
+        importing(CaImportFixtures.Profile(notAfter = Instant.parse("2027-01-06T12:00:00Z")))
+        val present = CaFingerprint.of(CaImportFixtures.original().certificate)
+
+        reconcile(present, CaUsage.NONE)
+
+        assertTrue("CA expires 2027-01-06T12:00:00Z" in output.all, output.all)
+    }
+
+    @Test
+    fun `a source that only is checked against the present CA does not warn about its expiry`(output: CapturedOutput) {
+        importing(CaImportFixtures.Profile(notAfter = Instant.parse("2027-01-06T12:00:00Z")))
+        val certificate = PkiFixtures.certificate(Files.readString(root.resolve("ca/ca.crt")))
+
+        reconcile(CaFingerprint.of(certificate), CaUsage.NONE)
+
+        assertFalse("CA expires" in output.all, output.all)
     }
 
     @Test

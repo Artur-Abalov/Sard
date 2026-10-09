@@ -34,9 +34,12 @@ class PkiAutoConfigurationImportTest {
     private val importDir get() = tmp.resolve("import")
     private val original = CaImportFixtures.original()
 
+    private val ledger = FakeCaLedger()
+
     private fun runner() =
         ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(PkiAutoConfiguration::class.java))
+            .withBean(CaLedger::class.java, { ledger })
             .withPropertyValues(
                 "sard.pki.dir=$dir",
                 "sard.pki.server-names=sard.example.com,localhost",

@@ -6,12 +6,6 @@ package dev.sard.server.api
 import com.fasterxml.jackson.annotation.JsonProperty
 import io.swagger.v3.oas.annotations.media.Schema
 
-/** Name of the setup session cookie (F4a, Р3). */
-const val SETUP_COOKIE = "sard_setup"
-
-/** The only path the setup cookie travels on. */
-const val SETUP_COOKIE_PATH = "/api/v1/onboarding"
-
 @Schema(enumAsRef = true, description = "A step of the first-start wizard, in the order of the wizard")
 enum class OnboardingStepId {
     @JsonProperty("ca")
@@ -68,19 +62,13 @@ enum class OnboardingAccess {
     ADMIN,
 }
 
-@Schema(
-    enumAsRef = true,
-    description = "Where the CA of the server came from; unknown for a CA created before the server recorded it",
-)
+@Schema(enumAsRef = true, description = "Where the CA of the server came from: made by the server or imported")
 enum class CaOrigin {
     @JsonProperty("generated")
     GENERATED,
 
     @JsonProperty("imported")
     IMPORTED,
-
-    @JsonProperty("unknown")
-    UNKNOWN,
 }
 
 @Schema(description = "A step of the wizard and where it stands")
@@ -140,6 +128,7 @@ sealed interface CodeResult {
 
 /** The outcome of the admin step. */
 sealed interface AdminStepResult {
+    /** The password is set; [sessionId] is the administrator session the wizard hands out. */
     data class Done(
         val sessionId: String,
     ) : AdminStepResult
@@ -172,13 +161,14 @@ sealed interface PasswordChangeResult {
 }
 
 /**
- * The first-start wizard (F4a): a domain port with no HTTP types, like [SessionApi]. Setup sessions are checked by the
- * filter before a call reaches it; [setupSessionId] is passed where the answer depends on it.
+ * The first-start wizard (F4a): a domain port with no HTTP types, like [SessionApi]. The setup session ids are those
+ * the request carried (cookies), if any; the implementation decides whether they name a live session. A missing or
+ * invalid setup session where one is required is [NoSuchSessionException], answered 401.
  */
 interface OnboardingApi {
-    /** [adminSessionId] and [setupSessionId] are the ids the request carried, if any. */
+    /** [adminSession]: an authentication filter attached a valid administrator session to the request. */
     fun state(
-        adminSessionId: String?,
+        adminSession: Boolean,
         setupSessionId: String?,
     ): Onboarding
 
@@ -188,9 +178,16 @@ interface OnboardingApi {
         previousSetupSessionId: String?,
     ): CodeResult
 
-    fun confirmCa(clientAddress: String)
+    /** @throws NoSuchSessionException unless [setupSessionId] is live (or, with an external sign-in, [adminSession]). */
+    fun confirmCa(
+        setupSessionId: String?,
+        adminSession: Boolean,
+        clientAddress: String,
+    )
 
+    /** @throws NoSuchSessionException unless [setupSessionId] is live. */
     fun completeAdmin(
+        setupSessionId: String?,
         password: String?,
         clientAddress: String,
     ): AdminStepResult

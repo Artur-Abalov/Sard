@@ -26,23 +26,39 @@ class FileCertificateAuthority(
     private val serverNames: List<String>,
     private val clock: Clock,
     private val random: SecureRandom,
+    ledger: CaLedger,
     importDir: Path? = null,
+    replacements: CaReplacementListener = CaReplacementListener { _, _ -> },
 ) : CertificateAuthority {
     init {
         ServerNames.validate(serverNames)
     }
 
+    private val keyFile =
+        dir
+            .toAbsolutePath()
+            .normalize()
+            .resolve(CA)
+            .resolve(KEY)
     private val opened =
-        CaDirectory(dir, clock).open(importDir?.let { CaImportSource(it, clock) }) { CaKeyPair.generate(clock, random) }
+        CaDirectory(dir, clock, ledger).open(importDir?.let { CaImportSource(it, clock) }) { CaKeyPair.generate(clock, random) }
     private val ca = opened.pair
     private val bundle = Pem.certificate(ca.certificate)
-    private val fingerprint = CaFingerprint.of(ca.certificate).also { logStart(it, opened.origin, importDir) }
+    private val fingerprint =
+        CaFingerprint.of(ca.certificate).also {
+            logStart(it, opened, importDir)
+            opened.replaced?.let { previous -> replacements.replaced(previous, it) }
+        }
     private val generation = AtomicLong()
     private val serverKeys = ServerKeyManager(issueServerKey())
 
     override fun caBundlePem() = bundle
 
     override fun fingerprint() = fingerprint
+
+    override fun provenance() = opened.provenance
+
+    override fun keyLocation() = keyFile.toString()
 
     override fun serverKeyManager(): X509KeyManager = serverKeys
 
@@ -76,14 +92,29 @@ class FileCertificateAuthority(
     /** The fingerprint with the origin of the CA, at every start: a moved server can be compared with the old. */
     private fun logStart(
         fingerprint: CaFingerprint,
-        origin: CaOrigin,
+        opened: OpenedCa,
         importDir: Path?,
     ) {
-        val name = origin.name.lowercase()
-        if (origin == CaOrigin.IMPORTED) {
-            log.info("CA imported from {}: fingerprint={} origin={}", importDir, fingerprint.hex, name)
-        } else {
-            log.info("CA fingerprint={} origin={}", fingerprint.hex, name)
+        val name = opened.origin.name.lowercase()
+        val replaced = opened.replaced
+        when {
+            replaced != null -> {
+                log.info(
+                    "CA imported from {}: fingerprint={} origin={} replaced={}",
+                    importDir,
+                    fingerprint.hex,
+                    name,
+                    replaced.hex,
+                )
+            }
+
+            opened.origin == CaOrigin.IMPORTED -> {
+                log.info("CA imported from {}: fingerprint={} origin={}", importDir, fingerprint.hex, name)
+            }
+
+            else -> {
+                log.info("CA fingerprint={} origin={}", fingerprint.hex, name)
+            }
         }
     }
 }

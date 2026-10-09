@@ -6,6 +6,7 @@ package dev.sard.server.agents
 import dev.sard.server.agents.AgentAuthResult.Accepted
 import dev.sard.server.agents.AgentAuthResult.Rejected
 import dev.sard.server.pki.AgentIdentity
+import dev.sard.server.pki.FakeCaLedger
 import dev.sard.server.pki.FileCertificateAuthority
 import dev.sard.server.pki.PkiFixtures.AGENT
 import dev.sard.server.pki.PkiFixtures.CLOCK
@@ -108,7 +109,7 @@ class AgentAuthenticatorTest {
 
     @Test
     fun `a presented certificate is its serial in lower-case hex and its URI identity`() {
-        val ca = FileCertificateAuthority(tmp.resolve("pki"), SERVER_NAMES, CLOCK, random())
+        val ca = FileCertificateAuthority(tmp.resolve("pki"), SERVER_NAMES, CLOCK, random(), FakeCaLedger())
         val issued = ca.issueAgentCertificate(resource("agent-p256.csr"), AGENT)
         val presented = MutFlow.underTest { PresentedCertificate.of(certificates(issued.chainPem).first()) }
         assertEquals(PresentedCertificate(issued.serial.toString(16), AGENT), presented)

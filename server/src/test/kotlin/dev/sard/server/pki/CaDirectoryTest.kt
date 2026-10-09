@@ -33,12 +33,13 @@ class CaDirectoryTest {
     private fun perms(path: Path) = PosixFilePermissions.toString(Files.getPosixFilePermissions(path))
 
     private val dir get() = tmp.resolve("pki")
+    private val ledger = FakeCaLedger()
 
     @Test
     fun `the first start publishes the CA owner-only and a restart loads it`() {
         val pair = generate()
-        val first = MutFlow.underTest { CaDirectory(dir, CLOCK).loadOrCreate { pair } }
-        val second = CaDirectory(dir, CLOCK).loadOrCreate { error("must load, not generate") }
+        val first = MutFlow.underTest { CaDirectory(dir, CLOCK, ledger).loadOrCreate { pair } }
+        val second = CaDirectory(dir, CLOCK, ledger).loadOrCreate { error("must load, not generate") }
         assertEquals(pair.certificate, first.certificate)
         assertEquals(pair.certificate, second.certificate)
         val perms = listOf(dir, dir.resolve("ca"), dir.resolve("ca/ca.key")).map { perms(it) }
@@ -51,9 +52,9 @@ class CaDirectoryTest {
         val loser = generate()
         val loaded =
             MutFlow.underTest {
-                CaDirectory(dir, CLOCK).loadOrCreate {
+                CaDirectory(dir, CLOCK, ledger).loadOrCreate {
                     // Another instance publishes its CA while this one is generating.
-                    CaDirectory(dir, CLOCK).loadOrCreate { winner }
+                    CaDirectory(dir, CLOCK, ledger).loadOrCreate { winner }
                     loser
                 }
             }
@@ -70,7 +71,7 @@ class CaDirectoryTest {
                 (1..4).map {
                     pool.submit<CaFingerprint> {
                         start.await()
-                        CaFingerprint.of(CaDirectory(dir, CLOCK).loadOrCreate { generate() }.certificate)
+                        CaFingerprint.of(CaDirectory(dir, CLOCK, ledger).loadOrCreate { generate() }.certificate)
                     }
                 }
             start.countDown()
@@ -84,12 +85,12 @@ class CaDirectoryTest {
     fun `a key, certificate, CA directory or key directory open to others is refused`() {
         val pair = generate()
         for (path in listOf("ca/ca.key", "ca/ca.crt", "ca", ".")) {
-            CaDirectory(dir, CLOCK).loadOrCreate { pair }
+            CaDirectory(dir, CLOCK, ledger).loadOrCreate { pair }
             val target = dir.resolve(path)
             val before = Files.getPosixFilePermissions(target)
             Files.setPosixFilePermissions(target, before + PosixFilePermission.OTHERS_READ)
             assertFailsWith<InsecureKeyStorageException>(path) {
-                MutFlow.underTest { CaDirectory(dir, CLOCK).loadOrCreate { pair } }
+                MutFlow.underTest { CaDirectory(dir, CLOCK, ledger).loadOrCreate { pair } }
             }
             Files.setPosixFilePermissions(target, before)
         }
@@ -97,35 +98,35 @@ class CaDirectoryTest {
 
     @Test
     fun `a key that does not match the certificate is refused`() {
-        CaDirectory(dir, CLOCK).loadOrCreate { generate() }
+        CaDirectory(dir, CLOCK, ledger).loadOrCreate { generate() }
         val other = tmp.resolve("other")
-        CaDirectory(other, CLOCK).loadOrCreate { generate() }
+        CaDirectory(other, CLOCK, ledger).loadOrCreate { generate() }
         Files.write(dir.resolve("ca/ca.key"), Files.readAllBytes(other.resolve("ca/ca.key")))
-        val directory = CaDirectory(dir, CLOCK)
+        val directory = CaDirectory(dir, CLOCK, ledger)
         assertFailsWith<IllegalStateException> { MutFlow.underTest { directory.loadOrCreate { generate() } } }
     }
 
     @Test
     fun `a certificate swapped for one with the same key but another signer is refused`() {
         val keys = Keys.generate(random())
-        CaDirectory(dir, CLOCK).loadOrCreate { CaKeyPair(Certificates.root(keys, NOW, random()), keys.private) }
+        CaDirectory(dir, CLOCK, ledger).loadOrCreate { CaKeyPair(Certificates.root(keys, NOW, random()), keys.private) }
         val forged = PkiFixtures.rootLike(keys, Keys.generate(random()).private, ca = true)
         Files.writeString(dir.resolve("ca/ca.crt"), Pem.certificate(forged))
-        val directory = CaDirectory(dir, CLOCK)
+        val directory = CaDirectory(dir, CLOCK, ledger)
         val e = assertFailsWith<IllegalStateException> { MutFlow.underTest { directory.loadOrCreate { generate() } } }
         assertEquals("CA certificate CN=Sard CA is not self-signed", e.message)
     }
 
     @Test
     fun `staging directories older than an hour are removed, younger ones may belong to a running start`() {
-        CaDirectory(dir, CLOCK).loadOrCreate { generate() }
+        CaDirectory(dir, CLOCK, ledger).loadOrCreate { generate() }
         val ages = mapOf(".tmp-stale" to 120L, ".tmp-hour" to 60L, ".tmp-fresh" to 0L)
         for ((name, minutes) in ages) {
             val staging = Files.createDirectory(dir.resolve(name))
             Files.writeString(staging.resolve("ca.key"), "partial")
             Files.setLastModifiedTime(staging, FileTime.from(NOW - Duration.ofMinutes(minutes)))
         }
-        MutFlow.underTest { CaDirectory(dir, CLOCK).loadOrCreate { error("must load") } }
+        MutFlow.underTest { CaDirectory(dir, CLOCK, ledger).loadOrCreate { error("must load") } }
         val left =
             Files
                 .list(dir)
@@ -141,7 +142,7 @@ class CaDirectoryTest {
         Files.createDirectories(dir, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
         // A dangling link: its mtime read fails with NoSuchFileException, as for an entry just moved away.
         Files.createSymbolicLink(dir.resolve(".tmp-gone"), Path.of("does-not-exist"))
-        val opened = MutFlow.underTest { CaDirectory(dir, CLOCK).loadOrCreate { pair } }
+        val opened = MutFlow.underTest { CaDirectory(dir, CLOCK, ledger).loadOrCreate { pair } }
         assertEquals(pair.certificate, opened.certificate)
         assertTrue(Files.isSymbolicLink(dir.resolve(".tmp-gone")))
     }
@@ -167,15 +168,15 @@ class CaDirectoryTest {
     fun `the start that publishes the CA reports it generated, the start that loses the race reports it existing`() {
         val winner = generate()
         val loser = generate()
-        val first = MutFlow.underTest { CaDirectory(dir, CLOCK).open(null) { winner } }
+        val first = MutFlow.underTest { CaDirectory(dir, CLOCK, ledger).open(null) { winner } }
         assertEquals(CaOrigin.GENERATED, first.origin)
-        assertEquals(CaOrigin.EXISTING, MutFlow.underTest { CaDirectory(dir, CLOCK).open(null) { loser } }.origin)
+        assertEquals(CaOrigin.EXISTING, MutFlow.underTest { CaDirectory(dir, CLOCK, ledger).open(null) { loser } }.origin)
 
         val raced = tmp.resolve("raced")
         val lost =
             MutFlow.underTest {
-                CaDirectory(raced, CLOCK).open(null) {
-                    CaDirectory(raced, CLOCK).loadOrCreate { winner }
+                CaDirectory(raced, CLOCK, ledger).open(null) {
+                    CaDirectory(raced, CLOCK, ledger).loadOrCreate { winner }
                     loser
                 }
             }

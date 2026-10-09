@@ -158,9 +158,10 @@ tasks.test {
     systemProperty("sard.test.version-order-file", rootProject.file("deploy/release/version-order.txt").path)
     // Tags that are not releases, shared with scripts/test-release-version.sh (ADR 0048).
     systemProperty("sard.test.not-release-tags-file", rootProject.file("deploy/release/not-release-tags.txt").path)
-    // The CA of integration tests; the default /var/lib/sard/pki is not writable here.
+    // The CA directories of integration tests: every context gets a new one in here (FreshPkiDirectory), because
+    // a CA directory goes with its database (F4a); the default /var/lib/sard/pki is not writable here.
     systemProperty(
-        "sard.pki.dir",
+        "sard.test.pki-base",
         layout.buildDirectory
             .dir("test-pki")
             .get()
@@ -169,9 +170,6 @@ tasks.test {
     // CSRF tests (W1b) set the Host header explicitly to control the expected Origin;
     // java.net.http.HttpClient refuses to set it unless this is allowed.
     systemProperty("jdk.httpclient.allowRestrictedHeaders", "host")
-    // A default so every test that boots the full context, not just the session ones,
-    // does not need its own SARD_ADMIN_PASSWORD; session tests override it per class.
-    environment("SARD_ADMIN_PASSWORD", "test-admin-password-2026")
     // No agent release next to the test server; AgentDownloadsIntegrationTest switches downloads on.
     environment("SARD_AGENT_DOWNLOADS", "false")
     finalizedBy(tasks.jacocoTestReport)

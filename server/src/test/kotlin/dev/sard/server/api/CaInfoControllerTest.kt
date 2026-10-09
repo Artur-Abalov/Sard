@@ -4,6 +4,7 @@
 package dev.sard.server.api
 
 import dev.sard.server.pki.CaFingerprint
+import dev.sard.server.pki.FakeCaLedger
 import dev.sard.server.pki.FileCertificateAuthority
 import dev.sard.server.pki.PkiFixtures
 import io.github.anschnapp.mutflow.MutFlow
@@ -21,9 +22,10 @@ class CaInfoControllerTest {
     @Test
     fun `the CA information carries the fingerprint the tokens carry`() {
         val names = PkiFixtures.SERVER_NAMES
-        val ca = FileCertificateAuthority(tmp.resolve("pki"), names, PkiFixtures.CLOCK, PkiFixtures.random())
+        val ca = FileCertificateAuthority(tmp.resolve("pki"), names, PkiFixtures.CLOCK, PkiFixtures.random(), FakeCaLedger())
         val info = MutFlow.underTest { CaInfoController(ca).info() }
-        assertEquals(CaInfo(ca.fingerprint().hex), info)
+        val keyPath = tmp.resolve("pki/ca/ca.key").toAbsolutePath().toString()
+        assertEquals(CaInfo(ca.fingerprint().hex, CaOrigin.GENERATED, keyPath), info)
         assertEquals(64, info.fingerprint.length)
         assertEquals(CaFingerprint.of(PkiFixtures.certificate(ca.caBundlePem())).hex, info.fingerprint)
     }

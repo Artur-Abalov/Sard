@@ -27,6 +27,7 @@ class CaDirectoryImportUnitTest {
     lateinit var tmp: Path
 
     private val dir get() = tmp.resolve("pki")
+    private val ledger = FakeCaLedger()
     private val original = CaImportFixtures.original()
     private val generated = CaImportFixtures.original()
 
@@ -41,8 +42,12 @@ class CaDirectoryImportUnitTest {
             return ca
         }
 
-        override fun reconcile(present: CaFingerprint) {
+        override fun reconcile(
+            present: CaFingerprint,
+            usage: CaUsage,
+        ): ImportedCa? {
             reconciled += present
+            return null
         }
 
         override fun writeFailed(
@@ -56,7 +61,7 @@ class CaDirectoryImportUnitTest {
     private fun open(
         source: CaImport?,
         writer: (Path, String) -> Unit = ::writeFile,
-    ): OpenedCa = MutFlow.underTest { CaDirectory(dir, CLOCK, writer).open(source) { generated } }
+    ): OpenedCa = MutFlow.underTest { CaDirectory(dir, CLOCK, ledger, writer).open(source) { generated } }
 
     private fun writeFile(
         path: Path,

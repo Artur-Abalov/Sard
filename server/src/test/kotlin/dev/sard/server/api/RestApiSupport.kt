@@ -12,7 +12,6 @@ import com.networknt.schema.dialect.Dialects
 import dev.sard.server.agents.dispatch.ReconciledHellos
 import dev.sard.server.agents.dispatch.StepDispatcher
 import dev.sard.server.auth.AdminSession
-import dev.sard.server.auth.SESSION_REQUEST_ATTRIBUTE
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.pki.MovableClock
 import org.springframework.boot.test.context.TestConfiguration

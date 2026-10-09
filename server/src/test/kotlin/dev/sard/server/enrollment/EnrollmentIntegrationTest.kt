@@ -9,6 +9,7 @@ import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.enrollment.EnrollmentRejectedException.Reason
 import dev.sard.server.pki.CaFingerprint
 import dev.sard.server.pki.CertificateAuthority
+import dev.sard.server.pki.FakeCaLedger
 import dev.sard.server.pki.FileCertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.certificate
@@ -71,7 +72,9 @@ class EnrollmentTestConfiguration {
     @Bean
     fun certificateAuthority(
         @Value("\${sard.pki.dir}") dir: Path,
-    ) = GatedCertificateAuthority(FileCertificateAuthority(dir, listOf("localhost"), Clock.systemUTC(), SecureRandom()))
+    ) = GatedCertificateAuthority(
+        FileCertificateAuthority(dir, listOf("localhost"), Clock.systemUTC(), SecureRandom(), FakeCaLedger(permissive = true)),
+    )
 }
 
 /** S2a: Enroll is one transaction that either enrolls the agent or leaves the token as it was. */

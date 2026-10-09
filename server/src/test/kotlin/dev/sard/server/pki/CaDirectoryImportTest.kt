@@ -29,13 +29,14 @@ class CaDirectoryImportTest {
     lateinit var tmp: Path
 
     private val dir get() = tmp.resolve("pki")
+    private val ledger = FakeCaLedger()
     private val importDir get() = tmp.resolve("import")
     private val original = CaImportFixtures.original()
     private val generated = CaImportFixtures.original()
 
     private fun source() = CaImportSource(importDir, CLOCK)
 
-    private fun open(source: CaImportSource? = source()): OpenedCa = CaDirectory(dir, CLOCK).open(source) { generated }
+    private fun open(source: CaImportSource? = source()): OpenedCa = CaDirectory(dir, CLOCK, ledger).open(source) { generated }
 
     private fun perms(path: Path) = PosixFilePermissions.toString(Files.getPosixFilePermissions(path))
 
@@ -112,8 +113,9 @@ class CaDirectoryImportTest {
     }
 
     @Test
-    fun `a source with another CA than the present one stops the start and changes nothing`() {
+    fun `a source with another CA than the present one stops the start once the step ca is done and changes nothing`() {
         open(null)
+        ledger.usage = CaUsage.STEP_CA_COMPLETE
         CaImportFixtures.source(importDir, original)
         val before = snapshot(dir)
         val sourceBefore = snapshot(importDir)
@@ -124,8 +126,9 @@ class CaDirectoryImportTest {
     }
 
     @Test
-    fun `a source that disappeared leaves the present CA in use`() {
+    fun `a source that disappeared leaves the present CA in use once the step ca is done`() {
         val first = open(null)
+        ledger.usage = CaUsage.STEP_CA_COMPLETE
         val second = open()
         assertEquals(CaOrigin.EXISTING, second.origin)
         assertEquals(CaFingerprint.of(first.pair.certificate), CaFingerprint.of(second.pair.certificate))
@@ -140,7 +143,7 @@ class CaDirectoryImportTest {
         }
         val e =
             assertFailsWith<CaImportRefused> {
-                CaDirectory(dir, CLOCK, failing).open(source()) { error("never") }
+                CaDirectory(dir, CLOCK, ledger, failing).open(source()) { error("never") }
             }
         assertEquals(CaImportRefusal.IMPORT_WRITE_FAILED, e.reason)
         val message = e.message.orEmpty()
@@ -156,7 +159,7 @@ class CaDirectoryImportTest {
         val blocker = Files.createFile(tmp.resolve("blocker"))
         val e =
             assertFailsWith<CaImportRefused> {
-                CaDirectory(blocker.resolve("pki"), CLOCK).open(source()) { error("never") }
+                CaDirectory(blocker.resolve("pki"), CLOCK, ledger).open(source()) { error("never") }
             }
         assertEquals(CaImportRefusal.IMPORT_WRITE_FAILED, e.reason)
         assertTrue(blocker.resolve("pki").toString() in e.message.orEmpty(), e.message)
@@ -183,7 +186,7 @@ class CaDirectoryImportTest {
                 (1..2).map {
                     pool.submit<CaFingerprint> {
                         start.await()
-                        CaFingerprint.of(CaDirectory(dir, CLOCK).open(source()) { error("never") }.pair.certificate)
+                        CaFingerprint.of(CaDirectory(dir, CLOCK, ledger).open(source()) { error("never") }.pair.certificate)
                     }
                 }
             start.countDown()

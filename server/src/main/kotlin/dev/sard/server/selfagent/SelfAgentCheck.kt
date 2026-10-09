@@ -5,6 +5,7 @@ package dev.sard.server.selfagent
 
 import dev.sard.server.enrollment.EnrollmentToken
 import dev.sard.server.enrollment.MalformedEnrollmentTokenException
+import dev.sard.server.onboarding.OnboardingSteps
 import org.slf4j.LoggerFactory
 
 private val log = LoggerFactory.getLogger(SelfAgentCheck::class.java)
@@ -27,13 +28,15 @@ fun interface BuiltinAgents {
 /**
  * One pass of the periodic check (docs/specs/server/self-agent.feature, rule "Проверка выпускает встроенный
  * токен, только пока нет живого встроенного агента"): with a live built-in agent the token file goes; without one
- * the file holds a usable built-in token, issued here when it does not. Passes never overlap. A failure
+ * the file holds a usable built-in token, issued here when it does not, but not before the owner confirmed
+ * the CA in the wizard (F4a). Passes never overlap. A failure
  * changes nothing in the channel, is logged once without the token and is left for the next pass.
  */
 class SelfAgentCheck(
     private val channel: SelfChannel,
     private val tokens: BuiltinTokens,
     private val agents: BuiltinAgents,
+    private val steps: OnboardingSteps,
 ) {
     private val lock = Any()
 
@@ -52,6 +55,8 @@ class SelfAgentCheck(
             channel.deleteToken()
             return
         }
+        // F4a, Р13: the owner may still replace the CA, and a token carries its fingerprint.
+        if (!steps.caConfirmed()) return
         val hash = channel.readToken()?.let(::secretHashOf)
         if (hash != null && tokens.usable(hash)) return
         channel.writeToken(tokens.replace())

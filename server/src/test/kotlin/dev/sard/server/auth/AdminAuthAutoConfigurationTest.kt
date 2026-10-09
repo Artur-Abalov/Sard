@@ -4,6 +4,7 @@
 package dev.sard.server.auth
 
 import dev.sard.server.ClockAutoConfiguration
+import dev.sard.server.api.PasswordChangeResult
 import dev.sard.server.api.SessionApi
 import dev.sard.server.api.SignInResult
 import dev.sard.server.extension.TenancyAutoConfiguration
@@ -17,6 +18,8 @@ import org.springframework.boot.autoconfigure.AutoConfigurations
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.boot.web.servlet.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
+import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.datasource.DriverManagerDataSource
 import tools.jackson.databind.ObjectMapper
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,8 +27,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-
-private const val PASSWORD = "correct-horse-battery"
 
 /** Stands in for an enterprise sign-in starter (SSO, say); ordered before the open core's default. */
 @AutoConfiguration(before = [AdminAuthAutoConfiguration::class])
@@ -98,18 +99,20 @@ class AdminAuthAutoConfigurationTest {
                     AdminAuthAutoConfiguration::class.java,
                 ),
             ).withBean(ObjectMapper::class.java, { ObjectMapper() })
+            .withBean(JdbcTemplate::class.java, { JdbcTemplate(DriverManagerDataSource("jdbc:postgresql://localhost:1/none")) })
 
     @Test
-    fun `the open core provides password sign-in`() {
-        runner.withPropertyValues("SARD_ADMIN_PASSWORD=$PASSWORD").run { ctx ->
-            val api = ctx.getBean(SessionApi::class.java)
-            assertIs<SessionApiImpl>(api)
-            assertIs<SignInResult.SignedIn>(api.createSession(PASSWORD, "203.0.113.10", null))
+    fun `the open core provides password sign-in against the stored administrator`() {
+        runner.run { ctx ->
+            assertTrue(ctx.startupFailure == null, "${ctx.startupFailure}")
+            assertIs<SessionApiImpl>(ctx.getBean(SessionApi::class.java))
+            assertIs<StoredAdminSetup>(ctx.getBean(AdminSetup::class.java))
+            assertIs<JdbcAdministrators>(ctx.getBean(Administrators::class.java))
         }
     }
 
     @Test
-    fun `an enterprise starter replaces SessionApi and needs no SARD_ADMIN_PASSWORD`() {
+    fun `an enterprise starter replaces SessionApi, the admin step counts as done and no administrator is stored`() {
         runner
             .withConfiguration(AutoConfigurations.of(FakeSsoStarter::class.java))
             .run { ctx ->
@@ -118,7 +121,9 @@ class AdminAuthAutoConfigurationTest {
                 val api = ctx.getBean(SessionApi::class.java)
                 val result = api.createSession("anything", "203.0.113.10", null)
                 assertEquals(SignInResult.SignedIn("fake-sso-session"), result)
-                assertFailsWith<NoSuchBeanDefinitionException> { ctx.getBean(AdminPasswordAuthenticator::class.java) }
+                assertFailsWith<NoSuchBeanDefinitionException> { ctx.getBean(Administrators::class.java) }
+                assertEquals(ExternalAdminSetup, ctx.getBean(AdminSetup::class.java))
+                assertEquals(PasswordChangeResult.NotSupported, api.changePassword("s", "a", "b", "203.0.113.10"))
             }
     }
 

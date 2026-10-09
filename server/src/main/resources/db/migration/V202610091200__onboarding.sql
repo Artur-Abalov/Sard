@@ -18,8 +18,8 @@ CREATE TABLE administrators (
     password_changed_at TIMESTAMPTZ NOT NULL
 );
 
--- Where the server's CA came from, by the fingerprint of its root. A CA that has no row here was created by a
--- version of the server that did not record it: its origin is unknown (OQ-192).
+-- Where the server's CA came from, by the fingerprint of its root (Р12, Р19). The row is written before the CA appears
+-- in the CA directory, so a CA that is there has one; a CA without a row stops the start (CA_ORIGIN_NOT_RECORDED).
 CREATE TABLE ca_origins (
     fingerprint TEXT        PRIMARY KEY CHECK (fingerprint ~ '^[0-9a-f]{64}$'),
     origin      TEXT        NOT NULL CHECK (origin IN ('generated', 'imported')),

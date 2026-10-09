@@ -22,8 +22,18 @@ interface CaImport {
     /** The CA to take, or throws [CaImportRefused] for the first check it fails. */
     fun read(): ImportedCa
 
-    /** A CA is already in the CA directory: the same one is fine, another one stops the start. */
-    fun reconcile(present: CaFingerprint)
+    /**
+     * A CA is already in the CA directory, and the database says how far it is in use ([usage], Р11, Р18). The
+     * CA to put in its place, or null when the directory keeps its CA:
+     * - [CaUsage.STEP_CA_COMPLETE]: the same CA is fine, another one stops the start (CA_ALREADY_PRESENT), a
+     *   source that cannot be read only warns (F8 Р3);
+     * - otherwise the source must pass every check, whatever it holds (Р18); the same CA is fine, another one
+     *   replaces the present one when no certificate was issued ([CaUsage.NONE]) and stops the start otherwise.
+     */
+    fun reconcile(
+        present: CaFingerprint,
+        usage: CaUsage,
+    ): ImportedCa?
 
     /** The refusal for a CA directory that could not be written. */
     fun writeFailed(
@@ -58,7 +68,10 @@ class CaImportSource(
     private val paths = listOf(root, caDir, certPath, keyPath)
 
     /** The CA of the source, or throws [CaImportRefused] for the first check it fails. */
-    override fun read(): ImportedCa {
+    override fun read(): ImportedCa = load().also { warnIfExpiresSoon(it.certificate) }
+
+    /** Every check of the table, no warning: for a source that is not about to be imported. */
+    private fun load(): ImportedCa {
         requireDirectory()
         requireFile(certPath)
         requireFile(keyPath)
@@ -68,7 +81,6 @@ class CaImportSource(
         val key = content.key(text(keyPath))
         content.requireMatch(certificate, key)
         profile.requireUsableCa(certificate, clock.instant())
-        warnIfExpiresSoon(certificate)
         return ImportedCa(certificate, key)
     }
 
@@ -88,11 +100,13 @@ class CaImportSource(
             throw refusal(CaImportRefusal.IMPORT_FILE_UNREADABLE, "$path cannot be read by the server")
         }
 
-    /**
-     * A CA is already in the CA directory. The same one as in the source: nothing to import. Another one: the
-     * server does not start. A source that cannot be read: the setting is stale, the server starts and says so.
-     */
-    override fun reconcile(present: CaFingerprint) {
+    override fun reconcile(
+        present: CaFingerprint,
+        usage: CaUsage,
+    ): ImportedCa? = if (usage == CaUsage.STEP_CA_COMPLETE) skipping(present) else judging(present, usage)
+
+    /** The step ca is done: the same CA is fine, another stops the start, a source that is gone is stale. */
+    private fun skipping(present: CaFingerprint): ImportedCa? {
         val theirs = runCatching { CaFingerprint.of(content.certificate(text(certPath))) }.getOrNull()
         when {
             theirs == null -> {
@@ -104,16 +118,54 @@ class CaImportSource(
             }
 
             theirs == present -> {
-                log.info("CA import not needed: the CA {} is already present", present.hex)
+                notNeeded(present)
             }
 
             else -> {
-                throw refusal(
-                    CaImportRefusal.CA_ALREADY_PRESENT,
-                    "the CA directory holds ${present.hex}, the source holds ${theirs.hex}",
-                )
+                throw alreadyPresent(present, theirs, CaUsage.STEP_CA_COMPLETE)
             }
         }
+        return null
+    }
+
+    /** The step ca is open: the source is checked in full first, a CA that did nothing yet may be replaced. */
+    private fun judging(
+        present: CaFingerprint,
+        usage: CaUsage,
+    ): ImportedCa? {
+        val source = load()
+        val theirs = CaFingerprint.of(source.certificate)
+        return when {
+            theirs == present -> {
+                notNeeded(present)
+                null
+            }
+
+            usage != CaUsage.NONE -> {
+                throw alreadyPresent(present, theirs, usage)
+            }
+
+            else -> {
+                source.also { warnIfExpiresSoon(it.certificate) }
+            }
+        }
+    }
+
+    private fun notNeeded(present: CaFingerprint) {
+        log.info("CA import not needed: the CA {} is already present", present.hex)
+    }
+
+    private fun alreadyPresent(
+        present: CaFingerprint,
+        theirs: CaFingerprint,
+        usage: CaUsage,
+    ): CaImportRefused {
+        val why = if (usage == CaUsage.STEP_CA_COMPLETE) "onboarding step ca is complete" else "agent certificates issued"
+        return refusal(
+            CaImportRefusal.CA_ALREADY_PRESENT,
+            "the CA directory holds ${present.hex}, the source holds ${theirs.hex}: $why, so the CA cannot be " +
+                "replaced; to move a server see docs/operator/08-migrate-and-remove.md",
+        )
     }
 
     /** The CA directory could not be written; the refusal names it, never a file's content. */

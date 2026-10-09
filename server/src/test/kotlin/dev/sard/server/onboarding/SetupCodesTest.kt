@@ -15,8 +15,6 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-private val T0: Instant = Instant.parse("2026-10-09T12:00:00Z")
-private const val CODE = "ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345"
 private val ALPHABET = Regex("[0-9A-HJKMNP-TV-Z]{28}")
 
 /** Rules "Сервер без администратора печатает код настройки при старте", "Код действует до шага admin" (@service). */

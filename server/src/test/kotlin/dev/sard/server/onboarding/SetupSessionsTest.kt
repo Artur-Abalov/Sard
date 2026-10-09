@@ -10,7 +10,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-private val T0: Instant = Instant.parse("2026-10-09T12:00:00Z")
 private val EXPIRY: Instant = Instant.parse("2026-10-10T12:00:00Z")
 
 /** Rule "Верный код выдаёт сессию настройки, и она открывает только мастер" (@service part, Р3). */

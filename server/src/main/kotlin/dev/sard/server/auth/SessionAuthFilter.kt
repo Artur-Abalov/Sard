@@ -5,6 +5,7 @@ package dev.sard.server.auth
 
 import dev.sard.server.api.ErrorCode
 import dev.sard.server.api.SESSION_COOKIE
+import dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE
 import dev.sard.server.api.clearedSessionCookie
 import dev.sard.server.api.writeProblem
 import jakarta.servlet.FilterChain
@@ -15,16 +16,28 @@ import org.springframework.web.filter.OncePerRequestFilter
 import tools.jackson.databind.ObjectMapper
 
 /**
- * Name of the request attribute [SessionAuthFilter] attaches the touched session under.
- * Nothing in the open core reads it back (W1b has one administrator, no per-request
- * principal); it is left in place on purpose as the future seam an enterprise
- * `TenantResolver` can use to read the caller out of an already-validated session,
- * without changing this filter or [dev.sard.server.api.SessionApi] (ADR 0021).
+ * Operations whose security requirement is empty: sign-in itself, the public status endpoint, and the two the
+ * first-start wizard opens without a session (F4a, К1, К2). The contract test compares this set with OpenAPI.
  */
-const val SESSION_REQUEST_ATTRIBUTE = "dev.sard.server.auth.session"
+internal val PUBLIC_OPERATIONS =
+    setOf(
+        "POST /api/v1/session",
+        "GET /api/v1/status",
+        "GET /api/v1/onboarding",
+        "POST /api/v1/onboarding/setup-session",
+    )
 
-/** Operations the filter never guards: sign-in itself, and the public status endpoint. */
-internal val PUBLIC_OPERATIONS = setOf("POST /api/v1/session", "GET /api/v1/status")
+/** Operations for which the filter does not even look at a session. */
+private val SESSIONLESS_OPERATIONS =
+    setOf("POST /api/v1/session", "GET /api/v1/status", "POST /api/v1/onboarding/setup-session")
+
+/**
+ * The state of the wizard (К1) is public and tells which session came with the request; the steps (К3, К4) ask for
+ * a setup session, which the controller checks because the filter does not know setup sessions. All three pass
+ * the filter with or without an administrator session; a valid one is attached to the request.
+ */
+private val WIZARD_OPERATIONS =
+    setOf("GET /api/v1/onboarding", "POST /api/v1/onboarding/ca", "POST /api/v1/onboarding/admin")
 private const val HTTP_UNAUTHORIZED = 401
 
 /**
@@ -42,7 +55,7 @@ class SessionAuthFilter(
         filterChain: FilterChain,
     ) {
         val operation = "${request.method} ${request.requestURI}"
-        if (operation in PUBLIC_OPERATIONS) {
+        if (operation in SESSIONLESS_OPERATIONS) {
             filterChain.doFilter(request, response)
             return
         }
@@ -52,11 +65,11 @@ class SessionAuthFilter(
                 .firstOrNull { it.name == SESSION_COOKIE }
                 ?.value
         val session = cookieValue?.let { sessionStore.touch(it) }
-        if (session == null) {
+        if (session == null && operation !in WIZARD_OPERATIONS) {
             respondUnauthorized(request, response)
             return
         }
-        request.setAttribute(SESSION_REQUEST_ATTRIBUTE, session)
+        session?.let { request.setAttribute(SESSION_REQUEST_ATTRIBUTE, it) }
         filterChain.doFilter(request, response)
     }
 
