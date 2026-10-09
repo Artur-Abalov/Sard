@@ -156,4 +156,33 @@ class CatchUpClaimMigrationTest(
         val since = jdbc.queryForObject("select catch_up_owed_since from schedules", Timestamp::class.java)
         assertEquals(at("2026-09-30T13:00:00Z"), since)
     }
+
+    @Test
+    fun `a downtime found in a catch-up's own tick, after it, belongs to the next catch-up`() {
+        lateinit var ids: List<UUID>
+        migrateAround {
+            schedule("2026-09-30T10:00:00Z")
+            val d1 = downtime("2026-09-30T12:00:10Z")
+            val c1 = catchUp("2026-09-30T20:00:00Z")
+            val d2 = downtime("2026-09-30T20:00:00Z") // same tick, written after c1
+            val c2 = catchUp("2026-09-30T20:00:10Z")
+            ids = listOf(d1, c1, d2, c2)
+        }
+
+        assertEquals(mapOf(ids[0] to ids[1], ids[2] to ids[3]), claims())
+    }
+
+    @Test
+    fun `a same-tick downtime with its catch-up still pending is left for that catch-up`() {
+        lateinit var ids: List<UUID>
+        migrateAround {
+            schedule("2026-09-30T10:00:00Z")
+            val c1 = catchUp("2026-09-30T20:00:00Z")
+            val d2 = downtime("2026-09-30T20:00:00Z")
+            jdbc.update("update schedules set catch_up_at = ?", at("2026-09-30T20:00:10Z"))
+            ids = listOf(c1, d2)
+        }
+
+        assertEquals(mapOf(ids[1] to null), claims())
+    }
 }

@@ -160,8 +160,7 @@ class Runs(
             filter.bind(query)
             after?.bind(query)
             query.setMaxResults(limit).list().map {
-                val run = it[0] as RunRecord
-                RunViews.of(run, it[1] as UUID, it[2] as SourceRecord, emptyList())
+                RunViews.of(it[0] as RunRecord, it[1] as UUID, it[2] as SourceRecord, emptyList())
             }
         }
 

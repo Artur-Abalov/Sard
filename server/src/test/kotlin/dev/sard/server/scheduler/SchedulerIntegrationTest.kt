@@ -39,6 +39,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -574,6 +575,44 @@ class SchedulerIntegrationTest(
         jdbc
             .queryForObject("select catch_up_at from schedules where id = ?", Timestamp::class.java, scheduleId)
             ?.toInstant()
+
+    private fun pendingCatchUpCancelledBy(draft: ScheduleDraft) {
+        val source = source()
+        val schedule = schedule(source)
+        tickAt(at("2026-09-30T12:30:00Z"))
+        assertNotNull(nextCatchUp(schedule.id))
+        clock.now = at("2026-09-30T12:30:00Z")
+        val saved = set(source, draft)
+        assertNull(saved.catchUpAt)
+        val owedSince =
+            jdbc.queryForObject(
+                "select catch_up_owed_since from schedules where id = ?",
+                Timestamp::class.java,
+                schedule.id,
+            )
+        assertNull(owedSince)
+        tickAt(at("2026-09-30T12:30:30Z")) // past the cancelled slot
+        assertEquals(emptyList(), tables.fires(schedule.id).filter { it.kind == "catch_up" })
+        assertEquals(emptyList(), tables.runs().filter { it.trigger == "catch_up" })
+    }
+
+    @Test
+    fun `a cron change cancels the pending catch-up`() {
+        val draft = ScheduleDraft("30 * * * *", "UTC", enabled = true)
+        pendingCatchUpCancelledBy(draft)
+    }
+
+    @Test
+    fun `a zone change cancels the pending catch-up`() {
+        val draft = ScheduleDraft(HOURLY, "Europe/Berlin", enabled = true)
+        pendingCatchUpCancelledBy(draft)
+    }
+
+    @Test
+    fun `disabling cancels the pending catch-up`() {
+        val draft = ScheduleDraft(HOURLY, "UTC", enabled = false)
+        pendingCatchUpCancelledBy(draft)
+    }
 
     @Test
     fun `a count that hit its limit is marked capped in the journal and in the catch-up`() {
