@@ -17,8 +17,9 @@
 # caller is signed in afterwards (the admin step signs the owner in).
 #
 # The requests go through sard_curl, which is plain curl; a script whose server is
-# reachable only from inside a container redefines it (sard_curl() { docker exec ... curl "$@"; })
-# and then names a cookie jar path inside that container in SARD_WIZARD_COOKIES.
+# reachable only from inside a container redefines it (sard_curl() { docker exec -i ... curl "$@"; };
+# -i is required: the bodies arrive on stdin, not on the command line) and then names
+# a cookie jar path inside that container in SARD_WIZARD_COOKIES.
 
 sard_curl() { curl "$@"; }
 
@@ -56,8 +57,13 @@ sard_wizard_step() {
   local name="$1" url="$2" body="${3:-}" status
   local args=(-sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json'
     -b "$SARD_WIZARD_JAR" -c "$SARD_WIZARD_JAR")
-  [ -z "$body" ] || args+=(--data-binary "$body")
-  status="$(sard_curl "${args[@]}" "$url")"
+  # The body (the code, the password) goes by stdin: argv is visible in ps and /proc.
+  if [ -n "$body" ]; then
+    args+=(--data-binary @-)
+    status="$(sard_curl "${args[@]}" "$url" <<<"$body")"
+  else
+    status="$(sard_curl "${args[@]}" "$url" </dev/null)"
+  fi
   if [ "$status" != 204 ]; then
     echo "setup-wizard: step $name answered $status, want 204 ($url)" >&2
     return 1

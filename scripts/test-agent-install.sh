@@ -43,7 +43,7 @@ HOST="$RUN_ID-host"
 # scripts/lib/setup-wizard.sh); the server is reachable from the host container only.
 # shellcheck source=lib/setup-wizard.sh
 source "$ROOT/scripts/lib/setup-wizard.sh"
-sard_curl() { docker exec "$HOST" curl "$@"; }
+sard_curl() { docker exec -i "$HOST" curl "$@"; }
 server_log() { docker logs "$RUN_ID-server" 2>&1; }
 export SARD_WIZARD_COOKIES=/root/jar
 

@@ -65,7 +65,8 @@ fakebin="$work/bin"
 mkdir -p "$fakebin"
 cat >"$fakebin/curl" <<'F'
 #!/usr/bin/env bash
-# Records the URL and the body; answers 204 on %{http_code}.
+# Records the URL and the body; the arguments go to one log and what arrives on stdin
+# to another (a secret on argv shows in ps and /proc); answers 204 on %{http_code}.
 url="" body=""
 args=("$@")
 for ((i = 0; i < ${#args[@]}; i++)); do
@@ -74,18 +75,32 @@ for ((i = 0; i < ${#args[@]}; i++)); do
     http*) url="${args[i]}" ;;
   esac
 done
+echo "$*" >>"$SARD_FAKE_ARGV_LOG"
+if [ "$body" = @- ]; then
+  body="$(cat)"
+  printf '%s\n' "$body" >>"$SARD_FAKE_STDIN_LOG"
+fi
 echo "$url $body" >>"$SARD_FAKE_CURL_LOG"
 printf '%s' "${SARD_FAKE_CURL_CODE:-204}"
 F
 chmod +x "$fakebin/curl"
-export SARD_FAKE_CURL_LOG="$work/curl.log"
+export SARD_FAKE_CURL_LOG="$work/curl.log" SARD_FAKE_ARGV_LOG="$work/argv.log" SARD_FAKE_STDIN_LOG="$work/stdin.log"
 : >"$SARD_FAKE_CURL_LOG"
+: >"$SARD_FAKE_ARGV_LOG"
+: >"$SARD_FAKE_STDIN_LOG"
 PATH="$fakebin:$PATH" sard_complete_wizard http://h:8080 'pa"ss\word-1234' log_one >/dev/null
 expect "wizard calls" \
   "http://h:8080/api/v1/onboarding/setup-session {\"code\":\"$old\"}
 http://h:8080/api/v1/onboarding/ca 
 http://h:8080/api/v1/onboarding/admin {\"password\":\"pa\\\"ss\\\\word-1234\"}" \
   "$(cat "$SARD_FAKE_CURL_LOG")"
+
+# 5a. The code and the password never reach argv; they arrive on stdin.
+if grep -qF -e "$old" -e 'word-1234' "$SARD_FAKE_ARGV_LOG"; then
+  fail "the code or the password is on the command line: $(cat "$SARD_FAKE_ARGV_LOG")"
+fi
+grep -qF 'word-1234' "$SARD_FAKE_STDIN_LOG" || fail "the password did not arrive on stdin"
+grep -qF "$old" "$SARD_FAKE_STDIN_LOG" || fail "the code did not arrive on stdin"
 
 # 5b. sard_curl can be replaced: the requests go through it, with the cookie jar asked for.
 : >"$SARD_FAKE_CURL_LOG"

@@ -54,7 +54,7 @@ api="http://127.0.0.1:8080/api/v1"
 cookies="$work/cookies"
 export SARD_WIZARD_COOKIES="$cookies"
 server_log() { docker compose logs --no-color server 2>&1; }
-login() { curl -fsS -c "$cookies" -H 'Content-Type: application/json' -d "{\"password\":\"$admin\"}" "$api/session" >/dev/null; }
+login() { curl -fsS -c "$cookies" -H 'Content-Type: application/json' --data-binary @- "$api/session" <<<"{\"password\":\"$admin\"}" >/dev/null; }
 get() { curl -fsS -b "$cookies" "$api$1"; }
 # Live built-in agents as "id status" lines.
 builtin_agents() { get /agents | python3 -c '
@@ -227,7 +227,7 @@ docker compose up -d --wait server >/dev/null || fail "6: the server is not heal
 admin="$(openssl rand -hex 16)"
 sard_complete_wizard "http://127.0.0.1:8080" "$admin" server_log || fail "6: the wizard after admin-reset"
 login || fail "6: sign-in with the recovered password"
-[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d "{\"password\":\"$old_admin\"}" "$api/session")" = 401 ] \
+[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' --data-binary @- "$api/session" <<<"{\"password\":\"$old_admin\"}")" = 401 ] \
   || fail "6: the old password still signs in"
 [ "$(get /agents | python3 -c 'import json,sys; print(" ".join(sorted(a["id"] for a in json.load(sys.stdin)["items"])))')" = "$agents_before_reset" ] \
   || fail "6: agents changed by the recovery"
