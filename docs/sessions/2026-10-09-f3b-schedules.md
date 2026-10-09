@@ -74,3 +74,10 @@
 - Р15 (решение владельца, c7df8a3): `schedules.catch_up_owed_since`, `CLAIM` берёт строки с `recorded_at >= since`;
   миграция V202610101200 исправлена на месте (`CatchUpClaimMigrationTest` гоняет Flyway по схеме до и после).
   Ограничение переноса F3a записано в ADR 0054.
+
+## Cleaner pass
+
+- Область: `git diff d688e20..HEAD`. `./scripts/crap.sh server`: максимум CRAP 6.0 (порог 6); затронутые функции
+  (`Firing.catchUp` 5.0, `Firing.journal` 5.0, `RunsApiImpl.listRuns` 5.0, `CatchUpPeriods.periods` 2.0, `RunMapping.*` 1.0-3.0)
+  при покрытии 100%, разложение не нужно. Кода не менял; веб (`inputOf`, `ScheduleEditor`) без находок.
+- `gate.sh server fast` и `gate.sh web fast`: PASSED.
