@@ -178,7 +178,17 @@ type sshHookRead struct {
 	h    *hooks
 }
 
+func (r sshHookRead) Read(p []byte) (int, error) {
+	if err := r.h.failing("read", r.name); err != nil {
+		return 0, err
+	}
+	return r.ReadFile.Read(p)
+}
+
 func (r sshHookRead) Stat() (fs.FileInfo, error) {
+	if err := r.h.failing("stat", r.name); err != nil {
+		return nil, err
+	}
 	info, err := r.ReadFile.Stat()
 	return r.h.seen(r.name, info, err)
 }
@@ -201,4 +211,21 @@ func (i uidInfo) Sys() any {
 	st := *i.FileInfo.Sys().(*syscall.Stat_t)
 	st.Uid = i.uid
 	return &st
+}
+
+// stepsOf are the kinds of the operations on the temporary file of name in
+// dir, the rename of it onto name, and the sync of the directory, in order.
+func (h *hooks) stepsOf(dir, name string) []string {
+	tmp := dir + "/." + name + ".tmp-"
+	var kinds []string
+	for _, op := range h.ops {
+		kind, rest, _ := strings.Cut(op, " ")
+		if kind == "rename" && (!strings.HasPrefix(rest, tmp) || !strings.HasSuffix(rest, " "+dir+"/"+name)) {
+			continue
+		}
+		if kind == "dirsync" || strings.HasPrefix(rest, tmp) {
+			kinds = append(kinds, kind)
+		}
+	}
+	return kinds
 }

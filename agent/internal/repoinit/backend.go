@@ -32,6 +32,8 @@ type Target struct {
 	Remote bool
 	Where  string
 	Bucket string
+	// Directory is the directory of an sftp: address on the server.
+	Directory string
 }
 
 // Inspect asks restic whether the repository is initialised: its id if so.

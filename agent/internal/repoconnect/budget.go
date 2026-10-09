@@ -90,3 +90,20 @@ func (w waiting) ReadSecret(prompt string) ([]byte, error) {
 	defer w.b.arm()
 	return w.Terminal.ReadSecret(prompt)
 }
+
+// Confirmation is how the command asks the operator to type an answer that
+// is seen (the confirmation of a host key): the line they typed, with the
+// time they took not counted in the budget. Nil when there is no terminal
+// or it cannot ask a line.
+func Confirmation(t hostsetup.Terminal, b *Budget) func(prompt string) (string, error) {
+	liner, ok := t.(hostsetup.LinePrompter)
+	if !ok {
+		return nil
+	}
+	return func(prompt string) (string, error) {
+		b.pause()
+		defer b.arm()
+		line, err := liner.ReadLine(prompt)
+		return string(line), err
+	}
+}

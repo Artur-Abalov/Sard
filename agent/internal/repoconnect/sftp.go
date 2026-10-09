@@ -358,23 +358,27 @@ func hostKeyFile(keyType string) string {
 // user (only now that the host key is trusted), known_hosts, the block of
 // the config; each change is audited when it is made.
 func (r *sshRun) write(ctx context.Context, t trust) *refusal.Failure {
-	if f := r.publicKey(ctx); f != nil {
-		return f
-	}
-	if t.write {
-		if f := r.trustHostKey(t); f != nil {
+	for _, step := range []func() *refusal.Failure{
+		func() *refusal.Failure { return r.publicKey(ctx) },
+		func() *refusal.Failure { return r.trustHostKey(t) },
+		r.writeConfig,
+	} {
+		if f := step(); f != nil {
 			return f
 		}
 	}
+	return nil
+}
+
+// writeConfig puts the block of the host into the config when it differs.
+func (r *sshRun) writeConfig() *refusal.Failure {
 	config, changed := ApplyBlock(r.config, r.Address.Host)
 	if !changed {
 		return nil
 	}
-	if f := r.Home.Write("config", config); f != nil {
-		return f
-	}
-	r.res.Changed = true
-	return nil
+	f := r.Home.Write("config", config)
+	r.res.Changed = r.res.Changed || f == nil
+	return f
 }
 
 // publicKey makes the key if there is none and settles its public part.
@@ -401,28 +405,41 @@ func (r *sshRun) createKey(ctx context.Context, keyPath string) *refusal.Failure
 	if f := r.Home.Ensure(); f != nil {
 		return f
 	}
-	host, err := r.Hostname()
-	if err != nil || host == "" {
-		host = "localhost"
-	}
-	if _, f := r.local(ctx, ProgKeygen, []string{"-q", "-t", "ed25519", "-N", "", "-C", "sard-agent@" + host, "-f", keyPath}); f != nil {
+	args := []string{"-q", "-t", "ed25519", "-N", "", "-C", "sard-agent@" + r.hostName(), "-f", keyPath}
+	if _, f := r.local(ctx, ProgKeygen, args); f != nil {
 		return f
 	}
 	r.res.Changed = true
 	r.Audit("ssh key of service user", r.Service.Name, "created")
 	pub, found, f := r.Home.Read(publicKeyFile)
-	if f != nil {
-		return f
-	}
 	if !found {
-		return refusal.Fail(refusal.SSHClientFailed, "ssh-keygen made no public part of the key: %s is missing", r.path(publicKeyFile))
+		return orFail(f, refusal.Fail(refusal.SSHClientFailed, "ssh-keygen made no public part of the key: %s is missing", r.path(publicKeyFile)))
 	}
 	r.res.PublicKey = strings.TrimSpace(string(pub))
 	return nil
 }
 
+// orFail is f, or other when f is nil.
+func orFail(f, other *refusal.Failure) *refusal.Failure {
+	if f != nil {
+		return f
+	}
+	return other
+}
+
+// hostName is the name of this host for the comment of the key.
+func (r *sshRun) hostName() string {
+	if host, err := r.Hostname(); err == nil && host != "" {
+		return host
+	}
+	return "localhost"
+}
+
 // trustHostKey writes the key of the server to known_hosts.
 func (r *sshRun) trustHostKey(t trust) *refusal.Failure {
+	if !t.write {
+		return nil
+	}
 	name := r.Address.KnownHostsName()
 	content, action := AddHostKey(r.known, name, t.key), "trusted"
 	if t.replace {

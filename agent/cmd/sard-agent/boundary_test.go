@@ -52,3 +52,42 @@ func TestPackageMainDoesNotDecideTheConnection(t *testing.T) {
 		}
 	})
 }
+
+// The decisions of the sftp: connection (the host key, the key, known_hosts,
+// the block of the config, the class of a refused login) live in
+// internal/repoconnect; package main only wires them to flags, output and
+// the host (A8b-2).
+func TestPackageMainDoesNotDecideTheSSHSetup(t *testing.T) {
+	forbidden := map[string]bool{
+		"repoconnect.FindKnown": true, "repoconnect.AddHostKey": true, "repoconnect.ReplaceHostKey": true,
+		"repoconnect.ParseKeyscan": true, "repoconnect.ApplyBlock": true, "repoconnect.ManagedBlock": true,
+	}
+	selectors(t, func(file string, pos token.Position, pkg, name string) {
+		if forbidden[pkg+"."+name] {
+			t.Errorf("%s: %s references %s.%s", file, pos, pkg, name)
+		}
+	})
+}
+
+func TestPackageMainImportsNothingToHandleKeysOrFingerprints(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("files %v, %v", files, err)
+	}
+	fset := token.NewFileSet()
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, name, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, imp := range file.Imports {
+			switch path := strings.Trim(imp.Path.Value, `"`); path {
+			case "crypto/sha256", "crypto/sha1", "crypto/hmac", "encoding/base64":
+				t.Errorf("%s imports %s", name, path)
+			}
+		}
+	}
+}

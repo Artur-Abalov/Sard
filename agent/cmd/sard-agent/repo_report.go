@@ -21,6 +21,7 @@ var repoClassCodes = map[refusal.Class]int{
 	refusal.ClassExists:     exitIdentityExists,
 	refusal.ClassTemporary:  exitTemporary,
 	refusal.ClassWrite:      exitWrite,
+	refusal.ClassTrust:      exitTrust,
 }
 
 // reportRepoError prints an error that is not a Failure yet: an agent error.

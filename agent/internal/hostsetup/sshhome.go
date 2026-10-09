@@ -123,6 +123,41 @@ func (h *SSHHome) ownerProblem(info fs.FileInfo) string {
 // is not. A file that is not a regular file with one name, of the service
 // user or root, within MaxSSHFileSize, is SSH_FILE_REJECTED and is not read.
 func (h *SSHHome) Read(name string) (data []byte, found bool, f *refusal.Failure) {
+	file, found, f := h.openRead(name)
+	if !found {
+		return nil, false, f
+	}
+	defer func() { _ = file.Close() }()
+	data, why := h.readJudged(file)
+	if why != "" {
+		return nil, false, h.rejected(name, why)
+	}
+	return data, true, nil
+}
+
+// readJudged reads the file once its descriptor says it is acceptable; why
+// is what is wrong with it.
+func (h *SSHHome) readJudged(file ReadFile) (data []byte, why string) {
+	info, err := file.Stat()
+	if err != nil {
+		return nil, "cannot be looked at: " + err.Error()
+	}
+	if why := h.fileProblem(info); why != "" {
+		return nil, why
+	}
+	data, err = io.ReadAll(io.LimitReader(file, MaxSSHFileSize+1))
+	if err != nil {
+		return nil, "cannot be read: " + err.Error()
+	}
+	if len(data) > MaxSSHFileSize {
+		return nil, fmt.Sprintf("is larger than %d bytes", MaxSSHFileSize)
+	}
+	return data, ""
+}
+
+// openRead opens a file of ~/.ssh for reading without following a link;
+// found is false, with no failure, for one that is not there.
+func (h *SSHHome) openRead(name string) (ReadFile, bool, *refusal.Failure) {
 	if h.ssh == nil {
 		return nil, false, nil
 	}
@@ -135,26 +170,7 @@ func (h *SSHHome) Read(name string) (data []byte, found bool, f *refusal.Failure
 	case err != nil:
 		return nil, false, h.rejected(name, "cannot be opened: "+err.Error())
 	}
-	defer func() { _ = file.Close() }()
-	info, err := file.Stat()
-	if err != nil {
-		return nil, false, h.rejected(name, "cannot be looked at: "+err.Error())
-	}
-	if why := h.fileProblem(info); why != "" {
-		return nil, false, h.rejected(name, why)
-	}
-	data, err = io.ReadAll(io.LimitReader(file, MaxSSHFileSize+1))
-	if err != nil || len(data) > MaxSSHFileSize {
-		return nil, false, h.rejected(name, h.readProblem(err))
-	}
-	return data, true, nil
-}
-
-func (h *SSHHome) readProblem(err error) string {
-	if err != nil {
-		return "cannot be read: " + err.Error()
-	}
-	return fmt.Sprintf("is larger than %d bytes", MaxSSHFileSize)
+	return file, true, nil
 }
 
 // fileProblem is why a file is not acceptable; "" if it is.

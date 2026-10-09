@@ -30,6 +30,10 @@ type addState struct {
 	s3 *repoconnect.S3Access
 	// rotation: the repository is connected already, the keys change (Н17).
 	rotation bool
+	// sftp is the state of an sftp: repository, nil for another kind.
+	sftp *sftpState
+	// plan is what the config says of the name before the command acts.
+	plan hostsetup.AddPlan
 }
 
 func (s *addState) final(c *hostCmd) string { return c.layout.PasswordFile(s.name) }
@@ -56,24 +60,16 @@ func (c *hostCmd) checkAddress() (string, *refusal.Failure) {
 	case "s3":
 		return c.checkS3()
 	case "sftp":
-		return "", refusal.Fail(refusal.BackendNotSupported, "sftp: addresses are not supported yet by this version of repo add: connect the repository by hand (docs/operator/05a-storage.md)")
+		return c.checkSFTP()
 	default:
 		return "", refusal.Fail(refusal.BackendNotSupported, "the address is of kind %q: repo add supports a local path, s3: or sftp:", kind)
 	}
 }
 
-// remoteFlags are the flags that belong to an s3: address.
-var remoteFlags = []struct{ name, flag string }{
-	{"access-key-id", "--access-key-id"}, {"region", "--region"},
-	{"secret-key-stdin", "--secret-key-stdin"}, {"secret-key-from-file", "--secret-key-from-file"},
-}
-
-// checkLocal: a local path takes none of the flags of an s3: address.
+// checkLocal: a local path takes none of the flags of a remote address.
 func (c *hostCmd) checkLocal() (string, *refusal.Failure) {
-	for _, f := range remoteFlags {
-		if c.opts.set[f.name] {
-			return "", usageFailureOf("%s is a flag for an s3: address, and the address is a local path", f.flag)
-		}
+	if f := c.checkFlagsOfKind("local"); f != nil {
+		return "", f
 	}
 	if hasControlCharacter(c.opts.address) {
 		return "", refusal.Fail(refusal.LocalPathInvalid, "%q holds a control character", c.opts.address)
@@ -103,6 +99,9 @@ func (c *hostCmd) checkS3() (string, *refusal.Failure) {
 		return "", f
 	}
 	if f := c.checkS3Flags(); f != nil {
+		return "", f
+	}
+	if f := c.checkFlagsOfKind("s3"); f != nil {
 		return "", f
 	}
 	c.s3 = addr
@@ -188,7 +187,7 @@ func (c *hostCmd) addPlanned(ctx context.Context, url string, plan hostsetup.Add
 	if err != nil {
 		return reportRepoError(ctx, c.stderr, "add", err)
 	}
-	st := &addState{name: c.opts.name, url: url, binary: binary}
+	st := &addState{name: c.opts.name, url: url, binary: binary, plan: plan}
 	if f := c.prepareAccess(st, plan); f != nil {
 		return c.fail(f)
 	}
@@ -201,8 +200,20 @@ func (c *hostCmd) addPlanned(ctx context.Context, url string, plan hostsetup.Add
 	return c.addLocked(ctx, st)
 }
 
+// prepareClient: an sftp: repository needs the OpenSSH client (Р36).
+func (c *hostCmd) prepareClient(st *addState) *refusal.Failure {
+	if (config.Repository{URL: st.url}).Backend() != "sftp" {
+		return nil
+	}
+	st.sftp = &sftpState{address: c.sftp}
+	return c.checkClient()
+}
+
 // prepareAccess settles the keys of an s3: repository (Р29, Р45, Н17).
 func (c *hostCmd) prepareAccess(st *addState, plan hostsetup.AddPlan) *refusal.Failure {
+	if f := c.prepareClient(st); f != nil {
+		return f
+	}
 	if (config.Repository{URL: st.url}).Backend() != "s3" {
 		return nil
 	}
@@ -236,7 +247,7 @@ func (c *hostCmd) refusePasswordWithKeys() *refusal.Failure {
 // repeatOf handles the command of a connected repository that changes
 // nothing: its code, and whether it was one.
 func (c *hostCmd) repeatOf(ctx context.Context, st *addState, plan hostsetup.AddPlan) (int, bool) {
-	if plan != hostsetup.AddUnchanged || st.rotation {
+	if plan != hostsetup.AddUnchanged || st.rotation || st.isSFTP() {
 		return exitOK, false
 	}
 	return c.reportUnchanged(ctx, st)
@@ -264,8 +275,11 @@ func (c *hostCmd) resticFor(st *addState, files repoconnect.Files, stderr io.Wri
 	password := strings.TrimSpace(string(st.Provided))
 	target := repoTarget(repo, checked, string(st.Provided), password, st.Generated)
 	target.Where = config.RedactURL(st.url)
-	if st.isS3() {
+	switch {
+	case st.isS3():
 		target.Remote, target.Bucket = true, c.s3.Bucket
+	case st.isSFTP():
+		target.Remote, target.Directory = true, st.sftp.address.Path
 	}
 	cli := newRestic(c.cfg, st.binary, c.deps, repo, runAs(c.who))
 	if stderr != nil {

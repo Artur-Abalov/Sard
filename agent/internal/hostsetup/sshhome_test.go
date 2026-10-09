@@ -92,11 +92,17 @@ func TestAMissingHomeAndSSHDirectoryAreMadeForTheServiceUserWhateverTheUmask(t *
 		t.Fatal(f)
 	}
 	for path, mode := range map[string]os.FileMode{home: 0o700, filepath.Join(home, ".ssh"): 0o700, filepath.Join(home, ".ssh", "known_hosts"): 0o600} {
-		info, err := os.Stat(path)
-		ok(t, err)
-		if info.Mode().Perm() != mode || int(info.Sys().(*syscall.Stat_t).Uid) != os.Getuid() {
-			t.Errorf("%s: mode %v", path, info.Mode().Perm())
-		}
+		assertOwnedWithMode(t, path, mode)
+	}
+}
+
+// assertOwnedWithMode: the path is the user's own, with the mode.
+func assertOwnedWithMode(t *testing.T, path string, mode os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	ok(t, err)
+	if info.Mode().Perm() != mode || int(info.Sys().(*syscall.Stat_t).Uid) != os.Getuid() {
+		t.Errorf("%s: mode %v", path, info.Mode().Perm())
 	}
 }
 
@@ -242,6 +248,23 @@ func TestAFileLargerThanOneMiBIsRejectedAndOneOfExactlyOneMiBIsRead(t *testing.T
 	assertFailure(t, f, refusal.SSHFileRejected, path, "1048576")
 }
 
+func TestAFileThatCannotBeLookedAtOrReadIsRejectedNamingThePathAndTheCause(t *testing.T) {
+	for _, step := range []string{"stat", "read"} {
+		home := t.TempDir()
+		ok(t, os.Mkdir(filepath.Join(home, ".ssh"), 0o700))
+		path := filepath.Join(home, ".ssh", "config")
+		ok(t, os.WriteFile(path, []byte("Host *\n"), 0o600))
+		hk := newHooks()
+		hk.fail[step] = "config"
+		h := openHome(t, hk.fs(), home)
+		data, found, f := h.Read("config")
+		assertFailure(t, f, refusal.SSHFileRejected, path, "injected")
+		if data != nil || found {
+			t.Errorf("%s: data %q, found %v", step, data, found)
+		}
+	}
+}
+
 // The private key is only looked at.
 func TestPresentLooksAtAFileWithoutOpeningIt(t *testing.T) {
 	home := t.TempDir()
@@ -287,28 +310,10 @@ func TestAFileIsWrittenWithItsOwnerBeforeItsContentAndRenamedInTheSameDirectory(
 	h := openHome(t, hk.fs(), home)
 	ok(t, errOf(h.Write("known_hosts", []byte("host key\n"))))
 	dir := filepath.Join(home, ".ssh")
-	var kinds []string
-	for _, op := range hk.ops {
-		kind, rest, _ := strings.Cut(op, " ")
-		switch {
-		case kind == "rename":
-			if !strings.HasPrefix(rest, dir+"/.known_hosts.tmp-") || !strings.HasSuffix(rest, " "+dir+"/known_hosts") {
-				t.Errorf("rename %s", rest)
-			}
-		case strings.HasPrefix(rest, dir+"/.known_hosts.tmp-") || kind == "dirsync":
-		default:
-			continue
-		}
-		kinds = append(kinds, kind)
-	}
-	if got := strings.Join(kinds, " "); got != "create chown chmod write sync rename dirsync" {
+	if got := strings.Join(hk.stepsOf(dir, "known_hosts"), " "); got != "create chown chmod write sync rename dirsync" {
 		t.Fatalf("order of operations: %s", got)
 	}
-	info, err := os.Stat(filepath.Join(dir, "known_hosts"))
-	ok(t, err)
-	if info.Mode().Perm() != 0o600 {
-		t.Errorf("mode %v", info.Mode().Perm())
-	}
+	assertOwnedWithMode(t, filepath.Join(dir, "known_hosts"), 0o600)
 	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
 		t.Errorf("entries %v", entries)
 	}

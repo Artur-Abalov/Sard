@@ -66,32 +66,37 @@ func TestANewRegionWithoutASecretKeySourceAsksTheSecretKeyAgain(t *testing.T) {
 // secret is read.
 func TestAPasswordSourceWithAChangeOfKeysIsRefusedBeforeAnySecretIsRead(t *testing.T) {
 	for _, flag := range []string{"--password-stdin", "--password-from-file"} {
-		h := newSetupHost(t)
-		h.connectedS3()
-		var opened []string
-		h.deps.openFile = func(p string) (io.ReadCloser, error) { opened = append(opened, p); return os.Open(p) }
-		src := h.path("outside/F")
-		h.write(src, "key\n", 0o600)
-		h.stdinIs("unread")
-		args := []string{"repo", "add", "extra", s3Address, "--access-key-id", "KEY-ID-2", "--secret-key-from-file", src, "--config", "C", flag}
-		if flag == "--password-from-file" {
-			args = append(args, h.path("outside/P"))
-		}
-		before := h.hostTree()
-		callsBefore := len(h.restic.calls)
-		code, _, stderr := h.sudo(args...)
-		assertCode(t, code, exitUsage)
-		if !strings.Contains(stderr, flag) || !strings.Contains(stderr, "password file") {
-			t.Errorf("%s: stderr %q", flag, stderr)
-		}
-		if len(opened) != 0 || h.stdin.String() != "unread" {
-			t.Errorf("%s: a source was read: opened %v, stdin %q", flag, opened, h.stdin.String())
-		}
-		if len(h.restic.calls) != callsBefore+1 || h.restic.calls[callsBefore].sub != "version" {
-			t.Errorf("%s: restic calls %v", flag, h.restic.subs()[callsBefore:])
-		}
-		h.assertHostUnchanged(before)
+		t.Run(flag, func(t *testing.T) { assertPasswordFlagRefusedBeforeSecrets(t, flag) })
 	}
+}
+
+func assertPasswordFlagRefusedBeforeSecrets(t *testing.T, flag string) {
+	t.Helper()
+	h := newSetupHost(t)
+	h.connectedS3()
+	var opened []string
+	h.deps.openFile = func(p string) (io.ReadCloser, error) { opened = append(opened, p); return os.Open(p) }
+	src := h.path("outside/F")
+	h.write(src, "key\n", 0o600)
+	h.stdinIs("unread")
+	args := []string{"repo", "add", "extra", s3Address, "--access-key-id", "KEY-ID-2", "--secret-key-from-file", src, "--config", "C", flag}
+	if flag == "--password-from-file" {
+		args = append(args, h.path("outside/P"))
+	}
+	before := h.hostTree()
+	callsBefore := len(h.restic.calls)
+	code, _, stderr := h.sudo(args...)
+	assertCode(t, code, exitUsage)
+	if !strings.Contains(stderr, flag) || !strings.Contains(stderr, "password file") {
+		t.Errorf("stderr %q", stderr)
+	}
+	if len(opened) != 0 || h.stdin.String() != "unread" {
+		t.Errorf("a source was read: opened %v, stdin %q", opened, h.stdin.String())
+	}
+	if len(h.restic.calls) != callsBefore+1 || h.restic.calls[callsBefore].sub != "version" {
+		t.Errorf("restic calls %v", h.restic.subs()[callsBefore:])
+	}
+	h.assertHostUnchanged(before)
 }
 
 // П17: the password file of the repository names the path when it does not open it.

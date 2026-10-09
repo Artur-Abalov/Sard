@@ -9,6 +9,7 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
+	"slices"
 	"strings"
 
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
@@ -101,17 +102,23 @@ func (k Known) Key(keys []HostKey) (HostKey, bool) {
 func FindKnown(content []byte, name string) Known {
 	var found Known
 	for n, l := range strings.Split(string(content), "\n") {
-		fields := strings.Fields(l)
-		if len(fields) < 3 || strings.HasPrefix(fields[0], "#") || strings.HasPrefix(fields[0], "@") {
-			continue
-		}
-		key := HostKey{Type: fields[1], Blob: fields[2]}
-		if key.Fingerprint() != "" && appliesTo(fields[0], name) {
+		if key, hostField, ok := entryOf(l); ok && appliesTo(hostField, name) {
 			found.Lines = append(found.Lines, n+1)
 			found.keys = append(found.keys, key)
 		}
 	}
 	return found
+}
+
+// entryOf reads a line of known_hosts that holds a key: its host field and
+// key. Comments, lines with a marker and lines that are no entry are none.
+func entryOf(l string) (key HostKey, hostField string, ok bool) {
+	fields := strings.Fields(l)
+	if len(fields) < 3 || strings.HasPrefix(fields[0], "#") || strings.HasPrefix(fields[0], "@") {
+		return HostKey{}, "", false
+	}
+	key = HostKey{Type: fields[1], Blob: fields[2]}
+	return key, fields[0], key.Fingerprint() != ""
 }
 
 // appliesTo: the host field of a line names the host.
@@ -121,15 +128,27 @@ func appliesTo(hostField, name string) bool {
 	}
 	matched := false
 	for pattern := range strings.SplitSeq(hostField, ",") {
-		if negated, found := strings.CutPrefix(pattern, "!"); found {
-			if globMatches(negated, name) {
-				return false
-			}
-			continue
+		verdict := patternVerdict(pattern, name)
+		if verdict < 0 {
+			return false
 		}
-		matched = matched || globMatches(pattern, name)
+		matched = matched || verdict > 0
 	}
 	return matched
+}
+
+// patternVerdict: 1 if a pattern of the field names the host, -1 if a
+// negated one does (the line is then not the host's at all), 0 if it
+// says nothing of it.
+func patternVerdict(pattern, name string) int {
+	negated, isNegation := strings.CutPrefix(pattern, "!")
+	switch {
+	case isNegation && globMatches(negated, name):
+		return -1
+	case !isNegation && globMatches(pattern, name):
+		return 1
+	}
+	return 0
 }
 
 // globMatches is the pattern matching of ssh: * is any run of characters,
@@ -141,26 +160,25 @@ func globMatches(pattern, name string) bool {
 
 func wildcard(pattern, name []rune) bool {
 	for len(pattern) > 0 {
-		switch pattern[0] {
-		case '*':
-			for i := 0; i <= len(name); i++ {
-				if wildcard(pattern[1:], name[i:]) {
-					return true
-				}
-			}
+		if pattern[0] == '*' {
+			return starMatches(pattern[1:], name)
+		}
+		if len(name) == 0 || (pattern[0] != '?' && pattern[0] != name[0]) {
 			return false
-		case '?':
-			if len(name) == 0 {
-				return false
-			}
-		default:
-			if len(name) == 0 || name[0] != pattern[0] {
-				return false
-			}
 		}
 		pattern, name = pattern[1:], name[1:]
 	}
 	return len(name) == 0
+}
+
+// starMatches: the pattern after a * matches some end of the name.
+func starMatches(rest, name []rune) bool {
+	for i := 0; i <= len(name); i++ {
+		if wildcard(rest, name[i:]) {
+			return true
+		}
+	}
+	return false
 }
 
 // hashedMatches: |1|salt|hash is the HMAC-SHA1 of the name keyed by the salt.
@@ -206,27 +224,22 @@ func ReplaceHostKey(content []byte, name string, key HostKey) []byte {
 
 // dropName is the line without the host's name: rest is what stays of
 // it ("" if nothing does); drop is false if the line has nothing to do
-// with the host.
+// with the host's own name (a wildcard that matches it is others' too).
 func dropName(l, name string) (rest string, drop bool) {
-	fields := strings.Fields(l)
-	if len(fields) < 3 || strings.HasPrefix(fields[0], "#") || strings.HasPrefix(fields[0], "@") || !appliesTo(fields[0], name) {
+	_, hostField, ok := entryOf(l)
+	if !ok || !appliesTo(hostField, name) {
 		return "", false
 	}
-	if strings.HasPrefix(fields[0], "|") {
+	if strings.HasPrefix(hostField, "|") {
 		return "", true
 	}
-	all := strings.Split(fields[0], ",")
-	var names []string
-	for _, pattern := range all {
-		if !strings.EqualFold(pattern, name) {
-			names = append(names, pattern)
-		}
-	}
-	if len(names) == len(all) {
-		return "", false // matched only through a wildcard: not this host's own entry
-	}
-	if len(names) == 0 {
+	all := strings.Split(hostField, ",")
+	names := slices.DeleteFunc(slices.Clone(all), func(pattern string) bool { return strings.EqualFold(pattern, name) })
+	switch {
+	case len(names) == len(all):
+		return "", false
+	case len(names) == 0:
 		return "", true
 	}
-	return strings.Replace(l, fields[0], strings.Join(names, ","), 1), true
+	return strings.Replace(l, hostField, strings.Join(names, ","), 1), true
 }

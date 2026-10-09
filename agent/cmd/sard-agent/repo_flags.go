@@ -50,6 +50,10 @@ type hostOptions struct {
 	secretKeyFromFile   string
 	// connectTimeout bounds the first access to the storage (Р33).
 	connectTimeout time.Duration
+	// The flags of an sftp: address (Р40): the fingerprint that confirms the
+	// host key, and the permission to replace a host key that changed.
+	hostKeyFingerprint string
+	replaceHostKey     bool
 	// set are the flags the command line gave, even with an empty value.
 	set map[string]bool
 	// name and address are the first and the second positional argument.
@@ -108,6 +112,8 @@ type flagValues struct {
 	secretKeyFromFile            *string
 	secretKeyStdin               *bool
 	connectTimeout               *time.Duration
+	hostKeyFingerprint           *string
+	replaceHostKey               *bool
 }
 
 func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
@@ -117,6 +123,7 @@ func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
 		stdin: new(bool), passwordStdin: new(bool), fromFile: new(string), passwordFromFile: new(string),
 		accessKeyID: new(string), region: new(string), secretKeyFromFile: new(string),
 		secretKeyStdin: new(bool), connectTimeout: new(time.Duration),
+		hostKeyFingerprint: new(string), replaceHostKey: new(bool),
 	}
 	if o&offerTimeout != 0 {
 		v.timeout = fs.Duration("timeout", defaultRepoTimeout, "")
@@ -150,6 +157,8 @@ func defineRemoteFlags(fs *flag.FlagSet, v *flagValues) {
 	v.region = fs.String("region", "", "")
 	v.secretKeyStdin = fs.Bool("secret-key-stdin", false, "")
 	v.secretKeyFromFile = fs.String("secret-key-from-file", "", "")
+	v.hostKeyFingerprint = fs.String("host-key-fingerprint", "", "")
+	v.replaceHostKey = fs.Bool("replace-host-key", false, "")
 	*v.connectTimeout = defaultConnectTimeout
 	fs.Var(positiveDuration{v.connectTimeout}, "connect-timeout", "")
 }
@@ -198,6 +207,7 @@ func parseFlags(spec cmdSpec, args []string, stderr io.Writer, defaultConfig str
 		passwordStdin: *v.passwordStdin, passwordFromFile: *v.passwordFromFile, args: args,
 		accessKeyID: *v.accessKeyID, region: *v.region, secretKeyStdin: *v.secretKeyStdin,
 		secretKeyFromFile: *v.secretKeyFromFile, connectTimeout: *v.connectTimeout, set: map[string]bool{},
+		hostKeyFingerprint: *v.hostKeyFingerprint, replaceHostKey: *v.replaceHostKey,
 	}
 	fs.Visit(func(f *flag.Flag) { opts.set[f.Name] = true })
 	setNames(&opts, positional)

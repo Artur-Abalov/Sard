@@ -100,13 +100,22 @@ func TestAFlagOfAnotherKindOfAddressIsRefusedWithItsName(t *testing.T) {
 		{"LOCAL", []string{"--region", "ru-central1"}, "--region"},
 		{"LOCAL", []string{"--secret-key-stdin"}, "--secret-key-stdin"},
 		{"LOCAL", []string{"--secret-key-from-file", "F"}, "--secret-key-from-file"},
+		{"LOCAL", []string{"--host-key-fingerprint", keyED.fingerprint()}, "--host-key-fingerprint"},
+		{"LOCAL", []string{"--replace-host-key"}, "--replace-host-key"},
+		{sftpAddress, []string{"--secret-key-stdin"}, "--secret-key-stdin"},
+		{sftpAddress, []string{"--secret-key-from-file", "F"}, "--secret-key-from-file"},
+		{sftpAddress, []string{"--access-key-id", keyID1}, "--access-key-id"},
+		{sftpAddress, []string{"--region", "ru-central1"}, "--region"},
+		{s3Address, []string{"--host-key-fingerprint", keyED.fingerprint(), "--access-key-id", keyID1, "--secret-key-stdin"}, "--host-key-fingerprint"},
+		{s3Address, []string{"--replace-host-key", "--access-key-id", keyID1, "--secret-key-stdin"}, "--replace-host-key"},
 	} {
-		h := newSetupHost(t)
+		h := newSFTPHost(t)
 		before := h.hostTree()
 		address := c.address
 		if address == "LOCAL" {
 			address = h.extraDir()
 		}
+		h.stdinIs(s3Marker)
 		code, _, stderr := h.sudo(append([]string{"repo", "add", "extra", address, "--config", "C"}, c.flags...)...)
 		assertCode(t, code, exitUsage)
 		if !strings.Contains(stderr, c.name) {
@@ -212,17 +221,4 @@ func TestTheOtherKindsOfAddressStayRefusedAndNameTheSupportedOnes(t *testing.T) 
 		h.assertHostUnchanged(before)
 		h.assertValuesHidden(stdout, stderr)
 	}
-}
-
-// A8b-2 brings sftp:; until then it is refused and says so.
-func TestAnSFTPAddressIsNotConnectedYet(t *testing.T) {
-	h := newSetupHost(t)
-	before := h.hostTree()
-	code, _, stderr := h.sudo("repo", "add", "extra", "sftp:backup@nas.example.com:/srv/extra", "--config", "C")
-	assertRefusal(t, code, stderr, exitUsage, "BACKEND_NOT_SUPPORTED")
-	if !strings.Contains(stderr, "sftp") || !strings.Contains(stderr, "not supported yet") {
-		t.Errorf("stderr %q", stderr)
-	}
-	h.assertNoBackendCalls()
-	h.assertHostUnchanged(before)
 }

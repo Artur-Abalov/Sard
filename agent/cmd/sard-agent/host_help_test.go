@@ -25,7 +25,7 @@ func TestHelpDescribesFlagsPrivilegesAndExitCodes(t *testing.T) {
 		{[]string{"repo", "password"}, []string{"--reveal", "--config"}, "service user", []int{0, 2}},
 		{[]string{"repo", "list"}, []string{"--json", "--timeout", "--config"}, "service user", []int{0, 1, 2, 6}},
 		{[]string{"repo", "init"}, []string{"--generate-password", "--timeout", "--config"}, "sudo", []int{0, 1, 2, 4, 6, 7}},
-		{[]string{"repo", "add"}, []string{"--password-stdin", "--password-from-file", "--no-restart", "--timeout", "--connect-timeout", "--config"}, "sudo", []int{0, 1, 2, 4, 6, 7}},
+		{[]string{"repo", "add"}, []string{"--password-stdin", "--password-from-file", "--no-restart", "--timeout", "--connect-timeout", "--config"}, "sudo", []int{0, 1, 2, 4, 5, 6, 7}},
 	}
 	for _, c := range cases {
 		name := strings.Join(c.words, " ")

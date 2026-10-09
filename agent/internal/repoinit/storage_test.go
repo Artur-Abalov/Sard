@@ -134,3 +134,30 @@ func TestAnErrorOfTheAgentIsNotARefusalOfTheStorage(t *testing.T) {
 		}
 	}
 }
+
+// An sftp: target names the directory, not a bucket.
+var sftpTarget = repoinit.Target{
+	Name: "extra", Backend: "sftp", PasswordFile: "/etc/sard/secrets/restic-extra.pass",
+	Remote: true, Where: "sftp:backup@nas.example.com:/srv/extra", Directory: "/srv/extra",
+	Scrub: func(s string) string { return s },
+}
+
+func TestAnSFTPDirectoryWithoutTheRightsNamesTheDirectoryAndTheCause(t *testing.T) {
+	for _, cause := range []string{
+		"unable to create lock in backend: OpenFile /srv/extra/locks/1a2b: permission denied",
+		"Fatal: create repository at sftp:backup@nas.example.com:/srv/extra failed: sftp: MkdirAll /srv/extra/keys: permission denied",
+	} {
+		f := repoinit.FromRestic(t.Context(), exitErr(cause, nil), sftpTarget)
+		if f.Reason != refusal.StorageAccessDenied || f.Class != refusal.ClassUsage {
+			t.Fatalf("%q: %+v", cause, f)
+		}
+		for _, want := range []string{"permission denied", "/srv/extra", "nas.example.com", "read, write and delete"} {
+			if !strings.Contains(f.Detail, want) {
+				t.Errorf("detail lacks %q: %s", want, f.Detail)
+			}
+		}
+		if strings.Contains(f.Detail, "bucket") || strings.Contains(f.Detail, "secret") {
+			t.Errorf("detail talks of s3: %s", f.Detail)
+		}
+	}
+}

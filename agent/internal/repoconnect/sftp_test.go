@@ -199,6 +199,27 @@ func (w *sftpWorld) ready() {
 	w.put("config", repoconnect.ManagedBlock(nasHost))
 }
 
+// keygenArgs are the arguments of the last run of ssh-keygen.
+func (w *sftpWorld) keygenArgs() []string {
+	var args []string
+	for _, c := range w.client.calls {
+		if c.program == repoconnect.ProgKeygen {
+			args = c.args
+		}
+	}
+	return args
+}
+
+// assertMentions: the text holds every one of the words.
+func assertMentions(t *testing.T, text string, words ...string) {
+	t.Helper()
+	for _, word := range words {
+		if !strings.Contains(text, word) {
+			t.Errorf("%q is not in:\n%s", word, text)
+		}
+	}
+}
+
 func assertFail(t *testing.T, f *refusal.Failure, reason refusal.Reason, class refusal.Class, mentions ...string) {
 	t.Helper()
 	if f == nil || f.Reason != reason || f.Class != class {
@@ -254,14 +275,8 @@ func TestAFingerprintOfTheFlagThatMatchesAKeyOfAnyTypeTrustsThatKeyWithoutAQuest
 		t.Fatalf("known_hosts %q", w.read("known_hosts"))
 	}
 	wantAudit := "ssh host key of nas.example.com trusted ecdsa-sha2-nistp256 " + ecKey.Fingerprint()
-	if len(w.audit) != 1 || w.audit[0] != wantAudit {
-		t.Fatalf("audit %q", w.audit)
-	}
-	if len(w.asked) != 0 {
-		t.Fatalf("asked %q", w.asked)
-	}
-	if w.read("config") != repoconnect.ManagedBlock(nasHost) {
-		t.Fatalf("config %q", w.read("config"))
+	if !slices.Equal(w.audit, []string{wantAudit}) || len(w.asked) != 0 {
+		t.Fatalf("audit %q, asked %q", w.audit, w.asked)
 	}
 }
 
@@ -327,16 +342,10 @@ func TestWithoutAFlagTheTerminalShowsOneKeyByPreferenceAndYesTrustsIt(t *testing
 			if len(w.asked) != 1 {
 				t.Fatalf("asked %q", w.asked)
 			}
-			for _, want := range []string{"nas.example.com", "22", c.wantKey.Type, c.wantKey.Fingerprint(), c.advice} {
-				if !strings.Contains(w.asked[0], want) {
-					t.Errorf("the prompt lacks %q:\n%s", want, w.asked[0])
-				}
-			}
+			assertMentions(t, w.asked[0], "nas.example.com", "22", c.wantKey.Type, c.wantKey.Fingerprint(), c.advice)
+			assertMentions(t, w.read("known_hosts"), c.wantKey.Blob)
 			if strings.Count(w.asked[0], "SHA256:") != 1 {
 				t.Errorf("the prompt shows more than one key:\n%s", w.asked[0])
-			}
-			if !strings.Contains(w.read("known_hosts"), c.wantKey.Blob) {
-				t.Errorf("known_hosts %q", w.read("known_hosts"))
 			}
 		})
 	}
@@ -495,22 +504,13 @@ func TestWithoutAKeyOneIsMadeAfterTheHostKeyAndItsPublicPartIsReturned(t *testin
 	if f != nil || !res.Changed || res.PublicKey != "ssh-ed25519 AAAAnew sard-agent@host1" {
 		t.Fatalf("%+v %v", res, f)
 	}
-	var keygen clientCall
-	for _, c := range w.client.calls {
-		if c.program == repoconnect.ProgKeygen {
-			keygen = c
-		}
-	}
 	want := []string{"-q", "-t", "ed25519", "-N", "", "-C", "sard-agent@host1", "-f", filepath.Join(w.ssh, "id_ed25519")}
-	if !slices.Equal(keygen.args, want) {
-		t.Fatalf("ssh-keygen %q, want %q", keygen.args, want)
-	}
 	wantAudit := []string{"ssh key of service user sard-agent created", "ssh host key of nas.example.com trusted ssh-ed25519 " + edKey.Fingerprint()}
-	if !slices.Equal(w.audit, wantAudit) {
-		t.Fatalf("audit %q", w.audit)
+	if got := w.keygenArgs(); !slices.Equal(got, want) {
+		t.Fatalf("ssh-keygen %q, want %q", got, want)
 	}
-	if w.read("config") != repoconnect.ManagedBlock(nasHost) {
-		t.Fatalf("config %q", w.read("config"))
+	if !slices.Equal(w.audit, wantAudit) || w.read("config") != repoconnect.ManagedBlock(nasHost) {
+		t.Fatalf("audit %q, config %q", w.audit, w.read("config"))
 	}
 }
 
@@ -546,13 +546,7 @@ func TestAPrivateKeyWithoutAPublicPartYieldsItFromTheKeygenWithoutWritingAFile(t
 	if w.read("id_ed25519.pub") != "<absent>" {
 		t.Fatal("the public part was written")
 	}
-	var args []string
-	for _, c := range w.client.calls {
-		if c.program == repoconnect.ProgKeygen {
-			args = c.args
-		}
-	}
-	if !slices.Equal(args, []string{"-y", "-f", filepath.Join(w.ssh, "id_ed25519")}) {
+	if args := w.keygenArgs(); !slices.Equal(args, []string{"-y", "-f", filepath.Join(w.ssh, "id_ed25519")}) {
 		t.Fatalf("ssh-keygen %q", args)
 	}
 }

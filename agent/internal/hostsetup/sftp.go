@@ -88,27 +88,41 @@ func cutHostPath(rest string) (authority, path string, found bool) {
 
 // sftpAuthority reads [user@]host[:port].
 func sftpAuthority(address, authority string) (SFTPAddress, *refusal.Failure) {
-	user, hostPort, hasUser := strings.Cut(authority, "@")
-	if !hasUser {
-		user, hostPort = "", authority
-	}
-	switch {
-	case strings.Contains(user, ":"):
-		return SFTPAddress{}, addressInvalid(address, "it holds a password (user:password@): ssh uses a key, never a password")
-	case hasUser && user == "":
-		return SFTPAddress{}, addressInvalid(address, "it names no user before @")
+	user, hostPort, f := sftpUser(address, authority)
+	if f != nil {
+		return SFTPAddress{}, f
 	}
 	if strings.HasPrefix(user, "-") || strings.HasPrefix(hostPort, "-") {
 		return SFTPAddress{}, addressInvalid(address, "the user and the host must not start with -")
 	}
-	host, port, hasPort, ok := splitHost(hostPort)
-	if !ok || host == "" {
-		return SFTPAddress{}, addressInvalid(address, "it names no valid host")
+	host, port, f := sftpHostPort(address, hostPort)
+	return SFTPAddress{User: user, Host: host, Port: port}, f
+}
+
+// sftpHostPort reads host[:port]; the port is 22 when there is none.
+func sftpHostPort(address, hostPort string) (host string, port int, f *refusal.Failure) {
+	host, portText, hasPort, ok := splitHost(hostPort)
+	switch {
+	case !ok || host == "":
+		return "", 0, addressInvalid(address, "it names no valid host")
+	case hasPort && !validPort(portText):
+		return "", 0, addressInvalid(address, "the port must be 1-65535")
 	}
-	if hasPort && !validPort(port) {
-		return SFTPAddress{}, addressInvalid(address, "the port must be 1-65535")
+	return host, portOf(portText, hasPort), nil
+}
+
+// sftpUser cuts the user from [user@]host[:port]; a password is refused.
+func sftpUser(address, authority string) (user, hostPort string, f *refusal.Failure) {
+	user, hostPort, hasUser := strings.Cut(authority, "@")
+	switch {
+	case !hasUser:
+		return "", authority, nil
+	case strings.Contains(user, ":"):
+		return "", "", addressInvalid(address, "it holds a password (user:password@): ssh uses a key, never a password")
+	case user == "":
+		return "", "", addressInvalid(address, "it names no user before @")
 	}
-	return SFTPAddress{User: user, Host: host, Port: portOf(port, hasPort)}, nil
+	return user, hostPort, nil
 }
 
 func portOf(port string, hasPort bool) int {

@@ -82,6 +82,8 @@ type hostCmd struct {
 	cfg            config.Config
 	// s3 is the address of an s3: repository, once it is checked.
 	s3 hostsetup.S3Address
+	// sftp is the address of an sftp: repository, once it is checked.
+	sftp hostsetup.SFTPAddress
 	// budget is the time --timeout allows; nil outside repo add.
 	budget *repoconnect.Budget
 }

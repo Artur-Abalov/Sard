@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
+	"slices"
 	"strings"
 	"testing"
 
@@ -101,25 +102,28 @@ func TestKnownHostsFindsPlainListedHashedAndPortEntriesOfAHostAndNoOthers(t *tes
 		"@revoked " + line(nasHost, edKey) + // 8
 		"@cert-authority " + line(nasHost, edKey) + // 9
 		line("!"+nasHost+",*.example.com", otherKey) + // 10
-		line("NAS.Example.COM", rsaKey) // 11
+		line("NAS.Example.COM", rsaKey) + // 11
+		line("!other.example.com,"+nasHost, rsaKey) // 12 (a negation of another host does not matter)
 	m := repoconnect.FindKnown([]byte(content), nasHost)
-	wantLines := []int{3, 4, 5, 7, 11}
-	if len(m.Lines) != len(wantLines) {
-		t.Fatalf("lines %v, want %v", m.Lines, wantLines)
+	if !slices.Equal(m.Lines, []int{3, 4, 5, 7, 11, 12}) {
+		t.Fatalf("lines %v", m.Lines)
 	}
-	for i, n := range wantLines {
-		if m.Lines[i] != n {
-			t.Fatalf("lines %v, want %v", m.Lines, wantLines)
+	for _, k := range []repoconnect.HostKey{rsaKey, ecKey, oldEd, wildKey} {
+		if !m.Matches([]repoconnect.HostKey{k}) {
+			t.Errorf("the key %s of an entry is not matched", k.Type)
 		}
 	}
-	if !m.Matches([]repoconnect.HostKey{rsaKey}) || !m.Matches([]repoconnect.HostKey{ecKey}) || !m.Matches([]repoconnect.HostKey{oldEd}) || !m.Matches([]repoconnect.HostKey{wildKey}) {
-		t.Error("a key of an entry is not matched")
+	for _, keys := range [][]repoconnect.HostKey{{edKey}, {otherKey}, nil} {
+		if m.Matches(keys) {
+			t.Errorf("the keys %v that are no entry's are matched", keys)
+		}
 	}
-	if m.Matches([]repoconnect.HostKey{edKey}) || m.Matches([]repoconnect.HostKey{otherKey}) || m.Matches(nil) {
-		t.Error("a key that is no entry's is matched")
-	}
+}
+
+func TestKnownHostsFindsTheEntriesOfAPortOnly(t *testing.T) {
+	content := line(nasHost, oldEd) + line(nasPort, otherKey) + line("*.example.com", wildKey)
 	port := repoconnect.FindKnown([]byte(content), nasPort)
-	if len(port.Lines) != 1 || port.Lines[0] != 6 || !port.Matches([]repoconnect.HostKey{otherKey}) {
+	if !slices.Equal(port.Lines, []int{2}) || !port.Matches([]repoconnect.HostKey{otherKey}) {
 		t.Errorf("the entries of the port: %+v", port)
 	}
 }

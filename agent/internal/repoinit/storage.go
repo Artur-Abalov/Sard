@@ -61,6 +61,9 @@ var remoteMessages = map[refusal.Reason]func(cause string, t Target) string{
 		return fmt.Sprintf("the storage at %s does not accept the key: %s; check --access-key-id and the secret key", t.Where, cause)
 	},
 	refusal.StorageAccessDenied: func(cause string, t Target) string {
+		if t.Directory != "" {
+			return fmt.Sprintf("the server of %s denied access: %s; the user of the address needs the right to read, write and delete in the directory %s", t.Where, cause, t.Directory)
+		}
 		return fmt.Sprintf("the storage at %s denied access: %s; the key id or the secret may be wrong (some storages answer a wrong secret with Access Denied): check both; the key needs read, write and delete in the bucket %s", t.Where, cause, t.Bucket)
 	},
 	refusal.BucketNotFound: func(cause string, t Target) string {

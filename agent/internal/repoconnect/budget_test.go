@@ -169,3 +169,40 @@ func TestCancelEndsTheContextWithTheCauseGiven(t *testing.T) {
 		t.Fatalf("ctx %v, cause %v", ctx.Err(), context.Cause(ctx))
 	}
 }
+
+// slowLiner is a terminal that can ask a line too.
+type slowLiner struct {
+	slowTerm
+	answer string
+}
+
+func (s slowLiner) ReadLine(string) ([]byte, error) {
+	s.clock.advance(s.wait)
+	return []byte(s.answer), nil
+}
+
+func TestTheTimeTheOperatorTakesToConfirmIsNotDeductedEither(t *testing.T) {
+	clock := newHandClock()
+	ctx, b := repoconnect.NewBudget(t.Context(), clock, 10*time.Second)
+	defer b.Cancel(nil)
+	confirm := repoconnect.Confirmation(slowLiner{slowTerm{clock: clock, wait: time.Hour}, "yes"}, b)
+	answer, err := confirm("Trust it? ")
+	if err != nil || answer != "yes" {
+		t.Fatalf("answer %q, err %v", answer, err)
+	}
+	stillOpen(t, ctx)
+	if got := clock.lastAsked(); got != 10*time.Second {
+		t.Fatalf("timer re-armed for %v", got)
+	}
+}
+
+func TestWithoutATerminalThatCanAskALineThereIsNoConfirmation(t *testing.T) {
+	_, b := repoconnect.NewBudget(t.Context(), newHandClock(), time.Second)
+	defer b.Cancel(nil)
+	if repoconnect.Confirmation(nil, b) != nil {
+		t.Error("a confirmation without a terminal")
+	}
+	if repoconnect.Confirmation(slowTerm{clock: newHandClock()}, b) != nil {
+		t.Error("a confirmation by a terminal that cannot ask a line")
+	}
+}

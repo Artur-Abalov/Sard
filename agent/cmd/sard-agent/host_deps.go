@@ -20,8 +20,13 @@ import (
 // clock, the user lookup, the file system, systemd, the system log and the
 // terminal.
 type hostDeps struct {
-	clock      repoconnect.TimeClock
-	exec       restic.Executor
+	clock repoconnect.TimeClock
+	exec  restic.Executor
+	// sshExec runs the programs of the OpenSSH client (ssh-keyscan,
+	// ssh-keygen, sftp) as the service user (A8b-2).
+	sshExec restic.Executor
+	// hostname is the name of this host, for the comment of a new ssh key.
+	hostname   func() (string, error)
 	executable func() (string, error)
 	// euid is the effective user id of the process: the right to run a
 	// command comes from it (Р5).
@@ -64,6 +69,8 @@ func productionHostDeps() hostDeps {
 	return hostDeps{
 		clock:      realEnrollClock{},
 		exec:       restic.ProcessExecutor{},
+		sshExec:    restic.ProcessExecutor{},
+		hostname:   os.Hostname,
 		executable: os.Executable,
 		euid:       uint32(os.Geteuid()),
 		stat:       secrets.RealStat,

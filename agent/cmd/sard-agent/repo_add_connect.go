@@ -76,14 +76,17 @@ func (c *hostCmd) underInitLock(ctx context.Context, st *addState) int {
 }
 
 func (c *hostCmd) connectAndWrite(ctx context.Context, st *addState) int {
-	if f := c.prepareStorage(st); f != nil {
+	if f := c.prepareStorage(ctx, st); f != nil {
 		return c.fail(f)
+	}
+	if code, done := c.sftpRepeat(ctx, st); done {
+		return code
 	}
 	if f := c.connect(ctx, st); f != nil {
 		return c.failConnect(ctx, st, f)
 	}
-	if st.rotation && st.Attached {
-		return c.finishRotation(st)
+	if code, done := c.finishConnected(st); done {
+		return code
 	}
 	if f := c.writeRepository(st); f != nil {
 		return c.fail(f)
@@ -93,11 +96,27 @@ func (c *hostCmd) connectAndWrite(ctx context.Context, st *addState) int {
 	return c.finish()
 }
 
+// finishConnected ends the command for a repository that was connected
+// already and only its keys (Н17) or its ssh files (Р43) were set up again.
+func (c *hostCmd) finishConnected(st *addState) (int, bool) {
+	switch {
+	case st.rotation && st.Attached:
+		return c.finishRotation(st), true
+	case st.isSFTP() && st.plan == hostsetup.AddUnchanged && st.Attached:
+		return c.finishSSHUpdate(st), true
+	}
+	return exitOK, false
+}
+
 // prepareStorage makes ready what the storage needs on this host: the
-// directory of a local repository; an s3: storage needs nothing.
-func (c *hostCmd) prepareStorage(st *addState) *refusal.Failure {
-	if st.isS3() {
+// directory of a local repository, the ssh side of an sftp: one; an s3:
+// storage needs nothing.
+func (c *hostCmd) prepareStorage(ctx context.Context, st *addState) *refusal.Failure {
+	switch {
+	case st.isS3():
 		return nil
+	case st.isSFTP():
+		return c.setupSSH(ctx, st)
 	}
 	if err := c.prepareRepositoryDir(st.url); err != nil {
 		return writeFailed(err)
@@ -110,6 +129,7 @@ func (c *hostCmd) prepareStorage(st *addState) *refusal.Failure {
 // them, a repeat will too (Р16, П12). An interrupt or a timeout says it
 // in its own words.
 func (c *hostCmd) failConnect(ctx context.Context, st *addState, f *refusal.Failure) int {
+	c.noteSSHFilesStay(st)
 	if c.exists(st.final(c)) && repoinit.Interruption(ctx) == nil {
 		_, _ = fmt.Fprintf(c.stderr, "sard-agent repo add: %s will be used when the command is repeated\n", c.keptFiles(st))
 	}
@@ -194,7 +214,7 @@ func (c *hostCmd) writeRepository(st *addState) *refusal.Failure {
 
 // writeDropIn lets the service write to a local repository (Р13).
 func (c *hostCmd) writeDropIn(st *addState) *refusal.Failure {
-	if st.isS3() || !c.deps.systemd.Present() {
+	if !st.isLocal() || !c.deps.systemd.Present() {
 		return nil
 	}
 	dropIn := hostsetup.DropIn{FS: c.deps.fs, Dir: c.deps.dropInDir}
@@ -210,13 +230,20 @@ func (c *hostCmd) printAdded(st *addState) {
 		what = "Result: attached an existing repository."
 	}
 	backend, files := "local", "  password file: "+st.final(c)+generatedNote(st)+"\n"
-	if st.isS3() {
+	switch {
+	case st.isS3():
 		backend, files = "s3", "  env file:      "+c.layout.EnvFile(st.name)+"\n"+files
+	case st.isSFTP():
+		backend = "sftp"
 	}
-	_, _ = fmt.Fprintf(c.stdout, "Repository %q added.\n  backend:       %s\n  address:       %s\n  repository_id: %s\n%s%s\n",
-		st.name, backend, config.RedactURL(st.url), st.ID, files, what)
+	_, _ = fmt.Fprintf(c.stdout, "Repository %q added.\n  backend:       %s\n  address:       %s\n  repository_id: %s\n%s",
+		st.name, backend, config.RedactURL(st.url), st.ID, files)
+	if st.isSFTP() {
+		c.printSFTPAdded(st)
+	}
+	_, _ = fmt.Fprintf(c.stdout, "%s\n", what)
 	c.printKeyWarning(st.name)
-	if !st.isS3() {
+	if st.isLocal() {
 		_, _ = fmt.Fprintln(c.stdout, "\nWARNING: this repository is on this host: its backups are lost together with this host. Add a repository on another host or in cloud storage as well.")
 	}
 }
