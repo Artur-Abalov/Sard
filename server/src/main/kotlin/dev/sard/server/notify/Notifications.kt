@@ -6,6 +6,8 @@ package dev.sard.server.notify
 import dev.sard.server.runs.RunState
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.Trigger
+import dev.sard.server.scheduler.FireOutcome
+import dev.sard.server.scheduler.FireReason
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -35,6 +37,32 @@ data class RunNotice(
     val backup: BackupSizes?,
     /** The status of the source's run finished before this one; null for its first run (F3a). */
     val previousStatus: RunState? = null,
+    /** How many runs of the source failed in a row right before this one, of any trigger (F3b). */
+    val failuresBefore: Int = 0,
+    /** The schedule asks to hear of successful scheduled runs too; read when the message is sent (F3b). */
+    val notifyOnSuccess: Boolean = false,
+)
+
+/**
+ * A schedule fire that raised the alert (F3b, ADR 0054), read back at send time with the names a person
+ * recognises: the source and the agent's host, never configuration or repository.
+ */
+data class SkipAlertNotice(
+    val tenantId: UUID,
+    val fireId: UUID,
+    val sourceId: UUID,
+    val sourceName: String,
+    val agentHostname: String,
+    /** Fires skipped in a row, as the journal row counted them. */
+    val skippedInRow: Int,
+    val outcome: FireOutcome,
+    val reason: FireReason?,
+    /** The cron moment that was skipped. */
+    val scheduledFor: Instant,
+    /** The schedule's zone, to write [scheduledFor] in. */
+    val timezone: String,
+    /** The run that was active, for a fire skipped because of it. */
+    val activeRunId: UUID?,
 )
 
 /** What a notification tells of a run (ADR 0024): a manual run's result, a scheduled run's turn of the series. */
@@ -49,18 +77,16 @@ enum class Telling {
         fun of(notice: RunNotice): Telling? =
             when (notice.trigger) {
                 Trigger.MANUAL -> RESULT
-                Trigger.SCHEDULE, Trigger.CATCH_UP -> turn(notice.status, notice.previousStatus)
+                Trigger.SCHEDULE, Trigger.CATCH_UP -> turn(notice)
                 Trigger.VERIFICATION -> null
             }
 
-        private fun turn(
-            status: RunState,
-            previous: RunState?,
-        ): Telling? {
-            val failedBefore = previous == RunState.FAILED
+        private fun turn(notice: RunNotice): Telling? {
+            val failedBefore = notice.previousStatus == RunState.FAILED
             return when {
-                status == RunState.FAILED && !failedBefore -> FIRST_FAILURE
-                status == RunState.SUCCEEDED && failedBefore -> RECOVERY
+                notice.status == RunState.FAILED && !failedBefore -> FIRST_FAILURE
+                notice.status == RunState.SUCCEEDED && failedBefore -> RECOVERY
+                notice.status == RunState.SUCCEEDED && notice.notifyOnSuccess -> RESULT
                 else -> null
             }
         }
@@ -103,6 +129,11 @@ data class Message(
 /** Rules and wording (S9b): what to say about a run, or null when the run needs no notification. */
 fun interface NotificationFormatter {
     fun format(notice: RunNotice): Message?
+}
+
+/** The wording of the alert about fires skipped in a row (F3b); the one text a skip can have. */
+fun interface SkipAlertFormatter {
+    fun format(notice: SkipAlertNotice): Message
 }
 
 /** One way to reach people (Telegram now; email or a webhook later). */

@@ -4,6 +4,7 @@
 package dev.sard.server.notify
 
 import dev.sard.server.runs.StepState
+import dev.sard.server.runs.Trigger
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -27,8 +28,8 @@ class RunNoticeFormatter(
     private val words = wording(language)
 
     override fun format(notice: RunNotice): Message? {
-        val headline = Telling.of(notice)?.let { headline(notice, it) }
-        return headline?.let { compose(notice, it) }
+        val telling = Telling.of(notice) ?: return null
+        return headline(notice, telling)?.let { compose(notice, it, telling) }
     }
 
     private fun headline(
@@ -42,10 +43,13 @@ class RunNoticeFormatter(
     private fun compose(
         notice: RunNotice,
         headline: Headline,
+        telling: Telling,
     ): Message {
         val lines =
             listOf(
                 listOf(listOf(Message.Bold("${headline.icon} ${headline.text}: ${notice.sourceName}"))),
+                listOfNotNull(triggerLine(notice.trigger)),
+                recoveryLines(telling, notice),
                 listOf(listOf(Message.Text(words.agent), Message.Code(notice.agentHostname))),
                 listOfNotNull(durationLine(notice.startedAt, notice.finishedAt)),
                 outcome(notice),
@@ -55,6 +59,25 @@ class RunNoticeFormatter(
         val newline = listOf(Message.Text(NEWLINE))
         return Message(lines.flatMapIndexed { index, line -> if (index == 0) line else newline + line })
     }
+
+    /** A scheduled run says so on the line after the headline; a manual one does not (F3b). */
+    private fun triggerLine(trigger: Trigger): List<Message.Part>? =
+        when (trigger) {
+            Trigger.SCHEDULE -> listOf(Message.Text(words.onSchedule))
+            Trigger.CATCH_UP -> listOf(Message.Text(words.catchUpRun))
+            Trigger.MANUAL, Trigger.VERIFICATION -> null
+        }
+
+    /** A recovery counts the failures it ends, unless a person started it: then it is a plain success. */
+    private fun recoveryLines(
+        telling: Telling,
+        notice: RunNotice,
+    ): List<List<Message.Part>> =
+        if (telling == Telling.RECOVERY) {
+            listOf(listOf(Message.Text("${words.failuresBefore}${notice.failuresBefore}")))
+        } else {
+            emptyList()
+        }
 
     /** What came of the backup: its sizes, or why it failed and what is left of it. */
     private fun outcome(notice: RunNotice): List<List<Message.Part>> {
@@ -148,4 +171,11 @@ class NoticeFormatterConfiguration {
         @Value("\${sard.notify.language:en}") language: String,
         @Value("\${sard.console.public-url:}") publicUrl: String,
     ): NotificationFormatter = RunNoticeFormatter(NoticeLanguage.of(language), ConsoleUrl.parse(publicUrl))
+
+    /** The alert about fires skipped in a row (F3b): the same language and console address. */
+    @Bean
+    fun skipAlertFormatter(
+        @Value("\${sard.notify.language:en}") language: String,
+        @Value("\${sard.console.public-url:}") publicUrl: String,
+    ): SkipAlertFormatter = ScheduleAlertFormatter(NoticeLanguage.of(language), ConsoleUrl.parse(publicUrl))
 }

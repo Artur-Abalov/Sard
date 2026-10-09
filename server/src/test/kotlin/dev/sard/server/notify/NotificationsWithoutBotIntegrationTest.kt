@@ -13,6 +13,8 @@ import dev.sard.server.runs.Sources
 import dev.sard.server.runs.StepOutcome
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepTransitions
+import dev.sard.server.scheduler.ScheduleDraft
+import dev.sard.server.scheduler.Schedules
 import io.micrometer.core.instrument.MeterRegistry
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
@@ -42,6 +44,7 @@ class NotificationsWithoutBotIntegrationTest(
     @Autowired private val sources: Sources,
     @Autowired private val runs: Runs,
     @Autowired private val steps: StepTransitions,
+    @Autowired private val schedules: Schedules,
     @Autowired private val clock: MovableClock,
     @Autowired private val meters: MeterRegistry,
     @Autowired private val jdbc: JdbcTemplate,
@@ -50,7 +53,29 @@ class NotificationsWithoutBotIntegrationTest(
 
     @AfterTest
     fun `drop the tenant`() {
+        jdbc.update("delete from schedule_fires where tenant_id = ?", tenant.id)
+        jdbc.update("delete from schedules where tenant_id = ?", tenant.id)
         tenant.drop()
+    }
+
+    @Test
+    fun `an alert about skipped fires plans nothing without a bot`() {
+        clock.now = RUNS_NOW
+        val source = sources.create(tenant.id, tenant.draft("db-main"))
+        val schedule = schedules.set(tenant.id, source.id, ScheduleDraft("0 2 * * *", "UTC", enabled = true))
+        jdbc.update(
+            "insert into schedule_fires (id, tenant_id, schedule_id, kind, scheduled_for, outcome, reason, " +
+                "skipped_in_row, alert, recorded_at) values (?, ?, ?, 'schedule', ?, 'refused', 'unknown_plugin', 3, true, ?)",
+            java.util.UUID.randomUUID(),
+            tenant.id,
+            schedule.id,
+            java.sql.Timestamp.from(RUNS_NOW),
+            java.sql.Timestamp.from(RUNS_NOW),
+        )
+
+        repeat(3) { service.tick() }
+
+        assertEquals(0, jdbc.queryForObject("select count(*) from notification_deliveries", Int::class.java))
     }
 
     @Test

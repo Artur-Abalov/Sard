@@ -6,12 +6,16 @@ package dev.sard.server.notify
 import dev.sard.server.persistence.Agent
 import dev.sard.server.persistence.RunRecord
 import dev.sard.server.persistence.RunStepRecord
+import dev.sard.server.persistence.ScheduleFireRecord
+import dev.sard.server.persistence.ScheduleRecord
 import dev.sard.server.persistence.SourceRecord
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.runs.RunState
 import dev.sard.server.runs.RunViews
 import dev.sard.server.runs.Trigger
+import dev.sard.server.scheduler.FireOutcome
+import dev.sard.server.scheduler.FireReason
 import org.hibernate.Session
 import java.time.Instant
 import java.util.UUID
@@ -22,15 +26,36 @@ data class Unplanned(
     val runId: UUID,
 )
 
-/** A pending delivery whose time has come. */
+/** A schedule fire that raised an alert and has no delivery through a channel yet (F3b). */
+data class UnplannedAlert(
+    val tenantId: UUID,
+    val fireId: UUID,
+)
+
+/** A pending delivery whose time has come: about a run or, exactly one of the two, a schedule fire. */
 data class DueDelivery(
     val tenantId: UUID,
     val id: UUID,
-    val runId: UUID,
+    val runId: UUID?,
+    val fireId: UUID?,
     val channel: String,
     val attempts: Int,
     val createdAt: Instant,
-)
+) {
+    /** What the delivery is about, as the log names it. */
+    val subject: String get() = if (fireId != null) "schedule fire $fireId" else "run $runId"
+}
+
+/** What a claimed delivery tells about, read back at send time. */
+sealed interface Claimed {
+    data class Finished(
+        val notice: RunNotice,
+    ) : Claimed
+
+    data class Alert(
+        val notice: SkipAlertNotice,
+    ) : Claimed
+}
 
 private const val UNPLANNED = """
     select new dev.sard.server.notify.Unplanned(r.tenantId, r.id) from RunRecord r
@@ -40,8 +65,17 @@ private const val UNPLANNED = """
         where d.tenantId = r.tenantId and d.runId = r.id and d.channel = :channel)
     order by r.finishedAt, r.id"""
 
+private const val UNPLANNED_ALERTS = """
+    select new dev.sard.server.notify.UnplannedAlert(f.tenantId, f.id) from ScheduleFireRecord f
+    where f.alert = true and f.recordedAt >= :since
+      and not exists (
+        select 1 from NotificationDeliveryRecord d
+        where d.tenantId = f.tenantId and d.fireId = f.id and d.channel = :channel)
+    order by f.recordedAt, f.id"""
+
 private const val DUE = """
-    select new dev.sard.server.notify.DueDelivery(d.tenantId, d.id, d.runId, d.channel, d.attempts, d.createdAt)
+    select new dev.sard.server.notify.DueDelivery(
+        d.tenantId, d.id, d.runId, d.fireId, d.channel, d.attempts, d.createdAt)
     from NotificationDeliveryRecord d
     where d.status = 'pending' and d.nextAttemptAt <= :now and d.channel in :channels
     order by d.nextAttemptAt, d.id"""
@@ -52,6 +86,11 @@ private const val PLAN = """
     insert into notification_deliveries (id, tenant_id, run_id, channel, status, next_attempt_at, created_at)
     values (:id, :tenant, :run, :channel, 'pending', :now, :now)
     on conflict (tenant_id, run_id, channel) do nothing"""
+
+private const val PLAN_ALERT = """
+    insert into notification_deliveries (id, tenant_id, fire_id, channel, status, next_attempt_at, created_at)
+    values (:id, :tenant, :fire, :channel, 'pending', :now, :now)
+    on conflict (tenant_id, fire_id, channel) do nothing"""
 
 private const val CLAIM = """
     update notification_deliveries set next_attempt_at = :until
@@ -97,6 +136,21 @@ class Deliveries(
                 .list()
         }
 
+    /** Alerts recorded since [since] without a delivery through [channel], oldest first. */
+    fun unplannedAlerts(
+        channel: String,
+        since: Instant,
+        limit: Int,
+    ): List<UnplannedAlert> =
+        sessions.system { session ->
+            session
+                .createSelectionQuery(UNPLANNED_ALERTS, UnplannedAlert::class.java)
+                .setParameter("since", since)
+                .setParameter("channel", channel)
+                .setMaxResults(limit)
+                .list()
+        }
+
     /** Pending deliveries through [channels] due at [now], longest waiting first. */
     fun due(
         now: Instant,
@@ -134,16 +188,36 @@ class Deliveries(
             }
         }
 
+    /** One pending delivery through [channel] for each alert of [fires] of [tenantId]; returns how many are new. */
+    fun planAlerts(
+        tenantId: UUID,
+        fires: List<UUID>,
+        channel: String,
+        now: Instant,
+    ): Int =
+        sessions.inTenant(tenantId) { session ->
+            fires.sumOf { fire ->
+                session
+                    .createNativeMutationQuery(PLAN_ALERT)
+                    .setParameter("id", ids.next())
+                    .setParameter("tenant", tenantId)
+                    .setParameter("fire", fire)
+                    .setParameter("channel", channel)
+                    .setParameter("now", now)
+                    .executeUpdate()
+            }
+        }
+
     /**
      * Takes [delivery] for one attempt: it is not due again until [until], so a crash during the
-     * send leads to another attempt then. Returns the run to tell about, or null when another
+     * send leads to another attempt then. Returns what to tell about, or null when another
      * sender took it first.
      */
     fun claim(
         delivery: DueDelivery,
         now: Instant,
         until: Instant,
-    ): RunNotice? =
+    ): Claimed? =
         sessions.inTenant(delivery.tenantId) { session ->
             val claimed =
                 session
@@ -153,7 +227,7 @@ class Deliveries(
                     .setParameter("id", delivery.id)
                     .setParameter("now", now)
                     .executeUpdate() == 1
-            if (claimed) notice(session, delivery.tenantId, delivery.runId) else null
+            if (claimed) claimed(session, delivery) else null
         }
 
     /** Stores how the attempt ended; false when the delivery is no longer pending. */
@@ -192,6 +266,39 @@ class Deliveries(
         .setParameter("attempts", closedAttempts(decision, attempts))
         .setParameter("error", closedReason(decision), String::class.java)
 
+    private fun claimed(
+        session: Session,
+        delivery: DueDelivery,
+    ): Claimed =
+        if (delivery.fireId != null) {
+            Claimed.Alert(alertNotice(session, delivery.tenantId, delivery.fireId))
+        } else {
+            Claimed.Finished(notice(session, delivery.tenantId, checkNotNull(delivery.runId)))
+        }
+
+    private fun alertNotice(
+        session: Session,
+        tenantId: UUID,
+        fireId: UUID,
+    ): SkipAlertNotice {
+        val fire = session.find(ScheduleFireRecord::class.java, fireId)
+        val schedule = session.find(ScheduleRecord::class.java, fire.scheduleId)
+        val source = session.find(SourceRecord::class.java, schedule.sourceId)
+        return SkipAlertNotice(
+            tenantId = tenantId,
+            fireId = fireId,
+            sourceId = source.id,
+            sourceName = source.name,
+            agentHostname = session.find(Agent::class.java, source.agentId).hostname,
+            skippedInRow = fire.skippedInRow,
+            outcome = FireOutcome.of(fire.outcome),
+            reason = fire.reason?.let(FireReason::of),
+            scheduledFor = fire.scheduledFor,
+            timezone = schedule.timezone,
+            activeRunId = fire.runId.takeIf { FireOutcome.of(fire.outcome) == FireOutcome.SKIPPED_ACTIVE },
+        )
+    }
+
     private fun notice(
         session: Session,
         tenantId: UUID,
@@ -224,8 +331,23 @@ class Deliveries(
             startedAt = run.startedAt,
             backup = stepView.backup?.let { BackupSizes(it.totalBytes, it.addedBytes) },
             previousStatus = previousStatus(session, run),
+            failuresBefore = failuresBefore(session, run),
+            notifyOnSuccess = run.scheduleId?.let { session.find(ScheduleRecord::class.java, it).notifyOnSuccess } ?: false,
         )
     }
+
+    /** How many runs failed in a row right before [run], of any trigger; a cancelled or succeeded run ends the count. */
+    private fun failuresBefore(
+        session: Session,
+        run: RunRecord,
+    ): Int =
+        session
+            .createSelectionQuery(PREVIOUS_STATUS, String::class.java)
+            .setParameter("source", run.sourceId)
+            .setParameter("queued", run.queuedAt)
+            .setParameter("run", run.id)
+            .resultStream
+            .use { statuses -> statuses.takeWhile { RunState.of(it) == RunState.FAILED }.count().toInt() }
 
     private fun previousStatus(
         session: Session,

@@ -47,6 +47,9 @@ services:
       SARD_TELEGRAM_CHAT_ID: ${SARD_TELEGRAM_CHAT_ID:-}
       SARD_CONSOLE_PUBLIC_URL: ${SARD_CONSOLE_PUBLIC_URL:-}
       SARD_NOTIFY_LANGUAGE: ${SARD_NOTIFY_LANGUAGE:-}
+      # The server's time zone: the zone a schedule without its own is read in (F3b, ADR 0054). An IANA name
+      # such as Europe/Berlin; anything else is read as UTC.
+      TZ: ${TZ:-UTC}
       # /downloads/agent/: the agent packages baked into the image (docs/release.md).
       SARD_AGENT_DOWNLOADS: ${SARD_AGENT_DOWNLOADS:-true}
       # Where hosts fetch them from in the install commands of the console (U1b); empty means

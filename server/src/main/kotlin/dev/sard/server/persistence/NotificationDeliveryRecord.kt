@@ -12,7 +12,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * One notification of one run through one channel (migration V202610021200, S9a). Rows are
+ * One notification of one run, or of one schedule fire that raised an alert (F3b), through one channel (migration V202610021200, S9a). Rows are
  * written and moved only by guarded native statements in `notify/Deliveries`, so the entity
  * serves reads and the schema validation.
  */
@@ -21,8 +21,10 @@ import java.util.UUID
 class NotificationDeliveryRecord(
     @Id
     val id: UUID,
-    @Column(name = "run_id", nullable = false, updatable = false)
-    val runId: UUID,
+    @Column(name = "run_id", updatable = false)
+    val runId: UUID?,
+    @Column(name = "fire_id", updatable = false)
+    val fireId: UUID?,
     @Column(nullable = false, updatable = false)
     val channel: String,
     @Column(nullable = false, updatable = false)
@@ -41,5 +43,5 @@ class NotificationDeliveryRecord(
     @Column(name = "tenant_id", nullable = false, updatable = false)
     val tenantId: UUID? = null,
 ) {
-    override fun toString() = "NotificationDeliveryRecord(id=$id, runId=$runId, channel=$channel, status=$status)"
+    override fun toString() = "NotificationDeliveryRecord(id=$id, runId=$runId, fireId=$fireId, channel=$channel, status=$status)"
 }

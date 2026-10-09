@@ -33,6 +33,8 @@ private fun notice(
     backup: BackupSizes? = if (step == StepState.SUCCEEDED) GIB else null,
     trigger: Trigger = Trigger.MANUAL,
     previous: RunState? = null,
+    failuresBefore: Int = if (previous == RunState.FAILED) 1 else 0,
+    notifyOnSuccess: Boolean = false,
 ) = RunNotice(
     tenantId = UUID.randomUUID(),
     runId = RUN,
@@ -49,6 +51,8 @@ private fun notice(
     startedAt = startedAt,
     backup = backup,
     previousStatus = previous,
+    failuresBefore = failuresBefore,
+    notifyOnSuccess = notifyOnSuccess,
 )
 
 private fun Message.text() = parts.joinToString("") { it.text }
@@ -116,14 +120,60 @@ class RunNoticeFormatterTest {
     }
 
     @Test
-    fun `Первая ошибка запуска по расписанию уведомляется так же, как ошибка ручного`() {
-        val manual = format(notice(step = StepState.FAILED, message = "disk full")).text()
-        for (trigger in listOf(Trigger.SCHEDULE, Trigger.CATCH_UP)) {
+    fun `Первая ошибка запуска по расписанию уведомляется как ошибка ручного, со строкой триггера второй`() {
+        val manual = format(notice(step = StepState.FAILED, message = "disk full")).lines()
+        val triggerLines = mapOf(Trigger.SCHEDULE to "По расписанию", Trigger.CATCH_UP to "Догоняющий запуск после простоя сервера")
+        for ((trigger, line) in triggerLines) {
             for (previous in listOf(null, RunState.SUCCEEDED, RunState.CANCELLED)) {
                 val scheduled =
                     notice(step = StepState.FAILED, message = "disk full", trigger = trigger, previous = previous)
-                assertEquals(manual, format(scheduled).text(), "$trigger after $previous")
+                val expected = manual.take(1) + line + manual.drop(1)
+                assertEquals(expected, format(scheduled).lines(), "$trigger after $previous")
             }
+        }
+    }
+
+    @Test
+    fun `Полный текст сообщения о первой ошибке по расписанию на русском и английском`() {
+        val failed = notice(step = StepState.FAILED, message = "restic exited with code 1", trigger = Trigger.SCHEDULE)
+        val ru =
+            """
+            ❌ Бэкап завершился ошибкой: db-main
+            По расписанию
+            Агент: db1.example.com
+            Длительность: 2 мин 30 с
+            Причина: restic exited with code 1
+            Запуск: $RUN
+            $LINK
+            """.trimIndent()
+        assertEquals(ru, format(failed).text())
+        val en =
+            """
+            ❌ Backup failed: db-main
+            On schedule
+            Agent: db1.example.com
+            Duration: 2 min 30 s
+            Reason: restic exited with code 1
+            Run: $RUN
+            $LINK
+            """.trimIndent()
+        assertEquals(en, format(failed, NoticeLanguage.EN).text())
+        val catchUp = format(failed.copy(trigger = Trigger.CATCH_UP), NoticeLanguage.EN).lines()
+        assertEquals("Catch-up run after server downtime", catchUp[1])
+    }
+
+    @Test
+    fun `Пометка триггера есть у каждого неуспешного статуса шага`() {
+        val headlines =
+            mapOf(
+                StepState.FAILED to "❌ Бэкап завершился ошибкой: db-main",
+                StepState.REJECTED to "❌ Бэкап отклонён агентом: db-main",
+                StepState.LOST to "❌ Бэкап потерян: db-main",
+                StepState.TIMED_OUT to "❌ Бэкап прерван по таймауту: db-main",
+            )
+        for ((step, headline) in headlines) {
+            val lines = format(notice(step = step, trigger = Trigger.SCHEDULE, previous = RunState.SUCCEEDED)).lines()
+            assertEquals(listOf(headline, "По расписанию"), lines.take(2), "$step")
         }
     }
 
@@ -140,20 +190,77 @@ class RunNoticeFormatterTest {
     }
 
     @Test
-    fun `Первый успех запуска по расписанию после ошибок уведомляется как восстановление`() {
-        val recovered = notice(trigger = Trigger.SCHEDULE, previous = RunState.FAILED)
-        val expected =
+    fun `Полный текст сообщения о восстановлении на русском и английском`() {
+        val recovered = notice(trigger = Trigger.SCHEDULE, previous = RunState.FAILED, failuresBefore = 3)
+        val ru =
             """
-            ✅ Бэкап снова выполнен после ошибок: db-main
+            ✅ Бэкап снова работает: db-main
+            По расписанию
+            Ошибок подряд перед этим: 3
             Агент: db1.example.com
             Длительность: 2 мин 30 с
             Всего: 1,5 ГиБ, добавлено: 12,3 МиБ
             Запуск: $RUN
             $LINK
             """.trimIndent()
-        assertEquals(expected, format(recovered).text())
-        val english = format(notice(trigger = Trigger.CATCH_UP, previous = RunState.FAILED), NoticeLanguage.EN)
-        assertEquals("✅ Backup succeeded again after failures: db-main", english.lines().first())
+        assertEquals(ru, format(recovered).text())
+        val en =
+            """
+            ✅ Backup is working again: db-main
+            On schedule
+            Failures in a row before this: 3
+            Agent: db1.example.com
+            Duration: 2 min 30 s
+            Total: 1.5 GiB, added: 12.3 MiB
+            Run: $RUN
+            $LINK
+            """.trimIndent()
+        assertEquals(en, format(recovered, NoticeLanguage.EN).text())
+    }
+
+    @Test
+    fun `Восстановление догоняющим запуском названо догоняющим`() {
+        val lines = format(notice(trigger = Trigger.CATCH_UP, previous = RunState.FAILED)).lines()
+        assertEquals(listOf("✅ Бэкап снова работает: db-main", "Догоняющий запуск после простоя сервера"), lines.take(2))
+    }
+
+    @Test
+    fun `Ручной успех после ошибок по расписанию - обычное сообщение без пометки и числа ошибок`() {
+        val lines = format(notice(trigger = Trigger.MANUAL, previous = RunState.FAILED, failuresBefore = 2)).lines()
+        assertEquals(listOf("✅ Бэкап выполнен: db-main", "Агент: db1.example.com"), lines.take(2))
+        assertTrue(lines.none { it.startsWith("Ошибок подряд") })
+    }
+
+    @Test
+    fun `С включённым уведомлением об успехе успех по расписанию уведомляет с пометкой`() {
+        val ok = notice(trigger = Trigger.SCHEDULE, previous = RunState.SUCCEEDED, notifyOnSuccess = true)
+        val expected =
+            """
+            ✅ Бэкап выполнен: db-main
+            По расписанию
+            Агент: db1.example.com
+            Длительность: 2 мин 30 с
+            Всего: 1,5 ГиБ, добавлено: 12,3 МиБ
+            Запуск: $RUN
+            $LINK
+            """.trimIndent()
+        assertEquals(expected, format(ok).text())
+        assertEquals("✅ Бэкап выполнен: db-main", format(ok.copy(previousStatus = null)).lines().first())
+        val afterCancel = ok.copy(previousStatus = RunState.CANCELLED)
+        assertEquals("✅ Бэкап выполнен: db-main", format(afterCancel).lines().first())
+    }
+
+    @Test
+    fun `С включённым уведомлением об успехе восстановление остаётся одним сообщением о восстановлении`() {
+        val recovered = notice(trigger = Trigger.SCHEDULE, previous = RunState.FAILED, notifyOnSuccess = true)
+        assertEquals("✅ Бэкап снова работает: db-main", format(recovered).lines().first())
+    }
+
+    @Test
+    fun `Включённое уведомление об успехе не добавляет сообщений об ошибках середины серии`() {
+        val formatter = RunNoticeFormatter(NoticeLanguage.RU, null)
+        val again = notice(step = StepState.FAILED, trigger = Trigger.SCHEDULE, previous = RunState.FAILED, notifyOnSuccess = true)
+        assertNull(MutFlow.underTest { formatter.format(again) })
     }
 
     @Test
