@@ -528,3 +528,31 @@ wizard`, `ok: agent port TLS, h2, certificate for localhost signed by the Sard C
   `shellcheck` в окружении нет, в репозитории не используется.
 - Мутационный прогон (`gate.sh server`/`web` без `fast`) не запускался.
 - Docker Hub отвечал 429 на часть загрузок образов; загрузки повторялись, пока не прошли.
+
+## Cleaner
+
+Меры до правок: `./scripts/crap.sh server`. Худшая функция — 6.0 (порог шлюза), выше 6.0 нет ни
+одной; из F4a на 6.0 стоят `OnboardingService.confirmCa`, `OnboardingService.state`,
+`SetupCodes.normalize`, `SetupCodes.accepts` (все 100% покрытия, CC 6). Ниже: `PasswordController.respond`
+5.0, `SessionAuthFilter.doFilterInternal` 5.0, `ServerCommand.run` 5.0, `CaImportSource.skipping` 5.0,
+`OnboardingAdminController.respond` 4.0. CRAP нигде не нарушен, поэтому правки — против дублирования.
+
+Сделано (поведение, контракты, тексты и коды ошибок прежние):
+
+- `api/Problems.kt`: `writeProblem(response, mapper, HttpStatus, code)` — заголовок берётся из статуса;
+  13 вызовов в `OnboardingControllers`, `PasswordController`, `SessionController` потеряли локальную
+  переменную `status` и литерал заголовка («Unauthorized», «Conflict», «Too Many Requests»).
+- `api/SessionCookies.kt`: `HttpServletRequest.cookie(name)` и `administratorSession()` теперь общие;
+  `SessionController.onMalformedSignIn` и `SessionAuthFilter.sessionOf` больше не ищут cookie вручную.
+- `pki/CaLedger.kt`: `CaUsage.reason()` — одна фраза о причине, по которой CA нельзя заменить;
+  раньше те же две строки были в `CaDirectory` и `CaImportSource`.
+- Тесты: `WIZARD_CODE` (REST) равен `CODE` (onboarding) вместо второго литерала.
+- Веб: `setupPending`/`setupFinished` читают шаг admin одной функцией.
+
+Проверено и оставлено: разбиение `CaDirectory` на `CaStore` (файлы), `CaLeftovers` (хвосты упавшего
+старта), `CaLedger` (база) и `CaImportFiles/Content/Profile` (источник) связное — у каждого одна
+причина меняться, `CaDirectory` только решает. Разбор кода из лога: в bash — один
+`scripts/lib/setup-wizard.sh`, его подключают smoke-server, test-self-agent и установочные тесты;
+Kotlin-версия в e2e `SetupWizard.kt` — тот же формат строки на другом языке, общего кода нет.
+`fetchOnboarding` и `onboardingQuery` в вебе различаются по ошибкам (простая ошибка против
+`ApiError`), их объединение изменило бы поведение guard — не тронуто.
