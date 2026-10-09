@@ -169,10 +169,42 @@
   (сначала пять новых функций были выше — упрощены).
 - mutflow по `dev.sard.server.selfbackup.*`: выживших нет.
 
+- `scripts/test-self-agent.sh` на образах `sard-server:e2e` и
+  `sard-agent:e2e` (версия `c7e70d8`): PASSED. Прошли проверки F5 1, 2 и 4 и
+  новая 7:
+  - CA и каталог установки только на чтение, запись отказывает;
+  - `.env` и ключ CA читаются;
+  - `sard_self` не выполняет update, create, temp и `lo_create`.
+- Полный `gate server` (с mutflow): **FAILED**, 3 выживших на 20 566
+  прогонов.
+  - `W2MutationTest`: снятие `requireUserSource()` выживало. Добавлен тест
+    системного источника — выживших в `selfbackup.*`, `W2MutationTest` и
+    `SourcesIntegrationTest` нет.
+  - `EnrollmentStatusTest` → `TenantSessions.kt:25-26`. В повторном прогоне
+    у `W2MutationTest` выжили мутанты в `Scheduler.tick`, `safeTick`, gauge
+    `lag`/`pending`/`waiting`, `TenantSessions.system`. Причина:
+    - сессия mutflow глобальная (`MutationRegistry.currentSession` —
+      `static volatile`, без привязки к потоку);
+    - закешированные Spring-контексты держат фоновые циклы (планировщик F3a
+      каждые 10 с, уведомления, диспетчер);
+    - их код выполняется внутри чужого окна `underTest` и становится
+      мутантом класса, который его не проверяет.
+  - Это не код F6 и не дефект `TenantSessions`. Гонка была и до F6 (с F3a),
+    F6 только добавил прогонов. Нужно системное решение — вопрос владельцу.
+  - Мой вклад в гонку убран: `SelfBackupIntegrationTest` больше не поднимает
+    свой контекст.
+
 **Не проверено (полагаю):**
-- Проверка 7 (`test-self-agent.sh`) не запускалась: нужны собранные образы
-  сервера и агента. Запуск — фаза 3, вместе с e2e.
 - Работа `repo add` в контейнере соседа — фаза 3.
+- Повторный полный `gate server` не запускался (около 1 ч): результат
+  зависит от времени из-за гонки выше.
+
+**Сборка образов в этой среде.**
+- Jar сервера собирается на хосте: в Docker keytool берёт только первый
+  сертификат бандла, а Java нужен CA прокси.
+- Затем `make e2e-assemble` с `--network host` и секретом `build-ca` из
+  `/root/.ccr/ca-bundle.crt` (apt и npm принимают бандл).
+- Docker Hub — через `registry-mirrors: mirror.gcr.io`.
 
 **Окружение.** Docker в контейнере сессии запускается вручную. Docker Hub
 отвечает 429, образы берутся через `mirror.gcr.io`. Maven Central
