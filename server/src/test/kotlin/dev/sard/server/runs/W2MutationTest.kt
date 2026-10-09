@@ -237,6 +237,18 @@ class W2MutationTest(
     }
 
     @Test
+    fun `a system source is neither replaced nor deleted, and stays as it was`() {
+        val created = sources.create(tenant.id, tenant.draft())
+        jdbc.update("update sources set system_role = 'self_keys' where id = ?", created.id)
+
+        assertFailsWith<SystemSourceProtected> {
+            MutFlow.underTest { sources.replace(tenant.id, created.id, tenant.draft(name = "other")) }
+        }
+        assertFailsWith<SystemSourceProtected> { MutFlow.underTest { sources.delete(tenant.id, created.id) } }
+        assertEquals("prod-db", sources.get(tenant.id, created.id).name)
+    }
+
+    @Test
     fun `a plugin that offers backup among other actions is accepted`() {
         val created = MutFlow.underTest { sources.create(tenant.id, tenant.draft()) }
 

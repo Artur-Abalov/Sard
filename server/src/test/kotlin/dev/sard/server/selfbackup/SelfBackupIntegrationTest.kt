@@ -42,12 +42,9 @@ import kotlin.test.assertTrue
 @MutFlowTest(includeTargets = [SelfBackups::class, Sources::class])
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
-    properties = [
-        "spring.grpc.server.port=0",
-        "sard.self-backup.timezone=Europe/Moscow",
-        "sard.self-backup.database-host=postgres",
-        "sard.self-backup.database-name=sard",
-    ],
+    // The same context as SourcesIntegrationTest: a context of its own would add scheduler threads that run
+    // while other classes' mutants are active.
+    properties = ["spring.grpc.server.port=0"],
 )
 @Import(TestcontainersConfiguration::class, RunsTestConfiguration::class)
 class SelfBackupIntegrationTest(
@@ -58,6 +55,7 @@ class SelfBackupIntegrationTest(
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
     @Autowired private val mapper: ObjectMapper,
+    @Autowired private val settings: SelfBackupSettings,
 ) {
     private val tenant = SelfBackupTenant(jdbc)
 
@@ -99,19 +97,16 @@ class SelfBackupIntegrationTest(
         val config = mapper.readTree(database.config)
         assertEquals("sard_self", config["user"].asString())
         assertEquals("sard-db", config["password_ref"].asString())
-        assertEquals("postgres", config["host"].asString())
+        assertEquals(settings.database.host, config["host"].asString())
+        assertEquals(settings.database.name, config["database"].asString())
         assertFalse(config["include_globals"].asBoolean())
         val keys = sources.get(tenant.id, state.sources[1].sourceId)
         assertEquals("files", keys.plugin)
         assertEquals(SystemRole.SELF_KEYS, keys.systemRole)
         for (source in state.sources) {
             val schedule = schedules.get(tenant.id, source.sourceId)
-            assertEquals(
-                ScheduleDraft("0 3 * * *", "Europe/Moscow", true),
-                schedule?.let {
-                    ScheduleDraft(it.cron, it.timezone, it.enabled)
-                },
-            )
+            assertEquals("0 3 * * *", settings.schedule.cron)
+            assertEquals(settings.schedule, schedule?.let { ScheduleDraft(it.cron, it.timezone, it.enabled) })
         }
     }
 
