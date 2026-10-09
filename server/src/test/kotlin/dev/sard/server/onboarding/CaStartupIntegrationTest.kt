@@ -636,6 +636,14 @@ class CaStartupIntegrationTest {
 
     @Test
     fun `Одновременные первые старты с одной базой получают один CA с записанным происхождением`() {
+        // The database is migrated and its partitions made before: the servers race for the CA, not for the schema.
+        start().close()
+        running.clear()
+        installation.pkiDir
+            .resolve("ca")
+            .toFile()
+            .deleteRecursively()
+        jdbc().update("delete from ca_origins")
         val start = CountDownLatch(1)
         val pool = Executors.newFixedThreadPool(2)
         val servers =
