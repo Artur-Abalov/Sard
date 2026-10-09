@@ -556,3 +556,9 @@ wizard`, `ok: agent port TLS, h2, certificate for localhost signed by the Sard C
 Kotlin-версия в e2e `SetupWizard.kt` — тот же формат строки на другом языке, общего кода нет.
 `fetchOnboarding` и `onboardingQuery` в вебе различаются по ошибкам (простая ошибка против
 `ApiError`), их объединение изменило бы поведение guard — не тронуто.
+
+После правок: `./scripts/crap.sh server` — худшая по-прежнему 6.0, строки F4a те же (CC не менялась:
+правки не трогали ветвления). `./scripts/gate.sh server fast` → `gate: PASSED (server, fast)`;
+`./scripts/gate.sh web fast` → `gate: PASSED (web, fast)`. Первый прогон сервера упал на detekt
+`MaxLineLength` в трёх строках новых правок (`SessionAuthFilter`, `CaDirectory`, `CaImportSource`) —
+строки разбиты, тексты сообщений прежние.

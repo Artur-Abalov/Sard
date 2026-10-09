@@ -151,8 +151,9 @@ class CaImportSource(
     ): CaImportRefused =
         refusal(
             CaImportRefusal.CA_ALREADY_PRESENT,
-            "the CA directory holds ${present.hex}, the source holds ${theirs.hex}: ${usage.reason()}, so the CA cannot be " +
-                "replaced; to move a server see docs/operator/08-migrate-and-remove.md",
+            "the CA directory holds ${present.hex}, the source holds ${theirs.hex}: " +
+                "${usage.reason()}, so the CA cannot be replaced; " +
+                "to move a server see docs/operator/08-migrate-and-remove.md",
         )
 
     /** The CA directory could not be written; the refusal names it, never a file's content. */

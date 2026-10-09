@@ -144,8 +144,8 @@ class CaDirectory(
     private fun missing(usage: CaUsage): CaStartRefused =
         CaStartRefused(
             CaStartRefusal.CA_MISSING,
-            "CA directory is empty: no CA in ${store.caPath}, and the database says the CA is in use (${usage.reason()}); " +
-                "set SARD_PKI_IMPORT_DIR to the backup of the CA to bring it back; $TOGETHER",
+            "CA directory is empty: no CA in ${store.caPath}, and the database says the CA is in use " +
+                "(${usage.reason()}); set SARD_PKI_IMPORT_DIR to the backup of the CA to bring it back; $TOGETHER",
         )
 
     /** A failed write while importing is a refusal that names the directory; otherwise the failure is passed on. */
