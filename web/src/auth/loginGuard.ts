@@ -24,22 +24,24 @@ export async function redirectIfSignedIn(
   return resolveRedirectTarget(redirectParam)
 }
 
-// Whether the visitor must go to the wizard first. A state that cannot be read is not
-// "pending": the login page opens as usual and its form reports a failure on submit.
-export async function setupPending(): Promise<boolean> {
+// Whether the admin step is pending, or null when the state cannot be read. An unreadable
+// state is neither "pending" nor "finished": the page opens as usual and reports the failure itself.
+async function adminStepPending(): Promise<boolean | null> {
   try {
     return adminPending(await fetchOnboarding())
   } catch {
-    return false
+    return null
   }
+}
+
+// Whether the visitor must go to the wizard first. A state that cannot be read is not
+// "pending": the login page opens as usual and its form reports a failure on submit.
+export async function setupPending(): Promise<boolean> {
+  return (await adminStepPending()) === true
 }
 
 // Whether the wizard has nothing left to do for this visitor: the admin step is done.
 // A state that cannot be read leaves the wizard open: it shows the failure itself.
 export async function setupFinished(): Promise<boolean> {
-  try {
-    return !adminPending(await fetchOnboarding())
-  } catch {
-    return false
-  }
+  return (await adminStepPending()) === false
 }
