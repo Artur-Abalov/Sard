@@ -22,7 +22,7 @@ import kotlin.reflect.KClass
 // Native SQL names tenant_id explicitly (ADR 0013, rule 8): the tenant of the schedule being fired.
 private const val CLAIM =
     "update schedule_fires set catch_up_fire_id = :fire where tenant_id = :tenant and schedule_id = :schedule " +
-        "and outcome = 'skipped_downtime' and catch_up_fire_id is null"
+        "and outcome = 'skipped_downtime' and catch_up_fire_id is null and recorded_at >= :since"
 
 /** A refused start of a schedule's run and what the journal says of it; [RunActive] is answered apart. */
 private val REFUSALS: Map<KClass<out RunsException>, Pair<FireOutcome, FireReason>> =
@@ -63,8 +63,10 @@ internal class Firing(
     /** A schedule is locked when either is due: the catch-up waits if only the cron is. */
     private fun catchUp(): RunView? {
         val at = schedule.catchUpAt?.takeIf { it <= now } ?: return null
+        val since = schedule.catchUpOwedSince ?: Instant.EPOCH
         schedule.catchUpAt = null
-        return attempt(at, FireKind.CATCH_UP)
+        schedule.catchUpOwedSince = null
+        return attempt(at, FireKind.CATCH_UP, since)
     }
 
     private fun cron(slots: CatchUpSlots): RunView? {
@@ -88,7 +90,10 @@ internal class Firing(
         slots: CatchUpSlots,
     ): RunView? {
         schedule.nextRunAt = due.next
-        schedule.catchUpAt = schedule.catchUpAt ?: slots.take()
+        if (schedule.catchUpAt == null) {
+            schedule.catchUpAt = slots.take()
+            schedule.catchUpOwedSince = now
+        }
         journal(FireKind.SCHEDULE, due.first, Result(FireOutcome.SKIPPED_DOWNTIME), Downtime(due))
         return null
     }
@@ -96,6 +101,7 @@ internal class Firing(
     private fun attempt(
         at: Instant,
         kind: FireKind,
+        owedSince: Instant = Instant.EPOCH,
     ): RunView? {
         val result =
             try {
@@ -108,7 +114,7 @@ internal class Firing(
             }
         schedule.skippedInRow = if (result.outcome.skip) schedule.skippedInRow + 1 else 0
         schedule.lastFiredAt = now
-        journal(kind, at, result)
+        journal(kind, at, result, owedSince = owedSince)
         return result.run
     }
 
@@ -117,6 +123,7 @@ internal class Firing(
         at: Instant,
         result: Result,
         downtime: Downtime? = null,
+        owedSince: Instant = Instant.EPOCH,
     ) {
         val record =
             ScheduleFireRecord(
@@ -135,16 +142,20 @@ internal class Firing(
                 recordedAt = now,
             )
         session.persist(record)
-        if (kind == FireKind.CATCH_UP) claimDowntimes(record.id)
+        if (kind == FireKind.CATCH_UP) claimDowntimes(record.id, owedSince)
         journal += kind to result.outcome
     }
 
-    /** The catch-up fire stands for the downtimes journaled so far and not claimed by an earlier one. */
-    private fun claimDowntimes(fire: UUID) {
+    /** The catch-up fire stands for the downtimes journaled since it became owed; earlier ones were cancelled (Р15). */
+    private fun claimDowntimes(
+        fire: UUID,
+        since: Instant,
+    ) {
         session.flush()
         session
             .createNativeMutationQuery(CLAIM)
             .setParameter("fire", fire)
+            .setParameter("since", since)
             .setParameter("tenant", schedule.tenantId)
             .setParameter("schedule", schedule.id)
             .executeUpdate()

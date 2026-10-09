@@ -16,11 +16,20 @@ ALTER TABLE schedule_fires ADD CONSTRAINT schedule_fires_catch_up_fire_fkey
 ALTER TABLE schedule_fires ADD CONSTRAINT schedule_fires_downtime_only_check
     CHECK (outcome = 'skipped_downtime' OR (NOT missed_count_capped AND catch_up_fire_id IS NULL));
 
--- Downtimes of F3a belong to the first catch-up fire recorded at or after them.
+-- When the owed catch-up became owed (Р15): a change of the schedule cancels a pending catch-up and leaves its
+-- downtimes to nobody; the next catch-up stands only for the downtimes recorded since it became owed.
+-- F3a kept only the time of the last change, which clears a pending catch-up: a pending one is owed since then.
+ALTER TABLE schedules ADD COLUMN catch_up_owed_since TIMESTAMPTZ;
+UPDATE schedules SET catch_up_owed_since = updated_at WHERE catch_up_at IS NOT NULL;
+
+-- Downtimes of F3a belong to the first catch-up fire recorded at or after them, unless the last change of the
+-- schedule came between and cancelled that catch-up: the only cancellation F3a data still shows.
 UPDATE schedule_fires d
 SET catch_up_fire_id = (
     SELECT c.id FROM schedule_fires c
+    JOIN schedules s ON s.tenant_id = c.tenant_id AND s.id = c.schedule_id
     WHERE c.tenant_id = d.tenant_id AND c.schedule_id = d.schedule_id AND c.kind = 'catch_up'
       AND c.recorded_at >= d.recorded_at
+      AND (d.recorded_at >= s.updated_at OR c.recorded_at < s.updated_at)
     ORDER BY c.recorded_at, c.id LIMIT 1)
 WHERE d.outcome = 'skipped_downtime';

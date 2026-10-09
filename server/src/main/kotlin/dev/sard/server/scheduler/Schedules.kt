@@ -133,6 +133,7 @@ class Schedules(
         record.enabled = draft.enabled
         record.nextRunAt = next(fires, draft.enabled, now)
         record.catchUpAt = null
+        record.catchUpOwedSince = null
         record.updatedAt = now
     }
 

@@ -529,6 +529,52 @@ class SchedulerIntegrationTest(
     }
 
     @Test
+    fun `a downtime whose catch-up a schedule change cancelled is left to nobody, the next catch-up has its own`() {
+        val source = source()
+        val schedule = schedule(source)
+        tickAt(at("2026-09-30T12:30:00Z"))
+        clock.now = at("2026-09-30T12:31:00Z")
+        set(source, ScheduleDraft(HOURLY, "UTC", enabled = false))
+        set(source, ScheduleDraft(HOURLY, "UTC", enabled = true))
+        assertNull(schedules.get(tenant.id, source.id)!!.catchUpAt)
+
+        tickAt(at("2026-09-30T15:30:00Z"))
+        tickAt(at("2026-09-30T15:30:02Z"))
+
+        val run = tables.runs().single()
+        assertEquals(period("2026-09-30T13:00:00Z", "2026-09-30T15:00:00Z", 3), periodOf(run.id))
+        val claimed = jdbc.queryForList("select scheduled_for from schedule_fires where catch_up_fire_id is not null")
+        assertEquals(1, claimed.size)
+        val orphans =
+            jdbc.queryForList(
+                "select missed_count from schedule_fires where outcome = 'skipped_downtime' and catch_up_fire_id is null",
+                Int::class.java,
+            )
+        assertEquals(listOf(2), orphans, "the downtime of 11:00-12:00 stays missed and unclaimed")
+        assertEquals(1, tables.fires(schedule.id).count { it.kind == "catch_up" })
+    }
+
+    @Test
+    fun `a change of notifyOnSuccess alone keeps the pending catch-up and its period`() {
+        val source = source()
+        val schedule = schedule(source)
+        tickAt(at("2026-09-30T12:30:00Z"))
+        val slot = nextCatchUp(schedule.id)
+        clock.now = at("2026-09-30T12:31:00Z")
+        set(source, ScheduleDraft(HOURLY, "UTC", enabled = true, notifyOnSuccess = true))
+        assertEquals(slot, nextCatchUp(schedule.id))
+
+        tickAt(at("2026-09-30T12:32:00Z"))
+        val run = tables.runs().single()
+        assertEquals(period("2026-09-30T11:00:00Z", "2026-09-30T12:00:00Z", 2), periodOf(run.id))
+    }
+
+    private fun nextCatchUp(scheduleId: UUID): Instant? =
+        jdbc
+            .queryForObject("select catch_up_at from schedules where id = ?", Timestamp::class.java, scheduleId)
+            ?.toInstant()
+
+    @Test
     fun `a count that hit its limit is marked capped in the journal and in the catch-up`() {
         val source = source()
         val schedule = schedule(source, cron = EVERY_MINUTE)

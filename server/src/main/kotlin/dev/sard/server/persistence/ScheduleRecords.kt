@@ -38,6 +38,10 @@ class ScheduleRecord(
     @Column(name = "catch_up_at")
     var catchUpAt: Instant? = null
 
+    /** When the owed catch-up became owed: the downtimes it stands for are those recorded since (F3b, Р15). */
+    @Column(name = "catch_up_owed_since")
+    var catchUpOwedSince: Instant? = null
+
     @Column(name = "last_fired_at")
     var lastFiredAt: Instant? = null
 
