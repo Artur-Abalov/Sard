@@ -299,7 +299,8 @@
     "RunTrigger": {
       "schedule": "schedule",
       "manual": "manual",
-      "verification": "verification"
+      "verification": "verification",
+      "catch_up": "catch-up"
     }
   },
   "install": {

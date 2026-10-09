@@ -587,7 +587,7 @@ export interface components {
             finishedAt: string | null;
         };
         /** @enum {string} */
-        RunTrigger: "schedule" | "manual" | "verification";
+        RunTrigger: "schedule" | "manual" | "verification" | "catch_up";
         /** @enum {string} */
         StepAction: "backup" | "restore" | "verify" | "run";
         /** @enum {string} */

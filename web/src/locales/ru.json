@@ -299,7 +299,8 @@
     "RunTrigger": {
       "schedule": "расписание",
       "manual": "вручную",
-      "verification": "проверка"
+      "verification": "проверка",
+      "catch_up": "догоняющий"
     }
   },
   "install": {

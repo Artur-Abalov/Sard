@@ -137,7 +137,7 @@ class ApiContractIntegrationTest(
     fun `run, trigger, agent and token states`() {
         val run = listOf("queued", "dispatched", "running", "succeeded", "failed", "cancelled")
         assertEquals(run, enumValues("RunStatus"))
-        assertEquals(listOf("schedule", "manual", "verification"), enumValues("RunTrigger"))
+        assertEquals(listOf("schedule", "manual", "verification", "catch_up"), enumValues("RunTrigger"))
         assertEquals(listOf("online", "offline"), enumValues("AgentStatus"))
         assertEquals(listOf("active", "used", "expired", "revoked"), enumValues("EnrollmentTokenStatus"))
     }

@@ -15,6 +15,8 @@ import dev.sard.server.runs.RunsTenant
 import dev.sard.server.runs.RunsTestConfiguration
 import dev.sard.server.runs.SourceView
 import dev.sard.server.runs.Sources
+import io.github.anschnapp.mutflow.MutFlow
+import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
@@ -39,7 +41,11 @@ private const val EVERY_MINUTE = "* * * * *"
 
 private fun at(text: String): Instant = Instant.parse(text)
 
-/** F3a verification 1-7: a fire is neither lost nor doubled. RUNS_NOW is 2026-09-30T10:00:00Z. */
+/**
+ * F3a verification 1-7: a fire is neither lost nor doubled. RUNS_NOW is 2026-09-30T10:00:00Z. Mutants run
+ * under single-threaded ticks only; the races call [Scheduler.tick] directly.
+ */
+@MutFlowTest
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = ["spring.grpc.server.port=0", QUIET_LOOP, SPACING],
@@ -78,11 +84,16 @@ class SchedulerIntegrationTest(
         source: SourceView,
         cron: String = HOURLY,
         zone: String = "UTC",
-    ): ScheduleView = schedules.set(tenant.id, source.id, ScheduleDraft(cron, zone, enabled = true))
+    ): ScheduleView = set(source, ScheduleDraft(cron, zone, enabled = true))
+
+    private fun set(
+        source: SourceView,
+        draft: ScheduleDraft,
+    ): ScheduleView = MutFlow.underTest { schedules.set(tenant.id, source.id, draft) }
 
     private fun tickAt(time: Instant) {
         clock.now = time
-        scheduler.tick()
+        MutFlow.underTest { scheduler.tick() }
     }
 
     /** A second server on the same database: its own scheduler, nothing shared but the tables. */
@@ -302,7 +313,7 @@ class SchedulerIntegrationTest(
     fun `7 - a disabled schedule does not fire and has no next fire`() {
         val source = source()
         val schedule = schedule(source)
-        schedules.set(tenant.id, source.id, ScheduleDraft(HOURLY, "UTC", enabled = false))
+        set(source, ScheduleDraft(HOURLY, "UTC", enabled = false))
 
         tickAt(at("2026-09-30T11:00:00Z"))
 
@@ -362,10 +373,10 @@ class SchedulerIntegrationTest(
         schedule(source)
         clock.now = at("2026-09-30T10:59:00Z")
 
-        val same = schedules.set(tenant.id, source.id, ScheduleDraft(HOURLY, "UTC", enabled = true))
+        val same = set(source, ScheduleDraft(HOURLY, "UTC", enabled = true))
         assertEquals(at("2026-09-30T11:00:00Z"), same.nextRunAt)
 
-        val changed = schedules.set(tenant.id, source.id, ScheduleDraft("30 * * * *", "UTC", enabled = true))
+        val changed = set(source, ScheduleDraft("30 * * * *", "UTC", enabled = true))
         assertEquals(at("2026-09-30T11:30:00Z"), changed.nextRunAt)
         assertTrue(changed.updatedAt > same.createdAt)
     }

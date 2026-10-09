@@ -2107,7 +2107,7 @@
       },
       "RunTrigger" : {
         "type" : "string",
-        "enum" : [ "schedule", "manual", "verification" ]
+        "enum" : [ "schedule", "manual", "verification", "catch_up" ]
       },
       "StepAction" : {
         "type" : "string",
