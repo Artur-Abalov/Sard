@@ -119,6 +119,13 @@ the bucket is not created by the command unless the key may create buckets;
 BACKEND_UNAVAILABLE). New keys for a name that is connected are checked the
 same way and replace the env file ("credentials updated", no restart).
 
+With --provider aws or b2 the address is s3:<bucket>[/<path>], without a scheme
+or a host, and the command builds the rest from --region, which --provider needs:
+aws gives s3:https://s3.<region>.amazonaws.com/<bucket>[/<path>], b2 gives
+s3:https://s3.<region>.backblazeb2.com/<bucket>[/<path>]. The region is not
+checked against a list: a region that does not exist fails at the storage
+(BACKEND_UNAVAILABLE). The env file gets AWS_DEFAULT_REGION=<region>.
+
 An sftp: storage: the connection is made with the ssh key of the service user,
 in the ssh directory of the home directory that passwd gives it (known_hosts,
 config, id_ed25519 and id_ed25519.pub in ~/.ssh), which the command sets up for
@@ -154,6 +161,7 @@ Flags:
   --access-key-id string       s3: the key id (required for an s3: address)
   --secret-key-stdin           s3: read the secret key from standard input
   --secret-key-from-file string  s3: read it from a file
+  --provider string            s3: aws or b2, builds the address from --region (--provider needs --region)
   --region string              s3: AWS_DEFAULT_REGION (1-64 characters of a-z 0-9 -)
   --host-key-fingerprint string  sftp: the fingerprint (SHA256:...) that confirms the host key
   --replace-host-key           sftp: replace a host key that changed (still needs the confirmation)

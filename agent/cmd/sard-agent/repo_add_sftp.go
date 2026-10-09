@@ -31,7 +31,7 @@ func (st *addState) isLocal() bool { return !st.isS3() && !st.isSFTP() }
 
 // foreignFlags are the flags that belong to one kind of address only (Р29, Р40).
 var foreignFlags = []struct{ name, flag, kind string }{
-	{"access-key-id", "--access-key-id", "s3"}, {"region", "--region", "s3"},
+	{"provider", "--provider", "s3"}, {"access-key-id", "--access-key-id", "s3"}, {"region", "--region", "s3"},
 	{"secret-key-stdin", "--secret-key-stdin", "s3"}, {"secret-key-from-file", "--secret-key-from-file", "s3"},
 	{"host-key-fingerprint", "--host-key-fingerprint", "sftp"}, {"replace-host-key", "--replace-host-key", "sftp"},
 }

@@ -46,8 +46,10 @@ type hostOptions struct {
 	// The flags of an s3: address (Р29): the secret key comes from the
 	// standard input, a file or the terminal, never from a value.
 	accessKeyID, region string
-	secretKeyStdin      bool
-	secretKeyFromFile   string
+	// provider is the preset of the storage address (Р50).
+	provider          string
+	secretKeyStdin    bool
+	secretKeyFromFile string
 	// connectTimeout bounds the first access to the storage (Р33).
 	connectTimeout time.Duration
 	// The flags of an sftp: address (Р40): the fingerprint that confirms the
@@ -109,6 +111,7 @@ type flagValues struct {
 	reveal, stdin, passwordStdin *bool
 	fromFile, passwordFromFile   *string
 	accessKeyID, region          *string
+	provider                     *string
 	secretKeyFromFile            *string
 	secretKeyStdin               *bool
 	connectTimeout               *time.Duration
@@ -121,7 +124,7 @@ func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
 		config: fs.String("config", defaultConfig, ""), timeout: new(time.Duration),
 		generate: new(bool), json: new(bool), noRestart: new(bool), reveal: new(bool),
 		stdin: new(bool), passwordStdin: new(bool), fromFile: new(string), passwordFromFile: new(string),
-		accessKeyID: new(string), region: new(string), secretKeyFromFile: new(string),
+		accessKeyID: new(string), region: new(string), provider: new(string), secretKeyFromFile: new(string),
 		secretKeyStdin: new(bool), connectTimeout: new(time.Duration),
 		hostKeyFingerprint: new(string), replaceHostKey: new(bool),
 	}
@@ -155,6 +158,7 @@ func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
 func defineRemoteFlags(fs *flag.FlagSet, v *flagValues) {
 	v.accessKeyID = fs.String("access-key-id", "", "")
 	v.region = fs.String("region", "", "")
+	v.provider = fs.String("provider", "", "")
 	v.secretKeyStdin = fs.Bool("secret-key-stdin", false, "")
 	v.secretKeyFromFile = fs.String("secret-key-from-file", "", "")
 	v.hostKeyFingerprint = fs.String("host-key-fingerprint", "", "")
@@ -205,7 +209,7 @@ func parseFlags(spec cmdSpec, args []string, stderr io.Writer, defaultConfig str
 		configPath: *v.config, timeout: *v.timeout, generate: *v.generate, json: *v.json,
 		noRestart: *v.noRestart, reveal: *v.reveal, stdin: *v.stdin, fromFile: *v.fromFile,
 		passwordStdin: *v.passwordStdin, passwordFromFile: *v.passwordFromFile, args: args,
-		accessKeyID: *v.accessKeyID, region: *v.region, secretKeyStdin: *v.secretKeyStdin,
+		accessKeyID: *v.accessKeyID, region: *v.region, provider: *v.provider, secretKeyStdin: *v.secretKeyStdin,
 		secretKeyFromFile: *v.secretKeyFromFile, connectTimeout: *v.connectTimeout, set: map[string]bool{},
 		hostKeyFingerprint: *v.hostKeyFingerprint, replaceHostKey: *v.replaceHostKey,
 	}

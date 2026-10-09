@@ -91,3 +91,40 @@ func TestPackageMainImportsNothingToHandleKeysOrFingerprints(t *testing.T) {
 		}
 	}
 }
+
+// stringLiterals calls visit for every string literal of the non-test files.
+func stringLiterals(t *testing.T, visit func(file string, pos token.Position, value string)) {
+	t.Helper()
+	files, err := filepath.Glob("*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("files %v, %v", files, err)
+	}
+	fset := token.NewFileSet()
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, name, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+				visit(name, fset.Position(lit.Pos()), lit.Value)
+			}
+			return true
+		})
+	}
+}
+
+// The table of providers of --provider lives in hostsetup (Р50): package
+// main passes the flags to hostsetup.ExpandProvider and holds no host of a
+// provider; only the help text shows the templates.
+func TestPackageMainHoldsNoHostOfAProvider(t *testing.T) {
+	stringLiterals(t, func(file string, pos token.Position, value string) {
+		holds := strings.Contains(value, "amazonaws.com") || strings.Contains(value, "backblazeb2.com")
+		if holds && file != "host_help.go" {
+			t.Errorf("%s: %s holds a host of a provider", file, pos)
+		}
+	})
+}

@@ -180,3 +180,46 @@ func S3EnvIdentity(env []byte) (id, region string) {
 	}
 	return id, region
 }
+
+// providerHosts are the presets of --provider (Р50): the host of the storage
+// from the region. The agent holds no list of regions: a region that does
+// not exist fails at the storage.
+var providerHosts = map[string]string{
+	"aws": "s3.%s.amazonaws.com",
+	"b2":  "s3.%s.backblazeb2.com",
+}
+
+// ExpandProvider is the address restic gets for s3:<bucket>[/<path>] with
+// the preset of a provider and a region (Р50). The address names no scheme
+// and no host; every misuse is a usage error that names the flag.
+func ExpandProvider(provider, region, address string) (string, *refusal.Failure) {
+	host, ok := providerHosts[provider]
+	if !ok {
+		return "", usageError("--provider must be one of: aws, b2")
+	}
+	if region == "" {
+		return "", usageError("--provider %s needs --region", provider)
+	}
+	if f := CheckRegion(region); f != nil {
+		return "", f
+	}
+	rest := strings.TrimPrefix(address, "s3:")
+	if f := checkPresetAddress(rest); f != nil {
+		return "", f
+	}
+	return "s3:https://" + fmt.Sprintf(host, region) + "/" + rest, nil
+}
+
+// checkPresetAddress: the bucket and the path of an address given with --provider.
+func checkPresetAddress(rest string) *refusal.Failure {
+	bucket, _, _ := strings.Cut(rest, "/")
+	switch {
+	case hasControl(rest):
+		return usageError("the address holds a control character")
+	case strings.Contains(rest, "://"):
+		return usageError("with --provider the address is s3:<bucket>[/<path>], without a scheme or a host")
+	case bucket == "":
+		return usageError("with --provider the address names no bucket: s3:<bucket>[/<path>]")
+	}
+	return nil
+}

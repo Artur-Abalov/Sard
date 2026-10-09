@@ -92,8 +92,11 @@ func (c *hostCmd) checkS3Flags() *refusal.Failure {
 }
 
 // checkS3 is Р28 and Р29: the address, then the flags of the key. The
-// address is written to the fragment as given.
+// address is written to the fragment as given, or as --provider expands it (Р50).
 func (c *hostCmd) checkS3() (string, *refusal.Failure) {
+	if f := c.expandPreset(); f != nil {
+		return "", f
+	}
 	addr, f := hostsetup.CheckS3Address(c.opts.address)
 	if f != nil {
 		return "", f
@@ -109,6 +112,18 @@ func (c *hostCmd) checkS3() (string, *refusal.Failure) {
 		_, _ = fmt.Fprintf(c.stderr, "warning: the address uses http: requests to the storage go without TLS; the data is encrypted by restic, but object names and signed requests are visible on the network\n")
 	}
 	return c.opts.address, nil
+}
+
+// expandPreset replaces the address with the one --provider builds (Р50).
+func (c *hostCmd) expandPreset() *refusal.Failure {
+	if !c.opts.set["provider"] {
+		return nil
+	}
+	expanded, f := hostsetup.ExpandProvider(c.opts.provider, c.opts.region, c.opts.address)
+	if f == nil {
+		c.opts.address = expanded
+	}
+	return f
 }
 
 func (c *hostCmd) checkLocalPath(path string) (string, *refusal.Failure) {

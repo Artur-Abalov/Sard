@@ -208,3 +208,36 @@ func TestTheMessageHidesWhatItCannotRedactAndRedactsWhatItCan(t *testing.T) {
 		}
 	}
 }
+
+// Р50: --provider builds the address of the storage from the region.
+func TestAProviderPresetExpandsTheAddressFromTheRegion(t *testing.T) {
+	for _, c := range []struct{ provider, region, address, want string }{
+		{"aws", "eu-central-1", "s3:bucket-b/extra", "s3:https://s3.eu-central-1.amazonaws.com/bucket-b/extra"},
+		{"b2", "us-west-004", "s3:bucket-b/extra", "s3:https://s3.us-west-004.backblazeb2.com/bucket-b/extra"},
+		{"aws", "us-east-1", "s3:bucket-b", "s3:https://s3.us-east-1.amazonaws.com/bucket-b"},
+	} {
+		got, f := hostsetup.ExpandProvider(c.provider, c.region, c.address)
+		if f != nil || got != c.want {
+			t.Errorf("%+v: got %q, %v", c, got, f)
+		}
+	}
+}
+
+func TestAnUnusableProviderPresetIsAUsageErrorThatNamesWhatIsWrong(t *testing.T) {
+	for _, c := range []struct{ provider, region, address, names string }{
+		{"yandex", "ru-central1", "s3:bucket-b/extra", "aws, b2"},
+		{"aws", "", "s3:bucket-b/extra", "--region"},
+		{"b2", "", "s3:bucket-b/extra", "--region"},
+		{"aws", "EU Central", "s3:bucket-b/extra", "--region"},
+		{"aws", "eu-central-1", "s3:https://s3.example.com/bucket-b/extra", "scheme or a host"},
+		{"aws", "eu-central-1", "s3:https://bucket-b", "scheme or a host"},
+		{"aws", "eu-central-1", "s3:", "bucket"},
+		{"aws", "eu-central-1", "s3:/extra", "bucket"},
+		{"aws", "eu-central-1", "s3:bucket-b/ex\ntra", "control character"},
+	} {
+		_, f := hostsetup.ExpandProvider(c.provider, c.region, c.address)
+		if f == nil || f.Class != refusal.ClassUsage || !strings.Contains(f.Detail, c.names) {
+			t.Errorf("%+v: %+v", c, f)
+		}
+	}
+}
