@@ -49,13 +49,15 @@ class FirstStartDocsTest {
     fun `The password variable is mentioned only in history and in the test that it is not read`() {
         val skipped = setOf(".git", "build", "node_modules", ".gradle", "dist", ".bin", ".kotlin", ".idea")
         val history = listOf("docs/sessions", "docs/adr", "docs/specs", "docs/qa").map { File(root, it) }
-        val found = root.walkTopDown()
-            .onEnter { dir -> dir.name !in skipped && dir !in history }
-            .filter { it.isFile && it.length() < 2_000_000 }
-            .filter { it != File(root, "docs/open-questions.md") }
-            .filter { runCatching { it.readText().contains("SARD_ADMIN_PASSWORD") }.getOrDefault(false) }
-            .map { it.relativeTo(root).path }
-            .toSortedSet()
+        val found =
+            root
+                .walkTopDown()
+                .onEnter { dir -> dir.name !in skipped && dir !in history }
+                .filter { it.isFile && it.length() < 2_000_000 }
+                .filter { it != File(root, "docs/open-questions.md") }
+                .filter { runCatching { it.readText().contains("SARD_ADMIN_PASSWORD") }.getOrDefault(false) }
+                .map { it.relativeTo(root).path }
+                .toSortedSet()
         assertEquals(
             setOf(
                 "server/src/test/kotlin/dev/sard/server/FirstStartDocsTest.kt",
