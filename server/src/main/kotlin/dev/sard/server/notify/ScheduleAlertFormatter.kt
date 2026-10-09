@@ -91,7 +91,10 @@ class ScheduleAlertFormatter(
         return listOf(Message.Text(words.activeRun), Message.Code("$run"))
     }
 
-    private fun linkLine(notice: SkipAlertNotice): List<Message.Part>? = console?.let { listOf(Message.Text(link(it, notice))) }
+    private fun linkLine(notice: SkipAlertNotice): List<Message.Part>? {
+        val address = console ?: return null
+        return listOf(Message.Text(link(address, notice)))
+    }
 
     /** The cause is the outcome of the fire that raised the alert (decision 10). */
     private fun reason(notice: SkipAlertNotice): String =
