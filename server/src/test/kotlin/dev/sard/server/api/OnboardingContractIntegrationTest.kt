@@ -14,7 +14,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** The rules about the OpenAPI document in docs/specs/server/onboarding-setup.feature (К1-К9), read from the served document. */
+/**
+ * The rules about the OpenAPI document in docs/specs/server/onboarding-setup.feature (К1-К9), read from the
+ * served document.
+ */
 @FirstStartTest
 class OnboardingContractIntegrationTest(
     @Autowired private val mapper: ObjectMapper,
@@ -39,7 +42,8 @@ class OnboardingContractIntegrationTest(
 
     @Test
     fun `Спецификация объявляет публичными ровно четыре операции`() {
-        val public = operations().filter { (_, op) -> op.path("security").let { it.isArray && it.isEmpty } }.map { it.first }.toSet()
+        val emptySecurity = operations().filter { (_, op) -> op.path("security").let { it.isArray && it.isEmpty } }
+        val public = emptySecurity.map { it.first }.toSet()
 
         assertEquals(
             setOf(
@@ -67,7 +71,8 @@ class OnboardingContractIntegrationTest(
     @Test
     fun `Спецификация описывает cookie сессии настройки и новые коды ошибок`() {
         val scheme = spec.path("components").path("securitySchemes").path("setupSession")
-        assertEquals(listOf("apiKey", "cookie", "sard_setup"), listOf("type", "in", "name").map { scheme.path(it).asString() })
+        val described = listOf("type", "in", "name").map { scheme.path(it).asString() }
+        assertEquals(listOf("apiKey", "cookie", "sard_setup"), described)
         val header =
             spec
                 .path("paths")
@@ -115,7 +120,8 @@ class OnboardingContractIntegrationTest(
                 .toSet()
 
         assertEquals(setOf("POST /api/v1/onboarding/admin", "PUT /api/v1/session/password"), setting)
-        assertTrue(operations().none { (name, _) -> name.startsWith("DELETE") && ("password" in name || "onboarding" in name) })
+        val deleting = operations().map { it.first }.filter { it.startsWith("DELETE") }
+        assertTrue(deleting.none { "password" in it || "onboarding" in it })
     }
 
     @Test
@@ -156,6 +162,7 @@ class OnboardingContractIntegrationTest(
         check("POST", "/api/v1/session", client.login("correct-horse-battery"))
         client.admin(setup, "correct-horse-battery")
         val admin = client.login("correct-horse-battery").cookie(SESSION_COOKIE)
-        check("PUT", "/api/v1/session/password", client.changePassword(admin, "wrong-password-123", "new-password-2026"))
+        val change = client.changePassword(admin, "wrong-password-123", "new-password-2026")
+        check("PUT", "/api/v1/session/password", change)
     }
 }

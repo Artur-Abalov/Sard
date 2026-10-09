@@ -22,7 +22,8 @@ class SetupCodeAnnouncerTest {
     private val adminSetup = FakeAdminSetup()
     private val announcer = SetupCodeAnnouncer(adminSetup, codes)
 
-    private val codeLine = Regex("SARD SETUP CODE: ([0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){6}) valid until (\\S+)")
+    private val codeLine =
+        Regex("SARD SETUP CODE: ([0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){6}) valid until (\\S+)")
 
     private fun start() = captureEvents { MutFlow.underTest { announcer.start() } }
 

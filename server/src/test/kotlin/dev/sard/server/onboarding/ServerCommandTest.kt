@@ -17,6 +17,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+private val DEFAULT_ENVIRONMENT =
+    mapOf("SARD_DB_URL" to "jdbc:postgresql://db:5432/sard?user=x", "SARD_DB_USER" to "sard")
+
 private const val HASH = "\$argon2id\$v=19\$m=19456,t=2,p=1\$c2FsdA\$aGFzaA"
 
 /** Rule "Команда admin-reset возвращает доступ только тому, у кого есть хост сервера" (@command, Р10). */
@@ -29,7 +32,7 @@ class ServerCommandTest {
 
     private fun run(
         vararg args: String,
-        env: Map<String, String> = mapOf("SARD_DB_URL" to "jdbc:postgresql://db:5432/sard?user=x", "SARD_DB_USER" to "sard"),
+        env: Map<String, String> = DEFAULT_ENVIRONMENT,
     ): Int? =
         MutFlow.underTest {
             ServerCommand { database ->
@@ -79,14 +82,16 @@ class ServerCommandTest {
         assertEquals(HASH, administrators.stored)
     }
 
+    /** Administrators whose removal fails with the SQL state [state]. */
+    private fun failingWith(state: String) =
+        object : Administrators by administrators {
+            override fun remove(): Boolean = throw BadSqlGrammarException("delete", "sql", SQLException("", state))
+        }
+
     @Test
     fun `База без таблицы администраторов — пароль не задан`() {
-        val missingTable =
-            object : Administrators by administrators {
-                override fun remove(): Boolean = throw BadSqlGrammarException("delete", "sql", SQLException("no", "42P01"))
-            }
-
-        val code = ServerCommand { missingTable }.run(arrayOf("admin-reset"), emptyMap(), PrintStream(out), PrintStream(err))
+        val command = ServerCommand { failingWith("42P01") }
+        val code = command.run(arrayOf("admin-reset"), emptyMap(), PrintStream(out), PrintStream(err))
 
         assertEquals(0, code)
         assertTrue("not set" in printed, printed)
@@ -94,12 +99,8 @@ class ServerCommandTest {
 
     @Test
     fun `Другая ошибка базы — код 1`() {
-        val broken =
-            object : Administrators by administrators {
-                override fun remove(): Boolean = throw BadSqlGrammarException("delete", "sql", SQLException("no", "42501"))
-            }
-
-        val code = ServerCommand { broken }.run(arrayOf("admin-reset"), emptyMap(), PrintStream(out), PrintStream(err))
+        val command = ServerCommand { failingWith("42501") }
+        val code = command.run(arrayOf("admin-reset"), emptyMap(), PrintStream(out), PrintStream(err))
 
         assertEquals(1, code)
         assertTrue("nothing was changed" in printed, printed)
@@ -126,7 +127,8 @@ class ServerCommandTest {
 
     @Test
     fun `Настройки базы берутся из тех же переменных, что у сервера`() {
-        run("admin-reset", env = mapOf("SARD_DB_URL" to "jdbc:postgresql://h/d", "SARD_DB_USER" to "u", "SARD_DB_PASSWORD" to "p"))
+        val env = mapOf("SARD_DB_URL" to "jdbc:postgresql://h/d", "SARD_DB_USER" to "u", "SARD_DB_PASSWORD" to "p")
+        run("admin-reset", env = env)
 
         assertEquals(DatabaseSettings("jdbc:postgresql://h/d", "u", "p"), settings)
     }

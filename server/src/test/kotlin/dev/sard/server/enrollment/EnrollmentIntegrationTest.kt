@@ -72,9 +72,12 @@ class EnrollmentTestConfiguration {
     @Bean
     fun certificateAuthority(
         @Value("\${sard.pki.dir}") dir: Path,
-    ) = GatedCertificateAuthority(
-        FileCertificateAuthority(dir, listOf("localhost"), Clock.systemUTC(), SecureRandom(), FakeCaLedger(permissive = true)),
-    )
+    ): GatedCertificateAuthority {
+        val ledger = FakeCaLedger(permissive = true)
+        return GatedCertificateAuthority(
+            FileCertificateAuthority(dir, listOf("localhost"), Clock.systemUTC(), SecureRandom(), ledger),
+        )
+    }
 }
 
 /** S2a: Enroll is one transaction that either enrolls the agent or leaves the token as it was. */

@@ -25,21 +25,19 @@ import kotlin.test.assertTrue
 private const val NEW_PASSWORD = "new-password-2026"
 private const val EVIL = "https://evil.example"
 
-/** Rule "Администратор меняет пароль из консоли, прочие сессии завершаются" of docs/specs/server/onboarding-setup.feature. */
+/**
+ * Rule "Администратор меняет пароль из консоли, прочие сессии завершаются" of
+ * docs/specs/server/onboarding-setup.feature.
+ */
 @FirstStartTest
 class PasswordChangeIntegrationTest(
     @Autowired private val jdbc: JdbcTemplate,
     @Autowired clock: MovableClock,
-    @Autowired codes: SetupCodes,
-    @Autowired sessions: SetupSessions,
-    @Autowired codeAttempts: SetupCodeAttempts,
-    @Autowired adminSessions: SessionStore,
-    @Autowired signInAttempts: LoginAttemptTracker,
+    @Autowired private val installation: CleanInstallation,
     @Autowired mapper: ObjectMapper,
     @LocalServerPort port: Int,
 ) {
     private val client = FirstStartClient(port, mapper)
-    private val installation = CleanInstallation(jdbc, clock, codes, sessions, codeAttempts, adminSessions, signInAttempts)
     private lateinit var a: String
 
     @BeforeTest

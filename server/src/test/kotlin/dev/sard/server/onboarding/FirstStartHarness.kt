@@ -53,6 +53,17 @@ class FirstStartConfiguration {
 
     @Bean
     fun setupCodeGenerator(): SetupCodeGenerator = SetupCodeGenerator { CODE }
+
+    @Bean
+    fun cleanInstallation(
+        jdbc: JdbcTemplate,
+        clock: Clock,
+        codes: SetupCodes,
+        sessions: SetupSessions,
+        codeAttempts: SetupCodeAttempts,
+        adminSessions: SessionStore,
+        signInAttempts: LoginAttemptTracker,
+    ) = CleanInstallation(jdbc, clock as MovableClock, codes, sessions, codeAttempts, adminSessions, signInAttempts)
 }
 
 /** What the server answered. */
@@ -88,7 +99,10 @@ class Reply(
     fun sameAs(other: Reply) = status == other.status && contentType == other.contentType && body == other.body
 
     /** All the text of the response, headers and body: where a secret must not be. */
-    fun everything() = headers.entries.joinToString("\n") { (name, values) -> values.joinToString("\n") { "$name: $it" } } + "\n" + body
+    fun everything(): String {
+        val lines = headers.entries.flatMap { (name, values) -> values.map { "$name: $it" } }
+        return lines.joinToString("\n") + "\n" + body
+    }
 
     override fun toString() = "$status $body"
 }
@@ -111,7 +125,9 @@ class FirstStartClient(
         val publisher = body?.let { HttpRequest.BodyPublishers.ofString(it) } ?: HttpRequest.BodyPublishers.noBody()
         val builder = HttpRequest.newBuilder(URI.create("http://localhost:$port$path")).method(method, publisher)
         if (json) builder.header("Content-Type", "application/json")
-        if (cookies.isNotEmpty()) builder.header("Cookie", cookies.entries.joinToString("; ") { "${it.key}=${it.value}" })
+        if (cookies.isNotEmpty()) {
+            builder.header("Cookie", cookies.map { (name, value) -> "$name=$value" }.joinToString("; "))
+        }
         headers.forEach { (name, value) -> builder.header(name, value) }
         val response = http.send(builder.build(), HttpResponse.BodyHandlers.ofString())
         return Reply(response.statusCode(), response.headers().map(), response.body(), mapper)
@@ -185,7 +201,10 @@ class FirstStartClient(
     private fun cookiesOf(
         setup: String?,
         admin: String?,
-    ): Map<String, String> = listOfNotNull(setup?.let { SETUP_COOKIE to it }, admin?.let { SESSION_COOKIE to it }).toMap()
+    ): Map<String, String> {
+        val cookies = listOfNotNull(setup?.let { SETUP_COOKIE to it }, admin?.let { SESSION_COOKIE to it })
+        return cookies.toMap()
+    }
 
     // ---- The scenarios' own steps ----
 

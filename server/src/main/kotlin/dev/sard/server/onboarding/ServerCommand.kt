@@ -48,12 +48,21 @@ class ServerCommand(
         out: PrintStream,
         err: PrintStream,
     ): Int? {
-        val command = args.firstOrNull()?.takeUnless { it.startsWith(OPTION_PREFIX) } ?: return null
-        if (command != COMMAND) {
-            err.println("Unknown command '$command'. The only command of the server is $COMMAND.")
-            return 2
+        val command = args.firstOrNull()?.takeUnless { it.startsWith(OPTION_PREFIX) }
+        return when {
+            command == null -> {
+                null
+            }
+
+            command == COMMAND -> {
+                reset(DatabaseSettings.of(env), out, err)
+            }
+
+            else -> {
+                err.println("Unknown command '$command'. The only command of the server is $COMMAND.")
+                2
+            }
         }
-        return reset(DatabaseSettings.of(env), out, err)
     }
 
     private fun reset(
@@ -84,11 +93,15 @@ class ServerCommand(
 
     /** A database the server never started against has no table for the administrator: no password is set. */
     private fun isUndefinedTable(e: DataAccessException): Boolean =
-        generateSequence<Throwable>(e) { it.cause }.filterIsInstance<SQLException>().any { it.sqlState == UNDEFINED_TABLE }
+        generateSequence<Throwable>(e) { it.cause }
+            .filterIsInstance<SQLException>()
+            .any { it.sqlState == UNDEFINED_TABLE }
 }
 
 private fun databaseAdministrators(settings: DatabaseSettings): Administrators {
     val dataSource = DriverManagerDataSource(settings.url, settings.user, settings.password)
-    dataSource.setConnectionProperties(java.util.Properties().apply { setProperty("connectTimeout", CONNECT_TIMEOUT_SECONDS) })
+    dataSource.setConnectionProperties(
+        java.util.Properties().apply { setProperty("connectTimeout", CONNECT_TIMEOUT_SECONDS) },
+    )
     return JdbcAdministrators(JdbcTemplate(dataSource))
 }

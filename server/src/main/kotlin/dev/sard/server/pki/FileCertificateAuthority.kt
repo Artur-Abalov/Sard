@@ -41,7 +41,8 @@ class FileCertificateAuthority(
             .resolve(CA)
             .resolve(KEY)
     private val opened =
-        CaDirectory(dir, clock, ledger).open(importDir?.let { CaImportSource(it, clock) }) { CaKeyPair.generate(clock, random) }
+        CaDirectory(dir, clock, ledger)
+            .open(importDir?.let { CaImportSource(it, clock) }) { CaKeyPair.generate(clock, random) }
     private val ca = opened.pair
     private val bundle = Pem.certificate(ca.certificate)
     private val fingerprint =

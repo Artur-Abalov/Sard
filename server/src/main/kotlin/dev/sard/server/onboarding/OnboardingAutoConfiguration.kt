@@ -30,7 +30,9 @@ class SetupCodeAttempts(
  * The first-start wizard (F4a): the setup code of this process, the setup sessions, the steps in the database, and
  * the ledger the CA directory is checked against. The setup code generator is replaceable (tests fix the code).
  */
-@AutoConfiguration(after = [ClockAutoConfiguration::class, TenancyAutoConfiguration::class, AdminAuthAutoConfiguration::class])
+@AutoConfiguration(
+    after = [ClockAutoConfiguration::class, TenancyAutoConfiguration::class, AdminAuthAutoConfiguration::class],
+)
 class OnboardingAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean

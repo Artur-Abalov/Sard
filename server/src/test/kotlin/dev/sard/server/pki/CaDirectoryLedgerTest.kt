@@ -60,11 +60,13 @@ class CaDirectoryLedgerTest {
 
     private fun entries(path: Path) = Files.list(path).use { it.map { e -> e.fileName.toString() }.sorted().toList() }
 
+    private fun contentOf(path: Path) = if (Files.isRegularFile(path)) Files.readString(path) else ""
+
     private fun snapshot(root: Path): List<String> =
         Files.walk(root).use { stream ->
             stream
                 .filter { it != root }
-                .map { "$it ${Files.getLastModifiedTime(it)} ${if (Files.isRegularFile(it)) Files.readString(it) else ""}" }
+                .map { "$it ${Files.getLastModifiedTime(it)} ${contentOf(it)}" }
                 .sorted()
                 .toList()
         }
@@ -316,11 +318,13 @@ class CaDirectoryLedgerTest {
 
         assertEquals(listOf("ca"), entries(dir))
         assertEquals(listOf("ca.crt", "ca.key"), entries(dir.resolve("ca")))
-        assertEquals("rwx------", PosixFilePermissions.toString(Files.getPosixFilePermissions(dir.resolve("ca"))))
-        assertEquals("rw-------", PosixFilePermissions.toString(Files.getPosixFilePermissions(dir.resolve("ca/ca.key"))))
+
+        fun modeOf(path: String) = PosixFilePermissions.toString(Files.getPosixFilePermissions(dir.resolve(path)))
+        assertEquals("rwx------", modeOf("ca"))
+        assertEquals("rw-------", modeOf("ca/ca.key"))
         assertEquals(Pem.privateKey(f.privateKey), keyOf(dir))
         for (line in CaImportFixtures.keyFragments(oldKey)) {
-            val anywhere = Files.walk(dir).use { s -> s.filter(Files::isRegularFile).anyMatch { line in Files.readString(it) } }
+            val anywhere = Files.walk(dir).use { s -> s.anyMatch { line in contentOf(it) } }
             assertFalse(anywhere, "a line of the old key is left")
         }
     }

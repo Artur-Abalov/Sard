@@ -5,6 +5,7 @@ package dev.sard.server.onboarding
 
 import dev.sard.server.api.CaInfo
 import dev.sard.server.api.CaOrigin
+import dev.sard.server.api.CodeResult
 import dev.sard.server.auth.AdminSetup
 import dev.sard.server.auth.LoginAttemptTracker
 import dev.sard.server.auth.SessionStore
@@ -74,5 +75,8 @@ class OnboardingHarness(
     }
 
     /** Enters the right code and returns the setup session. */
-    fun setupSession(): String = (service.enterCode(CODE, ADDRESS, null) as dev.sard.server.api.CodeResult.Accepted).setupSessionId
+    fun setupSession(): String {
+        val entered = service.enterCode(CODE, ADDRESS, null) as CodeResult.Accepted
+        return entered.setupSessionId
+    }
 }

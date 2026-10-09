@@ -65,20 +65,16 @@ class CaImportSource(
     private val keyPath = caDir.resolve(KEY)
     private val content = CaImportContent(root, certPath, keyPath)
     private val profile = CaImportProfile(root, certPath)
-    private val paths = listOf(root, caDir, certPath, keyPath)
+    private val files = CaImportFiles(root, certPath, keyPath, isReadable)
 
     /** The CA of the source, or throws [CaImportRefused] for the first check it fails. */
     override fun read(): ImportedCa = load().also { warnIfExpiresSoon(it.certificate) }
 
     /** Every check of the table, no warning: for a source that is not about to be imported. */
     private fun load(): ImportedCa {
-        requireDirectory()
-        requireFile(certPath)
-        requireFile(keyPath)
-        requireReadable()
-        requireOwnerOnly()
-        val certificate = content.certificate(text(certPath))
-        val key = content.key(text(keyPath))
+        files.requireUsable()
+        val certificate = content.certificate(files.text(certPath))
+        val key = content.key(files.text(keyPath))
         content.requireMatch(certificate, key)
         profile.requireUsableCa(certificate, clock.instant())
         return ImportedCa(certificate, key)
@@ -93,13 +89,6 @@ class CaImportSource(
         }
     }
 
-    private fun text(path: Path): String =
-        try {
-            String(Files.readAllBytes(path), Charsets.ISO_8859_1)
-        } catch (_: IOException) {
-            throw refusal(CaImportRefusal.IMPORT_FILE_UNREADABLE, "$path cannot be read by the server")
-        }
-
     override fun reconcile(
         present: CaFingerprint,
         usage: CaUsage,
@@ -107,7 +96,7 @@ class CaImportSource(
 
     /** The step ca is done: the same CA is fine, another stops the start, a source that is gone is stale. */
     private fun skipping(present: CaFingerprint): ImportedCa? {
-        val theirs = runCatching { CaFingerprint.of(content.certificate(text(certPath))) }.getOrNull()
+        val theirs = runCatching { CaFingerprint.of(content.certificate(files.text(certPath))) }.getOrNull()
         when {
             theirs == null -> {
                 log.warn(
@@ -160,7 +149,8 @@ class CaImportSource(
         theirs: CaFingerprint,
         usage: CaUsage,
     ): CaImportRefused {
-        val why = if (usage == CaUsage.STEP_CA_COMPLETE) "onboarding step ca is complete" else "agent certificates issued"
+        val why =
+            if (usage == CaUsage.STEP_CA_COMPLETE) "onboarding step ca is complete" else "agent certificates issued"
         return refusal(
             CaImportRefusal.CA_ALREADY_PRESENT,
             "the CA directory holds ${present.hex}, the source holds ${theirs.hex}: $why, so the CA cannot be " +
@@ -178,27 +168,6 @@ class CaImportSource(
             "cannot write to the CA directory $caDirectory: ${cause.message}",
             root,
         )
-
-    private fun requireDirectory() {
-        if (!Files.isDirectory(root)) {
-            throw refusal(CaImportRefusal.IMPORT_SOURCE_MISSING, "$root does not exist or is not a directory")
-        }
-    }
-
-    private fun requireReadable() {
-        val unreadable = paths.firstOrNull { !isReadable(it) } ?: return
-        throw refusal(CaImportRefusal.IMPORT_FILE_UNREADABLE, "$unreadable cannot be read by the server")
-    }
-
-    private fun requireOwnerOnly() {
-        for (path in paths) {
-            ownerOnlyViolation(path)?.let { throw refusal(CaImportRefusal.IMPORT_PERMISSIONS_TOO_OPEN, it) }
-        }
-    }
-
-    private fun requireFile(path: Path) {
-        if (!Files.isRegularFile(path)) throw refusal(CaImportRefusal.IMPORT_FILE_MISSING, "expected $path")
-    }
 
     private fun refusal(
         reason: CaImportRefusal,

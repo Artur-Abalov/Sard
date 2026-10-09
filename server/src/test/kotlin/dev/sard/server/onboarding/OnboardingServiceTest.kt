@@ -391,7 +391,9 @@ class OnboardingServiceTest {
         readySession()
 
         for (id in listOf(null, "forged-setup-id")) {
-            assertFailsWith<NoSuchSessionException> { MutFlow.underTest { service.completeAdmin(id, PASSWORD, ADDRESS) } }
+            assertFailsWith<NoSuchSessionException> {
+                MutFlow.underTest { service.completeAdmin(id, PASSWORD, ADDRESS) }
+            }
         }
         assertNull(h.adminSetup.password)
     }

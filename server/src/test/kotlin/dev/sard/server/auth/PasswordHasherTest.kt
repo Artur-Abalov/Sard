@@ -51,4 +51,28 @@ class PasswordHasherTest {
         assertEquals(22, parts[4].length) // 16 bytes in unpadded base64
         assertEquals(43, parts[5].length) // 32 bytes in unpadded base64
     }
+
+    @Test
+    fun `Пароль любой длины даёт значение одной и той же длины, и проверка его не принимает`() {
+        val stored = hasher.hash("correct-horse-battery")
+        val hashLength =
+            stored.substringAfterLast('$').let {
+                java.util.Base64
+                    .getDecoder()
+                    .decode(it)
+                    .size
+            }
+
+        for (candidate in listOf("", "c", "correct-horse-batter", "a".repeat(10_000))) {
+            assertFalse(hasher.matches(candidate, stored), candidate.take(20))
+            val again = hasher.hash(candidate)
+            assertEquals(
+                hashLength,
+                java.util.Base64
+                    .getDecoder()
+                    .decode(again.substringAfterLast('$'))
+                    .size,
+            )
+        }
+    }
 }

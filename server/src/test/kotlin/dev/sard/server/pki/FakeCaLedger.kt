@@ -14,7 +14,7 @@ class FakeCaLedger(
 ) : CaLedger {
     val recorded = java.util.concurrent.ConcurrentHashMap<CaFingerprint, CaProvenance>()
 
-    /** Called with the fingerprint and the origin just before a record is kept; a test checks the CA directory there. */
+    /** Called with the fingerprint and the origin just before a record is kept: a test looks at the directory. */
     var onRecord: (CaFingerprint, CaProvenance) -> Unit = { _, _ -> }
     var failRecording = false
 

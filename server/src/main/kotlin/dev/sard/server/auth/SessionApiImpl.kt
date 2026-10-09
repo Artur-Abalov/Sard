@@ -40,9 +40,14 @@ class SessionApiImpl(
         // concurrent requests could all read "not locked" before any of them is recorded.
         attemptTracker.withAddressLock(clientAddress) {
             val retryAfter = attemptTracker.retryAfterSeconds(clientAddress)
-            if (retryAfter != null) return@withAddressLock SignInResult.Locked(retryAfter)
-            val stored = administrators.hash() ?: return@withAddressLock SignInResult.SetupRequired
-            if (hasher.matches(password, stored)) signIn(clientAddress, previousSessionId) else wrongPassword(clientAddress)
+            // A locked address does not even reach the database.
+            val stored = if (retryAfter == null) administrators.hash() else null
+            when {
+                retryAfter != null -> SignInResult.Locked(retryAfter)
+                stored == null -> SignInResult.SetupRequired
+                hasher.matches(password, stored) -> signIn(clientAddress, previousSessionId)
+                else -> wrongPassword(clientAddress)
+            }
         }
 
     override fun getSession(sessionId: String): SessionResponse {
@@ -66,14 +71,35 @@ class SessionApiImpl(
         currentPassword: String?,
         newPassword: String?,
         clientAddress: String,
-    ): PasswordChangeResult {
-        val current = currentPassword ?: return PasswordChangeResult.InvalidField("currentPassword")
-        val new = newPassword?.takeIf(PasswordRules::acceptable) ?: return PasswordChangeResult.InvalidField("newPassword")
-        return attemptTracker.withAddressLock(clientAddress) {
-            val retryAfter = attemptTracker.retryAfterSeconds(clientAddress)
-            if (retryAfter != null) PasswordChangeResult.Locked(retryAfter) else replace(sessionId, current, new, clientAddress)
+    ): PasswordChangeResult =
+        when {
+            currentPassword == null -> {
+                PasswordChangeResult.InvalidField("currentPassword")
+            }
+
+            newPassword == null || !PasswordRules.acceptable(newPassword) -> {
+                PasswordChangeResult.InvalidField("newPassword")
+            }
+
+            else -> {
+                attempt(sessionId, currentPassword, newPassword, clientAddress)
+            }
         }
-    }
+
+    private fun attempt(
+        sessionId: String,
+        current: String,
+        new: String,
+        clientAddress: String,
+    ): PasswordChangeResult =
+        attemptTracker.withAddressLock(clientAddress) {
+            val retryAfter = attemptTracker.retryAfterSeconds(clientAddress)
+            if (retryAfter == null) {
+                replace(sessionId, current, new, clientAddress)
+            } else {
+                PasswordChangeResult.Locked(retryAfter)
+            }
+        }
 
     private fun replace(
         sessionId: String,

@@ -103,8 +103,10 @@ class EnrollmentFailureIntegrationTest(
      * the concurrency tests). It reads the same on-disk root key, so its fingerprint still
      * matches the tokens [tokens] issues.
      */
-    private fun freshCa() =
-        FileCertificateAuthority(pkiDir, listOf("localhost"), Clock.systemUTC(), SecureRandom(), FakeCaLedger(permissive = true))
+    private fun freshCa(): FileCertificateAuthority {
+        val ledger = FakeCaLedger(permissive = true)
+        return FileCertificateAuthority(pkiDir, listOf("localhost"), Clock.systemUTC(), SecureRandom(), ledger)
+    }
 
     @BeforeTest
     fun `start at a known instant with a fresh tenant`() {

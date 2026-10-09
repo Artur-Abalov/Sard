@@ -45,7 +45,9 @@ class CaInfoController(
     @Operation(
         operationId = "getCa",
         summary = "CA of the server",
-        description = "The fingerprint of the CA, where it came from and where its key is. Requires an administrator session.",
+        description =
+            "The fingerprint of the CA, where it came from and where its key is. " +
+                "Requires an administrator session.",
     )
     fun info(): CaInfo = ca.toInfo()
 }

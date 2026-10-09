@@ -11,7 +11,6 @@ import dev.sard.server.pki.MovableClock
 import dev.sard.server.selfagent.captureEvents
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.web.server.LocalServerPort
-import org.springframework.jdbc.core.JdbcTemplate
 import tools.jackson.databind.ObjectMapper
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
@@ -34,18 +33,12 @@ private const val EVIL = "https://evil.example"
  */
 @FirstStartTest
 class SetupCodeIntegrationTest(
-    @Autowired jdbc: JdbcTemplate,
     @Autowired private val clock: MovableClock,
-    @Autowired codes: SetupCodes,
-    @Autowired sessions: SetupSessions,
-    @Autowired codeAttempts: SetupCodeAttempts,
-    @Autowired adminSessions: SessionStore,
-    @Autowired signInAttempts: LoginAttemptTracker,
+    @Autowired private val installation: CleanInstallation,
     @Autowired mapper: ObjectMapper,
     @LocalServerPort port: Int,
 ) {
     private val client = FirstStartClient(port, mapper)
-    private val installation = CleanInstallation(jdbc, clock, codes, sessions, codeAttempts, adminSessions, signInAttempts)
 
     @BeforeTest
     fun `a clean installation with the code C`() = installation.restore()
@@ -336,7 +329,8 @@ class SetupCodeIntegrationTest(
     @Test
     fun `Cookie сессии настройки по HTTP, даже с заголовком X-Forwarded-Proto https, не Secure`() {
         val plain = client.enterCode(CODE).setCookie(SETUP_COOKIE)!!
-        val forwarded = client.enterCode(CODE, headers = mapOf("X-Forwarded-Proto" to "https")).setCookie(SETUP_COOKIE)!!
+        val secured = mapOf("X-Forwarded-Proto" to "https")
+        val forwarded = client.enterCode(CODE, headers = secured).setCookie(SETUP_COOKIE)!!
 
         assertFalse("Secure" in plain, plain)
         assertFalse("Secure" in forwarded, forwarded)

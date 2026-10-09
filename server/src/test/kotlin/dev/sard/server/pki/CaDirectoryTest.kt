@@ -170,7 +170,8 @@ class CaDirectoryTest {
         val loser = generate()
         val first = MutFlow.underTest { CaDirectory(dir, CLOCK, ledger).open(null) { winner } }
         assertEquals(CaOrigin.GENERATED, first.origin)
-        assertEquals(CaOrigin.EXISTING, MutFlow.underTest { CaDirectory(dir, CLOCK, ledger).open(null) { loser } }.origin)
+        val second = MutFlow.underTest { CaDirectory(dir, CLOCK, ledger).open(null) { loser } }
+        assertEquals(CaOrigin.EXISTING, second.origin)
 
         val raced = tmp.resolve("raced")
         val lost =

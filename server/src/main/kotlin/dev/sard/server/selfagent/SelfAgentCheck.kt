@@ -51,12 +51,15 @@ class SelfAgentCheck(
     }
 
     private fun pass() {
-        if (agents.live()) {
-            channel.deleteToken()
-            return
+        when {
+            agents.live() -> channel.deleteToken()
+
+            // F4a, Р13: the owner may still replace the CA, and a token carries its fingerprint.
+            steps.caConfirmed() -> keepUsableToken()
         }
-        // F4a, Р13: the owner may still replace the CA, and a token carries its fingerprint.
-        if (!steps.caConfirmed()) return
+    }
+
+    private fun keepUsableToken() {
         val hash = channel.readToken()?.let(::secretHashOf)
         if (hash != null && tokens.usable(hash)) return
         channel.writeToken(tokens.replace())

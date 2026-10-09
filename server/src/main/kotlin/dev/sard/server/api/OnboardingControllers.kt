@@ -258,7 +258,8 @@ class OnboardingAdminController(
             try {
                 api.completeAdmin(setupSessionId, password, httpRequest.remoteAddr)
             } catch (_: NoSuchSessionException) {
-                writeProblem(httpResponse, objectMapper, HttpStatus.UNAUTHORIZED.value(), "Unauthorized", ErrorCode.UNAUTHENTICATED)
+                val status = HttpStatus.UNAUTHORIZED.value()
+                writeProblem(httpResponse, objectMapper, status, "Unauthorized", ErrorCode.UNAUTHENTICATED)
                 return
             }
         when (result) {

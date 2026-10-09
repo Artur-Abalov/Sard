@@ -44,18 +44,13 @@ private val TENANT_B = UUID.fromString("00000000-0000-0000-0000-0000000000b4")
 class OnboardingStateIntegrationTest(
     @Autowired private val jdbc: JdbcTemplate,
     @Autowired private val clock: MovableClock,
-    @Autowired codes: SetupCodes,
-    @Autowired sessions: SetupSessions,
-    @Autowired codeAttempts: SetupCodeAttempts,
-    @Autowired adminSessions: SessionStore,
-    @Autowired signInAttempts: LoginAttemptTracker,
     @Autowired private val ca: CertificateAuthority,
+    @Autowired private val installation: CleanInstallation,
     @Autowired mapper: ObjectMapper,
     @Value("\${sard.pki.dir}") private val pkiDir: Path,
     @LocalServerPort port: Int,
 ) {
     private val client = FirstStartClient(port, mapper)
-    private val installation = CleanInstallation(jdbc, clock, codes, sessions, codeAttempts, adminSessions, signInAttempts)
     private val fingerprint get() = ca.fingerprint().hex
     private val keyPath get() =
         pkiDir
@@ -155,9 +150,14 @@ class OnboardingStateIntegrationTest(
         )
 
         val agent = UUID.randomUUID()
-        jdbc.update("insert into agents (id, tenant_id, hostname, registered_at) values (?, ?, 'h', now())", agent, tenantOfDefault())
         jdbc.update(
-            "insert into agent_certificates (serial, tenant_id, agent_id, issued_at, not_after) values (?, ?, ?, now(), now() + interval '1 day')",
+            "insert into agents (id, tenant_id, hostname, registered_at) values (?, ?, 'h', now())",
+            agent,
+            tenantOfDefault(),
+        )
+        jdbc.update(
+            "insert into agent_certificates (serial, tenant_id, agent_id, issued_at, not_after) " +
+                "values (?, ?, ?, now(), now() + interval '1 day')",
             "c".repeat(32),
             tenantOfDefault(),
             agent,
@@ -277,7 +277,8 @@ class OnboardingStateIntegrationTest(
             client.confirmCa(session)
             client.confirmCa(session)
 
-            assertEquals(1, jdbc.queryForObject("select count(*) from onboarding_steps where step = 'ca'", Int::class.java))
+            val rows = jdbc.queryForObject("select count(*) from onboarding_steps where step = 'ca'", Int::class.java)
+            assertEquals(1, rows)
         } finally {
             jdbc.update("delete from tenants where id = ?", TENANT_B)
         }
@@ -500,7 +501,8 @@ class OnboardingStateIntegrationTest(
     fun `База не содержит пароль администратора`() {
         client.completeWizard()
 
-        val tables = jdbc.queryForList("select table_name from information_schema.tables where table_schema = 'public'", String::class.java)
+        val listing = "select table_name from information_schema.tables where table_schema = 'public'"
+        val tables = jdbc.queryForList(listing, String::class.java)
         for (table in tables) {
             val rows = jdbc.queryForList("select t::text from \"$table\" t", String::class.java)
             assertTrue(rows.none { OWNER_PASSWORD in it.orEmpty() }, "the password is in $table")

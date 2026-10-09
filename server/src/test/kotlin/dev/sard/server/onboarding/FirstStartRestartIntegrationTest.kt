@@ -48,7 +48,11 @@ class FirstStartRestartIntegrationTest {
         running.forEach { runCatching { it.close() } }
     }
 
-    private fun start(options: StartOptions = StartOptions()): RunningServer = installation.start(options).also { running += it }
+    private fun start(options: StartOptions = StartOptions()): RunningServer {
+        val server = installation.start(options)
+        running += server
+        return server
+    }
 
     private fun restart(
         server: RunningServer,
@@ -183,9 +187,9 @@ class FirstStartRestartIntegrationTest {
 
     private fun adminReset(): Int {
         val out = ByteArrayOutputStream()
-        return checkNotNull(
-            ServerCommand().run(arrayOf("admin-reset"), installation.database.environment(), PrintStream(out), PrintStream(out)),
-        )
+        val environment = installation.database.environment()
+        val outcome = ServerCommand().run(arrayOf("admin-reset"), environment, PrintStream(out), PrintStream(out))
+        return checkNotNull(outcome)
     }
 
     @Test
@@ -259,7 +263,8 @@ class FirstStartRestartIntegrationTest {
 
         assertEquals(401, second.client.login("old-env-password-1").status)
         assertEquals(204, second.client.login("correct-horse-battery").status)
-        assertFalse("SARD_ADMIN_PASSWORD" in second.logText || "old-env-password-1" in second.logText, "the variable is in the log")
+        val mentioned = "SARD_ADMIN_PASSWORD" in second.logText || "old-env-password-1" in second.logText
+        assertFalse(mentioned, "the variable is in the log")
     }
 
     @Test

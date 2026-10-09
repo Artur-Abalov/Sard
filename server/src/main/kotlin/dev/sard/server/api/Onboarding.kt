@@ -187,7 +187,9 @@ interface OnboardingApi {
         previousSetupSessionId: String?,
     ): CodeResult
 
-    /** @throws NoSuchSessionException unless [setupSessionId] is live (or, with an external sign-in, [adminSession]). */
+    /**
+     * @throws NoSuchSessionException unless [setupSessionId] is live (or, with an external sign-in, [adminSession]).
+     */
     fun confirmCa(
         setupSessionId: String?,
         adminSession: Boolean,

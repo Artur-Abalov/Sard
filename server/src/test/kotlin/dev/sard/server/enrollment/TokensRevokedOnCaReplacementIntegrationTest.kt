@@ -75,8 +75,10 @@ class TokensRevokedOnCaReplacementIntegrationTest(
         return id
     }
 
-    private fun revokedAt(id: UUID): Instant? =
-        jdbc.queryForObject("select revoked_at from enrollment_tokens where id = ?", Timestamp::class.java, id)?.toInstant()
+    private fun revokedAt(id: UUID): Instant? {
+        val sql = "select revoked_at from enrollment_tokens where id = ?"
+        return jdbc.queryForObject(sql, Timestamp::class.java, id)?.toInstant()
+    }
 
     @Test
     fun `Активные обычные токены всех тенантов отзываются, одна строка WARN с числом`() {

@@ -3,47 +3,26 @@
 
 package dev.sard.server.pki
 
-import org.bouncycastle.asn1.pkcs.PrivateKeyInfo
-import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter
 import java.io.IOException
-import java.nio.ByteBuffer
-import java.nio.channels.FileChannel
-import java.nio.file.FileSystemException
 import java.nio.file.Files
-import java.nio.file.NoSuchFileException
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption.ATOMIC_MOVE
-import java.nio.file.StandardOpenOption.CREATE_NEW
-import java.nio.file.StandardOpenOption.READ
-import java.nio.file.StandardOpenOption.WRITE
 import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE
 import java.nio.file.attribute.PosixFilePermission.OWNER_READ
 import java.nio.file.attribute.PosixFilePermission.OWNER_WRITE
 import java.nio.file.attribute.PosixFilePermissions
-import java.security.cert.CertificateFactory
-import java.security.cert.X509Certificate
 import java.time.Clock
-import java.time.Duration
-import java.time.Instant
-import java.util.UUID
 
 /** The layout of the CA directory, shared with [CaImportSource], which reads the same layout. */
 internal const val CA = "ca"
 internal const val CERT = "ca.crt"
 internal const val KEY = "ca.key"
-private val OWNER = setOf(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE)
-private val OWNER_DIR = PosixFilePermissions.asFileAttribute(OWNER)
-private val OWNER_FILE = PosixFilePermissions.asFileAttribute(setOf(OWNER_READ, OWNER_WRITE))
-private const val STAGING = ".tmp-"
-private const val REPLACED = ".tmp-replaced-"
+internal val OWNER = setOf(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE)
 private const val TOGETHER =
-    "server volumes are reinstalled together (the database and the CA directory); see docs/operator/09-troubleshooting.md"
+    "server volumes are reinstalled together (the database and the CA directory); " +
+        "see docs/operator/09-troubleshooting.md"
 private const val STEP_CA_COMPLETE = "onboarding step ca is complete"
 private const val AGENT_CERTIFICATES = "agent certificates issued"
-
-/** A staging directory this old was left by a crashed first start, not by one still running. */
-private val STALE_STAGING = Duration.ofHours(1)
 
 /** A key file or directory that someone besides its owner may access. */
 class InsecureKeyStorageException(
@@ -85,11 +64,11 @@ class OpenedCa(
  */
 class CaDirectory(
     private val dir: Path,
-    private val clock: Clock,
+    clock: Clock,
     private val ledger: CaLedger,
-    private val writeFile: (Path, String) -> Unit = ::write,
+    writeFile: (Path, String) -> Unit = ::write,
 ) {
-    private val ca = dir.resolve(CA)
+    private val store = CaStore(dir, clock, writeFile)
 
     fun loadOrCreate(generate: () -> CaKeyPair): CaKeyPair = open(null, generate).pair
 
@@ -103,27 +82,22 @@ class CaDirectory(
         source: CaImport?,
         generate: () -> CaKeyPair,
     ): OpenedCa {
-        writing(source) {
-            if (Files.notExists(dir)) Files.createDirectories(dir, OWNER_DIR)
-        }
-        requireOwnerOnly(dir)
-        writing(source) {
-            restoreInterruptedReplacement()
-            removeStaleStaging()
-        }
-        return if (Files.exists(ca)) present(source) else empty(source, generate)
+        writing(source) { store.createDirectory() }
+        store.requireDirectoryOwnerOnly()
+        writing(source) { store.tidy() }
+        return if (store.hasCa()) present(source) else empty(source, generate)
     }
 
     private fun present(source: CaImport?): OpenedCa {
-        val pair = load()
+        val pair = store.load()
         val fingerprint = CaFingerprint.of(pair.certificate)
         val provenance = ledger.provenance(fingerprint) ?: throw notRecorded(fingerprint)
         val replacement = source?.reconcile(fingerprint, ledger.usage())
         if (replacement == null) return OpenedCa(pair, CaOrigin.EXISTING, provenance)
         val imported = CaKeyPair(replacement.certificate, replacement.key)
         ledger.record(CaFingerprint.of(imported.certificate), CaProvenance.IMPORTED)
-        writing(source) { replace(imported) }
-        return OpenedCa(load(), CaOrigin.IMPORTED, CaProvenance.IMPORTED, replaced = fingerprint)
+        writing(source) { store.replace(imported) }
+        return OpenedCa(store.load(), CaOrigin.IMPORTED, CaProvenance.IMPORTED, replaced = fingerprint)
     }
 
     private fun empty(
@@ -135,10 +109,12 @@ class CaDirectory(
         val pair = source?.read()?.let { CaKeyPair(it.certificate, it.key) } ?: generate()
         val provenance = if (source == null) CaProvenance.GENERATED else CaProvenance.IMPORTED
         ledger.record(CaFingerprint.of(pair.certificate), provenance)
-        val published = writing(source) { publish(pair) }
-        val loaded = load()
-        // The start that lost the race works with the winner's CA, whose origin the winner recorded before it published.
-        val recorded = ledger.provenance(CaFingerprint.of(loaded.certificate)) ?: throw notRecorded(CaFingerprint.of(loaded.certificate))
+        val published = writing(source) { store.publish(pair) }
+        val loaded = store.load()
+        // The start that lost the race works with the winner's CA, whose origin the winner recorded before
+        // it published.
+        val fingerprint = CaFingerprint.of(loaded.certificate)
+        val recorded = ledger.provenance(fingerprint) ?: throw notRecorded(fingerprint)
         return OpenedCa(loaded, originOf(published, source), recorded)
     }
 
@@ -154,15 +130,15 @@ class CaDirectory(
     private fun notRecorded(fingerprint: CaFingerprint) =
         CaStartRefused(
             CaStartRefusal.CA_ORIGIN_NOT_RECORDED,
-            "the CA ${fingerprint.hex} in $ca: CA origin is not recorded in the database; " + TOGETHER,
+            "the CA ${fingerprint.hex} in ${store.caPath}: CA origin is not recorded in the database; $TOGETHER",
         )
 
     private fun missing(usage: CaUsage): CaStartRefused {
         val why = if (usage == CaUsage.STEP_CA_COMPLETE) STEP_CA_COMPLETE else AGENT_CERTIFICATES
         return CaStartRefused(
             CaStartRefusal.CA_MISSING,
-            "CA directory is empty: no CA in $ca, and the database says the CA is in use ($why); " +
-                "set SARD_PKI_IMPORT_DIR to the backup of the CA to bring it back; " + TOGETHER,
+            "CA directory is empty: no CA in ${store.caPath}, and the database says the CA is in use ($why); " +
+                "set SARD_PKI_IMPORT_DIR to the backup of the CA to bring it back; $TOGETHER",
         )
     }
 
@@ -176,119 +152,4 @@ class CaDirectory(
         } catch (e: IOException) {
             throw source?.writeFailed(dir, e) ?: e
         }
-
-    /** True when this call published [pair], false when another start did first. */
-    private fun publish(pair: CaKeyPair): Boolean {
-        val staging = stage(pair)
-        try {
-            Files.move(staging, ca, ATOMIC_MOVE)
-            syncDirectory()
-            return true
-        } catch (e: FileSystemException) {
-            if (Files.notExists(ca)) throw e
-            return false
-        } finally {
-            staging.toFile().deleteRecursively()
-        }
-    }
-
-    /** A staging directory with the whole [pair] in it; nothing of it is left behind when writing fails. */
-    private fun stage(pair: CaKeyPair): Path {
-        val staging = Files.createTempDirectory(dir, STAGING, OWNER_DIR)
-        try {
-            writeFile(staging.resolve(KEY), Pem.privateKey(pair.privateKey))
-            writeFile(staging.resolve(CERT), Pem.certificate(pair.certificate))
-        } catch (e: IOException) {
-            staging.toFile().deleteRecursively()
-            throw e
-        }
-        return staging
-    }
-
-    /**
-     * Swaps the CA in place for [pair] (Р11): the new one is written whole in a staging directory, the present one
-     * is renamed away, the new one renamed in, the old one deleted. A start that dies between the renames finds
-     * the old CA under its new name and puts it back ([restoreInterruptedReplacement]).
-     */
-    private fun replace(pair: CaKeyPair) {
-        val staging = stage(pair)
-        val old = dir.resolve(REPLACED + UUID.randomUUID())
-        try {
-            Files.move(ca, old, ATOMIC_MOVE)
-            Files.move(staging, ca, ATOMIC_MOVE)
-        } catch (e: IOException) {
-            if (Files.notExists(ca) && Files.exists(old)) Files.move(old, ca, ATOMIC_MOVE)
-            staging.toFile().deleteRecursively()
-            throw e
-        }
-        syncDirectory()
-        old.toFile().deleteRecursively()
-    }
-
-    /** No `ca` but the CA that was swapped away: the replacement died half way, the old CA is the CA. */
-    private fun restoreInterruptedReplacement() {
-        val swapped = list { it.fileName.toString().startsWith(REPLACED) }
-        if (Files.notExists(ca)) swapped.firstOrNull()?.let { Files.move(it, ca, ATOMIC_MOVE) }
-        list { it.fileName.toString().startsWith(REPLACED) }.forEach { it.toFile().deleteRecursively() }
-    }
-
-    private fun list(filter: (Path) -> Boolean): List<Path> = Files.list(dir).use { entries -> entries.filter(filter).toList() }
-
-    private fun removeStaleStaging() {
-        val cutoff = clock.instant() - STALE_STAGING
-        Files.list(dir).use { entries ->
-            entries
-                .filter { it.fileName.toString().startsWith(STAGING) }
-                .filter { isStale(it, cutoff) }
-                .forEach { it.toFile().deleteRecursively() }
-        }
-    }
-
-    /** Gone already (a concurrent start published or removed it): not ours to clean. Other failures stop the start. */
-    private fun isStale(
-        path: Path,
-        cutoff: Instant,
-    ): Boolean =
-        try {
-            Files.getLastModifiedTime(path).toInstant() < cutoff
-        } catch (_: NoSuchFileException) {
-            false
-        }
-
-    /** Makes the rename durable; not observable without a crash, so no test covers it. */
-    private fun syncDirectory() { // mutflow:falsePositive fsync changes nothing observable without an OS crash
-        val channel = FileChannel.open(dir, READ)
-        try {
-            channel.force(true)
-        } finally {
-            channel.close()
-        }
-    }
-
-    private fun load(): CaKeyPair {
-        val key = ca.resolve(KEY)
-        requireOwnerOnly(ca)
-        requireOwnerOnly(key)
-        requireOwnerOnly(ca.resolve(CERT))
-        val certificate =
-            Files.newInputStream(ca.resolve(CERT)).use {
-                CertificateFactory.getInstance("X.509").generateCertificate(it) as X509Certificate
-            }
-        val der = Pem.decode("PRIVATE KEY", Files.readString(key))
-        return CaKeyPair(certificate, JcaPEMKeyConverter().getPrivateKey(PrivateKeyInfo.getInstance(der)))
-    }
-
-    private fun requireOwnerOnly(path: Path) {
-        ownerOnlyViolation(path)?.let { throw InsecureKeyStorageException(it) }
-    }
-}
-
-private fun write(
-    path: Path,
-    text: String,
-) {
-    FileChannel.open(path, setOf(CREATE_NEW, WRITE), OWNER_FILE).use {
-        it.write(ByteBuffer.wrap(text.toByteArray()))
-        it.force(true)
-    }
 }

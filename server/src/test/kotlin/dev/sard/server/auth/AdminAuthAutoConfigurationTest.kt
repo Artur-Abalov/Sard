@@ -89,6 +89,8 @@ class FakeSsoGuardStarter {
         }
 }
 
+private const val NO_DATABASE = "jdbc:postgresql://localhost:1/none"
+
 class AdminAuthAutoConfigurationTest {
     private val runner =
         ApplicationContextRunner()
@@ -99,7 +101,7 @@ class AdminAuthAutoConfigurationTest {
                     AdminAuthAutoConfiguration::class.java,
                 ),
             ).withBean(ObjectMapper::class.java, { ObjectMapper() })
-            .withBean(JdbcTemplate::class.java, { JdbcTemplate(DriverManagerDataSource("jdbc:postgresql://localhost:1/none")) })
+            .withBean(JdbcTemplate::class.java, { JdbcTemplate(DriverManagerDataSource(NO_DATABASE)) })
 
     @Test
     fun `the open core provides password sign-in against the stored administrator`() {

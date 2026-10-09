@@ -50,10 +50,17 @@ class Database(
     val password: String,
 ) {
     /** The variables the server and its commands read. */
-    fun environment(): Map<String, String> = mapOf("SARD_DB_URL" to url, "SARD_DB_USER" to user, "SARD_DB_PASSWORD" to password)
+    fun environment(): Map<String, String> {
+        val connection = mapOf("SARD_DB_URL" to url, "SARD_DB_USER" to user)
+        return connection + ("SARD_DB_PASSWORD" to password)
+    }
 
     fun properties(): Map<String, Any> =
-        mapOf("spring.datasource.url" to url, "spring.datasource.username" to user, "spring.datasource.password" to password)
+        mapOf(
+            "spring.datasource.url" to url,
+            "spring.datasource.username" to user,
+            "spring.datasource.password" to password,
+        )
 }
 
 /** Keeps the test classes of the surrounding module out of the component scan of a server started by hand. */
@@ -177,7 +184,9 @@ class Installation(
     }
 
     private companion object {
-        val loggingSetUp = java.util.concurrent.locks.ReentrantLock()
+        val loggingSetUp =
+            java.util.concurrent.locks
+                .ReentrantLock()
     }
 }
 

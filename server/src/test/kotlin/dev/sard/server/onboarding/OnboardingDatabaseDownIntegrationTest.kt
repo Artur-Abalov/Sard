@@ -41,17 +41,22 @@ class DatabaseRelay(
         thread(isDaemon = true) {
             while (!listening.isClosed) {
                 val client = runCatching { listening.accept() }.getOrNull() ?: break
-                val backend =
-                    runCatching { Socket(targetHost, targetPort) }.getOrNull() ?: run {
-                        client.close()
-                        null
-                    } ?: continue
-                sockets += client
-                sockets += backend
-                pipe(client, backend)
-                pipe(backend, client)
+                relay(client)
             }
         }
+    }
+
+    /** Connects [client] to the database; a database that does not answer drops the client. */
+    private fun relay(client: Socket) {
+        val backend = runCatching { Socket(targetHost, targetPort) }.getOrNull()
+        if (backend == null) {
+            client.close()
+            return
+        }
+        sockets += client
+        sockets += backend
+        pipe(client, backend)
+        pipe(backend, client)
     }
 
     private fun pipe(

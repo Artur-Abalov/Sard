@@ -8,11 +8,9 @@ import dev.sard.server.api.SETUP_COOKIE
 import dev.sard.server.auth.LoginAttemptTracker
 import dev.sard.server.auth.SessionStore
 import dev.sard.server.pki.CertificateAuthority
-import dev.sard.server.pki.MovableClock
 import dev.sard.server.selfagent.captureEvents
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.web.server.LocalServerPort
-import org.springframework.jdbc.core.JdbcTemplate
 import tools.jackson.databind.ObjectMapper
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -31,19 +29,12 @@ private fun from(address: String) = mapOf("X-Forwarded-For" to address)
  */
 @FirstStartBehindProxyTest
 class FirstStartBehindProxyIntegrationTest(
-    @Autowired jdbc: JdbcTemplate,
-    @Autowired clock: MovableClock,
-    @Autowired codes: SetupCodes,
-    @Autowired sessions: SetupSessions,
-    @Autowired codeAttempts: SetupCodeAttempts,
-    @Autowired adminSessions: SessionStore,
-    @Autowired signInAttempts: LoginAttemptTracker,
     @Autowired private val ca: CertificateAuthority,
+    @Autowired private val installation: CleanInstallation,
     @Autowired mapper: ObjectMapper,
     @LocalServerPort port: Int,
 ) {
     private val client = FirstStartClient(port, mapper)
-    private val installation = CleanInstallation(jdbc, clock, codes, sessions, codeAttempts, adminSessions, signInAttempts)
 
     @BeforeTest
     fun `a clean installation with the code C`() = installation.restore()
@@ -56,7 +47,8 @@ class FirstStartBehindProxyIntegrationTest(
     @Test
     fun `Атрибут Secure cookie сессии настройки следует соединению`() {
         val http = client.enterCode(CODE, headers = from(CLIENT)).setCookie(SETUP_COOKIE)!!
-        val https = client.enterCode(CODE, headers = from(CLIENT) + ("X-Forwarded-Proto" to "https")).setCookie(SETUP_COOKIE)!!
+        val secured = from(CLIENT) + ("X-Forwarded-Proto" to "https")
+        val https = client.enterCode(CODE, headers = secured).setCookie(SETUP_COOKIE)!!
 
         assertFalse("Secure" in http, http)
         assertTrue("Secure" in https, https)
@@ -96,7 +88,8 @@ class FirstStartBehindProxyIntegrationTest(
             captureEvents {
                 client.enterCode(WRONG_CODE, headers = from(CLIENT))
                 val setup = checkNotNull(client.enterCode(CODE, headers = from(CLIENT)).cookie(SETUP_COOKIE))
-                client.send("POST", "/api/v1/onboarding/ca", cookies = mapOf(SETUP_COOKIE to setup), headers = from(CLIENT))
+                val cookies = mapOf(SETUP_COOKIE to setup)
+                client.send("POST", "/api/v1/onboarding/ca", cookies = cookies, headers = from(CLIENT))
                 client.send(
                     "POST",
                     "/api/v1/onboarding/admin",

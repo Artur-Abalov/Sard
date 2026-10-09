@@ -36,21 +36,23 @@ class CaDirectoryImportTest {
 
     private fun source() = CaImportSource(importDir, CLOCK)
 
-    private fun open(source: CaImportSource? = source()): OpenedCa = CaDirectory(dir, CLOCK, ledger).open(source) { generated }
+    private fun open(source: CaImportSource? = source()): OpenedCa {
+        val directory = CaDirectory(dir, CLOCK, ledger)
+        return directory.open(source) { generated }
+    }
 
     private fun perms(path: Path) = PosixFilePermissions.toString(Files.getPosixFilePermissions(path))
 
     /** Names, modes, modification times and bytes of everything under [root]. */
-    private fun snapshot(root: Path): List<String> =
-        Files.walk(root).use { entries ->
-            entries
-                .map {
-                    "$it ${perms(
-                        it,
-                    )} ${Files.getLastModifiedTime(it)} ${if (Files.isRegularFile(it)) Files.readString(it).hashCode() else ""}"
-                }.sorted()
-                .toList()
-        }
+    private fun snapshot(root: Path): List<String> {
+        val described = Files.walk(root).use { entries -> entries.map(::describe).toList() }
+        return described.sorted()
+    }
+
+    private fun describe(path: Path): String {
+        val content = if (Files.isRegularFile(path)) Files.readString(path).hashCode() else ""
+        return "$path ${perms(path)} ${Files.getLastModifiedTime(path)} $content"
+    }
 
     private fun entries(path: Path) = Files.list(path).use { it.map { e -> e.fileName.toString() }.sorted().toList() }
 
@@ -186,7 +188,8 @@ class CaDirectoryImportTest {
                 (1..2).map {
                     pool.submit<CaFingerprint> {
                         start.await()
-                        CaFingerprint.of(CaDirectory(dir, CLOCK, ledger).open(source()) { error("never") }.pair.certificate)
+                        val opened = CaDirectory(dir, CLOCK, ledger).open(source()) { error("never") }
+                        CaFingerprint.of(opened.pair.certificate)
                     }
                 }
             start.countDown()

@@ -20,6 +20,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+private const val CA_FINGERPRINT = "8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f"
+
 /**
  * The spec is derived by swagger through Jackson 2, the server writes JSON with
  * Jackson 3: every DTO, serialized by the application's mapper, must match its
@@ -122,7 +124,12 @@ class ApiSerializationIntegrationTest(
         ),
         SetupCodeState.ACTIVE,
         access,
-        ca = if (withCa) CaInfo("8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f", CaOrigin.IMPORTED, "/k/ca.key") else null,
+        ca =
+            if (withCa) {
+                CaInfo(CA_FINGERPRINT, CaOrigin.IMPORTED, "/k/ca.key")
+            } else {
+                null
+            },
         caReplaceable = if (withCa) true else null,
     )
 
@@ -130,7 +137,7 @@ class ApiSerializationIntegrationTest(
         listOf(
             StatusResponse("1.0.0", lastVerifiedRestoreAt = null),
             Overview(1, 3, FirstSteps(true, true, false, false, false, complete = false)),
-            CaInfo("8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f", CaOrigin.GENERATED, "/var/lib/sard/pki/ca/ca.key"),
+            CaInfo(CA_FINGERPRINT, CaOrigin.GENERATED, "/var/lib/sard/pki/ca/ca.key"),
             SessionRequest("secret"),
             Session(id, at),
             onboarding(access = OnboardingAccess.SETUP, withCa = true),

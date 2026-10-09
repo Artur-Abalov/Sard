@@ -3,10 +3,12 @@
 
 package dev.sard.server.onboarding
 
+import ch.qos.logback.classic.Level.WARN
 import dev.sard.server.api.SETUP_COOKIE
 import dev.sard.server.pki.CaFingerprint
 import dev.sard.server.pki.CaImportFixtures
 import dev.sard.server.pki.CaImportRefusal
+import dev.sard.server.pki.CaImportRefusal.IMPORT_SOURCE_MISSING
 import dev.sard.server.pki.CaImportRefused
 import dev.sard.server.pki.CaStartRefusal
 import dev.sard.server.pki.CaStartRefused
@@ -32,15 +34,32 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private val TENANT = UUID.fromString("00000000-0000-0000-0000-000000000001")
 private val TENANT_B = UUID.fromString("00000000-0000-0000-0000-0000000000b5")
 private const val CODE_LINE = "SARD SETUP CODE"
+private const val REVOKED_TOKENS = "select count(*) from enrollment_tokens where revoked_at is not null"
+private const val NO_DATABASE = "jdbc:postgresql://localhost:1/none"
+private const val INSERT_ORIGIN =
+    "insert into ca_origins (fingerprint, origin, recorded_at) values (?, 'generated', now())"
 
-private fun Throwable.messages(): String = generateSequence(this) { it.cause }.mapNotNull { it.message }.joinToString("\n")
+/** The names of what is in [directory], none if there is no such directory. */
+private fun names(directory: Path): List<String> {
+    if (Files.notExists(directory)) return emptyList()
+    return Files.list(directory).use { found -> found.map { it.fileName.toString() }.sorted().toList() }
+}
 
-private inline fun <reified T : Throwable> Throwable.cause(): T? = generateSequence(this) { it.cause }.filterIsInstance<T>().firstOrNull()
+private fun Throwable.messages(): String {
+    val chain = generateSequence(this) { it.cause }
+    return chain.mapNotNull { it.message }.joinToString("\n")
+}
+
+private inline fun <reified T : Throwable> Throwable.cause(): T? {
+    val chain = generateSequence(this) { it.cause }
+    return chain.filterIsInstance<T>().firstOrNull()
+}
 
 /**
  * The scenarios of docs/specs/server/onboarding-setup.feature about the CA at start: a generated CA replaced by an
@@ -66,7 +85,11 @@ class CaStartupIntegrationTest {
         installation: Installation = this.installation,
         vararg properties: Pair<String, Any>,
         codes: List<String> = listOf(CODE),
-    ): RunningServer = installation.start(StartOptions(codes = codes, properties = mapOf(*properties))).also { running += it }
+    ): RunningServer {
+        val server = installation.start(StartOptions(codes = codes, properties = mapOf(*properties)))
+        running += server
+        return server
+    }
 
     private fun restart(
         server: RunningServer,
@@ -120,6 +143,15 @@ class CaStartupIntegrationTest {
         )
     }
 
+    /** The origin the database has recorded for the CA with this fingerprint, if any. */
+    private fun originRecordedFor(
+        fingerprint: String,
+        of: Installation = installation,
+    ): String? {
+        val sql = "select origin from ca_origins where fingerprint = ?"
+        return jdbc(of).queryForList(sql, String::class.java, fingerprint).firstOrNull()
+    }
+
     private fun forgetCertificates(jdbc: JdbcTemplate) {
         jdbc.update("delete from agent_certificates")
         jdbc.update("delete from agents")
@@ -127,6 +159,12 @@ class CaStartupIntegrationTest {
     }
 
     private fun sourceOf(pair: dev.sard.server.pki.CaKeyPair = f) = CaImportFixtures.source(importDir, pair)
+
+    /** The CA of an installation as a source of an import (a backup of the CA directory). */
+    private fun sourceOfDirectory(ca: Path) {
+        val certificate = Files.readString(ca.resolve("ca.crt"))
+        CaImportFixtures.source(importDir, certificate, Files.readString(ca.resolve("ca.key")))
+    }
 
     // ---- Правило: Сгенерированный CA заменяется импортом, пока шаг ca не выполнен и сертификатов нет ----
 
@@ -140,7 +178,9 @@ class CaStartupIntegrationTest {
 
         assertEquals(fHex, fingerprintOf(second))
         val line = second.startLog.map { it.text }.single { "CA imported from" in it }
-        assertTrue(importDir.toString() in line && "fingerprint=$fHex" in line && "origin=imported" in line && "replaced=$g" in line, line)
+        for (part in listOf(importDir.toString(), "fingerprint=$fHex", "origin=imported", "replaced=$g")) {
+            assertTrue(part in line, line)
+        }
     }
 
     @Test
@@ -151,7 +191,7 @@ class CaStartupIntegrationTest {
 
         val second = restart(first, *withSource())
 
-        assertEquals(listOf("ca"), Files.list(installation.pkiDir).use { s -> s.map { it.fileName.toString() }.toList() })
+        assertEquals(listOf("ca"), names(installation.pkiDir))
         assertEquals(
             listOf("ca.crt", "ca.key"),
             Files.list(installation.pkiDir.resolve("ca")).use { s ->
@@ -236,7 +276,8 @@ class CaStartupIntegrationTest {
         jdbc.update("insert into tenants (id, name) values (?, 'B')", TENANT_B)
         for (tenant in listOf(TENANT, TENANT_B)) {
             jdbc.update(
-                "insert into enrollment_tokens (id, tenant_id, token_hash, expires_at, created_at, label) values (?, ?, ?, now() + interval '1 day', now(), '')",
+                "insert into enrollment_tokens (id, tenant_id, token_hash, expires_at, created_at, label) " +
+                    "values (?, ?, ?, now() + interval '1 day', now(), '')",
                 UUID.randomUUID(),
                 tenant,
                 ByteArray(32) { (tenant.hashCode() + it).toByte() },
@@ -246,8 +287,9 @@ class CaStartupIntegrationTest {
 
         val second = restart(first, *withSource())
 
-        assertEquals(2, jdbc.queryForObject("select count(*) from enrollment_tokens where revoked_at is not null", Int::class.java))
-        val warnings = second.startLog.filter { it.level == ch.qos.logback.classic.Level.WARN && "enrollment tokens revoked" in it.text }
+        val revoked = jdbc.queryForObject(REVOKED_TOKENS, Int::class.java)
+        assertEquals(2, revoked)
+        val warnings = second.startLog.filter { it.level == WARN && "enrollment tokens revoked" in it.text }
         assertEquals(1, warnings.size, second.logText)
         assertTrue(" 2 " in warnings.single().text, warnings.single().text)
         jdbc.update("delete from enrollment_tokens")
@@ -262,7 +304,7 @@ class CaStartupIntegrationTest {
         first.close()
         running -= first
         val restored = installation.pkiDir.resolve("ca")
-        CaImportFixtures.source(importDir, Files.readString(restored.resolve("ca.crt")), Files.readString(restored.resolve("ca.key")))
+        sourceOfDirectory(restored)
 
         val second = start(installation, *withSource())
 
@@ -290,7 +332,8 @@ class CaStartupIntegrationTest {
         assertEquals(CaImportRefusal.CA_ALREADY_PRESENT, refused.reason)
         val message = refused.message.orEmpty()
         assertTrue(g in message && fHex in message, message)
-        assertTrue("onboarding step ca is complete" in message && "docs/operator/08-migrate-and-remove.md" in message, message)
+        assertTrue("onboarding step ca is complete" in message, message)
+        assertTrue("docs/operator/08-migrate-and-remove.md" in message, message)
         assertEquals(before, filesIn(installation.pkiDir))
     }
 
@@ -339,7 +382,7 @@ class CaStartupIntegrationTest {
         val before = filesIn(installation.pkiDir)
         val cases =
             listOf(
-                Triple("путь источника не существует", { Files.deleteIfExists(importDir) }, CaImportRefusal.IMPORT_SOURCE_MISSING),
+                Triple("путь источника не существует", { Files.deleteIfExists(importDir) }, IMPORT_SOURCE_MISSING),
                 Triple("нет файла сертификата", {
                     sourceOf()
                     Files.delete(importDir.resolve("ca/ca.crt"))
@@ -379,7 +422,7 @@ class CaStartupIntegrationTest {
         forgetCertificates(jdbc)
 
         val restored = installation.pkiDir.resolve("ca")
-        CaImportFixtures.source(importDir, Files.readString(restored.resolve("ca.crt")), Files.readString(restored.resolve("ca.key")))
+        sourceOfDirectory(restored)
         CaImportFixtures.chmod(importDir.resolve("ca/ca.key"), "rw-r-----")
         val (open, _) = installation.startFailing(StartOptions(properties = mapOf(*withSource())))
         assertEquals(CaImportRefusal.IMPORT_PERMISSIONS_TOO_OPEN, checkNotNull(open.cause<CaImportRefused>()).reason)
@@ -396,7 +439,7 @@ class CaStartupIntegrationTest {
         val second = restart(first, "sard.pki.import-dir" to tmp.resolve("nowhere").toString())
 
         assertEquals(g, fingerprintOf(second))
-        val warning = second.startLog.single { it.level == ch.qos.logback.classic.Level.WARN && "CA import skipped" in it.text }
+        val warning = second.startLog.single { it.level == WARN && "CA import skipped" in it.text }
         assertTrue("SARD_PKI_IMPORT_DIR" in warning.text, warning.text)
         assertEquals(before, filesIn(installation.pkiDir))
     }
@@ -408,7 +451,8 @@ class CaStartupIntegrationTest {
         vararg properties: Pair<String, Any>,
     ): Pair<CaStartRefused, String> {
         val (failure, log) = installation.startFailing(StartOptions(properties = mapOf(*properties)))
-        return checkNotNull(failure.cause<CaStartRefused>()) { failure.toString() } to log.joinToString("\n") { it.text }
+        val refused = checkNotNull(failure.cause<CaStartRefused>()) { failure.toString() }
+        return refused to log.joinToString("\n") { it.text }
     }
 
     @Test
@@ -424,7 +468,7 @@ class CaStartupIntegrationTest {
             listOf(
                 { },
                 {
-                    it.update("insert into ca_origins (fingerprint, origin, recorded_at) values (?, 'generated', now())", other)
+                    it.update(INSERT_ORIGIN, other)
                     it.update("insert into onboarding_steps (step, completed_at) values ('ca', now())")
                 },
                 { it.update("delete from onboarding_steps") },
@@ -439,15 +483,11 @@ class CaStartupIntegrationTest {
             assertTrue(message.startsWith("CA startup refused"), message)
             assertTrue(g in message && installation.pkiDir.resolve("ca").toString() in message, message)
             assertTrue("CA origin is not recorded in the database" in message, message)
-            assertTrue("server volumes are reinstalled together" in message && "docs/operator/09-troubleshooting.md" in message, message)
+            assertTrue("server volumes are reinstalled together" in message, message)
+            assertTrue("docs/operator/09-troubleshooting.md" in message, message)
             assertEquals(before, filesIn(installation.pkiDir))
             assertFalse(CODE_LINE in log, "a code was printed")
-            assertEquals(
-                0,
-                jdbc(
-                    reinstalledDatabase,
-                ).queryForObject("select count(*) from ca_origins where fingerprint = ?", Int::class.java, *arrayOf<Any>(g)),
-            )
+            assertNull(originRecordedFor(g, reinstalledDatabase))
         }
     }
 
@@ -517,7 +557,8 @@ class CaStartupIntegrationTest {
             val message = refused.message.orEmpty()
             assertTrue(lostCa.pkiDir.resolve("ca").toString() in message && "CA directory is empty" in message, message)
             assertTrue(reason in message && "SARD_PKI_IMPORT_DIR" in message, message)
-            assertTrue("server volumes are reinstalled together" in message && "docs/operator/09-troubleshooting.md" in message, message)
+            assertTrue("server volumes are reinstalled together" in message, message)
+            assertTrue("docs/operator/09-troubleshooting.md" in message, message)
             assertFalse(Files.exists(lostCa.pkiDir.resolve("ca")), "a CA was made")
         }
         forgetCertificates(jdbc)
@@ -531,16 +572,13 @@ class CaStartupIntegrationTest {
         running -= first
         val moved = Installation(tmp.resolve("moved").also { Files.createDirectories(it) }, installation.database)
         val restored = installation.pkiDir.resolve("ca")
-        CaImportFixtures.source(importDir, Files.readString(restored.resolve("ca.crt")), Files.readString(restored.resolve("ca.key")))
+        sourceOfDirectory(restored)
         val g = CaFingerprint.of(PkiFixturesCertificate.of(Files.readString(restored.resolve("ca.crt")))).hex
 
         val server = start(moved, *withSource())
 
         assertEquals(g, fingerprintOf(server))
-        assertEquals(
-            "imported",
-            jdbc().queryForObject("select origin from ca_origins where fingerprint = ?", String::class.java, *arrayOf<Any>(g)),
-        )
+        assertEquals("imported", originRecordedFor(g))
     }
 
     @Test
@@ -554,20 +592,13 @@ class CaStartupIntegrationTest {
         val second = start(lostCa)
 
         assertNotEquals(g, fingerprintOf(second))
-        assertEquals(
-            "generated",
-            jdbc().queryForObject(
-                "select origin from ca_origins where fingerprint = ?",
-                String::class.java,
-                *arrayOf<Any>(fingerprintOf(second)),
-            ),
-        )
+        assertEquals("generated", originRecordedFor(fingerprintOf(second)))
     }
 
     @Test
     fun `Недоступная база при первом старте не создаёт CA`() {
         val nowhere =
-            Installation(tmp.resolve("nodb").also { Files.createDirectories(it) }, Database("jdbc:postgresql://localhost:1/none", "u", "p"))
+            Installation(tmp.resolve("nodb").also { Files.createDirectories(it) }, Database(NO_DATABASE, "u", "p"))
 
         val (failure, _) = nowhere.startFailing()
 
@@ -583,9 +614,13 @@ class CaStartupIntegrationTest {
         installation.pkiDir.toFile().deleteRecursively()
         jdbc.update("delete from ca_origins")
         jdbc.execute(
-            "create function refuse_origin() returns trigger as \$\$ begin raise exception 'no origins'; end \$\$ language plpgsql",
+            "create function refuse_origin() returns trigger as \$\$ " +
+                "begin raise exception 'no origins'; end \$\$ language plpgsql",
         )
-        jdbc.execute("create trigger refuse_origin before insert on ca_origins for each row execute function refuse_origin()")
+        jdbc.execute(
+            "create trigger refuse_origin before insert on ca_origins " +
+                "for each row execute function refuse_origin()",
+        )
 
         val (failure, _) = installation.startFailing()
 
@@ -593,7 +628,7 @@ class CaStartupIntegrationTest {
         assertFalse(Files.exists(installation.pkiDir.resolve("ca")))
         assertEquals(
             emptyList(),
-            if (Files.exists(installation.pkiDir)) Files.list(installation.pkiDir).use { it.toList() } else emptyList<Path>(),
+            names(installation.pkiDir),
         )
         jdbc.execute("drop trigger refuse_origin on ca_origins")
         jdbc.execute("drop function refuse_origin()")
@@ -616,14 +651,7 @@ class CaStartupIntegrationTest {
         pool.shutdown()
 
         assertEquals(1, both.map { fingerprintOf(it) }.toSet().size)
-        assertEquals(
-            "generated",
-            jdbc().queryForObject(
-                "select origin from ca_origins where fingerprint = ?",
-                String::class.java,
-                *arrayOf<Any>(fingerprintOf(both.first())),
-            ),
-        )
+        assertEquals("generated", originRecordedFor(fingerprintOf(both.first())))
     }
 
     // ---- Правило: Встроенный токен sard-self не выпускается до шага ca ----
@@ -631,18 +659,27 @@ class CaStartupIntegrationTest {
     @Test
     fun `Чистая установка до шага ca не выпускает встроенный токен, после подтверждения CA — выпускает`() {
         val server =
-            start(installation, "sard.self-agent.dir" to installation.selfDir.toString(), "sard.self-agent.check-interval" to "100ms")
+            start(
+                installation,
+                "sard.self-agent.dir" to installation.selfDir.toString(),
+                "sard.self-agent.check-interval" to "100ms",
+            )
 
         Thread.sleep(600)
         assertEquals(0, jdbc().queryForObject("select count(*) from enrollment_tokens where builtin", Int::class.java))
         assertFalse(Files.exists(installation.selfDir.resolve("enroll-token")))
-        assertTrue(Files.exists(installation.selfDir.resolve("db-password")), "the role password is set before the step ca")
+        assertTrue(Files.exists(installation.selfDir.resolve("db-password")), "the role password is not set")
+        val password = Files.readString(installation.selfDir.resolve("db-password"))
+        java.sql.DriverManager
+            .getConnection(installation.database.url, "sard_self", password)
+            .use { assertTrue(it.isValid(5)) }
 
         val session = server.client.setupSession()
         assertEquals(204, server.client.confirmCa(session).status)
 
         val deadline = System.currentTimeMillis() + 10_000
-        while (!Files.exists(installation.selfDir.resolve("enroll-token")) && System.currentTimeMillis() < deadline) Thread.sleep(100)
+        val tokenFile = installation.selfDir.resolve("enroll-token")
+        while (!Files.exists(tokenFile) && System.currentTimeMillis() < deadline) Thread.sleep(100)
         val token = Files.readString(installation.selfDir.resolve("enroll-token"))
         assertEquals(1, jdbc().queryForObject("select count(*) from enrollment_tokens where builtin", Int::class.java))
         assertTrue(token.endsWith("." + fingerprintOf(server)), "the token carries the fingerprint of the CA")

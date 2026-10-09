@@ -171,74 +171,58 @@ class ApiContractIntegrationTest(
             item.properties().map { (method, op) -> "${method.uppercase()} $path" to op }
         }
 
+    private fun JsonNode.unauthorized() = path("responses").path("401")
+
+    private fun JsonNode.problemRef() =
+        unauthorized()
+            .path("content")
+            .path(PROBLEM_JSON)
+            .path("schema")
+            .path("\$ref")
+            .asString()
+
     @Test
     fun `every operation but the public ones requires a session and describes 401`() {
-        val public = PUBLIC_OPERATIONS
         val setup = setOf("POST /api/v1/onboarding/ca", "POST /api/v1/onboarding/admin")
-        for ((name, op) in operations()) {
-            if (name in setup) {
-                // The steps of the wizard ask for the setup session, and say so in their own 401.
-                assertEquals(listOf("setupSession"), op.path("security").flatMap { it.propertyNames() }, name)
-                assertEquals(
-                    "#/components/schemas/Problem",
-                    op
-                        .path("responses")
-                        .path("401")
-                        .path("content")
-                        .path(PROBLEM_JSON)
-                        .path("schema")
-                        .path("\$ref")
-                        .asString(),
-                    name,
-                )
-            } else if (name in public) {
-                assertTrue(op.path("security").isArray && op.path("security").isEmpty, "$name: ${op.path("security")}")
-                // Sign-in has its own 401, a wrong password.
-                assertTrue(
-                    op
-                        .path("responses")
-                        .path("401")
-                        .path("description")
-                        .asString() != NO_SESSION,
-                    name,
-                )
-            } else {
-                assertTrue(op.path("security").isMissingNode, "$name inherits the root security: $op")
-                val unauthorized =
-                    op
-                        .path("responses")
-                        .path("401")
-                        .path("content")
-                        .path(PROBLEM_JSON)
-                assertEquals("#/components/schemas/Problem", unauthorized.path("schema").path("\$ref").asString(), name)
-                assertEquals(
-                    NO_SESSION,
-                    op
-                        .path("responses")
-                        .path("401")
-                        .path("description")
-                        .asString(),
-                    name,
-                )
-            }
+        for ((name, op) in operations().filter { it.first !in PUBLIC_OPERATIONS && it.first !in setup }) {
+            assertTrue(op.path("security").isMissingNode, "$name inherits the root security: $op")
+            assertEquals("#/components/schemas/Problem", op.problemRef(), name)
+            assertEquals(NO_SESSION, op.unauthorized().path("description").asString(), name)
         }
-        val scheme = spec.path("components").path("securitySchemes").path("session")
-        val cookie = listOf("type", "in", "name").map { scheme.path(it).asString() }
-        assertEquals(listOf("apiKey", "cookie", "sard_session"), cookie)
-        val setupScheme = spec.path("components").path("securitySchemes").path("setupSession")
-        assertEquals(
-            listOf("apiKey", "cookie", "sard_setup"),
-            listOf("type", "in", "name").map { setupScheme.path(it).asString() },
-        )
-        assertEquals(
-            listOf("session"),
-            spec
-                .path("security")
-                .iterator()
-                .asSequence()
-                .flatMap { it.propertyNames() }
-                .toList(),
-        )
+    }
+
+    @Test
+    fun `the public operations have no security requirement and their own 401, if any`() {
+        for ((name, op) in operations().filter { it.first in PUBLIC_OPERATIONS }) {
+            assertTrue(op.path("security").isArray && op.path("security").isEmpty, "$name: ${op.path("security")}")
+            // Sign-in has its own 401, a wrong password.
+            assertTrue(op.unauthorized().path("description").asString() != NO_SESSION, name)
+        }
+    }
+
+    @Test
+    fun `the steps of the wizard ask for the setup session and say so in their own 401`() {
+        for ((name, op) in operations().filter { it.first.startsWith("POST /api/v1/onboarding/") }) {
+            if (name == "POST /api/v1/onboarding/setup-session") continue
+            assertEquals(listOf("setupSession"), op.path("security").flatMap { it.propertyNames() }, name)
+            assertEquals("#/components/schemas/Problem", op.problemRef(), name)
+        }
+    }
+
+    @Test
+    fun `the cookies of the session and of the setup session are the security schemes`() {
+        fun described(name: String) =
+            listOf("type", "in", "name").map {
+                spec
+                    .path("components")
+                    .path("securitySchemes")
+                    .path(name)
+                    .path(it)
+                    .asString()
+            }
+        assertEquals(listOf("apiKey", "cookie", "sard_session"), described("session"))
+        assertEquals(listOf("apiKey", "cookie", "sard_setup"), described("setupSession"))
+        assertEquals(listOf("session"), spec.path("security").flatMap { it.propertyNames() })
     }
 
     /** The session cookie is the `session` security scheme, never an operation parameter of its own. */
