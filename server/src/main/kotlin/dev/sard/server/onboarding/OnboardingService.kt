@@ -132,15 +132,14 @@ class OnboardingService(
         // With an external sign-in there is nothing to set up, and no setup session to ask for.
         if (adminSetup.external) return AdminStepResult.Completed
         if (!setupSessions.valid(setupSessionId)) throw NoSuchSessionException()
+        val accepted = password?.takeIf(PasswordRules::acceptable)
         return when {
             !steps.caConfirmed() -> AdminStepResult.CaPending
-            !acceptable(password) -> AdminStepResult.InvalidPassword
-            adminSetup.create(checkNotNull(password)) -> adminDone(clientAddress)
+            accepted == null -> AdminStepResult.InvalidPassword
+            adminSetup.create(accepted) -> adminDone(clientAddress)
             else -> AdminStepResult.Completed
         }
     }
-
-    private fun acceptable(password: String?): Boolean = password != null && PasswordRules.acceptable(password)
 
     private fun adminDone(clientAddress: String): AdminStepResult.Done {
         codes.close()
