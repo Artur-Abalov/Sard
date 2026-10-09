@@ -562,3 +562,44 @@ Kotlin-версия в e2e `SetupWizard.kt` — тот же формат стр�
 `./scripts/gate.sh web fast` → `gate: PASSED (web, fast)`. Первый прогон сервера упал на detekt
 `MaxLineLength` в трёх строках новых правок (`SessionAuthFilter`, `CaDirectory`, `CaImportSource`) —
 строки разбиты, тексты сообщений прежние.
+
+## Правки по architect (coder)
+
+Вердикт architect: CHANGES REQUIRED, семь пунктов; сделаны все, сверх них ничего. Тест писался первым там, где
+он задан; красные прогоны наблюдались для пунктов 2 (`CaDirectoryLedgerTest`, слушатель не вызывался), 3
+(`scripts/test-setup-wizard.sh`: код и пароль в argv, на stdin не приходят) и 7 (четыре теста
+`SessionIdResultsTest`). Пункты 1, 4, 6 тестами-охранниками проходят сразу (проверяют уже верное).
+
+1. Шов enterprise. ADR 0021 (шов), черновик ADR F4a и ADR 0014 описывают
+   `dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE` (значение `dev.sard.server.session`), его чтение в
+   production (`administratorSession()`, `OnboardingService.confirmCa`) и обязательство enterprise-фильтра
+   выставлять его для действительного администратора (Р16). ADR 0014 перечисляет `provenance()` и
+   `keyLocation()`; что вернёт enterprise-CA, там записано как требование к реализации (`IMPORTED` и
+   человекочитаемое описание хранилища) — это формулировка контракта, а не поведение кода; владельцу стоит её
+   подтвердить. OQ-035 перенесён в «Закрыто при сверке». Тест `SessionRequestAttributeTest`.
+2. Отзыв токенов до замены CA. `CaDirectory` получил `CaReplacementListener` и зовёт его после
+   `ledger.record(...)` и до `store.replace(...)`; сбой слушателя оставляет каталог прежним, следующий старт
+   повторяет запись и отзыв. `FileCertificateAuthority` слушателя больше не зовёт. Тест
+   `CaDirectoryLedgerTest`: «a replacement whose listener fails leaves the CA directory as it was, the next
+   start replaces and tells» (имя на четыре символа короче заданного — предел detekt в 120 колонок).
+3. Секреты не в argv. `sard_wizard_step` отправляет тело через `--data-binary @-` и stdin; docker-варианты
+   `sard_curl` — `docker exec -i`; `test-self-agent.sh`: `login` и проверка старого пароля — `@-`. Проверены
+   остальные скрипты: `smoke-server.sh` отправляет пароль через `@-`, литерал «anything-of-12-chars» не секрет;
+   `api()` в установочных тестах шлёт `{}`; в `release.yml` остался пароль БД в argv `sed` на одноразовом
+   раннере — строка не менялась в F4a и не про пароль администратора, не тронута.
+4. `ArchitectureTest`: «pki knows the database only through the CaLedger port»; в `SESSION_DOMAIN_FILES`
+   добавлены `OnboardingService`, `SetupCodes`, `SetupSessions`, `SetupCodeAnnouncer` (имя не менялось).
+5. Один запрос «шаг ca выполнен»: `JdbcCaLedger` принимает `OnboardingSteps` и зовёт `caConfirmed()`;
+   константа `CA_STEP` одна (в `OnboardingSteps.kt`); бин `caLedger` и `JdbcCaLedgerIntegrationTest` обновлены.
+6. `ServerCommandTest` читает `src/main/resources/application.yaml`, берёт умолчания `SARD_DB_URL`,
+   `SARD_DB_USER`, `SARD_DB_PASSWORD` и сравнивает с настройками команды и с `DatabaseSettings.of(emptyMap())`.
+7. `toString()` без идентификатора сессии у `CodeResult.Accepted`, `AdminStepResult.Done`,
+   `PasswordChangeResult.Changed`, `SignInResult.SignedIn`; `SessionIdResultsTest`, по тесту на тип.
+
+Итоги: `./scripts/gate.sh server fast` → `coverage: 96.7% (instructions)`, `gate: PASSED (server, fast)`
+(первый прогон упал на detekt `MaxLineLength` в двух строках тестов — разбиты); `./scripts/gate.sh web fast` →
+`gate: PASSED (web, fast)`; `scripts/test-setup-wizard.sh` → `test-setup-wizard: ok`;
+`license-check: 1035 files OK`; markdownlint `Summary: 0 error(s)`. `scripts/test-self-agent.sh` на compose не
+запускался: в окружении нет образов sard-server и sard-agent, их сборка выходит за рамки правок; проверен
+только `bash -n`. Не вошло по решению заказчика: `store.createDirectory()`/`tidy()` до первого обращения к
+книге, К3 с обоими требованиями к сессии, `@DependsOn("flywayInitializer")`.
