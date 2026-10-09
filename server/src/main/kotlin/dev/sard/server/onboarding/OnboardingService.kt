@@ -25,6 +25,11 @@ import java.time.Clock
 
 private val log = LoggerFactory.getLogger(OnboardingService::class.java)
 
+private fun doneOrPending(done: Boolean) = if (done) OnboardingStepState.DONE else OnboardingStepState.PENDING
+
+/** The password when it may be set, null when it may not (Р7). */
+private fun acceptable(password: String?): String? = password?.takeIf(PasswordRules::acceptable)
+
 /**
  * The first-start wizard (docs/specs/server/onboarding-setup.feature): the setup code, the setup sessions it
  * buys, the ca step and the admin step. Setup sessions and the code live in memory, so a restart ends them. The
@@ -75,8 +80,6 @@ class OnboardingService(
             OnboardingStep(OnboardingStepId.SELF_BACKUP, OnboardingStepState.UPCOMING),
             OnboardingStep(OnboardingStepId.KEYS_CONFIRMED, OnboardingStepState.UPCOMING),
         )
-
-    private fun doneOrPending(done: Boolean) = if (done) OnboardingStepState.DONE else OnboardingStepState.PENDING
 
     /** Р5: the admin step first (not an attempt), then the lock of the address, then the code itself. */
     override fun enterCode(
@@ -132,7 +135,14 @@ class OnboardingService(
         // With an external sign-in there is nothing to set up, and no setup session to ask for.
         if (adminSetup.external) return AdminStepResult.Completed
         if (!setupSessions.valid(setupSessionId)) throw NoSuchSessionException()
-        val accepted = password?.takeIf(PasswordRules::acceptable)
+        return setPassword(password, clientAddress)
+    }
+
+    private fun setPassword(
+        password: String?,
+        clientAddress: String,
+    ): AdminStepResult {
+        val accepted = acceptable(password)
         return when {
             !steps.caConfirmed() -> AdminStepResult.CaPending
             accepted == null -> AdminStepResult.InvalidPassword
