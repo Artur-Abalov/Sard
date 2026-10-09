@@ -56,13 +56,14 @@ enum class StepState(
     }
 }
 
-/** What started a run; stage 1 starts runs manually only. */
+/** What started a run: a person, a schedule on time, or the one catch-up after a downtime (D16). */
 enum class Trigger(
     val stored: String,
 ) {
     SCHEDULE("schedule"),
     MANUAL("manual"),
     VERIFICATION("verification"),
+    CATCH_UP("catch_up"),
     ;
 
     companion object {

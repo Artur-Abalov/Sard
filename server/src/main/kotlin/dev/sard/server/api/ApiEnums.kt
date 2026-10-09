@@ -58,7 +58,7 @@ enum class RunStatus {
     CANCELLED,
 }
 
-/** What started a run (ADR 0013, runs.trigger). Stage 1 starts runs manually only. */
+/** What started a run (ADR 0013, runs.trigger); catch_up is the one run after a server downtime (D16). */
 @Schema(enumAsRef = true)
 enum class RunTrigger {
     @JsonProperty("schedule")
@@ -69,6 +69,9 @@ enum class RunTrigger {
 
     @JsonProperty("verification")
     VERIFICATION,
+
+    @JsonProperty("catch_up")
+    CATCH_UP,
 }
 
 /** Step state (ADR 0013, run_steps.status): the server's own states around the agent's final ones. */

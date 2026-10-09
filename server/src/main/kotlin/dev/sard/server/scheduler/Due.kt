@@ -19,10 +19,11 @@ sealed interface Due {
         val next: Instant,
     ) : Due
 
-    /** [count] fires from [first] on have passed (at most [MISSED_COUNT_LIMIT]); the next fire is [next]. */
+    /** [count] fires from [first] through [last] have passed (at most [MISSED_COUNT_LIMIT]); the next is [next]. */
     data class Missed(
         val first: Instant,
         val count: Int,
+        val last: Instant,
         val next: Instant,
     ) : Due
 
@@ -38,17 +39,20 @@ sealed interface Due {
             when {
                 nextRunAt > now -> NotYet
                 schedule.nextAfter(nextRunAt) > now -> OnTime(nextRunAt, schedule.nextAfter(nextRunAt))
-                else -> Missed(nextRunAt, passed(schedule, nextRunAt, now), schedule.nextAfter(now))
+                else -> missed(schedule, nextRunAt, now)
             }
 
-        private fun passed(
+        private fun missed(
             schedule: Fires,
             first: Instant,
             now: Instant,
-        ): Int =
-            generateSequence(first, schedule::nextAfter)
-                .take(MISSED_COUNT_LIMIT)
-                .takeWhile { it <= now }
-                .count()
+        ): Missed {
+            val passed =
+                generateSequence(first, schedule::nextAfter)
+                    .take(MISSED_COUNT_LIMIT)
+                    .takeWhile { it <= now }
+                    .toList()
+            return Missed(first, passed.size, passed.last(), schedule.nextAfter(now))
+        }
     }
 }

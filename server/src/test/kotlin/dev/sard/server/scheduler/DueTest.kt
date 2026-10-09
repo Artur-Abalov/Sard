@@ -42,14 +42,15 @@ class DueTest {
 
     @Test
     fun `two or more passed fires are a downtime, owed as one catch-up counting all of them`() {
-        assertEquals(Due.Missed(at, 2, at.plusSeconds(120)), due(at, at.plusSeconds(60)))
-        assertEquals(Due.Missed(at, 3, at.plusSeconds(180)), due(at, at.plusSeconds(150)))
+        assertEquals(Due.Missed(at, 2, at.plusSeconds(60), at.plusSeconds(120)), due(at, at.plusSeconds(60)))
+        assertEquals(Due.Missed(at, 3, at.plusSeconds(120), at.plusSeconds(180)), due(at, at.plusSeconds(150)))
     }
 
     @Test
-    fun `the count of passed fires stops at the limit, the next fire is still the first one ahead`() {
+    fun `the count of passed fires stops at the limit, the last counted is the limit's, the next is the first ahead`() {
         val now = at.plusSeconds(60L * (Due.MISSED_COUNT_LIMIT + 500))
         val next = now.plusSeconds(60)
-        assertEquals(Due.Missed(at, Due.MISSED_COUNT_LIMIT, next), due(at, now))
+        val lastCounted = at.plusSeconds(60L * (Due.MISSED_COUNT_LIMIT - 1))
+        assertEquals(Due.Missed(at, Due.MISSED_COUNT_LIMIT, lastCounted, next), due(at, now))
     }
 }
