@@ -79,4 +79,4 @@ CREATE TABLE schedule_fires (
 -- Each fire at most once, held by the database: a second attempt at the same moment fails.
 CREATE UNIQUE INDEX schedule_fires_once_key ON schedule_fires (tenant_id, schedule_id, kind, scheduled_for)
     WHERE outcome <> 'skipped_downtime';
-CREATE INDEX schedule_fires_journal_idx ON schedule_fires (tenant_id, schedule_id, scheduled_for DESC, id DESC);
+CREATE INDEX schedule_fires_journal_idx ON schedule_fires (tenant_id, schedule_id, recorded_at DESC, id DESC);

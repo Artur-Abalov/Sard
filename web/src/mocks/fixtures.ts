@@ -665,3 +665,60 @@ export const enrollmentTokens: Schemas['EnrollmentToken'][] = [
     label: null,
   },
 ]
+
+/** The /etc source backs up nightly at 21:00 in Berlin; its journal shows each kind of fire (F3a). */
+export const schedules: Schemas['Schedule'][] = [
+  {
+    id: '0192f7a0-0000-7000-8000-000000000601',
+    sourceId: ids.etcSource,
+    cron: '0 21 * * *',
+    timezone: 'Europe/Berlin',
+    enabled: true,
+    nextRunAt: '2026-09-27T19:00:00Z',
+    catchUpAt: null,
+    lastFiredAt: '2026-09-26T19:00:00Z',
+    skippedInRow: 0,
+    createdAt: '2026-09-22T10:05:00Z',
+    updatedAt: '2026-09-22T10:05:00Z',
+  },
+]
+
+function fire(
+  id: string,
+  outcome: Schemas['ScheduleFireOutcome'],
+  scheduledFor: string,
+  fields: Partial<Schemas['ScheduleFire']> = {},
+): Schemas['ScheduleFire'] {
+  return {
+    id,
+    kind: 'schedule',
+    scheduledFor,
+    outcome,
+    runId: null,
+    reason: null,
+    missedCount: null,
+    missedUntil: null,
+    skippedInRow: 0,
+    alert: false,
+    recordedAt: scheduledFor,
+    ...fields,
+  }
+}
+
+/** Newest recorded first, as the server lists them. */
+export const scheduleFires: Record<string, Schemas['ScheduleFire'][]> = {
+  [ids.etcSource]: [
+    fire('0192f7a0-0000-7000-8000-000000000611', 'run_created', '2026-09-26T19:00:00Z', {
+      runId: ids.failedRun,
+    }),
+    fire('0192f7a0-0000-7000-8000-000000000612', 'run_created', '2026-09-25T19:00:00Z', {
+      kind: 'catch_up',
+      runId: ids.succeededRun,
+    }),
+    fire('0192f7a0-0000-7000-8000-000000000613', 'skipped_downtime', '2026-09-23T19:00:00Z', {
+      missedCount: 2,
+      missedUntil: '2026-09-24T19:00:00Z',
+      recordedAt: '2026-09-25T18:59:50Z',
+    }),
+  ],
+}

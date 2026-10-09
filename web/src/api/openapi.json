@@ -234,6 +234,152 @@
         }
       }
     },
+    "/api/v1/sources/{sourceId}/schedule" : {
+      "get" : {
+        "tags" : [ "sources" ],
+        "summary" : "The source's schedule",
+        "description" : "404 when the source has none.",
+        "operationId" : "getSchedule",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Schedule"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put" : {
+        "tags" : [ "sources" ],
+        "summary" : "Set the source's schedule",
+        "description" : "Creates or replaces it; enabled=false disables it. Setting it unchanged keeps its next fire; a change starts over from now, without a catch-up. 422 validation_failed names cron or timezone.",
+        "operationId" : "setSchedule",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ScheduleInput"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Schedule"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sources" : {
       "get" : {
         "tags" : [ "sources" ],
@@ -1012,6 +1158,95 @@
               "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/SnapshotPage"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{sourceId}/schedule/fires" : {
+      "get" : {
+        "tags" : [ "sources" ],
+        "summary" : "The journal of the source's schedule",
+        "description" : "Newest recorded first; empty for a source without a schedule.",
+        "operationId" : "listScheduleFires",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "cursor",
+          "in" : "query",
+          "description" : "nextCursor of the previous page; omit for the first page",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "description" : "Page size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 50,
+            "maximum" : 200,
+            "minimum" : 1
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ScheduleFirePage"
                 }
               }
             }
@@ -1893,6 +2128,80 @@
         },
         "required" : [ "agentId", "config", "createdAt", "id", "name", "plugin", "repositoryName", "updatedAt" ]
       },
+      "ScheduleInput" : {
+        "type" : "object",
+        "description" : "A source's schedule as set",
+        "properties" : {
+          "cron" : {
+            "type" : "string",
+            "description" : "Standard cron: five fields (minute hour day-of-month month day-of-week), names allowed",
+            "example" : "30 2 * * *"
+          },
+          "timezone" : {
+            "type" : "string",
+            "description" : "An IANA time zone, such as Europe/Berlin",
+            "example" : "Europe/Berlin"
+          },
+          "enabled" : {
+            "type" : "boolean",
+            "description" : "A disabled schedule keeps its cron and zone and does not fire"
+          }
+        },
+        "required" : [ "cron", "enabled", "timezone" ]
+      },
+      "Schedule" : {
+        "type" : "object",
+        "description" : "A source's schedule",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "sourceId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "cron" : {
+            "type" : "string",
+            "description" : "Standard cron: five fields (minute hour day-of-month month day-of-week), names allowed"
+          },
+          "timezone" : {
+            "type" : "string",
+            "description" : "An IANA time zone, such as Europe/Berlin"
+          },
+          "enabled" : {
+            "type" : "boolean"
+          },
+          "nextRunAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "The next fire by cron; null while disabled"
+          },
+          "catchUpAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "When the catch-up owed after a server downtime runs; null when none is owed"
+          },
+          "lastFiredAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "skippedInRow" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Fires skipped in a row: an active run, a revoked agent, a refusal"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "updatedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "catchUpAt", "createdAt", "cron", "enabled", "id", "lastFiredAt", "nextRunAt", "skippedInRow", "sourceId", "timezone", "updatedAt" ]
+      },
       "RunActiveProblem" : {
         "type" : "object",
         "description" : "The source already has an active run (D6); no new run was created (RFC 9457)",
@@ -2490,6 +2799,92 @@
           }
         },
         "required" : [ "items", "nextCursor" ]
+      },
+      "ScheduleFire" : {
+        "type" : "object",
+        "description" : "One fire of a schedule and what came of it",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "kind" : {
+            "$ref" : "#/components/schemas/ScheduleFireKind"
+          },
+          "scheduledFor" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "The cron moment; for a downtime the first fire missed; for a catch-up its slot"
+          },
+          "outcome" : {
+            "$ref" : "#/components/schemas/ScheduleFireOutcome"
+          },
+          "runId" : {
+            "type" : [ "string", "null" ],
+            "format" : "uuid",
+            "description" : "The run created, or for skipped_active the run that was active"
+          },
+          "reason" : {
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/ScheduleFireReason"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "missedCount" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32",
+            "description" : "skipped_downtime: how many fires were missed (counting stops at 10 000)"
+          },
+          "missedUntil" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "skipped_downtime: the last fire missed"
+          },
+          "skippedInRow" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Fires skipped in a row after this one"
+          },
+          "alert" : {
+            "type" : "boolean",
+            "description" : "This skip brought skippedInRow to the alert threshold"
+          },
+          "recordedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "alert", "id", "kind", "missedCount", "missedUntil", "outcome", "reason", "recordedAt", "runId", "scheduledFor", "skippedInRow" ]
+      },
+      "ScheduleFireKind" : {
+        "type" : "string",
+        "enum" : [ "schedule", "catch_up" ]
+      },
+      "ScheduleFireOutcome" : {
+        "type" : "string",
+        "enum" : [ "run_created", "skipped_active", "skipped_gone", "refused", "skipped_downtime" ]
+      },
+      "ScheduleFirePage" : {
+        "type" : "object",
+        "description" : "A page of a schedule's fires",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ScheduleFire"
+            }
+          },
+          "nextCursor" : {
+            "type" : [ "string", "null" ],
+            "description" : "Pass as cursor to get the next page; null on the last page"
+          }
+        },
+        "required" : [ "items", "nextCursor" ]
+      },
+      "ScheduleFireReason" : {
+        "type" : "string",
+        "enum" : [ "source_deleted", "agent_revoked", "unknown_plugin", "unknown_repository" ]
       },
       "Session" : {
         "type" : "object",
