@@ -373,3 +373,31 @@ Spring Security без изменения поведения (тесты W1b —
   покрыты тестами `@MutFlowTest` (`PasswordRulesTest`, `OnboardingServiceTest`,
   `SessionApiImplTest`, `AdminSetupTest`, `CaDirectoryLedgerTest`, `ServerCommandTest`,
   `SetupCodeAnnouncerTest`).
+
+### Результат шлюзов (как напечатано)
+
+`./scripts/gate.sh server fast` (шестой запуск; предыдущие остановились на CRAP 7–8 у
+`SessionApiImpl.replace`, `CaDirectory.empty`, `SessionAuthFilter.doFilterInternal`,
+`OnboardingService.completeAdmin` — функции разделены — и на двух нестабильных тестах
+(`CaStartupIntegrationTest` — гонка за схему, `OnboardingDatabaseDownIntegrationTest` — пул
+после возврата базы), которые теперь ждут):
+
+```
+== gate server: spotless, detekt, tests, coverage >= 80%
+coverage: 96.7% (instructions)
+== gate server: CRAP <= 6
+gate: PASSED (server, fast)
+```
+
+Всего 1863 теста сервера; худшие функции по CRAP — ровно 6.0 (`main` — 2 ветви без
+покрытия, остальные — прежний код).
+
+`./scripts/gate.sh web fast`:
+
+```
+ Test Files  33 passed (33)
+      Tests  444 passed (444)
+gate: PASSED (web, fast)
+```
+
+Мутационный прогон (`./scripts/gate.sh server` без `fast`) не запускался.
