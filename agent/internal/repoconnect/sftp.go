@@ -156,7 +156,7 @@ func (r *sshRun) seconds() int {
 	return int(math.Ceil(r.Bound.Timeout.Seconds()))
 }
 
-// timeoutArgs are the options that limit a connection to the timeout.
+// timeoutOption is the options that limit a connection to the timeout.
 func (r *sshRun) timeoutOption(flag string) []string {
 	if r.seconds() <= 0 {
 		return nil
@@ -193,9 +193,15 @@ func (r *sshRun) local(ctx context.Context, program string, args []string) (Outp
 		return out, r.notRun(program, err)
 	}
 	if out.Code != 0 {
-		return out, refusal.Fail(refusal.SSHClientFailed, "%s failed (exit code %d): %s", program, out.Code, r.scrub(lastLine(out.Stderr)))
+		return out, r.exitFailure(program, out)
 	}
 	return out, nil
+}
+
+// exitFailure is the refusal for a program of the client that ended with a
+// code other than 0.
+func (r *sshRun) exitFailure(program string, out Output) *refusal.Failure {
+	return refusal.Fail(refusal.SSHClientFailed, "%s failed (exit code %d): %s", program, out.Code, r.scrub(lastLine(out.Stderr)))
 }
 
 func (r *sshRun) notRun(program string, err error) *refusal.Failure {
@@ -223,7 +229,7 @@ func (r *sshRun) scan(ctx context.Context) ([]HostKey, *refusal.Failure) {
 	case timedOut:
 		return nil, refusal.Fail(refusal.BackendUnavailable, "ssh-keyscan of %s did not answer within %s (--connect-timeout); the command can be repeated", r.where(), r.Bound.Timeout)
 	case out.Code != 0:
-		return nil, refusal.Fail(refusal.SSHClientFailed, "ssh-keyscan failed (exit code %d): %s", out.Code, r.scrub(lastLine(out.Stderr)))
+		return nil, r.exitFailure(ProgKeyscan, out)
 	}
 	keys := ParseKeyscan(out.Stdout)
 	if len(keys) == 0 {

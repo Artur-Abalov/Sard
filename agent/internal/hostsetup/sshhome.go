@@ -21,6 +21,12 @@ const MaxSSHFileSize = 1 << 20
 
 const sshDirName = ".ssh"
 
+// Why a file of ~/.ssh is rejected, as the messages say it.
+var (
+	whyTooLarge = fmt.Sprintf("is larger than %d bytes", MaxSSHFileSize)
+	whyLink     = "is a symbolic link: the agent does not follow links in the ssh directory"
+)
+
 // SSHHome is the ~/.ssh of the service user, held by its descriptor (Р37,
 // Р38): root reads and writes there, and the service user can plant links,
 // hard links and FIFOs in it, or swap the directory itself. So the home is
@@ -150,7 +156,7 @@ func (h *SSHHome) readJudged(file ReadFile) (data []byte, why string) {
 		return nil, "cannot be read: " + err.Error()
 	}
 	if len(data) > MaxSSHFileSize {
-		return nil, fmt.Sprintf("is larger than %d bytes", MaxSSHFileSize)
+		return nil, whyTooLarge
 	}
 	return data, ""
 }
@@ -166,7 +172,7 @@ func (h *SSHHome) openRead(name string) (ReadFile, bool, *refusal.Failure) {
 	case errors.Is(err, fs.ErrNotExist):
 		return nil, false, nil
 	case errors.Is(err, syscall.ELOOP):
-		return nil, false, h.rejected(name, "is a symbolic link: the agent does not follow links in the ssh directory")
+		return nil, false, h.rejected(name, whyLink)
 	case err != nil:
 		return nil, false, h.rejected(name, "cannot be opened: "+err.Error())
 	}
@@ -178,13 +184,13 @@ func (h *SSHHome) fileProblem(info fs.FileInfo) string {
 	st, ok := info.Sys().(*syscall.Stat_t)
 	switch {
 	case info.Mode()&fs.ModeSymlink != 0:
-		return "is a symbolic link: the agent does not follow links in the ssh directory"
+		return whyLink
 	case !info.Mode().IsRegular() || !ok:
 		return "is not a regular file"
 	case st.Nlink > 1:
 		return "has more than one name (a hard link was planted?)"
 	case info.Size() > MaxSSHFileSize:
-		return fmt.Sprintf("is larger than %d bytes", MaxSSHFileSize)
+		return whyTooLarge
 	}
 	return h.ownerProblem(info)
 }
