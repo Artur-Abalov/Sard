@@ -26,6 +26,9 @@ type Repository interface {
 	// ID returns restic's repository id (from the repository config). It is
 	// not a secret: the server uses it to see how many hosts hold the key.
 	ID(ctx context.Context) (string, error)
+	// CheckLock opens the repository with a command that takes the shared
+	// lock; a key that may not write or delete fails on it (П29).
+	CheckLock(ctx context.Context) error
 	// Init creates the repository and returns its id.
 	Init(ctx context.Context) (string, error)
 	// Backup stores req.Paths, or the stream req.Stdin, as a new snapshot.
@@ -152,6 +155,14 @@ func (c *CLI) ID(ctx context.Context) (string, error) {
 	}
 	_ = json.Unmarshal(out.Bytes(), &cfg) // invalid JSON leaves the id empty
 	return requireID("restic cat", cfg.ID)
+}
+
+// CheckLock runs `restic snapshots --latest 1`: unlike `cat config` it
+// takes the shared lock (measured on restic 0.19.1), which needs write
+// rights to the repository.
+func (c *CLI) CheckLock(ctx context.Context) error {
+	_, err := c.runRepo(ctx, call{args: []string{"snapshots", "--latest", "1", "--json"}, stdout: collect(&bytes.Buffer{})})
+	return err
 }
 
 // Init runs `restic init` and returns the new repository's id.

@@ -146,6 +146,7 @@ type repo struct {
 var summary = restic.BackupSummary{SnapshotID: "snap", RepositoryID: "repo-id", TotalBytes: 42}
 
 func (r *repo) ID(context.Context) (string, error)   { return "repo-id", nil }
+func (r *repo) CheckLock(context.Context) error      { return nil }
 func (r *repo) Init(context.Context) (string, error) { return "repo-id", nil }
 
 func (r *repo) Restore(_ context.Context, snapshotID, target string) error {

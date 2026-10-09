@@ -225,7 +225,9 @@ func (c *Connector) connectKeysOnly(ctx context.Context) *refusal.Failure {
 	if !found {
 		return refusal.Fail(refusal.PasswordFileMissing, "the password file %s of the connected repository is missing; nothing was changed", c.Final)
 	}
-	id, initialized, f := c.inspect(ctx, Files{Password: c.Final, Env: c.env.path})
+	var log Log
+	target, cli := c.Open(Files{Password: c.Final, Env: c.env.path}, &log)
+	id, initialized, f := c.inspect(ctx, cli, target, &log)
 	switch {
 	case f != nil:
 		return f
@@ -260,7 +262,12 @@ func (c *Connector) discardEnv() { c.discard(c.env) }
 // try opens the repository with the candidate: it is attached if it is
 // there, created if it is not.
 func (c *Connector) try(ctx context.Context, cand candidate) outcome {
-	id, initialized, f := c.inspect(ctx, Files{Password: cand.path, Env: c.env.path})
+	var log Log
+	target, cli := c.Open(Files{Password: cand.path, Env: c.env.path}, &log)
+	id, initialized, f := c.inspect(ctx, cli, target, &log)
+	if f == nil && initialized {
+		f = c.Bound.CheckLock(ctx, cli, target, &log) // cat config takes no lock (П29)
+	}
 	if f != nil {
 		return c.rejected(cand, f)
 	}
@@ -269,14 +276,12 @@ func (c *Connector) try(ctx context.Context, cand candidate) outcome {
 
 // inspect asks whether the repository is there; the first time within the
 // time the storage is given to answer (Р33).
-func (c *Connector) inspect(ctx context.Context, files Files) (string, bool, *refusal.Failure) {
-	var log Log
-	target, cli := c.Open(files, &log)
+func (c *Connector) inspect(ctx context.Context, cli restic.Repository, target repoinit.Target, log *Log) (string, bool, *refusal.Failure) {
 	if c.accessed {
 		return repoinit.Inspect(ctx, cli, target)
 	}
 	c.accessed = true
-	return c.Bound.Inspect(ctx, cli, target, &log)
+	return c.Bound.Inspect(ctx, cli, target, log)
 }
 
 // rejected: the repository could not be opened with the candidate. A

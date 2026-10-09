@@ -194,6 +194,9 @@ func (f *fakeRestic) runRepoCommand(ctx context.Context, cmd restic.Command, sub
 		return f.cat(ctx, cmd, r)
 	case sub == "init":
 		return f.init(ctx, cmd, r)
+	case sub == "snapshots":
+		cmd.Stdout([]byte("[]")) // the command that takes the shared lock (П29)
+		return 0, nil
 	}
 	f.t.Fatalf("unexpected restic %q", cmd.Args)
 	return 0, nil

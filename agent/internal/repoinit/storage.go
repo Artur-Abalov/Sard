@@ -19,7 +19,10 @@ import (
 var (
 	keyRejectedCauses   = []string{"invalidaccesskeyid", "signaturedoesnotmatch", "does not exist in our records", "signature we calculated does not match"}
 	bucketMissingCauses = []string{"nosuchbucket", "bucket does not exist", "bucket not found"}
-	accessDeniedCauses  = []string{"access denied", "accessdenied", "forbidden", "permission denied"}
+	accessDeniedCauses  = []string{"access denied", "accessdenied", "forbidden", "permission denied", "unable to create lock"}
+	// makeBucketCause is how restic's init reports the creation of a bucket
+	// it asked for (П30); a refusal of it is the lack of the bucket.
+	makeBucketCause = "client.makebucket:"
 )
 
 func mentions(text string, causes []string) bool {
@@ -30,6 +33,18 @@ func mentions(text string, causes []string) bool {
 		}
 	}
 	return false
+}
+
+// causeReasons maps what a storage said to a Reason; the first match wins.
+var causeReasons = []struct {
+	matches func(cause string) bool
+	reason  refusal.Reason
+}{
+	{func(c string) bool { return mentions(c, keyRejectedCauses) }, refusal.S3KeyRejected},
+	// a refused creation of the bucket is the lack of the bucket (П30)
+	{func(c string) bool { return mentions(c, []string{makeBucketCause}) && mentions(c, accessDeniedCauses) }, refusal.BucketNotFound},
+	{func(c string) bool { return mentions(c, bucketMissingCauses) }, refusal.BucketNotFound},
+	{func(c string) bool { return mentions(c, accessDeniedCauses) }, refusal.StorageAccessDenied},
 }
 
 // storageReason is the reason of a refusal of the storage that restic
@@ -43,13 +58,10 @@ func storageReason(err error, t Target) refusal.Reason {
 	if !ok {
 		return refusal.BackendRefused // an error of the agent, not a word of the storage
 	}
-	switch {
-	case mentions(cause, keyRejectedCauses):
-		return refusal.S3KeyRejected
-	case mentions(cause, bucketMissingCauses):
-		return refusal.BucketNotFound
-	case mentions(cause, accessDeniedCauses):
-		return refusal.StorageAccessDenied
+	for _, c := range causeReasons {
+		if c.matches(cause) {
+			return c.reason
+		}
 	}
 	return refusal.BackendRefused
 }
@@ -67,6 +79,9 @@ var remoteMessages = map[refusal.Reason]func(cause string, t Target) string{
 		return fmt.Sprintf("the storage at %s denied access: %s; the key id or the secret may be wrong (some storages answer a wrong secret with Access Denied): check both; the key needs read, write and delete in the bucket %s", t.Where, cause, t.Bucket)
 	},
 	refusal.BucketNotFound: func(cause string, t Target) string {
+		if mentions(cause, []string{makeBucketCause}) {
+			return fmt.Sprintf("the bucket %s does not exist at %s and the key may not create it: %s; create the bucket, or give a key that may create buckets", t.Bucket, t.Where, cause)
+		}
 		return fmt.Sprintf("the bucket %s does not exist at %s: %s; create the bucket, or give a key that may create buckets", t.Bucket, t.Where, cause)
 	},
 	refusal.BackendUnavailable: func(cause string, t Target) string {

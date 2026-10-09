@@ -237,3 +237,30 @@ func TestWithinOfACallThatEndsInTimeOrIsInterruptedOrIsUnlimitedIsNotAnExpiry(t 
 		t.Errorf("an unlimited call: ran %v, timers %v", ran, clock.asked)
 	}
 }
+
+type hangingLock struct {
+	restic.Repository
+	started chan struct{}
+}
+
+func (h *hangingLock) CheckLock(ctx context.Context) error {
+	close(h.started)
+	<-ctx.Done()
+	return fmt.Errorf("restic snapshots: %w", ctx.Err())
+}
+
+// П29: the command that takes the lock is limited by --connect-timeout too.
+func TestACheckOfTheLockThatDoesNotAnswerFailsAsAnUnreachableStorage(t *testing.T) {
+	clock := &stepClock{fire: make(chan time.Time, 1)}
+	repo := &hangingLock{started: make(chan struct{})}
+	done := make(chan *refusal.Failure, 1)
+	go func() {
+		done <- repoconnect.Bound{Clock: clock, Timeout: time.Second}.CheckLock(t.Context(), repo, target, &repoconnect.Log{})
+	}()
+	<-repo.started
+	clock.fire <- time.Now()
+	f := <-done
+	if f == nil || f.Reason != refusal.BackendUnavailable || !strings.Contains(f.Detail, "did not answer within 1s") {
+		t.Fatalf("failure %+v", f)
+	}
+}

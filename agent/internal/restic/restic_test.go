@@ -508,3 +508,30 @@ func TestErrorLinesAreTheOnesTheWrapperReadsAsErrors(t *testing.T) {
 		}
 	}
 }
+
+// Measured on restic 0.19.1 (F2 stand): cat config takes no lock, so the
+// first access to an existing repository is a command that takes the
+// shared one; a key without write rights fails on it (П29).
+func TestCheckLockRunsASnapshotsCommandThatTakesTheSharedLock(t *testing.T) {
+	f := newFixture(t, map[string]reply{"snapshots": {inline: "[]"}})
+	if err := f.build().CheckLock(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := f.exec.call("snapshots")
+	if !slices.Equal(got.Args, []string{"snapshots", "--latest", "1", "--json"}) {
+		t.Errorf("ran %q", got.Args)
+	}
+	if slices.Contains(got.Args, "--no-lock") {
+		t.Error("the command takes no lock")
+	}
+}
+
+func TestCheckLockReportsTheErrorOfRestic(t *testing.T) {
+	f := newFixture(t, map[string]reply{"snapshots": {code: 1}})
+	f.exec.fatal = "Fatal: unable to create lock in backend: client.PutObject: Forbidden: Operation is not allowed for this key."
+	err := f.build().CheckLock(context.Background())
+	var exitErr *restic.ExitError
+	if !errors.As(err, &exitErr) || !strings.Contains(exitErr.Cause(), "unable to create lock in backend") {
+		t.Fatalf("err = %v", err)
+	}
+}

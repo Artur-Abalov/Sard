@@ -76,6 +76,21 @@ func (b Bound) Inspect(ctx context.Context, cli restic.Repository, target repoin
 	return id, initialized, f
 }
 
+// CheckLock opens the existing repository with a command that takes the
+// shared lock (П29), within the time Bound allows; a key that may not
+// write fails on it with the class of the storage's answer.
+func (b Bound) CheckLock(ctx context.Context, cli restic.Repository, target repoinit.Target, log *Log) *refusal.Failure {
+	var err error
+	timedOut := b.Within(ctx, func(limited context.Context) { err = cli.CheckLock(limited) })
+	switch {
+	case err == nil:
+		return nil
+	case timedOut:
+		return b.unanswered(target, log)
+	}
+	return repoinit.FromRestic(ctx, err, target)
+}
+
 // Within runs call limited by the time Bound allows; timedOut says that
 // the limit, not an interrupt of the command, ended the context call got.
 // Zero Timeout: no limit.

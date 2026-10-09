@@ -36,6 +36,23 @@ type fakeRepo struct {
 	passwordSeen []string
 	inits        int
 	current      *repoconnect.Files
+	// lockErr is what the command that takes the lock fails with; locks
+	// counts it and lockSaw lists the files in place when it ran.
+	lockErr error
+	locks   int
+	lockSaw [][]string
+	secrets string
+}
+
+func (r *fakeRepo) CheckLock(context.Context) error {
+	r.locks++
+	entries, _ := os.ReadDir(r.secrets)
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	r.lockSaw = append(r.lockSaw, names)
+	return r.lockErr
 }
 
 func (r *fakeRepo) ID(context.Context) (string, error) {
@@ -87,7 +104,7 @@ type world struct {
 func newWorld(t *testing.T) *world {
 	t.Helper()
 	dir := t.TempDir()
-	w := &world{t: t, dir: dir, repo: &fakeRepo{id: "ID-1"}}
+	w := &world{t: t, dir: dir, repo: &fakeRepo{id: "ID-1", secrets: filepath.Join(dir, "secrets")}}
 	owner := hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid()}
 	w.conn = &repoconnect.Connector{
 		FS:         hostsetup.OS{},
@@ -98,7 +115,7 @@ func newWorld(t *testing.T) *world {
 		Open: func(files repoconnect.Files, _ io.Writer) (repoinit.Target, restic.Repository) {
 			w.repo.files = append(w.repo.files, files)
 			w.repo.current = &files
-			return repoinit.Target{Name: "extra", Backend: "s3", Scrub: func(s string) string { return s }}, w.repo
+			return repoinit.Target{Name: "extra", Backend: "s3", Remote: true, Where: "s3:https://s3.example.com/b/extra", Bucket: "b", Scrub: func(s string) string { return s }}, w.repo
 		},
 		AskPassword: func() ([]byte, *refusal.Failure) {
 			w.asks++
@@ -388,7 +405,9 @@ func TestAnAskedPasswordThatCannotBeStagedIsAWriteError(t *testing.T) {
 	}
 }
 
-func TestOnlyTheFirstAccessIsLimitedByTheConnectTimeout(t *testing.T) {
+// The first cat config and the command that takes the lock (П29) are limited;
+// the cat config repeated with the password the operator gave is not.
+func TestOnlyTheFirstAccessAndTheLockCheckAreLimitedByTheConnectTimeout(t *testing.T) {
 	w := newWorld(t)
 	w.repo.initialized, w.repo.password = true, "asked"
 	clock := &stepClock{fire: make(chan time.Time, 1)}
@@ -396,7 +415,7 @@ func TestOnlyTheFirstAccessIsLimitedByTheConnectTimeout(t *testing.T) {
 	if f := w.conn.Connect(t.Context()); f != nil {
 		t.Fatal(f)
 	}
-	if len(w.repo.files) != 2 || len(clock.asked) != 1 {
+	if len(w.repo.files) != 2 || len(clock.asked) != 2 {
 		t.Fatalf("restic ran %d times, the clock was asked %v", len(w.repo.files), clock.asked)
 	}
 }
@@ -554,5 +573,56 @@ func TestWhatWasCommittedIsNotTakenAwayAgain(t *testing.T) {
 	}
 	if len(fsys.removed) != 0 {
 		t.Fatalf("removed %v", fsys.removed)
+	}
+}
+
+// П29: restic cat config takes no lock, so the first access to an existing
+// repository is a command that does; a key without write rights fails on it.
+var errReadOnlyKey = fmt.Errorf("restic snapshots: %w", &restic.ExitError{Code: 1, Message: "Fatal: unable to create lock in backend: client.PutObject: Forbidden: Operation is not allowed for this key."})
+
+func TestAReadOnlyKeyWithAGivenPasswordIsRefusedWithoutAQuestionAndWithoutFiles(t *testing.T) {
+	w := newWorld(t)
+	w.repo.initialized, w.repo.password, w.repo.lockErr = true, "given", errReadOnlyKey
+	w.conn.Provided = []byte("given\n")
+	w.conn.Env = &repoconnect.EnvFile{Final: w.env(), Content: []byte("AWS_ACCESS_KEY_ID=K\n")}
+	f := w.conn.Connect(t.Context())
+	if f == nil || f.Reason != refusal.StorageAccessDenied || !strings.Contains(f.Detail, "Operation is not allowed for this key") {
+		t.Fatalf("failure %v", f)
+	}
+	if w.asks != 0 || len(w.leftovers()) != 0 || w.conn.Attached {
+		t.Fatalf("asks %d, files %v, attached %v", w.asks, w.leftovers(), w.conn.Attached)
+	}
+}
+
+func TestAReadOnlyKeyWithATerminalPasswordIsRefusedRightAfterThePasswordAndWithoutFiles(t *testing.T) {
+	w := newWorld(t)
+	w.repo.initialized, w.repo.password, w.repo.lockErr = true, "asked", errReadOnlyKey
+	f := w.conn.Connect(t.Context())
+	if f == nil || f.Reason != refusal.StorageAccessDenied {
+		t.Fatalf("failure %v", f)
+	}
+	if w.asks != 1 || len(w.leftovers()) != 0 || w.conn.Attached {
+		t.Fatalf("asks %d, files %v, attached %v", w.asks, w.leftovers(), w.conn.Attached)
+	}
+}
+
+func TestTheLockIsTakenBeforeAnyFileIsWrittenAndNotForAnEmptyStorage(t *testing.T) {
+	w := newWorld(t)
+	w.repo.initialized, w.repo.password = true, "given"
+	w.conn.Provided = []byte("given\n")
+	if f := w.conn.Connect(t.Context()); f != nil {
+		t.Fatal(f)
+	}
+	if w.repo.locks != 1 {
+		t.Fatalf("locks %d", w.repo.locks)
+	}
+	for _, name := range w.repo.lockSaw[0] {
+		if strings.Contains(name, "restic-extra.pass") && !strings.Contains(name, ".tmp-") {
+			t.Fatalf("the password file was in place at the lock: %v", w.repo.lockSaw[0])
+		}
+	}
+	empty := newWorld(t)
+	if f := empty.conn.Connect(t.Context()); f != nil || empty.repo.locks != 0 {
+		t.Fatalf("failure %v, locks %d", f, empty.repo.locks)
 	}
 }

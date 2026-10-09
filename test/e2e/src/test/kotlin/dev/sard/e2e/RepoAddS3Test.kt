@@ -112,21 +112,29 @@ class RepoAddS3Test {
     fun `a read-only key on a bucket that holds a repository is refused with STORAGE_ACCESS_DENIED`() {
         val bucket = garage.bucket("add-readonly")
         val writer = garage.key("add-readonly-rw", bucket, write = true)
-        val created = AgentHost(sard, "add-readonly-1", persistentEtc = true).repoAdd(NAME, garage.url(bucket, "main"), "--access-key-id", writer.id, "--region", GarageS3.REGION, secretKey = writer.secret)
+        val first = AgentHost(sard, "add-readonly-1", persistentEtc = true)
+        val created = first.repoAdd(NAME, garage.url(bucket, "main"), "--access-key-id", writer.id, "--region", GarageS3.REGION, secretKey = writer.secret)
         assertEquals(0, created.code, created.stderr)
+        val password = first.revealPassword(NAME)
         val reader = garage.key("add-readonly-ro", bucket, write = false)
         val host = AgentHost(sard, "add-readonly-2", persistentEtc = true)
 
-        val exit = host.repoAdd(NAME, garage.url(bucket, "main"), "--access-key-id", reader.id, "--region", GarageS3.REGION, secretKey = reader.secret)
+        // The password is given by flag: restic takes the lock only on an opened repository (П29),
+        // so the refusal comes before any prompt and before any file is written.
+        val exit =
+            host.repoAdd(
+                NAME, garage.url(bucket, "main"), "--access-key-id", reader.id, "--region", GarageS3.REGION, "--password-from-file", PASSWORD_FILE,
+                secretKey = reader.secret,
+                files = mapOf(PASSWORD_FILE to Transferable.of(password.toByteArray(), TarFiles.OWNER_ONLY)),
+            )
 
         refusedWith(host, exit, "STORAGE_ACCESS_DENIED")
     }
 
     /**
-     * The key may not create buckets and the bucket is not there. Garage's exact answer was not
-     * measured when this was written (no Docker where A8b-1 was coded): the class BUCKET_NOT_FOUND
-     * is what the spec asks for; if restic's init reports the denied creation as Access Denied, this
-     * test fails and says what Garage sent.
+     * The key may not create buckets and the bucket is not there. Measured on Garage (П30): restic
+     * init prints `client.MakeBucket: Forbidden: Access key <id> is not allowed to create buckets`,
+     * which is BUCKET_NOT_FOUND.
      */
     @Test
     fun `a missing bucket the key cannot create is refused with BUCKET_NOT_FOUND`() {

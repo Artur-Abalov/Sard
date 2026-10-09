@@ -20,7 +20,6 @@ func TestTheRefusalOfAnS3StorageOnTheFirstAccessNamesItsClassCauseAndWhatToDo(t 
 		{"cat", "Fatal: unable to open config file: Stat: Access Denied.", exitUsage, "STORAGE_ACCESS_DENIED", "Access Denied"},
 		{"cat", "Fatal: unable to open config file: Stat: The Access Key Id you provided does not exist in our records.", exitUsage, "S3_KEY_REJECTED", "does not exist in our records"},
 		{"cat", "Fatal: unable to open config file: Stat: The request signature we calculated does not match the signature you provided.", exitUsage, "S3_KEY_REJECTED", "signature"},
-		{"cat", "unable to create lock in backend: client.PutObject: Forbidden: Operation is not allowed for this key.", exitUsage, "STORAGE_ACCESS_DENIED", "Operation is not allowed for this key"},
 		{"cat", "Fatal: unable to open config file: Stat: Get \"https://s3.example.com/bucket-b/extra/config\": dial tcp: lookup s3.example.com: no such host", exitTemporary, "BACKEND_UNAVAILABLE", "no such host"},
 		{"cat", "Fatal: unable to open config file: Stat: unexpected response 418", exitAgentError, "BACKEND_REFUSED", "unexpected response 418"},
 	} {
@@ -44,6 +43,7 @@ func TestARefusalOfAnS3StorageWhileCreatingKeepsTheEnvFileAndThePasswordForARepe
 	for _, c := range []struct{ line, reason, text string }{
 		{"Fatal: create repository at " + s3Address + " failed: client.PutObject: Forbidden: Operation is not allowed for this key.", "STORAGE_ACCESS_DENIED", "Operation is not allowed for this key"},
 		{"Fatal: create repository at " + s3Address + " failed: The specified bucket does not exist", "BUCKET_NOT_FOUND", "bucket-b"},
+		{"Fatal: create repository at s3:http://garage:3900/bucket-b/extra failed: client.MakeBucket: Forbidden: Access key KEY-ID-1 is not allowed to create buckets", "BUCKET_NOT_FOUND", "may not create it"},
 	} {
 		h := newSetupHost(t)
 		h.s3Repo().answers("init", c.line, 1)
@@ -116,4 +116,36 @@ func TestAPasswordWithSpacesAroundItIsScrubbedToo(t *testing.T) {
 		"--secret-key-from-file", key, "--password-stdin", "--config", "C")
 	assertCode(t, code, exitAgentError)
 	h.assertS3ValuesHidden(stdout, stderr)
+}
+
+// П29: restic cat config takes no lock; a key that may not write fails on
+// the command that does, before any file is written.
+const lockDenied = "Fatal: unable to create lock in backend: client.PutObject: Forbidden: Operation is not allowed for this key."
+
+func TestAReadOnlyKeyWithAPasswordFromAFileIsRefusedWithoutAQuestionAndWithoutFiles(t *testing.T) {
+	h := newSetupHost(t)
+	h.s3Repo().initialized, h.s3Repo().password = true, passMarker
+	src := h.path("outside/F")
+	h.write(src, passMarker+"\n", 0o600)
+	h.s3Repo().answers("snapshots", lockDenied, 1)
+	term := h.terminalIs()
+	code, stdout, stderr := h.sudo("repo", "add", "extra", s3Address, "--access-key-id", keyID1, "--secret-key-from-file", src, "--password-from-file", src, "--config", "C")
+	assertRefusal(t, code, stderr, exitUsage, "STORAGE_ACCESS_DENIED")
+	if !strings.Contains(stderr, "Operation is not allowed for this key") || strings.Contains(stdout, "attached") || len(term.prompts) != 0 {
+		t.Errorf("stdout %q stderr %q prompts %v", stdout, stderr, term.prompts)
+	}
+	h.assertNoS3Traces()
+}
+
+func TestAReadOnlyKeyWithATerminalPasswordIsRefusedAfterThePasswordAndWithoutFiles(t *testing.T) {
+	h := newSetupHost(t)
+	h.s3Repo().initialized, h.s3Repo().password = true, passMarker
+	h.s3Repo().script = func(sub string, _ []string) (string, int, bool) { return lockDenied, 1, sub == "snapshots" }
+	term := h.terminalIs(s3Marker, s3Marker, passMarker, passMarker)
+	code, stdout, stderr := h.sudo("repo", "add", "extra", s3Address, "--access-key-id", keyID1, "--config", "C")
+	assertRefusal(t, code, stderr, exitUsage, "STORAGE_ACCESS_DENIED")
+	if strings.Contains(stdout, "attached") || len(term.prompts) == 0 {
+		t.Errorf("stdout %q prompts %v", stdout, term.prompts)
+	}
+	h.assertNoS3Traces()
 }
