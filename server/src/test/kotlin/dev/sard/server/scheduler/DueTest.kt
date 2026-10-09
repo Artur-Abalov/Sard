@@ -61,4 +61,12 @@ class DueTest {
         assertEquals(Due.MISSED_COUNT_LIMIT, missed.count)
         assertEquals(false, missed.capped)
     }
+
+    @Test
+    fun `a fire exactly now after the counted limit has passed too, so the count is capped`() {
+        val now = at.plusSeconds(60L * Due.MISSED_COUNT_LIMIT)
+        val missed = due(at, now) as Due.Missed
+        assertEquals(Due.MISSED_COUNT_LIMIT, missed.count)
+        assertEquals(true, missed.capped)
+    }
 }

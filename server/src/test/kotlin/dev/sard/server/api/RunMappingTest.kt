@@ -10,6 +10,7 @@ import dev.sard.server.runs.RunView
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepView
 import dev.sard.server.runs.Trigger
+import dev.sard.server.scheduler.CatchUpPeriod
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import java.time.Instant
@@ -138,5 +139,22 @@ class RunMappingTest {
 
         assertEquals(listOf("etc", true), listOf(full.sourceName, full.sourceDeleted))
         assertEquals(listOf("etc", true), listOf(summary.sourceName, summary.sourceDeleted))
+    }
+
+    @Test
+    fun `a catch-up period is named by a run and by its summary, as it is, capped or not`() {
+        val until = AT.plusSeconds(3600)
+        for (capped in listOf(true, false)) {
+            val period = CatchUpPeriod(AT, until, 12, capped, "Europe/Berlin")
+            val expected = CatchUp(AT, until, 12, capped, "Europe/Berlin")
+            assertEquals(expected, MutFlow.underTest { RunMapping.run(run(), period) }.catchUp)
+            assertEquals(expected, MutFlow.underTest { RunMapping.summary(run(), period) }.catchUp)
+        }
+    }
+
+    @Test
+    fun `a run without a period names none`() {
+        assertNull(MutFlow.underTest { RunMapping.run(run(), null) }.catchUp)
+        assertNull(MutFlow.underTest { RunMapping.summary(run(), null) }.catchUp)
     }
 }

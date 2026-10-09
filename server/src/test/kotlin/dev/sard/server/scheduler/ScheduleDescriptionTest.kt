@@ -64,7 +64,17 @@ class ScheduleDescriptionTest {
     @Test
     fun `everything else is a custom schedule that shows its cron`() {
         val custom =
-            listOf("*/25 * * * *", "0 2 1-7 * 1", "0,30 2 * * *", "0 2 * 1 *", "00 2 * * *", "0 2 * * 1-4", "0 2 * * 8")
+            listOf(
+                "*/25 * * * *",
+                "0 2 1-7 * 1",
+                "0,30 2 * * *",
+                "0 2 * 1 *",
+                "00 2 * * *",
+                "0 2 * * 1-4",
+                "0 2 * * 8",
+                "60 * * * *",
+                "0 24 * * *",
+            )
         for (cron in custom) check(cron, "Особое расписание: $cron", "Custom: $cron")
     }
 }

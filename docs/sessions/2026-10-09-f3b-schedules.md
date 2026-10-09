@@ -92,3 +92,23 @@
 - Убрано лишнее `val run` в `Runs.listRuns`; в ADR 0054 (Р15) записано, что догоняющий, пропущенный на идущем запуске,
   тоже забирает свои простои и они не попадают в период ни одного запуска.
 - Cleaner: проверка коммита 8737295 без изменений кода (CRAP затронутых функций не выше 3.0, `gate.sh server fast` зелёный).
+
+## Hardener (мутационная проверка)
+
+- До: `-Pmutflow.enabled=true :server:test --rerun` на ветке F3b: 26 выживших (`CronScheduleTest` 1: граница длины
+  cron 200 -> 201; `DueTest` 2: `<=` и `0` в признаке «обрезано» при следующем срабатывании ровно в `now`;
+  `ScheduleDescriptionTest` 1: `<` в `number` (минута 60); `SchedulePreviewsTest` 22: мутанты `CronSchedule` и
+  `ScheduleDescription`, достигнутые через превью и уже убитые их собственными тестами). После: 0.
+- Тесты, не код: `CronScheduleTest` (201 символ), `DueTest` (следующее срабатывание ровно в `now` за пределом счёта),
+  `ScheduleDescriptionTest` (`60 * * * *`, `0 24 * * *`). `SchedulePreviewsTest` получил
+  `includeTargets = [SchedulePreviews::class]`, как `SchedulerIntegrationTest` (ADR 0006): cron и слова мутируются в
+  своих тестах, превью проверяет только своё.
+- Под mutflow приведён код F3b, который раньше проверялся только интеграционными тестами без `MutFlow.underTest`:
+  `Deliveries` и `Notices` (в `ScheduleNotificationsIntegrationTest`, плюс `NotificationService`: тест аренды
+  оборванной отправки и записи в журнал), `CatchUpPeriods` и `Schedules.fires` (в `SchedulerIntegrationTest`, новый тест
+  журнала с постраничным чтением), `SchedulePreviewApiImpl`, `SchedulesApiImpl`, `RunsApiImpl` (новые
+  `SchedulePreviewApiImplTest`, `SchedulesApiImplTest`, `RunsApiImplTest`), `RunMapping.catchUp` (`RunMappingTest`).
+- Не под mutflow остались классы без исполняемой логики или с логикой, которую mutflow не мутирует: DTO контроллеров
+  (`SchedulesController`, `RunsController`, `SchedulePreviewController` кроме `SchedulePreviewApiImpl`),
+  `ScheduleRecords`, `NotificationDeliveryRecord`, `ScheduleModel`; `RunsApiImpl.listStepLogs` F3b не менялся.
+- Исключений и подавлений нет; порог не менялся; продакшен-код не менялся.

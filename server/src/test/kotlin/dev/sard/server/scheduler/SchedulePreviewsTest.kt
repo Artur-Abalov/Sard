@@ -13,8 +13,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
-/** F3b: what the console shows before a schedule is saved. */
-@MutFlowTest
+/**
+ * F3b: what the console shows before a schedule is saved. The cron and its words have their own tests
+ * ([CronScheduleTest], [ScheduleDescriptionTest]); here only the preview's own logic is mutated.
+ */
+@MutFlowTest(includeTargets = [SchedulePreviews::class])
 class SchedulePreviewsTest {
     private val t0 = Instant.parse("2026-10-09T12:00:00Z")
 

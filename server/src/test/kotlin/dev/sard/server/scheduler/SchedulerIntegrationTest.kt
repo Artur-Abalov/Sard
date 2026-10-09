@@ -4,6 +4,7 @@
 package dev.sard.server.scheduler
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.MovableClock
@@ -52,7 +53,9 @@ private fun at(text: String): Instant = Instant.parse(text)
  * F3a verification 1-7: a fire is neither lost nor doubled. RUNS_NOW is 2026-09-30T10:00:00Z. Mutants run
  * under single-threaded ticks only; the races call [Scheduler.tick] directly.
  */
-@MutFlowTest(includeTargets = [Scheduler::class, Firing::class, Schedules::class, CatchUpSlots::class])
+@MutFlowTest(
+    includeTargets = [Scheduler::class, Firing::class, Schedules::class, CatchUpSlots::class, CatchUpPeriods::class],
+)
 @ExtendWith(OutputCaptureExtension::class)
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
@@ -460,12 +463,22 @@ class SchedulerIntegrationTest(
         // Kathmandu is UTC+05:45: the same cron in another zone fires at another instant.
         val moved = set(source, ScheduleDraft("30 * * * *", "Asia/Kathmandu", enabled = true))
         assertEquals(at("2026-09-30T11:45:00Z"), moved.nextRunAt)
-        assertEquals(moved, schedules.get(tenant.id, source.id))
-        assertNull(schedules.get(tenant.id, source("no-schedule").id))
+        assertEquals(moved, current(source))
+        assertNull(current(source("no-schedule")))
         assertTrue(changed.updatedAt > same.createdAt)
     }
 
-    private fun periodOf(run: UUID) = catchUps.periods(tenant.id, listOf(run))[run]
+    private fun current(source: SourceView): ScheduleView? = MutFlow.underTest { schedules.get(tenant.id, source.id) }
+
+    private fun journal(
+        source: SourceView,
+        after: PageKey? = null,
+        limit: Int = 100,
+    ): List<FireView> = MutFlow.underTest { schedules.fires(tenant.id, source.id, after, limit) }
+
+    private fun periods(vararg runs: UUID) = MutFlow.underTest { catchUps.periods(tenant.id, runs.toList()) }
+
+    private fun periodOf(run: UUID) = periods(run)[run]
 
     private fun period(
         from: String,
@@ -484,7 +497,7 @@ class SchedulerIntegrationTest(
 
         val run = tables.runs().single()
         assertEquals(period("2026-09-30T11:00:00Z", "2026-09-30T14:00:00Z", 4), periodOf(run.id))
-        assertEquals(true, tables.fires(schedules.get(tenant.id, source.id)!!.id).none { it.missedCountCapped })
+        assertEquals(true, tables.fires(current(source)!!.id).none { it.missedCountCapped })
     }
 
     @Test
@@ -525,7 +538,7 @@ class SchedulerIntegrationTest(
         assertEquals(period("2026-09-30T11:00:00Z", "2026-09-30T15:00:00Z", 5), periodOf(active.id))
         assertEquals(
             mapOf(active.id to period("2026-09-30T11:00:00Z", "2026-09-30T15:00:00Z", 5)),
-            catchUps.periods(tenant.id, listOf(active.id)),
+            periods(active.id),
         )
     }
 
@@ -537,7 +550,7 @@ class SchedulerIntegrationTest(
         clock.now = at("2026-09-30T12:31:00Z")
         set(source, ScheduleDraft(HOURLY, "UTC", enabled = false))
         set(source, ScheduleDraft(HOURLY, "UTC", enabled = true))
-        assertNull(schedules.get(tenant.id, source.id)!!.catchUpAt)
+        assertNull(current(source)!!.catchUpAt)
 
         tickAt(at("2026-09-30T15:30:00Z"))
         tickAt(at("2026-09-30T15:30:02Z"))
@@ -626,6 +639,32 @@ class SchedulerIntegrationTest(
         val run = tables.runs().single()
         assertEquals(10_000, periodOf(run.id)!!.missedCount)
         assertEquals(true, periodOf(run.id)!!.missedCountCapped)
+        val read = journal(source).single { it.outcome == FireOutcome.SKIPPED_DOWNTIME }
+        assertEquals(listOf(10_000, true), listOf(read.missedCount, read.missedCountCapped))
+    }
+
+    @Test
+    fun `the journal is read newest first, a page at a time, and a count within its limit is not capped`() {
+        val source = source()
+        val schedule = schedule(source)
+        assertEquals(emptyList(), journal(source))
+        tickAt(at("2026-09-30T11:00:00Z"))
+        tickAt(at("2026-09-30T12:00:00Z"))
+        tickAt(at("2026-09-30T13:00:00Z"))
+
+        val all = journal(source)
+        val stored = tables.fires(schedule.id)
+        assertEquals(3, all.size)
+        assertEquals(stored.map { it.scheduledFor }.reversed(), all.map { it.scheduledFor })
+        val oldest = all.last()
+        assertEquals(listOf(FireKind.SCHEDULE, FireOutcome.RUN_CREATED), listOf(oldest.kind, oldest.outcome))
+        assertEquals(false, all.any { it.missedCountCapped })
+        assertEquals(FireOutcome.SKIPPED_ACTIVE, all.first().outcome)
+        val firstPage = journal(source, limit = 2)
+        assertEquals(all.take(2), firstPage)
+        val after = PageKey(firstPage.last().recordedAt, firstPage.last().id)
+        assertEquals(all.drop(2), journal(source, after))
+        assertEquals(emptyList(), journal(source, PageKey(all.last().recordedAt, all.last().id)))
     }
 
     @Test

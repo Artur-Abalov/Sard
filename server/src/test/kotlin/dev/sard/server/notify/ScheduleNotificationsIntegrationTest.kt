@@ -27,6 +27,8 @@ import dev.sard.server.scheduler.Scheduler
 import dev.sard.server.scheduler.SchedulerMetrics
 import dev.sard.server.scheduler.SchedulerSettings
 import dev.sard.server.scheduler.Schedules
+import io.github.anschnapp.mutflow.MutFlow
+import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
@@ -61,7 +63,11 @@ private const val NIGHTLY = "0 2 * * *"
 private const val BERLIN = "Europe/Berlin"
 private val TTL: Duration = Duration.ofHours(24)
 
-/** F3b: the alert about fires skipped in a row and the messages about scheduled runs, through the real queue. */
+/**
+ * F3b: the alert about fires skipped in a row and the messages about scheduled runs, through the real queue. The
+ * queue and the reading of what a delivery tells about are mutated; the formatters have their own tests.
+ */
+@MutFlowTest(includeTargets = [Deliveries::class, Notices::class, NotificationService::class])
 @ExtendWith(OutputCaptureExtension::class)
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
@@ -130,7 +136,9 @@ class ScheduleNotificationsIntegrationTest(
         tenant.drop()
     }
 
-    private fun ticks(count: Int = 3) = repeat(count) { service.tick() }
+    private fun tick(by: NotificationService = service) = MutFlow.underTest { by.tick() }
+
+    private fun ticks(count: Int = 3) = repeat(count) { tick() }
 
     private fun alerts(): List<String> =
         fake.requests.indices
@@ -341,8 +349,50 @@ class ScheduleNotificationsIntegrationTest(
                 clock,
             )
 
-        repeat(3) { restarted.tick() }
+        repeat(3) { tick(restarted) }
 
+        assertEquals("delivered", deliveryStatus())
+    }
+
+    @Test
+    fun `Алерт, отправка которого оборвалась, не уходит снова до конца аренды`(output: CapturedOutput) {
+        val (_, schedule) = scheduleOf()
+        alertRow(schedule)
+        val channel =
+            object : NotificationChannel {
+                var calls = 0
+                override val name = "telegram"
+
+                override fun send(message: Message): SendOutcome {
+                    calls++
+                    check(calls > 1) { "connection lost" }
+                    return SendOutcome.Delivered
+                }
+            }
+        val lease = Duration.ofMinutes(5)
+        val queue =
+            NotificationService(
+                Deliveries(sessions, UuidV7(clock, SecureRandom())),
+                listOf(channel),
+                formatter,
+                alertFormatter,
+                RetryPolicy(RetrySettings()),
+                QueueSettings(batch = 10, lease = lease, ttl = TTL),
+                clock,
+            )
+
+        tick(queue)
+        assertEquals(1, channel.calls)
+        assertEquals("pending", deliveryStatus())
+        assertTrue("of schedule fire $FIRE failed; it is tried again later" in output.all)
+
+        clock.now = clock.now.plus(lease).minusSeconds(1)
+        tick(queue)
+        assertEquals(1, channel.calls, "the lease has not ended: nobody else sends it")
+
+        clock.now = clock.now.plusSeconds(2)
+        tick(queue)
+        assertEquals(2, channel.calls)
         assertEquals("delivered", deliveryStatus())
     }
 
@@ -378,7 +428,7 @@ class ScheduleNotificationsIntegrationTest(
         alertRow(schedule)
         jdbc.execute("alter table notification_deliveries rename to notification_deliveries_off")
         try {
-            assertFailsWith<Exception> { service.tick() }
+            assertFailsWith<Exception> { tick() }
         } finally {
             jdbc.execute("alter table notification_deliveries_off rename to notification_deliveries")
         }
@@ -394,12 +444,12 @@ class ScheduleNotificationsIntegrationTest(
         val (_, schedule) = scheduleOf()
         alertRow(schedule)
         fake.fallback = FakeBotApi.error(503, "Service Unavailable")
-        service.tick()
+        tick()
         assertEquals("pending", deliveryStatus())
 
         fake.fallback = FakeBotApi.ok()
         clock.now = clock.now.plusSeconds(10)
-        service.tick()
+        tick()
 
         assertEquals("delivered", deliveryStatus())
         assertEquals(2, fake.requests.size, "the refused attempt and the delivery")
@@ -413,10 +463,10 @@ class ScheduleNotificationsIntegrationTest(
         val (_, schedule) = scheduleOf()
         alertRow(schedule)
         fake.fallback = FakeBotApi.error(503, "Service Unavailable")
-        service.tick()
+        tick()
 
         clock.now = clock.now.plus(TTL).plusSeconds(1)
-        service.tick()
+        tick()
 
         assertEquals("expired", deliveryStatus())
         assertTrue("Notification of schedule fire $FIRE through telegram expired" in output.all)
@@ -428,7 +478,7 @@ class ScheduleNotificationsIntegrationTest(
         alertRow(schedule)
         fake.fallback = FakeBotApi.error(400, "Bad Request: chat not found")
 
-        service.tick()
+        tick()
 
         assertEquals("failed", deliveryStatus())
         val line = output.all.lines().single { "Notification of schedule fire $FIRE through telegram failed" in it }
