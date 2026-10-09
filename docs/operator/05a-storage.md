@@ -202,7 +202,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 того, как ключ хоста принят, и не удаляется никогда: администратор мог уже
 получить открытую часть. Первый запуск обычно заканчивается так:
 
-```
+```text
 sard-agent repo add: SSH_KEY_NOT_AUTHORIZED: the server … did not accept the key …
 Public key of the service user sard-agent: add it to authorized_keys of backup on <sftp.example.com>, then repeat the same command:
   ssh-ed25519 AAAA… sard-agent@<имя хоста>
