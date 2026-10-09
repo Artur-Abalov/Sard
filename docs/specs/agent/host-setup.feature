@@ -568,9 +568,9 @@
 #       прерванной команды) заменяется только принятым кандидатом.
 #   Р31. Проверка доступа S3. Первое обращение — restic cat config с
 #       кандидатом env-файла (restic от имени пользователя службы, Р6).
-#       restic берёт в хранилище блокировку даже для cat (F2:
-#       docs/operator/05a-storage.md, «ключ без записи»), поэтому ключ без
-#       права записи отказывает уже здесь. Есть репозиторий — нужен его
+#       [Исправлено П29: cat config блокировку не берёт; права записи
+#       проверяет отдельная команда restic с общей блокировкой при первом
+#       обращении.] Есть репозиторий — нужен его
 #       пароль (Р15); код 10 restic («нет репозитория») — init с
 #       сгенерированным или переданным паролем (Р16, Н5); init заодно
 #       проверяет запись в пустое хранилище.
@@ -619,9 +619,9 @@
 #                                пользователь SFTP без права читать, писать
 #                                или удалять в бакете или каталоге
 #         BUCKET_NOT_FOUND       «использование» бакета нет (NoSuchBucket,
-#                                «bucket does not exist»; точные строки
-#                                restic coder измеряет на стенде Garage и
-#                                записывает в журнал сессии)
+#                                «bucket does not exist»; отказ
+#                                client.MakeBucket — тоже, П30; строки
+#                                измерены на стенде F2 2026-10-09)
 #         SSH_KEY_NOT_AUTHORIZED «использование» Permission denied (publickey)
 #         HOST_KEY_MISMATCH      «доверие» Host key verification failed
 #         BACKEND_UNAVAILABLE    «временная» имя не разрешается, порт
@@ -999,6 +999,44 @@
 #       другого текста, который прислал сервер.
 #   П28 (T5 architect, к Р40). ssh-keyscan не вернул ни одного ключа —
 #       BACKEND_UNAVAILABLE, какой бы ни был его код выхода.
+#
+# Поправки по прогону e2e A8b на стенде F2 (2026-10-09: Garage и OpenSSH,
+# restic 0.19.1; 11 из 13 @stand прошли, два S3 упали на неверных
+# допущениях спецификации). Согласованы с решениями владельца (Н19, П12).
+#
+#   П29 (к Р31, Р34, Р45). Измерено: restic cat config в restic 0.19.1
+#       блокировку НЕ берёт; ключ только на чтение к бакету с репозиторием
+#       проходит cat config, и команда шла дальше к паролю. Поэтому проверка
+#       доступа (первое обращение) — команда restic, которая берёт общую
+#       (не исключительную) блокировку, например restic snapshots --latest 1
+#       (выбор команды — coder). Ключ без права записи или удаления
+#       отказывает на ней — STORAGE_ACCESS_DENIED — до запроса пароля и до
+#       записи любого файла (Р35). Ограничение --connect-timeout (Р33)
+#       действует на неё. Для пустого хранилища restic cat config
+#       завершается кодом 10 (измерено) — путь init достигается по Н19.
+#       Ограничение restic: блокировку берёт только открытый репозиторий,
+#       а открыть его можно только паролем. Поэтому:
+#       - пароль дан флагом (--password-stdin, --password-from-file) или
+#         это повтор с файлом пароля фрагмента — команда с блокировкой идёт
+#         с ним первой; отказ записи — STORAGE_ACCESS_DENIED до любого
+#         вопроса и до записи любого файла;
+#       - пароль неизвестен (только терминал) — cat config говорит, что
+#         репозиторий есть; пароль спрашивается; команда с блокировкой идёт
+#         сразу с ним, до записи файлов и до «attached»; отказ —
+#         STORAGE_ACCESS_DENIED, файлов нет. Отказ раньше вопроса о пароле
+#         здесь невозможен (restic не берёт блокировку без пароля). В сценариях A8b «restic на cat config отвечает …» для
+#       существующего репозитория читается как «первое обращение restic
+#       отвечает …»; строки «unable to create lock in backend: …»
+#       относятся к команде с блокировкой.
+#   П30 (к Р34, Н19, П12). Измерено на Garage: отказ создания бакета при
+#       init — «Fatal: create repository at s3:http://garage:3900/<бакет>/<путь>
+#       failed: client.MakeBucket: Forbidden: Access key <id> is not allowed
+#       to create buckets». Строка с «client.MakeBucket:» и Forbidden или
+#       AccessDenied — BUCKET_NOT_FOUND («the bucket does not exist and the
+#       key may not create it»), не STORAGE_ACCESS_DENIED. По П12 env-файл и
+#       файл пароля после этого отказа init остаются. Строки П29 и П30
+#       измерены на стенде F2 2026-10-09 (замечание к таблице Р34 о
+#       «точных строках, измеряемых coder» этим выполнено).
 #
 # ---------------------------------------------------------------------------
 # Классы кодов выхода A8b (номера A2b; дополняют таблицу A8a)
@@ -3352,6 +3390,48 @@
         | строка                                                                                                                                             | причина               | текст                                   |
         | "Fatal: create repository at s3:https://s3.example.com/bucket-b/extra failed: client.PutObject: Forbidden: Operation is not allowed for this key." | STORAGE_ACCESS_DENIED | "Operation is not allowed for this key" |
         | "Fatal: create repository at s3:https://s3.example.com/bucket-b/extra failed: The specified bucket does not exist"                                 | BUCKET_NOT_FOUND      | "bucket-b"                              |
+        | "Fatal: create repository at s3:http://garage:3900/bucket-b/extra failed: client.MakeBucket: Forbidden: Access key KEY-ID-1 is not allowed to create buckets" | BUCKET_NOT_FOUND | "may not create it"                |
+        | "Fatal: create repository at s3:https://s3.example.com/bucket-b/extra failed: client.MakeBucket: Access Denied."                                  | BUCKET_NOT_FOUND      | "may not create it"                     |
+
+    # П29 (измерено на стенде F2 2026-10-09)
+    @local
+    Сценарий: Ключ только на чтение к существующему репозиторию S3 с данным паролем отказывает при первом обращении без вопросов
+      Дано в хранилище A_S3 есть репозиторий с паролем PASS-MARKER
+      И файл P содержит PASS-MARKER
+      И restic cat config с ключом KEY-ID-1 возвращает id репозитория
+      И команда restic, которая берёт блокировку, печатает "unable to create lock in backend: client.PutObject: Forbidden: Operation is not allowed for this key." и завершается кодом 1
+      И стандартный ввод — терминал
+      Когда оператор выполняет repo add extra A_S3 --access-key-id KEY-ID-1 --secret-key-from-file F --password-from-file P
+      Тогда код выхода класса «использование»
+      И сообщение называет причину STORAGE_ACCESS_DENIED и "Operation is not allowed for this key"
+      И терминал ничего не запрашивал
+      И stdout не говорит, что репозиторий подключён
+      И файлов D/secrets/restic-extra.env, D/secrets/restic-extra.pass и D/agent.d/repo-extra.yaml нет
+      И в D/secrets нет временных файлов
+
+    # П29
+    @local
+    Сценарий: Ключ только на чтение с паролем с терминала отказывает сразу после пароля и до записи файлов
+      Дано в хранилище A_S3 есть репозиторий с паролем PASS-MARKER
+      И restic cat config с ключом KEY-ID-1 возвращает id репозитория
+      И команда restic, которая берёт блокировку, печатает "unable to create lock in backend: client.PutObject: Forbidden: Operation is not allowed for this key." и завершается кодом 1
+      И стандартный ввод — терминал, оператор дважды вводит PASS-MARKER
+      Когда оператор выполняет repo add extra A_S3 --access-key-id KEY-ID-1 --secret-key-from-file F
+      Тогда код выхода класса «использование»
+      И сообщение называет причину STORAGE_ACCESS_DENIED
+      И stdout не говорит, что репозиторий подключён
+      И файлов D/secrets/restic-extra.env, D/secrets/restic-extra.pass и D/agent.d/repo-extra.yaml нет
+      И в D/secrets нет временных файлов
+
+    # П29
+    @local
+    Сценарий: Проверка доступа S3 берёт общую блокировку и ограничена таймаутом подключения
+      Дано в хранилище A_S3 есть репозиторий с паролем PASS-MARKER
+      И файл P содержит PASS-MARKER
+      Когда оператор выполняет S3-команду с --password-from-file P
+      Тогда restic получил команду, которая берёт общую блокировку, раньше записи env-файла и файла пароля
+      И ни одна команда restic не получила флаг исключительной блокировки
+      И эта команда ограничена --connect-timeout
 
     @local
     Сценарий: Отказ доступа S3 называет обе возможные причины и бакет
@@ -3442,7 +3522,7 @@
         | поломка                                                          | код | причина               |
         | секрет ключа неверный                                            | 2   | STORAGE_ACCESS_DENIED |
         | в бакете есть репозиторий, у ключа только чтение                 | 2   | STORAGE_ACCESS_DENIED |
-        | бакета нет, ключ не может создавать бакеты                       | 2   | BUCKET_NOT_FOUND      |
+        | бакета нет, ключ не может создавать бакеты (П30)                 | 2   | BUCKET_NOT_FOUND      |
 
     @stand
     Сценарий: Каталог SFTP только для чтения на стенде — отказ доступа

@@ -345,9 +345,15 @@ SEC_MARK=$(cat "$OUT/ksec")              # только для grep утечек
 50. Ключ только на чтение к существующему репозиторию: `sudo $AG repo password s1 --reveal > "$OUT/s1.pass"`;
     `run sudo $AG repo add s1ro s3:$S3/$B/s1 --access-key-id $ROID --secret-key-from-file "$OUT/rosec" --password-from-file "$OUT/s1.pass"`
     → `exit=2`, `STORAGE_ACCESS_DENIED`, в сообщении строка restic о блокировке
-    (`unable to create lock`), не только `exit code 1`.
+    (`unable to create lock`), не только `exit code 1`; файлов `restic-s1ro.*`
+    нет. (П29) То же в терминале без `--password-from-file`
+    (`sudo $AG repo add s1ro s3:$S3/$B/s1 --access-key-id $ROID --secret-key-from-file "$OUT/rosec"`)
+    → пароль спрошен (restic не берёт блокировку без пароля); после ввода
+    `exit=2`, `STORAGE_ACCESS_DENIED`, «attached» не напечатано, файлов
+    `restic-s1ro.*` нет.
 51. Нет бакета: `run sudo $AG repo add s4 s3:$S3/$NOB/s4 --access-key-id $KID --secret-key-from-file "$OUT/ksec"`
-    → `exit=2`, `BUCKET_NOT_FOUND`, имя `$NOB` (Н19); сообщение говорит, что
+    → `exit=2`, `BUCKET_NOT_FOUND`, имя `$NOB`, «may not create it» (Н19,
+    П30: на Garage restic говорит `client.MakeBucket: Forbidden`); сообщение говорит, что
     файлы сохранены для повтора; `sudo stat -c '%U %a' /etc/sard/secrets/restic-s4.env /etc/sard/secrets/restic-s4.pass`
     → `sard-agent 600` дважды; `/etc/sard/agent.d/repo-s4.yaml` нет (П12).
     Убрать: `sudo rm /etc/sard/secrets/restic-s4.env /etc/sard/secrets/restic-s4.pass`.
