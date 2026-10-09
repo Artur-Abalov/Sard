@@ -612,3 +612,9 @@ Kotlin-версия в e2e `SetupWizard.kt` — тот же формат стр�
 Изменений кода нет: четыре `toString` отличаются только именем класса и прячут разные поля, общий помощник
 не проще четырёх однострочников; в `scripts/` повтор `--data-binary @-` минимален и каждый вызов
 самодостаточен. `scripts/test-setup-wizard.sh` печатает ok.
+
+## Правки по architect, раунд 2 (coder)
+
+- ADR 0014: `provenance()` и `keyLocation()` описаны только для файлового CA (К7, Р12, Р19); enterprise-вариант убран и вынесен в OQ-200.
+- Формулировка про чтение `SESSION_REQUEST_ATTRIBUTE` исправлена в ADR 0021, черновике ADR F4a и OQ-035: читает `administratorSession()`, его вызывает `OnboardingControllers`, в `OnboardingService` идёт булево значение.
+- Только документы; markdownlint и `make license-check` выполнены перед коммитом.

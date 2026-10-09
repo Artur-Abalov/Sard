@@ -89,9 +89,10 @@
   `dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE` (значение
   `dev.sard.server.session`, в `api/SessionCookies.kt`) — имя атрибута запроса,
   под которым ядровой фильтр прикладывает найденную сессию. С F4a его читает
-  production-код: `administratorSession()` (`SessionCookies.kt`) и
-  `OnboardingService.confirmCa` решают по нему, вошёл ли вызывающий как
-  администратор. Обязательство enterprise-фильтра: если он заменяет ядровой
+  production-код: `administratorSession()` (`SessionCookies.kt`), который вызывают
+  `OnboardingControllers.kt` (состояние мастера и подтверждение шага `ca`) и
+  передают в `OnboardingService` булевым значением; по нему решается, вошёл ли
+  вызывающий как администратор. Обязательство enterprise-фильтра: если он заменяет ядровой
   (бин `sessionAuthFilterRegistration`), он обязан выставлять этот атрибут
   (любым не-`null` значением) для каждого действительного администратора, иначе
   администратор расширения не сможет выполнить шаг `ca` мастера (Р16 F4a).

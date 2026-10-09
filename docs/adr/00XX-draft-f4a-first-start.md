@@ -94,7 +94,7 @@
   которого опознаёт его фильтр атрибутом запроса
   `dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE` (значение
   `dev.sard.server.session`, `api/SessionCookies.kt`). Атрибут читается в
-  production (`administratorSession()`, `OnboardingService.confirmCa`);
+  production (`administratorSession()`, его вызывает `OnboardingControllers`, а `OnboardingService` получает лишь булево значение);
   обязательство фильтра, заменяющего ядровой, — выставлять его для каждого
   действительного администратора, иначе шаг `ca` недоступен (Р16). Имя и
   значение закреплены тестом `SessionRequestAttributeTest`.
