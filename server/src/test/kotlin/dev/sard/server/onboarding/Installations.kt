@@ -152,21 +152,32 @@ class Installation(
                     "spring.grpc.server.port" to 0,
                     "sard.pki.dir" to pkiDir.toString(),
                     "sard.agent.stream.check-interval" to "1h",
-                    "sard.agent.downloads.enabled" to false,
                     "SARD_AGENT_DOWNLOADS" to "false",
                 ) + options.properties
-        return SpringApplicationBuilder(ServerUnderTest::class.java)
-            .bannerMode(Banner.Mode.OFF)
-            .initializers(
-                { context: ConfigurableApplicationContext ->
-                    // Logging is set up again by every start: what is attached before that is gone.
-                    capture.attach()
-                    val beans = context.beanFactory
-                    beans.registerSingleton("clock", options.clock)
-                    beans.registerSingleton("setupCodeGenerator", SetupCodeGenerator { codes.next() })
-                    options.beans.forEach { (name, bean) -> beans.registerSingleton(name, bean) }
-                },
-            ).run(*properties.map { (name, value) -> "--$name=$value" }.toTypedArray())
+        // Two servers that start together race in the setup of the logging system (Spring Boot sets system properties):
+        // the lock is held until the initializer below, which runs once logging is set up.
+        loggingSetUp.lock()
+        try {
+            return SpringApplicationBuilder(ServerUnderTest::class.java)
+                .bannerMode(Banner.Mode.OFF)
+                .initializers(
+                    { context: ConfigurableApplicationContext ->
+                        loggingSetUp.unlock()
+                        // Logging is set up again by every start: what is attached before that is gone.
+                        capture.attach()
+                        val beans = context.beanFactory
+                        beans.registerSingleton("clock", options.clock)
+                        beans.registerSingleton("setupCodeGenerator", SetupCodeGenerator { codes.next() })
+                        options.beans.forEach { (name, bean) -> beans.registerSingleton(name, bean) }
+                    },
+                ).run(*properties.map { (name, value) -> "--$name=$value" }.toTypedArray())
+        } finally {
+            if (loggingSetUp.isHeldByCurrentThread) loggingSetUp.unlock()
+        }
+    }
+
+    private companion object {
+        val loggingSetUp = java.util.concurrent.locks.ReentrantLock()
     }
 }
 

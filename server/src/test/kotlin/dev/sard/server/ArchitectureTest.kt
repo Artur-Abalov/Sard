@@ -53,7 +53,14 @@ private val AUTH_PACKAGE_REFERENCE = Regex("""\bdev\.sard\.server\.auth\b""")
 private val SESSION_DOMAIN_FORBIDDEN =
     Regex("""\b(jakarta\.servlet|org\.springframework\.http|org\.springframework\.web)\b""")
 private val SESSION_DOMAIN_FILES =
-    listOf("auth/SessionStore.kt", "auth/LoginAttemptTracker.kt", "auth/AdminPasswordAuthenticator.kt")
+    listOf(
+        "auth/SessionStore.kt",
+        "auth/LoginAttemptTracker.kt",
+        "auth/SessionApiImpl.kt",
+        "auth/PasswordHasher.kt",
+        "auth/PasswordRules.kt",
+        "auth/AdminSetup.kt",
+    )
 
 /** Source text with `//` and `/* */` comments stripped, so a comment mentioning a forbidden
  * package (e.g. in a KDoc example) never trips the scan, but any real reference — import or

@@ -10,7 +10,7 @@ import org.springframework.http.ResponseCookie
  * The open core's [dev.sard.server.api.OnboardingApi] reads only its presence; an enterprise filter that
  * replaces the core one sets it the same way, and that is how the wizard learns the caller is signed in.
  */
-const val SESSION_REQUEST_ATTRIBUTE = "dev.sard.server.auth.session"
+const val SESSION_REQUEST_ATTRIBUTE = "dev.sard.server.session"
 
 /** A fresh session cookie (Р7: no Max-Age, no Expires). */
 fun sessionCookie(

@@ -10,6 +10,7 @@ import dev.sard.server.enrollment.TokenServiceTestConfiguration
 import dev.sard.server.enrollment.deleteEnrollmentTenantData
 import dev.sard.server.enrollment.insertTenant
 import dev.sard.server.extension.TenantResolver
+import dev.sard.server.onboarding.ConfirmedCaStep
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.resource
@@ -68,7 +69,7 @@ class StatementLoggingPostgres {
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = ["spring.grpc.server.port=0", "sard.self-agent.check-interval=1h"],
 )
-@Import(StatementLoggingPostgres::class, TokenServiceTestConfiguration::class)
+@Import(StatementLoggingPostgres::class, TokenServiceTestConfiguration::class, ConfirmedCaStep::class)
 class SelfAgentWiringIntegrationTest(
     @Autowired private val check: SelfAgentCheck,
     @Autowired private val tokens: EnrollmentTokens,

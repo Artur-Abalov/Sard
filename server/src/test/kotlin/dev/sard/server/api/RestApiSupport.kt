@@ -17,6 +17,7 @@ import dev.sard.server.onboarding.SetupCodeGenerator
 import dev.sard.server.pki.MovableClock
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
 import org.springframework.web.context.request.RequestContextHolder
 import org.springframework.web.context.request.ServletRequestAttributes
@@ -59,14 +60,18 @@ class SessionTenantResolver : TenantResolver {
     }
 }
 
+/** The code the wizard of [ApiClient.signIn] enters. */
 @TestConfiguration(proxyBeanMethods = false)
+class WizardCodeConfiguration {
+    @Bean
+    fun setupCodeGenerator(): SetupCodeGenerator = SetupCodeGenerator { WIZARD_CODE }
+}
+
+@TestConfiguration(proxyBeanMethods = false)
+@Import(WizardCodeConfiguration::class)
 class RestApiTestConfiguration {
     @Bean
     fun clock() = MovableClock(T0)
-
-    /** The code the wizard of [ApiClient.signIn] enters. */
-    @Bean
-    fun setupCodeGenerator(): SetupCodeGenerator = SetupCodeGenerator { WIZARD_CODE }
 
     @Bean
     @Primary
