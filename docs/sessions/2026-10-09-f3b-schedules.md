@@ -47,3 +47,14 @@
 - Если пояс не выбран, а предпросмотр недоступен, консоль сохраняет расписание в UTC
   (PUT требует пояс; консоль не знает пояса сервера без предпросмотра).
 - Мутационное тестирование сервера (полный гейт) не запускалось: критерий — `fast`.
+
+## Cleaner pass
+
+- Server: `Schedules.replace` split into `changes` and `reschedule` (CRAP 6.0 -> below the list's top); the three
+  `closed*` functions of `Deliveries` became one `Closing.of`; `unplanned`/`unplannedAlerts` and
+  `plan`/`planAlerts` share one query helper each; both notice formatters use `Message.ofLines`; `Notices`
+  builds the previous-statuses query once; unused imports of `Deliveries.kt` removed.
+- Web: `ScheduleFields` (8 -> 6), `SaveError` (8 -> 6) and `ScheduleSummary` (8 -> 5) decomposed; the mock PUT
+  handler lost its inline storage code (`save`).
+- Noted, not changed: `Verdicts.failure` and `ScheduleDescription.stepOf` stay at CRAP 5.x (source-level, well covered).
+- Behavior unchanged; `gate.sh server fast` and `gate.sh web fast` pass. Next: architect.
