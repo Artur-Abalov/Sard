@@ -200,7 +200,7 @@ func (c *hostCmd) terminal() hostsetup.Terminal {
 // itself: the public key to authorize, and that the files written stay (Р39, Р43).
 func (c *hostCmd) explainSSHFailure(st *addState, f *refusal.Failure) {
 	if f.Reason == refusal.SSHKeyNotAuthorized && st.sftp.res.PublicKey != "" {
-		_, _ = fmt.Fprintf(c.stdout, "Public key of the service user %s: add it to ~/.ssh/authorized_keys of the user %s on %s, then repeat the same command:\n  %s\n",
+		_, _ = fmt.Fprintf(c.stdout, "Public key of the service user %s: add it to authorized_keys of %s on %s, then repeat the same command:\n  %s\n",
 			c.who.Service.Name, c.sftpUser(st), st.sftp.address.Host, st.sftp.res.PublicKey)
 	}
 	c.noteSSHFilesStay(st)
@@ -247,7 +247,7 @@ func (c *hostCmd) finishSSHUpdate(st *addState) int {
 func (c *hostCmd) printSFTPAdded(st *addState) {
 	res := st.sftp.res
 	_, _ = fmt.Fprintf(c.stdout, "  host key:      %s %s %s\n", st.sftp.address.KnownHostsName(), res.HostKey.Type, res.HostKey.Fingerprint())
-	_, _ = fmt.Fprintf(c.stdout, "Public key of the service user %s (the user %s on %s must have it in ~/.ssh/authorized_keys):\n  %s\n",
+	_, _ = fmt.Fprintf(c.stdout, "Public key of the service user %s (it must be in authorized_keys of %s on %s):\n  %s\n",
 		c.who.Service.Name, c.sftpUser(st), st.sftp.address.Host, res.PublicKey)
 }
 
