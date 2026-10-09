@@ -17,6 +17,8 @@
 `dev.sard.server.pki.CertificateAuthority`:
 - `caBundlePem()`
 - `fingerprint()`
+- `provenance(): CaProvenance` — откуда взялся CA: `GENERATED` или `IMPORTED`, как записано в базе при создании или импорте (F4a, Р12). Enterprise-CA (Vault, PKCS#11, ГОСТ), который сервер сам не создаёт и не импортирует из каталога, возвращает `IMPORTED`: ключ пришёл извне.
+- `keyLocation(): String` — где хранится корневой ключ, в виде, понятном оператору: у файловой реализации абсолютный путь к `ca.key`; у enterprise-CA — человекочитаемое описание хранилища (например, `vault:pki/sard`, `pkcs11:slot=1`), не путь и не секрет.
 - `serverKeyManager(): X509KeyManager`
 - `renewServerCertificate(): Boolean`
 - `issueAgentCertificate(csrDer, AgentIdentity): IssuedCertificate` — возвращает цепочку, серийный номер и `notAfter` для записи в `agent_certificates`.

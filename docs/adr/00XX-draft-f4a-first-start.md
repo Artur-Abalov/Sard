@@ -91,7 +91,13 @@
   шаг `admin` выполнен, код не выдаётся и не печатается, ввод кода и шаг `admin`
   — `409 setup_completed`, смена пароля — `501 not_implemented` по умолчанию в
   `SessionApi.changePassword`); шаг `ca` выполняет администратор расширения,
-  которого опознаёт его фильтр атрибутом запроса `SESSION_REQUEST_ATTRIBUTE`.
+  которого опознаёт его фильтр атрибутом запроса
+  `dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE` (значение
+  `dev.sard.server.session`, `api/SessionCookies.kt`). Атрибут читается в
+  production (`administratorSession()`, `OnboardingService.confirmCa`);
+  обязательство фильтра, заменяющего ядровой, — выставлять его для каждого
+  действительного администратора, иначе шаг `ca` недоступен (Р16). Имя и
+  значение закреплены тестом `SessionRequestAttributeTest`.
 - **Контракт** (К1–К9): `GET /api/v1/onboarding`, `POST …/setup-session`,
   `POST …/ca`, `POST …/admin`, `PUT /api/v1/session/password`; `CaInfo` с
   `origin` и `keyPath`; коды `setup_required`, `setup_completed`,
