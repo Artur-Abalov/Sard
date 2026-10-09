@@ -226,4 +226,11 @@ Spring Security без изменения поведения (тесты W1b —
 `spring-security-crypto` ради `Argon2PasswordEncoder` сейчас, остальное —
 когда понадобится SSO.
 
-СТОП: жду ответов на П1–П3.
+### Ответы владельца на П1–П3 (2026-10-09)
+
+- П1 и П2 приняты.
+- П3: сейчас — только `spring-security-crypto` (`Argon2PasswordEncoder`);
+  перевод входа на Spring Security — отдельная задача (нужна в любом случае),
+  не в F4a.
+
+Дальше — `/ship-feature`, начиная со specifier.
