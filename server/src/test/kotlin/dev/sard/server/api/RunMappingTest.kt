@@ -72,14 +72,14 @@ class RunMappingTest {
                 status.name,
                 MutFlow
                     .underTest {
-                        RunMapping.run(run(status))
+                        RunMapping.run(run(status), null)
                     }.status.name,
             )
         }
         for (trigger in Trigger.entries) {
             assertEquals(
                 trigger.name,
-                MutFlow.underTest { RunMapping.run(run(trigger = trigger)) }.trigger.name,
+                MutFlow.underTest { RunMapping.run(run(trigger = trigger), null) }.trigger.name,
             )
         }
         for (action in Action.entries) {
@@ -125,16 +125,16 @@ class RunMappingTest {
 
     @Test
     fun `a run has its steps, a summary has none`() {
-        assertEquals(1, MutFlow.underTest { RunMapping.run(run()) }.steps.size)
-        val summary = MutFlow.underTest { RunMapping.summary(run()) }
+        assertEquals(1, MutFlow.underTest { RunMapping.run(run(), null) }.steps.size)
+        val summary = MutFlow.underTest { RunMapping.summary(run(), null) }
         assertEquals(listOf(ID, ID, ID, "m"), listOf(summary.id, summary.sourceId, summary.agentId, summary.message))
         assertEquals(listOf(AT, AT, null), listOf(summary.queuedAt, summary.startedAt, summary.finishedAt))
     }
 
     @Test
     fun `a run and its summary name their source and say whether it was deleted`() {
-        val full = MutFlow.underTest { RunMapping.run(run()) }
-        val summary = MutFlow.underTest { RunMapping.summary(run()) }
+        val full = MutFlow.underTest { RunMapping.run(run(), null) }
+        val summary = MutFlow.underTest { RunMapping.summary(run(), null) }
 
         assertEquals(listOf("etc", true), listOf(full.sourceName, full.sourceDeleted))
         assertEquals(listOf("etc", true), listOf(summary.sourceName, summary.sourceDeleted))

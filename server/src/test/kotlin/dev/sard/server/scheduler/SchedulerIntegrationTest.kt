@@ -7,7 +7,6 @@ import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.MovableClock
-import dev.sard.server.runs.CatchUpPeriod
 import dev.sard.server.runs.RUNS_NOW
 import dev.sard.server.runs.RUNS_RACE_WAIT
 import dev.sard.server.runs.RecordingStepsQueued
@@ -65,6 +64,7 @@ class SchedulerIntegrationTest(
     @Autowired private val scheduler: Scheduler,
     @Autowired private val sessions: TenantSessions,
     @Autowired private val runs: Runs,
+    @Autowired private val catchUps: CatchUpPeriods,
     @Autowired private val queued: RecordingStepsQueued,
     @Autowired private val settings: SchedulerSettings,
     @Autowired private val clock: MovableClock,
@@ -464,7 +464,7 @@ class SchedulerIntegrationTest(
         assertTrue(changed.updatedAt > same.createdAt)
     }
 
-    private fun periodOf(run: UUID) = runs.get(tenant.id, run)!!.catchUp
+    private fun periodOf(run: UUID) = catchUps.periods(tenant.id, listOf(run))[run]
 
     private fun period(
         from: String,
@@ -483,8 +483,6 @@ class SchedulerIntegrationTest(
 
         val run = tables.runs().single()
         assertEquals(period("2026-09-30T11:00:00Z", "2026-09-30T14:00:00Z", 4), periodOf(run.id))
-        val listed = runs.list(tenant.id, RunFilter(sourceId = source.id), null, 10).single()
-        assertEquals(periodOf(run.id), listed.catchUp)
         assertEquals(true, tables.fires(schedules.get(tenant.id, source.id)!!.id).none { it.missedCountCapped })
     }
 
@@ -506,6 +504,28 @@ class SchedulerIntegrationTest(
         tickAt(at("2026-09-30T20:00:10Z"))
         val second = tables.runs().last { it.id != first.id }
         assertEquals(period("2026-09-30T16:00:00Z", "2026-09-30T20:00:00Z", 5), periodOf(second.id))
+    }
+
+    @Test
+    fun `a catch-up run still active keeps its own period when a later catch-up is skipped on it`() {
+        val source = source()
+        val schedule = schedule(source)
+        tickAt(at("2026-09-30T12:30:00Z"))
+        val far = Timestamp.from(at("2026-09-30T20:00:00Z"))
+        jdbc.update("update schedules set catch_up_at = ? where id = ?", far, schedule.id)
+        tickAt(at("2026-09-30T15:30:00Z"))
+        tickAt(at("2026-09-30T20:00:00Z"))
+        val active = tables.runs().single()
+
+        tickAt(at("2026-09-30T20:00:10Z"))
+
+        val skipped = tables.fires(schedule.id).filter { it.kind == "catch_up" && it.outcome == "skipped_active" }
+        assertEquals(listOf(active.id), skipped.map { it.runId }, "the later catch-up was skipped on the active run")
+        assertEquals(period("2026-09-30T11:00:00Z", "2026-09-30T15:00:00Z", 5), periodOf(active.id))
+        assertEquals(
+            mapOf(active.id to period("2026-09-30T11:00:00Z", "2026-09-30T15:00:00Z", 5)),
+            catchUps.periods(tenant.id, listOf(active.id)),
+        )
     }
 
     @Test

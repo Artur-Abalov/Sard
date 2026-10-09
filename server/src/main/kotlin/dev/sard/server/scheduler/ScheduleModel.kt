@@ -105,3 +105,15 @@ data class FireView(
     val alert: Boolean,
     val recordedAt: Instant,
 )
+
+/**
+ * The period a catch-up run stands for (F3b, D16): the fires missed while the server was down, from the first to the
+ * last, counted ([missedCountCapped]: at least that many), in the schedule's [timezone].
+ */
+data class CatchUpPeriod(
+    val missedFrom: Instant,
+    val missedUntil: Instant,
+    val missedCount: Int,
+    val missedCountCapped: Boolean,
+    val timezone: String,
+)

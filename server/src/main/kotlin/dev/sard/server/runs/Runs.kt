@@ -136,7 +136,7 @@ class Runs(
                     ).setParameter("run", runId)
                     .list()
             val source = session.find(SourceRecord::class.java, run.sourceId)!!
-            RunViews.of(run, steps.first().agentId, source, steps, CatchUps.of(session, run))
+            RunViews.of(run, steps.first().agentId, source, steps)
         }
 
     /**
@@ -161,7 +161,7 @@ class Runs(
             after?.bind(query)
             query.setMaxResults(limit).list().map {
                 val run = it[0] as RunRecord
-                RunViews.of(run, it[1] as UUID, it[2] as SourceRecord, emptyList(), CatchUps.of(session, run))
+                RunViews.of(run, it[1] as UUID, it[2] as SourceRecord, emptyList())
             }
         }
 
@@ -213,7 +213,6 @@ internal object RunViews {
         agentId: UUID,
         source: SourceRecord,
         steps: List<RunStepRecord>,
-        catchUp: CatchUpPeriod? = null,
     ) = RunView(
         id = run.id,
         sourceId = run.sourceId,
@@ -227,7 +226,6 @@ internal object RunViews {
         startedAt = run.startedAt,
         finishedAt = run.finishedAt,
         steps = steps.map { step(it) },
-        catchUp = catchUp,
     )
 
     fun step(record: RunStepRecord) =

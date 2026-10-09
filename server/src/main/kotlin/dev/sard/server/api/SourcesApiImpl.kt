@@ -60,7 +60,7 @@ class SourcesApiImpl(
     /** A run cannot start for an agent that is revoked or no longer offers the plugin or repository (S8b В6): 409. */
     override fun startRun(sourceId: UUID): Run =
         try {
-            RunMapping.run(runs.start(tenants.currentTenantId(), sourceId))
+            RunMapping.run(runs.start(tenants.currentTenantId(), sourceId), null)
         } catch (_: AgentRevoked) {
             throw RunRefused(ErrorCode.AGENT_REVOKED)
         } catch (_: UnknownPlugin) {

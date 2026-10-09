@@ -123,18 +123,6 @@ data class BackupResult(
     val partial: Boolean = false,
 )
 
-/**
- * The period a catch-up run stands for (F3b, D16): the fires missed while the server was down, from the first to the
- * last, counted ([missedCountCapped]: at least that many), in the schedule's [timezone].
- */
-data class CatchUpPeriod(
-    val missedFrom: Instant,
-    val missedUntil: Instant,
-    val missedCount: Int,
-    val missedCountCapped: Boolean,
-    val timezone: String,
-)
-
 /** A run with its steps; stage 1 runs have exactly one. */
 data class RunView(
     val id: UUID,
@@ -150,8 +138,6 @@ data class RunView(
     val startedAt: Instant?,
     val finishedAt: Instant?,
     val steps: List<StepView> = emptyList(),
-    /** Set for a catch-up run whose downtime the journal still holds (F3b). */
-    val catchUp: CatchUpPeriod? = null,
 )
 
 /** One step; [id] is the command_id the agent sees. Progress fields stay null until S7 fills them. */

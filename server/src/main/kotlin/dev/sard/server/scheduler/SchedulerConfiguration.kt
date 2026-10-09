@@ -124,6 +124,9 @@ class SchedulerConfiguration {
     ) = Schedules(sessions, clock, UuidV7(clock, SecureRandom()))
 
     @Bean
+    fun catchUpPeriods(sessions: TenantSessions) = CatchUpPeriods(sessions)
+
+    @Bean
     fun schedulePreviews(clock: Clock) = SchedulePreviews(clock, ZoneId.systemDefault())
 
     @Bean
