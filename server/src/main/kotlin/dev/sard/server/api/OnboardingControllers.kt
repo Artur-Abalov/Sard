@@ -33,10 +33,6 @@ const val SETUP_SCHEME = "setupSession"
 
 private const val SESSION_PATH = "/api/v1/onboarding"
 
-private fun HttpServletRequest.cookie(name: String): String? = cookies.orEmpty().firstOrNull { it.name == name }?.value
-
-private fun HttpServletRequest.administratorSession(): Boolean = getAttribute(SESSION_REQUEST_ATTRIBUTE) != null
-
 /** GET /api/v1/onboarding (К1): public; the CA only with a setup or administrator session. */
 @RestController
 @RequestMapping(SESSION_PATH)
@@ -138,19 +134,16 @@ class SetupSessionController(
             }
 
             is CodeResult.Rejected -> {
-                val status = HttpStatus.UNAUTHORIZED.value()
-                writeProblem(httpResponse, objectMapper, status, "Unauthorized", ErrorCode.UNAUTHENTICATED)
+                writeProblem(httpResponse, objectMapper, HttpStatus.UNAUTHORIZED, ErrorCode.UNAUTHENTICATED)
             }
 
             is CodeResult.Completed -> {
-                val status = HttpStatus.CONFLICT.value()
-                writeProblem(httpResponse, objectMapper, status, "Conflict", ErrorCode.SETUP_COMPLETED)
+                writeProblem(httpResponse, objectMapper, HttpStatus.CONFLICT, ErrorCode.SETUP_COMPLETED)
             }
 
             is CodeResult.Locked -> {
                 httpResponse.addHeader(HttpHeaders.RETRY_AFTER, result.retryAfterSeconds.toString())
-                val status = HttpStatus.TOO_MANY_REQUESTS.value()
-                writeProblem(httpResponse, objectMapper, status, "Too Many Requests", ErrorCode.TOO_MANY_ATTEMPTS)
+                writeProblem(httpResponse, objectMapper, HttpStatus.TOO_MANY_REQUESTS, ErrorCode.TOO_MANY_ATTEMPTS)
             }
         }
     }
@@ -184,8 +177,7 @@ class OnboardingCaController(
 
     @ExceptionHandler(NoSuchSessionException::class)
     fun onNoSession(httpResponse: HttpServletResponse) {
-        val status = HttpStatus.UNAUTHORIZED.value()
-        writeProblem(httpResponse, objectMapper, status, "Unauthorized", ErrorCode.UNAUTHENTICATED)
+        writeProblem(httpResponse, objectMapper, HttpStatus.UNAUTHORIZED, ErrorCode.UNAUTHENTICATED)
     }
 }
 
@@ -258,8 +250,7 @@ class OnboardingAdminController(
             try {
                 api.completeAdmin(setupSessionId, password, httpRequest.remoteAddr)
             } catch (_: NoSuchSessionException) {
-                val status = HttpStatus.UNAUTHORIZED.value()
-                writeProblem(httpResponse, objectMapper, status, "Unauthorized", ErrorCode.UNAUTHENTICATED)
+                writeProblem(httpResponse, objectMapper, HttpStatus.UNAUTHORIZED, ErrorCode.UNAUTHENTICATED)
                 return
             }
         when (result) {
@@ -271,13 +262,11 @@ class OnboardingAdminController(
             }
 
             is AdminStepResult.CaPending -> {
-                val status = HttpStatus.CONFLICT.value()
-                writeProblem(httpResponse, objectMapper, status, "Conflict", ErrorCode.CA_STEP_PENDING)
+                writeProblem(httpResponse, objectMapper, HttpStatus.CONFLICT, ErrorCode.CA_STEP_PENDING)
             }
 
             is AdminStepResult.Completed -> {
-                val status = HttpStatus.CONFLICT.value()
-                writeProblem(httpResponse, objectMapper, status, "Conflict", ErrorCode.SETUP_COMPLETED)
+                writeProblem(httpResponse, objectMapper, HttpStatus.CONFLICT, ErrorCode.SETUP_COMPLETED)
             }
 
             is AdminStepResult.InvalidPassword -> {

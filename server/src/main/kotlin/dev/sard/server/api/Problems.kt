@@ -151,6 +151,14 @@ fun writeProblem(
     response.outputStream.write(objectMapper.writeValueAsBytes(problem))
 }
 
+/** [writeProblem] with the title the status carries, for the controllers that answer by status. */
+fun writeProblem(
+    response: HttpServletResponse,
+    objectMapper: ObjectMapper,
+    status: HttpStatus,
+    code: ErrorCode,
+) = writeProblem(response, objectMapper, status.value(), status.reasonPhrase, code)
+
 /** Writes a 422 problem with the fields at fault, for the controllers that answer without an exception. */
 fun writeUnprocessable(
     response: HttpServletResponse,

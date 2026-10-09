@@ -166,11 +166,7 @@ class SessionController(
         httpRequest: HttpServletRequest,
         httpResponse: HttpServletResponse,
     ) {
-        val previousSessionId =
-            httpRequest.cookies
-                .orEmpty()
-                .firstOrNull { it.name == SESSION_COOKIE }
-                ?.value
+        val previousSessionId = httpRequest.cookie(SESSION_COOKIE)
         respondToSignIn(api.createSession("", httpRequest.remoteAddr, previousSessionId), httpRequest, httpResponse)
     }
 
@@ -187,19 +183,16 @@ class SessionController(
             }
 
             is SignInResult.WrongPassword -> {
-                val status = HttpStatus.UNAUTHORIZED.value()
-                writeProblem(httpResponse, objectMapper, status, "Unauthorized", ErrorCode.UNAUTHENTICATED)
+                writeProblem(httpResponse, objectMapper, HttpStatus.UNAUTHORIZED, ErrorCode.UNAUTHENTICATED)
             }
 
             is SignInResult.Locked -> {
                 httpResponse.addHeader(HttpHeaders.RETRY_AFTER, result.retryAfterSeconds.toString())
-                val status = HttpStatus.TOO_MANY_REQUESTS.value()
-                writeProblem(httpResponse, objectMapper, status, "Too Many Requests", ErrorCode.TOO_MANY_ATTEMPTS)
+                writeProblem(httpResponse, objectMapper, HttpStatus.TOO_MANY_REQUESTS, ErrorCode.TOO_MANY_ATTEMPTS)
             }
 
             is SignInResult.SetupRequired -> {
-                val status = HttpStatus.CONFLICT.value()
-                writeProblem(httpResponse, objectMapper, status, "Conflict", ErrorCode.SETUP_REQUIRED)
+                writeProblem(httpResponse, objectMapper, HttpStatus.CONFLICT, ErrorCode.SETUP_REQUIRED)
             }
         }
     }
@@ -235,7 +228,6 @@ class SessionController(
         if (httpRequest.method == "DELETE") {
             httpResponse.addHeader(HttpHeaders.SET_COOKIE, clearedSessionCookie(httpRequest.isSecure).toString())
         }
-        val status = HttpStatus.UNAUTHORIZED.value()
-        writeProblem(httpResponse, objectMapper, status, "Unauthorized", ErrorCode.UNAUTHENTICATED)
+        writeProblem(httpResponse, objectMapper, HttpStatus.UNAUTHORIZED, ErrorCode.UNAUTHENTICATED)
     }
 }

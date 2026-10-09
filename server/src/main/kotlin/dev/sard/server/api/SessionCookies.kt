@@ -3,6 +3,7 @@
 
 package dev.sard.server.api
 
+import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.ResponseCookie
 
 /**
@@ -11,6 +12,12 @@ import org.springframework.http.ResponseCookie
  * replaces the core one sets it the same way, and that is how the wizard learns the caller is signed in.
  */
 const val SESSION_REQUEST_ATTRIBUTE = "dev.sard.server.session"
+
+/** The value of the request's cookie [name], or null when it carries none. */
+fun HttpServletRequest.cookie(name: String): String? = cookies.orEmpty().firstOrNull { it.name == name }?.value
+
+/** True when an authentication filter attached an administrator session to this request. */
+fun HttpServletRequest.administratorSession(): Boolean = getAttribute(SESSION_REQUEST_ATTRIBUTE) != null
 
 /** A fresh session cookie (Р7: no Max-Age, no Expires). */
 fun sessionCookie(

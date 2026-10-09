@@ -7,6 +7,7 @@ import dev.sard.server.api.ErrorCode
 import dev.sard.server.api.SESSION_COOKIE
 import dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE
 import dev.sard.server.api.clearedSessionCookie
+import dev.sard.server.api.cookie
 import dev.sard.server.api.writeProblem
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
@@ -69,10 +70,7 @@ class SessionAuthFilter(
     }
 
     /** The session the request carries, touched; null when it carries none or one that is no longer valid. */
-    private fun sessionOf(request: HttpServletRequest): AdminSession? {
-        val cookie = request.cookies.orEmpty().firstOrNull { it.name == SESSION_COOKIE }
-        return cookie?.value?.let { sessionStore.touch(it) }
-    }
+    private fun sessionOf(request: HttpServletRequest): AdminSession? = request.cookie(SESSION_COOKIE)?.let { sessionStore.touch(it) }
 
     /** Р12: DELETE /api/v1/session with an invalid or missing session also clears the cookie. */
     private fun respondUnauthorized(

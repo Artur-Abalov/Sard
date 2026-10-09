@@ -112,13 +112,11 @@ class PasswordController(
 
             is PasswordChangeResult.Locked -> {
                 httpResponse.addHeader(HttpHeaders.RETRY_AFTER, result.retryAfterSeconds.toString())
-                val status = HttpStatus.TOO_MANY_REQUESTS.value()
-                writeProblem(httpResponse, objectMapper, status, "Too Many Requests", ErrorCode.TOO_MANY_ATTEMPTS)
+                writeProblem(httpResponse, objectMapper, HttpStatus.TOO_MANY_REQUESTS, ErrorCode.TOO_MANY_ATTEMPTS)
             }
 
             is PasswordChangeResult.NotSupported -> {
-                val status = HttpStatus.NOT_IMPLEMENTED.value()
-                writeProblem(httpResponse, objectMapper, status, "Not Implemented", ErrorCode.NOT_IMPLEMENTED)
+                writeProblem(httpResponse, objectMapper, HttpStatus.NOT_IMPLEMENTED, ErrorCode.NOT_IMPLEMENTED)
             }
         }
     }
