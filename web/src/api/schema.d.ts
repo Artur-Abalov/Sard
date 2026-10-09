@@ -14,13 +14,13 @@ export interface paths {
         get: operations["getSource"];
         /**
          * Replace a source
-         * @description The same 422 codes as creation, unknown_plugin included when the plugin does not offer backup.
+         * @description The same 422 codes as creation, unknown_plugin included when the plugin does not offer backup. 409 system_source for a source the server keeps itself.
          */
         put: operations["replaceSource"];
         post?: never;
         /**
          * Delete a source
-         * @description Its runs and snapshots stay in the history.
+         * @description Its runs and snapshots stay in the history. 409 run_active while a run is active, 409 system_source for a source the server keeps itself.
          */
         delete: operations["deleteSource"];
         options?: never;
@@ -45,6 +45,26 @@ export interface paths {
          * @description Creates or replaces it; enabled=false disables it. Setting it unchanged keeps its next fire; a change starts over from now, without a catch-up. 422 validation_failed names cron or timezone.
          */
         put: operations["setSchedule"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/self-backup/repository": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Bind the self-backup to a repository of the built-in agent
+         * @description Creates the two system sources with a nightly schedule, or moves them to this repository and the current built-in agent; binding again unchanged changes nothing. 422 codes: self_agent_missing, unknown_repository, repository_not_initialized, local_storage_unconfirmed, unknown_plugin, invalid_config (the built-in agent lacks the database password's secret), validation_failed.
+         */
+        put: operations["bindSelfBackupRepository"];
         post?: never;
         delete?: never;
         options?: never;
@@ -119,6 +139,26 @@ export interface paths {
          * @description Ends the session and clears the cookie.
          */
         delete: operations["deleteSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/self-backup/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Back up the installation now
+         * @description Queues a manual run of each system source; a source with an active run answers with that run. 409 self_backup_not_configured before a repository is bound; agent_revoked, unknown_plugin or unknown_repository when a run cannot start.
+         */
+        post: operations["startSelfBackup"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -240,6 +280,23 @@ export interface paths {
          * @description Newest recorded first; empty for a source without a schedule.
          */
         get: operations["listScheduleFires"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/self-backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The self-backup's state */
+        get: operations["getSelfBackup"];
         put?: never;
         post?: never;
         delete?: never;
@@ -458,7 +515,7 @@ export interface components {
             };
         };
         /** @enum {string} */
-        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "unavailable" | "self_agent_confirmation_required";
+        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured";
         /** @description An error (RFC 9457) */
         Problem: {
             /** @description URI reference identifying the problem type; about:blank when the status says it all */
@@ -516,7 +573,11 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+            /** @description Set for a source the server keeps itself (the self-backup's): it is neither replaced nor deleted through the API, only its schedule changes; null for an administrator's source */
+            systemRole: components["schemas"]["SystemSourceRole"] | null;
         };
+        /** @enum {string} */
+        SystemSourceRole: "self_database" | "self_keys";
         /** @description A source's schedule as set */
         ScheduleInput: {
             /**
@@ -564,6 +625,51 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @description The repository of the built-in agent the self-backup goes to */
+        SelfBackupRepositoryInput: {
+            /** @description A repository of the built-in agent's last Register, initialised */
+            repositoryName: string;
+            /** @description Required true for a local repository: a copy on the server's own machine is lost with the machine */
+            confirmLocalStorage?: boolean;
+        };
+        /** @description The self-backup of the installation: the database, the CA and the configuration */
+        SelfBackup: {
+            /** @description A repository is bound and both system sources exist */
+            configured: boolean;
+            /**
+             * Format: uuid
+             * @description The live built-in agent (sard-self); null without one
+             */
+            agentId: string | null;
+            /** @description Null until configured */
+            repository: components["schemas"]["SelfBackupRepository"] | null;
+            /**
+             * Format: date-time
+             * @description When the system sources last moved to a repository or agent; null until configured
+             */
+            boundAt: string | null;
+            /** @description Database first; empty until configured */
+            sources: components["schemas"]["SelfBackupSource"][];
+        };
+        /** @description Where the self-backup goes, as the built-in agent's last Register describes it */
+        SelfBackupRepository: {
+            name: string;
+            /** @description restic backend scheme: s3, sftp, local, ...; empty once Register no longer lists it */
+            backend: string;
+            /** @description restic repository id; null until the agent reads it */
+            repositoryId: string | null;
+            /** @description On the server's own machine: warn about it on every page */
+            local: boolean;
+        };
+        /** @description One of the self-backup's two system sources */
+        SelfBackupSource: {
+            role: components["schemas"]["SystemSourceRole"];
+            /** Format: uuid */
+            sourceId: string;
+            /** Format: uuid */
+            agentId: string;
+            repositoryName: string;
         };
         /** @description The source already has an active run (D6); no new run was created (RFC 9457) */
         RunActiveProblem: {
@@ -690,6 +796,20 @@ export interface components {
         SessionRequest: {
             /** @description The administrator password from the server's environment */
             password: string;
+        };
+        /** @description A run of one system source */
+        SelfBackupRunStarted: {
+            role: components["schemas"]["SystemSourceRole"];
+            /** Format: uuid */
+            sourceId: string;
+            /** Format: uuid */
+            runId: string;
+            /** @description False when the source already had this run active (D6): nothing new was queued */
+            started: boolean;
+        };
+        /** @description The runs "back up now" follows: one per system source, database first */
+        SelfBackupRuns: {
+            runs: components["schemas"]["SelfBackupRunStarted"][];
         };
         /** @description A new enrollment token */
         CreateEnrollmentTokenRequest: {
@@ -1258,6 +1378,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The server keeps this source itself (system_source); nothing was changed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Rejected values; errors name the fields */
             422: {
                 headers: {
@@ -1323,13 +1452,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The source has an active run (D6) */
+            /** @description The source has an active run (activeRunId), or the server keeps it itself (code) */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["RunActiveProblem"];
+                    "application/problem+json": components["schemas"]["RunActiveProblem"] | components["schemas"]["Problem"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */
@@ -1436,6 +1565,66 @@ export interface operations {
             };
             /** @description Not found in the session's tenant */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    bindSelfBackupRepository: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelfBackupRepositoryInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfBackup"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1770,6 +1959,62 @@ export interface operations {
             };
             /** @description Origin does not match the request (CSRF) */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    startSelfBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfBackupRuns"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not configured, or a run cannot start (code) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2180,6 +2425,44 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getSelfBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfBackup"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */

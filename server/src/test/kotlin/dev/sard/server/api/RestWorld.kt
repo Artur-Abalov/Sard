@@ -250,6 +250,7 @@ class RestWorld(
                 "run_steps",
                 "runs",
                 "schedules",
+                "self_backups",
                 "sources",
                 "agent_plugins",
                 "agent_repositories",

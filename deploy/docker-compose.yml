@@ -103,6 +103,10 @@ services:
       - sard-pki:/var/lib/sard/pki:ro
       # The server's channel: the enrollment token and the database role's password, read-only.
       - sard-self-channel:/run/sard-self:ro
+      # This installation's directory (.env, this file, docker-compose.override.yml), read-only: the
+      # self-backup keeps it with the CA (F6). .env must be readable by uid/gid 10001:
+      # chgrp 10001 .env && chmod 640 .env (docs/operator/02-install.md).
+      - ./:/etc/sard/install:ro
     tmpfs:
       - /tmp
     depends_on:

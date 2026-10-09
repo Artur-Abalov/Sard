@@ -131,7 +131,12 @@
     "unauthenticated": "The session has ended",
     "too_many_attempts": "Too many attempts, try again later",
     "generic": "The request failed ({{detail}})",
-    "network": "The server is unavailable"
+    "network": "The server is unavailable",
+    "system_source": "The server keeps this source itself: only its schedule can be changed",
+    "self_agent_missing": "The built-in agent sard-self is not registered",
+    "repository_not_initialized": "The repository is not initialized yet",
+    "local_storage_unconfirmed": "A local repository needs a confirmation: the copy is lost together with the server's machine",
+    "self_backup_not_configured": "The self-backup is not configured: choose its repository first"
   },
   "common": {
     "cancel": "Cancel",
@@ -214,6 +219,8 @@
     "partialWhy": "The snapshot can be restored, but part of the data did not get into it.",
     "snapshot": "Snapshot",
     "snapshots": "Snapshots",
+    "system": "system",
+    "systemWhy": "The server keeps this source itself for its self-backup. Only its schedule can be changed.",
     "total": "Total",
     "updatedAt": "Updated"
   },

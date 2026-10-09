@@ -12,10 +12,13 @@ SARD_TAG=v0.0.1-rc.1        # релиз: https://github.com/Artur-Abalov/Sard/r
 mkdir -p ~/sard && cd ~/sard
 curl -fsSLO "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/docker-compose.yml"
 curl -fsSL -o .env "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/sard.env.example"
-chmod 600 .env
+sudo chgrp 10001 .env && chmod 640 .env
 ```
 
-В скачанном `.env` уже стоит `SARD_VERSION` этого релиза.
+В скачанном `.env` уже стоит `SARD_VERSION` этого релиза. Группа 10001 —
+агент-сосед самобэкапа: он читает `.env` (только чтение) и хранит его в
+зашифрованном репозитории вместе с ключом CA ([раздел 6](06-data-and-backup.md)).
+Остальным `.env` по-прежнему не виден.
 
 ## 2. Секреты
 

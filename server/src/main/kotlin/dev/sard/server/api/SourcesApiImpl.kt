@@ -118,5 +118,6 @@ class SourcesApiImpl(
             mapper.readValue(view.config, CONFIG),
             view.createdAt,
             view.updatedAt,
+            view.systemRole?.let { SystemSourceRole.valueOf(it.name) },
         )
 }

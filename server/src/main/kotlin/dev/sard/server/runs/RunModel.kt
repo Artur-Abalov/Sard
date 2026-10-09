@@ -86,6 +86,19 @@ enum class Action(
     }
 }
 
+/** A source the server creates and keeps itself (F6): the self-backup's two; null for a user's source. */
+enum class SystemRole(
+    val stored: String,
+) {
+    SELF_DATABASE("self_database"),
+    SELF_KEYS("self_keys"),
+    ;
+
+    companion object {
+        fun of(stored: String): SystemRole = entries.single { it.stored == stored }
+    }
+}
+
 /** A source as a caller asks for it; [config] is JSON object text with secret names only (ADR 0008). */
 data class SourceDraft(
     val name: String,
@@ -110,6 +123,7 @@ data class SourceView(
     val config: String,
     val createdAt: Instant,
     val updatedAt: Instant,
+    val systemRole: SystemRole? = null,
 ) {
     override fun toString() = "SourceView(id=$id, name=$name, agentId=$agentId, plugin=$plugin)"
 }

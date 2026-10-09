@@ -158,3 +158,13 @@ enum class LogLevel {
     @JsonProperty("error")
     ERROR,
 }
+
+/** A source the server keeps itself (F6): the self-backup's database and its keys with the configuration. */
+@Schema(enumAsRef = true)
+enum class SystemSourceRole {
+    @JsonProperty("self_database")
+    SELF_DATABASE,
+
+    @JsonProperty("self_keys")
+    SELF_KEYS,
+}

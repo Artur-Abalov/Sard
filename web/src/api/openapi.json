@@ -79,7 +79,7 @@
       "put" : {
         "tags" : [ "sources" ],
         "summary" : "Replace a source",
-        "description" : "The same 422 codes as creation, unknown_plugin included when the plugin does not offer backup.",
+        "description" : "The same 422 codes as creation, unknown_plugin included when the plugin does not offer backup. 409 system_source for a source the server keeps itself.",
         "operationId" : "replaceSource",
         "parameters" : [ {
           "name" : "sourceId",
@@ -117,6 +117,16 @@
               "application/problem+json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "The server keeps this source itself (system_source); nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
                 }
               }
             }
@@ -166,7 +176,7 @@
       "delete" : {
         "tags" : [ "sources" ],
         "summary" : "Delete a source",
-        "description" : "Its runs and snapshots stay in the history.",
+        "description" : "Its runs and snapshots stay in the history. 409 run_active while a run is active, 409 system_source for a source the server keeps itself.",
         "operationId" : "deleteSource",
         "parameters" : [ {
           "name" : "sourceId",
@@ -181,22 +191,26 @@
           "204" : {
             "description" : "Deleted"
           },
+          "409" : {
+            "description" : "The source has an active run (activeRunId), or the server keeps it itself (code)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "anyOf" : [ {
+                    "$ref" : "#/components/schemas/RunActiveProblem"
+                  }, {
+                    "$ref" : "#/components/schemas/Problem"
+                  } ]
+                }
+              }
+            }
+          },
           "404" : {
             "description" : "Not found in the session's tenant",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "409" : {
-            "description" : "The source has an active run (D6)",
-            "content" : {
-              "application/problem+json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/RunActiveProblem"
                 }
               }
             }
@@ -343,6 +357,76 @@
               "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/Schedule"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/self-backup/repository" : {
+      "put" : {
+        "tags" : [ "self-backup" ],
+        "summary" : "Bind the self-backup to a repository of the built-in agent",
+        "description" : "Creates the two system sources with a nightly schedule, or moves them to this repository and the current built-in agent; binding again unchanged changes nothing. 422 codes: self_agent_missing, unknown_repository, repository_not_initialized, local_storage_unconfirmed, unknown_plugin, invalid_config (the built-in agent lacks the database password's secret), validation_failed.",
+        "operationId" : "bindSelfBackupRepository",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SelfBackupRepositoryInput"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SelfBackup"
                 }
               }
             }
@@ -737,6 +821,66 @@
         "responses" : {
           "204" : {
             "description" : "Signed out"
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/self-backup/runs" : {
+      "post" : {
+        "tags" : [ "self-backup" ],
+        "summary" : "Back up the installation now",
+        "description" : "Queues a manual run of each system source; a source with an active run answers with that run. 409 self_backup_not_configured before a repository is bound; agent_revoked, unknown_plugin or unknown_repository when a run cannot start.",
+        "operationId" : "startSelfBackup",
+        "responses" : {
+          "409" : {
+            "description" : "Not configured, or a run cannot start (code)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SelfBackupRuns"
+                }
+              }
+            }
           },
           "401" : {
             "description" : "No session or it expired",
@@ -1265,6 +1409,45 @@
               "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/ScheduleFirePage"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/self-backup" : {
+      "get" : {
+        "tags" : [ "self-backup" ],
+        "summary" : "The self-backup's state",
+        "operationId" : "getSelfBackup",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SelfBackup"
                 }
               }
             }
@@ -2030,7 +2213,7 @@
       },
       "ErrorCode" : {
         "type" : "string",
-        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "unavailable", "self_agent_confirmation_required" ]
+        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured" ]
       },
       "Problem" : {
         "type" : "object",
@@ -2142,9 +2325,21 @@
           "updatedAt" : {
             "type" : "string",
             "format" : "date-time"
+          },
+          "systemRole" : {
+            "description" : "Set for a source the server keeps itself (the self-backup's): it is neither replaced nor deleted through the API, only its schedule changes; null for an administrator's source",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/SystemSourceRole"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "agentId", "config", "createdAt", "id", "name", "plugin", "repositoryName", "updatedAt" ]
+        "required" : [ "agentId", "config", "createdAt", "id", "name", "plugin", "repositoryName", "systemRole", "updatedAt" ]
+      },
+      "SystemSourceRole" : {
+        "type" : "string",
+        "enum" : [ "self_database", "self_keys" ]
       },
       "ScheduleInput" : {
         "type" : "object",
@@ -2219,6 +2414,100 @@
           }
         },
         "required" : [ "catchUpAt", "createdAt", "cron", "enabled", "id", "lastFiredAt", "nextRunAt", "skippedInRow", "sourceId", "timezone", "updatedAt" ]
+      },
+      "SelfBackupRepositoryInput" : {
+        "type" : "object",
+        "description" : "The repository of the built-in agent the self-backup goes to",
+        "properties" : {
+          "repositoryName" : {
+            "type" : "string",
+            "description" : "A repository of the built-in agent's last Register, initialised"
+          },
+          "confirmLocalStorage" : {
+            "type" : "boolean",
+            "description" : "Required true for a local repository: a copy on the server's own machine is lost with the machine"
+          }
+        },
+        "required" : [ "repositoryName" ]
+      },
+      "SelfBackup" : {
+        "type" : "object",
+        "description" : "The self-backup of the installation: the database, the CA and the configuration",
+        "properties" : {
+          "configured" : {
+            "type" : "boolean",
+            "description" : "A repository is bound and both system sources exist"
+          },
+          "agentId" : {
+            "type" : [ "string", "null" ],
+            "format" : "uuid",
+            "description" : "The live built-in agent (sard-self); null without one"
+          },
+          "repository" : {
+            "description" : "Null until configured",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/SelfBackupRepository"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "boundAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "When the system sources last moved to a repository or agent; null until configured"
+          },
+          "sources" : {
+            "type" : "array",
+            "description" : "Database first; empty until configured",
+            "items" : {
+              "$ref" : "#/components/schemas/SelfBackupSource"
+            }
+          }
+        },
+        "required" : [ "agentId", "boundAt", "configured", "repository", "sources" ]
+      },
+      "SelfBackupRepository" : {
+        "type" : "object",
+        "description" : "Where the self-backup goes, as the built-in agent's last Register describes it",
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "backend" : {
+            "type" : "string",
+            "description" : "restic backend scheme: s3, sftp, local, ...; empty once Register no longer lists it"
+          },
+          "repositoryId" : {
+            "type" : [ "string", "null" ],
+            "description" : "restic repository id; null until the agent reads it"
+          },
+          "local" : {
+            "type" : "boolean",
+            "description" : "On the server's own machine: warn about it on every page"
+          }
+        },
+        "required" : [ "backend", "local", "name", "repositoryId" ]
+      },
+      "SelfBackupSource" : {
+        "type" : "object",
+        "description" : "One of the self-backup's two system sources",
+        "properties" : {
+          "role" : {
+            "$ref" : "#/components/schemas/SystemSourceRole"
+          },
+          "sourceId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "agentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "repositoryName" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "agentId", "repositoryName", "role", "sourceId" ]
       },
       "RunActiveProblem" : {
         "type" : "object",
@@ -2458,6 +2747,41 @@
           }
         },
         "required" : [ "password" ]
+      },
+      "SelfBackupRunStarted" : {
+        "type" : "object",
+        "description" : "A run of one system source",
+        "properties" : {
+          "role" : {
+            "$ref" : "#/components/schemas/SystemSourceRole"
+          },
+          "sourceId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "runId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "started" : {
+            "type" : "boolean",
+            "description" : "False when the source already had this run active (D6): nothing new was queued"
+          }
+        },
+        "required" : [ "role", "runId", "sourceId", "started" ]
+      },
+      "SelfBackupRuns" : {
+        "type" : "object",
+        "description" : "The runs \"back up now\" follows: one per system source, database first",
+        "properties" : {
+          "runs" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/SelfBackupRunStarted"
+            }
+          }
+        },
+        "required" : [ "runs" ]
       },
       "CreateEnrollmentTokenRequest" : {
         "type" : "object",

@@ -313,6 +313,9 @@ class ApiContractIntegrationTest(
                 Triple("GET", "/api/v1/runs?status=queued&status=failed", null),
                 Triple("GET", "/api/v1/runs/{runId}", null),
                 Triple("GET", "/api/v1/runs/{runId}/steps/{stepId}/logs", null),
+                Triple("GET", "/api/v1/self-backup", null),
+                Triple("PUT", "/api/v1/self-backup/repository", """{"repositoryName":"r"}"""),
+                Triple("POST", "/api/v1/self-backup/runs", null),
             )
         val implemented = setOf("POST /api/v1/session", "GET /api/v1/session", "DELETE /api/v1/session")
         val listed = calls.map { "${it.first} ${it.second.substringBefore('?')}" }.toSet()

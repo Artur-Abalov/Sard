@@ -269,7 +269,12 @@ export const agents: Schemas['AgentDetails'][] = [
     builtin: true,
     protocolVersion: 1,
     plugins: [filesPlugin],
-    repositories: [],
+    // F6: an S3 repository for the self-backup, a local one (D10: needs a confirmation), one not initialised.
+    repositories: [
+      { name: 'offsite', backend: 's3', repositoryId: '3b8e1f6a2c', cryptoProvider: 'file' },
+      { name: 'disk', backend: 'local', repositoryId: '6d2a9e4f1b', cryptoProvider: 'file' },
+      { name: 'fresh', backend: 'sftp', repositoryId: null, cryptoProvider: 'file' },
+    ],
     secretNames: ['sard-db'],
     scriptNames: [],
   },
@@ -285,6 +290,7 @@ export const sources: Schemas['Source'][] = [
     config: { paths: ['/etc'] },
     createdAt: '2026-09-22T10:00:00Z',
     updatedAt: '2026-09-22T10:00:00Z',
+    systemRole: null,
   },
   {
     id: ids.homeSource,
@@ -295,6 +301,7 @@ export const sources: Schemas['Source'][] = [
     config: { paths: ['/home'], exclude: ['/home/*/.cache'] },
     createdAt: '2026-09-23T11:00:00Z',
     updatedAt: '2026-09-24T08:15:00Z',
+    systemRole: null,
   },
   {
     id: ids.srvSource,
@@ -305,6 +312,7 @@ export const sources: Schemas['Source'][] = [
     config: { paths: ['/srv'] },
     createdAt: '2026-09-27T09:50:00Z',
     updatedAt: '2026-09-27T09:50:00Z',
+    systemRole: null,
   },
 ]
 
@@ -319,6 +327,7 @@ export const deletedSources: Schemas['Source'][] = [
     config: { paths: ['/old'] },
     createdAt: '2026-09-18T10:00:00Z',
     updatedAt: '2026-09-18T10:00:00Z',
+    systemRole: null,
   },
 ]
 

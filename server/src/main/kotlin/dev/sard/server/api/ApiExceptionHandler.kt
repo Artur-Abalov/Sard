@@ -9,10 +9,15 @@ import dev.sard.server.runs.InvalidConfig
 import dev.sard.server.runs.RunActive
 import dev.sard.server.runs.SourceNameTaken
 import dev.sard.server.runs.SourceNotFound
+import dev.sard.server.runs.SystemSourceProtected
 import dev.sard.server.runs.UnknownAgent
 import dev.sard.server.runs.UnknownPlugin
 import dev.sard.server.runs.UnknownRepository
 import dev.sard.server.scheduler.InvalidSchedule
+import dev.sard.server.selfbackup.LocalStorageUnconfirmed
+import dev.sard.server.selfbackup.RepositoryNotInitialized
+import dev.sard.server.selfbackup.SelfAgentMissing
+import dev.sard.server.selfbackup.SelfBackupNotConfigured
 import jakarta.persistence.PersistenceException
 import org.hibernate.HibernateException
 import org.slf4j.LoggerFactory
@@ -151,6 +156,36 @@ class SourceExceptionHandler {
         field: String,
         message: String,
     ) = unprocessableResponse(code, listOf(FieldError(field, message)))
+}
+
+/** The self-backup (F6): its system sources, what binding its repository and "back up now" refuse. */
+@RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
+class SelfBackupExceptionHandler {
+    @ExceptionHandler(SystemSourceProtected::class)
+    fun systemSource() = conflict(ErrorCode.SYSTEM_SOURCE)
+
+    @ExceptionHandler(SelfAgentMissing::class)
+    fun selfAgentMissing() = unprocessableResponse(ErrorCode.SELF_AGENT_MISSING, emptyList())
+
+    @ExceptionHandler(RepositoryNotInitialized::class)
+    fun notInitialized(): ResponseEntity<ValidationProblem> =
+        unprocessableResponse(
+            ErrorCode.REPOSITORY_NOT_INITIALIZED,
+            listOf(FieldError("repositoryName", "has no restic repository id yet: initialise it on the agent")),
+        )
+
+    @ExceptionHandler(LocalStorageUnconfirmed::class)
+    fun localUnconfirmed(): ResponseEntity<ValidationProblem> =
+        unprocessableResponse(
+            ErrorCode.LOCAL_STORAGE_UNCONFIRMED,
+            listOf(FieldError("confirmLocalStorage", "must be true for a repository on the server's own machine")),
+        )
+
+    @ExceptionHandler(SelfBackupNotConfigured::class)
+    fun notConfigured() = conflict(ErrorCode.SELF_BACKUP_NOT_CONFIGURED)
+
+    private fun conflict(code: ErrorCode) = problemResponse(HttpStatus.CONFLICT, "Conflict", code)
 }
 
 /** The database is the only thing the API cannot work without: 503, with the reason in the log only. */

@@ -17,7 +17,10 @@ export function activeRun(sourceId: string): Schemas['Run'] | undefined {
   return state.runs.find((r) => r.sourceId === sourceId && ACTIVE.includes(r.status))
 }
 
-function queuedRun(source: Schemas['Source']): Schemas['Run'] {
+/** A source the server keeps itself (F6): only its schedule changes. */
+const systemSource = problem(409, 'Conflict', 'system_source')
+
+export function queuedRun(source: Schemas['Source']): Schemas['Run'] {
   const now = new Date().toISOString()
   const step: Schemas['RunStep'] = {
     id: crypto.randomUUID(),
@@ -73,7 +76,13 @@ export const sourceHandlers = [
     const invalid = validateSource(input, state.agents)
     if (invalid !== null) return response(422).json(invalid, PROBLEM)
     const now = new Date().toISOString()
-    const source = { ...input, id: crypto.randomUUID(), createdAt: now, updatedAt: now }
+    const source = {
+      ...input,
+      id: crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+      systemRole: null,
+    }
     state.sources.unshift(source)
     return response(201).json(source)
   }),
@@ -88,6 +97,7 @@ export const sourceHandlers = [
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
     const source = state.sources.find((s) => s.id === params.sourceId)
     if (source === undefined) return response(404).json(notFound, PROBLEM)
+    if (source.systemRole !== null) return response(409).json(systemSource, PROBLEM)
     const input = await request.json()
     const invalid = validateSource(input, state.agents)
     if (invalid !== null) return response(422).json(invalid, PROBLEM)
@@ -99,6 +109,7 @@ export const sourceHandlers = [
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
     const index = state.sources.findIndex((s) => s.id === params.sourceId)
     if (index < 0) return response(404).json(notFound, PROBLEM)
+    if (state.sources[index].systemRole !== null) return response(409).json(systemSource, PROBLEM)
     const active = activeRun(params.sourceId)
     if (active !== undefined) return response(409).json(runActive(active.id), PROBLEM)
     // Soft: the source leaves the list and the card, its runs and snapshots stay.

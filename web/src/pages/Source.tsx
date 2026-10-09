@@ -19,6 +19,7 @@ import { AppLink, ButtonLink } from '../components/links'
 import { Loaded } from '../components/Loaded'
 import { PagedList } from '../components/PagedList'
 import { RunBackupButton } from '../components/RunBackupButton'
+import { SystemSourceMark } from '../components/SystemSourceMark'
 import { usePaged } from '../components/usePaged'
 import { useFormat } from '../useFormat'
 import { tones } from '../theme'
@@ -176,12 +177,22 @@ function SourceCard({ source }: { source: SourceModel }) {
     <Stack>
       <Group>
         <Title order={2}>{source.name}</Title>
+        <SystemSourceMark source={source} />
         <RunBackupButton sourceId={source.id} />
-        <ButtonLink to="/sources/$sourceId/edit" params={{ sourceId: source.id }} variant="default">
-          {t('source.edit')}
-        </ButtonLink>
-        <DeleteButton source={source} />
+        {source.systemRole === null && (
+          <>
+            <ButtonLink
+              to="/sources/$sourceId/edit"
+              params={{ sourceId: source.id }}
+              variant="default"
+            >
+              {t('source.edit')}
+            </ButtonLink>
+            <DeleteButton source={source} />
+          </>
+        )}
       </Group>
+      {source.systemRole !== null && <Text c="dimmed">{t('source.systemWhy')}</Text>}
       <Table>
         <Table.Tbody>
           <Table.Tr>

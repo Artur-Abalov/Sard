@@ -36,6 +36,11 @@ const KNOWN: Record<ErrorCode, true> = {
   agent_revoked: true,
   unavailable: true,
   self_agent_confirmation_required: true,
+  system_source: true,
+  self_agent_missing: true,
+  repository_not_initialized: true,
+  local_storage_unconfirmed: true,
+  self_backup_not_configured: true,
 }
 
 function codeOf(error: unknown): string | null {

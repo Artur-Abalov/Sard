@@ -77,14 +77,8 @@ export const contractChecks = [
   // @ts-expect-error: a run of a source is created with POST, there is no PUT
   http.put('/api/v1/sources/{sourceId}/runs', () => HttpResponse.json({})),
 
-  http.delete('/api/v1/sources/{sourceId}', ({ response }) =>
-    // @ts-expect-error: 409 carries the active run's id
-    response(409).json({
-      type: 'about:blank',
-      title: 'Conflict',
-      status: 409,
-      detail: null,
-      code: 'run_active',
-    }),
+  http.put('/api/v1/self-backup/repository', ({ response }) =>
+    // @ts-expect-error: the answer is the whole self-backup state, configured included
+    response(200).json({ agentId: null, repository: null, boundAt: null, sources: [] }),
   ),
 ]

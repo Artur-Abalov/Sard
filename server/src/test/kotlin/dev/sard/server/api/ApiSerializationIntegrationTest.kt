@@ -102,7 +102,19 @@ class ApiSerializationIntegrationTest(
             startedAt = null,
             finishedAt = null,
         )
-    private val source = Source(id, "etc", id, "files", "local", mapOf("paths" to listOf("/etc")), at, at)
+    private val source = Source(id, "etc", id, "files", "local", mapOf("paths" to listOf("/etc")), at, at, null)
+    private val systemSource =
+        Source(
+            id,
+            "Sard: database",
+            id,
+            "postgresql",
+            "offsite",
+            mapOf("host" to "postgres"),
+            at,
+            at,
+            SystemSourceRole.SELF_DATABASE,
+        )
     private val token =
         EnrollmentToken(id, EnrollmentTokenStatus.USED, at, at, at, revokedAt = null, agentId = id, label = null)
     private val snapshot =
@@ -181,7 +193,17 @@ class ApiSerializationIntegrationTest(
             EnrollmentTokenPage(listOf(token), nextCursor = null),
             SourceInput("etc", id, "files", "local", mapOf("paths" to listOf("/etc"))),
             source,
-            SourcePage(listOf(source), nextCursor = null),
+            SourcePage(listOf(source, systemSource), nextCursor = null),
+            SelfBackupRepositoryInput("offsite", confirmLocalStorage = false),
+            SelfBackup(
+                configured = true,
+                agentId = id,
+                SelfBackupRepository("offsite", "s3", "a1b2", local = false),
+                boundAt = at,
+                listOf(SelfBackupSource(SystemSourceRole.SELF_KEYS, id, id, "offsite")),
+            ),
+            SelfBackup(configured = false, agentId = null, repository = null, boundAt = null, sources = emptyList()),
+            SelfBackupRuns(listOf(SelfBackupRunStarted(SystemSourceRole.SELF_DATABASE, id, id, started = false))),
             SnapshotPage(listOf(snapshot), nextCursor = null),
             ScheduleInput("30 2 * * *", "Europe/Berlin", enabled = true),
             schedule,
@@ -335,6 +357,9 @@ class ApiSerializationIntegrationTest(
                 "RunSummary",
                 "LogLine",
                 "FieldError",
+                "SelfBackupRepository",
+                "SelfBackupSource",
+                "SelfBackupRunStarted",
             )
     }
 }

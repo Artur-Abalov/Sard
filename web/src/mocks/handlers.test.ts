@@ -156,6 +156,9 @@ describe('session', () => {
       api.GET('/api/v1/runs/{runId}/steps/{stepId}/logs', {
         params: { path: { runId: ids.runningRun, stepId: ids.runningStep } },
       }),
+      api.GET('/api/v1/self-backup'),
+      api.PUT('/api/v1/self-backup/repository', { body: { repositoryName: 'offsite' } }),
+      api.POST('/api/v1/self-backup/runs'),
     ]
     for (const { response, error } of await Promise.all(calls)) {
       expect(response.status, response.url).toBe(401)
@@ -862,5 +865,58 @@ describe('W2 mocks', () => {
       params: { path: { runId: ids.failedRun, stepId: ids.failedStep } },
     })
     expect(other.data?.truncated).toBe(false)
+  })
+})
+
+describe('self-backup (F6)', () => {
+  beforeEach(signIn)
+
+  const bind = (repositoryName: string, confirmLocalStorage?: boolean) =>
+    api.PUT('/api/v1/self-backup/repository', { body: { repositoryName, confirmLocalStorage } })
+
+  test('not configured until bound; the built-in agent is named', async () => {
+    const state = must(await api.GET('/api/v1/self-backup'))
+    expect(state).toMatchObject({ configured: false, agentId: ids.selfAgent, repository: null })
+    const runs = await api.POST('/api/v1/self-backup/runs')
+    expect(runs.response.status).toBe(409)
+    expect(runs.error).toMatchObject({ code: 'self_backup_not_configured' })
+  })
+
+  test('binding creates two marked system sources; binding again changes nothing', async () => {
+    const bound = must(await bind('offsite'))
+    expect(bound.configured).toBe(true)
+    expect(bound.repository).toMatchObject({ name: 'offsite', backend: 's3', local: false })
+    expect(bound.sources.map((s) => s.role)).toEqual(['self_database', 'self_keys'])
+    expect(must(await bind('offsite'))).toEqual(bound)
+    const listed = must(await api.GET('/api/v1/sources')).items.filter((s) => s.systemRole !== null)
+    expect(listed).toHaveLength(2)
+  })
+
+  test('the refusals of the server, in its order', async () => {
+    expect((await bind('nowhere')).error).toMatchObject({ code: 'unknown_repository' })
+    expect((await bind('fresh')).error).toMatchObject({ code: 'repository_not_initialized' })
+    const local = await bind('disk')
+    expect(local.response.status).toBe(422)
+    expect(local.error).toMatchObject({ code: 'local_storage_unconfirmed' })
+    expect(must(await bind('disk', true)).repository?.local).toBe(true)
+  })
+
+  test('a system source refuses replace and delete with 409 system_source', async () => {
+    const keys = must(await bind('offsite')).sources[1].sourceId
+    const path = { params: { path: { sourceId: keys } } }
+    const source = must(await api.GET('/api/v1/sources/{sourceId}', path))
+    const replaced = await api.PUT('/api/v1/sources/{sourceId}', { ...path, body: source })
+    expect(replaced.error).toMatchObject({ code: 'system_source' })
+    const deleted = await api.DELETE('/api/v1/sources/{sourceId}', path)
+    expect(deleted.error).toMatchObject({ code: 'system_source' })
+  })
+
+  test('back up now queues both runs; again answers with the same runs', async () => {
+    must(await bind('offsite'))
+    const first = must(await api.POST('/api/v1/self-backup/runs')).runs
+    expect(first.every((r) => r.started)).toBe(true)
+    const again = must(await api.POST('/api/v1/self-backup/runs')).runs
+    expect(again.map((r) => r.runId)).toEqual(first.map((r) => r.runId))
+    expect(again.some((r) => r.started)).toBe(false)
   })
 })

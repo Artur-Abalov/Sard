@@ -11,6 +11,9 @@
 #   4  the used built-in token is refused (TOKEN_USED) from another container; the
 #      channel is mounted by the server and the sidecar only, read-only in the
 #      sidecar; neither the token nor the role password is in any log
+#   7  (F6) what the self-backup reads stays read-only in the sidecar: the CA directory and
+#      the installation directory are mounted read-only and refuse a write, .env is readable
+#      through group 10001; the role sard_self still cannot write to the database
 #   5  (UPGRADE_FROM=<server image>) a stack of that version with an agent of its own
 #      is replaced by this compose file: the agent and the CA are still there, the
 #      sidecar appears and enrolls by itself
@@ -34,7 +37,9 @@ SARD_AGENT_IMAGE=${SARD_AGENT_IMAGE:?}
 SARD_DB_PASSWORD=$(openssl rand -hex 24)
 SARD_ADMIN_PASSWORD=$admin
 EOF
-chmod 600 .env
+# Group 10001 is the sidecar's: it reads .env for the self-backup (docs/operator/02-install.md).
+chgrp 10001 .env 2>/dev/null || sudo chgrp 10001 .env
+chmod 640 .env
 
 fail() { echo "FAIL: $*" >&2; docker compose logs --no-color >"$work/compose.log" 2>&1 || true; exit 1; }
 pass() { echo "ok: $*"; }
@@ -144,6 +149,26 @@ users="$(for c in $(docker ps -q); do docker inspect "$c" --format '{{.Name}} {{
 mounts self-agent | grep -q 'sard_sard-self-channel:false' || fail "4: the channel is not read-only in the sidecar"
 docker compose run --rm --no-deps --entrypoint sh self-agent -c 'touch /run/sard-self/x' 2>/dev/null && fail "4: the sidecar wrote to the channel"
 pass "4: the channel is mounted by server and self-agent only, read-only in self-agent"
+
+# 7 (F6): the CA and the installation directory are read-only in the sidecar; .env is readable there.
+targets() { docker inspect "$(docker compose ps -q "$1")" --format '{{range .Mounts}}{{.Destination}}:{{.RW}} {{end}}'; }
+for dir in /var/lib/sard/pki /etc/sard/install; do
+  targets self-agent | grep -q "$dir:false" || fail "7: $dir is not mounted read-only in the sidecar"
+  docker compose exec -T self-agent sh -c "touch $dir/x" 2>/dev/null && fail "7: the sidecar wrote to $dir"
+done
+docker compose exec -T self-agent sh -c 'test -r /etc/sard/install/.env && test -r /var/lib/sard/pki/ca/ca.key' ||
+  fail "7: the sidecar cannot read .env or the CA key"
+pass "7: the CA and the installation directory are read-only in the sidecar, .env and the CA key readable"
+# The role of the dump: even with read-only switched off for the session, nothing is written.
+role_write() {
+  docker compose exec -T -e PGPASSWORD="$pw" postgres psql -h 127.0.0.1 -U sard_self -d sard -v ON_ERROR_STOP=1 -qAtc \
+    "set default_transaction_read_only = off; $1" >/dev/null 2>&1
+}
+role_write 'select count(*) from agents' || fail "7: sard_self cannot read the database"
+for sql in "update tenants set name = name" "create table x (i int)" "create temp table x (i int)" "select lo_create(0)"; do
+  role_write "$sql" && fail "7: sard_self ran: $sql"
+done
+pass "7: sard_self reads the database and writes nothing (update, create, temp, large object)"
 # The captured token from another container on the compose network: refused, TOKEN_USED (exit 3).
 set +e
 docker compose run --rm --no-deps -T --entrypoint sh self-agent -c \

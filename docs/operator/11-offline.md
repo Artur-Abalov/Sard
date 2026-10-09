@@ -33,7 +33,7 @@ cd ~/sard-offline
 sha256sum --check --ignore-missing SHA256SUMS.server
 gunzip -c sard-*-images-linux-*.tar.gz | docker load
 mkdir -p ~/sard && cp docker-compose.yml ~/sard/ && cp sard.env.example ~/sard/.env
-cd ~/sard && chmod 600 .env
+cd ~/sard && sudo chgrp 10001 .env && chmod 640 .env
 ```
 
 Дальше — [раздел 2](02-install.md), шаги 2–3 (секреты и имя), и запуск с
