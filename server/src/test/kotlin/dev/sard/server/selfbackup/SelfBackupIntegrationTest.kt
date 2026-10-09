@@ -17,6 +17,8 @@ import dev.sard.server.runs.Trigger
 import dev.sard.server.runs.UnknownRepository
 import dev.sard.server.scheduler.ScheduleDraft
 import dev.sard.server.scheduler.Schedules
+import io.github.anschnapp.mutflow.MutFlow
+import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
@@ -37,6 +39,7 @@ import kotlin.test.assertTrue
  * F6, checks 1, 5 and 6: binding the self-backup's repository creates and keeps the two system sources,
  * a local repository needs a confirmation, and the system sources refuse everything but their schedule.
  */
+@MutFlowTest(includeTargets = [SelfBackups::class, Sources::class])
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = [
@@ -69,9 +72,18 @@ class SelfBackupIntegrationTest(
         tenant.drop()
     }
 
+    private fun bind(
+        repositoryName: String,
+        confirmLocalStorage: Boolean,
+    ): SelfBackupView = MutFlow.underTest { selfBackups.bind(tenant.id, repositoryName, confirmLocalStorage) }
+
+    private fun runNow(): List<SelfBackupRun> = MutFlow.underTest { selfBackups.runNow(tenant.id) }
+
+    private fun state(): SelfBackupView = MutFlow.underTest { selfBackups.get(tenant.id) }
+
     @Test
     fun `Привязка создаёт два системных источника с конфигами плана и ночным расписанием`() {
-        val state = selfBackups.bind(tenant.id, S3_REPOSITORY, confirmLocalStorage = false)
+        val state = bind(S3_REPOSITORY, confirmLocalStorage = false)
 
         assertTrue(state.configured)
         assertEquals(tenant.agentId, state.agentId)
@@ -105,10 +117,10 @@ class SelfBackupIntegrationTest(
 
     @Test
     fun `Повторная привязка к тому же репозиторию ничего не меняет`() {
-        val first = selfBackups.bind(tenant.id, S3_REPOSITORY, confirmLocalStorage = false)
+        val first = bind(S3_REPOSITORY, confirmLocalStorage = false)
         clock.now = RUNS_NOW.plus(Duration.ofHours(1))
 
-        val second = selfBackups.bind(tenant.id, S3_REPOSITORY, confirmLocalStorage = false)
+        val second = bind(S3_REPOSITORY, confirmLocalStorage = false)
 
         assertEquals(first, second)
         for (source in second.sources) {
@@ -120,13 +132,13 @@ class SelfBackupIntegrationTest(
 
     @Test
     fun `Привязка к другому репозиторию переводит те же источники и сохраняет их расписание`() {
-        val first = selfBackups.bind(tenant.id, S3_REPOSITORY, confirmLocalStorage = false)
+        val first = bind(S3_REPOSITORY, confirmLocalStorage = false)
         val database = first.sources[0].sourceId
         schedules.set(tenant.id, database, ScheduleDraft("15 2 * * *", "UTC", true))
         val moved = RUNS_NOW.plus(Duration.ofDays(1))
         clock.now = moved
 
-        val second = selfBackups.bind(tenant.id, SFTP_REPOSITORY, confirmLocalStorage = false)
+        val second = bind(SFTP_REPOSITORY, confirmLocalStorage = false)
 
         assertEquals(first.sources.map { it.sourceId }, second.sources.map { it.sourceId })
         assertEquals(moved, second.boundAt)
@@ -142,12 +154,12 @@ class SelfBackupIntegrationTest(
 
     @Test
     fun `Новый встроенный агент после отзыва старого получает те же источники`() {
-        val first = selfBackups.bind(tenant.id, S3_REPOSITORY, confirmLocalStorage = false)
+        val first = bind(S3_REPOSITORY, confirmLocalStorage = false)
         tenant.revoke(tenant.agentId)
         val replacement = UUID.randomUUID()
         tenant.insertAgent(replacement)
 
-        val second = selfBackups.bind(tenant.id, S3_REPOSITORY, confirmLocalStorage = false)
+        val second = bind(S3_REPOSITORY, confirmLocalStorage = false)
 
         assertEquals(replacement, second.agentId)
         assertEquals(first.sources.map { it.sourceId }, second.sources.map { it.sourceId })
@@ -158,32 +170,32 @@ class SelfBackupIntegrationTest(
     fun `Локальный репозиторий без подтверждения не привязывается`() {
         val refused =
             assertFailsWith<LocalStorageUnconfirmed> {
-                selfBackups.bind(tenant.id, LOCAL_REPOSITORY, confirmLocalStorage = false)
+                bind(LOCAL_REPOSITORY, confirmLocalStorage = false)
             }
         assertEquals(LOCAL_REPOSITORY, refused.repositoryName)
         assertEquals(0, tenant.count("sources"))
-        assertFalse(selfBackups.get(tenant.id).configured)
+        assertFalse(state().configured)
     }
 
     @Test
     fun `Локальный репозиторий с подтверждением привязан, и состояние помнит, что хранилище локальное`() {
-        val state = selfBackups.bind(tenant.id, LOCAL_REPOSITORY, confirmLocalStorage = true)
+        val state = bind(LOCAL_REPOSITORY, confirmLocalStorage = true)
 
         assertTrue(state.configured)
         assertEquals(true, state.repository?.local)
-        assertEquals(state, selfBackups.get(tenant.id))
+        assertEquals(state, state())
     }
 
     @Test
     fun `Привязка отказывает без встроенного агента, с чужим или неинициализированным репозиторием`() {
-        assertFailsWith<UnknownRepository> { selfBackups.bind(tenant.id, "elsewhere", confirmLocalStorage = false) }
+        assertFailsWith<UnknownRepository> { bind("elsewhere", confirmLocalStorage = false) }
         val fresh =
             assertFailsWith<RepositoryNotInitialized> {
-                selfBackups.bind(tenant.id, FRESH_REPOSITORY, confirmLocalStorage = false)
+                bind(FRESH_REPOSITORY, confirmLocalStorage = false)
             }
         assertEquals(FRESH_REPOSITORY, fresh.repositoryName)
         tenant.revoke(tenant.agentId)
-        assertFailsWith<SelfAgentMissing> { selfBackups.bind(tenant.id, S3_REPOSITORY, confirmLocalStorage = false) }
+        assertFailsWith<SelfAgentMissing> { bind(S3_REPOSITORY, confirmLocalStorage = false) }
         assertEquals(0, tenant.count("sources"))
         assertEquals(0, tenant.count("self_backups"))
     }
@@ -192,7 +204,7 @@ class SelfBackupIntegrationTest(
     fun `Обычный агент не встроенный - самобэкап на нём не настраивается`() {
         tenant.revoke(tenant.agentId)
         tenant.insertAgent(UUID.randomUUID(), builtin = false)
-        assertFailsWith<SelfAgentMissing> { selfBackups.bind(tenant.id, S3_REPOSITORY, confirmLocalStorage = false) }
+        assertFailsWith<SelfAgentMissing> { bind(S3_REPOSITORY, confirmLocalStorage = false) }
     }
 
     @Test
@@ -200,7 +212,7 @@ class SelfBackupIntegrationTest(
         tenant.revoke(tenant.agentId)
         tenant.insertAgent(UUID.randomUUID(), secrets = emptyList())
         val refused =
-            assertFailsWith<InvalidConfig> { selfBackups.bind(tenant.id, S3_REPOSITORY, confirmLocalStorage = false) }
+            assertFailsWith<InvalidConfig> { bind(S3_REPOSITORY, confirmLocalStorage = false) }
         assertEquals(listOf("config/password_ref"), refused.violations.map { it.field })
         assertEquals(0, tenant.count("sources"))
     }
@@ -209,19 +221,24 @@ class SelfBackupIntegrationTest(
     fun `Пользовательский источник с тем же именем не мешает привязке`() {
         val draft = SourceDraft("Sard: database", tenant.agentId, "files", S3_REPOSITORY, """{"paths": ["/srv"]}""")
         sources.create(tenant.id, draft)
-        val state = selfBackups.bind(tenant.id, S3_REPOSITORY, confirmLocalStorage = false)
+        val state = bind(S3_REPOSITORY, confirmLocalStorage = false)
         assertTrue(state.configured)
         assertEquals(3, tenant.count("sources"))
     }
 
     @Test
     fun `Системный источник нельзя изменить или удалить, а расписание - можно`() {
-        val state = selfBackups.bind(tenant.id, S3_REPOSITORY, confirmLocalStorage = false)
+        val state = bind(S3_REPOSITORY, confirmLocalStorage = false)
         val id = state.sources[1].sourceId
         val draft = SourceDraft("mine", tenant.agentId, "files", S3_REPOSITORY, """{"paths": ["/srv"]}""")
 
-        assertEquals(id, assertFailsWith<SystemSourceProtected> { sources.replace(tenant.id, id, draft) }.sourceId)
-        assertEquals(id, assertFailsWith<SystemSourceProtected> { sources.delete(tenant.id, id) }.sourceId)
+        val replaced =
+            assertFailsWith<SystemSourceProtected> {
+                MutFlow.underTest { sources.replace(tenant.id, id, draft) }
+            }
+        assertEquals(id, replaced.sourceId)
+        val deleted = assertFailsWith<SystemSourceProtected> { MutFlow.underTest { sources.delete(tenant.id, id) } }
+        assertEquals(id, deleted.sourceId)
         assertEquals("Sard: keys and configuration", sources.get(tenant.id, id).name)
         val changed = schedules.set(tenant.id, id, ScheduleDraft("0 4 * * 0", "UTC", false))
         assertFalse(changed.enabled)
@@ -231,7 +248,7 @@ class SelfBackupIntegrationTest(
     fun `Список источников помечает системные`() {
         val draft = SourceDraft("mine", tenant.agentId, "files", S3_REPOSITORY, """{"paths": ["/srv"]}""")
         val user = sources.create(tenant.id, draft)
-        selfBackups.bind(tenant.id, S3_REPOSITORY, confirmLocalStorage = false)
+        bind(S3_REPOSITORY, confirmLocalStorage = false)
 
         val roles = sources.list(tenant.id, null, null, 10).associate { it.id to it.systemRole }
 
@@ -241,9 +258,9 @@ class SelfBackupIntegrationTest(
 
     @Test
     fun `Запустить сейчас - два ручных запуска, повтор отдаёт уже идущие`() {
-        val state = selfBackups.bind(tenant.id, S3_REPOSITORY, confirmLocalStorage = false)
+        val state = bind(S3_REPOSITORY, confirmLocalStorage = false)
 
-        val started = selfBackups.runNow(tenant.id)
+        val started = runNow()
 
         assertEquals(state.sources.map { it.sourceId }, started.map { it.sourceId })
         assertEquals(listOf(SystemRole.SELF_DATABASE, SystemRole.SELF_KEYS), started.map { it.role })
@@ -253,7 +270,7 @@ class SelfBackupIntegrationTest(
             assertEquals(Trigger.MANUAL, view.trigger)
             assertEquals(run.sourceId, view.sourceId)
         }
-        val again = selfBackups.runNow(tenant.id)
+        val again = runNow()
         assertEquals(started.map { it.runId }, again.map { it.runId })
         assertTrue(again.none { it.started })
         assertEquals(2, tenant.count("runs"))
@@ -261,12 +278,26 @@ class SelfBackupIntegrationTest(
 
     @Test
     fun `Запустить сейчас без привязки отказывает`() {
-        assertFailsWith<SelfBackupNotConfigured> { selfBackups.runNow(tenant.id) }
+        assertFailsWith<SelfBackupNotConfigured> { runNow() }
+    }
+
+    @Test
+    fun `Без привязки или без одного из источников состояние - не настроен`() {
+        val sources = bind(S3_REPOSITORY, confirmLocalStorage = false).sources
+        jdbc.update("delete from self_backups where tenant_id = ?", tenant.id)
+        assertFalse(state().configured)
+
+        bind(S3_REPOSITORY, confirmLocalStorage = false)
+        jdbc.update("update sources set deleted_at = now() where id = ?", sources[1].sourceId)
+        val partial = state()
+        assertFalse(partial.configured)
+        assertNull(partial.repository)
+        assertTrue(partial.sources.isEmpty())
     }
 
     @Test
     fun `Без привязки состояние - не настроен, но встроенный агент виден`() {
-        val state = selfBackups.get(tenant.id)
+        val state = state()
         assertFalse(state.configured)
         assertEquals(tenant.agentId, state.agentId)
         assertNull(state.repository)

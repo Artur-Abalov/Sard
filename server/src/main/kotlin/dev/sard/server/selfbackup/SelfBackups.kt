@@ -37,6 +37,11 @@ private val RACE_KEYS = setOf("sources_tenant_id_system_role_key", "self_backups
 /** The role of a source read through [SYSTEM_SOURCES]: never null there. */
 private fun roleOf(source: SourceRecord): SystemRole = SystemRole.of(checkNotNull(source.systemRole))
 
+private fun systemSourceOf(source: SourceRecord): SystemSource {
+    val role = roleOf(source)
+    return SystemSource(role, source.id, source.agentId, source.repositoryName)
+}
+
 /** Refuses a repository restic has not initialised yet, and a local one without the confirmation (D10). */
 private fun AgentRepositoryRecord.requireBindable(confirmLocalStorage: Boolean) {
     if (repositoryId == null) throw RepositoryNotInitialized(name)
@@ -146,7 +151,7 @@ class SelfBackups internal constructor(
                     .requireConfig(mapper.writeValueAsString(planned.config))
                 keep(session, existing[planned.role], planned, agent.id, repositoryName, now)
             }
-        record(session, moved.any { it }, repository.backend == LOCAL_BACKEND, now)
+        record(session, moved.any { it }, now)
         session.flush()
         return viewIn(session)
     }
@@ -190,11 +195,9 @@ class SelfBackups internal constructor(
         repositoryName: String,
         now: Instant,
     ): Boolean {
+        val wanted = listOf(agentId, repositoryName, planned.plugin, planned.name)
         val same =
-            source.agentId == agentId &&
-                source.repositoryName == repositoryName &&
-                source.plugin == planned.plugin &&
-                source.name == planned.name &&
+            listOf(source.agentId, source.repositoryName, source.plugin, source.name) == wanted &&
                 mapper.readTree(source.config) == mapper.valueToTree(planned.config)
         if (!same) {
             source.agentId = agentId
@@ -207,42 +210,30 @@ class SelfBackups internal constructor(
         return !same
     }
 
+    /** Creates the binding, or marks it bound again now when the sources [moved]. */
     private fun record(
         session: Session,
         moved: Boolean,
-        local: Boolean,
         now: Instant,
     ) {
         val record = bindingOf(session, LockModeType.PESSIMISTIC_WRITE)
         if (record == null) {
-            session.persist(SelfBackupRecord(ids.next(), local, now, now))
-            return
-        }
-        if (moved) record.boundAt = now
-        if (moved || record.localStorageConfirmed != local) {
-            record.localStorageConfirmed = local
+            session.persist(SelfBackupRecord(ids.next(), now, now))
+        } else if (moved) {
+            record.boundAt = now
             record.updatedAt = now
         }
     }
 
     private fun viewIn(session: Session): SelfBackupView {
-        val agent = liveBuiltin(session)
+        val agentId = liveBuiltin(session)?.id
         val record = bindingOf(session, LockModeType.NONE)
         val sources = systemSources(session, LockModeType.NONE)
-        val bound = record?.takeIf { sources.size == SystemRole.entries.size }
-        val first = sources.firstOrNull()?.takeIf { bound != null }
-        return SelfBackupView(
-            configured = bound != null,
-            agentId = agent?.id,
-            repository = first?.let { repositoryState(session, it) },
-            boundAt = bound?.boundAt,
-            sources =
-                if (bound == null) {
-                    emptyList()
-                } else {
-                    sources.map { SystemSource(roleOf(it), it.id, it.agentId, it.repositoryName) }
-                },
-        )
+        if (record == null || sources.size != SystemRole.entries.size) {
+            return SelfBackupView(false, agentId, null, null, emptyList())
+        }
+        val repository = repositoryState(session, sources.first())
+        return SelfBackupView(true, agentId, repository, record.boundAt, sources.map(::systemSourceOf))
     }
 
     /** The repository of the system sources; the name alone once the agent's Register no longer lists it. */

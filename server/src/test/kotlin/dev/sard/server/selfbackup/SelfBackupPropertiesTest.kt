@@ -3,6 +3,7 @@
 
 package dev.sard.server.selfbackup
 
+import dev.sard.server.scheduler.CronSchedule
 import dev.sard.server.scheduler.ScheduleDraft
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
@@ -15,8 +16,11 @@ import kotlin.test.assertTrue
 private const val COMPOSE_URL = "jdbc:postgresql://postgres:5432/sard"
 private val MOSCOW: ZoneId = ZoneId.of("Europe/Moscow")
 
-/** F6: what the two system sources are made of, from `sard.self-backup.*` and the server's own datasource. */
-@MutFlowTest
+/**
+ * F6: what the two system sources are made of, from `sard.self-backup.*` and the server's own datasource. The cron
+ * and zone checks are F3a's, mutated by its own tests.
+ */
+@MutFlowTest(excludeTargets = [CronSchedule::class, CronSchedule.Companion::class])
 class SelfBackupPropertiesTest {
     @Test
     fun `По умолчанию база - та же, что у сервера, роль sard_self и секрет sard-db`() {
@@ -88,6 +92,18 @@ class SelfBackupPropertiesTest {
                 MutFlow.underTest { SelfBackupProperties().settings("jdbc:mysql://db/sard", MOSCOW) }
             }
         assertTrue("SARD_SELF_BACKUP_DATABASE_HOST" in e.message.orEmpty(), e.message)
+    }
+
+    @Test
+    fun `Имя базы можно задать при адресе из JDBC URL`() {
+        val settings = MutFlow.underTest { SelfBackupProperties(databaseName = "other").settings(COMPOSE_URL, MOSCOW) }
+        assertEquals(DatabaseTarget("postgres", 5432, "other"), settings.database)
+    }
+
+    @Test
+    fun `Явный адрес базы без имени - база sard`() {
+        val settings = MutFlow.underTest { SelfBackupProperties(databaseHost = "db").settings(COMPOSE_URL, MOSCOW) }
+        assertEquals(DatabaseTarget("db", 5432, "sard"), settings.database)
     }
 
     @Test

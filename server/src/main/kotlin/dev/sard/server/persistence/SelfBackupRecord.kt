@@ -20,8 +20,6 @@ import java.util.UUID
 class SelfBackupRecord(
     @Id
     val id: UUID,
-    @Column(name = "local_storage_confirmed", nullable = false)
-    var localStorageConfirmed: Boolean,
     @Column(name = "bound_at", nullable = false)
     var boundAt: Instant,
     @Column(name = "updated_at", nullable = false)

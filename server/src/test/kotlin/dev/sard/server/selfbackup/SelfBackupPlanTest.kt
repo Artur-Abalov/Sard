@@ -13,7 +13,7 @@ import kotlin.test.assertEquals
 private val SETTINGS = SelfBackupProperties().settings("jdbc:postgresql://postgres:5432/sard", ZoneId.of("UTC"))
 
 /** F6: the two system sources, one per role, as the server creates and keeps them. */
-@MutFlowTest
+@MutFlowTest(includeTargets = [SelfBackupPlan::class])
 class SelfBackupPlanTest {
     @Test
     fun `База - плагин postgresql ролью только на чтение, пароль по имени секрета, без глобальных объектов`() {

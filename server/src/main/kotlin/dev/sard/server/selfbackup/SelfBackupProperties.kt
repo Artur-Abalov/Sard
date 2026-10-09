@@ -90,41 +90,46 @@ data class SelfBackupProperties(
         return ScheduleDraft(cron, zone, true)
     }
 
-    private fun database(datasourceUrl: String): DatabaseTarget {
+    private fun database(datasourceUrl: String): DatabaseTarget =
         if (databaseHost.isNotEmpty()) {
-            return DatabaseTarget(databaseHost, databasePort, databaseName.ifEmpty { "sard" })
+            DatabaseTarget(databaseHost, databasePort, databaseName.ifEmpty { "sard" })
+        } else {
+            named(parsed(datasourceUrl))
         }
-        val parsed = runCatching { databaseOf(datasourceUrl) }.getOrNull()
-        requireNotNull(parsed) {
+
+    private fun named(target: DatabaseTarget) = if (databaseName.isEmpty()) target else target.copy(name = databaseName)
+
+    private fun parsed(datasourceUrl: String): DatabaseTarget {
+        val target = runCatching { databaseOf(datasourceUrl) }.getOrNull()
+        return requireNotNull(target) {
             "the self-backup cannot find the database in the datasource URL; " +
                 "set SARD_SELF_BACKUP_DATABASE_HOST, SARD_SELF_BACKUP_DATABASE_PORT and SARD_SELF_BACKUP_DATABASE_NAME"
         }
-        return if (databaseName.isEmpty()) parsed else parsed.copy(name = databaseName)
     }
 }
 
-/**
- * The first host of a PostgreSQL JDBC URL: `jdbc:postgresql://host[:port][,…]/database[?…]` or
- * `jdbc:postgresql:database`. Throws [IllegalArgumentException] for anything else.
- */
+/** `jdbc:postgresql://host[:port][,…]/database[?…]`; the host may be an IPv6 literal in brackets. */
+private val NETWORK_URL = Regex("""^jdbc:postgresql://(?:\[([^\]]+)]|([^:/,?\[]+))(?::(\d+))?[^/?]*(?:/([^?]*))?.*$""")
+
+/** `jdbc:postgresql:database[?…]`: the local server on the default port. */
+private val LOCAL_URL = Regex("""^jdbc:postgresql:([^/?][^?]*)(?:\?.*)?$""")
+
+/** The first host of a PostgreSQL JDBC URL; throws [IllegalArgumentException] for anything else. */
 internal fun databaseOf(url: String): DatabaseTarget {
-    require(url.startsWith(JDBC_PREFIX)) { "not a PostgreSQL JDBC URL" }
-    val rest = url.removePrefix(JDBC_PREFIX).substringBefore('?')
-    if (!rest.startsWith("//")) return DatabaseTarget("localhost", DEFAULT_PORT, rest)
-    val authority = rest.removePrefix("//").substringBefore('/')
-    val name = rest.removePrefix("//").substringAfter('/', "").ifEmpty { DEFAULT_DATABASE }
-    val first = authority.substringBefore(',')
-    val (host, port) = hostAndPort(first)
-    require(host.isNotEmpty()) { "no host" }
-    return DatabaseTarget(host, port, name)
+    val local = LOCAL_URL.matchEntire(url)
+    if (local != null) return DatabaseTarget("localhost", DEFAULT_PORT, local.groupValues[1])
+    return networkTarget(requireNotNull(NETWORK_URL.matchEntire(url)) { "not a PostgreSQL JDBC URL" })
 }
 
-private fun hostAndPort(address: String): Pair<String, Int> {
-    if (address.startsWith('[')) {
-        val host = address.substring(1, address.indexOf(']'))
-        val port = address.substringAfter("]:", "").ifEmpty { null }
-        return host to (port?.toInt() ?: DEFAULT_PORT)
-    }
-    val port = address.substringAfter(':', "").ifEmpty { null }
-    return address.substringBefore(':') to (port?.toInt() ?: DEFAULT_PORT)
+// The groups of NETWORK_URL.
+private const val IPV6_HOST = 1
+private const val NAMED_HOST = 2
+private const val PORT = 3
+private const val DATABASE = 4
+
+private fun networkTarget(match: MatchResult): DatabaseTarget {
+    val groups = match.groupValues
+    val host = groups[IPV6_HOST].ifEmpty { groups[NAMED_HOST] }
+    val port = groups[PORT].toIntOrNull() ?: DEFAULT_PORT
+    return DatabaseTarget(host, port, groups[DATABASE].ifEmpty { DEFAULT_DATABASE })
 }
