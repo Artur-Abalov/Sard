@@ -310,6 +310,7 @@ class ApiContractIntegrationTest(
                 Triple("GET", "/api/v1/sources/{sourceId}/schedule", null),
                 Triple("PUT", "/api/v1/sources/{sourceId}/schedule", schedule),
                 Triple("GET", "/api/v1/sources/{sourceId}/schedule/fires", null),
+                Triple("GET", "/api/v1/schedule-preview?cron=0%202%20*%20*%20*&timezone=UTC", null),
                 Triple("GET", "/api/v1/runs?status=queued&status=failed", null),
                 Triple("GET", "/api/v1/runs/{runId}", null),
                 Triple("GET", "/api/v1/runs/{runId}/steps/{stepId}/logs", null),

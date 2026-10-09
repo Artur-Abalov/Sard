@@ -49,3 +49,10 @@ export function describeError(error: unknown): Message {
     ? errorMessage(error.failure)
     : { key: 'errors.generic', params: { detail: 'client' } }
 }
+
+// The server refused the values (422): the fields it names are told by [fieldFailures].
+export function isRefusedValues(error: unknown): boolean {
+  return (
+    error instanceof ApiError && error.failure.kind === 'problem' && error.failure.status === 422
+  )
+}

@@ -19,6 +19,7 @@ import { AppLink, ButtonLink } from '../components/links'
 import { Loaded } from '../components/Loaded'
 import { PagedList } from '../components/PagedList'
 import { RunBackupButton } from '../components/RunBackupButton'
+import { ScheduleBlock } from '../components/ScheduleBlock'
 import { usePaged } from '../components/usePaged'
 import { useFormat } from '../useFormat'
 import { tones } from '../theme'
@@ -210,6 +211,7 @@ function SourceCard({ source }: { source: SourceModel }) {
           </Table.Tr>
         </Table.Tbody>
       </Table>
+      <ScheduleBlock sourceId={source.id} />
       <Card withBorder>
         <Title order={4}>{t('source.config')}</Title>
         <Code block>{JSON.stringify(source.config, null, 2)}</Code>

@@ -25,21 +25,53 @@ function rejected(
 }
 
 const CRON_FIELDS = 5
+// The server refuses a normalised cron longer than this (F3b, К0), without echoing it.
+export const MAX_CRON_LENGTH = 200
 
-/** The server's checks of a schedule that the mock can make: five cron fields and a known IANA zone. */
-export function validateSchedule(
-  schedule: Schemas['ScheduleInput'],
+/** A cron as the server stores it: its fields single-spaced. */
+export function normalCron(cron: string): string {
+  return cron.trim().split(/\s+/).join(' ')
+}
+
+function isZone(timezone: string): boolean {
+  return Intl.supportedValuesOf('timeZone').includes(timezone) || timezone === 'UTC'
+}
+
+/** The server's checks of a cron and a zone that the mock can make: five fields, a sane length, a known IANA zone. */
+export function validateCronAndZone(
+  cron: string,
+  timezone: string,
 ): Schemas['ValidationProblem'] | null {
-  if (schedule.cron.trim().split(/\s+/).length !== CRON_FIELDS) {
+  const normal = normalCron(cron)
+  if (normal.split(' ').length !== CRON_FIELDS) {
     return rejected('validation_failed', 'cron', 'must have five fields')
   }
-  if (
-    !Intl.supportedValuesOf('timeZone').includes(schedule.timezone) &&
-    schedule.timezone !== 'UTC'
-  ) {
+  if (normal.length > MAX_CRON_LENGTH) {
+    return rejected('validation_failed', 'cron', 'cron is longer than 200 characters')
+  }
+  if (!isZone(timezone)) {
     return rejected('validation_failed', 'timezone', 'is not an IANA time zone')
   }
   return null
+}
+
+/** The server's checks of a schedule that the mock can make. */
+export function validateSchedule(
+  schedule: Schemas['ScheduleInput'],
+): Schemas['ValidationProblem'] | null {
+  return validateCronAndZone(schedule.cron, schedule.timezone)
+}
+
+/** The preview refuses what saving refuses, and a language that is neither ru nor en. */
+export function validatePreview(
+  cron: string,
+  timezone: string,
+  lang: string | null,
+): Schemas['ValidationProblem'] | null {
+  if (lang !== null && lang !== 'ru' && lang !== 'en') {
+    return rejected('validation_failed', 'lang', 'must be ru or en')
+  }
+  return validateCronAndZone(cron, timezone)
 }
 
 /** The server's checks of a source that the mock can make: its agent, plugin and repository exist. */

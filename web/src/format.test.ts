@@ -5,10 +5,14 @@ import { describe, expect, test } from 'vitest'
 import {
   EMPTY,
   formatBytes,
+  formatCatchUp,
   formatDuration,
   formatFiles,
+  formatFires,
+  formatMissed,
   formatPercent,
   formatRelative,
+  formatScheduleTime,
   formatTimestamp,
 } from './format'
 
@@ -144,5 +148,75 @@ describe('formatRelative', () => {
 
   test('an unknown language reads as English', () => {
     expect(formatRelative(ago(3600), now, 'xx')).toBe('1 h ago')
+  })
+})
+
+describe('formatScheduleTime', () => {
+  test.each([
+    ['2026-10-10T00:00:00Z', 'Europe/Berlin', 'ru', '02:00', '10'],
+    ['2026-10-10T00:00:00Z', 'America/New_York', 'en', '20:00', '9'],
+    ['2027-03-28T01:00:00Z', 'Europe/Berlin', 'ru', '03:00', '28'],
+    ['2026-10-09T23:00:00Z', 'Europe/Moscow', 'en', '02:00', '10'],
+  ])(
+    '%s in %s on %s shows %s on day %s, not the browser’s time',
+    (value, zone, language, time, day) => {
+      const text = formatScheduleTime(value, zone, language)
+      expect(text).toContain(time)
+      expect(text).toContain(zone)
+      expect(text).toMatch(new RegExp(`(^|\\D)${day}(\\D|$)`))
+    },
+  )
+
+  test('no time shows a dash', () => {
+    expect(formatScheduleTime(null, 'UTC', 'en')).toBe(EMPTY)
+  })
+})
+
+describe('formatFires', () => {
+  test.each([
+    [1, 'ru', '1 срабатывание'],
+    [3, 'ru', '3 срабатывания'],
+    [5, 'ru', '5 срабатываний'],
+    [21, 'ru', '21 срабатывание'],
+    [1, 'en', '1 fire'],
+    [4, 'en', '4 fires'],
+  ])('%i in %s is %s', (count, language, text) => {
+    expect(formatFires(count, language)).toBe(text)
+  })
+})
+
+describe('formatMissed', () => {
+  const missed = {
+    from: '2026-10-09T13:00:00Z',
+    until: '2026-10-09T16:00:00Z',
+    count: 4,
+    capped: false,
+    timezone: 'Europe/Berlin',
+  }
+
+  test('a downtime names the count and the period in the zone of the schedule', () => {
+    expect(formatMissed(missed, 'ru')).toBe(
+      'сервер не работал, пропущено 4 срабатывания с 15:00 по 18:00 (9 окт. 2026 г., Europe/Berlin)',
+    )
+    expect(formatMissed(missed, 'en')).toBe(
+      'the server was down, 4 fires missed from 15:00 to 18:00 (Oct 9, 2026, Europe/Berlin)',
+    )
+  })
+
+  test('a period over midnight names both ends in full', () => {
+    const text = formatMissed({ ...missed, until: '2026-10-10T08:00:00Z' }, 'en')
+    expect(text).toContain('Oct 9, 2026, 15:00')
+    expect(text).toContain('Oct 10, 2026, 10:00')
+  })
+
+  test('a capped count is at least the limit and names no end', () => {
+    const text = formatMissed({ ...missed, count: 10_000, capped: true }, 'ru')
+    expect(text).toContain('не меньше 10 000')
+    expect(text).not.toContain('по ')
+    expect(text).not.toContain('18:00')
+  })
+
+  test('a catch-up run is marked with the same period', () => {
+    expect(formatCatchUp(missed, 'ru')).toBe(`догоняющий — ${formatMissed(missed, 'ru')}`)
   })
 })

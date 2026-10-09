@@ -87,7 +87,8 @@
     "resetFilters": "Reset filters",
     "source": "Source",
     "sourceDeleted": "deleted",
-    "status": "Status"
+    "status": "Status",
+    "startedBy": "Started"
   },
   "notFound": {
     "title": "Page not found",
@@ -300,7 +301,7 @@
       "run": "run a command"
     },
     "RunTrigger": {
-      "schedule": "schedule",
+      "schedule": "on schedule",
       "manual": "manual",
       "verification": "verification",
       "catch_up": "catch-up"
@@ -389,6 +390,83 @@
       "available": "The server hands out sard-agent {{agent}}, this agent runs an older version.",
       "remind": "Update when the agent has no active runs: restarting it interrupts them.",
       "packageNote": "A deb or rpm package replaces the program only: the configuration, keys and the repository password stay as they are."
+    }
+  },
+  "schedule": {
+    "title": "Schedule",
+    "none": "No schedule: the backup is started by hand.",
+    "set": "Set a schedule",
+    "change": "Change schedule",
+    "save": "Save",
+    "enabled": "Enabled",
+    "off": "disabled",
+    "timezone": "Time zone",
+    "next": "Next run",
+    "last": "Last scheduled run",
+    "noRuns": "There have been no scheduled runs yet.",
+    "catchUpPending": "A catch-up run after a server downtime is set for {{time}}.",
+    "skippedInRow": "Skipped in a row: {{count}}",
+    "tooFrequent": "The schedule fires more often than once in 15 minutes.",
+    "notifyOn": "Messages about successful scheduled backups are on.",
+    "notifyOnSuccess": "Notify about successful scheduled backups",
+    "notifyHint": "Messages about failures and recoveries always come.",
+    "mode": "Schedule",
+    "kind": {
+      "daily": "Every day",
+      "hourly": "Every hour",
+      "weekdays": "On weekdays",
+      "weekly": "Once a week",
+      "cron": "Cron"
+    },
+    "time": "Time",
+    "minute": "Minute",
+    "weekday": "Day of week",
+    "cron": "Cron expression",
+    "weekdayName": {
+      "0": "Sunday",
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday"
+    },
+    "nextThree": "Next three runs",
+    "error": {
+      "cron": "The cron expression is not acceptable",
+      "timezone": "The time zone is not acceptable"
+    },
+    "sourceGone": "The source was not found.",
+    "fires": {
+      "one": "{{count}} fire",
+      "few": "{{count}} fires",
+      "many": "{{count}} fires",
+      "other": "{{count}} fires"
+    },
+    "downtime": "the server was down, {{count}} missed {{period}}",
+    "downtimeCapped": "the server was down, at least {{count}} missed, starting {{from}}",
+    "period": {
+      "sameDay": "from {{from}} to {{until}} ({{date}}, {{zone}})",
+      "span": "from {{from}} to {{until}} ({{zone}})"
+    },
+    "catchUpMark": "catch-up — {{text}}",
+    "journal": {
+      "title": "Fire journal",
+      "empty": "There have been no fires yet.",
+      "alerted": "a message about skipped fires in a row was sent",
+      "catchUp": "catch-up",
+      "outcome": {
+        "run_created": "run created",
+        "skipped_active": "skipped — the previous run is still going",
+        "skipped_gone": {
+          "agent_revoked": "skipped — the agent is revoked",
+          "source_deleted": "skipped — the source is deleted"
+        },
+        "refused": {
+          "unknown_plugin": "not started — the agent does not offer the source’s plugin",
+          "unknown_repository": "not started — the agent does not report the source’s repository"
+        }
+      }
     }
   }
 }

@@ -202,6 +202,7 @@ class ApiSerializationIntegrationTest(
             ScheduleInput("30 2 * * *", "Europe/Berlin", enabled = true),
             schedule,
             ScheduleFirePage(listOf(fire), nextCursor = null),
+            SchedulePreview("30 2 * * *", "Europe/Berlin", "Every day at 02:30", listOf(at, at, at), tooFrequent = false),
             Run(
                 id,
                 id,
