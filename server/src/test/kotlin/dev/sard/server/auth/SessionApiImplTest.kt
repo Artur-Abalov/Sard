@@ -3,14 +3,18 @@
 
 package dev.sard.server.auth
 
+import ch.qos.logback.classic.Level
 import dev.sard.server.api.PasswordChangeResult
 import dev.sard.server.api.SignInResult
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.selfagent.captureEvents
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.springframework.dao.DataAccessResourceFailureException
+import java.time.Duration
 import java.time.Instant
+import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -268,5 +272,136 @@ class SessionApiImplTest {
 
         assertNotNull(store.find(old))
         assertNotNull(store.find(other))
+    }
+
+    private fun lockWarnings(block: () -> Unit) =
+        captureEvents(block).count { it.level == Level.WARN && "Sign-in locked from $ADDRESS" in it.text }
+
+    @Test
+    fun `Блокировка пишет предупреждение ровно на пятой неудаче входа`() {
+        withAdministrator()
+
+        val warnings = (1..5).map { lockWarnings { signIn("wrong-password-123") } }
+
+        assertEquals(listOf(0, 0, 0, 0, 1), warnings)
+        assertEquals(0, lockWarnings { signIn(PASSWORD) })
+    }
+
+    @Test
+    fun `Блокировка пишет предупреждение ровно на пятой неудаче смены пароля`() {
+        val old = session()
+        repeat(3) { signIn("wrong-password-123") }
+
+        val warnings = (1..2).map { lockWarnings { change(old, "wrong-password-123", "new-password-2026") } }
+
+        assertEquals(listOf(0, 1), warnings)
+    }
+
+    private fun lockOut() = repeat(5) { signIn("wrong-password-123") }
+
+    @Test
+    fun `Заблокированный адрес остаётся заблокированным при повторных попытках`() {
+        withAdministrator()
+        lockOut()
+
+        repeat(3) { assertEquals(SignInResult.Locked(900), signIn(PASSWORD)) }
+    }
+
+    @Test
+    fun `Остаток блокировки округляется вверх до секунды`() {
+        withAdministrator()
+        lockOut()
+
+        clock.now = T0 + Duration.ofMillis(1)
+        assertEquals(SignInResult.Locked(900), signIn(PASSWORD))
+
+        clock.now = T0 + Duration.ofMinutes(10) + Duration.ofSeconds(1) - Duration.ofNanos(1)
+        assertEquals(SignInResult.Locked(300), signIn(PASSWORD))
+
+        clock.now = T0 + Duration.ofMinutes(14) + Duration.ofSeconds(59) + Duration.ofMillis(999)
+        assertEquals(SignInResult.Locked(1), signIn(PASSWORD))
+    }
+
+    @Test
+    fun `Через 15 минут блокировка снимается и тот же адрес блокируется снова после пяти новых неудач`() {
+        withAdministrator()
+        lockOut()
+
+        clock.now = T0 + Duration.ofMinutes(15)
+        repeat(5) { assertEquals(SignInResult.WrongPassword, signIn("wrong-password-123")) }
+
+        assertEquals(SignInResult.Locked(900), signIn(PASSWORD))
+    }
+
+    @Test
+    fun `Неудача за миллисекунду до конца окна ещё считается`() {
+        withAdministrator()
+        repeat(4) { signIn("wrong-password-123") }
+
+        clock.now = T0 + Duration.ofMinutes(15) - Duration.ofMillis(1)
+        signIn("wrong-password-123")
+
+        assertEquals(SignInResult.Locked(900), signIn(PASSWORD))
+    }
+
+    @Test
+    fun `Неудачи ровно 15-минутной давности выпадают из окна`() {
+        withAdministrator()
+        repeat(4) { signIn("wrong-password-123") }
+
+        clock.now = T0 + Duration.ofMinutes(15)
+        repeat(4) { assertEquals(SignInResult.WrongPassword, signIn("wrong-password-123")) }
+
+        assertIs<SignInResult.SignedIn>(signIn(PASSWORD))
+    }
+
+    @Test
+    fun `Вход до шага admin не оставляет адрес в памяти`() {
+        signIn(PASSWORD)
+
+        assertEquals(0, tracker.trackedAddresses())
+    }
+
+    @Test
+    fun `Идентификатор сессии — 64 символа hex, и при входе, и после смены пароля`() {
+        val hex = Regex("[0-9a-f]{64}")
+        val old = session()
+
+        assertTrue(hex.matches(old), old)
+        assertTrue(hex.matches((change(old, PASSWORD, "new-password-2026") as PasswordChangeResult.Changed).sessionId))
+    }
+
+    @Test
+    fun `Смена пароля оставляет сессию в её тенанте`() {
+        val tenant = UUID.randomUUID()
+        withAdministrator()
+        val old = store.create(tenant).id
+
+        val result = change(old, PASSWORD, "new-password-2026") as PasswordChangeResult.Changed
+
+        assertEquals(tenant, store.find(result.sessionId)?.tenantId)
+    }
+
+    @Test
+    fun `Смена пароля с истёкшей сессией продолжает её в тенанте по умолчанию`() {
+        val tenant = UUID.randomUUID()
+        withAdministrator()
+        val old = store.create(tenant).id
+        clock.now = T0 + Duration.ofHours(13)
+
+        val result = change(old, PASSWORD, "new-password-2026") as PasswordChangeResult.Changed
+
+        assertEquals(TENANT, store.find(result.sessionId)?.tenantId)
+    }
+
+    @Test
+    fun `Выдача новой сессии стирает истёкшие`() {
+        withAdministrator()
+        store.create(TENANT)
+        clock.now = T0 + Duration.ofHours(13)
+
+        signIn(PASSWORD)
+
+        assertEquals(1, store.trackedSessions())
     }
 }

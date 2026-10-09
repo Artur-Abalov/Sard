@@ -9,6 +9,7 @@ import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -25,7 +26,7 @@ class SetupCodeAnnouncerTest {
     private val codeLine =
         Regex("SARD SETUP CODE: ([0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){6}) valid until (\\S+)")
 
-    private fun start() = captureEvents { MutFlow.underTest { announcer.start() } }
+    private fun start(subject: SetupCodeAnnouncer = announcer) = captureEvents { MutFlow.underTest { subject.start() } }
 
     @Test
     fun `Старт без администратора печатает ровно одну строку с кодом и сроком`() {
@@ -37,6 +38,7 @@ class SetupCodeAnnouncerTest {
         assertEquals("2026-10-10T12:00:00Z", matches.single().groupValues[3])
         assertEquals(ch.qos.logback.classic.Level.INFO, events.single { codeLine.containsMatchIn(it.text) }.level)
         assertEquals(SetupCodeState.ACTIVE, codes.state())
+        assertTrue(codes.accepts(matches.single().groupValues[1]))
     }
 
     @Test
@@ -78,5 +80,25 @@ class SetupCodeAnnouncerTest {
         assertTrue(announcer.isRunning)
         announcer.stop()
         assertFalse(announcer.isRunning)
+    }
+
+    @Test
+    fun `Код неправильной длины или с чужими символами не печатается`() {
+        for (bad in listOf("ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-234", "UBCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345")) {
+            val badCodes = SetupCodes(clock) { bad }
+
+            assertFailsWith<IllegalStateException>(bad) { start(SetupCodeAnnouncer(adminSetup, badCodes)) }
+
+            assertEquals(SetupCodeState.NOT_ISSUED, badCodes.state())
+        }
+    }
+
+    @Test
+    fun `Напечатанный код с I, L и O вводится как 1, 1 и 0`() {
+        val codes = SetupCodes(clock) { "ABCD-EFGH-JKMN-PQRS-TVWX-YZOI-L345" }
+
+        start(SetupCodeAnnouncer(adminSetup, codes))
+
+        assertTrue(codes.accepts("ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-1345"))
     }
 }

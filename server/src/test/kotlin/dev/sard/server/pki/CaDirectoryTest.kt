@@ -184,4 +184,31 @@ class CaDirectoryTest {
         assertEquals(CaOrigin.EXISTING, lost.origin)
         assertEquals(CaFingerprint.of(winner.certificate), CaFingerprint.of(lost.pair.certificate))
     }
+
+    @Test
+    fun `a replacement that died between its renames gives the old CA back, the leftover is gone`() {
+        val old = generate()
+        CaDirectory(dir, CLOCK, ledger).loadOrCreate { old }
+        Files.move(dir.resolve("ca"), dir.resolve(".tmp-replaced-crashed"))
+        Files.createDirectory(dir.resolve(".tmp-fresh"))
+
+        val loaded = MutFlow.underTest { CaDirectory(dir, CLOCK, ledger).loadOrCreate { generate() } }
+
+        assertEquals(CaFingerprint.of(old.certificate), CaFingerprint.of(loaded.certificate))
+        val names = Files.list(dir).use { e -> e.map { it.fileName.toString() }.sorted().toList() }
+        assertEquals(listOf(".tmp-fresh", "ca"), names)
+    }
+
+    @Test
+    fun `the old CA left behind by a finished replacement is erased and the CA in place stays`() {
+        val current = generate()
+        CaDirectory(dir, CLOCK, ledger).loadOrCreate { current }
+        val leftover = Files.createDirectory(dir.resolve(".tmp-replaced-done"))
+        Files.writeString(leftover.resolve("ca.key"), "old key")
+
+        val loaded = MutFlow.underTest { CaDirectory(dir, CLOCK, ledger).loadOrCreate { generate() } }
+
+        assertEquals(CaFingerprint.of(current.certificate), CaFingerprint.of(loaded.certificate))
+        assertEquals(listOf("ca"), Files.list(dir).use { e -> e.map { it.fileName.toString() }.toList() })
+    }
 }

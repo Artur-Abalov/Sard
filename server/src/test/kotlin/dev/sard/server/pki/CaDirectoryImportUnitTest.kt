@@ -167,4 +167,29 @@ class CaDirectoryImportUnitTest {
         val e = assertFailsWith<IllegalStateException> { open(FakeImport(ImportedCa(forged, keys.private))) }
         assertEquals("CA certificate CN=Sard CA is not self-signed", e.message)
     }
+
+    @Test
+    fun `a replacement that died between its renames gives the old CA back, the leftover is gone`() {
+        open(imported())
+        Files.move(dir.resolve("ca"), dir.resolve(".tmp-replaced-crashed"))
+        Files.createDirectory(dir.resolve(".tmp-fresh"))
+
+        val opened = open(null)
+
+        assertContentEquals(original.certificate.encoded, opened.pair.certificate.encoded)
+        val names = Files.list(dir).use { e -> e.map { it.fileName.toString() }.sorted().toList() }
+        assertEquals(listOf(".tmp-fresh", "ca"), names)
+    }
+
+    @Test
+    fun `the old CA left behind by a finished replacement is erased and the CA in place stays`() {
+        open(imported())
+        val leftover = Files.createDirectory(dir.resolve(".tmp-replaced-done"))
+        Files.writeString(leftover.resolve("ca.key"), "old key")
+
+        val opened = open(null)
+
+        assertContentEquals(original.certificate.encoded, opened.pair.certificate.encoded)
+        assertEquals(listOf("ca"), Files.list(dir).use { e -> e.map { it.fileName.toString() }.toList() })
+    }
 }

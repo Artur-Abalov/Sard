@@ -3,6 +3,7 @@
 
 package dev.sard.server.onboarding
 
+import ch.qos.logback.classic.Level
 import dev.sard.server.api.AdminStepResult
 import dev.sard.server.api.CodeResult
 import dev.sard.server.api.NoSuchSessionException
@@ -12,6 +13,7 @@ import dev.sard.server.api.OnboardingStepId
 import dev.sard.server.api.OnboardingStepState
 import dev.sard.server.api.SetupCodeState
 import dev.sard.server.pki.CaUsage
+import dev.sard.server.selfagent.captureEvents
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import java.time.Duration
@@ -70,7 +72,7 @@ class OnboardingServiceTest {
     fun `Сессия настройки видит CA, и CA ещё заменяем`() {
         val session = h.setupSession()
 
-        val state = service.state(false, session)
+        val state = MutFlow.underTest { service.state(false, session) }
 
         assertEquals(OnboardingAccess.SETUP, state.access)
         assertEquals(h.caInfo, state.ca)
@@ -108,7 +110,7 @@ class OnboardingServiceTest {
         )
         ) {
             h.usage = usage
-            assertEquals(replaceable, service.state(false, session).caReplaceable, "$usage")
+            assertEquals(replaceable, MutFlow.underTest { service.state(false, session) }.caReplaceable, "$usage")
         }
     }
 
@@ -118,7 +120,7 @@ class OnboardingServiceTest {
 
         h.clock.now = T0 + Duration.ofHours(24)
 
-        val state = service.state(false, session)
+        val state = MutFlow.underTest { service.state(false, session) }
         assertEquals(SetupCodeState.EXPIRED, state.setupCode)
         assertEquals(OnboardingAccess.NONE, state.access)
     }
@@ -129,7 +131,7 @@ class OnboardingServiceTest {
 
         h.clock.now = T0 + Duration.ofHours(24) - Duration.ofMillis(1)
 
-        assertEquals(OnboardingAccess.SETUP, service.state(false, session).access)
+        assertEquals(OnboardingAccess.SETUP, MutFlow.underTest { service.state(false, session) }.access)
     }
 
     @Test
@@ -332,7 +334,7 @@ class OnboardingServiceTest {
 
     @Test
     fun `Сессия администратора шаг ca не выполняет, пока вход в ядре`() {
-        assertFailsWith<NoSuchSessionException> { service.confirmCa(null, true, ADDRESS) }
+        assertFailsWith<NoSuchSessionException> { MutFlow.underTest { service.confirmCa(null, true, ADDRESS) } }
         assertFalse(h.steps.ca)
     }
 
@@ -340,7 +342,7 @@ class OnboardingServiceTest {
     fun `С входом через расширение шаг ca выполняет сессия администратора`() {
         val external = OnboardingHarness(adminSetup = FakeAdminSetup(external = true), issueCode = false)
 
-        external.service.confirmCa(null, true, ADDRESS)
+        MutFlow.underTest { external.service.confirmCa(null, true, ADDRESS) }
 
         assertTrue(external.steps.ca)
     }
@@ -349,7 +351,10 @@ class OnboardingServiceTest {
     fun `С входом через расширение без сессии шаг ca не выполняется`() {
         val external = OnboardingHarness(adminSetup = FakeAdminSetup(external = true), issueCode = false)
 
-        assertFailsWith<NoSuchSessionException> { external.service.confirmCa(null, false, ADDRESS) }
+        assertFailsWith<NoSuchSessionException> {
+            MutFlow.underTest { external.service.confirmCa(null, false, ADDRESS) }
+        }
+        assertFalse(external.steps.ca)
     }
 
     // ---- Шаг admin ----
@@ -374,6 +379,8 @@ class OnboardingServiceTest {
         assertEquals(OnboardingAccess.NONE, service.state(false, s2).access)
         assertEquals(SetupCodeState.NOT_ISSUED, service.state(false, null).setupCode)
         assertEquals(CodeResult.Completed, enter())
+        assertEquals(SetupCodeState.NOT_ISSUED, h.codes.state())
+        assertFalse(h.codes.accepts(CODE))
     }
 
     @Test
@@ -413,7 +420,8 @@ class OnboardingServiceTest {
         val session = readySession()
 
         for (bad in listOf(null, "", "short-pw-11", "a".repeat(1025))) {
-            assertEquals(AdminStepResult.InvalidPassword, service.completeAdmin(session, bad, ADDRESS), "$bad")
+            val result = MutFlow.underTest { service.completeAdmin(session, bad, ADDRESS) }
+            assertEquals(AdminStepResult.InvalidPassword, result, "$bad")
         }
 
         assertNull(h.adminSetup.password)
@@ -445,6 +453,132 @@ class OnboardingServiceTest {
         assertEquals(AdminStepResult.Completed, external.service.completeAdmin("forged", PASSWORD, ADDRESS))
         assertEquals(CodeResult.Completed, external.service.enterCode(CODE, ADDRESS, null))
         assertEquals(SetupCodeState.NOT_ISSUED, external.service.state(false, null).setupCode)
+    }
+
+    @Test
+    fun `Живая сессия администратора переживает выдачу новой`() {
+        h.adminSessions.create(h.tenant)
+        val session = readySession()
+        h.clock.now = T0 + Duration.ofHours(1)
+
+        MutFlow.underTest { service.completeAdmin(session, PASSWORD, ADDRESS) }
+
+        assertEquals(2, h.adminSessions.trackedSessions())
+    }
+
+    // ---- Выдача кода ----
+
+    @Test
+    fun `Код неправильной длины или с чужими символами не выдаётся`() {
+        for (bad in listOf("ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-234", "UBCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345")) {
+            val codes = SetupCodes(h.clock) { bad }
+
+            assertFailsWith<IllegalStateException>(bad) { MutFlow.underTest { codes.issue() } }
+            assertEquals(SetupCodeState.NOT_ISSUED, codes.state())
+        }
+    }
+
+    @Test
+    fun `Выданный код с I, L и O читается как 1, 1 и 0`() {
+        val codes = SetupCodes(h.clock) { "ABCD-EFGH-JKMN-PQRS-TVWX-YZOI-L345" }
+
+        MutFlow.underTest { codes.issue() }
+
+        assertTrue(codes.accepts("ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-1345"))
+    }
+
+    // ---- Журнал ----
+
+    private fun warnings(block: () -> Unit) =
+        captureEvents(block).count { it.level == Level.WARN && "Setup code entry locked from $ADDRESS" in it.text }
+
+    @Test
+    fun `Блокировка ввода кода пишет предупреждение ровно на пятой неудаче`() {
+        val counts = (1..5).map { warnings { enter(WRONG_CODE) } }
+
+        assertEquals(listOf(0, 0, 0, 0, 1), counts)
+        assertEquals(0, warnings { enter(WRONG_CODE) })
+    }
+
+    @Test
+    fun `Шаг ca пишет в журнал отпечаток CA один раз, повторное подтверждение молчит`() {
+        val session = h.setupSession()
+
+        val first = captureEvents { MutFlow.underTest { service.confirmCa(session, false, ADDRESS) } }
+        val second = captureEvents { MutFlow.underTest { service.confirmCa(session, false, ADDRESS) } }
+
+        val line = first.single { "Onboarding step ca completed" in it.text }
+        assertEquals(Level.INFO, line.level)
+        assertTrue(ADDRESS in line.text && FINGERPRINT in line.text, line.text)
+        assertTrue(second.none { "Onboarding step ca completed" in it.text }, second.toString())
+    }
+
+    // ---- Счётчик неудач ввода кода ----
+
+    @Test
+    fun `Заблокированный адрес остаётся заблокированным при повторных вводах`() {
+        repeat(5) { enter(WRONG_CODE) }
+
+        repeat(3) { assertEquals(CodeResult.Locked(900), enter()) }
+    }
+
+    @Test
+    fun `Остаток блокировки округляется вверх до секунды`() {
+        repeat(5) { enter(WRONG_CODE) }
+
+        h.clock.now = T0 + Duration.ofMillis(1)
+        assertEquals(CodeResult.Locked(900), enter())
+
+        h.clock.now = T0 + Duration.ofMinutes(10) + Duration.ofSeconds(1) - Duration.ofNanos(1)
+        assertEquals(CodeResult.Locked(300), enter())
+    }
+
+    @Test
+    fun `Через 15 минут блокировка снимается и адрес блокируется снова после пяти новых неудач`() {
+        repeat(5) { enter(WRONG_CODE) }
+
+        h.clock.now = T0 + Duration.ofMinutes(15)
+        repeat(5) { assertEquals(CodeResult.Rejected, enter(WRONG_CODE)) }
+
+        assertEquals(CodeResult.Locked(900), enter())
+    }
+
+    @Test
+    fun `Неудача за миллисекунду до конца окна ещё считается, ровно 15 минут — уже нет`() {
+        repeat(4) { enter(WRONG_CODE) }
+        h.clock.now = T0 + Duration.ofMinutes(15) - Duration.ofMillis(1)
+        enter(WRONG_CODE)
+        assertEquals(CodeResult.Locked(900), enter())
+
+        val other = "198.51.100.7"
+        h.clock.now = T0
+        repeat(4) { enter(WRONG_CODE, other) }
+        h.clock.now = T0 + Duration.ofMinutes(15)
+        repeat(4) { assertEquals(CodeResult.Rejected, enter(WRONG_CODE, other)) }
+        assertIs<CodeResult.Accepted>(enter(CODE, other))
+    }
+
+    @Test
+    fun `Ответ после шага admin не оставляет адрес в памяти`() {
+        h.adminSetup.password = PASSWORD
+
+        enter()
+
+        assertEquals(0, h.attempts.trackedAddresses())
+    }
+
+    // ---- Сессии администратора ----
+
+    @Test
+    fun `Сессия администратора после шага admin — 64 символа hex, истёкшие сессии стираются`() {
+        h.adminSessions.create(h.tenant)
+        val session = readySession()
+        h.clock.now = T0 + Duration.ofHours(13)
+
+        val result = MutFlow.underTest { service.completeAdmin(session, PASSWORD, ADDRESS) } as AdminStepResult.Done
+
+        assertTrue(Regex("[0-9a-f]{64}").matches(result.sessionId), result.sessionId)
+        assertEquals(1, h.adminSessions.trackedSessions())
     }
 
     /** The other session wins between the check and the creation. */
