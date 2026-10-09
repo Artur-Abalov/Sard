@@ -126,48 +126,31 @@ function PresetFields({
   )
 }
 
-// The values of the schedule: variant, zone, the preview the server gives, the two switches.
-function ScheduleFields({
+// The picker of the variant: switching carries over the values that fit the new one.
+function KindSelect({ preset, onChange }: { preset: Preset; onChange: (preset: Preset) => void }) {
+  const { t } = useTranslation()
+  return (
+    <Select
+      label={t('schedule.mode')}
+      allowDeselect={false}
+      data={PRESET_KINDS.map((kind) => ({ value: kind, label: t(`schedule.kind.${kind}`) }))}
+      value={preset.kind}
+      onChange={(kind) => kind !== null && onChange(withKind(preset, kind as PresetKind))}
+    />
+  )
+}
+
+// The two switches: whether the schedule fires, and whether successes are told too.
+function Switches({
   draft,
   update,
-  preview,
-  refused,
 }: {
   draft: ScheduleDraft
   update: (changes: Partial<ScheduleDraft>) => void
-  preview: Parameters<typeof SchedulePreview>[0]['query']
-  refused: Set<string>
 }) {
   const { t } = useTranslation()
-  const zone = draft.timezone ?? preview.data?.timezone ?? null
-  const cronError = refused.has('cron') ? t('schedule.error.cron') : undefined
-  const zoneError = refused.has('timezone') ? t('schedule.error.timezone') : undefined
   return (
     <>
-      <Select
-        label={t('schedule.mode')}
-        allowDeselect={false}
-        data={PRESET_KINDS.map((kind) => ({ value: kind, label: t(`schedule.kind.${kind}`) }))}
-        value={draft.preset.kind}
-        onChange={(kind) =>
-          kind !== null && update({ preset: withKind(draft.preset, kind as PresetKind) })
-        }
-      />
-      <PresetFields
-        preset={draft.preset}
-        onChange={(preset) => update({ preset })}
-        error={cronError}
-      />
-      <Select
-        label={t('schedule.timezone')}
-        searchable
-        allowDeselect={false}
-        data={zonesWith(zone)}
-        value={zone}
-        error={zoneError}
-        onChange={(timezone) => update({ timezone })}
-      />
-      {cronError === undefined && zoneError === undefined && <SchedulePreview query={preview} />}
       <Switch
         label={t('schedule.enabled')}
         checked={draft.enabled}
@@ -183,19 +166,84 @@ function ScheduleFields({
   )
 }
 
-// A refusal of the save that no field owns; a source that is gone gets a way out.
-function SaveError({ error }: { error: unknown }) {
+// The zone of the schedule; until one is picked it is the server's, which the preview names.
+function ZoneSelect({
+  zone,
+  error,
+  onChange,
+}: {
+  zone: string | null
+  error: string | undefined
+  onChange: (timezone: string | null) => void
+}) {
   const { t } = useTranslation()
-  if (error === null || error === undefined) return null
-  if (isRefusedValues(error)) {
-    const ownedByFields = [...refusedPlaces(error)].every((place) => place !== 'form')
-    return ownedByFields ? null : <ErrorBlock error={error} />
-  }
-  const gone =
+  return (
+    <Select
+      label={t('schedule.timezone')}
+      searchable
+      allowDeselect={false}
+      data={zonesWith(zone)}
+      value={zone}
+      error={error}
+      onChange={onChange}
+    />
+  )
+}
+
+// The message for a field the server refused, if it did.
+function refusal(refused: Set<string>, field: string, message: string): string | undefined {
+  return refused.has(field) ? message : undefined
+}
+
+// The values of the schedule: variant, zone, the preview the server gives, the two switches.
+function ScheduleFields({
+  draft,
+  update,
+  preview,
+  refused,
+}: {
+  draft: ScheduleDraft
+  update: (changes: Partial<ScheduleDraft>) => void
+  preview: Parameters<typeof SchedulePreview>[0]['query']
+  refused: Set<string>
+}) {
+  const { t } = useTranslation()
+  const zone = draft.timezone ?? preview.data?.timezone ?? null
+  const cronError = refusal(refused, 'cron', t('schedule.error.cron'))
+  const zoneError = refusal(refused, 'timezone', t('schedule.error.timezone'))
+  return (
+    <>
+      <KindSelect preset={draft.preset} onChange={(preset) => update({ preset })} />
+      <PresetFields
+        preset={draft.preset}
+        onChange={(preset) => update({ preset })}
+        error={cronError}
+      />
+      <ZoneSelect zone={zone} error={zoneError} onChange={(timezone) => update({ timezone })} />
+      {cronError === undefined && zoneError === undefined && <SchedulePreview query={preview} />}
+      <Switches draft={draft} update={update} />
+    </>
+  )
+}
+
+// A refusal that every field owns is shown at the fields, not below them.
+function ownedByFields(error: unknown): boolean {
+  return isRefusedValues(error) && [...refusedPlaces(error)].every((place) => place !== 'form')
+}
+
+function isSourceGone(error: unknown): boolean {
+  return (
     error instanceof ApiError &&
     error.failure.kind === 'problem' &&
     error.failure.code === 'not_found'
-  if (!gone) return <ErrorBlock error={error} />
+  )
+}
+
+// A refusal of the save that no field owns; a source that is gone gets a way out.
+function SaveError({ error }: { error: unknown }) {
+  const { t } = useTranslation()
+  if (error === null || error === undefined || ownedByFields(error)) return null
+  if (isRefusedValues(error) || !isSourceGone(error)) return <ErrorBlock error={error} />
   return (
     <Alert color={tones.error} role="alert">
       <Text span>{t('schedule.sourceGone')}</Text>{' '}

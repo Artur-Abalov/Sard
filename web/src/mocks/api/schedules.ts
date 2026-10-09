@@ -41,6 +41,44 @@ function preview(cron: string, timezone: string, lang: 'ru' | 'en'): Schemas['Sc
   }
 }
 
+/** Stores [input] as the schedule of [sourceId], replacing the one it has. */
+function save(sourceId: string, input: Schemas['ScheduleInput']): Schemas['Schedule'] {
+  const now = new Date().toISOString()
+  const cron = normalCron(input.cron)
+  const notifyOnSuccess = input.notifyOnSuccess ?? false
+  // The mock does not evaluate cron: an enabled schedule fires "in an hour", a disabled one never.
+  const nextRunAt = input.enabled ? new Date(Date.now() + 3_600_000).toISOString() : null
+  const existing = state.schedules.find((s) => s.sourceId === sourceId)
+  if (existing !== undefined) {
+    Object.assign(existing, {
+      ...input,
+      cron,
+      notifyOnSuccess,
+      nextRunAt,
+      catchUpAt: null,
+      updatedAt: now,
+    })
+    return existing
+  }
+  const schedule: Schemas['Schedule'] = {
+    id: crypto.randomUUID(),
+    sourceId,
+    cron,
+    timezone: input.timezone,
+    enabled: input.enabled,
+    nextRunAt,
+    catchUpAt: null,
+    lastFiredAt: null,
+    skippedInRow: 0,
+    notifyOnSuccess,
+    lastRun: null,
+    createdAt: now,
+    updatedAt: now,
+  }
+  state.schedules.push(schedule)
+  return schedule
+}
+
 export const scheduleHandlers = [
   http.get('/api/v1/schedule-preview', ({ query, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
@@ -67,40 +105,7 @@ export const scheduleHandlers = [
     const input = await request.json()
     const invalid = validateSchedule(input)
     if (invalid !== null) return response(422).json(invalid, PROBLEM)
-    const now = new Date().toISOString()
-    const cron = normalCron(input.cron)
-    const notifyOnSuccess = input.notifyOnSuccess ?? false
-    // The mock does not evaluate cron: an enabled schedule fires "in an hour", a disabled one never.
-    const nextRunAt = input.enabled ? new Date(Date.now() + 3_600_000).toISOString() : null
-    const existing = state.schedules.find((s) => s.sourceId === params.sourceId)
-    if (existing !== undefined) {
-      Object.assign(existing, {
-        ...input,
-        cron,
-        notifyOnSuccess,
-        nextRunAt,
-        catchUpAt: null,
-        updatedAt: now,
-      })
-      return response(200).json(existing)
-    }
-    const schedule: Schemas['Schedule'] = {
-      id: crypto.randomUUID(),
-      sourceId: params.sourceId,
-      cron,
-      timezone: input.timezone,
-      enabled: input.enabled,
-      nextRunAt,
-      catchUpAt: null,
-      lastFiredAt: null,
-      skippedInRow: 0,
-      notifyOnSuccess,
-      lastRun: null,
-      createdAt: now,
-      updatedAt: now,
-    }
-    state.schedules.push(schedule)
-    return response(200).json(schedule)
+    return response(200).json(save(params.sourceId, input))
   }),
 
   http.get('/api/v1/sources/{sourceId}/schedule/fires', ({ params, query, response }) => {

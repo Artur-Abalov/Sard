@@ -35,6 +35,29 @@ function LastRun({ schedule }: { schedule: Schedule }) {
   )
 }
 
+// What is amiss or worth knowing about the schedule: a pending catch-up, skipped fires, the success notice.
+function ScheduleNotes({ schedule }: { schedule: Schedule }) {
+  const { t } = useTranslation()
+  const format = useFormat()
+  return (
+    <>
+      {schedule.catchUpAt !== null && (
+        <Alert color={tones.info} role="status">
+          {t('schedule.catchUpPending', {
+            time: format.scheduleTime(schedule.catchUpAt, schedule.timezone),
+          })}
+        </Alert>
+      )}
+      {schedule.skippedInRow > 0 && (
+        <Alert color={tones.warning} role="status">
+          {t('schedule.skippedInRow', { count: schedule.skippedInRow })}
+        </Alert>
+      )}
+      {schedule.notifyOnSuccess && <Text size="sm">{t('schedule.notifyOn')}</Text>}
+    </>
+  )
+}
+
 // The saved schedule in words, with the zone, the next run and the last one, and what is amiss.
 function ScheduleSummary({ schedule }: { schedule: Schedule }) {
   const { t, i18n } = useTranslation()
@@ -70,19 +93,7 @@ function ScheduleSummary({ schedule }: { schedule: Schedule }) {
           </Table.Tr>
         </Table.Tbody>
       </Table>
-      {schedule.catchUpAt !== null && (
-        <Alert color={tones.info} role="status">
-          {t('schedule.catchUpPending', {
-            time: format.scheduleTime(schedule.catchUpAt, schedule.timezone),
-          })}
-        </Alert>
-      )}
-      {schedule.skippedInRow > 0 && (
-        <Alert color={tones.warning} role="status">
-          {t('schedule.skippedInRow', { count: schedule.skippedInRow })}
-        </Alert>
-      )}
-      {schedule.notifyOnSuccess && <Text size="sm">{t('schedule.notifyOn')}</Text>}
+      <ScheduleNotes schedule={schedule} />
     </Stack>
   )
 }
