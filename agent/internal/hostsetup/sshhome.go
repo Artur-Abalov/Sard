@@ -198,7 +198,7 @@ func (h *SSHHome) Present(name string) (bool, *refusal.Failure) {
 // renamed in the same directory, and the directory is synced (Р4, Р38).
 // The file is the service user's, 0600. CONFIG_WRITE names the file.
 func (h *SSHHome) Write(name string, data []byte) *refusal.Failure {
-	if f := h.ensure(); f != nil {
+	if f := h.Ensure(); f != nil {
 		return f
 	}
 	err := h.writeAtomic(name, data)
@@ -212,11 +212,11 @@ func (h *SSHHome) attrs(mode fs.FileMode) Attrs {
 	return Attrs{UID: int(h.user.UID), GID: int(h.user.GID), Mode: mode}
 }
 
-// ensure makes the home and ~/.ssh when they are missing: the last
+// Ensure makes the home and ~/.ssh when they are missing: the last
 // component of each inside the parent held, owner and mode through the
 // descriptor. A missing parent of the home is CONFIG_WRITE naming it, and
 // nothing is made.
-func (h *SSHHome) ensure() *refusal.Failure {
+func (h *SSHHome) Ensure() *refusal.Failure {
 	if h.ssh != nil {
 		return nil
 	}

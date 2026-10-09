@@ -64,16 +64,30 @@ type Bound struct {
 // failure is BACKEND_UNAVAILABLE with the last reason of a retry it
 // printed, if any. Time the command spends elsewhere is not counted.
 func (b Bound) Inspect(ctx context.Context, cli restic.Repository, target repoinit.Target, log *Log) (string, bool, *refusal.Failure) {
-	if b.Timeout <= 0 {
-		return repoinit.Inspect(ctx, cli, target)
-	}
-	bounded, cancel := b.limit(ctx)
-	defer cancel(nil)
-	id, initialized, f := repoinit.Inspect(bounded, cli, target)
-	if f != nil && expired(ctx, bounded) {
+	var id string
+	var initialized bool
+	var f *refusal.Failure
+	timedOut := b.Within(ctx, func(limited context.Context) {
+		id, initialized, f = repoinit.Inspect(limited, cli, target)
+	})
+	if f != nil && timedOut {
 		return "", false, b.unanswered(target, log)
 	}
 	return id, initialized, f
+}
+
+// Within runs call limited by the time Bound allows; timedOut says that
+// the limit, not an interrupt of the command, ended the context call got.
+// Zero Timeout: no limit.
+func (b Bound) Within(ctx context.Context, call func(limited context.Context)) (timedOut bool) {
+	if b.Timeout <= 0 {
+		call(ctx)
+		return false
+	}
+	bounded, cancel := b.limit(ctx)
+	defer cancel(nil)
+	call(bounded)
+	return expired(ctx, bounded)
 }
 
 // limit is ctx, ended with errConnectTimeout when the time runs out.

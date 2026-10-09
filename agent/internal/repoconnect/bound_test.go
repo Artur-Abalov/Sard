@@ -203,3 +203,37 @@ func TestACommandStoppedAfterTheLimitFiredIsInterruptedNotUnanswered(t *testing.
 		t.Fatalf("failure %+v", f)
 	}
 }
+
+// Within limits any call, such as a program of the ssh client, the same way.
+func TestWithinCancelsTheCallWhenTheTimeRunsOutAndSaysSo(t *testing.T) {
+	clock := &stepClock{fire: make(chan time.Time, 1)}
+	started := make(chan struct{})
+	done := make(chan bool, 1)
+	go func() {
+		done <- repoconnect.Bound{Clock: clock, Timeout: 5 * time.Second}.Within(t.Context(), func(ctx context.Context) {
+			close(started)
+			<-ctx.Done()
+		})
+	}()
+	<-started
+	clock.fire <- time.Now()
+	if !<-done || len(clock.asked) != 1 || clock.asked[0] != 5*time.Second {
+		t.Fatalf("timers %v", clock.asked)
+	}
+}
+
+func TestWithinOfACallThatEndsInTimeOrIsInterruptedOrIsUnlimitedIsNotAnExpiry(t *testing.T) {
+	clock := &stepClock{fire: make(chan time.Time, 1)}
+	limited, unlimited := repoconnect.Bound{Clock: clock, Timeout: time.Minute}, repoconnect.Bound{Clock: clock}
+	if limited.Within(t.Context(), func(context.Context) {}) {
+		t.Error("a call in time expired")
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	if limited.Within(ctx, func(context.Context) { cancel() }) {
+		t.Error("an interrupt expired")
+	}
+	var ran bool
+	if unlimited.Within(t.Context(), func(context.Context) { ran = true }) || !ran || len(clock.asked) != 2 {
+		t.Errorf("an unlimited call: ran %v, timers %v", ran, clock.asked)
+	}
+}
