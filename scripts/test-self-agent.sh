@@ -19,6 +19,7 @@
 #      of its own, is replaced by this compose file: the same agents and tokens, the
 #      same CA, sign-in with the password of the wizard, no setup code in the log of
 #      the upgraded server. UPGRADE_FROM unset: no upgrade check.
+#   6  admin-reset, a restart and the wizard give a new password; the old one is refused
 #
 # Usage: SARD_IMAGE=sard-server SARD_AGENT_IMAGE=sard-agent SARD_VERSION=<tag> \
 #          [UPGRADE_FROM=ghcr.io/artur-abalov/sard-server:0.1.0-beta.1] scripts/test-self-agent.sh <workdir>
@@ -137,7 +138,7 @@ else
   start=$(date +%s)
   # Before the step ca nothing is issued: the channel has no token (F4a).
   docker compose up -d --wait server >/dev/null || fail "1: up --wait server"
-  sleep 20 # more than one check interval (15 s)
+  sleep 60 # the spec waits one minute: several check intervals (15 s) without a token
   channel '! test -e /var/lib/sard/self/enroll-token' || fail "1: a token in the channel before the step ca"
   pass "1: no token in the channel before the step ca"
   # The wizard: code from the log, CA, administrator. The token is captured before the
@@ -215,5 +216,21 @@ pass "revoke: 409 without confirm, 200 with it, 200 again for the revoked agent"
 next="$(wait_online 180)" || fail "no new built-in agent within 180 s after the revoke"
 [ "$next" != "$id" ] || fail "the revoked agent is online again"
 pass "revoke: the sidecar enrolled again by itself as $next"
+# 6: access recovery on compose (F4a): admin-reset, a restart, the new code, the admin step with a new
+# password; the old password stops working and the installation's data stays.
+agents_before_reset="$(get /agents | python3 -c 'import json,sys; print(" ".join(sorted(a["id"] for a in json.load(sys.stdin)["items"])))')"
+old_admin="$admin"
+docker compose run --rm -T server admin-reset >"$work/admin-reset.log" 2>&1 || fail "6: admin-reset: $(cat "$work/admin-reset.log")"
+grep -q 'administrator password is removed' "$work/admin-reset.log" || fail "6: admin-reset said: $(cat "$work/admin-reset.log")"
+docker compose restart server >/dev/null || fail "6: restart server"
+docker compose up -d --wait server >/dev/null || fail "6: the server is not healthy after the restart"
+admin="$(openssl rand -hex 16)"
+sard_complete_wizard "http://127.0.0.1:8080" "$admin" server_log || fail "6: the wizard after admin-reset"
+login || fail "6: sign-in with the recovered password"
+[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d "{\"password\":\"$old_admin\"}" "$api/session")" = 401 ] \
+  || fail "6: the old password still signs in"
+[ "$(get /agents | python3 -c 'import json,sys; print(" ".join(sorted(a["id"] for a in json.load(sys.stdin)["items"])))')" = "$agents_before_reset" ] \
+  || fail "6: agents changed by the recovery"
+pass "6: admin-reset + restart + wizard: the new password signs in, the old one is refused (401), agents kept"
 docker compose down -v --remove-orphans >/dev/null 2>&1 # it holds ports 8080 and 9090 of the host
 echo "PASSED"

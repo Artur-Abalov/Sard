@@ -401,3 +401,130 @@ gate: PASSED (web, fast)
 ```
 
 Мутационный прогон (`./scripts/gate.sh server` без `fast`) не запускался.
+
+## Фаза 3: консоль, документация, обвязка (coder)
+
+Ветка `claude/charming-gates-2om1mw`, база фазы — `685f0c0`. Работа по циклу «тест, красный
+запуск, минимальный код, зелёный запуск»; чистые функции консоли и моки — Vitest, остальное
+проверено сквозными прогонами ниже.
+
+### Что сделано
+
+- **Консоль (`web/`).** Маршрут `/setup` вне guard; `guard` при 401 запрашивает
+  `GET /api/v1/onboarding` (шаг `admin` pending — `/setup` без `redirect`, иначе `/login?redirect`),
+  `/login` при pending ведёт на `/setup`, `/setup` после шага `admin` — на `/login`, ответ 409
+  `setup_required` на вход — на `/setup`; глобальный 401 на `/login` и `/setup` ничего не делает
+  (`auth/unauthenticated.ts`). Экраны: код (подсказка `docker compose logs server | grep "SARD SETUP
+  CODE"`), перезапуск (`expired`/`not_issued`), шаг CA (отпечаток, происхождение, `keyPath`, зачем
+  копия, инструкция импорта только при `caReplaceable`, иначе переезд), шаг администратора, список
+  четырёх шагов (F4b — «скоро»). Страница `/settings` (пункт навигации, смена пароля, 422
+  `wrong_password` у `currentPassword` — сообщение, не выход). Решения о том, какой экран и что делать
+  с ответом, — чистые функции `onboarding/{state,forms,outcomes}.ts`, `auth/{guard,loginGuard,
+  signInResult,unauthenticated}.ts` с тестами; страницы — тонкие. Строки — `src/locales/{ru,en}.json`
+  (`setup.*`, `settings.*`); `routeTree.gen.ts` перегенерирован `npm run gen:routes`.
+- **Моки.** `mocks/api/onboarding.ts`, `mocks/lockout.ts`: по умолчанию «администратор задан»
+  (пароль `admin`), `VITE_API_MOCKS=1 VITE_MOCK_ONBOARDING=1` — чистая установка с кодом
+  `ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345`; серверные правила кода (нормализация, пять неудач — 429
+  `Retry-After: 900`, отдельный счётчик), шагов (`ca_step_pending`, `setup_completed`), пароля
+  (12–1024 кодовых точек), входа до шага `admin` (409 `setup_required`) и смены пароля. Обновлён
+  `src/mocks/README.md`; `web/README.md` в репозитории нет.
+- **Развёртывание.** Из `deploy/docker-compose.yml` и `deploy/.env.example` убрана
+  `SARD_ADMIN_PASSWORD`; `scripts/ensure-admin-password.sh` удалён. `make up` по-прежнему создаёт
+  `deploy/.env` и подставляет **пароль базы** (иначе `docker compose` не стартует): для этого
+  `scripts/ensure-env.sh`; пароля администратора он не пишет (отклонение от формулировки задачи
+  «make up не генерирует пароль» — речь о пароле администратора).
+- **Скрипты и CI.** Общая подгружаемая библиотека `scripts/lib/setup-wizard.sh`
+  (`sard_setup_code_from_log`, `sard_setup_code`, `sard_complete_wizard`, переопределяемый
+  `sard_curl`) и её тест `scripts/test-setup-wizard.sh` (подключён в `ci.yml`, job `packages`).
+  `smoke-server.sh` (до мастера вход — 409, затем мастер, затем вход паролем мастера),
+  `test-console-install.sh`, `test-agent-install.sh` (мастер через `docker exec` на хосте-контейнере),
+  `test-self-agent.sh`: чистая установка — минуту без токена до шага CA, мастер, токен в канале,
+  дальше прежние проверки; проверка 5 — из выпущенной беты (`UPGRADE_FROM=<образ>`, свой compose
+  тега `v<тег>` или `UPGRADE_COMPOSE`, без вырезания сервиса соседа, мастер старого стека, после
+  обновления: те же агенты и токены, тот же CA, вход паролем мастера, шаги `ca`/`admin` done, нет
+  строки кода в логе после обновления, Flyway без неудач); новая проверка 6 — `admin-reset` на
+  compose. `ci.yml`: проверка `docker compose config` без переменной; `release.yml`: ни
+  `verify-quickstart`, ни офлайн-job пароля не задают, `smoke-server.sh` проходит мастер.
+- **e2e (`test/e2e`).** `SardEnvironment` не передаёт пароль серверу; `SardApi` при чистой
+  установке проходит мастер по коду из лога (`SetupWizard.kt`, `SetupCode.kt`) и входит; новые
+  `SetupCodeTest` (разбор строки Р1) и `FirstStartTest` (одна строка кода, вход до мастера — 409,
+  мастер, вход — 204 и чужой пароль — 401, рестарт не печатает новый код). Остальные `@e2e` спецификации
+  (compose) — в `test-self-agent.sh` (чистая установка, до шага CA нет токена, `admin-reset`) и
+  `smoke-server.sh` (quickstart).
+- **Документация.** README (быстрый старт — по коду; блок между `quickstart:begin/end` без пароля),
+  `docs/operator/02`–`04`, `06`, `07` (rc1 — переустановка с `down -v`, с беты — данные сохраняются),
+  `09` (CA_ORIGIN_NOT_RECORDED, CA_MISSING, `setup_required`, `setup_completed`), `10` (пароль в базе,
+  смена в консоли, «Восстановление доступа»), `docs/demo.md`, QA-процедуры `admin-login`,
+  `rest-api`, `self-agent`, `console-serving`, `console-pages`, `agent-install` (мастер вместо
+  переменной), строка про 0.0.1-rc1 в `docs/adr/00XX-draft-self-agent.md`. В `console-serving.md`
+  шаг 34 (jar без консоли рядом с базой) теперь монтирует том CA установки: свежий каталог CA при
+  базе, где CA «в деле», сервер отклоняет (CA_MISSING) — шаг в этой фазе не выполнялся.
+  `FirstStartDocsTest` (сервер) — сценарии `@doc` спецификации.
+
+### Команды и результаты (как напечатано)
+
+`./scripts/gate.sh web fast`:
+
+```text
+ Test Files  39 passed (39)
+      Tests  537 passed (537)
+gate: PASSED (web, fast)
+```
+
+`./scripts/gate.sh server fast` (первый запуск остановился на `spotlessKotlinCheck` у нового
+`FirstStartDocsTest`; формат исправлен, повторный запуск):
+
+```text
+== gate server: spotless, detekt, tests, coverage >= 80%
+coverage: 96.7% (instructions)
+gate: PASSED (server, fast)
+```
+
+`make e2e-test VERSION=0.0.0-e2e` (образы собраны так: `make package`/`package-stand` с этой
+версией, jar — хостовым Gradle с `-PsardConsoleDist=web/dist`, потому что `make server-jar` в
+контейнере не смог разрешить плагин mutflow через прокси песочницы; `make e2e-assemble` с
+`E2E_BUILD_FLAGS=--network host … --secret id=build-ca`):
+
+```text
+107 tests completed, 5 failed
+BUILD FAILED in 31m 45s
+```
+
+Все пять — `StepLossTest` (3) и `StreamBreakTest` (2): `docker.io/nicolaka/netshoot:v0.14 …
+429 Too Many Requests` (лимит Docker Hub для анонимных загрузок), к F4a не относятся. Остальные 102
+прошли, в том числе `FirstStartTest` (3), `SetupCodeTest` (4), `ServerSmokeTest`, `CaImportMoveTest`,
+`CaImportWithoutDatabaseTest`, `ServerRecreateTest`.
+
+`SARD_IMAGE=sard-server SARD_AGENT_IMAGE=sard-agent SARD_VERSION=e2e scripts/test-self-agent.sh <dir>`
+(compose из `deploy/docker-compose.yml`, образы сборки этой ветки): `PASSED`; проверки 1 (нет токена
+до шага CA, `sard-self` online после мастера), 2, 4, отзыв и 6 (`admin-reset`) — `ok`.
+
+Тот же скрипт с `UPGRADE_FROM=sard-server:e2e UPGRADE_COMPOSE=$PWD/deploy/docker-compose.yml`
+(выпущенной беты ещё нет, поэтому «старой» версией взята текущая сборка — проверена механика ветки
+обновления, не совместимость версий): `PASSED`, `ok: 5: after the upgrade: same CA, agents and
+tokens, steps ca and admin done, no setup code in the log, Flyway 15 applied; …`.
+
+`scripts/smoke-server.sh <env> 0.0.0-e2e` на стеке из `deploy/docker-compose.yml` (каталог с `.env`
+без пароля администратора): `ok: health UP`, `ok: version 0.0.0-e2e`, `ok: console served`, `ok:
+first start by the setup code from the log`, `ok: administrator sign-in with the password of the
+wizard`, `ok: agent port TLS, h2, certificate for localhost signed by the Sard CA`.
+
+`scripts/test-setup-wizard.sh` → `test-setup-wizard: ok`; `make license-check` → `license-check:
+1033 files OK`; `npx --yes markdownlint-cli2@0.18.1 "**/*.md"` → `Summary: 0 error(s)`;
+`docker compose … --env-file deploy/.env.example config --quiet` (с build-файлом и без) → код 0.
+
+### Что не запускалось
+
+- `scripts/test-console-install.sh` и `scripts/test-agent-install.sh` — нужны привилегированные
+  контейнеры с systemd и образы дистрибутивов; изменённые места проверены только `bash -n`.
+- Ветка обновления `test-self-agent.sh` с настоящей бетой — тега `v0.1.0-beta.N` ещё нет.
+- Проверка quickstart из README по настоящему релизу (`verify-quickstart`) — скачивает релиз с
+  GitHub; блок проверен чтением (`FirstStartDocsTest`) и тем же путём в `smoke-server.sh`.
+- Консоль в браузере (QA `docs/qa/onboarding-setup.md`, часть 2, на моках и против сервера) —
+  браузера нет; покрыто Vitest (чистые функции, роутер, моки) и сборкой; экраны мастера и
+  `/settings` в браузере не открывались.
+- `make lint` целиком (golangci-lint и др.): Go-код не менялся; выполнены `license-check`,
+  markdownlint, spotless и detekt (в шлюзе сервера), oxlint/prettier/tsc (в шлюзе веба).
+  `shellcheck` в окружении нет, в репозитории не используется.
+- Мутационный прогон (`gate.sh server`/`web` без `fast`) не запускался.
+- Docker Hub отвечал 429 на часть загрузок образов; загрузки повторялись, пока не прошли.
