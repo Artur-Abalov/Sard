@@ -22,7 +22,7 @@ var (
 	forbiddenOSCalls = []string{
 		"Open", "OpenFile", "Create", "CreateTemp", "ReadFile", "WriteFile", "ReadDir", "Mkdir", "MkdirAll", "MkdirTemp",
 		"Remove", "RemoveAll", "Rename", "Stat", "Lstat", "Chmod", "Chown", "Lchown", "Link", "Symlink", "Readlink",
-		"Truncate", "Getenv", "Environ", "Exit", "OpenRoot",
+		"Truncate", "Getenv", "Environ", "Exit", "OpenRoot", "Hostname", "Getuid", "Getwd",
 	}
 	forbiddenTimeCalls = []string{"Now", "After", "Sleep", "NewTimer", "Tick", "NewTicker", "AfterFunc", "Since", "Until"}
 )

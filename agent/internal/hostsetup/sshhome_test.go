@@ -79,8 +79,9 @@ func TestAHomeThatIsAFileIsSSHHomeInvalid(t *testing.T) {
 
 // Н23: a missing home is made as the last component of its held parent.
 func TestAMissingHomeAndSSHDirectoryAreMadeForTheServiceUserWhateverTheUmask(t *testing.T) {
+	base := t.TempDir()
 	withUmask(t, 0)
-	home := filepath.Join(t.TempDir(), "state")
+	home := filepath.Join(base, "state")
 	h := openHome(t, hostsetup.OS{}, home)
 	if data, found, f := h.Read("known_hosts"); f != nil || found || data != nil {
 		t.Fatalf("a missing home: %q, %v, %v", data, found, f)
@@ -304,8 +305,8 @@ func TestPresentOfAMissingSSHDirectoryIsFalse(t *testing.T) {
 // temporary file, its owner and mode before the content, fsync, rename in
 // the same directory, fsync of the directory.
 func TestAFileIsWrittenWithItsOwnerBeforeItsContentAndRenamedInTheSameDirectory(t *testing.T) {
-	withUmask(t, 0)
 	home := t.TempDir()
+	withUmask(t, 0)
 	hk := newHooks()
 	h := openHome(t, hk.fs(), home)
 	ok(t, errOf(h.Write("known_hosts", []byte("host key\n"))))
@@ -396,4 +397,102 @@ func TestSSHHomeClosesEveryDescriptorItOpened(t *testing.T) {
 		h.Close()
 		h.Close()
 	})
+}
+
+// A home, ~/.ssh or file that others can write to lets any local user plant
+// a host key that would then be trusted silently (Р40).
+func TestAHomeSSHDirectoryOrFileOthersCanWriteIsRejected(t *testing.T) {
+	for _, mode := range []os.FileMode{0o777, 0o775, 0o757} {
+		home := t.TempDir()
+		ok(t, os.Chmod(home, mode))
+		_, f := hostsetup.OpenSSHHome(hostsetup.OS{}, service(home))
+		assertFailure(t, f, refusal.SSHHomeInvalid, home)
+
+		home = t.TempDir()
+		ok(t, os.Mkdir(filepath.Join(home, ".ssh"), 0o700))
+		ok(t, os.Chmod(filepath.Join(home, ".ssh"), mode))
+		_, f = hostsetup.OpenSSHHome(hostsetup.OS{}, service(home))
+		assertFailure(t, f, refusal.SSHFileRejected, filepath.Join(home, ".ssh"))
+	}
+	for _, mode := range []os.FileMode{0o666, 0o664, 0o646} {
+		home := t.TempDir()
+		ok(t, os.Mkdir(filepath.Join(home, ".ssh"), 0o700))
+		path := filepath.Join(home, ".ssh", "known_hosts")
+		ok(t, os.WriteFile(path, []byte("h ssh-ed25519 AAAA\n"), 0o600))
+		ok(t, os.Chmod(path, mode))
+		h := openHome(t, hostsetup.OS{}, home)
+		data, _, f := h.Read("known_hosts")
+		assertFailure(t, f, refusal.SSHFileRejected, path, "writable")
+		if data != nil {
+			t.Errorf("%v: read %q", mode, data)
+		}
+	}
+}
+
+func TestAPublicKeyOf0644IsStillRead(t *testing.T) {
+	home := t.TempDir()
+	ok(t, os.Mkdir(filepath.Join(home, ".ssh"), 0o700))
+	path := filepath.Join(home, ".ssh", "id_ed25519.pub")
+	ok(t, os.WriteFile(path, []byte("ssh-ed25519 AAAA x\n"), 0o644))
+	ok(t, os.Chmod(path, 0o644))
+	if _, found, f := openHome(t, hostsetup.OS{}, home).Read("id_ed25519.pub"); f != nil || !found {
+		t.Fatalf("%v %v", found, f)
+	}
+}
+
+func TestAHomeOfAnotherUserIsRejected(t *testing.T) {
+	base := t.TempDir()
+	home := filepath.Join(base, "userhome")
+	ok(t, os.Mkdir(home, 0o755))
+	hk := newHooks()
+	hk.uid["userhome"] = uint32(os.Getuid()) + 1000
+	_, f := hostsetup.OpenSSHHome(hk.fs(), service(home))
+	assertFailure(t, f, refusal.SSHHomeInvalid, home)
+	hk.uid["userhome"] = 0
+	h, f := hostsetup.OpenSSHHome(hk.fs(), service(home))
+	if f != nil {
+		t.Fatal(f)
+	}
+	h.Close()
+}
+
+func TestAnAncestorOfTheHomeOfAnotherUserOrOpenToOthersWithoutTheStickyBitIsRejected(t *testing.T) {
+	for name, c := range map[string]struct {
+		prepare func(t *testing.T, ancestor string, hk *hooks)
+		ok      bool
+	}{
+		"owned by another user":  {func(_ *testing.T, _ string, hk *hooks) { hk.uid["a"] = uint32(os.Getuid()) + 1000 }, false},
+		"owned by root":          {func(_ *testing.T, _ string, hk *hooks) { hk.uid["a"] = 0 }, true},
+		"open to others":         {func(t *testing.T, a string, _ *hooks) { ok(t, os.Chmod(a, 0o777)) }, false},
+		"group writable":         {func(t *testing.T, a string, _ *hooks) { ok(t, os.Chmod(a, 0o775)) }, false},
+		"open to others, sticky": {func(t *testing.T, a string, _ *hooks) { ok(t, os.Chmod(a, 0o777|os.ModeSticky)) }, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ancestor := filepath.Join(t.TempDir(), "a")
+			home := filepath.Join(ancestor, "home")
+			ok(t, os.MkdirAll(home, 0o755))
+			hk := newHooks()
+			c.prepare(t, ancestor, hk)
+			h, f := hostsetup.OpenSSHHome(hk.fs(), service(home))
+			if c.ok {
+				if f != nil {
+					t.Fatal(f)
+				}
+				h.Close()
+				return
+			}
+			assertFailure(t, f, refusal.SSHHomeInvalid, ancestor)
+		})
+	}
+}
+
+func TestAnAncestorOfAHomeThatIsNotThereYetIsCheckedToo(t *testing.T) {
+	ancestor := filepath.Join(t.TempDir(), "a")
+	ok(t, os.Mkdir(ancestor, 0o755))
+	ok(t, os.Chmod(ancestor, 0o777))
+	_, f := hostsetup.OpenSSHHome(hostsetup.OS{}, service(filepath.Join(ancestor, "home")))
+	assertFailure(t, f, refusal.SSHHomeInvalid, ancestor)
+	if _, err := os.Stat(filepath.Join(ancestor, "home")); err == nil {
+		t.Fatal("the home was made")
+	}
 }

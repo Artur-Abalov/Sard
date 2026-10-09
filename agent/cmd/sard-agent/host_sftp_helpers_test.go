@@ -72,6 +72,8 @@ type sshServer struct {
 	loginCode   int
 	// keygenStderr, if set, makes ssh-keygen fail with it.
 	keygenStderr string
+	// keyscanCode is the exit code of ssh-keyscan when it prints no key.
+	keyscanCode int
 	// onScan runs when ssh-keyscan is asked, before it answers.
 	onScan func()
 	// hang makes the programs named never end until they are stopped.
@@ -131,6 +133,7 @@ func (f *fakeSSH) keyscan(cmd restic.Command) (int, error) {
 	}
 	if len(f.srv.keys) == 0 {
 		cmd.Stderr([]byte("getaddrinfo " + host + ": Name or service not known"))
+		return f.srv.keyscanCode, nil
 	}
 	return 0, nil
 }

@@ -57,8 +57,11 @@ func (c *hostCmd) prepareS3(st *addState, plan hostsetup.AddPlan) *refusal.Failu
 	if f != nil {
 		return f
 	}
-	if plan == hostsetup.AddUnchanged && !repoconnect.HoldsKeys(inPlace, c.opts.accessKeyID, c.opts.region) {
-		if f := c.refusePasswordWithKeys(); f != nil {
+	if plan == hostsetup.AddUnchanged {
+		// A repeat of a connected repository takes its password from the
+		// password file, never from a flag (П16, П24): refused before any
+		// source is read.
+		if f := c.refusePasswordWithKeys("a repeat of a connected repository"); f != nil {
 			return f
 		}
 	}

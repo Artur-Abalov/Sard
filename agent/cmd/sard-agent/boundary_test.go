@@ -60,7 +60,7 @@ func TestPackageMainDoesNotDecideTheConnection(t *testing.T) {
 func TestPackageMainDoesNotDecideTheSSHSetup(t *testing.T) {
 	forbidden := map[string]bool{
 		"repoconnect.FindKnown": true, "repoconnect.AddHostKey": true, "repoconnect.ReplaceHostKey": true,
-		"repoconnect.ParseKeyscan": true, "repoconnect.ApplyBlock": true, "repoconnect.ManagedBlock": true,
+		"repoconnect.ParseKeyscan": true, "hostsetup.OpenSSHHome": true, "repoconnect.ApplyBlock": true, "repoconnect.ManagedBlock": true,
 	}
 	selectors(t, func(file string, pos token.Position, pkg, name string) {
 		if forbidden[pkg+"."+name] {

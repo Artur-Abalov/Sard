@@ -186,7 +186,7 @@ func (c *hostCmd) connector(st *addState) *repoconnect.Connector {
 		},
 		AskPassword: func() ([]byte, *refusal.Failure) { return c.readSource(passwordSource(c.opts)) },
 		Bound:       c.bound(),
-		KeysOnly:    st.rotation,
+		KeysOnly:    st.rotation || st.isSFTP() && st.plan == hostsetup.AddUnchanged,
 		Owned:       c.owned(),
 		State:       &st.State,
 	}

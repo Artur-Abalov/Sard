@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -165,14 +166,9 @@ func (b *lineBuffer) text() string {
 // config and the login check. The public key is shown when the server does
 // not know it yet.
 func (c *hostCmd) setupSSH(ctx context.Context, st *addState) *refusal.Failure {
-	home, f := hostsetup.OpenSSHHome(c.deps.fs, c.who.Service)
-	if f != nil {
-		return f
-	}
-	defer home.Close()
 	target, _ := c.resticFor(st, repoconnect.Files{}, nil)
 	setup := &repoconnect.SFTP{
-		Home: home, Address: st.sftp.address, Service: c.who.Service,
+		FS: c.deps.fs, Address: st.sftp.address, Service: c.who.Service,
 		Runner: c.sshRunner(), Bound: c.bound(),
 		Fingerprint: c.opts.hostKeyFingerprint, Replace: c.opts.replaceHostKey,
 		Confirm:  repoconnect.Confirmation(c.terminal(), c.budget),
@@ -206,12 +202,31 @@ func (c *hostCmd) explainSSHFailure(st *addState, f *refusal.Failure) {
 	c.noteSSHFilesStay(st)
 }
 
-// noteSSHFilesStay says that what the setup wrote stays when the command
-// refuses later (Р43).
+// noteSSHFilesStay says which files of ~/.ssh the command wrote and that they
+// stay when it refuses later (Р43, П21); nothing is said when it wrote none.
 func (c *hostCmd) noteSSHFilesStay(st *addState) {
-	if st.isSFTP() && st.sftp.res.Changed {
-		_, _ = fmt.Fprintf(c.stderr, "sard-agent repo add: the ssh files written so far (the key, known_hosts, the config in %s) stay and will be used when the command is repeated\n", c.sshDir())
+	if !st.isSFTP() || len(st.sftp.res.Written) == 0 {
+		return
 	}
+	paths := make([]string, len(st.sftp.res.Written))
+	for i, name := range st.sftp.res.Written {
+		paths[i] = filepath.Join(c.sshDir(), name)
+	}
+	_, _ = fmt.Fprintf(c.stderr, "sard-agent repo add: the ssh files written (%s) stay and will be used when the command is repeated\n", strings.Join(paths, ", "))
+}
+
+// printKeptPatterns names the lines of known_hosts with a pattern or a list
+// that match the host and were left when its key was replaced (П22).
+func (c *hostCmd) printKeptPatterns(st *addState) {
+	if len(st.sftp.res.KeptPatterns) == 0 {
+		return
+	}
+	lines := make([]string, len(st.sftp.res.KeptPatterns))
+	for i, n := range st.sftp.res.KeptPatterns {
+		lines[i] = strconv.Itoa(n)
+	}
+	_, _ = fmt.Fprintf(c.stdout, "Entries with a pattern or a list that match %s were kept: line %s of %s.\n",
+		st.sftp.address.KnownHostsName(), strings.Join(lines, ", "), filepath.Join(c.sshDir(), "known_hosts"))
 }
 
 func (c *hostCmd) sshDir() string { return filepath.Join(c.who.Service.Home, ".ssh") }
@@ -238,6 +253,7 @@ func (c *hostCmd) sftpRepeat(ctx context.Context, st *addState) (int, bool) {
 // not restarted (Р43).
 func (c *hostCmd) finishSSHUpdate(st *addState) int {
 	c.printUnchanged(st, st.ID)
+	c.printKeptPatterns(st)
 	_, _ = fmt.Fprintf(c.stdout, "The ssh files of the service user were set up again in %s; ssh reads them at every connection, so the service is not restarted.\n", c.sshDir())
 	return exitOK
 }
@@ -247,6 +263,7 @@ func (c *hostCmd) finishSSHUpdate(st *addState) int {
 func (c *hostCmd) printSFTPAdded(st *addState) {
 	res := st.sftp.res
 	_, _ = fmt.Fprintf(c.stdout, "  host key:      %s %s %s\n", st.sftp.address.KnownHostsName(), res.HostKey.Type, res.HostKey.Fingerprint())
+	c.printKeptPatterns(st)
 	_, _ = fmt.Fprintf(c.stdout, "Public key of the service user %s (it must be in authorized_keys of %s on %s):\n  %s\n",
 		c.who.Service.Name, c.sftpUser(st), st.sftp.address.Host, res.PublicKey)
 }

@@ -335,3 +335,27 @@ func TestAFailedWriteToTheSSHDirectoryIsAWriteErrorAndTheOldContentIsWhole(t *te
 		h.assertNoSFTPTraces()
 	}
 }
+
+func TestAHomeOfAnotherUserOrOpenToOthersIsRefusedAndTheHostIsNotChanged(t *testing.T) {
+	h := newSFTPHost(t)
+	h.fsys.setOwner(h.homeDir(), aliceUID, aliceUID)
+	before := h.sshTree()
+	code, _, stderr := h.sftpCmd()
+	assertRefusal(t, code, stderr, exitUsage, "SSH_HOME_INVALID")
+	h.assertNothingChanged(before)
+
+	h = newSFTPHost(t)
+	ok(t, os.Chmod(h.homeDir(), 0o777))
+	code, _, stderr = h.sftpCmd()
+	assertRefusal(t, code, stderr, exitUsage, "SSH_HOME_INVALID")
+	h.assertNoSSHProgram()
+}
+
+func TestAKnownHostsOthersCanWriteIsRefusedAndNeverTrusted(t *testing.T) {
+	h := newSFTPHost(t)
+	h.putSSH("known_hosts", keyED.line(sftpHost), 0o600)
+	ok(t, os.Chmod(h.sshFile("known_hosts"), 0o666))
+	code, _, stderr := h.sftpCmd()
+	assertRefusal(t, code, stderr, exitUsage, "SSH_FILE_REJECTED")
+	h.assertNoSSHProgram()
+}

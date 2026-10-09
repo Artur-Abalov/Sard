@@ -254,10 +254,7 @@ func TestAKnownHostKeyIsNeitherAskedNorWrittenAgain(t *testing.T) {
 
 func TestAHashedEntryOfTheKnownHostIsRecognised(t *testing.T) {
 	h := newSFTPHost(t)
-	salt := base64.StdEncoding.EncodeToString([]byte("0123456789abcdefghij"))
-	mac := hmac.New(sha1.New, []byte("0123456789abcdefghij"))
-	mac.Write([]byte(sftpHost))
-	entry := "|1|" + salt + "|" + base64.StdEncoding.EncodeToString(mac.Sum(nil)) + " " + keyED.keyType + " " + keyED.blob + "\n"
+	entry := hashedHost(sftpHost) + " " + keyED.keyType + " " + keyED.blob + "\n"
 	h.putSSH("known_hosts", entry, 0o600)
 	h.putSSH("id_ed25519", "PRIVATE-KEY-MARKER", 0o600)
 	h.putSSH("id_ed25519.pub", "ssh-ed25519 AAAAexistingkey x\n", 0o644)
@@ -422,3 +419,11 @@ func TestEveryProgramOfTheClientRunsWithoutQuestionsAtTheTerminal(t *testing.T) 
 }
 
 func removeFile(path string) error { return os.Remove(path) }
+
+// hashedHost is the |1|salt|hash form ssh -H writes for a host.
+func hashedHost(host string) string {
+	salt := base64.StdEncoding.EncodeToString([]byte("0123456789abcdefghij"))
+	mac := hmac.New(sha1.New, []byte("0123456789abcdefghij"))
+	mac.Write([]byte(host))
+	return "|1|" + salt + "|" + base64.StdEncoding.EncodeToString(mac.Sum(nil))
+}

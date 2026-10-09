@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -54,8 +56,9 @@ func CheckClient(has func(program string) bool) *refusal.Failure {
 // (Р37-Р43): the host key, the key of the service user, known_hosts, the
 // block of ~/.ssh/config, and a check that the login is accepted.
 type SFTP struct {
-	// Home is ~/.ssh of the service user, held by its descriptors.
-	Home    *hostsetup.SSHHome
+	// FS is the file system; ~/.ssh of the service user is opened from it,
+	// and held by its descriptors for the run.
+	FS      hostsetup.FS
 	Address hostsetup.SFTPAddress
 	Service hostsetup.User
 	Runner  Runner
@@ -84,6 +87,11 @@ type SFTPResult struct {
 	HostKey HostKey
 	// Changed: something was written (the key, known_hosts, the config).
 	Changed bool
+	// Written names the files of ~/.ssh that were written, in order.
+	Written []string
+	// KeptPatterns are the lines of known_hosts with a pattern or a list
+	// that match the host and were left when its key was replaced.
+	KeptPatterns []int
 }
 
 const (
@@ -94,7 +102,9 @@ const (
 // sshRun is one run of the setup.
 type sshRun struct {
 	*SFTP
-	res SFTPResult
+	// Home is ~/.ssh of the service user.
+	Home *hostsetup.SSHHome
+	res  SFTPResult
 	// What ~/.ssh held when the run began.
 	known, config []byte
 	pub           string
@@ -107,7 +117,12 @@ type sshRun struct {
 // tried. Nothing is written before the host key is trusted; what is
 // written stays when a later step refuses (Р43).
 func (s *SFTP) Prepare(ctx context.Context) (SFTPResult, *refusal.Failure) {
-	r := &sshRun{SFTP: s}
+	home, f := hostsetup.OpenSSHHome(s.FS, s.Service)
+	if f != nil {
+		return SFTPResult{}, f
+	}
+	defer home.Close()
+	r := &sshRun{SFTP: s, Home: home}
 	if f := r.load(); f != nil {
 		return r.res, f
 	}
@@ -228,12 +243,13 @@ func (r *sshRun) scan(ctx context.Context) ([]HostKey, *refusal.Failure) {
 		return nil, f
 	case timedOut:
 		return nil, refusal.Fail(refusal.BackendUnavailable, "ssh-keyscan of %s did not answer within %s (--connect-timeout); the command can be repeated", r.where(), r.Bound.Timeout)
-	case out.Code != 0:
-		return nil, r.exitFailure(ProgKeyscan, out)
 	}
 	keys := ParseKeyscan(out.Stdout)
-	if len(keys) == 0 {
+	switch {
+	case len(keys) == 0:
 		return nil, refusal.Fail(refusal.BackendUnavailable, "the server %s presented no host key: %s; the command can be repeated", r.where(), r.scrub(lastLine(out.Stderr)))
+	case out.Code != 0:
+		return nil, r.exitFailure(ProgKeyscan, out)
 	}
 	return keys, nil
 }
@@ -264,17 +280,34 @@ func (r *sshRun) decide(keys []HostKey) (trust, *refusal.Failure) {
 		return trust{}, f
 	}
 	r.res.HostKey = key
-	return trust{key: key, write: true, replace: len(known.Lines) > 0}, nil
+	replace := len(known.Lines) > 0
+	if replace {
+		r.res.KeptPatterns = known.Patterns
+	}
+	return trust{key: key, write: true, replace: replace}, nil
 }
 
 func (r *sshRun) changed(known Known, keys []HostKey) *refusal.Failure {
-	lines := make([]string, len(known.Lines))
-	for i, n := range known.Lines {
-		lines[i] = strconv.Itoa(n)
+	own := slices.DeleteFunc(slices.Clone(known.Lines), func(n int) bool { return slices.Contains(known.Patterns, n) })
+	where := fmt.Sprintf("on line %s", joinInts(own))
+	if len(own) == 0 {
+		where = "in no entry of its own"
+	}
+	if len(known.Patterns) > 0 {
+		where += fmt.Sprintf(", and the entries with a pattern or a list on line %s match it too", joinInts(known.Patterns))
 	}
 	return refusal.Fail(refusal.HostKeyChanged,
-		"%s holds a key of %s on line %s that the server does not present now (it presents %s): this can be a substitution of the server or its reinstallation; if you know it was reinstalled, repeat the command with --replace-host-key",
-		r.path("known_hosts"), r.Address.KnownHostsName(), strings.Join(lines, ", "), describeKeys(keys))
+		"%s holds a key of %s %s that the server does not present now (it presents %s): this can be a substitution of the server or its reinstallation; if you know it was reinstalled, repeat the command with --replace-host-key (entries with a pattern or a list are kept)",
+		r.path("known_hosts"), r.Address.KnownHostsName(), where, describeKeys(keys))
+}
+
+// joinInts lists numbers for a message.
+func joinInts(numbers []int) string {
+	parts := make([]string, len(numbers))
+	for i, n := range numbers {
+		parts[i] = strconv.Itoa(n)
+	}
+	return strings.Join(parts, ", ")
 }
 
 func (r *sshRun) path(name string) string {
@@ -383,7 +416,7 @@ func (r *sshRun) writeConfig() *refusal.Failure {
 		return nil
 	}
 	f := r.Home.Write("config", config)
-	r.res.Changed = r.res.Changed || f == nil
+	r.wroteIf(f == nil, "config")
 	return f
 }
 
@@ -415,7 +448,7 @@ func (r *sshRun) createKey(ctx context.Context, keyPath string) *refusal.Failure
 	if _, f := r.local(ctx, ProgKeygen, args); f != nil {
 		return f
 	}
-	r.res.Changed = true
+	r.wroteIf(true, "id_ed25519")
 	r.Audit("ssh key of service user", r.Service.Name, "created")
 	pub, found, f := r.Home.Read(publicKeyFile)
 	if !found {
@@ -431,6 +464,14 @@ func orFail(f, other *refusal.Failure) *refusal.Failure {
 		return f
 	}
 	return other
+}
+
+// wroteIf notes that a file of ~/.ssh was written.
+func (r *sshRun) wroteIf(written bool, file string) {
+	if written {
+		r.res.Changed = true
+		r.res.Written = append(r.res.Written, file)
+	}
 }
 
 // hostName is the name of this host for the comment of the key.
@@ -454,7 +495,7 @@ func (r *sshRun) trustHostKey(t trust) *refusal.Failure {
 	if f := r.Home.Write("known_hosts", content); f != nil {
 		return f
 	}
-	r.res.Changed = true
+	r.wroteIf(true, "known_hosts")
 	r.Audit("ssh host key of", r.hostLabel(), action+" "+t.key.Type+" "+t.key.Fingerprint())
 	return nil
 }
@@ -487,38 +528,62 @@ func (r *sshRun) login(ctx context.Context) *refusal.Failure {
 	return r.loginRefused(out.Stderr)
 }
 
-// unreachable are the words of ssh for a server it could not reach.
-var unreachable = []string{
-	"could not resolve hostname", "connection refused", "connection timed out", "no route to host",
-	"network is unreachable", "connection closed", "connection reset", "operation timed out",
+// permissionDenied is the line ssh prints when the server turns the key
+// down: "user@host: Permission denied (publickey)." or without the prefix.
+var permissionDenied = regexp.MustCompile(`^\S+@\S+: Permission denied \([^)]*\)\.?$`)
+
+// loginClass is what a line of the stderr of ssh says of the login.
+type loginClass int
+
+const (
+	lineSays loginClass = iota // nothing the command can use
+	keyNotAuthorized
+	hostKeyRefused
+	serverUnreachable
+)
+
+// classOfLine looks at the lines ssh itself prints, not at a banner of the
+// server, which may hold any words.
+func classOfLine(line string) loginClass {
+	switch {
+	case line == "Host key verification failed.":
+		return hostKeyRefused
+	case permissionDenied.MatchString(line):
+		return keyNotAuthorized
+	case strings.HasPrefix(line, "ssh:"), strings.HasPrefix(line, "kex_exchange_identification:"),
+		strings.HasPrefix(line, "Connection closed"), strings.HasPrefix(line, "Connection reset"):
+		return serverUnreachable
+	}
+	return lineSays
+}
+
+// classified is the first line of stderr that says something, and what.
+func classified(stderr string) (string, loginClass) {
+	for l := range strings.Lines(stderr) {
+		if l = strings.TrimSpace(l); classOfLine(l) != lineSays {
+			return l, classOfLine(l)
+		}
+	}
+	return lastLine(stderr), lineSays
 }
 
 // loginRefused classifies the stderr of a login that did not succeed.
 func (r *sshRun) loginRefused(stderr string) *refusal.Failure {
-	cause := r.scrub(lastLine(stderr))
-	lower := strings.ToLower(stderr)
+	line, class := classified(stderr)
+	cause := r.scrub(line)
 	user := r.Address.User
 	if user == "" {
 		user = r.Service.Name
 	}
-	switch {
-	case strings.Contains(lower, "host key verification failed"):
+	switch class {
+	case hostKeyRefused:
 		return refusal.Fail(refusal.HostKeyMismatch, "ssh refused the host key of %s: %s; known_hosts holds another key for it", r.where(), cause)
-	case strings.Contains(lower, "permission denied"):
+	case keyNotAuthorized:
 		return refusal.Fail(refusal.SSHKeyNotAuthorized,
 			"the server %s did not accept the key of the service user %s for the user %s: %s; add the public key printed by this command to ~/.ssh/authorized_keys of the user %s on %s, then repeat the same command",
 			r.Address.Host, r.Service.Name, user, cause, user, r.Address.Host)
-	case containsAny(lower, unreachable):
+	case serverUnreachable:
 		return refusal.Fail(refusal.BackendUnavailable, "the server %s is unreachable over ssh: %s; the command can be repeated", r.where(), cause)
 	}
 	return refusal.Fail(refusal.BackendRefused, "the ssh login to %s failed: %s", r.where(), cause)
-}
-
-func containsAny(text string, words []string) bool {
-	for _, w := range words {
-		if strings.Contains(text, w) {
-			return true
-		}
-	}
-	return false
 }

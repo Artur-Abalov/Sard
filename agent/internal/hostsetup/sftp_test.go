@@ -94,3 +94,24 @@ func TestTheNamesOfAnSFTPServerAsSSHKnowsThem(t *testing.T) {
 		}
 	}
 }
+
+// A host or user that ssh would read as a pattern, a list or a negation widens
+// the trust of known_hosts and of the Host block.
+func TestAnSFTPHostOrUserThatSSHWouldReadAsAPatternOrAListIsInvalid(t *testing.T) {
+	for _, address := range []string{
+		"sftp:a,b:/x", "sftp:*:/x", "sftp:*.example.com:/x", "sftp:h?:/x", "sftp:!h:/x",
+		"sftp:u@h@x:/x", "sftp:a b:/x", "sftp:h/x:/x", "sftp:h#c:/x", "sftp:u,v@h:/x",
+		"sftp://u@a,b:2222/x", "sftp://u@*.example.com//x", "sftp://u v@h//x", "sftp:u@[2001:db8::*]:/x",
+		"sftp:u@[]:/x", "sftp:u@[host.example.com]:/x",
+	} {
+		_, f := hostsetup.CheckSFTPAddress(address)
+		if f == nil || f.Reason != refusal.AddressInvalid {
+			t.Errorf("%q: %+v", address, f)
+		}
+	}
+	for _, address := range []string{"sftp:u.v-w_x@h-1.example.com:/x", "sftp:u@[2001:db8::1]:/x", "sftp:u@10.0.0.5:/x"} {
+		if _, f := hostsetup.CheckSFTPAddress(address); f != nil {
+			t.Errorf("%q: %+v", address, f)
+		}
+	}
+}

@@ -4,6 +4,8 @@
 package hostsetup
 
 import (
+	"net/netip"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -95,6 +97,9 @@ func sftpAuthority(address, authority string) (SFTPAddress, *refusal.Failure) {
 	if strings.HasPrefix(user, "-") || strings.HasPrefix(hostPort, "-") {
 		return SFTPAddress{}, addressInvalid(address, "the user and the host must not start with -")
 	}
+	if user != "" && !sshName.MatchString(user) {
+		return SFTPAddress{}, addressInvalid(address, "the user may hold only letters, digits, . _ -")
+	}
 	host, port, f := sftpHostPort(address, hostPort)
 	return SFTPAddress{User: user, Host: host, Port: port}, f
 }
@@ -107,8 +112,24 @@ func sftpHostPort(address, hostPort string) (host string, port int, f *refusal.F
 		return "", 0, addressInvalid(address, "it names no valid host")
 	case hasPort && !validPort(portText):
 		return "", 0, addressInvalid(address, "the port must be 1-65535")
+	case !validSSHHost(hostPort, host):
+		return "", 0, addressInvalid(address, "the host must be a DNS name of letters, digits, . _ - or an IPv6 address in square brackets: ssh reads anything else as a pattern or a list")
 	}
 	return host, portOf(portText, hasPort), nil
+}
+
+// sshName is what a user or a host name may be made of: no pattern, list,
+// negation, space or comment of ssh_config and known_hosts.
+var sshName = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+// validSSHHost: a bracketed host is an IPv6 address, any other a DNS name or
+// an IPv4 address.
+func validSSHHost(hostPort, host string) bool {
+	if strings.HasPrefix(hostPort, "[") {
+		addr, err := netip.ParseAddr(host)
+		return err == nil && addr.Is6() && addr.Zone() == ""
+	}
+	return sshName.MatchString(host)
 }
 
 // sftpUser cuts the user from [user@]host[:port]; a password is refused.

@@ -445,3 +445,60 @@ func TestTheSSHFilesStayWhenResticRefusesTheStorage(t *testing.T) {
 		t.Errorf("stderr does not say the ssh files stay:\n%s", stderr)
 	}
 }
+
+// T1: a repeat that sets the ssh files up again never touches the password
+// file of the repository that is connected already.
+func TestAnSSHFilesUpdateNeverReplacesThePasswordFile(t *testing.T) {
+	h := newSFTPHost(t)
+	h.connectedSFTP()
+	pass := h.path("secrets/restic-extra.pass")
+	before := h.fileContent(pass)
+	ok(t, os.Remove(h.sshFile("config")))
+	other := h.path("outside/other.pass")
+	h.write(other, "another-valid-key\n", 0o600)
+	h.stdinIs("unread")
+	code, _, stderr := h.sftpAt(sftpAddress, "--password-from-file", other)
+	assertCode(t, code, exitUsage)
+	if !strings.Contains(stderr, "--password-from-file") || h.fileContent(pass) != before {
+		t.Fatalf("stderr %q, password file %q", stderr, h.fileContent(pass))
+	}
+	h.assertAbsent(h.sshFile("config"))
+
+	code, _, stderr = h.sftpAt(sftpAddress, "--password-stdin")
+	assertCode(t, code, exitUsage)
+	if !strings.Contains(stderr, "--password-stdin") || h.stdin.String() != "unread" || h.fileContent(pass) != before {
+		t.Fatalf("stderr %q, stdin %q", stderr, h.stdin.String())
+	}
+}
+
+func TestAnSSHFilesUpdateWithAWrongPasswordFileIsWrongPasswordWithoutAQuestion(t *testing.T) {
+	h := newSFTPHost(t)
+	h.connectedSFTP()
+	pass := h.path("secrets/restic-extra.pass")
+	h.write(pass, "not-the-password\n", 0o600)
+	ok(t, os.Remove(h.sshFile("config")))
+	term := h.terminalIs("whatever", "whatever")
+	code, _, stderr := h.sftpAt(sftpAddress)
+	assertRefusal(t, code, stderr, exitUsage, "WRONG_PASSWORD")
+	if len(term.prompts) != 0 || h.fileContent(pass) != "not-the-password\n" {
+		t.Fatalf("prompts %q, password file %q", term.prompts, h.fileContent(pass))
+	}
+}
+
+func TestAnSSHFilesUpdateOfARepositoryThatIsGoneIsAConflictAndNeverCreatesIt(t *testing.T) {
+	h := newSFTPHost(t)
+	h.connectedSFTP()
+	pass := h.path("secrets/restic-extra.pass")
+	before := h.fileContent(pass)
+	h.sftpRepo().initialized = false
+	ok(t, os.Remove(h.sshFile("config")))
+	inits := len(h.restic.callsTo(sftpAddress, "init"))
+	code, _, stderr := h.sftpAt(sftpAddress)
+	assertRefusal(t, code, stderr, exitIdentityExists, "REPOSITORY_CONFLICT")
+	if len(h.restic.callsTo(sftpAddress, "init")) != inits || h.fileContent(pass) != before {
+		t.Fatal("init ran or the password file changed")
+	}
+	if left := h.tempFilesIn(h.secretsDir()); len(left) != 0 {
+		t.Fatalf("temporary files %v", left)
+	}
+}

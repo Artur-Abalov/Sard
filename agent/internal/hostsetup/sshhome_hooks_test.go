@@ -111,7 +111,8 @@ func (d sshHookDir) OpenFile(name string) (hostsetup.ReadFile, error) {
 
 func (d sshHookDir) Lstat(name string) (fs.FileInfo, error) {
 	d.h.note("lstat %s", filepath.Join(d.Path(), name))
-	return d.Dir.Lstat(name)
+	info, err := d.Dir.Lstat(name)
+	return d.h.seen(name, info, err)
 }
 
 func (d sshHookDir) Rename(oldName, newName string) error {

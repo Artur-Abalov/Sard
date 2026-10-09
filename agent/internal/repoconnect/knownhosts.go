@@ -9,7 +9,6 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
-	"slices"
 	"strings"
 
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
@@ -68,7 +67,10 @@ func CheckFingerprint(fingerprint string) *refusal.Failure {
 type Known struct {
 	// Lines are the numbers (from 1) of the lines of the entries.
 	Lines []int
-	keys  []HostKey
+	// Patterns are those of Lines whose host field is not the host's own
+	// name: wildcards and lists, which are others' entries too.
+	Patterns []int
+	keys     []HostKey
 }
 
 // Matches says whether one of the keys is the key of an entry.
@@ -99,9 +101,17 @@ func FindKnown(content []byte, name string) Known {
 		if key, hostField, ok := entryOf(l); ok && appliesTo(hostField, name) {
 			found.Lines = append(found.Lines, n+1)
 			found.keys = append(found.keys, key)
+			if !isOwn(hostField, name) {
+				found.Patterns = append(found.Patterns, n+1)
+			}
 		}
 	}
 	return found
+}
+
+// isOwn: the host field is the host's name alone, plain or hashed.
+func isOwn(hostField, name string) bool {
+	return strings.HasPrefix(hostField, "|") || strings.EqualFold(hostField, name)
 }
 
 // entryOf reads a line of known_hosts that holds a key: its host field and
@@ -187,7 +197,7 @@ func hashedMatches(hostField, name string) bool {
 		return false
 	}
 	mac := hmac.New(sha1.New, salt)
-	mac.Write([]byte(name))
+	mac.Write([]byte(strings.ToLower(name)))
 	return hmac.Equal(mac.Sum(nil), want)
 }
 
@@ -202,38 +212,21 @@ func AddHostKey(content []byte, name string, key HostKey) []byte {
 }
 
 // ReplaceHostKey drops the entries that name the host itself (plain or
-// hashed; a list of names keeps the other names; a wildcard, which is
-// others' too, stays) and appends the key.
+// hashed; a list or a wildcard, which are others' too, stay) and appends
+// the key.
 func ReplaceHostKey(content []byte, name string, key HostKey) []byte {
 	var kept strings.Builder
 	for l := range strings.Lines(string(content)) {
-		if rest, drop := dropName(l, name); !drop {
+		if !dropName(l, name) {
 			kept.WriteString(l)
-		} else if rest != "" {
-			kept.WriteString(rest)
 		}
 	}
 	return AddHostKey([]byte(kept.String()), name, key)
 }
 
-// dropName is the line without the host's name: rest is what stays of
-// it ("" if nothing does); drop is false if the line has nothing to do
-// with the host's own name (a wildcard that matches it is others' too).
-func dropName(l, name string) (rest string, drop bool) {
+// dropName: the line is an entry of the host's own name, which a
+// replacement takes out. Patterns and lists stay (they are others' too).
+func dropName(l, name string) bool {
 	_, hostField, ok := entryOf(l)
-	if !ok || !appliesTo(hostField, name) {
-		return "", false
-	}
-	if strings.HasPrefix(hostField, "|") {
-		return "", true
-	}
-	all := strings.Split(hostField, ",")
-	names := slices.DeleteFunc(slices.Clone(all), func(pattern string) bool { return strings.EqualFold(pattern, name) })
-	switch {
-	case len(names) == len(all):
-		return "", false
-	case len(names) == 0:
-		return "", true
-	}
-	return strings.Replace(l, hostField, strings.Join(names, ","), 1), true
+	return ok && appliesTo(hostField, name) && isOwn(hostField, name)
 }

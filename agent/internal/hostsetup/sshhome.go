@@ -50,7 +50,7 @@ func OpenSSHHome(fsys FS, service User) (*SSHHome, *refusal.Failure) {
 		return nil, refusal.Fail(refusal.SSHHomeInvalid, "the home directory of %s in passwd is %q: it must be an absolute path other than /", service.Name, service.Home)
 	}
 	h := &SSHHome{fsys: fsys, user: service}
-	home, _, err := OpenDir(fsys, filepath.Clean(service.Home), nil)
+	home, err := h.walk(filepath.Clean(service.Home), true)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return h, nil
@@ -107,10 +107,84 @@ func (h *SSHHome) checkSSHOwner() *refusal.Failure {
 	if err != nil {
 		return h.rejected("", "cannot be looked at: "+err.Error())
 	}
-	if why := h.ownerProblem(info); why != "" {
+	if why := h.dirProblem(info); why != "" {
 		return h.rejected("", why)
 	}
 	return nil
+}
+
+// dirProblem is why ~/.ssh is not acceptable: not the user's or root's, or
+// writable by group or others.
+func (h *SSHHome) dirProblem(info fs.FileInfo) string {
+	if why := h.ownerProblem(info); why != "" {
+		return why
+	}
+	return writableProblem(info)
+}
+
+// writableProblem: group or others may write to it, so any local user could
+// plant a host key or a link there.
+func writableProblem(info fs.FileInfo) string {
+	if info.Mode().Perm()&0o022 != 0 {
+		return fmt.Sprintf("is writable by group or others (mode %04o)", info.Mode().Perm())
+	}
+	return ""
+}
+
+// homeRuleError is a component of the path to the home that others could
+// have tampered with.
+type homeRuleError struct{ path, why string }
+
+func (e *homeRuleError) Error() string { return e.path + " " + e.why }
+
+// walk opens the directory at the path from "/" without following a link,
+// judging each component by what it is before it is entered: the home must
+// be the user's or root's and closed to group and others; each ancestor must
+// be root's or the user's and closed to them, unless it has the sticky bit
+// (/tmp). A missing component is fs.ErrNotExist, with its path.
+func (h *SSHHome) walk(path string, isHome bool) (Dir, error) {
+	cur, err := h.fsys.OpenRootDir()
+	if err != nil {
+		return nil, err
+	}
+	names := components(path)
+	for i, name := range names {
+		next, err := h.step(cur, name, isHome && i == len(names)-1)
+		_ = cur.Close()
+		if err != nil {
+			return nil, err
+		}
+		cur = next
+	}
+	return cur, nil
+}
+
+func (h *SSHHome) step(cur Dir, name string, home bool) (Dir, error) {
+	path := filepath.Join(cur.Path(), name)
+	info, err := cur.Lstat(name)
+	switch {
+	case err != nil:
+		return nil, err
+	case info.Mode()&fs.ModeSymlink != 0:
+		return nil, &NotDirError{Path: path, Symlink: true}
+	case !info.IsDir():
+		return nil, &NotDirError{Path: path}
+	}
+	if why := h.componentProblem(info, home); why != "" {
+		return nil, &homeRuleError{path: path, why: why}
+	}
+	return cur.Open(name)
+}
+
+// componentProblem: why a directory on the way to the home is not acceptable.
+func (h *SSHHome) componentProblem(info fs.FileInfo, home bool) string {
+	if why := h.ownerProblem(info); why != "" {
+		return why
+	}
+	if !home && info.Mode()&fs.ModeSticky != 0 {
+		return ""
+	}
+	return writableProblem(info)
 }
 
 // ownerProblem is why the owner of info is not acceptable; "" if it is.
@@ -192,7 +266,7 @@ func (h *SSHHome) fileProblem(info fs.FileInfo) string {
 	case info.Size() > MaxSSHFileSize:
 		return whyTooLarge
 	}
-	return h.ownerProblem(info)
+	return h.dirProblem(info)
 }
 
 // Present says whether a file of ~/.ssh is there, judging it by what it
@@ -257,7 +331,7 @@ func (h *SSHHome) Ensure() *refusal.Failure {
 
 func (h *SSHHome) makeHome() *refusal.Failure {
 	home := filepath.Clean(h.user.Home)
-	parent, _, err := OpenDir(h.fsys, filepath.Dir(home), nil)
+	parent, err := h.walk(filepath.Dir(home), false)
 	if err != nil {
 		return h.dirFailure(err)
 	}
@@ -273,8 +347,9 @@ func (h *SSHHome) makeHome() *refusal.Failure {
 // dirFailure is the failure of opening or making a directory.
 func (h *SSHHome) dirFailure(err error) *refusal.Failure {
 	var notDir *NotDirError
-	if errors.As(err, &notDir) {
-		return refusal.Fail(refusal.SSHHomeInvalid, "%v", notDir)
+	var rule *homeRuleError
+	if errors.As(err, &notDir) || errors.As(err, &rule) {
+		return refusal.Fail(refusal.SSHHomeInvalid, "%v", err)
 	}
 	return refusal.Fail(refusal.ConfigWrite, "%v", err)
 }

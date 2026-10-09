@@ -180,12 +180,30 @@ func TestReplacingAHostsKeyDropsItsEntriesAndKeepsEveryOtherByteAndEveryOtherHos
 	got := repoconnect.ReplaceHostKey([]byte(content), nasHost, edKey)
 	want := "# comment\n" +
 		line("other.example.com", edKey) +
-		line("a.example.com", ecKey) +
+		line("a.example.com,"+nasHost, ecKey) +
 		line(nasPort, otherKey) +
 		line("*.example.com", rsaKey) +
 		"@revoked " + line(nasHost, otherKey) +
 		line(nasHost, edKey)
 	if string(got) != want {
 		t.Fatalf("got:\n%swant:\n%s", got, want)
+	}
+}
+
+// П22: entries with patterns, lists or negations are not the host's own.
+func TestTheEntriesThatArePatternsOrListsAreNamedAndNotTheHostsOwn(t *testing.T) {
+	content := line("*.example.com", wildKey) + line(nasHost, oldEd) + line("a.example.com,"+nasHost, ecKey) +
+		hashedName(nasHost, "c2FsdHNhbHRzYWx0c2FsdHM=") + " " + rsaKey.Type + " " + rsaKey.Blob + "\n" + line("NAS.example.com", rsaKey)
+	m := repoconnect.FindKnown([]byte(content), nasHost)
+	if !slices.Equal(m.Lines, []int{1, 2, 3, 4, 5}) || !slices.Equal(m.Patterns, []int{1, 3}) {
+		t.Fatalf("lines %v, patterns %v", m.Lines, m.Patterns)
+	}
+}
+
+// O1: ssh hashes the host name in lower case.
+func TestAHashedEntryIsFoundForTheHostWrittenInAnyCase(t *testing.T) {
+	content := hashedName("nas.example.com", "c2FsdHNhbHRzYWx0c2FsdHM=") + " " + edKey.Type + " " + edKey.Blob + "\n"
+	if m := repoconnect.FindKnown([]byte(content), "NAS.Example.com"); len(m.Lines) != 1 {
+		t.Fatalf("lines %v", m.Lines)
 	}
 }

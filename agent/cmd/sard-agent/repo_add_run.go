@@ -201,28 +201,41 @@ func (c *hostCmd) addPlanned(ctx context.Context, url string, plan hostsetup.Add
 }
 
 // prepareClient: an sftp: repository needs the OpenSSH client (Р36).
-func (c *hostCmd) prepareClient(st *addState) *refusal.Failure {
+func (c *hostCmd) prepareClient(st *addState, plan hostsetup.AddPlan) *refusal.Failure {
 	if (config.Repository{URL: st.url}).Backend() != "sftp" {
 		return nil
 	}
 	st.sftp = &sftpState{address: c.sftp}
-	return c.checkClient()
+	if f := c.checkClient(); f != nil {
+		return f
+	}
+	if plan == hostsetup.AddUnchanged {
+		// The repository is connected: only its ssh files are set up again, and
+		// its password is the one in the password file (T1).
+		return c.refusePasswordWithKeys("an update of the ssh files of a connected repository")
+	}
+	return nil
 }
 
 // prepareAccess settles the keys of an s3: repository (Р29, Р45, Н17).
 func (c *hostCmd) prepareAccess(st *addState, plan hostsetup.AddPlan) *refusal.Failure {
-	if f := c.prepareClient(st); f != nil {
+	if f := c.prepareClient(st, plan); f != nil {
 		return f
 	}
-	if (config.Repository{URL: st.url}).Backend() != "s3" {
+	if st.isSFTP() || (config.Repository{URL: st.url}).Backend() != "s3" {
 		return nil
 	}
+	return c.prepareS3Access(st, plan)
+}
+
+// prepareS3Access settles the keys of an s3: repository and whether they change.
+func (c *hostCmd) prepareS3Access(st *addState, plan hostsetup.AddPlan) *refusal.Failure {
 	if f := c.prepareS3(st, plan); f != nil {
 		return f
 	}
 	st.rotation = plan == hostsetup.AddUnchanged && !st.s3.Same
 	if st.rotation {
-		return c.refusePasswordWithKeys()
+		return c.refusePasswordWithKeys("a change of the keys of a connected repository")
 	}
 	return nil
 }
@@ -230,7 +243,7 @@ func (c *hostCmd) prepareAccess(st *addState, plan hostsetup.AddPlan) *refusal.F
 // refusePasswordWithKeys: a change of keys takes the password from the
 // password file of the repository, never from a flag (П16). It is decided
 // as soon as the change is known, before the secret key is read.
-func (c *hostCmd) refusePasswordWithKeys() *refusal.Failure {
+func (c *hostCmd) refusePasswordWithKeys(what string) *refusal.Failure {
 	var given []string
 	if c.opts.passwordStdin {
 		given = append(given, "--password-stdin")
@@ -241,7 +254,7 @@ func (c *hostCmd) refusePasswordWithKeys() *refusal.Failure {
 	if len(given) == 0 {
 		return nil
 	}
-	return usageFailureOf("a change of the keys of a connected repository takes the password from the password file of the repository: drop %s", strings.Join(given, " and "))
+	return usageFailureOf("%s takes the password from the password file of the repository: drop %s", what, strings.Join(given, " and "))
 }
 
 // repeatOf handles the command of a connected repository that changes
