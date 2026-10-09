@@ -125,6 +125,20 @@ class OnboardingDatabaseDownIntegrationTest {
             return block()
         } finally {
             relay.up()
+            awaitDatabase()
+        }
+    }
+
+    /** The pool of the server drops the connections the cut broke and makes new ones: it takes a moment. */
+    private fun awaitDatabase() {
+        val deadline =
+            System.nanoTime() +
+                java.time.Duration
+                    .ofSeconds(20)
+                    .toNanos()
+        while (client.state().status != 200) {
+            check(System.nanoTime() < deadline) { "the server does not find its database again" }
+            Thread.sleep(100)
         }
     }
 
