@@ -21,8 +21,10 @@ CREATE UNIQUE INDEX sources_tenant_id_name_key ON sources (tenant_id, name)
 -- The binding itself: when the sources last moved to a repository (or agent) and whether a local
 -- repository was confirmed (D10). The agent and repository are those of the system sources.
 CREATE TABLE self_backups (
-    tenant_id               UUID        NOT NULL PRIMARY KEY REFERENCES tenants (id),
+    id                      UUID        NOT NULL PRIMARY KEY,
+    tenant_id               UUID        NOT NULL REFERENCES tenants (id),
     local_storage_confirmed BOOLEAN     NOT NULL,
     bound_at                TIMESTAMPTZ NOT NULL,
-    updated_at              TIMESTAMPTZ NOT NULL
+    updated_at              TIMESTAMPTZ NOT NULL,
+    CONSTRAINT self_backups_tenant_id_key UNIQUE (tenant_id)
 );

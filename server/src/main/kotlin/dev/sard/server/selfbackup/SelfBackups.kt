@@ -27,11 +27,12 @@ import java.util.UUID
 
 private const val LOCAL_BACKEND = "local"
 private const val LIVE_BUILTIN = "from Agent where builtin = true and revokedAt is null"
+private const val BINDING = "from SelfBackupRecord"
 private const val SYSTEM_SOURCES =
     "from SourceRecord where systemRole is not null and deletedAt is null order by systemRole"
 
 /** Constraints two first bindings of one tenant race on: the loser binds again over the winner's rows. */
-private val RACE_KEYS = setOf("sources_tenant_id_system_role_key", "self_backups_pkey")
+private val RACE_KEYS = setOf("sources_tenant_id_system_role_key", "self_backups_tenant_id_key")
 
 /** The role of a source read through [SYSTEM_SOURCES]: never null there. */
 private fun roleOf(source: SourceRecord): SystemRole = SystemRole.of(checkNotNull(source.systemRole))
@@ -103,13 +104,13 @@ class SelfBackups internal constructor(
         confirmLocalStorage: Boolean,
     ): SelfBackupView =
         try {
-            sessions.inTenant(tenantId) { session -> bindIn(session, tenantId, repositoryName, confirmLocalStorage) }
+            sessions.inTenant(tenantId) { session -> bindIn(session, repositoryName, confirmLocalStorage) }
         } catch (e: ConstraintViolationException) {
             if (e.constraintName !in RACE_KEYS) throw e
             bind(tenantId, repositoryName, confirmLocalStorage)
         }
 
-    fun get(tenantId: UUID): SelfBackupView = sessions.inTenant(tenantId) { session -> viewIn(session, tenantId) }
+    fun get(tenantId: UUID): SelfBackupView = sessions.inTenant(tenantId) { session -> viewIn(session) }
 
     /**
      * Starts a manual run of each system source, the database first; a source with an active run answers with that
@@ -130,7 +131,6 @@ class SelfBackups internal constructor(
 
     private fun bindIn(
         session: Session,
-        tenantId: UUID,
         repositoryName: String,
         confirmLocalStorage: Boolean,
     ): SelfBackupView {
@@ -146,9 +146,9 @@ class SelfBackups internal constructor(
                     .requireConfig(mapper.writeValueAsString(planned.config))
                 keep(session, existing[planned.role], planned, agent.id, repositoryName, now)
             }
-        record(session, tenantId, moved.any { it }, repository.backend == LOCAL_BACKEND, now)
+        record(session, moved.any { it }, repository.backend == LOCAL_BACKEND, now)
         session.flush()
-        return viewIn(session, tenantId)
+        return viewIn(session)
     }
 
     /** Creates the source of [planned], or brings the existing one to it; true if anything changed. */
@@ -209,14 +209,13 @@ class SelfBackups internal constructor(
 
     private fun record(
         session: Session,
-        tenantId: UUID,
         moved: Boolean,
         local: Boolean,
         now: Instant,
     ) {
-        val record = session.find(SelfBackupRecord::class.java, tenantId, LockModeType.PESSIMISTIC_WRITE)
+        val record = bindingOf(session, LockModeType.PESSIMISTIC_WRITE)
         if (record == null) {
-            session.persist(SelfBackupRecord(tenantId, local, now, now))
+            session.persist(SelfBackupRecord(ids.next(), local, now, now))
             return
         }
         if (moved) record.boundAt = now
@@ -226,12 +225,9 @@ class SelfBackups internal constructor(
         }
     }
 
-    private fun viewIn(
-        session: Session,
-        tenantId: UUID,
-    ): SelfBackupView {
+    private fun viewIn(session: Session): SelfBackupView {
         val agent = liveBuiltin(session)
-        val record = session.find(SelfBackupRecord::class.java, tenantId)
+        val record = bindingOf(session, LockModeType.NONE)
         val sources = systemSources(session, LockModeType.NONE)
         val bound = record?.takeIf { sources.size == SystemRole.entries.size }
         val first = sources.firstOrNull()?.takeIf { bound != null }
@@ -275,6 +271,16 @@ private fun repositoryOf(
     agentId: UUID,
     name: String,
 ): AgentRepositoryRecord? = session.find(AgentRepositoryRecord::class.java, AgentOwnedKey(agentId, name))
+
+/** The tenant's binding (one at most, self_backups_tenant_id_key); the session's tenant filters it. */
+private fun bindingOf(
+    session: Session,
+    lock: LockModeType,
+): SelfBackupRecord? =
+    session
+        .createSelectionQuery(BINDING, SelfBackupRecord::class.java)
+        .setLockMode(lock)
+        .uniqueResult()
 
 /** The live system sources, database before keys (their stored roles sort that way). */
 private fun systemSources(
