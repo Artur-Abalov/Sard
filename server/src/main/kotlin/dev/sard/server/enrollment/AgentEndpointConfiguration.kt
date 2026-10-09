@@ -3,6 +3,7 @@
 
 package dev.sard.server.enrollment
 
+import dev.sard.server.pki.CaStartPrecondition
 import dev.sard.server.pki.PkiProperties
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.context.properties.ConfigurationProperties
@@ -44,4 +45,8 @@ class AgentEndpointConfiguration {
         pki: PkiProperties,
         @Value("\${spring.grpc.server.port}") grpcPort: Int,
     ): AgentEndpoint = AgentEndpointResolver.resolve(properties.endpoint, pki.serverNames, grpcPort)
+
+    /** Resolving [endpoint] validates it; the CA waits for that, so a refused address leaves no CA (ADR 0052). */
+    @Bean
+    fun agentEndpointBeforeCa(endpoint: AgentEndpoint) = CaStartPrecondition { endpoint.address }
 }

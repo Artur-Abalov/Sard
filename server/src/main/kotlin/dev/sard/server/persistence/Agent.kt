@@ -15,8 +15,8 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * A registered agent; table created by Flyway migrations V1, V2, V202609271200, V202609281200, V202609281400
- * and V202610011200.
+ * A registered agent; table created by Flyway migrations V1, V2, V202609271200, V202609281200, V202609281400,
+ * V202610011200 and V202610081200.
  */
 @Entity
 @Table(name = "agents")
@@ -35,6 +35,9 @@ class Agent(
     /** Set when the agent is revoked: none of its certificates authenticates any more (S3). */
     @Column(name = "revoked_at")
     var revokedAt: Instant? = null,
+    /** Enrolled with a built-in token: the agent next to the server (migration V202610081200). */
+    @Column(name = "builtin", nullable = false, updatable = false)
+    val builtin: Boolean = false,
     /** Set by Hibernate from the current tenant on insert (ADR 0013). */
     @TenantId
     @Column(name = "tenant_id", nullable = false, updatable = false)

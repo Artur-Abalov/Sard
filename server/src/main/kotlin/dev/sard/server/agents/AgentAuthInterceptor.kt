@@ -18,6 +18,23 @@ import javax.net.ssl.SSLPeerUnverifiedException
 
 private val log = LoggerFactory.getLogger(AgentAuthInterceptor::class.java)
 
+private const val UNKNOWN_CERTIFICATE_HINT =
+    "the certificate was issued by this server's CA, but the database has no record of it: " +
+        "the database was not restored or was restored from a copy older than the agent's enrollment"
+
+/** The log line for a refused call; the caller sees the reason alone (ADR 0009, ADR 0052). */
+internal fun refusalMessage(
+    rejected: Rejected,
+    method: String,
+): String {
+    val line = "agent call refused: reason=${rejected.failure} serial=${rejected.serial} agent=${rejected.agentId}"
+    return if (rejected.failure == AgentAuthFailure.CERT_UNKNOWN) {
+        "$line tenant=${rejected.tenantId} method=$method: $UNKNOWN_CERTIFICATE_HINT"
+    } else {
+        "$line method=$method"
+    }
+}
+
 /**
  * Authenticates every gRPC call by its client certificate (ADR 0009). Deny by default:
  * only the services in [open] are reachable without one; any other service, including
@@ -42,13 +59,7 @@ class AgentAuthInterceptor(
 
             is Rejected -> {
                 // Serial and agent id only: certificates and keys are never logged.
-                log.warn(
-                    "agent call refused: reason={} serial={} agent={} method={}",
-                    result.failure,
-                    result.serial,
-                    result.agentId,
-                    call.methodDescriptor.fullMethodName,
-                )
+                log.warn(refusalMessage(result, call.methodDescriptor.fullMethodName))
                 val error = AgentAuthStatus.of(result.failure)
                 call.close(error.status, error.trailers ?: Metadata())
                 object : ServerCall.Listener<Q>() {}

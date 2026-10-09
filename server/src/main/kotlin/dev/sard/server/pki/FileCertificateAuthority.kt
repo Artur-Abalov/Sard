@@ -4,12 +4,15 @@
 package dev.sard.server.pki
 
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
+import org.slf4j.LoggerFactory
 import java.nio.file.Path
 import java.security.SecureRandom
 import java.time.Clock
 import java.time.Duration
 import java.util.concurrent.atomic.AtomicLong
 import javax.net.ssl.X509KeyManager
+
+private val log = LoggerFactory.getLogger(FileCertificateAuthority::class.java)
 
 /** The server certificate lives 90 days and is replaced in its last 30. */
 private val RENEW_BEFORE = Duration.ofDays(30)
@@ -23,14 +26,17 @@ class FileCertificateAuthority(
     private val serverNames: List<String>,
     private val clock: Clock,
     private val random: SecureRandom,
+    importDir: Path? = null,
 ) : CertificateAuthority {
     init {
         ServerNames.validate(serverNames)
     }
 
-    private val ca = CaDirectory(dir, clock).loadOrCreate { CaKeyPair.generate(clock, random) }
+    private val opened =
+        CaDirectory(dir, clock).open(importDir?.let { CaImportSource(it, clock) }) { CaKeyPair.generate(clock, random) }
+    private val ca = opened.pair
     private val bundle = Pem.certificate(ca.certificate)
-    private val fingerprint = CaFingerprint.of(ca.certificate)
+    private val fingerprint = CaFingerprint.of(ca.certificate).also { logStart(it, opened.origin, importDir) }
     private val generation = AtomicLong()
     private val serverKeys = ServerKeyManager(issueServerKey())
 
@@ -66,4 +72,18 @@ class FileCertificateAuthority(
 
     /** Never prints key material. */
     override fun toString() = "FileCertificateAuthority(${fingerprint.hex})"
+
+    /** The fingerprint with the origin of the CA, at every start: a moved server can be compared with the old. */
+    private fun logStart(
+        fingerprint: CaFingerprint,
+        origin: CaOrigin,
+        importDir: Path?,
+    ) {
+        val name = origin.name.lowercase()
+        if (origin == CaOrigin.IMPORTED) {
+            log.info("CA imported from {}: fingerprint={} origin={}", importDir, fingerprint.hex, name)
+        } else {
+            log.info("CA fingerprint={} origin={}", fingerprint.hex, name)
+        }
+    }
 }

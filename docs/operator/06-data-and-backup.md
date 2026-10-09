@@ -56,12 +56,17 @@ docker rm -f sard-verify
 Два последних числа совпадают. Архив CA — по отпечатку:
 
 ```bash
-tar -xzOf "sard-pki-$STAMP.tgz" ca/ca.crt | openssl x509 -noout -fingerprint -sha256
-docker run --rm --user 0 --entrypoint cat -v sard_sard-pki:/pki:ro "$IMAGE" /pki/ca/ca.crt \
-  | openssl x509 -noout -fingerprint -sha256
+fp() { openssl x509 -in "$1" -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum | cut -c1-64; }
+tar -xzOf "sard-pki-$STAMP.tgz" ca/ca.crt > /tmp/backup-ca.crt
+fp /tmp/backup-ca.crt
+docker run --rm --user 0 --entrypoint cat -v sard_sard-pki:/pki:ro "$IMAGE" /pki/ca/ca.crt > /tmp/live-ca.crt
+fp /tmp/live-ca.crt
 ```
 
-Отпечатки совпадают.
+Отпечатки совпадают. Это тот же отпечаток, что в конце строки токена
+регистрации, в логе сервера при старте и на странице «Токены» консоли
+(встроенный отпечаток openssl считает хэш всего сертификата — другое число, с
+отпечатком Sard он не сверяется).
 
 ## Восстановление
 
@@ -87,5 +92,8 @@ docker compose up -d --wait
 Проверка: `curl -fsS http://localhost:8080/api/v1/status` отвечает; в консоли
 агенты те же и через минуту «в сети» — CA тот же, повторная регистрация не
 нужна. Сессии консоли сбрасываются (они в памяти).
+
+Перенос на другую машину — не распаковкой в том, а импортом CA с проверками:
+[раздел 8](08-migrate-and-remove.md).
 
 Права на каталог CA важны: с правами шире `0700`/`0600` сервер не стартует.

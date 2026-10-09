@@ -143,6 +143,17 @@ check_cache_dir() {
   done
 }
 
+# check_suggests verifies that the suggestions of a package (stdin: the field
+# Suggests of a deb, the suggested packages of an rpm) name $2, and that $2 is
+# not among the stronger dependencies ($3, may be empty): an agent without
+# databases does not need a PostgreSQL client (F1 ПГ21).
+check_suggests() {
+  local what="$1" want="$2" hard="$3" suggests
+  suggests="$(cat)"
+  grep -qw -- "$want" <<<"$suggests" || die "$what: does not suggest $want"
+  ! grep -qw -- "$want" <<<"$hard" || die "$what: requires $want"
+}
+
 # build_tags prints the -tags sard-agent was built with, from its build info.
 build_tags() {
   go version -m "$1" | awk '$1 == "build" && $2 ~ /^-tags=/ { sub(/^-tags=/, "", $2); print $2 }'
@@ -170,6 +181,7 @@ verify() {
   dpkg-deb --ctrl-tarfile "$deb" | tar -xO ./postinst | check_cache_dir "$(basename "$deb")"
   # restic's sftp backend runs ssh (ADR 0047).
   [ "$(dpkg-deb -f "$deb" Depends)" = openssh-client ] || die "$(basename "$deb"): Depends must be openssh-client"
+  dpkg-deb -f "$deb" Suggests | check_suggests "$(basename "$deb")" postgresql-client "$(dpkg-deb -f "$deb" Depends Pre-Depends Recommends)"
   rpm="$DIST/$("$RELEASE_VERSION" rpm-file "$VERSION" "$arch")"
   [ -f "$rpm" ] || die "$(basename "$rpm") missing"
   if command -v rpm >/dev/null; then
@@ -179,6 +191,7 @@ verify() {
     rpm -qlp "$rpm" 2>/dev/null | forbid "$(basename "$rpm")" /var/cache /var/cache/sard "$CACHE_DIR"
     rpm -qp --scripts "$rpm" 2>/dev/null | check_cache_dir "$(basename "$rpm")"
     rpm -qp --requires "$rpm" 2>/dev/null | grep -qx 'openssh-clients' || die "$(basename "$rpm"): must require openssh-clients"
+    rpm -qp --suggests "$rpm" 2>/dev/null | check_suggests "$(basename "$rpm")" postgresql "$(rpm -qp --requires --recommends "$rpm" 2>/dev/null)"
   else
     [ -z "${REQUIRE_RPM:-}" ] || die "rpm tool required (REQUIRE_RPM set)"
     echo "package-agent: $(basename "$rpm") contents not checked (no rpm tool)"

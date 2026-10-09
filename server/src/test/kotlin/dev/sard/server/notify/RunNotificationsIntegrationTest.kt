@@ -214,6 +214,41 @@ class RunNotificationsIntegrationTest(
         assertEquals("skipped", status(run))
     }
 
+    /** A scheduled run of [sourceId] queued [hour] hours after T0 that ends with [report] 2 min 30 s later. */
+    private fun scheduled(
+        sourceId: UUID,
+        report: StepReport,
+        hour: Long,
+    ): UUID {
+        clock.now = RUNS_NOW.plusSeconds(3600 * hour)
+        val run = runs.start(tenant.id, sourceId)
+        jdbc.update("update runs set trigger = 'schedule' where id = ?", run.id)
+        val step = run.steps.single().id
+        assertTrue(steps.claim(tenant.id, step))
+        assertTrue(steps.accepted(tenant.id, step, "accepted"))
+        clock.now = clock.now.plusSeconds(150)
+        results.record(tenant.id, tenant.agentId, step, report)
+        ticks()
+        return run.id
+    }
+
+    @Test
+    fun `scheduled runs notify the first failure of a series and the recovery, through the queue`() {
+        val source = sources.create(tenant.id, tenant.draft("db-main")).id
+        val failure = StepReport(StepState.FAILED, "disk full", null)
+
+        val quiet = scheduled(source, SUCCEEDED, 0)
+        val first = scheduled(source, failure, 1)
+        val again = scheduled(source, failure, 2)
+        val back = scheduled(source, SUCCEEDED, 3)
+
+        val statuses = listOf(quiet, first, again, back).map(::status)
+        assertEquals(listOf("skipped", "delivered", "skipped", "delivered"), statuses)
+        assertEquals(2, fake.requests.size)
+        assertEquals("❌ Бэкап завершился ошибкой: db-main", shown(0).lines().first())
+        assertEquals("✅ Бэкап снова выполнен после ошибок: db-main", shown(1).lines().first())
+    }
+
     // --- the text, end to end
 
     @Test

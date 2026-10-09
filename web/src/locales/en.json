@@ -47,6 +47,7 @@
   },
   "agents": {
     "title": "Agents",
+    "builtin": "Built-in",
     "duplicateAt": "Duplicate, last seen <when/>",
     "empty": "There are no agents yet. An agent registers with a token.",
     "host": "Host",
@@ -124,6 +125,7 @@
     "token_used": "The token is already used",
     "token_expired": "The token has expired",
     "origin_rejected": "The request was rejected: the origin does not match",
+    "self_agent_confirmation_required": "Revoking the built-in agent needs the confirmation sard-self",
     "unavailable": "The server is temporarily unavailable, try again",
     "not_implemented": "Not implemented",
     "unauthenticated": "The session has ended",
@@ -153,6 +155,7 @@
     "registeredAt": "Registered",
     "repositories": "Repositories",
     "revoke": "Revoke",
+    "revokeConfirmLabel": "To revoke the built-in agent type sard-self.",
     "revokeConnection": "The agent’s connection is closed at once.",
     "revokeHistory": "The history of runs and snapshots stays.",
     "revokeRuns": "New runs of its sources become impossible.",
@@ -162,6 +165,8 @@
     "sources": "Sources"
   },
   "tokens": {
+    "caFingerprint": "CA fingerprint of the server",
+    "caFingerprintHint": "Matches the part of an enrollment token after the last dot and the fingerprint in the server's start log.",
     "title": "Enrollment tokens",
     "agent": "Agent",
     "agentConnected": "The agent has connected.",
@@ -297,7 +302,8 @@
     "RunTrigger": {
       "schedule": "schedule",
       "manual": "manual",
-      "verification": "verification"
+      "verification": "verification",
+      "catch_up": "catch-up"
     }
   },
   "install": {

@@ -50,6 +50,9 @@ sard:
     # Holds the CA key; back it up separately from the database (docs/operations/pki.md).
     dir: ${SARD_PKI_DIR:/var/lib/sard/pki}
     server-names: ${SARD_PKI_SERVER_NAMES:localhost,127.0.0.1,::1}
+    # A CA to take at the first start, when dir holds none: <import-dir>/ca/ca.crt and ca.key, owner-only
+    # (docs/operator/08-migrate-and-remove.md, ADR 0052). Empty means: generate a new CA.
+    import-dir: ${SARD_PKI_IMPORT_DIR:}
   agent-packages:
     # /downloads/agent/: the agent packages of this server's version, baked into the image
     # (docs/adr/0043-agent-release.md). On without a valid release, the server does not start.
@@ -60,6 +63,14 @@ sard:
     # http, the host of the address agents dial (SARD_AGENT_ENDPOINT) and SARD_HTTP_PORT. Never taken from
     # request headers.
     downloads-url: ${SARD_AGENT_DOWNLOADS_URL:}
+  self-agent:
+    # The channel shared with the agent next to the server (sard-self): the server writes the password of the
+    # sard_self database role and the agent's enrollment token there (docs/operations/self-agent.md). Empty
+    # switches the whole mechanism off; set but unusable, the server does not start.
+    dir: ${SARD_SELF_DIR:}
+    # How often the server checks that the built-in agent has a token to enroll with, or is enrolled already.
+    # A positive duration; the server does not start with anything else.
+    check-interval: ${SARD_SELF_CHECK_INTERVAL:15s}
   agent:
     # Address agents dial (decision 5, S2b); empty means: first of sard.pki.server-names and the gRPC port.
     endpoint: ${SARD_AGENT_ENDPOINT:}

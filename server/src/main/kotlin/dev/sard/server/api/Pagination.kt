@@ -21,6 +21,7 @@ enum class CursorKind(
     SOURCES("sources"),
     RUNS("runs"),
     SNAPSHOTS("snapshots"),
+    FIRES("fires"),
 }
 
 /** A page of [items]; [nextCursor] is null on the last one. */

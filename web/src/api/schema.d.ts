@@ -28,6 +28,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sources/{sourceId}/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The source's schedule
+         * @description 404 when the source has none.
+         */
+        get: operations["getSchedule"];
+        /**
+         * Set the source's schedule
+         * @description Creates or replaces it; enabled=false disables it. Setting it unchanged keeps its next fire; a change starts over from now, without a catch-up. 422 validation_failed names cron or timezone.
+         */
+        put: operations["setSchedule"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sources": {
         parameters: {
             query?: never;
@@ -155,7 +179,7 @@ export interface paths {
         put?: never;
         /**
          * Revoke an agent
-         * @description Revokes all its certificates and closes its open stream at once; its queued, dispatched and running steps become lost. Its history stays. Revoking a revoked agent is a no-op and answers 200.
+         * @description Revokes all its certificates and closes its open stream at once; its queued, dispatched and running steps become lost. Its history stays. Revoking a revoked agent is a no-op and answers 200. A live built-in agent is revoked only with confirm=sard-self, else 409 and nothing changes; other agents ignore confirm.
          */
         post: operations["revokeAgent"];
         delete?: never;
@@ -196,6 +220,26 @@ export interface paths {
          * @description Newest first; also of a deleted source.
          */
         get: operations["listSourceSnapshots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources/{sourceId}/schedule/fires": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The journal of the source's schedule
+         * @description Newest recorded first; empty for a source without a schedule.
+         */
+        get: operations["listScheduleFires"];
         put?: never;
         post?: never;
         delete?: never;
@@ -290,6 +334,26 @@ export interface paths {
         };
         /** Token card */
         get: operations["getEnrollmentToken"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ca": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * CA of the server
+         * @description The fingerprint of the CA, whatever its origin. Requires an administrator session.
+         */
+        get: operations["getCa"];
         put?: never;
         post?: never;
         delete?: never;
@@ -394,7 +458,7 @@ export interface components {
             };
         };
         /** @enum {string} */
-        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "unavailable";
+        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "unavailable" | "self_agent_confirmation_required";
         /** @description An error (RFC 9457) */
         Problem: {
             /** @description URI reference identifying the problem type; about:blank when the status says it all */
@@ -448,6 +512,54 @@ export interface components {
             config: {
                 [key: string]: unknown;
             };
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A source's schedule as set */
+        ScheduleInput: {
+            /**
+             * @description Standard cron: five fields (minute hour day-of-month month day-of-week), names allowed
+             * @example 30 2 * * *
+             */
+            cron: string;
+            /**
+             * @description An IANA time zone, such as Europe/Berlin
+             * @example Europe/Berlin
+             */
+            timezone: string;
+            /** @description A disabled schedule keeps its cron and zone and does not fire */
+            enabled: boolean;
+        };
+        /** @description A source's schedule */
+        Schedule: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            sourceId: string;
+            /** @description Standard cron: five fields (minute hour day-of-month month day-of-week), names allowed */
+            cron: string;
+            /** @description An IANA time zone, such as Europe/Berlin */
+            timezone: string;
+            enabled: boolean;
+            /**
+             * Format: date-time
+             * @description The next fire by cron; null while disabled
+             */
+            nextRunAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the catch-up owed after a server downtime runs; null when none is owed
+             */
+            catchUpAt: string | null;
+            /** Format: date-time */
+            lastFiredAt: string | null;
+            /**
+             * Format: int32
+             * @description Fires skipped in a row: an active run, a revoked agent, a refusal
+             */
+            skippedInRow: number;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -567,7 +679,7 @@ export interface components {
             finishedAt: string | null;
         };
         /** @enum {string} */
-        RunTrigger: "schedule" | "manual" | "verification";
+        RunTrigger: "schedule" | "manual" | "verification" | "catch_up";
         /** @enum {string} */
         StepAction: "backup" | "restore" | "verify" | "run";
         /** @enum {string} */
@@ -682,6 +794,8 @@ export interface components {
             scriptNames: string[];
             /** @description True when the agent and the server's packages are both releases (vX.Y.Z) and the agent's version is lower by semver; false when it is newer, unknown or not a release */
             outdated: boolean;
+            /** @description True for the agent next to the server (sard-self), enrolled with the token the server wrote for it; revoking it needs confirm=sard-self */
+            builtin: boolean;
         };
         /** @description A plugin the agent offers */
         AgentPlugin: {
@@ -758,6 +872,55 @@ export interface components {
             /** @description Pass as cursor to get the next page; null on the last page */
             nextCursor: string | null;
         };
+        /** @description One fire of a schedule and what came of it */
+        ScheduleFire: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["ScheduleFireKind"];
+            /**
+             * Format: date-time
+             * @description The cron moment; for a downtime the first fire missed; for a catch-up its slot
+             */
+            scheduledFor: string;
+            outcome: components["schemas"]["ScheduleFireOutcome"];
+            /**
+             * Format: uuid
+             * @description The run created, or for skipped_active the run that was active
+             */
+            runId: string | null;
+            reason: components["schemas"]["ScheduleFireReason"] | null;
+            /**
+             * Format: int32
+             * @description skipped_downtime: how many fires were missed (counting stops at 10 000)
+             */
+            missedCount: number | null;
+            /**
+             * Format: date-time
+             * @description skipped_downtime: the last fire missed
+             */
+            missedUntil: string | null;
+            /**
+             * Format: int32
+             * @description Fires skipped in a row after this one
+             */
+            skippedInRow: number;
+            /** @description This skip brought skippedInRow to the alert threshold */
+            alert: boolean;
+            /** Format: date-time */
+            recordedAt: string;
+        };
+        /** @enum {string} */
+        ScheduleFireKind: "schedule" | "catch_up";
+        /** @enum {string} */
+        ScheduleFireOutcome: "run_created" | "skipped_active" | "skipped_gone" | "refused" | "skipped_downtime";
+        /** @description A page of a schedule's fires */
+        ScheduleFirePage: {
+            items: components["schemas"]["ScheduleFire"][];
+            /** @description Pass as cursor to get the next page; null on the last page */
+            nextCursor: string | null;
+        };
+        /** @enum {string} */
+        ScheduleFireReason: "source_deleted" | "agent_revoked" | "unknown_plugin" | "unknown_repository";
         /** @description The current administrator session */
         Session: {
             /**
@@ -872,6 +1035,14 @@ export interface components {
             /** @description Pass as cursor to get the next page; null on the last page */
             nextCursor: string | null;
         };
+        /** @description The CA of this server; public data, but only for a signed-in administrator */
+        CaInfo: {
+            /**
+             * @description SHA-256 of the root's DER SubjectPublicKeyInfo, 64 lower-case hex characters: the part of an enrollment token after the last dot
+             * @example 8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f
+             */
+            fingerprint: string;
+        };
         /** @description A page of agents */
         AgentPage: {
             items: components["schemas"]["AgentSummary"][];
@@ -910,6 +1081,8 @@ export interface components {
             duplicateSessionAt: string | null;
             /** @description True when the agent and the server's packages are both releases (vX.Y.Z) and the agent's version is lower by semver; false when it is newer, unknown or not a release */
             outdated: boolean;
+            /** @description True for the agent next to the server (sard-self), enrolled with the token the server wrote for it; revoking it needs confirm=sard-self */
+            builtin: boolean;
         };
         /** @enum {string} */
         InstallFormat: "deb" | "rpm" | "tar";
@@ -1157,6 +1330,126 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["RunActiveProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Schedule"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found in the session's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    setSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Schedule"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found in the session's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */
@@ -1677,7 +1970,10 @@ export interface operations {
     };
     revokeAgent: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description sard-self, exactly, to revoke a live built-in agent */
+                confirm?: string;
+            };
             header?: never;
             path: {
                 agentId: string;
@@ -1715,6 +2011,15 @@ export interface operations {
             };
             /** @description Not found in the session's tenant */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A live built-in agent needs confirm=sard-self; nothing was changed */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1785,6 +2090,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SnapshotPage"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found in the session's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listScheduleFires: {
+        parameters: {
+            query?: {
+                /** @description nextCursor of the previous page; omit for the first page */
+                cursor?: string;
+                /** @description Page size */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleFirePage"];
                 };
             };
             /** @description No session or it expired */
@@ -2066,6 +2434,44 @@ export interface operations {
             };
             /** @description Not found in the session's tenant */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getCa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaInfo"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

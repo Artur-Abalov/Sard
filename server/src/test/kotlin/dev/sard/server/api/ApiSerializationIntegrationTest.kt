@@ -56,6 +56,7 @@ class ApiSerializationIntegrationTest(
             revokedAt = null,
             duplicateSessionAt = at,
             outdated = false,
+            builtin = true,
         )
     private val step =
         RunStep(
@@ -106,6 +107,21 @@ class ApiSerializationIntegrationTest(
         EnrollmentToken(id, EnrollmentTokenStatus.USED, at, at, at, revokedAt = null, agentId = id, label = null)
     private val snapshot =
         Snapshot(id, "4f1c", id, id, id, id, "local", "a1b2", 10, 2, at, forgottenAt = null, partial = false)
+    private val schedule = Schedule(id, id, "30 2 * * *", "Europe/Berlin", true, at, null, at, 0, at, at)
+    private val fire =
+        ScheduleFire(
+            id,
+            ScheduleFireKind.SCHEDULE,
+            at,
+            ScheduleFireOutcome.SKIPPED_DOWNTIME,
+            runId = null,
+            reason = null,
+            missedCount = 3,
+            missedUntil = at,
+            skippedInRow = 0,
+            alert = false,
+            recordedAt = at,
+        )
     private val summaryRun =
         RunSummary(id, id, "etc", false, id, RunTrigger.MANUAL, RunStatus.FAILED, "boom", at, at, at)
 
@@ -113,6 +129,7 @@ class ApiSerializationIntegrationTest(
         listOf(
             StatusResponse("1.0.0", lastVerifiedRestoreAt = null),
             Overview(1, 3, FirstSteps(true, true, false, false, false, complete = false)),
+            CaInfo("8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f"),
             SessionRequest("secret"),
             Session(id, at),
             AgentPage(listOf(summary), nextCursor = "c2"),
@@ -133,6 +150,7 @@ class ApiSerializationIntegrationTest(
                 secretNames = listOf("pg"),
                 scriptNames = listOf("flush"),
                 outdated = true,
+                builtin = false,
             ),
             AgentInstall(
                 downloadsEnabled = true,
@@ -165,6 +183,9 @@ class ApiSerializationIntegrationTest(
             source,
             SourcePage(listOf(source), nextCursor = null),
             SnapshotPage(listOf(snapshot), nextCursor = null),
+            ScheduleInput("30 2 * * *", "Europe/Berlin", enabled = true),
+            schedule,
+            ScheduleFirePage(listOf(fire), nextCursor = null),
             Run(
                 id,
                 id,
@@ -308,6 +329,7 @@ class ApiSerializationIntegrationTest(
                 "AgentRepository",
                 "EnrollmentToken",
                 "Snapshot",
+                "ScheduleFire",
                 "RunStep",
                 "BackupOutput",
                 "RunSummary",

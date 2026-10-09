@@ -176,9 +176,10 @@ describe('with a session', () => {
     const { data } = await api.GET('/api/v1/agents')
     expect(data?.items.filter((a) => a.status === 'online').map((a) => a.hostname)).toEqual([
       'db1.example.com',
+      'sard-self',
     ])
     const online = await api.GET('/api/v1/agents', { params: { query: { status: 'online' } } })
-    expect(online.data?.items.map((a) => a.id)).toEqual([ids.dbAgent])
+    expect(online.data?.items.map((a) => a.id).sort()).toEqual([ids.dbAgent, ids.selfAgent].sort())
     const card = await api.GET('/api/v1/agents/{agentId}', {
       params: { path: { agentId: ids.dbAgent } },
     })
@@ -541,6 +542,43 @@ describe('agent revocation, soft delete and the new fields (S8b)', () => {
     expect(listed?.revokedAt).toBe(first.data?.revokedAt)
   })
 
+  const revokeSelf = (confirm?: string) =>
+    api.POST('/api/v1/agents/{agentId}/revoke', {
+      params: { path: { agentId: ids.selfAgent }, query: confirm === undefined ? {} : { confirm } },
+    })
+
+  test('the built-in agent is listed with builtin true, the others with false', async () => {
+    const items = must(await api.GET('/api/v1/agents')).items
+    expect(items.filter((a) => a.builtin).map((a) => a.id)).toEqual([ids.selfAgent])
+    expect(items.length).toBeGreaterThan(1)
+  })
+
+  test('revoking the built-in agent without the exact confirmation is 409 and changes nothing', async () => {
+    for (const confirm of [undefined, '', 'SARD-SELF', 'sard-self ', 'yes']) {
+      const { response, error } = await revokeSelf(confirm)
+      expect(response.status, String(confirm)).toBe(409)
+      expect(error).toMatchObject({ code: 'self_agent_confirmation_required' })
+    }
+    const card = must(await api.GET('/api/v1/agents/{agentId}', agentPath(ids.selfAgent)))
+    expect(card).toMatchObject({ revokedAt: null, status: 'online' })
+  })
+
+  test('with confirm sard-self the built-in agent is revoked; again without it is 200 and unchanged', async () => {
+    const first = await revokeSelf('sard-self')
+    expect(first.data).toMatchObject({ status: 'offline', builtin: true })
+    expect(first.data?.revokedAt).toBeTruthy()
+    const again = await revokeSelf()
+    expect(again.response.status).toBe(200)
+    expect(again.data?.revokedAt).toBe(first.data?.revokedAt)
+  })
+
+  test('an ordinary agent is revoked with or without confirm', async () => {
+    const { response } = await api.POST('/api/v1/agents/{agentId}/revoke', {
+      params: { path: { agentId: ids.dbAgent }, query: { confirm: 'yes' } },
+    })
+    expect(response.status).toBe(200)
+  })
+
   test('an unknown agent is 404 on revoke', async () => {
     const { response } = await api.POST('/api/v1/agents/{agentId}/revoke', agentPath(unknownId))
     expect(response.status).toBe(404)
@@ -631,6 +669,21 @@ describe('agent revocation, soft delete and the new fields (S8b)', () => {
   })
 })
 
+describe('F8 CA mock', () => {
+  const FINGERPRINT = '8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f'
+
+  test('the mock gives the fingerprint of the test vector, and token strings end with it', async () => {
+    await signIn()
+    expect(must(await api.GET('/api/v1/ca')).fingerprint).toBe(FINGERPRINT)
+    const created = must(await api.POST('/api/v1/enrollment-tokens', { body: {} }))
+    expect(created.token.endsWith(`.${FINGERPRINT}`)).toBe(true)
+  })
+
+  test('without a session the CA is refused', async () => {
+    expect((await api.GET('/api/v1/ca')).response.status).toBe(401)
+  })
+})
+
 describe('W2 mocks', () => {
   beforeEach(signIn)
   const agentPath = (agentId: string) => ({ params: { path: { agentId } } })
@@ -697,7 +750,7 @@ describe('W2 mocks', () => {
     })
     expect(agentsTotal).toBeLessThan(agents.length)
     await api.POST('/api/v1/agents/{agentId}/revoke', agentPath(ids.dbAgent))
-    expect(await overview()).toMatchObject({ agentsOnline: 0, agentsTotal: agentsTotal - 1 })
+    expect(await overview()).toMatchObject({ agentsOnline: 1, agentsTotal: agentsTotal - 1 })
   })
 
   test('the overview marks the first steps by the rules of the server', async () => {

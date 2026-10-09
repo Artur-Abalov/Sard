@@ -36,8 +36,8 @@ import java.util.UUID
 @Retention(AnnotationRetention.RUNTIME)
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    // The periodic stream checks stay out of the way; tests that need one call it by hand.
-    properties = ["spring.grpc.server.port=0", "sard.agent.stream.check-interval=1h"],
+    // The periodic stream checks and scheduler ticks stay out of the way; tests that need one call it by hand.
+    properties = ["spring.grpc.server.port=0", "sard.agent.stream.check-interval=1h", "sard.scheduler.interval=1h"],
 )
 @Import(TestcontainersConfiguration::class, RestApiTestConfiguration::class)
 annotation class RestApiTest
@@ -113,10 +113,12 @@ class RestWorld(
     fun enroll(
         tenant: UUID,
         hostname: String = "db1",
+        builtin: Boolean = false,
     ): TestAgent {
         val keys = newKeys()
         val csr = csrOf(keys)
-        val token = tokens.create(tenant, Duration.ofHours(1)).reveal()
+        val issued = if (builtin) tokens.replaceBuiltin(tenant) else tokens.create(tenant, Duration.ofHours(1))
+        val token = issued.reveal()
         val agent = enrollment.enroll(token, csr, hostname)
         val credentials =
             TlsChannelCredentials
@@ -132,8 +134,9 @@ class RestWorld(
         tenant: UUID,
         snapshot: AgentSnapshot? = snapshotOf(),
         hostname: String = "db1",
+        builtin: Boolean = false,
     ): TestAgent {
-        val agent = enroll(tenant, hostname)
+        val agent = enroll(tenant, hostname, builtin)
         snapshot?.let { registration.register(tenant, agent.agentId, it.copy(hostname = hostname)) }
         return agent
     }
@@ -241,10 +244,12 @@ class RestWorld(
         /** Children first. */
         val TENANT_TABLES =
             listOf(
+                "schedule_fires",
                 "snapshots",
                 "step_logs",
                 "run_steps",
                 "runs",
+                "schedules",
                 "sources",
                 "agent_plugins",
                 "agent_repositories",

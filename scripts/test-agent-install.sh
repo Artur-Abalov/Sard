@@ -9,7 +9,8 @@
 #   1. install N: user, directories and their owners and modes, the unit is
 #      neither enabled nor running and, left alone for 60 s, never restarts
 #      (NRestarts 0, empty journal); the output names the next step: the enroll
-#      command as sard-agent and the console for the token string (U1b);
+#      command through sudo (A8a, ADR 0050) and the console for the token
+#      string (U1b);
 #   2. as an administrator would: agent.yaml, "sudo -u sard-agent sard-agent
 #      enroll", "sudo -u sard-agent sard-agent repo init", then the service;
 #      the agent comes online with version N;
@@ -128,7 +129,7 @@ api() {
 check_fresh_install() {
   local output
   output="$(on_host "$INSTALL /root/old.$FAMILY 2>&1")" || die "install of the old $FAMILY: $output"
-  grep -q 'sudo -u sard-agent sard-agent enroll --server' <<<"$output" || die "the install does not print the enroll command: $output"
+  grep -q 'sudo sard-agent enroll --server' <<<"$output" || die "the install does not print the enroll command: $output"
   grep -qi 'console' <<<"$output" || die "the install does not point to the console for the token: $output"
   say "ok: the first install prints the next step"
   expect "service user" "getent passwd sard-agent | cut -d: -f6,7" "/var/lib/sard-agent:/usr/sbin/nologin"

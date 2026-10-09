@@ -233,7 +233,7 @@ Public key of the service user sard-agent: add it to authorized_keys of backup o
 **Блок `config`.** В начале `~/.ssh/config` команда ставит блок, который
 `ssh` применяет раньше любого `Host *` ниже:
 
-```
+```text
 # sard-agent begin <sftp.example.com>
 Host <sftp.example.com>
     StrictHostKeyChecking yes
@@ -284,7 +284,7 @@ Host <sftp.example.com>
 перехода по ссылкам, а файл, который не обычный, имеет больше одного имени,
 принадлежит не пользователю службы и не root или больше 1 МиБ, команда не
 читает и не меняет: `SSH_FILE_REJECTED` с путём и причиной. Ссылка на пути к
-домашнему каталогу — `SSH_HOME_INVALID`. Подробнее — ADR 0051.
+домашнему каталогу — `SSH_HOME_INVALID`. Подробнее — ADR 0054.
 
 `sudo sard-agent repo remove main` ключ, `known_hosts` и блок `config` не
 трогает: ими могут пользоваться другие репозитории. Итог называет файл

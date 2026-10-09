@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# sard-agent image for the e2e tests of the postgresql plugin (F1 ПГ20): the
+# official PostgreSQL image, so pg_dump, psql, pg_dumpall and pg_restore of the
+# major version BASE_IMAGE names are on the PATH, plus the very sard-agent and
+# restic of the release packages (test/e2e/agent/Dockerfile, ADR 0045). Unlike
+# the distroless image it has a shell, which the tests use to read the process
+# list. Build context: the unpacked tarball of `make package` with an empty
+# directory "empty/". Nothing is compiled or downloaded here but the base image.
+
+ARG BASE_IMAGE=postgres:18
+FROM ${BASE_IMAGE}
+COPY sard-agent restic /usr/libexec/sard/
+COPY LICENSE LICENSE.restic THIRD_PARTY_LICENSES NOTICE /usr/share/doc/sard-agent/
+COPY agent.example.yaml /etc/sard/
+# The user of the packages: uid 65532, as the files the tests hand to the agent
+# are owned by it (TarFiles.AGENT_UID); its home is the state directory.
+RUN useradd --system --uid 65532 --user-group --home-dir /var/lib/sard-agent --no-create-home --shell /usr/sbin/nologin sard-agent
+COPY --chown=65532:65532 --chmod=0700 empty/ /var/lib/sard-agent/
+COPY --chown=65532:65532 --chmod=0700 empty/ /var/cache/sard/restic/
+USER 65532:65532
+ENTRYPOINT ["/usr/libexec/sard/sard-agent"]
+CMD ["--config", "/etc/sard/agent.yaml"]

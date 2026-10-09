@@ -133,8 +133,12 @@ class RunSchemaIntegrationTest(
     }
 
     @Test
-    fun `only a manual run goes without a workflow`() {
-        refused("runs_workflow_check") { insertRun("queued", trigger = "schedule") }
+    fun `a verification run needs a workflow, manual and scheduled runs go without one`() {
+        // ADR 0022 as amended by F3a: a schedule fires its source, not a workflow.
+        refused("runs_workflow_check") { insertRun("succeeded", trigger = "verification") }
+        insertRun("succeeded", trigger = "schedule")
+        insertRun("succeeded", trigger = "catch_up")
+        refused("runs_trigger_check") { insertRun("succeeded", trigger = "cron") }
     }
 
     @Test

@@ -95,7 +95,9 @@ class Runs(
     ): RunView {
         val run =
             try {
-                sessions.inTenant(tenantId) { session -> create(session, sourceId) }
+                sessions.inTenant(tenantId) { session ->
+                    create(session, sourceId, Trigger.MANUAL, null, LockModeType.PESSIMISTIC_READ)
+                }
             } catch (e: ConstraintViolationException) {
                 if (e.constraintName != ACTIVE_RUN_KEY) throw e
                 // The run that won the index; if it has finished meanwhile, the source is free again.
@@ -105,6 +107,19 @@ class Runs(
         queued.onQueued(tenantId, run.agentId)
         return run
     }
+
+    /**
+     * A run of [sourceId] started by [scheduleId] inside the scheduler's transaction [session] (F3a): the same
+     * checks and run as [start], refused with the same [RunsException]s. The source's row is locked exclusively,
+     * so a concurrent manual start waits for this transaction and then sees its run, instead of racing on the
+     * D6 index. The caller tells [StepsQueued] once its transaction commits.
+     */
+    internal fun startScheduled(
+        session: Session,
+        sourceId: UUID,
+        trigger: Trigger,
+        scheduleId: UUID,
+    ): RunView = create(session, sourceId, trigger, scheduleId, LockModeType.PESSIMISTIC_WRITE)
 
     /** The run [runId] of the tenant with its steps; null if there is none (a deleted source's run is one). */
     fun get(
@@ -149,16 +164,22 @@ class Runs(
             }
         }
 
+    /**
+     * A manual start takes a shared [sourceLock]: concurrent starts race on the index, a delete waits for them (and
+     * they for it). A scheduled start takes it exclusively (see [startScheduled]).
+     */
     private fun create(
         session: Session,
         sourceId: UUID,
+        trigger: Trigger,
+        scheduleId: UUID?,
+        sourceLock: LockModeType,
     ): RunView {
-        // A shared lock: concurrent starts race on the index, a delete waits for them (and they for it).
-        val source = liveSource(session, sourceId, LockModeType.PESSIMISTIC_READ)
+        val source = liveSource(session, sourceId, sourceLock)
         AgentOffer.require(session, source.agentId, source.plugin, source.repositoryName, LockModeType.PESSIMISTIC_READ)
         activeRunOf(session, sourceId)?.let { throw RunActive(it) }
         val now = clock.instant()
-        val run = RunRecord(ids.next(), sourceId, Trigger.MANUAL.stored, RunState.QUEUED.stored, now)
+        val run = RunRecord(ids.next(), sourceId, trigger.stored, RunState.QUEUED.stored, now, scheduleId)
         val step = backupStep(run, source)
         session.persist(run)
         session.persist(step)

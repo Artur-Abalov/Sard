@@ -15,6 +15,7 @@
 | agent | google.golang.org/genproto/googleapis/rpc (пакет errdetails) | v0.0.0-20260706201446-f0a921348800 | Apache-2.0 | runtime | разбор `google.rpc.ErrorInfo` в отказах `Enroll` (A2a, домен `sard.dev`, ADR 0025) — ранее приходила транзитивно через grpc, объявлена явно, так как код использует её типы напрямую |
 | agent | github.com/santhosh-tekuri/jsonschema/v6 | v6.0.3 | Apache-2.0 | runtime | валидация `config_json` по `ConfigSchema()` плагина (draft 2020-12), формат `sard-secret`; ADR 0027 |
 | agent | pgregory.net/rapid | v1.3.0 | MPL-2.0 (без приложения B «Incompatible With Secondary Licenses», совместима с AGPL-3.0) | только тесты, в бинарник не попадает | тесты свойств `internal/redact` (A7a): случайные тексты и разбиения на порции с уменьшением контрпримера; своих зависимостей нет |
+| agent (плагин postgresql, F1) | — | — | — | — | только stdlib; драйвера PostgreSQL нет: `psql`, `pg_dump`, `pg_dumpall` — программы хоста (пакет `postgresql-client`), в сборку и в пакеты агента не входят, deb и rpm их только предлагают (`Suggests`); ADR 0051 |
 | cli | github.com/spf13/cobra | v1.10.2 | Apache-2.0 | runtime | дерево подкоманд `sardctl` |
 | cli | github.com/spf13/pflag (транзитивно) | v1.0.9 | BSD-3-Clause | runtime | флаги для cobra |
 
@@ -54,7 +55,7 @@
 | spring-boot-starter-actuator | 4.1.1 | Apache-2.0 | runtime | `/actuator/health` |
 | spring-boot-starter-data-jpa (Hibernate ORM 7.4, jakarta.persistence-api 3.2) | 4.1.1 | Apache-2.0; persistence-api — EPL-2.0 **или** EDL-1.0 (BSD-3), используем EDL | runtime | таблица `agents` |
 | spring-boot-starter-flyway + flyway-database-postgresql | 4.1.1 / 12.4.0 | Apache-2.0 | runtime | миграции |
-| org.postgresql:postgresql | 42.7.13 | BSD-2-Clause | runtime | JDBC-драйвер |
+| org.postgresql:postgresql | 42.7.13 | BSD-2-Clause | runtime; в коде — только PGConnection.alterUserPassword (пароль роли sard_self, SCRAM на стороне клиента) | JDBC-драйвер |
 | org.bouncycastle:bcpkix-jdk18on (+ bcprov-jdk18on, bcutil-jdk18on транзитивно) | 1.86 | Bouncy Castle Licence (MIT) | runtime | локальный CA: разбор CSR агента, выпуск X.509 (у JDK нет публичного API для этого) — ADR 0014 |
 | spring-boot-starter-grpc-server (spring-grpc-core 1.1.1, grpc-netty 1.83.1) | 4.1.1 | Apache-2.0 | runtime | gRPC-сервер `AgentService`; `grpc-services` из него — health-check (`HealthGrpc` в списке открытых сервисов S3) |
 | io.grpc:grpc-protobuf (+ com.google.api.grpc:proto-google-common-protos транзитивно) | 1.83.1 / 2.64.1 | Apache-2.0 | runtime | `google.rpc.ErrorInfo` в деталях статуса Enroll (S2b, контракт отказов) — уже транзитивная зависимость spring-boot-starter-grpc-server, объявлена явно, так как код использует её классы напрямую |
