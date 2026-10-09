@@ -13,14 +13,14 @@ import java.nio.file.Path
  * The CA directory and the database are one installation (F4a, Р19), and every context of a test gets a database
  * of its own, so it gets a CA directory of its own: a new directory under `sard.test.pki-base` (build.gradle.kts).
  * A test that restarts the server or looks at the CA directory names it itself with `sard.pki.dir` in its
- * properties (or in the default properties of a server it starts itself), and keeps it.
+ * properties (or in the command line of a server it starts itself), and keeps it.
  */
 class FreshPkiDirectory : ApplicationContextInitializer<ConfigurableApplicationContext> {
     override fun initialize(context: ConfigurableApplicationContext) {
         val environment = context.environment
         val base = System.getProperty("sard.test.pki-base") ?: return
         val named =
-            listOf("Inlined Test Properties", "defaultProperties").any {
+            listOf("Inlined Test Properties", "commandLineArgs").any {
                 environment.propertySources[it]?.containsProperty("sard.pki.dir") == true
             }
         if (named) return
