@@ -18,6 +18,16 @@ enum class CaUsage {
     AGENT_CERTIFICATES,
 }
 
+/** Why the CA cannot be replaced, as the refusals of a start say it. */
+internal fun CaUsage.reason(): String =
+    if (this ==
+        CaUsage.STEP_CA_COMPLETE
+    ) {
+        "onboarding step ca is complete"
+    } else {
+        "agent certificates issued"
+    }
+
 /**
  * What the database knows about the CA directory (F4a, Р11, Р12, Р19): the origin of each CA by the fingerprint
  * of its root, and whether a CA is already in use. The CA directory and the database are one installation; the

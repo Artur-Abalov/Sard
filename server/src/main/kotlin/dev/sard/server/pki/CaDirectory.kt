@@ -21,8 +21,6 @@ internal val OWNER = setOf(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE)
 private const val TOGETHER =
     "server volumes are reinstalled together (the database and the CA directory); " +
         "see docs/operator/09-troubleshooting.md"
-private const val STEP_CA_COMPLETE = "onboarding step ca is complete"
-private const val AGENT_CERTIFICATES = "agent certificates issued"
 
 /** A key file or directory that someone besides its owner may access. */
 class InsecureKeyStorageException(
@@ -143,14 +141,12 @@ class CaDirectory(
             "the CA ${fingerprint.hex} in ${store.caPath}: CA origin is not recorded in the database; $TOGETHER",
         )
 
-    private fun missing(usage: CaUsage): CaStartRefused {
-        val why = if (usage == CaUsage.STEP_CA_COMPLETE) STEP_CA_COMPLETE else AGENT_CERTIFICATES
-        return CaStartRefused(
+    private fun missing(usage: CaUsage): CaStartRefused =
+        CaStartRefused(
             CaStartRefusal.CA_MISSING,
-            "CA directory is empty: no CA in ${store.caPath}, and the database says the CA is in use ($why); " +
+            "CA directory is empty: no CA in ${store.caPath}, and the database says the CA is in use (${usage.reason()}); " +
                 "set SARD_PKI_IMPORT_DIR to the backup of the CA to bring it back; $TOGETHER",
         )
-    }
 
     /** A failed write while importing is a refusal that names the directory; otherwise the failure is passed on. */
     private fun <T> writing(

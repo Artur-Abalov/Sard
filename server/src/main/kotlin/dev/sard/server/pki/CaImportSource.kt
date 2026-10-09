@@ -148,15 +148,12 @@ class CaImportSource(
         present: CaFingerprint,
         theirs: CaFingerprint,
         usage: CaUsage,
-    ): CaImportRefused {
-        val why =
-            if (usage == CaUsage.STEP_CA_COMPLETE) "onboarding step ca is complete" else "agent certificates issued"
-        return refusal(
+    ): CaImportRefused =
+        refusal(
             CaImportRefusal.CA_ALREADY_PRESENT,
-            "the CA directory holds ${present.hex}, the source holds ${theirs.hex}: $why, so the CA cannot be " +
+            "the CA directory holds ${present.hex}, the source holds ${theirs.hex}: ${usage.reason()}, so the CA cannot be " +
                 "replaced; to move a server see docs/operator/08-migrate-and-remove.md",
         )
-    }
 
     /** The CA directory could not be written; the refusal names it, never a file's content. */
     override fun writeFailed(
