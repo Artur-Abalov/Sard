@@ -354,6 +354,8 @@ class ApiSerializationIntegrationTest(
                 "EnrollmentToken",
                 "Snapshot",
                 "ScheduleFire",
+                "ScheduleLastRun",
+                "CatchUp",
                 "RunStep",
                 "BackupOutput",
                 "RunSummary",
