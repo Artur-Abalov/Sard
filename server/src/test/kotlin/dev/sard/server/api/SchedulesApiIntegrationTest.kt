@@ -151,4 +151,80 @@ class SchedulesApiIntegrationTest(
         assertEquals(listOf("run_created"), second.pluck("items", "outcome"))
         assertTrue(second.path("nextCursor").isNull)
     }
+
+    private fun preview(query: String) = world.api.get("/api/v1/schedule-preview?$query", admin)
+
+    private val longCron = "0,".repeat(100) + "0 2 * * *"
+
+    @Test
+    fun `a preview names the cron as it is saved, the words, three fires and the zone`() {
+        val json = preview("cron=%20%200%20%202%20*%20*%20*&timezone=Europe/Berlin&lang=ru").json
+
+        assertEquals("0 2 * * *", json.path("cron").asString())
+        assertEquals("Europe/Berlin", json.path("timezone").asString())
+        assertEquals("Каждый день в 02:00", json.path("description").asString())
+        assertEquals(3, json.path("nextFires").size())
+        assertTrue(json.path("nextFires").list().all { it.asString().endsWith("Z") })
+        assertEquals(false, json.path("tooFrequent").asBoolean())
+    }
+
+    @Test
+    fun `a preview without a language is in English and without a zone is in the server's`() {
+        val json = preview("cron=*/5%20*%20*%20*%20*").json
+
+        assertEquals("Every 5 minutes", json.path("description").asString())
+        assertEquals(true, json.path("tooFrequent").asBoolean())
+        assertTrue(json.path("timezone").asString().isNotEmpty())
+    }
+
+    @Test
+    fun `a preview writes nothing and needs a session`() {
+        val before = world.count("schedules", tenant)
+        preview("cron=0%202%20*%20*%20*&timezone=UTC")
+        assertEquals(before, world.count("schedules", tenant))
+        assertEquals(0, world.count("schedule_fires", tenant))
+        assertEquals(401, world.api.get("/api/v1/schedule-preview?cron=0%202%20*%20*%20*", null).status)
+    }
+
+    @Test
+    fun `a preview refuses what saving refuses, naming the field`() {
+        val wrong =
+            listOf(
+                "cron=&timezone=UTC" to "cron",
+                "cron=0%202%20*%20*&timezone=UTC" to "cron",
+                "cron=0%202%20*%20*%20*&timezone=%2B03:00" to "timezone",
+                "cron=0%202%20*%20*%20*&timezone=" to "timezone",
+                "cron=0%202%20*%20*%20*&timezone=UTC&lang=de" to "lang",
+            )
+        for ((query, field) in wrong) {
+            val response = preview(query)
+            assertEquals(422, response.status, query)
+            assertEquals("validation_failed", response.code)
+            assertEquals(listOf(field), response.errorFields(), query)
+        }
+    }
+
+    @Test
+    fun `a cron longer than 200 characters is a 422 on the cron field, and the old schedule stays`() {
+        val source = source()
+        val logs =
+            captureLogs {
+                val created = put(source, cron = longCron)
+                assertEquals(422, created.status, created.toString())
+                assertEquals(listOf("cron"), created.errorFields())
+                assertEquals("cron is longer than 200 characters", created.json.path("errors").get(0).path("message").asString())
+                assertTrue("0,0,0,0,0" !in created.body)
+                assertEquals(404, world.api.get("/api/v1/sources/$source/schedule", admin).status)
+
+                put(source, cron = "0 2 * * *")
+                val replaced = put(source, cron = longCron)
+                assertEquals(422, replaced.status, replaced.toString())
+                assertEquals("0 2 * * *", world.api.get("/api/v1/sources/$source/schedule", admin).json.path("cron").asString())
+
+                val previewed = preview("cron=${longCron.replace(" ", "%20")}&timezone=UTC")
+                assertEquals(422, previewed.status, previewed.toString())
+                assertEquals(listOf("cron"), previewed.errorFields())
+            }
+        assertTrue(logs.none { "database unavailable" in it })
+    }
 }

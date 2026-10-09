@@ -155,4 +155,31 @@ class CronScheduleTest {
         assertEquals("0 9 * * 1", schedule.cron)
         assertEquals("Asia/Yerevan", schedule.zone.id)
     }
+
+    private fun minutes(count: Int) = List(count) { "0" }.joinToString(",")
+
+    @Test
+    fun `a cron longer than 200 characters once normalised is refused without echoing it`() {
+        val long = "0,".repeat(100) + "0 2 * * *"
+        assertEquals(209, long.length)
+        val e = assertFailsWith<InvalidSchedule> { MutFlow.underTest { CronSchedule.parse(long, "UTC") } }
+        assertEquals(ScheduleField.CRON, e.field)
+        assertEquals("cron is longer than 200 characters", e.message)
+    }
+
+    @Test
+    fun `a cron of exactly 200 characters is accepted`() {
+        val cron = minutes(96) + " 22 * * *"
+        assertEquals(200, cron.length)
+        assertEquals(cron, MutFlow.underTest { CronSchedule.parse(cron, "UTC") }.cron)
+    }
+
+    @Test
+    fun `the length counts the normalised cron, not input padded with spaces`() {
+        val normalised = minutes(91) + " 22 * * *"
+        assertEquals(190, normalised.length)
+        val padded = "  " + normalised.replace(" ", "   ") + "     "
+        assertEquals(true, padded.length > 200)
+        assertEquals(normalised, MutFlow.underTest { CronSchedule.parse(padded, "UTC") }.cron)
+    }
 }
