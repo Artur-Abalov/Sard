@@ -206,19 +206,31 @@ func (c *hostCmd) prepareAccess(st *addState, plan hostsetup.AddPlan) *refusal.F
 	if (config.Repository{URL: st.url}).Backend() != "s3" {
 		return nil
 	}
-	if f := c.prepareS3(st); f != nil {
+	if f := c.prepareS3(st, plan); f != nil {
 		return f
 	}
 	st.rotation = plan == hostsetup.AddUnchanged && !st.s3.Same
-	return c.refuseKeysWithPassword(st)
-}
-
-// refuseKeysWithPassword: a change of keys never touches the password.
-func (c *hostCmd) refuseKeysWithPassword(st *addState) *refusal.Failure {
-	if st.rotation && (c.opts.passwordStdin || c.opts.passwordFromFile != "") {
-		return usageFailureOf("a change of the keys of a connected repository does not take a password: drop --password-stdin and --password-from-file")
+	if st.rotation {
+		return c.refusePasswordWithKeys()
 	}
 	return nil
+}
+
+// refusePasswordWithKeys: a change of keys takes the password from the
+// password file of the repository, never from a flag (П16). It is decided
+// as soon as the change is known, before the secret key is read.
+func (c *hostCmd) refusePasswordWithKeys() *refusal.Failure {
+	var given []string
+	if c.opts.passwordStdin {
+		given = append(given, "--password-stdin")
+	}
+	if c.opts.passwordFromFile != "" {
+		given = append(given, "--password-from-file")
+	}
+	if len(given) == 0 {
+		return nil
+	}
+	return usageFailureOf("a change of the keys of a connected repository takes the password from the password file of the repository: drop %s", strings.Join(given, " and "))
 }
 
 // repeatOf handles the command of a connected repository that changes

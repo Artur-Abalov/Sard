@@ -52,10 +52,15 @@ func checkAddSources(o hostOptions) *refusal.Failure {
 // the env file in place is read here, as root may, only through the
 // owner-checked read (R4, ADR 0050), and the secret key is read from its
 // flag or asked at the terminal, before the locks.
-func (c *hostCmd) prepareS3(st *addState) *refusal.Failure {
+func (c *hostCmd) prepareS3(st *addState, plan hostsetup.AddPlan) *refusal.Failure {
 	inPlace, _, f := repoconnect.ReadInPlace(c.owned(), c.layout.EnvFile(st.name))
 	if f != nil {
 		return f
+	}
+	if plan == hostsetup.AddUnchanged && !repoconnect.HoldsKeys(inPlace, c.opts.accessKeyID, c.opts.region) {
+		if f := c.refusePasswordWithKeys(); f != nil {
+			return f
+		}
 	}
 	access, f := repoconnect.ChooseS3Env(inPlace, c.opts.accessKeyID, c.opts.region, c.givesSecretKey(),
 		func() ([]byte, *refusal.Failure) { return c.readSource(secretKeySource(c.opts)) })

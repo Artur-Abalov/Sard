@@ -161,3 +161,22 @@ func TestALeftoverPasswordFileThatReadsAsASecretIsUsed(t *testing.T) {
 		t.Fatalf("%v %q", f, w.repo.password)
 	}
 }
+
+func TestTheKeysAreTheSameOnlyForTheSameKeyIDAndRegion(t *testing.T) {
+	env := []byte("AWS_ACCESS_KEY_ID=KEY-ID-1\nAWS_SECRET_ACCESS_KEY=s\nAWS_DEFAULT_REGION=r1\n")
+	for _, c := range []struct {
+		env        []byte
+		id, region string
+		want       bool
+	}{
+		{env, "KEY-ID-1", "r1", true},
+		{env, "KEY-ID-2", "r1", false},
+		{env, "KEY-ID-1", "r2", false},
+		{env, "KEY-ID-1", "", false},
+		{nil, "KEY-ID-1", "r1", false},
+	} {
+		if got := repoconnect.HoldsKeys(c.env, c.id, c.region); got != c.want {
+			t.Errorf("HoldsKeys(%q, %s, %s) = %v", c.env, c.id, c.region, got)
+		}
+	}
+}

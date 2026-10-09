@@ -55,7 +55,7 @@ type S3Access struct {
 // key (the terminal, or SECRET_SOURCE_MISSING). inPlace is the env file
 // in place, nil if none.
 func ChooseS3Env(inPlace []byte, id, region string, sourceGiven bool, secretKey func() ([]byte, *refusal.Failure)) (S3Access, *refusal.Failure) {
-	if !sourceGiven && holdsKeys(inPlace, id, region) {
+	if !sourceGiven && HoldsKeys(inPlace, id, region) {
 		return S3Access{Same: true, Secrets: secretAssignmentsOf(inPlace)}, nil
 	}
 	raw, f := secretKey()
@@ -70,8 +70,9 @@ func ChooseS3Env(inPlace []byte, id, region string, sourceGiven bool, secretKey 
 	return S3Access{Content: content, Same: bytes.Equal(inPlace, content), Secrets: secretAssignmentsOf(content)}, nil
 }
 
-// holdsKeys: the env file in place has the key id and the region asked for.
-func holdsKeys(inPlace []byte, id, region string) bool {
+// HoldsKeys: the env file in place has the key id and the region asked for;
+// with another key id or region the keys change (П16), whatever the secret.
+func HoldsKeys(inPlace []byte, id, region string) bool {
 	if inPlace == nil {
 		return false
 	}

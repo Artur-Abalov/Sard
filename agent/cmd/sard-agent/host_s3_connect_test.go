@@ -481,7 +481,7 @@ func TestARepeatThatTheStorageRefusesIsNotASuccess(t *testing.T) {
 
 // F1: a change of keys touches the env file only.
 
-func TestNewKeysThatSeeNoRepositoryLeaveAConnectedS3RepositoryAlone(t *testing.T) {
+func TestNewKeysThatDoNotSeeTheRepositoryAreRefusedWithoutTracesAndWithoutInit(t *testing.T) {
 	h := newSetupHost(t)
 	h.connectedS3()
 	h.s3Repo().script = func(sub string, env []string) (string, int, bool) {
@@ -499,7 +499,7 @@ func TestNewKeysThatSeeNoRepositoryLeaveAConnectedS3RepositoryAlone(t *testing.T
 	h.assertS3ValuesHidden(stdout, stderr)
 }
 
-func TestAChangeOfKeysNeverAsksForOrReplacesThePassword(t *testing.T) {
+func TestAChangeOfKeysWithAPasswordFileThatDoesNotOpenTheRepositoryIsWrongPasswordWithoutAQuestion(t *testing.T) {
 	h := newSetupHost(t)
 	h.connectedS3()
 	h.write(h.path("secrets/restic-extra.pass"), "not-the-password\n", 0o600)

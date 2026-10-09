@@ -117,7 +117,7 @@ func TestAFlagOfAnotherKindOfAddressIsRefusedWithItsName(t *testing.T) {
 	}
 }
 
-func TestTheFirstS3ConnectionWithoutAKeyIDIsRefusedWithTheFlagName(t *testing.T) {
+func TestAnS3ConnectionWithoutAKeyIDIsRefusedWithTheFlagName(t *testing.T) {
 	h := newSetupHost(t)
 	before := h.hostTree()
 	h.stdinIs(s3Marker)

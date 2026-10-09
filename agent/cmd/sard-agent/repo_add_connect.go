@@ -106,9 +106,11 @@ func (c *hostCmd) prepareStorage(st *addState) *refusal.Failure {
 }
 
 // failConnect reports a failure of the backend; the files the command
-// left are named: the command used them, a repeat will too (Р16).
+// left are named, whatever the class of the refusal: the command used
+// them, a repeat will too (Р16, П12). An interrupt or a timeout says it
+// in its own words.
 func (c *hostCmd) failConnect(ctx context.Context, st *addState, f *refusal.Failure) int {
-	if c.exists(st.final(c)) && repoinit.Interruption(ctx) == nil && f.Class == refusal.ClassAgentError {
+	if c.exists(st.final(c)) && repoinit.Interruption(ctx) == nil {
 		_, _ = fmt.Fprintf(c.stderr, "sard-agent repo add: %s will be used when the command is repeated\n", c.keptFiles(st))
 	}
 	return c.fail(f)

@@ -10,7 +10,7 @@ import (
 
 // Rule "Отказ хранилища называет свой класс и причину".
 
-func TestTheRefusalOfAnS3StorageNamesItsClassCauseAndAddress(t *testing.T) {
+func TestTheRefusalOfAnS3StorageOnTheFirstAccessNamesItsClassCauseAndWhatToDo(t *testing.T) {
 	for _, c := range []struct {
 		sub, line string
 		code      int
@@ -21,8 +21,6 @@ func TestTheRefusalOfAnS3StorageNamesItsClassCauseAndAddress(t *testing.T) {
 		{"cat", "Fatal: unable to open config file: Stat: The Access Key Id you provided does not exist in our records.", exitUsage, "S3_KEY_REJECTED", "does not exist in our records"},
 		{"cat", "Fatal: unable to open config file: Stat: The request signature we calculated does not match the signature you provided.", exitUsage, "S3_KEY_REJECTED", "signature"},
 		{"cat", "unable to create lock in backend: client.PutObject: Forbidden: Operation is not allowed for this key.", exitUsage, "STORAGE_ACCESS_DENIED", "Operation is not allowed for this key"},
-		{"init", "Fatal: create repository at " + s3Address + " failed: client.PutObject: Forbidden: Operation is not allowed for this key.", exitUsage, "STORAGE_ACCESS_DENIED", "Operation is not allowed for this key"},
-		{"init", "Fatal: create repository at " + s3Address + " failed: The specified bucket does not exist", exitUsage, "BUCKET_NOT_FOUND", "bucket-b"},
 		{"cat", "Fatal: unable to open config file: Stat: Get \"https://s3.example.com/bucket-b/extra/config\": dial tcp: lookup s3.example.com: no such host", exitTemporary, "BACKEND_UNAVAILABLE", "no such host"},
 		{"cat", "Fatal: unable to open config file: Stat: unexpected response 418", exitAgentError, "BACKEND_REFUSED", "unexpected response 418"},
 	} {
@@ -36,9 +34,35 @@ func TestTheRefusalOfAnS3StorageNamesItsClassCauseAndAddress(t *testing.T) {
 			}
 		}
 		h.assertS3ValuesHidden(stdout, stderr)
-		if c.sub == "cat" {
-			h.assertNoS3Traces()
+		h.assertNoS3Traces()
+	}
+}
+
+// П12: a refusal of init leaves the env file and the password file, and
+// says so, whatever its class.
+func TestARefusalOfAnS3StorageWhileCreatingKeepsTheEnvFileAndThePasswordForARepeat(t *testing.T) {
+	for _, c := range []struct{ line, reason, text string }{
+		{"Fatal: create repository at " + s3Address + " failed: client.PutObject: Forbidden: Operation is not allowed for this key.", "STORAGE_ACCESS_DENIED", "Operation is not allowed for this key"},
+		{"Fatal: create repository at " + s3Address + " failed: The specified bucket does not exist", "BUCKET_NOT_FOUND", "bucket-b"},
+	} {
+		h := newSetupHost(t)
+		h.s3Repo().answers("init", c.line, 1)
+		code, stdout, stderr := h.s3Cmd()
+		assertRefusal(t, code, stderr, exitUsage, c.reason)
+		for _, want := range []string{c.text, "will be used when the command is repeated", h.envPath(), h.path("secrets/restic-extra.pass")} {
+			if !strings.Contains(stderr, want) {
+				t.Errorf("%s: stderr lacks %q:\n%s", c.reason, want, stderr)
+			}
 		}
+		for _, p := range []string{h.envPath(), h.path("secrets/restic-extra.pass")} {
+			h.assertOwner(p, serviceUID)
+			h.assertMode(p, 0o600)
+		}
+		h.assertAbsent(h.path("agent.d/repo-extra.yaml"))
+		if left := h.tempFilesIn(h.secretsDir()); len(left) != 0 || h.sd.touched() {
+			t.Errorf("temporary files %v, systemctl %v", left, h.sd.calls)
+		}
+		h.assertS3ValuesHidden(stdout, stderr)
 	}
 }
 
@@ -62,7 +86,7 @@ func TestTheTextOfResticInTheMessageIsScrubbedOfTheKeyAndThePassword(t *testing.
 	code, stdout, stderr := h.sudo("repo", "add", "extra", s3Address, "--access-key-id", keyID1,
 		"--secret-key-from-file", key, "--password-stdin", "--config", "C")
 	assertCode(t, code, exitAgentError)
-	if !strings.Contains(stderr, "[REDACTED]") {
+	if !strings.Contains(stderr, "[REDACTED]") || strings.Contains(stderr, "***") {
 		t.Fatalf("stderr %q", stderr)
 	}
 	h.assertS3ValuesHidden(stdout, stderr)
