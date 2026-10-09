@@ -13,6 +13,7 @@ import dev.sard.server.agents.dispatch.ReconciledHellos
 import dev.sard.server.agents.dispatch.StepDispatcher
 import dev.sard.server.auth.AdminSession
 import dev.sard.server.extension.TenantResolver
+import dev.sard.server.onboarding.CODE
 import dev.sard.server.onboarding.SetupCodeGenerator
 import dev.sard.server.pki.MovableClock
 import org.springframework.boot.test.context.TestConfiguration
@@ -39,7 +40,7 @@ import java.util.UUID
 val T0: Instant = Instant.now().truncatedTo(ChronoUnit.SECONDS)
 
 /** The setup code every REST test server prints; [ApiClient.signIn] enters it. */
-const val WIZARD_CODE = "ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345"
+const val WIZARD_CODE = CODE
 
 /** The password [ApiClient.signIn] sets in the wizard, and signs in with afterwards. */
 const val TEST_ADMIN_PASSWORD = "test-admin-password-2026"
