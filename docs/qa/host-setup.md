@@ -5,7 +5,8 @@
 8–11 ниже) утверждён владельцем 2026-10-08 (Н14–Н25); шаги, которые проверяют
 решение по ответу, помечены «(Н<номер>)». Шаблоны адресов провайдеров A8b-3
 (часть 11) ждут подтверждения владельца. Поправки П12–П17 (2026-10-09)
-учтены в шагах 51, 54а, 54б. A8b-1 реализован; его e2e на стенде ещё не
+учтены в шагах 51, 54а, 54б; поправки A8b-2 П18–П28 — в шагах 62а–62в,
+66, 66а, 70. A8b-1 реализован; его e2e на стенде ещё не
 прогнаны. Классы и номера кодов выхода —
 A2b (ADR 0025); A8b добавляет к `repo add` код `5` (доверие: ключ хоста
 SFTP).
@@ -434,6 +435,20 @@ sshsnap() { sudo find "$HOME_SA/.ssh" -printf '%u %g %m %n %s %p\n' 2>/dev/null 
     репозиторием `f1` из консоли → `succeeded`.
 62. Повтор ещё раз: `sshsnap > "$OUT/ss1"; sudo $AG repo add f1 sftp:backup@$SH:/srv/sftp/repo/f1`
     → `exit=0`, `unchanged`, `Z`; `sshsnap | diff - "$OUT/ss1"` → пусто.
+62а. (П24) `sudo $AG repo add f1 sftp:backup@$SH:/srv/sftp/repo/f1 --password-from-file /nonexistent`
+    → `exit=2`, называет `--password-from-file` (файл не открывался: нет
+    сообщения о `/nonexistent`). (П20) Администратор временно убирает ключ
+    из `authorized_keys`; повтор шага 62 → `exit=2`,
+    `SSH_KEY_NOT_AUTHORIZED`, не `unchanged`, за время меньше 40 с; вернуть ключ.
+62б. (П26) Для каждого хоста `a,b`, `*`, `*.example.com`, `h?`, `!h`, `a b`,
+    `h#c` и адресов `sftp:u@h@x:/x`, `sftp:u,v@h:/x`:
+    `run sudo $AG repo add bad "sftp:backup@<хост>:/x" --host-key-fingerprint $FP`
+    → `exit=2`, `ADDRESS_INVALID`; `sshsnap | diff - "$OUT/ss1"` → пусто.
+62в. (П25) `sudo chmod 0775 $HOME_SA; run sudo $AG repo add f1 sftp:backup@$SH:/srv/sftp/repo/f1`
+    → `exit=2`, `SSH_HOME_INVALID`; `sudo chmod 0755 $HOME_SA`.
+    `sudo chmod 0620 $HOME_SA/.ssh/known_hosts;` повтор → `exit=2`,
+    `SSH_FILE_REJECTED`, путь `known_hosts`; вернуть `0600`.
+    (П23) `sudo stat -c '%a' $HOME_SA/.ssh/id_ed25519.pub` → `644`.
 63. Каталог только на чтение: `run sudo $AG repo add f2 sftp:backup@$SH:/srv/sftp/ro/f2`
     → `exit=2`, `STORAGE_ACCESS_DENIED`, `permission denied`.
 64. Сервер молча пропал: на сервере SFTP
@@ -455,7 +470,12 @@ sshsnap() { sudo find "$HOME_SA/.ssh" -printf '%u %g %m %n %s %p\n' 2>/dev/null 
     → `exit=5`, `HOST_KEY_CHANGED`, путь и номер строки known_hosts,
     `--replace-host-key`. (Н18) `sudo $AG repo add f5 sftp:backup@$SH:/srv/sftp/repo/f5 --replace-host-key --host-key-fingerprint $FP2`
     → `exit=0`; в known_hosts одна строка `$SH` с новым ключом; `audit` →
-    `ssh host key of $SH replaced`.
+    `ssh host key of $SH replaced`. (П22) Перед заменой добавить в
+    known_hosts строку-шаблон `*.<домен $SH>` со старым ключом
+    (`sudo -u sard-agent` — часть QA): `HOST_KEY_CHANGED` и итог замены
+    называют её номер; после замены она на месте байт в байт.
+66а. (П21) В выводе шага 60 есть примечание: `id_ed25519`, `known_hosts` и
+    `config` записаны и остаются для повтора.
 67. `sudo $AG repo remove f1` → `exit=0`; stdout говорит, что ключ
     `$HOME_SA/.ssh/id_ed25519` и ключ хоста `$SH` остаются; `sshsnap` не
     изменился.
@@ -469,8 +489,10 @@ sshsnap() { sudo find "$HOME_SA/.ssh" -printf '%u %g %m %n %s %p\n' 2>/dev/null 
     пуст; `sudo systemctl restart sard-agent` → `active`; бэкапы `s1` и `f1`
     из консоли → `succeeded`; `sudo ausearch -m avc -ts recent | grep -c sard` → `0`.
 70. `grep -nE 'sudo -u|tee |install -o|ssh-keyscan|ssh-keygen -t' docs/operator/05a-storage.md`
-    → пусто, кроме команды получения отпечатка на сервере SFTP
-    (`ssh-keygen -lf`); `grep -c /usr/lib/sard/ docs/operator/05a-storage.md`
+    → пусто, кроме двух исключений (П18): команда получения отпечатка на
+    сервере SFTP (`ssh-keygen -lf`) и процедура снятия блокировки
+    `sudo -u sard-agent … /usr/libexec/sard/restic … unlock`. Ручных процедур
+    для ключа SSH, `known_hosts` и `~/.ssh/config` нет; `grep -c /usr/lib/sard/ docs/operator/05a-storage.md`
     → `0`; `grep -c /usr/libexec/sard/restic docs/operator/05a-storage.md` → не `0`;
     в документе есть `sudo sard-agent repo add` для S3 и SFTP, флаги
     `--secret-key-stdin` и `--host-key-fingerprint`, таблица причин Р34.
