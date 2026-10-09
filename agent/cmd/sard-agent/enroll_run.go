@@ -36,6 +36,8 @@ type realEnrollClock struct{}
 
 func (realEnrollClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
+func (realEnrollClock) Now() time.Time { return time.Now() }
+
 // enrollDeps is every dependency doEnroll's pipeline reaches outside its
 // own arguments: production always builds the real ones (runEnroll);
 // tests substitute a fake hostname, a hand-driven clock (--timeout,

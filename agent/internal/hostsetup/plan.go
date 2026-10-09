@@ -50,8 +50,8 @@ const (
 // address again changes nothing.
 func PlanRepository(cfg config.Config, l Layout, name, url string) (AddPlan, *refusal.Failure) {
 	source := cfg.RepositorySource(name)
-	if key := ReferencedBy(cfg, l.PasswordFile(name), RepositoryKey(name, "password_file")); key != "" {
-		return AddNew, refusal.Fail(refusal.PathInUse, "%s is used by %s and would be taken over", l.PasswordFile(name), key)
+	if f := planFiles(cfg, l, name, url); f != nil {
+		return AddNew, f
 	}
 	switch {
 	case source == "":
@@ -59,10 +59,33 @@ func PlanRepository(cfg config.Config, l Layout, name, url string) (AddPlan, *re
 	case source != l.RepositoryFragment(name):
 		return AddNew, refusal.Fail(refusal.DefinedInConfig, "repository %q is defined in %s; commands never change it, edit that file instead", name, source)
 	}
-	if current := RepositoryNamed(cfg, name); filepath.Clean(current.URL) != url {
+	if current := RepositoryNamed(cfg, name); !sameAddress(current, url) {
 		return AddNew, refusal.Fail(refusal.RepositoryConflict, "repository %q is already connected to %s; to connect it to another address run `sudo sard-agent repo remove %s` first", name, config.RedactURL(current.URL), name)
 	}
 	return AddUnchanged, nil
+}
+
+// planFiles refuses a password file, and for S3 an env file, that another
+// key of the config uses.
+func planFiles(cfg config.Config, l Layout, name, url string) *refusal.Failure {
+	if key := ReferencedBy(cfg, l.PasswordFile(name), RepositoryKey(name, "password_file")); key != "" {
+		return refusal.Fail(refusal.PathInUse, "%s is used by %s and would be taken over", l.PasswordFile(name), key)
+	}
+	if (config.Repository{URL: url}).Backend() != "s3" {
+		return nil
+	}
+	if key := ReferencedBy(cfg, l.EnvFile(name), RepositoryKey(name, "env_file")); key != "" {
+		return refusal.Fail(refusal.PathInUse, "%s is used by %s and would be overwritten", l.EnvFile(name), key)
+	}
+	return nil
+}
+
+// sameAddress: a local path is compared cleaned, a remote address as given.
+func sameAddress(current config.Repository, url string) bool {
+	if current.Backend() == "local" {
+		return filepath.Clean(current.URL) == url
+	}
+	return current.URL == url
 }
 
 // RepositoryNamed is the repository of the config by name; empty if there

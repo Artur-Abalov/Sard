@@ -79,4 +79,7 @@ func (c *hostCmd) printRemoved(name string) {
 	_, _ = fmt.Fprintf(c.stdout, "Repository %q removed from this host's configuration.\n", name)
 	_, _ = fmt.Fprintf(c.stdout, "  The data in the storage was not deleted, and neither was the password file %s:\n  adding the same address again attaches the repository with it.\n", c.layout.PasswordFile(name))
 	_, _ = fmt.Fprintf(c.stdout, "WARNING: sources on the server that refer to %q will now be refused.\n", name)
+	if repo := c.repository(name); repo.Backend() == "sftp" {
+		c.printSFTPRemoved(repo.URL)
+	}
 }

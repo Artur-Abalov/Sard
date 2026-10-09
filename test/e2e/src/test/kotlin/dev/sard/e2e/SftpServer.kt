@@ -7,6 +7,8 @@ import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.images.builder.Transferable
 import org.testcontainers.utility.DockerImageName
+import java.security.MessageDigest
+import java.util.Base64
 
 /**
  * The stand's SFTP server (test/e2e/sftp, ADR 0047) on the environment's network as [ALIAS]:
@@ -49,6 +51,15 @@ internal class SftpServer(
     fun knownHostsLine(): String {
         val key = container.copyFileFromContainer(HOST_KEY) { String(it.readAllBytes()) }.trim().split(' ')
         return "$ALIAS ${key[0]} ${key[1]}\n"
+    }
+
+    /**
+     * The fingerprint of the server's host key as `ssh-keygen -l` prints it (`SHA256:…`): what the
+     * storage admin tells the operator, read from the server's own container (a channel the test trusts).
+     */
+    fun fingerprint(): String {
+        val blob = Base64.getDecoder().decode(knownHostsLine().trim().split(' ')[2])
+        return "SHA256:" + Base64.getEncoder().withoutPadding().encodeToString(MessageDigest.getInstance("SHA-256").digest(blob))
     }
 
     /** Runs [command] as root on the server (the storage admin's shell); fails unless it exits 0. */
