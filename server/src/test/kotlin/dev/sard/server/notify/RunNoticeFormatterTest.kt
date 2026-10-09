@@ -32,6 +32,7 @@ private fun notice(
     finishedAt: Instant = T0.plusSeconds(155),
     backup: BackupSizes? = if (step == StepState.SUCCEEDED) GIB else null,
     trigger: Trigger = Trigger.MANUAL,
+    previous: RunState? = null,
 ) = RunNotice(
     tenantId = UUID.randomUUID(),
     runId = RUN,
@@ -47,6 +48,7 @@ private fun notice(
     stepStatus = step,
     startedAt = startedAt,
     backup = backup,
+    previousStatus = previous,
 )
 
 private fun Message.text() = parts.joinToString("") { it.text }
@@ -111,6 +113,60 @@ class RunNoticeFormatterTest {
             val finished = notice(trigger = trigger)
             assertNull(MutFlow.underTest { formatter.format(finished) })
         }
+    }
+
+    @Test
+    fun `Первая ошибка запуска по расписанию уведомляется так же, как ошибка ручного`() {
+        val manual = format(notice(step = StepState.FAILED, message = "disk full")).text()
+        for (trigger in listOf(Trigger.SCHEDULE, Trigger.CATCH_UP)) {
+            for (previous in listOf(null, RunState.SUCCEEDED, RunState.CANCELLED)) {
+                val scheduled =
+                    notice(step = StepState.FAILED, message = "disk full", trigger = trigger, previous = previous)
+                assertEquals(manual, format(scheduled).text(), "$trigger after $previous")
+            }
+        }
+    }
+
+    @Test
+    fun `Повторная ошибка запуска по расписанию не уведомляется, ручного уведомляется`() {
+        val formatter = RunNoticeFormatter(NoticeLanguage.RU, null)
+        for (step in listOf(StepState.FAILED, StepState.LOST)) {
+            for (trigger in listOf(Trigger.SCHEDULE, Trigger.CATCH_UP)) {
+                val again = notice(step = step, trigger = trigger, previous = RunState.FAILED)
+                assertNull(MutFlow.underTest { formatter.format(again) }, "$step $trigger")
+            }
+        }
+        assertNotNull(format(notice(step = StepState.FAILED, previous = RunState.FAILED)))
+    }
+
+    @Test
+    fun `Первый успех запуска по расписанию после ошибок уведомляется как восстановление`() {
+        val recovered = notice(trigger = Trigger.SCHEDULE, previous = RunState.FAILED)
+        val expected =
+            """
+            ✅ Бэкап снова выполнен после ошибок: db-main
+            Агент: db1.example.com
+            Длительность: 2 мин 30 с
+            Всего: 1,5 ГиБ, добавлено: 12,3 МиБ
+            Запуск: $RUN
+            $LINK
+            """.trimIndent()
+        assertEquals(expected, format(recovered).text())
+        val english = format(notice(trigger = Trigger.CATCH_UP, previous = RunState.FAILED), NoticeLanguage.EN)
+        assertEquals("✅ Backup succeeded again after failures: db-main", english.lines().first())
+    }
+
+    @Test
+    fun `Успех и отмена запуска по расписанию без ошибки перед ним не уведомляются`() {
+        val formatter = RunNoticeFormatter(NoticeLanguage.RU, null)
+        val quiet =
+            listOf(
+                notice(trigger = Trigger.SCHEDULE, previous = RunState.SUCCEEDED),
+                notice(trigger = Trigger.CATCH_UP, previous = null),
+                notice(step = StepState.CANCELLED, trigger = Trigger.SCHEDULE, previous = RunState.FAILED),
+                notice(step = StepState.FAILED, trigger = Trigger.VERIFICATION, previous = RunState.SUCCEEDED),
+            )
+        for (finished in quiet) assertNull(MutFlow.underTest { formatter.format(finished) }, "$finished")
     }
 
     // --- sizes
