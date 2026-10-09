@@ -24,6 +24,24 @@ function rejected(
   }
 }
 
+const CRON_FIELDS = 5
+
+/** The server's checks of a schedule that the mock can make: five cron fields and a known IANA zone. */
+export function validateSchedule(
+  schedule: Schemas['ScheduleInput'],
+): Schemas['ValidationProblem'] | null {
+  if (schedule.cron.trim().split(/\s+/).length !== CRON_FIELDS) {
+    return rejected('validation_failed', 'cron', 'must have five fields')
+  }
+  if (
+    !Intl.supportedValuesOf('timeZone').includes(schedule.timezone) &&
+    schedule.timezone !== 'UTC'
+  ) {
+    return rejected('validation_failed', 'timezone', 'is not an IANA time zone')
+  }
+  return null
+}
+
 /** The server's checks of a source that the mock can make: its agent, plugin and repository exist. */
 export function validateSource(
   source: Schemas['SourceInput'],

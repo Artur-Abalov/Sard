@@ -137,7 +137,7 @@ class ApiContractIntegrationTest(
     fun `run, trigger, agent and token states`() {
         val run = listOf("queued", "dispatched", "running", "succeeded", "failed", "cancelled")
         assertEquals(run, enumValues("RunStatus"))
-        assertEquals(listOf("schedule", "manual", "verification"), enumValues("RunTrigger"))
+        assertEquals(listOf("schedule", "manual", "verification", "catch_up"), enumValues("RunTrigger"))
         assertEquals(listOf("online", "offline"), enumValues("AgentStatus"))
         assertEquals(listOf("active", "used", "expired", "revoked"), enumValues("EnrollmentTokenStatus"))
     }
@@ -286,6 +286,7 @@ class ApiContractIntegrationTest(
     fun `no operation of the contract answers 501 not_implemented`() {
         val id = "0192f7a0-0000-7000-8000-000000000001"
         val source = """{"name":"n","agentId":"$id","plugin":"files","repositoryName":"r","config":{}}"""
+        val schedule = """{"cron":"* * * * *","timezone":"UTC","enabled":true}"""
         val calls =
             listOf(
                 Triple("GET", "/api/v1/overview", null),
@@ -306,6 +307,9 @@ class ApiContractIntegrationTest(
                 Triple("DELETE", "/api/v1/sources/{sourceId}", null),
                 Triple("POST", "/api/v1/sources/{sourceId}/runs", null),
                 Triple("GET", "/api/v1/sources/{sourceId}/snapshots", null),
+                Triple("GET", "/api/v1/sources/{sourceId}/schedule", null),
+                Triple("PUT", "/api/v1/sources/{sourceId}/schedule", schedule),
+                Triple("GET", "/api/v1/sources/{sourceId}/schedule/fires", null),
                 Triple("GET", "/api/v1/runs?status=queued&status=failed", null),
                 Triple("GET", "/api/v1/runs/{runId}", null),
                 Triple("GET", "/api/v1/runs/{runId}/steps/{stepId}/logs", null),

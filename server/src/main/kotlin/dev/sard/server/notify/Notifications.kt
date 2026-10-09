@@ -33,7 +33,39 @@ data class RunNotice(
     val startedAt: Instant?,
     /** The step's backup output, if it has one: kept even when the step failed after saving a snapshot. */
     val backup: BackupSizes?,
+    /** The status of the source's run finished before this one; null for its first run (F3a). */
+    val previousStatus: RunState? = null,
 )
+
+/** What a notification tells of a run (ADR 0024): a manual run's result, a scheduled run's turn of the series. */
+enum class Telling {
+    RESULT,
+    FIRST_FAILURE,
+    RECOVERY,
+    ;
+
+    companion object {
+        /** Null when the run needs no notification: a scheduled run in the middle of a series, a verification. */
+        fun of(notice: RunNotice): Telling? =
+            when (notice.trigger) {
+                Trigger.MANUAL -> RESULT
+                Trigger.SCHEDULE, Trigger.CATCH_UP -> turn(notice.status, notice.previousStatus)
+                Trigger.VERIFICATION -> null
+            }
+
+        private fun turn(
+            status: RunState,
+            previous: RunState?,
+        ): Telling? {
+            val failedBefore = previous == RunState.FAILED
+            return when {
+                status == RunState.FAILED && !failedBefore -> FIRST_FAILURE
+                status == RunState.SUCCEEDED && failedBefore -> RECOVERY
+                else -> null
+            }
+        }
+    }
+}
 
 /** How much a backup saw and how much of it was new, in bytes. */
 data class BackupSizes(

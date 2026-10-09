@@ -45,7 +45,10 @@ class SourceRecord(
     override fun toString() = "SourceRecord(id=$id, agentId=$agentId, plugin=$plugin)"
 }
 
-/** A run of a source (ADR 0022); workflow_id and definition stay NULL until workflows exist. Never deleted. */
+/**
+ * A run of a source (ADR 0022); workflow_id and definition stay NULL until workflows exist; schedule_id
+ * names the schedule that started it (F3a). Never deleted.
+ */
 @Entity
 @Table(name = "runs")
 class RunRecord(
@@ -59,6 +62,8 @@ class RunRecord(
     val status: String,
     @Column(name = "queued_at", nullable = false, updatable = false)
     val queuedAt: Instant,
+    @Column(name = "schedule_id", updatable = false)
+    val scheduleId: UUID? = null,
     @TenantId
     @Column(name = "tenant_id", nullable = false, updatable = false)
     val tenantId: UUID? = null,

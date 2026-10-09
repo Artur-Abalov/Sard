@@ -59,6 +59,11 @@ private const val CLAIM = """
 
 private const val FIRST_STEP = "from RunStepRecord s where s.runId = :run order by s.ordinal"
 
+// D6 keeps one active run per source, so every run queued before this one has finished: the answer is fixed.
+private const val PREVIOUS_STATUS =
+    "select r.status from RunRecord r where r.sourceId = :source and r.finishedAt is not null " +
+        "and (r.queuedAt < :queued or (r.queuedAt = :queued and r.id < :run)) order by r.queuedAt desc, r.id desc"
+
 private const val GUARD = "where tenant_id = :tenant and id = :id and status = 'pending'"
 
 private const val RETRY =
@@ -218,8 +223,22 @@ class Deliveries(
             stepStatus = stepView.status,
             startedAt = run.startedAt,
             backup = stepView.backup?.let { BackupSizes(it.totalBytes, it.addedBytes) },
+            previousStatus = previousStatus(session, run),
         )
     }
+
+    private fun previousStatus(
+        session: Session,
+        run: RunRecord,
+    ): RunState? =
+        session
+            .createSelectionQuery(PREVIOUS_STATUS, String::class.java)
+            .setParameter("source", run.sourceId)
+            .setParameter("queued", run.queuedAt)
+            .setParameter("run", run.id)
+            .setMaxResults(1)
+            .uniqueResult()
+            ?.let(RunState::of)
 }
 
 private fun closedStatus(decision: Decision): String =

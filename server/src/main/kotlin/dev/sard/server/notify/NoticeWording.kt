@@ -51,6 +51,8 @@ internal class Verdicts(
     val lost: String,
     val timedOut: String,
     val cancelled: String,
+    /** A scheduled run that succeeded after failed ones (ADR 0024). */
+    val recovered: String,
 ) {
     fun failure(step: StepState): String =
         when (step) {
@@ -106,6 +108,7 @@ private val EN =
                 lost = "Backup lost",
                 timedOut = "Backup timed out",
                 cancelled = "Backup cancelled",
+                recovered = "Backup succeeded again after failures",
             ),
     )
 
@@ -132,6 +135,7 @@ private val RU =
                 lost = "Бэкап потерян",
                 timedOut = "Бэкап прерван по таймауту",
                 cancelled = "Бэкап отменён",
+                recovered = "Бэкап снова выполнен после ошибок",
             ),
     )
 
