@@ -708,3 +708,67 @@ func TestTheClientIsCheckedForEveryProgramInOrder(t *testing.T) {
 		t.Fatalf("%+v", f)
 	}
 }
+
+// Without a connect timeout no program is told one.
+func TestWithoutAConnectTimeoutNoProgramIsToldOne(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.ready()
+	w.sftp.Bound.Timeout = 0
+	if _, f := w.prepare(); f != nil {
+		t.Fatal(f)
+	}
+	for _, c := range w.client.calls {
+		if joined := strings.Join(c.args, " "); strings.Contains(joined, "ConnectTimeout") || slices.Contains(c.args, "-T") {
+			t.Errorf("%s got a timeout: %s", c.program, joined)
+		}
+	}
+}
+
+func TestAKeygenThatCannotBeRunIsAnErrorOfTheClient(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	w.sftp.Runner = runnerFunc(func(ctx context.Context, program string, args []string) (repoconnect.Output, error) {
+		if program == repoconnect.ProgKeygen {
+			return repoconnect.Output{Code: -1}, errors.New("fork/exec: permission denied SECRET")
+		}
+		return w.client.Run(ctx, program, args)
+	})
+	_, f := w.prepare()
+	assertFail(t, f, refusal.SSHClientFailed, refusal.ClassAgentError, "ssh-keygen", "could not be run", "[x]")
+}
+
+func TestAKeygenThatIsInterruptedIsInterruptedNotAnErrorOfTheClient(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	ctx, cancel := context.WithCancel(t.Context())
+	w.sftp.Runner = runnerFunc(func(c context.Context, program string, args []string) (repoconnect.Output, error) {
+		if program == repoconnect.ProgKeygen {
+			cancel()
+			return repoconnect.Output{Code: -1}, c.Err()
+		}
+		return w.client.Run(c, program, args)
+	})
+	home, f := hostsetup.OpenSSHHome(hostsetup.OS{}, w.sftp.Service)
+	if f != nil {
+		t.Fatal(f)
+	}
+	defer home.Close()
+	w.sftp.Home = home
+	_, f = w.sftp.Prepare(ctx)
+	assertFail(t, f, refusal.Interrupted, refusal.ClassTemporary)
+}
+
+// runnerFunc is a Runner made of a function.
+type runnerFunc func(ctx context.Context, program string, args []string) (repoconnect.Output, error)
+
+func (f runnerFunc) Run(ctx context.Context, program string, args []string) (repoconnect.Output, error) {
+	return f(ctx, program, args)
+}
+
+func TestAWildcardMatchesAnEmptyEndAndAQuestionMarkOneCharacter(t *testing.T) {
+	content := line("nas.example.com*", edKey) + line("na?.example.com", ecKey) + line("nas.example.co?", rsaKey) + line("nas.example.c?", otherKey)
+	m := repoconnect.FindKnown([]byte(content), nasHost)
+	if !slices.Equal(m.Lines, []int{1, 2, 3}) {
+		t.Fatalf("lines %v", m.Lines)
+	}
+}
