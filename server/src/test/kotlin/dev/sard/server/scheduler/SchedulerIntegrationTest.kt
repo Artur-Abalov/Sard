@@ -17,8 +17,11 @@ import dev.sard.server.runs.SourceView
 import dev.sard.server.runs.Sources
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.system.CapturedOutput
+import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import java.security.SecureRandom
@@ -45,7 +48,8 @@ private fun at(text: String): Instant = Instant.parse(text)
  * F3a verification 1-7: a fire is neither lost nor doubled. RUNS_NOW is 2026-09-30T10:00:00Z. Mutants run
  * under single-threaded ticks only; the races call [Scheduler.tick] directly.
  */
-@MutFlowTest
+@MutFlowTest(includeTargets = [Scheduler::class, Schedules::class, CatchUpSlots::class])
+@ExtendWith(OutputCaptureExtension::class)
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = ["spring.grpc.server.port=0", QUIET_LOOP, SPACING],
@@ -109,6 +113,7 @@ class SchedulerIntegrationTest(
         val source = source()
         val schedule = schedule(source)
         assertEquals(at("2026-09-30T11:00:00Z"), schedule.nextRunAt)
+        assertTrue(schedule.enabled)
 
         tickAt(at("2026-09-30T10:59:59Z"))
         assertEquals(emptyList(), tables.runs())
@@ -149,7 +154,7 @@ class SchedulerIntegrationTest(
     }
 
     @Test
-    fun `3 - a server that stops in the middle of a fire neither loses nor doubles it`() {
+    fun `3 - a server that stops in the middle of a fire neither loses nor doubles it`(output: CapturedOutput) {
         val schedule = schedule(source())
         // The transaction fails after the run is written, before the fire is recorded: the server died.
         jdbc.execute(
@@ -167,6 +172,7 @@ class SchedulerIntegrationTest(
         assertEquals(emptyList(), tables.runs())
         assertEquals(emptyList(), tables.fires(schedule.id))
         assertEquals(at("2026-09-30T11:00:00Z"), nextRunAt(schedule.id))
+        assertTrue(output.out.contains("Schedule ${schedule.id} failed to fire; retrying at the next tick"))
 
         jdbc.execute("drop trigger fail_fires on schedule_fires")
         val restarted = anotherServer()
@@ -191,7 +197,8 @@ class SchedulerIntegrationTest(
         assertEquals(listOf(downtime), tables.fires(schedule.id))
         assertEquals(at("2026-09-30T15:00:00Z"), nextRunAt(schedule.id))
 
-        tickAt(at("2026-09-30T14:30:01Z"))
+        // The slot is the downtime tick's own moment: the next tick at that very instant runs the catch-up.
+        tickAt(at("2026-09-30T14:30:00Z"))
         tickAt(at("2026-09-30T14:30:02Z"))
 
         val run = tables.runs().single()
@@ -222,6 +229,20 @@ class SchedulerIntegrationTest(
         tickAt(at("2026-09-30T14:30:29Z"))
         assertEquals(listOf("catch_up"), tables.runs().map { it.trigger }.distinct())
         assertEquals(3, tables.runs().size)
+    }
+
+    @Test
+    fun `a downtime found while catch-ups are pending queues its catch-up after the last of them`() {
+        (1..2).forEach { schedule(source("db-$it")) }
+        tickAt(at("2026-09-30T14:30:00Z"))
+        val late = schedule(source("late"))
+        val missedSinceNoon = Timestamp.from(at("2026-09-30T12:00:00Z"))
+        jdbc.update("update schedules set next_run_at = ? where id = ?", missedSinceNoon, late.id)
+
+        tickAt(at("2026-09-30T14:30:05Z"))
+
+        val slot = jdbc.queryForObject("select catch_up_at from schedules where id = ?", Timestamp::class.java, late.id)
+        assertEquals(at("2026-09-30T14:30:20Z"), slot!!.toInstant())
     }
 
     /** Ticks every minute from [from] until [to], finishing runs in between as an agent would. */
@@ -313,7 +334,8 @@ class SchedulerIntegrationTest(
     fun `7 - a disabled schedule does not fire and has no next fire`() {
         val source = source()
         val schedule = schedule(source)
-        set(source, ScheduleDraft(HOURLY, "UTC", enabled = false))
+        val disabled = set(source, ScheduleDraft(HOURLY, "UTC", enabled = false))
+        assertEquals(false to null, disabled.enabled to disabled.nextRunAt)
 
         tickAt(at("2026-09-30T11:00:00Z"))
 
@@ -378,6 +400,10 @@ class SchedulerIntegrationTest(
 
         val changed = set(source, ScheduleDraft("30 * * * *", "UTC", enabled = true))
         assertEquals(at("2026-09-30T11:30:00Z"), changed.nextRunAt)
+
+        // Kathmandu is UTC+05:45: the same cron in another zone fires at another instant.
+        val moved = set(source, ScheduleDraft("30 * * * *", "Asia/Kathmandu", enabled = true))
+        assertEquals(at("2026-09-30T11:45:00Z"), moved.nextRunAt)
         assertTrue(changed.updatedAt > same.createdAt)
     }
 }
