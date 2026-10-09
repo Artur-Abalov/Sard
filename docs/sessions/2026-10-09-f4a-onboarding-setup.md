@@ -618,3 +618,8 @@ Kotlin-версия в e2e `SetupWizard.kt` — тот же формат стр�
 - ADR 0014: `provenance()` и `keyLocation()` описаны только для файлового CA (К7, Р12, Р19); enterprise-вариант убран и вынесен в OQ-200.
 - Формулировка про чтение `SESSION_REQUEST_ATTRIBUTE` исправлена в ADR 0021, черновике ADR F4a и OQ-035: читает `administratorSession()`, его вызывает `OnboardingControllers`, в `OnboardingService` идёт булево значение.
 - Только документы; markdownlint и `make license-check` выполнены перед коммитом.
+
+## Hardener
+
+- Предыдущий полный прогон мутаций (на 9940de5, до b6fb20f): 83 выживших из 27112 тестов (`CaDirectoryLedgerTest` 34, `OnboardingServiceTest` 21, `SessionApiImplTest` 19, `SetupCodeAnnouncerTest` 5, `CaDirectoryImportUnitTest` 2, `CaDirectoryTest` 2).
+- На b6fb20f мутации, сужённые на 18 тестовых классов F4a (`-Pmutflow.enabled=true :server:test --rerun --tests ...`): 16042 тестов, 0 упавших, выживших 0. Дальше полный `gate.sh server`.
