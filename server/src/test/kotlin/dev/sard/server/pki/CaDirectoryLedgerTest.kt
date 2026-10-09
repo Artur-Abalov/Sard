@@ -16,6 +16,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
@@ -449,6 +450,31 @@ class CaDirectoryLedgerTest {
 
             assertEquals(gHex, CaFingerprint.of(restarted.pair.certificate), cut)
             assertEquals(Pem.privateKey(g.privateKey), keyOf(dir), cut)
+        }
+    }
+
+    @Test
+    fun `Прерванное создание CA не оставляет CA без записанного происхождения`() {
+        // The first start of a clean installation and the first start with a source, each cut off in turn.
+        for (imported in listOf(false, true)) {
+            for (cut in listOf("ca.key", "ca.crt")) {
+                dir.toFile().deleteRecursively()
+                importDir.toFile().deleteRecursively()
+                ledger.recorded.clear()
+                if (imported) CaImportFixtures.source(importDir, f)
+                val failing = { path: Path, text: String ->
+                    if (path.fileName.toString() == cut) throw IOException("cut") else writeOwnerOnly(path, text)
+                }
+                assertFails { open(withSource = imported, writer = failing) }
+
+                val restarted = open()
+
+                assertEquals(
+                    CaProvenance.GENERATED,
+                    ledger.recorded[CaFingerprint.of(restarted.pair.certificate)],
+                    "imported=$imported, cut at $cut",
+                )
+            }
         }
     }
 

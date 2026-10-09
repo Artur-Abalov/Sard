@@ -59,18 +59,19 @@ class SessionAuthFilter(
             filterChain.doFilter(request, response)
             return
         }
-        val cookieValue =
-            request.cookies
-                .orEmpty()
-                .firstOrNull { it.name == SESSION_COOKIE }
-                ?.value
-        val session = cookieValue?.let { sessionStore.touch(it) }
+        val session = sessionOf(request)
         if (session == null && operation !in WIZARD_OPERATIONS) {
             respondUnauthorized(request, response)
             return
         }
         session?.let { request.setAttribute(SESSION_REQUEST_ATTRIBUTE, it) }
         filterChain.doFilter(request, response)
+    }
+
+    /** The session the request carries, touched; null when it carries none or one that is no longer valid. */
+    private fun sessionOf(request: HttpServletRequest): AdminSession? {
+        val cookie = request.cookies.orEmpty().firstOrNull { it.name == SESSION_COOKIE }
+        return cookie?.value?.let { sessionStore.touch(it) }
     }
 
     /** Р12: DELETE /api/v1/session with an invalid or missing session also clears the cookie. */

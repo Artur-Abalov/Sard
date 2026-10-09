@@ -91,7 +91,7 @@ class CaDirectory(
     private fun present(source: CaImport?): OpenedCa {
         val pair = store.load()
         val fingerprint = CaFingerprint.of(pair.certificate)
-        val provenance = ledger.provenance(fingerprint) ?: throw notRecorded(fingerprint)
+        val provenance = recordedFor(fingerprint)
         val replacement = source?.reconcile(fingerprint, ledger.usage())
         if (replacement == null) return OpenedCa(pair, CaOrigin.EXISTING, provenance)
         val imported = CaKeyPair(replacement.certificate, replacement.key)
@@ -106,16 +106,26 @@ class CaDirectory(
     ): OpenedCa {
         val usage = ledger.usage()
         if (source == null && usage != CaUsage.NONE) throw missing(usage)
-        val pair = source?.read()?.let { CaKeyPair(it.certificate, it.key) } ?: generate()
-        val provenance = if (source == null) CaProvenance.GENERATED else CaProvenance.IMPORTED
-        ledger.record(CaFingerprint.of(pair.certificate), provenance)
+        val pair = newCa(source, generate)
+        ledger.record(CaFingerprint.of(pair.certificate), provenanceOf(source))
         val published = writing(source) { store.publish(pair) }
         val loaded = store.load()
         // The start that lost the race works with the winner's CA, whose origin the winner recorded before
         // it published.
-        val fingerprint = CaFingerprint.of(loaded.certificate)
-        val recorded = ledger.provenance(fingerprint) ?: throw notRecorded(fingerprint)
-        return OpenedCa(loaded, originOf(published, source), recorded)
+        return OpenedCa(loaded, originOf(published, source), recordedFor(CaFingerprint.of(loaded.certificate)))
+    }
+
+    /** The CA of the [source] when there is one, else a generated one. */
+    private fun newCa(
+        source: CaImport?,
+        generate: () -> CaKeyPair,
+    ): CaKeyPair = source?.read()?.let { CaKeyPair(it.certificate, it.key) } ?: generate()
+
+    private fun provenanceOf(source: CaImport?) = if (source == null) CaProvenance.GENERATED else CaProvenance.IMPORTED
+
+    private fun recordedFor(fingerprint: CaFingerprint): CaProvenance {
+        val recorded = ledger.provenance(fingerprint)
+        return recorded ?: throw notRecorded(fingerprint)
     }
 
     private fun originOf(

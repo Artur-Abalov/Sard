@@ -260,3 +260,116 @@ Spring Security без изменения поведения (тесты W1b —
   «утверждено 2026-10-09».
 - `scripts/test-self-agent.sh` не менялся (зона coder): что в нём поменять —
   в отчёте specifier.
+
+## Фаза 2: сервер (coder)
+
+Ветка `claude/charming-gates-2om1mw`. Исходное состояние — коммит 63912f8 (черновик
+предыдущего прогона: хэшер, коды, сессии настройки, миграция); его тесты прошли (в том
+числе `JdbcStoresIntegrationTest`, которого прежде не запускали: Docker теперь есть).
+Рабочий цикл — тест, красный запуск, минимальный код, зелёный запуск; полный
+`:server:test` — после каждого крупного куска.
+
+### Что сделано
+
+- **Хэш и администратор.** `auth/PasswordHasher` (Argon2id, параметры OQ-193),
+  `auth/Administrators` (+`JdbcAdministrators`; хэш читается из базы при каждой
+  проверке), `auth/AdminSetup` (`StoredAdminSetup` в ядре, `ExternalAdminSetup` при
+  замене `SessionApi`), `auth/PasswordRules` (12–1024 кодовые точки).
+  `AdminPasswordAuthenticator` и все проверки `SARD_ADMIN_PASSWORD` удалены; сервер
+  переменную не читает.
+- **Вход.** `SessionApiImpl`: блокировка адреса, затем чтение хэша (заблокированный
+  адрес базу не трогает); нет администратора — `SignInResult.SetupRequired` (409
+  `setup_required`, не засчитывается); недоступная база — исключение доступа к данным,
+  то есть 503, попытка не засчитывается. `changePassword` в `SessionApi` (по умолчанию
+  `NotSupported` — 501): поля, блокировка, текущий пароль; успех завершает все прочие
+  сессии (`SessionStore.removeAll`) и выдаёт новый идентификатор.
+- **Мастер.** `onboarding/`: `SetupCodes` (SHA-256, Crockford, 24 часа от
+  внедрённых часов), `SetupSessions`, `OnboardingService` (реализует `api.OnboardingApi`),
+  `SetupCodeAnnouncer` (строка Р1 при старте, SmartLifecycle), `OnboardingAutoConfiguration`.
+  Контроллеры — каждый шаг свой (`OnboardingControllers.kt`, `PasswordController.kt`),
+  у каждого свой обработчик `HttpMessageNotReadableException`. `SessionAuthFilter`:
+  `PUBLIC_OPERATIONS` из четырёх, шаги `ca` и `admin` и `GET /onboarding` пропускаются,
+  сессию настройки проверяет контроллер (иначе цикл пакетов `auth` ↔ `onboarding`).
+- **CA и база (Р11, Р18, Р19).** `pki.CaLedger` (происхождение по отпечатку, «в деле ли
+  CA»), `onboarding.JdbcCaLedger`; `CaDirectory.open` теперь решает по реестру:
+  `CA_ORIGIN_NOT_RECORDED`, `CA_MISSING` (`CaStartRefused`, «CA startup refused»),
+  замена (`CaStore.replace`: `.tmp-*` → `ca`, прежний — `.tmp-replaced-*` и удаление;
+  `CaLeftovers` возвращает прежний CA после прерванной замены), запись происхождения до
+  появления CA. `CaImport.reconcile(present, usage)` возвращает CA на замену или null и до
+  шага `ca` проверяет источник по всей таблице. `CaReplacementListener` →
+  `enrollment.TokensRevokedOnCaReplacement` (отзыв активных обычных токенов, одна строка
+  WARN с числом). `CertificateAuthority` получил `provenance()` и `keyLocation()`;
+  `CaInfo` — `origin` и `keyPath`.
+- **Встроенный агент.** `SelfAgentCheck` не выпускает токен и не пишет файл, пока шаг `ca`
+  не выполнен (после проверки «живой агент → удалить файл»).
+- **admin-reset.** `onboarding/ServerCommand` + `main`: первый аргумент без `--`;
+  без Spring-контекста; коды 0/1/2; таблицы нет (`42P01`) — «пароль не задан».
+- **Контракт.** `make openapi` — `web/src/api/openapi.json` и `schema.d.ts`
+  перегенерированы; в веб правлено только нужное для зелёного `gate.sh web fast`:
+  четыре кода в `errors.ts` и локалях, `origin`/`keyPath` в моке `/api/v1/ca`.
+- **Тесты (новые).** `OnboardingServiceTest`, `SessionApiImplTest`, `AdminSetupTest`,
+  `PasswordRulesTest`, `ServerCommandTest`, `CaDirectoryLedgerTest`,
+  `JdbcCaLedgerIntegrationTest`, `TokensRevokedOnCaReplacementIntegrationTest`;
+  HTTP: `SetupCodeIntegrationTest`, `OnboardingStateIntegrationTest`,
+  `PasswordChangeIntegrationTest`, `FirstStartBehindProxyIntegrationTest`,
+  `OnboardingContractIntegrationTest`, `NoSecretsInBeansIntegrationTest`; настоящие
+  серверы один за другим над одной установкой (`Installations.kt`):
+  `FirstStartRestartIntegrationTest`, `CaStartupIntegrationTest`,
+  `OnboardingDatabaseDownIntegrationTest` (TCP-реле к базе вместо остановки
+  контейнера), `AdminResetCommandIntegrationTest` (процесс jar).
+- **Тесты (прежние).** В `server/build.gradle.kts` убрана переменная
+  `SARD_ADMIN_PASSWORD`; каждый контекст `@SpringBootTest` получает свой каталог CA
+  (`FreshPkiDirectory`, `sard.test.pki-base`), потому что каталог CA идёт вместе со своей
+  базой (Р19), а у каждого контекста своя база. Вход в REST-тестах — через мастер с
+  фиксированным кодом (`WizardCodeConfiguration`, `ApiClient.signIn`); тесты входа
+  засевают администратора настоящим хэшем (`SeededAdministrator`); тесты встроенного
+  агента подтверждают шаг `ca` (`ConfirmedCaStep`).
+
+### Отклонения от заметок предыдущего прогона и решения
+
+1. **Слушатель отзыва токенов — в `enrollment`, не в `selfagent`.** Токены регистрации
+   живут в `enrollment`; `selfagent` может быть выключен (`SARD_SELF_DIR` пуст), а отзыв
+   обязан работать всегда. `pki` ничего о токенах не знает (интерфейс
+   `CaReplacementListener`).
+2. **Реестр CA без «закрытого по умолчанию» значения.** `CaLedger` — обязательный
+   параметр `FileCertificateAuthority`; его бин объявляет `OnboardingAutoConfiguration`
+   (`@DependsOn("flywayInitializer")`), корпоративная замена CA реестром не пользуется.
+3. **`Administrators`, `PasswordHasher`, `AdminSetup` — в пакете `auth`**, не в
+   `onboarding` (иначе `auth` зависел бы от `onboarding` и наоборот; `PackageCycleTest`).
+4. **Атрибут запроса администратора** `SESSION_REQUEST_ATTRIBUTE` перенесён в `api`
+   (`ArchitectureTest` запрещает `api` ссылаться на `auth`); значение —
+   `dev.sard.server.session`. По нему мастер узнаёт администратора расширения.
+5. **`PUT /session/password`: `wrong_password` — это `ValidationProblem` с ошибкой у
+   `currentPassword`** (422 в контракте объявлен одной схемой).
+6. **Тела запросов с секретами** (`SetupCodeRequest`, `AdminStepRequest`,
+   `PasswordChangeRequest`, `SessionRequest`) переопределяют `toString`: Spring пишет
+   прочитанное тело в лог на DEBUG, а спецификация требует, чтобы код и пароль не
+   попадали в «захваченные логи» при DEBUG.
+7. **Шаг `admin` при внешнем входе отвечает `setup_completed` до проверки сессии
+   настройки** (Р16), а в ядре после шага `admin` запрос со старой сессией настройки —
+   401 (сценарий «После шага admin все сессии настройки не действуют»): порядок проверок
+   зависит от `AdminSetup.external`.
+8. **Таблицы `onboarding_steps` и `ca_origins` — глобальные** в `TenancyIntegrationTest`
+   (состояние установки, не тенанта; Р решения исполнителя).
+9. **Файл `deploy/.env.example` не менялся.** `DeployEnvExampleTest` проверял, что
+   `SARD_ADMIN_PASSWORD` в нём — пустая заготовка с комментарием о длине; эти два теста
+   проверяли отменённое поведение (сценарии `@qa-only` правила 1 W1b заменены F4a), и я их
+   удалил. Тест на отсутствие строки (`@doc` «Compose и пример окружения не содержат
+   пароль администратора») не добавлен: он проходит только после правки compose и
+   `.env.example`, то есть в следующем прогоне.
+10. **Конфигурация проверок.** Пороги и тесты не менялись. Для `detekt` (длина строки 120,
+    не более 11 функций в классе, `ReturnCount`) `CaDirectory` разделён на `CaDirectory`,
+    `CaStore` и `CaLeftovers`, а проверки файлов источника вынесены из `CaImportSource` в
+    `CaImportFiles`.
+11. **Условие «файл ключа принадлежит другому пользователю»** (Р18, причина
+    `IMPORT_FILE_UNREADABLE`) на уровне процесса не проверяется: тесты идут от root, и
+    root читает любой файл. Покрыто модульно: `CaImportSource` принимает `isReadable`.
+
+### Что не покрыто автоматическим тестом сервера
+
+- Сценарии `@e2e`, `@doc` и `@qa-only` — следующий прогон (e2e, документация, скрипты,
+  compose).
+- Мутационный прогон (`gate.sh server`, без `fast`) не запускался; новые чистые функции
+  покрыты тестами `@MutFlowTest` (`PasswordRulesTest`, `OnboardingServiceTest`,
+  `SessionApiImplTest`, `AdminSetupTest`, `CaDirectoryLedgerTest`, `ServerCommandTest`,
+  `SetupCodeAnnouncerTest`).

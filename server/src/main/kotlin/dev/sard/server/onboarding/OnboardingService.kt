@@ -134,11 +134,13 @@ class OnboardingService(
         if (!setupSessions.valid(setupSessionId)) throw NoSuchSessionException()
         return when {
             !steps.caConfirmed() -> AdminStepResult.CaPending
-            password == null || !PasswordRules.acceptable(password) -> AdminStepResult.InvalidPassword
-            adminSetup.create(password) -> adminDone(clientAddress)
+            !acceptable(password) -> AdminStepResult.InvalidPassword
+            adminSetup.create(checkNotNull(password)) -> adminDone(clientAddress)
             else -> AdminStepResult.Completed
         }
     }
+
+    private fun acceptable(password: String?): Boolean = password != null && PasswordRules.acceptable(password)
 
     private fun adminDone(clientAddress: String): AdminStepResult.Done {
         codes.close()

@@ -107,17 +107,21 @@ class SessionApiImpl(
         new: String,
         clientAddress: String,
     ): PasswordChangeResult {
-        val stored = administrators.hash()
-        val replaced =
-            stored != null &&
-                hasher.matches(current, stored) &&
-                administrators.replaceHash(stored, hasher.hash(new), clock.instant())
-        if (!replaced) return failedChange(clientAddress)
+        if (!swapped(current, new)) return failedChange(clientAddress)
         attemptTracker.recordSuccess(clientAddress)
         val tenantId = sessionStore.find(sessionId)?.tenantId ?: tenantResolver.currentTenantId()
         sessionStore.removeAll()
         log.info("Password changed from {}", clientAddress)
         return PasswordChangeResult.Changed(sessionStore.create(tenantId).id)
+    }
+
+    /** True when [current] is the password and the hash of [new] took its place, unless another change came first. */
+    private fun swapped(
+        current: String,
+        new: String,
+    ): Boolean {
+        val stored = administrators.hash() ?: return false
+        return hasher.matches(current, stored) && administrators.replaceHash(stored, hasher.hash(new), clock.instant())
     }
 
     private fun failedChange(clientAddress: String): PasswordChangeResult {
