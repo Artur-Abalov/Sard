@@ -3,6 +3,7 @@
 
 import { agentHandlers } from './api/agents'
 import { installHandlers } from './api/install'
+import { onboardingHandlers } from './api/onboarding'
 import { overviewHandlers } from './api/overview'
 import { runHandlers } from './api/runs'
 import { sessionHandlers } from './api/session'
@@ -19,6 +20,7 @@ export const handlers = [
   ...originGuardHandlers,
   http.get('/api/v1/status', ({ response }) => response(200).json(status)),
   ...sessionHandlers,
+  ...onboardingHandlers,
   ...overviewHandlers,
   ...agentHandlers,
   ...installHandlers,

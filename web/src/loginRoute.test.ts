@@ -2,7 +2,7 @@
 // Copyright 2026 Artur Abalov
 
 import { describe, expect, test } from 'vitest'
-import { redirectIfSignedIn } from './auth/loginGuard'
+import { redirectIfSignedIn, setupFinished, setupPending } from './auth/loginGuard'
 import { http } from './mocks/http'
 import { noSession, PROBLEM } from './mocks/problems'
 import { server } from './mocks/node'
@@ -32,5 +32,57 @@ describe('redirectIfSignedIn (the login route beforeLoad)', () => {
   test('a session check failure other than 401 still lets the login page open', async () => {
     server.use(http.get('/api/v1/session', () => new Response(null, { status: 500 })))
     await expect(redirectIfSignedIn(undefined)).resolves.toBeNull()
+  })
+})
+
+const withAdminStep = (state: 'pending' | 'done') =>
+  server.use(
+    http.get('/api/v1/onboarding', ({ response }) =>
+      response(200).json({
+        access: 'none',
+        setupCode: 'active',
+        ca: null,
+        caReplaceable: null,
+        steps: [
+          { id: 'ca', state },
+          { id: 'admin', state },
+          { id: 'self_backup', state: 'upcoming' },
+          { id: 'keys_confirmed', state: 'upcoming' },
+        ],
+      }),
+    ),
+  )
+
+describe('setupPending (the login route sends a visit to the wizard, Рк2)', () => {
+  test('is true while the admin step is pending', async () => {
+    withAdminStep('pending')
+    await expect(setupPending()).resolves.toBe(true)
+  })
+
+  test('is false once the admin step is done', async () => {
+    withAdminStep('done')
+    await expect(setupPending()).resolves.toBe(false)
+  })
+
+  test('is false when the state cannot be read: the login page opens as usual', async () => {
+    server.use(http.get('/api/v1/onboarding', () => new Response(null, { status: 503 })))
+    await expect(setupPending()).resolves.toBe(false)
+  })
+})
+
+describe('setupFinished (the wizard route sends a visit to sign-in, Рк2)', () => {
+  test('is true once the admin step is done', async () => {
+    withAdminStep('done')
+    await expect(setupFinished()).resolves.toBe(true)
+  })
+
+  test('is false while the admin step is pending', async () => {
+    withAdminStep('pending')
+    await expect(setupFinished()).resolves.toBe(false)
+  })
+
+  test('is false when the state cannot be read: the wizard shows the failure itself', async () => {
+    server.use(http.get('/api/v1/onboarding', () => new Response(null, { status: 500 })))
+    await expect(setupFinished()).resolves.toBe(false)
   })
 })
