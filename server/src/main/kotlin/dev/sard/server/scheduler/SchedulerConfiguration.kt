@@ -40,12 +40,17 @@ data class SchedulerProperties(
     val batch: Int = BATCH,
 ) {
     fun settings(): SchedulerSettings {
-        require(interval.isPositive) { "sard.scheduler.interval must be positive" }
-        require(!catchUpSpacing.isNegative) { "sard.scheduler.catch-up-spacing must not be negative" }
-        require(skipAlertThreshold >= 1) { "sard.scheduler.skip-alert-threshold must be at least 1" }
-        require(batch >= 1) { "sard.scheduler.batch must be at least 1" }
+        valid(interval.isPositive, "interval must be positive")
+        valid(!catchUpSpacing.isNegative, "catch-up-spacing must not be negative")
+        valid(skipAlertThreshold >= 1, "skip-alert-threshold must be at least 1")
+        valid(batch >= 1, "batch must be at least 1")
         return SchedulerSettings(catchUpSpacing, skipAlertThreshold, batch)
     }
+
+    private fun valid(
+        holds: Boolean,
+        rule: String,
+    ) = require(holds) { "sard.scheduler.$rule" }
 }
 
 /** Runs [tick] every [interval] on one thread; ticks never overlap. */

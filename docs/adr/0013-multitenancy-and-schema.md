@@ -54,8 +54,9 @@ class HibernateTenantBridge(private val resolver: TenantResolver) : CurrentTenan
   4. `StepCounts.waiting()` — число шагов в `queued` и `dispatched` по всем тенантам одним запросом раз в `sard.run.dispatch.check-interval` (S6a, метрика отправки): только счётчики, без строк.
   5. `Deliveries.unplanned`, `Deliveries.due`, `Deliveries.pending` (S9a, уведомления, OQ-047) — раз в `sard.notify.tick-interval`: завершённые запуски без доставки по каналу, доставки, у которых подошло время, и счётчик ожидающих. Возвращают только идентификаторы, канал, счётчик попыток и время создания; каждая запись — в `inTenant` тенанта строки.
   6. `StepDeadlines.overdue(now)`, `StepDeadlines.holders()` (FXs, срок потери шага) — раз в `sard.run.dispatch.check-interval` шаги в `dispatched`/`running`, чей `lost_deadline` наступил, и один раз при старте сервера агенты с такими шагами. Возвращают только пары «тенант, идентификатор»; перевод в `lost` и новый срок — в `inTenant` тенанта шага.
+  7. `Scheduler.tick` (F3a, ADR 00XX-draft-scheduler) — раз в `sard.scheduler.interval` расписания живых источников, у которых наступил `next_run_at` или `catch_up_at`, и самый поздний назначенный `catch_up_at`. Возвращает только пары «тенант, идентификатор» и одно время; строка расписания берётся `FOR UPDATE SKIP LOCKED`, срабатывание и запуск пишутся в `inTenant` тенанта расписания (системная сессия только читает, а `FOR UPDATE` в ней PostgreSQL не выполнит).
 
-  Список проверяет `ArchitectureTest` (S2b) с точностью до файла: вызов `sessions.system` вне `EnrollmentTokens.kt`, `AgentCertificateStandings.kt`, `StepCounts.kt`, `StepDeadlines.kt` и `notify/Deliveries.kt` роняет сборку; лишний вызов внутри этих файлов ловит ревью.
+  Список проверяет `ArchitectureTest` (S2b) с точностью до файла: вызов `sessions.system` вне `EnrollmentTokens.kt`, `AgentCertificateStandings.kt`, `StepCounts.kt`, `StepDeadlines.kt`, `notify/Deliveries.kt` и `scheduler/Scheduler.kt` роняет сборку; лишний вызов внутри этих файлов ловит ревью.
 - Операции администратора над токенами (`EnrollmentTokens.create`, `list`, `get`, `revoke`, S2b) идут через `inTenant` с тенантом, который вызывающий получил от `TenantResolver`. Будущий REST-слой (D2 → W1b) никогда не берёт тенант из параметра пути.
 - Тенант gRPC-вызова агента (S3) — из его сертификата: перехватчик кладёт `AgentPrincipal` в gRPC `Context`, обработчики `AgentService` ходят в базу через `agents/AgentSessions.inTenant { }` = `TenantSessions.inTenant(principal.tenantId)`. `Context` доходит до обработчика-корутины и всех диспетчеров, на которые он переключается (grpc-kotlin кладёт `GrpcContextElement` в контекст обработчика), в том числе до сообщений стрима, пришедших после открытия, — проверено `AgentAuthIntegrationTest`. Вне аутентифицированного вызова `AgentSessions` бросает исключение. Spring Data-репозитории в обработчиках агента не используются: они идут через резолвер, а не через принципал.
 - Register (S4a) пишет снимок через `registration/Registration`, доменный пакет без gRPC: он не может зависеть от `agents/`, поэтому `AgentGrpcService` передаёт ему `principal.tenantId` и `principal.agentId`, а тот открывает `TenantSessions.inTenant(tenantId)` — то же, что `AgentSessions.inTenant`, тенант по-прежнему только из сертификата. Транзакция начинается с блокировки строки агента (`LockModeType.PESSIMISTIC_WRITE`): второй Register того же агента ждёт и заменяет снимок целиком. Наборы заменяются удалением и вставкой, а не слиянием.
@@ -124,20 +125,25 @@ workflows                     тенант · таблица создана в S
   id PK, name, definition JSONB, created_at, updated_at, deleted_at
   UNIQUE (tenant_id, name) WHERE deleted_at IS NULL
 
-schedules                     тенант
-  id PK, workflow_id → workflows, cron, timezone, enabled, next_run_at, deleted_at,
-  misfire_policy TEXT CHECK IN ('run_once', 'skip') DEFAULT 'run_once'
-  INDEX (next_run_at) WHERE enabled AND deleted_at IS NULL   -- системный скан
-  -- выбор: SELECT ... WHERE next_run_at <= now() FOR UPDATE SKIP LOCKED — готово к HA;
-  -- пропущенные за время простоя запуски: run_once — один запуск вместо всех, skip — ни одного.
-  -- По умолчанию run_once: для бэкапа поздно лучше, чем никогда.
+schedules                     тенант · реализовано (F3a, ADR 00XX-draft-scheduler: расписание источника, не workflow)
+  id PK, source_id → sources UNIQUE (tenant_id, source_id), cron, timezone, enabled,
+  next_run_at (NULL ⇔ выключено), catch_up_at, last_fired_at, skipped_in_row, created_at, updated_at
+  INDEX (next_run_at) WHERE enabled, INDEX (catch_up_at) WHERE catch_up_at IS NOT NULL   -- системный скан
+  -- выбор: системное чтение созревших, затем в тенанте SELECT ... FOR UPDATE SKIP LOCKED — готово к HA;
+  -- простой: один запуск catch_up вместо всех пропущенных (D16), misfire_policy нет.
+  -- Удалённый источник: расписание остаётся, скан берёт только живые источники.
+
+schedule_fires                тенант · история · реализовано (F3a)
+  id PK, schedule_id → schedules, kind ('schedule', 'catch_up'), scheduled_for, outcome, run_id → runs,
+  reason, missed_count, missed_until, skipped_in_row, alert, recorded_at
+  UNIQUE (tenant_id, schedule_id, kind, scheduled_for) WHERE outcome <> 'skipped_downtime'
 
 runs                          тенант — запуск источника (этап 1) или workflow · история · реализовано (S6a; schedule_id — вместе со schedules)
   id PK, source_id NOT NULL → sources, workflow_id NULL → workflows, schedule_id NULL → schedules,
   trigger CHECK IN ('schedule', 'manual', 'verification'),
   status  CHECK IN ('queued', 'dispatched', 'running', 'succeeded', 'failed', 'cancelled'),
   definition JSONB NULL (снимок workflow на момент запуска), message NULL, queued_at, started_at, finished_at
-  CHECK (workflow_id IS NOT NULL OR trigger = 'manual')   -- этап 1: неявных workflow нет (ADR 0022)
+  CHECK (workflow_id IS NOT NULL OR trigger IN ('manual', 'schedule', 'catch_up'))   -- неявных workflow нет (ADR 0022, F3a)
   CHECK ((workflow_id IS NULL) = (definition IS NULL))
   CHECK ((status IN ('queued', 'dispatched', 'running')) = (finished_at IS NULL))
   UNIQUE (tenant_id, source_id) WHERE status IN ('queued', 'dispatched', 'running')   -- D6, ADR 0022
@@ -214,7 +220,7 @@ Enterprise-модуль хранит свои таблицы в собствен
 - **`DEFAULT` на `agents.tenant_id` в базе.** Ядро молча писало бы в тенант по умолчанию даже из enterprise-сборки с ошибкой в резолвере. Значение по умолчанию используется только для заполнения существующих строк в V2 и сразу снимается.
 
 ## Отложено
-- **Контекст тенанта вне HTTP-запроса.** Поиск токена до тенанта решён (S2a, «Явный тенант и системный доступ»). Тенант gRPC-вызова агента решён в S3 («Явный тенант и системный доступ»): из сертификата, подтверждённого записью `agent_certificates`. Остаётся скан планировщика по всем тенантам (кандидат — ещё один вызов `TenantSessions.system`).
+- **Контекст тенанта вне HTTP-запроса.** Поиск токена до тенанта решён (S2a, «Явный тенант и системный доступ»). Тенант gRPC-вызова агента решён в S3 («Явный тенант и системный доступ»): из сертификата, подтверждённого записью `agent_certificates`. Скан планировщика по всем тенантам решён в F3a (вызов 7 `TenantSessions.system`).
 - **Пользователи и роли.** В ядре — вместе с аутентификацией; вероятная форма — глобальная `users` и `memberships (tenant_id, user_id, role)`: оператор MSP видит нескольких тенантов.
 - **Каналы уведомлений** (токены Telegram, SMTP) — где хранить учётные данные сервера, решим на этапе уведомлений в духе ADR 0008. Этап 1 решён в S9a (OQ-017): окружение, один чат; этап 2 — ADR 0042, «Отложено».
 - ~~**`BackupOutput.repository_id`.**~~ Решено: поле `repository_id = 4` добавлено в proto (A6a, OQ-018), S7a пишет его в `snapshots`.

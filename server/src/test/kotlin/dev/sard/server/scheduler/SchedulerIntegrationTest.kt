@@ -48,7 +48,7 @@ private fun at(text: String): Instant = Instant.parse(text)
  * F3a verification 1-7: a fire is neither lost nor doubled. RUNS_NOW is 2026-09-30T10:00:00Z. Mutants run
  * under single-threaded ticks only; the races call [Scheduler.tick] directly.
  */
-@MutFlowTest(includeTargets = [Scheduler::class, Schedules::class, CatchUpSlots::class])
+@MutFlowTest(includeTargets = [Scheduler::class, Firing::class, Schedules::class, CatchUpSlots::class])
 @ExtendWith(OutputCaptureExtension::class)
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
@@ -199,6 +199,7 @@ class SchedulerIntegrationTest(
 
         // The slot is the downtime tick's own moment: the next tick at that very instant runs the catch-up.
         tickAt(at("2026-09-30T14:30:00Z"))
+        assertEquals(1, tables.runs().size, "a catch-up runs at its slot, not after it")
         tickAt(at("2026-09-30T14:30:02Z"))
 
         val run = tables.runs().single()
@@ -243,6 +244,23 @@ class SchedulerIntegrationTest(
 
         val slot = jdbc.queryForObject("select catch_up_at from schedules where id = ?", Timestamp::class.java, late.id)
         assertEquals(at("2026-09-30T14:30:20Z"), slot!!.toInstant())
+        tickAt(at("2026-09-30T14:30:19Z"))
+        assertEquals(emptyList(), tables.fires(late.id).filter { it.kind == "catch_up" }, "not before its slot")
+        tickAt(at("2026-09-30T14:30:20Z"))
+        assertEquals(listOf("catch_up"), tables.fires(late.id).filter { it.kind == "catch_up" }.map { it.kind })
+    }
+
+    @Test
+    fun `a catch-up whose slot is still ahead waits while the cron fires on time`() {
+        val schedule = schedule(source())
+        val slot = Timestamp.from(at("2026-09-30T11:00:30Z"))
+        jdbc.update("update schedules set catch_up_at = ? where id = ?", slot, schedule.id)
+
+        tickAt(at("2026-09-30T11:00:00Z"))
+
+        val fires = tables.fires(schedule.id)
+        assertEquals(listOf("schedule" to "run_created"), fires.map { it.kind to it.outcome })
+        assertEquals("schedule", tables.runs().single().trigger)
     }
 
     /** Ticks every minute from [from] until [to], finishing runs in between as an agent would. */
@@ -404,6 +422,8 @@ class SchedulerIntegrationTest(
         // Kathmandu is UTC+05:45: the same cron in another zone fires at another instant.
         val moved = set(source, ScheduleDraft("30 * * * *", "Asia/Kathmandu", enabled = true))
         assertEquals(at("2026-09-30T11:45:00Z"), moved.nextRunAt)
+        assertEquals(moved, schedules.get(tenant.id, source.id))
+        assertNull(schedules.get(tenant.id, source("no-schedule").id))
         assertTrue(changed.updatedAt > same.createdAt)
     }
 }
