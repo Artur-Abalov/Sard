@@ -34,10 +34,19 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVER_IMAGE="${SERVER_IMAGE:-sard-server:e2e}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:18-alpine}"
+# Set in the first-start wizard, with the code from the server's log (F4a).
 ADMIN_PASSWORD="console-install-admin"
 RUN_ID="sard-console-$$"
 NET="$RUN_ID"
 HOST="$RUN_ID-host"
+
+# The first start goes through the wizard with the code from the server's log (F4a,
+# scripts/lib/setup-wizard.sh); the server is reachable from the host container only.
+# shellcheck source=lib/setup-wizard.sh
+source "$ROOT/scripts/lib/setup-wizard.sh"
+sard_curl() { docker exec "$HOST" curl "$@"; }
+server_log() { docker logs "$RUN_ID-server" 2>&1; }
+export SARD_WIZARD_COOKIES=/root/jar
 WORK="$(mktemp -d)"
 # Not /tmp: Debian 13 mounts a tmpfs there at boot, over what docker cp writes.
 WORKDIR=/root/install
@@ -95,7 +104,7 @@ start_server() {
   docker run -d --name "$RUN_ID-server" --network "$NET" --network-alias sard-server \
     -e SARD_DB_URL=jdbc:postgresql://db:5432/sard -e SARD_DB_USER=sard -e SARD_DB_PASSWORD=sard \
     -e SARD_PKI_SERVER_NAMES=sard-server -e SARD_AGENT_ENDPOINT=sard-server:9090 \
-    -e SARD_ADMIN_PASSWORD="$ADMIN_PASSWORD" "$SERVER_IMAGE" >/dev/null
+    "$SERVER_IMAGE" >/dev/null
 }
 
 start_host() {
@@ -115,7 +124,7 @@ start_host() {
 sign_in() {
   wait_for "sard-server" "curl -sf http://sard-server:8080/api/v1/status"
   wait_for "sard-server gRPC" "bash -c '</dev/tcp/sard-server/9090'"
-  api POST /api/v1/session "{\"password\":\"$ADMIN_PASSWORD\"}" >/dev/null
+  sard_complete_wizard http://sard-server:8080 "$ADMIN_PASSWORD" server_log || die "the first-start wizard failed"
 }
 
 # steps <path with query>: the steps of the answer as TSV lines "kind<TAB>command", one per command.

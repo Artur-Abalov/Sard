@@ -101,6 +101,9 @@ jobs:
       # below their release (docs/adr/0048-release-versions.md).
       - name: Release version rule
         run: scripts/test-release-version.sh
+      # The helper that scripts use to go through the first-start wizard by the code from the log (F4a).
+      - name: Setup wizard helper
+        run: scripts/test-setup-wizard.sh
       - name: Package the agent with restic (tar.gz, deb, rpm; amd64 and arm64)
         env:
           REQUIRE_RPM: "1"
@@ -238,10 +241,8 @@ jobs:
           name: sard-server-image
           path: ${{ runner.temp }}/sard-server-image.tar
           if-no-files-found: error
-      # The template leaves the administrator password empty on purpose.
+      # The template has no administrator password: the first start asks for it (F4a).
       - name: Compose files resolve with the env template
-        env:
-          SARD_ADMIN_PASSWORD: compose-config-check
         run: |
           docker compose -f deploy/docker-compose.yml --env-file deploy/.env.example config --quiet
           env SARD_VERSION=ci docker compose -f deploy/docker-compose.yml \

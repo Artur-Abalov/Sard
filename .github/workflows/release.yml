@@ -481,8 +481,7 @@ jobs:
         run: |
           gunzip -c "sard-${VERSION#v}-images-linux-${{ matrix.arch }}.tar.gz" | docker load
           cp sard.env.example .env
-          sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" \
-                 -e "s/^SARD_ADMIN_PASSWORD=.*/SARD_ADMIN_PASSWORD=$(openssl rand -hex 16)/" .env
+          sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" .env
           docker compose up -d --wait --pull never
       - run: scripts/smoke-server.sh "$RUNNER_TEMP/offline/.env" "$VERSION"
       - if: failure()
