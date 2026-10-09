@@ -33,7 +33,10 @@ import java.util.UUID
 data class SessionRequest(
     @field:Schema(description = "The administrator password set in the first-start wizard or changed since")
     val password: String,
-)
+) {
+    // Never the password: Spring logs the body it reads at DEBUG.
+    override fun toString() = "SessionRequest()"
+}
 
 @Schema(description = "The current administrator session")
 data class Session(

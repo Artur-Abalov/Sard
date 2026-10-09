@@ -4,7 +4,9 @@
 package dev.sard.server.api
 
 import com.google.protobuf.ProtocolMessageEnum
+import dev.sard.server.SeededAdministrator
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.auth.PUBLIC_OPERATIONS
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
@@ -31,9 +33,9 @@ import dev.sard.proto.agent.v1.StepStatus as ProtoStepStatus
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = ["spring.grpc.server.port=0"],
+    properties = ["spring.grpc.server.port=0", "sard.test.admin-password=test-admin-password-2026"],
 )
-@Import(TestcontainersConfiguration::class)
+@Import(SeededAdministrator::class, TestcontainersConfiguration::class)
 class ApiContractIntegrationTest(
     @Autowired private val mapper: ObjectMapper,
     @LocalServerPort private val port: Int,
@@ -58,7 +60,7 @@ class ApiContractIntegrationTest(
         return http.send(builder.build(), HttpResponse.BodyHandlers.ofString())
     }
 
-    /** A fresh session cookie value, signed in with the test admin password (build.gradle.kts). */
+    /** A fresh session cookie value, signed in with the password the context was seeded with. */
     private fun signIn(): String {
         val response = send("POST", "/api/v1/session", """{"password":"test-admin-password-2026"}""")
         val setCookie = response.headers().firstValue("Set-Cookie").orElseThrow()
@@ -170,10 +172,26 @@ class ApiContractIntegrationTest(
         }
 
     @Test
-    fun `every operation but sign-in and status requires the session and describes 401`() {
-        val public = setOf("POST /api/v1/session", "GET /api/v1/status")
+    fun `every operation but the public ones requires a session and describes 401`() {
+        val public = PUBLIC_OPERATIONS
+        val setup = setOf("POST /api/v1/onboarding/ca", "POST /api/v1/onboarding/admin")
         for ((name, op) in operations()) {
-            if (name in public) {
+            if (name in setup) {
+                // The steps of the wizard ask for the setup session, and say so in their own 401.
+                assertEquals(listOf("setupSession"), op.path("security").flatMap { it.propertyNames() }, name)
+                assertEquals(
+                    "#/components/schemas/Problem",
+                    op
+                        .path("responses")
+                        .path("401")
+                        .path("content")
+                        .path(PROBLEM_JSON)
+                        .path("schema")
+                        .path("\$ref")
+                        .asString(),
+                    name,
+                )
+            } else if (name in public) {
                 assertTrue(op.path("security").isArray && op.path("security").isEmpty, "$name: ${op.path("security")}")
                 // Sign-in has its own 401, a wrong password.
                 assertTrue(
@@ -207,6 +225,11 @@ class ApiContractIntegrationTest(
         val scheme = spec.path("components").path("securitySchemes").path("session")
         val cookie = listOf("type", "in", "name").map { scheme.path(it).asString() }
         assertEquals(listOf("apiKey", "cookie", "sard_session"), cookie)
+        val setupScheme = spec.path("components").path("securitySchemes").path("setupSession")
+        assertEquals(
+            listOf("apiKey", "cookie", "sard_setup"),
+            listOf("type", "in", "name").map { setupScheme.path(it).asString() },
+        )
         assertEquals(
             listOf("session"),
             spec
@@ -310,7 +333,17 @@ class ApiContractIntegrationTest(
                 Triple("GET", "/api/v1/runs/{runId}", null),
                 Triple("GET", "/api/v1/runs/{runId}/steps/{stepId}/logs", null),
             )
-        val implemented = setOf("POST /api/v1/session", "GET /api/v1/session", "DELETE /api/v1/session")
+        val implemented =
+            setOf(
+                "POST /api/v1/session",
+                "GET /api/v1/session",
+                "DELETE /api/v1/session",
+                "PUT /api/v1/session/password",
+                "GET /api/v1/onboarding",
+                "POST /api/v1/onboarding/setup-session",
+                "POST /api/v1/onboarding/ca",
+                "POST /api/v1/onboarding/admin",
+            )
         val listed = calls.map { "${it.first} ${it.second.substringBefore('?')}" }.toSet()
         assertEquals(operations().map { it.first }.toSet() - "GET /api/v1/status" - implemented, listed)
         val cookie = signIn()

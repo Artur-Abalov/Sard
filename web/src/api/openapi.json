@@ -17,6 +17,9 @@
   "tags" : [ {
     "name" : "session",
     "description" : "Administrator sign-in"
+  }, {
+    "name" : "onboarding",
+    "description" : "The first-start wizard"
   } ],
   "paths" : {
     "/api/v1/sources/{sourceId}" : {
@@ -197,6 +200,107 @@
               "application/problem+json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/RunActiveProblem"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/session/password" : {
+      "put" : {
+        "tags" : [ "session" ],
+        "summary" : "Change the administrator password",
+        "description" : "Ends every other session; the session that asks goes on under a new id. A wrong current password counts as a failed sign-in attempt.",
+        "operationId" : "changePassword",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PasswordChangeRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "Changed",
+            "headers" : {
+              "Set-Cookie" : {
+                "description" : "sard_session; HttpOnly; SameSite=Strict; Path=/; Secure when the connection is HTTPS",
+                "style" : "simple",
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "wrong_password: the current password is not the password; validation_failed: a field is missing or the new password is not 12 to 1024 characters",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "429" : {
+            "description" : "Too many failed attempts; the password is not checked",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Seconds until the next attempt",
+                "style" : "simple",
+                "schema" : {
+                  "type" : "integer"
+                }
+              }
+            },
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "501" : {
+            "description" : "The administrator is managed outside the server (an extension)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
                 }
               }
             }
@@ -541,6 +645,16 @@
               }
             }
           },
+          "409" : {
+            "description" : "There is no administrator yet: the first-start wizard has not set the password (setup_required); not counted as a failed attempt",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "429" : {
             "description" : "Too many failed attempts; sign-in is locked for a while",
             "headers" : {
@@ -623,6 +737,229 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/onboarding/setup-session" : {
+      "post" : {
+        "tags" : [ "onboarding" ],
+        "summary" : "Enter the setup code",
+        "description" : "The code is printed in the log of the server. A wrong, expired, missing or malformed code is the same 401 and counts against the client address.",
+        "operationId" : "createSetupSession",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SetupCodeRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "The code is right; a setup session was issued",
+            "headers" : {
+              "Set-Cookie" : {
+                "description" : "sard_setup; HttpOnly; SameSite=Strict; Path=/api/v1/onboarding; Secure when the connection is HTTPS. No Max-Age: the session ends with the code, the admin step or a restart.",
+                "style" : "simple",
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Wrong, expired or missing code",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "The admin step is done, so there is no code (setup_completed)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429" : {
+            "description" : "Too many wrong codes from this address; the code is not checked",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Seconds until the next attempt",
+                "style" : "simple",
+                "schema" : {
+                  "type" : "integer"
+                }
+              }
+            },
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/api/v1/onboarding/ca" : {
+      "post" : {
+        "tags" : [ "onboarding" ],
+        "summary" : "Use the CA of this server",
+        "description" : "Does the step ca; repeating it changes nothing. From now on the CA cannot be replaced.",
+        "operationId" : "confirmOnboardingCa",
+        "responses" : {
+          "204" : {
+            "description" : "The step ca is done"
+          },
+          "401" : {
+            "description" : "No setup session, or it ended",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "setupSession" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/onboarding/admin" : {
+      "post" : {
+        "tags" : [ "onboarding" ],
+        "summary" : "Set the administrator password",
+        "description" : "Does the step admin and signs the owner in. The code and every setup session end. The password is stored as an Argon2id hash.",
+        "operationId" : "completeOnboardingAdmin",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AdminStepRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "The password is set",
+            "headers" : {
+              "Set-Cookie" : {
+                "description" : "sard_session; HttpOnly; SameSite=Strict; Path=/; Secure when the connection is HTTPS. A second Set-Cookie clears sard_setup.",
+                "style" : "simple",
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No setup session, or it ended",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "ca_step_pending: the CA was not confirmed yet; setup_completed: there is an administrator",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "The password is missing or not 12 to 1024 characters; errors name the field",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "setupSession" : [ ]
+        } ]
       }
     },
     "/api/v1/enrollment-tokens" : {
@@ -1369,6 +1706,37 @@
         }
       }
     },
+    "/api/v1/onboarding" : {
+      "get" : {
+        "tags" : [ "onboarding" ],
+        "summary" : "State of the first start",
+        "description" : "Public. Which steps are done, whether a setup code was issued, and which session came with the request. The CA is shown only to a setup or administrator session.",
+        "operationId" : "getOnboarding",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Onboarding"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
     "/api/v1/enrollment-tokens/{tokenId}" : {
       "get" : {
         "tags" : [ "enrollment-tokens" ],
@@ -1431,7 +1799,7 @@
       "get" : {
         "tags" : [ "ca" ],
         "summary" : "CA of the server",
-        "description" : "The fingerprint of the CA, whatever its origin. Requires an administrator session.",
+        "description" : "The fingerprint of the CA, where it came from and where its key is. Requires an administrator session.",
         "operationId" : "getCa",
         "responses" : {
           "200" : {
@@ -1795,7 +2163,7 @@
       },
       "ErrorCode" : {
         "type" : "string",
-        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "unavailable", "self_agent_confirmation_required" ]
+        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "unavailable", "self_agent_confirmation_required", "setup_required", "setup_completed", "ca_step_pending", "wrong_password" ]
       },
       "Problem" : {
         "type" : "object",
@@ -1910,6 +2278,18 @@
           }
         },
         "required" : [ "agentId", "config", "createdAt", "id", "name", "plugin", "repositoryName", "updatedAt" ]
+      },
+      "PasswordChangeRequest" : {
+        "type" : "object",
+        "description" : "A password change; the new password is 12 to 1024 Unicode code points",
+        "properties" : {
+          "currentPassword" : {
+            "type" : [ "string", "null" ]
+          },
+          "newPassword" : {
+            "type" : [ "string", "null" ]
+          }
+        }
       },
       "RunActiveProblem" : {
         "type" : "object",
@@ -2145,10 +2525,29 @@
         "properties" : {
           "password" : {
             "type" : "string",
-            "description" : "The administrator password from the server's environment"
+            "description" : "The administrator password set in the first-start wizard or changed since"
           }
         },
         "required" : [ "password" ]
+      },
+      "SetupCodeRequest" : {
+        "type" : "object",
+        "description" : "The setup code printed in the server's log",
+        "properties" : {
+          "code" : {
+            "type" : [ "string", "null" ],
+            "description" : "As printed, or as typed: case, hyphens and spaces do not matter"
+          }
+        }
+      },
+      "AdminStepRequest" : {
+        "type" : "object",
+        "description" : "The administrator password to set; 12 to 1024 Unicode code points",
+        "properties" : {
+          "password" : {
+            "type" : [ "string", "null" ]
+          }
+        }
       },
       "CreateEnrollmentTokenRequest" : {
         "type" : "object",
@@ -2703,6 +3102,97 @@
         },
         "required" : [ "agentsOnline", "agentsTotal", "firstSteps" ]
       },
+      "CaInfo" : {
+        "type" : "object",
+        "description" : "The CA of this server; public data, but only for a signed-in administrator",
+        "properties" : {
+          "fingerprint" : {
+            "type" : "string",
+            "description" : "SHA-256 of the root's DER SubjectPublicKeyInfo, 64 lower-case hex characters: the part of an enrollment token after the last dot",
+            "example" : "8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f"
+          },
+          "origin" : {
+            "$ref" : "#/components/schemas/CaOrigin",
+            "description" : "Where the CA came from: made by this server or imported (docs/operator/08)"
+          },
+          "keyPath" : {
+            "type" : "string",
+            "description" : "Absolute path of the CA key in the file system of the server: back it up separately",
+            "example" : "/var/lib/sard/pki/ca/ca.key"
+          }
+        },
+        "required" : [ "fingerprint", "keyPath", "origin" ]
+      },
+      "CaOrigin" : {
+        "type" : "string",
+        "description" : "Where the CA of the server came from: made by the server or imported",
+        "enum" : [ "generated", "imported" ]
+      },
+      "Onboarding" : {
+        "type" : "object",
+        "description" : "How far the first start has come; public, the CA only with a setup or administrator session",
+        "properties" : {
+          "steps" : {
+            "type" : "array",
+            "description" : "Exactly ca, admin, self_backup, keys_confirmed, in this order",
+            "items" : {
+              "$ref" : "#/components/schemas/OnboardingStep"
+            }
+          },
+          "setupCode" : {
+            "$ref" : "#/components/schemas/SetupCodeState"
+          },
+          "access" : {
+            "$ref" : "#/components/schemas/OnboardingAccess"
+          },
+          "ca" : {
+            "description" : "The CA of the server; null without a session",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/CaInfo"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "caReplaceable" : {
+            "type" : [ "boolean", "null" ],
+            "description" : "True while the CA may still be replaced by an import: the ca step is not done and no agent certificate was issued; null without a session"
+          }
+        },
+        "required" : [ "access", "ca", "caReplaceable", "setupCode", "steps" ]
+      },
+      "OnboardingAccess" : {
+        "type" : "string",
+        "description" : "Which session came with the request",
+        "enum" : [ "none", "setup", "admin" ]
+      },
+      "OnboardingStep" : {
+        "type" : "object",
+        "description" : "A step of the wizard and where it stands",
+        "properties" : {
+          "id" : {
+            "$ref" : "#/components/schemas/OnboardingStepId"
+          },
+          "state" : {
+            "$ref" : "#/components/schemas/OnboardingStepState"
+          }
+        },
+        "required" : [ "id", "state" ]
+      },
+      "OnboardingStepId" : {
+        "type" : "string",
+        "description" : "A step of the first-start wizard, in the order of the wizard",
+        "enum" : [ "ca", "admin", "self_backup", "keys_confirmed" ]
+      },
+      "OnboardingStepState" : {
+        "type" : "string",
+        "description" : "upcoming: the step is not part of this version of the wizard yet",
+        "enum" : [ "done", "pending", "upcoming" ]
+      },
+      "SetupCodeState" : {
+        "type" : "string",
+        "description" : "active: a code was issued at this start and has not expired; expired: it was issued and its time passed; not_issued: there is none (the admin step is done, or was opened by admin-reset after the start)",
+        "enum" : [ "active", "expired", "not_issued" ]
+      },
       "EnrollmentTokenPage" : {
         "type" : "object",
         "description" : "A page of enrollment tokens",
@@ -2719,18 +3209,6 @@
           }
         },
         "required" : [ "items", "nextCursor" ]
-      },
-      "CaInfo" : {
-        "type" : "object",
-        "description" : "The CA of this server; public data, but only for a signed-in administrator",
-        "properties" : {
-          "fingerprint" : {
-            "type" : "string",
-            "description" : "SHA-256 of the root's DER SubjectPublicKeyInfo, 64 lower-case hex characters: the part of an enrollment token after the last dot",
-            "example" : "8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f"
-          }
-        },
-        "required" : [ "fingerprint" ]
       },
       "AgentPage" : {
         "type" : "object",
@@ -2965,6 +3443,11 @@
       "session" : {
         "type" : "apiKey",
         "name" : "sard_session",
+        "in" : "cookie"
+      },
+      "setupSession" : {
+        "type" : "apiKey",
+        "name" : "sard_setup",
         "in" : "cookie"
       }
     }

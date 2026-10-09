@@ -97,18 +97,27 @@ data class Onboarding(
 data class SetupCodeRequest(
     @field:Schema(description = "As printed, or as typed: case, hyphens and spaces do not matter")
     val code: String? = null,
-)
+) {
+    // Never the code: Spring logs the body it reads at DEBUG.
+    override fun toString() = "SetupCodeRequest()"
+}
 
 @Schema(description = "The administrator password to set; 12 to 1024 Unicode code points")
 data class AdminStepRequest(
     val password: String? = null,
-)
+) {
+    // Never the password: Spring logs the body it reads at DEBUG.
+    override fun toString() = "AdminStepRequest()"
+}
 
 @Schema(description = "A password change; the new password is 12 to 1024 Unicode code points")
 data class PasswordChangeRequest(
     val currentPassword: String? = null,
     val newPassword: String? = null,
-)
+) {
+    // Never the passwords: Spring logs the body it reads at DEBUG.
+    override fun toString() = "PasswordChangeRequest()"
+}
 
 /** The outcome of entering the setup code. */
 sealed interface CodeResult {

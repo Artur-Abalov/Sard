@@ -3,6 +3,7 @@
 
 package dev.sard.server.auth
 
+import dev.sard.server.SeededAdministrator
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.api.SESSION_COOKIE
 import org.springframework.beans.factory.annotation.Autowired
@@ -17,22 +18,24 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 // A password unique to this class so it gets its own Spring context and its own
 // Testcontainers Postgres (stopped below), never shared with another test's cache entry.
 private const val PASSWORD = "db-unavailable-password"
 
 /**
- * Rule "Вход работает при недоступной базе данных" (Р8): sign-in and reading the
- * current session never touch the database (SessionStore is in-memory), so both keep
- * working with Postgres stopped. [DirtiesContext] retires this class's context (and
- * its now-stopped container) instead of returning it to the cache for reuse.
+ * Rule "Вход до создания администратора отвечает 409 setup_required", scenarios "Вход при недоступной базе
+ * отвечает 503 и не засчитывается" and "Текущая сессия читается при недоступной базе" (OQ-188): the hash of
+ * the password is in the database, so sign-in needs it; the sessions are in memory, so reading one does not.
+ * [DirtiesContext] retires this class's context (and its now-stopped container) instead of returning it to the
+ * cache for reuse.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = ["spring.grpc.server.port=0", "SARD_ADMIN_PASSWORD=$PASSWORD"],
+    properties = ["spring.grpc.server.port=0", "sard.test.admin-password=$PASSWORD"],
 )
-@Import(TestcontainersConfiguration::class)
+@Import(SeededAdministrator::class, TestcontainersConfiguration::class)
 @DirtiesContext
 class DatabaseUnavailableIntegrationTest(
     @Autowired private val postgres: PostgreSQLContainer,
@@ -61,14 +64,21 @@ class DatabaseUnavailableIntegrationTest(
             "$SESSION_COOKIE=([^;]*)",
         ).find(response.headers().firstValue("Set-Cookie").orElseThrow())!!.groupValues[1]
 
+    private fun login(password: String) = send("POST", "/api/v1/session", """{"password":"$password"}""")
+
     @Test
-    fun `sign-in and reading the current session work while the database is down`() {
-        val signedIn = send("POST", "/api/v1/session", """{"password":"$PASSWORD"}""")
-        val cookie = sessionIdOf(signedIn)
+    fun `sign-in answers 503 without counting and the current session is read while the database is down`() {
+        val cookie = sessionIdOf(login(PASSWORD))
+        repeat(4) { assertEquals(401, login("wrong-password-123").statusCode()) }
 
         postgres.stop()
 
-        assertEquals(204, send("POST", "/api/v1/session", """{"password":"$PASSWORD"}""").statusCode())
+        repeat(3) {
+            val response = login("wrong-password-123")
+            assertEquals(503, response.statusCode())
+            assertEquals("application/problem+json", response.headers().firstValue("Content-Type").orElse(""))
+            assertTrue("\"unavailable\"" in response.body(), response.body())
+        }
         assertEquals(200, send("GET", "/api/v1/session", cookie = cookie).statusCode())
     }
 }

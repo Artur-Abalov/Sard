@@ -21,6 +21,11 @@ import org.springframework.context.annotation.DependsOn
 import org.springframework.jdbc.core.JdbcTemplate
 import java.time.Clock
 
+/** The failed entries of the setup code per client address (Р4): a counter of its own, apart from sign-in's. */
+class SetupCodeAttempts(
+    val tracker: LoginAttemptTracker,
+)
+
 /**
  * The first-start wizard (F4a): the setup code of this process, the setup sessions, the steps in the database, and
  * the ledger the CA directory is checked against. The setup code generator is replaceable (tests fix the code).
@@ -52,6 +57,9 @@ class OnboardingAutoConfiguration {
     ): CaLedger = JdbcCaLedger(jdbc, clock)
 
     @Bean
+    fun setupCodeAttempts(clock: Clock) = SetupCodeAttempts(LoginAttemptTracker(clock))
+
+    @Bean
     fun setupCodeAnnouncer(
         adminSetup: AdminSetup,
         codes: SetupCodes,
@@ -64,6 +72,7 @@ class OnboardingAutoConfiguration {
         steps: OnboardingSteps,
         codes: SetupCodes,
         setupSessions: SetupSessions,
+        codeAttempts: SetupCodeAttempts,
         adminSessions: SessionStore,
         tenantResolver: TenantResolver,
         ledger: CaLedger,
@@ -75,8 +84,7 @@ class OnboardingAutoConfiguration {
             steps,
             codes,
             setupSessions,
-            // Entering the code has its own failure counter, apart from the one of sign-in (Р4).
-            LoginAttemptTracker(clock),
+            codeAttempts.tracker,
             adminSessions,
             tenantResolver,
             ledger::usage,

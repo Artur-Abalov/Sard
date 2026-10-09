@@ -36,6 +36,10 @@ const KNOWN: Record<ErrorCode, true> = {
   agent_revoked: true,
   unavailable: true,
   self_agent_confirmation_required: true,
+  setup_required: true,
+  setup_completed: true,
+  ca_step_pending: true,
+  wrong_password: true,
 }
 
 function codeOf(error: unknown): string | null {

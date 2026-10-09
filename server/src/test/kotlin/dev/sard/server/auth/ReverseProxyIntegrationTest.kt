@@ -5,6 +5,7 @@ package dev.sard.server.auth
 
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
+import dev.sard.server.SeededAdministrator
 import dev.sard.server.TestcontainersConfiguration
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -78,9 +79,9 @@ private fun capture(block: () -> Unit): List<String> {
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = ["spring.grpc.server.port=0", "SARD_ADMIN_PASSWORD=$PASSWORD", "SARD_FORWARD_HEADERS=native"],
+    properties = ["spring.grpc.server.port=0", "sard.test.admin-password=$PASSWORD", "SARD_FORWARD_HEADERS=native"],
 )
-@Import(TestcontainersConfiguration::class)
+@Import(SeededAdministrator::class, TestcontainersConfiguration::class)
 class ReverseProxyIntegrationTest(
     @Autowired private val sessionStore: SessionStore,
     @Autowired private val attemptTracker: LoginAttemptTracker,
@@ -131,9 +132,9 @@ class ReverseProxyIntegrationTest(
 /** ADR 0046: without SARD_FORWARD_HEADERS proxy headers are ignored, as in ADR 0021 (Р4). */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = ["spring.grpc.server.port=0", "SARD_ADMIN_PASSWORD=$PASSWORD"],
+    properties = ["spring.grpc.server.port=0", "sard.test.admin-password=$PASSWORD"],
 )
-@Import(TestcontainersConfiguration::class)
+@Import(SeededAdministrator::class, TestcontainersConfiguration::class)
 class ReverseProxyHeadersIgnoredByDefaultIntegrationTest(
     @Autowired private val sessionStore: SessionStore,
     @Autowired private val attemptTracker: LoginAttemptTracker,

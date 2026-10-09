@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import tools.jackson.databind.ObjectMapper
 
@@ -176,6 +177,7 @@ class OnboardingCaController(
         description = "No setup session, or it ended",
         content = [Content(mediaType = PROBLEM_JSON, schema = Schema(implementation = Problem::class))],
     )
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun confirm(httpRequest: HttpServletRequest) {
         api.confirmCa(httpRequest.cookie(SETUP_COOKIE), httpRequest.administratorSession(), httpRequest.remoteAddr)
     }

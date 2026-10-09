@@ -13,6 +13,7 @@ import dev.sard.server.agents.dispatch.ReconciledHellos
 import dev.sard.server.agents.dispatch.StepDispatcher
 import dev.sard.server.auth.AdminSession
 import dev.sard.server.extension.TenantResolver
+import dev.sard.server.onboarding.SetupCodeGenerator
 import dev.sard.server.pki.MovableClock
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
@@ -36,6 +37,12 @@ import java.util.UUID
  */
 val T0: Instant = Instant.now().truncatedTo(ChronoUnit.SECONDS)
 
+/** The setup code every REST test server prints; [ApiClient.signIn] enters it. */
+const val WIZARD_CODE = "ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345"
+
+/** The password [ApiClient.signIn] sets in the wizard, and signs in with afterwards. */
+const val TEST_ADMIN_PASSWORD = "test-admin-password-2026"
+
 /** The header a test sets on sign-in to name the session's tenant (the stand-in for an enterprise resolver). */
 const val TEST_TENANT_HEADER = "X-Test-Tenant"
 
@@ -56,6 +63,10 @@ class SessionTenantResolver : TenantResolver {
 class RestApiTestConfiguration {
     @Bean
     fun clock() = MovableClock(T0)
+
+    /** The code the wizard of [ApiClient.signIn] enters. */
+    @Bean
+    fun setupCodeGenerator(): SetupCodeGenerator = SetupCodeGenerator { WIZARD_CODE }
 
     @Bean
     @Primary
@@ -133,17 +144,37 @@ class ApiClient(
         return http.send(builder.build(), HttpResponse.BodyHandlers.ofString())
     }
 
-    /** Signs in as the test administrator of [tenant] (the default one unless told otherwise). */
+    /**
+     * Signs in as the test administrator of [tenant] (the default one unless told otherwise). A server that has
+     * no administrator yet answers 409 setup_required: the wizard runs first, with the code of the test
+     * (F4a), and the sign-in is repeated.
+     */
     fun signIn(tenant: UUID = TenantResolver.DEFAULT_TENANT_ID): ApiSession {
-        val response =
-            raw(
-                "POST",
-                "/api/v1/session",
-                """{"password":"test-admin-password-2026"}""",
-                mapOf(TEST_TENANT_HEADER to tenant.toString()),
-            )
+        var response = login(tenant)
+        if (response.statusCode() == 409) {
+            runWizard()
+            response = login(tenant)
+        }
         val cookie = response.headers().firstValue("Set-Cookie").orElseThrow()
         return ApiSession(Regex("$SESSION_COOKIE=([^;]+)").find(cookie)!!.groupValues[1], tenant)
+    }
+
+    private fun login(tenant: UUID) =
+        raw(
+            "POST",
+            "/api/v1/session",
+            """{"password":"$TEST_ADMIN_PASSWORD"}""",
+            mapOf(TEST_TENANT_HEADER to tenant.toString()),
+        )
+
+    /** Code, confirmation of the CA, administrator password: the first start, as an owner does it. */
+    private fun runWizard() {
+        val entered = raw("POST", "/api/v1/onboarding/setup-session", """{"code":"$WIZARD_CODE"}""")
+        val setup = Regex("$SETUP_COOKIE=([^;]+)").find(entered.headers().firstValue("Set-Cookie").orElseThrow())!!
+        val cookie = mapOf("Cookie" to "$SETUP_COOKIE=${setup.groupValues[1]}")
+        check(raw("POST", "/api/v1/onboarding/ca", null, cookie).statusCode() == 204) { "the wizard refused the CA" }
+        val admin = raw("POST", "/api/v1/onboarding/admin", """{"password":"$TEST_ADMIN_PASSWORD"}""", cookie)
+        check(admin.statusCode() == 204) { "the wizard refused the password: ${admin.body()}" }
     }
 
     /** One request; [body] is JSON text, [session] null sends no cookie, [headers] are extra request headers. */

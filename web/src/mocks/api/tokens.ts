@@ -33,7 +33,11 @@ function conflict(token: Schemas['EnrollmentToken']): Schemas['TokenConflictProb
 export const tokenHandlers = [
   http.get('/api/v1/ca', ({ response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
-    return response(200).json({ fingerprint: FINGERPRINT })
+    return response(200).json({
+      fingerprint: FINGERPRINT,
+      origin: 'generated',
+      keyPath: '/var/lib/sard/pki/ca/ca.key',
+    })
   }),
   http.post('/api/v1/enrollment-tokens', async ({ request, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
