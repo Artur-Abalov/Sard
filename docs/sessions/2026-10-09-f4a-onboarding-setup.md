@@ -603,3 +603,12 @@ Kotlin-версия в e2e `SetupWizard.kt` — тот же формат стр�
 запускался: в окружении нет образов sard-server и sard-agent, их сборка выходит за рамки правок; проверен
 только `bash -n`. Не вошло по решению заказчика: `store.createDirectory()`/`tidy()` до первого обращения к
 книге, К3 с обоими требованиями к сессии, `@DependsOn("flywayInitializer")`.
+
+## Cleaner (после правок architect)
+
+Дельта `71cdc30..HEAD` измерена `./scripts/crap.sh server`: у затронутых функций CRAP не выше 5.0
+(`PasswordController.respond` 5.0, `OnboardingService.setPassword` 4.0, `JdbcCaLedger.usage` 3.0,
+`CaDirectory.open` 2.0, `toString` переопределений 1.0), порог 6 не нарушен нигде в модуле.
+Изменений кода нет: четыре `toString` отличаются только именем класса и прячут разные поля, общий помощник
+не проще четырёх однострочников; в `scripts/` повтор `--data-binary @-` минимален и каждый вызов
+самодостаточен. `scripts/test-setup-wizard.sh` печатает ok.
