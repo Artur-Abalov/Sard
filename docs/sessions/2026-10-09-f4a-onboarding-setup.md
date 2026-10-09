@@ -234,3 +234,10 @@ Spring Security без изменения поведения (тесты W1b —
   не в F4a.
 
 Дальше — `/ship-feature`, начиная со specifier.
+
+## Спецификация (specifier)
+
+`docs/specs/server/onboarding-setup.feature` (161 сценарий),
+`docs/specs/web/onboarding-setup.feature` (63), `docs/qa/onboarding-setup.md`;
+поправки W1b, F8, F5. Владелец 2026-10-09 утвердил спецификацию и все
+предложения OQ-187…OQ-197 («Утверждаю. Все принимаю»).
