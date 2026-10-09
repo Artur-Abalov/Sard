@@ -13,6 +13,15 @@
 
 Ожидаемый результат указан после «→» в каждом шаге. Любое расхождение — дефект.
 
+> **Изменено F4a** (`docs/specs/server/onboarding-setup.feature`, Р11; черновик
+> 2026-10-09). Пока шаг онбординга ca не выполнен и сертификатов агентов нет,
+> источник с другим CA **заменяет** сгенерированный CA, а не даёт
+> `CA_ALREADY_PRESENT`. Перед шагом 9 части 1 выполнить шаг ca мастера (код из
+> `docker compose logs server`, `POST /api/v1/onboarding/ca`); тогда шаг 9
+> ожидает `CA_ALREADY_PRESENT` с причиной `onboarding step ca is complete`. Вход
+> в консоль (часть 3) — паролем, заданным в мастере. Замена — часть 3
+> `docs/qa/onboarding-setup.md`.
+
 Отпечаток CA везде считается так же, как в токене (SPKI, ADR 0014), а не
 `openssl x509 -fingerprint`:
 

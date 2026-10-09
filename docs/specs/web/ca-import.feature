@@ -18,6 +18,11 @@
 # показывает его без изменений и не вычисляет. Происхождение CA (generated,
 # imported, existing) консоль не показывает — оно только в логе сервера.
 #
+# Изменено F4a (черновик, ждёт утверждения владельца): сведения о CA получают
+# поля origin (generated, imported, unknown) и keyPath; их показывает шаг CA
+# мастера первого запуска (docs/specs/web/onboarding-setup.feature). Страница
+# токенов по-прежнему показывает только отпечаток (OQ-197).
+#
 # Теги — как в docs/specs/web/console-pages.feature:
 #   @mocks    поведение моков; проверяется в src/mocks/handlers.test.ts
 #   @qa-only  проверяется по docs/qa/ca-import.md, часть 3, в браузере дважды —
