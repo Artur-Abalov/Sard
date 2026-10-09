@@ -45,9 +45,10 @@ class CaDirectoryLedgerTest {
         withSource: Boolean = false,
         writer: (Path, String) -> Unit = ::writeOwnerOnly,
         generated: CaKeyPair = g,
+        listener: CaReplacementListener = CaReplacementListener { _, _ -> },
     ): OpenedCa =
         MutFlow.underTest {
-            CaDirectory(dir, CLOCK, ledger, writer)
+            CaDirectory(dir, CLOCK, ledger, writer, listener)
                 .open(if (withSource) CaImportSource(importDir, CLOCK) else null) { generated }
         }
 
@@ -514,6 +515,25 @@ class CaDirectoryLedgerTest {
         assertFailsWith<DataAccessResourceFailureException> { open(withSource = true) }
 
         assertEquals(before, snapshot(dir))
+    }
+
+    @Test
+    fun `a replacement whose listener fails leaves the CA directory as it was, the next start replaces and tells`() {
+        firstStart()
+        CaImportFixtures.source(importDir, f)
+        val before = snapshot(dir)
+
+        assertFailsWith<IllegalStateException> {
+            open(withSource = true, listener = { _, _ -> error("revocation failed") })
+        }
+
+        assertEquals(before, snapshot(dir))
+        val told = mutableListOf<Pair<CaFingerprint, CaFingerprint>>()
+
+        val opened = open(withSource = true, listener = { previous, current -> told += previous to current })
+
+        assertEquals(fHex, CaFingerprint.of(opened.pair.certificate))
+        assertEquals(listOf(gHex to fHex), told)
     }
 
     @Test

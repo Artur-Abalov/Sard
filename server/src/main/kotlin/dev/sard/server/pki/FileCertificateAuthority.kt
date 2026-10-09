@@ -41,15 +41,12 @@ class FileCertificateAuthority(
             .resolve(CA)
             .resolve(KEY)
     private val opened =
-        CaDirectory(dir, clock, ledger)
+        CaDirectory(dir, clock, ledger, replacements = replacements)
             .open(importDir?.let { CaImportSource(it, clock) }) { CaKeyPair.generate(clock, random) }
     private val ca = opened.pair
     private val bundle = Pem.certificate(ca.certificate)
     private val fingerprint =
-        CaFingerprint.of(ca.certificate).also {
-            logStart(it, opened, importDir)
-            opened.replaced?.let { previous -> replacements.replaced(previous, it) }
-        }
+        CaFingerprint.of(ca.certificate).also { logStart(it, opened, importDir) }
     private val generation = AtomicLong()
     private val serverKeys = ServerKeyManager(issueServerKey())
 

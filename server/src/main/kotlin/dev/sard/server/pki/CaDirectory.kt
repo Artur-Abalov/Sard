@@ -65,6 +65,7 @@ class CaDirectory(
     clock: Clock,
     private val ledger: CaLedger,
     writeFile: (Path, String) -> Unit = ::write,
+    private val replacements: CaReplacementListener = CaReplacementListener { _, _ -> },
 ) {
     private val store = CaStore(dir, clock, writeFile)
 
@@ -93,7 +94,11 @@ class CaDirectory(
         val replacement = source?.reconcile(fingerprint, ledger.usage())
         if (replacement == null) return OpenedCa(pair, CaOrigin.EXISTING, provenance)
         val imported = CaKeyPair(replacement.certificate, replacement.key)
-        ledger.record(CaFingerprint.of(imported.certificate), CaProvenance.IMPORTED)
+        val current = CaFingerprint.of(imported.certificate)
+        ledger.record(current, CaProvenance.IMPORTED)
+        // Whoever holds the old fingerprint lets go of it before the old CA goes: a failure here leaves the
+        // directory as it was and the next start does both again.
+        replacements.replaced(fingerprint, current)
         writing(source) { store.replace(imported) }
         return OpenedCa(store.load(), CaOrigin.IMPORTED, CaProvenance.IMPORTED, replaced = fingerprint)
     }
