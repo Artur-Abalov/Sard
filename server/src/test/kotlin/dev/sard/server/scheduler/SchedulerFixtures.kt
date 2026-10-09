@@ -100,3 +100,20 @@ internal class ScheduleTables(
         tenant.drop()
     }
 }
+
+/** Records what the scheduler reports instead of registering meters. */
+internal class RecordingSchedulerMetrics : SchedulerMetrics {
+    val fired = java.util.concurrent.CopyOnWriteArrayList<Pair<FireKind, FireOutcome>>()
+    val lags = java.util.concurrent.CopyOnWriteArrayList<java.time.Duration>()
+
+    override fun fired(
+        kind: FireKind,
+        outcome: FireOutcome,
+    ) {
+        fired += kind to outcome
+    }
+
+    override fun lag(behind: java.time.Duration) {
+        lags += behind
+    }
+}

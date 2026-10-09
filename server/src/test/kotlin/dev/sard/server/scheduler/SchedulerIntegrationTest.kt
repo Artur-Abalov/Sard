@@ -101,7 +101,8 @@ class SchedulerIntegrationTest(
     }
 
     /** A second server on the same database: its own scheduler, nothing shared but the tables. */
-    private fun anotherServer() = Scheduler(sessions, clock, runs, UuidV7(clock, SecureRandom()), queued, settings)
+    private fun anotherServer(metrics: SchedulerMetrics = SchedulerMetrics.NONE) =
+        Scheduler(sessions, clock, runs, UuidV7(clock, SecureRandom()), queued, settings, metrics)
 
     private fun nextRunAt(scheduleId: UUID): Instant? =
         jdbc
@@ -261,6 +262,38 @@ class SchedulerIntegrationTest(
         val fires = tables.fires(schedule.id)
         assertEquals(listOf("schedule" to "run_created"), fires.map { it.kind to it.outcome })
         assertEquals("schedule", tables.runs().single().trigger)
+    }
+
+    @Test
+    fun `metrics count committed fires by kind and outcome and the lag of the oldest due fire`() {
+        val metrics = RecordingSchedulerMetrics()
+        val server = anotherServer(metrics)
+        val schedule = schedule(source())
+        jdbc.execute(
+            """
+            create or replace function fail_fire() returns trigger language plpgsql as
+            ${'$'}${'$'} begin raise exception 'server stopped'; end ${'$'}${'$'}
+            """.trimIndent(),
+        )
+        jdbc.execute(
+            "create trigger fail_fires before insert on schedule_fires for each row execute function fail_fire()",
+        )
+        clock.now = at("2026-09-30T11:00:30Z")
+        server.tick()
+        assertEquals(emptyList(), metrics.fired, "a fire rolled back is not counted")
+        jdbc.execute("drop trigger fail_fires on schedule_fires")
+
+        server.tick()
+        clock.now = at("2026-09-30T12:00:00Z")
+        server.tick()
+        clock.now = at("2026-09-30T12:10:00Z")
+        server.tick()
+
+        val expected =
+            listOf(FireKind.SCHEDULE to FireOutcome.RUN_CREATED, FireKind.SCHEDULE to FireOutcome.SKIPPED_ACTIVE)
+        assertEquals(expected, metrics.fired)
+        assertEquals(listOf(30L, 30L, 0L, 0L), metrics.lags.map { it.seconds })
+        assertEquals(2, tables.fires(schedule.id).size)
     }
 
     /** Ticks every minute from [from] until [to], finishing runs in between as an agent would. */

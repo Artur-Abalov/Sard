@@ -6,7 +6,6 @@ package dev.sard.server.scheduler
 import dev.sard.server.persistence.ScheduleRecord
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
-import dev.sard.server.runs.InTenant
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.StepsQueued
 import org.hibernate.Session
@@ -22,13 +21,45 @@ private const val IS_DUE = "(s.next_run_at <= :now or s.catch_up_at <= :now)"
 
 // Native SQL names tenant_id explicitly (ADR 0013, rule 8). A deleted source's schedule is never due.
 private const val DUE =
-    "select s.tenant_id, s.id from schedules s join sources src on src.tenant_id = s.tenant_id " +
+    "select s.tenant_id, s.id, least(s.next_run_at, s.catch_up_at) from schedules s " +
+        "join sources src on src.tenant_id = s.tenant_id " +
         "and src.id = s.source_id where s.enabled and src.deleted_at is null and $IS_DUE " +
         "order by least(s.next_run_at, s.catch_up_at), s.id limit :batch"
 private const val LAST_SLOT = "select max(catch_up_at) from schedules"
 private const val LOCK =
     "select s.* from schedules s where s.tenant_id = :tenant and s.id = :id and s.enabled and $IS_DUE " +
         "for update skip locked"
+
+/** What the scheduler reports (F3a): fires once committed, and how far behind it runs. */
+interface SchedulerMetrics {
+    /** A fire recorded in the journal, after its transaction committed. */
+    fun fired(
+        kind: FireKind,
+        outcome: FireOutcome,
+    )
+
+    /** How far behind now the oldest due fire was when a tick began; zero when none was due. */
+    fun lag(behind: Duration)
+
+    companion object {
+        val NONE =
+            object : SchedulerMetrics {
+                override fun fired(
+                    kind: FireKind,
+                    outcome: FireOutcome,
+                ) = Unit
+
+                override fun lag(behind: Duration) = Unit
+            }
+    }
+}
+
+/** A due schedule and the moment it fell due: its next fire or its catch-up slot, the earlier. */
+private class DueSchedule(
+    val tenantId: UUID,
+    val id: UUID,
+    val at: Instant,
+)
 
 /** `sard.scheduler.*` as the scheduler uses it. */
 data class SchedulerSettings(
@@ -53,10 +84,12 @@ class Scheduler(
     private val ids: UuidV7,
     private val queued: StepsQueued,
     private val settings: SchedulerSettings,
+    private val metrics: SchedulerMetrics,
 ) {
     fun tick() {
         val now = clock.instant()
         val (due, lastSlot) = sessions.system { session -> due(session, now) to lastSlot(session) }
+        metrics.lag(due.firstOrNull()?.let { Duration.between(it.at, now) } ?: Duration.ZERO)
         val slots = CatchUpSlots(maxOf(now, lastSlot?.plus(settings.catchUpSpacing) ?: now), settings.catchUpSpacing)
         for (schedule in due) {
             runCatching { fire(schedule, now, slots) }
@@ -67,13 +100,13 @@ class Scheduler(
     private fun due(
         session: Session,
         now: Instant,
-    ): List<InTenant> =
+    ): List<DueSchedule> =
         session
             .createNativeQuery(DUE, Array<Any>::class.java)
             .setParameter("now", now)
             .setParameter("batch", settings.batch)
             .list()
-            .map { InTenant(it[0] as UUID, it[1] as UUID) }
+            .map { DueSchedule(it[0] as UUID, it[1] as UUID, it[2] as Instant) }
 
     private fun lastSlot(session: Session): Instant? {
         val query = session.createNativeQuery(LAST_SLOT, Instant::class.java)
@@ -81,11 +114,11 @@ class Scheduler(
     }
 
     private fun fire(
-        schedule: InTenant,
+        schedule: DueSchedule,
         now: Instant,
         slots: CatchUpSlots,
     ) {
-        val created =
+        val fired =
             sessions.inTenant(schedule.tenantId) { session ->
                 val record =
                     session
@@ -94,9 +127,10 @@ class Scheduler(
                         .setParameter("id", schedule.id)
                         .setParameter("now", now)
                         .uniqueResult()
-                record?.let { Firing(session, it, now, runs, ids, settings).fire(slots) }.orEmpty()
+                record?.let { Firing(session, it, now, runs, ids, settings).fire(slots) } ?: Fired.NOTHING
             }
-        created.forEach { queued.onQueued(schedule.tenantId, it.agentId) }
+        fired.runs.forEach { queued.onQueued(schedule.tenantId, it.agentId) }
+        fired.journal.forEach { (kind, outcome) -> metrics.fired(kind, outcome) }
     }
 }
 

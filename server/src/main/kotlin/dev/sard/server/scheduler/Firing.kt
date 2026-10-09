@@ -28,6 +28,16 @@ private val REFUSALS: Map<KClass<out RunsException>, Pair<FireOutcome, FireReaso
         UnknownRepository::class to (FireOutcome.REFUSED to FireReason.UNKNOWN_REPOSITORY),
     )
 
+/** What one locked schedule did: the runs it created and the journal rows it wrote, as (kind, outcome). */
+internal class Fired(
+    val runs: List<RunView>,
+    val journal: List<Pair<FireKind, FireOutcome>>,
+) {
+    companion object {
+        val NOTHING = Fired(emptyList(), emptyList())
+    }
+}
+
 /** One locked [schedule] at [now], inside its transaction: what [Scheduler] does with a due schedule. */
 internal class Firing(
     private val session: Session,
@@ -37,8 +47,13 @@ internal class Firing(
     private val ids: UuidV7,
     private val settings: SchedulerSettings,
 ) {
-    /** The catch-up first if its slot came, then the cron; returns the runs created. */
-    fun fire(slots: CatchUpSlots): List<RunView> = listOfNotNull(catchUp(), cron(slots))
+    private val journal = mutableListOf<Pair<FireKind, FireOutcome>>()
+
+    /** The catch-up first if its slot came, then the cron. */
+    fun fire(slots: CatchUpSlots): Fired {
+        val runs = listOfNotNull(catchUp(), cron(slots))
+        return Fired(runs, journal.toList())
+    }
 
     /** A schedule is locked when either is due: the catch-up waits if only the cron is. */
     private fun catchUp(): RunView? {
@@ -115,6 +130,7 @@ internal class Firing(
                 recordedAt = now,
             )
         session.persist(record)
+        journal += kind to result.outcome
     }
 
     /** The skip that brings the series to the threshold raises the alert, once. */
