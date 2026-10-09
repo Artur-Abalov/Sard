@@ -145,7 +145,7 @@ func TestALeftoverPasswordFileThatA1RejectsIsRefusedAndKept(t *testing.T) {
 				return secrets.ReadOwned(p, uint32(os.Getuid()))
 			}
 		},
-		"mode 0644":            func(h *setupHost) { ok(t, os.Chmod(pass(h), 0o644)) },
+		"mode 0644": func(h *setupHost) { ok(t, os.Chmod(pass(h), 0o644)) },
 		"a symbolic link": func(h *setupHost) {
 			target := h.path("outside/real.pass")
 			h.write(target, "Q\n", 0o600)
