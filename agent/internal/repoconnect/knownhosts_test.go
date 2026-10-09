@@ -207,3 +207,64 @@ func TestAHashedEntryIsFoundForTheHostWrittenInAnyCase(t *testing.T) {
 		t.Fatalf("lines %v", m.Lines)
 	}
 }
+
+// hashedLine is a known_hosts line with the host field and the key of key.
+func hashedLine(field string, k repoconnect.HostKey) string {
+	return field + " " + k.Type + " " + k.Blob + "\n"
+}
+
+// A hashed entry holds when the salt and the hash both read, and only for
+// the one version of the format.
+func TestAHashedEntryWithABrokenSaltOrAnotherVersionIsNobodysEvenWhenItsHashIsTheHosts(t *testing.T) {
+	good := hashedName(nasHost, "c2FsdHNh")
+	if m := repoconnect.FindKnown([]byte(hashedLine(good, edKey)), nasHost); len(m.Lines) != 1 {
+		t.Fatalf("the intact entry: %v", m.Lines)
+	}
+	// The part of the salt that reads is the salt the hash was made with.
+	brokenSalt := strings.Replace(good, "|c2FsdHNh|", "|c2FsdHNh!!!!|", 1)
+	versionTwo := strings.Replace(good, "|1|", "|2|", 1)
+	for _, field := range []string{brokenSalt, versionTwo} {
+		if m := repoconnect.FindKnown([]byte(hashedLine(field, edKey)), nasHost); len(m.Lines) != 0 {
+			t.Errorf("%s: lines %v", field, m.Lines)
+		}
+	}
+}
+
+// A comment and a line with a marker name no host, whatever follows.
+func TestACommentAndAMarkerLineAreNoEntryEvenIfTheirFieldsReadAsOne(t *testing.T) {
+	content := hashedLine("#old,"+nasHost, edKey) + hashedLine("@marker,"+nasHost, ecKey)
+	if m := repoconnect.FindKnown([]byte(content), nasHost); len(m.Lines) != 0 {
+		t.Errorf("lines %v", m.Lines)
+	}
+	if got := repoconnect.ReplaceHostKey([]byte(content), nasHost, rsaKey); string(got) != content+line(nasHost, rsaKey) {
+		t.Errorf("a replacement touched them: %q", got)
+	}
+}
+
+func TestReplacingAKeyKeepsTheHashedEntriesOfOtherHosts(t *testing.T) {
+	other := hashedLine(hashedName("other.example.com", "c2FsdHNhbHRzYWx0c2FsdHM="), edKey)
+	own := hashedLine(hashedName(nasHost, "c2FsdHNhbHRzYWx0c2FsdHM="), oldEd)
+	got := repoconnect.ReplaceHostKey([]byte(other+own), nasHost, ecKey)
+	if string(got) != other+line(nasHost, ecKey) {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestTheNameOfAHostIsNotReadAsANegation(t *testing.T) {
+	// "!a" in a host field negates "a"; the name "!a" is not "a".
+	if m := repoconnect.FindKnown([]byte(line("!a", edKey)), "!a"); len(m.Lines) != 0 {
+		t.Fatalf("lines %v", m.Lines)
+	}
+}
+
+func TestAKeyIsAppendedAfterAFileOfOneByteWithoutABreak(t *testing.T) {
+	if got := repoconnect.AddHostKey([]byte("x"), nasHost, edKey); string(got) != "x\n"+line(nasHost, edKey) {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestAKeyscanLineOfTwoFieldsIsNoKey(t *testing.T) {
+	if keys := repoconnect.ParseKeyscan(nasHost + " ssh-ed25519\n"); len(keys) != 0 {
+		t.Fatalf("keys %v", keys)
+	}
+}

@@ -26,11 +26,22 @@ type hooks struct {
 	// uid is the owner a name seems to have to Stat (by base name).
 	uid map[string]uint32
 	// fail is the step that fails: "chown", "chmod", "write", "sync", "rename",
-	// "dirsync" for the path (base name) it names.
+	// "dirsync", "lstat", "dirstat", "mkdir", "open" for the path (base name)
+	// it names.
 	fail map[string]string
+	// size is the size a name seems to have to Stat (by base name).
+	size map[string]int64
+	// anonymous are the names whose owner Stat cannot tell.
+	anonymous map[string]bool
+	// createTries are the names CreateFile was asked for; createErr is
+	// what it fails with, when set.
+	createTries []string
+	createErr   error
 }
 
-func newHooks() *hooks { return &hooks{uid: map[string]uint32{}, fail: map[string]string{}} }
+func newHooks() *hooks {
+	return &hooks{uid: map[string]uint32{}, fail: map[string]string{}, size: map[string]int64{}, anonymous: map[string]bool{}}
+}
 
 func (h *hooks) note(format string, args ...any) {
 	h.mu.Lock()
@@ -83,15 +94,27 @@ func (d sshHookDir) wrap(next hostsetup.Dir, err error) (hostsetup.Dir, error) {
 
 func (d sshHookDir) Open(name string) (hostsetup.Dir, error) { return d.wrap(d.Dir.Open(name)) }
 func (d sshHookDir) Mkdir(name string, perm os.FileMode) (hostsetup.Dir, error) {
+	if err := d.h.failing("mkdir", name); err != nil {
+		return nil, err
+	}
 	return d.wrap(d.Dir.Mkdir(name, perm))
 }
 
 func (d sshHookDir) Stat() (fs.FileInfo, error) {
+	if err := d.h.failing("dirstat", filepath.Base(d.Path())); err != nil {
+		return nil, err
+	}
 	info, err := d.Dir.Stat()
 	return d.h.seen(filepath.Base(d.Path()), info, err)
 }
 
 func (d sshHookDir) CreateFile(name string, perm fs.FileMode) (hostsetup.File, error) {
+	d.h.mu.Lock()
+	d.h.createTries = append(d.h.createTries, name)
+	d.h.mu.Unlock()
+	if d.h.createErr != nil {
+		return nil, &fs.PathError{Op: "openat", Path: name, Err: d.h.createErr}
+	}
 	f, err := d.Dir.CreateFile(name, perm)
 	if err != nil {
 		return nil, err
@@ -102,6 +125,9 @@ func (d sshHookDir) CreateFile(name string, perm fs.FileMode) (hostsetup.File, e
 
 func (d sshHookDir) OpenFile(name string) (hostsetup.ReadFile, error) {
 	d.h.note("openfile %s", filepath.Join(d.Path(), name))
+	if err := d.h.failing("open", name); err != nil {
+		return nil, err
+	}
 	f, err := d.Dir.OpenFile(name)
 	if err != nil {
 		return nil, err
@@ -111,6 +137,9 @@ func (d sshHookDir) OpenFile(name string) (hostsetup.ReadFile, error) {
 
 func (d sshHookDir) Lstat(name string) (fs.FileInfo, error) {
 	d.h.note("lstat %s", filepath.Join(d.Path(), name))
+	if err := d.h.failing("lstat", name); err != nil {
+		return nil, err
+	}
 	info, err := d.Dir.Lstat(name)
 	return d.h.seen(name, info, err)
 }
@@ -194,23 +223,40 @@ func (r sshHookRead) Stat() (fs.FileInfo, error) {
 	return r.h.seen(r.name, info, err)
 }
 
-// seen is info as the owner set for name makes it look.
+// seen is info as the owner, size and owner-ship set for name make it look.
 func (h *hooks) seen(name string, info fs.FileInfo, err error) (fs.FileInfo, error) {
-	uid, ok := h.uid[name]
-	if err != nil || !ok {
+	uid, hasUID := h.uid[name]
+	size, hasSize := h.size[name]
+	if err != nil || (!hasUID && !hasSize && !h.anonymous[name]) {
 		return info, err
 	}
-	return uidInfo{FileInfo: info, uid: uid}, nil
+	return seenInfo{FileInfo: info, uid: uid, hasUID: hasUID, size: size, hasSize: hasSize, anonymous: h.anonymous[name]}, nil
 }
 
-type uidInfo struct {
+type seenInfo struct {
 	fs.FileInfo
-	uid uint32
+	uid       uint32
+	hasUID    bool
+	size      int64
+	hasSize   bool
+	anonymous bool
 }
 
-func (i uidInfo) Sys() any {
+func (i seenInfo) Size() int64 {
+	if i.hasSize {
+		return i.size
+	}
+	return i.FileInfo.Size()
+}
+
+func (i seenInfo) Sys() any {
+	if i.anonymous {
+		return nil
+	}
 	st := *i.FileInfo.Sys().(*syscall.Stat_t)
-	st.Uid = i.uid
+	if i.hasUID {
+		st.Uid = i.uid
+	}
 	return &st
 }
 

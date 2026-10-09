@@ -115,3 +115,27 @@ func TestAnSFTPHostOrUserThatSSHWouldReadAsAPatternOrAListIsInvalid(t *testing.T
 		}
 	}
 }
+
+// Each wrong address is told what is wrong with it, not with another rule.
+func TestAnUnusableSFTPAddressSaysWhatIsWrongWithIt(t *testing.T) {
+	for address, why := range map[string]string{
+		"sftp://backup:URL-MARKER@nas.example.com//srv/extra": "holds a password",
+		"sftp:@nas.example.com:/srv/extra":                    "names no user before @",
+		"sftp:-nas.example.com:/srv/extra":                    "must not start with -",
+		"sftp:-u@nas.example.com:/srv/extra":                  "must not start with -",
+		"sftp:u v@nas.example.com:/srv/extra":                 "the user may hold only",
+		"sftp::/srv/extra":                                    "names no valid host",
+		"sftp://backup@//srv/extra":                           "names no valid host",
+		"sftp://u@[2001:db8::1//srv/extra":                    "names no valid host",
+		"sftp://u@nas.example.com:99999//srv/extra":           "the port must be 1-65535",
+		"sftp:u@nas*.example.com:/srv/extra":                  "the host must be a DNS name",
+		"sftp:u@[fe80::1%eth0]:/srv/extra":                    "the host must be a DNS name",
+		"sftp:u@[10.0.0.5]:/srv/extra":                        "the host must be a DNS name",
+		"sftp:u@[nas.example.com]:/srv/extra":                 "the host must be a DNS name",
+	} {
+		_, f := hostsetup.CheckSFTPAddress(address)
+		if f == nil || f.Reason != refusal.AddressInvalid || !strings.Contains(f.Detail, why) {
+			t.Errorf("%q: %+v, want %q", address, f, why)
+		}
+	}
+}
