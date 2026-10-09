@@ -26,5 +26,6 @@ CREATE TABLE self_backups (
     local_storage_confirmed BOOLEAN     NOT NULL,
     bound_at                TIMESTAMPTZ NOT NULL,
     updated_at              TIMESTAMPTZ NOT NULL,
+    CONSTRAINT self_backups_tenant_id_id_key UNIQUE (tenant_id, id),
     CONSTRAINT self_backups_tenant_id_key UNIQUE (tenant_id)
 );
