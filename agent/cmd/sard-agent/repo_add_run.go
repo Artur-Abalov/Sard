@@ -200,32 +200,29 @@ func (c *hostCmd) addPlanned(ctx context.Context, url string, plan hostsetup.Add
 	return c.addLocked(ctx, st)
 }
 
-// prepareClient: an sftp: repository needs the OpenSSH client (Р36).
-func (c *hostCmd) prepareClient(st *addState, plan hostsetup.AddPlan) *refusal.Failure {
-	if (config.Repository{URL: st.url}).Backend() != "sftp" {
-		return nil
+// prepareAccess settles what a remote repository needs before anything is
+// written: the OpenSSH client for sftp: (Р36), the keys for s3: (Р29, Р45, Н17).
+func (c *hostCmd) prepareAccess(st *addState, plan hostsetup.AddPlan) *refusal.Failure {
+	switch (config.Repository{URL: st.url}).Backend() {
+	case "sftp":
+		return c.prepareSFTP(st, plan)
+	case "s3":
+		return c.prepareS3Access(st, plan)
 	}
+	return nil
+}
+
+// prepareSFTP: an sftp: repository needs the OpenSSH client, and a repeat of a
+// connected one takes its password from the password file (T1).
+func (c *hostCmd) prepareSFTP(st *addState, plan hostsetup.AddPlan) *refusal.Failure {
 	st.sftp = &sftpState{address: c.sftp}
 	if f := c.checkClient(); f != nil {
 		return f
 	}
 	if plan == hostsetup.AddUnchanged {
-		// The repository is connected: only its ssh files are set up again, and
-		// its password is the one in the password file (T1).
 		return c.refusePasswordWithKeys("an update of the ssh files of a connected repository")
 	}
 	return nil
-}
-
-// prepareAccess settles the keys of an s3: repository (Р29, Р45, Н17).
-func (c *hostCmd) prepareAccess(st *addState, plan hostsetup.AddPlan) *refusal.Failure {
-	if f := c.prepareClient(st, plan); f != nil {
-		return f
-	}
-	if st.isSFTP() || (config.Repository{URL: st.url}).Backend() != "s3" {
-		return nil
-	}
-	return c.prepareS3Access(st, plan)
 }
 
 // prepareS3Access settles the keys of an s3: repository and whether they change.

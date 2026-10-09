@@ -560,8 +560,9 @@ func classOfLine(line string) loginClass {
 // classified is the first line of stderr that says something, and what.
 func classified(stderr string) (string, loginClass) {
 	for l := range strings.Lines(stderr) {
-		if l = strings.TrimSpace(l); classOfLine(l) != lineSays {
-			return l, classOfLine(l)
+		l = strings.TrimSpace(l)
+		if class := classOfLine(l); class != lineSays {
+			return l, class
 		}
 	}
 	return lastLine(stderr), lineSays
