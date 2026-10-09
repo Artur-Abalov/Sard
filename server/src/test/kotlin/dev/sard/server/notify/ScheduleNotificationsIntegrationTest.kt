@@ -6,6 +6,8 @@ package dev.sard.server.notify
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.notify.telegram.FakeBotApi
 import dev.sard.server.notify.telegram.TEST_TOKEN
+import dev.sard.server.persistence.TenantSessions
+import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.RUNS_NOW
 import dev.sard.server.runs.Runs
@@ -17,10 +19,13 @@ import dev.sard.server.runs.StepReport
 import dev.sard.server.runs.StepResults
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepTransitions
+import dev.sard.server.runs.StepsQueued
 import dev.sard.server.scheduler.QUIET_LOOP
 import dev.sard.server.scheduler.ScheduleDraft
 import dev.sard.server.scheduler.ScheduleTables
 import dev.sard.server.scheduler.Scheduler
+import dev.sard.server.scheduler.SchedulerMetrics
+import dev.sard.server.scheduler.SchedulerSettings
 import dev.sard.server.scheduler.Schedules
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.extension.ExtendWith
@@ -32,6 +37,7 @@ import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
+import java.security.SecureRandom
 import java.sql.Timestamp
 import java.time.Duration
 import java.time.Instant
@@ -40,6 +46,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -80,6 +87,10 @@ class ScheduleNotificationsIntegrationTest(
     @Autowired private val results: StepResults,
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
+    @Autowired private val sessions: TenantSessions,
+    @Autowired private val settings: SchedulerSettings,
+    @Autowired private val formatter: NotificationFormatter,
+    @Autowired private val alertFormatter: SkipAlertFormatter,
 ) {
     private val tenant = RunsTenant(jdbc)
 
@@ -110,6 +121,7 @@ class ScheduleNotificationsIntegrationTest(
 
     @AfterTest
     fun `drop the tenant`() {
+        jdbc.execute("drop trigger if exists fail_alert_fires on schedule_fires")
         jdbc.update("delete from notification_deliveries where tenant_id = ?", tenant.id)
         jdbc.update("delete from schedule_fires where tenant_id = ?", tenant.id)
         jdbc.update("update runs set schedule_id = null where tenant_id = ?", tenant.id)
@@ -136,9 +148,12 @@ class ScheduleNotificationsIntegrationTest(
     }
 
     /** The fire of the night [day] of October 2026 (02:00 in Berlin is 00:00 UTC); the tick comes 30 s after it. */
-    private fun fireNight(day: Int) {
+    private fun fireNight(
+        day: Int,
+        by: Scheduler = scheduler,
+    ) {
         clock.now = Instant.parse("2026-10-%02dT00:00:30Z".format(day))
-        scheduler.tick()
+        by.tick()
     }
 
     private fun alertRow(
@@ -268,7 +283,111 @@ class ScheduleNotificationsIntegrationTest(
         assertFalse("QA-CONFIG-MARKER" in text || "qa-repo-marker" in text, text)
     }
 
+    @Test
+    fun `При смешанных причинах алерт называет причину третьего пропуска`() {
+        val (source, _) = scheduleOf()
+        runs.start(tenant.id, source)
+        fireNight(1)
+        fireNight(2)
+        ScheduleTables(jdbc, tenant).finishAll(clock.now)
+        jdbc.update("update agents set revoked_at = ? where id = ?", Timestamp.from(clock.now), tenant.agentId)
+
+        fireNight(3)
+        ticks()
+
+        val alert = alerts().single()
+        assertTrue("Причина: агент источника отозван" in alert.lines(), alert)
+        assertFalse("предыдущий запуск всё ещё идёт" in alert, alert)
+    }
+
+    @Test
+    fun `Порог алерта берётся из настройки`() {
+        val (source, _) = scheduleOf()
+        runs.start(tenant.id, source)
+        val strict =
+            Scheduler(
+                sessions,
+                clock,
+                runs,
+                UuidV7(clock, SecureRandom()),
+                StepsQueued.NONE,
+                settings.copy(skipAlertThreshold = 5),
+                SchedulerMetrics.NONE,
+            )
+
+        for (night in 1..4) fireNight(night, strict)
+        ticks()
+        assertEquals(emptyList(), alerts(), "the third and the fourth skip are below the threshold")
+
+        fireNight(5, strict)
+        ticks()
+        assertEquals(listOf("Пропущено подряд: 5"), alerts().single().lines().filter { "Пропущено подряд" in it })
+    }
+
     // --- delivery as reliable as a run's
+
+    @Test
+    fun `Алерт, записанный перед остановкой сервера, доставляется после старта`() {
+        val (_, schedule) = scheduleOf()
+        alertRow(schedule)
+        val restarted =
+            NotificationService(
+                Deliveries(sessions, UuidV7(clock, SecureRandom())),
+                listOf(CapturingChannel()),
+                formatter,
+                alertFormatter,
+                RetryPolicy(RetrySettings()),
+                QueueSettings(batch = 10, lease = Duration.ofMinutes(5), ttl = TTL),
+                clock,
+            )
+
+        repeat(3) { restarted.tick() }
+
+        assertEquals("delivered", deliveryStatus())
+    }
+
+    @Test
+    fun `Срабатывание, откатившееся вместе с журналом, алерта не даёт`() {
+        val (source, schedule) = scheduleOf()
+        runs.start(tenant.id, source)
+        fireNight(1)
+        fireNight(2)
+        jdbc.execute(
+            """
+            create or replace function fail_alert_fire() returns trigger language plpgsql as
+            ${'$'}${'$'} begin if new.alert then raise exception 'server stopped'; end if; return new; end ${'$'}${'$'}
+            """.trimIndent(),
+        )
+        jdbc.execute(
+            "create trigger fail_alert_fires before insert on schedule_fires " +
+                "for each row execute function fail_alert_fire()",
+        )
+
+        fireNight(3)
+        ticks()
+
+        assertEquals(emptyList(), alerts())
+        val count = "select count(*) from schedule_fires where schedule_id = ?"
+        assertEquals(2, jdbc.queryForObject(count, Int::class.java, schedule), "the third skip left no row")
+        assertEquals(0, jdbc.queryForObject("select count(*) from notification_deliveries", Int::class.java))
+    }
+
+    @Test
+    fun `Сбой базы во время отправки алерта не теряет его`() {
+        val (_, schedule) = scheduleOf()
+        alertRow(schedule)
+        jdbc.execute("alter table notification_deliveries rename to notification_deliveries_off")
+        try {
+            assertFailsWith<Exception> { service.tick() }
+        } finally {
+            jdbc.execute("alter table notification_deliveries_off rename to notification_deliveries")
+        }
+
+        ticks(1)
+
+        assertEquals(1, alerts().size)
+        assertEquals(1, fake.requests.size)
+    }
 
     @Test
     fun `Недоступный Telegram откладывает алерт до восстановления, журнал срабатываний не меняется`() {

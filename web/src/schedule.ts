@@ -137,14 +137,17 @@ export function draftOf(schedule: Schemas['Schedule'] | null): ScheduleDraft {
   }
 }
 
-// The body of the PUT: the zone the preview named when none was picked, UTC when even that is unknown.
+// The body of the PUT: the zone the preview named when none was picked. The default zone is the
+// server's, so with neither there is nothing to send.
 export function inputOf(
   draft: ScheduleDraft,
   previewTimezone: string | undefined,
-): Schemas['ScheduleInput'] {
+): Schemas['ScheduleInput'] | null {
+  const timezone = draft.timezone ?? previewTimezone
+  if (timezone === undefined) return null
   return {
     cron: cronOf(draft.preset),
-    timezone: draft.timezone ?? previewTimezone ?? 'UTC',
+    timezone,
     enabled: draft.enabled,
     notifyOnSuccess: draft.notifyOnSuccess,
   }

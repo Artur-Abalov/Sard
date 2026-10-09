@@ -22,7 +22,8 @@ import kotlin.reflect.KClass
 // Native SQL names tenant_id explicitly (ADR 0013, rule 8): the tenant of the schedule being fired.
 private const val CLAIM =
     "update schedule_fires set catch_up_fire_id = :fire where tenant_id = :tenant and schedule_id = :schedule " +
-        "and outcome = 'skipped_downtime' and catch_up_fire_id is null and recorded_at >= :since"
+        "and outcome = 'skipped_downtime' and catch_up_fire_id is null " +
+        "and (cast(:since as timestamptz) is null or recorded_at >= :since)"
 
 /** A refused start of a schedule's run and what the journal says of it; [RunActive] is answered apart. */
 private val REFUSALS: Map<KClass<out RunsException>, Pair<FireOutcome, FireReason>> =
@@ -63,7 +64,7 @@ internal class Firing(
     /** A schedule is locked when either is due: the catch-up waits if only the cron is. */
     private fun catchUp(): RunView? {
         val at = schedule.catchUpAt?.takeIf { it <= now } ?: return null
-        val since = schedule.catchUpOwedSince ?: Instant.EPOCH
+        val since = schedule.catchUpOwedSince
         schedule.catchUpAt = null
         schedule.catchUpOwedSince = null
         return attempt(at, FireKind.CATCH_UP, since)
@@ -101,7 +102,7 @@ internal class Firing(
     private fun attempt(
         at: Instant,
         kind: FireKind,
-        owedSince: Instant = Instant.EPOCH,
+        owedSince: Instant? = null,
     ): RunView? {
         val result =
             try {
@@ -123,7 +124,7 @@ internal class Firing(
         at: Instant,
         result: Result,
         downtime: Downtime? = null,
-        owedSince: Instant = Instant.EPOCH,
+        owedSince: Instant? = null,
     ) {
         val record =
             ScheduleFireRecord(
@@ -149,13 +150,13 @@ internal class Firing(
     /** The catch-up fire stands for the downtimes journaled since it became owed; earlier ones were cancelled (Р15). */
     private fun claimDowntimes(
         fire: UUID,
-        since: Instant,
+        since: Instant?,
     ) {
         session.flush()
         session
             .createNativeMutationQuery(CLAIM)
             .setParameter("fire", fire)
-            .setParameter("since", since)
+            .setParameter("since", since, Instant::class.java)
             .setParameter("tenant", schedule.tenantId)
             .setParameter("schedule", schedule.id)
             .executeUpdate()

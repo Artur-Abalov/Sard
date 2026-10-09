@@ -41,6 +41,7 @@ import { SchedulePreview } from './SchedulePreview'
 import { tones } from '../theme'
 
 type Schedule = components['schemas']['Schedule']
+type ScheduleInput = components['schemas']['ScheduleInput']
 
 const MAX_MINUTE = 59
 
@@ -273,13 +274,11 @@ export function ScheduleEditor({
     ...schedulePreviewQuery(asked.cron, asked.timezone, i18n.language),
     enabled: asked.cron !== '',
   })
+  const input = inputOf(draft, preview.data?.timezone)
   const save = useMutation({
-    mutationFn: () =>
+    mutationFn: (body: ScheduleInput) =>
       call(
-        client.PUT('/api/v1/sources/{sourceId}/schedule', {
-          params: { path: { sourceId } },
-          body: inputOf(draft, preview.data?.timezone),
-        }),
+        client.PUT('/api/v1/sources/{sourceId}/schedule', { params: { path: { sourceId } }, body }),
       ),
     onSuccess: (saved) => {
       queryClient.setQueryData(scheduleQuery(sourceId).queryKey, saved)
@@ -298,7 +297,11 @@ export function ScheduleEditor({
       />
       <SaveError error={save.error} />
       <Group>
-        <Button loading={save.isPending} onClick={() => save.mutate()}>
+        <Button
+          loading={save.isPending}
+          disabled={input === null}
+          onClick={() => input !== null && save.mutate(input)}
+        >
           {t('schedule.save')}
         </Button>
         <Button variant="default" onClick={onDone}>

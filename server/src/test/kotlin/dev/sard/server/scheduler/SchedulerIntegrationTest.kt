@@ -547,7 +547,8 @@ class SchedulerIntegrationTest(
         assertEquals(1, claimed.size)
         val orphans =
             jdbc.queryForList(
-                "select missed_count from schedule_fires where outcome = 'skipped_downtime' and catch_up_fire_id is null",
+                "select missed_count from schedule_fires " +
+                    "where outcome = 'skipped_downtime' and catch_up_fire_id is null",
                 Int::class.java,
             )
         assertEquals(listOf(2), orphans, "the downtime of 11:00-12:00 stays missed and unclaimed")

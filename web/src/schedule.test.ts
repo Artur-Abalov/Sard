@@ -154,11 +154,14 @@ describe('the editor and the request', () => {
     })
   })
 
-  test('a zone not picked is the one the preview named, or UTC when there is no preview', () => {
-    expect(inputOf(draftOf(null), 'Europe/Moscow').timezone).toBe('Europe/Moscow')
-    expect(inputOf(draftOf(null), undefined).timezone).toBe('UTC')
-    expect(inputOf({ ...draftOf(null), timezone: 'Asia/Tokyo' }, 'Europe/Moscow').timezone).toBe(
+  test('a zone not picked is the one the preview named', () => {
+    expect(inputOf(draftOf(null), 'Europe/Moscow')?.timezone).toBe('Europe/Moscow')
+    expect(inputOf({ ...draftOf(null), timezone: 'Asia/Tokyo' }, 'Europe/Moscow')?.timezone).toBe(
       'Asia/Tokyo',
     )
+  })
+
+  test('without a picked zone and without a preview there is nothing to send', () => {
+    expect(inputOf(draftOf(null), undefined)).toBeNull()
   })
 })

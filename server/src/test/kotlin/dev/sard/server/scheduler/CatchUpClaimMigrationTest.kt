@@ -117,19 +117,18 @@ class CatchUpClaimMigrationTest(
 
     @Test
     fun `a downtime of F3a data belongs to its own catch-up`() {
-        lateinit var ids: List<UUID>
+        val ids = mutableMapOf<String, UUID>()
         migrateAround {
             schedule("2026-09-30T10:00:00Z")
-            val d1 = downtime("2026-09-30T12:00:10Z")
-            val d2 = downtime("2026-09-30T12:00:15Z")
-            val c1 = catchUp("2026-09-30T12:00:20Z")
-            val d3 = downtime("2026-09-30T15:00:10Z")
-            val c2 = catchUp("2026-09-30T15:00:20Z")
-            ids = listOf(d1, d2, c1, d3, c2)
+            ids["d1"] = downtime("2026-09-30T12:00:10Z")
+            ids["d2"] = downtime("2026-09-30T12:00:15Z")
+            ids["c1"] = catchUp("2026-09-30T12:00:20Z")
+            ids["d3"] = downtime("2026-09-30T15:00:10Z")
+            ids["c2"] = catchUp("2026-09-30T15:00:20Z")
         }
 
-        val (d1, d2, c1, d3, c2) = ids
-        assertEquals(mapOf(d1 to c1, d2 to c1, d3 to c2), claims())
+        val expected = mapOf(ids["d1"]!! to ids["c1"], ids["d2"]!! to ids["c1"], ids["d3"]!! to ids["c2"])
+        assertEquals(expected, claims())
     }
 
     @Test

@@ -8,6 +8,11 @@ import java.time.Instant
 import java.util.UUID
 
 private const val CAPPED = 1
+private const val FROM = 1
+private const val UNTIL = 2
+private const val COUNT = 3
+private const val IS_CAPPED = 4
+private const val ZONE = 5
 
 // The downtime rows that the catch-up fire which created a run claimed (migration V202610101200). Only a fire that
 // created its run counts: a later catch-up skipped on the same, still active run (run_id = that run) claims for itself.
@@ -42,10 +47,10 @@ class CatchUpPeriods(
 
     private fun period(row: Array<Any?>) =
         CatchUpPeriod(
-            row[1] as Instant,
-            row[2] as Instant,
-            (row[3] as Number).toInt(),
-            (row[4] as Number).toInt() == CAPPED,
-            row[5] as String,
+            row[FROM] as Instant,
+            row[UNTIL] as Instant,
+            (row[COUNT] as Number).toInt(),
+            (row[IS_CAPPED] as Number).toInt() == CAPPED,
+            row[ZONE] as String,
         )
 }

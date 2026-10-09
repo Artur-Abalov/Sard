@@ -44,8 +44,9 @@
 - Хранение доставки алерта — обобщение `notification_deliveries` (ADR 0054).
 - Признак «счёт обрезан» хранится в строке, а не выводится из `missedCount == 10000`:
   ровно 10 000 пропусков без продолжения обрезанными не считаются.
-- Если пояс не выбран, а предпросмотр недоступен, консоль сохраняет расписание в UTC
-  (PUT требует пояс; консоль не знает пояса сервера без предпросмотра).
+- Если пояс не выбран, а предпросмотр недоступен, консоль ничего не отправляет: кнопка
+  «Сохранить» отключена (`inputOf` возвращает null). Пояс по умолчанию — серверный, консоль
+  его не выбирает (исправлено после architect, находка 4; прежнее отклонение «UTC» снято).
 - Мутационное тестирование сервера (полный гейт) не запускалось: критерий — `fast`.
 
 ## Cleaner pass
@@ -58,3 +59,18 @@
   handler lost its inline storage code (`save`).
 - Noted, not changed: `Verdicts.failure` and `ScheduleDescription.stepOf` stay at CRAP 5.x (source-level, well covered).
 - Behavior unchanged; `gate.sh server fast` and `gate.sh web fast` pass. Next: architect.
+
+## Architect must-fix pass
+
+- Находка 1: `runs/CatchUps.kt` удалён; период читает `scheduler/CatchUpPeriods` (пачкой, только `run_created`),
+  `CatchUpPeriod` переехал в модель планировщика, `RunView.catchUp` убран, `RunsApiImpl` собирает периоды и отдаёт
+  их `RunMapping`. Тест A (`ArchitectureTest`) и тест B (`SchedulerIntegrationTest`: активный догоняющий запуск и
+  поздний догоняющий, пропущенный на нём) написаны первыми; тест B до исправления падал `DataException` (подзапрос
+  вернул две строки). REST-контракт не менялся.
+- Находка 4: `inputOf` возвращает `ScheduleInput | null`, «Сохранить» отключена без пояса.
+- Находка 5: пять сценариев `schedule-notifications.feature` покрыты в `ScheduleNotificationsIntegrationTest`;
+  все прошли без правок кода.
+- Находка 3: `Deliveries.unplannedAlerts` занесён в ADR 0013, п. 5, и в ADR 0054.
+- Р15 (решение владельца, c7df8a3): `schedules.catch_up_owed_since`, `CLAIM` берёт строки с `recorded_at >= since`;
+  миграция V202610101200 исправлена на месте (`CatchUpClaimMigrationTest` гоняет Flyway по схеме до и после).
+  Ограничение переноса F3a записано в ADR 0054.
