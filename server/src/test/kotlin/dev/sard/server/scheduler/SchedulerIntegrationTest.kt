@@ -279,15 +279,15 @@ class SchedulerIntegrationTest(
             "create trigger fail_fires before insert on schedule_fires for each row execute function fail_fire()",
         )
         clock.now = at("2026-09-30T11:00:30Z")
-        server.tick()
+        MutFlow.underTest { server.tick() }
         assertEquals(emptyList(), metrics.fired, "a fire rolled back is not counted")
         jdbc.execute("drop trigger fail_fires on schedule_fires")
 
-        server.tick()
+        MutFlow.underTest { server.tick() }
         clock.now = at("2026-09-30T12:00:00Z")
-        server.tick()
+        MutFlow.underTest { server.tick() }
         clock.now = at("2026-09-30T12:10:00Z")
-        server.tick()
+        MutFlow.underTest { server.tick() }
 
         val expected =
             listOf(FireKind.SCHEDULE to FireOutcome.RUN_CREATED, FireKind.SCHEDULE to FireOutcome.SKIPPED_ACTIVE)
