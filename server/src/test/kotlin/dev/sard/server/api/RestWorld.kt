@@ -113,10 +113,12 @@ class RestWorld(
     fun enroll(
         tenant: UUID,
         hostname: String = "db1",
+        builtin: Boolean = false,
     ): TestAgent {
         val keys = newKeys()
         val csr = csrOf(keys)
-        val token = tokens.create(tenant, Duration.ofHours(1)).reveal()
+        val issued = if (builtin) tokens.replaceBuiltin(tenant) else tokens.create(tenant, Duration.ofHours(1))
+        val token = issued.reveal()
         val agent = enrollment.enroll(token, csr, hostname)
         val credentials =
             TlsChannelCredentials
@@ -132,8 +134,9 @@ class RestWorld(
         tenant: UUID,
         snapshot: AgentSnapshot? = snapshotOf(),
         hostname: String = "db1",
+        builtin: Boolean = false,
     ): TestAgent {
-        val agent = enroll(tenant, hostname)
+        val agent = enroll(tenant, hostname, builtin)
         snapshot?.let { registration.register(tenant, agent.agentId, it.copy(hostname = hostname)) }
         return agent
     }

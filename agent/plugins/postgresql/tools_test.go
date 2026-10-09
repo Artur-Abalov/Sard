@@ -345,3 +345,47 @@ func TestEmptyEntryOfPathIsNotTheCurrentDirectory(t *testing.T) {
 	want(t, res, failed)
 	mentions(t, res.GetMessage(), "pg_dump not found")
 }
+
+// Scenario: Строка detail после ошибки pg_dump добавляется к сообщению.
+func TestСтрокаDetailПослеОшибкиPgDumpДобавляетсяКСообщению(t *testing.T) {
+	r := newRig(t)
+	r.proc.on("pg_dump", say("", []string{
+		`pg_dump: error: Dumping the contents of table "big" failed: PQgetCopyData() failed.`,
+		"pg_dump: detail: Error message from server: server closed the connection unexpectedly",
+		"pg_dump: detail: second",
+	}, 1))
+	res := r.backup(k())
+	want(t, res, failed)
+	oneLine(t, res.GetMessage())
+	mentions(t, res.GetMessage(), "PQgetCopyData() failed. — detail: Error message from server: server closed the connection unexpectedly")
+	if strings.Contains(res.GetMessage(), "second") {
+		t.Errorf("message = %q", res.GetMessage())
+	}
+}
+
+// Scenario: Ошибка pg_dump без строки detail цитируется без добавки.
+func TestОшибкаPgDumpБезСтрокиDetailЦитируетсяБезДобавки(t *testing.T) {
+	r := newRig(t)
+	r.proc.on("pg_dump", say("", []string{"pg_dump: detail: earlier", "pg_dump: error: connection lost"}, 1))
+	res := r.backup(k())
+	want(t, res, failed)
+	mentions(t, res.GetMessage(), "connection lost")
+	if strings.Contains(res.GetMessage(), "detail") {
+		t.Errorf("message = %q", res.GetMessage())
+	}
+}
+
+// Scenario: Длинные ошибка и detail обрезаются каждая отдельно.
+func TestДлинныеОшибкаИDetailОбрезаютсяКаждаяОтдельно(t *testing.T) {
+	errLine := "pg_dump: error: " + strings.Repeat("e", 600)
+	detail := strings.Repeat("d", 600)
+	r := newRig(t)
+	r.proc.on("pg_dump", say("", []string{errLine, "pg_dump: detail: " + detail}, 1))
+	res := r.backup(k())
+	want(t, res, failed)
+	oneLine(t, res.GetMessage())
+	wantText := errLine[:512] + "... — detail: " + detail[:512] + "..."
+	if !strings.HasSuffix(res.GetMessage(), wantText) {
+		t.Errorf("message = %q, want it to end with %q", res.GetMessage(), wantText)
+	}
+}

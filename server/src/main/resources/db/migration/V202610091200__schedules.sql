@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 -- Copyright 2026 Artur Abalov
 --
--- F3a: a schedule per source and the journal of its fires (D9, D16, ADR 00XX-draft-scheduler).
+-- F3a: a schedule per source and the journal of its fires (D9, D16, ADR 0053).
 -- A schedule fires through the same run creation as a manual start; the fire, its run and the
 -- schedule's move to the next fire commit together, so a fire is neither lost nor doubled.
 

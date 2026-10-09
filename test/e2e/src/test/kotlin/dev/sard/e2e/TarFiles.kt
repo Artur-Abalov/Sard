@@ -50,7 +50,7 @@ internal class TarFiles(
     }
 
     companion object {
-        /** The image's non-root user (`USER 65532`, sard-agent: test/e2e/agent/Dockerfile). */
+        /** The image's non-root user (`USER 65532`, sard-agent: deploy/agent/Dockerfile). */
         const val AGENT_UID = 65532
         const val OWNER_ONLY = 0b110_000_000 // 0600
         const val READABLE = 0b110_100_100 // 0644

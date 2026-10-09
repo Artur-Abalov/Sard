@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright 2026 Artur Abalov
 #
-# Local development: build sard-server from this checkout instead of pulling
-# the published image. make up adds this file on top of docker-compose.yml.
+# Local development: build sard-server and sard-agent from this checkout instead
+# of pulling the published images. make up adds this file on top of docker-compose.yml.
 services:
   server:
     image: sard-server:dev
@@ -11,4 +11,12 @@ services:
       dockerfile: deploy/server/Dockerfile
       args:
         # The agent packages in dist/ must be of this version (make up passes it).
+        SARD_VERSION: ${SARD_VERSION:-dev}
+  self-agent:
+    image: sard-agent:dev
+    build:
+      # The tarballs of make package (dist/), every architecture; the image takes its own.
+      context: ../dist
+      dockerfile: ../deploy/agent/Dockerfile
+      args:
         SARD_VERSION: ${SARD_VERSION:-dev}

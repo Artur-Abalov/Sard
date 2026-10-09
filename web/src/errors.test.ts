@@ -19,6 +19,7 @@ const knownCodes = [
   'origin_rejected',
   'unavailable',
   'not_implemented',
+  'self_agent_confirmation_required',
 ] as const
 
 function problem(status: number, code?: string, extra: Record<string, unknown> = {}) {

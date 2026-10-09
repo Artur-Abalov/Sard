@@ -179,7 +179,7 @@ export interface paths {
         put?: never;
         /**
          * Revoke an agent
-         * @description Revokes all its certificates and closes its open stream at once; its queued, dispatched and running steps become lost. Its history stays. Revoking a revoked agent is a no-op and answers 200.
+         * @description Revokes all its certificates and closes its open stream at once; its queued, dispatched and running steps become lost. Its history stays. Revoking a revoked agent is a no-op and answers 200. A live built-in agent is revoked only with confirm=sard-self, else 409 and nothing changes; other agents ignore confirm.
          */
         post: operations["revokeAgent"];
         delete?: never;
@@ -458,7 +458,7 @@ export interface components {
             };
         };
         /** @enum {string} */
-        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "unavailable";
+        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "unavailable" | "self_agent_confirmation_required";
         /** @description An error (RFC 9457) */
         Problem: {
             /** @description URI reference identifying the problem type; about:blank when the status says it all */
@@ -794,6 +794,8 @@ export interface components {
             scriptNames: string[];
             /** @description True when the agent and the server's packages are both releases (vX.Y.Z) and the agent's version is lower by semver; false when it is newer, unknown or not a release */
             outdated: boolean;
+            /** @description True for the agent next to the server (sard-self), enrolled with the token the server wrote for it; revoking it needs confirm=sard-self */
+            builtin: boolean;
         };
         /** @description A plugin the agent offers */
         AgentPlugin: {
@@ -1079,6 +1081,8 @@ export interface components {
             duplicateSessionAt: string | null;
             /** @description True when the agent and the server's packages are both releases (vX.Y.Z) and the agent's version is lower by semver; false when it is newer, unknown or not a release */
             outdated: boolean;
+            /** @description True for the agent next to the server (sard-self), enrolled with the token the server wrote for it; revoking it needs confirm=sard-self */
+            builtin: boolean;
         };
         /** @enum {string} */
         InstallFormat: "deb" | "rpm" | "tar";
@@ -1966,7 +1970,10 @@ export interface operations {
     };
     revokeAgent: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description sard-self, exactly, to revoke a live built-in agent */
+                confirm?: string;
+            };
             header?: never;
             path: {
                 agentId: string;
@@ -2004,6 +2011,15 @@ export interface operations {
             };
             /** @description Not found in the session's tenant */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A live built-in agent needs confirm=sard-self; nothing was changed */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

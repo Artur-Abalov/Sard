@@ -34,12 +34,16 @@ func TestTheDocumentationExplainsTheRoleAndTheSecret(t *testing.T) {
 		"CREATE ROLE backup LOGIN",         // the role with LOGIN
 		"GRANT pg_read_all_data TO backup", // and the right to read
 		"BYPASSRLS",                        // with row level security
-		"lo_compat_privileges",             // and large objects, which pg_read_all_data does not cover
-		"secrets:",                         // the secret in agent.yaml
-		"agent.yaml",                       //
-		"0600",                             // the file of the secret
-		"владельца агента",                 // owned by the agent's user
-		"перезапуск",                       // the agent is restarted
+		"GRANT SELECT ON LARGE OBJECT",     // large objects, which pg_read_all_data does not cover
+		"pg_largeobject_metadata",          // a grant for every existing one
+		"новые большие объекты",            // need new grants
+		"lo_compat_privileges",             // the fallback
+		"включая запись и удаление",        // and what it costs
+		"secrets:",         // the secret in agent.yaml
+		"agent.yaml",       //
+		"0600",             // the file of the secret
+		"владельца агента", // owned by the agent's user
+		"перезапуск",       // the agent is restarted
 		"в конфиге источника не пишется", // never the password itself
 		"`password_ref`",    // only the name of the secret
 		"postgresql-client", // the package of Debian and Ubuntu

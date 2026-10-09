@@ -35,6 +35,10 @@ sard-server сам является удостоверяющим центром 
 
 ## Как бэкапить
 
+Агент-сосед `sard-self` читает этот каталог (том `sard-pki:ro`) для
+самобэкапа (F6) — `docs/operations/self-agent.md`. Ручной способ ниже
+остаётся в силе.
+
 ```bash
 # Docker Compose: остановка сервера не нужна — файлы пишутся один раз при первом старте.
 docker run --rm -v sard_sard-pki:/pki -v "$PWD":/backup alpine \

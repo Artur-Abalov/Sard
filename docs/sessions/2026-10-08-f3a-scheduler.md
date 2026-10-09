@@ -5,7 +5,7 @@
 
 Ветка `ccr-bfde5281-j7cdly` (сессия привязана к ней вместо
 `feat/f3a-scheduler`). Техническая задача, в обход `/ship-feature` (ответ
-владельца 10). Черновик ADR — `docs/adr/00XX-draft-scheduler.md`.
+владельца 10). Черновик ADR — `docs/adr/0053-scheduler.md`.
 
 ## Вопросы и ответы владельца
 

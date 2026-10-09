@@ -113,7 +113,15 @@ class Enrollment(
         val now = clock.instant()
         claim(session, owner.tokenId, now)
         validateHostname(hostname)
-        val agent = Agent(ids.next(), hostname, agentVersion = null, registeredAt = now, lastSeenAt = null)
+        val agent =
+            Agent(
+                ids.next(),
+                hostname,
+                agentVersion = null,
+                registeredAt = now,
+                lastSeenAt = null,
+                builtin = owner.builtin,
+            )
         session.persist(agent)
         session.flush()
         val issued = issueCertificate(csrDer, AgentIdentity(owner.tenantId, agent.id))

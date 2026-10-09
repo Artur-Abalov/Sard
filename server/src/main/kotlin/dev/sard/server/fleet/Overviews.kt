@@ -8,7 +8,7 @@ import org.hibernate.Session
 import java.util.UUID
 
 private const val LIVE_AGENTS = "select a.id, a.lastSeenAt from Agent a where a.revokedAt is null"
-private const val ANY_TOKEN = "select count(t) from EnrollmentTokenRecord t"
+private const val ANY_TOKEN = "select count(t) from EnrollmentTokenRecord t where t.builtin = false"
 private const val INITIALIZED =
     "select count(r) from AgentRepositoryRecord r where r.repositoryId is not null " +
         "and r.agentId in (select a.id from Agent a where a.revokedAt is null)"

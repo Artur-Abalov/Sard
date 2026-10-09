@@ -54,7 +54,7 @@ class HibernateTenantBridge(private val resolver: TenantResolver) : CurrentTenan
   4. `StepCounts.waiting()` — число шагов в `queued` и `dispatched` по всем тенантам одним запросом раз в `sard.run.dispatch.check-interval` (S6a, метрика отправки): только счётчики, без строк.
   5. `Deliveries.unplanned`, `Deliveries.due`, `Deliveries.pending` (S9a, уведомления, OQ-047) — раз в `sard.notify.tick-interval`: завершённые запуски без доставки по каналу, доставки, у которых подошло время, и счётчик ожидающих. Возвращают только идентификаторы, канал, счётчик попыток и время создания; каждая запись — в `inTenant` тенанта строки.
   6. `StepDeadlines.overdue(now)`, `StepDeadlines.holders()` (FXs, срок потери шага) — раз в `sard.run.dispatch.check-interval` шаги в `dispatched`/`running`, чей `lost_deadline` наступил, и один раз при старте сервера агенты с такими шагами. Возвращают только пары «тенант, идентификатор»; перевод в `lost` и новый срок — в `inTenant` тенанта шага.
-  7. `Scheduler.tick` (F3a, ADR 00XX-draft-scheduler) — раз в `sard.scheduler.interval` расписания живых источников, у которых наступил `next_run_at` или `catch_up_at`, и самый поздний назначенный `catch_up_at`. Возвращает только пары «тенант, идентификатор» и одно время; строка расписания берётся `FOR UPDATE SKIP LOCKED`, срабатывание и запуск пишутся в `inTenant` тенанта расписания (системная сессия только читает, а `FOR UPDATE` в ней PostgreSQL не выполнит).
+  7. `Scheduler.tick` (F3a, ADR 0053) — раз в `sard.scheduler.interval` расписания живых источников, у которых наступил `next_run_at` или `catch_up_at`, и самый поздний назначенный `catch_up_at`. Возвращает только пары «тенант, идентификатор» и одно время; строка расписания берётся `FOR UPDATE SKIP LOCKED`, срабатывание и запуск пишутся в `inTenant` тенанта расписания (системная сессия только читает, а `FOR UPDATE` в ней PostgreSQL не выполнит).
 
   Список проверяет `ArchitectureTest` (S2b) с точностью до файла: вызов `sessions.system` вне `EnrollmentTokens.kt`, `AgentCertificateStandings.kt`, `StepCounts.kt`, `StepDeadlines.kt`, `notify/Deliveries.kt` и `scheduler/Scheduler.kt` роняет сборку; лишний вызов внутри этих файлов ловит ревью.
 - Операции администратора над токенами (`EnrollmentTokens.create`, `list`, `get`, `revoke`, S2b) идут через `inTenant` с тенантом, который вызывающий получил от `TenantResolver`. Будущий REST-слой (D2 → W1b) никогда не берёт тенант из параметра пути.
@@ -125,7 +125,7 @@ workflows                     тенант · таблица создана в S
   id PK, name, definition JSONB, created_at, updated_at, deleted_at
   UNIQUE (tenant_id, name) WHERE deleted_at IS NULL
 
-schedules                     тенант · реализовано (F3a, ADR 00XX-draft-scheduler: расписание источника, не workflow)
+schedules                     тенант · реализовано (F3a, ADR 0053: расписание источника, не workflow)
   id PK, source_id → sources UNIQUE (tenant_id, source_id), cron, timezone, enabled,
   next_run_at (NULL ⇔ выключено), catch_up_at, last_fired_at, skipped_in_row, created_at, updated_at
   INDEX (next_run_at) WHERE enabled, INDEX (catch_up_at) WHERE catch_up_at IS NOT NULL   -- системный скан

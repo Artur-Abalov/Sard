@@ -100,13 +100,20 @@ server-image:
 image: package server-jar
 	$(MAKE) server-image
 
-# agent_image: the e2e agent image of the tar.gz in $(1) for E2E_ARCH, tagged $(2),
-# laid out in E2E_BUILD/$(3); the Dockerfile is $(4) (default test/e2e/agent/Dockerfile),
-# $(5) are extra build flags.
+# agent_image: the agent image (deploy/agent/Dockerfile) of the tar.gz in $(1)
+# for E2E_ARCH, tagged $(2); the build context is $(1) itself.
 define agent_image
+	docker buildx build $(E2E_BUILD_FLAGS) --load --platform linux/$(E2E_ARCH) --build-arg SARD_VERSION=$(VERSION) \
+		-f deploy/agent/Dockerfile -t $(2) $(1)
+endef
+
+# agent_image_unpacked: an e2e image of the tar.gz in $(1) for E2E_ARCH, tagged $(2),
+# laid out in E2E_BUILD/$(3); the Dockerfile is $(4),
+# $(5) are extra build flags.
+define agent_image_unpacked
 	rm -rf $(E2E_BUILD)/$(3) && mkdir -p $(E2E_BUILD)/$(3)/empty
 	tar -xzf $(1)/sard-agent_$(VERSION)_linux_$(E2E_ARCH).tar.gz --strip-components=1 -C $(E2E_BUILD)/$(3)
-	docker buildx build $(E2E_BUILD_FLAGS) --load $(5) -f $(or $(4),test/e2e/agent/Dockerfile) -t $(2) $(E2E_BUILD)/$(3)
+	docker buildx build $(E2E_BUILD_FLAGS) --load $(5) -f $(4) -t $(2) $(E2E_BUILD)/$(3)
 endef
 
 ## e2e-images: build the release and stand packages and the jar once, then assemble the e2e images
@@ -122,14 +129,14 @@ e2e-assemble: e2e-agent-images e2e-pg-agent-images
 
 ## e2e-agent-images: the release and the stand agent images from the tar.gz in DIST and STAND_DIST, and the stand's SFTP server
 e2e-agent-images:
-	$(call agent_image,$(DIST),$(E2E_AGENT_IMAGE),agent-image)
-	$(call agent_image,$(STAND_DIST),$(E2E_STAND_AGENT_IMAGE),stand-agent-image)
+	$(call agent_image,$(DIST),$(E2E_AGENT_IMAGE))
+	$(call agent_image,$(STAND_DIST),$(E2E_STAND_AGENT_IMAGE))
 	docker buildx build $(E2E_BUILD_FLAGS) --load -t $(E2E_SFTP_IMAGE) test/e2e/sftp
 
 ## e2e-pg-agent-images: the agent on postgres:18 and on postgres:14 (test/e2e/agent/Dockerfile.postgres) from the tar.gz in DIST
 e2e-pg-agent-images:
-	$(call agent_image,$(DIST),$(E2E_PG18_AGENT_IMAGE),pg18-agent-image,test/e2e/agent/Dockerfile.postgres,--build-arg BASE_IMAGE=postgres:18)
-	$(call agent_image,$(DIST),$(E2E_PG14_AGENT_IMAGE),pg14-agent-image,test/e2e/agent/Dockerfile.postgres,--build-arg BASE_IMAGE=postgres:14)
+	$(call agent_image_unpacked,$(DIST),$(E2E_PG18_AGENT_IMAGE),pg18-agent-image,test/e2e/agent/Dockerfile.postgres,--build-arg BASE_IMAGE=postgres:18)
+	$(call agent_image_unpacked,$(DIST),$(E2E_PG14_AGENT_IMAGE),pg14-agent-image,test/e2e/agent/Dockerfile.postgres,--build-arg BASE_IMAGE=postgres:14)
 
 ## e2e-test: the end-to-end tests against the assembled images (needs Docker)
 e2e-test:

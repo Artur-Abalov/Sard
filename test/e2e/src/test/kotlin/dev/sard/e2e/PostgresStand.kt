@@ -81,8 +81,6 @@ internal class PgServer(
         sql(
             "create role backup login password $q$PG_PASSWORD$q",
             "grant pg_read_all_data to backup",
-            // pg_read_all_data does not cover large objects (docs/plugins/postgresql.md).
-            "alter role backup set lo_compat_privileges = on",
             "create database app",
         )
         sql(
@@ -103,6 +101,8 @@ internal class PgServer(
             "select setval('s', 42)",
             "create view big_t as select id from t where id > 19000",
             "select lo_from_bytea(4242, 'a large object'::bytea)",
+            // pg_read_all_data does not cover large objects (docs/plugins/postgresql.md).
+            "grant select on large object 4242 to backup",
             database = "app",
         )
     }

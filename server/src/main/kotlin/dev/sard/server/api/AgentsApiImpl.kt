@@ -6,6 +6,7 @@ package dev.sard.server.api
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.fleet.AgentCard
 import dev.sard.server.fleet.AgentPluginView
+import dev.sard.server.fleet.AgentRevocation
 import dev.sard.server.fleet.AgentRow
 import dev.sard.server.fleet.Agents
 import dev.sard.server.fleet.Connectivity
@@ -39,8 +40,15 @@ class AgentsApiImpl(
     override fun getAgent(agentId: UUID): AgentDetails =
         detailsOf(agents.get(tenants.currentTenantId(), agentId) ?: throw ResourceNotFound())
 
-    override fun revokeAgent(agentId: UUID): AgentDetails =
-        detailsOf(agents.revoke(tenants.currentTenantId(), agentId) ?: throw ResourceNotFound())
+    override fun revokeAgent(
+        agentId: UUID,
+        confirm: String?,
+    ): AgentDetails =
+        when (val revocation = agents.revoke(tenants.currentTenantId(), agentId, confirm)) {
+            is AgentRevocation.Revoked -> detailsOf(revocation.card)
+            AgentRevocation.NotFound -> throw ResourceNotFound()
+            AgentRevocation.ConfirmationRequired -> throw SelfAgentConfirmationRequired()
+        }
 
     private fun connectivityOf(status: AgentStatus): Connectivity =
         when (status) {
@@ -63,6 +71,7 @@ class AgentsApiImpl(
             row.revokedAt,
             row.duplicateSessionAt,
             versions.outdated(row.agentVersion),
+            row.builtin,
         )
 
     private fun detailsOf(card: AgentCard): AgentDetails {
@@ -91,6 +100,7 @@ class AgentsApiImpl(
             card.secretNames,
             card.scriptNames,
             versions.outdated(row.agentVersion),
+            row.builtin,
         )
     }
 

@@ -4,6 +4,7 @@
 package dev.sard.server.api
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.HttpStatus
@@ -26,6 +27,10 @@ private const val OUTDATED =
     "True when the agent and the server's packages are both releases (vX.Y.Z) and the agent's version is lower " +
         "by semver; false when it is newer, unknown or not a release"
 
+private const val BUILTIN =
+    "True for the agent next to the server (sard-self), enrolled with the token the server wrote for it; " +
+        "revoking it needs confirm=sard-self"
+
 @Schema(description = "An agent in the list")
 data class AgentSummary(
     val id: UUID,
@@ -47,6 +52,8 @@ data class AgentSummary(
     val duplicateSessionAt: Instant?,
     @field:Schema(description = OUTDATED)
     val outdated: Boolean,
+    @field:Schema(description = BUILTIN)
+    val builtin: Boolean,
 )
 
 @Schema(description = "A plugin the agent offers")
@@ -93,6 +100,8 @@ data class AgentDetails(
     val scriptNames: List<String>,
     @field:Schema(description = OUTDATED)
     val outdated: Boolean,
+    @field:Schema(description = BUILTIN)
+    val builtin: Boolean,
 )
 
 @Schema(description = "A page of agents")
@@ -112,7 +121,10 @@ interface AgentsApi {
 
     fun getAgent(agentId: UUID): AgentDetails
 
-    fun revokeAgent(agentId: UUID): AgentDetails
+    fun revokeAgent(
+        agentId: UUID,
+        confirm: String?,
+    ): AgentDetails
 }
 
 @RestController
@@ -145,10 +157,16 @@ class AgentsController(
         summary = "Revoke an agent",
         description =
             "Revokes all its certificates and closes its open stream at once; its queued, dispatched and running " +
-                "steps become lost. Its history stays. Revoking a revoked agent is a no-op and answers 200.",
+                "steps become lost. Its history stays. Revoking a revoked agent is a no-op and answers 200. " +
+                "A live built-in agent is revoked only with confirm=sard-self, else 409 and nothing changes; " +
+                "other agents ignore confirm.",
     )
     @NotFound
+    @ConfirmationRequired
     fun revokeAgent(
         @PathVariable agentId: UUID,
-    ): AgentDetails = api.revokeAgent(agentId)
+        @Parameter(description = "sard-self, exactly, to revoke a live built-in agent")
+        @RequestParam(required = false)
+        confirm: String?,
+    ): AgentDetails = api.revokeAgent(agentId, confirm)
 }

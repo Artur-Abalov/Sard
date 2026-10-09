@@ -91,6 +91,15 @@ class TokenExceptionHandler {
         )
 }
 
+/** Agents: what an administrator must confirm. */
+@RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
+class AgentExceptionHandler {
+    @ExceptionHandler(SelfAgentConfirmationRequired::class)
+    fun confirmationRequired(): ResponseEntity<Problem> =
+        problemResponse(HttpStatus.CONFLICT, "Conflict", ErrorCode.SELF_AGENT_CONFIRMATION_REQUIRED)
+}
+
 /** Sources and runs: what the domain refuses, field by field. */
 @RestControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
