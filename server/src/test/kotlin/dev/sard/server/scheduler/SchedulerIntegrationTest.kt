@@ -7,14 +7,18 @@ import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.runs.CatchUpPeriod
 import dev.sard.server.runs.RUNS_NOW
 import dev.sard.server.runs.RUNS_RACE_WAIT
 import dev.sard.server.runs.RecordingStepsQueued
+import dev.sard.server.runs.RunFilter
+import dev.sard.server.runs.RunState
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.RunsTenant
 import dev.sard.server.runs.RunsTestConfiguration
 import dev.sard.server.runs.SourceView
 import dev.sard.server.runs.Sources
+import dev.sard.server.runs.Trigger
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.junit.jupiter.api.extension.ExtendWith
@@ -458,5 +462,90 @@ class SchedulerIntegrationTest(
         assertEquals(moved, schedules.get(tenant.id, source.id))
         assertNull(schedules.get(tenant.id, source("no-schedule").id))
         assertTrue(changed.updatedAt > same.createdAt)
+    }
+
+    private fun periodOf(run: UUID) = runs.get(tenant.id, run)!!.catchUp
+
+    private fun period(
+        from: String,
+        until: String,
+        count: Int,
+        capped: Boolean = false,
+        zone: String = "UTC",
+    ) = CatchUpPeriod(at(from), at(until), count, capped, zone)
+
+    @Test
+    fun `a catch-up run names the period of the fires it stands for`() {
+        val source = source()
+        schedule(source)
+        tickAt(at("2026-09-30T14:30:00Z"))
+        tickAt(at("2026-09-30T14:30:02Z"))
+
+        val run = tables.runs().single()
+        assertEquals(period("2026-09-30T11:00:00Z", "2026-09-30T14:00:00Z", 4), periodOf(run.id))
+        val listed = runs.list(tenant.id, RunFilter(sourceId = source.id), null, 10).single()
+        assertEquals(periodOf(run.id), listed.catchUp)
+        assertEquals(true, tables.fires(schedules.get(tenant.id, source.id)!!.id).none { it.missedCountCapped })
+    }
+
+    @Test
+    fun `two downtimes before one catch-up share its period, and a later downtime waits for the next one`() {
+        val source = source()
+        val schedule = schedule(source)
+        tickAt(at("2026-09-30T12:30:00Z"))
+        val far = Timestamp.from(at("2026-09-30T20:00:00Z"))
+        jdbc.update("update schedules set catch_up_at = ? where id = ?", far, schedule.id)
+        tickAt(at("2026-09-30T15:30:00Z"))
+
+        // The catch-up and, in the same tick after it, a new downtime of 16:00-20:00.
+        tickAt(at("2026-09-30T20:00:00Z"))
+        val first = tables.runs().single()
+        assertEquals(period("2026-09-30T11:00:00Z", "2026-09-30T15:00:00Z", 5), periodOf(first.id))
+
+        tables.finishAll(at("2026-09-30T20:00:01Z"))
+        tickAt(at("2026-09-30T20:00:10Z"))
+        val second = tables.runs().last { it.id != first.id }
+        assertEquals(period("2026-09-30T16:00:00Z", "2026-09-30T20:00:00Z", 5), periodOf(second.id))
+    }
+
+    @Test
+    fun `a count that hit its limit is marked capped in the journal and in the catch-up`() {
+        val source = source()
+        val schedule = schedule(source, cron = EVERY_MINUTE)
+        tickAt(RUNS_NOW.plus(Duration.ofDays(8)))
+        tickAt(RUNS_NOW.plus(Duration.ofDays(8)).plusSeconds(2))
+
+        val downtime = tables.fires(schedule.id).first { it.outcome == "skipped_downtime" }
+        assertEquals(listOf(10_000, true), listOf(downtime.missedCount, downtime.missedCountCapped))
+        val run = tables.runs().single()
+        assertEquals(10_000, periodOf(run.id)!!.missedCount)
+        assertEquals(true, periodOf(run.id)!!.missedCountCapped)
+    }
+
+    @Test
+    fun `a run created on time has no period`() {
+        val source = source()
+        schedule(source)
+        tickAt(at("2026-09-30T11:00:00Z"))
+        val scheduled = tables.runs().single()
+        assertNull(periodOf(scheduled.id))
+    }
+
+    @Test
+    fun `a schedule names its latest run and keeps notifyOnSuccess without moving the next fire`() {
+        val source = source()
+        val created = schedule(source)
+        assertNull(created.lastRun)
+        assertEquals(false, created.notifyOnSuccess)
+        tickAt(at("2026-09-30T11:00:00Z"))
+        val run = tables.runs().single()
+
+        clock.now = at("2026-09-30T11:10:00Z")
+        val saved = set(source, ScheduleDraft(HOURLY, "UTC", enabled = true, notifyOnSuccess = true))
+
+        assertEquals(true, saved.notifyOnSuccess)
+        assertEquals(at("2026-09-30T12:00:00Z"), saved.nextRunAt)
+        assertEquals(LastRun(run.id, Trigger.SCHEDULE, RunState.QUEUED, at("2026-09-30T11:00:00Z"), null), saved.lastRun)
+        assertEquals(at("2026-09-30T11:10:00Z"), saved.updatedAt)
     }
 }

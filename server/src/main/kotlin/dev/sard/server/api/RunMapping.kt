@@ -4,6 +4,7 @@
 package dev.sard.server.api
 
 import dev.sard.server.runs.Action
+import dev.sard.server.runs.CatchUpPeriod
 import dev.sard.server.runs.RunState
 import dev.sard.server.runs.RunView
 import dev.sard.server.runs.StepState
@@ -26,6 +27,7 @@ internal object RunMapping {
             view.startedAt,
             view.finishedAt,
             view.steps.map(::step),
+            catchUp(view.catchUp),
         )
 
     fun summary(view: RunView) =
@@ -41,7 +43,11 @@ internal object RunMapping {
             view.queuedAt,
             view.startedAt,
             view.finishedAt,
+            catchUp(view.catchUp),
         )
+
+    private fun catchUp(period: CatchUpPeriod?) =
+        period?.let { CatchUp(it.missedFrom, it.missedUntil, it.missedCount, it.missedCountCapped, it.timezone) }
 
     fun step(view: StepView) =
         RunStep(

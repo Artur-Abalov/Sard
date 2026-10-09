@@ -51,6 +51,14 @@ class DueTest {
         val now = at.plusSeconds(60L * (Due.MISSED_COUNT_LIMIT + 500))
         val next = now.plusSeconds(60)
         val lastCounted = at.plusSeconds(60L * (Due.MISSED_COUNT_LIMIT - 1))
-        assertEquals(Due.Missed(at, Due.MISSED_COUNT_LIMIT, lastCounted, next), due(at, now))
+        assertEquals(Due.Missed(at, Due.MISSED_COUNT_LIMIT, lastCounted, next, capped = true), due(at, now))
+    }
+
+    @Test
+    fun `a count that ends exactly at the limit with nothing more passed is not capped`() {
+        val now = at.plusSeconds(60L * (Due.MISSED_COUNT_LIMIT - 1))
+        val missed = due(at, now) as Due.Missed
+        assertEquals(Due.MISSED_COUNT_LIMIT, missed.count)
+        assertEquals(false, missed.capped)
     }
 }

@@ -107,7 +107,22 @@ class ApiSerializationIntegrationTest(
         EnrollmentToken(id, EnrollmentTokenStatus.USED, at, at, at, revokedAt = null, agentId = id, label = null)
     private val snapshot =
         Snapshot(id, "4f1c", id, id, id, id, "local", "a1b2", 10, 2, at, forgottenAt = null, partial = false)
-    private val schedule = Schedule(id, id, "30 2 * * *", "Europe/Berlin", true, at, null, at, 0, at, at)
+    private val schedule =
+        Schedule(
+            id,
+            id,
+            "30 2 * * *",
+            "Europe/Berlin",
+            true,
+            at,
+            null,
+            at,
+            0,
+            notifyOnSuccess = false,
+            lastRun = ScheduleLastRun(id, RunTrigger.SCHEDULE, RunStatus.FAILED, at, at),
+            createdAt = at,
+            updatedAt = at,
+        )
     private val fire =
         ScheduleFire(
             id,
@@ -118,12 +133,13 @@ class ApiSerializationIntegrationTest(
             reason = null,
             missedCount = 3,
             missedUntil = at,
+            missedCountCapped = false,
             skippedInRow = 0,
             alert = false,
             recordedAt = at,
         )
     private val summaryRun =
-        RunSummary(id, id, "etc", false, id, RunTrigger.MANUAL, RunStatus.FAILED, "boom", at, at, at)
+        RunSummary(id, id, "etc", false, id, RunTrigger.MANUAL, RunStatus.FAILED, "boom", at, at, at, catchUp = null)
 
     private val samples: List<Any> =
         listOf(
@@ -199,6 +215,7 @@ class ApiSerializationIntegrationTest(
                 at,
                 finishedAt = null,
                 listOf(step, queuedStep),
+                catchUp = CatchUp(at, at, 4, missedCountCapped = false, timezone = "Europe/Berlin"),
             ),
             RunPage(listOf(summaryRun), nextCursor = null),
             LogPage(

@@ -70,7 +70,12 @@ object ScheduleDescription {
     private fun minutes(minute: String): Pair<String, String>? {
         if (minute == "*") return "Каждую минуту" to "Every minute"
         number(minute, MINUTES_IN_HOUR)?.let { return "Каждый час в :${two(it)}" to "Every hour at :${two(it)}" }
-        val step = STEP.matchEntire(minute)?.groupValues?.get(1)?.toInt() ?: return null
+        val step =
+            STEP
+                .matchEntire(minute)
+                ?.groupValues
+                ?.get(1)
+                ?.toInt() ?: return null
         if (step == 1) return "Каждую минуту" to "Every minute"
         return MINUTE_STEPS[step]?.let { "Каждые $step $it" to "Every $step minutes" }
     }

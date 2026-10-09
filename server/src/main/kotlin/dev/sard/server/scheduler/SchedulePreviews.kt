@@ -49,8 +49,7 @@ class SchedulePreviews(
     private fun upcoming(
         schedule: CronSchedule,
         now: Instant,
-    ): List<Instant> =
-        generateSequence(next(schedule, now)) { next(schedule, it) }.take(CHECKED).toList()
+    ): List<Instant> = generateSequence(next(schedule, now)) { next(schedule, it) }.take(CHECKED).toList()
 
     private fun next(
         schedule: CronSchedule,

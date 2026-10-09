@@ -212,19 +212,104 @@ class SchedulesApiIntegrationTest(
                 val created = put(source, cron = longCron)
                 assertEquals(422, created.status, created.toString())
                 assertEquals(listOf("cron"), created.errorFields())
-                assertEquals("cron is longer than 200 characters", created.json.path("errors").get(0).path("message").asString())
+                assertEquals(
+                    "cron is longer than 200 characters",
+                    created.json
+                        .path("errors")
+                        .get(0)
+                        .path("message")
+                        .asString(),
+                )
                 assertTrue("0,0,0,0,0" !in created.body)
                 assertEquals(404, world.api.get("/api/v1/sources/$source/schedule", admin).status)
 
                 put(source, cron = "0 2 * * *")
                 val replaced = put(source, cron = longCron)
                 assertEquals(422, replaced.status, replaced.toString())
-                assertEquals("0 2 * * *", world.api.get("/api/v1/sources/$source/schedule", admin).json.path("cron").asString())
+                assertEquals(
+                    "0 2 * * *",
+                    world.api
+                        .get("/api/v1/sources/$source/schedule", admin)
+                        .json
+                        .path("cron")
+                        .asString(),
+                )
 
                 val previewed = preview("cron=${longCron.replace(" ", "%20")}&timezone=UTC")
                 assertEquals(422, previewed.status, previewed.toString())
                 assertEquals(listOf("cron"), previewed.errorFields())
             }
         assertTrue(logs.none { "database unavailable" in it })
+    }
+
+    @Test
+    fun `notifyOnSuccess is off by default, is kept, and changing it alone leaves the next fire`() {
+        val source = source()
+        val created = put(source).json
+        assertEquals(false, created.path("notifyOnSuccess").asBoolean())
+        assertTrue(created.path("lastRun").isNull)
+
+        clock.now = T0.plus(1, ChronoUnit.HOURS)
+        val body = """{"cron":"0 * * * *","timezone":"UTC","enabled":true,"notifyOnSuccess":true}"""
+        val saved = world.api.send("PUT", "/api/v1/sources/$source/schedule", admin, body).json
+
+        assertEquals(true, saved.path("notifyOnSuccess").asBoolean())
+        assertEquals(created.path("nextRunAt"), saved.path("nextRunAt"))
+        assertEquals(saved, world.api.get("/api/v1/sources/$source/schedule", admin).json)
+    }
+
+    @Test
+    fun `a schedule names its latest run and a catch-up run its period`() {
+        val source = source()
+        put(source)
+        clock.now = nextHour
+        scheduler.tick()
+        val run =
+            world.api
+                .get("/api/v1/runs", admin)
+                .json
+                .path("items")
+                .get(0)
+
+        val lastRun =
+            world.api
+                .get("/api/v1/sources/$source/schedule", admin)
+                .json
+                .path("lastRun")
+        assertEquals(run.path("id"), lastRun.path("id"))
+        assertEquals(listOf("schedule", "queued"), listOf("trigger", "status").map { lastRun.path(it).asString() })
+        assertTrue(run.path("catchUp").isNull)
+
+        world.forceRun(java.util.UUID.fromString(run.path("id").asString()), "succeeded")
+        clock.now = nextHour.plus(3, ChronoUnit.HOURS).plusSeconds(1800)
+        scheduler.tick()
+        scheduler.tick()
+        val catchUp =
+            world.api
+                .get("/api/v1/runs", admin)
+                .json
+                .path("items")
+                .get(0)
+        assertEquals("catch_up", catchUp.path("trigger").asString())
+        val period = catchUp.path("catchUp")
+        assertEquals(nextHour.plus(1, ChronoUnit.HOURS).toString(), period.path("missedFrom").asString())
+        assertEquals(nextHour.plus(3, ChronoUnit.HOURS).toString(), period.path("missedUntil").asString())
+        assertEquals(
+            listOf(3, false, "UTC"),
+            listOf(period.path("missedCount").asInt(), period.path("missedCountCapped").asBoolean(), period.path("timezone").asString()),
+        )
+        assertEquals(
+            period,
+            world.api
+                .get("/api/v1/runs/${catchUp.path("id").asString()}", admin)
+                .json
+                .path("catchUp"),
+        )
+        val fires =
+            world.api
+                .get("/api/v1/sources/$source/schedule/fires", admin)
+                .json
+                .path("items")
+        assertTrue(fires.list().all { !it.path("missedCountCapped").asBoolean() })
     }
 }

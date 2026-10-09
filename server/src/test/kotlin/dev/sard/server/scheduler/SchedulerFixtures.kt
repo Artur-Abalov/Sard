@@ -23,6 +23,7 @@ internal data class FireRow(
     val missedCount: Int?,
     val skippedInRow: Int,
     val alert: Boolean,
+    val missedCountCapped: Boolean = false,
 )
 
 /** One run as the scheduler left it. */
@@ -55,7 +56,7 @@ internal class ScheduleTables(
     fun fires(scheduleId: UUID): List<FireRow> =
         jdbc.query(
             """
-            select kind, scheduled_for, outcome, run_id, reason, missed_count, skipped_in_row, alert
+            select kind, scheduled_for, outcome, run_id, reason, missed_count, skipped_in_row, alert, missed_count_capped
             from schedule_fires where tenant_id = ? and schedule_id = ? order by recorded_at, scheduled_for, kind
             """.trimIndent(),
             { rs, _ ->
@@ -68,6 +69,7 @@ internal class ScheduleTables(
                     rs.getObject(6) as Int?,
                     rs.getInt(7),
                     rs.getBoolean(8),
+                    rs.getBoolean(9),
                 )
             },
             tenant.id,

@@ -19,6 +19,11 @@ import java.time.Instant
 import java.util.UUID
 import kotlin.reflect.KClass
 
+// Native SQL names tenant_id explicitly (ADR 0013, rule 8): the tenant of the schedule being fired.
+private const val CLAIM =
+    "update schedule_fires set catch_up_fire_id = :fire where tenant_id = :tenant and schedule_id = :schedule " +
+        "and outcome = 'skipped_downtime' and catch_up_fire_id is null"
+
 /** A refused start of a schedule's run and what the journal says of it; [RunActive] is answered apart. */
 private val REFUSALS: Map<KClass<out RunsException>, Pair<FireOutcome, FireReason>> =
     mapOf(
@@ -84,7 +89,7 @@ internal class Firing(
     ): RunView? {
         schedule.nextRunAt = due.next
         schedule.catchUpAt = schedule.catchUpAt ?: slots.take()
-        journal(FireKind.SCHEDULE, due.first, Result(FireOutcome.SKIPPED_DOWNTIME), due.count, due.last)
+        journal(FireKind.SCHEDULE, due.first, Result(FireOutcome.SKIPPED_DOWNTIME), Downtime(due))
         return null
     }
 
@@ -103,7 +108,7 @@ internal class Firing(
             }
         schedule.skippedInRow = if (result.outcome.skip) schedule.skippedInRow + 1 else 0
         schedule.lastFiredAt = now
-        journal(kind, at, result, null, null)
+        journal(kind, at, result)
         return result.run
     }
 
@@ -111,8 +116,7 @@ internal class Firing(
         kind: FireKind,
         at: Instant,
         result: Result,
-        missedCount: Int?,
-        missedUntil: Instant?,
+        downtime: Downtime? = null,
     ) {
         val record =
             ScheduleFireRecord(
@@ -123,14 +127,27 @@ internal class Firing(
                 outcome = result.outcome.stored,
                 runId = result.runId,
                 reason = result.reason,
-                missedCount = missedCount,
-                missedUntil = missedUntil,
+                missedCount = downtime?.count,
+                missedUntil = downtime?.until,
+                missedCountCapped = downtime?.capped ?: false,
                 skippedInRow = schedule.skippedInRow,
                 alert = alerts(result),
                 recordedAt = now,
             )
         session.persist(record)
+        if (kind == FireKind.CATCH_UP) claimDowntimes(record.id)
         journal += kind to result.outcome
+    }
+
+    /** The catch-up fire stands for the downtimes journaled so far and not claimed by an earlier one. */
+    private fun claimDowntimes(fire: UUID) {
+        session.flush()
+        session
+            .createNativeMutationQuery(CLAIM)
+            .setParameter("fire", fire)
+            .setParameter("tenant", schedule.tenantId)
+            .setParameter("schedule", schedule.id)
+            .executeUpdate()
     }
 
     /** The skip that brings the series to the threshold raises the alert, once. */
@@ -140,6 +157,15 @@ internal class Firing(
 private fun refusal(e: RunsException): Result {
     val (outcome, reason) = REFUSALS[e::class] ?: throw e
     return Result(outcome, reason = reason.stored)
+}
+
+/** A downtime row: [count] fires passed, the last at [until]; [capped] when more passed than were counted. */
+private class Downtime(
+    val count: Int,
+    val until: Instant,
+    val capped: Boolean,
+) {
+    constructor(due: Due.Missed) : this(due.count, due.last, due.capped)
 }
 
 /** What came of a fire: the run created, or the active run that skipped it ([runId]), or the stored reason. */

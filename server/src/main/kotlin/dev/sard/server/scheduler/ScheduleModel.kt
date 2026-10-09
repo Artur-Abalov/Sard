@@ -3,6 +3,7 @@
 
 package dev.sard.server.scheduler
 
+import dev.sard.server.runs.RunState
 import dev.sard.server.runs.Trigger
 import java.time.Instant
 import java.util.UUID
@@ -58,6 +59,17 @@ data class ScheduleDraft(
     val cron: String,
     val timezone: String,
     val enabled: Boolean,
+    /** Tell of every successful scheduled run too; failures and recoveries are always told (F3b). */
+    val notifyOnSuccess: Boolean = false,
+)
+
+/** The latest run a schedule created, scheduled or catch-up (F3b). */
+data class LastRun(
+    val id: UUID,
+    val trigger: Trigger,
+    val status: RunState,
+    val queuedAt: Instant,
+    val finishedAt: Instant?,
 )
 
 /** A source's schedule; [nextRunAt] is null while disabled, [catchUpAt] set while a catch-up is owed. */
@@ -71,6 +83,8 @@ data class ScheduleView(
     val catchUpAt: Instant?,
     val lastFiredAt: Instant?,
     val skippedInRow: Int,
+    val notifyOnSuccess: Boolean,
+    val lastRun: LastRun?,
     val createdAt: Instant,
     val updatedAt: Instant,
 )
@@ -85,6 +99,8 @@ data class FireView(
     val reason: FireReason?,
     val missedCount: Int?,
     val missedUntil: Instant?,
+    /** The count stopped at its limit: more fires were missed. */
+    val missedCountCapped: Boolean,
     val skippedInRow: Int,
     val alert: Boolean,
     val recordedAt: Instant,
