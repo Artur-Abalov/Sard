@@ -13,7 +13,7 @@ import { Time } from './Time'
 
 type Agent = Pick<
   components['schemas']['AgentSummary'],
-  'revokedAt' | 'duplicateSessionAt' | 'outdated'
+  'revokedAt' | 'duplicateSessionAt' | 'outdated' | 'builtin'
 >
 
 // An update is available: a notice, not an error - the agent works. The version offered is the one
@@ -30,10 +30,12 @@ function OutdatedMark() {
   )
 }
 
-// The notes an agent carries beside its status: revoked, a confirmed duplicate session (S5b), outdated.
+// The notes an agent carries beside its status: built in (sard-self), revoked, a confirmed duplicate session (S5b), outdated.
 export function AgentMarks({ agent }: { agent: Agent }) {
+  const { t } = useTranslation()
   return (
     <Group gap="xs">
+      {agent.builtin && <Badge color={tones.info}>{t('agents.builtin')}</Badge>}
       {agent.revokedAt !== null && (
         <Badge color={tones.error} leftSection={<StatusIcon name="x-circle" />}>
           <Trans

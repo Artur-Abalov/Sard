@@ -20,6 +20,7 @@ private val ISOLATED_PACKAGES =
         "notify",
         "install",
         "downloads",
+        "selfagent",
     )
 
 // downloads/ holds both domain types and the HTTP adapter that serves the package files. Only the
@@ -36,6 +37,9 @@ private val API_PACKAGE_REFERENCE = Regex("""\bdev\.sard\.server\.api\b""")
 private val CONSOLE_PACKAGE_REFERENCE = Regex("""\bdev\.sard\.server\.console\b""")
 private val TELEGRAM_REFERENCE = Regex("""\b(dev\.sard\.server\.notify\.telegram|Telegram\w*)\b""")
 private const val NOTIFY_COMPOSITION_ROOT = "NotifyConfiguration.kt"
+private val AGENT_ENTITY_REFERENCE =
+    Regex("""\bfrom\s+Agent\b|\bAgent::class\b|\bdev\.sard\.server\.persistence\.Agent\b""")
+private val SELFAGENT_REFERENCE = Regex("""\bdev\.sard\.server\.selfagent\b""")
 private val SESSIONS_SYSTEM_CALL = Regex("""\bsessions\.system\s*[({]""")
 private val LINE_COMMENT = Regex("""//.*$""", RegexOption.MULTILINE)
 private val BLOCK_COMMENT = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
@@ -241,5 +245,25 @@ class ArchitectureTest {
                     CONSOLE_PACKAGE_REFERENCE.containsMatchIn(withoutComments(file.readText()))
             }
         assertTrue(offenders.isEmpty(), "references to console:\n${offenders.joinToString("\n") { it.path }}")
+    }
+
+    @Test
+    fun `selfagent asks fleet about agents and never queries the Agent entity itself`() {
+        val offenders =
+            ktFiles(File(mainRoot, "selfagent")).filter {
+                AGENT_ENTITY_REFERENCE.containsMatchIn(withoutComments(it.readText()))
+            }
+        val message = "selfagent querying agents directly:\n${offenders.joinToString("\n") { it.path }}"
+        assertTrue(offenders.isEmpty(), message)
+    }
+
+    @Test
+    fun `no package depends on selfagent, so the mechanism stays removable`() {
+        val offenders =
+            ktFiles(mainRoot).filter { file ->
+                !file.relativeTo(mainRoot).path.startsWith("selfagent") &&
+                    SELFAGENT_REFERENCE.containsMatchIn(withoutComments(file.readText()))
+            }
+        assertTrue(offenders.isEmpty(), "references to selfagent:\n${offenders.joinToString("\n") { it.path }}")
     }
 }

@@ -46,13 +46,18 @@ hosts, put the name they dial into `SARD_PKI_SERVER_NAMES` in `.env` and run
 guide, [docs/operator/](docs/operator/README.md) (in Russian). The whole
 stage 1 demo, from a clean VM to a restored file, is
 [docs/demo.md](docs/demo.md). Every release also carries
-an offline archive of both images, for hosts without registry access:
+an offline archive of its images (sard-server, sard-agent, PostgreSQL), for hosts
+without registry access:
 
 ```bash
 gunzip -c sard-<VERSION>-images-linux-<ARCH>.tar.gz | docker load
 docker compose up -d --wait --pull never
 ```
 
+Next to the server runs `self-agent`, the agent `sard-self` that enrolls by
+itself and will back up this installation: it reads the database through a
+read-only role and the CA directory read-only
+([docs/operations/self-agent.md](docs/operations/self-agent.md), in Russian).
 The CA key lives in the `sard_sard-pki` volume and the database in
 `sard_postgres-data`; both survive `docker compose down` and are removed by
 `docker compose down -v` only.

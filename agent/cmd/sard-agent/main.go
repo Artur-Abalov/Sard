@@ -64,7 +64,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, hostname 
 	if isSecretCommand(args) {
 		return runSecret(ctx, args[1:], stdout, stderr)
 	}
-	return runAgentCmd(ctx, args, stdout, stderr, hostname)
+	return runAgentCmd(ctx, args, stdout, stderr, hostname, realSelfEnrollDeps(hostname))
 }
 
 func isEnrollCommand(args []string) bool {
@@ -73,11 +73,12 @@ func isEnrollCommand(args []string) bool {
 
 // runAgentCmd is "sard-agent --config ..." — running the agent itself,
 // A2b's "enroll" subcommand dispatched away above.
-func runAgentCmd(ctx context.Context, args []string, stdout, stderr io.Writer, hostname hostnameFunc) int {
+func runAgentCmd(ctx context.Context, args []string, stdout, stderr io.Writer, hostname hostnameFunc, self selfEnrollDeps) int {
 	fs := flag.NewFlagSet("sard-agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	configPath := fs.String("config", "", "path to the agent YAML config")
+	tokenFile := fs.String("enroll-token-file", "", "file in which the server leaves an enrollment token; the agent enrolls itself with it")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
@@ -89,6 +90,9 @@ func runAgentCmd(ctx context.Context, args []string, stdout, stderr io.Writer, h
 		_, _ = fmt.Fprintln(stderr, "sard-agent: --config <path> is required")
 		fs.Usage()
 		return exitUsage
+	}
+	if proceed, code := selfEnrollIfAsked(ctx, *configPath, *tokenFile, stdout, stderr, self); !proceed {
+		return code
 	}
 	if err := start(ctx, *configPath, stdout, hostname, os.Executable); err != nil {
 		return reportFailure(stderr, err)

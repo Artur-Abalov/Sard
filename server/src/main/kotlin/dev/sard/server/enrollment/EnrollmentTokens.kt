@@ -9,6 +9,7 @@ import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.persistence.hqlWhere
 import dev.sard.server.pki.CertificateAuthority
+import org.hibernate.Session
 import java.security.SecureRandom
 import java.time.Clock
 import java.time.Duration
@@ -17,14 +18,23 @@ import java.util.UUID
 
 private const val BY_HASH = "from EnrollmentTokenRecord where tokenHash = :hash"
 private const val REVOKE =
-    "update EnrollmentTokenRecord set revokedAt = :now " +
-        "where id = :id and usedAt is null and revokedAt is null and expiresAt > :now"
+    "update EnrollmentTokenRecord set revokedAt = :now where id = :id and builtin = false " +
+        "and usedAt is null and revokedAt is null and expiresAt > :now"
+private const val REVOKE_ACTIVE_BUILTIN =
+    "update EnrollmentTokenRecord set revokedAt = :now where builtin = true " +
+        "and usedAt is null and revokedAt is null and expiresAt > :now"
+private const val USABLE_BUILTIN =
+    "select count(t) from EnrollmentTokenRecord t where t.builtin = true and t.tokenHash = :hash " +
+        "and t.usedAt is null and t.revokedAt is null and t.expiresAt > :limit"
 private const val LABEL_MAX_LENGTH = 200
 
 /** The lifetime of a token created without one (decision 1). */
 val DEFAULT_TTL: Duration = Duration.ofHours(24)
 private val MIN_TTL: Duration = Duration.ofMinutes(5)
 private val MAX_TTL: Duration = Duration.ofDays(7)
+
+/** The lifetime of a built-in token (docs/specs/server/self-agent.feature, Р1). */
+val BUILTIN_TTL: Duration = Duration.ofHours(1)
 
 /** A freshly created token: the only moment its string exists on the server. */
 class IssuedEnrollmentToken(
@@ -49,6 +59,8 @@ class IssuedEnrollmentToken(
 data class TokenOwner(
     val tokenId: UUID,
     val tenantId: UUID,
+    /** Whether the token was written by the server for the agent next to it; its agent is built in too. */
+    val builtin: Boolean = false,
 )
 
 /** A token as an administrator sees it: never the string, never the secret (rule "Строка токена..."). */
@@ -111,11 +123,55 @@ class EnrollmentTokens(
         if (label.length > LABEL_MAX_LENGTH) {
             throw EnrollmentTokenValidationException("label", "must be at most $LABEL_MAX_LENGTH characters")
         }
+        return sessions.inTenant(tenantId) { issue(it, ttl, label, builtin = false) }
+    }
+
+    /**
+     * A new built-in token for [tenantId] valid for [BUILTIN_TTL], in the same transaction that revokes the
+     * tenant's other active built-in tokens: at most one is ever active.
+     */
+    fun replaceBuiltin(tenantId: UUID): IssuedEnrollmentToken =
+        sessions.inTenant(tenantId) { session ->
+            session.createMutationQuery(REVOKE_ACTIVE_BUILTIN).setParameter("now", clock.instant()).executeUpdate()
+            issue(session, BUILTIN_TTL, "", builtin = true)
+        }
+
+    /**
+     * Whether [tenantId] has an unused, not revoked built-in token whose secret hashes to [secretHash] and
+     * which expires strictly later than [margin] from now.
+     */
+    fun builtinUsable(
+        tenantId: UUID,
+        secretHash: ByteArray,
+        margin: Duration,
+    ): Boolean =
+        sessions.inTenant(tenantId) { session ->
+            session
+                .createSelectionQuery(USABLE_BUILTIN, java.lang.Long::class.java)
+                .setParameter("hash", secretHash)
+                .setParameter("limit", clock.instant() + margin)
+                .singleResult
+                .toLong() > 0
+        }
+
+    private fun issue(
+        session: Session,
+        ttl: Duration,
+        label: String,
+        builtin: Boolean,
+    ): IssuedEnrollmentToken {
         val secret = EnrollmentSecret.random(random)
         val now = clock.instant()
         val record =
-            EnrollmentTokenRecord(ids.next(), secret.hash(), expiresAt = now + ttl, createdAt = now, label = label)
-        sessions.inTenant(tenantId) { it.persist(record) }
+            EnrollmentTokenRecord(
+                ids.next(),
+                secret.hash(),
+                expiresAt = now + ttl,
+                createdAt = now,
+                label = label,
+                builtin = builtin,
+            )
+        session.persist(record)
         val token = EnrollmentToken(secret, ca.fingerprint()).encode()
         return IssuedEnrollmentToken(record.id, record.expiresAt, token, endpoint)
     }
@@ -142,7 +198,9 @@ class EnrollmentTokens(
         state: EnrollmentTokenState?,
         after: PageKey?,
     ): String {
-        val where = hqlWhere(listOfNotNull(state?.let(::condition), after?.let { PageKey.condition("createdAt") }))
+        val conditions =
+            listOfNotNull("builtin = false", state?.let(::condition), after?.let { PageKey.condition("createdAt") })
+        val where = hqlWhere(conditions)
         return "from EnrollmentTokenRecord $where order by createdAt desc, id desc"
     }
 
@@ -161,7 +219,7 @@ class EnrollmentTokens(
         id: UUID,
     ): EnrollmentTokenSummary? =
         sessions.inTenant(tenantId) { session ->
-            session.find(EnrollmentTokenRecord::class.java, id)?.let { summaryOf(it) }
+            session.find(EnrollmentTokenRecord::class.java, id)?.takeUnless { it.builtin }?.let { summaryOf(it) }
         }
 
     /**
@@ -182,13 +240,10 @@ class EnrollmentTokens(
                     .setParameter("now", now)
                     .setParameter("id", id)
                     .executeUpdate()
-            if (revoked == 1) return@inTenant RevokeResult.Revoked(now)
-            val record = session.find(EnrollmentTokenRecord::class.java, id) ?: return@inTenant RevokeResult.NotFound
-            val revokedAt = record.revokedAt
-            when {
-                record.usedAt != null -> RevokeResult.Rejected(RevokeRejection.USED)
-                revokedAt != null -> RevokeResult.Revoked(revokedAt)
-                else -> RevokeResult.Rejected(RevokeRejection.EXPIRED)
+            if (revoked == 1) {
+                RevokeResult.Revoked(now)
+            } else {
+                refusal(session.find(EnrollmentTokenRecord::class.java, id))
             }
         }
 
@@ -199,7 +254,7 @@ class EnrollmentTokens(
                 .createSelectionQuery(BY_HASH, EnrollmentTokenRecord::class.java)
                 .setParameter("hash", tokenHash)
                 .uniqueResult()
-                ?.let { TokenOwner(it.id, checkNotNull(it.tenantId)) }
+                ?.let { TokenOwner(it.id, checkNotNull(it.tenantId), it.builtin) }
         }
 
     private fun summaryOf(record: EnrollmentTokenRecord) =
@@ -213,4 +268,15 @@ class EnrollmentTokens(
             agentId = record.agentId,
             revokedAt = record.revokedAt,
         )
+}
+
+/** Why the guarded update changed nothing; a built-in token is none of REST's business. */
+private fun refusal(record: EnrollmentTokenRecord?): RevokeResult {
+    val revokedAt = record?.revokedAt
+    return when {
+        record == null || record.builtin -> RevokeResult.NotFound
+        record.usedAt != null -> RevokeResult.Rejected(RevokeRejection.USED)
+        revokedAt != null -> RevokeResult.Revoked(revokedAt)
+        else -> RevokeResult.Rejected(RevokeRejection.EXPIRED)
+    }
 }

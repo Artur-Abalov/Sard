@@ -53,3 +53,12 @@ annotation class Unprocessable
     content = [Content(mediaType = PROBLEM_JSON, schema = Schema(implementation = RunActiveProblem::class))],
 )
 annotation class RunActive
+
+@Target(AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.RUNTIME)
+@ApiResponse(
+    responseCode = "409",
+    description = "A live built-in agent needs confirm=sard-self; nothing was changed",
+    content = [Content(mediaType = PROBLEM_JSON, schema = Schema(implementation = Problem::class))],
+)
+annotation class ConfirmationRequired

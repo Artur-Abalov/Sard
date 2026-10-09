@@ -854,7 +854,7 @@
       "post" : {
         "tags" : [ "agents" ],
         "summary" : "Revoke an agent",
-        "description" : "Revokes all its certificates and closes its open stream at once; its queued, dispatched and running steps become lost. Its history stays. Revoking a revoked agent is a no-op and answers 200.",
+        "description" : "Revokes all its certificates and closes its open stream at once; its queued, dispatched and running steps become lost. Its history stays. Revoking a revoked agent is a no-op and answers 200. A live built-in agent is revoked only with confirm=sard-self, else 409 and nothing changes; other agents ignore confirm.",
         "operationId" : "revokeAgent",
         "parameters" : [ {
           "name" : "agentId",
@@ -864,10 +864,28 @@
             "type" : "string",
             "format" : "uuid"
           }
+        }, {
+          "name" : "confirm",
+          "in" : "query",
+          "description" : "sard-self, exactly, to revoke a live built-in agent",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
         } ],
         "responses" : {
           "404" : {
             "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "A live built-in agent needs confirm=sard-self; nothing was changed",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -1777,7 +1795,7 @@
       },
       "ErrorCode" : {
         "type" : "string",
-        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "unavailable" ]
+        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "unavailable", "self_agent_confirmation_required" ]
       },
       "Problem" : {
         "type" : "object",
@@ -2328,9 +2346,13 @@
           "outdated" : {
             "type" : "boolean",
             "description" : "True when the agent and the server's packages are both releases (vX.Y.Z) and the agent's version is lower by semver; false when it is newer, unknown or not a release"
+          },
+          "builtin" : {
+            "type" : "boolean",
+            "description" : "True for the agent next to the server (sard-self), enrolled with the token the server wrote for it; revoking it needs confirm=sard-self"
           }
         },
-        "required" : [ "agentVersion", "arch", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "plugins", "protocolVersion", "registeredAt", "repositories", "revokedAt", "scriptNames", "secretNames", "status" ]
+        "required" : [ "agentVersion", "arch", "builtin", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "plugins", "protocolVersion", "registeredAt", "repositories", "revokedAt", "scriptNames", "secretNames", "status" ]
       },
       "AgentPlugin" : {
         "type" : "object",
@@ -2776,9 +2798,13 @@
           "outdated" : {
             "type" : "boolean",
             "description" : "True when the agent and the server's packages are both releases (vX.Y.Z) and the agent's version is lower by semver; false when it is newer, unknown or not a release"
+          },
+          "builtin" : {
+            "type" : "boolean",
+            "description" : "True for the agent next to the server (sard-self), enrolled with the token the server wrote for it; revoking it needs confirm=sard-self"
           }
         },
-        "required" : [ "agentVersion", "arch", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "registeredAt", "revokedAt", "status" ]
+        "required" : [ "agentVersion", "arch", "builtin", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "registeredAt", "revokedAt", "status" ]
       },
       "InstallFormat" : {
         "type" : "string",

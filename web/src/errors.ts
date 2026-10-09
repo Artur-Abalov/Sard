@@ -35,6 +35,7 @@ const KNOWN: Record<ErrorCode, true> = {
   origin_rejected: true,
   agent_revoked: true,
   unavailable: true,
+  self_agent_confirmation_required: true,
 }
 
 function codeOf(error: unknown): string | null {

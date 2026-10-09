@@ -13,6 +13,7 @@ export function ConfirmModal({
   title,
   confirmLabel,
   busy,
+  disabled = false,
   onConfirm,
   onClose,
   children,
@@ -21,6 +22,8 @@ export function ConfirmModal({
   title: string
   confirmLabel: string
   busy: boolean
+  // The confirm button stays off until the dialog's own condition holds.
+  disabled?: boolean
   onConfirm: () => void
   onClose: () => void
   children: ReactNode
@@ -34,7 +37,13 @@ export function ConfirmModal({
           <Button variant="default" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button variant="default" c={tones.error} loading={busy} onClick={onConfirm}>
+          <Button
+            variant="default"
+            c={tones.error}
+            loading={busy}
+            disabled={disabled}
+            onClick={onConfirm}
+          >
             {confirmLabel}
           </Button>
         </Group>

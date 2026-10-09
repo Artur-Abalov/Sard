@@ -4,7 +4,8 @@
 import type { components } from '../../api/schema'
 import { http } from '../http'
 import { pageOf } from '../paging'
-import { noSession, notFound, PROBLEM } from '../problems'
+import { noSession, notFound, problem, PROBLEM } from '../problems'
+import { SELF_AGENT_CONFIRMATION } from '../../selfAgent'
 import { state } from '../state'
 
 type Schemas = components['schemas']
@@ -22,6 +23,7 @@ function summary(agent: Schemas['AgentDetails']): Schemas['AgentSummary'] {
     revokedAt,
     duplicateSessionAt,
     outdated,
+    builtin,
   } = agent
   return {
     id,
@@ -35,6 +37,7 @@ function summary(agent: Schemas['AgentDetails']): Schemas['AgentSummary'] {
     revokedAt,
     duplicateSessionAt,
     outdated,
+    builtin,
   }
 }
 
@@ -66,10 +69,21 @@ export const agentHandlers = [
     return agent === undefined ? response(404).json(notFound, PROBLEM) : response(200).json(agent)
   }),
 
-  http.post('/api/v1/agents/{agentId}/revoke', ({ params, response }) => {
+  http.post('/api/v1/agents/{agentId}/revoke', ({ params, query, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
     const agent = state.agents.find((a) => a.id === params.agentId)
     if (agent === undefined) return response(404).json(notFound, PROBLEM)
+    // A live built-in agent is revoked only with the exact confirmation; nothing changes without it.
+    if (
+      agent.builtin &&
+      agent.revokedAt === null &&
+      query.get('confirm') !== SELF_AGENT_CONFIRMATION
+    ) {
+      return response(409).json(
+        problem(409, 'Conflict', 'self_agent_confirmation_required'),
+        PROBLEM,
+      )
+    }
     // Revoking a revoked agent changes nothing; otherwise it goes offline for good.
     if (agent.revokedAt === null) {
       Object.assign(agent, { revokedAt: new Date().toISOString(), status: 'offline' })
