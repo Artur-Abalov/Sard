@@ -89,7 +89,7 @@ class Scheduler(
     fun tick() {
         val now = clock.instant()
         val (due, lastSlot) = sessions.system { session -> due(session, now) to lastSlot(session) }
-        metrics.lag(due.firstOrNull()?.let { Duration.between(it.at, now) } ?: Duration.ZERO)
+        metrics.lag(lagOf(due, now))
         val slots = CatchUpSlots(maxOf(now, lastSlot?.plus(settings.catchUpSpacing) ?: now), settings.catchUpSpacing)
         for (schedule in due) {
             runCatching { fire(schedule, now, slots) }
@@ -107,6 +107,12 @@ class Scheduler(
             .setParameter("batch", settings.batch)
             .list()
             .map { DueSchedule(it[0] as UUID, it[1] as UUID, it[2] as Instant) }
+
+    /** The due schedules come oldest first: the first one is how far behind the scheduler runs. */
+    private fun lagOf(
+        due: List<DueSchedule>,
+        now: Instant,
+    ): Duration = due.firstOrNull()?.let { Duration.between(it.at, now) } ?: Duration.ZERO
 
     private fun lastSlot(session: Session): Instant? {
         val query = session.createNativeQuery(LAST_SLOT, Instant::class.java)
