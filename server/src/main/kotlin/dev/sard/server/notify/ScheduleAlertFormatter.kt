@@ -79,12 +79,19 @@ class ScheduleAlertFormatter(
                 listOf(Message.Text("${words.skipped}${notice.skippedInRow}")),
                 listOf(Message.Text(reason(notice))),
                 listOf(Message.Text(words.firedAt), Message.Code(moment(notice))),
-                notice.activeRunId?.let { listOf(Message.Text(words.activeRun), Message.Code("$it")) },
-                console?.let { listOf(Message.Text(link(it, notice))) },
+                activeRunLine(notice),
+                linkLine(notice),
             )
         val newline = listOf(Message.Text(NEWLINE))
         return Message(lines.flatMapIndexed { index, line -> if (index == 0) line else newline + line })
     }
+
+    private fun activeRunLine(notice: SkipAlertNotice): List<Message.Part>? {
+        val run = notice.activeRunId ?: return null
+        return listOf(Message.Text(words.activeRun), Message.Code("$run"))
+    }
+
+    private fun linkLine(notice: SkipAlertNotice): List<Message.Part>? = console?.let { listOf(Message.Text(link(it, notice))) }
 
     /** The cause is the outcome of the fire that raised the alert (decision 10). */
     private fun reason(notice: SkipAlertNotice): String =

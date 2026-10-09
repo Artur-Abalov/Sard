@@ -84,9 +84,10 @@ enum class Telling {
         private fun turn(notice: RunNotice): Telling? {
             val failedBefore = notice.previousStatus == RunState.FAILED
             return when {
-                notice.status == RunState.FAILED && !failedBefore -> FIRST_FAILURE
-                notice.status == RunState.SUCCEEDED && failedBefore -> RECOVERY
-                notice.status == RunState.SUCCEEDED && notice.notifyOnSuccess -> RESULT
+                notice.status == RunState.FAILED -> FIRST_FAILURE.takeUnless { failedBefore }
+                notice.status != RunState.SUCCEEDED -> null
+                failedBefore -> RECOVERY
+                notice.notifyOnSuccess -> RESULT
                 else -> null
             }
         }

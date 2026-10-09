@@ -46,6 +46,9 @@ object ScheduleDescription {
     private const val MONTH = 3
     private const val DAY_OF_WEEK = 4
     private val STEP = Regex("\\*/(\\d+)")
+    private val STEPS =
+        mapOf(1 to ("Каждую минуту" to "Every minute")) +
+            MINUTE_STEPS.mapValues { (step, noun) -> "Каждые $step $noun" to "Every $step minutes" }
     private val EVERY_DAY = "Каждый день" to "Every day"
     private val WEEKDAYS = "По будням" to "On weekdays"
 
@@ -75,23 +78,18 @@ object ScheduleDescription {
         return hourly ?: steps(minute)
     }
 
-    private fun steps(minute: String): Pair<String, String>? {
-        val step =
-            if (minute == "*") {
-                1
-            } else {
-                STEP
-                    .matchEntire(minute)
-                    ?.groupValues
-                    ?.get(1)
-                    ?.toInt()
-            }
-        return when (step) {
-            null -> null
-            1 -> "Каждую минуту" to "Every minute"
-            else -> MINUTE_STEPS[step]?.let { "Каждые $step $it" to "Every $step minutes" }
+    private fun steps(minute: String): Pair<String, String>? = stepOf(minute)?.let(STEPS::get)
+
+    private fun stepOf(minute: String): Int? =
+        if (minute == "*") {
+            1
+        } else {
+            STEP
+                .matchEntire(minute)
+                ?.groupValues
+                ?.get(1)
+                ?.toIntOrNull()
         }
-    }
 
     private fun timed(
         minute: String,
