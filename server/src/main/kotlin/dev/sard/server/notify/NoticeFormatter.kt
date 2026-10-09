@@ -26,6 +26,7 @@ class RunNoticeFormatter(
     private val console: ConsoleUrl?,
 ) : NotificationFormatter {
     private val words = wording(language)
+    private val figures = NoticeFigures(words)
 
     override fun format(notice: RunNotice): Message? {
         val telling = Telling.of(notice) ?: return null
@@ -122,9 +123,23 @@ class RunNoticeFormatter(
     private fun durationLine(
         start: Instant?,
         end: Instant,
-    ): List<Message.Part>? = start?.let { listOf(Message.Text(words.duration + duration(Duration.between(it, end)))) }
+    ): List<Message.Part>? {
+        val elapsed = start?.let { Duration.between(it, end) } ?: return null
+        return listOf(Message.Text(words.duration + figures.duration(elapsed)))
+    }
 
-    private fun duration(elapsed: Duration): String {
+    private fun sizesLine(sizes: BackupSizes): List<Message.Part> {
+        val total = figures.size(sizes.totalBytes)
+        val added = figures.size(sizes.addedBytes)
+        return listOf(Message.Text("${words.total}$total${words.added}$added"))
+    }
+}
+
+/** Durations and sizes as the console shows them (S9b); the formats repeat `web/src/format.ts`. */
+internal class NoticeFigures(
+    private val words: Wording,
+) {
+    fun duration(elapsed: Duration): String {
         val seconds = elapsed.seconds.coerceAtLeast(0)
         val (s, min, h) = words.durationUnits
         return when {
@@ -142,11 +157,8 @@ class RunNoticeFormatter(
         }
     }
 
-    private fun sizesLine(sizes: BackupSizes): List<Message.Part> =
-        listOf(Message.Text("${words.total}${size(sizes.totalBytes)}${words.added}${size(sizes.addedBytes)}"))
-
     /** Binary units, at most one decimal, half up, no trailing ",0" — as the console shows it. */
-    private fun size(bytes: Long): String {
+    fun size(bytes: Long): String {
         var value = bytes.toDouble()
         var unit = 0
         while (value >= BINARY && unit < words.units.size - 1) {

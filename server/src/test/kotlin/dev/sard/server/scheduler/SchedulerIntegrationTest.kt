@@ -545,7 +545,8 @@ class SchedulerIntegrationTest(
 
         assertEquals(true, saved.notifyOnSuccess)
         assertEquals(at("2026-09-30T12:00:00Z"), saved.nextRunAt)
-        assertEquals(LastRun(run.id, Trigger.SCHEDULE, RunState.QUEUED, at("2026-09-30T11:00:00Z"), null), saved.lastRun)
+        val expected = LastRun(run.id, Trigger.SCHEDULE, RunState.QUEUED, at("2026-09-30T11:00:00Z"), null)
+        assertEquals(expected, saved.lastRun)
         assertEquals(at("2026-09-30T11:10:00Z"), saved.updatedAt)
     }
 }

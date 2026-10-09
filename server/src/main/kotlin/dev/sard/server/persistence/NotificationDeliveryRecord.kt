@@ -12,9 +12,9 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * One notification of one run, or of one schedule fire that raised an alert (F3b), through one channel (migration V202610021200, S9a). Rows are
- * written and moved only by guarded native statements in `notify/Deliveries`, so the entity
- * serves reads and the schema validation.
+ * One notification through one channel, of one run or of one schedule fire that raised an alert (F3b);
+ * migrations V202610021200 (S9a) and V202610101300. Rows are written and moved only by guarded native
+ * statements in `notify/Deliveries`, so the entity serves reads and the schema validation.
  */
 @Entity
 @Table(name = "notification_deliveries")
@@ -43,5 +43,5 @@ class NotificationDeliveryRecord(
     @Column(name = "tenant_id", nullable = false, updatable = false)
     val tenantId: UUID? = null,
 ) {
-    override fun toString() = "NotificationDeliveryRecord(id=$id, runId=$runId, fireId=$fireId, channel=$channel, status=$status)"
+    override fun toString() = "NotificationDeliveryRecord(id=$id, run=$runId, fire=$fireId, $channel, $status)"
 }

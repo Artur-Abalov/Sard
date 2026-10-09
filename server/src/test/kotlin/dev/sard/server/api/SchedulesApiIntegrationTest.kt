@@ -296,7 +296,11 @@ class SchedulesApiIntegrationTest(
         assertEquals(nextHour.plus(3, ChronoUnit.HOURS).toString(), period.path("missedUntil").asString())
         assertEquals(
             listOf(3, false, "UTC"),
-            listOf(period.path("missedCount").asInt(), period.path("missedCountCapped").asBoolean(), period.path("timezone").asString()),
+            listOf(
+                period.path("missedCount").asInt(),
+                period.path("missedCountCapped").asBoolean(),
+                period.path("timezone").asString(),
+            ),
         )
         assertEquals(
             period,

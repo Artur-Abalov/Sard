@@ -65,7 +65,8 @@ class NotificationsWithoutBotIntegrationTest(
         val schedule = schedules.set(tenant.id, source.id, ScheduleDraft("0 2 * * *", "UTC", enabled = true))
         jdbc.update(
             "insert into schedule_fires (id, tenant_id, schedule_id, kind, scheduled_for, outcome, reason, " +
-                "skipped_in_row, alert, recorded_at) values (?, ?, ?, 'schedule', ?, 'refused', 'unknown_plugin', 3, true, ?)",
+                "skipped_in_row, alert, recorded_at) " +
+                "values (?, ?, ?, 'schedule', ?, 'refused', 'unknown_plugin', 3, true, ?)",
             java.util.UUID.randomUUID(),
             tenant.id,
             schedule.id,

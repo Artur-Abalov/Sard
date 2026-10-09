@@ -122,7 +122,11 @@ class RunNoticeFormatterTest {
     @Test
     fun `Первая ошибка запуска по расписанию уведомляется как ошибка ручного, со строкой триггера второй`() {
         val manual = format(notice(step = StepState.FAILED, message = "disk full")).lines()
-        val triggerLines = mapOf(Trigger.SCHEDULE to "По расписанию", Trigger.CATCH_UP to "Догоняющий запуск после простоя сервера")
+        val triggerLines =
+            mapOf(
+                Trigger.SCHEDULE to "По расписанию",
+                Trigger.CATCH_UP to "Догоняющий запуск после простоя сервера",
+            )
         for ((trigger, line) in triggerLines) {
             for (previous in listOf(null, RunState.SUCCEEDED, RunState.CANCELLED)) {
                 val scheduled =
@@ -221,7 +225,8 @@ class RunNoticeFormatterTest {
     @Test
     fun `Восстановление догоняющим запуском названо догоняющим`() {
         val lines = format(notice(trigger = Trigger.CATCH_UP, previous = RunState.FAILED)).lines()
-        assertEquals(listOf("✅ Бэкап снова работает: db-main", "Догоняющий запуск после простоя сервера"), lines.take(2))
+        val expected = listOf("✅ Бэкап снова работает: db-main", "Догоняющий запуск после простоя сервера")
+        assertEquals(expected, lines.take(2))
     }
 
     @Test
@@ -259,7 +264,13 @@ class RunNoticeFormatterTest {
     @Test
     fun `Включённое уведомление об успехе не добавляет сообщений об ошибках середины серии`() {
         val formatter = RunNoticeFormatter(NoticeLanguage.RU, null)
-        val again = notice(step = StepState.FAILED, trigger = Trigger.SCHEDULE, previous = RunState.FAILED, notifyOnSuccess = true)
+        val again =
+            notice(
+                step = StepState.FAILED,
+                trigger = Trigger.SCHEDULE,
+                previous = RunState.FAILED,
+                notifyOnSuccess = true,
+            )
         assertNull(MutFlow.underTest { formatter.format(again) })
     }
 

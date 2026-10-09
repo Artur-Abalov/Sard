@@ -260,7 +260,13 @@ class SchedulesApiImpl(
         )
 
     private fun lastRunOf(run: LastRun) =
-        ScheduleLastRun(run.id, RunTrigger.valueOf(run.trigger.name), RunStatus.valueOf(run.status.name), run.queuedAt, run.finishedAt)
+        ScheduleLastRun(
+            run.id,
+            RunTrigger.valueOf(run.trigger.name),
+            RunStatus.valueOf(run.status.name),
+            run.queuedAt,
+            run.finishedAt,
+        )
 
     private fun fireOf(view: FireView) =
         ScheduleFire(

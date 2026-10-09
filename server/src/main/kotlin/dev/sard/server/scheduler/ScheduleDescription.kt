@@ -40,44 +40,57 @@ private val MINUTE_STEPS = mapOf(2 to "минуты", 5 to "минут", 15 to "
 object ScheduleDescription {
     private const val MINUTES_IN_HOUR = 60
     private const val HOURS_IN_DAY = 24
+    private const val MINUTE = 0
+    private const val HOUR = 1
+    private const val DAY_OF_MONTH = 2
+    private const val MONTH = 3
+    private const val DAY_OF_WEEK = 4
     private val STEP = Regex("\\*/(\\d+)")
+    private val EVERY_DAY = "Каждый день" to "Every day"
+    private val WEEKDAYS = "По будням" to "On weekdays"
 
     fun of(
         cron: String,
         language: ScheduleLanguage,
     ): String {
-        val fields = cron.split(' ')
-        val words = known(fields) ?: return custom(cron, language)
-        return if (language == ScheduleLanguage.RU) words.first else words.second
-    }
-
-    private fun custom(
-        cron: String,
-        language: ScheduleLanguage,
-    ) = if (language == ScheduleLanguage.RU) "Особое расписание: $cron" else "Custom: $cron"
-
-    /** (ru, en), or null if the cron is not in the table. */
-    private fun known(fields: List<String>): Pair<String, String>? {
-        val (minute, hour, dayOfMonth, month, dayOfWeek) = fields
-        val everyDay = dayOfMonth == "*" && month == "*"
+        val words = known(cron.split(' '))
         return when {
-            !everyDay -> null
-            hour == "*" && dayOfWeek == "*" -> minutes(minute)
-            else -> timed(minute, hour, dayOfWeek)
+            words == null && language == ScheduleLanguage.RU -> "Особое расписание: $cron"
+            words == null -> "Custom: $cron"
+            language == ScheduleLanguage.RU -> words.first
+            else -> words.second
         }
     }
 
+    /** (ru, en), or null if the cron is not in the table. */
+    private fun known(fields: List<String>): Pair<String, String>? =
+        when {
+            fields[DAY_OF_MONTH] != "*" || fields[MONTH] != "*" -> null
+            fields[HOUR] == "*" && fields[DAY_OF_WEEK] == "*" -> minutes(fields[MINUTE])
+            else -> timed(fields[MINUTE], fields[HOUR], fields[DAY_OF_WEEK])
+        }
+
     private fun minutes(minute: String): Pair<String, String>? {
-        if (minute == "*") return "Каждую минуту" to "Every minute"
-        number(minute, MINUTES_IN_HOUR)?.let { return "Каждый час в :${two(it)}" to "Every hour at :${two(it)}" }
+        val hourly = number(minute, MINUTES_IN_HOUR)?.let { "Каждый час в :${two(it)}" to "Every hour at :${two(it)}" }
+        return hourly ?: steps(minute)
+    }
+
+    private fun steps(minute: String): Pair<String, String>? {
         val step =
-            STEP
-                .matchEntire(minute)
-                ?.groupValues
-                ?.get(1)
-                ?.toInt() ?: return null
-        if (step == 1) return "Каждую минуту" to "Every minute"
-        return MINUTE_STEPS[step]?.let { "Каждые $step $it" to "Every $step minutes" }
+            if (minute == "*") {
+                1
+            } else {
+                STEP
+                    .matchEntire(minute)
+                    ?.groupValues
+                    ?.get(1)
+                    ?.toInt()
+            }
+        return when (step) {
+            null -> null
+            1 -> "Каждую минуту" to "Every minute"
+            else -> MINUTE_STEPS[step]?.let { "Каждые $step $it" to "Every $step minutes" }
+        }
     }
 
     private fun timed(
@@ -85,19 +98,24 @@ object ScheduleDescription {
         hour: String,
         dayOfWeek: String,
     ): Pair<String, String>? {
-        val m = number(minute, MINUTES_IN_HOUR) ?: return null
-        val h = number(hour, HOURS_IN_DAY) ?: return null
+        val m = number(minute, MINUTES_IN_HOUR)
+        val h = number(hour, HOURS_IN_DAY)
+        val days = days(dayOfWeek)
+        if (m == null || h == null || days == null) return null
         val time = "${two(h)}:${two(m)}"
-        val (ru, en) = days(dayOfWeek) ?: return null
-        return "$ru в $time" to "$en at $time"
+        return "${days.first} в $time" to "${days.second} at $time"
     }
 
-    private fun days(dayOfWeek: String): Pair<String, String>? {
-        if (dayOfWeek == "*") return "Каждый день" to "Every day"
-        if (dayOfWeek == "1-5" || dayOfWeek.uppercase() == "MON-FRI") return "По будням" to "On weekdays"
+    private fun days(dayOfWeek: String): Pair<String, String>? =
+        when {
+            dayOfWeek == "*" -> EVERY_DAY
+            dayOfWeek == "1-5" || dayOfWeek.uppercase() == "MON-FRI" -> WEEKDAYS
+            else -> weekday(dayOfWeek)
+        }
+
+    private fun weekday(dayOfWeek: String): Pair<String, String>? {
         val numeric = number(dayOfWeek, SUNDAY_AS_SEVEN + 1)
-        val day = DAYS.singleOrNull { dayOfWeek.uppercase() == it.name || numeric in it.numbers }
-        return day?.let { it.ru to it.en }
+        return DAYS.singleOrNull { dayOfWeek.uppercase() == it.name || numeric in it.numbers }?.let { it.ru to it.en }
     }
 
     /** A canonical number below [limit] (no leading zero), else null. */

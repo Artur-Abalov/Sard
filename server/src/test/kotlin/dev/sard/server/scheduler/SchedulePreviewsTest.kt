@@ -47,7 +47,8 @@ class SchedulePreviewsTest {
     @Test
     fun `a fire exactly now is not among the nearest`() {
         val now = Instant.parse("2026-10-10T00:00:00Z")
-        assertEquals(Instant.parse("2026-10-11T00:00:00Z"), preview("0 2 * * *", "Europe/Berlin", now).nextFires.first())
+        val first = preview("0 2 * * *", "Europe/Berlin", now).nextFires.first()
+        assertEquals(Instant.parse("2026-10-11T00:00:00Z"), first)
     }
 
     @Test
@@ -76,7 +77,8 @@ class SchedulePreviewsTest {
 
     @Test
     fun `a schedule is too frequent when two of the next hundred fires are closer than fifteen minutes`() {
-        val frequent = listOf("* * * * *", "*/5 * * * *", "*/14 * * * *", "0,10 2 * * *", "0,10 2 1 1 *", "5,55 0,23 * * *")
+        val frequent =
+            listOf("* * * * *", "*/5 * * * *", "*/14 * * * *", "0,10 2 * * *", "0,10 2 1 1 *", "5,55 0,23 * * *")
         val rare = listOf("*/15 * * * *", "*/20 * * * *", "0 * * * *", "0 2 * * *")
         for (cron in frequent) assertEquals(true, preview(cron).tooFrequent, cron)
         for (cron in rare) assertEquals(false, preview(cron).tooFrequent, cron)

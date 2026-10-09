@@ -256,7 +256,8 @@ class ScheduleNotificationsIntegrationTest(
     fun `Значения конфигурации источника в алерт не попадают`() {
         val agent = UUID.randomUUID()
         tenant.insertAgent(agent, repositories = listOf("qa-repo-marker"))
-        val draft = tenant.draft("db-main", agent, repository = "qa-repo-marker", config = """{"paths":["/srv/QA-CONFIG-MARKER"]}""")
+        val config = """{"paths":["/srv/QA-CONFIG-MARKER"]}"""
+        val draft = tenant.draft("db-main", agent, repository = "qa-repo-marker", config = config)
         val (_, schedule) = scheduleOf(draft = draft)
         alertRow(schedule, reason = "unknown_repository")
 
@@ -358,7 +359,8 @@ class ScheduleNotificationsIntegrationTest(
         ticks()
 
         assertEquals(0, fake.requests.size)
-        val status = jdbc.queryForObject("select status from notification_deliveries where run_id = ?", String::class.java, run)
+        val sql = "select status from notification_deliveries where run_id = ?"
+        val status = jdbc.queryForObject(sql, String::class.java, run)
         assertEquals("skipped", status)
     }
 
@@ -375,6 +377,7 @@ class ScheduleNotificationsIntegrationTest(
 
         val texts = fake.requests.indices.map { fake.shownText(it) }
         assertEquals(2, texts.size)
-        assertTrue(texts.single { it.startsWith("✅") }.lines().contains("Ошибок подряд перед этим: 3"), texts.toString())
+        val recovery = texts.single { it.startsWith("✅") }
+        assertTrue("Ошибок подряд перед этим: 3" in recovery.lines(), texts.toString())
     }
 }
