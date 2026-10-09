@@ -112,9 +112,22 @@ class Schedules(
             record.notifyOnSuccess = draft.notifyOnSuccess
             record.updatedAt = now
         }
-        val unchanged =
-            record.cron == fires.cron && record.timezone == fires.zone.id && record.enabled == draft.enabled
-        if (unchanged) return
+        if (changes(record, fires, draft)) reschedule(record, fires, draft, now)
+    }
+
+    private fun changes(
+        record: ScheduleRecord,
+        fires: CronSchedule,
+        draft: ScheduleDraft,
+    ): Boolean = record.cron != fires.cron || record.timezone != fires.zone.id || record.enabled != draft.enabled
+
+    /** A change of cron, zone or enabled starts over from [now], without a catch-up. */
+    private fun reschedule(
+        record: ScheduleRecord,
+        fires: CronSchedule,
+        draft: ScheduleDraft,
+        now: Instant,
+    ) {
         record.cron = fires.cron
         record.timezone = fires.zone.id
         record.enabled = draft.enabled

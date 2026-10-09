@@ -134,6 +134,14 @@ data class Message(
     data class Code(
         override val text: String,
     ) : Part
+
+    companion object {
+        private val NEWLINE = listOf<Part>(Text("\n"))
+
+        /** The message of [lines], one under another. */
+        fun ofLines(lines: List<List<Part>>): Message =
+            Message(lines.flatMapIndexed { index, line -> if (index == 0) line else NEWLINE + line })
+    }
 }
 
 /** Rules and wording (S9b): what to say about a run, or null when the run needs no notification. */

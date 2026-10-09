@@ -15,6 +15,7 @@ import dev.sard.server.runs.Trigger
 import dev.sard.server.scheduler.FireOutcome
 import dev.sard.server.scheduler.FireReason
 import org.hibernate.Session
+import org.hibernate.query.SelectionQuery
 import java.util.UUID
 
 private const val FIRST_STEP = "from RunStepRecord s where s.runId = :run order by s.ordinal"
@@ -96,24 +97,27 @@ internal object Notices {
         session: Session,
         run: RunRecord,
     ): Int =
-        session
-            .createSelectionQuery(PREVIOUS_STATUS, String::class.java)
-            .setParameter("source", run.sourceId)
-            .setParameter("queued", run.queuedAt)
-            .setParameter("run", run.id)
-            .resultStream
-            .use { statuses -> statuses.takeWhile { RunState.of(it) == RunState.FAILED }.count().toInt() }
+        previousStatuses(session, run).resultStream.use { statuses ->
+            statuses.takeWhile { RunState.of(it) == RunState.FAILED }.count().toInt()
+        }
 
     private fun previousStatus(
         session: Session,
         run: RunRecord,
     ): RunState? =
+        previousStatuses(session, run)
+            .setMaxResults(1)
+            .uniqueResult()
+            ?.let(RunState::of)
+
+    /** The statuses of the finished runs of the source before [run], nearest first. */
+    private fun previousStatuses(
+        session: Session,
+        run: RunRecord,
+    ): SelectionQuery<String> =
         session
             .createSelectionQuery(PREVIOUS_STATUS, String::class.java)
             .setParameter("source", run.sourceId)
             .setParameter("queued", run.queuedAt)
             .setParameter("run", run.id)
-            .setMaxResults(1)
-            .uniqueResult()
-            ?.let(RunState::of)
 }

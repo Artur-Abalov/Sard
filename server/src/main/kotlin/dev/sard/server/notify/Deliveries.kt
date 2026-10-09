@@ -3,20 +3,10 @@
 
 package dev.sard.server.notify
 
-import dev.sard.server.persistence.Agent
-import dev.sard.server.persistence.RunRecord
-import dev.sard.server.persistence.RunStepRecord
-import dev.sard.server.persistence.ScheduleFireRecord
-import dev.sard.server.persistence.ScheduleRecord
-import dev.sard.server.persistence.SourceRecord
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
-import dev.sard.server.runs.RunState
-import dev.sard.server.runs.RunViews
-import dev.sard.server.runs.Trigger
-import dev.sard.server.scheduler.FireOutcome
-import dev.sard.server.scheduler.FireReason
 import org.hibernate.Session
+import org.hibernate.query.MutationQuery
 import java.time.Instant
 import java.util.UUID
 
@@ -119,30 +109,14 @@ class Deliveries(
         channel: String,
         since: Instant,
         limit: Int,
-    ): List<Unplanned> =
-        sessions.system { session ->
-            session
-                .createSelectionQuery(UNPLANNED, Unplanned::class.java)
-                .setParameter("since", since)
-                .setParameter("channel", channel)
-                .setMaxResults(limit)
-                .list()
-        }
+    ): List<Unplanned> = withoutDelivery(UNPLANNED, Unplanned::class.java, channel, since, limit)
 
     /** Alerts recorded since [since] without a delivery through [channel], oldest first. */
     fun unplannedAlerts(
         channel: String,
         since: Instant,
         limit: Int,
-    ): List<UnplannedAlert> =
-        sessions.system { session ->
-            session
-                .createSelectionQuery(UNPLANNED_ALERTS, UnplannedAlert::class.java)
-                .setParameter("since", since)
-                .setParameter("channel", channel)
-                .setMaxResults(limit)
-                .list()
-        }
+    ): List<UnplannedAlert> = withoutDelivery(UNPLANNED_ALERTS, UnplannedAlert::class.java, channel, since, limit)
 
     /** Pending deliveries through [channels] due at [now], longest waiting first. */
     fun due(
@@ -167,19 +141,7 @@ class Deliveries(
         runs: List<UUID>,
         channel: String,
         now: Instant,
-    ): Int =
-        sessions.inTenant(tenantId) { session ->
-            runs.sumOf { run ->
-                session
-                    .createNativeMutationQuery(PLAN)
-                    .setParameter("id", ids.next())
-                    .setParameter("tenant", tenantId)
-                    .setParameter("run", run)
-                    .setParameter("channel", channel)
-                    .setParameter("now", now)
-                    .executeUpdate()
-            }
-        }
+    ): Int = planAll(tenantId, PLAN, "run", runs, channel, now)
 
     /** One pending delivery through [channel] for each alert of [fires] of [tenantId]; returns how many are new. */
     fun planAlerts(
@@ -187,19 +149,7 @@ class Deliveries(
         fires: List<UUID>,
         channel: String,
         now: Instant,
-    ): Int =
-        sessions.inTenant(tenantId) { session ->
-            fires.sumOf { fire ->
-                session
-                    .createNativeMutationQuery(PLAN_ALERT)
-                    .setParameter("id", ids.next())
-                    .setParameter("tenant", tenantId)
-                    .setParameter("fire", fire)
-                    .setParameter("channel", channel)
-                    .setParameter("now", now)
-                    .executeUpdate()
-            }
-        }
+    ): Int = planAll(tenantId, PLAN_ALERT, "fire", fires, channel, now)
 
     /**
      * Takes [delivery] for one attempt: it is not due again until [until], so a crash during the
@@ -241,23 +191,49 @@ class Deliveries(
                     }
 
                     else -> {
-                        close(session, decision, delivery.attempts, now)
+                        closing(session, decision, delivery.attempts, now)
                     }
                 }
             query.setParameter("tenant", delivery.tenantId).setParameter("id", delivery.id).executeUpdate() == 1
         }
 
-    private fun close(
-        session: Session,
-        decision: Decision,
-        attempts: Int,
+    private fun <T> withoutDelivery(
+        query: String,
+        type: Class<T>,
+        channel: String,
+        since: Instant,
+        limit: Int,
+    ): List<T> =
+        sessions.system { session ->
+            session
+                .createSelectionQuery(query, type)
+                .setParameter("since", since)
+                .setParameter("channel", channel)
+                .setMaxResults(limit)
+                .list()
+        }
+
+    /** Runs the insert [sql] once per subject, bound to [subjectParameter]; returns how many rows are new. */
+    private fun planAll(
+        tenantId: UUID,
+        sql: String,
+        subjectParameter: String,
+        subjects: List<UUID>,
+        channel: String,
         now: Instant,
-    ) = session
-        .createNativeMutationQuery(CLOSE)
-        .setParameter("status", closedStatus(decision))
-        .setParameter("now", now)
-        .setParameter("attempts", closedAttempts(decision, attempts))
-        .setParameter("error", closedReason(decision), String::class.java)
+    ): Int =
+        sessions.inTenant(tenantId) { session ->
+            subjects.sumOf { subject ->
+                session
+                    .createNativeMutationQuery(sql)
+                    .setParameter("id", ids.next())
+                    .setParameter("tenant", tenantId)
+                    .setParameter(subjectParameter, subject)
+                    .setParameter("channel", channel)
+                    .setParameter("now", now)
+                    .executeUpdate()
+            }
+        }
 
     private fun claimed(
         session: Session,
@@ -270,28 +246,38 @@ class Deliveries(
         }
 }
 
-private fun closedStatus(decision: Decision): String =
-    when (decision) {
-        Decision.Delivered -> "delivered"
-        Decision.Skipped -> "skipped"
-        is Decision.Failed -> "failed"
-        is Decision.Expired -> "expired"
-        is Decision.Retry -> error("a retry keeps the delivery pending")
-    }
-
-private fun closedAttempts(
+private fun closing(
+    session: Session,
     decision: Decision,
     attempts: Int,
-): Int =
-    when (decision) {
-        is Decision.Failed -> decision.attempts
-        is Decision.Expired -> decision.attempts
-        Decision.Delivered, Decision.Skipped, is Decision.Retry -> attempts
-    }
+    now: Instant,
+): MutationQuery {
+    val closing = Closing.of(decision, attempts)
+    return session
+        .createNativeMutationQuery(CLOSE)
+        .setParameter("status", closing.status)
+        .setParameter("now", now)
+        .setParameter("attempts", closing.attempts)
+        .setParameter("error", closing.reason, String::class.java)
+}
 
-private fun closedReason(decision: Decision): String? =
-    when (decision) {
-        is Decision.Failed -> decision.reason
-        is Decision.Expired -> decision.reason
-        Decision.Delivered, Decision.Skipped, is Decision.Retry -> null
+/** How a delivery ends: the status it closes with, the attempts counted, the last error if the end has one. */
+private class Closing(
+    val status: String,
+    val attempts: Int,
+    val reason: String?,
+) {
+    companion object {
+        fun of(
+            decision: Decision,
+            attempts: Int,
+        ): Closing =
+            when (decision) {
+                Decision.Delivered -> Closing("delivered", attempts, null)
+                Decision.Skipped -> Closing("skipped", attempts, null)
+                is Decision.Failed -> Closing("failed", decision.attempts, decision.reason)
+                is Decision.Expired -> Closing("expired", decision.attempts, decision.reason)
+                is Decision.Retry -> error("a retry keeps the delivery pending")
+            }
     }
+}

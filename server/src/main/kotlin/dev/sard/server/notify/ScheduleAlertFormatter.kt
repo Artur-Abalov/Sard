@@ -8,7 +8,6 @@ import dev.sard.server.scheduler.FireReason
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-private const val NEWLINE = "\n"
 private val MOMENT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
 /** The words of the alert in one language (F3b, Н3, Н4); names of sources and hosts are never translated. */
@@ -82,8 +81,7 @@ class ScheduleAlertFormatter(
                 activeRunLine(notice),
                 linkLine(notice),
             )
-        val newline = listOf(Message.Text(NEWLINE))
-        return Message(lines.flatMapIndexed { index, line -> if (index == 0) line else newline + line })
+        return Message.ofLines(lines)
     }
 
     private fun activeRunLine(notice: SkipAlertNotice): List<Message.Part>? {

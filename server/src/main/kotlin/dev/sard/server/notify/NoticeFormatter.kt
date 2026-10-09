@@ -16,7 +16,6 @@ import java.time.Instant
 private const val BINARY = 1024
 private const val SECONDS_PER_MINUTE = 60L
 private const val SECONDS_PER_HOUR = 3600L
-private const val NEWLINE = "\n"
 private const val MAX_REASON = 500
 private const val ELLIPSIS = "…"
 
@@ -57,8 +56,7 @@ class RunNoticeFormatter(
                 listOf(listOf(Message.Text(words.run), Message.Code("${notice.runId}"))),
                 listOfNotNull(console?.let { listOf(Message.Text(it.run(notice.runId))) }),
             ).flatten()
-        val newline = listOf(Message.Text(NEWLINE))
-        return Message(lines.flatMapIndexed { index, line -> if (index == 0) line else newline + line })
+        return Message.ofLines(lines)
     }
 
     /** A scheduled run says so on the line after the headline; a manual one does not (F3b). */
