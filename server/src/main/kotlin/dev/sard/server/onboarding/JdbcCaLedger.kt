@@ -11,8 +11,6 @@ import org.springframework.jdbc.core.JdbcTemplate
 import java.sql.Timestamp
 import java.time.Clock
 
-private const val CA_STEP = "ca"
-
 /**
  * The ledger in the database (migration V202610091200): the origins by the fingerprint of the root, and the two
  * facts that put a CA to work, the confirmed step ca and any agent certificate of any tenant.
@@ -20,6 +18,7 @@ private const val CA_STEP = "ca"
 class JdbcCaLedger(
     private val jdbc: JdbcTemplate,
     private val clock: Clock,
+    private val steps: OnboardingSteps,
 ) : CaLedger {
     override fun provenance(fingerprint: CaFingerprint): CaProvenance? =
         jdbc
@@ -42,13 +41,10 @@ class JdbcCaLedger(
 
     override fun usage(): CaUsage =
         when {
-            exists("select 1 from onboarding_steps where step = ?", CA_STEP) -> CaUsage.STEP_CA_COMPLETE
+            steps.caConfirmed() -> CaUsage.STEP_CA_COMPLETE
             exists("select 1 from agent_certificates") -> CaUsage.AGENT_CERTIFICATES
             else -> CaUsage.NONE
         }
 
-    private fun exists(
-        sql: String,
-        vararg arguments: Any,
-    ): Boolean = jdbc.queryForList("$sql limit 1", *arguments).isNotEmpty()
+    private fun exists(sql: String): Boolean = jdbc.queryForList("$sql limit 1").isNotEmpty()
 }

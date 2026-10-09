@@ -41,6 +41,8 @@ private val AGENT_ENTITY_REFERENCE =
     Regex("""\bfrom\s+Agent\b|\bAgent::class\b|\bdev\.sard\.server\.persistence\.Agent\b""")
 private val SELFAGENT_REFERENCE = Regex("""\bdev\.sard\.server\.selfagent\b""")
 private val SESSIONS_SYSTEM_CALL = Regex("""\bsessions\.system\s*[({]""")
+private val DATABASE_REFERENCE =
+    Regex("""\b(org\.springframework\.jdbc|java\.sql|jakarta\.persistence|org\.flywaydb)\b""")
 private val LINE_COMMENT = Regex("""//.*$""", RegexOption.MULTILINE)
 private val BLOCK_COMMENT = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
 
@@ -54,6 +56,10 @@ private val SESSION_DOMAIN_FORBIDDEN =
     Regex("""\b(jakarta\.servlet|org\.springframework\.http|org\.springframework\.web)\b""")
 private val SESSION_DOMAIN_FILES =
     listOf(
+        "onboarding/OnboardingService.kt",
+        "onboarding/SetupCodes.kt",
+        "onboarding/SetupSessions.kt",
+        "onboarding/SetupCodeAnnouncer.kt",
         "auth/SessionStore.kt",
         "auth/LoginAttemptTracker.kt",
         "auth/SessionApiImpl.kt",
@@ -106,6 +112,18 @@ class ArchitectureTest {
             }
         }
         assertTrue(offenders.isEmpty(), "forbidden references:\n${offenders.joinToString("\n")}")
+    }
+
+    @Test
+    fun `pki knows the database only through the CaLedger port`() {
+        val offenders =
+            ktFiles(File(mainRoot, "pki")).flatMap { file ->
+                DATABASE_REFERENCE
+                    .findAll(withoutComments(file.readText()))
+                    .map { "${file.path}: ${it.value}" }
+                    .toList()
+            }
+        assertTrue(offenders.isEmpty(), "database in pki:\n${offenders.joinToString("\n")}")
     }
 
     @Test

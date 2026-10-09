@@ -123,7 +123,10 @@ data class PasswordChangeRequest(
 sealed interface CodeResult {
     data class Accepted(
         val setupSessionId: String,
-    ) : CodeResult
+    ) : CodeResult {
+        // Never the id: it is a live session.
+        override fun toString() = "Accepted()"
+    }
 
     data object Rejected : CodeResult
 
@@ -140,7 +143,10 @@ sealed interface AdminStepResult {
     /** The password is set; [sessionId] is the administrator session the wizard hands out. */
     data class Done(
         val sessionId: String,
-    ) : AdminStepResult
+    ) : AdminStepResult {
+        // Never the id: it is a live session.
+        override fun toString() = "Done()"
+    }
 
     data object CaPending : AdminStepResult
 
@@ -153,7 +159,10 @@ sealed interface AdminStepResult {
 sealed interface PasswordChangeResult {
     data class Changed(
         val sessionId: String,
-    ) : PasswordChangeResult
+    ) : PasswordChangeResult {
+        // Never the id: it is a live session.
+        override fun toString() = "Changed()"
+    }
 
     data object WrongPassword : PasswordChangeResult
 

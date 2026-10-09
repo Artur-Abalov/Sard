@@ -9,6 +9,7 @@ import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.springframework.jdbc.BadSqlGrammarException
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.PrintStream
 import java.sql.SQLException
 import kotlin.test.Test
@@ -137,7 +138,17 @@ class ServerCommandTest {
     fun `Без переменных база по умолчанию та же, что в application yaml`() {
         run("admin-reset", env = emptyMap())
 
-        assertEquals(DatabaseSettings("jdbc:postgresql://localhost:5432/sard", "sard", ""), settings)
+        val yaml = File("src/main/resources/application.yaml").readText()
+
+        fun default(variable: String) = Regex("""\$\{$variable:([^}]*)}""").find(yaml)?.groupValues?.get(1)
+        val fromYaml =
+            DatabaseSettings(
+                default("SARD_DB_URL").orEmpty(),
+                default("SARD_DB_USER").orEmpty(),
+                default("SARD_DB_PASSWORD").orEmpty(),
+            )
+        assertEquals(fromYaml, settings)
+        assertEquals(DatabaseSettings.of(emptyMap()), fromYaml)
     }
 
     @Test

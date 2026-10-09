@@ -50,7 +50,10 @@ data class Session(
 sealed interface SignInResult {
     data class SignedIn(
         val sessionId: String,
-    ) : SignInResult
+    ) : SignInResult {
+        // Never the id: it is a live session.
+        override fun toString() = "SignedIn()"
+    }
 
     data object WrongPassword : SignInResult
 

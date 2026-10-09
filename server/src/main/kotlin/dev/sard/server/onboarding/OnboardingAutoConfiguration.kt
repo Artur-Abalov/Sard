@@ -56,7 +56,8 @@ class OnboardingAutoConfiguration {
     fun caLedger(
         jdbc: JdbcTemplate,
         clock: Clock,
-    ): CaLedger = JdbcCaLedger(jdbc, clock)
+        steps: OnboardingSteps,
+    ): CaLedger = JdbcCaLedger(jdbc, clock, steps)
 
     @Bean
     fun setupCodeAttempts(clock: Clock) = SetupCodeAttempts(LoginAttemptTracker(clock))

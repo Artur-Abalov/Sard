@@ -31,7 +31,8 @@ private val OTHER_TENANT = UUID.fromString("00000000-0000-0000-0000-0000000000b2
 class JdbcCaLedgerIntegrationTest(
     @Autowired private val jdbc: JdbcTemplate,
 ) {
-    private val ledger = JdbcCaLedger(jdbc, java.time.Clock.fixed(NOW, java.time.ZoneOffset.UTC))
+    private val ledger =
+        JdbcCaLedger(jdbc, java.time.Clock.fixed(NOW, java.time.ZoneOffset.UTC), JdbcOnboardingSteps(jdbc))
 
     @AfterTest
     fun `forget the state`() {
