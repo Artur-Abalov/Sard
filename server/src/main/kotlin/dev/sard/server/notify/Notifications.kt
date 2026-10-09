@@ -85,12 +85,21 @@ enum class Telling {
             val failedBefore = notice.previousStatus == RunState.FAILED
             return when {
                 notice.status == RunState.FAILED -> FIRST_FAILURE.takeUnless { failedBefore }
-                notice.status != RunState.SUCCEEDED -> null
-                failedBefore -> RECOVERY
-                notice.notifyOnSuccess -> RESULT
+                notice.status == RunState.SUCCEEDED -> success(failedBefore, notice.notifyOnSuccess)
                 else -> null
             }
         }
+
+        /** A success ends a series of failures, or is told on its own when the schedule asks for it. */
+        private fun success(
+            failedBefore: Boolean,
+            notifyOnSuccess: Boolean,
+        ): Telling? =
+            when {
+                failedBefore -> RECOVERY
+                notifyOnSuccess -> RESULT
+                else -> null
+            }
     }
 }
 
