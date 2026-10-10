@@ -31,9 +31,12 @@ import java.util.UUID
 
 @Schema(description = "Sign-in with the administrator password (D2)")
 data class SessionRequest(
-    @field:Schema(description = "The administrator password from the server's environment")
+    @field:Schema(description = "The administrator password set in the first-start wizard or changed since")
     val password: String,
-)
+) {
+    // Never the password: Spring logs the body it reads at DEBUG.
+    override fun toString() = "SessionRequest()"
+}
 
 @Schema(description = "The current administrator session")
 data class Session(
@@ -47,13 +50,19 @@ data class Session(
 sealed interface SignInResult {
     data class SignedIn(
         val sessionId: String,
-    ) : SignInResult
+    ) : SignInResult {
+        // Never the id: it is a live session.
+        override fun toString() = "SignedIn()"
+    }
 
     data object WrongPassword : SignInResult
 
     data class Locked(
         val retryAfterSeconds: Long,
     ) : SignInResult
+
+    /** There is no administrator yet (F4a, В6): 409 setup_required, not counted as a failed attempt. */
+    data object SetupRequired : SignInResult
 }
 
 /** No session, or an id that names none that is still valid. */
@@ -80,6 +89,17 @@ interface SessionApi {
         sessionId: String,
         clientAddress: String,
     )
+
+    /**
+     * Changes the administrator password (F4a, К5). [sessionId] is the session that asks. Where the password
+     * is managed elsewhere (an enterprise SessionApi) this stays [PasswordChangeResult.NotSupported].
+     */
+    fun changePassword(
+        sessionId: String,
+        currentPassword: String?,
+        newPassword: String?,
+        clientAddress: String,
+    ): PasswordChangeResult = PasswordChangeResult.NotSupported
 }
 
 /** HTTP side of the session endpoints: maps [SignInResult] and [NoSuchSessionException] to status, cookies and body. */
@@ -107,6 +127,13 @@ class SessionController(
     @ApiResponse(
         responseCode = "401",
         description = "Wrong password",
+        content = [Content(mediaType = PROBLEM_JSON, schema = Schema(implementation = Problem::class))],
+    )
+    @ApiResponse(
+        responseCode = "409",
+        description =
+            "There is no administrator yet: the first-start wizard has not set the password " +
+                "(setup_required); not counted as a failed attempt",
         content = [Content(mediaType = PROBLEM_JSON, schema = Schema(implementation = Problem::class))],
     )
     @ApiResponse(
@@ -142,11 +169,7 @@ class SessionController(
         httpRequest: HttpServletRequest,
         httpResponse: HttpServletResponse,
     ) {
-        val previousSessionId =
-            httpRequest.cookies
-                .orEmpty()
-                .firstOrNull { it.name == SESSION_COOKIE }
-                ?.value
+        val previousSessionId = httpRequest.cookie(SESSION_COOKIE)
         respondToSignIn(api.createSession("", httpRequest.remoteAddr, previousSessionId), httpRequest, httpResponse)
     }
 
@@ -163,14 +186,16 @@ class SessionController(
             }
 
             is SignInResult.WrongPassword -> {
-                val status = HttpStatus.UNAUTHORIZED.value()
-                writeProblem(httpResponse, objectMapper, status, "Unauthorized", ErrorCode.UNAUTHENTICATED)
+                writeProblem(httpResponse, objectMapper, HttpStatus.UNAUTHORIZED, ErrorCode.UNAUTHENTICATED)
             }
 
             is SignInResult.Locked -> {
                 httpResponse.addHeader(HttpHeaders.RETRY_AFTER, result.retryAfterSeconds.toString())
-                val status = HttpStatus.TOO_MANY_REQUESTS.value()
-                writeProblem(httpResponse, objectMapper, status, "Too Many Requests", ErrorCode.TOO_MANY_ATTEMPTS)
+                writeProblem(httpResponse, objectMapper, HttpStatus.TOO_MANY_REQUESTS, ErrorCode.TOO_MANY_ATTEMPTS)
+            }
+
+            is SignInResult.SetupRequired -> {
+                writeProblem(httpResponse, objectMapper, HttpStatus.CONFLICT, ErrorCode.SETUP_REQUIRED)
             }
         }
     }
@@ -206,7 +231,6 @@ class SessionController(
         if (httpRequest.method == "DELETE") {
             httpResponse.addHeader(HttpHeaders.SET_COOKIE, clearedSessionCookie(httpRequest.isSecure).toString())
         }
-        val status = HttpStatus.UNAUTHORIZED.value()
-        writeProblem(httpResponse, objectMapper, status, "Unauthorized", ErrorCode.UNAUTHENTICATED)
+        writeProblem(httpResponse, objectMapper, HttpStatus.UNAUTHORIZED, ErrorCode.UNAUTHENTICATED)
     }
 }

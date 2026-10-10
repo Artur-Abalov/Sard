@@ -4,6 +4,8 @@
 package dev.sard.server.selfagent
 
 import dev.sard.server.enrollment.EnrollmentTokens
+import dev.sard.server.onboarding.FakeOnboardingSteps
+import dev.sard.server.onboarding.OnboardingSteps
 import dev.sard.server.persistence.TenantSessions
 import org.junit.jupiter.api.io.TempDir
 import org.mockito.Mockito.mock
@@ -30,6 +32,7 @@ class SelfAgentStartupTest {
             .withBean(EnrollmentTokens::class.java, { mock(EnrollmentTokens::class.java) })
             .withBean(TenantSessions::class.java, { mock(TenantSessions::class.java) })
             .withBean(DataSource::class.java, { mock(DataSource::class.java) })
+            .withBean(OnboardingSteps::class.java, { FakeOnboardingSteps() })
             .withPropertyValues(*properties)
 
     private fun failureMessage(vararg properties: String): String {

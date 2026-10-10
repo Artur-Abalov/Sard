@@ -21,15 +21,17 @@
 ```bash
 make down; make up                       # образ сервера несёт пакеты своей версии (U1a)
 API=http://localhost:8080/api/v1
-PW=$(sed -n 's/^SARD_ADMIN_PASSWORD=//p' deploy/.env)
+DC="docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file deploy/.env"
 QA=$(mktemp -d)
-curl -sS -X POST "$API/session" -H 'Content-Type: application/json' \
-  -d "{\"password\":\"$PW\"}" -c "$QA/jar" -o /dev/null -w '%{http_code}\n'
+# мастер первого запуска по коду из лога сервера (docs/qa/onboarding-setup.md)
+source scripts/lib/setup-wizard.sh
+PW=qa-admin-password-2026
+SARD_WIZARD_COOKIES="$QA/jar" sard_complete_wizard http://localhost:8080 "$PW" $DC logs server && echo 204
 api() { curl -sS -b "$QA/jar" "$@"; }
 V=$(curl -sS http://localhost:8080/downloads/agent/manifest.json | jq -r .version)
 ```
 
-→ вход — `204`; `$V` — версия сервера (`curl -sS $API/status` без сессии
+→ мастер печатает `204`; `$V` — версия сервера (`curl -sS $API/status` без сессии
 отвечает той же `version`).
 
 ## Часть 1. REST

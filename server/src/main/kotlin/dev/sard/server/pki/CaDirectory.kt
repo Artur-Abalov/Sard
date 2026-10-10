@@ -3,41 +3,24 @@
 
 package dev.sard.server.pki
 
-import org.bouncycastle.asn1.pkcs.PrivateKeyInfo
-import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter
 import java.io.IOException
-import java.nio.ByteBuffer
-import java.nio.channels.FileChannel
-import java.nio.file.FileSystemException
 import java.nio.file.Files
-import java.nio.file.NoSuchFileException
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption.ATOMIC_MOVE
-import java.nio.file.StandardOpenOption.CREATE_NEW
-import java.nio.file.StandardOpenOption.READ
-import java.nio.file.StandardOpenOption.WRITE
 import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE
 import java.nio.file.attribute.PosixFilePermission.OWNER_READ
 import java.nio.file.attribute.PosixFilePermission.OWNER_WRITE
 import java.nio.file.attribute.PosixFilePermissions
-import java.security.cert.CertificateFactory
-import java.security.cert.X509Certificate
 import java.time.Clock
-import java.time.Duration
-import java.time.Instant
 
 /** The layout of the CA directory, shared with [CaImportSource], which reads the same layout. */
 internal const val CA = "ca"
 internal const val CERT = "ca.crt"
 internal const val KEY = "ca.key"
-private val OWNER = setOf(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE)
-private val OWNER_DIR = PosixFilePermissions.asFileAttribute(OWNER)
-private val OWNER_FILE = PosixFilePermissions.asFileAttribute(setOf(OWNER_READ, OWNER_WRITE))
-private const val STAGING = ".tmp-"
-
-/** A staging directory this old was left by a crashed first start, not by one still running. */
-private val STALE_STAGING = Duration.ofHours(1)
+internal val OWNER = setOf(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE)
+private const val TOGETHER =
+    "server volumes are reinstalled together (the database and the CA directory); " +
+        "see docs/operator/09-troubleshooting.md"
 
 /** A key file or directory that someone besides its owner may access. */
 class InsecureKeyStorageException(
@@ -57,42 +40,95 @@ fun ownerOnlyViolation(path: Path): String? {
 /** Where the CA of a start came from; the server logs it with the fingerprint at every start (ADR 0052). */
 enum class CaOrigin { GENERATED, IMPORTED, EXISTING }
 
-/** The CA a start works with and where it came from. */
+/**
+ * The CA a start works with: [origin] is where it came from at this start (what the log says), [provenance] is
+ * what the database has recorded about it for good; [replaced] is the generated or imported CA this start
+ * swapped it for (F4a, Р11), if any.
+ */
 class OpenedCa(
     val pair: CaKeyPair,
     val origin: CaOrigin,
+    val provenance: CaProvenance,
+    val replaced: CaFingerprint? = null,
 )
 
 /**
  * `<dir>/ca/{ca.crt,ca.key}`, owner-only. The `ca` directory appears by one atomic
  * rename, so concurrent first starts end up with the same CA: the loser loads the winner's.
+ *
+ * The CA directory and the database are one installation (F4a, Р19): [ledger] says where each CA came from
+ * and whether a CA is in use. The origin of a CA is recorded before the CA appears here, so a CA in this
+ * directory always has one; a CA without one, or no CA where the database has one in use, stops the start.
  */
 class CaDirectory(
     private val dir: Path,
-    private val clock: Clock,
-    private val writeFile: (Path, String) -> Unit = ::write,
+    clock: Clock,
+    private val ledger: CaLedger,
+    writeFile: (Path, String) -> Unit = ::write,
+    private val replacements: CaReplacementListener = CaReplacementListener { _, _ -> },
 ) {
-    private val ca = dir.resolve(CA)
+    private val store = CaStore(dir, clock, writeFile)
 
     fun loadOrCreate(generate: () -> CaKeyPair): CaKeyPair = open(null, generate).pair
 
     /**
      * The CA of this directory. Empty directory: the CA of [source] when there is one (ADR 0052), else a
-     * generated one. A CA that is there stays; a [source] must then name the same CA or the start is refused.
+     * generated one, unless the database has a CA in use and no [source] brings it back (CA_MISSING). A CA
+     * that is there stays: a [source] is judged against it (see [CaImport.reconcile]) and may replace it while
+     * the CA is not in use (Р11).
      */
     fun open(
         source: CaImport?,
         generate: () -> CaKeyPair,
     ): OpenedCa {
-        writing(source) {
-            if (Files.notExists(dir)) Files.createDirectories(dir, OWNER_DIR)
-        }
-        requireOwnerOnly(dir)
-        writing(source, ::removeStaleStaging)
-        if (Files.exists(ca)) return existing(source)
-        val pair = source?.read()?.let { CaKeyPair(it.certificate, it.key) } ?: generate()
-        val published = writing(source) { publish(pair) }
-        return OpenedCa(load(), originOf(published, source))
+        writing(source) { store.createDirectory() }
+        store.requireDirectoryOwnerOnly()
+        writing(source) { store.tidy() }
+        return if (store.hasCa()) present(source) else empty(source, generate)
+    }
+
+    private fun present(source: CaImport?): OpenedCa {
+        val pair = store.load()
+        val fingerprint = CaFingerprint.of(pair.certificate)
+        val provenance = recordedFor(fingerprint)
+        val replacement = source?.reconcile(fingerprint, ledger.usage())
+        if (replacement == null) return OpenedCa(pair, CaOrigin.EXISTING, provenance)
+        val imported = CaKeyPair(replacement.certificate, replacement.key)
+        val current = CaFingerprint.of(imported.certificate)
+        ledger.record(current, CaProvenance.IMPORTED)
+        // Whoever holds the old fingerprint lets go of it before the old CA goes: a failure here leaves the
+        // directory as it was and the next start does both again.
+        replacements.replaced(fingerprint, current)
+        writing(source) { store.replace(imported) }
+        return OpenedCa(store.load(), CaOrigin.IMPORTED, CaProvenance.IMPORTED, replaced = fingerprint)
+    }
+
+    private fun empty(
+        source: CaImport?,
+        generate: () -> CaKeyPair,
+    ): OpenedCa {
+        val usage = ledger.usage()
+        if (source == null && usage != CaUsage.NONE) throw missing(usage)
+        val pair = newCa(source, generate)
+        ledger.record(CaFingerprint.of(pair.certificate), provenanceOf(source))
+        val published = writing(source) { store.publish(pair) }
+        val loaded = store.load()
+        // The start that lost the race works with the winner's CA, whose origin the winner recorded before
+        // it published.
+        return OpenedCa(loaded, originOf(published, source), recordedFor(CaFingerprint.of(loaded.certificate)))
+    }
+
+    /** The CA of the [source] when there is one, else a generated one. */
+    private fun newCa(
+        source: CaImport?,
+        generate: () -> CaKeyPair,
+    ): CaKeyPair = source?.read()?.let { CaKeyPair(it.certificate, it.key) } ?: generate()
+
+    private fun provenanceOf(source: CaImport?) = if (source == null) CaProvenance.GENERATED else CaProvenance.IMPORTED
+
+    private fun recordedFor(fingerprint: CaFingerprint): CaProvenance {
+        val recorded = ledger.provenance(fingerprint)
+        return recorded ?: throw notRecorded(fingerprint)
     }
 
     private fun originOf(
@@ -104,11 +140,18 @@ class CaDirectory(
         else -> CaOrigin.IMPORTED
     }
 
-    private fun existing(source: CaImport?): OpenedCa {
-        val pair = load()
-        source?.reconcile(CaFingerprint.of(pair.certificate))
-        return OpenedCa(pair, CaOrigin.EXISTING)
-    }
+    private fun notRecorded(fingerprint: CaFingerprint) =
+        CaStartRefused(
+            CaStartRefusal.CA_ORIGIN_NOT_RECORDED,
+            "the CA ${fingerprint.hex} in ${store.caPath}: CA origin is not recorded in the database; $TOGETHER",
+        )
+
+    private fun missing(usage: CaUsage): CaStartRefused =
+        CaStartRefused(
+            CaStartRefusal.CA_MISSING,
+            "CA directory is empty: no CA in ${store.caPath}, and the database says the CA is in use " +
+                "(${usage.reason()}); set SARD_PKI_IMPORT_DIR to the backup of the CA to bring it back; $TOGETHER",
+        )
 
     /** A failed write while importing is a refusal that names the directory; otherwise the failure is passed on. */
     private fun <T> writing(
@@ -120,79 +163,4 @@ class CaDirectory(
         } catch (e: IOException) {
             throw source?.writeFailed(dir, e) ?: e
         }
-
-    /** True when this call published [pair], false when another start did first. */
-    private fun publish(pair: CaKeyPair): Boolean {
-        val staging = Files.createTempDirectory(dir, STAGING, OWNER_DIR)
-        try {
-            writeFile(staging.resolve(KEY), Pem.privateKey(pair.privateKey))
-            writeFile(staging.resolve(CERT), Pem.certificate(pair.certificate))
-            Files.move(staging, ca, ATOMIC_MOVE)
-            syncDirectory()
-            return true
-        } catch (e: FileSystemException) {
-            if (Files.notExists(ca)) throw e
-            return false
-        } finally {
-            staging.toFile().deleteRecursively()
-        }
-    }
-
-    private fun removeStaleStaging() {
-        val cutoff = clock.instant() - STALE_STAGING
-        Files.list(dir).use { entries ->
-            entries
-                .filter { it.fileName.toString().startsWith(STAGING) }
-                .filter { isStale(it, cutoff) }
-                .forEach { it.toFile().deleteRecursively() }
-        }
-    }
-
-    /** Gone already (a concurrent start published or removed it): not ours to clean. Other failures stop the start. */
-    private fun isStale(
-        path: Path,
-        cutoff: Instant,
-    ): Boolean =
-        try {
-            Files.getLastModifiedTime(path).toInstant() < cutoff
-        } catch (_: NoSuchFileException) {
-            false
-        }
-
-    /** Makes the rename durable; not observable without a crash, so no test covers it. */
-    private fun syncDirectory() { // mutflow:falsePositive fsync changes nothing observable without an OS crash
-        val channel = FileChannel.open(dir, READ)
-        try {
-            channel.force(true)
-        } finally {
-            channel.close()
-        }
-    }
-
-    private fun load(): CaKeyPair {
-        val key = ca.resolve(KEY)
-        requireOwnerOnly(ca)
-        requireOwnerOnly(key)
-        requireOwnerOnly(ca.resolve(CERT))
-        val certificate =
-            Files.newInputStream(ca.resolve(CERT)).use {
-                CertificateFactory.getInstance("X.509").generateCertificate(it) as X509Certificate
-            }
-        val der = Pem.decode("PRIVATE KEY", Files.readString(key))
-        return CaKeyPair(certificate, JcaPEMKeyConverter().getPrivateKey(PrivateKeyInfo.getInstance(der)))
-    }
-
-    private fun requireOwnerOnly(path: Path) {
-        ownerOnlyViolation(path)?.let { throw InsecureKeyStorageException(it) }
-    }
-}
-
-private fun write(
-    path: Path,
-    text: String,
-) {
-    FileChannel.open(path, setOf(CREATE_NEW, WRITE), OWNER_FILE).use {
-        it.write(ByteBuffer.wrap(text.toByteArray()))
-        it.force(true)
-    }
 }

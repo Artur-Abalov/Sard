@@ -23,12 +23,19 @@ import kotlin.reflect.full.primaryConstructor
 /** Name of the administrator session cookie (D2). */
 const val SESSION_COOKIE = "sard_session"
 
+/** Name of the setup session cookie (F4a, Р3): the wizard's steps ask for it instead of the administrator session. */
+const val SETUP_COOKIE = "sard_setup"
+
+/** The only path the setup cookie travels on. */
+const val SETUP_COOKIE_PATH = "/api/v1/onboarding"
+
 private const val SESSION_SCHEME = "session"
 
 /**
  * OpenAPI metadata; the web client is generated from /v3/api-docs. Every
  * operation needs the session cookie unless it declares an empty security
- * requirement (sign-in, status).
+ * requirement (sign-in, status, the state of the wizard and the entering of its code) or one for the
+ * setup session (the steps of the wizard).
  */
 @Configuration(proxyBeanMethods = false)
 class OpenApiConfiguration {
@@ -44,14 +51,16 @@ class OpenApiConfiguration {
             // The console is served from the API's own origin.
             .servers(listOf(Server().url("/")))
             .components(
-                Components().addSecuritySchemes(
-                    SESSION_SCHEME,
-                    SecurityScheme()
-                        .type(SecurityScheme.Type.APIKEY)
-                        .`in`(SecurityScheme.In.COOKIE)
-                        .name(SESSION_COOKIE),
-                ),
+                Components()
+                    .addSecuritySchemes(SESSION_SCHEME, cookieScheme(SESSION_COOKIE))
+                    .addSecuritySchemes(SETUP_SCHEME, cookieScheme(SETUP_COOKIE)),
             ).addSecurityItem(SecurityRequirement().addList(SESSION_SCHEME))
+
+    private fun cookieScheme(name: String) =
+        SecurityScheme()
+            .type(SecurityScheme.Type.APIKEY)
+            .`in`(SecurityScheme.In.COOKIE)
+            .name(name)
 
     @Bean
     fun unauthorizedResponses(): OpenApiCustomizer = OpenApiCustomizer(::describeUnauthorized)

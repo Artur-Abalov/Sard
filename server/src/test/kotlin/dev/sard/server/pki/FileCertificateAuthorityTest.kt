@@ -41,7 +41,9 @@ class FileCertificateAuthorityTest {
 
     private val dir get() = tmp.resolve("pki")
 
-    private fun ca() = FileCertificateAuthority(dir, SERVER_NAMES, CLOCK, random())
+    private val ledger = FakeCaLedger()
+
+    private fun ca() = FileCertificateAuthority(dir, SERVER_NAMES, CLOCK, random(), ledger)
 
     private fun caCertificate(ca: CertificateAuthority) = certificate(ca.caBundlePem())
 
@@ -197,7 +199,7 @@ class FileCertificateAuthorityTest {
     @Test
     fun `the server certificate is renewed once 30 days or less remain, and not before`() {
         val clock = MovableClock(NOW)
-        val ca = FileCertificateAuthority(dir, SERVER_NAMES, clock, random())
+        val ca = FileCertificateAuthority(dir, SERVER_NAMES, clock, random(), ledger)
         val km = ca.serverKeyManager()
         val first = km.chooseServerAlias("EC", null, null)
 
@@ -222,7 +224,7 @@ class FileCertificateAuthorityTest {
         // uncompressed literal with a group above 0xff (so a high byte lands at the right offset),
         // a "::"-compressed literal with an embedded dotted IPv4 tail, and the maximum IPv4 octet.
         val names = listOf("1:2:3:4:5:6:7::", "ff00:1:2:3:4:5:6:7", "::ffff:1.2.3.4", "255.255.255.255")
-        val ca = FileCertificateAuthority(dir, names, CLOCK, random())
+        val ca = FileCertificateAuthority(dir, names, CLOCK, random(), ledger)
         val km = ca.serverKeyManager()
         val leaf = km.getCertificateChain(km.chooseServerAlias("EC", null, null)).first()
         val sans = leaf.subjectAlternativeNames.map { it.toList() }
@@ -253,7 +255,7 @@ class FileCertificateAuthorityTest {
                 "1:2:3:4:5:6:1.2.3.4",
                 "255.255.255.255",
             )
-        val ca = FileCertificateAuthority(dir, names, clock, random())
+        val ca = FileCertificateAuthority(dir, names, clock, random(), ledger)
         clock.now = NOW + Duration.ofDays(60)
         assertTrue(MutFlow.underTest { ca.renewServerCertificate() })
         val km = ca.serverKeyManager()
@@ -280,7 +282,7 @@ class FileCertificateAuthorityTest {
         // only way this construction can fail is if ipLiteral itself correctly rejects octet 256.
         for (name in listOf("999.1.1.1", "fe80::1%eth0", "bad name", "1:2:3:4:5:6:7::8", "256.0.0.1")) {
             assertFailsWith<IllegalArgumentException>(name) {
-                MutFlow.underTest { FileCertificateAuthority(dir, listOf(name), CLOCK, random()) }
+                MutFlow.underTest { FileCertificateAuthority(dir, listOf(name), CLOCK, random(), ledger) }
             }
         }
     }
@@ -297,7 +299,7 @@ class FileCertificateAuthorityTest {
     fun `a plain hostname with no IP literal in the list is accepted on its own`() {
         // Mutation coverage of the accept condition itself lives in ServerNamesTest, which calls
         // ServerNames.validate directly.
-        val ca = FileCertificateAuthority(dir, listOf("localhost"), CLOCK, random())
+        val ca = FileCertificateAuthority(dir, listOf("localhost"), CLOCK, random(), ledger)
         assertTrue(Files.exists(dir.resolve("ca/ca.crt")))
     }
 

@@ -12,7 +12,8 @@
 внутри проверки вручную не воспроизводятся — это делают тесты сценариев
 `@service`, `@startup`, `@grpc`, `@fake`, `@local`. Здесь — сквозной путь через
 настоящие compose, сервер, базу и соседа: проверки задачи 1, 2, 4, 5 (проверка 3
-сделана в фазе 2) и консоль.
+сделана в фазе 2) и консоль. Проверка 5 — обновление с выпущенной 0.1.0-beta.N,
+не с 0.0.1-rc1 (изменено F4a, часть 5).
 
 ## Подготовка
 
@@ -24,8 +25,6 @@
 DC="docker compose -f deploy/docker-compose.yml --env-file deploy/.env"
 $DC down -v                                   # тома установки удаляются: чистый старт
 rm -f deploy/.env; cp deploy/.env.example deploy/.env
-sed -i 's/^#\? *SARD_ADMIN_PASSWORD=.*/SARD_ADMIN_PASSWORD=qa-admin-password-2026/' deploy/.env
-grep -q '^SARD_ADMIN_PASSWORD=' deploy/.env || echo 'SARD_ADMIN_PASSWORD=qa-admin-password-2026' >> deploy/.env
 PSQL="$DC exec -T postgres psql -U sard -d sard -At -c"
 API=http://localhost:8080/api/v1
 QA=$(mktemp -d); J=$QA/jar
@@ -46,8 +45,11 @@ chan() { $DC exec -T server ls -la /var/lib/sard/self; }
    → завершается с кодом 0 не позднее чем через 3 минуты; `$DC ps` — `postgres`,
    `server`, `self-agent` в состоянии `running`, у `postgres` и `server` —
    `healthy`.
-2. `login` → `204`.
-3. `builtin` (повторять до 2 минут после шага 1)
+2. До мастера в канале нет токена (`chan` — только `db-password`) и сосед ждёт. Мастер
+   по коду из лога (F4a; шаг CA выдаёт встроенный токен): `source scripts/lib/setup-wizard.sh;
+   sard_complete_wizard http://localhost:8080 qa-admin-password-2026 $DC logs server`
+   → код возврата 0; `login` → `204`.
+3. `builtin` (повторять до 3 минут после шага 2)
    → ровно один элемент: `hostname` = `sard-self`, `status` = `online`,
    `revokedAt` = `null`. Запомнить `X=<id>`.
 4. `a GET /agents | body | jq '[.items[] | {hostname, builtin}]'`
@@ -159,30 +161,46 @@ chan() { $DC exec -T server ls -la /var/lib/sard/self; }
     `a POST /agents/$Z/revoke | tail -1` → `HTTP 200 application/json`.
 37. `a DELETE /agents/$Y | tail -1` → не `2xx`; `builtin` → `Y` по-прежнему `online`.
 
-## Часть 5. Обновление с 0.0.1-rc1 (проверка 5)
+## Часть 5. Обновление с выпущенной 0.1.0-beta.N (проверка 5)
 
-Образы 0.0.1-rc1 — из ghcr; если их там нет, собрать из тега `v0.0.1-rc1`
-(решение 12 контрольной точки 1).
+Изменено F4a (уточнение владельца 2026-10-09: «Будет верно после
+0.1.0-бета»). Исходная версия — первая выпущенная `0.1.0-beta.N` (она уже
+содержит F4a и соседа). `0.0.1-rc1` — не поддерживаемый источник обновления:
+такую установку переустанавливают с новыми томами (`docs/operator/07-upgrade.md`).
+**Предусловие:** тег `v0.1.0-beta.N` существует (`git tag -l 'v0.1.0-beta.*'`
+не пусто). Пока его нет (на 2026-10-09 есть только `v0.0.1-rc1`), часть 5 не
+выполняется — это не дефект. Образы беты — из ghcr; если их там нет, собрать
+из её тега (решение 12 контрольной точки 1). `BETA` — номер версии без `v`,
+например `0.1.0-beta.1`.
 
-38. `$DC down -v`; `git show v0.0.1-rc1:deploy/docker-compose.yml > $QA/rc1.yml`;
-    `SARD_VERSION=0.0.1-rc1 docker compose -f $QA/rc1.yml --env-file deploy/.env up -d --wait`
-    → `postgres` и `server` `healthy`; тома `sard_postgres-data` и `sard_sard-pki`
-    созданы (`docker volume ls`); сервиса `self-agent` нет.
-39. Войти (`login`), выпустить два токена, зарегистрировать по одному обычного
-    агента A (`docs/qa/agent-enroll.md`); сохранить
-    `a GET /agents | body | jq -S '[.items[] | {id, hostname, revokedAt}]' > $QA/agents-before`,
+38. `$DC down -v`; `git show v$BETA:deploy/docker-compose.yml > $QA/beta.yml`;
+    `.env` для беты — по `deploy/.env.example` её тега, `SARD_VERSION=$BETA`;
+    `docker compose -f $QA/beta.yml --env-file $QA/beta.env up -d --wait`
+    → `postgres`, `server` `healthy`, `self-agent` `running`; тома
+    `sard_postgres-data`, `sard_sard-pki`, `sard_sard-self-*` созданы (`docker volume ls`).
+39. Пройти мастер беты по коду из `docker compose logs server` (как в
+    `docs/qa/onboarding-setup.md`, часть 1, шаги 10, 17, 20) с паролем
+    `qa-admin-password-2026`; `login` → `204`. Дождаться `builtin` → один
+    `sard-self`, `online`; запомнить `S=<id>`. Выпустить два токена,
+    зарегистрировать по одному обычного агента A (`docs/qa/agent-enroll.md`); сохранить
+    `a GET /agents | body | jq -S '[.items[] | {id, hostname, builtin, revokedAt}]' > $QA/agents-before`,
     `a GET /enrollment-tokens | body | jq -S '[.items[] | {id, status}]' > $QA/tokens-before`,
     `$DC exec -T server sha256sum /var/lib/sard/pki/ca/ca.crt > $QA/ca-before`.
-40. `docker compose -f $QA/rc1.yml --env-file deploy/.env down` (без `-v`), затем
-    `$DC up --wait` с текущими образами
+40. `docker compose -f $QA/beta.yml --env-file $QA/beta.env down` (без `-v`), затем
+    `$DC up --wait` с текущими compose и образами
     → код 0; `server` `healthy`; `self-agent` `running`.
-41. `login`; `diff <(a GET /agents | body | jq -S '[.items[] | select(.builtin | not) | {id, hostname, revokedAt}]') $QA/agents-before`
-    → нет различий; то же для токенов → нет различий;
+41. `$DC logs server 2>&1 | grep -cE 'SARD SETUP CODE'` → `0` (мастер не
+    открывается); `curl -sS $API/onboarding | jq -c '[.steps[0].state, .steps[1].state]'`
+    → `["done","done"]`; `login` (пароль из мастера беты) → `204`.
+42. `diff <(a GET /agents | body | jq -S '[.items[] | {id, hostname, builtin, revokedAt}]') $QA/agents-before`
+    → нет различий (агент A и `sard-self` `$S` на месте); то же для токенов → нет различий;
     `$DC exec -T server sha256sum /var/lib/sard/pki/ca/ca.crt | diff - $QA/ca-before` → нет различий.
-42. `$PSQL "select count(*) from flyway_schema_history where script like '%self_dump_role%' and success"` → `1`;
-    `$PSQL "select count(*) from pg_roles where rolname = 'sard_self'"` → `1`.
-43. Повторять `builtin` до 3 минут → один элемент `sard-self`, `online`.
-44. Агент A (если запущен на хосте) снова `online`, его `id` не изменился.
+43. `$PSQL "select count(*) from flyway_schema_history where not success"` → `0`;
+    версия последней миграции равна последнему файлу
+    `server/src/main/resources/db/migration` текущей сборки.
+44. Повторять `builtin` до 3 минут → один элемент, `id` = `$S`, `online`;
+    встроенных токенов не прибавилось. Агент A (если запущен на хосте) снова
+    `online`, его `id` не изменился.
 
 ## Часть 6. Консоль
 

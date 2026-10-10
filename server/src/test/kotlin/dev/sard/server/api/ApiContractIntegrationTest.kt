@@ -4,7 +4,9 @@
 package dev.sard.server.api
 
 import com.google.protobuf.ProtocolMessageEnum
+import dev.sard.server.SeededAdministrator
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.auth.PUBLIC_OPERATIONS
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
@@ -31,9 +33,9 @@ import dev.sard.proto.agent.v1.StepStatus as ProtoStepStatus
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = ["spring.grpc.server.port=0"],
+    properties = ["spring.grpc.server.port=0", "sard.test.admin-password=test-admin-password-2026"],
 )
-@Import(TestcontainersConfiguration::class)
+@Import(SeededAdministrator::class, TestcontainersConfiguration::class)
 class ApiContractIntegrationTest(
     @Autowired private val mapper: ObjectMapper,
     @LocalServerPort private val port: Int,
@@ -58,7 +60,7 @@ class ApiContractIntegrationTest(
         return http.send(builder.build(), HttpResponse.BodyHandlers.ofString())
     }
 
-    /** A fresh session cookie value, signed in with the test admin password (build.gradle.kts). */
+    /** A fresh session cookie value, signed in with the password the context was seeded with. */
     private fun signIn(): String {
         val response = send("POST", "/api/v1/session", """{"password":"test-admin-password-2026"}""")
         val setCookie = response.headers().firstValue("Set-Cookie").orElseThrow()
@@ -169,53 +171,58 @@ class ApiContractIntegrationTest(
             item.properties().map { (method, op) -> "${method.uppercase()} $path" to op }
         }
 
+    private fun JsonNode.unauthorized() = path("responses").path("401")
+
+    private fun JsonNode.problemRef() =
+        unauthorized()
+            .path("content")
+            .path(PROBLEM_JSON)
+            .path("schema")
+            .path("\$ref")
+            .asString()
+
     @Test
-    fun `every operation but sign-in and status requires the session and describes 401`() {
-        val public = setOf("POST /api/v1/session", "GET /api/v1/status")
-        for ((name, op) in operations()) {
-            if (name in public) {
-                assertTrue(op.path("security").isArray && op.path("security").isEmpty, "$name: ${op.path("security")}")
-                // Sign-in has its own 401, a wrong password.
-                assertTrue(
-                    op
-                        .path("responses")
-                        .path("401")
-                        .path("description")
-                        .asString() != NO_SESSION,
-                    name,
-                )
-            } else {
-                assertTrue(op.path("security").isMissingNode, "$name inherits the root security: $op")
-                val unauthorized =
-                    op
-                        .path("responses")
-                        .path("401")
-                        .path("content")
-                        .path(PROBLEM_JSON)
-                assertEquals("#/components/schemas/Problem", unauthorized.path("schema").path("\$ref").asString(), name)
-                assertEquals(
-                    NO_SESSION,
-                    op
-                        .path("responses")
-                        .path("401")
-                        .path("description")
-                        .asString(),
-                    name,
-                )
-            }
+    fun `every operation but the public ones requires a session and describes 401`() {
+        val setup = setOf("POST /api/v1/onboarding/ca", "POST /api/v1/onboarding/admin")
+        for ((name, op) in operations().filter { it.first !in PUBLIC_OPERATIONS && it.first !in setup }) {
+            assertTrue(op.path("security").isMissingNode, "$name inherits the root security: $op")
+            assertEquals("#/components/schemas/Problem", op.problemRef(), name)
+            assertEquals(NO_SESSION, op.unauthorized().path("description").asString(), name)
         }
-        val scheme = spec.path("components").path("securitySchemes").path("session")
-        val cookie = listOf("type", "in", "name").map { scheme.path(it).asString() }
-        assertEquals(listOf("apiKey", "cookie", "sard_session"), cookie)
-        assertEquals(
-            listOf("session"),
-            spec
-                .path("security")
-                .iterator()
-                .asSequence()
-                .flatMap { it.propertyNames() }
-                .toList(),
-        )
+    }
+
+    @Test
+    fun `the public operations have no security requirement and their own 401, if any`() {
+        for ((name, op) in operations().filter { it.first in PUBLIC_OPERATIONS }) {
+            assertTrue(op.path("security").isArray && op.path("security").isEmpty, "$name: ${op.path("security")}")
+            // Sign-in has its own 401, a wrong password.
+            assertTrue(op.unauthorized().path("description").asString() != NO_SESSION, name)
+        }
+    }
+
+    @Test
+    fun `the steps of the wizard ask for the setup session and say so in their own 401`() {
+        for ((name, op) in operations().filter { it.first.startsWith("POST /api/v1/onboarding/") }) {
+            if (name == "POST /api/v1/onboarding/setup-session") continue
+            assertEquals(listOf("setupSession"), op.path("security").flatMap { it.propertyNames() }, name)
+            assertEquals("#/components/schemas/Problem", op.problemRef(), name)
+        }
+    }
+
+    @Test
+    fun `the cookies of the session and of the setup session are the security schemes`() {
+        fun described(name: String) =
+            listOf("type", "in", "name").map {
+                spec
+                    .path("components")
+                    .path("securitySchemes")
+                    .path(name)
+                    .path(it)
+                    .asString()
+            }
+        assertEquals(listOf("apiKey", "cookie", "sard_session"), described("session"))
+        assertEquals(listOf("apiKey", "cookie", "sard_setup"), described("setupSession"))
+        assertEquals(listOf("session"), spec.path("security").flatMap { it.propertyNames() })
     }
 
     /** The session cookie is the `session` security scheme, never an operation parameter of its own. */
@@ -314,7 +321,17 @@ class ApiContractIntegrationTest(
                 Triple("GET", "/api/v1/runs/{runId}", null),
                 Triple("GET", "/api/v1/runs/{runId}/steps/{stepId}/logs", null),
             )
-        val implemented = setOf("POST /api/v1/session", "GET /api/v1/session", "DELETE /api/v1/session")
+        val implemented =
+            setOf(
+                "POST /api/v1/session",
+                "GET /api/v1/session",
+                "DELETE /api/v1/session",
+                "PUT /api/v1/session/password",
+                "GET /api/v1/onboarding",
+                "POST /api/v1/onboarding/setup-session",
+                "POST /api/v1/onboarding/ca",
+                "POST /api/v1/onboarding/admin",
+            )
         val listed = calls.map { "${it.first} ${it.second.substringBefore('?')}" }.toSet()
         assertEquals(operations().map { it.first }.toSet() - "GET /api/v1/status" - implemented, listed)
         val cookie = signIn()

@@ -37,9 +37,6 @@ services:
       # A CA to take at the first start (a move to a new machine, ADR 0052): the path inside the container
       # where docker-compose.override.yml mounts it (docs/operator/08-migrate-and-remove.md). Empty means none.
       SARD_PKI_IMPORT_DIR: ${SARD_PKI_IMPORT_DIR:-}
-      # The single administrator's password (ADR 0021); at least 12 Unicode code points,
-      # or the server refuses to start. make up generates one on the first run.
-      SARD_ADMIN_PASSWORD: ${SARD_ADMIN_PASSWORD:?set SARD_ADMIN_PASSWORD in .env}
       # Address agents dial (decision 5, S2b); unset means the first of the names above and the gRPC port.
       SARD_AGENT_ENDPOINT: ${SARD_AGENT_ENDPOINT:-}
       # Telegram notifications (S9a); both empty means notifications are off, with a warning.

@@ -126,6 +126,10 @@
     "token_expired": "The token has expired",
     "origin_rejected": "The request was rejected: the origin does not match",
     "self_agent_confirmation_required": "Revoking the built-in agent needs the confirmation sard-self",
+    "setup_required": "The server has no administrator yet: finish the first-start wizard",
+    "setup_completed": "The first start is already done",
+    "ca_step_pending": "Confirm the CA of the server first",
+    "wrong_password": "The current password is wrong",
     "unavailable": "The server is temporarily unavailable, try again",
     "not_implemented": "Not implemented",
     "unauthenticated": "The session has ended",
@@ -390,5 +394,80 @@
       "remind": "Update when the agent has no active runs: restarting it interrupts them.",
       "packageNote": "A deb or rpm package replaces the program only: the configuration, keys and the repository password stay as they are."
     }
+  },
+  "setup": {
+    "title": "First start",
+    "intro": "Three things before the console opens: prove you own the server, look at its CA, set the administrator password.",
+    "steps": {
+      "ca": "CA of the server",
+      "admin": "Administrator",
+      "self_backup": "Backup of the server itself",
+      "keys_confirmed": "Key copies"
+    },
+    "marks": {
+      "done": "done",
+      "current": "now",
+      "todo": "next",
+      "soon": "soon"
+    },
+    "code": {
+      "title": "Setup code",
+      "hint": "The server prints a one-time code in its log when it starts. On the host of the server run:",
+      "command": "docker compose logs server | grep \"SARD SETUP CODE\"",
+      "label": "Setup code",
+      "submit": "Continue",
+      "invalid": "The code is wrong or has expired. Check it against the log of the server.",
+      "locked": "Too many wrong codes. Try again in {{minutes}} min."
+    },
+    "restart": {
+      "title": "A new setup code is needed",
+      "message": "The setup code has expired or was not issued. Restart the server to get a new one:",
+      "command": "docker compose restart server"
+    },
+    "completed": "The administrator is already set. Sign in.",
+    "sessionEnded": "The setup session has ended. Enter the setup code from the log of the server again.",
+    "unavailable": "The server is unavailable. Try again.",
+    "ca": {
+      "title": "CA of this server",
+      "intro": "Agents trust only certificates issued by this CA. Compare the fingerprint with the one the server printed in its log.",
+      "fingerprint": "Fingerprint (SHA-256)",
+      "origin": "Origin",
+      "originGenerated": "created by the server",
+      "originImported": "imported",
+      "keyPath": "Key file in the file system of the server",
+      "backup": "Back up the key separately. Without a copy of the CA key every agent has to be registered again. How: {{doc}}.",
+      "replaceTitle": "Want your own CA?",
+      "replaceSteps": "Put the CA files in a directory on the host (for example ./pki-import), create docker-compose.override.yml with the text below and restart the server with docker compose up -d server. Details: {{doc}}.",
+      "replaceCompose": "services:\n  server:\n    environment:\n      SARD_PKI_IMPORT_DIR: /var/lib/sard/pki-import\n    volumes:\n      - ./pki-import:/var/lib/sard/pki-import:ro",
+      "replaceWarning": "After “Use this CA” the CA can no longer be replaced by an import.",
+      "migrateOnly": "The CA can no longer be replaced by an import. It can be changed only by moving to a new server: {{doc}}.",
+      "submit": "Use this CA"
+    },
+    "admin": {
+      "title": "Administrator password",
+      "requirements": "The password is 12 to 1024 characters long. Use a password manager: it is the only way into the console.",
+      "password": "Password",
+      "confirmation": "Repeat the password",
+      "mismatch": "The passwords do not match",
+      "submit": "Set the password and open the console"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "password": {
+      "title": "Change the administrator password",
+      "requirements": "The new password is 12 to 1024 characters long. Other sessions end when it is changed.",
+      "current": "Current password",
+      "new": "New password",
+      "confirmation": "Repeat the new password",
+      "mismatch": "The passwords do not match",
+      "submit": "Change the password",
+      "changed": "The password is changed. Other sessions have ended."
+    },
+    "wrongPassword": "The current password is wrong.",
+    "requirements": "The new password is not acceptable: it must be 12 to 1024 characters.",
+    "locked": "Too many attempts. Try again in {{minutes}} min.",
+    "notSupported": "The administrator is managed outside the server: the password cannot be changed here.",
+    "unavailable": "The server is unavailable. Nothing was changed."
   }
 }

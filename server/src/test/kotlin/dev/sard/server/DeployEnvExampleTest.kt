@@ -9,10 +9,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Rule "Установка показывает, где задать пароль администратора" (@qa-only in the spec,
- * but the shape of `deploy/.env.example` itself — an empty placeholder, not a value
- * someone might copy verbatim into deploy/.env and forget to change — is a plain fact
- * about a committed file, so it gets a real test).
+ * The shape of `deploy/.env.example`: an empty placeholder, not a value someone might copy verbatim into
+ * deploy/.env and forget to change. The administrator password is no setting any more (F4a): the first start
+ * asks for it in the wizard, and the scenario that the example does not mention it is the task of the
+ * installation (docs/specs/server/onboarding-setup.feature, "Compose и пример окружения не содержат пароль").
  */
 class DeployEnvExampleTest {
     private val lines: List<String>
@@ -23,23 +23,9 @@ class DeployEnvExampleTest {
         }
 
     @Test
-    fun `SARD_ADMIN_PASSWORD is an empty placeholder, not a value to copy verbatim`() {
-        val value = lines.first { it.startsWith("SARD_ADMIN_PASSWORD=") }.substringAfter("=")
-        assertEquals("", value)
-    }
-
-    @Test
     fun `SARD_TELEGRAM_BOT_TOKEN is an empty placeholder, and the chat id goes with it`() {
         val value = lines.first { it.startsWith("SARD_TELEGRAM_BOT_TOKEN=") }.substringAfter("=")
         assertEquals("", value)
         assertTrue(lines.any { it.contains("SARD_TELEGRAM_CHAT_ID=") }, lines.joinToString("\n"))
-    }
-
-    @Test
-    fun `SARD_ADMIN_PASSWORD is commented with the minimum length, next to SARD_AGENT_ENDPOINT`() {
-        val text = lines.joinToString("\n")
-        assertTrue(text.contains("SARD_ADMIN_PASSWORD"), text)
-        assertTrue(text.contains("12"), text)
-        assertTrue(text.contains("SARD_AGENT_ENDPOINT"), text)
     }
 }

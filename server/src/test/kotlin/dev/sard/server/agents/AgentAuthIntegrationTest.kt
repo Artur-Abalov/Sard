@@ -13,6 +13,7 @@ import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.pki.AgentIdentity
 import dev.sard.server.pki.CertificateAuthority
+import dev.sard.server.pki.FakeCaLedger
 import dev.sard.server.pki.FileCertificateAuthority
 import dev.sard.server.pki.Pem
 import io.grpc.CallOptions
@@ -271,7 +272,13 @@ class AgentAuthIntegrationTest(
     @Test
     fun `a certificate from another CA fails the handshake before any interceptor`() {
         val stranger =
-            FileCertificateAuthority(tmp.resolve("pki"), listOf("localhost"), Clock.systemUTC(), SecureRandom())
+            FileCertificateAuthority(
+                tmp.resolve("pki"),
+                listOf("localhost"),
+                Clock.systemUTC(),
+                SecureRandom(),
+                FakeCaLedger(permissive = true),
+            )
         val agent = unrecorded(stranger, AgentIdentity(acme, UUID.randomUUID()))
         assertEquals(Outcome(Status.Code.UNAVAILABLE), call(presenting(agent), ProbeService.WHOAMI))
     }

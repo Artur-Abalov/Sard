@@ -12,6 +12,7 @@ import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.AgentIdentity
 import dev.sard.server.pki.CertificateAuthority
+import dev.sard.server.pki.FakeCaLedger
 import dev.sard.server.pki.FileCertificateAuthority
 import dev.sard.server.pki.IssuedCertificate
 import dev.sard.server.pki.MovableClock
@@ -102,7 +103,10 @@ class EnrollmentFailureIntegrationTest(
      * the concurrency tests). It reads the same on-disk root key, so its fingerprint still
      * matches the tokens [tokens] issues.
      */
-    private fun freshCa() = FileCertificateAuthority(pkiDir, listOf("localhost"), Clock.systemUTC(), SecureRandom())
+    private fun freshCa(): FileCertificateAuthority {
+        val ledger = FakeCaLedger(permissive = true)
+        return FileCertificateAuthority(pkiDir, listOf("localhost"), Clock.systemUTC(), SecureRandom(), ledger)
+    }
 
     @BeforeTest
     fun `start at a known instant with a fresh tenant`() {

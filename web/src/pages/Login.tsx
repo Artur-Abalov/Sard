@@ -5,12 +5,24 @@ import { Alert, Button, Card, PasswordInput, Stack, Title } from '@mantine/core'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { formatLockoutMinutes } from '../auth/lockout'
 import { resolveRedirectTarget } from '../auth/redirect'
 import { signIn } from '../auth/session'
+import { signInResult, type SignInResult } from '../auth/signInResult'
 import { tones } from '../theme'
 
-type FormError = { kind: 'invalid' } | { kind: 'locked'; minutes: number } | { kind: 'unavailable' }
+function SignInError({ error }: { error: SignInResult }) {
+  const { t } = useTranslation()
+  switch (error.kind) {
+    case 'invalid':
+      return <Alert color={tones.error}>{t('login.wrongPassword')}</Alert>
+    case 'locked':
+      return <Alert color={tones.error}>{t('login.locked', { minutes: error.minutes })}</Alert>
+    case 'unavailable':
+      return <Alert color={tones.error}>{t('login.unavailable')}</Alert>
+    default:
+      return null
+  }
+}
 
 // The single-field sign-in form (rule "Форма входа — одно поле пароля"). Password
 // checking, the session and its lifetime are the server's (D2): this component only
@@ -18,9 +30,9 @@ type FormError = { kind: 'invalid' } | { kind: 'locked'; minutes: number } | { k
 export function Login() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const search = useSearch({ strict: false }) as { redirect?: string }
+  const search = useSearch({ strict: false }) as { redirect?: string; notice?: 'setup_completed' }
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<FormError | null>(null)
+  const [error, setError] = useState<SignInResult | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   async function onSubmit(event: React.FormEvent) {
@@ -30,18 +42,16 @@ export function Login() {
     setError(null)
     try {
       const response = await signIn(password)
-      if (response.status === 204) {
+      const result = signInResult(response.status, response.headers.get('Retry-After'))
+      if (result.kind === 'ok') {
         await navigate({ to: resolveRedirectTarget(search.redirect) })
         return
       }
-      if (response.status === 429) {
-        const retryAfter = Number(response.headers.get('Retry-After') ?? '0')
-        setError({ kind: 'locked', minutes: formatLockoutMinutes(retryAfter) })
-      } else if (response.status === 401) {
-        setError({ kind: 'invalid' })
-      } else {
-        setError({ kind: 'unavailable' })
+      if (result.kind === 'setup') {
+        await navigate({ to: '/setup' })
+        return
       }
+      setError(result)
     } catch {
       setError({ kind: 'unavailable' })
     } finally {
@@ -55,15 +65,10 @@ export function Login() {
         <form onSubmit={(event) => void onSubmit(event)}>
           <Stack>
             <Title order={2}>{t('login.title')}</Title>
-            {error?.kind === 'invalid' && (
-              <Alert color={tones.error}>{t('login.wrongPassword')}</Alert>
+            {search.notice === 'setup_completed' && (
+              <Alert color={tones.info}>{t('setup.completed')}</Alert>
             )}
-            {error?.kind === 'locked' && (
-              <Alert color={tones.error}>{t('login.locked', { minutes: error.minutes })}</Alert>
-            )}
-            {error?.kind === 'unavailable' && (
-              <Alert color={tones.error}>{t('login.unavailable')}</Alert>
-            )}
+            {error && <SignInError error={error} />}
             <PasswordInput
               label={t('login.password')}
               value={password}

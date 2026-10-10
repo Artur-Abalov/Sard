@@ -6,6 +6,7 @@ package dev.sard.server.selfagent
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.fleet.Agents
+import dev.sard.server.onboarding.OnboardingSteps
 import org.postgresql.PGConnection
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -72,7 +73,8 @@ class SelfAgentConfiguration {
         channel: SelfChannel,
         tokens: EnrollmentTokens,
         agents: Agents,
-    ) = SelfAgentCheck(channel, DefaultTenantTokens(tokens), DefaultTenantAgents(agents))
+        steps: OnboardingSteps,
+    ) = SelfAgentCheck(channel, DefaultTenantTokens(tokens), DefaultTenantAgents(agents), steps)
 
     @Bean
     @ConditionalOnExpression("'\${sard.self-agent.dir:}' != ''")
