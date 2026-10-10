@@ -623,3 +623,4 @@ Kotlin-версия в e2e `SetupWizard.kt` — тот же формат стр�
 
 - Предыдущий полный прогон мутаций (на 9940de5, до b6fb20f): 83 выживших из 27112 тестов (`CaDirectoryLedgerTest` 34, `OnboardingServiceTest` 21, `SessionApiImplTest` 19, `SetupCodeAnnouncerTest` 5, `CaDirectoryImportUnitTest` 2, `CaDirectoryTest` 2).
 - На b6fb20f мутации, сужённые на 18 тестовых классов F4a (`-Pmutflow.enabled=true :server:test --rerun --tests ...`): 16042 тестов, 0 упавших, выживших 0. Дальше полный `gate.sh server`.
+- Полный `./scripts/gate.sh server`: `gate: PASSED (server, full)`, exit 0 (выживших 0). `./scripts/gate.sh web fast`: `Tests  537 passed (537)`, `gate: PASSED (web, fast)`. Исключений и `mutflow:falsePositive` нет, продакшн-код не менялся.
