@@ -1292,6 +1292,79 @@
         }
       }
     },
+    "/api/v1/schedule-preview" : {
+      "get" : {
+        "tags" : [ "sources" ],
+        "summary" : "Preview a schedule before saving it",
+        "description" : "The same checks as PUT schedule: 422 validation_failed names cron, timezone or lang. Without timezone the server's zone is used; lang is ru or en (en by default).",
+        "operationId" : "preview",
+        "parameters" : [ {
+          "name" : "cron",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : ""
+          }
+        }, {
+          "name" : "timezone",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "lang",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SchedulePreview"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/runs" : {
       "get" : {
         "tags" : [ "runs" ],
@@ -2163,9 +2236,21 @@
           "enabled" : {
             "type" : "boolean",
             "description" : "A disabled schedule keeps its cron and zone and does not fire"
+          },
+          "notifyOnSuccess" : {
+            "type" : "boolean",
+            "description" : "Tell of every successful scheduled run too; failures and recoveries are always told. Off by default"
           }
         },
         "required" : [ "cron", "enabled", "timezone" ]
+      },
+      "RunStatus" : {
+        "type" : "string",
+        "enum" : [ "queued", "dispatched", "running", "succeeded", "failed", "cancelled" ]
+      },
+      "RunTrigger" : {
+        "type" : "string",
+        "enum" : [ "schedule", "manual", "verification", "catch_up" ]
       },
       "Schedule" : {
         "type" : "object",
@@ -2209,6 +2294,18 @@
             "format" : "int32",
             "description" : "Fires skipped in a row: an active run, a revoked agent, a refusal"
           },
+          "notifyOnSuccess" : {
+            "type" : "boolean",
+            "description" : "Tell of every successful scheduled run too; failures and recoveries are always told. Off by default"
+          },
+          "lastRun" : {
+            "description" : "The latest run created by this schedule (schedule or catch_up); null if none yet",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/ScheduleLastRun"
+            }, {
+              "type" : "null"
+            } ]
+          },
           "createdAt" : {
             "type" : "string",
             "format" : "date-time"
@@ -2218,7 +2315,32 @@
             "format" : "date-time"
           }
         },
-        "required" : [ "catchUpAt", "createdAt", "cron", "enabled", "id", "lastFiredAt", "nextRunAt", "skippedInRow", "sourceId", "timezone", "updatedAt" ]
+        "required" : [ "catchUpAt", "createdAt", "cron", "enabled", "id", "lastFiredAt", "lastRun", "nextRunAt", "notifyOnSuccess", "skippedInRow", "sourceId", "timezone", "updatedAt" ]
+      },
+      "ScheduleLastRun" : {
+        "type" : "object",
+        "description" : "The latest run the schedule created, scheduled or catch-up",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "trigger" : {
+            "$ref" : "#/components/schemas/RunTrigger"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/RunStatus"
+          },
+          "queuedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "finishedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "finishedAt", "id", "queuedAt", "status", "trigger" ]
       },
       "RunActiveProblem" : {
         "type" : "object",
@@ -2280,6 +2402,36 @@
         },
         "required" : [ "addedBytes", "partial", "repositoryId", "snapshotId", "totalBytes" ]
       },
+      "CatchUp" : {
+        "type" : "object",
+        "description" : "What a catch-up run stands for: the fires missed while the server was down",
+        "properties" : {
+          "missedFrom" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "The first fire missed"
+          },
+          "missedUntil" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "The last fire missed; with a capped count, the last one counted"
+          },
+          "missedCount" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "How many fires were missed (counting stops at 10 000)"
+          },
+          "missedCountCapped" : {
+            "type" : "boolean",
+            "description" : "More fires were missed than counted: missedCount is a lower bound"
+          },
+          "timezone" : {
+            "type" : "string",
+            "description" : "The schedule's time zone, to show the period in"
+          }
+        },
+        "required" : [ "missedCount", "missedCountCapped", "missedFrom", "missedUntil", "timezone" ]
+      },
       "Run" : {
         "type" : "object",
         "description" : "A run with its steps",
@@ -2331,13 +2483,17 @@
             "items" : {
               "$ref" : "#/components/schemas/RunStep"
             }
+          },
+          "catchUp" : {
+            "description" : "Set only for trigger catch_up: the downtime it stands for",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/CatchUp"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "agentId", "finishedAt", "id", "message", "queuedAt", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "steps", "trigger" ]
-      },
-      "RunStatus" : {
-        "type" : "string",
-        "enum" : [ "queued", "dispatched", "running", "succeeded", "failed", "cancelled" ]
+        "required" : [ "agentId", "catchUp", "finishedAt", "id", "message", "queuedAt", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "steps", "trigger" ]
       },
       "RunStep" : {
         "type" : "object",
@@ -2431,10 +2587,6 @@
           }
         },
         "required" : [ "action", "agentId", "backup", "bytesProcessed", "bytesTotal", "dispatchedAt", "filesProcessed", "filesTotal", "finishedAt", "id", "message", "ordinal", "phase", "plugin", "queuedAt", "repositoryName", "sourceId", "startedAt", "status" ]
-      },
-      "RunTrigger" : {
-        "type" : "string",
-        "enum" : [ "schedule", "manual", "verification", "catch_up" ]
       },
       "StepAction" : {
         "type" : "string",
@@ -2863,6 +3015,10 @@
             "format" : "date-time",
             "description" : "skipped_downtime: the last fire missed"
           },
+          "missedCountCapped" : {
+            "type" : "boolean",
+            "description" : "skipped_downtime: more fires were missed than counted; missedCount is a lower bound"
+          },
           "skippedInRow" : {
             "type" : "integer",
             "format" : "int32",
@@ -2877,7 +3033,7 @@
             "format" : "date-time"
           }
         },
-        "required" : [ "alert", "id", "kind", "missedCount", "missedUntil", "outcome", "reason", "recordedAt", "runId", "scheduledFor", "skippedInRow" ]
+        "required" : [ "alert", "id", "kind", "missedCount", "missedCountCapped", "missedUntil", "outcome", "reason", "recordedAt", "runId", "scheduledFor", "skippedInRow" ]
       },
       "ScheduleFireKind" : {
         "type" : "string",
@@ -2924,6 +3080,37 @@
           }
         },
         "required" : [ "expiresAt", "tenantId" ]
+      },
+      "SchedulePreview" : {
+        "type" : "object",
+        "description" : "A schedule as it would be saved, in words, with its nearest fires; nothing is stored",
+        "properties" : {
+          "cron" : {
+            "type" : "string",
+            "description" : "Five fields, single-spaced, as PUT schedule would store it"
+          },
+          "timezone" : {
+            "type" : "string",
+            "description" : "The zone the fires are read in: the requested one, or the server's"
+          },
+          "description" : {
+            "type" : "string",
+            "description" : "The schedule in words in the language asked for"
+          },
+          "nextFires" : {
+            "type" : "array",
+            "description" : "The three nearest fires strictly after now",
+            "items" : {
+              "type" : "string",
+              "format" : "date-time"
+            }
+          },
+          "tooFrequent" : {
+            "type" : "boolean",
+            "description" : "Two of the next 100 fires are closer than 15 minutes: a warning, not a ban"
+          }
+        },
+        "required" : [ "cron", "description", "nextFires", "timezone", "tooFrequent" ]
       },
       "RunPage" : {
         "type" : "object",
@@ -2989,9 +3176,17 @@
           "finishedAt" : {
             "type" : [ "string", "null" ],
             "format" : "date-time"
+          },
+          "catchUp" : {
+            "description" : "Set only for trigger catch_up: the downtime it stands for",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/CatchUp"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "agentId", "finishedAt", "id", "message", "queuedAt", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "trigger" ]
+        "required" : [ "agentId", "catchUp", "finishedAt", "id", "message", "queuedAt", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "trigger" ]
       },
       "LogLevel" : {
         "type" : "string",

@@ -74,6 +74,17 @@ export const contractChecks = [
     }),
   ),
 
+  http.get('/api/v1/schedule-preview', ({ response }) =>
+    response(200).json({
+      cron: '0 2 * * *',
+      timezone: 'UTC',
+      description: 'Every day at 02:00',
+      // @ts-expect-error: the fires are instants as text
+      nextFires: [1, 2, 3],
+      tooFrequent: false,
+    }),
+  ),
+
   // @ts-expect-error: a run of a source is created with POST, there is no PUT
   http.put('/api/v1/sources/{sourceId}/runs', () => HttpResponse.json({})),
 

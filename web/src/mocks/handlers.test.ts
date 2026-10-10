@@ -5,7 +5,17 @@ import createClient from 'openapi-fetch'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { paths } from '../api/schema'
 import filesSchema from '../../../agent/plugins/files/schema.json'
-import { agents, ids, MOCK_PASSWORD, runs, snapshots, stepLogs } from './fixtures'
+import {
+  agents,
+  ids,
+  MOCK_PASSWORD,
+  runs,
+  scheduleFires,
+  schedulePreviews,
+  schedules,
+  snapshots,
+  stepLogs,
+} from './fixtures'
 import { state } from './state'
 
 // The mock API as W2 pages see it: the typed client against the MSW handlers.
@@ -862,5 +872,147 @@ describe('W2 mocks', () => {
       params: { path: { runId: ids.failedRun, stepId: ids.failedStep } },
     })
     expect(other.data?.truncated).toBe(false)
+  })
+})
+
+describe('F3b schedule mocks', () => {
+  beforeEach(signIn)
+  const longCron = `${'0,'.repeat(100)}0 2 * * *`
+  const preview = (query: Record<string, string>) =>
+    api.GET('/api/v1/schedule-preview', { params: { query: { cron: '0 2 * * *', ...query } } })
+  const schedulePath = (sourceId: string) => ({ params: { path: { sourceId } } })
+
+  test.each([['0 2 * *'], [longCron]])(
+    'the preview of %j is 422 at the cron field',
+    async (cron) => {
+      const { response, error } = await preview({ cron })
+      expect(response.status).toBe(422)
+      expect(error).toMatchObject({ code: 'validation_failed', errors: [{ field: 'cron' }] })
+    },
+  )
+
+  test('the preview refuses a zone that is not IANA and a language that is neither ru nor en', async () => {
+    expect((await preview({ timezone: '+03:00' })).error).toMatchObject({
+      errors: [{ field: 'timezone' }],
+    })
+    expect((await preview({ lang: 'de' })).error).toMatchObject({ errors: [{ field: 'lang' }] })
+  })
+
+  test.each([
+    ['0 2 * * *', 'ru'],
+    ['0 2 * * *', 'en'],
+    ['0 * * * *', 'ru'],
+    ['30 2 * * 1-5', 'ru'],
+    ['0 3 * * 0', 'ru'],
+    ['*/5 * * * *', 'ru'],
+  ] as const)('the preview of %s in %s is the fixture of the server answer', async (cron, lang) => {
+    const { data } = await preview({ cron, timezone: 'Europe/Berlin', lang })
+    const fixture = schedulePreviews[cron]
+    expect(data).toEqual({
+      cron,
+      timezone: 'Europe/Berlin',
+      description: fixture[lang],
+      nextFires: fixture.nextFires,
+      tooFrequent: fixture.tooFrequent,
+    })
+  })
+
+  test('a cron without a fixture is a custom schedule with fires a day apart', async () => {
+    const { data } = await preview({ cron: '0 2 1-7 * 1', lang: 'ru' })
+    expect(data?.description).toBe('Особое расписание: 0 2 1-7 * 1')
+    expect(data?.tooFrequent).toBe(false)
+    const fires = (data?.nextFires ?? []).map((value) => Date.parse(value))
+    expect(fires).toHaveLength(3)
+    expect(fires[1] - fires[0]).toBe(86_400_000)
+    expect(fires[2] - fires[1]).toBe(86_400_000)
+    expect(fires[0]).toBeGreaterThan(Date.now())
+  })
+
+  test('without a zone the preview is in the zone of the mock server, UTC, and names it', async () => {
+    expect((await preview({})).data?.timezone).toBe('UTC')
+  })
+
+  test('the cron is returned as the server would store it', async () => {
+    expect((await preview({ cron: '  0   2 * *  *  ' })).data?.cron).toBe('0 2 * * *')
+  })
+
+  test('the preview needs a session', async () => {
+    await api.DELETE('/api/v1/session')
+    expect((await preview({})).response.status).toBe(401)
+  })
+
+  test('saving a schedule with a cron of 209 characters is 422 and the schedule stays', async () => {
+    const before = structuredClone(state.schedules.find((s) => s.sourceId === ids.etcSource))
+    const { response, error } = await api.PUT('/api/v1/sources/{sourceId}/schedule', {
+      ...schedulePath(ids.etcSource),
+      body: { cron: longCron, timezone: 'UTC', enabled: true },
+    })
+    expect(response.status).toBe(422)
+    expect(error).toMatchObject({ errors: [{ field: 'cron' }] })
+    expect(state.schedules.find((s) => s.sourceId === ids.etcSource)).toEqual(before)
+  })
+
+  test('a schedule saved without notifyOnSuccess has it off, and its last run is none', async () => {
+    const put = await api.PUT('/api/v1/sources/{sourceId}/schedule', {
+      ...schedulePath(ids.homeSource),
+      body: { cron: '0 2 * * *', timezone: 'UTC', enabled: true },
+    })
+    expect(put.data?.notifyOnSuccess).toBe(false)
+    const { data } = await api.GET(
+      '/api/v1/sources/{sourceId}/schedule',
+      schedulePath(ids.homeSource),
+    )
+    expect(data).toMatchObject({ notifyOnSuccess: false, lastRun: null })
+    const on = await api.PUT('/api/v1/sources/{sourceId}/schedule', {
+      ...schedulePath(ids.homeSource),
+      body: { cron: '0 2 * * *', timezone: 'UTC', enabled: true, notifyOnSuccess: true },
+    })
+    expect(on.data?.notifyOnSuccess).toBe(true)
+  })
+
+  test('replacing a schedule keeps its last run', async () => {
+    const { data } = await api.PUT('/api/v1/sources/{sourceId}/schedule', {
+      ...schedulePath(ids.etcSource),
+      body: { cron: '0 3 * * *', timezone: 'UTC', enabled: true },
+    })
+    expect(data?.lastRun).toEqual(schedules[0].lastRun)
+  })
+
+  test('changing a source leaves its schedule as it was', async () => {
+    const source = must(await api.GET('/api/v1/sources/{sourceId}', schedulePath(ids.etcSource)))
+    await api.PUT('/api/v1/sources/{sourceId}', {
+      ...schedulePath(ids.etcSource),
+      body: { ...source, name: 'renamed' },
+    })
+    const { data } = await api.GET(
+      '/api/v1/sources/{sourceId}/schedule',
+      schedulePath(ids.etcSource),
+    )
+    expect(data?.cron).toBe('0 21 * * *')
+  })
+
+  test('the fixtures cover the states of F3b', () => {
+    expect(schedules.some((s) => s.enabled)).toBe(true)
+    expect(schedules.some((s) => !s.enabled)).toBe(true)
+    expect(schedules.some((s) => s.catchUpAt !== null)).toBe(true)
+    expect(schedules.some((s) => s.sourceId === ids.homeSource)).toBe(false)
+    const fires = Object.values(scheduleFires).flat()
+    const outcomes = new Set(fires.map((f) => `${f.outcome}/${f.reason ?? 'none'}`))
+    expect(outcomes).toEqual(
+      new Set([
+        'run_created/none',
+        'skipped_active/none',
+        'skipped_gone/agent_revoked',
+        'skipped_gone/source_deleted',
+        'refused/unknown_plugin',
+        'refused/unknown_repository',
+        'skipped_downtime/none',
+      ]),
+    )
+    expect(fires.some((f) => f.alert)).toBe(true)
+    expect(fires.some((f) => f.missedCountCapped)).toBe(true)
+    expect(new Set(runs.map((r) => r.trigger))).toEqual(new Set(['manual', 'schedule', 'catch_up']))
+    expect(runs.filter((r) => r.trigger === 'catch_up').every((r) => r.catchUp !== null)).toBe(true)
+    expect(runs.filter((r) => r.trigger !== 'catch_up').every((r) => r.catchUp === null)).toBe(true)
   })
 })

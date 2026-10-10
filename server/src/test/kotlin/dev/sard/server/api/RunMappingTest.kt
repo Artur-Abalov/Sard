@@ -10,6 +10,7 @@ import dev.sard.server.runs.RunView
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepView
 import dev.sard.server.runs.Trigger
+import dev.sard.server.scheduler.CatchUpPeriod
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import java.time.Instant
@@ -72,14 +73,14 @@ class RunMappingTest {
                 status.name,
                 MutFlow
                     .underTest {
-                        RunMapping.run(run(status))
+                        RunMapping.run(run(status), null)
                     }.status.name,
             )
         }
         for (trigger in Trigger.entries) {
             assertEquals(
                 trigger.name,
-                MutFlow.underTest { RunMapping.run(run(trigger = trigger)) }.trigger.name,
+                MutFlow.underTest { RunMapping.run(run(trigger = trigger), null) }.trigger.name,
             )
         }
         for (action in Action.entries) {
@@ -125,18 +126,35 @@ class RunMappingTest {
 
     @Test
     fun `a run has its steps, a summary has none`() {
-        assertEquals(1, MutFlow.underTest { RunMapping.run(run()) }.steps.size)
-        val summary = MutFlow.underTest { RunMapping.summary(run()) }
+        assertEquals(1, MutFlow.underTest { RunMapping.run(run(), null) }.steps.size)
+        val summary = MutFlow.underTest { RunMapping.summary(run(), null) }
         assertEquals(listOf(ID, ID, ID, "m"), listOf(summary.id, summary.sourceId, summary.agentId, summary.message))
         assertEquals(listOf(AT, AT, null), listOf(summary.queuedAt, summary.startedAt, summary.finishedAt))
     }
 
     @Test
     fun `a run and its summary name their source and say whether it was deleted`() {
-        val full = MutFlow.underTest { RunMapping.run(run()) }
-        val summary = MutFlow.underTest { RunMapping.summary(run()) }
+        val full = MutFlow.underTest { RunMapping.run(run(), null) }
+        val summary = MutFlow.underTest { RunMapping.summary(run(), null) }
 
         assertEquals(listOf("etc", true), listOf(full.sourceName, full.sourceDeleted))
         assertEquals(listOf("etc", true), listOf(summary.sourceName, summary.sourceDeleted))
+    }
+
+    @Test
+    fun `a catch-up period is named by a run and by its summary, as it is, capped or not`() {
+        val until = AT.plusSeconds(3600)
+        for (capped in listOf(true, false)) {
+            val period = CatchUpPeriod(AT, until, 12, capped, "Europe/Berlin")
+            val expected = CatchUp(AT, until, 12, capped, "Europe/Berlin")
+            assertEquals(expected, MutFlow.underTest { RunMapping.run(run(), period) }.catchUp)
+            assertEquals(expected, MutFlow.underTest { RunMapping.summary(run(), period) }.catchUp)
+        }
+    }
+
+    @Test
+    fun `a run without a period names none`() {
+        assertNull(MutFlow.underTest { RunMapping.run(run(), null) }.catchUp)
+        assertNull(MutFlow.underTest { RunMapping.summary(run(), null) }.catchUp)
     }
 }

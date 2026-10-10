@@ -25,6 +25,8 @@ sealed interface Due {
         val count: Int,
         val last: Instant,
         val next: Instant,
+        /** More fires passed than were counted (F3b): the count is "at least". */
+        val capped: Boolean = false,
     ) : Due
 
     companion object {
@@ -52,7 +54,8 @@ sealed interface Due {
                     .take(MISSED_COUNT_LIMIT)
                     .takeWhile { it <= now }
                     .toList()
-            return Missed(first, passed.size, passed.last(), schedule.nextAfter(now))
+            val capped = passed.size == MISSED_COUNT_LIMIT && schedule.nextAfter(passed.last()) <= now
+            return Missed(first, passed.size, passed.last(), schedule.nextAfter(now), capped)
         }
     }
 }

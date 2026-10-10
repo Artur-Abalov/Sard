@@ -3,16 +3,10 @@
 
 package dev.sard.server.notify
 
-import dev.sard.server.persistence.Agent
-import dev.sard.server.persistence.RunRecord
-import dev.sard.server.persistence.RunStepRecord
-import dev.sard.server.persistence.SourceRecord
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
-import dev.sard.server.runs.RunState
-import dev.sard.server.runs.RunViews
-import dev.sard.server.runs.Trigger
 import org.hibernate.Session
+import org.hibernate.query.MutationQuery
 import java.time.Instant
 import java.util.UUID
 
@@ -22,15 +16,36 @@ data class Unplanned(
     val runId: UUID,
 )
 
-/** A pending delivery whose time has come. */
+/** A schedule fire that raised an alert and has no delivery through a channel yet (F3b). */
+data class UnplannedAlert(
+    val tenantId: UUID,
+    val fireId: UUID,
+)
+
+/** A pending delivery whose time has come: about a run or, exactly one of the two, a schedule fire. */
 data class DueDelivery(
     val tenantId: UUID,
     val id: UUID,
-    val runId: UUID,
+    val runId: UUID?,
+    val fireId: UUID?,
     val channel: String,
     val attempts: Int,
     val createdAt: Instant,
-)
+) {
+    /** What the delivery is about, as the log names it. */
+    val subject: String get() = if (fireId != null) "schedule fire $fireId" else "run $runId"
+}
+
+/** What a claimed delivery tells about, read back at send time. */
+sealed interface Claimed {
+    data class Finished(
+        val notice: RunNotice,
+    ) : Claimed
+
+    data class Alert(
+        val notice: SkipAlertNotice,
+    ) : Claimed
+}
 
 private const val UNPLANNED = """
     select new dev.sard.server.notify.Unplanned(r.tenantId, r.id) from RunRecord r
@@ -40,8 +55,17 @@ private const val UNPLANNED = """
         where d.tenantId = r.tenantId and d.runId = r.id and d.channel = :channel)
     order by r.finishedAt, r.id"""
 
+private const val UNPLANNED_ALERTS = """
+    select new dev.sard.server.notify.UnplannedAlert(f.tenantId, f.id) from ScheduleFireRecord f
+    where f.alert = true and f.recordedAt >= :since
+      and not exists (
+        select 1 from NotificationDeliveryRecord d
+        where d.tenantId = f.tenantId and d.fireId = f.id and d.channel = :channel)
+    order by f.recordedAt, f.id"""
+
 private const val DUE = """
-    select new dev.sard.server.notify.DueDelivery(d.tenantId, d.id, d.runId, d.channel, d.attempts, d.createdAt)
+    select new dev.sard.server.notify.DueDelivery(
+        d.tenantId, d.id, d.runId, d.fireId, d.channel, d.attempts, d.createdAt)
     from NotificationDeliveryRecord d
     where d.status = 'pending' and d.nextAttemptAt <= :now and d.channel in :channels
     order by d.nextAttemptAt, d.id"""
@@ -53,16 +77,14 @@ private const val PLAN = """
     values (:id, :tenant, :run, :channel, 'pending', :now, :now)
     on conflict (tenant_id, run_id, channel) do nothing"""
 
+private const val PLAN_ALERT = """
+    insert into notification_deliveries (id, tenant_id, fire_id, channel, status, next_attempt_at, created_at)
+    values (:id, :tenant, :fire, :channel, 'pending', :now, :now)
+    on conflict (tenant_id, fire_id, channel) do nothing"""
+
 private const val CLAIM = """
     update notification_deliveries set next_attempt_at = :until
     where tenant_id = :tenant and id = :id and status = 'pending' and next_attempt_at <= :now"""
-
-private const val FIRST_STEP = "from RunStepRecord s where s.runId = :run order by s.ordinal"
-
-// D6 keeps one active run per source, so every run queued before this one has finished: the answer is fixed.
-private const val PREVIOUS_STATUS =
-    "select r.status from RunRecord r where r.sourceId = :source and r.finishedAt is not null " +
-        "and (r.queuedAt < :queued or (r.queuedAt = :queued and r.id < :run)) order by r.queuedAt desc, r.id desc"
 
 private const val GUARD = "where tenant_id = :tenant and id = :id and status = 'pending'"
 
@@ -87,15 +109,14 @@ class Deliveries(
         channel: String,
         since: Instant,
         limit: Int,
-    ): List<Unplanned> =
-        sessions.system { session ->
-            session
-                .createSelectionQuery(UNPLANNED, Unplanned::class.java)
-                .setParameter("since", since)
-                .setParameter("channel", channel)
-                .setMaxResults(limit)
-                .list()
-        }
+    ): List<Unplanned> = withoutDelivery(UNPLANNED, Unplanned::class.java, channel, since, limit)
+
+    /** Alerts recorded since [since] without a delivery through [channel], oldest first. */
+    fun unplannedAlerts(
+        channel: String,
+        since: Instant,
+        limit: Int,
+    ): List<UnplannedAlert> = withoutDelivery(UNPLANNED_ALERTS, UnplannedAlert::class.java, channel, since, limit)
 
     /** Pending deliveries through [channels] due at [now], longest waiting first. */
     fun due(
@@ -120,30 +141,26 @@ class Deliveries(
         runs: List<UUID>,
         channel: String,
         now: Instant,
-    ): Int =
-        sessions.inTenant(tenantId) { session ->
-            runs.sumOf { run ->
-                session
-                    .createNativeMutationQuery(PLAN)
-                    .setParameter("id", ids.next())
-                    .setParameter("tenant", tenantId)
-                    .setParameter("run", run)
-                    .setParameter("channel", channel)
-                    .setParameter("now", now)
-                    .executeUpdate()
-            }
-        }
+    ): Int = planAll(tenantId, PLAN, "run", runs, channel, now)
+
+    /** One pending delivery through [channel] for each alert of [fires] of [tenantId]; returns how many are new. */
+    fun planAlerts(
+        tenantId: UUID,
+        fires: List<UUID>,
+        channel: String,
+        now: Instant,
+    ): Int = planAll(tenantId, PLAN_ALERT, "fire", fires, channel, now)
 
     /**
      * Takes [delivery] for one attempt: it is not due again until [until], so a crash during the
-     * send leads to another attempt then. Returns the run to tell about, or null when another
+     * send leads to another attempt then. Returns what to tell about, or null when another
      * sender took it first.
      */
     fun claim(
         delivery: DueDelivery,
         now: Instant,
         until: Instant,
-    ): RunNotice? =
+    ): Claimed? =
         sessions.inTenant(delivery.tenantId) { session ->
             val claimed =
                 session
@@ -153,7 +170,7 @@ class Deliveries(
                     .setParameter("id", delivery.id)
                     .setParameter("now", now)
                     .executeUpdate() == 1
-            if (claimed) notice(session, delivery.tenantId, delivery.runId) else null
+            if (claimed) claimed(session, delivery) else null
         }
 
     /** Stores how the attempt ended; false when the delivery is no longer pending. */
@@ -174,95 +191,93 @@ class Deliveries(
                     }
 
                     else -> {
-                        close(session, decision, delivery.attempts, now)
+                        closing(session, decision, delivery.attempts, now)
                     }
                 }
             query.setParameter("tenant", delivery.tenantId).setParameter("id", delivery.id).executeUpdate() == 1
         }
 
-    private fun close(
-        session: Session,
-        decision: Decision,
-        attempts: Int,
-        now: Instant,
-    ) = session
-        .createNativeMutationQuery(CLOSE)
-        .setParameter("status", closedStatus(decision))
-        .setParameter("now", now)
-        .setParameter("attempts", closedAttempts(decision, attempts))
-        .setParameter("error", closedReason(decision), String::class.java)
-
-    private fun notice(
-        session: Session,
-        tenantId: UUID,
-        runId: UUID,
-    ): RunNotice {
-        val run = session.find(RunRecord::class.java, runId)
-        val source = session.find(SourceRecord::class.java, run.sourceId)
-        val step =
+    private fun <T> withoutDelivery(
+        query: String,
+        type: Class<T>,
+        channel: String,
+        since: Instant,
+        limit: Int,
+    ): List<T> =
+        sessions.system { session ->
             session
-                .createSelectionQuery(FIRST_STEP, RunStepRecord::class.java)
-                .setParameter("run", runId)
-                .setMaxResults(1)
-                .singleResult
-        val agentId = step.agentId
-        val agent = session.find(Agent::class.java, agentId)
-        val stepView = RunViews.step(step)
-        return RunNotice(
-            tenantId = tenantId,
-            runId = runId,
-            trigger = Trigger.of(run.trigger),
-            status = RunState.of(run.status),
-            message = run.message,
-            queuedAt = run.queuedAt,
-            finishedAt = checkNotNull(run.finishedAt) { "run $runId is not finished" },
-            sourceId = source.id,
-            sourceName = source.name,
-            agentId = agentId,
-            agentHostname = agent.hostname,
-            stepStatus = stepView.status,
-            startedAt = run.startedAt,
-            backup = stepView.backup?.let { BackupSizes(it.totalBytes, it.addedBytes) },
-            previousStatus = previousStatus(session, run),
-        )
-    }
+                .createSelectionQuery(query, type)
+                .setParameter("since", since)
+                .setParameter("channel", channel)
+                .setMaxResults(limit)
+                .list()
+        }
 
-    private fun previousStatus(
+    /** Runs the insert [sql] once per subject, bound to [subjectParameter]; returns how many rows are new. */
+    private fun planAll(
+        tenantId: UUID,
+        sql: String,
+        subjectParameter: String,
+        subjects: List<UUID>,
+        channel: String,
+        now: Instant,
+    ): Int =
+        sessions.inTenant(tenantId) { session ->
+            subjects.sumOf { subject ->
+                session
+                    .createNativeMutationQuery(sql)
+                    .setParameter("id", ids.next())
+                    .setParameter("tenant", tenantId)
+                    .setParameter(subjectParameter, subject)
+                    .setParameter("channel", channel)
+                    .setParameter("now", now)
+                    .executeUpdate()
+            }
+        }
+
+    private fun claimed(
         session: Session,
-        run: RunRecord,
-    ): RunState? =
-        session
-            .createSelectionQuery(PREVIOUS_STATUS, String::class.java)
-            .setParameter("source", run.sourceId)
-            .setParameter("queued", run.queuedAt)
-            .setParameter("run", run.id)
-            .setMaxResults(1)
-            .uniqueResult()
-            ?.let(RunState::of)
+        delivery: DueDelivery,
+    ): Claimed =
+        if (delivery.fireId != null) {
+            Claimed.Alert(Notices.alert(session, delivery.tenantId, delivery.fireId))
+        } else {
+            Claimed.Finished(Notices.finished(session, delivery.tenantId, checkNotNull(delivery.runId)))
+        }
 }
 
-private fun closedStatus(decision: Decision): String =
-    when (decision) {
-        Decision.Delivered -> "delivered"
-        Decision.Skipped -> "skipped"
-        is Decision.Failed -> "failed"
-        is Decision.Expired -> "expired"
-        is Decision.Retry -> error("a retry keeps the delivery pending")
-    }
-
-private fun closedAttempts(
+private fun closing(
+    session: Session,
     decision: Decision,
     attempts: Int,
-): Int =
-    when (decision) {
-        is Decision.Failed -> decision.attempts
-        is Decision.Expired -> decision.attempts
-        Decision.Delivered, Decision.Skipped, is Decision.Retry -> attempts
-    }
+    now: Instant,
+): MutationQuery {
+    val closing = Closing.of(decision, attempts)
+    return session
+        .createNativeMutationQuery(CLOSE)
+        .setParameter("status", closing.status)
+        .setParameter("now", now)
+        .setParameter("attempts", closing.attempts)
+        .setParameter("error", closing.reason, String::class.java)
+}
 
-private fun closedReason(decision: Decision): String? =
-    when (decision) {
-        is Decision.Failed -> decision.reason
-        is Decision.Expired -> decision.reason
-        Decision.Delivered, Decision.Skipped, is Decision.Retry -> null
+/** How a delivery ends: the status it closes with, the attempts counted, the last error if the end has one. */
+private class Closing(
+    val status: String,
+    val attempts: Int,
+    val reason: String?,
+) {
+    companion object {
+        fun of(
+            decision: Decision,
+            attempts: Int,
+        ): Closing =
+            when (decision) {
+                Decision.Delivered -> Closing("delivered", attempts, null)
+                Decision.Skipped -> Closing("skipped", attempts, null)
+                is Decision.Failed -> Closing("failed", decision.attempts, decision.reason)
+                is Decision.Expired -> Closing("expired", decision.attempts, decision.reason)
+                is Decision.Retry -> error("a retry keeps the delivery pending")
+            }
     }
+}

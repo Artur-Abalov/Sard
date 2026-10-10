@@ -133,3 +133,90 @@ export function formatRelative(value: string | null, now: number, language: stri
   const distance = `${Math.floor(seconds / size)} ${units[unit]}`
   return fill(now >= then ? relativeTime.ago : relativeTime.in, { value: distance })
 }
+
+// The time of a schedule is the zone's own, not the browser's, and names the zone (F3b, ВП3).
+const SCHEDULE_TIME: Intl.DateTimeFormatOptions = {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+}
+
+// "10 Oct 2026, 02:00 Europe/Berlin"; null -> EMPTY.
+export function formatScheduleTime(
+  value: string | null,
+  timeZone: string,
+  language: string,
+): string {
+  if (value === null) {
+    return EMPTY
+  }
+  const time = new Date(value).toLocaleString(language, { ...SCHEDULE_TIME, timeZone })
+  return `${time} ${timeZone}`
+}
+
+// A count with the space of its language between thousands, a plain one, so that it can be searched for.
+function formatCount(count: number, language: string): string {
+  return new Intl.NumberFormat(language).format(count).replace(/[  ]/g, ' ')
+}
+
+// "4 fires", "21 срабатывание": the noun agrees with the count by the rules of the language.
+export function formatFires(count: number, language: string): string {
+  const { fires } = dictionary(language).schedule
+  const category = new Intl.PluralRules(language).select(count)
+  return fill(fires[category as keyof typeof fires], { count: formatCount(count, language) })
+}
+
+// The span of missed fires in the zone of the schedule: a day once when both ends fall on it.
+function formatPeriod(from: string, until: string, timeZone: string, language: string): string {
+  const { period } = dictionary(language).schedule
+  const day = (value: string) =>
+    new Date(value).toLocaleDateString(language, { dateStyle: 'medium', timeZone })
+  const clock = (value: string) =>
+    new Date(value).toLocaleTimeString(language, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+      timeZone,
+    })
+  if (day(from) === day(until)) {
+    return fill(period.sameDay, {
+      from: clock(from),
+      until: clock(until),
+      date: day(from),
+      zone: timeZone,
+    })
+  }
+  const full = (value: string) =>
+    new Date(value).toLocaleString(language, { ...SCHEDULE_TIME, timeZone })
+  return fill(period.span, { from: full(from), until: full(until), zone: timeZone })
+}
+
+// The fires missed while the server was down; [capped]: the count stopped at its limit.
+export interface MissedFires {
+  from: string
+  until: string
+  count: number
+  capped: boolean
+  timezone: string
+}
+
+// "the server was down, 4 fires missed from 15:00 to 18:00 (...)". A capped count says "at least"
+// and names no end: the last fire counted is not the last one missed.
+export function formatMissed(missed: MissedFires, language: string): string {
+  const { schedule } = dictionary(language)
+  const count = formatFires(missed.count, language)
+  if (missed.capped) {
+    const from = formatScheduleTime(missed.from, missed.timezone, language)
+    return fill(schedule.downtimeCapped, { count, from })
+  }
+  const period = formatPeriod(missed.from, missed.until, missed.timezone, language)
+  return fill(schedule.downtime, { count, period })
+}
+
+// The mark of a catch-up run in a list: "catch-up — the server was down, ...".
+export function formatCatchUp(missed: MissedFires, language: string): string {
+  return fill(dictionary(language).schedule.catchUpMark, { text: formatMissed(missed, language) })
+}

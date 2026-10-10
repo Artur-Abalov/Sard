@@ -180,6 +180,7 @@ class NotifyConfiguration {
         json: ObjectMapper,
         extraChannels: ObjectProvider<NotificationChannel>,
         formatter: NotificationFormatter,
+        alertFormatter: SkipAlertFormatter,
         meters: MeterRegistry,
     ): NotificationService {
         val telegram = telegramChannel(credentials, properties.telegram, json)
@@ -188,6 +189,7 @@ class NotifyConfiguration {
             Deliveries(sessions, UuidV7(clock, SecureRandom())),
             activeChannels(channels),
             formatter,
+            alertFormatter,
             RetryPolicy(properties.retry()),
             properties.queue(),
             clock,
