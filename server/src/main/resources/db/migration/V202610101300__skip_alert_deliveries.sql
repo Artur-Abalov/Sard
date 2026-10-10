@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 -- Copyright 2026 Artur Abalov
 --
--- F3b (ADR 0054): the alert about fires skipped in a row goes through the same queue as run
+-- F3b (ADR 0055): the alert about fires skipped in a row goes through the same queue as run
 -- notifications. A delivery is about a finished run or about a schedule fire that raised an alert,
 -- never both: the retry, lease, time to live and metrics of the queue stay one piece of code.
 

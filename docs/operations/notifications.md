@@ -91,7 +91,7 @@ https://sard.example.com/runs/0192f0c4-7a10-7000-8000-00000000a001
 `sard.scheduler.skip-alert-threshold` (3): через ту же очередь, с теми же
 повторами и сроком жизни. Недоставленный алерт пишется в журнал как
 `Notification of schedule fire <id> through telegram <failed|expired>: …`
-(ADR 0054); его строки — в `notification_deliveries` с `fire_id`.
+(ADR 0055); его строки — в `notification_deliveries` с `fire_id`.
 
 ## Наблюдать
 - Метрики: `sard.notify.sent`, `sard.notify.retries`, `sard.notify.undelivered` (теги `channel`, `reason=failed|expired`), `sard.notify.pending`.

@@ -35,10 +35,17 @@ internal class AgentHost(
     val local: String = "",
     /** The agent image every command of this host runs: [E2e.agentImage] unless T3 needs the stand's. */
     private val image: String = E2e.agentImage,
+    /**
+     * `/etc/sard` on a volume of the host, as on a real one (Н24, ADR 0047): `agent.d` and `secrets`
+     * written by `sudo sard-agent repo add` stay for the next command and for the agent. Without it
+     * (the default) the config is copied into every container and nothing else of `/etc/sard` stays.
+     */
+    persistentEtc: Boolean = false,
 ) {
     /** The volume mounted at [STATE_DIR]: state, TLS files, repository, the executor's journal. */
     val state = sardEnv.volume()
     private val cache = sardEnv.volume()
+    private val etc = if (persistentEtc) sardEnv.volume() else null
     private var runs = 0
 
     /** How a command ended. Its output is in the environment's failure logs, masked. */
@@ -60,6 +67,7 @@ internal class AgentHost(
         files: Map<String, Transferable> = emptyMap(),
         env: Map<String, String> = emptyMap(),
         timeout: Duration = RUN_TIMEOUT,
+        asRoot: Boolean = false,
         inspect: (GenericContainer<*>) -> Unit = {},
     ): Exit {
         val name = "$hostname-run-${++runs}"
@@ -67,7 +75,11 @@ internal class AgentHost(
             sardEnv.track(name, container)
             files.forEach { (path, content) -> container.withCopyToContainer(content, path) }
             container.withEnv(env)
-            container.withCreateContainerCmdModifier { it.withEntrypoint(*command) }
+            container.withCreateContainerCmdModifier { create ->
+                create.withEntrypoint(*command)
+                // `sudo`: the command runs as root, which the image has no sudo for (ADR 0050).
+                if (asRoot) create.withUser("0")
+            }
             container.withStartupCheckStrategy(Exited.withTimeout(timeout))
             container.start()
             inspect(container)
@@ -117,6 +129,44 @@ internal class AgentHost(
         name: String,
         vararg flags: String,
     ): Exit = run(AgentImage.AGENT_BINARY, "repo", "init", "--config", CONFIG, *flags, name)
+
+    /**
+     * `sudo sard-agent repo add <name> <address> [flags]` (A8b): as root, on the host's `/etc/sard`
+     * and state volumes. [secretKey] reaches `--secret-key-stdin` from a file inside the container
+     * (a container has no stdin to feed), never the command line; [files] are copied in first.
+     */
+    fun repoAdd(
+        name: String,
+        address: String,
+        vararg flags: String,
+        secretKey: String? = null,
+        files: Map<String, Transferable> = emptyMap(),
+        timeout: Duration = RUN_TIMEOUT,
+    ): Exit {
+        check(etc != null) { "repo add needs a host with persistentEtc" }
+        secretKey?.let(sardEnv::secret)
+        val stdin = if (secretKey != null) " --secret-key-stdin < $SECRET_KEY_FILE" else ""
+        val line = listOf(AgentImage.AGENT_BINARY, "repo", "add", "--config", CONFIG, name, address, *flags).joinToString(" ") { "'$it'" }
+        val keyFile = secretKey?.let { mapOf(SECRET_KEY_FILE to Transferable.of(it.toByteArray(), TarFiles.OWNER_ONLY)) }.orEmpty()
+        return run("/bin/sh", "-c", "exec $line$stdin", files = files + keyFile, timeout = timeout, asRoot = true)
+    }
+
+    /** `sudo sard-agent repo password <name> --reveal`: the password, with its line break dropped; registered as a log secret. */
+    fun revealPassword(name: String): String {
+        val exit = run(AgentImage.AGENT_BINARY, "repo", "password", "--config", CONFIG, "--reveal", name, asRoot = true)
+        check(exit.code == 0) { "repo password exited ${exit.code}: ${exit.stderr}" }
+        return exit.stdout.trimEnd('\n').also(sardEnv::secret)
+    }
+
+    /** Owner and mode of [path] on this host, as `uid:gid mode` (`stat`). */
+    fun stat(path: String): String {
+        val exit = run("/usr/bin/stat", "-c", "%u:%g %a", path)
+        check(exit.code == 0) { "stat $path exited ${exit.code}: ${exit.stderr}" }
+        return exit.stdout.trim()
+    }
+
+    /** Whether [path] exists on this host. */
+    fun exists(path: String): Boolean = run("/usr/bin/test", "-e", path).code == 0
 
     /** Puts [files] at [destination] on this host's disk (a path on one of its volumes). */
     fun put(
@@ -214,9 +264,12 @@ internal class AgentHost(
             withCopyToContainer(Transferable.of(config(), TarFiles.READABLE), CONFIG)
             withCreateContainerCmdModifier { create ->
                 create.withHostName(hostname)
-                create.hostConfig?.withBinds(Bind(state, Volume(STATE_DIR)), Bind(cache, Volume(CACHE_DIR)))
+                create.hostConfig?.withBinds(*binds().toTypedArray())
             }
         }
+
+    private fun binds(): List<Bind> =
+        listOfNotNull(Bind(state, Volume(STATE_DIR)), Bind(cache, Volume(CACHE_DIR)), etc?.let { Bind(it, Volume(ETC_DIR)) })
 
     private fun config() =
         """
@@ -240,7 +293,13 @@ internal class AgentHost(
     }
 
     companion object {
-        const val CONFIG = "/etc/sard/agent.yaml"
+        const val ETC_DIR = "/etc/sard"
+        const val CONFIG = "$ETC_DIR/agent.yaml"
+
+        /** What `sudo sard-agent repo add` makes under [ETC_DIR] (A8b, Р30). */
+        const val SECRETS_DIR = "$ETC_DIR/secrets"
+        const val FRAGMENT_DIR = "$ETC_DIR/agent.d"
+        private const val SECRET_KEY_FILE = "/run/secret-key"
         const val STATE_DIR = "/var/lib/sard-agent"
         const val CACHE_DIR = "/var/cache/sard/restic"
         const val CA_FILE = "$STATE_DIR/ca.pem"

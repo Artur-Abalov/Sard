@@ -44,7 +44,7 @@ data class RunNotice(
 )
 
 /**
- * A schedule fire that raised the alert (F3b, ADR 0054), read back at send time with the names a person
+ * A schedule fire that raised the alert (F3b, ADR 0055), read back at send time with the names a person
  * recognises: the source and the agent's host, never configuration or repository.
  */
 data class SkipAlertNotice(

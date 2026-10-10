@@ -11,7 +11,7 @@ import (
 
 func fakeLookup(uid, gid string) func(string) (*user.User, error) {
 	return func(name string) (*user.User, error) {
-		return &user.User{Username: name, Uid: uid, Gid: gid}, nil
+		return &user.User{Username: name, Uid: uid, Gid: gid, HomeDir: "/var/lib/svc"}, nil
 	}
 }
 
@@ -20,9 +20,9 @@ func TestLookupReadsDecimalIDsUpToTheLargestUint32(t *testing.T) {
 		uid, gid string
 		want     User
 	}{
-		{"990", "991", User{"svc", 990, 991}},
-		{"99", "99", User{"svc", 99, 99}},
-		{"3000000000", "4294967295", User{"svc", 3000000000, 4294967295}},
+		{"990", "991", User{Name: "svc", UID: 990, GID: 991, Home: "/var/lib/svc"}},
+		{"99", "99", User{Name: "svc", UID: 99, GID: 99, Home: "/var/lib/svc"}},
+		{"3000000000", "4294967295", User{Name: "svc", UID: 3000000000, GID: 4294967295, Home: "/var/lib/svc"}},
 	} {
 		got, err := lookupWith(fakeLookup(c.uid, c.gid), "svc")
 		if err != nil || got != c.want {

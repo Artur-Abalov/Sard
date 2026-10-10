@@ -25,7 +25,7 @@ func TestHelpDescribesFlagsPrivilegesAndExitCodes(t *testing.T) {
 		{[]string{"repo", "password"}, []string{"--reveal", "--config"}, "service user", []int{0, 2}},
 		{[]string{"repo", "list"}, []string{"--json", "--timeout", "--config"}, "service user", []int{0, 1, 2, 6}},
 		{[]string{"repo", "init"}, []string{"--generate-password", "--timeout", "--config"}, "sudo", []int{0, 1, 2, 4, 6, 7}},
-		{[]string{"repo", "add"}, []string{"--password-stdin", "--password-from-file", "--no-restart", "--timeout", "--config"}, "sudo", []int{0, 1, 2, 4, 6, 7}},
+		{[]string{"repo", "add"}, []string{"--password-stdin", "--password-from-file", "--no-restart", "--timeout", "--connect-timeout", "--config"}, "sudo", []int{0, 1, 2, 4, 5, 6, 7}},
 	}
 	for _, c := range cases {
 		name := strings.Join(c.words, " ")
@@ -67,7 +67,7 @@ func TestRepoAddHelpDescribesTheAddressTheApplyingAndTheSudo(t *testing.T) {
 	h := newSetupHost(t)
 	code, stdout, _ := h.sudo("repo", "add", "--help")
 	assertCode(t, code, exitOK)
-	for _, want := range []string{"only a local path", "through sudo", "symbolic link", "/run, not /var/run", "sard-agent.service", "a step is running", "D13"} {
+	for _, want := range []string{"a local path (an absolute path", "through sudo", "symbolic link", "/run, not /var/run", "sard-agent.service", "a step is running", "D13"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("help lacks %q:\n%s", want, stdout)
 		}
@@ -108,5 +108,23 @@ func TestSecretIsDispatchedFromTheAgentCommandLine(t *testing.T) {
 	assertCode(t, code, exitUsage)
 	if !strings.Contains(stderr, "sard-agent secret: want a subcommand") {
 		t.Fatalf("stderr %q", stderr)
+	}
+}
+
+func TestRepoAddHelpDescribesTheS3Flags(t *testing.T) {
+	h := newSetupHost(t)
+	code, stdout, _ := h.sudo("repo", "add", "--help")
+	assertCode(t, code, exitOK)
+	for _, want := range []string{
+		"--access-key-id", "--secret-key-stdin", "--secret-key-from-file", "--region", "--connect-timeout",
+		"never the value of a flag", "secrets/restic-<name>.env", "AWS_ACCESS_KEY_ID", "s3:https://",
+		"STORAGE_ACCESS_DENIED", "S3_KEY_REJECTED", "BUCKET_NOT_FOUND", "ADDRESS_INVALID", "credentials updated",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("help lacks %q:\n%s", want, stdout)
+		}
+	}
+	if strings.Contains(stdout, "only a local path") {
+		t.Errorf("help still calls s3: unsupported:\n%s", stdout)
 	}
 }

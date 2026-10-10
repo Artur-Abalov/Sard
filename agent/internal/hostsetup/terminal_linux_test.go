@@ -152,3 +152,25 @@ func TestTerminalThatCannotBeConfiguredIsReported(t *testing.T) {
 		t.Fatal("no error for a file that is not a terminal")
 	}
 }
+
+// Р40: the confirmation of a host key is read with the echo on, so that
+// the operator sees what they answer; the line comes back without its break.
+func TestALineAskedAtTheTerminalIsReadWithTheEchoOn(t *testing.T) {
+	master, slave := openPTY(t)
+	spy := &promptSpy{t: t, slave: slave, master: master, typed: "yes"}
+	term := hostsetup.StdinTerminal(slave, spy)
+	prompter, isPrompter := term.(hostsetup.LinePrompter)
+	if !isPrompter {
+		t.Fatal("the terminal cannot ask a line")
+	}
+	got, err := prompter.ReadLine("Trust it? ")
+	if err != nil || string(got) != "yes" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+	if len(spy.echoAtAsk) != 1 || !spy.echoAtAsk[0] {
+		t.Fatalf("echo at the prompt: %v", spy.echoAtAsk)
+	}
+	if !strings.Contains(spy.promptSeen.String(), "Trust it? ") {
+		t.Fatalf("prompt %q", spy.promptSeen.String())
+	}
+}

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Artur-Abalov/sard/agent/internal/repoconnect"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 )
 
@@ -323,27 +324,6 @@ func TestAnAddressedNameOfTheMainConfigIsRefused(t *testing.T) {
 		t.Fatalf("stderr %q", stderr)
 	}
 	h.assertHostUnchanged(before)
-}
-
-func TestOtherBackendsAreAStubInThisSlice(t *testing.T) {
-	cases := map[string]string{
-		"s3:https://s3.example.com/bucket/extra":                  "s3",
-		"sftp:backup@nas.example.com:/extra":                      "sftp",
-		"rest:https://u:" + urlMarker + "@rest.example.com/extra": "rest",
-		"b2:bucket:extra": "b2",
-	}
-	for address, kind := range cases {
-		h := newSetupHost(t)
-		before := h.hostTree()
-		code, stdout, stderr := h.sudo("repo", "add", "extra", address, "--config", "C")
-		assertRefusal(t, code, stderr, exitUsage, "BACKEND_NOT_SUPPORTED")
-		if !strings.Contains(stderr, kind) || !strings.Contains(stderr, "only a local path") {
-			t.Errorf("stderr %q", stderr)
-		}
-		h.assertNoBackendCalls()
-		h.assertHostUnchanged(before)
-		h.assertValuesHidden(stdout, stderr)
-	}
 }
 
 func TestUnusableLocalPathsAreRefused(t *testing.T) {
@@ -711,7 +691,7 @@ func TestAnAddressInTheSummaryNeverShowsACredential(t *testing.T) {
 	c := newHostCmd("repo add", hostOptions{configPath: h.cfgPath}, hostsetup.Principal{}, &bytes.Buffer{}, &bytes.Buffer{}, h.deps)
 	var out bytes.Buffer
 	c.stdout = &out
-	st := &addState{name: "extra", url: "rest:https://u:" + urlMarker + "@rest.example.com/extra", id: "X"}
+	st := &addState{name: "extra", url: "rest:https://u:" + urlMarker + "@rest.example.com/extra", State: repoconnect.State{ID: "X"}}
 	c.printAdded(st)
 	c.printUnchanged(st, "X")
 	if strings.Contains(out.String(), urlMarker) || !strings.Contains(out.String(), "u:***@rest.example.com") {

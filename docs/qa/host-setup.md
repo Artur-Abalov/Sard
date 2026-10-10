@@ -1,8 +1,15 @@
-# QA: настройка хоста агента командами `sard-agent` (A8a)
+# QA: настройка хоста агента командами `sard-agent` (A8a, A8b)
 
 Сценарии: `docs/specs/agent/host-setup.feature`. Срез A8a утверждён владельцем
-2026-10-07; ответы на О1–О5, Н1–Н13 внесены в спецификацию. Классы и номера
-кодов выхода — A2b (ADR 0025).
+2026-10-07; ответы на О1–О5, Н1–Н13 внесены в спецификацию. Срез A8b (части
+8–11 ниже) утверждён владельцем 2026-10-08 (Н14–Н25); шаги, которые проверяют
+решение по ответу, помечены «(Н<номер>)». Шаблоны адресов провайдеров A8b-3
+(часть 11) подтверждены владельцем 2026-10-09. Поправки П12–П17 (2026-10-09)
+учтены в шагах 51, 54а, 54б; поправки A8b-2 П18–П28 — в шагах 62а–62в,
+66, 66а, 70. A8b-1 реализован; его e2e на стенде ещё не
+прогнаны. Классы и номера кодов выхода —
+A2b (ADR 0025); A8b добавляет к `repo add` код `5` (доверие: ключ хоста
+SFTP).
 
 Выполнима после реализации A8a. Ожидаемый результат — после «→». Любое
 расхождение — дефект.
@@ -199,10 +206,11 @@ pid() { systemctl show -p MainPID --value sard-agent; }
     перезапущена.
 27. Конфликт: `sudo $AG repo add main /srv/sard/other` → `exit=4`,
     `REPOSITORY_CONFLICT`, `/srv/sard/main`, совет `repo remove main`.
-28. Заглушки: `sudo $AG repo add s3x s3:https://s3.example.com/b/x`,
-    `… sftpx sftp:u@h:/x`, `… restx rest:https://u:URL-MARKER@h/x`
-    → каждый раз `exit=2`, `BACKEND_NOT_SUPPORTED`, вид адреса;
-    `grep -c URL-MARKER "$OUT/all"` → `0` (выполнять через `run`).
+28. Заглушки (после A8b — Р27: s3 и sftp больше не заглушка, их проверяют
+    части 8 и 9): `run sudo $AG repo add restx rest:https://u:URL-MARKER@h/x`,
+    `run sudo $AG repo add b2x b2:bucket:x`
+    → каждый раз `exit=2`, `BACKEND_NOT_SUPPORTED`, вид адреса и
+    `a local path, s3: or sftp:`; `grep -c URL-MARKER "$OUT/all"` → `0`.
 29. Путь: `sudo $AG repo add r1 relative` → `exit=2`, `LOCAL_PATH_INVALID`;
     `sudo $AG repo add r2 /etc/hostname` → `exit=2`, `LOCAL_PATH_INVALID`.
 29а. (П10.) Символьная ссылка:
@@ -283,6 +291,251 @@ pid() { systemctl show -p MainPID --value sard-agent; }
     коды выхода.
 41. `grep -cF "$SECRET" "$OUT/all"` → `0`; `grep -c URL-MARKER "$OUT/all"` → `0`;
     `sudo journalctl -t sard-agent --no-pager | grep -cF "$SECRET"` → `0`.
+
+## Часть 8. Хранилище S3 (A8b-1)
+
+Нужно S3-совместимое хранилище, доступное с обеих ВМ: Garage на третьей
+машине (как стенд F2, `test/e2e/README.md`) или облачное хранилище. В нём:
+бакет `$B`, ключ `$KID`/`$KSEC` с чтением, записью и удалением в `$B`, ключ
+`$ROID`/`$ROSEC` только на чтение в `$B`, бакета `$NOB` нет, и ключ не может
+создавать бакеты. Значения ключей — в файлах `$OUT/ksec`, `$OUT/rosec`
+(`chmod 0600`), в командную строку не попадают.
+
+```bash
+S3=https://<адрес хранилища>; B=<бакет>; NOB=<имя бакета, которого нет>
+KID=<id ключа>; ROID=<id ключа только на чтение>
+SEC_MARK=$(cat "$OUT/ksec")              # только для grep утечек
+```
+
+42. Без идентификатора ключа: `run sudo $AG repo add s1 s3:$S3/$B/s1 --secret-key-from-file "$OUT/ksec"`
+    → `exit=2`, сообщение называет `--access-key-id`.
+43. Значение флагом: `run sudo $AG repo add s1 s3:$S3/$B/s1 --access-key-id $KID --secret-key "$SEC_MARK"`
+    → `exit=2`; `grep -cF "$SEC_MARK" "$OUT/all"` → `0`.
+44. Учётные данные в адресе: `run sudo $AG repo add s1 "s3:https://u:URL-MARKER@${S3#https://}/$B/s1" --access-key-id $KID --secret-key-from-file "$OUT/ksec"`
+    → `exit=2`, `ADDRESS_INVALID`; `grep -c URL-MARKER "$OUT/all"` → `0`.
+45. Подключение пустого пути: `T=$(date '+%F %T'); P0=$(pid); run sudo $AG repo add s1 s3:$S3/$B/s1 --access-key-id $KID --secret-key-stdin < "$OUT/ksec"`
+    → `exit=0`; stdout: `s1`, `s3`, адрес, repository_id из 64 шестнадцатеричных
+    символов (далее `Y`), «created», `only on this host`, `unrecoverable`,
+    `/etc/sard/secrets/restic-s1.env`; предупреждения «на этом же хосте» нет;
+    «restarted», `pid` ≠ `$P0`.
+    `sudo stat -c '%U %G %a' /etc/sard/secrets/restic-s1.env /etc/sard/secrets/restic-s1.pass`
+    → `sard-agent sard-agent 600` дважды;
+    `sudo sed 's/=.*/=…/' /etc/sard/secrets/restic-s1.env` → ровно
+    `AWS_ACCESS_KEY_ID=…`, `AWS_SECRET_ACCESS_KEY=…` (без региона);
+    `sudo grep -c $'\r' /etc/sard/secrets/restic-s1.env` → `0`;
+    `sudo cat /etc/sard/agent.d/repo-s1.yaml` → `url: s3:…/s1`,
+    `password_file`, `env_file: /etc/sard/secrets/restic-s1.env`;
+    `ls /etc/systemd/system/sard-agent.service.d/sard-repo-s1.conf` → нет файла;
+    `audit "$T"` → одна строка `repository s1 added`.
+46. Сервер и бэкап: в консоли агент перечисляет `s1` с backend `s3`; источник
+    `files` на `/etc/hostname` с репозиторием `s1` → `succeeded`.
+47. Повтор без секрета: `P0=$(pid); T=$(date '+%F %T'); sudo $AG repo add s1 s3:$S3/$B/s1 --access-key-id $KID`
+    (в терминале) → сразу `exit=0`, `unchanged`, `Y`; ничего не спрошено;
+    `pid` = `$P0`; `audit "$T"` → пусто.
+48. Секрет с терминала: `sudo $AG repo add s2 s3:$S3/$B/s2 --access-key-id $KID`
+    → дважды запрос без эха; ввести разные значения → `exit=2`,
+    `SECRET_MISMATCH`, файлов `restic-s2.*` нет. Повторить, ввести `$KSEC`
+    дважды → `exit=0`. Затем `sudo $AG repo remove s2` → `exit=0`;
+    `/etc/sard/secrets/restic-s2.env` нет, `restic-s2.pass` на месте.
+49. Неверный секрет: `printf 'wrong' | run sudo $AG repo add s3 s3:$S3/$B/s3 --access-key-id $KID --secret-key-stdin`
+    → `exit=2`, `STORAGE_ACCESS_DENIED` (или `S3_KEY_REJECTED` у хранилищ,
+    различающих неверную подпись); сообщение говорит проверить ключ и права
+    на бакет `$B`; `sudo ls -A /etc/sard/secrets | grep -c 'restic-s3\.'` → `0`;
+    `/etc/sard/agent.d/repo-s3.yaml` нет; меньше 5 с.
+50. Ключ только на чтение к существующему репозиторию: `sudo $AG repo password s1 --reveal > "$OUT/s1.pass"`;
+    `run sudo $AG repo add s1ro s3:$S3/$B/s1 --access-key-id $ROID --secret-key-from-file "$OUT/rosec" --password-from-file "$OUT/s1.pass"`
+    → `exit=2`, `STORAGE_ACCESS_DENIED`, в сообщении строка restic о блокировке
+    (`unable to create lock`), не только `exit code 1`; файлов `restic-s1ro.*`
+    нет. (П29) То же в терминале без `--password-from-file`
+    (`sudo $AG repo add s1ro s3:$S3/$B/s1 --access-key-id $ROID --secret-key-from-file "$OUT/rosec"`)
+    → пароль спрошен (restic не берёт блокировку без пароля); после ввода
+    `exit=2`, `STORAGE_ACCESS_DENIED`, «attached» не напечатано, файлов
+    `restic-s1ro.*` нет.
+51. Нет бакета: `run sudo $AG repo add s4 s3:$S3/$NOB/s4 --access-key-id $KID --secret-key-from-file "$OUT/ksec"`
+    → `exit=2`, `BUCKET_NOT_FOUND`, имя `$NOB`, «may not create it» (Н19,
+    П30: на Garage restic говорит `client.MakeBucket: Forbidden`); сообщение говорит, что
+    файлы сохранены для повтора; `sudo stat -c '%U %a' /etc/sard/secrets/restic-s4.env /etc/sard/secrets/restic-s4.pass`
+    → `sard-agent 600` дважды; `/etc/sard/agent.d/repo-s4.yaml` нет (П12).
+    Убрать: `sudo rm /etc/sard/secrets/restic-s4.env /etc/sard/secrets/restic-s4.pass`.
+52. Недоступное хранилище: `time run sudo $AG repo add s5 s3:https://192.0.2.1/$B/s5 --access-key-id $KID --secret-key-from-file "$OUT/ksec" --connect-timeout 10s`
+    → `exit=6`, `BACKEND_UNAVAILABLE`, `did not answer within 10s`,
+    `--connect-timeout`; `real` меньше 25 с; файлов `restic-s5.*` и
+    `repo-s5.yaml` нет. Без флага (`--connect-timeout` по умолчанию) → то же
+    меньше 45 с.
+53. Существующий репозиторий на втором хосте (вторая ВМ):
+    `sudo $AG repo add s1 s3:$S3/$B/s1 --access-key-id $KID --secret-key-from-file "$OUT/ksec"`
+    без `--password-*`, ввод — не терминал (`</dev/null`) → сразу `exit=2`,
+    `SECRET_SOURCE_MISSING`, `--password-stdin`, `--password-from-file`;
+    с `--password-from-file` (копия `$OUT/s1.pass`) → `exit=0`, «attached», `Y`.
+54. Смена ключа (Н17): создать в хранилище второй ключ `$KID2` с теми же
+    правами; `sudo $AG repo add s1 s3:$S3/$B/s1 --access-key-id $KID2 --secret-key-from-file "$OUT/ksec2"`
+    → `exit=0`, `credentials updated`, служба не перезапущена;
+    `audit` → `repository s1 credentials updated`; следующий бэкап `s1` →
+    `succeeded`.
+54а. (П14–П17) `sudo $AG repo add s1 s3:$S3/$B/s1` → `exit=2`, называет
+    `--access-key-id`. `sudo $AG repo add s1 s3:$S3/$B/s1 --access-key-id $KID2 --region <другой регион> </dev/null`
+    → `exit=2`, `SECRET_SOURCE_MISSING`; env-файл не изменился
+    (`sudo sha256sum` до и после). `sudo $AG repo add s1 s3:$S3/$B/s1 --access-key-id $KID --secret-key-from-file "$OUT/ksec" --password-from-file "$OUT/s1.pass"`
+    → `exit=2`, называет `--password-from-file`. Ключ другого бакета
+    `$KIDX` (секрет в `$OUT/ksecx`), где по пути `s1` пусто:
+    `sudo $AG repo add s1 s3:$S3/$B/s1 --access-key-id $KIDX --secret-key-from-file "$OUT/ksecx"`
+    → `exit=4`, `REPOSITORY_CONFLICT`; env-файл и пароль `s1` не изменились,
+    в хранилище нового репозитория не появилось.
+54б. (П13) В выводе отказов шагов 49–54а значения ключей заменены
+    `[REDACTED]`; `***` встречается только в адресах с паролем.
+55. Утечки: `grep -cF "$SEC_MARK" "$OUT/all"` → `0`;
+    `sudo journalctl -t sard-agent --no-pager | grep -cF "$SEC_MARK"` → `0`;
+    во время шага 45 в другом терминале `ps -eo args | grep -cF "$SEC_MARK"`
+    (несколько раз) → `0`.
+
+## Часть 9. Хранилище SFTP (A8b-2)
+
+Нужен сервер SFTP (третья ВМ или контейнер `test/e2e/sftp`): пользователь
+`backup` только с ключами, каталог `/srv/sftp/repo` на запись,
+`/srv/sftp/ro` только на чтение. Администратор сервера сообщает отпечаток:
+`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` → `FP` (вида `SHA256:…`).
+
+```bash
+SH=<адрес сервера SFTP>; FP=<отпечаток ed25519 от администратора>
+HOME_SA=$(getent passwd sard-agent | cut -d: -f6)   # /var/lib/sard-agent
+sshsnap() { sudo find "$HOME_SA/.ssh" -printf '%u %g %m %n %s %p\n' 2>/dev/null | sort; }
+```
+
+56. Без клиента OpenSSH (только на копии ВМ или в контейнере):
+    `sudo apt-get remove openssh-client` (`dnf remove openssh-clients`), затем
+    `run sudo $AG repo add f0 sftp:backup@$SH:/srv/sftp/repo/f0 --host-key-fingerprint $FP`
+    → `exit=1`, `SSH_CLIENT_MISSING`, называет программу,
+    `sudo apt-get install openssh-client`, `sudo dnf install openssh-clients`,
+    `dpkg -i`; `sshsnap` до и после совпадают. Вернуть клиент.
+57. Без подтверждения: `sshsnap > "$OUT/ss0"; sleep 600 | sudo $AG repo add f1 sftp:backup@$SH:/srv/sftp/repo/f1; echo "exit=$?"`
+    → сразу `exit=2`, `HOST_KEY_UNCONFIRMED`, отпечатки ключей сервера (среди
+    них `FP`), `--host-key-fingerprint`; `sshsnap | diff - "$OUT/ss0"` → пусто.
+58. Чужой отпечаток: `run sudo $AG repo add f1 sftp:backup@$SH:/srv/sftp/repo/f1 --host-key-fingerprint SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA`
+    → `exit=5`, `HOST_KEY_MISMATCH`, называет данный отпечаток и `FP`;
+    `sshsnap | diff - "$OUT/ss0"` → пусто.
+59. С терминала: `sudo $AG repo add f1 sftp:backup@$SH:/srv/sftp/repo/f1`
+    → показаны `$SH`, порт `22`, `ssh-ed25519`, `FP` и совет
+    `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`; ответить `no` →
+    `exit=5`, `HOST_KEY_REJECTED`; `sshsnap | diff - "$OUT/ss0"` → пусто.
+60. Первый запуск (ключа у службы нет: `sudo ls $HOME_SA/.ssh/id_ed25519` → нет файла):
+    `T=$(date '+%F %T'); run sudo $AG repo add f1 sftp:backup@$SH:/srv/sftp/repo/f1 --host-key-fingerprint $FP`
+    → `exit=2`, `SSH_KEY_NOT_AUTHORIZED`, `Permission denied (publickey)`;
+    stdout — строка `ssh-ed25519 … sard-agent@<имя хоста>` (сохранить в
+    `$OUT/pub`) и «add it to authorized_keys of backup on $SH»;
+    `sudo stat -c '%U %G %a %n' $HOME_SA/.ssh $HOME_SA/.ssh/*` →
+    `sard-agent sard-agent 700 …/.ssh`, `… 600 …/config`,
+    `… 600 …/id_ed25519`, `… 644 …/id_ed25519.pub`, `… 600 …/known_hosts`;
+    `sudo cat $HOME_SA/.ssh/known_hosts` → одна строка `$SH ssh-ed25519 …`;
+    `sudo head -1 $HOME_SA/.ssh/config` → `# sard-agent begin $SH`, блок
+    содержит `StrictHostKeyChecking yes`, `BatchMode yes`,
+    `ServerAliveInterval 15`; `/etc/sard/agent.d/repo-f1.yaml` и
+    `/etc/sard/secrets/restic-f1.pass` нет; служба не перезапущена;
+    `audit "$T"` → `ssh key of service user sard-agent created`,
+    `ssh host key of $SH trusted ssh-ed25519 $FP`.
+61. Администратор добавляет `$OUT/pub` в `authorized_keys` пользователя
+    `backup`. Повтор: `T=$(date '+%F %T'); sudo $AG repo add f1 sftp:backup@$SH:/srv/sftp/repo/f1`
+    (в терминале, без флага отпечатка) → ничего не спрошено; `exit=0`;
+    «created», repository_id (`Z`), открытая часть ключа и `FP`, «restarted»;
+    `sudo cat /etc/sard/agent.d/repo-f1.yaml` → без `env_file`;
+    `audit "$T"` → только `repository f1 added`. Источник `files` с
+    репозиторием `f1` из консоли → `succeeded`.
+62. Повтор ещё раз: `sshsnap > "$OUT/ss1"; sudo $AG repo add f1 sftp:backup@$SH:/srv/sftp/repo/f1`
+    → `exit=0`, `unchanged`, `Z`; `sshsnap | diff - "$OUT/ss1"` → пусто.
+62а. (П24) `sudo $AG repo add f1 sftp:backup@$SH:/srv/sftp/repo/f1 --password-from-file /nonexistent`
+    → `exit=2`, называет `--password-from-file` (файл не открывался: нет
+    сообщения о `/nonexistent`). (П20) Администратор временно убирает ключ
+    из `authorized_keys`; повтор шага 62 → `exit=2`,
+    `SSH_KEY_NOT_AUTHORIZED`, не `unchanged`, за время меньше 40 с; вернуть ключ.
+62б. (П26) Для каждого хоста `a,b`, `*`, `*.example.com`, `h?`, `!h`, `a b`,
+    `h#c` и адресов `sftp:u@h@x:/x`, `sftp:u,v@h:/x`:
+    `run sudo $AG repo add bad "sftp:backup@<хост>:/x" --host-key-fingerprint $FP`
+    → `exit=2`, `ADDRESS_INVALID`; `sshsnap | diff - "$OUT/ss1"` → пусто.
+62в. (П25) `sudo chmod 0775 $HOME_SA; run sudo $AG repo add f1 sftp:backup@$SH:/srv/sftp/repo/f1`
+    → `exit=2`, `SSH_HOME_INVALID`; `sudo chmod 0755 $HOME_SA`.
+    `sudo chmod 0620 $HOME_SA/.ssh/known_hosts;` повтор → `exit=2`,
+    `SSH_FILE_REJECTED`, путь `known_hosts`; вернуть `0600`.
+    (П23) `sudo stat -c '%a' $HOME_SA/.ssh/id_ed25519.pub` → `644`.
+63. Каталог только на чтение: `run sudo $AG repo add f2 sftp:backup@$SH:/srv/sftp/ro/f2`
+    → `exit=2`, `STORAGE_ACCESS_DENIED`, `permission denied`.
+64. Сервер молча пропал: на сервере SFTP
+    `sudo iptables -I INPUT -p tcp --dport 22 -j DROP`;
+    `time run sudo $AG repo add f3 sftp:backup@$SH:/srv/sftp/repo/f3 --connect-timeout 10s`
+    → `exit=6`, `BACKEND_UNAVAILABLE`; `real` меньше 25 с. Убрать правило.
+65. Подлог в `~/.ssh` (Р38): `sshsnap > "$OUT/ss2"; sudo cp /etc/shadow "$OUT/shadow0"`;
+    `sudo -u sard-agent mv $HOME_SA/.ssh/known_hosts $HOME_SA/.ssh/kh.bak;
+    sudo -u sard-agent ln -s /etc/shadow $HOME_SA/.ssh/known_hosts`;
+    `run sudo $AG repo add f4 sftp:backup@$SH:/srv/sftp/repo/f4 --host-key-fingerprint $FP`
+    → `exit=2`, `SSH_FILE_REJECTED`, путь `…/.ssh/known_hosts`;
+    `sudo cmp /etc/shadow "$OUT/shadow0"` → совпадают; `sudo stat -c '%U %a' /etc/shadow`
+    → прежние; `grep -c root: "$OUT/all"` → `0`. То же с жёсткой ссылкой
+    (`ln` без `-s`, если `fs.protected_hardlinks=0`, иначе пропустить и
+    отметить). Вернуть `kh.bak`; `sshsnap | diff - "$OUT/ss2"` → пусто.
+66. Сменившийся ключ хоста: на сервере пересоздать ключ хоста
+    (`sudo ssh-keygen -A` после удаления ed25519), получить новый `FP2`;
+    `run sudo $AG repo add f5 sftp:backup@$SH:/srv/sftp/repo/f5`
+    → `exit=5`, `HOST_KEY_CHANGED`, путь и номер строки known_hosts,
+    `--replace-host-key`. (Н18) `sudo $AG repo add f5 sftp:backup@$SH:/srv/sftp/repo/f5 --replace-host-key --host-key-fingerprint $FP2`
+    → `exit=0`; в known_hosts одна строка `$SH` с новым ключом; `audit` →
+    `ssh host key of $SH replaced`. (П22) Перед заменой добавить в
+    known_hosts строку-шаблон `*.<домен $SH>` со старым ключом
+    (`sudo -u sard-agent` — часть QA): `HOST_KEY_CHANGED` и итог замены
+    называют её номер; после замены она на месте байт в байт.
+66а. (П21) В выводе шага 60 есть примечание: `id_ed25519`, `known_hosts` и
+    `config` записаны и остаются для повтора.
+67. `sudo $AG repo remove f1` → `exit=0`; stdout говорит, что ключ
+    `$HOME_SA/.ssh/id_ed25519` и ключ хоста `$SH` остаются; `sshsnap` не
+    изменился.
+68. Временные файлы: во время шагов 60–61 в другом терминале
+    `sudo inotifywait -m -r /tmp -e create` → ни одного события от
+    `sard-agent`; после шагов `sudo find $HOME_SA/.ssh /etc/sard/secrets -name '*.tmp-*'` → пусто.
+
+## Часть 10. SELinux и документация (A8b)
+
+69. (Rocky/Oracle Linux) `sudo restorecon -nv -R /etc/sard $HOME_SA` → вывод
+    пуст; `sudo systemctl restart sard-agent` → `active`; бэкапы `s1` и `f1`
+    из консоли → `succeeded`; `sudo ausearch -m avc -ts recent | grep -c sard` → `0`.
+70. `grep -nE 'sudo -u|tee |install -o|ssh-keyscan|ssh-keygen -t' docs/operator/05a-storage.md`
+    → пусто, кроме двух исключений (П18): команда получения отпечатка на
+    сервере SFTP (`ssh-keygen -lf`) и процедура снятия блокировки
+    `sudo -u sard-agent … /usr/libexec/sard/restic … unlock`. Ручных процедур
+    для ключа SSH, `known_hosts` и `~/.ssh/config` нет; `grep -c /usr/lib/sard/ docs/operator/05a-storage.md`
+    → `0`; `grep -c /usr/libexec/sard/restic docs/operator/05a-storage.md` → не `0`;
+    в документе есть `sudo sard-agent repo add` для S3 и SFTP, флаги
+    `--secret-key-stdin` и `--host-key-fingerprint`, таблица причин Р34.
+71. `sard-agent repo add --help` → `exit=0`; называет `--access-key-id`,
+    `--secret-key-stdin`, `--secret-key-from-file`, `--region`,
+    `--host-key-fingerprint`, `--replace-host-key`, `--connect-timeout`,
+    коды `0 1 2 4 5 6 7`; сказано, что ключ хоста не принимается без
+    подтверждения.
+
+## Часть 11. Предустановки провайдеров (A8b-3, Р50)
+
+Шаблоны адресов подтверждены владельцем 2026-10-09. Нужны бакет и ключ у
+AWS (`$AWSB`, регион `$AWSR`, ключ `$AWSKID`, секрет в `$OUT/awssec`) и, по
+возможности, у Backblaze B2 (`$B2B`, `$B2R` вида `us-west-004`, `$B2KID`,
+`$OUT/b2sec`).
+
+72. `run sudo $AG repo add p1 s3:$AWSB/p1 --provider aws --access-key-id $AWSKID --secret-key-from-file "$OUT/awssec"`
+    → `exit=2`, сообщение называет `--region`; файлов `restic-p1.*` нет.
+73. `run sudo $AG repo add p1 s3:$AWSB/p1 --provider aws --region $AWSR --access-key-id $AWSKID --secret-key-from-file "$OUT/awssec"`
+    → `exit=0`, «created»; `sudo grep url /etc/sard/agent.d/repo-p1.yaml` →
+    `s3:https://s3.$AWSR.amazonaws.com/$AWSB/p1`;
+    `sudo grep -c "AWS_DEFAULT_REGION=$AWSR" /etc/sard/secrets/restic-p1.env` → `1`;
+    бэкап `p1` из консоли → `succeeded`.
+74. То же для B2: `--provider b2 --region $B2R` → `exit=0`; url
+    `s3:https://s3.$B2R.backblazeb2.com/$B2B/p2`; бэкап → `succeeded`.
+75. `run sudo $AG repo add p3 s3:$AWSB/p3 --provider yandex --region ru-central1 --access-key-id $AWSKID --secret-key-from-file "$OUT/awssec"`
+    → `exit=2`, сообщение перечисляет `aws` и `b2`.
+76. `run sudo $AG repo add p4 s3:https://s3.example.com/$AWSB/p4 --provider aws --region $AWSR --access-key-id $AWSKID --secret-key-from-file "$OUT/awssec"`
+    → `exit=2`, называет `--provider` и схему или хост в адресе.
+77. `grep -cF "$(cat "$OUT/awssec")" "$OUT/all"` → `0`.
+
+Вручную не воспроизводятся и проверяются тестами `@local` с теми же
+названиями (A8b): подмена каталога `~/.ssh` ссылкой между открытием и
+записью, FIFO в `~/.ssh`, `umask 000` для env-файла и файлов ssh, сбои
+fchown, rename и fsync в `~/.ssh` и `secrets`, отказ `ssh-keygen`, SIGKILL
+restic после SIGTERM по таймауту подключения, хешированные записи
+`known_hosts`, IPv6 в адресе SFTP, регион провайдера, которого нет.
 
 Вручную не воспроизводятся и проверяются тестами `@local` с теми же
 названиями: сбои fsync, rename и смены владельца при записи, недоступный

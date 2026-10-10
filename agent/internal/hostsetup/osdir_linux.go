@@ -61,3 +61,56 @@ func (d osDir) Chown(uid, gid int) error     { return d.f.Chown(uid, gid) }
 func (d osDir) Chmod(mode fs.FileMode) error { return d.f.Chmod(mode) }
 func (d osDir) Stat() (fs.FileInfo, error)   { return d.f.Stat() }
 func (d osDir) Close() error                 { return d.f.Close() }
+
+// CreateFile implements Dir.
+func (d osDir) CreateFile(name string, perm fs.FileMode) (File, error) {
+	fd, err := syscall.Openat(int(d.f.Fd()), name, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|syscall.O_NOFOLLOW|syscall.O_NOCTTY|syscall.O_CLOEXEC, uint32(perm.Perm()))
+	if err != nil {
+		return nil, &fs.PathError{Op: "openat", Path: d.child(name), Err: err}
+	}
+	return os.NewFile(uintptr(fd), d.child(name)), nil
+}
+
+// OpenFile implements Dir: O_NOFOLLOW so a link is ELOOP, O_NONBLOCK so a
+// FIFO nobody writes to does not hang the open.
+func (d osDir) OpenFile(name string) (ReadFile, error) {
+	fd, err := syscall.Openat(int(d.f.Fd()), name, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_NOCTTY|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, &fs.PathError{Op: "openat", Path: d.child(name), Err: err}
+	}
+	return os.NewFile(uintptr(fd), d.child(name)), nil
+}
+
+// oPath asks for a descriptor that only names the file: no read, no write,
+// no block on a FIFO, and with O_NOFOLLOW a link is itself.
+const oPath = 0x200000
+
+// Lstat implements Dir.
+func (d osDir) Lstat(name string) (fs.FileInfo, error) {
+	fd, err := syscall.Openat(int(d.f.Fd()), name, oPath|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, &fs.PathError{Op: "lstat", Path: d.child(name), Err: err}
+	}
+	f := os.NewFile(uintptr(fd), d.child(name))
+	defer func() { _ = f.Close() }()
+	return f.Stat()
+}
+
+// Rename implements Dir.
+func (d osDir) Rename(oldName, newName string) error {
+	if err := syscall.Renameat(int(d.f.Fd()), oldName, int(d.f.Fd()), newName); err != nil {
+		return &fs.PathError{Op: "renameat", Path: d.child(oldName), Err: err}
+	}
+	return nil
+}
+
+// Remove implements Dir.
+func (d osDir) Remove(name string) error {
+	if err := syscall.Unlinkat(int(d.f.Fd()), name); err != nil {
+		return &fs.PathError{Op: "unlinkat", Path: d.child(name), Err: err}
+	}
+	return nil
+}
+
+// Sync implements Dir.
+func (d osDir) Sync() error { return d.f.Sync() }

@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
@@ -40,9 +41,36 @@ type fakeFS struct {
 	chownCalls  int
 	// events lists the owner changes, renames and temporary files, in order.
 	events []string
+	// byPath lists the operations that were given a full path (open, chown,
+	// rename, remove, link): the ssh directory is never touched this way.
+	byPath []string
+	// opened lists the files opened for reading through a held directory.
+	opened []string
+	// defaultUID is the owner a file nobody changed seems to have.
+	defaultUID uint32
 }
 
-func newFakeFS() *fakeFS { return &fakeFS{owners: map[string]ownerRec{}} }
+// pathCall notes an operation on a full path.
+func (f *fakeFS) pathCall(op, path string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.byPath = append(f.byPath, op+" "+path)
+}
+
+// pathCallsIn are the operations on full paths inside dir.
+func (f *fakeFS) pathCallsIn(dir string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var got []string
+	for _, c := range f.byPath {
+		if _, path, _ := strings.Cut(c, " "); strings.HasPrefix(path, dir+"/") || path == dir {
+			got = append(got, c)
+		}
+	}
+	return got
+}
+
+func newFakeFS() *fakeFS { return &fakeFS{owners: map[string]ownerRec{}, defaultUID: serviceUID} }
 
 var errFakeFailure = errors.New("injected failure")
 
@@ -81,6 +109,7 @@ func (f *fakeFS) chowns() int {
 }
 
 func (f *fakeFS) CreateTemp(dir, pattern string) (hostsetup.File, error) {
+	f.pathCall("createtemp", dir)
 	if err := f.fails("createtemp", dir); err != nil {
 		return nil, err
 	}
@@ -125,6 +154,7 @@ func (f *fakeFile) Sync() error {
 }
 
 func (f *fakeFS) Rename(oldpath, newpath string) error {
+	f.pathCall("rename", newpath)
 	if err := f.fails("rename", newpath); err != nil {
 		return err
 	}
@@ -173,6 +203,7 @@ func (f *fakeFS) chownFile(file *os.File, uid, gid int) error {
 }
 
 func (f *fakeFS) Chown(path string, uid, gid int) error {
+	f.pathCall("chown", path)
 	if err := f.fails("chown", path); err != nil {
 		return err
 	}
@@ -184,6 +215,7 @@ func (f *fakeFS) Chown(path string, uid, gid int) error {
 }
 
 func (f *fakeFS) Remove(path string) error {
+	f.pathCall("remove", path)
 	if err := f.fails("remove", path); err != nil {
 		return err
 	}
@@ -191,6 +223,7 @@ func (f *fakeFS) Remove(path string) error {
 }
 
 func (f *fakeFS) Link(oldpath, newpath string) error {
+	f.pathCall("link", newpath)
 	if err := f.fails("link", newpath); err != nil {
 		return err
 	}
@@ -247,7 +280,149 @@ func (d fakeDir) Chown(uid, gid int) error {
 	return nil
 }
 
+// CreateFile makes the file for real and records its owner instead of
+// changing it; any step can be made to fail.
+func (d fakeDir) CreateFile(name string, perm os.FileMode) (hostsetup.File, error) {
+	path := filepath.Join(d.Path(), name)
+	if err := d.fsys.fails("createtemp", path); err != nil {
+		return nil, err
+	}
+	file, err := d.Dir.CreateFile(name, perm)
+	if err != nil {
+		return nil, err
+	}
+	d.fsys.mu.Lock()
+	d.fsys.events = append(d.fsys.events, "dir-create "+path)
+	d.fsys.mu.Unlock()
+	return &fakeDirFile{File: file, fsys: d.fsys}, nil
+}
+
+// fakeDirFile is a file made through a held directory.
+type fakeDirFile struct {
+	hostsetup.File
+	fsys *fakeFS
+}
+
+func (f *fakeDirFile) Chown(uid, gid int) error {
+	if err := f.fsys.fails("chown", f.Name()); err != nil {
+		return err
+	}
+	if err := f.fsys.nthChown(f.Name()); err != nil {
+		return err
+	}
+	f.fsys.setOwner(f.Name(), uid, gid)
+	return nil
+}
+
+func (f *fakeDirFile) Chmod(m os.FileMode) error {
+	if err := f.fsys.fails("chmod", f.Name()); err != nil {
+		return err
+	}
+	return f.File.Chmod(m)
+}
+
+func (f *fakeDirFile) Write(p []byte) (int, error) {
+	if err := f.fsys.fails("write", f.Name()); err != nil {
+		return 0, err
+	}
+	return f.File.Write(p)
+}
+
+func (f *fakeDirFile) Sync() error {
+	if err := f.fsys.fails("sync", f.Name()); err != nil {
+		return err
+	}
+	return f.File.Sync()
+}
+
+// seen is info as the recorded owner makes it look (a test is not root).
+func (f *fakeFS) seen(path string, info fs.FileInfo, err error) (fs.FileInfo, error) {
+	if err != nil {
+		return nil, err
+	}
+	uid := f.defaultUID
+	if o, ok := f.ownerOf(path); ok {
+		uid = uint32(o.uid)
+	}
+	return ownedInfo{FileInfo: info, uid: uid}, nil
+}
+
+type ownedInfo struct {
+	fs.FileInfo
+	uid uint32
+}
+
+func (i ownedInfo) Sys() any {
+	st := *i.FileInfo.Sys().(*syscall.Stat_t)
+	st.Uid = i.uid
+	return &st
+}
+
+// Stat shows the owner of ~/.ssh as recorded; other directories are left
+// alone (os.SameFile needs the real FileInfo).
+func (d fakeDir) Stat() (fs.FileInfo, error) {
+	info, err := d.Dir.Stat()
+	if filepath.Base(d.Path()) != ".ssh" {
+		return info, err
+	}
+	return d.fsys.seen(d.Path(), info, err)
+}
+
+func (d fakeDir) OpenFile(name string) (hostsetup.ReadFile, error) {
+	path := filepath.Join(d.Path(), name)
+	d.fsys.mu.Lock()
+	d.fsys.opened = append(d.fsys.opened, path)
+	d.fsys.mu.Unlock()
+	f, err := d.Dir.OpenFile(name)
+	if err != nil {
+		return nil, err
+	}
+	return fakeRead{ReadFile: f, path: path, fsys: d.fsys}, nil
+}
+
+type fakeRead struct {
+	hostsetup.ReadFile
+	path string
+	fsys *fakeFS
+}
+
+func (r fakeRead) Stat() (fs.FileInfo, error) {
+	info, err := r.ReadFile.Stat()
+	return r.fsys.seen(r.path, info, err)
+}
+
+func (d fakeDir) Lstat(name string) (fs.FileInfo, error) {
+	info, err := d.Dir.Lstat(name)
+	return d.fsys.seen(filepath.Join(d.Path(), name), info, err)
+}
+
+func (d fakeDir) Rename(oldName, newName string) error {
+	oldPath, newPath := filepath.Join(d.Path(), oldName), filepath.Join(d.Path(), newName)
+	if err := d.fsys.fails("rename", newPath); err != nil {
+		return err
+	}
+	if err := d.Dir.Rename(oldName, newName); err != nil {
+		return err
+	}
+	d.fsys.mu.Lock()
+	defer d.fsys.mu.Unlock()
+	if o, ok := d.fsys.owners[oldPath]; ok {
+		d.fsys.owners[newPath] = o
+		delete(d.fsys.owners, oldPath)
+	}
+	d.fsys.events = append(d.fsys.events, "dir-rename "+oldPath+" "+newPath)
+	return nil
+}
+
+func (d fakeDir) Sync() error {
+	if err := d.fsys.fails("syncdir", d.Path()); err != nil {
+		return err
+	}
+	return d.Dir.Sync()
+}
+
 func (f *fakeFS) OpenRoot(path string) (hostsetup.Root, error) {
+	f.pathCall("openroot", path)
 	root, err := f.OS.OpenRoot(path)
 	if err != nil {
 		return nil, err
@@ -368,6 +543,10 @@ func (t *fakeTerminal) ReadSecret(prompt string) ([]byte, error) {
 	t.answers = t.answers[1:]
 	return []byte(a), nil
 }
+
+// ReadLine is a question whose answer is seen (the confirmation of a host
+// key); it takes the next answer of the script like ReadSecret.
+func (t *fakeTerminal) ReadLine(prompt string) ([]byte, error) { return t.ReadSecret(prompt) }
 
 // hungInput is a pipe nobody ever closes: any read is a failure of the command.
 type hungInput struct{ reads int }

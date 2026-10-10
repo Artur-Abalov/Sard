@@ -4,7 +4,9 @@
 package enroll
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"strings"
 )
@@ -115,4 +117,11 @@ func NormalizeTokenFile(data []byte) string {
 		return s[:len(s)-2]
 	}
 	return strings.TrimSuffix(s, "\n")
+}
+
+// TokenDigest is the hex SHA-256 of a raw token: the marker that tells a
+// token already used by self-enroll without keeping the token itself.
+func TokenDigest(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:])
 }

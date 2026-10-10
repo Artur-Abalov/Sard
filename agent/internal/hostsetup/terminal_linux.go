@@ -65,6 +65,13 @@ func (t TTY) ReadSecret(prompt string) (value []byte, err error) {
 	return readLine(t.In)
 }
 
+// ReadLine prints the prompt and reads a line with the echo on: for an
+// answer the operator should see, such as the confirmation of a host key.
+func (t TTY) ReadLine(prompt string) ([]byte, error) {
+	_, _ = fmt.Fprint(t.Out, prompt)
+	return readLine(t.In)
+}
+
 // readLine reads up to the line break, one byte at a time: nothing past
 // the line is consumed.
 // It stops one byte past MaxSecretSize: more is refused anyway, and a
