@@ -30,7 +30,7 @@ func lookupWith(lookup func(string) (*user.User, error), name string) (User, err
 	if uerr != nil || gerr != nil {
 		return User{}, fmt.Errorf("user %s has a non-numeric id (uid %q, gid %q)", name, u.Uid, u.Gid)
 	}
-	return User{Name: name, UID: uint32(uid), GID: uint32(gid)}, nil
+	return User{Name: name, UID: uint32(uid), GID: uint32(gid), Home: u.HomeDir}, nil
 }
 
 // ProcessUser is the name and the uid of the user of this process; the

@@ -4,7 +4,6 @@
 package dev.sard.server.notify
 
 import dev.sard.server.runs.StepState
-import dev.sard.server.runs.Trigger
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -28,8 +27,16 @@ class RunNoticeFormatter(
     private val words = wording(language)
 
     override fun format(notice: RunNotice): Message? {
-        val headline = words.headline(notice.stepStatus)
-        return if (notice.trigger == Trigger.MANUAL && headline != null) compose(notice, headline) else null
+        val headline = Telling.of(notice)?.let { headline(notice, it) }
+        return headline?.let { compose(notice, it) }
+    }
+
+    private fun headline(
+        notice: RunNotice,
+        telling: Telling,
+    ): Headline? {
+        val recovered = Headline("✅", words.verdicts.recovered)
+        return if (telling == Telling.RECOVERY) recovered else words.headline(notice.stepStatus)
     }
 
     private fun compose(

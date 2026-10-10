@@ -15,7 +15,7 @@ S6 создаёт таблицы `sources`, `runs`, `run_steps` и отправ�
 - **Не больше одного активного запуска на источник.** Гарантия — частичный уникальный индекс `UNIQUE (tenant_id, source_id) WHERE status IN ('queued', 'dispatched', 'running')` на `runs`. Не проверка в коде: «прочитать, затем вставить» пропускает два одновременных запроса, индекс — нет. Код может проверить заранее, чтобы найти `activeRunId` для ответа, но корректность держит индекс; нарушение индекса при вставке тоже превращается в 409.
 - **Ручной запуск при активном** — отказ 409 `run_active` (problem+json, ADR 0019) с `activeRunId`; новый запуск не создаётся.
 - **Запуск по расписанию при активном** (этап 2) — видимый пропуск: запись о пропуске в истории источника, алерт при нескольких пропусках подряд. Запуск не ставится в очередь.
-- **Запуск этапа 1 — запуск источника.** `runs.source_id` обязателен; `runs.workflow_id` допускает `NULL` только при `trigger = 'manual'`. Неявные workflow под каждый источник не создаются.
+- **Запуск этапа 1 — запуск источника.** `runs.source_id` обязателен; `runs.workflow_id` допускает `NULL` только при `trigger = 'manual'`. Неявные workflow под каждый источник не создаются. *F3a (ADR 0053):* расписание тоже запускает источник, поэтому `NULL` допустим и при `trigger IN ('schedule', 'catch_up')`; запуск `verification` по-прежнему требует workflow.
 - **Workflow из нескольких источников** (после этапа 1): ограничение переходит на `run_steps.source_id` — тот же частичный индекс по активным шагам; форма `runs` для таких workflow решается вместе с ними.
 - **Репозиторий задаётся в источнике**, `sources.repository_name`, а не при запуске: снимки одного источника живут в одном репозитории (дедупликация, `forget` и проверка восстановления идут по репозиторию). API при создании и замене источника проверяет имя по последнему `Register` агента (`agent_repositories`, S4a) и отвечает 422 `unknown_repository`. Снимок `Register` может устареть, поэтому агент при запуске всё равно может ответить `REJECTED` (S6). `run_steps.repository_name` хранит имя, отправленное агенту.
 
@@ -26,7 +26,7 @@ S6 создаёт таблицы `sources`, `runs`, `run_steps` и отправ�
 sources      + repository_name NOT NULL                    -- имя из снимка Register агента
 runs         + source_id NOT NULL → sources
              workflow_id NULL → workflows
-             CHECK (workflow_id IS NOT NULL OR trigger = 'manual')
+             CHECK (workflow_id IS NOT NULL OR trigger = 'manual')   -- F3a: OR trigger IN ('schedule', 'catch_up')
              status CHECK IN ('queued', 'dispatched', 'running', 'succeeded', 'failed', 'cancelled')
              definition JSONB NULL                          -- снимок workflow; NULL без workflow
              CHECK ((workflow_id IS NULL) = (definition IS NULL))

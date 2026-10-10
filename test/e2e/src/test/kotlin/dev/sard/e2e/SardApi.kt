@@ -50,6 +50,11 @@ internal class SardApi(
         body: String? = null,
     ): Answer = send("POST", path, body)
 
+    fun put(
+        path: String,
+        body: String,
+    ): Answer = send("PUT", path, body)
+
     /** POSTs and checks the status is [expected]; the body is not put in the failure (it may hold a token). */
     fun created(
         path: String,

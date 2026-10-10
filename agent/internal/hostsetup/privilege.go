@@ -13,6 +13,8 @@ import (
 type User struct {
 	Name     string
 	UID, GID uint32
+	// Home is the home directory of passwd; "" if there is none.
+	Home string
 }
 
 // ErrNoUser is what a LookupFunc returns for a name the host does not have.

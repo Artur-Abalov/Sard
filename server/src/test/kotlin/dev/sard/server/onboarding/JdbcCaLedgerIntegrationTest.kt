@@ -25,7 +25,7 @@ private val F = CaFingerprint("b".repeat(64))
 private val TENANT = UUID.fromString("00000000-0000-0000-0000-000000000001")
 private val OTHER_TENANT = UUID.fromString("00000000-0000-0000-0000-0000000000b2")
 
-/** What the database knows about the CA (migration V202610091200, Р11, Р12, Р19). */
+/** What the database knows about the CA (migration V202610101200, Р11, Р12, Р19). */
 @SpringBootTest(properties = ["spring.grpc.server.port=0", "server.port=0"])
 @Import(TestcontainersConfiguration::class)
 class JdbcCaLedgerIntegrationTest(

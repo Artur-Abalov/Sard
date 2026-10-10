@@ -8,6 +8,8 @@ import {
   deletedSources,
   enrollmentTokens,
   runs,
+  scheduleFires,
+  schedules,
   snapshots,
   sources,
   MOCK_PASSWORD,
@@ -38,6 +40,10 @@ export interface MockState {
   /** Deleted sources: gone from the list and the card, their runs and snapshots stay (soft delete, К13). */
   deletedSources: Schemas['Source'][]
   runs: Schemas['Run'][]
+  /** One per source at most (F3a); a deleted source's schedule stays but is never shown. */
+  schedules: Schemas['Schedule'][]
+  /** The journal of each source's schedule, newest recorded first. */
+  scheduleFires: Record<string, Schemas['ScheduleFire'][]>
   snapshots: Schemas['Snapshot'][]
   stepLogs: Record<string, Schemas['LogLine'][]>
   tokens: Schemas['EnrollmentToken'][]
@@ -54,6 +60,8 @@ function fresh(signedIn: boolean, freshInstall: boolean): MockState {
     sources,
     deletedSources,
     runs,
+    schedules,
+    scheduleFires,
     snapshots,
     stepLogs,
     tokens: enrollmentTokens,

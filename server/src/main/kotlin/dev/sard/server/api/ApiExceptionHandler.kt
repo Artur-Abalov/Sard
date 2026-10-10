@@ -12,6 +12,7 @@ import dev.sard.server.runs.SourceNotFound
 import dev.sard.server.runs.UnknownAgent
 import dev.sard.server.runs.UnknownPlugin
 import dev.sard.server.runs.UnknownRepository
+import dev.sard.server.scheduler.InvalidSchedule
 import jakarta.persistence.PersistenceException
 import org.hibernate.HibernateException
 import org.slf4j.LoggerFactory
@@ -124,6 +125,10 @@ class SourceExceptionHandler {
     @ExceptionHandler(InvalidConfig::class)
     fun invalidConfig(e: InvalidConfig) =
         unprocessableResponse(ErrorCode.INVALID_CONFIG, e.violations.map { FieldError(it.field, it.message) })
+
+    @ExceptionHandler(InvalidSchedule::class)
+    fun invalidSchedule(e: InvalidSchedule): ResponseEntity<ValidationProblem> =
+        invalidResponse(e.field.name.lowercase(), e.message.orEmpty())
 
     @ExceptionHandler(RunActive::class)
     fun runActive(e: RunActive): ResponseEntity<Any> =

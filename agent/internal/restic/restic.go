@@ -26,6 +26,9 @@ type Repository interface {
 	// ID returns restic's repository id (from the repository config). It is
 	// not a secret: the server uses it to see how many hosts hold the key.
 	ID(ctx context.Context) (string, error)
+	// CheckLock opens the repository with a command that takes the shared
+	// lock; a key that may not write or delete fails on it (П29).
+	CheckLock(ctx context.Context) error
 	// Init creates the repository and returns its id.
 	Init(ctx context.Context) (string, error)
 	// Backup stores req.Paths, or the stream req.Stdin, as a new snapshot.
@@ -154,6 +157,14 @@ func (c *CLI) ID(ctx context.Context) (string, error) {
 	return requireID("restic cat", cfg.ID)
 }
 
+// CheckLock runs `restic snapshots --latest 1`: unlike `cat config` it
+// takes the shared lock (measured on restic 0.19.1), which needs write
+// rights to the repository.
+func (c *CLI) CheckLock(ctx context.Context) error {
+	_, err := c.runRepo(ctx, call{args: []string{"snapshots", "--latest", "1", "--json"}, stdout: collect(&bytes.Buffer{})})
+	return err
+}
+
 // Init runs `restic init` and returns the new repository's id.
 func (c *CLI) Init(ctx context.Context) (string, error) {
 	var out bytes.Buffer
@@ -258,6 +269,7 @@ type result struct {
 	cmd   string
 	code  int
 	fatal string      // restic's last fatal message
+	hint  string      // the last line of a lock or ssh failure that is no fatal message
 	items []ItemError // per-file errors of backup --json
 }
 
@@ -298,9 +310,31 @@ const missing = " does not exist, skipping"
 func (r *result) plain(line []byte) {
 	if bytes.HasPrefix(line, []byte("Fatal: ")) {
 		r.fatal = string(line)
+	} else if isCauseLine(line) {
+		r.hint = string(line)
 	} else if path, ok := bytes.CutSuffix(line, []byte(missing)); ok {
 		r.items = append(r.items, ItemError{Item: string(path), During: "scan", Message: "does not exist"})
 	}
+}
+
+// causeLines start the lines restic prints about a failure without calling
+// it fatal: a lock it cannot create, the stderr of its ssh (A8b, Р34).
+var causeLines = [][]byte{[]byte("unable to create lock in backend:"), []byte("subprocess ssh:")}
+
+func isCauseLine(line []byte) bool {
+	return slices.ContainsFunc(causeLines, func(p []byte) bool { return bytes.HasPrefix(line, p) })
+}
+
+// cause is the fatal message, with the lock or ssh line next to it, or
+// that line alone.
+func (r *result) cause() string {
+	switch {
+	case r.fatal == "":
+		return r.hint
+	case r.hint == "":
+		return r.fatal
+	}
+	return r.fatal + " (" + r.hint + ")"
 }
 
 // err maps restic's exit code to an error; nil for 0.
@@ -325,7 +359,7 @@ func (r *result) err() error {
 // agent knows how to read adds a sentinel next to the *ExitError.
 func (r *result) exitError() error {
 	exit := &ExitError{Code: r.code, Message: r.fatalLine()}
-	if kind := fatalKind(r.fatal); kind != nil {
+	if kind := fatalKind(r.cause()); kind != nil {
 		return fmt.Errorf("%w: %w", kind, exit)
 	}
 	return exit
@@ -353,7 +387,7 @@ func fatalKind(msg string) error {
 // fatalLine is restic's fatal message on one line, followed by the paths it
 // reported as missing: the message alone does not say which.
 func (r *result) fatalLine() string {
-	msg := strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(r.fatal)
+	msg := strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(r.cause())
 	if msg == "" {
 		return ""
 	}

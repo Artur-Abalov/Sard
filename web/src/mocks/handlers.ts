@@ -6,6 +6,7 @@ import { installHandlers } from './api/install'
 import { onboardingHandlers } from './api/onboarding'
 import { overviewHandlers } from './api/overview'
 import { runHandlers } from './api/runs'
+import { scheduleHandlers } from './api/schedules'
 import { sessionHandlers } from './api/session'
 import { sourceHandlers } from './api/sources'
 import { tokenHandlers } from './api/tokens'
@@ -26,5 +27,6 @@ export const handlers = [
   ...installHandlers,
   ...tokenHandlers,
   ...sourceHandlers,
+  ...scheduleHandlers,
   ...runHandlers,
 ]

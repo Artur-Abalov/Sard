@@ -4,11 +4,12 @@
 // Compile-time checks only, never run: `npm run typecheck` fails if a mock that
 // matches the OpenAPI schema stops compiling or one that breaks it starts to.
 import { HttpResponse } from 'msw'
-import { enrollmentTokens, sources } from './fixtures'
+import { enrollmentTokens, scheduleFires, sources } from './fixtures'
 import { http } from './http'
 
 const [token] = enrollmentTokens
 const [source] = sources
+const [fireExample] = Object.values(scheduleFires)[0]
 
 export const contractChecks = [
   http.get('/api/v1/status', ({ response }) =>
@@ -57,6 +58,19 @@ export const contractChecks = [
       items: [{ seq: '1', time: '2026-09-27T10:00:00Z', level: 'info', text: 'x' }],
       nextAfterSeq: 1,
       hasMore: false,
+    }),
+  ),
+
+  http.put('/api/v1/sources/{sourceId}/schedule', ({ response }) =>
+    // @ts-expect-error: a schedule always says whether it is enabled
+    response(200).json({ id: 'x', sourceId: 'y', cron: '* * * * *', timezone: 'UTC' }),
+  ),
+
+  http.get('/api/v1/sources/{sourceId}/schedule/fires', ({ response }) =>
+    response(200).json({
+      // @ts-expect-error: a fire's outcome is one of the journal's, not a run status
+      items: [{ ...fireExample, outcome: 'succeeded' }],
+      nextCursor: null,
     }),
   ),
 

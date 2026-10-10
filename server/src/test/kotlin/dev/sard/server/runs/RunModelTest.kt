@@ -67,7 +67,7 @@ class RunModelTest {
     @Test
     fun `triggers and actions are the schema's and read back`() {
         val triggers = MutFlow.underTest { Trigger.entries.map { it.stored } }
-        assertEquals(listOf("schedule", "manual", "verification"), triggers)
+        assertEquals(listOf("schedule", "manual", "verification", "catch_up"), triggers)
         val actions = MutFlow.underTest { Action.entries.map { it.stored } }
         assertEquals(listOf("backup", "restore", "verify", "run"), actions)
         for (trigger in Trigger.entries) assertEquals(trigger, MutFlow.underTest { Trigger.of(trigger.stored) })

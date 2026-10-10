@@ -12,7 +12,7 @@ import java.sql.Timestamp
 import java.time.Clock
 
 /**
- * The ledger in the database (migration V202610091200): the origins by the fingerprint of the root, and the two
+ * The ledger in the database (migration V202610101200): the origins by the fingerprint of the root, and the two
  * facts that put a CA to work, the confirmed step ca and any agent certificate of any tenant.
  */
 class JdbcCaLedger(

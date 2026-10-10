@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
 
 private val NOW: Instant = Instant.parse("2026-10-09T12:00:00Z")
 
-/** The installation-wide steps of the first start in the database (migration V202610091200). */
+/** The installation-wide steps of the first start in the database (migration V202610101200). */
 @SpringBootTest(properties = ["spring.grpc.server.port=0", "server.port=0"])
 @Import(TestcontainersConfiguration::class)
 class JdbcOnboardingStepsIntegrationTest(

@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
@@ -57,21 +56,6 @@ func cacheDir(cfg config.Config, deps hostDeps) string {
 		return cfg.Restic.CacheDir
 	}
 	return deps.defaultCacheDir
-}
-
-// repoContext bounds the whole command: it ends when timeout runs out on
-// clk (cause repoinit.ErrTimeout) or when ctx ends (an interrupt).
-func repoContext(ctx context.Context, clk clock, timeout time.Duration) (context.Context, context.CancelCauseFunc) {
-	ctx, cancel := context.WithCancelCause(ctx)
-	timer := clk.After(timeout)
-	go func() {
-		select {
-		case <-timer:
-			cancel(repoinit.ErrTimeout)
-		case <-ctx.Done():
-		}
-	}()
-	return ctx, cancel
 }
 
 // prepareInit runs the checks that come before the lock.

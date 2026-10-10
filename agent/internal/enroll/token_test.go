@@ -151,3 +151,9 @@ func TestNormalizeTokenFileKeepsOtherWhitespaceIntact(t *testing.T) {
 		t.Fatalf("NormalizeTokenFile(%q) = %q, want %q", data, got, vectorToken+"\n")
 	}
 }
+
+func TestTokenDigestIsTheHexSha256OfTheToken(t *testing.T) {
+	if got, want := enroll.TokenDigest("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"; got != want {
+		t.Fatalf("TokenDigest = %q, want %q", got, want)
+	}
+}

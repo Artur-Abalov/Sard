@@ -117,6 +117,19 @@ internal object Interruptions {
         DockerClientFactory.instance().checkAndPullImage(container.dockerClient, FIREWALL_IMAGE)
     }
 
+    /**
+     * `docker pause`: every process is frozen, the connections stay open and nothing answers, as a
+     * server that dropped off the network silently (the case for `--connect-timeout`).
+     */
+    fun pause(container: GenericContainer<*>) {
+        container.dockerClient.pauseContainerCmd(container.containerId).exec()
+    }
+
+    /** `docker unpause` of a container paused with [pause]. */
+    fun unpause(container: GenericContainer<*>) {
+        container.dockerClient.unpauseContainerCmd(container.containerId).exec()
+    }
+
     /** `docker start` of a stopped container. */
     fun start(container: GenericContainer<*>) {
         container.dockerClient.startContainerCmd(container.containerId).exec()
