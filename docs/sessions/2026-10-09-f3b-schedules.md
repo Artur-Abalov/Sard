@@ -75,7 +75,7 @@
   миграция V202610101200 исправлена на месте (`CatchUpClaimMigrationTest` гоняет Flyway по схеме до и после).
   Ограничение переноса F3a записано в ADR 0055.
 
-## Cleaner pass
+## Cleaner pass после правок архитектора
 
 - Область: `git diff d688e20..HEAD`. `./scripts/crap.sh server`: максимум CRAP 6.0 (порог 6); затронутые функции
   (`Firing.catchUp` 5.0, `Firing.journal` 5.0, `RunsApiImpl.listRuns` 5.0, `CatchUpPeriods.periods` 2.0, `RunMapping.*` 1.0-3.0)
