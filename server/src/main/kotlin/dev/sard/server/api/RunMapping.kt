@@ -9,39 +9,49 @@ import dev.sard.server.runs.RunView
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepView
 import dev.sard.server.runs.Trigger
+import dev.sard.server.scheduler.CatchUpPeriod
 
 /** Domain runs and steps to the contract's classes: the same facts, under the wire names. */
 internal object RunMapping {
-    fun run(view: RunView) =
-        Run(
-            view.id,
-            view.sourceId,
-            view.sourceName,
-            view.sourceDeleted,
-            view.agentId,
-            trigger(view.trigger),
-            status(view.status),
-            view.message,
-            view.queuedAt,
-            view.startedAt,
-            view.finishedAt,
-            view.steps.map(::step),
-        )
+    fun run(
+        view: RunView,
+        period: CatchUpPeriod?,
+    ) = Run(
+        view.id,
+        view.sourceId,
+        view.sourceName,
+        view.sourceDeleted,
+        view.agentId,
+        trigger(view.trigger),
+        status(view.status),
+        view.message,
+        view.queuedAt,
+        view.startedAt,
+        view.finishedAt,
+        view.steps.map(::step),
+        catchUp(period),
+    )
 
-    fun summary(view: RunView) =
-        RunSummary(
-            view.id,
-            view.sourceId,
-            view.sourceName,
-            view.sourceDeleted,
-            view.agentId,
-            trigger(view.trigger),
-            status(view.status),
-            view.message,
-            view.queuedAt,
-            view.startedAt,
-            view.finishedAt,
-        )
+    fun summary(
+        view: RunView,
+        period: CatchUpPeriod?,
+    ) = RunSummary(
+        view.id,
+        view.sourceId,
+        view.sourceName,
+        view.sourceDeleted,
+        view.agentId,
+        trigger(view.trigger),
+        status(view.status),
+        view.message,
+        view.queuedAt,
+        view.startedAt,
+        view.finishedAt,
+        catchUp(period),
+    )
+
+    private fun catchUp(period: CatchUpPeriod?) =
+        period?.let { CatchUp(it.missedFrom, it.missedUntil, it.missedCount, it.missedCountCapped, it.timezone) }
 
     fun step(view: StepView) =
         RunStep(

@@ -369,6 +369,7 @@ function runOf(
   step: Schemas['RunStep'],
   status: Schemas['RunStatus'],
   sourceDeleted = false,
+  extra: Partial<Schemas['Run']> = {},
 ): Schemas['Run'] {
   const sourceId = step.sourceId ?? ids.etcSource
   return {
@@ -384,6 +385,8 @@ function runOf(
     startedAt: step.startedAt,
     finishedAt: step.finishedAt,
     steps: [step],
+    catchUp: null,
+    ...extra,
   }
 }
 
@@ -446,6 +449,8 @@ export const runs: Schemas['Run'][] = [
       message: 'open /etc/shadow: permission denied',
     },
     'failed',
+    false,
+    { trigger: 'schedule' },
   ),
   // Failed after it saved a snapshot: the snapshot is usable but incomplete.
   runOf(
@@ -535,6 +540,17 @@ export const runs: Schemas['Run'][] = [
       },
     },
     'succeeded',
+    false,
+    {
+      trigger: 'catch_up',
+      catchUp: {
+        missedFrom: '2026-09-23T19:00:00Z',
+        missedUntil: '2026-09-24T19:00:00Z',
+        missedCount: 2,
+        missedCountCapped: false,
+        timezone: 'Europe/Berlin',
+      },
+    },
   ),
   // The run of a source that was deleted afterwards.
   runOf(
@@ -691,7 +707,14 @@ export const enrollmentTokens: Schemas['EnrollmentToken'][] = [
   },
 ]
 
-/** The /etc source backs up nightly at 21:00 in Berlin; its journal shows each kind of fire (F3a). */
+/** The mock server's own zone (F3b): the preview names it when no zone is asked for. */
+export const SERVER_TIMEZONE = 'UTC'
+
+/**
+ * The /etc source backs up nightly at 21:00 in Berlin; it shows every state of the schedule block: the last
+ * run failed, two fires skipped in a row, a catch-up owed. The second source's schedule is disabled, the third
+ * has none (F3b).
+ */
 export const schedules: Schemas['Schedule'][] = [
   {
     id: '0192f7a0-0000-7000-8000-000000000601',
@@ -700,11 +723,34 @@ export const schedules: Schemas['Schedule'][] = [
     timezone: 'Europe/Berlin',
     enabled: true,
     nextRunAt: '2026-09-27T19:00:00Z',
-    catchUpAt: null,
+    catchUpAt: '2026-09-27T10:00:10Z',
     lastFiredAt: '2026-09-26T19:00:00Z',
-    skippedInRow: 0,
+    skippedInRow: 2,
+    notifyOnSuccess: false,
+    lastRun: {
+      id: ids.failedRun,
+      trigger: 'schedule',
+      status: 'failed',
+      queuedAt: '2026-09-26T21:00:00Z',
+      finishedAt: '2026-09-26T21:00:04Z',
+    },
     createdAt: '2026-09-22T10:05:00Z',
     updatedAt: '2026-09-22T10:05:00Z',
+  },
+  {
+    id: '0192f7a0-0000-7000-8000-000000000602',
+    sourceId: ids.srvSource,
+    cron: '30 2 * * 1-5',
+    timezone: 'Europe/Berlin',
+    enabled: false,
+    nextRunAt: null,
+    catchUpAt: null,
+    lastFiredAt: null,
+    skippedInRow: 0,
+    notifyOnSuccess: true,
+    lastRun: null,
+    createdAt: '2026-09-27T09:55:00Z',
+    updatedAt: '2026-09-27T09:55:00Z',
   },
 ]
 
@@ -723,6 +769,7 @@ function fire(
     reason: null,
     missedCount: null,
     missedUntil: null,
+    missedCountCapped: false,
     skippedInRow: 0,
     alert: false,
     recordedAt: scheduledFor,
@@ -730,11 +777,37 @@ function fire(
   }
 }
 
-/** Newest recorded first, as the server lists them. */
+/** Newest recorded first, as the server lists them: all five outcomes, an alert and a capped downtime. */
 export const scheduleFires: Record<string, Schemas['ScheduleFire'][]> = {
   [ids.etcSource]: [
+    fire('0192f7a0-0000-7000-8000-000000000621', 'skipped_active', '2026-09-27T19:00:00Z', {
+      runId: ids.runningRun,
+      skippedInRow: 2,
+    }),
+    fire('0192f7a0-0000-7000-8000-000000000622', 'skipped_active', '2026-09-26T19:00:00Z', {
+      runId: ids.runningRun,
+      skippedInRow: 1,
+    }),
     fire('0192f7a0-0000-7000-8000-000000000611', 'run_created', '2026-09-26T19:00:00Z', {
       runId: ids.failedRun,
+      recordedAt: '2026-09-26T19:00:01Z',
+    }),
+    fire('0192f7a0-0000-7000-8000-000000000623', 'refused', '2026-09-25T19:30:00Z', {
+      reason: 'unknown_repository',
+      skippedInRow: 3,
+      alert: true,
+    }),
+    fire('0192f7a0-0000-7000-8000-000000000624', 'refused', '2026-09-25T19:20:00Z', {
+      reason: 'unknown_plugin',
+      skippedInRow: 2,
+    }),
+    fire('0192f7a0-0000-7000-8000-000000000625', 'skipped_gone', '2026-09-25T19:10:00Z', {
+      reason: 'source_deleted',
+      skippedInRow: 1,
+    }),
+    fire('0192f7a0-0000-7000-8000-000000000626', 'skipped_gone', '2026-09-25T19:05:00Z', {
+      reason: 'agent_revoked',
+      skippedInRow: 0,
     }),
     fire('0192f7a0-0000-7000-8000-000000000612', 'run_created', '2026-09-25T19:00:00Z', {
       kind: 'catch_up',
@@ -745,5 +818,61 @@ export const scheduleFires: Record<string, Schemas['ScheduleFire'][]> = {
       missedUntil: '2026-09-24T19:00:00Z',
       recordedAt: '2026-09-25T18:59:50Z',
     }),
+    fire('0192f7a0-0000-7000-8000-000000000614', 'skipped_downtime', '2026-09-10T19:00:00Z', {
+      missedCount: 10_000,
+      missedUntil: '2026-09-10T21:00:00Z',
+      missedCountCapped: true,
+      recordedAt: '2026-09-22T18:59:50Z',
+    }),
   ],
+}
+
+/**
+ * What the server answered to a preview of each cron at T0 = 2026-10-09T12:00:00Z in Europe/Berlin (F3b);
+ * the mock does not compute fires, so the same moments answer in any zone.
+ */
+export interface PreviewFixture {
+  ru: string
+  en: string
+  tooFrequent: boolean
+  nextFires: string[]
+}
+
+export const schedulePreviews: Record<string, PreviewFixture> = {
+  '0 2 * * *': {
+    ru: 'Каждый день в 02:00',
+    en: 'Every day at 02:00',
+    tooFrequent: false,
+    nextFires: ['2026-10-10T00:00:00Z', '2026-10-11T00:00:00Z', '2026-10-12T00:00:00Z'],
+  },
+  '0 * * * *': {
+    ru: 'Каждый час в :00',
+    en: 'Every hour at :00',
+    tooFrequent: false,
+    nextFires: ['2026-10-09T13:00:00Z', '2026-10-09T14:00:00Z', '2026-10-09T15:00:00Z'],
+  },
+  '30 2 * * 1-5': {
+    ru: 'По будням в 02:30',
+    en: 'On weekdays at 02:30',
+    tooFrequent: false,
+    nextFires: ['2026-10-12T00:30:00Z', '2026-10-13T00:30:00Z', '2026-10-14T00:30:00Z'],
+  },
+  '0 3 * * 0': {
+    ru: 'Каждое воскресенье в 03:00',
+    en: 'Every Sunday at 03:00',
+    tooFrequent: false,
+    nextFires: ['2026-10-11T01:00:00Z', '2026-10-18T01:00:00Z', '2026-10-25T02:00:00Z'],
+  },
+  '*/5 * * * *': {
+    ru: 'Каждые 5 минут',
+    en: 'Every 5 minutes',
+    tooFrequent: true,
+    nextFires: ['2026-10-09T12:05:00Z', '2026-10-09T12:10:00Z', '2026-10-09T12:15:00Z'],
+  },
+  '0 21 * * *': {
+    ru: 'Каждый день в 21:00',
+    en: 'Every day at 21:00',
+    tooFrequent: false,
+    nextFires: ['2026-10-09T19:00:00Z', '2026-10-10T19:00:00Z', '2026-10-11T19:00:00Z'],
+  },
 }

@@ -373,6 +373,7 @@ class NotificationsIntegrationTest(
                 Deliveries(sessions, UuidV7(clock, SecureRandom())),
                 listOf(CapturingChannel()),
                 { Message(Message.Text("after restart")) },
+                { Message(Message.Text("alert after restart")) },
                 RetryPolicy(RetrySettings()),
                 QueueSettings(batch = 10, lease = LEASE, ttl = Duration.ofHours(24)),
                 clock,
@@ -431,7 +432,7 @@ class NotificationsIntegrationTest(
         due.plan(tenant.id, listOf(run), "test-channel", clock.now)
         val delivery = due.due(clock.now, listOf("test-channel"), 10).single()
 
-        val notice = due.claim(delivery, clock.now, clock.now + LEASE)!!
+        val notice = (due.claim(delivery, clock.now, clock.now + LEASE) as Claimed.Finished).notice
 
         assertEquals(run, notice.runId)
         assertEquals(tenant.id, notice.tenantId)
@@ -447,7 +448,7 @@ class NotificationsIntegrationTest(
         val queue = Deliveries(sessions, UuidV7(clock, SecureRandom()))
         queue.plan(tenant.id, listOf(run), "test-channel", clock.now)
         val due = queue.due(clock.now, listOf("test-channel"), 10).single()
-        return queue.claim(due, clock.now, clock.now + LEASE)!!
+        return (queue.claim(due, clock.now, clock.now + LEASE) as Claimed.Finished).notice
     }
 
     @Test

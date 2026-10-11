@@ -21,6 +21,10 @@ internal class Wording(
     val decimalSeparator: Char,
     val durationUnits: List<String>,
     val verdicts: Verdicts,
+    /** The line after the headline of a scheduled run (F3b). */
+    val onSchedule: String,
+    val catchUpRun: String,
+    val failuresBefore: String,
 ) {
     /** The headline of a finished step; null for a step still active (nothing to announce). */
     fun headline(step: StepState): Headline? =
@@ -108,8 +112,11 @@ private val EN =
                 lost = "Backup lost",
                 timedOut = "Backup timed out",
                 cancelled = "Backup cancelled",
-                recovered = "Backup succeeded again after failures",
+                recovered = "Backup is working again",
             ),
+        onSchedule = "On schedule",
+        catchUpRun = "Catch-up run after server downtime",
+        failuresBefore = "Failures in a row before this: ",
     )
 
 private val RU =
@@ -135,8 +142,11 @@ private val RU =
                 lost = "Бэкап потерян",
                 timedOut = "Бэкап прерван по таймауту",
                 cancelled = "Бэкап отменён",
-                recovered = "Бэкап снова выполнен после ошибок",
+                recovered = "Бэкап снова работает",
             ),
+        onSchedule = "По расписанию",
+        catchUpRun = "Догоняющий запуск после простоя сервера",
+        failuresBefore = "Ошибок подряд перед этим: ",
     )
 
 internal fun wording(language: NoticeLanguage): Wording =

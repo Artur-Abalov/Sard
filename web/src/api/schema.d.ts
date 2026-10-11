@@ -248,6 +248,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/schedule-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview a schedule before saving it
+         * @description The same checks as PUT schedule: 422 validation_failed names cron, timezone or lang. Without timezone the server's zone is used; lang is ru or en (en by default).
+         */
+        get: operations["preview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/runs": {
         parameters: {
             query?: never;
@@ -531,7 +551,13 @@ export interface components {
             timezone: string;
             /** @description A disabled schedule keeps its cron and zone and does not fire */
             enabled: boolean;
+            /** @description Tell of every successful scheduled run too; failures and recoveries are always told. Off by default */
+            notifyOnSuccess?: boolean;
         };
+        /** @enum {string} */
+        RunStatus: "queued" | "dispatched" | "running" | "succeeded" | "failed" | "cancelled";
+        /** @enum {string} */
+        RunTrigger: "schedule" | "manual" | "verification" | "catch_up";
         /** @description A source's schedule */
         Schedule: {
             /** Format: uuid */
@@ -560,10 +586,25 @@ export interface components {
              * @description Fires skipped in a row: an active run, a revoked agent, a refusal
              */
             skippedInRow: number;
+            /** @description Tell of every successful scheduled run too; failures and recoveries are always told. Off by default */
+            notifyOnSuccess: boolean;
+            /** @description The latest run created by this schedule (schedule or catch_up); null if none yet */
+            lastRun: components["schemas"]["ScheduleLastRun"] | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @description The latest run the schedule created, scheduled or catch-up */
+        ScheduleLastRun: {
+            /** Format: uuid */
+            id: string;
+            trigger: components["schemas"]["RunTrigger"];
+            status: components["schemas"]["RunStatus"];
+            /** Format: date-time */
+            queuedAt: string;
+            /** Format: date-time */
+            finishedAt: string | null;
         };
         /** @description The source already has an active run (D6); no new run was created (RFC 9457) */
         RunActiveProblem: {
@@ -599,6 +640,28 @@ export interface components {
             /** @description The result that brought this output failed: the snapshot is usable but incomplete, like Snapshot.partial */
             partial: boolean;
         };
+        /** @description What a catch-up run stands for: the fires missed while the server was down */
+        CatchUp: {
+            /**
+             * Format: date-time
+             * @description The first fire missed
+             */
+            missedFrom: string;
+            /**
+             * Format: date-time
+             * @description The last fire missed; with a capped count, the last one counted
+             */
+            missedUntil: string;
+            /**
+             * Format: int32
+             * @description How many fires were missed (counting stops at 10 000)
+             */
+            missedCount: number;
+            /** @description More fires were missed than counted: missedCount is a lower bound */
+            missedCountCapped: boolean;
+            /** @description The schedule's time zone, to show the period in */
+            timezone: string;
+        };
         /** @description A run with its steps */
         Run: {
             /** Format: uuid */
@@ -622,9 +685,9 @@ export interface components {
             /** Format: date-time */
             finishedAt: string | null;
             steps: components["schemas"]["RunStep"][];
+            /** @description Set only for trigger catch_up: the downtime it stands for */
+            catchUp: components["schemas"]["CatchUp"] | null;
         };
-        /** @enum {string} */
-        RunStatus: "queued" | "dispatched" | "running" | "succeeded" | "failed" | "cancelled";
         /** @description One command to the agent */
         RunStep: {
             /**
@@ -678,8 +741,6 @@ export interface components {
             /** Format: date-time */
             finishedAt: string | null;
         };
-        /** @enum {string} */
-        RunTrigger: "schedule" | "manual" | "verification" | "catch_up";
         /** @enum {string} */
         StepAction: "backup" | "restore" | "verify" | "run";
         /** @enum {string} */
@@ -899,6 +960,8 @@ export interface components {
              * @description skipped_downtime: the last fire missed
              */
             missedUntil: string | null;
+            /** @description skipped_downtime: more fires were missed than counted; missedCount is a lower bound */
+            missedCountCapped: boolean;
             /**
              * Format: int32
              * @description Fires skipped in a row after this one
@@ -934,6 +997,19 @@ export interface components {
              */
             expiresAt: string;
         };
+        /** @description A schedule as it would be saved, in words, with its nearest fires; nothing is stored */
+        SchedulePreview: {
+            /** @description Five fields, single-spaced, as PUT schedule would store it */
+            cron: string;
+            /** @description The zone the fires are read in: the requested one, or the server's */
+            timezone: string;
+            /** @description The schedule in words in the language asked for */
+            description: string;
+            /** @description The three nearest fires strictly after now */
+            nextFires: string[];
+            /** @description Two of the next 100 fires are closer than 15 minutes: a warning, not a ban */
+            tooFrequent: boolean;
+        };
         /** @description A page of runs */
         RunPage: {
             items: components["schemas"]["RunSummary"][];
@@ -968,6 +1044,8 @@ export interface components {
             startedAt: string | null;
             /** Format: date-time */
             finishedAt: string | null;
+            /** @description Set only for trigger catch_up: the downtime it stands for */
+            catchUp: components["schemas"]["CatchUp"] | null;
         };
         /** @enum {string} */
         LogLevel: "debug" | "info" | "warn" | "error";
@@ -2166,6 +2244,57 @@ export interface operations {
             };
             /** @description Not found in the session's tenant */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    preview: {
+        parameters: {
+            query?: {
+                cron?: string;
+                timezone?: string;
+                lang?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchedulePreview"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

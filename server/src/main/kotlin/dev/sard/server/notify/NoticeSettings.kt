@@ -34,6 +34,8 @@ class ConsoleUrl private constructor(
 ) {
     fun run(runId: UUID): String = "$base/runs/$runId"
 
+    fun source(sourceId: UUID): String = "$base/sources/$sourceId"
+
     companion object {
         /** The address, or null when the setting is empty; anything but an http(s) address with a host fails. */
         fun parse(setting: String): ConsoleUrl? =

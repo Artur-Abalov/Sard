@@ -10,7 +10,7 @@ import { AgentName } from '../components/AgentName'
 import { AppLink } from '../components/links'
 import { Loaded } from '../components/Loaded'
 import { RunBackupButton } from '../components/RunBackupButton'
-import { SourceLabel } from '../components/RunsTable'
+import { SourceLabel, TriggerLabel } from '../components/RunsTable'
 import { StatusBadge } from '../components/StatusBadge'
 import { StepPanel } from '../components/StepPanel'
 import { waitsForAgent } from '../stepNotes'
@@ -47,7 +47,9 @@ function RunCard({ run }: { run: RunModel }) {
         <Table.Tbody>
           <Table.Tr>
             <Table.Th>{t('run.trigger')}</Table.Th>
-            <Table.Td>{t(`enum.RunTrigger.${run.trigger}`)}</Table.Td>
+            <Table.Td>
+              <TriggerLabel run={run} />
+            </Table.Td>
           </Table.Tr>
           <Table.Tr>
             <Table.Th>{t('runs.queuedAt')}</Table.Th>

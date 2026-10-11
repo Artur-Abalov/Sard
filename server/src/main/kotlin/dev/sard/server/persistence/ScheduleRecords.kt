@@ -38,11 +38,18 @@ class ScheduleRecord(
     @Column(name = "catch_up_at")
     var catchUpAt: Instant? = null
 
+    /** When the owed catch-up became owed: the downtimes it stands for are those recorded since (F3b, Р15). */
+    @Column(name = "catch_up_owed_since")
+    var catchUpOwedSince: Instant? = null
+
     @Column(name = "last_fired_at")
     var lastFiredAt: Instant? = null
 
     @Column(name = "skipped_in_row", nullable = false)
     var skippedInRow: Int = 0
+
+    @Column(name = "notify_on_success", nullable = false)
+    var notifyOnSuccess: Boolean = false
 
     override fun toString() = "ScheduleRecord(id=$id, sourceId=$sourceId, cron=$cron, timezone=$timezone)"
 }
@@ -69,6 +76,8 @@ class ScheduleFireRecord(
     val missedCount: Int?,
     @Column(name = "missed_until", updatable = false)
     val missedUntil: Instant?,
+    @Column(name = "missed_count_capped", nullable = false, updatable = false)
+    val missedCountCapped: Boolean,
     @Column(name = "skipped_in_row", nullable = false, updatable = false)
     val skippedInRow: Int,
     @Column(nullable = false, updatable = false)
@@ -78,4 +87,8 @@ class ScheduleFireRecord(
     @TenantId
     @Column(name = "tenant_id", nullable = false, updatable = false)
     val tenantId: UUID? = null,
-)
+) {
+    /** The catch-up fire a downtime stands under; set by a statement of the scheduler, only read here. */
+    @Column(name = "catch_up_fire_id", insertable = false, updatable = false)
+    val catchUpFireId: UUID? = null
+}
