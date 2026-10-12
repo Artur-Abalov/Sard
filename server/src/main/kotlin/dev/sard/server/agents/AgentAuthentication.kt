@@ -5,7 +5,7 @@ package dev.sard.server.agents
 
 import dev.sard.server.pki.AgentIdentity
 import dev.sard.server.pki.AgentRole
-import dev.sard.server.pki.AgentRoleExtension
+import dev.sard.server.pki.AgentRoleUri
 import dev.sard.server.pki.CertificateRole
 import io.grpc.Context
 import java.security.cert.X509Certificate
@@ -47,13 +47,13 @@ data class PresentedCertificate(
     val serial: String,
     /** The identity in its URI SAN, or null when it names none. */
     val identity: AgentIdentity?,
-    /** What its Sard role extension says (V1). */
+    /** What its role URI says (V1). */
     val role: CertificateRole,
 ) {
     companion object {
         fun of(certificate: X509Certificate): PresentedCertificate {
             val serial = certificate.serialNumber.toString(HEX)
-            return PresentedCertificate(serial, AgentIdentity.of(certificate), AgentRoleExtension.read(certificate))
+            return PresentedCertificate(serial, AgentIdentity.of(certificate), AgentRoleUri.read(certificate))
         }
     }
 }

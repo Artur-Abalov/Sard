@@ -102,21 +102,51 @@ class AgentRoleAuthIntegrationTest(
 
     @Test
     fun `Сертификат без роли или с непонятной ролью получает отказ S3`() {
-        val cases =
+        val missing = listOf("sard://role/source", "https://roles/source")
+        val invalid =
             listOf(
-                ForgedRole.Absent to "CERT_ROLE_MISSING",
-                ForgedRole.Text("admin") to "CERT_ROLE_INVALID",
-                ForgedRole.Text("Source") to "CERT_ROLE_INVALID",
-                ForgedRole.Text("") to "CERT_ROLE_INVALID",
-                ForgedRole.Raw(byteArrayOf(0x0c, 0x7f, 0x01)) to "CERT_ROLE_INVALID",
-                ForgedRole.Printable("source") to "CERT_ROLE_INVALID",
+                "sard://roles/admin",
+                "sard://roles/Source",
+                "SARD://ROLES/source",
+                "sard://roles/",
+                "sard://roles",
+                "sard://roles/source/",
+                "sard://roles/source?x=1",
+                "sard://roles/source#x",
+                "sard://u@roles/source",
+                "sard://roles:443/source",
             )
+        val cases =
+            listOf(ForgedRole.Absent to "CERT_ROLE_MISSING") +
+                missing.map { ForgedRole.Uris(listOf(it)) to "CERT_ROLE_MISSING" } +
+                invalid.map { ForgedRole.Uris(listOf(it)) to "CERT_ROLE_INVALID" } +
+                listOf(
+                    ForgedRole.Uris(listOf("sard://roles/source", "sard://roles/source")) to "CERT_ROLE_INVALID",
+                    ForgedRole.Uris(listOf("sard://roles/source", "sard://roles/verifier")) to "CERT_ROLE_INVALID",
+                )
         for ((role, reason) in cases) {
             val agent = fixtures.enrolled(tenant)
             val before = snapshotOf(agent)
             val forged = fixtures.forged(agent, role)
             assertEquals(refused(reason), refusalOf { register(forged) }, "$role")
             assertEquals(before, snapshotOf(agent), "$role")
+        }
+    }
+
+    @Test
+    fun `Порядок имён в SAN не влияет на проверку S3`() {
+        for (role in AgentRole.entries) {
+            val agent = fixtures.enrolled(tenant, role)
+            val forged = fixtures.forged(agent, ForgedRole.Uris(listOf("sard://roles/${role.stored}"), first = true))
+            val response =
+                AgentServiceGrpc
+                    .newBlockingStub(fixtures.channel(forged))
+                    .withDeadlineAfter(DEADLINE_SECONDS, TimeUnit.SECONDS)
+                    .register(fixtures.registerRequest().setHostname("db9").build())
+            assertEquals(agent.identity.agentId.toString(), response.agentId)
+            val sql = "select hostname from agents where id = ?"
+            val host = jdbc.queryForObject(sql, String::class.java, agent.identity.agentId)
+            assertEquals("db9", host)
         }
     }
 

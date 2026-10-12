@@ -141,7 +141,10 @@ class EnrollmentIntegrationTest(
 
         val leaf = certificates(enrolled.certificateChainPem).single()
         val uri = "sard://tenants/$acme/agents/${enrolled.agentId}"
-        assertEquals(listOf(listOf<Any>(6, uri)), leaf.subjectAlternativeNames.map { it.toList() })
+        assertEquals(
+            setOf(listOf<Any>(6, uri), listOf<Any>(6, "sard://roles/source")),
+            leaf.subjectAlternativeNames.map { it.toList() }.toSet(),
+        )
         assertEquals(ca.caBundlePem(), enrolled.caBundlePem)
         leaf.verify(certificate(enrolled.caBundlePem).publicKey)
 

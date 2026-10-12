@@ -63,9 +63,8 @@ internal object Certificates {
         now: Instant,
         random: SecureRandom,
     ): X509Certificate {
-        val san = GeneralNames(GeneralName(GeneralName.uniformResourceIdentifier, agent.uri()))
-        val profile =
-            Leaf("CN=${agent.agentId}", KeyPurposeId.id_kp_clientAuth, san, now, now + AGENT_VALIDITY, role)
+        val san = GeneralNames(arrayOf(uri(agent.uri()), uri(AgentRoleUri.of(role))))
+        val profile = Leaf("CN=${agent.agentId}", KeyPurposeId.id_kp_clientAuth, san, now, now + AGENT_VALIDITY)
         return leaf(key, profile, ca, random)
     }
 
@@ -88,8 +87,6 @@ internal object Certificates {
         val san: GeneralNames,
         val notBefore: Instant,
         val notAfter: Instant,
-        /** Set for an agent certificate only; the role extension is Sard's own (V1). */
-        val role: AgentRole? = null,
     )
 
     private fun leaf(
@@ -113,9 +110,10 @@ internal object Certificates {
                 .addExtension(Extension.subjectAlternativeName, false, profile.san)
                 .addExtension(Extension.subjectKeyIdentifier, false, extensions.createSubjectKeyIdentifier(key))
                 .addExtension(Extension.authorityKeyIdentifier, false, authorityKeyIdentifier(ca))
-        profile.role?.let { builder.addExtension(AgentRoleExtension.IDENTIFIER, false, AgentRoleExtension.value(it)) }
         return sign(builder, ca.privateKey, random)
     }
+
+    private fun uri(value: String) = GeneralName(GeneralName.uniformResourceIdentifier, value)
 
     private fun authorityKeyIdentifier(ca: CaKeyPair) = extensions.createAuthorityKeyIdentifier(ca.certificate)
 

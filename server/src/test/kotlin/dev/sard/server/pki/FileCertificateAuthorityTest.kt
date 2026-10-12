@@ -104,7 +104,9 @@ class FileCertificateAuthorityTest {
         val leaf = issue("agent-p256.csr")
         assertEquals(listOf(CLIENT_AUTH), leaf.extendedKeyUsage)
         val uri = "sard://tenants/${AGENT.tenantId}/agents/${AGENT.agentId}"
-        assertEquals(listOf(listOf<Any>(SAN_URI, uri)), leaf.subjectAlternativeNames.map { it.toList() })
+        val names = leaf.subjectAlternativeNames.map { it.toList() }
+        assertEquals(setOf(listOf<Any>(SAN_URI, uri), listOf<Any>(SAN_URI, "sard://roles/source")), names.toSet())
+        assertEquals(2, names.size)
         assertEquals("CN=${AGENT.agentId}", leaf.subjectX500Principal.name)
         assertEquals(NOW, leaf.notBefore.toInstant())
         assertEquals(NOW + Duration.ofDays(365), leaf.notAfter.toInstant())

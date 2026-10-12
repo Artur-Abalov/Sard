@@ -16,14 +16,16 @@ import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.AgentIdentity
 import dev.sard.server.pki.AgentRole
-import dev.sard.server.pki.AgentRoleExtension
+import dev.sard.server.pki.AgentRoleUri
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.CertificateRole
 import dev.sard.server.pki.IssuedCertificate
 import dev.sard.server.pki.PkiFixtures
 import org.bouncycastle.asn1.DEROctetString
-import org.bouncycastle.asn1.DERUTF8String
+import org.bouncycastle.asn1.x509.BasicConstraints
 import org.bouncycastle.asn1.x509.Extension
+import org.bouncycastle.asn1.x509.GeneralName
+import org.bouncycastle.asn1.x509.GeneralNames
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.grpc.test.autoconfigure.LocalGrpcServerPort
 import org.springframework.boot.test.context.SpringBootTest
@@ -100,24 +102,31 @@ class AgentRoleEnrollmentIntegrationTest(
         return chain.first()
     }
 
-    private fun roleOfCertificate(response: EnrollResponse) = AgentRoleExtension.read(certificateOf(response))
+    private fun roleOfCertificate(response: EnrollResponse) = AgentRoleUri.read(certificateOf(response))
 
     private fun roleInDatabase(response: EnrollResponse) =
         jdbc.queryForObject("select role from agents where id = ?::uuid", String::class.java, response.agentId)
 
-    private fun extensionCount(certificate: X509Certificate) =
-        org.bouncycastle.cert.jcajce
-            .JcaX509CertificateHolder(certificate)
-            .extensions.extensionOIDs
-            .count { it.id == AgentRoleExtension.OID }
+    private fun sanOf(certificate: X509Certificate): Set<Pair<Int, String>> {
+        val names = certificate.subjectAlternativeNames
+        return names.map { (it[0] as Int) to it[1] as String }.toSet()
+    }
+
+    private fun askedSan(vararg names: GeneralName) =
+        Extension(Extension.subjectAlternativeName, false, DEROctetString(GeneralNames(names).encoded))
+
+    private fun uriName(uri: String) = GeneralName(GeneralName.uniformResourceIdentifier, uri)
 
     @Test
     fun `Регистрация по токену verifier выдаёт сертификат с ролью verifier`() {
         val response = enroll(tokens.create(tenant, role = AgentRole.VERIFIER).reveal())
 
         val certificate = certificateOf(response)
-        assertEquals(CertificateRole.Valid(AgentRole.VERIFIER), AgentRoleExtension.read(certificate))
-        assertEquals(true, AgentRoleExtension.OID in certificate.nonCriticalExtensionOIDs)
+        assertEquals(CertificateRole.Valid(AgentRole.VERIFIER), AgentRoleUri.read(certificate))
+        assertEquals(
+            setOf(6 to "sard://roles/verifier", 6 to AgentIdentity(tenant, UUID.fromString(response.agentId)).uri()),
+            sanOf(certificate),
+        )
         assertEquals("verifier", roleInDatabase(response))
     }
 
@@ -159,31 +168,38 @@ class AgentRoleEnrollmentIntegrationTest(
     }
 
     @Test
-    fun `Расширение роли в CSR не попадает в сертификат`() {
+    fun `URI роли verifier в CSR не попадает в сертификат токена source`() {
         val keys = fixtures.newKeys()
-        val asked = Extension(AgentRoleExtension.IDENTIFIER, false, DEROctetString(DERUTF8String("verifier")))
-        val csr = fixtures.csr(keys, extensions = listOf(asked))
+        val csr = fixtures.csr(keys, extensions = listOf(askedSan(uriName("sard://roles/verifier"))))
 
         val response = enroll(tokens.create(tenant, role = AgentRole.SOURCE).reveal(), keys, csr)
 
-        val certificate = certificateOf(response)
-        assertEquals(1, extensionCount(certificate))
-        assertEquals(CertificateRole.Valid(AgentRole.SOURCE), AgentRoleExtension.read(certificate))
+        val own = AgentIdentity(tenant, UUID.fromString(response.agentId)).uri()
+        assertEquals(setOf(6 to own, 6 to "sard://roles/source"), sanOf(certificateOf(response)))
         assertEquals("source", roleInDatabase(response))
     }
 
     @Test
-    fun `Критичное расширение роли в CSR игнорируется`() {
+    fun `Имена SAN и расширения CSR не попадают в сертификат`() {
+        val other = fixtures.enrolled(fixtures.tenant())
         val keys = fixtures.newKeys()
-        val asked = Extension(AgentRoleExtension.IDENTIFIER, true, DEROctetString(DERUTF8String("source")))
-        val csr = fixtures.csr(keys, extensions = listOf(asked))
+        val asked =
+            listOf(
+                askedSan(
+                    uriName("sard://roles/source"),
+                    uriName(other.identity.uri()),
+                    GeneralName(GeneralName.dNSName, "db1.example"),
+                ),
+                Extension(Extension.basicConstraints, true, DEROctetString(BasicConstraints(true).encoded)),
+            )
+        val csr = fixtures.csr(keys, extensions = asked)
 
         val response = enroll(tokens.create(tenant, role = AgentRole.VERIFIER).reveal(), keys, csr)
 
         val certificate = certificateOf(response)
-        assertEquals(1, extensionCount(certificate))
-        assertEquals(CertificateRole.Valid(AgentRole.VERIFIER), AgentRoleExtension.read(certificate))
-        assertEquals(emptyList(), certificate.criticalExtensionOIDs.orEmpty().filter { it == AgentRoleExtension.OID })
+        val own = AgentIdentity(tenant, UUID.fromString(response.agentId)).uri()
+        assertEquals(setOf(6 to own, 6 to "sard://roles/verifier"), sanOf(certificate))
+        assertEquals(-1, certificate.basicConstraints)
     }
 
     @Test

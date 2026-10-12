@@ -3,9 +3,6 @@
 
 package dev.sard.server.pki
 
-import org.bouncycastle.asn1.ASN1Encodable
-import org.bouncycastle.asn1.DERPrintableString
-import org.bouncycastle.asn1.DERUTF8String
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.asn1.x509.BasicConstraints
 import org.bouncycastle.asn1.x509.ExtendedKeyUsage
@@ -30,24 +27,20 @@ import java.time.Duration
 import java.time.Instant
 import java.util.Date
 
-/** What a forged certificate says about the agent's role (tests only). */
+/** What the SAN of a forged certificate says about the agent's role besides its identity URI (tests only). */
 sealed interface ForgedRole {
-    /** No Sard role extension at all. */
+    /** No role URI at all. */
     data object Absent : ForgedRole
 
-    /** The extension holds a DER UTF8String [text]. */
+    /** The single role URI "sard://roles/[text]". */
     data class Text(
         val text: String,
     ) : ForgedRole
 
-    /** The extension holds a DER PrintableString [text]: right letters, wrong type. */
-    data class Printable(
-        val text: String,
-    ) : ForgedRole
-
-    /** The extension holds these bytes, whatever they are. */
-    class Raw(
-        val der: ByteArray,
+    /** These URIs, verbatim, after the identity URI or (with [first]) before it. */
+    data class Uris(
+        val uris: List<String>,
+        val first: Boolean = false,
     ) : ForgedRole
 }
 
@@ -81,24 +74,24 @@ class ForgedCertificates(
                 .addExtension(
                     Extension.subjectAlternativeName,
                     false,
-                    GeneralNames(GeneralName(GeneralName.uniformResourceIdentifier, identity.uri())),
+                    GeneralNames(names(identity, role)),
                 )
-        withRole(builder, role)
         val signer = JcaContentSignerBuilder(Keys.SIGNATURE).setSecureRandom(SecureRandom()).build(ca.privateKey)
         return JcaX509CertificateConverter().getCertificate(builder.build(signer))
     }
 
-    private fun withRole(
-        builder: X509v3CertificateBuilder,
+    private fun names(
+        identity: AgentIdentity,
         role: ForgedRole,
-    ) {
-        val oid = org.bouncycastle.asn1.ASN1ObjectIdentifier(AgentRoleExtension.OID)
-        when (role) {
-            ForgedRole.Absent -> Unit
-            is ForgedRole.Text -> builder.addExtension(oid, false, DERUTF8String(role.text) as ASN1Encodable)
-            is ForgedRole.Printable -> builder.addExtension(oid, false, DERPrintableString(role.text))
-            is ForgedRole.Raw -> builder.addExtension(oid, false, role.der)
-        }
+    ): Array<GeneralName> {
+        val own = listOf(identity.uri())
+        val uris =
+            when (role) {
+                ForgedRole.Absent -> own
+                is ForgedRole.Text -> own + "sard://roles/${role.text}"
+                is ForgedRole.Uris -> if (role.first) role.uris + own else own + role.uris
+            }
+        return uris.map { GeneralName(GeneralName.uniformResourceIdentifier, it) }.toTypedArray()
     }
 
     companion object {
