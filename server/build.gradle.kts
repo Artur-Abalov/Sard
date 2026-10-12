@@ -170,6 +170,11 @@ tasks.test {
     // CSRF tests (W1b) set the Host header explicitly to control the expected Origin;
     // java.net.http.HttpClient refuses to set it unless this is allowed.
     systemProperty("jdk.httpclient.allowRestrictedHeaders", "host")
+    // Every cached Spring context keeps its server and pools alive; with the onboarding contexts the
+    // mutation run (gate.sh, mutflow) outgrew the default 512 MiB worker heap and later contexts failed
+    // to load. Capping the context cache instead changed which tests see background mutants, so the
+    // cache stays as it is and the heap grows.
+    maxHeapSize = "1g"
     // No agent release next to the test server; AgentDownloadsIntegrationTest switches downloads on.
     environment("SARD_AGENT_DOWNLOADS", "false")
     finalizedBy(tasks.jacocoTestReport)
