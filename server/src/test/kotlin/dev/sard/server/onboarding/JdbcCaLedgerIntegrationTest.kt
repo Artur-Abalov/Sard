@@ -39,7 +39,7 @@ class JdbcCaLedgerIntegrationTest(
         jdbc.update("delete from agent_certificates where serial = ?", "a".repeat(32))
         jdbc.update("delete from agents where hostname = 'a'")
         jdbc.update("delete from tenants where id = ?", OTHER_TENANT)
-        jdbc.update("delete from onboarding_steps")
+        jdbc.update("delete from onboarding_steps where step <> 'keys_confirmed'")
         jdbc.update("delete from ca_origins")
     }
 

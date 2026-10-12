@@ -8,12 +8,15 @@ import dev.sard.server.api.AdminStepResult
 import dev.sard.server.api.CodeResult
 import dev.sard.server.api.NoSuchSessionException
 import dev.sard.server.api.OnboardingAccess
+import dev.sard.server.api.OnboardingRestriction
 import dev.sard.server.api.OnboardingStep
 import dev.sard.server.api.OnboardingStepId
 import dev.sard.server.api.OnboardingStepState
 import dev.sard.server.api.SetupCodeState
 import dev.sard.server.pki.CaUsage
 import dev.sard.server.selfagent.captureEvents
+import dev.sard.server.selfbackup.FirstBackupPending
+import dev.sard.server.selfbackup.SelfBackupNotConfigured
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import java.time.Duration
@@ -43,11 +46,13 @@ class OnboardingServiceTest {
     private fun steps(
         ca: OnboardingStepState,
         admin: OnboardingStepState,
+        selfBackup: OnboardingStepState = OnboardingStepState.UPCOMING,
+        keys: OnboardingStepState = OnboardingStepState.UPCOMING,
     ) = listOf(
         OnboardingStep(OnboardingStepId.CA, ca),
         OnboardingStep(OnboardingStepId.ADMIN, admin),
-        OnboardingStep(OnboardingStepId.SELF_BACKUP, OnboardingStepState.UPCOMING),
-        OnboardingStep(OnboardingStepId.KEYS_CONFIRMED, OnboardingStepState.UPCOMING),
+        OnboardingStep(OnboardingStepId.SELF_BACKUP, selfBackup),
+        OnboardingStep(OnboardingStepId.KEYS_CONFIRMED, keys),
     )
 
     // ---- Состояние ----
@@ -87,7 +92,8 @@ class OnboardingServiceTest {
 
         val state = service.state(true, null)
 
-        assertEquals(steps(OnboardingStepState.DONE, OnboardingStepState.DONE), state.steps)
+        val afterWizard = steps(OnboardingStepState.DONE, OnboardingStepState.DONE, OnboardingStepState.PENDING)
+        assertEquals(afterWizard, state.steps)
         assertEquals(SetupCodeState.NOT_ISSUED, state.setupCode)
         assertEquals(OnboardingAccess.ADMIN, state.access)
         assertEquals(false, state.caReplaceable)
@@ -579,6 +585,155 @@ class OnboardingServiceTest {
 
         assertTrue(Regex("[0-9a-f]{64}").matches(result.sessionId), result.sessionId)
         assertEquals(1, h.adminSessions.trackedSessions())
+    }
+
+    // ---- F4b: шаги самобэкапа и копии ключей, ограничение (docs/specs/server/onboarding-self-backup.feature) ----
+
+    private fun adminDone() {
+        h.steps.ca = true
+        h.adminSetup.password = PASSWORD
+    }
+
+    private fun stateOf(): dev.sard.server.api.Onboarding = MutFlow.underTest { service.state(true, null) }
+
+    @Test
+    fun `До шага admin шаги самобэкапа и копии ключей предстоят, ограничение full`() {
+        val state = MutFlow.underTest { service.state(false, null) }
+
+        val expected = steps(OnboardingStepState.PENDING, OnboardingStepState.PENDING)
+        assertEquals(expected, state.steps)
+        assertEquals(OnboardingRestriction.FULL, state.restriction)
+    }
+
+    @Test
+    fun `После шага admin шаг самобэкапа ожидает выполнения, копия ключей предстоит`() {
+        adminDone()
+
+        val state = stateOf()
+
+        val expected = steps(OnboardingStepState.DONE, OnboardingStepState.DONE, OnboardingStepState.PENDING)
+        assertEquals(expected, state.steps)
+        assertEquals(OnboardingRestriction.FULL, state.restriction)
+    }
+
+    @Test
+    fun `Шаг самобэкапа выполнен, когда первые бэкапы прошли, и тогда копия ключей ожидает`() {
+        adminDone()
+        h.selfBackup.firstBackupDone = true
+
+        val state = stateOf()
+
+        val expected =
+            steps(
+                OnboardingStepState.DONE,
+                OnboardingStepState.DONE,
+                OnboardingStepState.DONE,
+                OnboardingStepState.PENDING,
+            )
+        assertEquals(expected, state.steps)
+        assertEquals(OnboardingRestriction.FULL, state.restriction)
+    }
+
+    @Test
+    fun `Первые бэкапы до шага admin шаг самобэкапа не выполняют`() {
+        h.steps.ca = true
+        h.selfBackup.firstBackupDone = true
+
+        val state = MutFlow.underTest { service.state(false, null) }
+
+        assertEquals(steps(OnboardingStepState.DONE, OnboardingStepState.PENDING), state.steps)
+    }
+
+    @Test
+    fun `Подтверждённая копия ключей выполняет все четыре шага и снимает ограничение`() {
+        adminDone()
+        h.selfBackup.firstBackupDone = true
+
+        MutFlow.underTest { service.confirmKeys(ADDRESS) }
+
+        val state = stateOf()
+        assertTrue(state.steps.all { it.state == OnboardingStepState.DONE }, state.steps.toString())
+        assertEquals(OnboardingRestriction.NONE, state.restriction)
+        assertEquals(listOf(h.tenant), h.selfBackup.confirmations)
+    }
+
+    @Test
+    fun `После завершения онбординга шаги остаются выполненными без первых бэкапов и после admin-reset`() {
+        h.steps.ca = true
+        h.steps.keys = true
+        h.selfBackup.firstBackupDone = false
+
+        val state = MutFlow.underTest { service.state(false, null) }
+
+        val expected =
+            steps(
+                OnboardingStepState.DONE,
+                OnboardingStepState.PENDING,
+                OnboardingStepState.DONE,
+                OnboardingStepState.DONE,
+            )
+        assertEquals(expected, state.steps)
+        assertEquals(OnboardingRestriction.NONE, state.restriction)
+    }
+
+    @Test
+    fun `Обновлённая установка до завершения онбординга имеет ограничение new_agents, после него none`() {
+        adminDone()
+        h.steps.upgraded = true
+
+        assertEquals(OnboardingRestriction.NEW_AGENTS, stateOf().restriction)
+
+        h.steps.keys = true
+        assertEquals(OnboardingRestriction.NONE, stateOf().restriction)
+    }
+
+    @Test
+    fun `Подтверждение до первых бэкапов отклоняется и ничего не записывает`() {
+        adminDone()
+        h.selfBackup.refusal = FirstBackupPending()
+
+        assertFailsWith<FirstBackupPending> { MutFlow.underTest { service.confirmKeys(ADDRESS) } }
+
+        assertFalse(h.steps.keys)
+    }
+
+    @Test
+    fun `Подтверждение без привязки отклоняется и ничего не записывает`() {
+        adminDone()
+        h.selfBackup.refusal = SelfBackupNotConfigured()
+
+        assertFailsWith<SelfBackupNotConfigured> { MutFlow.underTest { service.confirmKeys(ADDRESS) } }
+
+        assertFalse(h.steps.keys)
+    }
+
+    @Test
+    fun `Подтверждение пишет в журнал адрес и репозиторий, а завершение онбординга - один раз`() {
+        adminDone()
+        h.selfBackup.firstBackupDone = true
+
+        val first = captureEvents { MutFlow.underTest { service.confirmKeys(ADDRESS) } }
+        h.selfBackup.recorded = false
+        val second = captureEvents { MutFlow.underTest { service.confirmKeys(ADDRESS) } }
+
+        val step =
+            "Onboarding step keys_confirmed completed from $ADDRESS: repository=self repository_id=$REPOSITORY_ID"
+        assertEquals(Level.INFO, first.single { it.text == step }.level)
+        assertEquals(1, first.count { it.text == "Onboarding completed" })
+        assertTrue(second.none { "Onboarding" in it.text }, second.toString())
+    }
+
+    @Test
+    fun `Запись подтверждения без шага в базе всё равно завершает онбординг`() {
+        adminDone()
+        h.selfBackup.firstBackupDone = true
+        h.selfBackup.recorded = false
+
+        val events = captureEvents { service.confirmKeys(ADDRESS) }
+
+        assertTrue(h.steps.keys)
+        assertEquals(1, events.count { it.text == "Onboarding completed" })
+        assertEquals(1, events.count { "Onboarding step keys_confirmed completed" in it.text })
     }
 
     /** The other session wins between the check and the creation. */

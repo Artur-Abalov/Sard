@@ -49,7 +49,7 @@ class AdminResetCommandIntegrationTest(
     @AfterTest
     fun `forget the state`() {
         jdbc.update("delete from administrators")
-        jdbc.update("delete from onboarding_steps")
+        jdbc.update("delete from onboarding_steps where step <> 'keys_confirmed'")
     }
 
     private class Result(
@@ -101,6 +101,18 @@ class AdminResetCommandIntegrationTest(
     }
 
     @Test
+    fun `admin-reset после завершения онбординга не возвращает ограничение`() {
+        val steps = JdbcOnboardingSteps(jdbc)
+        steps.confirmKeys(Instant.parse("2026-10-12T12:00:00Z"))
+
+        val result = command("admin-reset")
+
+        assertEquals(0, result.exit, result.output)
+        assertNull(administrators.hash())
+        assertTrue(steps.keysConfirmed())
+    }
+
+    @Test
     fun `admin-reset не запускает сервер, не создаёт каталог CA и канал`() {
         Files.createDirectories(tmp.resolve("pki/ca"))
         Files.writeString(tmp.resolve("pki/ca/ca.key"), "key")
@@ -125,7 +137,7 @@ class AdminResetCommandIntegrationTest(
 
         assertEquals(0, result.exit, result.output)
         assertTrue("not set" in result.output, result.output)
-        assertEquals(1, jdbc.queryForObject("select count(*) from onboarding_steps", Int::class.java))
+        assertEquals(1, jdbc.queryForObject("select count(*) from onboarding_steps where step = 'ca'", Int::class.java))
     }
 
     @Test

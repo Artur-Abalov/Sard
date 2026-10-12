@@ -4,6 +4,7 @@
 package dev.sard.server.selfbackup
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.completeOnboarding
 import dev.sard.server.freshness.FreshnessCheck
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.RUNS_NOW
@@ -54,11 +55,14 @@ class SelfBackupHealthIntegrationTest(
     fun `a tenant with its built-in agent`() {
         clock.now = RUNS_NOW
         tenant.create()
+        // F6 is about the self-backup alone: the onboarding is not over, so no warning about the key copy (F4b).
+        jdbc.update("delete from onboarding_steps where step = 'keys_confirmed'")
     }
 
     @AfterTest
     fun `drop the tenant`() {
         tenant.drop()
+        completeOnboarding(jdbc)
     }
 
     private fun state(): SelfBackupView = MutFlow.underTest { selfBackups.get(tenant.id) }

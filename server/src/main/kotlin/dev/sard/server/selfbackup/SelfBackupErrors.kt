@@ -23,3 +23,6 @@ class LocalStorageUnconfirmed(
 
 /** "Back up now" before a repository is bound (409 self_backup_not_configured). */
 class SelfBackupNotConfigured : SelfBackupException("the self-backup is not configured")
+
+/** The key copy is confirmed before both system sources backed up after the binding (409 first_backup_pending). */
+class FirstBackupPending : SelfBackupException("the first backups of the binding are not done")

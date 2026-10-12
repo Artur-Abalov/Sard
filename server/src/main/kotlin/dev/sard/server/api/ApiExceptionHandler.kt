@@ -14,6 +14,7 @@ import dev.sard.server.runs.UnknownAgent
 import dev.sard.server.runs.UnknownPlugin
 import dev.sard.server.runs.UnknownRepository
 import dev.sard.server.scheduler.InvalidSchedule
+import dev.sard.server.selfbackup.FirstBackupPending
 import dev.sard.server.selfbackup.LocalStorageUnconfirmed
 import dev.sard.server.selfbackup.RepositoryNotInitialized
 import dev.sard.server.selfbackup.SelfAgentMissing
@@ -184,6 +185,9 @@ class SelfBackupExceptionHandler {
 
     @ExceptionHandler(SelfBackupNotConfigured::class)
     fun notConfigured() = conflict(ErrorCode.SELF_BACKUP_NOT_CONFIGURED)
+
+    @ExceptionHandler(FirstBackupPending::class)
+    fun firstBackupPending() = conflict(ErrorCode.FIRST_BACKUP_PENDING)
 
     private fun conflict(code: ErrorCode) = problemResponse(HttpStatus.CONFLICT, "Conflict", code)
 }

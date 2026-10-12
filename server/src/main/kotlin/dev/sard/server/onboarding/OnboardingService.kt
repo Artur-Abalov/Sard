@@ -11,8 +11,6 @@ import dev.sard.server.api.Onboarding
 import dev.sard.server.api.OnboardingAccess
 import dev.sard.server.api.OnboardingApi
 import dev.sard.server.api.OnboardingStep
-import dev.sard.server.api.OnboardingStepId
-import dev.sard.server.api.OnboardingStepState
 import dev.sard.server.api.SetupCodeState
 import dev.sard.server.auth.AdminSetup
 import dev.sard.server.auth.LoginAttemptTracker
@@ -23,9 +21,16 @@ import dev.sard.server.pki.CaUsage
 import org.slf4j.LoggerFactory
 import java.time.Clock
 
-private val log = LoggerFactory.getLogger(OnboardingService::class.java)
+private fun accessOf(
+    adminSession: Boolean,
+    setupSessionLive: Boolean,
+) = when {
+    adminSession -> OnboardingAccess.ADMIN
+    setupSessionLive -> OnboardingAccess.SETUP
+    else -> OnboardingAccess.NONE
+}
 
-private fun doneOrPending(done: Boolean) = if (done) OnboardingStepState.DONE else OnboardingStepState.PENDING
+private val log = LoggerFactory.getLogger(OnboardingService::class.java)
 
 /** The password when it may be set, null when it may not (Р7). */
 private fun acceptable(password: String?): String? = password?.takeIf(PasswordRules::acceptable)
@@ -41,6 +46,7 @@ class OnboardingService(
     private val clock: Clock,
     private val adminSetup: AdminSetup,
     private val steps: OnboardingSteps,
+    private val selfBackup: SelfBackupGate,
     private val codes: SetupCodes,
     private val setupSessions: SetupSessions,
     private val codeAttempts: LoginAttemptTracker,
@@ -53,7 +59,7 @@ class OnboardingService(
         adminSession: Boolean,
         setupSessionId: String?,
     ): Onboarding {
-        val access = accessOf(adminSession, setupSessionId)
+        val access = accessOf(adminSession, setupSessions.valid(setupSessionId))
         val seesCa = access != OnboardingAccess.NONE
         return Onboarding(
             steps = stepStates(),
@@ -61,25 +67,16 @@ class OnboardingService(
             access = access,
             ca = if (seesCa) caInfo() else null,
             caReplaceable = if (seesCa) caUsage() == CaUsage.NONE else null,
+            restriction = restriction(),
         )
     }
 
-    private fun accessOf(
-        adminSession: Boolean,
-        setupSessionId: String?,
-    ) = when {
-        adminSession -> OnboardingAccess.ADMIN
-        setupSessions.valid(setupSessionId) -> OnboardingAccess.SETUP
-        else -> OnboardingAccess.NONE
-    }
+    override fun restriction() = restrictionOf(steps.keysConfirmed(), steps.upgraded())
 
-    private fun stepStates(): List<OnboardingStep> =
-        listOf(
-            OnboardingStep(OnboardingStepId.CA, doneOrPending(steps.caConfirmed())),
-            OnboardingStep(OnboardingStepId.ADMIN, doneOrPending(adminSetup.done())),
-            OnboardingStep(OnboardingStepId.SELF_BACKUP, OnboardingStepState.UPCOMING),
-            OnboardingStep(OnboardingStepId.KEYS_CONFIRMED, OnboardingStepState.UPCOMING),
-        )
+    private fun stepStates(): List<OnboardingStep> {
+        val complete = steps.keysConfirmed()
+        return stepsOf(steps.caConfirmed(), adminSetup.done(), complete, selfBackup::firstBackupDone)
+    }
 
     /** Р5: the admin step first (not an attempt), then the lock of the address, then the code itself. */
     override fun enterCode(
@@ -156,5 +153,20 @@ class OnboardingService(
         setupSessions.endAll()
         log.info("Onboarding step admin completed from {}", clientAddress)
         return AdminStepResult.Done(adminSessions.create(tenantResolver.currentTenantId()).id)
+    }
+
+    override fun confirmKeys(clientAddress: String) {
+        val now = clock.instant()
+        val confirmed = selfBackup.confirmKeys(tenantResolver.currentTenantId(), now)
+        val first = steps.confirmKeys(now)
+        if (confirmed.recorded || first) {
+            log.info(
+                "Onboarding step keys_confirmed completed from {}: repository={} repository_id={}",
+                clientAddress,
+                confirmed.repositoryName,
+                confirmed.repositoryId,
+            )
+        }
+        if (first) log.info("Onboarding completed")
     }
 }

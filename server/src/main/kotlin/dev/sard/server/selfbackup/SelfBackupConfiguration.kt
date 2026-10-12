@@ -35,6 +35,7 @@ class SelfBackupConfiguration {
         schedules: Schedules,
         runs: Runs,
         mapper: ObjectMapper,
+        onboarding: OnboardingCompletion,
     ) = SelfBackups(
         sessions,
         clock,
@@ -44,5 +45,6 @@ class SelfBackupConfiguration {
         schedules,
         runs,
         mapper,
+        onboarding::complete,
     )
 }

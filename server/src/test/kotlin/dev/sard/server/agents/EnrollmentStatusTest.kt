@@ -10,6 +10,7 @@ import dev.sard.server.pki.InvalidCsrException
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import io.grpc.Status
+import io.grpc.Status.Code.FAILED_PRECONDITION
 import io.grpc.Status.Code.INVALID_ARGUMENT
 import io.grpc.Status.Code.UNAUTHENTICATED
 import io.grpc.Status.Code.UNAVAILABLE
@@ -56,6 +57,11 @@ class EnrollmentStatusTest {
         code: Status.Code,
         wireReason: String,
     ) = assertMapping(EnrollmentRejectedException(reason), code, wireReason)
+
+    @Test
+    fun `ONBOARDING_INCOMPLETE is FAILED_PRECONDITION`() {
+        assertRejected(Reason.ONBOARDING_INCOMPLETE, FAILED_PRECONDITION, "ONBOARDING_INCOMPLETE")
+    }
 
     @Test
     fun `TOKEN_MALFORMED is INVALID_ARGUMENT`() {
@@ -122,6 +128,7 @@ class EnrollmentStatusTest {
                 "TOKEN_USED",
                 "TOKEN_REVOKED",
                 "TOKEN_EXPIRED",
+                "ONBOARDING_INCOMPLETE",
                 "HOSTNAME_INVALID",
                 "CSR_INVALID",
                 "INTERNAL_RETRYABLE",
