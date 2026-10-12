@@ -32,7 +32,7 @@ private const val WAIT_SECONDS = 20L
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = ["spring.grpc.server.port=0"],
 )
-@Import(TestcontainersConfiguration::class, EnrollmentTestConfiguration::class)
+@Import(TestcontainersConfiguration::class, EnrollmentTestConfiguration::class, WizardCodeConfiguration::class)
 class TokenRevokeRaceApiIntegrationTest(
     @Autowired private val enrollment: Enrollment,
     @Autowired private val ca: GatedCertificateAuthority,

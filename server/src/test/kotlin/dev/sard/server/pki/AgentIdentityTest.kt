@@ -59,7 +59,7 @@ class AgentIdentityTest {
 
     @Test
     fun `an agent certificate carries its identity`() {
-        val ca = FileCertificateAuthority(tmp.resolve("pki"), SERVER_NAMES, CLOCK, random())
+        val ca = FileCertificateAuthority(tmp.resolve("pki"), SERVER_NAMES, CLOCK, random(), FakeCaLedger())
         val issued = ca.issueAgentCertificate(resource("agent-p256.csr"), AGENT)
         val leaf = certificates(issued.chainPem).first()
         assertEquals(AGENT, MutFlow.underTest { AgentIdentity.of(leaf) })
@@ -67,7 +67,7 @@ class AgentIdentityTest {
 
     @Test
     fun `a certificate without an agent URI carries none`() {
-        val ca = FileCertificateAuthority(tmp.resolve("pki"), SERVER_NAMES, CLOCK, random())
+        val ca = FileCertificateAuthority(tmp.resolve("pki"), SERVER_NAMES, CLOCK, random(), FakeCaLedger())
         val root = certificate(ca.caBundlePem())
         assertNull(MutFlow.underTest { AgentIdentity.of(root) })
         val server = ca.serverKeyManager().let { it.getCertificateChain(it.getServerAliases("EC", null).first()) }

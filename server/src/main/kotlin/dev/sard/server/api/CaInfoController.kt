@@ -3,6 +3,7 @@
 
 package dev.sard.server.api
 
+import dev.sard.server.pki.CaProvenance
 import dev.sard.server.pki.CertificateAuthority
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Schema
@@ -23,6 +24,13 @@ data class CaInfo(
         example = "8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f",
     )
     val fingerprint: String,
+    @field:Schema(description = "Where the CA came from: made by this server or imported (docs/operator/08)")
+    val origin: CaOrigin,
+    @field:Schema(
+        description = "Absolute path of the CA key in the file system of the server: back it up separately",
+        example = "/var/lib/sard/pki/ca/ca.key",
+    )
+    val keyPath: String,
 )
 
 /** The fingerprint of the server's CA, for comparing a moved server with the old one (ADR 0052). Never the key. */
@@ -37,7 +45,20 @@ class CaInfoController(
     @Operation(
         operationId = "getCa",
         summary = "CA of the server",
-        description = "The fingerprint of the CA, whatever its origin. Requires an administrator session.",
+        description =
+            "The fingerprint of the CA, where it came from and where its key is. " +
+                "Requires an administrator session.",
     )
-    fun info(): CaInfo = CaInfo(ca.fingerprint().hex)
+    fun info(): CaInfo = ca.toInfo()
 }
+
+/** What the console shows of the CA: the fingerprint, where it came from and where the key is (F4a, К7). */
+fun CertificateAuthority.toInfo(): CaInfo =
+    CaInfo(
+        fingerprint().hex,
+        when (provenance()) {
+            CaProvenance.GENERATED -> CaOrigin.GENERATED
+            CaProvenance.IMPORTED -> CaOrigin.IMPORTED
+        },
+        keyLocation(),
+    )

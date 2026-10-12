@@ -3,6 +3,7 @@
 
 package dev.sard.server.console
 
+import dev.sard.server.SeededAdministrator
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.downloads.AgentPackageFixture
 import org.springframework.boot.test.context.SpringBootTest
@@ -36,12 +37,12 @@ private val RELEASE: Path = AgentPackageFixture.tempRelease(SERVER_VERSION)
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = [
         "spring.grpc.server.port=0",
-        "SARD_ADMIN_PASSWORD=$CONSOLE_PASSWORD",
+        "sard.test.admin-password=$CONSOLE_PASSWORD",
         "sard.console.location=$FIXTURE_CONSOLE",
         "sard.agent-packages.enabled=true",
     ],
 )
-@Import(TestcontainersConfiguration::class)
+@Import(SeededAdministrator::class, TestcontainersConfiguration::class)
 class ConsoleWithAgentDownloadsIntegrationTest(
     @LocalServerPort port: Int,
 ) {

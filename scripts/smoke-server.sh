@@ -4,12 +4,18 @@
 #
 # Smoke check of a running sard-server (release.yml, after the quickstart or
 # the offline installation): health is UP, the version is the expected one,
-# the console is served and is of that version, the administrator can sign in, and the agent port answers TLS with a
-# certificate for the expected name, signed by the server's own CA.
+# the console is served and is of that version, the first start goes through by the
+# setup code from the server log (F4a) and the administrator can sign in with the
+# password the wizard set, and the agent port answers TLS with a certificate for the
+# expected name, signed by the server's own CA.
 #
 # Usage: scripts/smoke-server.sh <env-file> <expected-version> [http-base] [grpc-host:port]
-#   env-file: the deploy .env (SARD_ADMIN_PASSWORD is read from it)
+#   env-file: the deploy .env; docker-compose.yml lies next to it, and the code is read
+#   from `docker compose logs server` of that directory
 set -euo pipefail
+
+# shellcheck source=lib/setup-wizard.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/setup-wizard.sh"
 
 [ $# -ge 2 ] || { echo "usage: $0 <env-file> <version> [http-base] [grpc-host:port]" >&2; exit 2; }
 env_file="$1" version="$2"
@@ -20,8 +26,10 @@ trap 'rm -rf "$work"' EXIT
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
-password="$(sed -n 's/^SARD_ADMIN_PASSWORD=//p' "$env_file")"
-[ -n "$password" ] || fail "SARD_ADMIN_PASSWORD is empty in $env_file"
+env_dir="$(cd "$(dirname "$env_file")" && pwd)"
+server_log() { (cd "$env_dir" && docker compose logs --no-color server); }
+# The administrator password is chosen here and exists only in this run.
+password="$(openssl rand -hex 16)"
 
 curl -fsS "$http/actuator/health" | grep -q '"status":"UP"' || fail "health is not UP"
 echo "ok: health UP"
@@ -41,10 +49,16 @@ script="$(grep -oE '/assets/[^"]+\.js' "$work/page.html" | head -1)"
 curl -fsS -o /dev/null "$http$script" || fail "console script $script is not served"
 echo "ok: console served, version $version, script $script"
 
+# Before the wizard there is no administrator: sign-in is refused with setup_required.
+code="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+  --data-binary '{"password":"anything-of-12-chars"}' "$http/api/v1/session")"
+[ "$code" = 409 ] || fail "sign-in before the wizard answered $code, want 409"
+sard_complete_wizard "$http" "$password" server_log || fail "the first-start wizard did not complete"
+echo "ok: first start by the setup code from the log"
 code="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
   --data-binary @- "$http/api/v1/session" <<<"{\"password\":\"$password\"}")"
 [ "$code" = 204 ] || fail "sign-in answered $code, want 204"
-echo "ok: administrator sign-in"
+echo "ok: administrator sign-in with the password of the wizard"
 
 # The server sends its whole chain, root included: the last certificate is
 # the Sard CA, and the leaf must verify against it for the dialed name.

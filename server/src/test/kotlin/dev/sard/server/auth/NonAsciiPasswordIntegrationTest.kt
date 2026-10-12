@@ -3,6 +3,7 @@
 
 package dev.sard.server.auth
 
+import dev.sard.server.SeededAdministrator
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.api.SESSION_COOKIE
 import org.springframework.boot.test.context.SpringBootTest
@@ -21,9 +22,9 @@ private const val PASSWORD = "пароль-из-кириллицы-42"
 /** Rule "Верный пароль выдаёт сессию", non-ASCII case: a password outside ASCII is accepted. */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = ["spring.grpc.server.port=0", "SARD_ADMIN_PASSWORD=$PASSWORD"],
+    properties = ["spring.grpc.server.port=0", "sard.test.admin-password=$PASSWORD"],
 )
-@Import(TestcontainersConfiguration::class)
+@Import(SeededAdministrator::class, TestcontainersConfiguration::class)
 class NonAsciiPasswordIntegrationTest(
     @LocalServerPort private val port: Int,
 ) {

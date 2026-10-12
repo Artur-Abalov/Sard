@@ -28,11 +28,12 @@ class FileCertificateAuthorityImportTest {
     private val dir get() = tmp.resolve("pki")
     private val importDir get() = tmp.resolve("import")
     private val original = CaImportFixtures.original()
+    private val ledger = FakeCaLedger()
 
     private fun ca(
         clock: java.time.Clock = CLOCK,
         import: Path? = importDir,
-    ) = FileCertificateAuthority(dir, NAMES, clock, random(), import)
+    ) = FileCertificateAuthority(dir, NAMES, clock, random(), ledger, import)
 
     private fun chain(ca: CertificateAuthority): List<X509Certificate> {
         val km = ca.serverKeyManager()
@@ -106,7 +107,7 @@ class FileCertificateAuthorityImportTest {
         CaImportFixtures.chmod(importDir.resolve("ca/ca.crt"), "rw-r--r--")
         val refused =
             assertFailsWith<CaImportRefused> {
-                FileCertificateAuthority(tmp.resolve("other"), NAMES, CLOCK, random(), importDir)
+                FileCertificateAuthority(tmp.resolve("other"), NAMES, CLOCK, random(), ledger, importDir)
             }
         val seen = refused.message.orEmpty() + output.all
         for (fragment in fragments) assertTrue(fragment !in seen, "key line leaked")

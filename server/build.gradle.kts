@@ -64,6 +64,8 @@ dependencies {
     implementation("io.grpc:grpc-protobuf")
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.bouncycastle:bcpkix-jdk18on:1.86")
+    // Argon2PasswordEncoder only (ADR F4a); nothing else of Spring Security is on the classpath.
+    implementation("org.springframework.security:spring-security-crypto")
     implementation("com.google.api.grpc:proto-google-common-protos:2.64.1")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-api:3.1.1")
     implementation("com.networknt:json-schema-validator:3.0.8")
@@ -141,7 +143,14 @@ val buildTestAgent by tasks.registering(Exec::class) {
     )
 }
 
-tasks.test {
+// mutflow keeps its session in one static field per JVM, so a mutation test that starts a Spring
+// context must not share a JVM with any other context's background threads (ADR 00XX, mutflow
+// isolation). Those classes carry @Tag("mutflow-isolated"), MutationIsolationTest fails if one lacks it, and they run in isolatedTest, one JVM per class.
+val isolatedTag = "mutflow-isolated"
+
+// Both test tasks are configured alike: the properties, environment, heap and, through the mutflow
+// plugin (which configures every Test task), the mutated classes first on the classpath.
+tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     if (prebuiltTestAgent == null) dependsOn(buildTestAgent)
     systemProperty("sard.test.agent-binary", prebuiltTestAgent ?: testAgentBinary.get().asFile.path)
@@ -156,9 +165,10 @@ tasks.test {
     systemProperty("sard.test.version-order-file", rootProject.file("deploy/release/version-order.txt").path)
     // Tags that are not releases, shared with scripts/test-release-version.sh (ADR 0048).
     systemProperty("sard.test.not-release-tags-file", rootProject.file("deploy/release/not-release-tags.txt").path)
-    // The CA of integration tests; the default /var/lib/sard/pki is not writable here.
+    // The CA directories of integration tests: every context gets a new one in here (FreshPkiDirectory), because
+    // a CA directory goes with its database (F4a); the default /var/lib/sard/pki is not writable here.
     systemProperty(
-        "sard.pki.dir",
+        "sard.test.pki-base",
         layout.buildDirectory
             .dir("test-pki")
             .get()
@@ -167,20 +177,50 @@ tasks.test {
     // CSRF tests (W1b) set the Host header explicitly to control the expected Origin;
     // java.net.http.HttpClient refuses to set it unless this is allowed.
     systemProperty("jdk.httpclient.allowRestrictedHeaders", "host")
-    // A default so every test that boots the full context, not just the session ones,
-    // does not need its own SARD_ADMIN_PASSWORD; session tests override it per class.
-    environment("SARD_ADMIN_PASSWORD", "test-admin-password-2026")
+    // Every cached Spring context keeps its server and pools alive; with the onboarding contexts the
+    // mutation run (gate.sh, mutflow) outgrew the default 512 MiB worker heap and later contexts failed
+    // to load. Capping the context cache instead changed which tests see background mutants, so the
+    // cache stays as it is and the heap grows.
+    maxHeapSize = "1g"
     // No agent release next to the test server; AgentDownloadsIntegrationTest switches downloads on.
     environment("SARD_AGENT_DOWNLOADS", "false")
     finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.test {
+    useJUnitPlatform { excludeTags(isolatedTag) }
+}
+
+val isolatedTest by tasks.registering(Test::class) {
+    description = "Runs the mutation tests that start a Spring context, one JVM per class."
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    testClassesDirs =
+        sourceSets.test
+            .get()
+            .output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform { includeTags(isolatedTag) }
+    forkEvery = 1
+    // forkEvery = 1 forks once per scanned class, and the tag filter works inside the fork; pick the
+    // class files that name the tag so only the isolated classes (and no other) cost a JVM.
+    include {
+        it.isDirectory || (it.name.endsWith(".class") && String(it.file.readBytes(), Charsets.ISO_8859_1).contains(isolatedTag))
+    }
+    mustRunAfter(tasks.test)
 }
 
 jacoco {
     toolVersion = "0.8.15"
 }
 
+val jacocoData = layout.buildDirectory.files("jacoco/test.exec", "jacoco/isolatedTest.exec")
+
 tasks.jacocoTestReport {
-    dependsOn(tasks.test)
+    // One report over both tasks' data, by file: Task-typed executionData would make each task a
+    // dependency, and a run of one of them (a --tests filter) would pull in the other. A task that did
+    // not run has no file; the report skips missing ones.
+    mustRunAfter(tasks.test, isolatedTest)
+    executionData(jacocoData)
     reports {
         xml.required = true
         html.required = false
@@ -189,6 +229,7 @@ tasks.jacocoTestReport {
 
 tasks.jacocoTestCoverageVerification {
     dependsOn(tasks.jacocoTestReport)
+    executionData(jacocoData)
     violationRules {
         rule {
             limit {
@@ -200,7 +241,7 @@ tasks.jacocoTestCoverageVerification {
 }
 
 tasks.check {
-    dependsOn(tasks.jacocoTestCoverageVerification)
+    dependsOn(tasks.jacocoTestCoverageVerification, isolatedTest)
 }
 
 // detekt runs on its own embedded compiler (built with Kotlin 2.4.10); keep the

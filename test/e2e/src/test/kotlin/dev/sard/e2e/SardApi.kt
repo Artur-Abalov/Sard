@@ -10,8 +10,9 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 
 /**
- * The server's REST API as the administrator sees it: signed in once with `SARD_ADMIN_PASSWORD`,
- * the session cookie kept in the client. No Origin header is sent, as from sardctl or curl
+ * The server's REST API as the administrator sees it: the first start gone through when the
+ * installation is clean (the code from the server's log), then signed in once, the session cookie
+ * kept in the client. No Origin header is sent, as from sardctl or curl
  * (the origin check lets such requests through, ADR 0021).
  *
  * Answers are read with [field]: the tests need a few top-level values, not a JSON model.
@@ -22,6 +23,7 @@ internal class SardApi(
     private val http = HttpClient.newBuilder().cookieHandler(CookieManager()).build()
 
     init {
+        env.ensureAdministrator()
         val signIn = send("POST", "/api/v1/session", """{"password":"${env.adminPassword}"}""")
         check(signIn.status == HTTP_NO_CONTENT) { "sign-in answered ${signIn.status}" }
     }

@@ -60,7 +60,7 @@ class SardEnvironment(
     // Not "network": inside a container's apply {} that name is the container's own getNetwork().
     private val sardNetwork = Network.newNetwork()
     private val dbPassword = randomHex()
-    /** The administrator's password (`SARD_ADMIN_PASSWORD`), for signing in to the REST API. */
+    /** The administrator's password, set in the first-start wizard by [ensureAdministrator], for signing in to the REST API. */
     internal val adminPassword = randomHex()
     private val secrets = mutableSetOf(dbPassword, adminPassword)
     private val containers = linkedMapOf<String, Tracked>()
@@ -229,6 +229,16 @@ class SardEnvironment(
         }
     }
 
+    /**
+     * Makes sure the installation has an administrator with [adminPassword]: on a clean one goes through
+     * the wizard with the code from the server's log (the server reads no password from its environment).
+     */
+    @Synchronized
+    fun ensureAdministrator() {
+        val wizard = SetupWizard(this)
+        if (!wizard.administratorSet()) wizard.complete(adminPassword)
+    }
+
     /** Everything every server container of this installation has written so far, unmasked. */
     fun serverLogs(): String = retiredServerLogs.toString() + server.logs
 
@@ -283,8 +293,6 @@ class SardEnvironment(
             // The server certificate's SAN; the endpoint's host must be one of them.
             "SARD_PKI_SERVER_NAMES" to SERVER_ALIAS,
             "SARD_AGENT_ENDPOINT" to AGENT_ENDPOINT,
-            // The server refuses to start without it (ADR 0021); 32 hex characters.
-            "SARD_ADMIN_PASSWORD" to adminPassword,
         )
 
     private class Tracked(

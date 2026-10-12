@@ -31,14 +31,15 @@
 make down; make up
 DC="docker compose -f deploy/docker-compose.yml --env-file deploy/.env"
 API=http://localhost:8080/api/v1
-PW=$(sed -n 's/^SARD_ADMIN_PASSWORD=//p' deploy/.env)
 QA=$(mktemp -d)
-curl -sS -X POST "$API/session" -H 'Content-Type: application/json' \
-  -d "{\"password\":\"$PW\"}" -c "$QA/jar" -o /dev/null -w '%{http_code}\n'
+# мастер первого запуска по коду из лога сервера (docs/qa/onboarding-setup.md)
+source scripts/lib/setup-wizard.sh
+PW=qa-admin-password-2026
+SARD_WIZARD_COOKIES="$QA/jar" sard_complete_wizard http://localhost:8080 "$PW" $DC logs server && echo 204
 api() { curl -sS -b "$QA/jar" "$@"; }   # api <curl args> <url>
 ```
 
-→ `make up` завершается, вход — `204`.
+→ `make up` завершается, мастер завершается без ошибки и печатает `204` (пароль администратора — `$PW`).
 
 В браузере: консоль `http://localhost:5173` (`cd web && npm run dev`), DevTools →
 Network открыт, «Preserve log» включён, фильтр `api/v1`.

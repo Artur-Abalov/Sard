@@ -89,7 +89,7 @@ HTTP-порт по умолчанию слушает только `127.0.0.1:808
    `origin_rejected` — переменная не применилась):
 
    ```bash
-   PASS=$(grep '^SARD_ADMIN_PASSWORD=' .env | cut -d= -f2-)
+   read -rs -p 'Пароль администратора: ' PASS; echo   # заданный в мастере первого запуска
    curl -si -X POST http://127.0.0.1:8080/api/v1/session \
      -H 'Host: sard.example.com' -H 'Origin: https://sard.example.com' \
      -H 'X-Forwarded-Proto: https' -H 'Content-Type: application/json' \

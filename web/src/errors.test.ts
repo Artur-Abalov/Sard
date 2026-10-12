@@ -20,6 +20,10 @@ const knownCodes = [
   'unavailable',
   'not_implemented',
   'self_agent_confirmation_required',
+  'setup_required',
+  'setup_completed',
+  'ca_step_pending',
+  'wrong_password',
 ] as const
 
 function problem(status: number, code?: string, extra: Record<string, unknown> = {}) {

@@ -105,6 +105,7 @@ function Navigation({ onNavigate }: { onNavigate: () => void }) {
       <NavLink to="/tokens" label={t('tokens.title')} onClick={onNavigate} />
       <NavLink to="/sources" label={t('sources.title')} onClick={onNavigate} />
       <NavLink to="/runs" label={t('runs.title')} onClick={onNavigate} />
+      <NavLink to="/settings" label={t('settings.title')} onClick={onNavigate} />
     </>
   )
 }

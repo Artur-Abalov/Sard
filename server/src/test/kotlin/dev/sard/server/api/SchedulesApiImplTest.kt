@@ -17,6 +17,7 @@ import dev.sard.server.scheduler.Scheduler
 import dev.sard.server.scheduler.Schedules
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
@@ -36,6 +37,7 @@ import kotlin.test.assertNull
 private fun at(text: String): Instant = Instant.parse(text)
 
 /** F3a/F3b: the schedule endpoints over the real schedules, without the HTTP layer; its mapping is mutated. */
+@Tag("mutflow-isolated")
 @MutFlowTest(includeTargets = [SchedulesApiImpl::class])
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,

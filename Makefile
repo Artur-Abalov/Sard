@@ -180,7 +180,7 @@ openapi:
 
 ## up: start PostgreSQL + sard-server (builds the image, with the agent packages of dist/, on first run)
 up: package
-	./scripts/ensure-admin-password.sh
+	./scripts/ensure-env.sh
 	$(COMPOSE) up -d --wait
 
 ## down: stop the local stack (data volume is kept)

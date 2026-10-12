@@ -3,6 +3,7 @@
 
 package dev.sard.server.console
 
+import dev.sard.server.SeededAdministrator
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.auth.AdminLoginClockConfiguration
 import dev.sard.server.pki.MovableClock
@@ -32,11 +33,11 @@ private const val IMMUTABLE = "public, max-age=31536000, immutable"
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = [
         "spring.grpc.server.port=0",
-        "SARD_ADMIN_PASSWORD=$CONSOLE_PASSWORD",
+        "sard.test.admin-password=$CONSOLE_PASSWORD",
         "sard.console.location=$FIXTURE_CONSOLE",
     ],
 )
-@Import(TestcontainersConfiguration::class, AdminLoginClockConfiguration::class)
+@Import(SeededAdministrator::class, TestcontainersConfiguration::class, AdminLoginClockConfiguration::class)
 class ConsoleServingIntegrationTest(
     @Autowired private val mapper: ObjectMapper,
     @Autowired private val clock: Clock,

@@ -4,6 +4,7 @@
 package dev.sard.server.auth
 
 import dev.sard.server.api.SESSION_COOKIE
+import dev.sard.server.api.SESSION_REQUEST_ATTRIBUTE
 import dev.sard.server.pki.MovableClock
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
@@ -129,5 +130,58 @@ class SessionAuthFilterTest {
         request.setCookies(jakarta.servlet.http.Cookie(SESSION_COOKIE, "forged-session-id"))
         val (response, _) = filtered(request)
         assertFalse(response.containsHeader("Set-Cookie"))
+    }
+
+    @Test
+    fun `the state of the first start and the entering of the code pass through without a session`() {
+        for ((method, path) in listOf("GET" to "/api/v1/onboarding", "POST" to "/api/v1/onboarding/setup-session")) {
+            val (_, reached) = filtered(MockHttpServletRequest(method, path))
+            assertTrue(reached != null, "$method $path")
+        }
+    }
+
+    @Test
+    fun `the steps of the wizard pass through for the controller to check the setup session`() {
+        for (path in listOf("/api/v1/onboarding/ca", "/api/v1/onboarding/admin")) {
+            val (response, reached) = filtered(MockHttpServletRequest("POST", path))
+            assertTrue(reached != null, path)
+            assertFalse(response.containsHeader("Set-Cookie"), path)
+        }
+    }
+
+    @Test
+    fun `a wizard path of another method is guarded as any other`() {
+        for ((method, path) in listOf("GET" to "/api/v1/onboarding/ca", "PUT" to "/api/v1/onboarding/admin")) {
+            val (response, reached) = filtered(MockHttpServletRequest(method, path))
+            assertEquals(401, response.status, "$method $path")
+            assertNull(reached, "$method $path")
+        }
+    }
+
+    @Test
+    fun `a valid administrator session on the state of the first start is attached to the request`() {
+        val session = store.create(TENANT)
+        val request = MockHttpServletRequest("GET", "/api/v1/onboarding")
+        request.setCookies(jakarta.servlet.http.Cookie(SESSION_COOKIE, session.id))
+        val (_, reached) = filtered(request)
+        assertEquals(session.id, (reached?.getAttribute(SESSION_REQUEST_ATTRIBUTE) as AdminSession?)?.id)
+    }
+
+    @Test
+    fun `an invalid administrator session on the wizard is not attached and does not stop the request`() {
+        val request = MockHttpServletRequest("POST", "/api/v1/onboarding/ca")
+        request.setCookies(jakarta.servlet.http.Cookie(SESSION_COOKIE, "forged-session-id"))
+        val (_, reached) = filtered(request)
+        assertTrue(reached != null)
+        assertNull(reached.getAttribute(SESSION_REQUEST_ATTRIBUTE))
+    }
+
+    @Test
+    fun `sign-in does not attach the session it carries`() {
+        val session = store.create(TENANT)
+        val request = MockHttpServletRequest("POST", "/api/v1/session")
+        request.setCookies(jakarta.servlet.http.Cookie(SESSION_COOKIE, session.id))
+        val (_, reached) = filtered(request)
+        assertNull(reached?.getAttribute(SESSION_REQUEST_ATTRIBUTE))
     }
 }

@@ -29,16 +29,29 @@ SARD_TAG=v0.0.1-rc.1
 mkdir -p ~/sard && cd ~/sard
 curl -fsSLO "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/docker-compose.yml"
 curl -fsSL -o .env "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/sard.env.example"
-sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" \
-       -e "s/^SARD_ADMIN_PASSWORD=.*/SARD_ADMIN_PASSWORD=$(openssl rand -hex 16)/" .env
+sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" .env
 chmod 600 .env
 docker compose up -d --wait
 curl -fsS http://localhost:8080/api/v1/status
 ```
 <!-- quickstart:end -->
 
-The last command prints the server's version. The administrator password is
-`SARD_ADMIN_PASSWORD` in `~/sard/.env`. The REST API listens on
+The last command prints the server's version. There is no administrator yet:
+the first start asks for the password in the console. The server prints a
+one-time setup code in its log; find it with
+
+```bash
+docker compose logs server | grep "SARD SETUP CODE"
+```
+
+and open the `/setup` page of the console, <http://localhost:8080/setup> (the
+console redirects there by itself). Enter the code, look at the server's CA
+(back up its key: without it every agent has to be registered again) and set
+the administrator password. The code is valid for 24 hours; if it has
+expired, `docker compose restart server` prints a new one. The password is
+changed later on the console's Settings page; if it is lost,
+[docs/operator/10-security.md](docs/operator/10-security.md) has the recovery.
+The REST API listens on
 `127.0.0.1:8080` only, because it is plain HTTP; the agents' port 9090
 (gRPC, mutual TLS) is open to the network. Before enrolling agents from other
 hosts, put the name they dial into `SARD_PKI_SERVER_NAMES` in `.env` and run
@@ -146,13 +159,14 @@ cd web && npm install && npm run dev      # development: console at http://local
 make down
 ```
 
-The administrator password is the `SARD_ADMIN_PASSWORD` variable in
-`deploy/.env` (next to `SARD_AGENT_ENDPOINT`), at least 12 characters long; the
-server refuses to start without it. On the first `make up`, if `deploy/.env`
-doesn't exist yet, a random password of 24+ characters is written there; the
-command prints the path to the file but never the password itself
-([ADR 0021](docs/adr/0021-admin-password-login.md)). The console opens on the
-login page; the sign-out button is in the header.
+The first start asks for the administrator password in the console: `make up` writes
+no password. The server prints a one-time setup code in its log
+(`docker compose -f deploy/docker-compose.yml logs server | grep "SARD SETUP CODE"`);
+open `/setup`, enter the code, confirm the CA and set the password (12 to 1024
+characters). It is stored as an Argon2id hash in the database and changed on the
+Settings page ([ADR 0021](docs/adr/0021-admin-password-login.md),
+[the first-start ADR](docs/adr/00XX-draft-f4a-first-start.md)). After that the
+console opens on the login page; the sign-out button is in the header.
 
 Behind a TLS-terminating reverse proxy (Cloudflare Tunnel, nginx, Caddy) set
 `SARD_FORWARD_HEADERS=native` in `deploy/.env` and keep port 8080 on the

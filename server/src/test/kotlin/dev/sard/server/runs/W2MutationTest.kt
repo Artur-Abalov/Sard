@@ -12,6 +12,7 @@ import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.MovableClock
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
@@ -44,6 +45,7 @@ private class FixedPresence(
  * Mutation tests of the W2 rules that live over the database: the overview's counts and first steps, which sources
  * a plugin may back, what a run view says of its source and of a partial snapshot (W2 К14, К17, К18).
  */
+@Tag("mutflow-isolated")
 @MutFlowTest
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,

@@ -24,6 +24,12 @@ interface CertificateAuthority {
     /** Pins the root; the agent compares it with the one in its enrollment token. */
     fun fingerprint(): CaFingerprint
 
+    /** Where this CA came from, as recorded when it was created or imported (F4a, Р12). */
+    fun provenance(): CaProvenance
+
+    /** Where the root key is kept, as an operator finds it: an absolute file path for the open core. */
+    fun keyLocation(): String
+
     /** Key material the gRPC listener serves; the key itself may never leave its store. */
     fun serverKeyManager(): X509KeyManager
 

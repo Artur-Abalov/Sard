@@ -15,6 +15,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createAppQueryClient } from './auth/queryClient'
+import { unauthenticatedTarget } from './auth/unauthenticated'
 import { createAppRouter } from './router'
 import { cssVariablesResolver, defaultColorScheme, reducedMotionCss, theme } from './theme'
 
@@ -22,8 +23,8 @@ import { cssVariablesResolver, defaultColorScheme, reducedMotionCss, theme } fro
 // with the current page remembered (rule "Ответ 401 во время работы ведёт на вход").
 function handleUnauthenticated() {
   const { pathname, searchStr } = router.state.location
-  if (pathname === '/login') return
-  void router.navigate({ to: '/login', search: { redirect: pathname + searchStr } })
+  const target = unauthenticatedTarget(pathname, searchStr)
+  if (target !== null) void router.navigate(target)
 }
 
 const queryClient = createAppQueryClient(() => handleUnauthenticated())

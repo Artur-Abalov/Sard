@@ -21,6 +21,7 @@ import dev.sard.server.scheduler.Scheduler
 import dev.sard.server.scheduler.Schedules
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
@@ -38,6 +39,7 @@ import kotlin.test.assertNull
 private fun at(text: String): Instant = Instant.parse(text)
 
 /** F3b: the run endpoints name the period of a catch-up run, in the list and for one run. */
+@Tag("mutflow-isolated")
 @MutFlowTest(includeTargets = [RunsApiImpl::class])
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
