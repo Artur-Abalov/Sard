@@ -48,14 +48,16 @@ data class QueueSettings(
 )
 
 /**
- * Turns finished runs into notifications, asynchronously (OQ-047, answer В4): each [tick] plans
- * a delivery per channel for every run finished within the time to live that has none, then
+ * Turns finished runs and overdue episodes (F6) into notifications, asynchronously (OQ-047, answer В4): each
+ * [tick] plans a delivery per channel for every run finished, and every episode opened or closed by a success,
+ * within the time to live that has none, then
  * sends the deliveries that are due. Nothing here runs in the transaction that finished a run.
  * Delivery is at least once: a crash after the send and before [Deliveries.record] sends again
  * once the lease ends.
  */
 class NotificationService(
     private val deliveries: Deliveries,
+    private val episodes: OverdueDeliveries,
     channels: List<NotificationChannel>,
     private val formatter: NotificationFormatter,
     private val policy: RetryPolicy,
@@ -78,6 +80,10 @@ class NotificationService(
             for ((tenantId, tenantRuns) in runs.groupBy({ it.tenantId }, { it.runId })) {
                 deliveries.plan(tenantId, tenantRuns, channel, now)
             }
+            val overdue = episodes.unplanned(channel, now - settings.ttl, settings.batch)
+            for ((tenantId, tenantEpisodes) in overdue.groupBy { it.tenantId }) {
+                episodes.plan(tenantId, tenantEpisodes, channel, now)
+            }
         }
     }
 
@@ -87,7 +93,7 @@ class NotificationService(
         for (delivery in deliveries.due(now, channels.keys, settings.batch)) {
             val channel = channels.getValue(delivery.channel)
             runCatching { attempt(delivery, channel) }.onFailure {
-                log.warn("Notification {} of run {} failed; it is tried again later", delivery.id, delivery.runId, it)
+                log.warn("Notification {} of {} failed; it is tried again later", delivery.id, delivery, it)
             }
         }
     }
@@ -107,7 +113,7 @@ class NotificationService(
     /** A formatter that throws leaves the delivery claimed: it is tried again when the lease ends. */
     private fun send(
         delivery: DueDelivery,
-        notice: RunNotice,
+        notice: Notice,
         channel: NotificationChannel,
     ): Decision {
         val message = formatter.format(notice) ?: return Decision.Skipped
@@ -140,6 +146,6 @@ class NotificationService(
         reason: String,
     ) {
         metrics.undelivered(delivery.channel, status)
-        log.warn("Notification of run {} through {} {}: {}", delivery.runId, delivery.channel, status, reason)
+        log.warn("Notification of {} through {} {}: {}", delivery, delivery.channel, status, reason)
     }
 }

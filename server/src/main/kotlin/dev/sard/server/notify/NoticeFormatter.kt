@@ -11,6 +11,8 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 private const val BINARY = 1024
 private const val SECONDS_PER_MINUTE = 60L
@@ -19,17 +21,26 @@ private const val NEWLINE = "\n"
 private const val MAX_REASON = 500
 private const val ELLIPSIS = "…"
 
-/** What a finished run looks like in a message (S9b); the wording is the specification's, per language. */
+/** Times in a message: UTC to the minute, the same for every reader of a shared chat. */
+private val MOMENT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC)
+
+/**
+ * What a finished run (S9b) or an overdue episode (F6) looks like in a message; the wording is the
+ * specification's, per language.
+ */
 class RunNoticeFormatter(
     language: NoticeLanguage,
     private val console: ConsoleUrl?,
 ) : NotificationFormatter {
     private val words = wording(language)
 
-    override fun format(notice: RunNotice): Message? {
-        val headline = Telling.of(notice)?.let { headline(notice, it) }
-        return headline?.let { compose(notice, it) }
-    }
+    private val overdue = OverdueFormatter(words, console)
+
+    override fun format(notice: Notice): Message? =
+        when (notice) {
+            is RunNotice -> Telling.of(notice)?.let { headline(notice, it) }?.let { compose(notice, it) }
+            is OverdueNotice -> overdue.format(notice)
+        }
 
     private fun headline(
         notice: RunNotice,
@@ -52,8 +63,7 @@ class RunNoticeFormatter(
                 listOf(listOf(Message.Text(words.run), Message.Code("${notice.runId}"))),
                 listOfNotNull(console?.let { listOf(Message.Text(it.run(notice.runId))) }),
             ).flatten()
-        val newline = listOf(Message.Text(NEWLINE))
-        return Message(lines.flatMapIndexed { index, line -> if (index == 0) line else newline + line })
+        return messageOf(lines)
     }
 
     /** What came of the backup: its sizes, or why it failed and what is left of it. */
@@ -138,6 +148,49 @@ class RunNoticeFormatter(
                 .removeSuffix(".0")
         return "${rounded.replace('.', words.decimalSeparator)} ${words.units[unit]}"
     }
+}
+
+/** An overdue episode in a message (F6, ADR 00XX-draft-source-freshness). */
+internal class OverdueFormatter(
+    private val words: Wording,
+    private val console: ConsoleUrl?,
+) {
+    /**
+     * An episode that opened; one a success closed, unless that run is told about itself (a manual result, a
+     * recovery): one message per turn of events.
+     */
+    fun format(notice: OverdueNotice): Message? {
+        val closing = notice.closedBy ?: return messageOf(opened(notice))
+        return if (Telling.of(closing) == null) messageOf(resumed(notice, closing)) else null
+    }
+
+    private fun opened(notice: OverdueNotice): List<List<Message.Part>> {
+        val overdue = words.overdue
+        val last = notice.countedFrom?.let { Message.Text(overdue.lastSuccess + MOMENT.format(it)) }
+        return listOf(
+            listOf(Message.Bold("⚠️ ${overdue.opened}: ${notice.sourceName}")),
+            listOf(Message.Text(words.agent), Message.Code(notice.agentHostname)),
+            listOf(last ?: Message.Text(overdue.never)),
+            listOf(Message.Text(overdue.expectedBy + MOMENT.format(notice.deadline))),
+        )
+    }
+
+    private fun resumed(
+        notice: OverdueNotice,
+        closing: RunNotice,
+    ): List<List<Message.Part>> =
+        listOfNotNull(
+            listOf(Message.Bold("✅ ${words.overdue.resumed}: ${notice.sourceName}")),
+            listOf(Message.Text(words.agent), Message.Code(notice.agentHostname)),
+            listOf(Message.Text(words.run), Message.Code("${closing.runId}")),
+            console?.let { listOf(Message.Text(it.run(closing.runId))) },
+        )
+}
+
+/** Lines joined by newlines, each a list of parts. */
+internal fun messageOf(lines: List<List<Message.Part>>): Message {
+    val newline = listOf(Message.Text(NEWLINE))
+    return Message(lines.flatMapIndexed { index, line -> if (index == 0) line else newline + line })
 }
 
 /** The formatter bean (S9b): always present; a bad setting stops the start. */

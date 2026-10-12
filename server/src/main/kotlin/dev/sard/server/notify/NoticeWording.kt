@@ -21,6 +21,7 @@ internal class Wording(
     val decimalSeparator: Char,
     val durationUnits: List<String>,
     val verdicts: Verdicts,
+    val overdue: OverdueWording,
 ) {
     /** The headline of a finished step; null for a step still active (nothing to announce). */
     fun headline(step: StepState): Headline? =
@@ -42,6 +43,15 @@ internal class Wording(
             }
         }
 }
+
+/** What an overdue episode looks like in a message (F6). */
+internal class OverdueWording(
+    val opened: String,
+    val resumed: String,
+    val lastSuccess: String,
+    val never: String,
+    val expectedBy: String,
+)
 
 /** What each finished step is called in a headline. */
 internal class Verdicts(
@@ -110,6 +120,14 @@ private val EN =
                 cancelled = "Backup cancelled",
                 recovered = "Backup succeeded again after failures",
             ),
+        overdue =
+            OverdueWording(
+                opened = "No successful backup for too long",
+                resumed = "Backups are back",
+                lastSuccess = "Last success: ",
+                never = "There has been no successful backup yet",
+                expectedBy = "Expected by: ",
+            ),
     )
 
 private val RU =
@@ -136,6 +154,14 @@ private val RU =
                 timedOut = "Бэкап прерван по таймауту",
                 cancelled = "Бэкап отменён",
                 recovered = "Бэкап снова выполнен после ошибок",
+            ),
+        overdue =
+            OverdueWording(
+                opened = "Давно не было успешного бэкапа",
+                resumed = "Бэкапы возобновились",
+                lastSuccess = "Последний успех: ",
+                never = "Успешных бэкапов ещё не было",
+                expectedBy = "Ожидался не позже: ",
             ),
     )
 

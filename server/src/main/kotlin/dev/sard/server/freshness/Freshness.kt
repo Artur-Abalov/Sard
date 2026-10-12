@@ -81,7 +81,7 @@ object Freshness {
         now: Instant,
     ): Verdict {
         val success = source.lastSuccess?.at
-        val from = if (success == null || success < source.scheduleChangedAt) source.scheduleChangedAt else success
+        val from = success?.let { maxOf(it, source.scheduleChangedAt) } ?: source.scheduleChangedAt
         val deadline = deadline(from, source.fires)
         return if (now < deadline) Verdict.Keep else Verdict.Open(deadline, success)
     }

@@ -10,12 +10,17 @@ import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
+/** What a notification tells of (S9a, F6): a finished run, or an overdue episode of a scheduled source. */
+sealed interface Notice {
+    val tenantId: UUID
+}
+
 /**
  * A finished run as a notification sees it (S9a): [RunFinished][dev.sard.server.runs.RunFinished]
  * read back from the database at send time, with the names a person recognises.
  */
 data class RunNotice(
-    val tenantId: UUID,
+    override val tenantId: UUID,
     val runId: UUID,
     val trigger: Trigger,
     val status: RunState,
@@ -35,7 +40,23 @@ data class RunNotice(
     val backup: BackupSizes?,
     /** The status of the source's run finished before this one; null for its first run (F3a). */
     val previousStatus: RunState? = null,
-)
+) : Notice
+
+/**
+ * An overdue episode (F6, ADR 00XX-draft-source-freshness) as a notification sees it: [closedBy] is null when it
+ * opened, and the success that closed it otherwise.
+ */
+data class OverdueNotice(
+    override val tenantId: UUID,
+    val episodeId: UUID,
+    val sourceId: UUID,
+    val sourceName: String,
+    val agentHostname: String,
+    /** The last success it counts from; null when the source never succeeded. */
+    val countedFrom: Instant?,
+    val deadline: Instant,
+    val closedBy: RunNotice?,
+) : Notice
 
 /** What a notification tells of a run (ADR 0024): a manual run's result, a scheduled run's turn of the series. */
 enum class Telling {
@@ -100,9 +121,9 @@ data class Message(
     ) : Part
 }
 
-/** Rules and wording (S9b): what to say about a run, or null when the run needs no notification. */
+/** Rules and wording (S9b, F6): what to say about a notice, or null when it needs no notification. */
 fun interface NotificationFormatter {
-    fun format(notice: RunNotice): Message?
+    fun format(notice: Notice): Message?
 }
 
 /** One way to reach people (Telegram now; email or a webhook later). */

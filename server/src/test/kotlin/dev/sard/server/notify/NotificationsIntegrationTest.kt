@@ -64,10 +64,10 @@ class NotifyTestConfiguration {
     @Primary
     fun formatter() =
         NotificationFormatter { notice ->
-            if (notice.sourceName.startsWith("quiet")) {
-                null
-            } else {
-                Message(Message.Bold(notice.status.stored), Message.Text(" "), Message.Code(notice.sourceName))
+            when {
+                notice !is RunNotice -> null
+                notice.sourceName.startsWith("quiet") -> null
+                else -> Message(Message.Bold(notice.status.stored), Message.Text(" "), Message.Code(notice.sourceName))
             }
         }
 }
@@ -371,6 +371,7 @@ class NotificationsIntegrationTest(
         val restarted =
             NotificationService(
                 Deliveries(sessions, UuidV7(clock, SecureRandom())),
+                OverdueDeliveries(sessions, UuidV7(clock, SecureRandom())),
                 listOf(CapturingChannel()),
                 { Message(Message.Text("after restart")) },
                 RetryPolicy(RetrySettings()),
@@ -431,7 +432,7 @@ class NotificationsIntegrationTest(
         due.plan(tenant.id, listOf(run), "test-channel", clock.now)
         val delivery = due.due(clock.now, listOf("test-channel"), 10).single()
 
-        val notice = due.claim(delivery, clock.now, clock.now + LEASE)!!
+        val notice = due.claim(delivery, clock.now, clock.now + LEASE) as RunNotice
 
         assertEquals(run, notice.runId)
         assertEquals(tenant.id, notice.tenantId)
@@ -447,7 +448,7 @@ class NotificationsIntegrationTest(
         val queue = Deliveries(sessions, UuidV7(clock, SecureRandom()))
         queue.plan(tenant.id, listOf(run), "test-channel", clock.now)
         val due = queue.due(clock.now, listOf("test-channel"), 10).single()
-        return queue.claim(due, clock.now, clock.now + LEASE)!!
+        return queue.claim(due, clock.now, clock.now + LEASE) as RunNotice
     }
 
     @Test

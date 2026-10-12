@@ -6,6 +6,7 @@ package dev.sard.server.freshness
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.scheduler.CronSchedule
+import org.hibernate.Session
 import org.slf4j.LoggerFactory
 import java.sql.Timestamp
 import java.time.Clock
@@ -64,7 +65,7 @@ class FreshnessCheck(
         }
     }
 
-    private fun scan(session: org.hibernate.Session): Pair<List<SourceFreshness>, List<Pair<UUID, UUID>>> {
+    private fun scan(session: Session): Pair<List<SourceFreshness>, List<Pair<UUID, UUID>>> {
         val scheduled =
             session
                 .createNativeQuery(SCHEDULED.trimIndent(), Array<Any?>::class.java)
@@ -124,19 +125,24 @@ class FreshnessCheck(
     }
 }
 
+/** The columns of [SCHEDULED], in its select order. */
+private enum class Column { TENANT, SOURCE, CRON, ZONE, CHANGED, SUCCESS_RUN, SUCCESS_AT, EPISODE, COUNTED_FROM }
+
+private operator fun Array<Any?>.get(column: Column): Any? = this[column.ordinal]
+
 /** One scanned row; null (and a warning) for a stored schedule that no longer parses. */
 private fun freshnessOf(row: Array<Any?>): SourceFreshness? {
     val fires =
-        runCatching { CronSchedule.parse(row[2] as String, row[3] as String) }
-            .onFailure { log.warn("Source {}: its schedule does not parse, freshness not checked", row[1]) }
+        runCatching { CronSchedule.parse(row[Column.CRON] as String, row[Column.ZONE] as String) }
+            .onFailure { log.warn("Source {}: its schedule does not parse, freshness not checked", row[Column.SOURCE]) }
             .getOrNull() ?: return null
     return SourceFreshness(
-        tenantId = row[0] as UUID,
-        sourceId = row[1] as UUID,
+        tenantId = row[Column.TENANT] as UUID,
+        sourceId = row[Column.SOURCE] as UUID,
         fires = fires,
-        scheduleChangedAt = instant(row[4]),
-        lastSuccess = (row[5] as UUID?)?.let { LastSuccess(it, instant(row[6])) },
-        open = (row[7] as UUID?)?.let { OpenEpisode(it, row[8]?.let(::instant)) },
+        scheduleChangedAt = instant(row[Column.CHANGED]),
+        lastSuccess = (row[Column.SUCCESS_RUN] as UUID?)?.let { LastSuccess(it, instant(row[Column.SUCCESS_AT])) },
+        open = (row[Column.EPISODE] as UUID?)?.let { OpenEpisode(it, row[Column.COUNTED_FROM]?.let(::instant)) },
     )
 }
 

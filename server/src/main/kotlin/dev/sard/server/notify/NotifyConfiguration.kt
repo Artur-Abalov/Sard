@@ -184,8 +184,10 @@ class NotifyConfiguration {
     ): NotificationService {
         val telegram = telegramChannel(credentials, properties.telegram, json)
         val channels = listOfNotNull(telegram) + extraChannels.orderedStream().toList()
+        val ids = UuidV7(clock, SecureRandom())
         return NotificationService(
-            Deliveries(sessions, UuidV7(clock, SecureRandom())),
+            Deliveries(sessions, ids),
+            OverdueDeliveries(sessions, ids),
             activeChannels(channels),
             formatter,
             RetryPolicy(properties.retry()),

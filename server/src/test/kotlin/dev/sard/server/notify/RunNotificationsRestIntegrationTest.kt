@@ -152,6 +152,7 @@ class RunNotificationsRestIntegrationTest(
         val withoutLink =
             NotificationService(
                 Deliveries(sessions, UuidV7(clock, SecureRandom())),
+                OverdueDeliveries(sessions, UuidV7(clock, SecureRandom())),
                 listOf(channel),
                 RunNoticeFormatter(NoticeLanguage.EN, ConsoleUrl.parse("")),
                 RetryPolicy(RetrySettings()),
