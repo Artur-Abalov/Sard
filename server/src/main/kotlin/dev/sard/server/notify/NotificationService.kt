@@ -76,16 +76,18 @@ class NotificationService(
 
     private fun plan() {
         val now = clock.instant()
+        // One cut-off for every subject: older ones expire instead of being planned.
+        val since = now - settings.ttl
         for (channel in channels.keys) {
-            val runs = deliveries.unplanned(channel, now - settings.ttl, settings.batch)
+            val runs = deliveries.unplanned(channel, since, settings.batch)
             for ((tenantId, tenantRuns) in runs.groupBy({ it.tenantId }, { it.runId })) {
                 deliveries.plan(tenantId, tenantRuns, channel, now)
             }
-            val alerts = deliveries.unplannedAlerts(channel, now - settings.ttl, settings.batch)
+            val alerts = deliveries.unplannedAlerts(channel, since, settings.batch)
             for ((tenantId, fires) in alerts.groupBy({ it.tenantId }, { it.fireId })) {
                 deliveries.planAlerts(tenantId, fires, channel, now)
             }
-            val overdue = episodes.unplanned(channel, now - settings.ttl, settings.batch)
+            val overdue = episodes.unplanned(channel, since, settings.batch)
             for ((tenantId, tenantEpisodes) in overdue.groupBy { it.tenantId }) {
                 episodes.plan(tenantId, tenantEpisodes, channel, now)
             }
