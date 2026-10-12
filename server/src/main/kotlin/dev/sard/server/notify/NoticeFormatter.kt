@@ -188,4 +188,11 @@ class NoticeFormatterConfiguration {
         @Value("\${sard.notify.language:en}") language: String,
         @Value("\${sard.console.public-url:}") publicUrl: String,
     ): SkipAlertFormatter = ScheduleAlertFormatter(NoticeLanguage.of(language), ConsoleUrl.parse(publicUrl))
+
+    /** An overdue episode (F6): the same language and console address. */
+    @Bean
+    fun overdueFormatter(
+        @Value("\${sard.notify.language:en}") language: String,
+        @Value("\${sard.console.public-url:}") publicUrl: String,
+    ): OverdueFormatter = OverdueNoticeFormatter(NoticeLanguage.of(language), ConsoleUrl.parse(publicUrl))
 }

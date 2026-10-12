@@ -22,7 +22,18 @@ data class UnplannedAlert(
     val fireId: UUID,
 )
 
-/** A pending delivery whose time has come: about a run or, exactly one of the two, a schedule fire. */
+/** An overdue episode that opened, or that a success closed, with no delivery through a channel yet (F6). */
+data class UnplannedEpisode(
+    val tenantId: UUID,
+    val episodeId: UUID,
+    /** opened or closed. */
+    val event: String,
+)
+
+/**
+ * A pending delivery whose time has come: about a run, a schedule fire (F3b) or an overdue episode's [episodeEvent]
+ * (F6), exactly one of them.
+ */
 data class DueDelivery(
     val tenantId: UUID,
     val id: UUID,
@@ -31,10 +42,22 @@ data class DueDelivery(
     val channel: String,
     val attempts: Int,
     val createdAt: Instant,
+    val episodeId: UUID? = null,
+    val episodeEvent: String? = null,
 ) {
     /** What the delivery is about, as the log names it. */
-    val subject: String get() = if (fireId != null) "schedule fire $fireId" else "run $runId"
+    val subject: String
+        get() =
+            when {
+                fireId != null -> "schedule fire $fireId"
+                episodeId != null -> "overdue episode $episodeId ($episodeEvent)"
+                else -> "run $runId"
+            }
 }
+
+/** The event of an overdue episode a delivery tells of: it opened, or a success closed it. */
+internal const val EPISODE_OPENED = "opened"
+internal const val EPISODE_CLOSED = "closed"
 
 /** What a claimed delivery tells about, read back at send time. */
 sealed interface Claimed {
@@ -44,6 +67,10 @@ sealed interface Claimed {
 
     data class Alert(
         val notice: SkipAlertNotice,
+    ) : Claimed
+
+    data class Overdue(
+        val notice: OverdueNotice,
     ) : Claimed
 }
 
@@ -63,9 +90,31 @@ private const val UNPLANNED_ALERTS = """
         where d.tenantId = f.tenantId and d.fireId = f.id and d.channel = :channel)
     order by f.recordedAt, f.id"""
 
+private const val OPENED_EPISODES = """
+    select new dev.sard.server.notify.UnplannedEpisode(e.tenantId, e.id, 'opened') from OverdueEpisodeRecord e
+    where e.openedAt >= :since
+      and not exists (
+        select 1 from NotificationDeliveryRecord d
+        where d.tenantId = e.tenantId and d.episodeId = e.id and d.episodeEvent = 'opened' and d.channel = :channel)
+    order by e.openedAt, e.id"""
+
+private const val CLOSED_EPISODES = """
+    select new dev.sard.server.notify.UnplannedEpisode(e.tenantId, e.id, 'closed') from OverdueEpisodeRecord e
+    where e.closedAt >= :since and e.closedByRunId is not null
+      and not exists (
+        select 1 from NotificationDeliveryRecord d
+        where d.tenantId = e.tenantId and d.episodeId = e.id and d.episodeEvent = 'closed' and d.channel = :channel)
+    order by e.closedAt, e.id"""
+
+private const val PLAN_EPISODE = """
+    insert into notification_deliveries
+        (id, tenant_id, episode_id, episode_event, channel, status, next_attempt_at, created_at)
+    values (:id, :tenant, :episode, :event, :channel, 'pending', :now, :now)
+    on conflict (tenant_id, episode_id, episode_event, channel) do nothing"""
+
 private const val DUE = """
     select new dev.sard.server.notify.DueDelivery(
-        d.tenantId, d.id, d.runId, d.fireId, d.channel, d.attempts, d.createdAt)
+        d.tenantId, d.id, d.runId, d.fireId, d.channel, d.attempts, d.createdAt, d.episodeId, d.episodeEvent)
     from NotificationDeliveryRecord d
     where d.status = 'pending' and d.nextAttemptAt <= :now and d.channel in :channels
     order by d.nextAttemptAt, d.id"""
@@ -239,10 +288,58 @@ class Deliveries(
         session: Session,
         delivery: DueDelivery,
     ): Claimed =
-        if (delivery.fireId != null) {
-            Claimed.Alert(Notices.alert(session, delivery.tenantId, delivery.fireId))
-        } else {
-            Claimed.Finished(Notices.finished(session, delivery.tenantId, checkNotNull(delivery.runId)))
+        when {
+            delivery.fireId != null -> Claimed.Alert(Notices.alert(session, delivery.tenantId, delivery.fireId))
+            delivery.episodeId != null -> Claimed.Overdue(Notices.overdue(session, delivery.tenantId, delivery))
+            else -> Claimed.Finished(Notices.finished(session, delivery.tenantId, checkNotNull(delivery.runId)))
+        }
+}
+
+/**
+ * The overdue episodes' side of the queue (F6, ADR 00XX-draft-source-freshness): finding episodes without a
+ * delivery reads across tenants in the read-only system session (ADR 0013, caller 5); planning writes in the
+ * episode's own tenant, guarded by the key (tenant, episode, event, channel).
+ */
+class OverdueDeliveries(
+    private val sessions: TenantSessions,
+    private val ids: UuidV7,
+) {
+    /** Episodes opened, or closed by a success, since [since] without a delivery through [channel]. */
+    fun unplanned(
+        channel: String,
+        since: Instant,
+        limit: Int,
+    ): List<UnplannedEpisode> =
+        sessions.system { session ->
+            listOf(OPENED_EPISODES, CLOSED_EPISODES).flatMap { hql ->
+                session
+                    .createSelectionQuery(hql, UnplannedEpisode::class.java)
+                    .setParameter("since", since)
+                    .setParameter("channel", channel)
+                    .setMaxResults(limit)
+                    .list()
+            }
+        }
+
+    /** One pending delivery through [channel] for each of [episodes] of [tenantId]; returns how many are new. */
+    fun plan(
+        tenantId: UUID,
+        episodes: List<UnplannedEpisode>,
+        channel: String,
+        now: Instant,
+    ): Int =
+        sessions.inTenant(tenantId) { session ->
+            episodes.sumOf { episode ->
+                session
+                    .createNativeMutationQuery(PLAN_EPISODE)
+                    .setParameter("id", ids.next())
+                    .setParameter("tenant", tenantId)
+                    .setParameter("episode", episode.episodeId)
+                    .setParameter("event", episode.event)
+                    .setParameter("channel", channel)
+                    .setParameter("now", now)
+                    .executeUpdate()
+            }
         }
 }
 

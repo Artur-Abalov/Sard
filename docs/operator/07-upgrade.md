@@ -33,7 +33,12 @@
    diff docker-compose.yml docker-compose.new.yml    # пусто — файл не менялся
    mv docker-compose.new.yml docker-compose.yml
    sed -i "s/^SARD_VERSION=.*/SARD_VERSION=${NEW_TAG#v}/" .env
+   sudo chgrp 10001 .env && chmod 640 .env
    ```
+
+   `sed -i` пишет файл заново, и группа 10001 у него теряется. Без неё сосед не
+   прочитает `.env`, и самобэкап ключей упадёт ([раздел 6](06-data-and-backup.md)).
+   При обновлении с версии без самобэкапа эту строку нужно выполнить один раз.
 
 3. **Запуск:**
 

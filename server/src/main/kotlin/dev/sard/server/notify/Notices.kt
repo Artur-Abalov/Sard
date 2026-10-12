@@ -4,6 +4,7 @@
 package dev.sard.server.notify
 
 import dev.sard.server.persistence.Agent
+import dev.sard.server.persistence.OverdueEpisodeRecord
 import dev.sard.server.persistence.RunRecord
 import dev.sard.server.persistence.RunStepRecord
 import dev.sard.server.persistence.ScheduleFireRecord
@@ -27,6 +28,27 @@ private const val PREVIOUS_STATUS =
 
 /** What a claimed delivery tells about, read back from the database at send time (S9a, F3b). */
 internal object Notices {
+    /** An overdue episode (F6); for its closing, with the run that closed it. */
+    fun overdue(
+        session: Session,
+        tenantId: UUID,
+        delivery: DueDelivery,
+    ): OverdueNotice {
+        val episode = session.find(OverdueEpisodeRecord::class.java, checkNotNull(delivery.episodeId))
+        val source = session.find(SourceRecord::class.java, episode.sourceId)
+        val closing = episode.closedByRunId?.takeIf { delivery.episodeEvent == EPISODE_CLOSED }
+        return OverdueNotice(
+            tenantId = tenantId,
+            episodeId = episode.id,
+            sourceId = source.id,
+            sourceName = source.name,
+            agentHostname = session.find(Agent::class.java, source.agentId).hostname,
+            countedFrom = episode.countedFrom,
+            deadline = episode.deadline,
+            closedBy = closing?.let { finished(session, tenantId, it) },
+        )
+    }
+
     fun alert(
         session: Session,
         tenantId: UUID,

@@ -149,6 +149,27 @@ fun interface NotificationFormatter {
     fun format(notice: RunNotice): Message?
 }
 
+/**
+ * An overdue episode of a scheduled source (F6, ADR 00XX-draft-source-freshness) as a notification sees it:
+ * [closedBy] is null when it opened, and the success that closed it otherwise.
+ */
+data class OverdueNotice(
+    val tenantId: UUID,
+    val episodeId: UUID,
+    val sourceId: UUID,
+    val sourceName: String,
+    val agentHostname: String,
+    /** The last success it counts from; null when the source never succeeded. */
+    val countedFrom: Instant?,
+    val deadline: Instant,
+    val closedBy: RunNotice?,
+)
+
+/** The wording of an overdue episode (F6); null when its end is told by the run that ended it. */
+fun interface OverdueFormatter {
+    fun format(notice: OverdueNotice): Message?
+}
+
 /** The wording of the alert about fires skipped in a row (F3b); the one text a skip can have. */
 fun interface SkipAlertFormatter {
     fun format(notice: SkipAlertNotice): Message

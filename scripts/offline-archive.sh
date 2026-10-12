@@ -18,7 +18,8 @@ version="$1" arch="$2" outdir="$3"
 case "$arch" in amd64 | arm64) ;; *) echo "unknown arch: $arch" >&2; exit 2 ;; esac
 
 server="${SARD_IMAGE:-ghcr.io/artur-abalov/sard-server}:$version"
-agent="${SARD_AGENT_IMAGE:-ghcr.io/artur-abalov/sard-agent}:$version"
+# The agent next to the server in docker-compose.yml is the -pg18 variant (F6).
+agent="${SARD_AGENT_IMAGE:-ghcr.io/artur-abalov/sard-agent}:$version-pg18"
 postgres="${SARD_POSTGRES_IMAGE:-postgres:18-alpine}"
 
 if [ "${SKIP_PULL:-0}" != 1 ]; then

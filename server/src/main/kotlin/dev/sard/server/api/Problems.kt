@@ -64,6 +64,21 @@ enum class ErrorCode {
     @JsonProperty("self_agent_confirmation_required")
     SELF_AGENT_CONFIRMATION_REQUIRED,
 
+    @JsonProperty("system_source")
+    SYSTEM_SOURCE,
+
+    @JsonProperty("self_agent_missing")
+    SELF_AGENT_MISSING,
+
+    @JsonProperty("repository_not_initialized")
+    REPOSITORY_NOT_INITIALIZED,
+
+    @JsonProperty("local_storage_unconfirmed")
+    LOCAL_STORAGE_UNCONFIRMED,
+
+    @JsonProperty("self_backup_not_configured")
+    SELF_BACKUP_NOT_CONFIGURED,
+
     @JsonProperty("setup_required")
     SETUP_REQUIRED,
 

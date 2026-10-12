@@ -198,6 +198,7 @@ class ArchitectureTest {
             listOf(
                 "agents/AgentCertificateStandings.kt",
                 "enrollment/EnrollmentTokens.kt",
+                "freshness/FreshnessCheck.kt",
                 "notify/Deliveries.kt",
                 "runs/StepCounts.kt",
                 "runs/StepDeadlines.kt",

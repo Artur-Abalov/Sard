@@ -47,6 +47,8 @@ export interface MockState {
   snapshots: Schemas['Snapshot'][]
   stepLogs: Record<string, Schemas['LogLine'][]>
   tokens: Schemas['EnrollmentToken'][]
+  /** The self-backup's binding (F6); its agent and repository are those of the system sources. */
+  selfBackup: { boundAt: string } | null
 }
 
 function fresh(signedIn: boolean, freshInstall: boolean): MockState {
@@ -65,6 +67,7 @@ function fresh(signedIn: boolean, freshInstall: boolean): MockState {
     snapshots,
     stepLogs,
     tokens: enrollmentTokens,
+    selfBackup: null,
   })
 }
 

@@ -23,12 +23,16 @@ Sard — консоль резервного копирования для ра�
   ([docs/operations/notifications.md](docs/operations/notifications.md)).
 - Установка агентов с сервера: deb, rpm и tar.gz для Linux amd64 и arm64,
   подписанные релизы ([docs/operator/05-agents.md](docs/operator/05-agents.md)).
+- Самобэкап: каждую ночь база сервера, ключи CA и конфигурация установки
+  уходят через встроенного агента в выбранный репозиторий, а консоль
+  предупреждает, когда этот бэкап просрочен или падает
+  ([docs/operator/06-data-and-backup.md](docs/operator/06-data-and-backup.md)).
+  О просрочке любых источников сообщается и в Telegram.
 
 ### Чего пока нет
 
 Восстановления из консоли (сейчас восстановление — ручной `restic restore`,
-см. [docs/demo.md](docs/demo.md)), проверки восстановления, самобэкапа
-сервера, других источников (MySQL, сетевые устройства, 1С), больше одного
+см. [docs/demo.md](docs/demo.md)), проверки восстановления, других источников (MySQL, сетевые устройства, 1С), больше одного
 тенанта, команд `sardctl`, кроме `version`.
 
 ## Как устроено
@@ -75,16 +79,28 @@ SARD_TAG=v0.0.1-rc.1
 mkdir -p ~/sard && cd ~/sard
 curl -fsSLO "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/docker-compose.yml"
 curl -fsSL -o .env "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/sard.env.example"
-sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" \
-       -e "s/^SARD_ADMIN_PASSWORD=.*/SARD_ADMIN_PASSWORD=$(openssl rand -hex 16)/" .env
-chmod 600 .env
+sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" .env
+sudo chgrp 10001 .env && chmod 640 .env
 docker compose up -d --wait
 curl -fsS http://localhost:8080/api/v1/status
 ```
 <!-- quickstart:end -->
 
-Последняя команда печатает версию сервера. Пароль администратора —
-`SARD_ADMIN_PASSWORD` в `~/sard/.env`. REST API слушает только
+Последняя команда печатает версию сервера. Администратора ещё нет: пароль
+спрашивает первый запуск в консоли. Сервер печатает в журнал одноразовый код
+настройки; найдите его командой
+
+```bash
+docker compose logs server | grep "SARD SETUP CODE"
+```
+
+и откройте страницу консоли `/setup`, <http://localhost:8080/setup> (консоль
+сама переходит туда). Введите код, посмотрите на CA сервера (сохраните его
+ключ: без него все агенты регистрируются заново) и задайте пароль
+администратора. Код действует 24 часа; если он истёк,
+`docker compose restart server` напечатает новый. Пароль потом меняется на
+странице «Настройки» консоли; если он утерян, восстановление описано в
+[docs/operator/10-security.md](docs/operator/10-security.md). REST API слушает только
 `127.0.0.1:8080`, потому что это обычный HTTP; порт агентов 9090 (gRPC,
 взаимный TLS) открыт в сеть. Прежде чем регистрировать агентов с других
 хостов, впишите имя, по которому они подключаются, в `SARD_PKI_SERVER_NAMES` в
@@ -214,12 +230,14 @@ cd web && npm install && npm run dev      # разработка: консоль
 make down
 ```
 
-Пароль администратора — переменная `SARD_ADMIN_PASSWORD` в `deploy/.env`
-(рядом с `SARD_AGENT_ENDPOINT`), не короче 12 символов; без неё сервер не
-стартует. При первом `make up`, если `deploy/.env` ещё нет, туда пишется
-случайный пароль из 24+ символов; команда печатает путь к файлу, но не сам
-пароль ([ADR 0021](docs/adr/0021-admin-password-login.md)). Консоль
-открывается на странице входа; кнопка выхода — в шапке.
+Пароль администратора спрашивает первый запуск в консоли: `make up` пароля не
+пишет. Сервер печатает в журнал одноразовый код настройки
+(`docker compose -f deploy/docker-compose.yml logs server | grep "SARD SETUP CODE"`);
+откройте `/setup`, введите код, подтвердите CA и задайте пароль (от 12 до 1024
+символов). Он хранится в базе как хеш Argon2id и меняется на странице
+«Настройки» ([ADR 0021](docs/adr/0021-admin-password-login.md),
+[ADR первого запуска](docs/adr/00XX-draft-f4a-first-start.md)). После этого
+консоль открывается на странице входа; кнопка выхода — в шапке.
 
 За обратным прокси, который завершает TLS (Cloudflare Tunnel, nginx, Caddy),
 задайте `SARD_FORWARD_HEADERS=native` в `deploy/.env` и оставьте порт 8080 на

@@ -44,6 +44,7 @@ val e2eProperties =
     mapOf(
         "e2e.serverImage" to "sard-server:e2e",
         "e2e.agentImage" to "sard-agent:e2e",
+        "e2e.agentPgImage" to "sard-agent:e2e-pg18",
         "e2e.standAgentImage" to "sard-agent-stand:e2e",
         "e2e.pg18AgentImage" to "sard-agent-pg18:e2e",
         "e2e.pg14AgentImage" to "sard-agent-pg14:e2e",

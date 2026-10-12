@@ -53,6 +53,12 @@ data class Source(
     val config: Map<String, Any?>,
     val createdAt: Instant,
     val updatedAt: Instant,
+    @field:Schema(
+        description =
+            "Set for a source the server keeps itself (the self-backup's): it is neither replaced nor deleted " +
+                "through the API, only its schedule changes; null for an administrator's source",
+    )
+    val systemRole: SystemSourceRole?,
 ) {
     override fun toString() = "Source(id=$id, name=$name, agentId=$agentId, plugin=$plugin)"
 }
@@ -162,10 +168,13 @@ class SourcesController(
     @ResponseStatus(HttpStatus.OK)
     @Operation(
         summary = "Replace a source",
-        description = "The same 422 codes as creation, unknown_plugin included when the plugin does not offer backup.",
+        description =
+            "The same 422 codes as creation, unknown_plugin included when the plugin does not offer backup. " +
+                "409 system_source for a source the server keeps itself.",
     )
     @NotFound
     @Unprocessable
+    @SystemSourceConflict
     fun replaceSource(
         @PathVariable sourceId: UUID,
         @RequestBody source: SourceInput,
@@ -173,10 +182,24 @@ class SourcesController(
 
     @DeleteMapping("/{sourceId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @Operation(summary = "Delete a source", description = "Its runs and snapshots stay in the history.")
+    @Operation(
+        summary = "Delete a source",
+        description =
+            "Its runs and snapshots stay in the history. 409 run_active while a run is active, " +
+                "409 system_source for a source the server keeps itself.",
+    )
     @ApiResponse(responseCode = "204", description = "Deleted")
     @NotFound
-    @RunActive
+    @ApiResponse(
+        responseCode = "409",
+        description = "The source has an active run (activeRunId), or the server keeps it itself (code)",
+        content = [
+            Content(
+                mediaType = PROBLEM_JSON,
+                schema = Schema(anyOf = [RunActiveProblem::class, Problem::class]),
+            ),
+        ],
+    )
     fun deleteSource(
         @PathVariable sourceId: UUID,
     ): Unit = api.deleteSource(sourceId)
