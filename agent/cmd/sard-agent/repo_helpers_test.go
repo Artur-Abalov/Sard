@@ -8,11 +8,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -66,6 +68,10 @@ type fakeRepo struct {
 	// script, if not nil, answers a restic command before the rest of the
 	// fake does: the stderr line to print and the exit code, handled true.
 	script func(sub string, env []string) (line string, code int, handled bool)
+	// snapshots are what restic snapshots lists; a --tag restricts the list
+	// to the snapshots that carry it. hangSnapshots: it never finishes.
+	snapshots     []restic.Snapshot
+	hangSnapshots bool
 }
 
 // fakeCall is one restic invocation.
@@ -195,8 +201,7 @@ func (f *fakeRestic) runRepoCommand(ctx context.Context, cmd restic.Command, sub
 	case sub == "init":
 		return f.init(ctx, cmd, r)
 	case sub == "snapshots":
-		cmd.Stdout([]byte("[]")) // the command that takes the shared lock (П29)
-		return 0, nil
+		return f.snapshots(ctx, cmd, r)
 	}
 	f.t.Fatalf("unexpected restic %q", cmd.Args)
 	return 0, nil
@@ -228,6 +233,36 @@ func (f *fakeRestic) cat(ctx context.Context, cmd restic.Command, r *fakeRepo) (
 	}
 	lines(cmd.Stdout, strings.ReplaceAll(golden(f.t, "cat-config.json"), goldenID, r.id))
 	return 0, nil
+}
+
+// snapshots lists r.snapshots as restic does, as JSON; the command with
+// no list is also the one that takes the shared lock (П29).
+func (f *fakeRestic) snapshots(ctx context.Context, cmd restic.Command, r *fakeRepo) (int, error) {
+	if r.hangSnapshots {
+		return f.hang(ctx, cmd, r, r.hangLine)
+	}
+	listed := []restic.Snapshot{}
+	for _, s := range r.snapshots {
+		if hasAllTags(s, cmd.Args) {
+			listed = append(listed, s)
+		}
+	}
+	data, err := json.Marshal(listed)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	cmd.Stdout(data)
+	return 0, nil
+}
+
+// hasAllTags: s carries the tag of every --tag of args.
+func hasAllTags(s restic.Snapshot, args []string) bool {
+	for i, a := range args {
+		if a == "--tag" && !slices.Contains(s.Tags, args[i+1]) {
+			return false
+		}
+	}
+	return true
 }
 
 func (f *fakeRestic) init(ctx context.Context, cmd restic.Command, r *fakeRepo) (int, error) {

@@ -13,8 +13,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -214,4 +217,45 @@ func (h *repoHost) snapshotWithout(skip ...string) map[string]string {
 	got := h.snapshot()
 	dropTrees(got, skip)
 	return got
+}
+
+// backupWithRestic makes a snapshot of dir with the real restic and the tags.
+func backupWithRestic(t *testing.T, h *repoHost, dir string, tags ...string) {
+	t.Helper()
+	args := []string{"backup", "--no-cache", dir}
+	for _, tag := range tags {
+		args = append(args, "--tag", tag)
+	}
+	cmd := exec.Command(pinnedRestic(t), args...)
+	cmd.Env = append(os.Environ(), "RESTIC_REPOSITORY="+h.repoURL(), "RESTIC_PASSWORD_FILE="+h.pass())
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("restic backup: %v\n%s", err, out)
+	}
+}
+
+// Список настоящего restic называет теги снимков бэкапа
+func TestIntegrationTheListOfTheRealResticNamesTheTagsOfABackup(t *testing.T) {
+	h := realHost(t)
+	assertCode(t, first(h.initCmd()), exitOK)
+	data := h.path("data")
+	h.write(filepath.Join(data, "a.txt"), "a", 0o644)
+	backupWithRestic(t, h, data, "sard.run=r1", "sard.source=s1")
+	backupWithRestic(t, h, data)
+	code, stdout, stderr := h.run("snapshots", "--config", "C", "--json", "main")
+	assertCode(t, code, exitOK)
+	var got snapshotsJSON
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil || len(got.Snapshots) != 2 || got.Snapshots[0].Source == nil {
+		t.Fatalf("stdout %q, stderr %q: %v", stdout, stderr, err)
+	}
+	assertRealSnapshots(t, got, data)
+}
+
+// assertRealSnapshots: the first snapshot is tagged s1 and r1, the second has no tag of Sard.
+func assertRealSnapshots(t *testing.T, got snapshotsJSON, data string) {
+	t.Helper()
+	tagged, plain := got.Snapshots[0], got.Snapshots[1]
+	shown := fmt.Sprintf("%d %v %v %v", len(tagged.ID), []string{*tagged.Source, *tagged.Run}, tagged.Paths, strings.HasSuffix(tagged.Time, "Z"))
+	if want := fmt.Sprintf("64 [s1 r1] [%s] true", data); shown != want || plain.Source != nil || plain.Run != nil {
+		t.Fatalf("snapshots %+v", got.Snapshots)
+	}
 }

@@ -122,9 +122,25 @@ func stringLiterals(t *testing.T, visit func(file string, pos token.Position, va
 // provider; only the help text shows the templates.
 func TestPackageMainHoldsNoHostOfAProvider(t *testing.T) {
 	stringLiterals(t, func(file string, pos token.Position, value string) {
-		holds := strings.Contains(value, "amazonaws.com") || strings.Contains(value, "backblazeb2.com")
+		holds := false
+		for _, host := range []string{"amazonaws.com", "backblazeb2.com", "yandexcloud.net", "vkcloud-storage.ru", "selcloud.ru"} {
+			holds = holds || strings.Contains(value, host)
+		}
 		if holds && file != "host_help.go" {
 			t.Errorf("%s: %s holds a host of a provider", file, pos)
+		}
+	})
+}
+
+// The tags of the snapshots are read in internal/restore (A8c, Р68): package
+// main prints what that package returns and parses no tag; only the help
+// text names them.
+func TestPackageMainParsesNoTagOfASnapshot(t *testing.T) {
+	stringLiterals(t, func(file string, pos token.Position, value string) {
+		for _, tag := range []string{"sard.source", "sard.run", "sard.step", "postgresql."} {
+			if strings.Contains(value, tag) && file != "host_help.go" {
+				t.Errorf("%s: %s holds the tag %s", file, pos, tag)
+			}
 		}
 	})
 }

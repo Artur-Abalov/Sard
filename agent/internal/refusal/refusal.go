@@ -83,6 +83,10 @@ const (
 	HostKeyChanged      Reason = "HOST_KEY_CHANGED"
 )
 
+// RepositoryNotInitialized: the command reads a repository, and none is
+// stored at its address (A8c-1, Р54).
+const RepositoryNotInitialized Reason = "REPOSITORY_NOT_INITIALIZED"
+
 // Class is the kind of a failure; the command maps it to an exit code
 // (the numbers are A2b's, docs/adr/0025-grpc-error-model.md).
 type Class int
@@ -119,6 +123,8 @@ var classes = map[Reason]Class{
 	ConfigLocked:         ClassTemporary,
 	ConfigWrite:          ClassWrite,
 	ServiceRestartFailed: ClassAgentError,
+
+	RepositoryNotInitialized: ClassUsage,
 
 	AddressInvalid: ClassUsage, SecretInvalid: ClassUsage, S3KeyRejected: ClassUsage,
 	StorageAccessDenied: ClassUsage, BucketNotFound: ClassUsage,

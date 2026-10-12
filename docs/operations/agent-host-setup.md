@@ -30,7 +30,7 @@ sudo sard-agent repo add main /srv/sard/main
 | кто запускает | что может |
 |---|---|
 | root (`sudo`) | всё |
-| пользователь службы (`sard-agent`, или `service.user` основного конфига) | только чтение: `secret list`, `repo list`, `repo show`, `repo password --reveal`; а также `repo init` и `enroll`, как раньше |
+| пользователь службы (`sard-agent`, или `service.user` основного конфига) | только чтение: `secret list`, `repo list`, `repo show`, `repo snapshots`, `repo password --reveal`; а также `repo init` и `enroll`, как раньше |
 | любой другой | ничего: `PRIVILEGES_REQUIRED`, код 2, в сообщении готовая команда с `sudo` |
 
 Проверка идёт сразу после разбора флагов, до чтения конфига. Изменяющая
@@ -188,13 +188,19 @@ sudo sard-agent repo add <имя> s3:https://<хост>[:<порт>]/<бакет
 или без схемы); учётных данных в нём нет (`ADDRESS_INVALID`: нет хоста или
 бакета, другая схема, `user:pass@`, управляющий символ, хост с `-` в начале).
 
-- **Предустановка провайдера.** `--provider aws|b2` с адресом
-  `s3:<бакет>[/<путь>]` (без схемы и хоста) и обязательным `--region` строит
-  адрес: `aws` — `s3:https://s3.<регион>.amazonaws.com/<бакет>[/<путь>]`, `b2` —
-  `s3:https://s3.<регион>.backblazeb2.com/<бакет>[/<путь>]`; во фрагмент
-  пишется полный адрес, в `env`-файл — `AWS_DEFAULT_REGION=<регион>`.
-  Схема или хост в адресе, неизвестный провайдер (в сообщении `aws`, `b2`),
-  нет `--region`, плохой формат региона, нет бакета — ошибка использования.
+- **Предустановка провайдера.** `--provider aws|b2|yandex|vk|selectel` с адресом
+  `s3:<бакет>[/<путь>]` (без схемы и хоста) строит адрес: `aws` —
+  `s3:https://s3.<регион>.amazonaws.com/<бакет>[/<путь>]`, `b2` —
+  `s3:https://s3.<регион>.backblazeb2.com/<бакет>[/<путь>]`, `yandex` —
+  `s3:https://storage.yandexcloud.net/…` (регион `ru-central1`), `vk` —
+  `s3:https://hb.ru-msk.vkcloud-storage.ru/…` (регион `ru-msk`), `selectel` —
+  `s3:https://s3.<регион>.storage.selcloud.ru/…` (по умолчанию `ru-1`, `--region`
+  выбирает пул). У `aws` и `b2` `--region` обязателен, у остальных подставляется;
+  `yandex` и `vk` принимают только свой регион. Во фрагмент пишется полный
+  адрес, в `env`-файл — `AWS_DEFAULT_REGION=<регион>` (и подставленный).
+  Схема или хост в адресе, неизвестный провайдер (в сообщении все пять), нет
+  `--region` у `aws`/`b2`, чужой регион у `yandex`/`vk`, плохой формат региона,
+  нет бакета — ошибка использования.
   Списка регионов нет: несуществующий регион — `BACKEND_UNAVAILABLE`.
   `--provider` с адресом другого вида — ошибка использования, называющая флаг.
   Пример: `sudo sard-agent repo add main s3:<бакет>/<путь> --provider aws
@@ -360,6 +366,48 @@ sudo sard-agent repo add <имя> sftp:[<пользователь>@]<хост>:<
   Строки ключа и ключа хоста пишутся и тогда, когда команда потом отказала.
   Значений, ключей и паролей в строках нет.
 
+## Снимки репозитория: `repo snapshots`
+
+```bash
+sudo sard-agent repo snapshots <имя> [--source <источник>] [--json] [--timeout 2m] [--connect-timeout 30s]
+```
+
+Показывает снимки репозитория (A8c-1, `docs/specs/agent/repo-restore.feature`,
+Р53–Р57) без сервера Sard и без регистрации агента: нужны только конфиг и
+файлы пароля и ключей репозитория. Один вызов `restic snapshots --json
+--no-lock` (ключ только на чтение подходит, файлов блокировки нет) от имени
+пользователя службы; пароль restic получает только файлом, ключи S3 — из
+`env`-файла. Команда только читает и в журнал не пишет. Запускать её можно через
+`sudo` или от пользователя службы, остальные получают `PRIVILEGES_REQUIRED`.
+
+Снимки показаны **все**, в том числе сделанные другими хостами: на новом хосте
+после потери старого их видно сразу после `repo add`. Порядок — по времени
+по возрастанию, при равном времени по id:
+
+```
+ID TIME HOST SOURCE RUN PATHS
+dddd1111 2026-10-09T12:00:00Z old-host - - /etc
+aaaa1111 2026-10-10T03:00:00Z db1 s1 r1 /srv/data
+```
+
+- `ID` — короткий id (8 символов); `TIME` — UTC, RFC 3339 до секунд с `Z`;
+- `SOURCE` и `RUN` — значения тегов `sard.source` и `sard.run`, `-`, если тега
+  нет или он пуст (снимок, сделанный вручную); `PATHS` — пути через запятую;
+- нет снимков — одна строка `no snapshots in repository <имя>` (с `--source` —
+  `no snapshots of source <id> in repository <имя>`), код 0;
+- `--source <id>` (1–128 печатных символов ASCII без пробела и запятой) — только
+  снимки этого источника; иначе ошибка использования, называющая `--source`;
+- `--json` — один объект `{"repository":"<имя>","snapshots":[{"id","short_id",
+  "time","hostname","paths","source","run","step","tags"}]}`: `id` полный (64
+  символа), `source`, `run`, `step` — строка или `null`, `tags` — все теги;
+  ошибки остаются текстом в stderr.
+
+Отказы: `REPOSITORY_UNKNOWN` (называет подключённые имена),
+`REPOSITORY_NOT_INITIALIZED`, `WRONG_PASSWORD`, `PASSWORD_FILE_MISSING`,
+`SECRET_FILE_REJECTED`, `STORAGE_ACCESS_DENIED` — код 2; `BACKEND_UNAVAILABLE`
+(в том числе молчащее хранилище дольше `--connect-timeout`), `TIMEOUT` — код 6;
+restic не найден — код 1. Восстановление снимка (`repo restore`) — срез A8c-2.
+
 ## Применение изменения и перезапуск
 
 После изменения, в этом порядке:
@@ -413,7 +461,7 @@ sudo journalctl -t sard-agent --since today
 |---|---|---|
 | 0 | успех | изменение применено или не требовалось; чтение; `--help` |
 | 1 | ошибка агента | restic не найден, старый, непригоден; `BACKEND_REFUSED`; `SSH_CLIENT_MISSING`, `SSH_CLIENT_FAILED`; `SERVICE_RESTART_FAILED` |
-| 2 | использование | флаги, `PRIVILEGES_REQUIRED`, `SERVICE_USER_UNKNOWN`, `NAME_INVALID`, конфиг и `DUPLICATE_NAME`, `DEFINED_IN_CONFIG`, `PATH_IN_USE`, `SECRET_SOURCE_MISSING`, `SECRET_SOURCE_CONFLICT`, `SECRET_EMPTY`, `SECRET_TOO_LARGE`, `SECRET_MISMATCH`, `SECRET_INVALID`, `SECRET_FILE_REJECTED`, `BACKEND_NOT_SUPPORTED`, `ADDRESS_INVALID`, `LOCAL_PATH_INVALID`, `WRONG_PASSWORD`, `S3_KEY_REJECTED`, `STORAGE_ACCESS_DENIED`, `BUCKET_NOT_FOUND`, `SSH_HOME_INVALID`, `SSH_FILE_REJECTED`, `SSH_KEY_NOT_AUTHORIZED`, `HOST_KEY_UNCONFIRMED`, `REPOSITORY_UNKNOWN`, `REVEAL_REQUIRED`, `PASSWORD_FILE_MISSING` |
+| 2 | использование | флаги, `PRIVILEGES_REQUIRED`, `SERVICE_USER_UNKNOWN`, `NAME_INVALID`, конфиг и `DUPLICATE_NAME`, `DEFINED_IN_CONFIG`, `PATH_IN_USE`, `SECRET_SOURCE_MISSING`, `SECRET_SOURCE_CONFLICT`, `SECRET_EMPTY`, `SECRET_TOO_LARGE`, `SECRET_MISMATCH`, `SECRET_INVALID`, `SECRET_FILE_REJECTED`, `BACKEND_NOT_SUPPORTED`, `ADDRESS_INVALID`, `LOCAL_PATH_INVALID`, `WRONG_PASSWORD`, `S3_KEY_REJECTED`, `STORAGE_ACCESS_DENIED`, `BUCKET_NOT_FOUND`, `SSH_HOME_INVALID`, `SSH_FILE_REJECTED`, `SSH_KEY_NOT_AUTHORIZED`, `HOST_KEY_UNCONFIRMED`, `REPOSITORY_UNKNOWN`, `REPOSITORY_NOT_INITIALIZED`, `REVEAL_REQUIRED`, `PASSWORD_FILE_MISSING` |
 | 4 | идентичность есть | `REPOSITORY_CONFLICT`: имя уже подключено к другому адресу |
 | 5 | доверие | `HOST_KEY_MISMATCH`, `HOST_KEY_REJECTED`, `HOST_KEY_CHANGED`: ключ хоста SFTP не подтверждён, не совпал или сменился |
 | 6 | временная | `BACKEND_UNAVAILABLE` (в том числе `--connect-timeout`), `TIMEOUT`, `INTERRUPTED`, `CONFIG_LOCKED`, `INIT_IN_PROGRESS` |

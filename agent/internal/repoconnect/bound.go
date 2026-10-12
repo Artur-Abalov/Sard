@@ -91,6 +91,22 @@ func (b Bound) CheckLock(ctx context.Context, cli restic.Repository, target repo
 	return repoinit.FromRestic(ctx, err, target)
 }
 
+// Attempt runs call, the first access of a command that is not one of the
+// above (the list of snapshots), within the time Bound allows. An error of
+// call is explained by explain; a storage that did not answer in time is
+// BACKEND_UNAVAILABLE as for Inspect.
+func (b Bound) Attempt(ctx context.Context, target repoinit.Target, log *Log, call func(limited context.Context) error, explain func(ctx context.Context, err error) *refusal.Failure) *refusal.Failure {
+	var err error
+	timedOut := b.Within(ctx, func(limited context.Context) { err = call(limited) })
+	switch {
+	case err == nil:
+		return nil
+	case timedOut:
+		return b.unanswered(target, log)
+	}
+	return explain(ctx, err)
+}
+
 // Within runs call limited by the time Bound allows; timedOut says that
 // the limit, not an interrupt of the command, ended the context call got.
 // Zero Timeout: no limit.

@@ -6,6 +6,9 @@ package main
 import (
 	"fmt"
 	"io"
+	"strings"
+
+	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 )
 
 // applyingHelp is what every command that changes the config says about
@@ -119,12 +122,17 @@ the bucket is not created by the command unless the key may create buckets;
 BACKEND_UNAVAILABLE). New keys for a name that is connected are checked the
 same way and replace the env file ("credentials updated", no restart).
 
-With --provider aws or b2 the address is s3:<bucket>[/<path>], without a scheme
-or a host, and the command builds the rest from --region, which --provider needs:
-aws gives s3:https://s3.<region>.amazonaws.com/<bucket>[/<path>], b2 gives
-s3:https://s3.<region>.backblazeb2.com/<bucket>[/<path>]. The region is not
-checked against a list: a region that does not exist fails at the storage
-(BACKEND_UNAVAILABLE). The env file gets AWS_DEFAULT_REGION=<region>.
+With --provider ({providers}) the address is s3:<bucket>[/<path>],
+without a scheme or a host, and the command builds the rest from --region.
+For aws and b2 --provider needs --region: aws gives
+s3:https://s3.<region>.amazonaws.com/<bucket>[/<path>], b2 gives
+s3:https://s3.<region>.backblazeb2.com/<bucket>[/<path>].
+For yandex, vk and selectel --region is optional and defaults (yandex
+ru-central1, vk ru-msk, selectel ru-1): yandex and vk have one address and take their default region
+only; selectel takes any pool as --region (ru-3, ru-7, gis-1, ...). The region
+is not checked against a list: a region that does not exist fails at the
+storage (BACKEND_UNAVAILABLE). The env file gets AWS_DEFAULT_REGION=<region>,
+the default one too.
 
 An sftp: storage: the connection is made with the ssh key of the service user,
 in the ssh directory of the home directory that passwd gives it (known_hosts,
@@ -161,7 +169,8 @@ Flags:
   --access-key-id string       s3: the key id (required for an s3: address)
   --secret-key-stdin           s3: read the secret key from standard input
   --secret-key-from-file string  s3: read it from a file
-  --provider string            s3: aws or b2, builds the address from --region (--provider needs --region)
+  --provider string            s3: {providers}; builds the address (aws and b2 need --region,
+                               the others default it)
   --region string              s3: AWS_DEFAULT_REGION (1-64 characters of a-z 0-9 -)
   --host-key-fingerprint string  sftp: the fingerprint (SHA256:...) that confirms the host key
   --replace-host-key           sftp: replace a host key that changed (still needs the confirmation)
@@ -189,11 +198,12 @@ system log (tag sard-agent).
 ` + applyingHelp
 
 var repoHelpPrinters = map[string]func(io.Writer){
-	"list":     printRepoListHelp,
-	"add":      printRepoAddHelp,
-	"show":     printRepoShowHelp,
-	"remove":   printRepoRemoveHelp,
-	"password": printRepoPasswordHelp,
+	"list":      printRepoListHelp,
+	"add":       printRepoAddHelp,
+	"show":      printRepoShowHelp,
+	"remove":    printRepoRemoveHelp,
+	"password":  printRepoPasswordHelp,
+	"snapshots": printRepoSnapshotsHelp,
 }
 
 func printRepoHelp(stdout io.Writer, sub string) {
@@ -205,7 +215,8 @@ func printRepoHelp(stdout io.Writer, sub string) {
 }
 
 func printRepoAddHelp(stdout io.Writer) {
-	printHelp(stdout, "repo add [flags] <name> <address>", repoAddHelpText, []repoHelpCode{
+	text := strings.ReplaceAll(repoAddHelpText, "{providers}", strings.Join(hostsetup.ProviderNames(), ", "))
+	printHelp(stdout, "repo add [flags] <name> <address>", text, []repoHelpCode{
 		codeOK, codeRestart,
 		usageCode("flags, rights (PRIVILEGES_REQUIRED, SERVICE_USER_UNKNOWN), NAME_INVALID, BACKEND_NOT_SUPPORTED, ADDRESS_INVALID, LOCAL_PATH_INVALID, config, DEFINED_IN_CONFIG, PATH_IN_USE, SECRET_SOURCE_MISSING, SECRET_SOURCE_CONFLICT, SECRET_INVALID, SECRET_FILE_REJECTED, WRONG_PASSWORD, S3_KEY_REJECTED, STORAGE_ACCESS_DENIED, BUCKET_NOT_FOUND, SSH_HOME_INVALID, SSH_FILE_REJECTED, SSH_KEY_NOT_AUTHORIZED, HOST_KEY_UNCONFIRMED"),
 		codeConflict,
@@ -261,5 +272,42 @@ Flags:
 		codeOK, {exitAgentError, "agent error", "restic is missing or unusable; the first permanent problem is an agent error"},
 		usageCode("flags, rights (PRIVILEGES_REQUIRED), config, REPOSITORY_UNKNOWN, or a usage problem in the status"),
 		{exitTemporary, "temporary", "the backend is unreachable, --timeout ran out, or the command was interrupted"},
+	})
+}
+
+func printRepoSnapshotsHelp(stdout io.Writer) {
+	printHelp(stdout, "repo snapshots [flags] <name>", `Lists the snapshots of one repository of the config: all of them, whatever
+host made them (a new host sees the snapshots of the lost one). One restic
+snapshots call without a lock; the command only reads, writes nothing and
+never contacts the Sard server. Run it through sudo (restic then runs as the
+service user) or as the service user (sard-agent, or service.user of the
+config); anyone else is refused (PRIVILEGES_REQUIRED). No registration of the
+agent is needed: the config and the files of the repository are enough.
+
+Flags:
+  --config string            path to the agent config (default /etc/sard/agent.yaml)
+  --source string            only the snapshots of this source id (1-128 printable
+                             ASCII characters without a space or a comma)
+  --json                     print one JSON object {"repository":"<name>","snapshots":[...]}
+                             with id (64 characters), short_id, time, hostname, paths,
+                             source, run, step (null if the snapshot has none) and tags;
+                             errors stay text on stderr
+  --connect-timeout duration how long the first access to the storage may take (default 30s)
+  --timeout duration         how long the whole command may take (default 2m)
+
+Columns, one line per snapshot, oldest first (the same time: by id):
+  ID      the short id (8 characters)
+  TIME    the time of the snapshot in UTC, 2026-10-10T03:00:00Z
+  HOST    the host that made the snapshot
+  SOURCE  the source id from the tag sard.source, - if there is none
+  RUN     the run id from the tag sard.run, - if there is none
+  PATHS   the paths of the snapshot, separated by commas
+A repository with no snapshots prints one line and exits 0.
+
+`+readOnlyHelp, []repoHelpCode{
+		codeOK,
+		{exitAgentError, "agent error", "restic is missing or unusable; the backend refused (BACKEND_REFUSED)"},
+		usageCode("flags (--source), rights (PRIVILEGES_REQUIRED, SERVICE_USER_UNKNOWN), config, REPOSITORY_UNKNOWN, REPOSITORY_NOT_INITIALIZED, WRONG_PASSWORD, PASSWORD_FILE_MISSING, SECRET_FILE_REJECTED, STORAGE_ACCESS_DENIED"),
+		{exitTemporary, "temporary", "the storage is unreachable (BACKEND_UNAVAILABLE, also --connect-timeout), --timeout ran out, or the command was interrupted"},
 	})
 }

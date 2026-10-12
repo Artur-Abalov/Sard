@@ -119,9 +119,9 @@ func (c *hostCmd) expandPreset() *refusal.Failure {
 	if !c.opts.set["provider"] {
 		return nil
 	}
-	expanded, f := hostsetup.ExpandProvider(c.opts.provider, c.opts.region, c.opts.address)
+	expanded, region, f := hostsetup.ExpandProvider(c.opts.provider, c.opts.region, c.opts.address)
 	if f == nil {
-		c.opts.address = expanded
+		c.opts.address, c.opts.region = expanded, region
 	}
 	return f
 }

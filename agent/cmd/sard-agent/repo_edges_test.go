@@ -24,7 +24,7 @@ func TestRepoIsDispatchedFromTheAgentCommandLine(t *testing.T) {
 		t.Fatalf("init --help: code = %d, stdout = %q", code, stdout)
 	}
 	code, stdout, stderr := runAgent("repo")
-	if code != exitUsage || stdout != "" || stderr != "sard-agent repo: want a subcommand: init, list, add, show, remove or password\n" {
+	if code != exitUsage || stdout != "" || stderr != "sard-agent repo: want a subcommand: init, list, add, show, remove, password or snapshots\n" {
 		t.Fatalf("repo alone: code = %d, stdout = %q, stderr = %q", code, stdout, stderr)
 	}
 }

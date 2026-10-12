@@ -181,33 +181,84 @@ func S3EnvIdentity(env []byte) (id, region string) {
 	return id, region
 }
 
-// providerHosts are the presets of --provider (Р50): the host of the storage
-// from the region. The agent holds no list of regions: a region that does
-// not exist fails at the storage.
-var providerHosts = map[string]string{
-	"aws": "s3.%s.amazonaws.com",
-	"b2":  "s3.%s.backblazeb2.com",
+// providerPreset is one row of the table of --provider (Р50, Р51): the host
+// of the storage, the region used when --region is not given ("" - the
+// region is required) and whether the host serves that region only.
+type providerPreset struct {
+	name string
+	// host is the host of the storage; %s is replaced by the region unless
+	// onlyDefault is set.
+	host          string
+	defaultRegion string
+	onlyDefault   bool
+}
+
+// providerTable is the one table of presets, in the order the help shows
+// them. The agent holds no list of regions where the region is part of the
+// host: a region that does not exist fails at the storage.
+var providerTable = []providerPreset{
+	{name: "aws", host: "s3.%s.amazonaws.com"},
+	{name: "b2", host: "s3.%s.backblazeb2.com"},
+	{name: "yandex", host: "storage.yandexcloud.net", defaultRegion: "ru-central1", onlyDefault: true},
+	{name: "vk", host: "hb.ru-msk.vkcloud-storage.ru", defaultRegion: "ru-msk", onlyDefault: true},
+	{name: "selectel", host: "s3.%s.storage.selcloud.ru", defaultRegion: "ru-1"},
+}
+
+// ProviderNames are the values of --provider, in the order of the table.
+func ProviderNames() []string {
+	names := make([]string, len(providerTable))
+	for i, p := range providerTable {
+		names[i] = p.name
+	}
+	return names
+}
+
+func lookupProvider(name string) (providerPreset, bool) {
+	for _, p := range providerTable {
+		if p.name == name {
+			return p, true
+		}
+	}
+	return providerPreset{}, false
+}
+
+// resolveRegion is the region the preset uses: the one asked for, or the
+// default; a host without a region in its name takes the default only.
+func (p providerPreset) resolveRegion(region string) (string, *refusal.Failure) {
+	if region == "" {
+		region = p.defaultRegion
+	}
+	switch {
+	case region == "":
+		return "", usageError("--provider %s needs --region", p.name)
+	case p.onlyDefault && region != p.defaultRegion:
+		return "", usageError("--provider %s: --region must be %s", p.name, p.defaultRegion)
+	}
+	return region, CheckRegion(region)
 }
 
 // ExpandProvider is the address restic gets for s3:<bucket>[/<path>] with
-// the preset of a provider and a region (Р50). The address names no scheme
-// and no host; every misuse is a usage error that names the flag.
-func ExpandProvider(provider, region, address string) (string, *refusal.Failure) {
-	host, ok := providerHosts[provider]
+// the preset of a provider and a region (Р50, Р51), and the region that goes
+// to the env file (the default one when region is empty). The address names
+// no scheme and no host; every misuse is a usage error that names the flag.
+func ExpandProvider(provider, region, address string) (string, string, *refusal.Failure) {
+	preset, ok := lookupProvider(provider)
 	if !ok {
-		return "", usageError("--provider must be one of: aws, b2")
+		return "", "", usageError("--provider must be one of: %s", strings.Join(ProviderNames(), ", "))
 	}
-	if region == "" {
-		return "", usageError("--provider %s needs --region", provider)
-	}
-	if f := CheckRegion(region); f != nil {
-		return "", f
+	region, f := preset.resolveRegion(region)
+	if f != nil {
+		return "", "", f
 	}
 	rest := strings.TrimPrefix(address, "s3:")
 	if f := checkPresetAddress(rest); f != nil {
-		return "", f
+		return "", "", f
 	}
-	return "s3:https://" + fmt.Sprintf(host, region) + "/" + rest, nil
+	host := preset.host
+	if !preset.onlyDefault {
+		host = fmt.Sprintf(host, region)
+	}
+	return "s3:https://" + host + "/" + rest, region, nil
 }
 
 // checkPresetAddress: the bucket and the path of an address given with --provider.

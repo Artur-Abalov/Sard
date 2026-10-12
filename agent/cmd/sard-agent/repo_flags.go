@@ -10,6 +10,8 @@ import (
 	"io"
 	"regexp"
 	"time"
+
+	"github.com/Artur-Abalov/sard/agent/internal/restore"
 )
 
 // offer is the set of flags a command accepts besides --config.
@@ -24,8 +26,12 @@ const (
 	offerStdin
 	offerFromFile
 	offerPasswordSource
-	// offerRemote: the flags of an s3: address and --connect-timeout (A8b).
+	// offerRemote: the flags of an s3: address and an sftp: one (A8b).
 	offerRemote
+	// offerConnectTimeout: --connect-timeout (Р33).
+	offerConnectTimeout
+	// offerSource: --source of repo snapshots (Р57).
+	offerSource
 )
 
 // hostOptions are the flags and the positional arguments of one command of
@@ -52,6 +58,8 @@ type hostOptions struct {
 	secretKeyFromFile string
 	// connectTimeout bounds the first access to the storage (Р33).
 	connectTimeout time.Duration
+	// source is --source: the id of a source of Sard (Р57).
+	source string
 	// The flags of an sftp: address (Р40): the fingerprint that confirms the
 	// host key, and the permission to replace a host key that changed.
 	hostKeyFingerprint string
@@ -77,12 +85,13 @@ type cmdSpec struct {
 
 // repoSpecs are the commands of "sard-agent repo".
 var repoSpecs = map[string]cmdSpec{
-	"init":     {"repo init", offerTimeout | offerGenerate, 1, "the name of a repository of the agent config is required: sard-agent repo init [flags] <name>"},
-	"list":     {"repo list", offerTimeout | offerJSON, 0, ""},
-	"add":      {"repo add", offerTimeout | offerNoRestart | offerPasswordSource | offerRemote, 2, "a name and an address are required: sard-agent repo add [flags] <name> <address>"},
-	"show":     {"repo show", offerTimeout | offerJSON, 1, "the name of a repository is required: sard-agent repo show [flags] <name>"},
-	"remove":   {"repo remove", offerNoRestart, 1, "the name of a repository is required: sard-agent repo remove [flags] <name>"},
-	"password": {"repo password", offerReveal, 1, "the name of a repository is required: sard-agent repo password <name> --reveal"},
+	"init":      {"repo init", offerTimeout | offerGenerate, 1, "the name of a repository of the agent config is required: sard-agent repo init [flags] <name>"},
+	"list":      {"repo list", offerTimeout | offerJSON, 0, ""},
+	"add":       {"repo add", offerTimeout | offerNoRestart | offerPasswordSource | offerRemote, 2, "a name and an address are required: sard-agent repo add [flags] <name> <address>"},
+	"show":      {"repo show", offerTimeout | offerJSON, 1, "the name of a repository is required: sard-agent repo show [flags] <name>"},
+	"remove":    {"repo remove", offerNoRestart, 1, "the name of a repository is required: sard-agent repo remove [flags] <name>"},
+	"password":  {"repo password", offerReveal, 1, "the name of a repository is required: sard-agent repo password <name> --reveal"},
+	"snapshots": {"repo snapshots", offerTimeout | offerJSON | offerConnectTimeout | offerSource, 1, "the name of a repository is required: sard-agent repo snapshots [flags] <name>"},
 }
 
 // secretSpecs are the commands of "sard-agent secret".
@@ -115,6 +124,7 @@ type flagValues struct {
 	secretKeyFromFile            *string
 	secretKeyStdin               *bool
 	connectTimeout               *time.Duration
+	source                       *string
 	hostKeyFingerprint           *string
 	replaceHostKey               *bool
 }
@@ -125,7 +135,7 @@ func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
 		generate: new(bool), json: new(bool), noRestart: new(bool), reveal: new(bool),
 		stdin: new(bool), passwordStdin: new(bool), fromFile: new(string), passwordFromFile: new(string),
 		accessKeyID: new(string), region: new(string), provider: new(string), secretKeyFromFile: new(string),
-		secretKeyStdin: new(bool), connectTimeout: new(time.Duration),
+		secretKeyStdin: new(bool), connectTimeout: new(time.Duration), source: new(string),
 		hostKeyFingerprint: new(string), replaceHostKey: new(bool),
 	}
 	if o&offerTimeout != 0 {
@@ -151,10 +161,23 @@ func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
 	if o&offerRemote != 0 {
 		defineRemoteFlags(fs, &v)
 	}
+	defineReadFlags(fs, o, &v)
 	return v
 }
 
-// defineRemoteFlags are the flags of an s3: address and --connect-timeout.
+// defineReadFlags are --connect-timeout, which the commands that reach a
+// remote storage have, and --source of repo snapshots.
+func defineReadFlags(fs *flag.FlagSet, o offer, v *flagValues) {
+	if o&(offerRemote|offerConnectTimeout) != 0 {
+		*v.connectTimeout = defaultConnectTimeout
+		fs.Var(positiveDuration{v.connectTimeout}, "connect-timeout", "")
+	}
+	if o&offerSource != 0 {
+		v.source = fs.String("source", "", "")
+	}
+}
+
+// defineRemoteFlags are the flags of an s3: or an sftp: address.
 func defineRemoteFlags(fs *flag.FlagSet, v *flagValues) {
 	v.accessKeyID = fs.String("access-key-id", "", "")
 	v.region = fs.String("region", "", "")
@@ -163,8 +186,6 @@ func defineRemoteFlags(fs *flag.FlagSet, v *flagValues) {
 	v.secretKeyFromFile = fs.String("secret-key-from-file", "", "")
 	v.hostKeyFingerprint = fs.String("host-key-fingerprint", "", "")
 	v.replaceHostKey = fs.Bool("replace-host-key", false, "")
-	*v.connectTimeout = defaultConnectTimeout
-	fs.Var(positiveDuration{v.connectTimeout}, "connect-timeout", "")
 }
 
 // defaultConnectTimeout bounds the first access to the storage unless
@@ -210,12 +231,23 @@ func parseFlags(spec cmdSpec, args []string, stderr io.Writer, defaultConfig str
 		noRestart: *v.noRestart, reveal: *v.reveal, stdin: *v.stdin, fromFile: *v.fromFile,
 		passwordStdin: *v.passwordStdin, passwordFromFile: *v.passwordFromFile, args: args,
 		accessKeyID: *v.accessKeyID, region: *v.region, provider: *v.provider, secretKeyStdin: *v.secretKeyStdin,
-		secretKeyFromFile: *v.secretKeyFromFile, connectTimeout: *v.connectTimeout, set: map[string]bool{},
+		secretKeyFromFile: *v.secretKeyFromFile, connectTimeout: *v.connectTimeout, source: *v.source, set: map[string]bool{},
 		hostKeyFingerprint: *v.hostKeyFingerprint, replaceHostKey: *v.replaceHostKey,
 	}
 	fs.Visit(func(f *flag.Flag) { opts.set[f.Name] = true })
 	setNames(&opts, positional)
+	if err := checkSource(opts); err != nil {
+		return hostOptions{}, usageFailure(stderr, spec.words, err.Error())
+	}
 	return opts, exitOK
+}
+
+// checkSource: --source, if given, names a source (Р57).
+func checkSource(opts hostOptions) error {
+	if !opts.set["source"] {
+		return nil
+	}
+	return restore.CheckSource(opts.source)
 }
 
 func setNames(opts *hostOptions, positional []string) {

@@ -16,7 +16,7 @@ func TestEveryReasonHasAClass(t *testing.T) {
 		LocalPathInvalid, RevealRequired, RepositoryConflict, ConfigLocked, ConfigWrite, ServiceRestartFailed,
 		AddressInvalid, SecretInvalid, S3KeyRejected, StorageAccessDenied, BucketNotFound,
 		SSHClientMissing, SSHClientFailed, SSHHomeInvalid, SSHFileRejected, SSHKeyNotAuthorized,
-		HostKeyUnconfirmed, HostKeyMismatch, HostKeyRejected, HostKeyChanged}
+		HostKeyUnconfirmed, HostKeyMismatch, HostKeyRejected, HostKeyChanged, RepositoryNotInitialized}
 	if len(classes) != len(reasons) {
 		t.Errorf("%d reasons have a class, %d exist", len(classes), len(reasons))
 	}

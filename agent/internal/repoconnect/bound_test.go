@@ -264,3 +264,44 @@ func TestACheckOfTheLockThatDoesNotAnswerFailsAsAnUnreachableStorage(t *testing.
 		t.Fatalf("failure %+v", f)
 	}
 }
+
+func TestAnAttemptThatDoesNotAnswerFailsAsTheFirstAccessDoes(t *testing.T) {
+	clock := &stepClock{fire: make(chan time.Time, 1)}
+	log := &repoconnect.Log{}
+	started := make(chan struct{})
+	done := make(chan *refusal.Failure, 1)
+	explained := false
+	go func() {
+		done <- repoconnect.Bound{Clock: clock, Timeout: 2 * time.Second}.Attempt(t.Context(), target, log,
+			func(ctx context.Context) error { close(started); <-ctx.Done(); return ctx.Err() },
+			func(context.Context, error) *refusal.Failure { explained = true; return nil })
+	}()
+	<-started
+	clock.fire <- time.Now()
+	f := <-done
+	if f == nil || f.Reason != refusal.BackendUnavailable || !strings.Contains(f.Detail, "did not answer within 2s") || explained {
+		t.Fatalf("failure %+v, explained %v", f, explained)
+	}
+}
+
+func TestAnAttemptThatFailsIsExplainedByTheCaller(t *testing.T) {
+	boom := fmt.Errorf("boom")
+	var got error
+	f := repoconnect.Bound{Clock: &stepClock{fire: make(chan time.Time, 1)}, Timeout: time.Minute}.Attempt(t.Context(), target, &repoconnect.Log{},
+		func(context.Context) error { return boom },
+		func(_ context.Context, err error) *refusal.Failure {
+			got = err
+			return refusal.Fail(refusal.WrongPassword, "x")
+		})
+	if f == nil || f.Reason != refusal.WrongPassword || got != boom {
+		t.Fatalf("failure %+v, error %v", f, got)
+	}
+}
+
+func TestAnAttemptThatAnswersIsNoFailure(t *testing.T) {
+	f := repoconnect.Bound{Clock: &stepClock{fire: make(chan time.Time, 1)}, Timeout: time.Minute}.Attempt(t.Context(), target, &repoconnect.Log{},
+		func(context.Context) error { return nil }, nil)
+	if f != nil {
+		t.Fatalf("failure %+v", f)
+	}
+}

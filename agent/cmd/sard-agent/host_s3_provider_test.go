@@ -6,6 +6,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 )
 
 // Rule "Предустановка провайдера строит адрес хранилища из региона" (A8b-3, Р50).
@@ -27,6 +29,51 @@ func TestAProviderPresetBuildsTheAddressAndTheRegion(t *testing.T) {
 	}
 }
 
+// Rule "Российские предустановки подставляют адрес и регион по умолчанию" (A8c-1, Р51).
+func TestARussianPresetFillsTheAddressAndTheDefaultRegion(t *testing.T) {
+	for _, c := range []struct{ provider, region, url string }{
+		{"yandex", "ru-central1", "s3:https://storage.yandexcloud.net/bucket-b/extra"},
+		{"vk", "ru-msk", "s3:https://hb.ru-msk.vkcloud-storage.ru/bucket-b/extra"},
+		{"selectel", "ru-1", "s3:https://s3.ru-1.storage.selcloud.ru/bucket-b/extra"},
+	} {
+		h := newSetupHost(t)
+		code, _, stderr := h.s3At("s3:bucket-b/extra", s3Marker, "--provider", c.provider)
+		assertCode(t, code, exitOK)
+		if fragment := h.fileContent(h.path("agent.d/repo-extra.yaml")); !strings.Contains(fragment, "url: "+c.url+"\n") {
+			t.Errorf("%s: fragment\n%s\nstderr %q", c.provider, fragment, stderr)
+		}
+		if env := h.fileContent(h.envPath()); !strings.Contains(env, "AWS_DEFAULT_REGION="+c.region+"\n") {
+			t.Errorf("%s: env file\n%s", c.provider, env)
+		}
+	}
+}
+
+func TestRepeatingARussianPresetWithoutARegionChangesNothing(t *testing.T) {
+	h := newSetupHost(t)
+	code, _, _ := h.s3At("s3:bucket-b/extra", s3Marker, "--provider", "yandex")
+	assertCode(t, code, exitOK)
+	h.sd.calls, h.log.lines = nil, nil
+	before := h.hostTree()
+	code, stdout, _ := h.sudo("repo", "add", "extra", "s3:bucket-b/extra", "--provider", "yandex", "--access-key-id", keyID1, "--config", "C")
+	assertCode(t, code, exitOK)
+	if !strings.Contains(stdout, "unchanged") {
+		t.Fatalf("stdout %q", stdout)
+	}
+	h.assertHostUnchanged(before)
+}
+
+func TestSelectelRegionChoosesThePool(t *testing.T) {
+	h := newSetupHost(t)
+	code, _, _ := h.s3At("s3:bucket-b/extra", s3Marker, "--provider", "selectel", "--region", "ru-3")
+	assertCode(t, code, exitOK)
+	if fragment := h.fileContent(h.path("agent.d/repo-extra.yaml")); !strings.Contains(fragment, "url: s3:https://s3.ru-3.storage.selcloud.ru/bucket-b/extra\n") {
+		t.Fatalf("fragment\n%s", fragment)
+	}
+	if env := h.fileContent(h.envPath()); !strings.Contains(env, "AWS_DEFAULT_REGION=ru-3\n") {
+		t.Fatalf("env\n%s", env)
+	}
+}
+
 func TestAProviderPresetWithoutAPathWritesTheAddressOfTheBucket(t *testing.T) {
 	h := newSetupHost(t)
 	code, _, _ := h.s3At("s3:bucket-b", s3Marker, "--provider", "aws", "--region", "us-east-1")
@@ -42,7 +89,7 @@ func TestAnUnusableProviderCombinationIsAUsageErrorWithoutTouchingTheStorage(t *
 		flags   []string
 		names   string
 	}{
-		{"s3:bucket-b/extra", []string{"--provider", "yandex", "--region", "ru-central1"}, "aws, b2"},
+		{"s3:bucket-b/extra", []string{"--provider", "wasabi", "--region", "us-east-1"}, "aws, b2, yandex, vk, selectel"},
 		{"s3:bucket-b/extra", []string{"--provider", "aws"}, "--provider aws needs --region"},
 		{"s3:bucket-b/extra", []string{"--provider", "b2"}, "--provider b2 needs --region"},
 		{s3Address, []string{"--provider", "aws", "--region", "eu-central-1"}, "host"},
@@ -52,6 +99,9 @@ func TestAnUnusableProviderCombinationIsAUsageErrorWithoutTouchingTheStorage(t *
 		{"s3:bucket-b/extra", []string{"--provider", "aws", "--region", "a@b"}, "--region"},
 		{"s3:bucket-b/extra", []string{"--provider", "b2", "--region", "eu/central"}, "--region"},
 		{"s3:", []string{"--provider", "aws", "--region", "eu-central-1"}, "bucket"},
+		{"s3:bucket-b/extra", []string{"--provider", "yandex", "--region", "ru-central2"}, "ru-central1"},
+		{"s3:bucket-b/extra", []string{"--provider", "vk", "--region", "kz-ast"}, "ru-msk"},
+		{"s3:https://storage.yandexcloud.net/bucket-b", []string{"--provider", "yandex"}, "scheme"},
 		{"LOCAL", []string{"--provider", "aws", "--region", "eu-central-1"}, "--provider"},
 	} {
 		h := newSetupHost(t)
@@ -102,7 +152,7 @@ func TestRepoAddHelpListsTheProvidersAndRequiresTheRegionWithThem(t *testing.T) 
 	h := newSetupHost(t)
 	code, stdout, _ := h.sudo("repo", "add", "--help")
 	assertCode(t, code, exitOK)
-	for _, want := range []string{"--provider", "aws", "b2", "--provider needs --region", "s3:<bucket>[/<path>]"} {
+	for _, want := range append(hostsetup.ProviderNames(), "--provider", "--provider needs --region", "s3:<bucket>[/<path>]", "yandex, vk and selectel", "--provider needs --region") {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("help lacks %q:\n%s", want, stdout)
 		}

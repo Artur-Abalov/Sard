@@ -211,21 +211,38 @@ func TestTheMessageHidesWhatItCannotRedactAndRedactsWhatItCan(t *testing.T) {
 
 // Р50: --provider builds the address of the storage from the region.
 func TestAProviderPresetExpandsTheAddressFromTheRegion(t *testing.T) {
-	for _, c := range []struct{ provider, region, address, want string }{
-		{"aws", "eu-central-1", "s3:bucket-b/extra", "s3:https://s3.eu-central-1.amazonaws.com/bucket-b/extra"},
-		{"b2", "us-west-004", "s3:bucket-b/extra", "s3:https://s3.us-west-004.backblazeb2.com/bucket-b/extra"},
-		{"aws", "us-east-1", "s3:bucket-b", "s3:https://s3.us-east-1.amazonaws.com/bucket-b"},
+	for _, c := range []struct{ provider, region, address, want, wantRegion string }{
+		{"aws", "eu-central-1", "s3:bucket-b/extra", "s3:https://s3.eu-central-1.amazonaws.com/bucket-b/extra", "eu-central-1"},
+		{"b2", "us-west-004", "s3:bucket-b/extra", "s3:https://s3.us-west-004.backblazeb2.com/bucket-b/extra", "us-west-004"},
+		{"aws", "us-east-1", "s3:bucket-b", "s3:https://s3.us-east-1.amazonaws.com/bucket-b", "us-east-1"},
+		{"yandex", "", "s3:bucket-b/extra", "s3:https://storage.yandexcloud.net/bucket-b/extra", "ru-central1"},
+		{"yandex", "ru-central1", "s3:bucket-b/extra", "s3:https://storage.yandexcloud.net/bucket-b/extra", "ru-central1"},
+		{"vk", "", "s3:bucket-b/extra", "s3:https://hb.ru-msk.vkcloud-storage.ru/bucket-b/extra", "ru-msk"},
+		{"vk", "ru-msk", "s3:bucket-b/extra", "s3:https://hb.ru-msk.vkcloud-storage.ru/bucket-b/extra", "ru-msk"},
+		{"selectel", "", "s3:bucket-b/extra", "s3:https://s3.ru-1.storage.selcloud.ru/bucket-b/extra", "ru-1"},
+		{"selectel", "ru-3", "s3:bucket-b/extra", "s3:https://s3.ru-3.storage.selcloud.ru/bucket-b/extra", "ru-3"},
 	} {
-		got, f := hostsetup.ExpandProvider(c.provider, c.region, c.address)
-		if f != nil || got != c.want {
-			t.Errorf("%+v: got %q, %v", c, got, f)
+		got, region, f := hostsetup.ExpandProvider(c.provider, c.region, c.address)
+		if f != nil || got != c.want || region != c.wantRegion {
+			t.Errorf("%+v: got %q, %q, %v", c, got, region, f)
 		}
+	}
+}
+
+func TestTheProviderNamesAreTheKeysOfTheTable(t *testing.T) {
+	got := strings.Join(hostsetup.ProviderNames(), ", ")
+	if got != "aws, b2, yandex, vk, selectel" {
+		t.Fatalf("names %q", got)
 	}
 }
 
 func TestAnUnusableProviderPresetIsAUsageErrorThatNamesWhatIsWrong(t *testing.T) {
 	for _, c := range []struct{ provider, region, address, names string }{
-		{"yandex", "ru-central1", "s3:bucket-b/extra", "aws, b2"},
+		{"wasabi", "us-east-1", "s3:bucket-b/extra", "aws, b2, yandex, vk, selectel"},
+		{"yandex", "ru-central2", "s3:bucket-b/extra", "--region must be ru-central1"},
+		{"vk", "kz-ast", "s3:bucket-b/extra", "--region must be ru-msk"},
+		{"selectel", "ru 3", "s3:bucket-b/extra", "--region"},
+		{"yandex", "", "s3:https://storage.yandexcloud.net/bucket-b", "--provider"},
 		{"aws", "", "s3:bucket-b/extra", "--provider aws needs --region"},
 		{"b2", "", "s3:bucket-b/extra", "--provider b2 needs --region"},
 		{"aws", "EU Central", "s3:bucket-b/extra", "--region"},
@@ -239,7 +256,7 @@ func TestAnUnusableProviderPresetIsAUsageErrorThatNamesWhatIsWrong(t *testing.T)
 		{"aws", "eu-central-1", "s3:/extra", "bucket"},
 		{"aws", "eu-central-1", "s3:bucket-b/ex\ntra", "control character"},
 	} {
-		_, f := hostsetup.ExpandProvider(c.provider, c.region, c.address)
+		_, _, f := hostsetup.ExpandProvider(c.provider, c.region, c.address)
 		if f == nil || f.Class != refusal.ClassUsage || !strings.Contains(f.Detail, c.names) {
 			t.Errorf("%+v: %+v", c, f)
 		}
