@@ -172,6 +172,9 @@ tasks.test {
     environment("SARD_ADMIN_PASSWORD", "test-admin-password-2026")
     // No agent release next to the test server; AgentDownloadsIntegrationTest switches downloads on.
     environment("SARD_AGENT_DOWNLOADS", "false")
+    // Spring keeps up to 32 test contexts (its default) and the suite has more distinct ones, so the cache runs
+    // full; 32 server contexts outgrow Gradle's default 512 MB worker heap, more so in the mutated build.
+    maxHeapSize = "1g"
     finalizedBy(tasks.jacocoTestReport)
 }
 

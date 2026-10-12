@@ -240,6 +240,9 @@ class SardEnvironment(
         }
     }
 
+    /** [text] with every registered secret masked, as the collected logs are. */
+    fun masked(text: String): String = Redaction.apply(text, secrets)
+
     /** Everything every server container of this installation has written so far, unmasked. */
     fun serverLogs(): String = retiredServerLogs.toString() + server.logs
 

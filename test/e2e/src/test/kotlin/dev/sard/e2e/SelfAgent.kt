@@ -56,7 +56,18 @@ internal class SelfAgent(
     /** Starts the agent and waits until it is the tenant's live built-in agent; returns its id. */
     fun start(): String {
         container.start()
-        return Await.value("the built-in agent sard-self registered") { liveBuiltin() }
+        return try {
+            Await.value("the built-in agent sard-self registered") { liveBuiltin() }
+        } catch (e: AssertionError) {
+            throw AssertionError("${e.message}\n${startLogs()}", e)
+        }
+    }
+
+    /** The masked tail of the sidecar's log and the server's lines about it: why it did not register, in the test report. */
+    private fun startLogs(): String {
+        val agent = runCatching { container.logs }.getOrDefault("").lines().takeLast(LOG_TAIL)
+        val server = sard.serverLogs().lines().filter { SELF_LINE.containsMatchIn(it) }.takeLast(LOG_TAIL)
+        return sard.masked((listOf("--- sard-self:") + agent + "--- sard-server, self:" + server).joinToString("\n"))
     }
 
     /**
@@ -231,5 +242,7 @@ internal class SelfAgent(
         const val INSTALL_DIR = "/etc/sard/install"
 
         private val SNAPSHOT_ID = Regex("\"id\":\"([0-9a-f]{64})\"")
+        private const val LOG_TAIL = 40
+        private val SELF_LINE = Regex("(?i)self|builtin|enroll")
     }
 }
