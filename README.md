@@ -1,19 +1,19 @@
 # Sard
 
 Sard is an open-core backup orchestrator. A single console manages backups of
-heterogeneous infrastructure (PostgreSQL, MySQL, files, MikroTik/Eltex
-configurations, later 1C and others) and **proves that you can restore from
-them**. The headline metric on the dashboard is "last verified restore N hours
-ago".
+heterogeneous infrastructure and is built to **prove that you can restore from
+them**. Today Sard backs up files and directories and PostgreSQL databases;
+restore verification and other sources are planned, not available yet: see
+the [roadmap](docs/roadmap.en.md).
 
 Sard does not invent its own storage format: storage, deduplication and
 encryption are handled by [restic](https://restic.net). Sard owns sources,
 workflows, schedules, restore verification, reports and multi-tenancy.
 
 > Status: **stage 1, under active development**. Agent enrollment over mTLS,
-> the files plugin, restic repository initialisation, run dispatch, the stage 1
-> REST API, admin login and Telegram notifications are in place; the product is
-> not production-ready yet.
+> the files and postgresql plugins, restic repositories on a local disk, S3 and
+> SFTP, run dispatch, schedules, the stage 1 REST API, admin login and Telegram
+> notifications are in place; the product is not production-ready yet.
 
 ## Quickstart: a server in 10 minutes
 
@@ -190,6 +190,8 @@ Details and the release process: `docs/release.md`.
 
 - [docs/demo.md](docs/demo.md): stage 1 demo, step by step: server, agent, backup, Telegram, restore
 - [docs/operator/](docs/operator/README.md): running the server: requirements, install, configuration, TLS, backup, upgrade, troubleshooting
+- [docs/plugins/](docs/plugins/): the source plugins that work today: files, postgresql
+- [docs/roadmap.en.md](docs/roadmap.en.md) ([на русском](docs/roadmap.md)): what is planned, not a promise
 - [docs/adr/](docs/adr/README.md): architecture decision records
 - [docs/specs/](docs/specs/): Gherkin specifications per module
 - [docs/sessions/](docs/sessions/): work session log

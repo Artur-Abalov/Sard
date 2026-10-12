@@ -173,7 +173,7 @@ class AgentSeamIntegrationTest(
         val tenant = agent.identity.tenantId
         // Built-in plugins cannot verify a restored copy yet, so they offer no verify (A6a, ADR 0027).
         val expectedPlugins =
-            listOf("files", "mysql", "network", "postgresql").map {
+            listOf("files", "postgresql").map {
                 listOf(it, agentVersion(), "backup,restore", "object", tenant)
             }
         assertEquals(expectedPlugins, plugins.map { it.values.toList() })

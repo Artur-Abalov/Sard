@@ -69,6 +69,38 @@ Register на каждом подключении заменяет набор п
 Попутно (по отчёту, проверил `Runs.kt:179`): старт запуска вызывает `AgentOffer.require`
 без `requireBackup`, в отличие от создания и правки.
 
-### Вопросы на контрольную точку 1
+### Контрольная точка 1: ответы владельца (2026-10-12)
 
-См. сообщение владельцу; ответы — ниже, после ревью.
+1. Отметку «плагин недоступен» на карточке и в списке не делать: только убрать
+   неработающие плагины.
+2. Заглушки — удалить, без тега `dev`.
+3. ADR и поправка к ADR 0036; плюс архитектурный тест.
+4. План источников — на двух языках.
+5. `DESIGN.md` — поправить.
+6. `requireBackup` при старте запуска не проверять: плагин без `backup` во встроенном
+   реестре — ошибка того, кто его пишет.
+
+## Фаза 2: изменения
+
+- Удалены `agent/plugins/mysql` и `agent/plugins/network`; `Builtin()` — `postgresql`,
+  `files` (+ стенд).
+- Тесты реестра: `TestReleaseBuildRegistersTheWorkingSourcePluginsOnly` (ровно `files`,
+  `postgresql`), тест сборки стенда, `AgentSeamIntegrationTest` (строки `agent_plugins`).
+  Удалён `TestEveryPluginMethodIsNotImplementedYet`: проверял только заглушки.
+- Архитектурный тест `agent/plugins/release_test.go` (`!e2e`):
+  `TestEveryPluginPackageIsRegisteredByABuild` и `TestEveryReleasePluginIsDocumented`.
+  Тест сначала увидел падения: проверил, вернув пакет `mysql` без регистрации («registered
+  by no build») и с регистрацией без документации («has no docs/plugins/mysql.md»), затем
+  убрал его.
+- ADR 0056; поправка доказательства (а) в ADR 0036; строка в `docs/adr/README.md`.
+- `README.md`: первый абзац и статус — только files и postgresql, проверка восстановления
+  и другие источники — «в плане» со ссылкой на `docs/roadmap.en.md`; ссылки на
+  `docs/plugins/` и план в разделе документации.
+- `docs/roadmap.md` и `docs/roadmap.en.md` — «план, не обещание».
+- `docs/design/DESIGN.md:10` — портрет пользователя без перечня неработающих источников.
+- Комментарии e2e `RunStepSeamTest`, `ResultAckSeamTest`.
+- Консоль и i18n не менялись: неработающие источники там не названы (поиск по `web/src`).
+
+Не тронуто намеренно: `README.md:11` («Sard owns sources, workflows, schedules, restore
+verification, reports and multi-tenancy») — это раздел ответственности между Sard и
+restic, а не список возможностей; переписать при Q3/B1.
