@@ -59,23 +59,78 @@ function repositoryOf(source: Schemas['Source']): Schemas['SelfBackupRepository'
   }
 }
 
+/** The source's newest finished run with [status], or its newest finished run at all. */
+function lastFinished(sourceId: string, status?: Schemas['RunStatus']): Schemas['Run'] | undefined {
+  return state.runs
+    .filter((r) => r.sourceId === sourceId && r.finishedAt !== null)
+    .filter((r) => status === undefined || r.status === status)
+    .sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''))[0]
+}
+
+function systemSourceOf(source: Schemas['Source']): Schemas['SelfBackupSource'] {
+  const last = lastFinished(source.id)
+  return {
+    role: source.systemRole as Role,
+    sourceId: source.id,
+    agentId: source.agentId,
+    repositoryName: source.repositoryName,
+    lastSuccessAt: lastFinished(source.id, 'succeeded')?.finishedAt ?? null,
+    lastFailureAt: lastFinished(source.id, 'failed')?.finishedAt ?? null,
+    lastRun:
+      last === undefined
+        ? null
+        : { id: last.id, status: last.status, finishedAt: last.finishedAt as string },
+  }
+}
+
+/** The server's rules, worst first; the mock knows no overdue episodes. */
+function warningsOf(
+  sources: Schemas['SelfBackupSource'][],
+  agentId: string | null,
+  local: boolean,
+): Schemas['SelfBackupWarningCode'][] {
+  const scheduleOff = (id: string) => !state.schedules.some((s) => s.sourceId === id && s.enabled)
+  const checks: [Schemas['SelfBackupWarningCode'], boolean][] = [
+    ['agent_replaced', sources.some((s) => s.agentId !== agentId)],
+    ['failing', sources.some((s) => s.lastRun?.status === 'failed')],
+    ['schedule_disabled', sources.some((s) => scheduleOff(s.sourceId))],
+    ['local_storage', local],
+  ]
+  return checks.filter(([, holds]) => holds).map(([code]) => code)
+}
+
+function statusOf(warnings: Schemas['SelfBackupWarningCode'][]): Schemas['SelfBackupStatus'] {
+  const worst = warnings[0]
+  return worst === undefined || worst === 'local_storage' ? 'ok' : worst
+}
+
 function current(): Schemas['SelfBackup'] {
   const agentId = liveBuiltin()?.id ?? null
   const sources = systemSources()
   if (state.selfBackup === null || sources.length !== ROLES.length) {
-    return { configured: false, agentId, repository: null, boundAt: null, sources: [] }
+    return {
+      configured: false,
+      agentId,
+      repository: null,
+      boundAt: null,
+      sources: [],
+      status: 'not_configured',
+      warnings: [],
+      overdueSince: null,
+    }
   }
+  const repository = repositoryOf(sources[0])
+  const systemSourceViews = sources.map(systemSourceOf)
+  const warnings = warningsOf(systemSourceViews, agentId, repository.local)
   return {
     configured: true,
     agentId,
-    repository: repositoryOf(sources[0]),
+    repository,
     boundAt: state.selfBackup.boundAt,
-    sources: sources.map((s) => ({
-      role: s.systemRole as Role,
-      sourceId: s.id,
-      agentId: s.agentId,
-      repositoryName: s.repositoryName,
-    })),
+    sources: systemSourceViews,
+    status: statusOf(warnings),
+    warnings,
+    overdueSince: null,
   }
 }
 

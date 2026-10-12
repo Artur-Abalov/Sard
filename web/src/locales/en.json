@@ -397,5 +397,15 @@
       "remind": "Update when the agent has no active runs: restarting it interrupts them.",
       "packageNote": "A deb or rpm package replaces the program only: the configuration, keys and the repository password stay as they are."
     }
+  },
+  "selfBackup": {
+    "bannerTitle": "Sard's own backup needs attention",
+    "warning": {
+      "agent_replaced": "The built-in agent sard-self was replaced: bind the self-backup's repository again so its sources move to the new agent.",
+      "overdue": "No successful self-backup since {{since}}: the database and the CA key are not backed up.",
+      "failing": "The last self-backup failed. See its runs.",
+      "schedule_disabled": "The self-backup's schedule is switched off.",
+      "local_storage": "The self-backup is on the server's own disk: it is lost together with the machine. Add an S3 or SFTP repository."
+    }
   }
 }

@@ -898,7 +898,14 @@ describe('self-backup (F6)', () => {
     const local = await bind('disk')
     expect(local.response.status).toBe(422)
     expect(local.error).toMatchObject({ code: 'local_storage_unconfirmed' })
-    expect(must(await bind('disk', true)).repository?.local).toBe(true)
+    const confirmed = must(await bind('disk', true))
+    expect(confirmed.repository?.local).toBe(true)
+    expect(confirmed).toMatchObject({ status: 'ok', warnings: ['local_storage'] })
+  })
+
+  test('a state before binding is not configured and warns about nothing', async () => {
+    const state = must(await api.GET('/api/v1/self-backup'))
+    expect(state).toMatchObject({ status: 'not_configured', warnings: [], overdueSince: null })
   })
 
   test('a system source refuses replace and delete with 409 system_source', async () => {

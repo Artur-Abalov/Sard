@@ -16,6 +16,7 @@ import { Outlet, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { signOut } from './auth/session'
+import { SelfBackupBanner } from './components/SelfBackupBanner'
 import { Wordmark } from './components/Wordmark'
 import { languages } from './languages'
 import { NavLink } from './NavLink'
@@ -126,6 +127,7 @@ export function Layout() {
       </AppShell.Navbar>
       <AppShell.Main>
         <Box maw={contentMaxWidth}>
+          <SelfBackupBanner />
           <Outlet />
         </Box>
       </AppShell.Main>
