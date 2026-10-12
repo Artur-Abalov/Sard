@@ -11,6 +11,7 @@ import dev.sard.server.enrollment.EnrollmentRejectedException.Reason
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.AgentIdentity
+import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.FakeCaLedger
 import dev.sard.server.pki.FileCertificateAuthority
@@ -71,9 +72,10 @@ private class BrokenCertificateAuthority(
     override fun issueAgentCertificate(
         csrDer: ByteArray,
         agent: AgentIdentity,
+        role: AgentRole,
     ): IssuedCertificate {
         failWith?.let { throw SimulatedFailure(it) }
-        return delegate.issueAgentCertificate(csrDer, agent)
+        return delegate.issueAgentCertificate(csrDer, agent, role)
     }
 }
 
@@ -140,6 +142,14 @@ class EnrollmentFailureIntegrationTest(
     fun `Отказ базы при создании токена не выдаёт строку`() {
         assertFailsWith<SimulatedFailure> { failingTokens().create(acme) }
         assertEquals(0, countTokens())
+    }
+
+    @Test
+    fun `Отказ базы при создании токена verifier не создаёт токен`() {
+        assertFailsWith<SimulatedFailure> { failingTokens().create(acme, role = AgentRole.VERIFIER) }
+        assertEquals(0, countTokens())
+        tokens.create(acme, role = AgentRole.VERIFIER)
+        assertEquals(1, countTokens())
     }
 
     @Test

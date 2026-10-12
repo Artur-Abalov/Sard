@@ -53,7 +53,7 @@ class TokensRevokedOnCaReplacementIntegrationTest(
         if (used) {
             // A used token names an agent, which exists for it.
             jdbc.update(
-                "insert into agents (id, tenant_id, hostname, registered_at) values (?, ?, 'h', ?)",
+                "insert into agents (id, tenant_id, hostname, registered_at, role) values (?, ?, 'h', ?, 'source')",
                 id,
                 tenant,
                 Timestamp.from(NOW),
@@ -61,7 +61,7 @@ class TokensRevokedOnCaReplacementIntegrationTest(
         }
         jdbc.update(
             "insert into enrollment_tokens (id, tenant_id, token_hash, expires_at, used_at, agent_id, created_at, " +
-                "revoked_at, builtin, label) values (?, ?, ?, ?, ?, ?, ?, ?, ?, '')",
+                "revoked_at, builtin, label, role) values (?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'source')",
             id,
             tenant,
             hash,

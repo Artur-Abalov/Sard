@@ -5,12 +5,14 @@ package dev.sard.server.agents
 
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.AgentIdentity
+import dev.sard.server.pki.AgentRole
 import java.time.Instant
 import java.util.UUID
 
-private const val COLUMNS = "c.tenantId, c.agentId, c.notAfter, c.revokedAt, a.revokedAt"
+private const val COLUMNS = "c.tenantId, c.agentId, c.notAfter, c.revokedAt, a.revokedAt, a.role"
 private const val JOIN =
     "from AgentCertificateRecord c join Agent a on a.tenantId = c.tenantId and a.id = c.agentId "
+private const val ROLE_COLUMN = 5
 private const val BY_SERIALS = "select c.serial, $COLUMNS $JOIN where c.serial in (:serials)"
 
 private const val BY_SERIAL = "select $COLUMNS $JOIN where c.serial = :serial"
@@ -49,5 +51,6 @@ class AgentCertificateStandings(
         notAfter = row[from + 2] as Instant,
         revokedAt = row[from + 3] as Instant?,
         agentRevokedAt = row[from + 4] as Instant?,
+        role = AgentRole.of(row[from + ROLE_COLUMN] as String),
     )
 }

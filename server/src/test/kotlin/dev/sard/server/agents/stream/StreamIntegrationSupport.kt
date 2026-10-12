@@ -14,6 +14,7 @@ import dev.sard.proto.agent.v1.StepProgress
 import dev.sard.proto.agent.v1.StepResult
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
+import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.Pem
@@ -142,10 +143,11 @@ class StreamClients(
         jdbc.update("delete from tenants where id = ?", tenant)
     }
 
-    fun enrolled(): TestAgent {
+    fun enrolled(role: AgentRole = AgentRole.SOURCE): TestAgent {
         val generator = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }
         val keys = generator.generateKeyPair()
-        val agent = enrollment.enroll(tokens.create(tenant, TOKEN_TTL).reveal(), csr(keys), "host-$tenant")
+        val token = tokens.create(tenant, TOKEN_TTL, role = role).reveal()
+        val agent = enrollment.enroll(token, csr(keys), "host-$tenant")
         val credentials =
             TlsChannelCredentials
                 .newBuilder()

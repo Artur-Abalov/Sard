@@ -22,7 +22,16 @@ class RevocationConfirmationTest {
         builtin: Boolean,
         revokedAt: Instant? = null,
     ): Agent {
-        val agent = Agent(UUID.randomUUID(), "sard-self", "1.0.0", Instant.EPOCH, lastSeenAt = null, builtin = builtin)
+        val agent =
+            Agent(
+                UUID.randomUUID(),
+                "sard-self",
+                "1.0.0",
+                Instant.EPOCH,
+                lastSeenAt = null,
+                builtin = builtin,
+                role = "source",
+            )
         agent.revokedAt = revokedAt
         return agent
     }

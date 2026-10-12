@@ -14,11 +14,14 @@ import dev.sard.server.agents.stream.Connection
 import dev.sard.server.agents.stream.StreamClients
 import dev.sard.server.agents.stream.TestAgent
 import dev.sard.server.agents.stream.WAIT_SECONDS
+import dev.sard.server.api.captureLogs
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
+import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.ProgressReport
+import dev.sard.server.runs.RoleLedger
 import dev.sard.server.runs.RunView
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.SourceDraft
@@ -107,6 +110,7 @@ class DispatchIntegrationTest(
     @Autowired private val sources: Sources,
     @Autowired private val runs: Runs,
     @Autowired private val steps: StepTransitions,
+    @Autowired private val roles: RoleLedger,
     @Autowired private val deadlines: StepDeadlines,
     @Autowired private val progress: StepProgressWrites,
     @Autowired private val meters: MeterRegistry,
@@ -151,6 +155,37 @@ class DispatchIntegrationTest(
             agent.agentId,
         )
         return agent
+    }
+
+    /** A verifier whose last Register offered what [agent] offers. */
+    private fun verifier(tenant: StreamClients = clients): TestAgent {
+        val agent = tenant.enrolled(AgentRole.VERIFIER)
+        jdbc.update(
+            "insert into agent_repositories (tenant_id, agent_id, name, backend) values (?, ?, 'main', 'local')",
+            agent.tenantId,
+            agent.agentId,
+        )
+        return agent
+    }
+
+    /** A run of [source]'s whose only step is edited, as only a database edit can, to [action] for [agent]. */
+    private fun stepEditedTo(
+        source: TestAgent,
+        agent: TestAgent,
+        action: String,
+    ): UUID {
+        val step = run(source, "prod-db-$action-${agent.agentId}").steps.single().id
+        val script = action == "run"
+        jdbc.update(
+            "update run_steps set agent_id = ?, action = ?, source_id = case when ? then null else source_id end, " +
+                "repository_name = case when ? then null else repository_name end where id = ?",
+            agent.agentId,
+            action,
+            script,
+            script,
+            step,
+        )
+        return step
     }
 
     private fun run(
@@ -419,7 +454,15 @@ class DispatchIntegrationTest(
         clock.now += settings.lostAfter.multipliedBy(10)
         // The new process: a dispatcher over the same database, no agent connected yet.
         val restarted =
-            StepDispatcher(steps, deadlines, FakeLinks(), clock, settings.lostAfter, RecordingDispatchMetrics()) {
+            StepDispatcher(
+                steps,
+                deadlines,
+                FakeLinks(),
+                clock,
+                settings.lostAfter,
+                RecordingDispatchMetrics(),
+                roles,
+            ) {
                 dev.sard.server.runs
                     .WaitingSteps(0, 0)
             }
@@ -578,5 +621,64 @@ class DispatchIntegrationTest(
 
         assertEquals(1.0, meters.get("sard.run.steps.queued").gauge().value())
         assertEquals(1.0, meters.get("sard.run.steps.dispatched").gauge().value())
+    }
+
+    // --- V1: the dispatcher never sends a step the agent's role does not allow
+
+    @Test
+    fun `StepDispatcher не отправляет шаг, который не допускает роль агента`() {
+        val cases =
+            listOf(
+                Triple(AgentRole.VERIFIER, "backup", "verifier"),
+                Triple(AgentRole.VERIFIER, "restore", "verifier"),
+                Triple(AgentRole.VERIFIER, "run", "verifier"),
+                Triple(AgentRole.SOURCE, "verify", "source"),
+            )
+        for ((role, action, roleName) in cases) {
+            val source = agent()
+            val target = if (role == AgentRole.VERIFIER) verifier() else source
+            val step = stepEditedTo(source, target, action)
+            lateinit var stream: Connection
+
+            val logs = captureLogs { stream = greeted(clients, target) }
+
+            stream.nothingMore()
+            val row = jdbc.queryForMap("select status, message from run_steps where id = ?", step)
+            assertEquals("failed", row["status"], "$roleName $action")
+            assertTrue((row["message"] as String).startsWith("agent role mismatch"), "$row")
+            val line = logs.single { "agent role mismatch" in it && "$step" in it }
+            val expected = listOf("${target.agentId}", roleName, action)
+            assertTrue(expected.all { it in line }, "$line lacks one of $expected")
+            stream.leave(target)
+        }
+    }
+
+    @Test
+    fun `StepDispatcher отправляет проверку агенту-верификатору`() {
+        val source = agent()
+        val verifier = verifier()
+        val step = stepEditedTo(source, verifier, "verify")
+
+        val stream = greeted(clients, verifier)
+
+        val sent = stream.nextStep()
+        assertEquals(Action.ACTION_VERIFY, sent.action)
+        assertEquals(step.toString(), sent.commandId)
+    }
+
+    @Test
+    fun `Шаг с недопустимой ролью у одного агента не мешает шагам другого`() {
+        val good = agent()
+        val goodStep = run(good, "good").steps.single().id
+        val verifier = verifier()
+        val badStep = stepEditedTo(agent(), verifier, "backup")
+
+        val goodStream = greeted(clients, good)
+        val badStream = greeted(clients, verifier)
+
+        assertEquals(goodStep.toString(), goodStream.nextStep().commandId)
+        badStream.nothingMore()
+        val sql = "select status from run_steps where id = ?"
+        assertEquals("failed", jdbc.queryForObject(sql, String::class.java, badStep))
     }
 }

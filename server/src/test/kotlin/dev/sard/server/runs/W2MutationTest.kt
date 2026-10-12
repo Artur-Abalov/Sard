@@ -87,8 +87,8 @@ class W2MutationTest(
 
     private fun token(of: RunsTenant) {
         jdbc.update(
-            "insert into enrollment_tokens (id, tenant_id, label, token_hash, expires_at, created_at) " +
-                "values (?, ?, ?, ?, ?, ?)",
+            "insert into enrollment_tokens (id, tenant_id, label, token_hash, expires_at, created_at, role) " +
+                "values (?, ?, ?, ?, ?, ?, 'source')",
             UUID.randomUUID(),
             of.id,
             "first",

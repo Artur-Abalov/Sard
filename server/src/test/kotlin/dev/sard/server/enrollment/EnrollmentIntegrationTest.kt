@@ -57,10 +57,11 @@ class GatedCertificateAuthority(
     override fun issueAgentCertificate(
         csrDer: ByteArray,
         agent: dev.sard.server.pki.AgentIdentity,
+        role: dev.sard.server.pki.AgentRole,
     ): dev.sard.server.pki.IssuedCertificate {
         entered.release()
         gate?.await(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS)
-        return delegate.issueAgentCertificate(csrDer, agent)
+        return delegate.issueAgentCertificate(csrDer, agent, role)
     }
 }
 

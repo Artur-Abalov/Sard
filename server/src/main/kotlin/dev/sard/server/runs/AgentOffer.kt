@@ -7,6 +7,7 @@ import dev.sard.server.persistence.Agent
 import dev.sard.server.persistence.AgentOwnedKey
 import dev.sard.server.persistence.AgentPluginRecord
 import dev.sard.server.persistence.AgentRepositoryRecord
+import dev.sard.server.pki.AgentRole
 import jakarta.persistence.LockModeType
 import org.hibernate.Session
 import java.util.UUID
@@ -29,8 +30,8 @@ internal class Offered(
  */
 internal object AgentOffer {
     /**
-     * Refuses, in this order, an unknown agent, a revoked one, an unknown plugin (with [requireBackup], also one
-     * that does not list backup), an unknown repository.
+     * Refuses, in this order, an unknown agent, a revoked one, a verifier (it cannot back up), an unknown plugin
+     * (with [requireBackup], also one that does not list backup), an unknown repository.
      * [lock] is taken on the agent's row: a run being started shares it, so it cannot slip past a revocation.
      */
     fun require(
@@ -42,6 +43,7 @@ internal object AgentOffer {
         requireBackup: Boolean = false,
     ): Offered {
         val agent = liveAgent(session, agentId, lock)
+        requireSource(agent)
         val announced = announcedPlugin(session, agentId, plugin, requireBackup)
         session.find(AgentRepositoryRecord::class.java, AgentOwnedKey(agentId, repositoryName))
             ?: throw UnknownRepository(repositoryName)
@@ -70,5 +72,10 @@ internal object AgentOffer {
         val agent = session.find(Agent::class.java, agentId, lock) ?: throw UnknownAgent(agentId)
         if (agent.revokedAt != null) throw AgentRevoked(agentId)
         return agent
+    }
+
+    /** A source is backed up by an agent whose role allows backups; a verifier does not (V1). */
+    private fun requireSource(agent: Agent) {
+        if (!AgentRole.of(agent.role).allows(Action.BACKUP)) throw AgentRoleMismatch(agent.id)
     }
 }

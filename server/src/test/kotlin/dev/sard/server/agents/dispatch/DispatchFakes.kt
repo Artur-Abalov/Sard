@@ -6,10 +6,12 @@ package dev.sard.server.agents.dispatch
 import dev.sard.proto.agent.v1.RunStep
 import dev.sard.server.agents.stream.ConnectedAgent
 import dev.sard.server.agents.stream.SendResult
+import dev.sard.server.pki.AgentRole
 import dev.sard.server.runs.Action
 import dev.sard.server.runs.DispatchLedger
 import dev.sard.server.runs.InTenant
 import dev.sard.server.runs.LostDeadlines
+import dev.sard.server.runs.RoleLedger
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepView
 import dev.sard.server.runs.WaitingSteps
@@ -27,10 +29,11 @@ internal fun step(
     status: StepState = StepState.QUEUED,
     dispatchedAt: Instant? = null,
     agent: UUID = AGENT.agentId,
+    action: Action = Action.BACKUP,
 ) = StepView(
     id = UUID(0, n),
     ordinal = 0,
-    action = Action.BACKUP,
+    action = action,
     status = status,
     agentId = agent,
     sourceId = UUID(9, n),
@@ -50,10 +53,29 @@ internal class FakeLedger(
     vararg steps: StepView,
     private val now: () -> Instant = { DISPATCH_NOW },
 ) : DispatchLedger,
-    LostDeadlines {
+    LostDeadlines,
+    RoleLedger {
     val steps = steps.toMutableList()
     val calls = mutableListOf<String>()
     val deadlines = mutableMapOf<UUID, Instant>()
+
+    /** The roles of the agents; an agent not listed is a source. */
+    val roles = mutableMapOf<UUID, AgentRole>()
+    val refusals = mutableMapOf<UUID, String>()
+
+    override fun roleOf(
+        tenantId: UUID,
+        agentId: UUID,
+    ) = roles[agentId] ?: AgentRole.SOURCE
+
+    override fun refuse(
+        tenantId: UUID,
+        stepId: UUID,
+        message: String,
+    ) = move(stepId, setOf(StepState.QUEUED, StepState.DISPATCHED)) { it.copy(status = StepState.FAILED) }
+        .also { if (it) deadlines.remove(stepId) }
+        .also { if (it) refusals[stepId] = message }
+        .also { calls += "refuse ${stepId.leastSignificantBits}" }
 
     fun deadline(n: Long) = deadlines[UUID(0, n)]
 

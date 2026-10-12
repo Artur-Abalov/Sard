@@ -41,12 +41,14 @@ interface CertificateAuthority {
     fun renewServerCertificate(): Boolean
 
     /**
-     * Signs an agent CSR (DER): a client-only certificate naming [agent], whatever the
-     * CSR asks for. Throws [InvalidCsrException] for a bad signature or an unsupported key.
+     * Signs an agent CSR (DER): a client-only certificate naming [agent] and carrying [role] in the
+     * Sard role extension, whatever the CSR asks for. Throws [InvalidCsrException] for a bad signature or an
+     * unsupported key.
      */
     fun issueAgentCertificate(
         csrDer: ByteArray,
         agent: AgentIdentity,
+        role: AgentRole,
     ): IssuedCertificate
 }
 

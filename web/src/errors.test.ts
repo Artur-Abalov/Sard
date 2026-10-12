@@ -10,6 +10,7 @@ const knownCodes = [
   'validation_failed',
   'unknown_agent',
   'agent_revoked',
+  'agent_role_mismatch',
   'unknown_plugin',
   'unknown_repository',
   'invalid_config',

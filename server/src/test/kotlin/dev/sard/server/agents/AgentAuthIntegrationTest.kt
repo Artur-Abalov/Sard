@@ -12,6 +12,7 @@ import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.pki.AgentIdentity
+import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.FakeCaLedger
 import dev.sard.server.pki.FileCertificateAuthority
@@ -142,7 +143,7 @@ class AgentAuthIntegrationTest(
         identity: AgentIdentity,
     ): AgentKey {
         val keys = newKeys()
-        val issued = issuer.issueAgentCertificate(csr(keys), identity)
+        val issued = issuer.issueAgentCertificate(csr(keys), identity, AgentRole.SOURCE)
         return AgentKey(identity, issued.serial.toString(16), issued.chainPem, keys)
     }
 

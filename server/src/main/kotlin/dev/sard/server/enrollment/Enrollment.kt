@@ -9,6 +9,7 @@ import dev.sard.server.persistence.EnrollmentTokenRecord
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.AgentIdentity
+import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.InvalidCsrException
 import dev.sard.server.pki.IssuedCertificate
@@ -121,10 +122,11 @@ class Enrollment(
                 registeredAt = now,
                 lastSeenAt = null,
                 builtin = owner.builtin,
+                role = owner.role.stored,
             )
         session.persist(agent)
         session.flush()
-        val issued = issueCertificate(csrDer, AgentIdentity(owner.tenantId, agent.id))
+        val issued = issueCertificate(csrDer, AgentIdentity(owner.tenantId, agent.id), owner.role)
         // Decision 7: past this point a client cancellation no longer stops the commit.
         if (cancelled()) throw CancellationException()
         session.persist(certificateRecord(agent.id, issued))
@@ -139,9 +141,10 @@ class Enrollment(
     private fun issueCertificate(
         csrDer: ByteArray,
         identity: AgentIdentity,
+        role: AgentRole,
     ): IssuedCertificate =
         try {
-            ca.issueAgentCertificate(csrDer, identity)
+            ca.issueAgentCertificate(csrDer, identity, role)
         } catch (e: InvalidCsrException) {
             throw EnrollmentRejectedException(Reason.CSR_INVALID, e)
         }

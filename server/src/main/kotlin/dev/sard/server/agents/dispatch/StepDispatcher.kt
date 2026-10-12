@@ -6,11 +6,14 @@ package dev.sard.server.agents.dispatch
 import dev.sard.server.agents.stream.ConnectedAgent
 import dev.sard.server.agents.stream.SendResult
 import dev.sard.server.agents.stream.StreamCloseReason
+import dev.sard.server.pki.AgentRole
 import dev.sard.server.runs.DispatchLedger
 import dev.sard.server.runs.LostDeadlines
+import dev.sard.server.runs.RoleLedger
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepView
 import dev.sard.server.runs.WaitingSteps
+import dev.sard.server.runs.allows
 import org.slf4j.LoggerFactory
 import java.time.Clock
 import java.time.Duration
@@ -38,9 +41,11 @@ class StepDispatcher(
     private val clock: Clock,
     private val lostAfter: Duration,
     private val metrics: DispatchMetrics,
+    roles: RoleLedger,
     private val waiting: () -> WaitingSteps,
 ) {
     private val locks = ConcurrentHashMap<UUID, Any>()
+    private val guard = RoleGuard(roles)
 
     /** A run was committed (Runs.start): send its step now if the agent is online. Never throws. */
     fun onQueued(
@@ -111,14 +116,24 @@ class StepDispatcher(
         deliver(ConnectedAgent(agentId, tenantId, ""), queued, sentBefore = null)
     }
 
-    /** Sends [steps] in order and stops at the first one the session refuses. */
+    /**
+     * Sends [steps] in order and stops at the first one the session refuses. A step the agent's role does not
+     * allow is never sent (V1, defence in depth: sources and runs do not create one): it fails and the
+     * round goes on.
+     */
     private fun deliver(
         agent: ConnectedAgent,
         steps: List<StepView>,
         sentBefore: Instant?,
     ) {
+        if (steps.isEmpty()) return
+        val role = guard.roleOf(agent)
         for (step in steps) {
-            if (!send(agent, step, sentBefore)) return
+            if (!role.allows(step.action)) {
+                guard.refuse(agent, role, step)
+            } else if (!send(agent, step, sentBefore)) {
+                return
+            }
         }
     }
 
@@ -162,4 +177,27 @@ class StepDispatcher(
         agentId: UUID,
         work: () -> T,
     ): T = synchronized(locks.computeIfAbsent(agentId) { Any() }) { work() }
+}
+
+/** A step the agent's role does not allow is never sent (V1, defence in depth): it fails, and the log says why. */
+private class RoleGuard(
+    private val roles: RoleLedger,
+) {
+    fun roleOf(agent: ConnectedAgent): AgentRole = roles.roleOf(agent.tenantId, agent.agentId)
+
+    fun refuse(
+        agent: ConnectedAgent,
+        role: AgentRole,
+        step: StepView,
+    ) {
+        val message = "agent role mismatch: a ${role.stored} does not run ${step.action.stored}"
+        if (!roles.refuse(agent.tenantId, step.id, message)) return
+        log.warn(
+            "agent role mismatch: step {} of agent {} not sent, role {} does not allow action {}",
+            step.id,
+            agent.agentId,
+            role.stored,
+            step.action.stored,
+        )
+    }
 }

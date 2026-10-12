@@ -85,9 +85,12 @@ class FileCertificateAuthorityTest {
 
     // --- agent certificates from Go CSRs
 
-    private fun issue(csr: String): X509Certificate {
+    private fun issue(
+        csr: String,
+        role: AgentRole = AgentRole.SOURCE,
+    ): X509Certificate {
         val ca = ca()
-        val issued = MutFlow.underTest { ca.issueAgentCertificate(resource(csr), AGENT) }
+        val issued = MutFlow.underTest { ca.issueAgentCertificate(resource(csr), AGENT, role) }
         val chain = certificates(issued.chainPem)
         val leaf = chain.first()
         leaf.verify(caCertificate(ca).publicKey)
@@ -138,7 +141,9 @@ class FileCertificateAuthorityTest {
     fun `bytes that are not a CSR are refused`() {
         val ca = ca()
         val notCsr = byteArrayOf(1, 2, 3)
-        assertFailsWith<InvalidCsrException> { MutFlow.underTest { ca.issueAgentCertificate(notCsr, AGENT) } }
+        assertFailsWith<InvalidCsrException> {
+            MutFlow.underTest { ca.issueAgentCertificate(notCsr, AGENT, AgentRole.SOURCE) }
+        }
     }
 
     // --- server certificate

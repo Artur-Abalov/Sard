@@ -151,7 +151,7 @@ class OnboardingStateIntegrationTest(
 
         val agent = UUID.randomUUID()
         jdbc.update(
-            "insert into agents (id, tenant_id, hostname, registered_at) values (?, ?, 'h', now())",
+            "insert into agents (id, tenant_id, hostname, registered_at, role) values (?, ?, 'h', now(), 'source')",
             agent,
             tenantOfDefault(),
         )

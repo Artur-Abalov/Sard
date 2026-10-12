@@ -62,7 +62,7 @@ class FileCertificateAuthorityImportTest {
     fun `an agent certificate is signed by the imported CA`() {
         CaImportFixtures.source(importDir, original)
         val csr = PkiFixtures.resource("agent-p256.csr")
-        val issued = ca().issueAgentCertificate(csr, PkiFixtures.AGENT)
+        val issued = ca().issueAgentCertificate(csr, PkiFixtures.AGENT, AgentRole.SOURCE)
         val leaf = PkiFixtures.certificates(issued.chainPem).first()
         leaf.verify(original.certificate.publicKey)
     }

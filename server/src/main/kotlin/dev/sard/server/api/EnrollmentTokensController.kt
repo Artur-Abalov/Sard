@@ -34,6 +34,12 @@ data class CreateEnrollmentTokenRequest(
         maxLength = 200,
     )
     val label: String? = null,
+    @field:Schema(
+        description =
+            "What the agent that enrolls with the token may do, for good: source runs backups, verifier only " +
+                "verifies restores; source when omitted or null",
+    )
+    val role: AgentRole? = null,
 )
 
 @Schema(description = "A created token: the only response with the token string (docs/specs/enrollment-token.md)")
@@ -66,6 +72,8 @@ data class EnrollmentToken(
     val agentId: UUID?,
     @field:Schema(description = "What the token is for; null when it has no label")
     val label: String?,
+    @field:Schema(description = "The role of the agent that enrolls with it")
+    val role: AgentRole,
 )
 
 @Schema(description = "A page of enrollment tokens")

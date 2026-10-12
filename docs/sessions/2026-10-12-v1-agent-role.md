@@ -97,3 +97,63 @@
 - О2: неверная роль в REST — 422 `validation_failed`.
 - О3: `"role": null` равносилен отсутствию поля, то есть source.
 - О4–О11: приняты так, как их сформулировал specifier.
+
+### coder (сервер) — proto и сервер готовы, Go-агент — отдельным прогоном
+
+Ветка `ccr-6c6f4c08-945jg7`. Консоль, e2e и ADR — фаза 3, не тронуты (кроме
+моков и таблицы кодов ошибок, см. ниже).
+
+**proto** (`agent.proto`, добавочно): `RegisterRequest.machine_id = 10`,
+`enum RejectReason`, `StepResult.reject_reason = 14` (поле 14 свободно, `oneof output` — 10–13).
+Поля роли в сообщениях агента нет. `make proto`, `buf lint`, `buf breaking` зелёные.
+
+**Сервер.** Миграция `V202610121300__agent_role.sql`: `role` NOT NULL в `agents` и
+`enrollment_tokens` (существующим — `source`, значение по умолчанию снято), CHECK множества,
+CHECK «builtin влечёт source», `agents.machine_id TEXT NULL` + индекс по (tenant, machine_id),
+`agent_role_mismatch` добавлен в CHECK причин `schedule_fires`.
+
+- `pki/AgentRole.kt`: `AgentRole`, `CertificateRole` (Missing / Invalid / Valid), `AgentRoleExtension`
+  (OID, DER UTF8String, некритичное, разбор). `Certificates.agent` и `issueAgentCertificate`
+  принимают роль; расширения и атрибуты CSR по-прежнему игнорируются (берётся только ключ).
+- Enroll: роль токена пишется в сертификат и в `agents.role` в той же транзакции.
+- S3 (`AgentAuthenticator`): порядок по Р4; новые причины `CERT_ROLE_MISSING`, `CERT_ROLE_INVALID`;
+  роль сертификата ≠ роли в базе — `CERT_IDENTITY_MISMATCH`. `AgentPrincipal`, `CertificateStanding`,
+  `PresentedCertificate` несут роль. Строка лога для двух новых причин — формат CERT_UNKNOWN
+  (агент, тенант, метод, «re-enroll the agent»), значение роли в лог не попадает.
+  Повторная проверка открытых потоков берёт роль из записи (роль неизменна).
+- REST: `AgentRole` (с `@JsonCreator`: Jackson принимает число `1` за порядковый номер константы),
+  `CreateEnrollmentTokenRequest.role`, `EnrollmentToken.role`, `AgentSummary.role`, `AgentDetails.role`,
+  `ErrorCode.agent_role_mismatch`, `ScheduleFireReason.agent_role_mismatch`. `make openapi` выполнен.
+- Register: `machine_id` проверяется последним (ровно 64 строчных hex, иначе `FIELD_INVALID`
+  с `field=machine_id`), сохраняется при каждом Register, в логи и REST не попадает
+  (`AgentSnapshot.toString` его скрывает).
+- Источники: `AgentOffer` проверяет роль после «нет агента» и «отозван», до плагина и репозитория —
+  `AgentRoleMismatch` (422 у `agentId` при POST и PUT, 409 при запуске, `refused` у расписания).
+  Правило «что разрешено роли» — `AgentRole.allows(Action)` в `runs/RunModel.kt`.
+- `StepDispatcher`: защита при отправке (`RoleGuard`); шаг, не допустимый роли, не отправляется,
+  переходит в `failed` с сообщением «agent role mismatch: ...», в лог — WARN с id шага, агента,
+  ролью и действием. Новый интерфейс `RoleLedger` (`roleOf`, `refuse`) и `RoleRefusals`.
+- Поиск агентов по `machine_id`: `fleet/MachineAgents.withMachineId(tenant, machineId)`.
+
+**Сверх спецификации, но без чего падает сборка или шлюз:**
+- `ScheduleAlertFormatter`: слова для причины `agent_role_mismatch` (en, ru); без них `getValue`
+  бросал бы исключение при тревоге о пропусках.
+- `web/src/errors.ts`, `web/src/errors.test.ts`, `web/src/locales/{en,ru}.json`,
+  `web/src/mocks/**`: код ошибки, подписи и поле `role` в моках, иначе `tsc` падает на новом
+  `schema.d.ts`. Компонентов нет.
+
+**Блокеры для Go-агента (сообщено координатору).**
+1. OID `2.25.73832348518563859722830588044060276920` нельзя разобрать стандартной библиотекой Go:
+   `x509.ParseCertificate` отвечает `x509: malformed extension OID field` на любой OID с дугой
+   >= 2^31 (проверено: дуга 2147483647 разбирается, 2147483648 — нет; `cryptobyte.readBase128Int`).
+   Агент не сможет загрузить собственный сертификат (`tls.LoadX509KeyPair`), не то что прочитать роль.
+   Нужно решение владельца о другом OID; в сервере он в одном месте (`AgentRoleExtension.OID`) и
+   в одной константе теста (`AgentRoleExtensionTest.ROLE_OID`).
+2. `AgentSeamIntegrationTest` запускает настоящий агент, собранный из `agent/`: до работы агента
+   (`machine_id`) он не пройдёт Register. Это единственный упавший тест серверного набора.
+
+**Гейты (вывод инструментов).** `gate.sh proto fast` и `gate.sh gen fast` — PASSED; `gate.sh web` — PASSED;
+`license-check`: 1176 files OK. `gate.sh server fast` — FAILED только на `AgentSeamIntegrationTest`
+(п. 2 выше): spotless и detekt без замечаний, 2221 тестов (`test` + `isolatedTest`), 1 упал;
+`gradlew --continue :server:check` довёл до отчёта: coverage 96.7% (instructions), `crap` -threshold 6 — код выхода 0.
+Мутационный прогон (`gate.sh server`, без `fast`) не запускался.

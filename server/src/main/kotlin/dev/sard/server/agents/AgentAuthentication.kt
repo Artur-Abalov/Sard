@@ -4,6 +4,9 @@
 package dev.sard.server.agents
 
 import dev.sard.server.pki.AgentIdentity
+import dev.sard.server.pki.AgentRole
+import dev.sard.server.pki.AgentRoleExtension
+import dev.sard.server.pki.CertificateRole
 import io.grpc.Context
 import java.security.cert.X509Certificate
 import java.time.Clock
@@ -17,6 +20,8 @@ enum class AgentAuthFailure {
     CERT_MISSING,
     CERT_UNKNOWN,
     CERT_IDENTITY_MISMATCH,
+    CERT_ROLE_MISSING,
+    CERT_ROLE_INVALID,
     CERT_REVOKED,
     CERT_EXPIRED,
     AGENT_REVOKED,
@@ -27,6 +32,8 @@ data class AgentPrincipal(
     val agentId: UUID,
     val tenantId: UUID,
     val serial: String,
+    /** From the agents table, which equals the one in the certificate (V1): a source or a verifier. */
+    val role: AgentRole,
 ) {
     companion object {
         /** Where [AgentAuthInterceptor] puts the principal: the call's gRPC [Context]. */
@@ -40,11 +47,13 @@ data class PresentedCertificate(
     val serial: String,
     /** The identity in its URI SAN, or null when it names none. */
     val identity: AgentIdentity?,
+    /** What its Sard role extension says (V1). */
+    val role: CertificateRole,
 ) {
     companion object {
         fun of(certificate: X509Certificate): PresentedCertificate {
             val serial = certificate.serialNumber.toString(HEX)
-            return PresentedCertificate(serial, AgentIdentity.of(certificate))
+            return PresentedCertificate(serial, AgentIdentity.of(certificate), AgentRoleExtension.read(certificate))
         }
     }
 }
@@ -55,6 +64,7 @@ data class CertificateStanding(
     val notAfter: Instant,
     val revokedAt: Instant?,
     val agentRevokedAt: Instant?,
+    val role: AgentRole,
 )
 
 /** Looks a certificate up by serial across tenants: the tenant is what it establishes. */
@@ -107,17 +117,42 @@ class AgentAuthenticator(
         }
         val identity = standing.identity
         return when (val failure = failureOf(presented, standing)) {
-            null -> AgentAuthResult.Accepted(AgentPrincipal(identity.agentId, identity.tenantId, presented.serial))
-            else -> AgentAuthResult.Rejected(failure, presented.serial, identity.agentId)
+            null -> {
+                val principal = AgentPrincipal(identity.agentId, identity.tenantId, presented.serial, standing.role)
+                AgentAuthResult.Accepted(principal)
+            }
+
+            // The role refusals are about the certificate, whose SAN matched the record: it may be named in the log.
+            AgentAuthFailure.CERT_ROLE_MISSING, AgentAuthFailure.CERT_ROLE_INVALID -> {
+                AgentAuthResult.Rejected(failure, presented.serial, identity.agentId, identity.tenantId)
+            }
+
+            else -> {
+                AgentAuthResult.Rejected(failure, presented.serial, identity.agentId)
+            }
         }
     }
 
+    /** The certificate first (who it names, what role it says), then the state of the record (ADR 0009, V1). */
     private fun failureOf(
+        presented: PresentedCertificate,
+        standing: CertificateStanding,
+    ): AgentAuthFailure? = certificateFailure(presented, standing) ?: stateFailure(standing)
+
+    private fun certificateFailure(
         presented: PresentedCertificate,
         standing: CertificateStanding,
     ): AgentAuthFailure? =
         when {
             presented.identity != standing.identity -> AgentAuthFailure.CERT_IDENTITY_MISMATCH
+            presented.role == CertificateRole.Missing -> AgentAuthFailure.CERT_ROLE_MISSING
+            presented.role == CertificateRole.Invalid -> AgentAuthFailure.CERT_ROLE_INVALID
+            presented.role != CertificateRole.Valid(standing.role) -> AgentAuthFailure.CERT_IDENTITY_MISMATCH
+            else -> null
+        }
+
+    private fun stateFailure(standing: CertificateStanding): AgentAuthFailure? =
+        when {
             standing.revokedAt != null -> AgentAuthFailure.CERT_REVOKED
             !clock.instant().isBefore(standing.notAfter) -> AgentAuthFailure.CERT_EXPIRED
             standing.agentRevokedAt != null -> AgentAuthFailure.AGENT_REVOKED

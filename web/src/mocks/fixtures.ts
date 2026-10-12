@@ -158,6 +158,7 @@ export const agents: Schemas['AgentDetails'][] = [
     duplicateSessionAt: null,
     outdated: false,
     builtin: false,
+    role: 'source',
     protocolVersion: 1,
     plugins: [
       filesPlugin,
@@ -185,6 +186,7 @@ export const agents: Schemas['AgentDetails'][] = [
     duplicateSessionAt: null,
     outdated: true,
     builtin: false,
+    role: 'source',
     protocolVersion: 1,
     plugins: [{ ...filesPlugin, actions: ['backup'] }],
     repositories: [
@@ -206,6 +208,7 @@ export const agents: Schemas['AgentDetails'][] = [
     duplicateSessionAt: null,
     outdated: false,
     builtin: false,
+    role: 'source',
     protocolVersion: 1,
     plugins: [filesPlugin],
     repositories: [
@@ -227,6 +230,7 @@ export const agents: Schemas['AgentDetails'][] = [
     duplicateSessionAt: '2026-09-27T08:05:00Z',
     outdated: false,
     builtin: false,
+    role: 'source',
     protocolVersion: 1,
     plugins: [filesPlugin],
     repositories: [
@@ -248,6 +252,7 @@ export const agents: Schemas['AgentDetails'][] = [
     duplicateSessionAt: null,
     outdated: false,
     builtin: false,
+    role: 'source',
     protocolVersion: null,
     plugins: [],
     repositories: [],
@@ -267,6 +272,7 @@ export const agents: Schemas['AgentDetails'][] = [
     duplicateSessionAt: null,
     outdated: false,
     builtin: true,
+    role: 'source',
     protocolVersion: 1,
     plugins: [filesPlugin],
     // F6: an S3 repository for the self-backup, a local one (D10: needs a confirmation), one not initialised.
@@ -683,6 +689,7 @@ export const enrollmentTokens: Schemas['EnrollmentToken'][] = [
     revokedAt: null,
     agentId: null,
     label: null,
+    role: 'source',
   },
   {
     id: ids.revokedToken,
@@ -693,6 +700,7 @@ export const enrollmentTokens: Schemas['EnrollmentToken'][] = [
     revokedAt: '2026-09-24T09:30:00Z',
     agentId: null,
     label: null,
+    role: 'source',
   },
   {
     id: ids.expiredToken,
@@ -703,6 +711,7 @@ export const enrollmentTokens: Schemas['EnrollmentToken'][] = [
     revokedAt: null,
     agentId: null,
     label: null,
+    role: 'source',
   },
   {
     id: ids.usedToken,
@@ -713,6 +722,7 @@ export const enrollmentTokens: Schemas['EnrollmentToken'][] = [
     revokedAt: null,
     agentId: ids.dbAgent,
     label: null,
+    role: 'source',
   },
 ]
 

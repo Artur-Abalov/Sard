@@ -8,6 +8,7 @@ import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.persistence.hqlWhere
+import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CertificateAuthority
 import org.hibernate.Session
 import java.security.SecureRandom
@@ -61,6 +62,8 @@ data class TokenOwner(
     val tenantId: UUID,
     /** Whether the token was written by the server for the agent next to it; its agent is built in too. */
     val builtin: Boolean = false,
+    /** The role the enrolling agent gets (V1). */
+    val role: AgentRole = AgentRole.SOURCE,
 )
 
 /** A token as an administrator sees it: never the string, never the secret (rule "Строка токена..."). */
@@ -73,6 +76,7 @@ data class EnrollmentTokenSummary(
     val usedAt: Instant?,
     val agentId: UUID?,
     val revokedAt: Instant?,
+    val role: AgentRole,
 )
 
 /** [tokens.create] rejected the request; [field] names what was out of range. */
@@ -110,12 +114,13 @@ class EnrollmentTokens(
     /**
      * A token for [tenantId], valid for [ttl] (default 24h, 5 minutes to 7 days inclusive,
      * decision 1) with an optional operator-facing [label] up to 200 characters (decision 2).
-     * Only the hash of its secret is stored.
+     * Only the hash of its secret is stored. The agent that enrolls with it gets [role], for good (V1).
      */
     fun create(
         tenantId: UUID,
         ttl: Duration = DEFAULT_TTL,
         label: String = "",
+        role: AgentRole = AgentRole.SOURCE,
     ): IssuedEnrollmentToken {
         if (ttl < MIN_TTL || ttl > MAX_TTL) {
             throw EnrollmentTokenValidationException("ttl", "must be between $MIN_TTL and $MAX_TTL inclusive")
@@ -123,7 +128,7 @@ class EnrollmentTokens(
         if (label.length > LABEL_MAX_LENGTH) {
             throw EnrollmentTokenValidationException("label", "must be at most $LABEL_MAX_LENGTH characters")
         }
-        return sessions.inTenant(tenantId) { issue(it, ttl, label, builtin = false) }
+        return sessions.inTenant(tenantId) { issue(it, ttl, label, builtin = false, role = role) }
     }
 
     /**
@@ -133,7 +138,7 @@ class EnrollmentTokens(
     fun replaceBuiltin(tenantId: UUID): IssuedEnrollmentToken =
         sessions.inTenant(tenantId) { session ->
             session.createMutationQuery(REVOKE_ACTIVE_BUILTIN).setParameter("now", clock.instant()).executeUpdate()
-            issue(session, BUILTIN_TTL, "", builtin = true)
+            issue(session, BUILTIN_TTL, "", builtin = true, role = AgentRole.SOURCE)
         }
 
     /**
@@ -159,6 +164,7 @@ class EnrollmentTokens(
         ttl: Duration,
         label: String,
         builtin: Boolean,
+        role: AgentRole,
     ): IssuedEnrollmentToken {
         val secret = EnrollmentSecret.random(random)
         val now = clock.instant()
@@ -170,6 +176,7 @@ class EnrollmentTokens(
                 createdAt = now,
                 label = label,
                 builtin = builtin,
+                role = role.stored,
             )
         session.persist(record)
         val token = EnrollmentToken(secret, ca.fingerprint()).encode()
@@ -254,7 +261,7 @@ class EnrollmentTokens(
                 .createSelectionQuery(BY_HASH, EnrollmentTokenRecord::class.java)
                 .setParameter("hash", tokenHash)
                 .uniqueResult()
-                ?.let { TokenOwner(it.id, checkNotNull(it.tenantId), it.builtin) }
+                ?.let { TokenOwner(it.id, checkNotNull(it.tenantId), it.builtin, AgentRole.of(it.role)) }
         }
 
     private fun summaryOf(record: EnrollmentTokenRecord) =
@@ -267,6 +274,7 @@ class EnrollmentTokens(
             usedAt = record.usedAt,
             agentId = record.agentId,
             revokedAt = record.revokedAt,
+            role = AgentRole.of(record.role),
         )
 }
 

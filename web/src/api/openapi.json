@@ -2654,7 +2654,7 @@
       },
       "ErrorCode" : {
         "type" : "string",
-        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password" ]
+        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "agent_role_mismatch", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password" ]
       },
       "Problem" : {
         "type" : "object",
@@ -3391,6 +3391,10 @@
           }
         }
       },
+      "AgentRole" : {
+        "type" : "string",
+        "enum" : [ "source", "verifier" ]
+      },
       "CreateEnrollmentTokenRequest" : {
         "type" : "object",
         "description" : "A new enrollment token",
@@ -3406,6 +3410,14 @@
             "type" : [ "string", "null" ],
             "description" : "What the token is for, shown in the list; up to 200 characters, empty means none",
             "maxLength" : 200
+          },
+          "role" : {
+            "description" : "What the agent that enrolls with the token may do, for good: source runs backups, verifier only verifies restores; source when omitted or null",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/AgentRole"
+            }, {
+              "type" : "null"
+            } ]
           }
         }
       },
@@ -3505,9 +3517,13 @@
           "label" : {
             "type" : [ "string", "null" ],
             "description" : "What the token is for; null when it has no label"
+          },
+          "role" : {
+            "$ref" : "#/components/schemas/AgentRole",
+            "description" : "The role of the agent that enrolls with it"
           }
         },
-        "required" : [ "agentId", "createdAt", "expiresAt", "id", "label", "revokedAt", "status", "usedAt" ]
+        "required" : [ "agentId", "createdAt", "expiresAt", "id", "label", "revokedAt", "role", "status", "usedAt" ]
       },
       "EnrollmentTokenStatus" : {
         "type" : "string",
@@ -3591,9 +3607,13 @@
           "builtin" : {
             "type" : "boolean",
             "description" : "True for the agent next to the server (sard-self), enrolled with the token the server wrote for it; revoking it needs confirm=sard-self"
+          },
+          "role" : {
+            "$ref" : "#/components/schemas/AgentRole",
+            "description" : "source runs backups, restores and scripts; verifier only verifies restores. Chosen by the token, never changes"
           }
         },
-        "required" : [ "agentVersion", "arch", "builtin", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "plugins", "protocolVersion", "registeredAt", "repositories", "revokedAt", "scriptNames", "secretNames", "status" ]
+        "required" : [ "agentVersion", "arch", "builtin", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "plugins", "protocolVersion", "registeredAt", "repositories", "revokedAt", "role", "scriptNames", "secretNames", "status" ]
       },
       "AgentPlugin" : {
         "type" : "object",
@@ -3842,7 +3862,7 @@
       },
       "ScheduleFireReason" : {
         "type" : "string",
-        "enum" : [ "source_deleted", "agent_revoked", "unknown_plugin", "unknown_repository" ]
+        "enum" : [ "source_deleted", "agent_revoked", "unknown_plugin", "unknown_repository", "agent_role_mismatch" ]
       },
       "Session" : {
         "type" : "object",
@@ -4251,9 +4271,13 @@
           "builtin" : {
             "type" : "boolean",
             "description" : "True for the agent next to the server (sard-self), enrolled with the token the server wrote for it; revoking it needs confirm=sard-self"
+          },
+          "role" : {
+            "$ref" : "#/components/schemas/AgentRole",
+            "description" : "source runs backups, restores and scripts; verifier only verifies restores. Chosen by the token, never changes"
           }
         },
-        "required" : [ "agentVersion", "arch", "builtin", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "registeredAt", "revokedAt", "status" ]
+        "required" : [ "agentVersion", "arch", "builtin", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "registeredAt", "revokedAt", "role", "status" ]
       },
       "InstallFormat" : {
         "type" : "string",

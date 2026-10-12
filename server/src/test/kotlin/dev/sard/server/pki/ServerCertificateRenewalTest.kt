@@ -29,6 +29,7 @@ class ServerCertificateRenewalTest {
         override fun issueAgentCertificate(
             csrDer: ByteArray,
             agent: AgentIdentity,
+            role: AgentRole,
         ) = error("unused")
 
         override fun renewServerCertificate(): Boolean {

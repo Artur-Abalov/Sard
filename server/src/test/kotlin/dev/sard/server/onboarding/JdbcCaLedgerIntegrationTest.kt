@@ -47,7 +47,7 @@ class JdbcCaLedgerIntegrationTest(
         if (tenant == OTHER_TENANT) jdbc.update("insert into tenants (id, name) values (?, 'B')", tenant)
         val agent = UUID.randomUUID()
         jdbc.update(
-            "insert into agents (id, tenant_id, hostname, registered_at) values (?, ?, 'a', ?)",
+            "insert into agents (id, tenant_id, hostname, registered_at, role) values (?, ?, 'a', ?, 'source')",
             agent,
             tenant,
             Timestamp.from(NOW),

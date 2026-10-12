@@ -43,7 +43,7 @@ internal class RunsTenant(
         repositories: List<String> = listOf(REPOSITORY),
     ) {
         jdbc.update(
-            "insert into agents (id, tenant_id, hostname, registered_at) values (?, ?, 'db1', ?)",
+            "insert into agents (id, tenant_id, hostname, registered_at, role) values (?, ?, 'db1', ?, 'source')",
             agent,
             id,
             java.sql.Timestamp.from(RUNS_NOW),

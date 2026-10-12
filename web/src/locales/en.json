@@ -119,6 +119,7 @@
     "validation_failed": "The values are not acceptable",
     "unknown_agent": "The agent does not exist",
     "agent_revoked": "The agent is revoked",
+    "agent_role_mismatch": "The agent is a verifier and cannot back up",
     "unknown_plugin": "The agent does not offer this plugin",
     "unknown_repository": "The agent does not report this repository",
     "invalid_config": "The source config is not valid",
@@ -550,7 +551,8 @@
         },
         "refused": {
           "unknown_plugin": "not started — the agent does not offer the source’s plugin",
-          "unknown_repository": "not started — the agent does not report the source’s repository"
+          "unknown_repository": "not started — the agent does not report the source’s repository",
+          "agent_role_mismatch": "not started — the agent is a verifier and cannot run backups"
         }
       }
     }

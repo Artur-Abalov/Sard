@@ -269,7 +269,7 @@ class EnrollmentTokenServiceIntegrationTest(
         val issued = tokens.create(tenantA, Duration.ofHours(1))
         val agentId = UUID.randomUUID()
         jdbc.update(
-            "insert into agents (id, tenant_id, hostname, registered_at) values (?, ?, ?, ?)",
+            "insert into agents (id, tenant_id, hostname, registered_at, role) values (?, ?, ?, ?, 'source')",
             agentId,
             tenantA,
             "db1",

@@ -9,6 +9,7 @@ import dev.sard.server.agents.stream.StreamClients
 import dev.sard.server.agents.stream.TestAgent
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
+import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.Pem
@@ -58,7 +59,14 @@ fun snapshotOf(
     scriptNames: List<String> = emptyList(),
     version: String = "0.4.0",
     arch: String = "amd64",
-) = AgentSnapshot("db1", version, 1, "linux", arch, plugins, repositories, secretNames, scriptNames)
+    machineId: String = MACHINE_ID,
+) = AgentSnapshot("db1", version, 1, "linux", arch, plugins, repositories, secretNames, scriptNames, machineId)
+
+/** A machine id as an agent computes it: 64 lower-case hex characters (agent-role.feature, M). */
+const val MACHINE_ID = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+
+/** Another machine (M2). */
+const val OTHER_MACHINE_ID = "0f9e8d7c6b5a49382716f5e4d3c2b1a00f9e8d7c6b5a49382716f5e4d3c2b1a0"
 
 fun filesPlugin(
     name: String = "files",
@@ -119,10 +127,12 @@ class RestWorld(
         tenant: UUID,
         hostname: String = "db1",
         builtin: Boolean = false,
+        role: AgentRole = AgentRole.SOURCE,
     ): TestAgent {
         val keys = newKeys()
         val csr = csrOf(keys)
-        val issued = if (builtin) tokens.replaceBuiltin(tenant) else tokens.create(tenant, Duration.ofHours(1))
+        val issued =
+            if (builtin) tokens.replaceBuiltin(tenant) else tokens.create(tenant, Duration.ofHours(1), role = role)
         val token = issued.reveal()
         val agent = enrollment.enroll(token, csr, hostname)
         val credentials =
@@ -140,8 +150,9 @@ class RestWorld(
         snapshot: AgentSnapshot? = snapshotOf(),
         hostname: String = "db1",
         builtin: Boolean = false,
+        role: AgentRole = AgentRole.SOURCE,
     ): TestAgent {
-        val agent = enroll(tenant, hostname, builtin)
+        val agent = enroll(tenant, hostname, builtin, role)
         snapshot?.let { registration.register(tenant, agent.agentId, it.copy(hostname = hostname)) }
         return agent
     }

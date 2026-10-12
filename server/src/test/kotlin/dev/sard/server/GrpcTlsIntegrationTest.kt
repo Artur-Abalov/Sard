@@ -6,6 +6,7 @@ package dev.sard.server
 import dev.sard.proto.agent.v1.EnrollRequest
 import dev.sard.proto.agent.v1.EnrollmentServiceGrpcKt
 import dev.sard.server.pki.AgentIdentity
+import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CaFingerprint
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.FakeCaLedger
@@ -71,7 +72,8 @@ class GrpcTlsIntegrationTest(
         val keys = generator.generateKeyPair()
         val signer = JcaContentSignerBuilder("SHA256withECDSA").build(keys.private)
         val csr = JcaPKCS10CertificationRequestBuilder(X500Name("CN=test"), keys.public).build(signer).encoded
-        val issued = issuer.issueAgentCertificate(csr, AgentIdentity(UUID.randomUUID(), UUID.randomUUID()))
+        val identity = AgentIdentity(UUID.randomUUID(), UUID.randomUUID())
+        val issued = issuer.issueAgentCertificate(csr, identity, AgentRole.SOURCE)
         return trusting()
             .keyManager(issued.chainPem.byteInputStream(), Pem.privateKey(keys.private).byteInputStream())
             .build()

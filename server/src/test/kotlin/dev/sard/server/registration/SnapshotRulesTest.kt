@@ -37,7 +37,19 @@ private fun snapshot(
     repositories: List<RepositoryEntry> = listOf(repository()),
     secretNames: List<String> = listOf("pg-prod"),
     scriptNames: List<String> = listOf("pre-dump"),
-) = AgentSnapshot(hostname, agentVersion, protocolVersion, os, arch, plugins, repositories, secretNames, scriptNames)
+    machineId: String = HEX64,
+) = AgentSnapshot(
+    hostname,
+    agentVersion,
+    protocolVersion,
+    os,
+    arch,
+    plugins,
+    repositories,
+    secretNames,
+    scriptNames,
+    machineId,
+)
 
 /** What a refusal says on the wire: the reason and the ErrorInfo metadata. */
 private data class Refusal(
@@ -291,5 +303,36 @@ class SnapshotRulesTest {
         assertEquals(Refusal(Reason.NAME_DUPLICATE, mapOf("field" to "secret_names[1]")), refusalOf(secrets))
         val scripts = snapshot(scriptNames = listOf("x", "y", "x"))
         assertEquals(Refusal(Reason.NAME_DUPLICATE, mapOf("field" to "script_names[2]")), refusalOf(scripts))
+    }
+
+    // --- machine_id (V1)
+
+    @Test
+    fun `a machine id of 64 lower-case hex characters is accepted`() {
+        assertNull(refusalOf(snapshot(machineId = "0123456789abcdef".repeat(4))))
+    }
+
+    @Test
+    fun `a machine id that is not exactly 64 lower-case hex characters is FIELD_INVALID at machine_id`() {
+        val bad =
+            listOf(
+                "",
+                "a".repeat(63),
+                "a".repeat(65),
+                "A".repeat(64),
+                "a".repeat(63) + "g",
+                " " + "a".repeat(63),
+                "a".repeat(64) + "\n",
+            )
+        for (machineId in bad) {
+            assertEquals(invalid("machine_id"), refusalOf(snapshot(machineId = machineId)), "'$machineId'")
+        }
+    }
+
+    @Test
+    fun `the machine id is checked last, after the hostname and the script names`() {
+        assertEquals(Reason.HOSTNAME_INVALID, refusalOf(snapshot(hostname = "", machineId = ""))?.reason)
+        val scripts = snapshot(scriptNames = listOf("../x"), machineId = "")
+        assertEquals(Reason.NAME_INVALID, refusalOf(scripts)?.reason)
     }
 }
