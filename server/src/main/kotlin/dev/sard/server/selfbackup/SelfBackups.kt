@@ -321,27 +321,10 @@ class SelfBackups internal constructor(
                 plan = plan.items(),
             )
         }
-        val repository = repositoryState(session, sources.first())
         val states = sources.map { SourceStates.of(session, it, record.boundAt) }
-        val keysConfirmedAt = record.keysConfirmedAt?.takeIf { !it.isBefore(record.boundAt) }
-        val keysUnconfirmed = keysConfirmedAt == null && onboardingComplete()
-        val warnings = HealthRules.warnings(states, agentId, repository.local, keysUnconfirmed)
-        return SelfBackupView(
-            configured = true,
-            agentId = agentId,
-            repository = repository,
-            boundAt = record.boundAt,
-            sources = sources.zip(states, ::systemSourceOf),
-            health = HealthRules.health(warnings),
-            warnings = warnings,
-            overdueSince = HealthRules.overdueSince(states),
-            repositories = repositories,
-            plan = plan.items(),
-            firstBackupDone = HealthRules.firstBackupDone(states),
-            keysConfirmedAt = keysConfirmedAt,
-            passwordRevealCommand = passwordRevealCommand(repository.name),
-            location = record.location,
-        )
+        val repository = repositoryState(session, sources.first())
+        val view = viewOf(record, sources, states, agentId, repository, onboardingComplete())
+        return view.copy(repositories = repositories, plan = plan.items())
     }
 }
 
@@ -402,5 +385,33 @@ private fun repositoryState(
         announced?.backend.orEmpty(),
         announced?.repositoryId,
         announced?.backend == LOCAL_BACKEND,
+    )
+}
+
+/** The self-backup that is configured: its sources with their states, the warnings and what the wizard needs. */
+private fun viewOf(
+    record: SelfBackupRecord,
+    sources: List<SourceRecord>,
+    states: List<SourceState>,
+    agentId: UUID?,
+    repository: RepositoryState,
+    onboardingComplete: Boolean,
+): SelfBackupView {
+    val keysConfirmedAt = record.keysConfirmedAt?.takeIf { !it.isBefore(record.boundAt) }
+    val keysUnconfirmed = keysConfirmedAt == null && onboardingComplete
+    val warnings = HealthRules.warnings(states, agentId, repository.local, keysUnconfirmed)
+    return SelfBackupView(
+        configured = true,
+        agentId = agentId,
+        repository = repository,
+        boundAt = record.boundAt,
+        sources = sources.zip(states, ::systemSourceOf),
+        health = HealthRules.health(warnings),
+        warnings = warnings,
+        overdueSince = HealthRules.overdueSince(states),
+        firstBackupDone = HealthRules.firstBackupDone(states),
+        keysConfirmedAt = keysConfirmedAt,
+        passwordRevealCommand = passwordRevealCommand(repository.name),
+        location = record.location,
     )
 }

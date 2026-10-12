@@ -26,35 +26,6 @@ private const val RESTART = "docker compose restart self-agent"
 private const val RUN =
     "docker compose run --rm --no-deps -u 0 --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER " +
         "--cap-add SETUID --cap-add SETGID self-agent repo add"
-private const val MAX_PATH = 512
-private const val MAX_PORT = 65535
-
-private val BUCKET = Regex("[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]")
-private val REGION = Regex("[a-z0-9-]{1,64}")
-private val USER = Regex("[a-z_][a-z0-9_-]{0,31}")
-private val SEGMENT = Regex("[A-Za-z0-9._-]+")
-private val FINGERPRINT = Regex("SHA256:[A-Za-z0-9+/]{43}")
-private val PORT = Regex("[1-9][0-9]{0,4}")
-private const val LABEL = "[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
-private val DNS_NAME = Regex("(?=.{1,253}$)$LABEL(\\.$LABEL)*")
-private val IPV6_LITERAL = Regex("\\[[0-9A-Fa-f:.]+]")
-private val ENDPOINT = Regex("https?://([^:/@?#\\s]+|\\[[0-9A-Fa-f:.]+])(:[0-9]+)?")
-
-private fun validHost(host: String) = DNS_NAME.matches(host) || IPV6_LITERAL.matches(host)
-
-private fun validPort(port: String) = PORT.matches(port) && port.toInt() <= MAX_PORT
-
-private fun plainSegment(segment: String) = SEGMENT.matches(segment) && segment != "." && segment != ".."
-
-private fun validSegments(path: String) = path.length <= MAX_PATH && path.split('/').all(::plainSegment)
-
-private fun validAbsolute(path: String) = path.startsWith("/") && validSegments(path.drop(1))
-
-private fun validEndpoint(endpoint: String): Boolean {
-    val match = ENDPOINT.matchEntire(endpoint) ?: return false
-    val port = match.groupValues[2].drop(1)
-    return validHost(match.groupValues[1]) && (port.isEmpty() || validPort(port))
-}
 
 /** The parameters as the request carried them; what is empty is absent. Collects the fields that do not fit. */
 private class Fields(
@@ -83,19 +54,37 @@ private class Storage(
     val asksKeyId: Boolean = false,
 )
 
-private fun s3(fields: Fields): Storage? {
-    val provider = fields.required("provider") { it in setOf("aws", "b2", "custom") }
-    val region = if (provider == "custom") null else fields.required("region", REGION::matches)
-    val endpoint = if (provider == "custom") fields.required("endpoint", ::validEndpoint) else null
+private val PROVIDERS = setOf("aws", "b2", "custom")
+
+/** The bucket and, when there is one, the folder in it as the address holds them; null without a bucket. */
+private fun locationOf(fields: Fields): String? {
     val bucket = fields.required("bucket", BUCKET::matches)
     val path = fields.optional("path", ::validSegments)
-    if (fields.invalid.isNotEmpty() || provider == null || bucket == null) return null
-    val location = bucket + path?.let { "/$it" }.orEmpty()
-    return if (endpoint != null) {
-        Storage("s3:$endpoint/$location", listOf(KEY_ID_FLAG), asksKeyId = true)
-    } else {
-        Storage("s3:$location", listOf("--provider $provider", "--region $region", KEY_ID_FLAG), asksKeyId = true)
-    }
+    return bucket?.let { it + path?.let { folder -> "/$folder" }.orEmpty() }
+}
+
+/** AWS or Backblaze B2: the address is the bucket, the rest is built from the region by `repo add`. */
+private fun hostedS3(
+    fields: Fields,
+    provider: String?,
+): Storage? {
+    val region = fields.required("region", REGION::matches)
+    val location = locationOf(fields)
+    if (provider == null || region == null || location == null) return null
+    return Storage("s3:$location", listOf("--provider $provider", "--region $region", KEY_ID_FLAG), asksKeyId = true)
+}
+
+/** An S3 of the owner's own: the address names the endpoint. */
+private fun customS3(fields: Fields): Storage? {
+    val endpoint = fields.required("endpoint", ::validEndpoint)
+    val location = locationOf(fields)
+    if (endpoint == null || location == null) return null
+    return Storage("s3:$endpoint/$location", listOf(KEY_ID_FLAG), asksKeyId = true)
+}
+
+private fun s3(fields: Fields): Storage? {
+    val provider = fields.required("provider") { it in PROVIDERS }
+    return if (provider == "custom") customS3(fields) else hostedS3(fields, provider)
 }
 
 private fun sftp(fields: Fields): Storage? {
@@ -109,6 +98,18 @@ private fun sftp(fields: Fields): Storage? {
     // The fingerprint is checked above to hold nothing the shell reads: it goes in as it is.
     return Storage(address, listOfNotNull(fingerprint?.let { "--host-key-fingerprint $it" }))
 }
+
+private fun planOf(
+    storage: String?,
+    name: String,
+    fields: Fields,
+): Storage? =
+    when (storage) {
+        "s3" -> s3(fields)
+        "sftp" -> sftp(fields)
+        "local" -> Storage("$SELF_STORAGE_DIR/$name")
+        else -> null
+    }
 
 /**
  * The commands that add a repository to the built-in agent (F4b, Р23–Р25, Р29): built by the server from
@@ -125,15 +126,11 @@ object RepositoryCommands {
         params: Map<String, String>,
     ): CommandBuild {
         val fields = Fields(params.filterValues { it.isNotEmpty() })
-        val storage =
-            when (fields.required("storage") { it in setOf("s3", "sftp", "local") }) {
-                "s3" -> s3(fields)
-                "sftp" -> sftp(fields)
-                "local" -> Storage("$SELF_STORAGE_DIR/$name")
-                else -> null
-            }
-        if (storage == null) return CommandBuild.Rejected(fields.invalid)
-        return CommandBuild.Built(storage.address, commands(name, storage))
+        val storage = fields.required("storage") { it in setOf("s3", "sftp", "local") }
+        val plan = planOf(storage, name, fields)
+        // Whatever the plan is, a field that did not fit refuses the whole request.
+        if (plan == null || fields.invalid.isNotEmpty()) return CommandBuild.Rejected(fields.invalid)
+        return CommandBuild.Built(plan.address, commands(name, plan))
     }
 
     private fun commands(

@@ -74,13 +74,25 @@ internal object OnboardingRules {
         method: String,
         path: String,
         targets: GuardTargets,
-    ): Boolean {
-        val operation = "$method $path"
-        return operation in ALWAYS_OPEN ||
+    ): Boolean =
+        "$method $path" in ALWAYS_OPEN ||
             path.startsWith(ONBOARDING_PATH) ||
-            (method == "PUT" && idIn(SOURCE_SCHEDULE, path)?.let(targets::isSystemSource) == true) ||
-            (method == "POST" && idIn(AGENT_REVOKE, path)?.let(targets::isBuiltinAgent) == true)
-    }
+            systemSchedule(method, path, targets) ||
+            builtinRevocation(method, path, targets)
+
+    /** The schedule of a system source (OQ-209). */
+    private fun systemSchedule(
+        method: String,
+        path: String,
+        targets: GuardTargets,
+    ): Boolean = method == "PUT" && idIn(SOURCE_SCHEDULE, path)?.let(targets::isSystemSource) == true
+
+    /** The revocation of the live built-in agent, which the REST layer asks to confirm (OQ-209). */
+    private fun builtinRevocation(
+        method: String,
+        path: String,
+        targets: GuardTargets,
+    ): Boolean = method == "POST" && idIn(AGENT_REVOKE, path)?.let(targets::isBuiltinAgent) == true
 
     /** Whether the operation of the contract can be refused by some restriction: the document says so. */
     fun gated(
@@ -145,13 +157,20 @@ fun describeOnboardingIncomplete(api: OpenAPI) {
     }
 }
 
+/** The body of the 409: the operation's own, or the plain problem, or either of them. */
+private fun conflictBody(
+    own: ApiResponse?,
+    problem: Schema<Any>,
+): Schema<Any> {
+    val ownSchema = own?.content?.get(PROBLEM_JSON)?.schema ?: return problem
+    return Schema<Any>().anyOf(listOf(ownSchema, problem))
+}
+
 private fun conflictOf(
     own: ApiResponse?,
     problem: Schema<Any>,
 ): ApiResponse {
-    val ownSchema = own?.content?.get(PROBLEM_JSON)?.schema
-    val schema = if (ownSchema == null) problem else Schema<Any>().anyOf(listOf(ownSchema, problem))
+    val content = Content().addMediaType(PROBLEM_JSON, MediaType().schema(conflictBody(own, problem)))
     val description = own?.description ?: "The onboarding is not complete (onboarding_incomplete)"
-    val content = Content().addMediaType(PROBLEM_JSON, MediaType().schema(schema))
     return ApiResponse().description("$description; or the onboarding is not complete").content(content)
 }
