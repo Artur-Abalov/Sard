@@ -97,8 +97,14 @@ docker compose logs server | grep "SARD SETUP CODE"
 and open the `/setup` page of the console, <http://localhost:8080/setup> (the
 console redirects there by itself). Enter the code, look at the server's CA
 (back up its key: without it every agent has to be registered again) and set
-the administrator password. The code is valid for 24 hours; if it has
-expired, `docker compose restart server` prints a new one. The password is
+the administrator password. The wizard goes on with the backup of the server
+itself: choose a storage (S3 by default), run the command the wizard shows on
+the host (the storage keys are typed in the terminal, never in the browser),
+let the first backup succeed, and confirm that a copy of the repository
+password is kept outside the machine. Until then the server accepts no new
+agents and changes nothing but its own backup (`409 onboarding_incomplete`;
+[docs/operator/02-install.md](docs/operator/02-install.md)). The code is valid
+for 24 hours; if it has expired, `docker compose restart server` prints a new one. The password is
 changed later on the console's Settings page; if it is lost,
 [docs/operator/10-security.md](docs/operator/10-security.md) has the recovery.
 The REST API listens on
@@ -118,10 +124,11 @@ docker compose up -d --wait --pull never
 ```
 
 Next to the server runs `self-agent`, the agent `sard-self` that enrolls by
-itself; it does not back up the installation yet. It reads the database
+itself and backs up the installation (the database and the CA key with the
+configuration) to the storage you chose in the wizard. It reads the database
 through a read-only role and the CA directory read-only
 ([docs/operations/self-agent.md](docs/operations/self-agent.md), in Russian).
-Until then, back up the server by hand:
+The manual procedure stays for installations without it:
 [docs/operator/06-data-and-backup.md](docs/operator/06-data-and-backup.md).
 The CA key lives in the `sard_sard-pki` volume and the database in
 `sard_postgres-data`; both survive `docker compose down` and are removed by
