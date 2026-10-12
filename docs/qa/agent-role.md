@@ -1,0 +1,267 @@
+# QA: роль агента и идентификатор машины (V1)
+
+Сценарии: `docs/specs/server/agent-role.feature` и
+`docs/specs/agent/agent-role.feature`. Решения владельца и specifier (Р1–Р12,
+С1–С11) — в заголовках этих файлов; исследование —
+`docs/sessions/2026-10-12-v1-agent-role.md`.
+
+Ожидаемый результат указан после «→» в каждом шаге. Любое расхождение — дефект.
+
+Вручную проходятся сквозной путь и сценарии с тегом `@qa`. Управляемые часы,
+гонки, порядок проверок S3, StepDispatcher при шаге, вставленном в базу, и
+подставной сервер, присылающий бэкап верификатору, проверяют тесты сценариев с
+теми же названиями: агент сам дозванивается до сервера, и вручную подменить
+сервер на этом стенде нельзя. Консоль (колонка и выбор роли) — фаза 3, здесь не
+проверяется.
+
+## Подготовка
+
+Нужны: Docker, Go, `curl`, `jq`, `grpcurl`, `openssl` 3, `python3`. Команды —
+из корня репозитория, не от root. Хост, на котором идёт проверка, должен иметь
+непустой `/etc/machine-id`.
+
+```bash
+make down; rm -f deploy/.env
+cp deploy/.env.example deploy/.env
+make up && make build
+DC="docker compose -f deploy/docker-compose.yml --env-file deploy/.env"
+PSQL="$DC exec -T postgres psql -U sard -d sard -At -c"
+API=http://localhost:8080/api/v1
+QA=$(mktemp -d); J=$QA/jar
+source scripts/lib/setup-wizard.sh
+SARD_WIZARD_COOKIES=$J sard_complete_wizard http://localhost:8080 qa-admin-password-2026 $DC logs server && echo 204
+a() { curl -sS -X "$1" "$API$2" -b $J ${3:+-H 'Content-Type: application/json' -d "$3"} \
+  -w '\nHTTP %{http_code} %{content_type}\n'; }
+body() { sed '$d'; }
+AG=$PWD/agent/bin/sard-agent
+$DC exec -T server cat /var/lib/sard/pki/ca/ca.crt > $QA/ca.crt
+$DC exec -T server cat /var/lib/sard/pki/ca/ca.key > $QA/ca.key; chmod 0600 $QA/ca.key
+GRPC="grpcurl -cacert $QA/ca.crt -import-path proto -proto sard/agent/v1/agent.proto -format-error"
+# OID расширения роли Sard — константа coder (2.25.<uuid>) в сервере и агенте
+grep -rhoE '"2\.25\.[0-9]{20,}"' server/src/main agent/internal | sort -u
+ROLE_OID=$(grep -rhoE '"2\.25\.[0-9]{20,}"' server/src/main agent/internal | sort -u | tr -d '"')
+# host <каталог> — конфиг агента без репозиториев в каталоге
+host() { mkdir -p -m 0700 $1/tls $1/state; cat > $1/agent.yaml <<EOF
+server:
+  address: localhost:9090
+tls:
+  ca_file: $1/tls/ca.pem
+  cert_file: $1/tls/agent.pem
+  key_file: $1/tls/agent.key
+executor:
+  state_dir: $1/state
+EOF
+}
+# enroll_as <каталог> <тело POST токена> — регистрирует агента в каталоге
+enroll_as() { local cmd; cmd=$(a POST /enrollment-tokens "$2" | body | jq -r .enrollCommand)
+  $AG ${cmd#sudo -u sard-agent sard-agent } --config $1/agent.yaml; }
+# roleext <сертификат> — значение расширения роли Sard, как его печатает openssl
+roleext() { openssl x509 -in $1 -noout -text | grep -A1 -F "$ROLE_OID" | tail -1 | tr -d ' '; }
+# forge <каталог агента> <строка extfile для роли или пусто> <выход> — поддельный
+# сертификат CA сервера с серийным номером и SAN настоящего
+forge() { local ser uri; ser=$(openssl x509 -in $1/tls/agent.pem -noout -serial | cut -d= -f2)
+  uri=$(openssl x509 -in $1/tls/agent.pem -noout -ext subjectAltName | grep -o 'sard://[^ ,]*')
+  printf 'subjectAltName=URI:%s\nextendedKeyUsage=clientAuth\n%s\n' "$uri" "$2" > $QA/ext.cnf
+  openssl req -new -key $1/tls/agent.key -subj "/CN=${uri##*/}" \
+  | openssl x509 -req -CA $QA/ca.crt -CAkey $QA/ca.key -set_serial 0x$ser -days 30 \
+      -extfile $QA/ext.cnf -out $3 2>/dev/null; }
+# reg <сертификат> <ключ> <machine_id> — Register по mTLS
+reg() { $GRPC -cert $1 -key $2 -d "{\"hostname\":\"qa\",\"agentVersion\":\"qa\",\"protocolVersion\":1,\"os\":\"linux\",\"arch\":\"amd64\",\"machineId\":\"$3\"}" \
+  localhost:9090 sard.agent.v1.AgentService/Register; }
+```
+
+→ мастер печатает `204`; `make build` завершается; `grep` печатает ровно одну
+строку — один и тот же OID в сервере и агенте; `$ROLE_OID` начинается с `2.25.`.
+
+## Часть 1. Роль токена в REST
+
+1. `a POST /enrollment-tokens '{}' | body | jq -r .role`
+   → `source`.
+2. `a POST /enrollment-tokens '{"role":"verifier"}' | tee $QA/tv | tail -1; VT=$(body < $QA/tv | jq -r .id); body < $QA/tv | jq -r .role`
+   → `HTTP 201`, `verifier`.
+3. `a GET /enrollment-tokens/$VT | body | jq -r .role; a GET /enrollment-tokens | body | jq -r ".items[] | select(.id==\"$VT\") | .role"`
+   → `verifier` и `verifier`.
+4. `body < $QA/tv | jq -r .enrollCommand`
+   → `sudo -u sard-agent sard-agent enroll --server localhost:9090 --token <token>`, как у токена из шага 1.
+5. `N=$($PSQL "select count(*) from enrollment_tokens"); for r in '""' '"SOURCE"' '"Verifier"' '"admin"' 1 null; do a POST /enrollment-tokens "{\"role\":$r}" | tr '\n' ' ' | grep -o 'HTTP 422\|"field":"role"' | sort -u | tr '\n' ' '; echo; done; $PSQL "select count(*) from enrollment_tokens"`
+   → шесть строк `"field":"role" HTTP 422`; `code` каждого — `validation_failed`; число токенов равно `$N`.
+6. `$PSQL "select role from enrollment_tokens where builtin"`
+   → только `source` (встроенный токен sard-self, если ещё не израсходован, или израсходованный).
+7. `$PSQL "insert into enrollment_tokens (id, tenant_id, token_hash, expires_at, created_at, builtin, role) values (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', decode(md5('qa'),'hex'), now() + interval '1 hour', now(), true, 'verifier')"`
+   → ошибка нарушения ограничения CHECK; строка не вставлена.
+
+## Часть 2. Регистрация: роль в сертификате, в базе и у агента
+
+```bash
+S1=$QA/src; V1=$QA/ver; host $S1; host $V1
+enroll_as $S1 '{}'; enroll_as $V1 '{"role":"verifier"}'
+XS=$(openssl x509 -in $S1/tls/agent.pem -noout -subject | sed 's/.*CN *= *//')
+XV=$(openssl x509 -in $V1/tls/agent.pem -noout -subject | sed 's/.*CN *= *//')
+```
+
+8. `roleext $S1/tls/agent.pem; roleext $V1/tls/agent.pem`
+   → `..source` и `..verifier` (два служебных байта DER UTF8String, затем строка).
+9. `openssl x509 -in $V1/tls/agent.pem -noout -text | grep -F "$ROLE_OID"`
+   → строка OID без слова `critical`.
+10. `$PSQL "select id, role from agents where id in ('$XS','$XV') order by role"`
+    → `$XS|source`, `$XV|verifier`.
+11. `$AG status --config $S1/agent.yaml; echo "exit=$?"`
+    → ровно четыре строки: `agent_id: $XS`, `tenant_id: 00000000-0000-0000-0000-000000000001`,
+    `role: source`, `certificate_not_after: <notAfter сертификата в RFC 3339 UTC с Z>`; `exit=0`.
+    `openssl x509 -in $S1/tls/agent.pem -noout -enddate` → та же дата.
+12. `$AG status --config $V1/agent.yaml | grep role` → `role: verifier`.
+13. `host $QA/none; $AG status --config $QA/none/agent.yaml; echo "exit=$?"`
+    → stderr `sard-agent: not enrolled: run sard-agent enroll`; stdout пуст; `exit=1`.
+14. `$AG status; echo "exit=$?"` → `exit=2`.
+15. Запуск обоих агентов:
+    `$AG --config $S1/agent.yaml > $QA/s.out 2>&1 & SP=$!; $AG --config $V1/agent.yaml > $QA/v.out 2>&1 & VP=$!; sleep 5; head -1 $QA/s.out; head -1 $QA/v.out`
+    → `sard-agent <версия>: connecting to localhost:9090 as source` и `… as verifier`.
+16. `a GET /agents | body | jq -r ".items[] | select(.id==\"$XS\" or .id==\"$XV\") | \"\(.id) \(.role) \(.status)\""`
+    → `$XS source online`, `$XV verifier online`; `a GET /agents/$XV | body | jq -r .role` → `verifier`.
+17. `a GET /agents | body | jq -r '.items[] | select(.builtin) | .role'`
+    → `source` (встроенный агент sard-self).
+
+## Часть 3. Роль не берётся из сообщений агента
+
+18. CSR с расширением роли «verifier» по токену source:
+    ```bash
+    openssl ecparam -name prime256v1 -genkey -noout -out $QA/k
+    printf '[req]\ndistinguished_name=dn\nreq_extensions=ext\n[dn]\n[ext]\n%s=critical,ASN1:UTF8String:verifier\n' "$ROLE_OID" > $QA/csr.cnf
+    CSR=$(openssl req -new -key $QA/k -subj "/CN=verifier/OU=verifier" -config $QA/csr.cnf -outform DER | base64 -w0)
+    T=$(a POST /enrollment-tokens '{}' | body | jq -r .token)
+    $GRPC -d "{\"enrollment_token\":\"$T\",\"csr_der\":\"$CSR\",\"hostname\":\"qa-forge\"}" localhost:9090 sard.agent.v1.EnrollmentService/Enroll | tee $QA/f.json
+    jq -r .certificateChainPem $QA/f.json > $QA/f.pem; roleext $QA/f.pem
+    openssl x509 -in $QA/f.pem -noout -text | grep -cF "$ROLE_OID"
+    ```
+    → регистрация успешна; `..source`; `1` (ровно одно расширение, без `critical`);
+    `$PSQL "select role from agents where id = '$(jq -r .agentId $QA/f.json)'"` → `source`.
+19. В API нет операции изменения роли:
+    `curl -s http://localhost:8080/v3/api-docs | jq -r '.components.schemas | to_entries[] | select(.value.properties.role) | .key'`
+    → ровно четыре схемы: `AgentDetails`, `AgentSummary`, `CreateEnrollmentTokenRequest`,
+    `EnrollmentToken`; из них тело запроса — только `CreateEnrollmentTokenRequest`.
+
+## Часть 4. Проверка S3: сертификат без роли или с чужой ролью
+
+В каждом шаге: ответ `UNAUTHENTICATED`, ровно один `ErrorInfo` с указанным
+`reason` и `domain` = `sard.dev`.
+
+20. `forge $S1 "" $QA/nr.pem; reg $QA/nr.pem $S1/tls/agent.key $(printf 'a%.0s' $(seq 64))`
+    → `CERT_ROLE_MISSING`.
+21. `forge $S1 "$ROLE_OID=ASN1:UTF8String:marker-ROLE-7f" $QA/bad.pem; reg $QA/bad.pem $S1/tls/agent.key $(printf 'a%.0s' $(seq 64))`
+    → `CERT_ROLE_INVALID`; `$DC logs server | grep reason=CERT_ROLE_INVALID | tail -1`
+    → строка называет `$XS` и тенант по умолчанию; `$DC logs server | grep -c marker-ROLE-7f` → `0`.
+22. `forge $S1 "$ROLE_OID=DER:01:02:03" $QA/der.pem; reg $QA/der.pem $S1/tls/agent.key $(printf 'a%.0s' $(seq 64))`
+    → `CERT_ROLE_INVALID`.
+23. `forge $S1 "$ROLE_OID=ASN1:UTF8String:verifier" $QA/sv.pem; reg $QA/sv.pem $S1/tls/agent.key $(printf 'a%.0s' $(seq 64))`
+    → `CERT_IDENTITY_MISMATCH` (агент-источник с сертификатом роли verifier).
+24. `forge $V1 "$ROLE_OID=ASN1:UTF8String:source" $QA/vs.pem; reg $QA/vs.pem $V1/tls/agent.key $(printf 'a%.0s' $(seq 64))`
+    → `CERT_IDENTITY_MISMATCH`.
+25. После шагов 20–24: `$PSQL "select role from agents where id in ('$XS','$XV') order by role"`
+    → `source`, `verifier` — не изменились.
+
+## Часть 5. Агент с сертификатом без допустимой роли не стартует
+
+```bash
+kill $SP; wait $SP 2>/dev/null
+cp $S1/tls/agent.pem $QA/good.pem
+```
+
+26. `cp $QA/nr.pem $S1/tls/agent.pem; timeout 10 $AG --config $S1/agent.yaml; echo "exit=$?"`
+    → одна строка stderr `sard-agent: …`, содержит `CERT_ROLE_MISSING`, `tls.cert_file`,
+    путь `$S1/tls/agent.pem` и `sard-agent enroll --force`; нет `connecting to`; `exit=78`.
+27. `cp $QA/bad.pem $S1/tls/agent.pem; timeout 10 $AG --config $S1/agent.yaml 2>$QA/e; echo "exit=$?"; cat $QA/e`
+    → `CERT_ROLE_INVALID`; `exit=78`; `grep -c marker-ROLE-7f $QA/e` → `0`.
+28. `$AG status --config $S1/agent.yaml; echo "exit=$?"`
+    → одна строка stderr с `CERT_ROLE_INVALID` и `sard-agent enroll --force`; stdout пуст; `exit=1`.
+29. `cp $QA/good.pem $S1/tls/agent.pem; $AG --config $S1/agent.yaml > $QA/s.out 2>&1 & SP=$!; sleep 5; head -1 $QA/s.out`
+    → `… as source`; агент `online`.
+
+## Часть 6. Источник привязывается только к агенту-источнику
+
+```bash
+mkdir -p $QA/tree; echo hi > $QA/tree/a.txt
+SRC="{\"name\":\"etc\",\"agentId\":\"$XS\",\"plugin\":\"files\",\"repositoryName\":\"qa\",\"config\":{\"paths\":[\"$QA/tree\"]}}"
+```
+
+Для источника нужен репозиторий `qa` у обоих агентов: добавить в оба конфига
+раздел `repositories` (как в `docs/qa/rest-api.md`, часть 3, общий `password_file`
+с правами 0600), инициализировать репозиторий и перезапустить оба агента.
+
+30. `a POST /sources "${SRC/$XS/$XV}"`
+    → `HTTP 422`, `code` `agent_role_mismatch`, `errors[0].field` = `agentId`;
+    `$PSQL "select count(*) from sources"` не изменилось.
+31. `a POST /sources "{\"name\":\"x\",\"agentId\":\"$XV\",\"plugin\":\"postgres\",\"repositoryName\":\"offsite\",\"config\":{}}"`
+    → `HTTP 422`, `agent_role_mismatch`, поле `agentId` (роль проверяется раньше плагина и репозитория).
+32. `a POST /sources "$SRC" | tee $QA/s1 | tail -1; S=$(body < $QA/s1 | jq -r .id)`
+    → `HTTP 201`.
+33. `a PUT /sources/$S "${SRC/$XS/$XV}"`
+    → `HTTP 422`, `agent_role_mismatch`, поле `agentId`; `a GET /sources/$S | body | jq -r .agentId` → `$XS`.
+34. Обход API: `$PSQL "update sources set agent_id = '$XV' where id = '$S'"; a POST /sources/$S/runs`
+    → `HTTP 409`, `code` `agent_role_mismatch`; `a GET "/runs?sourceId=$S" | body | jq '.items|length'` → `0`;
+    `grep -c 'step accepted' $QA/v.out` → `0`.
+35. `$PSQL "update sources set agent_id = '$XS' where id = '$S'"; a POST /sources/$S/runs`
+    → `HTTP 201`; запуск доходит до `succeeded`; `grep -c 'step accepted' $QA/v.out` → `0`.
+
+## Часть 7. Идентификатор машины
+
+```bash
+TEN=00000000-0000-0000-0000-000000000001
+EXP=$(python3 -c "import hmac,hashlib,sys; print(hmac.new(b'sard-machine-id/v1'+sys.argv[1].encode(), sys.argv[2].encode(), hashlib.sha256).hexdigest())" $TEN "$(tr -d '[:space:]' < /etc/machine-id)")
+```
+
+36. `$PSQL "select machine_id from agents where id = '$XS'"; $PSQL "select machine_id from agents where id = '$XV'"; echo $EXP`
+    → три одинаковые строки из 64 строчных шестнадцатеричных символов
+    (два агента разных ролей одной машины — сигнал «один хост» для V4).
+37. `[ "$EXP" != "$(tr -d '[:space:]' < /etc/machine-id)" ] && echo differs; $PSQL "select count(*) from agents where machine_id like '%$(tr -d '[:space:]' < /etc/machine-id)%'"`
+    → `differs`; `0`.
+38. `kill $SP; wait $SP; $AG --config $S1/agent.yaml > $QA/s.out 2>&1 & SP=$!; sleep 5; $PSQL "select machine_id from agents where id = '$XS'"`
+    → по-прежнему `$EXP`.
+39. `a GET /agents/$XS | body | grep -c "$EXP"; a GET /agents | body | grep -c machineId; grep -c "$EXP" $QA/s.out; $DC logs server | grep -c "$EXP"`
+    → `0`, `0`, `0`, `0`.
+40. Пустой machine_id: `reg $QA/good.pem $S1/tls/agent.key ""`
+    → `INVALID_ARGUMENT`, `reason` `FIELD_INVALID`, metadata `field=machine_id`;
+    `$PSQL "select machine_id, hostname from agents where id = '$XS'"` не изменились.
+    То же с `MARKER-MID-0001` → `FIELD_INVALID`; `$DC logs server | grep -c MARKER-MID-0001` → `0`.
+41. Хост без machine-id — агент в контейнере:
+    ```bash
+    C=$QA/ctr; host $C; enroll_as $C '{}'; sed -i "s|$C|/h|g" $C/agent.yaml
+    # контейнер запускается от root, чтобы удалить machine-id образа, затем агент
+    # работает от uid проверяющего (права файлов $C проходят проверку A1)
+    scripts/fetch-restic.sh; RV=$(sed -n 's/^version=//p' agent/internal/restic/restic-version)
+    RB=$PWD/.bin/restic/$RV/linux_$(go env GOARCH)/restic   # restic рядом с агентом, ADR 0017
+    run_ctr() { docker run --rm --network host -v $AG:/sard-agent:ro -v $RB:/restic:ro -v $C:/h ubuntu:24.04 \
+      sh -c "rm -f /etc/machine-id /var/lib/dbus/machine-id; exec setpriv --reuid=$(id -u) --regid=$(id -g) --clear-groups timeout 8 /sard-agent --config /h/agent.yaml"; }
+    run_ctr; ls -l $C/state/machine-id; cat $C/state/machine-id; echo
+    ```
+    Каталог `$C` смонтирован в `/h`, поэтому пути `tls.*` и `state_dir` в конфиге
+    заменены на `/h/…`.
+    → `-rw-------` (0600); 64 строчных шестнадцатеричных символа без перевода строки;
+    `$PSQL "select machine_id from agents where id = '$(openssl x509 -in $C/tls/agent.pem -noout -subject | sed 's/.*CN *= *//')'"`
+    → 64 hex, отличается от `$EXP` и от содержимого `$C/state/machine-id`.
+42. `M1=$(cat $C/state/machine-id); run_ctr; [ "$(cat $C/state/machine-id)" = "$M1" ] && echo same`
+    → `same`; `machine_id` агента в базе не изменился.
+43. `printf not-hex > $C/state/machine-id; run_ctr; echo "exit=$?"`
+    → одна строка stderr с путём `/h/state/machine-id`; `exit=1`; файл по-прежнему `not-hex`.
+
+## Часть 8. Встроенный агент после повторной регистрации
+
+44. Отозвать sard-self с подтверждением (`docs/qa/self-agent.md`), дождаться новой
+    регистрации соседа → `a GET /agents | body | jq -r '.items[] | select(.builtin and .revokedAt == null) | .role'`
+    → `source`; `$DC logs self-agent | grep 'connecting to' | tail -1` → `… as source`.
+
+## Часть 9. Уборка
+
+```bash
+kill $SP $VP 2>/dev/null; rm -rf $QA; make down
+```
+
+## Не проверяется вручную (тесты сценариев)
+
+- Шаг не своей роли, присланный подставным сервером (`@transport`, «Подставной
+  сервер не может заставить верификатор сделать бэкап»), и все сценарии `@executor`.
+- StepDispatcher при шаге, вставленном в базу правкой (`@grpc`, «StepDispatcher
+  не отправляет шаг, который не допускает роль агента»).
+- Миграция базы предыдущей версии (`@migration`) и отказ `CERT_ROLE_MISSING`
+  агенту, зарегистрированному до V1.
+- Сквозной сценарий стенда `@e2e @phase3` — после реализации в фазе 3
+  запускается в `test/e2e`.
