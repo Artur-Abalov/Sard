@@ -106,6 +106,12 @@ message RegisterRequest {
   repeated string secret_names = 8;
   // Names of scripts allowlisted on this host for ACTION_RUN.
   repeated string script_names = 9;
+  // Stable identifier of the host: lowercase hex of
+  // HMAC-SHA256(key = "sard-machine-id/v1" || tenant_id, data = raw machine
+  // id), exactly 64 characters. Required; lets the server tell that two
+  // agents of different roles share one machine. The raw id never leaves
+  // the host.
+  string machine_id = 10;
 }
 
 // Plugin is a source plugin available on the agent.
@@ -252,6 +258,17 @@ message StepResult {
     VerifyOutput verify = 12;
     RunOutput run = 13;
   }
+
+  // Machine-readable reason for STEP_STATUS_REJECTED; unspecified otherwise.
+  RejectReason reject_reason = 14;
+}
+
+// RejectReason says why an agent refused to start a step.
+enum RejectReason {
+  REJECT_REASON_UNSPECIFIED = 0;
+  // The action is not allowed for the role in the agent's own certificate:
+  // a source runs BACKUP, RESTORE and RUN; a verifier runs only VERIFY.
+  REJECT_REASON_ROLE_MISMATCH = 1;
 }
 
 // StepStatus is the final state of a step.
