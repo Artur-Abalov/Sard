@@ -2,7 +2,7 @@
 // Copyright 2026 Artur Abalov
 
 import { fetchOnboarding } from '../onboarding/api'
-import { adminPending } from '../onboarding/state'
+import { adminPending, type Onboarding } from '../onboarding/state'
 import { resolveRedirectTarget } from './redirect'
 import { checkSession } from './session'
 
@@ -40,8 +40,32 @@ export async function setupPending(): Promise<boolean> {
   return (await adminStepPending()) === true
 }
 
-// Whether the wizard has nothing left to do for this visitor: the admin step is done.
-// A state that cannot be read leaves the wizard open: it shows the failure itself.
-export async function setupFinished(): Promise<boolean> {
-  return (await adminStepPending()) === false
+async function readOnboarding(): Promise<Onboarding | null> {
+  try {
+    return await fetchOnboarding()
+  } catch {
+    return null
+  }
+}
+
+async function signedIn(): Promise<boolean> {
+  try {
+    await checkSession()
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Where the wizard route sends a visit, or null to let it open (Рк2, Рк10). Before the admin step the
+ * wizard is the way in. After it a visit without a session goes to sign-in, and a signed-in one goes home
+ * once the onboarding is complete; while the server still restricts, the wizard shows the step it is at.
+ * A state that cannot be read leaves the wizard open: it shows the failure itself.
+ */
+export async function setupRedirect(): Promise<'/login' | '/' | null> {
+  const onboarding = await readOnboarding()
+  if (onboarding === null || adminPending(onboarding)) return null
+  if (!(await signedIn())) return '/login'
+  return onboarding.restriction === 'none' ? '/' : null
 }

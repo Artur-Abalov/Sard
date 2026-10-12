@@ -6,6 +6,7 @@ import { http } from '../http'
 import { logPage, pageOf } from '../paging'
 import { noSession, notFound, PROBLEM } from '../problems'
 import { state } from '../state'
+import { settleRuns } from './selfBackup'
 
 type Schemas = components['schemas']
 
@@ -48,6 +49,7 @@ function matches(
 export const runHandlers = [
   http.get('/api/v1/runs', ({ query, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
+    settleRuns()
     const filter = {
       sourceId: query.get('sourceId'),
       agentId: query.get('agentId'),
@@ -61,6 +63,7 @@ export const runHandlers = [
 
   http.get('/api/v1/runs/{runId}', ({ params, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
+    settleRuns()
     const run = state.runs.find((r) => r.id === params.runId)
     return run === undefined
       ? response(404).json(notFound, PROBLEM)

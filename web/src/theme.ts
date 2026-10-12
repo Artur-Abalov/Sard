@@ -118,6 +118,10 @@ export const reducedMotionCss = `@media (prefers-reduced-motion: reduce) { :root
   .map(([name, value]) => `${name}: ${value}`)
   .join('; ')} } }`
 
+// The recovery card prints without the shell of the console (F4b, Рк15): no header, no navigation, and nothing marked
+// data-no-print (banners, buttons). main.tsx puts this in a <style> beside the reduced-motion override.
+export const printCss = '@media print { header, nav, [data-no-print] { display: none !important } }'
+
 // The node of the logo mark is the accent of the scheme.
 export const logoNodeFill = 'var(--sard-accent)'
 

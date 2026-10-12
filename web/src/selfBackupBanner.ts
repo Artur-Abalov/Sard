@@ -8,11 +8,16 @@ type Warning = components['schemas']['SelfBackupWarningCode']
 
 // What the server already decided (F6), only dressed: the warnings come worst first, and only
 // a lasting setting (a local repository, a schedule switched off) is a warning rather than an error.
-const SETTINGS: Warning[] = ['local_storage', 'schedule_disabled']
+const SETTINGS: Warning[] = ['local_storage', 'schedule_disabled', 'keys_unconfirmed']
 
 export function bannerTone(warnings: Warning[]): keyof typeof tones | null {
   if (warnings.length === 0) return null
   return warnings.every((warning) => SETTINGS.includes(warning)) ? 'warning' : 'error'
+}
+
+/** Where the banner sends the owner: the self-backup section of the settings, for the key copy to confirm (Рк17). */
+export function bannerLink(warnings: Warning[]): '/settings' | null {
+  return warnings.includes('keys_unconfirmed') ? '/settings' : null
 }
 
 // How often the console asks again: the server checks freshness once a minute.

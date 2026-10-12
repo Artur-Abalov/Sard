@@ -910,7 +910,11 @@ describe('self-backup (F6)', () => {
     expect(local.error).toMatchObject({ code: 'local_storage_unconfirmed' })
     const confirmed = must(await bind('disk', true))
     expect(confirmed.repository?.local).toBe(true)
-    expect(confirmed).toMatchObject({ status: 'ok', warnings: ['local_storage'] })
+    // The onboarding is over in the default mock and nobody confirmed the key copy of this binding (F4b).
+    expect(confirmed).toMatchObject({
+      status: 'ok',
+      warnings: ['local_storage', 'keys_unconfirmed'],
+    })
   })
 
   test('a state before binding is not configured and warns about nothing', async () => {

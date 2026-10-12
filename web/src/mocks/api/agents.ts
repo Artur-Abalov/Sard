@@ -6,6 +6,7 @@ import { http } from '../http'
 import { pageOf } from '../paging'
 import { noSession, notFound, problem, PROBLEM } from '../problems'
 import { SELF_AGENT_CONFIRMATION } from '../../selfAgent'
+import { onboardingIncomplete, refusedUntilComplete } from '../restriction'
 import { state } from '../state'
 
 type Schemas = components['schemas']
@@ -55,6 +56,11 @@ function loseActiveSteps(agentId: string) {
   }
 }
 
+/** The live built-in agent: the one revocation the full restriction lets through (OQ-209). */
+function isLiveBuiltin(agent: Schemas['AgentDetails'] | undefined): boolean {
+  return agent?.builtin === true && agent.revokedAt === null
+}
+
 export const agentHandlers = [
   http.get('/api/v1/agents', ({ query, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
@@ -72,6 +78,9 @@ export const agentHandlers = [
   http.post('/api/v1/agents/{agentId}/revoke', ({ params, query, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
     const agent = state.agents.find((a) => a.id === params.agentId)
+    if (refusedUntilComplete(false, isLiveBuiltin(agent))) {
+      return response(409).json(onboardingIncomplete, PROBLEM)
+    }
     if (agent === undefined) return response(404).json(notFound, PROBLEM)
     // A live built-in agent is revoked only with the exact confirmation; nothing changes without it.
     if (

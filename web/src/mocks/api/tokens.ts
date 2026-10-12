@@ -5,6 +5,7 @@ import type { components } from '../../api/schema'
 import { http } from '../http'
 import { pageOf } from '../paging'
 import { noSession, notFound, PROBLEM, problem } from '../problems'
+import { onboardingIncomplete, refusedUntilComplete } from '../restriction'
 import { state } from '../state'
 import { validateLabel, validateTtl } from '../validation'
 
@@ -41,6 +42,7 @@ export const tokenHandlers = [
   }),
   http.post('/api/v1/enrollment-tokens', async ({ request, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
+    if (refusedUntilComplete(true)) return response(409).json(onboardingIncomplete, PROBLEM)
     const { ttlSeconds, label } = await request.json()
     const invalid = validateTtl(ttlSeconds) ?? validateLabel(label)
     if (invalid !== null) return response(422).json(invalid, PROBLEM)
@@ -86,6 +88,7 @@ export const tokenHandlers = [
 
   http.post('/api/v1/enrollment-tokens/{tokenId}/revoke', ({ params, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
+    if (refusedUntilComplete()) return response(409).json(onboardingIncomplete, PROBLEM)
     const token = state.tokens.find((t) => t.id === params.tokenId)
     if (token === undefined) return response(404).json(notFound, PROBLEM)
     if (token.status === 'used' || token.status === 'expired')
