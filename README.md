@@ -1,19 +1,65 @@
-# Sard
+# Sard · [Русская версия](README.ru.md)
 
-Sard is an open-core backup orchestrator. A single console manages backups of
-heterogeneous infrastructure (PostgreSQL, MySQL, files, MikroTik/Eltex
-configurations, later 1C and others) and **proves that you can restore from
-them**. The headline metric on the dashboard is "last verified restore N hours
-ago".
+Sard is a backup console for the mixed infrastructure of small and mid-sized
+businesses, built for the integrators and MSPs who look after it; its aim is
+backups you have proven you can restore.
 
-Sard does not invent its own storage format: storage, deduplication and
-encryption are handled by [restic](https://restic.net). Sard owns sources,
-workflows, schedules, restore verification, reports and multi-tenancy.
+> Status: **early development, pre-release.** Restore from the console and
+> automatic restore verification are not there yet; see
+> [Not yet](#not-yet). Not production-ready.
 
-> Status: **stage 1, under active development**. Agent enrollment over mTLS,
-> the files plugin, restic repository initialisation, run dispatch, the stage 1
-> REST API, admin login and Telegram notifications are in place; the product is
-> not production-ready yet.
+## What it does today
+
+- Backs up files and directories ([docs/plugins/files.md](docs/plugins/files.md)).
+- Backs up PostgreSQL: `pg_dump` of a database in custom format plus the
+  cluster's roles and tablespaces
+  ([docs/plugins/postgresql.md](docs/plugins/postgresql.md)).
+- Stores backups with [restic](https://restic.net) in S3-compatible storage,
+  over SFTP or in a local directory; restic does deduplication and encryption
+  ([docs/operator/05a-storage.md](docs/operator/05a-storage.md)).
+- Runs backups on a cron schedule in a chosen time zone, with one catch-up
+  run after downtime, or on demand from the console
+  ([docs/operations/scheduler.md](docs/operations/scheduler.md)).
+- Reports runs and missed schedules to Telegram
+  ([docs/operations/notifications.md](docs/operations/notifications.md)).
+- Installs agents from the server: deb, rpm and tar.gz for Linux amd64 and
+  arm64, signed releases ([docs/operator/05-agents.md](docs/operator/05-agents.md)).
+
+### Not yet
+
+Restore from the console (today restore is a manual `restic restore`, see
+[docs/demo.md](docs/demo.md)), restore verification, self-backup of the
+server, other sources (MySQL, network devices, 1C), more than one tenant,
+`sardctl` commands beyond `version`.
+
+## How it works
+
+```text
+             browser / sardctl
+                    │ REST /api/v1
+                    ▼
+           ┌─────────────────┐       PostgreSQL
+           │   sard-server   │──────── (Flyway)
+           │ Kotlin, Spring  │
+           └─────────────────┘
+                    ▲ gRPC + mTLS, connection opened by the agent
+                    │
+           ┌─────────────────┐   restic    ┌──────────────────────┐
+           │   sard-agent    │────────────▶│  S3 / SFTP / local   │
+           │  Go, on the host│             └──────────────────────┘
+           └─────────────────┘
+```
+
+An agent runs on each host and dials out to the server over gRPC with mutual
+TLS, so hosts open no inbound ports. Backup data goes from the agent straight
+to storage, never through the server. Repositories, storage keys and scripts
+are defined on the agent host and referenced by name only: the server holds no
+storage keys ([ADR 0008](docs/adr/0008-crypto-provider.md)).
+
+- Source plugins implement a single interface: prepare → dump → stream → verify
+  ([ADR 0027](docs/adr/0027-plugin-sdk.md)).
+- Enterprise modules plug in as Spring Boot starters via `server/.../extension`;
+  the open core runs without them.
 
 ## Quickstart: a server in 10 minutes
 
@@ -55,39 +101,68 @@ docker compose up -d --wait --pull never
 ```
 
 Next to the server runs `self-agent`, the agent `sard-self` that enrolls by
-itself and will back up this installation: it reads the database through a
-read-only role and the CA directory read-only
+itself; it does not back up the installation yet. It reads the database
+through a read-only role and the CA directory read-only
 ([docs/operations/self-agent.md](docs/operations/self-agent.md), in Russian).
+Until then, back up the server by hand:
+[docs/operator/06-data-and-backup.md](docs/operator/06-data-and-backup.md).
 The CA key lives in the `sard_sard-pki` volume and the database in
 `sard_postgres-data`; both survive `docker compose down` and are removed by
 `docker compose down -v` only.
 
-## Architecture
+### Verifying releases
 
-```text
-             browser / sardctl
-                    │ REST /api/v1
-                    ▼
-           ┌─────────────────┐       PostgreSQL
-           │   sard-server   │──────── (Flyway)
-           │ Kotlin, Spring  │
-           └─────────────────┘
-                    ▲ gRPC + mTLS, connection opened by the agent
-                    │
-           ┌─────────────────┐   restic    ┌──────────────────────┐
-           │   sard-agent    │────────────▶│  S3 / SFTP / local   │
-           │  Go, on the host│             └──────────────────────┘
-           └─────────────────┘
+Agent releases (tar.gz, deb, rpm for linux/amd64 and arm64) are signed with
+the Sard release key, [minisign](https://jedisct1.github.io/minisign/)
+(Ed25519), over `SHA256SUMS`. Take the key from this repository, not from the
+server you downloaded the package from: `deploy/release/sard-release.pub`.
+
+| | |
+|---|---|
+| Key ID | `DF5D5B6DB257DBFA` |
+| Public key | `RWT621eybVtd38CL7B33xZrcc8ArYiPt3GlKXyJuk9ZQzDnoUV+kLi2d` |
+
+```bash
+minisign -Vm SHA256SUMS -p sard-release.pub && sha256sum -c --ignore-missing SHA256SUMS
 ```
 
-- The agent dials out to the server; hosts never open inbound ports.
-- Backup data flows from the agent straight to storage, bypassing the server.
-- The server is a control plane, not a key holder: repositories, secrets and
-  scripts are defined on the agent host and referenced by name only
-  ([ADR 0008](docs/adr/0008-crypto-provider.md)).
-- Source plugins implement a single interface: prepare → dump → stream → verify.
-- Enterprise modules plug in as Spring Boot starters via `server/.../extension`;
-  the open core runs without them.
+Details and the release process: [docs/release.md](docs/release.md).
+
+## Documentation
+
+Most documentation is in Russian.
+
+- [docs/demo.md](docs/demo.md): stage 1 demo, step by step: server, agent, backup, Telegram, restore
+- [docs/operator/](docs/operator/README.md): running the server: requirements, install, configuration, TLS, backup, upgrade, troubleshooting
+- [docs/plugins/](docs/plugins/): source plugins and their settings
+- [docs/adr/](docs/adr/README.md): architecture decision records
+- [docs/specs/](docs/specs/): Gherkin specifications per module
+- [docs/sessions/](docs/sessions/): work session log
+- [docs/dependencies.md](docs/dependencies.md): third-party dependencies and their licenses
+- [CLAUDE.md](CLAUDE.md): project constitution and definition of done
+
+## License
+
+Sard uses a hybrid license. The server, agent, CLI and web UI are
+[AGPL-3.0-only](LICENSE): anyone who runs a modified version as a service must
+publish their changes. The gRPC contracts (`proto/`, including the generated
+code) and the plugin SDK (`agent/plugins/sdk`) are
+[Apache-2.0](proto/LICENSE), so third-party plugins, including proprietary
+ones, can be written without AGPL obligations. External contributions are
+accepted after signing the [CLA](docs/legal/CLA.md); see
+[ADR 0004](docs/adr/0004-hybrid-license-and-cla.md).
+
+## Reporting a vulnerability
+
+Do not open a public issue. Report privately as described in
+[SECURITY.md](SECURITY.md).
+
+## Contributing
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md): the CLA, the quality gate and
+the language of commits and pull requests.
+
+### Repository layout
 
 | Directory | What it is |
 |---|---|
@@ -102,7 +177,7 @@ The CA key lives in the `sard_sard-pki` volume and the database in
 | `test/e2e/` | end-to-end tests against built images |
 | `docs/` | ADRs, session log, dependencies, specifications, CLA |
 
-## Requirements
+### Requirements
 
 JDK 25, Go 1.27, Node.js 24, Docker (for the server's Testcontainers tests and
 `make up`), GNU make. You don't need to install buf, golangci-lint or the other
@@ -113,15 +188,13 @@ Kotlin test class names contain Cyrillic, so Gradle needs a UTF-8 locale.
 `./gradlew` or `scripts/gate.sh` directly, `export LC_ALL=C.UTF-8` first (see
 [CONTRIBUTING.md](CONTRIBUTING.md)).
 
-### Claude Code on the web
-
 `.claude/hooks/session-start.sh` runs at the start of every Claude Code on the
 web session. It installs JDK 25 and Node.js 24, builds the pinned Go tools,
 downloads Go and npm dependencies, and warms the Gradle cache, so tests,
 linters and the quality gate work straight away. Outside the remote
 environment it does nothing.
 
-## Build and check
+### Build and check
 
 ```bash
 make proto    # generate Go code from proto/ (the result is committed)
@@ -136,7 +209,7 @@ make e2e      # build the images, then run the end-to-end tests (needs Docker)
 Thresholds are defined once, in `scripts/gate.sh`. A pull request with a red
 gate is not accepted.
 
-## Running
+### Running from the checkout
 
 ```bash
 make up                                   # PostgreSQL + sard-server built from this checkout (deploy/.env is created from .env.example)
@@ -167,43 +240,3 @@ Agent and CLI:
 ./agent/bin/sard-agent --config deploy/agent/agent.example.yaml
 ./cli/bin/sardctl version
 ```
-
-## Verifying releases
-
-Agent releases (tar.gz, deb, rpm for linux/amd64 and arm64) are signed with
-the Sard release key, [minisign](https://jedisct1.github.io/minisign/)
-(Ed25519), over `SHA256SUMS`. Take the key from this repository, not from the
-server you downloaded the package from: `deploy/release/sard-release.pub`.
-
-| | |
-|---|---|
-| Key ID | `DF5D5B6DB257DBFA` |
-| Public key | `RWT621eybVtd38CL7B33xZrcc8ArYiPt3GlKXyJuk9ZQzDnoUV+kLi2d` |
-
-```bash
-minisign -Vm SHA256SUMS -p sard-release.pub && sha256sum -c --ignore-missing SHA256SUMS
-```
-
-Details and the release process: `docs/release.md`.
-
-## Documentation
-
-- [docs/demo.md](docs/demo.md): stage 1 demo, step by step: server, agent, backup, Telegram, restore
-- [docs/operator/](docs/operator/README.md): running the server: requirements, install, configuration, TLS, backup, upgrade, troubleshooting
-- [docs/adr/](docs/adr/README.md): architecture decision records
-- [docs/specs/](docs/specs/): Gherkin specifications per module
-- [docs/sessions/](docs/sessions/): work session log
-- [docs/dependencies.md](docs/dependencies.md): third-party dependencies and their licenses
-- [CLAUDE.md](CLAUDE.md): project constitution and definition of done
-
-## License
-
-Sard uses a hybrid license. The server, agent, CLI and web UI are
-[AGPL-3.0-only](LICENSE): anyone who runs a modified version as a service must
-publish their changes. The gRPC contracts (`proto/`, including the generated
-code) and the plugin SDK (`agent/plugins/sdk`) are
-[Apache-2.0](proto/LICENSE), so third-party plugins, including proprietary
-ones, can be written without AGPL obligations. External contributions are
-accepted after signing the [CLA](docs/legal/CLA.md); see
-[CONTRIBUTING.md](CONTRIBUTING.md) and
-[ADR 0004](docs/adr/0004-hybrid-license-and-cla.md).
