@@ -624,3 +624,16 @@ Kotlin-версия в e2e `SetupWizard.kt` — тот же формат стр�
 - Предыдущий полный прогон мутаций (на 9940de5, до b6fb20f): 83 выживших из 27112 тестов (`CaDirectoryLedgerTest` 34, `OnboardingServiceTest` 21, `SessionApiImplTest` 19, `SetupCodeAnnouncerTest` 5, `CaDirectoryImportUnitTest` 2, `CaDirectoryTest` 2).
 - На b6fb20f мутации, сужённые на 18 тестовых классов F4a (`-Pmutflow.enabled=true :server:test --rerun --tests ...`): 16042 тестов, 0 упавших, выживших 0. Дальше полный `gate.sh server`.
 - Полный `./scripts/gate.sh server`: `gate: PASSED (server, full)`, exit 0 (выживших 0). `./scripts/gate.sh web fast`: `Tests  537 passed (537)`, `gate: PASSED (web, fast)`. Исключений и `mutflow:falsePositive` нет, продакшн-код не менялся.
+
+## CI: мутационный гейт и фоновые потоки
+
+- Симптом: на 51f9037 мутационный шаг сервера падал «MUTANT SURVIVED» в коде, не связанном с тестом
+  (`StepDispatcher`, `AgentConnections`, `AgentStreamSweeper`, `SessionRevalidation` под
+  `EnrollmentStatusTest`/`CaImportSourceTest`); локально набор был другим, в одном прогоне — пустым.
+- Причина: сессия mutflow 1.5.0 — глобальное статическое поле (`MutationRegistry.currentSession`),
+  фоновые потоки кэшированных контекстов Spring попадают в сессию чужого теста.
+- Решение владельца «порядок + изоляция» (`docs/adr/00XX-draft-mutflow-isolation.md`): классы со
+  Spring-контекстом идут последними (`SpringContextsLastOrderer`); 8 Spring-тестов с `@MutFlowTest`
+  вынесены в задачу `isolatedTest` (JVM на класс, тег `mutflow-isolated`), защита —
+  `MutationIsolationTest`. Ограничение кэша контекстов и убийство выживших по одному отвергнуты.
+- Продакшн-код, пороги и тесты не менялись.

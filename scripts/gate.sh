@@ -131,8 +131,10 @@ gate_server() {
   [ "$mode" = fast ] && return 0
   # mutflow: a second, mutated compilation; any surviving mutant fails the
   # build (stricter than MUTATION_MIN). See docs/adr/0006-mutation-testing.md.
+  # Two tasks: mutflow's session is one static per JVM, so the Spring mutation tests
+  # (tag mutflow-isolated) run in isolatedTest, one JVM per class (ADR 00XX, mutflow isolation).
   say server "mutation testing (mutflow, no survivors)"
-  (cd "$ROOT" && ./gradlew --no-daemon -q -Pmutflow.enabled=true :server:test --rerun) || die "server: mutation testing"
+  (cd "$ROOT" && ./gradlew --no-daemon -q --continue -Pmutflow.enabled=true :server:test --rerun :server:isolatedTest --rerun) || die "server: mutation testing"
 }
 
 gate_web() {

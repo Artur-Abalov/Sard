@@ -30,6 +30,7 @@ import dev.sard.server.scheduler.Schedules
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -67,6 +68,7 @@ private val TTL: Duration = Duration.ofHours(24)
  * F3b: the alert about fires skipped in a row and the messages about scheduled runs, through the real queue. The
  * queue and the reading of what a delivery tells about are mutated; the formatters have their own tests.
  */
+@Tag("mutflow-isolated")
 @MutFlowTest(includeTargets = [Deliveries::class, Notices::class, NotificationService::class])
 @ExtendWith(OutputCaptureExtension::class)
 @SpringBootTest(

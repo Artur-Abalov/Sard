@@ -143,7 +143,14 @@ val buildTestAgent by tasks.registering(Exec::class) {
     )
 }
 
-tasks.test {
+// mutflow keeps its session in one static field per JVM, so a mutation test that starts a Spring
+// context must not share a JVM with any other context's background threads (ADR 00XX, mutflow
+// isolation). Those classes carry @Tag("mutflow-isolated"), MutationIsolationTest fails if one lacks it, and they run in isolatedTest, one JVM per class.
+val isolatedTag = "mutflow-isolated"
+
+// Both test tasks are configured alike: the properties, environment, heap and, through the mutflow
+// plugin (which configures every Test task), the mutated classes first on the classpath.
+tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     if (prebuiltTestAgent == null) dependsOn(buildTestAgent)
     systemProperty("sard.test.agent-binary", prebuiltTestAgent ?: testAgentBinary.get().asFile.path)
@@ -180,12 +187,40 @@ tasks.test {
     finalizedBy(tasks.jacocoTestReport)
 }
 
+tasks.test {
+    useJUnitPlatform { excludeTags(isolatedTag) }
+}
+
+val isolatedTest by tasks.registering(Test::class) {
+    description = "Runs the mutation tests that start a Spring context, one JVM per class."
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    testClassesDirs =
+        sourceSets.test
+            .get()
+            .output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform { includeTags(isolatedTag) }
+    forkEvery = 1
+    // forkEvery = 1 forks once per scanned class, and the tag filter works inside the fork; pick the
+    // class files that name the tag so only the isolated classes (and no other) cost a JVM.
+    include {
+        it.isDirectory || (it.name.endsWith(".class") && String(it.file.readBytes(), Charsets.ISO_8859_1).contains(isolatedTag))
+    }
+    mustRunAfter(tasks.test)
+}
+
 jacoco {
     toolVersion = "0.8.15"
 }
 
+val jacocoData = layout.buildDirectory.files("jacoco/test.exec", "jacoco/isolatedTest.exec")
+
 tasks.jacocoTestReport {
-    dependsOn(tasks.test)
+    // One report over both tasks' data, by file: Task-typed executionData would make each task a
+    // dependency, and a run of one of them (a --tests filter) would pull in the other. A task that did
+    // not run has no file; the report skips missing ones.
+    mustRunAfter(tasks.test, isolatedTest)
+    executionData(jacocoData)
     reports {
         xml.required = true
         html.required = false
@@ -194,6 +229,7 @@ tasks.jacocoTestReport {
 
 tasks.jacocoTestCoverageVerification {
     dependsOn(tasks.jacocoTestReport)
+    executionData(jacocoData)
     violationRules {
         rule {
             limit {
@@ -205,7 +241,7 @@ tasks.jacocoTestCoverageVerification {
 }
 
 tasks.check {
-    dependsOn(tasks.jacocoTestCoverageVerification)
+    dependsOn(tasks.jacocoTestCoverageVerification, isolatedTest)
 }
 
 // detekt runs on its own embedded compiler (built with Kotlin 2.4.10); keep the

@@ -16,6 +16,7 @@ import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.resource
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
@@ -64,6 +65,7 @@ class StatementLoggingPostgres {
  * store and the real role. Rules "Пароль роли sard_self ...", "Проверка ... " and "Регистрация по встроенному
  * токену ..." of docs/specs/server/self-agent.feature.
  */
+@Tag("mutflow-isolated")
 @MutFlowTest
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,

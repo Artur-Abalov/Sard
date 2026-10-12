@@ -9,6 +9,7 @@ import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.resource
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
@@ -34,6 +35,7 @@ private val MARGIN: Duration = Duration.ofMinutes(10)
  * "Регистрация по встроенному токену подчиняется обычным правилам токенов" and
  * "Проверка выпускает встроенный токен..." (the token side) of docs/specs/server/self-agent.feature.
  */
+@Tag("mutflow-isolated")
 @MutFlowTest
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
