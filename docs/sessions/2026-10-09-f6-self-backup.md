@@ -209,3 +209,88 @@
 **Окружение.** Docker в контейнере сессии запускается вручную. Docker Hub
 отвечает 429, образы берутся через `mirror.gcr.io`. Maven Central
 периодически отвечает 429, гейт перезапускается с паузой.
+
+## Фаза 3 — состояние, предупреждения, образ, e2e, документация (2026-10-12)
+
+Ответы владельца на фазу 2:
+- гонку mutflow пока не чинить;
+- «давно не было успеха» сделать нормальным решением, а не частным случаем
+  самобэкапа: свежесть любого источника с расписанием.
+
+**Свежесть источников** (ADR `00XX-draft-source-freshness`).
+- `Freshness`: источник просрочен через 1,5 интервала cron после последнего
+  успеха или после изменения расписания, если оно позже. Интервал — между
+  первыми двумя срабатываниями после этого момента.
+- `overdue_episodes` (миграция `V202610121200`): не больше одного открытого
+  эпизода на источник.
+- `FreshnessCheck` раз в `sard.freshness.interval` (60 с) открывает эпизод,
+  закрывает его успехом и молча закрывает, если расписание выключено или
+  источник удалён. В ADR 0013 это вызов `system` № 8, `ArchitectureTest`
+  обновлён.
+- Очередь уведомлений про предметы: `notification_deliveries.subject` (`run`,
+  `overdue`, `overdue_over`), `run_id` nullable, `episode_id`.
+  `OverdueDeliveries`, `Notices`, `OverdueFormatter`. Закрытие молчит, если
+  закрывший запуск сообщает о себе сам (ручной или «восстановлен»).
+
+**Состояние самобэкапа.**
+- `status` и `warnings`: `agent_replaced`, `overdue`, `failing`,
+  `schedule_disabled`, `local_storage`. Плюс `overdueSince`, а у каждого
+  источника последний успех, последняя ошибка и последний запуск.
+- REST, OpenAPI и моки обновлены.
+- Баннер в `Layout` читает состояние раз в минуту. Тон выбирает чистая функция
+  `bannerTone` с тестом. Проверено скриншотом на моках: метка «системный» и
+  баннер о локальном хранилище.
+
+**Образ.**
+- `deploy/agent/Dockerfile` принимает `BASE_IMAGE`; `postgres:18` даёт
+  `sard-agent:<версия>-pg18`.
+- compose (`self-agent`), `docker-compose.build.yml`, release.yml (сборка и
+  проверка `pg_dump` 18) и офлайн-архив берут `-pg18`.
+- **Не собран здесь:** прокси сессии отвечает 403 на `deb.debian.org` и 405
+  на `apt.postgresql.org`, а apt нужен для openssh-client. Для e2e собран тот
+  же Dockerfile без шага apt (без ssh; локальному репозиторию он не нужен).
+  Настоящий вариант соберёт CI (полагаю).
+
+**Вопрос 5 (`repo add` в соседе) — проверено e2e.**
+- `docker compose exec -u 0` не работает: у соседа `cap_drop: ALL`, root
+  получает `permission denied` на `/var/lib/sard-self` (0700, 10001).
+- Работает разовый контейнер `docker compose run --rm --no-deps -u 0` с
+  `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETUID`, `SETGID`. Без двух последних
+  restic не запускается: `fork/exec … operation not permitted`.
+- Затем `restart self-agent`. Права работающего соседа не расширены. Команда
+  описана в `docs/operator/06` и в ADR — это готовая команда для мастера F4b.
+
+**e2e** (`SelfBackupTest`, стенд `SardEnvironment(selfAgent = true)` +
+`SelfAgent` как в compose: read-only, без capabilities, CA и канал `:ro`,
+каталог установки `:ro`). Пять тестов, все прошли:
+1. `repo add`, локальный репозиторий без подтверждения → 422, с
+   подтверждением → `local_storage`. «Запустить сейчас» → оба succeeded,
+   `status=ok`, `lastSuccessAt`.
+2. Теги `sard.run`, `sard.step`, `sard.source`; у базы
+   `postgresql.part=database`.
+3. `/sard.dump` из снимка → `pg_restore --no-owner` в чистый `postgres:18`:
+   число агентов как в живой базе, таблицы `sources`, `runs`, `self_backups`
+   на месте.
+4. `ca.key` и `ca.crt` побайтово равны серверным, `.env` возвращается как был,
+   `docker-compose.yml` в снимке, ручного `*.dump` нет.
+5. `sard_self NOLOGIN` → запуск базы failed, ключей succeeded,
+   `status=failing`. После `LOGIN` и нового запуска → `ok`.
+
+Сбой базы в e2e смоделирован ролью без LOGIN, а не остановкой PostgreSQL: без
+базы стоит и сервер.
+
+Проверка 4 на фейковых часах — в серверных тестах:
+- `SelfBackupHealthIntegrationTest`: часы на 3 дня вперёд, `freshness.tick()`
+  → `overdue` и `overdueSince`;
+- `FreshnessCheckIntegrationTest`, `OverdueNotificationsIntegrationTest`.
+
+Уведомления в e2e не проверялись: на стенде нет Telegram.
+
+**Документация.**
+- `docs/operator/06`: что входит, пути и теги в снимке, как включить, пароль
+  вне ВМ, предупреждения, CA и база в одном репозитории, `CERT_UNKNOWN` после
+  восстановления (для F7).
+- `07-upgrade`: `sed -i` теряет группу `.env`, её нужно вернуть.
+- `operations/pki.md`, `operations/self-agent.md` — правки.
+- ADR самобэкапа обновлён, ADR свежести — новый. Номера при слиянии
+  предлагаются такие: агент-сосед 0054, самобэкап 0055, свежесть 0056.

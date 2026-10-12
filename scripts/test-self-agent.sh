@@ -20,6 +20,8 @@
 #
 # Usage: SARD_IMAGE=sard-server SARD_AGENT_IMAGE=sard-agent SARD_VERSION=<tag> \
 #          [UPGRADE_FROM=sard-server:rc1] scripts/test-self-agent.sh <workdir>
+# The compose file runs the agent's -pg18 variant: $SARD_AGENT_IMAGE:<tag>-pg18 must exist
+# (make e2e-agent-images builds it as sard-agent:e2e-pg18).
 # The stack uses the fixed project name "sard": it removes that project's volumes. A pass
 # takes the stack down; a failure leaves it up for a look (compose.log in <workdir>).
 set -euo pipefail
