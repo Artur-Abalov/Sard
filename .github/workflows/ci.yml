@@ -172,6 +172,23 @@ jobs:
           } >>"$GITHUB_ENV"
       # Testcontainers uses the runner's Docker.
       - run: ./scripts/gate.sh server
+      # gate.sh runs Gradle quietly; name the failed tests and their root causes in the log.
+      - name: Failed server tests
+        if: failure()
+        run: |
+          python3 - <<'EOF'
+          import glob, xml.etree.ElementTree as ET
+          for path in sorted(glob.glob("server/build/test-results/test/*.xml")):
+              for case in ET.parse(path).getroot().iter("testcase"):
+                  for problem in case:
+                      if problem.tag not in ("failure", "error"):
+                          continue
+                      causes = [l.strip() for l in (problem.text or "").splitlines() if l.strip().startswith("Caused by")]
+                      print(f"{case.get('classname')} :: {case.get('name')}")
+                      print(f"  {(problem.get('message') or '').splitlines()[0][:300] if problem.get('message') else ''}")
+                      if causes:
+                          print(f"  {causes[-1][:300]}")
+          EOF
       - name: OpenAPI document used by the web client is up to date
         run: |
           cp server/build/openapi/openapi.json web/src/api/openapi.json
