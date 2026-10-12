@@ -37,9 +37,20 @@ private val RACE_KEYS = setOf("sources_tenant_id_system_role_key", "self_backups
 /** The role of a source read through [SYSTEM_SOURCES]: never null there. */
 private fun roleOf(source: SourceRecord): SystemRole = SystemRole.of(checkNotNull(source.systemRole))
 
-private fun systemSourceOf(source: SourceRecord): SystemSource {
+private fun systemSourceOf(
+    source: SourceRecord,
+    state: SourceState,
+): SystemSource {
     val role = roleOf(source)
-    return SystemSource(role, source.id, source.agentId, source.repositoryName)
+    return SystemSource(
+        role,
+        source.id,
+        source.agentId,
+        source.repositoryName,
+        state.lastSuccessAt,
+        state.lastFailureAt,
+        state.lastRun,
+    )
 }
 
 /** Refuses a repository restic has not initialised yet, and a local one without the confirmation (D10). */
@@ -63,6 +74,9 @@ data class SystemSource(
     val sourceId: UUID,
     val agentId: UUID,
     val repositoryName: String,
+    val lastSuccessAt: Instant? = null,
+    val lastFailureAt: Instant? = null,
+    val lastRun: LastRun? = null,
 )
 
 /** The self-backup of a tenant; [agentId] is its live built-in agent, whether bound or not. */
@@ -72,6 +86,11 @@ data class SelfBackupView(
     val repository: RepositoryState?,
     val boundAt: Instant?,
     val sources: List<SystemSource>,
+    val health: SelfBackupHealth = SelfBackupHealth.NOT_CONFIGURED,
+    /** Worst first; empty when nothing is to be warned about. */
+    val warnings: List<SelfBackupWarning> = emptyList(),
+    /** The earliest deadline of the system sources' open overdue episodes. */
+    val overdueSince: Instant? = null,
 )
 
 /** A run of one system source asked for by "back up now"; [started] is false for a run already active (D6). */
@@ -233,7 +252,18 @@ class SelfBackups internal constructor(
             return SelfBackupView(false, agentId, null, null, emptyList())
         }
         val repository = repositoryState(session, sources.first())
-        return SelfBackupView(true, agentId, repository, record.boundAt, sources.map(::systemSourceOf))
+        val states = sources.map { SourceStates.of(session, it) }
+        val warnings = HealthRules.warnings(states, agentId, repository.local)
+        return SelfBackupView(
+            configured = true,
+            agentId = agentId,
+            repository = repository,
+            boundAt = record.boundAt,
+            sources = sources.zip(states, ::systemSourceOf),
+            health = HealthRules.health(warnings),
+            warnings = warnings,
+            overdueSince = HealthRules.overdueSince(states),
+        )
     }
 
     /** The repository of the system sources; the name alone once the agent's Register no longer lists it. */

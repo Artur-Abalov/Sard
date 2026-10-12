@@ -10,6 +10,7 @@ import dev.sard.server.runs.UnknownRepository
 import dev.sard.server.selfbackup.SelfBackupRun
 import dev.sard.server.selfbackup.SelfBackupView
 import dev.sard.server.selfbackup.SelfBackups
+import dev.sard.server.selfbackup.SystemSource
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
@@ -50,12 +51,22 @@ data class SelfBackupRepository(
     val local: Boolean,
 )
 
+@Schema(description = "A system source's last finished run")
+data class SelfBackupLastRun(
+    val id: UUID,
+    val status: RunStatus,
+    val finishedAt: Instant,
+)
+
 @Schema(description = "One of the self-backup's two system sources")
 data class SelfBackupSource(
     val role: SystemSourceRole,
     val sourceId: UUID,
     val agentId: UUID,
     val repositoryName: String,
+    val lastSuccessAt: Instant?,
+    val lastFailureAt: Instant?,
+    val lastRun: SelfBackupLastRun?,
 )
 
 @Schema(description = "The self-backup of the installation: the database, the CA and the configuration")
@@ -70,6 +81,16 @@ data class SelfBackup(
     val boundAt: Instant?,
     @field:Schema(description = "Database first; empty until configured")
     val sources: List<SelfBackupSource>,
+    @field:Schema(description = "The worst of the warnings about the backup itself; local storage alone is ok")
+    val status: SelfBackupStatus,
+    @field:Schema(
+        description =
+            "What the console shows on every page, worst first: the sources are on a replaced agent, a source " +
+                "has gone too long without a success, its last run failed, its schedule is off, the storage is local",
+    )
+    val warnings: List<SelfBackupWarningCode>,
+    @field:Schema(description = "When a system source went overdue: the earliest deadline it missed; null if none")
+    val overdueSince: Instant?,
 )
 
 @Schema(description = "A run of one system source")
@@ -172,8 +193,20 @@ class SelfBackupApiImpl(
             view.agentId,
             view.repository?.let { SelfBackupRepository(it.name, it.backend, it.repositoryId, it.local) },
             view.boundAt,
-            view.sources.map {
-                SelfBackupSource(SystemSourceRole.valueOf(it.role.name), it.sourceId, it.agentId, it.repositoryName)
-            },
+            view.sources.map(::sourceOf),
+            SelfBackupStatus.valueOf(view.health.name),
+            view.warnings.map { SelfBackupWarningCode.valueOf(it.name) },
+            view.overdueSince,
+        )
+
+    private fun sourceOf(source: SystemSource) =
+        SelfBackupSource(
+            SystemSourceRole.valueOf(source.role.name),
+            source.sourceId,
+            source.agentId,
+            source.repositoryName,
+            source.lastSuccessAt,
+            source.lastFailureAt,
+            source.lastRun?.let { SelfBackupLastRun(it.id, RunStatus.valueOf(it.status.name), it.finishedAt) },
         )
 }

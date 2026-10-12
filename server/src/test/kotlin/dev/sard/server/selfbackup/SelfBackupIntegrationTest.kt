@@ -86,6 +86,7 @@ class SelfBackupIntegrationTest(
         assertTrue(state.configured)
         assertEquals(tenant.agentId, state.agentId)
         assertEquals(RepositoryState(S3_REPOSITORY, "s3", S3_ID, local = false), state.repository)
+        assertEquals(emptyList(), state.warnings)
         assertEquals(RUNS_NOW, state.boundAt)
         assertEquals(listOf(SystemRole.SELF_DATABASE, SystemRole.SELF_KEYS), state.sources.map { it.role })
         val database = sources.get(tenant.id, state.sources[0].sourceId)
@@ -178,6 +179,7 @@ class SelfBackupIntegrationTest(
 
         assertTrue(state.configured)
         assertEquals(true, state.repository?.local)
+        assertEquals(listOf(SelfBackupWarning.LOCAL_STORAGE), state.warnings)
         assertEquals(state, state())
     }
 

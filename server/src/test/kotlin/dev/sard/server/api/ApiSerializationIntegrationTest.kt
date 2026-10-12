@@ -200,9 +200,32 @@ class ApiSerializationIntegrationTest(
                 agentId = id,
                 SelfBackupRepository("offsite", "s3", "a1b2", local = false),
                 boundAt = at,
-                listOf(SelfBackupSource(SystemSourceRole.SELF_KEYS, id, id, "offsite")),
+                listOf(
+                    SelfBackupSource(
+                        SystemSourceRole.SELF_KEYS,
+                        id,
+                        id,
+                        "offsite",
+                        lastSuccessAt = at,
+                        lastFailureAt = null,
+                        SelfBackupLastRun(id, RunStatus.FAILED, at),
+                    ),
+                    SelfBackupSource(SystemSourceRole.SELF_DATABASE, id, id, "offsite", null, null, null),
+                ),
+                SelfBackupStatus.OVERDUE,
+                listOf(SelfBackupWarningCode.OVERDUE, SelfBackupWarningCode.LOCAL_STORAGE),
+                overdueSince = at,
             ),
-            SelfBackup(configured = false, agentId = null, repository = null, boundAt = null, sources = emptyList()),
+            SelfBackup(
+                configured = false,
+                agentId = null,
+                repository = null,
+                boundAt = null,
+                sources = emptyList(),
+                SelfBackupStatus.NOT_CONFIGURED,
+                warnings = emptyList(),
+                overdueSince = null,
+            ),
             SelfBackupRuns(listOf(SelfBackupRunStarted(SystemSourceRole.SELF_DATABASE, id, id, started = false))),
             SnapshotPage(listOf(snapshot), nextCursor = null),
             ScheduleInput("30 2 * * *", "Europe/Berlin", enabled = true),
@@ -360,6 +383,7 @@ class ApiSerializationIntegrationTest(
                 "SelfBackupRepository",
                 "SelfBackupSource",
                 "SelfBackupRunStarted",
+                "SelfBackupLastRun",
             )
     }
 }

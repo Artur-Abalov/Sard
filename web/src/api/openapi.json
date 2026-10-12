@@ -2430,6 +2430,10 @@
         },
         "required" : [ "repositoryName" ]
       },
+      "RunStatus" : {
+        "type" : "string",
+        "enum" : [ "queued", "dispatched", "running", "succeeded", "failed", "cancelled" ]
+      },
       "SelfBackup" : {
         "type" : "object",
         "description" : "The self-backup of the installation: the database, the CA and the configuration",
@@ -2462,9 +2466,43 @@
             "items" : {
               "$ref" : "#/components/schemas/SelfBackupSource"
             }
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/SelfBackupStatus",
+            "description" : "The worst of the warnings about the backup itself; local storage alone is ok"
+          },
+          "warnings" : {
+            "type" : "array",
+            "description" : "What the console shows on every page, worst first: the sources are on a replaced agent, a source has gone too long without a success, its last run failed, its schedule is off, the storage is local",
+            "items" : {
+              "$ref" : "#/components/schemas/SelfBackupWarningCode"
+            }
+          },
+          "overdueSince" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "When a system source went overdue: the earliest deadline it missed; null if none"
           }
         },
-        "required" : [ "agentId", "boundAt", "configured", "repository", "sources" ]
+        "required" : [ "agentId", "boundAt", "configured", "overdueSince", "repository", "sources", "status", "warnings" ]
+      },
+      "SelfBackupLastRun" : {
+        "type" : "object",
+        "description" : "A system source's last finished run",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/RunStatus"
+          },
+          "finishedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "finishedAt", "id", "status" ]
       },
       "SelfBackupRepository" : {
         "type" : "object",
@@ -2505,9 +2543,32 @@
           },
           "repositoryName" : {
             "type" : "string"
+          },
+          "lastSuccessAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "lastFailureAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "lastRun" : {
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/SelfBackupLastRun"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "agentId", "repositoryName", "role", "sourceId" ]
+        "required" : [ "agentId", "lastFailureAt", "lastRun", "lastSuccessAt", "repositoryName", "role", "sourceId" ]
+      },
+      "SelfBackupStatus" : {
+        "type" : "string",
+        "enum" : [ "not_configured", "ok", "agent_replaced", "overdue", "failing", "schedule_disabled" ]
+      },
+      "SelfBackupWarningCode" : {
+        "type" : "string",
+        "enum" : [ "agent_replaced", "overdue", "failing", "schedule_disabled", "local_storage" ]
       },
       "RunActiveProblem" : {
         "type" : "object",
@@ -2623,10 +2684,6 @@
           }
         },
         "required" : [ "agentId", "finishedAt", "id", "message", "queuedAt", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "steps", "trigger" ]
-      },
-      "RunStatus" : {
-        "type" : "string",
-        "enum" : [ "queued", "dispatched", "running", "succeeded", "failed", "cancelled" ]
       },
       "RunStep" : {
         "type" : "object",

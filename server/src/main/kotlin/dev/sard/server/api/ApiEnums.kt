@@ -168,3 +168,44 @@ enum class SystemSourceRole {
     @JsonProperty("self_keys")
     SELF_KEYS,
 }
+
+/** How the self-backup is doing, its worst warning (F6). */
+@Schema(enumAsRef = true)
+enum class SelfBackupStatus {
+    @JsonProperty("not_configured")
+    NOT_CONFIGURED,
+
+    @JsonProperty("ok")
+    OK,
+
+    @JsonProperty("agent_replaced")
+    AGENT_REPLACED,
+
+    @JsonProperty("overdue")
+    OVERDUE,
+
+    @JsonProperty("failing")
+    FAILING,
+
+    @JsonProperty("schedule_disabled")
+    SCHEDULE_DISABLED,
+}
+
+/** What the console warns about on every page (F6), worst first. */
+@Schema(enumAsRef = true)
+enum class SelfBackupWarningCode {
+    @JsonProperty("agent_replaced")
+    AGENT_REPLACED,
+
+    @JsonProperty("overdue")
+    OVERDUE,
+
+    @JsonProperty("failing")
+    FAILING,
+
+    @JsonProperty("schedule_disabled")
+    SCHEDULE_DISABLED,
+
+    @JsonProperty("local_storage")
+    LOCAL_STORAGE,
+}

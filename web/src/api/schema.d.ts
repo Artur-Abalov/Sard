@@ -633,6 +633,8 @@ export interface components {
             /** @description Required true for a local repository: a copy on the server's own machine is lost with the machine */
             confirmLocalStorage?: boolean;
         };
+        /** @enum {string} */
+        RunStatus: "queued" | "dispatched" | "running" | "succeeded" | "failed" | "cancelled";
         /** @description The self-backup of the installation: the database, the CA and the configuration */
         SelfBackup: {
             /** @description A repository is bound and both system sources exist */
@@ -651,6 +653,23 @@ export interface components {
             boundAt: string | null;
             /** @description Database first; empty until configured */
             sources: components["schemas"]["SelfBackupSource"][];
+            /** @description The worst of the warnings about the backup itself; local storage alone is ok */
+            status: components["schemas"]["SelfBackupStatus"];
+            /** @description What the console shows on every page, worst first: the sources are on a replaced agent, a source has gone too long without a success, its last run failed, its schedule is off, the storage is local */
+            warnings: components["schemas"]["SelfBackupWarningCode"][];
+            /**
+             * Format: date-time
+             * @description When a system source went overdue: the earliest deadline it missed; null if none
+             */
+            overdueSince: string | null;
+        };
+        /** @description A system source's last finished run */
+        SelfBackupLastRun: {
+            /** Format: uuid */
+            id: string;
+            status: components["schemas"]["RunStatus"];
+            /** Format: date-time */
+            finishedAt: string;
         };
         /** @description Where the self-backup goes, as the built-in agent's last Register describes it */
         SelfBackupRepository: {
@@ -670,7 +689,16 @@ export interface components {
             /** Format: uuid */
             agentId: string;
             repositoryName: string;
+            /** Format: date-time */
+            lastSuccessAt: string | null;
+            /** Format: date-time */
+            lastFailureAt: string | null;
+            lastRun: components["schemas"]["SelfBackupLastRun"] | null;
         };
+        /** @enum {string} */
+        SelfBackupStatus: "not_configured" | "ok" | "agent_replaced" | "overdue" | "failing" | "schedule_disabled";
+        /** @enum {string} */
+        SelfBackupWarningCode: "agent_replaced" | "overdue" | "failing" | "schedule_disabled" | "local_storage";
         /** @description The source already has an active run (D6); no new run was created (RFC 9457) */
         RunActiveProblem: {
             /** @description URI reference identifying the problem type; about:blank when the status says it all */
@@ -729,8 +757,6 @@ export interface components {
             finishedAt: string | null;
             steps: components["schemas"]["RunStep"][];
         };
-        /** @enum {string} */
-        RunStatus: "queued" | "dispatched" | "running" | "succeeded" | "failed" | "cancelled";
         /** @description One command to the agent */
         RunStep: {
             /**

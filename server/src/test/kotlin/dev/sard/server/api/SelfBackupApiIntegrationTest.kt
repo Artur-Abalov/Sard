@@ -84,6 +84,7 @@ class SelfBackupApiIntegrationTest(
 
         assertEquals(200, state.status, state.toString())
         assertFalse(state.json.path("configured").asBoolean())
+        assertEquals("not_configured", state.json.path("status").asString())
         assertEquals(agent.agentId.toString(), state.json.path("agentId").asString())
         assertTrue(state.json.path("repository").isNull)
         assertEquals(0, state.json.path("sources").size())
@@ -101,6 +102,8 @@ class SelfBackupApiIntegrationTest(
         assertEquals("s3", json.path("repository").path("backend").asString())
         assertEquals(REPOSITORY_ID, json.path("repository").path("repositoryId").asString())
         assertFalse(json.path("repository").path("local").asBoolean())
+        assertEquals("ok", json.path("status").asString())
+        assertEquals(0, json.path("warnings").size())
         assertEquals(
             listOf("self_database", "self_keys"),
             json.path("sources").list().map { it.path("role").asString() },
@@ -139,6 +142,13 @@ class SelfBackupApiIntegrationTest(
                 .path("repository")
                 .path("local")
                 .asBoolean(),
+        )
+        assertEquals(
+            listOf("local_storage"),
+            bound.json
+                .path("warnings")
+                .list()
+                .map { it.asString() },
         )
     }
 

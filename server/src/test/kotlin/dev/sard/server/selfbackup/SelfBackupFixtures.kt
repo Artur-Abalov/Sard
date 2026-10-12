@@ -56,6 +56,26 @@ internal class SelfBackupTenant(
         repository(agent, FRESH_REPOSITORY, "s3", null)
     }
 
+    /** Stands in for the agent's result: the run and its step end [status] at [at], with [message]. */
+    fun finish(
+        runId: UUID,
+        status: String,
+        at: java.time.Instant,
+        message: String? = null,
+    ) {
+        val time = Timestamp.from(at)
+        jdbc.update(
+            "update run_steps set status = ?, dispatched_at = ?, finished_at = ?, message = ? where run_id = ?",
+            status,
+            time,
+            time,
+            message,
+            runId,
+        )
+        val run = "update runs set status = ?, finished_at = ?, message = ? where id = ?"
+        jdbc.update(run, status, time, message, runId)
+    }
+
     fun revoke(agent: UUID) {
         jdbc.update("update agents set revoked_at = ? where id = ?", Timestamp.from(RUNS_NOW), agent)
     }
@@ -101,6 +121,8 @@ internal class SelfBackupTenant(
     fun drop() {
         val tables =
             listOf(
+                "notification_deliveries",
+                "overdue_episodes",
                 "schedule_fires",
                 "schedules",
                 "run_steps",
