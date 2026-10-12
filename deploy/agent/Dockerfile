@@ -20,6 +20,13 @@
 # on openssh-client (restic's sftp backend runs ssh), and the service user
 # sard-agent has its home in /var/lib/sard-agent, as postinstall.sh creates
 # it; ssh reads ~/.ssh from there, whatever HOME the agent gives restic.
+#
+# BASE_IMAGE=postgres:18 gives the "-pg18" variant (F6, ADR 00XX-draft-self-backup):
+# the same agent on the official PostgreSQL image, whose pg_dump, pg_dumpall and
+# psql of that major version (/usr/lib/postgresql/18/bin) the postgresql plugin
+# runs. The compose file's sard-self uses it to dump the server's database; a
+# containerised agent of a client can take it too. Any Debian or Ubuntu base works.
+ARG BASE_IMAGE=ubuntu:24.04
 
 # The tarballs are files for every architecture: unpacked once, on the builder's platform.
 FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS unpack
@@ -33,7 +40,7 @@ RUN sha256sum --check --strict --ignore-missing --quiet SHA256SUMS \
  && tar -xzf "sard-agent_${SARD_VERSION}_linux_${TARGETARCH}.tar.gz" --strip-components=1 -C /out \
  && mkdir /empty
 
-FROM ubuntu:24.04
+FROM ${BASE_IMAGE}
 ARG SARD_VERSION=dev
 LABEL org.opencontainers.image.title="sard-agent" \
       org.opencontainers.image.description="Sard backup orchestrator: the agent, with restic" \
@@ -48,7 +55,7 @@ LABEL org.opencontainers.image.title="sard-agent" \
 # file's agent, which reads the server's CA directory (0700, owner 10001).
 RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
     if [ -f /run/secrets/build-ca ]; then \
-      sed -i 's|http://|https://|' /etc/apt/sources.list.d/ubuntu.sources; \
+      sed -i 's|http://|https://|' /etc/apt/sources.list.d/*.sources; \
       echo 'Acquire::https::CaInfo "/run/secrets/build-ca";' > /etc/apt/apt.conf.d/99build-ca; \
     fi \
  && apt-get update && apt-get install -y --no-install-recommends openssh-client \

@@ -12,6 +12,9 @@ internal object E2e {
     /** The agent of the release packages (`make package`), the one every class runs but T3's. */
     val agentImage: String get() = property("e2e.agentImage")
 
+    /** The release agent on postgres:18 (deploy/agent/Dockerfile, BASE_IMAGE): the compose file's sard-self (F6). */
+    val agentPgImage: String get() = property("e2e.agentPgImage")
+
     /** The stand's agent (`GO_TAGS=e2e`, ADR 0036): the release agent plus `e2e-slow`, for T3 only. */
     val standAgentImage: String get() = property("e2e.standAgentImage")
 

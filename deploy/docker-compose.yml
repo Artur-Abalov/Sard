@@ -85,7 +85,8 @@ services:
   # It enrolls itself: the server writes its one-time token into the sard-self-channel
   # volume, which this service mounts read-only (no SARD_ENROLL_TOKEN here).
   self-agent:
-    image: ${SARD_AGENT_IMAGE:-ghcr.io/artur-abalov/sard-agent}:${SARD_VERSION:?set SARD_VERSION in .env}
+    # The agent on postgres:18: pg_dump of the database's major version for the self-backup (F6).
+    image: ${SARD_AGENT_IMAGE:-ghcr.io/artur-abalov/sard-agent}:${SARD_VERSION:?set SARD_VERSION in .env}-pg18
     restart: unless-stopped
     hostname: sard-self
     # The server's uid: the CA directory is 0700 and its files 0600, owned by it.

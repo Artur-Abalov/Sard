@@ -42,6 +42,8 @@ E2E_BUILD := $(CURDIR)/test/e2e/build
 STAND_DIST ?= $(E2E_BUILD)/stand-dist
 E2E_SERVER_IMAGE ?= sard-server:e2e
 E2E_AGENT_IMAGE ?= sard-agent:e2e
+# The same agent on postgres:18 (deploy/agent/Dockerfile, BASE_IMAGE): the compose file's sard-self (F6).
+E2E_AGENT_PG_IMAGE ?= $(E2E_AGENT_IMAGE)-pg18
 E2E_STAND_AGENT_IMAGE ?= sard-agent-stand:e2e
 # The agent on the official postgres image (F1 ПГ20): pg_dump 18, and 14 for the old-client scenario.
 E2E_PG18_AGENT_IMAGE ?= sard-agent-pg18:e2e
@@ -104,7 +106,7 @@ image: package server-jar
 # for E2E_ARCH, tagged $(2); the build context is $(1) itself.
 define agent_image
 	docker buildx build $(E2E_BUILD_FLAGS) --load --platform linux/$(E2E_ARCH) --build-arg SARD_VERSION=$(VERSION) \
-		-f deploy/agent/Dockerfile -t $(2) $(1)
+		$(3) -f deploy/agent/Dockerfile -t $(2) $(1)
 endef
 
 # agent_image_unpacked: an e2e image of the tar.gz in $(1) for E2E_ARCH, tagged $(2),
@@ -127,9 +129,10 @@ e2e-images:
 e2e-assemble: e2e-agent-images e2e-pg-agent-images
 	$(MAKE) server-image SERVER_IMAGE=$(E2E_SERVER_IMAGE)
 
-## e2e-agent-images: the release and the stand agent images from the tar.gz in DIST and STAND_DIST, and the stand's SFTP server
+## e2e-agent-images: the release agent images (plain and -pg18) and the stand's from the tar.gz in DIST and STAND_DIST, and the stand's SFTP server
 e2e-agent-images:
 	$(call agent_image,$(DIST),$(E2E_AGENT_IMAGE))
+	$(call agent_image,$(DIST),$(E2E_AGENT_PG_IMAGE),--build-arg BASE_IMAGE=postgres:18)
 	$(call agent_image,$(STAND_DIST),$(E2E_STAND_AGENT_IMAGE))
 	docker buildx build $(E2E_BUILD_FLAGS) --load -t $(E2E_SFTP_IMAGE) test/e2e/sftp
 
@@ -140,7 +143,7 @@ e2e-pg-agent-images:
 
 ## e2e-test: the end-to-end tests against the assembled images (needs Docker)
 e2e-test:
-	$(GRADLE) :e2e:test -Pe2e.serverImage=$(E2E_SERVER_IMAGE) -Pe2e.agentImage=$(E2E_AGENT_IMAGE) \
+	$(GRADLE) :e2e:test -Pe2e.serverImage=$(E2E_SERVER_IMAGE) -Pe2e.agentImage=$(E2E_AGENT_IMAGE) -Pe2e.agentPgImage=$(E2E_AGENT_PG_IMAGE) \
 		-Pe2e.standAgentImage=$(E2E_STAND_AGENT_IMAGE) -Pe2e.sftpImage=$(E2E_SFTP_IMAGE) \
 		-Pe2e.pg18AgentImage=$(E2E_PG18_AGENT_IMAGE) -Pe2e.pg14AgentImage=$(E2E_PG14_AGENT_IMAGE) -Pe2e.version=$(VERSION)
 
