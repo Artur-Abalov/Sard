@@ -141,3 +141,58 @@ OQ-201…OQ-210 («Делай. Со всем согласен»). Решения
     приведены к F4b.
 
 Следующий этап — coder: реализует F4b по утверждённым спецификациям.
+
+## Coder: реализация F4b (2026-10-12)
+
+Ветка `ccr-ee6b499f-31e44v`; тесты сначала, затем код; сервер — Kotlin, консоль — web.
+ADR: `docs/adr/00XX-draft-f4b-onboarding-self-backup.md`.
+
+**Сервер.**
+- Миграция `V202610121300__onboarding_self_backup.sql`: `self_backups.location`,
+  `self_backups.keys_confirmed_at`, таблица `onboarding_marks` и отметка `upgraded`
+  (Р21, один раз при первом старте).
+- Шаги и ограничение: `onboarding/StepStates.kt` (Р20, Р21), `OnboardingService`
+  (`confirmKeys`, `restriction`), `OnboardingSteps` (шаг `keys_confirmed`, отметка).
+- Самобэкап: `SelfBackups` (`firstBackupDone`, `confirmKeys`, репозитории, состав,
+  `location`, команда показа пароля, предупреждение `keys_unconfirmed`),
+  `RepositoryCommands` (Р23–Р25, Р29), `RecoveryCards` (адрес процедуры, проверка адреса).
+- REST: `GET /self-backup/repository-command`, `POST /self-backup/keys-confirmation`,
+  `GET /self-backup/recovery-card`; `OnboardingGuard` (D8, Р22) и описание 409 в OpenAPI.
+- gRPC: `Enrollment` + `RegistrationGate` (`ONBOARDING_INCOMPLETE`, К17).
+- Порты `OnboardingCompletion`, `RegistrationGate`, `GuardTargets` убирают круговые
+  зависимости пакетов (`PackageCycleTest`).
+
+**Тесты сервера.** Контекст интеграционных тестов стартует с завершённым онбордингом
+(`TestcontainersConfiguration.completedOnboarding`); тесты первого запуска и F4b убирают шаг и
+возвращают его. Новые: `OnboardingServiceTest` (раздел F4b), `SelfBackupOnboardingIntegrationTest`,
+`RepositoryCommandsTest`, `RecoveryCardsTest`, `OnboardingGuardApiIntegrationTest`,
+`OnboardingSelfBackupApiIntegrationTest`, `EnrollmentOnboardingIntegrationTest`,
+`OnboardingMarksMigrationTest`, `OnboardingDocsTest`, дополнения `FirstStartRestartIntegrationTest`,
+`AdminResetCommandIntegrationTest`. Изменены ожидания F4a/F6 (шаг `self_backup` pending,
+`restriction`, предупреждение `keys_unconfirmed` после онбординга, порядок удаления строк в
+`SelfBackupFixtures`).
+
+**Консоль.** `onboarding/state.ts` (экраны шагов, баннер), `auth/guard.ts` (Рк9),
+`auth/loginGuard.ts` (`setupRedirect`, Рк10), `onboarding/selfBackup.ts` (запрос команды,
+привязка, расписание, первый бэкап, подтверждение), `onboarding/schedule.ts`,
+`onboarding/recoveryCard.ts`; экраны `pages/setup/*`, `pages/RecoveryCard.tsx`,
+`pages/settings/SelfBackupSection.tsx`, `components/OnboardingBanner.tsx`; моки Рк18.
+Тест F4a «Защищённая страница с действующей сессией не запрашивает состояние онбординга»
+(`@заменено-f4b`) удалён из `auth/guard.test.ts`; `Завершение мастера не требует шагов F4b` —
+`@qa-only`, теста не было.
+
+**Расхождения со спецификацией (для владельца).**
+1. Сервер-спецификация, таблица «Обновлённая установка разрешает прочие изменения»: запуск
+   источника `POST /sources/{S}/runs` указан как 200; в контракте он 201 (как у всех запусков).
+   Тест ожидает 201.
+2. Сценарий «Состав самобэкапа виден до привязки и не содержит секретов»: «тело не содержит
+   password», но поле К12 называется `passwordRevealCommand`. Проверено отсутствие
+   `sard-db`, `password_ref` и ключа `"password"`.
+3. Рк18: мок по умолчанию «самобэкап привязан к self s3» не реализован привязкой: тесты F6
+   привязывают сами; завершённый онбординг и все шаги `done` в моке по умолчанию есть.
+4. Ripple скриптов и e2e: вместо шагов 3–4 по REST со стендом локального репозитория скрипты без
+   `sard-self` и e2e-стенды пишут шаг `keys_confirmed` в базу (`sard_confirm_onboarding_in_database`,
+   `SardEnvironment.confirmOnboarding`); `smoke-server.sh`, `test-self-agent.sh` после мастера
+   токены не выпускают и не менялись. Ни один стенд здесь не запускался (нет образов).
+5. Проверка `registrationOpen` в `Enrollment` стоит до транзакции (внутри неё десять
+   одновременных регистраций встали на пуле соединений).
