@@ -44,6 +44,7 @@ private val SELFAGENT_REFERENCE = Regex("""\bdev\.sard\.server\.selfagent\b""")
 private val SESSIONS_SYSTEM_CALL = Regex("""\bsessions\.system\s*[({]""")
 private val DATABASE_REFERENCE =
     Regex("""\b(org\.springframework\.jdbc|java\.sql|jakarta\.persistence|org\.flywaydb)\b""")
+private val SCHEDULER_TABLES_REFERENCE = Regex("""\b(ScheduleRecord|ScheduleFireRecord|schedule_fires|schedules)\b""")
 private val LINE_COMMENT = Regex("""//.*$""", RegexOption.MULTILINE)
 private val BLOCK_COMMENT = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
 
@@ -177,6 +178,18 @@ class ArchitectureTest {
                     .toList()
             }
         assertTrue(offenders.isEmpty(), "api referencing the agent boundary:\n${offenders.joinToString("\n")}")
+    }
+
+    @Test
+    fun `runs reads nothing of the scheduler's tables, so the journal has one owner`() {
+        val offenders =
+            ktFiles(File(mainRoot, "runs")).flatMap { file ->
+                SCHEDULER_TABLES_REFERENCE
+                    .findAll(withoutComments(file.readText()))
+                    .map { "${file.path}: ${it.value}" }
+                    .toList()
+            }
+        assertTrue(offenders.isEmpty(), "runs reading the scheduler's tables:\n${offenders.joinToString("\n")}")
     }
 
     @Test

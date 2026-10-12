@@ -246,7 +246,7 @@ class RunNotificationsIntegrationTest(
         assertEquals(listOf("skipped", "delivered", "skipped", "delivered"), statuses)
         assertEquals(2, fake.requests.size)
         assertEquals("❌ Бэкап завершился ошибкой: db-main", shown(0).lines().first())
-        assertEquals("✅ Бэкап снова выполнен после ошибок: db-main", shown(1).lines().first())
+        assertEquals("✅ Бэкап снова работает: db-main", shown(1).lines().first())
     }
 
     // --- the text, end to end

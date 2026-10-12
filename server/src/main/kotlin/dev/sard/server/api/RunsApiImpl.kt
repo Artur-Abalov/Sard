@@ -8,6 +8,7 @@ import dev.sard.server.persistence.PageKey
 import dev.sard.server.runs.RunFilter
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.StepLogs
+import dev.sard.server.scheduler.CatchUpPeriods
 import org.springframework.stereotype.Component
 import java.time.Instant
 import java.util.UUID
@@ -19,6 +20,7 @@ private const val MAX_LOG_LIMIT = 1000
 class RunsApiImpl(
     private val runs: Runs,
     private val logs: StepLogs,
+    private val catchUps: CatchUpPeriods,
     private val tenants: TenantResolver,
 ) : RunsApi {
     override fun listRuns(
@@ -37,12 +39,13 @@ class RunsApiImpl(
         val filter = RunFilter(sourceId, agentId, status.orEmpty().map(RunMapping::state).toSet(), queuedFrom, queuedTo)
         val rows = runs.list(tenants.currentTenantId(), filter, page.after, page.fetch)
         val slice = page.slice(rows) { PageKey(it.queuedAt, it.id) }
-        return RunPage(slice.items.map(RunMapping::summary), slice.nextCursor)
+        val periods = catchUps.periods(tenants.currentTenantId(), slice.items.map { it.id })
+        return RunPage(slice.items.map { RunMapping.summary(it, periods[it.id]) }, slice.nextCursor)
     }
 
     override fun getRun(runId: UUID): Run {
         val run = runs.get(tenants.currentTenantId(), runId) ?: throw ResourceNotFound()
-        return RunMapping.run(run)
+        return RunMapping.run(run, catchUps.periods(tenants.currentTenantId(), listOf(runId))[runId])
     }
 
     override fun listStepLogs(

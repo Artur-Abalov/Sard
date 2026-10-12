@@ -33,3 +33,10 @@ export function runListPollInterval(
 export function tokenPollInterval(status: Schemas['EnrollmentTokenStatus'] | undefined): Interval {
   return status === 'active' ? POLL_INTERVAL_MS : false
 }
+
+// The card of a source asks again while the run its schedule created last is active (F3b).
+export function schedulePollInterval(
+  schedule: { lastRun: { status: Schemas['RunStatus'] } | null } | undefined,
+): Interval {
+  return runPollInterval(schedule?.lastRun?.status)
+}

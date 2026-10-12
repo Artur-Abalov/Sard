@@ -20,6 +20,7 @@ import org.springframework.context.annotation.Configuration
 import java.security.SecureRandom
 import java.time.Clock
 import java.time.Duration
+import java.time.ZoneId
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -121,6 +122,12 @@ class SchedulerConfiguration {
         sessions: TenantSessions,
         clock: Clock,
     ) = Schedules(sessions, clock, UuidV7(clock, SecureRandom()))
+
+    @Bean
+    fun catchUpPeriods(sessions: TenantSessions) = CatchUpPeriods(sessions)
+
+    @Bean
+    fun schedulePreviews(clock: Clock) = SchedulePreviews(clock, ZoneId.systemDefault())
 
     @Bean
     fun scheduler(

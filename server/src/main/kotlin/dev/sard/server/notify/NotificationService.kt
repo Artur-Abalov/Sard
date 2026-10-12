@@ -58,6 +58,7 @@ class NotificationService(
     private val deliveries: Deliveries,
     channels: List<NotificationChannel>,
     private val formatter: NotificationFormatter,
+    private val alertFormatter: SkipAlertFormatter,
     private val policy: RetryPolicy,
     private val settings: QueueSettings,
     private val clock: Clock,
@@ -78,6 +79,10 @@ class NotificationService(
             for ((tenantId, tenantRuns) in runs.groupBy({ it.tenantId }, { it.runId })) {
                 deliveries.plan(tenantId, tenantRuns, channel, now)
             }
+            val alerts = deliveries.unplannedAlerts(channel, now - settings.ttl, settings.batch)
+            for ((tenantId, fires) in alerts.groupBy({ it.tenantId }, { it.fireId })) {
+                deliveries.planAlerts(tenantId, fires, channel, now)
+            }
         }
     }
 
@@ -87,7 +92,7 @@ class NotificationService(
         for (delivery in deliveries.due(now, channels.keys, settings.batch)) {
             val channel = channels.getValue(delivery.channel)
             runCatching { attempt(delivery, channel) }.onFailure {
-                log.warn("Notification {} of run {} failed; it is tried again later", delivery.id, delivery.runId, it)
+                log.warn("Notification {} of {} failed; it is tried again later", delivery.id, delivery.subject, it)
             }
         }
     }
@@ -107,12 +112,18 @@ class NotificationService(
     /** A formatter that throws leaves the delivery claimed: it is tried again when the lease ends. */
     private fun send(
         delivery: DueDelivery,
-        notice: RunNotice,
+        claimed: Claimed,
         channel: NotificationChannel,
     ): Decision {
-        val message = formatter.format(notice) ?: return Decision.Skipped
+        val message = messageOf(claimed) ?: return Decision.Skipped
         return policy.decide(channel.send(message), delivery.attempts, delivery.createdAt, clock.instant())
     }
+
+    private fun messageOf(claimed: Claimed): Message? =
+        when (claimed) {
+            is Claimed.Finished -> formatter.format(claimed.notice)
+            is Claimed.Alert -> alertFormatter.format(claimed.notice)
+        }
 
     private fun finish(
         delivery: DueDelivery,
@@ -140,6 +151,6 @@ class NotificationService(
         reason: String,
     ) {
         metrics.undelivered(delivery.channel, status)
-        log.warn("Notification of run {} through {} {}: {}", delivery.runId, delivery.channel, status, reason)
+        log.warn("Notification of {} through {} {}: {}", delivery.subject, delivery.channel, status, reason)
     }
 }

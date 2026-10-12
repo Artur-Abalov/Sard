@@ -2,8 +2,8 @@
 // Copyright 2026 Artur Abalov
 
 import { queryOptions } from '@tanstack/react-query'
-import { runPollInterval, tokenPollInterval } from '../polling'
-import { call } from './call'
+import { runPollInterval, schedulePollInterval, tokenPollInterval } from '../polling'
+import { ApiError, call } from './call'
 import { client } from './client'
 import type { InstallChoice } from '../install'
 import type { components } from './schema'
@@ -105,6 +105,43 @@ export const recentRunsQuery = (limit: number) =>
   queryOptions({
     queryKey: ['runs', 'recent', limit],
     queryFn: () => call(client.GET('/api/v1/runs', { params: { query: { limit } } })),
+  })
+
+// The schedule of a source; null when it has none (a 404 is the answer "no schedule", not a failure).
+// The card asks again while the run the schedule created last is active (F3b).
+export const scheduleQuery = (sourceId: string) =>
+  queryOptions({
+    queryKey: ['schedule', sourceId],
+    queryFn: async (): Promise<Schemas['Schedule'] | null> => {
+      try {
+        return await call(
+          client.GET('/api/v1/sources/{sourceId}/schedule', { params: { path: { sourceId } } }),
+        )
+      } catch (error) {
+        const absent =
+          error instanceof ApiError &&
+          error.failure.kind === 'problem' &&
+          error.failure.code === 'not_found'
+        if (absent) return null
+        throw error
+      }
+    },
+    refetchInterval: (query) => schedulePollInterval(query.state.data ?? undefined),
+  })
+
+// The server's preview of a schedule: words, the next fires, the warning about frequency. Without a
+// zone the server's own is used and named in the answer.
+export const schedulePreviewQuery = (cron: string, timezone: string | null, lang: string) =>
+  queryOptions({
+    queryKey: ['schedule-preview', cron, timezone, lang],
+    queryFn: () =>
+      call(
+        client.GET('/api/v1/schedule-preview', {
+          params: { query: { cron, timezone: timezone ?? undefined, lang } },
+        }),
+      ),
+    // A refused schedule is refused again; the editor asks anew when a field changes.
+    retry: false,
   })
 
 export type Run = Schemas['Run']
