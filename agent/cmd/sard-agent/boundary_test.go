@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -143,4 +144,49 @@ func TestPackageMainParsesNoTagOfASnapshot(t *testing.T) {
 			}
 		}
 	})
+}
+
+// How a storage is described to the messages (Where, Remote, Bucket,
+// Directory of repoinit.Target, Р34) is decided once, in
+// repoconnect.TargetFor; package main does not set those fields.
+func TestPackageMainDoesNotDescribeTheStorage(t *testing.T) {
+	assignedFields(t, func(file string, pos token.Position, field string) {
+		if slices.Contains([]string{"Where", "Remote", "Bucket", "Directory"}, field) {
+			t.Errorf("%s: %s sets %s", file, pos, field)
+		}
+	})
+}
+
+// assignedFields calls visit for every x.Field on the left of an assignment
+// in the non-test files.
+func assignedFields(t *testing.T, visit func(file string, pos token.Position, field string)) {
+	t.Helper()
+	files, err := filepath.Glob("*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("files %v, %v", files, err)
+	}
+	fset := token.NewFileSet()
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, name, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			if assign, ok := n.(*ast.AssignStmt); ok {
+				visitSelectors(assign.Lhs, func(sel *ast.SelectorExpr) { visit(name, fset.Position(sel.Pos()), sel.Sel.Name) })
+			}
+			return true
+		})
+	}
+}
+
+func visitSelectors(exprs []ast.Expr, visit func(*ast.SelectorExpr)) {
+	for _, e := range exprs {
+		if sel, ok := e.(*ast.SelectorExpr); ok {
+			visit(sel)
+		}
+	}
 }

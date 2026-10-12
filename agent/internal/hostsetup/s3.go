@@ -213,6 +213,18 @@ func ProviderNames() []string {
 	return names
 }
 
+// ProviderDefaults are the presets that default --region, with the region,
+// for the help text: "yandex ru-central1, vk ru-msk, selectel ru-1".
+func ProviderDefaults() string {
+	var parts []string
+	for _, p := range providerTable {
+		if p.defaultRegion != "" {
+			parts = append(parts, p.name+" "+p.defaultRegion)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
 func lookupProvider(name string) (providerPreset, bool) {
 	for _, p := range providerTable {
 		if p.name == name {

@@ -262,3 +262,9 @@ func TestAnUnusableProviderPresetIsAUsageErrorThatNamesWhatIsWrong(t *testing.T)
 		}
 	}
 }
+
+func TestProviderDefaultsNameTheDefaultRegionOfEachPresetThatHasOne(t *testing.T) {
+	if got := hostsetup.ProviderDefaults(); got != "yandex ru-central1, vk ru-msk, selectel ru-1" {
+		t.Fatalf("defaults %q", got)
+	}
+}

@@ -76,7 +76,7 @@ func prepareSnapshots(ctx context.Context, opts hostOptions, who hostsetup.Princ
 func readSnapshots(ctx context.Context, st snapshotsState, opts hostOptions, who hostsetup.Principal, deps hostDeps) ([]restore.Snapshot, *refusal.Failure) {
 	var log repoconnect.Log
 	cli := newRestic(st.cfg, st.binary, deps, st.repo, runAs(who)).WithStderr(&log)
-	target := snapshotsTarget(st, passwordValues(st.repo, who, deps))
+	target := repoconnect.TargetFor(st.repo, st.checked.EnvAssignments, passwordValues(st.repo, who, deps)...)
 	var list []restore.Snapshot
 	bound := repoconnect.Bound{Clock: deps.clock, Timeout: opts.connectTimeout}
 	f := bound.Attempt(ctx, target, &log,
@@ -107,32 +107,6 @@ func passwordValues(repo config.Repository, who hostsetup.Principal, deps hostDe
 		return nil
 	}
 	return []string{string(data), strings.TrimSpace(string(data))}
-}
-
-// snapshotsTarget is what the messages need to know of the repository; a
-// remote one is told apart by the answer of its storage (Р34).
-func snapshotsTarget(st snapshotsState, secrets []string) repoinit.Target {
-	target := repoTarget(st.repo, st.checked, secrets...)
-	target.Where = config.RedactURL(st.repo.URL)
-	if st.repo.Backend() == "s3" {
-		markS3(&target, st.repo.URL)
-	}
-	if st.repo.Backend() == "sftp" {
-		markSFTP(&target, st.repo.URL)
-	}
-	return target
-}
-
-func markS3(target *repoinit.Target, url string) {
-	if a, f := hostsetup.CheckS3Address(url); f == nil {
-		target.Remote, target.Bucket = true, a.Bucket
-	}
-}
-
-func markSFTP(target *repoinit.Target, url string) {
-	if a, f := hostsetup.CheckSFTPAddress(url); f == nil {
-		target.Remote, target.Directory = true, a.Path
-	}
 }
 
 func printSnapshots(stdout io.Writer, repoName string, opts hostOptions, list []restore.Snapshot) {

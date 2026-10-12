@@ -127,8 +127,8 @@ without a scheme or a host, and the command builds the rest from --region.
 For aws and b2 --provider needs --region: aws gives
 s3:https://s3.<region>.amazonaws.com/<bucket>[/<path>], b2 gives
 s3:https://s3.<region>.backblazeb2.com/<bucket>[/<path>].
-For yandex, vk and selectel --region is optional and defaults (yandex
-ru-central1, vk ru-msk, selectel ru-1): yandex and vk have one address and take their default region
+For yandex, vk and selectel --region is optional and defaults ({defaults}):
+yandex and vk have one address and take their default region
 only; selectel takes any pool as --region (ru-3, ru-7, gis-1, ...). The region
 is not checked against a list: a region that does not exist fails at the
 storage (BACKEND_UNAVAILABLE). The env file gets AWS_DEFAULT_REGION=<region>,
@@ -215,7 +215,7 @@ func printRepoHelp(stdout io.Writer, sub string) {
 }
 
 func printRepoAddHelp(stdout io.Writer) {
-	text := strings.ReplaceAll(repoAddHelpText, "{providers}", strings.Join(hostsetup.ProviderNames(), ", "))
+	text := strings.NewReplacer("{providers}", strings.Join(hostsetup.ProviderNames(), ", "), "{defaults}", hostsetup.ProviderDefaults()).Replace(repoAddHelpText)
 	printHelp(stdout, "repo add [flags] <name> <address>", text, []repoHelpCode{
 		codeOK, codeRestart,
 		usageCode("flags, rights (PRIVILEGES_REQUIRED, SERVICE_USER_UNKNOWN), NAME_INVALID, BACKEND_NOT_SUPPORTED, ADDRESS_INVALID, LOCAL_PATH_INVALID, config, DEFINED_IN_CONFIG, PATH_IN_USE, SECRET_SOURCE_MISSING, SECRET_SOURCE_CONFLICT, SECRET_INVALID, SECRET_FILE_REJECTED, WRONG_PASSWORD, S3_KEY_REJECTED, STORAGE_ACCESS_DENIED, BUCKET_NOT_FOUND, SSH_HOME_INVALID, SSH_FILE_REJECTED, SSH_KEY_NOT_AUTHORIZED, HOST_KEY_UNCONFIRMED"),
