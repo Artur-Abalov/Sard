@@ -37,12 +37,14 @@ docker compose exec -u 10001 self-agent /usr/libexec/sard/restic snapshots \
    `sudo chgrp 10001 .env && chmod 640 .env`. Больше его никто не прочитает.
 2. Добавьте соседу репозиторий. Хранилище по умолчанию — S3 или SFTP (D10).
    Локальный путь — только сознательно: копия погибнет вместе с машиной.
+
    ```bash
    docker compose run --rm --no-deps -u 0 \
      --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER --cap-add SETUID --cap-add SETGID \
      self-agent repo add self /var/lib/sard-self/self --no-restart --config /etc/sard/self/agent.yaml
    docker compose restart self-agent
    ```
+
    Разовый контейнер с теми же томами нужен потому, что у работающего соседа
    нет capabilities: даже root в нём не войдёт в его каталоги `0700`.
    `repo add` нужен root (ADR 0050). Пять capabilities нужны, чтобы создать
