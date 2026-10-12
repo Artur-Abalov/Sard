@@ -133,12 +133,16 @@ func (ca *testCA) issueAgentCert(agentID string, pub any) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	role, err := url.Parse("sard://roles/source") // the server writes the token's role (V1)
+	if err != nil {
+		return "", err
+	}
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().UnixNano()),
 		Subject:      pkix.Name{CommonName: agentID},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(24 * time.Hour),
-		URIs:         []*url.URL{uri},
+		URIs:         []*url.URL{uri, role},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.cert, pub, ca.key)
 	if err != nil {

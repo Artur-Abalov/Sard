@@ -96,6 +96,16 @@ func TestRegisterRequestCarriesHostAndVersion(t *testing.T) {
 	}
 }
 
+func TestRegisterRequestCarriesTheMachineIDOfEveryRegister(t *testing.T) {
+	a := newAgent(t, &fakeLink{})
+	a.MachineID = strings.Repeat("ab", 32)
+	for range 2 {
+		if got := a.RegisterRequest(context.Background()).GetMachineId(); got != a.MachineID {
+			t.Errorf("machine_id = %q", got)
+		}
+	}
+}
+
 func TestRegisterRequestAnnouncesPluginsWithSchemasSortedByName(t *testing.T) {
 	var got []string
 	for _, p := range registered(t).GetPlugins() {

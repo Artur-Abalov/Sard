@@ -4,41 +4,22 @@
 package main
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
-	"encoding/pem"
-	"math/big"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 )
 
 // docs/specs/agent/agent-tls-identity.feature (OQ-027).
 const incompleteEnrollment = "tls.key_file не соответствует tls.cert_file: регистрация не завершена — повторите `sard-agent enroll --force`"
 
-// identityPEM returns a new key (PKCS #8) and a certificate issued on it.
+// identityPEM returns a new key (PKCS #8) and a certificate issued on it:
+// the identity of agent 2222… of tenant 1111… with the role source.
 func identityPEM(t *testing.T) (key, cert []byte) {
 	t.Helper()
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tmpl := &x509.Certificate{SerialNumber: big.NewInt(2), NotAfter: time.Now().Add(time.Hour)}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &k.PublicKey, k)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(k)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8}), pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	return rolePair(t, testIdentityURI, "sard://roles/source")
 }
 
 // writeIdentity writes ca.pem, agent.pem and agent.key (one pair) into dir

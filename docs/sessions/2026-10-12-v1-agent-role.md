@@ -185,3 +185,49 @@ userinfo и порт отбрасываются при определении х
 попадает (строка отказа берёт agent и tenant из личности). CSR по-прежнему даёт только ключ: добавлены
 сценарии «Имена SAN и расширения CSR не попадают в сертификат», «URI роли verifier в CSR ...» и
 «Порядок имён в SAN не влияет на проверку S3». Фикстура `ForgedRole` теперь описывает URI в SAN.
+
+### coder (агент)
+
+Go-агент: роль из сертификата, шлюз роли в исполнителе, `sard-agent status`, `machine_id`. Тесты
+написаны по сценариям `docs/specs/agent/agent-role.feature`, названия сценариев процитированы в
+комментариях над тестами.
+
+**Что сделано**
+- `internal/identity` (новый): разбор первого блока CERTIFICATE из `tls.cert_file`. URI личности
+  ищется среди всех URI SAN в любом порядке; URI роли — любой URI со схемой `sard` и хостом `roles`
+  (без учёта регистра, userinfo и порт игнорируются); допустим ровно один и ровно
+  `sard://roles/source|verifier`. URI читаются из сырого расширения SAN (`encoding/asn1`), а не из
+  `x509.Certificate.URIs`: разбор нормализует строку (`sard://roles/verifier#`), а требование — точное
+  совпадение. Ошибки: `*RoleError` (CERT_ROLE_MISSING / CERT_ROLE_INVALID, значение URI в текст не
+  попадает) и `*tlsid.FileError` для нечитаемого файла или сертификата без личности.
+- `internal/machineid` (новый): HMAC-SHA256 по С7–С9; файловая система, источник случайных байт и список
+  источников передаются в конструктор (`Host`), реальная — `machineid.OS`. Запись атомарна
+  (временный файл, fsync, rename).
+- `internal/executor`: опция `Role` (обязательна, `ErrInvalidOptions` для пустой или неизвестной);
+  шлюз роли — первая проверка принятого шага (`refuse` в `command.go`), результат REJECTED с
+  `reject_reason = ROLE_MISMATCH`, остальные отказы — UNSPECIFIED. В журнал шаг не пишется.
+- `internal/app`: поле `MachineID` уходит в каждый Register; роль агент не отправляет.
+- `cmd/sard-agent`: `identifyHost` в `start` между проверкой пары ключа и restic (С1), строка старта
+  `... connecting to <addr> as <role>`; подкоманда `status` (`status_cmd.go`).
+- `internal/tlsid`: `ReadCertificate` стал экспортируемым; текст «no parsable CERTIFICATE PEM block»
+  заменён на «no parsable PEM certificate»: сценарии `status` требуют, чтобы слова CERTIFICATE не было
+  ни в stdout, ни в stderr.
+- `internal/transport`: `CheckFiles` — проверка наличия tls.* до чтения сертификата, с тем же текстом,
+  что у `transport.New`.
+
+**Решения, не прописанные в спецификации (для ревью)**
+1. Пути `/etc/machine-id` и `/var/lib/dbus/machine-id` в тестах `cmd/sard-agent` подменяются
+   пакетной переменной `machineIDSources` (в `TestMain` она указывает на отсутствующие файлы), потому что
+   `run(...)` вызывается из десятков существующих тестов, а сигнатуру менять нельзя. Файлы хоста тесты не читают.
+2. Тесты прав 0000 (`/etc/machine-id`, `tls.cert_file`) не используют реальные права: гейт работает
+   от root, где права не действуют. Для `machine-id` недоступность проверена фейковой ФС (@unit) и
+   подставленным каталогом (@start), для `status` — фейковым `readFile`.
+3. Существующие тесты, которым нужен запуск агента, получили сертификат с личностью и ролью source
+   (`identityPEM`, `issueAgentCert`); `TestHostnameFailure` и `TestStartStopsWhenResticCannotBeLocated`
+   получили `tls.*`, потому что роль читается раньше restic и имени хоста (С1).
+   `TestAnUnusableStateDirStopsBeforeDialing` теперь видит отказ `machine-id` (С8) раньше «invalid
+   executor options»: каталог состояния создаётся при вычислении machine_id.
+4. Тесты плагинов files и postgresql проверяют `ACTION_VERIFY` как «неподдерживаемое» теперь на агенте
+   роли verifier (`newRigAs`): на source то же действие отклоняется по роли (сценарий «Источник отклоняет
+   проверку»).
+5. Сценарий «Агент не сообщает роль серверу» проверен по сериализованным байтам RegisterRequest и Hello.

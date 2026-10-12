@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
+	"github.com/Artur-Abalov/sard/agent/internal/identity"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
@@ -675,7 +676,7 @@ func TestDefaultsAreSixteenWaitingStepsAndADayOfRuntime(t *testing.T) {
 	clock, sink, files := newClock(), newSink(), newHandler(false)
 	e, err := executor.New(executor.Options{
 		Handlers: registry{"files": files}, Sink: sink, StateDir: stateDir(t),
-		Repositories: []string{"main"}, Clock: clock,
+		Repositories: []string{"main"}, Clock: clock, Role: identity.Source,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -701,6 +702,7 @@ func TestAnExecutorWithOnlyRequiredOptionsRunsOneStepAtATime(t *testing.T) {
 		Handlers:     registry{"files": files},
 		Sink:         sink,
 		StateDir:     stateDir(t),
+		Role:         identity.Source,
 		Repositories: []string{"main"},
 	})
 	if err != nil {
@@ -724,7 +726,7 @@ func TestNewRequiresHandlersSinkAndStateDir(t *testing.T) {
 	}
 	for name, edit := range cases {
 		t.Run(name, func(t *testing.T) {
-			opts := executor.Options{Handlers: registry{}, Sink: newSink(), StateDir: stateDir(t)}
+			opts := executor.Options{Handlers: registry{}, Sink: newSink(), StateDir: stateDir(t), Role: identity.Source}
 			edit(&opts)
 			if _, err := executor.New(opts); !errors.Is(err, executor.ErrInvalidOptions) || !strings.Contains(err.Error(), name) {
 				t.Fatalf("err = %v", err)

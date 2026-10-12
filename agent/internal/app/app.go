@@ -28,7 +28,11 @@ type Agent struct {
 	// Handlers run the plugins' steps; their actions are announced.
 	Handlers executor.Registry
 	Hostname string
-	Version  string
+	// MachineID is the HMAC of the host's machine-id (package machineid),
+	// computed once at start and sent in every Register. The agent never
+	// sends its role: the server reads it from the certificate.
+	MachineID string
+	Version   string
 	// OS and Arch are runtime.GOOS and runtime.GOARCH in production.
 	OS   string
 	Arch string
@@ -51,6 +55,7 @@ func (a *Agent) Run(ctx context.Context) error {
 func (a *Agent) RegisterRequest(ctx context.Context) *agentv1.RegisterRequest {
 	req := &agentv1.RegisterRequest{
 		Hostname:        a.Hostname,
+		MachineId:       a.MachineID,
 		AgentVersion:    a.Version,
 		ProtocolVersion: ProtocolVersion,
 		Os:              a.OS,

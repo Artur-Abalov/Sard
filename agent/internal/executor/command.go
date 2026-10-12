@@ -82,18 +82,23 @@ func timedOut(message string, limit time.Duration) *stopCause {
 	return &stopCause{agentv1.StepStatus_STEP_STATUS_TIMED_OUT, fmt.Sprintf(message, limit)}
 }
 
+// refusal is why a step is not accepted. Only a mismatch of the agent's role
+// is told apart by a code; the rest are text for the operator (С5).
+type refusal struct {
+	message string
+	reason  agentv1.RejectReason
+}
+
 // accept validates a new step and either queues it (ACCEPTED) or rejects it.
 // A queued step is journaled first: if the agent dies before its result is
 // saved, the next start reports it as interrupted instead of running it again.
 func (e *Executor) accept(step *agentv1.RunStep) {
 	c := &command{step: step}
 	e.cmds[step.GetCommandId()] = c
-	reason := e.check(c)
-	if reason == "" {
-		reason = e.record(c)
-	}
-	if reason != "" {
-		e.finish(c, e.outcome(c, agentv1.StepStatus_STEP_STATUS_REJECTED, reason))
+	if ref := e.refuse(c); ref != nil {
+		r := e.outcome(c, agentv1.StepStatus_STEP_STATUS_REJECTED, ref.message)
+		r.RejectReason = ref.reason
+		e.finish(c, r)
 		return
 	}
 	c.state = queued
@@ -101,6 +106,22 @@ func (e *Executor) accept(step *agentv1.RunStep) {
 	e.opts.Logger.Info("step accepted", "command_id", step.GetCommandId(), "plugin", step.GetPlugin(), "action", step.GetAction().String())
 	e.send(c, e.opts.Clock.Now(), agentv1.StepPhase_STEP_PHASE_ACCEPTED, counters{})
 	e.dispatch()
+}
+
+// refuse runs the checks in order: the role gate first, before the plugin,
+// the repository, the queue and the journal (С4); nil when the step is journaled.
+func (e *Executor) refuse(c *command) *refusal {
+	if action := c.step.GetAction(); !e.opts.Role.Allows(action) {
+		return &refusal{fmt.Sprintf("%s agent does not run %s", e.opts.Role, action), agentv1.RejectReason_REJECT_REASON_ROLE_MISMATCH}
+	}
+	reason := e.check(c)
+	if reason == "" {
+		reason = e.record(c)
+	}
+	if reason == "" {
+		return nil
+	}
+	return &refusal{reason, agentv1.RejectReason_REJECT_REASON_UNSPECIFIED}
 }
 
 // check returns why the step cannot run, or "".

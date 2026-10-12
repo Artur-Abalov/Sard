@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Artur-Abalov/sard/agent/internal/identity"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -371,9 +372,12 @@ func TestRestoreOfFilesIntoAnUnknownRepositoryIsRejected(t *testing.T) {
 }
 
 // Scenario: Проверка и запуск скрипта плагином files отклоняются как неподдерживаемые.
+// VERIFY is run by an agent that may (a verifier), RUN by a source: the
+// role gate lets both reach the plugin check.
 func TestVerifyAndRunAreRejectedAsUnsupported(t *testing.T) {
+	roles := map[agentv1.Action]identity.Role{agentv1.Action_ACTION_VERIFY: identity.Verifier, agentv1.Action_ACTION_RUN: identity.Source}
 	for _, action := range []agentv1.Action{agentv1.Action_ACTION_VERIFY, agentv1.Action_ACTION_RUN} {
-		r := newRig(t)
+		r := newRigAs(t, roles[action])
 		s := step(paths("/D"))
 		s.Action, s.SnapshotId = action, "abc"
 		res := r.run(s)

@@ -33,7 +33,7 @@ func (e *FileError) Error() string { return fmt.Sprintf("%s %q: %v", e.Key, e.Pa
 func (e *FileError) Unwrap() error { return e.Err }
 
 var (
-	errNoCertificate = errors.New("no parsable CERTIFICATE PEM block")
+	errNoCertificate = errors.New("no parsable PEM certificate")
 	errNoKey         = errors.New("no parsable private key PEM block")
 )
 
@@ -48,7 +48,7 @@ func Check(files config.TLS, read func(name string) ([]byte, error)) error {
 }
 
 func checkPair(files config.TLS, read func(name string) ([]byte, error)) error {
-	cert, err := readCertificate(files.CertFile, read)
+	cert, err := ReadCertificate(files.CertFile, read)
 	if err != nil {
 		return err
 	}
@@ -68,7 +68,9 @@ func belongs(key crypto.Signer, cert *x509.Certificate) bool {
 	return ok && pub.Equal(cert.PublicKey)
 }
 
-func readCertificate(path string, read func(string) ([]byte, error)) (*x509.Certificate, error) {
+// ReadCertificate parses the first CERTIFICATE block of the file at path;
+// a failure is a *FileError naming tls.cert_file and the path.
+func ReadCertificate(path string, read func(string) ([]byte, error)) (*x509.Certificate, error) {
 	fail := func(err error) (*x509.Certificate, error) {
 		return nil, &FileError{Key: "tls.cert_file", Path: path, Err: err}
 	}
