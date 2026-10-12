@@ -35,7 +35,10 @@ private fun testClasses(): List<Class<*>> {
         .toList()
 }
 
-private fun Class<*>.isTagged() = AnnotationSupport.findRepeatableAnnotations(this, Tag::class.java).any { it.value == ISOLATED_TAG }
+private fun Class<*>.isTagged(): Boolean {
+    val tags = AnnotationSupport.findRepeatableAnnotations(this, Tag::class.java)
+    return tags.any { it.value == ISOLATED_TAG }
+}
 
 private fun Class<*>.isSpringMutationTest() =
     AnnotationSupport.isAnnotated(this, MutFlowTest::class.java) &&
