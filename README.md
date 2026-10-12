@@ -24,12 +24,16 @@ backups you have proven you can restore.
   ([docs/operations/notifications.md](docs/operations/notifications.md)).
 - Installs agents from the server: deb, rpm and tar.gz for Linux amd64 and
   arm64, signed releases ([docs/operator/05-agents.md](docs/operator/05-agents.md)).
+- Backs itself up: nightly, its database, CA keys and installation
+  configuration go through the built-in agent into a repository of your
+  choice, and the console warns when that backup is overdue or failing
+  ([docs/operator/06-data-and-backup.md](docs/operator/06-data-and-backup.md)).
+  Overdue sources of any kind are reported to Telegram too.
 
 ### Not yet
 
 Restore from the console (today restore is a manual `restic restore`, see
-[docs/demo.md](docs/demo.md)), restore verification, self-backup of the
-server, other sources (MySQL, network devices, 1C), more than one tenant,
+[docs/demo.md](docs/demo.md)), restore verification, other sources (MySQL, network devices, 1C), more than one tenant,
 `sardctl` commands beyond `version`.
 
 ## How it works
