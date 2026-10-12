@@ -5,6 +5,11 @@
 С1–С11) — в заголовках этих файлов; исследование —
 `docs/sessions/2026-10-12-v1-agent-role.md`.
 
+Роль в сертификате — второй URI в subjectAltName (`sard://roles/source` или
+`sard://roles/verifier`) рядом с URI личности `sard://tenants/<t>/agents/<a>`;
+поправка владельца 2026-10-12 к решению 3 заменила прежнее собственное
+расширение X.509 (OID с дугой >= 2^31 не разбирает `x509.ParseCertificate` в Go).
+
 Ожидаемый результат указан после «→» в каждом шаге. Любое расхождение — дефект.
 
 Вручную проходятся сквозной путь и сценарии с тегом `@qa`. Управляемые часы,
@@ -37,9 +42,9 @@ AG=$PWD/agent/bin/sard-agent
 $DC exec -T server cat /var/lib/sard/pki/ca/ca.crt > $QA/ca.crt
 $DC exec -T server cat /var/lib/sard/pki/ca/ca.key > $QA/ca.key; chmod 0600 $QA/ca.key
 GRPC="grpcurl -cacert $QA/ca.crt -import-path proto -proto sard/agent/v1/agent.proto -format-error"
-# OID расширения роли Sard — константа coder (2.25.<uuid>) в сервере и агенте
-grep -rhoE '"2\.25\.[0-9]{20,}"' server/src/main agent/internal | sort -u
-ROLE_OID=$(grep -rhoE '"2\.25\.[0-9]{20,}"' server/src/main agent/internal | sort -u | tr -d '"')
+TEN=00000000-0000-0000-0000-000000000001
+# EXP — ожидаемый machine_id этого хоста в тенанте по умолчанию (С9)
+EXP=$(python3 -c "import hmac,hashlib,sys; print(hmac.new(b'sard-machine-id/v1'+sys.argv[1].encode(), sys.argv[2].encode(), hashlib.sha256).hexdigest())" $TEN "$(tr -d '[:space:]' < /etc/machine-id)")
 # host <каталог> — конфиг агента без репозиториев в каталоге
 host() { mkdir -p -m 0700 $1/tls $1/state; cat > $1/agent.yaml <<EOF
 server:
@@ -55,14 +60,16 @@ EOF
 # enroll_as <каталог> <тело POST токена> — регистрирует агента в каталоге
 enroll_as() { local cmd; cmd=$(a POST /enrollment-tokens "$2" | body | jq -r .enrollCommand)
   $AG ${cmd#sudo -u sard-agent sard-agent } --config $1/agent.yaml; }
-# roleext <сертификат> — значение расширения роли Sard, как его печатает openssl
-roleext() { openssl x509 -in $1 -noout -text | grep -A1 -F "$ROLE_OID" | tail -1 | tr -d ' '; }
-# forge <каталог агента> <строка extfile для роли или пусто> <выход> — поддельный
-# сертификат CA сервера с серийным номером и SAN настоящего
-forge() { local ser uri; ser=$(openssl x509 -in $1/tls/agent.pem -noout -serial | cut -d= -f2)
-  uri=$(openssl x509 -in $1/tls/agent.pem -noout -ext subjectAltName | grep -o 'sard://[^ ,]*')
-  printf 'subjectAltName=URI:%s\nextendedKeyUsage=clientAuth\n%s\n' "$uri" "$2" > $QA/ext.cnf
-  openssl req -new -key $1/tls/agent.key -subj "/CN=${uri##*/}" \
+# san <сертификат> — имена subjectAltName по одному в строке, в порядке сертификата
+san() { openssl x509 -in $1 -noout -ext subjectAltName | tail -n +2 | tr ',' '\n' | sed 's/^ *//'; }
+# idu <сертификат> — URI личности агента из SAN, где бы он ни стоял
+idu() { san $1 | sed -n 's|^URI:\(sard://tenants/.*\)$|\1|p'; }
+# forge <каталог агента> <значение subjectAltName> <выход> — поддельный сертификат
+# CA сервера с серийным номером настоящего и заданным SAN (порядок имён сохраняется)
+forge() { local ser id; ser=$(openssl x509 -in $1/tls/agent.pem -noout -serial | cut -d= -f2)
+  id=$(idu $1/tls/agent.pem)
+  printf 'subjectAltName=%s\nextendedKeyUsage=clientAuth\n' "$2" > $QA/ext.cnf
+  openssl req -new -key $1/tls/agent.key -subj "/CN=${id##*/}" \
   | openssl x509 -req -CA $QA/ca.crt -CAkey $QA/ca.key -set_serial 0x$ser -days 30 \
       -extfile $QA/ext.cnf -out $3 2>/dev/null; }
 # reg <сертификат> <ключ> <machine_id> — Register по mTLS
@@ -70,8 +77,8 @@ reg() { $GRPC -cert $1 -key $2 -d "{\"hostname\":\"qa\",\"agentVersion\":\"qa\",
   localhost:9090 sard.agent.v1.AgentService/Register; }
 ```
 
-→ мастер печатает `204`; `make build` завершается; `grep` печатает ровно одну
-строку — один и тот же OID в сервере и агенте; `$ROLE_OID` начинается с `2.25.`.
+→ мастер печатает `204`; `make build` завершается; `echo $EXP` печатает 64
+строчных шестнадцатеричных символа.
 
 ## Часть 1. Роль токена в REST
 
@@ -97,12 +104,15 @@ S1=$QA/src; V1=$QA/ver; host $S1; host $V1
 enroll_as $S1 '{}'; enroll_as $V1 '{"role":"verifier"}'
 XS=$(openssl x509 -in $S1/tls/agent.pem -noout -subject | sed 's/.*CN *= *//')
 XV=$(openssl x509 -in $V1/tls/agent.pem -noout -subject | sed 's/.*CN *= *//')
+IS=$(idu $S1/tls/agent.pem); IV=$(idu $V1/tls/agent.pem)
 ```
 
-8. `roleext $S1/tls/agent.pem; roleext $V1/tls/agent.pem`
-   → `..source` и `..verifier` (два служебных байта DER UTF8String, затем строка).
-9. `openssl x509 -in $V1/tls/agent.pem -noout -text | grep -F "$ROLE_OID"`
-   → строка OID без слова `critical`.
+8. `san $S1/tls/agent.pem; echo; san $V1/tls/agent.pem`
+   → первый блок — ровно две строки `URI:sard://tenants/$TEN/agents/$XS` и
+   `URI:sard://roles/source` (в любом порядке); второй — `URI:sard://tenants/$TEN/agents/$XV`
+   и `URI:sard://roles/verifier`.
+9. `san $V1/tls/agent.pem | grep -c '^URI:sard://roles/'; openssl x509 -in $V1/tls/agent.pem -noout -text | grep -c '2\.25\.'`
+   → `1` (ровно один URI роли); `0` (собственного расширения роли нет).
 10. `$PSQL "select id, role from agents where id in ('$XS','$XV') order by role"`
     → `$XS|source`, `$XV|verifier`.
 11. `$AG status --config $S1/agent.yaml; echo "exit=$?"`
@@ -123,17 +133,17 @@ XV=$(openssl x509 -in $V1/tls/agent.pem -noout -subject | sed 's/.*CN *= *//')
 
 ## Часть 3. Роль не берётся из сообщений агента
 
-18. CSR с расширением роли «verifier» по токену source:
+18. CSR, в SAN которого `sard://roles/verifier` и URI личности верификатора, по токену source:
     ```bash
     openssl ecparam -name prime256v1 -genkey -noout -out $QA/k
-    printf '[req]\ndistinguished_name=dn\nreq_extensions=ext\n[dn]\n[ext]\n%s=critical,ASN1:UTF8String:verifier\n' "$ROLE_OID" > $QA/csr.cnf
+    printf '[req]\ndistinguished_name=dn\nreq_extensions=ext\n[dn]\n[ext]\nsubjectAltName=URI:sard://roles/verifier,URI:%s\n' "$IV" > $QA/csr.cnf
     CSR=$(openssl req -new -key $QA/k -subj "/CN=verifier/OU=verifier" -config $QA/csr.cnf -outform DER | base64 -w0)
     T=$(a POST /enrollment-tokens '{}' | body | jq -r .token)
     $GRPC -d "{\"enrollment_token\":\"$T\",\"csr_der\":\"$CSR\",\"hostname\":\"qa-forge\"}" localhost:9090 sard.agent.v1.EnrollmentService/Enroll | tee $QA/f.json
-    jq -r .certificateChainPem $QA/f.json > $QA/f.pem; roleext $QA/f.pem
-    openssl x509 -in $QA/f.pem -noout -text | grep -cF "$ROLE_OID"
+    jq -r .certificateChainPem $QA/f.json > $QA/f.pem; san $QA/f.pem
     ```
-    → регистрация успешна; `..source`; `1` (ровно одно расширение, без `critical`);
+    → регистрация успешна; ровно две строки: `URI:sard://tenants/$TEN/agents/<agentId из $QA/f.json>`
+    и `URI:sard://roles/source`; `san $QA/f.pem | grep -c "verifier\|$XV"` → `0`;
     `$PSQL "select role from agents where id = '$(jq -r .agentId $QA/f.json)'"` → `source`.
 19. В API нет операции изменения роли:
     `curl -s http://localhost:8080/v3/api-docs | jq -r '.components.schemas | to_entries[] | select(.value.properties.role) | .key'`
@@ -145,18 +155,30 @@ XV=$(openssl x509 -in $V1/tls/agent.pem -noout -subject | sed 's/.*CN *= *//')
 В каждом шаге: ответ `UNAUTHENTICATED`, ровно один `ErrorInfo` с указанным
 `reason` и `domain` = `sard.dev`.
 
-20. `forge $S1 "" $QA/nr.pem; reg $QA/nr.pem $S1/tls/agent.key $(printf 'a%.0s' $(seq 64))`
+20. `forge $S1 "URI:$IS" $QA/nr.pem; reg $QA/nr.pem $S1/tls/agent.key $(printf 'a%.0s' $(seq 64))`
     → `CERT_ROLE_MISSING`.
-21. `forge $S1 "$ROLE_OID=ASN1:UTF8String:marker-ROLE-7f" $QA/bad.pem; reg $QA/bad.pem $S1/tls/agent.key $(printf 'a%.0s' $(seq 64))`
+21. `forge $S1 "URI:$IS,URI:sard://roles/marker-ROLE-7f" $QA/bad.pem; reg $QA/bad.pem $S1/tls/agent.key $(printf 'a%.0s' $(seq 64))`
     → `CERT_ROLE_INVALID`; `$DC logs server | grep reason=CERT_ROLE_INVALID | tail -1`
     → строка называет `$XS` и тенант по умолчанию; `$DC logs server | grep -c marker-ROLE-7f` → `0`.
-22. `forge $S1 "$ROLE_OID=DER:01:02:03" $QA/der.pem; reg $QA/der.pem $S1/tls/agent.key $(printf 'a%.0s' $(seq 64))`
-    → `CERT_ROLE_INVALID`.
-23. `forge $S1 "$ROLE_OID=ASN1:UTF8String:verifier" $QA/sv.pem; reg $QA/sv.pem $S1/tls/agent.key $(printf 'a%.0s' $(seq 64))`
+22. Недопустимые URI роли:
+    ```bash
+    for s in "URI:$IS,URI:sard://roles/source,URI:sard://roles/source" \
+             "URI:$IS,URI:sard://roles/source,URI:sard://roles/verifier" \
+             "URI:$IS,URI:sard://roles/source/" "URI:$IS,URI:sard://roles/Source" \
+             "URI:$IS,URI:sard://roles/source?x=1" "URI:$IS,URI:sard://roles:443/source"; do
+      forge $S1 "$s" $QA/x.pem; reg $QA/x.pem $S1/tls/agent.key $(printf 'a%.0s' $(seq 64)) 2>&1 | grep -o 'CERT_[A-Z_]*' | sort -u
+    done
+    ```
+    → шесть строк `CERT_ROLE_INVALID`.
+23. `forge $S1 "URI:$IS,URI:sard://roles/verifier" $QA/sv.pem; reg $QA/sv.pem $S1/tls/agent.key $(printf 'a%.0s' $(seq 64))`
     → `CERT_IDENTITY_MISMATCH` (агент-источник с сертификатом роли verifier).
-24. `forge $V1 "$ROLE_OID=ASN1:UTF8String:source" $QA/vs.pem; reg $QA/vs.pem $V1/tls/agent.key $(printf 'a%.0s' $(seq 64))`
+24. `forge $V1 "URI:$IV,URI:sard://roles/source" $QA/vs.pem; reg $QA/vs.pem $V1/tls/agent.key $(printf 'a%.0s' $(seq 64))`
     → `CERT_IDENTITY_MISMATCH`.
-25. После шагов 20–24: `$PSQL "select role from agents where id in ('$XS','$XV') order by role"`
+25. Порядок имён в SAN не значим — URI роли первым:
+    `forge $V1 "URI:sard://roles/verifier,URI:$IV" $QA/rf.pem; san $QA/rf.pem; reg $QA/rf.pem $V1/tls/agent.key $EXP`
+    → `san` печатает сначала `URI:sard://roles/verifier`, затем `URI:$IV`; Register успешен;
+    `$PSQL "select hostname, machine_id from agents where id = '$XV'"` → `qa|$EXP`.
+26. После шагов 20–25: `$PSQL "select role from agents where id in ('$XS','$XV') order by role"`
     → `source`, `verifier` — не изменились.
 
 ## Часть 5. Агент с сертификатом без допустимой роли не стартует
@@ -166,14 +188,19 @@ kill $SP; wait $SP 2>/dev/null
 cp $S1/tls/agent.pem $QA/good.pem
 ```
 
-26. `cp $QA/nr.pem $S1/tls/agent.pem; timeout 10 $AG --config $S1/agent.yaml; echo "exit=$?"`
+27. `cp $QA/nr.pem $S1/tls/agent.pem; timeout 10 $AG --config $S1/agent.yaml; echo "exit=$?"`
     → одна строка stderr `sard-agent: …`, содержит `CERT_ROLE_MISSING`, `tls.cert_file`,
     путь `$S1/tls/agent.pem` и `sard-agent enroll --force`; нет `connecting to`; `exit=1`.
-27. `cp $QA/bad.pem $S1/tls/agent.pem; timeout 10 $AG --config $S1/agent.yaml 2>$QA/e; echo "exit=$?"; cat $QA/e`
+28. `cp $QA/bad.pem $S1/tls/agent.pem; timeout 10 $AG --config $S1/agent.yaml 2>$QA/e; echo "exit=$?"; cat $QA/e`
     → `CERT_ROLE_INVALID`; `exit=1`; `grep -c marker-ROLE-7f $QA/e` → `0`.
-28. `$AG status --config $S1/agent.yaml; echo "exit=$?"`
+29. `$AG status --config $S1/agent.yaml; echo "exit=$?"`
     → одна строка stderr с `CERT_ROLE_INVALID` и `sard-agent enroll --force`; stdout пуст; `exit=1`.
-29. `cp $QA/good.pem $S1/tls/agent.pem; $AG --config $S1/agent.yaml > $QA/s.out 2>&1 & SP=$!; sleep 5; head -1 $QA/s.out`
+    То же с двумя URI роли: `forge $S1 "URI:$IS,URI:sard://roles/source,URI:sard://roles/source" $S1/tls/agent.pem; $AG status --config $S1/agent.yaml; echo "exit=$?"`
+    → `CERT_ROLE_INVALID`; stdout пуст; `exit=1`.
+30. Статус при URI роли перед URI личности (шаг 25), в отдельном каталоге:
+    `host $QA/rf; cp $V1/tls/ca.pem $QA/rf/tls/; cp $QA/rf.pem $QA/rf/tls/agent.pem; $AG status --config $QA/rf/agent.yaml; echo "exit=$?"`
+    → `agent_id: $XV`, `tenant_id: $TEN`, `role: verifier`, `certificate_not_after: …`; `exit=0`.
+31. `cp $QA/good.pem $S1/tls/agent.pem; $AG --config $S1/agent.yaml > $QA/s.out 2>&1 & SP=$!; sleep 5; head -1 $QA/s.out`
     → `… as source`; агент `online`.
 
 ## Часть 6. Источник привязывается только к агенту-источнику
@@ -187,42 +214,39 @@ SRC="{\"name\":\"etc\",\"agentId\":\"$XS\",\"plugin\":\"files\",\"repositoryName
 раздел `repositories` (как в `docs/qa/rest-api.md`, часть 3, общий `password_file`
 с правами 0600), инициализировать репозиторий и перезапустить оба агента.
 
-30. `a POST /sources "${SRC/$XS/$XV}"`
+32. `a POST /sources "${SRC/$XS/$XV}"`
     → `HTTP 422`, `code` `agent_role_mismatch`, `errors[0].field` = `agentId`;
     `$PSQL "select count(*) from sources"` не изменилось.
-31. `a POST /sources "{\"name\":\"x\",\"agentId\":\"$XV\",\"plugin\":\"postgres\",\"repositoryName\":\"offsite\",\"config\":{}}"`
+33. `a POST /sources "{\"name\":\"x\",\"agentId\":\"$XV\",\"plugin\":\"postgres\",\"repositoryName\":\"offsite\",\"config\":{}}"`
     → `HTTP 422`, `agent_role_mismatch`, поле `agentId` (роль проверяется раньше плагина и репозитория).
-32. `a POST /sources "$SRC" | tee $QA/s1 | tail -1; S=$(body < $QA/s1 | jq -r .id)`
+34. `a POST /sources "$SRC" | tee $QA/s1 | tail -1; S=$(body < $QA/s1 | jq -r .id)`
     → `HTTP 201`.
-33. `a PUT /sources/$S "${SRC/$XS/$XV}"`
+35. `a PUT /sources/$S "${SRC/$XS/$XV}"`
     → `HTTP 422`, `agent_role_mismatch`, поле `agentId`; `a GET /sources/$S | body | jq -r .agentId` → `$XS`.
-34. Обход API: `$PSQL "update sources set agent_id = '$XV' where id = '$S'"; a POST /sources/$S/runs`
+36. Обход API: `$PSQL "update sources set agent_id = '$XV' where id = '$S'"; a POST /sources/$S/runs`
     → `HTTP 409`, `code` `agent_role_mismatch`; `a GET "/runs?sourceId=$S" | body | jq '.items|length'` → `0`;
     `grep -c 'step accepted' $QA/v.out` → `0`.
-35. `$PSQL "update sources set agent_id = '$XS' where id = '$S'"; a POST /sources/$S/runs`
+37. `$PSQL "update sources set agent_id = '$XS' where id = '$S'"; a POST /sources/$S/runs`
     → `HTTP 201`; запуск доходит до `succeeded`; `grep -c 'step accepted' $QA/v.out` → `0`.
 
 ## Часть 7. Идентификатор машины
 
-```bash
-TEN=00000000-0000-0000-0000-000000000001
-EXP=$(python3 -c "import hmac,hashlib,sys; print(hmac.new(b'sard-machine-id/v1'+sys.argv[1].encode(), sys.argv[2].encode(), hashlib.sha256).hexdigest())" $TEN "$(tr -d '[:space:]' < /etc/machine-id)")
-```
+`TEN` и `EXP` заданы в подготовке.
 
-36. `$PSQL "select machine_id from agents where id = '$XS'"; $PSQL "select machine_id from agents where id = '$XV'"; echo $EXP`
+38. `$PSQL "select machine_id from agents where id = '$XS'"; $PSQL "select machine_id from agents where id = '$XV'"; echo $EXP`
     → три одинаковые строки из 64 строчных шестнадцатеричных символов
     (два агента разных ролей одной машины — сигнал «один хост» для V4).
-37. `[ "$EXP" != "$(tr -d '[:space:]' < /etc/machine-id)" ] && echo differs; $PSQL "select count(*) from agents where machine_id like '%$(tr -d '[:space:]' < /etc/machine-id)%'"`
+39. `[ "$EXP" != "$(tr -d '[:space:]' < /etc/machine-id)" ] && echo differs; $PSQL "select count(*) from agents where machine_id like '%$(tr -d '[:space:]' < /etc/machine-id)%'"`
     → `differs`; `0`.
-38. `kill $SP; wait $SP; $AG --config $S1/agent.yaml > $QA/s.out 2>&1 & SP=$!; sleep 5; $PSQL "select machine_id from agents where id = '$XS'"`
+40. `kill $SP; wait $SP; $AG --config $S1/agent.yaml > $QA/s.out 2>&1 & SP=$!; sleep 5; $PSQL "select machine_id from agents where id = '$XS'"`
     → по-прежнему `$EXP`.
-39. `a GET /agents/$XS | body | grep -c "$EXP"; a GET /agents | body | grep -c machineId; grep -c "$EXP" $QA/s.out; $DC logs server | grep -c "$EXP"`
+41. `a GET /agents/$XS | body | grep -c "$EXP"; a GET /agents | body | grep -c machineId; grep -c "$EXP" $QA/s.out; $DC logs server | grep -c "$EXP"`
     → `0`, `0`, `0`, `0`.
-40. Пустой machine_id: `reg $QA/good.pem $S1/tls/agent.key ""`
+42. Пустой machine_id: `reg $QA/good.pem $S1/tls/agent.key ""`
     → `INVALID_ARGUMENT`, `reason` `FIELD_INVALID`, metadata `field=machine_id`;
     `$PSQL "select machine_id, hostname from agents where id = '$XS'"` не изменились.
     То же с `MARKER-MID-0001` → `FIELD_INVALID`; `$DC logs server | grep -c MARKER-MID-0001` → `0`.
-41. Хост без machine-id — агент в контейнере:
+43. Хост без machine-id — агент в контейнере:
     ```bash
     C=$QA/ctr; host $C; enroll_as $C '{}'; sed -i "s|$C|/h|g" $C/agent.yaml
     # контейнер запускается от root, чтобы удалить machine-id образа, затем агент
@@ -238,14 +262,14 @@ EXP=$(python3 -c "import hmac,hashlib,sys; print(hmac.new(b'sard-machine-id/v1'+
     → `-rw-------` (0600); 64 строчных шестнадцатеричных символа без перевода строки;
     `$PSQL "select machine_id from agents where id = '$(openssl x509 -in $C/tls/agent.pem -noout -subject | sed 's/.*CN *= *//')'"`
     → 64 hex, отличается от `$EXP` и от содержимого `$C/state/machine-id`.
-42. `M1=$(cat $C/state/machine-id); run_ctr; [ "$(cat $C/state/machine-id)" = "$M1" ] && echo same`
+44. `M1=$(cat $C/state/machine-id); run_ctr; [ "$(cat $C/state/machine-id)" = "$M1" ] && echo same`
     → `same`; `machine_id` агента в базе не изменился.
-43. `printf not-hex > $C/state/machine-id; run_ctr; echo "exit=$?"`
+45. `printf not-hex > $C/state/machine-id; run_ctr; echo "exit=$?"`
     → одна строка stderr с путём `/h/state/machine-id`; `exit=1`; файл по-прежнему `not-hex`.
 
 ## Часть 8. Встроенный агент после повторной регистрации
 
-44. Отозвать sard-self с подтверждением (`docs/qa/self-agent.md`), дождаться новой
+46. Отозвать sard-self с подтверждением (`docs/qa/self-agent.md`), дождаться новой
     регистрации соседа → `a GET /agents | body | jq -r '.items[] | select(.builtin and .revokedAt == null) | .role'`
     → `source`; `$DC logs self-agent | grep 'connecting to' | tail -1` → `… as source`.
 

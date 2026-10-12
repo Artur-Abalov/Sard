@@ -157,3 +157,16 @@ CHECK «builtin влечёт source», `agents.machine_id TEXT NULL` + инде�
 (п. 2 выше): spotless и detekt без замечаний, 2221 тестов (`test` + `isolatedTest`), 1 упал;
 `gradlew --continue :server:check` довёл до отчёта: coverage 96.7% (instructions), `crap` -threshold 6 — код выхода 0.
 Мутационный прогон (`gate.sh server`, без `fast`) не запускался.
+
+### Поправка к решению 3 (2026-10-12): роль — второй URI в SAN
+
+coder (сервер) обнаружил: `x509.ParseCertificate` в Go отвергает сертификат,
+если в нём есть OID с дугой ≥ 2³¹ («x509: malformed extension OID field»).
+Координатор проверил это на сертификате openssl: с дугой 2147483647 сертификат
+разбирается, с OID `2.25.73832348518563859722830588044060276920` — нет. Дуга
+`2.25.<UUID>` для Go непригодна.
+
+Решение владельца: роль записывается вторым URI в subjectAltName —
+`sard://roles/source` или `sard://roles/verifier` — рядом с URI личности.
+Спецификация исправлена (specifier, Р1/Р3 и сценарии); ждёт подтверждения
+владельца.
