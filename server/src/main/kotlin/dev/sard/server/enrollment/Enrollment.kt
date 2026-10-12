@@ -84,13 +84,18 @@ class Enrollment(
         val parsed = parse(token)
         if (parsed.fingerprint != ca.fingerprint()) throw EnrollmentRejectedException(Reason.TOKEN_FOREIGN_CA)
         val owner = lookUp(parsed) ?: throw EnrollmentRejectedException(Reason.TOKEN_UNKNOWN)
-        // Before the transaction: it holds a connection, and asking the database from inside it for every
-        // enrollment at once would wait for connections that the transactions themselves hold. A token refused
-        // here is not claimed (K17).
+        requireRegistrationOpen(owner)
+        return runInTransaction(owner, csrDer, hostname, cancelled)
+    }
+
+    /**
+     * Before the transaction: it holds a connection, and asking the database from inside it for every enrollment at
+     * once would wait for connections that the transactions themselves hold. A token refused here is not claimed (K17).
+     */
+    private fun requireRegistrationOpen(owner: TokenOwner) {
         if (!owner.builtin && !wrapUnexpected(registrationOpen)) {
             throw EnrollmentRejectedException(Reason.ONBOARDING_INCOMPLETE)
         }
-        return runInTransaction(owner, csrDer, hostname, cancelled)
     }
 
     private fun parse(token: String) =
