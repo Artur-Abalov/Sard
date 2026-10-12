@@ -21,6 +21,7 @@ import dev.sard.server.runs.Sources
 import dev.sard.server.runs.Trigger
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -53,6 +54,7 @@ private fun at(text: String): Instant = Instant.parse(text)
  * F3a verification 1-7: a fire is neither lost nor doubled. RUNS_NOW is 2026-09-30T10:00:00Z. Mutants run
  * under single-threaded ticks only; the races call [Scheduler.tick] directly.
  */
+@Tag("mutflow-isolated")
 @MutFlowTest(
     includeTargets = [Scheduler::class, Firing::class, Schedules::class, CatchUpSlots::class, CatchUpPeriods::class],
 )

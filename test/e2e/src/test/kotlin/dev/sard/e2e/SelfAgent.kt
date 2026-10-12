@@ -53,8 +53,12 @@ internal class SelfAgent(
         fillInstallDirectory()
     }
 
-    /** Starts the agent and waits until it is the tenant's live built-in agent; returns its id. */
+    /**
+     * Starts the agent and waits until it is the tenant's live built-in agent; returns its id. The server issues the
+     * built-in token only after the wizard's step ca (F4a), so the wizard goes first.
+     */
     fun start(): String {
+        sard.ensureAdministrator()
         container.start()
         return try {
             Await.value("the built-in agent sard-self registered") { liveBuiltin() }

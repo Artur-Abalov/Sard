@@ -6,6 +6,7 @@ package dev.sard.server.selfagent
 import ch.qos.logback.classic.Level
 import dev.sard.server.enrollment.EnrollmentSecret
 import dev.sard.server.enrollment.EnrollmentToken
+import dev.sard.server.onboarding.FakeOnboardingSteps
 import dev.sard.server.pki.CaFingerprint
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
@@ -70,11 +71,45 @@ class SelfAgentCheckTest {
 
     private val tokens = FakeTokens()
     private val agents = FakeAgents()
+    private val steps = FakeOnboardingSteps(ca = true)
 
     private val channel by lazy { SelfChannel(dir) }
-    private val check by lazy { SelfAgentCheck(channel, tokens, agents) }
+    private val check by lazy { SelfAgentCheck(channel, tokens, agents, steps) }
 
     private val file get() = dir.resolve("enroll-token")
+
+    @Test
+    fun `Проверка до шага ca не выпускает токен и не пишет файл`() {
+        steps.ca = false
+
+        MutFlow.underTest { check.run() }
+
+        assertEquals(0, tokens.issued.get())
+        assertFalse(Files.exists(file))
+    }
+
+    @Test
+    fun `После подтверждения CA следующая проверка выпускает токен`() {
+        steps.ca = false
+        check.run()
+
+        steps.ca = true
+        MutFlow.underTest { check.run() }
+
+        assertEquals(1, tokens.issued.get())
+        assertEquals(tokenOf(1), Files.readString(file))
+    }
+
+    @Test
+    fun `Проверка до шага ca с живым встроенным агентом убирает файл токена`() {
+        steps.ca = false
+        Files.writeString(file, tokenOf(1))
+        agents.live = true
+
+        MutFlow.underTest { check.run() }
+
+        assertFalse(Files.exists(file))
+    }
 
     @Test
     fun `Проверка без встроенного агента и без файла выпускает токен и пишет его без перевода строки`() {

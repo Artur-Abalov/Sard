@@ -14,6 +14,7 @@ import dev.sard.server.scheduler.ScheduleDraft
 import dev.sard.server.scheduler.Schedules
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
@@ -33,6 +34,7 @@ private val DEADLINE: Instant = RUNS_NOW.plus(Duration.ofHours(36))
 private val NIGHTLY = ScheduleDraft("0 3 * * *", "UTC", true)
 
 /** F6, check 4: an overdue episode opens once, a success closes it, a lost schedule or source ends it quietly. */
+@Tag("mutflow-isolated")
 @MutFlowTest(includeTargets = [FreshnessCheck::class])
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,

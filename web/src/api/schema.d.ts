@@ -52,6 +52,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/session/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change the administrator password
+         * @description Ends every other session; the session that asks goes on under a new id. A wrong current password counts as a failed sign-in attempt.
+         */
+        put: operations["changePassword"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/self-backup/repository": {
         parameters: {
             query?: never;
@@ -158,6 +178,66 @@ export interface paths {
          * @description Queues a manual run of each system source; a source with an active run answers with that run. 409 self_backup_not_configured before a repository is bound; agent_revoked, unknown_plugin or unknown_repository when a run cannot start.
          */
         post: operations["startSelfBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/setup-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enter the setup code
+         * @description The code is printed in the log of the server. A wrong, expired, missing or malformed code is the same 401 and counts against the client address.
+         */
+        post: operations["createSetupSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/ca": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Use the CA of this server
+         * @description Does the step ca; repeating it changes nothing. From now on the CA cannot be replaced.
+         */
+        post: operations["confirmOnboardingCa"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/admin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set the administrator password
+         * @description Does the step admin and signs the owner in. The code and every setup session end. The password is stored as an Argon2id hash.
+         */
+        post: operations["completeOnboardingAdmin"];
         delete?: never;
         options?: never;
         head?: never;
@@ -402,6 +482,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * State of the first start
+         * @description Public. Which steps are done, whether a setup code was issued, and which session came with the request. The CA is shown only to a setup or administrator session.
+         */
+        get: operations["getOnboarding"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/enrollment-tokens/{tokenId}": {
         parameters: {
             query?: never;
@@ -428,7 +528,7 @@ export interface paths {
         };
         /**
          * CA of the server
-         * @description The fingerprint of the CA, whatever its origin. Requires an administrator session.
+         * @description The fingerprint of the CA, where it came from and where its key is. Requires an administrator session.
          */
         get: operations["getCa"];
         put?: never;
@@ -535,7 +635,7 @@ export interface components {
             };
         };
         /** @enum {string} */
-        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured";
+        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured" | "setup_required" | "setup_completed" | "ca_step_pending" | "wrong_password";
         /** @description An error (RFC 9457) */
         Problem: {
             /** @description URI reference identifying the problem type; about:blank when the status says it all */
@@ -666,6 +766,11 @@ export interface components {
             queuedAt: string;
             /** Format: date-time */
             finishedAt: string | null;
+        };
+        /** @description A password change; the new password is 12 to 1024 Unicode code points */
+        PasswordChangeRequest: {
+            currentPassword?: string | null;
+            newPassword?: string | null;
         };
         /** @description The repository of the built-in agent the self-backup goes to */
         SelfBackupRepositoryInput: {
@@ -881,7 +986,7 @@ export interface components {
         StepStatus: "queued" | "dispatched" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out" | "rejected" | "lost";
         /** @description Sign-in with the administrator password (D2) */
         SessionRequest: {
-            /** @description The administrator password from the server's environment */
+            /** @description The administrator password set in the first-start wizard or changed since */
             password: string;
         };
         /** @description A run of one system source */
@@ -897,6 +1002,15 @@ export interface components {
         /** @description The runs "back up now" follows: one per system source, database first */
         SelfBackupRuns: {
             runs: components["schemas"]["SelfBackupRunStarted"][];
+        };
+        /** @description The setup code printed in the server's log */
+        SetupCodeRequest: {
+            /** @description As printed, or as typed: case, hyphens and spaces do not matter */
+            code?: string | null;
+        };
+        /** @description The administrator password to set; 12 to 1024 Unicode code points */
+        AdminStepRequest: {
+            password?: string | null;
         };
         /** @description A new enrollment token */
         CreateEnrollmentTokenRequest: {
@@ -1253,12 +1367,6 @@ export interface components {
             agentsTotal: number;
             firstSteps: components["schemas"]["FirstSteps"];
         };
-        /** @description A page of enrollment tokens */
-        EnrollmentTokenPage: {
-            items: components["schemas"]["EnrollmentToken"][];
-            /** @description Pass as cursor to get the next page; null on the last page */
-            nextCursor: string | null;
-        };
         /** @description The CA of this server; public data, but only for a signed-in administrator */
         CaInfo: {
             /**
@@ -1266,6 +1374,60 @@ export interface components {
              * @example 8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f
              */
             fingerprint: string;
+            /** @description Where the CA came from: made by this server or imported (docs/operator/08) */
+            origin: components["schemas"]["CaOrigin"];
+            /**
+             * @description Absolute path of the CA key in the file system of the server: back it up separately
+             * @example /var/lib/sard/pki/ca/ca.key
+             */
+            keyPath: string;
+        };
+        /**
+         * @description Where the CA of the server came from: made by the server or imported
+         * @enum {string}
+         */
+        CaOrigin: "generated" | "imported";
+        /** @description How far the first start has come; public, the CA only with a setup or administrator session */
+        Onboarding: {
+            /** @description Exactly ca, admin, self_backup, keys_confirmed, in this order */
+            steps: components["schemas"]["OnboardingStep"][];
+            setupCode: components["schemas"]["SetupCodeState"];
+            access: components["schemas"]["OnboardingAccess"];
+            /** @description The CA of the server; null without a session */
+            ca: components["schemas"]["CaInfo"] | null;
+            /** @description True while the CA may still be replaced by an import: the ca step is not done and no agent certificate was issued; null without a session */
+            caReplaceable: boolean | null;
+        };
+        /**
+         * @description Which session came with the request
+         * @enum {string}
+         */
+        OnboardingAccess: "none" | "setup" | "admin";
+        /** @description A step of the wizard and where it stands */
+        OnboardingStep: {
+            id: components["schemas"]["OnboardingStepId"];
+            state: components["schemas"]["OnboardingStepState"];
+        };
+        /**
+         * @description A step of the first-start wizard, in the order of the wizard
+         * @enum {string}
+         */
+        OnboardingStepId: "ca" | "admin" | "self_backup" | "keys_confirmed";
+        /**
+         * @description upcoming: the step is not part of this version of the wizard yet
+         * @enum {string}
+         */
+        OnboardingStepState: "done" | "pending" | "upcoming";
+        /**
+         * @description active: a code was issued at this start and has not expired; expired: it was issued and its time passed; not_issued: there is none (the admin step is done, or was opened by admin-reset after the start)
+         * @enum {string}
+         */
+        SetupCodeState: "active" | "expired" | "not_issued";
+        /** @description A page of enrollment tokens */
+        EnrollmentTokenPage: {
+            items: components["schemas"]["EnrollmentToken"][];
+            /** @description Pass as cursor to get the next page; null on the last page */
+            nextCursor: string | null;
         };
         /** @description A page of agents */
         AgentPage: {
@@ -1696,6 +1858,86 @@ export interface operations {
             };
         };
     };
+    changePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Changed */
+            204: {
+                headers: {
+                    /** @description sard_session; HttpOnly; SameSite=Strict; Path=/; Secure when the connection is HTTPS */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description wrong_password: the current password is not the password; validation_failed: a field is missing or the new password is not 12 to 1024 characters */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Too many failed attempts; the password is not checked */
+            429: {
+                headers: {
+                    /** @description Seconds until the next attempt */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The administrator is managed outside the server (an extension) */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     bindSelfBackupRepository: {
         parameters: {
             query?: never;
@@ -2014,6 +2256,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description There is no administrator yet: the first-start wizard has not set the password (setup_required); not counted as a failed attempt */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Too many failed attempts; sign-in is locked for a while */
             429: {
                 headers: {
@@ -2124,6 +2375,191 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createSetupSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description The code is right; a setup session was issued */
+            204: {
+                headers: {
+                    /** @description sard_setup; HttpOnly; SameSite=Strict; Path=/api/v1/onboarding; Secure when the connection is HTTPS. No Max-Age: the session ends with the code, the admin step or a restart. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Wrong, expired or missing code */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The admin step is done, so there is no code (setup_completed) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many wrong codes from this address; the code is not checked */
+            429: {
+                headers: {
+                    /** @description Seconds until the next attempt */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    confirmOnboardingCa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The step ca is done */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No setup session, or it ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    completeOnboardingAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminStepRequest"];
+            };
+        };
+        responses: {
+            /** @description The password is set */
+            204: {
+                headers: {
+                    /** @description sard_session; HttpOnly; SameSite=Strict; Path=/; Secure when the connection is HTTPS. A second Set-Cookie clears sard_setup. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No setup session, or it ended */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description ca_step_pending: the CA was not confirmed yet; setup_completed: there is an administrator */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The password is missing or not 12 to 1024 characters; errors name the field */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */
@@ -2828,6 +3264,35 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getOnboarding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Onboarding"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */

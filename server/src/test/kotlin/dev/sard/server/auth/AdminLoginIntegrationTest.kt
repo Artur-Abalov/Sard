@@ -3,6 +3,7 @@
 
 package dev.sard.server.auth
 
+import dev.sard.server.SeededAdministrator
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.api.SESSION_COOKIE
 import dev.sard.server.pki.MovableClock
@@ -52,9 +53,9 @@ class AdminLoginClockConfiguration {
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = ["spring.grpc.server.port=0", "SARD_ADMIN_PASSWORD=$PASSWORD"],
+    properties = ["spring.grpc.server.port=0", "sard.test.admin-password=$PASSWORD"],
 )
-@Import(TestcontainersConfiguration::class, AdminLoginClockConfiguration::class)
+@Import(SeededAdministrator::class, TestcontainersConfiguration::class, AdminLoginClockConfiguration::class)
 class AdminLoginIntegrationTest(
     @Autowired private val mapper: ObjectMapper,
     @Autowired private val clock: Clock,

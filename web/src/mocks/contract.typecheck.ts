@@ -92,4 +92,9 @@ export const contractChecks = [
     // @ts-expect-error: the answer is the whole self-backup state, configured included
     response(200).json({ agentId: null, repository: null, boundAt: null, sources: [] }),
   ),
+
+  http.post('/api/v1/onboarding/setup-session', ({ response }) =>
+    // @ts-expect-error: a 409 is a problem and carries its code
+    response(409).json({ type: 'about:blank', title: 'Conflict', status: 409, detail: null }),
+  ),
 ]

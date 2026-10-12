@@ -15,6 +15,7 @@ import dev.sard.server.scheduler.ScheduleDraft
 import dev.sard.server.scheduler.Schedules
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
@@ -32,6 +33,7 @@ import kotlin.test.assertNull
  * F6, check 4 and the banner: the self-backup's health from its sources' runs, schedules and overdue episodes,
  * and the warnings the console shows on every page.
  */
+@Tag("mutflow-isolated")
 @MutFlowTest(includeTargets = [SourceStates::class, HealthRules::class])
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,

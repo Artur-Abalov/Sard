@@ -88,7 +88,7 @@ class SardServerIntegrationTest(
             listOf("1", "2", "202609271200", "202609271600", "202609281200", "202609281400") +
                 listOf("202609301200", "202609301800", "202610011200", "202610011300", "202610021200", "202610041200") +
                 listOf("202610071200", "202610081200", "202610091200", "202610101200", "202610101300") +
-                listOf("202610121100", "202610121200")
+                listOf("202610111200", "202610121100", "202610121200")
         assertEquals(versions, jdbc.queryForList(sql, String::class.java))
         assertEquals(0, jdbc.queryForObject("select count(*) from agents", Int::class.java))
     }

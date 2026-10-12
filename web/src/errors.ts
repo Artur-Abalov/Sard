@@ -41,6 +41,10 @@ const KNOWN: Record<ErrorCode, true> = {
   repository_not_initialized: true,
   local_storage_unconfirmed: true,
   self_backup_not_configured: true,
+  setup_required: true,
+  setup_completed: true,
+  ca_step_pending: true,
+  wrong_password: true,
 }
 
 function codeOf(error: unknown): string | null {

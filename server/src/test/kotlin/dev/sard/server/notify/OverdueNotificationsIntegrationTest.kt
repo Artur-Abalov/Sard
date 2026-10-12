@@ -15,6 +15,7 @@ import dev.sard.server.runs.Sources
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
@@ -39,6 +40,7 @@ private val DEADLINE: Instant = Instant.parse("2026-09-29T15:10:00Z")
  * F6: an overdue episode is told about when it opens and when a success closes it, through the same queue as runs;
  * a closing run that is told about itself (a manual result, a recovery) carries the news alone.
  */
+@Tag("mutflow-isolated")
 @MutFlowTest(includeTargets = [OverdueDeliveries::class, OverdueNoticeFormatter::class])
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,

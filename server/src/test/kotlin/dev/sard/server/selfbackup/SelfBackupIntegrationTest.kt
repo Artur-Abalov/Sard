@@ -19,6 +19,7 @@ import dev.sard.server.scheduler.ScheduleDraft
 import dev.sard.server.scheduler.Schedules
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
@@ -39,11 +40,10 @@ import kotlin.test.assertTrue
  * F6, checks 1, 5 and 6: binding the self-backup's repository creates and keeps the two system sources,
  * a local repository needs a confirmation, and the system sources refuse everything but their schedule.
  */
+@Tag("mutflow-isolated")
 @MutFlowTest(includeTargets = [SelfBackups::class, Sources::class])
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
-    // The same context as SourcesIntegrationTest: a context of its own would add scheduler threads that run
-    // while other classes' mutants are active.
     properties = ["spring.grpc.server.port=0"],
 )
 @Import(TestcontainersConfiguration::class, RunsTestConfiguration::class)
