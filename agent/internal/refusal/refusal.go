@@ -61,6 +61,28 @@ const (
 	ServiceRestartFailed Reason = "SERVICE_RESTART_FAILED"
 )
 
+// The reasons of repo add for remote storage (A8b, Р28, Р29, Р34).
+const (
+	AddressInvalid      Reason = "ADDRESS_INVALID"
+	SecretInvalid       Reason = "SECRET_INVALID"
+	S3KeyRejected       Reason = "S3_KEY_REJECTED"
+	StorageAccessDenied Reason = "STORAGE_ACCESS_DENIED"
+	BucketNotFound      Reason = "BUCKET_NOT_FOUND"
+)
+
+// The reasons of repo add for an sftp: storage (A8b-2, Р36-Р40).
+const (
+	SSHClientMissing    Reason = "SSH_CLIENT_MISSING"
+	SSHClientFailed     Reason = "SSH_CLIENT_FAILED"
+	SSHHomeInvalid      Reason = "SSH_HOME_INVALID"
+	SSHFileRejected     Reason = "SSH_FILE_REJECTED"
+	SSHKeyNotAuthorized Reason = "SSH_KEY_NOT_AUTHORIZED"
+	HostKeyUnconfirmed  Reason = "HOST_KEY_UNCONFIRMED"
+	HostKeyMismatch     Reason = "HOST_KEY_MISMATCH"
+	HostKeyRejected     Reason = "HOST_KEY_REJECTED"
+	HostKeyChanged      Reason = "HOST_KEY_CHANGED"
+)
+
 // Class is the kind of a failure; the command maps it to an exit code
 // (the numbers are A2b's, docs/adr/0025-grpc-error-model.md).
 type Class int
@@ -72,6 +94,9 @@ const (
 	ClassExists
 	ClassTemporary
 	ClassWrite
+	// ClassTrust: a key of a host the operator was asked to trust is not
+	// the one expected, was not accepted, or changed (exit code 5).
+	ClassTrust
 )
 
 var classes = map[Reason]Class{
@@ -94,6 +119,13 @@ var classes = map[Reason]Class{
 	ConfigLocked:         ClassTemporary,
 	ConfigWrite:          ClassWrite,
 	ServiceRestartFailed: ClassAgentError,
+
+	AddressInvalid: ClassUsage, SecretInvalid: ClassUsage, S3KeyRejected: ClassUsage,
+	StorageAccessDenied: ClassUsage, BucketNotFound: ClassUsage,
+
+	SSHClientMissing: ClassAgentError, SSHClientFailed: ClassAgentError,
+	SSHHomeInvalid: ClassUsage, SSHFileRejected: ClassUsage, SSHKeyNotAuthorized: ClassUsage, HostKeyUnconfirmed: ClassUsage,
+	HostKeyMismatch: ClassTrust, HostKeyRejected: ClassTrust, HostKeyChanged: ClassTrust,
 }
 
 // Failure is a refusal the operator is told about.

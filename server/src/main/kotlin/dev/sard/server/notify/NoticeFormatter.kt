@@ -4,6 +4,7 @@
 package dev.sard.server.notify
 
 import dev.sard.server.runs.StepState
+import dev.sard.server.runs.Trigger
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -11,36 +12,25 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Duration
 import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 
 private const val BINARY = 1024
 private const val SECONDS_PER_MINUTE = 60L
 private const val SECONDS_PER_HOUR = 3600L
-private const val NEWLINE = "\n"
 private const val MAX_REASON = 500
 private const val ELLIPSIS = "…"
 
-/** Times in a message: UTC to the minute, the same for every reader of a shared chat. */
-private val MOMENT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC)
-
-/**
- * What a finished run (S9b) or an overdue episode (F6) looks like in a message; the wording is the
- * specification's, per language.
- */
+/** What a finished run looks like in a message (S9b); the wording is the specification's, per language. */
 class RunNoticeFormatter(
     language: NoticeLanguage,
     private val console: ConsoleUrl?,
 ) : NotificationFormatter {
     private val words = wording(language)
+    private val figures = NoticeFigures(words)
 
-    private val overdue = OverdueFormatter(words, console)
-
-    override fun format(notice: Notice): Message? =
-        when (notice) {
-            is RunNotice -> Telling.of(notice)?.let { headline(notice, it) }?.let { compose(notice, it) }
-            is OverdueNotice -> overdue.format(notice)
-        }
+    override fun format(notice: RunNotice): Message? {
+        val telling = Telling.of(notice) ?: return null
+        return headline(notice, telling)?.let { compose(notice, it, telling) }
+    }
 
     private fun headline(
         notice: RunNotice,
@@ -53,18 +43,40 @@ class RunNoticeFormatter(
     private fun compose(
         notice: RunNotice,
         headline: Headline,
+        telling: Telling,
     ): Message {
         val lines =
             listOf(
                 listOf(listOf(Message.Bold("${headline.icon} ${headline.text}: ${notice.sourceName}"))),
+                listOfNotNull(triggerLine(notice.trigger)),
+                recoveryLines(telling, notice),
                 listOf(listOf(Message.Text(words.agent), Message.Code(notice.agentHostname))),
                 listOfNotNull(durationLine(notice.startedAt, notice.finishedAt)),
                 outcome(notice),
                 listOf(listOf(Message.Text(words.run), Message.Code("${notice.runId}"))),
                 listOfNotNull(console?.let { listOf(Message.Text(it.run(notice.runId))) }),
             ).flatten()
-        return messageOf(lines)
+        return Message.ofLines(lines)
     }
+
+    /** A scheduled run says so on the line after the headline; a manual one does not (F3b). */
+    private fun triggerLine(trigger: Trigger): List<Message.Part>? =
+        when (trigger) {
+            Trigger.SCHEDULE -> listOf(Message.Text(words.onSchedule))
+            Trigger.CATCH_UP -> listOf(Message.Text(words.catchUpRun))
+            Trigger.MANUAL, Trigger.VERIFICATION -> null
+        }
+
+    /** A recovery counts the failures it ends, unless a person started it: then it is a plain success. */
+    private fun recoveryLines(
+        telling: Telling,
+        notice: RunNotice,
+    ): List<List<Message.Part>> =
+        if (telling == Telling.RECOVERY) {
+            listOf(listOf(Message.Text("${words.failuresBefore}${notice.failuresBefore}")))
+        } else {
+            emptyList()
+        }
 
     /** What came of the backup: its sizes, or why it failed and what is left of it. */
     private fun outcome(notice: RunNotice): List<List<Message.Part>> {
@@ -109,9 +121,23 @@ class RunNoticeFormatter(
     private fun durationLine(
         start: Instant?,
         end: Instant,
-    ): List<Message.Part>? = start?.let { listOf(Message.Text(words.duration + duration(Duration.between(it, end)))) }
+    ): List<Message.Part>? {
+        val elapsed = start?.let { Duration.between(it, end) } ?: return null
+        return listOf(Message.Text(words.duration + figures.duration(elapsed)))
+    }
 
-    private fun duration(elapsed: Duration): String {
+    private fun sizesLine(sizes: BackupSizes): List<Message.Part> {
+        val total = figures.size(sizes.totalBytes)
+        val added = figures.size(sizes.addedBytes)
+        return listOf(Message.Text("${words.total}$total${words.added}$added"))
+    }
+}
+
+/** Durations and sizes as the console shows them (S9b); the formats repeat `web/src/format.ts`. */
+internal class NoticeFigures(
+    private val words: Wording,
+) {
+    fun duration(elapsed: Duration): String {
         val seconds = elapsed.seconds.coerceAtLeast(0)
         val (s, min, h) = words.durationUnits
         return when {
@@ -129,11 +155,8 @@ class RunNoticeFormatter(
         }
     }
 
-    private fun sizesLine(sizes: BackupSizes): List<Message.Part> =
-        listOf(Message.Text("${words.total}${size(sizes.totalBytes)}${words.added}${size(sizes.addedBytes)}"))
-
     /** Binary units, at most one decimal, half up, no trailing ",0" — as the console shows it. */
-    private fun size(bytes: Long): String {
+    fun size(bytes: Long): String {
         var value = bytes.toDouble()
         var unit = 0
         while (value >= BINARY && unit < words.units.size - 1) {
@@ -150,49 +173,6 @@ class RunNoticeFormatter(
     }
 }
 
-/** An overdue episode in a message (F6, ADR 00XX-draft-source-freshness). */
-internal class OverdueFormatter(
-    private val words: Wording,
-    private val console: ConsoleUrl?,
-) {
-    /**
-     * An episode that opened; one a success closed, unless that run is told about itself (a manual result, a
-     * recovery): one message per turn of events.
-     */
-    fun format(notice: OverdueNotice): Message? {
-        val closing = notice.closedBy ?: return messageOf(opened(notice))
-        return if (Telling.of(closing) == null) messageOf(resumed(notice, closing)) else null
-    }
-
-    private fun opened(notice: OverdueNotice): List<List<Message.Part>> {
-        val overdue = words.overdue
-        val last = notice.countedFrom?.let { Message.Text(overdue.lastSuccess + MOMENT.format(it)) }
-        return listOf(
-            listOf(Message.Bold("⚠️ ${overdue.opened}: ${notice.sourceName}")),
-            listOf(Message.Text(words.agent), Message.Code(notice.agentHostname)),
-            listOf(last ?: Message.Text(overdue.never)),
-            listOf(Message.Text(overdue.expectedBy + MOMENT.format(notice.deadline))),
-        )
-    }
-
-    private fun resumed(
-        notice: OverdueNotice,
-        closing: RunNotice,
-    ): List<List<Message.Part>> =
-        listOfNotNull(
-            listOf(Message.Bold("✅ ${words.overdue.resumed}: ${notice.sourceName}")),
-            listOf(Message.Text(words.agent), Message.Code(notice.agentHostname)),
-            listOf(Message.Text(words.run), Message.Code("${closing.runId}")),
-            console?.let { listOf(Message.Text(it.run(closing.runId))) },
-        )
-}
-
-/** Lines joined by newlines, each a list of parts. */
-internal fun messageOf(lines: List<List<Message.Part>>): Message {
-    val newline = listOf(Message.Text(NEWLINE))
-    return Message(lines.flatMapIndexed { index, line -> if (index == 0) line else newline + line })
-}
-
 /** The formatter bean (S9b): always present; a bad setting stops the start. */
 @Configuration(proxyBeanMethods = false)
 class NoticeFormatterConfiguration {
@@ -201,4 +181,18 @@ class NoticeFormatterConfiguration {
         @Value("\${sard.notify.language:en}") language: String,
         @Value("\${sard.console.public-url:}") publicUrl: String,
     ): NotificationFormatter = RunNoticeFormatter(NoticeLanguage.of(language), ConsoleUrl.parse(publicUrl))
+
+    /** The alert about fires skipped in a row (F3b): the same language and console address. */
+    @Bean
+    fun skipAlertFormatter(
+        @Value("\${sard.notify.language:en}") language: String,
+        @Value("\${sard.console.public-url:}") publicUrl: String,
+    ): SkipAlertFormatter = ScheduleAlertFormatter(NoticeLanguage.of(language), ConsoleUrl.parse(publicUrl))
+
+    /** An overdue episode (F6): the same language and console address. */
+    @Bean
+    fun overdueFormatter(
+        @Value("\${sard.notify.language:en}") language: String,
+        @Value("\${sard.console.public-url:}") publicUrl: String,
+    ): OverdueFormatter = OverdueNoticeFormatter(NoticeLanguage.of(language), ConsoleUrl.parse(publicUrl))
 }

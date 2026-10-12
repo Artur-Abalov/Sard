@@ -12,10 +12,11 @@
 `docs/specs/agent/host-setup.feature`; ADR 0049 (каталог `agent.d`) и 0050
 (права запуска); ручная проверка — `docs/qa/host-setup.md`.
 
-Решения о репозиториях s3 и sftp — срез A8b: пока `repo add` подключает только
-**локальный путь**; любой другой адрес отказывает с `BACKEND_NOT_SUPPORTED`.
-Для облачного хранилища репозиторий по-прежнему описывают в `agent.yaml`
-(`docs/operations/repo-init.md`).
+`repo add` подключает **локальный путь**, **S3** (срез A8b-1, раздел «Репозиторий
+S3» ниже) и **SFTP** (срез A8b-2, раздел «Репозиторий SFTP»). Адреса остальных
+видов (`rest:`, `b2:`, `azure:`, `gs:`, `swift:`, `rclone:`) отказывают с
+`BACKEND_NOT_SUPPORTED`; такие репозитории описывают в `agent.yaml` руками
+(`docs/operator/05a-storage.md`, `docs/operations/repo-init.md`).
 
 ## Кто запускает
 
@@ -61,6 +62,9 @@ service:
 | `/etc/sard/agent.d/secret-<имя>.yaml` | секрет | `root:sard-agent`, `0640` |
 | `/etc/sard/secrets/<имя>` | значение секрета | `sard-agent`, `0600` |
 | `/etc/sard/secrets/restic-<имя>.pass` | пароль репозитория | `sard-agent`, `0600` |
+| `/etc/sard/secrets/restic-<имя>.env` | ключи репозитория S3 (A8b) | `sard-agent`, `0600` |
+| `<домашний каталог>/.ssh/id_ed25519`, `.pub` | ключ пользователя службы для SFTP (A8b-2) | `sard-agent`, `0600`, `0644` |
+| `<домашний каталог>/.ssh/known_hosts`, `config` | ключ хоста SFTP и блок на хост (A8b-2) | `sard-agent`, `0600` |
 | `/etc/systemd/system/sard-agent.service.d/sard-repo-<имя>.conf` | `ReadWritePaths` каталога репозитория | `root`, `0644` |
 
 Агент читает основной файл, затем фрагменты `agent.d/*.yaml` в порядке имён
@@ -111,7 +115,7 @@ sudo sard-agent secret remove <имя> [--no-restart]
 ## Локальный репозиторий
 
 ```bash
-sudo sard-agent repo add <имя> <абсолютный путь> [--password-stdin | --password-from-file <путь>] [--no-restart] [--timeout 2m]
+sudo sard-agent repo add <имя> <абсолютный путь> [--password-stdin | --password-from-file <путь>] [--no-restart] [--timeout 2m] [--connect-timeout 30s]
 sudo sard-agent repo list [--json]
 sudo sard-agent repo show <имя> [--json]
 sudo sard-agent repo password <имя> --reveal
@@ -171,6 +175,191 @@ init мог записать ключ этим паролем), фрагмент
 BACKEND STATUS REPOSITORY_ID` (в `--json` ещё и `defined_in`). `--json` у `repo list`, `repo show` и `secret list` печатает один
 объект JSON в stdout; ошибки по-прежнему текстом в stderr, коды выхода те же.
 
+## Репозиторий S3
+
+```bash
+sudo sard-agent repo add <имя> s3:https://<хост>[:<порт>]/<бакет>[/<путь>] \
+  --access-key-id <id> [--region <регион>] \
+  [--secret-key-stdin | --secret-key-from-file <путь>] \
+  [--password-stdin | --password-from-file <путь>] [--no-restart] [--timeout 2m] [--connect-timeout 30s]
+```
+
+Адрес — формат restic (с `https`, с `http` и предупреждением о передаче без TLS,
+или без схемы); учётных данных в нём нет (`ADDRESS_INVALID`: нет хоста или
+бакета, другая схема, `user:pass@`, управляющий символ, хост с `-` в начале).
+
+- **Предустановка провайдера.** `--provider aws|b2` с адресом
+  `s3:<бакет>[/<путь>]` (без схемы и хоста) и обязательным `--region` строит
+  адрес: `aws` — `s3:https://s3.<регион>.amazonaws.com/<бакет>[/<путь>]`, `b2` —
+  `s3:https://s3.<регион>.backblazeb2.com/<бакет>[/<путь>]`; во фрагмент
+  пишется полный адрес, в `env`-файл — `AWS_DEFAULT_REGION=<регион>`.
+  Схема или хост в адресе, неизвестный провайдер (в сообщении `aws`, `b2`),
+  нет `--region`, плохой формат региона, нет бакета — ошибка использования.
+  Списка регионов нет: несуществующий регион — `BACKEND_UNAVAILABLE`.
+  `--provider` с адресом другого вида — ошибка использования, называющая флаг.
+  Пример: `sudo sard-agent repo add main s3:<бакет>/<путь> --provider aws
+  --region eu-central-1 --access-key-id <id> --secret-key-from-file <путь>`.
+- **Ключи.** `--access-key-id` обязателен (1–128 печатных символов ASCII без
+  пробелов). Секретный ключ — один источник из трёх: `--secret-key-stdin`,
+  `--secret-key-from-file` или терминал (дважды, без эха); значением флага или
+  аргументом он не передаётся. Один перевод строки в конце отбрасывается (`\n`
+  или `\r\n`), любой другой управляющий символ — `SECRET_INVALID`; пусто —
+  `SECRET_EMPTY`, больше 65536 байт — `SECRET_TOO_LARGE`. `--secret-key-stdin`
+  вместе с `--password-stdin` — `SECRET_SOURCE_CONFLICT`. `--region`:
+  `a–z 0–9 -`, до 64 символов.
+- **`env`-файл.** `secrets/restic-<имя>.env`, владелец и группа — пользователь
+  службы, `0600`: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, с `--region` —
+  `AWS_DEFAULT_REGION`. Он пишется временным файлом (владелец и права выставляются
+  до записи содержимого) и становится `env`-файлом в тот же момент, что и файл
+  пароля, после того как restic принял ключи. Существующий `env`-файл под root
+  читается только через проверку владельца и прав (`SECRET_FILE_REJECTED`,
+  если файл не принадлежит пользователю службы, открыт другим, это ссылка или
+  не обычный файл; такой файл не меняется). Файл, на который ссылается другой
+  ключ конфига, — `PATH_IN_USE`.
+- **Проверка.** `restic cat config` от имени пользователя службы с ключами
+  кандидата. Репозитория нет (код 10 restic) — `restic init`, со
+  сгенерированным паролем, как для локального пути; репозиторий есть — нужен
+  его пароль, как выше. Отказ хранилища относится к классу
+  (`S3_KEY_REJECTED`, `STORAGE_ACCESS_DENIED`, `BUCKET_NOT_FOUND`,
+  `BACKEND_UNAVAILABLE`, `WRONG_PASSWORD`, `BACKEND_REFUSED`); сообщение
+  называет причину, адрес (пароль скрыт), очищенную строку restic и что делать.
+  Таблица причин — `docs/operator/05a-storage.md`.
+- **`--connect-timeout`** (по умолчанию `30s`; для любого вида адреса,
+  в том числе локального пути) ограничивает каждое сетевое обращение проверки
+  (первое обращение restic; для SFTP ещё получение ключа хоста и проверку
+  входа по ssh): программа получает SIGTERM, а через 10 секунд SIGKILL; код 6,
+  `BACKEND_UNAVAILABLE`, в сообщении последняя причина повтора, которую restic
+  успел напечатать. `restic init` и проверку пароля после первого ответа он не
+  ограничивает, их ограничивает `--timeout`; он объемлет всё. Время, которое
+  команда ждёт ответа оператора на терминале, не входит ни в тот, ни в другой.
+- **Следов нет**, пока кандидат не принят: ни `env`-файла, ни файла пароля, ни
+  фрагмента, ни временных файлов, `systemctl` не вызывается, строки аудита нет.
+  После принятия ключей и отказа `restic init` `env`-файл и файл пароля остаются
+  и используются повтором без вопросов.
+- **Повтор.** Тот же адрес, тот же `--access-key-id`, тот же `--region` и
+  либо ни одного источника секретного ключа (терминал не спрашивается), либо
+  тот же ключ — `unchanged`: ничего не записано, нет строки аудита и перезапуска.
+  Другие ключи или регион подключённого имени проверяются так же, как новые;
+  проверка идёт с файлом пароля, который уже лежит на месте: пароль не
+  спрашивается и не заменяется (`--password-stdin` и `--password-from-file`
+  с этим — ошибка использования), неверный пароль — `WRONG_PASSWORD`, а ключи,
+  которые не видят репозитория, — `REPOSITORY_CONFLICT` (репозиторий заново не
+  создаётся); принятые заменяют `env`-файл атомарно (`credentials updated`, строка аудита
+  `repository <имя> credentials updated`, службу не перезапускают: `env`-файл
+  читается на каждом шаге); отклонённые оставляют `env`-файл как был. Другой
+  адрес для того же имени — `REPOSITORY_CONFLICT`.
+- **Итог** называет имя, `backend: s3`, адрес (пароль скрыт), `repository_id`,
+  `env`-файл и файл пароля, «created» или «attached» и напоминает о копии
+  пароля (`repo password <имя> --reveal`); предупреждения о бэкапе на этом же
+  хосте нет. Drop-in systemd для S3 не пишется. `repo remove` удаляет
+  фрагмент и `env`-файл, файл пароля оставляет.
+- **Аудит.** `repository <имя> added` или `repository <имя> credentials
+  updated`; ключей, паролей и адресов с учётными данными в строке нет. Секретный
+  ключ и пароль нигде не появляются: ни в выводе, ни в аргументах процессов, ни
+  в журналах; ключи получает только restic, окружением из `env`-файла.
+- **Бакет.** Если бакета нет, `restic init` создаёт его сам, когда ключ вправе
+  создавать бакеты (Н19). Агент бакеты не создаёт и не проверяет заранее.
+
+## Репозиторий SFTP
+
+```bash
+sudo sard-agent repo add <имя> sftp:[<пользователь>@]<хост>:<путь> \
+  [--host-key-fingerprint SHA256:<отпечаток>] [--replace-host-key] \
+  [--password-stdin | --password-from-file <путь>] [--no-restart] [--timeout 2m] [--connect-timeout 30s]
+```
+
+Адрес — формат restic: `sftp:[пользователь@]хост:путь` или
+`sftp://[пользователь@]хост[:порт]/путь` (IPv6 в квадратных скобках).
+`ADDRESS_INVALID`: нет хоста или пути, пароль в адресе (`ssh` работает по
+ключу), порт вне 1–65535, управляющий символ, хост или пользователь с `-` в
+начале. Флаги S3 (`--provider`, `--access-key-id`, `--region`, `--secret-key-*`) с адресом
+`sftp:` и флаги SFTP с другими адресами — ошибка использования, называющая флаг.
+
+- **Клиент OpenSSH.** До блокировок и любых изменений проверяется, что `ssh`,
+  `sftp`, `ssh-keygen` и `ssh-keyscan` есть в `PATH`, который получает restic;
+  иначе `SSH_CLIENT_MISSING` (код 1) называет программу и команды установки
+  (`sudo apt-get install openssh-client`, `sudo dnf install openssh-clients`;
+  `dpkg -i` и `rpm -U` зависимостей не ставят). Для S3 и локального пути клиент
+  не нужен.
+- **Каталог `.ssh`.** Домашний каталог пользователя службы — из passwd (у пакета
+  `/var/lib/sard-agent`, ADR 0047), путь проходится от `/` без перехода по
+  ссылкам (`SSH_HOME_INVALID`: не абсолютный, `/`, ссылка в любом компоненте).
+  Нет домашнего каталога — создаётся последний компонент (`0700`, пользователь
+  службы), нет родителя — `CONFIG_WRITE`, ничего не создано. Каталог `.ssh`
+  открывается относительно удерживаемого домашнего каталога; нет — создаётся
+  (`0700`). Существующие каталоги владельца и прав не меняют.
+- **Запись под root.** Каждое создание, смена владельца и прав, переименование
+  и чтение идут относительно удерживаемого дескриптора `.ssh` (`openat`,
+  `fchown`, `fchmod`, `renameat`), ни одного вызова по полному пути. Новый файл —
+  временный (`O_EXCL|O_NOFOLLOW`), владелец и права выставляются до записи
+  содержимого, `fsync`, `renameat` в том же каталоге, `fsync` каталога. Файл,
+  который читается (`known_hosts`, `config`, `id_ed25519.pub`), открывается с
+  `O_NOFOLLOW|O_NONBLOCK` и должен быть обычным файлом с одним именем, владелец —
+  пользователь службы или root, не больше 1 МиБ: иначе `SSH_FILE_REJECTED`
+  с путём и причиной, файл не читается дальше `fstat` и не меняется. Закрытый
+  ключ root не открывает никогда. Результат: `config` и `known_hosts`
+  принадлежат пользователю службы, `0600`. ADR 0054.
+- **Ключ хоста.** Сканирование — `ssh-keyscan` от имени пользователя службы с
+  портом адреса. Известный ключ (обычная или хешированная запись, `хост` или
+  `[хост]:порт`) — ничего не спрашивается и не пишется. Неизвестный:
+  `--host-key-fingerprint SHA256:…` (43 символа base64 без `=`; MD5 и другое —
+  ошибка использования) принимает ключ любого типа с этим отпечатком, иначе
+  `HOST_KEY_MISMATCH` (код 5); без флага на терминале показывается один ключ
+  (ed25519, ecdsa, rsa) и принимается ответ ровно `yes` (иначе
+  `HOST_KEY_REJECTED`, код 5); без флага и без терминала — `HOST_KEY_UNCONFIRMED`
+  (код 2), ввод не читается. Записи хоста, ни одна из которых не совпала, —
+  `HOST_KEY_CHANGED` (код 5; файл и номера строк); `--replace-host-key`
+  заменяет их ключом, подтверждённым тем же способом. Принятый ключ дописывается
+  одной строкой без хеширования, остальное содержимое — байт в байт.
+- **Ключ пользователя службы.** Нет `~/.ssh/id_ed25519` — `ssh-keygen` от имени
+  пользователя службы создаёт ed25519 без пароля с комментарием
+  `sard-agent@<имя хоста>`; ни один файл ключа не пишет root. Только после
+  принятия ключа хоста; ключ не удаляется ни при каком отказе. Открытая часть
+  всегда печатается в stdout: при успехе и при `SSH_KEY_NOT_AUTHORIZED`. Есть
+  закрытый ключ без `.pub` — открытая часть берётся `ssh-keygen -y` от имени
+  пользователя службы, файл не пишется.
+- **Блок `~/.ssh/config`.** В начале файла блок на хост (`StrictHostKeyChecking
+  yes`, `BatchMode yes`, `IdentityFile`, `IdentitiesOnly yes`,
+  `ServerAliveInterval 15`, `ServerAliveCountMax 4`, `ConnectTimeout 30`) между
+  строками `# sard-agent begin <хост>` и `# sard-agent end <хост>`. Тот же блок —
+  файл не переписывается, иной блок того же хоста заменяется на месте, прочее
+  содержимое — байт в байт. Те же `StrictHostKeyChecking` и `BatchMode` команда
+  передаёт и в командной строке каждой программы `ssh` и `sftp`.
+- **Проверка входа.** `sftp -b /dev/null` от имени пользователя службы с
+  `--connect-timeout`; причина берётся из его stderr, а не из строки restic:
+  `SSH_KEY_NOT_AUTHORIZED` (код 2; открытая часть ключа печатается), `HOST_KEY_MISMATCH`
+  (код 5), `BACKEND_UNAVAILABLE` (код 6), прочее — `BACKEND_REFUSED` (код 1).
+  Затем `restic cat config`; `permission denied` в каталоге —
+  `STORAGE_ACCESS_DENIED` с каталогом из адреса.
+- **Процессы.** `restic`, `ssh`, `sftp`, `ssh-keygen` и `ssh-keyscan` запускаются
+  от uid и gid пользователя службы, с окружением `PATH` (restic), `HOME`
+  (из passwd) и `LC_ALL=C`: ни пароль, ни `AWS_*`, ни переменные оператора в них
+  не попадают, пароль не бывает аргументом.
+- **Порядок.** Флаги, права, имя, вид и адрес, флаги вида, источники секретов,
+  конфиг, конфликт имени, пользователь службы, restic, клиент OpenSSH, блокировка
+  конфига, блокировка `init`, `.ssh` и его файлы, ключ хоста, ключ SSH,
+  `known_hosts`, `config`, проверка входа, первое обращение restic, пароль,
+  файл пароля, `init` или проверка пароля, фрагмент, аудит, применение. Drop-in
+  systemd не пишется.
+- **Файлы `ssh` — настройка, а не отказ.** Записанные до проверки входа ключ,
+  запись `known_hosts` и блок `config` остаются при любом отказе дальше
+  (`SSH_KEY_NOT_AUTHORIZED`, `STORAGE_ACCESS_DENIED`, `BACKEND_UNAVAILABLE`);
+  повтор их использует и ничего не спрашивает. Фрагмент, файл пароля и временные
+  файлы при отказе до `init` не остаются; после отказа `init` остаётся файл
+  пароля, как у S3. Изменение только файлов `ssh` службу не перезапускает.
+- **Повтор.** Ключ хоста известен, ключ SSH есть, блок тот же и репозиторий
+  открывается файлом пароля — `unchanged`: без записи, вопросов, строки аудита
+  и перезапуска.
+- **Итог** называет имя, `backend: sftp`, адрес, `repository_id`, файл пароля,
+  хост с отпечатком принятого ключа, открытую часть ключа и напоминает о копии
+  пароля; предупреждения о бэкапе на этом же хосте нет. `repo remove` удаляет
+  фрагмент, `~/.ssh` не трогает и называет файл ключа и хост, которые остаются.
+- **Аудит.** Своя строка на каждое изменение, в порядке изменений:
+  `ssh key of service user <польз> created`, `ssh host key of <хост>[:<порт>]
+  trusted <тип> <отпечаток>` (при замене `replaced`), `repository <имя> added`.
+  Строки ключа и ключа хоста пишутся и тогда, когда команда потом отказала.
+  Значений, ключей и паролей в строках нет.
+
 ## Применение изменения и перезапуск
 
 После изменения, в этом порядке:
@@ -223,11 +412,12 @@ sudo journalctl -t sard-agent --since today
 | код | класс | когда |
 |---|---|---|
 | 0 | успех | изменение применено или не требовалось; чтение; `--help` |
-| 1 | ошибка агента | restic не найден, старый, непригоден; `BACKEND_REFUSED`; `SERVICE_RESTART_FAILED` |
-| 2 | использование | флаги, `PRIVILEGES_REQUIRED`, `SERVICE_USER_UNKNOWN`, `NAME_INVALID`, конфиг и `DUPLICATE_NAME`, `DEFINED_IN_CONFIG`, `PATH_IN_USE`, `SECRET_SOURCE_MISSING`, `SECRET_SOURCE_CONFLICT`, `SECRET_EMPTY`, `SECRET_TOO_LARGE`, `SECRET_MISMATCH`, `BACKEND_NOT_SUPPORTED`, `LOCAL_PATH_INVALID`, `WRONG_PASSWORD`, `REPOSITORY_UNKNOWN`, `REVEAL_REQUIRED`, `PASSWORD_FILE_MISSING` |
+| 1 | ошибка агента | restic не найден, старый, непригоден; `BACKEND_REFUSED`; `SSH_CLIENT_MISSING`, `SSH_CLIENT_FAILED`; `SERVICE_RESTART_FAILED` |
+| 2 | использование | флаги, `PRIVILEGES_REQUIRED`, `SERVICE_USER_UNKNOWN`, `NAME_INVALID`, конфиг и `DUPLICATE_NAME`, `DEFINED_IN_CONFIG`, `PATH_IN_USE`, `SECRET_SOURCE_MISSING`, `SECRET_SOURCE_CONFLICT`, `SECRET_EMPTY`, `SECRET_TOO_LARGE`, `SECRET_MISMATCH`, `SECRET_INVALID`, `SECRET_FILE_REJECTED`, `BACKEND_NOT_SUPPORTED`, `ADDRESS_INVALID`, `LOCAL_PATH_INVALID`, `WRONG_PASSWORD`, `S3_KEY_REJECTED`, `STORAGE_ACCESS_DENIED`, `BUCKET_NOT_FOUND`, `SSH_HOME_INVALID`, `SSH_FILE_REJECTED`, `SSH_KEY_NOT_AUTHORIZED`, `HOST_KEY_UNCONFIRMED`, `REPOSITORY_UNKNOWN`, `REVEAL_REQUIRED`, `PASSWORD_FILE_MISSING` |
 | 4 | идентичность есть | `REPOSITORY_CONFLICT`: имя уже подключено к другому адресу |
-| 6 | временная | `BACKEND_UNAVAILABLE`, `TIMEOUT`, `INTERRUPTED`, `CONFIG_LOCKED`, `INIT_IN_PROGRESS` |
-| 7 | запись | `CONFIG_WRITE` (каталог или файл `agent.d`, `secrets`, drop-in, каталог репозитория, смена владельца), `LOCK_WRITE` |
+| 5 | доверие | `HOST_KEY_MISMATCH`, `HOST_KEY_REJECTED`, `HOST_KEY_CHANGED`: ключ хоста SFTP не подтверждён, не совпал или сменился |
+| 6 | временная | `BACKEND_UNAVAILABLE` (в том числе `--connect-timeout`), `TIMEOUT`, `INTERRUPTED`, `CONFIG_LOCKED`, `INIT_IN_PROGRESS` |
+| 7 | запись | `CONFIG_WRITE` (каталог или файл `agent.d`, `secrets`, drop-in, каталог репозитория, домашний каталог, `~/.ssh` и его файлы, смена владельца), `LOCK_WRITE` |
 
 Таблица каждой команды — в её `--help`.
 

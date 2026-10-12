@@ -53,9 +53,9 @@ private fun overdue(closedBy: RunNotice? = null) =
 private fun Message?.text() = this?.parts?.joinToString("") { it.text }
 
 /** F6: the wording of an overdue episode in English, and when its end is left to the run that ended it. */
-@MutFlowTest(includeTargets = [OverdueFormatter::class, RunNoticeFormatter::class])
+@MutFlowTest(includeTargets = [OverdueNoticeFormatter::class])
 class OverdueNoticeFormatterTest {
-    private val formatter = RunNoticeFormatter(NoticeLanguage.EN, ConsoleUrl.parse("https://sard.example.com"))
+    private val formatter = OverdueNoticeFormatter(NoticeLanguage.EN, ConsoleUrl.parse("https://sard.example.com"))
 
     @Test
     fun `An opened episode names the last success and the deadline`() {
@@ -104,7 +104,7 @@ class OverdueNoticeFormatterTest {
 
     @Test
     fun `Without a console address the end has no link`() {
-        val plain = RunNoticeFormatter(NoticeLanguage.EN, null)
+        val plain = OverdueNoticeFormatter(NoticeLanguage.EN, null)
         val text = MutFlow.underTest { plain.format(overdue(closing(Trigger.SCHEDULE, null))) }.text()
         assertEquals(3, text?.lines()?.size)
     }

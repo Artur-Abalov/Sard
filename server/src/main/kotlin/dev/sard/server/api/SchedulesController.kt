@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.scheduler.FireView
+import dev.sard.server.scheduler.LastRun
 import dev.sard.server.scheduler.ScheduleDraft
 import dev.sard.server.scheduler.ScheduleView
 import dev.sard.server.scheduler.Schedules
@@ -38,6 +39,20 @@ data class ScheduleInput(
     val timezone: String,
     @field:Schema(description = "A disabled schedule keeps its cron and zone and does not fire")
     val enabled: Boolean,
+    @field:Schema(description = NOTIFY_ON_SUCCESS)
+    val notifyOnSuccess: Boolean = false,
+)
+
+private const val NOTIFY_ON_SUCCESS =
+    "Tell of every successful scheduled run too; failures and recoveries are always told. Off by default"
+
+@Schema(description = "The latest run the schedule created, scheduled or catch-up")
+data class ScheduleLastRun(
+    val id: UUID,
+    val trigger: RunTrigger,
+    val status: RunStatus,
+    val queuedAt: Instant,
+    val finishedAt: Instant?,
 )
 
 @Schema(description = "A source's schedule")
@@ -56,6 +71,10 @@ data class Schedule(
     val lastFiredAt: Instant?,
     @field:Schema(description = "Fires skipped in a row: an active run, a revoked agent, a refusal")
     val skippedInRow: Int,
+    @field:Schema(description = NOTIFY_ON_SUCCESS)
+    val notifyOnSuccess: Boolean,
+    @field:Schema(description = "The latest run created by this schedule (schedule or catch_up); null if none yet")
+    val lastRun: ScheduleLastRun?,
     val createdAt: Instant,
     val updatedAt: Instant,
 )
@@ -119,6 +138,8 @@ data class ScheduleFire(
     val missedCount: Int?,
     @field:Schema(description = "skipped_downtime: the last fire missed")
     val missedUntil: Instant?,
+    @field:Schema(description = "skipped_downtime: more fires were missed than counted; missedCount is a lower bound")
+    val missedCountCapped: Boolean,
     @field:Schema(description = "Fires skipped in a row after this one")
     val skippedInRow: Int,
     @field:Schema(description = "This skip brought skippedInRow to the alert threshold")
@@ -206,7 +227,7 @@ class SchedulesApiImpl(
         sourceId: UUID,
         schedule: ScheduleInput,
     ): Schedule {
-        val draft = ScheduleDraft(schedule.cron, schedule.timezone, schedule.enabled)
+        val draft = ScheduleDraft(schedule.cron, schedule.timezone, schedule.enabled, schedule.notifyOnSuccess)
         return scheduleOf(schedules.set(tenants.currentTenantId(), sourceId, draft))
     }
 
@@ -232,8 +253,19 @@ class SchedulesApiImpl(
             view.catchUpAt,
             view.lastFiredAt,
             view.skippedInRow,
+            view.notifyOnSuccess,
+            view.lastRun?.let(::lastRunOf),
             view.createdAt,
             view.updatedAt,
+        )
+
+    private fun lastRunOf(run: LastRun) =
+        ScheduleLastRun(
+            run.id,
+            RunTrigger.valueOf(run.trigger.name),
+            RunStatus.valueOf(run.status.name),
+            run.queuedAt,
+            run.finishedAt,
         )
 
     private fun fireOf(view: FireView) =
@@ -246,6 +278,7 @@ class SchedulesApiImpl(
             view.reason?.let { ScheduleFireReason.valueOf(it.name) },
             view.missedCount,
             view.missedUntil,
+            view.missedCountCapped,
             view.skippedInRow,
             view.alert,
             view.recordedAt,

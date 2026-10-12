@@ -39,7 +39,7 @@ private val DEADLINE: Instant = Instant.parse("2026-09-29T15:10:00Z")
  * F6: an overdue episode is told about when it opens and when a success closes it, through the same queue as runs;
  * a closing run that is told about itself (a manual result, a recovery) carries the news alone.
  */
-@MutFlowTest(includeTargets = [OverdueDeliveries::class, Notices::class, OverdueFormatter::class])
+@MutFlowTest(includeTargets = [OverdueDeliveries::class, OverdueNoticeFormatter::class])
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = [
@@ -132,8 +132,8 @@ class OverdueNotificationsIntegrationTest(
 
     private fun statuses(episode: UUID): Map<String, String> =
         jdbc
-            .queryForList("select subject, status from notification_deliveries where episode_id = ?", episode)
-            .associate { it["subject"] as String to it["status"] as String }
+            .queryForList("select episode_event, status from notification_deliveries where episode_id = ?", episode)
+            .associate { it["episode_event"] as String to it["status"] as String }
 
     @Test
     fun `Открытый эпизод даёт одно сообщение с последним успехом и сроком`() {
@@ -149,7 +149,7 @@ class OverdueNotificationsIntegrationTest(
             Ожидался не позже: 2026-09-29 15:10 UTC
             """.trimIndent()
         assertEquals(listOf(expected), List(fake.requests.size) { fake.shownText(it) })
-        assertEquals(mapOf("overdue" to "delivered"), statuses(episode))
+        assertEquals(mapOf("opened" to "delivered"), statuses(episode))
     }
 
     @Test
@@ -180,7 +180,7 @@ class OverdueNotificationsIntegrationTest(
             """.trimIndent()
         assertEquals(expected, fake.shownText(1))
         assertEquals(2, fake.requests.size)
-        assertEquals(mapOf("overdue" to "delivered", "overdue_over" to "delivered"), statuses(episode))
+        assertEquals(mapOf("opened" to "delivered", "closed" to "delivered"), statuses(episode))
     }
 
     @Test
@@ -195,7 +195,7 @@ class OverdueNotificationsIntegrationTest(
 
         assertEquals(2, fake.requests.size)
         assertEquals("✅ Бэкап выполнен: db-main", fake.shownText(1).lines().first())
-        assertEquals("skipped", statuses(episode)["overdue_over"])
+        assertEquals("skipped", statuses(episode)["closed"])
     }
 
     @Test
@@ -207,6 +207,6 @@ class OverdueNotificationsIntegrationTest(
         ticks()
 
         assertEquals(1, fake.requests.size)
-        assertEquals(mapOf("overdue" to "delivered"), statuses(episode))
+        assertEquals(mapOf("opened" to "delivered"), statuses(episode))
     }
 }

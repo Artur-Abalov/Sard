@@ -32,11 +32,11 @@
    sudo systemctl enable --now sard-agent.service
    ```
 
-   Репозиторий в облачном хранилище (`s3:…`, `sftp:…`) пока описывается в
-   секции `repositories` файла `/etc/sard/agent.yaml` (адрес, `password_file`,
-   `env_file` с ключами) и создаётся `sudo sard-agent repo init
-   --generate-password main`. S3 и SFTP — [раздел 5a](05a-storage.md):
-   `env_file`, ключ SSH и `known_hosts` пользователя службы. Все команды,
+   Репозиторий в облачном хранилище или на SFTP-сервере подключает та же
+   команда: `sudo sard-agent repo add main s3:https://… --access-key-id …`
+   или `sudo sard-agent repo add main sftp:пользователь@хост:/каталог
+   --host-key-fingerprint SHA256:…`. Ключи S3, ключ SSH пользователя службы и
+   `known_hosts` она создаёт сама — [раздел 5a](05a-storage.md). Все команды,
    права и коды выхода —
    [настройка хоста](../operations/agent-host-setup.md),
    [репозиторий](../operations/repo-init.md).

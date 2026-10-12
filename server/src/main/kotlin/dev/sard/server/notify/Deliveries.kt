@@ -6,6 +6,7 @@ package dev.sard.server.notify
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import org.hibernate.Session
+import org.hibernate.query.MutationQuery
 import java.time.Instant
 import java.util.UUID
 
@@ -15,32 +16,63 @@ data class Unplanned(
     val runId: UUID,
 )
 
+/** A schedule fire that raised an alert and has no delivery through a channel yet (F3b). */
+data class UnplannedAlert(
+    val tenantId: UUID,
+    val fireId: UUID,
+)
+
 /** An overdue episode that opened, or that a success closed, with no delivery through a channel yet (F6). */
 data class UnplannedEpisode(
     val tenantId: UUID,
     val episodeId: UUID,
-    /** overdue (it opened) or overdue_over (a success closed it). */
-    val subject: String,
+    /** opened or closed. */
+    val event: String,
 )
 
-/** A pending delivery whose time has come; of a run ([runId]) or of an overdue episode ([episodeId], F6). */
+/**
+ * A pending delivery whose time has come: about a run, a schedule fire (F3b) or an overdue episode's [episodeEvent]
+ * (F6), exactly one of them.
+ */
 data class DueDelivery(
     val tenantId: UUID,
     val id: UUID,
     val runId: UUID?,
+    val fireId: UUID?,
     val channel: String,
     val attempts: Int,
     val createdAt: Instant,
-    val subject: String = SUBJECT_RUN,
     val episodeId: UUID? = null,
+    val episodeEvent: String? = null,
 ) {
-    /** What the delivery tells of, for the log: "run <id>", or the episode's subject and id. */
-    override fun toString(): String = runId?.let { "run $it" } ?: "$subject episode $episodeId"
+    /** What the delivery is about, as the log names it. */
+    val subject: String
+        get() =
+            when {
+                fireId != null -> "schedule fire $fireId"
+                episodeId != null -> "overdue episode $episodeId ($episodeEvent)"
+                else -> "run $runId"
+            }
 }
 
-internal const val SUBJECT_RUN = "run"
-internal const val SUBJECT_OVERDUE = "overdue"
-internal const val SUBJECT_OVERDUE_OVER = "overdue_over"
+/** The event of an overdue episode a delivery tells of: it opened, or a success closed it. */
+internal const val EPISODE_OPENED = "opened"
+internal const val EPISODE_CLOSED = "closed"
+
+/** What a claimed delivery tells about, read back at send time. */
+sealed interface Claimed {
+    data class Finished(
+        val notice: RunNotice,
+    ) : Claimed
+
+    data class Alert(
+        val notice: SkipAlertNotice,
+    ) : Claimed
+
+    data class Overdue(
+        val notice: OverdueNotice,
+    ) : Claimed
+}
 
 private const val UNPLANNED = """
     select new dev.sard.server.notify.Unplanned(r.tenantId, r.id) from RunRecord r
@@ -50,25 +82,39 @@ private const val UNPLANNED = """
         where d.tenantId = r.tenantId and d.runId = r.id and d.channel = :channel)
     order by r.finishedAt, r.id"""
 
-private const val OPENED = """
-    select new dev.sard.server.notify.UnplannedEpisode(e.tenantId, e.id, 'overdue') from OverdueEpisodeRecord e
+private const val UNPLANNED_ALERTS = """
+    select new dev.sard.server.notify.UnplannedAlert(f.tenantId, f.id) from ScheduleFireRecord f
+    where f.alert = true and f.recordedAt >= :since
+      and not exists (
+        select 1 from NotificationDeliveryRecord d
+        where d.tenantId = f.tenantId and d.fireId = f.id and d.channel = :channel)
+    order by f.recordedAt, f.id"""
+
+private const val OPENED_EPISODES = """
+    select new dev.sard.server.notify.UnplannedEpisode(e.tenantId, e.id, 'opened') from OverdueEpisodeRecord e
     where e.openedAt >= :since
       and not exists (
         select 1 from NotificationDeliveryRecord d
-        where d.tenantId = e.tenantId and d.episodeId = e.id and d.subject = 'overdue' and d.channel = :channel)
+        where d.tenantId = e.tenantId and d.episodeId = e.id and d.episodeEvent = 'opened' and d.channel = :channel)
     order by e.openedAt, e.id"""
 
-private const val CLOSED = """
-    select new dev.sard.server.notify.UnplannedEpisode(e.tenantId, e.id, 'overdue_over') from OverdueEpisodeRecord e
+private const val CLOSED_EPISODES = """
+    select new dev.sard.server.notify.UnplannedEpisode(e.tenantId, e.id, 'closed') from OverdueEpisodeRecord e
     where e.closedAt >= :since and e.closedByRunId is not null
       and not exists (
         select 1 from NotificationDeliveryRecord d
-        where d.tenantId = e.tenantId and d.episodeId = e.id and d.subject = 'overdue_over' and d.channel = :channel)
+        where d.tenantId = e.tenantId and d.episodeId = e.id and d.episodeEvent = 'closed' and d.channel = :channel)
     order by e.closedAt, e.id"""
+
+private const val PLAN_EPISODE = """
+    insert into notification_deliveries
+        (id, tenant_id, episode_id, episode_event, channel, status, next_attempt_at, created_at)
+    values (:id, :tenant, :episode, :event, :channel, 'pending', :now, :now)
+    on conflict (tenant_id, episode_id, episode_event, channel) do nothing"""
 
 private const val DUE = """
     select new dev.sard.server.notify.DueDelivery(
-        d.tenantId, d.id, d.runId, d.channel, d.attempts, d.createdAt, d.subject, d.episodeId)
+        d.tenantId, d.id, d.runId, d.fireId, d.channel, d.attempts, d.createdAt, d.episodeId, d.episodeEvent)
     from NotificationDeliveryRecord d
     where d.status = 'pending' and d.nextAttemptAt <= :now and d.channel in :channels
     order by d.nextAttemptAt, d.id"""
@@ -76,14 +122,14 @@ private const val DUE = """
 private const val PENDING = "select count(*) from NotificationDeliveryRecord d where d.status = 'pending'"
 
 private const val PLAN = """
-    insert into notification_deliveries (id, tenant_id, run_id, subject, channel, status, next_attempt_at, created_at)
-    values (:id, :tenant, :run, 'run', :channel, 'pending', :now, :now)
+    insert into notification_deliveries (id, tenant_id, run_id, channel, status, next_attempt_at, created_at)
+    values (:id, :tenant, :run, :channel, 'pending', :now, :now)
     on conflict (tenant_id, run_id, channel) do nothing"""
 
-private const val PLAN_EPISODE = """
-    insert into notification_deliveries (id, tenant_id, episode_id, subject, channel, status, next_attempt_at, created_at)
-    values (:id, :tenant, :episode, :subject, :channel, 'pending', :now, :now)
-    on conflict (tenant_id, episode_id, subject, channel) do nothing"""
+private const val PLAN_ALERT = """
+    insert into notification_deliveries (id, tenant_id, fire_id, channel, status, next_attempt_at, created_at)
+    values (:id, :tenant, :fire, :channel, 'pending', :now, :now)
+    on conflict (tenant_id, fire_id, channel) do nothing"""
 
 private const val CLAIM = """
     update notification_deliveries set next_attempt_at = :until
@@ -112,15 +158,14 @@ class Deliveries(
         channel: String,
         since: Instant,
         limit: Int,
-    ): List<Unplanned> =
-        sessions.system { session ->
-            session
-                .createSelectionQuery(UNPLANNED, Unplanned::class.java)
-                .setParameter("since", since)
-                .setParameter("channel", channel)
-                .setMaxResults(limit)
-                .list()
-        }
+    ): List<Unplanned> = withoutDelivery(UNPLANNED, Unplanned::class.java, channel, since, limit)
+
+    /** Alerts recorded since [since] without a delivery through [channel], oldest first. */
+    fun unplannedAlerts(
+        channel: String,
+        since: Instant,
+        limit: Int,
+    ): List<UnplannedAlert> = withoutDelivery(UNPLANNED_ALERTS, UnplannedAlert::class.java, channel, since, limit)
 
     /** Pending deliveries through [channels] due at [now], longest waiting first. */
     fun due(
@@ -145,19 +190,15 @@ class Deliveries(
         runs: List<UUID>,
         channel: String,
         now: Instant,
-    ): Int =
-        sessions.inTenant(tenantId) { session ->
-            runs.sumOf { run ->
-                session
-                    .createNativeMutationQuery(PLAN)
-                    .setParameter("id", ids.next())
-                    .setParameter("tenant", tenantId)
-                    .setParameter("run", run)
-                    .setParameter("channel", channel)
-                    .setParameter("now", now)
-                    .executeUpdate()
-            }
-        }
+    ): Int = planAll(tenantId, PLAN, "run", runs, channel, now)
+
+    /** One pending delivery through [channel] for each alert of [fires] of [tenantId]; returns how many are new. */
+    fun planAlerts(
+        tenantId: UUID,
+        fires: List<UUID>,
+        channel: String,
+        now: Instant,
+    ): Int = planAll(tenantId, PLAN_ALERT, "fire", fires, channel, now)
 
     /**
      * Takes [delivery] for one attempt: it is not due again until [until], so a crash during the
@@ -168,7 +209,7 @@ class Deliveries(
         delivery: DueDelivery,
         now: Instant,
         until: Instant,
-    ): Notice? =
+    ): Claimed? =
         sessions.inTenant(delivery.tenantId) { session ->
             val claimed =
                 session
@@ -178,7 +219,7 @@ class Deliveries(
                     .setParameter("id", delivery.id)
                     .setParameter("now", now)
                     .executeUpdate() == 1
-            if (claimed) Notices.of(session, delivery) else null
+            if (claimed) claimed(session, delivery) else null
         }
 
     /** Stores how the attempt ended; false when the delivery is no longer pending. */
@@ -199,41 +240,78 @@ class Deliveries(
                     }
 
                     else -> {
-                        close(session, decision, delivery.attempts, now)
+                        closing(session, decision, delivery.attempts, now)
                     }
                 }
             query.setParameter("tenant", delivery.tenantId).setParameter("id", delivery.id).executeUpdate() == 1
         }
 
-    private fun close(
-        session: Session,
-        decision: Decision,
-        attempts: Int,
+    private fun <T> withoutDelivery(
+        query: String,
+        type: Class<T>,
+        channel: String,
+        since: Instant,
+        limit: Int,
+    ): List<T> =
+        sessions.system { session ->
+            session
+                .createSelectionQuery(query, type)
+                .setParameter("since", since)
+                .setParameter("channel", channel)
+                .setMaxResults(limit)
+                .list()
+        }
+
+    /** Runs the insert [sql] once per subject, bound to [subjectParameter]; returns how many rows are new. */
+    private fun planAll(
+        tenantId: UUID,
+        sql: String,
+        subjectParameter: String,
+        subjects: List<UUID>,
+        channel: String,
         now: Instant,
-    ) = session
-        .createNativeMutationQuery(CLOSE)
-        .setParameter("status", closedStatus(decision))
-        .setParameter("now", now)
-        .setParameter("attempts", closedAttempts(decision, attempts))
-        .setParameter("error", closedReason(decision), String::class.java)
+    ): Int =
+        sessions.inTenant(tenantId) { session ->
+            subjects.sumOf { subject ->
+                session
+                    .createNativeMutationQuery(sql)
+                    .setParameter("id", ids.next())
+                    .setParameter("tenant", tenantId)
+                    .setParameter(subjectParameter, subject)
+                    .setParameter("channel", channel)
+                    .setParameter("now", now)
+                    .executeUpdate()
+            }
+        }
+
+    private fun claimed(
+        session: Session,
+        delivery: DueDelivery,
+    ): Claimed =
+        when {
+            delivery.fireId != null -> Claimed.Alert(Notices.alert(session, delivery.tenantId, delivery.fireId))
+            delivery.episodeId != null -> Claimed.Overdue(Notices.overdue(session, delivery.tenantId, delivery))
+            else -> Claimed.Finished(Notices.finished(session, delivery.tenantId, checkNotNull(delivery.runId)))
+        }
 }
 
 /**
- * The overdue episodes' side of the queue (F6): finding episodes without a delivery reads across tenants in the
- * read-only system session (ADR 0013, caller 5); planning writes in the episode's own tenant, guarded by the key.
+ * The overdue episodes' side of the queue (F6, ADR 00XX-draft-source-freshness): finding episodes without a
+ * delivery reads across tenants in the read-only system session (ADR 0013, caller 5); planning writes in the
+ * episode's own tenant, guarded by the key (tenant, episode, event, channel).
  */
 class OverdueDeliveries(
     private val sessions: TenantSessions,
     private val ids: UuidV7,
 ) {
-    /** Overdue episodes opened or closed by a success since [since] without a delivery through [channel] (F6). */
+    /** Episodes opened, or closed by a success, since [since] without a delivery through [channel]. */
     fun unplanned(
         channel: String,
         since: Instant,
         limit: Int,
     ): List<UnplannedEpisode> =
         sessions.system { session ->
-            listOf(OPENED, CLOSED).flatMap { hql ->
+            listOf(OPENED_EPISODES, CLOSED_EPISODES).flatMap { hql ->
                 session
                     .createSelectionQuery(hql, UnplannedEpisode::class.java)
                     .setParameter("since", since)
@@ -257,7 +335,7 @@ class OverdueDeliveries(
                     .setParameter("id", ids.next())
                     .setParameter("tenant", tenantId)
                     .setParameter("episode", episode.episodeId)
-                    .setParameter("subject", episode.subject)
+                    .setParameter("event", episode.event)
                     .setParameter("channel", channel)
                     .setParameter("now", now)
                     .executeUpdate()
@@ -265,28 +343,38 @@ class OverdueDeliveries(
         }
 }
 
-private fun closedStatus(decision: Decision): String =
-    when (decision) {
-        Decision.Delivered -> "delivered"
-        Decision.Skipped -> "skipped"
-        is Decision.Failed -> "failed"
-        is Decision.Expired -> "expired"
-        is Decision.Retry -> error("a retry keeps the delivery pending")
-    }
-
-private fun closedAttempts(
+private fun closing(
+    session: Session,
     decision: Decision,
     attempts: Int,
-): Int =
-    when (decision) {
-        is Decision.Failed -> decision.attempts
-        is Decision.Expired -> decision.attempts
-        Decision.Delivered, Decision.Skipped, is Decision.Retry -> attempts
-    }
+    now: Instant,
+): MutationQuery {
+    val closing = Closing.of(decision, attempts)
+    return session
+        .createNativeMutationQuery(CLOSE)
+        .setParameter("status", closing.status)
+        .setParameter("now", now)
+        .setParameter("attempts", closing.attempts)
+        .setParameter("error", closing.reason, String::class.java)
+}
 
-private fun closedReason(decision: Decision): String? =
-    when (decision) {
-        is Decision.Failed -> decision.reason
-        is Decision.Expired -> decision.reason
-        Decision.Delivered, Decision.Skipped, is Decision.Retry -> null
+/** How a delivery ends: the status it closes with, the attempts counted, the last error if the end has one. */
+private class Closing(
+    val status: String,
+    val attempts: Int,
+    val reason: String?,
+) {
+    companion object {
+        fun of(
+            decision: Decision,
+            attempts: Int,
+        ): Closing =
+            when (decision) {
+                Decision.Delivered -> Closing("delivered", attempts, null)
+                Decision.Skipped -> Closing("skipped", attempts, null)
+                is Decision.Failed -> Closing("failed", decision.attempts, decision.reason)
+                is Decision.Expired -> Closing("expired", decision.attempts, decision.reason)
+                is Decision.Retry -> error("a retry keeps the delivery pending")
+            }
     }
+}

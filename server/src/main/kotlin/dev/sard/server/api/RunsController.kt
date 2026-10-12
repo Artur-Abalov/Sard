@@ -21,6 +21,22 @@ import java.util.UUID
 private const val SOURCE_NAME = "The source's current name; for a deleted source, its name when it was deleted"
 private const val MESSAGE = "Why it failed, was rejected or lost; null on success"
 
+@Schema(description = "What a catch-up run stands for: the fires missed while the server was down")
+data class CatchUp(
+    @field:Schema(description = "The first fire missed")
+    val missedFrom: Instant,
+    @field:Schema(description = "The last fire missed; with a capped count, the last one counted")
+    val missedUntil: Instant,
+    @field:Schema(description = "How many fires were missed (counting stops at 10 000)")
+    val missedCount: Int,
+    @field:Schema(description = "More fires were missed than counted: missedCount is a lower bound")
+    val missedCountCapped: Boolean,
+    @field:Schema(description = "The schedule's time zone, to show the period in")
+    val timezone: String,
+)
+
+private const val CATCH_UP = "Set only for trigger catch_up: the downtime it stands for"
+
 @Schema(description = "A run in the list")
 data class RunSummary(
     val id: UUID,
@@ -39,6 +55,8 @@ data class RunSummary(
     val queuedAt: Instant,
     val startedAt: Instant?,
     val finishedAt: Instant?,
+    @field:Schema(description = CATCH_UP)
+    val catchUp: CatchUp?,
 )
 
 @Schema(description = "What a backup step produced")
@@ -110,6 +128,8 @@ data class Run(
     val startedAt: Instant?,
     val finishedAt: Instant?,
     val steps: List<RunStep>,
+    @field:Schema(description = CATCH_UP)
+    val catchUp: CatchUp?,
 )
 
 @Schema(description = "A page of runs")

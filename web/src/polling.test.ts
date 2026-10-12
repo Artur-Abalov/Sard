@@ -6,6 +6,7 @@ import {
   POLL_INTERVAL_MS,
   runListPollInterval,
   runPollInterval,
+  schedulePollInterval,
   stepPollInterval,
   tokenPollInterval,
 } from './polling'
@@ -62,5 +63,19 @@ describe('the polling decision', () => {
     expect(runPollInterval(undefined)).toBe(false)
     expect(stepPollInterval(undefined)).toBe(false)
     expect(tokenPollInterval(undefined)).toBe(false)
+  })
+
+  test.each([
+    ['queued', POLL_INTERVAL_MS],
+    ['running', POLL_INTERVAL_MS],
+    ['succeeded', false],
+    ['failed', false],
+  ] as const)('a schedule whose last run is %s: %s', (status, interval) => {
+    expect(schedulePollInterval({ lastRun: { status } })).toBe(interval)
+  })
+
+  test('a schedule with no run, or none at all, is not polled', () => {
+    expect(schedulePollInterval({ lastRun: null })).toBe(false)
+    expect(schedulePollInterval(undefined)).toBe(false)
   })
 })

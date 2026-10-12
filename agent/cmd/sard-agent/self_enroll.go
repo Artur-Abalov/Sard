@@ -10,8 +10,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -150,15 +148,10 @@ func (s *selfEnroller) idle() selfOutcome {
 
 func (s *selfEnroller) markerPath() string { return s.cfg.TLS.CertFile + tokenMarkerSuffix }
 
-func tokenDigest(raw string) string {
-	sum := sha256.Sum256([]byte(raw))
-	return hex.EncodeToString(sum[:])
-}
-
 // spent: the marker holds the digest of this very token (Р3).
 func (s *selfEnroller) spent(raw string) bool {
 	marker, err := s.deps.readFile(s.markerPath())
-	return err == nil && string(marker) == tokenDigest(raw)
+	return err == nil && string(marker) == enroll.TokenDigest(raw)
 }
 
 // enrollWith runs the enroll pipeline in this process, replacing an
@@ -176,7 +169,7 @@ func (s *selfEnroller) enrollWith(ctx context.Context, raw string) selfOutcome {
 		_, _ = fmt.Fprintf(s.stderr, "sard-agent: enrolled but the agent id could not be read from %s: %v\n", s.cfg.TLS.CertFile, err)
 		return selfOutcome{outcomeExit, exitAgentError}
 	}
-	if err := s.deps.writeFile(s.markerPath(), []byte(tokenDigest(raw)), tokenMarkerMode); err != nil {
+	if err := s.deps.writeFile(s.markerPath(), []byte(enroll.TokenDigest(raw)), tokenMarkerMode); err != nil {
 		_, _ = fmt.Fprintf(s.stderr, "sard-agent: enrolled as agent %s but writing the token marker %s failed: %v\n", status.AgentID, s.markerPath(), err)
 		return selfOutcome{outcomeExit, exitWrite}
 	}

@@ -21,7 +21,10 @@ internal class Wording(
     val decimalSeparator: Char,
     val durationUnits: List<String>,
     val verdicts: Verdicts,
-    val overdue: OverdueWording,
+    /** The line after the headline of a scheduled run (F3b). */
+    val onSchedule: String,
+    val catchUpRun: String,
+    val failuresBefore: String,
 ) {
     /** The headline of a finished step; null for a step still active (nothing to announce). */
     fun headline(step: StepState): Headline? =
@@ -43,15 +46,6 @@ internal class Wording(
             }
         }
 }
-
-/** What an overdue episode looks like in a message (F6). */
-internal class OverdueWording(
-    val opened: String,
-    val resumed: String,
-    val lastSuccess: String,
-    val never: String,
-    val expectedBy: String,
-)
 
 /** What each finished step is called in a headline. */
 internal class Verdicts(
@@ -118,16 +112,11 @@ private val EN =
                 lost = "Backup lost",
                 timedOut = "Backup timed out",
                 cancelled = "Backup cancelled",
-                recovered = "Backup succeeded again after failures",
+                recovered = "Backup is working again",
             ),
-        overdue =
-            OverdueWording(
-                opened = "No successful backup for too long",
-                resumed = "Backups are back",
-                lastSuccess = "Last success: ",
-                never = "There has been no successful backup yet",
-                expectedBy = "Expected by: ",
-            ),
+        onSchedule = "On schedule",
+        catchUpRun = "Catch-up run after server downtime",
+        failuresBefore = "Failures in a row before this: ",
     )
 
 private val RU =
@@ -153,16 +142,11 @@ private val RU =
                 lost = "Бэкап потерян",
                 timedOut = "Бэкап прерван по таймауту",
                 cancelled = "Бэкап отменён",
-                recovered = "Бэкап снова выполнен после ошибок",
+                recovered = "Бэкап снова работает",
             ),
-        overdue =
-            OverdueWording(
-                opened = "Давно не было успешного бэкапа",
-                resumed = "Бэкапы возобновились",
-                lastSuccess = "Последний успех: ",
-                never = "Успешных бэкапов ещё не было",
-                expectedBy = "Ожидался не позже: ",
-            ),
+        onSchedule = "По расписанию",
+        catchUpRun = "Догоняющий запуск после простоя сервера",
+        failuresBefore = "Ошибок подряд перед этим: ",
     )
 
 internal fun wording(language: NoticeLanguage): Wording =

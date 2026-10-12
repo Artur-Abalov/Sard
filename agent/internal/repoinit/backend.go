@@ -26,6 +26,14 @@ type Target struct {
 	PasswordFile string
 	// Scrub removes secrets from text taken from restic.
 	Scrub func(string) string
+	// Remote: the storage is reached over the network, so a refusal of it
+	// is told apart by its cause (A8b, Р34). Where is its address as an
+	// operator may see it, Bucket the bucket of an s3: address.
+	Remote bool
+	Where  string
+	Bucket string
+	// Directory is the directory of an sftp: address on the server.
+	Directory string
 }
 
 // Inspect asks restic whether the repository is initialised: its id if so.
@@ -101,7 +109,7 @@ func FromRestic(ctx context.Context, err error, t Target) *refusal.Failure {
 			return describe(r.reason, err, t)
 		}
 	}
-	return describe(refusal.BackendRefused, err, t)
+	return describe(storageReason(err, t), err, t)
 }
 
 func fromContext(ctx context.Context) *refusal.Failure {
@@ -119,6 +127,9 @@ func Interruption(ctx context.Context) *refusal.Failure { return fromContext(ctx
 
 func describe(reason refusal.Reason, err error, t Target) *refusal.Failure {
 	cause := t.Scrub(causeOf(err))
+	if f := describeRemote(reason, cause, t); f != nil {
+		return f
+	}
 	switch reason {
 	case refusal.WrongPassword:
 		return refusal.Fail(reason, "a repository already exists at the address of %q, and the password file %s does not open it", t.Name, t.PasswordFile)

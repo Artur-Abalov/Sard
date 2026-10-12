@@ -19,15 +19,29 @@ import (
 type fakeEnrollClock struct {
 	added chan time.Duration
 	fire  chan time.Time
+
+	mu   sync.Mutex
+	now  time.Time
+	last time.Duration
 }
 
 func newFakeEnrollClock() *fakeEnrollClock {
-	return &fakeEnrollClock{added: make(chan time.Duration, 4), fire: make(chan time.Time, 4)}
+	return &fakeEnrollClock{added: make(chan time.Duration, 64), fire: make(chan time.Time, 4), now: time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)}
 }
 
 func (c *fakeEnrollClock) After(d time.Duration) <-chan time.Time {
+	c.mu.Lock()
+	c.last = d
+	c.mu.Unlock()
 	c.added <- d
 	return c.fire
+}
+
+// Now is virtual: it moves when a timer is fired, by the time that timer waited for.
+func (c *fakeEnrollClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
 }
 
 func (c *fakeEnrollClock) waitTimer(t *testing.T) time.Duration {
@@ -41,7 +55,13 @@ func (c *fakeEnrollClock) waitTimer(t *testing.T) time.Duration {
 	}
 }
 
-func (c *fakeEnrollClock) fireNow() { c.fire <- time.Now() }
+func (c *fakeEnrollClock) fireNow() {
+	c.mu.Lock()
+	c.now = c.now.Add(c.last)
+	now := c.now
+	c.mu.Unlock()
+	c.fire <- now
+}
 
 func runEnrollCmdWithClock(clk clock, args ...string) (int, string, string) {
 	var out, errOut strings.Builder

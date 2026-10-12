@@ -1,0 +1,1052 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright 2026 Artur Abalov
+
+package repoconnect_test
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
+	"github.com/Artur-Abalov/sard/agent/internal/repoconnect"
+)
+
+// fakeClient is the OpenSSH client: it records what it is asked and
+// answers from a script; ssh-keygen really writes the key files, as the
+// service user would.
+type fakeClient struct {
+	home  string
+	calls []clientCall
+	// keyscan, login and keygen answer; nil: the defaults.
+	keyscan, login func(args []string) (repoconnect.Output, error)
+	keygenFails    string
+	noPub          bool
+	hang           map[string]chan struct{}
+	started        chan string
+}
+
+type clientCall struct {
+	program string
+	args    []string
+}
+
+func (c *fakeClient) Run(ctx context.Context, program string, args []string) (repoconnect.Output, error) {
+	c.calls = append(c.calls, clientCall{program, args})
+	if wait := c.hang[program]; wait != nil {
+		c.started <- program
+		select {
+		case <-ctx.Done():
+			return repoconnect.Output{Code: -1}, ctx.Err()
+		case <-wait:
+		}
+	}
+	switch program {
+	case repoconnect.ProgKeyscan:
+		return answer(c.keyscan, args, repoconnect.Output{Stdout: line(nasHost, edKey) + line(nasHost, ecKey)})
+	case repoconnect.ProgSFTP:
+		return answer(c.login, args, repoconnect.Output{})
+	}
+	return c.keygen(args)
+}
+
+func answer(script func([]string) (repoconnect.Output, error), args []string, def repoconnect.Output) (repoconnect.Output, error) {
+	if script != nil {
+		return script(args)
+	}
+	return def, nil
+}
+
+func (c *fakeClient) keygen(args []string) (repoconnect.Output, error) {
+	if c.keygenFails != "" {
+		return repoconnect.Output{Code: 1, Stderr: c.keygenFails}, nil
+	}
+	if slices.Contains(args, "-y") {
+		return repoconnect.Output{Stdout: "ssh-ed25519 AAAAderived sard-agent@host1\n"}, nil
+	}
+	priv := args[slices.Index(args, "-f")+1]
+	if err := os.WriteFile(priv, []byte("PRIVATE"), 0o600); err != nil {
+		return repoconnect.Output{}, err
+	}
+	if !c.noPub {
+		if err := os.WriteFile(priv+".pub", []byte("ssh-ed25519 AAAAnew sard-agent@host1\n"), 0o644); err != nil {
+			return repoconnect.Output{}, err
+		}
+	}
+	return repoconnect.Output{}, nil
+}
+
+func (c *fakeClient) programs() []string {
+	var names []string
+	for _, call := range c.calls {
+		names = append(names, call.program)
+	}
+	return names
+}
+
+// latchClock gives every timer its own channel and fires the latest one:
+// a timer of a call that ended cannot take the firing meant for a later one.
+type latchClock struct {
+	mu     sync.Mutex
+	timers []chan time.Time
+}
+
+func (c *latchClock) After(time.Duration) <-chan time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ch := make(chan time.Time, 1)
+	c.timers = append(c.timers, ch)
+	return ch
+}
+
+func (c *latchClock) fireLast() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.timers[len(c.timers)-1] <- time.Now()
+}
+
+// sftpWorld is a service user's home, the client, and a command to run.
+type sftpWorld struct {
+	t       *testing.T
+	home    string
+	ssh     string
+	client  *fakeClient
+	audit   []string
+	asked   []string
+	answers []string
+	sftp    *repoconnect.SFTP
+	clock   *latchClock
+}
+
+func newSFTPWorld(t *testing.T, address string) *sftpWorld {
+	t.Helper()
+	home := t.TempDir()
+	w := &sftpWorld{t: t, home: home, ssh: filepath.Join(home, ".ssh"), client: &fakeClient{home: home}, clock: &latchClock{}}
+	if err := os.Mkdir(w.ssh, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	a, f := hostsetup.CheckSFTPAddress(address)
+	if f != nil {
+		t.Fatal(f)
+	}
+	w.sftp = &repoconnect.SFTP{
+		FS:       hostsetup.OS{},
+		Address:  a,
+		Service:  hostsetup.User{Name: "sard-agent", UID: uint32(os.Getuid()), GID: uint32(os.Getgid()), Home: home},
+		Runner:   w.client,
+		Bound:    repoconnect.Bound{Clock: w.clock, Timeout: 30 * time.Second},
+		Hostname: func() (string, error) { return "host1", nil },
+		Audit:    func(kind, name, action string) { w.audit = append(w.audit, kind+" "+name+" "+action) },
+		Scrub:    func(s string) string { return strings.ReplaceAll(s, "SECRET", "[x]") },
+	}
+	return w
+}
+
+const nasAddress = "sftp:backup@nas.example.com:/srv/extra"
+
+func (w *sftpWorld) put(name, content string) {
+	w.t.Helper()
+	if err := os.WriteFile(filepath.Join(w.ssh, name), []byte(content), 0o600); err != nil {
+		w.t.Fatal(err)
+	}
+}
+
+func (w *sftpWorld) read(name string) string {
+	w.t.Helper()
+	data, err := os.ReadFile(filepath.Join(w.ssh, name))
+	if err != nil {
+		return "<absent>"
+	}
+	return string(data)
+}
+
+// terminal makes the operator answer with answers.
+func (w *sftpWorld) terminal(answers ...string) {
+	w.answers = answers
+	w.sftp.Confirm = func(prompt string) (string, error) {
+		w.asked = append(w.asked, prompt)
+		if len(w.answers) == 0 {
+			return "", errors.New("end of input")
+		}
+		a := w.answers[0]
+		w.answers = w.answers[1:]
+		return a, nil
+	}
+}
+
+func (w *sftpWorld) prepare() (repoconnect.SFTPResult, *refusal.Failure) {
+	w.t.Helper()
+	return w.sftp.Prepare(w.t.Context())
+}
+
+// ready is a world with the host key known, the key and the block in place.
+func (w *sftpWorld) ready() {
+	w.put("known_hosts", line(nasHost, edKey))
+	w.put("id_ed25519", "PRIVATE")
+	w.put("id_ed25519.pub", "ssh-ed25519 AAAAold sard-agent@host1\n")
+	w.put("config", repoconnect.ManagedBlock(nasHost))
+}
+
+// keygenArgs are the arguments of the last run of ssh-keygen.
+func (w *sftpWorld) keygenArgs() []string {
+	var args []string
+	for _, c := range w.client.calls {
+		if c.program == repoconnect.ProgKeygen {
+			args = c.args
+		}
+	}
+	return args
+}
+
+// assertMentions: the text holds every one of the words.
+func assertMentions(t *testing.T, text string, words ...string) {
+	t.Helper()
+	for _, word := range words {
+		if !strings.Contains(text, word) {
+			t.Errorf("%q is not in:\n%s", word, text)
+		}
+	}
+}
+
+func assertFail(t *testing.T, f *refusal.Failure, reason refusal.Reason, class refusal.Class, mentions ...string) {
+	t.Helper()
+	if f == nil || f.Reason != reason || f.Class != class {
+		t.Fatalf("failure %+v, want %s class %d", f, reason, class)
+	}
+	for _, m := range mentions {
+		if !strings.Contains(f.Detail, m) {
+			t.Errorf("%s does not mention %q: %s", reason, m, f.Detail)
+		}
+	}
+}
+
+// Р45: a host known, a key present and the block in place need no change.
+func TestAKnownHostWithAKeyAndTheBlockInPlaceChangesNothingAndAsksNothing(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.ready()
+	w.terminal()
+	res, f := w.prepare()
+	if f != nil || res.Changed || res.PublicKey != "ssh-ed25519 AAAAold sard-agent@host1" || res.HostKey != edKey {
+		t.Fatalf("%+v %v", res, f)
+	}
+	if len(w.asked) != 0 || len(w.audit) != 0 {
+		t.Fatalf("asked %q, audit %q", w.asked, w.audit)
+	}
+	if got := strings.Join(w.client.programs(), " "); got != "ssh-keyscan sftp" {
+		t.Fatalf("programs: %s", got)
+	}
+}
+
+func TestAnyKeyOfTheServerThatIsKnownMakesTheHostKnown(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.ready()
+	w.put("known_hosts", line(nasHost, ecKey))
+	res, f := w.prepare()
+	if f != nil || res.Changed || res.HostKey != ecKey {
+		t.Fatalf("%+v %v", res, f)
+	}
+}
+
+// Р40: the fingerprint of the flag, of any key type.
+func TestAFingerprintOfTheFlagThatMatchesAKeyOfAnyTypeTrustsThatKeyWithoutAQuestion(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.put("known_hosts", "other.example.com ssh-ed25519 AAAA\n")
+	w.put("id_ed25519", "PRIVATE")
+	w.put("id_ed25519.pub", "ssh-ed25519 AAAAold sard-agent@host1\n")
+	w.sftp.Fingerprint = ecKey.Fingerprint()
+	w.terminal()
+	res, f := w.prepare()
+	if f != nil || !res.Changed || res.HostKey != ecKey {
+		t.Fatalf("%+v %v", res, f)
+	}
+	if want := "other.example.com ssh-ed25519 AAAA\n" + line(nasHost, ecKey); w.read("known_hosts") != want {
+		t.Fatalf("known_hosts %q", w.read("known_hosts"))
+	}
+	wantAudit := "ssh host key of nas.example.com trusted ecdsa-sha2-nistp256 " + ecKey.Fingerprint()
+	if !slices.Equal(w.audit, []string{wantAudit}) || len(w.asked) != 0 {
+		t.Fatalf("audit %q, asked %q", w.audit, w.asked)
+	}
+}
+
+func TestTheHostKeyOfAServerOnAnotherPortIsWrittenAsHostAndPort(t *testing.T) {
+	w := newSFTPWorld(t, "sftp://backup@nas.example.com:2222//srv/extra")
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	if _, f := w.prepare(); f != nil {
+		t.Fatal(f)
+	}
+	if w.read("known_hosts") != line(nasPort, edKey) {
+		t.Fatalf("known_hosts %q", w.read("known_hosts"))
+	}
+	if len(w.audit) == 0 || !strings.HasPrefix(w.audit[len(w.audit)-1], "ssh host key of nas.example.com:2222 trusted ssh-ed25519 ") {
+		t.Fatalf("audit %q", w.audit)
+	}
+	scan := w.client.calls[0]
+	if scan.program != repoconnect.ProgKeyscan || !slices.Contains(scan.args, "2222") || scan.args[len(scan.args)-1] != "nas.example.com" {
+		t.Fatalf("keyscan %v", scan)
+	}
+}
+
+func TestAFingerprintThatMatchesNoKeyIsAMismatchNamingAllFingerprintsAndWritesNothing(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.sftp.Fingerprint = otherKey.Fingerprint()
+	w.terminal("yes")
+	_, f := w.prepare()
+	assertFail(t, f, refusal.HostKeyMismatch, refusal.ClassTrust, otherKey.Fingerprint(), edKey.Fingerprint(), ecKey.Fingerprint())
+	w.assertNothingWritten()
+	if len(w.asked) != 0 {
+		t.Fatalf("asked %q", w.asked)
+	}
+}
+
+func (w *sftpWorld) assertNothingWritten() {
+	w.t.Helper()
+	entries, _ := os.ReadDir(w.ssh)
+	if len(entries) != 0 || len(w.audit) != 0 {
+		w.t.Fatalf("written %v, audit %q", entries, w.audit)
+	}
+	if slices.Contains(w.client.programs(), repoconnect.ProgKeygen) {
+		w.t.Fatal("ssh-keygen ran")
+	}
+}
+
+func TestWithoutAFlagTheTerminalShowsOneKeyByPreferenceAndYesTrustsIt(t *testing.T) {
+	for name, c := range map[string]struct {
+		keys    string
+		wantKey repoconnect.HostKey
+		advice  string
+	}{
+		"ed25519 first":    {line(nasHost, rsaKey) + line(nasHost, ecKey) + line(nasHost, edKey), edKey, "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub"},
+		"ecdsa without ed": {line(nasHost, rsaKey) + line(nasHost, ecKey), ecKey, "ssh-keygen -lf /etc/ssh/ssh_host_ecdsa_key.pub"},
+		"rsa alone":        {line(nasHost, rsaKey), rsaKey, "ssh-keygen -lf /etc/ssh/ssh_host_rsa_key.pub"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newSFTPWorld(t, nasAddress)
+			w.client.keyscan = func([]string) (repoconnect.Output, error) { return repoconnect.Output{Stdout: c.keys}, nil }
+			w.terminal("yes")
+			res, f := w.prepare()
+			if f != nil || res.HostKey != c.wantKey {
+				t.Fatalf("%+v %v", res, f)
+			}
+			if len(w.asked) != 1 {
+				t.Fatalf("asked %q", w.asked)
+			}
+			assertMentions(t, w.asked[0], "nas.example.com", "22", c.wantKey.Type, c.wantKey.Fingerprint(), c.advice)
+			assertMentions(t, w.read("known_hosts"), c.wantKey.Blob)
+			if strings.Count(w.asked[0], "SHA256:") != 1 {
+				t.Errorf("the prompt shows more than one key:\n%s", w.asked[0])
+			}
+		})
+	}
+}
+
+func TestAnAnswerOtherThanExactlyYesIsRejectedAndWritesNothing(t *testing.T) {
+	for _, answer := range []string{"no", "y", "YES", "Yes", "", " yes", "yes ", "yes\n"} {
+		w := newSFTPWorld(t, nasAddress)
+		w.terminal(answer)
+		_, f := w.prepare()
+		assertFail(t, f, refusal.HostKeyRejected, refusal.ClassTrust)
+		w.assertNothingWritten()
+	}
+	w := newSFTPWorld(t, nasAddress)
+	w.terminal()
+	_, f := w.prepare()
+	assertFail(t, f, refusal.HostKeyRejected, refusal.ClassTrust)
+	w.assertNothingWritten()
+}
+
+func TestWithoutATerminalAndWithoutAFlagTheHostKeyIsUnconfirmed(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	_, f := w.prepare()
+	assertFail(t, f, refusal.HostKeyUnconfirmed, refusal.ClassUsage, edKey.Fingerprint(), ecKey.Fingerprint(), "--host-key-fingerprint")
+	w.assertNothingWritten()
+}
+
+// Р40: the entries of the host that match no key are a change.
+func TestAChangedHostKeyIsRefusedWithThePathAndTheLinesAndWritesNothing(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	old := "other.example.com ssh-ed25519 AAAA\n\n" + line(nasHost, oldEd)
+	w.put("known_hosts", old)
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	w.terminal("yes")
+	_, f := w.prepare()
+	assertFail(t, f, refusal.HostKeyChanged, refusal.ClassTrust, filepath.Join(w.ssh, "known_hosts"), "3", "--replace-host-key", "substitution", "reinstall")
+	if w.read("known_hosts") != old || len(w.audit) != 0 || len(w.client.calls) != 1 {
+		t.Fatalf("known_hosts %q, audit %q, calls %v", w.read("known_hosts"), w.audit, w.client.programs())
+	}
+}
+
+func TestReplacingAChangedHostKeyStillNeedsTheConfirmation(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.put("known_hosts", line(nasHost, oldEd))
+	w.sftp.Replace = true
+	_, f := w.prepare()
+	assertFail(t, f, refusal.HostKeyUnconfirmed, refusal.ClassUsage)
+	if w.read("known_hosts") != line(nasHost, oldEd) {
+		t.Fatalf("known_hosts %q", w.read("known_hosts"))
+	}
+}
+
+func TestReplacingAChangedHostKeyDropsTheOldEntriesAndAuditsAReplacement(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.put("known_hosts", line(nasHost, oldEd)+line("other.example.com", rsaKey))
+	w.sftp.Replace = true
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	res, f := w.prepare()
+	if f != nil || !res.Changed {
+		t.Fatalf("%+v %v", res, f)
+	}
+	if want := line("other.example.com", rsaKey) + line(nasHost, edKey); w.read("known_hosts") != want {
+		t.Fatalf("known_hosts %q", w.read("known_hosts"))
+	}
+	var replaced bool
+	for _, a := range w.audit {
+		replaced = replaced || a == "ssh host key of nas.example.com replaced ssh-ed25519 "+edKey.Fingerprint()
+	}
+	if !replaced {
+		t.Fatalf("audit %q", w.audit)
+	}
+}
+
+func TestTheFlagToReplaceChangesNothingWhenTheHostKeyIsKnown(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.ready()
+	w.sftp.Replace = true
+	res, f := w.prepare()
+	if f != nil || res.Changed || len(w.audit) != 0 {
+		t.Fatalf("%+v %v audit %q", res, f, w.audit)
+	}
+}
+
+// Р40: ssh-keyscan.
+func TestTheScanRunsWithThePortTheTimeoutAndTheHostAndNoKeysIsUnavailable(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.client.keyscan = func([]string) (repoconnect.Output, error) {
+		return repoconnect.Output{Stderr: "getaddrinfo nas.example.com: Name or service not known"}, nil
+	}
+	_, f := w.prepare()
+	assertFail(t, f, refusal.BackendUnavailable, refusal.ClassTemporary, "nas.example.com", "22", "Name or service not known")
+	args := strings.Join(w.client.calls[0].args, " ")
+	if args != "-T 30 -p 22 -t ed25519,ecdsa,rsa nas.example.com" {
+		t.Fatalf("args %s", args)
+	}
+	w.assertNothingWritten()
+}
+
+func TestAScanThatCannotBeRunIsAnErrorOfTheClient(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.client.keyscan = func([]string) (repoconnect.Output, error) {
+		return repoconnect.Output{Code: -1}, errors.New("fork/exec: no such file SECRET")
+	}
+	_, f := w.prepare()
+	assertFail(t, f, refusal.SSHClientFailed, refusal.ClassAgentError, "ssh-keyscan")
+	if strings.Contains(f.Detail, "SECRET") {
+		t.Errorf("the message is not scrubbed: %s", f.Detail)
+	}
+	w.assertNothingWritten()
+}
+
+func TestAScanThatDoesNotEndInTimeIsUnavailableWithTheHostAndPort(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.client.hang = map[string]chan struct{}{repoconnect.ProgKeyscan: make(chan struct{})}
+	w.client.started = make(chan string, 1)
+	done := make(chan *refusal.Failure, 1)
+	go func() { _, f := w.prepare(); done <- f }()
+	<-w.client.started
+	w.clock.fireLast()
+	f := <-done
+	assertFail(t, f, refusal.BackendUnavailable, refusal.ClassTemporary, "nas.example.com", "22", "--connect-timeout", "30s")
+	w.assertNothingWritten()
+}
+
+func TestACommandThatIsInterruptedDuringAProgramIsInterruptedNotAClientError(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.client.hang = map[string]chan struct{}{repoconnect.ProgKeyscan: make(chan struct{})}
+	w.client.started = make(chan string, 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan *refusal.Failure, 1)
+	go func() { _, f := w.sftp.Prepare(ctx); done <- f }()
+	<-w.client.started
+	cancel()
+	assertFail(t, <-done, refusal.Interrupted, refusal.ClassTemporary)
+}
+
+// Р39: the key is made by ssh-keygen as the service user, after the host
+// key is trusted, and its public part is read back.
+func TestWithoutAKeyOneIsMadeAfterTheHostKeyAndItsPublicPartIsReturned(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	res, f := w.prepare()
+	if f != nil || !res.Changed || res.PublicKey != "ssh-ed25519 AAAAnew sard-agent@host1" {
+		t.Fatalf("%+v %v", res, f)
+	}
+	want := []string{"-q", "-t", "ed25519", "-N", "", "-C", "sard-agent@host1", "-f", filepath.Join(w.ssh, "id_ed25519")}
+	wantAudit := []string{"ssh key of service user sard-agent created", "ssh host key of nas.example.com trusted ssh-ed25519 " + edKey.Fingerprint()}
+	if got := w.keygenArgs(); !slices.Equal(got, want) {
+		t.Fatalf("ssh-keygen %q, want %q", got, want)
+	}
+	if !slices.Equal(w.audit, wantAudit) || w.read("config") != repoconnect.ManagedBlock(nasHost) {
+		t.Fatalf("audit %q, config %q", w.audit, w.read("config"))
+	}
+}
+
+func TestAKeyThatCannotBeMadeIsAnErrorOfTheClientAndTheHostKeyIsNotWritten(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	w.client.keygenFails = "Saving key failed"
+	_, f := w.prepare()
+	assertFail(t, f, refusal.SSHClientFailed, refusal.ClassAgentError, "ssh-keygen", "Saving key failed")
+	if w.read("known_hosts") != "<absent>" || len(w.audit) != 0 {
+		t.Fatalf("known_hosts %q audit %q", w.read("known_hosts"), w.audit)
+	}
+}
+
+func TestAKeyWhosePublicPartWasNotWrittenIsAnErrorOfTheClient(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	w.client.noPub = true
+	_, f := w.prepare()
+	assertFail(t, f, refusal.SSHClientFailed, refusal.ClassAgentError, "id_ed25519.pub")
+}
+
+func TestAPrivateKeyWithoutAPublicPartYieldsItFromTheKeygenWithoutWritingAFile(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.ready()
+	if err := os.Remove(filepath.Join(w.ssh, "id_ed25519.pub")); err != nil {
+		t.Fatal(err)
+	}
+	res, f := w.prepare()
+	if f != nil || res.Changed || res.PublicKey != "ssh-ed25519 AAAAderived sard-agent@host1" {
+		t.Fatalf("%+v %v", res, f)
+	}
+	if w.read("id_ed25519.pub") != "<absent>" {
+		t.Fatal("the public part was written")
+	}
+	if args := w.keygenArgs(); !slices.Equal(args, []string{"-y", "-f", filepath.Join(w.ssh, "id_ed25519")}) {
+		t.Fatalf("ssh-keygen %q", args)
+	}
+}
+
+func TestAPrivateKeyThatTheKeygenCannotReadIsAnErrorOfTheClient(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.ready()
+	if err := os.Remove(filepath.Join(w.ssh, "id_ed25519.pub")); err != nil {
+		t.Fatal(err)
+	}
+	w.client.keygenFails = "incorrect passphrase supplied to decrypt private key"
+	_, f := w.prepare()
+	assertFail(t, f, refusal.SSHClientFailed, refusal.ClassAgentError, "incorrect passphrase")
+}
+
+// Р43: the files written before a failed login stay, the key is shown.
+func TestTheFilesWrittenBeforeAFailedLoginStayAndTheKeyIsReturned(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	w.client.login = func([]string) (repoconnect.Output, error) {
+		return repoconnect.Output{Code: 255, Stderr: "backup@nas.example.com: Permission denied (publickey)."}, nil
+	}
+	res, f := w.prepare()
+	assertFail(t, f, refusal.SSHKeyNotAuthorized, refusal.ClassUsage, "Permission denied (publickey)", "backup", "nas.example.com", "authorized_keys")
+	if res.PublicKey != "ssh-ed25519 AAAAnew sard-agent@host1" || !res.Changed {
+		t.Fatalf("%+v", res)
+	}
+	for _, name := range []string{"id_ed25519", "id_ed25519.pub", "known_hosts", "config"} {
+		if w.read(name) == "<absent>" {
+			t.Errorf("%s is gone", name)
+		}
+	}
+	if len(w.audit) != 2 {
+		t.Fatalf("audit %q", w.audit)
+	}
+}
+
+// Р34: the class of a refusal of the login, from the stderr of ssh.
+func TestTheStderrOfTheLoginSaysWhichClassOfRefusalItIs(t *testing.T) {
+	for _, c := range []struct {
+		stderr string
+		reason refusal.Reason
+		class  refusal.Class
+		text   string
+	}{
+		{"backup@nas.example.com: Permission denied (publickey).", refusal.SSHKeyNotAuthorized, refusal.ClassUsage, "Permission denied (publickey)"},
+		{"backup@nas.example.com: Permission denied (publickey,password).", refusal.SSHKeyNotAuthorized, refusal.ClassUsage, "Permission denied"},
+		{"Host key verification failed.", refusal.HostKeyMismatch, refusal.ClassTrust, "Host key verification failed"},
+		{"ssh: Could not resolve hostname nas.example.com: Name or service not known", refusal.BackendUnavailable, refusal.ClassTemporary, "Could not resolve hostname"},
+		{"ssh: connect to host nas.example.com port 22: Connection refused", refusal.BackendUnavailable, refusal.ClassTemporary, "Connection refused"},
+		{"ssh: connect to host nas.example.com port 22: Connection timed out", refusal.BackendUnavailable, refusal.ClassTemporary, "Connection timed out"},
+		{"ssh: connect to host nas.example.com port 22: No route to host", refusal.BackendUnavailable, refusal.ClassTemporary, "No route to host"},
+		{"ssh: connect to host nas.example.com port 22: Network is unreachable", refusal.BackendUnavailable, refusal.ClassTemporary, "Network is unreachable"},
+		{"Connection closed by 192.0.2.1 port 22", refusal.BackendUnavailable, refusal.ClassTemporary, "Connection closed"},
+		{"subsystem request failed on channel 0 SECRET", refusal.BackendRefused, refusal.ClassAgentError, "subsystem request failed on channel 0 [x]"},
+	} {
+		w := newSFTPWorld(t, nasAddress)
+		w.ready()
+		w.client.login = func([]string) (repoconnect.Output, error) {
+			return repoconnect.Output{Code: 255, Stderr: c.stderr}, nil
+		}
+		_, f := w.prepare()
+		assertFail(t, f, c.reason, c.class, c.text)
+		if w.read("known_hosts") != line(nasHost, edKey) {
+			t.Errorf("%s: known_hosts changed", c.stderr)
+		}
+	}
+}
+
+func TestALoginThatDoesNotEndInTimeIsUnavailable(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.ready()
+	w.client.hang = map[string]chan struct{}{repoconnect.ProgSFTP: make(chan struct{})}
+	w.client.started = make(chan string, 1)
+	done := make(chan *refusal.Failure, 1)
+	go func() { _, f := w.prepare(); done <- f }()
+	<-w.client.started
+	w.clock.fireLast()
+	assertFail(t, <-done, refusal.BackendUnavailable, refusal.ClassTemporary, "nas.example.com", "--connect-timeout")
+}
+
+// Р41, Р47: every program of the client gets the options of the block
+// on its command line too; none gets a secret.
+func TestEveryNetworkProgramGetsStrictHostKeyCheckingBatchModeAndTheTimeout(t *testing.T) {
+	w := newSFTPWorld(t, "sftp://backup@[2001:db8::1]:2222//srv/extra")
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	w.put("id_ed25519", "PRIVATE")
+	w.put("id_ed25519.pub", "ssh-ed25519 AAAAold x\n")
+	w.client.keyscan = func([]string) (repoconnect.Output, error) {
+		return repoconnect.Output{Stdout: line("[2001:db8::1]:2222", edKey)}, nil
+	}
+	if _, f := w.prepare(); f != nil {
+		t.Fatal(f)
+	}
+	login := w.client.calls[len(w.client.calls)-1]
+	want := []string{"-b", "/dev/null", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=30", "-P", "2222", "backup@[2001:db8::1]"}
+	if login.program != repoconnect.ProgSFTP || !slices.Equal(login.args, want) {
+		t.Fatalf("login %s %q, want %q", login.program, login.args, want)
+	}
+	if got := strings.Join(w.client.calls[0].args, " "); got != "-T 30 -p 2222 -t ed25519,ecdsa,rsa 2001:db8::1" {
+		t.Fatalf("keyscan %s", got)
+	}
+}
+
+func TestAConnectTimeoutOfAFractionOfASecondRoundsUpToASecond(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.ready()
+	w.sftp.Bound.Timeout = 1500 * time.Millisecond
+	if _, f := w.prepare(); f != nil {
+		t.Fatal(f)
+	}
+	if got := strings.Join(w.client.calls[0].args, " "); !strings.HasPrefix(got, "-T 2 ") {
+		t.Fatalf("keyscan %s", got)
+	}
+}
+
+// Р41: the block of the host is written when it differs.
+func TestTheManagedBlockIsWrittenBeforeTheFormerConfigOnlyWhenItDiffers(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.ready()
+	w.put("config", "Host *\n    ServerAliveInterval 0\n")
+	res, f := w.prepare()
+	if f != nil || !res.Changed {
+		t.Fatalf("%+v %v", res, f)
+	}
+	if want := repoconnect.ManagedBlock(nasHost) + "\nHost *\n    ServerAliveInterval 0\n"; w.read("config") != want {
+		t.Fatalf("config %q", w.read("config"))
+	}
+	again, f := w.prepare()
+	if f != nil || again.Changed {
+		t.Fatalf("a repeat: %+v %v", again, f)
+	}
+}
+
+// Р38: a file of ~/.ssh that cannot be read is refused before the server is asked.
+func TestAFileOfTheSSHDirectoryThatIsRejectedStopsBeforeAnyProgramRuns(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	if err := os.Symlink("/etc/passwd", filepath.Join(w.ssh, "known_hosts")); err != nil {
+		t.Fatal(err)
+	}
+	_, f := w.prepare()
+	assertFail(t, f, refusal.SSHFileRejected, refusal.ClassUsage, "known_hosts")
+	if len(w.client.calls) != 0 {
+		t.Fatalf("programs ran: %v", w.client.programs())
+	}
+}
+
+func TestTheClientIsCheckedForEveryProgramInOrder(t *testing.T) {
+	has := func(missing string) func(string) bool { return func(p string) bool { return p != missing } }
+	if f := repoconnect.CheckClient(has("")); f != nil {
+		t.Fatal(f)
+	}
+	for _, program := range []string{"ssh", "sftp", "ssh-keygen", "ssh-keyscan"} {
+		f := repoconnect.CheckClient(has(program))
+		assertFail(t, f, refusal.SSHClientMissing, refusal.ClassAgentError, program, "sudo apt-get install openssh-client", "sudo dnf install openssh-clients", "dpkg -i", "rpm -U")
+	}
+	none := func(string) bool { return false }
+	if f := repoconnect.CheckClient(none); f == nil || !strings.Contains(f.Detail, "ssh ") && !strings.Contains(f.Detail, "ssh,") {
+		t.Fatalf("%+v", f)
+	}
+}
+
+// Without a connect timeout no program is told one.
+func TestWithoutAConnectTimeoutNoProgramIsToldOne(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.ready()
+	w.sftp.Bound.Timeout = 0
+	if _, f := w.prepare(); f != nil {
+		t.Fatal(f)
+	}
+	for _, c := range w.client.calls {
+		if joined := strings.Join(c.args, " "); strings.Contains(joined, "ConnectTimeout") || slices.Contains(c.args, "-T") {
+			t.Errorf("%s got a timeout: %s", c.program, joined)
+		}
+	}
+}
+
+func TestAKeygenThatCannotBeRunIsAnErrorOfTheClient(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	w.sftp.Runner = runnerFunc(func(ctx context.Context, program string, args []string) (repoconnect.Output, error) {
+		if program == repoconnect.ProgKeygen {
+			return repoconnect.Output{Code: -1}, errors.New("fork/exec: permission denied SECRET")
+		}
+		return w.client.Run(ctx, program, args)
+	})
+	_, f := w.prepare()
+	assertFail(t, f, refusal.SSHClientFailed, refusal.ClassAgentError, "ssh-keygen", "could not be run", "[x]")
+}
+
+func TestAKeygenThatIsInterruptedIsInterruptedNotAnErrorOfTheClient(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	ctx, cancel := context.WithCancel(t.Context())
+	w.sftp.Runner = runnerFunc(func(c context.Context, program string, args []string) (repoconnect.Output, error) {
+		if program == repoconnect.ProgKeygen {
+			cancel()
+			return repoconnect.Output{Code: -1}, c.Err()
+		}
+		return w.client.Run(c, program, args)
+	})
+	_, f := w.sftp.Prepare(ctx)
+	assertFail(t, f, refusal.Interrupted, refusal.ClassTemporary)
+}
+
+// runnerFunc is a Runner made of a function.
+type runnerFunc func(ctx context.Context, program string, args []string) (repoconnect.Output, error)
+
+func (f runnerFunc) Run(ctx context.Context, program string, args []string) (repoconnect.Output, error) {
+	return f(ctx, program, args)
+}
+
+func TestAWildcardMatchesAnEmptyEndAndAQuestionMarkOneCharacter(t *testing.T) {
+	content := line("nas.example.com*", edKey) + line("na?.example.com", ecKey) + line("nas.example.co?", rsaKey) + line("nas.example.c?", otherKey)
+	m := repoconnect.FindKnown([]byte(content), nasHost)
+	if !slices.Equal(m.Lines, []int{1, 2, 3}) {
+		t.Fatalf("lines %v", m.Lines)
+	}
+}
+
+// T4: only the lines of ssh itself decide the class of a refused login; a
+// banner of the server is the server's text.
+func TestABannerDoesNotDecideTheClassOfALogin(t *testing.T) {
+	for _, c := range []struct {
+		stderr string
+		reason refusal.Reason
+	}{
+		{"Welcome. Access is by permission only; permission denied to guests.\nConnection closed by 192.0.2.1 port 22", refusal.BackendUnavailable},
+		{"Banner: host key verification failed on the old host\nssh: connect to host nas.example.com port 22: Connection refused", refusal.BackendUnavailable},
+		{"Notice: permission denied (see policy)\nbackup@nas.example.com: Permission denied (publickey).", refusal.SSHKeyNotAuthorized},
+		{"kex_exchange_identification: read: Connection reset by peer", refusal.BackendUnavailable},
+		{"Connection reset by 192.0.2.1 port 22", refusal.BackendUnavailable},
+		{"Please note: connection refused is not an answer here\nsubsystem request failed on channel 0", refusal.BackendRefused},
+		{"Host key verification failed.", refusal.HostKeyMismatch},
+	} {
+		w := newSFTPWorld(t, nasAddress)
+		w.ready()
+		w.client.login = func([]string) (repoconnect.Output, error) {
+			return repoconnect.Output{Code: 255, Stderr: c.stderr}, nil
+		}
+		_, f := w.prepare()
+		if f == nil || f.Reason != c.reason {
+			t.Errorf("%q: %+v, want %s", c.stderr, f, c.reason)
+		}
+	}
+}
+
+// П28: no key at all is the server's fault whatever the exit code.
+func TestAScanWithoutKeysIsUnavailableWhateverTheExitCode(t *testing.T) {
+	for _, code := range []int{0, 1} {
+		w := newSFTPWorld(t, nasAddress)
+		w.client.keyscan = func([]string) (repoconnect.Output, error) {
+			return repoconnect.Output{Code: code, Stderr: "getaddrinfo nas.example.com: Name or service not known"}, nil
+		}
+		_, f := w.prepare()
+		assertFail(t, f, refusal.BackendUnavailable, refusal.ClassTemporary, "nas.example.com", "22", "Name or service not known")
+		w.assertNothingWritten()
+	}
+}
+
+// П27: a banner that only looks like a line of ssh decides nothing.
+func TestALineOfABannerThatLooksLikePermissionDeniedIsBackendRefused(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.ready()
+	w.client.login = func([]string) (repoconnect.Output, error) {
+		return repoconnect.Output{Code: 255, Stderr: "Permission denied (publickey) — call the admin"}, nil
+	}
+	_, f := w.prepare()
+	assertFail(t, f, refusal.BackendRefused, refusal.ClassAgentError)
+}
+
+// П21: the files written are named.
+func TestTheResultNamesTheFilesThatWereWritten(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	res, f := w.prepare()
+	if f != nil || !slices.Equal(res.Written, []string{"id_ed25519", "known_hosts", "config"}) {
+		t.Fatalf("%+v %v", res, f)
+	}
+	again, f := w.prepare()
+	if f != nil || len(again.Written) != 0 {
+		t.Fatalf("a repeat wrote %v (%v)", again.Written, f)
+	}
+}
+
+// П22
+func TestReplacingAHostKeyKeepsPatternsAndListsAndNamesThem(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.put("known_hosts", line("*.example.com", wildKey)+line(nasHost, oldEd)+line("a.example.com,"+nasHost, otherKey)+line("other.example.com", rsaKey))
+	w.sftp.Replace = true
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	res, f := w.prepare()
+	if f != nil || !slices.Equal(res.KeptPatterns, []int{1, 3}) {
+		t.Fatalf("%+v %v", res, f)
+	}
+	want := line("*.example.com", wildKey) + line("a.example.com,"+nasHost, otherKey) + line("other.example.com", rsaKey) + line(nasHost, edKey)
+	if w.read("known_hosts") != want {
+		t.Fatalf("known_hosts %q", w.read("known_hosts"))
+	}
+}
+
+func TestAChangedHostKeyNamesThePatternLinesToo(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.put("known_hosts", line("*.example.com", wildKey)+line(nasHost, oldEd))
+	_, f := w.prepare()
+	assertFail(t, f, refusal.HostKeyChanged, refusal.ClassTrust, "line 2", "line 1", "pattern")
+}
+
+// interruptDuring runs Prepare while the program hangs, interrupts the
+// command, and returns the failure.
+func (w *sftpWorld) interruptDuring(program string) *refusal.Failure {
+	w.client.hang = map[string]chan struct{}{program: make(chan struct{})}
+	w.client.started = make(chan string, 1)
+	ctx, cancel := context.WithCancel(t0(w))
+	done := make(chan *refusal.Failure, 1)
+	go func() { _, f := w.sftp.Prepare(ctx); done <- f }()
+	<-w.client.started
+	cancel()
+	return <-done
+}
+
+func t0(w *sftpWorld) context.Context { return w.t.Context() }
+
+func TestALoginThatIsInterruptedIsInterruptedNotARefusalOfTheServer(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.ready()
+	assertFail(t, w.interruptDuring(repoconnect.ProgSFTP), refusal.Interrupted, refusal.ClassTemporary)
+}
+
+func TestAHomeThatIsNoAbsolutePathIsRefusedBeforeAnyProgramRuns(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.sftp.Service.Home = "relative/home"
+	_, f := w.prepare()
+	assertFail(t, f, refusal.SSHHomeInvalid, refusal.ClassUsage, "relative/home")
+	if len(w.client.calls) != 0 {
+		t.Fatalf("programs ran: %v", w.client.programs())
+	}
+}
+
+func TestAPrivateKeyThatIsALinkIsRejectedBeforeAnyProgramRuns(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	if err := os.Symlink("/etc/passwd", filepath.Join(w.ssh, "id_ed25519")); err != nil {
+		t.Fatal(err)
+	}
+	_, f := w.prepare()
+	assertFail(t, f, refusal.SSHFileRejected, refusal.ClassUsage, "id_ed25519")
+	if len(w.client.calls) != 0 {
+		t.Fatalf("programs ran: %v", w.client.programs())
+	}
+}
+
+func TestWithoutAScrubberTheTextOfAProgramIsTakenAsItIs(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.sftp.Scrub = nil
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	w.client.keygenFails = "Saving key failed"
+	_, f := w.prepare()
+	assertFail(t, f, refusal.SSHClientFailed, refusal.ClassAgentError, "Saving key failed")
+}
+
+func TestAKeyIsNotMadeWhereTheSSHDirectoryCannotBeMade(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.sftp.Service.Home = filepath.Join(w.home, "missing", "home")
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	_, f := w.prepare()
+	assertFail(t, f, refusal.ConfigWrite, refusal.ClassWrite, "missing")
+	if slices.Contains(w.client.programs(), repoconnect.ProgKeygen) {
+		t.Fatal("ssh-keygen ran")
+	}
+}
+
+// afterKeygen runs the client and then does something to ~/.ssh, as another
+// process would between the steps of the setup.
+func (w *sftpWorld) afterKeygen(then func()) {
+	w.sftp.Runner = runnerFunc(func(ctx context.Context, program string, args []string) (repoconnect.Output, error) {
+		out, err := w.client.Run(ctx, program, args)
+		if program == repoconnect.ProgKeygen {
+			then()
+		}
+		return out, err
+	})
+}
+
+func TestAPublicPartThatTurnsIntoALinkAfterTheKeyWasMadeIsRejectedNotAClientError(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	w.afterKeygen(func() {
+		pub := filepath.Join(w.ssh, "id_ed25519.pub")
+		if err := os.Remove(pub); err != nil {
+			t.Error(err)
+		}
+		if err := os.Symlink("/etc/passwd", pub); err != nil {
+			t.Error(err)
+		}
+	})
+	_, f := w.prepare()
+	assertFail(t, f, refusal.SSHFileRejected, refusal.ClassUsage, "id_ed25519.pub")
+}
+
+func TestAKnownHostsFileThatCannotBeWrittenIsAConfigWriteFailureAndIsNotAudited(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.sftp.Fingerprint = edKey.Fingerprint()
+	w.afterKeygen(func() {
+		if err := os.Mkdir(filepath.Join(w.ssh, "known_hosts"), 0o700); err != nil {
+			t.Error(err)
+		}
+	})
+	res, f := w.prepare()
+	assertFail(t, f, refusal.ConfigWrite, refusal.ClassWrite, "known_hosts")
+	if slices.Contains(res.Written, "known_hosts") || slices.ContainsFunc(w.audit, func(a string) bool { return strings.Contains(a, "host key") }) {
+		t.Fatalf("written %v, audit %q", res.Written, w.audit)
+	}
+}
+
+func TestWithoutAUserInTheAddressTheServiceUserIsTheOneTheServerDidNotAccept(t *testing.T) {
+	w := newSFTPWorld(t, "sftp:nas.example.com:/srv/extra")
+	w.ready()
+	w.client.login = func([]string) (repoconnect.Output, error) {
+		return repoconnect.Output{Code: 255, Stderr: "sard-agent@nas.example.com: Permission denied (publickey)."}, nil
+	}
+	_, f := w.prepare()
+	assertFail(t, f, refusal.SSHKeyNotAuthorized, refusal.ClassUsage, "for the user sard-agent:", "of the user sard-agent on nas.example.com")
+}
+
+func TestAChangedKeyWithOnlyPatternEntriesSaysNoEntryIsItsOwn(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.put("known_hosts", line("*.example.com", wildKey))
+	_, f := w.prepare()
+	assertFail(t, f, refusal.HostKeyChanged, refusal.ClassTrust, "in no entry of its own", "pattern or a list on line 1")
+}
+
+func TestAChangedKeyWithoutPatternEntriesNamesNoPatterns(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.put("known_hosts", line(nasHost, oldEd))
+	_, f := w.prepare()
+	assertFail(t, f, refusal.HostKeyChanged, refusal.ClassTrust, "on line 1")
+	if strings.Contains(f.Detail, "pattern or a list on line") || strings.Contains(f.Detail, "in no entry") {
+		t.Errorf("the message names what is not there: %s", f.Detail)
+	}
+}
+
+func TestTheFirstOfKeysOfOneTypeIsShownAndAKeyOfAnUnknownTypeComesLast(t *testing.T) {
+	other := repoconnect.HostKey{Type: "ssh-ed25519", Blob: otherKey.Blob}
+	skKey := repoconnect.HostKey{Type: "sk-ssh-ed25519@openssh.com", Blob: wire("sk-ssh-ed25519@openssh.com", 's')}
+	for name, c := range map[string]struct {
+		keys   []repoconnect.HostKey
+		want   repoconnect.HostKey
+		advice string
+	}{
+		"two of one type":   {[]repoconnect.HostKey{edKey, other}, edKey, "ssh_host_ed25519_key.pub"},
+		"unknown, then rsa": {[]repoconnect.HostKey{skKey, rsaKey}, rsaKey, "ssh_host_rsa_key.pub"},
+		"unknown alone":     {[]repoconnect.HostKey{skKey}, skKey, "ssh_host_*_key.pub"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newSFTPWorld(t, nasAddress)
+			var scanned string
+			for _, k := range c.keys {
+				scanned += line(nasHost, k)
+			}
+			w.client.keyscan = func([]string) (repoconnect.Output, error) { return repoconnect.Output{Stdout: scanned}, nil }
+			w.terminal("yes")
+			res, f := w.prepare()
+			if f != nil || res.HostKey != c.want || len(w.asked) != 1 {
+				t.Fatalf("%+v %v asked %q", res, f, w.asked)
+			}
+			assertMentions(t, w.asked[0], c.advice)
+		})
+	}
+}
+
+func TestTheCommentOfANewKeyNamesTheHostOrLocalhostWhenItHasNoName(t *testing.T) {
+	for name, hostname := range map[string]func() (string, error){
+		"empty":  func() (string, error) { return "", nil },
+		"failed": func() (string, error) { return "", errors.New("no hostname") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newSFTPWorld(t, nasAddress)
+			w.sftp.Hostname = hostname
+			w.sftp.Fingerprint = edKey.Fingerprint()
+			if _, f := w.prepare(); f != nil {
+				t.Fatal(f)
+			}
+			if got := w.keygenArgs(); !slices.Contains(got, "sard-agent@localhost") {
+				t.Fatalf("ssh-keygen %q", got)
+			}
+		})
+	}
+}
+
+func TestAConnectTimeoutOfOneSecondIsTold(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.ready()
+	w.sftp.Bound.Timeout = time.Second
+	if _, f := w.prepare(); f != nil {
+		t.Fatal(f)
+	}
+	scan, login := w.client.calls[0].args, w.client.calls[1].args
+	if !slices.Equal(scan[:2], []string{"-T", "1"}) || !slices.Contains(login, "ConnectTimeout=1") {
+		t.Fatalf("keyscan %q, login %q", scan, login)
+	}
+}
+
+func TestTheLinesOfSSHAreRecognisedWithTheirLeadingAndTrailingWhitespace(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.ready()
+	w.client.login = func([]string) (repoconnect.Output, error) {
+		return repoconnect.Output{Code: 255, Stderr: "  Host key verification failed.\r\n"}, nil
+	}
+	_, f := w.prepare()
+	assertFail(t, f, refusal.HostKeyMismatch, refusal.ClassTrust)
+}
+
+func TestAScanThatEndedWithAnErrorIsAnErrorOfTheClientEvenWithKeys(t *testing.T) {
+	w := newSFTPWorld(t, nasAddress)
+	w.client.keyscan = func([]string) (repoconnect.Output, error) {
+		return repoconnect.Output{Code: 1, Stdout: line(nasHost, edKey), Stderr: "write: broken pipe SECRET"}, nil
+	}
+	_, f := w.prepare()
+	assertFail(t, f, refusal.SSHClientFailed, refusal.ClassAgentError, "ssh-keyscan", "exit code 1", "broken pipe [x]")
+	w.assertNothingWritten()
+}

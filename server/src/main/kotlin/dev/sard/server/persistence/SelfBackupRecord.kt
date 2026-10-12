@@ -12,7 +12,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * The self-backup's binding of a tenant (F6, migration V202610101200): one per tenant; its sources carry the
+ * The self-backup's binding of a tenant (F6, migration V202610121100): one per tenant; its sources carry the
  * agent and the repository.
  */
 @Entity

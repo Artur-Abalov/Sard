@@ -56,6 +56,7 @@ export function queuedRun(source: Schemas['Source']): Schemas['Run'] {
     startedAt: null,
     finishedAt: null,
     steps: [step],
+    catchUp: null,
   }
   return run
 }

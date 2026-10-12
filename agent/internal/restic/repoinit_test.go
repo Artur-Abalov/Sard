@@ -105,3 +105,55 @@ func TestAnIDSplitOverTwoLinesIsUnexpectedOutput(t *testing.T) {
 		t.Errorf("Init = %q, %v", id, err)
 	}
 }
+
+// A8b, Р34 (OQ-155): restic fails some commands with a line that is not
+// "Fatal: ...": a lock it cannot create, the stderr of its ssh. That line
+// is the cause when there is no fatal message, and is kept next to one.
+func TestALockOrSSHLineWithoutAFatalMessageIsTheCause(t *testing.T) {
+	for _, line := range []string{
+		"unable to create lock in backend: client.PutObject: Forbidden: Operation is not allowed for this key.",
+		"subprocess ssh: backup@nas.example.com: Permission denied (publickey).",
+	} {
+		f := newFixture(t, map[string]reply{"cat": {code: 1}})
+		f.exec.fatal = line
+		_, err := f.build().ID(context.Background())
+		var exitErr *restic.ExitError
+		if !errors.As(err, &exitErr) || exitErr.Code != 1 || exitErr.Message != line || exitErr.Cause() != line {
+			t.Errorf("%q: %v", line, err)
+		}
+	}
+}
+
+func TestAnSSHLineIsKeptNextToTheFatalMessage(t *testing.T) {
+	f := newFixture(t, map[string]reply{"cat": {code: 1}})
+	f.exec.lines = []string{
+		"subprocess ssh: Host key verification failed.",
+		"Fatal: unable to open repository at sftp:backup@nas.example.com:/srv/extra: unable to start the sftp session, error: EOF",
+	}
+	_, err := f.build().ID(context.Background())
+	var exitErr *restic.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatal(err)
+	}
+	if want := "Fatal: unable to open repository at sftp:backup@nas.example.com:/srv/extra: unable to start the sftp session, error: EOF (subprocess ssh: Host key verification failed.)"; exitErr.Message != want {
+		t.Errorf("Message = %q", exitErr.Message)
+	}
+}
+
+func TestANetworkCauseInALockLineIsANetworkFailure(t *testing.T) {
+	f := newFixture(t, map[string]reply{"cat": {code: 1}})
+	f.exec.fatal = "unable to create lock in backend: dial tcp 192.0.2.1:443: connect: connection refused"
+	if _, err := f.build().ID(context.Background()); !errors.Is(err, restic.ErrNetwork) {
+		t.Errorf("%v", err)
+	}
+}
+
+func TestOtherLinesAreNotACause(t *testing.T) {
+	f := newFixture(t, map[string]reply{"cat": {code: 1}})
+	f.exec.fatal = "Load(<config/0000000000>, 0, 0) returned error, retrying after 1.2s: connection refused"
+	_, err := f.build().ID(context.Background())
+	var exitErr *restic.ExitError
+	if errors.Is(err, restic.ErrNetwork) || !errors.As(err, &exitErr) || exitErr.Message != "" {
+		t.Errorf("%v", err)
+	}
+}

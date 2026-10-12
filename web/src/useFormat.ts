@@ -2,7 +2,17 @@
 // Copyright 2026 Artur Abalov
 
 import { useTranslation } from 'react-i18next'
-import { formatBytes, formatDuration, formatFiles, formatRelative, formatTimestamp } from './format'
+import {
+  formatBytes,
+  formatCatchUp,
+  formatDuration,
+  formatFiles,
+  formatMissed,
+  formatRelative,
+  formatScheduleTime,
+  formatTimestamp,
+  type MissedFires,
+} from './format'
 
 // The formatters of format.ts bound to the interface language.
 export function useFormat() {
@@ -16,5 +26,9 @@ export function useFormat() {
       formatDuration(start, end, Date.now(), language),
     files: (processed: number | null, total: number | null) =>
       formatFiles(processed, total, language),
+    scheduleTime: (value: string | null, timeZone: string) =>
+      formatScheduleTime(value, timeZone, language),
+    missed: (missed: MissedFires) => formatMissed(missed, language),
+    catchUp: (missed: MissedFires) => formatCatchUp(missed, language),
   }
 }

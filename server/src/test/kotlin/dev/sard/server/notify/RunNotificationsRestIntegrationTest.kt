@@ -155,6 +155,8 @@ class RunNotificationsRestIntegrationTest(
                 OverdueDeliveries(sessions, UuidV7(clock, SecureRandom())),
                 listOf(channel),
                 RunNoticeFormatter(NoticeLanguage.EN, ConsoleUrl.parse("")),
+                ScheduleAlertFormatter(NoticeLanguage.EN, ConsoleUrl.parse("")),
+                OverdueNoticeFormatter(NoticeLanguage.EN, ConsoleUrl.parse("")),
                 RetryPolicy(RetrySettings()),
                 QueueSettings(batch = 10, lease = Duration.ofMinutes(5), ttl = Duration.ofHours(24)),
                 clock,

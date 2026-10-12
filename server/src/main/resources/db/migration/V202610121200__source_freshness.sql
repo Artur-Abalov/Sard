@@ -24,19 +24,18 @@ CREATE TABLE overdue_episodes (
 );
 CREATE UNIQUE INDEX overdue_episodes_open_key ON overdue_episodes (tenant_id, source_id) WHERE closed_at IS NULL;
 
--- A delivery tells of a subject: a finished run, an episode that opened (overdue) or one a success
--- closed (overdue_over). The run's key stays; an episode's is (episode, subject, channel).
-ALTER TABLE notification_deliveries ALTER COLUMN run_id DROP NOT NULL;
-ALTER TABLE notification_deliveries ADD COLUMN subject TEXT NOT NULL DEFAULT 'run'
-    CONSTRAINT notification_deliveries_subject_check CHECK (subject IN ('run', 'overdue', 'overdue_over'));
-ALTER TABLE notification_deliveries ALTER COLUMN subject DROP DEFAULT;
+-- A delivery tells of a run, a schedule fire (F3b) or an overdue episode: exactly one. Of an episode it tells
+-- that it opened or that a success closed it (episode_event); the key is (episode, event, channel).
 ALTER TABLE notification_deliveries ADD COLUMN episode_id UUID;
-ALTER TABLE notification_deliveries ADD CONSTRAINT notification_deliveries_subject_id_check
-    CHECK ((subject = 'run') = (run_id IS NOT NULL) AND (subject = 'run') = (episode_id IS NULL));
+ALTER TABLE notification_deliveries ADD COLUMN episode_event TEXT
+    CONSTRAINT notification_deliveries_episode_event_check CHECK (episode_event IN ('opened', 'closed'));
+ALTER TABLE notification_deliveries DROP CONSTRAINT notification_deliveries_subject_check;
+ALTER TABLE notification_deliveries ADD CONSTRAINT notification_deliveries_subject_check
+    CHECK (num_nonnulls(run_id, fire_id, episode_id) = 1 AND (episode_id IS NULL) = (episode_event IS NULL));
 ALTER TABLE notification_deliveries ADD CONSTRAINT notification_deliveries_episode_fkey
     FOREIGN KEY (tenant_id, episode_id) REFERENCES overdue_episodes (tenant_id, id);
 ALTER TABLE notification_deliveries ADD CONSTRAINT notification_deliveries_episode_channel_key
-    UNIQUE (tenant_id, episode_id, subject, channel);
+    UNIQUE (tenant_id, episode_id, episode_event, channel);
 
 -- The planner looks for episodes opened or closed within the delivery time to live.
 CREATE INDEX overdue_episodes_opened_at_idx ON overdue_episodes (opened_at);

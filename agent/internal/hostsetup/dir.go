@@ -6,6 +6,7 @@ package hostsetup
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"path/filepath"
 	"strings"
@@ -25,6 +26,30 @@ type Dir interface {
 	// Chown and Chmod change this directory itself (fchown, fchmod).
 	Chown(uid, gid int) error
 	Chmod(mode fs.FileMode) error
+	Stat() (fs.FileInfo, error)
+	Close() error
+
+	// CreateFile makes the regular file called name and opens it for
+	// writing: openat with O_CREAT|O_EXCL|O_NOFOLLOW, so whatever has the
+	// name already, a link included, is an fs.ErrExist and is not touched.
+	CreateFile(name string, perm fs.FileMode) (File, error)
+	// OpenFile opens the file called name for reading without following a
+	// link (syscall.ELOOP) and without blocking on a FIFO; the caller
+	// judges what it is from Stat of the descriptor.
+	OpenFile(name string) (ReadFile, error)
+	// Lstat describes what name is, a link as a link, without opening it
+	// for reading (an O_PATH descriptor): for what root must not read.
+	Lstat(name string) (fs.FileInfo, error)
+	// Rename, Remove and Sync are renameat, unlinkat and fsync relative to
+	// this directory; names are one component.
+	Rename(oldName, newName string) error
+	Remove(name string) error
+	Sync() error
+}
+
+// ReadFile is a file opened for reading.
+type ReadFile interface {
+	io.Reader
 	Stat() (fs.FileInfo, error)
 	Close() error
 }

@@ -8,6 +8,9 @@ dist/
 node_modules/
 .cover.out
 go-mutesting-report.html
+# `go build` run inside a command's directory writes the binary next to main.go
+/agent/cmd/sard-agent/sard-agent
+/cli/cmd/sardctl/sardctl
 
 # Local configuration
 .env

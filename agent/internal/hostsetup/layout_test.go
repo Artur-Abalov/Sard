@@ -21,6 +21,7 @@ func TestLayoutNamesFilesNextToTheMainConfig(t *testing.T) {
 		l.SecretsDir():            "/etc/sard/secrets",
 		l.SecretFile("db"):        "/etc/sard/secrets/db",
 		l.PasswordFile("main"):    "/etc/sard/secrets/restic-main.pass",
+		l.EnvFile("main"):         "/etc/sard/secrets/restic-main.env",
 	} {
 		if got != want {
 			t.Errorf("got %s, want %s", got, want)
@@ -93,5 +94,24 @@ func TestReferencesToAPathAreFoundInEveryKey(t *testing.T) {
 	}
 	if got := hostsetup.ReferencedBy(cfg, "/p/pass", `password_file of repository "base"`); got != "" {
 		t.Errorf("a key's own reference counted: %q", got)
+	}
+}
+
+func TestAnEnvFileIsNamedInTheFragmentOfARepository(t *testing.T) {
+	dir := t.TempDir()
+	l := hostsetup.Layout{Config: dir + "/agent.yaml"}
+	writeAll(t, map[string][]byte{
+		l.Config:                  []byte("server: {address: 'a:1'}\n"),
+		l.RepositoryFragment("x"): hostsetup.RepositoryYAMLWithEnv("x", "s3:https://h/b", l.PasswordFile("x"), l.EnvFile("x")),
+	})
+	cfg, err := config.Load(l.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Repositories[0].EnvFile; got != dir+"/secrets/restic-x.env" {
+		t.Fatalf("env_file = %q", got)
+	}
+	if strings.Contains(string(hostsetup.RepositoryYAML("x", "/srv/x", "/p")), "env_file") {
+		t.Fatal("a repository without an env file names one")
 	}
 }

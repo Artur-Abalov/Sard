@@ -43,14 +43,15 @@ internal object Chain {
 
     /**
      * A [SourceTree] on [agent]'s host backed up through the console into [url], and its snapshot
-     * restored with `restic restore` ([env]: the backend's credentials): the tree comes back byte
-     * for byte.
+     * restored with `restic restore` ([env]: the backend's credentials, [passwordFile]: where the
+     * repository's password is): the tree comes back byte for byte.
      */
     fun backupRestores(
         sard: SardEnvironment,
         agent: EnrolledAgent,
         url: String,
         env: Map<String, String> = emptyMap(),
+        passwordFile: String = PASSWORD_FILE,
     ) {
         val tree = SourceTree.generate(SEED)
         agent.host.put(DATA, tree.files())
@@ -61,7 +62,7 @@ internal object Chain {
         val snapshot = assertNotNull(Backups.snapshot(sard, started.stepId))
         assertEquals(listOf(step.repositoryId, step.snapshotId, "false"), listOf(snapshot.repositoryId, snapshot.snapshotId, snapshot.partial.toString()))
 
-        val restored = agent.host.restore(url, PASSWORD_FILE, snapshot.snapshotId, DATA, env)
+        val restored = agent.host.restore(url, passwordFile, snapshot.snapshotId, DATA, env)
         assertEquals(emptyList(), TreeDiff.of(tree.expected, restored))
     }
 

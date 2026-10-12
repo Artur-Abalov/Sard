@@ -48,17 +48,28 @@ func (l Layout) PasswordFile(name string) string {
 	return filepath.Join(l.SecretsDir(), "restic-"+name+".pass")
 }
 
+// EnvFile is the env file of an S3 repository (Р30).
+func (l Layout) EnvFile(name string) string {
+	return filepath.Join(l.SecretsDir(), "restic-"+name+".env")
+}
+
 const fragmentHeader = "# Written by sard-agent; change it with `sard-agent repo` and `sard-agent secret`, not by hand.\n"
 
 type repositoryEntry struct {
 	Name         string `yaml:"name"`
 	URL          string `yaml:"url"`
 	PasswordFile string `yaml:"password_file"`
+	EnvFile      string `yaml:"env_file,omitempty"`
 }
 
 // RepositoryYAML is the content of a repository's fragment.
 func RepositoryYAML(name, url, passwordFile string) []byte {
-	return marshal(map[string][]repositoryEntry{"repositories": {{Name: name, URL: url, PasswordFile: passwordFile}}})
+	return RepositoryYAMLWithEnv(name, url, passwordFile, "")
+}
+
+// RepositoryYAMLWithEnv is RepositoryYAML for a repository with an env_file.
+func RepositoryYAMLWithEnv(name, url, passwordFile, envFile string) []byte {
+	return marshal(map[string][]repositoryEntry{"repositories": {{Name: name, URL: url, PasswordFile: passwordFile, EnvFile: envFile}}})
 }
 
 // SecretYAML is the content of a secret's fragment.

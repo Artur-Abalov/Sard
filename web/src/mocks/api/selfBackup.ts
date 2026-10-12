@@ -176,6 +176,8 @@ function nightly(sourceId: string, now: string): Schemas['Schedule'] {
     catchUpAt: null,
     lastFiredAt: null,
     skippedInRow: 0,
+    notifyOnSuccess: false,
+    lastRun: null,
     createdAt: now,
     updatedAt: now,
   }

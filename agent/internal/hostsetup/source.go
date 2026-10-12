@@ -21,6 +21,12 @@ type Terminal interface {
 	ReadSecret(prompt string) ([]byte, error)
 }
 
+// LinePrompter is a terminal that can also ask for a line with the echo
+// on (the confirmation of a host key, which the operator should see).
+type LinePrompter interface {
+	ReadLine(prompt string) ([]byte, error)
+}
+
 // SourceFlags are the names of the two flags of a command, for its messages:
 // --stdin and --from-file, or --password-stdin and --password-from-file.
 type SourceFlags struct{ Stdin, File string }

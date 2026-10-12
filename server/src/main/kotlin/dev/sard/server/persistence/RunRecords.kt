@@ -42,7 +42,7 @@ class SourceRecord(
     @Column(name = "deleted_at")
     var deletedAt: Instant? = null
 
-    /** Set only for the server's own sources (F6, migration V202610101200); never changes once set. */
+    /** Set only for the server's own sources (F6, migration V202610121100); never changes once set. */
     @Column(name = "system_role", updatable = false)
     var systemRole: String? = null
 

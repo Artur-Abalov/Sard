@@ -67,6 +67,7 @@ class CronSchedule private constructor(
 
     companion object {
         private const val FIELDS = 5
+        private const val MAX_LENGTH = 200
         private const val SKIPPED_LOCAL_LIMIT = 1_000
         private const val HOUR = 1
         private const val DAY_OF_MONTH = 2
@@ -85,6 +86,10 @@ class CronSchedule private constructor(
         ): CronSchedule {
             val zoneId = zoneOf(zone)
             val fields = fieldsOf(cron)
+            // The column holds 200 characters; the message does not echo the input.
+            if (fields.joinToString(" ").length > MAX_LENGTH) {
+                throw InvalidSchedule(ScheduleField.CRON, "cron is longer than $MAX_LENGTH characters")
+            }
             val schedule =
                 try {
                     CronSchedule(fields.joinToString(" "), zoneId, expressionsOf(fields), !fields[HOUR].startsWith('*'))
