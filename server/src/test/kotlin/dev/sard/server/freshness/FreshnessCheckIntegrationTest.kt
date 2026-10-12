@@ -156,6 +156,18 @@ class FreshnessCheckIntegrationTest(
     }
 
     @Test
+    fun `Расписание, которое больше не разбирается, пропускается, остальные проверяются`() {
+        val broken = scheduled(name = "broken")
+        val fine = scheduled(name = "fine")
+        jdbc.update("update schedules set cron = '61 * * * * *' where source_id = ?", broken)
+
+        tickAt(DEADLINE)
+
+        assertEquals(0, episodes(broken).size)
+        assertEquals(1, episodes(fine).size)
+    }
+
+    @Test
     fun `Источник без расписания не бывает просрочен, тенанты не смешиваются`() {
         val unscheduled = sources.create(tenant.id, tenant.draft(name = "manual")).id
         val foreign = scheduled(owner = other)

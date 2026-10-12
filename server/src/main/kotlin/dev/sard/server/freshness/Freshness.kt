@@ -70,10 +70,17 @@ object Freshness {
         source: SourceFreshness,
         now: Instant,
     ): Verdict {
-        val open = source.open ?: return opening(source, now)
-        val success = source.lastSuccess
-        val newer = success != null && (open.countedFrom == null || success.at > open.countedFrom)
-        return if (newer) Verdict.Close(open.id, checkNotNull(success).runId) else Verdict.Keep
+        val open = source.open
+        return if (open == null) opening(source, now) else closing(open, source.lastSuccess)
+    }
+
+    /** A success newer than the one the episode counts from ends it. */
+    private fun closing(
+        open: OpenEpisode,
+        success: LastSuccess?,
+    ): Verdict {
+        val newer = success?.takeIf { open.countedFrom == null || it.at > open.countedFrom }
+        return newer?.let { Verdict.Close(open.id, it.runId) } ?: Verdict.Keep
     }
 
     private fun opening(

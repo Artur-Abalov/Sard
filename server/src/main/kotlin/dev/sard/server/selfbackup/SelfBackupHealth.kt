@@ -105,18 +105,23 @@ internal object SourceStates {
 
 /** The rules of the self-backup's health and warnings. */
 internal object HealthRules {
+    /** The warnings a source can raise, worst first; [SelfBackupWarning.LOCAL_STORAGE] is the repository's. */
+    private val sourceRules: List<Pair<SelfBackupWarning, (SourceState, UUID?) -> Boolean>> =
+        listOf(
+            SelfBackupWarning.AGENT_REPLACED to { state, agent -> state.agentId != agent },
+            SelfBackupWarning.OVERDUE to { state, _ -> state.overdueSince != null },
+            SelfBackupWarning.FAILING to { state, _ -> state.lastRun?.status == RunState.FAILED },
+            SelfBackupWarning.SCHEDULE_DISABLED to { state, _ -> !state.scheduleOn },
+        )
+
     fun warnings(
         states: List<SourceState>,
         builtinAgent: UUID?,
         local: Boolean,
-    ): List<SelfBackupWarning> =
-        listOfNotNull(
-            SelfBackupWarning.AGENT_REPLACED.takeIf { states.any { it.agentId != builtinAgent } },
-            SelfBackupWarning.OVERDUE.takeIf { states.any { it.overdueSince != null } },
-            SelfBackupWarning.FAILING.takeIf { states.any { it.lastRun?.status == RunState.FAILED } },
-            SelfBackupWarning.SCHEDULE_DISABLED.takeIf { states.any { !it.scheduleOn } },
-            SelfBackupWarning.LOCAL_STORAGE.takeIf { local },
-        )
+    ): List<SelfBackupWarning> {
+        val raised = sourceRules.filter { (_, holds) -> states.any { holds(it, builtinAgent) } }.map { it.first }
+        return if (local) raised + SelfBackupWarning.LOCAL_STORAGE else raised
+    }
 
     /** The worst warning about the backup itself; local storage alone leaves it OK. */
     fun health(warnings: List<SelfBackupWarning>): SelfBackupHealth =

@@ -8,9 +8,9 @@ import dev.sard.server.persistence.UuidV7
 import dev.sard.server.scheduler.CronSchedule
 import org.hibernate.Session
 import org.slf4j.LoggerFactory
-import java.sql.Timestamp
 import java.time.Clock
 import java.time.Instant
+import java.time.temporal.TemporalAccessor
 import java.util.UUID
 
 private val log = LoggerFactory.getLogger(FreshnessCheck::class.java)
@@ -130,12 +130,15 @@ private enum class Column { TENANT, SOURCE, CRON, ZONE, CHANGED, SUCCESS_RUN, SU
 
 private operator fun Array<Any?>.get(column: Column): Any? = this[column.ordinal]
 
-/** One scanned row; null (and a warning) for a stored schedule that no longer parses. */
+/** The schedule of a scanned row; null (and a warning) for a stored schedule that no longer parses. */
+private fun firesOf(row: Array<Any?>): CronSchedule? =
+    runCatching { CronSchedule.parse(row[Column.CRON] as String, row[Column.ZONE] as String) }
+        .onFailure { log.warn("Source {}: its schedule does not parse, freshness not checked", row[Column.SOURCE]) }
+        .getOrNull()
+
+/** One scanned row; null for a stored schedule that no longer parses. */
 private fun freshnessOf(row: Array<Any?>): SourceFreshness? {
-    val fires =
-        runCatching { CronSchedule.parse(row[Column.CRON] as String, row[Column.ZONE] as String) }
-            .onFailure { log.warn("Source {}: its schedule does not parse, freshness not checked", row[Column.SOURCE]) }
-            .getOrNull() ?: return null
+    val fires = firesOf(row) ?: return null
     return SourceFreshness(
         tenantId = row[Column.TENANT] as UUID,
         sourceId = row[Column.SOURCE] as UUID,
@@ -146,10 +149,5 @@ private fun freshnessOf(row: Array<Any?>): SourceFreshness? {
     )
 }
 
-private fun instant(value: Any?): Instant =
-    when (value) {
-        is Instant -> value
-        is Timestamp -> value.toInstant()
-        is java.time.OffsetDateTime -> value.toInstant()
-        else -> error("not a time: $value")
-    }
+/** A timestamptz column of a native query: Hibernate hands it over as a temporal (an Instant or an offset time). */
+private fun instant(value: Any?): Instant = Instant.from(value as TemporalAccessor)
