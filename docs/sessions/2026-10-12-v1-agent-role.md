@@ -67,3 +67,33 @@
 
 Открыты вопросы 1 и 3–7 (семантика `ACTION_VERIFY`, расширение X.509, соль
 идентификатора машины, код отказа, `status`, мелочи).
+
+### Решение владельца 2 (2026-10-12): вопросы 1, 3–7 — «со всем согласен»
+
+1. `ACTION_VERIFY` выполняет только verifier. BACKUP, RESTORE и RUN выполняет
+   только source. Запасной вариант ADR 0008 п. 3 «проверка на исходном хосте»
+   отменён. `Verify` сторонних плагинов на verifier до V4 не вызывается.
+3. Роль записывается некритичным расширением X.509 с OID в дуге `2.25.<UUID>`.
+   Значение — DER UTF8String. S3 сверяет роль сертификата с ролью в БД.
+4. `machine_id` — HMAC-SHA256 с ключом `"sard-machine-id/v1" ‖ tenant_id`.
+   Источники по порядку: `/etc/machine-id`, `/var/lib/dbus/machine-id`, затем
+   случайное значение в `executor.state_dir`.
+5. Код отказа передаётся в `StepResult.reject_reason`
+   (`REJECT_REASON_ROLE_MISMATCH`).
+6. Команда `sard-agent status` работает офлайн.
+7. Привязка источника к verifier — 422 `agent_role_mismatch`. CHECK в БД:
+   builtin → source. `machine_id` до V4 не выводится в REST. Требование к C1:
+   при продлении сертификата роль сохраняется.
+
+## Фаза 2 — /ship-feature
+
+### specifier — готово, спецификация утверждена
+
+Файлы: `docs/specs/server/agent-role.feature`,
+`docs/specs/agent/agent-role.feature`, `docs/qa/agent-role.md`.
+Ответы владельца на О1–О11 — «согласен» с предложениями координатора:
+
+- О1: код выхода при отсутствии роли — 1, а не 78 (как О2 agent-start-refusals).
+- О2: неверная роль в REST — 422 `validation_failed`.
+- О3: `"role": null` равносилен отсутствию поля, то есть source.
+- О4–О11: приняты так, как их сформулировал specifier.

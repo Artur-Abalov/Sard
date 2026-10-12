@@ -83,7 +83,7 @@ reg() { $GRPC -cert $1 -key $2 -d "{\"hostname\":\"qa\",\"agentVersion\":\"qa\",
    → `verifier` и `verifier`.
 4. `body < $QA/tv | jq -r .enrollCommand`
    → `sudo -u sard-agent sard-agent enroll --server localhost:9090 --token <token>`, как у токена из шага 1.
-5. `N=$($PSQL "select count(*) from enrollment_tokens"); for r in '""' '"SOURCE"' '"Verifier"' '"admin"' 1 null; do a POST /enrollment-tokens "{\"role\":$r}" | tr '\n' ' ' | grep -o 'HTTP 422\|"field":"role"' | sort -u | tr '\n' ' '; echo; done; $PSQL "select count(*) from enrollment_tokens"`
+5. `N=$($PSQL "select count(*) from enrollment_tokens"); for r in '""' '"SOURCE"' '"Verifier"' '"admin"' 1; do a POST /enrollment-tokens "{\"role\":$r}" | tr '\n' ' ' | grep -o 'HTTP 422\|"field":"role"' | sort -u | tr '\n' ' '; echo; done; $PSQL "select count(*) from enrollment_tokens"`
    → шесть строк `"field":"role" HTTP 422`; `code` каждого — `validation_failed`; число токенов равно `$N`.
 6. `$PSQL "select role from enrollment_tokens where builtin"`
    → только `source` (встроенный токен sard-self, если ещё не израсходован, или израсходованный).
@@ -168,9 +168,9 @@ cp $S1/tls/agent.pem $QA/good.pem
 
 26. `cp $QA/nr.pem $S1/tls/agent.pem; timeout 10 $AG --config $S1/agent.yaml; echo "exit=$?"`
     → одна строка stderr `sard-agent: …`, содержит `CERT_ROLE_MISSING`, `tls.cert_file`,
-    путь `$S1/tls/agent.pem` и `sard-agent enroll --force`; нет `connecting to`; `exit=78`.
+    путь `$S1/tls/agent.pem` и `sard-agent enroll --force`; нет `connecting to`; `exit=1`.
 27. `cp $QA/bad.pem $S1/tls/agent.pem; timeout 10 $AG --config $S1/agent.yaml 2>$QA/e; echo "exit=$?"; cat $QA/e`
-    → `CERT_ROLE_INVALID`; `exit=78`; `grep -c marker-ROLE-7f $QA/e` → `0`.
+    → `CERT_ROLE_INVALID`; `exit=1`; `grep -c marker-ROLE-7f $QA/e` → `0`.
 28. `$AG status --config $S1/agent.yaml; echo "exit=$?"`
     → одна строка stderr с `CERT_ROLE_INVALID` и `sard-agent enroll --force`; stdout пуст; `exit=1`.
 29. `cp $QA/good.pem $S1/tls/agent.pem; $AG --config $S1/agent.yaml > $QA/s.out 2>&1 & SP=$!; sleep 5; head -1 $QA/s.out`
