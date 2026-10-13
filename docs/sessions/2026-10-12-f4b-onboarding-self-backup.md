@@ -248,3 +248,16 @@ ADR: `docs/adr/00XX-draft-f4b-onboarding-self-backup.md`.
    (`web/src/mocks/selfBackupSources.ts`, `state.ts`); тесты F6, привязывающие сами, начинают с `unbind()`.
 7. F6 (P2). Абзац-исключение (черновик, «pending owner sign-off») в ADR 0008 и в последствиях
    `00XX-draft-f4b-onboarding-self-backup.md`.
+
+## F4b: F4 закрыт вариантом (b) (владелец)
+
+- Команда показа пароля и .feature не менялись. `deploy/agent/Dockerfile`: `RUN ln -s /usr/libexec/sard/sard-agent
+  /usr/local/bin/sard-agent` после COPY бинарника; база Debian/Ubuntu (в том числе `postgres:18`, вариант `-pg18`,
+  тот же Dockerfile), `ln` есть. `read_only` и `cap_drop` в compose на разрешение через PATH не влияют (ссылка
+  в слое образа, не в томе).
+- Тест `selfbackup/RevealCommandImageTest` читает Dockerfile и проверяет, что программа из `passwordRevealCommand`
+  равна ENTRYPOINT или есть ссылка в стандартном каталоге PATH на него. Падал: `links: {}`; после правки зелёный.
+- `docs/operator/02-install.md` упоминает путь. `scripts/test-self-agent.sh` группа 8 выполняет команду как есть
+  (`bash -c "$reveal"`), правки не нужны.
+- Образ здесь не собирался (нет демона Docker/образов): ссылка проверена только тестом по тексту Dockerfile,
+  не в рантайме.
