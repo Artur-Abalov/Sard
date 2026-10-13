@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -182,5 +183,55 @@ func TestRemoveTreeOfAnEntryItCannotOpenIsTheErrorOfTheOpen(t *testing.T) {
 	ok(t, closed.Close())
 	if err := hostsetup.RemoveTree(closed, "stage"); err == nil || errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("err = %v", err)
+	}
+}
+
+// A name with a NUL byte cannot be handed to the kernel: it is EINVAL and
+// nothing is asked of the kernel at all.
+func TestANameWithANulByteIsInvalidForAMoveAndForARemoval(t *testing.T) {
+	from, to := t.TempDir(), t.TempDir()
+	ok(t, os.WriteFile(filepath.Join(from, "a"), nil, 0o600))
+	source, target := heldDir(t, from), heldDir(t, to)
+	for name, err := range map[string]error{
+		"old name": source.RenameNoReplace("a\x00b", target, "b"),
+		"new name": source.RenameNoReplace("a", target, "b\x00c"),
+		"removal":  source.RemoveDir("a\x00b"),
+	} {
+		if !errors.Is(err, syscall.EINVAL) {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(from, "a")); err != nil {
+		t.Errorf("a was touched: %v", err)
+	}
+}
+
+// plainInfo is a file info that carries no owner.
+type plainInfo struct{ fs.FileInfo }
+
+func (plainInfo) Sys() any { return nil }
+
+func TestOwnerOfAFileInfoWithoutAnOwnerIsNotFoundAndNoOwner(t *testing.T) {
+	base := t.TempDir()
+	info, err := os.Stat(base)
+	ok(t, err)
+	if uid, gid, found := hostsetup.OwnerOf(plainInfo{info}); found || uid != 0 || gid != 0 {
+		t.Errorf("uid %d, gid %d, found %v", uid, gid, found)
+	}
+	if uid, gid, found := hostsetup.OwnerOf(info); !found || int(uid) != os.Getuid() || int(gid) != os.Getgid() {
+		t.Errorf("uid %d, gid %d, found %v", uid, gid, found)
+	}
+}
+
+func TestRemoveTreeLeavesNoDescriptorOfTheDirectoriesItWalked(t *testing.T) {
+	base := t.TempDir()
+	ok(t, os.MkdirAll(filepath.Join(base, "walked-tree-x1/sub"), 0o700))
+	ok(t, hostsetup.RemoveTree(heldDir(t, base), "walked-tree-x1"))
+	entries, err := os.ReadDir("/proc/self/fd")
+	ok(t, err)
+	for _, e := range entries {
+		if link, err := os.Readlink(filepath.Join("/proc/self/fd", e.Name())); err == nil && strings.Contains(link, "walked-tree-x1") {
+			t.Errorf("still open: %s", link)
+		}
 	}
 }

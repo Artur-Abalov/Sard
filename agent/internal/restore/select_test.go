@@ -17,6 +17,7 @@ import (
 func TestCheckRefAcceptsAnIdAPrefixAndLatestWithASource(t *testing.T) {
 	for _, c := range []struct{ ref, source string }{
 		{id("aaaa1111"), ""}, {"aaaa1111", ""}, {strings.Repeat("a", 63), ""}, {"latest", "s1"},
+		{"00000000", ""}, {"99999999", ""}, {"ffffffff", ""}, {"09af09af", ""},
 	} {
 		if err := restore.CheckRef(c.ref, c.source); err != nil {
 			t.Errorf("CheckRef(%q, %q) = %v", c.ref, c.source, err)
@@ -25,10 +26,17 @@ func TestCheckRefAcceptsAnIdAPrefixAndLatestWithASource(t *testing.T) {
 }
 
 func TestCheckRefRefusesAnythingElse(t *testing.T) {
-	for _, ref := range []string{"aaaa111", "AAAA1111", "zzzz1111", "", strings.Repeat("a", 65), "-aaaa1111"} {
+	for _, ref := range []string{"aaaa111", "AAAA1111", "zzzz1111", "", strings.Repeat("a", 65), "-aaaa1111", "////////", "::::::::", "@@@@@@@@", "gggggggg", "aaaa/aaa", "aaaa:aaa", "aaaagaaa"} {
 		if err := restore.CheckRef(ref, ""); err == nil {
 			t.Errorf("CheckRef(%q) = nil", ref)
 		}
+	}
+}
+
+func TestARefusedRefStatesTheLengthsOfAPrefixAndTheRef(t *testing.T) {
+	err := restore.CheckRef("zz", "")
+	if err == nil || !strings.Contains(err.Error(), "8-63 lowercase") || !strings.Contains(err.Error(), `"zz"`) {
+		t.Fatalf("err = %v", err)
 	}
 }
 

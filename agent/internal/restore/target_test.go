@@ -34,6 +34,16 @@ type recordingFS struct {
 	// failChown and failStat make the owner change and the look at a
 	// directory fail.
 	failChown, failStat bool
+	// failRemoveDir is the name of a directory that cannot be removed, failSync
+	// makes the sync of a directory fail, failNames is the suffix of the path
+	// of a directory that cannot be listed, and asFile makes every directory
+	// seem to be a regular file.
+	failRemoveDir, failNames string
+	failSync, asFile         bool
+	// failLock makes the lock of a directory fail as if another restore held
+	// it; asMode is the permission every directory seems to have.
+	failLock bool
+	asMode   *fs.FileMode
 }
 
 func newRecordingFS() *recordingFS { return &recordingFS{owners: map[string][2]int{}} }
@@ -79,6 +89,12 @@ func (d recordingDir) Stat() (fs.FileInfo, error) {
 	}
 	d.fsys.mu.Lock()
 	defer d.fsys.mu.Unlock()
+	if d.fsys.asFile {
+		return notADir{info}, nil
+	}
+	if d.fsys.asMode != nil {
+		return withMode{notADir{info}, *d.fsys.asMode}, nil
+	}
 	if d.fsys.asOwner != nil {
 		return ownedInfo{info, *d.fsys.asOwner}, nil
 	}
@@ -87,6 +103,26 @@ func (d recordingDir) Stat() (fs.FileInfo, error) {
 	}
 	return info, nil
 }
+
+// notADir is the owner root, mode 0700 and the type of a regular file.
+type notADir struct{ fs.FileInfo }
+
+func (notADir) Mode() fs.FileMode { return 0o700 }
+func (notADir) IsDir() bool       { return false }
+func (n notADir) Sys() any {
+	st := *n.FileInfo.Sys().(*syscall.Stat_t)
+	st.Uid = 0
+	return &st
+}
+
+// withMode is a directory of root with the permission given.
+type withMode struct {
+	notADir
+	perm fs.FileMode
+}
+
+func (w withMode) Mode() fs.FileMode { return fs.ModeDir | w.perm }
+func (withMode) IsDir() bool         { return true }
 
 type ownedInfo struct {
 	fs.FileInfo
@@ -104,6 +140,34 @@ func (d recordingDir) RenameNoReplace(oldName string, newDir hostsetup.Dir, newN
 		return &fs.PathError{Op: "renameat2", Path: newName, Err: hostsetup.ErrCrossDevice}
 	}
 	return d.Dir.RenameNoReplace(oldName, newDir, newName)
+}
+
+func (d recordingDir) RemoveDir(name string) error {
+	if name == d.fsys.failRemoveDir {
+		return &fs.PathError{Op: "unlinkat", Path: name, Err: syscall.EBUSY}
+	}
+	return d.Dir.RemoveDir(name)
+}
+
+func (d recordingDir) Lock() error {
+	if d.fsys.failLock {
+		return hostsetup.ErrBusy
+	}
+	return d.Dir.Lock()
+}
+
+func (d recordingDir) Sync() error {
+	if d.fsys.failSync {
+		return &fs.PathError{Op: "fsync", Path: d.Path(), Err: syscall.EIO}
+	}
+	return d.Dir.Sync()
+}
+
+func (d recordingDir) Names() ([]string, error) {
+	if d.fsys.failNames != "" && strings.HasSuffix(d.Path(), d.fsys.failNames) {
+		return nil, &fs.PathError{Op: "getdents", Path: d.Path(), Err: syscall.EIO}
+	}
+	return d.Dir.Names()
 }
 
 func (d recordingDir) Chown(uid, gid int) error {
@@ -191,7 +255,7 @@ func TestTheTargetIsGivenInItsCleanForm(t *testing.T) {
 
 func TestARelativeTargetIsInvalid(t *testing.T) {
 	_, f := check(t, restore.Target{Path: "restore"})
-	wantFailure(t, f, refusal.TargetInvalid, "absolute")
+	wantFailure(t, f, refusal.TargetInvalid, "absolute", `--target "restore"`)
 }
 
 func TestANonEmptyTargetIsRefused(t *testing.T) {

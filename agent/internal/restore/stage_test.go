@@ -166,7 +166,7 @@ func TestANameThatTurnedUpInTheTargetIsNotReplacedAndTheRestIsRemoved(t *testing
 	if f == nil || f.Reason != refusal.TargetWrite || f.Class != refusal.ClassWrite {
 		t.Fatalf("failure %v", f)
 	}
-	for _, want := range []string{filepath.Join(dir, "srv"), "stay in the target", "removed"} {
+	for _, want := range []string{filepath.Join(dir, "srv"), "turned up in the target while restic worked and is not replaced", "stay in the target", "removed"} {
 		if !strings.Contains(f.Detail, want) {
 			t.Errorf("%q is not in %q", want, f.Detail)
 		}
