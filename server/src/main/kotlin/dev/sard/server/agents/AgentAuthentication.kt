@@ -4,9 +4,9 @@
 package dev.sard.server.agents
 
 import dev.sard.server.pki.AgentIdentity
-import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.AgentRoleUri
 import dev.sard.server.pki.CertificateRole
+import dev.sard.server.role.AgentRole
 import io.grpc.Context
 import java.security.cert.X509Certificate
 import java.time.Clock

@@ -15,6 +15,7 @@ import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.certificate
 import dev.sard.server.pki.PkiFixtures.certificates
 import dev.sard.server.pki.PkiFixtures.resource
+import dev.sard.server.role.AgentRole
 import io.grpc.Grpc
 import io.grpc.Status
 import io.grpc.StatusException
@@ -57,7 +58,7 @@ class GatedCertificateAuthority(
     override fun issueAgentCertificate(
         csrDer: ByteArray,
         agent: dev.sard.server.pki.AgentIdentity,
-        role: dev.sard.server.pki.AgentRole,
+        role: dev.sard.server.role.AgentRole,
     ): dev.sard.server.pki.IssuedCertificate {
         entered.release()
         gate?.await(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS)
@@ -111,7 +112,7 @@ class EnrollmentIntegrationTest(
         jdbc.deleteEnrollmentTenantData(acme)
     }
 
-    private fun newToken() = tokens.create(acme, ENROLLMENT_TOKEN_TTL)
+    private fun newToken() = tokens.create(acme, ENROLLMENT_TOKEN_TTL, role = AgentRole.SOURCE)
 
     private fun tokenRow(issued: IssuedEnrollmentToken) =
         jdbc.queryForMap("select used_at, agent_id from enrollment_tokens where id = ?", issued.id)

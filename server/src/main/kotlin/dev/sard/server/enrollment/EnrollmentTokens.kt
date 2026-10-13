@@ -8,8 +8,8 @@ import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.persistence.hqlWhere
-import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CertificateAuthority
+import dev.sard.server.role.AgentRole
 import org.hibernate.Session
 import java.security.SecureRandom
 import java.time.Clock
@@ -63,7 +63,7 @@ data class TokenOwner(
     /** Whether the token was written by the server for the agent next to it; its agent is built in too. */
     val builtin: Boolean = false,
     /** The role the enrolling agent gets (V1). */
-    val role: AgentRole = AgentRole.SOURCE,
+    val role: AgentRole,
 )
 
 /** A token as an administrator sees it: never the string, never the secret (rule "Строка токена..."). */
@@ -120,7 +120,7 @@ class EnrollmentTokens(
         tenantId: UUID,
         ttl: Duration = DEFAULT_TTL,
         label: String = "",
-        role: AgentRole = AgentRole.SOURCE,
+        role: AgentRole,
     ): IssuedEnrollmentToken {
         if (ttl < MIN_TTL || ttl > MAX_TTL) {
             throw EnrollmentTokenValidationException("ttl", "must be between $MIN_TTL and $MAX_TTL inclusive")

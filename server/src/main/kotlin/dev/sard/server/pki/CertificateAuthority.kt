@@ -3,6 +3,7 @@
 
 package dev.sard.server.pki
 
+import dev.sard.server.role.AgentRole
 import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder
 import java.math.BigInteger
 import java.security.MessageDigest

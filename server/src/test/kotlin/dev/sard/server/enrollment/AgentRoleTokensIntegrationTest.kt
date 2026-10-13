@@ -4,8 +4,8 @@
 package dev.sard.server.enrollment
 
 import dev.sard.server.TestcontainersConfiguration
-import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.role.AgentRole
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
@@ -41,7 +41,7 @@ class AgentRoleTokensIntegrationTest(
 
     @Test
     fun `Токен без указанной роли создаётся с ролью source`() {
-        val issued = tokens.create(acme)
+        val issued = tokens.create(acme, role = AgentRole.SOURCE)
 
         assertEquals(AgentRole.SOURCE, tokens.get(acme, issued.id)?.role)
     }
@@ -56,7 +56,7 @@ class AgentRoleTokensIntegrationTest(
 
     @Test
     fun `Строка токена verifier имеет тот же формат, что у source`() {
-        val source = tokens.create(acme).reveal()
+        val source = tokens.create(acme, role = AgentRole.SOURCE).reveal()
         val verifier = tokens.create(acme, role = AgentRole.VERIFIER).reveal()
 
         val parsed = EnrollmentToken.parse(verifier)

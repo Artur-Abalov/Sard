@@ -12,11 +12,11 @@ import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.pki.AgentIdentity
-import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.FakeCaLedger
 import dev.sard.server.pki.FileCertificateAuthority
 import dev.sard.server.pki.Pem
+import dev.sard.server.role.AgentRole
 import io.grpc.CallOptions
 import io.grpc.ChannelCredentials
 import io.grpc.Grpc
@@ -131,7 +131,8 @@ class AgentAuthIntegrationTest(
     /** An agent enrolled into [tenant] the way a real one is: token, CSR, Enroll. */
     private fun enrolled(tenant: UUID): AgentKey {
         val keys = newKeys()
-        val agent = enrollment.enroll(tokens.create(tenant, TTL).reveal(), csr(keys), "host-$tenant")
+        val token = tokens.create(tenant, TTL, role = AgentRole.SOURCE).reveal()
+        val agent = enrollment.enroll(token, csr(keys), "host-$tenant")
         val sql = "select serial from agent_certificates where agent_id = ?"
         val serial = jdbc.queryForObject(sql, String::class.java, agent.agentId)
         return AgentKey(AgentIdentity(tenant, agent.agentId), serial!!, agent.certificateChainPem, keys)
@@ -213,7 +214,7 @@ class AgentAuthIntegrationTest(
         val request =
             EnrollRequest
                 .newBuilder()
-                .setEnrollmentToken(tokens.create(acme, TTL).reveal())
+                .setEnrollmentToken(tokens.create(acme, TTL, role = AgentRole.SOURCE).reveal())
                 .setCsrDer(ByteString.copyFrom(csr(keys)))
                 .setHostname("db1")
                 .build()

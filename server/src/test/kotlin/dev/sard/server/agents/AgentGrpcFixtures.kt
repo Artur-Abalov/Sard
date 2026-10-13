@@ -8,11 +8,11 @@ import dev.sard.server.api.MACHINE_ID
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.pki.AgentIdentity
-import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.ForgedCertificates
 import dev.sard.server.pki.ForgedRole
 import dev.sard.server.pki.Pem
+import dev.sard.server.role.AgentRole
 import io.grpc.ChannelCredentials
 import io.grpc.Grpc
 import io.grpc.ManagedChannel

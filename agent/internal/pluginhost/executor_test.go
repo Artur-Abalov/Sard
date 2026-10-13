@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
-	"github.com/Artur-Abalov/sard/agent/internal/identity"
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
@@ -51,7 +51,7 @@ func TestTheExecutorRunsPluginStepsThroughTheHandlers(t *testing.T) {
 	s := newSink()
 	state := filepath.Join(t.TempDir(), "state") // the executor creates it 0700
 	exec, err := executor.New(executor.Options{
-		Role:         identity.Source,
+		Role:         role.Source,
 		Handlers:     f.handlers,
 		Sink:         s,
 		StateDir:     state,

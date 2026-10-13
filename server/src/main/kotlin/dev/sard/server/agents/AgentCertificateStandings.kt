@@ -5,7 +5,7 @@ package dev.sard.server.agents
 
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.AgentIdentity
-import dev.sard.server.pki.AgentRole
+import dev.sard.server.role.AgentRole
 import java.time.Instant
 import java.util.UUID
 

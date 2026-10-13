@@ -17,40 +17,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	"github.com/Artur-Abalov/sard/agent/internal/tlsid"
-	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
-
-// Role is what the server allows the agent to do.
-type Role string
-
-const (
-	// Source runs BACKUP, RESTORE and RUN.
-	Source Role = "source"
-	// Verifier runs VERIFY only.
-	Verifier Role = "verifier"
-)
-
-// Valid reports whether r is one of the two roles.
-func (r Role) Valid() bool { return r == Source || r == Verifier }
-
-// Allows reports whether the role may run the action. ACTION_UNSPECIFIED and
-// unknown actions pass: the executor's plugin check rejects them as before.
-func (r Role) Allows(a agentv1.Action) bool {
-	switch a {
-	case agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE, agentv1.Action_ACTION_RUN:
-		return r == Source
-	case agentv1.Action_ACTION_VERIFY:
-		return r == Verifier
-	}
-	return true
-}
 
 // Identity is what the agent's certificate says.
 type Identity struct {
 	TenantID string
 	AgentID  string
-	Role     Role
+	Role     role.Role
 	NotAfter time.Time
 }
 
@@ -86,8 +61,8 @@ func Read(path string, read func(string) ([]byte, error)) (Identity, error) {
 	if !findIdentity(uris, &id) {
 		return Identity{}, &tlsid.FileError{Key: "tls.cert_file", Path: path, Err: errNoIdentity}
 	}
-	role, err := roleOf(path, uris)
-	id.Role = role
+	r, err := roleOf(path, uris)
+	id.Role = r
 	return id, err
 }
 
@@ -134,25 +109,25 @@ func uriNames(der []byte) []string {
 // roleOf finds the URI names with scheme sard and host roles (case
 // insensitive, userinfo and port ignored); exactly one of them, written
 // exactly, is the role.
-func roleOf(path string, uris []string) (Role, error) {
+func roleOf(path string, uris []string) (role.Role, error) {
 	found := slices.DeleteFunc(slices.Clone(uris), func(raw string) bool { return !isRoleURI(raw) })
 	if len(found) == 0 {
 		return "", &RoleError{Path: path, Missing: true}
 	}
-	if role, ok := exactRole(found); ok {
-		return role, nil
+	if r, ok := exactRole(found); ok {
+		return r, nil
 	}
 	return "", &RoleError{Path: path}
 }
 
 // exactRole is the role of a single URI that is exactly sard://roles/<role>.
-func exactRole(found []string) (Role, bool) {
+func exactRole(found []string) (role.Role, bool) {
 	if len(found) != 1 {
 		return "", false
 	}
 	name, ok := strings.CutPrefix(found[0], "sard://roles/")
-	role := Role(name)
-	return role, ok && role.Valid()
+	r := role.Role(name)
+	return r, ok && r.Valid()
 }
 
 func isRoleURI(raw string) bool {

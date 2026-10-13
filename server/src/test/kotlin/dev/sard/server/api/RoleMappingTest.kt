@@ -8,7 +8,7 @@ import io.github.anschnapp.mutflow.junit.MutFlowTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import dev.sard.server.pki.AgentRole as DomainRole
+import dev.sard.server.role.AgentRole as DomainRole
 
 @MutFlowTest
 class RoleMappingTest {

@@ -3,6 +3,7 @@
 
 package dev.sard.server.pki
 
+import dev.sard.server.role.AgentRole
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
 import org.slf4j.LoggerFactory
 import java.nio.file.Path

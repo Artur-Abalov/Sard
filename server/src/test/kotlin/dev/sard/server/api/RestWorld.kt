@@ -9,7 +9,6 @@ import dev.sard.server.agents.stream.StreamClients
 import dev.sard.server.agents.stream.TestAgent
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
-import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.Pem
@@ -18,6 +17,7 @@ import dev.sard.server.registration.PluginAction
 import dev.sard.server.registration.PluginEntry
 import dev.sard.server.registration.Registration
 import dev.sard.server.registration.RepositoryEntry
+import dev.sard.server.role.AgentRole
 import io.grpc.TlsChannelCredentials
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder

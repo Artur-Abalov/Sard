@@ -6,6 +6,7 @@ package dev.sard.server.pki
 import dev.sard.server.pki.CaImportFixtures.CLOCK
 import dev.sard.server.pki.CaImportFixtures.NOW
 import dev.sard.server.pki.PkiFixtures.random
+import dev.sard.server.role.AgentRole
 import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.api.io.TempDir
 import org.springframework.boot.test.system.CapturedOutput

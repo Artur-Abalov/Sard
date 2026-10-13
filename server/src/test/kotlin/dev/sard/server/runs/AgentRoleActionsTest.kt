@@ -3,7 +3,7 @@
 
 package dev.sard.server.runs
 
-import dev.sard.server.pki.AgentRole
+import dev.sard.server.role.AgentRole
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import kotlin.test.Test

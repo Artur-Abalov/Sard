@@ -9,10 +9,10 @@ import dev.sard.server.persistence.EnrollmentTokenRecord
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.AgentIdentity
-import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.InvalidCsrException
 import dev.sard.server.pki.IssuedCertificate
+import dev.sard.server.role.AgentRole
 import org.hibernate.Session
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate

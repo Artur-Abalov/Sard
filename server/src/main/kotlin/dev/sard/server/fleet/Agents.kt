@@ -10,7 +10,7 @@ import dev.sard.server.persistence.AgentRepositoryRecord
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.hqlWhere
-import dev.sard.server.pki.AgentRole
+import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.RunAnnouncer
 import dev.sard.server.runs.StepRevocation
 import jakarta.persistence.LockModeType

@@ -7,6 +7,7 @@ import dev.sard.server.pki.PkiFixtures.AGENT
 import dev.sard.server.pki.PkiFixtures.CLOCK
 import dev.sard.server.pki.PkiFixtures.NOW
 import dev.sard.server.pki.PkiFixtures.random
+import dev.sard.server.role.AgentRole
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
@@ -14,6 +15,7 @@ import java.math.BigInteger
 import java.security.cert.X509Certificate
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 private const val SOURCE_URI = "sard://roles/source"
 private const val VERIFIER_URI = "sard://roles/verifier"
@@ -59,8 +61,19 @@ class AgentRoleUriTest {
     @Test
     fun `a certificate without a role URI has no role`() {
         assertEquals(CertificateRole.Missing, read(ForgedRole.Absent))
-        for (other in listOf("sard://role/source", "https://roles/source", "sard://tenants/x/agents/y", "sard:roles")) {
-            assertEquals(CertificateRole.Missing, read(uris(other)), other)
+    }
+
+    @Test
+    fun `the shared role URI vectors read as the file says`() {
+        assertTrue(ROLE_URI_VECTORS.isNotEmpty())
+        for ((uri, outcome) in ROLE_URI_VECTORS) {
+            val expected =
+                when (outcome) {
+                    "missing" -> CertificateRole.Missing
+                    "invalid" -> CertificateRole.Invalid
+                    else -> CertificateRole.Valid(AgentRole.of(outcome))
+                }
+            assertEquals(expected, read(uris(uri)), uri)
         }
     }
 
@@ -68,9 +81,6 @@ class AgentRoleUriTest {
     fun `only exactly the two role strings are a role`() {
         assertEquals(CertificateRole.Valid(AgentRole.VERIFIER), read(ForgedRole.Text("verifier")))
         assertEquals(CertificateRole.Valid(AgentRole.SOURCE), read(ForgedRole.Text("source")))
-        for (uri in INEXACT_ROLE_URIS) {
-            assertEquals(CertificateRole.Invalid, read(uris(uri)), uri)
-        }
     }
 
     @Test

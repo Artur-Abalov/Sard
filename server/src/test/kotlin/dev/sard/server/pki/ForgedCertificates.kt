@@ -44,21 +44,23 @@ sealed interface ForgedRole {
     ) : ForgedRole
 }
 
-/** Single SAN URIs with scheme sard and host roles that are not exactly a role: all "invalid" (tests only). */
-val INEXACT_ROLE_URIS =
-    listOf(
-        "sard://roles/admin",
-        "sard://roles/Source",
-        "SARD://ROLES/source",
-        "sard://roles/",
-        "sard://roles",
-        "sard://roles/source/",
-        "sard://roles/source?x=1",
-        "sard://roles/source#x",
-        "sard://u@roles/source",
-        "sard://roles:443/source",
-        "sard://Roles",
-    )
+private const val ROLE_URI_VECTORS_FILE = "test/vectors/agent-role-uri.tsv"
+
+/**
+ * The role URI rows shared with the agent (test/vectors/agent-role-uri.tsv): URI to outcome, one of
+ * "source", "verifier", "missing", "invalid" (tests only). The file is found from the working
+ * directory upwards, whichever directory Gradle runs the tests in.
+ */
+val ROLE_URI_VECTORS: List<Pair<String, String>> =
+    generateSequence(Path.of("").toAbsolutePath()) { it.parent }
+        .map { it.resolve(ROLE_URI_VECTORS_FILE) }
+        .first { Files.isRegularFile(it) }
+        .let(Files::readAllLines)
+        .filter { it.isNotBlank() && !it.startsWith("#") }
+        .map { line -> line.substringBefore('\t') to line.substringAfter('\t') }
+
+/** The URIs of the shared vectors with this outcome. */
+fun roleUrisWith(outcome: String): List<String> = ROLE_URI_VECTORS.filter { it.second == outcome }.map { it.first }
 
 /**
  * Certificates signed by the real CA that no honest server would issue: the same serial and SAN

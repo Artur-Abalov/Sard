@@ -10,6 +10,7 @@ import dev.sard.server.persistence.SelfBackupRecord
 import dev.sard.server.persistence.SourceRecord
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
+import dev.sard.server.runs.Action
 import dev.sard.server.runs.AgentOffer
 import dev.sard.server.runs.RunActive
 import dev.sard.server.runs.Runs
@@ -166,7 +167,7 @@ class SelfBackups internal constructor(
         val moved =
             plan.sources().map { planned ->
                 AgentOffer
-                    .require(session, agent.id, planned.plugin, repositoryName, requireBackup = true)
+                    .require(session, agent.id, planned.plugin, repositoryName, Action.BACKUP, requireListed = true)
                     .requireConfig(mapper.writeValueAsString(planned.config))
                 keep(session, existing[planned.role], planned, agent.id, repositoryName, now)
             }

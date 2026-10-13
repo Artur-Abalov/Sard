@@ -22,8 +22,8 @@ import dev.sard.server.agents.stream.StreamFixtures.HEARTBEAT
 import dev.sard.server.agents.stream.StreamFixtures.NOW
 import dev.sard.server.agents.stream.StreamFixtures.SETTINGS
 import dev.sard.server.pki.AgentIdentity
-import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.role.AgentRole
 import io.grpc.Context
 import io.grpc.Metadata
 import io.grpc.Status

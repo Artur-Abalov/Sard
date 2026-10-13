@@ -6,7 +6,7 @@ package dev.sard.server.agents.dispatch
 import dev.sard.proto.agent.v1.RunStep
 import dev.sard.server.agents.stream.ConnectedAgent
 import dev.sard.server.agents.stream.SendResult
-import dev.sard.server.pki.AgentRole
+import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.Action
 import dev.sard.server.runs.DispatchLedger
 import dev.sard.server.runs.InTenant

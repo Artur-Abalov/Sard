@@ -7,7 +7,7 @@ import dev.sard.server.persistence.Agent
 import dev.sard.server.persistence.AgentOwnedKey
 import dev.sard.server.persistence.AgentPluginRecord
 import dev.sard.server.persistence.AgentRepositoryRecord
-import dev.sard.server.pki.AgentRole
+import dev.sard.server.role.AgentRole
 import jakarta.persistence.LockModeType
 import org.hibernate.Session
 import java.util.UUID
@@ -30,8 +30,9 @@ internal class Offered(
  */
 internal object AgentOffer {
     /**
-     * Refuses, in this order, an unknown agent, a revoked one, a verifier (it cannot back up), an unknown plugin
-     * (with [requireBackup], also one that does not list backup), an unknown repository.
+     * Refuses, in this order, an unknown agent, a revoked one, one whose role does not allow [action] (a verifier
+     * cannot back up), an unknown plugin (with [requireListed], also one that does not list [action]), an unknown
+     * repository.
      * [lock] is taken on the agent's row: a run being started shares it, so it cannot slip past a revocation.
      */
     fun require(
@@ -39,26 +40,27 @@ internal object AgentOffer {
         agentId: UUID,
         plugin: String,
         repositoryName: String,
+        action: Action,
         lock: LockModeType = LockModeType.NONE,
-        requireBackup: Boolean = false,
+        requireListed: Boolean = false,
     ): Offered {
         val agent = liveAgent(session, agentId, lock)
-        requireSource(agent)
-        val announced = announcedPlugin(session, agentId, plugin, requireBackup)
+        requireAllowed(agent, action)
+        val announced = announcedPlugin(session, agentId, plugin, action.takeIf { requireListed })
         session.find(AgentRepositoryRecord::class.java, AgentOwnedKey(agentId, repositoryName))
             ?: throw UnknownRepository(repositoryName)
         return Offered(announced.configSchema, agent.secretNames.toSet())
     }
 
-    // A source of stage 1 backs up: a plugin that does not list backup is as good as unknown (W2 K17).
+    // A plugin that does not list the action asked for is as good as unknown (W2 K17).
     private fun announcedPlugin(
         session: Session,
         agentId: UUID,
         plugin: String,
-        requireBackup: Boolean,
+        listing: Action?,
     ): AgentPluginRecord {
         val announced = session.find(AgentPluginRecord::class.java, AgentOwnedKey(agentId, plugin))
-        if (announced == null || (requireBackup && Action.BACKUP.stored !in announced.actions)) {
+        if (announced == null || (listing != null && listing.stored !in announced.actions)) {
             throw UnknownPlugin(plugin)
         }
         return announced
@@ -74,8 +76,11 @@ internal object AgentOffer {
         return agent
     }
 
-    /** A source is backed up by an agent whose role allows backups; a verifier does not (V1). */
-    private fun requireSource(agent: Agent) {
-        if (!AgentRole.of(agent.role).allows(Action.BACKUP)) throw AgentRoleMismatch(agent.id)
+    /** The agent's role must allow the action: a source is backed up, a verifier is not (V1). */
+    private fun requireAllowed(
+        agent: Agent,
+        action: Action,
+    ) {
+        if (!AgentRole.of(agent.role).allows(action)) throw AgentRoleMismatch(agent.id)
     }
 }

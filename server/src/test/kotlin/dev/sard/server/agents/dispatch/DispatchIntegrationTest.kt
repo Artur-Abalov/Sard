@@ -17,9 +17,9 @@ import dev.sard.server.agents.stream.WAIT_SECONDS
 import dev.sard.server.api.captureLogs
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
-import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.ProgressReport
 import dev.sard.server.runs.RoleLedger
 import dev.sard.server.runs.RunView

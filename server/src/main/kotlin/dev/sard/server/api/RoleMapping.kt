@@ -3,7 +3,7 @@
 
 package dev.sard.server.api
 
-import dev.sard.server.pki.AgentRole as DomainRole
+import dev.sard.server.role.AgentRole as DomainRole
 
 /** The wire role as the domain knows it. Exhaustive, no `else`. */
 internal fun AgentRole.toDomain(): DomainRole =

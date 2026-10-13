@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/identity"
-	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 )
 
 const (
@@ -65,7 +65,7 @@ func readOf(data []byte) func(string) ([]byte, error) {
 }
 
 func TestReadsTheIdentityAndRoleOfACertificate(t *testing.T) {
-	for _, role := range []identity.Role{identity.Source, identity.Verifier} {
+	for _, role := range []role.Role{role.Source, role.Verifier} {
 		got, err := identity.Read("/a.pem", readOf(certPEM(t, identURI, "sard://roles/"+string(role))))
 		if err != nil {
 			t.Fatal(err)
@@ -79,7 +79,7 @@ func TestReadsTheIdentityAndRoleOfACertificate(t *testing.T) {
 
 func TestTheOrderOfNamesInTheSANDoesNotMatter(t *testing.T) {
 	got, err := identity.Read("/a.pem", readOf(certPEM(t, "sard://roles/verifier", identURI)))
-	if err != nil || got.Role != identity.Verifier || got.AgentID != agent || got.TenantID != tenant {
+	if err != nil || got.Role != role.Verifier || got.AgentID != agent || got.TenantID != tenant {
 		t.Fatalf("got %+v, %v", got, err)
 	}
 }
@@ -174,30 +174,46 @@ func TestAReadErrorKeepsItsCauseForTheCaller(t *testing.T) {
 	}
 }
 
-func TestWhatEachRoleMayRun(t *testing.T) {
-	allowed := map[identity.Role][]agentv1.Action{
-		identity.Source:   {agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE, agentv1.Action_ACTION_RUN},
-		identity.Verifier: {agentv1.Action_ACTION_VERIFY},
+// vectors are the role URI rows shared with the server: test/vectors/agent-role-uri.tsv.
+func vectors(t *testing.T) [][2]string {
+	t.Helper()
+	data, err := os.ReadFile("../../../test/vectors/agent-role-uri.tsv")
+	if err != nil {
+		t.Fatal(err)
 	}
-	for role, ok := range allowed {
-		for _, a := range []agentv1.Action{agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE, agentv1.Action_ACTION_RUN, agentv1.Action_ACTION_VERIFY} {
-			want := false
-			for _, x := range ok {
-				want = want || x == a
-			}
-			if got := role.Allows(a); got != want {
-				t.Errorf("%s.Allows(%s) = %v", role, a, got)
-			}
+	var rows [][2]string
+	for _, line := range strings.Split(string(data), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
 		}
+		uri, outcome, ok := strings.Cut(line, "\t")
+		if !ok {
+			t.Fatalf("bad vector %q", line)
+		}
+		rows = append(rows, [2]string{uri, outcome})
 	}
+	if len(rows) == 0 {
+		t.Fatal("no vectors")
+	}
+	return rows
 }
 
-func TestUnspecifiedAndUnknownActionsPassTheRoleGate(t *testing.T) {
-	for _, role := range []identity.Role{identity.Source, identity.Verifier} {
-		for _, a := range []agentv1.Action{agentv1.Action_ACTION_UNSPECIFIED, agentv1.Action(99)} {
-			if !role.Allows(a) {
-				t.Errorf("%s.Allows(%d) = false", role, a)
+func TestTheSharedRoleURIVectors(t *testing.T) {
+	for _, row := range vectors(t) {
+		uri, want := row[0], row[1]
+		got, err := identity.Read("/a.pem", readOf(certPEM(t, identURI, uri)))
+		var re *identity.RoleError
+		switch want {
+		case "source", "verifier":
+			if err != nil || got.Role != role.Role(want) {
+				t.Errorf("%s: got %q, %v", uri, got.Role, err)
 			}
+		case "missing", "invalid":
+			if !errors.As(err, &re) || re.Missing != (want == "missing") {
+				t.Errorf("%s: err = %v, want %s", uri, err, want)
+			}
+		default:
+			t.Fatalf("unknown outcome %q", want)
 		}
 	}
 }

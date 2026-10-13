@@ -6,6 +6,7 @@ package dev.sard.server.enrollment
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.role.AgentRole
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
@@ -75,7 +76,7 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Создание токена возвращает идентификатор, срок и строку токена`() {
-        val issued = tokens.create(tenantA, Duration.ofHours(1))
+        val issued = tokens.create(tenantA, Duration.ofHours(1), role = AgentRole.SOURCE)
         assertEquals(NOW + Duration.ofHours(1), issued.expiresAt)
         val parsed = EnrollmentToken.parse(issued.reveal())
         assertEquals(ca.fingerprint(), parsed.fingerprint)
@@ -83,7 +84,7 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Результат создания токена содержит команду регистрации с настроенным адресом`() {
-        val issued = tokens.create(tenantA)
+        val issued = tokens.create(tenantA, role = AgentRole.SOURCE)
         assertEquals(
             "sudo -u sard-agent sard-agent enroll --server sard.example.com:9090 --token ${issued.reveal()}",
             issued.command(),
@@ -92,13 +93,13 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Созданный токен активен`() {
-        val issued = tokens.create(tenantA, Duration.ofHours(1))
+        val issued = tokens.create(tenantA, Duration.ofHours(1), role = AgentRole.SOURCE)
         assertEquals(EnrollmentTokenState.ACTIVE, tokens.get(tenantA, issued.id)?.state)
     }
 
     @Test
     fun `Сервер хранит только хэш секрета токена`() {
-        val issued = tokens.create(tenantA)
+        val issued = tokens.create(tenantA, role = AgentRole.SOURCE)
         val parsed = EnrollmentToken.parse(issued.reveal())
         val row = jdbc.queryForMap("select token_hash from enrollment_tokens where id = ?", issued.id)
         assertEquals(
@@ -118,7 +119,7 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Список токенов не содержит строку токена`() {
-        val issued = tokens.create(tenantA)
+        val issued = tokens.create(tenantA, role = AgentRole.SOURCE)
         val secret = issued.reveal().substringAfter("sard_").substringBefore('.')
         val summary = tokens.list(tenantA).single()
         val text = summary.toString()
@@ -128,7 +129,7 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Карточка токена не содержит строку токена`() {
-        val issued = tokens.create(tenantA)
+        val issued = tokens.create(tenantA, role = AgentRole.SOURCE)
         val secret = issued.reveal().substringAfter("sard_").substringBefore('.')
         val text = checkNotNull(tokens.get(tenantA, issued.id)).toString()
         assertFalse(issued.reveal() in text, text)
@@ -137,8 +138,8 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Два созданных токена имеют разные секреты`() {
-        val first = tokens.create(tenantA)
-        val second = tokens.create(tenantA)
+        val first = tokens.create(tenantA, role = AgentRole.SOURCE)
+        val second = tokens.create(tenantA, role = AgentRole.SOURCE)
         assertTrue(first.reveal() != second.reveal())
         assertTrue(first.id != second.id)
     }
@@ -147,14 +148,16 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Токен без указанного срока живёт 24 часа`() {
-        val issued = tokens.create(tenantA)
+        val issued = tokens.create(tenantA, role = AgentRole.SOURCE)
         assertEquals(NOW + Duration.ofHours(24), issued.expiresAt)
     }
 
     @Test
     fun `Срок на границе диапазона принимается`() {
-        assertEquals(NOW + Duration.ofMinutes(5), tokens.create(tenantA, Duration.ofMinutes(5)).expiresAt)
-        assertEquals(NOW + Duration.ofDays(7), tokens.create(tenantA, Duration.ofDays(7)).expiresAt)
+        val shortest = tokens.create(tenantA, Duration.ofMinutes(5), role = AgentRole.SOURCE)
+        assertEquals(NOW + Duration.ofMinutes(5), shortest.expiresAt)
+        val longest = tokens.create(tenantA, Duration.ofDays(7), role = AgentRole.SOURCE)
+        assertEquals(NOW + Duration.ofDays(7), longest.expiresAt)
     }
 
     @Test
@@ -167,7 +170,9 @@ class EnrollmentTokenServiceIntegrationTest(
                 Duration.ofDays(7).plusSeconds(1),
             )
         for (ttl in ttls) {
-            assertFailsWith<EnrollmentTokenValidationException>(ttl.toString()) { tokens.create(tenantA, ttl) }
+            assertFailsWith<EnrollmentTokenValidationException>(ttl.toString()) {
+                tokens.create(tenantA, ttl, role = AgentRole.SOURCE)
+            }
         }
         assertEquals(0, countTokens(tenantA))
     }
@@ -176,33 +181,35 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Подпись токена показывается в списке и карточке`() {
-        val issued = tokens.create(tenantA, label = "db1 — бухгалтерия")
+        val issued = tokens.create(tenantA, label = "db1 — бухгалтерия", role = AgentRole.SOURCE)
         assertEquals("db1 — бухгалтерия", tokens.get(tenantA, issued.id)?.label)
         assertEquals("db1 — бухгалтерия", tokens.list(tenantA).single().label)
     }
 
     @Test
     fun `Токен без подписи создаётся`() {
-        val issued = tokens.create(tenantA)
+        val issued = tokens.create(tenantA, role = AgentRole.SOURCE)
         assertEquals("", tokens.get(tenantA, issued.id)?.label)
     }
 
     @Test
     fun `Пустая подпись означает отсутствие подписи`() {
-        val issued = tokens.create(tenantA, label = "")
+        val issued = tokens.create(tenantA, label = "", role = AgentRole.SOURCE)
         assertEquals("", tokens.get(tenantA, issued.id)?.label)
     }
 
     @Test
     fun `Подпись из 200 символов принимается`() {
         val label = "x".repeat(200)
-        val issued = tokens.create(tenantA, label = label)
+        val issued = tokens.create(tenantA, label = label, role = AgentRole.SOURCE)
         assertEquals(label, tokens.get(tenantA, issued.id)?.label)
     }
 
     @Test
     fun `Подпись длиннее 200 символов отклоняется`() {
-        assertFailsWith<EnrollmentTokenValidationException> { tokens.create(tenantA, label = "x".repeat(201)) }
+        assertFailsWith<EnrollmentTokenValidationException> {
+            tokens.create(tenantA, label = "x".repeat(201), role = AgentRole.SOURCE)
+        }
         assertEquals(0, countTokens(tenantA))
     }
 
@@ -210,11 +217,11 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Список показывает состояние каждого токена`() {
-        val active = tokens.create(tenantA, Duration.ofHours(1))
-        val used = tokens.create(tenantA, Duration.ofHours(1))
+        val active = tokens.create(tenantA, Duration.ofHours(1), role = AgentRole.SOURCE)
+        val used = tokens.create(tenantA, Duration.ofHours(1), role = AgentRole.SOURCE)
         markUsed(used.id)
-        val expired = tokens.create(tenantA, Duration.ofMinutes(5))
-        val revoked = tokens.create(tenantA, Duration.ofHours(1))
+        val expired = tokens.create(tenantA, Duration.ofMinutes(5), role = AgentRole.SOURCE)
+        val revoked = tokens.create(tenantA, Duration.ofHours(1), role = AgentRole.SOURCE)
         tokens.revoke(tenantA, revoked.id, clock.now)
         clock.now = NOW + Duration.ofMinutes(5)
 
@@ -227,21 +234,21 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Список упорядочен по времени создания, новые первыми`() {
-        val x = tokens.create(tenantA)
+        val x = tokens.create(tenantA, role = AgentRole.SOURCE)
         clock.now = NOW + Duration.ofHours(1)
-        val y = tokens.create(tenantA)
+        val y = tokens.create(tenantA, role = AgentRole.SOURCE)
         clock.now = NOW + Duration.ofHours(1) + Duration.ofMinutes(30)
-        val z = tokens.create(tenantA)
+        val z = tokens.create(tenantA, role = AgentRole.SOURCE)
 
         assertEquals(listOf(z.id, y.id, x.id), tokens.list(tenantA).map { it.id })
     }
 
     @Test
     fun `Завершённые токены остаются в списке`() {
-        val used = tokens.create(tenantA, Duration.ofHours(1))
+        val used = tokens.create(tenantA, Duration.ofHours(1), role = AgentRole.SOURCE)
         markUsed(used.id)
-        val expired = tokens.create(tenantA, Duration.ofMinutes(5))
-        val revoked = tokens.create(tenantA, Duration.ofHours(1))
+        val expired = tokens.create(tenantA, Duration.ofMinutes(5), role = AgentRole.SOURCE)
+        val revoked = tokens.create(tenantA, Duration.ofHours(1), role = AgentRole.SOURCE)
         tokens.revoke(tenantA, revoked.id, clock.now)
         clock.now = NOW + Duration.ofDays(365)
 
@@ -250,7 +257,7 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Использованный токен после срока остаётся использованным`() {
-        val issued = tokens.create(tenantA, Duration.ofHours(1))
+        val issued = tokens.create(tenantA, Duration.ofHours(1), role = AgentRole.SOURCE)
         markUsed(issued.id)
         clock.now = NOW + Duration.ofDays(1)
         assertEquals(EnrollmentTokenState.USED, tokens.get(tenantA, issued.id)?.state)
@@ -258,7 +265,7 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Отозванный токен после срока остаётся отозванным`() {
-        val issued = tokens.create(tenantA, Duration.ofHours(1))
+        val issued = tokens.create(tenantA, Duration.ofHours(1), role = AgentRole.SOURCE)
         tokens.revoke(tenantA, issued.id, clock.now)
         clock.now = NOW + Duration.ofDays(1)
         assertEquals(EnrollmentTokenState.REVOKED, tokens.get(tenantA, issued.id)?.state)
@@ -266,7 +273,7 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Карточка использованного токена называет зарегистрированного агента`() {
-        val issued = tokens.create(tenantA, Duration.ofHours(1))
+        val issued = tokens.create(tenantA, Duration.ofHours(1), role = AgentRole.SOURCE)
         val agentId = UUID.randomUUID()
         jdbc.update(
             "insert into agents (id, tenant_id, hostname, registered_at, role) values (?, ?, ?, ?, 'source')",
@@ -295,13 +302,13 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Список токенов тенанта не содержит токенов другого тенанта`() {
-        tokens.create(tenantA)
+        tokens.create(tenantA, role = AgentRole.SOURCE)
         assertEquals(emptyList(), tokens.list(tenantB))
     }
 
     @Test
     fun `Карточка токена другого тенанта не находится`() {
-        val issued = tokens.create(tenantA)
+        val issued = tokens.create(tenantA, role = AgentRole.SOURCE)
         assertNull(tokens.get(tenantB, issued.id))
     }
 
@@ -309,7 +316,7 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Администратор отзывает активный токен`() {
-        val issued = tokens.create(tenantA, Duration.ofHours(1))
+        val issued = tokens.create(tenantA, Duration.ofHours(1), role = AgentRole.SOURCE)
         val result = tokens.revoke(tenantA, issued.id, clock.now)
         assertEquals(RevokeResult.Revoked(NOW), result)
         val card = tokens.get(tenantA, issued.id)
@@ -319,7 +326,7 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Истёкший токен отозвать нельзя`() {
-        val issued = tokens.create(tenantA, Duration.ofMinutes(5))
+        val issued = tokens.create(tenantA, Duration.ofMinutes(5), role = AgentRole.SOURCE)
         clock.now = NOW + Duration.ofMinutes(10)
         val result = tokens.revoke(tenantA, issued.id, clock.now)
         assertEquals(RevokeResult.Rejected(RevokeRejection.EXPIRED), result)
@@ -330,7 +337,7 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Использованный токен отозвать нельзя`() {
-        val issued = tokens.create(tenantA, Duration.ofHours(1))
+        val issued = tokens.create(tenantA, Duration.ofHours(1), role = AgentRole.SOURCE)
         markUsed(issued.id)
         assertEquals(RevokeResult.Rejected(RevokeRejection.USED), tokens.revoke(tenantA, issued.id, clock.now))
         assertEquals(EnrollmentTokenState.USED, tokens.get(tenantA, issued.id)?.state)
@@ -338,7 +345,7 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Повторный отзыв токена ничего не меняет`() {
-        val issued = tokens.create(tenantA, Duration.ofHours(1))
+        val issued = tokens.create(tenantA, Duration.ofHours(1), role = AgentRole.SOURCE)
         tokens.revoke(tenantA, issued.id, NOW)
         clock.now = NOW + Duration.ofMinutes(10)
         val result = tokens.revoke(tenantA, issued.id, clock.now)
@@ -348,7 +355,7 @@ class EnrollmentTokenServiceIntegrationTest(
 
     @Test
     fun `Отзыв токена другого тенанта не находит его`() {
-        val issued = tokens.create(tenantA, Duration.ofHours(1))
+        val issued = tokens.create(tenantA, Duration.ofHours(1), role = AgentRole.SOURCE)
         assertEquals(RevokeResult.NotFound, tokens.revoke(tenantB, issued.id, clock.now))
         assertEquals(EnrollmentTokenState.ACTIVE, tokens.get(tenantA, issued.id)?.state)
     }

@@ -9,8 +9,8 @@ import dev.sard.server.agents.CertificateStanding
 import dev.sard.server.agents.stream.StreamFixtures.NOW
 import dev.sard.server.agents.stream.StreamFixtures.agent
 import dev.sard.server.pki.AgentIdentity
-import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.role.AgentRole
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import java.time.Duration

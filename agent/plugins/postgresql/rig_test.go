@@ -26,9 +26,9 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
-	"github.com/Artur-Abalov/sard/agent/internal/identity"
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	"github.com/Artur-Abalov/sard/agent/plugins/postgresql"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
@@ -515,10 +515,10 @@ func (fakeKeys) RepositoryKey(context.Context, string) (crypto.Key, error) {
 	return crypto.Key{Env: []string{"RESTIC_PASSWORD_FILE=/etc/sard/R.pass"}}, nil
 }
 
-func newRig(t *testing.T) *rig { return newRigAs(t, identity.Source) }
+func newRig(t *testing.T) *rig { return newRigAs(t, role.Source) }
 
 // newRigAs is a rig whose agent has that role.
-func newRigAs(t *testing.T, role identity.Role) *rig {
+func newRigAs(t *testing.T, role role.Role) *rig {
 	t.Helper()
 	r := &rig{t: t, sink: &sink{results: make(chan *agentv1.StepResult, 8)}, secrets: &secrets{}}
 	r.secrets.set(P + "\n")

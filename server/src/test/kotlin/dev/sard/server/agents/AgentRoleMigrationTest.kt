@@ -80,14 +80,20 @@ class AgentRoleMigrationTest(
         role,
     )
 
-    private fun insertAgent(role: String?) =
-        jdbc.update(
-            "insert into agents (id, tenant_id, hostname, registered_at, role) values (?, ?, 'h', ?, ?)",
-            UUID.randomUUID(),
-            tenant,
-            T0,
-            role,
-        )
+    private fun insertAgent(
+        role: String?,
+        builtin: Boolean = false,
+        machineId: String? = null,
+    ) = jdbc.update(
+        "insert into agents (id, tenant_id, hostname, registered_at, role, builtin, machine_id) " +
+            "values (?, ?, 'h', ?, ?, ?, ?)",
+        UUID.randomUUID(),
+        tenant,
+        T0,
+        role,
+        builtin,
+        machineId,
+    )
 
     private fun count(table: String) = jdbc.queryForObject("select count(*) from $table", Int::class.java)
 
@@ -122,6 +128,34 @@ class AgentRoleMigrationTest(
         }
         insertAgent("verifier")
         assertEquals(1, count("agents"))
+    }
+
+    @Test
+    fun `the database refuses a built-in agent with the role verifier`() {
+        migrated()
+        val refused = assertFailsWith<DataIntegrityViolationException> { insertAgent("verifier", builtin = true) }
+        assertTrue("agents_builtin_source_check" in refused.message.orEmpty(), refused.message)
+        assertEquals(0, count("agents"))
+        insertAgent("source", builtin = true)
+        insertAgent("verifier", builtin = false)
+        assertEquals(2, count("agents"))
+    }
+
+    @Test
+    fun `the database refuses a machine id that is not 64 lower-case hex digits`() {
+        migrated()
+        val valid = "0123456789abcdef".repeat(4)
+        val malformed = listOf("", "abc", valid.uppercase(), valid + "0", valid.dropLast(1), valid.dropLast(1) + "g")
+        for (machineId in malformed) {
+            val refused =
+                assertFailsWith<DataIntegrityViolationException>(machineId) {
+                    insertAgent("source", machineId = machineId)
+                }
+            assertTrue("agents_machine_id_check" in refused.message.orEmpty(), refused.message)
+        }
+        insertAgent("source", machineId = valid)
+        insertAgent("source", machineId = null)
+        assertEquals(2, count("agents"))
     }
 
     @Test

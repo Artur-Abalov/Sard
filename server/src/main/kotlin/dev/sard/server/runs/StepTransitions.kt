@@ -6,7 +6,7 @@ package dev.sard.server.runs
 import dev.sard.server.persistence.Agent
 import dev.sard.server.persistence.RunStepRecord
 import dev.sard.server.persistence.TenantSessions
-import dev.sard.server.pki.AgentRole
+import dev.sard.server.role.AgentRole
 import org.hibernate.Session
 import java.time.Clock
 import java.time.Instant

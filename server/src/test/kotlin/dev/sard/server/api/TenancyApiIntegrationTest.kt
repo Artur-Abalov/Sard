@@ -8,6 +8,7 @@ import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.registration.Registration
+import dev.sard.server.role.AgentRole
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.test.web.server.LocalServerPort
@@ -49,7 +50,7 @@ class TenancyApiIntegrationTest(
         val admin: ApiSession,
     ) {
         val agent = world.agent(tenant)
-        val token = tokens.create(tenant).id.toString()
+        val token = tokens.create(tenant, role = AgentRole.SOURCE).id.toString()
         val source =
             world.api
                 .post("/api/v1/sources", admin, body("etc", agent.agentId))

@@ -15,12 +15,12 @@ import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.AgentIdentity
-import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.AgentRoleUri
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.CertificateRole
 import dev.sard.server.pki.IssuedCertificate
 import dev.sard.server.pki.PkiFixtures
+import dev.sard.server.role.AgentRole
 import org.bouncycastle.asn1.DEROctetString
 import org.bouncycastle.asn1.x509.BasicConstraints
 import org.bouncycastle.asn1.x509.Extension
@@ -132,7 +132,7 @@ class AgentRoleEnrollmentIntegrationTest(
 
     @Test
     fun `Регистрация по токену без указанной роли выдаёт сертификат с ролью source`() {
-        val response = enroll(tokens.create(tenant).reveal())
+        val response = enroll(tokens.create(tenant, role = AgentRole.SOURCE).reveal())
 
         assertEquals(CertificateRole.Valid(AgentRole.SOURCE), roleOfCertificate(response))
         assertEquals("source", roleInDatabase(response))
@@ -232,7 +232,7 @@ class AgentRoleEnrollmentIntegrationTest(
 
     @Test
     fun `Регистрация без сертификата роль не проверяет`() {
-        val response = enroll(tokens.create(tenant).reveal())
+        val response = enroll(tokens.create(tenant, role = AgentRole.SOURCE).reveal())
 
         val sql = "select tenant_id from agents where id = ?::uuid"
         assertEquals(tenant, jdbc.queryForObject(sql, UUID::class.java, response.agentId))

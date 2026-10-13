@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
-	"github.com/Artur-Abalov/sard/agent/internal/identity"
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
@@ -306,7 +306,7 @@ func setup(t *testing.T, tune func(*executor.Options)) *fixture {
 		Handlers:     registry{"files": f.files, "stubborn": f.stubborn, "sloppy": sloppy},
 		Sink:         f.sink,
 		StateDir:     stateDir(t),
-		Role:         identity.Source,
+		Role:         role.Source,
 		Repositories: []string{"main"},
 		Clock:        f.clock,
 		Logger:       slog.New(slog.NewTextHandler(f.log, nil)),

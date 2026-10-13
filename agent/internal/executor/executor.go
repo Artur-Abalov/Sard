@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Artur-Abalov/sard/agent/internal/identity"
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
@@ -132,7 +132,7 @@ type Options struct {
 	StateDir string   // required: unacknowledged results live here (0700)
 	// Role is the agent's role from its certificate (required). A step whose
 	// action the role does not allow is rejected before anything else.
-	Role identity.Role
+	Role role.Role
 	// Repositories are the repository names configured on this host.
 	Repositories []string
 	// Secrets are masked in each step's log lines and result; nil masks nothing.

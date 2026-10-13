@@ -11,13 +11,13 @@ import dev.sard.server.enrollment.EnrollmentRejectedException.Reason
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.pki.AgentIdentity
-import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.FakeCaLedger
 import dev.sard.server.pki.FileCertificateAuthority
 import dev.sard.server.pki.IssuedCertificate
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.resource
+import dev.sard.server.role.AgentRole
 import io.grpc.Status
 import io.grpc.StatusRuntimeException
 import kotlinx.coroutines.Dispatchers
@@ -140,7 +140,7 @@ class EnrollmentFailureIntegrationTest(
 
     @Test
     fun `Отказ базы при создании токена не выдаёт строку`() {
-        assertFailsWith<SimulatedFailure> { failingTokens().create(acme) }
+        assertFailsWith<SimulatedFailure> { failingTokens().create(acme, role = AgentRole.SOURCE) }
         assertEquals(0, countTokens())
     }
 
@@ -154,7 +154,7 @@ class EnrollmentFailureIntegrationTest(
 
     @Test
     fun `Отказ базы при отзыве оставляет токен активным`() {
-        val issued = tokens.create(acme, Duration.ofHours(1))
+        val issued = tokens.create(acme, Duration.ofHours(1), role = AgentRole.SOURCE)
         assertFailsWith<SimulatedFailure> { failingTokens().revoke(acme, issued.id, clock.now) }
         assertEquals(EnrollmentTokenState.ACTIVE, tokens.get(acme, issued.id)?.state)
     }
@@ -163,7 +163,7 @@ class EnrollmentFailureIntegrationTest(
 
     @Test
     fun `Недоступная база при поиске токена даёт INTERNAL_RETRYABLE`() {
-        val issued = tokens.create(acme, Duration.ofHours(1))
+        val issued = tokens.create(acme, Duration.ofHours(1), role = AgentRole.SOURCE)
         val testEnrollment = Enrollment(realSessions, failingTokens(), ca, clock, ids())
         val error = assertFailsWith<EnrollmentRejectedException> { testEnrollment.enroll(issued.reveal(), csr, "db1") }
         assertEquals(Reason.INTERNAL_RETRYABLE, error.reason)
@@ -171,7 +171,7 @@ class EnrollmentFailureIntegrationTest(
 
     @Test
     fun `Сбой базы внутри регистрации не расходует токен`() {
-        val issued = tokens.create(acme, Duration.ofHours(1))
+        val issued = tokens.create(acme, Duration.ofHours(1), role = AgentRole.SOURCE)
         val testEnrollment = Enrollment(failingTenantSessions(), tokens, ca, clock, ids())
         val error = assertFailsWith<EnrollmentRejectedException> { testEnrollment.enroll(issued.reveal(), csr, "db1") }
         assertEquals(Reason.INTERNAL_RETRYABLE, error.reason)
@@ -181,7 +181,7 @@ class EnrollmentFailureIntegrationTest(
 
     @Test
     fun `Сбой CA не по вине CSR не расходует токен`() {
-        val issued = tokens.create(acme, Duration.ofHours(1))
+        val issued = tokens.create(acme, Duration.ofHours(1), role = AgentRole.SOURCE)
         val broken = BrokenCertificateAuthority(freshCa())
         val testEnrollment = Enrollment(realSessions, tokens, broken, clock, ids())
         val error = assertFailsWith<EnrollmentRejectedException> { testEnrollment.enroll(issued.reveal(), csr, "db1") }
@@ -192,7 +192,7 @@ class EnrollmentFailureIntegrationTest(
 
     @Test
     fun `После внутренней ошибки тем же токеном можно зарегистрироваться`() {
-        val issued = tokens.create(acme, Duration.ofHours(1))
+        val issued = tokens.create(acme, Duration.ofHours(1), role = AgentRole.SOURCE)
         val broken = BrokenCertificateAuthority(freshCa())
         val testEnrollment = Enrollment(realSessions, tokens, broken, clock, ids())
         assertFailsWith<EnrollmentRejectedException> { testEnrollment.enroll(issued.reveal(), csr, "db1") }
@@ -203,7 +203,7 @@ class EnrollmentFailureIntegrationTest(
 
     @Test
     fun `Текст отказа INTERNAL_RETRYABLE не раскрывает внутреннюю ошибку`() {
-        val issued = tokens.create(acme, Duration.ofHours(1))
+        val issued = tokens.create(acme, Duration.ofHours(1), role = AgentRole.SOURCE)
         val broken = BrokenCertificateAuthority(freshCa()).apply { failWith = "disk on fire" }
         val testEnrollment = Enrollment(realSessions, tokens, broken, clock, ids())
         val service = EnrollmentGrpcService(testEnrollment, Dispatchers.Unconfined)

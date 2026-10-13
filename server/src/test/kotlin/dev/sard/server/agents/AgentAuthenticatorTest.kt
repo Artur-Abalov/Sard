@@ -6,7 +6,6 @@ package dev.sard.server.agents
 import dev.sard.server.agents.AgentAuthResult.Accepted
 import dev.sard.server.agents.AgentAuthResult.Rejected
 import dev.sard.server.pki.AgentIdentity
-import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CertificateRole
 import dev.sard.server.pki.FakeCaLedger
 import dev.sard.server.pki.FileCertificateAuthority
@@ -17,6 +16,7 @@ import dev.sard.server.pki.PkiFixtures.SERVER_NAMES
 import dev.sard.server.pki.PkiFixtures.certificates
 import dev.sard.server.pki.PkiFixtures.random
 import dev.sard.server.pki.PkiFixtures.resource
+import dev.sard.server.role.AgentRole
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.junit.jupiter.api.io.TempDir

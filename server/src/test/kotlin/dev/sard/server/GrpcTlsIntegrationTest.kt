@@ -6,12 +6,12 @@ package dev.sard.server
 import dev.sard.proto.agent.v1.EnrollRequest
 import dev.sard.proto.agent.v1.EnrollmentServiceGrpcKt
 import dev.sard.server.pki.AgentIdentity
-import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CaFingerprint
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.FakeCaLedger
 import dev.sard.server.pki.FileCertificateAuthority
 import dev.sard.server.pki.Pem
+import dev.sard.server.role.AgentRole
 import io.grpc.ChannelCredentials
 import io.grpc.Grpc
 import io.grpc.InsecureChannelCredentials

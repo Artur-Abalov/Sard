@@ -27,6 +27,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/machineid"
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 	"github.com/Artur-Abalov/sard/agent/internal/stepsecrets"
 	"github.com/Artur-Abalov/sard/agent/internal/tlsid"
@@ -151,7 +152,7 @@ func loadLocal(configPath string) (config.Config, hostIdentity, error) {
 
 // hostIdentity is what the agent knows about itself before it connects.
 type hostIdentity struct {
-	role      identity.Role
+	role      role.Role
 	machineID string
 }
 
@@ -237,7 +238,7 @@ func restoreDir(stateDir string) string {
 // the executor reports through the transport. The transport is built first
 // (it checks TLS before anything touches the disk); ref points it at the
 // executor before it starts.
-func serve(ctx context.Context, cfg config.Config, role identity.Role, agent *app.Agent) error {
+func serve(ctx context.Context, cfg config.Config, role role.Role, agent *app.Agent) error {
 	ref := &executorRef{}
 	// A7b: the step's secrets are masked in its logs and result.
 	masking := stepsecrets.New(cfg, os.ReadFile, slog.Default())
