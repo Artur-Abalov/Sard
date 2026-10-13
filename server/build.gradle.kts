@@ -185,6 +185,9 @@ tasks.withType<Test>().configureEach {
     // to load. Capping the context cache instead changed which tests see background mutants, so the
     // cache stays as it is and the heap grows.
     maxHeapSize = "1g"
+    // Two test JVMs at a time, each with its own Spring context cache and PostgreSQL container; one mutflow
+    // session per JVM, so the isolation of ADR 00XX (mutflow isolation) holds in each.
+    maxParallelForks = 2
     // No agent release next to the test server; AgentDownloadsIntegrationTest switches downloads on.
     environment("SARD_AGENT_DOWNLOADS", "false")
     // The mutation run (gate.sh, -Pmutflow.enabled=true) runs the mutated compilation, whose
