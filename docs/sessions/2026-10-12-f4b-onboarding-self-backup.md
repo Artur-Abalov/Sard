@@ -342,3 +342,10 @@ ADR: `docs/adr/00XX-draft-f4b-onboarding-self-backup.md`.
 - Test helper: `ApiClient.sendUnchecked` (no ContractCheck) for paths the OpenAPI does not know; `send` is built on it.
 - Widened `ArchitectureTest` rule 8 landed (JDBC import, `createNativeQuery`/`createNativeMutationQuery`/`prepareStatement`; tenant tables from the Flyway migrations; `$CONST` expansion). It found two installation-wide reads by design, now in the exception set and in ADR 0013: `Scheduler.kt` (`LAST_SLOT`, `max(catch_up_at)` over all tenants in `sessions.system`) and `JdbcCaLedger.kt` (`select 1 from agent_certificates`, whether any agent of any tenant holds a certificate decides if the installation's CA can be replaced; its KDoc says "any agent certificate of any tenant").
 - Next: `cleaner`.
+
+## cleaner (after merge of origin/main)
+
+- `./scripts/crap.sh server` (full table from the JaCoCo report): every touched function is at or under the threshold of 6. `OnboardingRules.systemSchedule` / `builtinRevocation` / `openToFull` 5.0, `allowed` 4.0, `gated` 4.0, `OnboardingGuard.permitted` 5.0, `variablesOf` 5.0, `RepositoryCommands.build` 3.0, `hostedS3` / `customS3` 3.0, `planOf` 4.0. `RepositoryCommandsKt.sftp` 6.0 (CC 6, 100%) is untouched by 54bdafa.
+- Refactors: none warranted. The `"$method $template"` key compare reads clearly (one constant per operation, same form as `ALWAYS_OPEN`); a helper for the three-times-repeated key would add a function for no CRAP gain. The RepositoryCommands change already removed the duplicated guards.
+- `./scripts/gate.sh server fast`: PASSED, which confirms the merge of main is green.
+- Next: `architect`.
