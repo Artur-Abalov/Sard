@@ -46,6 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: make license-check
+      - run: make check-sudo-u
 
   proto:
     runs-on: ubuntu-latest

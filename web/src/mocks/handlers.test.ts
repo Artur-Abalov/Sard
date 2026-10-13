@@ -369,7 +369,7 @@ describe('agent install', () => {
       'install',
       'configure',
       'enroll',
-      'repo-init',
+      'repo-add',
       'start',
     ])
     expect(data?.steps[0].commands[0]).toContain('arm64.tar.gz')
@@ -489,7 +489,7 @@ describe('enrollment tokens', () => {
     const { data } = await api.POST('/api/v1/enrollment-tokens', { body: {} })
     expect(data?.token).toMatch(/^sard_[A-Za-z0-9_-]{43}\.[0-9a-f]{64}$/)
     expect(data?.enrollCommand).toBe(
-      `sudo -u sard-agent sard-agent enroll --server sard.example.com:9090 --token ${data?.token}`,
+      `sudo sard-agent enroll --server sard.example.com:9090 --token ${data?.token}`,
     )
     const ttl = Date.parse(data?.expiresAt ?? '') - before
     expect(Math.abs(ttl - 86_400_000)).toBeLessThan(60_000)

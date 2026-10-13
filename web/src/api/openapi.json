@@ -3423,7 +3423,7 @@
           },
           "enrollCommand" : {
             "type" : "string",
-            "description" : "Ready-to-run command: sudo -u sard-agent sard-agent enroll --server <address> --token <token>"
+            "description" : "Ready-to-run command: sudo sard-agent enroll --server <address> --token <token>"
           },
           "expiresAt" : {
             "type" : "string",
@@ -4355,7 +4355,7 @@
       },
       "StepKind" : {
         "type" : "string",
-        "enum" : [ "download", "checksum", "signature", "install", "configure", "enroll", "repo-init", "start", "upgrade", "restart" ]
+        "enum" : [ "download", "checksum", "signature", "install", "configure", "enroll", "repo-add", "start", "upgrade", "restart" ]
       },
       "UpgradeReason" : {
         "type" : "string",
@@ -4401,7 +4401,7 @@
           },
           "steps" : {
             "type" : "array",
-            "description" : "Steps in the order to run them; empty when there is nothing to run; kinds: download, checksum, signature, install, configure, enroll, repo-init, start",
+            "description" : "Steps in the order to run them; empty when there is nothing to run; kinds: download, checksum, signature, install, configure, enroll, repo-add, start",
             "items" : {
               "$ref" : "#/components/schemas/InstallStep"
             }

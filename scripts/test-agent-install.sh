@@ -11,8 +11,10 @@
 #      (NRestarts 0, empty journal); the output names the next step: the enroll
 #      command through sudo (A8a, ADR 0050) and the console for the token
 #      string (U1b);
-#   2. as an administrator would: agent.yaml, "sudo -u sard-agent sard-agent
-#      enroll", "sudo -u sard-agent sard-agent repo init", then the service;
+#   2. as an administrator would: agent.yaml, "sudo sard-agent enroll",
+#      "sudo sard-agent repo add main /srv/sard/main" (it creates the
+#      repository, its password, the agent.d fragment and the ReadWritePaths
+#      drop-in itself, Q5 Р4), then the service;
 #      the agent comes online with version N;
 #   3. upgrade to N+1 (a newer package version, ADR 0048: 0.1.0~beta.1 →
 #      0.1.0~beta.2 …): configuration, keys, the repository password and the
@@ -155,7 +157,7 @@ check_fresh_install() {
   expect "empty journal of the unit" "journalctl -u sard-agent --no-pager -q | wc -l" "0"
 }
 
-# configure_and_enroll: what docs/operations/agent-enroll.md and repo-init.md tell an administrator.
+# configure_and_enroll: what docs/operations/agent-enroll.md and agent-host-setup.md tell an administrator.
 configure_and_enroll() {
   local token
   on_host "cat >/etc/sard/agent.yaml <<'EOF'
@@ -165,31 +167,24 @@ tls:
   ca_file: /etc/sard/tls/ca.pem
   cert_file: /etc/sard/tls/agent.pem
   key_file: /etc/sard/tls/agent.key
-repositories:
-  - name: main
-    url: /srv/sard-repo/main
-    password_file: /etc/sard/secrets/main.pass
 EOF
-chown root:sard-agent /etc/sard/agent.yaml && chmod 0640 /etc/sard/agent.yaml
-install -d -o sard-agent -g sard-agent -m 0700 /srv/sard-repo
-mkdir -p /etc/systemd/system/sard-agent.service.d
-printf '[Service]\\nReadWritePaths=/srv/sard-repo\\n' >/etc/systemd/system/sard-agent.service.d/repo.conf"
+chown root:sard-agent /etc/sard/agent.yaml && chmod 0640 /etc/sard/agent.yaml"
   wait_for "sard-server" "curl -sf http://sard-server:8080/api/v1/status"
   wait_for "sard-server gRPC" "bash -c '</dev/tcp/sard-server/9090'"
   sard_complete_wizard http://sard-server:8080 "$ADMIN_PASSWORD" server_log || die "the first-start wizard failed"
   token="$(api POST /api/v1/enrollment-tokens '{}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)"
   [ -n "$token" ] || die "no enrollment token from the server"
-  on_host "cd / && sudo -u sard-agent sard-agent enroll --token '$token'" || {
+  on_host "cd / && sudo sard-agent enroll --token '$token'" || {
     # What sudo's PAM stack saw: the accounts, their shadow entries, the stack.
     on_host "rpm -q sudo pam shadow-utils setup 2>/dev/null || dpkg -l sudo libpam-modules 2>/dev/null | tail -2
       ls -l /etc/passwd /etc/shadow; grep -E '^(root|sard-agent):' /etc/passwd
       grep -E '^(root|sard-agent):' /etc/shadow | cut -d: -f1,3-; cat /etc/pam.d/sudo
       journalctl --no-pager -n 15 | grep -iE 'sudo|pam' | sed 's/--token [^ ]*/--token ***/'" || true
-    die "enroll as sard-agent"
+    die "enroll under sudo"
   }
-  on_host "cd / && sudo -u sard-agent sard-agent repo init --generate-password main" || die "repo init as sard-agent"
+  on_host "cd / && sudo sard-agent repo add main /srv/sard/main" || die "repo add under sudo"
   expect "agent key" "stat -c '%U %a' /etc/sard/tls/agent.key" "sard-agent 600"
-  expect "repository password" "stat -c '%U %a' /etc/sard/secrets/main.pass" "sard-agent 600"
+  expect "repository password" "stat -c '%U %a' /etc/sard/secrets/restic-main.pass" "sard-agent 600"
   on_host "systemctl enable --now sard-agent"
   wait_online "$OLD_VERSION"
 }
@@ -215,9 +210,9 @@ wait_online() {
 # agent.example.yaml is the package's own file, not the administrator's: a
 # new version may ship a new one (an unedited conffile is replaced).
 snapshot() {
-  on_host 'find /etc/sard /srv/sard-repo /var/lib/sard-agent /var/cache/sard -xdev \
+  on_host 'find /etc/sard /srv/sard /var/lib/sard-agent /var/cache/sard -xdev \
       -printf "%p %u:%g %m\n" | grep -v "^/var/cache/sard/restic/" | sort
-    find /etc/sard /srv/sard-repo -type f ! -name agent.example.yaml -exec sha256sum {} + | sort'
+    find /etc/sard /srv/sard -type f ! -name agent.example.yaml -exec sha256sum {} + | sort'
 }
 
 check_upgrade() {

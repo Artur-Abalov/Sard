@@ -47,7 +47,7 @@ private val INSTALL_KINDS =
         StepKind.INSTALL,
         StepKind.CONFIGURE,
         StepKind.ENROLL,
-        StepKind.REPO_INIT,
+        StepKind.REPO_ADD,
         StepKind.START,
     )
 
@@ -156,19 +156,46 @@ class InstallCommandsTest {
     }
 
     @Test
-    fun `Регистрация выполняется от имени пользователя службы с заполнителем токена`() {
+    fun `Регистрация выполняется через sudo с заполнителем токена`() {
         assertEquals(
-            listOf("sudo -u sard-agent sard-agent enroll --server sard.corp.example:9090 --token <TOKEN>"),
+            listOf("sudo sard-agent enroll --server sard.corp.example:9090 --token <TOKEN>"),
             install(deb()).lines(StepKind.ENROLL),
         )
     }
 
     @Test
-    fun `Создание репозитория выполняется от имени пользователя службы`() {
+    fun `Подключение хранилища создаёт локальный репозиторий main через sudo`() {
         assertEquals(
-            listOf("sudo -u sard-agent sard-agent repo init --generate-password main"),
-            install(deb()).lines(StepKind.REPO_INIT),
+            listOf("sudo sard-agent repo add main /srv/sard/main"),
+            install(deb()).lines(StepKind.REPO_ADD),
         )
+    }
+
+    @Test
+    fun `Ни одна команда ни одного шага не запускает агента от имени пользователя службы`() {
+        val packages = listOf(deb(), deb(signed = false), rpm(), tar())
+        // allow-sudo-u: the test asserts the absence of this very string in the steps
+        val forbidden = "sudo -u"
+        for (pkg in packages) {
+            for (step in install(pkg) + upgrade(pkg)) {
+                assertFalse(step.commands.any { forbidden in it }, "${pkg.format} ${step.kind}: ${step.commands}")
+            }
+        }
+    }
+
+    @Test
+    fun `Шаги не ссылаются на репозиторий, которого никто не создал`() {
+        val reference = Regex("""sard-agent repo (\w+) (\S+)""")
+        for (pkg in listOf(deb(), rpm(), tar())) {
+            val created = mutableSetOf<String>()
+            for (step in install(pkg) + upgrade(pkg)) {
+                for (line in step.commands) {
+                    val (verb, name) = reference.find(line)?.destructured ?: continue
+                    if (verb == "add") created += name
+                    assertTrue(name in created, "${pkg.format} ${step.kind}: $line")
+                }
+            }
+        }
     }
 
     @Test
@@ -246,7 +273,7 @@ class InstallCommandsTest {
 
     @Test
     fun `Шаги после установки rpm совпадают с шагами deb`() {
-        val after = listOf(StepKind.CONFIGURE, StepKind.ENROLL, StepKind.REPO_INIT, StepKind.START)
+        val after = listOf(StepKind.CONFIGURE, StepKind.ENROLL, StepKind.REPO_ADD, StepKind.START)
         for (kind in after) assertEquals(install(deb()).lines(kind), install(rpm()).lines(kind), kind.name)
     }
 

@@ -85,7 +85,7 @@ class EnrollmentTokenServiceIntegrationTest(
     fun `Результат создания токена содержит команду регистрации с настроенным адресом`() {
         val issued = tokens.create(tenantA)
         assertEquals(
-            "sudo -u sard-agent sard-agent enroll --server sard.example.com:9090 --token ${issued.reveal()}",
+            "sudo sard-agent enroll --server sard.example.com:9090 --token ${issued.reveal()}",
             issued.command(),
         )
     }

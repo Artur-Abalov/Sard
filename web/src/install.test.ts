@@ -14,7 +14,7 @@ const steps: Step[] = [
   { kind: 'download', commands: ['curl -fsSLO a', 'curl -fsSLO b'], optional: false },
   {
     kind: 'enroll',
-    commands: ['sudo -u sard-agent sard-agent enroll --token <TOKEN>'],
+    commands: ['sudo sard-agent enroll --token <TOKEN>'],
     optional: false,
   },
   { kind: 'start', commands: ['sudo systemctl enable --now sard-agent.service'], optional: false },
@@ -31,8 +31,7 @@ describe('the text a step copies', () => {
 })
 
 describe('the steps of the token dialog', () => {
-  const enrollCommand =
-    'sudo -u sard-agent sard-agent enroll --server sard.example.com:9090 --token sard_x.y'
+  const enrollCommand = 'sudo sard-agent enroll --server sard.example.com:9090 --token sard_x.y'
 
   test('keep the order and every step but enroll as the server sent them', () => {
     const shown = withEnrollCommand(steps, enrollCommand)

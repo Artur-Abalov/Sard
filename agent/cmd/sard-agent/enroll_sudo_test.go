@@ -169,7 +169,7 @@ func TestEnrollmentFromAnotherUserIsRefusedBeforeTheServerAndTheToken(t *testing
 	deps.euid = aliceUID
 	code, out, errOut := f.enrollWith(deps)
 	assertRefusal(t, code, errOut, exitUsage, "PRIVILEGES_REQUIRED")
-	if !strings.Contains(errOut, "sudo sard-agent enroll") || strings.Contains(errOut, "sudo -u") {
+	if !strings.Contains(errOut, "sudo sard-agent enroll") || strings.Contains(errOut, "sudo -u") { // allow-sudo-u: absence guard, the help must not tell to use it
 		t.Fatalf("stderr %q", errOut)
 	}
 	if f.srv.callCount() != 0 || strings.Contains(out+errOut, f.token) || strings.Contains(out+errOut, "sard_") {
@@ -389,7 +389,7 @@ func TestEnrollHelpTellsToRunItWithSudo(t *testing.T) {
 			t.Errorf("help lacks %q:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "sudo -u") {
-		t.Fatal("help mentions sudo -u")
+	if strings.Contains(out, "sudo -u") { // allow-sudo-u: absence guard, the help must not tell to use it
+		t.Fatal("help mentions sudo -u") // allow-sudo-u: absence guard, the help must not tell to use it
 	}
 }

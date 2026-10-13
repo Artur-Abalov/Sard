@@ -145,29 +145,6 @@ run_steps() {
 # kinds_of <steps>: the kinds in order, each once.
 kinds_of() { cut -f1 <<<"$1" | awk '!seen[$0]++' | paste -sd' ' -; }
 
-# edit_repository: what the operator does after configure: points the repository at a local directory.
-# The server's address stays as configure set it.
-edit_repository() {
-  on_host "grep -q 'address: sard-server:9090' /etc/sard/agent.yaml" ||
-    die "configure did not put the server's address into agent.yaml"
-  docker exec -i "$HOST" sh -c 'cat >/etc/sard/agent.yaml' <<'YAML'
-server:
-  address: sard-server:9090
-tls:
-  ca_file: /etc/sard/tls/ca.pem
-  cert_file: /etc/sard/tls/agent.pem
-  key_file: /etc/sard/tls/agent.key
-repositories:
-  - name: main
-    url: /srv/sard-repo/main
-    password_file: /etc/sard/secrets/main.pass
-YAML
-  on_host "chown root:sard-agent /etc/sard/agent.yaml && chmod 0640 /etc/sard/agent.yaml &&
-    install -d -o sard-agent -g sard-agent -m 0700 /srv/sard-repo &&
-    mkdir -p /etc/systemd/system/sard-agent.service.d &&
-    printf '[Service]\\nReadWritePaths=/srv/sard-repo\\n' >/etc/systemd/system/sard-agent.service.d/repo.conf"
-}
-
 # wait_online <version>: the one agent is online and reports that version; sets AGENT_ID.
 wait_online() {
   local agents
@@ -248,12 +225,13 @@ install_flow() {
   run_steps install
   expect_unit_idle
   run_steps configure
-  edit_repository
+  on_host "grep -q 'address: sard-server:9090' /etc/sard/agent.yaml" ||
+    die "configure did not put the server's address into agent.yaml"
   before="$(on_host 'sha256sum /etc/sard/agent.yaml')"
-  run_steps configure # an edited agent.yaml stays as it is
+  run_steps configure # an existing agent.yaml stays as it is
   after="$(on_host 'sha256sum /etc/sard/agent.yaml')"
   [ "$before" = "$after" ] || die "configure overwrote agent.yaml"
-  run_steps enroll repo-init start
+  run_steps enroll repo-add start
   wait_online "$(api GET "/api/v1/agent-install?format=$format" | jq -r .agentVersion)"
   if [ "$format" = tar ]; then check_archive_layout; fi
   cleanup
@@ -279,8 +257,7 @@ upgrade_flow() {
   STEPS="$(steps "/api/v1/agent-install?format=$FAMILY")"
   new_token
   run_steps configure
-  edit_repository
-  run_steps enroll repo-init start
+  run_steps enroll repo-add start
   wait_online "$old_version"
   # Only releases (vX.Y.Z) are compared; the old package of CI is a build of the same commit, never marked.
   if [[ "$old_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
