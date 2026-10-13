@@ -69,16 +69,17 @@ private fun hostedS3(
     provider: String?,
 ): Storage? {
     val region = fields.required("region", REGION::matches)
-    val location = locationOf(fields)
-    if (fields.invalid.isNotEmpty()) return null
+    val location = locationOf(fields).takeIf { fields.invalid.isEmpty() }
+    // The location is null when anything is invalid; the checks let the compiler prove what the address holds.
+    if (provider == null || region == null || location == null) return null
     return Storage("s3:$location", listOf("--provider $provider", "--region $region", KEY_ID_FLAG), asksKeyId = true)
 }
 
 /** An S3 of the owner's own: the address names the endpoint. */
 private fun customS3(fields: Fields): Storage? {
     val endpoint = fields.required("endpoint", ::validEndpoint)
-    val location = locationOf(fields)
-    if (fields.invalid.isNotEmpty()) return null
+    val location = locationOf(fields).takeIf { fields.invalid.isEmpty() }
+    if (endpoint == null || location == null) return null
     return Storage("s3:$endpoint/$location", listOf(KEY_ID_FLAG), asksKeyId = true)
 }
 

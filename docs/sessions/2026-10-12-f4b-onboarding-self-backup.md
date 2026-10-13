@@ -355,3 +355,11 @@ ADR: `docs/adr/00XX-draft-f4b-onboarding-self-backup.md`.
 - F1: `OnboardingGuard` gated a deny-list (`POST/PUT/DELETE`), so PATCH bypassed D8 and was not documented with 409. Now `method !in SAFE` (`GET/HEAD/OPTIONS/TRACE`). Tests (`OnboardingGuardTest`) failed first on PATCH (rules and guard), then passed. Comment on the missing template reworded as a defensive branch.
 - F2: `ArchitectureTest` exempted whole files; now per-(file, literal) exceptions, a stale exception fails the build, and a fixture self-test shows an unlisted query in an exempt file is reported.
 - F3: ADR 0013 rule 8 now describes the detector and the three per-query exceptions.
+
+## Cleaner: architect F4 (compile-time safety of the S3 address) and readability of 525e414
+
+- F4: `hostedS3`/`customS3` took the null-safety from the runtime invariant "invalid empty implies required fields non-null". Now `location` is `locationOf(fields).takeIf { fields.invalid.isEmpty() }` and a single guard (`provider == null || region == null || location == null`, resp. `endpoint == null || location == null`) smart-casts every value that goes into the address, so a literal `null` cannot reach it. The `invalid` return was folded into `location`, so the behavior and the reported fields are unchanged (detekt ReturnCount and ComplexCondition kept the shape: one guard, three terms). `provider` stays `String?` in `hostedS3`: `s3` must still validate region and location to report every invalid field when the provider is wrong.
+- Equivalent-by-construction: the `provider == null` and `region == null` (`endpoint == null`) terms never decide alone, because each is null only with an entry in `invalid`, which already makes `location` null. Mutating one of them survives; no mutation run was done here (fast gate), so the survivors are expected in the next hardener run and the terms are the price of the compile-time proof.
+- CRAP (JaCoCo, `.bin/crap -top 5000`): `hostedS3` 3.0 -> 5.0, `customS3` 3.0 -> 4.0 (coverage 100% both, limit 6); `locationOf` 4.0 unchanged.
+- 525e414 readability: `SAFE`, `OnboardingGuardTest` and the `ArchitectureTest` per-literal exceptions read well; nothing changed.
+- `./scripts/gate.sh server fast`: passed.
