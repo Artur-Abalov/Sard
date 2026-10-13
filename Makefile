@@ -11,7 +11,8 @@ GO_MODULES := agent agent/plugins/sdk cli
 # LC_ALL=C.UTF-8: Kotlin test class file names come from Cyrillic spec-quoted
 # titles; the JVM derives file-name encoding (sun.jnu.encoding) from the
 # process locale only, never from JVM flags.
-# One Gradle build at a time: the SubagentStop hook runs `make gate-fast` after every
+# One Gradle build at a time: the SubagentStop hook runs `make gate-fast M=<module>` (for the
+# changed modules, scripts/claude/gate-changed.sh) after every
 # subagent, and two builds sharing server/build corrupt each other's test results
 # (EOFException reading test-results/binary). flock is absent on macOS; there the
 # lock is skipped.
