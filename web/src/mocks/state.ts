@@ -79,13 +79,16 @@ function neighbourWithoutRepositories(list: Schemas['AgentDetails'][]): Schemas[
   return list.map((agent) => (agent.builtin ? { ...agent, repositories: [] } : agent))
 }
 
+function boundSelfBackup(complete: boolean) {
+  return defaultSelfBackup(complete ? agents.find((agent) => agent.builtin)?.id : undefined)
+}
+
 function fresh(options: ResetOptions): MockState {
   const freshInstall = options.freshInstall ?? false
   const upgraded = options.upgraded ?? false
   const complete = !freshInstall && !upgraded
-  const self = agents.find((agent) => agent.builtin)
   // A complete installation has its self-backup bound to "self", backed up and confirmed (Рк18).
-  const bound = complete && self !== undefined ? defaultSelfBackup(self.id) : null
+  const bound = boundSelfBackup(complete)
   return structuredClone({
     signedIn: options.signedIn,
     password: MOCK_PASSWORD,
@@ -99,16 +102,16 @@ function fresh(options: ResetOptions): MockState {
       upgraded,
     },
     agents: complete ? agents : neighbourWithoutRepositories(agents),
-    sources: [...(bound?.sources ?? []), ...sources],
+    sources: [...bound.sources, ...sources],
     deletedSources,
     // Newest first: the runs of the binding are older than every fixture run.
-    runs: [...runs, ...(bound?.runs ?? [])],
-    schedules: [...schedules, ...(bound?.schedules ?? [])],
+    runs: [...runs, ...bound.runs],
+    schedules: [...schedules, ...bound.schedules],
     scheduleFires,
     snapshots,
     stepLogs,
     tokens: enrollmentTokens,
-    selfBackup: bound?.binding ?? null,
+    selfBackup: bound.binding,
     pendingRepository: null,
     runOutcomes: {},
     failFirstBackup: options.failFirstBackup ?? false,

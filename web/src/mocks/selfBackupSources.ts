@@ -108,8 +108,12 @@ function succeededRun(source: Schemas['Source']): Schemas['Run'] {
   }
 }
 
+/** Nothing is bound: a clean or an upgraded installation (F4b). */
+const UNBOUND = { sources: [], schedules: [], runs: [], binding: null }
+
 /** The self-backup bound to [DEFAULT_REPOSITORY] of [agentId], both system sources backed up, the key copy confirmed. */
-export function defaultSelfBackup(agentId: string) {
+export function defaultSelfBackup(agentId: string | undefined) {
+  if (agentId === undefined) return UNBOUND
   const sources = ROLES.map((role) => systemSource(role, agentId))
   return {
     sources,
