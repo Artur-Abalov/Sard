@@ -3,10 +3,8 @@
 
 package dev.sard.server.runs
 
-import dev.sard.server.persistence.Agent
 import dev.sard.server.persistence.RunStepRecord
 import dev.sard.server.persistence.TenantSessions
-import dev.sard.server.role.AgentRole
 import org.hibernate.Session
 import java.time.Clock
 import java.time.Instant
@@ -20,8 +18,8 @@ private const val ACTIVE =
 
 // Native SQL names tenant_id explicitly (ADR 0013, rule 8); every WHERE names the status it expects.
 // A step the agent touches, or that is sent, has no lost deadline (FXs): only LOSE leaves it set.
-private const val STEP = "where tenant_id = :tenant and id = :step"
-private const val NO_DEADLINE = "lost_deadline = null"
+internal const val STEP = "where tenant_id = :tenant and id = :step"
+internal const val NO_DEADLINE = "lost_deadline = null"
 private const val CLAIM =
     "update run_steps set status = 'dispatched', dispatched_at = :now, $NO_DEADLINE $STEP and status = 'queued'"
 private const val SET_QUEUED = "set status = 'queued', dispatched_at = null, $NO_DEADLINE"
@@ -32,22 +30,18 @@ private const val REDISPATCH =
 private const val ACCEPT =
     "update run_steps set status = 'running', phase = :phase, started_at = :now, $NO_DEADLINE " +
         "$STEP and status = 'dispatched'"
-private const val MESSAGE = "message = cast(:message as text), finished_at = :now"
+internal const val MESSAGE = "message = cast(:message as text), finished_at = :now"
 private const val CLOSE = "update run_steps set status = :status, $MESSAGE $STEP"
 private const val FINISH =
     "update run_steps set status = :status, $MESSAGE, output = cast(:output as jsonb), $NO_DEADLINE $STEP " +
         "and status in ('dispatched', 'running')"
 
-// A step that never left the queue still gets a dispatch moment: run_steps_dispatched_check ties it to the status.
-private const val REFUSE =
-    "update run_steps set status = :status, $MESSAGE, dispatched_at = coalesce(dispatched_at, :now), $NO_DEADLINE " +
-        "$STEP and status in ('queued', 'dispatched')"
 private const val LOSE = "$CLOSE and status in ('dispatched', 'running') and lost_deadline <= :now"
 
 private const val OF_STEP = "where tenant_id = :tenant and id = (select run_id from run_steps $STEP)"
 private const val RUN_STATUS = "update runs set status = :run $OF_STEP"
 private const val RUN_STARTED = "update runs set status = :run, started_at = :now $OF_STEP"
-private const val RUN_FINISHED = "update runs set status = :run, $MESSAGE $OF_STEP"
+internal const val RUN_FINISHED = "update runs set status = :run, $MESSAGE $OF_STEP"
 
 /** How the agent says a step ended (S7 maps StepResult to it). */
 data class StepOutcome(
@@ -205,77 +199,4 @@ class StepTransitions(
         if (moved && run != null) execute(run, values)
         return moved
     }
-}
-
-private val TEXT_VALUES = setOf("message", "output")
-
-/** What the dispatcher asks about roles (V1): who may be sent what, and the end of a step that may not be sent. */
-interface RoleLedger {
-    /** The role of the agent: what the dispatcher may send it. */
-    fun roleOf(
-        tenantId: UUID,
-        agentId: UUID,
-    ): AgentRole
-
-    /** queued or dispatched → failed with [message]: the agent's role does not allow the step's action. */
-    fun refuse(
-        tenantId: UUID,
-        stepId: UUID,
-        message: String,
-    ): Boolean
-}
-
-/** [RoleLedger] over the database; the step and its run end in one transaction, then the run is announced. */
-class RoleRefusals(
-    private val sessions: TenantSessions,
-    private val clock: Clock,
-    private val announcer: RunAnnouncer,
-) : RoleLedger {
-    override fun roleOf(
-        tenantId: UUID,
-        agentId: UUID,
-    ): AgentRole =
-        sessions.inTenant(tenantId) { session ->
-            AgentRole.of(checkNotNull(session.find(Agent::class.java, agentId)) { "no agent $agentId" }.role)
-        }
-
-    override fun refuse(
-        tenantId: UUID,
-        stepId: UUID,
-        message: String,
-    ): Boolean {
-        val values =
-            mapOf(
-                "tenant" to tenantId,
-                "step" to stepId,
-                "now" to clock.instant(),
-                "status" to StepState.FAILED.stored,
-                "run" to RunState.FAILED.stored,
-                "message" to message,
-            )
-        val moved =
-            sessions.inTenant(tenantId) { session ->
-                val ended = session.execute(REFUSE, values) == 1
-                if (ended) session.execute(RUN_FINISHED, values)
-                ended
-            }
-        if (moved) announcer.announce(tenantId, stepId)
-        return moved
-    }
-}
-
-/** Binds the [values] that [sql] names; text values are typed so that NULL binds as text. */
-private fun Session.execute(
-    sql: String,
-    values: Map<String, Any?>,
-): Int {
-    val query = createNativeMutationQuery(sql)
-    for ((name, value) in values.filterKeys { ":$it" in sql }) {
-        if (name in TEXT_VALUES) {
-            query.setParameter(name, value as String?, String::class.java)
-        } else {
-            query.setParameter(name, value)
-        }
-    }
-    return query.executeUpdate()
 }

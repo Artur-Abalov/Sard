@@ -256,3 +256,7 @@ Left as is: `RoleLedger` (interface) and `RoleRefusals` (database) stay split, l
 4. `AgentOffer.require(..., action, ...)` проверяет `role.allows(action)`; `requireBackup` переименован в `requireListed` (плагин должен перечислять именно это действие). Вызовы (`Runs`, `Sources` x2, `SelfBackups`) передают `Action.BACKUP`.
 5. `TokenOwner.role` и `EnrollmentTokens.create(role)` без значений по умолчанию; REST оставляет null -> source, встроенный токен передаёт SOURCE.
 6. Миграция V202610121300: `agents_builtin_source_check`, `agents_machine_id_check` (`^[0-9a-f]{64}$`), поправлен устаревший комментарий; тесты в `AgentRoleMigrationTest`.
+
+## cleaner (разделение StepTransitions)
+
+Задача 7 из обзора architect, поведение не менялось. `RoleLedger` и `RoleRefusals` переехали из `StepTransitions.kt` в `runs/RoleRefusals.kt` (интерфейс и реализация остались раздельными: `StepDispatcherTest` подменяет `RoleLedger`); `Session.execute` с `TEXT_VALUES` - в `runs/NativeMutations.kt` как `internal`. Минимальное расширение видимости: `STEP`, `NO_DEADLINE`, `MESSAGE`, `RUN_FINISHED` стали `internal` (их используют оба файла), `REFUSE` переехал с `RoleRefusals` и остался `private`. Лишние импорты `Agent` и `AgentRole` убраны из `StepTransitions.kt`. Комментарий к миграции V202610121300 проверен: он уже исправлен в 51ba6e6.
