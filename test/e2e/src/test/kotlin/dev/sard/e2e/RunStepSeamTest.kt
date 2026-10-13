@@ -69,7 +69,7 @@ class RunStepSeamTest {
     }
 
     companion object {
-        /** A plugin no agent has (built in are postgresql, mysql, files and network). */
+        /** A plugin no agent has (built in are files and postgresql). */
         private const val PLUGIN = "absent"
 
         /** The plugin only the stand's build links (agent/plugins/stand_e2e.go). */

@@ -42,12 +42,14 @@ concurrency:
 jobs:
   licenses:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       - run: make license-check
 
   proto:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       # buf breaking: a PR is checked against its base, a push against the previous tip.
       # The first push of a branch has an all-zero "before"; it is compared with itself.
@@ -66,6 +68,7 @@ jobs:
 
   go:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -76,7 +79,14 @@ jobs:
         with:
           go-version-file: tools/go.mod
           cache-dependency-path: "**/go.sum"
-      - run: ./scripts/gate.sh ${{ matrix.module }}
+      # The agent's mutation testing runs as shards in agent-mutation.
+      - run: ./scripts/gate.sh ${{ matrix.module }} ${{ matrix.module == 'agent' && 'fast' || '' }}
+      - uses: actions/upload-artifact@v7
+        if: always() && matrix.module != 'agent'
+        with:
+          name: mutation-${{ matrix.module }}
+          path: build/mutation/
+          if-no-files-found: ignore
       # The agent is built for shipping by the packages job only.
       - name: Build sardctl
         if: matrix.module == 'cli'
@@ -84,11 +94,52 @@ jobs:
           make build-cli
           ./cli/bin/sardctl version
 
+  # The agent's mutation testing (docs/adr/00XX-draft-go-mutation-exec.md): every
+  # shard mutates every 12th file of the module on its own runner; the
+  # threshold applies to the sum, in agent-mutation-total.
+  agent-mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: tools/go.mod
+          cache-dependency-path: "**/go.sum"
+      # The shard's log is streamed too: a runner lost mid-shard still shows its last START line.
+      - run: ./scripts/gate.sh agent mutation ${{ matrix.shard }}/12
+        env:
+          MUTATION_STREAM: "1"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: mutation-agent-${{ matrix.shard }}
+          path: build/mutation/agent/
+          if-no-files-found: error
+
+  agent-mutation-total:
+    needs: agent-mutation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: mutation-agent-*
+          path: build/mutation/agent
+          merge-multiple: true
+      - run: ./scripts/gate.sh agent mutation-total build/mutation/agent
+
   packages:
     # The only build of sard-agent in this workflow: the release packages every
     # later job tests, plus the e2e stand's build (GO_TAGS=e2e, ADR 0036), which
     # only the T3 e2e classes run and which is never shipped.
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -141,6 +192,7 @@ jobs:
   server:
     needs: packages
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
       # Kotlin test class file names come from Cyrillic spec-quoted titles; the
       # JVM derives file-name encoding (sun.jnu.encoding) from the process
@@ -196,6 +248,7 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -225,6 +278,7 @@ jobs:
     # a tag, and the amd64 image the e2e job runs.
     needs: packages
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-qemu-action@v3
@@ -272,6 +326,7 @@ jobs:
     # uploaded as an artifact.
     needs: [packages, server-image]
     runs-on: ubuntu-latest
+    timeout-minutes: 75
     env:
       LC_ALL: C.UTF-8
     steps:
@@ -321,6 +376,7 @@ jobs:
     # and its scripts on upgrade, run.
     needs: [packages, server-image]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

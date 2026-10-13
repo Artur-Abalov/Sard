@@ -48,7 +48,7 @@ type EnrollResult struct {
 // only Class and Reason to build its message and pick an exit code. It
 // does not retry: the server's contract promises only UNAVAILABLE is worth
 // retrying, and retrying is A2b's decision, not this package's.
-func CallEnroll(ctx context.Context, conn *grpc.ClientConn, req *agentv1.EnrollRequest) (*EnrollResult, error) {
+func CallEnroll(ctx context.Context, conn grpc.ClientConnInterface, req *agentv1.EnrollRequest) (*EnrollResult, error) {
 	resp, err := agentv1.NewEnrollmentServiceClient(conn).Enroll(ctx, req)
 	if err != nil {
 		return nil, classifyEnrollError(err)

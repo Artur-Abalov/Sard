@@ -7,21 +7,19 @@ package plugins
 import (
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/plugins/files"
-	"github.com/Artur-Abalov/sard/agent/plugins/mysql"
-	"github.com/Artur-Abalov/sard/agent/plugins/network"
 	"github.com/Artur-Abalov/sard/agent/plugins/postgresql"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
 // Builtin returns the plugins compiled into the agent; they share the
-// agent's version. A build with the "e2e" tag adds the e2e stand's plugins
-// (stand_e2e.go); a release build has none (stand.go).
+// agent's version. Only plugins that really back up are built in: the
+// agent announces every one of them to the server (ADR 0056). A build with
+// the "e2e" tag adds the e2e stand's plugins (stand_e2e.go); a release
+// build has none (stand.go).
 func Builtin(agentVersion string) []sdk.Plugin {
 	return append([]sdk.Plugin{
 		postgresql.Plugin{AgentVersion: agentVersion},
-		mysql.Plugin{AgentVersion: agentVersion},
 		files.Plugin{AgentVersion: agentVersion},
-		network.Plugin{AgentVersion: agentVersion},
 	}, stand(agentVersion)...)
 }
 

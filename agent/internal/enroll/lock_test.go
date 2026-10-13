@@ -247,6 +247,12 @@ func assertLockRefusedBehindLink(t *testing.T, plant func(dir, lock, victim stri
 // released) is refused, and the descriptor of that refused file is closed.
 // The garbage collector is off so that a leaked descriptor is not closed by
 // a finalizer before it is counted.
+//
+// The loop stops once enough calls were refused, not after a fixed number of
+// iterations: what the test proves is that the race was hit and that every
+// refused call closed its descriptor, so the work is sized by the refusals.
+// A fixed count made the run time depend on the CPU load; the iteration
+// ceiling only bounds a run in which the race is (almost) never hit.
 func TestLockOfAFileRemovedUnderneathDoesNotLeakAFileDescriptor(t *testing.T) {
 	defer debug.SetGCPercent(debug.SetGCPercent(-1))
 	certFile := filepath.Join(t.TempDir(), "tls.crt")
@@ -265,8 +271,9 @@ func TestLockOfAFileRemovedUnderneathDoesNotLeakAFileDescriptor(t *testing.T) {
 		}
 	}()
 	before := openFDCount(t)
+	const enoughRefusals, maxIterations = 200, 20000
 	refused := 0
-	for i := 0; i < 20000; i++ {
+	for i := 0; i < maxIterations && refused < enoughRefusals; i++ {
 		unlock, err := enroll.Lock(certFile)
 		if err != nil {
 			refused++

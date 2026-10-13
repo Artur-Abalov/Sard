@@ -5,7 +5,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -32,20 +31,24 @@ func (b *lockedBuffer) String() string {
 	return b.buf.String()
 }
 
-// startAgentWith runs the agent against a closed port until a short timeout
-// with extra config lines, and returns the exit code and the agent's log.
+// startAgentWith runs the agent with extra config lines against a loopback
+// server until its first accepted connection (300 ms at most), and returns
+// the exit code and the agent's log. The start-time warnings are logged
+// before the agent dials.
 func startAgentWith(t *testing.T, extra func(dir string) string) (int, string) {
 	t.Helper()
 	dir := t.TempDir()
 	ca := writeIdentity(t, dir)
-	cfg := "server:\n  address: 127.0.0.1:1\n" +
+	addr, _, first := signalingServer(t)
+	cfg := "server:\n  address: " + addr + "\n" +
 		"tls: {ca_file: " + ca + ", cert_file: " + dir + "/agent.pem, key_file: " + dir + "/agent.key}\n" +
 		"executor: {state_dir: " + dir + "/state}\n" + withRestic(t) + extra(dir)
 	var log lockedBuffer
 	previous := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
 	t.Cleanup(func() { slog.SetDefault(previous) })
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	// the warnings are logged before the first dial
+	ctx, cancel := contextUntil(300*time.Millisecond, first)
 	defer cancel()
 	var out, errOut bytes.Buffer
 	code := run(ctx, []string{"--config", writeConfig(t, cfg)}, &out, &errOut, fixedHostname)
