@@ -317,3 +317,10 @@ ADR: `docs/adr/00XX-draft-f4b-onboarding-self-backup.md`.
 - P1: `isSafeLocation` let credentials through when the address had a leading space, quotes, an `ENV=` prefix or a single slash after the scheme. Tests added first (4 vectors in `StorageLocationTest`, one failed first on ` s3:https://AKIA:secret@h/b`); fix: AUTHORITY takes `/*` instead of `(?://)?`, plus `EMBEDDED_USERINFO` scanned over the whole text (helper `isCredentialFree` keeps CRAP <= 6). `s3:https://minio:9000/b/a@b` stays valid. The leading-space case is also in the 422 examples of `OnboardingSelfBackupApiIntegrationTest`.
 - P3: `scripts/test-self-agent.sh` group 8 binds with the `address` of the repository-command response instead of a hard-coded path.
 - `./scripts/gate.sh server fast`: PASSED.
+
+## Cleaner pass on daf8f6e (StorageLocation.kt)
+
+- `./scripts/crap.sh server`: `StorageLocationKt.isSafeLocation` CRAP 6.0, CC 6, coverage 100.0%; the private helpers (`isCredentialFree`, `hasCredentials`, `isHttpUser`) are below the report's cut-off. Before and after are identical: no code changed.
+- Refactor not warranted: the split already reads clearly (each regex has a KDoc, helpers are named for what they decide). `EMBEDDED_USERINFO` is not redundant with `hasCredentials`: it covers addresses that start mid-text (quotes, `ENV=` prefix), which `AUTHORITY` anchored at `^` does not see. Folding `isCredentialFree` back into `isSafeLocation` would raise its CC above the CRAP limit.
+- `./scripts/gate.sh server fast`: PASSED.
+- Next: `architect`.
