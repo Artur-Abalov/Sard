@@ -31,8 +31,10 @@ func (b *lockedBuffer) String() string {
 	return b.buf.String()
 }
 
-// startAgentWith runs the agent against a closed port until a short timeout
-// with extra config lines, and returns the exit code and the agent's log.
+// startAgentWith runs the agent with extra config lines against a loopback
+// server until its first accepted connection (300 ms at most), and returns
+// the exit code and the agent's log. The start-time warnings are logged
+// before the agent dials.
 func startAgentWith(t *testing.T, extra func(dir string) string) (int, string) {
 	t.Helper()
 	dir := t.TempDir()
