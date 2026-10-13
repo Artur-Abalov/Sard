@@ -12,7 +12,6 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/x509"
 	"errors"
 	"io"
@@ -236,12 +235,9 @@ func TestReportIdentityInspectionErrorPrintsTheError(t *testing.T) {
 // GODEBUG=cryptocustomrand=1 is set).
 func TestBuildIdentityRequestPropagatesAKeyGenerationFailure(t *testing.T) {
 	t.Setenv("GODEBUG", "cryptocustomrand=1")
-	old := rand.Reader
-	rand.Reader = failingReaderForTest{}
-	defer func() { rand.Reader = old }()
 
 	var stderr strings.Builder
-	key, der, code := buildIdentityRequest("db1", &stderr)
+	key, der, code := buildIdentityRequest(failingReaderForTest{}, "db1", &stderr)
 	if code != exitAgentError || key != nil || der != nil {
 		t.Fatalf("code = %d, key = %v, der = %v", code, key, der)
 	}
