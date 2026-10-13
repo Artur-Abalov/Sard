@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -50,7 +51,23 @@ type Dir interface {
 	Rename(oldName, newName string) error
 	Remove(name string) error
 	Sync() error
+
+	// Handle is the open descriptor of this directory, for a process that
+	// inherits it (restic gets the staging directory of a restore this way).
+	// It is owned by the Dir: it is closed with it.
+	Handle() *os.File
+	// RenameNoReplace moves the entry oldName of this directory to newName in
+	// newDir (renameat2 with RENAME_NOREPLACE): a name that exists there is
+	// fs.ErrExist and is not touched; another file system is ErrCrossDevice.
+	RenameNoReplace(oldName string, newDir Dir, newName string) error
+	// RemoveDir removes the empty directory called name (unlinkat with
+	// AT_REMOVEDIR).
+	RemoveDir(name string) error
 }
+
+// ErrCrossDevice: the entry cannot be moved because the two directories are
+// on different file systems, a mount point lies between them (EXDEV).
+var ErrCrossDevice = errors.New("the directories are on different file systems")
 
 // ErrBusy: the directory is locked by another holder.
 var ErrBusy = errors.New("the directory is held by another command")

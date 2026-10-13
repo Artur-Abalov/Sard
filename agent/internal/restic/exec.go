@@ -43,6 +43,10 @@ type Command struct {
 	// RunAs, if not nil, is the user and group the process runs as: the
 	// agent runs restic as the service user when a command runs as root.
 	RunAs *RunAs
+	// ExtraFiles are inherited by the process as descriptors 3, 4, ...: a
+	// directory restic writes into, the pipe that carries its password
+	// (Р73, Р78). The caller keeps them open and closes them.
+	ExtraFiles []*os.File
 }
 
 // RunAs is a user and a group to run a process as. Supplementary groups
@@ -76,6 +80,7 @@ func (p ProcessExecutor) Run(ctx context.Context, c Command) (int, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Credential: credentialFor(c.RunAs)}
 	stdout, stderr := &lineWriter{emit: c.Stdout}, &lineWriter{emit: c.Stderr}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = c.Stdin, stdout, stderr
+	cmd.ExtraFiles = c.ExtraFiles
 	if c.StderrCopy != nil {
 		cmd.Stderr = io.MultiWriter(c.StderrCopy, stderr)
 	}

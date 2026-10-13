@@ -148,11 +148,29 @@ func TestASecondRestoreIntoTheSameTargetIsBusy(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	first := h.restoreInBackground(ctx)
 	h.waitForRestore()
-	code, _, stderr := h.restore(idF, "--overwrite")
+	code, _, stderr := h.restore(idF)
 	assertRefusal(t, code, stderr, exitTemporary, "TARGET_BUSY")
 	if !strings.Contains(stderr, h.target()) {
 		t.Errorf("stderr %q", stderr)
 	}
+	if n := len(h.restoreCalls()); n != 1 {
+		t.Errorf("%d restore calls: the second restore must not call restic", n)
+	}
+	cancel()
+	within(t, first)
+}
+
+// Р79: an existing target is locked while it is walked, so the second command
+// is told it is busy, not that the target is not empty.
+func TestASecondRestoreIntoAnExistingTargetIsBusyNotNonEmpty(t *testing.T) {
+	h := restoreHost(t)
+	ok(t, os.MkdirAll(h.target(), 0o700))
+	h.base().restoreState.hang = true
+	ctx, cancel := context.WithCancel(context.Background())
+	first := h.restoreInBackground(ctx)
+	h.waitForRestore()
+	code, _, stderr := h.restore(idF)
+	assertRefusal(t, code, stderr, exitTemporary, "TARGET_BUSY")
 	if n := len(h.restoreCalls()); n != 1 {
 		t.Errorf("%d restore calls: the second restore must not call restic", n)
 	}

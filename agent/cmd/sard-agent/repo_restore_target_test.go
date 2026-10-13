@@ -38,13 +38,13 @@ func TestMissingParentsOfTheTargetAreCreatedToo(t *testing.T) {
 	}
 }
 
-func TestANonEmptyTargetIsRefusedWithoutOverwrite(t *testing.T) {
+func TestANonEmptyTargetIsRefused(t *testing.T) {
 	h := restoreHost(t)
 	h.write(h.target()+"/keep.txt", "KEEP", 0o600)
 	before := h.hostTree()
 	code, _, stderr := h.restore(idF)
 	assertRefusal(t, code, stderr, exitUsage, "TARGET_NOT_EMPTY")
-	for _, want := range []string{h.target(), "--overwrite"} {
+	for _, want := range []string{h.target(), "empty or new directory"} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("stderr lacks %q: %s", want, stderr)
 		}
@@ -70,30 +70,37 @@ func TestATargetWithAFilledLostAndFoundIsNotEmpty(t *testing.T) {
 	assertRefusal(t, code, stderr, exitUsage, "TARGET_NOT_EMPTY")
 }
 
-func TestOverwriteReplacesTheFilesOfTheSnapshotAndKeepsTheRest(t *testing.T) {
-	h := restoreHost(t)
-	h.write(h.target()+"/srv/data/a.txt", "OLD", 0o600)
-	h.write(h.target()+"/keep.txt", "KEEP", 0o600)
-	code, _, _ := h.restore(idF, "--overwrite")
-	assertCode(t, code, exitOK)
-	args := h.restoreCalls()[0].args
-	if i := slices.Index(args, "--overwrite"); i < 0 || args[i+1] != "always" {
-		t.Errorf("restic args %q: the files must be replaced", args)
-	}
-	if got := h.fileContent(h.target() + "/srv/data/a.txt"); got != "A-DATA" {
-		t.Errorf("a.txt = %q", got)
-	}
-	if got := h.fileContent(h.target() + "/keep.txt"); got != "KEEP" {
-		t.Errorf("keep.txt = %q", got)
-	}
-}
-
 func TestWithoutOverwriteResticIsToldNotToReplaceAnything(t *testing.T) {
 	h := restoreHost(t)
 	h.restore(idF)
 	args := h.restoreCalls()[0].args
 	if i := slices.Index(args, "--overwrite"); i < 0 || args[i+1] != "never" {
 		t.Errorf("restic args %q", args)
+	}
+}
+
+// Р74: --overwrite is recognised and refused before any work; the merge into
+// a target that is not empty is the slice A8c-2b (OQ-201).
+func TestOverwriteIsNotAvailableYetAndRefusesBeforeTheConfigIsRead(t *testing.T) {
+	for _, c := range []struct {
+		target string
+		flags  []string
+	}{{"", nil}, {"/", []string{"--allow-root-target"}}} {
+		h := restoreHost(t)
+		if c.target == "" {
+			c.target = h.target()
+		}
+		code, _, stderr := h.sudo(append([]string{"repo", "restore", "base", "aaaa1111", "--target", c.target, "--overwrite", "--config", h.path("missing.yaml")}, c.flags...)...)
+		assertCode(t, code, exitUsage)
+		for _, want := range []string{"--overwrite", "empty or new directory"} {
+			if !strings.Contains(stderr, want) {
+				t.Errorf("%q: stderr lacks %q: %s", c.target, want, stderr)
+			}
+		}
+		if strings.Contains(stderr, "reading config") {
+			t.Errorf("%q: the config was read: %s", c.target, stderr)
+		}
+		h.assertNoBackendCalls()
 	}
 }
 
@@ -147,8 +154,8 @@ func TestTheTargetIsUsedInItsCleanForm(t *testing.T) {
 	h := restoreHost(t)
 	code, stdout, _ := h.sudo("repo", "restore", "base", "aaaa1111", "--target", h.path(".")+"/./restore/", "--config", "C")
 	assertCode(t, code, exitOK)
-	if got := h.restoreCalls()[0].args; !slices.Contains(got, h.target()) {
-		t.Errorf("restic args %q", got)
+	if got := h.fileContent(h.target() + "/srv/data/a.txt"); got != "A-DATA" {
+		t.Errorf("a.txt in the clean target = %q", got)
 	}
 	if !strings.Contains(stdout, "target:   "+h.target()+"\n") {
 		t.Errorf("stdout %q", stdout)
@@ -160,7 +167,7 @@ func TestTheRootNeedsItsOwnFlag(t *testing.T) {
 	for _, c := range []struct {
 		target string
 		flags  []string
-	}{{"/", nil}, {"/", []string{"--overwrite"}}, {"/.", []string{"--overwrite"}}, {"//", []string{"--overwrite"}}} {
+	}{{"/", nil}, {"/.", nil}, {"//", nil}} {
 		h := restoreHost(t)
 		code, _, stderr := h.sudo(append([]string{"repo", "restore", "base", "aaaa1111", "--target", c.target, "--config", "C"}, c.flags...)...)
 		assertRefusal(t, code, stderr, exitUsage, "ROOT_TARGET_REFUSED")
@@ -171,25 +178,12 @@ func TestTheRootNeedsItsOwnFlag(t *testing.T) {
 	}
 }
 
-func TestTheRootWithoutOverwriteIsNeverEmpty(t *testing.T) {
+func TestTheRootIsNeverEmpty(t *testing.T) {
 	h := restoreHost(t)
 	code, _, stderr := h.sudo("repo", "restore", "base", "aaaa1111", "--target", "/", "--allow-root-target", "--config", "C")
 	assertRefusal(t, code, stderr, exitUsage, "TARGET_NOT_EMPTY")
-	if !strings.Contains(stderr, "--overwrite") || len(h.restoreCalls()) != 0 {
+	if !strings.Contains(stderr, "empty or new directory") || len(h.restoreCalls()) != 0 {
 		t.Errorf("stderr %q, restore calls %v", stderr, h.restoreCalls())
-	}
-}
-
-func TestTheRootWithBothFlagsIsRestoredOntoItsPlaces(t *testing.T) {
-	h := restoreHost(t)
-	code, _, _ := h.sudo("repo", "restore", "base", "aaaa1111", "--target", "/", "--allow-root-target", "--overwrite", "--config", "C")
-	assertCode(t, code, exitOK)
-	args := h.restoreCalls()[0].args
-	if i := slices.Index(args, "--target"); args[i+1] != "/" || args[slices.Index(args, "--overwrite")+1] != "always" {
-		t.Errorf("restic args %q", args)
-	}
-	if line := h.lastAudit(); !strings.Contains(line, "repository base snapshot aaaa1111 restored to /") {
-		t.Errorf("audit %q", line)
 	}
 }
 

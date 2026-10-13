@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -23,9 +24,13 @@ type restoreRun struct {
 	deps           hostDeps
 	stdout, stderr io.Writer
 	st             snapshotsState
-	// target is the clean path of the target, checked before the storage is touched.
-	target string
+	// held is the target: judged before the storage is touched, held and
+	// locked from then on (Р79).
+	held *restore.Held
 }
+
+// target is the clean path of the target.
+func (r *restoreRun) target() string { return r.held.Path }
 
 // runRepoRestore is "sard-agent repo restore <name> <snapshot> --target
 // <dir>": args excludes "restore". The checks come in the order of Р69:
@@ -45,7 +50,8 @@ func runRepoRestore(ctx context.Context, args []string, stdout, stderr io.Writer
 	ctx, cancel := repoContext(ctx, deps.clock, opts.timeout)
 	defer cancel(nil)
 	run := &restoreRun{opts: opts, deps: deps, stdout: stdout, stderr: stderr}
-	st, code := prepareRepository(ctx, "restore", opts, stderr, deps, run.checkHost)
+	defer run.release()
+	st, code := prepareRepository(ctx, "restore", opts, stderr, deps, run.checkHost, run.checkTools)
 	if code != exitOK {
 		return code
 	}
@@ -55,19 +61,47 @@ func runRepoRestore(ctx context.Context, args []string, stdout, stderr io.Writer
 
 // checkHost is the checks of the host before the storage: the target as it
 // is, then the service user, who restic runs as.
-func (r *restoreRun) checkHost(cfg config.Config, _ config.Repository) (hostsetup.Principal, int) {
-	target, f := restore.CheckTarget(r.deps.fs, restore.Target{
-		Path: r.opts.target, Overwrite: r.opts.overwrite, AllowRoot: r.opts.allowRoot, Avoid: avoidedDirs(cfg, r.deps),
+func (r *restoreRun) checkHost(cfg config.Config, repo config.Repository) (hostsetup.Principal, int) {
+	if err := restic.CheckRootBackend(repo); err != nil {
+		return hostsetup.Principal{}, report(r.stderr, "repo restore", restore.InputsFailure(err))
+	}
+	held, f := restore.CheckTarget(r.deps.fs, restore.Target{
+		Path: r.opts.target, AllowRoot: r.opts.allowRoot, Avoid: avoidedDirs(cfg, r.deps),
 	})
 	if f != nil {
 		return hostsetup.Principal{}, report(r.stderr, "repo restore", f)
 	}
-	r.target = target
+	r.held = held
 	who, f := authorize(r.deps, "repo restore", r.opts, true, true)
 	if f != nil {
 		return hostsetup.Principal{}, report(r.stderr, "repo restore", f)
 	}
 	return who, exitOK
+}
+
+// release lets go of the target, whatever way the command ends.
+func (r *restoreRun) release() {
+	if r.held != nil {
+		r.held.Release()
+	}
+}
+
+// checkTools is what restic needs next to itself, before the files of the
+// repository are judged (Р69): setpriv for an sftp: repository (Р77), then
+// the password file and the env_file as root will get them, read here once,
+// before anything is listed or made (Р78, Р72).
+func (r *restoreRun) checkTools(st snapshotsState) *refusal.Failure {
+	c := newHostCmd("repo restore", r.opts, st.who, r.stdout, r.stderr, r.deps)
+	if f := restore.CheckSetpriv(st.repo.Backend(), func(program string) bool {
+		_, found := c.findProgram(program)
+		return found
+	}); f != nil {
+		return f
+	}
+	if err := newResticAsRoot(st.cfg, st.binary, r.deps, st.repo, st.who.Service.UID).CheckRootInputs(); err != nil {
+		return named(restore.InputsFailure(err))
+	}
+	return nil
 }
 
 // avoidedDirs are the directories a restore must not go into: the local
@@ -107,32 +141,45 @@ func (r *restoreRun) restore(ctx context.Context) int {
 
 // request is what to restore and how restic reaches the storage.
 func (r *restoreRun) request(snap restore.Snapshot) (restore.Request, *refusal.Failure) {
-	req := restore.Request{Snapshot: snap, Target: r.target, Overwrite: r.opts.overwrite, Paths: r.opts.paths}
+	req := restore.Request{Snapshot: snap, Target: r.target(), Paths: r.opts.paths}
 	command, f := r.sftpCommand()
 	req.SFTPCommand = command
 	return req, f
 }
 
-// write makes the target, restores into it and records the outcome.
+// write makes the target, the temporary directory in it, restores and
+// records the outcome.
 func (r *restoreRun) write(ctx context.Context, req restore.Request) int {
-	st, snap := r.st, req.Snapshot
-	held, f := restore.OpenTarget(r.deps.fs, r.target)
-	if f != nil {
+	st, snap, held := r.st, req.Snapshot, r.held
+	if f := held.Create(); f != nil {
 		return report(r.stderr, "repo restore", f)
 	}
+	stage, f := held.Stage(r.randomName)
+	if f != nil {
+		held.Abandon()
+		return report(r.stderr, "repo restore", f)
+	}
+	req.Staging = stage
 	// restic runs as root so that the files get the owners of the snapshot;
-	// the env_file is still the file of the service user (Р63).
-	writer := newResticReading(st.cfg, st.binary, r.deps, st.repo, nil, st.who.Service.UID)
+	// the env_file and the password file are still files of the service user (Р63).
+	writer := newResticAsRoot(st.cfg, st.binary, r.deps, st.repo, st.who.Service.UID)
 	summary, f := restore.Run(ctx, writer, req, targetOf(st, st.who, r.deps))
 	if f != nil {
 		held.Abandon()
-		r.record(snap, fmt.Sprintf("restore to %s failed: %s", auditPath(r.target), f.Reason))
+		r.record(snap, fmt.Sprintf("restore to %s failed: %s", auditPath(r.target()), f.Reason))
 		return report(r.stderr, "repo restore", f)
 	}
 	held.Release()
-	r.record(snap, "restored to "+auditPath(r.target))
-	printRestored(r.stdout, st.repo.Name, snap, r.target, r.opts.paths, summary)
+	r.record(snap, "restored to "+auditPath(r.target()))
+	printRestored(r.stdout, st.repo.Name, snap, r.target(), r.opts.paths, summary)
 	return exitOK
+}
+
+// randomName is the random part of the name of the temporary directory.
+func (r *restoreRun) randomName() string {
+	var b [8]byte
+	_, _ = io.ReadFull(r.deps.random, b[:]) // a short read leaves zeros: a taken name is replaced
+	return hex.EncodeToString(b[:])
 }
 
 // sftpCommand is how restic starts ssh as the service user for an sftp:

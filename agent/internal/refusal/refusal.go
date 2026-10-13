@@ -101,6 +101,9 @@ const (
 	TargetWrite Reason = "TARGET_WRITE"
 	// TargetBusy: another restore holds the target.
 	TargetBusy Reason = "TARGET_BUSY"
+	// SetprivMissing: an sftp: repository is restored as root with ssh run
+	// by setpriv (util-linux) as the service user, and setpriv is not there (Р77).
+	SetprivMissing Reason = "SETPRIV_MISSING"
 )
 
 // Class is the kind of a failure; the command maps it to an exit code
@@ -144,7 +147,7 @@ var classes = map[Reason]Class{
 
 	SnapshotUnknown: ClassUsage, SnapshotAmbiguous: ClassUsage, TargetInvalid: ClassUsage,
 	TargetNotEmpty: ClassUsage, RootTargetRefused: ClassUsage, PathNotInSnapshot: ClassUsage,
-	RestoreIncomplete: ClassAgentError, TargetWrite: ClassWrite, TargetBusy: ClassTemporary,
+	RestoreIncomplete: ClassAgentError, TargetWrite: ClassWrite, TargetBusy: ClassTemporary, SetprivMissing: ClassAgentError,
 
 	AddressInvalid: ClassUsage, SecretInvalid: ClassUsage, S3KeyRejected: ClassUsage,
 	StorageAccessDenied: ClassUsage, BucketNotFound: ClassUsage,

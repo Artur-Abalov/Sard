@@ -7,10 +7,13 @@ package hostsetup
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
+	"unsafe"
 )
 
 // osDir is a directory held by its file descriptor; every step of a walk
@@ -125,4 +128,56 @@ func (d osDir) Lock() error {
 		return ErrBusy
 	}
 	return err
+}
+
+// Handle implements Dir.
+func (d osDir) Handle() *os.File { return d.f }
+
+// renameNoReplace is RENAME_NOREPLACE of renameat2.
+const renameNoReplace = 1
+
+// atRemoveDir is AT_REMOVEDIR of unlinkat: the syscall package's Unlinkat
+// takes no flags.
+const atRemoveDir = 0x200
+
+// RenameNoReplace implements Dir. renameat2 is called by its number: the
+// syscall package has none for amd64 (see renameat2_*.go).
+func (d osDir) RenameNoReplace(oldName string, newDir Dir, newName string) error {
+	from, err := syscall.BytePtrFromString(oldName)
+	if err != nil {
+		return err
+	}
+	to, err := syscall.BytePtrFromString(newName)
+	if err != nil {
+		return err
+	}
+	target := newDir.Handle()
+	_, _, errno := syscall.Syscall6(sysRenameat2, d.f.Fd(), uintptr(unsafe.Pointer(from)), target.Fd(), uintptr(unsafe.Pointer(to)), renameNoReplace, 0)
+	runtime.KeepAlive(target)
+	if errno != 0 {
+		return &fs.PathError{Op: "renameat2", Path: newDir.Path() + "/" + newName, Err: renameError(oldName, errno)}
+	}
+	return nil
+}
+
+// renameError is the error of a move: EXDEV, a mount point on the way, is
+// ErrCrossDevice; any other stays as it is.
+func renameError(name string, err error) error {
+	if errors.Is(err, syscall.EXDEV) {
+		return fmt.Errorf("%s: %w", name, ErrCrossDevice)
+	}
+	return err
+}
+
+// RemoveDir implements Dir.
+func (d osDir) RemoveDir(name string) error {
+	p, err := syscall.BytePtrFromString(name)
+	if err != nil {
+		return err
+	}
+	_, _, errno := syscall.Syscall(syscall.SYS_UNLINKAT, d.f.Fd(), uintptr(unsafe.Pointer(p)), atRemoveDir)
+	if errno != 0 {
+		return &fs.PathError{Op: "unlinkat", Path: d.child(name), Err: errno}
+	}
+	return nil
 }

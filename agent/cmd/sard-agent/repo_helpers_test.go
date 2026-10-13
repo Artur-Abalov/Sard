@@ -86,6 +86,8 @@ type fakeCall struct {
 	runAs        *restic.RunAs
 	// password is what the password file held when restic ran.
 	password string
+	// extra is what each inherited descriptor was: "dir" or "pipe".
+	extra []string
 }
 
 // fakeRestic replays the golden output of restic 0.19.1 (as the A5a
@@ -137,12 +139,31 @@ func (f *fakeRestic) Run(ctx context.Context, cmd restic.Command) (int, error) {
 	cmd.Stderr = alsoCopied(cmd)
 	url := envValue(cmd.Env, "RESTIC_REPOSITORY")
 	f.mu.Lock()
-	f.calls = append(f.calls, fakeCall{sub: sub, args: append([]string(nil), cmd.Args...), repository: url, passwordFile: envValue(cmd.Env, "RESTIC_PASSWORD_FILE"), env: cmd.Env, runAs: cmd.RunAs, password: passwordOf(cmd.Env)})
+	f.calls = append(f.calls, fakeCall{sub: sub, args: append([]string(nil), cmd.Args...), repository: url, passwordFile: envValue(cmd.Env, "RESTIC_PASSWORD_FILE"), env: cmd.Env, runAs: cmd.RunAs, password: passwordOf(cmd), extra: kindsOf(cmd.ExtraFiles)})
 	f.mu.Unlock()
 	if sub == "version" {
 		return f.printVersion(cmd)
 	}
 	return f.runRepoCommand(ctx, cmd, sub, f.repo(url))
+}
+
+// kindsOf says what the inherited files are: a directory or a pipe.
+func kindsOf(files []*os.File) []string {
+	var kinds []string
+	for _, f := range files {
+		info, err := f.Stat()
+		switch {
+		case err != nil:
+			kinds = append(kinds, "?")
+		case info.IsDir():
+			kinds = append(kinds, "dir")
+		case info.Mode()&os.ModeNamedPipe != 0:
+			kinds = append(kinds, "pipe")
+		default:
+			kinds = append(kinds, "file")
+		}
+	}
+	return kinds
 }
 
 // alsoCopied is the stderr callback of cmd that feeds StderrCopy as well, as
@@ -161,12 +182,30 @@ func alsoCopied(cmd restic.Command) func([]byte) {
 
 // passwordOf is the content of the password file of a restic call, without
 // the line break; "" if there is none.
-func passwordOf(env []string) string {
-	data, err := os.ReadFile(envValue(env, "RESTIC_PASSWORD_FILE"))
+func passwordOf(cmd restic.Command) string {
+	data, err := os.ReadFile(passwordPathOf(cmd))
 	if err != nil {
 		return ""
 	}
 	return strings.TrimRight(string(data), "\r\n")
+}
+
+// passwordPathOf is where restic reads its password: the file of
+// RESTIC_PASSWORD_FILE, or the descriptor --password-file /proc/self/fd/N
+// names, which in the fake is the inherited file of this process.
+func passwordPathOf(cmd restic.Command) string {
+	if path := envValue(cmd.Env, "RESTIC_PASSWORD_FILE"); path != "" {
+		return path
+	}
+	i := slices.Index(cmd.Args, "--password-file")
+	if i < 0 {
+		return ""
+	}
+	var n int
+	if _, err := fmt.Sscanf(cmd.Args[i+1], "/proc/self/fd/%d", &n); err != nil || n-3 >= len(cmd.ExtraFiles) {
+		return ""
+	}
+	return fmt.Sprintf("/proc/self/fd/%d", cmd.ExtraFiles[n-3].Fd())
 }
 
 func (f *fakeRestic) printVersion(cmd restic.Command) (int, error) {
@@ -225,7 +264,7 @@ func (f *fakeRestic) cat(ctx context.Context, cmd restic.Command, r *fakeRepo) (
 	switch {
 	case r.hangCat:
 		return f.hang(ctx, cmd, r, r.hangLine)
-	case r.wrongPassword || (r.password != "" && r.initialized && r.password != passwordOf(cmd.Env)):
+	case r.wrongPassword || (r.password != "" && r.initialized && r.password != passwordOf(cmd)):
 		lines(cmd.Stderr, golden(f.t, "wrong-password.stderr"))
 		return 12, nil
 	case !r.initialized || r.raceExists:
@@ -287,7 +326,7 @@ func (f *fakeRestic) init(ctx context.Context, cmd restic.Command, r *fakeRepo) 
 		return 0, nil
 	}
 	r.initialized = true
-	r.password = passwordOf(cmd.Env)
+	r.password = passwordOf(cmd)
 	lines(cmd.Stdout, strings.ReplaceAll(golden(f.t, "init.json"), goldenID, r.id))
 	return 0, nil
 }

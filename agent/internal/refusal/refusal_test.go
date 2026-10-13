@@ -18,7 +18,7 @@ func TestEveryReasonHasAClass(t *testing.T) {
 		SSHClientMissing, SSHClientFailed, SSHHomeInvalid, SSHFileRejected, SSHKeyNotAuthorized,
 		HostKeyUnconfirmed, HostKeyMismatch, HostKeyRejected, HostKeyChanged, RepositoryNotInitialized,
 		SnapshotUnknown, SnapshotAmbiguous, TargetInvalid, TargetNotEmpty, RootTargetRefused, PathNotInSnapshot,
-		RestoreIncomplete, TargetWrite, TargetBusy}
+		RestoreIncomplete, TargetWrite, TargetBusy, SetprivMissing}
 	if len(classes) != len(reasons) {
 		t.Errorf("%d reasons have a class, %d exist", len(classes), len(reasons))
 	}
@@ -65,7 +65,7 @@ func TestTheReasonsOfRepoRestoreHaveTheClassesOfTheSpecification(t *testing.T) {
 	for reason, class := range map[Reason]Class{
 		SnapshotUnknown: ClassUsage, SnapshotAmbiguous: ClassUsage, TargetInvalid: ClassUsage,
 		TargetNotEmpty: ClassUsage, RootTargetRefused: ClassUsage, PathNotInSnapshot: ClassUsage,
-		RestoreIncomplete: ClassAgentError, TargetWrite: ClassWrite, TargetBusy: ClassTemporary,
+		RestoreIncomplete: ClassAgentError, TargetWrite: ClassWrite, TargetBusy: ClassTemporary, SetprivMissing: ClassAgentError,
 	} {
 		if got := ClassOf(reason); got != class {
 			t.Errorf("%s: class %d, want %d", reason, got, class)

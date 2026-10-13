@@ -5,6 +5,7 @@ package main
 
 import (
 	"net"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -141,15 +142,39 @@ func TestResticRestoresAsRootAndReadsAsTheServiceUser(t *testing.T) {
 	}
 }
 
-func TestThePasswordGoesToResticAsAFileOnly(t *testing.T) {
+// Р78: restic of the service user reads the password file by its path; restic
+// as root gets the password from the pipe the agent filled, never a path of a
+// file of the service user.
+func TestResticOfTheServiceUserReadsThePasswordFileByItsPath(t *testing.T) {
+	h := restoreHost(t)
+	h.restore(idF)
+	list := h.restic.callsTo(h.path("base"), "snapshots")[0]
+	if list.runAs == nil || list.runAs.UID != serviceUID || list.passwordFile != h.path("secrets/base.pass") || list.password != passMarker {
+		t.Errorf("the list: ran as %+v, env %q", list.runAs, list.env)
+	}
+}
+
+func TestResticAsRootGetsThePasswordFromAnInheritedPipe(t *testing.T) {
 	h := restoreHost(t)
 	h.restore(idF)
 	c := h.restoreCalls()[0]
-	if envValue(c.env, "RESTIC_PASSWORD_FILE") != h.path("secrets/base.pass") || c.password != passMarker {
-		t.Errorf("env %q", c.env)
+	if c.passwordFile != "" || c.password != passMarker {
+		t.Errorf("env %q, password %q", c.env, c.password)
 	}
-	if strings.Contains(strings.Join(c.args, " "), passMarker) {
-		t.Errorf("a password in the arguments: %q", c.args)
+	i := slices.Index(c.args, "--password-file")
+	if i < 0 || !strings.HasPrefix(c.args[i+1], "/proc/self/fd/") {
+		t.Errorf("args %q: the password must come from an inherited descriptor", c.args)
+	}
+}
+
+func TestNoPasswordAndNoPathOfItsFileReachResticAsRoot(t *testing.T) {
+	h := restoreHost(t)
+	h.restore(idF)
+	c := h.restoreCalls()[0]
+	for _, kv := range append(slices.Clone(c.env), c.args...) {
+		if strings.Contains(kv, passMarker) || strings.Contains(kv, h.path("secrets")) {
+			t.Errorf("the password or its file in %q", kv)
+		}
 	}
 }
 
@@ -187,6 +212,29 @@ func TestSSHForAnSFTPRepositoryRunsAsTheServiceUser(t *testing.T) {
 			t.Errorf("%s was opened by root", opened)
 		}
 	}
+}
+
+// Р77
+func TestAnSFTPRepositoryWithoutSetprivIsRefusedBeforeResticIsCalled(t *testing.T) {
+	h, _ := restoreSFTPHost(t)
+	ok(t, os.Remove(h.path("bin/setpriv")))
+	before := h.hostTree()
+	code, _, stderr := h.sudo("repo", "restore", "extra", "aaaa1111", "--target", h.target(), "--config", "C")
+	assertRefusal(t, code, stderr, exitAgentError, "SETPRIV_MISSING")
+	for _, want := range []string{"setpriv", "util-linux"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr lacks %q: %s", want, stderr)
+		}
+	}
+	h.assertNoBackendCalls()
+	h.assertHostUnchanged(before)
+}
+
+func TestALocalRepositoryNeedsNoSetpriv(t *testing.T) {
+	h := restoreHost(t)
+	ok(t, os.Remove(h.path("bin/setpriv")))
+	code, _, _ := h.restore(idF)
+	assertCode(t, code, exitOK)
 }
 
 func TestOtherRepositoriesGetNoSFTPCommand(t *testing.T) {
@@ -287,6 +335,21 @@ func TestRestoreHelp(t *testing.T) {
 		}
 	}
 	h.assertNoBackendCalls()
+}
+
+// Р74, Р72, Р77: the help does not offer --overwrite as working, and names
+// the new reasons.
+func TestRestoreHelpSaysTheTargetIsEmptyOrNewAndOverwriteIsNotAvailable(t *testing.T) {
+	h := newSetupHost(t)
+	_, stdout, _ := h.sudo("repo", "restore", "--help")
+	for _, want := range []string{"empty or new directory", "--overwrite is not available yet", "SETPRIV_MISSING", "ENV_FILE_INVALID", "BACKEND_NOT_SUPPORTED", "util-linux"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("help lacks %q:\n%s", want, stdout)
+		}
+	}
+	if strings.Contains(stdout, "files of the\n                             snapshot replace") || strings.Contains(stdout, "(together with --overwrite)") {
+		t.Errorf("the help still offers --overwrite:\n%s", stdout)
+	}
 }
 
 func TestAnAddressResticCannotReachIsRefusedBeforeTheTargetIsMade(t *testing.T) {

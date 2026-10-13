@@ -26,6 +26,14 @@ type recordingFS struct {
 	mu        sync.Mutex
 	owners    map[string][2]int
 	failMkdir string
+	// failMove is the name of an entry whose move fails with a mount point
+	// on the way (EXDEV); asOwner, if not nil, is the owner every directory
+	// seems to have.
+	failMove string
+	asOwner  *uint32
+	// failChown and failStat make the owner change and the look at a
+	// directory fail.
+	failChown, failStat bool
 }
 
 func newRecordingFS() *recordingFS { return &recordingFS{owners: map[string][2]int{}} }
@@ -59,7 +67,49 @@ func (d recordingDir) Mkdir(name string, perm fs.FileMode) (hostsetup.Dir, error
 	return d.wrap(d.Dir.Mkdir(name, perm))
 }
 
+// Stat shows the owner a Chown recorded (a test is not root), or the owner
+// the test made up.
+func (d recordingDir) Stat() (fs.FileInfo, error) {
+	info, err := d.Dir.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if d.fsys.failStat {
+		return nil, &fs.PathError{Op: "fstat", Path: d.Path(), Err: syscall.EIO}
+	}
+	d.fsys.mu.Lock()
+	defer d.fsys.mu.Unlock()
+	if d.fsys.asOwner != nil {
+		return ownedInfo{info, *d.fsys.asOwner}, nil
+	}
+	if o, ok := d.fsys.owners[d.Path()]; ok {
+		return ownedInfo{info, uint32(o[0])}, nil
+	}
+	return info, nil
+}
+
+type ownedInfo struct {
+	fs.FileInfo
+	uid uint32
+}
+
+func (i ownedInfo) Sys() any {
+	st := *i.FileInfo.Sys().(*syscall.Stat_t)
+	st.Uid = i.uid
+	return &st
+}
+
+func (d recordingDir) RenameNoReplace(oldName string, newDir hostsetup.Dir, newName string) error {
+	if oldName == d.fsys.failMove {
+		return &fs.PathError{Op: "renameat2", Path: newName, Err: hostsetup.ErrCrossDevice}
+	}
+	return d.Dir.RenameNoReplace(oldName, newDir, newName)
+}
+
 func (d recordingDir) Chown(uid, gid int) error {
+	if d.fsys.failChown {
+		return &fs.PathError{Op: "fchown", Path: d.Path(), Err: syscall.EPERM}
+	}
 	d.fsys.mu.Lock()
 	defer d.fsys.mu.Unlock()
 	d.fsys.owners[d.Path()] = [2]int{uid, gid}
@@ -85,9 +135,27 @@ func mustWrite(t *testing.T, path, content string) {
 	}
 }
 
+// check judges the target and lets go of it again; it returns the clean path.
 func check(t *testing.T, tgt restore.Target) (string, *refusal.Failure) {
 	t.Helper()
-	return restore.CheckTarget(newRecordingFS(), tgt)
+	held, f := restore.CheckTarget(newRecordingFS(), tgt)
+	if f != nil {
+		return "", f
+	}
+	held.Release()
+	return held.Path, nil
+}
+
+// openTarget is CheckTarget and Create: the target held, made if it was missing.
+func openTarget(fsys hostsetup.FS, path string) (*restore.Held, *refusal.Failure) {
+	held, f := restore.CheckTarget(fsys, restore.Target{Path: path})
+	if f != nil {
+		return nil, f
+	}
+	if f := held.Create(); f != nil {
+		return nil, f
+	}
+	return held, nil
 }
 
 func wantFailure(t *testing.T, f *refusal.Failure, reason refusal.Reason, mentions ...string) {
@@ -126,14 +194,11 @@ func TestARelativeTargetIsInvalid(t *testing.T) {
 	wantFailure(t, f, refusal.TargetInvalid, "absolute")
 }
 
-func TestANonEmptyTargetNeedsOverwrite(t *testing.T) {
+func TestANonEmptyTargetIsRefused(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "keep.txt"), "x")
 	_, f := check(t, restore.Target{Path: dir})
-	wantFailure(t, f, refusal.TargetNotEmpty, dir, "--overwrite")
-	if _, f := check(t, restore.Target{Path: dir, Overwrite: true}); f != nil {
-		t.Fatalf("with overwrite: %v", f)
-	}
+	wantFailure(t, f, refusal.TargetNotEmpty, dir, "empty or new directory")
 }
 
 func TestAnEmptyTargetIsFine(t *testing.T) {
@@ -207,16 +272,12 @@ func TestATargetInsideOrEqualToAnAvoidedDirectoryIsInvalid(t *testing.T) {
 }
 
 // Н31
-func TestTheRootNeedsAllowRootTargetAndOverwrite(t *testing.T) {
+func TestTheRootNeedsAllowRootTargetAndIsNeverEmpty(t *testing.T) {
 	for _, root := range []string{"/", "/.", "//"} {
-		_, f := check(t, restore.Target{Path: root, Overwrite: true})
+		_, f := check(t, restore.Target{Path: root})
 		wantFailure(t, f, refusal.RootTargetRefused, "--allow-root-target")
 		_, f = check(t, restore.Target{Path: root, AllowRoot: true})
-		wantFailure(t, f, refusal.TargetNotEmpty, "--overwrite")
-		got, f := check(t, restore.Target{Path: root, AllowRoot: true, Overwrite: true})
-		if f != nil || got != "/" {
-			t.Errorf("%q with both: %q, %v", root, got, f)
-		}
+		wantFailure(t, f, refusal.TargetNotEmpty, "/", "empty or new directory")
 	}
 }
 
@@ -225,7 +286,7 @@ func TestACreatedTargetBelongsToRootWithMode0700EvenWithUmask000(t *testing.T) {
 	old := syscall.Umask(0)
 	defer syscall.Umask(old)
 	fsys := newRecordingFS()
-	held, f := restore.OpenTarget(fsys, filepath.Join(dir, "a/b/c"))
+	held, f := openTarget(fsys, filepath.Join(dir, "a/b/c"))
 	if f != nil {
 		t.Fatal(f)
 	}
@@ -245,7 +306,7 @@ func TestACreatedTargetBelongsToRootWithMode0700EvenWithUmask000(t *testing.T) {
 func TestAnExistingTargetIsLeftAsItIs(t *testing.T) {
 	dir := t.TempDir()
 	fsys := newRecordingFS()
-	held, f := restore.OpenTarget(fsys, dir)
+	held, f := openTarget(fsys, dir)
 	if f != nil {
 		t.Fatal(f)
 	}
@@ -260,16 +321,16 @@ func TestAnExistingTargetIsLeftAsItIs(t *testing.T) {
 
 func TestASecondRestoreIntoTheSameTargetIsBusy(t *testing.T) {
 	dir := t.TempDir()
-	first, f := restore.OpenTarget(newRecordingFS(), dir)
+	first, f := openTarget(newRecordingFS(), dir)
 	if f != nil {
 		t.Fatal(f)
 	}
-	_, f = restore.OpenTarget(newRecordingFS(), dir)
+	_, f = openTarget(newRecordingFS(), dir)
 	if f == nil || f.Reason != refusal.TargetBusy || f.Class != refusal.ClassTemporary || !strings.Contains(f.Detail, dir) {
 		t.Fatalf("second: %v", f)
 	}
 	first.Release()
-	again, f := restore.OpenTarget(newRecordingFS(), dir)
+	again, f := openTarget(newRecordingFS(), dir)
 	if f != nil {
 		t.Fatalf("after release: %v", f)
 	}
@@ -278,7 +339,7 @@ func TestASecondRestoreIntoTheSameTargetIsBusy(t *testing.T) {
 
 func TestAbandonRemovesTheDirectoriesThisRunCreatedWhenTheyAreEmpty(t *testing.T) {
 	dir := t.TempDir()
-	held, f := restore.OpenTarget(newRecordingFS(), filepath.Join(dir, "a/b"))
+	held, f := openTarget(newRecordingFS(), filepath.Join(dir, "a/b"))
 	if f != nil {
 		t.Fatal(f)
 	}
@@ -293,7 +354,7 @@ func TestAbandonRemovesTheDirectoriesThisRunCreatedWhenTheyAreEmpty(t *testing.T
 
 func TestAbandonKeepsWhatHoldsFiles(t *testing.T) {
 	dir := t.TempDir()
-	held, f := restore.OpenTarget(newRecordingFS(), filepath.Join(dir, "a/b"))
+	held, f := openTarget(newRecordingFS(), filepath.Join(dir, "a/b"))
 	if f != nil {
 		t.Fatal(f)
 	}
@@ -308,7 +369,7 @@ func TestADirectoryThatCannotBeCreatedIsATargetWriteFailureAndLeavesNothing(t *t
 	dir := t.TempDir()
 	fsys := newRecordingFS()
 	fsys.failMkdir = "c"
-	_, f := restore.OpenTarget(fsys, filepath.Join(dir, "a/b/c"))
+	_, f := openTarget(fsys, filepath.Join(dir, "a/b/c"))
 	if f == nil || f.Reason != refusal.TargetWrite || f.Class != refusal.ClassWrite {
 		t.Fatalf("failure %v", f)
 	}
@@ -320,6 +381,47 @@ func TestADirectoryThatCannotBeCreatedIsATargetWriteFailureAndLeavesNothing(t *t
 func TestAFileTurnedUpInThePathBetweenTheCheckAndTheOpenIsInvalid(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "f"), "x")
-	_, f := restore.OpenTarget(newRecordingFS(), filepath.Join(dir, "f"))
+	_, f := openTarget(newRecordingFS(), filepath.Join(dir, "f"))
 	wantFailure(t, f, refusal.TargetInvalid)
+}
+
+// Р79: an existing target is locked while it is walked, before it is judged
+// empty: the second command is told the target is busy, not that it is full.
+func TestAnExistingTargetThatAnotherRestoreHoldsIsBusyEvenWhenItIsNotEmpty(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "partial"), "x")
+	other, _, err := hostsetup.OpenDir(hostsetup.OS{}, dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = other.Close() }()
+	if err := other.Lock(); err != nil {
+		t.Fatal(err)
+	}
+	_, f := check(t, restore.Target{Path: dir})
+	if f == nil || f.Reason != refusal.TargetBusy || !strings.Contains(f.Detail, dir) {
+		t.Fatalf("failure %v", f)
+	}
+}
+
+func TestAnExistingTargetIsHeldFromTheCheckOn(t *testing.T) {
+	dir := t.TempDir()
+	held, f := restore.CheckTarget(newRecordingFS(), restore.Target{Path: dir})
+	if f != nil {
+		t.Fatal(f)
+	}
+	defer held.Release()
+	_, f = restore.CheckTarget(newRecordingFS(), restore.Target{Path: dir})
+	if f == nil || f.Reason != refusal.TargetBusy {
+		t.Fatalf("second check: %v", f)
+	}
+}
+
+// Р73: what an interrupted restore left behind makes the target non-empty,
+// and the refusal names it.
+func TestALeftoverStagingDirectoryIsNamedAsTheRemainsOfAnInterruptedRestore(t *testing.T) {
+	dir := t.TempDir()
+	mustMkdir(t, dir, ".sard-restore-x1y2")
+	_, f := check(t, restore.Target{Path: dir})
+	wantFailure(t, f, refusal.TargetNotEmpty, filepath.Join(dir, ".sard-restore-x1y2"), "interrupted restore", "remove")
 }

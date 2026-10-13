@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -154,5 +155,49 @@ func TestHasPathReportsTheExitCodeOfRestic(t *testing.T) {
 	f := newFixture(t, map[string]reply{"ls": {code: 12}})
 	if _, err := f.build().HasPath(context.Background(), fullID, "/x"); !errors.Is(err, restic.ErrWrongPassword) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// A8c-2 (Р73): restic is given the staging directory by descriptor 3 and
+// writes into its subdirectory root, never into a path of the target.
+func TestRestoreToWritesIntoTheRootDirectoryOfAnInheritedStagingDirectory(t *testing.T) {
+	staging, err := os.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = staging.Close() }()
+	f := newFixture(t, map[string]reply{"restore": {}})
+	f.files["/etc/sard/main.pass"], f.root = "pw\n", true
+	if _, err := f.build().RestoreTo(context.Background(), restic.RestoreRequest{SnapshotID: fullID, Staging: staging}); err != nil {
+		t.Fatal(err)
+	}
+	c := f.exec.call("restore")
+	want := []string{"restore", "--password-file", "/proc/self/fd/4", "--json", "--no-cache", "--no-lock", "--target", "/proc/self/fd/3/root", "--overwrite", "never", "--", fullID}
+	if !slices.Equal(c.Args, want) {
+		t.Errorf("args %q, want %q", c.Args, want)
+	}
+	if len(c.ExtraFiles) != 2 || c.ExtraFiles[0] != staging {
+		t.Errorf("inherited %v: the staging directory is descriptor 3, the password pipe 4", c.ExtraFiles)
+	}
+}
+
+// Р76: a quota is a lack of space; a read-only file system is its own error.
+func TestRestoreToTellsAQuotaAndAReadOnlyFileSystemFromOtherFailures(t *testing.T) {
+	for cause, want := range map[string]error{
+		"write /r/f: disk quota exceeded":   restic.ErrNoSpace,
+		"mkdir /r/d: read-only file system": restic.ErrReadOnly,
+	} {
+		item := fmt.Sprintf(`{"message_type":"error","error":{"message":%q},"during":"restore","item":"/f"}`, cause)
+		for name, lines := range map[string][]string{
+			"item":  {item, `{"message_type":"exit_error","code":1,"message":"Fatal: There were 1 errors"}`},
+			"fatal": {"Fatal: " + cause},
+		} {
+			f := newFixture(t, map[string]reply{"restore": {code: 1}})
+			f.exec.lines = lines
+			_, err := f.build().RestoreTo(context.Background(), restic.RestoreRequest{SnapshotID: fullID, Target: "/r"})
+			if !errors.Is(err, want) {
+				t.Errorf("%s, %s: err = %v, want %v", cause, name, err, want)
+			}
+		}
 	}
 }

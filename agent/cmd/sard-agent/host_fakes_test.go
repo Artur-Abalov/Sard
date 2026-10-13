@@ -48,6 +48,26 @@ type fakeFS struct {
 	opened []string
 	// defaultUID is the owner a file nobody changed seems to have.
 	defaultUID uint32
+	// failErr, if not nil, is the error a failing step reports.
+	failErr error
+	// crossDevice is the name of an entry whose move fails with EXDEV;
+	// stagingOwner, if not zero, is the owner a temporary directory of repo
+	// restore seems to have.
+	crossDevice  string
+	stagingOwner int
+}
+
+// countEvents counts the events that start with the text.
+func (f *fakeFS) countEvents(prefix string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, e := range f.events {
+		if strings.HasPrefix(e, prefix) {
+			n++
+		}
+	}
+	return n
 }
 
 // pathCall notes an operation on a full path.
@@ -76,6 +96,9 @@ var errFakeFailure = errors.New("injected failure")
 
 func (f *fakeFS) fails(op, path string) error {
 	if f.failOn == op && strings.Contains(path, f.failPath) {
+		if f.failErr != nil {
+			return &fs.PathError{Op: op, Path: path, Err: f.failErr}
+		}
 		return &fs.PathError{Op: op, Path: path, Err: errFakeFailure}
 	}
 	return nil
@@ -276,7 +299,25 @@ func (d fakeDir) Chown(uid, gid int) error {
 	if err := d.fsys.nthChown(d.Path()); err != nil {
 		return err
 	}
+	if d.fsys.stagingOwner != 0 && strings.HasPrefix(filepath.Base(d.Path()), ".sard-restore-") {
+		uid = d.fsys.stagingOwner
+	}
 	d.fsys.setOwner(d.Path(), uid, gid)
+	return nil
+}
+
+// RenameNoReplace records the move; the entry called crossDevice is on
+// another file system.
+func (d fakeDir) RenameNoReplace(oldName string, newDir hostsetup.Dir, newName string) error {
+	if oldName == d.fsys.crossDevice {
+		return &fs.PathError{Op: "renameat2", Path: newName, Err: hostsetup.ErrCrossDevice}
+	}
+	if err := d.Dir.RenameNoReplace(oldName, newDir, newName); err != nil {
+		return err
+	}
+	d.fsys.mu.Lock()
+	defer d.fsys.mu.Unlock()
+	d.fsys.events = append(d.fsys.events, "dir-renamenoreplace "+filepath.Join(d.Path(), oldName)+" "+filepath.Join(newDir.Path(), newName))
 	return nil
 }
 
@@ -362,10 +403,15 @@ func (i ownedInfo) Sys() any {
 // alone (os.SameFile needs the real FileInfo).
 func (d fakeDir) Stat() (fs.FileInfo, error) {
 	info, err := d.Dir.Stat()
-	if filepath.Base(d.Path()) != ".ssh" {
-		return info, err
+	if _, recorded := d.fsys.ownerOf(d.Path()); filepath.Base(d.Path()) == ".ssh" || (recorded && isStaging(d.Path())) {
+		return d.fsys.seen(d.Path(), info, err)
 	}
-	return d.fsys.seen(d.Path(), info, err)
+	return info, err
+}
+
+// isStaging: the path is a temporary directory of repo restore, or its root.
+func isStaging(path string) bool {
+	return strings.Contains(path, "/.sard-restore-")
 }
 
 func (d fakeDir) OpenFile(name string) (hostsetup.ReadFile, error) {

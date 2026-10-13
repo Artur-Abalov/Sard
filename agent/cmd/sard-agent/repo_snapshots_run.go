@@ -54,14 +54,19 @@ func runRepoSnapshots(ctx context.Context, args []string, stdout, stderr io.Writ
 }
 
 func prepareSnapshots(ctx context.Context, opts hostOptions, who hostsetup.Principal, stderr io.Writer, deps hostDeps) (snapshotsState, int) {
-	return prepareRepository(ctx, "snapshots", opts, stderr, deps, func(config.Config, config.Repository) (hostsetup.Principal, int) { return who, exitOK })
+	return prepareRepository(ctx, "snapshots", opts, stderr, deps, func(config.Config, config.Repository) (hostsetup.Principal, int) { return who, exitOK }, noTools)
 }
+
+// noTools: repo snapshots needs nothing next to restic.
+func noTools(snapshotsState) *refusal.Failure { return nil }
 
 // prepareRepository is what repo snapshots and repo restore do before the
 // storage is touched: the config, the name, then check (the command's own
-// checks of the host, Р69, which also tell who runs restic), restic and the
-// files of the repository.
-func prepareRepository(ctx context.Context, sub string, opts hostOptions, stderr io.Writer, deps hostDeps, check func(config.Config, config.Repository) (hostsetup.Principal, int)) (snapshotsState, int) {
+// checks of the host, Р69, which also tell who runs restic), restic, tools
+// (what the command needs next to restic, if anything: setpriv, the
+// password and the env_file for root; Р77, Р78, Р72) and the files of
+// the repository.
+func prepareRepository(ctx context.Context, sub string, opts hostOptions, stderr io.Writer, deps hostDeps, check func(config.Config, config.Repository) (hostsetup.Principal, int), tools func(snapshotsState) *refusal.Failure) (snapshotsState, int) {
 	cfg, repo, index, code := findConfigured(sub, opts, stderr)
 	if code != exitOK {
 		return snapshotsState{}, code
@@ -73,6 +78,9 @@ func prepareRepository(ctx context.Context, sub string, opts hostOptions, stderr
 	binary, err := checkRestic(ctx, cfg, opts.configPath, deps.executable, deps.exec, runAs(who))
 	if err != nil {
 		return snapshotsState{}, reportRepoError(ctx, stderr, sub, err)
+	}
+	if f := tools(snapshotsState{cfg: cfg, repo: repo, binary: binary, who: who}); f != nil {
+		return snapshotsState{}, report(stderr, "repo "+sub, f)
 	}
 	checked, f := repoinit.Preflight(deps.host(who.Service.UID), repo, index, false)
 	if f != nil {

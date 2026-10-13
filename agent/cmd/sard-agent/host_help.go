@@ -327,9 +327,13 @@ latest: the newest snapshot of the source given with --source (latest needs
 --source: one repository holds the snapshots of many sources). Find the ids
 with `+"`sard-agent repo snapshots <name>`"+`.
 
-The files of the snapshot lie under their original paths inside the target:
-the snapshot of /srv/data restored into /r gives /r/srv/data/...
-Restoring into / puts the files on their own places.
+The target is an empty or new directory. The files of the snapshot lie
+under their original paths inside it: the snapshot of /srv/data restored into
+/r gives /r/srv/data/... restic writes into a temporary directory .sard-restore-*
+that only root can change, and the entries are moved into the target when it
+is done; a restore that was killed leaves that directory, and the next run
+asks you to remove it. --overwrite is not available yet (restoring into a
+directory that is not empty, and into /, comes with a later release).
 For a snapshot of PostgreSQL the files are laid out and the commands to
 restore the database are printed; the database itself is not restored.
 
@@ -337,9 +341,9 @@ Flags:
   --config string            path to the agent config (default /etc/sard/agent.yaml)
   --target string            the directory to restore into (required, absolute path); it is
                              created with the owner root and mode 0700 if it is missing
-  --overwrite                restore into a directory that is not empty: the files of the
-                             snapshot replace the files of the same name, other files stay
-  --allow-root-target        allow --target / (together with --overwrite)
+  --overwrite                not available yet: --overwrite is not available yet, restore
+                             into an empty or new directory
+  --allow-root-target        allow --target / (refused for now: the root is never empty)
   --path string              restore only this file or directory of the snapshot (repeatable);
                              an absolute path taken literally, no patterns
   --source string            only the snapshots of this source id; with latest, the source
@@ -351,9 +355,9 @@ sard-agent). An interrupt (SIGINT, SIGTERM) stops restic; files that were
 restored before it stay in the target.
 `, []repoHelpCode{
 		codeOK,
-		{exitAgentError, "agent error", "restic is missing or unusable; RESTORE_INCOMPLETE: restic could not restore some files (the first ten are named); BACKEND_REFUSED"},
-		usageCode("flags, rights (PRIVILEGES_REQUIRED, SERVICE_USER_UNKNOWN), config, REPOSITORY_UNKNOWN, SNAPSHOT_UNKNOWN, SNAPSHOT_AMBIGUOUS, TARGET_INVALID, TARGET_NOT_EMPTY, ROOT_TARGET_REFUSED, PATH_NOT_IN_SNAPSHOT, WRONG_PASSWORD, PASSWORD_FILE_MISSING, SECRET_FILE_REJECTED, STORAGE_ACCESS_DENIED"),
+		{exitAgentError, "agent error", "restic is missing or unusable; RESTORE_INCOMPLETE: restic could not restore some files (the first ten are named); BACKEND_REFUSED; SETPRIV_MISSING: an sftp: repository needs setpriv (util-linux) to start ssh as the service user"},
+		usageCode("flags, rights (PRIVILEGES_REQUIRED, SERVICE_USER_UNKNOWN), config, REPOSITORY_UNKNOWN, SNAPSHOT_UNKNOWN, SNAPSHOT_AMBIGUOUS, TARGET_INVALID, TARGET_NOT_EMPTY, ROOT_TARGET_REFUSED, PATH_NOT_IN_SNAPSHOT, WRONG_PASSWORD, PASSWORD_FILE_MISSING, SECRET_FILE_REJECTED, ENV_FILE_INVALID (a variable in env_file that restic as root may not get), BACKEND_NOT_SUPPORTED (rclone, azure, b2, gs, swift), STORAGE_ACCESS_DENIED"),
 		{exitTemporary, "temporary", "the storage is unreachable (BACKEND_UNAVAILABLE), --timeout ran out, the command was interrupted, or another restore holds the target (TARGET_BUSY); files restored so far stay in the target"},
-		{exitWrite, "write", "TARGET_WRITE: the target could not be created or written (no space)"},
+		{exitWrite, "write", "TARGET_WRITE: the target could not be created or written (no space, quota, read-only file system, a name that turned up in the target while restic worked)"},
 	})
 }

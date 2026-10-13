@@ -8,19 +8,49 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"slices"
 	"strings"
 )
 
 // ErrNoSpace: restic could not write a file because the disk of the target
-// is full.
+// is full or the quota of the user is used up (ENOSPC, EDQUOT, Р76).
 var ErrNoSpace = errors.New("no space left on the target")
 
-const noSpaceCause = "no space left on device"
+// ErrReadOnly: the file system of the target is read-only (EROFS, Р76).
+var ErrReadOnly = errors.New("the file system of the target is read-only")
+
+// targetCauses are the texts of the errors of the system that say the target
+// cannot be written, and the error each stands for.
+var targetCauses = []struct {
+	text string
+	err  error
+}{
+	{"no space left on device", ErrNoSpace},
+	{"disk quota exceeded", ErrNoSpace},
+	{"read-only file system", ErrReadOnly},
+}
+
+// targetCause is the error for a text of restic that says the target cannot
+// be written; nil for any other text.
+func targetCause(msg string) error {
+	for _, c := range targetCauses {
+		if strings.Contains(msg, c.text) {
+			return c.err
+		}
+	}
+	return nil
+}
 
 // RestoreRequest is a restore of repo restore (A8c-2).
 type RestoreRequest struct {
 	// SnapshotID is the full id of the snapshot, Target the directory.
 	SnapshotID, Target string
+	// Staging, if not nil, is an open directory restic restores into, as its
+	// subdirectory root, instead of Target: it is inherited as descriptor 3
+	// and restic gets --target /proc/self/fd/3/root. restic then writes only
+	// below a directory that nobody but root can change (Р73).
+	Staging *os.File
 	// Overwrite lets restic replace files that are in Target already; without
 	// it restic never touches a file that exists.
 	Overwrite bool
@@ -30,6 +60,11 @@ type RestoreRequest struct {
 	// to reach an sftp: repository (sftp.command).
 	SFTPCommand string
 }
+
+// stagingTarget is the root directory of the staging directory, which restic
+// inherits as descriptor 3. The bare /proc/self/fd/3 does not work: restic
+// removes the target's magic link when it makes the directory (ADR 0056).
+const stagingTarget = "/proc/self/fd/3/root"
 
 // RestoreSummary is what restic reports of a restore.
 type RestoreSummary struct{ Files, Bytes uint64 }
@@ -45,17 +80,12 @@ func (e *RestoreError) Error() string {
 	return fmt.Sprintf("restic could not restore %d paths", len(e.Paths()))
 }
 
-// Is: a file that could not be written for lack of space is ErrNoSpace.
+// Is: a file that could not be written for lack of space is ErrNoSpace, one
+// on a read-only file system ErrReadOnly.
 func (e *RestoreError) Is(target error) bool {
-	if target != ErrNoSpace {
-		return false
-	}
-	for _, it := range e.Items {
-		if strings.Contains(it.Message, noSpaceCause) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(e.Items, func(it ItemError) bool {
+		return targetCause(it.Message) == target
+	})
 }
 
 // RestoreTo runs `restic restore` of a whole snapshot, or of the paths in
@@ -64,23 +94,32 @@ func (e *RestoreError) Is(target error) bool {
 // process may be root, which writes the files of the snapshot with their
 // owners.
 func (c *CLI) RestoreTo(ctx context.Context, req RestoreRequest) (RestoreSummary, error) {
-	if req.SnapshotID == "" || req.Target == "" {
+	target, extra := req.Target, []*os.File(nil)
+	if req.Staging != nil {
+		target, extra = stagingTarget, []*os.File{req.Staging}
+	}
+	if req.SnapshotID == "" || target == "" {
 		return RestoreSummary{}, fmt.Errorf("%w: snapshot and target are required", ErrInvalidRequest)
 	}
+	var summary RestoreSummary
+	res, err := c.runRepo(ctx, call{args: restoreArgs(req, target), extra: extra, stdout: func(line []byte) { summary = readSummary(line, summary) }})
+	return summary, incomplete(res, err)
+}
+
+// restoreArgs are the arguments of `restic restore` of the request.
+func restoreArgs(req RestoreRequest, target string) []string {
 	overwrite := "never"
 	if req.Overwrite {
 		overwrite = "always"
 	}
-	args := []string{"restore", "--json", "--no-cache", "--no-lock", "--target", req.Target, "--overwrite", overwrite}
+	args := []string{"restore", "--json", "--no-cache", "--no-lock", "--target", target, "--overwrite", overwrite}
 	for _, p := range req.Include {
 		args = append(args, "--include", p)
 	}
 	if req.SFTPCommand != "" {
 		args = append(args, "-o", "sftp.command="+req.SFTPCommand)
 	}
-	var summary RestoreSummary
-	res, err := c.runRepo(ctx, call{args: append(args, "--", req.SnapshotID), stdout: func(line []byte) { summary = readSummary(line, summary) }})
-	return summary, incomplete(res, err)
+	return append(args, "--", req.SnapshotID)
 }
 
 // readSummary is the summary the line holds, or the one given.

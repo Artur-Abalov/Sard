@@ -76,6 +76,7 @@ func (a restoreArgs) includes(path string) bool {
 func (f *fakeRestic) restore(ctx context.Context, cmd restic.Command, r *fakeRepo) (int, error) {
 	rs := &r.restoreState
 	args := parseRestoreArgs(cmd.Args)
+	args.target = inheritedTarget(args.target, cmd.ExtraFiles)
 	if rs.before != nil {
 		rs.before(args.target)
 	}
@@ -105,12 +106,30 @@ func (f *fakeRestic) restore(ctx context.Context, cmd restic.Command, r *fakeRep
 	return 0, nil
 }
 
+// inheritedTarget is the target as this process can write to it: restic
+// would write to /proc/self/fd/3/root with the directory it inherited as
+// descriptor 3; the fake is the same process as the command, and the
+// directory is a file of it.
+func inheritedTarget(target string, inherited []*os.File) string {
+	rest, ok := strings.CutPrefix(target, "/proc/self/fd/3/")
+	if !ok || len(inherited) == 0 {
+		return target
+	}
+	return fmt.Sprintf("/proc/self/fd/%d/%s", inherited[0].Fd(), rest)
+}
+
+// writable: the target is inside the temporary directory of the test or is
+// a directory the command handed on.
+func writable(target string) bool {
+	return strings.HasPrefix(target, os.TempDir()) || strings.HasPrefix(target, "/proc/self/fd/")
+}
+
 // write puts the files of the snapshot into the target, as restic does, but
 // only inside the temporary directory of the test: a target "/" is recorded
 // and never written.
 func (rs *fakeRestore) write(f *fakeRestic, a restoreArgs) restic.RestoreSummary {
 	var summary restic.RestoreSummary
-	if rs.writeNothing || !strings.HasPrefix(a.target, os.TempDir()) {
+	if rs.writeNothing || !writable(a.target) {
 		return summary
 	}
 	for _, file := range rs.files[a.snapshot] {

@@ -54,22 +54,32 @@ func repoSubcommand(args []string) hostCommand {
 	}[args[0]]
 }
 
-// newRestic is the wrapper for one repository of the config.
-func newRestic(cfg config.Config, binary string, deps hostDeps, repo config.Repository, as *restic.RunAs) *restic.CLI {
-	return newResticReading(cfg, binary, deps, repo, as, runUID(deps, as))
-}
-
-// newResticReading is newRestic whose env_file is read as a file of the
-// user readUID, which differs from the user restic runs as when root runs
-// restic for repo restore: the files belong to the service user (A1).
-func newResticReading(cfg config.Config, binary string, deps hostDeps, repo config.Repository, as *restic.RunAs, readUID uint32) *restic.CLI {
+// newResticAsRoot is the wrapper for the restic that repo restore runs as
+// root, so that the files get the owners of the snapshot. The env_file and
+// the password file are files of the service user (A1) and are read as such;
+// root gets only the variables allowed for the kind of storage, and the
+// password through a pipe (Р72, Р78).
+func newResticAsRoot(cfg config.Config, binary string, deps hostDeps, repo config.Repository, serviceUID uint32) *restic.CLI {
 	return restic.New(restic.Options{
 		Binary:   binary,
 		CacheDir: cfg.Restic.CacheDir,
 		Path:     deps.pathEnv,
 		Exec:     deps.exec,
 		Keys:     crypto.NewResticAES(map[string]string{repo.Name: repo.PasswordFile}),
-		ReadFile: deps.ownedReader(readUID),
+		ReadFile: deps.ownedReader(serviceUID),
+		AsRoot:   true,
+	}, repo)
+}
+
+// newRestic is the wrapper for one repository of the config.
+func newRestic(cfg config.Config, binary string, deps hostDeps, repo config.Repository, as *restic.RunAs) *restic.CLI {
+	return restic.New(restic.Options{
+		Binary:   binary,
+		CacheDir: cfg.Restic.CacheDir,
+		Path:     deps.pathEnv,
+		Exec:     deps.exec,
+		Keys:     crypto.NewResticAES(map[string]string{repo.Name: repo.PasswordFile}),
+		ReadFile: deps.ownedReader(runUID(deps, as)),
 		RunAs:    as,
 	}, repo)
 }

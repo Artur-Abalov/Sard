@@ -129,3 +129,22 @@ func TestLatestKeepsTheNewestOfTwoWithTheSameTimeByID(t *testing.T) {
 		t.Fatalf("got %v", got.ID)
 	}
 }
+
+// Р75: with a source the id or the prefix is looked for among the snapshots
+// of that source only.
+func TestAnIDOfAnotherSourceIsUnknownAndNamesTheSource(t *testing.T) {
+	_, f := restore.Select(snapshotsF(), "bbbb1111", "base", "s1")
+	if f == nil || f.Reason != refusal.SnapshotUnknown || !strings.Contains(f.Detail, "bbbb1111") || !strings.Contains(f.Detail, "s1") {
+		t.Fatalf("f = %v", f)
+	}
+}
+
+func TestAPrefixFittingSnapshotsOfTwoSourcesIsAmbiguousWithinTheSourceOnly(t *testing.T) {
+	list := snapshotsF()
+	list[0].ID = "aaaa1111e" + strings.Repeat("0", 55) // s1
+	list[2].ID = "aaaa1111f" + strings.Repeat("0", 55) // s2
+	got, f := restore.Select(list, "aaaa1111", "base", "s1")
+	if f != nil || got.ID != list[0].ID {
+		t.Fatalf("got %v, %v", got.ID, f)
+	}
+}

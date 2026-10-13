@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"slices"
 	"strings"
 
@@ -68,6 +69,10 @@ type Options struct {
 	Stderr io.Writer
 	// RunAs, if not nil, is the user restic runs as (Р6 of A8a).
 	RunAs *RunAs
+	// AsRoot says that restic runs as root (repo restore, Р72, Р78): its
+	// environment then holds only the variables of the kind of storage that
+	// the env_file may set, and the password reaches it through a pipe.
+	AsRoot bool
 }
 
 // Errors for restic's documented exit codes and for output the wrapper
@@ -200,6 +205,9 @@ type call struct {
 	args   []string
 	stdout func(line []byte)
 	stdin  io.Reader
+	// extra are inherited as descriptors 3, 4, ...; the password pipe of a
+	// restic that runs as root is added after them.
+	extra []*os.File
 	// stderr sees each stderr line after the wrapper has.
 	stderr func(line []byte)
 }
@@ -210,7 +218,39 @@ func (c *CLI) runRepo(ctx context.Context, cl call) (*result, error) {
 	if err != nil {
 		return &result{}, err
 	}
+	if c.opts.AsRoot {
+		pipe, err := c.passwordPipe()
+		if err != nil {
+			return &result{}, err
+		}
+		defer func() { _ = pipe.Close() }()
+		cl.args = slices.Insert(cl.args, 1, "--password-file", fmt.Sprintf("/proc/self/fd/%d", firstFD+len(cl.extra)))
+		cl.extra = append(slices.Clone(cl.extra), pipe)
+	}
 	return c.run(ctx, env, cl)
+}
+
+// firstFD is the number the first of Command.ExtraFiles has in the process.
+const firstFD = 3
+
+// passwordPipe reads the password file as a file of the service user (A1,
+// opts.ReadFile) and returns the read end of a pipe that carries it. Root
+// gets the password by descriptor, never the path of a file the service user
+// could swap for a FIFO or a link (Р78).
+func (c *CLI) passwordPipe() (*os.File, error) {
+	password, err := c.opts.ReadFile(c.repo.PasswordFile)
+	if err != nil {
+		return nil, fmt.Errorf("password_file: %w", err)
+	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		_, _ = w.Write(password) // a restic that does not read it ends with EPIPE
+		_ = w.Close()
+	}()
+	return r, nil
 }
 
 // run runs a restic command and turns a non-zero exit code into an error.
@@ -231,6 +271,7 @@ func (c *CLI) start(ctx context.Context, env []string, cl call) (*result, error)
 		Args:       cl.args,
 		Env:        env,
 		Stdin:      cl.stdin,
+		ExtraFiles: cl.extra,
 		Stdout:     cl.stdout,
 		Stderr:     res.stderr(cl.stderr),
 		StderrCopy: c.opts.Stderr,
@@ -373,9 +414,10 @@ var networkCauses = []string{
 
 // fatalKind recognises restic's fatal message; nil for the unknown ones.
 func fatalKind(msg string) error {
+	if err := targetCause(msg); err != nil {
+		return err
+	}
 	switch {
-	case strings.Contains(msg, noSpaceCause):
-		return ErrNoSpace
 	case strings.Contains(msg, "config file already exists"):
 		return ErrRepositoryExists
 	case strings.Contains(msg, "an empty password is not allowed"):

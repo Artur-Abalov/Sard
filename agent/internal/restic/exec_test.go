@@ -47,6 +47,7 @@ var helperModes = map[string]func(){
 	"tree":  startStubbornChild,
 	"leak":  leaveChildBehind,
 	"sleep": func() { time.Sleep(time.Minute) },
+	"fd3":   func() { data, _ := io.ReadAll(os.NewFile(3, "fd3")); fmt.Printf("%s", data) },
 	"stubborn": func() {
 		signal.Ignore(syscall.SIGTERM)
 		fmt.Println("ready")
@@ -128,6 +129,23 @@ func TestProcessExecutorPassesOnlyTheGivenEnvironment(t *testing.T) {
 	want := cmd.Env
 	if code != 0 || err != nil || !slices.Equal(out.all(), want) {
 		t.Fatalf("code = %d, err = %v, env = %q, want %q", code, err, out.all(), want)
+	}
+}
+
+func TestProcessExecutorHandsTheExtraFilesToTheProcessFromDescriptor3(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = r.Close() }()
+	_, _ = w.WriteString("secret\n")
+	_ = w.Close()
+	var out lines
+	cmd := helper(t, "fd3")
+	cmd.Stdout, cmd.ExtraFiles = out.add, []*os.File{r}
+	code, err := restic.ProcessExecutor{}.Run(context.Background(), cmd)
+	if code != 0 || err != nil || !slices.Equal(out.all(), []string{"secret"}) {
+		t.Fatalf("code = %d, err = %v, out = %q", code, err, out.all())
 	}
 }
 

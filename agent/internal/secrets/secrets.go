@@ -203,5 +203,8 @@ func checkOwned(path string, info fs.FileInfo, uid uint32) error {
 	if !info.Mode().IsRegular() || !ok {
 		return fmt.Errorf("secret file %s is not a regular file", path)
 	}
+	if st.Nlink != 1 {
+		return fmt.Errorf("secret file %s has %d names; it must have one", path, st.Nlink)
+	}
 	return judge("", path, info.Mode().Perm(), st.Uid, uid)
 }

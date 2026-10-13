@@ -22,6 +22,9 @@ func restoreHost(t *testing.T) *setupHost {
 	t.Helper()
 	h := snapshotsHost(t)
 	two := []snapFile{{"/srv/data/a.txt", "A-DATA"}, {"/srv/data/sub/b.txt", "B-DATA"}}
+	// the PATH of restic holds setpriv, as the package util-linux brings it
+	h.write(h.path("bin/setpriv"), "#!/bin/sh\n", 0o755)
+	h.deps.pathEnv = h.path("bin")
 	h.base().restoreState.files = map[string][]snapFile{
 		idF: two, idF2: two,
 		idP: {{"/app.dump", "DUMP-BYTES"}}, idG: {{"/app.globals.sql", "GLOBALS-BYTES"}},
@@ -184,4 +187,41 @@ func (h *setupHost) waitForRestore() {
 		time.Sleep(time.Millisecond)
 	}
 	h.t.Fatal("restic restore was not called")
+}
+
+// Р75: --source narrows the search by id or prefix as well.
+func TestSourceWithTheIDOfASnapshotOfThatSourceRestoresIt(t *testing.T) {
+	h := restoreHost(t)
+	code, _, stderr := h.restore("aaaa1111", "--source", "s1")
+	assertCode(t, code, exitOK)
+	if stderr != "" {
+		t.Errorf("stderr %q", stderr)
+	}
+	h.assertRestored(idF)
+}
+
+func TestSourceWithTheIDOfASnapshotOfAnotherSourceFindsNoSnapshot(t *testing.T) {
+	h := restoreHost(t)
+	before := h.hostTree()
+	code, _, stderr := h.restore("bbbb1111", "--source", "s1")
+	assertRefusal(t, code, stderr, exitUsage, "SNAPSHOT_UNKNOWN")
+	for _, want := range []string{"bbbb1111", "s1"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr lacks %q: %s", want, stderr)
+		}
+	}
+	h.assertHostUnchanged(before)
+}
+
+func TestAnAmbiguousPrefixIsCountedAmongTheSnapshotsOfTheSourceOnly(t *testing.T) {
+	h := restoreHost(t)
+	h.base().snapshots[3].ID = "aaaa1111e" + strings.Repeat("0", 55) // F, source s1
+	h.base().snapshots[4].ID = "aaaa1111f" + strings.Repeat("0", 55) // P, source s2
+	code, _, stderr := h.restore("aaaa1111", "--source", "s1")
+	if code != exitOK {
+		t.Fatalf("code %d: %s", code, stderr)
+	}
+	if calls := h.restoreCalls(); len(calls) != 1 || !strings.HasPrefix(calls[0].args[len(calls[0].args)-1], "aaaa1111e") {
+		t.Errorf("restore calls %v", calls)
+	}
 }

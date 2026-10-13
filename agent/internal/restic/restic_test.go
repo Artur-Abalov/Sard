@@ -51,10 +51,13 @@ type fakeExec struct {
 	killed  bool     // a readStdin reply was stopped before EOF
 	fatal   string   // stderr line printed by every reply, for synthetic cases
 	lines   []string // more stderr lines, printed after fatal
+	// extra is what the inherited descriptors held when the process started.
+	extra []string
 }
 
 func (f *fakeExec) Run(ctx context.Context, cmd restic.Command) (int, error) {
 	f.calls = append(f.calls, cmd)
+	f.readExtraFiles(cmd)
 	r, ok := f.replies[cmd.Args[0]]
 	if !ok {
 		f.t.Fatalf("unexpected restic %q", cmd.Args)
@@ -77,6 +80,15 @@ func (f *fakeExec) Run(ctx context.Context, cmd restic.Command) (int, error) {
 		r.during()
 	}
 	return r.code, r.err
+}
+
+// readExtraFiles reads the inherited descriptors that hold a stream, as the
+// process would; a directory holds none.
+func (f *fakeExec) readExtraFiles(cmd restic.Command) {
+	for _, file := range cmd.ExtraFiles {
+		data, _ := io.ReadAll(file)
+		f.extra = append(f.extra, string(data))
+	}
 }
 
 // readStdin reads stdin to EOF into f.stdin; true means ctx ended first.
@@ -145,6 +157,8 @@ type fixture struct {
 	files files
 	keys  fakeKeys
 	repo  config.Repository
+	// root: restic runs as root (Options.AsRoot).
+	root bool
 }
 
 func newFixture(t *testing.T, replies map[string]reply) *fixture {
@@ -165,6 +179,7 @@ func (f *fixture) build() *restic.CLI {
 		Keys:     f.keys,
 		ReadFile: f.files.read,
 		Logger:   slog.New(slog.NewTextHandler(&f.log, nil)),
+		AsRoot:   f.root,
 	}, f.repo)
 }
 

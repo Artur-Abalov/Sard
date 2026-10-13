@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -294,6 +295,9 @@ func parseFlags(spec cmdSpec, args []string, stderr io.Writer, defaultConfig str
 func checkFlagValues(spec cmdSpec, opts *hostOptions) error {
 	if spec.offer&offerRestore == 0 {
 		return checkSource(*opts)
+	}
+	if opts.overwrite {
+		return errors.New(restore.OverwriteUnavailable)
 	}
 	paths, err := restore.CheckPaths(opts.paths)
 	if err != nil {

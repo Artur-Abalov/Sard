@@ -59,19 +59,33 @@ func Select(list []Snapshot, ref, repoName, source string) (Snapshot, *refusal.F
 	if ref == Latest {
 		return newest(list, source)
 	}
-	var found []Snapshot
-	for _, s := range list {
-		if strings.HasPrefix(s.ID, ref) {
-			found = append(found, s)
-		}
-	}
+	found := matching(list, ref, source)
 	switch len(found) {
 	case 0:
-		return Snapshot{}, refusal.Fail(refusal.SnapshotUnknown, "no snapshot %s in repository %s; see the snapshots with `sard-agent repo snapshots %s`", ref, repoName, repoName)
+		return Snapshot{}, unknown(ref, repoName, source)
 	case 1:
 		return found[0], nil
 	}
 	return Snapshot{}, ambiguous(found, ref)
+}
+
+// matching are the snapshots of the source (all, without one) whose id starts with ref.
+func matching(list []Snapshot, ref, source string) []Snapshot {
+	var found []Snapshot
+	for _, s := range list {
+		if strings.HasPrefix(s.ID, ref) && (source == "" || ofSource(s, source)) {
+			found = append(found, s)
+		}
+	}
+	return found
+}
+
+func unknown(ref, repoName, source string) *refusal.Failure {
+	of := ""
+	if source != "" {
+		of = " of source " + source
+	}
+	return refusal.Fail(refusal.SnapshotUnknown, "no snapshot %s%s in repository %s; see the snapshots with `sard-agent repo snapshots %s`", ref, of, repoName, repoName)
 }
 
 func newest(list []Snapshot, source string) (Snapshot, *refusal.Failure) {

@@ -121,3 +121,17 @@ func openFDs(t *testing.T) int {
 	}
 	return len(entries)
 }
+
+// Р78 (A8c-2): a secret file has one name; a second name is a way to keep a
+// file the service user may still change after it was judged.
+func TestReadOwnedRefusesAFileWithTwoNames(t *testing.T) {
+	dir, self := t.TempDir(), uint32(os.Getuid())
+	file := plainFile(t, dir, "a", "x", 0o600)
+	if err := os.Link(file, filepath.Join(dir, "second")); err != nil {
+		t.Fatal(err)
+	}
+	_, err := secrets.ReadOwned(file, self)
+	if err == nil || !strings.Contains(err.Error(), "names") {
+		t.Fatalf("a file with two names was read: %v", err)
+	}
+}
