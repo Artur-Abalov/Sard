@@ -68,21 +68,7 @@ class AgentRoleUriTest {
     fun `only exactly the two role strings are a role`() {
         assertEquals(CertificateRole.Valid(AgentRole.VERIFIER), read(ForgedRole.Text("verifier")))
         assertEquals(CertificateRole.Valid(AgentRole.SOURCE), read(ForgedRole.Text("source")))
-        val invalid =
-            listOf(
-                "sard://roles/admin",
-                "sard://roles/Source",
-                "SARD://ROLES/source",
-                "sard://roles/",
-                "sard://roles",
-                "sard://roles/source/",
-                "sard://roles/source?x=1",
-                "sard://roles/source#x",
-                "sard://u@roles/source",
-                "sard://roles:443/source",
-                "sard://Roles",
-            )
-        for (uri in invalid) {
+        for (uri in INEXACT_ROLE_URIS) {
             assertEquals(CertificateRole.Invalid, read(uris(uri)), uri)
         }
     }

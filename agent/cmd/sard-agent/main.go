@@ -118,15 +118,7 @@ func reportFailure(stderr io.Writer, err error) int {
 
 // start is the composition root: the only place that knows concrete types.
 func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf hostnameFunc, executable func() (string, error)) error {
-	cfg, err := config.Load(configPath)
-	if err != nil {
-		return err
-	}
-	if err := checkLocal(cfg); err != nil {
-		return err
-	}
-	// V1: the role comes from the certificate, then the machine id (С1).
-	me, err := identifyHost(cfg)
+	cfg, me, err := loadLocal(configPath)
 	if err != nil {
 		return err
 	}
@@ -141,6 +133,20 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 	}
 	_, _ = fmt.Fprintf(stdout, "sard-agent %s: connecting to %s as %s\n", version, cfg.Server.Address, me.role)
 	return serve(ctx, cfg, me.role, newAgent(cfg, hostname, resticBinary, me.machineID))
+}
+
+// loadLocal loads the config and runs every check that needs no network; V1:
+// the role comes from the certificate, then the machine id (С1).
+func loadLocal(configPath string) (config.Config, hostIdentity, error) {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return cfg, hostIdentity{}, err
+	}
+	if err := checkLocal(cfg); err != nil {
+		return cfg, hostIdentity{}, err
+	}
+	me, err := identifyHost(cfg)
+	return cfg, me, err
 }
 
 // hostIdentity is what the agent knows about itself before it connects.

@@ -231,3 +231,17 @@ Go-агент: роль из сертификата, шлюз роли в исп
    роли verifier (`newRigAs`): на source то же действие отклоняется по роли (сценарий «Источник отклоняет
    проверку»).
 5. Сценарий «Агент не сообщает роль серверу» проверен по сериализованным байтам RegisterRequest и Hello.
+
+## cleaner
+
+Behaviour-preserving cleanup of the V1 diff (`928507d..HEAD`), `crap.sh` before and after, `gate.sh agent fast` and `gate.sh server fast` green.
+
+| Function | CRAP before | CRAP after |
+|---|---|---|
+| agent `cmd/sard-agent/main.go:start` | 6.0 (CC 6) | 4.0 (CC 4); the new `loadLocal` is 3.0 |
+| agent `internal/identity/identity.go:exactRole` | 4.0 (CC 4) | 3.0 (CC 3) |
+| server `AgentAuthenticator.judge` | 6.0 (CC 6) | 3.0 (CC 3); split into `unknown`, `rejected`, `accepted` (3.0, 2.0, 1.0) |
+
+Changes: `start` takes config load, local checks and role/machine id from `loadLocal`; `exactRole` checks the prefix and `Role.Valid` instead of looping over the roles; `judge` is split into three helpers (the log-only tenant id of the two role refusals is kept). Tests: the role refusal rows of `role_start_test.go` and `status_test.go` moved to `roleRefusalRows`; the inexact role URIs of `AgentRoleUriTest` and `AgentRoleAuthIntegrationTest` moved to `INEXACT_ROLE_URIS` (`ForgedCertificates.kt`). The two shared lists now run in both tests, so each covers a few more rows, none fewer.
+
+Left as is: `RoleLedger` (interface) and `RoleRefusals` (database) stay split, like `DispatchLedger`, because `StepDispatcherTest` fakes the interface; `StepTransitions.kt` grew by ~80 lines for them and could take its own file, which is a module-structure question for architect. The role-URI rule exists once per module (`AgentRoleUri` in the server, `identity.roleOf` in the agent); the two implementations mirror each other by design across the wire and are not shared code.

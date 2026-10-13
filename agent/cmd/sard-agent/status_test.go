@@ -175,16 +175,7 @@ func TestStatusOfAnUnreadableCertificateNamesTheConfigKeyAndThePath(t *testing.T
 
 // Scenario: Статус сертификата без допустимой роли отказывает с причиной
 func TestStatusOfACertificateWithoutAValidRoleRefusesWithTheReason(t *testing.T) {
-	rows := []struct {
-		names  []string
-		reason string
-	}{
-		{nil, "CERT_ROLE_MISSING"},
-		{[]string{"sard://roles/admin"}, "CERT_ROLE_INVALID"},
-		{[]string{"sard://roles/source", "sard://roles/source"}, "CERT_ROLE_INVALID"},
-		{[]string{"sard://roles/source", "sard://roles/verifier"}, "CERT_ROLE_INVALID"},
-	}
-	for _, row := range rows {
+	for _, row := range roleRefusalRows {
 		h := newStatusHost(t, "127.0.0.1:1")
 		h.install(append([]string{testIdentityURI}, row.names...)...)
 		code, stdout, stderr := h.status("--config", h.cfg)

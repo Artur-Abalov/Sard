@@ -230,25 +230,7 @@ func TestTheStartLineNamesTheRoleFromTheCertificate(t *testing.T) {
 
 // Scenario: Сертификат без допустимой роли останавливает агента до подключения
 func TestACertificateWithoutAValidRoleStopsTheAgentBeforeConnecting(t *testing.T) {
-	rows := []struct {
-		names  []string
-		reason string
-	}{
-		{nil, "CERT_ROLE_MISSING"},
-		{[]string{"sard://role/verifier"}, "CERT_ROLE_MISSING"},
-		{[]string{"sard://roles/admin"}, "CERT_ROLE_INVALID"},
-		{[]string{"sard://roles/Verifier"}, "CERT_ROLE_INVALID"},
-		{[]string{"SARD://ROLES/verifier"}, "CERT_ROLE_INVALID"},
-		{[]string{"sard://roles/"}, "CERT_ROLE_INVALID"},
-		{[]string{"sard://roles/verifier/"}, "CERT_ROLE_INVALID"},
-		{[]string{"sard://roles/verifier?x=1"}, "CERT_ROLE_INVALID"},
-		{[]string{"sard://roles/verifier#x"}, "CERT_ROLE_INVALID"},
-		{[]string{"sard://u@roles/verifier"}, "CERT_ROLE_INVALID"},
-		{[]string{"sard://roles:443/verifier"}, "CERT_ROLE_INVALID"},
-		{[]string{"sard://roles/verifier", "sard://roles/verifier"}, "CERT_ROLE_INVALID"},
-		{[]string{"sard://roles/source", "sard://roles/verifier"}, "CERT_ROLE_INVALID"},
-	}
-	for _, row := range rows {
+	for _, row := range roleRefusalRows {
 		h := newAgentHost(t)
 		installPair(t, h.dir, append([]string{testIdentityURI}, row.names...)...)
 		_, stderr := h.refuses()

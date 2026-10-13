@@ -44,6 +44,22 @@ sealed interface ForgedRole {
     ) : ForgedRole
 }
 
+/** Single SAN URIs with scheme sard and host roles that are not exactly a role: all "invalid" (tests only). */
+val INEXACT_ROLE_URIS =
+    listOf(
+        "sard://roles/admin",
+        "sard://roles/Source",
+        "SARD://ROLES/source",
+        "sard://roles/",
+        "sard://roles",
+        "sard://roles/source/",
+        "sard://roles/source?x=1",
+        "sard://roles/source#x",
+        "sard://u@roles/source",
+        "sard://roles:443/source",
+        "sard://Roles",
+    )
+
 /**
  * Certificates signed by the real CA that no honest server would issue: the same serial and SAN
  * as a recorded one but another set of extensions (tests only, "поддельный сертификат").

@@ -91,6 +91,27 @@ func installPair(t *testing.T, dir string, uris ...string) {
 // withRole is the SAN of a certificate of the role: identity, then role URI.
 func withRole(role string) []string { return []string{testIdentityURI, "sard://roles/" + role} }
 
+// roleRefusalRows are the SAN role names (after the identity URI) that stop
+// the agent, and the reason each is refused with.
+var roleRefusalRows = []struct {
+	names  []string
+	reason string
+}{
+	{nil, "CERT_ROLE_MISSING"},
+	{[]string{"sard://role/verifier"}, "CERT_ROLE_MISSING"},
+	{[]string{"sard://roles/admin"}, "CERT_ROLE_INVALID"},
+	{[]string{"sard://roles/Verifier"}, "CERT_ROLE_INVALID"},
+	{[]string{"SARD://ROLES/verifier"}, "CERT_ROLE_INVALID"},
+	{[]string{"sard://roles/"}, "CERT_ROLE_INVALID"},
+	{[]string{"sard://roles/verifier/"}, "CERT_ROLE_INVALID"},
+	{[]string{"sard://roles/verifier?x=1"}, "CERT_ROLE_INVALID"},
+	{[]string{"sard://roles/verifier#x"}, "CERT_ROLE_INVALID"},
+	{[]string{"sard://u@roles/verifier"}, "CERT_ROLE_INVALID"},
+	{[]string{"sard://roles:443/verifier"}, "CERT_ROLE_INVALID"},
+	{[]string{"sard://roles/verifier", "sard://roles/verifier"}, "CERT_ROLE_INVALID"},
+	{[]string{"sard://roles/source", "sard://roles/verifier"}, "CERT_ROLE_INVALID"},
+}
+
 // useMachineIDFiles points the agent at these machine-id files for the test
 // (the host's own files are never read); "" is a path that does not exist.
 func useMachineIDFiles(t *testing.T, etc, dbus string) {

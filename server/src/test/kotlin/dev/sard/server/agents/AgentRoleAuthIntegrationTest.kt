@@ -15,6 +15,7 @@ import dev.sard.server.pki.AgentIdentity
 import dev.sard.server.pki.AgentRole
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.ForgedRole
+import dev.sard.server.pki.INEXACT_ROLE_URIS
 import io.grpc.CallOptions
 import io.grpc.Metadata
 import io.grpc.Status
@@ -103,23 +104,10 @@ class AgentRoleAuthIntegrationTest(
     @Test
     fun `Сертификат без роли или с непонятной ролью получает отказ S3`() {
         val missing = listOf("sard://role/source", "https://roles/source")
-        val invalid =
-            listOf(
-                "sard://roles/admin",
-                "sard://roles/Source",
-                "SARD://ROLES/source",
-                "sard://roles/",
-                "sard://roles",
-                "sard://roles/source/",
-                "sard://roles/source?x=1",
-                "sard://roles/source#x",
-                "sard://u@roles/source",
-                "sard://roles:443/source",
-            )
         val cases =
             listOf(ForgedRole.Absent to "CERT_ROLE_MISSING") +
                 missing.map { ForgedRole.Uris(listOf(it)) to "CERT_ROLE_MISSING" } +
-                invalid.map { ForgedRole.Uris(listOf(it)) to "CERT_ROLE_INVALID" } +
+                INEXACT_ROLE_URIS.map { ForgedRole.Uris(listOf(it)) to "CERT_ROLE_INVALID" } +
                 listOf(
                     ForgedRole.Uris(listOf("sard://roles/source", "sard://roles/source")) to "CERT_ROLE_INVALID",
                     ForgedRole.Uris(listOf("sard://roles/source", "sard://roles/verifier")) to "CERT_ROLE_INVALID",

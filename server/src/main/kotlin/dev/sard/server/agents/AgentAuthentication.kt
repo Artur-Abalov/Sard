@@ -91,6 +91,8 @@ sealed interface AgentAuthResult {
     ) : AgentAuthResult
 }
 
+private val ROLE_REFUSALS = setOf(AgentAuthFailure.CERT_ROLE_MISSING, AgentAuthFailure.CERT_ROLE_INVALID)
+
 /**
  * Decides whether a presented certificate authenticates an agent (S3). No cache: every
  * call reads the record, so a revocation applies to the next call.
@@ -110,27 +112,35 @@ class AgentAuthenticator(
         presented: PresentedCertificate,
         standing: CertificateStanding?,
     ): AgentAuthResult {
-        if (standing == null) {
-            val claimed = presented.identity
-            val failure = AgentAuthFailure.CERT_UNKNOWN
-            return AgentAuthResult.Rejected(failure, presented.serial, claimed?.agentId, claimed?.tenantId)
-        }
+        if (standing == null) return unknown(presented)
+        val failure = failureOf(presented, standing)
+        return if (failure == null) accepted(presented, standing) else rejected(failure, presented, standing)
+    }
+
+    private fun unknown(presented: PresentedCertificate): AgentAuthResult {
+        val claimed = presented.identity
+        val failure = AgentAuthFailure.CERT_UNKNOWN
+        return AgentAuthResult.Rejected(failure, presented.serial, claimed?.agentId, claimed?.tenantId)
+    }
+
+    private fun rejected(
+        failure: AgentAuthFailure,
+        presented: PresentedCertificate,
+        standing: CertificateStanding,
+    ): AgentAuthResult {
         val identity = standing.identity
-        return when (val failure = failureOf(presented, standing)) {
-            null -> {
-                val principal = AgentPrincipal(identity.agentId, identity.tenantId, presented.serial, standing.role)
-                AgentAuthResult.Accepted(principal)
-            }
+        // The role refusals are about the certificate, whose SAN matched the record: it may be named in the log.
+        val tenantId = if (failure in ROLE_REFUSALS) identity.tenantId else null
+        return AgentAuthResult.Rejected(failure, presented.serial, identity.agentId, tenantId)
+    }
 
-            // The role refusals are about the certificate, whose SAN matched the record: it may be named in the log.
-            AgentAuthFailure.CERT_ROLE_MISSING, AgentAuthFailure.CERT_ROLE_INVALID -> {
-                AgentAuthResult.Rejected(failure, presented.serial, identity.agentId, identity.tenantId)
-            }
-
-            else -> {
-                AgentAuthResult.Rejected(failure, presented.serial, identity.agentId)
-            }
-        }
+    private fun accepted(
+        presented: PresentedCertificate,
+        standing: CertificateStanding,
+    ): AgentAuthResult {
+        val identity = standing.identity
+        val principal = AgentPrincipal(identity.agentId, identity.tenantId, presented.serial, standing.role)
+        return AgentAuthResult.Accepted(principal)
     }
 
     /** The certificate first (who it names, what role it says), then the state of the record (ADR 0009, V1). */

@@ -147,12 +147,12 @@ func roleOf(path string, uris []string) (Role, error) {
 
 // exactRole is the role of a single URI that is exactly sard://roles/<role>.
 func exactRole(found []string) (Role, bool) {
-	for _, role := range []Role{Source, Verifier} {
-		if len(found) == 1 && found[0] == "sard://roles/"+string(role) {
-			return role, true
-		}
+	if len(found) != 1 {
+		return "", false
 	}
-	return "", false
+	name, ok := strings.CutPrefix(found[0], "sard://roles/")
+	role := Role(name)
+	return role, ok && role.Valid()
 }
 
 func isRoleURI(raw string) bool {
