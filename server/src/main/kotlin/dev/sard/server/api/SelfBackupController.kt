@@ -370,9 +370,6 @@ class SelfBackupApiImpl(
 
     override fun bindSelfBackupRepository(input: SelfBackupRepositoryInput): SelfBackup {
         val tenant = tenants.currentTenantId()
-        if (input.location?.let(::isSafeLocation) == false) {
-            throw RequestInvalid("location", "holds credentials or is not an address")
-        }
         return selfBackupOf(selfBackups.bind(tenant, input.repositoryName, input.confirmLocalStorage, input.location))
     }
 

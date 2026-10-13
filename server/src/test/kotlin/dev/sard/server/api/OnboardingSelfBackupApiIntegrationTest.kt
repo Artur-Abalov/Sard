@@ -526,6 +526,10 @@ class OnboardingSelfBackupApiIntegrationTest(
             listOf(
                 "s3:https://AKIA123:secret@minio.example.net/acme",
                 "sftp:backup:pw@backup.example.net:/srv/sard",
+                "rest:https://user:pass@host/repo",
+                "S3:https://AKIA:secret@host/b",
+                "s3:HTTPS://AKIA123:secret@minio.example.net/acme",
+                "https://ghp_TOKEN@host/r",
                 "s3:acme-sard\\nprod",
                 "x".repeat(1025),
             )

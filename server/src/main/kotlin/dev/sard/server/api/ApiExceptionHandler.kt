@@ -16,6 +16,7 @@ import dev.sard.server.runs.UnknownRepository
 import dev.sard.server.scheduler.InvalidSchedule
 import dev.sard.server.selfbackup.FirstBackupPending
 import dev.sard.server.selfbackup.LocalStorageUnconfirmed
+import dev.sard.server.selfbackup.LocationInvalid
 import dev.sard.server.selfbackup.RepositoryNotInitialized
 import dev.sard.server.selfbackup.SelfAgentMissing
 import dev.sard.server.selfbackup.SelfBackupNotConfigured
@@ -181,6 +182,13 @@ class SelfBackupExceptionHandler {
         unprocessableResponse(
             ErrorCode.LOCAL_STORAGE_UNCONFIRMED,
             listOf(FieldError("confirmLocalStorage", "must be true for a repository on the server's own machine")),
+        )
+
+    @ExceptionHandler(LocationInvalid::class)
+    fun locationInvalid(): ResponseEntity<ValidationProblem> =
+        unprocessableResponse(
+            ErrorCode.VALIDATION_FAILED,
+            listOf(FieldError("location", "holds credentials or is not an address")),
         )
 
     @ExceptionHandler(SelfBackupNotConfigured::class)

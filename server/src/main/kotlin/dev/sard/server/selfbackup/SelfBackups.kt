@@ -146,7 +146,7 @@ class SelfBackups internal constructor(
     /**
      * Binds the self-backup to [repositoryName] of the live built-in agent: creates the system sources with their
      * schedule, or moves them to this agent and repository. Binding again unchanged changes nothing. Throws
-     * [SelfAgentMissing], UnknownRepository, [RepositoryNotInitialized], [LocalStorageUnconfirmed] or, when the
+     * [LocationInvalid], [SelfAgentMissing], UnknownRepository, [RepositoryNotInitialized], [LocalStorageUnconfirmed] or, when the
      * agent lacks a plugin or the database password's secret, UnknownPlugin or InvalidConfig.
      */
     fun bind(
@@ -154,15 +154,32 @@ class SelfBackups internal constructor(
         repositoryName: String,
         confirmLocalStorage: Boolean,
         location: String? = null,
+    ): SelfBackupView {
+        if (location != null && !isSafeLocation(location)) throw LocationInvalid()
+        return bindRetrying(tenantId, repositoryName, confirmLocalStorage, location, onboardingComplete())
+    }
+
+    /** [complete] is asked before the session: the pool may hold one connection, and a request needs one at a time. */
+    private fun bindRetrying(
+        tenantId: UUID,
+        repositoryName: String,
+        confirmLocalStorage: Boolean,
+        location: String?,
+        complete: Boolean,
     ): SelfBackupView =
         try {
-            sessions.inTenant(tenantId) { session -> bindIn(session, repositoryName, confirmLocalStorage, location) }
+            sessions.inTenant(tenantId) { session ->
+                bindIn(session, repositoryName, confirmLocalStorage, location, complete)
+            }
         } catch (e: ConstraintViolationException) {
             if (e.constraintName !in RACE_KEYS) throw e
-            bind(tenantId, repositoryName, confirmLocalStorage, location)
+            bindRetrying(tenantId, repositoryName, confirmLocalStorage, location, complete)
         }
 
-    fun get(tenantId: UUID): SelfBackupView = sessions.inTenant(tenantId) { session -> viewIn(session) }
+    fun get(tenantId: UUID): SelfBackupView {
+        val complete = onboardingComplete()
+        return sessions.inTenant(tenantId) { session -> viewIn(session, complete) }
+    }
 
     /**
      * The owner confirms the copy of the repository password and the storage access made outside the server
@@ -172,7 +189,10 @@ class SelfBackups internal constructor(
     fun confirmKeys(
         tenantId: UUID,
         now: Instant,
-    ): KeysConfirmed = sessions.inTenant(tenantId) { session -> confirmIn(session, now) }
+    ): KeysConfirmed {
+        val complete = onboardingComplete()
+        return sessions.inTenant(tenantId) { session -> confirmIn(session, now, complete) }
+    }
 
     /**
      * Starts a manual run of each system source, the database first; a source with an active run answers with that
@@ -194,9 +214,10 @@ class SelfBackups internal constructor(
     private fun confirmIn(
         session: Session,
         now: Instant,
+        complete: Boolean,
     ): KeysConfirmed {
         val record = bindingOf(session, LockModeType.PESSIMISTIC_WRITE)
-        val view = viewIn(session)
+        val view = viewIn(session, complete)
         val repository = view.repository
         if (record == null || repository == null) throw SelfBackupNotConfigured()
         if (!view.firstBackupDone) throw FirstBackupPending()
@@ -210,6 +231,7 @@ class SelfBackups internal constructor(
         repositoryName: String,
         confirmLocalStorage: Boolean,
         location: String?,
+        complete: Boolean,
     ): SelfBackupView {
         val agent = liveBuiltin(session) ?: throw SelfAgentMissing()
         val repository = repositoryOf(session, agent.id, repositoryName) ?: throw UnknownRepository(repositoryName)
@@ -225,7 +247,7 @@ class SelfBackups internal constructor(
             }
         record(session, moved.any { it }, now, location)
         session.flush()
-        return viewIn(session)
+        return viewIn(session, complete)
     }
 
     /** Creates the source of [planned], or brings the existing one to it; true if anything changed. */
@@ -305,7 +327,10 @@ class SelfBackups internal constructor(
         }
     }
 
-    private fun viewIn(session: Session): SelfBackupView {
+    private fun viewIn(
+        session: Session,
+        complete: Boolean,
+    ): SelfBackupView {
         val agentId = liveBuiltin(session)?.id
         val record = bindingOf(session, LockModeType.NONE)
         val sources = systemSources(session, LockModeType.NONE)
@@ -323,7 +348,7 @@ class SelfBackups internal constructor(
         }
         val states = sources.map { SourceStates.of(session, it, record.boundAt) }
         val repository = repositoryState(session, sources.first())
-        val view = viewOf(record, sources, states, agentId, repository, onboardingComplete())
+        val view = viewOf(record, sources, states, agentId, repository, complete)
         return view.copy(repositories = repositories, plan = plan.items())
     }
 }

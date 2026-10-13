@@ -116,6 +116,36 @@ class SelfBackupIntegrationTest(
     }
 
     @Test
+    fun `Привязка с адресом, в котором учётные данные, отклоняется и ничего не создаёт`() {
+        val addresses =
+            listOf(
+                "rest:https://user:pass@host/repo",
+                "S3:https://AKIA:secret@host/b",
+                "s3:HTTPS://AKIA123:secret@minio.example.net/acme",
+                "https://ghp_TOKEN@host/r",
+                "s3:acme\nprod",
+                "",
+            )
+        for (address in addresses) {
+            assertFailsWith<LocationInvalid>(address) {
+                MutFlow.underTest { selfBackups.bind(tenant.id, S3_REPOSITORY, false, address) }
+            }
+        }
+
+        assertFalse(state().configured)
+        assertEquals(0, tenant.count("sources"))
+    }
+
+    @Test
+    fun `Привязка с адресом без учётных данных сохраняет его`() {
+        val address = "x".repeat(1024)
+
+        val bound = MutFlow.underTest { selfBackups.bind(tenant.id, S3_REPOSITORY, false, address) }
+
+        assertEquals(address, bound.location)
+    }
+
+    @Test
     fun `Повторная привязка к тому же репозиторию ничего не меняет`() {
         val first = bind(S3_REPOSITORY, confirmLocalStorage = false)
         clock.now = RUNS_NOW.plus(Duration.ofHours(1))
