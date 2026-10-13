@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -145,23 +146,39 @@ func listenNoTLS(t *testing.T) string {
 }
 
 // listenIdleTLS accepts plain TCP and never sends anything back, so a TLS
-// handshake against it only ends when its context does.
+// handshake against it only ends when its context does. Accepted
+// connections are kept referenced until cleanup: otherwise the garbage
+// collector's finalizer closes them and the "silent" server aborts the
+// handshake before the context ends.
 func listenIdleTLS(t *testing.T) string {
 	t.Helper()
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
+	var (
+		mu    sync.Mutex
+		conns []net.Conn
+	)
 	go func() {
 		for {
 			conn, err := lis.Accept()
 			if err != nil {
 				return
 			}
-			_ = conn // accept and sit idle
+			mu.Lock()
+			conns = append(conns, conn)
+			mu.Unlock()
 		}
 	}()
-	t.Cleanup(func() { _ = lis.Close() })
+	t.Cleanup(func() {
+		_ = lis.Close()
+		mu.Lock()
+		defer mu.Unlock()
+		for _, c := range conns {
+			_ = c.Close()
+		}
+	})
 	return lis.Addr().String()
 }
 
