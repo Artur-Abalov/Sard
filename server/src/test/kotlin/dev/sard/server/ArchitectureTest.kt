@@ -22,6 +22,7 @@ private val ISOLATED_PACKAGES =
         "install",
         "downloads",
         "selfagent",
+        "selfbackup",
     )
 
 // downloads/ holds both domain types and the HTTP adapter that serves the package files. Only the
@@ -45,6 +46,17 @@ private val SESSIONS_SYSTEM_CALL = Regex("""\bsessions\.system\s*[({]""")
 private val DATABASE_REFERENCE =
     Regex("""\b(org\.springframework\.jdbc|java\.sql|jakarta\.persistence|org\.flywaydb)\b""")
 private val SCHEDULER_TABLES_REFERENCE = Regex("""\b(ScheduleRecord|ScheduleFireRecord|schedule_fires|schedules)\b""")
+private val JDBC_IMPORT = Regex("""\bimport org\.springframework\.jdbc\b""")
+private val STRING_CONCATENATION = Regex(""""\s*\+\s*"""")
+private val STRING_LITERAL = Regex("""\"{3}(.*?)\"{3}|"((?:[^"\\]++|\\.)*+)"""", RegexOption.DOT_MATCHES_ALL)
+private val TENANT_TABLE_SQL =
+    Regex(
+        """\b(from|update|into|join|delete)\s+(agents|sources|runs|enrollment_tokens|agent_repositories|self_backups|schedules)\b""",
+        RegexOption.IGNORE_CASE,
+    )
+
+// ADR 0013, rule 8: installation-wide by design, listed there.
+private val TENANT_SQL_EXCEPTIONS = setOf("TokensRevokedOnCaReplacement.kt")
 private val LINE_COMMENT = Regex("""//.*$""", RegexOption.MULTILINE)
 private val BLOCK_COMMENT = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
 
@@ -306,5 +318,22 @@ class ArchitectureTest {
                     SELFAGENT_REFERENCE.containsMatchIn(withoutComments(file.readText()))
             }
         assertTrue(offenders.isEmpty(), "references to selfagent:\n${offenders.joinToString("\n") { it.path }}")
+    }
+
+    @Test
+    fun `native SQL on a tenant table names tenant_id (ADR 0013, rule 8)`() {
+        val offenders =
+            ktFiles(mainRoot)
+                .filter { it.name !in TENANT_SQL_EXCEPTIONS && JDBC_IMPORT.containsMatchIn(it.readText()) }
+                .flatMap { file ->
+                    val text = withoutComments(file.readText()).replace(STRING_CONCATENATION, "")
+                    STRING_LITERAL
+                        .findAll(text)
+                        .map { it.groupValues[1] + it.groupValues[2] }
+                        .filter { TENANT_TABLE_SQL.containsMatchIn(it) && "tenant_id" !in it }
+                        .map { "${file.path}: ${it.trim()}" }
+                        .toList()
+                }
+        assertTrue(offenders.isEmpty(), "native SQL on a tenant table without tenant_id:\n${offenders.joinToString("\n")}")
     }
 }

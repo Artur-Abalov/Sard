@@ -5,9 +5,9 @@ package dev.sard.server.onboarding
 
 import dev.sard.server.api.GuardTargets
 import dev.sard.server.extension.TenantResolver
+import dev.sard.server.fleet.Agents
 import dev.sard.server.selfbackup.KeysConfirmed
 import dev.sard.server.selfbackup.SelfBackups
-import org.springframework.jdbc.core.JdbcTemplate
 import java.time.Instant
 import java.util.UUID
 
@@ -35,18 +35,16 @@ class SelfBackupsGate(
     ): KeysConfirmed = selfBackups.confirmKeys(tenantId, now)
 }
 
-/** The objects a mutating request names, as the database knows them (D8, Р22). */
-class JdbcGuardTargets(
-    private val jdbc: JdbcTemplate,
+/**
+ * The objects a mutating request names, as the session's tenant knows them (D8, Р22): each is asked of the package
+ * that owns it, through the tenant's session, never by SQL past the tenant filter (ADR 0013, rule 8).
+ */
+class TenantGuardTargets(
+    private val selfBackups: SelfBackups,
+    private val agents: Agents,
+    private val tenants: TenantResolver,
 ) : GuardTargets {
-    override fun isSystemSource(id: UUID): Boolean =
-        exists("select 1 from sources where id = ? and system_role is not null and deleted_at is null", id)
+    override fun isSystemSource(id: UUID): Boolean = selfBackups.isSystemSource(tenants.currentTenantId(), id)
 
-    override fun isBuiltinAgent(id: UUID): Boolean =
-        exists("select 1 from agents where id = ? and builtin = true and revoked_at is null", id)
-
-    private fun exists(
-        sql: String,
-        id: UUID,
-    ): Boolean = jdbc.queryForList(sql, id).isNotEmpty()
+    override fun isBuiltinAgent(id: UUID): Boolean = agents.isLiveBuiltin(tenants.currentTenantId(), id)
 }

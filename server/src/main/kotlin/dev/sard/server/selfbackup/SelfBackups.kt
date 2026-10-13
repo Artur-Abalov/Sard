@@ -181,6 +181,15 @@ class SelfBackups internal constructor(
         return sessions.inTenant(tenantId) { session -> viewIn(session, complete) }
     }
 
+    /** Whether [sourceId] is a live system source of the tenant: the REST guard keeps such a source out of reach. */
+    fun isSystemSource(
+        tenantId: UUID,
+        sourceId: UUID,
+    ): Boolean =
+        sessions.inTenant(tenantId) { session ->
+            session.find(SourceRecord::class.java, sourceId)?.let { it.systemRole != null && it.deletedAt == null } == true
+        }
+
     /**
      * The owner confirms the copy of the repository password and the storage access made outside the server
      * (F4b). Throws [SelfBackupNotConfigured] before a repository is bound and [FirstBackupPending] before both

@@ -75,6 +75,7 @@ class HibernateTenantBridge(private val resolver: TenantResolver) : CurrentTenan
 6. Первичные ключи — `UUID`, генерирует приложение (UUIDv7: упорядочены по времени, дружат с B-деревом).
 7. Время — только `TIMESTAMPTZ`. Перечисления — `TEXT` с `CHECK (x IN (...))`, значения в `lower_snake_case`, полные списки ниже; не `CREATE TYPE ... AS ENUM` (новое значение — обычная миграция). Без `CHECK` через год в колонке окажутся `Failed`, `failed` и `FAILED`.
 8. Данные тенанта читаются через JPA. `JdbcTemplate` и нативный SQL обходят фильтр Hibernate; такой запрос обязан содержать `tenant_id = ?` явно и проходит ревью как исключение.
+   Единственное исключение — `TokensRevokedOnCaReplacement` (`enrollment/`, F4a): замена CA отзывает неиспользованные обычные токены всей установки, это её свойство, а не тенанта. Остальное проверяет `ArchitectureTest` («native SQL on a tenant table names tenant_id»): нативный SQL по таблицам тенанта без `tenant_id` в файле с `org.springframework.jdbc` роняет сборку; исключение перечислено в тесте поимённо.
 9. Секретов в базе нет (ADR 0008): конфиги содержат ссылки (`password_ref`), репозитории — только имена. Поэтому отправленный агенту конфиг можно хранить как есть.
 
 Правила 1 и 2 проверяет по каталогу PostgreSQL `TenantSchemaRulesTest` (с контрольным прогоном на заведомо плохих таблицах в откатываемой транзакции); `tenant_id NOT NULL` в каждой таблице кроме глобальных и `@TenantId` в каждой сущности — `TenancyIntegrationTest`. Миграция, нарушившая правило, роняет тесты.

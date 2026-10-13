@@ -157,6 +157,12 @@ class Agents(
             session.createSelectionQuery(LIVE_BUILTIN_AGENTS, java.lang.Long::class.java).singleResult.toLong() > 0
         }
 
+    /** Whether [agentId] is a built-in agent of the tenant that is not revoked. */
+    fun isLiveBuiltin(
+        tenantId: UUID,
+        agentId: UUID,
+    ): Boolean = sessions.inTenant(tenantId) { session -> session.find(Agent::class.java, agentId)?.liveBuiltin() == true }
+
     fun get(
         tenantId: UUID,
         agentId: UUID,

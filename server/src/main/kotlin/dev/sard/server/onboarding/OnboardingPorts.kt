@@ -5,12 +5,13 @@ package dev.sard.server.onboarding
 
 import dev.sard.server.api.GuardTargets
 import dev.sard.server.enrollment.RegistrationGate
+import dev.sard.server.extension.TenantResolver
+import dev.sard.server.fleet.Agents
 import dev.sard.server.selfbackup.OnboardingCompletion
 import dev.sard.server.selfbackup.SelfBackups
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.jdbc.core.JdbcTemplate
 
 /**
  * What the self-backup, the enrollment and the REST guard ask the onboarding through (F4b): each asks in its own
@@ -29,5 +30,9 @@ class OnboardingPorts {
 
     @Bean
     @ConditionalOnMissingBean
-    fun guardTargets(jdbc: JdbcTemplate): GuardTargets = JdbcGuardTargets(jdbc)
+    fun guardTargets(
+        selfBackups: SelfBackups,
+        agents: Agents,
+        tenants: TenantResolver,
+    ): GuardTargets = TenantGuardTargets(selfBackups, agents, tenants)
 }
