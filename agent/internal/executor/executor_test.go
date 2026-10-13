@@ -720,9 +720,10 @@ func TestAnExecutorWithOnlyRequiredOptionsRunsOneStepAtATime(t *testing.T) {
 
 func TestNewRequiresHandlersSinkAndStateDir(t *testing.T) {
 	cases := map[string]func(*executor.Options){
-		"handlers":  func(o *executor.Options) { o.Handlers = nil },
-		"sink":      func(o *executor.Options) { o.Sink = nil },
-		"state dir": func(o *executor.Options) { o.StateDir = "" },
+		"handlers are required":  func(o *executor.Options) { o.Handlers = nil },
+		"sink is required":       func(o *executor.Options) { o.Sink = nil },
+		"state dir is required":  func(o *executor.Options) { o.StateDir = "" },
+		"role must be source or": func(o *executor.Options) { o.Role = "" },
 	}
 	for name, edit := range cases {
 		t.Run(name, func(t *testing.T) {

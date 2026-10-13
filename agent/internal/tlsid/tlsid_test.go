@@ -160,3 +160,38 @@ func TestWithoutCertOrKeyPathsThereIsNothingToCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Half a configuration is nothing to check either: no file is read.
+func TestWithOnlyOneOfCertAndKeyPathsNothingIsRead(t *testing.T) {
+	read := func(name string) ([]byte, error) {
+		t.Errorf("read %q", name)
+		return nil, errors.New("unexpected read")
+	}
+	for name, cfg := range map[string]config.TLS{
+		"cert only": {CertFile: files.CertFile},
+		"key only":  {KeyFile: files.KeyFile},
+	} {
+		if err := tlsid.Check(cfg, read); err != nil {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+}
+
+// A file that cannot be read keeps its cause for the caller.
+func TestAnUnreadableFileKeepsItsCause(t *testing.T) {
+	a := newPair(t, ecKey(t))
+	denied := errors.New("permission denied")
+	for name, failing := range map[string]string{"cert": files.CertFile, "key": files.KeyFile} {
+		disk := map[string][]byte{files.CertFile: a.cert, files.KeyFile: a.key}
+		err := tlsid.Check(files, func(path string) ([]byte, error) {
+			if path == failing {
+				return nil, denied
+			}
+			return disk[path], nil
+		})
+		var fileErr *tlsid.FileError
+		if !errors.As(err, &fileErr) || fileErr.Path != failing || !errors.Is(err, denied) {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+}

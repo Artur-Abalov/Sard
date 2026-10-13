@@ -37,7 +37,10 @@ type handlers map[string][]agentv1.Action
 
 func (h handlers) Handler(name string) (executor.Handler, bool) {
 	actions, ok := h[name]
-	return actionsOnly(actions), ok
+	if !ok {
+		return nil, false
+	}
+	return actionsOnly(actions), true
 }
 
 type actionsOnly []agentv1.Action

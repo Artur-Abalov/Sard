@@ -34,13 +34,19 @@ var notAfter = time.Date(2027, 10, 12, 12, 0, 0, 0, time.UTC)
 // given, byte for byte (x509.CreateCertificate would normalise them).
 func certPEM(t *testing.T, uris ...string) []byte {
 	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	var names []asn1.RawValue
 	for _, u := range uris {
 		names = append(names, asn1.RawValue{Class: asn1.ClassContextSpecific, Tag: 6, Bytes: []byte(u)})
+	}
+	return certPEMNames(t, names...)
+}
+
+// certPEMNames issues a certificate whose SAN carries exactly the names given.
+func certPEMNames(t *testing.T, names ...asn1.RawValue) []byte {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
 	}
 	san, err := asn1.Marshal(names)
 	if err != nil {
@@ -214,6 +220,28 @@ func TestTheSharedRoleURIVectors(t *testing.T) {
 			}
 		default:
 			t.Fatalf("unknown outcome %q", want)
+		}
+	}
+}
+
+// Only a uniformResourceIdentifier name (context-specific tag 6) can carry
+// the role: the same text in another kind of SAN name is no role.
+func TestARoleURIInANameOfAnotherKindIsNoRole(t *testing.T) {
+	roleText := []byte("sard://roles/source")
+	rows := []struct {
+		name string
+		raw  asn1.RawValue
+	}{
+		{"dNSName", asn1.RawValue{Class: asn1.ClassContextSpecific, Tag: 2, Bytes: roleText}},
+		{"rfc822Name", asn1.RawValue{Class: asn1.ClassContextSpecific, Tag: 1, Bytes: roleText}},
+		{"application class, tag 6", asn1.RawValue{Class: asn1.ClassApplication, Tag: 6, Bytes: roleText}},
+	}
+	ident := asn1.RawValue{Class: asn1.ClassContextSpecific, Tag: 6, Bytes: []byte(identURI)}
+	for _, row := range rows {
+		_, err := identity.Read("/a.pem", readOf(certPEMNames(t, ident, row.raw)))
+		var re *identity.RoleError
+		if !errors.As(err, &re) || !re.Missing {
+			t.Errorf("%s: err = %v", row.name, err)
 		}
 	}
 }

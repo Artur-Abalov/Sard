@@ -285,6 +285,24 @@ func TestNewChecksTheTLSFiles(t *testing.T) {
 	}
 }
 
+// CheckFiles answers the way New does for a missing file.
+func TestCheckFilesNamesTheMissingFile(t *testing.T) {
+	full := config.TLS{CAFile: "/ca", CertFile: "/cert", KeyFile: "/key"}
+	if err := transport.CheckFiles(full); err != nil {
+		t.Fatalf("complete configuration: %v", err)
+	}
+	for want, files := range map[string]config.TLS{
+		"tls.ca_file is required":   {CertFile: "/cert", KeyFile: "/key"},
+		"tls.cert_file is required": {CAFile: "/ca", KeyFile: "/key"},
+		"tls.key_file is required":  {CAFile: "/ca", CertFile: "/cert"},
+	} {
+		err := transport.CheckFiles(files)
+		if !errors.Is(err, transport.ErrInvalidOptions) || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: err = %v", want, err)
+		}
+	}
+}
+
 // A broken client key fails the handshake on the agent's side; the error
 // names the files, never their content.
 func TestUnreadableClientCertificateFailsTheHandshake(t *testing.T) {

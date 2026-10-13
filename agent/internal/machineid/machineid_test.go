@@ -44,6 +44,7 @@ type fakeFS struct {
 	dirs      map[string]fs.FileMode
 	failRead  map[string]error
 	failWrite error
+	failMkdir error
 	writes    int
 }
 
@@ -67,8 +68,8 @@ func (f *fakeFS) ReadFile(name string) ([]byte, error) {
 }
 
 func (f *fakeFS) MkdirAll(path string, perm fs.FileMode) error {
-	if f.failWrite != nil {
-		return &fs.PathError{Op: "mkdir", Path: path, Err: f.failWrite}
+	if f.failMkdir != nil {
+		return &fs.PathError{Op: "mkdir", Path: path, Err: f.failMkdir}
 	}
 	f.dirs[path] = perm
 	return nil
@@ -256,11 +257,18 @@ func TestAnUnusableSourceIsRefusedNamingThePath(t *testing.T) {
 		{"stored upper case", with(map[string]string{stored: strings.Repeat("A", 64)}), stored},
 		{"stored too short", with(map[string]string{stored: strings.Repeat("a", 63)}), stored},
 		{"stored too long", with(map[string]string{stored: strings.Repeat("a", 65)}), stored},
+		{"stored with a character below 0", with(map[string]string{stored: strings.Repeat("/", 64)}), stored},
+		{"stored with a character above f", with(map[string]string{stored: strings.Repeat("g", 64)}), stored},
 		{"cannot write", func() *fixture {
 			x := with(nil)
 			x.fs.failWrite = denied
 			return x
 		}(), stored},
+		{"cannot create the directory", func() *fixture {
+			x := with(nil)
+			x.fs.failMkdir = denied
+			return x
+		}(), state},
 	}
 	for _, row := range rows {
 		requireRefused(t, row.name, row.x, row.path)
