@@ -37,7 +37,7 @@
   команды, адреса и правила — на сервере (`docs/specs/server/agent-install.feature`).
   Агент `web2` отмечен `outdated`, остальные — нет.
 - Первый запуск (F4a, `api/onboarding.ts`): по умолчанию онбординг завершён (все четыре
-  шага `done`, `restriction: none`, `setupCode: not_issued`; F4b, Рк18), пароль `admin`. С
+  шага `done`, `restriction: none`, `setupCode: not_issued`; F4b, Рк18), самобэкап привязан к репозиторию `self` (s3) соседа, оба системных источника забэкаплены, копия ключей подтверждена (`selfBackupSources.ts`), пароль `admin`. С
   `VITE_API_MOCKS=1 VITE_MOCK_ONBOARDING=1 npm run dev` моки стартуют чистой установкой:
   консоль открывает `/setup`, код мока — `ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345`
   (регистр, пробелы и дефисы не важны), CA — отпечаток тестового вектора F8 (`generated`,

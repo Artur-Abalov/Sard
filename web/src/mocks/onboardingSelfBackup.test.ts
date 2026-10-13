@@ -43,6 +43,33 @@ async function bound() {
 
 const runsOf = async () => (await api.POST('/api/v1/self-backup/runs')).data?.runs ?? []
 
+describe('the default mock (Рк18)', () => {
+  test('is a finished onboarding with the self-backup bound to "self" on S3, backed up and confirmed', async () => {
+    resetMockState({ signedIn: true })
+
+    expect(await onboarding()).toMatchObject({ restriction: 'none' })
+    expect((await onboarding())?.steps.every((s) => s.state === 'done')).toBe(true)
+    expect(await selfBackup()).toMatchObject({
+      configured: true,
+      repository: { name: 'self', backend: 's3', local: false },
+      firstBackupDone: true,
+      status: 'ok',
+      warnings: [],
+    })
+    expect((await selfBackup())?.keysConfirmedAt).not.toBeNull()
+    expect((await selfBackup())?.sources.map((s) => s.lastRun?.status)).toEqual([
+      'succeeded',
+      'succeeded',
+    ])
+  })
+
+  test('has a recovery card for the bound repository', async () => {
+    resetMockState({ signedIn: true })
+    const { data } = await api.GET('/api/v1/self-backup/recovery-card')
+    expect(data).toMatchObject({ repositoryName: 'self', backend: 's3' })
+  })
+})
+
 describe('the clean-install mock after the step admin', () => {
   test('reports the self-backup step pending and the full restriction', async () => {
     await afterAdminStep()

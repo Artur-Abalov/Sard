@@ -3,6 +3,7 @@
 
 import type { components } from '../api/schema'
 import { freshTracker, type Tracker } from './lockout'
+import { defaultSelfBackup } from './selfBackupSources'
 import {
   agents,
   deletedSources,
@@ -82,6 +83,9 @@ function fresh(options: ResetOptions): MockState {
   const freshInstall = options.freshInstall ?? false
   const upgraded = options.upgraded ?? false
   const complete = !freshInstall && !upgraded
+  const self = agents.find((agent) => agent.builtin)
+  // A complete installation has its self-backup bound to "self", backed up and confirmed (Рк18).
+  const bound = complete && self !== undefined ? defaultSelfBackup(self.id) : null
   return structuredClone({
     signedIn: options.signedIn,
     password: MOCK_PASSWORD,
@@ -95,15 +99,16 @@ function fresh(options: ResetOptions): MockState {
       upgraded,
     },
     agents: complete ? agents : neighbourWithoutRepositories(agents),
-    sources,
+    sources: [...(bound?.sources ?? []), ...sources],
     deletedSources,
-    runs,
-    schedules,
+    // Newest first: the runs of the binding are older than every fixture run.
+    runs: [...runs, ...(bound?.runs ?? [])],
+    schedules: [...schedules, ...(bound?.schedules ?? [])],
     scheduleFires,
     snapshots,
     stepLogs,
     tokens: enrollmentTokens,
-    selfBackup: null,
+    selfBackup: bound?.binding ?? null,
     pendingRepository: null,
     runOutcomes: {},
     failFirstBackup: options.failFirstBackup ?? false,

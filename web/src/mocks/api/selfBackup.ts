@@ -6,35 +6,15 @@ import { buildCommand, freeName, passwordRevealCommand, safeLocation } from '../
 import { http } from '../http'
 import { noSession, PROBLEM, problem } from '../problems'
 import { status } from '../fixtures'
+import { CONFIGS, NAMES, nightly, PLUGINS, ROLES, type Role } from '../selfBackupSources'
 import { state } from '../state'
 import { activeRun, queuedRun } from './sources'
 import { FINGERPRINT } from './tokens'
 
 type Schemas = components['schemas']
-type Role = Schemas['SystemSourceRole']
 
 // The mock of F6: the same refusals in the same order as the server, two system sources with a
 // nightly schedule, "back up now" answering with the active run of a source that has one.
-
-const ROLES: Role[] = ['self_database', 'self_keys']
-const NAMES: Record<Role, string> = {
-  self_database: 'Sard: database',
-  self_keys: 'Sard: keys and configuration',
-}
-const PLUGINS: Record<Role, string> = { self_database: 'postgresql', self_keys: 'files' }
-const CONFIGS: Record<Role, Record<string, unknown>> = {
-  self_database: {
-    host: 'postgres',
-    port: 5432,
-    database: 'sard',
-    user: 'sard_self',
-    password_ref: 'sard-db',
-    tls_mode: 'disable',
-    pg_dump_path: '/usr/lib/postgresql/18/bin/pg_dump',
-    include_globals: false,
-  },
-  self_keys: { paths: ['/var/lib/sard/pki', '/etc/sard/install'], exclude: ['*.dump', '*.tgz'] },
-}
 
 function refused(
   code: Schemas['ErrorCode'],
@@ -286,24 +266,6 @@ function refusal(
     return refused('invalid_config', [{ field: 'config/password_ref', message: 'unknown secret' }])
   }
   return null
-}
-
-function nightly(sourceId: string, now: string): Schemas['Schedule'] {
-  return {
-    id: crypto.randomUUID(),
-    sourceId,
-    cron: '0 3 * * *',
-    timezone: 'UTC',
-    enabled: true,
-    nextRunAt: new Date(Date.now() + 3_600_000).toISOString(),
-    catchUpAt: null,
-    lastFiredAt: null,
-    skippedInRow: 0,
-    notifyOnSuccess: false,
-    lastRun: null,
-    createdAt: now,
-    updatedAt: now,
-  }
 }
 
 /** Creates the source of [role] or moves it to [agentId] and [repositoryName]; true if anything changed. */
