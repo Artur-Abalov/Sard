@@ -118,6 +118,13 @@ func signalingServer(t *testing.T) (addr string, accepted *atomic.Int32, first <
 	return l.Addr().String(), accepted, signal
 }
 
+// eventWait is the upper bound for waits that end on an event (the first
+// accepted connection, the first registration): a passing run ends on the
+// event, not on the limit. It is generous so that load and -race do not fail
+// a test that merely started late. Tests that assert the absence of an event
+// keep their own, short windows.
+const eventWait = 10 * time.Second
+
 // contextUntil is a context that ends after limit or as soon as event is
 // closed (a nil event never fires). The caller defers the returned cancel.
 func contextUntil(limit time.Duration, event <-chan struct{}) (context.Context, context.CancelFunc) {

@@ -82,7 +82,7 @@ func (h *startHost) refuses(cfg string) (stdout, stderr string) {
 
 func (h *startHost) connects(cfg string) string {
 	h.t.Helper()
-	code, _, stderr := h.runUntil(400*time.Millisecond, h.firstAccept, "--config", cfg)
+	code, _, stderr := h.runUntil(eventWait, h.firstAccept, "--config", cfg)
 	if code != 0 || h.accepted() == 0 {
 		h.t.Fatalf("exit code = %d, connections = %d, stderr = %q", code, h.accepted(), stderr)
 	}
@@ -143,7 +143,7 @@ func TestTheResticNextToTheAgentIsFoundByTheRealFileNotTheSymlink(t *testing.T) 
 		t.Fatal(err)
 	}
 	exe := func() (string, error) { return filepath.Join(link, "sard-agent"), nil }
-	ctx, cancel := contextUntil(400*time.Millisecond, h.firstAccept)
+	ctx, cancel := contextUntil(eventWait, h.firstAccept)
 	defer cancel()
 	if err := start(ctx, h.config(""), &bytes.Buffer{}, fixedHostname, exe); err != nil {
 		t.Fatalf("start: %v", err)
