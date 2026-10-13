@@ -28,7 +28,9 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * F6, check 4 and the banner: the self-backup's health from its sources' runs, schedules and overdue episodes,
@@ -96,6 +98,33 @@ class SelfBackupHealthIntegrationTest(
             assertNull(source.lastFailureAt)
             assertNull(source.lastRun)
         }
+    }
+
+    @Test
+    fun `Первый бэкап сделан, когда оба системных источника отработали после привязки`() {
+        val bound = bound()
+        assertFalse(bound.firstBackupDone)
+        assertFalse(state().firstBackupDone)
+
+        ran(bound.sources[0].sourceId, "succeeded", RUNS_NOW.plus(Duration.ofHours(1)))
+        assertFalse(state().firstBackupDone)
+
+        ran(bound.sources[1].sourceId, "failed", RUNS_NOW.plus(Duration.ofHours(2)))
+        assertFalse(state().firstBackupDone)
+
+        ran(bound.sources[1].sourceId, "succeeded", RUNS_NOW.plus(Duration.ofHours(3)))
+        assertTrue(state().firstBackupDone)
+    }
+
+    @Test
+    fun `Без подтверждения копии ключей после завершения онбординга - предупреждение при норме`() {
+        completeOnboarding(jdbc)
+        bound()
+
+        val state = state()
+
+        assertEquals(SelfBackupHealth.OK, state.health)
+        assertEquals(listOf(SelfBackupWarning.KEYS_UNCONFIRMED), state.warnings)
     }
 
     @Test

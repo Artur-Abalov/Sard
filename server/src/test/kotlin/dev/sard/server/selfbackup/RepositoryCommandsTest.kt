@@ -85,6 +85,30 @@ class RepositoryCommandsTest {
     }
 
     @Test
+    fun `Каждый адрес, который собирает сервер, допустим для проверки адреса хранилища`() {
+        val queries =
+            listOf(
+                "storage=s3 provider=aws region=eu-central-1 bucket=acme-sard path=prod",
+                "storage=s3 provider=aws region=eu-central-1 bucket=acme-sard",
+                "storage=s3 provider=b2 region=eu-central-003 bucket=acme-sard path=a/b",
+                "storage=s3 provider=b2 region=eu-central-003 bucket=acme-sard",
+                "storage=s3 provider=custom endpoint=https://minio.example.net:9000 bucket=acme-sard path=prod",
+                "storage=s3 provider=custom endpoint=https://minio.example.net:9000 bucket=acme-sard",
+                "storage=s3 provider=custom endpoint=http://minio.example.net bucket=acme-sard path=prod",
+                "storage=s3 provider=custom endpoint=https://minio.example.net bucket=acme-sard",
+                "storage=sftp user=backup host=backup.example.net path=/srv/sard",
+                "storage=sftp user=backup host=backup.example.net port=2222 path=/srv/sard",
+                "storage=sftp user=backup host=backup.example.net path=/srv/sard hostKeyFingerprint=$FINGERPRINT",
+                "storage=local",
+            )
+        for (query in queries) {
+            val address = built(query).address
+
+            assertTrue(isSafeLocation(address), "$address from $query")
+        }
+    }
+
+    @Test
     fun `Строка docker compose run запускает разовый контейнер соседа с пятью capabilities`() {
         val built = built("storage=local")
 
@@ -191,6 +215,7 @@ class RepositoryCommandsTest {
                 "storage=sftp user=backup host=backup.example.net" to "path",
                 "storage=sftp user=backup host=backup.example.net port=70000 path=/srv/sard" to "port",
                 "storage=sftp user=backup host=backup.example.net port=0 path=/srv/sard" to "port",
+                "storage=sftp user=backup host=backup.example.net port=65536 path=/srv/sard" to "port",
                 "storage=sftp user=backup host=backup.example.net port=22x path=/srv/sard" to "port",
                 "storage=sftp user=backup host=backup.example.net path=/srv/sard hostKeyFingerprint=MD5:aa" to
                     "hostKeyFingerprint",

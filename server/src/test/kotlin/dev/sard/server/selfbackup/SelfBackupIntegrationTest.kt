@@ -146,6 +146,32 @@ class SelfBackupIntegrationTest(
     }
 
     @Test
+    fun `Повторная привязка без адреса сохраняет прежний, с другим заменяет, с тем же не трогает запись`() {
+        fun updatedAt() =
+            jdbc
+                .queryForObject(
+                    "select updated_at from self_backups where tenant_id = ?",
+                    java.sql.Timestamp::class.java,
+                    tenant.id,
+                )?.toInstant()
+
+        fun rebind(where: String?) = MutFlow.underTest { selfBackups.bind(tenant.id, S3_REPOSITORY, false, where) }
+
+        val address = "s3:acme-sard/prod"
+        rebind(address)
+        clock.now = RUNS_NOW.plus(Duration.ofHours(1))
+
+        assertEquals(address, rebind(null).location)
+        assertEquals(address, rebind(address).location)
+        assertEquals(RUNS_NOW, updatedAt())
+
+        val later = RUNS_NOW.plus(Duration.ofHours(2))
+        clock.now = later
+        assertEquals("s3:acme-sard/other", rebind("s3:acme-sard/other").location)
+        assertEquals(later, updatedAt())
+    }
+
+    @Test
     fun `Повторная привязка к тому же репозиторию ничего не меняет`() {
         val first = bind(S3_REPOSITORY, confirmLocalStorage = false)
         clock.now = RUNS_NOW.plus(Duration.ofHours(1))

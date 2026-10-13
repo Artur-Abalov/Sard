@@ -736,6 +736,19 @@ class OnboardingServiceTest {
         assertEquals(1, events.count { "Onboarding step keys_confirmed completed" in it.text })
     }
 
+    @Test
+    fun `Запись подтверждения при шаге, уже выполненном в базе, пишет шаг в журнал, но не завершение`() {
+        adminDone()
+        h.selfBackup.firstBackupDone = true
+        h.steps.keys = true
+        h.selfBackup.recorded = true
+
+        val events = captureEvents { MutFlow.underTest { service.confirmKeys(ADDRESS) } }
+
+        assertEquals(1, events.count { "Onboarding step keys_confirmed completed" in it.text })
+        assertTrue(events.none { it.text == "Onboarding completed" }, events.toString())
+    }
+
     /** The other session wins between the check and the creation. */
     private class RacingAdminSetup : FakeAdminSetup() {
         override fun done() = false

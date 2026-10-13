@@ -70,7 +70,7 @@ private fun hostedS3(
 ): Storage? {
     val region = fields.required("region", REGION::matches)
     val location = locationOf(fields)
-    if (provider == null || region == null || location == null) return null
+    if (fields.invalid.isNotEmpty()) return null
     return Storage("s3:$location", listOf("--provider $provider", "--region $region", KEY_ID_FLAG), asksKeyId = true)
 }
 
@@ -78,7 +78,7 @@ private fun hostedS3(
 private fun customS3(fields: Fields): Storage? {
     val endpoint = fields.required("endpoint", ::validEndpoint)
     val location = locationOf(fields)
-    if (endpoint == null || location == null) return null
+    if (fields.invalid.isNotEmpty()) return null
     return Storage("s3:$endpoint/$location", listOf(KEY_ID_FLAG), asksKeyId = true)
 }
 
@@ -127,9 +127,8 @@ object RepositoryCommands {
     ): CommandBuild {
         val fields = Fields(params.filterValues { it.isNotEmpty() })
         val storage = fields.required("storage") { it in setOf("s3", "sftp", "local") }
-        val plan = planOf(storage, name, fields)
-        // Whatever the plan is, a field that did not fit refuses the whole request.
-        if (plan == null || fields.invalid.isNotEmpty()) return CommandBuild.Rejected(fields.invalid)
+        // A storage whose field did not fit has no plan: it refuses the whole request.
+        val plan = planOf(storage, name, fields) ?: return CommandBuild.Rejected(fields.invalid)
         return CommandBuild.Built(plan.address, commands(name, plan))
     }
 

@@ -324,3 +324,12 @@ ADR: `docs/adr/00XX-draft-f4b-onboarding-self-backup.md`.
 - Refactor not warranted: the split already reads clearly (each regex has a KDoc, helpers are named for what they decide). `EMBEDDED_USERINFO` is not redundant with `hasCredentials`: it covers addresses that start mid-text (quotes, `ENV=` prefix), which `AUTHORITY` anchored at `^` does not see. Folding `isCredentialFree` back into `isSafeLocation` would raise its CC above the CRAP limit.
 - `./scripts/gate.sh server fast`: PASSED.
 - Next: `architect`.
+
+## Hardener pass (mutation testing)
+
+- Baseline `./scripts/gate.sh server` (mutflow): 17 survivors in 6 classes: `AgentVersions.kt` 26/62/25 (reached through `recoveryProcedureUrl`), `OnboardingService.kt:162`, `StorageParameters.kt:25` (`65535 -> 65536`), `RepositoryCommands.kt` 73/73#2/81, `Enrollment.kt` 95/96, `SelfBackupHealth.kt` 67/75/75/151/151/160, `SelfBackups.kt:318`. `StorageLocation` (22 mutants), `SystemSourceLookup`/`TenantGuardTargets` (9, isolated) and `OnboardingRules` had no survivors.
+- Killed by tests: stage ordering and overflowing numbers of a release tag (`RecoveryCardsTest`), a keys confirmation on an already-done step (`OnboardingServiceTest`), port 65536 (`RepositoryCommandsTest`), ordinary vs built-in token while the onboarding is open (`BuiltinEnrollmentTokensIntegrationTest`), `firstBackupDone` and the KEYS_UNCONFIRMED-only warning (`SelfBackupHealthIntegrationTest`), a rebind without an address (`SelfBackupIntegrationTest`).
+- Dead code removed: the null guards of `hostedS3`/`customS3` and the second `invalid` check in `RepositoryCommands.build` duplicated each other (a missing field is always in `Fields.invalid`, so the mutants were equivalent). Now the builders return null on any invalid field and `build` rejects on a null plan.
+- New test: every address `RepositoryCommands` builds is accepted by `isSafeLocation`.
+- NOT committed (blocked, returned to coder): a path-bypass test of the D8 guard and the widened rule-8 architecture test, see the hardener report.
+- `./scripts/gate.sh server`: PASSED (coverage 96.8%, 1905 mutations, 0 survivors). `./scripts/gate.sh web`: PASSED (no mutation testing for web).
