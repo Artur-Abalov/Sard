@@ -377,7 +377,7 @@
       },
       "repo-add": {
         "title": "Connect the storage",
-        "text": "Creates a local restic repository main in /srv/sard/main with a generated password and gives the service write access. Save the password outside the host (sudo sard-agent repo password main --reveal): without it the backups cannot be restored. S3 and SFTP are connected by the same sudo sard-agent repo add with another address — see the operator docs (agent host setup)."
+        "text": "The command creates a local restic repository with a generated password and gives the service write access. Save the password outside the host (sudo sard-agent repo password <name> --reveal): without it the backups cannot be restored. S3 and SFTP are connected by the same sudo sard-agent repo add with another address — see the operator docs (agent host setup)."
       },
       "start": {
         "title": "Start the service",

@@ -252,7 +252,7 @@ start() { timeout 10 "$AG" --config "$H/a1.yaml" 2>&1; echo "exit=$?"; }
     → `sard-agent sard-agent 600`, `sard-agent sard-agent 644`,
     `sard-agent sard-agent 644`; `sudo ls -A /etc/sard/tls` — только эти три файла.
 48а. Совместимость: `sudo rm /etc/sard/tls/*`, новый токен;
-    `sudo -u sard-agent sard-agent enroll --server <адрес> --token <строка>`
+    `sudo -u sard-agent sard-agent enroll --server <адрес> --token <строка>` <!-- allow-sudo-u: совместимость: прежняя команда консоли, до Q5 -->
     (прежняя команда консоли, до Q5) → `exit=0`; владелец файлов — `sard-agent`,
     ключ `600`.
 48б. Посторонний пользователь: `sard-agent enroll --server <адрес> --token <новая строка>; echo "exit=$?"`

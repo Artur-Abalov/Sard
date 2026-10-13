@@ -22,7 +22,7 @@
 #      docs/specs/server/agent-install.feature: изменяющие команды агента —
 #      через sudo, ADR 0050; под root enroll с A8a сам отдаёт файлы личности
 #      пользователю службы, Р25 в docs/specs/agent/host-setup.feature. До Q5
-#      префикс был «sudo -u sard-agent sard-agent», В10 U1b) из явной настройки публичного gRPC-адреса для агентов
+#      префикс был «sudo -u sard-agent sard-agent», В10 U1b) из явной настройки публичного gRPC-адреса для агентов (allow-sudo-u: история: до Q5)
 #      (например SARD_AGENT_ENDPOINT). Результат создания токена на уровне
 #      сервиса уже содержит готовую команду; консоль её никогда не собирает.
 #      Адрес для агентов:

@@ -4,7 +4,7 @@
 package dev.sard.server.install
 
 import dev.sard.server.enrollment.AgentEndpoint
-import dev.sard.server.enrollment.withSudo
+import dev.sard.server.enrollment.agentCommand
 
 private const val USER = "sard-agent"
 private const val UNIT = "sard-agent.service"
@@ -47,7 +47,7 @@ class InstallCommands(
                 step(StepKind.INSTALL, installCommands(pkg)),
                 step(StepKind.CONFIGURE, listOf(configure())),
                 step(StepKind.ENROLL, listOf(enroll())),
-                step(StepKind.REPO_ADD, listOf(withSudo("repo add $FIRST_REPOSITORY $FIRST_REPOSITORY_PATH"))),
+                step(StepKind.REPO_ADD, listOf(agentCommand("repo add $FIRST_REPOSITORY $FIRST_REPOSITORY_PATH"))),
                 step(StepKind.START, listOf("sudo systemctl enable --now $UNIT")),
             )
 
