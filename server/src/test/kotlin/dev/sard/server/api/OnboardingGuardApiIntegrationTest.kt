@@ -129,6 +129,7 @@ class OnboardingGuardApiIntegrationTest(
 
     @Test
     fun `Разрешённые изменяющие запросы не отвечают onboarding_incomplete`() {
+        assertEquals("full", send("GET", "/api/v1/onboarding").json.path("restriction").asString())
         world.selfAgent(tenant)
         val bound = send("PUT", "/api/v1/self-backup/repository", """{"repositoryName":"self"}""")
         assertEquals(200, bound.status, bound.toString())
@@ -156,6 +157,7 @@ class OnboardingGuardApiIntegrationTest(
     @Test
     fun `Отзыв встроенного агента с подтверждением разрешён до завершения онбординга`() {
         val builtin = world.selfAgent(tenant)
+        assertEquals("full", send("GET", "/api/v1/onboarding").json.path("restriction").asString())
 
         val revoked = send("POST", "/api/v1/agents/${builtin.agentId}/revoke?confirm=sard-self")
 
@@ -266,13 +268,16 @@ class OnboardingGuardApiIntegrationTest(
         val before = counts()
 
         val paths = listOf("/api/v1/enrollment-tokens;x=1", "/api/v1/enrollment%2Dtokens", "/api/v1/enrollment-tokens/")
-        for (path in paths) {
-            val response = world.api.sendUnchecked("POST", path, admin, "{}")
-
-            assertTrue(response.status != 201, "$path: $response")
-            assertTrue(response.status in setOf(400, 404, 409), "$path: $response")
-            if (response.status == 409) assertEquals("onboarding_incomplete", response.code, path)
-        }
+        val statuses = paths.associateWith { world.api.sendUnchecked("POST", it, admin, "{}").status }
+        assertEquals(
+            mapOf(
+                "/api/v1/enrollment-tokens;x=1" to 409,
+                "/api/v1/enrollment%2Dtokens" to 409,
+                // No such mapping: the trailing slash is not the issue of a token, and it is not issued.
+                "/api/v1/enrollment-tokens/" to 404,
+            ),
+            statuses,
+        )
         assertEquals(before, counts())
     }
 
@@ -292,13 +297,41 @@ class OnboardingGuardApiIntegrationTest(
             )
         val before = counts()
 
-        for (path in requests) {
-            val response = world.api.sendUnchecked("POST", path, admin, source)
-
-            assertTrue(response.status != 201 && response.status != 200, "$path: $response")
-            if (response.status == 409) assertEquals("onboarding_incomplete", response.code, path)
-        }
+        val statuses = requests.associateWith { world.api.sendUnchecked("POST", it, admin, source).status }
+        val refused = 409
+        val expected =
+            mapOf(
+                "/api/v1/onboarding/../sources" to refused,
+                "/api/v1/sources;x=1" to refused,
+                "/api/v1/s%6Frces" to refused,
+                "/api/v1/enrollment-tokens;x=1" to refused,
+                "/api/v1/onboarding;x=1/../sources" to refused,
+                // The schedule has no POST: the method is not allowed, nothing is changed.
+                "/api/v1/sources/$random;x=1/schedule" to 405,
+                // An encoded slash is rejected before any mapping.
+                "/api/v1/agents/$random%2Frevoke" to 400,
+            )
+        assertEquals(expected, statuses)
         assertEquals(before, counts())
+    }
+
+    @Test
+    fun `Неизвестный изменяющий путь отвечает 404 при NONE и NEW_AGENTS и onboarding_incomplete при FULL`() {
+        val path = "/api/v1/no-such"
+        assertEquals("full", send("GET", "/api/v1/onboarding").json.path("restriction").asString())
+        val full = world.api.sendUnchecked("POST", path, admin, "{}")
+        assertEquals(409, full.status, full.toString())
+        assertEquals("onboarding_incomplete", full.code)
+
+        jdbc.markUpgraded()
+        assertEquals("new_agents", send("GET", "/api/v1/onboarding").json.path("restriction").asString())
+        val newAgents = world.api.sendUnchecked("POST", path, admin, "{}")
+        assertEquals(404, newAgents.status, newAgents.toString())
+
+        jdbc.finishOnboarding()
+        assertEquals("none", send("GET", "/api/v1/onboarding").json.path("restriction").asString())
+        val none = world.api.sendUnchecked("POST", path, admin, "{}")
+        assertEquals(404, none.status, none.toString())
     }
 
     @Test

@@ -233,6 +233,42 @@ class RepositoryCommandsTest {
     }
 
     @Test
+    fun `Отклонённый S3 называет все недопустимые поля и не строит команд`() {
+        val aws = "storage=s3 provider=aws"
+        val custom = "storage=s3 provider=custom"
+        val cases =
+            listOf(
+                "$aws bucket=acme-sard" to listOf("region"),
+                "$aws region=eu-central-1" to listOf("bucket"),
+                "$aws region=eu-central-1 bucket=acme-sard path=a//b" to listOf("path"),
+                "$aws" to listOf("region", "bucket"),
+                "$aws region=EU bucket=ab path=../x" to listOf("region", "bucket", "path"),
+                "storage=s3 provider=b2 bucket=acme-sard" to listOf("region"),
+                "$custom bucket=acme-sard" to listOf("endpoint"),
+                "$custom endpoint=https://minio.example.net" to listOf("bucket"),
+                "$custom endpoint=https://minio.example.net bucket=acme-sard path=a//b" to listOf("path"),
+                "$custom endpoint=ftp://x bucket=ab path=../x" to listOf("endpoint", "bucket", "path"),
+                "$custom region=eu-central-1 bucket=acme-sard" to listOf("endpoint"),
+                "storage=s3 region=eu-central-1 bucket=acme-sard" to listOf("provider"),
+                "storage=s3 provider=wasabi" to listOf("provider", "region", "bucket"),
+            )
+        for ((query, fields) in cases) {
+            val rejected = assertIs<CommandBuild.Rejected>(build(query), query)
+
+            assertEquals(fields, rejected.fields, query)
+        }
+    }
+
+    @Test
+    fun `Параметры, которых нет у выбранного S3, не мешают`() {
+        val aws = built("storage=s3 provider=aws region=eu-central-1 bucket=acme-sard endpoint=ftp://x")
+        assertEquals("s3:acme-sard", aws.address)
+        val custom = built("storage=s3 provider=custom endpoint=https://m.example.net bucket=acme-sard region=EU_x")
+        assertEquals("s3:https://m.example.net/acme-sard", custom.address)
+        assertTrue("--provider" !in runLine(custom) && "--region" !in runLine(custom), runLine(custom))
+    }
+
+    @Test
     fun `Путь из 512 знаков принимается, из 513 отклоняется`() {
         val base = "storage=s3 provider=aws region=eu-central-1 bucket=acme-sard path="
 
