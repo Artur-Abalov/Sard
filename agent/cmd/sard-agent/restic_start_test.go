@@ -61,19 +61,8 @@ func (h *startHost) runFor(d time.Duration, args ...string) (code int, stdout, s
 // runUntil is runFor that stops the agent as soon as event is closed; d stays
 // the upper bound when it never is.
 func (h *startHost) runUntil(d time.Duration, event <-chan struct{}, args ...string) (code int, stdout, stderr string) {
-	ctx, cancel := context.WithTimeout(context.Background(), d)
+	ctx, cancel := contextUntil(d, event)
 	defer cancel()
-	if event != nil {
-		done := make(chan struct{})
-		defer close(done)
-		go func() {
-			select {
-			case <-event:
-				cancel()
-			case <-done:
-			}
-		}()
-	}
 	var out, errOut bytes.Buffer
 	code = run(ctx, args, &out, &errOut, fixedHostname)
 	return code, out.String(), errOut.String()
@@ -151,15 +140,8 @@ func TestTheResticNextToTheAgentIsFoundByTheRealFileNotTheSymlink(t *testing.T) 
 		t.Fatal(err)
 	}
 	exe := func() (string, error) { return filepath.Join(link, "sard-agent"), nil }
-	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+	ctx, cancel := contextUntil(400*time.Millisecond, h.firstAccept)
 	defer cancel()
-	go func() {
-		select {
-		case <-h.firstAccept:
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
 	if err := start(ctx, h.config(""), &bytes.Buffer{}, fixedHostname, exe); err != nil {
 		t.Fatalf("start: %v", err)
 	}

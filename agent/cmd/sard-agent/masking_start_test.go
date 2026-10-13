@@ -5,7 +5,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -46,15 +45,9 @@ func startAgentWith(t *testing.T, extra func(dir string) string) (int, string) {
 	previous := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
 	t.Cleanup(func() { slog.SetDefault(previous) })
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	// the warnings are logged before the first dial
+	ctx, cancel := contextUntil(300*time.Millisecond, first)
 	defer cancel()
-	go func() { // the warnings are logged before the first dial
-		select {
-		case <-first:
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
 	var out, errOut bytes.Buffer
 	code := run(ctx, []string{"--config", writeConfig(t, cfg)}, &out, &errOut, fixedHostname)
 	return code, log.String()

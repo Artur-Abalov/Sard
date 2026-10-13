@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -95,6 +96,20 @@ func signalingServer(t *testing.T) (addr string, accepted *atomic.Int32, first <
 		}
 	}()
 	return l.Addr().String(), accepted, signal
+}
+
+// contextUntil is a context that ends after limit or as soon as event is
+// closed (a nil event never fires). The caller defers the returned cancel.
+func contextUntil(limit time.Duration, event <-chan struct{}) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	go func() {
+		select {
+		case <-event:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, cancel
 }
 
 func identityConfig(t *testing.T, dir, addr string) string {

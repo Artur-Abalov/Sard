@@ -107,19 +107,8 @@ func (h *refusalHost) runUntilRegistered(limit time.Duration) (code int, stdout,
 }
 
 func (h *refusalHost) runUntil(limit time.Duration, event <-chan struct{}) (code int, stdout, stderr string) {
-	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	ctx, cancel := contextUntil(limit, event)
 	defer cancel()
-	if event != nil {
-		done := make(chan struct{})
-		defer close(done)
-		go func() {
-			select {
-			case <-event:
-				cancel()
-			case <-done:
-			}
-		}()
-	}
 	var out, errOut bytes.Buffer
 	code = run(ctx, []string{"--config", h.cfg}, &out, &errOut, fixedHostname)
 	return code, out.String(), errOut.String()
