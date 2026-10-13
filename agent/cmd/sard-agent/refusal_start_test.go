@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -37,11 +38,15 @@ type tlsServer struct {
 	connects atomic.Int32
 	// last is the latest RegisterRequest.
 	last atomic.Pointer[agentv1.RegisterRequest]
+	// first is closed after the first Register has been recorded.
+	first     chan struct{}
+	firstOnce sync.Once
 }
 
 func (s *tlsServer) Register(ctx context.Context, req *agentv1.RegisterRequest) (*agentv1.RegisterResponse, error) {
 	s.registry.Add(1)
 	s.last.Store(req)
+	s.firstOnce.Do(func() { close(s.first) })
 	return nil, s.reply(ctx)
 }
 
@@ -72,7 +77,7 @@ func newRefusalHost(t *testing.T, reply func(ctx context.Context) error) *refusa
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := &tlsServer{reply: reply}
+	srv := &tlsServer{reply: reply, first: make(chan struct{})}
 	g := grpc.NewServer(grpc.Creds(credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})))
 	agentv1.RegisterAgentServiceServer(g, srv)
 	go func() { _ = g.Serve(lis) }()
@@ -92,7 +97,17 @@ func (h *refusalHost) configFor(address string) string {
 
 // runAgent starts the agent and stops it after limit; it returns early when the agent exits.
 func (h *refusalHost) run(limit time.Duration) (code int, stdout, stderr string) {
-	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	return h.runUntil(limit, nil)
+}
+
+// runUntilRegistered is run that stops the agent once the server has recorded
+// a Register; limit stays the upper bound.
+func (h *refusalHost) runUntilRegistered(limit time.Duration) (code int, stdout, stderr string) {
+	return h.runUntil(limit, h.server.first)
+}
+
+func (h *refusalHost) runUntil(limit time.Duration, event <-chan struct{}) (code int, stdout, stderr string) {
+	ctx, cancel := contextUntil(limit, event)
 	defer cancel()
 	var out, errOut bytes.Buffer
 	code = run(ctx, []string{"--config", h.cfg}, &out, &errOut, fixedHostname)
