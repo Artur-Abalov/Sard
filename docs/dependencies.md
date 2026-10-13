@@ -44,6 +44,8 @@
 
 Зависимость пакета (ставит менеджер пакетов хоста, не поставляется): `openssh-client` (deb) / `openssh-clients` (rpm), OpenSSH, BSD — `ssh` для бэкенда `sftp:` restic; ADR 0047.
 
+Зависимость пакета rpm (в Debian обязательный пакет): `util-linux`, GPL-2.0-or-later и др. — `setpriv`, которым `sard-agent repo restore` запускает `ssh` от пользователя службы, когда restic идёт от root; ADR 0056. Программа запускается, в код агента не линкуется.
+
 ## Сервер (Kotlin, Gradle)
 
 Версии без явного номера управляются BOM Spring Boot 4.1.1. Лицензии — из POM на Maven Central.

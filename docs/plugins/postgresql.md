@@ -219,40 +219,61 @@ FAILED, а результат содержит снимок базы: он по�
 Автоматического восстановления пока нет: действие `restore` плагина объявлено, но шаг
 завершается FAILED с сообщением, что восстановление для плагина postgresql ещё не
 реализовано, и ничего не запускает. Из снимков базу восстанавливают стандартными
-средствами PostgreSQL. После A8 команда `sard-agent repo restore` заменит `restic`
-ниже. `pg_restore` и `psql` должны быть **не старше** версии из метки
-`postgresql.pg_dump_version`; новый кластер — не старше исходного.
+средствами PostgreSQL; снимки находит и выкладывает на диск команда
+`sard-agent repo snapshots` и `sard-agent repo restore` (без сервера Sard и без
+регистрации агента, `docs/operations/agent-host-setup.md`). `pg_restore` и `psql`
+должны быть **не старше** версии из метки `postgresql.pg_dump_version`; новый
+кластер — не старше исходного.
 
-В примерах `restic` настроен переменными `RESTIC_REPOSITORY` и `RESTIC_PASSWORD_FILE`
-репозитория источника, `$SN` — `snapshot_id` шага (снимок базы).
+Пока команда `repo restore` выкладывает снимок PostgreSQL как обычный каталог (команды
+`psql`, `createdb` и `pg_restore` она печатает позже, в срезе A8c-3): файл `/app.dump`
+ложится в `<цель>/app.dump`, `/app.globals.sql` — в `<цель>/app.globals.sql`, оба
+принадлежат root. В примерах `<имя>` — репозиторий источника, `$SN` — `snapshot_id`
+шага (снимок базы), `$T` — пустой каталог для файлов.
 
 1. **Найти снимок глобальных объектов** по метке `postgresql.main_snapshot`:
 
    ```bash
-   GS=$(restic snapshots --json --tag postgresql.main_snapshot=$SN | jq -r '.[0].id')
+   GS=$(sudo sard-agent repo snapshots <имя> --json \
+     | jq -r --arg t "postgresql.main_snapshot=$SN" '.snapshots[] | select(.tags | index($t)) | .id')
    ```
 
-2. **Восстановить глобальные объекты** суперпользователем нового кластера, **до** базы:
+   В списке `sudo sard-agent repo snapshots <имя> --source <источник>` оба снимка
+   (базы и глобальных объектов) видны рядом, с одним `RUN`.
+
+2. **Выложить файлы** обоих снимков и отдать их пользователю `postgres` (дамп содержит все
+   данные базы, глобальные объекты при `globals_role_passwords` — хеши паролей ролей, поэтому
+   файлы закрыты для всех, кроме root):
 
    ```bash
-   restic dump $GS /app.globals.sql | psql -X -d postgres
+   sudo sard-agent repo restore <имя> $GS --target $T
+   sudo sard-agent repo restore <имя> $SN --target $T --overwrite
+   sudo chown -R postgres $T
+   ```
+
+   Каждая команда выкладывает файл снимка под его путём внутри цели; вторая берёт
+   `--overwrite`, потому что в цели уже есть файл первой. Цель создана для root с
+   правами `0700`, поэтому `chown -R` отдаёт `postgres` и каталог.
+
+3. **Восстановить глобальные объекты** суперпользователем нового кластера, **до** базы:
+
+   ```bash
+   sudo -u postgres psql -X -d postgres -f $T/app.globals.sql
    ```
 
    Ошибки «role … already exists» ожидаемы для ролей, которые в новом кластере уже есть
    (начальный суперпользователь).
 
-3. **Восстановить базу**: `restic dump` (или `restic restore`), `createdb`, `pg_restore`
-   в новую базу:
+4. **Восстановить базу**: `createdb`, `pg_restore` в новую базу:
 
    ```bash
-   restic dump $SN /app.dump > app.dump
-   createdb restored
-   pg_restore -d restored app.dump
+   sudo -u postgres createdb restored
+   sudo -u postgres pg_restore -d restored $T/app.dump
    ```
 
-   Роли из шага 2 нужны уже здесь: владельцы объектов в дампе — эти роли.
+   Роли из шага 3 нужны уже здесь: владельцы объектов в дампе — эти роли.
 
-4. **Пароли ролей.** Без `globals_role_passwords` роли восстановлены без паролей — войти
+5. **Пароли ролей.** Без `globals_role_passwords` роли восстановлены без паролей — войти
    по паролю они не могут. Задайте пароли:
 
    ```sql

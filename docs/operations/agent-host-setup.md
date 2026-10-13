@@ -29,7 +29,7 @@ sudo sard-agent repo add main /srv/sard/main
 
 | кто запускает | что может |
 |---|---|
-| root (`sudo`) | всё |
+| root (`sudo`) | всё, в том числе `repo restore`, которое пишет файлы хоста и доступно только root |
 | пользователь службы (`sard-agent`, или `service.user` основного конфига) | только чтение: `secret list`, `repo list`, `repo show`, `repo snapshots`, `repo password --reveal`; а также `repo init` и `enroll`, как раньше |
 | любой другой | ничего: `PRIVILEGES_REQUIRED`, код 2, в сообщении готовая команда с `sudo` |
 
@@ -374,8 +374,8 @@ sudo sard-agent repo snapshots <имя> [--source <источник>] [--json] [
 
 Показывает снимки репозитория (A8c-1, `docs/specs/agent/repo-restore.feature`,
 Р53–Р57) без сервера Sard и без регистрации агента: нужны только конфиг и
-файлы пароля и ключей репозитория. Один вызов `restic snapshots --json
---no-lock` (ключ только на чтение подходит, файлов блокировки нет) от имени
+файлы пароля и ключей репозитория. Один вызов restic со списком снимков
+(`--json --no-lock`: ключ только на чтение подходит, файлов блокировки нет) от имени
 пользователя службы; пароль restic получает только файлом, ключи S3 — из
 `env`-файла. Команда только читает и в журнал не пишет. Запускать её можно через
 `sudo` или от пользователя службы, остальные получают `PRIVILEGES_REQUIRED`.
@@ -406,7 +406,128 @@ aaaa1111 2026-10-10T03:00:00Z db1 s1 r1 /srv/data
 `REPOSITORY_NOT_INITIALIZED`, `WRONG_PASSWORD`, `PASSWORD_FILE_MISSING`,
 `SECRET_FILE_REJECTED`, `STORAGE_ACCESS_DENIED` — код 2; `BACKEND_UNAVAILABLE`
 (в том числе молчащее хранилище дольше `--connect-timeout`), `TIMEOUT` — код 6;
-restic не найден — код 1. Восстановление снимка (`repo restore`) — срез A8c-2.
+restic не найден — код 1. Восстановление снимка — `repo restore`, ниже.
+
+## Снимки и восстановление на хосте: `repo restore`
+
+```bash
+sudo sard-agent repo restore <имя> <снимок> --target <каталог> [--overwrite] [--path <путь>]...
+sudo sard-agent repo restore <имя> latest --source <источник> --target <каталог>
+```
+
+Восстанавливает снимок на этом хосте (A8c-2, `docs/specs/agent/repo-restore.feature`,
+Р58–Р71; решения — ADR 0056) **без сервера Sard и без регистрации агента**:
+команда не соединяется с сервером, не читает `tls.*`, не требует работающей
+службы и не меняет настройку хоста (конфиг, `agent.d`, `secrets`, drop-in,
+`~/.ssh`; `systemctl` не вызывается). Нужны только конфиг и файлы пароля и
+ключей репозитория. Запускать её можно только через `sudo`: она пишет файлы с
+владельцами из снимка. Пользователь службы и посторонний получают
+`PRIVILEGES_REQUIRED` с готовой командой `sudo sard-agent repo restore …`.
+
+### После потери хоста
+
+1. Установите пакет агента (`deb` или `rpm`, он приносит restic, `ssh` и
+   `setpriv`). Служба и регистрация **не нужны**.
+2. Подключите репозиторий с паролем из копии (копия лежит вне потерянного хоста):
+
+   ```bash
+   sudo sard-agent repo add main s3:https://s3.example.com/bucket/main \
+       --access-key-id AKIA... --secret-key-from-file /root/s3.secret \
+       --password-from-file /root/main.password.copy --no-restart
+   ```
+
+   Для SFTP и локального пути — те же флаги пароля, см. разделы выше.
+3. Найдите снимок: `sudo sard-agent repo snapshots main` (видны снимки всех
+   хостов, в том числе потерянного).
+4. Восстановите в пустой каталог:
+
+   ```bash
+   sudo sard-agent repo restore main latest --source <id источника> --target /srv/restore
+   ```
+
+### Снимок
+
+Второй аргумент — полный id (64 символа), префикс id из 8–63 строчных
+шестнадцатеричных символов или `latest`. `latest` берёт самый новый снимок
+источника и **требует `--source`** (в одном репозитории снимки многих
+источников); снимки глобальных объектов PostgreSQL он пропускает. Команда
+находит снимок в списке сама и передаёт restic полный id. Нет такого —
+`SNAPSHOT_UNKNOWN` (называет `repo snapshots <имя>`); префикс подходит
+нескольким — `SNAPSHOT_AMBIGUOUS` (называет полные id, время и источник
+каждого). `--source` с id сужает поиск снимками этого источника.
+
+### Раскладка и цель
+
+Файлы снимка ложатся **под исходными абсолютными путями внутри цели**: снимок
+`/srv/data`, цель `/r` — `/r/srv/data/…`, с владельцем, группой, правами и
+временем изменения из снимка. Цель `/` кладёт файлы на свои места.
+
+- `--target` обязателен, путь абсолютный (`/srv/r/` и `/srv/./r` — `/srv/r`).
+  Путь проходится от `/` без перехода по ссылкам: ссылка или файл в любом
+  компоненте — `TARGET_INVALID` с компонентом. Цель не может совпадать с
+  каталогом локального репозитория или `restic.cache_dir` и лежать внутри них.
+- Отсутствующая цель и её родители создаются: `root:root`, `0700` при любой
+  umask. При отказе созданные этим запуском пустые каталоги удаляются.
+- Непустая цель без `--overwrite` — `TARGET_NOT_EMPTY`, ничего не записано.
+  Каталог только с пустым `lost+found` (свежий том ext4) считается пустым.
+  С `--overwrite` файлы снимка заменяют одноимённые, прочие файлы цели остаются.
+- `/` — только с `--allow-root-target` **и** `--overwrite` (`/` не бывает
+  пустым); без флага — `ROOT_TARGET_REFUSED`.
+- `--path <путь>` (повторяемый) восстанавливает только этот файл или
+  поддерево: абсолютный путь внутри снимка, **буквально** (символы `* ? [ \` и
+  компонент `..` — ошибка использования). Пути, которого нет в снимке, —
+  `PATH_NOT_IN_SNAPSHOT` до записи в цель.
+- На время восстановления цель удерживается блокировкой; вторая команда в ту
+  же цель — `TARGET_BUSY` (код 6), restic второй команды не запускается.
+
+Итог (stdout): имя репозитория, полный id снимка, время (UTC), источник,
+запуск, цель, число восстановленных файлов и байт и слово `restored`; затем
+строка, что файлы лежат в цели под исходными путями. До A8c-3 снимок PostgreSQL
+восстанавливается как обычный каталог (`<цель>/<база>.dump`), команды
+PostgreSQL не печатаются; см. «Восстановление руками» в
+`docs/plugins/postgresql.md`.
+
+### Время и прерывание
+
+`--connect-timeout` (30 с) ограничивает первое обращение к хранилищу.
+**Общего таймаута по умолчанию нет** (восстановление бывает долгим);
+`--timeout` — положительная длительность, истёк — `TIMEOUT`. `SIGINT` или
+`SIGTERM` команде: restic получает `SIGTERM` своей группе и `SIGKILL` через
+10 с, код `INTERRUPTED`. Отказ после начала записи (`TIMEOUT`, `INTERRUPTED`,
+`BACKEND_UNAVAILABLE`, `TARGET_WRITE`) говорит, что в цели могут остаться
+частично восстановленные файлы. `RESTORE_INCOMPLETE` (код 1) — restic не
+восстановил отдельные файлы: число и первые 10 путей, восстановленное остаётся.
+`TARGET_WRITE` (код 7) — не создана цель или нет места.
+
+### Как это устроено
+
+- Чтение списка и проверка `--path` — вызовы restic со списком снимков и
+  списком файлов снимка, оба с `--no-lock`, от имени пользователя службы.
+- Восстановление — вызов restic с `--no-cache --no-lock` от root, чтобы
+  владельцы и группы вернулись из снимка. После команды в `restic.cache_dir`,
+  каталоге локального репозитория и `~/.ssh` нет файлов root.
+- Для SFTP restic получает `-o sftp.command`: `ssh` запускается от пользователя
+  службы через `setpriv` (пакет `util-linux`) и читает его `~/.ssh`; root
+  закрытый ключ не открывает.
+- Пароль restic получает только файлом, ключи S3 — только окружением из
+  `env`-файла; в аргументах процессов, выводе, журнале и строке аудита их нет.
+- `--no-lock`: `restic prune`, запущенный вручную во время восстановления, может
+  удалить нужные данные; restic откажет с ошибкой (тихой порчи нет). Sard
+  `forget` и `prune` не выполняет.
+
+### Журнал и SELinux
+
+Если запись в цель началась, команда пишет одну строку аудита после исхода:
+`repository <имя> snapshot <короткий id> restored to <цель>` или `… restore to
+<цель> failed: <ПРИЧИНА>`; отказ до записи строки не оставляет.
+
+На хосте с SELinux enforcing метки файлов, восстановленных в системные каталоги
+(`/etc`, `/var`, `/srv`), могут не совпасть с политикой этого хоста: restic
+возвращает расширенные атрибуты снимка, а снимок мог быть сделан на другом
+хосте. После восстановления в системный каталог выполните
+`sudo restorecon -R <каталог>`; `sudo restorecon -nv -R <каталог>` после этого
+ничего не меняет, а в журнале аудита нет отказов AVC для `sard-agent` и
+`restic`.
 
 ## Применение изменения и перезапуск
 
@@ -460,12 +581,12 @@ sudo journalctl -t sard-agent --since today
 | код | класс | когда |
 |---|---|---|
 | 0 | успех | изменение применено или не требовалось; чтение; `--help` |
-| 1 | ошибка агента | restic не найден, старый, непригоден; `BACKEND_REFUSED`; `SSH_CLIENT_MISSING`, `SSH_CLIENT_FAILED`; `SERVICE_RESTART_FAILED` |
-| 2 | использование | флаги, `PRIVILEGES_REQUIRED`, `SERVICE_USER_UNKNOWN`, `NAME_INVALID`, конфиг и `DUPLICATE_NAME`, `DEFINED_IN_CONFIG`, `PATH_IN_USE`, `SECRET_SOURCE_MISSING`, `SECRET_SOURCE_CONFLICT`, `SECRET_EMPTY`, `SECRET_TOO_LARGE`, `SECRET_MISMATCH`, `SECRET_INVALID`, `SECRET_FILE_REJECTED`, `BACKEND_NOT_SUPPORTED`, `ADDRESS_INVALID`, `LOCAL_PATH_INVALID`, `WRONG_PASSWORD`, `S3_KEY_REJECTED`, `STORAGE_ACCESS_DENIED`, `BUCKET_NOT_FOUND`, `SSH_HOME_INVALID`, `SSH_FILE_REJECTED`, `SSH_KEY_NOT_AUTHORIZED`, `HOST_KEY_UNCONFIRMED`, `REPOSITORY_UNKNOWN`, `REPOSITORY_NOT_INITIALIZED`, `REVEAL_REQUIRED`, `PASSWORD_FILE_MISSING` |
+| 1 | ошибка агента | restic не найден, старый, непригоден; `BACKEND_REFUSED`; `SSH_CLIENT_MISSING`, `SSH_CLIENT_FAILED`; `SERVICE_RESTART_FAILED`; `RESTORE_INCOMPLETE` |
+| 2 | использование | флаги, `PRIVILEGES_REQUIRED`, `SERVICE_USER_UNKNOWN`, `NAME_INVALID`, конфиг и `DUPLICATE_NAME`, `DEFINED_IN_CONFIG`, `PATH_IN_USE`, `SECRET_SOURCE_MISSING`, `SECRET_SOURCE_CONFLICT`, `SECRET_EMPTY`, `SECRET_TOO_LARGE`, `SECRET_MISMATCH`, `SECRET_INVALID`, `SECRET_FILE_REJECTED`, `BACKEND_NOT_SUPPORTED`, `ADDRESS_INVALID`, `LOCAL_PATH_INVALID`, `WRONG_PASSWORD`, `S3_KEY_REJECTED`, `STORAGE_ACCESS_DENIED`, `BUCKET_NOT_FOUND`, `SSH_HOME_INVALID`, `SSH_FILE_REJECTED`, `SSH_KEY_NOT_AUTHORIZED`, `HOST_KEY_UNCONFIRMED`, `REPOSITORY_UNKNOWN`, `REPOSITORY_NOT_INITIALIZED`, `REVEAL_REQUIRED`, `PASSWORD_FILE_MISSING`, `SNAPSHOT_UNKNOWN`, `SNAPSHOT_AMBIGUOUS`, `TARGET_INVALID`, `TARGET_NOT_EMPTY`, `ROOT_TARGET_REFUSED`, `PATH_NOT_IN_SNAPSHOT` |
 | 4 | идентичность есть | `REPOSITORY_CONFLICT`: имя уже подключено к другому адресу |
 | 5 | доверие | `HOST_KEY_MISMATCH`, `HOST_KEY_REJECTED`, `HOST_KEY_CHANGED`: ключ хоста SFTP не подтверждён, не совпал или сменился |
-| 6 | временная | `BACKEND_UNAVAILABLE` (в том числе `--connect-timeout`), `TIMEOUT`, `INTERRUPTED`, `CONFIG_LOCKED`, `INIT_IN_PROGRESS` |
-| 7 | запись | `CONFIG_WRITE` (каталог или файл `agent.d`, `secrets`, drop-in, каталог репозитория, домашний каталог, `~/.ssh` и его файлы, смена владельца), `LOCK_WRITE` |
+| 6 | временная | `BACKEND_UNAVAILABLE` (в том числе `--connect-timeout`), `TIMEOUT`, `INTERRUPTED`, `CONFIG_LOCKED`, `INIT_IN_PROGRESS`, `TARGET_BUSY` |
+| 7 | запись | `CONFIG_WRITE` (каталог или файл `agent.d`, `secrets`, drop-in, каталог репозитория, домашний каталог, `~/.ssh` и его файлы, смена владельца), `LOCK_WRITE`, `TARGET_WRITE` (создание цели или запись файла у `repo restore`, нет места) |
 
 Таблица каждой команды — в её `--help`.
 
