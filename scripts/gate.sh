@@ -81,7 +81,7 @@ gate_go() {
   mutation_total "$m" "$out"
 }
 
-# Go mutation testing (docs/adr/00XX-draft-go-mutation-exec.md). The files go-mutesting
+# Go mutation testing (docs/adr/0057-go-mutation-exec.md). The files go-mutesting
 # would mutate for ./..., minus those of a nested module (agent/plugins/sdk is
 # its own module and gate), in a stable order.
 mutation_files() {

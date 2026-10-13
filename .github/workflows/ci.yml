@@ -94,7 +94,7 @@ jobs:
           make build-cli
           ./cli/bin/sardctl version
 
-  # The agent's mutation testing (docs/adr/00XX-draft-go-mutation-exec.md): every
+  # The agent's mutation testing (docs/adr/0057-go-mutation-exec.md): every
   # shard mutates every 12th file of the module on its own runner; the
   # threshold applies to the sum, in agent-mutation-total.
   agent-mutation:

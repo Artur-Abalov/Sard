@@ -3,7 +3,7 @@
 # Copyright 2026 Artur Abalov
 #
 # go-mutesting --exec command: runs the tests of the mutated package against
-# one mutant (docs/adr/00XX-draft-go-mutation-exec.md).
+# one mutant (docs/adr/0057-go-mutation-exec.md).
 #
 # - The working tree is never written: the mutant is handed to the compiler
 #   through `go test -overlay`, so several go-mutesting processes can share
