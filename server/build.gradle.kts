@@ -196,8 +196,14 @@ tasks.withType<Test>().configureEach {
     }
 }
 
+// A class file that names text: how the test tasks pick classes by annotation or tag without loading them.
+fun FileTreeElement.isClassNaming(text: String) =
+    isDirectory || (name.endsWith(".class") && String(file.readBytes(), Charsets.ISO_8859_1).contains(text))
+
 tasks.test {
     useJUnitPlatform { excludeTags(isolatedTag) }
+    // Only @MutFlowTest classes kill mutants; the others already ran in :server:check.
+    if (mutationRun) include { it.isClassNaming("io/github/anschnapp/mutflow/junit/MutFlowTest") }
 }
 
 val isolatedTest by tasks.registering(Test::class) {
@@ -212,9 +218,7 @@ val isolatedTest by tasks.registering(Test::class) {
     forkEvery = 1
     // forkEvery = 1 forks once per scanned class, and the tag filter works inside the fork; pick the
     // class files that name the tag so only the isolated classes (and no other) cost a JVM.
-    include {
-        it.isDirectory || (it.name.endsWith(".class") && String(it.file.readBytes(), Charsets.ISO_8859_1).contains(isolatedTag))
-    }
+    include { it.isClassNaming(isolatedTag) }
     mustRunAfter(tasks.test)
 }
 
