@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -66,12 +67,22 @@ func writeFile(t *testing.T, path string, data []byte, mode os.FileMode) {
 // countingServer accepts TCP connections and counts them.
 func countingServer(t *testing.T) (addr string, accepted *atomic.Int32) {
 	t.Helper()
+	addr, accepted, _ = signalingServer(t)
+	return addr, accepted
+}
+
+// signalingServer is countingServer whose first channel is closed once the
+// first connection has been accepted and counted.
+func signalingServer(t *testing.T) (addr string, accepted *atomic.Int32, first <-chan struct{}) {
+	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = l.Close() })
 	accepted = &atomic.Int32{}
+	signal := make(chan struct{})
+	var once sync.Once
 	go func() {
 		for {
 			c, err := l.Accept()
@@ -79,10 +90,11 @@ func countingServer(t *testing.T) (addr string, accepted *atomic.Int32) {
 				return
 			}
 			accepted.Add(1)
+			once.Do(func() { close(signal) })
 			_ = c.Close()
 		}
 	}()
-	return l.Addr().String(), accepted
+	return l.Addr().String(), accepted, signal
 }
 
 func identityConfig(t *testing.T, dir, addr string) string {

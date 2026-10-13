@@ -34,14 +34,16 @@ type startHost struct {
 	dir      string
 	accepted func() int32
 	address  string
+	// firstAccept is closed when the server accepts its first connection.
+	firstAccept <-chan struct{}
 }
 
 func newStartHost(t *testing.T) *startHost {
 	t.Helper()
 	dir := t.TempDir()
 	writeIdentity(t, dir)
-	addr, accepted := countingServer(t)
-	return &startHost{t: t, dir: dir, address: addr, accepted: accepted.Load}
+	addr, accepted, first := signalingServer(t)
+	return &startHost{t: t, dir: dir, address: addr, accepted: accepted.Load, firstAccept: first}
 }
 
 // config is the agent config with the given extra YAML (restic, repositories).
@@ -53,8 +55,25 @@ func (h *startHost) config(extra string) string {
 
 // runFor starts the agent and stops it after d, as a service manager would.
 func (h *startHost) runFor(d time.Duration, args ...string) (code int, stdout, stderr string) {
+	return h.runUntil(d, nil, args...)
+}
+
+// runUntil is runFor that stops the agent as soon as event is closed; d stays
+// the upper bound when it never is.
+func (h *startHost) runUntil(d time.Duration, event <-chan struct{}, args ...string) (code int, stdout, stderr string) {
 	ctx, cancel := context.WithTimeout(context.Background(), d)
 	defer cancel()
+	if event != nil {
+		done := make(chan struct{})
+		defer close(done)
+		go func() {
+			select {
+			case <-event:
+				cancel()
+			case <-done:
+			}
+		}()
+	}
 	var out, errOut bytes.Buffer
 	code = run(ctx, args, &out, &errOut, fixedHostname)
 	return code, out.String(), errOut.String()
@@ -74,7 +93,7 @@ func (h *startHost) refuses(cfg string) (stdout, stderr string) {
 
 func (h *startHost) connects(cfg string) string {
 	h.t.Helper()
-	code, _, stderr := h.runFor(400*time.Millisecond, "--config", cfg)
+	code, _, stderr := h.runUntil(400*time.Millisecond, h.firstAccept, "--config", cfg)
 	if code != 0 || h.accepted() == 0 {
 		h.t.Fatalf("exit code = %d, connections = %d, stderr = %q", code, h.accepted(), stderr)
 	}
@@ -134,6 +153,13 @@ func TestTheResticNextToTheAgentIsFoundByTheRealFileNotTheSymlink(t *testing.T) 
 	exe := func() (string, error) { return filepath.Join(link, "sard-agent"), nil }
 	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
 	defer cancel()
+	go func() {
+		select {
+		case <-h.firstAccept:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 	if err := start(ctx, h.config(""), &bytes.Buffer{}, fixedHostname, exe); err != nil {
 		t.Fatalf("start: %v", err)
 	}

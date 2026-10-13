@@ -38,7 +38,8 @@ func startAgentWith(t *testing.T, extra func(dir string) string) (int, string) {
 	t.Helper()
 	dir := t.TempDir()
 	ca := writeIdentity(t, dir)
-	cfg := "server:\n  address: 127.0.0.1:1\n" +
+	addr, _, first := signalingServer(t)
+	cfg := "server:\n  address: " + addr + "\n" +
 		"tls: {ca_file: " + ca + ", cert_file: " + dir + "/agent.pem, key_file: " + dir + "/agent.key}\n" +
 		"executor: {state_dir: " + dir + "/state}\n" + withRestic(t) + extra(dir)
 	var log lockedBuffer
@@ -47,6 +48,13 @@ func startAgentWith(t *testing.T, extra func(dir string) string) (int, string) {
 	t.Cleanup(func() { slog.SetDefault(previous) })
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
+	go func() { // the warnings are logged before the first dial
+		select {
+		case <-first:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 	var out, errOut bytes.Buffer
 	code := run(ctx, []string{"--config", writeConfig(t, cfg)}, &out, &errOut, fixedHostname)
 	return code, log.String()
