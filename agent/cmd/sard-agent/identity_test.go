@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -55,8 +56,27 @@ func writeIdentity(t *testing.T, dir string) string {
 	return ca
 }
 
+// writeExecutable writes a file that a test later runs, holding
+// syscall.ForkLock while the file is open for writing. os/exec forks under
+// ForkLock.RLock, so no parallel test can fork (and leak this writable fd
+// into a child that has not yet exec'd) before the fd is closed; otherwise
+// running the file fails with "text file busy" (ETXTBSY), golang/go#22315.
+func writeExecutable(t *testing.T, path string, data []byte, mode os.FileMode) {
+	t.Helper()
+	syscall.ForkLock.Lock()
+	err := os.WriteFile(path, data, mode)
+	syscall.ForkLock.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func writeFile(t *testing.T, path string, data []byte, mode os.FileMode) {
 	t.Helper()
+	if mode&0o111 != 0 {
+		writeExecutable(t, path, data, mode)
+		return
+	}
 	if err := os.WriteFile(path, data, mode); err != nil {
 		t.Fatal(err)
 	}
