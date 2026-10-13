@@ -23,6 +23,8 @@ type snapshotsState struct {
 	repo    config.Repository
 	checked repoinit.Checked
 	binary  string
+	// who is who runs the command, with the service user known.
+	who hostsetup.Principal
 }
 
 // runRepoSnapshots is "sard-agent repo snapshots <name>": args excludes
@@ -52,23 +54,45 @@ func runRepoSnapshots(ctx context.Context, args []string, stdout, stderr io.Writ
 }
 
 func prepareSnapshots(ctx context.Context, opts hostOptions, who hostsetup.Principal, stderr io.Writer, deps hostDeps) (snapshotsState, int) {
-	cfg, code := loadRepoConfig("snapshots", opts.configPath, stderr)
+	return prepareRepository(ctx, "snapshots", opts, stderr, deps, func(config.Config, config.Repository) (hostsetup.Principal, int) { return who, exitOK })
+}
+
+// prepareRepository is what repo snapshots and repo restore do before the
+// storage is touched: the config, the name, then check (the command's own
+// checks of the host, Р69, which also tell who runs restic), restic and the
+// files of the repository.
+func prepareRepository(ctx context.Context, sub string, opts hostOptions, stderr io.Writer, deps hostDeps, check func(config.Config, config.Repository) (hostsetup.Principal, int)) (snapshotsState, int) {
+	cfg, repo, index, code := findConfigured(sub, opts, stderr)
 	if code != exitOK {
 		return snapshotsState{}, code
 	}
-	repo, index, f := findRepository(cfg, opts.name, opts.configPath)
-	if f != nil {
-		return snapshotsState{}, report(stderr, "repo snapshots", f)
+	who, code := check(cfg, repo)
+	if code != exitOK {
+		return snapshotsState{}, code
 	}
 	binary, err := checkRestic(ctx, cfg, opts.configPath, deps.executable, deps.exec, runAs(who))
 	if err != nil {
-		return snapshotsState{}, reportRepoError(ctx, stderr, "snapshots", err)
+		return snapshotsState{}, reportRepoError(ctx, stderr, sub, err)
 	}
 	checked, f := repoinit.Preflight(deps.host(who.Service.UID), repo, index, false)
 	if f != nil {
-		return snapshotsState{}, report(stderr, "repo snapshots", named(f))
+		return snapshotsState{}, report(stderr, "repo "+sub, named(f))
 	}
-	return snapshotsState{cfg: cfg, repo: repo, checked: checked, binary: binary}, exitOK
+	return snapshotsState{cfg: cfg, repo: repo, checked: checked, binary: binary, who: who}, exitOK
+}
+
+// findConfigured reads the config and looks the repository up by its name;
+// the index is the one A1's messages use.
+func findConfigured(sub string, opts hostOptions, stderr io.Writer) (config.Config, config.Repository, int, int) {
+	cfg, code := loadRepoConfig(sub, opts.configPath, stderr)
+	if code != exitOK {
+		return config.Config{}, config.Repository{}, -1, code
+	}
+	repo, index, f := findRepository(cfg, opts.name, opts.configPath)
+	if f != nil {
+		return config.Config{}, config.Repository{}, -1, report(stderr, "repo "+sub, f)
+	}
+	return cfg, repo, index, exitOK
 }
 
 // readSnapshots is the one restic snapshots call; the first access to the
@@ -76,7 +100,7 @@ func prepareSnapshots(ctx context.Context, opts hostOptions, who hostsetup.Princ
 func readSnapshots(ctx context.Context, st snapshotsState, opts hostOptions, who hostsetup.Principal, deps hostDeps) ([]restore.Snapshot, *refusal.Failure) {
 	var log repoconnect.Log
 	cli := newRestic(st.cfg, st.binary, deps, st.repo, runAs(who)).WithStderr(&log)
-	target := repoconnect.TargetFor(st.repo, st.checked.EnvAssignments, passwordValues(st.repo, who, deps)...)
+	target := targetOf(st, who, deps)
 	var list []restore.Snapshot
 	bound := repoconnect.Bound{Clock: deps.clock, Timeout: opts.connectTimeout}
 	f := bound.Attempt(ctx, target, &log,
@@ -86,6 +110,11 @@ func readSnapshots(ctx context.Context, st snapshotsState, opts hostOptions, who
 		},
 		func(ctx context.Context, err error) *refusal.Failure { return restore.ListFailure(ctx, err, target) })
 	return list, f
+}
+
+// targetOf is the repository as the messages of a failure describe it.
+func targetOf(st snapshotsState, who hostsetup.Principal, deps hostDeps) repoinit.Target {
+	return repoconnect.TargetFor(st.repo, st.checked.EnvAssignments, passwordValues(st.repo, who, deps)...)
 }
 
 // named puts the reason in front of the text of A1 that stands alone at

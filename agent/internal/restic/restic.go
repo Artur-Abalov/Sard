@@ -374,6 +374,8 @@ var networkCauses = []string{
 // fatalKind recognises restic's fatal message; nil for the unknown ones.
 func fatalKind(msg string) error {
 	switch {
+	case strings.Contains(msg, noSpaceCause):
+		return ErrNoSpace
 	case strings.Contains(msg, "config file already exists"):
 		return ErrRepositoryExists
 	case strings.Contains(msg, "an empty password is not allowed"):

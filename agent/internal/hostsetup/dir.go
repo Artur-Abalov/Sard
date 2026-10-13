@@ -40,12 +40,20 @@ type Dir interface {
 	// Lstat describes what name is, a link as a link, without opening it
 	// for reading (an O_PATH descriptor): for what root must not read.
 	Lstat(name string) (fs.FileInfo, error)
+	// Names are the names of the entries of this directory, in no order.
+	Names() ([]string, error)
+	// Lock takes an exclusive flock on this directory's descriptor, without
+	// waiting: ErrBusy if another holder has it. It is released by Close.
+	Lock() error
 	// Rename, Remove and Sync are renameat, unlinkat and fsync relative to
 	// this directory; names are one component.
 	Rename(oldName, newName string) error
 	Remove(name string) error
 	Sync() error
 }
+
+// ErrBusy: the directory is locked by another holder.
+var ErrBusy = errors.New("the directory is held by another command")
 
 // ReadFile is a file opened for reading.
 type ReadFile interface {

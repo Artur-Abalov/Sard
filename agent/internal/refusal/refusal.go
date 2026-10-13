@@ -87,6 +87,22 @@ const (
 // stored at its address (A8c-1, Р54).
 const RepositoryNotInitialized Reason = "REPOSITORY_NOT_INITIALIZED"
 
+// The reasons of repo restore (A8c-2, Р58-Р61, Р64).
+const (
+	SnapshotUnknown   Reason = "SNAPSHOT_UNKNOWN"
+	SnapshotAmbiguous Reason = "SNAPSHOT_AMBIGUOUS"
+	TargetInvalid     Reason = "TARGET_INVALID"
+	TargetNotEmpty    Reason = "TARGET_NOT_EMPTY"
+	RootTargetRefused Reason = "ROOT_TARGET_REFUSED"
+	PathNotInSnapshot Reason = "PATH_NOT_IN_SNAPSHOT"
+	// RestoreIncomplete: restic could not restore some files.
+	RestoreIncomplete Reason = "RESTORE_INCOMPLETE"
+	// TargetWrite: the target could not be created or written (no space).
+	TargetWrite Reason = "TARGET_WRITE"
+	// TargetBusy: another restore holds the target.
+	TargetBusy Reason = "TARGET_BUSY"
+)
+
 // Class is the kind of a failure; the command maps it to an exit code
 // (the numbers are A2b's, docs/adr/0025-grpc-error-model.md).
 type Class int
@@ -125,6 +141,10 @@ var classes = map[Reason]Class{
 	ServiceRestartFailed: ClassAgentError,
 
 	RepositoryNotInitialized: ClassUsage,
+
+	SnapshotUnknown: ClassUsage, SnapshotAmbiguous: ClassUsage, TargetInvalid: ClassUsage,
+	TargetNotEmpty: ClassUsage, RootTargetRefused: ClassUsage, PathNotInSnapshot: ClassUsage,
+	RestoreIncomplete: ClassAgentError, TargetWrite: ClassWrite, TargetBusy: ClassTemporary,
 
 	AddressInvalid: ClassUsage, SecretInvalid: ClassUsage, S3KeyRejected: ClassUsage,
 	StorageAccessDenied: ClassUsage, BucketNotFound: ClassUsage,

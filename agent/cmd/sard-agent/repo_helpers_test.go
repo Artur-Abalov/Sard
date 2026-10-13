@@ -72,6 +72,8 @@ type fakeRepo struct {
 	// to the snapshots that carry it. hangSnapshots: it never finishes.
 	snapshots     []restic.Snapshot
 	hangSnapshots bool
+	// restoreState is how the repository answers restore and ls (A8c-2).
+	restoreState fakeRestore
 }
 
 // fakeCall is one restic invocation.
@@ -192,16 +194,15 @@ func (f *fakeRestic) runRepoCommand(ctx context.Context, cmd restic.Command, sub
 			return code, nil
 		}
 	}
-	switch {
-	case r.fatal != "":
+	if r.fatal != "" {
 		cmd.Stderr([]byte("Fatal: " + r.fatal))
 		return 1, nil
-	case sub == "cat":
-		return f.cat(ctx, cmd, r)
-	case sub == "init":
-		return f.init(ctx, cmd, r)
-	case sub == "snapshots":
-		return f.snapshots(ctx, cmd, r)
+	}
+	handlers := map[string]func(context.Context, restic.Command, *fakeRepo) (int, error){
+		"cat": f.cat, "init": f.init, "snapshots": f.snapshots, "restore": f.restore, "ls": f.ls,
+	}
+	if handle, ok := handlers[sub]; ok {
+		return handle(ctx, cmd, r)
 	}
 	f.t.Fatalf("unexpected restic %q", cmd.Args)
 	return 0, nil

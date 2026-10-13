@@ -33,7 +33,7 @@ func runRepo(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 func runRepoWithDeps(ctx context.Context, args []string, stdout, stderr io.Writer, deps hostDeps) int {
 	run := repoSubcommand(args)
 	if run == nil {
-		_, _ = fmt.Fprintln(stderr, "sard-agent repo: want a subcommand: init, list, add, show, remove, password or snapshots")
+		_, _ = fmt.Fprintln(stderr, "sard-agent repo: want a subcommand: init, list, add, show, remove, password, snapshots or restore")
 		return exitUsage
 	}
 	if hasHelpFlag(args[1:]) {
@@ -50,19 +50,26 @@ func repoSubcommand(args []string) hostCommand {
 	}
 	return map[string]hostCommand{
 		"init": runRepoInit, "list": runRepoList, "add": runRepoAdd,
-		"show": runRepoShow, "remove": runRepoRemove, "password": runRepoPassword, "snapshots": runRepoSnapshots,
+		"show": runRepoShow, "remove": runRepoRemove, "password": runRepoPassword, "snapshots": runRepoSnapshots, "restore": runRepoRestore,
 	}[args[0]]
 }
 
 // newRestic is the wrapper for one repository of the config.
 func newRestic(cfg config.Config, binary string, deps hostDeps, repo config.Repository, as *restic.RunAs) *restic.CLI {
+	return newResticReading(cfg, binary, deps, repo, as, runUID(deps, as))
+}
+
+// newResticReading is newRestic whose env_file is read as a file of the
+// user readUID, which differs from the user restic runs as when root runs
+// restic for repo restore: the files belong to the service user (A1).
+func newResticReading(cfg config.Config, binary string, deps hostDeps, repo config.Repository, as *restic.RunAs, readUID uint32) *restic.CLI {
 	return restic.New(restic.Options{
 		Binary:   binary,
 		CacheDir: cfg.Restic.CacheDir,
 		Path:     deps.pathEnv,
 		Exec:     deps.exec,
 		Keys:     crypto.NewResticAES(map[string]string{repo.Name: repo.PasswordFile}),
-		ReadFile: deps.ownedReader(runUID(deps, as)),
+		ReadFile: deps.ownedReader(readUID),
 		RunAs:    as,
 	}, repo)
 }

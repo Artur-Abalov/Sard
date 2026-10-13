@@ -114,3 +114,15 @@ func (d osDir) Remove(name string) error {
 
 // Sync implements Dir.
 func (d osDir) Sync() error { return d.f.Sync() }
+
+// Names implements Dir.
+func (d osDir) Names() ([]string, error) { return d.f.Readdirnames(-1) }
+
+// Lock implements Dir.
+func (d osDir) Lock() error {
+	err := syscall.Flock(int(d.f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+	if errors.Is(err, syscall.EWOULDBLOCK) {
+		return ErrBusy
+	}
+	return err
+}

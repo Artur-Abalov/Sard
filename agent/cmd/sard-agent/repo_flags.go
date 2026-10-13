@@ -4,11 +4,11 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/restore"
@@ -32,6 +32,9 @@ const (
 	offerConnectTimeout
 	// offerSource: --source of repo snapshots (Р57).
 	offerSource
+	// offerRestore: --target, --overwrite, --allow-root-target, --path and a
+	// --timeout that is not set unless the operator gives it (Р59, Р61, Р64).
+	offerRestore
 )
 
 // hostOptions are the flags and the positional arguments of one command of
@@ -60,6 +63,12 @@ type hostOptions struct {
 	connectTimeout time.Duration
 	// source is --source: the id of a source of Sard (Р57).
 	source string
+	// The flags of repo restore (Р59, Р61): the directory to restore into,
+	// the permission to replace files in it and to restore into the root of
+	// the file system, and the paths of the snapshot to restore.
+	target               string
+	overwrite, allowRoot bool
+	paths                []string
 	// The flags of an sftp: address (Р40): the fingerprint that confirms the
 	// host key, and the permission to replace a host key that changed.
 	hostKeyFingerprint string
@@ -92,6 +101,7 @@ var repoSpecs = map[string]cmdSpec{
 	"remove":    {"repo remove", offerNoRestart, 1, "the name of a repository is required: sard-agent repo remove [flags] <name>"},
 	"password":  {"repo password", offerReveal, 1, "the name of a repository is required: sard-agent repo password <name> --reveal"},
 	"snapshots": {"repo snapshots", offerTimeout | offerJSON | offerConnectTimeout | offerSource, 1, "the name of a repository is required: sard-agent repo snapshots [flags] <name>"},
+	"restore":   {"repo restore", offerRestore | offerConnectTimeout | offerSource, 2, "a repository name and a snapshot are required: sard-agent repo restore [flags] <name> <snapshot> --target <dir>"},
 }
 
 // secretSpecs are the commands of "sard-agent secret".
@@ -127,6 +137,9 @@ type flagValues struct {
 	source                       *string
 	hostKeyFingerprint           *string
 	replaceHostKey               *bool
+	target                       *string
+	overwrite, allowRoot         *bool
+	paths                        *stringList
 }
 
 func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
@@ -137,6 +150,7 @@ func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
 		accessKeyID: new(string), region: new(string), provider: new(string), secretKeyFromFile: new(string),
 		secretKeyStdin: new(bool), connectTimeout: new(time.Duration), source: new(string),
 		hostKeyFingerprint: new(string), replaceHostKey: new(bool),
+		target: new(string), overwrite: new(bool), allowRoot: new(bool), paths: new(stringList),
 	}
 	if o&offerTimeout != 0 {
 		v.timeout = fs.Duration("timeout", defaultRepoTimeout, "")
@@ -170,11 +184,39 @@ func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
 func defineReadFlags(fs *flag.FlagSet, o offer, v *flagValues) {
 	if o&(offerRemote|offerConnectTimeout) != 0 {
 		*v.connectTimeout = defaultConnectTimeout
-		fs.Var(positiveDuration{v.connectTimeout}, "connect-timeout", "")
+		fs.Var(positiveDuration{name: "connect-timeout", d: v.connectTimeout}, "connect-timeout", "")
 	}
 	if o&offerSource != 0 {
 		v.source = fs.String("source", "", "")
 	}
+	if o&offerRestore != 0 {
+		defineRestoreFlags(fs, v)
+	}
+}
+
+// defineRestoreFlags are the flags of repo restore. --timeout has no
+// default: a restore takes as long as it takes (Р64).
+func defineRestoreFlags(fs *flag.FlagSet, v *flagValues) {
+	v.target = fs.String("target", "", "")
+	v.overwrite = fs.Bool("overwrite", false, "")
+	v.allowRoot = fs.Bool("allow-root-target", false, "")
+	fs.Var(v.paths, "path", "")
+	fs.Var(positiveDuration{name: "timeout", d: v.timeout}, "timeout", "")
+}
+
+// stringList is a flag that may be given many times.
+type stringList []string
+
+func (l *stringList) Set(s string) error {
+	*l = append(*l, s)
+	return nil
+}
+
+func (l *stringList) String() string {
+	if l == nil {
+		return ""
+	}
+	return strings.Join(*l, ",")
 }
 
 // defineRemoteFlags are the flags of an s3: or an sftp: address.
@@ -193,12 +235,15 @@ func defineRemoteFlags(fs *flag.FlagSet, v *flagValues) {
 const defaultConnectTimeout = 30 * time.Second
 
 // positiveDuration is a duration flag that refuses zero and less, naming itself.
-type positiveDuration struct{ d *time.Duration }
+type positiveDuration struct {
+	name string
+	d    *time.Duration
+}
 
 func (p positiveDuration) Set(s string) error {
 	d, err := time.ParseDuration(s)
 	if err != nil || d <= 0 {
-		return errors.New("--connect-timeout must be a positive duration")
+		return fmt.Errorf("--%s must be a positive duration", p.name)
 	}
 	*p.d = d
 	return nil
@@ -233,13 +278,34 @@ func parseFlags(spec cmdSpec, args []string, stderr io.Writer, defaultConfig str
 		accessKeyID: *v.accessKeyID, region: *v.region, provider: *v.provider, secretKeyStdin: *v.secretKeyStdin,
 		secretKeyFromFile: *v.secretKeyFromFile, connectTimeout: *v.connectTimeout, source: *v.source, set: map[string]bool{},
 		hostKeyFingerprint: *v.hostKeyFingerprint, replaceHostKey: *v.replaceHostKey,
+		target: *v.target, overwrite: *v.overwrite, allowRoot: *v.allowRoot, paths: *v.paths,
 	}
 	fs.Visit(func(f *flag.Flag) { opts.set[f.Name] = true })
 	setNames(&opts, positional)
-	if err := checkSource(opts); err != nil {
+	if err := checkFlagValues(spec, &opts); err != nil {
 		return hostOptions{}, usageFailure(stderr, spec.words, err.Error())
 	}
 	return opts, exitOK
+}
+
+// checkFlagValues are the checks of the values that follow the parse: the
+// source (Р57) and, for repo restore, the target, the paths and the snapshot
+// (Р58, Р59, Р61), in the order of Р69. The paths are put in their clean form.
+func checkFlagValues(spec cmdSpec, opts *hostOptions) error {
+	if spec.offer&offerRestore == 0 {
+		return checkSource(*opts)
+	}
+	paths, err := restore.CheckPaths(opts.paths)
+	if err != nil {
+		return err
+	}
+	opts.paths = paths
+	for _, err := range []error{restore.CheckTargetFlags(opts.target, opts.allowRoot), checkSource(*opts), restore.CheckRef(opts.address, opts.source)} {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // checkSource: --source, if given, names a source (Р57).
