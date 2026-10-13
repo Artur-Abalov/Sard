@@ -89,22 +89,14 @@ ALTER ROLE backup SET lo_compat_privileges = on;
 ## Секрет с паролем
 
 Пароль в конфиге источника не пишется: конфиг называет только имя секрета, а значение
-лежит в файле на хосте агента (ADR 0008). Пока нет `sard-agent secret set` (A8), секрет
-создаётся вручную: файл `0600` владельца агента (пользователя `sard-agent`), имя — в `secrets:` файла `agent.yaml`.
+лежит в файле на хосте агента (ADR 0008). Секрет создаёт `sard-agent secret set`: файл
+`0600` владельца агента, имя в фрагменте `agent.d` и перезапуск службы
+([настройка хоста агента](../operations/agent-host-setup.md)).
 
 ```bash
-sudo install -d -m 0750 -o sard-agent -g sard-agent /etc/sard/secrets
-printf '%s\n' 'пароль роли backup' | sudo -u sard-agent tee /etc/sard/secrets/pg-app >/dev/null
-sudo chmod 0600 /etc/sard/secrets/pg-app      # файл 0600 владельца агента
+printf '%s' 'пароль роли backup' | sudo sard-agent secret set pg-app --stdin
 ```
 
-```yaml
-# /etc/sard/agent.yaml
-secrets:
-  pg-app: /etc/sard/secrets/pg-app
-```
-
-После правки `agent.yaml` нужен перезапуск агента: `sudo systemctl restart sard-agent`.
 Агент сообщает серверу имена секретов, консоль предлагает их в поле «пароль» источника, а
 сервер при сохранении источника проверяет, что секрет есть у агента.
 

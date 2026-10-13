@@ -538,7 +538,7 @@
       Дано сервер импортировал исходный CA
       И SARD_AGENT_ENDPOINT задан как "sard.example.com:9090"
       Когда администратор тенанта "A" создаёт токен
-      Тогда результат содержит команду "sudo -u sard-agent sard-agent enroll --server sard.example.com:9090 --token S"
+      Тогда результат содержит команду "sudo sard-agent enroll --server sard.example.com:9090 --token S"
 
     @unit @регрессия
     Сценарий: Продление сертификата сервера идёт от импортированного CA

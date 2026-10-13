@@ -26,7 +26,7 @@
 
 Хост агента может быть за NAT (дома): агент сам подключается к серверу, входящие
 порты на нём не нужны. Хранилище бэкапов в демо — каталог на диске самого
-хоста агента (`/srv/sard-repo`); S3 и SFTP пока прописываются в `repositories` вручную
+хоста агента (`/srv/sard`); S3 и SFTP пока прописываются в `repositories` вручную
 ([хранилища](operator/05a-storage.md)).
 
 ## Шаг 0. Подготовка ВМ и имени
@@ -186,7 +186,7 @@ grep 'address:' /etc/sard/agent.yaml
 (команда уже с вашим токеном):
 
 ```bash
-sudo -u sard-agent sard-agent enroll --server <sard.example.com>:9090 --token <токен>
+sudo sard-agent enroll --server <sard.example.com>:9090 --token <токен>
 ```
 
 **Что должно получиться.** Код выхода 0; в `/etc/sard/tls/` — `ca.pem`,
@@ -201,14 +201,12 @@ sudo -u sard-agent sard-agent enroll --server <sard.example.com>:9090 --token <�
 ## Шаг 5. Репозиторий и копия пароля вне хоста
 
 **Что делать.** В примере конфига нет ни репозиториев, ни секретов: в демо
-репозиторий — каталог на хосте агента, его добавляет команда
-([настройка хоста агента](operations/agent-host-setup.md)). Шаг консоли
-«Создайте репозиторий» (`repo init --generate-password main`) пока не подходит:
-в примере конфига нет репозитория `main` (до A8e, OQ-162). Вместо него на хосте
-агента:
+репозиторий — каталог на хосте агента, его подключает шаг консоли «Подключите
+хранилище» ([настройка хоста агента](operations/agent-host-setup.md)), затем
+шаг «Запустите службу»:
 
 ```bash
-sudo sard-agent repo add main /srv/sard-repo/main
+sudo sard-agent repo add main /srv/sard/main
 sudo systemctl enable --now sard-agent.service
 ```
 
@@ -233,7 +231,7 @@ sudo sard-agent repo password main --reveal
 **Время.** ~3 мин (оценка).
 
 **Если не получилось.** Агент «висит» при старте — нет `ReadWritePaths` для
-`/srv/sard-repo`. Код 7 `LOCK_WRITE` — нет каталога кэша restic. Агент не в
+`/srv/sard`. Код 7 `LOCK_WRITE` — нет каталога кэша restic. Агент не в
 сети — `journalctl -u sard-agent --since -5min` и
 [диагностика](operator/09-troubleshooting.md), «Агент не подключается».
 
@@ -311,7 +309,8 @@ umask 077
 cat > /tmp/sard-pass-copy        # вставьте строку из менеджера паролей, Enter, затем Ctrl+D
 sudo install -o sard-agent -g sard-agent -m 0600 /tmp/sard-pass-copy /var/tmp/sard-pass-copy
 rm /tmp/sard-pass-copy
-R="sudo -u sard-agent /usr/libexec/sard/restic -r /srv/sard-repo/main --password-file /var/tmp/sard-pass-copy --cache-dir /var/cache/sard/restic"
+# allow-sudo-u: restic от пользователя службы, пока нет sard-agent repo snapshots/restore (A8c)
+R="sudo -u sard-agent /usr/libexec/sard/restic -r /srv/sard/main --password-file /var/tmp/sard-pass-copy --cache-dir /var/cache/sard/restic"
 $R snapshots
 sudo install -d -o sard-agent -g sard-agent -m 0700 /var/tmp/sard-restore
 $R restore latest --target /var/tmp/sard-restore
@@ -327,7 +326,7 @@ $R restore latest --target /var/tmp/sard-restore
 
 **Если не получилось.** `wrong password or no key found` — в копии не та строка
 (лишние пробелы, не тот репозиторий). `unable to create lock` — каталог
-`/srv/sard-repo` не принадлежит `sard-agent`.
+`/srv/sard` не принадлежит `sard-agent`.
 
 ## Шаг 10. Сравнение с исходными файлами
 
