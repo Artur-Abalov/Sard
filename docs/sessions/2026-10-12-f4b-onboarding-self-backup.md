@@ -285,3 +285,17 @@ ADR: `docs/adr/00XX-draft-f4b-onboarding-self-backup.md`.
 - `docs/adr/0008-crypto-provider.md` и черновик F4b: исключение принято владельцем 2026-10-13; прямо
   сказано, что защита от скомпрометированного сервера — только чтение команды владельцем (подсказка Рк19),
   а Р29 и кавычки защищают от ошибок ввода и инъекции через ввод пользователя.
+
+## Cleaner, второй проход (2026-10-13)
+
+- F7 архитектора: `SelfBackupApiImpl` и его мапперы (`selfBackupOf`, `planItemOf`, `sourceOf`, `runOf`) и
+  константы `REJECTED_PARAMETER`, `UNKNOWN_VERSION` перенесены из `api/SelfBackupController.kt` в
+  `api/SelfBackupApiImpl.kt` (как `RunsApiImpl.kt`, `SourcesApiImpl.kt`). Контроллер остался с DTO, интерфейсом
+  `SelfBackupApi` и маршрутами. Поведение не менялось.
+- `web/src/mocks/commands.ts` не сокращён до заготовленных ответов: тесты мока
+  (`onboardingSelfBackup.test.ts`) требуют адрес, собранный из введённых параметров, и имя
+  поля в 422 (`bucket`); заготовки изменили бы наблюдаемое поведение мока. Дрейф от Р29 остаётся
+  риском, на него указано архитектору.
+- Новый код после eebccba (`StorageLocation.kt`, `SystemSourceLookup.kt`, `TenantGuardTargets`,
+  `SelfBackups`, `selfBackupSources.ts`, `CommandStage.tsx`): все функции сервера CRAP <= 6 (худшие 6.0
+  при покрытии 100%), дублирования и лишней сложности не найдено.
