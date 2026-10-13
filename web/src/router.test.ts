@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
-import { createMemoryHistory } from '@tanstack/react-router'
+import { createMemoryHistory, isRedirect } from '@tanstack/react-router'
 import { QueryClient } from '@tanstack/react-query'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { guard } from './auth/guard'
 import { http } from './mocks/http'
+import { noSession, PROBLEM } from './mocks/problems'
 import { server } from './mocks/node'
 import { NotFound } from './pages/NotFound'
 import { createAppRouter } from './router'
@@ -34,6 +35,7 @@ const sections = [
   { path: '/sources/7/edit', routeId: '/_app/sources/$sourceId/edit' },
   { path: '/runs', routeId: '/_app/runs/' },
   { path: '/runs/42', routeId: '/_app/runs/$runId' },
+  { path: '/settings', routeId: '/_app/settings' },
 ] as const
 
 describe('routing', () => {
@@ -123,5 +125,74 @@ describe('routing', () => {
     expect(router.state.matches.map((match) => match.routeId)).toEqual(['__root__'])
     expect(router.routesById.__root__.options.notFoundComponent).toBe(NotFound)
     expect(guard).not.toHaveBeenCalled()
+  })
+
+  describe('the wizard and sign-in around the administrator step (Рк1, Рк2)', () => {
+    const adminStep = (state: 'pending' | 'done') =>
+      server.use(
+        http.get('/api/v1/session', ({ response }) => response(401).json(noSession, PROBLEM)),
+        http.get('/api/v1/onboarding', ({ response }) =>
+          response(200).json({
+            access: 'none',
+            setupCode: 'active',
+            ca: null,
+            caReplaceable: null,
+            steps: [
+              { id: 'ca', state },
+              { id: 'admin', state },
+              { id: 'self_backup', state: 'upcoming' },
+              { id: 'keys_confirmed', state: 'upcoming' },
+            ],
+          }),
+        ),
+      )
+
+    // What the route's beforeLoad throws for a visit: the redirect options, or null.
+    async function redirectOf(path: string, routeId: '/setup' | '/login' | '/_app') {
+      const router = await load('/no-such-page')
+      const beforeLoad = router.routesById[routeId].options.beforeLoad as (args: unknown) => unknown
+      const location = router.parseLocation(
+        createMemoryHistory({ initialEntries: [path] }).location,
+      )
+      try {
+        await beforeLoad({ location, search: location.search })
+        return null
+      } catch (thrown) {
+        return isRedirect(thrown) ? thrown.options : null
+      }
+    }
+
+    test('a protected page before the admin step redirects to /setup without a parameter', async () => {
+      vi.mocked(guard).mockRestore()
+      adminStep('pending')
+      expect(await redirectOf('/agents', '/_app')).toMatchObject({ to: '/setup' })
+    })
+
+    test('/settings without a session redirects to /login with its path', async () => {
+      vi.mocked(guard).mockRestore()
+      adminStep('done')
+      expect(await redirectOf('/settings', '/_app')).toMatchObject({
+        to: '/login',
+        search: { redirect: '/settings' },
+      })
+    })
+
+    test('/setup opens before the admin step', async () => {
+      adminStep('pending')
+      const router = await load('/setup')
+      expect(router.state.location.pathname).toBe('/setup')
+      expect(router.state.matches.map((match) => match.routeId)).toEqual(['__root__', '/setup'])
+      expect(guard).not.toHaveBeenCalled()
+    })
+
+    test('/setup after the admin step redirects to /login', async () => {
+      adminStep('done')
+      expect(await redirectOf('/setup', '/setup')).toMatchObject({ to: '/login' })
+    })
+
+    test('/login before the admin step redirects to /setup', async () => {
+      adminStep('pending')
+      expect(await redirectOf('/login?redirect=%2Fruns', '/login')).toMatchObject({ to: '/setup' })
+    })
   })
 })

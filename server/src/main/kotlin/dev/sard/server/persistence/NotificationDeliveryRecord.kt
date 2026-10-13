@@ -12,7 +12,8 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * One notification through one channel, of one run or of one schedule fire that raised an alert (F3b);
+ * One notification through one channel, of one run, of one schedule fire that raised an alert (F3b) or of an
+ * overdue episode (F6);
  * migrations V202610021200 (S9a) and V202610101300. Rows are written and moved only by guarded native
  * statements in `notify/Deliveries`, so the entity serves reads and the schema validation.
  */
@@ -42,6 +43,11 @@ class NotificationDeliveryRecord(
     @TenantId
     @Column(name = "tenant_id", nullable = false, updatable = false)
     val tenantId: UUID? = null,
+    /** An overdue episode (F6, migration V202610121200) and what of it the delivery tells: opened or closed. */
+    @Column(name = "episode_id", updatable = false)
+    val episodeId: UUID? = null,
+    @Column(name = "episode_event", updatable = false)
+    val episodeEvent: String? = null,
 ) {
     override fun toString() = "NotificationDeliveryRecord(id=$id, run=$runId, fire=$fireId, $channel, $status)"
 }

@@ -3,6 +3,7 @@
 
 import { queryOptions } from '@tanstack/react-query'
 import { runPollInterval, schedulePollInterval, tokenPollInterval } from '../polling'
+import { SELF_BACKUP_POLL_MS } from '../selfBackupBanner'
 import { ApiError, call } from './call'
 import { client } from './client'
 import type { InstallChoice } from '../install'
@@ -18,6 +19,14 @@ export const overviewQuery = () =>
   queryOptions({
     queryKey: ['overview'],
     queryFn: () => call(client.GET('/api/v1/overview')),
+  })
+
+// The self-backup's state (F6): the banner of every page reads it.
+export const selfBackupQuery = () =>
+  queryOptions({
+    queryKey: ['self-backup'],
+    queryFn: () => call(client.GET('/api/v1/self-backup')),
+    refetchInterval: SELF_BACKUP_POLL_MS,
   })
 
 export const agentQuery = (agentId: string) =>

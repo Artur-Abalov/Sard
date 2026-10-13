@@ -12,6 +12,7 @@ import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.MovableClock
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
@@ -44,6 +45,7 @@ private class FixedPresence(
  * Mutation tests of the W2 rules that live over the database: the overview's counts and first steps, which sources
  * a plugin may back, what a run view says of its source and of a partial snapshot (W2 К14, К17, К18).
  */
+@Tag("mutflow-isolated")
 @MutFlowTest
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
@@ -234,6 +236,18 @@ class W2MutationTest(
         assertFailsWith<UnknownPlugin> {
             MutFlow.underTest { sources.replace(tenant.id, created.id, tenant.draft()) }
         }
+    }
+
+    @Test
+    fun `a system source is neither replaced nor deleted, and stays as it was`() {
+        val created = sources.create(tenant.id, tenant.draft())
+        jdbc.update("update sources set system_role = 'self_keys' where id = ?", created.id)
+
+        assertFailsWith<SystemSourceProtected> {
+            MutFlow.underTest { sources.replace(tenant.id, created.id, tenant.draft(name = "other")) }
+        }
+        assertFailsWith<SystemSourceProtected> { MutFlow.underTest { sources.delete(tenant.id, created.id) } }
+        assertEquals("prod-db", sources.get(tenant.id, created.id).name)
     }
 
     @Test

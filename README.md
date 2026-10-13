@@ -1,68 +1,42 @@
-# Sard
+# Sard · [Русская версия](README.ru.md)
 
-Sard is an open-core backup orchestrator. A single console manages backups of
-heterogeneous infrastructure and is built to **prove that you can restore from
-them**. Today Sard backs up files and directories and PostgreSQL databases;
-restore verification and other sources are planned, not available yet: see
-the [roadmap](docs/roadmap.en.md).
+Sard is a backup console for the mixed infrastructure of small and mid-sized
+businesses, built for the integrators and MSPs who look after it; its aim is
+backups you have proven you can restore.
 
-Sard does not invent its own storage format: storage, deduplication and
-encryption are handled by [restic](https://restic.net). Sard owns sources,
-workflows, schedules, restore verification, reports and multi-tenancy.
+> Status: **early development, pre-release.** Restore from the console and
+> automatic restore verification are not there yet; see
+> [Not yet](#not-yet). Not production-ready.
 
-> Status: **stage 1, under active development**. Agent enrollment over mTLS,
-> the files and postgresql plugins, restic repositories on a local disk, S3 and
-> SFTP, run dispatch, schedules, the stage 1 REST API, admin login and Telegram
-> notifications are in place; the product is not production-ready yet.
+## What it does today
 
-## Quickstart: a server in 10 minutes
+- Backs up files and directories ([docs/plugins/files.md](docs/plugins/files.md)).
+- Backs up PostgreSQL: `pg_dump` of a database in custom format plus the
+  cluster's roles and tablespaces
+  ([docs/plugins/postgresql.md](docs/plugins/postgresql.md)).
+- Stores backups with [restic](https://restic.net) in S3-compatible storage,
+  over SFTP or in a local directory; restic does deduplication and encryption
+  ([docs/operator/05a-storage.md](docs/operator/05a-storage.md)).
+- Runs backups on a cron schedule in a chosen time zone, with one catch-up
+  run after downtime, or on demand from the console
+  ([docs/operations/scheduler.md](docs/operations/scheduler.md)).
+- Reports runs and missed schedules to Telegram
+  ([docs/operations/notifications.md](docs/operations/notifications.md)).
+- Installs agents from the server: deb, rpm and tar.gz for Linux amd64 and
+  arm64, signed releases ([docs/operator/05-agents.md](docs/operator/05-agents.md)).
+- Backs itself up: nightly, its database, CA keys and installation
+  configuration go through the built-in agent into a repository of your
+  choice, and the console warns when that backup is overdue or failing
+  ([docs/operator/06-data-and-backup.md](docs/operator/06-data-and-backup.md)).
+  Overdue sources of any kind are reported to Telegram too.
 
-On a Linux host (amd64 or arm64) with Docker Engine and the Compose plugin,
-`curl` and `openssl`. This runs sard-server and PostgreSQL from the published
-image of release `SARD_TAG`
-([releases](https://github.com/Artur-Abalov/Sard/releases)); change only
-that line to install another release.
+### Not yet
 
-<!-- quickstart:begin -->
-```bash
-SARD_TAG=v0.0.1-rc.1
-mkdir -p ~/sard && cd ~/sard
-curl -fsSLO "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/docker-compose.yml"
-curl -fsSL -o .env "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/sard.env.example"
-sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" \
-       -e "s/^SARD_ADMIN_PASSWORD=.*/SARD_ADMIN_PASSWORD=$(openssl rand -hex 16)/" .env
-chmod 600 .env
-docker compose up -d --wait
-curl -fsS http://localhost:8080/api/v1/status
-```
-<!-- quickstart:end -->
+Restore from the console (today restore is a manual `restic restore`, see
+[docs/demo.md](docs/demo.md)), restore verification, other sources (MySQL, network devices, 1C), more than one tenant,
+`sardctl` commands beyond `version`. Plans, not promises: [docs/roadmap.en.md](docs/roadmap.en.md).
 
-The last command prints the server's version. The administrator password is
-`SARD_ADMIN_PASSWORD` in `~/sard/.env`. The REST API listens on
-`127.0.0.1:8080` only, because it is plain HTTP; the agents' port 9090
-(gRPC, mutual TLS) is open to the network. Before enrolling agents from other
-hosts, put the name they dial into `SARD_PKI_SERVER_NAMES` in `.env` and run
-`docker compose up -d` again: see the comments in `.env` and the operator
-guide, [docs/operator/](docs/operator/README.md) (in Russian). The whole
-stage 1 demo, from a clean VM to a restored file, is
-[docs/demo.md](docs/demo.md). Every release also carries
-an offline archive of its images (sard-server, sard-agent, PostgreSQL), for hosts
-without registry access:
-
-```bash
-gunzip -c sard-<VERSION>-images-linux-<ARCH>.tar.gz | docker load
-docker compose up -d --wait --pull never
-```
-
-Next to the server runs `self-agent`, the agent `sard-self` that enrolls by
-itself and will back up this installation: it reads the database through a
-read-only role and the CA directory read-only
-([docs/operations/self-agent.md](docs/operations/self-agent.md), in Russian).
-The CA key lives in the `sard_sard-pki` volume and the database in
-`sard_postgres-data`; both survive `docker compose down` and are removed by
-`docker compose down -v` only.
-
-## Architecture
+## How it works
 
 ```text
              browser / sardctl
@@ -80,95 +54,80 @@ The CA key lives in the `sard_sard-pki` volume and the database in
            └─────────────────┘
 ```
 
-- The agent dials out to the server; hosts never open inbound ports.
-- Backup data flows from the agent straight to storage, bypassing the server.
-- The server is a control plane, not a key holder: repositories, secrets and
-  scripts are defined on the agent host and referenced by name only
-  ([ADR 0008](docs/adr/0008-crypto-provider.md)).
-- Source plugins implement a single interface: prepare → dump → stream → verify.
+An agent runs on each host and dials out to the server over gRPC with mutual
+TLS, so hosts open no inbound ports. Backup data goes from the agent straight
+to storage, never through the server. Repositories, storage keys and scripts
+are defined on the agent host and referenced by name only: the server holds no
+storage keys ([ADR 0008](docs/adr/0008-crypto-provider.md)).
+
+- Source plugins implement a single interface: prepare → dump → stream → verify
+  ([ADR 0027](docs/adr/0027-plugin-sdk.md)).
 - Enterprise modules plug in as Spring Boot starters via `server/.../extension`;
   the open core runs without them.
 
-| Directory | What it is |
-|---|---|
-| `server/` | `sard-server`: Kotlin, Spring Boot 4.1, PostgreSQL, Flyway, gRPC |
-| `agent/` | `sard-agent`: Go, single binary; `agent/plugins/sdk` is the plugin SDK |
-| `cli/` | `sardctl`: Go, single binary |
-| `proto/` | server ↔ agent gRPC contracts (buf); `proto/gen/go` is the generated Go code, `proto/jvm` the JVM bindings |
-| `web/` | SPA: React, TypeScript, Vite, Mantine |
-| `deploy/` | docker-compose, server Dockerfile, agent systemd unit |
-| `examples/workflows/` | sample YAML workflows |
-| `tools/` | development tooling (CRAP, pinned Go tools) |
-| `test/e2e/` | end-to-end tests against built images |
-| `docs/` | ADRs, session log, dependencies, specifications, CLA |
+## Quickstart: a server in 10 minutes
 
-## Requirements
+On a Linux host (amd64 or arm64) with Docker Engine and the Compose plugin,
+`curl` and `openssl`. This runs sard-server and PostgreSQL from the published
+image of release `SARD_TAG`
+([releases](https://github.com/Artur-Abalov/Sard/releases)); change only
+that line to install another release.
 
-JDK 25, Go 1.27, Node.js 24, Docker (for the server's Testcontainers tests and
-`make up`), GNU make. You don't need to install buf, golangci-lint or the other
-Go tools: `make tools` builds the pinned versions into `.bin/`.
+<!-- quickstart:begin -->
+```bash
+SARD_TAG=v0.0.1-rc.1
+mkdir -p ~/sard && cd ~/sard
+curl -fsSLO "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/docker-compose.yml"
+curl -fsSL -o .env "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/sard.env.example"
+sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" .env
+sudo chgrp 10001 .env && chmod 640 .env
+docker compose up -d --wait
+curl -fsS http://localhost:8080/api/v1/status
+```
+<!-- quickstart:end -->
 
-Kotlin test class names contain Cyrillic, so Gradle needs a UTF-8 locale.
-`make` sets `LC_ALL=C.UTF-8` for its own Gradle targets; when you call
-`./gradlew` or `scripts/gate.sh` directly, `export LC_ALL=C.UTF-8` first (see
-[CONTRIBUTING.md](CONTRIBUTING.md)).
-
-### Claude Code on the web
-
-`.claude/hooks/session-start.sh` runs at the start of every Claude Code on the
-web session. It installs JDK 25 and Node.js 24, builds the pinned Go tools,
-downloads Go and npm dependencies, and warms the Gradle cache, so tests,
-linters and the quality gate work straight away. Outside the remote
-environment it does nothing.
-
-## Build and check
+The last command prints the server's version. There is no administrator yet:
+the first start asks for the password in the console. The server prints a
+one-time setup code in its log; find it with
 
 ```bash
-make proto    # generate Go code from proto/ (the result is committed)
-make build    # agent/bin/sard-agent, cli/bin/sardctl, server/build/libs/sard-server.jar, web/dist/
-make test     # all test suites
-make lint     # SPDX headers, buf lint, gofmt/vet/golangci-lint, spotless/detekt, oxlint/prettier/tsc
-make gate     # full quality gate: coverage ≥ 80%, CRAP ≤ 6, complexity ≤ 8, mutation testing
-make gate M=server   # one module: proto gen sdk tools agent cli server web
-make e2e      # build the images, then run the end-to-end tests (needs Docker)
+docker compose logs server | grep "SARD SETUP CODE"
 ```
 
-Thresholds are defined once, in `scripts/gate.sh`. A pull request with a red
-gate is not accepted.
-
-## Running
+and open the `/setup` page of the console, <http://localhost:8080/setup> (the
+console redirects there by itself). Enter the code, look at the server's CA
+(back up its key: without it every agent has to be registered again) and set
+the administrator password. The code is valid for 24 hours; if it has
+expired, `docker compose restart server` prints a new one. The password is
+changed later on the console's Settings page; if it is lost,
+[docs/operator/10-security.md](docs/operator/10-security.md) has the recovery.
+The REST API listens on
+`127.0.0.1:8080` only, because it is plain HTTP; the agents' port 9090
+(gRPC, mutual TLS) is open to the network. Before enrolling agents from other
+hosts, put the name they dial into `SARD_PKI_SERVER_NAMES` in `.env` and run
+`docker compose up -d` again: see the comments in `.env` and the operator
+guide, [docs/operator/](docs/operator/README.md) (in Russian). The whole
+stage 1 demo, from a clean VM to a restored file, is
+[docs/demo.md](docs/demo.md). Every release also carries
+an offline archive of its images (sard-server, sard-agent, PostgreSQL), for hosts
+without registry access:
 
 ```bash
-make up                                   # PostgreSQL + sard-server built from this checkout (deploy/.env is created from .env.example)
-curl -s localhost:8080/api/v1/status      # {"version":"…","lastVerifiedRestoreAt":null}
-# the console itself is served by the server at http://localhost:8080 (it is in the image)
-cd web && npm install && npm run dev      # development: console at http://localhost:5173, API proxied to :8080
-make down
+gunzip -c sard-<VERSION>-images-linux-<ARCH>.tar.gz | docker load
+docker compose up -d --wait --pull never
 ```
 
-The administrator password is the `SARD_ADMIN_PASSWORD` variable in
-`deploy/.env` (next to `SARD_AGENT_ENDPOINT`), at least 12 characters long; the
-server refuses to start without it. On the first `make up`, if `deploy/.env`
-doesn't exist yet, a random password of 24+ characters is written there; the
-command prints the path to the file but never the password itself
-([ADR 0021](docs/adr/0021-admin-password-login.md)). The console opens on the
-login page; the sign-out button is in the header.
+Next to the server runs `self-agent`, the agent `sard-self` that enrolls by
+itself; it does not back up the installation yet. It reads the database
+through a read-only role and the CA directory read-only
+([docs/operations/self-agent.md](docs/operations/self-agent.md), in Russian).
+Until then, back up the server by hand:
+[docs/operator/06-data-and-backup.md](docs/operator/06-data-and-backup.md).
+The CA key lives in the `sard_sard-pki` volume and the database in
+`sard_postgres-data`; both survive `docker compose down` and are removed by
+`docker compose down -v` only.
 
-Behind a TLS-terminating reverse proxy (Cloudflare Tunnel, nginx, Caddy) set
-`SARD_FORWARD_HEADERS=native` in `deploy/.env` and keep port 8080 on the
-loopback; without it login and every mutating request answer 403
-`origin_rejected` ([ADR 0046](docs/adr/0046-reverse-proxy-forward-headers.md),
-[docs/operator/04-tls-and-names.md](docs/operator/04-tls-and-names.md)).
-
-Agent and CLI:
-
-```bash
-./agent/bin/sard-agent --version
-./agent/bin/sard-agent --config deploy/agent/agent.example.yaml
-./cli/bin/sardctl version
-```
-
-## Verifying releases
+### Verifying releases
 
 Agent releases (tar.gz, deb, rpm for linux/amd64 and arm64) are signed with
 the Sard release key, [minisign](https://jedisct1.github.io/minisign/)
@@ -184,13 +143,15 @@ server you downloaded the package from: `deploy/release/sard-release.pub`.
 minisign -Vm SHA256SUMS -p sard-release.pub && sha256sum -c --ignore-missing SHA256SUMS
 ```
 
-Details and the release process: `docs/release.md`.
+Details and the release process: [docs/release.md](docs/release.md).
 
 ## Documentation
 
+Most documentation is in Russian.
+
 - [docs/demo.md](docs/demo.md): stage 1 demo, step by step: server, agent, backup, Telegram, restore
 - [docs/operator/](docs/operator/README.md): running the server: requirements, install, configuration, TLS, backup, upgrade, troubleshooting
-- [docs/plugins/](docs/plugins/): the source plugins that work today: files, postgresql
+- [docs/plugins/](docs/plugins/): source plugins and their settings
 - [docs/roadmap.en.md](docs/roadmap.en.md) ([на русском](docs/roadmap.md)): what is planned, not a promise
 - [docs/adr/](docs/adr/README.md): architecture decision records
 - [docs/specs/](docs/specs/): Gherkin specifications per module
@@ -207,5 +168,94 @@ code) and the plugin SDK (`agent/plugins/sdk`) are
 [Apache-2.0](proto/LICENSE), so third-party plugins, including proprietary
 ones, can be written without AGPL obligations. External contributions are
 accepted after signing the [CLA](docs/legal/CLA.md); see
-[CONTRIBUTING.md](CONTRIBUTING.md) and
 [ADR 0004](docs/adr/0004-hybrid-license-and-cla.md).
+
+## Reporting a vulnerability
+
+Do not open a public issue. Report privately as described in
+[SECURITY.md](SECURITY.md).
+
+## Contributing
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md): the CLA, the quality gate and
+the language of commits and pull requests.
+
+### Repository layout
+
+| Directory | What it is |
+|---|---|
+| `server/` | `sard-server`: Kotlin, Spring Boot 4.1, PostgreSQL, Flyway, gRPC |
+| `agent/` | `sard-agent`: Go, single binary; `agent/plugins/sdk` is the plugin SDK |
+| `cli/` | `sardctl`: Go, single binary |
+| `proto/` | server ↔ agent gRPC contracts (buf); `proto/gen/go` is the generated Go code, `proto/jvm` the JVM bindings |
+| `web/` | SPA: React, TypeScript, Vite, Mantine |
+| `deploy/` | docker-compose, server Dockerfile, agent systemd unit |
+| `examples/workflows/` | sample YAML workflows |
+| `tools/` | development tooling (CRAP, pinned Go tools) |
+| `test/e2e/` | end-to-end tests against built images |
+| `docs/` | ADRs, session log, dependencies, specifications, CLA |
+
+### Requirements
+
+JDK 25, Go 1.27, Node.js 24, Docker (for the server's Testcontainers tests and
+`make up`), GNU make. You don't need to install buf, golangci-lint or the other
+Go tools: `make tools` builds the pinned versions into `.bin/`.
+
+Kotlin test class names contain Cyrillic, so Gradle needs a UTF-8 locale.
+`make` sets `LC_ALL=C.UTF-8` for its own Gradle targets; when you call
+`./gradlew` or `scripts/gate.sh` directly, `export LC_ALL=C.UTF-8` first (see
+[CONTRIBUTING.md](CONTRIBUTING.md)).
+
+`.claude/hooks/session-start.sh` runs at the start of every Claude Code on the
+web session. It installs JDK 25 and Node.js 24, builds the pinned Go tools,
+downloads Go and npm dependencies, and warms the Gradle cache, so tests,
+linters and the quality gate work straight away. Outside the remote
+environment it does nothing.
+
+### Build and check
+
+```bash
+make proto    # generate Go code from proto/ (the result is committed)
+make build    # agent/bin/sard-agent, cli/bin/sardctl, server/build/libs/sard-server.jar, web/dist/
+make test     # all test suites
+make lint     # SPDX headers, buf lint, gofmt/vet/golangci-lint, spotless/detekt, oxlint/prettier/tsc
+make gate     # full quality gate: coverage ≥ 80%, CRAP ≤ 6, complexity ≤ 8, mutation testing
+make gate M=server   # one module: proto gen sdk tools agent cli server web
+make e2e      # build the images, then run the end-to-end tests (needs Docker)
+```
+
+Thresholds are defined once, in `scripts/gate.sh`. A pull request with a red
+gate is not accepted.
+
+### Running from the checkout
+
+```bash
+make up                                   # PostgreSQL + sard-server built from this checkout (deploy/.env is created from .env.example)
+curl -s localhost:8080/api/v1/status      # {"version":"…","lastVerifiedRestoreAt":null}
+# the console itself is served by the server at http://localhost:8080 (it is in the image)
+cd web && npm install && npm run dev      # development: console at http://localhost:5173, API proxied to :8080
+make down
+```
+
+The first start asks for the administrator password in the console: `make up` writes
+no password. The server prints a one-time setup code in its log
+(`docker compose -f deploy/docker-compose.yml logs server | grep "SARD SETUP CODE"`);
+open `/setup`, enter the code, confirm the CA and set the password (12 to 1024
+characters). It is stored as an Argon2id hash in the database and changed on the
+Settings page ([ADR 0021](docs/adr/0021-admin-password-login.md),
+[the first-start ADR](docs/adr/00XX-draft-f4a-first-start.md)). After that the
+console opens on the login page; the sign-out button is in the header.
+
+Behind a TLS-terminating reverse proxy (Cloudflare Tunnel, nginx, Caddy) set
+`SARD_FORWARD_HEADERS=native` in `deploy/.env` and keep port 8080 on the
+loopback; without it login and every mutating request answer 403
+`origin_rejected` ([ADR 0046](docs/adr/0046-reverse-proxy-forward-headers.md),
+[docs/operator/04-tls-and-names.md](docs/operator/04-tls-and-names.md)).
+
+Agent and CLI:
+
+```bash
+./agent/bin/sard-agent --version
+./agent/bin/sard-agent --config deploy/agent/agent.example.yaml
+./cli/bin/sardctl version
+```

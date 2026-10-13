@@ -8,6 +8,7 @@ import dev.sard.proto.agent.v1.EnrollmentServiceGrpcKt
 import dev.sard.server.pki.AgentIdentity
 import dev.sard.server.pki.CaFingerprint
 import dev.sard.server.pki.CertificateAuthority
+import dev.sard.server.pki.FakeCaLedger
 import dev.sard.server.pki.FileCertificateAuthority
 import dev.sard.server.pki.Pem
 import io.grpc.ChannelCredentials
@@ -128,7 +129,13 @@ class GrpcTlsIntegrationTest(
     @Test
     fun `a client certificate from another CA is refused at the handshake`() {
         val stranger =
-            FileCertificateAuthority(tmp.resolve("pki"), listOf("localhost"), Clock.systemUTC(), SecureRandom())
+            FileCertificateAuthority(
+                tmp.resolve("pki"),
+                listOf("localhost"),
+                Clock.systemUTC(),
+                SecureRandom(),
+                FakeCaLedger(permissive = true),
+            )
         assertEquals(Status.Code.UNAVAILABLE, enroll(withClientCertificate(stranger)))
     }
 }

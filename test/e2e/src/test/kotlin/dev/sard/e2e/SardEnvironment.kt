@@ -50,17 +50,20 @@ import java.util.HexFormat
  * `test/e2e/build/e2e-logs/<class>/<test>/<container>.log`.
  *
  * [serverEnv] adds or overrides server variables (a test that breaks the
- * configuration on purpose uses it).
+ * configuration on purpose uses it). With [selfAgent] the server runs as in
+ * deploy/docker-compose.yml next to the agent sard-self ([SelfAgent], F5/F6): it
+ * keeps the channel ([SELF_DIR], a volume of its own) and answers to "server" too.
  */
 class SardEnvironment(
     serverEnv: Map<String, String> = emptyMap(),
+    private val selfAgent: Boolean = false,
 ) : BeforeAllCallback,
     AfterAllCallback,
     TestWatcher {
     // Not "network": inside a container's apply {} that name is the container's own getNetwork().
     private val sardNetwork = Network.newNetwork()
     private val dbPassword = randomHex()
-    /** The administrator's password (`SARD_ADMIN_PASSWORD`), for signing in to the REST API. */
+    /** The administrator's password, set in the first-start wizard by [ensureAdministrator], for signing in to the REST API. */
     internal val adminPassword = randomHex()
     private val secrets = mutableSetOf(dbPassword, adminPassword)
     private val containers = linkedMapOf<String, Tracked>()
@@ -71,6 +74,13 @@ class SardEnvironment(
     // Created in [start], when Docker is up; the containers mount them on creation.
     private lateinit var pkiVolume: String
     private lateinit var dbVolume: String
+
+    /** The volume of the server's CA directory ([PKI_DIR]), which sard-self mounts read-only. */
+    internal val caVolume: String get() = pkiVolume
+
+    /** The channel to sard-self ([SELF_DIR]): its enrollment token and the database role's password. */
+    internal lateinit var channelVolume: String
+        private set
 
     val postgres: PostgreSQLContainer =
         track(
@@ -90,10 +100,10 @@ class SardEnvironment(
             SERVER_ALIAS,
             GenericContainer<Nothing>(DockerImageName.parse(E2e.serverImage)).apply {
                 withNetwork(sardNetwork)
-                withNetworkAliases(SERVER_ALIAS)
-                withEnv(defaultServerEnv() + serverEnv)
+                withNetworkAliases(*listOfNotNull(SERVER_ALIAS, SELF_SERVER_ALIAS.takeIf { selfAgent }).toTypedArray())
+                withEnv(defaultServerEnv() + selfServerEnv() + serverEnv)
                 withExposedPorts(HTTP_PORT, GRPC_PORT)
-                withCreateContainerCmdModifier { it.hostConfig?.withBinds(Bind(pkiVolume, Volume(PKI_DIR))) }
+                withCreateContainerCmdModifier { it.hostConfig?.withBinds(*serverBinds().toTypedArray()) }
                 waitingFor(HealthyOrExited("/actuator/health", HTTP_PORT).withStartupTimeout(STARTUP_TIMEOUT))
             },
         )
@@ -152,6 +162,7 @@ class SardEnvironment(
         try {
             pkiVolume = volume()
             dbVolume = volume()
+            channelVolume = volume()
             postgres.start()
             server.start()
         } catch (e: RuntimeException) {
@@ -229,6 +240,19 @@ class SardEnvironment(
         }
     }
 
+    /** [text] with every registered secret masked, as the collected logs are. */
+    fun masked(text: String): String = Redaction.apply(text, secrets)
+
+    /**
+     * Makes sure the installation has an administrator with [adminPassword]: on a clean one goes through
+     * the wizard with the code from the server's log (the server reads no password from its environment).
+     */
+    @Synchronized
+    fun ensureAdministrator() {
+        val wizard = SetupWizard(this)
+        if (!wizard.administratorSet()) wizard.complete(adminPassword)
+    }
+
     /** Everything every server container of this installation has written so far, unmasked. */
     fun serverLogs(): String = retiredServerLogs.toString() + server.logs
 
@@ -283,9 +307,23 @@ class SardEnvironment(
             // The server certificate's SAN; the endpoint's host must be one of them.
             "SARD_PKI_SERVER_NAMES" to SERVER_ALIAS,
             "SARD_AGENT_ENDPOINT" to AGENT_ENDPOINT,
-            // The server refuses to start without it (ADR 0021); 32 hex characters.
-            "SARD_ADMIN_PASSWORD" to adminPassword,
         )
+
+    // A fresh volume takes the owner and mode of the image's directory on first mount: the server's own.
+    private fun serverBinds(): List<Bind> =
+        listOfNotNull(Bind(pkiVolume, Volume(PKI_DIR)), Bind(channelVolume, Volume(SELF_DIR)).takeIf { selfAgent })
+
+    // As deploy/docker-compose.yml: the channel on, "server" among the certificate's names; checks every 2 s.
+    private fun selfServerEnv(): Map<String, String> =
+        if (!selfAgent) {
+            emptyMap()
+        } else {
+            mapOf(
+                "SARD_SELF_DIR" to SELF_DIR,
+                "SARD_SELF_CHECK_INTERVAL" to "2s",
+                "SARD_PKI_SERVER_NAMES" to "$SERVER_ALIAS,$SELF_SERVER_ALIAS",
+            )
+        }
 
     private class Tracked(
         val container: GenericContainer<*>,
@@ -303,6 +341,12 @@ class SardEnvironment(
 
         /** Where the server keeps its PKI (`SARD_PKI_DIR`, ADR 0014): a volume, as `sard-pki` in deploy/. */
         const val PKI_DIR = "/var/lib/sard/pki"
+
+        /** The name sard-self dials (its baked config: server:9090), as the compose service is called. */
+        const val SELF_SERVER_ALIAS = "server"
+
+        /** The server's end of the channel to sard-self (`SARD_SELF_DIR`). */
+        const val SELF_DIR = "/var/lib/sard/self"
 
         /** Where the import source is mounted in the new server (`SARD_PKI_IMPORT_DIR`, F8). */
         const val IMPORT_DIR = "/var/lib/sard/pki-import"

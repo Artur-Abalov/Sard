@@ -17,6 +17,9 @@
   "tags" : [ {
     "name" : "session",
     "description" : "Administrator sign-in"
+  }, {
+    "name" : "onboarding",
+    "description" : "The first-start wizard"
   } ],
   "paths" : {
     "/api/v1/sources/{sourceId}" : {
@@ -79,7 +82,7 @@
       "put" : {
         "tags" : [ "sources" ],
         "summary" : "Replace a source",
-        "description" : "The same 422 codes as creation, unknown_plugin included when the plugin does not offer backup.",
+        "description" : "The same 422 codes as creation, unknown_plugin included when the plugin does not offer backup. 409 system_source for a source the server keeps itself.",
         "operationId" : "replaceSource",
         "parameters" : [ {
           "name" : "sourceId",
@@ -117,6 +120,16 @@
               "application/problem+json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "The server keeps this source itself (system_source); nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
                 }
               }
             }
@@ -166,7 +179,7 @@
       "delete" : {
         "tags" : [ "sources" ],
         "summary" : "Delete a source",
-        "description" : "Its runs and snapshots stay in the history.",
+        "description" : "Its runs and snapshots stay in the history. 409 run_active while a run is active, 409 system_source for a source the server keeps itself.",
         "operationId" : "deleteSource",
         "parameters" : [ {
           "name" : "sourceId",
@@ -181,22 +194,26 @@
           "204" : {
             "description" : "Deleted"
           },
+          "409" : {
+            "description" : "The source has an active run (activeRunId), or the server keeps it itself (code)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "anyOf" : [ {
+                    "$ref" : "#/components/schemas/RunActiveProblem"
+                  }, {
+                    "$ref" : "#/components/schemas/Problem"
+                  } ]
+                }
+              }
+            }
+          },
           "404" : {
             "description" : "Not found in the session's tenant",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "409" : {
-            "description" : "The source has an active run (D6)",
-            "content" : {
-              "application/problem+json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/RunActiveProblem"
                 }
               }
             }
@@ -343,6 +360,177 @@
               "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/Schedule"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/session/password" : {
+      "put" : {
+        "tags" : [ "session" ],
+        "summary" : "Change the administrator password",
+        "description" : "Ends every other session; the session that asks goes on under a new id. A wrong current password counts as a failed sign-in attempt.",
+        "operationId" : "changePassword",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PasswordChangeRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "Changed",
+            "headers" : {
+              "Set-Cookie" : {
+                "description" : "sard_session; HttpOnly; SameSite=Strict; Path=/; Secure when the connection is HTTPS",
+                "style" : "simple",
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "wrong_password: the current password is not the password; validation_failed: a field is missing or the new password is not 12 to 1024 characters",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "429" : {
+            "description" : "Too many failed attempts; the password is not checked",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Seconds until the next attempt",
+                "style" : "simple",
+                "schema" : {
+                  "type" : "integer"
+                }
+              }
+            },
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "501" : {
+            "description" : "The administrator is managed outside the server (an extension)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/self-backup/repository" : {
+      "put" : {
+        "tags" : [ "self-backup" ],
+        "summary" : "Bind the self-backup to a repository of the built-in agent",
+        "description" : "Creates the two system sources with a nightly schedule, or moves them to this repository and the current built-in agent; binding again unchanged changes nothing. 422 codes: self_agent_missing, unknown_repository, repository_not_initialized, local_storage_unconfirmed, unknown_plugin, invalid_config (the built-in agent lacks the database password's secret), validation_failed.",
+        "operationId" : "bindSelfBackupRepository",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SelfBackupRepositoryInput"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SelfBackup"
                 }
               }
             }
@@ -687,6 +875,16 @@
               }
             }
           },
+          "409" : {
+            "description" : "There is no administrator yet: the first-start wizard has not set the password (setup_required); not counted as a failed attempt",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "429" : {
             "description" : "Too many failed attempts; sign-in is locked for a while",
             "headers" : {
@@ -769,6 +967,289 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/self-backup/runs" : {
+      "post" : {
+        "tags" : [ "self-backup" ],
+        "summary" : "Back up the installation now",
+        "description" : "Queues a manual run of each system source; a source with an active run answers with that run. 409 self_backup_not_configured before a repository is bound; agent_revoked, unknown_plugin or unknown_repository when a run cannot start.",
+        "operationId" : "startSelfBackup",
+        "responses" : {
+          "409" : {
+            "description" : "Not configured, or a run cannot start (code)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SelfBackupRuns"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/onboarding/setup-session" : {
+      "post" : {
+        "tags" : [ "onboarding" ],
+        "summary" : "Enter the setup code",
+        "description" : "The code is printed in the log of the server. A wrong, expired, missing or malformed code is the same 401 and counts against the client address.",
+        "operationId" : "createSetupSession",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SetupCodeRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "The code is right; a setup session was issued",
+            "headers" : {
+              "Set-Cookie" : {
+                "description" : "sard_setup; HttpOnly; SameSite=Strict; Path=/api/v1/onboarding; Secure when the connection is HTTPS. No Max-Age: the session ends with the code, the admin step or a restart.",
+                "style" : "simple",
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Wrong, expired or missing code",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "The admin step is done, so there is no code (setup_completed)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429" : {
+            "description" : "Too many wrong codes from this address; the code is not checked",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Seconds until the next attempt",
+                "style" : "simple",
+                "schema" : {
+                  "type" : "integer"
+                }
+              }
+            },
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/api/v1/onboarding/ca" : {
+      "post" : {
+        "tags" : [ "onboarding" ],
+        "summary" : "Use the CA of this server",
+        "description" : "Does the step ca; repeating it changes nothing. From now on the CA cannot be replaced.",
+        "operationId" : "confirmOnboardingCa",
+        "responses" : {
+          "204" : {
+            "description" : "The step ca is done"
+          },
+          "401" : {
+            "description" : "No setup session, or it ended",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "setupSession" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/onboarding/admin" : {
+      "post" : {
+        "tags" : [ "onboarding" ],
+        "summary" : "Set the administrator password",
+        "description" : "Does the step admin and signs the owner in. The code and every setup session end. The password is stored as an Argon2id hash.",
+        "operationId" : "completeOnboardingAdmin",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AdminStepRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "The password is set",
+            "headers" : {
+              "Set-Cookie" : {
+                "description" : "sard_session; HttpOnly; SameSite=Strict; Path=/; Secure when the connection is HTTPS. A second Set-Cookie clears sard_setup.",
+                "style" : "simple",
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No setup session, or it ended",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "ca_step_pending: the CA was not confirmed yet; setup_completed: there is an administrator",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "The password is missing or not 12 to 1024 characters; errors name the field",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "setupSession" : [ ]
+        } ]
       }
     },
     "/api/v1/enrollment-tokens" : {
@@ -1292,6 +1773,45 @@
         }
       }
     },
+    "/api/v1/self-backup" : {
+      "get" : {
+        "tags" : [ "self-backup" ],
+        "summary" : "The self-backup's state",
+        "operationId" : "getSelfBackup",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SelfBackup"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/schedule-preview" : {
       "get" : {
         "tags" : [ "sources" ],
@@ -1677,6 +2197,37 @@
         }
       }
     },
+    "/api/v1/onboarding" : {
+      "get" : {
+        "tags" : [ "onboarding" ],
+        "summary" : "State of the first start",
+        "description" : "Public. Which steps are done, whether a setup code was issued, and which session came with the request. The CA is shown only to a setup or administrator session.",
+        "operationId" : "getOnboarding",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Onboarding"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
     "/api/v1/enrollment-tokens/{tokenId}" : {
       "get" : {
         "tags" : [ "enrollment-tokens" ],
@@ -1739,7 +2290,7 @@
       "get" : {
         "tags" : [ "ca" ],
         "summary" : "CA of the server",
-        "description" : "The fingerprint of the CA, whatever its origin. Requires an administrator session.",
+        "description" : "The fingerprint of the CA, where it came from and where its key is. Requires an administrator session.",
         "operationId" : "getCa",
         "responses" : {
           "200" : {
@@ -2103,7 +2654,7 @@
       },
       "ErrorCode" : {
         "type" : "string",
-        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "unavailable", "self_agent_confirmation_required" ]
+        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password" ]
       },
       "Problem" : {
         "type" : "object",
@@ -2215,9 +2766,21 @@
           "updatedAt" : {
             "type" : "string",
             "format" : "date-time"
+          },
+          "systemRole" : {
+            "description" : "Set for a source the server keeps itself (the self-backup's): it is neither replaced nor deleted through the API, only its schedule changes; null for an administrator's source",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/SystemSourceRole"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "agentId", "config", "createdAt", "id", "name", "plugin", "repositoryName", "updatedAt" ]
+        "required" : [ "agentId", "config", "createdAt", "id", "name", "plugin", "repositoryName", "systemRole", "updatedAt" ]
+      },
+      "SystemSourceRole" : {
+        "type" : "string",
+        "enum" : [ "self_database", "self_keys" ]
       },
       "ScheduleInput" : {
         "type" : "object",
@@ -2341,6 +2904,169 @@
           }
         },
         "required" : [ "finishedAt", "id", "queuedAt", "status", "trigger" ]
+      },
+      "PasswordChangeRequest" : {
+        "type" : "object",
+        "description" : "A password change; the new password is 12 to 1024 Unicode code points",
+        "properties" : {
+          "currentPassword" : {
+            "type" : [ "string", "null" ]
+          },
+          "newPassword" : {
+            "type" : [ "string", "null" ]
+          }
+        }
+      },
+      "SelfBackupRepositoryInput" : {
+        "type" : "object",
+        "description" : "The repository of the built-in agent the self-backup goes to",
+        "properties" : {
+          "repositoryName" : {
+            "type" : "string",
+            "description" : "A repository of the built-in agent's last Register, initialised"
+          },
+          "confirmLocalStorage" : {
+            "type" : "boolean",
+            "description" : "Required true for a local repository: a copy on the server's own machine is lost with the machine"
+          }
+        },
+        "required" : [ "repositoryName" ]
+      },
+      "SelfBackup" : {
+        "type" : "object",
+        "description" : "The self-backup of the installation: the database, the CA and the configuration",
+        "properties" : {
+          "configured" : {
+            "type" : "boolean",
+            "description" : "A repository is bound and both system sources exist"
+          },
+          "agentId" : {
+            "type" : [ "string", "null" ],
+            "format" : "uuid",
+            "description" : "The live built-in agent (sard-self); null without one"
+          },
+          "repository" : {
+            "description" : "Null until configured",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/SelfBackupRepository"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "boundAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "When the system sources last moved to a repository or agent; null until configured"
+          },
+          "sources" : {
+            "type" : "array",
+            "description" : "Database first; empty until configured",
+            "items" : {
+              "$ref" : "#/components/schemas/SelfBackupSource"
+            }
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/SelfBackupStatus",
+            "description" : "The worst of the warnings about the backup itself; local storage alone is ok"
+          },
+          "warnings" : {
+            "type" : "array",
+            "description" : "What the console shows on every page, worst first: the sources are on a replaced agent, a source has gone too long without a success, its last run failed, its schedule is off, the storage is local",
+            "items" : {
+              "$ref" : "#/components/schemas/SelfBackupWarningCode"
+            }
+          },
+          "overdueSince" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "When a system source went overdue: the earliest deadline it missed; null if none"
+          }
+        },
+        "required" : [ "agentId", "boundAt", "configured", "overdueSince", "repository", "sources", "status", "warnings" ]
+      },
+      "SelfBackupLastRun" : {
+        "type" : "object",
+        "description" : "A system source's last finished run",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/RunStatus"
+          },
+          "finishedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "finishedAt", "id", "status" ]
+      },
+      "SelfBackupRepository" : {
+        "type" : "object",
+        "description" : "Where the self-backup goes, as the built-in agent's last Register describes it",
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "backend" : {
+            "type" : "string",
+            "description" : "restic backend scheme: s3, sftp, local, ...; empty once Register no longer lists it"
+          },
+          "repositoryId" : {
+            "type" : [ "string", "null" ],
+            "description" : "restic repository id; null until the agent reads it"
+          },
+          "local" : {
+            "type" : "boolean",
+            "description" : "On the server's own machine: warn about it on every page"
+          }
+        },
+        "required" : [ "backend", "local", "name", "repositoryId" ]
+      },
+      "SelfBackupSource" : {
+        "type" : "object",
+        "description" : "One of the self-backup's two system sources",
+        "properties" : {
+          "role" : {
+            "$ref" : "#/components/schemas/SystemSourceRole"
+          },
+          "sourceId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "agentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "repositoryName" : {
+            "type" : "string"
+          },
+          "lastSuccessAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "lastFailureAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "lastRun" : {
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/SelfBackupLastRun"
+            }, {
+              "type" : "null"
+            } ]
+          }
+        },
+        "required" : [ "agentId", "lastFailureAt", "lastRun", "lastSuccessAt", "repositoryName", "role", "sourceId" ]
+      },
+      "SelfBackupStatus" : {
+        "type" : "string",
+        "enum" : [ "not_configured", "ok", "agent_replaced", "overdue", "failing", "schedule_disabled" ]
+      },
+      "SelfBackupWarningCode" : {
+        "type" : "string",
+        "enum" : [ "agent_replaced", "overdue", "failing", "schedule_disabled", "local_storage" ]
       },
       "RunActiveProblem" : {
         "type" : "object",
@@ -2606,10 +3332,64 @@
         "properties" : {
           "password" : {
             "type" : "string",
-            "description" : "The administrator password from the server's environment"
+            "description" : "The administrator password set in the first-start wizard or changed since"
           }
         },
         "required" : [ "password" ]
+      },
+      "SelfBackupRunStarted" : {
+        "type" : "object",
+        "description" : "A run of one system source",
+        "properties" : {
+          "role" : {
+            "$ref" : "#/components/schemas/SystemSourceRole"
+          },
+          "sourceId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "runId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "started" : {
+            "type" : "boolean",
+            "description" : "False when the source already had this run active (D6): nothing new was queued"
+          }
+        },
+        "required" : [ "role", "runId", "sourceId", "started" ]
+      },
+      "SelfBackupRuns" : {
+        "type" : "object",
+        "description" : "The runs \"back up now\" follows: one per system source, database first",
+        "properties" : {
+          "runs" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/SelfBackupRunStarted"
+            }
+          }
+        },
+        "required" : [ "runs" ]
+      },
+      "SetupCodeRequest" : {
+        "type" : "object",
+        "description" : "The setup code printed in the server's log",
+        "properties" : {
+          "code" : {
+            "type" : [ "string", "null" ],
+            "description" : "As printed, or as typed: case, hyphens and spaces do not matter"
+          }
+        }
+      },
+      "AdminStepRequest" : {
+        "type" : "object",
+        "description" : "The administrator password to set; 12 to 1024 Unicode code points",
+        "properties" : {
+          "password" : {
+            "type" : [ "string", "null" ]
+          }
+        }
       },
       "CreateEnrollmentTokenRequest" : {
         "type" : "object",
@@ -3293,6 +4073,97 @@
         },
         "required" : [ "agentsOnline", "agentsTotal", "firstSteps" ]
       },
+      "CaInfo" : {
+        "type" : "object",
+        "description" : "The CA of this server; public data, but only for a signed-in administrator",
+        "properties" : {
+          "fingerprint" : {
+            "type" : "string",
+            "description" : "SHA-256 of the root's DER SubjectPublicKeyInfo, 64 lower-case hex characters: the part of an enrollment token after the last dot",
+            "example" : "8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f"
+          },
+          "origin" : {
+            "$ref" : "#/components/schemas/CaOrigin",
+            "description" : "Where the CA came from: made by this server or imported (docs/operator/08)"
+          },
+          "keyPath" : {
+            "type" : "string",
+            "description" : "Absolute path of the CA key in the file system of the server: back it up separately",
+            "example" : "/var/lib/sard/pki/ca/ca.key"
+          }
+        },
+        "required" : [ "fingerprint", "keyPath", "origin" ]
+      },
+      "CaOrigin" : {
+        "type" : "string",
+        "description" : "Where the CA of the server came from: made by the server or imported",
+        "enum" : [ "generated", "imported" ]
+      },
+      "Onboarding" : {
+        "type" : "object",
+        "description" : "How far the first start has come; public, the CA only with a setup or administrator session",
+        "properties" : {
+          "steps" : {
+            "type" : "array",
+            "description" : "Exactly ca, admin, self_backup, keys_confirmed, in this order",
+            "items" : {
+              "$ref" : "#/components/schemas/OnboardingStep"
+            }
+          },
+          "setupCode" : {
+            "$ref" : "#/components/schemas/SetupCodeState"
+          },
+          "access" : {
+            "$ref" : "#/components/schemas/OnboardingAccess"
+          },
+          "ca" : {
+            "description" : "The CA of the server; null without a session",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/CaInfo"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "caReplaceable" : {
+            "type" : [ "boolean", "null" ],
+            "description" : "True while the CA may still be replaced by an import: the ca step is not done and no agent certificate was issued; null without a session"
+          }
+        },
+        "required" : [ "access", "ca", "caReplaceable", "setupCode", "steps" ]
+      },
+      "OnboardingAccess" : {
+        "type" : "string",
+        "description" : "Which session came with the request",
+        "enum" : [ "none", "setup", "admin" ]
+      },
+      "OnboardingStep" : {
+        "type" : "object",
+        "description" : "A step of the wizard and where it stands",
+        "properties" : {
+          "id" : {
+            "$ref" : "#/components/schemas/OnboardingStepId"
+          },
+          "state" : {
+            "$ref" : "#/components/schemas/OnboardingStepState"
+          }
+        },
+        "required" : [ "id", "state" ]
+      },
+      "OnboardingStepId" : {
+        "type" : "string",
+        "description" : "A step of the first-start wizard, in the order of the wizard",
+        "enum" : [ "ca", "admin", "self_backup", "keys_confirmed" ]
+      },
+      "OnboardingStepState" : {
+        "type" : "string",
+        "description" : "upcoming: the step is not part of this version of the wizard yet",
+        "enum" : [ "done", "pending", "upcoming" ]
+      },
+      "SetupCodeState" : {
+        "type" : "string",
+        "description" : "active: a code was issued at this start and has not expired; expired: it was issued and its time passed; not_issued: there is none (the admin step is done, or was opened by admin-reset after the start)",
+        "enum" : [ "active", "expired", "not_issued" ]
+      },
       "EnrollmentTokenPage" : {
         "type" : "object",
         "description" : "A page of enrollment tokens",
@@ -3309,18 +4180,6 @@
           }
         },
         "required" : [ "items", "nextCursor" ]
-      },
-      "CaInfo" : {
-        "type" : "object",
-        "description" : "The CA of this server; public data, but only for a signed-in administrator",
-        "properties" : {
-          "fingerprint" : {
-            "type" : "string",
-            "description" : "SHA-256 of the root's DER SubjectPublicKeyInfo, 64 lower-case hex characters: the part of an enrollment token after the last dot",
-            "example" : "8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f"
-          }
-        },
-        "required" : [ "fingerprint" ]
       },
       "AgentPage" : {
         "type" : "object",
@@ -3555,6 +4414,11 @@
       "session" : {
         "type" : "apiKey",
         "name" : "sard_session",
+        "in" : "cookie"
+      },
+      "setupSession" : {
+        "type" : "apiKey",
+        "name" : "sard_setup",
         "in" : "cookie"
       }
     }

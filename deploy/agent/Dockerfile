@@ -20,6 +20,13 @@
 # on openssh-client (restic's sftp backend runs ssh), and the service user
 # sard-agent has its home in /var/lib/sard-agent, as postinstall.sh creates
 # it; ssh reads ~/.ssh from there, whatever HOME the agent gives restic.
+#
+# BASE_IMAGE=postgres:18 gives the "-pg18" variant (F6, ADR 00XX-draft-self-backup):
+# the same agent on the official PostgreSQL image, whose pg_dump, pg_dumpall and
+# psql of that major version (/usr/lib/postgresql/18/bin) the postgresql plugin
+# runs. The compose file's sard-self uses it to dump the server's database; a
+# containerised agent of a client can take it too. Any Debian or Ubuntu base works.
+ARG BASE_IMAGE=ubuntu:24.04
 
 # The tarballs are files for every architecture: unpacked once, on the builder's platform.
 FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS unpack
@@ -30,10 +37,9 @@ WORKDIR /in
 RUN sha256sum --check --strict --ignore-missing --quiet SHA256SUMS \
  && grep -q " sard-agent_${SARD_VERSION}_linux_${TARGETARCH}.tar.gz\$" SHA256SUMS \
  && mkdir /out \
- && tar -xzf "sard-agent_${SARD_VERSION}_linux_${TARGETARCH}.tar.gz" --strip-components=1 -C /out \
- && mkdir /empty
+ && tar -xzf "sard-agent_${SARD_VERSION}_linux_${TARGETARCH}.tar.gz" --strip-components=1 -C /out
 
-FROM ubuntu:24.04
+FROM ${BASE_IMAGE}
 ARG SARD_VERSION=dev
 LABEL org.opencontainers.image.title="sard-agent" \
       org.opencontainers.image.description="Sard backup orchestrator: the agent, with restic" \
@@ -46,9 +52,16 @@ LABEL org.opencontainers.image.title="sard-agent" \
 # Two users: sard-agent (65532), as the packages create it, is the image's
 # default; sard-self (10001, the uid of sard-server's image) is the compose
 # file's agent, which reads the server's CA directory (0700, owner 10001).
+# Their directories are made by install -d, not by COPY --chmod of an empty
+# directory: older BuildKit leaves the copied directory itself 0755, and the
+# agent refuses a state directory others can read. sard-agent: the default state
+# and cache directories of the agent config. sard-self: its config (the
+# sard-self-config volume starts as a copy of it) and every directory it writes
+# (the sard-self-state volume), made here because enroll never creates
+# directories and a fresh volume takes owner and mode from the image.
 RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
     if [ -f /run/secrets/build-ca ]; then \
-      sed -i 's|http://|https://|' /etc/apt/sources.list.d/ubuntu.sources; \
+      sed -i 's|http://|https://|' /etc/apt/sources.list.d/*.sources; \
       echo 'Acquire::https::CaInfo "/run/secrets/build-ca";' > /etc/apt/apt.conf.d/99build-ca; \
     fi \
  && apt-get update && apt-get install -y --no-install-recommends openssh-client \
@@ -58,18 +71,15 @@ RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
       --shell /usr/sbin/nologin sard-agent \
  && groupadd --system --gid 10001 sard-self \
  && useradd --system --uid 10001 --gid 10001 --no-create-home --home-dir /var/lib/sard-self \
-      --shell /usr/sbin/nologin sard-self
+      --shell /usr/sbin/nologin sard-self \
+ && install -d -m 0700 -o 65532 -g 65532 /var/lib/sard-agent /var/cache/sard/restic \
+ && install -d -m 0755 /etc/sard/self \
+ && install -d -m 0700 -o 10001 -g 10001 /var/lib/sard-self /var/lib/sard-self/tls \
+      /var/lib/sard-self/executor /var/lib/sard-self/restic-cache
 # The layout of the deb/rpm packages (ADR 0018).
 COPY --from=unpack /out/sard-agent /out/restic /usr/libexec/sard/
 COPY --from=unpack /out/LICENSE /out/LICENSE.restic /out/THIRD_PARTY_LICENSES /out/NOTICE /usr/share/doc/sard-agent/
 COPY --from=unpack /out/agent.example.yaml /etc/sard/
-# Default state and cache directories of the agent config, writable by the agent.
-COPY --from=unpack --chown=65532:65532 --chmod=0700 /empty/ /var/lib/sard-agent/
-COPY --from=unpack --chown=65532:65532 --chmod=0700 /empty/ /var/cache/sard/restic/
-# sard-self: its config (the sard-self-config volume starts as a copy of it) and
-# every directory it writes (the sard-self-state volume), created here because
-# enroll never creates directories and a fresh volume takes the owner from the image.
-COPY --from=unpack --chmod=0755 /empty/ /etc/sard/self/
 COPY --chmod=0644 <<EOF /etc/sard/self/agent.yaml
 # /etc/sard/self/agent.yaml — the agent next to sard-server in
 # deploy/docker-compose.yml (sard-self, docs/operations/self-agent.md).
@@ -93,10 +103,6 @@ executor:
 secrets: # the password of the database role sard_self, written by the server into the channel volume
   sard-db: /run/sard-self/db-password
 EOF
-COPY --from=unpack --chown=10001:10001 --chmod=0700 /empty/ /var/lib/sard-self/
-COPY --from=unpack --chown=10001:10001 --chmod=0700 /empty/ /var/lib/sard-self/tls/
-COPY --from=unpack --chown=10001:10001 --chmod=0700 /empty/ /var/lib/sard-self/executor/
-COPY --from=unpack --chown=10001:10001 --chmod=0700 /empty/ /var/lib/sard-self/restic-cache/
 USER 65532:65532
 ENTRYPOINT ["/usr/libexec/sard/sard-agent"]
 CMD ["--config", "/etc/sard/agent.yaml"]

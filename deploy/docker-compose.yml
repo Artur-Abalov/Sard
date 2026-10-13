@@ -37,9 +37,6 @@ services:
       # A CA to take at the first start (a move to a new machine, ADR 0052): the path inside the container
       # where docker-compose.override.yml mounts it (docs/operator/08-migrate-and-remove.md). Empty means none.
       SARD_PKI_IMPORT_DIR: ${SARD_PKI_IMPORT_DIR:-}
-      # The single administrator's password (ADR 0021); at least 12 Unicode code points,
-      # or the server refuses to start. make up generates one on the first run.
-      SARD_ADMIN_PASSWORD: ${SARD_ADMIN_PASSWORD:?set SARD_ADMIN_PASSWORD in .env}
       # Address agents dial (decision 5, S2b); unset means the first of the names above and the gRPC port.
       SARD_AGENT_ENDPOINT: ${SARD_AGENT_ENDPOINT:-}
       # Telegram notifications (S9a); both empty means notifications are off, with a warning.
@@ -88,7 +85,8 @@ services:
   # It enrolls itself: the server writes its one-time token into the sard-self-channel
   # volume, which this service mounts read-only (no SARD_ENROLL_TOKEN here).
   self-agent:
-    image: ${SARD_AGENT_IMAGE:-ghcr.io/artur-abalov/sard-agent}:${SARD_VERSION:?set SARD_VERSION in .env}
+    # The agent on postgres:18: pg_dump of the database's major version for the self-backup (F6).
+    image: ${SARD_AGENT_IMAGE:-ghcr.io/artur-abalov/sard-agent}:${SARD_VERSION:?set SARD_VERSION in .env}-pg18
     restart: unless-stopped
     hostname: sard-self
     # The server's uid: the CA directory is 0700 and its files 0600, owned by it.
@@ -106,6 +104,10 @@ services:
       - sard-pki:/var/lib/sard/pki:ro
       # The server's channel: the enrollment token and the database role's password, read-only.
       - sard-self-channel:/run/sard-self:ro
+      # This installation's directory (.env, this file, docker-compose.override.yml), read-only: the
+      # self-backup keeps it with the CA (F6). .env must be readable by uid/gid 10001:
+      # chgrp 10001 .env && chmod 640 .env (docs/operator/02-install.md).
+      - ./:/etc/sard/install:ro
     tmpfs:
       - /tmp
     depends_on:

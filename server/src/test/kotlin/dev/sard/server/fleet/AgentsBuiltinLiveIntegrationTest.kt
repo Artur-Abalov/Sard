@@ -15,6 +15,7 @@ import dev.sard.server.registration.Registration
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import io.grpc.Status
+import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.test.web.server.LocalServerPort
@@ -30,6 +31,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /** Rule "built-in and not revoked" of docs/specs/server/self-agent.feature, asked of the fleet. */
+@Tag("mutflow-isolated")
 @MutFlowTest
 @RestApiTest
 class AgentsBuiltinLiveIntegrationTest(

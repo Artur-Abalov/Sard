@@ -13,10 +13,11 @@ services:
         # The agent packages in dist/ must be of this version (make up passes it).
         SARD_VERSION: ${SARD_VERSION:-dev}
   self-agent:
-    image: sard-agent:dev
+    image: sard-agent:dev-pg18
     build:
       # The tarballs of make package (dist/), every architecture; the image takes its own.
       context: ../dist
       dockerfile: ../deploy/agent/Dockerfile
       args:
         SARD_VERSION: ${SARD_VERSION:-dev}
+        BASE_IMAGE: postgres:18

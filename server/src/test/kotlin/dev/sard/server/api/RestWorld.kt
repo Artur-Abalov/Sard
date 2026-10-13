@@ -37,7 +37,12 @@ import java.util.UUID
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     // The periodic stream checks and scheduler ticks stay out of the way; tests that need one call it by hand.
-    properties = ["spring.grpc.server.port=0", "sard.agent.stream.check-interval=1h", "sard.scheduler.interval=1h"],
+    properties = [
+        "spring.grpc.server.port=0",
+        "sard.agent.stream.check-interval=1h",
+        "sard.scheduler.interval=1h",
+        "sard.freshness.interval=1h",
+    ],
 )
 @Import(TestcontainersConfiguration::class, RestApiTestConfiguration::class)
 annotation class RestApiTest
@@ -244,12 +249,15 @@ class RestWorld(
         /** Children first. */
         val TENANT_TABLES =
             listOf(
+                "notification_deliveries",
+                "overdue_episodes",
                 "schedule_fires",
                 "snapshots",
                 "step_logs",
                 "run_steps",
                 "runs",
                 "schedules",
+                "self_backups",
                 "sources",
                 "agent_plugins",
                 "agent_repositories",

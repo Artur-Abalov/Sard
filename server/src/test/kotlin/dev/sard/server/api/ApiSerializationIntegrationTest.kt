@@ -20,6 +20,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+private const val CA_FINGERPRINT = "8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f"
+
 /**
  * The spec is derived by swagger through Jackson 2, the server writes JSON with
  * Jackson 3: every DTO, serialized by the application's mapper, must match its
@@ -102,7 +104,19 @@ class ApiSerializationIntegrationTest(
             startedAt = null,
             finishedAt = null,
         )
-    private val source = Source(id, "etc", id, "files", "local", mapOf("paths" to listOf("/etc")), at, at)
+    private val source = Source(id, "etc", id, "files", "local", mapOf("paths" to listOf("/etc")), at, at, null)
+    private val systemSource =
+        Source(
+            id,
+            "Sard: database",
+            id,
+            "postgresql",
+            "offsite",
+            mapOf("host" to "postgres"),
+            at,
+            at,
+            SystemSourceRole.SELF_DATABASE,
+        )
     private val token =
         EnrollmentToken(id, EnrollmentTokenStatus.USED, at, at, at, revokedAt = null, agentId = id, label = null)
     private val snapshot =
@@ -141,13 +155,39 @@ class ApiSerializationIntegrationTest(
     private val summaryRun =
         RunSummary(id, id, "etc", false, id, RunTrigger.MANUAL, RunStatus.FAILED, "boom", at, at, at, catchUp = null)
 
+    private fun onboarding(
+        access: OnboardingAccess,
+        withCa: Boolean,
+    ) = Onboarding(
+        listOf(
+            OnboardingStep(OnboardingStepId.CA, OnboardingStepState.PENDING),
+            OnboardingStep(OnboardingStepId.ADMIN, OnboardingStepState.PENDING),
+            OnboardingStep(OnboardingStepId.SELF_BACKUP, OnboardingStepState.UPCOMING),
+            OnboardingStep(OnboardingStepId.KEYS_CONFIRMED, OnboardingStepState.UPCOMING),
+        ),
+        SetupCodeState.ACTIVE,
+        access,
+        ca =
+            if (withCa) {
+                CaInfo(CA_FINGERPRINT, CaOrigin.IMPORTED, "/k/ca.key")
+            } else {
+                null
+            },
+        caReplaceable = if (withCa) true else null,
+    )
+
     private val samples: List<Any> =
         listOf(
             StatusResponse("1.0.0", lastVerifiedRestoreAt = null),
             Overview(1, 3, FirstSteps(true, true, false, false, false, complete = false)),
-            CaInfo("8544e2352a80a3d403eed68f8bb4ff271d0ce02c09c1d0faf6f090cea423be9f"),
+            CaInfo(CA_FINGERPRINT, CaOrigin.GENERATED, "/var/lib/sard/pki/ca/ca.key"),
             SessionRequest("secret"),
             Session(id, at),
+            onboarding(access = OnboardingAccess.SETUP, withCa = true),
+            onboarding(access = OnboardingAccess.NONE, withCa = false),
+            SetupCodeRequest("ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345"),
+            AdminStepRequest("correct-horse-battery"),
+            PasswordChangeRequest("correct-horse-battery", "new-password-2026"),
             AgentPage(listOf(summary), nextCursor = "c2"),
             AgentDetails(
                 id,
@@ -197,7 +237,40 @@ class ApiSerializationIntegrationTest(
             EnrollmentTokenPage(listOf(token), nextCursor = null),
             SourceInput("etc", id, "files", "local", mapOf("paths" to listOf("/etc"))),
             source,
-            SourcePage(listOf(source), nextCursor = null),
+            SourcePage(listOf(source, systemSource), nextCursor = null),
+            SelfBackupRepositoryInput("offsite", confirmLocalStorage = false),
+            SelfBackup(
+                configured = true,
+                agentId = id,
+                SelfBackupRepository("offsite", "s3", "a1b2", local = false),
+                boundAt = at,
+                listOf(
+                    SelfBackupSource(
+                        SystemSourceRole.SELF_KEYS,
+                        id,
+                        id,
+                        "offsite",
+                        lastSuccessAt = at,
+                        lastFailureAt = null,
+                        SelfBackupLastRun(id, RunStatus.FAILED, at),
+                    ),
+                    SelfBackupSource(SystemSourceRole.SELF_DATABASE, id, id, "offsite", null, null, null),
+                ),
+                SelfBackupStatus.OVERDUE,
+                listOf(SelfBackupWarningCode.OVERDUE, SelfBackupWarningCode.LOCAL_STORAGE),
+                overdueSince = at,
+            ),
+            SelfBackup(
+                configured = false,
+                agentId = null,
+                repository = null,
+                boundAt = null,
+                sources = emptyList(),
+                SelfBackupStatus.NOT_CONFIGURED,
+                warnings = emptyList(),
+                overdueSince = null,
+            ),
+            SelfBackupRuns(listOf(SelfBackupRunStarted(SystemSourceRole.SELF_DATABASE, id, id, started = false))),
             SnapshotPage(listOf(snapshot), nextCursor = null),
             ScheduleInput("30 2 * * *", "Europe/Berlin", enabled = true),
             schedule,
@@ -345,6 +418,7 @@ class ApiSerializationIntegrationTest(
         /** Reached through their parents' samples. */
         val NESTED =
             setOf(
+                "OnboardingStep",
                 "AgentSummary",
                 "InstallStep",
                 "ReleaseKey",
@@ -361,6 +435,10 @@ class ApiSerializationIntegrationTest(
                 "RunSummary",
                 "LogLine",
                 "FieldError",
+                "SelfBackupRepository",
+                "SelfBackupSource",
+                "SelfBackupRunStarted",
+                "SelfBackupLastRun",
             )
     }
 }

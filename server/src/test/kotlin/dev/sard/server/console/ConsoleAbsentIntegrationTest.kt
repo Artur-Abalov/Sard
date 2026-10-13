@@ -3,6 +3,7 @@
 
 package dev.sard.server.console
 
+import dev.sard.server.SeededAdministrator
 import dev.sard.server.TestcontainersConfiguration
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -19,11 +20,11 @@ import kotlin.test.assertTrue
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = [
         "spring.grpc.server.port=0",
-        "SARD_ADMIN_PASSWORD=$CONSOLE_PASSWORD",
+        "sard.test.admin-password=$CONSOLE_PASSWORD",
         "sard.console.location=classpath:/fixtures/",
     ],
 )
-@Import(TestcontainersConfiguration::class)
+@Import(SeededAdministrator::class, TestcontainersConfiguration::class)
 class ConsoleAbsentIntegrationTest(
     @Autowired private val mapper: ObjectMapper,
     @LocalServerPort port: Int,

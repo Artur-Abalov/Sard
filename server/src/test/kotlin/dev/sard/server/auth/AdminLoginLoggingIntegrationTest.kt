@@ -5,6 +5,7 @@ package dev.sard.server.auth
 
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
+import dev.sard.server.SeededAdministrator
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.api.SESSION_COOKIE
 import dev.sard.server.pki.MovableClock
@@ -37,9 +38,9 @@ private const val PASSWORD = "correct-horse-battery"
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = ["spring.grpc.server.port=0", "SARD_ADMIN_PASSWORD=$PASSWORD"],
+    properties = ["spring.grpc.server.port=0", "sard.test.admin-password=$PASSWORD"],
 )
-@Import(TestcontainersConfiguration::class, AdminLoginClockConfiguration::class)
+@Import(SeededAdministrator::class, TestcontainersConfiguration::class, AdminLoginClockConfiguration::class)
 class AdminLoginLoggingIntegrationTest(
     @Autowired private val clock: Clock,
     @Autowired private val sessionStore: SessionStore,

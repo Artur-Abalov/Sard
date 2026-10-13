@@ -16,6 +16,7 @@ import { Outlet, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { signOut } from './auth/session'
+import { SelfBackupBanner } from './components/SelfBackupBanner'
 import { Wordmark } from './components/Wordmark'
 import { languages } from './languages'
 import { NavLink } from './NavLink'
@@ -105,6 +106,7 @@ function Navigation({ onNavigate }: { onNavigate: () => void }) {
       <NavLink to="/tokens" label={t('tokens.title')} onClick={onNavigate} />
       <NavLink to="/sources" label={t('sources.title')} onClick={onNavigate} />
       <NavLink to="/runs" label={t('runs.title')} onClick={onNavigate} />
+      <NavLink to="/settings" label={t('settings.title')} onClick={onNavigate} />
     </>
   )
 }
@@ -126,6 +128,7 @@ export function Layout() {
       </AppShell.Navbar>
       <AppShell.Main>
         <Box maw={contentMaxWidth}>
+          <SelfBackupBanner />
           <Outlet />
         </Box>
       </AppShell.Main>

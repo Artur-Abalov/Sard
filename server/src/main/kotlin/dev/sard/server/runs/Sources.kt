@@ -27,6 +27,11 @@ internal fun liveSource(
     return record?.takeIf { it.deletedAt == null } ?: throw SourceNotFound(id)
 }
 
+/** Refuses a source the server keeps itself (F6); its schedule is set through Schedules, not here. */
+private fun SourceRecord.requireUserSource() {
+    if (systemRole != null) throw SystemSourceProtected(id)
+}
+
 /** The active run of [sourceId], if any (D6: at most one). */
 internal fun activeRunOf(
     session: Session,
@@ -79,6 +84,7 @@ class Sources(
         nameGuarded(draft.name) {
             sessions.inTenant(tenantId) { session ->
                 val record = liveSource(session, sourceId, LockModeType.PESSIMISTIC_WRITE)
+                record.requireUserSource()
                 AgentOffer
                     .require(
                         session,
@@ -105,6 +111,7 @@ class Sources(
     ) {
         sessions.inTenant(tenantId) { session ->
             val record = liveSource(session, sourceId, LockModeType.PESSIMISTIC_WRITE)
+            record.requireUserSource()
             activeRunOf(session, sourceId)?.let { throw RunActive(it) }
             record.deletedAt = clock.instant()
         }
@@ -160,5 +167,6 @@ class Sources(
             record.config,
             record.createdAt,
             record.updatedAt,
+            record.systemRole?.let(SystemRole::of),
         )
 }

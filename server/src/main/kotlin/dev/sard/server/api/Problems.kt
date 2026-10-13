@@ -6,6 +6,7 @@ package dev.sard.server.api
 import com.fasterxml.jackson.annotation.JsonProperty
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.http.HttpStatus
 import tools.jackson.databind.ObjectMapper
 import java.util.UUID
 
@@ -62,6 +63,33 @@ enum class ErrorCode {
 
     @JsonProperty("self_agent_confirmation_required")
     SELF_AGENT_CONFIRMATION_REQUIRED,
+
+    @JsonProperty("system_source")
+    SYSTEM_SOURCE,
+
+    @JsonProperty("self_agent_missing")
+    SELF_AGENT_MISSING,
+
+    @JsonProperty("repository_not_initialized")
+    REPOSITORY_NOT_INITIALIZED,
+
+    @JsonProperty("local_storage_unconfirmed")
+    LOCAL_STORAGE_UNCONFIRMED,
+
+    @JsonProperty("self_backup_not_configured")
+    SELF_BACKUP_NOT_CONFIGURED,
+
+    @JsonProperty("setup_required")
+    SETUP_REQUIRED,
+
+    @JsonProperty("setup_completed")
+    SETUP_COMPLETED,
+
+    @JsonProperty("ca_step_pending")
+    CA_STEP_PENDING,
+
+    @JsonProperty("wrong_password")
+    WRONG_PASSWORD,
 }
 
 private const val TYPE = "URI reference identifying the problem type; about:blank when the status says it all"
@@ -134,6 +162,28 @@ fun writeProblem(
     response.status = status
     // Set directly (not response.characterEncoding), so Tomcat does not append ";charset=..." to it:
     // the contract's Content-Type is exactly "application/problem+json".
+    response.setHeader("Content-Type", PROBLEM_JSON)
+    response.outputStream.write(objectMapper.writeValueAsBytes(problem))
+}
+
+/** [writeProblem] with the title the status carries, for the controllers that answer by status. */
+fun writeProblem(
+    response: HttpServletResponse,
+    objectMapper: ObjectMapper,
+    status: HttpStatus,
+    code: ErrorCode,
+) = writeProblem(response, objectMapper, status.value(), status.reasonPhrase, code)
+
+/** Writes a 422 problem with the fields at fault, for the controllers that answer without an exception. */
+fun writeUnprocessable(
+    response: HttpServletResponse,
+    objectMapper: ObjectMapper,
+    code: ErrorCode,
+    errors: List<FieldError>,
+) {
+    val status = HttpStatus.UNPROCESSABLE_CONTENT.value()
+    val problem = ValidationProblem("about:blank", "Unprocessable Content", status, null, code, errors)
+    response.status = status
     response.setHeader("Content-Type", PROBLEM_JSON)
     response.outputStream.write(objectMapper.writeValueAsBytes(problem))
 }

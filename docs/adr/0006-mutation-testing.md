@@ -12,6 +12,7 @@
   - Режим STRICT: **любой** выживший мутант роняет сборку — строже порога 0.80.
   - Тестовые классы помечаются `@MutFlowTest`, проверяемый вызов оборачивается в `MutFlow.underTest { }`; мутируется только код, достигнутый внутри таких блоков. Неохваченный код ловит шлюз покрытия (JaCoCo ≥ 80%).
   - mutflow компилирует исходники второй раз (`mutatedMain`), и JaCoCo в этом прогоне видит 0%. Поэтому по умолчанию `mutflow.enabled=false` (`gradle.properties`), а `scripts/gate.sh server` делает два прогона: `:server:check` (покрытие) и `-Pmutflow.enabled=true :server:test --rerun` (мутации).
+  - Сессия mutflow глобальна на JVM: Spring-тесты с `@MutFlowTest` идут отдельной задачей `isolatedTest` (JVM на класс), прочие Spring-классы — в конце порядка; см. `docs/adr/00XX-draft-mutflow-isolation.md`. Шлюз запускает `:server:test` и `:server:isolatedTest` с `--rerun`.
   - Цели мутаций: `dev.sard.server.**`. Сгенерированный proto-код живёт в отдельном проекте `proto/jvm` и не мутируется.
   - Подавление: `// mutflow:falsePositive <причина>` допустим только для доказанно эквивалентного мутанта. `mutflow:ignore`, `@SuppressMutations`, режимы `LENIENT`/`DISABLED` запрещены хуком `scripts/claude/guard-edit.sh`.
 

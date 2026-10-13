@@ -52,6 +52,16 @@ class Schedules(
         }
     }
 
+    /**
+     * Creates or replaces the schedule of [sourceId] in the caller's transaction [session], so a source and its
+     * schedule commit together (F6: the self-backup's system sources).
+     */
+    internal fun setIn(
+        session: Session,
+        sourceId: UUID,
+        draft: ScheduleDraft,
+    ): ScheduleView = view(session, write(session, sourceId, CronSchedule.parse(draft.cron, draft.timezone), draft))
+
     /** The schedule of the live source [sourceId]; null if it has none. Throws SourceNotFound. */
     fun get(
         tenantId: UUID,

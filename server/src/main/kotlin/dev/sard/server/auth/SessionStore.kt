@@ -73,6 +73,9 @@ class SessionStore(
     /** True when [id] named a session that was removed. */
     fun remove(id: String): Boolean = sessions.remove(id) != null
 
+    /** Ends every session: the password changed, so none of the others may go on (F4a, Р9). */
+    fun removeAll() = sessions.clear()
+
     /** How many sessions are tracked right now, expired or not; for tests only. */
     internal fun trackedSessions(): Int = sessions.size
 

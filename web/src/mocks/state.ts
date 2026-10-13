@@ -2,6 +2,7 @@
 // Copyright 2026 Artur Abalov
 
 import type { components } from '../api/schema'
+import { freshTracker, type Tracker } from './lockout'
 import {
   agents,
   deletedSources,
@@ -11,6 +12,7 @@ import {
   schedules,
   snapshots,
   sources,
+  MOCK_PASSWORD,
   stepLogs,
 } from './fixtures'
 
@@ -19,10 +21,20 @@ type Schemas = components['schemas']
 /** What the mock server remembers between requests; reset per test. */
 export interface MockState {
   signedIn: boolean
-  /** Timestamps (ms) of failed sign-ins, pruned to the 15-minute window (К4). */
-  failedSignIns: number[]
-  /** When the fifth failure locked sign-in (ms), or null when it is not locked (К4: matches the server). */
-  lockedAt: number | null
+  /** The administrator password; sign-in and the password change check it. */
+  password: string
+  /** Failed sign-ins (and wrong current passwords) and the lock they set (К4). */
+  signIns: Tracker
+  /** Wrong setup codes and the lock they set. */
+  codes: Tracker
+  onboarding: {
+    /** The step ca is done. */
+    caDone: boolean
+    /** The step admin is done: there is an administrator. */
+    adminDone: boolean
+    /** The client entered the setup code (the sard_setup cookie, as the mocks see it). */
+    setupSession: boolean
+  }
   agents: Schemas['AgentDetails'][]
   sources: Schemas['Source'][]
   /** Deleted sources: gone from the list and the card, their runs and snapshots stay (soft delete, К13). */
@@ -35,13 +47,17 @@ export interface MockState {
   snapshots: Schemas['Snapshot'][]
   stepLogs: Record<string, Schemas['LogLine'][]>
   tokens: Schemas['EnrollmentToken'][]
+  /** The self-backup's binding (F6); its agent and repository are those of the system sources. */
+  selfBackup: { boundAt: string } | null
 }
 
-function fresh(signedIn: boolean): MockState {
+function fresh(signedIn: boolean, freshInstall: boolean): MockState {
   return structuredClone({
     signedIn,
-    failedSignIns: [],
-    lockedAt: null,
+    password: MOCK_PASSWORD,
+    signIns: freshTracker(),
+    codes: freshTracker(),
+    onboarding: { caDone: !freshInstall, adminDone: !freshInstall, setupSession: false },
     agents,
     sources,
     deletedSources,
@@ -51,12 +67,16 @@ function fresh(signedIn: boolean): MockState {
     snapshots,
     stepLogs,
     tokens: enrollmentTokens,
+    selfBackup: null,
   })
 }
 
-export let state: MockState = fresh(false)
+export let state: MockState = fresh(false, false)
 
-/** Back to the fixtures. Both the dev worker and Vitest start signed out (К4). */
-export function resetMockState(options: { signedIn: boolean }): void {
-  state = fresh(options.signedIn)
+/**
+ * Back to the fixtures. Both the dev worker and Vitest start signed out (К4); by default
+ * the administrator exists, [freshInstall] starts a clean installation (setup code, no admin).
+ */
+export function resetMockState(options: { signedIn: boolean; freshInstall?: boolean }): void {
+  state = fresh(options.signedIn, options.freshInstall ?? false)
 }

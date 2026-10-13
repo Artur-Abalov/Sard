@@ -13,6 +13,7 @@ import { EmptyState } from '../components/EmptyState'
 import { AppLink, ButtonLink } from '../components/links'
 import { PagedList } from '../components/PagedList'
 import { RunBackupButton } from '../components/RunBackupButton'
+import { SystemSourceMark } from '../components/SystemSourceMark'
 import { usePaged } from '../components/usePaged'
 import { tones } from '../theme'
 import { Mono } from '../components/Mono'
@@ -44,9 +45,12 @@ function SourceRow({ source }: { source: Source }) {
   return (
     <Table.Tr>
       <Table.Td>
-        <AppLink to="/sources/$sourceId" params={{ sourceId: source.id }}>
-          <Mono>{source.name}</Mono>
-        </AppLink>
+        <Group gap="xs">
+          <AppLink to="/sources/$sourceId" params={{ sourceId: source.id }}>
+            <Mono>{source.name}</Mono>
+          </AppLink>
+          <SystemSourceMark source={source} />
+        </Group>
       </Table.Td>
       <Table.Td>
         <AgentName agentId={source.agentId} />

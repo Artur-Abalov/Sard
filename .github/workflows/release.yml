@@ -327,11 +327,14 @@ jobs:
           plain="$(scripts/release-version.sh image "$VERSION")"
           tags="$image:$VERSION,$image:$plain"
           agent_tags="$agent:$VERSION,$agent:$plain"
+          pg_tags="$agent:$VERSION-pg18,$agent:$plain-pg18"
           if [[ "$VERSION" != *-* ]]; then
             tags="$tags,$image:${plain%.*},$image:latest"
             agent_tags="$agent_tags,$agent:${plain%.*},$agent:latest"
+            pg_tags="$pg_tags,$agent:${plain%.*}-pg18,$agent:latest-pg18"
           fi
           { echo "IMAGE=$image"; echo "TAGS=$tags"; echo "AGENT_IMAGE=$agent"; echo "AGENT_TAGS=$agent_tags"; } >>"$GITHUB_ENV"
+          echo "AGENT_PG_TAGS=$pg_tags" >>"$GITHUB_ENV"
       # The runtime stage runs useradd for arm64; the package check runs once,
       # natively, and the jar comes from the server-jar job (deploy/server/Dockerfile).
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
@@ -369,10 +372,25 @@ jobs:
           build-args: SARD_VERSION=${{ env.VERSION }}
           push: true
           tags: ${{ env.AGENT_TAGS }}
-      - name: the published agent image is this version, on both architectures
+      # The same agent on postgres:18 (F6): docker-compose.yml's sard-self dumps the database with its pg_dump.
+      - name: build and push sard-agent -pg18 for amd64 and arm64
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: dist
+          file: deploy/agent/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            SARD_VERSION=${{ env.VERSION }}
+            BASE_IMAGE=postgres:18
+          push: true
+          tags: ${{ env.AGENT_PG_TAGS }}
+      - name: the published agent images are this version, on both architectures
         run: |
           for platform in linux/amd64 linux/arm64; do
             docker run --rm --platform "$platform" "$AGENT_IMAGE:$VERSION" --version | grep -qx "sard-agent $VERSION"
+            docker run --rm --platform "$platform" "$AGENT_IMAGE:$VERSION-pg18" --version | grep -qx "sard-agent $VERSION"
+            docker run --rm --platform "$platform" --entrypoint /usr/lib/postgresql/18/bin/pg_dump \
+              "$AGENT_IMAGE:$VERSION-pg18" --version | grep -q "PostgreSQL) 18\."
           done
 
   offline:
@@ -481,8 +499,7 @@ jobs:
         run: |
           gunzip -c "sard-${VERSION#v}-images-linux-${{ matrix.arch }}.tar.gz" | docker load
           cp sard.env.example .env
-          sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" \
-                 -e "s/^SARD_ADMIN_PASSWORD=.*/SARD_ADMIN_PASSWORD=$(openssl rand -hex 16)/" .env
+          sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" .env
           docker compose up -d --wait --pull never
       - run: scripts/smoke-server.sh "$RUNNER_TEMP/offline/.env" "$VERSION"
       - if: failure()

@@ -55,3 +55,8 @@ data class ConfigViolation(
 class InvalidConfig(
     val violations: List<ConfigViolation>,
 ) : RunsException("the config has ${violations.size} violations")
+
+/** The source is one the server keeps itself (F6): only its schedule changes through the API (409 system_source). */
+class SystemSourceProtected(
+    val sourceId: UUID,
+) : RunsException("source $sourceId is a system source")
