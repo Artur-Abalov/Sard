@@ -203,3 +203,13 @@ ADR: `docs/adr/00XX-draft-f4b-onboarding-self-backup.md`.
 - `./scripts/gate.sh server fast` and `./scripts/gate.sh web fast` pass (oxlint complexity clean).
 - No refactor warranted: no function over the threshold, no duplication of F4a/F6 helpers found worth extracting. No code changed.
 - Next: `architect`.
+
+## Specifier: поправка спецификации (2026-10-13)
+
+По ревью architect закрыты расхождения coder 1 и 2 — только формулировки, решения не меняются:
+1. `docs/specs/server/onboarding-self-backup.feature`, таблица «Обновлённая установка разрешает
+   прочие изменения…»: `POST /api/v1/sources/{S}/runs` → 201 (контракт до F4b).
+2. Там же, «Состав самобэкапа виден до привязки и не содержит секретов»: тело не содержит
+   значения пароля, ключа `"password"`, `sard-db` и `password_ref`; `passwordRevealCommand` (К12)
+   допустим. `docs/qa/onboarding-self-backup.md`, часть 1, шаг 3 — так же.
+Поправка записана в заголовках обоих файлов. Часть 5 QA статус запуска не называет — без изменений.

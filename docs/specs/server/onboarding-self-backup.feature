@@ -14,6 +14,14 @@
 # Правки утверждённых спецификаций F4a (ниже, «Что меняется…») внесены
 # 2026-10-12.
 #
+# ПОПРАВКА 2026-10-13 (ревью architect, расхождения coder 1 и 2; поведение не
+# меняется, формулировки приведены к существующим контрактам):
+#   - «Обновлённая установка разрешает прочие изменения…»: POST
+#     /api/v1/sources/{S}/runs — 201, как в контракте до F4b, а не 200.
+#   - «Состав самобэкапа виден до привязки и не содержит секретов»: тело не
+#     содержит значения пароля, ключа "password", "sard-db" и "password_ref";
+#     поле К12 passwordRevealCommand — команда, а не секрет, и допустимо.
+#
 # Консоль — docs/specs/web/onboarding-self-backup.feature; ручная проверка —
 # docs/qa/onboarding-self-backup.md. Исследование — docs/sessions/
 # 2026-10-12-f4b-onboarding-self-backup.md.
@@ -637,7 +645,7 @@
         | запрос                                                    | статус |
         | POST /api/v1/sources с допустимым источником files агента Y | 201    |
         | PUT /api/v1/sources/{S}/schedule с cron "0 4 * * *"       | 200    |
-        | POST /api/v1/sources/{S}/runs                             | 200    |
+        | POST /api/v1/sources/{S}/runs                             | 201    |
         | POST /api/v1/agents/{Y}/revoke                            | 200    |
 
     @service @oq-201
@@ -796,7 +804,7 @@
       Когда администратор запрашивает состояние самобэкапа
       Тогда plan содержит self_database с plugin "postgresql" и includes ["sard на postgres:5432"]
       И plan содержит self_keys с plugin "files", includes ["/var/lib/sard/pki", "/etc/sard/install"] и excludes ["*.dump", "*.tgz", "*.tar", "*.tar.gz", "*.zst"]
-      И тело ответа не содержит "sard-db" и "password"
+      И тело ответа не содержит "sard-db", "password_ref", ключа "password" и значения пароля репозитория
 
     @http
     Сценарий: Команда показа пароля появляется после привязки

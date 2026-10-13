@@ -13,6 +13,10 @@ specifier Р20–Р30 — в заголовке серверной специф�
 СТАТУС: утверждено владельцем 2026-10-12 вместе со спецификациями и всеми
 предложениями OQ-201…OQ-210.
 
+Поправка 2026-10-13 (ревью architect, расхождения coder 1 и 2): часть 1, шаг 3 —
+проверка секретов сформулирована как отсутствие значения пароля, ключа
+`"password"`, `sard-db` и `password_ref`; `passwordRevealCommand` допустим.
+
 Процедура из шести частей:
 
 - **Часть 1 — REST API на чистой установке compose**: ограничение D8, команда,
@@ -77,7 +81,9 @@ cookie `sard_session` в `$J`.
    → два элемента: `self_database` (`postgresql`, includes с именем базы и
    `postgres:5432`) и `self_keys` (`files`, includes `/var/lib/sard/pki` и
    `/etc/sard/install`, excludes `*.dump`, `*.tgz`, `*.tar`, `*.tar.gz`,
-   `*.zst`). Ни `sard-db`, ни `password` в выводе нет.
+   `*.zst`). `get self-backup` не содержит `sard-db`, `password_ref`, ключа
+   `"password"` и значения пароля репозитория (`passwordRevealCommand` —
+   команда, не секрет, допустима).
 
 ### Ограничение D8 `[Р22]` `[OQ-209]`
 
