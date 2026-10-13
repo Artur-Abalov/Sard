@@ -219,7 +219,7 @@ func (c *CLI) runRepo(ctx context.Context, cl call) (*result, error) {
 		return &result{}, err
 	}
 	if c.opts.AsRoot {
-		pipe, err := c.passwordPipe()
+		pipe, err := c.passwordPipe(ctx)
 		if err != nil {
 			return &result{}, err
 		}
@@ -233,14 +233,31 @@ func (c *CLI) runRepo(ctx context.Context, cl call) (*result, error) {
 // firstFD is the number the first of Command.ExtraFiles has in the process.
 const firstFD = 3
 
-// passwordPipe reads the password file as a file of the service user (A1,
-// opts.ReadFile) and returns the read end of a pipe that carries it. Root
-// gets the password by descriptor, never the path of a file the service user
-// could swap for a FIFO or a link (Р78).
-func (c *CLI) passwordPipe() (*os.File, error) {
-	password, err := c.opts.ReadFile(c.repo.PasswordFile)
+// rootKey is the key of the repository for restic that runs as root: the
+// provider names the file that holds it (crypto.Key.File), and the agent reads
+// that file as a file of the service user (A1, opts.ReadFile). Root gets the
+// key by descriptor, never the path of a file the service user could swap for
+// a FIFO or a link (Р78).
+func (c *CLI) rootKey(ctx context.Context) ([]byte, error) {
+	key, err := c.opts.Keys.RepositoryKey(ctx, c.repo.Name)
 	if err != nil {
-		return nil, fmt.Errorf("password_file: %w", err)
+		return nil, err
+	}
+	if key.File == "" {
+		return nil, fmt.Errorf("%w: the key provider %s gives no file that holds the key of repository %q", ErrPasswordFile, c.opts.Keys.Name(), c.repo.Name)
+	}
+	data, err := c.opts.ReadFile(key.File)
+	if err != nil {
+		return nil, fmt.Errorf("%w of repository %q: %w", ErrPasswordFile, c.repo.Name, err)
+	}
+	return data, nil
+}
+
+// passwordPipe returns the read end of a pipe that carries the key.
+func (c *CLI) passwordPipe(ctx context.Context) (*os.File, error) {
+	password, err := c.rootKey(ctx)
+	if err != nil {
+		return nil, err
 	}
 	r, w, err := os.Pipe()
 	if err != nil {

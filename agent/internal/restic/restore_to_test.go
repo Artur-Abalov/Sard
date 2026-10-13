@@ -32,15 +32,15 @@ func TestRestoreToRunsResticWithoutCacheAndLockAndRefusesToOverwriteByDefault(t 
 	}
 }
 
-func TestRestoreToPassesOverwritePathsAndTheSFTPCommand(t *testing.T) {
+func TestRestoreToPassesThePathsAndTheSFTPCommand(t *testing.T) {
 	f := newFixture(t, map[string]reply{"restore": {}})
 	_, err := f.build().RestoreTo(context.Background(), restic.RestoreRequest{
-		SnapshotID: fullID, Target: "/r", Overwrite: true, Include: []string{"/srv/a", "/srv/b"}, SFTPCommand: "setpriv ssh",
+		SnapshotID: fullID, Target: "/r", Include: []string{"/srv/a", "/srv/b"}, SFTPCommand: "setpriv ssh",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"restore", "--json", "--no-cache", "--no-lock", "--target", "/r", "--overwrite", "always",
+	want := []string{"restore", "--json", "--no-cache", "--no-lock", "--target", "/r", "--overwrite", "never",
 		"--include", "/srv/a", "--include", "/srv/b", "-o", "sftp.command=setpriv ssh", "--", fullID}
 	if args := f.exec.call("restore").Args; !slices.Equal(args, want) {
 		t.Errorf("args %q, want %q", args, want)
@@ -199,5 +199,15 @@ func TestRestoreToTellsAQuotaAndAReadOnlyFileSystemFromOtherFailures(t *testing.
 				t.Errorf("%s, %s: err = %v, want %v", cause, name, err, want)
 			}
 		}
+	}
+}
+
+func TestARootRestoreWithoutAStagingDirectoryIsRefused(t *testing.T) {
+	f := newFixture(t, map[string]reply{"restore": {}})
+	f.root = true
+	f.files["/etc/sard/main.pass"] = "pw\n"
+	_, err := f.build().RestoreTo(context.Background(), restic.RestoreRequest{SnapshotID: fullID, Target: "/r"})
+	if !errors.Is(err, restic.ErrInvalidRequest) || len(f.exec.calls) != 0 {
+		t.Fatalf("err = %v, calls %d", err, len(f.exec.calls))
 	}
 }

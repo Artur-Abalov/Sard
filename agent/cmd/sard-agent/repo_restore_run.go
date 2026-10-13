@@ -98,7 +98,7 @@ func (r *restoreRun) checkTools(st snapshotsState) *refusal.Failure {
 	}); f != nil {
 		return f
 	}
-	if err := newResticAsRoot(st.cfg, st.binary, r.deps, st.repo, st.who.Service.UID).CheckRootInputs(); err != nil {
+	if err := newResticAsRoot(st.cfg, st.binary, r.deps, st.repo, st.who.Service.UID).CheckRootInputs(context.Background()); err != nil {
 		return named(restore.InputsFailure(err))
 	}
 	return nil

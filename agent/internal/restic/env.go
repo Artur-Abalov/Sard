@@ -43,17 +43,15 @@ func CheckRootBackend(repo config.Repository) error {
 // starting it: the kind of storage, the variables of the env_file and the
 // password file. It is what repo restore does before it lists anything, so
 // that a refusal comes first (Р72, Р78); RestoreTo checks the same again.
-func (c *CLI) CheckRootInputs() error {
+func (c *CLI) CheckRootInputs(ctx context.Context) error {
 	if err := CheckRootBackend(c.repo); err != nil {
 		return err
 	}
 	if _, err := c.envFile(); err != nil {
 		return err
 	}
-	if _, err := c.opts.ReadFile(c.repo.PasswordFile); err != nil {
-		return fmt.Errorf("%w of repository %q: %w", ErrPasswordFile, c.repo.Name, err)
-	}
-	return nil
+	_, err := c.rootKey(ctx)
+	return err
 }
 
 // baseEnv is the environment of every restic process.

@@ -80,11 +80,11 @@ func (f *fakeRestic) restore(ctx context.Context, cmd restic.Command, r *fakeRep
 	if rs.before != nil {
 		rs.before(args.target)
 	}
+	if rs.hang { // SIGTERM may come before or while it waits: either way it is terminated
+		return f.hang(ctx, cmd, r, "")
+	}
 	if ctx.Err() != nil { // SIGTERM came while it ran
 		return -1, nil
-	}
-	if rs.hang {
-		return f.hang(ctx, cmd, r, "")
 	}
 	if rs.fatal != "" {
 		cmd.Stderr([]byte(rs.fatal))

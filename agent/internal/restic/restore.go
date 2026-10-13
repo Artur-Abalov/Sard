@@ -51,9 +51,6 @@ type RestoreRequest struct {
 	// and restic gets --target /proc/self/fd/3/root. restic then writes only
 	// below a directory that nobody but root can change (Р73).
 	Staging *os.File
-	// Overwrite lets restic replace files that are in Target already; without
-	// it restic never touches a file that exists.
-	Overwrite bool
 	// Include limits the restore to these paths, taken literally.
 	Include []string
 	// SFTPCommand, if not empty, is the command restic starts instead of ssh
@@ -98,7 +95,7 @@ func (c *CLI) RestoreTo(ctx context.Context, req RestoreRequest) (RestoreSummary
 	if req.Staging != nil {
 		target, extra = stagingTarget, []*os.File{req.Staging}
 	}
-	if req.SnapshotID == "" || target == "" {
+	if req.SnapshotID == "" || target == "" || (c.opts.AsRoot && req.Staging == nil) {
 		return RestoreSummary{}, fmt.Errorf("%w: snapshot and target are required", ErrInvalidRequest)
 	}
 	var summary RestoreSummary
@@ -108,11 +105,7 @@ func (c *CLI) RestoreTo(ctx context.Context, req RestoreRequest) (RestoreSummary
 
 // restoreArgs are the arguments of `restic restore` of the request.
 func restoreArgs(req RestoreRequest, target string) []string {
-	overwrite := "never"
-	if req.Overwrite {
-		overwrite = "always"
-	}
-	args := []string{"restore", "--json", "--no-cache", "--no-lock", "--target", target, "--overwrite", overwrite}
+	args := []string{"restore", "--json", "--no-cache", "--no-lock", "--target", target, "--overwrite", "never"}
 	for _, p := range req.Include {
 		args = append(args, "--include", p)
 	}

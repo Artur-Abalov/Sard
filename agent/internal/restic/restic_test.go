@@ -86,8 +86,9 @@ func (f *fakeExec) Run(ctx context.Context, cmd restic.Command) (int, error) {
 // process would; a directory holds none.
 func (f *fakeExec) readExtraFiles(cmd restic.Command) {
 	for _, file := range cmd.ExtraFiles {
-		data, _ := io.ReadAll(file)
-		f.extra = append(f.extra, string(data))
+		if data, err := io.ReadAll(file); err == nil {
+			f.extra = append(f.extra, string(data))
+		}
 	}
 }
 
@@ -137,7 +138,8 @@ type fakeKeys struct{ err error }
 
 func (fakeKeys) Name() string { return "fake" }
 func (k fakeKeys) RepositoryKey(_ context.Context, repository string) (crypto.Key, error) {
-	return crypto.Key{Env: []string{"RESTIC_PASSWORD_FILE=/etc/sard/" + repository + ".pass"}}, k.err
+	file := "/etc/sard/" + repository + ".pass"
+	return crypto.Key{Env: []string{"RESTIC_PASSWORD_FILE=" + file}, File: file}, k.err
 }
 
 // files is an in-memory ReadFile.
@@ -159,6 +161,8 @@ type fixture struct {
 	repo  config.Repository
 	// root: restic runs as root (Options.AsRoot).
 	root bool
+	// provider, if not nil, replaces keys.
+	provider crypto.Provider
 }
 
 func newFixture(t *testing.T, replies map[string]reply) *fixture {
@@ -170,13 +174,20 @@ func newFixture(t *testing.T, replies map[string]reply) *fixture {
 	return f
 }
 
+func (f *fixture) keyProvider() crypto.Provider {
+	if f.provider != nil {
+		return f.provider
+	}
+	return f.keys
+}
+
 func (f *fixture) build() *restic.CLI {
 	return restic.New(restic.Options{
 		Binary:   "/opt/sard/restic",
 		CacheDir: "/var/cache/sard/restic",
 		Path:     "/usr/bin:/bin",
 		Exec:     f.exec,
-		Keys:     f.keys,
+		Keys:     f.keyProvider(),
 		ReadFile: f.files.read,
 		Logger:   slog.New(slog.NewTextHandler(&f.log, nil)),
 		AsRoot:   f.root,

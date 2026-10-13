@@ -27,6 +27,9 @@ func TestResticAESHandsTheRepositoryPasswordFileToRestic(t *testing.T) {
 	if !slices.Equal(key.Env, []string{"RESTIC_PASSWORD_FILE=/etc/sard/offsite.pass"}) {
 		t.Errorf("Env = %v", key.Env)
 	}
+	if key.File != "/etc/sard/offsite.pass" {
+		t.Errorf("File = %q: a consumer that reads the key itself needs the file", key.File)
+	}
 }
 
 func TestResticAESRejectsRepositoriesNotConfiguredOnTheHost(t *testing.T) {

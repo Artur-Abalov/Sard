@@ -74,7 +74,20 @@ func (h *startHost) refuses(cfg string) (stdout, stderr string) {
 
 func (h *startHost) connects(cfg string) string {
 	h.t.Helper()
-	code, _, stderr := h.runFor(400*time.Millisecond, "--config", cfg)
+	// The agent runs until the counting server has accepted its connection
+	// (a fixed window is too short on a loaded machine); the bound applies
+	// only when it never connects.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	go func() {
+		for ctx.Err() == nil && h.accepted() == 0 {
+			time.Sleep(5 * time.Millisecond)
+		}
+		cancel()
+	}()
+	var out, errOut bytes.Buffer
+	code := run(ctx, []string{"--config", cfg}, &out, &errOut, fixedHostname)
+	stderr := errOut.String()
 	if code != 0 || h.accepted() == 0 {
 		h.t.Fatalf("exit code = %d, connections = %d, stderr = %q", code, h.accepted(), stderr)
 	}

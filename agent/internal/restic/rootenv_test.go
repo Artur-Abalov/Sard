@@ -7,10 +7,12 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"os"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Artur-Abalov/sard/agent/internal/crypto"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 )
 
@@ -36,7 +38,7 @@ func TestARootRestoreRefusesEnvTheServiceUserCouldTurnAgainstRoot(t *testing.T) 
 	} {
 		f := newFixture(t, map[string]reply{"restore": {}})
 		cli := f.asRoot(tc.url, "# keys\n\n"+tc.line+"\n")
-		_, err := cli.RestoreTo(context.Background(), restic.RestoreRequest{SnapshotID: fullID, Target: "/r"})
+		_, err := cli.RestoreTo(context.Background(), restic.RestoreRequest{SnapshotID: fullID, Staging: stagingFile(t)})
 		if !errors.Is(err, restic.ErrInvalidEnvFile) {
 			t.Fatalf("%s: err = %v", tc.name, err)
 		}
@@ -61,7 +63,7 @@ func TestARootRestoreOfARepositoryWithoutAnAllowlistIsRefusedBeforeResticStarts(
 		f := newFixture(t, map[string]reply{"restore": {}})
 		f.root = true
 		f.repo.URL = url
-		_, err := f.build().RestoreTo(context.Background(), restic.RestoreRequest{SnapshotID: fullID, Target: "/r"})
+		_, err := f.build().RestoreTo(context.Background(), restic.RestoreRequest{SnapshotID: fullID, Staging: stagingFile(t)})
 		var unsupported *restic.BackendNotSupportedError
 		if !errors.As(err, &unsupported) || unsupported.Kind != kind {
 			t.Errorf("%s: err = %v", url, err)
@@ -75,7 +77,7 @@ func TestARootRestoreOfARepositoryWithoutAnAllowlistIsRefusedBeforeResticStarts(
 func TestARootRestorePassesTheS3KeysThrough(t *testing.T) {
 	f := newFixture(t, map[string]reply{"restore": {}})
 	env := "# keys\nAWS_ACCESS_KEY_ID=K\n\nAWS_SECRET_ACCESS_KEY=S\nAWS_SESSION_TOKEN=T\nAWS_DEFAULT_REGION=eu-west-1\n"
-	_, err := f.asRoot("s3:https://s3.example.com/b", env).RestoreTo(context.Background(), restic.RestoreRequest{SnapshotID: fullID, Target: "/r"})
+	_, err := f.asRoot("s3:https://s3.example.com/b", env).RestoreTo(context.Background(), restic.RestoreRequest{SnapshotID: fullID, Staging: stagingFile(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,11 +110,11 @@ func TestARootRestoreGetsThePasswordThroughAnInheritedPipe(t *testing.T) {
 	f := newFixture(t, map[string]reply{"restore": {}})
 	f.files["/etc/sard/main.pass"] = "hunter2\n"
 	f.root = true
-	if _, err := f.build().RestoreTo(context.Background(), restic.RestoreRequest{SnapshotID: fullID, Target: "/r"}); err != nil {
+	if _, err := f.build().RestoreTo(context.Background(), restic.RestoreRequest{SnapshotID: fullID, Staging: stagingFile(t)}); err != nil {
 		t.Fatal(err)
 	}
 	c := f.exec.call("restore")
-	if !slices.Equal(c.Args[:3], []string{"restore", "--password-file", "/proc/self/fd/3"}) {
+	if !slices.Equal(c.Args[:3], []string{"restore", "--password-file", "/proc/self/fd/4"}) {
 		t.Errorf("args %q", c.Args)
 	}
 	if !slices.Equal(f.exec.extra, []string{"hunter2\n"}) {
@@ -128,8 +130,52 @@ func TestARootRestoreGetsThePasswordThroughAnInheritedPipe(t *testing.T) {
 func TestARootRestoreWithAPasswordFileTheAgentCannotReadDoesNotStartRestic(t *testing.T) {
 	f := newFixture(t, map[string]reply{"restore": {}})
 	f.root = true // the password file is not among the files
-	_, err := f.build().RestoreTo(context.Background(), restic.RestoreRequest{SnapshotID: fullID, Target: "/r"})
+	_, err := f.build().RestoreTo(context.Background(), restic.RestoreRequest{SnapshotID: fullID, Staging: stagingFile(t)})
 	if !errors.Is(err, fs.ErrNotExist) || len(f.exec.calls) != 0 {
 		t.Fatalf("err = %v, calls %d", err, len(f.exec.calls))
 	}
+}
+
+// Constraint 6 (crypto.Provider): the key comes from the provider, not from
+// the config; the file the provider names is read by the agent and piped.
+type providerKeys struct{ file string }
+
+func (providerKeys) Name() string { return "test-provider" }
+func (k providerKeys) RepositoryKey(context.Context, string) (crypto.Key, error) {
+	return crypto.Key{File: k.file}, nil
+}
+
+func TestARootRestoreTakesTheKeyFromTheProvider(t *testing.T) {
+	f := newFixture(t, map[string]reply{"restore": {}})
+	f.root = true
+	f.files["/from-config"], f.files["/from-provider"] = "pw-config", "pw-provider"
+	f.repo.PasswordFile = "/from-config"
+	f.provider = providerKeys{file: "/from-provider"}
+	if _, err := f.build().RestoreTo(context.Background(), restic.RestoreRequest{SnapshotID: fullID, Staging: stagingFile(t)}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(f.exec.extra, []string{"pw-provider"}) {
+		t.Errorf("the pipe held %q", f.exec.extra)
+	}
+}
+
+func TestARootRestoreWithAProviderThatGivesNoFileNamesTheProvider(t *testing.T) {
+	f := newFixture(t, map[string]reply{"restore": {}})
+	f.root = true
+	f.provider = providerKeys{}
+	_, err := f.build().RestoreTo(context.Background(), restic.RestoreRequest{SnapshotID: fullID, Staging: stagingFile(t)})
+	if err == nil || !strings.Contains(err.Error(), "test-provider") || len(f.exec.calls) != 0 {
+		t.Fatalf("err = %v, calls %d", err, len(f.exec.calls))
+	}
+}
+
+// stagingFile is a directory to hand to restic as the staging directory.
+func stagingFile(t *testing.T) *os.File {
+	t.Helper()
+	d, err := os.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Close() })
+	return d
 }
