@@ -196,3 +196,10 @@ ADR: `docs/adr/00XX-draft-f4b-onboarding-self-backup.md`.
    токены не выпускают и не менялись. Ни один стенд здесь не запускался (нет образов).
 5. Проверка `registrationOpen` в `Enrollment` стоит до транзакции (внутри неё десять
    одновременных регистраций встали на пуле соединений).
+
+## Cleaner stage
+
+- `./scripts/crap.sh server`: worst row 6.0 (CC 6, 100% coverage), none above the threshold of 6; the F4b rows (`OnboardingService.confirmCa/state`, `SetupCodes.accepts/normalize`, `RepositoryCommandsKt.sftp`, `SelfBackupPropertiesKt.networkTarget`, `SelfBackups.confirmIn`, `SelfBackupsKt.viewOf`, `StorageParametersKt.validEndpoint`) sit at the threshold, not over it.
+- `./scripts/gate.sh server fast` and `./scripts/gate.sh web fast` pass (oxlint complexity clean).
+- No refactor warranted: no function over the threshold, no duplication of F4a/F6 helpers found worth extracting. No code changed.
+- Next: `architect`.
