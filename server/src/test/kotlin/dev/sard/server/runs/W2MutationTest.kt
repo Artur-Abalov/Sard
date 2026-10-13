@@ -229,6 +229,17 @@ class W2MutationTest(
     }
 
     @Test
+    fun `a source needs an agent whose role allows backup`() {
+        jdbc.update("update agents set role = 'verifier' where id = ?", tenant.agentId)
+
+        val refusal =
+            assertFailsWith<AgentRoleMismatch> { MutFlow.underTest { sources.create(tenant.id, tenant.draft()) } }
+
+        assertEquals(tenant.agentId, refusal.agentId)
+        assertEquals(0, tenant.count("sources"))
+    }
+
+    @Test
     fun `a source is not replaced onto a plugin that does not offer backup`() {
         val created = sources.create(tenant.id, tenant.draft())
         jdbc.update("update agent_plugins set actions = array['restore'] where agent_id = ?", tenant.agentId)

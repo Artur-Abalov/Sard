@@ -13,6 +13,7 @@ import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
 import java.math.BigInteger
 import java.security.cert.X509Certificate
+import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -50,6 +51,15 @@ class AgentRoleUriTest {
             assertEquals(2, names.size)
             assertEquals(setOf(6 to AGENT.uri(), 6 to uri), names.toSet())
         }
+    }
+
+    @Test
+    fun `an agent certificate is valid for a year from now, with a 128-bit positive serial`() {
+        val certificate = issued(AgentRole.SOURCE)
+
+        assertEquals(NOW, certificate.notBefore.toInstant())
+        assertEquals(NOW.plus(Duration.ofDays(365)), certificate.notAfter.toInstant())
+        assertEquals(128, certificate.serialNumber.bitLength())
     }
 
     @Test

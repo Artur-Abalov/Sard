@@ -19,6 +19,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import dev.sard.proto.agent.v1.Action as ProtoAction
 
 /** The dispatch rules of ADR 0038 and the FXs lost deadline, against fake transitions and sessions. */
 @MutFlowTest
@@ -105,6 +106,29 @@ class StepDispatcherTest {
 
         assertEquals(listOf(1L), links.sentIds())
         assertEquals(StepState.DISPATCHED, verifies.status(1))
+    }
+
+    @Test
+    fun `every action a role allows is sent as its own wire action`() {
+        val cases =
+            listOf(
+                AgentRole.SOURCE to (Action.BACKUP to ProtoAction.ACTION_BACKUP),
+                AgentRole.SOURCE to (Action.RESTORE to ProtoAction.ACTION_RESTORE),
+                AgentRole.SOURCE to (Action.RUN to ProtoAction.ACTION_RUN),
+                AgentRole.VERIFIER to (Action.VERIFY to ProtoAction.ACTION_VERIFY),
+            )
+        for ((role, pair) in cases) {
+            val (action, wire) = pair
+            online()
+            links.sent.clear()
+            val ledger = ledger(step(1, action = action))
+            ledger.roles[AGENT.agentId] = role
+
+            MutFlow.underTest { dispatcher(ledger).onQueued(TENANT, AGENT.agentId) }
+
+            assertEquals(listOf(wire), links.sent.map { it.action }, "$role $action")
+            assertEquals(StepState.DISPATCHED, ledger.status(1), "$role $action")
+        }
     }
 
     @Test

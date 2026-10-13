@@ -12,6 +12,7 @@ import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.registration.Registration
+import dev.sard.server.role.AgentRole
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import io.grpc.Status
@@ -124,6 +125,15 @@ class AgentsBuiltinLiveIntegrationTest(
         assertNotNull(again.card.row.revokedAt)
         assertEquals(Ended(Status.Code.UNAUTHENTICATED, "AGENT_REVOKED"), connection.ended())
         assertEquals(AgentRevocation.NotFound, revoke(UUID.randomUUID(), SELF_AGENT_CONFIRMATION))
+    }
+
+    @Test
+    fun `the card carries the role of the agent`() {
+        val source = world.agent(tenant)
+        val verifier = world.agent(tenant, role = AgentRole.VERIFIER)
+
+        assertEquals(AgentRole.SOURCE, MutFlow.underTest { agents.get(tenant, source.agentId) }?.row?.role)
+        assertEquals(AgentRole.VERIFIER, MutFlow.underTest { agents.get(tenant, verifier.agentId) }?.row?.role)
     }
 
     @Test

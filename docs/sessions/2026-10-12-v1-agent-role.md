@@ -260,3 +260,41 @@ Left as is: `RoleLedger` (interface) and `RoleRefusals` (database) stay split, l
 ## cleaner (разделение StepTransitions)
 
 Задача 7 из обзора architect, поведение не менялось. `RoleLedger` и `RoleRefusals` переехали из `StepTransitions.kt` в `runs/RoleRefusals.kt` (интерфейс и реализация остались раздельными: `StepDispatcherTest` подменяет `RoleLedger`); `Session.execute` с `TEXT_VALUES` - в `runs/NativeMutations.kt` как `internal`. Минимальное расширение видимости: `STEP`, `NO_DEADLINE`, `MESSAGE`, `RUN_FINISHED` стали `internal` (их используют оба файла), `REFUSE` переехал с `RoleRefusals` и остался `private`. Лишние импорты `Agent` и `AgentRole` убраны из `StepTransitions.kt`. Комментарий к миграции V202610121300 проверен: он уже исправлен в 51ba6e6.
+
+## hardener
+
+Both full gates, with mutation, PASSED at the end: `./scripts/gate.sh agent` (exit 0, mutation score 0.958146) and `./scripts/gate.sh server` (exit 0, mutflow: 1854 mutations discovered, 1854 killed, 0 survived, summed over the XML reports of `test` and `isolatedTest`).
+
+### Agent (go-mutesting)
+
+Before: `mutation score: 0.954770`, 201 `FAIL` lines for the whole module. After: `mutation score: 0.958146`, 186 `FAIL` lines. V1 files only, per `go-mutesting --verbose` on them: 17 survivors before (`app.go`, `identity.go`, `machineid.go`, `tlsid.go`) and 6 after. `cmd/sard-agent`, `internal/role` and `executor/command.go` (the role gate) had no survivors. The other `FAIL` lines are in code V1 did not touch (`config`, `enroll`, `hostsetup`, `redact`, `repoconnect`, `restic`, `transport/outbox`, ...) and are left as they were.
+
+Killed by tests (behavior, not mutants):
+- `identity`: a role URI written in a SAN name of another kind (dNSName, rfc822Name, application-class tag 6) is `CERT_ROLE_MISSING`, not a role (`TestARoleURIInANameOfAnotherKindIsNoRole`; `certPEMNames` builds any raw SAN names).
+- `machineid`: the fake FS now fails `MkdirAll` and `WriteFileAtomic` separately, so a failed directory creation and a failed write each refuse with the path; stored ids with a character below `0` (`/`) or above `f` (`g`) are refused.
+- `app`: the fake `Registry` returns a nil handler for an unknown plugin as the real one does, so an announced plugin without a handler offers no actions (this also covered a survivor in pre-V1 `actions`).
+- `tlsid`: a certificate or key that cannot be read keeps its cause (`errors.Is`); with only one of `cert_file`/`key_file` set `Check` reads nothing.
+- `executor`: `TestNewRequiresHandlersSinkAndStateDir` asserts the whole message ("state dir is required", "role must be source or ...") instead of a word that other errors also contain.
+- `transport.CheckFiles` (new in V1) had no test: complete configuration passes, each missing file is named, `ErrInvalidOptions` wraps it.
+
+Left, with reasons (for coder or the owner):
+- `identity.go.5` (`uriNames`: the `asn1.Unmarshal` error branch `return nil`): unreachable, `x509.ParseCertificate` has already rejected a malformed SAN, and `asn1.Unmarshal` leaves `names` empty on error. Equivalent. Proposal to coder: read the URIs from `cert.URIs`-independent raw bytes without the dead branch, or ignore the error with a comment; not done, `errcheck` would flag an ignored error.
+- `machineid.go.4` and `.31` (`rawID`: `continue` -> nothing or `break` in the `ErrNotExist` case): equivalent, a missing file gives empty `data`, and the empty-content check right below also continues. Proposal to coder: remove the `ErrNotExist` case and test `err != nil && !errors.Is(err, fs.ErrNotExist)` once.
+- `machineid.go.15`, `.18`, `.39` (`osFS.WriteFileAtomic`/`fill`: cleanup after a failed `Chmod`/`Write`, and the `Sync`): need fault injection in a real `*os.File` (a chmod, write or sync that fails on a local temp file); `Sync` is a durability guarantee no test can observe. The seam is missing in production code; not tailored around.
+
+### Server (mutflow)
+
+Before (first full run): 2 survivors in `isolatedTest`, and a Gradle `java.io.EOFException` in `:server:test` that hid 4 more. After the EOF was cleared (below) the 4 showed: 6 in total, all V1:
+- `AgentRole.kt:23` `==` -> `!=` (`AgentRole.parse`), in `AgentsBuiltinLiveIntegrationTest`: the card's role was never asserted. New test `the card carries the role of the agent` (source and verifier).
+- `AgentOffer.kt:80` `requireAllowed()` removed, in `W2MutationTest`: new test `a source needs an agent whose role allows backup` (a verifier agent, `AgentRoleMismatch` with its id, no source row).
+- `DispatchParts.kt:67` `==` -> `!=` (RESTORE) and `RunModel.kt:98` `||` -> `&&` (`AgentRole.allows`), in `StepDispatcherTest`: new test `every action a role allows is sent as its own wire action` (BACKUP, RESTORE, RUN to a source, VERIFY to a verifier).
+- `Certificates.kt:68` `+` -> `-` (agent certificate `notAfter`) and `Certificates.kt:122` `-` -> `+` (serial bit), in `AgentRoleUriTest`: new test asserts `notBefore == now`, `notAfter == now + 365 days` and a 128-bit serial of an issued agent certificate.
+
+After: 0 survivors. No `mutflow:falsePositive`, `mutflow:ignore` or `@SuppressMutations` added.
+
+### Pitfalls met
+
+- OQ-030 happened: `go-mutesting` interrupted by the 30-minute limit of a background command left `enroll_run.go` (and later `repo_flags.go`) mutated plus a `*.go.tmp`. Restored from the `.tmp` and checked with `git status --porcelain agent/ | grep -v _test.go` (empty) before trusting each score. The mutation step of the agent gate takes about 2 hours here, so the final gates ran detached (`setsid nohup`), outside the command time limit.
+- OQ-130 did not show: no `cmd/sard-agent` survivor in the final run (the gates ran one at a time, no parallel build).
+- Flaky server failures: the Gradle `java.io.EOFException` recurred and was not a worker death this time but stable: `Test.getPreviousFailedTestClasses` could not read a truncated `server/build/test-results/test/binary/results.bin` left by an earlier killed run (stack trace in `./gradlew :server:test --stacktrace`). Fixed by `./gradlew :server:cleanTest :server:cleanIsolatedTest` (deleting the directory by hand is blocked by `guard.sh`). "Not a managed type: Agent" did not occur. One run failed with HTTP 429 from Maven Central while downloading `mutflow-compiler-plugin-1.5.0.jar`; a rerun succeeded.
+- `detekt` MaxLineLength in a new test line, fixed.
