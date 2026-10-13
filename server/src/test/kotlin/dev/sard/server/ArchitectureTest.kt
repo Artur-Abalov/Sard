@@ -62,15 +62,20 @@ private val INTERPOLATION = Regex("""\$\{?(\w+)}?""")
 private const val INTERPOLATION_DEPTH = 4
 private val SQL_COMMENT = Regex("""--.*$""", RegexOption.MULTILINE)
 
-// ADR 0013, rule 8: installation-wide by design, listed there.
+// ADR 0013, rule 8: installation-wide by design, listed there. Per file and per query (the literal as the
+// detector sees it, constants expanded): any other query in the same file is still checked.
 private val TENANT_SQL_EXCEPTIONS =
-    setOf(
+    mapOf(
         // A CA replacement revokes the unused tokens of the whole installation.
-        "TokensRevokedOnCaReplacement.kt",
+        "TokensRevokedOnCaReplacement.kt" to
+            setOf(
+                "update enrollment_tokens set revoked_at = ? where builtin = false and used_at is null " +
+                    "and revoked_at is null and expires_at > ?",
+            ),
         // LAST_SLOT: the latest catch-up slot over all tenants, read in the system session (ADR 0013 system callers).
-        "Scheduler.kt",
+        "Scheduler.kt" to setOf("select max(catch_up_at) from schedules"),
         // "Is any agent certificate issued?" decides whether the installation's CA may be replaced.
-        "JdbcCaLedger.kt",
+        "JdbcCaLedger.kt" to setOf("select 1 from agent_certificates"),
     )
 private val LINE_COMMENT = Regex("""//.*$""", RegexOption.MULTILINE)
 private val BLOCK_COMMENT = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
@@ -375,24 +380,60 @@ class ArchitectureTest {
         assertTrue(tables.none { it in wide }, "installation-wide: $tables")
     }
 
+    private fun tenantTableRegex(): Regex {
+        val names = tenantTables().joinToString("|")
+        return Regex("""\b(from|update|into|join|delete)\s+($names)\b""", RegexOption.IGNORE_CASE)
+    }
+
+    /** The string literals of [source] (constants expanded) that read a tenant table without `tenant_id`. */
+    private fun unscopedTenantSql(
+        source: String,
+        tenantTable: Regex,
+    ): List<String> {
+        val text = withoutComments(source).replace(STRING_CONCATENATION, "")
+        val constants = NAMED_LITERAL.findAll(text).associate { it.groupValues[1] to literalText(it) }
+        return STRING_LITERAL
+            .findAll(text)
+            .map { expanded(it.groupValues[1] + it.groupValues[2], constants).trim() }
+            .filter { tenantTable.containsMatchIn(it) && "tenant_id" !in it }
+            .toList()
+    }
+
+    @Test
+    fun `an exempt file is still checked for every query that is not listed`() {
+        val fixture =
+            """
+            import org.springframework.jdbc.core.JdbcTemplate
+            private const val LAST_SLOT = "select max(catch_up_at) from schedules"
+            fun a() = jdbc.query(LAST_SLOT)
+            fun b() = jdbc.query("select * from runs")
+            """.trimIndent()
+        val listed = TENANT_SQL_EXCEPTIONS.getValue("Scheduler.kt")
+
+        val reported = unscopedTenantSql(fixture, tenantTableRegex()).filter { it !in listed }
+
+        assertEquals(listOf("select * from runs"), reported)
+    }
+
     @Test
     fun `native SQL on a tenant table names tenant_id (ADR 0013, rule 8)`() {
-        val names = tenantTables().joinToString("|")
-        val tenantTable = Regex("""\b(from|update|into|join|delete)\s+($names)\b""", RegexOption.IGNORE_CASE)
+        val tenantTable = tenantTableRegex()
+        val found = mutableMapOf<String, Set<String>>()
         val offenders =
             ktFiles(mainRoot)
-                .filter { it.name !in TENANT_SQL_EXCEPTIONS && NATIVE_SQL_SOURCE.containsMatchIn(it.readText()) }
+                .filter { NATIVE_SQL_SOURCE.containsMatchIn(it.readText()) }
                 .flatMap { file ->
-                    val text = withoutComments(file.readText()).replace(STRING_CONCATENATION, "")
-                    val constants = NAMED_LITERAL.findAll(text).associate { it.groupValues[1] to literalText(it) }
-                    STRING_LITERAL
-                        .findAll(text)
-                        .map { expanded(it.groupValues[1] + it.groupValues[2], constants) }
-                        .filter { tenantTable.containsMatchIn(it) && "tenant_id" !in it }
-                        .map { "${file.path}: ${it.trim()}" }
-                        .toList()
+                    val unscoped = unscopedTenantSql(file.readText(), tenantTable)
+                    val listed = TENANT_SQL_EXCEPTIONS[file.name].orEmpty()
+                    found[file.name] = unscoped.filter { it in listed }.toSet()
+                    unscoped.filter { it !in listed }.map { "${file.path}: $it" }
                 }
         val message = "native SQL on a tenant table without tenant_id:\n${offenders.joinToString("\n")}"
         assertTrue(offenders.isEmpty(), message)
+        val stale =
+            TENANT_SQL_EXCEPTIONS.flatMap { (file, queries) ->
+                (queries - found[file].orEmpty()).map { "$file: $it" }
+            }
+        assertTrue(stale.isEmpty(), "exceptions that match no query:\n${stale.joinToString("\n")}")
     }
 }

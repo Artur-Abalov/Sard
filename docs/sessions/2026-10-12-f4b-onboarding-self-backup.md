@@ -349,3 +349,9 @@ ADR: `docs/adr/00XX-draft-f4b-onboarding-self-backup.md`.
 - Refactors: none warranted. The `"$method $template"` key compare reads clearly (one constant per operation, same form as `ALWAYS_OPEN`); a helper for the three-times-repeated key would add a function for no CRAP gain. The RepositoryCommands change already removed the duplicated guards.
 - `./scripts/gate.sh server fast`: PASSED, which confirms the merge of main is green.
 - Next: `architect`.
+
+## Architect review 4: F1-F3
+
+- F1: `OnboardingGuard` gated a deny-list (`POST/PUT/DELETE`), so PATCH bypassed D8 and was not documented with 409. Now `method !in SAFE` (`GET/HEAD/OPTIONS/TRACE`). Tests (`OnboardingGuardTest`) failed first on PATCH (rules and guard), then passed. Comment on the missing template reworded as a defensive branch.
+- F2: `ArchitectureTest` exempted whole files; now per-(file, literal) exceptions, a stale exception fails the build, and a fixture self-test shows an unlisted query in an exempt file is reported.
+- F3: ADR 0013 rule 8 now describes the detector and the three per-query exceptions.

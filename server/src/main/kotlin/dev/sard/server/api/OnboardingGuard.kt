@@ -22,7 +22,8 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import java.util.UUID
 
-private val MUTATING = setOf("POST", "PUT", "DELETE")
+/** The methods that change nothing; every other method is a change and is gated (a deny-list would miss PATCH). */
+private val SAFE = setOf("GET", "HEAD", "OPTIONS", "TRACE")
 private const val ISSUE_TOKEN = "POST /api/v1/enrollment-tokens"
 private const val ONBOARDING_PATH = "/api/v1/onboarding/"
 private const val SOURCE_SCHEDULE = "PUT /api/v1/sources/{sourceId}/schedule"
@@ -109,7 +110,7 @@ internal object OnboardingRules {
     fun gated(
         method: String,
         template: String,
-    ): Boolean = method in MUTATING && "$method $template" !in ALWAYS_OPEN && !template.startsWith(ONBOARDING_PATH)
+    ): Boolean = method !in SAFE && "$method $template" !in ALWAYS_OPEN && !template.startsWith(ONBOARDING_PATH)
 }
 
 /**
@@ -125,13 +126,13 @@ class OnboardingGuard(
         response: HttpServletResponse,
         handler: Any,
     ): Boolean {
-        if (request.method in MUTATING && !permitted(request)) throw OnboardingIncomplete()
+        if (request.method !in SAFE && !permitted(request)) throw OnboardingIncomplete()
         return true
     }
 
     private fun permitted(request: HttpServletRequest): Boolean {
         val restriction = onboarding.restriction()
-        // No matched template: nothing to decide on, so the request is refused.
+        // Defensive: every Spring MVC mapping sets the pattern; without one there is nothing to decide on, so refuse.
         val template = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE) as? String
         val variables = variablesOf(request)
         return restriction == OnboardingRestriction.NONE ||
