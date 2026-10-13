@@ -28,8 +28,7 @@ class RevealCommandImageTest {
             .removePrefix("docker compose exec self-agent ")
             .substringBefore(' ')
 
-    private fun entrypoint(): String =
-        Regex("""(?m)^ENTRYPOINT \["([^"]+)"""").find(dockerfile)!!.groupValues[1]
+    private fun entrypoint(): String = Regex("""(?m)^ENTRYPOINT \["([^"]+)"""").find(dockerfile)!!.groupValues[1]
 
     @Test
     fun `Команда показа пароля находит программу в образе агента`() {
