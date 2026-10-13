@@ -14,7 +14,7 @@ import (
 
 // The e2e stand's build ("e2e" tag) adds e2e-slow to the source plugins.
 func TestStandBuildAddsTheSlowPlugin(t *testing.T) {
-	if got := plugins.Registry("1.2.3").Names(); !slices.Equal(got, []string{"e2e-slow", "files", "mysql", "network", "postgresql"}) {
+	if got := plugins.Registry("1.2.3").Names(); !slices.Equal(got, []string{"e2e-slow", "files", "postgresql"}) {
 		t.Fatalf("Names() = %v", got)
 	}
 }

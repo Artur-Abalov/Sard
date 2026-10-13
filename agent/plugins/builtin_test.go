@@ -5,9 +5,6 @@ package plugins_test
 
 import (
 	"bytes"
-	"context"
-	"errors"
-	"io"
 	"slices"
 	"testing"
 
@@ -53,29 +50,6 @@ func TestEveryConfigSchemaIsValidJSONSchema(t *testing.T) {
 			}
 			if n := len(s.Properties); n < 2 {
 				t.Errorf("schema has %d fields, want at least 2", n)
-			}
-		})
-	}
-}
-
-// written are the plugins whose methods are no longer stubs.
-var written = []string{"files", "postgresql", "e2e-slow"}
-
-func TestEveryPluginMethodIsNotImplementedYet(t *testing.T) {
-	ctx := context.Background()
-	for _, p := range plugins.Builtin("1.2.3") {
-		if slices.Contains(written, p.Name()) {
-			continue // written: plugins/files (A6b), plugins/postgresql (F1) and plugins/e2eslow (T3s) tests
-		}
-		t.Run(p.Name(), func(t *testing.T) {
-			if err := p.Prepare(ctx, nil, nil); !errors.Is(err, sdk.ErrNotImplemented) {
-				t.Errorf("Prepare: %v", err)
-			}
-			if d, err := p.Dump(ctx, nil, nil); len(d.Paths) != 0 || !errors.Is(err, sdk.ErrNotImplemented) {
-				t.Errorf("Dump: %v, %v", d, err)
-			}
-			if err := p.Stream(ctx, nil, nil, sdk.Dump{}, io.Discard); !errors.Is(err, sdk.ErrNotImplemented) {
-				t.Errorf("Stream: %v", err)
 			}
 		})
 	}

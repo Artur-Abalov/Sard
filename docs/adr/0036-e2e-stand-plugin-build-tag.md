@@ -33,8 +33,10 @@ T3 (обрыв связи посреди бэкапа) упирался в дв�
   пустой список, и пакет в бинарник не линкуется. `GO_TAGS=e2e` задаёт только
   `make e2e-images`.
 - **Доказательство, что в продукте плагина нет** (варианты «а» и «б» владельца):
-  - (а) `TestReleaseBuildRegistersTheFourSourcePluginsOnly`: без тега реестр
-    (то есть Register) — это ровно files, mysql, network, postgresql.
+  - (а) ~~`TestReleaseBuildRegistersTheFourSourcePluginsOnly`: без тега реестр
+    (то есть Register) — это ровно files, mysql, network, postgresql.~~ С ADR 0056
+    `TestReleaseBuildRegistersTheWorkingSourcePluginsOnly`: без тега реестр — ровно
+    files и postgresql; заглушки `mysql` и `network` удалены.
   - (б) `scripts/package-agent.sh` проверяет собранный бинарник: теги из
     `go version -m` равны `GO_TAGS`, и в релизе нет `plugins/e2eslow`. Иначе
     `make package` падает.

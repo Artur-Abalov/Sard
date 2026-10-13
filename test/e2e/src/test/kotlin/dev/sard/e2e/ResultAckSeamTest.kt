@@ -107,7 +107,7 @@ class ResultAckSeamTest {
     }
 
     companion object {
-        /** A plugin no agent has (built in are postgresql, mysql, files and network). */
+        /** A plugin no agent has (built in are files and postgresql). */
         private const val PLUGIN = "absent"
 
         /** The executor's state dir: the agent's default (agent/cmd/sard-agent/main.go). */
