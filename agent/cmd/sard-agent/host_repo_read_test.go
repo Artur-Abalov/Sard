@@ -25,6 +25,7 @@ func card(stdout string) map[string]string {
 // Rule "repo show описывает один репозиторий без учётных данных".
 
 func TestCardOfAnInitializedRepository(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.base().initialized = true
 	code, stdout, _ := h.sudo("repo", "show", "base", "--config", "C")
@@ -42,6 +43,7 @@ func TestCardOfAnInitializedRepository(t *testing.T) {
 }
 
 func TestCardOfARepositoryThatIsNotInitialized(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, _ := h.sudo("repo", "show", "base", "--config", "C")
 	assertCode(t, code, exitOK)
@@ -51,6 +53,7 @@ func TestCardOfARepositoryThatIsNotInitialized(t *testing.T) {
 }
 
 func TestThePasswordInTheAddressIsHiddenInTheCard(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.cfg.Repositories = append(h.cfg.Repositories, h.cfg.Repositories[0])
 	h.cfg.Repositories[1].Name = "offsite"
@@ -65,6 +68,7 @@ func TestThePasswordInTheAddressIsHiddenInTheCard(t *testing.T) {
 }
 
 func TestTheCardOfAFragmentRepositoryNamesTheFragment(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	fragment := h.extraFragment()
 	code, stdout, _ := h.sudo("repo", "show", "extra", "--config", "C")
@@ -75,6 +79,7 @@ func TestTheCardOfAFragmentRepositoryNamesTheFragment(t *testing.T) {
 }
 
 func TestCardInJSON(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, _ := h.sudo("repo", "show", "base", "--json", "--config", "C")
 	assertCode(t, code, exitOK)
@@ -93,6 +98,7 @@ func TestCardInJSON(t *testing.T) {
 }
 
 func TestAnUnreachableBackendIsACardWithTheReasonAndATemporaryCode(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.base().fatal = "connection refused"
 	code, stdout, stderr := h.sudo("repo", "show", "base", "--config", "C")
@@ -107,6 +113,7 @@ func TestAnUnreachableBackendIsACardWithTheReasonAndATemporaryCode(t *testing.T)
 }
 
 func TestAnUnknownNameIsRefusedWithTheKnownOnes(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, stderr := h.sudo("repo", "show", "nope", "--config", "C")
 	assertRefusal(t, code, stderr, exitUsage, "REPOSITORY_UNKNOWN")
@@ -116,6 +123,7 @@ func TestAnUnknownNameIsRefusedWithTheKnownOnes(t *testing.T) {
 }
 
 func TestShowCreatesNothingAndCallsResticOnce(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	before := h.hostTree()
 	code, _, _ := h.sudo("repo", "show", "base", "--config", "C")
@@ -127,6 +135,7 @@ func TestShowCreatesNothingAndCallsResticOnce(t *testing.T) {
 }
 
 func TestTheServiceUserMayShowARepository(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, stderr := h.asService("repo", "show", "base", "--config", "C")
 	assertCode(t, code, exitOK)
@@ -136,6 +145,7 @@ func TestTheServiceUserMayShowARepository(t *testing.T) {
 }
 
 func TestShowRefusesAProblemOfTheLocalChecksLikeTheList(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	ok(t, os.Remove(h.path("secrets/base.pass")))
 	code, stdout, stderr := h.sudo("repo", "show", "base", "--config", "C")
@@ -148,6 +158,7 @@ func TestShowRefusesAProblemOfTheLocalChecksLikeTheList(t *testing.T) {
 // Rule "Пароль репозитория показывается только по явному флагу".
 
 func TestRevealPrintsThePasswordByteForByteWithAWarning(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.write(h.path("secrets/base.pass"), passMarker+"\n", 0o600)
 	code, stdout, stderr := h.sudo("repo", "password", "base", "--reveal", "--config", "C")
@@ -168,6 +179,7 @@ func TestRevealPrintsThePasswordByteForByteWithAWarning(t *testing.T) {
 }
 
 func TestWithoutRevealThePasswordIsNotPrinted(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, stderr := h.sudo("repo", "password", "base", "--config", "C")
 	assertRefusal(t, code, stderr, exitUsage, "REVEAL_REQUIRED")
@@ -177,12 +189,14 @@ func TestWithoutRevealThePasswordIsNotPrinted(t *testing.T) {
 }
 
 func TestThePasswordOfAnUnknownRepositoryIsRefused(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, stderr := h.sudo("repo", "password", "nope", "--reveal", "--config", "C")
 	assertRefusal(t, code, stderr, exitUsage, "REPOSITORY_UNKNOWN")
 }
 
 func TestAMissingPasswordFileIsRefusedWithItsPath(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	ok(t, os.Remove(h.path("secrets/base.pass")))
 	code, _, stderr := h.sudo("repo", "password", "base", "--reveal", "--config", "C")
@@ -193,6 +207,7 @@ func TestAMissingPasswordFileIsRefusedWithItsPath(t *testing.T) {
 }
 
 func TestTheServiceUserMayRevealAndItIsAudited(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, _ := h.asService("repo", "password", "base", "--reveal", "--config", "C")
 	assertCode(t, code, exitOK)
@@ -202,6 +217,7 @@ func TestTheServiceUserMayRevealAndItIsAudited(t *testing.T) {
 }
 
 func TestThePasswordOfAFragmentRepositoryCanBeRevealed(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.extraFragment()
 	code, stdout, _ := h.sudo("repo", "password", "extra", "--reveal", "--config", "C")
@@ -212,6 +228,7 @@ func TestThePasswordOfAFragmentRepositoryCanBeRevealed(t *testing.T) {
 }
 
 func TestAPasswordFileThatCannotBeReadIsRefusedWithItsPath(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.deps.readOwned = func(string, uint32) ([]byte, error) { return nil, os.ErrPermission }
 	code, _, stderr := h.sudo("repo", "password", "base", "--reveal", "--config", "C")
@@ -228,6 +245,7 @@ func TestAPasswordFileThatCannotBeReadIsRefusedWithItsPath(t *testing.T) {
 // service user: it must be read as A1 allows it to be (a plain file of the
 // service user), never by a bare path.
 func TestAnEnvFileIsReadOnlyThroughTheOwnerCheckedRead(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	env := h.path("secrets/base.env")
 	h.write(env, "AWS_SECRET_ACCESS_KEY="+envMarker+"\n", 0o600)
@@ -253,6 +271,7 @@ func TestAnEnvFileIsReadOnlyThroughTheOwnerCheckedRead(t *testing.T) {
 }
 
 func TestThePasswordIsRevealedThroughTheOwnerCheckedReadToo(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, _ := h.sudo("repo", "password", "base", "--reveal", "--config", "C")
 	assertCode(t, code, exitOK)

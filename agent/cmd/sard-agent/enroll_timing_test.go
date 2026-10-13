@@ -85,6 +85,7 @@ func newBlockingFixture(t *testing.T) (*host, string, *enrollServer) {
 
 // Без флага таймаута команда ждёт сервер 30 секунд
 func TestWithoutATimeoutFlagTheCommandWaits30Seconds(t *testing.T) {
+	t.Parallel()
 	h, token, _ := newBlockingFixture(t)
 	clk := newFakeEnrollClock()
 	done := make(chan int, 1)
@@ -118,6 +119,7 @@ func TestWithoutATimeoutFlagTheCommandWaits30Seconds(t *testing.T) {
 
 // Флаг таймаута меняет время ожидания
 func TestTheTimeoutFlagChangesHowLongTheCommandWaits(t *testing.T) {
+	t.Parallel()
 	h, token, _ := newBlockingFixture(t)
 	clk := newFakeEnrollClock()
 	done := make(chan int, 1)
@@ -141,6 +143,7 @@ func TestTheTimeoutFlagChangesHowLongTheCommandWaits(t *testing.T) {
 
 // Таймаут после отправки регистрации предупреждает, что токен мог быть израсходован
 func TestATimeoutAfterSendingEnrollWarnsTheTokenMayHaveBeenSpent(t *testing.T) {
+	t.Parallel()
 	h, token, srv := newBlockingFixture(t)
 	clk := newFakeEnrollClock()
 	var out, errOut strings.Builder
@@ -165,6 +168,7 @@ func TestATimeoutAfterSendingEnrollWarnsTheTokenMayHaveBeenSpent(t *testing.T) {
 
 // Прерывание команды сигналом не меняет хост
 func TestInterruptingTheCommandDoesNotChangeTheHost(t *testing.T) {
+	t.Parallel()
 	h, token, srv := newBlockingFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	var out, errOut strings.Builder
@@ -191,6 +195,7 @@ func TestInterruptingTheCommandDoesNotChangeTheHost(t *testing.T) {
 
 // Вторая одновременная регистрация отказывает до обращения к серверу
 func TestASecondConcurrentEnrollmentIsRefusedBeforeContactingTheServer(t *testing.T) {
+	t.Parallel()
 	h, token1, srv := newBlockingFixture(t)
 	done := make(chan int, 1)
 	go func() {
@@ -220,6 +225,7 @@ func TestASecondConcurrentEnrollmentIsRefusedBeforeContactingTheServer(t *testin
 
 // Одновременные регистрации на одном хосте не смешивают файлы
 func TestConcurrentEnrollmentsOnOneHostDoNotMixFiles(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	token2 := newToken(t, f.ca.fingerprint())
 	var wg sync.WaitGroup
@@ -254,6 +260,7 @@ func TestConcurrentEnrollmentsOnOneHostDoNotMixFiles(t *testing.T) {
 // one would overwrite the identity the first just wrote. Re-checking after
 // the lock closes that window.
 func TestASecondEnrollRacingBetweenTheIdentityCheckAndTheLockIsRefused(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 
 	entered := make(chan struct{})

@@ -91,6 +91,7 @@ func (h *startHost) connects(cfg string) string {
 
 // restic не найден по пути из конфига — агент не стартует
 func TestTheAgentDoesNotStartWhenResticIsNotFoundAtTheConfiguredPath(t *testing.T) {
+	t.Parallel()
 	h := newStartHost(t)
 	q := filepath.Join(h.dir, "nowhere", "restic")
 	_, stderr := h.refuses(h.config("restic: {path: " + q + "}\n"))
@@ -106,6 +107,7 @@ func TestTheAgentDoesNotStartWhenResticIsNotFoundAtTheConfiguredPath(t *testing.
 
 // restic не найден рядом с агентом — агент не стартует и называет путь
 func TestTheAgentDoesNotStartWhenResticIsNotNextToIt(t *testing.T) {
+	t.Parallel()
 	h := newStartHost(t)
 	exe := func() (string, error) { return filepath.Join(h.dir, "bin", "sard-agent"), nil }
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -126,6 +128,7 @@ func TestTheAgentDoesNotStartWhenResticIsNotNextToIt(t *testing.T) {
 
 // Путь рядом с агентом берётся по настоящему файлу, а не по символьной ссылке
 func TestTheResticNextToTheAgentIsFoundByTheRealFileNotTheSymlink(t *testing.T) {
+	t.Parallel()
 	h := newStartHost(t)
 	real := filepath.Join(h.dir, "L")
 	link := filepath.Join(h.dir, "M")
@@ -152,6 +155,7 @@ func TestTheResticNextToTheAgentIsFoundByTheRealFileNotTheSymlink(t *testing.T) 
 
 // Устаревший restic — агент не стартует и называет версии
 func TestTheAgentDoesNotStartWithAnOutdatedRestic(t *testing.T) {
+	t.Parallel()
 	for _, version := range []string{"0.18.1", "0.9.6"} {
 		h := newStartHost(t)
 		path := resticScript(t, filepath.Join(h.dir, "restic"), version)
@@ -166,6 +170,7 @@ func TestTheAgentDoesNotStartWithAnOutdatedRestic(t *testing.T) {
 
 // Непригодный restic — агент не стартует
 func TestTheAgentDoesNotStartWithAnUnusableRestic(t *testing.T) {
+	t.Parallel()
 	h := newStartHost(t)
 	dir := filepath.Join(h.dir, "a-directory")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -185,6 +190,7 @@ func TestTheAgentDoesNotStartWithAnUnusableRestic(t *testing.T) {
 
 // restic минимальной версии и новее принимается
 func TestResticOfTheMinimumVersionAndNewerIsAccepted(t *testing.T) {
+	t.Parallel()
 	for _, version := range []string{"0.19.0", "0.19.1", "0.19.0-dev", "0.20.0", "1.0.0"} {
 		h := newStartHost(t)
 		path := resticScript(t, filepath.Join(h.dir, "restic"), version)
@@ -196,12 +202,14 @@ func TestResticOfTheMinimumVersionAndNewerIsAccepted(t *testing.T) {
 
 // Агент без репозиториев тоже требует restic
 func TestAnAgentWithoutRepositoriesStillNeedsRestic(t *testing.T) {
+	t.Parallel()
 	h := newStartHost(t)
 	h.refuses(h.config("restic: {path: " + filepath.Join(h.dir, "nowhere") + "}\nrepositories: []\n"))
 }
 
 // Нарушение прав секретного файла сообщается раньше проблемы с restic
 func TestASecretFilePermissionProblemIsReportedBeforeAResticProblem(t *testing.T) {
+	t.Parallel()
 	h := newStartHost(t)
 	pass := filepath.Join(h.dir, "main.pass")
 	writeFile(t, pass, []byte("x\n"), 0o644)
@@ -215,6 +223,7 @@ func TestASecretFilePermissionProblemIsReportedBeforeAResticProblem(t *testing.T
 
 // Файл пароля, созданный командой, проходит проверку при старте агента
 func TestThePasswordFileCreatedByTheCommandPassesTheStartOfTheAgent(t *testing.T) {
+	t.Parallel()
 	h := newStartHost(t)
 	script := resticScript(t, filepath.Join(h.dir, "restic"), "0.19.1")
 	pass := filepath.Join(h.dir, "main.pass")
@@ -235,6 +244,7 @@ func TestThePasswordFileCreatedByTheCommandPassesTheStartOfTheAgent(t *testing.T
 
 // Регистрация агента не требует restic
 func TestEnrollDoesNotNeedRestic(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	data, err := os.ReadFile(f.h.configPath)
 	if err != nil {

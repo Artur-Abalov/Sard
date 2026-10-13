@@ -11,6 +11,7 @@ import (
 // Rule "Отказ хранилища называет свой класс и причину".
 
 func TestTheRefusalOfAnS3StorageOnTheFirstAccessNamesItsClassCauseAndWhatToDo(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		sub, line string
 		code      int
@@ -40,6 +41,7 @@ func TestTheRefusalOfAnS3StorageOnTheFirstAccessNamesItsClassCauseAndWhatToDo(t 
 // П12: a refusal of init leaves the env file and the password file, and
 // says so, whatever its class.
 func TestARefusalOfAnS3StorageWhileCreatingKeepsTheEnvFileAndThePasswordForARepeat(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ line, reason, text string }{
 		{"Fatal: create repository at " + s3Address + " failed: client.PutObject: Forbidden: Operation is not allowed for this key.", "STORAGE_ACCESS_DENIED", "Operation is not allowed for this key"},
 		{"Fatal: create repository at " + s3Address + " failed: The specified bucket does not exist", "BUCKET_NOT_FOUND", "bucket-b"},
@@ -67,6 +69,7 @@ func TestARefusalOfAnS3StorageWhileCreatingKeepsTheEnvFileAndThePasswordForARepe
 }
 
 func TestAnAccessDeniedOfS3NamesBothCausesAndTheBucket(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.s3Repo().answers("cat", "Fatal: unable to open config file: Stat: Access Denied.", 1)
 	_, _, stderr := h.s3Cmd()
@@ -78,6 +81,7 @@ func TestAnAccessDeniedOfS3NamesBothCausesAndTheBucket(t *testing.T) {
 }
 
 func TestTheTextOfResticInTheMessageIsScrubbedOfTheKeyAndThePassword(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.s3Repo().answers("cat", "Fatal: the storage said "+s3Marker+" and "+passMarker, 1)
 	key := h.path("outside/key")
@@ -93,6 +97,7 @@ func TestTheTextOfResticInTheMessageIsScrubbedOfTheKeyAndThePassword(t *testing.
 }
 
 func TestNoLineOfTheAuditAndNoOutputOfASuccessfulS3CommandShowsASecret(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, stderr := h.s3Cmd("--region", "ru-central1")
 	assertCode(t, code, exitOK)
@@ -107,6 +112,7 @@ func TestNoLineOfTheAuditAndNoOutputOfASuccessfulS3CommandShowsASecret(t *testin
 }
 
 func TestAPasswordWithSpacesAroundItIsScrubbedToo(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.s3Repo().answers("cat", "Fatal: the storage said "+passMarker, 1)
 	h.stdinIs("  " + passMarker + " \t\n")
@@ -123,6 +129,7 @@ func TestAPasswordWithSpacesAroundItIsScrubbedToo(t *testing.T) {
 const lockDenied = "Fatal: unable to create lock in backend: client.PutObject: Forbidden: Operation is not allowed for this key."
 
 func TestAReadOnlyKeyWithAPasswordFromAFileIsRefusedWithoutAQuestionAndWithoutFiles(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.s3Repo().initialized, h.s3Repo().password = true, passMarker
 	src := h.path("outside/F")
@@ -138,6 +145,7 @@ func TestAReadOnlyKeyWithAPasswordFromAFileIsRefusedWithoutAQuestionAndWithoutFi
 }
 
 func TestAReadOnlyKeyWithATerminalPasswordIsRefusedAfterThePasswordAndWithoutFiles(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.s3Repo().initialized, h.s3Repo().password = true, passMarker
 	h.s3Repo().script = func(sub string, _ []string) (string, int, bool) { return lockDenied, 1, sub == "snapshots" }

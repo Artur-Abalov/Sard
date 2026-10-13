@@ -106,6 +106,7 @@ const retryLine = "Load(<config/0000000000>, 0, 0) returned error, retrying afte
 // Rule "Проверка доступа ограничена таймаутом подключения, команда не висит на недоступном хранилище".
 
 func TestAnUnreachableS3StorageIsTemporaryAfterTheConnectTimeoutWithTheReasonOfTheRetry(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	vc := newVirtualClock()
 	h.deps.clock = vc
@@ -133,6 +134,7 @@ func TestAnUnreachableS3StorageIsTemporaryAfterTheConnectTimeoutWithTheReasonOfT
 }
 
 func TestWithoutAFlagTheConnectTimeoutIs30Seconds(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	vc := newVirtualClock()
 	h.deps.clock = vc
@@ -147,6 +149,7 @@ func TestWithoutAFlagTheConnectTimeoutIs30Seconds(t *testing.T) {
 }
 
 func TestTheConnectTimeoutDoesNotLimitTheCreationOfTheRepository(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	vc := newVirtualClock()
 	h.deps.clock = vc
@@ -161,6 +164,7 @@ func TestTheConnectTimeoutDoesNotLimitTheCreationOfTheRepository(t *testing.T) {
 }
 
 func TestAnOverallTimeoutShorterThanTheConnectTimeoutIsTimeout(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	vc := newVirtualClock()
 	h.deps.clock = vc
@@ -186,6 +190,7 @@ func (s slowTerminal) ReadSecret(prompt string) ([]byte, error) {
 }
 
 func TestTheWaitForTheOperatorAtTheTerminalIsNotCountedInTheTimeouts(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	vc := newVirtualClock()
 	h.deps.clock = vc
@@ -199,6 +204,7 @@ func TestTheWaitForTheOperatorAtTheTerminalIsNotCountedInTheTimeouts(t *testing.
 }
 
 func TestTheConnectTimeoutLimitsALocalPathToo(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	vc := newVirtualClock()
 	h.deps.clock = vc
@@ -218,6 +224,7 @@ func TestTheConnectTimeoutLimitsALocalPathToo(t *testing.T) {
 }
 
 func TestResticIsStoppedWithTheDefaultGraceOfTenSeconds(t *testing.T) {
+	t.Parallel()
 	// A zero Grace is restic.DefaultGrace, 10 seconds (Р33), see the tests of the executor.
 	exec, ok := productionHostDeps().exec.(restic.ProcessExecutor)
 	if !ok || exec.Grace != 0 || restic.DefaultGrace != 10*time.Second {

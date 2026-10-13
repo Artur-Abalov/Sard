@@ -18,6 +18,7 @@ import (
 
 // П14: a repeat names the key id too.
 func TestRepeatingAnS3CommandWithoutAKeyIDIsAUsageErrorAndChangesNothing(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.connectedS3()
 	before := h.hostTree()
@@ -32,6 +33,7 @@ func TestRepeatingAnS3CommandWithoutAKeyIDIsAUsageErrorAndChangesNothing(t *test
 // П14: a new region without a source of the secret key asks again; the
 // env file in place is never the source of a new env file.
 func TestANewRegionWithoutASecretKeySourceAsksTheSecretKeyAgain(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.stdinIs(s3Marker)
 	code, _, _ := h.sudo("repo", "add", "extra", s3Address, "--access-key-id", keyID1, "--secret-key-stdin", "--region", "ru-central1", "--config", "C")
@@ -65,6 +67,7 @@ func TestANewRegionWithoutASecretKeySourceAsksTheSecretKeyAgain(t *testing.T) {
 // П16: a password source with a change of keys is refused before any
 // secret is read.
 func TestAPasswordSourceWithAChangeOfKeysIsRefusedBeforeAnySecretIsRead(t *testing.T) {
+	t.Parallel()
 	for _, flag := range []string{"--password-stdin", "--password-from-file"} {
 		t.Run(flag, func(t *testing.T) { assertPasswordFlagRefusedBeforeSecrets(t, flag) })
 	}
@@ -101,6 +104,7 @@ func assertPasswordFlagRefusedBeforeSecrets(t *testing.T, flag string) {
 
 // П17: the password file of the repository names the path when it does not open it.
 func TestAWrongPasswordFileOfAChangeOfKeysNamesThePathAndNeverAsksTheTerminal(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.connectedS3()
 	h.write(h.path("secrets/restic-extra.pass"), "another\n", 0o600)
@@ -120,6 +124,7 @@ func TestAWrongPasswordFileOfAChangeOfKeysNamesThePathAndNeverAsksTheTerminal(t 
 
 // П17
 func TestAChangeOfKeysWithoutThePasswordFileIsPasswordFileMissing(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.connectedS3()
 	ok(t, os.Remove(h.path("secrets/restic-extra.pass")))
@@ -140,6 +145,7 @@ func TestAChangeOfKeysWithoutThePasswordFileIsPasswordFileMissing(t *testing.T) 
 // П17: a leftover password file that A1 rejects is SECRET_FILE_REJECTED
 // and stays as it is.
 func TestALeftoverPasswordFileThatA1RejectsIsRefusedAndKept(t *testing.T) {
+	t.Parallel()
 	pass := func(h *setupHost) string { return h.path("secrets/restic-extra.pass") }
 	for name, spoil := range map[string]func(h *setupHost){
 		"owned by another uid": func(h *setupHost) {
@@ -163,6 +169,7 @@ func TestALeftoverPasswordFileThatA1RejectsIsRefusedAndKept(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			h := newSetupHost(t)
 			h.deps.readOwned = ownedAsUID(uint32(os.Getuid()))
 			h.s3Repo().answers("init", "Fatal: create repository failed: Internal Error", 1)

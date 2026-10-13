@@ -79,6 +79,7 @@ func hashes(t *testing.T, dir string) string {
 
 // Команда создаёт репозиторий, который открывается файлом пароля из конфига
 func TestIntegrationTheCommandCreatesARepositoryThatOpensWithThePasswordFile(t *testing.T) {
+	t.Parallel()
 	h := realHost(t)
 	code, stdout, stderr := h.initCmd()
 	assertCode(t, code, exitOK)
@@ -109,6 +110,7 @@ func TestIntegrationResticVariablesOfTheOperatorAreIgnored(t *testing.T) {
 
 // Файл пароля из одного перевода строки не даёт создать репозиторий
 func TestIntegrationAPasswordFileOfOneLineBreakCreatesNoRepository(t *testing.T) {
+	t.Parallel()
 	h := realHost(t)
 	h.write(h.pass(), "\n", 0o600)
 	code, _, stderr := h.initCmd()
@@ -122,6 +124,7 @@ func TestIntegrationAPasswordFileOfOneLineBreakCreatesNoRepository(t *testing.T)
 
 // Уже инициализированный репозиторий — отдельный отказ с его id
 func TestIntegrationAnInitialisedRepositoryIsRefusedAndItsDataIsUntouched(t *testing.T) {
+	t.Parallel()
 	h := realHost(t)
 	assertCode(t, first(h.initCmd()), exitOK)
 	id, _ := repositoryID(t, h, h.cfg.Repositories[0])
@@ -140,6 +143,7 @@ func TestIntegrationAnInitialisedRepositoryIsRefusedAndItsDataIsUntouched(t *tes
 
 // Репозиторий по адресу есть, но файл пароля его не открывает
 func TestIntegrationARepositoryThePasswordFileDoesNotOpenIsAUsageError(t *testing.T) {
+	t.Parallel()
 	h := realHost(t)
 	assertCode(t, first(h.initCmd()), exitOK)
 	h.write(h.pass(), "another password\n", 0o600)
@@ -155,6 +159,7 @@ func TestIntegrationARepositoryThePasswordFileDoesNotOpenIsAUsageError(t *testin
 
 // Недоступный REST-бэкенд с паролем в адресе не раскрывает пароль
 func TestIntegrationAnUnreachableRESTBackendDoesNotRevealTheURLPassword(t *testing.T) {
+	t.Parallel()
 	h := realHost(t)
 	h.cfg.Repositories[1].URL = offsiteURL
 	h.saveConfig()
@@ -168,6 +173,7 @@ func TestIntegrationAnUnreachableRESTBackendDoesNotRevealTheURLPassword(t *testi
 
 // Настоящий restic не раскрывает пароль при успехе и неверном пароле
 func TestIntegrationResticDoesNotRevealThePassword(t *testing.T) {
+	t.Parallel()
 	h := realHost(t)
 	code1, out1, err1 := h.initCmd()
 	assertCode(t, code1, exitOK)
@@ -181,6 +187,7 @@ func TestIntegrationResticDoesNotRevealThePassword(t *testing.T) {
 
 // Список называет инициализированный и неинициализированный репозитории
 func TestIntegrationTheListNamesInitialisedAndNotInitialisedRepositories(t *testing.T) {
+	t.Parallel()
 	h := realHost(t)
 	assertCode(t, first(h.initCmd()), exitOK)
 	id, _ := repositoryID(t, h, h.cfg.Repositories[0])
@@ -197,6 +204,7 @@ func TestIntegrationTheListNamesInitialisedAndNotInitialisedRepositories(t *test
 
 // Список ничего не создаёт и не меняет
 func TestIntegrationTheListCreatesNothing(t *testing.T) {
+	t.Parallel()
 	h := realHost(t)
 	before := h.snapshotWithout(h.path("cache"))
 	code, _, _ := h.listCmd()

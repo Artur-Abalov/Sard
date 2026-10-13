@@ -12,6 +12,7 @@ import (
 
 // Уже инициализированный репозиторий — отдельный отказ с его id
 func TestAnInitialisedRepositoryIsRefusedWithItsID(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().initialized = true
 	before := h.snapshot()
@@ -32,6 +33,7 @@ func TestAnInitialisedRepositoryIsRefusedWithItsID(t *testing.T) {
 
 // Повторный запуск после успеха сообщает тот же id
 func TestARepeatAfterSuccessReportsTheSameID(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	_, stdout, _ := h.initCmd()
 	id := hexID.FindString(stdout)
@@ -47,6 +49,7 @@ func TestARepeatAfterSuccessReportsTheSameID(t *testing.T) {
 
 // Репозиторий, созданный между проверкой и инициализацией, не перезаписывается
 func TestARepositoryCreatedBetweenTheCheckAndTheInitIsNotOverwritten(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().raceExists = true
 	code, stdout, stderr := h.initCmd()
@@ -59,6 +62,7 @@ func TestARepositoryCreatedBetweenTheCheckAndTheInitIsNotOverwritten(t *testing.
 
 // Репозиторий по адресу есть, но файл пароля его не открывает
 func TestARepositoryThatThePasswordFileDoesNotOpenIsAUsageError(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().wrongPassword = true
 	before := h.snapshot()
@@ -79,6 +83,7 @@ func TestARepositoryThatThePasswordFileDoesNotOpenIsAUsageError(t *testing.T) {
 
 // Сетевая недоступность бэкенда — временная ошибка
 func TestAnUnreachableBackendIsTemporary(t *testing.T) {
+	t.Parallel()
 	for _, cause := range []string{"connection refused", "no such host", "i/o timeout", "network is unreachable"} {
 		h := newRepoHost(t)
 		h.cfg.Repositories[0].URL = "sftp:backup@nas.example.com:/main"
@@ -98,6 +103,7 @@ func TestAnUnreachableBackendIsTemporary(t *testing.T) {
 
 // Несетевой отказ бэкенда — ошибка агента с причиной от restic
 func TestANonNetworkRefusalOfTheBackendIsAnAgentError(t *testing.T) {
+	t.Parallel()
 	for _, cause := range []string{
 		"The AWS Access Key Id you provided does not exist",
 		"Access Denied",
@@ -122,6 +128,7 @@ func TestANonNetworkRefusalOfTheBackendIsAnAgentError(t *testing.T) {
 
 // Вывод restic со значением из файла окружения не раскрывает его
 func TestResticOutputWithAnEnvFileValueDoesNotRevealIt(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.cfg.Repositories[0].URL = "rest:http://qa:" + urlMarker + "@127.0.0.1:9/main"
 	h.saveConfig()
@@ -136,6 +143,7 @@ func TestResticOutputWithAnEnvFileValueDoesNotRevealIt(t *testing.T) {
 
 // Непредусмотренный вывод restic — ошибка агента
 func TestUnexpectedResticOutputIsAnAgentError(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().initNoID = true
 	code, stdout, stderr := h.initCmd()
@@ -147,6 +155,7 @@ func TestUnexpectedResticOutputIsAnAgentError(t *testing.T) {
 
 // Файл пароля из одних переводов строки отклоняет restic
 func TestAPasswordOfOnlyLineBreaksIsRefusedByRestic(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().fatal = "an empty password is not allowed by default. Pass the flag `--insecure-no-password` to restic to disable this check"
 	code, _, stderr := h.initCmd()
@@ -156,6 +165,7 @@ func TestAPasswordOfOnlyLineBreaksIsRefusedByRestic(t *testing.T) {
 
 // Rule "Секреты не попадают в вывод": every class of exit code.
 func TestNoSecretReachesTheOutputWhateverTheOutcome(t *testing.T) {
+	t.Parallel()
 	url := "rest:http://qa:" + urlMarker + "@127.0.0.1:9/main"
 	leak := "Head http://qa:" + urlMarker + "@127.0.0.1:9/main " + envMarker
 	scenarios := map[string]func(h *repoHost) []string{

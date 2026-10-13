@@ -122,6 +122,7 @@ func TestAllThreeTokenSourcesAreAUsageError(t *testing.T) {
 
 // Без токена команда отказывает с ошибкой использования
 func TestNoTokenIsAUsageError(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	code, _, errOut := runEnrollCmdTest("--config", f.h.configPath)
 	if code != exitUsage {
@@ -137,6 +138,7 @@ func TestNoTokenIsAUsageError(t *testing.T) {
 
 // Файл токена не найден
 func TestTokenFileNotFound(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	missing := filepath.Join(t.TempDir(), "nope")
 	code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token-file", missing)
@@ -153,6 +155,7 @@ func TestTokenFileNotFound(t *testing.T) {
 
 // Пустой файл токена отклоняется
 func TestEmptyTokenFileIsRejected(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	empty := filepath.Join(t.TempDir(), "empty")
 	if err := os.WriteFile(empty, nil, 0o600); err != nil {
@@ -167,6 +170,7 @@ func TestEmptyTokenFileIsRejected(t *testing.T) {
 
 // Прочие лишние символы в файле токена делают его повреждённым
 func TestOtherStrayCharactersInTheTokenFileAreMalformed(t *testing.T) {
+	t.Parallel()
 	cases := map[string]func(token string) string{
 		"с пробелом в начале":    func(tok string) string { return " " + tok },
 		"с пробелом в конце":     func(tok string) string { return tok + " " },
@@ -175,6 +179,7 @@ func TestOtherStrayCharactersInTheTokenFileAreMalformed(t *testing.T) {
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			f := newLocalFixture(t)
 			path := filepath.Join(t.TempDir(), "token")
 			if err := os.WriteFile(path, []byte(mutate(f.token)), 0o600); err != nil {
@@ -191,6 +196,7 @@ func TestOtherStrayCharactersInTheTokenFileAreMalformed(t *testing.T) {
 
 // Пустое значение флага --token считается заданным и повреждённым
 func TestEmptyTokenFlagValueIsSetAndMalformed(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", "")
 	if code != exitUsage || !strings.Contains(errOut, "TOKEN_MALFORMED") {
@@ -201,6 +207,7 @@ func TestEmptyTokenFlagValueIsSetAndMalformed(t *testing.T) {
 
 // Повреждённая строка токена отклоняется локально
 func TestMalformedTokenStringsAreRejectedLocally(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	valid := f.token
 	secretAndFP := strings.TrimPrefix(valid, "sard_")
@@ -218,6 +225,7 @@ func TestMalformedTokenStringsAreRejectedLocally(t *testing.T) {
 	}
 	for name, tokenStr := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", tokenStr)
 			if code != exitUsage {
 				t.Fatalf("code = %d, want usage; stderr = %q", code, errOut)
@@ -239,8 +247,10 @@ func TestMalformedTokenStringsAreRejectedLocally(t *testing.T) {
 
 // Неразбираемый адрес сервера — ошибка использования
 func TestUnparsableServerAddressIsAUsageError(t *testing.T) {
+	t.Parallel()
 	for _, addr := range []string{"sard.example.com", "https://sard.example.com:9090", "sard.example.com:0", "sard.example.com:65536", "::1:9090"} {
 		t.Run(addr, func(t *testing.T) {
+			t.Parallel()
 			f := newLocalFixture(t)
 			code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--server", addr, "--token", f.token)
 			if code != exitUsage {
@@ -263,8 +273,10 @@ func TestUnparsableServerAddressIsAUsageError(t *testing.T) {
 // server.address, with a message that also happens to echo addr, so a
 // weaker "contains addr" assertion cannot tell the two apart).
 func TestUnparsableServerAddressIsCaughtByItsOwnFormatCheck(t *testing.T) {
+	t.Parallel()
 	for _, addr := range []string{"sard.example.com", "https://sard.example.com:9090", "::1:9090"} {
 		t.Run(addr, func(t *testing.T) {
+			t.Parallel()
 			f := newLocalFixture(t)
 			code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--server", addr, "--token", f.token)
 			if code != exitUsage {
@@ -280,8 +292,10 @@ func TestUnparsableServerAddressIsCaughtByItsOwnFormatCheck(t *testing.T) {
 
 // Неизвестный флаг или лишний аргумент — ошибка использования
 func TestUnknownFlagOrExtraArgumentIsAUsageError(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	t.Run("с флагом --insecure", func(t *testing.T) {
+		t.Parallel()
 		code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token, "--insecure")
 		if code != exitUsage {
 			t.Fatalf("code = %d, want usage", code)
@@ -291,6 +305,7 @@ func TestUnknownFlagOrExtraArgumentIsAUsageError(t *testing.T) {
 		}
 	})
 	t.Run(`с лишним аргументом "extra"`, func(t *testing.T) {
+		t.Parallel()
 		code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token, "extra")
 		if code != exitUsage {
 			t.Fatalf("code = %d, want usage", code)
@@ -304,6 +319,7 @@ func TestUnknownFlagOrExtraArgumentIsAUsageError(t *testing.T) {
 
 // Без --config используется конфиг службы по умолчанию
 func TestWithoutConfigTheDefaultServiceConfigIsUsed(t *testing.T) {
+	t.Parallel()
 	// The literal path, not defaultEnrollConfigPath: comparing against the
 	// same constant the code returns would pass even if that constant were
 	// itself wrong (F9). Going through parseEnrollFlags, not
@@ -328,6 +344,7 @@ func TestWithoutConfigTheDefaultServiceConfigIsUsed(t *testing.T) {
 
 // Отсутствующий конфиг — ошибка использования
 func TestMissingConfigIsAUsageErrorForEnroll(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	missing := filepath.Join(t.TempDir(), "nope.yaml")
 	code, _, errOut := runEnrollCmdTest("--config", missing, "--server", f.h.address, "--token", f.token)
@@ -339,8 +356,10 @@ func TestMissingConfigIsAUsageErrorForEnroll(t *testing.T) {
 
 // Конфиг без пути tls — ошибка использования
 func TestConfigWithoutATLSPathIsAUsageError(t *testing.T) {
+	t.Parallel()
 	for _, key := range []string{"tls.ca_file", "tls.cert_file", "tls.key_file"} {
 		t.Run(key, func(t *testing.T) {
+			t.Parallel()
 			f := newLocalFixture(t)
 			path := writeConfigMissingKey(t, f.h, key)
 			code, _, errOut := runEnrollCmdTest("--config", path, "--server", f.h.address, "--token", f.token)
@@ -376,8 +395,10 @@ func writeConfigMissingKey(t *testing.T, h *host, missing string) string {
 
 // Недопустимый таймаут — ошибка использования
 func TestInvalidTimeoutIsAUsageError(t *testing.T) {
+	t.Parallel()
 	for _, v := range []string{"0s", "-1s"} {
 		t.Run(v, func(t *testing.T) {
+			t.Parallel()
 			f := newLocalFixture(t)
 			code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token, "--timeout", v)
 			if code != exitUsage {
@@ -393,6 +414,7 @@ func TestInvalidTimeoutIsAUsageError(t *testing.T) {
 		})
 	}
 	t.Run("abc", func(t *testing.T) {
+		t.Parallel()
 		f := newLocalFixture(t)
 		code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token, "--timeout", "abc")
 		if code != exitUsage {
@@ -405,6 +427,7 @@ func TestInvalidTimeoutIsAUsageError(t *testing.T) {
 // The smallest positive timeout (1ns) must be accepted — only <= 0 is a
 // usage error, not <= 1ns.
 func TestASingleNanosecondTimeoutIsAccepted(t *testing.T) {
+	t.Parallel()
 	_, code := parseEnrollFlags([]string{"--token", "x", "--timeout", "1ns"}, io.Discard)
 	if code != exitOK {
 		t.Fatalf("code = %d, want 0 (1ns is a positive duration)", code)
@@ -413,6 +436,7 @@ func TestASingleNanosecondTimeoutIsAccepted(t *testing.T) {
 
 // Конфиг без адреса сервера — ошибка использования
 func TestConfigWithoutServerAddressIsAUsageError(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	path := filepath.Join(t.TempDir(), "cfg.yaml")
 	content := "tls:\n  ca_file: " + f.h.caFile + "\n  cert_file: " + f.h.certFile + "\n  key_file: " + f.h.keyFile + "\n"
@@ -431,6 +455,7 @@ func TestConfigWithoutServerAddressIsAUsageError(t *testing.T) {
 
 // Адрес в конфиге отличается от адреса команды
 func TestAddressInTheConfigDiffersFromTheCommand(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	other := "old.example.com:9090"
 	code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--server", other, "--token", f.token)
@@ -449,6 +474,7 @@ func TestAddressInTheConfigDiffersFromTheCommand(t *testing.T) {
 
 // Конфликт адреса не обходится флагом --force
 func TestAddressConflictIsNotBypassedByForce(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--server", "old.example.com:9090", "--token", f.token, "--force")
 	if code != exitUsage {
@@ -459,6 +485,7 @@ func TestAddressConflictIsNotBypassedByForce(t *testing.T) {
 
 // Адреса с разными портами не совпадают
 func TestAddressesWithDifferentPortsDoNotMatch(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	host, port := splitHostPortForTest(t, f.h.address)
 	otherPort := "1"
@@ -483,6 +510,7 @@ func splitHostPortForTest(t *testing.T, addr string) (string, string) {
 
 // Есть сертификат — команда отказывает и называет текущую личность
 func TestAnExistingCertificateRefusesAndNamesTheCurrentIdentity(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	certPEM := writeAgentCertForTest(t, f.h.certFile, "existing-agent")
 	code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)
@@ -502,6 +530,7 @@ func TestAnExistingCertificateRefusesAndNamesTheCurrentIdentity(t *testing.T) {
 
 // Существующая идентичность проверяется раньше доступности сервера
 func TestExistingIdentityIsCheckedBeforeServerReachability(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	writeAgentCertForTest(t, f.h.certFile, "existing-agent")
 	unreachable := "127.0.0.1:1"
@@ -514,6 +543,7 @@ func TestExistingIdentityIsCheckedBeforeServerReachability(t *testing.T) {
 
 // Есть только ключ — команда считает идентичность существующей
 func TestOnlyAKeyExistingCountsAsAnIdentity(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	if err := os.WriteFile(f.h.keyFile, []byte("key material"), 0o600); err != nil {
 		t.Fatal(err)
@@ -529,6 +559,7 @@ func TestOnlyAKeyExistingCountsAsAnIdentity(t *testing.T) {
 
 // Нечитаемый сертификат — команда отказывает и говорит, что agent_id неизвестен
 func TestAnUnreadableCertificateSaysAgentIDIsUnknown(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	if err := os.WriteFile(f.h.certFile, []byte("not a certificate"), 0o644); err != nil {
 		t.Fatal(err)
@@ -547,6 +578,7 @@ func TestAnUnreadableCertificateSaysAgentIDIsUnknown(t *testing.T) {
 
 // Непригодный для записи каталог обнаруживается до обращения к серверу
 func TestAnUnusableDirectoryIsFoundBeforeContactingTheServer(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		setup func(t *testing.T, f *localFixture)
@@ -563,6 +595,7 @@ func TestAnUnusableDirectoryIsFoundBeforeContactingTheServer(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			f := newLocalFixture(t)
 			c.setup(t, f)
 			code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)
@@ -578,6 +611,7 @@ func TestAnUnusableDirectoryIsFoundBeforeContactingTheServer(t *testing.T) {
 // must be refused before the network, not only inside WriteIdentity after
 // a successful Enroll — which would otherwise spend the token for nothing.
 func TestATargetPathThatIsADirectoryIsRefusedBeforeContactingTheServer(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	if err := os.MkdirAll(f.h.caFile, 0o700); err != nil {
 		t.Fatal(err)
@@ -626,12 +660,14 @@ func writeConfigWithMovedFile(t *testing.T, h *host, which, missingDir string) s
 
 // Недопустимое имя хоста отклоняется до обращения к серверу
 func TestInvalidHostnameIsRejectedBeforeContactingTheServer(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		"пустое":          "",
 		"из 254 символов": strings.Repeat("h", 254),
 	}
 	for name, hn := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			f := newLocalFixture(t)
 			bad := func() (string, error) { return hn, nil }
 			code, _, errOut := runEnrollCmdOn(bad, "--config", f.h.configPath, "--token", f.token)
@@ -648,6 +684,7 @@ func TestInvalidHostnameIsRejectedBeforeContactingTheServer(t *testing.T) {
 
 // Токен из файла не раскрывается при ошибке его разбора
 func TestATokenFromAFileIsNotRevealedWhenItsParsingFails(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	bad := f.token + " "
 	path := filepath.Join(t.TempDir(), "token")

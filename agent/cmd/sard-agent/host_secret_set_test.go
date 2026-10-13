@@ -29,6 +29,7 @@ func assertRefusal(t *testing.T, code int, stderr string, wantCode int, reason s
 // Rule "Секрет передаётся только из файла, стандартного ввода или терминала без эха".
 
 func TestStdinValueIsStoredByteForByte(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	value := "SECRET-MARKER\n"
 	code, _, _ := h.set("db", value)
@@ -39,6 +40,7 @@ func TestStdinValueIsStoredByteForByte(t *testing.T) {
 }
 
 func TestFileValueIsStoredByteForByteAndTheSourceIsUntouched(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	src := h.path("outside/F")
 	h.write(src, "SECRET-MARKER\n", 0o644)
@@ -55,6 +57,7 @@ func TestFileValueIsStoredByteForByteAndTheSourceIsUntouched(t *testing.T) {
 }
 
 func TestTerminalValueIsAskedTwiceAndStoredWithoutALineBreak(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	term := h.terminalIs("SECRET-MARKER", "SECRET-MARKER")
 	code, _, stderr := h.sudo("secret", "set", "db", "--config", "C")
@@ -66,6 +69,7 @@ func TestTerminalValueIsAskedTwiceAndStoredWithoutALineBreak(t *testing.T) {
 }
 
 func TestTerminalValuesThatDifferAreRefusedAndNothingChanges(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.terminalIs("SECRET-MARKER-1", "SECRET-MARKER-2")
 	before := h.hostTree()
@@ -76,6 +80,7 @@ func TestTerminalValuesThatDifferAreRefusedAndNothingChanges(t *testing.T) {
 }
 
 func TestWithoutATerminalAndWithoutAFlagNothingIsRead(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.hung = &hungInput{}
 	h.deps.stdin = h.hung
@@ -94,6 +99,7 @@ func TestWithoutATerminalAndWithoutAFlagNothingIsRead(t *testing.T) {
 }
 
 func TestTwoSourcesAreRefused(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	before := h.hostTree()
 	code, _, stderr := h.sudo("secret", "set", "db", "--stdin", "--from-file", h.path("F"), "--config", "C")
@@ -102,6 +108,7 @@ func TestTwoSourcesAreRefused(t *testing.T) {
 }
 
 func TestAValueGivenAsAnArgumentOrFlagIsNotAcceptedNorPrinted(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{
 		{"secret", "set", "db", "SECRET-MARKER", "--config", "C"},
 		{"secret", "set", "db", "--value", "SECRET-MARKER", "--config", "C"},
@@ -117,6 +124,7 @@ func TestAValueGivenAsAnArgumentOrFlagIsNotAcceptedNorPrinted(t *testing.T) {
 }
 
 func TestEmptyValueIsRefused(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	before := h.hostTree()
 	code, _, stderr := h.set("db", "")
@@ -125,6 +133,7 @@ func TestEmptyValueIsRefused(t *testing.T) {
 }
 
 func TestValueOver64KiBIsRefusedAndExactly64KiBIsAccepted(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	before := h.hostTree()
 	code, _, stderr := h.set("db", strings.Repeat("a", 65537))
@@ -138,6 +147,7 @@ func TestValueOver64KiBIsRefusedAndExactly64KiBIsAccepted(t *testing.T) {
 }
 
 func TestMissingValueFileIsRefusedWithItsPath(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	before := h.hostTree()
 	missing := h.path("nowhere/F")
@@ -152,6 +162,7 @@ func TestMissingValueFileIsRefusedWithItsPath(t *testing.T) {
 // Rule "secret set добавляет секрет отдельными файлами с правами A1".
 
 func TestNewSecretIsAValueFileOfTheServiceUser(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, stderr := h.set("db", "SECRET-MARKER")
 	assertCode(t, code, exitOK)
@@ -168,6 +179,7 @@ func TestNewSecretIsAValueFileOfTheServiceUser(t *testing.T) {
 }
 
 func TestNewSecretIsAFragmentOfRootReadableByTheService(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	mainBefore := h.fileContent(h.cfgPath)
 	h.set("db", "SECRET-MARKER")
@@ -200,6 +212,7 @@ func TestCreatedFilesDoNotDependOnTheUmask(t *testing.T) {
 }
 
 func TestMissingSecretsDirectoryIsCreatedForTheServiceUser(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	ok(t, os.RemoveAll(h.secretsDir()))
 	h.cfg.Repositories = nil
@@ -231,6 +244,7 @@ func (h *setupHost) tempFileDirs() []string {
 }
 
 func TestTemporaryFilesLiveInTheDirectoryOfTheirTarget(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, _ := h.set("db", "SECRET-MARKER")
 	assertCode(t, code, exitOK)
@@ -247,6 +261,7 @@ func TestTemporaryFilesLiveInTheDirectoryOfTheirTarget(t *testing.T) {
 }
 
 func TestRepeatingTheSameValueChangesNothing(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, _ := h.set("db", "SECRET-MARKER")
 	assertCode(t, code, exitOK)
@@ -261,6 +276,7 @@ func TestRepeatingTheSameValueChangesNothing(t *testing.T) {
 }
 
 func TestANewValueReplacesTheOldOneAndIsApplied(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.set("db", "SECRET-MARKER-1")
 	h.sd.calls, h.log.lines = nil, nil
@@ -276,6 +292,7 @@ func TestANewValueReplacesTheOldOneAndIsApplied(t *testing.T) {
 }
 
 func TestASecretOfTheMainConfigIsNotChanged(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	before := h.hostTree()
 	code, _, stderr := h.set("pg", "SECRET-MARKER")
@@ -287,6 +304,7 @@ func TestASecretOfTheMainConfigIsNotChanged(t *testing.T) {
 }
 
 func TestAFileAnotherKeyRefersToIsNotOverwritten(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.cfg.Repositories[0].PasswordFile = h.path("secrets/db")
 	h.saveConfig()
@@ -301,6 +319,7 @@ func TestAFileAnotherKeyRefersToIsNotOverwritten(t *testing.T) {
 }
 
 func TestALeftoverFileInPlaceOfTheValueFileIsReplaced(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.write(h.path("secrets/db"), "left by an interrupted command", 0o600)
 	code, _, _ := h.set("db", "SECRET-MARKER")
@@ -311,6 +330,7 @@ func TestALeftoverFileInPlaceOfTheValueFileIsReplaced(t *testing.T) {
 }
 
 func TestInvalidNamesAreRefused(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"", "-db", "db.pass", "../db", "d b", "a" + strings.Repeat("0", 63) + "x"} {
 		h := newSetupHost(t)
 		before := h.hostTree()
@@ -321,14 +341,17 @@ func TestInvalidNamesAreRefused(t *testing.T) {
 }
 
 func TestAName64CharactersLongIsAccepted(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, _ := h.set(strings.Repeat("a", 64), "SECRET-MARKER")
 	assertCode(t, code, exitOK)
 }
 
 func TestAFailedWriteLeavesNoTracesAndTheOldValue(t *testing.T) {
+	t.Parallel()
 	for _, op := range []string{"chown", "rename", "sync", "createtemp"} {
 		t.Run(op, func(t *testing.T) {
+			t.Parallel()
 			h := newSetupHost(t)
 			h.set("db", "SECRET-MARKER-1")
 			h.sd.calls, h.log.lines = nil, nil
@@ -350,6 +373,7 @@ func TestAFailedWriteLeavesNoTracesAndTheOldValue(t *testing.T) {
 }
 
 func TestTheFragmentDirectoryThatCannotBeCreatedIsAWriteError(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.fsys.failOn, h.fsys.failPath = "mkdir", "agent.d"
 	before := h.hostTree()
@@ -362,6 +386,7 @@ func TestTheFragmentDirectoryThatCannotBeCreatedIsAWriteError(t *testing.T) {
 }
 
 func TestTheValueIsNeverInTheFragmentOrTheAudit(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, stderr := h.set("db", "SECRET-MARKER")
 	assertCode(t, code, exitOK)
@@ -374,6 +399,7 @@ func TestTheValueIsNeverInTheFragmentOrTheAudit(t *testing.T) {
 // Правило "Изменяет хост только sudo": отказы изменяющих команд
 
 func TestChangingCommandsFromTheServiceUserAreRefusedWithTheSameCommand(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{
 		{"secret", "set", "db", "--stdin", "--config", "C"},
 		{"secret", "remove", "pg", "--config", "C"},
@@ -394,6 +420,7 @@ func TestChangingCommandsFromTheServiceUserAreRefusedWithTheSameCommand(t *testi
 }
 
 func TestEveryCommandFromAnotherUserIsRefused(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{
 		{"secret", "list", "--config", "C"},
 		{"secret", "set", "db", "--stdin", "--config", "C"},
@@ -412,6 +439,7 @@ func TestEveryCommandFromAnotherUserIsRefused(t *testing.T) {
 }
 
 func TestTheRightToRunIsCheckedBeforeTheConfigOfASecretCommand(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.stdinIs("x")
 	code, _, stderr := h.asService("secret", "set", "db", "--stdin", "--config", h.path("absent.yaml"))
@@ -419,6 +447,7 @@ func TestTheRightToRunIsCheckedBeforeTheConfigOfASecretCommand(t *testing.T) {
 }
 
 func TestWithoutTheServiceUserOnTheHostASecretIsNotSet(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.people = nil
 	before := h.hostTree()
@@ -431,6 +460,7 @@ func TestWithoutTheServiceUserOnTheHostASecretIsNotSet(t *testing.T) {
 }
 
 func TestTheServiceUserOfTheConfigOwnsTheFiles(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.cfg.Service.User = "backup"
 	h.saveConfig()

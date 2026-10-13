@@ -40,6 +40,7 @@ func (h *startHost) goodRestic() string {
 
 // Scenario: Неподдерживаемый crypto_provider одного репозитория останавливает агента
 func TestAnUnsupportedCryptoProviderOfOneRepositoryStopsTheAgent(t *testing.T) {
+	t.Parallel()
 	for _, value := range []string{"gost", "RESTIC-AES", "restic-aes ", "restic"} {
 		h := newStartHost(t)
 		_, stderr := h.refuses(h.cryptoConfig(0o600, h.goodRestic(), nil, ptr(value)))
@@ -59,6 +60,7 @@ func TestAnUnsupportedCryptoProviderOfOneRepositoryStopsTheAgent(t *testing.T) {
 
 // Scenario: Встроенный или не заданный crypto_provider не мешает старту
 func TestTheBuiltInOrAnUnsetCryptoProviderDoesNotPreventTheStart(t *testing.T) {
+	t.Parallel()
 	rows := [][2]*string{{nil, nil}, {ptr(""), nil}, {ptr("restic-aes"), nil}, {ptr("restic-aes"), ptr("")}}
 	for _, row := range rows {
 		h := newStartHost(t)
@@ -70,6 +72,7 @@ func TestTheBuiltInOrAnUnsetCryptoProviderDoesNotPreventTheStart(t *testing.T) {
 
 // Scenario: Из нескольких неподдерживаемых crypto_provider называется первый по порядку конфига
 func TestTheFirstUnsupportedCryptoProviderInConfigOrderIsNamed(t *testing.T) {
+	t.Parallel()
 	h := newStartHost(t)
 	_, stderr := h.refuses(h.cryptoConfig(0o600, h.goodRestic(), ptr("gost"), ptr("aes-gcm")))
 	if !strings.Contains(stderr, `"main"`) || !strings.Contains(stderr, `"gost"`) || strings.Contains(stderr, "offsite") || strings.Contains(stderr, "aes-gcm") {
@@ -79,6 +82,7 @@ func TestTheFirstUnsupportedCryptoProviderInConfigOrderIsNamed(t *testing.T) {
 
 // Scenario: Перевод строки в crypto_provider не разрывает сообщение
 func TestANewlineInCryptoProviderDoesNotBreakTheMessage(t *testing.T) {
+	t.Parallel()
 	h := newStartHost(t)
 	_, stderr := h.refuses(h.cryptoConfig(0o600, h.goodRestic(), nil, ptr("gost\nx")))
 	if strings.Count(stderr, "\n") != 1 || !strings.Contains(stderr, `"gost\nx"`) {
@@ -88,6 +92,7 @@ func TestANewlineInCryptoProviderDoesNotBreakTheMessage(t *testing.T) {
 
 // Scenario: Неподдерживаемый crypto_provider сообщается раньше нарушения прав секретного файла
 func TestAnUnsupportedCryptoProviderIsReportedBeforeASecretFilePermissionProblem(t *testing.T) {
+	t.Parallel()
 	h := newStartHost(t)
 	_, stderr := h.refuses(h.cryptoConfig(0o644, h.goodRestic(), nil, ptr("gost")))
 	if !strings.Contains(stderr, "CRYPTO_PROVIDER_UNSUPPORTED") || strings.Contains(stderr, "-rw-r--r--") {
@@ -97,6 +102,7 @@ func TestAnUnsupportedCryptoProviderIsReportedBeforeASecretFilePermissionProblem
 
 // Scenario: Неподдерживаемый crypto_provider сообщается раньше проблемы с restic
 func TestAnUnsupportedCryptoProviderIsReportedBeforeAResticProblem(t *testing.T) {
+	t.Parallel()
 	h := newStartHost(t)
 	_, stderr := h.refuses(h.cryptoConfig(0o600, filepath.Join(h.dir, "nowhere"), nil, ptr("gost")))
 	if !strings.Contains(stderr, "CRYPTO_PROVIDER_UNSUPPORTED") || strings.Contains(stderr, "RESTIC_NOT_FOUND") {

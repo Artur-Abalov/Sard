@@ -24,6 +24,7 @@ type leakCase struct {
 
 // Ни токен, ни ключ не попадают в вывод команды
 func TestNeitherTheTokenNorTheKeyAppearInCommandOutput(t *testing.T) {
+	t.Parallel()
 	cases := map[string]func(t *testing.T) leakCase{
 		"успех":             leakCaseSuccess,
 		"использование":     leakCaseUsage,
@@ -36,6 +37,7 @@ func TestNeitherTheTokenNorTheKeyAppearInCommandOutput(t *testing.T) {
 	}
 	for name, run := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			requireLeakCase(t, run(t))
 		})
 	}
@@ -104,6 +106,7 @@ func leakCaseWrite(t *testing.T) leakCase {
 
 // В2: a token put into any other flag by mistake is never echoed back.
 func TestATokenPassedAsAnotherFlagsValueIsNeverEchoedBack(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	for name, args := range map[string][]string{
 		"--server":  {"--config", f.h.configPath, "--token", f.token, "--server", f.token},
@@ -111,6 +114,7 @@ func TestATokenPassedAsAnotherFlagsValueIsNeverEchoedBack(t *testing.T) {
 		"--timeout": {"--config", f.h.configPath, "--token", f.token, "--timeout", f.token},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			code, out, errOut := runEnrollCmdTest(args...)
 			if code != exitUsage {
 				t.Fatalf("code = %d, want usage; stderr = %q", code, errOut)
@@ -125,6 +129,7 @@ func TestATokenPassedAsAnotherFlagsValueIsNeverEchoedBack(t *testing.T) {
 // F3: a token pasted without --token (a positional argument), or pasted
 // as the --token-file path by mistake, must never be echoed back.
 func TestPositionalArgumentsAndTokenFilePathsAreNeverEchoedBack(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	t.Run("token pasted without --token", func(t *testing.T) {
 		code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token, f.token)

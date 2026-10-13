@@ -129,6 +129,7 @@ func requireNoKeyMaterial(t *testing.T, outputs ...string) {
 }
 
 func TestAKeyOfAnotherPairStopsTheAgentBeforeConnecting(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeIdentity(t, dir)
 	other, _ := identityPEM(t)
@@ -146,6 +147,7 @@ func TestAKeyOfAnotherPairStopsTheAgentBeforeConnecting(t *testing.T) {
 
 // A1 reports the key's permissions before the pair is compared.
 func TestKeyPermissionsAreReportedBeforeTheMismatch(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeIdentity(t, dir)
 	other, _ := identityPEM(t)
@@ -157,6 +159,7 @@ func TestKeyPermissionsAreReportedBeforeTheMismatch(t *testing.T) {
 }
 
 func TestAFileProblemNamesTheKeyAndPathNotTheContent(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		file, key string
 		data      []byte

@@ -46,6 +46,7 @@ func writeConfig(t *testing.T, content string) string {
 }
 
 func TestVersionFlag(t *testing.T) {
+	t.Parallel()
 	code, out, _ := runAgent("--version")
 	if code != 0 || out != "sard-agent dev\n" {
 		t.Fatalf("code = %d, out = %q", code, out)
@@ -53,6 +54,7 @@ func TestVersionFlag(t *testing.T) {
 }
 
 func TestMissingConfigIsAUsageError(t *testing.T) {
+	t.Parallel()
 	code, _, errOut := runAgent()
 	if code != 2 || !strings.Contains(errOut, "--config <path> is required") || !strings.Contains(errOut, "-config string") {
 		t.Fatalf("code = %d, stderr = %q", code, errOut)
@@ -63,6 +65,7 @@ func TestMissingConfigIsAUsageError(t *testing.T) {
 // enroll subcommand (len(args) > 0, not > 1 — a boundary a "just enroll,
 // no flags" invocation is the only way to exercise).
 func TestEnrollWithNoOtherArgumentsDispatchesToEnroll(t *testing.T) {
+	t.Parallel()
 	code, _, errOut := runAgent("enroll")
 	if code != exitUsage {
 		t.Fatalf("code = %d, want usage", code)
@@ -78,6 +81,7 @@ func TestEnrollWithNoOtherArgumentsDispatchesToEnroll(t *testing.T) {
 }
 
 func TestUnknownFlagIsAUsageError(t *testing.T) {
+	t.Parallel()
 	code, _, errOut := runAgent("--listen", ":9090")
 	if code != 2 || !strings.Contains(errOut, "flag provided but not defined: -listen") {
 		t.Fatalf("code = %d, stderr = %q", code, errOut)
@@ -85,6 +89,7 @@ func TestUnknownFlagIsAUsageError(t *testing.T) {
 }
 
 func TestUnknownFlagAfterConfigStopsBeforeStarting(t *testing.T) {
+	t.Parallel()
 	cfg := writeConfig(t, "server:\n  address: sard.example.com:9090\n")
 	code, out, _ := runAgent("--config", cfg, "--listen", ":9090")
 	if code != 2 || out != "" {
@@ -100,6 +105,7 @@ func withRestic(t *testing.T) string {
 }
 
 func TestHostnameFailure(t *testing.T) {
+	t.Parallel()
 	cfg := writeConfig(t, "server:\n  address: sard.example.com:9090\n"+withRestic(t))
 	broken := func() (string, error) { return "", errors.New("uname failed") }
 	code, _, errOut := runAgentOn(broken, "--config", cfg)
@@ -109,6 +115,7 @@ func TestHostnameFailure(t *testing.T) {
 }
 
 func TestConfigErrorsExitWithOne(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		filepath.Join(t.TempDir(), "missing.yaml"): "no such file",
 		writeConfig(t, "server: ["):                "parse config",
@@ -124,6 +131,7 @@ func TestConfigErrorsExitWithOne(t *testing.T) {
 
 // Without tls.* the agent cannot dial and says which setting is missing.
 func TestConfigWithoutTLSStopsBeforeDialing(t *testing.T) {
+	t.Parallel()
 	cfg := "server:\n  address: sard.example.com:9090\n" + withRestic(t)
 	code, _, errOut := runAgent("--config", writeConfig(t, cfg))
 	if code != 1 || errOut != "sard-agent: invalid transport options: tls.ca_file is required\n" {
@@ -135,6 +143,7 @@ func TestConfigWithoutTLSStopsBeforeDialing(t *testing.T) {
 // over TLS; nothing listens on the port here, so it retries until stopped,
 // and a stop is a clean exit.
 func TestValidConfigDialsTheServerUntilStopped(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	ca := writeIdentity(t, dir)
 	cfg := "server:\n  address: 127.0.0.1:1\n" +
@@ -151,6 +160,7 @@ func TestValidConfigDialsTheServerUntilStopped(t *testing.T) {
 
 // The executor's state dir is checked before the agent connects.
 func TestAnUnusableStateDirStopsBeforeDialing(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	ca := writeIdentity(t, dir)
 	cfg := "server:\n  address: 127.0.0.1:1\n" +
@@ -163,6 +173,7 @@ func TestAnUnusableStateDirStopsBeforeDialing(t *testing.T) {
 }
 
 func TestTheExecutorKnowsTheConfiguredRepositories(t *testing.T) {
+	t.Parallel()
 	got := repositoryNames([]config.Repository{{Name: "main"}, {Name: "offsite"}})
 	if strings.Join(got, ",") != "main,offsite" {
 		t.Fatalf("names = %v", got)
@@ -170,6 +181,7 @@ func TestTheExecutorKnowsTheConfiguredRepositories(t *testing.T) {
 }
 
 func TestEveryConfiguredRepositoryIsOpenedByName(t *testing.T) {
+	t.Parallel()
 	repos := openRepositories(config.Config{Repositories: []config.Repository{{Name: "main"}, {Name: "offsite"}}}, restic.Options{})
 	if _, ok := repos.get("offsite", "c1", nil); !ok || len(repos) != 2 {
 		t.Errorf("repositories = %v", repos)
@@ -180,6 +192,7 @@ func TestEveryConfiguredRepositoryIsOpenedByName(t *testing.T) {
 }
 
 func TestRestoredCopiesLiveInTheExecutorStateDir(t *testing.T) {
+	t.Parallel()
 	if got := restoreDir(""); got != "/var/lib/sard-agent/executor/restore" {
 		t.Errorf("default = %q", got)
 	}
@@ -189,6 +202,7 @@ func TestRestoredCopiesLiveInTheExecutorStateDir(t *testing.T) {
 }
 
 func TestExecutorStateDirDefaultsUnderTheSystemdStateDirectory(t *testing.T) {
+	t.Parallel()
 	if got := executorStateDir(""); got != "/var/lib/sard-agent/executor" {
 		t.Errorf("default = %q", got)
 	}
@@ -229,6 +243,7 @@ func TestMainProcess(t *testing.T) {
 // A1: a secret file open to the group or others stops the agent before it
 // tries to connect to anything.
 func TestASecretFileOpenBeyondItsOwnerRefusesStart(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	keyFile := filepath.Join(dir, "agent.key")
 	if err := os.WriteFile(keyFile, nil, 0o640); err != nil {
@@ -244,6 +259,7 @@ func TestASecretFileOpenBeyondItsOwnerRefusesStart(t *testing.T) {
 
 // Without restic.path the agent runs the restic shipped next to it.
 func TestResticPath(t *testing.T) {
+	t.Parallel()
 	exe := func() (string, error) { return "/opt/sard/bin/sard-agent", nil }
 	if got, err := resticPath("", exe); got != "/opt/sard/bin/restic" || err != nil {
 		t.Errorf("default = %q, %v", got, err)
@@ -258,6 +274,7 @@ func TestResticPath(t *testing.T) {
 }
 
 func TestStartStopsWhenResticCannotBeLocated(t *testing.T) {
+	t.Parallel()
 	cfg := writeConfig(t, "server:\n  address: sard.example.com:9090\n")
 	broken := func() (string, error) { return "", errors.ErrUnsupported }
 	err := start(context.Background(), cfg, io.Discard, fixedHostname, broken)

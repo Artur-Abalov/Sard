@@ -49,6 +49,7 @@ func stillRunning(t *testing.T, done <-chan cmdResult) {
 
 // Без флага таймаута команда ждёт бэкенд 2 минуты
 func TestWithoutATimeoutFlagTheCommandWaitsForTheBackendFor2Minutes(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().hangInit = true
 	done := h.start(context.Background(), "init", "--config", "C", "main")
@@ -68,6 +69,7 @@ func TestWithoutATimeoutFlagTheCommandWaitsForTheBackendFor2Minutes(t *testing.T
 
 // Флаг таймаута меняет время ожидания
 func TestTheTimeoutFlagChangesTheWait(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().hangInit = true
 	done := h.start(context.Background(), "init", "--config", "C", "--timeout", "5s", "main")
@@ -81,6 +83,7 @@ func TestTheTimeoutFlagChangesTheWait(t *testing.T) {
 
 // Истечение таймаута останавливает restic и не выдаёт успех
 func TestATimeoutStopsResticAndIsNoSuccess(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().hangInit = true
 	before := h.snapshot()
@@ -102,6 +105,7 @@ func TestATimeoutStopsResticAndIsNoSuccess(t *testing.T) {
 
 // Таймаут во время проверки существующего репозитория — временная ошибка
 func TestATimeoutWhileCheckingTheExistingRepositoryIsTemporary(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().hangCat = true
 	done := h.start(context.Background(), "init", "--config", "C", "main")
@@ -119,6 +123,7 @@ func TestATimeoutWhileCheckingTheExistingRepositoryIsTemporary(t *testing.T) {
 
 // Прерывание команды останавливает restic и не выдаёт успех
 func TestAnInterruptStopsResticAndIsNoSuccess(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().hangInit = true
 	before := h.snapshot()
@@ -142,6 +147,7 @@ func TestAnInterruptStopsResticAndIsNoSuccess(t *testing.T) {
 
 // Вторая одновременная инициализация того же репозитория отказывает до обращения к бэкенду
 func TestASecondConcurrentInitOfTheSameRepositoryIsRefusedBeforeTheBackend(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().hangInit = true
 	ctx, stop := context.WithCancel(context.Background())
@@ -159,6 +165,7 @@ func TestASecondConcurrentInitOfTheSameRepositoryIsRefusedBeforeTheBackend(t *te
 
 // Инициализации разных репозиториев одного хоста не мешают друг другу
 func TestInitsOfDifferentRepositoriesDoNotBlockEachOther(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().hangInit = true
 	ctx, stop := context.WithCancel(context.Background())
@@ -174,6 +181,7 @@ func TestInitsOfDifferentRepositoriesDoNotBlockEachOther(t *testing.T) {
 
 // После завершения первой команды блокировка не мешает повтору
 func TestTheLockDoesNotHinderARepeatAfterTheFirstCommandEnded(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().hangInit = true
 	first := h.start(context.Background(), "init", "--config", "C", "main")
