@@ -183,8 +183,8 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
     (Р79: существующая цель блокируется до проверки пустоты)
     → вторая `exit=6`, `TARGET_BUSY`, `/srv/r10`; первая `exit=0`.
 25. Прерывание: `sudo $AG repo restore main $BID --target /srv/r11`, через 2 с
-    Ctrl-C → `exit=6`, `INTERRUPTED`, сообщение говорит о частично
-    восстановленных файлах; `pgrep -u root,sard-agent restic` → пусто;
+    Ctrl-C → `exit=6`, `INTERRUPTED`, сообщение говорит, что в цель ничего
+    не перенесено (Р80); `sudo ls -A /srv/r11` → пусто или каталога нет; `pgrep -u root,sard-agent restic` → пусто;
     `audit` → строка `… restore to /srv/r11 failed: INTERRUPTED`.
 26. Нет места: `truncate -s 64M "$OUT/small.img"; sudo mkfs.ext4 -q -F "$OUT/small.img"; sudo install -d /srv/r12; sudo mount -o loop "$OUT/small.img" /srv/r12`;
     `sudo $AG repo restore main $BID --target /srv/r12; echo "exit=$?"` →
@@ -192,7 +192,8 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
 27. Хранилище пропало посреди: восстановление `$BID` из `s1` (после бэкапа
     `/srv/big` в `s1`) в `/srv/r13`; через 3 с закрыть порт хранилища
     (шаг 8) → не позже чем через 10 мин `exit=6`, `BACKEND_UNAVAILABLE`,
-    сообщение о частично восстановленных файлах. Убрать правило.
+    сообщение говорит, что в цель ничего не перенесено (Р80); `sudo ls -A /srv/r13`
+    → пусто или каталога нет. Убрать правило.
 28. После шагов 18–27: `owned_root` → пусто; бэкап `qa-files` из консоли →
     `succeeded`.
 
@@ -278,7 +279,9 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
 50. Документация: в `docs/operations/agent-host-setup.md` есть раздел о
     снимках и восстановлении с `sudo sard-agent repo snapshots`,
     `sudo sard-agent repo restore`, `--allow-root-target`, восстановлением на
-    новом хосте без регистрации и `restorecon -R`;
+    новом хосте без регистрации и `restorecon -R`; (Р82) раздел и ADR 0056
+    советуют восстанавливать в новую цель или в существующую root 0700 и
+    проверять `find <цель> -perm /6000`, прежде чем что-то выносить;
     `grep -nE 'restic (snapshots|dump|restore)' docs/plugins/postgresql.md docs/operations/agent-host-setup.md docs/operator/*.md`
     → пусто, кроме `docs/operator/06-data-and-backup.md` (самобэкап сервера,
     вне A8c); `docs/plugins/postgresql.md`, «Восстановление руками», ведёт через
