@@ -213,3 +213,38 @@ ADR: `docs/adr/00XX-draft-f4b-onboarding-self-backup.md`.
    значения пароля, ключа `"password"`, `sard-db` и `password_ref`; `passwordRevealCommand` (К12)
    допустим. `docs/qa/onboarding-self-backup.md`, часть 1, шаг 3 — так же.
 Поправка записана в заголовках обоих файлов. Часть 5 QA статус запуска не называет — без изменений.
+
+## Coder: правки по ревью architect (CHANGES REQUIRED, 2026-10-13)
+
+Тесты писались раньше кода; наблюдавшиеся падения указаны.
+1. F1 (P0, ADR 0008). `isSafeLocation` перенесён из `api/RecoveryCards.kt` в `selfbackup/StorageLocation.kt`
+   и вызывается в `SelfBackups.bind` (`LocationInvalid`, 422 `validation_failed` у `location` в
+   `SelfBackupExceptionHandler`). Учётные данные ищутся после любой цепочки префиксов схемы (`s3:`,
+   `rest:`, `https:`, `foo://`) в любом регистре; пароль в `user:password@` отклоняется всегда, а любое имя
+   пользователя в адресе http(s) — как токен (`https://ghp_TOKEN@host/r`); `sftp://backup@host` допустим.
+   Тесты: `StorageLocationTest` (падал на `SFTP:backup@…`, `https://ghp_TOKEN@host/r`,
+   `s3:HTTPS://AKIA123:secret@…`), `SelfBackupIntegrationTest` («Привязка с адресом, в котором учётные
+   данные, отклоняется…»: падал «Expected an exception … LocationInvalid»), адреса добавлены в
+   `OnboardingSelfBackupApiIntegrationTest` (422). Известный предел: секрет с `/` внутри пароля в
+   неэкранированном виде (`user:pa/ss@host`) режется по первому слэшу и не распознаётся.
+2. F2 (P0, ADR 0013 п. 8). Тест `ArchitectureTest` «native SQL on a tenant table names tenant_id» упал на
+   `JdbcGuardTargets` (две строки); `JdbcGuardTargets` заменён `TenantGuardTargets` над
+   `SelfBackups.isSystemSource` и `Agents.isLiveBuiltin` (JPA, фильтр тенанта); тесты в
+   `SelfBackupIntegrationTest` и `AgentsBuiltinLiveIntegrationTest` (падали на заглушке `false`).
+   В ADR 0013 п. 8 названо единственное исключение `TokensRevokedOnCaReplacement`; `selfbackup` добавлен в
+   `ISOLATED_PACKAGES`.
+3. F3 (P1). `SelfBackupSingleConnectionIntegrationTest` (пул из одного соединения, таймаут 2 с) упал
+   `CannotGetJdbcConnectionException` в `viewIn` → `JdbcOnboardingSteps`; `onboardingComplete()` теперь
+   читается до `inTenant` в `bind`/`get`/`confirmKeys` и передаётся булевым значением.
+4. F4 (P1, Р27) НЕ сделано: конфликт со спецификацией. `docs/specs/server/onboarding-self-backup.feature`
+   (Р27 и сценарий «Команда показа пароля появляется после привязки») требует точную строку
+   `docker compose exec self-agent sard-agent repo password … --reveal --config …`, а `exec` обходит
+   ENTRYPOINT образа (`/usr/libexec/sard/sard-agent`, в PATH его нет). Нужна поправка спецификации
+   (specifier), затем одна строка в `SelfBackupCommands.kt` и ожидаемые строки. Форма `repo add`
+   (`docker compose run … self-agent repo add`) проходит через ENTRYPOINT и разрешается верно.
+5. F5 (P1). `scripts/test-self-agent.sh`, группа 8: путь шагов 3–4 по REST с локальным репозиторием; не
+   запускалась (нет образов), `bash -n` чисто, shellcheck недоступен.
+6. Рк18. Мок по умолчанию привязан к `self` (s3), оба запуска `succeeded`, копия ключей подтверждена
+   (`web/src/mocks/selfBackupSources.ts`, `state.ts`); тесты F6, привязывающие сами, начинают с `unbind()`.
+7. F6 (P2). Абзац-исключение (черновик, «pending owner sign-off») в ADR 0008 и в последствиях
+   `00XX-draft-f4b-onboarding-self-backup.md`.
