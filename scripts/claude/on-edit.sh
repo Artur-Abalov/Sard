@@ -41,7 +41,9 @@ case "$rel" in
     report bash -c "cd '$mod' && GOWORK='$gowork' go vet '$pkg' && GOWORK='$gowork' go test -count=1 '$pkg'"
     ;;
   server/*.kt | server/*.kts)
-    report bash -c "cd '$ROOT' && LC_ALL=C.UTF-8 ./gradlew --no-daemon -q :server:compileTestKotlin"
+    # A warm Gradle daemon compiles incrementally; a daemon started without a UTF-8 locale fails
+    # fast in KotlinCompile (server/build.gradle.kts). The gates themselves stay --no-daemon.
+    report bash -c "cd '$ROOT' && LC_ALL=C.UTF-8 ./gradlew -q :server:compileTestKotlin"
     ;;
   proto/*.proto)
     report make -C "$ROOT" lint-proto
