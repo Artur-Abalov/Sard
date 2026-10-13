@@ -14,6 +14,9 @@
 #   mutant), and reported on a "mutate-exec: TIMEOUT" line.
 # - A package whose unmutated tests fail or hang cannot judge mutants: that is
 #   an error (exit 3), never a kill.
+# - Test binaries run with at most MEMORY_LIMIT_MB of address space: a
+#   mutant that allocates without end is killed by "out of memory", not the
+#   runner by the kernel.
 #
 # Exit codes are go-mutesting's: 0 killed, 1 survived, 2 did not compile,
 # 3 error. Input: MUTATE_ORIGINAL, MUTATE_CHANGED, MUTATE_PACKAGE (set by
@@ -24,6 +27,11 @@ set -uo pipefail
 TIMEOUT_FACTOR=3
 TIMEOUT_MIN_S=30
 BASELINE_LIMIT_S=600
+# Address space of a test binary, baseline included: a mutant that allocates
+# without end (an endless loop that appends) dies with "out of memory" instead
+# of taking the host down. Every agent, sdk, cli and tools package passes
+# well within it unmutated.
+MEMORY_LIMIT_MB=3072
 
 : "${MUTATE_ORIGINAL:?}" "${MUTATE_CHANGED:?}" "${MUTATE_PACKAGE:?}" "${MUTATE_STATE_DIR:?}"
 
@@ -37,7 +45,7 @@ now_ms() { echo $(($(date +%s%N) / 1000000)); }
 run_tests() {
   local start status
   start="$(now_ms)"
-  (cd "$2" && timeout --signal=KILL "$3" "$1" -test.count=1 -test.timeout=0 >/dev/null 2>&1)
+  (ulimit -v $((MEMORY_LIMIT_MB * 1024)) && cd "$2" && timeout --signal=KILL "$3" "$1" -test.count=1 -test.timeout=0 >/dev/null 2>&1)
   status=$?
   echo $(($(now_ms) - start))
   [ "$status" -eq 137 ] && status=124
