@@ -261,6 +261,47 @@ class OnboardingGuardApiIntegrationTest(
     }
 
     @Test
+    fun `Обновлённая установка не выпускает токен и по обходному пути`() {
+        jdbc.markUpgraded()
+        val before = counts()
+
+        val paths = listOf("/api/v1/enrollment-tokens;x=1", "/api/v1/enrollment%2Dtokens", "/api/v1/enrollment-tokens/")
+        for (path in paths) {
+            val response = world.api.sendUnchecked("POST", path, admin, "{}")
+
+            assertTrue(response.status != 201, "$path: $response")
+            assertTrue(response.status in setOf(400, 404, 409), "$path: $response")
+            if (response.status == 409) assertEquals("onboarding_incomplete", response.code, path)
+        }
+        assertEquals(before, counts())
+    }
+
+    @Test
+    fun `Полное ограничение не открывает запрещённое действие обходным путём`() {
+        val source = validSource()
+        val random = UUID.randomUUID()
+        val requests =
+            listOf(
+                "/api/v1/onboarding/../sources",
+                "/api/v1/sources;x=1",
+                "/api/v1/s%6Frces",
+                "/api/v1/enrollment-tokens;x=1",
+                "/api/v1/onboarding;x=1/../sources",
+                "/api/v1/sources/$random;x=1/schedule",
+                "/api/v1/agents/$random%2Frevoke",
+            )
+        val before = counts()
+
+        for (path in requests) {
+            val response = world.api.sendUnchecked("POST", path, admin, source)
+
+            assertTrue(response.status != 201 && response.status != 200, "$path: $response")
+            if (response.status == 409) assertEquals("onboarding_incomplete", response.code, path)
+        }
+        assertEquals(before, counts())
+    }
+
+    @Test
     fun `Обновлённая установка разрешает прочие изменения до завершения онбординга`() {
         jdbc.markUpgraded()
         val created = send("POST", "/api/v1/sources", sourceJson("mine", agent.agentId))

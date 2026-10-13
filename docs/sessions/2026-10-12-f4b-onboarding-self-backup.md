@@ -333,3 +333,12 @@ ADR: `docs/adr/00XX-draft-f4b-onboarding-self-backup.md`.
 - New test: every address `RepositoryCommands` builds is accepted by `isSafeLocation`.
 - NOT committed (blocked, returned to coder): a path-bypass test of the D8 guard and the widened rule-8 architecture test, see the hardener report.
 - `./scripts/gate.sh server`: PASSED (coverage 96.8%, 1905 mutations, 0 survivors). `./scripts/gate.sh web`: PASSED (no mutation testing for web).
+
+## Coder: D8 path bypass fixed, rule-8 test widened
+
+- Bypass: on NEW_AGENTS, `POST /api/v1/enrollment-tokens;x=1` and `/api/v1/enrollment%2Dtokens` issued a token (201): `OnboardingGuard` compared the raw `requestURI` with the denied operation. Observed before the fix: the new test `Обновлённая установка не выпускает токен и по обходному пути` failed on the 201.
+- Fix: `OnboardingGuard` decides on `HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE` (the template, the same form `OnboardingRules.gated` and the OpenAPI use) and takes ids from `URI_TEMPLATE_VARIABLES_ATTRIBUTE`. `OnboardingRules.allowed` now takes (method, template, variables); the system-source and built-in-agent checks match `/api/v1/sources/{sourceId}/schedule` and `/api/v1/agents/{agentId}/revoke`. A mutating request with no matched template under any restriction other than NONE is refused (409), i.e. fails closed.
+- FULL variant test `Полное ограничение не открывает запрещённое действие обходным путём` (`/onboarding/../sources`, `;x=1`, `%6F`, `..;`, matrix on schedule/revoke): already refused before the fix (the raw URI was not in the allow-list), kept as a regression guard for the template-based rewrite.
+- Test helper: `ApiClient.sendUnchecked` (no ContractCheck) for paths the OpenAPI does not know; `send` is built on it.
+- Widened `ArchitectureTest` rule 8 landed (JDBC import, `createNativeQuery`/`createNativeMutationQuery`/`prepareStatement`; tenant tables from the Flyway migrations; `$CONST` expansion). It found two installation-wide reads by design, now in the exception set and in ADR 0013: `Scheduler.kt` (`LAST_SLOT`, `max(catch_up_at)` over all tenants in `sessions.system`) and `JdbcCaLedger.kt` (`select 1 from agent_certificates`, whether any agent of any tenant holds a certificate decides if the installation's CA can be replaced; its KDoc says "any agent certificate of any tenant").
+- Next: `cleaner`.

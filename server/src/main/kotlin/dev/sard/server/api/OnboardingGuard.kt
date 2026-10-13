@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.servlet.HandlerInterceptor
+import org.springframework.web.servlet.HandlerMapping
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import java.util.UUID
@@ -24,9 +25,8 @@ import java.util.UUID
 private val MUTATING = setOf("POST", "PUT", "DELETE")
 private const val ISSUE_TOKEN = "POST /api/v1/enrollment-tokens"
 private const val ONBOARDING_PATH = "/api/v1/onboarding/"
-private const val UUID_TEXT = "[0-9a-fA-F-]{36}"
-private val SOURCE_SCHEDULE = Regex("/api/v1/sources/($UUID_TEXT)/schedule")
-private val AGENT_REVOKE = Regex("/api/v1/agents/($UUID_TEXT)/revoke")
+private const val SOURCE_SCHEDULE = "PUT /api/v1/sources/{sourceId}/schedule"
+private const val AGENT_REVOKE = "POST /api/v1/agents/{agentId}/revoke"
 
 /** The mutating operations the full restriction lets through whoever they name (OQ-209). */
 private val ALWAYS_OPEN =
@@ -51,48 +51,59 @@ interface GuardTargets {
 /** A change was asked for while the onboarding is not complete (409 onboarding_incomplete, D8). */
 class OnboardingIncomplete : RuntimeException("the onboarding is not complete")
 
-private fun idIn(
-    pattern: Regex,
-    path: String,
-): UUID? = pattern.matchEntire(path)?.let { runCatching { UUID.fromString(it.groupValues[1]) }.getOrNull() }
+private fun idOf(
+    variables: Map<String, String>,
+    name: String,
+): UUID? = variables[name]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
-/** Р22: which mutating requests each restriction lets through. */
+/**
+ * Р22: which mutating requests each restriction lets through. The decision is made on the template the request
+ * matched, never on the raw URI, so `;x=1`, `%2D` and `..` cannot change what is asked about.
+ */
 internal object OnboardingRules {
     fun allowed(
         method: String,
-        path: String,
+        template: String,
+        variables: Map<String, String>,
         restriction: OnboardingRestriction,
         targets: GuardTargets,
     ): Boolean =
         when (restriction) {
             OnboardingRestriction.NONE -> true
-            OnboardingRestriction.NEW_AGENTS -> "$method $path" != ISSUE_TOKEN
-            OnboardingRestriction.FULL -> openToFull(method, path, targets)
+            OnboardingRestriction.NEW_AGENTS -> "$method $template" != ISSUE_TOKEN
+            OnboardingRestriction.FULL -> openToFull(method, template, variables, targets)
         }
 
     private fun openToFull(
         method: String,
-        path: String,
+        template: String,
+        variables: Map<String, String>,
         targets: GuardTargets,
     ): Boolean =
-        "$method $path" in ALWAYS_OPEN ||
-            path.startsWith(ONBOARDING_PATH) ||
-            systemSchedule(method, path, targets) ||
-            builtinRevocation(method, path, targets)
+        "$method $template" in ALWAYS_OPEN ||
+            template.startsWith(ONBOARDING_PATH) ||
+            systemSchedule(method, template, variables, targets) ||
+            builtinRevocation(method, template, variables, targets)
 
     /** The schedule of a system source (OQ-209). */
     private fun systemSchedule(
         method: String,
-        path: String,
+        template: String,
+        variables: Map<String, String>,
         targets: GuardTargets,
-    ): Boolean = method == "PUT" && idIn(SOURCE_SCHEDULE, path)?.let(targets::isSystemSource) == true
+    ): Boolean =
+        "$method $template" == SOURCE_SCHEDULE &&
+            idOf(variables, "sourceId")?.let(targets::isSystemSource) == true
 
     /** The revocation of the live built-in agent, which the REST layer asks to confirm (OQ-209). */
     private fun builtinRevocation(
         method: String,
-        path: String,
+        template: String,
+        variables: Map<String, String>,
         targets: GuardTargets,
-    ): Boolean = method == "POST" && idIn(AGENT_REVOKE, path)?.let(targets::isBuiltinAgent) == true
+    ): Boolean =
+        "$method $template" == AGENT_REVOKE &&
+            idOf(variables, "agentId")?.let(targets::isBuiltinAgent) == true
 
     /** Whether the operation of the contract can be refused by some restriction: the document says so. */
     fun gated(
@@ -114,12 +125,22 @@ class OnboardingGuard(
         response: HttpServletResponse,
         handler: Any,
     ): Boolean {
-        if (request.method !in MUTATING) return true
-        val restriction = onboarding.restriction()
-        if (!OnboardingRules.allowed(request.method, request.requestURI, restriction, targets)) {
-            throw OnboardingIncomplete()
-        }
+        if (request.method in MUTATING && !permitted(request)) throw OnboardingIncomplete()
         return true
+    }
+
+    private fun permitted(request: HttpServletRequest): Boolean {
+        val restriction = onboarding.restriction()
+        // No matched template: nothing to decide on, so the request is refused.
+        val template = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE) as? String
+        val variables = variablesOf(request)
+        return restriction == OnboardingRestriction.NONE ||
+            (template != null && OnboardingRules.allowed(request.method, template, variables, restriction, targets))
+    }
+
+    private fun variablesOf(request: HttpServletRequest): Map<String, String> {
+        val attribute = request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE)
+        return (attribute as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value.toString() }.orEmpty()
     }
 }
 
