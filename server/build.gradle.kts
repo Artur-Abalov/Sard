@@ -148,6 +148,9 @@ val buildTestAgent by tasks.registering(Exec::class) {
 // isolation). Those classes carry @Tag("mutflow-isolated"), MutationIsolationTest fails if one lacks it, and they run in isolatedTest, one JVM per class.
 val isolatedTag = "mutflow-isolated"
 
+// The mutation run of the gate (ADR 0006): mutflow compiles a mutated copy of main and tests that.
+val mutationRun = providers.gradleProperty("mutflow.enabled").map(String::toBoolean).getOrElse(false)
+
 // Both test tasks are configured alike: the properties, environment, heap and, through the mutflow
 // plugin (which configures every Test task), the mutated classes first on the classpath.
 tasks.withType<Test>().configureEach {
@@ -184,7 +187,13 @@ tasks.withType<Test>().configureEach {
     maxHeapSize = "1g"
     // No agent release next to the test server; AgentDownloadsIntegrationTest switches downloads on.
     environment("SARD_AGENT_DOWNLOADS", "false")
-    finalizedBy(tasks.jacocoTestReport)
+    // The mutation run (gate.sh, -Pmutflow.enabled=true) runs the mutated compilation, whose
+    // coverage is meaningless and would overwrite the report of :server:check: no JaCoCo agent there.
+    if (mutationRun) {
+        extensions.configure<JacocoTaskExtension> { isEnabled = false }
+    } else {
+        finalizedBy(tasks.jacocoTestReport)
+    }
 }
 
 tasks.test {
