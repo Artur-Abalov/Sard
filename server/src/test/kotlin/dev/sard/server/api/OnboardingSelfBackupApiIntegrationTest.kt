@@ -530,6 +530,7 @@ class OnboardingSelfBackupApiIntegrationTest(
                 "S3:https://AKIA:secret@host/b",
                 "s3:HTTPS://AKIA123:secret@minio.example.net/acme",
                 "https://ghp_TOKEN@host/r",
+                " s3:https://AKIA:secret@h/b",
                 "s3:acme-sard\\nprod",
                 "x".repeat(1025),
             )

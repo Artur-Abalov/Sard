@@ -311,3 +311,9 @@ ADR: `docs/adr/00XX-draft-f4b-onboarding-self-backup.md`.
   `docs/adr/0008-crypto-provider.md`. Решения, сценарии и примеры не менялись; консоль всегда шлёт
   адрес, собранный сервером из проверенных параметров, поэтому пределы касаются только API-клиентов,
   пишущих адрес вручную.
+
+## Architect re-review fixes (coder)
+
+- P1: `isSafeLocation` let credentials through when the address had a leading space, quotes, an `ENV=` prefix or a single slash after the scheme. Tests added first (4 vectors in `StorageLocationTest`, one failed first on ` s3:https://AKIA:secret@h/b`); fix: AUTHORITY takes `/*` instead of `(?://)?`, plus `EMBEDDED_USERINFO` scanned over the whole text (helper `isCredentialFree` keeps CRAP <= 6). `s3:https://minio:9000/b/a@b` stays valid. The leading-space case is also in the 422 examples of `OnboardingSelfBackupApiIntegrationTest`.
+- P3: `scripts/test-self-agent.sh` group 8 binds with the `address` of the repository-command response instead of a hard-coded path.
+- `./scripts/gate.sh server fast`: PASSED.

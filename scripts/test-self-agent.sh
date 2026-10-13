@@ -276,6 +276,7 @@ restriction() { get /onboarding | json_field 'd["restriction"]'; }
 [ "$(restriction)" != none ] || fail "8: the restriction is none before the self-backup is bound"
 cmd="$(get '/self-backup/repository-command?storage=local')" || fail "8: no repository-command for local storage"
 repo="$(printf '%s' "$cmd" | json_field 'd["repositoryName"]')"
+address="$(printf '%s' "$cmd" | json_field 'd["address"]')"
 printf '%s' "$cmd" | json_field '"\n".join(d["commands"])' >"$work/repo-commands.sh"
 [ -s "$work/repo-commands.sh" ] || fail "8: the returned command list is empty"
 while IFS= read -r line; do
@@ -291,7 +292,7 @@ for _ in $(seq 1 120); do
 done
 [ -n "$repo_id" ] || fail "8: the repository $repo has no restic id in GET /self-backup within 120 s"
 pass "8: repository $repo registered with restic id $repo_id"
-bound="$(send PUT /self-backup/repository "{\"repositoryName\":\"$repo\",\"confirmLocalStorage\":true,\"location\":\"/var/lib/sard-self/$repo\"}")"
+bound="$(send PUT /self-backup/repository "{\"repositoryName\":\"$repo\",\"confirmLocalStorage\":true,\"location\":\"$address\"}")"
 [ "${bound%% *}" = 200 ] || fail "8: binding answered ${bound%% *}: ${bound#* }"
 started="$(send POST /self-backup/runs)"
 [ "${started%% *}" = 200 ] || fail "8: back up now answered ${started%% *}: ${started#* }"

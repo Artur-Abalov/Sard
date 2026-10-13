@@ -18,6 +18,7 @@ class StorageLocationTest {
             listOf(
                 "s3:acme-sard/prod",
                 "s3:https://minio.example.net:9000/acme-sard/prod",
+                "s3:https://minio:9000/b/a@b",
                 "sftp:backup@backup.example.net:/srv/sard",
                 "SFTP:backup@backup.example.net:/srv/sard",
                 "sftp://backup@backup.example.net:2222//srv/sard",
@@ -41,6 +42,10 @@ class StorageLocationTest {
                 "sftp://backup:pw@backup.example.net/srv",
                 "foo://user:pw@host/x",
                 "backup:pw@host:/srv",
+                " s3:https://AKIA:secret@h/b",
+                "'s3:https://AKIA:secret@h/b'",
+                "RESTIC_REPOSITORY=\"rest:https://u:p@h/\"",
+                "s3:https:/AKIA:secret@h/b",
             )
         for (address in addresses) assertFalse(MutFlow.underTest { isSafeLocation(address) }, address)
     }

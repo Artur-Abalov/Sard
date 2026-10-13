@@ -13,7 +13,10 @@ private const val ANY_SCHEME = "[a-z][a-z0-9+.-]*"
  * the authority up to the first slash: [user[:password]@]host. A word before a colon is a scheme only when it is a
  * known backend or is followed by "//"; otherwise it is the user name of user:password@host.
  */
-private val AUTHORITY = Regex("^((?:(?:$KNOWN_SCHEMES):|$ANY_SCHEME:(?=//))*)(?://)?([^/]*)", RegexOption.IGNORE_CASE)
+private val AUTHORITY = Regex("^((?:(?:$KNOWN_SCHEMES):|$ANY_SCHEME:(?=//))*)/*([^/]*)", RegexOption.IGNORE_CASE)
+
+/** user:password@ or an http(s) user@ right after "//", wherever in the text the address starts (quotes, a prefix). */
+private val EMBEDDED_USERINFO = Regex("""//[^/@\s]*:[^/@\s]*@|https?://[^/@\s]+@""", RegexOption.IGNORE_CASE)
 private val HTTP_SCHEME = Regex("https?:$", RegexOption.IGNORE_CASE)
 
 /** A user name in an http(s) address is a token (OQ-203). */
@@ -30,9 +33,15 @@ private fun hasCredentials(location: String): Boolean {
     return ':' in userinfo || isHttpUser(schemes, userinfo)
 }
 
-/** The address holds no credentials (see [hasCredentials]) and no control character, and is not long (OQ-203). */
+/** No user:password@ or token user@ anywhere in the text, and none after the scheme prefixes (see [hasCredentials]). */
+private fun isCredentialFree(location: String): Boolean {
+    if (EMBEDDED_USERINFO.containsMatchIn(location)) return false
+    return !hasCredentials(location)
+}
+
+/** The address holds no credentials and no control character, and is not long (OQ-203). */
 fun isSafeLocation(location: String): Boolean =
     location.isNotEmpty() &&
         location.length <= MAX_LOCATION &&
         location.none { it.isISOControl() } &&
-        !hasCredentials(location)
+        isCredentialFree(location)
