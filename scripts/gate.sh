@@ -5,9 +5,12 @@
 # Quality gate per module. Thresholds live here and nowhere else.
 #
 #   ./scripts/gate.sh <module|all> [fast]
+#   ./scripts/gate.sh <go module> mutation <i>/<n>       one shard of Go mutation testing
+#   ./scripts/gate.sh <go module> mutation-total <dir>   the shards' sum against MUTATION_MIN
 #
 # Modules: proto gen sdk agent cli tools server web.
 # "fast" skips mutation testing. Exit code is non-zero on the first failure.
+# MUTATION_JOBS: parallel Go mutation shards of a full local run (default: CPUs).
 set -euo pipefail
 export LC_ALL=C.UTF-8
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -69,15 +72,78 @@ gate_go() {
   "$BIN/crap" -go-profile "$profile" -go-src "$dir" -threshold "$CRAP_MAX" || die "$m: CRAP"
   [ "$m" = agent ] && gate_agent_integration && gate_agent_stand
   [ "$mode" = fast ] && return 0
-  say "$m" "mutation score >= $MUTATION_MIN"
-  local log score
-  log="$(mktemp)"
-  (cd "$dir" && GOWORK="$(go_env "$m")" "$BIN/go-mutesting" ./... >"$log" 2>&1) || true
-  grep '^FAIL' "$log" || true
-  score="$(sed -n 's/^The mutation score is \([0-9.]*\).*/\1/p' "$log")"
-  [ -n "$score" ] || { tail -20 "$log"; die "$m: go-mutesting produced no score"; }
-  echo "mutation score: $score"
-  awk -v s="$score" -v min="$MUTATION_MIN" 'BEGIN { exit !(s >= min) }' || die "$m: mutation score $score < $MUTATION_MIN"
+  # Shards in parallel in this checkout: scripts/mutate-exec.sh never writes the tree.
+  local jobs="${MUTATION_JOBS:-$(getconf _NPROCESSORS_ONLN)}" out="$ROOT/build/mutation/$m" i
+  rm -rf "$out" && mkdir -p "$out"
+  say "$m" "mutation score >= $MUTATION_MIN, $jobs shards in parallel"
+  for i in $(seq 1 "$jobs"); do mutation_shard "$m" "$i/$jobs" "$out" & done
+  wait
+  mutation_total "$m" "$out"
+}
+
+# Go mutation testing (docs/adr/00XX-draft-go-mutation-exec.md). The files go-mutesting
+# would mutate for ./..., minus those of a nested module (agent/plugins/sdk is
+# its own module and gate), in a stable order.
+mutation_files() {
+  local m="$1" dir f d
+  dir="$ROOT/$(module_dir "$1")"
+  (cd "$dir" && GOWORK="$(go_env "$m")" "$BIN/go-mutesting" --list-files ./... 2>/dev/null) | sort |
+    while read -r f; do
+      d="$(dirname "$f")"
+      while [ "$d" != . ] && [ ! -f "$dir/$d/go.mod" ]; do d="$(dirname "$d")"; done
+      [ "$d" = . ] && echo "$f"
+    done
+}
+
+# mutation_shard <module> <i>/<n> <out>: mutates every n-th file starting at
+# the i-th into <out>/<module>-<i>-of-<n>.log. Never fails on survivors: the
+# threshold applies to the sum of all shards (mutation_total).
+mutation_shard() {
+  local m="$1" i="${2%/*}" n="${2#*/}" out="$3" dir log state files
+  dir="$ROOT/$(module_dir "$1")"
+  log="$out/$m-$i-of-$n.log"
+  mapfile -t files < <(mutation_files "$m" | awk -v i="$i" -v n="$n" '(NR - 1) % n == i - 1')
+  if [ "${#files[@]}" -eq 0 ]; then
+    echo "The mutation score is 0.000000 (0 passed, 0 failed, 0 duplicated, 0 skipped, total is 0)" >"$log"
+    return 0
+  fi
+  state="$(mktemp -d)"
+  (cd "$dir" && GOWORK="$(go_env "$m")" MUTATE_STATE_DIR="$state" \
+    "$BIN/go-mutesting" --exec "$ROOT/scripts/mutate-exec.sh" "${files[@]}" >"$log" 2>&1) || true
+  rm -rf "$state"
+}
+
+# mutation_total <module> <dir>: sums the shard logs in <dir>, prints what was
+# found and applies MUTATION_MIN. Every shard of one shard count must be present.
+mutation_total() {
+  local m="$1" dir="$2" logs n i summary status
+  logs=("$dir/$m"-*-of-*.log)
+  [ -e "${logs[0]}" ] || die "$m: no mutation shard logs in $dir"
+  n="${logs[0]##*-of-}" && n="${n%.log}"
+  for i in $(seq 1 "$n"); do [ -f "$dir/$m-$i-of-$n.log" ] || die "$m: mutation shard $i of $n is missing"; done
+  [ "${#logs[@]}" -eq "$n" ] || die "$m: shard logs of different shard counts in $dir"
+  for i in "${logs[@]}"; do grep -q '^The mutation score is' "$i" || { tail -20 "$i"; die "$m: $(basename "$i") has no score"; }; done
+  # Survivors with their diffs, then timeouts and errors.
+  grep -h -A30 '^--- original' "${logs[@]}" || true
+  grep -h 'mutate-exec: \(TIMEOUT\|ERROR\)' "${logs[@]}" || true
+  status=0
+  summary="$(cat "${logs[@]}" | awk -v min="$MUTATION_MIN" '
+    /^The mutation score is/ {
+      gsub(/[(),]/, " ")
+      k += $6; e += $8; d += $10; s += $12; t += $16
+    }
+    /^mutate-exec: TIMEOUT/ { to++ }
+    END {
+      err = t - k - e - s
+      judged = k + e + s
+      score = judged ? (k + s) / judged : 0
+      printf "mutants: %d total, %d killed (%d of them by timeout), %d survived, %d did not compile, %d errors, %d duplicates skipped\n", t, k, to, e, s, err, d
+      printf "mutation score: %.6f\n", score
+      exit (err > 0) ? 2 : !(score >= min)
+    }')" || status=$?
+  echo "$summary"
+  [ "$status" -ne 2 ] || die "$m: mutate-exec errors (unmutated tests fail or hang), see the ERROR lines"
+  [ "$status" -eq 0 ] || die "$m: mutation score $(sed -n 's/^mutation score: //p' <<<"$summary") < $MUTATION_MIN"
 }
 
 # Integration tests run the pinned restic (agent/internal/restic/restic-version)
@@ -159,10 +225,36 @@ gate_one() {
   esac
 }
 
+# CI runs the Go mutation step as shards on separate runners and sums them in
+# one job (ci.yml); locally gate_go runs the same shards in parallel.
+gate_mutation_step() {
+  local m="$1" step="$2" arg="$3" out
+  case "$m" in sdk | agent | cli | tools) ;; *) die "$step: Go modules only (sdk agent cli tools)" ;; esac
+  if [ "$step" = mutation ]; then
+    [[ "$arg" =~ ^[1-9][0-9]*/[1-9][0-9]*$ ]] && [ "${arg%/*}" -le "${arg#*/}" ] || die "mutation needs <i>/<n>, 1 <= i <= n"
+    need_tools
+    out="${MUTATION_OUT:-$ROOT/build/mutation/$m}"
+    mkdir -p "$out"
+    say "$m" "mutation shard $arg"
+    mutation_shard "$m" "$arg" "$out"
+    grep -h '^The mutation score is\|mutate-exec: \(TIMEOUT\|ERROR\)' "$out/$m-${arg%/*}-of-${arg#*/}.log" || true
+    printf '\ngate: mutation shard %s of %s done; the threshold applies to the sum of all shards\n' "$arg" "$m"
+  else
+    [ -d "$arg" ] || die "mutation-total needs the directory with the shard logs"
+    say "$m" "mutation score >= $MUTATION_MIN over all shards"
+    mutation_total "$m" "$arg"
+    printf '\ngate: PASSED (%s, mutation)\n' "$m"
+  fi
+}
+
 main() {
   local target="${1:-}" mode="${2:-full}"
-  [ -n "$target" ] || die "usage: gate.sh <module|all> [fast]"
-  [ "$mode" = full ] || [ "$mode" = fast ] || die "mode must be 'fast' or omitted"
+  [ -n "$target" ] || die "usage: gate.sh <module|all> [fast | mutation <i>/<n> | mutation-total <dir>]"
+  case "$mode" in
+    full | fast) ;;
+    mutation | mutation-total) gate_mutation_step "$target" "$mode" "${3:-}" && return 0 ;;
+    *) die "mode must be 'fast', 'mutation', 'mutation-total' or omitted" ;;
+  esac
   if [ "$target" = all ]; then
     for m in "${ALL_MODULES[@]}"; do gate_one "$m" "$mode"; done
   else

@@ -12,7 +12,7 @@ executed; a surviving mutant tells you nobody checks its result.
 
 | Module | Command | Where survivors are listed |
 |---|---|---|
-| sdk, agent, cli, tools (Go) | `./scripts/gate.sh <module>` (runs `go-mutesting`) | `FAIL "...file.go.N"` lines; rerun `cd <dir> && ../.bin/go-mutesting --verbose ./<pkg>` for diffs |
+| sdk, agent, cli, tools (Go) | `./scripts/gate.sh <module>` (runs `go-mutesting` through `scripts/mutate-exec.sh`, shards in parallel) | the gate prints every survivor with its diff, then `mutate-exec: TIMEOUT`/`ERROR` lines and the totals; shard logs in `build/mutation/<module>/`. One package: `cd <dir> && MUTATE_STATE_DIR="$(mktemp -d)" ../.bin/go-mutesting --exec "$PWD/../scripts/mutate-exec.sh" ./<pkg>` (`../../` for sdk) |
 | server (Kotlin) | `./scripts/gate.sh server` (runs `./gradlew -Pmutflow.enabled=true :server:test --rerun`) | mutflow summary in `server/build/test-results/test/*.xml` ("MUTATION TESTING SUMMARY"); any survivor fails the build (ADR 0006) |
 | web, proto, proto/gen/go | not mutation-tested | — |
 
