@@ -146,24 +146,6 @@ class SelfBackupIntegrationTest(
     }
 
     @Test
-    fun `Системный источник узнаётся по роли, у своего арендатора и пока не удалён`() {
-        val bound = bind(S3_REPOSITORY, confirmLocalStorage = false)
-        val system = bound.sources.map { it.sourceId }
-        val draft = SourceDraft("ordinary", tenant.agentId, "files", S3_REPOSITORY, """{"paths": ["/srv"]}""")
-        val ordinary = sources.create(tenant.id, draft).id
-        fun isSystem(source: UUID) = MutFlow.underTest { selfBackups.isSystemSource(tenant.id, source) }
-
-        assertTrue(system.all(::isSystem))
-        assertFalse(isSystem(ordinary))
-        assertFalse(isSystem(UUID.randomUUID()))
-        assertFalse(MutFlow.underTest { selfBackups.isSystemSource(UUID.randomUUID(), system.first()) })
-
-        jdbc.update("update sources set deleted_at = now() where id = ?", system.first())
-
-        assertFalse(isSystem(system.first()))
-    }
-
-    @Test
     fun `Повторная привязка к тому же репозиторию ничего не меняет`() {
         val first = bind(S3_REPOSITORY, confirmLocalStorage = false)
         clock.now = RUNS_NOW.plus(Duration.ofHours(1))

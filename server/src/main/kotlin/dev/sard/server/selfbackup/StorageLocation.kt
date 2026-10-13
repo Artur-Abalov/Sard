@@ -16,11 +16,18 @@ private const val ANY_SCHEME = "[a-z][a-z0-9+.-]*"
 private val AUTHORITY = Regex("^((?:(?:$KNOWN_SCHEMES):|$ANY_SCHEME:(?=//))*)(?://)?([^/]*)", RegexOption.IGNORE_CASE)
 private val HTTP_SCHEME = Regex("https?:$", RegexOption.IGNORE_CASE)
 
-/** A password in user:password@, or any user name in an http(s) address, where it is a token (OQ-203). */
+/** A user name in an http(s) address is a token (OQ-203). */
+private fun isHttpUser(
+    schemes: String,
+    userinfo: String,
+): Boolean = userinfo.isNotEmpty() && HTTP_SCHEME.containsMatchIn(schemes)
+
+/** A password in user:password@, or any user name in an http(s) address (OQ-203). */
 private fun hasCredentials(location: String): Boolean {
-    val (schemes, authority) = AUTHORITY.find(location)?.destructured ?: return false
+    // The pattern matches every string, if only as an empty prefix.
+    val (schemes, authority) = AUTHORITY.findAll(location).first().destructured
     val userinfo = authority.substringBeforeLast('@', missingDelimiterValue = "")
-    return ':' in userinfo || (userinfo.isNotEmpty() && HTTP_SCHEME.containsMatchIn(schemes))
+    return ':' in userinfo || isHttpUser(schemes, userinfo)
 }
 
 /** The address holds no credentials (see [hasCredentials]) and no control character, and is not long (OQ-203). */

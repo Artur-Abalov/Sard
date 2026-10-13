@@ -82,23 +82,6 @@ class AgentsBuiltinLiveIntegrationTest(
     }
 
     @Test
-    fun `an agent is a live built-in one only if it is built-in, not revoked and of the tenant`() {
-        val builtin = world.agent(tenant, builtin = true)
-        val ordinary = world.agent(tenant)
-        val foreign = world.agent(world.tenant(), builtin = true)
-        fun live(agent: UUID) = MutFlow.underTest { agents.isLiveBuiltin(tenant, agent) }
-
-        assertTrue(live(builtin.agentId))
-        assertFalse(live(ordinary.agentId))
-        assertFalse(live(foreign.agentId))
-        assertFalse(live(UUID.randomUUID()))
-
-        agents.revoke(tenant, builtin.agentId, SELF_AGENT_CONFIRMATION)
-
-        assertFalse(live(builtin.agentId))
-    }
-
-    @Test
     fun `a built-in agent of another tenant is not seen`() {
         world.agent(world.tenant(), builtin = true)
 

@@ -28,6 +28,9 @@ class SelfBackupConfiguration {
     ): SelfBackupSettings = properties.settings(connection.jdbcUrl, ZoneId.systemDefault())
 
     @Bean
+    fun systemSourceLookup(sessions: TenantSessions) = SystemSourceLookup(sessions)
+
+    @Bean
     fun selfBackups(
         settings: SelfBackupSettings,
         sessions: TenantSessions,

@@ -47,7 +47,8 @@ class StorageLocationTest {
 
     @Test
     fun `Адрес http с именем пользователя без пароля недопустим, потому что это токен`() {
-        val addresses = listOf("https://ghp_TOKEN@host/r", "s3:https://AKIA123@minio.example.net/acme", "rest:HTTP://t@h/r")
+        val addresses =
+            listOf("https://ghp_TOKEN@host/r", "s3:https://AKIA123@minio.example.net/acme", "rest:HTTP://t@h/r")
         for (address in addresses) assertFalse(MutFlow.underTest { isSafeLocation(address) }, address)
     }
 

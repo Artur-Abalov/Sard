@@ -51,7 +51,8 @@ private val STRING_CONCATENATION = Regex(""""\s*\+\s*"""")
 private val STRING_LITERAL = Regex("""\"{3}(.*?)\"{3}|"((?:[^"\\]++|\\.)*+)"""", RegexOption.DOT_MATCHES_ALL)
 private val TENANT_TABLE_SQL =
     Regex(
-        """\b(from|update|into|join|delete)\s+(agents|sources|runs|enrollment_tokens|agent_repositories|self_backups|schedules)\b""",
+        """\b(from|update|into|join|delete)\s+""" +
+            """(agents|sources|runs|enrollment_tokens|agent_repositories|self_backups|schedules)\b""",
         RegexOption.IGNORE_CASE,
     )
 
@@ -334,6 +335,7 @@ class ArchitectureTest {
                         .map { "${file.path}: ${it.trim()}" }
                         .toList()
                 }
-        assertTrue(offenders.isEmpty(), "native SQL on a tenant table without tenant_id:\n${offenders.joinToString("\n")}")
+        val message = "native SQL on a tenant table without tenant_id:\n${offenders.joinToString("\n")}"
+        assertTrue(offenders.isEmpty(), message)
     }
 }

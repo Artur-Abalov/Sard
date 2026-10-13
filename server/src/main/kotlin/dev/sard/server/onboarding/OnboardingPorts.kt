@@ -9,6 +9,7 @@ import dev.sard.server.extension.TenantResolver
 import dev.sard.server.fleet.Agents
 import dev.sard.server.selfbackup.OnboardingCompletion
 import dev.sard.server.selfbackup.SelfBackups
+import dev.sard.server.selfbackup.SystemSourceLookup
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -31,8 +32,8 @@ class OnboardingPorts {
     @Bean
     @ConditionalOnMissingBean
     fun guardTargets(
-        selfBackups: SelfBackups,
+        systemSources: SystemSourceLookup,
         agents: Agents,
         tenants: TenantResolver,
-    ): GuardTargets = TenantGuardTargets(selfBackups, agents, tenants)
+    ): GuardTargets = TenantGuardTargets(systemSources, agents, tenants)
 }

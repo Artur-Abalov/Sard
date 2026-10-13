@@ -8,6 +8,7 @@ import dev.sard.server.extension.TenantResolver
 import dev.sard.server.fleet.Agents
 import dev.sard.server.selfbackup.KeysConfirmed
 import dev.sard.server.selfbackup.SelfBackups
+import dev.sard.server.selfbackup.SystemSourceLookup
 import java.time.Instant
 import java.util.UUID
 
@@ -40,11 +41,14 @@ class SelfBackupsGate(
  * that owns it, through the tenant's session, never by SQL past the tenant filter (ADR 0013, rule 8).
  */
 class TenantGuardTargets(
-    private val selfBackups: SelfBackups,
+    private val systemSources: SystemSourceLookup,
     private val agents: Agents,
     private val tenants: TenantResolver,
 ) : GuardTargets {
-    override fun isSystemSource(id: UUID): Boolean = selfBackups.isSystemSource(tenants.currentTenantId(), id)
+    override fun isSystemSource(id: UUID): Boolean = systemSources.isSystemSource(tenants.currentTenantId(), id)
 
-    override fun isBuiltinAgent(id: UUID): Boolean = agents.isLiveBuiltin(tenants.currentTenantId(), id)
+    override fun isBuiltinAgent(id: UUID): Boolean {
+        val row = agents.get(tenants.currentTenantId(), id)?.row
+        return row != null && row.builtin && row.revokedAt == null
+    }
 }

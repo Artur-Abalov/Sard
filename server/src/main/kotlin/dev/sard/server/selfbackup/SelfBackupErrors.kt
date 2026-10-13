@@ -21,7 +21,7 @@ class LocalStorageUnconfirmed(
     val repositoryName: String,
 ) : SelfBackupException("repository $repositoryName is local and not confirmed")
 
-/** The storage address holds credentials or control characters, or is too long (OQ-203, 422 validation_failed at location). */
+/** The address holds credentials or control characters, or is too long (OQ-203, 422 validation_failed at location). */
 class LocationInvalid : SelfBackupException("the storage address holds credentials or is not an address")
 
 /** "Back up now" before a repository is bound (409 self_backup_not_configured). */

@@ -146,8 +146,9 @@ class SelfBackups internal constructor(
     /**
      * Binds the self-backup to [repositoryName] of the live built-in agent: creates the system sources with their
      * schedule, or moves them to this agent and repository. Binding again unchanged changes nothing. Throws
-     * [LocationInvalid], [SelfAgentMissing], UnknownRepository, [RepositoryNotInitialized], [LocalStorageUnconfirmed] or, when the
-     * agent lacks a plugin or the database password's secret, UnknownPlugin or InvalidConfig.
+     * [LocationInvalid], [SelfAgentMissing], UnknownRepository, [RepositoryNotInitialized],
+     * [LocalStorageUnconfirmed] or, when the agent lacks a plugin or the database password's secret, UnknownPlugin
+     * or InvalidConfig.
      */
     fun bind(
         tenantId: UUID,
@@ -156,39 +157,23 @@ class SelfBackups internal constructor(
         location: String? = null,
     ): SelfBackupView {
         if (location != null && !isSafeLocation(location)) throw LocationInvalid()
-        return bindRetrying(tenantId, repositoryName, confirmLocalStorage, location, onboardingComplete())
-    }
-
-    /** [complete] is asked before the session: the pool may hold one connection, and a request needs one at a time. */
-    private fun bindRetrying(
-        tenantId: UUID,
-        repositoryName: String,
-        confirmLocalStorage: Boolean,
-        location: String?,
-        complete: Boolean,
-    ): SelfBackupView =
-        try {
-            sessions.inTenant(tenantId) { session ->
-                bindIn(session, repositoryName, confirmLocalStorage, location, complete)
+        // Asked before the session: the pool may hold one connection, and a request needs one at a time.
+        val complete = onboardingComplete()
+        while (true) {
+            try {
+                return sessions.inTenant(tenantId) { session ->
+                    bindIn(session, repositoryName, confirmLocalStorage, location, complete)
+                }
+            } catch (e: ConstraintViolationException) {
+                if (e.constraintName !in RACE_KEYS) throw e
             }
-        } catch (e: ConstraintViolationException) {
-            if (e.constraintName !in RACE_KEYS) throw e
-            bindRetrying(tenantId, repositoryName, confirmLocalStorage, location, complete)
         }
+    }
 
     fun get(tenantId: UUID): SelfBackupView {
         val complete = onboardingComplete()
         return sessions.inTenant(tenantId) { session -> viewIn(session, complete) }
     }
-
-    /** Whether [sourceId] is a live system source of the tenant: the REST guard keeps such a source out of reach. */
-    fun isSystemSource(
-        tenantId: UUID,
-        sourceId: UUID,
-    ): Boolean =
-        sessions.inTenant(tenantId) { session ->
-            session.find(SourceRecord::class.java, sourceId)?.let { it.systemRole != null && it.deletedAt == null } == true
-        }
 
     /**
      * The owner confirms the copy of the repository password and the storage access made outside the server
