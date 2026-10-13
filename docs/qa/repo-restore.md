@@ -6,13 +6,17 @@
 Сценарии: `docs/specs/agent/repo-restore.feature` (Р52–Р71). Предустановки
 российских S3 (Р51) проверяет `docs/qa/host-setup.md`, часть 12.
 УТВЕРЖДЕНО 2026-10-12 (ответы Н26–Н38 — «да», как рекомендовано); шаги,
-которые зависят от ответа, помечены «(Н<номер>)».
+которые зависят от ответа, помечены «(Н<номер>)». Поправки Р72–Р79 —
+ответы владельца 2026-10-13, переданы координатором; шаги помечены
+«(Р<номер>)». В A8c-2 `--overwrite` недоступен (Р74): шаги с ним помечены
+«(A8c-2b)» и до этого среза проверяют отказ (шаг 20а); новые проверки — часть 8.
 
 Выполнима после реализации A8c. Ожидаемый результат — после «→». Любое
 расхождение — дефект.
 
-Коды: `0` успех, `1` ошибка агента (`RESTORE_INCOMPLETE`, restic), `2`
-использование, `6` временная (`BACKEND_UNAVAILABLE`, `TIMEOUT`,
+Коды: `0` успех, `1` ошибка агента (`RESTORE_INCOMPLETE`, `SETPRIV_MISSING`,
+restic), `2` использование (в том числе `ENV_FILE_INVALID`,
+`BACKEND_NOT_SUPPORTED`), `6` временная (`BACKEND_UNAVAILABLE`, `TIMEOUT`,
 `INTERRUPTED`, `TARGET_BUSY`), `7` запись (`TARGET_WRITE`).
 
 ## Стенды
@@ -123,15 +127,17 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
     `sudo rm /srv/qa-link`.
 15. Непустая цель: `sudo install -d /srv/r2; echo keep | sudo tee /srv/r2/keep.txt >/dev/null`;
     `T=$(date '+%F %T'); sudo $AG repo restore main $ID8 --target /srv/r2; echo "exit=$?"`
-    → `exit=2`, `TARGET_NOT_EMPTY`, `--overwrite`; `ls -A /srv/r2` → только
+    → `exit=2`, `TARGET_NOT_EMPTY`, сообщение говорит, что нужна пустая или
+    новая цель (с A8c-2b — и `--overwrite`); `ls -A /srv/r2` → только
     `keep.txt`; `audit "$T"` → пусто.
 16. Пустой том (Н30): `truncate -s 64M "$OUT/vol.img"; sudo mkfs.ext4 -q -F "$OUT/vol.img"`;
     `sudo install -d /srv/r3; sudo mount -o loop "$OUT/vol.img" /srv/r3`;
     `ls -A /srv/r3` → `lost+found`;
     `sudo $AG repo restore main $ID8 --target /srv/r3` → `exit=0`.
-17. Корень (Н31): `sudo $AG repo restore main $ID8 --target /`,
-    `… --target / --overwrite` → `exit=2`, `ROOT_TARGET_REFUSED`,
-    `--allow-root-target`; `… --target / --allow-root-target` → `exit=2`,
+17. Корень (Н31): `sudo $AG repo restore main $ID8 --target /` → `exit=2`,
+    `ROOT_TARGET_REFUSED`, `--allow-root-target` (A8c-2b: то же с
+    `--overwrite`; в A8c-2 `--overwrite` отказывает раньше, шаг 20а);
+    `… --target / --allow-root-target` → `exit=2`,
     `TARGET_NOT_EMPTY`; `… --target /srv/r9 --allow-root-target` → `exit=2`,
     называет `--allow-root-target`.
 
@@ -152,21 +158,29 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
     `sudo $AG repo restore main $ID --target /srv/r6 --path /srv/nothing` →
     `exit=2`, `PATH_NOT_IN_SNAPSHOT`; `ls -d /srv/r6` → нет.
     `--path '/srv/*'` → `exit=2`, называет `--path`.
-20. `--overwrite`: `echo changed | sudo tee /srv/r4/srv/qa-data/a.txt >/dev/null; echo x | sudo tee /srv/r4/extra.txt >/dev/null`;
+20. (A8c-2b) `--overwrite`: `echo changed | sudo tee /srv/r4/srv/qa-data/a.txt >/dev/null; echo x | sudo tee /srv/r4/extra.txt >/dev/null`;
     `sudo $AG repo restore main $ID --target /srv/r4 --overwrite` → `exit=0`;
     `sudo cat /srv/r4/srv/qa-data/a.txt` → `a`; `/srv/r4/extra.txt` на месте.
+20а. (Р74, A8c-2) `sudo find /srv/r4 -printf '%u %m %s %T@ %p\n' | sort > "$OUT/r4"`;
+    `sudo $AG repo restore main $ID --target /srv/r4 --overwrite; echo "exit=$?"`
+    и `sudo $AG repo restore main $ID --target / --allow-root-target --overwrite; echo "exit=$?"`
+    → каждый раз сразу `exit=2`, сообщение называет `--overwrite` и что
+    восстанавливать нужно в пустой или новый каталог;
+    `sudo find /srv/r4 -printf '%u %m %s %T@ %p\n' | sort | diff - "$OUT/r4"` → пусто.
 21. `latest`: `sudo $AG repo restore main latest --source $SF --target /srv/r7`
     → `exit=0`, stdout называет полный id последнего снимка `qa-files`
     (сверить с `repo snapshots main --source $SF`).
 22. Ручной снимок без тегов: `MID=$(sudo $AG repo snapshots main --json | jq -r '.snapshots[] | select(.source==null) | .id')`;
     `sudo $AG repo restore main $MID --target /srv/r8` → `exit=0`, источник
     и запуск `-`; `sudo cmp /etc/hostname /srv/r8/etc/hostname` → совпадают.
-23. Корень по-настоящему (только на копии ВМ): `sudo rm /srv/qa-data/sub/b.txt`;
+23. (A8c-2b) Корень по-настоящему (только на копии ВМ): `sudo rm /srv/qa-data/sub/b.txt`;
     `sudo $AG repo restore main $ID --target / --overwrite --allow-root-target --path /srv/qa-data/sub`
     → `exit=0`; `sudo stat -c '%U %Y' /srv/qa-data/sub/b.txt` → `postgres`, время 2020-01-02.
 24. Одновременно: создать большой источник (`/srv/big`, 4 ГБ, как шаг 19
     `host-setup.md`), бэкап из консоли, `BID=<его id>`;
-    `sudo $AG repo restore main $BID --target /srv/r10 & sleep 2; sudo $AG repo restore main $BID --target /srv/r10 --overwrite; echo "exit=$?"; wait`
+    `sudo install -d /srv/r10`;
+    `sudo $AG repo restore main $BID --target /srv/r10 & sleep 2; sudo $AG repo restore main $BID --target /srv/r10; echo "exit=$?"; wait`
+    (Р79: существующая цель блокируется до проверки пустоты)
     → вторая `exit=6`, `TARGET_BUSY`, `/srv/r10`; первая `exit=0`.
 25. Прерывание: `sudo $AG repo restore main $BID --target /srv/r11`, через 2 с
     Ctrl-C → `exit=6`, `INTERRUPTED`, сообщение говорит о частично
@@ -208,7 +222,7 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
     `createdb 'my db'`.
 34. `--path`: `sudo $AG repo restore main latest --source $SP --target /srv/pg5 --path /app.dump`
     → `exit=2`, называет `--path`; каталога нет.
-35. `--overwrite`: `echo notes | sudo tee /srv/pg1/notes.txt >/dev/null`;
+35. (A8c-2b) `--overwrite`: `echo notes | sudo tee /srv/pg1/notes.txt >/dev/null`;
     `sudo $AG repo restore main latest --source $SP --target /srv/pg1 --overwrite`
     → `exit=0`; `notes.txt` на месте; `app.dump` — новый inode
     (`stat -c %i` до и после различаются).
@@ -270,8 +284,82 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
     вне A8c); `docs/plugins/postgresql.md`, «Восстановление руками», ведёт через
     `sard-agent repo restore`.
 
+## Часть 8. Поправки 2026-10-13 (Р72–Р79, A8c-2)
+
+51. Разрешённый список env_file (Р72). `S1ENV=/etc/sard/secrets/restic-s1.env`;
+    `sudo cp -p $S1ENV "$OUT/s1.env.bak"`. Для каждой строки
+    `RCLONE_PASSWORD_COMMAND=touch /root/pwned`,
+    `AWS_SHARED_CREDENTIALS_FILE=/etc/shadow`, `HTTPS_PROXY=http://127.0.0.1:9`,
+    `SSL_CERT_FILE=/etc/shadow`:
+    `echo '<строка>' | sudo -u sard-agent tee -a $S1ENV >/dev/null` (так её
+    дописал бы нарушитель — пользователь службы);
+    `T=$(date '+%F %T'); run sudo $AG repo restore s1 latest --source $SFS3 --target /srv/e1`
+    → `exit=2`, `ENV_FILE_INVALID`, путь `$S1ENV`, номер строки и имя
+    переменной, без её значения; `ls -d /srv/e1 /root/pwned` → нет обоих;
+    `audit "$T"` → пусто. Вернуть файл (`sudo cp -p "$OUT/s1.env.bak" $S1ENV`).
+    С `HTTPS_PROXY` в файле `sudo $AG repo snapshots s1` → не `ENV_FILE_INVALID`
+    (от пользователя службы действует прежний запрещающий список).
+52. Локальный репозиторий с env_file (Р72): в `/etc/sard/agent.d/repo-main.yaml`
+    добавить `env_file` на файл `sard-agent 0600` со строкой
+    `HTTPS_PROXY=http://127.0.0.1:9` (часть QA, `sudoedit`);
+    `sudo $AG repo restore main $ID --target /srv/e2` → `exit=2`,
+    `ENV_FILE_INVALID`. Убрать `env_file`.
+53. rclone (Р72): `/etc/sard/agent.d/repo-rc.yaml` с `url: rclone:remote:x`
+    (часть QA); `sudo $AG repo restore rc 00000000 --target /srv/e3` →
+    `exit=2`, `BACKEND_NOT_SUPPORTED`, `rclone`; `ls -d /srv/e3` → нет.
+    Удалить фрагмент.
+54. Временный каталог (Р73): во время шага 18 в другом терминале
+    `sudo inotifywait -m /srv/r4 -e create,moved_to` → сначала
+    `.sard-restore-…` (каталог), затем `moved_to srv`; во время работы
+    `sudo stat -c '%U %a' /srv/r4/.sard-restore-*` → `root 700`;
+    `ps -o args= -C restic` (от root) содержит `--target /proc/self/fd/3/root`
+    и не содержит `/srv/r4`; после шага `ls -A /srv/r4` → только `srv`.
+55. Снимок с файлом в корне (Р73): ручной stdin-снимок
+    `echo hello | sudo -u sard-agent /usr/libexec/sard/restic --repo /srv/sard/main --password-file /etc/sard/secrets/restic-main.pass --cache-dir /var/cache/sard/restic backup --stdin --stdin-filename root.txt`;
+    его id — `RID`; `sudo $AG repo restore main $RID --target /srv/e4` →
+    `exit=0`; `sudo cat /srv/e4/root.txt` → `hello`.
+56. Подмена внутри цели (Р73; только на копии ВМ): цель `/srv/e5`
+    (`sudo install -d -m 0777 /srv/e5`), от имени `sard-agent` цикл
+    `while :; do mkdir -p /srv/e5/srv 2>/dev/null; rm -rf /srv/e5/srv; ln -sfn /etc /srv/e5/srv; done &`;
+    `sudo find /etc -printf '%u %m %p\n' | sort > "$OUT/etc0"`;
+    `sudo $AG repo restore main $ID --target /srv/e5; echo "exit=$?"` →
+    `exit=2` (`TARGET_NOT_EMPTY`, если цикл успел создать запись) или
+    `exit=7` (`TARGET_WRITE`, запись `srv` появилась во время
+    восстановления); остановить цикл;
+    `sudo find /etc -printf '%u %m %p\n' | sort | diff - "$OUT/etc0"` → пусто;
+    `sudo find /srv/e5 -name '.sard-restore-*'` → пусто.
+57. Остаток после аварии (Р73): `sudo $AG repo restore main $BID --target /srv/e6 &`,
+    через 3 с `sudo pkill -KILL -f 'sard-agent repo restore'`;
+    `sudo pkill -KILL restic`; `ls -A /srv/e6` → `.sard-restore-…`;
+    `sudo $AG repo restore main $ID --target /srv/e6` → `exit=2`,
+    `TARGET_NOT_EMPTY`, называет `.sard-restore-…` как остаток прерванного
+    восстановления и советует удалить. `sudo rm -rf /srv/e6`.
+58. Квота и только чтение (Р76): том шага 26 очистить и перемонтировать
+    только для чтения: `sudo rm -rf /srv/r12/*; sudo mount -o remount,ro /srv/r12`;
+    `sudo $AG repo restore main $ID --target /srv/r12` → `exit=7`,
+    `TARGET_WRITE`. С квотой ext4 (`usrquota`, `setquota -u root 100 100 0 0`
+    на этом томе, если QA умеет) → `exit=7`, `TARGET_WRITE`; иначе отметить
+    как непроверенное (есть `@local`).
+59. setpriv (Р77; копия ВМ): `sudo mv /usr/bin/setpriv /usr/bin/setpriv.qa`;
+    `T=$(date '+%F %T'); run sudo $AG repo restore f1 latest --source $SFSFTP --target /srv/e7`
+    → `exit=1`, `SETPRIV_MISSING`, `setpriv`, `util-linux`; `ls -d /srv/e7` →
+    нет; `audit "$T"` → пусто. `sudo $AG repo restore s1 latest --source $SFS3 --target /srv/e8`
+    → `exit=0` (S3 setpriv не нужен). Вернуть `setpriv`.
+60. Пароль каналом (Р78): во время шага 18 `sudo cat /proc/$(pgrep -u root -n restic)/environ | tr '\0' '\n' | grep RESTIC_PASSWORD`
+    → нет `RESTIC_PASSWORD_FILE=/etc/sard/secrets/…` и нет `RESTIC_PASSWORD=`;
+    `ps -o args= -C restic` (от root) — `--password-file /proc/self/fd/…`;
+    `sudo ls -l /proc/$(pgrep -u root -n restic)/fd` → дескриптор пароля —
+    `pipe:`. FIFO: `sudo mv /etc/sard/secrets/restic-main.pass "$OUT/m.pass"; sudo -u sard-agent mkfifo -m 0600 /etc/sard/secrets/restic-main.pass`;
+    `time sudo $AG repo restore main $ID --target /srv/e9` → сразу `exit=2`,
+    `SECRET_FILE_REJECTED`, `real` меньше 5 с. Вернуть файл пароля.
+61. `--source` с id (Р75): `sudo $AG repo restore main $ID8 --source $SF --target /srv/e10`
+    → `exit=0`; `sudo $AG repo restore main $ID8 --source $SP --target /srv/e11`
+    → `exit=2`, `SNAPSHOT_UNKNOWN`, называет `$ID8` и `$SP`.
+
 Вручную не воспроизводятся и проверяются тестами `@local` с теми же
-названиями: 10000 снимков, неоднозначный префикс id, `umask 000` для цели и
+названиями: EXDEV при переносе, `fstat` временного каталога с чужим
+владельцем, ссылка, созданная restic во временном каталоге, при его
+удалении, 10000 снимков, неоднозначный префикс id, `umask 000` для цели и
 файлов PostgreSQL, права до записи содержимого, кавычка в имени базы, ошибки
 отдельных файлов (`RESTORE_INCOMPLETE`), подмена ссылкой компонента цели между
 проверкой и созданием, отсутствие пользователя службы, Scrubber для строк
