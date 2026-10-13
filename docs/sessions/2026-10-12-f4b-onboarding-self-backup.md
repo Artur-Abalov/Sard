@@ -363,3 +363,11 @@ ADR: `docs/adr/00XX-draft-f4b-onboarding-self-backup.md`.
 - CRAP (JaCoCo, `.bin/crap -top 5000`): `hostedS3` 3.0 -> 5.0, `customS3` 3.0 -> 4.0 (coverage 100% both, limit 6); `locationOf` 4.0 unchanged.
 - 525e414 readability: `SAFE`, `OnboardingGuardTest` and the `ArchitectureTest` per-literal exceptions read well; nothing changed.
 - `./scripts/gate.sh server fast`: passed.
+
+## Cleaner: equivalent mutants in 4f5675b removed
+
+- The redundant `provider == null`, `region == null`, `endpoint == null` terms of 4f5675b could never decide alone (each is null only with an entry in `invalid`), so their mutants were unobservable. Now `hostedS3`/`customS3` keep one observable decision, `if (fields.invalid.isNotEmpty()) return null`, and then take the required values through `valid(x)`, a single `checkNotNull` with an invariant message. A literal `null` cannot reach the address: it fails loudly (IllegalStateException). Behavior and reported fields are unchanged.
+- One shared `valid` rather than `checkNotNull` in each function: inlined `checkNotNull` branches counted into the caller's JaCoCo complexity and uncovered (hostedS3 CRAP 7.0 at first, over 6); a single helper keeps them in one tiny function. mutflow mutates IR of written conditions; `checkNotNull` is a stdlib call, not a written condition (ADR 0006: no elvis/structural mutants).
+- CRAP (JaCoCo, `.bin/crap`): `hostedS3` 5.0 -> 3.0, `customS3` 4.0 -> 3.0, new `valid` 3.3 (complexity 2, coverage 30.8%: the throw branch is unreachable by design); `locationOf` 4.0 unchanged.
+- Scoped mutflow run (`-Pmutflow.enabled=true :server:test --rerun --tests '*RepositoryCommandsTest'`): passed, no survivors.
+- `./scripts/gate.sh server fast`: passed.

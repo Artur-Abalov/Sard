@@ -63,24 +63,27 @@ private fun locationOf(fields: Fields): String? {
     return bucket?.let { it + path?.let { folder -> "/$folder" }.orEmpty() }
 }
 
+/** What [Fields] returned for a field that is valid: with nothing invalid, a required value is present. */
+private fun <T : Any> valid(value: T?): T = checkNotNull(value) { "a field that passed validation is absent" }
+
 /** AWS or Backblaze B2: the address is the bucket, the rest is built from the region by `repo add`. */
 private fun hostedS3(
     fields: Fields,
     provider: String?,
 ): Storage? {
     val region = fields.required("region", REGION::matches)
-    val location = locationOf(fields).takeIf { fields.invalid.isEmpty() }
-    // The location is null when anything is invalid; the checks let the compiler prove what the address holds.
-    if (provider == null || region == null || location == null) return null
-    return Storage("s3:$location", listOf("--provider $provider", "--region $region", KEY_ID_FLAG), asksKeyId = true)
+    val location = locationOf(fields)
+    if (fields.invalid.isNotEmpty()) return null
+    val flags = listOf("--provider ${valid(provider)}", "--region ${valid(region)}", KEY_ID_FLAG)
+    return Storage("s3:${valid(location)}", flags, asksKeyId = true)
 }
 
 /** An S3 of the owner's own: the address names the endpoint. */
 private fun customS3(fields: Fields): Storage? {
     val endpoint = fields.required("endpoint", ::validEndpoint)
-    val location = locationOf(fields).takeIf { fields.invalid.isEmpty() }
-    if (endpoint == null || location == null) return null
-    return Storage("s3:$endpoint/$location", listOf(KEY_ID_FLAG), asksKeyId = true)
+    val location = locationOf(fields)
+    if (fields.invalid.isNotEmpty()) return null
+    return Storage("s3:${valid(endpoint)}/${valid(location)}", listOf(KEY_ID_FLAG), asksKeyId = true)
 }
 
 private fun s3(fields: Fields): Storage? {
