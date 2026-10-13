@@ -16,7 +16,7 @@ block() {
   exit 2
 }
 
-protected='(^|/)(CLAUDE\.md|\.claude/settings\.json|scripts/claude/[^/]+|scripts/gate\.sh|scripts/crap\.sh|\.golangci\.yml|config/detekt\.yml)$'
+protected='(^|/)(CLAUDE\.md|\.claude/settings\.json|scripts/claude/[^/]+|scripts/gate\.sh|scripts/mutate-exec\.sh|scripts/crap\.sh|\.golangci\.yml|config/detekt\.yml)$'
 if [ -n "$path" ] && [ -e "$path" ] && grep -Eq -- "$protected" <<<"$path"; then
   block "$path defines a quality gate and is protected"
 fi

@@ -19,11 +19,15 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
+	"io"
 	"math/big"
 	"net"
 	"strings"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc"
 )
 
 // selfSignedCert builds a self-signed certificate that is a valid CA and
@@ -131,5 +135,40 @@ func TestClientHandshakeRejectsANonTLSConnection(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "expected an established TLS connection") {
 		t.Fatalf("error = %q, want it to name the actual problem", err.Error())
+	}
+}
+
+// Conn.Close must close the TLS connection it owns even if grpc never
+// dialed (grpc.NewClient without Connect never calls the dialer).
+func TestConnCloseClosesTheOwnedConnectionWhenGRPCNeverDialed(t *testing.T) {
+	client, server := net.Pipe()
+	defer func() { _ = server.Close() }()
+	cc, err := grpc.NewClient("passthrough:///x:1", grpc.WithTransportCredentials(tofuCredentials{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &Conn{ClientConn: cc, tls: client}
+	if err := c.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	_ = server.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := server.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+		t.Fatalf("server read = %v, want io.EOF", err)
+	}
+}
+
+// The dialer hands out the verified connection once; a reconnect must get
+// an error, not the same (by then closed) connection.
+func TestOneShotDialerRefusesASecondCall(t *testing.T) {
+	client, server := net.Pipe()
+	defer func() { _ = client.Close() }()
+	defer func() { _ = server.Close() }()
+	dial := oneShotDialer(client)
+	got, err := dial(context.Background(), "x:1")
+	if err != nil || got != client {
+		t.Fatalf("first call = (%v, %v), want the connection", got, err)
+	}
+	if got, err := dial(context.Background(), "x:1"); err == nil || got != nil {
+		t.Fatalf("second call = (%v, %v), want an error and no connection", got, err)
 	}
 }

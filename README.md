@@ -34,7 +34,7 @@ backups you have proven you can restore.
 
 Restore from the console (today restore is a manual `restic restore`, see
 [docs/demo.md](docs/demo.md)), restore verification, other sources (MySQL, network devices, 1C), more than one tenant,
-`sardctl` commands beyond `version`.
+`sardctl` commands beyond `version`. Plans, not promises: [docs/roadmap.en.md](docs/roadmap.en.md).
 
 ## How it works
 
@@ -159,6 +159,7 @@ Most documentation is in Russian.
 - [docs/demo.md](docs/demo.md): stage 1 demo, step by step: server, agent, backup, Telegram, restore
 - [docs/operator/](docs/operator/README.md): running the server: requirements, install, configuration, TLS, backup, upgrade, troubleshooting
 - [docs/plugins/](docs/plugins/): source plugins and their settings
+- [docs/roadmap.en.md](docs/roadmap.en.md) ([на русском](docs/roadmap.md)): what is planned, not a promise
 - [docs/adr/](docs/adr/README.md): architecture decision records
 - [docs/specs/](docs/specs/): Gherkin specifications per module
 - [docs/sessions/](docs/sessions/): work session log
