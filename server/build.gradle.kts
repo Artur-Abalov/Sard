@@ -206,7 +206,8 @@ fun FileTreeElement.isClassNaming(text: String) =
 tasks.test {
     useJUnitPlatform { excludeTags(isolatedTag) }
     // Only @MutFlowTest classes kill mutants; the others already ran in :server:check.
-    if (mutationRun) include { it.isClassNaming("io/github/anschnapp/mutflow/junit/MutFlowTest") }
+    // The annotation descriptor, not the class name: MutationIsolationTest only refers to the class.
+    if (mutationRun) include { it.isClassNaming("Lio/github/anschnapp/mutflow/junit/MutFlowTest;") }
 }
 
 val isolatedTest by tasks.registering(Test::class) {
