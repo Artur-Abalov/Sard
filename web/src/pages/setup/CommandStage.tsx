@@ -81,6 +81,9 @@ export function CommandStage({
           {t('common.copy')}
         </Button>
       </Group>
+      <Text size="sm" role="note">
+        {t('setup.selfBackup.command.verify')}
+      </Text>
       {copied === 'copied' && (
         <Text size="xs" role="status">
           {t('common.copied')}

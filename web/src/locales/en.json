@@ -497,6 +497,7 @@
       "command": {
         "title": "Run on the server",
         "hint": "Run these lines in a terminal on the machine of the server, in the directory with docker-compose.yml. The last line restarts the built-in agent so that it reports the new repository.",
+        "verify": "Check the command before you run it. It must contain only the \"read\" line asking for the S3 key ID (for S3), \"docker compose run … self-agent repo add\" with your own address, bucket and path, and \"docker compose restart self-agent\". A compromised server cannot vouch for this command itself — you are the one who checks it.",
         "label": "Commands",
         "back": "Change the storage",
         "agentMissing": "The built-in agent sard-self is not registered, so there is nothing to add a repository to. See the troubleshooting section: {{doc}}."
