@@ -69,6 +69,9 @@ limit_s=$(((baseline_ms * TIMEOUT_FACTOR + 999) / 1000))
 
 original="$(cd "$(dirname "$MUTATE_ORIGINAL")" && pwd)/$(basename "$MUTATE_ORIGINAL")"
 changed="$(cd "$(dirname "$MUTATE_CHANGED")" && pwd)/$(basename "$MUTATE_CHANGED")"
+# Names the mutant before it runs: if a run takes the whole host down, the
+# last START line in a streamed log names the mutant that did it.
+say "START $changed"
 printf '{"Replace":{"%s":"%s"}}\n' "$original" "$changed" >"$work/overlay.json"
 rm -f "$work/mutant.test"
 if ! go test -c -overlay "$work/overlay.json" -o "$work/mutant.test" "$MUTATE_PACKAGE" >/dev/null 2>&1; then

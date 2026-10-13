@@ -108,8 +108,14 @@ mutation_shard() {
     return 0
   fi
   state="$(mktemp -d)"
-  (cd "$dir" && GOWORK="$(go_env "$m")" MUTATE_STATE_DIR="$state" \
-    "$BIN/go-mutesting" --exec "$ROOT/scripts/mutate-exec.sh" "${files[@]}" >"$log" 2>&1) || true
+  # MUTATION_STREAM=1 (CI) also streams the log, so it survives a runner lost mid-shard.
+  if [ "${MUTATION_STREAM:-}" = 1 ]; then
+    (cd "$dir" && GOWORK="$(go_env "$m")" MUTATE_STATE_DIR="$state" \
+      "$BIN/go-mutesting" --exec "$ROOT/scripts/mutate-exec.sh" "${files[@]}" 2>&1 | tee "$log") || true
+  else
+    (cd "$dir" && GOWORK="$(go_env "$m")" MUTATE_STATE_DIR="$state" \
+      "$BIN/go-mutesting" --exec "$ROOT/scripts/mutate-exec.sh" "${files[@]}" >"$log" 2>&1) || true
+  fi
   rm -rf "$state"
 }
 

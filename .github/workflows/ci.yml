@@ -110,7 +110,10 @@ jobs:
         with:
           go-version-file: tools/go.mod
           cache-dependency-path: "**/go.sum"
+      # The shard's log is streamed too: a runner lost mid-shard still shows its last START line.
       - run: ./scripts/gate.sh agent mutation ${{ matrix.shard }}/12
+        env:
+          MUTATION_STREAM: "1"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
