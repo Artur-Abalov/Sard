@@ -12,6 +12,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"sync/atomic"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -38,10 +39,14 @@ func RealDial(ctx context.Context, network, addr string) (net.Conn, error) {
 // the returned connection is handed to anything that would send the
 // enrollment token or a CSR: a rejected server never receives either.
 //
+// The returned *Conn owns the TLS connection: closing it closes both the
+// gRPC client and the TLS connection, including when grpc never got to
+// take the connection from its dialer.
+//
 // The returned error is always a *Error with Class ClassTrust (fingerprint
 // or hostname mismatch, or any other TLS failure) or ClassTemporary (the
 // server could not be reached, or ctx ended first).
-func DialTOFU(ctx context.Context, dial DialFunc, address, fingerprint string) (*grpc.ClientConn, error) {
+func DialTOFU(ctx context.Context, dial DialFunc, address, fingerprint string) (*Conn, error) {
 	host, _, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, &Error{Class: ClassAgentError, msg: "invalid server address " + address}
@@ -79,29 +84,60 @@ func dialAndVerify(ctx context.Context, dial DialFunc, address, host, fingerprin
 	return tlsConn, nil
 }
 
+// Conn is the verified connection DialTOFU returns. It is a
+// grpc.ClientConnInterface (via the embedded client) and is the single
+// owner of the underlying TLS connection.
+type Conn struct {
+	*grpc.ClientConn
+	tls net.Conn
+}
+
+// Close closes the gRPC client and then always the TLS connection: grpc
+// only takes it from its dialer asynchronously, so a client closed early
+// would otherwise leave it open and the server stuck on its preface.
+// Closing twice is harmless; the TLS close error is ignored.
+func (c *Conn) Close() error {
+	err := c.ClientConn.Close()
+	_ = c.tls.Close()
+	return err
+}
+
+// oneShotDialer hands out conn on the first call only: the connection is
+// already handshaken, so a reconnect cannot reuse it and gets an error
+// instead of a dead connection.
+func oneShotDialer(conn net.Conn) func(context.Context, string) (net.Conn, error) {
+	var used atomic.Bool
+	return func(context.Context, string) (net.Conn, error) {
+		if used.Swap(true) {
+			return nil, errors.New("enroll: the verified connection can be used only once")
+		}
+		return conn, nil
+	}
+}
+
 // newGRPCConn hands the already-verified tlsConn to grpc as-is.
 // grpc.NewClient never dials by itself; an established-but-unused tlsConn
 // would sit open on the server until something closes it, so Connect is
 // called right away. The target uses the "passthrough" scheme explicitly
 // (not just "address", which grpc-go would otherwise hand to its default
-// resolver): the custom dialer below ignores the target and always returns
-// tlsConn, so resolving it serves no purpose, and a resolution failure —
+// resolver): the custom dialer below ignores the target and returns
+// tlsConn once, so resolving it serves no purpose, and a resolution failure —
 // e.g. address is a bare IPv6 literal grpc's own resolver rejects, or a
 // name that does not exist — would otherwise surface as an UNAVAILABLE
 // status with no ErrorInfo before Enroll is ever called, which
 // classifyBareStatus (F1) now reads as "the request was sent, the token
 // may be spent" — exactly backwards for a call that was never made.
-func newGRPCConn(address string, tlsConn *tls.Conn) (*grpc.ClientConn, error) {
-	conn, err := grpc.NewClient("passthrough:///"+address,
-		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return tlsConn, nil }),
+func newGRPCConn(address string, tlsConn *tls.Conn) (*Conn, error) {
+	cc, err := grpc.NewClient("passthrough:///"+address,
+		grpc.WithContextDialer(oneShotDialer(tlsConn)),
 		grpc.WithTransportCredentials(tofuCredentials{}),
 	)
 	if err != nil {
 		_ = tlsConn.Close()
 		return nil, &Error{Class: ClassAgentError, msg: "building the client connection failed", err: err}
 	}
-	conn.Connect()
-	return conn, nil
+	cc.Connect()
+	return &Conn{ClientConn: cc, tls: tlsConn}, nil
 }
 
 func classifyDialError(ctx context.Context, err error, address string) error {

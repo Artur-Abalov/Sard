@@ -33,7 +33,7 @@ Sard — консоль резервного копирования для ра�
 
 Восстановления из консоли (сейчас восстановление — ручной `restic restore`,
 см. [docs/demo.md](docs/demo.md)), проверки восстановления, других источников (MySQL, сетевые устройства, 1С), больше одного
-тенанта, команд `sardctl`, кроме `version`.
+тенанта, команд `sardctl`, кроме `version`. Планы, не обещания: [docs/roadmap.md](docs/roadmap.md).
 
 ## Как устроено
 
@@ -146,6 +146,7 @@ minisign -Vm SHA256SUMS -p sard-release.pub && sha256sum -c --ignore-missing SHA
 - [docs/demo.md](docs/demo.md): демо этапа 1 по шагам: сервер, агент, бэкап, Telegram, восстановление
 - [docs/operator/](docs/operator/README.md): эксплуатация сервера: требования, установка, настройка, TLS, бэкап, обновление, диагностика
 - [docs/plugins/](docs/plugins/): плагины источников и их настройки
+- [docs/roadmap.md](docs/roadmap.md) ([in English](docs/roadmap.en.md)): что в планах, не обещание
 - [docs/adr/](docs/adr/README.md): архитектурные решения
 - [docs/specs/](docs/specs/): спецификации Gherkin по модулям
 - [docs/sessions/](docs/sessions/): журнал рабочих сессий

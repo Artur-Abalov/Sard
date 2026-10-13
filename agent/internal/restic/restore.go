@@ -60,7 +60,7 @@ type RestoreRequest struct {
 
 // stagingTarget is the root directory of the staging directory, which restic
 // inherits as descriptor 3. The bare /proc/self/fd/3 does not work: restic
-// removes the target's magic link when it makes the directory (ADR 0056).
+// removes the target's magic link when it makes the directory (ADR 0057).
 const stagingTarget = "/proc/self/fd/3/root"
 
 // RestoreSummary is what restic reports of a restore.

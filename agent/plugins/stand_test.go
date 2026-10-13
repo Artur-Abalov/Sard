@@ -12,10 +12,10 @@ import (
 	"github.com/Artur-Abalov/sard/agent/plugins"
 )
 
-// A release build (no "e2e" tag, as make package builds) registers the four
+// A release build (no "e2e" tag, as make package builds) registers the working
 // source plugins and nothing of the e2e stand: Register reports exactly these.
-func TestReleaseBuildRegistersTheFourSourcePluginsOnly(t *testing.T) {
-	if got := plugins.Registry("1.2.3").Names(); !slices.Equal(got, []string{"files", "mysql", "network", "postgresql"}) {
+func TestReleaseBuildRegistersTheWorkingSourcePluginsOnly(t *testing.T) {
+	if got := plugins.Registry("1.2.3").Names(); !slices.Equal(got, []string{"files", "postgresql"}) {
 		t.Fatalf("Names() = %v", got)
 	}
 }

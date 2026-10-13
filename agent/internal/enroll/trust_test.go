@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -145,23 +146,39 @@ func listenNoTLS(t *testing.T) string {
 }
 
 // listenIdleTLS accepts plain TCP and never sends anything back, so a TLS
-// handshake against it only ends when its context does.
+// handshake against it only ends when its context does. Accepted
+// connections are kept referenced until cleanup: otherwise the garbage
+// collector's finalizer closes them and the "silent" server aborts the
+// handshake before the context ends.
 func listenIdleTLS(t *testing.T) string {
 	t.Helper()
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
+	var (
+		mu    sync.Mutex
+		conns []net.Conn
+	)
 	go func() {
 		for {
 			conn, err := lis.Accept()
 			if err != nil {
 				return
 			}
-			_ = conn // accept and sit idle
+			mu.Lock()
+			conns = append(conns, conn)
+			mu.Unlock()
 		}
 	}()
-	t.Cleanup(func() { _ = lis.Close() })
+	t.Cleanup(func() {
+		_ = lis.Close()
+		mu.Lock()
+		defer mu.Unlock()
+		for _, c := range conns {
+			_ = c.Close()
+		}
+	})
 	return lis.Addr().String()
 }
 
@@ -395,5 +412,44 @@ func requireTrustClass(t *testing.T, err error) {
 	}
 	if eerr.Class != enroll.ClassTrust {
 		t.Fatalf("class = %q, want trust", eerr.Class)
+	}
+}
+
+// Closing the connection DialTOFU returned must close the TLS connection
+// beneath it, even when grpc never got to take it from its dialer: the
+// server side must see the end of the stream, not hang until its own
+// connection timeout. The server reads until it fails and ignores any
+// data (grpc may already have written the HTTP/2 preface).
+func TestDialTOFUCloseReleasesTheTLSConnectionTheServerIsReadingFrom(t *testing.T) {
+	ca := newTestCA(t)
+	cert := chainOf(ca.leaf(t, []string{"localhost"}, 0), ca)
+	clientSide, serverSide := net.Pipe()
+	readErr := make(chan error, 1)
+	go func() {
+		tc := tls.Server(serverSide, &tls.Config{Certificates: []tls.Certificate{cert}, NextProtos: []string{"h2"}})
+		if err := tc.Handshake(); err != nil {
+			readErr <- err
+			return
+		}
+		_ = tc.SetReadDeadline(time.Now().Add(2 * time.Second))
+		buf := make([]byte, 1024)
+		for {
+			if _, err := tc.Read(buf); err != nil {
+				readErr <- err
+				return
+			}
+		}
+	}()
+	fakeDial := func(context.Context, string, string) (net.Conn, error) { return clientSide, nil }
+
+	conn, err := enroll.DialTOFU(context.Background(), fakeDial, "localhost:443", ca.fingerprint())
+	if err != nil {
+		t.Fatalf("DialTOFU: %v", err)
+	}
+	_ = conn.Close()
+
+	var nerr net.Error
+	if err := <-readErr; errors.As(err, &nerr) && nerr.Timeout() {
+		t.Fatalf("server read timed out; the connection was not closed: %v", err)
 	}
 }

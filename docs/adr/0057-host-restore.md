@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 <!-- Copyright 2026 Artur Abalov -->
 
-# 0056 — Восстановление на хосте командой `repo restore`
+# 0057 — Восстановление на хосте командой `repo restore`
 
 - Статус: принято (A8c-2); решения владельца — 2026-10-12 (`docs/specs/agent/repo-restore.feature`, Н26, Н27 (а), Н28–Н32, Н36; Р58–Р71); поправлено 2026-10-13 после ревью architect (Р72–Р79, ниже; `--overwrite` перенесён в срез A8c-2b, OQ-201)
 - Дата: 2026-10-13
