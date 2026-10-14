@@ -456,16 +456,30 @@ func TestDialTOFUCloseReleasesTheTLSConnectionTheServerIsReadingFrom(t *testing.
 	}
 }
 
-// A second Close reports the gRPC client's closing error; the first Close
-// has already closed the TLS connection beneath it.
-func TestConnSecondCloseReturnsTheClientClosingErrorAndTheTLSConnectionStaysClosed(t *testing.T) {
+// closeSignalConn reports on closed the first time the raw connection is
+// closed.
+type closeSignalConn struct {
+	net.Conn
+	once   sync.Once
+	closed chan struct{}
+}
+
+func (c *closeSignalConn) Close() error {
+	defer c.once.Do(func() { close(c.closed) })
+	return c.Conn.Close()
+}
+
+// A second Close reports the gRPC client's closing error. The first Close
+// closes the raw connection, though possibly just after it returns when
+// gRPC had already started closing the TLS connection.
+func TestConnSecondCloseReturnsTheClientClosingErrorAndTheRawConnectionGetsClosed(t *testing.T) {
 	ca := newTestCA(t)
-	var clientSide net.Conn
+	signal := &closeSignalConn{closed: make(chan struct{})}
 	addr := serveGRPC(t, chainOf(ca.leaf(t, []string{"localhost", "127.0.0.1"}, 0), ca))
 	dial := func(ctx context.Context, network, a string) (net.Conn, error) {
 		c, err := enroll.RealDial(ctx, network, a)
-		clientSide = c
-		return c, err
+		signal.Conn = c
+		return signal, err
 	}
 	conn, err := enroll.DialTOFU(context.Background(), dial, addr, ca.fingerprint())
 	if err != nil {
@@ -474,8 +488,10 @@ func TestConnSecondCloseReturnsTheClientClosingErrorAndTheTLSConnectionStaysClos
 	if err := conn.Close(); err != nil {
 		t.Fatalf("first Close: %v", err)
 	}
-	if _, err := clientSide.Write([]byte{0}); !errors.Is(err, net.ErrClosed) {
-		t.Fatalf("write after Close = %v, want net.ErrClosed", err)
+	select {
+	case <-signal.closed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the raw connection was not closed after Close")
 	}
 	// grpc.ErrClientConnClosing is deprecated for direct comparison; it is a
 	// status error with code Canceled.

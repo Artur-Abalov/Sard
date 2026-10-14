@@ -108,6 +108,8 @@ func (c *Conn) NewStream(ctx context.Context, desc *grpc.StreamDesc, method stri
 // Close closes the gRPC client and then always the TLS connection: grpc
 // only takes it from its dialer asynchronously, so a client closed early
 // would otherwise leave it open and the server stuck on its preface.
+// The TLS connection is always closed, though it may finish just after
+// Close returns when grpc had already started closing it.
 // A second Close returns grpc.ErrClientConnClosing (status Canceled); the
 // TLS close error is ignored.
 func (c *Conn) Close() error {

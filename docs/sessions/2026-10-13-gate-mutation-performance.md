@@ -80,6 +80,12 @@
     возвращает `ErrClientConnClosing` (статус Canceled), закреплено тестом; поле `cc` вместо
     встраивания `*grpc.ClientConn`, `Invoke`/`NewStream` делегируются (тесты падают на мутантах
     делегирования). CRAP: `Close`, `Invoke`, `NewStream` 1.0, `newGRPCConn` 2.1.
+    Новый тест второго `Close` флейкал (CI run 38516321401: база `internal/enroll` упала один раз,
+    `agent-mutation-total` — 1 ошибка; локально 1/240 под нагрузкой): gRPC закрывает tls.Conn в своей
+    горутине, а наш `tls.Close` возвращается сразу. Тест ждёт закрытия сырого соединения по событию
+    (≤ 10 с), комментарий `Close` уточнён; 0/2400. Тем же стрессом найден флейк
+    `TestCallEnrollTimeoutAfterTheRequestWasSent…` (задача 12): 100 мс истекают до обработчика,
+    `<-started` ждёт вечно.
 12. Горутина `classify_test.go:242` остаётся в `select {}` до конца процесса.
 13. 333 выживших мутанта агента (hardener).
 
