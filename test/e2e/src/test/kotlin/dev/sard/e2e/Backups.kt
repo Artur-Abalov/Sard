@@ -64,6 +64,32 @@ internal object Backups {
         return Started(sourceId, runId, stepId)
     }
 
+    /**
+     * Restores the snapshot [snapshotId] of source [sourceId] on [agentId] as the console's "Start the
+     * restore" does (R2a); the API answers 201 with a restore run and its one step.
+     */
+    fun restore(
+        env: SardEnvironment,
+        sourceId: UUID,
+        snapshotId: String,
+        agentId: String,
+        configJson: String,
+        api: SardApi = SardApi(env),
+    ): Started {
+        val path = "/api/v1/sources/$sourceId/snapshots/$snapshotId/restores"
+        val run = api.created(path, """{"agentId":"$agentId","config":$configJson}""")
+        val runId = UUID.fromString(run.require("id"))
+        val stepId = Await.value("the step of run $runId") { query(env, "SELECT id FROM run_steps WHERE run_id = ?", runId) { it.getObject(1, UUID::class.java) } }
+        return Started(sourceId, runId, stepId)
+    }
+
+    /** A top-level field of the step's output as the server stored it (`output->>name`), or null. */
+    fun outputField(
+        env: SardEnvironment,
+        stepId: UUID,
+        name: String,
+    ): String? = query(env, "SELECT output->>'$name' FROM run_steps WHERE id = ?", stepId) { it.getString(1) }
+
     /** Waits until the step is no longer active and returns the server's record of it. */
     fun awaitFinished(
         env: SardEnvironment,
