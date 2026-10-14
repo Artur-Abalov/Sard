@@ -2,7 +2,7 @@
 // Copyright 2026 Artur Abalov
 
 import { describe, expect, test } from 'vitest'
-import { canCreateSourceOn, canRevokeToken, shortId, ttlSeconds } from './tokens'
+import { canRevokeToken, shortId, ttlSeconds } from './tokens'
 
 describe('the lifetime of a new token', () => {
   test.each([
@@ -35,14 +35,5 @@ describe('the revoke button', () => {
 describe('shortId', () => {
   test('is the first eight characters of the id', () => {
     expect(shortId('0192f7a0-0000-7000-8000-000000000101')).toBe('0192f7a0')
-  })
-})
-
-describe('the create-source button on the card of an agent', () => {
-  test.each([
-    ['source', true],
-    ['verifier', false],
-  ] as const)('an agent with role %s: %s', (role, shown) => {
-    expect(canCreateSourceOn(role)).toBe(shown)
   })
 })

@@ -31,6 +31,11 @@ export function emptyDraft(agentId = ''): Draft {
   return { name: '', agentId, plugin: '', repository: '', values: {}, json: '{}' }
 }
 
+// Only an agent that backs up can be given a source; a convenience, the server decides (RK7).
+export function canCreateSourceOn(role: components['schemas']['AgentRole']): boolean {
+  return role === 'source'
+}
+
 // Revoked agents cannot be given a source (P6).
 export function offeredAgents<T extends { revokedAt: string | null }>(agents: T[]): T[] {
   return agents.filter((agent) => agent.revokedAt === null)
@@ -40,7 +45,7 @@ export function offeredAgents<T extends { revokedAt: string | null }>(agents: T[
 export function offeredSourceAgents<
   T extends { revokedAt: string | null; role: Schemas['AgentRole'] },
 >(agents: T[]): T[] {
-  return offeredAgents(agents).filter((agent) => agent.role === 'source')
+  return offeredAgents(agents).filter((agent) => canCreateSourceOn(agent.role))
 }
 
 // A source of stage 1 backs up: plugins without the backup action are not offered (P6).

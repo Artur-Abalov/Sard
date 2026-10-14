@@ -20,11 +20,6 @@ export function canRevokeToken(status: components['schemas']['EnrollmentTokenSta
   return status === 'active'
 }
 
-// Only an agent that backs up can be given a source; a convenience, the server decides (RK7).
-export function canCreateSourceOn(role: components['schemas']['AgentRole']): boolean {
-  return role === 'source'
-}
-
 // An id as a short label where no name is known yet.
 export function shortId(id: string): string {
   return id.slice(0, 8)

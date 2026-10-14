@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vitest'
 import filesSchema from '../../agent/plugins/files/schema.json'
 import {
   buildSourceInput,
+  canCreateSourceOn,
   draftOf,
   emptyDraft,
   offeredAgents,
@@ -173,5 +174,14 @@ describe('the request that saves a source', () => {
     const draft = { ...emptyDraft('x'), plugin: 'files' }
 
     expect(buildSourceInput(draft, files as never)).toMatchObject({ ok: true })
+  })
+})
+
+describe('the create-source button on the card of an agent', () => {
+  test.each([
+    ['source', true],
+    ['verifier', false],
+  ] as const)('an agent with role %s: %s', (role, shown) => {
+    expect(canCreateSourceOn(role)).toBe(shown)
   })
 })

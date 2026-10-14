@@ -387,3 +387,10 @@ After: 0 survivors. No `mutflow:falsePositive`, `mutflow:ignore` or `@SuppressMu
 - Заметка: `make openapi` сам берёт замок Gradle; оборачивать его в `flock` нельзя (взаимная блокировка).
 - Заметка: при полном прогоне один раз упал `ResultsIntegrationTest` («a result sent again on a
   new stream…», expected 1.0 but was 0.0); в одиночном прогоне зелёный, код не менялся.
+
+## cleaner (canCreateSourceOn)
+
+- `canCreateSourceOn` перенесён из `web/src/tokens.ts` в `web/src/sourceDraft.ts` (правило источников и агентов);
+  `offeredSourceAgents` теперь `offeredAgents(agents).filter((a) => canCreateSourceOn(a.role))`, порядок и поведение те же.
+- `test.each` перенесён из `tokens.test.ts` в `sourceDraft.test.ts` без изменений утверждений; импорт в `pages/Agent.tsx` обновлён.
+- `./scripts/gate.sh web fast`: до и после 46 файлов, 759 тестов, PASSED.
