@@ -298,3 +298,27 @@ After: 0 survivors. No `mutflow:falsePositive`, `mutflow:ignore` or `@SuppressMu
 - OQ-130 did not show: no `cmd/sard-agent` survivor in the final run (the gates ran one at a time, no parallel build).
 - Flaky server failures: the Gradle `java.io.EOFException` recurred and was not a worker death this time but stable: `Test.getPreviousFailedTestClasses` could not read a truncated `server/build/test-results/test/binary/results.bin` left by an earlier killed run (stack trace in `./gradlew :server:test --stacktrace`). Fixed by `./gradlew :server:cleanTest :server:cleanIsolatedTest` (deleting the directory by hand is blocked by `guard.sh`). "Not a managed type: Agent" did not occur. One run failed with HTTP 429 from Maven Central while downloading `mutflow-compiler-plugin-1.5.0.jar`; a rerun succeeded.
 - `detekt` MaxLineLength in a new test line, fixed.
+
+### Слияние main и мутации по новой схеме (2026-10-14)
+
+- Влит `origin/main` (11366b4, PR #65: Go-мутации через `go test -overlay`, шарды,
+  измеряемый таймаут). Конфликт был только в импортах
+  `agent/cmd/sard-agent/identity_test.go`. Слияние — `d39c000`.
+- Поправка к коммиту `da69327`: в его сообщении указан счёт 0.954770, но он
+  относится к прогону до усиленных тестов. После тестов hardener'а по старой
+  схеме — 0.958146.
+- Первый полный гейт агента после слияния упал: `cover: bufio.Scanner: token
+  too long`. В `.cover.out` оказалось 7 МБ нулевых байтов, а на диске оставалось
+  4.1G. После `go clean -cache` (освобождено 20G) гейт прошёл: coverage 98.2%,
+  CRAP ≤ 6, интеграционные тесты, сборка e2e-стенда.
+- Этап мутаций не укладывается в двухчасовой лимит фоновых команд сессии.
+  Поэтому шарды `./scripts/gate.sh agent mutation i/4` запущены отдельно от
+  сессии, итог посчитан через `mutation-total`. Результат: «mutants: 4407 total,
+  3310 killed (224 of them by timeout), 340 survived, 757 did not compile,
+  0 errors, 217 duplicates skipped», «mutation score: 0.922850»,
+  «gate: PASSED (agent, mutation)».
+- В файлах, которые затронул V1, по новой схеме выжили: `executor.go` — 10,
+  `status_cmd.go` — 6, `main.go` — 6, `machineid.go` — 5, `enroll/identity.go`
+  — 2, `identity.go` — 1. Старая схема их не показывала. Какие из них приходятся
+  на строки V1, не разбиралось.
+- `AgentSeamIntegrationTest` после слияния: tests=1, failures=0.
