@@ -19,7 +19,7 @@
   `FlywayMigrationStrategy` (`persistence/DatabaseVersionGuard.kt`) смотрит
   `flyway.info()` до `migrate()`.
 - Отказ — если в `flyway_schema_history` есть версионная миграция в состоянии
-  `FUTURE_SUCCESS` — то есть версия больше самой большой версии миграций
+  `FUTURE_SUCCESS` или `FUTURE_FAILED` — то есть версия больше самой большой версии миграций
   сборки. Исключение `DatabaseNewerThanServer`; первая строка начинается с
   `Database startup refused: DATABASE_NEWER_THAN_SERVER:` и называет самую новую
   миграцию базы с описанием, самую новую миграцию сервера, версию сервера

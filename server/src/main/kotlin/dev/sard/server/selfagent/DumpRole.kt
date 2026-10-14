@@ -52,7 +52,10 @@ internal class PostgresDumpRole(
     }
 }
 
-/** A session-level advisory lock, held on a connection of its own while the action runs. */
+/**
+ * A session-level advisory lock, held on a connection of its own while the action runs. It takes one pool connection
+ * for the whole action, so the pool needs at least two.
+ */
 internal class AdvisoryLock(
     private val dataSource: DataSource,
 ) : SetupLock {

@@ -84,4 +84,13 @@ class DrillPageTest {
         assertEquals(listOf("a", "b"), executed)
         assertTrue("b" in failure.message.orEmpty() && "1" in failure.message.orEmpty(), failure.message)
     }
+
+    @Test
+    fun `Метка учений без блока bash сразу после неё останавливает учения`() {
+        val page = "<!-- drill: a -->\n\n```bash\necho a\n```\n<!-- drill: b -->\n```bash\necho b\n```\n"
+
+        val error = assertFailsWith<DrillPageError> { DrillPage.blocks(page) }
+
+        assertTrue("a" in error.message!!, error.message)
+    }
 }

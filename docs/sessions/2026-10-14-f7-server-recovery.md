@@ -146,3 +146,10 @@ Docker Hub отвечал 429, базовые образы взяты с `mirror
 2.0 (CC 2, 100%), `newestFuture` 3.0, `newestKnown` 1.0. Остальные функции F7 (DumpRole,
 SelfAgentSetup, AdvisoryLock) — CRAP <= 2.5, не менялись. Код `test/e2e` не измеряется
 CRAP-ом и не менялся. `./scripts/gate.sh server fast`: PASSED. Далее — architect.
+
+### Правки после ревью architect
+- `DrillPage.blocks()` отказывает на метке `<!-- drill: id -->` без блока `bash`
+  сразу за ней (тест первым, красный); `ServerRecoveryDocsTest` требует равенства
+  числа меток и блоков в обеих страницах.
+- ADR 0059 называет `FUTURE_SUCCESS` и `FUTURE_FAILED`; ADR 0061 — `state.env` и
+  доступ к S3 по IP; KDoc `AdvisoryLock` — один контакт пула (пул не меньше 2).

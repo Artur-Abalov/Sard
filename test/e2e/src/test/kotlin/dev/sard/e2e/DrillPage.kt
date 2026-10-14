@@ -26,13 +26,16 @@ internal class PreparedBlock(
  * A name that is not in the table, or an id used twice, stops the drill before anything is run.
  */
 internal object DrillPage {
-    private val MARKED = Regex("""<!-- drill: (\S+) -->\n```bash\n(.*?)\n```""", RegexOption.DOT_MATCHES_ALL)
+    private val MARKED = Regex("""<!-- drill: ([\w-]+) -->\n```bash\n(.*?)\n```""", RegexOption.DOT_MATCHES_ALL)
+    private val MARK = Regex("""<!-- drill: ([\w-]+) -->""")
 
     /** A value in angle brackets: a name of letters, digits and `_.-`; shell redirections never look like it. */
     private val SUBSTITUTION = Regex("""<(\p{L}[\p{L}\p{N}_.-]*)>""")
 
     fun blocks(page: String): List<DrillBlock> {
         val blocks = MARKED.findAll(page).map { DrillBlock(it.groupValues[1], it.groupValues[2]) }.toList()
+        val bare = MARK.findAll(page).map { it.groupValues[1] }.firstOrNull { id -> blocks.none { it.id == id } }
+        if (bare != null) throw DrillPageError("the mark of block $bare is not followed by a bash block")
         val repeated = blocks.groupBy { it.id }.filterValues { it.size > 1 }.keys
         if (repeated.isNotEmpty()) throw DrillPageError("the page marks block ${repeated.first()} for the drill more than once")
         return blocks

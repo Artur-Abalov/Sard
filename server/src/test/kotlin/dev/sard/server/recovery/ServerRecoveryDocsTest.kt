@@ -10,7 +10,8 @@ import kotlin.test.assertTrue
 
 private const val PAGE = "docs/operator/12-server-recovery.md"
 private const val PAGE_EN = "docs/en/operator/12-server-recovery.md"
-private val DRILL_MARK = Regex("""<!-- drill: (\S+) -->\s*```bash\n(.*?)\n```""", RegexOption.DOT_MATCHES_ALL)
+private val DRILL_MARK = Regex("""<!-- drill: ([\w-]+) -->\n```bash\n(.*?)\n```""", RegexOption.DOT_MATCHES_ALL)
+private val ANY_MARK = Regex("""<!-- drill: [\w-]+ -->""")
 private val BASH_BLOCK = Regex("""```bash\n(.*?)\n```""", RegexOption.DOT_MATCHES_ALL)
 private val SUBSTITUTION = Regex("""<([\p{L}][\p{L}\p{N}_.-]*)>""")
 private val SECRET_WORD = Regex("(?i)парол|секрет|ключ|password|secret|key|token")
@@ -236,6 +237,10 @@ class ServerRecoveryDocsTest {
         val russian = drillBlocks(PAGE)
         val english = drillBlocks(PAGE_EN)
         assertTrue(russian.isNotEmpty(), "the page has no block marked for the drill")
+        for (path in listOf(PAGE, PAGE_EN)) {
+            val marks = ANY_MARK.findAll(text(path)).count()
+            assertEquals(marks, drillBlocks(path).size, "$path: a mark without its block")
+        }
         assertEquals(russian.keys, english.keys)
         for ((id, block) in russian) assertEquals(block, english.getValue(id), "block $id differs")
     }
