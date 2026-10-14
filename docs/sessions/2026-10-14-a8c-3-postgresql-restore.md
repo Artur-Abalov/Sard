@@ -181,3 +181,18 @@ scripts/mutate-exec.sh`, по файлам). Счёт, как его печат�
 `incomplete`, `exec.go` — ветка `ProcessState == nil`) не трогались; строки
 не менялись срезом. Мутационные прогоны — `agent`, `./scripts/gate.sh agent
 fast` проходит.
+
+## Cleaner, раунд Р87/Р88
+
+`./scripts/crap.sh agent` до и после: изменённых функций (`WritePostgres`,
+`takeBack`, `pending.*`, `writeFile`, `isRemains`, `leftover`,
+`SameFile`) в списке нет, то есть CRAP ниже 6; список из 30 строк не
+изменился. Поведение, тексты ошибок и тесты не менялись.
+
+- Проверка «имя ведёт к записанному файлу» (`Lstat` + `SameFile`) была
+  в `takeBack` и в `pending.commit`; вынесена в `isWritten`.
+- Строка `.tmp-` в `createTemp` берётся из `tempMarker`, которым пользуется
+  `isRemains`: имя временного файла и его распознавание не расходятся.
+- Запись файлов (`written` … `countingWriter`) перенесена из `postgres.go`
+  (428 строк) в `postgres_write.go`; в `postgres.go` остались план и подсказки
+  (221 и 226 строк).
