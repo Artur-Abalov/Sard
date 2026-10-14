@@ -37,6 +37,8 @@ type fileBehaviour struct {
 	beforeRename func(oldName, newName string)
 	afterRename  func(newName string)
 	beforeWrite  func(name string)
+	// onLstat runs at the start of every look at a name in the target.
+	onLstat func(name string)
 	// closed are the names of the files that were closed, in order.
 	closed []string
 }
@@ -109,6 +111,9 @@ func (f recordingFile) Close() error {
 
 func (d recordingDir) Lstat(name string) (fs.FileInfo, error) {
 	d.fsys.note("lstat " + name)
+	if hook := d.fsys.files.onLstat; hook != nil {
+		hook(name)
+	}
 	return d.Dir.Lstat(name)
 }
 

@@ -665,16 +665,44 @@ func TestAForeignFileUnderTheNameOfTheTempFileIsNotRemovedWhenTheDumpFails(t *te
 	}
 }
 
-func TestAnUnreadableWrittenFileIsATargetWriteFailureAndLeavesNothing(t *testing.T) {
+func TestAnUnreadableWrittenFileIsATargetWriteFailureAndIsNotRemovedUnchecked(t *testing.T) {
 	dir, fsys := t.TempDir(), newRecordingFS()
 	fsys.files.failFileStat = true
 	held, _ := openTarget(fsys, dir)
 	defer held.Release()
 	plan, content := fullPlan(t)
 	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1"), repoTarget())
-	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite)
-	if got := entries(t, dir); len(got) != 0 {
-		t.Errorf("left %v", got)
+	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, ".app.dump.tmp-x1", "was not removed")
+	if got := entries(t, dir); !slices.Equal(got, []string{".app.dump.tmp-x1"}) {
+		t.Errorf("entries %v: a name whose identity cannot be confirmed is not unlinked", got)
+	}
+}
+
+// The temp file is held open while its name is judged for removal: a writer of
+// the target cannot then give the inode of a deleted file to a new one.
+func TestTheTempFileIsStillOpenWhenItsNameIsJudgedForRemoval(t *testing.T) {
+	for name, arrange := range map[string]func(*recordingFS) *fakeDumper{
+		"dump failed": func(*recordingFS) *fakeDumper { return &fakeDumper{failAfter: 2, err: restic.ErrNetwork} },
+		"owner":       func(f *recordingFS) *fakeDumper { f.files.failChown = true; return &fakeDumper{} },
+	} {
+		fsys := newRecordingFS()
+		d := arrange(fsys)
+		plan, content := fullPlan(t)
+		d.content = content
+		var judged []bool
+		fsys.files.onLstat = func(n string) {
+			if n == ".app.dump.tmp-x1" {
+				fsys.mu.Lock()
+				judged = append(judged, slices.Contains(fsys.files.closed, n))
+				fsys.mu.Unlock()
+			}
+		}
+		held, _ := openTarget(fsys, t.TempDir())
+		_ = restore.WritePostgres(context.Background(), d, held, plan, names("x1"), repoTarget())
+		held.Release()
+		if !slices.Equal(judged, []bool{false}) {
+			t.Errorf("%s: judged with the file closed? %v, want exactly one judgement with it open", name, judged)
+		}
 	}
 }
 

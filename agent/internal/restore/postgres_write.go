@@ -106,23 +106,22 @@ func newPending(h *Held, name string, random func() string) (*pending, *refusal.
 	info, err := out.Stat()
 	if err != nil {
 		_ = out.Close()
-		_ = h.dir.Remove(tmp)
-		return nil, refusal.Fail(refusal.TargetWrite, "cannot look at the file %s/%s: %v", h.Path, tmp, err)
+		// Р87: no unlink by a name whose identity cannot be confirmed; the next
+		// run refuses the target as not empty and names the leftover (Р88).
+		return nil, refusal.Fail(refusal.TargetWrite, "cannot look at the file %s/%s: %v; it was not removed because its identity could not be confirmed", h.Path, tmp, err)
 	}
 	return &pending{h: h, out: out, info: info, remove: tmp}, nil
 }
 
-// fill gives the file its owner and mode and then its content; the file is
-// closed when that fails.
+// fill gives the file its owner and mode and then its content. The file is
+// not closed when that fails: abandon judges its name first, with it still
+// open, and closes it after.
 func (p *pending) fill(ctx context.Context, d Dumper, file PGFile, target repoinit.Target) *refusal.Failure {
 	w := &countingWriter{w: p.out}
 	f := prepare(p.out, p.h.Path, p.remove)
 	if f == nil {
 		err := d.Dump(ctx, file.SnapshotID, file.Path, w)
 		f = outcome(ctx, err, w.err, p.h.Path, target)
-	}
-	if f != nil {
-		_ = p.close()
 	}
 	return f
 }

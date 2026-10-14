@@ -33,7 +33,7 @@ type File interface {
 func SameFile(a, b fs.FileInfo) bool {
 	x, okX := a.Sys().(*syscall.Stat_t)
 	y, okY := b.Sys().(*syscall.Stat_t)
-	if !okX || !okY {
+	if !okX || !okY { // test fakes whose Sys() is not a *syscall.Stat_t
 		return os.SameFile(a, b)
 	}
 	return uint64(x.Dev) == uint64(y.Dev) && uint64(x.Ino) == uint64(y.Ino)
