@@ -41,10 +41,12 @@ internal class AgentHost(
      * (the default) the config is copied into every container and nothing else of `/etc/sard` stays.
      */
     persistentEtc: Boolean = false,
+    /** What the agent dials (`server.address`): the environment's server unless a test brings a server of its own (F7). */
+    private val endpoint: String = SardEnvironment.AGENT_ENDPOINT,
 ) {
     /** The volume mounted at [STATE_DIR]: state, TLS files, repository, the executor's journal. */
     val state = sardEnv.volume()
-    private val cache = sardEnv.volume()
+    val cache = sardEnv.volume()
     private val etc = if (persistentEtc) sardEnv.volume() else null
     private var runs = 0
 
@@ -119,7 +121,7 @@ internal class AgentHost(
     ): Exit =
         run(
             AgentImage.AGENT_BINARY, "enroll", "--config", CONFIG,
-            "--server", SardEnvironment.AGENT_ENDPOINT, "--token-file", TOKEN_FILE, *flags,
+            "--server", endpoint, "--token-file", TOKEN_FILE, *flags,
             files = mapOf(TOKEN_FILE to TarFiles.ownedByAgent(token + "\n")),
             timeout = timeout,
         )
@@ -237,7 +239,7 @@ internal class AgentHost(
     fun agent(ownedFiles: Map<String, String> = emptyMap()): GenericContainer<*> =
         container().apply {
             ownedFiles.forEach { (path, content) -> withCopyToContainer(TarFiles.ownedByAgent(content), path) }
-            waitingFor(Wait.forLogMessage(".*connecting to ${SardEnvironment.AGENT_ENDPOINT}.*", 1))
+            waitingFor(Wait.forLogMessage(".*connecting to $endpoint.*", 1))
         }
 
     /** The tree at [path] in [container] (`docker cp` as a tar): relative path to bytes, null for a directory. */
@@ -261,7 +263,7 @@ internal class AgentHost(
         GenericContainer<Nothing>(DockerImageName.parse(image)).apply {
             withNetwork(sardEnv.dockerNetwork)
             withNetworkAliases(hostname)
-            withCopyToContainer(Transferable.of(config(), TarFiles.READABLE), CONFIG)
+            withCopyToContainer(Transferable.of(configText(), TarFiles.READABLE), CONFIG)
             withCreateContainerCmdModifier { create ->
                 create.withHostName(hostname)
                 create.hostConfig?.withBinds(*binds().toTypedArray())
@@ -271,10 +273,11 @@ internal class AgentHost(
     private fun binds(): List<Bind> =
         listOfNotNull(Bind(state, Volume(STATE_DIR)), Bind(cache, Volume(CACHE_DIR)), etc?.let { Bind(it, Volume(ETC_DIR)) })
 
-    private fun config() =
+    /** The text of the host's `/etc/sard/agent.yaml`: the server, the TLS files and [local]. */
+    fun configText() =
         """
         server:
-          address: ${SardEnvironment.AGENT_ENDPOINT}
+          address: $endpoint
         tls:
           ca_file: $CA_FILE
           cert_file: $CERT_FILE

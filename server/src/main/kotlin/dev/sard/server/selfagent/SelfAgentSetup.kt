@@ -23,18 +23,24 @@ fun interface RolePasswords {
 }
 
 /**
- * At every start, with the channel on: the password of [SELF_ROLE] is the one in `db-password`, a new random one
- * when the file is missing or malformed. A role the server cannot change is one WARNING, not a failure: the
+ * At every start, with the channel on: [SELF_ROLE] is brought to the shape of its migration (a restored database
+ * has none), and its password is the one in `db-password`, a new random one when the file is missing or malformed,
+ * all under [lock]. A role the server cannot create or change is one WARNING, not a failure: the
  * operator sets it up by hand (docs/operations/self-agent.md). The password is never logged.
  */
 class SelfAgentSetup(
     private val channel: SelfChannel,
     private val random: SecureRandom,
     private val passwords: RolePasswords,
+    private val role: DumpRole,
+    private val lock: SetupLock,
 ) {
-    fun run() {
+    fun run() = lock.exclusive(::setUp)
+
+    private fun setUp() {
         val password = channel.readPassword() ?: newPassword().also(channel::writePassword)
         try {
+            role.reconcile()
             passwords.set(SELF_ROLE, password)
         } catch (e: SQLException) {
             log.warn("role {} not set up (SQLState {}); see docs/operations/self-agent.md", SELF_ROLE, e.sqlState)
