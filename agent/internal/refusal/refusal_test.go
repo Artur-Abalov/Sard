@@ -16,7 +16,9 @@ func TestEveryReasonHasAClass(t *testing.T) {
 		LocalPathInvalid, RevealRequired, RepositoryConflict, ConfigLocked, ConfigWrite, ServiceRestartFailed,
 		AddressInvalid, SecretInvalid, S3KeyRejected, StorageAccessDenied, BucketNotFound,
 		SSHClientMissing, SSHClientFailed, SSHHomeInvalid, SSHFileRejected, SSHKeyNotAuthorized,
-		HostKeyUnconfirmed, HostKeyMismatch, HostKeyRejected, HostKeyChanged}
+		HostKeyUnconfirmed, HostKeyMismatch, HostKeyRejected, HostKeyChanged, RepositoryNotInitialized,
+		SnapshotUnknown, SnapshotAmbiguous, TargetInvalid, TargetNotEmpty, RootTargetRefused, PathNotInSnapshot,
+		RestoreIncomplete, TargetWrite, TargetBusy, SetprivMissing}
 	if len(classes) != len(reasons) {
 		t.Errorf("%d reasons have a class, %d exist", len(classes), len(reasons))
 	}
@@ -50,6 +52,20 @@ func TestTheReasonsOfTheSSHSetupHaveTheClassesOfTheSpecification(t *testing.T) {
 		SSHClientMissing: ClassAgentError, SSHClientFailed: ClassAgentError,
 		SSHHomeInvalid: ClassUsage, SSHFileRejected: ClassUsage, SSHKeyNotAuthorized: ClassUsage, HostKeyUnconfirmed: ClassUsage,
 		HostKeyMismatch: ClassTrust, HostKeyRejected: ClassTrust, HostKeyChanged: ClassTrust,
+	} {
+		if got := ClassOf(reason); got != class {
+			t.Errorf("%s: class %d, want %d", reason, got, class)
+		}
+	}
+}
+
+// A8c-2: the classes of the reasons of repo restore (the table of classes
+// of docs/specs/agent/repo-restore.feature).
+func TestTheReasonsOfRepoRestoreHaveTheClassesOfTheSpecification(t *testing.T) {
+	for reason, class := range map[Reason]Class{
+		SnapshotUnknown: ClassUsage, SnapshotAmbiguous: ClassUsage, TargetInvalid: ClassUsage,
+		TargetNotEmpty: ClassUsage, RootTargetRefused: ClassUsage, PathNotInSnapshot: ClassUsage,
+		RestoreIncomplete: ClassAgentError, TargetWrite: ClassWrite, TargetBusy: ClassTemporary, SetprivMissing: ClassAgentError,
 	} {
 		if got := ClassOf(reason); got != class {
 			t.Errorf("%s: class %d, want %d", reason, got, class)

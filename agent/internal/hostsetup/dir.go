@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -40,12 +41,36 @@ type Dir interface {
 	// Lstat describes what name is, a link as a link, without opening it
 	// for reading (an O_PATH descriptor): for what root must not read.
 	Lstat(name string) (fs.FileInfo, error)
+	// Names are the names of the entries of this directory, in no order.
+	Names() ([]string, error)
+	// Lock takes an exclusive flock on this directory's descriptor, without
+	// waiting: ErrBusy if another holder has it. It is released by Close.
+	Lock() error
 	// Rename, Remove and Sync are renameat, unlinkat and fsync relative to
 	// this directory; names are one component.
 	Rename(oldName, newName string) error
 	Remove(name string) error
 	Sync() error
+
+	// Handle is the open descriptor of this directory, for a process that
+	// inherits it (restic gets the staging directory of a restore this way).
+	// It is owned by the Dir: it is closed with it.
+	Handle() *os.File
+	// RenameNoReplace moves the entry oldName of this directory to newName in
+	// newDir (renameat2 with RENAME_NOREPLACE): a name that exists there is
+	// fs.ErrExist and is not touched; another file system is ErrCrossDevice.
+	RenameNoReplace(oldName string, newDir Dir, newName string) error
+	// RemoveDir removes the empty directory called name (unlinkat with
+	// AT_REMOVEDIR).
+	RemoveDir(name string) error
 }
+
+// ErrCrossDevice: the entry cannot be moved because the two directories are
+// on different file systems, a mount point lies between them (EXDEV).
+var ErrCrossDevice = errors.New("the directories are on different file systems")
+
+// ErrBusy: the directory is locked by another holder.
+var ErrBusy = errors.New("the directory is held by another command")
 
 // ReadFile is a file opened for reading.
 type ReadFile interface {

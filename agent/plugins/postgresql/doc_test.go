@@ -58,7 +58,7 @@ func TestTheDocumentationExplainsTheRestoreByHand(t *testing.T) {
 		"postgresql.main_snapshot",   // find the snapshot of the globals
 		"psql -X -d postgres",        // restore the globals as a superuser first
 		"суперпользовател",           //
-		"restic dump",                // then the dump of the database
+		"sard-agent repo restore",    // the files of the snapshots are laid out by the agent (A8c, Р71)
 		"createdb",                   // into a new database
 		"pg_restore",                 //
 		"already exists",             // roles that exist already are expected

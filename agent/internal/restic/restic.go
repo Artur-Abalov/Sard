@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"slices"
 	"strings"
 
@@ -68,6 +69,10 @@ type Options struct {
 	Stderr io.Writer
 	// RunAs, if not nil, is the user restic runs as (Р6 of A8a).
 	RunAs *RunAs
+	// AsRoot says that restic runs as root (repo restore, Р72, Р78): its
+	// environment then holds only the variables of the kind of storage that
+	// the env_file may set, and the password reaches it through a pipe.
+	AsRoot bool
 }
 
 // Errors for restic's documented exit codes and for output the wrapper
@@ -199,7 +204,12 @@ func (c *CLI) Restore(ctx context.Context, snapshotID, target string) error {
 type call struct {
 	args   []string
 	stdout func(line []byte)
-	stdin  io.Reader
+	// stdoutTo, if not nil, gets the raw stdout instead of stdout.
+	stdoutTo io.Writer
+	stdin    io.Reader
+	// extra are inherited as descriptors 3, 4, ...; the password pipe of a
+	// restic that runs as root is added after them.
+	extra []*os.File
 	// stderr sees each stderr line after the wrapper has.
 	stderr func(line []byte)
 }
@@ -210,7 +220,56 @@ func (c *CLI) runRepo(ctx context.Context, cl call) (*result, error) {
 	if err != nil {
 		return &result{}, err
 	}
+	if c.opts.AsRoot {
+		pipe, err := c.passwordPipe(ctx)
+		if err != nil {
+			return &result{}, err
+		}
+		defer func() { _ = pipe.Close() }()
+		cl.args = slices.Insert(cl.args, 1, "--password-file", fmt.Sprintf("/proc/self/fd/%d", firstFD+len(cl.extra)))
+		cl.extra = append(slices.Clone(cl.extra), pipe)
+	}
 	return c.run(ctx, env, cl)
+}
+
+// firstFD is the number the first of Command.ExtraFiles has in the process.
+const firstFD = 3
+
+// rootKey is the key of the repository for restic that runs as root: the
+// provider names the file that holds it (crypto.Key.File), and the agent reads
+// that file as a file of the service user (A1, opts.ReadFile). Root gets the
+// key by descriptor, never the path of a file the service user could swap for
+// a FIFO or a link (Р78).
+func (c *CLI) rootKey(ctx context.Context) ([]byte, error) {
+	key, err := c.opts.Keys.RepositoryKey(ctx, c.repo.Name)
+	if err != nil {
+		return nil, err
+	}
+	if key.File == "" {
+		return nil, fmt.Errorf("%w: the key provider %s gives no file that holds the key of repository %q", ErrPasswordFile, c.opts.Keys.Name(), c.repo.Name)
+	}
+	data, err := c.opts.ReadFile(key.File)
+	if err != nil {
+		return nil, fmt.Errorf("%w of repository %q: %w", ErrPasswordFile, c.repo.Name, err)
+	}
+	return data, nil
+}
+
+// passwordPipe returns the read end of a pipe that carries the key.
+func (c *CLI) passwordPipe(ctx context.Context) (*os.File, error) {
+	password, err := c.rootKey(ctx)
+	if err != nil {
+		return nil, err
+	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		_, _ = w.Write(password) // a restic that does not read it ends with EPIPE
+		_ = w.Close()
+	}()
+	return r, nil
 }
 
 // run runs a restic command and turns a non-zero exit code into an error.
@@ -231,7 +290,9 @@ func (c *CLI) start(ctx context.Context, env []string, cl call) (*result, error)
 		Args:       cl.args,
 		Env:        env,
 		Stdin:      cl.stdin,
+		ExtraFiles: cl.extra,
 		Stdout:     cl.stdout,
+		StdoutTo:   cl.stdoutTo,
 		Stderr:     res.stderr(cl.stderr),
 		StderrCopy: c.opts.Stderr,
 		RunAs:      c.opts.RunAs,
@@ -373,6 +434,9 @@ var networkCauses = []string{
 
 // fatalKind recognises restic's fatal message; nil for the unknown ones.
 func fatalKind(msg string) error {
+	if err := targetCause(msg); err != nil {
+		return err
+	}
 	switch {
 	case strings.Contains(msg, "config file already exists"):
 		return ErrRepositoryExists

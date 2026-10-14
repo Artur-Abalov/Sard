@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -126,9 +127,70 @@ func stringLiterals(t *testing.T, visit func(file string, pos token.Position, va
 func TestPackageMainHoldsNoHostOfAProvider(t *testing.T) {
 	t.Parallel()
 	stringLiterals(t, func(file string, pos token.Position, value string) {
-		holds := strings.Contains(value, "amazonaws.com") || strings.Contains(value, "backblazeb2.com")
+		holds := false
+		for _, host := range []string{"amazonaws.com", "backblazeb2.com", "yandexcloud.net", "vkcloud-storage.ru", "selcloud.ru"} {
+			holds = holds || strings.Contains(value, host)
+		}
 		if holds && file != "host_help.go" {
 			t.Errorf("%s: %s holds a host of a provider", file, pos)
 		}
 	})
+}
+
+// The tags of the snapshots are read in internal/restore (A8c, Р68): package
+// main prints what that package returns and parses no tag; only the help
+// text names them.
+func TestPackageMainParsesNoTagOfASnapshot(t *testing.T) {
+	stringLiterals(t, func(file string, pos token.Position, value string) {
+		for _, tag := range []string{"sard.source", "sard.run", "sard.step", "postgresql."} {
+			if strings.Contains(value, tag) && file != "host_help.go" {
+				t.Errorf("%s: %s holds the tag %s", file, pos, tag)
+			}
+		}
+	})
+}
+
+// How a storage is described to the messages (Where, Remote, Bucket,
+// Directory of repoinit.Target, Р34) is decided once, in
+// repoconnect.TargetFor; package main does not set those fields.
+func TestPackageMainDoesNotDescribeTheStorage(t *testing.T) {
+	assignedFields(t, func(file string, pos token.Position, field string) {
+		if slices.Contains([]string{"Where", "Remote", "Bucket", "Directory"}, field) {
+			t.Errorf("%s: %s sets %s", file, pos, field)
+		}
+	})
+}
+
+// assignedFields calls visit for every x.Field on the left of an assignment
+// in the non-test files.
+func assignedFields(t *testing.T, visit func(file string, pos token.Position, field string)) {
+	t.Helper()
+	files, err := filepath.Glob("*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("files %v, %v", files, err)
+	}
+	fset := token.NewFileSet()
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, name, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			if assign, ok := n.(*ast.AssignStmt); ok {
+				visitSelectors(assign.Lhs, func(sel *ast.SelectorExpr) { visit(name, fset.Position(sel.Pos()), sel.Sel.Name) })
+			}
+			return true
+		})
+	}
+}
+
+func visitSelectors(exprs []ast.Expr, visit func(*ast.SelectorExpr)) {
+	for _, e := range exprs {
+		if sel, ok := e.(*ast.SelectorExpr); ok {
+			visit(sel)
+		}
+	}
 }

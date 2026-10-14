@@ -11,8 +11,12 @@ import (
 )
 
 // repoContext bounds the whole command: it ends when timeout runs out on
-// clk (cause repoinit.ErrTimeout) or when ctx ends (an interrupt).
+// clk (cause repoinit.ErrTimeout) or when ctx ends (an interrupt). A zero
+// timeout is no limit (repo restore without --timeout, Р64).
 func repoContext(ctx context.Context, clk repoconnect.TimeClock, timeout time.Duration) (context.Context, context.CancelCauseFunc) {
+	if timeout <= 0 {
+		return context.WithCancelCause(ctx)
+	}
 	ctx, b := repoconnect.NewBudget(ctx, clk, timeout)
 	return ctx, b.Cancel
 }

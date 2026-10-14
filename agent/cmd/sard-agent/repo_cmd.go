@@ -33,7 +33,7 @@ func runRepo(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 func runRepoWithDeps(ctx context.Context, args []string, stdout, stderr io.Writer, deps hostDeps) int {
 	run := repoSubcommand(args)
 	if run == nil {
-		_, _ = fmt.Fprintln(stderr, "sard-agent repo: want a subcommand: init, list, add, show, remove or password")
+		_, _ = fmt.Fprintln(stderr, "sard-agent repo: want a subcommand: init, list, add, show, remove, password, snapshots or restore")
 		return exitUsage
 	}
 	if hasHelpFlag(args[1:]) {
@@ -50,8 +50,25 @@ func repoSubcommand(args []string) hostCommand {
 	}
 	return map[string]hostCommand{
 		"init": runRepoInit, "list": runRepoList, "add": runRepoAdd,
-		"show": runRepoShow, "remove": runRepoRemove, "password": runRepoPassword,
+		"show": runRepoShow, "remove": runRepoRemove, "password": runRepoPassword, "snapshots": runRepoSnapshots, "restore": runRepoRestore,
 	}[args[0]]
+}
+
+// newResticAsRoot is the wrapper for the restic that repo restore runs as
+// root, so that the files get the owners of the snapshot. The env_file and
+// the password file are files of the service user (A1) and are read as such;
+// root gets only the variables allowed for the kind of storage, and the
+// password through a pipe (Р72, Р78).
+func newResticAsRoot(cfg config.Config, binary string, deps hostDeps, repo config.Repository, serviceUID uint32) *restic.CLI {
+	return restic.New(restic.Options{
+		Binary:   binary,
+		CacheDir: cfg.Restic.CacheDir,
+		Path:     deps.pathEnv,
+		Exec:     deps.exec,
+		Keys:     crypto.NewResticAES(map[string]string{repo.Name: repo.PasswordFile}),
+		ReadFile: deps.ownedReader(serviceUID),
+		AsRoot:   true,
+	}, repo)
 }
 
 // newRestic is the wrapper for one repository of the config.
