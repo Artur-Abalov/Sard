@@ -33,6 +33,8 @@ type Config struct {
 	Scripts  map[string]string `yaml:"scripts"`
 	Restic   Restic            `yaml:"restic"`
 	Executor Executor          `yaml:"executor"`
+	// Restore is where the console may restore to (host-only, ВК2).
+	Restore Restore `yaml:"restore"`
 	// Service names the user the service runs as (main config only).
 	Service Service `yaml:"service"`
 
@@ -136,7 +138,10 @@ func (c Config) validate() error {
 	if err := c.Executor.validate(); err != nil {
 		return err
 	}
-	return c.validateRepositories()
+	if err := c.validateRepositories(); err != nil {
+		return err
+	}
+	return c.validateRestore()
 }
 
 // validateRepositories checks every repository; one of a fragment is

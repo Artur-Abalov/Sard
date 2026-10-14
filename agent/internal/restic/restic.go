@@ -39,6 +39,13 @@ type Repository interface {
 	Backup(ctx context.Context, req BackupRequest, progress func(Progress)) (BackupSummary, error)
 	// Restore writes snapshot snapshotID into the target directory.
 	Restore(ctx context.Context, snapshotID, target string) error
+	// Snapshots lists the snapshots that carry all the tags ("key=value").
+	Snapshots(ctx context.Context, tags []string) ([]Snapshot, error)
+	// HasPath says whether the snapshot holds the file or directory.
+	HasPath(ctx context.Context, snapshotID, path string) (bool, error)
+	// RestoreTo restores a snapshot, or paths of it, into a directory
+	// without overwriting (restore from the console, repo restore).
+	RestoreTo(ctx context.Context, req RestoreRequest) (RestoreSummary, error)
 }
 
 // Defaults for Options.

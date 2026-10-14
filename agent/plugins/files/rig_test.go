@@ -463,21 +463,3 @@ func oneLine(t *testing.T, msg string) {
 		t.Errorf("message is not one line: %q", msg)
 	}
 }
-
-// tree lists the entries below root, relative to it.
-func tree(t *testing.T, root string) []string {
-	t.Helper()
-	var out []string
-	err := filepath.WalkDir(root, func(p string, _ fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, _ := filepath.Rel(root, p)
-		out = append(out, rel)
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return out
-}

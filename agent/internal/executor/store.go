@@ -21,13 +21,13 @@ import (
 
 // State directory layout (all owner-only: results may name paths and repositories):
 //
-//	<dir>/journal/<key>.json  accepted, no result yet     {"version":1,"command_id":"…","accepted_at":"…","started_at":"…"}
+//	<dir>/journal/<key>.json  accepted, no result yet     {"version":1,"command_id":"…","accepted_at":"…","started_at":"…","action":2}
 //	<dir>/results/<key>.json  finished, waiting for Ack   {"version":1,"result":{…}}
 //	<dir>/acked/<key>.json    acknowledged (tombstone)    {"version":1,"acked_at":"…","result":{…}}
 //
 // A journal entry is written before ACCEPTED is reported and removed once
 // the result is saved; one found at start is a step the agent was killed
-// in (D13). It holds no config: only the id and the times. A state dir
+// in (D13). It holds no config: only the id, the action and the times. A state dir
 // without journal/ (written before it existed) is read as it is.
 //
 // <key> is hex(SHA-256(command_id)): the id comes from the server and may hold
@@ -48,6 +48,9 @@ type entry struct {
 	CommandID  string     `json:"command_id"`
 	AcceptedAt time.Time  `json:"accepted_at"`
 	StartedAt  *time.Time `json:"started_at,omitempty"`
+	// Action is the action of the command (agentv1.Action); zero in an entry
+	// written before it was recorded.
+	Action int32 `json:"action,omitempty"`
 }
 
 type record struct {
@@ -94,8 +97,8 @@ func (s *store) path(sub, commandID string) string {
 }
 
 // journal records an accepted command; started is nil until its handler starts.
-func (s *store) journal(commandID string, accepted time.Time, started *time.Time) error {
-	data, err := json.Marshal(entry{Version: recordVersion, CommandID: commandID, AcceptedAt: accepted, StartedAt: started})
+func (s *store) journal(commandID string, action agentv1.Action, accepted time.Time, started *time.Time) error {
+	data, err := json.Marshal(entry{Version: recordVersion, CommandID: commandID, AcceptedAt: accepted, StartedAt: started, Action: int32(action)})
 	if err != nil {
 		return err
 	}

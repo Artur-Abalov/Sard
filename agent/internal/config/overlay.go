@@ -81,19 +81,22 @@ func (e *DuplicateNameError) Error() string {
 type FragmentError struct{ File, Key string }
 
 func (e *FragmentError) Error() string {
-	return fmt.Sprintf("%s: key %q is not allowed in a fragment of %s: only repositories and secrets are", e.File, e.Key, FragmentDir)
+	return fmt.Sprintf("%s: key %q is not allowed in a fragment of %s: only repositories, secrets and restore are", e.File, e.Key, FragmentDir)
 }
 
 // fragment is what a file of agent.d may hold.
 type fragment struct {
 	Repositories []Repository      `yaml:"repositories"`
 	Secrets      map[string]string `yaml:"secrets"`
+	Restore      Restore           `yaml:"restore"`
 }
 
 // sources remembers where each definition came from.
 type sources struct {
 	path    string
 	secrets map[string]string
+	// restoreDirFile is the fragment that sets restore.dir; "" for the main config.
+	restoreDirFile string
 }
 
 // RepositorySource is the file that defines the repository: the main
@@ -155,7 +158,20 @@ func overlay(c Config, path string) (Config, error) {
 			return Config{}, err
 		}
 	}
-	return c, c.validateRepositories()
+	if err := c.validateRepositories(); err != nil {
+		return Config{}, err
+	}
+	return c, c.validateRestoreOf()
+}
+
+// validateRestoreOf validates restore.dir after the fragments are merged; a
+// fragment that set it is named.
+func (c Config) validateRestoreOf() error {
+	err := c.validateRestore()
+	if err != nil && c.src.restoreDirFile != "" {
+		return fmt.Errorf("%s: %w", c.src.restoreDirFile, err)
+	}
+	return err
 }
 
 // namesOf is who defined each name of the main config: "repository
@@ -169,6 +185,9 @@ func namesOf(c Config, path string) map[string]string {
 		owners["secret "+name] = path
 		c.src.secrets[name] = path
 	}
+	if c.Restore.Dir != "" {
+		owners["setting restore.dir"] = path
+	}
 	return owners
 }
 
@@ -179,7 +198,21 @@ func merge(c Config, frag fragment, file string, owners map[string]string) (Conf
 	if err := c.mergeSecrets(frag, file, owners); err != nil {
 		return Config{}, err
 	}
-	return c, nil
+	return c, c.mergeRestore(frag, file, owners)
+}
+
+// mergeRestore takes restore.dir of a fragment; a second definition is a
+// clash like a repository name defined twice.
+func (c *Config) mergeRestore(frag fragment, file string, owners map[string]string) error {
+	if frag.Restore.Dir == "" {
+		return nil
+	}
+	if err := claim(owners, "setting", "restore.dir", file); err != nil {
+		return err
+	}
+	c.Restore.Dir = frag.Restore.Dir
+	c.src.restoreDirFile = file
+	return nil
 }
 
 func (c *Config) mergeRepositories(frag fragment, file string, owners map[string]string) error {
@@ -235,15 +268,18 @@ func readFragment(file string) (fragment, error) {
 	return frag, nil
 }
 
-// checkFragmentKeys refuses a fragment with a key other than repositories
-// and secrets; the first such key in name order is the one named.
+// fragmentKeys are the keys a fragment may have.
+var fragmentKeys = []string{"repositories", "secrets", "restore"}
+
+// checkFragmentKeys refuses a fragment with a key other than repositories,
+// secrets and restore; the first such key in name order is the one named.
 func checkFragmentKeys(file string, data []byte) error {
 	var keys map[string]yaml.Node
 	if err := yaml.Unmarshal(data, &keys); err != nil {
 		return fmt.Errorf("parsing fragment %s: %w", file, err)
 	}
 	for _, key := range slices.Sorted(mapKeys(keys)) {
-		if key != "repositories" && key != "secrets" {
+		if !slices.Contains(fragmentKeys, key) {
 			return &FragmentError{File: file, Key: key}
 		}
 	}

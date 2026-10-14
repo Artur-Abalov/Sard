@@ -273,8 +273,8 @@ func TestStepsThatCannotRunAreRejectedWithoutStartingTheHandler(t *testing.T) {
 		message string
 	}{
 		"unknown plugin": {func(s *agentv1.RunStep) { s.Plugin = "tape" }, `unknown plugin "tape"`},
-		"unsupported action": {func(s *agentv1.RunStep) { s.Action = agentv1.Action_ACTION_RESTORE },
-			`plugin "files" does not support ACTION_RESTORE`},
+		"unsupported action": {func(s *agentv1.RunStep) { s.Action = agentv1.Action_ACTION_VERIFY },
+			`plugin "files" does not support ACTION_VERIFY`},
 		"unspecified action": {func(s *agentv1.RunStep) { s.Action = agentv1.Action_ACTION_UNSPECIFIED },
 			`plugin "files" does not support ACTION_UNSPECIFIED`},
 		"unknown repository": {func(s *agentv1.RunStep) { s.RepositoryName = "offsite" }, `unknown repository "offsite"`},

@@ -206,7 +206,7 @@ type fakeHandler struct {
 
 func newHandler(stubborn bool) *fakeHandler {
 	return &fakeHandler{
-		actions:  []agentv1.Action{agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RUN},
+		actions:  []agentv1.Action{agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE, agentv1.Action_ACTION_RUN},
 		stubborn: stubborn,
 		calls:    make(chan *call, 100),
 	}

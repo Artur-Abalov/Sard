@@ -108,13 +108,18 @@ func TestHandlersKnowTheRegisteredPluginsOnly(t *testing.T) {
 func TestActionsOfAPluginFollowWhatItImplements(t *testing.T) {
 	f := newHandlers(t, &plugin{})
 	h, _ := f.handlers.Handler("fake")
-	if got := h.Actions(); !slices.Equal(got, []agentv1.Action{backup, restore}) {
+	if got := h.Actions(); !slices.Equal(got, []agentv1.Action{backup}) {
 		t.Errorf("plugin: %v", got)
 	}
 	f = newHandlers(t, &verifier{})
 	h, _ = f.handlers.Handler("fake")
-	if got := h.Actions(); !slices.Equal(got, []agentv1.Action{backup, restore, verify}) {
+	if got := h.Actions(); !slices.Equal(got, []agentv1.Action{backup, verify}) {
 		t.Errorf("verifier: %v", got)
+	}
+	f = newHandlers(t, &restorer{})
+	h, _ = f.handlers.Handler("fake")
+	if got := h.Actions(); !slices.Equal(got, []agentv1.Action{backup, restore}) {
+		t.Errorf("restorer: %v", got)
 	}
 }
 
@@ -228,48 +233,6 @@ func TestRejectionNamesTheViolation(t *testing.T) {
 	}
 }
 
-func TestRestoreWritesIntoAFreshDirectoryOfTheCommand(t *testing.T) {
-	f := newHandlers(t, &plugin{})
-	st := step(restore, `{}`)
-	st.SnapshotId = "snap"
-	res, err := f.run(t, st)
-	target := filepath.Join(f.restoreDir, "cmd-1")
-	if err != nil || res.GetRestore().GetTarget() != target {
-		t.Fatalf("Run = %v, %v", res, err)
-	}
-	if !slices.Equal(f.repo.restores, []string{"snap " + target}) {
-		t.Errorf("restores = %q", f.repo.restores)
-	}
-	if info, err := os.Stat(target); err != nil || info.Mode().Perm() != 0o700 {
-		t.Errorf("target: %v, %v", info, err)
-	}
-	// The same command id again never restores over the first copy.
-	if _, err := f.run(t, st); err == nil || len(f.repo.restores) != 1 {
-		t.Errorf("second restore: %v, %d restores", err, len(f.repo.restores))
-	}
-}
-
-func TestRestoreRejectsACommandIDThatIsNotADirectoryName(t *testing.T) {
-	for _, id := range []string{"", ".", "..", "a/b", "../x"} {
-		st := step(restore, `{}`)
-		st.SnapshotId, st.CommandId = "snap", id
-		f := newHandlers(t, &plugin{})
-		if _, err := f.run(t, st); !errors.Is(err, executor.ErrRejected) || len(f.repo.restores) != 0 {
-			t.Errorf("%q: err = %v", id, err)
-		}
-	}
-}
-
-func TestRestoreFailure(t *testing.T) {
-	f := newHandlers(t, &plugin{})
-	f.repo.restoreErr = restic.ErrNoRepository
-	st := step(restore, `{}`)
-	st.SnapshotId = "snap"
-	if res, err := f.run(t, st); !errors.Is(err, restic.ErrNoRepository) || res != nil {
-		t.Fatalf("Run = %v, %v", res, err)
-	}
-}
-
 func TestVerifyRestoresChecksAndRemovesTheCopy(t *testing.T) {
 	v := &verifier{}
 	f := newHandlers(t, v)
@@ -312,62 +275,49 @@ func TestVerifyStopsWhenTheRestoreFails(t *testing.T) {
 	}
 }
 
-func TestRestoreFailsWhenTheRestoreDirCannotBeCreated(t *testing.T) {
-	f := newHandlers(t, &plugin{})
+func TestVerifyFailsWhenTheRestoreDirCannotBeCreated(t *testing.T) {
+	f := newHandlers(t, &verifier{})
 	blocker := filepath.Join(t.TempDir(), "file")
 	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	reg, _ := sdk.NewRegistry(&plugin{})
+	reg, _ := sdk.NewRegistry(&verifier{})
 	h, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return f.repo, true }, filepath.Join(blocker, "restore"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	handler, _ := h.Handler("fake")
-	st := step(restore, `{}`)
+	st := step(verify, `{}`)
 	st.SnapshotId = "snap"
 	if _, err := handler.Run(context.Background(), st, &reporter{}); err == nil || errors.Is(err, executor.ErrRejected) || len(f.repo.restores) != 0 {
-		t.Fatalf("err = %v", err)
-	}
-}
-
-func TestVerifyRejectsAnInvalidConfigBeforeRestoring(t *testing.T) {
-	f := newHandlers(t, &verifier{})
-	st := step(verify, `{"x": 1}`)
-	st.SnapshotId = "snap"
-	if _, err := f.run(t, st); !errors.Is(err, executor.ErrRejected) || len(f.repo.restores) != 0 {
 		t.Fatalf("err = %v, restores %q", err, f.repo.restores)
 	}
 }
 
-// deferredRestore is a plugin whose restore is announced but not written
-// yet (A6b Ф5: the files plugin).
-type deferredRestore struct{ plugin }
-
-func (*deferredRestore) RestoreNotImplemented() string {
-	return "restore for the fake plugin is not implemented yet"
-}
-
-func TestRestoreOfAPluginThatCannotRestoreYetFailsWithoutTouchingTheDisk(t *testing.T) {
-	f := newHandlers(t, &deferredRestore{})
-	st := step(restore, `{}`)
-	st.SnapshotId = "abc"
-	res, err := f.run(t, st)
-	if res != nil || err == nil || errors.Is(err, executor.ErrRejected) || err.Error() != "restore for the fake plugin is not implemented yet" {
-		t.Fatalf("Run = %v, %v", res, err)
-	}
-	if len(f.repo.restores) != 0 || len(f.repo.requests) != 0 {
-		t.Errorf("restic ran: %q", f.repo.restores)
-	}
-	if _, err := os.Stat(f.restoreDir); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("restore dir: %v", err)
+func TestVerifyRejectsACommandIDThatIsNotADirectoryName(t *testing.T) {
+	for _, id := range []string{"", ".", "..", "a/b", "../x"} {
+		st := step(verify, `{}`)
+		st.SnapshotId, st.CommandId = "snap", id
+		f := newHandlers(t, &verifier{})
+		if _, err := f.run(t, st); !errors.Is(err, executor.ErrRejected) || len(f.repo.restores) != 0 {
+			t.Errorf("%q: err = %v", id, err)
+		}
 	}
 }
 
-func TestRestoreOfAPluginThatCannotRestoreYetStillRejectsAMissingSnapshot(t *testing.T) {
-	f := newHandlers(t, &deferredRestore{})
-	if _, err := f.run(t, step(restore, `{}`)); !errors.Is(err, executor.ErrRejected) {
-		t.Fatalf("err = %v", err)
+// The restore of a verification starts with a RESTORING report without counters.
+func TestVerifyReportsTheRestoringPhaseBeforeRestic(t *testing.T) {
+	f := newHandlers(t, &verifier{})
+	st := step(verify, `{}`)
+	st.SnapshotId = "snap"
+	h, _ := f.handlers.Handler("fake")
+	var rep reporter
+	if _, err := h.Run(context.Background(), st, &rep); err != nil {
+		t.Fatal(err)
+	}
+	want := []event{{phase: agentv1.StepPhase_STEP_PHASE_RESTORING}, {phase: agentv1.StepPhase_STEP_PHASE_VERIFYING}, {phase: agentv1.StepPhase_STEP_PHASE_VERIFYING, done: 1, total: 2}}
+	if got := rep.all(); !slices.Equal(got, want) {
+		t.Errorf("events = %+v, want %+v", got, want)
 	}
 }
 
@@ -399,22 +349,6 @@ func TestAnUnknownSecretRejectsTheStep(t *testing.T) {
 	}})
 	if _, err := f.run(t, step(backup, `{}`)); !errors.Is(err, executor.ErrRejected) || !errors.Is(err, sdk.ErrUnknownSecret) {
 		t.Errorf("err = %v", err)
-	}
-}
-
-// The restore starts with a RESTORING report without counters.
-func TestRestoreReportsTheRestoringPhaseBeforeRestic(t *testing.T) {
-	f := newHandlers(t, &plugin{})
-	st := step(restore, `{}`)
-	st.SnapshotId = "snap"
-	h, _ := f.handlers.Handler("fake")
-	var rep reporter
-	if _, err := h.Run(context.Background(), st, &rep); err != nil {
-		t.Fatal(err)
-	}
-	want := []event{{phase: agentv1.StepPhase_STEP_PHASE_RESTORING}}
-	if got := rep.all(); !slices.Equal(got, want) {
-		t.Errorf("events = %+v, want %+v", got, want)
 	}
 }
 

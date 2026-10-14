@@ -35,6 +35,9 @@ type Agent struct {
 	// Local holds the host-local repositories, secrets and scripts. Only
 	// their names and metadata are sent to the server (ADR 0008).
 	Local config.Config
+	// RestoreDir is restore.dir of the host: the only place the console may
+	// restore to. It is told to the server for display and cannot be set by it.
+	RestoreDir string
 	// RepositoryID returns restic's id of a local repository. The server
 	// counts hosts per id to warn when a key exists on one host only.
 	RepositoryID func(ctx context.Context, r config.Repository) (string, error)
@@ -56,16 +59,18 @@ func (a *Agent) RegisterRequest(ctx context.Context) *agentv1.RegisterRequest {
 		Os:              a.OS,
 		Arch:            a.Arch,
 		Repositories:    a.repositoryInfos(ctx),
+		RestoreDir:      a.RestoreDir,
 		SecretNames:     a.Local.SecretNames(),
 		ScriptNames:     a.Local.ScriptNames(),
 	}
 	for _, name := range a.Plugins.Names() {
 		p, _ := a.Plugins.Get(name)
 		req.Plugins = append(req.Plugins, &agentv1.Plugin{
-			Name:         name,
-			ConfigSchema: string(p.ConfigSchema()),
-			Version:      p.Version(),
-			Actions:      a.actions(name),
+			Name:                name,
+			ConfigSchema:        string(p.ConfigSchema()),
+			Version:             p.Version(),
+			Actions:             a.actions(name),
+			RestoreConfigSchema: restoreSchema(p),
 		})
 	}
 	return req
@@ -94,4 +99,13 @@ func (a *Agent) actions(plugin string) []agentv1.Action {
 		return nil
 	}
 	return h.Actions()
+}
+
+// restoreSchema is the schema of the restore config of a plugin that the
+// console can restore; empty for the others.
+func restoreSchema(p sdk.Plugin) string {
+	if r, ok := p.(sdk.Restorer); ok {
+		return string(r.RestoreConfigSchema())
+	}
+	return ""
 }

@@ -51,9 +51,3 @@ func (p Plugin) Version() string { return p.AgentVersion }
 
 // ConfigSchema implements sdk.Plugin.
 func (Plugin) ConfigSchema() []byte { return schema }
-
-// RestoreNotImplemented is the message of a restore step: the restore of a
-// dump is done by hand for now (F1 ПГ13).
-func (Plugin) RestoreNotImplemented() string {
-	return "restore for the postgresql plugin is not implemented yet"
-}

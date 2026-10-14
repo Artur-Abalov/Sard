@@ -18,7 +18,7 @@ func TestEveryReasonHasAClass(t *testing.T) {
 		SSHClientMissing, SSHClientFailed, SSHHomeInvalid, SSHFileRejected, SSHKeyNotAuthorized,
 		HostKeyUnconfirmed, HostKeyMismatch, HostKeyRejected, HostKeyChanged, RepositoryNotInitialized,
 		SnapshotUnknown, SnapshotAmbiguous, TargetInvalid, TargetNotEmpty, RootTargetRefused, PathNotInSnapshot,
-		RestoreIncomplete, TargetWrite, TargetBusy, SetprivMissing}
+		RestoreIncomplete, TargetWrite, TargetBusy, SetprivMissing, ResticFailed, CleanupFailed}
 	if len(classes) != len(reasons) {
 		t.Errorf("%d reasons have a class, %d exist", len(classes), len(reasons))
 	}
@@ -67,6 +67,15 @@ func TestTheReasonsOfRepoRestoreHaveTheClassesOfTheSpecification(t *testing.T) {
 		TargetNotEmpty: ClassUsage, RootTargetRefused: ClassUsage, PathNotInSnapshot: ClassUsage,
 		RestoreIncomplete: ClassAgentError, TargetWrite: ClassWrite, TargetBusy: ClassTemporary, SetprivMissing: ClassAgentError,
 	} {
+		if got := ClassOf(reason); got != class {
+			t.Errorf("%s: class %d, want %d", reason, got, class)
+		}
+	}
+}
+
+// R2a: the reasons only the restore from the console has.
+func TestTheReasonsOfTheRestoreFromTheConsoleHaveTheirClasses(t *testing.T) {
+	for reason, class := range map[Reason]Class{ResticFailed: ClassAgentError, CleanupFailed: ClassWrite} {
 		if got := ClassOf(reason); got != class {
 			t.Errorf("%s: class %d, want %d", reason, got, class)
 		}

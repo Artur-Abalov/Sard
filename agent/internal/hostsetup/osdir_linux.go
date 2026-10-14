@@ -160,6 +160,17 @@ func (d osDir) RenameNoReplace(oldName string, newDir Dir, newName string) error
 	return nil
 }
 
+// Move implements Dir.
+func (d osDir) Move(oldName string, newDir Dir, newName string) error {
+	target := newDir.Handle()
+	err := syscall.Renameat(int(d.f.Fd()), oldName, int(target.Fd()), newName)
+	runtime.KeepAlive(target)
+	if err != nil {
+		return &fs.PathError{Op: "renameat", Path: newDir.Path() + "/" + newName, Err: renameError(oldName, err)}
+	}
+	return nil
+}
+
 // renameError is the error of a move: EXDEV, a mount point on the way, is
 // ErrCrossDevice; any other stays as it is.
 func renameError(name string, err error) error {

@@ -33,6 +33,9 @@ type Source struct {
 	plugin  sdk.Plugin
 	schema  *Schema
 	secrets *Secrets
+	// restorer and restoreSchema are set for a plugin the console can restore.
+	restorer      sdk.Restorer
+	restoreSchema *Schema
 }
 
 // NewSource compiles the plugin's ConfigSchema; a schema that does not
@@ -42,7 +45,31 @@ func NewSource(p sdk.Plugin, secrets *Secrets) (*Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Source{plugin: p, schema: schema, secrets: secrets}, nil
+	src := &Source{plugin: p, schema: schema, secrets: secrets}
+	if r, ok := p.(sdk.Restorer); ok {
+		src.restorer = r
+		if src.restoreSchema, err = CompileSchema(p.Name()+"/restore", r.RestoreConfigSchema(), secrets.Has); err != nil {
+			return nil, err
+		}
+	}
+	return src, nil
+}
+
+// CanRestore reports whether the plugin implements sdk.Restorer.
+func (s *Source) CanRestore() bool { return s.restorer != nil }
+
+// PlanRestore validates the restore config against the plugin's restore
+// schema and gives the plan the plugin makes of it, checked against the rules
+// of a plan. Any violation is a *sdk.ConfigError.
+func (s *Source) PlanRestore(cfg sdk.Config) (sdk.RestorePlan, error) {
+	if err := s.restoreSchema.Validate(cfg); err != nil {
+		return sdk.RestorePlan{}, err
+	}
+	plan, err := s.restorer.PlanRestore(cfg)
+	if err != nil {
+		return sdk.RestorePlan{}, err
+	}
+	return plan, plan.Validate()
 }
 
 // Plugin returns the plugin.

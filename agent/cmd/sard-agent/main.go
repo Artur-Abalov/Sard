@@ -21,8 +21,10 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/app"
 	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/consolerestore"
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
+	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
@@ -30,6 +32,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/tlsid"
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
 	"github.com/Artur-Abalov/sard/agent/plugins"
+	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
 // version is set at build time: -ldflags "-X main.version=...".
@@ -130,7 +133,22 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 		return fmt.Errorf("hostname: %w", err)
 	}
 	_, _ = fmt.Fprintf(stdout, "sard-agent %s: connecting to %s\n", version, cfg.Server.Address)
-	return serve(ctx, cfg, newAgent(cfg, hostname, resticBinary))
+	// R2a: before any step is accepted, what a killed restore left is removed.
+	engine := newRestoreEngine(cfg)
+	interrupted := pluginhost.Interrupted(engine.CleanStaging())
+	return serve(ctx, cfg, newAgent(cfg, hostname, resticBinary, engine), interrupted)
+}
+
+// newRestoreEngine restores for the console into restore.dir, as the
+// service user: it makes the directories it needs with the owner of this
+// process and mode 0700.
+func newRestoreEngine(cfg config.Config) *consolerestore.Engine {
+	return consolerestore.New(consolerestore.Options{
+		Dir:    cfg.RestoreDir(),
+		FS:     hostsetup.OS{},
+		Owner:  hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid(), Mode: 0o700},
+		Logger: slog.Default(),
+	})
 }
 
 // checkLocal runs the checks that need no network. OQ-050: the repositories'
@@ -155,7 +173,7 @@ func checkHostFiles(cfg config.Config) error {
 }
 
 // newAgent wires the built-in plugins to restic and the host's secrets.
-func newAgent(cfg config.Config, hostname, resticBinary string) *app.Agent {
+func newAgent(cfg config.Config, hostname, resticBinary string, restores *consolerestore.Engine) *app.Agent {
 	// Repository keys stay on this host (ADR 0008).
 	repos := openRepositories(cfg, restic.Options{
 		Binary:   resticBinary,
@@ -169,12 +187,14 @@ func newAgent(cfg config.Config, hostname, resticBinary string) *app.Agent {
 	registry := plugins.Registry(version)
 	return &app.Agent{
 		Plugins:  registry,
-		Handlers: plugins.Handlers(registry, pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), repos.get, restoreDir(cfg.Executor.StateDir)),
+		Handlers: plugins.Handlers(registry, pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), repos.get, restoreDir(cfg.Executor.StateDir), pluginhost.WithConsoleRestore(restores)),
 		Hostname: hostname,
 		Version:  version,
 		OS:       runtime.GOOS,
 		Arch:     runtime.GOARCH,
 		Local:    cfg,
+		// Only the operator of the host says where the console may restore.
+		RestoreDir: cfg.RestoreDir(),
 		RepositoryID: func(ctx context.Context, r config.Repository) (string, error) {
 			return repos[r.Name].ID(ctx)
 		},
@@ -192,7 +212,7 @@ func restoreDir(stateDir string) string {
 // the executor reports through the transport. The transport is built first
 // (it checks TLS before anything touches the disk); ref points it at the
 // executor before it starts.
-func serve(ctx context.Context, cfg config.Config, agent *app.Agent) error {
+func serve(ctx context.Context, cfg config.Config, agent *app.Agent, interrupted func(string, agentv1.Action) *executor.Interruption) error {
 	ref := &executorRef{}
 	// A7b: the step's secrets are masked in its logs and result.
 	masking := stepsecrets.New(cfg, os.ReadFile, slog.Default())
@@ -215,6 +235,7 @@ func serve(ctx context.Context, cfg config.Config, agent *app.Agent) error {
 		Repositories: repositoryNames(cfg.Repositories),
 		Secrets:      masking,
 		OutputLevel:  pluginhost.OutputLevel,
+		Interrupted:  interrupted,
 		MaxParallel:  cfg.Executor.MaxParallel,
 		Logger:       slog.Default(),
 	})

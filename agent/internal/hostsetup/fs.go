@@ -39,6 +39,15 @@ func SameFile(a, b fs.FileInfo) bool {
 	return uint64(x.Dev) == uint64(y.Dev) && uint64(x.Ino) == uint64(y.Ino)
 }
 
+// SameDevice reports whether the two descriptions are of files on one device:
+// a directory on another one is a mount point. A description that reports no
+// device (a test fake) is taken to be on the same one.
+func SameDevice(a, b fs.FileInfo) bool {
+	x, okX := a.Sys().(*syscall.Stat_t)
+	y, okY := b.Sys().(*syscall.Stat_t)
+	return !okX || !okY || uint64(x.Dev) == uint64(y.Dev)
+}
+
 // FS is the part of the file system the commands change. OS is the real
 // one; tests wrap it to record owner changes (a test is not root) and to
 // fail a step on demand.

@@ -106,6 +106,15 @@ const (
 	SetprivMissing Reason = "SETPRIV_MISSING"
 )
 
+// The reasons of the restore from the console (R2, docs/specs/agent/console-restore.feature).
+const (
+	// ResticFailed: restic failed in a way the agent has no name for.
+	ResticFailed Reason = "RESTIC_FAILED"
+	// CleanupFailed: a restore failed and the rollback could not remove what
+	// it wrote; the message names what is left.
+	CleanupFailed Reason = "CLEANUP_FAILED"
+)
+
 // Class is the kind of a failure; the command maps it to an exit code
 // (the numbers are A2b's, docs/adr/0025-grpc-error-model.md).
 type Class int
@@ -148,6 +157,8 @@ var classes = map[Reason]Class{
 	SnapshotUnknown: ClassUsage, SnapshotAmbiguous: ClassUsage, TargetInvalid: ClassUsage,
 	TargetNotEmpty: ClassUsage, RootTargetRefused: ClassUsage, PathNotInSnapshot: ClassUsage,
 	RestoreIncomplete: ClassAgentError, TargetWrite: ClassWrite, TargetBusy: ClassTemporary, SetprivMissing: ClassAgentError,
+
+	ResticFailed: ClassAgentError, CleanupFailed: ClassWrite,
 
 	AddressInvalid: ClassUsage, SecretInvalid: ClassUsage, S3KeyRejected: ClassUsage,
 	StorageAccessDenied: ClassUsage, BucketNotFound: ClassUsage,

@@ -141,6 +141,13 @@ type repo struct {
 
 	restores   []string
 	restoreErr error
+
+	// R2a: the calls of the restore from the console.
+	snapshots   []restic.Snapshot
+	listErr     error
+	holds       map[string]bool
+	restoreTo   func(context.Context, restic.RestoreRequest) (restic.RestoreSummary, error)
+	restoreReqs []restic.RestoreRequest
 }
 
 var summary = restic.BackupSummary{SnapshotID: "snap", RepositoryID: "repo-id", TotalBytes: 42}
@@ -152,6 +159,17 @@ func (r *repo) Init(context.Context) (string, error) { return "repo-id", nil }
 func (r *repo) Restore(_ context.Context, snapshotID, target string) error {
 	r.restores = append(r.restores, snapshotID+" "+target)
 	return r.restoreErr
+}
+
+func (r *repo) Snapshots(context.Context, []string) ([]restic.Snapshot, error) {
+	return r.snapshots, r.listErr
+}
+
+func (r *repo) HasPath(_ context.Context, _, path string) (bool, error) { return r.holds[path], nil }
+
+func (r *repo) RestoreTo(ctx context.Context, req restic.RestoreRequest) (restic.RestoreSummary, error) {
+	r.restoreReqs = append(r.restoreReqs, req)
+	return r.restoreTo(ctx, req)
 }
 
 func (r *repo) Backup(ctx context.Context, req restic.BackupRequest, progress func(restic.Progress)) (restic.BackupSummary, error) {
