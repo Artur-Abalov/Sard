@@ -208,4 +208,58 @@ class RunMappingTest {
         assertEquals(true, mapped.backup?.restorable)
         assertNull(MutFlow.underTest { RunMapping.step(step()) }.restore)
     }
+
+    // --- R2a: how a restore step ended is told by the server, not derived by the page
+
+    private fun outcomeOf(
+        status: StepState,
+        result: RestoreResult? = null,
+        action: Action = Action.RESTORE,
+    ) = MutFlow.underTest { RunMapping.step(step(status, action).copy(restore = result)) }.restoreOutcome
+
+    private val written = RestoreResult("/r/etc", 2, 4, null, null, null, false, null)
+
+    @Test
+    fun `a succeeded restore step with an output restored`() {
+        assertEquals(RestoreOutcome.RESTORED, outcomeOf(StepState.SUCCEEDED, written))
+        assertNull(outcomeOf(StepState.SUCCEEDED, null))
+    }
+
+    @Test
+    fun `a restore step that did not succeed restored nothing`() {
+        for (status in listOf(StepState.FAILED, StepState.REJECTED, StepState.TIMED_OUT, StepState.CANCELLED)) {
+            assertEquals(RestoreOutcome.NOTHING, outcomeOf(status), status.name)
+        }
+    }
+
+    @Test
+    fun `a leftover is a failed rollback whatever the status`() {
+        val left = RestoreResult(null, null, null, null, null, null, null, "database app_restored")
+        for (status in StepState.entries) {
+            assertEquals(RestoreOutcome.ROLLBACK_FAILED, outcomeOf(status, left), status.name)
+        }
+        assertEquals(RestoreOutcome.NOTHING, outcomeOf(StepState.FAILED, left.copy(leftover = "")))
+    }
+
+    @Test
+    fun `a lost restore step is late only when its late output says where the data is`() {
+        assertEquals(RestoreOutcome.LATE, outcomeOf(StepState.LOST, written))
+        assertNull(outcomeOf(StepState.LOST, null))
+        assertNull(outcomeOf(StepState.LOST, written.copy(target = null)))
+        assertNull(outcomeOf(StepState.LOST, written.copy(target = "")))
+    }
+
+    @Test
+    fun `a restore step that has not ended has no outcome`() {
+        for (status in listOf(StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING)) {
+            assertNull(outcomeOf(status), status.name)
+        }
+    }
+
+    @Test
+    fun `a step of another action has no restore outcome`() {
+        for (action in Action.entries.filter { it != Action.RESTORE }) {
+            assertNull(outcomeOf(StepState.FAILED, null, action), action.name)
+        }
+    }
 }

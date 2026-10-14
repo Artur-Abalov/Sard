@@ -87,6 +87,7 @@ function succeededRun(source: Schemas['Source']): Schemas['Run'] {
     message: null,
     backup: null,
     restore: null,
+    restoreOutcome: null,
     queuedAt,
     dispatchedAt: queuedAt,
     startedAt: queuedAt,

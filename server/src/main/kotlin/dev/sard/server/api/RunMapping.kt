@@ -84,6 +84,7 @@ internal object RunMapping {
                 BackupOutput(it.snapshotId, it.totalBytes, it.addedBytes, it.repositoryId, it.partial, it.restorable)
             },
             view.restore?.let(RestoreMapping::output),
+            RestoreMapping.outcome(view),
             view.queuedAt,
             view.dispatchedAt,
             view.startedAt,
@@ -131,4 +132,30 @@ internal object RestoreMapping {
             result.ownersRestored,
             result.leftover,
         )
+
+    /**
+     * A restore is all or nothing: a failed step restored nothing unless the agent names what its rollback left.
+     * A lost step is late only when its late output says where the data is.
+     */
+    fun outcome(step: StepView): RestoreOutcome? =
+        when {
+            step.action != Action.RESTORE -> null
+            !step.restore?.leftover.isNullOrEmpty() -> RestoreOutcome.ROLLBACK_FAILED
+            else -> ended(step.status, step.restore)
+        }
+
+    private fun ended(
+        status: StepState,
+        result: dev.sard.server.runs.RestoreResult?,
+    ): RestoreOutcome? =
+        when {
+            status == StepState.SUCCEEDED -> if (result == null) null else RestoreOutcome.RESTORED
+            status == StepState.LOST -> late(result)
+            status.active -> null
+            else -> RestoreOutcome.NOTHING // failed, rejected, timed out, cancelled: all or nothing
+        }
+
+    // A lost step is late only when its late output says where the data is.
+    private fun late(result: dev.sard.server.runs.RestoreResult?): RestoreOutcome? =
+        if (result?.target.isNullOrEmpty()) null else RestoreOutcome.LATE
 }

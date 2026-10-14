@@ -254,6 +254,7 @@ export function queuedRestore(choice: Choice): Schemas['Run'] {
     message: null,
     backup: null,
     restore: null,
+    restoreOutcome: null,
     queuedAt: now,
     dispatchedAt: null,
     startedAt: null,

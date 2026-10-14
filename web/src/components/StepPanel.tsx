@@ -2,12 +2,12 @@
 // Copyright 2026 Artur Abalov
 
 import { Alert, Badge, Card, Code, Group, Progress, Stack, Text, Title } from '@mantine/core'
+import type { ReactNode } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import type { RunStep } from '../api/queries'
 import type { components } from '../api/schema'
 import { formatPercent, formatRestoreResult } from '../format'
 import { stepPollInterval } from '../polling'
-import { restoreOutcome, type RestoreOutcome } from '../restoreView'
 import { partialNoteShown, stepNoteShown } from '../stepNotes'
 import { useFormat } from '../useFormat'
 import { Mono } from './Mono'
@@ -117,41 +117,49 @@ function Restored({ restore }: { restore: Schemas['RestoreOutput'] }) {
   )
 }
 
-function Outcome({ outcome }: { outcome: RestoreOutcome }) {
-  const { t } = useTranslation()
-  switch (outcome.kind) {
-    case 'restored':
-      return <Restored restore={outcome.restore} />
-    case 'nothing':
-      return <Alert color={tones.neutral}>{t('restore.nothingRestored')}</Alert>
-    case 'rollbackFailed':
-      return (
-        <Alert color={tones.error} role="alert">
-          <Trans
-            i18nKey="restore.rollbackFailed"
-            values={{ leftover: outcome.leftover }}
-            components={{ m: <Mono /> }}
-          />
-        </Alert>
-      )
-    case 'late':
-      return (
-        <Alert color={tones.warning} role="status">
-          <Trans
-            i18nKey="restore.lateSuccess"
-            values={{ target: outcome.target }}
-            components={{ m: <Mono /> }}
-          />
-        </Alert>
-      )
-  }
+function RollbackFailed({ leftover }: { leftover: string | null }) {
+  return (
+    <Alert color={tones.error} role="alert">
+      <Trans
+        i18nKey="restore.rollbackFailed"
+        values={{ leftover: leftover ?? '' }}
+        components={{ m: <Mono /> }}
+      />
+    </Alert>
+  )
 }
 
-// How a restore step ended, in the server's facts: what it wrote, that nothing was restored, what
-// its rollback left behind, or where a lost step's late result put the data.
+function LateSuccess({ target }: { target: string | null }) {
+  return (
+    <Alert color={tones.warning} role="status">
+      <Trans
+        i18nKey="restore.lateSuccess"
+        values={{ target: target ?? '' }}
+        components={{ m: <Mono /> }}
+      />
+    </Alert>
+  )
+}
+
+function Nothing() {
+  const { t } = useTranslation()
+  return <Alert color={tones.neutral}>{t('restore.nothingRestored')}</Alert>
+}
+
+type Restore = Schemas['RestoreOutput'] | null
+type Outcome = NonNullable<RunStep['restoreOutcome']>
+
+const OUTCOMES: Record<Outcome, (restore: Restore) => ReactNode> = {
+  restored: (restore) => restore && <Restored restore={restore} />,
+  nothing: () => <Nothing />,
+  rollback_failed: (restore) => <RollbackFailed leftover={restore?.leftover ?? null} />,
+  late: (restore) => <LateSuccess target={restore?.target ?? null} />,
+}
+
+// How a restore step ended, in the words of the server's outcome: what it wrote, that nothing was
+// restored, what its rollback left behind, or where a lost step's late result put the data.
 function RestoreBlock({ step }: { step: RunStep }) {
-  const outcome = step.action === 'restore' ? restoreOutcome(step) : null
-  return outcome === null ? null : <Outcome outcome={outcome} />
+  return step.restoreOutcome === null ? null : OUTCOMES[step.restoreOutcome](step.restore)
 }
 
 export function StepPanel({ runId, step }: { runId: string; step: RunStep }) {

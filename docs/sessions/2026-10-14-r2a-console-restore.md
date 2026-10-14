@@ -22,3 +22,11 @@
 - Проверка владельца в интеграционном тесте слаба под root.
 - Каталоги с ограниченными правами могут помешать откату (сообщается `leftover`).
 - Для существующих ручных запусков `requestedBy` заполнен значением `admin`.
+
+## Правки по замечаниям architect (F1, F3, F4, F6, claim)
+- F1: сбой `Sync` каталога после успешного rename — предупреждение (WARN), восстановление считается состоявшимся. Тест `TestASyncFailureAfterTheMoveDoesNotDenyARestoreThatHappened`.
+- F3: `Engine.Restore` сам проверяет план (`RestorePlan.Validate`) до записи; отказ `TARGET_INVALID (check)`. Тест на `../escape`, `a/../../escape`, `.sard-staging/x`, пустое назначение.
+- F4: свой классификатор ошибок restic в `consolerestore` удалён; используются `repoinit.FromRestic`, `restore.ListFailure`, `restore.RequirePaths`, `restore.TargetFailure` (без пометки о частичном восстановлении, `restore.IncompleteText` общий). Движок получает `repoinit.Target` репозитория (`Options.Target`, в main — `repoconnect.TargetReading` читает env_file и пароль, чтобы скрыть значения). Причина «иная ошибка restic» для локального репозитория остаётся `RESTIC_FAILED` (сценарий спецификации), для удалённого — `BACKEND_REFUSED` как у A8c. Не тронуто: `missingOrInvalid` в `consolerestore/target.go` — другое сообщение (`NotDirError`), не классификатор restic.
+- claim: назначения, вложенные друг в друга (`a` и `a/b`), считаются занятыми (`TARGET_BUSY`).
+- F6: сервер отдаёт у шага `restoreOutcome` (`restored | nothing | rollback_failed | late`), решение принимает `RestoreMapping.outcome`; `restoreOutcome()` и его тест удалены из web, страница только сопоставляет значение строкам i18n. `make openapi` перегенерировал `openapi.json` и `schema.d.ts`.
+- F2 и F5 не затронуты (ждут правки спецификации).

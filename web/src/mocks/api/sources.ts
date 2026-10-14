@@ -40,6 +40,7 @@ export function queuedRun(source: Schemas['Source']): Schemas['Run'] {
     message: null,
     backup: null,
     restore: null,
+    restoreOutcome: null,
     queuedAt: now,
     dispatchedAt: null,
     startedAt: null,

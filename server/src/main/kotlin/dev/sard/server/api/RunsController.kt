@@ -153,6 +153,13 @@ data class RunStep(
             "Set when a restore step reported an output, whatever its status: a lost step shows a late one (R2)",
     )
     val restore: RestoreOutput?,
+    @field:Schema(
+        description =
+            "How a restore step ended: restored, nothing (all or nothing: the step failed and left no trace), " +
+                "rollback_failed (restore.leftover must be removed by hand) or late (a lost step's late output is " +
+                "at restore.target); null while it runs and for any other action",
+    )
+    val restoreOutcome: RestoreOutcome?,
     val queuedAt: Instant,
     val dispatchedAt: Instant?,
     val startedAt: Instant?,

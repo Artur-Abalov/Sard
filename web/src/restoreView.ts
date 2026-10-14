@@ -1,40 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
-import type { components } from './api/schema'
-
-type Schemas = components['schemas']
 type Json = Record<string, unknown>
-
-export type RestoreOutcome =
-  | { kind: 'restored'; restore: Schemas['RestoreOutput'] }
-  | { kind: 'nothing' }
-  | { kind: 'rollbackFailed'; leftover: string }
-  | { kind: 'late'; target: string }
-
-const NOT_RESTORED: Schemas['StepStatus'][] = ['failed', 'rejected', 'timed_out', 'cancelled']
-
-type Restore = Schemas['RestoreOutput'] | null
-
-function rollbackFailed(restore: Restore): RestoreOutcome | null {
-  const leftover = restore?.leftover ?? ''
-  return leftover === '' ? null : { kind: 'rollbackFailed', leftover }
-}
-
-function finished(status: Schemas['StepStatus'], restore: Restore): RestoreOutcome | null {
-  if (status === 'succeeded') return restore && { kind: 'restored', restore }
-  if (status === 'lost') return restore?.target ? { kind: 'late', target: restore.target } : null
-  return NOT_RESTORED.includes(status) ? { kind: 'nothing' } : null
-}
-
-// What the page of a restore step says about its end, from the server's facts only: a restore is
-// all or nothing, so a failed step restored nothing unless the server names a leftover of its rollback.
-export function restoreOutcome(step: {
-  status: Schemas['StepStatus']
-  restore: Restore
-}): RestoreOutcome | null {
-  return rollbackFailed(step.restore) ?? finished(step.status, step.restore)
-}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 

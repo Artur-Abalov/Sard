@@ -1033,6 +1033,8 @@ export interface components {
             /** @description The schedule's time zone, to show the period in */
             timezone: string;
         };
+        /** @enum {string} */
+        RestoreOutcome: "restored" | "nothing" | "rollback_failed" | "late";
         /** @description What a restore step reported. A restore is all or nothing: a succeeded one has everything it did, any other has this only when its rollback failed, and then leftover alone. A field the restore does not have is null: a database restore has no files, a restore of files no tables */
         RestoreOutput: {
             /** @description The absolute path of the directory, or the name of the database */
@@ -1145,6 +1147,8 @@ export interface components {
             backup: components["schemas"]["BackupOutput"] | null;
             /** @description Set when a restore step reported an output, whatever its status: a lost step shows a late one (R2) */
             restore: components["schemas"]["RestoreOutput"] | null;
+            /** @description How a restore step ended: restored, nothing (all or nothing: the step failed and left no trace), rollback_failed (restore.leftover must be removed by hand) or late (a lost step's late output is at restore.target); null while it runs and for any other action */
+            restoreOutcome: components["schemas"]["RestoreOutcome"] | null;
             /** Format: date-time */
             queuedAt: string;
             /** Format: date-time */

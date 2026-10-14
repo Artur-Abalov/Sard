@@ -372,6 +372,7 @@ function backupStep(facts: StepFacts): Schemas['RunStep'] {
     message: null,
     backup: null,
     restore: null,
+    restoreOutcome: null,
     queuedAt: facts.queuedAt,
     dispatchedAt: facts.startedAt === null ? null : facts.queuedAt,
     startedAt: facts.startedAt,

@@ -120,6 +120,22 @@ enum class RestoreWarningCode {
     GLOBALS_CHANGE_CLUSTER,
 }
 
+/** How a restore step ended, for the page to word; the server decides it from the status and the output. */
+@Schema(enumAsRef = true)
+enum class RestoreOutcome {
+    @JsonProperty("restored")
+    RESTORED,
+
+    @JsonProperty("nothing")
+    NOTHING,
+
+    @JsonProperty("rollback_failed")
+    ROLLBACK_FAILED,
+
+    @JsonProperty("late")
+    LATE,
+}
+
 /** Step state (ADR 0013, run_steps.status): the server's own states around the agent's final ones. */
 @Schema(enumAsRef = true)
 enum class StepStatus {
