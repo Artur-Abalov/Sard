@@ -83,3 +83,10 @@ PostgreSQL нет (ADR 0059, Р62). Задание просит распрост
 `printSnapshotHeader`, общий конец неудачной записи (`write`, `restorePostgres`)
 — в `restoreRun.writeFailed`. Поведение и тексты не менялись. Остальные
 функции среза ниже порога CRAP 6; `restoreRun.restore` — CRAP 6.0, CC 6, покрытие 100%.
+
+### Cleaner, второй проход (629ecdb)
+
+Затронутые функции (`malformed`, `PGPlan.fileOf`) в отчёте CRAP не
+значатся, то есть ниже 6. Новые тесты уже используют общие помощники
+(`assertRefusal`, `assertAbsent`, `dumpCalls`, `restoreCalls`);
+`assertNothingWritten` не дублирует существующих. Код не менялся.
