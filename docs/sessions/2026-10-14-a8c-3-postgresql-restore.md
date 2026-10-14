@@ -211,3 +211,4 @@ fast` проходит.
 - Запись файлов (`written` … `countingWriter`) перенесена из `postgres.go`
   (428 строк) в `postgres_write.go`; в `postgres.go` остались план и подсказки
   (221 и 226 строк).
+- cleaner: reviewed d55b7b0; fill, newPending and SameFile are below CRAP 6, nothing changed; agent fast gate passed.
