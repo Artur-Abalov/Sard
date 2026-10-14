@@ -5,6 +5,7 @@ package restic_test
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -47,6 +48,7 @@ var helperModes = map[string]func(){
 	"tree":  startStubbornChild,
 	"leak":  leaveChildBehind,
 	"sleep": func() { time.Sleep(time.Minute) },
+	"fd3":   func() { data, _ := io.ReadAll(os.NewFile(3, "fd3")); fmt.Printf("%s", data) },
 	"stubborn": func() {
 		signal.Ignore(syscall.SIGTERM)
 		fmt.Println("ready")
@@ -128,6 +130,23 @@ func TestProcessExecutorPassesOnlyTheGivenEnvironment(t *testing.T) {
 	want := cmd.Env
 	if code != 0 || err != nil || !slices.Equal(out.all(), want) {
 		t.Fatalf("code = %d, err = %v, env = %q, want %q", code, err, out.all(), want)
+	}
+}
+
+func TestProcessExecutorHandsTheExtraFilesToTheProcessFromDescriptor3(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = r.Close() }()
+	_, _ = w.WriteString("secret\n")
+	_ = w.Close()
+	var out lines
+	cmd := helper(t, "fd3")
+	cmd.Stdout, cmd.ExtraFiles = out.add, []*os.File{r}
+	code, err := restic.ProcessExecutor{}.Run(context.Background(), cmd)
+	if code != 0 || err != nil || !slices.Equal(out.all(), []string{"secret"}) {
+		t.Fatalf("code = %d, err = %v, out = %q", code, err, out.all())
 	}
 }
 
@@ -290,5 +309,17 @@ func TestProcessExecutorCopiesStderrUnchanged(t *testing.T) {
 	}
 	if want := []string{"warn"}; !slices.Equal(errOut.all(), want) {
 		t.Errorf("stderr = %q, want %q", errOut.all(), want)
+	}
+}
+
+// A8c-3: restic dump writes a file, not lines; StdoutTo gets the bytes as they are.
+func TestProcessExecutorGivesRawStdoutToTheWriterUnchanged(t *testing.T) {
+	var out bytes.Buffer
+	cmd := helper(t, "cat")
+	cmd.Stdin = strings.NewReader("PGDMP\r\n\x00no line end")
+	cmd.StdoutTo = &out
+	code, err := restic.ProcessExecutor{}.Run(context.Background(), cmd)
+	if code != 0 || err != nil || out.String() != "PGDMP\r\n\x00no line end" {
+		t.Fatalf("code = %d, err = %v, stdout = %q", code, err, out.String())
 	}
 }
