@@ -41,6 +41,6 @@ func CheckTargetFlags(target string, allowRoot bool) error {
 func IsRoot(target string) bool { return path.IsAbs(target) && path.Clean(target) == "/" }
 
 // OverwriteUnavailable is the usage error of --overwrite: replacing files in
-// a target that is not empty is the slice A8c-2b (Р74, OQ-201). The flag is
+// a target that is not empty is the slice A8c-2b (Р74, OQ-211). The flag is
 // recognised, so that the operator sees a limit, not a typo.
 const OverwriteUnavailable = "--overwrite is not available yet: restore into an empty or new directory"

@@ -118,6 +118,15 @@ fi
 grep -q 'setup-session' <<<"$out" || fail "the failure does not name the step: $out"
 expect "stops at the first refusal" "1" "$(wc -l <"$SARD_FAKE_CURL_LOG" | tr -d ' ')"
 
+# 7. A stand without sard-self confirms the onboarding in the database (F4b): the SQL goes to the command on stdin.
+read_sql() { cat; }
+expect "onboarding in the database" \
+  "insert into onboarding_steps (step, completed_at) values ('keys_confirmed', now()) on conflict do nothing;" \
+  "$(sard_confirm_onboarding_in_database read_sql)"
+if sard_confirm_onboarding_in_database false 2>/dev/null; then
+  fail "a failing database command must fail"
+fi
+
 if [ "$failures" -gt 0 ]; then
   echo "test-setup-wizard: $failures failure(s)" >&2
   exit 1

@@ -59,6 +59,7 @@ describe('guard', () => {
             setupCode: 'active',
             ca: null,
             caReplaceable: null,
+            restriction: 'full',
             steps: [
               { id: 'ca', state },
               { id: 'admin', state },
@@ -97,24 +98,6 @@ describe('guard', () => {
       expect(seen).toEqual(['GET /api/v1/session', 'GET /api/v1/onboarding'])
     })
 
-    test('a signed-in visit does not ask for the onboarding state', async () => {
-      server.use(
-        http.get('/api/v1/session', ({ response }) =>
-          response(200).json({
-            tenantId: '00000000-0000-0000-0000-000000000001',
-            expiresAt: new Date().toISOString(),
-          }),
-        ),
-      )
-      const seen: string[] = []
-      const listener = ({ request }: { request: Request }) =>
-        void seen.push(new URL(request.url).pathname)
-      server.events.on('request:start', listener)
-      await guard({ pathname: '/agents', searchStr: '' })
-      server.events.removeListener('request:start', listener)
-      expect(seen).toEqual(['/api/v1/session'])
-    })
-
     test.each([
       ['a 503', () => new Response(null, { status: 503 })],
       ['a 500', () => new Response(null, { status: 500 })],
@@ -126,5 +109,73 @@ describe('guard', () => {
       expect(error).toBeInstanceOf(Error)
       expect(isRedirect(error)).toBe(false)
     })
+  })
+})
+
+// F4b (Рк9): a signed-in visit asks the server how far the onboarding has come.
+describe('with an administrator session (Рк9, F4b)', () => {
+  const signedIn = () =>
+    server.use(
+      http.get('/api/v1/session', ({ response }) =>
+        response(200).json({
+          tenantId: '00000000-0000-0000-0000-000000000001',
+          expiresAt: new Date().toISOString(),
+        }),
+      ),
+    )
+  const restriction = (value: 'full' | 'new_agents' | 'none') =>
+    server.use(
+      http.get('/api/v1/onboarding', ({ response }) =>
+        response(200).json({
+          access: 'admin',
+          setupCode: 'not_issued',
+          ca: null,
+          caReplaceable: false,
+          restriction: value,
+          steps: [
+            { id: 'ca', state: 'done' },
+            { id: 'admin', state: 'done' },
+            { id: 'self_backup', state: value === 'none' ? 'done' : 'pending' },
+            { id: 'keys_confirmed', state: value === 'none' ? 'done' : 'upcoming' },
+          ],
+        }),
+      ),
+    )
+
+  test('the full restriction sends a protected page to the wizard', async () => {
+    signedIn()
+    restriction('full')
+    const error = await guard({ pathname: '/agents', searchStr: '' }).catch((e: unknown) => e)
+    expect(isRedirect(error)).toBe(true)
+    expect(error).toMatchObject({ options: { to: '/setup' } })
+  })
+
+  test.each(['new_agents', 'none'] as const)(
+    'the restriction %s lets the protected page open',
+    async (value) => {
+      signedIn()
+      restriction(value)
+      await expect(guard({ pathname: '/agents', searchStr: '' })).resolves.toBeUndefined()
+    },
+  )
+
+  test('asks for the session and then for the onboarding state', async () => {
+    signedIn()
+    restriction('none')
+    const seen: string[] = []
+    const listener = ({ request }: { request: Request }) =>
+      void seen.push(new URL(request.url).pathname)
+    server.events.on('request:start', listener)
+    await guard({ pathname: '/agents', searchStr: '' })
+    server.events.removeListener('request:start', listener)
+    expect(seen).toEqual(['/api/v1/session', '/api/v1/onboarding'])
+  })
+
+  test('an onboarding state that cannot be read is no redirect', async () => {
+    signedIn()
+    server.use(http.get('/api/v1/onboarding', () => new Response(null, { status: 503 })))
+    const error = await guard({ pathname: '/agents', searchStr: '' }).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(Error)
+    expect(isRedirect(error)).toBe(false)
   })
 })

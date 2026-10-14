@@ -19,10 +19,12 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppTokensRouteImport } from './routes/_app/tokens'
+import { Route as SetupRecoveryCardRouteImport } from './routes/setup_.recovery-card'
 import { Route as AppAgentsIndexRouteImport } from './routes/_app/agents/index'
 import { Route as AppAgentsAgentIdRouteImport } from './routes/_app/agents/$agentId'
 import { Route as AppRunsIndexRouteImport } from './routes/_app/runs/index'
 import { Route as AppRunsRunIdRouteImport } from './routes/_app/runs/$runId'
+import { Route as AppSettingsRecoveryCardRouteImport } from './routes/_app/settings_.recovery-card'
 import { Route as AppSourcesIndexRouteImport } from './routes/_app/sources/index'
 import { Route as AppSourcesNewRouteImport } from './routes/_app/sources/new'
 import { Route as AppSourcesSourceIdIndexRouteImport } from './routes/_app/sources/$sourceId/index'
@@ -57,6 +59,11 @@ const AppTokensRoute = AppTokensRouteImport.update({
   path: '/tokens',
   getParentRoute: () => AppRoute,
 } as any)
+const SetupRecoveryCardRoute = SetupRecoveryCardRouteImport.update({
+  id: '/setup_/recovery-card',
+  path: '/setup/recovery-card',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppAgentsIndexRoute = AppAgentsIndexRouteImport.update({
   id: '/agents/',
   path: '/agents/',
@@ -75,6 +82,11 @@ const AppRunsIndexRoute = AppRunsIndexRouteImport.update({
 const AppRunsRunIdRoute = AppRunsRunIdRouteImport.update({
   id: '/runs/$runId',
   path: '/runs/$runId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsRecoveryCardRoute = AppSettingsRecoveryCardRouteImport.update({
+  id: '/settings_/recovery-card',
+  path: '/settings/recovery-card',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSourcesIndexRoute = AppSourcesIndexRouteImport.update({
@@ -104,8 +116,10 @@ export interface FileRoutesByFullPath {
   '/setup': typeof SetupRoute
   '/settings': typeof AppSettingsRoute
   '/tokens': typeof AppTokensRoute
+  '/setup/recovery-card': typeof SetupRecoveryCardRoute
   '/agents/$agentId': typeof AppAgentsAgentIdRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
+  '/settings/recovery-card': typeof AppSettingsRecoveryCardRoute
   '/sources/new': typeof AppSourcesNewRoute
   '/agents/': typeof AppAgentsIndexRoute
   '/runs/': typeof AppRunsIndexRoute
@@ -118,9 +132,11 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupRoute
   '/settings': typeof AppSettingsRoute
   '/tokens': typeof AppTokensRoute
+  '/setup/recovery-card': typeof SetupRecoveryCardRoute
   '/': typeof AppIndexRoute
   '/agents/$agentId': typeof AppAgentsAgentIdRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
+  '/settings/recovery-card': typeof AppSettingsRecoveryCardRoute
   '/sources/new': typeof AppSourcesNewRoute
   '/agents': typeof AppAgentsIndexRoute
   '/runs': typeof AppRunsIndexRoute
@@ -135,9 +151,11 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/tokens': typeof AppTokensRoute
+  '/setup_/recovery-card': typeof SetupRecoveryCardRoute
   '/_app/': typeof AppIndexRoute
   '/_app/agents/$agentId': typeof AppAgentsAgentIdRoute
   '/_app/runs/$runId': typeof AppRunsRunIdRoute
+  '/_app/settings_/recovery-card': typeof AppSettingsRecoveryCardRoute
   '/_app/sources/new': typeof AppSourcesNewRoute
   '/_app/agents/': typeof AppAgentsIndexRoute
   '/_app/runs/': typeof AppRunsIndexRoute
@@ -153,8 +171,10 @@ export interface FileRouteTypes {
     | '/setup'
     | '/settings'
     | '/tokens'
+    | '/setup/recovery-card'
     | '/agents/$agentId'
     | '/runs/$runId'
+    | '/settings/recovery-card'
     | '/sources/new'
     | '/agents/'
     | '/runs/'
@@ -167,9 +187,11 @@ export interface FileRouteTypes {
     | '/setup'
     | '/settings'
     | '/tokens'
+    | '/setup/recovery-card'
     | '/'
     | '/agents/$agentId'
     | '/runs/$runId'
+    | '/settings/recovery-card'
     | '/sources/new'
     | '/agents'
     | '/runs'
@@ -183,9 +205,11 @@ export interface FileRouteTypes {
     | '/setup'
     | '/_app/settings'
     | '/_app/tokens'
+    | '/setup_/recovery-card'
     | '/_app/'
     | '/_app/agents/$agentId'
     | '/_app/runs/$runId'
+    | '/_app/settings_/recovery-card'
     | '/_app/sources/new'
     | '/_app/agents/'
     | '/_app/runs/'
@@ -198,6 +222,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
   SetupRoute: typeof SetupRoute
+  SetupRecoveryCardRoute: typeof SetupRecoveryCardRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -244,6 +269,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTokensRouteImport
       parentRoute: typeof AppRoute
     }
+    '/setup_/recovery-card': {
+      id: '/setup_/recovery-card'
+      path: '/setup/recovery-card'
+      fullPath: '/setup/recovery-card'
+      preLoaderRoute: typeof SetupRecoveryCardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/agents/': {
       id: '/_app/agents/'
       path: '/agents'
@@ -270,6 +302,13 @@ declare module '@tanstack/react-router' {
       path: '/runs/$runId'
       fullPath: '/runs/$runId'
       preLoaderRoute: typeof AppRunsRunIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings_/recovery-card': {
+      id: '/_app/settings_/recovery-card'
+      path: '/settings/recovery-card'
+      fullPath: '/settings/recovery-card'
+      preLoaderRoute: typeof AppSettingsRecoveryCardRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/sources/': {
@@ -309,6 +348,7 @@ interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppAgentsAgentIdRoute: typeof AppAgentsAgentIdRoute
   AppRunsRunIdRoute: typeof AppRunsRunIdRoute
+  AppSettingsRecoveryCardRoute: typeof AppSettingsRecoveryCardRoute
   AppSourcesNewRoute: typeof AppSourcesNewRoute
   AppAgentsIndexRoute: typeof AppAgentsIndexRoute
   AppRunsIndexRoute: typeof AppRunsIndexRoute
@@ -323,6 +363,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppAgentsAgentIdRoute: AppAgentsAgentIdRoute,
   AppRunsRunIdRoute: AppRunsRunIdRoute,
+  AppSettingsRecoveryCardRoute: AppSettingsRecoveryCardRoute,
   AppSourcesNewRoute: AppSourcesNewRoute,
   AppAgentsIndexRoute: AppAgentsIndexRoute,
   AppRunsIndexRoute: AppRunsIndexRoute,
@@ -337,6 +378,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
   SetupRoute: SetupRoute,
+  SetupRecoveryCardRoute: SetupRecoveryCardRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

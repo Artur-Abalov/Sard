@@ -25,8 +25,10 @@ func dirForTLSFile(h *host, which string) string {
 
 // Сбой записи после успешной регистрации не оставляет файлов
 func TestAWriteFailureAfterASuccessfulEnrollmentLeavesNoFiles(t *testing.T) {
+	t.Parallel()
 	for _, which := range []string{"key", "cert", "ca"} {
 		t.Run(which, func(t *testing.T) {
+			t.Parallel()
 			ca := newTestCA(t)
 			leaf := chainOf(ca.leaf(t, []string{"127.0.0.1"}, 0), ca)
 			srv := &enrollServer{started: make(chan struct{}), block: make(chan struct{})}
@@ -66,8 +68,10 @@ func TestAWriteFailureAfterASuccessfulEnrollmentLeavesNoFiles(t *testing.T) {
 
 // Сбой записи при --force оставляет прежние файлы
 func TestAWriteFailureWithForceLeavesThePreviousFiles(t *testing.T) {
+	t.Parallel()
 	for _, which := range []string{"key", "cert", "ca"} {
 		t.Run(which, func(t *testing.T) {
+			t.Parallel()
 			f := newSucceedingFakeFixture(t, "old-agent")
 			if code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token); code != exitOK {
 				t.Fatalf("first enroll: code = %d, stderr = %q", code, errOut)
@@ -132,6 +136,7 @@ func TestTheKeyIsWritten0600RegardlessOfUmask(t *testing.T) {
 
 // При --force ключ получает права 0600, даже если прежний был шире
 func TestForceStillWritesTheKeyAt0600EvenIfThePreviousOneWasWider(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "old-agent")
 	if code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token); code != exitOK {
 		t.Fatalf("first enroll: code = %d, stderr = %q", code, errOut)
@@ -150,6 +155,7 @@ func TestForceStillWritesTheKeyAt0600EvenIfThePreviousOneWasWider(t *testing.T) 
 
 // Файлы принадлежат пользователю, запустившему команду
 func TestFilesBelongToTheUserRunningTheCommand(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)
 	if code != exitOK {
@@ -202,6 +208,7 @@ func requireFileMode(t *testing.T, path string, want os.FileMode) {
 // actual successful run, not merely that production code never touches
 // os.Stdin. A stdin that blocks forever must not make the command wait.
 func TestASuccessfulCommandDoesNotReadStdin(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	// The command under test here is run() (via runEnrollCmdTest), which
 	// never touches os.Stdin at all (see enroll_run.go): there is nothing

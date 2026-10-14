@@ -15,6 +15,7 @@ import (
 // Rule "repo add подключает хранилище SFTP одной командой".
 
 func TestAnEmptySFTPDirectoryBecomesARepositoryWithAGeneratedPassword(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	code, stdout, stderr := h.sftpCmd()
@@ -59,6 +60,7 @@ func (h *sftpHostWorld) assertSFTPSummary(stdout string) {
 }
 
 func TestAnExistingSFTPRepositoryIsAttachedByItsPassword(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	repo := h.sftpRepo()
@@ -76,6 +78,7 @@ func TestAnExistingSFTPRepositoryIsAttachedByItsPassword(t *testing.T) {
 }
 
 func TestTheFirstRunWithAnUnauthorizedKeyPrintsThePublicPartAndRefuses(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.srv.authorized = false
 	code, stdout, stderr := h.sftpCmd()
@@ -93,6 +96,7 @@ func TestTheFirstRunWithAnUnauthorizedKeyPrintsThePublicPartAndRefuses(t *testin
 }
 
 func TestTheFilesWrittenBeforeARefusedLoginStayAndAreAudited(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.srv.authorized = false
 	h.sftpCmd()
@@ -108,6 +112,7 @@ func TestTheFilesWrittenBeforeARefusedLoginStayAndAreAudited(t *testing.T) {
 }
 
 func TestAfterTheKeyIsAuthorizedARepeatConnectsWithoutQuestionsAndWithoutANewKey(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.srv.authorized = false
 	h.sftpCmd()
@@ -127,6 +132,7 @@ func TestAfterTheKeyIsAuthorizedARepeatConnectsWithoutQuestionsAndWithoutANewKey
 }
 
 func TestRepeatingAnSFTPCommandChangesNothingAndAsksNothing(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	stdout := h.connectedSFTP()
 	id := hexID.FindString(stdout)
@@ -141,6 +147,7 @@ func TestRepeatingAnSFTPCommandChangesNothingAndAsksNothing(t *testing.T) {
 }
 
 func TestAfterConnectingSFTPTheChangeIsApplied(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	code, stdout, _ := h.sftpCmd()
@@ -149,6 +156,7 @@ func TestAfterConnectingSFTPTheChangeIsApplied(t *testing.T) {
 }
 
 func TestWhileAnotherCommandChangesTheConfigNoClientProgramRuns(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	unlock := h.holdConfigLock()
 	defer unlock()
@@ -160,6 +168,7 @@ func TestWhileAnotherCommandChangesTheConfigNoClientProgramRuns(t *testing.T) {
 }
 
 func TestUnderSudoEveryProgramRunsAsTheServiceUser(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	code, _, stderr := h.sftpCmd()
 	assertCode(t, code, exitOK)
@@ -183,6 +192,7 @@ func assertRanAsService(t *testing.T, what string, as *restic.RunAs) {
 }
 
 func TestThePasswordAndTheKeysNeverReachTheArgumentsOrTheEnvironmentOfTheClient(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	repo := h.sftpRepo()
@@ -211,6 +221,7 @@ func assertNoSecretIn(t *testing.T, c sshCall) {
 }
 
 func TestTheClientRunsWithAFixedEnvironmentOfThePathOfResticAndTheHome(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	code, _, _ := h.sftpCmd()
@@ -227,6 +238,7 @@ func TestTheClientRunsWithAFixedEnvironmentOfThePathOfResticAndTheHome(t *testin
 // Rule "Проверка доступа ограничена таймаутом подключения" (SFTP).
 
 func TestAServerThatDoesNotAnswerTheScanIsTemporaryAfterTheConnectTimeoutAndNothingIsWritten(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	vc := newVirtualClock()
 	h.deps.clock = vc
@@ -253,6 +265,7 @@ func TestAServerThatDoesNotAnswerTheScanIsTemporaryAfterTheConnectTimeoutAndNoth
 }
 
 func TestAServerThatDoesNotAnswerTheLoginIsTemporaryAfterTheConnectTimeout(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	vc := newVirtualClock()
@@ -270,6 +283,7 @@ func TestAServerThatDoesNotAnswerTheLoginIsTemporaryAfterTheConnectTimeout(t *te
 // Rule "Отказ хранилища называет свой класс и причину" (SFTP).
 
 func TestTheLoginCheckTellsTheClassEvenWhenResticPassesOnNoReasonOfSSH(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		stderr string
 		code   int
@@ -297,6 +311,7 @@ func TestTheLoginCheckTellsTheClassEvenWhenResticPassesOnNoReasonOfSSH(t *testin
 }
 
 func TestADirectoryOfTheSFTPServerWithoutTheRightToWriteIsAccessDenied(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	h.sftpRepo().answers("cat", "unable to create lock in backend: OpenFile /srv/extra/locks/1a2b: permission denied", 1)
@@ -311,6 +326,7 @@ func TestADirectoryOfTheSFTPServerWithoutTheRightToWriteIsAccessDenied(t *testin
 }
 
 func TestADirectoryOfTheSFTPServerThatCannotBeCreatedKeepsThePasswordForARepeat(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	h.sftpRepo().answers("init", "Fatal: create repository at "+sftpAddress+" failed: sftp: MkdirAll /srv/extra/keys: permission denied", 1)
@@ -332,6 +348,7 @@ func TestADirectoryOfTheSFTPServerThatCannotBeCreatedKeepsThePasswordForARepeat(
 // Rule "Удалённые репозитории показываются и удаляются без раскрытия ключей" (SFTP).
 
 func TestRemovingAnSFTPRepositoryLeavesTheSSHFilesAndNamesThem(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.connectedSFTP()
 	before := h.sshTree()
@@ -359,6 +376,7 @@ func TestRemovingAnSFTPRepositoryLeavesTheSSHFilesAndNamesThem(t *testing.T) {
 }
 
 func TestTheAuditLinesOfARemoteConnectionHoldNoValues(t *testing.T) {
+	t.Parallel()
 	for name, c := range map[string]struct {
 		prepare func(h *sftpHostWorld)
 		lines   []string
@@ -372,6 +390,7 @@ func TestTheAuditLinesOfARemoteConnectionHoldNoValues(t *testing.T) {
 			[]string{"ssh key of service user sard-agent created", "ssh host key of nas.example.com trusted", "repository extra added"}},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			h := newSFTPHost(t)
 			c.prepare(h)
 			code, stdout, stderr := h.sftpCmd()
@@ -390,6 +409,7 @@ func TestTheAuditLinesOfARemoteConnectionHoldNoValues(t *testing.T) {
 }
 
 func TestAChangeOfOnlyTheSSHFilesDoesNotRestartTheService(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.connectedSFTP()
 	ok(t, os.Remove(h.sshFile("config")))
@@ -413,6 +433,7 @@ func TestAChangeOfOnlyTheSSHFilesDoesNotRestartTheService(t *testing.T) {
 // Rule "Справка repo add описывает удалённые хранилища".
 
 func TestTheHelpOfRepoAddNamesTheSFTPFlagsAndWhereTheSSHFilesAre(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, _ := h.sudo("repo", "add", "--help")
 	assertCode(t, code, exitOK)
@@ -431,6 +452,7 @@ func TestTheHelpOfRepoAddNamesTheSFTPFlagsAndWhereTheSSHFilesAre(t *testing.T) {
 // Р43: the ssh files stay when restic refuses, the password file and the
 // fragment do not exist yet.
 func TestTheSSHFilesStayWhenResticRefusesTheStorage(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.sftpRepo().answers("cat", "unable to create lock in backend: OpenFile /srv/extra/locks/1a2b: permission denied", 1)
 	code, _, stderr := h.sftpCmd()
@@ -449,6 +471,7 @@ func TestTheSSHFilesStayWhenResticRefusesTheStorage(t *testing.T) {
 // T1: a repeat that sets the ssh files up again never touches the password
 // file of the repository that is connected already.
 func TestAnSSHFilesUpdateNeverReplacesThePasswordFile(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.connectedSFTP()
 	pass := h.path("secrets/restic-extra.pass")
@@ -472,6 +495,7 @@ func TestAnSSHFilesUpdateNeverReplacesThePasswordFile(t *testing.T) {
 }
 
 func TestAnSSHFilesUpdateWithAWrongPasswordFileIsWrongPasswordWithoutAQuestion(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.connectedSFTP()
 	pass := h.path("secrets/restic-extra.pass")
@@ -486,6 +510,7 @@ func TestAnSSHFilesUpdateWithAWrongPasswordFileIsWrongPasswordWithoutAQuestion(t
 }
 
 func TestAnSSHFilesUpdateOfARepositoryThatIsGoneIsAConflictAndNeverCreatesIt(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.connectedSFTP()
 	pass := h.path("secrets/restic-extra.pass")

@@ -28,6 +28,7 @@ import java.util.UUID
 private const val LOCAL_BACKEND = "local"
 private const val LIVE_BUILTIN = "from Agent where builtin = true and revokedAt is null"
 private const val BINDING = "from SelfBackupRecord"
+private const val BUILTIN_REPOSITORIES = "from AgentRepositoryRecord where agentId = :agent"
 private const val SYSTEM_SOURCES =
     "from SourceRecord where systemRole is not null and deletedAt is null order by systemRole"
 
@@ -68,6 +69,18 @@ data class RepositoryState(
     val local: Boolean,
 )
 
+/** Whether the onboarding is over: only then an unconfirmed key copy is a warning, not a step of the wizard. */
+fun interface OnboardingCompletion {
+    fun complete(): Boolean
+}
+
+/** The key copy is confirmed for [repositoryName]; [recorded] is false when the binding had it already. */
+data class KeysConfirmed(
+    val repositoryName: String,
+    val repositoryId: String?,
+    val recorded: Boolean,
+)
+
 /** One of the two system sources. */
 data class SystemSource(
     val role: SystemRole,
@@ -91,6 +104,18 @@ data class SelfBackupView(
     val warnings: List<SelfBackupWarning> = emptyList(),
     /** The earliest deadline of the system sources' open overdue episodes. */
     val overdueSince: Instant? = null,
+    /** The repositories of the live built-in agent's last Register, by name, whether bound or not (F4b). */
+    val repositories: List<RepositoryState> = emptyList(),
+    /** What the system sources back up (F4b, Р26). */
+    val plan: List<PlanItem> = emptyList(),
+    /** Both system sources backed up successfully after [boundAt] (Р20). */
+    val firstBackupDone: Boolean = false,
+    /** The key copy confirmed for the current binding; null when not, or confirmed before [boundAt] (OQ-206). */
+    val keysConfirmedAt: Instant? = null,
+    /** What prints the repository password on the server's machine; null until bound (Р27). */
+    val passwordRevealCommand: String? = null,
+    /** The storage address the wizard built the command for, without credentials (OQ-203). */
+    val location: String? = null,
 )
 
 /** A run of one system source asked for by "back up now"; [started] is false for a run already active (D6). */
@@ -115,26 +140,53 @@ class SelfBackups internal constructor(
     private val schedules: Schedules,
     private val runs: Runs,
     private val mapper: ObjectMapper,
+    /** The onboarding is over: only then an unconfirmed key copy is a warning, not a step of the wizard. */
+    private val onboardingComplete: () -> Boolean = { false },
 ) {
     /**
      * Binds the self-backup to [repositoryName] of the live built-in agent: creates the system sources with their
      * schedule, or moves them to this agent and repository. Binding again unchanged changes nothing. Throws
-     * [SelfAgentMissing], UnknownRepository, [RepositoryNotInitialized], [LocalStorageUnconfirmed] or, when the
-     * agent lacks a plugin or the database password's secret, UnknownPlugin or InvalidConfig.
+     * [LocationInvalid], [SelfAgentMissing], UnknownRepository, [RepositoryNotInitialized],
+     * [LocalStorageUnconfirmed] or, when the agent lacks a plugin or the database password's secret, UnknownPlugin
+     * or InvalidConfig.
      */
     fun bind(
         tenantId: UUID,
         repositoryName: String,
         confirmLocalStorage: Boolean,
-    ): SelfBackupView =
-        try {
-            sessions.inTenant(tenantId) { session -> bindIn(session, repositoryName, confirmLocalStorage) }
-        } catch (e: ConstraintViolationException) {
-            if (e.constraintName !in RACE_KEYS) throw e
-            bind(tenantId, repositoryName, confirmLocalStorage)
+        location: String? = null,
+    ): SelfBackupView {
+        if (location != null && !isSafeLocation(location)) throw LocationInvalid()
+        // Asked before the session: the pool may hold one connection, and a request needs one at a time.
+        val complete = onboardingComplete()
+        while (true) {
+            try {
+                return sessions.inTenant(tenantId) { session ->
+                    bindIn(session, repositoryName, confirmLocalStorage, location, complete)
+                }
+            } catch (e: ConstraintViolationException) {
+                if (e.constraintName !in RACE_KEYS) throw e
+            }
         }
+    }
 
-    fun get(tenantId: UUID): SelfBackupView = sessions.inTenant(tenantId) { session -> viewIn(session) }
+    fun get(tenantId: UUID): SelfBackupView {
+        val complete = onboardingComplete()
+        return sessions.inTenant(tenantId) { session -> viewIn(session, complete) }
+    }
+
+    /**
+     * The owner confirms the copy of the repository password and the storage access made outside the server
+     * (F4b). Throws [SelfBackupNotConfigured] before a repository is bound and [FirstBackupPending] before both
+     * system sources backed up after the binding; confirming again changes nothing.
+     */
+    fun confirmKeys(
+        tenantId: UUID,
+        now: Instant,
+    ): KeysConfirmed {
+        val complete = onboardingComplete()
+        return sessions.inTenant(tenantId) { session -> confirmIn(session, now, complete) }
+    }
 
     /**
      * Starts a manual run of each system source, the database first; a source with an active run answers with that
@@ -153,10 +205,27 @@ class SelfBackups internal constructor(
         }
     }
 
+    private fun confirmIn(
+        session: Session,
+        now: Instant,
+        complete: Boolean,
+    ): KeysConfirmed {
+        val record = bindingOf(session, LockModeType.PESSIMISTIC_WRITE)
+        val view = viewIn(session, complete)
+        val repository = view.repository
+        if (record == null || repository == null) throw SelfBackupNotConfigured()
+        if (!view.firstBackupDone) throw FirstBackupPending()
+        val recorded = view.keysConfirmedAt == null
+        if (recorded) record.keysConfirmedAt = now
+        return KeysConfirmed(repository.name, repository.repositoryId, recorded)
+    }
+
     private fun bindIn(
         session: Session,
         repositoryName: String,
         confirmLocalStorage: Boolean,
+        location: String?,
+        complete: Boolean,
     ): SelfBackupView {
         val agent = liveBuiltin(session) ?: throw SelfAgentMissing()
         val repository = repositoryOf(session, agent.id, repositoryName) ?: throw UnknownRepository(repositoryName)
@@ -170,9 +239,9 @@ class SelfBackups internal constructor(
                     .requireConfig(mapper.writeValueAsString(planned.config))
                 keep(session, existing[planned.role], planned, agent.id, repositoryName, now)
             }
-        record(session, moved.any { it }, now)
+        record(session, moved.any { it }, now, location)
         session.flush()
-        return viewIn(session)
+        return viewIn(session, complete)
     }
 
     /** Creates the source of [planned], or brings the existing one to it; true if anything changed. */
@@ -229,55 +298,52 @@ class SelfBackups internal constructor(
         return !same
     }
 
-    /** Creates the binding, or marks it bound again now when the sources [moved]. */
+    /**
+     * Creates the binding, or marks it bound again now when the sources [moved], with the new [location] (none
+     * without one). Unmoved, the binding keeps its address unless a new one comes.
+     */
     private fun record(
         session: Session,
         moved: Boolean,
         now: Instant,
+        location: String?,
     ) {
         val record = bindingOf(session, LockModeType.PESSIMISTIC_WRITE)
         if (record == null) {
-            session.persist(SelfBackupRecord(ids.next(), now, now))
+            session.persist(SelfBackupRecord(ids.next(), now, now).also { it.location = location })
         } else if (moved) {
             record.boundAt = now
+            record.updatedAt = now
+            record.location = location
+        } else if (location != null && location != record.location) {
+            record.location = location
             record.updatedAt = now
         }
     }
 
-    private fun viewIn(session: Session): SelfBackupView {
+    private fun viewIn(
+        session: Session,
+        complete: Boolean,
+    ): SelfBackupView {
         val agentId = liveBuiltin(session)?.id
         val record = bindingOf(session, LockModeType.NONE)
         val sources = systemSources(session, LockModeType.NONE)
+        val repositories = repositoriesOf(session, agentId)
         if (record == null || sources.size != SystemRole.entries.size) {
-            return SelfBackupView(false, agentId, null, null, emptyList())
+            return SelfBackupView(
+                configured = false,
+                agentId = agentId,
+                repository = null,
+                boundAt = null,
+                sources = emptyList(),
+                repositories = repositories,
+                plan = plan.items(),
+            )
         }
+        val states = sources.map { SourceStates.of(session, it, record.boundAt) }
         val repository = repositoryState(session, sources.first())
-        val states = sources.map { SourceStates.of(session, it) }
-        val warnings = HealthRules.warnings(states, agentId, repository.local)
-        return SelfBackupView(
-            configured = true,
-            agentId = agentId,
-            repository = repository,
-            boundAt = record.boundAt,
-            sources = sources.zip(states, ::systemSourceOf),
-            health = HealthRules.health(warnings),
-            warnings = warnings,
-            overdueSince = HealthRules.overdueSince(states),
-        )
-    }
-
-    /** The repository of the system sources; the name alone once the agent's Register no longer lists it. */
-    private fun repositoryState(
-        session: Session,
-        source: SourceRecord,
-    ): RepositoryState {
-        val announced = repositoryOf(session, source.agentId, source.repositoryName)
-        return RepositoryState(
-            source.repositoryName,
-            announced?.backend.orEmpty(),
-            announced?.repositoryId,
-            announced?.backend == LOCAL_BACKEND,
-        )
+        val view = viewOf(record, sources, states, agentId, repository, complete)
+        return view.copy(repositories = repositories, plan = plan.items())
     }
 }
 
@@ -312,3 +378,59 @@ private fun systemSources(
         .createSelectionQuery(SYSTEM_SOURCES, SourceRecord::class.java)
         .setLockMode(lock)
         .list()
+
+/** What the live built-in agent's last Register lists, by name; none without such an agent. */
+private fun repositoriesOf(
+    session: Session,
+    agentId: UUID?,
+): List<RepositoryState> {
+    if (agentId == null) return emptyList()
+    return session
+        .createSelectionQuery(BUILTIN_REPOSITORIES, AgentRepositoryRecord::class.java)
+        .setParameter("agent", agentId)
+        .list()
+        .sortedBy { it.name }
+        .map { RepositoryState(it.name, it.backend, it.repositoryId, it.backend == LOCAL_BACKEND) }
+}
+
+/** The repository of the system sources; the name alone once the agent's Register no longer lists it. */
+private fun repositoryState(
+    session: Session,
+    source: SourceRecord,
+): RepositoryState {
+    val announced = repositoryOf(session, source.agentId, source.repositoryName)
+    return RepositoryState(
+        source.repositoryName,
+        announced?.backend.orEmpty(),
+        announced?.repositoryId,
+        announced?.backend == LOCAL_BACKEND,
+    )
+}
+
+/** The self-backup that is configured: its sources with their states, the warnings and what the wizard needs. */
+private fun viewOf(
+    record: SelfBackupRecord,
+    sources: List<SourceRecord>,
+    states: List<SourceState>,
+    agentId: UUID?,
+    repository: RepositoryState,
+    onboardingComplete: Boolean,
+): SelfBackupView {
+    val keysConfirmedAt = record.keysConfirmedAt?.takeIf { !it.isBefore(record.boundAt) }
+    val keysUnconfirmed = keysConfirmedAt == null && onboardingComplete
+    val warnings = HealthRules.warnings(states, agentId, repository.local, keysUnconfirmed)
+    return SelfBackupView(
+        configured = true,
+        agentId = agentId,
+        repository = repository,
+        boundAt = record.boundAt,
+        sources = sources.zip(states, ::systemSourceOf),
+        health = HealthRules.health(warnings),
+        warnings = warnings,
+        overdueSince = HealthRules.overdueSince(states),
+        firstBackupDone = HealthRules.firstBackupDone(states),
+        keysConfirmedAt = keysConfirmedAt,
+        passwordRevealCommand = passwordRevealCommand(repository.name),
+        location = record.location,
+    )
+}

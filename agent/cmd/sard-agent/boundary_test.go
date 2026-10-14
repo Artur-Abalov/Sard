@@ -43,6 +43,7 @@ func selectors(t *testing.T, visit func(file string, pos token.Position, pkg, na
 // The decisions of the connection live in internal/repoconnect (Р26): the
 // command line only wires them to flags, output and the host.
 func TestPackageMainDoesNotDecideTheConnection(t *testing.T) {
+	t.Parallel()
 	forbidden := map[string]bool{
 		"hostsetup.S3EnvIdentity": true, "hostsetup.S3EnvFile": true,
 		"restic.ParseEnvFile": true, "repoinit.NewPassword": true,
@@ -59,6 +60,7 @@ func TestPackageMainDoesNotDecideTheConnection(t *testing.T) {
 // internal/repoconnect; package main only wires them to flags, output and
 // the host (A8b-2).
 func TestPackageMainDoesNotDecideTheSSHSetup(t *testing.T) {
+	t.Parallel()
 	forbidden := map[string]bool{
 		"repoconnect.FindKnown": true, "repoconnect.AddHostKey": true, "repoconnect.ReplaceHostKey": true,
 		"repoconnect.ParseKeyscan": true, "hostsetup.OpenSSHHome": true, "repoconnect.ApplyBlock": true, "repoconnect.ManagedBlock": true,
@@ -71,6 +73,7 @@ func TestPackageMainDoesNotDecideTheSSHSetup(t *testing.T) {
 }
 
 func TestPackageMainImportsNothingToHandleKeysOrFingerprints(t *testing.T) {
+	t.Parallel()
 	files, err := filepath.Glob("*.go")
 	if err != nil || len(files) == 0 {
 		t.Fatalf("files %v, %v", files, err)
@@ -122,6 +125,7 @@ func stringLiterals(t *testing.T, visit func(file string, pos token.Position, va
 // main passes the flags to hostsetup.ExpandProvider and holds no host of a
 // provider; only the help text shows the templates.
 func TestPackageMainHoldsNoHostOfAProvider(t *testing.T) {
+	t.Parallel()
 	stringLiterals(t, func(file string, pos token.Position, value string) {
 		holds := false
 		for _, host := range []string{"amazonaws.com", "backblazeb2.com", "yandexcloud.net", "vkcloud-storage.ru", "selcloud.ru"} {

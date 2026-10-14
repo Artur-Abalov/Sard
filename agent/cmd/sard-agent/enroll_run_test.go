@@ -12,7 +12,6 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/x509"
 	"errors"
 	"io"
@@ -31,6 +30,7 @@ import (
 // the moment resolveEnrollHostname called it, so a panic here proves the
 // pipeline was entered when it must not have been.
 func TestRunEnrollWithDepsStopsAtAFlagParsingFailure(t *testing.T) {
+	t.Parallel()
 	var out, errOut strings.Builder
 	code := runEnrollWithDeps(context.Background(), []string{"--timeout", "not-a-duration"}, &out, &errOut, enrollDeps{})
 	if code != exitUsage {
@@ -55,6 +55,7 @@ func TestRunEnrollWithDepsStopsAtAFlagParsingFailure(t *testing.T) {
 // differently, "reading config", not "no enrollment token given") if the
 // token-source check's early return were skipped.
 func TestResolveEnrollLocalsChecksTheTokenSourceBeforeTheConfig(t *testing.T) {
+	t.Parallel()
 	missing := t.TempDir() + "/does-not-exist.yaml"
 	opts := enrollOptions{configPath: missing, timeout: defaultEnrollTimeout}
 	// No token source set at all.
@@ -81,6 +82,7 @@ func TestResolveEnrollLocalsChecksTheTokenSourceBeforeTheConfig(t *testing.T) {
 // second, redundant existing-identity check inside doEnroll (F2) would
 // otherwise mask from an exit-code-only assertion.
 func TestExistingIdentityIsCheckedBeforeTheHostnameLookup(t *testing.T) {
+	t.Parallel()
 	f := newLocalFixture(t)
 	writeAgentCertForTest(t, f.h.certFile, "existing-agent")
 	var calls atomic.Int32
@@ -101,6 +103,7 @@ func TestExistingIdentityIsCheckedBeforeTheHostnameLookup(t *testing.T) {
 // name, and stop there (host must not fall through to checkHostnameValid
 // as if it were empty and unrelated).
 func TestResolveEnrollHostnameReportsTheUnderlyingFailure(t *testing.T) {
+	t.Parallel()
 	broken := func() (string, error) { return "", errors.New("uname failed") }
 	var stderr strings.Builder
 	host, code := resolveEnrollHostname(broken, &stderr)
@@ -119,6 +122,7 @@ func TestResolveEnrollHostnameReportsTheUnderlyingFailure(t *testing.T) {
 }
 
 func TestCheckHostnameValidBoundaries(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		host string
@@ -131,6 +135,7 @@ func TestCheckHostnameValidBoundaries(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			code := checkHostnameValid(c.host, io.Discard)
 			if c.ok && code != exitOK {
 				t.Fatalf("code = %d, want exitOK for a %d-char host", code, len(c.host))
@@ -146,6 +151,7 @@ func TestCheckHostnameValidBoundaries(t *testing.T) {
 // tls.cert_file parent path here) rather than silently treating it as "no
 // identity".
 func TestCheckExistingIdentityReportsAnInspectionError(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	notADir := dir + "/not-a-dir"
 	if err := os.WriteFile(notADir, nil, 0o600); err != nil {
@@ -166,6 +172,7 @@ func TestCheckExistingIdentityReportsAnInspectionError(t *testing.T) {
 // be read (a key-only identity, say), not an empty agent id in the middle
 // of the sentence.
 func TestPrintExistingIdentityRefusalUsesUnknownForAnEmptyAgentID(t *testing.T) {
+	t.Parallel()
 	cfg := config.Config{Server: config.Server{Address: "sard.example.com:9090"}}
 	var stderr strings.Builder
 	printExistingIdentityRefusal(&stderr, cfg, enroll.IdentityStatus{Exists: true, AgentID: ""})
@@ -177,6 +184,7 @@ func TestPrintExistingIdentityRefusalUsesUnknownForAnEmptyAgentID(t *testing.T) 
 // loadEnrollConfig must report a missing-server-address config distinctly
 // from an unrelated read/parse failure.
 func TestLoadEnrollConfigReportsAMissingServerAddress(t *testing.T) {
+	t.Parallel()
 	path := writeConfig(t, "tls:\n  ca_file: /x\n  cert_file: /y\n  key_file: /z\n")
 	var stderr strings.Builder
 	_, code := loadEnrollConfig(path, &stderr)
@@ -189,6 +197,7 @@ func TestLoadEnrollConfigReportsAMissingServerAddress(t *testing.T) {
 }
 
 func TestLoadEnrollConfigReportsAReadFailure(t *testing.T) {
+	t.Parallel()
 	missing := t.TempDir() + "/does-not-exist.yaml"
 	var stderr strings.Builder
 	_, code := loadEnrollConfig(missing, &stderr)
@@ -202,6 +211,7 @@ func TestLoadEnrollConfigReportsAReadFailure(t *testing.T) {
 
 // reportAgentError and reportIdentityInspectionError: direct message checks.
 func TestReportAgentErrorPrintsTheError(t *testing.T) {
+	t.Parallel()
 	var stderr strings.Builder
 	code := reportAgentError(&stderr, errors.New("boom"))
 	if code != exitAgentError || !strings.Contains(stderr.String(), "boom") {
@@ -210,6 +220,7 @@ func TestReportAgentErrorPrintsTheError(t *testing.T) {
 }
 
 func TestReportIdentityInspectionErrorPrintsTheError(t *testing.T) {
+	t.Parallel()
 	var stderr strings.Builder
 	code := reportIdentityInspectionError(&stderr, errors.New("boom"))
 	if code != exitAgentError || !strings.Contains(stderr.String(), "boom") {
@@ -224,12 +235,9 @@ func TestReportIdentityInspectionErrorPrintsTheError(t *testing.T) {
 // GODEBUG=cryptocustomrand=1 is set).
 func TestBuildIdentityRequestPropagatesAKeyGenerationFailure(t *testing.T) {
 	t.Setenv("GODEBUG", "cryptocustomrand=1")
-	old := rand.Reader
-	rand.Reader = failingReaderForTest{}
-	defer func() { rand.Reader = old }()
 
 	var stderr strings.Builder
-	key, der, code := buildIdentityRequest("db1", &stderr)
+	key, der, code := buildIdentityRequest(failingReaderForTest{}, "db1", &stderr)
 	if code != exitAgentError || key != nil || der != nil {
 		t.Fatalf("code = %d, key = %v, der = %v", code, key, der)
 	}
@@ -249,6 +257,7 @@ func (failingReaderForTest) Read([]byte) (int, error) {
 // assignment (st.host never actually set) would leave both empty
 // downstream.
 func TestTheHostnameReadEarlyReachesTheCSRAndTheRequest(t *testing.T) {
+	t.Parallel()
 	ca := newTestCA(t)
 	var gotHostname string
 	var gotCN string
@@ -287,6 +296,7 @@ func TestTheHostnameReadEarlyReachesTheCSRAndTheRequest(t *testing.T) {
 // deferred Close that is never actually called would leak the TLS
 // connection to the fake server forever.
 func TestASuccessfulEnrollClosesTheConnection(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	before := openFDCountForTest(t)
 	for i := 0; i < 20; i++ {

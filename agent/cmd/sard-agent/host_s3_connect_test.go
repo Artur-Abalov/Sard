@@ -45,6 +45,7 @@ func (h *setupHost) tempFilesIn(dir string) []string {
 // Rule "Секретный ключ S3 ... хранится только в env-файле пользователя службы".
 
 func TestARejectedS3KeyLeavesNoEnvFileAndNoTemporaryFiles(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.s3Repo().answers("cat", "Fatal: unable to open config file: Stat: Access Denied.", 1)
 	code, stdout, stderr := h.s3Cmd()
@@ -54,6 +55,7 @@ func TestARejectedS3KeyLeavesNoEnvFileAndNoTemporaryFiles(t *testing.T) {
 }
 
 func TestAnEnvFileAnotherKeyOfTheConfigNamesIsNotOverwritten(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.cfg.Repositories[0].EnvFile = h.envPath()
 	h.saveConfig()
@@ -68,6 +70,7 @@ func TestAnEnvFileAnotherKeyOfTheConfigNamesIsNotOverwritten(t *testing.T) {
 }
 
 func TestALeftoverEnvFileNobodyUsesIsReplacedByTheAcceptedKeys(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.write(h.envPath(), "AWS_ACCESS_KEY_ID=OLD\nAWS_SECRET_ACCESS_KEY=OLD-SECRET\n", 0o600)
 	code, _, _ := h.s3Cmd()
@@ -78,6 +81,7 @@ func TestALeftoverEnvFileNobodyUsesIsReplacedByTheAcceptedKeys(t *testing.T) {
 }
 
 func TestAnEnvFileThatCannotBeReadAsASecretIsNotReadNorChanged(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, _ := h.s3Cmd()
 	assertCode(t, code, exitOK)
@@ -98,6 +102,7 @@ func TestAnEnvFileThatCannotBeReadAsASecretIsNotReadNorChanged(t *testing.T) {
 }
 
 func TestAnEnvFileIsReadOnlyThroughTheOwnerCheckedReadAsTheServiceUser(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, _ := h.s3Cmd()
 	assertCode(t, code, exitOK)
@@ -124,6 +129,7 @@ func TestAnEnvFileIsReadOnlyThroughTheOwnerCheckedReadAsTheServiceUser(t *testin
 }
 
 func TestAFailedWriteOfTheEnvFileIsAWriteErrorWithoutTraces(t *testing.T) {
+	t.Parallel()
 	for _, op := range []string{"chown", "rename", "sync"} {
 		h := newSetupHost(t)
 		h.fsys.failOn, h.fsys.failPath = op, "restic-extra.env"
@@ -145,6 +151,7 @@ func TestAFailedWriteOfTheEnvFileIsAWriteErrorWithoutTraces(t *testing.T) {
 // Rule "repo add подключает хранилище S3 одной командой".
 
 func TestAnEmptyS3StorageIsCreatedWithAGeneratedPassword(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	mainBefore := h.fileContent(h.cfgPath)
 	code, _, stderr := h.s3Cmd()
@@ -167,6 +174,7 @@ func TestAnEmptyS3StorageIsCreatedWithAGeneratedPassword(t *testing.T) {
 }
 
 func TestTheS3SummaryNamesTheRepositoryAndAsksForACopyOfThePassword(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, stderr := h.s3Cmd()
 	assertCode(t, code, exitOK)
@@ -185,6 +193,7 @@ func TestTheS3SummaryNamesTheRepositoryAndAsksForACopyOfThePassword(t *testing.T
 }
 
 func TestAnS3RepositoryNeedsNoSystemdDropIn(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, _ := h.s3Cmd()
 	assertCode(t, code, exitOK)
@@ -197,6 +206,7 @@ func TestAnS3RepositoryNeedsNoSystemdDropIn(t *testing.T) {
 }
 
 func TestAnExistingS3RepositoryIsAttachedWithItsPassword(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.s3Repo().initialized, h.s3Repo().password = true, passMarker
 	src := h.path("outside/F")
@@ -218,6 +228,7 @@ func TestAnExistingS3RepositoryIsAttachedWithItsPassword(t *testing.T) {
 }
 
 func TestThePasswordOfAnExistingS3RepositoryIsAskedAfterTheSecretKey(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.s3Repo().initialized, h.s3Repo().password = true, passMarker
 	term := h.terminalIs(s3Marker, s3Marker, passMarker, passMarker)
@@ -229,6 +240,7 @@ func TestThePasswordOfAnExistingS3RepositoryIsAskedAfterTheSecretKey(t *testing.
 }
 
 func TestAnExistingS3RepositoryWithoutAPasswordSourceIsRefusedWithoutTraces(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.s3Repo().initialized, h.s3Repo().password = true, passMarker
 	h.hung = &hungInput{}
@@ -243,6 +255,7 @@ func TestAnExistingS3RepositoryWithoutAPasswordSourceIsRefusedWithoutTraces(t *t
 }
 
 func TestAWrongPasswordOfAnExistingS3RepositoryIsRefusedWithoutTraces(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.s3Repo().initialized, h.s3Repo().password = true, "another"
 	src := h.path("outside/F")
@@ -254,6 +267,7 @@ func TestAWrongPasswordOfAnExistingS3RepositoryIsRefusedWithoutTraces(t *testing
 }
 
 func TestAResticRefusalWhileCreatingAnS3RepositoryKeepsTheFilesForARepeat(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.s3Repo().answers("init", "Fatal: create key in repository at "+s3Address+" failed: client.PutObject: Internal Error", 1)
 	code, _, stderr := h.s3Cmd()
@@ -275,6 +289,7 @@ func TestAResticRefusalWhileCreatingAnS3RepositoryKeepsTheFilesForARepeat(t *tes
 }
 
 func TestRepeatingAfterAFailureOfS3UsesTheLeftoverFilesWithoutQuestions(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.write(h.envPath(), "AWS_ACCESS_KEY_ID=KEY-ID-1\nAWS_SECRET_ACCESS_KEY=S3-MARKER\n", 0o600)
 	h.write(h.path("secrets/restic-extra.pass"), "Q\n", 0o600)
@@ -291,6 +306,7 @@ func TestRepeatingAfterAFailureOfS3UsesTheLeftoverFilesWithoutQuestions(t *testi
 }
 
 func TestRepeatingAnS3CommandChangesNothingAndAsksNothing(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, _ := h.s3Cmd()
 	assertCode(t, code, exitOK)
@@ -311,6 +327,7 @@ func TestRepeatingAnS3CommandChangesNothingAndAsksNothing(t *testing.T) {
 }
 
 func TestRepeatingAnS3CommandWithTheSameSecretKeyChangesNothing(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, _ := h.s3Cmd()
 	assertCode(t, code, exitOK)
@@ -325,6 +342,7 @@ func TestRepeatingAnS3CommandWithTheSameSecretKeyChangesNothing(t *testing.T) {
 }
 
 func TestAnS3NameAtAnotherAddressIsAConflict(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, _ := h.s3Cmd()
 	assertCode(t, code, exitOK)
@@ -339,6 +357,7 @@ func TestAnS3NameAtAnotherAddressIsAConflict(t *testing.T) {
 }
 
 func TestAfterConnectingS3TheChangeIsAppliedAndAudited(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, _ := h.s3Cmd()
 	assertCode(t, code, exitOK)
@@ -359,6 +378,7 @@ func (h *setupHost) connectedS3() {
 }
 
 func TestNewKeysOfAConnectedS3RepositoryReplaceTheEnvFileAfterTheCheck(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.connectedS3()
 	fragment := h.fileContent(h.path("agent.d/repo-extra.yaml"))
@@ -400,6 +420,7 @@ func (h *setupHost) assertRotationLeftOnlyTheEnvFile(fragment, pass string) {
 }
 
 func TestARejectedNewKeyLeavesTheEnvFileOfAConnectedS3RepositoryAlone(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.connectedS3()
 	h.s3Repo().script = func(sub string, env []string) (string, int, bool) {
@@ -416,6 +437,7 @@ func TestARejectedNewKeyLeavesTheEnvFileOfAConnectedS3RepositoryAlone(t *testing
 }
 
 func TestANewRegionOfAConnectedS3RepositoryIsAChangeOfKeysToo(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.connectedS3()
 	code, stdout, _ := h.s3Cmd("--region", "ru-central1")
@@ -426,6 +448,7 @@ func TestANewRegionOfAConnectedS3RepositoryIsAChangeOfKeysToo(t *testing.T) {
 }
 
 func TestANewKeyIDWithoutASecretKeySourceAsksTheTerminal(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.connectedS3()
 	term := h.terminalIs("S3-MARKER-3", "S3-MARKER-3")
@@ -439,6 +462,7 @@ func TestANewKeyIDWithoutASecretKeySourceAsksTheTerminal(t *testing.T) {
 // Rule "Удалённые репозитории показываются и удаляются без раскрытия ключей".
 
 func TestRemovingAnS3RepositoryRemovesTheFragmentAndTheEnvFileButKeepsThePassword(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.connectedS3()
 	calls := len(h.restic.calls)
@@ -457,6 +481,7 @@ func TestRemovingAnS3RepositoryRemovesTheFragmentAndTheEnvFileButKeepsThePasswor
 }
 
 func TestTheCardOfAnS3RepositoryNamesTheEnvFileAndHidesTheKeys(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.connectedS3()
 	code, stdout, stderr := h.sudo("repo", "show", "extra", "--json", "--config", "C")
@@ -472,6 +497,7 @@ func TestTheCardOfAnS3RepositoryNamesTheEnvFileAndHidesTheKeys(t *testing.T) {
 // A repeat that cannot reach the storage with the keys in place fails, it
 // does not report success.
 func TestARepeatThatTheStorageRefusesIsNotASuccess(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.connectedS3()
 	h.s3Repo().answers("cat", "Fatal: unable to open config file: Stat: Access Denied.", 1)
@@ -482,6 +508,7 @@ func TestARepeatThatTheStorageRefusesIsNotASuccess(t *testing.T) {
 // F1: a change of keys touches the env file only.
 
 func TestNewKeysThatDoNotSeeTheRepositoryAreRefusedWithoutTracesAndWithoutInit(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.connectedS3()
 	h.s3Repo().script = func(sub string, env []string) (string, int, bool) {
@@ -500,6 +527,7 @@ func TestNewKeysThatDoNotSeeTheRepositoryAreRefusedWithoutTracesAndWithoutInit(t
 }
 
 func TestAChangeOfKeysWithAPasswordFileThatDoesNotOpenTheRepositoryIsWrongPasswordWithoutAQuestion(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.connectedS3()
 	h.write(h.path("secrets/restic-extra.pass"), "not-the-password\n", 0o600)
@@ -515,6 +543,7 @@ func TestAChangeOfKeysWithAPasswordFileThatDoesNotOpenTheRepositoryIsWrongPasswo
 }
 
 func TestAPasswordFlagWithAChangeOfKeysIsAUsageError(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.connectedS3()
 	src := h.path("outside/F")

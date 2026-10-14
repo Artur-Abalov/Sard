@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 )
 
 // lockedBuffer is the agent's log: the agent writes to it from several goroutines.
@@ -48,7 +47,7 @@ func startAgentWith(t *testing.T, extra func(dir string) string) (int, string) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
 	t.Cleanup(func() { slog.SetDefault(previous) })
 	// the warnings are logged before the first dial
-	ctx, cancel := contextUntil(300*time.Millisecond, first)
+	ctx, cancel := contextUntil(eventWait, first)
 	defer cancel()
 	var out, errOut bytes.Buffer
 	code := run(ctx, []string{"--config", writeConfig(t, cfg)}, &out, &errOut, fixedHostname)

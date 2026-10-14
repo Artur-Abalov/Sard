@@ -3,13 +3,13 @@
 # Copyright 2026 Artur Abalov
 #
 # go-mutesting --exec command: runs the tests of the mutated package against
-# one mutant (docs/adr/00XX-draft-go-mutation-exec.md).
+# one mutant (docs/adr/0057-go-mutation-exec.md).
 #
 # - The working tree is never written: the mutant is handed to the compiler
 #   through `go test -overlay`, so several go-mutesting processes can share
 #   one checkout and an interrupted run leaves no mutated source behind.
 # - The timeout is measured, not fixed: the package's unmutated tests are run
-#   once per process (baseline), and a mutant gets max(3 x baseline, 30 s).
+#   once per process (baseline), and a mutant gets max(3 x baseline, 10 s).
 #   A mutant that runs past it is killed (an endless loop is a detected
 #   mutant), and reported on a "mutate-exec: TIMEOUT" line.
 # - A package whose unmutated tests fail or hang cannot judge mutants: that is
@@ -25,7 +25,7 @@
 set -uo pipefail
 
 TIMEOUT_FACTOR=3
-TIMEOUT_MIN_S=30
+TIMEOUT_MIN_S=10
 BASELINE_LIMIT_S=600
 # Address space of a test binary, baseline included: a mutant that allocates
 # without end (an endless loop that appends) dies with "out of memory" instead
@@ -78,8 +78,9 @@ limit_s=$(((baseline_ms * TIMEOUT_FACTOR + 999) / 1000))
 original="$(cd "$(dirname "$MUTATE_ORIGINAL")" && pwd)/$(basename "$MUTATE_ORIGINAL")"
 changed="$(cd "$(dirname "$MUTATE_CHANGED")" && pwd)/$(basename "$MUTATE_CHANGED")"
 # Names the mutant before it runs: if a run takes the whole host down, the
-# last START line in a streamed log names the mutant that did it.
-say "START $changed"
+# last START line in a streamed log names the mutant that did it; the START
+# times give scripts/mutation-weights.sh the cost of each file.
+say "START $(now_ms) $changed"
 printf '{"Replace":{"%s":"%s"}}\n' "$original" "$changed" >"$work/overlay.json"
 rm -f "$work/mutant.test"
 if ! go test -c -overlay "$work/overlay.json" -o "$work/mutant.test" "$MUTATE_PACKAGE" >/dev/null 2>&1; then

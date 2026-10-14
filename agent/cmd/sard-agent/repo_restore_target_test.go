@@ -80,7 +80,7 @@ func TestWithoutOverwriteResticIsToldNotToReplaceAnything(t *testing.T) {
 }
 
 // Р74: --overwrite is recognised and refused before any work; the merge into
-// a target that is not empty is the slice A8c-2b (OQ-201).
+// a target that is not empty is the slice A8c-2b (OQ-211).
 func TestOverwriteIsNotAvailableYetAndRefusesBeforeTheConfigIsRead(t *testing.T) {
 	for _, c := range []struct {
 		target string

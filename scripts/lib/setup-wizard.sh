@@ -90,3 +90,12 @@ sard_complete_wizard() {
   [ "$jar_is_temp" = 0 ] || rm -f "$SARD_WIZARD_JAR"
   return "$rc"
 }
+
+# sard_confirm_onboarding_in_database PSQL_CMD...: the first start also asks for a self-backup and a confirmed key
+# copy (F4b), and until they are done the server issues no enrollment tokens. A stand that is about something else
+# and has no sard-self writes the step of the key copy into the database, as the owner's confirmation would; the
+# SQL goes to the command on stdin, e.g. docker exec -i <db> psql -v ON_ERROR_STOP=1 -U sard -d sard.
+sard_confirm_onboarding_in_database() {
+  printf '%s\n' "insert into onboarding_steps (step, completed_at) values ('keys_confirmed', now()) on conflict do nothing;" |
+    "$@"
+}

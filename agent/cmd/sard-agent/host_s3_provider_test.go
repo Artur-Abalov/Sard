@@ -13,6 +13,7 @@ import (
 // Rule "Предустановка провайдера строит адрес хранилища из региона" (A8b-3, Р50).
 
 func TestAProviderPresetBuildsTheAddressAndTheRegion(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ provider, region, url string }{
 		{"aws", "eu-central-1", "s3:https://s3.eu-central-1.amazonaws.com/bucket-b/extra"},
 		{"b2", "us-west-004", "s3:https://s3.us-west-004.backblazeb2.com/bucket-b/extra"},
@@ -75,6 +76,7 @@ func TestSelectelRegionChoosesThePool(t *testing.T) {
 }
 
 func TestAProviderPresetWithoutAPathWritesTheAddressOfTheBucket(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, _ := h.s3At("s3:bucket-b", s3Marker, "--provider", "aws", "--region", "us-east-1")
 	assertCode(t, code, exitOK)
@@ -84,6 +86,7 @@ func TestAProviderPresetWithoutAPathWritesTheAddressOfTheBucket(t *testing.T) {
 }
 
 func TestAnUnusableProviderCombinationIsAUsageErrorWithoutTouchingTheStorage(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		address string
 		flags   []string
@@ -122,6 +125,7 @@ func TestAnUnusableProviderCombinationIsAUsageErrorWithoutTouchingTheStorage(t *
 }
 
 func TestARegionThePresetDoesNotKnowFailsAtTheStorageWithItsAddress(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	url := "s3:https://s3.xx-nowhere-9.amazonaws.com/bucket-b/extra"
 	h.restic.repo(url).answers("cat", "Fatal: unable to open config file: Stat: Get \"https://s3.xx-nowhere-9.amazonaws.com/bucket-b/extra/config\": dial tcp: lookup s3.xx-nowhere-9.amazonaws.com: no such host", 1)
@@ -134,6 +138,7 @@ func TestARegionThePresetDoesNotKnowFailsAtTheStorageWithItsAddress(t *testing.T
 }
 
 func TestRepeatingAProviderPresetChangesNothing(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	preset := []string{"--provider", "aws", "--region", "eu-central-1"}
 	code, _, _ := h.s3At("s3:bucket-b/extra", s3Marker, preset...)
@@ -149,6 +154,7 @@ func TestRepeatingAProviderPresetChangesNothing(t *testing.T) {
 }
 
 func TestRepoAddHelpListsTheProvidersAndRequiresTheRegionWithThem(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, _ := h.sudo("repo", "add", "--help")
 	assertCode(t, code, exitOK)

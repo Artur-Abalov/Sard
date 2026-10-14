@@ -3,7 +3,7 @@
 
 import { redirect } from '@tanstack/react-router'
 import { fetchOnboarding } from '../onboarding/api'
-import { adminPending, type Onboarding } from '../onboarding/state'
+import { adminPending, restrictsConsole, type Onboarding } from '../onboarding/state'
 import { checkSession, UnauthenticatedError } from './session'
 
 // The page being opened; a subset of the router's ParsedLocation.
@@ -39,4 +39,7 @@ export async function guard(destination: Destination): Promise<void> {
     }
     throw error
   }
+  // A signed-in visit asks how far the onboarding has come (F4b, Рк9): while the server refuses
+  // every change the console is the wizard and nothing else.
+  if (restrictsConsole(await fetchOnboarding())) throw redirect({ to: '/setup' })
 }

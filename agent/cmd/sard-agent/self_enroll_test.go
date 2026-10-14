@@ -102,6 +102,7 @@ func requireNoLeak(t *testing.T, token string, r selfRun, h *host) {
 // Агент без идентичности регистрируется по файлу токена и подключается;
 // После успешной регистрации маркер хранит SHA-256 токена
 func TestAgentWithoutIdentityEnrollsByTheTokenFileAndWritesTheMarker(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	p := writeTokenFile(t, f.h, f.token)
 	r := runSelfStep(context.Background(), f.h.configPath, p, selfDepsFor(newTickClock()))
@@ -127,6 +128,7 @@ func TestAgentWithoutIdentityEnrollsByTheTokenFileAndWritesTheMarker(t *testing.
 
 // Завершающий перевод строки в файле токена не мешает
 func TestATrailingLineEndingInTheTokenFileIsIgnored(t *testing.T) {
+	t.Parallel()
 	for _, ending := range []string{"\n", "\r\n"} {
 		f := newSucceedingFakeFixture(t, "a1")
 		p := writeTokenFile(t, f.h, f.token+ending)
@@ -142,6 +144,7 @@ func TestATrailingLineEndingInTheTokenFileIsIgnored(t *testing.T) {
 
 // Израсходованный токен в файле не регистрирует агента повторно
 func TestASpentTokenWithAnIdentityStartsNormally(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	p := writeTokenFile(t, f.h, f.token)
 	d := selfDepsFor(newTickClock())
@@ -160,6 +163,7 @@ func TestASpentTokenWithAnIdentityStartsNormally(t *testing.T) {
 // Новый токен при существующей идентичности заменяет личность;
 // Идентичность без маркера заменяется по токену из файла
 func TestANewTokenReplacesTheExistingIdentity(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	d := selfDepsFor(newTickClock())
 	if code := runEnrollWithDeps(context.Background(), []string{"--config", f.h.configPath, "--token", f.token}, &bytes.Buffer{}, &bytes.Buffer{}, d.enroll); code != exitOK {
@@ -182,6 +186,7 @@ func TestANewTokenReplacesTheExistingIdentity(t *testing.T) {
 
 // Неудачная регистрация по файлу завершает агента кодом конвейера
 func TestAFailedEnrollmentExitsWithThePipelineCode(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	f.srv.answer = failingAnswer(codes.FailedPrecondition, "TOKEN_USED")
 	p := writeTokenFile(t, f.h, f.token)
@@ -197,6 +202,7 @@ func TestAFailedEnrollmentExitsWithThePipelineCode(t *testing.T) {
 
 // Повреждённая строка и пустой файл — ошибка использования без обращения к серверу
 func TestAMalformedOrEmptyTokenFileIsAUsageError(t *testing.T) {
+	t.Parallel()
 	for content, want := range map[string]string{"sard_broken": "TOKEN_MALFORMED", "": "empty"} {
 		f := newSucceedingFakeFixture(t, "a1")
 		p := writeTokenFile(t, f.h, content)
@@ -210,6 +216,7 @@ func TestAMalformedOrEmptyTokenFileIsAUsageError(t *testing.T) {
 
 // Нечитаемый файл токена — ошибка использования
 func TestAnUnreadableTokenFileIsAUsageError(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	p := filepath.Join(f.h.dir, "a-directory")
 	if err := os.Mkdir(p, 0o700); err != nil {
@@ -226,6 +233,7 @@ func TestAnUnreadableTokenFileIsAUsageError(t *testing.T) {
 
 // Сбой записи маркера после успешной регистрации — ошибка записи
 func TestAMarkerWriteFailureIsAWriteError(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	p := writeTokenFile(t, f.h, f.token)
 	d := selfDepsFor(newTickClock())
@@ -244,6 +252,7 @@ func TestAMarkerWriteFailureIsAWriteError(t *testing.T) {
 // Регистрация прошла, но личность после неё не читается — ошибка агента,
 // сообщение называет файл сертификата, id не печатается пустым
 func TestAnIdentityUnreadableAfterEnrollingIsAnAgentErrorNamingTheCertFile(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	p := writeTokenFile(t, f.h, f.token)
 	d := selfDepsFor(newTickClock())
@@ -262,6 +271,7 @@ func TestAnIdentityUnreadableAfterEnrollingIsAnAgentErrorNamingTheCertFile(t *te
 
 // Личность читается без ошибки, но id в сертификате нет — то же самое
 func TestAnEmptyAgentIdAfterEnrollingIsAnAgentErrorNamingTheCertFile(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	p := writeTokenFile(t, f.h, f.token)
 	d := selfDepsFor(newTickClock())
@@ -276,6 +286,7 @@ func TestAnEmptyAgentIdAfterEnrollingIsAnAgentErrorNamingTheCertFile(t *testing.
 
 // Без файла токена агент с идентичностью стартует как обычно
 func TestWithoutATokenFileAnAgentWithAnIdentityStartsNormally(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	d := selfDepsFor(newTickClock())
 	if code := runEnrollWithDeps(context.Background(), []string{"--config", f.h.configPath, "--token", f.token}, &bytes.Buffer{}, &bytes.Buffer{}, d.enroll); code != exitOK {
@@ -358,6 +369,7 @@ func waitForTimers(t *testing.T, c *tickClock, n int) {
 // Агент без файла и без идентичности ждёт и пишет одну строку ожидания;
 // Агент опрашивает файл токена каждые 2 секунды
 func TestWithoutAFileAndAnIdentityTheAgentWaitsAndPollsEveryTwoSeconds(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	p := filepath.Join(f.h.dir, "no-such-dir", "token")
 	clk := newTickClock()
@@ -397,6 +409,7 @@ func TestWithoutAFileAndAnIdentityTheAgentWaitsAndPollsEveryTwoSeconds(t *testin
 
 // SIGTERM во время ожидания завершает агента с кодом 0
 func TestSIGTERMWhileWaitingEndsTheAgentWithCodeZero(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	clk := newTickClock()
 	w := startWaiting(t, f.h.configPath, filepath.Join(f.h.dir, "token"), selfDepsFor(clk))
@@ -415,6 +428,7 @@ func TestSIGTERMWhileWaitingEndsTheAgentWithCodeZero(t *testing.T) {
 
 // Появившийся файл токена подхватывается следующим опросом
 func TestATokenFileThatAppearsIsPickedUpByTheNextPoll(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	p := filepath.Join(f.h.dir, "enroll-token")
 	clk := newTickClock()
@@ -435,6 +449,7 @@ func TestATokenFileThatAppearsIsPickedUpByTheNextPoll(t *testing.T) {
 
 // Израсходованный токен без идентичности — ожидание
 func TestASpentTokenWithoutAnIdentityWaits(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	p := writeTokenFile(t, f.h, f.token)
 	if err := os.WriteFile(markerOf(f.h), []byte(sha(f.token)), 0o600); err != nil {
@@ -451,6 +466,7 @@ func TestASpentTokenWithoutAnIdentityWaits(t *testing.T) {
 
 // Флаг --enroll-token-file у команды enroll — ошибка использования
 func TestEnrollTokenFileFlagOnTheEnrollCommandIsAUsageError(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	p := writeTokenFile(t, f.h, f.token)
 	code, _, _ := runEnrollCmdTest("--config", f.h.configPath, "--enroll-token-file", p)
@@ -462,6 +478,7 @@ func TestEnrollTokenFileFlagOnTheEnrollCommandIsAUsageError(t *testing.T) {
 // Без флага агент без идентичности не ждёт файла токена; с флагом после шага
 // идёт обычный старт
 func TestTheEnrollTokenFileFlagIsWiredIntoTheAgentCommand(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	var out, errOut bytes.Buffer
 	code := runAgentCmd(context.Background(), []string{"--config", f.h.configPath}, &out, &errOut, fixedHostname, selfDepsFor(newTickClock()))
@@ -482,6 +499,7 @@ func TestTheEnrollTokenFileFlagIsWiredIntoTheAgentCommand(t *testing.T) {
 
 // Ошибка конфига — как без флага
 func TestAConfigErrorWithTheFlagIsReportedLikeWithoutIt(t *testing.T) {
+	t.Parallel()
 	var out, errOut bytes.Buffer
 	code := runAgentCmd(context.Background(), []string{"--config", filepath.Join(t.TempDir(), "none.yaml"), "--enroll-token-file", "x"}, &out, &errOut, fixedHostname, selfDepsFor(newTickClock()))
 	if code != exitError || errOut.Len() == 0 {
@@ -492,6 +510,7 @@ func TestAConfigErrorWithTheFlagIsReportedLikeWithoutIt(t *testing.T) {
 // Когда шаг самоорегистрации не даёт продолжить, команда агента завершается
 // его кодом и обычный старт не выполняется
 func TestAgentCommandExitsWithTheCodeOfAStepThatDoesNotProceed(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	p := writeTokenFile(t, f.h, "")
 	var out, errOut bytes.Buffer
@@ -506,6 +525,7 @@ func TestAgentCommandExitsWithTheCodeOfAStepThatDoesNotProceed(t *testing.T) {
 
 // Конфиг, который не читается, — ошибка запуска, продолжать нечем
 func TestAConfigThatCannotBeLoadedStopsTheStepWithTheStartErrorCode(t *testing.T) {
+	t.Parallel()
 	r := runSelfStep(context.Background(), filepath.Join(t.TempDir(), "none.yaml"), "x", selfDepsFor(newTickClock()))
 	if r.proceed || r.code != exitError || r.errOut == "" || r.out != "" {
 		t.Fatalf("%+v", r)
@@ -515,6 +535,7 @@ func TestAConfigThatCannotBeLoadedStopsTheStepWithTheStartErrorCode(t *testing.T
 // Без cert_file или без key_file регистрироваться некуда: шаг ничего не
 // делает и не мешает обычному старту, который назовёт недостающий ключ
 func TestWithoutACertOrKeyFileInTheConfigTheStepDoesNothing(t *testing.T) {
+	t.Parallel()
 	for _, missing := range []string{"cert_file", "key_file"} {
 		f := newSucceedingFakeFixture(t, "a1")
 		p := writeTokenFile(t, f.h, f.token)
@@ -533,6 +554,7 @@ func TestWithoutACertOrKeyFileInTheConfigTheStepDoesNothing(t *testing.T) {
 
 // Личность, которую нельзя проверить, и нет токена — ошибка агента
 func TestAnIdentityThatCannotBeInspectedWithoutATokenIsAnAgentError(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	blocker := filepath.Join(f.h.dir, "blocker")
 	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
@@ -548,6 +570,7 @@ func TestAnIdentityThatCannotBeInspectedWithoutATokenIsAnAgentError(t *testing.T
 
 // Ошибка чтения личности после регистрации перевешивает известный id
 func TestAnInspectionErrorAfterEnrollingIsAnAgentErrorEvenWithAnId(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	p := writeTokenFile(t, f.h, f.token)
 	d := selfDepsFor(newTickClock())

@@ -237,6 +237,11 @@ class RestWorld(
         tenant: UUID,
     ): Int = jdbc.queryForObject("select count(*) from $table where tenant_id = ?", Int::class.java, tenant) ?: 0
 
+    /** Forgets what tests left in [tenant] that this world did not create, such as the default tenant. */
+    fun wipe(tenant: UUID) {
+        for (table in TENANT_TABLES) jdbc.update("delete from $table where tenant_id = ?", tenant)
+    }
+
     override fun close() {
         clients.closeChannels()
         for (tenant in tenants) {

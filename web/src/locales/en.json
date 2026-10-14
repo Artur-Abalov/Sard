@@ -141,7 +141,10 @@
     "self_agent_missing": "The built-in agent sard-self is not registered",
     "repository_not_initialized": "The repository is not initialized yet",
     "local_storage_unconfirmed": "A local repository needs a confirmation: the copy is lost together with the server's machine",
-    "self_backup_not_configured": "The self-backup is not configured: choose its repository first"
+    "self_backup_not_configured": "The self-backup is not configured: choose its repository first",
+    "onboarding_incomplete": "The server is not set up yet: finish the first-start wizard (the self-backup and the key copy) before making changes",
+    "first_backup_pending": "Both parts of the self-backup must back up successfully first: run the first backup",
+    "openWizard": "Open the wizard"
   },
   "common": {
     "cancel": "Cancel",
@@ -151,7 +154,8 @@
     "loading": "Loading…",
     "notUpdating": "The data is not being updated right now",
     "retry": "Retry",
-    "showMore": "Show more"
+    "showMore": "Show more",
+    "dash": "—"
   },
   "agent": {
     "duplicateTitle": "Duplicate session",
@@ -405,7 +409,7 @@
   },
   "setup": {
     "title": "First start",
-    "intro": "Three things before the console opens: prove you own the server, look at its CA, set the administrator password.",
+    "intro": "Four things before the console opens: prove you own the server, look at its CA, set the administrator password, and protect the server itself: back it up outside this machine and keep the key copy.",
     "steps": {
       "ca": "CA of the server",
       "admin": "Administrator",
@@ -415,8 +419,7 @@
     "marks": {
       "done": "done",
       "current": "now",
-      "todo": "next",
-      "soon": "soon"
+      "todo": "next"
     },
     "code": {
       "title": "Setup code",
@@ -458,6 +461,102 @@
       "confirmation": "Repeat the password",
       "mismatch": "The passwords do not match",
       "submit": "Set the password and open the console"
+    },
+    "selfBackup": {
+      "title": "Backup of the server itself",
+      "intro": "Sard backs up its own database, the CA key and the configuration to a storage outside this machine. Until the first backup succeeds, the server accepts no new agents and changes nothing else.",
+      "storage": {
+        "title": "Where to keep the backup",
+        "s3": "S3 (recommended)",
+        "sftp": "SFTP",
+        "local": "On this machine"
+      },
+      "provider": {
+        "label": "S3 service",
+        "aws": "AWS",
+        "b2": "Backblaze B2",
+        "custom": "Own address (MinIO, Ceph…)"
+      },
+      "field": {
+        "region": "Region",
+        "endpoint": "Address of the S3 service",
+        "bucket": "Bucket",
+        "path": "Folder in the bucket (optional)",
+        "sftpPath": "Absolute path on the server",
+        "user": "User",
+        "host": "Host",
+        "port": "Port (optional)",
+        "fingerprint": "Fingerprint of the host key, SHA256:… (optional)"
+      },
+      "noSecrets": "No keys or passwords are entered here: the key ID and the secret key are typed in the terminal of the server, and they never reach the browser or the server.",
+      "local": {
+        "warning": "A backup on this same machine is lost together with it. I understand that this backup will die with the machine.",
+        "next": "Continue"
+      },
+      "showCommand": "Show the command",
+      "command": {
+        "title": "Run on the server",
+        "hint": "Run these lines in a terminal on the machine of the server, in the directory with docker-compose.yml. The last line restarts the built-in agent so that it reports the new repository.",
+        "verify": "Check the command before you run it. It must contain only the \"read\" line asking for the S3 key ID (for S3), \"docker compose run … self-agent repo add\" with your own address, bucket and path, and \"docker compose restart self-agent\". A compromised server cannot vouch for this command itself — you are the one who checks it.",
+        "label": "Commands",
+        "back": "Change the storage",
+        "agentMissing": "The built-in agent sard-self is not registered, so there is nothing to add a repository to. See the troubleshooting section: {{doc}}."
+      },
+      "wait": {
+        "title": "Waiting for the repository",
+        "message": "Waiting for the repository from sard-self. When it appears, the wizard binds it itself.",
+        "slow": "It takes longer than usual. Look at the log of the agent: {{command}}",
+        "logs": "docker compose logs self-agent"
+      },
+      "attach": {
+        "title": "A repository is ready",
+        "message": "The built-in agent already has the initialised repository {{name}}. Bind the self-backup to it.",
+        "submit": "Bind {{name}}",
+        "other": "Choose another storage"
+      },
+      "bindFailed": "The repository could not be bound.",
+      "plan": {
+        "title": "What will be backed up",
+        "includes": "Includes",
+        "excludes": "Excludes",
+        "caWarning": "The CA key inside the backup is protected only by the password of the repository. Whoever has both the storage and the password has the root of trust of this installation."
+      },
+      "schedule": {
+        "title": "Schedule",
+        "time": "Time of the nightly backup",
+        "timezone": "Time zone",
+        "save": "Save the schedule",
+        "saved": "The schedule is saved.",
+        "custom": "The schedule is {{cron}}. It is not a daily time, so it is shown as it is.",
+        "failed": "The schedule could not be saved."
+      },
+      "first": {
+        "title": "First backup",
+        "intro": "The step is done when both the database and the keys have backed up successfully. It cannot be skipped.",
+        "start": "Run the first backup",
+        "retry": "Retry",
+        "database": "Database",
+        "keys": "Keys and configuration",
+        "failed": "Failed: {{message}}",
+        "failedNoMessage": "Failed.",
+        "unavailable": "The backup could not be started. Try again.",
+        "done": "Both parts backed up successfully.",
+        "openRun": "Open the run"
+      },
+      "unavailable": "The server is unavailable. Try again."
+    },
+    "keys": {
+      "title": "Keep the key copy outside this machine",
+      "intro": "Without the password of the repository and the access to the storage the backup cannot be restored. The server does not know the password: it exists only on the built-in agent.",
+      "command": "Print the password on the machine of the server (as root or as the service user) and keep it in a password manager or on paper:",
+      "commandLabel": "Command",
+      "storage": "Keep the access to the storage as well: the key ID and the secret key of the S3 service, or the SSH key for SFTP.",
+      "card": "The recovery card says where the storage is and which CA the server has. It holds no password.",
+      "cardLink": "Open the recovery card",
+      "confirm": "A copy of the repository password and of the storage access is kept outside this VM",
+      "submit": "Finish",
+      "unavailable": "The server is unavailable. Nothing was confirmed.",
+      "pending": "The first backup is not done yet."
     }
   },
   "settings": {
@@ -476,7 +575,19 @@
     "requirements": "The new password is not acceptable: it must be 12 to 1024 characters.",
     "locked": "Too many attempts. Try again in {{minutes}} min.",
     "notSupported": "The administrator is managed outside the server: the password cannot be changed here.",
-    "unavailable": "The server is unavailable. Nothing was changed."
+    "unavailable": "The server is unavailable. Nothing was changed.",
+    "selfBackup": {
+      "title": "Self-backup",
+      "notConfigured": "The self-backup is not configured.",
+      "current": "Repository: {{name}} ({{backend}})",
+      "change": "Change the storage",
+      "cancel": "Cancel",
+      "changeIntro": "After a change the new storage needs its own first backup and a new confirmation of the key copy. The old backups stay where they are.",
+      "card": "Recovery card",
+      "keysUnconfirmed": "The key copy of this storage is not confirmed yet.",
+      "keysConfirmedAt": "The key copy is confirmed: {{time}}",
+      "done": "The storage is changed."
+    }
   },
   "schedule": {
     "title": "Schedule",
@@ -562,7 +673,32 @@
       "overdue": "No successful self-backup since {{since}}: the database and the CA key are not backed up.",
       "failing": "The last self-backup failed. See its runs.",
       "schedule_disabled": "The self-backup's schedule is switched off.",
-      "local_storage": "The self-backup is on the server's own disk: it is lost together with the machine. Add an S3 or SFTP repository."
-    }
+      "local_storage": "The self-backup is on the server's own disk: it is lost together with the machine. Add an S3 or SFTP repository.",
+      "keys_unconfirmed": "The storage of the self-backup was changed, but the copy of the repository password and of the storage access is not confirmed yet. Open the settings and confirm it."
+    },
+    "openSettings": "Open the settings"
+  },
+  "recoveryCard": {
+    "title": "Recovery card",
+    "intro": "Keep this card with the copy of the repository password. It holds no password and no keys.",
+    "repositoryName": "Repository",
+    "backend": "Storage type",
+    "location": "Storage address",
+    "locationUnknown": "not recorded, write it in by hand",
+    "repositoryId": "Repository ID",
+    "caFingerprint": "CA fingerprint (SHA-256)",
+    "sardVersion": "Sard version",
+    "generatedAt": "Generated",
+    "recoveryProcedure": "Restore procedure",
+    "print": "Print",
+    "download": "Download .txt",
+    "back": "Back",
+    "unavailable": "The recovery card is not available: bind the repository of the self-backup first.",
+    "fileName": "sard-recovery-card.txt"
+  },
+  "onboardingBanner": {
+    "title": "Set up the backup of the server",
+    "message": "The server accepts no new agents until its own backup is set up and the key copy is confirmed.",
+    "link": "Open the wizard"
   }
 }

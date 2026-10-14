@@ -45,6 +45,7 @@ func (h *repoHost) assertNoLockFiles() {
 
 // Файл блокировки создаётся в каталоге кэша restic, а не рядом с файлом пароля
 func TestTheLockFileIsCreatedInTheCacheDirNotNextToThePasswordFile(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().hangInit = true
 	ctx, stop := context.WithCancel(context.Background())
@@ -62,6 +63,7 @@ func TestTheLockFileIsCreatedInTheCacheDirNotNextToThePasswordFile(t *testing.T)
 
 // Файл блокировки не остаётся после завершения команды
 func TestTheLockFileIsGoneWhenTheCommandEnds(t *testing.T) {
+	t.Parallel()
 	outcomes := map[string]func(h *repoHost) []string{
 		"success": func(h *repoHost) []string { return nil },
 		"REPOSITORY_EXISTS": func(h *repoHost) []string {
@@ -93,6 +95,7 @@ func TestTheLockFileIsGoneWhenTheCommandEnds(t *testing.T) {
 
 // Файл блокировки, оставшийся после аварийного завершения, не мешает повтору
 func TestAStaleLockFileInTheCacheDirDoesNotBlockARepeat(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.write(filepath.Join(h.cacheDir(), ".sard-init-main.lock"), "4242\n", 0o600)
 	code, _, stderr := h.initCmd()
@@ -116,6 +119,7 @@ func assertReasonAbsent(t *testing.T, out, reason string) {
 
 // Существующий файл пароля в каталоге только для чтения не мешает инициализации
 func TestAnExistingPasswordFileInAReadOnlyDirectoryDoesNotHinderInit(t *testing.T) {
+	t.Parallel()
 	for _, flags := range [][]string{nil, {"--generate-password"}} {
 		h := newRepoHost(t)
 		dir := h.path("secrets")
@@ -137,6 +141,7 @@ func TestAnExistingPasswordFileInAReadOnlyDirectoryDoesNotHinderInit(t *testing.
 
 // Файл блокировки нельзя создать — ошибка записи
 func TestALockFileThatCannotBeCreatedIsAWriteError(t *testing.T) {
+	t.Parallel()
 	states := map[string]func(h *repoHost){
 		"missing": func(h *repoHost) {
 			if err := os.Remove(h.cacheDir()); err != nil {
@@ -175,6 +180,7 @@ func TestALockFileThatCannotBeCreatedIsAWriteError(t *testing.T) {
 
 // Отсутствующий каталог кэша restic не создаётся
 func TestAMissingCacheDirIsNotCreated(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	if err := os.Remove(h.cacheDir()); err != nil {
 		t.Fatal(err)
@@ -188,6 +194,7 @@ func TestAMissingCacheDirIsNotCreated(t *testing.T) {
 
 // Без ключа каталога кэша в конфиге блокировка берётся в каталоге кэша по умолчанию
 func TestWithoutACacheDirKeyTheDefaultCacheDirHoldsTheLock(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.cfg.Restic.CacheDir = ""
 	h.saveConfig()
@@ -199,6 +206,7 @@ func TestWithoutACacheDirKeyTheDefaultCacheDirHoldsTheLock(t *testing.T) {
 
 // Файл пароля не создаётся, если блокировку не взять
 func TestThePasswordFileIsNotCreatedWhenTheLockCannotBeTaken(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.removePass()
 	if err := os.Remove(h.cacheDir()); err != nil {
@@ -214,6 +222,7 @@ func TestThePasswordFileIsNotCreatedWhenTheLockCannotBeTaken(t *testing.T) {
 
 // Каталог кэша по умолчанию — каталог кэша службы
 func TestTheProductionDefaultCacheDirIsTheServiceCacheDir(t *testing.T) {
+	t.Parallel()
 	if got := productionHostDeps().defaultCacheDir; got != "/var/cache/sard/restic" {
 		t.Fatalf("default cache dir = %q", got)
 	}
@@ -221,6 +230,7 @@ func TestTheProductionDefaultCacheDirIsTheServiceCacheDir(t *testing.T) {
 
 // Список не берёт блокировку и не ждёт идущей инициализации
 func TestTheListTakesNoLockAndDoesNotWaitForARunningInit(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().hangInit = true
 	ctx, stop := context.WithCancel(context.Background())
@@ -235,6 +245,7 @@ func TestTheListTakesNoLockAndDoesNotWaitForARunningInit(t *testing.T) {
 
 // Список работает без каталога кэша restic
 func TestTheListWorksWithoutTheCacheDir(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	if err := os.Remove(h.cacheDir()); err != nil {
 		t.Fatal(err)
@@ -249,6 +260,7 @@ func TestTheListWorksWithoutTheCacheDir(t *testing.T) {
 
 // The help of repo init names the write reasons.
 func TestTheInitHelpNamesBothWriteReasons(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	_, stdout, _ := h.run("init", "--help")
 	for _, want := range []string{"password file", "restic.cache_dir"} {

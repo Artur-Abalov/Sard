@@ -2,7 +2,7 @@
 // Copyright 2026 Artur Abalov
 
 import { describe, expect, test } from 'vitest'
-import { redirectIfSignedIn, setupFinished, setupPending } from './auth/loginGuard'
+import { redirectIfSignedIn, setupPending, setupRedirect } from './auth/loginGuard'
 import { http } from './mocks/http'
 import { noSession, PROBLEM } from './mocks/problems'
 import { server } from './mocks/node'
@@ -43,6 +43,7 @@ const withAdminStep = (state: 'pending' | 'done') =>
         setupCode: 'active',
         ca: null,
         caReplaceable: null,
+        restriction: 'full',
         steps: [
           { id: 'ca', state },
           { id: 'admin', state },
@@ -70,19 +71,65 @@ describe('setupPending (the login route sends a visit to the wizard, Рк2)', ()
   })
 })
 
-describe('setupFinished (the wizard route sends a visit to sign-in, Рк2)', () => {
-  test('is true once the admin step is done', async () => {
-    withAdminStep('done')
-    await expect(setupFinished()).resolves.toBe(true)
-  })
+const signedIn = () =>
+  server.use(
+    http.get('/api/v1/session', ({ response }) =>
+      response(200).json({
+        tenantId: '00000000-0000-0000-0000-000000000001',
+        expiresAt: new Date().toISOString(),
+      }),
+    ),
+  )
+const signedOut = () =>
+  server.use(http.get('/api/v1/session', ({ response }) => response(401).json(noSession, PROBLEM)))
+const withRestriction = (restriction: 'full' | 'new_agents' | 'none') =>
+  server.use(
+    http.get('/api/v1/onboarding', ({ response }) =>
+      response(200).json({
+        access: 'admin',
+        setupCode: 'not_issued',
+        ca: null,
+        caReplaceable: false,
+        restriction,
+        steps: [
+          { id: 'ca', state: 'done' },
+          { id: 'admin', state: 'done' },
+          { id: 'self_backup', state: restriction === 'none' ? 'done' : 'pending' },
+          { id: 'keys_confirmed', state: restriction === 'none' ? 'done' : 'upcoming' },
+        ],
+      }),
+    ),
+  )
 
-  test('is false while the admin step is pending', async () => {
+describe('setupRedirect (the wizard route, Рк2, Рк10)', () => {
+  test('stays on the wizard while the admin step is pending', async () => {
     withAdminStep('pending')
-    await expect(setupFinished()).resolves.toBe(false)
+    await expect(setupRedirect()).resolves.toBeNull()
   })
 
-  test('is false when the state cannot be read: the wizard shows the failure itself', async () => {
-    server.use(http.get('/api/v1/onboarding', () => new Response(null, { status: 500 })))
-    await expect(setupFinished()).resolves.toBe(false)
+  test('sends a visit without a session to sign-in once the admin step is done', async () => {
+    withAdminStep('done')
+    signedOut()
+    await expect(setupRedirect()).resolves.toBe('/login')
+  })
+
+  test('sends a signed-in visit home once the onboarding is complete', async () => {
+    signedIn()
+    withRestriction('none')
+    await expect(setupRedirect()).resolves.toBe('/')
+  })
+
+  test.each(['full', 'new_agents'] as const)(
+    'keeps a signed-in visit on the wizard while the restriction is %s',
+    async (restriction) => {
+      signedIn()
+      withRestriction(restriction)
+      await expect(setupRedirect()).resolves.toBeNull()
+    },
+  )
+
+  test('stays on the wizard when the state cannot be read: it shows the failure itself', async () => {
+    server.use(http.get('/api/v1/onboarding', () => new Response(null, { status: 503 })))
+    await expect(setupRedirect()).resolves.toBeNull()
   })
 })

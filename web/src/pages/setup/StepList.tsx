@@ -10,11 +10,9 @@ const badgeTone = {
   done: tones.success,
   current: tones.info,
   todo: tones.neutral,
-  soon: tones.neutral,
 } as const
 
-// The four steps in the server's order. The F4b steps are announced only: no action and
-// no sign of being required (Рк5).
+// The four steps in the server's order; all of them are required (Рк5, revised by F4b).
 export function StepList({ onboarding }: { onboarding: Onboarding }) {
   const { t } = useTranslation()
   return (

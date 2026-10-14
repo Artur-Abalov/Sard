@@ -11,9 +11,16 @@ const worker = setupWorker(...handlers)
 // an error in the console; everything else (Vite modules, assets) passes through.
 // The dev worker starts signed out (К4): the login page opens first, as it would
 // against the real server. With VITE_MOCK_ONBOARDING=1 it starts a clean installation:
-// the wizard opens first and takes the code of the mocks (MOCK_SETUP_CODE).
+// the wizard opens first and takes the code of the mocks (MOCK_SETUP_CODE), then the steps of the
+// self-backup. VITE_MOCK_ONBOARDING=upgraded starts an upgraded installation (only tokens are refused);
+// VITE_MOCK_SELF_BACKUP_FAIL=1 makes the first run of the database fail once (Рк18).
 export function startMocks() {
-  resetMockState({ signedIn: false, freshInstall: import.meta.env.VITE_MOCK_ONBOARDING === '1' })
+  resetMockState({
+    signedIn: false,
+    freshInstall: import.meta.env.VITE_MOCK_ONBOARDING === '1',
+    upgraded: import.meta.env.VITE_MOCK_ONBOARDING === 'upgraded',
+    failFirstBackup: import.meta.env.VITE_MOCK_SELF_BACKUP_FAIL === '1',
+  })
   return worker.start({
     onUnhandledRequest(request, print) {
       if (new URL(request.url).pathname.startsWith('/api/')) print.error()

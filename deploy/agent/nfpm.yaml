@@ -23,7 +23,7 @@ license: AGPL-3.0-only AND BSD-2-Clause
 # docs/plugins/postgresql.md). An agent without databases needs no client,
 # so there is no hard dependency; the names differ between the families.
 # util-linux brings setpriv, which starts ssh as the service user when
-# "sard-agent repo restore" runs restic as root (docs/adr/0057-host-restore.md);
+# "sard-agent repo restore" runs restic as root (docs/adr/0059-host-restore.md);
 # on Debian it is essential and needs no entry.
 overrides:
   deb:

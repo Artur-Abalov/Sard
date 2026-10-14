@@ -15,6 +15,7 @@ import (
 
 // The subcommand is dispatched from the command line of the binary itself.
 func TestRepoIsDispatchedFromTheAgentCommandLine(t *testing.T) {
+	t.Parallel()
 	code, stdout, _ := runAgent("repo", "list", "--help")
 	if code != exitOK || !strings.Contains(stdout, "Usage: sard-agent repo list") {
 		t.Fatalf("list --help: code = %d, stdout = %q", code, stdout)
@@ -31,6 +32,7 @@ func TestRepoIsDispatchedFromTheAgentCommandLine(t *testing.T) {
 
 // A subcommand alone, with no flag and no name, is a complete command line.
 func TestRepoListWithoutAnyArgumentUsesTheDefaultConfig(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.deps.defaultConfig = h.cfgPath
 	h.main().initialized = true
@@ -42,6 +44,7 @@ func TestRepoListWithoutAnyArgumentUsesTheDefaultConfig(t *testing.T) {
 }
 
 func TestEachUsageErrorSaysWhatIsWrong(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		args []string
 		want string
@@ -86,6 +89,7 @@ func TestABadFlagIsNotPrintedByTheFlagPackage(t *testing.T) {
 }
 
 func TestAMissingConfigIsReportedOnceAndNothingElseRuns(t *testing.T) {
+	t.Parallel()
 	for _, sub := range [][]string{{"init", "main"}, {"list"}} {
 		h := newRepoHost(t)
 		missing := h.path("nope.yaml")
@@ -100,6 +104,7 @@ func TestAMissingConfigIsReportedOnceAndNothingElseRuns(t *testing.T) {
 
 // The smallest positive timeout is a timeout.
 func TestTheSmallestPositiveTimeoutIsAccepted(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	code, _, stderr := h.listCmd("--timeout", "1ns")
 	if code != exitOK || stderr != "" {
@@ -108,6 +113,7 @@ func TestTheSmallestPositiveTimeoutIsAccepted(t *testing.T) {
 }
 
 func TestTheListTableIsAlignedInColumnsTwoSpacesApart(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().initialized = true
 	_, stdout, _ := h.listCmd()
@@ -121,6 +127,7 @@ func TestTheListTableIsAlignedInColumnsTwoSpacesApart(t *testing.T) {
 
 // A name is text, whatever it looks like: markup in it counts as width.
 func TestTheListTableTreatsNamesAsPlainText(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.cfg.Repositories[0].Name = "<abcdefghij>"
 	h.saveConfig()
@@ -136,6 +143,7 @@ func TestTheListTableTreatsNamesAsPlainText(t *testing.T) {
 
 // Once the timeout has run out, later rows are marked without a call to restic.
 func TestARowAfterTheTimeoutMakesNoCallToRestic(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().hangCat = true
 	done := h.start(context.Background(), "list", "--config", "C")
@@ -167,6 +175,7 @@ func (f failingReader) Read([]byte) (int, error) {
 }
 
 func TestAnErrorThatIsNoFailureIsPrintedAsAnAgentError(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	if err := os.Remove(h.pass()); err != nil {
 		t.Fatal(err)
@@ -183,6 +192,7 @@ func TestAnErrorThatIsNoFailureIsPrintedAsAnAgentError(t *testing.T) {
 
 // An interrupt outranks whatever error it caused.
 func TestAnInterruptOutranksAnErrorThatIsNoFailure(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	if err := os.Remove(h.pass()); err != nil {
 		t.Fatal(err)

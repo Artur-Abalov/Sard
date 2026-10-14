@@ -5,6 +5,7 @@ import type { components } from '../../api/schema'
 import { http } from '../http'
 import { pageOf } from '../paging'
 import { noSession, notFound, PROBLEM } from '../problems'
+import { onboardingIncomplete, refusedUntilComplete } from '../restriction'
 import { state } from '../state'
 import { SERVER_TIMEZONE, schedulePreviews } from '../fixtures'
 import { normalCron, validatePreview, validateSchedule } from '../validation'
@@ -101,6 +102,10 @@ export const scheduleHandlers = [
 
   http.put('/api/v1/sources/{sourceId}/schedule', async ({ params, request, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
+    const system = liveSource(params.sourceId)?.systemRole != null
+    if (refusedUntilComplete(false, system)) {
+      return response(409).json(onboardingIncomplete, PROBLEM)
+    }
     if (liveSource(params.sourceId) === undefined) return response(404).json(notFound, PROBLEM)
     const input = await request.json()
     const invalid = validateSchedule(input)

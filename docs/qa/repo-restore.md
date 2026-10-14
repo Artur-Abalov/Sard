@@ -279,7 +279,7 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
 50. Документация: в `docs/operations/agent-host-setup.md` есть раздел о
     снимках и восстановлении с `sudo sard-agent repo snapshots`,
     `sudo sard-agent repo restore`, `--allow-root-target`, восстановлением на
-    новом хосте без регистрации и `restorecon -R`; (Р82) раздел и ADR 0057
+    новом хосте без регистрации и `restorecon -R`; (Р82) раздел и ADR 0059
     советуют восстанавливать в новую цель или в существующую root 0700 и
     проверять `find <цель> -perm /6000`, прежде чем что-то выносить;
     `grep -nE 'restic (snapshots|dump|restore)' docs/plugins/postgresql.md docs/operations/agent-host-setup.md docs/operator/*.md`

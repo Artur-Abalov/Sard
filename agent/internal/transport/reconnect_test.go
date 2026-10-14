@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -214,5 +215,92 @@ func TestConcurrentReportsUnderBackPressure(t *testing.T) {
 	wg.Wait()
 	if logged != producers*lines {
 		t.Fatalf("log lines = %d, want %d", logged, producers*lines)
+	}
+}
+
+// A stream counts as healthy from 30 s on, not before.
+func TestHealthyStreamIsThirtySeconds(t *testing.T) {
+	for _, tc := range []struct{ lived, want time.Duration }{
+		{29 * time.Second, 2 * time.Second},
+		{30 * time.Second, time.Second},
+	} {
+		r := newRig(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		r.run(ctx)
+		ss := r.server.next(t)
+		ss.read(t)
+		close(ss.done)
+		r.clock.Advance(r.backoff(t, beat)) // 1 s
+		ss = r.server.next(t)
+		ss.read(t)
+		r.clock.Advance(tc.lived)
+		close(ss.done)
+		if d := r.backoff(t, beat); d != tc.want {
+			t.Errorf("stream lived %v: delay = %v, want %v", tc.lived, d, tc.want)
+		}
+		cancel()
+	}
+}
+
+// Stopping a connected agent is not a lost connection: nothing is logged
+// about reconnecting.
+func TestStoppingTheAgentIsNotALostConnection(t *testing.T) {
+	r := newRig(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := r.run(ctx)
+	r.server.next(t).read(t)
+	cancel()
+	if err := wait(t, done); err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if log := r.logs.all(); strings.Contains(log, "connection to the server lost") || strings.Contains(log, "reconnecting") {
+		t.Fatalf("log:\n%s", log)
+	}
+}
+
+// Stopping the agent while it waits to reconnect does not try once more.
+func TestStoppingWhileWaitingToReconnectDoesNotConnectAgain(t *testing.T) {
+	r := newRig(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := r.run(ctx)
+	ss := r.server.next(t)
+	ss.read(t)
+	close(ss.done)
+	r.backoff(t, beat)
+	cancel()
+	if err := wait(t, done); err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if n := r.prepared.Load(); n != 1 {
+		t.Fatalf("%d registrations were prepared, want the one of the first stream", n)
+	}
+}
+
+// Progress reaches the server on the stream.
+func TestProgressReachesTheServer(t *testing.T) {
+	r := newRig(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r.connect(ctx)
+	ss := r.server.next(t)
+	ss.read(t)
+	r.tr.Progress(&agentv1.StepProgress{CommandId: "c1", BytesProcessed: 7})
+	if p := ss.read(t).GetStepProgress(); p.GetCommandId() != "c1" || p.GetBytesProcessed() != 7 {
+		t.Fatalf("progress = %v", p)
+	}
+}
+
+// Connect leaves no connection behind: the server sees the agent's end.
+func TestConnectClosesItsConnection(t *testing.T) {
+	r := newRig(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := r.connect(ctx)
+	r.server.next(t).read(t)
+	cancel()
+	_ = wait(t, done)
+	select {
+	case <-r.server.connEnded:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the connection stayed open")
 	}
 }

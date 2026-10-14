@@ -446,9 +446,7 @@ func (h *repoHost) write(path, content string, mode os.FileMode) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		h.t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(content), mode); err != nil {
-		h.t.Fatal(err)
-	}
+	writeFile(h.t, path, []byte(content), mode)
 	if err := os.Chmod(path, mode); err != nil {
 		h.t.Fatal(err)
 	}
