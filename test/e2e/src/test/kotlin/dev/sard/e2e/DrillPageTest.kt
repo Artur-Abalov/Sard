@@ -93,4 +93,25 @@ class DrillPageTest {
 
         assertTrue("a" in error.message!!, error.message)
     }
+
+    @Test
+    fun `Метка с недопустимым id останавливает учения`() {
+        val error = assertFailsWith<DrillPageError> { DrillPage.blocks("<!-- drill: repo.add -->\n```bash\necho a\n```\n") }
+
+        assertTrue("repo.add" in error.message!!, error.message)
+    }
+
+    @Test
+    fun `Голая метка с id, совпадающим с другой меткой, останавливает учения`() {
+        val page = "<!-- drill: a -->\n\n```bash\necho x\n```\n<!-- drill: a -->\n```bash\necho y\n```\n"
+
+        assertFailsWith<DrillPageError> { DrillPage.blocks(page) }
+    }
+
+    @Test
+    fun `Упоминание метки внутри строки текста меткой не считается`() {
+        val page = "Блоки со строкой `<!-- drill: … -->` идут.\n<!-- drill: a -->\n```bash\necho a\n```\n"
+
+        assertEquals(listOf("a"), DrillPage.blocks(page).map { it.id })
+    }
 }

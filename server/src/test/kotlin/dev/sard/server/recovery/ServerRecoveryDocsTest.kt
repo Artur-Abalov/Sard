@@ -10,8 +10,8 @@ import kotlin.test.assertTrue
 
 private const val PAGE = "docs/operator/12-server-recovery.md"
 private const val PAGE_EN = "docs/en/operator/12-server-recovery.md"
-private val DRILL_MARK = Regex("""<!-- drill: ([\w-]+) -->\n```bash\n(.*?)\n```""", RegexOption.DOT_MATCHES_ALL)
-private val ANY_MARK = Regex("""<!-- drill: [\w-]+ -->""")
+private val DRILL_MARK = Regex("""(?m)^<!-- drill: ([\w-]+) -->\n```bash\n(.*?)\n```""", RegexOption.DOT_MATCHES_ALL)
+private val ANY_MARK = Regex("""(?m)^<!--\s*drill:.*$""")
 private val BASH_BLOCK = Regex("""```bash\n(.*?)\n```""", RegexOption.DOT_MATCHES_ALL)
 private val SUBSTITUTION = Regex("""<([\p{L}][\p{L}\p{N}_.-]*)>""")
 private val SECRET_WORD = Regex("(?i)парол|секрет|ключ|password|secret|key|token")
