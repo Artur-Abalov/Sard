@@ -244,6 +244,7 @@ FAILED, а результат содержит снимок базы: он по�
 3. **Восстановить глобальные объекты** суперпользователем нового кластера, **до** базы:
 
    ```bash
+   # allow-sudo-u: psql от суперпользователя нового кластера PostgreSQL, не sard-agent
    sudo -u postgres psql -X -d postgres -f $T/app.globals.sql
    ```
 
@@ -253,7 +254,9 @@ FAILED, а результат содержит снимок базы: он по�
 4. **Восстановить базу**: `createdb`, `pg_restore` в новую базу:
 
    ```bash
+   # allow-sudo-u: createdb от суперпользователя нового кластера PostgreSQL, не sard-agent
    sudo -u postgres createdb restored
+   # allow-sudo-u: то же, pg_restore от суперпользователя PostgreSQL
    sudo -u postgres pg_restore -d restored $T/app.dump
    ```
 

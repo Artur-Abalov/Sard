@@ -54,6 +54,7 @@ sudo touch -d '2020-01-02 03:04:05' /srv/qa-data/sub/b.txt
 Кроме того — снимок без тегов Sard, сделанный вручную от имени службы:
 
 ```bash
+# allow-sudo-u: restic от пользователя службы: ручной снимок для проверки
 sudo -u sard-agent /usr/libexec/sard/restic --repo /srv/sard/main \
   --password-file /etc/sard/secrets/restic-main.pass --cache-dir /var/cache/sard/restic backup /etc/hostname
 ```
@@ -87,7 +88,7 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
    → `main` и общее число снимков; `… | jq -r '.snapshots[] | select(.source == null) | .paths[0]'`
    → `/etc/hostname`; `… | jq -r '.snapshots[0].id | length'` → `64`;
    `… | jq -e '.snapshots[] | select(.paths[0]=="/app.dump") | .tags | index("postgresql.part=database")'` → не `null`.
-4. Права: `sudo -u sard-agent $AG repo snapshots main; echo "exit=$?"` →
+4. Права: `sudo -u sard-agent $AG repo snapshots main; echo "exit=$?"` → <!-- allow-sudo-u: проверка отказа от пользователя службы -->
    `exit=0`; `$AG repo snapshots main; echo "exit=$?"` (без sudo) → `exit=2`,
    `PRIVILEGES_REQUIRED`.
 5. Только чтение (Н26): `T=$(date '+%F %T'); sudo find /srv/sard/main/locks -type f | wc -l`
@@ -118,7 +119,7 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
     `sudo $AG repo restore main eeeeeeee --target /srv/r1` → `exit=2`,
     `SNAPSHOT_UNKNOWN`, `repo snapshots main`; каталога нет.
 12. Без `--target`: `sudo $AG repo restore main $ID8` → `exit=2`, называет `--target`.
-13. Права: `sudo -u sard-agent $AG repo restore main $ID8 --target /tmp/r; echo "exit=$?"`
+13. Права: `sudo -u sard-agent $AG repo restore main $ID8 --target /tmp/r; echo "exit=$?"` <!-- allow-sudo-u: проверка отказа от пользователя службы -->
     → `exit=2`, `PRIVILEGES_REQUIRED`, `sudo sard-agent repo restore` (Н28);
     `ls -d /tmp/r` → нет.
 14. Непригодная цель: `sudo $AG repo restore main $ID8 --target relative`,
@@ -211,7 +212,7 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
 30. Напечатанные команды работают: поднять второй кластер
     (`sudo pg_createcluster 16 qa --start`, порт `5433`);
     `sudo chown postgres: /srv/pg1/*`; от имени `postgres` выполнить три
-    команды из шага 29 с `-p 5433` → `sudo -u postgres psql -p 5433 -d app -tAc 'select count(*) from t'`
+    команды из шага 29 с `-p 5433` → `sudo -u postgres psql -p 5433 -d app -tAc 'select count(*) from t'` <!-- allow-sudo-u: psql от суперпользователя PostgreSQL, не sard-agent -->
     → `1000`; `sudo -u postgres psql -p 5433 -tAc "select 1 from pg_roles where rolname='app_rw'"` → `1`.
 31. Без глобальных: `sudo $AG repo restore main latest --source $SPN --target /srv/pg2`
     → `exit=0`; `sudo ls -A /srv/pg2` → только `app.dump`; stdout говорит, что
@@ -296,7 +297,7 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
     `RCLONE_PASSWORD_COMMAND=touch /root/pwned`,
     `AWS_SHARED_CREDENTIALS_FILE=/etc/shadow`, `HTTPS_PROXY=http://127.0.0.1:9`,
     `SSL_CERT_FILE=/etc/shadow`:
-    `echo '<строка>' | sudo -u sard-agent tee -a $S1ENV >/dev/null` (так её
+    `echo '<строка>' | sudo -u sard-agent tee -a $S1ENV >/dev/null` (так её <!-- allow-sudo-u: запись в env_file от владельца файла, пользователя службы -->
     дописал бы нарушитель — пользователь службы);
     `T=$(date '+%F %T'); run sudo $AG repo restore s1 latest --source $SFS3 --target /srv/e1`
     → `exit=2`, `ENV_FILE_INVALID`, путь `$S1ENV`, номер строки и имя
@@ -320,7 +321,7 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
     `ps -o args= -C restic` (от root) содержит `--target /proc/self/fd/3/root`
     и не содержит `/srv/r4`; после шага `ls -A /srv/r4` → только `srv`.
 55. Снимок с файлом в корне (Р73): ручной stdin-снимок
-    `echo hello | sudo -u sard-agent /usr/libexec/sard/restic --repo /srv/sard/main --password-file /etc/sard/secrets/restic-main.pass --cache-dir /var/cache/sard/restic backup --stdin --stdin-filename root.txt`;
+    `echo hello | sudo -u sard-agent /usr/libexec/sard/restic --repo /srv/sard/main --password-file /etc/sard/secrets/restic-main.pass --cache-dir /var/cache/sard/restic backup --stdin --stdin-filename root.txt`; <!-- allow-sudo-u: ручной снимок restic от пользователя службы для проверки -->
     его id — `RID`; `sudo $AG repo restore main $RID --target /srv/e4` →
     `exit=0`; `sudo cat /srv/e4/root.txt` → `hello`.
 56. Подмена внутри цели (Р73; только на копии ВМ): цель `/srv/e5`
@@ -354,7 +355,7 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
     → нет `RESTIC_PASSWORD_FILE=/etc/sard/secrets/…` и нет `RESTIC_PASSWORD=`;
     `ps -o args= -C restic` (от root) — `--password-file /proc/self/fd/…`;
     `sudo ls -l /proc/$(pgrep -u root -n restic)/fd` → дескриптор пароля —
-    `pipe:`. FIFO: `sudo mv /etc/sard/secrets/restic-main.pass "$OUT/m.pass"; sudo -u sard-agent mkfifo -m 0600 /etc/sard/secrets/restic-main.pass`;
+    `pipe:`. FIFO: `sudo mv /etc/sard/secrets/restic-main.pass "$OUT/m.pass"; sudo -u sard-agent mkfifo -m 0600 /etc/sard/secrets/restic-main.pass`; <!-- allow-sudo-u: FIFO от пользователя службы для проверки -->
     `time sudo $AG repo restore main $ID --target /srv/e9` → сразу `exit=2`,
     `SECRET_FILE_REJECTED`, `real` меньше 5 с. Вернуть файл пароля.
 61. `--source` с id (Р75): `sudo $AG repo restore main $ID8 --source $SF --target /srv/e10`
@@ -366,6 +367,7 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
 Снимки этой части делаются вручную от имени службы и в конце удаляются:
 
 ```bash
+# allow-sudo-u: restic от пользователя службы: ручные снимки для проверки
 R="sudo -u sard-agent /usr/libexec/sard/restic --repo /srv/sard/main --password-file /etc/sard/secrets/restic-main.pass --cache-dir /var/cache/sard/restic"
 ```
 
@@ -412,7 +414,7 @@ R="sudo -u sard-agent /usr/libexec/sard/restic --repo /srv/sard/main --password-
     тот же файл. `sudo rm -rf /srv/e12`.
 67. Подмена файла PostgreSQL в цели, куда пишут другие (Р87; только на
     копии ВМ): `sudo install -d -m 0777 /srv/e13`;
-    `echo FOREIGN | sudo -u nobody tee /tmp/qa-foreign >/dev/null`; от имени
+    `echo FOREIGN | sudo -u nobody tee /tmp/qa-foreign >/dev/null`; от имени <!-- allow-sudo-u: запись чужого файла от nobody для проверки подмены -->
     `nobody` цикл
     `while :; do for f in /srv/e13/.app.dump.tmp-*; do [ -e "$f" ] && mv "$f" /srv/e13/stolen 2>/dev/null && cp /tmp/qa-foreign "$f"; done; done &`.
     20 раз: очистить цель `sudo find /srv/e13 -mindepth 1 -delete`;
