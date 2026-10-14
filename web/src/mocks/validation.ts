@@ -9,7 +9,7 @@ export const MIN_TTL_SECONDS = 300
 export const MAX_TTL_SECONDS = 604_800
 export const MAX_LABEL_LENGTH = 200
 
-function rejected(
+export function rejected(
   code: Schemas['ErrorCode'],
   field: string,
   message: string,

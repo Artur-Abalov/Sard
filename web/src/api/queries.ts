@@ -50,6 +50,17 @@ export const sourceQuery = (sourceId: string) =>
       call(client.GET('/api/v1/sources/{sourceId}', { params: { path: { sourceId } } })),
   })
 
+export const restoreOptionsQuery = (sourceId: string, snapshotId: string) =>
+  queryOptions({
+    queryKey: ['restoreOptions', sourceId, snapshotId],
+    queryFn: () =>
+      call(
+        client.GET('/api/v1/sources/{sourceId}/snapshots/{snapshotId}/restore-options', {
+          params: { path: { sourceId, snapshotId } },
+        }),
+      ),
+  })
+
 export const runQuery = (runId: string) =>
   queryOptions({
     queryKey: ['run', runId],
@@ -163,6 +174,9 @@ export const schedulePreviewQuery = (cron: string, timezone: string | null, lang
 
 export type Run = Schemas['Run']
 export type RunStep = Schemas['RunStep']
+export type RestoreOptions = Schemas['RestoreOptions']
+export type RestoreTarget = Schemas['RestoreTarget']
+export type RestorePreview = Schemas['RestorePreview']
 export type Source = Schemas['Source']
 export type AgentDetails = Schemas['AgentDetails']
 export type EnrollmentToken = Schemas['EnrollmentToken']

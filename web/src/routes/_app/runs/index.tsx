@@ -8,10 +8,11 @@ import { parseRunFilter } from '../../../runFilter'
 export const Route = createFileRoute('/_app/runs/')({
   // The filter lives in the address: sourceId and any number of status; what is not valid is dropped.
   validateSearch: (search) => {
-    const { statuses, sourceId } = parseRunFilter(search)
+    const { statuses, sourceId, kind } = parseRunFilter(search)
     return {
       ...(statuses.length > 0 ? { status: statuses } : {}),
       ...(sourceId === null ? {} : { sourceId }),
+      ...(kind === null ? {} : { kind }),
     }
   },
   component: Runs,

@@ -29,6 +29,7 @@ import { Route as AppSourcesIndexRouteImport } from './routes/_app/sources/index
 import { Route as AppSourcesNewRouteImport } from './routes/_app/sources/new'
 import { Route as AppSourcesSourceIdIndexRouteImport } from './routes/_app/sources/$sourceId/index'
 import { Route as AppSourcesSourceIdEditRouteImport } from './routes/_app/sources/$sourceId/edit'
+import { Route as AppSourcesSourceIdSnapshotsSnapshotIdRestoreRouteImport } from './routes/_app/sources/$sourceId/snapshots/$snapshotId/restore'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -109,6 +110,12 @@ const AppSourcesSourceIdEditRoute = AppSourcesSourceIdEditRouteImport.update({
   path: '/sources/$sourceId/edit',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSourcesSourceIdSnapshotsSnapshotIdRestoreRoute =
+  AppSourcesSourceIdSnapshotsSnapshotIdRestoreRouteImport.update({
+    id: '/sources/$sourceId/snapshots/$snapshotId/restore',
+    path: '/sources/$sourceId/snapshots/$snapshotId/restore',
+    getParentRoute: () => AppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -126,6 +133,7 @@ export interface FileRoutesByFullPath {
   '/sources/': typeof AppSourcesIndexRoute
   '/sources/$sourceId/edit': typeof AppSourcesSourceIdEditRoute
   '/sources/$sourceId/': typeof AppSourcesSourceIdIndexRoute
+  '/sources/$sourceId/snapshots/$snapshotId/restore': typeof AppSourcesSourceIdSnapshotsSnapshotIdRestoreRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -143,6 +151,7 @@ export interface FileRoutesByTo {
   '/sources': typeof AppSourcesIndexRoute
   '/sources/$sourceId/edit': typeof AppSourcesSourceIdEditRoute
   '/sources/$sourceId': typeof AppSourcesSourceIdIndexRoute
+  '/sources/$sourceId/snapshots/$snapshotId/restore': typeof AppSourcesSourceIdSnapshotsSnapshotIdRestoreRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -162,6 +171,7 @@ export interface FileRoutesById {
   '/_app/sources/': typeof AppSourcesIndexRoute
   '/_app/sources/$sourceId/edit': typeof AppSourcesSourceIdEditRoute
   '/_app/sources/$sourceId/': typeof AppSourcesSourceIdIndexRoute
+  '/_app/sources/$sourceId/snapshots/$snapshotId/restore': typeof AppSourcesSourceIdSnapshotsSnapshotIdRestoreRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -181,6 +191,7 @@ export interface FileRouteTypes {
     | '/sources/'
     | '/sources/$sourceId/edit'
     | '/sources/$sourceId/'
+    | '/sources/$sourceId/snapshots/$snapshotId/restore'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -198,6 +209,7 @@ export interface FileRouteTypes {
     | '/sources'
     | '/sources/$sourceId/edit'
     | '/sources/$sourceId'
+    | '/sources/$sourceId/snapshots/$snapshotId/restore'
   id:
     | '__root__'
     | '/_app'
@@ -216,6 +228,7 @@ export interface FileRouteTypes {
     | '/_app/sources/'
     | '/_app/sources/$sourceId/edit'
     | '/_app/sources/$sourceId/'
+    | '/_app/sources/$sourceId/snapshots/$snapshotId/restore'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -339,6 +352,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSourcesSourceIdEditRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/sources/$sourceId/snapshots/$snapshotId/restore': {
+      id: '/_app/sources/$sourceId/snapshots/$snapshotId/restore'
+      path: '/sources/$sourceId/snapshots/$snapshotId/restore'
+      fullPath: '/sources/$sourceId/snapshots/$snapshotId/restore'
+      preLoaderRoute: typeof AppSourcesSourceIdSnapshotsSnapshotIdRestoreRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -355,6 +375,7 @@ interface AppRouteChildren {
   AppSourcesIndexRoute: typeof AppSourcesIndexRoute
   AppSourcesSourceIdEditRoute: typeof AppSourcesSourceIdEditRoute
   AppSourcesSourceIdIndexRoute: typeof AppSourcesSourceIdIndexRoute
+  AppSourcesSourceIdSnapshotsSnapshotIdRestoreRoute: typeof AppSourcesSourceIdSnapshotsSnapshotIdRestoreRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -370,6 +391,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppSourcesIndexRoute: AppSourcesIndexRoute,
   AppSourcesSourceIdEditRoute: AppSourcesSourceIdEditRoute,
   AppSourcesSourceIdIndexRoute: AppSourcesSourceIdIndexRoute,
+  AppSourcesSourceIdSnapshotsSnapshotIdRestoreRoute:
+    AppSourcesSourceIdSnapshotsSnapshotIdRestoreRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

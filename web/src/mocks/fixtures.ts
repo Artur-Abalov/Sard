@@ -171,6 +171,7 @@ export const agents: Schemas['AgentDetails'][] = [
     ],
     secretNames: ['pg-password', 'api-token'],
     scriptNames: ['flush-caches'],
+    restoreDir: '/var/lib/sard-agent/restore',
   },
   {
     id: ids.webAgent,
@@ -188,10 +189,11 @@ export const agents: Schemas['AgentDetails'][] = [
     protocolVersion: 1,
     plugins: [{ ...filesPlugin, actions: ['backup'] }],
     repositories: [
-      { name: 'local', backend: 'local', repositoryId: '9c7d2b1a04', cryptoProvider: 'file' },
+      { name: 'local', backend: 'local', repositoryId: '5a1f0c3e9b', cryptoProvider: 'file' },
     ],
     secretNames: [],
     scriptNames: [],
+    restoreDir: null,
   },
   {
     id: ids.revokedAgent,
@@ -213,6 +215,7 @@ export const agents: Schemas['AgentDetails'][] = [
     ],
     secretNames: [],
     scriptNames: [],
+    restoreDir: null,
   },
   {
     id: ids.duplicateAgent,
@@ -234,6 +237,7 @@ export const agents: Schemas['AgentDetails'][] = [
     ],
     secretNames: [],
     scriptNames: [],
+    restoreDir: '/srv/restore',
   },
   {
     id: ids.bareAgent,
@@ -253,6 +257,7 @@ export const agents: Schemas['AgentDetails'][] = [
     repositories: [],
     secretNames: [],
     scriptNames: [],
+    restoreDir: null,
   },
   {
     id: ids.selfAgent,
@@ -284,6 +289,7 @@ export const agents: Schemas['AgentDetails'][] = [
     ],
     secretNames: ['sard-db'],
     scriptNames: [],
+    restoreDir: null,
   },
 ]
 
@@ -365,6 +371,7 @@ function backupStep(facts: StepFacts): Schemas['RunStep'] {
     filesTotal: null,
     message: null,
     backup: null,
+    restore: null,
     queuedAt: facts.queuedAt,
     dispatchedAt: facts.startedAt === null ? null : facts.queuedAt,
     startedAt: facts.startedAt,
@@ -402,6 +409,9 @@ function runOf(
     finishedAt: step.finishedAt,
     steps: [step],
     catchUp: null,
+    kind: 'backup',
+    requestedBy: (extra.trigger ?? 'manual') === 'manual' ? 'admin' : null,
+    restore: null,
     ...extra,
   }
 }
@@ -411,6 +421,7 @@ const snapshotOutput = {
   totalBytes: 31_457_280,
   addedBytes: 524_288,
   repositoryId: '5a1f0c3e9b',
+  restorable: true,
 }
 
 // Newest first, as the list endpoint returns them.
@@ -483,7 +494,7 @@ export const runs: Schemas['Run'][] = [
       bytesProcessed: 31_457_280,
       bytesTotal: 31_457_280,
       message: '2 files unreadable',
-      backup: { ...snapshotOutput, partial: true },
+      backup: { ...snapshotOutput, partial: true, restorable: false },
     },
     'failed',
   ),
@@ -553,6 +564,7 @@ export const runs: Schemas['Run'][] = [
         addedBytes: 1_048_576,
         repositoryId: '5a1f0c3e9b',
         partial: false,
+        restorable: true,
       },
     },
     'succeeded',
@@ -603,6 +615,8 @@ export const snapshots: Schemas['Snapshot'][] = [
     createdAt: '2026-09-26T15:01:09Z',
     forgottenAt: null,
     partial: true,
+    restorable: false,
+    restoreBlockedReason: 'partial',
   },
   {
     id: ids.snapshot,
@@ -618,6 +632,8 @@ export const snapshots: Schemas['Snapshot'][] = [
     createdAt: '2026-09-25T21:02:30Z',
     forgottenAt: null,
     partial: false,
+    restorable: true,
+    restoreBlockedReason: null,
   },
 ]
 

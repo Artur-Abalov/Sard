@@ -4,14 +4,18 @@
 import { Alert, Badge, Card, Code, Group, Progress, Stack, Text, Title } from '@mantine/core'
 import { Trans, useTranslation } from 'react-i18next'
 import type { RunStep } from '../api/queries'
-import { formatPercent } from '../format'
+import type { components } from '../api/schema'
+import { formatPercent, formatRestoreResult } from '../format'
 import { stepPollInterval } from '../polling'
+import { restoreOutcome, type RestoreOutcome } from '../restoreView'
 import { partialNoteShown, stepNoteShown } from '../stepNotes'
 import { useFormat } from '../useFormat'
 import { Mono } from './Mono'
 import { StatusBadge } from './StatusBadge'
 import { StepLogView } from './StepLogView'
 import { tones } from '../theme'
+
+type Schemas = components['schemas']
 
 // The reason the server gave, as it gave it, under the words that say what kind of end it was.
 function Reason({ step }: { step: RunStep }) {
@@ -99,6 +103,57 @@ function BackupBlock({ step }: { step: RunStep }) {
   )
 }
 
+function Restored({ restore }: { restore: Schemas['RestoreOutput'] }) {
+  const { t, i18n } = useTranslation()
+  return (
+    <Alert color={tones.success} role="status">
+      <Text>
+        {formatRestoreResult(restore.filesRestored, restore.bytesRestored, i18n.language)}
+        {' — '}
+        <Mono>{restore.target ?? ''}</Mono>
+      </Text>
+      {restore.ownersRestored === false && <Text size="sm">{t('restore.ownersNotRestored')}</Text>}
+    </Alert>
+  )
+}
+
+function Outcome({ outcome }: { outcome: RestoreOutcome }) {
+  const { t } = useTranslation()
+  switch (outcome.kind) {
+    case 'restored':
+      return <Restored restore={outcome.restore} />
+    case 'nothing':
+      return <Alert color={tones.neutral}>{t('restore.nothingRestored')}</Alert>
+    case 'rollbackFailed':
+      return (
+        <Alert color={tones.error} role="alert">
+          <Trans
+            i18nKey="restore.rollbackFailed"
+            values={{ leftover: outcome.leftover }}
+            components={{ m: <Mono /> }}
+          />
+        </Alert>
+      )
+    case 'late':
+      return (
+        <Alert color={tones.warning} role="status">
+          <Trans
+            i18nKey="restore.lateSuccess"
+            values={{ target: outcome.target }}
+            components={{ m: <Mono /> }}
+          />
+        </Alert>
+      )
+  }
+}
+
+// How a restore step ended, in the server's facts: what it wrote, that nothing was restored, what
+// its rollback left behind, or where a lost step's late result put the data.
+function RestoreBlock({ step }: { step: RunStep }) {
+  const outcome = step.action === 'restore' ? restoreOutcome(step) : null
+  return outcome === null ? null : <Outcome outcome={outcome} />
+}
+
 export function StepPanel({ runId, step }: { runId: string; step: RunStep }) {
   const { t } = useTranslation()
   const format = useFormat()
@@ -122,6 +177,7 @@ export function StepPanel({ runId, step }: { runId: string; step: RunStep }) {
         <Progress_ step={step} />
         <Reason step={step} />
         <BackupBlock step={step} />
+        <RestoreBlock step={step} />
         <Title order={5}>{t('run.log')}</Title>
         <StepLogView
           runId={runId}

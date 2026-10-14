@@ -11,6 +11,7 @@ import {
   formatFires,
   formatMissed,
   formatPercent,
+  formatRestoreResult,
   formatRelative,
   formatScheduleTime,
   formatTimestamp,
@@ -218,5 +219,25 @@ describe('formatMissed', () => {
 
   test('a catch-up run is marked with the same period', () => {
     expect(formatCatchUp(missed, 'ru')).toBe(`догоняющий — ${formatMissed(missed, 'ru')}`)
+  })
+})
+
+describe('formatRestoreResult', () => {
+  test.each([
+    ['ru', 2, 1536, '2 файла, 1,5 КиБ'],
+    ['ru', 1, 0, '1 файл, 0 Б'],
+    ['ru', 5, 2048, '5 файлов, 2 КиБ'],
+    ['en', 2, 1536, '2 files, 1.5 KiB'],
+    ['en', 1, 10, '1 file, 10 B'],
+  ])('%s: %s files and %s bytes is %s', (language, files, bytes, text) => {
+    expect(formatRestoreResult(files, bytes, language)).toBe(text)
+  })
+
+  test('an unknown count of files leaves only the size', () => {
+    expect(formatRestoreResult(null, 1536, 'en')).toBe('1.5 KiB')
+  })
+
+  test('nothing known is a dash', () => {
+    expect(formatRestoreResult(null, null, 'en')).toBe('—')
   })
 })

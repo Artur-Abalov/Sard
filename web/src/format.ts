@@ -105,6 +105,25 @@ export function formatFiles(
   })
 }
 
+// "2 files, 1.5 KiB": what a restore wrote, the count with the plural form of the language; a
+// part that is unknown is left out, and nothing known is EMPTY.
+export function formatRestoreResult(
+  files: number | null,
+  bytes: number | null,
+  language: string,
+): string {
+  const forms: Record<string, string> = dictionary(language).filesRestored
+  const count =
+    files === null
+      ? null
+      : fill(forms[new Intl.PluralRules(language).select(files)] ?? forms.other, {
+          count: new Intl.NumberFormat(language).format(files),
+        })
+  const parts = [count, bytes === null ? null : formatBytes(bytes, language)]
+  const known = parts.filter((part) => part !== null)
+  return known.length === 0 ? EMPTY : known.join(', ')
+}
+
 const SECONDS_PER_DAY = 86_400
 // Closer than this to now, either way, is "just now": clocks of browser and server differ a little.
 const NOW_WINDOW_SECONDS = 5
