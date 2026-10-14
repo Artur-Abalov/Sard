@@ -49,8 +49,10 @@ func (h *setupHost) assertPGFile(name, want string) {
 }
 
 func TestADatabaseSnapshotLaysOutTheDumpAndTheGlobalsInTheRootOfTheTarget(t *testing.T) {
-	defer syscall.Umask(syscall.Umask(0o277))
 	h := restoreHost(t)
+	// After restoreHost: under this umask t.TempDir could not make its
+	// directory unless the test runs as root.
+	defer syscall.Umask(syscall.Umask(0o277))
 	code, stdout, stderr := h.restore(idP)
 	assertCode(t, code, exitOK)
 	if stderr != "" || len(h.restoreCalls()) != 0 || !strings.Contains(stdout, "root only") {

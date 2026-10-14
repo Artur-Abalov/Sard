@@ -155,8 +155,9 @@ func entries(t *testing.T, dir string) []string {
 }
 
 func TestTheFilesAreWrittenToTheRootOfTheTargetWithOwnerAndModeOfRoot(t *testing.T) {
-	defer syscall.Umask(syscall.Umask(0o277)) // a umask that would take the owner's write bit
 	dir, fsys := t.TempDir(), newRecordingFS()
+	// Set after t.TempDir, which could not make its directory under it unless run as root.
+	defer syscall.Umask(syscall.Umask(0o277)) // a umask that would take the owner's write bit
 	held, f := openTarget(fsys, dir)
 	if f != nil {
 		t.Fatal(f)
