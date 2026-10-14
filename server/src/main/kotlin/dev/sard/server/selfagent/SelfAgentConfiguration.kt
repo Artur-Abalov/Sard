@@ -84,7 +84,8 @@ class SelfAgentConfiguration {
         check: SelfAgentCheck,
         dataSource: DataSource,
     ): SelfAgentLoop {
-        val setup = SelfAgentSetup(channel, SecureRandom(), ScramRolePasswords(dataSource))
+        val setup =
+            SelfAgentSetup(channel, SecureRandom(), ScramRolePasswords(dataSource), PostgresDumpRole(dataSource), AdvisoryLock(dataSource))
         return SelfAgentLoop(checkNotNull(properties.settings()).checkInterval, ::scheduler, setup::run, check::run)
     }
 

@@ -26,13 +26,29 @@ class SelfAgentSetupTest {
     lateinit var dir: Path
 
     private val applied = mutableListOf<Pair<String, String>>()
+    private val events = mutableListOf<String>()
     private var failure: SQLException? = null
+    private var reconcileFailure: SQLException? = null
 
     private fun setup(channelDir: Path = dir) =
-        SelfAgentSetup(SelfChannel(channelDir), SecureRandom()) { role, password ->
-            failure?.let { throw it }
-            applied += role to password
-        }
+        SelfAgentSetup(
+            SelfChannel(channelDir),
+            SecureRandom(),
+            { role, password ->
+                failure?.let { throw it }
+                events += "password"
+                applied += role to password
+            },
+            {
+                events += "reconcile"
+                reconcileFailure?.let { throw it }
+            },
+            {
+                events += "lock"
+                it()
+                events += "unlock"
+            },
+        )
 
     private val file get() = dir.resolve("db-password")
 
@@ -93,5 +109,26 @@ class SelfAgentSetupTest {
         assertTrue("docs/operations/self-agent.md" in warnings.single().text, warnings.single().text)
         assertTrue("sard_self" in warnings.single().text, warnings.single().text)
         assertTrue(lines.none { password in it.text })
+    }
+
+    @Test
+    fun `Роль приводится к виду миграции до пароля, и всё это под блокировкой`() {
+        MutFlow.underTest { setup().run() }
+
+        assertEquals(listOf("lock", "reconcile", "password", "unlock"), events)
+    }
+
+    @Test
+    fun `Роль, которую сервер не смог привести к виду миграции, даёт одну строку WARN, пароль не задан`() {
+        reconcileFailure = SQLException("permission denied", "42501")
+
+        val lines = captureEvents { MutFlow.underTest { setup().run() } }
+
+        assertEquals(listOf("lock", "reconcile", "unlock"), events)
+        val warnings = lines.filter { it.level == Level.WARN }
+        assertEquals(1, warnings.size)
+        assertTrue("docs/operations/self-agent.md" in warnings.single().text, warnings.single().text)
+        assertTrue("42501" in warnings.single().text, warnings.single().text)
+        assertTrue(FORMAT.matches(Files.readString(file)))
     }
 }
