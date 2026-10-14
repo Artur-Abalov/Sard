@@ -48,7 +48,10 @@ internal class PostgresDumpRole(
     private val dataSource: DataSource,
 ) : DumpRole {
     override fun reconcile() {
-        dataSource.connection.use { connection -> connection.createStatement().use { it.execute(RECONCILE) } }
+        dataSource.connection.use { connection ->
+            connection.createStatement().use { it.executeUpdate(RECONCILE) }
+            Unit
+        }
     }
 }
 
@@ -63,14 +66,14 @@ internal class AdvisoryLock(
         dataSource.connection.use { connection ->
             connection.prepareStatement("select pg_advisory_lock(?)").use {
                 it.setLong(1, LOCK_KEY)
-                it.execute()
+                it.executeQuery().close()
             }
             try {
                 action()
             } finally {
                 connection.prepareStatement("select pg_advisory_unlock(?)").use {
                     it.setLong(1, LOCK_KEY)
-                    it.execute()
+                    it.executeQuery().close()
                 }
             }
         }
