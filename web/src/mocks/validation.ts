@@ -133,11 +133,11 @@ export function validateLabel(
   return rejected('validation_failed', 'label', `at most ${MAX_LABEL_LENGTH} characters`)
 }
 
-/** The server's checks of a new token's request, in the server's order. */
+/** The server's checks of a new token's request, in its order: the body is read first (role), then ttl and label. */
 export function validateToken(body: {
   ttlSeconds?: number | null
   label?: string | null
   role?: unknown
 }): Schemas['ValidationProblem'] | null {
-  return validateTtl(body.ttlSeconds) ?? validateLabel(body.label) ?? validateRole(body.role)
+  return validateRole(body.role) ?? validateTtl(body.ttlSeconds) ?? validateLabel(body.label)
 }

@@ -122,6 +122,20 @@ class ApiContractIntegrationTest(
     }
 
     @Test
+    fun `agent_role_mismatch is documented on createSource and startRun`() {
+        for ((path, method) in listOf("/api/v1/sources" to "post", "/api/v1/sources/{sourceId}/runs" to "post")) {
+            val text =
+                spec
+                    .path("paths")
+                    .path(path)
+                    .path(method)
+                    .path("description")
+                    .asString()
+            assertTrue("agent_role_mismatch" in text, "$method $path: $text")
+        }
+    }
+
+    @Test
     fun `В API нет операции, меняющей роль агента`() {
         val offenders = mutableListOf<String>()
         for ((path, item) in spec.path("paths").properties()) {

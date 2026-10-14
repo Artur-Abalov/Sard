@@ -60,7 +60,7 @@ EOF
 }
 # enroll_as <каталог> <тело POST токена> — регистрирует агента в каталоге
 enroll_as() { local cmd; cmd=$(a POST /enrollment-tokens "$2" | body | jq -r .enrollCommand)
-  $AG ${cmd#sudo -u sard-agent sard-agent } --config $1/agent.yaml; }
+  $AG ${cmd#sudo sard-agent } --config $1/agent.yaml; }
 # san <сертификат> — имена subjectAltName по одному в строке, в порядке сертификата
 san() { openssl x509 -in $1 -noout -ext subjectAltName | tail -n +2 | tr ',' '\n' | sed 's/^ *//'; }
 # idu <сертификат> — URI личности агента из SAN, где бы он ни стоял
@@ -90,7 +90,7 @@ reg() { $GRPC -cert $1 -key $2 -d "{\"hostname\":\"qa\",\"agentVersion\":\"qa\",
 3. `a GET /enrollment-tokens/$VT | body | jq -r .role; a GET /enrollment-tokens | body | jq -r ".items[] | select(.id==\"$VT\") | .role"`
    → `verifier` и `verifier`.
 4. `body < $QA/tv | jq -r .enrollCommand`
-   → `sudo -u sard-agent sard-agent enroll --server localhost:9090 --token <token>`, как у токена из шага 1.
+   → `sudo sard-agent enroll --server localhost:9090 --token <token>`, как у токена из шага 1.
 5. `N=$($PSQL "select count(*) from enrollment_tokens"); for r in '""' '"SOURCE"' '"Verifier"' '"admin"' 1; do a POST /enrollment-tokens "{\"role\":$r}" | tr '\n' ' ' | grep -o 'HTTP 422\|"field":"role"' | sort -u | tr '\n' ' '; echo; done; $PSQL "select count(*) from enrollment_tokens"`
    → шесть строк `"field":"role" HTTP 422`; `code` каждого — `validation_failed`; число токенов равно `$N`.
 6. `$PSQL "select role from enrollment_tokens where builtin"`

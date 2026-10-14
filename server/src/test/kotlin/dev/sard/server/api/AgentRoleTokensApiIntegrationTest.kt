@@ -91,13 +91,21 @@ class AgentRoleTokensApiIntegrationTest(
     }
 
     @Test
+    fun `Недопустимая роль называется раньше срока и метки`() {
+        val response = create("""{"ttlSeconds":1,"label":"${"x".repeat(201)}","role":"admin"}""")
+        assertEquals(422, response.status)
+        assertEquals(listOf("role"), response.errorFields())
+        assertEquals(0, world.count("enrollment_tokens", admin.tenant))
+    }
+
+    @Test
     fun `Команда регистрации для токена verifier такая же, как для source`() {
         val source = create("{}").json
         val verifier = create("""{"role":"verifier"}""").json
         for (created in listOf(source, verifier)) {
             val token = created.path("token").asString()
             val command = created.path("enrollCommand").asString()
-            assertTrue(command.startsWith("sudo -u sard-agent sard-agent enroll --server "), command)
+            assertTrue(command.startsWith("sudo sard-agent enroll --server "), command)
             assertTrue(command.endsWith(" --token $token"), command)
         }
         assertEquals(

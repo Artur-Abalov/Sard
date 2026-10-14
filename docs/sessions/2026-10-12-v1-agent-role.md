@@ -370,3 +370,20 @@ After: 0 survivors. No `mutflow:falsePositive`, `mutflow:ignore` or `@SuppressMu
 - e2e (VerifierRoleTest, EnrollmentTokens): мёртвого кода и дублей нет, не менялись; detekt для
   модуля e2e не настроен. Мок-валидация (`validateToken`) уже единая.
 - Стало: `gate.sh web fast` PASSED, 758 тестов в 46 файлах. Дальше: architect.
+
+## coder (правки architect, фаза 3)
+
+- Порядок полей мока токена: сервер читает тело первым, поэтому недопустимая `role` называется
+  раньше ttl и метки. Тесты сначала: `handlers.test.ts` (agent role) и
+  `AgentRoleTokensApiIntegrationTest` («Недопустимая роль называется раньше срока и метки»);
+  красный подтверждён. `validateToken` теперь `validateRole ?? validateTtl ?? validateLabel`,
+  комментарий исправлен.
+- Контракт: `agent_role_mismatch` добавлен в описание createSource (422, replaceSource наследует)
+  и startRun (409). Тест первым в `ApiContractIntegrationTest` (красный подтверждён), затем
+  `make openapi`: обновлены `web/src/api/openapi.json` и `schema.d.ts`.
+- `scripts/check-sudo-u.sh` (main): команда регистрации теперь `sudo sard-agent enroll ...`;
+  исправлены `docs/qa/agent-role.md` (две строки), `docs/specs/server/agent-role.feature` и
+  `AgentRoleTokensApiIntegrationTest`. Смысл спецификации не менялся.
+- Заметка: `make openapi` сам берёт замок Gradle; оборачивать его в `flock` нельзя (взаимная блокировка).
+- Заметка: при полном прогоне один раз упал `ResultsIntegrationTest` («a result sent again on a
+  new stream…», expected 1.0 but was 0.0); в одиночном прогоне зелёный, код не менялся.

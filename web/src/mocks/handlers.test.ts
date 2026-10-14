@@ -1145,6 +1145,14 @@ describe('agent role', () => {
     },
   )
 
+  test('an invalid role is named before an out-of-range ttl and a long label: the server reads the body first', async () => {
+    const { response, error } = await api.POST('/api/v1/enrollment-tokens', {
+      body: { ttlSeconds: 1, label: 'x'.repeat(201), role: 'admin' } as never,
+    })
+    expect(response.status).toBe(422)
+    expect(error).toMatchObject({ code: 'validation_failed', errors: [{ field: 'role' }] })
+  })
+
   test('the fixtures hold one verifier, not revoked, not built-in; every other agent is a source', () => {
     const one = verifier()
     expect(one.revokedAt).toBeNull()
