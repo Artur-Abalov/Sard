@@ -14,6 +14,13 @@
 # R2a (files и всё общее), R2b (postgresql), R2c (перезапись, отложена, ВВ1),
 # как в агентской спецификации; над правилами — «# R2a» / «# R2b» / «# R2c».
 #
+# ПОПРАВКА ВЛАДЕЛЬЦА 2026-10-14: восстановление — всё или ничего, правило 11
+# описания отменено (агентская спецификация, ВК8, ВК13–ВК16, ВК23, ВК26,
+# ВК27). Сервер больше не говорит о частичных данных: поле partialDataLeft
+# убрано, вместо него — leftover только при неудачном откате (КВ5), строки
+# уведомления 6–7 переписаны (ВК39), добавлен ВВ11 (поздний результат
+# потерянного шага).
+#
 # Опирается на (готово): S6a, S7a, FXs (отправка, результат, потеря шага —
 # ADR 0038), S8b и W2 (REST, снимки источника, К12 partial, В6, В7, В15, В16),
 # S9a/S9b (уведомления, ADR 0042), F3a (серии уведомлений расписания), W1b и
@@ -51,9 +58,11 @@
 #        null для расписания) и restore (null для бэкапа: snapshotId,
 #        snapshotCreatedAt, repositoryName, config, target). RunStep + restore
 #        (RestoreOutput: target, filesRestored, bytesRestored, database,
-#        tablesRestored, ownersRestored — null, если не пришли; partialDataLeft
-#        — boolean, true, если шаг не succeeded и target пришёл). GET
-#        /api/v1/runs + kind (фильтр). ErrorCode + snapshot_not_restorable.
+#        tablesRestored, rolesRestored, ownersRestored, leftover — null, если
+#        не пришли). У succeeded приходит всё, кроме leftover; у прочих
+#        исходов restore есть только при неудачном откате и несёт только
+#        leftover (что осталось на хосте или в PostgreSQL). GET /api/v1/runs +
+#        kind (фильтр). ErrorCode + snapshot_not_restorable.
 #   КВ6. AgentDetails + restoreDir (string, null — агент до R2).
 #
 # Решения specifier (предложены, ждут одобрения)
@@ -116,9 +125,13 @@
 #            «Files restored: N, size: X. Where: » + (Code) <target>;
 #            succeeded postgresql — «База: » / «Database: » + (Code) <база> +
 #            «, таблиц: N» / «, tables: N»
-#         6. не succeeded — «Причина: …» как S9b (предел 500, «…»)
-#         7. partialDataLeft — «Частично восстановленные данные не удалены: »
-#            / «Partially restored data was not removed: » + (Code) <target>
+#         6. не succeeded — «Причина: …» как S9b (предел 500, «…»); причина —
+#            сообщение агента, в нём стадия сбоя (ВК7 агента)
+#         7. не succeeded, leftover нет — «Ничего не восстановлено: изменения
+#            отменены.» / «Nothing was restored: the changes were rolled
+#            back.»; leftover есть — «Откат не удался, осталось: » / «Rollback
+#            failed, left behind: » + (Code) <leftover> + « Удалите вручную.» /
+#            « Remove it by hand.»
 #         8. lost — «Связь с агентом прервалась, пока шаг выполнялся. Можно
 #            повторить восстановление.» / «The connection to the agent was
 #            interrupted while the step was running. The restore can be
@@ -142,6 +155,15 @@
 #       «начнётся при подключении агента»). В R2 восстановление не затирает
 #       данные (новый каталог, новая база), поэтому позднее выполнение
 #       безопасно; свой срок понадобится, если R2c придёт раньше J1.
+#   ВВ11 (FXs и всё-или-ничего). Шаг восстановления стал lost (агент пропал
+#       дольше окна потери), а агент был жив, закончил восстановление и
+#       позже прислал SUCCEEDED. По FXs шаг остаётся lost, запуск failed, а
+#       поздний вывод сохраняется. → так и оставить, но страница запуска
+#       показывает поздний итог («Агент позже сообщил: восстановление
+#       выполнено», target) — данные на хосте есть, и администратор должен
+#       это знать; второго уведомления нет (одна доставка на запуск, S9a).
+#       Альтернатива — поздний результат восстановления переводит запуск в
+#       succeeded (отступление от FXs только для kind restore).
 #
 # Общие соглашения
 #   - «Агент A» — агент тенанта, Register: hostname "db1", restore_dir
@@ -382,18 +404,25 @@
     Сценарий: Успешный итог files называет путь, число файлов и объём
       Когда агент присылает SUCCEEDED с RestoreOutput target "/var/lib/sard-agent/restore/etc%20data/20261010T030000Z", files_restored 2, bytes_restored 4, owners_restored false
       Тогда запуск succeeded
-      И restore шага — target этот путь, filesRestored 2, bytesRestored 4, ownersRestored false, partialDataLeft false
+      И restore шага — target этот путь, filesRestored 2, bytesRestored 4, ownersRestored false, leftover null
 
     @http @grpc
-    Сценарий: Ошибка с частичными данными называет их место
-      Когда агент присылает FAILED с сообщением "TARGET_WRITE: no space left on device" и RestoreOutput target T1
-      Тогда запуск failed с message "TARGET_WRITE: no space left on device"
-      И restore шага — target T1 и partialDataLeft true
+    Сценарий: Неудачное восстановление называет стадию и причину и ничего не оставляет
+      Когда агент присылает FAILED с сообщением "TARGET_WRITE (restore): no space left on device; nothing was restored" без вывода
+      Тогда запуск failed с этим message
+      И phase шага — последняя присланная фаза
+      И restore шага null
 
     @http @grpc
-    Сценарий: Ошибка до записи не говорит о частичных данных
-      Когда агент присылает FAILED с сообщением "TARGET_NOT_EMPTY: …" без вывода
-      Тогда restore шага null
+    Сценарий: Неудачный откат виден как отдельный исход с тем, что осталось
+      Когда агент присылает FAILED с сообщением, начинающимся с "CLEANUP_FAILED (rollback)", и RestoreOutput только с leftover L1
+      Тогда запуск failed
+      И restore шага — leftover L1, остальные поля null
+
+    @http @grpc
+    Сценарий: Неудачный результат с полями итога — недопустимый результат
+      Когда агент присылает FAILED с RestoreOutput, где target и files_restored заполнены, а leftover пуст
+      Тогда запуск failed с message, начинающимся с "invalid result"
 
     @http @grpc
     Сценарий: Вывод бэкапа в шаге восстановления — недопустимый результат
@@ -406,6 +435,16 @@
       Когда срабатывает тик потери
       Тогда шаг lost, запуск failed с message "agent lost the step"
       И шаг не отправлен агенту повторно
+
+    # ВВ11
+    @http @grpc
+    Сценарий: Поздний успех потерянного восстановления сохраняется и виден
+      Дано шаг восстановления lost
+      Когда агент переподключается и присылает SUCCEEDED с RestoreOutput target T1
+      Тогда шаг остаётся lost, запуск failed
+      И restore шага — target T1 и итог, пришедший поздно
+      И агент получил ResultAck
+      И второго уведомления о запуске нет
 
     @http @grpc
     Сценарий: Отзыв агента теряет его восстановление
@@ -524,10 +563,17 @@
       Тогда сообщение содержит строки "Агент: db1", "Снимок: 4f1c2a9e от 2026-10-10T03:00:00Z" и "Восстановлено файлов: 2, объём: 1,5 КиБ. Куда: T1"
 
     @server
-    Сценарий: Уведомление об ошибке говорит о неудалённых данных
+    Сценарий: Уведомление об ошибке говорит, что ничего не восстановлено
       Дано язык уведомлений en
-      Когда восстановление завершается failed с message "TARGET_WRITE: no space left on device" и target T1
-      Тогда сообщение содержит "Reason: TARGET_WRITE: no space left on device" и "Partially restored data was not removed: T1"
+      Когда восстановление завершается failed с message "TARGET_WRITE (restore): no space left on device; nothing was restored" без вывода
+      Тогда сообщение содержит "Reason: TARGET_WRITE (restore): no space left on device; nothing was restored" и "Nothing was restored: the changes were rolled back."
+
+    @server
+    Сценарий: Уведомление о неудачном откате называет то, что осталось
+      Дано язык уведомлений ru
+      Когда восстановление завершается failed с leftover "database app_restored_20261011"
+      Тогда сообщение содержит "Откат не удался, осталось: database app_restored_20261011 Удалите вручную."
+      И не содержит "Ничего не восстановлено"
 
     @server
     Сценарий: Уведомление о потерянном восстановлении предлагает повтор
@@ -623,8 +669,8 @@
 
     @http @grpc
     Сценарий: Итог PostgreSQL называет базу и число таблиц
-      Когда агент присылает SUCCEEDED с RestoreOutput target "app_restored_20261011", database "app_restored_20261011", tables_restored 12
-      Тогда restore шага — database "app_restored_20261011", tablesRestored 12, partialDataLeft false
+      Когда агент присылает SUCCEEDED с RestoreOutput target "app_restored_20261011", database "app_restored_20261011", tables_restored 12, roles_restored 0
+      Тогда restore шага — database "app_restored_20261011", tablesRestored 12, rolesRestored 0, leftover null
 
     @server
     Сценарий: Уведомление об успешном восстановлении базы называет базу и таблицы
@@ -661,6 +707,13 @@
       Когда администратор восстанавливает снимок files через REST в это назначение
       Тогда запуск failed с message, начинающимся с "TARGET_NOT_EMPTY"
 
+    @e2e
+    Сценарий: Восстановление files, оборванное нехваткой места, не оставляет следов
+      Дано каталог восстановления агента на томе меньше снимка
+      Когда администратор восстанавливает снимок files через REST
+      Тогда запуск failed с message, начинающимся с "TARGET_WRITE (restore)"
+      И в каталоге восстановления агента нет ни назначения, ни содержимого .sard-staging
+
   # ===========================================================================
   # R2b
   Правило: Сквозные отказы PostgreSQL
@@ -675,6 +728,13 @@
         | условие                                   | причина           |
         | целевой PostgreSQL 14, снимок с сервера 18 | PG_SERVER_TOO_OLD |
         | база с именем назначения уже есть         | DATABASE_EXISTS   |
+
+    @e2e
+    Сценарий: Ошибка pg_restore удаляет созданную базу
+      Дано у целевой роли нет прав на расширение, которое использует дамп
+      Когда администратор восстанавливает снимок postgresql через REST
+      Тогда запуск failed с message, начинающимся с "PG_RESTORE_FAILED (restore)"
+      И на целевом сервере нет базы назначения
 
   # ===========================================================================
   # R2c — НЕ РЕАЛИЗУЕТСЯ в R2 (ВВ1). Правила 5, 9, 15 описания для перезаписи.

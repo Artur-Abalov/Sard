@@ -3,13 +3,28 @@
 
 # QA: восстановление из консоли (R2)
 
-Сценарии: `docs/specs/agent/console-restore.feature` (ВК1–ВК25),
+Сценарии: `docs/specs/agent/console-restore.feature` (ВК1–ВК27),
 `docs/specs/server/console-restore.feature` (КВ1–КВ6, ВК30–ВК39),
 `docs/specs/web/console-restore.feature` (ВК40–ВК43).
 
 **ПРОЕКТ, не утверждён владельцем (2026-10-14).** Шаги, зависящие от ответа
 на вопрос, помечены «(ВВ<номер>)». Части 1–4 и 6–7 — срез R2a, часть 5 — R2b.
 R2c (перезапись) не проверяется: в R2 его нет (ВВ1).
+
+Поправка владельца 2026-10-14: восстановление — всё или ничего. После любого
+неуспешного исхода проверяется «следов нет»: на хосте нет назначения и
+содержимого `/var/lib/sard-agent/restore/.sard-staging`, в PostgreSQL нет
+созданных базы и ролей, в `/var/lib/sard-agent/executor` нет журнала отката,
+страница запуска говорит «Ничего не восстановлено». Проверка следов:
+
+```bash
+mark() { OUT=${OUT:-$(mktemp -d)}; touch "$OUT/mark"; }
+# allow-sudo-u: psql от суперпользователя PostgreSQL, не sard-agent
+traces() { sudo find /var/lib/sard-agent/restore -mindepth 1 -newer "$OUT/mark" -printf '%p\n'; \
+           sudo -u postgres psql -tAc "select datname from pg_database where datname like 'app_restored%'"; }
+```
+
+`traces` после `mark` перед шагом → пусто означает «следов нет».
 
 Выполнима после реализации R2a (части 1–4, 6, 7) и R2b (часть 5). Ожидаемый
 результат — после «→». Любое расхождение — дефект.
@@ -120,7 +135,7 @@ REPO_PASS=$(sudo cat /etc/sard/secrets/restic-s1.pass)   # на ВМ-1, толь
 20. Telegram → одно сообщение «✅ Восстановление выполнено: qa files», строки
     `Агент: db1`, `Снимок: <8> от …`, `Восстановлено файлов: …, объём: …. Куда: <P>`, ссылка.
 21. Повторить шаг 18 с тем же назначением → запуск `failed`, сообщение
-    `TARGET_NOT_EMPTY: …` с путём `P`; в `P` ничего не изменилось
+    `TARGET_NOT_EMPTY (check): …` с путём `P`; в `P` ничего не изменилось
     (`sudo find "$P" -newer <метка до шага> | wc -l` → `0`).
 22. Часть путей: назначение `qa-part`, `paths` `/srv/qa-data/sub` →
     `succeeded`; `sudo find /var/lib/sard-agent/restore/qa-part -type f` →
@@ -141,20 +156,48 @@ REPO_PASS=$(sudo cat /etc/sard/secrets/restic-s1.pass)   # на ВМ-1, толь
 27. Потеря: во время восстановления `qa-big` на db2 `sudo systemctl kill -s KILL sard-agent`
     на ВМ-2 и не запускать дольше окна потери → шаг `lost`, запуск `failed`,
     «agent lost the step»; Telegram — «❌ Восстановление потеряно…» со строкой о
-    повторе. На ВМ-2 запустить службу. В консоли «Повторить» → страница
-    восстановления с тем же агентом и назначением; «Проверить», «Запустить» →
-    `failed`, `TARGET_NOT_EMPTY` (назначение с частичными данными); сменить
-    назначение → `succeeded`.
+    повторе. На ВМ-2 запустить службу → `journalctl -u sard-agent` содержит
+    строку об удалении `/var/lib/sard-agent/restore/.sard-staging/<id шага>`;
+    `sudo ls -A /var/lib/sard-agent/restore/.sard-staging` → пусто; назначения
+    нет. В консоли «Повторить» → страница восстановления с тем же агентом и
+    назначением; «Проверить», «Запустить» → `succeeded` в то же назначение.
+27а. Временный каталог: во время шага 24 `sudo inotifywait -m /var/lib/sard-agent/restore -r -e create,moved_to`
+    → сначала `.sard-staging/<id шага>`, назначение появляется одним
+    `moved_to`; пока идёт restic, `sudo ls /var/lib/sard-agent/restore/<назначение>`
+    → нет такого каталога.
+27б. Перезапуск без потери: во время восстановления `qa-big` на db1
+    `sudo systemctl kill -s KILL sard-agent; sudo systemctl start sard-agent`
+    (быстрее окна потери) → запуск `failed`, сообщение «interrupted: agent
+    restarted before the step finished» и «nothing was restored»; `traces` →
+    пусто.
+27в. Отмена агентом недоступна из консоли (J1); таймаут и отмену проверяют
+    тесты `@unit`.
 28. Одновременно с бэкапом: запустить бэкап `qa-big`, сразу восстановление
     `qa files` → оба запроса `201`; оба запуска завершаются (на агенте с
     `max_parallel: 1` — по очереди). Пока идёт восстановление, кнопка бэкапа
     источника доступна, `POST runs` → `201`.
 29. Нет места: том 64 МБ (`truncate`, `mkfs.ext4`, `mount -o loop` на
-    `/var/lib/sard-agent/restore/small`, `chown sard-agent`), восстановить
-    `qa-big` в `small/x` → `failed`, `TARGET_WRITE`; страница запуска говорит,
-    что частично восстановленные данные не удалены, с путём; `sudo ls /var/lib/sard-agent/restore/small/x`
-    → файлы есть. Telegram — строка «Частично восстановленные данные не
-    удалены: …». Отмонтировать.
+    `/srv/small-restore`, `chown sard-agent: ; chmod 700`), в
+    `/etc/sard/agent.d/restore.yaml` `restore: {dir: /srv/small-restore}`,
+    drop-in `ReadWritePaths=/srv/small-restore`, перезапуск службы; `mark`;
+    восстановить `qa-big` → `failed`, сообщение `TARGET_WRITE (restore): …;
+    nothing was restored`; страница запуска — «Ничего не восстановлено», фаза
+    `restoring`; `sudo find /srv/small-restore -mindepth 1 -not -name lost+found -not -path '*/.sard-staging'`
+    → пусто, `.sard-staging` пуст; `df /srv/small-restore` — место вернулось.
+    Telegram — «Ничего не восстановлено: изменения отменены.» Вернуть
+    `restore.dir`, отмонтировать.
+29а. Точка монтирования внутри каталога восстановления: смонтировать том шага
+    29 на `/var/lib/sard-agent/restore/mnt`, назначение `mnt/x` → `failed`,
+    `TARGET_INVALID (check)` о точке монтирования; на томе ничего не
+    появилось. Отмонтировать.
+29б. Неудачный откат (только на копии ВМ): во время восстановления `qa-big`
+    сделать временный каталог неудаляемым — `sudo chattr +i /var/lib/sard-agent/restore/.sard-staging/<id шага>`,
+    затем закрыть порт хранилища → `failed`, сообщение `CLEANUP_FAILED
+    (rollback)` с исходной причиной; страница запуска — предупреждение «Откат
+    не удался, осталось: <путь временного каталога>»; Telegram — «Откат не
+    удался, осталось: …»; `journalctl -u sard-agent -p err` — строка с путём.
+    `sudo chattr -i …`, перезапустить службу → строка журнала об удалении,
+    каталог удалён. Убрать правило порта.
 30. Хранилище пропало: на ВМ-2 `sudo iptables -I OUTPUT -p tcp -d <адрес S3> -j REJECT`,
     восстановить `qa files` на db2 → `failed`, `BACKEND_UNAVAILABLE`; сервер
     при этом онлайн. Убрать правило.
@@ -181,12 +224,42 @@ REPO_PASS=$(sudo cat /etc/sard/secrets/restic-s1.pass)   # на ВМ-1, толь
 37. Глобальные объекты: `restore_globals` включить при роли `restorer` →
     предпросмотр предупреждает об изменении кластера; запуск → `failed`,
     `SUPERUSER_REQUIRED`. Со второй, пустой копией кластера (`pg_createcluster 16 qa --start`,
-    порт 5433, секрет `pg-super`) → `succeeded`; роль `app_rw` есть и владеет
-    `t1` в новой базе; лог шага — строки WARN «already exists», итог называет
-    их число (ВВ6).
-38. Сбой посреди: большая база (`pgbench -i -s 200 app`, бэкап), восстановление,
-    через 5 с остановить целевой кластер → `failed`; страница говорит, что база
-    `…` создана и не удалена; после запуска кластера база есть.
+    порт 5433, секрет `pg-super`) → `succeeded`; итог — число ролей; роль
+    `app_rw` есть и владеет `t1` в новой базе; лог шага — строка INFO о
+    пропуске роли `postgres`.
+37а. Существующая роль (ВВ13): повторить шаг 37 в тот же кластер 5433 с
+    другим именем базы → `failed`, `ROLES_EXIST (check)`, называет `app_rw`;
+    `psql -p 5433 -tAc "select rolcanlogin from pg_roles where rolname='app_rw'"`
+    — как до шага; новой базы нет.
+37б. Табличное пространство (ВВ6): в исходном кластере
+    `CREATE TABLESPACE qa_ts LOCATION '/srv/pg-ts'`, бэкап `qa-pg`;
+    восстановление с `restore_globals` в пустой кластер → `failed`,
+    `GLOBALS_TABLESPACES (check)`, называет `qa_ts`; в кластере ничего не
+    изменилось. Без `restore_globals` → `succeeded` (`--no-tablespaces`).
+    Удалить `qa_ts`.
+37в. Ошибка в глобальных объектах: на копии ВМ ручной снимок глобальных
+    объектов с неверным оператором (как `docs/qa/repo-restore.md`, часть 9:
+    `$R backup --stdin --stdin-filename app.globals.sql` с тегами
+    `postgresql.part=globals`, `postgresql.main_snapshot=<id снимка базы>`)
+    → `failed`, `PG_GLOBALS_FAILED (globals)`; в кластере 5433 ни одной новой
+    роли (сравнить `select rolname from pg_roles` до и после), новой базы нет.
+38. Сбой посреди: большая база (`pgbench -i -s 200 app`, бэкап); `mark`;
+    восстановление с `restore_globals` в пустой кластер 5434; через 5 с
+    `pg_terminate_backend` сессии `pg_restore` на целевом кластере → `failed`,
+    `PG_RESTORE_FAILED (restore)`, «nothing was restored»; на 5434 нет новой
+    базы и ролей из снимка; страница — «Ничего не восстановлено».
+38а. Перезапуск посреди: то же, но вместо обрыва `sudo systemctl kill -s KILL sard-agent`
+    на ВМ-1 и сразу `start` → до первого шага журнал агента пишет об удалении
+    базы и ролей; запуск `failed` с «interrupted…» и «nothing was restored»;
+    на 5434 следов нет; `sudo ls /var/lib/sard-agent/executor` — нет записи
+    журнала отката.
+38б. Неудачный откат базы (копия стенда): во время восстановления выполнить
+    без `restore_globals`, роль `restorer` (не суперпользователь), выполнить
+    на целевом кластере `ALTER DATABASE <новая база> OWNER TO postgres` (удалить
+    её теперь может только владелец или суперпользователь), затем оборвать
+    `pg_restore` → `failed`, `CLEANUP_FAILED (rollback)`
+    с причиной и ошибкой DROP; страница — «Откат не удался, осталось: database
+    …»; Telegram — то же. Удалить базу вручную.
 39. Дамп не на диске: во время шага 34 `sudo inotifywait -m -r /var/lib/sard-agent /tmp -e create`
     → ни одного файла дампа.
 40. Нет клиента: на ВМ-2 без пакета `postgresql-client` восстановить `qa-pg` на
@@ -208,15 +281,21 @@ REPO_PASS=$(sudo cat /etc/sard/secrets/restic-s1.pass)   # на ВМ-1, толь
 
 45. `docs/operations/agent-host-setup.md` — раздел о восстановлении из консоли:
     `restore.dir`, `/var/lib/sard-agent/restore`, `ReadWritePaths` для другого
-    каталога, владельцы не переносятся, перенос `sudo cp -a` / `rsync -a` и
-    `restorecon -R`. `docs/plugins/postgresql.md` — роль для восстановления
-    (`CREATEDB`, суперпользователь для глобальных объектов), клиент
-    PostgreSQL на целевом хосте не старше версии `pg_dump` снимка.
+    каталога, точка монтирования внутри не годится, `.sard-staging` и его
+    уборка при старте, владельцы не переносятся, перенос `sudo cp -a` /
+    `rsync -a` и `restorecon -R`. `docs/plugins/postgresql.md` — роль для
+    восстановления (`CREATEDB`, суперпользователь для глобальных объектов),
+    клиент PostgreSQL на целевом хосте не старше версии `pg_dump` снимка, откат
+    базы и ролей при ошибке, отказы `ROLES_EXIST` и `GLOBALS_TABLESPACES`.
 46. Пройти шаги 18 и 34 по документации, не заглядывая в эту процедуру →
     результат тот же.
 
 Вручную не воспроизводятся и проверяются тестами с теми же названиями:
 `TARGET_BUSY` при двух командах в одно назначение, база, созданная другим между
 проверкой и `CREATE DATABASE`, имя базы с кавычкой, таймаут шага,
-`RESTORE_INCOMPLETE`, повторно присланный `command_id`, укорачивание длинного
-имени базы по умолчанию, вывод бэкапа в шаге восстановления.
+`RESTORE_INCOMPLETE` (снимок без части файлов — отказ целиком, следов нет),
+сбой переноса (`ENOTEMPTY`, `EXDEV`, `EIO`), удаление базы по OID при подмене
+имени, неудачный `DROP ROLE`, недоступный при перезапуске PostgreSQL,
+повторно присланный `command_id`, укорачивание длинного имени базы по
+умолчанию, вывод бэкапа в шаге восстановления, поздний успех потерянного шага
+(ВВ11).
