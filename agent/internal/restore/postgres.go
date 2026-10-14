@@ -130,7 +130,7 @@ func newestGlobals(list []Snapshot, database Snapshot) (Snapshot, bool) {
 }
 
 func malformed(s Snapshot, format string, args ...any) *refusal.Failure {
-	return refusal.Fail(refusal.ResticOutputUnexpected, "snapshot %s is tagged as PostgreSQL but %s; restore it as a directory is not possible, nothing was written", s.ShortID, fmt.Sprintf(format, args...))
+	return refusal.Fail(refusal.ResticOutputUnexpected, "snapshot %s is tagged as PostgreSQL but %s; it cannot be restored as a directory, and nothing was written", s.ShortID, fmt.Sprintf(format, args...))
 }
 
 // databaseName is the value of postgresql.database, decoded from %XX.
@@ -325,7 +325,10 @@ func (p PGPlan) versionLine() string {
 
 // fileOf is the name of the dump file (dump true) or of the global objects.
 func (p PGPlan) fileOf(dump bool) string {
-	if dump || len(p.Files) == 0 {
+	switch {
+	case len(p.Files) == 0:
+		return ""
+	case dump:
 		return p.Files[0].Name
 	}
 	return p.Files[len(p.Files)-1].Name

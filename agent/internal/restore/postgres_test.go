@@ -398,3 +398,9 @@ func wantPG(t *testing.T, f *refusal.Failure, reason refusal.Reason, class refus
 		}
 	}
 }
+
+func TestHintsOfAnEmptyPlanDoNotPanic(t *testing.T) {
+	for _, p := range []restore.PGPlan{{}, {Dump: true}, {Globals: true}, {Dump: true, Globals: true}} {
+		_ = p.Hints("/t") // no file in the plan: nothing to name, but no panic
+	}
+}

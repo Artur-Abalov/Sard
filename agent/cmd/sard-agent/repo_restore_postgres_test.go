@@ -257,3 +257,96 @@ func TestRestoreHelpSaysPostgreSQLFilesAreWrittenAndCommandsPrinted(t *testing.T
 		}
 	}
 }
+
+// Р83: a snapshot tagged as PostgreSQL that is not shaped as the agent
+// writes it is refused before the target is made.
+func TestAMalformedPostgreSQLSnapshotIsRefusedWithoutAnyWrite(t *testing.T) {
+	setTags := func(id string, mutate func(*restic.Snapshot)) func(*setupHost) {
+		return func(h *setupHost) {
+			for i := range h.base().snapshots {
+				if h.base().snapshots[i].ID == id {
+					mutate(&h.base().snapshots[i])
+				}
+			}
+		}
+	}
+	dropTag := func(s *restic.Snapshot) {
+		s.Tags = slices.DeleteFunc(s.Tags, func(t string) bool { return strings.HasPrefix(t, "postgresql.database=") })
+	}
+	for name, c := range map[string]struct {
+		arrange func(*setupHost)
+		short   string
+	}{
+		"two paths":      {setTags(idP, func(s *restic.Snapshot) { s.Paths = []string{"/app.dump", "/other.dump"} }), "bbbb1111"},
+		"nested path":    {setTags(idP, func(s *restic.Snapshot) { s.Paths = []string{"/dir/app.dump"} }), "bbbb1111"},
+		"no database":    {setTags(idP, dropTag), "bbbb1111"},
+		"broken escape":  {setTags(idP, func(s *restic.Snapshot) { dropTag(s); s.Tags = append(s.Tags, "postgresql.database=%zz") }), "bbbb1111"},
+		"globals broken": {setTags(idG, func(s *restic.Snapshot) { s.Paths = []string{"/app.globals.sql", "/x.sql"} }), "cccc1111"},
+	} {
+		h := restoreHost(t)
+		c.arrange(h)
+		code, _, stderr := h.restore(idP)
+		assertRefusal(t, code, stderr, exitAgentError, "RESTIC_OUTPUT_UNEXPECTED")
+		for _, want := range []string{c.short, "cannot be restored as a directory", "nothing was written"} {
+			if !strings.Contains(stderr, want) {
+				t.Errorf("%s: stderr lacks %q: %s", name, want, stderr)
+			}
+		}
+		h.assertNothingWritten(name)
+	}
+}
+
+// assertNothingWritten: no target, no restic call that reads the snapshot, no audit line.
+func (h *setupHost) assertNothingWritten(name string) {
+	h.t.Helper()
+	h.assertAbsent(h.target())
+	if len(h.dumpCalls()) != 0 || len(h.restoreCalls()) != 0 || len(h.log.lines) != 0 {
+		h.t.Errorf("%s: dump %v restore %v audit %q", name, h.dumpCalls(), h.restoreCalls(), h.log.lines)
+	}
+}
+
+// Р84: no tag of the version of pg_dump is no refusal, and no number is invented.
+func TestWithoutTheVersionTagTheSummaryNamesNoVersion(t *testing.T) {
+	h := restoreHost(t)
+	for i := range h.base().snapshots {
+		h.base().snapshots[i].Tags = slices.DeleteFunc(h.base().snapshots[i].Tags, func(s string) bool { return strings.HasPrefix(s, "postgresql.pg_dump_version") })
+	}
+	code, stdout, _ := h.restore(idP)
+	assertCode(t, code, exitOK)
+	line := ""
+	for _, l := range strings.Split(stdout, "\n") {
+		if strings.Contains(l, "not older than") {
+			line = l
+		}
+	}
+	if !strings.Contains(line, "pg_restore and psql") || !strings.Contains(line, "not older than the version of pg_dump that made the backup") || strings.ContainsAny(line, "0123456789") {
+		t.Errorf("line %q", line)
+	}
+}
+
+// Р85: the temporary file of a created target that cannot be made.
+func TestAFileThatCannotBeMadeInACreatedTargetIsWrittenToTheAuditLog(t *testing.T) {
+	h := restoreHost(t)
+	h.fsys.failOn, h.fsys.failPath, h.fsys.failErr = "createtemp", ".app.dump.tmp-", syscall.EROFS
+	code, _, stderr := h.restore(idP)
+	assertRefusal(t, code, stderr, exitWrite, "TARGET_WRITE")
+	if len(h.dumpCalls()) != 0 {
+		t.Error("restic dump was called")
+	}
+	want := "repository base snapshot bbbb1111 restore to " + h.target() + " failed: TARGET_WRITE"
+	if len(h.log.lines) != 1 || !strings.Contains(h.log.lines[0], want) {
+		t.Errorf("audit %q", h.log.lines)
+	}
+}
+
+// Р86: a failure of the globals file takes the finished dump back.
+func TestAFailureToWriteTheGlobalsRemovesTheDumpToo(t *testing.T) {
+	h := restoreHost(t)
+	ok(t, os.MkdirAll(h.target(), 0o700))
+	h.fsys.failOn, h.fsys.failPath, h.fsys.failErr = "write", ".app.globals.sql.tmp-", syscall.ENOSPC
+	code, _, stderr := h.restore(idP)
+	assertRefusal(t, code, stderr, exitWrite, "TARGET_WRITE")
+	if got := h.names(h.target()); len(got) != 0 {
+		t.Errorf("target holds %v", got)
+	}
+}
