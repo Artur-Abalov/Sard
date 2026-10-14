@@ -129,3 +129,12 @@
 Docker Hub отвечал 429, базовые образы взяты с `mirror.gcr.io` и перетегированы;
 образ агента `-pg18` собран без шага `apt-get install openssh-client` (Debian-зеркала
 недоступны; для учений SFTP не нужен) — только локально, Dockerfile репозитория не менялся.
+
+### Cleaner
+
+`./scripts/crap.sh server`: единственная функция F7 выше порога 6 —
+`DatabaseVersionGuardKt.refuseNewerDatabase` (CRAP 7.8, CC 4, покрытие 38.0%).
+Выделены `newestFuture` и `newestKnown` (поведение прежнее). После: `refuseNewerDatabase`
+2.0 (CC 2, 100%), `newestFuture` 3.0, `newestKnown` 1.0. Остальные функции F7 (DumpRole,
+SelfAgentSetup, AdvisoryLock) — CRAP <= 2.5, не менялись. Код `test/e2e` не измеряется
+CRAP-ом и не менялся. `./scripts/gate.sh server fast`: PASSED. Далее — architect.

@@ -4,6 +4,7 @@
 package dev.sard.server.persistence
 
 import org.flywaydb.core.Flyway
+import org.flywaydb.core.api.MigrationInfo
 import org.flywaydb.core.api.MigrationState
 import org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy
 import org.springframework.boot.info.BuildProperties
@@ -47,17 +48,20 @@ fun refuseNewerDatabase(
     serverVersion: String,
 ) {
     val all = flyway.info().all()
-    val newest =
-        all
-            .filter { it.state == MigrationState.FUTURE_SUCCESS || it.state == MigrationState.FUTURE_FAILED }
-            .maxByOrNull { it.version } ?: return
-    val known = all.filter { it.state.isResolved }.mapNotNull { it.version }.max()
+    val newest = newestFuture(all) ?: return
     throw DatabaseNewerThanServer(
         MigrationRef(newest.version.version, newest.description, newest.state.isFailed),
-        known.version,
+        newestKnown(all).version,
         serverVersion,
     )
 }
+
+private fun newestFuture(all: Array<MigrationInfo>) =
+    all
+        .filter { it.state == MigrationState.FUTURE_SUCCESS || it.state == MigrationState.FUTURE_FAILED }
+        .maxByOrNull { it.version }
+
+private fun newestKnown(all: Array<MigrationInfo>) = all.filter { it.state.isResolved }.mapNotNull { it.version }.max()
 
 @Configuration(proxyBeanMethods = false)
 class DatabaseVersionConfiguration {
