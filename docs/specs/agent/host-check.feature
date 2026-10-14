@@ -10,11 +10,12 @@
 # узнаёт, готов ли хост к бэкапу и восстановлению, а если нет — что сломано и
 # какой командой починить. Пригодно для Ansible и мониторинга.
 #
-# СТАТУС: ЧЕРНОВИК, ждёт одобрения владельца. Решения Ч1–Ч30 предложены
-# specifier; вопросы ЧВ1–ЧВ14 — ниже, рекомендация после «→». Сценарии, которые
-# зависят от ответа, помечены «# ЧВ<номер>».
+# СТАТУС: ОДОБРЕНО владельцем 2026-10-14. Решения Ч1–Ч31 приняты. Вопросы
+# ЧВ1–ЧВ14 закрыты: ЧВ1–ЧВ10 и ЧВ12–ЧВ14 — по рекомендации specifier (после
+# «→»), ЧВ11 — иначе, решением владельца (Ч31). Пометки «# ЧВ<номер>» над
+# сценариями оставлены как ссылки на решение.
 #
-# НАРЕЗКА (предложение, ЧВ13). Над каждым правилом — комментарий «# A8d-1» …
+# НАРЕЗКА (одобрено, ЧВ13). Над каждым правилом — комментарий «# A8d-1» …
 # «# A8d-4». A8d-1: repo check, repo unlock, запись объявленных id службой
 # (Ч4). A8d-2: sard-agent check без сервера (всё, кроме server.* и
 # clock.skew), --json, --offline, права. A8d-3: server.*, clock.skew — нужен
@@ -46,7 +47,7 @@
 # в нём нет — ЧВ12).
 #
 # ---------------------------------------------------------------------------
-# Решения specifier для A8d (предложены, ждут одобрения)
+# Решения для A8d (одобрены владельцем; Ч31 — решение владельца по ЧВ11)
 #
 #   Ч1. Строка проверки. Обе команды печатают в stdout по строке на проверку:
 #       СТАТУС, ИДЕНТИФИКАТОР, ПРЕДМЕТ, СООБЩЕНИЕ. СТАТУС — OK, WARN, ERROR
@@ -59,8 +60,9 @@
 #   Ч2. Статус «пропущено» (SKIP, в JSON «skipped», ЧВ8). Проверка, которую
 #       нельзя выполнить: --offline, не влитый срез (C1, V1, V0, R2), нет
 #       systemd, нет SELinux-утилит, запуск от пользователя службы (Ч20),
-#       провал проверки, от которой она зависит. SKIP на код выхода не
-#       влияет.
+#       провал проверки, от которой она зависит; а также проверка, которая
+#       к этому хосту не применима, — единственный такой случай — программы
+#       PostgreSQL не установлены (Ч31). SKIP на код выхода не влияет.
 #   Ч3. repo check <имя> (правило 1) — шаги по порядку, первый ERROR
 #       останавливает репозиторий, остальные шаги этого репозитория — SKIP с
 #       сообщением «not checked: <идентификатор> failed»:
@@ -270,12 +272,11 @@
 #       программ не требует, OK. postgresql — pg_dump ищется в PATH агента
 #       (как плагин, F1 ПГ8), psql и pg_dumpall — рядом с ним, pg_restore —
 #       рядом (для ручного восстановления, A8c Р62); сообщение называет путь
-#       и версию каждого (pg_dump --version). Нет pg_dump в PATH — WARN
-#       (ЧВ11): «PostgreSQL sources need pg_dump in the PATH or pg_dump_path
-#       in the source», подсказка — пакет клиента (postgresql-client,
-#       postgresql) и docs/plugins/postgresql.md. pg_dump есть, а psql или
-#       pg_dumpall рядом нет — ERROR. pg_restore рядом нет — WARN. Версии
-#       разных старших номеров рядом — WARN.
+#       и версию каждого (pg_dump --version). Нет pg_dump в PATH — SKIP
+#       по Ч31 (а не WARN: решение владельца по ЧВ11). pg_dump есть, а psql
+#       или pg_dumpall рядом нет — ERROR. pg_restore рядом нет — WARN. Версии
+#       разных старших номеров рядом — WARN. (Последние три случая —
+#       клиент PostgreSQL установлен не полностью; Ч31 их не меняет.)
 #   Ч19. SELinux. Нет SELinux или он не enforcing (getenforce) — оба OK с
 #       сообщением «SELinux is not enforcing». Enforcing:
 #         selinux.labels  метка каждого файла и каталога агента (основной
@@ -331,7 +332,9 @@
 #   Ч26. --json (правило 7) — JSON Lines: по одному объекту на строку
 #       stdout, в порядке Ч10, поля ровно: check, subject (строка или null),
 #       status (ok, warning, error, skipped), message, hint (строка или null
-#       у ok). Строк summary и «needs root» нет: итог — код выхода. Ошибки
+#       у ok). Статус однозначно задаёт вклад строки в код выхода (Ч9):
+#       warning — 8, error — 1, ok и skipped — ничего; исключений нет, в том
+#       числе у Ч31. Строк summary и «needs root» нет: итог — код выхода. Ошибки
 #       самой команды (флаги, PRIVILEGES_REQUIRED) — текстом в stderr, stdout
 #       пуст (Р21).
 #   Ч27. Время (нефункциональное). Каждое сетевое обращение ограничено
@@ -363,9 +366,42 @@
 #       ручные процедуры диагностики агента (раздел «Агент не подключается»)
 #       заменяются ссылкой на check. Итог postinstall.sh после первой
 #       установки называет sudo sard-agent check последним шагом.
+#   Ч31. Хост без программ PostgreSQL (решение владельца по ЧВ11). Нет
+#       pg_dump в PATH агента (поиск — как у плагина, от имени службы, Ч20:
+#       каталог PATH, который служба не может прочитать, — то же «нет») —
+#       строка plugin.programs с предметом postgresql — SKIP, не WARN:
+#         сообщение  начинается с неизменного текста «PostgreSQL client tools
+#                    are not installed» и продолжается «PostgreSQL sources on
+#                    this host will fail until pg_dump is in the PATH or
+#                    pg_dump_path is set in the source»;
+#         подсказка  пакет клиента (postgresql-client, postgresql) и
+#                    docs/plugins/postgresql.md;
+#         итог       считается в summary как skipped; на код выхода не
+#                    влияет — хост только с источниками files без программ
+#                    PostgreSQL получает 0.
+#       В --json — status «skipped», message и hint как выше; новых полей и
+#       статусов нет. Сочетание check «plugin.programs», subject
+#       «postgresql», status «skipped» значит ровно это и ничего больше:
+#       других причин SKIP у plugin.programs нет (поиск в PATH и --version
+#       не требуют root и сети, поэтому ни Ч20 «needs root», ни Ч22
+#       --offline эту строку не пропускают). Скрипт мониторинга, которому
+#       нужна эта ситуация, проверяет эту тройку.
+#       Почему SKIP, а не новый статус и не WARN с отдельным признаком:
+#         - агент не знает, есть ли у хоста источники PostgreSQL (источники
+#           определены на сервере), поэтому отсутствие клиента — не
+#           неисправность хоста, а неприменимая к нему проверка; так и
+#           определён SKIP (Ч2);
+#         - SKIP уже даёт всё, что требует владелец: видимая строка с
+#           сообщением и подсказкой, без влияния на код выхода;
+#         - сохраняются инварианты для мониторинга: «есть warning ⇔ код 8»,
+#           «есть error ⇔ код 1», четыре статуса и пять полей JSON (Ч26) —
+#           WARN без влияния на код или пятый статус их бы сломали.
+#       Ошибка шага плагина «pg_dump не найден» по-прежнему кончается
+#       подсказкой check (Ч28): там источник PostgreSQL уже есть.
 #
 # ---------------------------------------------------------------------------
-# Вопросы владельцу по A8d (рекомендация specifier — после «→»)
+# Вопросы владельцу по A8d — все закрыты 2026-10-14 (рекомендация specifier —
+# после «→»; принята для всех, кроме ЧВ11)
 #
 #   ЧВ1. Пороги. → зависшая блокировка 24 ч; расхождение часов 1 мин;
 #       сертификат 30 дней (из описания); отказы SELinux — за 24 ч. Все —
@@ -406,9 +442,12 @@
 #       config, list locks), restic check не запускается: «без трафика
 #       хранилища». Вариант: restic check без чтения данных (структура и
 #       индексы) — дольше и тянет индексы.
-#   ЧВ11. Нет pg_dump на хосте без PostgreSQL. → WARN (Ч18). Минус: хост
-#       только с файлами всегда даёт код 8. Вариант: OK с сообщением «not
-#       installed» (тогда ошибка шага всплывёт только при бэкапе).
+#   ЧВ11. Нет pg_dump на хосте без PostgreSQL. Рекомендация specifier была
+#       WARN (хост только с файлами всегда давал бы код 8) — ОТКЛОНЕНА.
+#       Решение владельца: оператор предупреждён строкой с сообщением и
+#       подсказкой, но это ничего не блокирует и не даёт ненулевого кода;
+#       хост только с файлами — код 0. Моделирование — SKIP «not
+#       applicable», Ч31.
 #   ЧВ12. «Последний снимок» в repo show (Н34 A8c). → не в A8d (в описании
 #       A8d его нет); отдельная задача.
 #   ЧВ13. Нарезка A8d-1 … A8d-4. → да, как в шапке.
@@ -896,7 +935,8 @@
         | файл секрета D/secrets/pg — каталог                             | secret.readable   | "sudo sard-agent secret set pg"                   |
         | файл секрета D/secrets/pg — символьная ссылка                   | secret.readable   | "sudo sard-agent secret set pg"                   |
         | pg_dump в PATH есть, psql рядом нет                             | plugin.programs   | "postgresql-client"                               |
-        | служба failed                                                   | service.running   | "sudo systemctl start sard-agent"                 |
+        | pg_dump в PATH есть, pg_dumpall рядом нет                       | plugin.programs   | "postgresql-client"                               |
+        | служба failed                                                 | service.running   | "sudo systemctl start sard-agent"                 |
 
     @local
     Структура сценария: Предупреждения хоста с подсказками
@@ -912,7 +952,6 @@
         | фрагмент D/agent.d/repo-x.yaml с правами 0666                   | files.permissions | "sudo chmod 0640"                                 |
         | restic версии 0.19.0 при поставляемой 0.19.1                    | restic.binary     | "restic.path"                                     |
         | сертификат истекает через 10 дней                               | tls.expiry        | "sudo sard-agent enroll --force"                  |
-        | в PATH агента нет pg_dump                                       | plugin.programs   | "postgresql-client"                               |
         | pg_restore рядом с pg_dump нет                                  | plugin.programs   | "postgresql-client"                               |
         | pg_dump версии 16.4, а pg_dumpall рядом — 15.2                  | plugin.programs   | "postgresql-client"                               |
         | служба active с NRestarts=3                                     | service.running   | "journalctl -u sard-agent"                        |
@@ -973,6 +1012,79 @@
     Сценарий: Программы PostgreSQL названы с путём и версией
       Когда оператор выполняет check
       Тогда сообщение строки plugin.programs с предметом postgresql называет пути и версию 16.4 для pg_dump, psql, pg_dumpall и pg_restore
+
+  # ===========================================================================
+  # A8d-2
+  Правило: Хост без программ PostgreSQL предупреждён строкой пропуска и не получает ненулевой код
+
+    # ЧВ11 Ч31
+    @local
+    Сценарий: Без программ PostgreSQL строка плагина пропущена с сообщением и подсказкой
+      Дано в PATH агента нет pg_dump, psql, pg_dumpall и pg_restore
+      Когда оператор выполняет check
+      Тогда строка plugin.programs с предметом postgresql — SKIP
+      И сообщение начинается с "PostgreSQL client tools are not installed"
+      И сообщение содержит "PostgreSQL sources on this host will fail"
+      И подсказка содержит "postgresql-client" и "docs/plugins/postgresql.md"
+
+    # ЧВ11 Ч31
+    @local
+    Сценарий: Хост только с источниками files без программ PostgreSQL завершается кодом 0
+      Дано в PATH агента нет pg_dump, psql, pg_dumpall и pg_restore
+      Когда оператор выполняет check
+      Тогда код выхода — 0
+      И строка plugin.programs с предметом files — OK
+      И последняя строка stdout — "summary: 26 ok, 0 warnings, 0 errors, 3 skipped"
+
+    # ЧВ11 Ч31
+    @local
+    Сценарий: В JSON отсутствие программ PostgreSQL — статус skipped без новых полей
+      Дано в PATH агента нет pg_dump, psql, pg_dumpall и pg_restore
+      Когда оператор выполняет check --json
+      Тогда строка с check "plugin.programs" и subject "postgresql" — объект ровно с полями check, subject, status, message, hint
+      И её status — "skipped"
+      И её message начинается с "PostgreSQL client tools are not installed"
+      И её hint содержит "postgresql-client"
+      И ни у одной строки status не "warning" и не "error"
+      И код выхода — 0
+
+    # Ч31
+    @local
+    Структура сценария: Пропуск программ PostgreSQL имеет одну причину при любом режиме запуска
+      Дано в PATH агента нет pg_dump, psql, pg_dumpall и pg_restore
+      Когда оператор выполняет <команда>
+      Тогда строка plugin.programs с предметом postgresql — SKIP
+      И сообщение начинается с "PostgreSQL client tools are not installed"
+      И сообщение не содержит "needs root" и "offline"
+
+      Примеры:
+        | команда                            |
+        | check от root                      |
+        | check от пользователя службы       |
+        | check --offline                    |
+
+    # Ч31
+    @local
+    Сценарий: При установленных программах PostgreSQL строка плагина не пропускается ни в каком режиме
+      Когда оператор выполняет check --offline от пользователя службы
+      Тогда строка plugin.programs с предметом postgresql — OK
+
+    # Ч31
+    @local
+    Сценарий: Каталог PATH, который служба не может прочитать, равен отсутствию pg_dump
+      Дано pg_dump есть только в каталоге PATH с правами 0700 и владельцем root
+      Когда оператор выполняет check
+      Тогда строка plugin.programs с предметом postgresql — SKIP
+      И сообщение начинается с "PostgreSQL client tools are not installed"
+      И код выхода — 0
+
+    # Ч31
+    @local
+    Сценарий: Неполный клиент PostgreSQL по-прежнему ошибка
+      Дано в PATH агента есть pg_dump, а pg_dumpall рядом нет
+      Когда оператор выполняет check
+      Тогда строка plugin.programs с предметом postgresql — ERROR
+      И код выхода класса «есть ошибки»
 
     @local
     Сценарий: Секрет проверяется без вывода значения
@@ -1143,11 +1255,14 @@
       Тогда код выхода — <код>
 
       Примеры:
-        | состав                                    | код |
-        | все строки OK или SKIP                    | 0   |
-        | одна WARN, остальные OK                   | 8   |
-        | одна WARN и одна ERROR                    | 1   |
-        | пять SKIP после offline, остальные OK     | 0   |
+        | состав                                                                 | код |
+        | все строки OK или SKIP                                                 | 0   |
+        | одна WARN, остальные OK                                                | 8   |
+        | одна WARN и одна ERROR                                                 | 1   |
+        | пять SKIP после offline, остальные OK                                  | 0   |
+        | SKIP plugin.programs postgresql без программ PostgreSQL, остальные OK  | 0   |
+        | SKIP plugin.programs postgresql без программ PostgreSQL и одна WARN    | 8   |
+        | SKIP plugin.programs postgresql без программ PostgreSQL и одна ERROR   | 1   |
 
     @local
     Сценарий: Ошибка флага — код использования и пустой stdout

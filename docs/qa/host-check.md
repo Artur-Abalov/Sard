@@ -3,10 +3,10 @@
 
 # QA: проверка хоста агента `sard-agent repo check` и `sard-agent check` (A8d)
 
-Сценарии: `docs/specs/agent/host-check.feature` (Ч1–Ч30). ЧЕРНОВИК: ждёт
-одобрения владельца вместе со спецификацией; шаги, зависящие от ответа на
-вопрос, помечены «(ЧВ<номер>)». Части помечены срезом (A8d-1 … A8d-4) и
-выполняются после реализации своего среза.
+Сценарии: `docs/specs/agent/host-check.feature` (Ч1–Ч31). ОДОБРЕНО владельцем
+2026-10-14 вместе со спецификацией; пометки «(ЧВ<номер>)» ссылаются на
+закрытые вопросы (ЧВ11 — решение владельца, Ч31). Части помечены срезом
+(A8d-1 … A8d-4) и выполняются после реализации своего среза.
 
 Ожидаемый результат — после «→». Любое расхождение — дефект.
 
@@ -201,9 +201,19 @@ S3_MARK=$(sudo sed -n 's/^AWS_SECRET_ACCESS_KEY=//p' /etc/sard/secrets/restic-s1
     Вернуть часы.
 39. `sudo systemctl stop sard-agent` → `service.running` — `ERROR`,
     подсказка `sudo systemctl start sard-agent`; `sudo systemctl start sard-agent`.
-40. pg_dump: `sudo mv /usr/bin/pg_dump "$OUT/"` (Debian — ссылка
-    pg_wrapper) → `plugin.programs postgresql` — `WARN` (ЧВ11), подсказка
-    `postgresql-client`. Вернуть.
+40. Хост без программ PostgreSQL (ЧВ11, Ч31): `sudo mv /usr/bin/pg_dump "$OUT/"`
+    (Debian — ссылка pg_wrapper; на ВМ-1R — отдельная ВМ без пакета
+    `postgresql`) → `exit=0`; `plugin.programs postgresql` — `SKIP`,
+    сообщение начинается с `PostgreSQL client tools are not installed`,
+    строка `hint:` называет `postgresql-client` и `docs/plugins/postgresql.md`;
+    `summary` считает её в `skipped`, `warnings` и `errors` — `0`.
+    `sudo $AG check --json | jq -c 'select(.check=="plugin.programs" and .subject=="postgresql")'`
+    → `status` `"skipped"`, ключи ровно `check,hint,message,status,subject`.
+    `sudo $AG check --offline` и `sudo -u sard-agent $AG check` → та же строка <!-- allow-sudo-u: проверка запуска от пользователя службы -->
+    с тем же сообщением, без `offline` и `needs root`. Вернуть.
+40a. Неполный клиент: `sudo mv /usr/bin/pg_dumpall "$OUT/"` при месте
+    `pg_dump` → `plugin.programs postgresql` — `ERROR`, подсказка
+    `postgresql-client`; `exit=1`. Вернуть.
 41. Нет репозиториев (отдельная ВМ или временно убрать фрагменты в `$OUT`)
     → строка `repository.storage` с предметом `-` — `WARN`
     `no repositories configured`, подсказка `sudo sard-agent repo add`.
@@ -224,7 +234,8 @@ S3_MARK=$(sudo sed -n 's/^AWS_SECRET_ACCESS_KEY=//p' /etc/sard/secrets/restic-s1
     `exit=0`.
 46. Ansible: задача `command: sard-agent check --json` с
     `failed_when: rc not in [0, 8]` → проходит на здоровом хосте и при
-    шаге 32; падает при шаге 30.
+    шаге 32; падает при шаге 30. С `failed_when: rc != 0` → проходит при
+    шаге 40 (хост без программ PostgreSQL не мешает).
 
 ## Часть 8. Права запуска и только чтение (A8d-2)
 
