@@ -4,9 +4,12 @@
 package repoconnect
 
 import (
+	"strings"
+
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
+	"github.com/Artur-Abalov/sard/agent/internal/restic"
 )
 
 // TargetFor is the repository as the messages of a failure describe it
@@ -31,4 +34,20 @@ func TargetFor(repo config.Repository, env []string, secrets ...string) repoinit
 		}
 	}
 	return target
+}
+
+// TargetReading is TargetFor for a running agent: the env file and the
+// password file are read now, to hide their values. A file that cannot be
+// read gives nothing to hide.
+func TargetReading(repo config.Repository, readFile func(string) ([]byte, error)) repoinit.Target {
+	var env, secrets []string
+	if data, err := readFile(repo.PasswordFile); err == nil {
+		secrets = []string{string(data), strings.TrimSpace(string(data))}
+	}
+	if repo.EnvFile != "" {
+		if data, err := readFile(repo.EnvFile); err == nil {
+			env, _ = restic.ParseEnvFile(data)
+		}
+	}
+	return TargetFor(repo, env, secrets...)
 }

@@ -36,6 +36,7 @@ type faults struct {
 	mkdirErr     map[string]error // by the path of the new directory
 	removeDirErr map[string]error // by the path of the directory removed
 	moveErr      error
+	syncErr      error
 	moveHook     func()
 	device       map[string]uint64 // by the path of the directory
 }
@@ -98,6 +99,13 @@ func (d faultDir) Move(oldName string, newDir hostsetup.Dir, newName string) err
 		return &fs.PathError{Op: "renameat", Path: newName, Err: d.f.moveErr}
 	}
 	return d.Dir.Move(oldName, newDir, newName)
+}
+
+func (d faultDir) Sync() error {
+	if d.f.syncErr != nil {
+		return d.f.syncErr
+	}
+	return d.Dir.Sync()
 }
 
 func (d faultDir) Stat() (fs.FileInfo, error) {

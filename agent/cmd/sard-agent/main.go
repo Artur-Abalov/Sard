@@ -26,6 +26,8 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
+	"github.com/Artur-Abalov/sard/agent/internal/repoconnect"
+	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 	"github.com/Artur-Abalov/sard/agent/internal/stepsecrets"
@@ -148,7 +150,21 @@ func newRestoreEngine(cfg config.Config) *consolerestore.Engine {
 		FS:     hostsetup.OS{},
 		Owner:  hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid(), Mode: 0o700},
 		Logger: slog.Default(),
+		Target: restoreTargets(cfg, os.ReadFile),
 	})
+}
+
+// restoreTargets describes the repositories of the host for the messages of
+// a failed restore, with their secrets hidden.
+func restoreTargets(cfg config.Config, readFile func(string) ([]byte, error)) func(name string) repoinit.Target {
+	return func(name string) repoinit.Target {
+		for _, repo := range cfg.Repositories {
+			if repo.Name == name {
+				return repoconnect.TargetReading(repo, readFile)
+			}
+		}
+		return repoinit.Target{Name: name, Scrub: func(s string) string { return s }}
+	}
 }
 
 // checkLocal runs the checks that need no network. OQ-050: the repositories'

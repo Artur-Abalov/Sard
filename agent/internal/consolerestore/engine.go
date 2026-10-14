@@ -11,16 +11,17 @@ package consolerestore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"log/slog"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
+	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/restore"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
@@ -49,6 +50,17 @@ type Options struct {
 	// Owner is the service user and the mode of the directories the engine makes.
 	Owner  hostsetup.Attrs
 	Logger *slog.Logger
+	// Target describes a repository by its name for the messages of a failure
+	// (secrets hidden); nil: just the name, nothing to hide.
+	Target func(repository string) repoinit.Target
+}
+
+// targetOf is the repository as the messages of a failure describe it.
+func (e *Engine) targetOf(name string) repoinit.Target {
+	if e.opts.Target != nil {
+		return e.opts.Target(name)
+	}
+	return repoinit.Target{Name: name, Scrub: func(s string) string { return s }}
 }
 
 // Engine restores snapshots into Dir.
@@ -62,15 +74,23 @@ type Engine struct {
 // New returns an Engine.
 func New(o Options) *Engine { return &Engine{opts: o, busy: map[string]bool{}} }
 
-// claim marks the destination as being restored; false if it already is.
+// claim marks the destination as being restored; false if it, a directory
+// above it or one below it already is.
 func (e *Engine) claim(destination string) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.busy[destination] {
-		return false
+	for busy := range e.busy {
+		if within(busy, destination) || within(destination, busy) {
+			return false
+		}
 	}
 	e.busy[destination] = true
 	return true
+}
+
+// within: path is dir or below it (both clean and relative).
+func within(dir, path string) bool {
+	return path == dir || strings.HasPrefix(path, dir+string(filepath.Separator))
 }
 
 func (e *Engine) free(destination string) {
@@ -169,7 +189,11 @@ const stagingName = ".sard-staging"
 // Restore restores the snapshot into the destination of the plan, or leaves
 // no trace.
 func (e *Engine) Restore(ctx context.Context, repo Repository, req Request, r Reporter) (Output, *Failure) {
-	a := &attempt{e: e, ctx: ctx, repo: repo, req: req, r: r, destination: filepath.Clean(req.Plan.Destination)}
+	if err := req.Plan.Validate(); err != nil {
+		// The code that writes enforces the rules of a plan itself (ADR 0008).
+		return Output{}, &Failure{Reason: refusal.TargetInvalid, Stage: StageCheck, Detail: "the restore plan is invalid: " + err.Error()}
+	}
+	a := &attempt{e: e, ctx: ctx, repo: repo, req: req, r: r, destination: filepath.Clean(req.Plan.Destination), target: e.targetOf(req.Repository)}
 	defer a.release()
 	r.Progress(agentv1.StepPhase_STEP_PHASE_PREPARING, 0, 0)
 	if f := a.prepare(); f != nil {
@@ -183,7 +207,7 @@ func (e *Engine) Restore(ctx context.Context, repo Repository, req Request, r Re
 		},
 	})
 	if err != nil {
-		return Output{}, a.rollback(resticFailure(ctx, err, StageRestore, e.opts.Dir))
+		return Output{}, a.rollback(resticFailure(ctx, err, StageRestore, e.opts.Dir, a.target))
 	}
 	files, bytes := countFiles(a.stagingPath())
 	if f := a.move(); f != nil {
@@ -219,6 +243,7 @@ type attempt struct {
 	req         Request
 	r           Reporter
 	destination string // clean
+	target      repoinit.Target
 
 	claimed bool
 	root    hostsetup.Dir // restore.dir, held
@@ -254,20 +279,14 @@ func (a *attempt) release() {
 func (a *attempt) checkSnapshot() *Failure {
 	list, err := restore.List(a.ctx, a.repo, a.req.Source)
 	if err != nil {
-		return resticFailure(a.ctx, err, StageCheck, a.e.opts.Dir)
+		return asFailure(restore.ListFailure(a.ctx, err, a.target), StageCheck, a.target)
 	}
 	snap, failure := restore.Select(list, a.req.SnapshotID, a.req.Repository, a.req.Source)
 	if failure != nil {
 		return &Failure{Reason: failure.Reason, Stage: StageCheck, Detail: failure.Detail}
 	}
-	for _, p := range a.req.Plan.Paths {
-		found, err := a.repo.HasPath(a.ctx, snap.ID, p)
-		if err != nil {
-			return resticFailure(a.ctx, err, StageCheck, a.e.opts.Dir)
-		}
-		if !found {
-			return &Failure{Reason: refusal.PathNotInSnapshot, Stage: StageCheck, Detail: fmt.Sprintf("the path %s is not in the snapshot %s", p, snap.ShortID)}
-		}
+	if failure := restore.RequirePaths(a.ctx, a.repo, snap, a.req.Plan.Paths, a.target); failure != nil {
+		return asFailure(failure, StageCheck, a.target)
 	}
 	return nil
 }
@@ -339,7 +358,9 @@ func (a *attempt) move() *Failure {
 	}
 	a.stagingMade = false // the directory is the destination now
 	if err := dir.Sync(); err != nil {
-		return &Failure{Reason: refusal.TargetWrite, Stage: StageMove, Detail: err.Error()}
+		// The rename happened: the restore did too. Only its durability is in doubt.
+		a.e.opts.Logger.Warn("the restored directory is in place, but the directory that holds it could not be synced to disk",
+			"command_id", a.req.CommandID, "path", a.destinationPath(), "error", err)
 	}
 	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/consolerestore"
@@ -165,4 +166,22 @@ func TestTheOutputCountsTheRegularFilesAndTheirBytesNotTheDirectories(t *testing
 	if f != nil || out.Files != 2 || out.Bytes != 4 {
 		t.Fatalf("output %+v, failure %v", out, f)
 	}
+}
+
+// The rename is the restore: a failed sync of the parent afterwards is a
+// warning, not a failure of a restore that happened.
+func TestASyncFailureAfterTheMoveDoesNotDenyARestoreThatHappened(t *testing.T) {
+	h := newHost(t)
+	h.faults.syncErr = syscall.EIO
+	out, f := h.run(h.request())
+	if f != nil {
+		t.Fatalf("the destination holds the snapshot, yet the step says: %v", f)
+	}
+	if _, err := os.Stat(filepath.Join(h.dest(), "srv/data/a.txt")); err != nil {
+		t.Error(err)
+	}
+	if out.Target != h.dest() {
+		t.Errorf("target %q", out.Target)
+	}
+	mentions(t, h.log.String(), "level=WARN", "input/output error")
 }

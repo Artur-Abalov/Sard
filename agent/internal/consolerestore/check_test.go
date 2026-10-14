@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
@@ -106,5 +107,21 @@ func TestOtherFailuresOfResticWhileCheckingAreToldByTheirKind(t *testing.T) {
 			hasPrefix(t, f, tt.want)
 			nothingWritten(t, h)
 		})
+	}
+}
+
+// The engine is what writes, so it enforces the rules of the plan itself
+// (ADR 0008), whoever made the plan.
+func TestTheEngineRefusesADestinationOutsideTheRestoreDirectoryItself(t *testing.T) {
+	for _, d := range []string{"../escape", "a/../../escape", ".sard-staging/x", ""} {
+		h := newHost(t)
+		req := h.request()
+		req.Plan.Destination = d
+		_, f := h.run(req)
+		hasPrefix(t, f, "TARGET_INVALID (check)")
+		nothingWritten(t, h)
+		if _, err := os.Lstat(filepath.Join(filepath.Dir(h.dir), "escape")); !os.IsNotExist(err) {
+			t.Errorf("%q: wrote outside the restore directory", d)
+		}
 	}
 }

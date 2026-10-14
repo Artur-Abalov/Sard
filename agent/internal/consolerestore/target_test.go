@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/Artur-Abalov/sard/agent/internal/consolerestore"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 )
 
@@ -112,6 +113,36 @@ func TestASecondCommandIntoTheSameDestinationIsBusy(t *testing.T) {
 	// Once the first is done the destination is free again, but not empty.
 	_, f = h.run(second)
 	hasPrefix(t, f, "TARGET_NOT_EMPTY (check)")
+}
+
+// A destination inside another one that is being restored, or around it, is
+// as busy as the same one: the rename of the first would meet the second.
+func TestADestinationAboveOrBelowARunningOneIsBusy(t *testing.T) {
+	for _, pair := range [][2]string{{"a", "a/b"}, {"a/b", "a"}, {"a/b", "a/b/c/d"}} {
+		h := newHost(t)
+		inRestic, release := make(chan struct{}), make(chan struct{})
+		h.repo.restore = func(ctx context.Context, req restic.RestoreRequest) (restic.RestoreSummary, error) {
+			close(inRestic)
+			<-release
+			return writesF(ctx, req)
+		}
+		firstReq := h.request()
+		firstReq.Plan.Destination = pair[0]
+		first := make(chan *consolerestore.Failure, 1)
+		go func() {
+			_, f := h.engine.Restore(context.Background(), h.repo, firstReq, &reporter{})
+			first <- f
+		}()
+		<-inRestic
+		second := h.request()
+		second.CommandID, second.Plan.Destination = "c2", pair[1]
+		_, f := h.engine.Restore(context.Background(), &fakeRepo{snapshots: h.repo.snapshots, paths: map[string]bool{}, restore: writesF}, second, &reporter{})
+		hasPrefix(t, f, "TARGET_BUSY (check)")
+		close(release)
+		if f := <-first; f != nil {
+			t.Fatalf("%v: the first restore: %v", pair, f)
+		}
+	}
 }
 
 // Scenario: Недоступный для записи каталог восстановления называет настройку юнита.
