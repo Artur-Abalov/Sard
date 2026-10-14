@@ -63,8 +63,8 @@ enum class StepKind {
     @JsonProperty("enroll")
     ENROLL,
 
-    @JsonProperty("repo-init")
-    REPO_INIT,
+    @JsonProperty("repo-add")
+    REPO_ADD,
 
     @JsonProperty("start")
     START,

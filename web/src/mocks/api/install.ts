@@ -58,13 +58,13 @@ function verification(arch: string, format: string, fetch: string): Step[] {
 }
 
 function installSteps(arch: string, format: string, fetch: string): Step[] {
-  const user = 'sudo -u sard-agent sard-agent'
+  const user = 'sudo sard-agent'
   return [
     ...verification(arch, format, fetch),
     step('install', [installCommand(arch, format)]),
     step('configure', ['sudo cp -n /etc/sard/agent.example.yaml /etc/sard/agent.yaml']),
     step('enroll', [`${user} enroll --server sard.example.com:9090 --token <TOKEN>`]),
-    step('repo-init', [`${user} repo init --generate-password main`]),
+    step('repo-add', [`${user} repo add main /srv/sard/main`]),
     step('start', ['sudo systemctl enable --now sard-agent.service']),
   ]
 }

@@ -44,8 +44,8 @@ func TestHelpDescribesFlagsPrivilegesAndExitCodes(t *testing.T) {
 				}
 			}
 			assertDescribesCodes(t, stdout, c.codes, otherCodes(c.codes))
-			if strings.Contains(stdout, "sudo -u") {
-				t.Error("help mentions sudo -u")
+			if strings.Contains(stdout, "sudo -u") { // allow-sudo-u: absence guard, the help must not tell to use it
+				t.Error("help mentions sudo -u") // allow-sudo-u: absence guard, the help must not tell to use it
 			}
 		})
 	}

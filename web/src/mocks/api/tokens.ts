@@ -63,7 +63,7 @@ export const tokenHandlers = [
       agentId: null,
       label: label === undefined || label === '' ? null : label,
     })
-    const enrollCommand = `sudo -u sard-agent sard-agent enroll --server ${GRPC_ADDRESS} --token ${token}`
+    const enrollCommand = `sudo sard-agent enroll --server ${GRPC_ADDRESS} --token ${token}`
     return response(201).json({
       id,
       token,

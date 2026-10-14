@@ -193,8 +193,8 @@ ln -sf "$(command -v psql)" $QA/oldpg/psql; chmod +x $QA/oldpg/pg_dump
 23. **Список процессов.** Во время прогона `run $SRC` по увеличенной базе из шага 19 (в фазе `uploading`):
     `for p in $(pgrep -f 'pg_dump|psql'); do tr '\0' ' ' < /proc/$p/cmdline; echo; done | grep -cF "$P"`
     → `0`; в строках видно `--dbname=` с `host=`, `dbname=`, без `password`.
-    От другого пользователя хоста (`sudo -u nobody`):
-    `sudo -u nobody cat /proc/$(pgrep -n pg_dump)/environ` → `Permission denied`.
+    От другого пользователя хоста (`sudo -u nobody`): <!-- allow-sudo-u: проверка от другого пользователя хоста -->
+    `sudo -u nobody cat /proc/$(pgrep -n pg_dump)/environ` → `Permission denied`. <!-- allow-sudo-u: проверка от другого пользователя хоста -->
 24. **Логи и результаты.**
     `curl -sS -b $QA/jf "$API/runs?limit=100" | jq -r '.items[].message' | grep -cF "$P"` → `0`;
     для каждого прогона частей 2–4 логи шага `… | grep -cF "$P"` → `0`;
