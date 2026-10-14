@@ -565,6 +565,8 @@ func (s *fakeSystemd) restarted() bool {
 type fakeSyslog struct {
 	lines []string
 	down  bool
+	// onWrite, if not nil, runs when a line is written.
+	onWrite func()
 }
 
 func (s *fakeSyslog) open() (hostsetup.Auditor, error) {
@@ -576,6 +578,9 @@ func (s *fakeSyslog) open() (hostsetup.Auditor, error) {
 
 func (s *fakeSyslog) Write(line string) error {
 	s.lines = append(s.lines, line)
+	if s.onWrite != nil {
+		s.onWrite()
+	}
 	return nil
 }
 

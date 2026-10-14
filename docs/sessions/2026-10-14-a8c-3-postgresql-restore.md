@@ -106,3 +106,48 @@ PostgreSQL нет (ADR 0059, Р62). Задание просит распрост
 `assertNothingWritten` не дублирует существующих. Код не менялся.
 
 Клинер (третий раунд): `newest`, `fakeRestic.dump` и новый тест в отчёте CRAP не значатся (ниже 6); менять нечего, код не менялся.
+
+## Hardener
+
+Мутационное тестирование по схеме ADR 0057 (`go-mutesting --exec
+scripts/mutate-exec.sh`, по файлам). Счёт, как его печатает инструмент:
+
+| Файл | До | После |
+|---|---|---|
+| `internal/restore/postgres.go` | 0.863636 (60 passed, 15 failed) | 0.981818 (73 passed, 2 failed, оба эквивалентны) |
+| `internal/restore/select.go` | 1.000000 (0 failed) | без изменений |
+| `internal/restic/restic.go` | 0.990385 (1 failed) | выживший вне среза |
+| `internal/restic/restore.go` | 0.972973 (1 failed) | выживший вне среза |
+| `internal/restic/exec.go` | 0.916667 (3 failed) | выжившие вне среза |
+| `cmd/sard-agent/repo_restore_run.go` | 0.916667 (6 failed) | 1.000000 (63 passed, 0 failed) |
+| `cmd/sard-agent/host_help.go` | 1.000000 (0 failed) | без изменений |
+
+Убиты тестами (поведение, не мутант):
+
+- `outcome`: причина restic (`the command can be repeated`) не теряется при
+  дописывании `; there is no dump file in <dir>`.
+- `addGlobals`/`newestGlobals`: повреждённый снимок глобальных объектов отказывает
+  всё восстановление; снимок без `postgresql.main_snapshot` и снимок другого
+  `postgresql.part` с этой меткой не берутся.
+- `createTemp`: сбой создания файла — `TARGET_WRITE`, дамп не вызывался;
+  восемь попыток имени (семь занятых — успех, восемь — отказ).
+- `finish`: сбой `fsync` файла не оставляет файлов.
+- `writeFile`: файл закрыт при любом исходе; `countingWriter` сообщает первую
+  ошибку записи, а не последнюю.
+- `versionLine`: «pg_restore and psql must be not older than 16.4».
+- `restorePostgres`: цель, которую нельзя создать, — `TARGET_WRITE` без вызова
+  `dump`; цель отпущена до записи в аудит (и для каталога); итог печатает
+  заголовок и строку `file:` на каждый файл.
+
+Эквивалентные мутанты (код не менялся):
+
+- `KindOf`, `case part == nil: return KindDirectory` без `return`: пустой
+  `case` выходит из `switch` на тот же `return KindDirectory`; ветка нужна
+  как защита от `*part` с nil, мутант её сохраняет.
+- `countingWriter.Write`, `err != nil` → `true`: при `err == nil` и
+  `c.err == nil` присваивается `nil`, то есть то же значение.
+
+Выжившие вне среза A8c-3 (`restic.go` — канал пароля, `restore.go` —
+`incomplete`, `exec.go` — ветка `ProcessState == nil`) не трогались; строки
+не менялись срезом. Мутационные прогоны — `agent`, `./scripts/gate.sh agent
+fast` проходит.

@@ -350,3 +350,35 @@ func TestAFailureToWriteTheGlobalsRemovesTheDumpToo(t *testing.T) {
 		t.Errorf("target holds %v", got)
 	}
 }
+
+func TestTheSummaryNamesTheSnapshotTheTargetAndEveryFile(t *testing.T) {
+	h := restoreHost(t)
+	code, stdout, _ := h.restore(idP)
+	assertCode(t, code, exitOK)
+	assertInOrder(t, stdout, "repository base: snapshot "+idP+" restored", "  target:   "+h.target(),
+		"  file:     "+h.target()+"/app.dump\n", "  file:     "+h.target()+"/app.globals.sql\n", "root only")
+}
+
+func TestATargetThatCannotBeMadeForAPostgreSQLSnapshotIsATargetWriteFailure(t *testing.T) {
+	h := restoreHost(t)
+	h.fsys.failOn, h.fsys.failPath, h.fsys.failErr = "mkdir", filepath.Base(h.target()), syscall.ENOSPC
+	code, _, stderr := h.restore(idP)
+	assertRefusal(t, code, stderr, exitWrite, "TARGET_WRITE")
+	if !strings.Contains(stderr, "cannot create the target") || len(h.dumpCalls()) != 0 {
+		t.Errorf("stderr %q, dumps %v", stderr, h.dumpCalls())
+	}
+	h.assertAbsent(h.target())
+}
+
+func TestTheTargetIsLetGoBeforeTheOutcomeIsRecorded(t *testing.T) {
+	for name, id := range map[string]string{"postgresql": idP, "directory": idF} {
+		h := restoreHost(t)
+		var held []string
+		h.log.onWrite = func() { held = openDescriptors(t, h.target()) }
+		code, _, _ := h.restore(id)
+		assertCode(t, code, exitOK)
+		if len(h.log.lines) != 1 || len(held) != 0 {
+			t.Errorf("%s: audit %q, the target was held at the record: %v", name, h.log.lines, held)
+		}
+	}
+}

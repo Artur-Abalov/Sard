@@ -22,6 +22,16 @@ type fileBehaviour struct {
 	failWrite       error
 	// failChown makes the owner change of a file fail; failRename the move to the final name.
 	failChown, failRename bool
+	// failCreate is the error the making of any file fails with; failFileSync
+	// makes the sync of a file fail.
+	failCreate   error
+	failFileSync bool
+	// failWriteLater, if not nil, is the error every write of a file after the
+	// first failed one fails with, instead of failWrite.
+	failWriteLater error
+	failedWrites   int
+	// closed are the names of the files that were closed, in order.
+	closed []string
 }
 
 type recordingFile struct {
@@ -31,6 +41,9 @@ type recordingFile struct {
 }
 
 func (d recordingDir) CreateFile(name string, perm fs.FileMode) (hostsetup.File, error) {
+	if err := d.fsys.files.failCreate; err != nil {
+		return nil, &fs.PathError{Op: "openat", Path: name, Err: err}
+	}
 	f, err := d.Dir.CreateFile(name, perm)
 	if err != nil {
 		return nil, err
@@ -54,7 +67,12 @@ func (f recordingFile) Chmod(mode fs.FileMode) error {
 func (f recordingFile) Write(p []byte) (int, error) {
 	f.fsys.note("write " + f.name)
 	if f.fsys.files.failWrite != nil && strings.HasPrefix(f.name, f.fsys.files.failWritePrefix) {
-		return 0, &fs.PathError{Op: "write", Path: f.name, Err: f.fsys.files.failWrite}
+		err := f.fsys.files.failWrite
+		if f.fsys.files.failedWrites > 0 && f.fsys.files.failWriteLater != nil {
+			err = f.fsys.files.failWriteLater
+		}
+		f.fsys.files.failedWrites++
+		return 0, &fs.PathError{Op: "write", Path: f.name, Err: err}
 	}
 	return f.File.Write(p)
 }
@@ -63,4 +81,18 @@ func (fsys *recordingFS) note(event string) {
 	fsys.mu.Lock()
 	defer fsys.mu.Unlock()
 	fsys.files.events = append(fsys.files.events, event)
+}
+
+func (f recordingFile) Sync() error {
+	if f.fsys.files.failFileSync {
+		return &fs.PathError{Op: "fsync", Path: f.name, Err: syscall.EIO}
+	}
+	return f.File.Sync()
+}
+
+func (f recordingFile) Close() error {
+	f.fsys.mu.Lock()
+	f.fsys.files.closed = append(f.fsys.files.closed, f.name)
+	f.fsys.mu.Unlock()
+	return f.File.Close()
 }
