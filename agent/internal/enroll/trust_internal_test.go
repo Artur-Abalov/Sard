@@ -147,7 +147,7 @@ func TestConnCloseClosesTheOwnedConnectionWhenGRPCNeverDialed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &Conn{ClientConn: cc, tls: client}
+	c := &Conn{cc: cc, tls: client}
 	if err := c.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}

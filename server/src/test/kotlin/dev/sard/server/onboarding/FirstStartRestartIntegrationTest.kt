@@ -10,6 +10,7 @@ import dev.sard.server.api.SETUP_COOKIE
 import dev.sard.server.api.Session
 import dev.sard.server.api.SessionApi
 import dev.sard.server.api.SignInResult
+import dev.sard.server.api.list
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -181,6 +182,68 @@ class FirstStartRestartIntegrationTest {
         assertEquals(204, second.client.login("new-password-2026").status)
         assertEquals(401, second.client.login("correct-horse-battery").status)
         assertTrue(codeLines(second).isEmpty(), second.logText)
+    }
+
+    // ---- F4b: Правило: Завершённый онбординг не возвращается ----
+
+    private fun stateAfterRestart(complete: Boolean): Pair<List<String>, String> {
+        val first = start()
+        first.client.completeWizard("correct-horse-battery")
+        if (complete) {
+            val jdbc =
+                org.springframework.jdbc.core.JdbcTemplate(
+                    org.springframework.jdbc.datasource.DriverManagerDataSource(
+                        installation.database.url,
+                        installation.database.user,
+                        installation.database.password,
+                    ),
+                )
+            JdbcOnboardingSteps(jdbc).confirmKeys(java.time.Instant.parse("2026-10-12T12:00:00Z"))
+        }
+        val second = restart(first)
+        val admin = second.client.login("correct-horse-battery").cookie(SESSION_COOKIE)
+        val state = second.client.state(admin = admin)
+        val steps =
+            state.json
+                .path("steps")
+                .list()
+                .map { it.path("state").asString() }
+        return steps to state.json.path("restriction").asString()
+    }
+
+    @Test
+    fun `Перезапуск сервера сохраняет состояние шагов F4b, самобэкап не привязан`() {
+        val (steps, restriction) = stateAfterRestart(complete = false)
+
+        assertEquals(listOf("done", "done", "pending", "upcoming"), steps)
+        assertEquals("full", restriction)
+    }
+
+    @Test
+    fun `Перезапуск сервера сохраняет состояние шагов F4b, онбординг завершён`() {
+        val (steps, restriction) = stateAfterRestart(complete = true)
+
+        assertEquals(listOf("done", "done", "done", "done"), steps)
+        assertEquals("none", restriction)
+    }
+
+    @Test
+    fun `Чистая установка не становится обновлённой после перезапусков`() {
+        val first = start()
+        first.client.completeWizard("correct-horse-battery")
+
+        val second = restart(first)
+        val third = restart(second)
+
+        val admin = third.client.login("correct-horse-battery").cookie(SESSION_COOKIE)
+        assertEquals(
+            "full",
+            third.client
+                .state(admin = admin)
+                .json
+                .path("restriction")
+                .asString(),
+        )
     }
 
     // ---- Правило: Команда admin-reset возвращает доступ только тому, у кого есть хост сервера ----

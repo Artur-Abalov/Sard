@@ -14,6 +14,8 @@ private const val LAST_AT =
     "select max(r.finishedAt) from RunRecord r where r.sourceId = :source and r.status = :status"
 private const val LAST_RUN =
     "from RunRecord r where r.sourceId = :source and r.finishedAt is not null order by r.finishedAt desc, r.id desc"
+private const val SUCCEEDED_SINCE =
+    "select count(r) from RunRecord r where r.sourceId = :source and r.status = :status and r.queuedAt >= :since"
 private const val SCHEDULE_ON = "select s.enabled from ScheduleRecord s where s.sourceId = :source"
 private const val OVERDUE_SINCE =
     "select e.deadline from OverdueEpisodeRecord e where e.sourceId = :source and e.closedAt is null"
@@ -23,9 +25,10 @@ enum class SelfBackupHealth { NOT_CONFIGURED, OK, AGENT_REPLACED, OVERDUE, FAILI
 
 /**
  * What the console warns about on every page (F6, D8), worst first: the system sources are on an agent that is no
- * longer the built-in one, a source is overdue, its last run failed, its schedule is off, the repository is local.
+ * longer the built-in one, a source is overdue, its last run failed, its schedule is off, the repository is local,
+ * the key copy of the current binding is not confirmed although the onboarding is over (F4b, OQ-206).
  */
-enum class SelfBackupWarning { AGENT_REPLACED, OVERDUE, FAILING, SCHEDULE_DISABLED, LOCAL_STORAGE }
+enum class SelfBackupWarning { AGENT_REPLACED, OVERDUE, FAILING, SCHEDULE_DISABLED, LOCAL_STORAGE, KEYS_UNCONFIRMED }
 
 /** A source's last finished run. */
 data class LastRun(
@@ -43,6 +46,8 @@ internal data class SourceState(
     val scheduleOn: Boolean,
     /** The deadline of its open overdue episode; null when it is not overdue. */
     val overdueSince: Instant?,
+    /** A run queued at or after the binding ended succeeded: the source's part of the first backup (F4b). */
+    val succeededSinceBound: Boolean = false,
 )
 
 /** Reads a system source's state in the tenant's session. */
@@ -50,6 +55,7 @@ internal object SourceStates {
     fun of(
         session: Session,
         source: SourceRecord,
+        boundAt: Instant,
     ): SourceState =
         SourceState(
             agentId = source.agentId,
@@ -58,7 +64,20 @@ internal object SourceStates {
             lastRun = lastRun(session, source.id),
             scheduleOn = scheduleOn(session, source.id),
             overdueSince = overdueSince(session, source.id),
+            succeededSinceBound = succeededSince(session, source.id, boundAt),
         )
+
+    private fun succeededSince(
+        session: Session,
+        source: UUID,
+        since: Instant,
+    ): Boolean =
+        session
+            .createSelectionQuery(SUCCEEDED_SINCE, Long::class.javaObjectType)
+            .setParameter("source", source)
+            .setParameter("status", RunState.SUCCEEDED.stored)
+            .setParameter("since", since)
+            .singleResult > 0
 
     private fun lastAt(
         session: Session,
@@ -118,10 +137,18 @@ internal object HealthRules {
         states: List<SourceState>,
         builtinAgent: UUID?,
         local: Boolean,
+        keysUnconfirmed: Boolean = false,
     ): List<SelfBackupWarning> {
         val raised = sourceRules.filter { (_, holds) -> states.any { holds(it, builtinAgent) } }.map { it.first }
-        return if (local) raised + SelfBackupWarning.LOCAL_STORAGE else raised
+        return raised +
+            listOfNotNull(
+                SelfBackupWarning.LOCAL_STORAGE.takeIf { local },
+                SelfBackupWarning.KEYS_UNCONFIRMED.takeIf { keysUnconfirmed },
+            )
     }
+
+    /** The first backup of a binding is done when every system source backed up after it. */
+    fun firstBackupDone(states: List<SourceState>): Boolean = states.all { it.succeededSinceBound }
 
     /** The worst warning about the backup itself; local storage alone leaves it OK. */
     fun health(warnings: List<SelfBackupWarning>): SelfBackupHealth =
@@ -130,7 +157,7 @@ internal object HealthRules {
             SelfBackupWarning.OVERDUE -> SelfBackupHealth.OVERDUE
             SelfBackupWarning.FAILING -> SelfBackupHealth.FAILING
             SelfBackupWarning.SCHEDULE_DISABLED -> SelfBackupHealth.SCHEDULE_DISABLED
-            SelfBackupWarning.LOCAL_STORAGE, null -> SelfBackupHealth.OK
+            SelfBackupWarning.LOCAL_STORAGE, SelfBackupWarning.KEYS_UNCONFIRMED, null -> SelfBackupHealth.OK
         }
 
     /** When the self-backup went overdue: the earliest deadline of its open episodes. */

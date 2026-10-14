@@ -22,9 +22,10 @@ import kotlin.test.assertFailsWith
  * F4: enrollment_tokens_label_check and enrollment_tokens_revocation_check
  * (V202609271600__enrollment_revocation.sql) enforce at the database level what decisions 2 and 6
  * of docs/specs/server/agent-enrollment.feature require of every row, not only of rows written
- * through Enroll and revoke.
+ * through Enroll and revoke. gRPC is on a random port: test JVMs run in parallel (maxParallelForks)
+ * and must not share 9090.
  */
-@SpringBootTest
+@SpringBootTest(properties = ["spring.grpc.server.port=0"])
 @Import(TestcontainersConfiguration::class)
 class EnrollmentTokenSchemaIntegrationTest(
     @Autowired private val jdbc: JdbcTemplate,

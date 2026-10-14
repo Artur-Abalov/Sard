@@ -15,6 +15,7 @@ import (
 
 // П28
 func TestScanWithoutKeysIsATemporaryErrorWhateverTheExitCodeOfSSHKeyscan(t *testing.T) {
+	t.Parallel()
 	for _, code := range []int{0, 1} {
 		h := newSFTPHost(t)
 		h.srv.keys, h.srv.keyscanCode = nil, code
@@ -32,6 +33,7 @@ func TestScanWithoutKeysIsATemporaryErrorWhateverTheExitCodeOfSSHKeyscan(t *test
 
 // П27
 func TestTheTextOfABannerOfTheServerDoesNotDecideTheClassOfARefusedLogin(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	h.srv.loginCode = 255
@@ -47,6 +49,7 @@ func TestTheTextOfABannerOfTheServerDoesNotDecideTheClassOfARefusedLogin(t *test
 
 // П27
 func TestABannerWithoutALineOfSSHGivesBackendRefusedNotTheClassOfTheBanner(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	h.srv.loginCode = 255
@@ -57,6 +60,7 @@ func TestABannerWithoutALineOfSSHGivesBackendRefusedNotTheClassOfTheBanner(t *te
 
 // П22
 func TestReplacingTheHostKeyRemovesPlainAndHashedEntriesAndKeepsPatterns(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	hashed := hashedEntry(sftpHost, keyOldED)
 	h.putSSH("known_hosts", keyOldED.line("*.example.com")+keyOldED.line(sftpHost)+hashed+keyRSA.line("other.example.com"), 0o600)
@@ -73,6 +77,7 @@ func TestReplacingTheHostKeyRemovesPlainAndHashedEntriesAndKeepsPatterns(t *test
 
 // П22
 func TestARefusalForAChangedHostKeyNamesTheMatchingPatternEntries(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.putSSH("known_hosts", keyOldED.line("*.example.com")+keyOldED.line(sftpHost), 0o600)
 	before := h.sshTree()
@@ -88,6 +93,7 @@ func TestARefusalForAChangedHostKeyNamesTheMatchingPatternEntries(t *testing.T) 
 
 // П21
 func TestARefusalAfterWritingSSHFilesSaysTheyStayForARepeat(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.srv.authorized = false
 	code, stdout, stderr := h.sftpCmd()
@@ -102,6 +108,7 @@ func TestARefusalAfterWritingSSHFilesSaysTheyStayForARepeat(t *testing.T) {
 
 // П21
 func TestARefusalBeforeWritingSSHFilesPrintsNoNoteAboutThem(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.stdin.Reset()
 	code, stdout, stderr := h.sftpAt(sftpAddress)
@@ -113,6 +120,7 @@ func TestARefusalBeforeWritingSSHFilesPrintsNoNoteAboutThem(t *testing.T) {
 
 // П20
 func TestRepeatingAnSFTPCommandChecksTheLoginBeforeUnchanged(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.connectedSFTP()
 	h.srv.authorized = false
@@ -138,6 +146,7 @@ func sshOnly(tree map[string]string, dir string) map[string]string {
 
 // П23
 func TestThePublicKeyIsReadAtMode0644AndRefusedAtMode0664(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	code, _, stderr := h.sftpAt(sftpAddress)
@@ -157,6 +166,7 @@ func TestThePublicKeyIsReadAtMode0644AndRefusedAtMode0664(t *testing.T) {
 
 // П24
 func TestRepeatingAConnectedRemoteRepositoryWithAPasswordSourceIsAUsageErrorBeforeAnyRead(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		remote string
 		flag   []string
@@ -167,6 +177,7 @@ func TestRepeatingAConnectedRemoteRepositoryWithAPasswordSourceIsAUsageErrorBefo
 		{"s3", []string{"--password-from-file", "P"}, "--password-from-file"},
 	} {
 		t.Run(c.remote+" "+c.name, func(t *testing.T) {
+			t.Parallel()
 			h := newSFTPHost(t)
 			run := h.connectedRepeat(c.remote)
 			var opened []string

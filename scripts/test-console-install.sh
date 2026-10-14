@@ -125,6 +125,10 @@ sign_in() {
   wait_for "sard-server" "curl -sf http://sard-server:8080/api/v1/status"
   wait_for "sard-server gRPC" "bash -c '</dev/tcp/sard-server/9090'"
   sard_complete_wizard http://sard-server:8080 "$ADMIN_PASSWORD" server_log || die "the first-start wizard failed"
+  # This stand is about the install commands of the console: the steps of the self-backup and the key copy are
+  # written to the database, as the owner's confirmation would (without them the server issues no tokens, F4b).
+  sard_confirm_onboarding_in_database docker exec -i "$RUN_ID-db" psql -q -v ON_ERROR_STOP=1 -U sard -d sard \
+    >/dev/null || die "the onboarding could not be confirmed in the database"
 }
 
 # steps <path with query>: the steps of the answer as TSV lines "kind<TAB>command", one per command.

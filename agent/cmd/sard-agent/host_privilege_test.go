@@ -12,8 +12,10 @@ import (
 
 // Любая команда от постороннего пользователя — отказ с подсказкой sudo
 func TestAnyCommandFromAnotherUserIsRefusedWithTheSudoHint(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{{"repo", "list"}, {"repo", "init", "base"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			t.Parallel()
 			h := newSetupHost(t)
 			before := h.hostTree()
 			code, stdout, stderr := h.asOther(args...)
@@ -30,6 +32,7 @@ func TestAnyCommandFromAnotherUserIsRefusedWithTheSudoHint(t *testing.T) {
 
 // Команда чтения от пользователя службы выполняется
 func TestAReadCommandFromTheServiceUserRuns(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, stderr := h.asService("repo", "list")
 	assertCode(t, code, exitOK)
@@ -40,6 +43,7 @@ func TestAReadCommandFromTheServiceUserRuns(t *testing.T) {
 
 // Права запуска проверяются раньше конфига
 func TestTheRightToRunIsCheckedBeforeTheConfigIsRead(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, stderr := h.asOther("repo", "list", "--config", h.path("no-such-config.yaml"))
 	assertCode(t, code, exitUsage)
@@ -48,6 +52,7 @@ func TestTheRightToRunIsCheckedBeforeTheConfigIsRead(t *testing.T) {
 
 // Пользователь службы берётся из ключа service user основного конфига
 func TestTheServiceUserComesFromTheServiceUserKeyOfTheMainConfig(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.cfg.Service.User = "backup"
 	h.saveConfig()
@@ -70,6 +75,7 @@ func TestTheServiceUserComesFromTheServiceUserKeyOfTheMainConfig(t *testing.T) {
 
 // Репозиторий без пользователя службы на хосте — отказ
 func TestWithoutTheServiceUserOnTheHostRootIsRefused(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.people = nil
 	before := h.hostTree()
@@ -84,6 +90,7 @@ func TestWithoutTheServiceUserOnTheHostRootIsRefused(t *testing.T) {
 
 // restic под sudo запускается от имени пользователя службы
 func TestResticRunsAsTheServiceUserUnderSudo(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.base().initialized = true
 	code, _, _ := h.sudo("repo", "list")
@@ -100,6 +107,7 @@ func TestResticRunsAsTheServiceUserUnderSudo(t *testing.T) {
 
 // restic от пользователя службы запускается как раньше
 func TestResticRunsAsTheCallerForTheServiceUser(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.asService("repo", "list")
 	for _, c := range h.restic.calls {
@@ -111,6 +119,7 @@ func TestResticRunsAsTheCallerForTheServiceUser(t *testing.T) {
 
 // repo init под sudo создаёт файл пароля для пользователя службы
 func TestRepoInitUnderSudoCreatesThePasswordFileForTheServiceUser(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.cfg.Repositories[0].PasswordFile = h.path("secrets/new.pass")
 	h.saveConfig()
@@ -131,6 +140,7 @@ func TestRepoInitUnderSudoCreatesThePasswordFileForTheServiceUser(t *testing.T) 
 
 // repo init от пользователя службы работает как раньше
 func TestRepoInitFromTheServiceUserLeavesTheOwnerAlone(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.cfg.Repositories[0].PasswordFile = h.path("secrets/new.pass")
 	h.saveConfig()
@@ -144,6 +154,7 @@ func TestRepoInitFromTheServiceUserLeavesTheOwnerAlone(t *testing.T) {
 // ADR 0050, Р4: the owner is given to the temporary file; the final path is
 // never the property of root, not even for a moment.
 func TestRepoInitUnderSudoGivesTheOwnerBeforeThePasswordFileTakesItsPath(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	final := h.path("secrets/new.pass")
 	h.cfg.Repositories[0].PasswordFile = final
@@ -164,6 +175,7 @@ func TestRepoInitUnderSudoGivesTheOwnerBeforeThePasswordFileTakesItsPath(t *test
 }
 
 func TestRepoInitUnderSudoNeverReplacesAPasswordFileThatAppearsMeanwhile(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	final := h.path("secrets/new.pass")
 	h.cfg.Repositories[0].PasswordFile = final

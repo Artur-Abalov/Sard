@@ -253,6 +253,23 @@ class SardEnvironment(
         if (!wizard.administratorSet()) wizard.complete(adminPassword)
     }
 
+    /**
+     * Writes the step of the key copy into the database, as the owner's confirmation would (F4b): until it is
+     * there the server issues no enrollment tokens and creates no sources. The stands that are about something
+     * else than the first start use this instead of the steps of the self-backup; those have a test of their own
+     * ([OnboardingGateTest]).
+     */
+    @Synchronized
+    fun confirmOnboarding() {
+        database().use { connection ->
+            connection.createStatement().use {
+                it.executeUpdate(
+                    "INSERT INTO onboarding_steps (step, completed_at) VALUES ('keys_confirmed', now()) ON CONFLICT DO NOTHING",
+                )
+            }
+        }
+    }
+
     /** Everything every server container of this installation has written so far, unmasked. */
     fun serverLogs(): String = retiredServerLogs.toString() + server.logs
 

@@ -242,6 +242,9 @@ describe('with a session', () => {
       'failed',
       'succeeded',
       'succeeded',
+      // The first backups of the self-backup the default mock is bound with (Рк18).
+      'succeeded',
+      'succeeded',
     ])
     const finished = must(
       await api.GET('/api/v1/runs', { params: { query: { status: ['succeeded', 'failed'] } } }),
@@ -884,7 +887,14 @@ describe('self-backup (F6)', () => {
   const bind = (repositoryName: string, confirmLocalStorage?: boolean) =>
     api.PUT('/api/v1/self-backup/repository', { body: { repositoryName, confirmLocalStorage } })
 
+  /** The default mock is bound to "self" (Рк18); these checks start from an installation that is not. */
+  const unbind = () => {
+    state.selfBackup = null
+    state.sources = state.sources.filter((s) => s.systemRole === null)
+  }
+
   test('not configured until bound; the built-in agent is named', async () => {
+    unbind()
     const state = must(await api.GET('/api/v1/self-backup'))
     expect(state).toMatchObject({ configured: false, agentId: ids.selfAgent, repository: null })
     const runs = await api.POST('/api/v1/self-backup/runs')
@@ -893,6 +903,7 @@ describe('self-backup (F6)', () => {
   })
 
   test('binding creates two marked system sources; binding again changes nothing', async () => {
+    unbind()
     const bound = must(await bind('offsite'))
     expect(bound.configured).toBe(true)
     expect(bound.repository).toMatchObject({ name: 'offsite', backend: 's3', local: false })
@@ -910,10 +921,15 @@ describe('self-backup (F6)', () => {
     expect(local.error).toMatchObject({ code: 'local_storage_unconfirmed' })
     const confirmed = must(await bind('disk', true))
     expect(confirmed.repository?.local).toBe(true)
-    expect(confirmed).toMatchObject({ status: 'ok', warnings: ['local_storage'] })
+    // The onboarding is over in the default mock and nobody confirmed the key copy of this binding (F4b).
+    expect(confirmed).toMatchObject({
+      status: 'ok',
+      warnings: ['local_storage', 'keys_unconfirmed'],
+    })
   })
 
   test('a state before binding is not configured and warns about nothing', async () => {
+    unbind()
     const state = must(await api.GET('/api/v1/self-backup'))
     expect(state).toMatchObject({ status: 'not_configured', warnings: [], overdueSince: null })
   })

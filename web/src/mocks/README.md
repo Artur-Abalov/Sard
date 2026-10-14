@@ -36,8 +36,8 @@
   заготовленными командами релиза `v1.4.0` (restic `0.19.1`, подписанный); настоящие
   команды, адреса и правила — на сервере (`docs/specs/server/agent-install.feature`).
   Агент `web2` отмечен `outdated`, остальные — нет.
-- Первый запуск (F4a, `api/onboarding.ts`): по умолчанию «администратор задан» (шаги
-  `ca` и `admin` выполнены, `setupCode: not_issued`), пароль `admin`. С
+- Первый запуск (F4a, `api/onboarding.ts`): по умолчанию онбординг завершён (все четыре
+  шага `done`, `restriction: none`, `setupCode: not_issued`; F4b, Рк18), самобэкап привязан к репозиторию `self` (s3) соседа, оба системных источника забэкаплены, копия ключей подтверждена (`selfBackupSources.ts`), пароль `admin`. С
   `VITE_API_MOCKS=1 VITE_MOCK_ONBOARDING=1 npm run dev` моки стартуют чистой установкой:
   консоль открывает `/setup`, код мока — `ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345`
   (регистр, пробелы и дефисы не важны), CA — отпечаток тестового вектора F8 (`generated`,
@@ -48,7 +48,19 @@
   (счётчик кода отдельный от счётчика входа); `PUT /session/password` с неверным текущим
   паролем — 422 `wrong_password` (засчитывается как неудачный вход). Состояние
   мастера — `state.onboarding`, пароль — `state.password` (меняется шагом `admin` и
-  сменой пароля); `resetMockState({ signedIn, freshInstall })` задаёт начальное.
+  сменой пароля); `resetMockState({ signedIn, freshInstall, upgraded, failFirstBackup })` задаёт
+  начальное.
+- Шаги самобэкапа и копии ключей (F4b, `api/selfBackup.ts`, `restriction.ts`, `commands.ts`):
+  в чистой установке после шага `admin` шаг `self_backup` — `pending`, `restriction: full`,
+  изменяющие запросы вне разрешённых (токены, источники, запуски, расписания обычных источников,
+  отзыв обычного агента) отвечают 409 `onboarding_incomplete`. `GET /self-backup/repository-command`
+  собирает команду по правилам сервера (Р23–Р25, Р29) и запоминает репозиторий; сосед «сообщает»
+  его в `repositories` через 3 секунды (с идентификатором из 64 hex). «Запустить сейчас» завершает
+  оба запуска `succeeded` через 3 секунды; `VITE_MOCK_SELF_BACKUP_FAIL=1` — первый запуск базы
+  `failed` с сообщением шага. `keys-confirmation` отвечает по правилам К14 (422 без `true`, 409
+  `self_backup_not_configured`, 409 `first_backup_pending`), после него `restriction: none`.
+  `VITE_MOCK_ONBOARDING=upgraded` — установка с `restriction: new_agents`, отказ только у токенов.
+  Привязка по умолчанию не создаётся (в отличие от Рк18): тесты самобэкапа F6 привязывают сами.
 - Сессия: пароль `admin` (`MOCK_PASSWORD`, пока его не сменили); без сессии все эндпоинты, кроме
   `/status` и входа, отвечают 401. После 5 неверных паролей за 15 минут вход
   блокируется на 15 минут от пятой неудачи (`state.signIns`, `lockout.ts`); попытки

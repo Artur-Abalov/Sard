@@ -11,6 +11,7 @@ import (
 // Rule "Справка есть у каждой команды".
 
 func TestHelpDescribesFlagsPrivilegesAndExitCodes(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		words []string
 		flags []string
@@ -30,6 +31,7 @@ func TestHelpDescribesFlagsPrivilegesAndExitCodes(t *testing.T) {
 	for _, c := range cases {
 		name := strings.Join(c.words, " ")
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			h := newSetupHost(t)
 			code, stdout, stderr := h.sudo(append(c.words, "--help")...)
 			assertCode(t, code, exitOK)
@@ -64,6 +66,7 @@ func otherCodes(have []int) []int {
 }
 
 func TestRepoAddHelpDescribesTheAddressTheApplyingAndTheSudo(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, _ := h.sudo("repo", "add", "--help")
 	assertCode(t, code, exitOK)
@@ -75,6 +78,7 @@ func TestRepoAddHelpDescribesTheAddressTheApplyingAndTheSudo(t *testing.T) {
 }
 
 func TestSecretWithoutASubcommandNamesThem(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, stderr := h.sudo("secret")
 	assertCode(t, code, exitUsage)
@@ -89,6 +93,7 @@ func TestSecretWithoutASubcommandNamesThem(t *testing.T) {
 }
 
 func TestRepoWithoutASubcommandNamesAllOfThem(t *testing.T) {
+	t.Parallel()
 	code, _, stderr := runAgent("repo")
 	assertCode(t, code, exitUsage)
 	for _, want := range []string{"init", "list", "add", "show", "remove", "password"} {
@@ -99,6 +104,7 @@ func TestRepoWithoutASubcommandNamesAllOfThem(t *testing.T) {
 }
 
 func TestSecretIsDispatchedFromTheAgentCommandLine(t *testing.T) {
+	t.Parallel()
 	code, stdout, _ := runAgent("secret", "set", "--help")
 	assertCode(t, code, exitOK)
 	if !strings.Contains(stdout, "Usage: sard-agent secret set") {
@@ -112,6 +118,7 @@ func TestSecretIsDispatchedFromTheAgentCommandLine(t *testing.T) {
 }
 
 func TestRepoAddHelpDescribesTheS3Flags(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, _ := h.sudo("repo", "add", "--help")
 	assertCode(t, code, exitOK)

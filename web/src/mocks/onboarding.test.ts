@@ -20,19 +20,20 @@ const enter = (code: string) => api.POST('/api/v1/onboarding/setup-session', { b
 const adminStep = (password: string) => api.POST('/api/v1/onboarding/admin', { body: { password } })
 
 describe('the default mock', () => {
-  test('reports the admin step done', async () => {
+  test('reports the onboarding complete (F4b, Рк18)', async () => {
     const { data } = await api.GET('/api/v1/onboarding')
     expect(data).toMatchObject({
       steps: [
         { id: 'ca', state: 'done' },
         { id: 'admin', state: 'done' },
-        { id: 'self_backup', state: 'upcoming' },
-        { id: 'keys_confirmed', state: 'upcoming' },
+        { id: 'self_backup', state: 'done' },
+        { id: 'keys_confirmed', state: 'done' },
       ],
       setupCode: 'not_issued',
       access: 'none',
       ca: null,
       caReplaceable: null,
+      restriction: 'none',
     })
   })
 })

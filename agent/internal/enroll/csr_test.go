@@ -15,33 +15,28 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/enroll"
 )
 
-// failingReader always fails; swapping it in for crypto/rand.Reader forces
+// failingReader always fails; passing it as the entropy source forces
 // the (otherwise practically unreachable) error branches of
 // ecdsa.GenerateKey and x509.CreateCertificateRequest.
 type failingReader struct{}
 
 func (failingReader) Read([]byte) (int, error) { return 0, errors.New("simulated entropy failure") }
 
-// withFailingRand swaps crypto/rand.Reader for a reader that always fails,
-// for the duration of the calling test, and restores it on cleanup. Since
-// Go 1.26, ecdsa.GenerateKey and x509.CreateCertificateRequest ignore the
-// supplied io.Reader unless GODEBUG=cryptocustomrand=1 (go doc
-// crypto/ecdsa.GenerateKey) — that GODEBUG setting is what makes the
-// (otherwise unreachable in this toolchain) error branches reachable here.
-func withFailingRand(t *testing.T) {
+// enableCustomRand makes ecdsa.GenerateKey and x509.CreateCertificateRequest
+// honour the supplied io.Reader: since Go 1.26 they ignore it unless
+// GODEBUG=cryptocustomrand=1 (go doc crypto/ecdsa.GenerateKey), which is what
+// makes their error branches reachable here.
+func enableCustomRand(t *testing.T) {
 	t.Helper()
 	t.Setenv("GODEBUG", "cryptocustomrand=1")
-	old := rand.Reader
-	rand.Reader = failingReader{}
-	t.Cleanup(func() { rand.Reader = old })
 }
 
 func TestNewIdentityKeyIsFreshP256(t *testing.T) {
-	k1, err := enroll.NewIdentityKey()
+	k1, err := enroll.NewIdentityKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("NewIdentityKey: %v", err)
 	}
-	k2, err := enroll.NewIdentityKey()
+	k2, err := enroll.NewIdentityKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("NewIdentityKey: %v", err)
 	}
@@ -54,11 +49,11 @@ func TestNewIdentityKeyIsFreshP256(t *testing.T) {
 }
 
 func TestBuildCSRCarriesTheHostname(t *testing.T) {
-	key, err := enroll.NewIdentityKey()
+	key, err := enroll.NewIdentityKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("NewIdentityKey: %v", err)
 	}
-	der, err := enroll.BuildCSR(key, "db1")
+	der, err := enroll.BuildCSR(rand.Reader, key, "db1")
 	if err != nil {
 		t.Fatalf("BuildCSR: %v", err)
 	}
@@ -81,8 +76,8 @@ func TestBuildCSRCarriesTheHostname(t *testing.T) {
 // NewIdentityKey must propagate a key-generation failure, wrapped with
 // context and without a nil key masquerading as success.
 func TestNewIdentityKeyPropagatesAKeyGenerationFailure(t *testing.T) {
-	withFailingRand(t)
-	key, err := enroll.NewIdentityKey()
+	enableCustomRand(t)
+	key, err := enroll.NewIdentityKey(failingReader{})
 	if err == nil {
 		t.Fatal("NewIdentityKey: want an error when the entropy source fails")
 	}
@@ -96,12 +91,12 @@ func TestNewIdentityKeyPropagatesAKeyGenerationFailure(t *testing.T) {
 
 // BuildCSR must propagate a CSR-generation failure the same way.
 func TestBuildCSRPropagatesACSRGenerationFailure(t *testing.T) {
-	key, err := enroll.NewIdentityKey()
+	key, err := enroll.NewIdentityKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("NewIdentityKey: %v", err)
 	}
-	withFailingRand(t)
-	der, err := enroll.BuildCSR(key, "db1")
+	enableCustomRand(t)
+	der, err := enroll.BuildCSR(failingReader{}, key, "db1")
 	if err == nil {
 		t.Fatal("BuildCSR: want an error when the entropy source fails")
 	}
@@ -114,11 +109,11 @@ func TestBuildCSRPropagatesACSRGenerationFailure(t *testing.T) {
 }
 
 func TestKeyNeverAppearsInCSRErrors(t *testing.T) {
-	key, err := enroll.NewIdentityKey()
+	key, err := enroll.NewIdentityKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("NewIdentityKey: %v", err)
 	}
-	_, err = enroll.BuildCSR(key, strings.Repeat("x", 300)) // deliberately too long a CN is still fine at this layer; just exercise error text
+	_, err = enroll.BuildCSR(rand.Reader, key, strings.Repeat("x", 300)) // deliberately too long a CN is still fine at this layer; just exercise error text
 	raw, rawErr := key.Bytes()
 	if rawErr != nil {
 		t.Fatal(rawErr)

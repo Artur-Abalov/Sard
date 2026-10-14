@@ -52,6 +52,7 @@ func listAsJSON(t *testing.T) (*setupHost, listJSON, string) {
 
 // Список репозиториев в JSON: основной конфиг
 func TestRepoListInJSONDescribesTheRepositoryOfTheMainConfig(t *testing.T) {
+	t.Parallel()
 	h, got, _ := listAsJSON(t)
 	base := got.Repositories[0]
 	if base.Name != "base" || base.Backend != "local" || base.Status != "initialized" || base.DefinedIn != h.cfgPath {
@@ -64,6 +65,7 @@ func TestRepoListInJSONDescribesTheRepositoryOfTheMainConfig(t *testing.T) {
 
 // Список репозиториев в JSON: фрагмент
 func TestRepoListInJSONNamesTheFragmentOfARepository(t *testing.T) {
+	t.Parallel()
 	_, got, fragment := listAsJSON(t)
 	if extra := got.Repositories[1]; extra.Name != "extra" || extra.DefinedIn != fragment {
 		t.Fatalf("extra: %+v", extra)
@@ -72,6 +74,7 @@ func TestRepoListInJSONNamesTheFragmentOfARepository(t *testing.T) {
 
 // В JSON неизвестный repository_id — null
 func TestUnknownRepositoryIDIsNullInJSON(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, _ := h.sudo("repo", "list", "--json", "--config", "C")
 	assertCode(t, code, exitOK)
@@ -89,6 +92,7 @@ func TestUnknownRepositoryIDIsNullInJSON(t *testing.T) {
 
 // Ошибки строк идут текстом в stderr, коды выхода те же
 func TestJSONListKeepsProblemMessagesInStderrAndTheExitCode(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.base().fatal = "connection refused"
 	code, stdout, stderr := h.sudo("repo", "list", "--json", "--config", "C")
@@ -100,6 +104,7 @@ func TestJSONListKeepsProblemMessagesInStderrAndTheExitCode(t *testing.T) {
 
 // Без репозиториев JSON — пустой массив
 func TestJSONListWithoutRepositoriesIsAnEmptyArray(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.cfg.Repositories = nil
 	h.saveConfig()
@@ -112,6 +117,7 @@ func TestJSONListWithoutRepositoriesIsAnEmptyArray(t *testing.T) {
 
 // Репозитории фрагментов идут после основного конфига в порядке имён файлов
 func TestFragmentRepositoriesFollowTheMainConfigInTheList(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.write(h.path("agent.d/repo-b.yaml"), string(hostsetup.RepositoryYAML("zeta", h.path("zeta"), h.path("secrets/z.pass"))), 0o640)
 	h.write(h.path("agent.d/repo-a.yaml"), string(hostsetup.RepositoryYAML("alpha", h.path("alpha"), h.path("secrets/a.pass"))), 0o640)
@@ -130,6 +136,7 @@ func TestFragmentRepositoriesFollowTheMainConfigInTheList(t *testing.T) {
 
 // Файлы фрагментов не на yaml и невалидный конфиг: ошибки называют файл
 func TestAFragmentErrorIsAUsageErrorNamingTheFile(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	path := h.path("agent.d/repo-x.yaml")
 	h.write(path, "server: {address: 'x:1'}\n", 0o640)
@@ -142,6 +149,7 @@ func TestAFragmentErrorIsAUsageErrorNamingTheFile(t *testing.T) {
 
 // Одно имя репозитория в основном конфиге и во фрагменте
 func TestDuplicateNameIsAUsageErrorNamingBothFiles(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	path := h.path("agent.d/repo-base.yaml")
 	h.write(path, string(hostsetup.RepositoryYAML("base", h.path("other"), h.path("secrets/o.pass"))), 0o640)

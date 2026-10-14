@@ -58,6 +58,7 @@ func assertMode(t *testing.T, path string, want os.FileMode) {
 }
 
 func TestEnrollmentUnderSudoHandsTheIdentityToTheServiceUser(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	fsys := newFakeFS()
 	code, _, errOut := f.enrollWith(rootEnrollDeps(fsys))
@@ -97,6 +98,7 @@ func TestIdentityFileModesDoNotDependOnTheUmaskUnderSudo(t *testing.T) {
 }
 
 func TestForceUnderSudoReplacesAnIdentityOfRootWithTheServiceUsersFiles(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "old-agent")
 	code, _, _ := f.enrollWith(testEnrollDeps(fixedHostname))
 	assertCode(t, code, exitOK)
@@ -110,8 +112,10 @@ func TestForceUnderSudoReplacesAnIdentityOfRootWithTheServiceUsersFiles(t *testi
 }
 
 func TestAFailedOwnerChangeAfterTheRegistrationLeavesNoFiles(t *testing.T) {
+	t.Parallel()
 	for i, file := range []string{"tls.key_file", "tls.cert_file", "tls.ca_file"} {
 		t.Run(file, func(t *testing.T) {
+			t.Parallel()
 			f := newSucceedingFakeFixture(t, "agent-x")
 			fsys := newFakeFS()
 			fsys.failChownAt = i + 1
@@ -132,6 +136,7 @@ func TestAFailedOwnerChangeAfterTheRegistrationLeavesNoFiles(t *testing.T) {
 }
 
 func TestAFailedOwnerChangeWithForceKeepsThePreviousFiles(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "agent-x")
 	if code, _, _ := f.enrollWith(testEnrollDeps(fixedHostname)); code != exitOK {
 		t.Fatal("first enrollment failed")
@@ -152,6 +157,7 @@ func TestAFailedOwnerChangeWithForceKeepsThePreviousFiles(t *testing.T) {
 }
 
 func TestEnrollmentFromTheServiceUserChangesNoOwner(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	deps := testEnrollDeps(fixedHostname)
 	fsys := newFakeFS()
@@ -164,6 +170,7 @@ func TestEnrollmentFromTheServiceUserChangesNoOwner(t *testing.T) {
 }
 
 func TestEnrollmentFromAnotherUserIsRefusedBeforeTheServerAndTheToken(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	deps := testEnrollDeps(fixedHostname)
 	deps.euid = aliceUID
@@ -183,6 +190,7 @@ func TestEnrollmentFromAnotherUserIsRefusedBeforeTheServerAndTheToken(t *testing
 }
 
 func TestTheRightToEnrollIsCheckedBeforeTheTokenSource(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	deps := testEnrollDeps(fixedHostname)
 	deps.euid = aliceUID
@@ -195,6 +203,7 @@ func TestTheRightToEnrollIsCheckedBeforeTheTokenSource(t *testing.T) {
 }
 
 func TestEnrollmentUnderSudoWithoutTheServiceUserIsRefusedBeforeTheServer(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	deps := rootEnrollDeps(newFakeFS())
 	deps.lookupUser = users()
@@ -206,6 +215,7 @@ func TestEnrollmentUnderSudoWithoutTheServiceUserIsRefusedBeforeTheServer(t *tes
 }
 
 func TestEnrollmentUnderSudoTakesTheServiceUserFromTheConfig(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	data, _ := os.ReadFile(f.h.configPath)
 	ok(t, os.WriteFile(f.h.configPath, append(data, []byte("service:\n  user: backup\n")...), 0o600))
@@ -238,6 +248,7 @@ func TestAMissingTLSDirectoryIsCreatedForTheServiceUserUnderSudo(t *testing.T) {
 }
 
 func TestEveryMissingDirectoryOfTheTLSFilesIsCreated(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	keyDir, pubDir := filepath.Join(f.h.dir, "tls-key"), filepath.Join(f.h.dir, "tls-pub")
 	f.useDirs(keyDir, pubDir, pubDir)
@@ -248,6 +259,7 @@ func TestEveryMissingDirectoryOfTheTLSFilesIsCreated(t *testing.T) {
 }
 
 func TestAMissingParentOfTheTLSDirectoryIsAWriteErrorAndNothingIsCreated(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	dir := filepath.Join(f.h.dir, "etc", "sard", "tls")
 	f.useDirs(dir, dir, dir)
@@ -267,6 +279,7 @@ func TestAMissingParentOfTheTLSDirectoryIsAWriteErrorAndNothingIsCreated(t *test
 }
 
 func TestAnExistingTLSDirectoryIsLeftAlone(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	dir := filepath.Join(f.h.dir, "tls")
 	ok(t, os.Mkdir(dir, 0o755))
@@ -281,6 +294,7 @@ func TestAnExistingTLSDirectoryIsLeftAlone(t *testing.T) {
 }
 
 func TestADirectoryMadeByAFailedEnrollmentIsRemoved(t *testing.T) {
+	t.Parallel()
 	cases := map[string]func(f *fakeFixture) enrollDeps{
 		"TOKEN_USED": func(f *fakeFixture) enrollDeps {
 			f.srv.answer = failingAnswer(codes.Unauthenticated, "TOKEN_USED")
@@ -303,6 +317,7 @@ func TestADirectoryMadeByAFailedEnrollmentIsRemoved(t *testing.T) {
 	}
 	for name, setup := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			f := newSucceedingFakeFixture(t, "a1")
 			dir := filepath.Join(f.h.dir, "tls")
 			f.useDirs(dir, dir, dir)
@@ -320,6 +335,7 @@ func TestADirectoryMadeByAFailedEnrollmentIsRemoved(t *testing.T) {
 }
 
 func TestADirectoryMadeByAnInterruptedEnrollmentIsRemoved(t *testing.T) {
+	t.Parallel()
 	h, token, srv := newBlockingFixture(t)
 	dir := filepath.Join(h.dir, "tls")
 	h.keyDir, h.certDir, h.caDir = dir, dir, dir
@@ -342,6 +358,7 @@ func TestADirectoryMadeByAnInterruptedEnrollmentIsRemoved(t *testing.T) {
 }
 
 func TestAMissingTLSDirectoryIsNotCreatedForTheServiceUser(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	dir := filepath.Join(f.h.dir, "tls")
 	f.useDirs(dir, dir, dir)
@@ -356,6 +373,7 @@ func TestAMissingTLSDirectoryIsNotCreatedForTheServiceUser(t *testing.T) {
 }
 
 func TestAnEnrollmentDirectoryThatCannotBeCreatedIsAWriteError(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	dir := filepath.Join(f.h.dir, "tls")
 	f.useDirs(dir, dir, dir)
@@ -369,6 +387,7 @@ func TestAnEnrollmentDirectoryThatCannotBeCreatedIsAWriteError(t *testing.T) {
 }
 
 func TestADirectoryMadeBeforeAFailedLaterOneIsTakenBack(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	keyDir, pubDir := filepath.Join(f.h.dir, "tls-key"), filepath.Join(f.h.dir, "tls-pub")
 	f.useDirs(keyDir, pubDir, pubDir)
@@ -382,6 +401,7 @@ func TestADirectoryMadeBeforeAFailedLaterOneIsTakenBack(t *testing.T) {
 }
 
 func TestEnrollHelpTellsToRunItWithSudo(t *testing.T) {
+	t.Parallel()
 	code, out, _ := runEnrollCmdTest("--help")
 	assertCode(t, code, exitOK)
 	for _, want := range []string{"sudo sard-agent enroll", "service user", "PRIVILEGES_REQUIRED"} {

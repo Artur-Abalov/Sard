@@ -4,6 +4,7 @@
 package dev.sard.server.enrollment
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.completeOnboarding
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.resource
@@ -172,6 +173,25 @@ class BuiltinEnrollmentTokensIntegrationTest(
         enroll(tokens.create(tenant).reveal(), csr, "sard-self")
         assertEquals(1, builtinAgents())
         assertEquals(2, jdbc.countAgents(tenant))
+    }
+
+    @Test
+    fun `Пока онбординг не завершён, обычный токен не регистрирует и не тратится, а встроенный регистрирует`() {
+        jdbc.update("delete from onboarding_steps where step = 'keys_confirmed'")
+        try {
+            val ordinary = tokens.create(tenant)
+
+            val reason = rejectionReason { enroll(ordinary.reveal(), csr, "sard-host") }
+            assertEquals(EnrollmentRejectedException.Reason.ONBOARDING_INCOMPLETE, reason)
+            assertEquals(0, jdbc.countAgents(tenant))
+            val usedAt = "select used_at from enrollment_tokens where id = ?"
+            assertEquals(null, jdbc.queryForObject(usedAt, java.sql.Timestamp::class.java, ordinary.id))
+
+            enroll(replaceBuiltin().reveal(), csr, "sard-self")
+            assertEquals(1, builtinAgents())
+        } finally {
+            completeOnboarding(jdbc)
+        }
     }
 
     @Test

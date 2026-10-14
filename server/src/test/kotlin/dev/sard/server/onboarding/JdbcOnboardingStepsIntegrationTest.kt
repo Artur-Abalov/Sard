@@ -27,7 +27,7 @@ class JdbcOnboardingStepsIntegrationTest(
 
     @AfterTest
     fun `forget the state`() {
-        jdbc.update("delete from onboarding_steps")
+        jdbc.update("delete from onboarding_steps where step <> 'keys_confirmed'")
     }
 
     @Test
@@ -38,6 +38,6 @@ class JdbcOnboardingStepsIntegrationTest(
         assertFalse(steps.confirmCa(NOW.plusSeconds(5)))
 
         assertTrue(steps.caConfirmed())
-        assertEquals(1, jdbc.queryForObject("select count(*) from onboarding_steps", Int::class.java))
+        assertEquals(1, jdbc.queryForObject("select count(*) from onboarding_steps where step = 'ca'", Int::class.java))
     }
 }

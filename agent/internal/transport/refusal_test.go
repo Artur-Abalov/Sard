@@ -5,6 +5,7 @@ package transport_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -163,5 +164,13 @@ func TestAStreamClosedWithAnyCodeIsReconnected(t *testing.T) {
 			t.Errorf("%s: Run ended: %v", name, err)
 		default:
 		}
+	}
+}
+
+// An error that carries no gRPC status is shown as its own text, one line.
+func TestRefusalLineOfAnErrorWithoutAStatus(t *testing.T) {
+	got := transport.RefusalLine(errors.New("dial\nfailed"))
+	if want := `dial\nfailed; ` + refusalSuffix; got != want {
+		t.Fatalf("line = %q, want %q", got, want)
 	}
 }

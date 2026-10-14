@@ -13,6 +13,15 @@ internal data class PlannedSource(
     val config: Map<String, Any>,
 )
 
+/** What a system source backs up, for the wizard to show before the binding; no secret names (F4b, Р26). */
+data class PlanItem(
+    val role: SystemRole,
+    val name: String,
+    val plugin: String,
+    val includes: List<String>,
+    val excludes: List<String>,
+)
+
 /**
  * The two system sources of the self-backup (F6): the database through the postgresql plugin and the CA
  * with the installation's configuration through the files plugin. They are backed up by separate runs.
@@ -22,6 +31,29 @@ internal class SelfBackupPlan(
     private val settings: SelfBackupSettings,
 ) {
     fun sources(): List<PlannedSource> = SystemRole.entries.map(::source)
+
+    /** The sources as the owner reads them: the database by name and address, the files by path. */
+    fun items(): List<PlanItem> =
+        SystemRole.entries.map { role ->
+            val planned = source(role)
+            when (role) {
+                SystemRole.SELF_DATABASE -> {
+                    PlanItem(role, planned.name, planned.plugin, listOf(databaseSummary()), emptyList())
+                }
+
+                SystemRole.SELF_KEYS -> {
+                    PlanItem(
+                        role,
+                        planned.name,
+                        planned.plugin,
+                        listOf(settings.pkiDir, settings.installDir),
+                        settings.installExclude,
+                    )
+                }
+            }
+        }
+
+    private fun databaseSummary() = with(settings.database) { "$name на $host:$port" }
 
     fun source(role: SystemRole): PlannedSource =
         when (role) {

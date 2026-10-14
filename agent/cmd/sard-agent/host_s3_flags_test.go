@@ -42,6 +42,7 @@ func (h *setupHost) assertS3ValuesHidden(outputs ...string) {
 // Rule "repo add проверяет адрес и флаги удалённого хранилища до обращения к нему".
 
 func TestAnUnusableS3AddressIsRefusedBeforeTheStorageIsTouched(t *testing.T) {
+	t.Parallel()
 	for _, address := range []string{
 		"s3:https://s3.example.com",
 		"s3:https://s3.example.com/",
@@ -62,6 +63,7 @@ func TestAnUnusableS3AddressIsRefusedBeforeTheStorageIsTouched(t *testing.T) {
 }
 
 func TestTheFormsOfAnS3AddressAreWrittenToTheFragmentAsGiven(t *testing.T) {
+	t.Parallel()
 	for _, address := range []string{
 		"s3:https://s3.example.com/bucket-b/extra",
 		"s3:https://s3.example.com:9000/bucket-b",
@@ -78,6 +80,7 @@ func TestTheFormsOfAnS3AddressAreWrittenToTheFragmentAsGiven(t *testing.T) {
 }
 
 func TestAnS3AddressOverHTTPIsAcceptedWithAWarningAboutMissingTLS(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, stderr := h.s3At("s3:http://10.0.0.5:3900/bucket-b/extra", s3Marker)
 	assertCode(t, code, exitOK)
@@ -91,6 +94,7 @@ func TestAnS3AddressOverHTTPIsAcceptedWithAWarningAboutMissingTLS(t *testing.T) 
 }
 
 func TestAFlagOfAnotherKindOfAddressIsRefusedWithItsName(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		address string
 		flags   []string
@@ -127,6 +131,7 @@ func TestAFlagOfAnotherKindOfAddressIsRefusedWithItsName(t *testing.T) {
 }
 
 func TestAnS3ConnectionWithoutAKeyIDIsRefusedWithTheFlagName(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	before := h.hostTree()
 	h.stdinIs(s3Marker)
@@ -140,6 +145,7 @@ func TestAnS3ConnectionWithoutAKeyIDIsRefusedWithTheFlagName(t *testing.T) {
 }
 
 func TestAnUnusableKeyIDOrRegionIsRefusedWithTheFlagName(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		flags []string
 		name  string
@@ -163,6 +169,7 @@ func TestAnUnusableKeyIDOrRegionIsRefusedWithTheFlagName(t *testing.T) {
 }
 
 func TestAKeyIDOf128CharactersAndARegionOf64CharactersAreAccepted(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.stdinIs(s3Marker)
 	code, _, stderr := h.sudo("repo", "add", "extra", s3Address, "--secret-key-stdin", "--config", "C",
@@ -174,6 +181,7 @@ func TestAKeyIDOf128CharactersAndARegionOf64CharactersAreAccepted(t *testing.T) 
 }
 
 func TestAnUnusableConnectTimeoutIsRefusedWithTheFlagName(t *testing.T) {
+	t.Parallel()
 	for _, value := range []string{"0s", "-1s", "abc"} {
 		h := newSetupHost(t)
 		before := h.hostTree()
@@ -187,6 +195,7 @@ func TestAnUnusableConnectTimeoutIsRefusedWithTheFlagName(t *testing.T) {
 }
 
 func TestTheSecretKeyIsNeverTheValueOfAFlagOrAnArgument(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{
 		{"repo", "add", "extra", s3Address, "--access-key-id", keyID1, "--secret-key", s3Marker, "--config", "C"},
 		{"repo", "add", "extra", s3Address, "--access-key-id", keyID1, "--secret-key=" + s3Marker, "--config", "C"},
@@ -202,6 +211,7 @@ func TestTheSecretKeyIsNeverTheValueOfAFlagOrAnArgument(t *testing.T) {
 }
 
 func TestTheOtherKindsOfAddressStayRefusedAndNameTheSupportedOnes(t *testing.T) {
+	t.Parallel()
 	for address, kind := range map[string]string{
 		"rest:https://u:" + urlMarker + "@rest.example.com/extra": "rest",
 		"b2:bucket:extra":        "b2",

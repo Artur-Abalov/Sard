@@ -34,6 +34,7 @@ func listRows(t *testing.T, stdout string) map[string][]string {
 
 // Список называет инициализированный и неинициализированный репозитории
 func TestTheListNamesInitialisedAndNotInitialisedRepositories(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().initialized = true
 	code, stdout, stderr := h.listCmd()
@@ -52,6 +53,7 @@ func TestTheListNamesInitialisedAndNotInitialisedRepositories(t *testing.T) {
 
 // Строки списка идут в порядке конфига
 func TestTheListRowsFollowTheOrderOfTheConfig(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.cfg.Repositories[0], h.cfg.Repositories[1] = h.cfg.Repositories[1], h.cfg.Repositories[0]
 	h.saveConfig()
@@ -63,6 +65,7 @@ func TestTheListRowsFollowTheOrderOfTheConfig(t *testing.T) {
 
 // Список не печатает адреса репозиториев
 func TestTheListDoesNotPrintRepositoryAddresses(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	_, stdout, stderr := h.listCmd()
 	for _, r := range h.cfg.Repositories {
@@ -75,6 +78,7 @@ func TestTheListDoesNotPrintRepositoryAddresses(t *testing.T) {
 
 // Список ничего не создаёт и не меняет
 func TestTheListCreatesAndChangesNothing(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	before := h.snapshot()
 	code, _, _ := h.listCmd()
@@ -89,6 +93,7 @@ func TestTheListCreatesAndChangesNothing(t *testing.T) {
 
 // Конфиг без репозиториев — пустой список и успех
 func TestAConfigWithoutRepositoriesGivesAnEmptyListAndSuccess(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.cfg.Repositories = nil
 	h.saveConfig()
@@ -122,6 +127,7 @@ func TestTheListDoesNotReadStdinAndDoesNotConnectToTheServer(t *testing.T) {
 
 // Справка списка описывает колонки, флаги и коды выхода
 func TestTheListHelpDescribesColumnsFlagsAndExitCodes(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	code, stdout, _ := h.run("list", "--help")
 	assertCode(t, code, exitOK)
@@ -142,6 +148,7 @@ func TestTheListHelpDescribesColumnsFlagsAndExitCodes(t *testing.T) {
 
 // Ошибка вызова списка — ошибка использования
 func TestAMalformedListInvocationIsAUsageError(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{
 		{"list", "--config", "C", "main"},
 		{"list", "--config", "C", "--json", "main"}, // --json is allowed since A8a (Л4а), a name is not
@@ -159,6 +166,7 @@ func TestAMalformedListInvocationIsAUsageError(t *testing.T) {
 
 // Отсутствующий конфиг — список не печатается
 func TestAMissingConfigPrintsNoList(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	code, stdout, _ := h.run("list", "--config", h.path("nope.yaml"))
 	assertCode(t, code, exitUsage)
@@ -171,6 +179,7 @@ func TestAMissingConfigPrintsNoList(t *testing.T) {
 
 // Проблемная строка получает причину, остальные строки печатаются
 func TestAProblemRowGetsAReasonAndTheOtherRowsArePrinted(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		arrange func(h *repoHost)
@@ -217,6 +226,7 @@ func assertRowMessage(t *testing.T, name, stderr, repo, status string) {
 
 // Для строки с проблемой до бэкенда restic не вызывается
 func TestNoResticCallIsMadeForARowWithAProblemBeforeTheBackend(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	if err := os.Remove(h.pass2()); err != nil {
 		t.Fatal(err)
@@ -229,6 +239,7 @@ func TestNoResticCallIsMadeForARowWithAProblemBeforeTheBackend(t *testing.T) {
 
 // Нарушение прав в строке списка поясняется текстом A1
 func TestAPermissionProblemInARowIsExplainedWithTheA1Text(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	if err := os.Chmod(h.pass2(), 0o644); err != nil {
 		t.Fatal(err)
@@ -242,6 +253,7 @@ func TestAPermissionProblemInARowIsExplainedWithTheA1Text(t *testing.T) {
 
 // Постоянная проблема строки важнее временной
 func TestAPermanentRowProblemBeatsATemporaryOne(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().fatal = "connection refused"
 	if err := os.Remove(h.pass2()); err != nil {
@@ -253,6 +265,7 @@ func TestAPermanentRowProblemBeatsATemporaryOne(t *testing.T) {
 
 // Код выхода берётся из первой по порядку конфига постоянной проблемы
 func TestTheExitCodeComesFromTheFirstPermanentProblemInConfigOrder(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().fatal = "Access Denied"
 	if err := os.Remove(h.pass2()); err != nil {
@@ -264,6 +277,7 @@ func TestTheExitCodeComesFromTheFirstPermanentProblemInConfigOrder(t *testing.T)
 
 // Только временные проблемы строк — временная ошибка
 func TestOnlyTemporaryRowProblemsGiveATemporaryError(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().fatal = "connection refused"
 	h.offsite().fatal = "no such host"
@@ -277,6 +291,7 @@ func TestOnlyTemporaryRowProblemsGiveATemporaryError(t *testing.T) {
 
 // Неинициализированные репозитории не делают список ошибкой
 func TestRepositoriesThatAreNotInitialisedAreNoError(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	code, _, _ := h.listCmd()
 	assertCode(t, code, exitOK)
@@ -284,6 +299,7 @@ func TestRepositoriesThatAreNotInitialisedAreNoError(t *testing.T) {
 
 // Истечение таймаута списка отмечает незавершённые строки
 func TestATimeoutOfTheListMarksTheUnfinishedRows(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.main().initialized = true
 	h.offsite().hangCat = true
@@ -305,6 +321,7 @@ func TestATimeoutOfTheListMarksTheUnfinishedRows(t *testing.T) {
 
 // Прерывание списка не печатает таблицу
 func TestAnInterruptOfTheListPrintsNoTable(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.offsite().hangCat = true
 	ctx, interrupt := context.WithCancel(context.Background())
@@ -325,6 +342,7 @@ func TestAnInterruptOfTheListPrintsNoTable(t *testing.T) {
 
 // Непригодный restic — список не печатается
 func TestAnUnusableResticPrintsNoList(t *testing.T) {
+	t.Parallel()
 	dir := func(h *repoHost) { h.cfg.Restic.Path = h.dir; h.deps.exec = restic.ProcessExecutor{} }
 	cases := map[string]struct {
 		arrange func(h *repoHost)
