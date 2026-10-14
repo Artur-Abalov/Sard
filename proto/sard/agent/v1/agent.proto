@@ -106,6 +106,11 @@ message RegisterRequest {
   repeated string secret_names = 8;
   // Names of scripts allowlisted on this host for ACTION_RUN.
   repeated string script_names = 9;
+  // Absolute path of the directory the host's operator allows restores into
+  // (restore.dir in the agent config), shown in the console. Not a secret;
+  // the server cannot set or change it and never sends a path of its own in a
+  // command. Empty for an agent that cannot restore from the console.
+  string restore_dir = 10;
 }
 
 // Plugin is a source plugin available on the agent.
@@ -120,6 +125,10 @@ message Plugin {
   string version = 3;
   // Actions the plugin implements.
   repeated Action actions = 4;
+  // JSON Schema (draft 2020-12) of the configuration of ACTION_RESTORE, which
+  // the console renders and the server validates before it sends the
+  // command. Empty: the plugin cannot be restored from the console.
+  string restore_config_schema = 5;
 }
 
 // RegisterResponse identifies the agent in all later calls.
@@ -282,9 +291,29 @@ message BackupOutput {
   string repository_id = 4;
 }
 
+// RestoreOutput is the outcome of ACTION_RESTORE. A restore is all or
+// nothing: on SUCCEEDED every field but leftover is set; on any other
+// status the output exists only when the rollback failed, and then holds
+// leftover alone.
 message RestoreOutput {
-  // Where the data was restored, e.g. a path or a database name.
+  // Where the data was restored: the absolute path of a directory, or the
+  // name of a database.
   string target = 1;
+  // Files and bytes written to the target, as restic reports them.
+  uint64 files_restored = 2;
+  uint64 bytes_restored = 3;
+  // Name of the database a PostgreSQL restore created.
+  string database = 4;
+  // Tables and roles a PostgreSQL restore created.
+  uint64 tables_restored = 5;
+  uint64 roles_restored = 6;
+  // Whether the owners and groups of the snapshot were restored. False for
+  // files: the service user is not privileged, so everything it writes is
+  // its own.
+  bool owners_restored = 7;
+  // What the rollback of a failed restore could not remove and the operator
+  // must remove by hand: a path, "database <name>", "role <name>".
+  string leftover = 8;
 }
 
 // VerifyOutput is the evidence behind "last verified restore N hours ago".
