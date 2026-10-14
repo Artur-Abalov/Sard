@@ -10,7 +10,8 @@
 ответы владельца 2026-10-13, переданы координатором; шаги помечены
 «(Р<номер>)». В A8c-2 `--overwrite` недоступен (Р74): шаги с ним помечены
 «(A8c-2b)» и до этого среза проверяют отказ (шаг 20а); новые проверки — часть 8.
-Ответы владельца 2026-10-14 на вопросы A8c-3 (Р83–Р86) проверяет часть 9.
+Ответы владельца 2026-10-14 на вопросы A8c-3 (Р83–Р86) проверяет часть 9;
+ответы на вопросы architect A8c-3 (Р87, Р88) — часть 10.
 
 Выполнима после реализации A8c. Ожидаемый результат — после «→». Любое
 расхождение — дефект.
@@ -392,6 +393,41 @@ R="sudo -u sard-agent /usr/libexec/sard/restic --repo /srv/sard/main --password-
 65. Удалить снимки части: `$R forget $X1 $X2 $X3`;
     `sudo $AG repo snapshots main` → их нет.
 
+## Часть 10. Ответы 2026-10-14 на вопросы architect (Р87, Р88, A8c-3)
+
+66. Остаток временного файла после аварии (Р88). Нужен снимок большой базы
+    шага 38 (последний снимок базы источника `$SP`):
+    `sudo $AG repo restore main latest --source $SP --target /srv/e12 &`;
+    `until sudo find /srv/e12 -maxdepth 1 -name '.app.dump.tmp-*' 2>/dev/null | grep -q .; do sleep 0.2; done`;
+    `sudo pkill -KILL -f 'sard-agent repo restore'; sudo pkill -KILL restic`;
+    `sudo ls -A /srv/e12` → ровно `.app.dump.tmp-…`; запомнить
+    `sudo stat -c '%i %s' /srv/e12/.app.dump.tmp-*` → `S0`.
+    `T=$(date '+%F %T'); run sudo $AG repo restore main latest --source $SP --target /srv/e12`
+    → `exit=2`, `TARGET_NOT_EMPTY`, сообщение называет
+    `/srv/e12/.app.dump.tmp-…` как остаток прерванного восстановления
+    (`remains of an interrupted restore`) и советует удалить; `audit "$T"` →
+    пусто; `sudo stat -c '%i %s' /srv/e12/.app.dump.tmp-*` → то же `S0`
+    (агент файл не удалил и не изменил). То же восстановлением каталога:
+    `sudo $AG repo restore main $ID --target /srv/e12` → `exit=2`, называет
+    тот же файл. `sudo rm -rf /srv/e12`.
+67. Подмена файла PostgreSQL в цели, куда пишут другие (Р87; только на
+    копии ВМ): `sudo install -d -m 0777 /srv/e13`;
+    `echo FOREIGN | sudo -u nobody tee /tmp/qa-foreign >/dev/null`; от имени
+    `nobody` цикл
+    `while :; do for f in /srv/e13/.app.dump.tmp-*; do [ -e "$f" ] && mv "$f" /srv/e13/stolen 2>/dev/null && cp /tmp/qa-foreign "$f"; done; done &`.
+    20 раз: очистить цель `sudo find /srv/e13 -mindepth 1 -delete`;
+    `T=$(date '+%F %T'); run sudo $AG repo restore main latest --source $SP --target /srv/e13`.
+    Каждый запуск → либо `exit=0` и `sudo stat -c '%U %G %a' /srv/e13/app.dump`
+    → `root root 600`, `sudo head -c 5 /srv/e13/app.dump` → `PGDMP`; либо
+    `exit=7`, `TARGET_WRITE`, сообщение называет `/srv/e13/app.dump`,
+    `is not the file the agent wrote` и что файл не удалён; тогда
+    `stat -c %U /srv/e13/app.dump` → `nobody`, `cat /srv/e13/app.dump` →
+    `FOREIGN`, в `/srv/e13` нет `app.globals.sql`, `audit "$T"` → строка
+    `… restore to /srv/e13 failed: TARGET_WRITE`; `sudo stat -c '%U %a' /srv/e13/stolen`
+    (если есть) → `root 600`. Ни разу: `exit=0` при `app.dump` не от root.
+    Если цикл ни разу не успел — отметить подмену как непроверенную (есть
+    `@local`). Остановить цикл, `sudo rm -rf /srv/e13 /tmp/qa-foreign`.
+
 Вручную не воспроизводятся и проверяются тестами `@local` с теми же
 названиями: EXDEV при переносе, `fstat` временного каталога с чужим
 владельцем, ссылка, созданная restic во временном каталоге, при его
@@ -402,4 +438,7 @@ R="sudo -u sard-agent /usr/libexec/sard/restic --repo /srv/sard/main --password-
 restic с паролем и ключом, сбой записи файла глобальных объектов после
 готового дампа (Р86: дампа в цели не остаётся), путь снимка PostgreSQL не в
 корне и неразбираемое имя базы (Р83), снимок глобальных объектов неожиданной
-формы к снимку базы (Р83).
+формы к снимку базы (Р83), имя файла PostgreSQL, пропавшее сразу после
+переименования, и чужой файл под именем законченного дампа или временного
+файла при взятии назад (Р87), имена, похожие на временный файл, но не того
+вида (Р88).
