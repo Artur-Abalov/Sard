@@ -15,6 +15,7 @@ import { AppLink, ButtonLink } from '../components/links'
 import { PagedList } from '../components/PagedList'
 import { StatusBadge } from '../components/StatusBadge'
 import { usePaged } from '../components/usePaged'
+import { useRoleLabel } from '../components/useRoleLabel'
 import { EMPTY } from '../format'
 import { tones } from '../theme'
 import { Mono } from '../components/Mono'
@@ -24,6 +25,7 @@ const route = getRouteApi('/_app/agents/')
 
 function AgentRow({ agent }: { agent: components['schemas']['AgentSummary'] }) {
   const { t } = useTranslation()
+  const roleLabel = useRoleLabel()
   return (
     <Table.Tr>
       <Table.Td>
@@ -31,7 +33,7 @@ function AgentRow({ agent }: { agent: components['schemas']['AgentSummary'] }) {
           <Mono>{agent.hostname}</Mono>
         </AppLink>
       </Table.Td>
-      <Table.Td>{t(`enum.AgentRole.${agent.role}`)}</Table.Td>
+      <Table.Td>{roleLabel(agent.role)}</Table.Td>
       <Table.Td>
         <StatusBadge group="AgentStatus" value={agent.status} />
       </Table.Td>

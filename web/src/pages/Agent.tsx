@@ -34,6 +34,7 @@ import { PagedList } from '../components/PagedList'
 import { RepoInitHint } from '../components/RepoInitHint'
 import { StatusBadge } from '../components/StatusBadge'
 import { usePaged } from '../components/usePaged'
+import { useRoleLabel } from '../components/useRoleLabel'
 import { EMPTY } from '../format'
 import { canConfirmRevoke, revokeQuery, SELF_AGENT_CONFIRMATION } from '../selfAgent'
 import { canCreateSourceOn } from '../tokens'
@@ -244,12 +245,13 @@ function RevokeButton({ agent }: { agent: AgentDetails }) {
 
 function Facts({ agent }: { agent: AgentDetails }) {
   const { t } = useTranslation()
+  const roleLabel = useRoleLabel()
   return (
     <Table>
       <Table.Tbody>
         <Table.Tr>
           <Table.Th>{t('agents.role')}</Table.Th>
-          <Table.Td>{t(`enum.AgentRole.${agent.role}`)}</Table.Td>
+          <Table.Td>{roleLabel(agent.role)}</Table.Td>
         </Table.Tr>
         <Table.Tr>
           <Table.Th>{t('agents.version')}</Table.Th>

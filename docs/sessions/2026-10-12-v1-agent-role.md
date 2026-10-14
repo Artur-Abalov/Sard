@@ -358,3 +358,15 @@ After: 0 survivors. No `mutflow:falsePositive`, `mutflow:ignore` or `@SuppressMu
   не собирались (в контейнере сборки не резолвится deb.debian.org), поэтому
   полный `make e2e-test` не запускался. Диск: кэш Go (19 ГБ) лишил Postgres
   места; помог `go clean -cache`.
+
+## cleaner (консоль и e2e)
+
+- Область: коммит b55a866 (web + test/e2e). Было: `gate.sh web fast` PASSED, oxlint без
+  предупреждений о сложности, 758 тестов в 46 файлах.
+- Дубль: подпись роли `t(`enum.AgentRole.${role}`)` в пяти местах (Tokens x3, Agents, Agent)
+  вынесена в хук `web/src/components/useRoleLabel.ts`. Поведение и тексты те же.
+- Проверка роли `role === 'source'` в `canCreateSourceOn` и `offeredSourceAgents` оставлена
+  как есть: это разные слои (карточка агента и выбор в форме), общий предикат дал бы связность.
+- e2e (VerifierRoleTest, EnrollmentTokens): мёртвого кода и дублей нет, не менялись; detekt для
+  модуля e2e не настроен. Мок-валидация (`validateToken`) уже единая.
+- Стало: `gate.sh web fast` PASSED, 758 тестов в 46 файлах. Дальше: architect.

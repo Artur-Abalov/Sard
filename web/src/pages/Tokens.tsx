@@ -35,6 +35,7 @@ import { AppLink } from '../components/links'
 import { PagedList } from '../components/PagedList'
 import { StatusBadge } from '../components/StatusBadge'
 import { usePaged } from '../components/usePaged'
+import { useRoleLabel } from '../components/useRoleLabel'
 import { EMPTY } from '../format'
 import { canRevokeToken, ttlSeconds, type TtlUnit } from '../tokens'
 import { useFormat } from '../useFormat'
@@ -69,13 +70,12 @@ function TokenOutcome({ token }: { token: EnrollmentToken | undefined }) {
 // Where the new token stands while its window is open: waiting, used by an agent, or no longer usable.
 function TokenProgress({ tokenId }: { tokenId: string }) {
   const { t } = useTranslation()
+  const roleLabel = useRoleLabel()
   const token = useQuery(tokenQuery(tokenId, true))
   return (
     <Stack gap="xs" role="status">
       {token.data !== undefined && (
-        <Text size="sm">
-          {t('tokens.roleOf', { role: t(`enum.AgentRole.${token.data.role}`) })}
-        </Text>
+        <Text size="sm">{t('tokens.roleOf', { role: roleLabel(token.data.role) })}</Text>
       )}
       <TokenOutcome token={token.data} />
     </Stack>
@@ -103,6 +103,7 @@ function CreatedToken({ created }: { created: Created }) {
 
 function CreateForm({ onCreated }: { onCreated: (created: Created) => void }) {
   const { t } = useTranslation()
+  const roleLabel = useRoleLabel()
   const [label, setLabel] = useState('')
   const [ttl, setTtl] = useState<number | string>('')
   const [unit, setUnit] = useState<TtlUnit>('hours')
@@ -137,7 +138,7 @@ function CreateForm({ onCreated }: { onCreated: (created: Created) => void }) {
         onChange={(value) => setRole((value as AgentRole | null) ?? 'source')}
         data={(['source', 'verifier'] as const).map((value) => ({
           value,
-          label: t(`enum.AgentRole.${value}`),
+          label: roleLabel(value),
         }))}
         error={refused(fields, 'role') ? t('errors.validation_failed') : undefined}
       />
@@ -253,14 +254,14 @@ function RevokeButton({ token }: { token: EnrollmentToken }) {
 }
 
 function TokenRow({ token }: { token: EnrollmentToken }) {
-  const { t } = useTranslation()
+  const roleLabel = useRoleLabel()
   return (
     <Table.Tr>
       <Table.Td>
         <StatusBadge group="EnrollmentTokenStatus" value={token.status} />
       </Table.Td>
       <Table.Td>{token.label ?? EMPTY}</Table.Td>
-      <Table.Td>{t(`enum.AgentRole.${token.role}`)}</Table.Td>
+      <Table.Td>{roleLabel(token.role)}</Table.Td>
       <Table.Td>
         <Time value={token.createdAt} />
       </Table.Td>
