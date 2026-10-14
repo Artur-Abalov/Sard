@@ -7,7 +7,7 @@ import { pageOf } from '../paging'
 import { noSession, notFound, PROBLEM, problem } from '../problems'
 import { onboardingIncomplete, refusedUntilComplete } from '../restriction'
 import { state } from '../state'
-import { validateLabel, validateTtl } from '../validation'
+import { validateToken } from '../validation'
 
 type Schemas = components['schemas']
 
@@ -43,8 +43,8 @@ export const tokenHandlers = [
   http.post('/api/v1/enrollment-tokens', async ({ request, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
     if (refusedUntilComplete(true)) return response(409).json(onboardingIncomplete, PROBLEM)
-    const { ttlSeconds, label } = await request.json()
-    const invalid = validateTtl(ttlSeconds) ?? validateLabel(label)
+    const { ttlSeconds, label, role } = await request.json()
+    const invalid = validateToken({ ttlSeconds, label, role })
     if (invalid !== null) return response(422).json(invalid, PROBLEM)
     const now = new Date()
     const expiresAt = new Date(
@@ -62,7 +62,7 @@ export const tokenHandlers = [
       revokedAt: null,
       agentId: null,
       label: label === undefined || label === '' ? null : label,
-      role: 'source',
+      role: role ?? 'source',
     })
     const enrollCommand = `sudo -u sard-agent sard-agent enroll --server ${GRPC_ADDRESS} --token ${token}`
     return response(201).json({

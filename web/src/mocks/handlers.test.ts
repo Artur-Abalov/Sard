@@ -1095,3 +1095,106 @@ describe('F3b schedule mocks', () => {
     expect(runs.filter((r) => r.trigger !== 'catch_up').every((r) => r.catchUp === null)).toBe(true)
   })
 })
+
+describe('agent role', () => {
+  beforeEach(signIn)
+  const agentPath = (agentId: string) => ({ params: { path: { agentId } } })
+  const sourceInput = (agentId: string, rest: Record<string, string> = {}) => ({
+    name: 'x',
+    agentId,
+    plugin: 'files',
+    repositoryName: 'local',
+    config: {},
+    ...rest,
+  })
+  const verifier = () => {
+    const found = agents.filter((a) => a.role === 'verifier')
+    expect(found).toHaveLength(1)
+    return found[0]
+  }
+
+  test.each([
+    ['no role field', {}, 'source'],
+    ['role null', { role: null }, 'source'],
+    ['role source', { role: 'source' }, 'source'],
+    ['role verifier', { role: 'verifier' }, 'verifier'],
+  ])(
+    'a token made with %s has the stored role %s in the list and in its card',
+    async (_, body, role) => {
+      const created = must(await api.POST('/api/v1/enrollment-tokens', { body: body as never }))
+      const list = must(await api.GET('/api/v1/enrollment-tokens'))
+      expect(list.items.find((t) => t.id === created.id)?.role).toBe(role)
+      const card = must(
+        await api.GET('/api/v1/enrollment-tokens/{tokenId}', {
+          params: { path: { tokenId: created.id } },
+        }),
+      )
+      expect(card.role).toBe(role)
+    },
+  )
+
+  test.each([[''], ['SOURCE'], ['Verifier'], ['admin'], [1]])(
+    'a token with role %j is 422 naming the field, and no token is made',
+    async (role) => {
+      const { response, error } = await api.POST('/api/v1/enrollment-tokens', {
+        body: { role } as never,
+      })
+      expect(response.status).toBe(422)
+      expect(error).toMatchObject({ code: 'validation_failed', errors: [{ field: 'role' }] })
+      expect((await api.GET('/api/v1/enrollment-tokens')).data?.items).toHaveLength(4)
+    },
+  )
+
+  test('the fixtures hold one verifier, not revoked, not built-in; every other agent is a source', () => {
+    const one = verifier()
+    expect(one.revokedAt).toBeNull()
+    expect(one.builtin).toBe(false)
+    expect(agents.filter((a) => a.role === 'source').length).toBe(agents.length - 1)
+    expect(agents.find((a) => a.builtin)?.role).toBe('source')
+  })
+
+  test('the verifier can be picked by address: a backup plugin and a repository', async () => {
+    const card = must(await api.GET('/api/v1/agents/{agentId}', agentPath(verifier().id)))
+    expect(card.role).toBe('verifier')
+    expect(card.plugins.some((p) => p.actions.includes('backup'))).toBe(true)
+    expect(card.repositories.length).toBeGreaterThan(0)
+  })
+
+  test('a source of the verifier is 422 agent_role_mismatch on POST and PUT, sources unchanged', async () => {
+    const before = structuredClone(state.sources)
+    const plugin = verifier().plugins.find((p) => p.actions.includes('backup'))?.name ?? ''
+    const repo = verifier().repositories[0].name
+    const input = sourceInput(verifier().id, { plugin, repositoryName: repo })
+    const created = await api.POST('/api/v1/sources', { body: input })
+    const put = await api.PUT('/api/v1/sources/{sourceId}', {
+      params: { path: { sourceId: ids.homeSource } },
+      body: input,
+    })
+    for (const result of [created, put]) {
+      expect(result.response.status).toBe(422)
+      expect(result.error).toMatchObject({
+        code: 'agent_role_mismatch',
+        errors: [{ field: 'agentId' }],
+      })
+    }
+    expect(state.sources).toEqual(before)
+  })
+
+  test('a revoked verifier is agent_revoked, before the role is looked at', async () => {
+    await api.POST('/api/v1/agents/{agentId}/revoke', agentPath(verifier().id))
+    const created = await api.POST('/api/v1/sources', { body: sourceInput(verifier().id) })
+    expect(created.response.status).toBe(422)
+    expect(created.error).toMatchObject({ code: 'agent_revoked', errors: [{ field: 'agentId' }] })
+  })
+
+  test('the role is looked at before the plugin and the repository', async () => {
+    const created = await api.POST('/api/v1/sources', {
+      body: sourceInput(verifier().id, { plugin: 'nope', repositoryName: 'nope' }),
+    })
+    expect(created.response.status).toBe(422)
+    expect(created.error).toMatchObject({
+      code: 'agent_role_mismatch',
+      errors: [{ field: 'agentId' }],
+    })
+  })
+})

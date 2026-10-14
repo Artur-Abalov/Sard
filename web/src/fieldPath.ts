@@ -3,7 +3,7 @@
 
 // Where in a form an error of the server belongs.
 export type FieldTarget =
-  | { kind: 'name' | 'agent' | 'plugin' | 'repository' | 'ttl' | 'label' }
+  | { kind: 'name' | 'agent' | 'plugin' | 'repository' | 'ttl' | 'label' | 'role' }
   // The config as a whole: the JSON editor, or a field the form has none for.
   | { kind: 'config' }
   | { kind: 'configField'; path: string[] }
@@ -18,6 +18,7 @@ const TOP_LEVEL: Record<string, FieldTarget> = {
   config: { kind: 'config' },
   ttlSeconds: { kind: 'ttl' },
   label: { kind: 'label' },
+  role: { kind: 'role' },
 }
 
 // RFC 6901: "~1" is "/", then "~0" is "~", in that order.

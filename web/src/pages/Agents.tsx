@@ -31,6 +31,7 @@ function AgentRow({ agent }: { agent: components['schemas']['AgentSummary'] }) {
           <Mono>{agent.hostname}</Mono>
         </AppLink>
       </Table.Td>
+      <Table.Td>{t(`enum.AgentRole.${agent.role}`)}</Table.Td>
       <Table.Td>
         <StatusBadge group="AgentStatus" value={agent.status} />
       </Table.Td>
@@ -87,6 +88,7 @@ export function Agents() {
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>{t('agents.host')}</Table.Th>
+                  <Table.Th>{t('agents.role')}</Table.Th>
                   <Table.Th>{t('agents.status')}</Table.Th>
                   <Table.Th>{t('agents.lastSeen')}</Table.Th>
                   <Table.Th>{t('agents.version')}</Table.Th>

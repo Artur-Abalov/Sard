@@ -59,6 +59,7 @@
     "repoInitPage": "Open an agent that has a repository marked \"not initialized\", run sard-agent repo init <name> on its host and restart the agent service.",
     "repoInitRestart": "After it, restart the agent service so that it reports the repository.",
     "revokedAt": "Revoked <when/>",
+    "role": "Role",
     "status": "Status",
     "version": "Version",
     "outdated": "Update available: {{version}}",
@@ -202,6 +203,9 @@
     "revokeText": "A revoked token can no longer be used to register an agent.",
     "revokeTitle": "Revoke the token?",
     "revokedNow": "The token was revoked.",
+    "role": "Agent role",
+    "roleHint": "A source runs backups; a verifier only verifies restores. The role goes into the agent's certificate and never changes.",
+    "roleOf": "Agent role: {{role}}",
     "shownOnce": "The token string is shown once. Copy it now: it cannot be shown again.",
     "status": "Status",
     "token": "Token",
@@ -321,6 +325,10 @@
       "manual": "manual",
       "verification": "verification",
       "catch_up": "catch-up"
+    },
+    "AgentRole": {
+      "source": "source",
+      "verifier": "verifier"
     }
   },
   "install": {

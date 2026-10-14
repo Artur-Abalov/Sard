@@ -44,6 +44,7 @@ import { Time } from '../components/Time'
 const route = getRouteApi('/_app/tokens')
 
 type Created = components['schemas']['CreatedEnrollmentToken']
+type AgentRole = components['schemas']['AgentRole']
 
 // What the poll of the new token has found out about it.
 function TokenOutcome({ token }: { token: EnrollmentToken | undefined }) {
@@ -67,9 +68,15 @@ function TokenOutcome({ token }: { token: EnrollmentToken | undefined }) {
 
 // Where the new token stands while its window is open: waiting, used by an agent, or no longer usable.
 function TokenProgress({ tokenId }: { tokenId: string }) {
+  const { t } = useTranslation()
   const token = useQuery(tokenQuery(tokenId, true))
   return (
     <Stack gap="xs" role="status">
+      {token.data !== undefined && (
+        <Text size="sm">
+          {t('tokens.roleOf', { role: t(`enum.AgentRole.${token.data.role}`) })}
+        </Text>
+      )}
       <TokenOutcome token={token.data} />
     </Stack>
   )
@@ -99,11 +106,16 @@ function CreateForm({ onCreated }: { onCreated: (created: Created) => void }) {
   const [label, setLabel] = useState('')
   const [ttl, setTtl] = useState<number | string>('')
   const [unit, setUnit] = useState<TtlUnit>('hours')
+  const [role, setRole] = useState<AgentRole>('source')
   const create = useMutation({
     mutationFn: () =>
       call(
         client.POST('/api/v1/enrollment-tokens', {
-          body: { ttlSeconds: ttlSeconds(ttl, unit), label: label === '' ? undefined : label },
+          body: {
+            ttlSeconds: ttlSeconds(ttl, unit),
+            label: label === '' ? undefined : label,
+            role,
+          },
         }),
       ),
     onSuccess: onCreated,
@@ -116,6 +128,18 @@ function CreateForm({ onCreated }: { onCreated: (created: Created) => void }) {
         value={label}
         onChange={(event) => setLabel(event.currentTarget.value)}
         error={refused(fields, 'label') ? t('errors.validation_failed') : undefined}
+      />
+      <Select
+        label={t('tokens.role')}
+        description={t('tokens.roleHint')}
+        allowDeselect={false}
+        value={role}
+        onChange={(value) => setRole((value as AgentRole | null) ?? 'source')}
+        data={(['source', 'verifier'] as const).map((value) => ({
+          value,
+          label: t(`enum.AgentRole.${value}`),
+        }))}
+        error={refused(fields, 'role') ? t('errors.validation_failed') : undefined}
       />
       <Group align="flex-end">
         <NumberInput
@@ -146,7 +170,7 @@ function CreateForm({ onCreated }: { onCreated: (created: Created) => void }) {
 }
 
 // Whether the server refused this field of the form (a 422 names it by its path).
-function refused(body: unknown, kind: 'ttl' | 'label'): boolean {
+function refused(body: unknown, kind: 'ttl' | 'label' | 'role'): boolean {
   return fieldFailures(body).some((failure) => mapField(failure.field, []).kind === kind)
 }
 
@@ -229,12 +253,14 @@ function RevokeButton({ token }: { token: EnrollmentToken }) {
 }
 
 function TokenRow({ token }: { token: EnrollmentToken }) {
+  const { t } = useTranslation()
   return (
     <Table.Tr>
       <Table.Td>
         <StatusBadge group="EnrollmentTokenStatus" value={token.status} />
       </Table.Td>
       <Table.Td>{token.label ?? EMPTY}</Table.Td>
+      <Table.Td>{t(`enum.AgentRole.${token.role}`)}</Table.Td>
       <Table.Td>
         <Time value={token.createdAt} />
       </Table.Td>
@@ -307,6 +333,7 @@ export function Tokens() {
               <Table.Tr>
                 <Table.Th>{t('tokens.status')}</Table.Th>
                 <Table.Th>{t('tokens.label')}</Table.Th>
+                <Table.Th>{t('tokens.role')}</Table.Th>
                 <Table.Th>{t('tokens.createdAt')}</Table.Th>
                 <Table.Th>{t('tokens.expires')}</Table.Th>
                 <Table.Th>{t('tokens.agent')}</Table.Th>

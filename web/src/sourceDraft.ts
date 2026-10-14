@@ -36,6 +36,13 @@ export function offeredAgents<T extends { revokedAt: string | null }>(agents: T[
   return agents.filter((agent) => agent.revokedAt === null)
 }
 
+// Only agents that back up are offered for a source (RK6): a convenience, the server decides.
+export function offeredSourceAgents<
+  T extends { revokedAt: string | null; role: Schemas['AgentRole'] },
+>(agents: T[]): T[] {
+  return offeredAgents(agents).filter((agent) => agent.role === 'source')
+}
+
 // A source of stage 1 backs up: plugins without the backup action are not offered (P6).
 export function offeredPlugins(agent: Pick<Schemas['AgentDetails'], 'plugins'>): Plugin[] {
   return agent.plugins.filter((plugin) => plugin.actions.includes('backup'))

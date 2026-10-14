@@ -8,6 +8,7 @@ import {
   draftOf,
   emptyDraft,
   offeredAgents,
+  offeredSourceAgents,
   offeredPlugins,
   withAgent,
   withPlugin,
@@ -28,6 +29,34 @@ const nested = {
 }
 
 describe('what a source can be made of', () => {
+  test.each([
+    ['source', null, true],
+    ['verifier', null, false],
+    ['source', '2026-09-27T09:00:00Z', false],
+    ['verifier', '2026-09-27T09:00:00Z', false],
+  ] as const)('an agent with role %s, revokedAt %s: offered %s', (role, revokedAt, offered) => {
+    expect(offeredSourceAgents([{ id: 'x', role, revokedAt }]).length === 1).toBe(offered)
+  })
+
+  test('the offered agents keep the order of the list', () => {
+    const agents = [
+      { id: 'A', role: 'source', revokedAt: null },
+      { id: 'V', role: 'verifier', revokedAt: null },
+      { id: 'B', role: 'source', revokedAt: null },
+    ] as const
+
+    expect(offeredSourceAgents([...agents]).map((a) => a.id)).toEqual(['A', 'B'])
+  })
+
+  test('with only verifiers and revoked sources nothing is offered', () => {
+    const agents = [
+      { id: 'V', role: 'verifier', revokedAt: null },
+      { id: 'X', role: 'source', revokedAt: '2026-09-27T09:00:00Z' },
+    ] as const
+
+    expect(offeredSourceAgents([...agents])).toEqual([])
+  })
+
   test('revoked agents are not offered', () => {
     const agents = [
       { id: 'x', revokedAt: null },

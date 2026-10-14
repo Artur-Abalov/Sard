@@ -322,3 +322,39 @@ After: 0 survivors. No `mutflow:falsePositive`, `mutflow:ignore` or `@SuppressMu
   — 2, `identity.go` — 1. Старая схема их не показывала. Какие из них приходятся
   на строки V1, не разбиралось.
 - `AgentSeamIntegrationTest` после слияния: tests=1, failures=0.
+
+## coder (консоль и e2e)
+
+Фаза 3 по `docs/specs/web/agent-role.feature` (решения РК1–РК8) и сценарий 7
+`docs/specs/server/agent-role.feature` (`@e2e @phase3`).
+
+- Консоль, тесты первыми (Vitest): `AgentRole` в `enums.test.ts`; `role` в
+  `fieldPath.test.ts`; `offeredSourceAgents` в `sourceDraft.test.ts` (4 строки
+  таблицы, порядок, пустой выбор); `canCreateSourceOn` в `tokens.test.ts`;
+  моки в `handlers.test.ts` (роль токена, 5 недопустимых значений, фикстура
+  верификатора, `agent_role_mismatch` на POST и PUT, порядок Р7).
+- Код: `offeredSourceAgents` (рядом с `offeredAgents`, выбор агента формы
+  источника), `canCreateSourceOn` (кнопка «Создать источник» на карточке
+  агента), `role` в `fieldPath.ts`; выбор роли (по умолчанию source, отправляется
+  всегда), колонка роли и строка «Роль агента: …» в окне токена по GET —
+  `Tokens.tsx`; колонка и строка роли — `Agents.tsx`, `Agent.tsx`; ключи
+  `enum.AgentRole.*`, `tokens.role|roleHint|roleOf`, `agents.role` в ru и en.
+- Моки: токен хранит `role` запроса, `validateRole` (null и отсутствие — source,
+  иное — 422 у `role`), `validateToken` (вынесено ради сложности ≤ 8), источник
+  верификатора — 422 `agent_role_mismatch` после проверки отзыва и до плагина и
+  репозитория; фикстура `verify6.example.com` (верификатор, offline, плагин
+  files с backup, репозиторий `local`).
+- e2e: `EnrollmentTokens.create/issue` получили параметр `role` (по умолчанию
+  `source`, отправляется всегда, как в консоли); класс `VerifierRoleTest`.
+  Новый класс в списки шардов вносить не нужно: `scripts/e2e-shard.sh` находит
+  все `*Test.kt`, а вес берёт из `e2e-weights.tsv` (у нового класса его нет —
+  берётся среднее до следующего измерения CI).
+- Среда сборки e2e-образов: `make e2e-images` упал на `npm ci` (перехватывающий
+  прокси; помог секрет `build-ca` с корнем шлюза через `SERVER_BUILD_FLAGS` и
+  `E2E_BUILD_FLAGS`), затем на лимите Docker Hub (429, окно 3600 с) и на
+  Gradle внутри docker (не нашёл плагин mutflow). Jar собран на хосте
+  (`./gradlew :server:bootJar`) и подставлен в `make server-image`; собраны
+  только `sard-agent:e2e` и `sard-server:e2e`. Образы stand, pg18/pg14 и sftp
+  не собирались (в контейнере сборки не резолвится deb.debian.org), поэтому
+  полный `make e2e-test` не запускался. Диск: кэш Go (19 ГБ) лишил Postgres
+  места; помог `go clean -cache`.

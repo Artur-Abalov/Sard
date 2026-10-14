@@ -26,6 +26,7 @@ export const ids = {
   duplicateAgent: '0192f7a0-0000-7000-8000-000000000104',
   bareAgent: '0192f7a0-0000-7000-8000-000000000105',
   selfAgent: '0192f7a0-0000-7000-8000-000000000106',
+  verifierAgent: '0192f7a0-0000-7000-8000-000000000107',
   etcSource: '0192f7a0-0000-7000-8000-000000000201',
   homeSource: '0192f7a0-0000-7000-8000-000000000202',
   srvSource: '0192f7a0-0000-7000-8000-000000000203',
@@ -289,6 +290,30 @@ export const agents: Schemas['AgentDetails'][] = [
       { name: 'fresh', backend: 'sftp', repositoryId: null, cryptoProvider: 'file' },
     ],
     secretNames: ['sard-db'],
+    scriptNames: [],
+  },
+  // A verifier: it has a backup plugin and a repository so that the form can be reached by
+  // address and the server's refusal by role is seen (V1).
+  {
+    id: ids.verifierAgent,
+    hostname: 'verify6.example.com',
+    status: 'offline',
+    agentVersion: '0.1.0',
+    os: 'linux',
+    arch: 'amd64',
+    registeredAt: '2026-09-23T09:00:00Z',
+    lastSeenAt: '2026-09-27T09:00:00Z',
+    revokedAt: null,
+    duplicateSessionAt: null,
+    outdated: false,
+    builtin: false,
+    role: 'verifier',
+    protocolVersion: 1,
+    plugins: [filesPlugin],
+    repositories: [
+      { name: 'local', backend: 'local', repositoryId: '4f6a8c0e2d', cryptoProvider: 'file' },
+    ],
+    secretNames: [],
     scriptNames: [],
   },
 ]
