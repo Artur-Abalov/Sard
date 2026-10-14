@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -25,12 +26,12 @@ import (
 type classifyServer struct {
 	agentv1.UnimplementedEnrollmentServiceServer
 	calls  atomic.Int32
-	answer func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error)
+	answer func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error)
 }
 
-func (s *classifyServer) Enroll(_ context.Context, req *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+func (s *classifyServer) Enroll(ctx context.Context, req *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 	s.calls.Add(1)
-	return s.answer(req)
+	return s.answer(ctx, req)
 }
 
 func dialClassifyServer(t *testing.T, s *classifyServer) *grpc.ClientConn {
@@ -76,25 +77,13 @@ func dialClassifyServerManual(t *testing.T, s *classifyServer) (*grpc.ClientConn
 // same as a timeout, not "an updated agent might fix this".
 func TestCallEnrollClassifiesAConnectionDropAfterSendingAsTemporaryWithTokenMaybeSpent(t *testing.T) {
 	started := make(chan struct{})
-	s := &classifyServer{answer: func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
-		close(started)
-		select {} // never respond; the server is stopped from outside instead
-	}}
+	s := &classifyServer{answer: blockUntilCallerGone(started)}
 	conn, stop := dialClassifyServerManual(t, s)
-	errCh := make(chan error, 1)
-	go func() {
-		_, err := enroll.CallEnroll(context.Background(), conn, &agentv1.EnrollRequest{})
-		errCh <- err
-	}()
-	<-started
+	errCh := callEnrollAsync(context.Background(), conn)
+	awaitStarted(t, started)
 	stop() // abruptly closes the listener and every connection
 
-	var err error
-	select {
-	case err = <-errCh:
-	case <-time.After(5 * time.Second):
-		t.Fatal("CallEnroll did not return after the server stopped")
-	}
+	err := awaitCallEnroll(t, errCh, "CallEnroll did not return after the server stopped")
 	var eerr *enroll.Error
 	if !errors.As(err, &eerr) {
 		t.Fatalf("error type = %T, want *enroll.Error", err)
@@ -104,6 +93,49 @@ func TestCallEnrollClassifiesAConnectionDropAfterSendingAsTemporaryWithTokenMayb
 	}
 	if !eerr.TokenMaybeSpent {
 		t.Fatal("want TokenMaybeSpent after a connection drop following the request")
+	}
+}
+
+// blockUntilCallerGone returns a handler that signals started, never responds,
+// and returns only once its context ends (the client gave up or the server
+// stopped), so no goroutine outlives the test.
+func blockUntilCallerGone(started chan<- struct{}) func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+	return func(ctx context.Context, _ *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+		close(started)
+		<-ctx.Done()
+		return nil, status.FromContextError(ctx.Err()).Err()
+	}
+}
+
+// callEnrollAsync runs CallEnroll in a goroutine and delivers its error.
+func callEnrollAsync(ctx context.Context, conn *grpc.ClientConn) <-chan error {
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := enroll.CallEnroll(ctx, conn, &agentv1.EnrollRequest{})
+		errCh <- err
+	}()
+	return errCh
+}
+
+const asyncWaitBound = 10 * time.Second
+
+func awaitStarted(t *testing.T, started <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-started:
+	case <-time.After(asyncWaitBound):
+		t.Fatal("the server never received the request")
+	}
+}
+
+func awaitCallEnroll(t *testing.T, errCh <-chan error, timeoutMsg string) error {
+	t.Helper()
+	select {
+	case err := <-errCh:
+		return err
+	case <-time.After(asyncWaitBound):
+		t.Fatal(timeoutMsg)
+		return nil
 	}
 }
 
@@ -119,7 +151,7 @@ func TestCallEnrollClassifiesTokenRefusalsByReason(t *testing.T) {
 	cases := []string{"TOKEN_UNKNOWN", "TOKEN_USED", "TOKEN_EXPIRED", "TOKEN_REVOKED"}
 	for _, reason := range cases {
 		t.Run(reason, func(t *testing.T) {
-			s := &classifyServer{answer: func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+			s := &classifyServer{answer: func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 				return nil, reasonRefusal(codes.Unauthenticated, reason)
 			}}
 			conn := dialClassifyServer(t, s)
@@ -139,7 +171,7 @@ func TestCallEnrollClassifiesTokenRefusalsByReason(t *testing.T) {
 }
 
 func TestCallEnrollClassifiesTokenForeignCAAsTrust(t *testing.T) {
-	s := &classifyServer{answer: func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+	s := &classifyServer{answer: func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 		return nil, reasonRefusal(codes.Unauthenticated, "TOKEN_FOREIGN_CA")
 	}}
 	conn := dialClassifyServer(t, s)
@@ -148,7 +180,7 @@ func TestCallEnrollClassifiesTokenForeignCAAsTrust(t *testing.T) {
 }
 
 func TestCallEnrollClassifiesTokenMalformedAsUsage(t *testing.T) {
-	s := &classifyServer{answer: func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+	s := &classifyServer{answer: func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 		return nil, reasonRefusal(codes.InvalidArgument, "TOKEN_MALFORMED")
 	}}
 	conn := dialClassifyServer(t, s)
@@ -159,7 +191,7 @@ func TestCallEnrollClassifiesTokenMalformedAsUsage(t *testing.T) {
 func TestCallEnrollClassifiesAgentFaultReasons(t *testing.T) {
 	for _, reason := range []string{"CSR_INVALID", "HOSTNAME_INVALID"} {
 		t.Run(reason, func(t *testing.T) {
-			s := &classifyServer{answer: func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+			s := &classifyServer{answer: func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 				return nil, reasonRefusal(codes.InvalidArgument, reason)
 			}}
 			conn := dialClassifyServer(t, s)
@@ -170,7 +202,7 @@ func TestCallEnrollClassifiesAgentFaultReasons(t *testing.T) {
 }
 
 func TestCallEnrollClassifiesInternalRetryableAsTemporaryWithoutSpendingTheToken(t *testing.T) {
-	s := &classifyServer{answer: func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+	s := &classifyServer{answer: func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 		return nil, reasonRefusal(codes.Unavailable, "INTERNAL_RETRYABLE")
 	}}
 	conn := dialClassifyServer(t, s)
@@ -191,17 +223,17 @@ func TestCallEnrollClassifiesInternalRetryableAsTemporaryWithoutSpendingTheToken
 }
 
 func TestCallEnrollClassifiesUnforeseenResponsesAsAgentError(t *testing.T) {
-	cases := map[string]func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error){
-		"UNIMPLEMENTED without ErrorInfo": func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+	cases := map[string]func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error){
+		"UNIMPLEMENTED without ErrorInfo": func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 			return nil, status.Error(codes.Unimplemented, "not implemented")
 		},
-		"INTERNAL without ErrorInfo": func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+		"INTERNAL without ErrorInfo": func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 			return nil, status.Error(codes.Internal, "boom")
 		},
-		"UNAUTHENTICATED with an unknown reason": func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+		"UNAUTHENTICATED with an unknown reason": func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 			return nil, reasonRefusal(codes.Unauthenticated, "SOMETHING_NEW")
 		},
-		"success without a certificate": func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+		"success without a certificate": func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 			return &agentv1.EnrollResponse{AgentId: "a1"}, nil
 		},
 	}
@@ -222,7 +254,7 @@ func TestCallEnrollClassifiesUnforeseenResponsesAsAgentError(t *testing.T) {
 }
 
 func TestCallEnrollReturnsTheIssuedIdentityOnSuccess(t *testing.T) {
-	s := &classifyServer{answer: func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+	s := &classifyServer{answer: func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 		return &agentv1.EnrollResponse{AgentId: "a1", CertificateChainPem: "cert", CaBundlePem: "ca"}, nil
 	}}
 	conn := dialClassifyServer(t, s)
@@ -235,17 +267,43 @@ func TestCallEnrollReturnsTheIssuedIdentityOnSuccess(t *testing.T) {
 	}
 }
 
+// manualDeadlineContext reports context.DeadlineExceeded once expire is
+// called, so a test can make the deadline fire at an exact moment (after the
+// server has seen the request) instead of racing a fixed timeout.
+type manualDeadlineContext struct {
+	context.Context
+	done chan struct{}
+	once sync.Once
+}
+
+func newManualDeadlineContext() *manualDeadlineContext {
+	return &manualDeadlineContext{Context: context.Background(), done: make(chan struct{})}
+}
+
+func (c *manualDeadlineContext) Done() <-chan struct{} { return c.done }
+
+func (c *manualDeadlineContext) Err() error {
+	select {
+	case <-c.done:
+		return context.DeadlineExceeded
+	default:
+		return nil
+	}
+}
+
+func (c *manualDeadlineContext) expire() { c.once.Do(func() { close(c.done) }) }
+
 func TestCallEnrollTimeoutAfterTheRequestWasSentMarksTheTokenMaybeSpent(t *testing.T) {
 	started := make(chan struct{})
-	s := &classifyServer{answer: func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
-		close(started)
-		select {} // never respond
-	}}
+	s := &classifyServer{answer: blockUntilCallerGone(started)}
 	conn := dialClassifyServer(t, s)
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-	_, err := enroll.CallEnroll(ctx, conn, &agentv1.EnrollRequest{})
-	<-started
+	ctx := newManualDeadlineContext()
+	t.Cleanup(ctx.expire)
+	errCh := callEnrollAsync(ctx, conn)
+	awaitStarted(t, started)
+	ctx.expire() // the deadline fires only now that the request is on the server
+
+	err := awaitCallEnroll(t, errCh, "CallEnroll did not return after the deadline expired")
 	var eerr *enroll.Error
 	if !errors.As(err, &eerr) {
 		t.Fatalf("error type = %T, want *enroll.Error", err)
@@ -262,14 +320,14 @@ func TestCallEnrollTimeoutAfterTheRequestWasSentMarksTheTokenMaybeSpent(t *testi
 // three identity fields, even when the other two are present — a response
 // missing only AgentId (say) is just as useless as one missing everything.
 func TestCallEnrollTreatsAResponseMissingExactlyOneIdentityFieldAsAgentError(t *testing.T) {
-	cases := map[string]func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error){
-		"missing AgentId only": func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+	cases := map[string]func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error){
+		"missing AgentId only": func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 			return &agentv1.EnrollResponse{AgentId: "", CertificateChainPem: "cert", CaBundlePem: "ca"}, nil
 		},
-		"missing CertificateChainPem only": func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+		"missing CertificateChainPem only": func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 			return &agentv1.EnrollResponse{AgentId: "a1", CertificateChainPem: "", CaBundlePem: "ca"}, nil
 		},
-		"missing CaBundlePem only": func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+		"missing CaBundlePem only": func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 			return &agentv1.EnrollResponse{AgentId: "a1", CertificateChainPem: "cert", CaBundlePem: ""}, nil
 		},
 	}
@@ -295,7 +353,7 @@ func TestCallEnrollTreatsAResponseMissingExactlyOneIdentityFieldAsAgentError(t *
 // server's own classification (F1's connection-drop fix depends on
 // classifyBareStatus running instead in that case).
 func TestCallEnrollIgnoresErrorInfoFromAForeignDomain(t *testing.T) {
-	s := &classifyServer{answer: func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+	s := &classifyServer{answer: func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 		st, err := status.New(codes.Unavailable, "enroll refused").WithDetails(&errdetails.ErrorInfo{Reason: "TOKEN_USED", Domain: "not-sard.example"})
 		if err != nil {
 			panic(err)
@@ -326,7 +384,7 @@ func TestCallEnrollIgnoresErrorInfoFromAForeignDomain(t *testing.T) {
 // Canceled or Unavailable depending on timing) but does not reliably pin
 // down Canceled specifically; this test does, deterministically.
 func TestCallEnrollClassifiesABareCanceledStatusAsTemporary(t *testing.T) {
-	s := &classifyServer{answer: func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+	s := &classifyServer{answer: func(context.Context, *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 		return nil, status.Error(codes.Canceled, "canceled")
 	}}
 	conn := dialClassifyServer(t, s)

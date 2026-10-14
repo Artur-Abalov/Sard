@@ -86,7 +86,11 @@
     (≤ 10 с), комментарий `Close` уточнён; 0/2400. Тем же стрессом найден флейк
     `TestCallEnrollTimeoutAfterTheRequestWasSent…` (задача 12): 100 мс истекают до обработчика,
     `<-started` ждёт вечно.
-12. Горутина `classify_test.go:242` остаётся в `select {}` до конца процесса.
+12. ~~Горутина `classify_test.go:242` в `select {}`~~ — `/quick-fix` (coder → cleaner → architect,
+    APPROVED; hardener не запускался): обработчики ждут `ctx.Done()` сервера; срок клиента в
+    тесте таймаута истекает только после того, как запрос дошёл (`manualDeadlineContext`, код
+    DeadlineExceeded), все ожидания ограничены 10 с. Под нагрузкой: `TestCallEnroll` 0/800, пакет
+    0/240. Необязательное от архитектора: `t.Cleanup(srv.Stop)` в `dialClassifyServerManual`.
 13. 333 выживших мутанта агента (hardener).
 
 Часы в конструкторах не понадобились: `executor` (3,5 с на 98 тестов) и `postgresql` (5,3 с,
