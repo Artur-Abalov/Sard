@@ -334,8 +334,13 @@ that only root can change, and the entries are moved into the target when it
 is done; a restore that was killed leaves that directory, and the next run
 asks you to remove it. --overwrite is not available yet (restoring into a
 directory that is not empty, and into /, comes with a later release).
-For a snapshot of PostgreSQL the files are laid out and the commands to
-restore the database are printed; the database itself is not restored.
+A snapshot of PostgreSQL (tags postgresql.part=database or globals) is not
+laid out under paths: the agent writes <database>.dump and, if the backup has
+them, <database>.globals.sql into the root of the target, owned by root:root
+with mode 0600 (only root reads them; give them to the user of PostgreSQL
+yourself). The commands that restore the database (psql, createdb,
+pg_restore) are printed and not run, the database itself is not restored,
+and no PostgreSQL client is needed on the host. --path does not apply to it.
 
 Flags:
   --config string            path to the agent config (default /etc/sard/agent.yaml)

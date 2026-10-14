@@ -32,6 +32,7 @@ const goldenRepoID = "0fa4b1261960f1b5334694f4603c60dd52a5c2b2c8f262aa6c31a7fd5b
 type reply struct {
 	stdout, stderr string // testdata file names
 	inline         string // stdout given verbatim, for synthetic cases
+	raw            string // bytes of the raw stdout (Command.StdoutTo), as restic dump writes them
 	code           int
 	err            error
 	during         func() // runs while "restic" is running, e.g. cancel
@@ -40,6 +41,13 @@ type reply struct {
 	// (SIGTERM) makes it confirm on stderr and keep reading until EOF,
 	// then exit with 130 and no snapshot.
 	readStdin bool
+}
+
+// writeRaw gives the raw stdout, if the command asks for it.
+func (r reply) writeRaw(cmd restic.Command) {
+	if cmd.StdoutTo != nil {
+		_, _ = io.WriteString(cmd.StdoutTo, r.raw)
+	}
 }
 
 // fakeExec replays golden output instead of starting restic.
@@ -66,6 +74,7 @@ func (f *fakeExec) Run(ctx context.Context, cmd restic.Command) (int, error) {
 		return 130, nil
 	}
 	feed(f.t, r.stdout, cmd.Stdout)
+	r.writeRaw(cmd)
 	for line := range strings.Lines(r.inline) {
 		cmd.Stdout([]byte(strings.TrimSuffix(line, "\n")))
 	}

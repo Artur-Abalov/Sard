@@ -129,6 +129,9 @@ func (r *restoreRun) restore(ctx context.Context) int {
 	}
 	target := targetOf(st, who, r.deps)
 	reader := newRestic(st.cfg, st.binary, r.deps, st.repo, runAs(who))
+	if restore.KindOf(snap) != restore.KindDirectory {
+		return r.restorePostgres(ctx, reader, list, snap)
+	}
 	if f := restore.RequirePaths(ctx, reader, snap, r.opts.paths, target); f != nil {
 		return report(r.stderr, "repo restore", f)
 	}
@@ -137,6 +140,32 @@ func (r *restoreRun) restore(ctx context.Context) int {
 		return report(r.stderr, "repo restore", f)
 	}
 	return r.write(ctx, req)
+}
+
+// restorePostgres lays out a snapshot of PostgreSQL as files and tells the
+// commands that restore it (Р62). The content comes from restic dump, run as
+// the service user like the list; root writes the files itself.
+func (r *restoreRun) restorePostgres(ctx context.Context, reader *restic.CLI, list []restore.Snapshot, snap restore.Snapshot) int {
+	if len(r.opts.paths) > 0 {
+		return report(r.stderr, "repo restore", &refusal.Failure{Class: refusal.ClassUsage,
+			Detail: "--path does not apply to a PostgreSQL snapshot: it holds one file and is laid out whole"})
+	}
+	plan, f := restore.PlanPostgres(list, snap)
+	if f != nil {
+		return report(r.stderr, "repo restore", f)
+	}
+	if f := r.held.Create(); f != nil {
+		return report(r.stderr, "repo restore", f)
+	}
+	if f := restore.WritePostgres(ctx, reader, r.held, plan, r.randomName, targetOf(r.st, r.st.who, r.deps)); f != nil {
+		r.held.Abandon()
+		r.record(snap, fmt.Sprintf("restore to %s failed: %s", auditPath(r.target()), f.Reason))
+		return report(r.stderr, "repo restore", f)
+	}
+	r.held.Release()
+	r.record(snap, "restored to "+auditPath(r.target()))
+	printPostgres(r.stdout, r.st.repo.Name, snap, r.target(), plan)
+	return exitOK
 }
 
 // request is what to restore and how restic reaches the storage.
@@ -222,5 +251,16 @@ func printRestored(stdout io.Writer, repoName string, snap restore.Snapshot, tar
 	example := append(append([]string{}, paths...), snap.Paths...)
 	if len(example) > 0 {
 		_, _ = fmt.Fprintf(stdout, "The files lie in %s under their original paths, for example %s.\n", target, filepath.Join(target, example[0]))
+	}
+}
+
+func printPostgres(stdout io.Writer, repoName string, snap restore.Snapshot, target string, plan restore.PGPlan) {
+	_, _ = fmt.Fprintf(stdout, "repository %s: snapshot %s restored\n", repoName, snap.ID)
+	_, _ = fmt.Fprintf(stdout, "  time:     %s\n  source:   %s\n  run:      %s\n  target:   %s\n", snap.Stamp(), dashIfNil(snap.Source), dashIfNil(snap.Run), target)
+	for _, file := range plan.Files {
+		_, _ = fmt.Fprintf(stdout, "  file:     %s\n", filepath.Join(target, file.Name))
+	}
+	for _, line := range plan.Hints(target) {
+		_, _ = fmt.Fprintln(stdout, line)
 	}
 }

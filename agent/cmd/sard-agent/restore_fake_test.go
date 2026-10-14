@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -38,6 +39,9 @@ type fakeRestore struct {
 	before func(target string)
 	// writeNothing: restore reports success but writes no file.
 	writeNothing bool
+	// dumpFatal, if not empty, makes dump write the first half of the file
+	// and then print this line on stderr and exit with 1.
+	dumpFatal string
 }
 
 // restoreArgs are the arguments of a restore call, taken apart.
@@ -168,4 +172,27 @@ func (f *fakeRestic) ls(_ context.Context, cmd restic.Command, r *fakeRepo) (int
 		}
 	}
 	return 0, nil
+}
+
+// dump gives the content of one file of a snapshot on stdout, as restic dump
+// does; the file is /app.dump or /app.globals.sql of the set.
+func (f *fakeRestic) dump(_ context.Context, cmd restic.Command, r *fakeRepo) (int, error) {
+	id, path := cmd.Args[len(cmd.Args)-2], cmd.Args[len(cmd.Args)-1]
+	for _, file := range r.restoreState.files[id] {
+		if file.path != path {
+			continue
+		}
+		data := file.data
+		if r.restoreState.dumpFatal != "" {
+			data = data[:len(data)/2]
+		}
+		_, _ = io.WriteString(cmd.StdoutTo, data)
+		if r.restoreState.dumpFatal != "" {
+			cmd.Stderr([]byte(r.restoreState.dumpFatal))
+			return 1, nil
+		}
+		return 0, nil
+	}
+	cmd.Stderr([]byte("Fatal: path " + path + " not found in snapshot"))
+	return 1, nil
 }

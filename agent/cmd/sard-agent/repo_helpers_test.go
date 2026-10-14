@@ -238,7 +238,7 @@ func (f *fakeRestic) runRepoCommand(ctx context.Context, cmd restic.Command, sub
 		return 1, nil
 	}
 	handlers := map[string]func(context.Context, restic.Command, *fakeRepo) (int, error){
-		"cat": f.cat, "init": f.init, "snapshots": f.snapshots, "restore": f.restore, "ls": f.ls,
+		"cat": f.cat, "init": f.init, "snapshots": f.snapshots, "restore": f.restore, "ls": f.ls, "dump": f.dump,
 	}
 	if handle, ok := handlers[sub]; ok {
 		return handle(ctx, cmd, r)

@@ -309,3 +309,22 @@ func TestIntegrationANameSwappedForALinkInTheTargetWhileRestoringLeadsNowhere(t 
 		t.Errorf("something was written outside the target: %v, %v", entries, err)
 	}
 }
+
+// A8c-3: the dump of a database snapshot reaches the file byte for byte
+// (binary, larger than a pipe, no line ending) from the real restic.
+func TestIntegrationADatabaseSnapshotIsWrittenByTheAgentByteForByte(t *testing.T) {
+	h := realRestoreHost(t)
+	content := strings.Repeat("PGDMP\r\n\x00\xff binary \r", 100000)
+	h.backupStdinBase("app.dump", content, "postgresql.database=app", "postgresql.part=database", "postgresql.pg_dump_version=16.4")
+	code, stdout, stderr := h.restore(h.onlySnapshotID())
+	assertCode(t, code, exitOK)
+	if got := h.fileContent(h.target() + "/app.dump"); got != content {
+		t.Errorf("app.dump differs: %d bytes, want %d (stderr %q)", len(got), len(content), stderr)
+	}
+	if !strings.Contains(stdout, "pg_restore --no-owner --no-acl -d 'app'") {
+		t.Errorf("stdout %q", stdout)
+	}
+	if got := h.names(h.target()); len(got) != 1 {
+		t.Errorf("target holds %v", got)
+	}
+}

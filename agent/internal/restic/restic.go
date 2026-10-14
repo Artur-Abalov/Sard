@@ -204,7 +204,9 @@ func (c *CLI) Restore(ctx context.Context, snapshotID, target string) error {
 type call struct {
 	args   []string
 	stdout func(line []byte)
-	stdin  io.Reader
+	// stdoutTo, if not nil, gets the raw stdout instead of stdout.
+	stdoutTo io.Writer
+	stdin    io.Reader
 	// extra are inherited as descriptors 3, 4, ...; the password pipe of a
 	// restic that runs as root is added after them.
 	extra []*os.File
@@ -290,6 +292,7 @@ func (c *CLI) start(ctx context.Context, env []string, cl call) (*result, error)
 		Stdin:      cl.stdin,
 		ExtraFiles: cl.extra,
 		Stdout:     cl.stdout,
+		StdoutTo:   cl.stdoutTo,
 		Stderr:     res.stderr(cl.stderr),
 		StderrCopy: c.opts.Stderr,
 		RunAs:      c.opts.RunAs,

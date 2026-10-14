@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"slices"
 	"strings"
@@ -149,4 +150,15 @@ func (c *CLI) HasPath(ctx context.Context, snapshotID, path string) (bool, error
 		found = found || json.Unmarshal(line, &msg) == nil && msg.Type == "node"
 	}})
 	return found && err == nil, err
+}
+
+// Dump runs `restic dump` of one file of the snapshot and writes its content
+// to w as it comes (Р62). The lock is not taken (Н26). The caller judges w:
+// a failure of w ends restic with an error of its own, which w remembers.
+func (c *CLI) Dump(ctx context.Context, snapshotID, path string, w io.Writer) error {
+	if snapshotID == "" || path == "" {
+		return fmt.Errorf("%w: snapshot and path are required", ErrInvalidRequest)
+	}
+	_, err := c.runRepo(ctx, call{args: []string{"dump", "--no-lock", "--", snapshotID, path}, stdoutTo: w})
+	return err
 }

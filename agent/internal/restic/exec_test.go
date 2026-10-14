@@ -5,6 +5,7 @@ package restic_test
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -308,5 +309,17 @@ func TestProcessExecutorCopiesStderrUnchanged(t *testing.T) {
 	}
 	if want := []string{"warn"}; !slices.Equal(errOut.all(), want) {
 		t.Errorf("stderr = %q, want %q", errOut.all(), want)
+	}
+}
+
+// A8c-3: restic dump writes a file, not lines; StdoutTo gets the bytes as they are.
+func TestProcessExecutorGivesRawStdoutToTheWriterUnchanged(t *testing.T) {
+	var out bytes.Buffer
+	cmd := helper(t, "cat")
+	cmd.Stdin = strings.NewReader("PGDMP\r\n\x00no line end")
+	cmd.StdoutTo = &out
+	code, err := restic.ProcessExecutor{}.Run(context.Background(), cmd)
+	if code != 0 || err != nil || out.String() != "PGDMP\r\n\x00no line end" {
+		t.Fatalf("code = %d, err = %v, stdout = %q", code, err, out.String())
 	}
 }

@@ -44,6 +44,8 @@ type recordingFS struct {
 	// it; asMode is the permission every directory seems to have.
 	failLock bool
 	asMode   *fs.FileMode
+	// files: what the files made in the directories do (A8c-3).
+	files fileBehaviour
 }
 
 func newRecordingFS() *recordingFS { return &recordingFS{owners: map[string][2]int{}} }
@@ -136,6 +138,9 @@ func (i ownedInfo) Sys() any {
 }
 
 func (d recordingDir) RenameNoReplace(oldName string, newDir hostsetup.Dir, newName string) error {
+	if d.fsys.files.failRename {
+		return &fs.PathError{Op: "renameat2", Path: newName, Err: fs.ErrExist}
+	}
 	if oldName == d.fsys.failMove {
 		return &fs.PathError{Op: "renameat2", Path: newName, Err: hostsetup.ErrCrossDevice}
 	}

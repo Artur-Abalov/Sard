@@ -37,6 +37,9 @@ type Command struct {
 	// during the call. Nil discards the stream.
 	Stdout func(line []byte)
 	Stderr func(line []byte)
+	// StdoutTo, if not nil, receives stdout as the bytes come, unchanged and
+	// instead of Stdout: the content of a file `restic dump` writes.
+	StdoutTo io.Writer
 	// StderrCopy, if not nil, receives stderr unchanged, before it is
 	// split into lines (the step's log masks it as a stream, A7c).
 	StderrCopy io.Writer
@@ -80,6 +83,9 @@ func (p ProcessExecutor) Run(ctx context.Context, c Command) (int, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Credential: credentialFor(c.RunAs)}
 	stdout, stderr := &lineWriter{emit: c.Stdout}, &lineWriter{emit: c.Stderr}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = c.Stdin, stdout, stderr
+	if c.StdoutTo != nil {
+		cmd.Stdout = c.StdoutTo
+	}
 	cmd.ExtraFiles = c.ExtraFiles
 	if c.StderrCopy != nil {
 		cmd.Stderr = io.MultiWriter(c.StderrCopy, stderr)

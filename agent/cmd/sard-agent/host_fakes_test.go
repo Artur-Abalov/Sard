@@ -317,6 +317,9 @@ func (d fakeDir) RenameNoReplace(oldName string, newDir hostsetup.Dir, newName s
 	}
 	d.fsys.mu.Lock()
 	defer d.fsys.mu.Unlock()
+	if o, ok := d.fsys.owners[filepath.Join(d.Path(), oldName)]; ok {
+		d.fsys.owners[filepath.Join(newDir.Path(), newName)] = o
+	}
 	d.fsys.events = append(d.fsys.events, "dir-renamenoreplace "+filepath.Join(d.Path(), oldName)+" "+filepath.Join(newDir.Path(), newName))
 	return nil
 }
@@ -363,6 +366,9 @@ func (f *fakeDirFile) Chmod(m os.FileMode) error {
 }
 
 func (f *fakeDirFile) Write(p []byte) (int, error) {
+	f.fsys.mu.Lock()
+	f.fsys.events = append(f.fsys.events, "write "+f.Name())
+	f.fsys.mu.Unlock()
 	if err := f.fsys.fails("write", f.Name()); err != nil {
 		return 0, err
 	}

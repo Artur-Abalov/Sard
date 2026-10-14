@@ -131,7 +131,10 @@ func TestLatestSkipsTheSnapshotOfTheGlobalsOfPostgreSQL(t *testing.T) {
 	h := restoreHost(t)
 	code, _, _ := h.restore("latest", "--source", "s2")
 	assertCode(t, code, exitOK)
-	h.assertRestored(idP)
+	// a PostgreSQL snapshot is dumped, not restored (A8c-3): the file of P, and the globals as its companion
+	if calls := h.dumpCalls(); len(calls) != 2 || calls[0].args[len(calls[0].args)-2] != idP {
+		t.Fatalf("dump calls %v", calls)
+	}
 }
 
 func TestLatestWithoutASourceIsAUsageErrorNamingTheFlag(t *testing.T) {
