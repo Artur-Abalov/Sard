@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -37,8 +38,27 @@ func writeIdentity(t *testing.T, dir string) string {
 	return ca
 }
 
+// writeExecutable writes a file that a test later runs, holding
+// syscall.ForkLock while the file is open for writing. os/exec forks under
+// ForkLock.RLock, so no parallel test can fork (and leak this writable fd
+// into a child that has not yet exec'd) before the fd is closed; otherwise
+// running the file fails with "text file busy" (ETXTBSY), golang/go#22315.
+func writeExecutable(t *testing.T, path string, data []byte, mode os.FileMode) {
+	t.Helper()
+	syscall.ForkLock.Lock()
+	err := os.WriteFile(path, data, mode)
+	syscall.ForkLock.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func writeFile(t *testing.T, path string, data []byte, mode os.FileMode) {
 	t.Helper()
+	if mode&0o111 != 0 {
+		writeExecutable(t, path, data, mode)
+		return
+	}
 	if err := os.WriteFile(path, data, mode); err != nil {
 		t.Fatal(err)
 	}
@@ -80,6 +100,13 @@ func signalingServer(t *testing.T) (addr string, accepted *atomic.Int32, first <
 	return l.Addr().String(), accepted, signal
 }
 
+// eventWait is the upper bound for waits that end on an event (the first
+// accepted connection, the first registration): a passing run ends on the
+// event, not on the limit. It is generous so that load and -race do not fail
+// a test that merely started late. Tests that assert the absence of an event
+// keep their own, short windows.
+const eventWait = 10 * time.Second
+
 // contextUntil is a context that ends after limit or as soon as event is
 // closed (a nil event never fires). The caller defers the returned cancel.
 func contextUntil(limit time.Duration, event <-chan struct{}) (context.Context, context.CancelFunc) {
@@ -111,6 +138,7 @@ func requireNoKeyMaterial(t *testing.T, outputs ...string) {
 }
 
 func TestAKeyOfAnotherPairStopsTheAgentBeforeConnecting(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeIdentity(t, dir)
 	other, _ := identityPEM(t)
@@ -128,6 +156,7 @@ func TestAKeyOfAnotherPairStopsTheAgentBeforeConnecting(t *testing.T) {
 
 // A1 reports the key's permissions before the pair is compared.
 func TestKeyPermissionsAreReportedBeforeTheMismatch(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeIdentity(t, dir)
 	other, _ := identityPEM(t)
@@ -139,6 +168,7 @@ func TestKeyPermissionsAreReportedBeforeTheMismatch(t *testing.T) {
 }
 
 func TestAFileProblemNamesTheKeyAndPathNotTheContent(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		file, key string
 		data      []byte

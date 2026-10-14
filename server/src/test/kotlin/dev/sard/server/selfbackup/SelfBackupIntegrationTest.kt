@@ -4,6 +4,7 @@
 package dev.sard.server.selfbackup
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.completeOnboarding
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.InvalidConfig
 import dev.sard.server.runs.RUNS_NOW
@@ -63,11 +64,14 @@ class SelfBackupIntegrationTest(
     fun `a tenant with its built-in agent`() {
         clock.now = RUNS_NOW
         tenant.create()
+        // F6 is about the self-backup alone: the onboarding is not over, so no warning about the key copy (F4b).
+        jdbc.update("delete from onboarding_steps where step = 'keys_confirmed'")
     }
 
     @AfterTest
     fun `drop the tenant`() {
         tenant.drop()
+        completeOnboarding(jdbc)
     }
 
     private fun bind(
@@ -109,6 +113,62 @@ class SelfBackupIntegrationTest(
             assertEquals("0 3 * * *", settings.schedule.cron)
             assertEquals(settings.schedule, schedule?.let { ScheduleDraft(it.cron, it.timezone, it.enabled) })
         }
+    }
+
+    @Test
+    fun `Привязка с адресом, в котором учётные данные, отклоняется и ничего не создаёт`() {
+        val addresses =
+            listOf(
+                "rest:https://user:pass@host/repo",
+                "S3:https://AKIA:secret@host/b",
+                "s3:HTTPS://AKIA123:secret@minio.example.net/acme",
+                "https://ghp_TOKEN@host/r",
+                "s3:acme\nprod",
+                "",
+            )
+        for (address in addresses) {
+            assertFailsWith<LocationInvalid>(address) {
+                MutFlow.underTest { selfBackups.bind(tenant.id, S3_REPOSITORY, false, address) }
+            }
+        }
+
+        assertFalse(state().configured)
+        assertEquals(0, tenant.count("sources"))
+    }
+
+    @Test
+    fun `Привязка с адресом без учётных данных сохраняет его`() {
+        val address = "x".repeat(1024)
+
+        val bound = MutFlow.underTest { selfBackups.bind(tenant.id, S3_REPOSITORY, false, address) }
+
+        assertEquals(address, bound.location)
+    }
+
+    @Test
+    fun `Повторная привязка без адреса сохраняет прежний, с другим заменяет, с тем же не трогает запись`() {
+        fun updatedAt() =
+            jdbc
+                .queryForObject(
+                    "select updated_at from self_backups where tenant_id = ?",
+                    java.sql.Timestamp::class.java,
+                    tenant.id,
+                )?.toInstant()
+
+        fun rebind(where: String?) = MutFlow.underTest { selfBackups.bind(tenant.id, S3_REPOSITORY, false, where) }
+
+        val address = "s3:acme-sard/prod"
+        rebind(address)
+        clock.now = RUNS_NOW.plus(Duration.ofHours(1))
+
+        assertEquals(address, rebind(null).location)
+        assertEquals(address, rebind(address).location)
+        assertEquals(RUNS_NOW, updatedAt())
+
+        val later = RUNS_NOW.plus(Duration.ofHours(2))
+        clock.now = later
+        assertEquals("s3:acme-sard/other", rebind("s3:acme-sard/other").location)
+        assertEquals(later, updatedAt())
     }
 
     @Test

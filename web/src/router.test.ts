@@ -36,6 +36,7 @@ const sections = [
   { path: '/runs', routeId: '/_app/runs/' },
   { path: '/runs/42', routeId: '/_app/runs/$runId' },
   { path: '/settings', routeId: '/_app/settings' },
+  { path: '/settings/recovery-card', routeId: '/_app/settings_/recovery-card' },
 ] as const
 
 describe('routing', () => {
@@ -137,6 +138,7 @@ describe('routing', () => {
             setupCode: 'active',
             ca: null,
             caReplaceable: null,
+            restriction: 'full',
             steps: [
               { id: 'ca', state },
               { id: 'admin', state },
@@ -194,5 +196,36 @@ describe('routing', () => {
       adminStep('pending')
       expect(await redirectOf('/login?redirect=%2Fruns', '/login')).toMatchObject({ to: '/setup' })
     })
+  })
+})
+
+// The recovery card during the wizard (Рк15): outside the guard of the console, for an administrator session only.
+describe('the recovery card of the wizard', () => {
+  test('opens for a signed-in visitor outside the protected layout', async () => {
+    server.use(
+      http.get('/api/v1/session', ({ response }) =>
+        response(200).json({
+          tenantId: '00000000-0000-0000-0000-000000000001',
+          expiresAt: new Date().toISOString(),
+        }),
+      ),
+    )
+    const router = await load('/setup/recovery-card')
+    expect(router.state.matches.map((match) => match.routeId)).toEqual([
+      '__root__',
+      '/setup_/recovery-card',
+    ])
+  })
+
+  test('without a session the wizard decides where the visitor goes', async () => {
+    server.use(
+      http.get('/api/v1/session', ({ response }) => response(401).json(noSession, PROBLEM)),
+    )
+    const router = await load('/no-such-page')
+    const route = router.routesById['/setup_/recovery-card']
+    const beforeLoad = route.options.beforeLoad as (args: unknown) => unknown
+    const thrown = await Promise.resolve(beforeLoad({})).catch((error: unknown) => error)
+    expect(isRedirect(thrown)).toBe(true)
+    expect(thrown).toMatchObject({ options: { to: '/setup' } })
   })
 })

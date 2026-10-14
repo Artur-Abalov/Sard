@@ -23,7 +23,8 @@ import kotlin.test.assertTrue
  * Tables that describe tenants themselves, belong to tooling or to the installation as a whole (the steps of the
  * first start and the origin of the server's CA, F4a); everything else is tenant data.
  */
-private val GLOBAL_TABLES = setOf("tenants", "flyway_schema_history", "onboarding_steps", "ca_origins")
+private val GLOBAL_TABLES =
+    setOf("tenants", "flyway_schema_history", "onboarding_steps", "onboarding_marks", "ca_origins")
 
 /** ADR 0013: every row belongs to a tenant; the open core writes and reads the default one only. */
 @SpringBootTest(

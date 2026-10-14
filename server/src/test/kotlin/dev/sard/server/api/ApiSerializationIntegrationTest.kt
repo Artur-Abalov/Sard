@@ -185,6 +185,7 @@ class ApiSerializationIntegrationTest(
                 null
             },
         caReplaceable = if (withCa) true else null,
+        restriction = OnboardingRestriction.FULL,
     )
 
     private val samples: List<Any> =
@@ -271,6 +272,20 @@ class ApiSerializationIntegrationTest(
                 SelfBackupStatus.OVERDUE,
                 listOf(SelfBackupWarningCode.OVERDUE, SelfBackupWarningCode.LOCAL_STORAGE),
                 overdueSince = at,
+                repositories = listOf(SelfBackupRepository("offsite", "s3", "a1b2", local = false)),
+                plan =
+                    listOf(
+                        SelfBackupPlanItem(
+                            SystemSourceRole.SELF_DATABASE,
+                            "Sard: database",
+                            "postgresql",
+                            listOf("sard"),
+                            emptyList(),
+                        ),
+                    ),
+                firstBackupDone = true,
+                keysConfirmedAt = at,
+                passwordRevealCommand = "docker compose exec self-agent sard-agent repo password offsite --reveal",
             ),
             SelfBackup(
                 configured = false,
@@ -281,7 +296,15 @@ class ApiSerializationIntegrationTest(
                 SelfBackupStatus.NOT_CONFIGURED,
                 warnings = emptyList(),
                 overdueSince = null,
+                repositories = emptyList(),
+                plan = emptyList(),
+                firstBackupDone = false,
+                keysConfirmedAt = null,
+                passwordRevealCommand = null,
             ),
+            KeysConfirmationInput(copiedOutsideServer = true),
+            RepositoryCommand("self", "/var/lib/sard-self/self", listOf("docker compose restart self-agent")),
+            RecoveryCard("self", "s3", null, "a1b2", CA_FINGERPRINT, "0.1.0", at, "https://example.test/doc"),
             SelfBackupRuns(listOf(SelfBackupRunStarted(SystemSourceRole.SELF_DATABASE, id, id, started = false))),
             SnapshotPage(listOf(snapshot), nextCursor = null),
             ScheduleInput("30 2 * * *", "Europe/Berlin", enabled = true),
@@ -431,6 +454,7 @@ class ApiSerializationIntegrationTest(
         val NESTED =
             setOf(
                 "OnboardingStep",
+                "SelfBackupPlanItem",
                 "AgentSummary",
                 "InstallStep",
                 "ReleaseKey",

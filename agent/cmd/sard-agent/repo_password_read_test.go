@@ -43,6 +43,7 @@ func (h *repoHost) assertPasswordFilesAreOnlyPassedByPath(read *[]string) {
 }
 
 func TestRepoCommandsNeverReadThePasswordFile(t *testing.T) {
+	t.Parallel()
 	cases := map[string]func(h *repoHost) int{
 		"init": func(h *repoHost) int { code, _, _ := h.initCmd(); return code },
 		"init --generate-password, new file": func(h *repoHost) int {
@@ -58,6 +59,7 @@ func TestRepoCommandsNeverReadThePasswordFile(t *testing.T) {
 	}
 	for name, run := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			h := newRepoHost(t)
 			read := h.watchReads()
 			assertCode(t, run(h), exitOK)

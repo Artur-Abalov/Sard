@@ -11,7 +11,8 @@ GO_MODULES := agent agent/plugins/sdk cli
 # LC_ALL=C.UTF-8: Kotlin test class file names come from Cyrillic spec-quoted
 # titles; the JVM derives file-name encoding (sun.jnu.encoding) from the
 # process locale only, never from JVM flags.
-# One Gradle build at a time: the SubagentStop hook runs `make gate-fast` after every
+# One Gradle build at a time: the SubagentStop hook runs `make gate-fast M=<module>` (for the
+# changed modules, scripts/claude/gate-changed.sh) after every
 # subagent, and two builds sharing server/build corrupt each other's test results
 # (EOFException reading test-results/binary). flock is absent on macOS; there the
 # lock is skipped.
@@ -53,6 +54,8 @@ E2E_SFTP_IMAGE ?= sard-sftp:e2e
 # Extra `docker buildx build` flags for the stand images (apt): proxy settings
 # and the "build-ca" secret behind a TLS-intercepting proxy.
 E2E_BUILD_FLAGS ?=
+# One shard of the e2e classes, i/n (scripts/e2e-shard.sh, CI); empty runs them all.
+E2E_SHARD ?=
 
 GO_TOOLS := \
 	github.com/bufbuild/buf/cmd/buf \
@@ -141,9 +144,10 @@ e2e-pg-agent-images:
 	$(call agent_image_unpacked,$(DIST),$(E2E_PG18_AGENT_IMAGE),pg18-agent-image,test/e2e/agent/Dockerfile.postgres,--build-arg BASE_IMAGE=postgres:18)
 	$(call agent_image_unpacked,$(DIST),$(E2E_PG14_AGENT_IMAGE),pg14-agent-image,test/e2e/agent/Dockerfile.postgres,--build-arg BASE_IMAGE=postgres:14)
 
-## e2e-test: the end-to-end tests against the assembled images (needs Docker)
+## e2e-test: the end-to-end tests against the assembled images, E2E_SHARD=i/n for one shard (needs Docker)
 e2e-test:
-	$(GRADLE) :e2e:test -Pe2e.serverImage=$(E2E_SERVER_IMAGE) -Pe2e.agentImage=$(E2E_AGENT_IMAGE) -Pe2e.agentPgImage=$(E2E_AGENT_PG_IMAGE) \
+	@tests=; if [ -n "$(E2E_SHARD)" ]; then tests="$$(scripts/e2e-shard.sh $(E2E_SHARD))" || exit 1; echo "e2e shard $(E2E_SHARD):" $$tests; fi; \
+	$(GRADLE) :e2e:test $$(for c in $$tests; do printf -- '--tests %s ' "$$c"; done) -Pe2e.serverImage=$(E2E_SERVER_IMAGE) -Pe2e.agentImage=$(E2E_AGENT_IMAGE) -Pe2e.agentPgImage=$(E2E_AGENT_PG_IMAGE) \
 		-Pe2e.standAgentImage=$(E2E_STAND_AGENT_IMAGE) -Pe2e.sftpImage=$(E2E_SFTP_IMAGE) \
 		-Pe2e.pg18AgentImage=$(E2E_PG18_AGENT_IMAGE) -Pe2e.pg14AgentImage=$(E2E_PG14_AGENT_IMAGE) -Pe2e.version=$(VERSION)
 

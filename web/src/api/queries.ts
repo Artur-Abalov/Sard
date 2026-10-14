@@ -29,6 +29,14 @@ export const selfBackupQuery = () =>
     refetchInterval: SELF_BACKUP_POLL_MS,
   })
 
+// What the owner needs to restore from the self-backup (F4b); a 409 means there is no binding yet.
+export const recoveryCardQuery = () =>
+  queryOptions({
+    queryKey: ['recovery-card'],
+    queryFn: () => call(client.GET('/api/v1/self-backup/recovery-card')),
+    retry: false,
+  })
+
 export const agentQuery = (agentId: string) =>
   queryOptions({
     queryKey: ['agent', agentId],

@@ -350,6 +350,9 @@ class ApiContractIntegrationTest(
                 Triple("GET", "/api/v1/self-backup", null),
                 Triple("PUT", "/api/v1/self-backup/repository", """{"repositoryName":"r"}"""),
                 Triple("POST", "/api/v1/self-backup/runs", null),
+                Triple("POST", "/api/v1/self-backup/keys-confirmation", """{"copiedOutsideServer":true}"""),
+                Triple("GET", "/api/v1/self-backup/repository-command?storage=local", null),
+                Triple("GET", "/api/v1/self-backup/recovery-card", null),
             )
         val implemented =
             setOf(

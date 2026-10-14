@@ -15,6 +15,7 @@ const (
 )
 
 func TestRedactionKeepsTheCharacterAfterAToken(t *testing.T) {
+	t.Parallel()
 	for _, after := range []string{":", `"`, ")", ","} {
 		if got, want := redactIfToken("x"+redactSecret+"."+redactFingerprint+after+"y"), "x"+redactedMark+after+"y"; got != want {
 			t.Errorf("after %q: got %q, want %q", after, got, want)
@@ -23,6 +24,7 @@ func TestRedactionKeepsTheCharacterAfterAToken(t *testing.T) {
 }
 
 func TestAFullTokenIsRedactedCompletely(t *testing.T) {
+	t.Parallel()
 	for name, token := range map[string]string{
 		"with a fingerprint":    redactSecret + "." + redactFingerprint,
 		"without a fingerprint": redactSecret,
@@ -35,6 +37,7 @@ func TestAFullTokenIsRedactedCompletely(t *testing.T) {
 
 // A path that merely contains "sard_" is redacted too; the owner accepted it.
 func TestAPathWithSardUnderscoreIsStillRedacted(t *testing.T) {
+	t.Parallel()
 	if got, want := redactIfToken("/etc/sard_agent/x"), "/etc/"+redactedMark+"/x"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}

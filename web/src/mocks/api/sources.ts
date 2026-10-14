@@ -5,6 +5,7 @@ import type { components } from '../../api/schema'
 import { http } from '../http'
 import { pageOf } from '../paging'
 import { noSession, notFound, PROBLEM, problem, runActive } from '../problems'
+import { onboardingIncomplete, refusedUntilComplete } from '../restriction'
 import { state } from '../state'
 import { validateSource } from '../validation'
 
@@ -73,6 +74,7 @@ export const sourceHandlers = [
 
   http.post('/api/v1/sources', async ({ request, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
+    if (refusedUntilComplete()) return response(409).json(onboardingIncomplete, PROBLEM)
     const input = await request.json()
     const invalid = validateSource(input, state.agents)
     if (invalid !== null) return response(422).json(invalid, PROBLEM)
@@ -96,6 +98,7 @@ export const sourceHandlers = [
 
   http.put('/api/v1/sources/{sourceId}', async ({ params, request, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
+    if (refusedUntilComplete()) return response(409).json(onboardingIncomplete, PROBLEM)
     const source = state.sources.find((s) => s.id === params.sourceId)
     if (source === undefined) return response(404).json(notFound, PROBLEM)
     if (source.systemRole !== null) return response(409).json(systemSource, PROBLEM)
@@ -108,6 +111,7 @@ export const sourceHandlers = [
 
   http.delete('/api/v1/sources/{sourceId}', ({ params, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
+    if (refusedUntilComplete()) return response(409).json(onboardingIncomplete, PROBLEM)
     const index = state.sources.findIndex((s) => s.id === params.sourceId)
     if (index < 0) return response(404).json(notFound, PROBLEM)
     if (state.sources[index].systemRole !== null) return response(409).json(systemSource, PROBLEM)
@@ -120,6 +124,7 @@ export const sourceHandlers = [
 
   http.post('/api/v1/sources/{sourceId}/runs', ({ params, response }) => {
     if (!state.signedIn) return response(401).json(noSession, PROBLEM)
+    if (refusedUntilComplete()) return response(409).json(onboardingIncomplete, PROBLEM)
     const source = state.sources.find((s) => s.id === params.sourceId)
     if (source === undefined) return response(404).json(notFound, PROBLEM)
     const active = activeRun(source.id)

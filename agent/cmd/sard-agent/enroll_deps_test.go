@@ -4,6 +4,8 @@
 package main
 
 import (
+	"crypto/rand"
+
 	"github.com/Artur-Abalov/sard/agent/internal/enroll"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 )
@@ -20,5 +22,6 @@ func testEnrollDeps(hostname hostnameFunc) enrollDeps {
 		lookupUser: users(hostsetup.User{Name: "sard-agent", UID: testServiceUID, GID: testServiceUID}),
 		fs:         hostsetup.OS{},
 		chownFile:  chownOpenFile,
+		random:     rand.Reader,
 	}
 }

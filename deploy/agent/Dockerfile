@@ -78,6 +78,10 @@ RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
       /var/lib/sard-self/executor /var/lib/sard-self/restic-cache
 # The layout of the deb/rpm packages (ADR 0018).
 COPY --from=unpack /out/sard-agent /out/restic /usr/libexec/sard/
+# `docker compose exec` bypasses ENTRYPOINT: the command the console shows for the
+# repository password (sard-agent repo password <name> --reveal) needs the agent on
+# PATH, as the packages' symlink in /usr/bin provides it (nfpm.yaml). Every variant.
+RUN ln -s /usr/libexec/sard/sard-agent /usr/local/bin/sard-agent
 COPY --from=unpack /out/LICENSE /out/LICENSE.restic /out/THIRD_PARTY_LICENSES /out/NOTICE /usr/share/doc/sard-agent/
 COPY --from=unpack /out/agent.example.yaml /etc/sard/
 COPY --chmod=0644 <<EOF /etc/sard/self/agent.yaml

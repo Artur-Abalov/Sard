@@ -24,11 +24,11 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-private const val BEFORE_V1 = "202610121200"
+private const val BEFORE_V1 = "202610121300"
 private const val SCHEMA = "agent_role_migration"
 private val T0 = Timestamp.from(Instant.parse("2026-10-12T12:00:00Z"))
 
-/** Migration V202610121300 (V1): the role and machine id columns, on a schema of its own. */
+/** Migration V202610141200 (V1): the role and machine id columns, on a schema of its own. */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = ["spring.grpc.server.port=0", QUIET_LOOP],

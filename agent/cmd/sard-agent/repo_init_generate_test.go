@@ -35,6 +35,7 @@ func (h *repoHost) readPass(path string) string {
 
 // С флагом генерации отсутствующий файл пароля создаётся и репозиторий инициализируется
 func TestWithTheGenerateFlagAMissingPasswordFileIsCreatedAndTheRepositoryInitialised(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.removePass()
 	code, _, stderr := h.initCmd("--generate-password")
@@ -69,6 +70,7 @@ func TestTheCreatedPasswordFileIsOwnerOnlyWhateverTheUmask(t *testing.T) {
 
 // Созданный пароль — 43 символа base64url и перевод строки
 func TestTheCreatedPasswordIs43Base64urlCharactersAndALineBreak(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.removePass()
 	h.initCmd("--generate-password")
@@ -79,6 +81,7 @@ func TestTheCreatedPasswordIs43Base64urlCharactersAndALineBreak(t *testing.T) {
 
 // Два созданных пароля различаются
 func TestTwoCreatedPasswordsDiffer(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.removePass()
 	if err := os.Remove(h.pass2()); err != nil {
@@ -96,6 +99,7 @@ func first(code int, _, _ string) int { return code }
 
 // Созданный пароль не попадает в вывод
 func TestTheCreatedPasswordIsNotPrinted(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.removePass()
 	_, stdout, stderr := h.initCmd("--generate-password")
@@ -107,6 +111,7 @@ func TestTheCreatedPasswordIsNotPrinted(t *testing.T) {
 
 // Итог успеха говорит, что пароль сгенерирован
 func TestTheSummarySaysThePasswordWasGenerated(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.removePass()
 	_, stdout, _ := h.initCmd("--generate-password")
@@ -117,6 +122,7 @@ func TestTheSummarySaysThePasswordWasGenerated(t *testing.T) {
 
 // Существующий файл пароля с флагом генерации не перезаписывается
 func TestAnExistingPasswordFileIsNotOverwrittenByTheGenerateFlag(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	before := h.snapshot()
 	code, stdout, _ := h.initCmd("--generate-password")
@@ -135,6 +141,7 @@ func TestAnExistingPasswordFileIsNotOverwrittenByTheGenerateFlag(t *testing.T) {
 
 // Существующий файл пароля с широкими правами флаг генерации не спасает
 func TestTheGenerateFlagDoesNotRescueAWidePasswordFile(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	if err := os.Chmod(h.pass(), 0o644); err != nil {
 		t.Fatal(err)
@@ -148,6 +155,7 @@ func TestTheGenerateFlagDoesNotRescueAWidePasswordFile(t *testing.T) {
 
 // Файл пароля нельзя создать — ошибка записи
 func TestAPasswordFileThatCannotBeCreatedIsAWriteError(t *testing.T) {
+	t.Parallel()
 	missingDir := func(h *repoHost) string {
 		h.cfg.Repositories[0].PasswordFile = h.path("no-such-dir/main.pass")
 		return h.path("no-such-dir")
@@ -183,6 +191,7 @@ func TestAPasswordFileThatCannotBeCreatedIsAWriteError(t *testing.T) {
 
 // Файл пароля не создаётся, если restic непригоден
 func TestThePasswordFileIsNotCreatedWhenResticIsUnusable(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.removePass()
 	h.cfg.Restic.Path = h.path("nowhere/restic")
@@ -197,6 +206,7 @@ func TestThePasswordFileIsNotCreatedWhenResticIsUnusable(t *testing.T) {
 
 // Созданный файл пароля остаётся после неудачи инициализации
 func TestTheCreatedPasswordFileStaysAfterAFailedInitialisation(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.removePass()
 	h.main().fatal = "dial tcp 127.0.0.1:9: connect: connection refused"
@@ -213,6 +223,7 @@ func TestTheCreatedPasswordFileStaysAfterAFailedInitialisation(t *testing.T) {
 
 // Файл пароля, созданный командой, проходит проверку при старте агента
 func TestThePasswordFileOfTheCommandPassesTheChecksOfTheAgentStart(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.removePass()
 	assertCode(t, first(h.initCmd("--generate-password")), exitOK)
@@ -227,6 +238,7 @@ func TestThePasswordFileOfTheCommandPassesTheChecksOfTheAgentStart(t *testing.T)
 
 // Истечение таймаута сохраняет созданный файл пароля
 func TestATimeoutKeepsTheCreatedPasswordFile(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.removePass()
 	h.main().hangInit = true

@@ -40,6 +40,7 @@ var base64URL43 = regexp.MustCompile(`^[A-Za-z0-9_-]{43}\n$`)
 // Rule "repo add подключает локальное хранилище одной командой".
 
 func TestAnEmptyRepositoryIsCreatedWithAGeneratedPassword(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, stderr := h.add()
 	assertCode(t, code, exitOK)
@@ -58,6 +59,7 @@ func TestAnEmptyRepositoryIsCreatedWithAGeneratedPassword(t *testing.T) {
 }
 
 func TestResticOpensTheNewRepositoryWithTheGeneratedPasswordFile(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.add()
 	for _, c := range h.restic.callsTo(h.extraDir(), "cat") {
@@ -72,6 +74,7 @@ func TestResticOpensTheNewRepositoryWithTheGeneratedPasswordFile(t *testing.T) {
 }
 
 func TestTheFragmentOfANewRepositoryIsWrittenAndTheMainConfigIsNot(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	mainBefore := h.fileContent(h.cfgPath)
 	h.add()
@@ -87,6 +90,7 @@ func TestTheFragmentOfANewRepositoryIsWrittenAndTheMainConfigIsNot(t *testing.T)
 }
 
 func TestTheSummaryNamesTheRepositoryAndAsksForACopyOfThePassword(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, stderr := h.add()
 	assertCode(t, code, exitOK)
@@ -105,6 +109,7 @@ func TestTheSummaryNamesTheRepositoryAndAsksForACopyOfThePassword(t *testing.T) 
 }
 
 func TestALocalRepositoryWarnsThatTheBackupIsLostWithTheHost(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	_, stdout, _ := h.add()
 	if !strings.Contains(stdout, "lost together with this host") {
@@ -113,6 +118,7 @@ func TestALocalRepositoryWarnsThatTheBackupIsLostWithTheHost(t *testing.T) {
 }
 
 func TestMissingParentDirectoriesAreCreatedForRoot(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	target := h.path("a/b/repo")
 	code, _, _ := h.sudo("repo", "add", "extra", target, "--config", "C")
@@ -128,6 +134,7 @@ func TestMissingParentDirectoriesAreCreatedForRoot(t *testing.T) {
 }
 
 func TestARepositoryDirectoryThatCannotBeCreatedIsAWriteErrorWithoutTraces(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.fsys.failOn, h.fsys.failPath = "mkdir", "repo-extra"
 	code, _, stderr := h.add()
@@ -142,6 +149,7 @@ func TestARepositoryDirectoryThatCannotBeCreatedIsAWriteErrorWithoutTraces(t *te
 }
 
 func TestAnExistingEmptyDirectoryBecomesTheServiceUsers(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	ok(t, os.Mkdir(h.extraDir(), 0o755))
 	code, _, _ := h.add()
@@ -150,6 +158,7 @@ func TestAnExistingEmptyDirectoryBecomesTheServiceUsers(t *testing.T) {
 }
 
 func TestAnExistingRepositoryIsAttachedByItsPasswordFromStandardInput(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	r := h.existingRepository(passMarker)
 	h.stdinIs(passMarker + "\n")
@@ -171,6 +180,7 @@ func TestAnExistingRepositoryIsAttachedByItsPasswordFromStandardInput(t *testing
 }
 
 func TestTheOnlyPasswordOfAnExistingRepositoryCanBeTypedAtTheTerminal(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.existingRepository(passMarker)
 	term := h.terminalIs(passMarker, passMarker)
@@ -183,6 +193,7 @@ func TestTheOnlyPasswordOfAnExistingRepositoryCanBeTypedAtTheTerminal(t *testing
 }
 
 func TestThePasswordOfAnExistingRepositoryCanBeGivenInAFile(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.existingRepository(passMarker)
 	src := h.path("outside/F")
@@ -192,6 +203,7 @@ func TestThePasswordOfAnExistingRepositoryCanBeGivenInAFile(t *testing.T) {
 }
 
 func TestAnExistingRepositoryWithoutASourceAndATerminalIsRefusedAtOnce(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.existingRepository(passMarker)
 	h.hung = &hungInput{}
@@ -211,6 +223,7 @@ func TestAnExistingRepositoryWithoutASourceAndATerminalIsRefusedAtOnce(t *testin
 }
 
 func TestAWrongPasswordLeavesNoTraces(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.existingRepository("another password")
 	h.stdinIs(passMarker)
@@ -237,6 +250,7 @@ func (h *setupHost) assertNoTemporaryFiles(dirs ...string) {
 }
 
 func TestAGivenPasswordCreatesTheEmptyRepository(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.stdinIs(passMarker + "\n")
 	code, stdout, stderr := h.add("--password-stdin")
@@ -252,6 +266,7 @@ func TestAGivenPasswordCreatesTheEmptyRepository(t *testing.T) {
 }
 
 func TestAnEmptyRepositoryDoesNotAskForAPasswordAtTheTerminal(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	term := h.terminalIs()
 	code, _, _ := h.add()
@@ -265,6 +280,7 @@ func TestAnEmptyRepositoryDoesNotAskForAPasswordAtTheTerminal(t *testing.T) {
 }
 
 func TestAnExistingRepositoryOfAnotherOwnerBelongsToTheServiceUserAfterwards(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.existingRepository(passMarker)
 	ok(t, os.MkdirAll(filepath.Join(h.extraDir(), "data", "00"), 0o755))
@@ -281,6 +297,7 @@ func TestAnExistingRepositoryOfAnotherOwnerBelongsToTheServiceUserAfterwards(t *
 }
 
 func TestRepeatingRepoAddChangesNothingAndAsksNothing(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	_, first, _ := h.add()
 	id := hexID.FindString(first)
@@ -301,6 +318,7 @@ func TestRepeatingRepoAddChangesNothingAndAsksNothing(t *testing.T) {
 }
 
 func TestTheSameNameWithAnotherAddressIsRefused(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.add()
 	h.sd.calls, h.log.lines = nil, nil
@@ -316,6 +334,7 @@ func TestTheSameNameWithAnotherAddressIsRefused(t *testing.T) {
 }
 
 func TestAnAddressedNameOfTheMainConfigIsRefused(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	before := h.hostTree()
 	code, _, stderr := h.sudo("repo", "add", "base", h.extraDir(), "--config", "C")
@@ -327,6 +346,7 @@ func TestAnAddressedNameOfTheMainConfigIsRefused(t *testing.T) {
 }
 
 func TestUnusableLocalPathsAreRefused(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.write(h.path("file"), "x", 0o600)
 	for _, path := range []string{"relative-dir", h.path("file")} {
@@ -341,6 +361,7 @@ func TestUnusableLocalPathsAreRefused(t *testing.T) {
 }
 
 func TestMalformedRepoAddCommandLinesAreUsageErrors(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{
 		{"repo", "add", "--config", "C"},
 		{"repo", "add", "extra", "--config", "C"},
@@ -359,6 +380,7 @@ func TestMalformedRepoAddCommandLinesAreUsageErrors(t *testing.T) {
 }
 
 func TestAResticRefusalWhileCreatingKeepsThePasswordAndWritesNoFragment(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.restic.repo(h.extraDir()).initFatal = "permission denied"
 	code, _, stderr := h.add()
@@ -376,6 +398,7 @@ func TestAResticRefusalWhileCreatingKeepsThePasswordAndWritesNoFragment(t *testi
 }
 
 func TestRepeatingAfterAFailureUsesTheLeftoverPasswordFile(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.write(h.path("secrets/restic-extra.pass"), "Q\n", 0o600)
 	code, _, _ := h.add()
@@ -390,6 +413,7 @@ func TestRepeatingAfterAFailureUsesTheLeftoverPasswordFile(t *testing.T) {
 }
 
 func TestRepeatingAfterAFailureAttachesTheRepositoryTheLeftoverOpens(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.write(h.path("secrets/restic-extra.pass"), "Q\n", 0o600)
 	h.existingRepository("Q")
@@ -403,6 +427,7 @@ func TestRepeatingAfterAFailureAttachesTheRepositoryTheLeftoverOpens(t *testing.
 }
 
 func TestALeftoverThatDoesNotOpenTheRepositoryAsksForThePassword(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.write(h.path("secrets/restic-extra.pass"), "stale\n", 0o600)
 	h.existingRepository(passMarker)
@@ -426,6 +451,7 @@ func (h *setupHost) startAs(ctx context.Context, args ...string) <-chan cmdResul
 }
 
 func TestATimeoutOfRepoAddIsTemporaryAndWritesNoFragment(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	r := h.restic.repo(h.extraDir())
 	r.hangInit = true
@@ -442,6 +468,7 @@ func TestATimeoutOfRepoAddIsTemporaryAndWritesNoFragment(t *testing.T) {
 }
 
 func TestAnInterruptOfRepoAddIsTemporaryAndWritesNoFragment(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	r := h.restic.repo(h.extraDir())
 	r.hangInit = true
@@ -455,6 +482,7 @@ func TestAnInterruptOfRepoAddIsTemporaryAndWritesNoFragment(t *testing.T) {
 }
 
 func TestAnUnusableResticIsRefusedBeforeAnythingIsCreated(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.cfg.Restic.Path = h.path("no-restic")
 	h.saveConfig()
@@ -466,6 +494,7 @@ func TestAnUnusableResticIsRefusedBeforeAnythingIsCreated(t *testing.T) {
 }
 
 func TestWithoutTheResticCacheDirectoryRepoAddIsAWriteErrorBeforeTheRepositoryDirectory(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	ok(t, os.Remove(h.cacheDir()))
 	code, _, stderr := h.add()
@@ -474,6 +503,7 @@ func TestWithoutTheResticCacheDirectoryRepoAddIsAWriteErrorBeforeTheRepositoryDi
 }
 
 func TestAnInitOfTheSameNameInProgressBlocksRepoAdd(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	unlock, err := repoinit.Lock(os.OpenFile, repoinit.LockPath(h.cacheDir(), "extra"))
 	ok(t, err)
@@ -483,6 +513,7 @@ func TestAnInitOfTheSameNameInProgressBlocksRepoAdd(t *testing.T) {
 }
 
 func TestOnASystemdHostTheServiceMayWriteToTheRepositoryDirectory(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, _ := h.add()
 	assertCode(t, code, exitOK)
@@ -505,6 +536,7 @@ func TestOnASystemdHostTheServiceMayWriteToTheRepositoryDirectory(t *testing.T) 
 }
 
 func TestWithoutSystemdNoDropInIsMade(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.sd.present = false
 	code, _, _ := h.add()
@@ -513,6 +545,7 @@ func TestWithoutSystemdNoDropInIsMade(t *testing.T) {
 }
 
 func TestRepoAddIsAppliedAndAudited(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, _ := h.add()
 	assertCode(t, code, exitOK)
@@ -524,6 +557,7 @@ func TestRepoAddIsAppliedAndAudited(t *testing.T) {
 }
 
 func TestAnAddedRepositoryIsSeenByTheNextCommands(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	_, first, _ := h.add()
 	id := hexID.FindString(first)
@@ -535,6 +569,7 @@ func TestAnAddedRepositoryIsSeenByTheNextCommands(t *testing.T) {
 }
 
 func TestADropInThatCannotBeWrittenStopsBeforeTheFragment(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.fsys.failOn, h.fsys.failPath = "mkdir", "dropin"
 	code, _, stderr := h.add()
@@ -543,6 +578,7 @@ func TestADropInThatCannotBeWrittenStopsBeforeTheFragment(t *testing.T) {
 }
 
 func TestAFragmentThatCannotBeWrittenAfterTheRepositoryIsMadeIsAWriteError(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.fsys.failOn, h.fsys.failPath = "rename", "repo-extra.yaml"
 	code, _, stderr := h.add()
@@ -556,6 +592,7 @@ func TestAFragmentThatCannotBeWrittenAfterTheRepositoryIsMadeIsAWriteError(t *te
 // Rule "repo remove убирает репозиторий только из настройки хоста".
 
 func TestRemovingARepositoryKeepsTheDataAndThePassword(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.add()
 	h.sd.calls, h.log.lines = nil, nil
@@ -584,6 +621,7 @@ func TestRemovingARepositoryKeepsTheDataAndThePassword(t *testing.T) {
 }
 
 func TestTheRemovalSummaryWarnsAboutServerSourcesAndNamesTheRemainingPassword(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.add()
 	_, stdout, _ := h.sudo("repo", "remove", "extra", "--config", "C")
@@ -595,6 +633,7 @@ func TestTheRemovalSummaryWarnsAboutServerSourcesAndNamesTheRemainingPassword(t 
 }
 
 func TestAddingAgainAfterARemovalAsksNoPassword(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.add()
 	h.sudo("repo", "remove", "extra", "--config", "C")
@@ -609,6 +648,7 @@ func TestAddingAgainAfterARemovalAsksNoPassword(t *testing.T) {
 }
 
 func TestRemovingARepositoryThatIsNotThereDoesNothing(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	before := h.hostTree()
 	code, stdout, _ := h.sudo("repo", "remove", "nope", "--config", "C")
@@ -620,6 +660,7 @@ func TestRemovingARepositoryThatIsNotThereDoesNothing(t *testing.T) {
 }
 
 func TestARepositoryOfTheMainConfigIsNotRemoved(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	before := h.hostTree()
 	code, _, stderr := h.sudo("repo", "remove", "base", "--config", "C")
@@ -631,6 +672,7 @@ func TestARepositoryOfTheMainConfigIsNotRemoved(t *testing.T) {
 }
 
 func TestRemovingKeepsTheEnvFileSomethingElseUsesAndRemovesItsOwn(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	env := h.path("secrets/extra.env")
 	h.write(env, "K=V\n", 0o600)
@@ -641,6 +683,7 @@ func TestRemovingKeepsTheEnvFileSomethingElseUsesAndRemovesItsOwn(t *testing.T) 
 }
 
 func TestAnEnvFileOutsideTheSecretsDirectoryIsKept(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	env := h.path("elsewhere/extra.env")
 	h.write(env, "K=V\n", 0o600)
@@ -653,6 +696,7 @@ func TestAnEnvFileOutsideTheSecretsDirectoryIsKept(t *testing.T) {
 }
 
 func TestADropInThatCannotBeRemovedIsAWriteError(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.add()
 	h.fsys.failOn, h.fsys.failPath = "remove", "sard-repo-extra.conf"
@@ -661,6 +705,7 @@ func TestADropInThatCannotBeRemovedIsAWriteError(t *testing.T) {
 }
 
 func TestAPasswordFileAnotherKeyRefersToIsNotTakenOver(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.cfg.Repositories[0].PasswordFile = h.path("secrets/restic-extra.pass")
 	h.saveConfig()
@@ -676,6 +721,7 @@ func TestAPasswordFileAnotherKeyRefersToIsNotTakenOver(t *testing.T) {
 }
 
 func TestAPathWithAControlCharacterIsRefusedAndLeavesNoDropIn(t *testing.T) {
+	t.Parallel()
 	for _, path := range []string{"/srv/a\nExecStartPre=+/bin/true", "/srv/a\tb", "/srv/a\x7fb", "/srv/a\x00b"} {
 		h := newSetupHost(t)
 		before := h.hostTree()
@@ -687,6 +733,7 @@ func TestAPathWithAControlCharacterIsRefusedAndLeavesNoDropIn(t *testing.T) {
 }
 
 func TestAnAddressInTheSummaryNeverShowsACredential(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	c := newHostCmd("repo add", hostOptions{configPath: h.cfgPath}, hostsetup.Principal{}, &bytes.Buffer{}, &bytes.Buffer{}, h.deps)
 	var out bytes.Buffer
@@ -700,6 +747,7 @@ func TestAnAddressInTheSummaryNeverShowsACredential(t *testing.T) {
 }
 
 func TestAnAddressThatIsASymbolicLinkIsRefusedAndNothingIsChanged(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	target := h.path("elsewhere")
 	ok(t, os.Mkdir(target, 0o755))
@@ -718,6 +766,7 @@ func TestAnAddressThatIsASymbolicLinkIsRefusedAndNothingIsChanged(t *testing.T) 
 }
 
 func TestAnAddressThatPassesThroughASymbolicLinkIsRefusedAndNothingIsChanged(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	real := h.path("var")
 	ok(t, os.MkdirAll(filepath.Join(real, "backups"), 0o755))

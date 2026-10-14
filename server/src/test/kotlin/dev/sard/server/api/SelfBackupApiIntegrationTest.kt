@@ -103,7 +103,8 @@ class SelfBackupApiIntegrationTest(
         assertEquals(REPOSITORY_ID, json.path("repository").path("repositoryId").asString())
         assertFalse(json.path("repository").path("local").asBoolean())
         assertEquals("ok", json.path("status").asString())
-        assertEquals(0, json.path("warnings").size())
+        // The onboarding is over in these tests and nobody confirmed the key copy of this binding (F4b, OQ-206).
+        assertEquals(listOf("keys_unconfirmed"), json.path("warnings").list().map { it.asString() })
         assertEquals(
             listOf("self_database", "self_keys"),
             json.path("sources").list().map { it.path("role").asString() },
@@ -144,7 +145,7 @@ class SelfBackupApiIntegrationTest(
                 .asBoolean(),
         )
         assertEquals(
-            listOf("local_storage"),
+            listOf("local_storage", "keys_unconfirmed"),
             bound.json
                 .path("warnings")
                 .list()

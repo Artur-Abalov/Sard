@@ -14,6 +14,7 @@ import (
 
 // Неизвестное имя репозитория — ошибка со списком известных имён
 func TestAnUnknownRepositoryNameIsAnErrorListingTheKnownNames(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	before := h.snapshot()
 	code, stdout, stderr := h.run("init", "--config", "C", "backup")
@@ -33,6 +34,7 @@ func TestAnUnknownRepositoryNameIsAnErrorListingTheKnownNames(t *testing.T) {
 
 // Имя репозитория сравнивается с учётом регистра
 func TestTheRepositoryNameIsCaseSensitive(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	code, _, stderr := h.run("init", "--config", "C", "Main")
 	assertCode(t, code, exitUsage)
@@ -41,6 +43,7 @@ func TestTheRepositoryNameIsCaseSensitive(t *testing.T) {
 
 // Конфиг без репозиториев — сообщение говорит, что их нет
 func TestAConfigWithoutRepositoriesSaysSo(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.cfg.Repositories = nil
 	h.saveConfig()
@@ -56,6 +59,7 @@ func TestAConfigWithoutRepositoriesSaysSo(t *testing.T) {
 
 // Справка описывает подкоманду, флаги и коды выхода
 func TestHelpDescribesTheSubcommandTheFlagsAndTheExitCodes(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	code, stdout, _ := h.run("init", "--help")
 	assertCode(t, code, exitOK)
@@ -78,6 +82,7 @@ func TestHelpDescribesTheSubcommandTheFlagsAndTheExitCodes(t *testing.T) {
 
 // Ошибка вызова — ошибка использования
 func TestAMalformedInvocationIsAUsageError(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{
 		{"--config", "C"},
 		{"init", "--config", "C"},
@@ -97,6 +102,7 @@ func TestAMalformedInvocationIsAUsageError(t *testing.T) {
 
 // Пароль и ключи флагами не принимаются
 func TestPasswordsAndKeysAreNotAcceptedAsFlags(t *testing.T) {
+	t.Parallel()
 	for _, extra := range [][]string{
 		{"--password", passMarker},
 		{"--password-file", "P"},
@@ -113,6 +119,7 @@ func TestPasswordsAndKeysAreNotAcceptedAsFlags(t *testing.T) {
 
 // Флаги принимаются и после имени репозитория
 func TestFlagsAreAcceptedAfterTheRepositoryName(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	code, _, stderr := h.run("init", "main", "--config", "C")
 	assertCode(t, code, exitOK)
@@ -123,6 +130,7 @@ func TestFlagsAreAcceptedAfterTheRepositoryName(t *testing.T) {
 
 // Без флага конфига используется конфиг службы по умолчанию
 func TestWithoutTheConfigFlagTheServiceConfigIsUsed(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	if got := productionHostDeps().defaultConfig; got != "/etc/sard/agent.yaml" {
 		t.Fatalf("default config = %q", got)
@@ -137,6 +145,7 @@ func TestWithoutTheConfigFlagTheServiceConfigIsUsed(t *testing.T) {
 
 // Отсутствующий конфиг — ошибка использования
 func TestAMissingConfigIsAUsageError(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	missing := h.path("nope/agent.yaml")
 	code, _, stderr := h.run("init", "--config", missing, "main")
@@ -149,6 +158,7 @@ func TestAMissingConfigIsAUsageError(t *testing.T) {
 
 // Невалидный конфиг — ошибка использования
 func TestAnInvalidConfigIsAUsageError(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.cfg.Repositories[0].URL = ""
 	h.saveConfig()
@@ -162,6 +172,7 @@ func TestAnInvalidConfigIsAUsageError(t *testing.T) {
 
 // Недопустимый таймаут — ошибка использования
 func TestAnInvalidTimeoutIsAUsageError(t *testing.T) {
+	t.Parallel()
 	for _, value := range []string{"0s", "-1s", "abc"} {
 		h := newRepoHost(t)
 		code, _, stderr := h.initCmd("--timeout", value)

@@ -184,6 +184,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/self-backup/keys-confirmation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm that the repository password and the storage access are kept outside the server
+         * @description Does the step keys_confirmed; the first confirmation ends the onboarding. Repeating it changes nothing. 409 self_backup_not_configured before a repository is bound; 409 first_backup_pending before both system sources backed up after the binding; 422 validation_failed unless copiedOutsideServer is true.
+         */
+        post: operations["confirmKeys"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/setup-session": {
         parameters: {
             query?: never;
@@ -377,6 +397,46 @@ export interface paths {
         };
         /** The self-backup's state */
         get: operations["getSelfBackup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/self-backup/repository-command": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The commands that add a repository to the built-in agent
+         * @description Built from parameters that are no secrets; nothing is written. The key id and the secret key of an S3 storage are asked in the terminal. 422 validation_failed names the field; 422 self_agent_missing without a built-in agent.
+         */
+        get: operations["repositoryCommand"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/self-backup/recovery-card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The recovery card
+         * @description Where the storage is and which CA the server has, to keep with the repository password.
+         */
+        get: operations["recoveryCard"];
         put?: never;
         post?: never;
         delete?: never;
@@ -635,7 +695,7 @@ export interface components {
             };
         };
         /** @enum {string} */
-        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "agent_role_mismatch" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured" | "setup_required" | "setup_completed" | "ca_step_pending" | "wrong_password";
+        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "agent_role_mismatch" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured" | "setup_required" | "setup_completed" | "ca_step_pending" | "wrong_password" | "onboarding_incomplete" | "first_backup_pending";
         /** @description An error (RFC 9457) */
         Problem: {
             /** @description URI reference identifying the problem type; about:blank when the status says it all */
@@ -778,6 +838,8 @@ export interface components {
             repositoryName: string;
             /** @description Required true for a local repository: a copy on the server's own machine is lost with the machine */
             confirmLocalStorage?: boolean;
+            /** @description The storage address the wizard built the command for, without credentials; shown on the recovery card. At most 1024 characters, no control characters, no user:password@ */
+            location?: string | null;
         };
         /** @description The self-backup of the installation: the database, the CA and the configuration */
         SelfBackup: {
@@ -806,6 +868,19 @@ export interface components {
              * @description When a system source went overdue: the earliest deadline it missed; null if none
              */
             overdueSince: string | null;
+            /** @description The repositories of the live built-in agent's last Register, by name, bound or not; empty without one */
+            repositories: components["schemas"]["SelfBackupRepository"][];
+            /** @description What the system sources back up, whether configured or not */
+            plan: components["schemas"]["SelfBackupPlanItem"][];
+            /** @description Both system sources backed up successfully with runs queued at or after boundAt; false until configured */
+            firstBackupDone: boolean;
+            /**
+             * Format: date-time
+             * @description When the key copy of the current binding was confirmed; null if not, or if confirmed before boundAt
+             */
+            keysConfirmedAt: string | null;
+            /** @description The command that prints the repository password on the server's machine; null until configured */
+            passwordRevealCommand: string | null;
         };
         /** @description A system source's last finished run */
         SelfBackupLastRun: {
@@ -814,6 +889,15 @@ export interface components {
             status: components["schemas"]["RunStatus"];
             /** Format: date-time */
             finishedAt: string;
+        };
+        /** @description What a system source backs up, for the wizard to show before the binding; no secrets */
+        SelfBackupPlanItem: {
+            role: components["schemas"]["SystemSourceRole"];
+            name: string;
+            plugin: string;
+            /** @description What goes into the backup: paths, or the database and where it is */
+            includes: string[];
+            excludes: string[];
         };
         /** @description Where the self-backup goes, as the built-in agent's last Register describes it */
         SelfBackupRepository: {
@@ -842,7 +926,7 @@ export interface components {
         /** @enum {string} */
         SelfBackupStatus: "not_configured" | "ok" | "agent_replaced" | "overdue" | "failing" | "schedule_disabled";
         /** @enum {string} */
-        SelfBackupWarningCode: "agent_replaced" | "overdue" | "failing" | "schedule_disabled" | "local_storage";
+        SelfBackupWarningCode: "agent_replaced" | "overdue" | "failing" | "schedule_disabled" | "local_storage" | "keys_unconfirmed";
         /** @description The source already has an active run (D6); no new run was created (RFC 9457) */
         RunActiveProblem: {
             /** @description URI reference identifying the problem type; about:blank when the status says it all */
@@ -1002,6 +1086,11 @@ export interface components {
         /** @description The runs "back up now" follows: one per system source, database first */
         SelfBackupRuns: {
             runs: components["schemas"]["SelfBackupRunStarted"][];
+        };
+        /** @description The owner's confirmation that the repository password and the storage access are kept */
+        KeysConfirmationInput: {
+            /** @description Must be true: a copy of the repository password and of the storage access is kept */
+            copiedOutsideServer?: boolean | null;
         };
         /** @description The setup code printed in the server's log */
         SetupCodeRequest: {
@@ -1265,6 +1354,32 @@ export interface components {
              */
             expiresAt: string;
         };
+        /** @description The commands for a terminal on the server's machine that add a repository to the built-in agent */
+        RepositoryCommand: {
+            /** @description The name the repository will have: the first free of self, self-2, ... */
+            repositoryName: string;
+            /** @description The address of the repository, without credentials */
+            address: string;
+            /** @description In the order to run them; the key id and the secret key are asked in the terminal */
+            commands: string[];
+        };
+        /** @description What the owner needs to restore from the self-backup; no password, no credentials */
+        RecoveryCard: {
+            repositoryName: string;
+            /** @description restic backend scheme: s3, sftp, local, ... */
+            backend: string;
+            /** @description The storage address the wizard recorded; null when none was */
+            location: string | null;
+            /** @description restic repository id; null until the agent reads it */
+            repositoryId: string | null;
+            /** @description SHA-256 fingerprint of the server's CA */
+            caFingerprint: string;
+            sardVersion: string;
+            /** Format: date-time */
+            generatedAt: string;
+            /** @description Where the restore procedure is described, for this version of the server */
+            recoveryProcedure: string;
+        };
         /** @description A schedule as it would be saved, in words, with its nearest fires; nothing is stored */
         SchedulePreview: {
             /** @description Five fields, single-spaced, as PUT schedule would store it */
@@ -1405,12 +1520,18 @@ export interface components {
             ca: components["schemas"]["CaInfo"] | null;
             /** @description True while the CA may still be replaced by an import: the ca step is not done and no agent certificate was issued; null without a session */
             caReplaceable: boolean | null;
+            restriction: components["schemas"]["OnboardingRestriction"];
         };
         /**
          * @description Which session came with the request
          * @enum {string}
          */
         OnboardingAccess: "none" | "setup" | "admin";
+        /**
+         * @description What the server refuses until the self-backup and the key copy are confirmed: full: every change but the self-backup's own and the session's; new_agents: only issuing enrollment tokens (an installation upgraded with agents or sources); none: onboarding is complete
+         * @enum {string}
+         */
+        OnboardingRestriction: "full" | "new_agents" | "none";
         /** @description A step of the wizard and where it stands */
         OnboardingStep: {
             id: components["schemas"]["OnboardingStepId"];
@@ -1422,7 +1543,7 @@ export interface components {
          */
         OnboardingStepId: "ca" | "admin" | "self_backup" | "keys_confirmed";
         /**
-         * @description upcoming: the step is not part of this version of the wizard yet
+         * @description upcoming: an earlier step is not done yet
          * @enum {string}
          */
         OnboardingStepState: "done" | "pending" | "upcoming";
@@ -1654,13 +1775,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The server keeps this source itself (system_source); nothing was changed */
+            /** @description The server keeps this source itself (system_source); nothing was changed; or the onboarding is not complete */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"] | components["schemas"]["Problem"];
                 };
             };
             /** @description Rejected values; errors name the fields */
@@ -1728,13 +1849,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The source has an active run (activeRunId), or the server keeps it itself (code) */
+            /** @description The source has an active run (activeRunId), or the server keeps it itself (code); or the onboarding is not complete */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["RunActiveProblem"] | components["schemas"]["Problem"];
+                    "application/problem+json": (components["schemas"]["RunActiveProblem"] | components["schemas"]["Problem"]) | components["schemas"]["Problem"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */
@@ -1841,6 +1962,15 @@ export interface operations {
             };
             /** @description Not found in the session's tenant */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The onboarding is not complete (onboarding_incomplete); or the onboarding is not complete */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2101,6 +2231,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The onboarding is not complete (onboarding_incomplete); or the onboarding is not complete */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Rejected values; errors name the fields */
             422: {
                 headers: {
@@ -2168,13 +2307,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The source has an active run (activeRunId), or the run cannot start (code) */
+            /** @description The source has an active run (activeRunId), or the run cannot start (code); or the onboarding is not complete */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["RunActiveProblem"] | components["schemas"]["Problem"];
+                    "application/problem+json": (components["schemas"]["RunActiveProblem"] | components["schemas"]["Problem"]) | components["schemas"]["Problem"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */
@@ -2385,6 +2524,73 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    confirmKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeysConfirmationInput"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description self_backup_not_configured or first_backup_pending */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */
@@ -2676,6 +2882,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The onboarding is not complete (onboarding_incomplete); or the onboarding is not complete */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Rejected values; errors name the fields */
             422: {
                 headers: {
@@ -2743,13 +2958,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The token was used (agentId names the agent) or expired */
+            /** @description The token was used (agentId names the agent) or expired; or the onboarding is not complete */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["TokenConflictProblem"];
+                    "application/problem+json": components["schemas"]["TokenConflictProblem"] | components["schemas"]["Problem"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */
@@ -2813,13 +3028,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description A live built-in agent needs confirm=sard-self; nothing was changed */
+            /** @description A live built-in agent needs confirm=sard-self; nothing was changed; or the onboarding is not complete */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"] | components["schemas"]["Problem"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */
@@ -3008,6 +3223,121 @@ export interface operations {
             };
             /** @description No session or it expired */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    repositoryCommand: {
+        parameters: {
+            query?: {
+                /** @description s3, sftp or local */
+                storage?: string;
+                /** @description s3: aws, b2 or custom */
+                provider?: string;
+                /** @description s3 aws and b2: the region */
+                region?: string;
+                /** @description s3 custom: http or https, host and optional port */
+                endpoint?: string;
+                /** @description s3: the bucket */
+                bucket?: string;
+                /** @description s3: the prefix in the bucket; sftp: the absolute path */
+                path?: string;
+                /** @description sftp: the user on the storage host */
+                user?: string;
+                /** @description sftp: the storage host */
+                host?: string;
+                /** @description sftp: the port, 22 when absent */
+                port?: string;
+                /** @description sftp: SHA256:... of the host key, if the owner knows it */
+                hostKeyFingerprint?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepositoryCommand"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    recoveryCard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCard"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description self_backup_not_configured */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

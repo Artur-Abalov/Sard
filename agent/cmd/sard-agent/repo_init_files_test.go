@@ -16,6 +16,7 @@ import (
 
 // Неподдерживаемый провайдер шифрования — отказ до обращения к бэкенду
 func TestAnUnsupportedCryptoProviderIsRefusedBeforeTheBackend(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.cfg.Repositories[0].CryptoProvider = "gost"
 	h.saveConfig()
@@ -32,6 +33,7 @@ func TestAnUnsupportedCryptoProviderIsRefusedBeforeTheBackend(t *testing.T) {
 
 // Провайдер шифрования проверяется раньше файла пароля
 func TestTheCryptoProviderIsCheckedBeforeThePasswordFile(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.cfg.Repositories[0].CryptoProvider = "gost"
 	h.saveConfig()
@@ -46,6 +48,7 @@ func TestTheCryptoProviderIsCheckedBeforeThePasswordFile(t *testing.T) {
 
 // Нет файла пароля и нет флага генерации — отказ
 func TestWithoutAPasswordFileAndWithoutTheGenerateFlagTheCommandRefuses(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	if err := os.Remove(h.pass()); err != nil {
 		t.Fatal(err)
@@ -65,6 +68,7 @@ func TestWithoutAPasswordFileAndWithoutTheGenerateFlagTheCommandRefuses(t *testi
 
 // Файл пароля нулевого размера — отказ
 func TestAPasswordFileOfZeroSizeIsRefused(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.write(h.pass(), "", 0o600)
 	code, _, stderr := h.initCmd()
@@ -88,6 +92,7 @@ func a1Message(t *testing.T, h *repoHost, stat secrets.StatFunc) string {
 
 // Секретный файл репозитория, доступный не только владельцу, — отказ с сообщением A1
 func TestASecretFileOpenBeyondItsOwnerIsRefusedWithTheA1Message(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		file func(*repoHost) string
 		mode os.FileMode
@@ -112,6 +117,7 @@ func TestASecretFileOpenBeyondItsOwnerIsRefusedWithTheA1Message(t *testing.T) {
 
 // Секретный файл репозитория другого владельца — отказ с сообщением A1
 func TestASecretFileOfAnotherOwnerIsRefusedWithTheA1Message(t *testing.T) {
+	t.Parallel()
 	for _, file := range []func(*repoHost) string{(*repoHost).pass, (*repoHost).envFile} {
 		h := newRepoHost(t)
 		alien := file(h)
@@ -133,6 +139,7 @@ func TestASecretFileOfAnotherOwnerIsRefusedWithTheA1Message(t *testing.T) {
 
 // Файл пароля с правами только на чтение владельцу принимается
 func TestAReadOnlyPasswordFileOfTheOwnerIsAccepted(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	if err := os.Chmod(h.pass(), 0o400); err != nil {
 		t.Fatal(err)
@@ -146,6 +153,7 @@ func TestAReadOnlyPasswordFileOfTheOwnerIsAccepted(t *testing.T) {
 
 // Секретные файлы других репозиториев и секретов не проверяются
 func TestSecretFilesOfOtherRepositoriesAndSecretsAreNotChecked(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.write(h.path("secret"), "s", 0o644)
 	h.write(h.path("tls/agent.key"), "k", 0o644)
@@ -163,6 +171,7 @@ func TestSecretFilesOfOtherRepositoriesAndSecretsAreNotChecked(t *testing.T) {
 
 // Заданный, но отсутствующий файл окружения — отказ
 func TestAnEnvFileThatIsSetButMissingIsRefused(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	if err := os.Remove(h.envFile()); err != nil {
 		t.Fatal(err)
@@ -180,6 +189,7 @@ func TestAnEnvFileThatIsSetButMissingIsRefused(t *testing.T) {
 
 // Неверный файл окружения — отказ без значений
 func TestAnInvalidEnvFileIsRefusedWithoutItsValues(t *testing.T) {
+	t.Parallel()
 	for _, line := range []string{
 		envMarker + " без знака равенства",
 		"RESTIC_PASSWORD=" + envMarker,
@@ -201,6 +211,7 @@ func TestAnInvalidEnvFileIsRefusedWithoutItsValues(t *testing.T) {
 
 // Репозиторий без файла окружения инициализируется
 func TestARepositoryWithoutAnEnvFileIsInitialised(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.cfg.Repositories[0] = config.Repository{Name: "main", URL: h.repoURL(), PasswordFile: h.pass()}
 	h.saveConfig()
@@ -210,6 +221,7 @@ func TestARepositoryWithoutAnEnvFileIsInitialised(t *testing.T) {
 
 // Scenario: repo init одного репозитория не спотыкается о crypto_provider другого
 func TestRepoInitOfOneRepositoryIgnoresTheCryptoProviderOfAnother(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.cfg.Repositories[1].CryptoProvider = "gost"
 	h.saveConfig()

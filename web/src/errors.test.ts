@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from 'vitest'
 import en from './locales/en.json'
-import { errorMessage, failureOf, fieldFailures } from './errors'
+import { errorLink, errorMessage, failureOf, fieldFailures } from './errors'
 
 const knownCodes = [
   'not_found',
@@ -90,5 +90,20 @@ describe('the fields a 422 names', () => {
     expect(fieldFailures({ code: 'not_found' })).toEqual([])
     expect(fieldFailures('text')).toEqual([])
     expect(fieldFailures(undefined)).toEqual([])
+  })
+})
+
+// F4b (OQ-201): a refusal because the onboarding is not over points to the wizard.
+describe('where an error leads (onboarding_incomplete)', () => {
+  test('onboarding_incomplete leads to the wizard', () => {
+    expect(errorLink({ kind: 'problem', status: 409, code: 'onboarding_incomplete' })).toEqual({
+      to: '/setup',
+    })
+  })
+
+  test('any other failure leads nowhere', () => {
+    expect(errorLink({ kind: 'problem', status: 409, code: 'run_active' })).toBeNull()
+    expect(errorLink({ kind: 'http', status: 409 })).toBeNull()
+    expect(errorLink({ kind: 'network' })).toBeNull()
   })
 })

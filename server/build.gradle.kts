@@ -148,6 +148,9 @@ val buildTestAgent by tasks.registering(Exec::class) {
 // isolation). Those classes carry @Tag("mutflow-isolated"), MutationIsolationTest fails if one lacks it, and they run in isolatedTest, one JVM per class.
 val isolatedTag = "mutflow-isolated"
 
+// The mutation run of the gate (ADR 0006): mutflow compiles a mutated copy of main and tests that.
+val mutationRun = providers.gradleProperty("mutflow.enabled").map(String::toBoolean).getOrElse(false)
+
 // Both test tasks are configured alike: the properties, environment, heap and, through the mutflow
 // plugin (which configures every Test task), the mutated classes first on the classpath.
 tasks.withType<Test>().configureEach {
@@ -182,13 +185,29 @@ tasks.withType<Test>().configureEach {
     // to load. Capping the context cache instead changed which tests see background mutants, so the
     // cache stays as it is and the heap grows.
     maxHeapSize = "1g"
+    // Two test JVMs at a time, each with its own Spring context cache and PostgreSQL container; one mutflow
+    // session per JVM, so the isolation of ADR 00XX (mutflow isolation) holds in each.
+    maxParallelForks = 2
     // No agent release next to the test server; AgentDownloadsIntegrationTest switches downloads on.
     environment("SARD_AGENT_DOWNLOADS", "false")
-    finalizedBy(tasks.jacocoTestReport)
+    // The mutation run (gate.sh, -Pmutflow.enabled=true) runs the mutated compilation, whose
+    // coverage is meaningless and would overwrite the report of :server:check: no JaCoCo agent there.
+    if (mutationRun) {
+        extensions.configure<JacocoTaskExtension> { isEnabled = false }
+    } else {
+        finalizedBy(tasks.jacocoTestReport)
+    }
 }
+
+// A class file that names text: how the test tasks pick classes by annotation or tag without loading them.
+fun FileTreeElement.isClassNaming(text: String) =
+    isDirectory || (name.endsWith(".class") && String(file.readBytes(), Charsets.ISO_8859_1).contains(text))
 
 tasks.test {
     useJUnitPlatform { excludeTags(isolatedTag) }
+    // Only @MutFlowTest classes kill mutants; the others already ran in :server:check.
+    // The annotation descriptor, not the class name: MutationIsolationTest only refers to the class.
+    if (mutationRun) include { it.isClassNaming("Lio/github/anschnapp/mutflow/junit/MutFlowTest;") }
 }
 
 val isolatedTest by tasks.registering(Test::class) {
@@ -203,9 +222,7 @@ val isolatedTest by tasks.registering(Test::class) {
     forkEvery = 1
     // forkEvery = 1 forks once per scanned class, and the tag filter works inside the fork; pick the
     // class files that name the tag so only the isolated classes (and no other) cost a JVM.
-    include {
-        it.isDirectory || (it.name.endsWith(".class") && String(it.file.readBytes(), Charsets.ISO_8859_1).contains(isolatedTag))
-    }
+    include { it.isClassNaming(isolatedTag) }
     mustRunAfter(tasks.test)
 }
 

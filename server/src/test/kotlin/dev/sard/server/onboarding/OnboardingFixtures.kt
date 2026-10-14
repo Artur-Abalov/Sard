@@ -11,6 +11,7 @@ import dev.sard.server.auth.LoginAttemptTracker
 import dev.sard.server.auth.SessionStore
 import dev.sard.server.pki.CaUsage
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.selfbackup.KeysConfirmed
 import java.time.Instant
 import java.util.UUID
 
@@ -36,17 +37,48 @@ open class FakeAdminSetup(
 
 class FakeOnboardingSteps(
     var ca: Boolean = false,
+    var keys: Boolean = false,
+    var upgraded: Boolean = false,
 ) : OnboardingSteps {
     override fun caConfirmed() = ca
 
     override fun confirmCa(now: Instant): Boolean = !ca.also { ca = true }
+
+    override fun keysConfirmed() = keys
+
+    override fun confirmKeys(now: Instant): Boolean = !keys.also { keys = true }
+
+    override fun upgraded() = upgraded
 }
+
+/** The self-backup of the default tenant as the wizard asks about it; [confirmations] are the calls that came. */
+class FakeSelfBackupGate(
+    var firstBackupDone: Boolean = false,
+    var refusal: RuntimeException? = null,
+    var recorded: Boolean = true,
+) : SelfBackupGate {
+    val confirmations = mutableListOf<UUID>()
+
+    override fun firstBackupDone() = firstBackupDone
+
+    override fun confirmKeys(
+        tenantId: UUID,
+        now: Instant,
+    ): KeysConfirmed {
+        refusal?.let { throw it }
+        confirmations += tenantId
+        return KeysConfirmed("self", REPOSITORY_ID, recorded)
+    }
+}
+
+const val REPOSITORY_ID = "0f3a0f3a0f3a0f3a0f3a0f3a0f3a0f3a0f3a0f3a0f3a0f3a0f3a0f3a0f3a0f3a"
 
 /** A service with everything in memory; the code [CODE] is issued when the harness is built unless told otherwise. */
 class OnboardingHarness(
     val clock: MovableClock = MovableClock(T0),
     val adminSetup: FakeAdminSetup = FakeAdminSetup(),
     val steps: FakeOnboardingSteps = FakeOnboardingSteps(),
+    val selfBackup: FakeSelfBackupGate = FakeSelfBackupGate(),
     var usage: CaUsage = CaUsage.NONE,
     issueCode: Boolean = true,
 ) {
@@ -61,6 +93,7 @@ class OnboardingHarness(
             clock,
             adminSetup,
             steps,
+            selfBackup,
             codes,
             sessions,
             attempts,

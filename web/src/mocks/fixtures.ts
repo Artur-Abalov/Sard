@@ -266,7 +266,7 @@ export const agents: Schemas['AgentDetails'][] = [
     agentVersion: '0.1.0',
     os: 'linux',
     arch: 'amd64',
-    registeredAt: '2026-09-27T09:40:00Z',
+    registeredAt: '2026-09-19T09:40:00Z',
     lastSeenAt: '2026-09-27T09:59:55Z',
     revokedAt: null,
     duplicateSessionAt: null,
@@ -275,8 +275,15 @@ export const agents: Schemas['AgentDetails'][] = [
     role: 'source',
     protocolVersion: 1,
     plugins: [filesPlugin],
-    // F6: an S3 repository for the self-backup, a local one (D10: needs a confirmation), one not initialised.
+    // F6: the S3 repository the default mock is bound to (Рк18), another one, a local one (D10: needs a
+    // confirmation), one not initialised.
     repositories: [
+      {
+        name: 'self',
+        backend: 's3',
+        repositoryId: '0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9',
+        cryptoProvider: 'file',
+      },
       { name: 'offsite', backend: 's3', repositoryId: '3b8e1f6a2c', cryptoProvider: 'file' },
       { name: 'disk', backend: 'local', repositoryId: '6d2a9e4f1b', cryptoProvider: 'file' },
       { name: 'fresh', backend: 'sftp', repositoryId: null, cryptoProvider: 'file' },

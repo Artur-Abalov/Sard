@@ -28,5 +28,13 @@ class SelfBackupRecord(
     @Column(name = "tenant_id", nullable = false, updatable = false)
     val tenantId: UUID? = null,
 ) {
+    /** The storage address without credentials, as the wizard built the command for it (F4b, OQ-203). */
+    @Column
+    var location: String? = null
+
+    /** When the owner confirmed the key copy; counts for this binding only if it is not before [boundAt]. */
+    @Column(name = "keys_confirmed_at")
+    var keysConfirmedAt: Instant? = null
+
     override fun toString() = "SelfBackupRecord(id=$id, boundAt=$boundAt)"
 }

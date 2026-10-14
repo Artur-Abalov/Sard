@@ -82,7 +82,8 @@ class OnboardingStateIntegrationTest(
         val expected =
             """{"steps": [{"id": "ca", "state": "pending"}, {"id": "admin", "state": "pending"},
                {"id": "self_backup", "state": "upcoming"}, {"id": "keys_confirmed", "state": "upcoming"}],
-               "setupCode": "active", "access": "none", "ca": null, "caReplaceable": null}"""
+               "setupCode": "active", "access": "none", "ca": null, "caReplaceable": null,
+               "restriction": "full"}"""
         assertEquals(client.jsonOf(expected), reply.json)
         assertFalse(fingerprint in reply.body)
     }
@@ -107,7 +108,7 @@ class OnboardingStateIntegrationTest(
 
         val state = client.state(admin = admin)
 
-        assertEquals(listOf("done", "done", "upcoming", "upcoming"), stepStates(state))
+        assertEquals(listOf("done", "done", "pending", "upcoming"), stepStates(state))
         assertEquals("not_issued", state.json.path("setupCode").asString())
         assertEquals("admin", state.json.path("access").asString())
         assertEquals(false, state.json.path("caReplaceable").asBoolean())

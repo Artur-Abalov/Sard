@@ -24,6 +24,7 @@ internal class SardApi(
 
     init {
         env.ensureAdministrator()
+        env.confirmOnboarding()
         val signIn = send("POST", "/api/v1/session", """{"password":"${env.adminPassword}"}""")
         check(signIn.status == HTTP_NO_CONTENT) { "sign-in answered ${signIn.status}" }
     }

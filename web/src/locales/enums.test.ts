@@ -48,4 +48,25 @@ describe('every value of the contract is translated', () => {
       }
     }
   })
+
+  test('SelfBackupWarningCode has a message under selfBackup.warning.<code> in both languages', () => {
+    for (const code of schemas.SelfBackupWarningCode.enum) {
+      for (const dictionary of [ru, en]) {
+        const text = lookup(dictionary, `selfBackup.warning.${code}`)
+        expect(typeof text === 'string' && text !== '', code).toBe(true)
+      }
+    }
+  })
+
+  test('the codes of F4b are translated: onboarding_incomplete, first_backup_pending, keys_unconfirmed', () => {
+    for (const path of [
+      'errors.onboarding_incomplete',
+      'errors.first_backup_pending',
+      'selfBackup.warning.keys_unconfirmed',
+    ]) {
+      for (const dictionary of [ru, en]) {
+        expect(typeof lookup(dictionary, path), path).toBe('string')
+      }
+    }
+  })
 })

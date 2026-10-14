@@ -1,0 +1,384 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Copyright 2026 Artur Abalov -->
+
+# 2026-10-12 — F4b: онбординг, самобэкап и подтверждение копии ключей
+
+Ветка `ccr-ee6b499f-31e44v`, база — `main` с F4a (#61) и F6 (#62). Продуктовая
+фича: идёт через `/ship-feature`. Эта запись — этап specifier; кода нет.
+
+## Specifier: что прочитано (file:line)
+
+**Онбординг F4a.**
+- Шаги `self_backup` и `keys_confirmed` — заготовки `UPCOMING`
+  (`server/src/main/kotlin/dev/sard/server/onboarding/OnboardingService.kt:76-82`).
+- Записанные шаги — таблица `onboarding_steps (step, completed_at)`, сейчас
+  только `ca` (`onboarding/OnboardingSteps.kt:10-31`); состояние — на
+  установку, не на тенант.
+- Спецификации F4a, которые F4b меняет:
+  `docs/specs/server/onboarding-setup.feature:63-65,697,713`,
+  `docs/specs/web/onboarding-setup.feature:363-377,107-112,474-477`.
+
+**Самобэкап F6.**
+- `SelfBackups` — на тенант; привязка, «запустить сейчас», состояние
+  (`selfbackup/SelfBackups.kt:109-282`). Привязка без изменений ничего не
+  пишет, новая — двигает `boundAt` (`:233-245`).
+- REST: `GET /api/v1/self-backup`, `PUT …/repository`, `POST …/runs`
+  (`api/SelfBackupController.kt:119-160`). В ответе нет репозиториев соседа,
+  состава, команды и признака «первый бэкап прошёл».
+- Предупреждения и здоровье — `selfbackup/SelfBackupHealth.kt:22-28,106-138`.
+  Баннер F6 показывается только при предупреждениях; `not_configured` баннера
+  не даёт (`web/src/selfBackupBanner.ts:13`).
+- Расписание — `0 3 * * *` в поясе сервера, отдельное на каждый источник
+  (`selfbackup/SelfBackupProperties.kt:46`; `PUT /sources/{id}/schedule`,
+  `api/SchedulesController.kt:187-200`).
+- Имена системных источников — английские: «Sard: database», «Sard: keys and
+  configuration» (`docs/operator/06-data-and-backup.md:14-15`), а не «Sard:
+  база» и «Sard: ключи и конфигурация» постановки F4b.
+
+**Агент.**
+- `repo add` (A8b): флаги `--provider aws|b2`, `--region`,
+  `--access-key-id` (обязателен для s3), секретный ключ — только stdin, файл
+  или терминал; адреса sftp `sftp:[user@]host:path` и
+  `sftp://[user@]host[:port]/path` (`agent/cmd/sard-agent/host_help.go:98-187`).
+- `repo password <имя> --reveal` — от root или пользователя службы
+  (`host_help.go:22,234-246`). У соседа пользователь службы — `sard-self`,
+  uid 10001 (`deploy/agent/Dockerfile:91-92`), compose запускает его под
+  `10001:10001` (`deploy/docker-compose.yml:93`).
+- Неизвестную причину Enroll агент печатает как «unforeseen reason from the
+  server» с самой причиной (`agent/internal/enroll/classify.go:119-120`): новая
+  причина `ONBOARDING_INCOMPLETE` работает без правки агента.
+
+**Сервер, изменяющие запросы** (кандидаты на 409 `onboarding_incomplete`):
+`POST/PUT/DELETE /sources`, `POST /sources/{id}/runs`,
+`PUT /sources/{id}/schedule`, `POST /agents/{id}/revoke`,
+`POST /enrollment-tokens`, `POST /enrollment-tokens/{id}/revoke`, плюс
+сессия, пароль, онбординг и самобэкап.
+
+**Register** несёт про репозиторий только `name`, `backend`,
+`repository_id`, `crypto_provider` (журнал F6, `agent.proto:383-395`) —
+адреса хранилища сервер не знает.
+
+## Specifier: расхождения постановки с кодом и ADR
+
+1. **Команда `repo add`.** Постановка: `docker compose exec sard-self
+   sard-agent repo add …`. F6 проверил e2e: `exec -u 0` в работающего соседа не
+   работает (`cap_drop: ALL`, каталоги 0700), сервис называется `self-agent`.
+   Рабочая форма — разовый `docker compose run … self-agent repo add …` и
+   `restart self-agent` (`docs/adr/00XX-draft-self-backup.md`, «Последствия»).
+   OQ-204.
+2. **ADR 0008 и карточка.** «Где хранилище» на карточке: адреса сервер не
+   знает, а ADR 0008 держит репозитории «по имени». OQ-203.
+3. **D8 в журнале F5** (`docs/sessions/2026-10-07-f5-sidecar-agent.md:65`)
+   отнесено к F6; постановка F4b забирает его — записано в заголовке
+   спецификации.
+4. **Правило 13 и граница совместимости F4a.** Обновление поддерживается только
+   с 0.1.0-beta.N, а беты нет (OQ-145). Если F4b войдёт в первую бету,
+   «обновлённых установок» не будет. OQ-201.
+5. **Правило 15 и правило 14.** «Снова подтверждение» после смены хранилища
+   против «без блокировки после онбординга». OQ-206.
+6. **Идентификатор ключа S3.** `repo add` требует `--access-key-id`, постановка
+   запрещает ключи в браузере. OQ-205.
+7. **Локальный путь.** Корневая ФС соседа только на чтение: «любой локальный
+   путь» невозможен. OQ-208.
+8. **Сервер без соседа** (`SARD_SELF_DIR` пуст): онбординг не завершить
+   никогда. OQ-207.
+9. **Имена системных источников** — английские из F6; постановка говорит
+   «состав и параметры — F6», значит, остаются как есть; консоль может
+   подписывать их по `systemRole`.
+10. **Процедура восстановления F7** ещё не написана: ссылка карточки ведёт на
+    раздел «Восстановление из самобэкапа (F7)» `docs/operator/06`.
+
+## Specifier: результат
+
+- `docs/specs/server/onboarding-self-backup.feature`,
+  `docs/specs/web/onboarding-self-backup.feature`,
+  `docs/qa/onboarding-self-backup.md`.
+- Контракт К10–К17, решения Р20–Р30 (сервер), Рк9–Рк18 (консоль) — нумерация
+  продолжает F4a.
+- Открытые вопросы OQ-201…OQ-210 внесены в `docs/open-questions.md`.
+- Утверждённые спецификации F4a не правились: правки перечислены в заголовке
+  серверной спецификации F4b и вносятся после утверждения.
+
+Последствия для следующих этапов (coder):
+- Каждый тест, скрипт и e2e, который после мастера F4a выпускает токены или
+  создаёт источники (`SardApi`, `smoke-server.sh`, `test-agent-install.sh`,
+  `test-console-install.sh`, `test-self-agent.sh`, quickstart README и
+  `verify-quickstart`, `docs/demo.md`), получит 409 `onboarding_incomplete`.
+  Предложение (OQ-207): фикстуры сервера засевают завершённый онбординг в
+  базе, e2e и скрипты проходят шаги 3–4 через REST с локальным репозиторием.
+- Образ соседа `-pg18` с openssh-client в этой среде не собирался (журнал F6):
+  SFTP-путь мастера проверит только CI.
+
+Статус: ждёт утверждения владельца.
+
+### Утверждение владельца 2026-10-12 (specifier)
+
+Владелец 2026-10-12 утвердил спецификацию F4b и все рекомендованные ответы
+OQ-201…OQ-210 («Делай. Со всем согласен»). Решения Р20–Р30, Рк9–Рк18 и
+контракт К10–К17 приняты как написаны; альтернатив в сценариях не было —
+сценарии с тегами @oq-NNN уже написаны по рекомендациям и оставлены как есть.
+
+Сделано:
+- `СТАТУС` обеих спецификаций F4b и процедуры QA — «утверждено владельцем
+  2026-10-12»; тег `@oq-NNN` описан как «написан по решению OQ-NNN».
+- OQ-201…OQ-210 перенесены из «Открыто» в «Закрыто при сверке»
+  `docs/open-questions.md` (раздел «2026-10-12, спецификация F4b») с решением.
+- Правки утверждённых спецификаций F4a:
+  - `docs/specs/server/onboarding-setup.feature`: поправка в заголовке;
+    «Вне фичи (F4b)» ссылается на F4b; сценарий «Администратор после мастера
+    видит выполненные шаги и CA» — шаг self_backup pending; точное тело
+    «Состояние чистой установки без cookie…» содержит `"restriction": "full"`.
+  - `docs/specs/web/onboarding-setup.feature`: поправка в заголовке, Рк5 и Рк8
+    пересмотрены, новый тег `@заменено-f4b`; правило «Шаги F4b показаны как
+    предстоящие, не обязательные» заменено правилом «Шаги самобэкапа и копии
+    ключей следуют за шагом администратора» (сценарий «Завершение мастера не
+    требует шагов F4b» — `@заменено-f4b`); сценарий «Защищённая страница с
+    действующей сессией не запрашивает состояние онбординга» —
+    `@заменено-f4b` (Рк9 F4b); мок по умолчанию — онбординг завершён;
+    «Заданный пароль сразу открывает консоль без страницы входа» и «Консоль на
+    моках чистой установки начинает с мастера» ведут на шаг самобэкапа.
+  - `docs/qa/onboarding-setup.md`: шаги 3, 22 (части 1), 3 и 12 (части 2)
+    приведены к F4b.
+
+Следующий этап — coder: реализует F4b по утверждённым спецификациям.
+
+## Coder: реализация F4b (2026-10-12)
+
+Ветка `ccr-ee6b499f-31e44v`; тесты сначала, затем код; сервер — Kotlin, консоль — web.
+ADR: `docs/adr/00XX-draft-f4b-onboarding-self-backup.md`.
+
+**Сервер.**
+- Миграция `V202610121300__onboarding_self_backup.sql`: `self_backups.location`,
+  `self_backups.keys_confirmed_at`, таблица `onboarding_marks` и отметка `upgraded`
+  (Р21, один раз при первом старте).
+- Шаги и ограничение: `onboarding/StepStates.kt` (Р20, Р21), `OnboardingService`
+  (`confirmKeys`, `restriction`), `OnboardingSteps` (шаг `keys_confirmed`, отметка).
+- Самобэкап: `SelfBackups` (`firstBackupDone`, `confirmKeys`, репозитории, состав,
+  `location`, команда показа пароля, предупреждение `keys_unconfirmed`),
+  `RepositoryCommands` (Р23–Р25, Р29), `RecoveryCards` (адрес процедуры, проверка адреса).
+- REST: `GET /self-backup/repository-command`, `POST /self-backup/keys-confirmation`,
+  `GET /self-backup/recovery-card`; `OnboardingGuard` (D8, Р22) и описание 409 в OpenAPI.
+- gRPC: `Enrollment` + `RegistrationGate` (`ONBOARDING_INCOMPLETE`, К17).
+- Порты `OnboardingCompletion`, `RegistrationGate`, `GuardTargets` убирают круговые
+  зависимости пакетов (`PackageCycleTest`).
+
+**Тесты сервера.** Контекст интеграционных тестов стартует с завершённым онбордингом
+(`TestcontainersConfiguration.completedOnboarding`); тесты первого запуска и F4b убирают шаг и
+возвращают его. Новые: `OnboardingServiceTest` (раздел F4b), `SelfBackupOnboardingIntegrationTest`,
+`RepositoryCommandsTest`, `RecoveryCardsTest`, `OnboardingGuardApiIntegrationTest`,
+`OnboardingSelfBackupApiIntegrationTest`, `EnrollmentOnboardingIntegrationTest`,
+`OnboardingMarksMigrationTest`, `OnboardingDocsTest`, дополнения `FirstStartRestartIntegrationTest`,
+`AdminResetCommandIntegrationTest`. Изменены ожидания F4a/F6 (шаг `self_backup` pending,
+`restriction`, предупреждение `keys_unconfirmed` после онбординга, порядок удаления строк в
+`SelfBackupFixtures`).
+
+**Консоль.** `onboarding/state.ts` (экраны шагов, баннер), `auth/guard.ts` (Рк9),
+`auth/loginGuard.ts` (`setupRedirect`, Рк10), `onboarding/selfBackup.ts` (запрос команды,
+привязка, расписание, первый бэкап, подтверждение), `onboarding/schedule.ts`,
+`onboarding/recoveryCard.ts`; экраны `pages/setup/*`, `pages/RecoveryCard.tsx`,
+`pages/settings/SelfBackupSection.tsx`, `components/OnboardingBanner.tsx`; моки Рк18.
+Тест F4a «Защищённая страница с действующей сессией не запрашивает состояние онбординга»
+(`@заменено-f4b`) удалён из `auth/guard.test.ts`; `Завершение мастера не требует шагов F4b` —
+`@qa-only`, теста не было.
+
+**Расхождения со спецификацией (для владельца).**
+1. Сервер-спецификация, таблица «Обновлённая установка разрешает прочие изменения»: запуск
+   источника `POST /sources/{S}/runs` указан как 200; в контракте он 201 (как у всех запусков).
+   Тест ожидает 201.
+2. Сценарий «Состав самобэкапа виден до привязки и не содержит секретов»: «тело не содержит
+   password», но поле К12 называется `passwordRevealCommand`. Проверено отсутствие
+   `sard-db`, `password_ref` и ключа `"password"`.
+3. Рк18: мок по умолчанию «самобэкап привязан к self s3» не реализован привязкой: тесты F6
+   привязывают сами; завершённый онбординг и все шаги `done` в моке по умолчанию есть.
+4. Ripple скриптов и e2e: вместо шагов 3–4 по REST со стендом локального репозитория скрипты без
+   `sard-self` и e2e-стенды пишут шаг `keys_confirmed` в базу (`sard_confirm_onboarding_in_database`,
+   `SardEnvironment.confirmOnboarding`); `smoke-server.sh`, `test-self-agent.sh` после мастера
+   токены не выпускают и не менялись. Ни один стенд здесь не запускался (нет образов).
+5. Проверка `registrationOpen` в `Enrollment` стоит до транзакции (внутри неё десять
+   одновременных регистраций встали на пуле соединений).
+
+## Cleaner stage
+
+- `./scripts/crap.sh server`: worst row 6.0 (CC 6, 100% coverage), none above the threshold of 6; the F4b rows (`OnboardingService.confirmCa/state`, `SetupCodes.accepts/normalize`, `RepositoryCommandsKt.sftp`, `SelfBackupPropertiesKt.networkTarget`, `SelfBackups.confirmIn`, `SelfBackupsKt.viewOf`, `StorageParametersKt.validEndpoint`) sit at the threshold, not over it.
+- `./scripts/gate.sh server fast` and `./scripts/gate.sh web fast` pass (oxlint complexity clean).
+- No refactor warranted: no function over the threshold, no duplication of F4a/F6 helpers found worth extracting. No code changed.
+- Next: `architect`.
+
+## Specifier: поправка спецификации (2026-10-13)
+
+По ревью architect закрыты расхождения coder 1 и 2 — только формулировки, решения не меняются:
+1. `docs/specs/server/onboarding-self-backup.feature`, таблица «Обновлённая установка разрешает
+   прочие изменения…»: `POST /api/v1/sources/{S}/runs` → 201 (контракт до F4b).
+2. Там же, «Состав самобэкапа виден до привязки и не содержит секретов»: тело не содержит
+   значения пароля, ключа `"password"`, `sard-db` и `password_ref`; `passwordRevealCommand` (К12)
+   допустим. `docs/qa/onboarding-self-backup.md`, часть 1, шаг 3 — так же.
+Поправка записана в заголовках обоих файлов. Часть 5 QA статус запуска не называет — без изменений.
+
+## Coder: правки по ревью architect (CHANGES REQUIRED, 2026-10-13)
+
+Тесты писались раньше кода; наблюдавшиеся падения указаны.
+1. F1 (P0, ADR 0008). `isSafeLocation` перенесён из `api/RecoveryCards.kt` в `selfbackup/StorageLocation.kt`
+   и вызывается в `SelfBackups.bind` (`LocationInvalid`, 422 `validation_failed` у `location` в
+   `SelfBackupExceptionHandler`). Учётные данные ищутся после любой цепочки префиксов схемы (`s3:`,
+   `rest:`, `https:`, `foo://`) в любом регистре; пароль в `user:password@` отклоняется всегда, а любое имя
+   пользователя в адресе http(s) — как токен (`https://ghp_TOKEN@host/r`); `sftp://backup@host` допустим.
+   Тесты: `StorageLocationTest` (падал на `SFTP:backup@…`, `https://ghp_TOKEN@host/r`,
+   `s3:HTTPS://AKIA123:secret@…`), `SelfBackupIntegrationTest` («Привязка с адресом, в котором учётные
+   данные, отклоняется…»: падал «Expected an exception … LocationInvalid»), адреса добавлены в
+   `OnboardingSelfBackupApiIntegrationTest` (422). Известный предел: секрет с `/` внутри пароля в
+   неэкранированном виде (`user:pa/ss@host`) режется по первому слэшу и не распознаётся.
+2. F2 (P0, ADR 0013 п. 8). Тест `ArchitectureTest` «native SQL on a tenant table names tenant_id» упал на
+   `JdbcGuardTargets` (две строки); `JdbcGuardTargets` заменён `TenantGuardTargets` над
+   `SelfBackups.isSystemSource` и `Agents.isLiveBuiltin` (JPA, фильтр тенанта); тесты в
+   `SelfBackupIntegrationTest` и `AgentsBuiltinLiveIntegrationTest` (падали на заглушке `false`).
+   В ADR 0013 п. 8 названо единственное исключение `TokensRevokedOnCaReplacement`; `selfbackup` добавлен в
+   `ISOLATED_PACKAGES`.
+3. F3 (P1). `SelfBackupSingleConnectionIntegrationTest` (пул из одного соединения, таймаут 2 с) упал
+   `CannotGetJdbcConnectionException` в `viewIn` → `JdbcOnboardingSteps`; `onboardingComplete()` теперь
+   читается до `inTenant` в `bind`/`get`/`confirmKeys` и передаётся булевым значением.
+4. F4 (P1, Р27) НЕ сделано: конфликт со спецификацией. `docs/specs/server/onboarding-self-backup.feature`
+   (Р27 и сценарий «Команда показа пароля появляется после привязки») требует точную строку
+   `docker compose exec self-agent sard-agent repo password … --reveal --config …`, а `exec` обходит
+   ENTRYPOINT образа (`/usr/libexec/sard/sard-agent`, в PATH его нет). Нужна поправка спецификации
+   (specifier), затем одна строка в `SelfBackupCommands.kt` и ожидаемые строки. Форма `repo add`
+   (`docker compose run … self-agent repo add`) проходит через ENTRYPOINT и разрешается верно.
+5. F5 (P1). `scripts/test-self-agent.sh`, группа 8: путь шагов 3–4 по REST с локальным репозиторием; не
+   запускалась (нет образов), `bash -n` чисто, shellcheck недоступен.
+6. Рк18. Мок по умолчанию привязан к `self` (s3), оба запуска `succeeded`, копия ключей подтверждена
+   (`web/src/mocks/selfBackupSources.ts`, `state.ts`); тесты F6, привязывающие сами, начинают с `unbind()`.
+7. F6 (P2). Абзац-исключение (черновик, «pending owner sign-off») в ADR 0008 и в последствиях
+   `00XX-draft-f4b-onboarding-self-backup.md`.
+
+## F4b: F4 закрыт вариантом (b) (владелец)
+
+- Команда показа пароля и .feature не менялись. `deploy/agent/Dockerfile`: `RUN ln -s /usr/libexec/sard/sard-agent
+  /usr/local/bin/sard-agent` после COPY бинарника; база Debian/Ubuntu (в том числе `postgres:18`, вариант `-pg18`,
+  тот же Dockerfile), `ln` есть. `read_only` и `cap_drop` в compose на разрешение через PATH не влияют (ссылка
+  в слое образа, не в томе).
+- Тест `selfbackup/RevealCommandImageTest` читает Dockerfile и проверяет, что программа из `passwordRevealCommand`
+  равна ENTRYPOINT или есть ссылка в стандартном каталоге PATH на него. Падал: `links: {}`; после правки зелёный.
+- `docs/operator/02-install.md` упоминает путь. `scripts/test-self-agent.sh` группа 8 выполняет команду как есть
+  (`bash -c "$reveal"`), правки не нужны.
+- Образ здесь не собирался (нет демона Docker/образов): ссылка проверена только тестом по тексту Dockerfile,
+  не в рантайме.
+
+## Specifier: поправка Рк19 (2026-10-13, находка F6, владелец принял исключение из ADR 0008)
+
+- Команду `repo add` собирает сервер; скомпрометированный сервер не может сам за неё поручиться. Решение
+  владельца: шаг 3 мастера (и те же подэкраны смены хранилища в настройках) показывает рядом с командой
+  короткую подсказку проверить её перед запуском — в ней должны быть только `docker compose run …
+  self-agent repo add` со своим адресом, бакетом и путём и `docker compose restart self-agent`.
+- `docs/specs/web/onboarding-self-backup.feature`: поправка в заголовке, решение Рк19, сценарий `@qa-only`
+  «Рядом с командой repo add есть подсказка проверить её перед запуском».
+- `docs/qa/onboarding-self-backup.md`: поправка в заголовке, часть 2 шаг 5, часть 4 шаг 4.
+- Команда S3 начинается строкой `read -r -p "S3 access key ID: " SARD_S3_KEY_ID` (OQ-205, утверждено владельцем);
+  подсказка называет и её, иначе законная первая строка выглядела бы подозрительной. Это прямое следствие
+  OQ-205, отдельного решения не требует.
+- Ключ локали `setup.selfBackup.command.verify` (ru, en) рядом с `setup.selfBackup.command.hint`.
+
+## Coder: подсказка Рк19 и принятие исключения ADR 0008 (2026-10-13)
+
+- Ключ локали `setup.selfBackup.command.verify` (ru, en) добавлен рядом с `command.hint` и выведен в
+  `web/src/pages/setup/CommandStage.tsx` под блоком команды; компонент общий для шага 3 мастера и
+  подэкранов смены хранилища в настройках (Рк17). Обратные кавычки в локалях не используются, код
+  выделен кавычками («…» в ru, "…" в en). Тест паритета ключей локалей покрывает новый ключ.
+- `docs/adr/0008-crypto-provider.md` и черновик F4b: исключение принято владельцем 2026-10-13; прямо
+  сказано, что защита от скомпрометированного сервера — только чтение команды владельцем (подсказка Рк19),
+  а Р29 и кавычки защищают от ошибок ввода и инъекции через ввод пользователя.
+
+## Cleaner, второй проход (2026-10-13)
+
+- F7 архитектора: `SelfBackupApiImpl` и его мапперы (`selfBackupOf`, `planItemOf`, `sourceOf`, `runOf`) и
+  константы `REJECTED_PARAMETER`, `UNKNOWN_VERSION` перенесены из `api/SelfBackupController.kt` в
+  `api/SelfBackupApiImpl.kt` (как `RunsApiImpl.kt`, `SourcesApiImpl.kt`). Контроллер остался с DTO, интерфейсом
+  `SelfBackupApi` и маршрутами. Поведение не менялось.
+- `web/src/mocks/commands.ts` не сокращён до заготовленных ответов: тесты мока
+  (`onboardingSelfBackup.test.ts`) требуют адрес, собранный из введённых параметров, и имя
+  поля в 422 (`bucket`); заготовки изменили бы наблюдаемое поведение мока. Дрейф от Р29 остаётся
+  риском, на него указано архитектору.
+- Новый код после eebccba (`StorageLocation.kt`, `SystemSourceLookup.kt`, `TenantGuardTargets`,
+  `SelfBackups`, `selfBackupSources.ts`, `CommandStage.tsx`): все функции сервера CRAP <= 6 (худшие 6.0
+  при покрытии 100%), дублирования и лишней сложности не найдено.
+
+## Specifier: известные пределы проверки адреса (2026-10-13, повторное ревью architect)
+
+- Обещание «адрес с `user:password@` отклоняется» сильнее, чем может гарантировать проверка в
+  `selfbackup/StorageLocation.kt`. Два предела не закрываются без отказа законным адресам:
+  неэкранированный `/` в пароле (`user:pa/ss@host`) и имя пользователя sftp, равное слову бэкенда
+  (`sftp:rest:pw@host`). Записаны как известные пределы: комментарий перед структурой сценария
+  «Адрес с учётными данными или управляющими символами отклоняется» в
+  `docs/specs/server/onboarding-self-backup.feature` и одна вставка в абзац исключения F4b в
+  `docs/adr/0008-crypto-provider.md`. Решения, сценарии и примеры не менялись; консоль всегда шлёт
+  адрес, собранный сервером из проверенных параметров, поэтому пределы касаются только API-клиентов,
+  пишущих адрес вручную.
+
+## Architect re-review fixes (coder)
+
+- P1: `isSafeLocation` let credentials through when the address had a leading space, quotes, an `ENV=` prefix or a single slash after the scheme. Tests added first (4 vectors in `StorageLocationTest`, one failed first on ` s3:https://AKIA:secret@h/b`); fix: AUTHORITY takes `/*` instead of `(?://)?`, plus `EMBEDDED_USERINFO` scanned over the whole text (helper `isCredentialFree` keeps CRAP <= 6). `s3:https://minio:9000/b/a@b` stays valid. The leading-space case is also in the 422 examples of `OnboardingSelfBackupApiIntegrationTest`.
+- P3: `scripts/test-self-agent.sh` group 8 binds with the `address` of the repository-command response instead of a hard-coded path.
+- `./scripts/gate.sh server fast`: PASSED.
+
+## Cleaner pass on daf8f6e (StorageLocation.kt)
+
+- `./scripts/crap.sh server`: `StorageLocationKt.isSafeLocation` CRAP 6.0, CC 6, coverage 100.0%; the private helpers (`isCredentialFree`, `hasCredentials`, `isHttpUser`) are below the report's cut-off. Before and after are identical: no code changed.
+- Refactor not warranted: the split already reads clearly (each regex has a KDoc, helpers are named for what they decide). `EMBEDDED_USERINFO` is not redundant with `hasCredentials`: it covers addresses that start mid-text (quotes, `ENV=` prefix), which `AUTHORITY` anchored at `^` does not see. Folding `isCredentialFree` back into `isSafeLocation` would raise its CC above the CRAP limit.
+- `./scripts/gate.sh server fast`: PASSED.
+- Next: `architect`.
+
+## Hardener pass (mutation testing)
+
+- Baseline `./scripts/gate.sh server` (mutflow): 17 survivors in 6 classes: `AgentVersions.kt` 26/62/25 (reached through `recoveryProcedureUrl`), `OnboardingService.kt:162`, `StorageParameters.kt:25` (`65535 -> 65536`), `RepositoryCommands.kt` 73/73#2/81, `Enrollment.kt` 95/96, `SelfBackupHealth.kt` 67/75/75/151/151/160, `SelfBackups.kt:318`. `StorageLocation` (22 mutants), `SystemSourceLookup`/`TenantGuardTargets` (9, isolated) and `OnboardingRules` had no survivors.
+- Killed by tests: stage ordering and overflowing numbers of a release tag (`RecoveryCardsTest`), a keys confirmation on an already-done step (`OnboardingServiceTest`), port 65536 (`RepositoryCommandsTest`), ordinary vs built-in token while the onboarding is open (`BuiltinEnrollmentTokensIntegrationTest`), `firstBackupDone` and the KEYS_UNCONFIRMED-only warning (`SelfBackupHealthIntegrationTest`), a rebind without an address (`SelfBackupIntegrationTest`).
+- Dead code removed: the null guards of `hostedS3`/`customS3` and the second `invalid` check in `RepositoryCommands.build` duplicated each other (a missing field is always in `Fields.invalid`, so the mutants were equivalent). Now the builders return null on any invalid field and `build` rejects on a null plan.
+- New test: every address `RepositoryCommands` builds is accepted by `isSafeLocation`.
+- NOT committed (blocked, returned to coder): a path-bypass test of the D8 guard and the widened rule-8 architecture test, see the hardener report.
+- `./scripts/gate.sh server`: PASSED (coverage 96.8%, 1905 mutations, 0 survivors). `./scripts/gate.sh web`: PASSED (no mutation testing for web).
+
+## Coder: D8 path bypass fixed, rule-8 test widened
+
+- Bypass: on NEW_AGENTS, `POST /api/v1/enrollment-tokens;x=1` and `/api/v1/enrollment%2Dtokens` issued a token (201): `OnboardingGuard` compared the raw `requestURI` with the denied operation. Observed before the fix: the new test `Обновлённая установка не выпускает токен и по обходному пути` failed on the 201.
+- Fix: `OnboardingGuard` decides on `HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE` (the template, the same form `OnboardingRules.gated` and the OpenAPI use) and takes ids from `URI_TEMPLATE_VARIABLES_ATTRIBUTE`. `OnboardingRules.allowed` now takes (method, template, variables); the system-source and built-in-agent checks match `/api/v1/sources/{sourceId}/schedule` and `/api/v1/agents/{agentId}/revoke`. A mutating request with no matched template under any restriction other than NONE is refused (409), i.e. fails closed.
+- FULL variant test `Полное ограничение не открывает запрещённое действие обходным путём` (`/onboarding/../sources`, `;x=1`, `%6F`, `..;`, matrix on schedule/revoke): already refused before the fix (the raw URI was not in the allow-list), kept as a regression guard for the template-based rewrite.
+- Test helper: `ApiClient.sendUnchecked` (no ContractCheck) for paths the OpenAPI does not know; `send` is built on it.
+- Widened `ArchitectureTest` rule 8 landed (JDBC import, `createNativeQuery`/`createNativeMutationQuery`/`prepareStatement`; tenant tables from the Flyway migrations; `$CONST` expansion). It found two installation-wide reads by design, now in the exception set and in ADR 0013: `Scheduler.kt` (`LAST_SLOT`, `max(catch_up_at)` over all tenants in `sessions.system`) and `JdbcCaLedger.kt` (`select 1 from agent_certificates`, whether any agent of any tenant holds a certificate decides if the installation's CA can be replaced; its KDoc says "any agent certificate of any tenant").
+- Next: `cleaner`.
+
+## cleaner (after merge of origin/main)
+
+- `./scripts/crap.sh server` (full table from the JaCoCo report): every touched function is at or under the threshold of 6. `OnboardingRules.systemSchedule` / `builtinRevocation` / `openToFull` 5.0, `allowed` 4.0, `gated` 4.0, `OnboardingGuard.permitted` 5.0, `variablesOf` 5.0, `RepositoryCommands.build` 3.0, `hostedS3` / `customS3` 3.0, `planOf` 4.0. `RepositoryCommandsKt.sftp` 6.0 (CC 6, 100%) is untouched by 54bdafa.
+- Refactors: none warranted. The `"$method $template"` key compare reads clearly (one constant per operation, same form as `ALWAYS_OPEN`); a helper for the three-times-repeated key would add a function for no CRAP gain. The RepositoryCommands change already removed the duplicated guards.
+- `./scripts/gate.sh server fast`: PASSED, which confirms the merge of main is green.
+- Next: `architect`.
+
+## Architect review 4: F1-F3
+
+- F1: `OnboardingGuard` gated a deny-list (`POST/PUT/DELETE`), so PATCH bypassed D8 and was not documented with 409. Now `method !in SAFE` (`GET/HEAD/OPTIONS/TRACE`). Tests (`OnboardingGuardTest`) failed first on PATCH (rules and guard), then passed. Comment on the missing template reworded as a defensive branch.
+- F2: `ArchitectureTest` exempted whole files; now per-(file, literal) exceptions, a stale exception fails the build, and a fixture self-test shows an unlisted query in an exempt file is reported.
+- F3: ADR 0013 rule 8 now describes the detector and the three per-query exceptions.
+
+## Cleaner: architect F4 (compile-time safety of the S3 address) and readability of 525e414
+
+- F4: `hostedS3`/`customS3` took the null-safety from the runtime invariant "invalid empty implies required fields non-null". Now `location` is `locationOf(fields).takeIf { fields.invalid.isEmpty() }` and a single guard (`provider == null || region == null || location == null`, resp. `endpoint == null || location == null`) smart-casts every value that goes into the address, so a literal `null` cannot reach it. The `invalid` return was folded into `location`, so the behavior and the reported fields are unchanged (detekt ReturnCount and ComplexCondition kept the shape: one guard, three terms). `provider` stays `String?` in `hostedS3`: `s3` must still validate region and location to report every invalid field when the provider is wrong.
+- Equivalent-by-construction: the `provider == null` and `region == null` (`endpoint == null`) terms never decide alone, because each is null only with an entry in `invalid`, which already makes `location` null. Mutating one of them survives; no mutation run was done here (fast gate), so the survivors are expected in the next hardener run and the terms are the price of the compile-time proof.
+- CRAP (JaCoCo, `.bin/crap -top 5000`): `hostedS3` 3.0 -> 5.0, `customS3` 3.0 -> 4.0 (coverage 100% both, limit 6); `locationOf` 4.0 unchanged.
+- 525e414 readability: `SAFE`, `OnboardingGuardTest` and the `ArchitectureTest` per-literal exceptions read well; nothing changed.
+- `./scripts/gate.sh server fast`: passed.
+
+## Cleaner: equivalent mutants in 4f5675b removed
+
+- The redundant `provider == null`, `region == null`, `endpoint == null` terms of 4f5675b could never decide alone (each is null only with an entry in `invalid`), so their mutants were unobservable. Now `hostedS3`/`customS3` keep one observable decision, `if (fields.invalid.isNotEmpty()) return null`, and then take the required values through `valid(x)`, a single `checkNotNull` with an invariant message. A literal `null` cannot reach the address: it fails loudly (IllegalStateException). Behavior and reported fields are unchanged.
+- One shared `valid` rather than `checkNotNull` in each function: inlined `checkNotNull` branches counted into the caller's JaCoCo complexity and uncovered (hostedS3 CRAP 7.0 at first, over 6); a single helper keeps them in one tiny function. mutflow mutates IR of written conditions; `checkNotNull` is a stdlib call, not a written condition (ADR 0006: no elvis/structural mutants).
+- CRAP (JaCoCo, `.bin/crap`): `hostedS3` 5.0 -> 3.0, `customS3` 4.0 -> 3.0, new `valid` 3.3 (complexity 2, coverage 30.8%: the throw branch is unreachable by design); `locationOf` 4.0 unchanged.
+- Scoped mutflow run (`-Pmutflow.enabled=true :server:test --rerun --tests '*RepositoryCommandsTest'`): passed, no survivors.
+- `./scripts/gate.sh server fast`: passed.
+
+## Hardener: final mutation pass (architect reviews 4 and 5)
+
+- Baseline: the full mutflow run on the unchanged tests (1905 mutations, 0 survivors) discovered no mutation in `OnboardingGuard.kt` at all: `OnboardingGuardTest` was not a `@MutFlowTest` and called nothing inside `MutFlow.underTest`, and the API tests are not mutation tests. The "0 survivors" said nothing about the rewritten guard.
+- `OnboardingGuardTest` is now `@MutFlowTest` and calls `OnboardingRules.allowed/gated`, `OnboardingGuard.preHandle` and `describeOnboardingIncomplete` through `MutFlow.underTest`. It discovers 34 mutations in `OnboardingGuard.kt`, all killed. Unit cases: every always-open entry per method, the onboarding prefix, NEW_AGENTS refuses only the token issue, a system source's schedule and the built-in agent's revoke (wrong id, bad UUID, missing or misnamed variable, wrong method), GET under FULL and NEW_AGENTS passes (H2), a change without a matched pattern throws under non-NONE and passes under NONE (H3), the 409 added to the OpenAPI document (plain, own body, own without a problem body, safe and open operations untouched, no paths).
+- `idOf` and `variablesOf` (expression-bodied, `runCatching`/`as?`) get no mutants from mutflow; they are pinned by behavior (bad UUID, non-map variables).
+- `OnboardingContractIntegrationTest`: every operation the guard names by literal exists in the served OpenAPI document, and 409 onboarding_incomplete is described exactly on the operations that are neither safe, always-open, nor under /api/v1/onboarding/ (H4, H6).
+- `OnboardingGuardApiIntegrationTest`: the bypass tests pin each path's exact status. Observed: unknown `POST /api/v1/no-such` is 409 onboarding_incomplete under FULL and 404 under NEW_AGENTS and NONE (architect's expectation holds); under NEW_AGENTS `;x=1` and `%2D` give 409, a trailing slash 404; under FULL `POST .../schedule;x=1` is 405 (the schedule has no POST) and an encoded slash is 400. The system schedule and the built-in agent's revoke are asserted to pass with restriction `full` (H7).
+- `RepositoryCommandsTest` (H8): exact `fields` lists for every missing or invalid provider, region, endpoint, bucket and path, and that a field of the other S3 kind is ignored. A wrong provider also reports region and bucket (hostedS3 runs with a null provider). `valid()`'s throw branch has no mutant and is not forced.
+- H9, by hand, not committed: changing the literal in `Scheduler.kt` fails `ArchitectureTest` rule 8 as an offender ("select max(catch_up_at)  from schedules"); the stale check is reached only when there is no offender (sequential assertions), so it was checked separately with an extra unmatched exception in the test map ("exceptions that match no query"). Both reverted; no production code changed.
+- Full `./scripts/gate.sh server`: passed, coverage 96.8%, CRAP <= 6, mutation 1939 mutations, 0 survivors. `./scripts/gate.sh web`: passed.

@@ -3,22 +3,15 @@
 
 package dev.sard.server.api
 
-import dev.sard.server.extension.TenantResolver
-import dev.sard.server.runs.AgentRevoked
-import dev.sard.server.runs.UnknownPlugin
-import dev.sard.server.runs.UnknownRepository
-import dev.sard.server.selfbackup.SelfBackupRun
-import dev.sard.server.selfbackup.SelfBackupView
-import dev.sard.server.selfbackup.SelfBackups
-import dev.sard.server.selfbackup.SystemSource
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.servlet.http.HttpServletRequest
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
-import org.springframework.stereotype.Component
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
@@ -26,6 +19,11 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import tools.jackson.core.JsonParser
+import tools.jackson.core.JsonToken
+import tools.jackson.databind.DeserializationContext
+import tools.jackson.databind.annotation.JsonDeserialize
+import tools.jackson.databind.deser.std.StdDeserializer
 import java.time.Instant
 import java.util.UUID
 
@@ -38,6 +36,12 @@ data class SelfBackupRepositoryInput(
             "Required true for a local repository: a copy on the server's own machine is lost with the machine",
     )
     val confirmLocalStorage: Boolean = false,
+    @field:Schema(
+        description =
+            "The storage address the wizard built the command for, without credentials; shown on the recovery " +
+                "card. At most 1024 characters, no control characters, no user:password@",
+    )
+    val location: String? = null,
 )
 
 @Schema(description = "Where the self-backup goes, as the built-in agent's last Register describes it")
@@ -49,6 +53,16 @@ data class SelfBackupRepository(
     val repositoryId: String?,
     @field:Schema(description = "On the server's own machine: warn about it on every page")
     val local: Boolean,
+)
+
+@Schema(description = "What a system source backs up, for the wizard to show before the binding; no secrets")
+data class SelfBackupPlanItem(
+    val role: SystemSourceRole,
+    val name: String,
+    val plugin: String,
+    @field:Schema(description = "What goes into the backup: paths, or the database and where it is")
+    val includes: List<String>,
+    val excludes: List<String>,
 )
 
 @Schema(description = "A system source's last finished run")
@@ -91,6 +105,27 @@ data class SelfBackup(
     val warnings: List<SelfBackupWarningCode>,
     @field:Schema(description = "When a system source went overdue: the earliest deadline it missed; null if none")
     val overdueSince: Instant?,
+    @field:Schema(
+        description =
+            "The repositories of the live built-in agent's last Register, by name, bound or not; empty without one",
+    )
+    val repositories: List<SelfBackupRepository>,
+    @field:Schema(description = "What the system sources back up, whether configured or not")
+    val plan: List<SelfBackupPlanItem>,
+    @field:Schema(
+        description =
+            "Both system sources backed up successfully with runs queued at or after boundAt; false until configured",
+    )
+    val firstBackupDone: Boolean,
+    @field:Schema(
+        description =
+            "When the key copy of the current binding was confirmed; null if not, or if confirmed before boundAt",
+    )
+    val keysConfirmedAt: Instant?,
+    @field:Schema(
+        description = "The command that prints the repository password on the server's machine; null until configured",
+    )
+    val passwordRevealCommand: String?,
 )
 
 @Schema(description = "A run of one system source")
@@ -107,13 +142,110 @@ data class SelfBackupRuns(
     val runs: List<SelfBackupRunStarted>,
 )
 
-/** What the self-backup endpoints do (F6). */
+/** A boolean that only a JSON true or false is: the string "true" is not one, whatever the mapper would coerce. */
+class StrictBooleanDeserializer : StdDeserializer<Boolean>(Boolean::class.java) {
+    override fun deserialize(
+        parser: JsonParser,
+        context: DeserializationContext,
+    ): Boolean =
+        when (parser.currentToken()) {
+            JsonToken.VALUE_TRUE -> true
+            JsonToken.VALUE_FALSE -> false
+            else -> context.handleUnexpectedToken(Boolean::class.java, parser) as Boolean
+        }
+}
+
+@Schema(description = "The owner's confirmation that the repository password and the storage access are kept")
+data class KeysConfirmationInput(
+    @field:Schema(description = "Must be true: a copy of the repository password and of the storage access is kept")
+    @field:JsonDeserialize(using = StrictBooleanDeserializer::class)
+    val copiedOutsideServer: Boolean? = null,
+)
+
+@Schema(description = "What the wizard asks for to build the command that adds a repository; none is a secret")
+data class RepositoryCommandQuery(
+    @field:Schema(description = "s3, sftp or local")
+    val storage: String? = null,
+    @field:Schema(description = "s3: aws, b2 or custom")
+    val provider: String? = null,
+    @field:Schema(description = "s3 aws and b2: the region")
+    val region: String? = null,
+    @field:Schema(description = "s3 custom: http or https, host and optional port")
+    val endpoint: String? = null,
+    @field:Schema(description = "s3: the bucket")
+    val bucket: String? = null,
+    @field:Schema(description = "s3: the prefix in the bucket; sftp: the absolute path")
+    val path: String? = null,
+    @field:Schema(description = "sftp: the user on the storage host")
+    val user: String? = null,
+    @field:Schema(description = "sftp: the storage host")
+    val host: String? = null,
+    @field:Schema(description = "sftp: the port, 22 when absent")
+    val port: String? = null,
+    @field:Schema(description = "sftp: SHA256:... of the host key, if the owner knows it")
+    val hostKeyFingerprint: String? = null,
+) {
+    fun asMap(): Map<String, String> {
+        val all =
+            mapOf(
+                "storage" to storage,
+                "provider" to provider,
+                "region" to region,
+                "endpoint" to endpoint,
+                "bucket" to bucket,
+                "path" to path,
+                "user" to user,
+                "host" to host,
+                "port" to port,
+                "hostKeyFingerprint" to hostKeyFingerprint,
+            )
+        return all.entries.mapNotNull { (name, value) -> value?.let { name to it } }.toMap()
+    }
+}
+
+@Schema(description = "The commands for a terminal on the server's machine that add a repository to the built-in agent")
+data class RepositoryCommand(
+    @field:Schema(description = "The name the repository will have: the first free of self, self-2, ...")
+    val repositoryName: String,
+    @field:Schema(description = "The address of the repository, without credentials")
+    val address: String,
+    @field:Schema(description = "In the order to run them; the key id and the secret key are asked in the terminal")
+    val commands: List<String>,
+)
+
+@Schema(description = "What the owner needs to restore from the self-backup; no password, no credentials")
+data class RecoveryCard(
+    val repositoryName: String,
+    @field:Schema(description = "restic backend scheme: s3, sftp, local, ...")
+    val backend: String,
+    @field:Schema(description = "The storage address the wizard recorded; null when none was")
+    val location: String?,
+    @field:Schema(description = "restic repository id; null until the agent reads it")
+    val repositoryId: String?,
+    @field:Schema(description = "SHA-256 fingerprint of the server's CA")
+    val caFingerprint: String,
+    val sardVersion: String,
+    val generatedAt: Instant,
+    @field:Schema(description = "Where the restore procedure is described, for this version of the server")
+    val recoveryProcedure: String,
+)
+
+/** What the self-backup endpoints do (F6, F4b). */
 interface SelfBackupApi {
     fun getSelfBackup(): SelfBackup
 
     fun bindSelfBackupRepository(input: SelfBackupRepositoryInput): SelfBackup
 
     fun startSelfBackup(): SelfBackupRuns
+
+    fun confirmKeys(
+        input: KeysConfirmationInput,
+        clientAddress: String,
+    )
+
+    fun repositoryCommand(query: RepositoryCommandQuery): RepositoryCommand
+
+    fun recoveryCard(): RecoveryCard
 }
 
 @RestController
@@ -157,56 +289,52 @@ class SelfBackupController(
         content = [Content(mediaType = PROBLEM_JSON, schema = Schema(implementation = Problem::class))],
     )
     fun startSelfBackup(): SelfBackupRuns = api.startSelfBackup()
-}
 
-/** The self-backup endpoints over [SelfBackups], in the tenant of the session. */
-@Component
-class SelfBackupApiImpl(
-    private val selfBackups: SelfBackups,
-    private val tenants: TenantResolver,
-) : SelfBackupApi {
-    override fun getSelfBackup(): SelfBackup = selfBackupOf(selfBackups.get(tenants.currentTenantId()))
+    @PostMapping("/keys-confirmation", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(
+        summary = "Confirm that the repository password and the storage access are kept outside the server",
+        description =
+            "Does the step keys_confirmed; the first confirmation ends the onboarding. Repeating it changes " +
+                "nothing. 409 self_backup_not_configured before a repository is bound; 409 first_backup_pending " +
+                "before both system sources backed up after the binding; 422 validation_failed unless " +
+                "copiedOutsideServer is true.",
+    )
+    @ApiResponse(
+        responseCode = "409",
+        description = "self_backup_not_configured or first_backup_pending",
+        content = [Content(mediaType = PROBLEM_JSON, schema = Schema(implementation = Problem::class))],
+    )
+    @Unprocessable
+    fun confirmKeys(
+        @RequestBody input: KeysConfirmationInput,
+        httpRequest: HttpServletRequest,
+    ) = api.confirmKeys(input, httpRequest.remoteAddr)
 
-    override fun bindSelfBackupRepository(input: SelfBackupRepositoryInput): SelfBackup {
-        val tenant = tenants.currentTenantId()
-        return selfBackupOf(selfBackups.bind(tenant, input.repositoryName, input.confirmLocalStorage))
-    }
+    @GetMapping("/repository-command")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(
+        summary = "The commands that add a repository to the built-in agent",
+        description =
+            "Built from parameters that are no secrets; nothing is written. The key id and the secret key of an " +
+                "S3 storage are asked in the terminal. 422 validation_failed names the field; 422 " +
+                "self_agent_missing without a built-in agent.",
+    )
+    @Unprocessable
+    fun repositoryCommand(
+        @ParameterObject query: RepositoryCommandQuery,
+    ): RepositoryCommand = api.repositoryCommand(query)
 
-    /** As POST /sources/{id}/runs: a run that cannot start for its agent is a conflict, not a bad request. */
-    override fun startSelfBackup(): SelfBackupRuns =
-        try {
-            SelfBackupRuns(selfBackups.runNow(tenants.currentTenantId()).map(::runOf))
-        } catch (_: AgentRevoked) {
-            throw RunRefused(ErrorCode.AGENT_REVOKED)
-        } catch (_: UnknownPlugin) {
-            throw RunRefused(ErrorCode.UNKNOWN_PLUGIN)
-        } catch (_: UnknownRepository) {
-            throw RunRefused(ErrorCode.UNKNOWN_REPOSITORY)
-        }
-
-    private fun runOf(run: SelfBackupRun) =
-        SelfBackupRunStarted(SystemSourceRole.valueOf(run.role.name), run.sourceId, run.runId, run.started)
-
-    private fun selfBackupOf(view: SelfBackupView) =
-        SelfBackup(
-            view.configured,
-            view.agentId,
-            view.repository?.let { SelfBackupRepository(it.name, it.backend, it.repositoryId, it.local) },
-            view.boundAt,
-            view.sources.map(::sourceOf),
-            SelfBackupStatus.valueOf(view.health.name),
-            view.warnings.map { SelfBackupWarningCode.valueOf(it.name) },
-            view.overdueSince,
-        )
-
-    private fun sourceOf(source: SystemSource) =
-        SelfBackupSource(
-            SystemSourceRole.valueOf(source.role.name),
-            source.sourceId,
-            source.agentId,
-            source.repositoryName,
-            source.lastSuccessAt,
-            source.lastFailureAt,
-            source.lastRun?.let { SelfBackupLastRun(it.id, RunStatus.valueOf(it.status.name), it.finishedAt) },
-        )
+    @GetMapping("/recovery-card")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(
+        summary = "The recovery card",
+        description = "Where the storage is and which CA the server has, to keep with the repository password.",
+    )
+    @ApiResponse(
+        responseCode = "409",
+        description = "self_backup_not_configured",
+        content = [Content(mediaType = PROBLEM_JSON, schema = Schema(implementation = Problem::class))],
+    )
+    fun recoveryCard(): RecoveryCard = api.recoveryCard()
 }

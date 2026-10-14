@@ -72,6 +72,9 @@ class OpenApiConfiguration {
     fun unavailableResponses(): OpenApiCustomizer = OpenApiCustomizer(::describeUnavailable)
 
     @Bean
+    fun onboardingIncompleteResponses(): OpenApiCustomizer = OpenApiCustomizer(::describeOnboardingIncomplete)
+
+    @Bean
     fun requiredProperties(): OpenApiCustomizer = OpenApiCustomizer(::requireConstructorParameters)
 }
 

@@ -20,6 +20,12 @@
 #      same CA, sign-in with the password of the wizard, no setup code in the log of
 #      the upgraded server. UPGRADE_FROM unset: no upgrade check.
 #   6  admin-reset, a restart and the wizard give a new password; the old one is refused
+#   8  (F4b) steps 3 and 4 of the wizard through REST with a local repository, as the owner does:
+#      the commands of GET /self-backup/repository-command run in this directory, the repository
+#      shows up with its restic id, PUT /self-backup/repository binds it, "back up now" runs both
+#      system sources to success, the printed password command prints, the key copy is confirmed
+#      (204), the restriction is none and an enrollment token is issued (201). The other stands
+#      take the DB shortcut (sard_confirm_onboarding_in_database), this one does not.
 #   7  (F6) what the self-backup reads stays read-only in the sidecar: the CA directory and
 #      the installation directory are mounted read-only and refuse a write, .env is readable
 #      through group 10001; the role sard_self still cannot write to the database
@@ -259,5 +265,60 @@ login || fail "6: sign-in with the recovered password"
 [ "$(get /agents | python3 -c 'import json,sys; print(" ".join(sorted(a["id"] for a in json.load(sys.stdin)["items"])))')" = "$agents_before_reset" ] \
   || fail "6: agents changed by the recovery"
 pass "6: admin-reset + restart + wizard: the new password signs in, the old one is refused (401), agents kept"
+# 8 (F4b): steps 3 and 4 of the wizard through REST, with a local repository (OQ-207).
+json_field() { python3 -c 'import json,sys; d = json.load(sys.stdin); print(eval(sys.argv[1], {"d": d}))' "$1"; }
+send() { # METHOD PATH [BODY]: prints "<status> <body>" on one line
+  local out
+  out="$(curl -sS -w '\n%{http_code}' -b "$cookies" -X "$1" -H 'Content-Type: application/json' --data-binary "${3:-}" "$api$2")" || return 1
+  printf '%s %s\n' "${out##*$'\n'}" "$(printf '%s' "${out%$'\n'*}" | tr -d '\n')"
+}
+restriction() { get /onboarding | json_field 'd["restriction"]'; }
+[ "$(restriction)" != none ] || fail "8: the restriction is none before the self-backup is bound"
+cmd="$(get '/self-backup/repository-command?storage=local')" || fail "8: no repository-command for local storage"
+repo="$(printf '%s' "$cmd" | json_field 'd["repositoryName"]')"
+address="$(printf '%s' "$cmd" | json_field 'd["address"]')"
+printf '%s' "$cmd" | json_field '"\n".join(d["commands"])' >"$work/repo-commands.sh"
+[ -s "$work/repo-commands.sh" ] || fail "8: the returned command list is empty"
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  bash -c "$line" </dev/null >>"$work/repo-add.log" 2>&1 || fail "8: command failed: $line: $(tail -5 "$work/repo-add.log")"
+done <"$work/repo-commands.sh"
+pass "8: the commands of repository-command for $repo ran"
+repo_id=""
+for _ in $(seq 1 120); do
+  repo_id="$(get /self-backup | json_field 'next((r["repositoryId"] for r in d["repositories"] if r["name"] == "'"$repo"'" and r["repositoryId"]), "")' 2>/dev/null || true)"
+  [ -n "$repo_id" ] && break
+  sleep 1
+done
+[ -n "$repo_id" ] || fail "8: the repository $repo has no restic id in GET /self-backup within 120 s"
+pass "8: repository $repo registered with restic id $repo_id"
+bound="$(send PUT /self-backup/repository "{\"repositoryName\":\"$repo\",\"confirmLocalStorage\":true,\"location\":\"$address\"}")"
+[ "${bound%% *}" = 200 ] || fail "8: binding answered ${bound%% *}: ${bound#* }"
+started="$(send POST /self-backup/runs)"
+[ "${started%% *}" = 200 ] || fail "8: back up now answered ${started%% *}: ${started#* }"
+run_ids="$(printf '%s' "${started#* }" | json_field '" ".join(r["runId"] for r in d["runs"])')"
+[ "$(wc -w <<<"$run_ids")" -eq 2 ] || fail "8: expected two runs, got: $run_ids"
+for run in $run_ids; do
+  status=""
+  for _ in $(seq 1 300); do
+    status="$(get "/runs/$run" | json_field 'd["status"]')"
+    case "$status" in succeeded | failed | cancelled) break ;; esac
+    sleep 1
+  done
+  [ "$status" = succeeded ] || fail "8: run $run ended as '$status' within 300 s"
+done
+pass "8: both system sources backed up to $repo (runs $run_ids)"
+reveal="$(get /self-backup | json_field 'd["passwordRevealCommand"]')"
+[ -n "$reveal" ] && [ "$reveal" != None ] || fail "8: no passwordRevealCommand after the binding"
+revealed="$(bash -c "$reveal" </dev/null 2>"$work/reveal.err")" || fail "8: the password command failed: $(cat "$work/reveal.err")"
+[ -n "$revealed" ] || fail "8: the password command printed nothing"
+pass "8: the password command prints a password"
+[ "$(restriction)" != none ] || fail "8: the restriction is none before the key copy is confirmed"
+confirmed="$(send POST /self-backup/keys-confirmation '{"copiedOutsideServer":true}')"
+[ "${confirmed%% *}" = 204 ] || fail "8: the key copy confirmation answered ${confirmed%% *}: ${confirmed#* }"
+[ "$(restriction)" = none ] || fail "8: the restriction is $(restriction) after the confirmation, not none"
+issued="$(send POST /enrollment-tokens '{"label":"after-onboarding"}')"
+[ "${issued%% *}" = 201 ] || fail "8: an enrollment token answered ${issued%% *}: ${issued#* }"
+pass "8: the key copy confirmed (204), restriction none, an enrollment token issued (201)"
 docker compose down -v --remove-orphans >/dev/null 2>&1 # it holds ports 8080 and 9090 of the host
 echo "PASSED"

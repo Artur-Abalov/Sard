@@ -16,6 +16,7 @@ import (
 
 // restic не найден по пути из конфига — отказ до обращения к бэкенду
 func TestResticNotFoundAtThePathOfTheConfigIsRefusedBeforeTheBackend(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	q := h.path("nowhere/restic")
 	h.cfg.Restic.Path = q
@@ -35,6 +36,7 @@ func TestResticNotFoundAtThePathOfTheConfigIsRefusedBeforeTheBackend(t *testing.
 
 // restic не найден рядом с агентом — сообщение называет этот путь
 func TestResticNotFoundNextToTheAgentNamesThatPath(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.cfg.Restic.Path = ""
 	h.saveConfig()
@@ -51,6 +53,7 @@ func TestResticNotFoundNextToTheAgentNamesThatPath(t *testing.T) {
 
 // Устаревший restic — отказ с найденной и требуемой версиями
 func TestAnOutdatedResticIsRefusedWithBothVersions(t *testing.T) {
+	t.Parallel()
 	for _, version := range []string{"0.18.1", "0.18.1-dev", "0.17.3", "0.9.6"} {
 		h := newRepoHost(t)
 		h.restic.version = version
@@ -66,6 +69,7 @@ func TestAnOutdatedResticIsRefusedWithBothVersions(t *testing.T) {
 
 // Непригодный restic — отказ с путём и причиной
 func TestAnUnusableResticIsRefusedWithThePathAndTheCause(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	dir := h.path("a-directory")
 	plain := h.path("plain-file")

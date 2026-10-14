@@ -35,7 +35,7 @@ class EnrollmentTokenRecord(
     /** Written by the server for the agent next to it (migration V202610081200); REST never shows it. */
     @Column(name = "builtin", nullable = false, updatable = false)
     val builtin: Boolean = false,
-    /** The role of the agent that enrolls with it (migration V202610121300); a built-in token is always a source. */
+    /** The role of the agent that enrolls with it (migration V202610141200); a built-in token is always a source. */
     @Column(name = "role", nullable = false, updatable = false)
     val role: String,
     /** Set by Hibernate from the session's tenant on insert (ADR 0013). */

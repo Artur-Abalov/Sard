@@ -67,11 +67,12 @@ func (h *fragmentHost) registered() (repos, secretNames []string) {
 }
 
 func TestTheAgentRegistersTheRepositoryOfAFragment(t *testing.T) {
+	t.Parallel()
 	h := newFragmentHost(t, "repositories:\n  - {name: base, url: /srv/base, password_file: "+filepath.Join(t.TempDir(), "base.pass")+"}\n")
 	pass := filepath.Join(t.TempDir(), "extra.pass")
 	writeFile(t, pass, []byte("x\n"), 0o600)
 	h.fragment("repo-extra.yaml", "repositories:\n  - {name: extra, url: /srv/extra, password_file: "+pass+"}\n")
-	h.runUntilRegistered(time.Second)
+	h.runUntilRegistered(eventWait)
 	repos, _ := h.registered()
 	if strings.Join(repos, ",") != "base,extra" {
 		t.Fatalf("repositories %v", repos)
@@ -79,13 +80,14 @@ func TestTheAgentRegistersTheRepositoryOfAFragment(t *testing.T) {
 }
 
 func TestTheAgentRegistersTheSecretOfAFragment(t *testing.T) {
+	t.Parallel()
 	secret := filepath.Join(t.TempDir(), "pg")
 	writeFile(t, secret, []byte("v"), 0o600)
 	h := newFragmentHost(t, "secrets: {pg: "+secret+"}\n")
 	db := filepath.Join(t.TempDir(), "db")
 	writeFile(t, db, []byte("v"), 0o600)
 	h.fragment("secret-db.yaml", "secrets:\n  db: "+db+"\n")
-	h.runUntilRegistered(time.Second)
+	h.runUntilRegistered(eventWait)
 	_, names := h.registered()
 	if strings.Join(names, ",") != "db,pg" {
 		t.Fatalf("secret names %v", names)
@@ -93,6 +95,7 @@ func TestTheAgentRegistersTheSecretOfAFragment(t *testing.T) {
 }
 
 func TestADuplicateNameInAFragmentStopsTheAgentBeforeConnecting(t *testing.T) {
+	t.Parallel()
 	h := newStartHost(t)
 	pass := filepath.Join(h.dir, "base.pass")
 	writeFile(t, pass, []byte("x\n"), 0o600)
@@ -109,6 +112,7 @@ func TestADuplicateNameInAFragmentStopsTheAgentBeforeConnecting(t *testing.T) {
 }
 
 func TestAPasswordFileOfAFragmentThatIsOpenToTheGroupNamesTheFragment(t *testing.T) {
+	t.Parallel()
 	h := newStartHost(t)
 	pass := filepath.Join(h.dir, "extra.pass")
 	writeFile(t, pass, []byte("x\n"), 0o640)
@@ -141,6 +145,7 @@ func hostDepsFor(t *testing.T) (hostDeps, *fakeFS) {
 }
 
 func TestASecretMadeUnderSudoPassesTheCheckOfTheServiceStart(t *testing.T) {
+	t.Parallel()
 	h := newStartHost(t)
 	cfg := h.config(withRestic(t))
 	deps, _ := hostDepsFor(t)
@@ -152,6 +157,7 @@ func TestASecretMadeUnderSudoPassesTheCheckOfTheServiceStart(t *testing.T) {
 }
 
 func TestAnIdentityWrittenUnderSudoPassesTheCheckOfTheServiceStart(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	code, _, errOut := f.enrollWith(rootEnrollDeps(newFakeFS()))
 	assertCode(t, code, exitOK)
@@ -175,6 +181,7 @@ func resticAnswering(t *testing.T, id string) string {
 }
 
 func TestAfterRepoAddTheAgentTellsTheServerTheRepositoryID(t *testing.T) {
+	t.Parallel()
 	h := newRefusalHost(t, unavailable)
 	id := strings.Repeat("ab", 32)
 	script := resticAnswering(t, id)
@@ -192,7 +199,7 @@ func TestAfterRepoAddTheAgentTellsTheServerTheRepositoryID(t *testing.T) {
 	if !strings.Contains(out.String(), id) {
 		t.Fatalf("stdout %q, stderr %q", out.String(), errOut.String())
 	}
-	h.runUntilRegistered(time.Second)
+	h.runUntilRegistered(eventWait)
 	req := h.server.last.Load()
 	if req == nil || len(req.GetRepositories()) != 1 || req.GetRepositories()[0].GetName() != "extra" || req.GetRepositories()[0].GetRepositoryId() != id {
 		t.Fatalf("register request %v", req)
@@ -201,6 +208,7 @@ func TestAfterRepoAddTheAgentTellsTheServerTheRepositoryID(t *testing.T) {
 
 // A8b: the agent started after "repo add" of an s3: address.
 func TestAfterRepoAddOfS3TheAgentTellsTheServerTheBackendAndTheID(t *testing.T) {
+	t.Parallel()
 	h := newRefusalHost(t, unavailable)
 	id := strings.Repeat("cd", 32)
 	script := resticAnswering(t, id)
@@ -224,7 +232,7 @@ func TestAfterRepoAddOfS3TheAgentTellsTheServerTheBackendAndTheID(t *testing.T) 
 	if err := secrets.CheckAll(cfg, uint32(os.Getuid()), secrets.RealStat); err != nil {
 		t.Fatalf("A1: %v (stderr %q)", err, errOut.String())
 	}
-	h.runUntilRegistered(time.Second)
+	h.runUntilRegistered(eventWait)
 	req := h.server.last.Load()
 	if req == nil || len(req.GetRepositories()) != 1 {
 		t.Fatalf("register request %v", req)
@@ -256,6 +264,7 @@ func sftpDepsFor(t *testing.T, script string) hostDeps {
 
 // A8b-2: the agent started after "repo add" of an sftp: address.
 func TestAfterRepoAddOfSFTPTheAgentTellsTheServerTheBackendAndTheID(t *testing.T) {
+	t.Parallel()
 	h := newRefusalHost(t, unavailable)
 	id := strings.Repeat("ef", 32)
 	script := resticAnswering(t, id)
@@ -267,7 +276,7 @@ func TestAfterRepoAddOfSFTPTheAgentTellsTheServerTheBackendAndTheID(t *testing.T
 	if code != exitOK || !strings.Contains(out.String(), id) {
 		t.Fatalf("exit code %d, stdout %q, stderr %q", code, out.String(), errOut.String())
 	}
-	h.runUntilRegistered(time.Second)
+	h.runUntilRegistered(eventWait)
 	req := h.server.last.Load()
 	if req == nil || len(req.GetRepositories()) != 1 {
 		t.Fatalf("register request %v", req)

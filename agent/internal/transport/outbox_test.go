@@ -185,6 +185,7 @@ func TestOutboxSignalsNewMessages(t *testing.T) {
 		"progress": func() { o.Progress(progress("c", 1)) },
 		"result":   func() { o.Result(result("c")) },
 		"log":      func() { o.Log("c", line("l")) },
+		"stream":   func() { o.startStream([]*agentv1.StepResult{result("c")}) },
 	} {
 		write()
 		select {
@@ -198,13 +199,13 @@ func TestOutboxSignalsNewMessages(t *testing.T) {
 
 // A long run of one command's logs is split into chunks.
 func TestOutboxSplitsLongLogRuns(t *testing.T) {
-	o := newOutbox(2 * maxChunkLines)
-	for i := range maxChunkLines + 1 {
+	o := newOutbox(200)
+	for i := range 65 {
 		o.Log("c", line(fmt.Sprint(i)))
 	}
 	first, _ := o.next()
 	second, _ := o.next()
-	if len(first.GetLogChunk().GetLines()) != maxChunkLines || len(second.GetLogChunk().GetLines()) != 1 {
+	if len(first.GetLogChunk().GetLines()) != 64 || len(second.GetLogChunk().GetLines()) != 1 {
 		t.Fatalf("chunks of %d and %d lines", len(first.GetLogChunk().GetLines()), len(second.GetLogChunk().GetLines()))
 	}
 }
@@ -246,4 +247,57 @@ func collectResults(o *outbox, into map[string]bool) {
 			into[id] = true
 		}
 	}
+}
+
+// A chunk put back goes in front of lines queued since, however few it has.
+func TestOutboxRequeueKeepsOrderBeforeLaterLines(t *testing.T) {
+	o := newOutbox(8)
+	o.Log("c1", line("a"))
+	msg, _ := o.next()
+	o.Log("c1", line("b"))
+	o.Log("c1", line("c"))
+	o.requeue(msg)
+	equal(t, drain(o), "log c1 a b c")
+}
+
+// Writes that come before the sender looks leave one wake-up, not a backlog.
+func TestOutboxCoalescesWakeUps(t *testing.T) {
+	o := newOutbox(8)
+	o.Log("c", line("1"))
+	o.Log("c", line("2"))
+	<-o.ready()
+	select {
+	case <-o.ready():
+		t.Fatal("a second wake-up is pending")
+	default:
+	}
+}
+
+// The executor lists the same pending result on every stream: the outbox
+// keeps one copy, not one per stream.
+func TestOutboxHoldsOneCopyOfAResultAcrossStreams(t *testing.T) {
+	o := newOutbox(8)
+	for range 3 {
+		o.startStream([]*agentv1.StepResult{result("r1")})
+	}
+	o.Result(result("r1"))
+	if len(o.results) != 1 {
+		t.Fatalf("%d copies of the result", len(o.results))
+	}
+}
+
+// The last 1024 acks are remembered: a stale resend of those is refused, an
+// older one is not. Dropping one id at a time keeps the window exact.
+func TestOutboxRemembersExactlyTheLast1024Acks(t *testing.T) {
+	o := newOutbox(8)
+	for i := range 1024 {
+		o.ack(fmt.Sprint("r", i))
+	}
+	o.Result(result("r0"))
+	equal(t, drain(o))
+	o.ack("r1024") // the 1025th ack: r0 leaves the window, r1 stays
+	o.Result(result("r1"))
+	equal(t, drain(o))
+	o.Result(result("r0"))
+	equal(t, drain(o), "result r0")
 }

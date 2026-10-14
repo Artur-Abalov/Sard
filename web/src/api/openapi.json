@@ -125,11 +125,15 @@
             }
           },
           "409" : {
-            "description" : "The server keeps this source itself (system_source); nothing was changed",
+            "description" : "The server keeps this source itself (system_source); nothing was changed; or the onboarding is not complete",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/Problem"
+                  "anyOf" : [ {
+                    "$ref" : "#/components/schemas/Problem"
+                  }, {
+                    "$ref" : "#/components/schemas/Problem"
+                  } ]
                 }
               }
             }
@@ -195,12 +199,16 @@
             "description" : "Deleted"
           },
           "409" : {
-            "description" : "The source has an active run (activeRunId), or the server keeps it itself (code)",
+            "description" : "The source has an active run (activeRunId), or the server keeps it itself (code); or the onboarding is not complete",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
                   "anyOf" : [ {
-                    "$ref" : "#/components/schemas/RunActiveProblem"
+                    "anyOf" : [ {
+                      "$ref" : "#/components/schemas/RunActiveProblem"
+                    }, {
+                      "$ref" : "#/components/schemas/Problem"
+                    } ]
                   }, {
                     "$ref" : "#/components/schemas/Problem"
                   } ]
@@ -386,6 +394,16 @@
           },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "The onboarding is not complete (onboarding_incomplete); or the onboarding is not complete",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -711,6 +729,16 @@
                 }
               }
             }
+          },
+          "409" : {
+            "description" : "The onboarding is not complete (onboarding_incomplete); or the onboarding is not complete",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
           }
         }
       }
@@ -732,12 +760,16 @@
         } ],
         "responses" : {
           "409" : {
-            "description" : "The source has an active run (activeRunId), or the run cannot start (code)",
+            "description" : "The source has an active run (activeRunId), or the run cannot start (code); or the onboarding is not complete",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
                   "anyOf" : [ {
-                    "$ref" : "#/components/schemas/RunActiveProblem"
+                    "anyOf" : [ {
+                      "$ref" : "#/components/schemas/RunActiveProblem"
+                    }, {
+                      "$ref" : "#/components/schemas/Problem"
+                    } ]
                   }, {
                     "$ref" : "#/components/schemas/Problem"
                   } ]
@@ -995,6 +1027,79 @@
                 }
               }
             }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/self-backup/keys-confirmation" : {
+      "post" : {
+        "tags" : [ "self-backup" ],
+        "summary" : "Confirm that the repository password and the storage access are kept outside the server",
+        "description" : "Does the step keys_confirmed; the first confirmation ends the onboarding. Repeating it changes nothing. 409 self_backup_not_configured before a repository is bound; 409 first_backup_pending before both system sources backed up after the binding; 422 validation_failed unless copiedOutsideServer is true.",
+        "operationId" : "confirmKeys",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/KeysConfirmationInput"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "409" : {
+            "description" : "self_backup_not_configured or first_backup_pending",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "204" : {
+            "description" : "No Content"
           },
           "401" : {
             "description" : "No session or it expired",
@@ -1394,6 +1499,16 @@
                 }
               }
             }
+          },
+          "409" : {
+            "description" : "The onboarding is not complete (onboarding_incomplete); or the onboarding is not complete",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
           }
         }
       }
@@ -1415,11 +1530,15 @@
         } ],
         "responses" : {
           "409" : {
-            "description" : "The token was used (agentId names the agent) or expired",
+            "description" : "The token was used (agentId names the agent) or expired; or the onboarding is not complete",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/TokenConflictProblem"
+                  "anyOf" : [ {
+                    "$ref" : "#/components/schemas/TokenConflictProblem"
+                  }, {
+                    "$ref" : "#/components/schemas/Problem"
+                  } ]
                 }
               }
             }
@@ -1512,11 +1631,15 @@
             }
           },
           "409" : {
-            "description" : "A live built-in agent needs confirm=sard-self; nothing was changed",
+            "description" : "A live built-in agent needs confirm=sard-self; nothing was changed; or the onboarding is not complete",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/Problem"
+                  "anyOf" : [ {
+                    "$ref" : "#/components/schemas/Problem"
+                  }, {
+                    "$ref" : "#/components/schemas/Problem"
+                  } ]
                 }
               }
             }
@@ -1785,6 +1908,197 @@
               "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/SelfBackup"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/self-backup/repository-command" : {
+      "get" : {
+        "tags" : [ "self-backup" ],
+        "summary" : "The commands that add a repository to the built-in agent",
+        "description" : "Built from parameters that are no secrets; nothing is written. The key id and the secret key of an S3 storage are asked in the terminal. 422 validation_failed names the field; 422 self_agent_missing without a built-in agent.",
+        "operationId" : "repositoryCommand",
+        "parameters" : [ {
+          "name" : "storage",
+          "in" : "query",
+          "description" : "s3, sftp or local",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "s3, sftp or local"
+          }
+        }, {
+          "name" : "provider",
+          "in" : "query",
+          "description" : "s3: aws, b2 or custom",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "s3: aws, b2 or custom"
+          }
+        }, {
+          "name" : "region",
+          "in" : "query",
+          "description" : "s3 aws and b2: the region",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "s3 aws and b2: the region"
+          }
+        }, {
+          "name" : "endpoint",
+          "in" : "query",
+          "description" : "s3 custom: http or https, host and optional port",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "s3 custom: http or https, host and optional port"
+          }
+        }, {
+          "name" : "bucket",
+          "in" : "query",
+          "description" : "s3: the bucket",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "s3: the bucket"
+          }
+        }, {
+          "name" : "path",
+          "in" : "query",
+          "description" : "s3: the prefix in the bucket; sftp: the absolute path",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "s3: the prefix in the bucket; sftp: the absolute path"
+          }
+        }, {
+          "name" : "user",
+          "in" : "query",
+          "description" : "sftp: the user on the storage host",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "sftp: the user on the storage host"
+          }
+        }, {
+          "name" : "host",
+          "in" : "query",
+          "description" : "sftp: the storage host",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "sftp: the storage host"
+          }
+        }, {
+          "name" : "port",
+          "in" : "query",
+          "description" : "sftp: the port, 22 when absent",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "sftp: the port, 22 when absent"
+          }
+        }, {
+          "name" : "hostKeyFingerprint",
+          "in" : "query",
+          "description" : "sftp: SHA256:... of the host key, if the owner knows it",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "description" : "sftp: SHA256:... of the host key, if the owner knows it"
+          }
+        } ],
+        "responses" : {
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RepositoryCommand"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/self-backup/recovery-card" : {
+      "get" : {
+        "tags" : [ "self-backup" ],
+        "summary" : "The recovery card",
+        "description" : "Where the storage is and which CA the server has, to keep with the repository password.",
+        "operationId" : "recoveryCard",
+        "responses" : {
+          "409" : {
+            "description" : "self_backup_not_configured",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RecoveryCard"
                 }
               }
             }
@@ -2654,7 +2968,7 @@
       },
       "ErrorCode" : {
         "type" : "string",
-        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "agent_role_mismatch", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password" ]
+        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "agent_role_mismatch", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password", "onboarding_incomplete", "first_backup_pending" ]
       },
       "Problem" : {
         "type" : "object",
@@ -2928,6 +3242,10 @@
           "confirmLocalStorage" : {
             "type" : "boolean",
             "description" : "Required true for a local repository: a copy on the server's own machine is lost with the machine"
+          },
+          "location" : {
+            "type" : [ "string", "null" ],
+            "description" : "The storage address the wizard built the command for, without credentials; shown on the recovery card. At most 1024 characters, no control characters, no user:password@"
           }
         },
         "required" : [ "repositoryName" ]
@@ -2980,9 +3298,36 @@
             "type" : [ "string", "null" ],
             "format" : "date-time",
             "description" : "When a system source went overdue: the earliest deadline it missed; null if none"
+          },
+          "repositories" : {
+            "type" : "array",
+            "description" : "The repositories of the live built-in agent's last Register, by name, bound or not; empty without one",
+            "items" : {
+              "$ref" : "#/components/schemas/SelfBackupRepository"
+            }
+          },
+          "plan" : {
+            "type" : "array",
+            "description" : "What the system sources back up, whether configured or not",
+            "items" : {
+              "$ref" : "#/components/schemas/SelfBackupPlanItem"
+            }
+          },
+          "firstBackupDone" : {
+            "type" : "boolean",
+            "description" : "Both system sources backed up successfully with runs queued at or after boundAt; false until configured"
+          },
+          "keysConfirmedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "When the key copy of the current binding was confirmed; null if not, or if confirmed before boundAt"
+          },
+          "passwordRevealCommand" : {
+            "type" : [ "string", "null" ],
+            "description" : "The command that prints the repository password on the server's machine; null until configured"
           }
         },
-        "required" : [ "agentId", "boundAt", "configured", "overdueSince", "repository", "sources", "status", "warnings" ]
+        "required" : [ "agentId", "boundAt", "configured", "firstBackupDone", "keysConfirmedAt", "overdueSince", "passwordRevealCommand", "plan", "repositories", "repository", "sources", "status", "warnings" ]
       },
       "SelfBackupLastRun" : {
         "type" : "object",
@@ -3001,6 +3346,35 @@
           }
         },
         "required" : [ "finishedAt", "id", "status" ]
+      },
+      "SelfBackupPlanItem" : {
+        "type" : "object",
+        "description" : "What a system source backs up, for the wizard to show before the binding; no secrets",
+        "properties" : {
+          "role" : {
+            "$ref" : "#/components/schemas/SystemSourceRole"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "plugin" : {
+            "type" : "string"
+          },
+          "includes" : {
+            "type" : "array",
+            "description" : "What goes into the backup: paths, or the database and where it is",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "excludes" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        },
+        "required" : [ "excludes", "includes", "name", "plugin", "role" ]
       },
       "SelfBackupRepository" : {
         "type" : "object",
@@ -3066,7 +3440,7 @@
       },
       "SelfBackupWarningCode" : {
         "type" : "string",
-        "enum" : [ "agent_replaced", "overdue", "failing", "schedule_disabled", "local_storage" ]
+        "enum" : [ "agent_replaced", "overdue", "failing", "schedule_disabled", "local_storage", "keys_unconfirmed" ]
       },
       "RunActiveProblem" : {
         "type" : "object",
@@ -3371,6 +3745,16 @@
           }
         },
         "required" : [ "runs" ]
+      },
+      "KeysConfirmationInput" : {
+        "type" : "object",
+        "description" : "The owner's confirmation that the repository password and the storage access are kept",
+        "properties" : {
+          "copiedOutsideServer" : {
+            "type" : [ "boolean", "null" ],
+            "description" : "Must be true: a copy of the repository password and of the storage access is kept"
+          }
+        }
       },
       "SetupCodeRequest" : {
         "type" : "object",
@@ -3881,6 +4265,65 @@
         },
         "required" : [ "expiresAt", "tenantId" ]
       },
+      "RepositoryCommand" : {
+        "type" : "object",
+        "description" : "The commands for a terminal on the server's machine that add a repository to the built-in agent",
+        "properties" : {
+          "repositoryName" : {
+            "type" : "string",
+            "description" : "The name the repository will have: the first free of self, self-2, ..."
+          },
+          "address" : {
+            "type" : "string",
+            "description" : "The address of the repository, without credentials"
+          },
+          "commands" : {
+            "type" : "array",
+            "description" : "In the order to run them; the key id and the secret key are asked in the terminal",
+            "items" : {
+              "type" : "string"
+            }
+          }
+        },
+        "required" : [ "address", "commands", "repositoryName" ]
+      },
+      "RecoveryCard" : {
+        "type" : "object",
+        "description" : "What the owner needs to restore from the self-backup; no password, no credentials",
+        "properties" : {
+          "repositoryName" : {
+            "type" : "string"
+          },
+          "backend" : {
+            "type" : "string",
+            "description" : "restic backend scheme: s3, sftp, local, ..."
+          },
+          "location" : {
+            "type" : [ "string", "null" ],
+            "description" : "The storage address the wizard recorded; null when none was"
+          },
+          "repositoryId" : {
+            "type" : [ "string", "null" ],
+            "description" : "restic repository id; null until the agent reads it"
+          },
+          "caFingerprint" : {
+            "type" : "string",
+            "description" : "SHA-256 fingerprint of the server's CA"
+          },
+          "sardVersion" : {
+            "type" : "string"
+          },
+          "generatedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "recoveryProcedure" : {
+            "type" : "string",
+            "description" : "Where the restore procedure is described, for this version of the server"
+          }
+        },
+        "required" : [ "backend", "caFingerprint", "generatedAt", "location", "recoveryProcedure", "repositoryId", "repositoryName", "sardVersion" ]
+      },
       "SchedulePreview" : {
         "type" : "object",
         "description" : "A schedule as it would be saved, in words, with its nearest fires; nothing is stored",
@@ -4147,14 +4590,22 @@
           "caReplaceable" : {
             "type" : [ "boolean", "null" ],
             "description" : "True while the CA may still be replaced by an import: the ca step is not done and no agent certificate was issued; null without a session"
+          },
+          "restriction" : {
+            "$ref" : "#/components/schemas/OnboardingRestriction"
           }
         },
-        "required" : [ "access", "ca", "caReplaceable", "setupCode", "steps" ]
+        "required" : [ "access", "ca", "caReplaceable", "restriction", "setupCode", "steps" ]
       },
       "OnboardingAccess" : {
         "type" : "string",
         "description" : "Which session came with the request",
         "enum" : [ "none", "setup", "admin" ]
+      },
+      "OnboardingRestriction" : {
+        "type" : "string",
+        "description" : "What the server refuses until the self-backup and the key copy are confirmed: full: every change but the self-backup's own and the session's; new_agents: only issuing enrollment tokens (an installation upgraded with agents or sources); none: onboarding is complete",
+        "enum" : [ "full", "new_agents", "none" ]
       },
       "OnboardingStep" : {
         "type" : "object",
@@ -4176,7 +4627,7 @@
       },
       "OnboardingStepState" : {
         "type" : "string",
-        "description" : "upcoming: the step is not part of this version of the wizard yet",
+        "description" : "upcoming: an earlier step is not done yet",
         "enum" : [ "done", "pending", "upcoming" ]
       },
       "SetupCodeState" : {

@@ -152,6 +152,7 @@ func requireContains(t *testing.T, line string, parts []string, present bool) {
 
 // Scenario: Отказ Register с причиной сервера завершает агента с кодом 78
 func TestRegisterRefusalWithAServerReasonEndsTheAgentWithCode78(t *testing.T) {
+	t.Parallel()
 	rows := []struct {
 		code     codes.Code
 		reason   string
@@ -170,6 +171,7 @@ func TestRegisterRefusalWithAServerReasonEndsTheAgentWithCode78(t *testing.T) {
 
 // Scenario: Отказ Register без ErrorInfo тоже завершает агента с кодом 78
 func TestRegisterRefusalWithoutErrorInfoAlsoEndsTheAgentWithCode78(t *testing.T) {
+	t.Parallel()
 	for _, c := range []codes.Code{codes.InvalidArgument, codes.FailedPrecondition, codes.Unauthenticated, codes.PermissionDenied} {
 		h := newRefusalHost(t, func(context.Context) error { return status.Error(c, "refused-marker") })
 		h.requireRefusal(10*time.Second, []string{"code = " + c.String(), "refused-marker"}, "reason ")
@@ -178,6 +180,7 @@ func TestRegisterRefusalWithoutErrorInfoAlsoEndsTheAgentWithCode78(t *testing.T)
 
 // Scenario: ErrorInfo чужого домена не выдаётся за причину сервера
 func TestErrorInfoOfAnotherDomainIsNotShownAsTheServersReason(t *testing.T) {
+	t.Parallel()
 	h := newRefusalHost(t, refusedWith(codes.InvalidArgument, "register rejected", "other.example", "NAME_DUPLICATE", nil))
 	code, _, stderr := h.run(10 * time.Second)
 	if code != 78 || strings.Contains(stderr, "NAME_DUPLICATE") {
@@ -187,6 +190,7 @@ func TestErrorInfoOfAnotherDomainIsNotShownAsTheServersReason(t *testing.T) {
 
 // Scenario: Управляющие символы в ответе сервера не разрывают строку отказа
 func TestControlCharactersFromTheServerDoNotBreakTheRefusalLine(t *testing.T) {
+	t.Parallel()
 	h := newRefusalHost(t, refusedWith(codes.InvalidArgument, "register rejected", "sard.dev", "BAD\nREASON", map[string]string{"field": "x\ny"}))
 	code, _, stderr := h.run(10 * time.Second)
 	if code != 78 || strings.Count(stderr, "\n") != 1 || !strings.Contains(stderr, `reason BAD\nREASON, field=x\ny`) {
@@ -196,6 +200,7 @@ func TestControlCharactersFromTheServerDoNotBreakTheRefusalLine(t *testing.T) {
 
 // Scenario: Остановка агента во время отказа Register завершает его с кодом 0
 func TestStoppingTheAgentDuringARegisterRefusalEndsItWithCode0(t *testing.T) {
+	t.Parallel()
 	ctx, stop := context.WithCancel(context.Background())
 	h := newRefusalHost(t, func(context.Context) error {
 		stop() // SIGTERM arrives while Register is in flight
@@ -210,6 +215,7 @@ func TestStoppingTheAgentDuringARegisterRefusalEndsItWithCode0(t *testing.T) {
 
 // Scenario: Недоступный сервер не останавливает агента
 func TestAnUnreachableServerDoesNotStopTheAgent(t *testing.T) {
+	t.Parallel()
 	h := newRefusalHost(t, nil)
 	h.cfg = h.configFor("127.0.0.1:1")
 	code, _, stderr := h.run(500 * time.Millisecond)
@@ -240,6 +246,7 @@ func serviceSetting(t *testing.T, key string) string {
 
 // Scenario: Юнит службы запрещает перезапуск после кода 78
 func TestTheUnitDoesNotRestartTheAgentAfterCode78(t *testing.T) {
+	t.Parallel()
 	if got := serviceSetting(t, "RestartPreventExitStatus"); got != strconv.Itoa(exitRefused) || exitRefused != 78 {
 		t.Errorf("RestartPreventExitStatus = %q", got)
 	}

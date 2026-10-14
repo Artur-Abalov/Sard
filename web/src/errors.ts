@@ -46,6 +46,8 @@ const KNOWN: Record<ErrorCode, true> = {
   setup_completed: true,
   ca_step_pending: true,
   wrong_password: true,
+  onboarding_incomplete: true,
+  first_backup_pending: true,
 }
 
 function codeOf(error: unknown): string | null {
@@ -75,6 +77,13 @@ export function errorMessage(failure: Failure): Message {
   }
   const detail = failure.kind === 'problem' ? `${failure.status} ${failure.code}` : failure.status
   return { key: 'errors.generic', params: { detail: String(detail) } }
+}
+
+/** Where the owner goes to put right what a failure says: the wizard, when the onboarding is not over. */
+export function errorLink(failure: Failure): { to: '/setup' } | null {
+  return failure.kind === 'problem' && failure.code === 'onboarding_incomplete'
+    ? { to: '/setup' }
+    : null
 }
 
 export interface FieldFailure {

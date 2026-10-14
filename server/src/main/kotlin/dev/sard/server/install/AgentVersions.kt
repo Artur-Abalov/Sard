@@ -65,6 +65,9 @@ private data class ReleaseVersion(
     }
 }
 
+/** [text] is a release tag by the rule of ADR 0048: vX.Y.Z, vX.Y.Z-beta.N or vX.Y.Z-rc.N. */
+fun isReleaseTag(text: String): Boolean = ReleaseVersion.parse(text) != null
+
 /**
  * Which agents are outdated (U1b, В4; pre-releases R1, Р2): both versions are releases by the tag rule
  * and the agent's is strictly lower by SemVer 2.0. Anything else (newer, equal, unknown, a git build)

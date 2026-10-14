@@ -16,6 +16,7 @@ import (
 // Rule "Ключ SSH пользователя службы создаётся от его имени и показывается открытой частью".
 
 func TestWithoutAKeyOneIsMadeByTheKeygenAsTheServiceUser(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	code, _, stderr := h.sftpCmd()
 	assertCode(t, code, exitOK)
@@ -40,6 +41,7 @@ func TestWithoutAKeyOneIsMadeByTheKeygenAsTheServiceUser(t *testing.T) {
 }
 
 func TestThePublicPartIsPrintedWithWhereToAddIt(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	code, stdout, _ := h.sftpCmd()
@@ -52,6 +54,7 @@ func TestThePublicPartIsPrintedWithWhereToAddIt(t *testing.T) {
 }
 
 func TestAnExistingKeyIsNotMadeAgain(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	private, public := h.fileContent(h.sshFile("id_ed25519")), h.fileContent(h.sshFile("id_ed25519.pub"))
@@ -68,6 +71,7 @@ func TestAnExistingKeyIsNotMadeAgain(t *testing.T) {
 }
 
 func TestAPrivateKeyWithoutAPublicPartGetsItFromTheKeygenAsTheServiceUserWithoutAFile(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	ok(t, removeFile(h.sshFile("id_ed25519.pub")))
@@ -84,6 +88,7 @@ func TestAPrivateKeyWithoutAPublicPartGetsItFromTheKeygenAsTheServiceUserWithout
 }
 
 func TestTheKeyIsMadeOnlyAfterTheHostKeyIsConfirmed(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.stdin.Reset()
 	before := h.sshTree()
@@ -98,6 +103,7 @@ func TestTheKeyIsMadeOnlyAfterTheHostKeyIsConfirmed(t *testing.T) {
 // Rule "Ключ хоста SFTP никогда не принимается молча".
 
 func TestAFingerprintOfTheFlagThatMatchesIsTrustedWithoutAQuestion(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	h.putSSH("known_hosts", "other.example.com ssh-ed25519 AAAA\n", 0o600)
@@ -119,6 +125,7 @@ func TestAFingerprintOfTheFlagThatMatchesIsTrustedWithoutAQuestion(t *testing.T)
 }
 
 func TestTheScanRunsAsTheServiceUserWithThePortOfTheAddress(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	code, _, stderr := h.sftpAt("sftp://backup@nas.example.com:2222//srv/extra", "--host-key-fingerprint", keyED.fingerprint())
@@ -137,6 +144,7 @@ func TestTheScanRunsAsTheServiceUserWithThePortOfTheAddress(t *testing.T) {
 }
 
 func TestTheEntryOfTheKnownHostHasTheFormSSHUsesForThePortAndForIPv6(t *testing.T) {
+	t.Parallel()
 	for address, start := range map[string]string{
 		"sftp:backup@nas.example.com:/srv/extra":      "nas.example.com ssh-ed25519",
 		"sftp://backup@nas.example.com:22//srv/extra": "nas.example.com ssh-ed25519",
@@ -154,6 +162,7 @@ func TestTheEntryOfTheKnownHostHasTheFormSSHUsesForThePortAndForIPv6(t *testing.
 }
 
 func TestAFingerprintThatMatchesNoKeyIsAMismatchOfTrustAndWritesNothing(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	before := h.sshTree()
 	other := "SHA256:" + strings.Repeat("A", 43)
@@ -172,6 +181,7 @@ func TestAFingerprintThatMatchesNoKeyIsAMismatchOfTrustAndWritesNothing(t *testi
 }
 
 func TestAtTheTerminalOneKeyIsShownAndYesTrustsIt(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	term := h.terminalIs("yes")
 	code, _, stderr := h.sftpAt(sftpAddress)
@@ -191,6 +201,7 @@ func TestAtTheTerminalOneKeyIsShownAndYesTrustsIt(t *testing.T) {
 }
 
 func TestAServerWithoutAnED25519KeyOffersTheECDSAKeyAtTheTerminal(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.srv.keys = []serverKey{keyRSA, keyEC}
 	term := h.terminalIs("yes")
@@ -205,6 +216,7 @@ func TestAServerWithoutAnED25519KeyOffersTheECDSAKeyAtTheTerminal(t *testing.T) 
 }
 
 func TestAnAnswerOtherThanYesIsRejectedAndNothingIsWritten(t *testing.T) {
+	t.Parallel()
 	for _, answers := range [][]string{{"no"}, {"y"}, {"YES"}, {""}, {}} {
 		h := newSFTPHost(t)
 		h.terminalIs(answers...)
@@ -219,6 +231,7 @@ func TestAnAnswerOtherThanYesIsRejectedAndNothingIsWritten(t *testing.T) {
 }
 
 func TestWithoutATerminalAndWithoutAFlagTheHostKeyIsUnconfirmedAndNothingIsRead(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.deps.stdin = &hungInput{}
 	before := h.sshTree()
@@ -236,6 +249,7 @@ func TestWithoutATerminalAndWithoutAFlagTheHostKeyIsUnconfirmedAndNothingIsRead(
 }
 
 func TestAKnownHostKeyIsNeitherAskedNorWrittenAgain(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	term := h.terminalIs()
@@ -253,6 +267,7 @@ func TestAKnownHostKeyIsNeitherAskedNorWrittenAgain(t *testing.T) {
 }
 
 func TestAHashedEntryOfTheKnownHostIsRecognised(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	entry := hashedHost(sftpHost) + " " + keyED.keyType + " " + keyED.blob + "\n"
 	h.putSSH("known_hosts", entry, 0o600)
@@ -266,6 +281,7 @@ func TestAHashedEntryOfTheKnownHostIsRecognised(t *testing.T) {
 }
 
 func TestAnEntryOfAnotherPortOfTheSameHostIsNotTheKnownKey(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.putSSH("known_hosts", keyED.line("[nas.example.com]:2222"), 0o600)
 	code, _, _ := h.sftpCmd()
@@ -276,6 +292,7 @@ func TestAnEntryOfAnotherPortOfTheSameHostIsNotTheKnownKey(t *testing.T) {
 }
 
 func TestAChangedHostKeyIsRefusedWithoutReplacingIt(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.putSSH("known_hosts", keyRSA.line("other.example.com")+"\n"+keyOldED.line(sftpHost), 0o600)
 	before := h.sshTree()
@@ -290,6 +307,7 @@ func TestAChangedHostKeyIsRefusedWithoutReplacingIt(t *testing.T) {
 }
 
 func TestTheFlagToReplaceReplacesAChangedHostKeyWithTheConfirmedOne(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.putSSH("known_hosts", keyOldED.line(sftpHost)+keyRSA.line("other.example.com"), 0o600)
 	code, _, _ := h.sftpCmd("--replace-host-key")
@@ -303,6 +321,7 @@ func TestTheFlagToReplaceReplacesAChangedHostKeyWithTheConfirmedOne(t *testing.T
 }
 
 func TestTheFlagToReplaceDoesNotSkipTheConfirmation(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.putSSH("known_hosts", keyOldED.line(sftpHost), 0o600)
 	h.stdin.Reset()
@@ -313,6 +332,7 @@ func TestTheFlagToReplaceDoesNotSkipTheConfirmation(t *testing.T) {
 }
 
 func TestAHostKeyThatSSHRefusesAtTheLoginIsAMismatchOfTrust(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	h.srv.loginStderr, h.srv.loginCode = "Host key verification failed.", 255
@@ -336,6 +356,7 @@ Host nas.example.com
 `
 
 func TestWithoutAConfigItIsMadeOfOneBlockOfTheHost(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	code, _, _ := h.sftpCmd()
 	assertCode(t, code, exitOK)
@@ -347,6 +368,7 @@ func TestWithoutAConfigItIsMadeOfOneBlockOfTheHost(t *testing.T) {
 }
 
 func TestTheBlockStandsBeforeTheFormerContentOfTheConfig(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	old := "Host *\n    ServerAliveInterval 0\n"
 	h.putSSH("config", old, 0o600)
@@ -359,6 +381,7 @@ func TestTheBlockStandsBeforeTheFormerContentOfTheConfig(t *testing.T) {
 }
 
 func TestTheSameBlockDoesNotRewriteTheConfig(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	h.putSSH("config", hostBlock, 0o600)
@@ -373,6 +396,7 @@ func TestTheSameBlockDoesNotRewriteTheConfig(t *testing.T) {
 }
 
 func TestAnOutdatedBlockOfTheSameHostIsReplacedInPlace(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	old := strings.Replace(hostBlock, "ServerAliveInterval 15", "ServerAliveInterval 60", 1) + "Host mine\n    User me\n"
 	h.putSSH("config", old, 0o600)
@@ -384,6 +408,7 @@ func TestAnOutdatedBlockOfTheSameHostIsReplacedInPlace(t *testing.T) {
 }
 
 func TestBlocksOfDifferentHostsLiveSideBySide(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.srv.keys = []serverKey{keyED, keyEC}
 	code, _, _ := h.sftpAt("sftp:backup@other.example.com:/srv/other", "--host-key-fingerprint", keyED.fingerprint())
@@ -398,6 +423,7 @@ func TestBlocksOfDifferentHostsLiveSideBySide(t *testing.T) {
 }
 
 func TestEveryProgramOfTheClientRunsWithoutQuestionsAtTheTerminal(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	h.srv.authorized = false

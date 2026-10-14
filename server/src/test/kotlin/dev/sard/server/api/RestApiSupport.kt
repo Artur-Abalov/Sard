@@ -190,20 +190,29 @@ class ApiClient(
         session: ApiSession?,
         body: String? = null,
         headers: Map<String, String> = emptyMap(),
+    ): ApiResponse =
+        sendUnchecked(method, path, session, body, headers).also {
+            contract.check(method, path.substringBefore('?'), it)
+        }
+
+    /** As [send], without the contract check: for paths the contract does not know (bypass attempts). */
+    fun sendUnchecked(
+        method: String,
+        path: String,
+        session: ApiSession?,
+        body: String? = null,
+        headers: Map<String, String> = emptyMap(),
     ): ApiResponse {
         val cookie = session?.let { mapOf("Cookie" to "$SESSION_COOKIE=${it.cookie}") }.orEmpty()
         val response = raw(method, path, body, headers + cookie)
         val text = response.body()
         val json = if (text.isBlank()) mapper.nullNode() else runCatching { mapper.readTree(text) }.getOrNull()
-        val checked =
-            ApiResponse(
-                response.statusCode(),
-                response.headers().firstValue("Content-Type").orElse(null),
-                text,
-                json ?: mapper.nullNode(),
-            )
-        contract.check(method, path.substringBefore('?'), checked)
-        return checked
+        return ApiResponse(
+            response.statusCode(),
+            response.headers().firstValue("Content-Type").orElse(null),
+            text,
+            json ?: mapper.nullNode(),
+        )
     }
 
     fun get(

@@ -39,6 +39,8 @@ private fun codeOf(reason: Reason): Status.Code =
         Reason.TOKEN_EXPIRED,
         -> Status.Code.UNAUTHENTICATED
 
+        Reason.ONBOARDING_INCOMPLETE -> Status.Code.FAILED_PRECONDITION
+
         Reason.INTERNAL_RETRYABLE -> Status.Code.UNAVAILABLE
     }
 

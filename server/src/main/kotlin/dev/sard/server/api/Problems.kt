@@ -93,6 +93,12 @@ enum class ErrorCode {
 
     @JsonProperty("wrong_password")
     WRONG_PASSWORD,
+
+    @JsonProperty("onboarding_incomplete")
+    ONBOARDING_INCOMPLETE,
+
+    @JsonProperty("first_backup_pending")
+    FIRST_BACKUP_PENDING,
 }
 
 private const val TYPE = "URI reference identifying the problem type; about:blank when the status says it all"

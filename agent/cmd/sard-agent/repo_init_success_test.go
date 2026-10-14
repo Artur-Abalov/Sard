@@ -16,6 +16,7 @@ import (
 
 // Итог успеха называет имя, тип бэкенда и repository_id
 func TestSuccessSummaryNamesTheRepositoryTheBackendAndTheRepositoryID(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	code, stdout, stderr := h.initCmd()
 	assertCode(t, code, exitOK)
@@ -32,6 +33,7 @@ func TestSuccessSummaryNamesTheRepositoryTheBackendAndTheRepositoryID(t *testing
 
 // Итог успеха предупреждает, что ключ есть только на этом хосте
 func TestSuccessSummaryWarnsThatTheKeyIsOnlyOnThisHost(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	_, stdout, _ := h.initCmd()
 	for _, want := range []string{h.pass(), "outside this host", "only on this host", "unrecoverable"} {
@@ -43,6 +45,7 @@ func TestSuccessSummaryWarnsThatTheKeyIsOnlyOnThisHost(t *testing.T) {
 
 // Итог успеха говорит перезапустить службу агента
 func TestSuccessSummaryTellsToRestartTheAgentService(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	_, stdout, _ := h.initCmd()
 	for _, want := range []string{"restart", "sard-agent", "repository_id"} {
@@ -54,6 +57,7 @@ func TestSuccessSummaryTellsToRestartTheAgentService(t *testing.T) {
 
 // Предупреждение о ключе печатается и когда вывод не терминал
 func TestTheKeyWarningIsPrintedWhenStdoutIsAFile(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	out, err := os.Create(h.path("out.txt"))
 	if err != nil {
@@ -70,6 +74,7 @@ func TestTheKeyWarningIsPrintedWhenStdoutIsAFile(t *testing.T) {
 
 // Тип бэкенда в итоге берётся из адреса репозитория
 func TestTheBackendTypeComesFromTheRepositoryAddress(t *testing.T) {
+	t.Parallel()
 	for url, kind := range map[string]string{
 		"/srv/backup/main":                   "local",
 		"s3:https://s3.example.com/b/main":   "s3",
@@ -89,6 +94,7 @@ func TestTheBackendTypeComesFromTheRepositoryAddress(t *testing.T) {
 
 // Команда не меняет конфиг и файл пароля
 func TestTheCommandChangesNeitherTheConfigNorThePasswordFile(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	before := h.snapshot()
 	code, _, _ := h.initCmd()
@@ -98,6 +104,7 @@ func TestTheCommandChangesNeitherTheConfigNorThePasswordFile(t *testing.T) {
 
 // Команда не обращается к серверу Sard
 func TestTheCommandDoesNotConnectToTheSardServer(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	addr, accepted := countingServer(t)
 	h.cfg.Server.Address = addr
@@ -134,6 +141,7 @@ func TestTheCommandDoesNotReadStandardInput(t *testing.T) {
 
 // Встроенный провайдер шифрования, заданный явно, принимается
 func TestTheBuiltInCryptoProviderNamedExplicitlyIsAccepted(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	h.cfg.Repositories[0].CryptoProvider = "restic-aes"
 	h.saveConfig()
@@ -165,6 +173,7 @@ func TestResticVariablesOfTheOperatorEnvironmentDoNotReachRestic(t *testing.T) {
 
 // Второй репозиторий конфига инициализируется по своему имени
 func TestTheSecondRepositoryOfTheConfigIsInitialisedByItsName(t *testing.T) {
+	t.Parallel()
 	h := newRepoHost(t)
 	code, stdout, stderr := h.run("init", "--config", "C", "offsite")
 	assertCode(t, code, exitOK)

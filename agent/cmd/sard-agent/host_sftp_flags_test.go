@@ -11,6 +11,7 @@ import (
 // Rule "repo add проверяет адрес и флаги удалённого хранилища до обращения к нему" (SFTP).
 
 func TestAnUnusableSFTPAddressIsRefusedWithoutRunningSSH(t *testing.T) {
+	t.Parallel()
 	for _, address := range []string{
 		"sftp:backup@nas.example.com",
 		"sftp:",
@@ -33,6 +34,7 @@ func TestAnUnusableSFTPAddressIsRefusedWithoutRunningSSH(t *testing.T) {
 }
 
 func TestAHostKeyFingerprintNotInTheFormOfSHA256IsRefusedWithTheFlagName(t *testing.T) {
+	t.Parallel()
 	for _, fingerprint := range []string{
 		"MD5:16:27:ac:a5:76:28:2d:36:63:1b:56:4d:eb:df:a6:48",
 		"SHA256:short",

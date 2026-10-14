@@ -34,6 +34,7 @@ func (h *setupHost) idOf(url, passwordFile string) (string, error) {
 
 // Пустое хранилище создаётся со сгенерированным паролем
 func TestIntegrationRepoAddCreatesARepositoryThePasswordFileOpens(t *testing.T) {
+	t.Parallel()
 	h := realSetupHost(t)
 	code, stdout, stderr := h.add()
 	assertCode(t, code, exitOK)
@@ -52,6 +53,7 @@ func TestIntegrationRepoAddCreatesARepositoryThePasswordFileOpens(t *testing.T) 
 
 // Существующий репозиторий подключается по его паролю из стандартного ввода
 func TestIntegrationRepoAddAttachesAnExistingRepositoryByItsPassword(t *testing.T) {
+	t.Parallel()
 	h := realSetupHost(t)
 	other := h.path("outside.pass")
 	h.write(other, passMarker+"\n", 0o600)
@@ -78,6 +80,7 @@ func TestIntegrationRepoAddAttachesAnExistingRepositoryByItsPassword(t *testing.
 
 // Неверный пароль существующего репозитория — отказ без следов
 func TestIntegrationRepoAddWithAWrongPasswordTouchesNothing(t *testing.T) {
+	t.Parallel()
 	h := realSetupHost(t)
 	other := h.path("outside.pass")
 	h.write(other, "the real password\n", 0o600)
