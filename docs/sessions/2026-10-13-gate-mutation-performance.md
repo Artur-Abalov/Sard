@@ -75,8 +75,11 @@
     каждый класс. LPT вынесен в `scripts/lib/lpt.awk` (шарды агента не изменились).
     CI run 38512214310 (`81fde19`): шарды e2e 13,2 / 13,3 / 14,2 мин, все 32 класса с отчётом;
     весь прогон 20,9 мин вместо 42,9 (дальше всех теперь мутации агента 18,1 и server 16,4).
-11. Замечания архитектора к `enroll.Conn`: комментарий `Close` про `ErrClientConnClosing`;
-    поле вместо встраивания `*grpc.ClientConn`.
+11. ~~Замечания архитектора к `enroll.Conn`~~ — `/quick-fix` (coder → cleaner → architect,
+    APPROVED; hardener не запускался — состав `/quick-fix`): комментарий `Close` — второй вызов
+    возвращает `ErrClientConnClosing` (статус Canceled), закреплено тестом; поле `cc` вместо
+    встраивания `*grpc.ClientConn`, `Invoke`/`NewStream` делегируются (тесты падают на мутантах
+    делегирования). CRAP: `Close`, `Invoke`, `NewStream` 1.0, `newGRPCConn` 2.1.
 12. Горутина `classify_test.go:242` остаётся в `select {}` до конца процесса.
 13. 333 выживших мутанта агента (hardener).
 

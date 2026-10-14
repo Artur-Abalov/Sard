@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/Artur-Abalov/sard/agent/internal/enroll"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
@@ -451,5 +453,65 @@ func TestDialTOFUCloseReleasesTheTLSConnectionTheServerIsReadingFrom(t *testing.
 	var nerr net.Error
 	if err := <-readErr; errors.As(err, &nerr) && nerr.Timeout() {
 		t.Fatalf("server read timed out; the connection was not closed: %v", err)
+	}
+}
+
+// A second Close reports the gRPC client's closing error; the first Close
+// has already closed the TLS connection beneath it.
+func TestConnSecondCloseReturnsTheClientClosingErrorAndTheTLSConnectionStaysClosed(t *testing.T) {
+	ca := newTestCA(t)
+	var clientSide net.Conn
+	addr := serveGRPC(t, chainOf(ca.leaf(t, []string{"localhost", "127.0.0.1"}, 0), ca))
+	dial := func(ctx context.Context, network, a string) (net.Conn, error) {
+		c, err := enroll.RealDial(ctx, network, a)
+		clientSide = c
+		return c, err
+	}
+	conn, err := enroll.DialTOFU(context.Background(), dial, addr, ca.fingerprint())
+	if err != nil {
+		t.Fatalf("DialTOFU: %v", err)
+	}
+	if err := conn.Close(); err != nil {
+		t.Fatalf("first Close: %v", err)
+	}
+	if _, err := clientSide.Write([]byte{0}); !errors.Is(err, net.ErrClosed) {
+		t.Fatalf("write after Close = %v, want net.ErrClosed", err)
+	}
+	// grpc.ErrClientConnClosing is deprecated for direct comparison; it is a
+	// status error with code Canceled.
+	if err := conn.Close(); status.Code(err) != codes.Canceled {
+		t.Fatalf("second Close = %v, want the client-closing (Canceled) error", err)
+	}
+}
+
+// Invoke and NewStream reach the server through the verified connection.
+// The server registers no such method, so both must surface its
+// Unimplemented status.
+func TestConnInvokeAndNewStreamDelegateOverTheVerifiedConnection(t *testing.T) {
+	ca := newTestCA(t)
+	addr := serveGRPC(t, chainOf(ca.leaf(t, []string{"localhost", "127.0.0.1"}, 0), ca))
+	conn, err := enroll.DialTOFU(context.Background(), enroll.RealDial, addr, ca.fingerprint())
+	if err != nil {
+		t.Fatalf("DialTOFU: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var cci grpc.ClientConnInterface = conn
+	err = cci.Invoke(ctx, "/sard.test.Nothing/Unary", &agentv1.EnrollRequest{}, &agentv1.EnrollRequest{})
+	if status.Code(err) != codes.Unimplemented {
+		t.Fatalf("Invoke = %v, want Unimplemented", err)
+	}
+
+	stream, err := cci.NewStream(ctx, &grpc.StreamDesc{ServerStreams: true}, "/sard.test.Nothing/Stream")
+	if err != nil {
+		t.Fatalf("NewStream: %v", err)
+	}
+	if err := stream.SendMsg(&agentv1.EnrollRequest{}); err != nil {
+		t.Logf("SendMsg: %v", err)
+	}
+	if err := stream.RecvMsg(&agentv1.EnrollRequest{}); status.Code(err) != codes.Unimplemented {
+		t.Fatalf("RecvMsg = %v, want Unimplemented", err)
 	}
 }
