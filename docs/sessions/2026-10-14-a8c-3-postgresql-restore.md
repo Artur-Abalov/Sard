@@ -69,3 +69,10 @@ PostgreSQL нет (ADR 0059, Р62). Задание просит распрост
 
 `@vm` «Напечатанные команды восстанавливают базу в новом кластере»,
 `@vm` SELinux (QA часть 4, шаги 29–38, часть 6) — ручной QA.
+
+## Cleaner
+
+Повторяющийся заголовок итога (`printRestored`, `printPostgres`) вынесен в
+`printSnapshotHeader`, общий конец неудачной записи (`write`, `restorePostgres`)
+— в `restoreRun.writeFailed`. Поведение и тексты не менялись. Остальные
+функции среза ниже порога CRAP 6; `restoreRun.restore` — CRAP 6.0, CC 6, покрытие 100%.

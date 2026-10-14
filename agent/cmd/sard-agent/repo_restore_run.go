@@ -158,9 +158,7 @@ func (r *restoreRun) restorePostgres(ctx context.Context, reader *restic.CLI, li
 		return report(r.stderr, "repo restore", f)
 	}
 	if f := restore.WritePostgres(ctx, reader, r.held, plan, r.randomName, targetOf(r.st, r.st.who, r.deps)); f != nil {
-		r.held.Abandon()
-		r.record(snap, fmt.Sprintf("restore to %s failed: %s", auditPath(r.target()), f.Reason))
-		return report(r.stderr, "repo restore", f)
+		return r.writeFailed(snap, f)
 	}
 	r.held.Release()
 	r.record(snap, "restored to "+auditPath(r.target()))
@@ -194,14 +192,20 @@ func (r *restoreRun) write(ctx context.Context, req restore.Request) int {
 	writer := newResticAsRoot(st.cfg, st.binary, r.deps, st.repo, st.who.Service.UID)
 	summary, f := restore.Run(ctx, writer, req, targetOf(st, st.who, r.deps))
 	if f != nil {
-		held.Abandon()
-		r.record(snap, fmt.Sprintf("restore to %s failed: %s", auditPath(r.target()), f.Reason))
-		return report(r.stderr, "repo restore", f)
+		return r.writeFailed(snap, f)
 	}
 	held.Release()
 	r.record(snap, "restored to "+auditPath(r.target()))
 	printRestored(r.stdout, st.repo.Name, snap, r.target(), r.opts.paths, summary)
 	return exitOK
+}
+
+// writeFailed ends a restore whose writing began and failed: the target is
+// abandoned, the audit line and the report say why.
+func (r *restoreRun) writeFailed(snap restore.Snapshot, f *refusal.Failure) int {
+	r.held.Abandon()
+	r.record(snap, fmt.Sprintf("restore to %s failed: %s", auditPath(r.target()), f.Reason))
+	return report(r.stderr, "repo restore", f)
 }
 
 // randomName is the random part of the name of the temporary directory.
@@ -242,8 +246,7 @@ func auditPath(path string) string {
 }
 
 func printRestored(stdout io.Writer, repoName string, snap restore.Snapshot, target string, paths []string, summary restic.RestoreSummary) {
-	_, _ = fmt.Fprintf(stdout, "repository %s: snapshot %s restored\n", repoName, snap.ID)
-	_, _ = fmt.Fprintf(stdout, "  time:     %s\n  source:   %s\n  run:      %s\n  target:   %s\n", snap.Stamp(), dashIfNil(snap.Source), dashIfNil(snap.Run), target)
+	printSnapshotHeader(stdout, repoName, snap, target)
 	if len(paths) > 0 {
 		_, _ = fmt.Fprintf(stdout, "  paths:    %v\n", paths)
 	}
@@ -255,12 +258,17 @@ func printRestored(stdout io.Writer, repoName string, snap restore.Snapshot, tar
 }
 
 func printPostgres(stdout io.Writer, repoName string, snap restore.Snapshot, target string, plan restore.PGPlan) {
-	_, _ = fmt.Fprintf(stdout, "repository %s: snapshot %s restored\n", repoName, snap.ID)
-	_, _ = fmt.Fprintf(stdout, "  time:     %s\n  source:   %s\n  run:      %s\n  target:   %s\n", snap.Stamp(), dashIfNil(snap.Source), dashIfNil(snap.Run), target)
+	printSnapshotHeader(stdout, repoName, snap, target)
 	for _, file := range plan.Files {
 		_, _ = fmt.Fprintf(stdout, "  file:     %s\n", filepath.Join(target, file.Name))
 	}
 	for _, line := range plan.Hints(target) {
 		_, _ = fmt.Fprintln(stdout, line)
 	}
+}
+
+// printSnapshotHeader is the first lines of the summary of a restore.
+func printSnapshotHeader(stdout io.Writer, repoName string, snap restore.Snapshot, target string) {
+	_, _ = fmt.Fprintf(stdout, "repository %s: snapshot %s restored\n", repoName, snap.ID)
+	_, _ = fmt.Fprintf(stdout, "  time:     %s\n  source:   %s\n  run:      %s\n  target:   %s\n", snap.Stamp(), dashIfNil(snap.Source), dashIfNil(snap.Run), target)
 }
