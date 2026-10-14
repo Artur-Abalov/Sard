@@ -316,19 +316,27 @@ internal object RunViews {
         val target = node.text("target")
         val database = node.text("database")
         val leftover = node.text("leftover")
-        if (target == null && leftover == null) return null
-        val files = target != null && database == null
-        val databases = database != null
-        return RestoreResult(
-            target,
-            node.path("filesRestored").asLong().takeIf { files },
-            node.path("bytesRestored").asLong().takeIf { files },
-            database,
-            node.path("tablesRestored").asLong().takeIf { databases },
-            node.path("rolesRestored").asLong().takeIf { databases },
-            node.path("ownersRestored").asBoolean().takeIf { files },
-            leftover,
-        )
+        return when {
+            database != null -> {
+                val tables = node.path("tablesRestored").asLong()
+                val roles = node.path("rolesRestored").asLong()
+                RestoreResult(target, null, null, database, tables, roles, null, leftover)
+            }
+
+            target != null -> {
+                val files = node.path("filesRestored").asLong()
+                val bytes = node.path("bytesRestored").asLong()
+                RestoreResult(target, files, bytes, null, null, null, node.path("ownersRestored").asBoolean(), leftover)
+            }
+
+            leftover != null -> {
+                RestoreResult(null, null, null, null, null, null, null, leftover)
+            }
+
+            else -> {
+                null
+            }
+        }
     }
 
     /** A text field of the output, null when absent or empty. */

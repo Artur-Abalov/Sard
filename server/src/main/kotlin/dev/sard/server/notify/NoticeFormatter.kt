@@ -120,6 +120,9 @@ class RunNoticeFormatter(
     }
 }
 
+/** What the restore step reported, null when it reported nothing. */
+private val RunNotice.result get() = restore?.result
+
 /** The lines a backup's message and a restore's share: the reason (cut to a limit) and the duration. */
 internal class NoticeLines(
     private val words: Wording,
@@ -183,7 +186,7 @@ internal class RestoreNoticeFormatter(
         }
 
     private fun restoreOutcome(notice: RunNotice): List<List<Message.Part>> {
-        val result = notice.restore?.result
+        val result = notice.result
         return when (notice.stepStatus) {
             // A finished run has no active step: the queued, dispatched and running ones are never reached.
             StepState.SUCCEEDED, StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING -> {
