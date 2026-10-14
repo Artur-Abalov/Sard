@@ -95,29 +95,14 @@ mutation_files() {
     done
 }
 
-# mutation_shard_of <module> <i> <n>: the files (stdin) of shard i of n. The
-# heaviest file goes to the lightest shard (ties: lower shard, then path), by
-# the weights in scripts/mutation-weights/<module>.tsv (seconds per file, from
+# mutation_shard_of <module> <i> <n>: the files (stdin) of shard i of n, heaviest
+# first to the lightest shard (scripts/lib/lpt.awk), by the weights in
+# scripts/mutation-weights/<module>.tsv (seconds per file, from
 # scripts/mutation-weights.sh); a file without a weight weighs the mean.
 mutation_shard_of() {
   local weights="$ROOT/scripts/mutation-weights/$1.tsv"
   [ -f "$weights" ] || weights=/dev/null
-  awk -F'\t' -v i="$2" -v n="$3" -v wf="$weights" '
-    BEGIN {
-      while ((getline line < wf) > 0) if (line !~ /^#/ && split(line, a, "\t") == 2) { w[a[2]] = a[1]; sum += a[1]; cnt++ }
-      mean = cnt ? sum / cnt : 1
-    }
-    { f[NR] = $0; c[NR] = ($0 in w) ? w[$0] : mean }
-    END {
-      for (x = 1; x <= NR; x++) for (y = x + 1; y <= NR; y++)
-        if (c[y] > c[x] || (c[y] == c[x] && f[y] < f[x])) { t = f[x]; f[x] = f[y]; f[y] = t; t = c[x]; c[x] = c[y]; c[y] = t }
-      for (x = 1; x <= NR; x++) {
-        s = 1
-        for (k = 2; k <= n; k++) if (load[k] < load[s]) s = k
-        load[s] += c[x]
-        if (s == i) print f[x]
-      }
-    }'
+  awk -f "$ROOT/scripts/lib/lpt.awk" -v i="$2" -v n="$3" -v wf="$weights"
 }
 
 # mutation_shard <module> <i>/<n> <out>: mutates the files of shard i of n
