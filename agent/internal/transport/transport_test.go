@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -47,6 +48,7 @@ type rig struct {
 	state    *state
 	logs     *recorder
 	tr       *transport.Transport
+	prepared atomic.Int32 // how often the transport built a RegisterRequest
 }
 
 func newRig(t *testing.T) *rig {
@@ -65,6 +67,7 @@ func newRigWith(t *testing.T, ca, serverCA *authority) *rig {
 		Address: r.server.addr,
 		TLS:     ca.agentFiles(t, ca),
 		Register: func(context.Context) *agentv1.RegisterRequest {
+			r.prepared.Add(1)
 			return &agentv1.RegisterRequest{Hostname: "db1", ProtocolVersion: 1}
 		},
 		Commands: r.commands,
@@ -130,7 +133,8 @@ func TestConnectsOverMutualTLSAndRegistersFirst(t *testing.T) {
 		t.Fatalf("registered = %v, client certificate verified = %v", regs, verified)
 	}
 	cancel()
-	if err := wait(t, done); !errors.Is(err, context.Canceled) {
+	// The context's own error, not a stream failure wrapping it.
+	if err := wait(t, done); err != context.Canceled {
 		t.Fatalf("err = %v", err)
 	}
 }
