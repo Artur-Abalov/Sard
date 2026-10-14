@@ -274,10 +274,9 @@
 #         временный файл в каталоге назначения — stage в
 #         agent/internal/enroll/write.go), так что ни в один момент целевой
 #         путь не принадлежит root. То же при --force.
-#       - euid пользователя службы — как сейчас (совместимость: команда
-#         консоли из S2b, AgentEndpoint.asServiceUser, и e2e пока содержат
-#         sudo -u sard-agent; их переход на sudo sard-agent — отдельная
-#         задача server/web, вне этого файла).
+#       - euid пользователя службы — как сейчас (совместимость с прежней
+#         командой консоли S2b; с поправки Q5 консоль предлагает
+#         sudo sard-agent enroll, Р4 docs/specs/server/agent-install.feature).
 #       - любой другой пользователь — PRIVILEGES_REQUIRED (класс
 #         «использование»), подсказка «sudo sard-agent enroll …».
 #       - под root пользователя службы нет — SERVICE_USER_UNKNOWN (класс
@@ -872,7 +871,7 @@
 #       отказ, сменить ключ через repo remove и repo add.
 #   Н18. Сменившийся ключ хоста SFTP. → HOST_KEY_CHANGED и флаг
 #       --replace-host-key в A8b-2 (Р40); иначе оператору снова нужен
-#       sudo -u sard-agent ssh-keygen -R.
+#       sudo -u sard-agent ssh-keygen -R. (allow-sudo-u: история: нынешнее неудобство оператора)
 #   Н19. Бакета нет, а ключу можно создавать бакеты: restic init создаёт
 #       бакет сам. → принять поведение restic и написать об этом в
 #       05a-storage.md; отказ BUCKET_NOT_FOUND — когда создать нельзя.
@@ -954,7 +953,7 @@
 #
 #   П18 (к Р49, QA шаг 70). Запрет ручных процедур в 05a-storage.md касается
 #       ключа SSH, known_hosts и ~/.ssh/config. Процедура снятия
-#       оставшейся блокировки restic (sudo -u sard-agent … restic unlock)
+#       оставшейся блокировки restic (sudo -u sard-agent … restic unlock) (allow-sudo-u: П18 restic unlock)
 #       остаётся как есть, с путём /usr/libexec/sard/restic; её может
 #       заменить будущая команда sard-agent repo unlock (вне A8b).
 #   П19 (к Р41). Блок «Host <хост>» в ~/.ssh/config портов не различает:
@@ -2545,6 +2544,7 @@
       И справка не содержит "sudo -u"
 
     @package
+    # allow-sudo-u: отсутствие sudo -u — требование
     Структура сценария: Подсказка после установки пакета называет регистрацию через sudo без sudo -u
       Когда администратор впервые устанавливает пакет <формат>
       Тогда вывод установки содержит "sudo sard-agent enroll --server"

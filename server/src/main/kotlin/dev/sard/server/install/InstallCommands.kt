@@ -4,7 +4,7 @@
 package dev.sard.server.install
 
 import dev.sard.server.enrollment.AgentEndpoint
-import dev.sard.server.enrollment.asServiceUser
+import dev.sard.server.enrollment.agentCommand
 
 private const val USER = "sard-agent"
 private const val UNIT = "sard-agent.service"
@@ -15,6 +15,7 @@ private const val CONFIG = "/etc/sard/agent.yaml"
 private const val EXAMPLE = "/etc/sard/agent.example.yaml"
 private const val EXAMPLE_ADDRESS = "sard.example.com:9090"
 private const val FIRST_REPOSITORY = "main"
+private const val FIRST_REPOSITORY_PATH = "/srv/sard/main"
 private const val SERVICE_USER_ADD =
     "useradd --system --no-create-home --home-dir /var/lib/sard-agent --shell /usr/sbin/nologin --user-group $USER"
 
@@ -46,7 +47,7 @@ class InstallCommands(
                 step(StepKind.INSTALL, installCommands(pkg)),
                 step(StepKind.CONFIGURE, listOf(configure())),
                 step(StepKind.ENROLL, listOf(enroll())),
-                step(StepKind.REPO_INIT, listOf(asServiceUser("repo init --generate-password $FIRST_REPOSITORY"))),
+                step(StepKind.REPO_ADD, listOf(agentCommand("repo add $FIRST_REPOSITORY $FIRST_REPOSITORY_PATH"))),
                 step(StepKind.START, listOf("sudo systemctl enable --now $UNIT")),
             )
 

@@ -103,7 +103,7 @@ func TestTheHintLeavesOutWhatTheCallerKeepsSecret(t *testing.T) {
 	req := request(1000, true, serviceUser)
 	req.Command = "enroll"
 	_, f := hostsetup.Authorize(req)
-	if f == nil || !strings.Contains(f.Detail, "sudo sard-agent enroll") || strings.Contains(f.Detail, "sudo -u") {
+	if f == nil || !strings.Contains(f.Detail, "sudo sard-agent enroll") || strings.Contains(f.Detail, "sudo -u") { // allow-sudo-u: absence guard, the help must not tell to use it
 		t.Fatalf("refusal = %+v", f)
 	}
 }

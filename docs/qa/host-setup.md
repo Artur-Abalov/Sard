@@ -69,7 +69,7 @@ pid() { systemctl show -p MainPID --value sard-agent; }
        `sudo sard-agent enroll --server <адрес> --token <отозванный>; echo "exit=$?"`
        → `exit=3`; `ls -d /etc/sard/tls` → нет каталога.
     3) От пользователя службы каталог не создаётся (В12):
-       `sudo -u sard-agent sard-agent enroll --server <адрес> --token <строка>; echo "exit=$?"`
+       `sudo -u sard-agent sard-agent enroll --server <адрес> --token <строка>; echo "exit=$?"` <!-- allow-sudo-u: проверка отказа от пользователя службы -->
        → `exit=7`, сообщение называет `/etc/sard/tls`; каталога нет; токен
        активен.
     Каталог `/etc/sard/tls.bak` не возвращать: шаг 0г создаёт `/etc/sard/tls`
@@ -98,12 +98,12 @@ pid() { systemctl show -p MainPID --value sard-agent; }
 
 ## Часть 1. Права запуска
 
-1. `sudo -u sard-agent $AG secret set db --stdin </dev/null; echo "exit=$?"`
+1. `sudo -u sard-agent $AG secret set db --stdin </dev/null; echo "exit=$?"` <!-- allow-sudo-u: проверка отказа от пользователя службы -->
    → `exit=2`; `PRIVILEGES_REQUIRED`; сообщение содержит
    `sudo sard-agent secret set db --stdin`.
 2. `$AG secret list; echo "exit=$?"` (обычный пользователь, без sudo)
    → `exit=2`; `PRIVILEGES_REQUIRED`, `sudo`.
-3. `sudo -u sard-agent $AG secret list; echo "exit=$?"` → `exit=0`.
+3. `sudo -u sard-agent $AG secret list; echo "exit=$?"` → `exit=0`. <!-- allow-sudo-u: команда чтения от пользователя службы (Р5) -->
 4. `snap > "$OUT/s0"`; повторить шаги 1–3; `snap | diff - "$OUT/s0"` → пусто.
 4а. Посторонний с отсутствующим конфигом (поправка П1):
     `$AG secret list --config /nonexistent.yaml; echo "exit=$?"` → `exit=2`,
@@ -238,7 +238,7 @@ pid() { systemctl show -p MainPID --value sard-agent; }
 30. `sudo $AG repo show main` → `exit=0`; `local`, `/srv/sard/main`,
     `initialized`, `X`, `/etc/sard/secrets/restic-main.pass`,
     `/etc/sard/agent.d/repo-main.yaml`. `sudo $AG repo show main --json | jq -r .repository_id` → `X`.
-    `sudo -u sard-agent $AG repo list --json | jq -r '.repositories[].name'` → `main`.
+    `sudo -u sard-agent $AG repo list --json | jq -r '.repositories[].name'` → `main`. <!-- allow-sudo-u: команда чтения от пользователя службы (Р5) -->
 31. `T=$(date '+%F %T'); sudo $AG repo password main --reveal > "$OUT/p"`
     → `exit=0`; stderr — предупреждение; `sudo cmp "$OUT/p" /etc/sard/secrets/restic-main.pass`
     → совпадают; `audit "$T"` → `repository main password revealed`.
@@ -463,9 +463,9 @@ sshsnap() { sudo find "$HOME_SA/.ssh" -printf '%u %g %m %n %s %p\n' 2>/dev/null 
     `sudo iptables -I INPUT -p tcp --dport 22 -j DROP`;
     `time run sudo $AG repo add f3 sftp:backup@$SH:/srv/sftp/repo/f3 --connect-timeout 10s`
     → `exit=6`, `BACKEND_UNAVAILABLE`; `real` меньше 25 с. Убрать правило.
-65. Подлог в `~/.ssh` (Р38): `sshsnap > "$OUT/ss2"; sudo cp /etc/shadow "$OUT/shadow0"`;
+65. Подлог в `~/.ssh` (Р38): `sshsnap > "$OUT/ss2"; sudo cp /etc/shadow "$OUT/shadow0"`; <!-- allow-sudo-u: атака в QA: команда на строке ниже -->
     `sudo -u sard-agent mv $HOME_SA/.ssh/known_hosts $HOME_SA/.ssh/kh.bak;
-    sudo -u sard-agent ln -s /etc/shadow $HOME_SA/.ssh/known_hosts`;
+    sudo -u sard-agent ln -s /etc/shadow $HOME_SA/.ssh/known_hosts`; <!-- allow-sudo-u: атака в QA -->
     `run sudo $AG repo add f4 sftp:backup@$SH:/srv/sftp/repo/f4 --host-key-fingerprint $FP`
     → `exit=2`, `SSH_FILE_REJECTED`, путь `…/.ssh/known_hosts`;
     `sudo cmp /etc/shadow "$OUT/shadow0"` → совпадают; `sudo stat -c '%U %a' /etc/shadow`
@@ -480,7 +480,7 @@ sshsnap() { sudo find "$HOME_SA/.ssh" -printf '%u %g %m %n %s %p\n' 2>/dev/null 
     → `exit=0`; в known_hosts одна строка `$SH` с новым ключом; `audit` →
     `ssh host key of $SH replaced`. (П22) Перед заменой добавить в
     known_hosts строку-шаблон `*.<домен $SH>` со старым ключом
-    (`sudo -u sard-agent` — часть QA): `HOST_KEY_CHANGED` и итог замены
+    (`sudo -u sard-agent` — часть QA): `HOST_KEY_CHANGED` и итог замены <!-- allow-sudo-u: подготовка стенда QA -->
     называют её номер; после замены она на месте байт в байт.
 66а. (П21) В выводе шага 60 есть примечание: `id_ed25519`, `known_hosts` и
     `config` записаны и остаются для повтора.
@@ -499,7 +499,7 @@ sshsnap() { sudo find "$HOME_SA/.ssh" -printf '%u %g %m %n %s %p\n' 2>/dev/null 
 70. `grep -nE 'sudo -u|tee |install -o|ssh-keyscan|ssh-keygen -t' docs/operator/05a-storage.md`
     → пусто, кроме двух исключений (П18): команда получения отпечатка на
     сервере SFTP (`ssh-keygen -lf`) и процедура снятия блокировки
-    `sudo -u sard-agent … /usr/libexec/sard/restic … unlock`. Ручных процедур
+    `sudo -u sard-agent … /usr/libexec/sard/restic … unlock`. Ручных процедур <!-- allow-sudo-u: П18 restic unlock -->
     для ключа SSH, `known_hosts` и `~/.ssh/config` нет; `grep -c /usr/lib/sard/ docs/operator/05a-storage.md`
     → `0`; `grep -c /usr/libexec/sard/restic docs/operator/05a-storage.md` → не `0`;
     в документе есть `sudo sard-agent repo add` для S3 и SFTP, флаги
