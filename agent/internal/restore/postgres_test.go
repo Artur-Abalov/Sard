@@ -295,6 +295,9 @@ func TestAFailureOfTheSecondFileTakesTheFirstBack(t *testing.T) {
 	plan, content := fullPlan(t)
 	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1", "x2"), repoTarget())
 	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite)
+	if strings.Contains(f.Detail, "not removed") || strings.Contains(f.Detail, "not the file") {
+		t.Errorf("a file that was taken back is said to stay: %q", f.Detail)
+	}
 	if got := entries(t, dir); len(got) != 0 {
 		t.Errorf("left %v", got)
 	}
@@ -473,16 +476,24 @@ func TestAFileThatCannotBeSyncedLeavesNoFile(t *testing.T) {
 }
 
 func TestEveryFileIsClosedWhateverTheOutcome(t *testing.T) {
-	for name, arrange := range map[string]func(*recordingFS) *fakeDumper{
-		"success":     func(*recordingFS) *fakeDumper { return &fakeDumper{} },
-		"dump failed": func(*recordingFS) *fakeDumper { return &fakeDumper{err: restic.ErrNetwork} },
-		"owner":       func(f *recordingFS) *fakeDumper { f.files.failChown = true; return &fakeDumper{} },
+	for name, arrange := range map[string]func(*recordingFS, string) *fakeDumper{
+		"success":     func(*recordingFS, string) *fakeDumper { return &fakeDumper{} },
+		"dump failed": func(*recordingFS, string) *fakeDumper { return &fakeDumper{err: restic.ErrNetwork} },
+		"owner":       func(f *recordingFS, _ string) *fakeDumper { f.files.failChown = true; return &fakeDumper{} },
+		"stat":        func(f *recordingFS, _ string) *fakeDumper { f.files.failFileStat = true; return &fakeDumper{} },
+		"sync":        func(f *recordingFS, _ string) *fakeDumper { f.files.failFileSync = true; return &fakeDumper{} },
+		"rename":      func(f *recordingFS, _ string) *fakeDumper { f.files.failRename = true; return &fakeDumper{} },
+		"directory":   func(f *recordingFS, _ string) *fakeDumper { f.failSync = true; return &fakeDumper{} },
+		"swapped": func(f *recordingFS, dir string) *fakeDumper {
+			f.files.beforeRename = func(old, _ string) { swap(t, dir, old, "FOREIGN") }
+			return &fakeDumper{}
+		},
 	} {
-		fsys := newRecordingFS()
-		d := arrange(fsys)
+		fsys, dir := newRecordingFS(), t.TempDir()
+		d := arrange(fsys, dir)
 		plan, content := fullPlan(t)
 		d.content = content
-		held, _ := openTarget(fsys, t.TempDir())
+		held, _ := openTarget(fsys, dir)
 		_ = restore.WritePostgres(context.Background(), d, held, plan, names("x1", "x2"), repoTarget())
 		held.Release()
 		fsys.mu.Lock()
@@ -602,6 +613,9 @@ func TestADumpSwappedBeforeTheMoveIsATargetWriteFailureAndTheForeignFileStays(t 
 	plan, content := fullPlan(t)
 	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1"), repoTarget())
 	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, filepath.Join(dir, "app.dump"), "is not the file the agent wrote", "was not removed", "new target")
+	if n := strings.Count(f.Detail, "not the file the agent wrote"); n != 1 {
+		t.Errorf("the failure says it %d times: %q", n, f.Detail)
+	}
 	if got := foreignContent(t, dir, "app.dump"); got != "FOREIGN" || len(entries(t, dir)) != 1 {
 		t.Errorf("app.dump %q, entries %v", got, entries(t, dir))
 	}
@@ -673,6 +687,12 @@ func TestAnUnreadableWrittenFileIsATargetWriteFailureAndIsNotRemovedUnchecked(t 
 	plan, content := fullPlan(t)
 	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1"), repoTarget())
 	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, ".app.dump.tmp-x1", "was not removed")
+	fsys.mu.Lock()
+	closed := slices.Clone(fsys.files.closed)
+	fsys.mu.Unlock()
+	if !slices.Equal(closed, []string{".app.dump.tmp-x1"}) {
+		t.Errorf("closed %v: the file is let go when it cannot be looked at", closed)
+	}
 	if got := entries(t, dir); !slices.Equal(got, []string{".app.dump.tmp-x1"}) {
 		t.Errorf("entries %v: a name whose identity cannot be confirmed is not unlinked", got)
 	}
@@ -721,7 +741,7 @@ func TestATempFileOfAKilledPostgreSQLRestoreIsNamedAsTheRemainsInTheRefusal(t *t
 }
 
 func TestOtherNamesAreNotCalledTheRemainsOfAnInterruptedRestore(t *testing.T) {
-	for _, name := range []string{".tmp-x1", "app.dump.tmp-x1", ".app.dump", "notes.txt"} {
+	for _, name := range []string{".tmp-x1", "..tmp-x1", "app.dump.tmp-x1", ".app.dump", "notes.txt"} {
 		dir := t.TempDir()
 		mustWrite(t, filepath.Join(dir, name), "x")
 		_, f := check(t, restore.Target{Path: dir})

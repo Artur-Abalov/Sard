@@ -212,3 +212,34 @@ fast` проходит.
   (428 строк) в `postgres_write.go`; в `postgres.go` остались план и подсказки
   (221 и 226 строк).
 - cleaner: reviewed d55b7b0; fill, newPending and SameFile are below CRAP 6, nothing changed; agent fast gate passed.
+
+### Hardener, последний раунд (Р87, Р88)
+
+Файлы среза после 95627bd, счёт как его печатает инструмент:
+
+| Файл | До | После |
+|---|---|---|
+| `internal/restore/postgres_write.go` | 0.854545 (35 passed, 8 failed) | 0.927273 (39 passed, 4 failed) |
+| `internal/restore/target.go` | 0.946429 (48 passed, 3 failed) | 0.982143 (50 passed, 1 failed) |
+| `internal/hostsetup/fs.go` | 0.920635 (33 passed, 5 failed) | 0.952381 (35 passed, 3 failed) |
+| `internal/restore/postgres.go` | 0.986486 (45 passed, 1 failed) | без изменений |
+| `cmd/sard-agent/repo_restore_run.go` | 1.000000 (63 passed, 0 failed) | без изменений |
+
+Убиты тестами: `takeBack` не пишет «не удалён» про файл, который убрал;
+`abandon` не повторяет отказ Р87 для имени, которое уже признано чужим;
+`newPending` закрывает файл, который нельзя осмотреть; один `Close` на файл
+при каждом исходе (dump, владелец, stat, fsync файла, rename, подмена,
+fsync каталога); `..tmp-x` (пустое `<name>`) не остатки (Р88);
+`SameFile` — другое устройство при том же inode, другой inode, описание не
+ядра.
+
+Эквивалентные мутанты:
+
+- `KindOf`, `case part == nil` без `return`: пустой `case` выходит на тот же `return`.
+- `countingWriter.Write`, `err != nil` → `true`: присваивается `nil` в `nil`.
+- `postgres_write.go`: `pending.closed` (`p.closed = true` в `writeFile` и в
+  `close`, `if p.closed { return nil }`) — мёртвый код: `close` зовёт
+  только `abandon`, один раз на файл. Предложение coder: убрать поле `closed`.
+- `target.go` `isEmpty`, `err == nil &&` → `true &&`: `err` возвращается
+  тут же и `checkEmpty` отказывает по нему раньше, чем смотрит на пустоту.
+- `fs.go` `sameDir`, `chownEntry`: код вне среза (не менялся).
