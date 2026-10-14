@@ -68,7 +68,7 @@ GO_TOOLS := \
 	github.com/goreleaser/nfpm/v2/cmd/nfpm \
 	./cmd/crap
 
-.PHONY: tools gate gate-fast proto build build-agent build-cli package package-stand server-jar server-image image e2e e2e-images e2e-assemble e2e-agent-images e2e-pg-agent-images e2e-test test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check up down openapi
+.PHONY: tools gate gate-fast proto build build-agent build-cli package package-stand server-jar server-image image e2e e2e-images e2e-assemble e2e-agent-images e2e-pg-agent-images e2e-test test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check check-sudo-u up down openapi
 
 ## proto: generate Go code from proto/ into proto/gen/go (committed)
 proto: tools
@@ -170,7 +170,7 @@ test:
 	cd web && npm test
 
 ## lint: licenses, formatting, static analysis
-lint: license-check lint-proto lint-go lint-server lint-web
+lint: license-check check-sudo-u lint-proto lint-go lint-server lint-web
 
 lint-server:
 	$(GRADLE) :server:spotlessCheck :server:detekt
@@ -199,6 +199,11 @@ down:
 
 license-check:
 	./scripts/license-check.sh
+
+## check-sudo-u: nothing tells to run the agent as another user through sudo (rule A8, Q5 Р4), and the test of that check
+check-sudo-u:
+	./scripts/test-check-sudo-u.sh
+	./scripts/check-sudo-u.sh
 
 lint-proto: tools
 	cd proto && $(BIN)/buf lint

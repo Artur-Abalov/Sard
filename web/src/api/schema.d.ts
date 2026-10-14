@@ -1117,7 +1117,7 @@ export interface components {
             id: string;
             /** @description sard_<secret>.<CA fingerprint>; shown once, the server keeps only its hash */
             token: string;
-            /** @description Ready-to-run command: sudo -u sard-agent sard-agent enroll --server <address> --token <token> */
+            /** @description Ready-to-run command: sudo sard-agent enroll --server <address> --token <token> */
             enrollCommand: string;
             /** Format: date-time */
             expiresAt: string;
@@ -1632,7 +1632,7 @@ export interface components {
             publicKey: string;
         };
         /** @enum {string} */
-        StepKind: "download" | "checksum" | "signature" | "install" | "configure" | "enroll" | "repo-init" | "start" | "upgrade" | "restart";
+        StepKind: "download" | "checksum" | "signature" | "install" | "configure" | "enroll" | "repo-add" | "start" | "upgrade" | "restart";
         /** @enum {string} */
         UpgradeReason: "arch_unknown" | "arch_unavailable";
         /** @enum {string} */
@@ -1653,7 +1653,7 @@ export interface components {
             releaseKey: components["schemas"]["ReleaseKey"];
             /** @description Link to the documentation of the manual installation, for when there are no steps */
             manualInstallDoc: string;
-            /** @description Steps in the order to run them; empty when there is nothing to run; kinds: download, checksum, signature, install, configure, enroll, repo-init, start */
+            /** @description Steps in the order to run them; empty when there is nothing to run; kinds: download, checksum, signature, install, configure, enroll, repo-add, start */
             steps: components["schemas"]["InstallStep"][];
         };
     };

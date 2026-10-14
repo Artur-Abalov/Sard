@@ -17,6 +17,10 @@ type Key struct {
 	// Env is added to the environment of the restic process,
 	// e.g. "RESTIC_PASSWORD_FILE=/etc/sard/restic.pass".
 	Env []string
+	// File is the file that holds the key, for a consumer that must read it
+	// itself instead of handing the path on (restic that runs as root gets
+	// the key through a pipe, Р78); empty if the provider has no such file.
+	File string
 }
 
 // Provider supplies repository keys. The rest of the agent depends on
@@ -52,5 +56,5 @@ func (p resticAES) RepositoryKey(_ context.Context, repository string) (Key, err
 	if !ok {
 		return Key{}, fmt.Errorf("%w: %q", ErrUnknownRepository, repository)
 	}
-	return Key{Env: []string{"RESTIC_PASSWORD_FILE=" + file}}, nil
+	return Key{Env: []string{"RESTIC_PASSWORD_FILE=" + file}, File: file}, nil
 }

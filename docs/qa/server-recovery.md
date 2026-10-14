@@ -9,7 +9,7 @@
 вместе с решением.
 
 СТАТУС: утверждено владельцем 2026-10-14 вместе со спецификацией и всеми
-предложениями OQ-211…OQ-222 (OQ-220 — по Р43: вход после восстановления прежним
+предложениями OQ-216…OQ-227 (OQ-225 — по Р43: вход после восстановления прежним
 паролем администратора). Процедура предполагает, что страница
 `docs/operator/12-server-recovery.md` уже написана (И3): части 3–4 проходят её
 блоки по порядку, эта процедура лишь говорит, что должно получиться после
@@ -141,11 +141,11 @@ send() { curl -sS -o /dev/stderr -w '%{http_code}\n' -b $J -X "$1" "$API/$2" -H 
 11. Шаг 1: список снимков.
     → видны снимки с тегом `postgresql.part=database` и снимки путей
     `/var/lib/sard/pki`, `/etc/sard/install`; выбраны D и K по правилу страницы
-    `[OQ-212]`; `restic cat config` печатает `id`, равный `repositoryId`
+    `[OQ-217]`; `restic cat config` печатает `id`, равный `repositoryId`
     карточки.
 12. Шаг 1, проверка полноты K.
     → проверка перечисляет `ca.key`, `ca.crt`, `.env`, `docker-compose.yml`.
-13. Шаг 2: ключи и конфигурация `[OQ-215]`.
+13. Шаг 2: ключи и конфигурация `[OQ-220]`.
     → `ls -l ~/sard/.env` — группа `10001`, `-rw-r-----`; `diff ~/sard/.env
     $QA/env.old` пуст; `docker run --rm -u 0 -v sard_sard-pki:/p alpine stat -c
     '%u %a %n' /p/ca /p/ca/ca.key /p/ca/ca.crt` → `10001 700`, `10001 600`,
@@ -160,7 +160,7 @@ send() { curl -sS -o /dev/stderr -w '%{http_code}\n' -b $J -X "$1" "$API/$2" -H 
     `caFingerprint` карточки и `origin=existing`; `curl -fsS $API/status` —
     версия `e2e`; `curl -fsS $API/onboarding | jq -r .restriction` → `none`; лог
     без `SARD SETUP CODE`.
-16. Роль дампа `[OQ-214]`:
+16. Роль дампа `[OQ-219]`:
 
     ```bash
     pw=$(docker compose exec -T server cat /var/lib/sard/self/db-password)
@@ -177,7 +177,7 @@ send() { curl -sS -o /dev/stderr -w '%{http_code}\n' -b $J -X "$1" "$API/$2" -H 
     токена; `docker compose exec -T server ls /var/lib/sard/self` — без
     `enroll-token`.
 18. Шаг 5: вход паролем `correct-horse-battery` и отзыв прежнего встроенного
-    агента X `[OQ-216]`.
+    агента X `[OQ-221]`.
     → отзыв `200`; через 2 минуты в `get agents` живой встроенный агент Y ≠ X,
     `online`; `get self-backup | jq -c .warnings` содержит `agent_replaced`.
 19. Шаг 5: `repo add` существующего репозитория.
@@ -187,7 +187,7 @@ send() { curl -sS -o /dev/stderr -w '%{http_code}\n' -b $J -X "$1" "$API/$2" -H 
 20. Шаг 5: перепривязка с `location` карточки и «запустить сейчас».
     → оба запуска `succeeded`; `get self-backup/recovery-card | jq -r .location`
     равно `location` из `$QA/card.json`; `get self-backup | jq -c .warnings` →
-    `["keys_unconfirmed"]` `[OQ-217]`; в консоли баннер самобэкапа виден на
+    `["keys_unconfirmed"]` `[OQ-222]`; в консоли баннер самобэкапа виден на
     каждой странице до этого шага.
 21. Шаг 5: подтверждение копии ключей.
     → `204`; `warnings` → `[]`, `status` → `ok`; баннера нет.
@@ -215,7 +215,7 @@ send() { curl -sS -o /dev/stderr -w '%{http_code}\n' -b $J -X "$1" "$API/$2" -H 
     шаг ключей — так же; у источника A1 ровно один запуск с `trigger`
     `catch_up` и `catchUp.missedCount` ≥ 2 (если запуск A1 шёл в момент дампа,
     его догоняющий пропущен как активный и запуск идёт по расписанию следующей
-    минуты `[OQ-222]`).
+    минуты `[OQ-227]`).
 27. Новый бэкап: «запустить сейчас» источника A2.
     → `succeeded`.
 28. Уборка по шагу 7 страницы.
@@ -294,14 +294,14 @@ send() { curl -sS -o /dev/stderr -w '%{http_code}\n' -b $J -X "$1" "$API/$2" -H 
 39. Документация.
     → раздел «Что нужно» страницы говорит, что вход после восстановления —
     тем же паролем администратора, хранить его вместе с карточкой, а
-    `admin-reset` — запасной путь `[OQ-220]`; `docs/operator/README.md`
+    `admin-reset` — запасной путь `[OQ-225]`; `docs/operator/README.md`
     содержит строку 12; раздел
     `06-data-and-backup.md` «Восстановление из самобэкапа (F7)» ведёт на
     страницу; на странице у шагов 1–6 есть «Проверка» и «Если не вышло»;
     `09-troubleshooting.md` называет `DATABASE_NEWER_THAN_SERVER`; таблица
     `11-offline.md` называет образ `sard-agent`; английская страница — если
-    утверждено `[OQ-219]`.
-40. Время `[OQ-221]`: `make e2e-test` с фильтром `ServerRecoveryDrillTest`.
+    утверждено `[OQ-224]`.
+40. Время `[OQ-226]`: `make e2e-test` с фильтром `ServerRecoveryDrillTest`.
     → тест зелёный; `test/e2e/build/recovery-drill/result.md` содержит строку
     в формате таблицы «Сколько это займёт»; в таблице страницы есть строка с
     результатом не старше этого изменения.

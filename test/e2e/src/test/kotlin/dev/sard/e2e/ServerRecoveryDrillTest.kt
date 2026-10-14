@@ -22,7 +22,7 @@ import kotlin.test.assertTrue
  * extension; the blocks of the page marked `<!-- drill: id -->` run on the new one, an empty machine without a way to
  * the registries, in the order of the page, each method taking them up to the point its scenario looks at. The methods
  * share the two machines and run in order. The time and the sizes go to `build/recovery-drill/result.json` and
- * `result.md`; the duration is not asserted (a shared runner), a person moves the row to the page (OQ-221).
+ * `result.md`; the duration is not asserted (a shared runner), a person moves the row to the page (OQ-226).
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class ServerRecoveryDrillTest {

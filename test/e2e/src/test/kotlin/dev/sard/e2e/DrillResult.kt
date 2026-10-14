@@ -13,7 +13,7 @@ private const val SECONDS_PER_MINUTE = 60.0
  * What the drill measured (Р41): the dump and the database, and the minutes from the start of the first block on the
  * new VM to the server's health, to every agent online after the name is switched, and to the successful runs of the
  * self-backup. [markdown] has the row in the form of the table "Сколько это займёт" of the page; a person carries it
- * over (OQ-221).
+ * over (OQ-226).
  */
 internal class DrillResult(
     private val date: LocalDate,

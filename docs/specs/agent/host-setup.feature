@@ -72,10 +72,13 @@
 #     подтверждены владельцем 2026-10-09).
 #   Срез A8c — repo snapshots (теги sard.* из FXs, фильтр по источнику),
 #     repo restore (без сервера и без регистрации; --target, --overwrite,
-#     отдельный флаг для «/», часть путей), repo check (доступ, пароль,
-#     блокировки restic, флаг лёгкой проверки целостности), «последний снимок»
-#     в repo show. Требует расширить обёртку agent/internal/restic (сейчас там
-#     только ID, Init, Backup, Restore, Check, Version).
+#     отдельный флаг для «/», часть путей; PostgreSQL — файлы дампа и
+#     команды), предустановки российских S3 для repo add. Специфицирован
+#     2026-10-12, УТВЕРЖДЁН 2026-10-12: snapshots и restore —
+#     docs/specs/agent/repo-restore.feature (Р52–Р71, вопросы Н26–Н38);
+#     предустановки — Р51 ниже и правило «Предустановка провайдера …» этого
+#     файла. repo check перенесён в A8d (вне A8c по описанию среза);
+#     «последний снимок» в repo show — вопрос Н34.
 #   Срез A8d — sard-agent check: конфиг и agent.d, права и владельцы, restic,
 #     сертификат и ключ (соответствие, срок — tlsid), доступность сервера и
 #     TLS, каждый репозиторий, расхождение часов, отказы SELinux; --json; общий
@@ -271,10 +274,9 @@
 #         временный файл в каталоге назначения — stage в
 #         agent/internal/enroll/write.go), так что ни в один момент целевой
 #         путь не принадлежит root. То же при --force.
-#       - euid пользователя службы — как сейчас (совместимость: команда
-#         консоли из S2b, AgentEndpoint.asServiceUser, и e2e пока содержат
-#         sudo -u sard-agent; их переход на sudo sard-agent — отдельная
-#         задача server/web, вне этого файла).
+#       - euid пользователя службы — как сейчас (совместимость с прежней
+#         командой консоли S2b; с поправки Q5 консоль предлагает
+#         sudo sard-agent enroll, Р4 docs/specs/server/agent-install.feature).
 #       - любой другой пользователь — PRIVILEGES_REQUIRED (класс
 #         «использование»), подсказка «sudo sard-agent enroll …».
 #       - под root пользователя службы нет — SERVICE_USER_UNKNOWN (класс
@@ -817,6 +819,7 @@
 #   Р50. --provider (О2, ответ на Н15; срез A8b-3, последний, A8b-1 и
 #       A8b-2 от него не зависят). Российские предустановки (yandex, vk,
 #       selectel) сейчас не делаются — позже, отдельным решением владельца.
+#       [Дополнено A8c, Р51: yandex, vk, selectel добавлены.]
 #       --provider aws|b2 строит адрес хранилища из региона:
 #         aws — s3:https://s3.<регион>.amazonaws.com/<бакет>[/<путь>];
 #         b2  — s3:https://s3.<регион>.backblazeb2.com/<бакет>[/<путь>]
@@ -868,7 +871,7 @@
 #       отказ, сменить ключ через repo remove и repo add.
 #   Н18. Сменившийся ключ хоста SFTP. → HOST_KEY_CHANGED и флаг
 #       --replace-host-key в A8b-2 (Р40); иначе оператору снова нужен
-#       sudo -u sard-agent ssh-keygen -R.
+#       sudo -u sard-agent ssh-keygen -R. (allow-sudo-u: история: нынешнее неудобство оператора)
 #   Н19. Бакета нет, а ключу можно создавать бакеты: restic init создаёт
 #       бакет сам. → принять поведение restic и написать об этом в
 #       05a-storage.md; отказ BUCKET_NOT_FOUND — когда создать нельзя.
@@ -950,7 +953,7 @@
 #
 #   П18 (к Р49, QA шаг 70). Запрет ручных процедур в 05a-storage.md касается
 #       ключа SSH, known_hosts и ~/.ssh/config. Процедура снятия
-#       оставшейся блокировки restic (sudo -u sard-agent … restic unlock)
+#       оставшейся блокировки restic (sudo -u sard-agent … restic unlock) (allow-sudo-u: П18 restic unlock)
 #       остаётся как есть, с путём /usr/libexec/sard/restic; её может
 #       заменить будущая команда sard-agent repo unlock (вне A8b).
 #   П19 (к Р41). Блок «Host <хост>» в ~/.ssh/config портов не различает:
@@ -1037,6 +1040,34 @@
 #       файл пароля после этого отказа init остаются. Строки П29 и П30
 #       измерены на стенде F2 2026-10-09 (замечание к таблице Р34 о
 #       «точных строках, измеряемых coder» этим выполнено).
+#
+# ---------------------------------------------------------------------------
+# СРЕЗ A8c — предустановки российских S3 (поправка к Р50). УТВЕРЖДЁН
+# владельцем 2026-10-12: значения адресов и регионов — ответ на вопрос
+# Н35 (docs/specs/agent/repo-restore.feature, там же прочие решения и
+# вопросы A8c).
+#
+#   Р51. --provider принимает aws, b2, yandex, vk, selectel. Таблица
+#       провайдеров — одна, в коде агента (hostsetup, рядом с
+#       ExpandProvider); список в отказе «неизвестный провайдер» и в справке
+#       repo add строится из неё, хостов провайдеров в package main нет
+#       (boundary_test.go, как A8b-3). Строка таблицы: шаблон хоста, регион
+#       по умолчанию (или «обязателен») и, для хоста без региона в имени,
+#       единственный допустимый регион.
+#         aws      — s3.<регион>.amazonaws.com;      --region обязателен (Р50)
+#         b2       — s3.<регион>.backblazeb2.com;    --region обязателен (Р50)
+#         yandex   — storage.yandexcloud.net;        регион ru-central1, другой
+#                    — ошибка использования, называющая ru-central1
+#         vk       — hb.ru-msk.vkcloud-storage.ru;   регион ru-msk, другой —
+#                    ошибка использования, называющая ru-msk
+#         selectel — s3.<регион>.storage.selcloud.ru; регион по умолчанию
+#                    ru-1, --region выбирает пул (список агент не держит)
+#       Для yandex, vk и selectel --region необязателен: подставляется регион
+#       по умолчанию. Остальное — как Р50: адрес s3:<бакет>[/<путь>] без схемы
+#       и хоста, проверка региона по Р29, во фрагмент — полный адрес restic, в
+#       env-файл — AWS_DEFAULT_REGION=<регион> (и для подставленного
+#       региона), повтор и итог — по фрагменту. Неизвестный провайдер —
+#       ошибка использования со списком всех пяти.
 #
 # ---------------------------------------------------------------------------
 # Классы кодов выхода A8b (номера A2b; дополняют таблицу A8a)
@@ -2513,6 +2544,7 @@
       И справка не содержит "sudo -u"
 
     @package
+    # allow-sudo-u: отсутствие sudo -u — требование
     Структура сценария: Подсказка после установки пакета называет регистрацию через sudo без sudo -u
       Когда администратор впервые устанавливает пакет <формат>
       Тогда вывод установки содержит "sudo sard-agent enroll --server"
@@ -4345,7 +4377,7 @@
 
       Примеры:
         | адрес                 | флаги                                  | что                            |
-        | "s3:bucket-b/extra"   | --provider yandex --region ru-central1 | aws и b2                       |
+        | "s3:bucket-b/extra"   | --provider wasabi --region us-east-1   | aws, b2, yandex, vk и selectel |
         | "s3:bucket-b/extra"   | --provider aws                         | "--region"                     |
         | "s3:bucket-b/extra"   | --provider b2                          | "--region"                     |
         | A_S3                  | --provider aws --region eu-central-1   | "--provider" и хост в адресе   |
@@ -4368,11 +4400,88 @@
       Тогда stdout говорит "unchanged"
       И хост не изменён
 
+    # Изменено A8c (Р51): пять провайдеров, регион по умолчанию у российских.
     @local
     Сценарий: Справка repo add перечисляет провайдеров и требует регион
       Когда оператор выполняет repo add --help
-      Тогда справка называет --provider со значениями aws и b2
-      И справка говорит, что с --provider нужен --region, а адрес — s3 с бакетом и путём без хоста
+      Тогда справка называет --provider со значениями aws, b2, yandex, vk и selectel
+      И справка говорит, что для aws и b2 нужен --region, а для yandex, vk и selectel он подставляется
+      И справка говорит, что с --provider адрес — s3 с бакетом и путём без хоста
+
+  # ===========================================================================
+  # A8c-1 (Р51). Значения адресов и регионов — Н35 (repo-restore.feature):
+  # приняты владельцем 2026-10-12 как написаны. Изменённые выше пример «wasabi» и
+  # справка repo add — тоже A8c-1.
+  Правило: Российские предустановки подставляют адрес и регион по умолчанию
+
+    @local
+    Структура сценария: Российская предустановка без региона подставляет адрес и регион
+      Дано restic отвечает на cat config кодом 10
+      Когда оператор выполняет repo add extra "s3:bucket-b/extra" --provider <провайдер> --access-key-id KEY-ID-1 --secret-key-stdin со вводом S3-MARKER
+      Тогда код выхода класса «успех»
+      И файл D/agent.d/repo-extra.yaml содержит url <url>
+      И файл D/secrets/restic-extra.env содержит строку "AWS_DEFAULT_REGION=<регион>"
+
+      Примеры:
+        | провайдер | регион      | url                                                          |
+        | yandex    | ru-central1 | "s3:https://storage.yandexcloud.net/bucket-b/extra"          |
+        | vk        | ru-msk      | "s3:https://hb.ru-msk.vkcloud-storage.ru/bucket-b/extra"     |
+        | selectel  | ru-1        | "s3:https://s3.ru-1.storage.selcloud.ru/bucket-b/extra"      |
+
+    @local
+    Сценарий: Регион Selectel выбирает пул хранилища
+      Дано restic отвечает на cat config кодом 10
+      Когда оператор выполняет repo add extra "s3:bucket-b/extra" --provider selectel --region ru-3 --access-key-id KEY-ID-1 --secret-key-stdin со вводом S3-MARKER
+      Тогда файл D/agent.d/repo-extra.yaml содержит url "s3:https://s3.ru-3.storage.selcloud.ru/bucket-b/extra"
+      И файл D/secrets/restic-extra.env содержит строку "AWS_DEFAULT_REGION=ru-3"
+
+    @local
+    Структура сценария: Явный регион по умолчанию принимается
+      Дано restic отвечает на cat config кодом 10
+      Когда оператор выполняет repo add extra "s3:bucket-b/extra" --provider <провайдер> --region <регион> --access-key-id KEY-ID-1 --secret-key-stdin со вводом S3-MARKER
+      Тогда код выхода класса «успех»
+
+      Примеры:
+        | провайдер | регион      |
+        | yandex    | ru-central1 |
+        | vk        | ru-msk      |
+
+    @local
+    Структура сценария: Чужой регион у провайдера с одним адресом — ошибка использования
+      Когда оператор выполняет repo add extra "s3:bucket-b/extra" --provider <провайдер> --region <регион> --access-key-id KEY-ID-1 --secret-key-stdin со вводом S3-MARKER
+      Тогда код выхода класса «использование»
+      И сообщение называет "--region" и <допустимый>
+      И restic не вызывался кроме version
+      И хост не изменён
+
+      Примеры:
+        | провайдер | регион       | допустимый  |
+        | yandex    | ru-central2  | ru-central1 |
+        | vk        | kz-ast       | ru-msk      |
+
+    @local
+    Сценарий: Российская предустановка с хостом в адресе — ошибка использования
+      Когда оператор выполняет repo add extra "s3:https://storage.yandexcloud.net/bucket-b" --provider yandex --access-key-id KEY-ID-1 --secret-key-stdin со вводом S3-MARKER
+      Тогда код выхода класса «использование»
+      И сообщение называет "--provider" и схему в адресе
+      И хост не изменён
+
+    @local
+    Сценарий: Повтор с российской предустановкой ничего не меняет
+      Дано оператор выполнил repo add extra "s3:bucket-b/extra" --provider yandex --access-key-id KEY-ID-1 --secret-key-stdin со вводом S3-MARKER
+      Когда оператор выполняет repo add extra "s3:bucket-b/extra" --provider yandex --access-key-id KEY-ID-1
+      Тогда stdout говорит "unchanged"
+      И хост не изменён
+
+    @local
+    Сценарий: Список провайдеров в отказе совпадает с таблицей агента
+      Когда оператор выполняет repo add extra "s3:bucket-b/extra" --provider nope --access-key-id KEY-ID-1 --secret-key-stdin со вводом S3-MARKER
+      Тогда сообщение отказа называет все ключи таблицы предустановок и только их
+
+    @local
+    Сценарий: Список провайдеров в справке совпадает с таблицей агента
+      Когда оператор выполняет repo add --help
+      Тогда справка называет у --provider все ключи таблицы предустановок и только их
 
   # ===========================================================================
   # A8b-1, A8b-2

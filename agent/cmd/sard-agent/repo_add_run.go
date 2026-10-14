@@ -119,9 +119,9 @@ func (c *hostCmd) expandPreset() *refusal.Failure {
 	if !c.opts.set["provider"] {
 		return nil
 	}
-	expanded, f := hostsetup.ExpandProvider(c.opts.provider, c.opts.region, c.opts.address)
+	expanded, region, f := hostsetup.ExpandProvider(c.opts.provider, c.opts.region, c.opts.address)
 	if f == nil {
-		c.opts.address = expanded
+		c.opts.address, c.opts.region = expanded, region
 	}
 	return f
 }
@@ -295,17 +295,9 @@ func (c *hostCmd) readGivenPassword(st *addState) *refusal.Failure {
 // stderr, if given.
 func (c *hostCmd) resticFor(st *addState, files repoconnect.Files, stderr io.Writer) (repoinit.Target, restic.Repository) {
 	repo := config.Repository{Name: st.name, URL: st.url, PasswordFile: files.Password, EnvFile: files.Env}
-	checked := repoinit.Checked{EnvAssignments: st.secretAssignments()}
 	// restic takes the password without the white space around it in the file.
 	password := strings.TrimSpace(string(st.Provided))
-	target := repoTarget(repo, checked, string(st.Provided), password, st.Generated)
-	target.Where = config.RedactURL(st.url)
-	switch {
-	case st.isS3():
-		target.Remote, target.Bucket = true, c.s3.Bucket
-	case st.isSFTP():
-		target.Remote, target.Directory = true, st.sftp.address.Path
-	}
+	target := repoconnect.TargetFor(repo, st.secretAssignments(), string(st.Provided), password, st.Generated)
 	cli := newRestic(c.cfg, st.binary, c.deps, repo, runAs(c.who))
 	if stderr != nil {
 		cli = cli.WithStderr(stderr)

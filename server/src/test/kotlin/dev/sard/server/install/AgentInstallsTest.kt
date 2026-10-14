@@ -118,7 +118,7 @@ class AgentInstallsTest {
         val info = install()
 
         assertEquals(
-            listOf("download", "checksum", "signature", "install", "configure", "enroll", "repo-init", "start"),
+            listOf("download", "checksum", "signature", "install", "configure", "enroll", "repo-add", "start"),
             info.steps.map {
                 it.kind.name
                     .lowercase()

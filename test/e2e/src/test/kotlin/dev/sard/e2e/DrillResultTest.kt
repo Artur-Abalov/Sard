@@ -8,7 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** The result of the drill (Р41, OQ-221): `result.json` and the row of the page's table "Сколько это займёт". */
+/** The result of the drill (Р41, OQ-226): `result.json` and the row of the page's table "Сколько это займёт". */
 class DrillResultTest {
     private val result =
         DrillResult(

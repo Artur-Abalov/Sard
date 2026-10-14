@@ -24,7 +24,7 @@ import kotlin.test.assertTrue
 
 /**
  * Rule "Роль дампа sard_self возвращается при старте на восстановленной базе" of
- * docs/specs/server/server-recovery.feature (Р33, OQ-214): real servers over a database without the role.
+ * docs/specs/server/server-recovery.feature (Р33, OQ-219): real servers over a database without the role.
  */
 class SelfRoleRestoredDatabaseIntegrationTest {
     @TempDir

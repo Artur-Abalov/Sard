@@ -69,14 +69,7 @@ const maxNamedPaths = 10
 // first report (a path that failed at scan and at archival counts once),
 // and names the first ten, quoted, so the text is one line.
 func (e *PartialError) Error() string {
-	var paths []string
-	seen := make(map[string]bool)
-	for _, it := range e.Items {
-		if !seen[it.Item] {
-			seen[it.Item] = true
-			paths = append(paths, it.Item)
-		}
-	}
+	paths := distinctPaths(e.Items)
 	head := fmt.Sprintf("unreadable paths (%d)", len(paths))
 	if len(paths) > maxNamedPaths {
 		head += fmt.Sprintf(", first %d", maxNamedPaths)
@@ -86,6 +79,20 @@ func (e *PartialError) Error() string {
 		paths[i] = fmt.Sprintf("%q", p)
 	}
 	return fmt.Sprintf("%s: %s: %s", ErrUnreadableSource, head, strings.Join(paths, ", "))
+}
+
+// distinctPaths are the paths of the items, each once, in the order of the
+// first report.
+func distinctPaths(items []ItemError) []string {
+	var paths []string
+	seen := make(map[string]bool)
+	for _, it := range items {
+		if !seen[it.Item] {
+			seen[it.Item] = true
+			paths = append(paths, it.Item)
+		}
+	}
+	return paths
 }
 
 func (e *PartialError) Is(target error) bool { return target == ErrUnreadableSource }

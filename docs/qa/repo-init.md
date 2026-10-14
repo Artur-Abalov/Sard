@@ -358,7 +358,7 @@ locks() { find "$QA/cache" "$H/sec" -maxdepth 1 -name '.sard-init-*' 2>/dev/null
      доступен на запись `sard-agent`, `password_file: /etc/sard/restic/main.pass`,
      `sudo install -d -o sard-agent -g sard-agent -m 0700 /etc/sard/restic`),
      без `restic.cache_dir`;
-     `sudo -u sard-agent sard-agent repo init --generate-password main; echo "exit=$?"`
+     `sudo -u sard-agent sard-agent repo init --generate-password main; echo "exit=$?"` <!-- allow-sudo-u: проверка repo init от пользователя службы -->
      → `exit=0`; в выводе нет `LOCK_WRITE`;
      `sudo ls -A /var/cache/sard/restic | grep -c '^\.sard-init-'` → `0`;
      `systemctl is-active sard-agent` → `inactive`.
@@ -381,10 +381,10 @@ locks() { find "$QA/cache" "$H/sec" -maxdepth 1 -name '.sard-init-*' 2>/dev/null
     `password_file: /etc/sard/restic/main.pass`. Перезапустить службу.
     `$PSQL "select name, backend, repository_id from agent_repositories where agent_id = '<id>'"`
     → `main | local | ` (id пуст).
-66. `sudo -u sard-agent sard-agent repo init --generate-password main`
+66. `sudo -u sard-agent sard-agent repo init --generate-password main` <!-- allow-sudo-u: проверка repo init от пользователя службы -->
     → `exit=0`; владелец файла пароля — `sard-agent`, права `600`; вывод
     называет repository_id `X`; `sudo ls -A /var/cache/sard/restic | grep -c '^\.sard-init-'`
-    → `0`. `sudo -u sard-agent sard-agent repo list`
+    → `0`. `sudo -u sard-agent sard-agent repo list` <!-- allow-sudo-u: команда чтения от пользователя службы (Р5) -->
     → `main local initialized X`.
 67. До перезапуска: запрос шага 65 → id по-прежнему пуст (конфиг не
     перечитывается; при обрыве связи id может прийти раньше — это не дефект).
@@ -393,7 +393,7 @@ locks() { find "$QA/cache" "$H/sec" -maxdepth 1 -name '.sard-init-*' 2>/dev/null
     локальным `url` и `password_file: /etc/sard/third.pass`;
     `stat -c '%U %a' /etc/sard` → `root 755`;
     `head -c 32 /dev/urandom | base64 | sudo install -o sard-agent -g sard-agent -m 0600 /dev/stdin /etc/sard/third.pass`;
-    `sudo -u sard-agent sard-agent repo init third`
+    `sudo -u sard-agent sard-agent repo init third` <!-- allow-sudo-u: проверка repo init от пользователя службы -->
     → `exit=0`; в выводе нет `PASSWORD_FILE_WRITE` и `LOCK_WRITE`;
     `sudo ls -A /etc/sard | grep -c '^\.sard-init-'` → `0`.
 70. Под sudo (поправка A8a, Р24): `sudo sard-agent repo init --generate-password other`

@@ -156,7 +156,7 @@ class AgentInstallApiIntegrationTest(
         val response = install()
 
         assertEquals(
-            listOf("download", "checksum", "signature", "install", "configure", "enroll", "repo-init", "start"),
+            listOf("download", "checksum", "signature", "install", "configure", "enroll", "repo-add", "start"),
             kinds(response),
         )
         for (step in steps(response)) {
@@ -201,14 +201,14 @@ class AgentInstallApiIntegrationTest(
     }
 
     @Test
-    fun `Регистрация и создание репозитория выполняются от имени пользователя службы`() {
+    fun `Регистрация и подключение хранилища выполняются через sudo`() {
         val response = install()
 
         assertEquals(1, commands(response, "enroll").size)
-        assertTrue(commands(response, "enroll").single().startsWith("sudo -u sard-agent sard-agent enroll "))
+        assertTrue(commands(response, "enroll").single().startsWith("sudo sard-agent enroll "))
         assertEquals(
-            listOf("sudo -u sard-agent sard-agent repo init --generate-password main"),
-            commands(response, "repo-init"),
+            listOf("sudo sard-agent repo add main /srv/sard/main"),
+            commands(response, "repo-add"),
         )
         assertEquals(listOf("sudo systemctl enable --now sard-agent.service"), commands(response, "start"))
     }
@@ -222,7 +222,7 @@ class AgentInstallApiIntegrationTest(
         val enroll = commands(install(), "enroll").single()
 
         assertEquals(command.replace(token, "<TOKEN>"), enroll)
-        assertTrue(enroll.startsWith("sudo -u sard-agent sard-agent enroll --server "), enroll)
+        assertTrue(enroll.startsWith("sudo sard-agent enroll --server "), enroll)
     }
 
     @Test

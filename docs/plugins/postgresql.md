@@ -89,22 +89,15 @@ ALTER ROLE backup SET lo_compat_privileges = on;
 ## Секрет с паролем
 
 Пароль в конфиге источника не пишется: конфиг называет только имя секрета, а значение
-лежит в файле на хосте агента (ADR 0008). Пока нет `sard-agent secret set` (A8), секрет
-создаётся вручную: файл `0600` владельца агента (пользователя `sard-agent`), имя — в `secrets:` файла `agent.yaml`.
+лежит в файле на хосте агента (ADR 0008). Секрет создаёт `sard-agent secret set`: файл
+`/etc/sard/secrets/pg-app` с правами `0600` владельца агента, имя — в `secrets:` фрагмента
+`/etc/sard/agent.d/secret-pg-app.yaml` (основной `agent.yaml` не меняется) и перезапуск
+службы ([настройка хоста агента](../operations/agent-host-setup.md)).
 
 ```bash
-sudo install -d -m 0750 -o sard-agent -g sard-agent /etc/sard/secrets
-printf '%s\n' 'пароль роли backup' | sudo -u sard-agent tee /etc/sard/secrets/pg-app >/dev/null
-sudo chmod 0600 /etc/sard/secrets/pg-app      # файл 0600 владельца агента
+printf '%s' 'пароль роли backup' | sudo sard-agent secret set pg-app --stdin
 ```
 
-```yaml
-# /etc/sard/agent.yaml
-secrets:
-  pg-app: /etc/sard/secrets/pg-app
-```
-
-После правки `agent.yaml` нужен перезапуск агента: `sudo systemctl restart sard-agent`.
 Агент сообщает серверу имена секретов, консоль предлагает их в поле «пароль» источника, а
 сервер при сохранении источника проверяет, что секрет есть у агента.
 
@@ -219,40 +212,57 @@ FAILED, а результат содержит снимок базы: он по�
 Автоматического восстановления пока нет: действие `restore` плагина объявлено, но шаг
 завершается FAILED с сообщением, что восстановление для плагина postgresql ещё не
 реализовано, и ничего не запускает. Из снимков базу восстанавливают стандартными
-средствами PostgreSQL. После A8 команда `sard-agent repo restore` заменит `restic`
-ниже. `pg_restore` и `psql` должны быть **не старше** версии из метки
-`postgresql.pg_dump_version`; новый кластер — не старше исходного.
+средствами PostgreSQL; снимки находит и выкладывает на диск команда
+`sard-agent repo snapshots` и `sard-agent repo restore` (без сервера Sard и без
+регистрации агента, `docs/operations/agent-host-setup.md`). `pg_restore` и `psql`
+должны быть **не старше** версии из метки `postgresql.pg_dump_version`; новый
+кластер — не старше исходного.
 
-В примерах `restic` настроен переменными `RESTIC_REPOSITORY` и `RESTIC_PASSWORD_FILE`
-репозитория источника, `$SN` — `snapshot_id` шага (снимок базы).
+Команда `repo restore` выкладывает снимок PostgreSQL файлами (`<цель>/<база>.dump` и
+`<цель>/<база>.globals.sql`, оба `root:root`, `0600`) и **печатает** команды `psql`,
+`createdb` и `pg_restore`; она их не запускает. В примерах `<имя>` — репозиторий
+источника, `$SP` — идентификатор источника, `$T` — каталог для файлов (новый или пустой).
 
-1. **Найти снимок глобальных объектов** по метке `postgresql.main_snapshot`:
+1. **Найти снимок**: `sudo sard-agent repo snapshots <имя> --source $SP` — снимки базы и
+   глобальных объектов видны рядом, с одним `RUN`.
+
+2. **Выложить файлы** и отдать их пользователю `postgres` (дамп содержит все данные базы,
+   глобальные объекты при `globals_role_passwords` — хеши паролей ролей, поэтому файлы
+   закрыты для всех, кроме root):
 
    ```bash
-   GS=$(restic snapshots --json --tag postgresql.main_snapshot=$SN | jq -r '.[0].id')
+   sudo sard-agent repo restore <имя> latest --source $SP --target $T
+   sudo chown -R postgres $T
    ```
 
-2. **Восстановить глобальные объекты** суперпользователем нового кластера, **до** базы:
+   Одна команда выкладывает дамп и, если есть, файл глобальных объектов из самого нового
+   снимка с меткой `postgresql.main_snapshot=<id снимка базы>`; id снимка базы вместо
+   `latest` восстанавливает именно его. Итог команды печатает следующие шаги с готовыми
+   путями. Цель создана для root с правами `0700`, поэтому `chown -R` отдаёт `postgres`
+   и каталог.
+
+3. **Восстановить глобальные объекты** суперпользователем нового кластера, **до** базы:
 
    ```bash
-   restic dump $GS /app.globals.sql | psql -X -d postgres
+   # allow-sudo-u: psql от суперпользователя нового кластера PostgreSQL, не sard-agent
+   sudo -u postgres psql -X -d postgres -f $T/app.globals.sql
    ```
 
    Ошибки «role … already exists» ожидаемы для ролей, которые в новом кластере уже есть
    (начальный суперпользователь).
 
-3. **Восстановить базу**: `restic dump` (или `restic restore`), `createdb`, `pg_restore`
-   в новую базу:
+4. **Восстановить базу**: `createdb`, `pg_restore` в новую базу:
 
    ```bash
-   restic dump $SN /app.dump > app.dump
-   createdb restored
-   pg_restore -d restored app.dump
+   # allow-sudo-u: createdb от суперпользователя нового кластера PostgreSQL, не sard-agent
+   sudo -u postgres createdb restored
+   # allow-sudo-u: то же, pg_restore от суперпользователя PostgreSQL
+   sudo -u postgres pg_restore -d restored $T/app.dump
    ```
 
-   Роли из шага 2 нужны уже здесь: владельцы объектов в дампе — эти роли.
+   Роли из шага 3 нужны уже здесь: владельцы объектов в дампе — эти роли.
 
-4. **Пароли ролей.** Без `globals_role_passwords` роли восстановлены без паролей — войти
+5. **Пароли ролей.** Без `globals_role_passwords` роли восстановлены без паролей — войти
    по паролю они не могут. Задайте пароли:
 
    ```sql

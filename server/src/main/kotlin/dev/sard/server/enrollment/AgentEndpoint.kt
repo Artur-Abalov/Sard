@@ -8,10 +8,11 @@ import dev.sard.server.pki.ServerNames
 private const val MIN_PORT = 1
 private const val MAX_PORT = 65535
 
-private const val SERVICE_USER = "sard-agent"
-
-/** [command] of the agent binary run as the service user, which owns the identity files (В10). */
-fun asServiceUser(command: String): String = "sudo -u $SERVICE_USER $SERVICE_USER $command"
+/**
+ * [command] of the agent binary as the console shows it: `sudo sard-agent ...` (rule A8, ADR 0050, Q5 Р4).
+ * Mutating commands run under root; the agent hands the identity files to the service user itself (Р25).
+ */
+fun agentCommand(command: String): String = "sudo sard-agent $command"
 
 /** The address agents dial to reach this server (decision 5): host:port as it goes into the enroll command. */
 data class AgentEndpoint(
@@ -22,7 +23,7 @@ data class AgentEndpoint(
     /** The host as it goes into a URL: an IPv6 literal keeps its brackets. */
     val host: String get() = address.substringBeforeLast(':')
 
-    fun enrollCommand(token: String): String = asServiceUser("enroll --server $address --token $token")
+    fun enrollCommand(token: String): String = agentCommand("enroll --server $address --token $token")
 }
 
 /** SARD_AGENT_ENDPOINT does not parse, or its host is not covered by sard.pki.server-names. */

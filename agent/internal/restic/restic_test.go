@@ -32,6 +32,7 @@ const goldenRepoID = "0fa4b1261960f1b5334694f4603c60dd52a5c2b2c8f262aa6c31a7fd5b
 type reply struct {
 	stdout, stderr string // testdata file names
 	inline         string // stdout given verbatim, for synthetic cases
+	raw            string // bytes of the raw stdout (Command.StdoutTo), as restic dump writes them
 	code           int
 	err            error
 	during         func() // runs while "restic" is running, e.g. cancel
@@ -40,6 +41,13 @@ type reply struct {
 	// (SIGTERM) makes it confirm on stderr and keep reading until EOF,
 	// then exit with 130 and no snapshot.
 	readStdin bool
+}
+
+// writeRaw gives the raw stdout, if the command asks for it.
+func (r reply) writeRaw(cmd restic.Command) {
+	if cmd.StdoutTo != nil {
+		_, _ = io.WriteString(cmd.StdoutTo, r.raw)
+	}
 }
 
 // fakeExec replays golden output instead of starting restic.
@@ -51,10 +59,13 @@ type fakeExec struct {
 	killed  bool     // a readStdin reply was stopped before EOF
 	fatal   string   // stderr line printed by every reply, for synthetic cases
 	lines   []string // more stderr lines, printed after fatal
+	// extra is what the inherited descriptors held when the process started.
+	extra []string
 }
 
 func (f *fakeExec) Run(ctx context.Context, cmd restic.Command) (int, error) {
 	f.calls = append(f.calls, cmd)
+	f.readExtraFiles(cmd)
 	r, ok := f.replies[cmd.Args[0]]
 	if !ok {
 		f.t.Fatalf("unexpected restic %q", cmd.Args)
@@ -63,6 +74,7 @@ func (f *fakeExec) Run(ctx context.Context, cmd restic.Command) (int, error) {
 		return 130, nil
 	}
 	feed(f.t, r.stdout, cmd.Stdout)
+	r.writeRaw(cmd)
 	for line := range strings.Lines(r.inline) {
 		cmd.Stdout([]byte(strings.TrimSuffix(line, "\n")))
 	}
@@ -77,6 +89,16 @@ func (f *fakeExec) Run(ctx context.Context, cmd restic.Command) (int, error) {
 		r.during()
 	}
 	return r.code, r.err
+}
+
+// readExtraFiles reads the inherited descriptors that hold a stream, as the
+// process would; a directory holds none.
+func (f *fakeExec) readExtraFiles(cmd restic.Command) {
+	for _, file := range cmd.ExtraFiles {
+		if data, err := io.ReadAll(file); err == nil {
+			f.extra = append(f.extra, string(data))
+		}
+	}
 }
 
 // readStdin reads stdin to EOF into f.stdin; true means ctx ended first.
@@ -125,7 +147,8 @@ type fakeKeys struct{ err error }
 
 func (fakeKeys) Name() string { return "fake" }
 func (k fakeKeys) RepositoryKey(_ context.Context, repository string) (crypto.Key, error) {
-	return crypto.Key{Env: []string{"RESTIC_PASSWORD_FILE=/etc/sard/" + repository + ".pass"}}, k.err
+	file := "/etc/sard/" + repository + ".pass"
+	return crypto.Key{Env: []string{"RESTIC_PASSWORD_FILE=" + file}, File: file}, k.err
 }
 
 // files is an in-memory ReadFile.
@@ -145,6 +168,10 @@ type fixture struct {
 	files files
 	keys  fakeKeys
 	repo  config.Repository
+	// root: restic runs as root (Options.AsRoot).
+	root bool
+	// provider, if not nil, replaces keys.
+	provider crypto.Provider
 }
 
 func newFixture(t *testing.T, replies map[string]reply) *fixture {
@@ -156,15 +183,23 @@ func newFixture(t *testing.T, replies map[string]reply) *fixture {
 	return f
 }
 
+func (f *fixture) keyProvider() crypto.Provider {
+	if f.provider != nil {
+		return f.provider
+	}
+	return f.keys
+}
+
 func (f *fixture) build() *restic.CLI {
 	return restic.New(restic.Options{
 		Binary:   "/opt/sard/restic",
 		CacheDir: "/var/cache/sard/restic",
 		Path:     "/usr/bin:/bin",
 		Exec:     f.exec,
-		Keys:     f.keys,
+		Keys:     f.keyProvider(),
 		ReadFile: f.files.read,
 		Logger:   slog.New(slog.NewTextHandler(&f.log, nil)),
+		AsRoot:   f.root,
 	}, f.repo)
 }
 
