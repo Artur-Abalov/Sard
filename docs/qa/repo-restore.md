@@ -10,12 +10,13 @@
 ответы владельца 2026-10-13, переданы координатором; шаги помечены
 «(Р<номер>)». В A8c-2 `--overwrite` недоступен (Р74): шаги с ним помечены
 «(A8c-2b)» и до этого среза проверяют отказ (шаг 20а); новые проверки — часть 8.
+Ответы владельца 2026-10-14 на вопросы A8c-3 (Р83–Р86) проверяет часть 9.
 
 Выполнима после реализации A8c. Ожидаемый результат — после «→». Любое
 расхождение — дефект.
 
 Коды: `0` успех, `1` ошибка агента (`RESTORE_INCOMPLETE`, `SETPRIV_MISSING`,
-restic), `2` использование (в том числе `ENV_FILE_INVALID`,
+`RESTIC_OUTPUT_UNEXPECTED`, restic), `2` использование (в том числе `ENV_FILE_INVALID`,
 `BACKEND_NOT_SUPPORTED`), `6` временная (`BACKEND_UNAVAILABLE`, `TIMEOUT`,
 `INTERRUPTED`, `TARGET_BUSY`), `7` запись (`TARGET_WRITE`).
 
@@ -359,6 +360,38 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
     → `exit=0`; `sudo $AG repo restore main $ID8 --source $SP --target /srv/e11`
     → `exit=2`, `SNAPSHOT_UNKNOWN`, называет `$ID8` и `$SP`.
 
+## Часть 9. Ответы 2026-10-14 (Р83–Р86, A8c-3)
+
+Снимки этой части делаются вручную от имени службы и в конце удаляются:
+
+```bash
+R="sudo -u sard-agent /usr/libexec/sard/restic --repo /srv/sard/main --password-file /etc/sard/secrets/restic-main.pass --cache-dir /var/cache/sard/restic"
+```
+
+62. Снимок PostgreSQL неожиданной формы (Р83). Два пути:
+    `$R backup --tag postgresql.part=database --tag postgresql.database=app /etc/hostname /etc/hosts`;
+    без имени базы: `echo x | $R backup --stdin --stdin-filename app.dump --tag postgresql.part=database`.
+    Их id — `X1` и `X2` (`$R snapshots --json | jq -r '.[-2:][].id'`). Для
+    каждого: `T=$(date '+%F %T'); run sudo $AG repo restore main <id> --target /srv/u1`
+    → `exit=1`, `RESTIC_OUTPUT_UNEXPECTED`, первые 8 символов id, сообщение
+    говорит, что восстановить каталогом нельзя и ничего не записано;
+    `ls -d /srv/u1` → нет; `audit "$T"` → пусто.
+63. Нет тега версии pg_dump (Р84):
+    `sudo cat /srv/pg1/app.dump | $R backup --stdin --stdin-filename app.dump --tag postgresql.part=database --tag postgresql.database=app`;
+    его id — `X3`; `run sudo $AG repo restore main $X3 --target /srv/u2` →
+    `exit=0`; `sudo ls -A /srv/u2` → только `app.dump`; stdout содержит
+    `not older than the version of pg_dump that made the backup`, и в этой
+    строке нет номера версии (`grep 'pg_dump that made' "$OUT/o" | grep -cE '[0-9]+\.[0-9]+'` → `0`).
+64. Аудит при отказе после создания цели (Р85): том шага 58 только для
+    чтения (`mountpoint -q /srv/r12 || sudo mount -o loop,ro "$OUT/small.img" /srv/r12; sudo mount -o remount,ro /srv/r12`);
+    `T=$(date '+%F %T'); run sudo $AG repo restore main latest --source $SP --target /srv/r12`
+    → `exit=7`, `TARGET_WRITE`; `audit "$T"` → одна строка
+    `… restore to /srv/r12 failed: TARGET_WRITE`. Для сравнения (Р81):
+    `T=$(date '+%F %T'); sudo $AG repo restore main $ID --target /srv/r12`
+    → `exit=7`; `audit "$T"` → пусто. Отмонтировать `/srv/r12`.
+65. Удалить снимки части: `$R forget $X1 $X2 $X3`;
+    `sudo $AG repo snapshots main` → их нет.
+
 Вручную не воспроизводятся и проверяются тестами `@local` с теми же
 названиями: EXDEV при переносе, `fstat` временного каталога с чужим
 владельцем, ссылка, созданная restic во временном каталоге, при его
@@ -366,4 +399,7 @@ owned_root() { sudo find "$K" /srv/sard/main /var/lib/sard-agent/.ssh -user root
 файлов PostgreSQL, права до записи содержимого, кавычка в имени базы, ошибки
 отдельных файлов (`RESTORE_INCOMPLETE`), подмена ссылкой компонента цели между
 проверкой и созданием, отсутствие пользователя службы, Scrubber для строк
-restic с паролем и ключом.
+restic с паролем и ключом, сбой записи файла глобальных объектов после
+готового дампа (Р86: дампа в цели не остаётся), путь снимка PostgreSQL не в
+корне и неразбираемое имя базы (Р83), снимок глобальных объектов неожиданной
+формы к снимку базы (Р83).
