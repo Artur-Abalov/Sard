@@ -133,11 +133,26 @@ func (h *Held) checkEmpty() *refusal.Failure {
 	return nil
 }
 
-// leftover: a staging directory of a restore that was killed makes the
-// target not empty, and the refusal names it (Р73).
+// tempMarker follows the name in .<name>.tmp-<random>, the temporary file of
+// a PostgreSQL restore (Р62).
+const tempMarker = ".tmp-"
+
+// isRemains: the name of what a restore that was killed leaves: a staging
+// directory (Р73) or a temporary file .<name>.tmp-* with a name that is not
+// empty (Р88). It is told by the name alone.
+func isRemains(name string) bool {
+	if strings.HasPrefix(name, StagingPrefix) {
+		return true
+	}
+	rest, dotted := strings.CutPrefix(name, ".")
+	return dotted && strings.Index(rest, tempMarker) > 0
+}
+
+// leftover: what a restore that was killed leaves makes the target not
+// empty, and the refusal names it (Р73, Р88).
 func leftover(path string, names []string) *refusal.Failure {
 	for _, name := range names {
-		if strings.HasPrefix(name, StagingPrefix) {
+		if isRemains(name) {
 			return refusal.Fail(refusal.TargetNotEmpty, "the target %s is not empty: %s is the remains of an interrupted restore; remove it (rm -rf) and run the command again", path, filepath.Join(path, name))
 		}
 	}

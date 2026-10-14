@@ -114,6 +114,8 @@ type fakeDumper struct {
 	failAfter int
 	err       error
 	asked     []string
+	// during runs after the content was written, before the dump ends.
+	during func()
 }
 
 func (d *fakeDumper) Dump(_ context.Context, snapshotID, path string, w io.Writer) error {
@@ -121,6 +123,9 @@ func (d *fakeDumper) Dump(_ context.Context, snapshotID, path string, w io.Write
 	data := d.content[snapshotID+" "+path]
 	if d.err != nil {
 		_, _ = io.WriteString(w, data[:min(d.failAfter, len(data))])
+		if d.during != nil {
+			d.during()
+		}
 		return d.err
 	}
 	_, err := io.WriteString(w, data)
@@ -192,7 +197,8 @@ func TestOwnerAndModeAreSetBeforeTheFirstByteOfContent(t *testing.T) {
 		"chown .app.dump.tmp-x1 0:0", "chmod .app.dump.tmp-x1 -rw-------", "write .app.dump.tmp-x1",
 		"chown .app.globals.sql.tmp-x2 0:0", "chmod .app.globals.sql.tmp-x2 -rw-------", "write .app.globals.sql.tmp-x2",
 	}
-	if got := fsys.files.events; !slices.Equal(got, want) {
+	got := slices.DeleteFunc(slices.Clone(fsys.files.events), func(e string) bool { return strings.HasPrefix(e, "lstat ") || e == "syncdir" })
+	if !slices.Equal(got, want) {
 		t.Errorf("events\n got %q\nwant %q", got, want)
 	}
 }
@@ -542,5 +548,168 @@ func TestTheHintsNameTheProgramsThatMustBeNotOlderThanTheDump(t *testing.T) {
 	plan, _ := fullPlan(t)
 	if text := hintsOf(t, plan); !strings.Contains(text, "You run these commands; pg_restore and psql must be not older than 16.4:") {
 		t.Errorf("hints %q", text)
+	}
+}
+
+// Р87: after the move every file is looked for by its name, without following
+// a link, and compared with the file the agent wrote; what is not that file is
+// never removed.
+
+// swap puts a file of someone else under the name, in place of what is there.
+func swap(t *testing.T, dir, name, content string) {
+	t.Helper()
+	_ = os.Remove(filepath.Join(dir, name))
+	mustWrite(t, filepath.Join(dir, name), content)
+}
+
+func foreignContent(t *testing.T, dir, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	return string(data)
+}
+
+func TestEveryFileIsComparedWithTheOneWrittenAfterTheMoveAndBeforeTheDirectorySync(t *testing.T) {
+	dir, fsys := t.TempDir(), newRecordingFS()
+	held, _ := openTarget(fsys, dir)
+	defer held.Release()
+	plan, content := fullPlan(t)
+	if f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1", "x2"), repoTarget()); f != nil {
+		t.Fatal(f)
+	}
+	var seen []string
+	for _, e := range fsys.files.events {
+		if strings.HasPrefix(e, "lstat ") || e == "syncdir" {
+			seen = append(seen, e)
+		}
+	}
+	if want := []string{"lstat app.dump", "syncdir", "lstat app.globals.sql", "syncdir"}; !slices.Equal(seen, want) {
+		t.Errorf("events %q, want %q", seen, want)
+	}
+}
+
+func TestADumpSwappedBeforeTheMoveIsATargetWriteFailureAndTheForeignFileStays(t *testing.T) {
+	dir, fsys := t.TempDir(), newRecordingFS()
+	fsys.files.beforeRename = func(old, _ string) {
+		if strings.HasPrefix(old, ".app.dump.tmp-") {
+			swap(t, dir, old, "FOREIGN")
+		}
+	}
+	held, _ := openTarget(fsys, dir)
+	defer held.Release()
+	plan, content := fullPlan(t)
+	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1"), repoTarget())
+	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, filepath.Join(dir, "app.dump"), "is not the file the agent wrote", "was not removed", "new target")
+	if got := foreignContent(t, dir, "app.dump"); got != "FOREIGN" || len(entries(t, dir)) != 1 {
+		t.Errorf("app.dump %q, entries %v", got, entries(t, dir))
+	}
+}
+
+func TestANameThatVanishedAfterTheMoveIsTheSameFailure(t *testing.T) {
+	dir, fsys := t.TempDir(), newRecordingFS()
+	fsys.files.afterRename = func(name string) { _ = os.Remove(filepath.Join(dir, name)) }
+	held, _ := openTarget(fsys, dir)
+	defer held.Release()
+	plan, content := fullPlan(t)
+	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1"), repoTarget())
+	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, filepath.Join(dir, "app.dump"), "is not the file the agent wrote")
+}
+
+func TestASwappedGlobalsFileTakesTheDumpBackAndStays(t *testing.T) {
+	dir, fsys := t.TempDir(), newRecordingFS()
+	fsys.files.beforeRename = func(old, _ string) {
+		if strings.HasPrefix(old, ".app.globals.sql.tmp-") {
+			swap(t, dir, old, "FOREIGN-G")
+		}
+	}
+	held, _ := openTarget(fsys, dir)
+	defer held.Release()
+	plan, content := fullPlan(t)
+	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1", "x2"), repoTarget())
+	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, "app.globals.sql", "is not the file the agent wrote")
+	if got := entries(t, dir); !slices.Equal(got, []string{"app.globals.sql"}) || foreignContent(t, dir, "app.globals.sql") != "FOREIGN-G" {
+		t.Errorf("entries %v", got)
+	}
+}
+
+func TestAForeignFileUnderTheNameOfAFinishedDumpIsNotRemovedWhenTakingBack(t *testing.T) {
+	dir, fsys := t.TempDir(), newRecordingFS()
+	fsys.files.failWritePrefix, fsys.files.failWrite = ".app.globals.sql.tmp-", syscall.ENOSPC
+	fsys.files.beforeWrite = func(name string) {
+		if strings.HasPrefix(name, ".app.globals.sql.tmp-") {
+			swap(t, dir, "app.dump", "FOREIGN")
+		}
+	}
+	held, _ := openTarget(fsys, dir)
+	defer held.Release()
+	plan, content := fullPlan(t)
+	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1", "x2"), repoTarget())
+	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, filepath.Join(dir, "app.dump"), "not removed", "not the file the agent wrote")
+	if got := entries(t, dir); !slices.Equal(got, []string{"app.dump"}) || foreignContent(t, dir, "app.dump") != "FOREIGN" {
+		t.Errorf("entries %v", got)
+	}
+}
+
+func TestAForeignFileUnderTheNameOfTheTempFileIsNotRemovedWhenTheDumpFails(t *testing.T) {
+	dir := t.TempDir()
+	held, _ := openTarget(newRecordingFS(), dir)
+	defer held.Release()
+	plan, content := fullPlan(t)
+	d := &fakeDumper{content: content, failAfter: 2, err: restic.ErrNetwork, during: func() { swap(t, dir, ".app.dump.tmp-x1", "FOREIGN") }}
+	f := restore.WritePostgres(context.Background(), d, held, plan, names("x1"), repoTarget())
+	wantPG(t, f, refusal.BackendUnavailable, refusal.ClassTemporary, ".app.dump.tmp-x1", "not removed")
+	if foreignContent(t, dir, ".app.dump.tmp-x1") != "FOREIGN" {
+		t.Error("the foreign file was removed")
+	}
+}
+
+func TestAnUnreadableWrittenFileIsATargetWriteFailureAndLeavesNothing(t *testing.T) {
+	dir, fsys := t.TempDir(), newRecordingFS()
+	fsys.files.failFileStat = true
+	held, _ := openTarget(fsys, dir)
+	defer held.Release()
+	plan, content := fullPlan(t)
+	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1"), repoTarget())
+	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite)
+	if got := entries(t, dir); len(got) != 0 {
+		t.Errorf("left %v", got)
+	}
+}
+
+// Р88: the temporary file of a PostgreSQL restore that was killed makes the
+// target not empty, and the refusal names it as the remains of it.
+func TestATempFileOfAKilledPostgreSQLRestoreIsNamedAsTheRemainsInTheRefusal(t *testing.T) {
+	for _, name := range []string{".app.dump.tmp-x1", ".app.globals.sql.tmp-x2", ".a.tmp-"} {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, name), "HALF")
+		_, f := check(t, restore.Target{Path: dir})
+		wantFailure(t, f, refusal.TargetNotEmpty, filepath.Join(dir, name), "the remains of an interrupted restore", "remove it")
+		if data, _ := os.ReadFile(filepath.Join(dir, name)); string(data) != "HALF" {
+			t.Errorf("%s was changed: %q", name, data)
+		}
+	}
+}
+
+func TestOtherNamesAreNotCalledTheRemainsOfAnInterruptedRestore(t *testing.T) {
+	for _, name := range []string{".tmp-x1", "app.dump.tmp-x1", ".app.dump", "notes.txt"} {
+		dir := t.TempDir()
+		mustWrite(t, filepath.Join(dir, name), "x")
+		_, f := check(t, restore.Target{Path: dir})
+		wantFailure(t, f, refusal.TargetNotEmpty)
+		if strings.Contains(f.Detail, "remains of an interrupted") {
+			t.Errorf("%s: %s", name, f.Detail)
+		}
+	}
+}
+
+func TestTheFirstOfSeveralRemainsIsTheOneNamed(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, ".a.dump.tmp-1"), "x")
+	mustMkdir(t, dir, ".sard-restore-x")
+	_, f := check(t, restore.Target{Path: dir})
+	if f == nil || strings.Count(f.Detail, "remains of an interrupted") != 1 {
+		t.Fatalf("failure %v", f)
 	}
 }

@@ -55,6 +55,9 @@ type fakeFS struct {
 	// restore seems to have.
 	crossDevice  string
 	stagingOwner int
+	// beforeMove, if not nil, runs before an entry is moved to its name, with
+	// the directory and the old name: a writer of the target at work (Р87).
+	beforeMove func(dir, oldName string)
 }
 
 // countEvents counts the events that start with the text.
@@ -309,6 +312,9 @@ func (d fakeDir) Chown(uid, gid int) error {
 // RenameNoReplace records the move; the entry called crossDevice is on
 // another file system.
 func (d fakeDir) RenameNoReplace(oldName string, newDir hostsetup.Dir, newName string) error {
+	if d.fsys.beforeMove != nil {
+		d.fsys.beforeMove(d.Path(), oldName)
+	}
 	if oldName == d.fsys.crossDevice {
 		return &fs.PathError{Op: "renameat2", Path: newName, Err: hostsetup.ErrCrossDevice}
 	}

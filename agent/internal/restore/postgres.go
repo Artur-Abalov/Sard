@@ -173,46 +173,149 @@ type Dumper interface {
 // maxTempNames is how many random names a temporary file is tried with.
 const maxTempNames = 8
 
+// written is a file the agent wrote, as it was when it was written: the
+// identity (device and inode) that Р87 compares a name with.
+type written struct {
+	name string
+	info fs.FileInfo
+	// out stays open until the whole write is over, so that the inode of the
+	// file cannot be given to another one (see pending.close).
+	out hostsetup.File
+}
+
 // WritePostgres writes the files of the plan into the held target, each
 // the way Р62 says: a temporary file .<name>.tmp-<random> made O_EXCL, given
 // root:root and 0600 before any content (Н29, whatever the umask), filled by
-// restic, synced, moved to its name without replacing and the directory
-// synced. A failure leaves neither a temporary nor a final file: the files
-// this run already finished are taken back. random is the random part of a name.
+// restic, synced, moved to its name without replacing, compared with the file
+// written (Р87) and the directory synced. A failure leaves neither a temporary
+// nor a final file: the files this run already finished are taken back. A
+// name that leads to another file than the agent wrote is never removed; the
+// failure names it. random is the random part of a name.
 func WritePostgres(ctx context.Context, d Dumper, h *Held, plan PGPlan, random func() string, target repoinit.Target) *refusal.Failure {
-	var done []string
+	var done []written
+	defer func() {
+		for _, w := range done {
+			_ = w.out.Close()
+		}
+	}()
 	for _, file := range plan.Files {
-		if f := writeFile(ctx, d, h, file, random, target); f != nil {
-			for _, name := range done {
-				_ = h.dir.Remove(name)
+		w, f := writeFile(ctx, d, h, file, random, target)
+		if f != nil {
+			for _, back := range done {
+				f.Detail += takeBack(h, back)
 			}
 			return f
 		}
-		done = append(done, file.Name)
+		done = append(done, w)
 	}
 	return nil
 }
 
-func writeFile(ctx context.Context, d Dumper, h *Held, file PGFile, random func() string, target repoinit.Target) *refusal.Failure {
-	tmp, out, f := createTemp(h, file.Name, random)
+// takeBack removes the name if it still leads to the file the agent wrote;
+// otherwise it stays, and the text that follows a failure names it (Р87).
+func takeBack(h *Held, w written) string {
+	if cur, err := h.dir.Lstat(w.name); err == nil && hostsetup.SameFile(cur, w.info) && h.dir.Remove(w.name) == nil {
+		return ""
+	}
+	return fmt.Sprintf("; %s/%s was not removed: it is not the file the agent wrote", h.Path, w.name)
+}
+
+// pending is a file being written: its temporary name, until it is moved,
+// and then the final one, once that is judged to be the file written.
+type pending struct {
+	h      *Held
+	out    hostsetup.File
+	info   fs.FileInfo
+	remove string // the name an abandoned file is taken back by
+	closed bool
+}
+
+func writeFile(ctx context.Context, d Dumper, h *Held, file PGFile, random func() string, target repoinit.Target) (written, *refusal.Failure) {
+	p, f := newPending(h, file.Name, random)
 	if f != nil {
-		return f
+		return written{}, f
 	}
-	w := &countingWriter{w: out}
-	dumpErr := error(nil)
-	if f = prepare(out, h.Path, tmp); f == nil {
-		dumpErr = d.Dump(ctx, file.SnapshotID, file.Path, w)
-		f = outcome(ctx, dumpErr, w.err, h.Path, target)
+	if f = p.fill(ctx, d, file, target); f == nil {
+		f = p.commit(file.Name)
 	}
-	if f == nil {
-		f = finish(h, out, tmp, file.Name)
-	} else {
+	if f != nil {
+		f.Detail += p.abandon()
+		return written{}, f
+	}
+	p.closed = true // WritePostgres closes it at the end
+	return written{name: file.Name, info: p.info, out: p.out}, nil
+}
+
+func newPending(h *Held, name string, random func() string) (*pending, *refusal.Failure) {
+	tmp, out, f := createTemp(h, name, random)
+	if f != nil {
+		return nil, f
+	}
+	info, err := out.Stat()
+	if err != nil {
 		_ = out.Close()
+		_ = h.dir.Remove(tmp)
+		return nil, refusal.Fail(refusal.TargetWrite, "cannot look at the file %s/%s: %v", h.Path, tmp, err)
+	}
+	return &pending{h: h, out: out, info: info, remove: tmp}, nil
+}
+
+// fill gives the file its owner and mode and then its content; the file is
+// closed when that fails.
+func (p *pending) fill(ctx context.Context, d Dumper, file PGFile, target repoinit.Target) *refusal.Failure {
+	w := &countingWriter{w: p.out}
+	f := prepare(p.out, p.h.Path, p.remove)
+	if f == nil {
+		err := d.Dump(ctx, file.SnapshotID, file.Path, w)
+		f = outcome(ctx, err, w.err, p.h.Path, target)
 	}
 	if f != nil {
-		_ = h.dir.Remove(tmp)
+		_ = p.close()
 	}
 	return f
+}
+
+// close closes the file once. The file stays open until its name is judged:
+// while the agent holds it, its inode cannot be given to another file, so the
+// comparison of Р87 cannot be fooled by a file that reuses the number.
+func (p *pending) close() error {
+	if p.closed {
+		return nil
+	}
+	p.closed = true
+	return p.out.Close()
+}
+
+// commit syncs the file, gives it its name, compares the name with the file
+// written (Р87) and syncs the directory.
+func (p *pending) commit(name string) *refusal.Failure {
+	h := p.h
+	if err := p.out.Sync(); err != nil {
+		return refusal.Fail(refusal.TargetWrite, "cannot save %s/%s: %v; no file of the snapshot was left in the target", h.Path, name, err)
+	}
+	if err := h.dir.RenameNoReplace(p.remove, h.dir, name); err != nil {
+		return refusal.Fail(refusal.TargetWrite, "cannot give the file its name %s/%s: %v; no file of the snapshot was left in the target", h.Path, name, err)
+	}
+	p.remove = ""
+	if cur, err := h.dir.Lstat(name); err != nil || !hostsetup.SameFile(cur, p.info) {
+		return refusal.Fail(refusal.TargetWrite, "%s/%s is not the file the agent wrote (someone else writes to the target) and was not removed; restore into a new target (the command makes it with owner root and mode 0700) or into a directory only root can write", h.Path, name)
+	}
+	p.remove = name
+	if err := h.dir.Sync(); err != nil {
+		return refusal.Fail(refusal.TargetWrite, "cannot sync the target %s: %v; no file of the snapshot was left in it", h.Path, err)
+	}
+	return nil
+}
+
+// abandon takes back what the file left: the temporary file, or the final
+// one if it was judged to be the file written. The text it returns names a
+// name that was left because it is not that file.
+func (p *pending) abandon() string {
+	defer func() { _ = p.close() }()
+	if p.remove == "" {
+		return ""
+	}
+	return takeBack(p.h, written{name: p.remove, info: p.info})
 }
 
 // createTemp makes the temporary file of name, trying another random part
@@ -251,21 +354,6 @@ func outcome(ctx context.Context, dumpErr, writeErr error, dir string, target re
 		f := repoinit.FromRestic(ctx, dumpErr, target)
 		f.Detail += "; there is no dump file in " + dir
 		return f
-	}
-	return nil
-}
-
-// finish syncs the file, gives it its name and syncs the directory.
-func finish(h *Held, out hostsetup.File, tmp, name string) *refusal.Failure {
-	if err := errors.Join(out.Sync(), out.Close()); err != nil {
-		return refusal.Fail(refusal.TargetWrite, "cannot save %s/%s: %v; no file of the snapshot was left in the target", h.Path, name, err)
-	}
-	if err := h.dir.RenameNoReplace(tmp, h.dir, name); err != nil {
-		return refusal.Fail(refusal.TargetWrite, "cannot give the file its name %s/%s: %v; no file of the snapshot was left in the target", h.Path, name, err)
-	}
-	if err := h.dir.Sync(); err != nil {
-		_ = h.dir.Remove(name)
-		return refusal.Fail(refusal.TargetWrite, "cannot sync the target %s: %v; no file of the snapshot was left in it", h.Path, err)
 	}
 	return nil
 }
@@ -334,5 +422,7 @@ func (p PGPlan) fileOf(dump bool) string {
 	return p.Files[len(p.Files)-1].Name
 }
 
-// quote is s as one word of a shell: in single quotes, a quote in it as '\”.
+// quote is s as one word of a shell: in single quotes, and a single quote
+// inside it is written as a quote, a backslash and two quotes (gofmt would turn
+// the literal text of that into a typographic quote in a comment).
 func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }

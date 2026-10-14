@@ -22,7 +22,21 @@ type File interface {
 	Chown(uid, gid int) error
 	Chmod(mode os.FileMode) error
 	Sync() error
+	Stat() (fs.FileInfo, error)
 	Close() error
+}
+
+// SameFile reports whether the two descriptions are of one file: the same
+// device and inode (Р87).
+// It reads the numbers the file system reported, so a description that wraps
+// another (a test fake that shows another owner) is still compared by them.
+func SameFile(a, b fs.FileInfo) bool {
+	x, okX := a.Sys().(*syscall.Stat_t)
+	y, okY := b.Sys().(*syscall.Stat_t)
+	if !okX || !okY {
+		return os.SameFile(a, b)
+	}
+	return uint64(x.Dev) == uint64(y.Dev) && uint64(x.Ino) == uint64(y.Ino)
 }
 
 // FS is the part of the file system the commands change. OS is the real

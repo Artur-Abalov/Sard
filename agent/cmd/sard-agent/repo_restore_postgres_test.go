@@ -382,3 +382,61 @@ func TestTheTargetIsLetGoBeforeTheOutcomeIsRecorded(t *testing.T) {
 		}
 	}
 }
+
+// Р87: a file swapped in the target is a write failure, audited as one.
+func TestASwappedPostgreSQLFileIsATargetWriteFailureWithAnAuditLine(t *testing.T) {
+	h := restoreHost(t)
+	h.fsys.beforeMove = func(dir, old string) {
+		if strings.HasPrefix(old, ".app.dump.tmp-") {
+			_ = os.Remove(filepath.Join(dir, old))
+			ok(t, os.WriteFile(filepath.Join(dir, old), []byte("FOREIGN"), 0o644))
+		}
+	}
+	code, _, stderr := h.restore(idP)
+	assertRefusal(t, code, stderr, exitWrite, "TARGET_WRITE")
+	for _, want := range []string{filepath.Join(h.target(), "app.dump"), "is not the file the agent wrote"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr lacks %q: %s", want, stderr)
+		}
+	}
+	if got := h.fileContent(h.target() + "/app.dump"); got != "FOREIGN" {
+		t.Errorf("app.dump %q", got)
+	}
+	want := "repository base snapshot bbbb1111 restore to " + h.target() + " failed: TARGET_WRITE"
+	if len(h.log.lines) != 1 || !strings.Contains(h.log.lines[0], want) {
+		t.Errorf("audit %q", h.log.lines)
+	}
+}
+
+// Р88: what an interrupted restore left makes the target not empty, and is named.
+func TestAnInterruptedPostgreSQLRestoreLeftoverIsNamedAndKept(t *testing.T) {
+	for _, ref := range []string{idP, idF} {
+		h := restoreHost(t)
+		left := filepath.Join(h.target(), ".app.dump.tmp-x1")
+		ok(t, os.MkdirAll(h.target(), 0o700))
+		ok(t, os.WriteFile(left, []byte("HALF"), 0o640))
+		code, _, stderr := h.restore(ref)
+		assertRefusal(t, code, stderr, exitUsage, "TARGET_NOT_EMPTY")
+		for _, want := range []string{left, "the remains of an interrupted restore", "remove it"} {
+			if !strings.Contains(stderr, want) {
+				t.Errorf("stderr lacks %q: %s", want, stderr)
+			}
+		}
+		if h.fileContent(left) != "HALF" || len(h.dumpCalls()) != 0 || len(h.restoreCalls()) != 0 || len(h.log.lines) != 0 {
+			t.Errorf("content %q, dump %v, restore %v, audit %q", h.fileContent(left), h.dumpCalls(), h.restoreCalls(), h.log.lines)
+		}
+	}
+}
+
+func TestANameNotOfTheFormTempIsNotCalledTheRemains(t *testing.T) {
+	for _, name := range []string{".tmp-x1", "app.dump.tmp-x1", ".app.dump"} {
+		h := restoreHost(t)
+		ok(t, os.MkdirAll(h.target(), 0o700))
+		ok(t, os.WriteFile(filepath.Join(h.target(), name), []byte("x"), 0o640))
+		code, _, stderr := h.restore(idP)
+		assertRefusal(t, code, stderr, exitUsage, "TARGET_NOT_EMPTY")
+		if strings.Contains(stderr, "remains of an interrupted") {
+			t.Errorf("%s: %s", name, stderr)
+		}
+	}
+}

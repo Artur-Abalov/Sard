@@ -86,6 +86,36 @@ PostgreSQL нет (ADR 0059, Р62). Задание просит распрост
   глобальные, а `KindOf` раскладывает как базу). Заданное поведение не меняется.
 - O3 и O4 — владельцу, не делались.
 
+## Р87 и Р88 (четвёртый заход)
+
+- **Р87.** `hostsetup.File.Stat` и `hostsetup.SameFile` (устройство и inode);
+  сверку по имени делает уже существующий `Dir.Lstat` (`O_PATH|O_NOFOLLOW`, то же,
+  что `fstatat` с `AT_SYMLINK_NOFOLLOW`). `WritePostgres` разобран на `pending`
+  (`fill`, `commit`, `abandon`) и `takeBack`; удаление по имени всегда после
+  сверки. Находка при красном прогоне: если записанный файл закрыт, подмена
+  «удалить и создать заново» получает тот же номер inode и сверку обманывает, —
+  поэтому записанные файлы держатся открытыми до конца команды (тест
+  `TestAForeignFileUnderTheNameOfAFinishedDumpIsNotRemovedWhenTakingBack` красный
+  до этого). `SameFile` читает `Stat_t`, а не `os.SameFile`: обёртка fake с
+  другим владельцем остаётся сравнимой.
+- **Тесты Р87** (`restore/postgres_test.go`): порядок «lstat имя, затем fsync
+  каталога» у каждого файла; подменённый дамп; пропавшее имя; подменённые
+  глобальные объекты берут дамп назад; чужой файл под именем законченного
+  дампа не удаляется; чужой файл под временным именем не удаляется при сбое
+  дампа; файл, который нельзя осмотреть. `main`:
+  `TestASwappedPostgreSQLFileIsATargetWriteFailureWithAnAuditLine` (код 7, путь,
+  строка аудита).
+- **Р88.** `isRemains` в `restore/target.go`: `.sard-restore-*` или
+  `.<имя>.tmp-*`. Тесты: `restore` — `TestATempFileOfAKilledPostgreSQLRestore…`,
+  `TestOtherNamesAreNotCalledTheRemains…`, `TestTheFirstOfSeveralRemains…`;
+  `main` — `TestAnInterruptedPostgreSQLRestoreLeftoverIsNamedAndKept` (база и
+  каталог, файл остаётся, restic не вызывался, аудита нет),
+  `TestANameNotOfTheFormTempIsNotCalledTheRemains`.
+- Примечание: тесты `main` для Р87 и Р88 прошли сразу после кода (код написан
+  после красных тестов уровня `restore`).
+- O6: `gofmt` переписывает `'\''` в комментарии документации в типографскую
+  кавычку, поэтому комментарий `quote` теперь словами.
+
 ## Не автоматизировано
 
 `@vm` «Напечатанные команды восстанавливают базу в новом кластере»,

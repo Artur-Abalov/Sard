@@ -26,10 +26,17 @@ type fileBehaviour struct {
 	// makes the sync of a file fail.
 	failCreate   error
 	failFileSync bool
+	// failFileStat makes the look at an open file fail.
+	failFileStat bool
 	// failWriteLater, if not nil, is the error every write of a file after the
 	// first failed one fails with, instead of failWrite.
 	failWriteLater error
 	failedWrites   int
+	// beforeRename runs before a file is moved to its name, afterRename after
+	// it, beforeWrite before a write (a writer of the target at work, Р87).
+	beforeRename func(oldName, newName string)
+	afterRename  func(newName string)
+	beforeWrite  func(name string)
 	// closed are the names of the files that were closed, in order.
 	closed []string
 }
@@ -66,6 +73,9 @@ func (f recordingFile) Chmod(mode fs.FileMode) error {
 
 func (f recordingFile) Write(p []byte) (int, error) {
 	f.fsys.note("write " + f.name)
+	if hook := f.fsys.files.beforeWrite; hook != nil {
+		hook(f.name)
+	}
 	if f.fsys.files.failWrite != nil && strings.HasPrefix(f.name, f.fsys.files.failWritePrefix) {
 		err := f.fsys.files.failWrite
 		if f.fsys.files.failedWrites > 0 && f.fsys.files.failWriteLater != nil {
@@ -95,4 +105,16 @@ func (f recordingFile) Close() error {
 	f.fsys.files.closed = append(f.fsys.files.closed, f.name)
 	f.fsys.mu.Unlock()
 	return f.File.Close()
+}
+
+func (d recordingDir) Lstat(name string) (fs.FileInfo, error) {
+	d.fsys.note("lstat " + name)
+	return d.Dir.Lstat(name)
+}
+
+func (f recordingFile) Stat() (fs.FileInfo, error) {
+	if f.fsys.files.failFileStat {
+		return nil, &fs.PathError{Op: "fstat", Path: f.name, Err: syscall.EIO}
+	}
+	return f.File.Stat()
 }

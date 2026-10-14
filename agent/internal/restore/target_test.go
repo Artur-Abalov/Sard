@@ -144,7 +144,14 @@ func (d recordingDir) RenameNoReplace(oldName string, newDir hostsetup.Dir, newN
 	if oldName == d.fsys.failMove {
 		return &fs.PathError{Op: "renameat2", Path: newName, Err: hostsetup.ErrCrossDevice}
 	}
-	return d.Dir.RenameNoReplace(oldName, newDir, newName)
+	if hook := d.fsys.files.beforeRename; hook != nil {
+		hook(oldName, newName)
+	}
+	err := d.Dir.RenameNoReplace(oldName, newDir, newName)
+	if hook := d.fsys.files.afterRename; hook != nil && err == nil {
+		hook(newName)
+	}
+	return err
 }
 
 func (d recordingDir) RemoveDir(name string) error {
@@ -162,6 +169,7 @@ func (d recordingDir) Lock() error {
 }
 
 func (d recordingDir) Sync() error {
+	d.fsys.note("syncdir")
 	if d.fsys.failSync {
 		return &fs.PathError{Op: "fsync", Path: d.Path(), Err: syscall.EIO}
 	}
