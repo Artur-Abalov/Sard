@@ -178,6 +178,7 @@ func newAgent(cfg config.Config, hostname, resticBinary string) *app.Agent {
 		RepositoryID: func(ctx context.Context, r config.Repository) (string, error) {
 			return repos[r.Name].ID(ctx)
 		},
+		Announced: recordAnnounced(executorStateDir(cfg.Executor.StateDir), slog.Default()),
 	}
 }
 

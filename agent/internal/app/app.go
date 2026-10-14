@@ -38,6 +38,9 @@ type Agent struct {
 	// RepositoryID returns restic's id of a local repository. The server
 	// counts hosts per id to warn when a key exists on one host only.
 	RepositoryID func(ctx context.Context, r config.Repository) (string, error)
+	// Announced, if not nil, gets the repositories every Register announces
+	// (names and ids), for the record sard-agent repo check compares with.
+	Announced func(repos []*agentv1.RepositoryInfo)
 }
 
 // Run keeps the agent connected to the server until ctx ends or the
@@ -58,6 +61,9 @@ func (a *Agent) RegisterRequest(ctx context.Context) *agentv1.RegisterRequest {
 		Repositories:    a.repositoryInfos(ctx),
 		SecretNames:     a.Local.SecretNames(),
 		ScriptNames:     a.Local.ScriptNames(),
+	}
+	if a.Announced != nil {
+		a.Announced(req.Repositories)
 	}
 	for _, name := range a.Plugins.Names() {
 		p, _ := a.Plugins.Get(name)

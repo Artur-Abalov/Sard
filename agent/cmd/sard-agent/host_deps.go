@@ -28,6 +28,9 @@ type hostDeps struct {
 	// hostname is the name of this host, for the comment of a new ssh key.
 	hostname   func() (string, error)
 	executable func() (string, error)
+	// pidAlive says whether a process of this host is running: a lock of
+	// restic from a process that is gone is stale (A8d).
+	pidAlive func(pid int) bool
 	// euid is the effective user id of the process: the right to run a
 	// command comes from it (Р5).
 	euid     uint32
@@ -72,6 +75,7 @@ func productionHostDeps() hostDeps {
 		sshExec:    restic.ProcessExecutor{},
 		hostname:   os.Hostname,
 		executable: os.Executable,
+		pidAlive:   processAlive,
 		euid:       uint32(os.Geteuid()),
 		stat:       secrets.RealStat,
 		readFile:   os.ReadFile,

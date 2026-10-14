@@ -61,6 +61,8 @@ type setupHost struct {
 	// read (with the uid asked for) and through the plain one.
 	readOwned  []ownedRead
 	plainReads []string
+	// alive are the processes of this host that are running (A8d).
+	alive map[int]bool
 }
 
 type ownedRead struct {

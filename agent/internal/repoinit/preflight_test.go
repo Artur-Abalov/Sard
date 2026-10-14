@@ -208,3 +208,32 @@ func TestPreflightAcceptsTheNameOfTheBuiltInProvider(t *testing.T) {
 		t.Fatalf("ResticAESName = %q", crypto.ResticAESName)
 	}
 }
+
+// A8d-1 (Ч3): repo check judges the env_file and the password file one at a
+// time, because they are two different steps of its list.
+func TestTheEnvFileIsCheckedApartFromThePasswordFile(t *testing.T) {
+	host := goodHost()
+	host.info["/etc/sard/main.env"] = secrets.Info{Mode: 0o644, UID: uid, Size: 30}
+	if f := repoinit.CheckPasswordFile(host.host(), repo, 0); f != nil {
+		t.Errorf("the password file is fine: %v", f)
+	}
+	env, f := repoinit.CheckEnvFile(host.host(), repo, 0)
+	if f == nil || f.Reason != refusal.SecretFileRejected || env != nil {
+		t.Errorf("the env file is open to the group: %v, %v", env, f)
+	}
+	env, f = repoinit.CheckEnvFile(goodHost().host(), repo, 0)
+	if f != nil || len(env) != 1 {
+		t.Errorf("good env file: %v, %v", env, f)
+	}
+}
+
+func TestThePasswordFileIsCheckedApartFromTheEnvFile(t *testing.T) {
+	host := goodHost()
+	delete(host.info, "/etc/sard/main.pass")
+	if f := repoinit.CheckPasswordFile(host.host(), repo, 0); f == nil || f.Reason != refusal.PasswordFileMissing {
+		t.Errorf("missing password file: %v", f)
+	}
+	if _, f := repoinit.CheckEnvFile(host.host(), repo, 0); f != nil {
+		t.Errorf("the env file is fine: %v", f)
+	}
+}
