@@ -386,11 +386,11 @@
       },
       "enroll": {
         "title": "Register the agent",
-        "text": "Run it as the sard-agent user, the one the service runs as: the identity files must belong to it. The token is shown once, when you create it in Tokens."
+        "text": "It runs under sudo: the agent itself gives the identity files to the service user sard-agent. The token is shown once, when you create it in Tokens."
       },
-      "repo-init": {
-        "title": "Create the repository",
-        "text": "Creates the restic repository named in agent.yaml with a generated password. Keep the password file: without it the backups cannot be restored."
+      "repo-add": {
+        "title": "Connect the storage",
+        "text": "The command creates a local restic repository with a generated password and gives the service write access. Save the password outside the host (sudo sard-agent repo password <name> --reveal): without it the backups cannot be restored. S3 and SFTP are connected by the same sudo sard-agent repo add with another address — see the operator docs (agent host setup)."
       },
       "start": {
         "title": "Start the service",

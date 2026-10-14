@@ -40,7 +40,7 @@ V=$(curl -sS http://localhost:8080/downloads/agent/manifest.json | jq -r .versio
 2. `api "$API/agent-install" | jq '{format, arch, agentVersion, resticVersion, downloadsEnabled}'`
    → `deb`, `amd64`, `$V`, версия из `agent/internal/restic/restic-version`, `true`.
 3. `api "$API/agent-install" | jq -r '.steps[].kind'` → по строке:
-   `download checksum signature install configure enroll repo-init start`
+   `download checksum signature install configure enroll repo-add start`
    (в образе `make up` подписи нет → без `signature`, см. шаг 9).
 4. `api "$API/agent-install" | jq '[.steps[] | select(.optional)] | map(.kind)'`
    → `[]` в неподписанном образе; `["signature"]` в релизном.
@@ -50,7 +50,7 @@ V=$(curl -sS http://localhost:8080/downloads/agent/manifest.json | jq -r .versio
    ошибка у поля `arch`; то же `format=zip` → `422`, поле `format`.
    `format=rpm` — `200` (поправка R1, шаги 41–44).
 7. `api "$API/agent-install" | jq -r '.steps[] | select(.kind=="enroll") | .commands[]'`
-   → `sudo -u sard-agent sard-agent enroll --server localhost:9090 --token <...>`
+   → `sudo sard-agent enroll --server localhost:9090 --token <...>`
    с заполнителем; адрес совпадает с `enrollCommand` из
    `api -X POST -H 'Content-Type: application/json' -d '{}' "$API/enrollment-tokens" | jq -r .enrollCommand`
    до `--token`.
@@ -85,10 +85,10 @@ V=$(curl -sS http://localhost:8080/downloads/agent/manifest.json | jq -r .versio
     `systemctl show -p NRestarts sard-agent` → `NRestarts=0`.
 17. `[В2]` Шаг `configure` → код `0`; `/etc/sard/agent.yaml` есть,
     `server.address` равен адресу из команды enroll. Повторить шаг → файл не
-    изменился (`sha256sum` до и после совпадает). Отредактировать репозиторий
-    `main` на локальный каталог хоста.
+    изменился (`sha256sum` до и после совпадает); репозиториев в нём нет.
 18. В консоли создать токен; шаг `enroll` из диалога → код `0`.
-19. Шаг `repo-init` → код `0`, напоминание сохранить файл пароля.
+19. Шаг `repo-add` (`sudo sard-agent repo add main /srv/sard/main`) → код `0`,
+    напоминание сохранить пароль; `sudo sard-agent repo list` → `main`.
 20. Шаг `start` → код `0`; в консоли агент онлайн с версией `$V`.
 21. Хост без выхода в интернет: `curl -m 5 https://github.com` в контейнере
     → ошибка; шаги 13–20 всё равно прошли.
@@ -166,7 +166,7 @@ V=$(curl -sS http://localhost:8080/downloads/agent/manifest.json | jq -r .versio
 
 41. `api "$API/agent-install?format=rpm" | jq '{format, arch}'` → `rpm`, `amd64`.
     `api "$API/agent-install?format=rpm" | jq -r '.steps[].kind'` → по строке
-    `download checksum install configure enroll repo-init start` (в релизном
+    `download checksum install configure enroll repo-add start` (в релизном
     образе — `signature` после `checksum`).
 42. `api "$API/agent-install?format=rpm" | jq -r '.steps[0].commands[0]'` → ссылка
     на файл, имя которого равно
@@ -176,8 +176,8 @@ V=$(curl -sS http://localhost:8080/downloads/agent/manifest.json | jq -r .versio
 43. `api "$API/agent-install?format=rpm" | jq -r '.steps[] | select(.kind=="install") | .commands[]'`
     → ровно одна строка `sudo rpm -Uvh <файл из шага 42>`.
     `api "$API/agent-install?format=rpm" | grep -cE 'dnf|yum|zypper'` → `0`.
-44. Шаги `configure`, `enroll`, `repo-init`, `start` у `format=rpm` и `format=deb`
-    совпадают: `diff <(api "$API/agent-install?format=rpm" | jq '[.steps[] | select(.kind|IN("configure","enroll","repo-init","start"))]') <(api "$API/agent-install?format=deb" | jq '[.steps[] | select(.kind|IN("configure","enroll","repo-init","start"))]')`
+44. Шаги `configure`, `enroll`, `repo-add`, `start` у `format=rpm` и `format=deb`
+    совпадают: `diff <(api "$API/agent-install?format=rpm" | jq '[.steps[] | select(.kind|IN("configure","enroll","repo-add","start"))]') <(api "$API/agent-install?format=deb" | jq '[.steps[] | select(.kind|IN("configure","enroll","repo-add","start"))]')`
     → пусто, код `0`.
 45. С `fetch=wget`: `api "$API/agent-install?format=rpm&fetch=wget" | jq -r '.steps[0].commands[]' | grep -c curl`
     → `0`.
@@ -196,7 +196,7 @@ V=$(curl -sS http://localhost:8080/downloads/agent/manifest.json | jq -r .versio
     `disabled`, `inactive`; через 60 с `NRestarts=0`;
     `stat -c '%a %U' /etc/sard/tls /etc/sard/secrets /var/cache/sard/restic`
     → `700 sard-agent` у каждого.
-49. Шаги `configure`, `enroll` (токен из консоли), `repo-init`, `start` → коды
+49. Шаги `configure`, `enroll` (токен из консоли), `repo-add`, `start` → коды
     `0`; агент онлайн в консоли с версией `$V`. `curl -m 5 https://github.com`
     из контейнера → ошибка (сети нет), а шаги прошли.
 50. Обновление: поставить на хосте rpm версии `v0.0.1` по шагам 47–49, сервер

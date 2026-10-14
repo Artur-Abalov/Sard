@@ -230,7 +230,7 @@ class ApiSerializationIntegrationTest(
                 signed = false,
                 ReleaseKey("DF5D5B6DB257DBFA", "RWT621eybVtd38CL7B33xZrcc8ArYiPt3GlKXyJuk9ZQzDnoUV+kLi2d"),
                 manualInstallDoc = "https://example.com/doc",
-                steps = listOf(InstallStep(StepKind.REPO_INIT, listOf("true"), optional = false)),
+                steps = listOf(InstallStep(StepKind.REPO_ADD, listOf("true"), optional = false)),
             ),
             AgentUpgrade(
                 downloadsEnabled = true,

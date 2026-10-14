@@ -38,7 +38,7 @@ enum class StepKind {
     INSTALL,
     CONFIGURE,
     ENROLL,
-    REPO_INIT,
+    REPO_ADD,
     START,
     UPGRADE,
     RESTART,

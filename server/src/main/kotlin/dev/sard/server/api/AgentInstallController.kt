@@ -43,7 +43,7 @@ data class AgentInstall(
     @field:Schema(description = MANUAL_DOC)
     val manualInstallDoc: String,
     @field:Schema(
-        description = "$STEPS; kinds: download, checksum, signature, install, configure, enroll, repo-init, start",
+        description = "$STEPS; kinds: download, checksum, signature, install, configure, enroll, repo-add, start",
     )
     val steps: List<InstallStep>,
 )

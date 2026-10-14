@@ -24,7 +24,7 @@
    переменные `DC`, `PSQL`, `DEFAULT`, `QA`, `F`, функции `new_token`,
    `hash_of`, `token_row`). Сервер поднят с именами `localhost,127.0.0.1,::1`,
    `SARD_AGENT_ENDPOINT` не задан — команда консоли:
-   `sudo -u sard-agent sard-agent enroll --server localhost:9090 --token <строка>`.
+   `sudo sard-agent enroll --server localhost:9090 --token <строка>`.
 2. Собрать агента и подготовить «хост»:
 
 ```bash
@@ -242,8 +242,8 @@ start() { timeout 10 "$AG" --config "$H/a1.yaml" 2>&1; echo "exit=$?"; }
 
 Поправка A8a (Р25 `docs/specs/agent/host-setup.feature`). Пакет deb/rpm при
 первой установке создаёт `/etc/sard/tls` (владелец `sard-agent`, `0700`).
-Команда консоли (S2b) пока по-прежнему начинается с `sudo -u sard-agent` —
-её смена на `sudo sard-agent` вне A8a; шаг 48а проверяет, что она работает.
+С поправки Q5 команда консоли (S2b) — `sudo sard-agent enroll`; шаг 48а
+проверяет, что прежняя команда от пользователя службы по-прежнему работает.
 
 48. В `/etc/sard/agent.yaml` — `server.address` из команды консоли и пути
     `tls.*` в `/etc/sard/tls`;
@@ -252,8 +252,8 @@ start() { timeout 10 "$AG" --config "$H/a1.yaml" 2>&1; echo "exit=$?"; }
     → `sard-agent sard-agent 600`, `sard-agent sard-agent 644`,
     `sard-agent sard-agent 644`; `sudo ls -A /etc/sard/tls` — только эти три файла.
 48а. Совместимость: `sudo rm /etc/sard/tls/*`, новый токен;
-    `sudo -u sard-agent sard-agent enroll --server <адрес> --token <строка>`
-    (команда из консоли как есть) → `exit=0`; владелец файлов — `sard-agent`,
+    `sudo -u sard-agent sard-agent enroll --server <адрес> --token <строка>` <!-- allow-sudo-u: совместимость: прежняя команда консоли, до Q5 -->
+    (прежняя команда консоли, до Q5) → `exit=0`; владелец файлов — `sard-agent`,
     ключ `600`.
 48б. Посторонний пользователь: `sard-agent enroll --server <адрес> --token <новая строка>; echo "exit=$?"`
     (обычный пользователь, без sudo) → `exit=2`, `PRIVILEGES_REQUIRED`,

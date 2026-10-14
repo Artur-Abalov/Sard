@@ -48,7 +48,7 @@ data class CreatedEnrollmentToken(
     @field:Schema(description = "sard_<secret>.<CA fingerprint>; shown once, the server keeps only its hash")
     val token: String,
     @field:Schema(
-        description = "Ready-to-run command: sudo -u sard-agent sard-agent enroll --server <address> --token <token>",
+        description = "Ready-to-run command: sudo sard-agent enroll --server <address> --token <token>",
     )
     val enrollCommand: String,
     val expiresAt: Instant,

@@ -13,11 +13,13 @@ on:
     paths:
       - "**/*.md"
       - ".markdownlint-cli2.jsonc"
+      - "scripts/check-sudo-u.sh"
       - ".github/workflows/docs.yml"
   pull_request:
     paths:
       - "**/*.md"
       - ".markdownlint-cli2.jsonc"
+      - "scripts/check-sudo-u.sh"
       - ".github/workflows/docs.yml"
 
 permissions:
@@ -28,6 +30,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  sudo-u:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: ./scripts/check-sudo-u.sh
+
   markdownlint:
     runs-on: ubuntu-latest
     steps:
