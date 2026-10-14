@@ -11,7 +11,9 @@ import {
   tooManyAttempts,
 } from '../lockout'
 import { noSession, PROBLEM, problem } from '../problems'
+import { restriction } from '../restriction'
 import { state } from '../state'
+import { selfBackupSteps } from './selfBackup'
 import { SESSION_COOKIE } from './session'
 import { FINGERPRINT } from './tokens'
 
@@ -53,8 +55,7 @@ function describedState(): Schemas['Onboarding'] {
     steps: [
       { id: 'ca', state: caDone ? 'done' : 'pending' },
       { id: 'admin', state: adminDone ? 'done' : 'pending' },
-      { id: 'self_backup', state: 'upcoming' },
-      { id: 'keys_confirmed', state: 'upcoming' },
+      ...selfBackupSteps(adminDone),
     ],
     setupCode: adminDone ? 'not_issued' : 'active',
     access,
@@ -62,6 +63,7 @@ function describedState(): Schemas['Onboarding'] {
       ? { fingerprint: FINGERPRINT, origin: 'generated', keyPath: '/var/lib/sard/pki/ca/ca.key' }
       : null,
     caReplaceable: known ? !caDone : null,
+    restriction: restriction(),
   }
 }
 

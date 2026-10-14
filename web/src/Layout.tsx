@@ -16,6 +16,7 @@ import { Outlet, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { signOut } from './auth/session'
+import { OnboardingBanner } from './components/OnboardingBanner'
 import { SelfBackupBanner } from './components/SelfBackupBanner'
 import { Wordmark } from './components/Wordmark'
 import { languages } from './languages'
@@ -128,6 +129,7 @@ export function Layout() {
       </AppShell.Navbar>
       <AppShell.Main>
         <Box maw={contentMaxWidth}>
+          <OnboardingBanner />
           <SelfBackupBanner />
           <Outlet />
         </Box>

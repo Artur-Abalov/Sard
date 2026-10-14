@@ -12,6 +12,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -33,7 +34,12 @@ class DatabaseRelay(
     private val sockets = CopyOnWriteArrayList<Socket>()
     private var server: ServerSocket? = null
 
+    // A connection accepted while the cut happens must not outlive it: the cut closes what it finds in [sockets],
+    // and a connection added just after it would be a database that answers when it should not.
+    private val cut = AtomicBoolean(true)
+
     fun up() {
+        cut.set(false)
         val listening = ServerSocket()
         listening.reuseAddress = true
         listening.bind(java.net.InetSocketAddress(loopback, port))
@@ -55,6 +61,11 @@ class DatabaseRelay(
         }
         sockets += client
         sockets += backend
+        if (cut.get()) {
+            runCatching { client.close() }
+            runCatching { backend.close() }
+            return
+        }
         pipe(client, backend)
         pipe(backend, client)
     }
@@ -74,6 +85,7 @@ class DatabaseRelay(
     }
 
     fun down() {
+        cut.set(true)
         server?.close()
         sockets.forEach { runCatching { it.close() } }
         sockets.clear()

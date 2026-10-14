@@ -15,6 +15,10 @@
 # токены); Р17 переписано; сценарии обновления удалены; добавлено Р18 (OQ-198).
 # Уточнение владельца 2026-10-09 («Будет верно после 0.1.0-бета»): граница
 # совместимости — 0.1.0-beta; добавлено Р19 (OQ-199).
+# Поправка 2026-10-12 (утверждена F4b, docs/specs/server/
+# onboarding-self-backup.feature): после шага admin шаг self_backup pending, а
+# не upcoming (Р20 F4b); Onboarding (К1) дополнен полем restriction (К10 F4b),
+# точное тело сценария «Состояние чистой установки без cookie…» его содержит.
 #
 # Обратной совместимости с версиями до 0.1.0-beta нет (владелец 2026-10-09:
 # «В утиль все. У следующей версии не будет обратной совместимости»; «Будет
@@ -60,10 +64,11 @@
 #   - docs/specs/web/admin-login.feature: guard ведёт на /setup, пока шаг admin
 #     не выполнен.
 #
-# Вне фичи (F4b): шаг самобэкапа, подтверждение копии ключей, ограничение D8.
-# Их шаги self_backup и keys_confirmed есть в состоянии онбординга как
-# заготовки в состоянии upcoming. Перевод входа на Spring Security — отдельная
-# задача (ответ владельца на П3).
+# Вне фичи (F4b): шаг самобэкапа, подтверждение копии ключей, ограничение D8 —
+# docs/specs/server/onboarding-self-backup.feature (утверждена 2026-10-12); там
+# же состояния шагов self_backup и keys_confirmed (Р20) и поле restriction
+# (К10). Перевод входа на Spring Security — отдельная задача (ответ владельца
+# на П3).
 #
 # Решения владельца (обязательны)
 #   D2′. Пароль задаётся в мастере, хранится как хэш; мастер не открывается без
@@ -694,7 +699,7 @@
       Дано чистая установка, сервер выдал код C
       И у сервера сгенерированный CA с отпечатком G
       Когда клиент без cookie запрашивает состояние онбординга
-      Тогда ответ 200 с телом {"steps": [{"id": "ca", "state": "pending"}, {"id": "admin", "state": "pending"}, {"id": "self_backup", "state": "upcoming"}, {"id": "keys_confirmed", "state": "upcoming"}], "setupCode": "active", "access": "none", "ca": null, "caReplaceable": null}
+      Тогда ответ 200 с телом {"steps": [{"id": "ca", "state": "pending"}, {"id": "admin", "state": "pending"}, {"id": "self_backup", "state": "upcoming"}, {"id": "keys_confirmed", "state": "upcoming"}], "setupCode": "active", "access": "none", "ca": null, "caReplaceable": null, "restriction": "full"}
       И тело ответа не содержит G
 
     @http
@@ -710,7 +715,7 @@
     Сценарий: Администратор после мастера видит выполненные шаги и CA
       Дано владелец прошёл мастер с паролем "correct-horse-battery" и получил сессию A
       Когда клиент с сессией A запрашивает состояние онбординга
-      Тогда шаги ca и admin done, шаги self_backup и keys_confirmed upcoming
+      Тогда шаги ca и admin done, шаг self_backup pending, шаг keys_confirmed upcoming
       И setupCode равен "not_issued"
       И access равен "admin"
       И caReplaceable равно false

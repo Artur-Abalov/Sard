@@ -68,7 +68,8 @@ pkicrt() { docker run --rm --user 0 --entrypoint cat -v sard_sard-pki:/pki:ro "$
 ### Состояние до мастера
 
 3. `curl -sS $API/onboarding | jq -c .`
-   → `{"steps":[{"id":"ca","state":"pending"},{"id":"admin","state":"pending"},{"id":"self_backup","state":"upcoming"},{"id":"keys_confirmed","state":"upcoming"}],"setupCode":"active","access":"none","ca":null,"caReplaceable":null}`.
+   → `{"steps":[{"id":"ca","state":"pending"},{"id":"admin","state":"pending"},{"id":"self_backup","state":"upcoming"},{"id":"keys_confirmed","state":"upcoming"}],"setupCode":"active","access":"none","ca":null,"caReplaceable":null,"restriction":"full"}`
+   (поле `restriction` — F4b, поправка 2026-10-12).
    `pkicrt $QA/g.crt; G=$(fp $QA/g.crt); curl -sS $API/onboarding | grep -c "$G"` → `0`.
 4. `post session -d '{"password":"correct-horse-battery"}' | grep -E '^HTTP|"code"'`
    → `409`, `"code":"setup_required"`; нет `Set-Cookie: sard_session` `[В6]`.
@@ -123,7 +124,8 @@ pkicrt() { docker run --rm --user 0 --entrypoint cat -v sard_sard-pki:/pki:ro "$
     `expiresAt` ≈ сейчас + 12 ч. `curl -sS -b $QA/j2 $API/onboarding | jq -r .access`
     → `none`. `enter "$C2" $QA/jx | grep -E '^HTTP|"code"'` → `409` `setup_completed`.
 22. `curl -sS -b $QA/a1 $API/onboarding | jq -c '[.steps[].state, .setupCode, .access]'`
-    → `["done","done","upcoming","upcoming","not_issued","admin"]`.
+    → `["done","done","pending","upcoming","not_issued","admin"]` (шаг
+    `self_backup` после шага admin — `pending`, F4b Р20).
     `curl -sS -b $QA/a1 $API/ca | jq -c .` → `fingerprint` = `$G`, `origin`
     `generated`, `keyPath` как в шаге 13.
 23. `post session -c $QA/a2 -d "{\"password\":\"$PW\"}" | head -1` → `204`.
@@ -182,7 +184,8 @@ pkicrt() { docker run --rm --user 0 --entrypoint cat -v sard_sard-pki:/pki:ro "$
 2. Открыть `/login` → переход на `/setup` `[Рк2]`.
 3. Экран кода → одно поле, кнопка неактивна при пустом поле; подсказка с
    `docker compose logs server` и `SARD SETUP CODE`; список шагов: CA,
-   администратор, самобэкап и копия ключей с меткой «скоро» `[Рк4]` `[Рк5]`.
+   администратор, самобэкап и копия ключей — следующими шагами, без метки
+   «скоро» `[Рк4]` `[Рк5, пересмотрено F4b]`.
 4. Ввести неверный код → сообщение о неверном коде, экран кода, перехода на
    `/login` нет. Ввести неверный код ещё 4 раза, затем шестой → сообщение о
    блокировке с ожиданием 15 минут. Против сервера: `$DC restart server`, взять
@@ -204,8 +207,10 @@ pkicrt() { docker run --rm --user 0 --entrypoint cat -v sard_sard-pki:/pki:ro "$
 11. Шаг администратора → два поля `password`, требования «от 12 до 1024»;
     кнопка неактивна при пустых или несовпадающих полях, подсказка о
     несовпадении. Ввести `short`/`short` → сообщение с требованиями от сервера.
-12. Ввести `qa-admin-password-2026` дважды → главная страница консоли без
-    страницы входа; `GET /api/v1/session` → 200.
+12. Ввести `qa-admin-password-2026` дважды → шаг самобэкапа мастера (F4b) без
+    страницы входа; `GET /api/v1/session` → 200. Шаги 14–15 ниже выполнять
+    после шагов 3 и 4 (`docs/qa/onboarding-self-backup.md`, часть 2): до этого
+    `/setup` и защищённые страницы показывают мастер (F4b Рк9, Рк10).
 13. Во втором браузере (шаг 8) нажать любую кнопку мастера → экран кода; ввести
     код → сообщение, что администратор уже задан, переход на `/login`.
 14. Открыть `/setup` → `/login` → (сессия действует) `/` `[Рк2]`.

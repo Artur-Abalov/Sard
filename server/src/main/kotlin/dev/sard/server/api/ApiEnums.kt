@@ -208,4 +208,7 @@ enum class SelfBackupWarningCode {
 
     @JsonProperty("local_storage")
     LOCAL_STORAGE,
+
+    @JsonProperty("keys_unconfirmed")
+    KEYS_UNCONFIRMED,
 }

@@ -21,7 +21,7 @@ enum class OnboardingStepId {
     KEYS_CONFIRMED,
 }
 
-@Schema(enumAsRef = true, description = "upcoming: the step is not part of this version of the wizard yet")
+@Schema(enumAsRef = true, description = "upcoming: an earlier step is not done yet")
 enum class OnboardingStepState {
     @JsonProperty("done")
     DONE,
@@ -48,6 +48,24 @@ enum class SetupCodeState {
 
     @JsonProperty("not_issued")
     NOT_ISSUED,
+}
+
+@Schema(
+    enumAsRef = true,
+    description =
+        "What the server refuses until the self-backup and the key copy are confirmed: full: every change but " +
+            "the self-backup's own and the session's; new_agents: only issuing enrollment tokens (an installation " +
+            "upgraded with agents or sources); none: onboarding is complete",
+)
+enum class OnboardingRestriction {
+    @JsonProperty("full")
+    FULL,
+
+    @JsonProperty("new_agents")
+    NEW_AGENTS,
+
+    @JsonProperty("none")
+    NONE,
 }
 
 @Schema(enumAsRef = true, description = "Which session came with the request")
@@ -91,6 +109,7 @@ data class Onboarding(
                 "certificate was issued; null without a session",
     )
     val caReplaceable: Boolean?,
+    val restriction: OnboardingRestriction,
 )
 
 @Schema(description = "The setup code printed in the server's log")
@@ -211,4 +230,14 @@ interface OnboardingApi {
         password: String?,
         clientAddress: String,
     ): AdminStepResult
+
+    /** What the server refuses now (F4b, Р21); read for every change asked for. */
+    fun restriction(): OnboardingRestriction
+
+    /**
+     * The owner confirms the copy of the repository password and the storage access made outside the server
+     * (F4b): the step keys_confirmed, and with it the end of onboarding when it is the first. Throws
+     * SelfBackupNotConfigured or FirstBackupPending when the self-backup is not there yet.
+     */
+    fun confirmKeys(clientAddress: String)
 }

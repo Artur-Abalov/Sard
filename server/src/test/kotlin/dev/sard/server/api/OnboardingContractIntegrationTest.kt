@@ -165,4 +165,49 @@ class OnboardingContractIntegrationTest(
         val change = client.changePassword(admin, "wrong-password-123", "new-password-2026")
         check("PUT", "/api/v1/session/password", change)
     }
+
+    // The operations the guard names by a literal (OnboardingGuard.kt); a rename in the contract must not open them.
+    private val named =
+        setOf(
+            "POST /api/v1/enrollment-tokens",
+            "PUT /api/v1/sources/{sourceId}/schedule",
+            "POST /api/v1/agents/{agentId}/revoke",
+            "POST /api/v1/session",
+            "DELETE /api/v1/session",
+            "PUT /api/v1/session/password",
+            "PUT /api/v1/self-backup/repository",
+            "POST /api/v1/self-backup/runs",
+            "POST /api/v1/self-backup/keys-confirmation",
+        )
+
+    @Test
+    fun `Каждая операция, которую охранник называет, есть в спецификации`() {
+        val documented = operations().map { it.first }.toSet()
+
+        assertEquals(emptySet(), named - documented)
+        assertTrue(operations().any { (key, _) -> key.substringAfter(' ').startsWith("/api/v1/onboarding/") })
+    }
+
+    @Test
+    fun `409 onboarding_incomplete описан ровно у операций, которые ограничение может отклонить`() {
+        val safe = setOf("GET", "HEAD", "OPTIONS", "TRACE")
+        val open =
+            named - "POST /api/v1/enrollment-tokens" - "PUT /api/v1/sources/{sourceId}/schedule" -
+                "POST /api/v1/agents/{agentId}/revoke"
+        val problem = "\"#/components/schemas/Problem\""
+
+        for ((key, op) in operations()) {
+            val method = key.substringBefore(' ')
+            val path = key.substringAfter(' ')
+            val refusable = method !in safe && key !in open && !path.startsWith("/api/v1/onboarding/")
+            val conflict = op.path("responses").path("409")
+
+            val described = "the onboarding is not complete" in conflict.path("description").asString()
+            assertEquals(refusable, described, key)
+            if (refusable) {
+                val schema = conflict.path("content").path("application/problem+json").path("schema")
+                assertTrue(problem in schema.toString(), "$key: $schema")
+            }
+        }
+    }
 }

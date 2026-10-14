@@ -35,5 +35,6 @@ class EnrollmentConfiguration {
         tokens: EnrollmentTokens,
         ca: CertificateAuthority,
         clock: Clock,
-    ) = Enrollment(sessions, tokens, ca, clock, UuidV7(clock, SecureRandom()))
+        gate: RegistrationGate,
+    ) = Enrollment(sessions, tokens, ca, clock, UuidV7(clock, SecureRandom()), gate::open)
 }
