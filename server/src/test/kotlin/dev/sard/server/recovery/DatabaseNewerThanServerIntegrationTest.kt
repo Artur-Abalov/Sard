@@ -21,7 +21,8 @@ import kotlin.test.assertTrue
 
 private const val FUTURE = "299901010000"
 private const val CODE_LINE = "SARD SETUP CODE"
-private const val HISTORY = "select installed_rank, version, description, checksum, success from flyway_schema_history order by 1"
+private const val HISTORY =
+    "select installed_rank, version, description, checksum, success from flyway_schema_history order by 1"
 
 /** The migrations of this build: the version in the file name, and the description. */
 private val MIGRATIONS: List<Pair<String, String>> =
@@ -58,9 +59,12 @@ class DatabaseNewerThanServerIntegrationTest {
         running.forEach { runCatching { it.close() } }
     }
 
-    private fun jdbc() = installation.database.let { JdbcTemplate(DriverManagerDataSource(it.url, it.user, it.password)) }
+    private fun jdbc(): JdbcTemplate {
+        val database = installation.database
+        return JdbcTemplate(DriverManagerDataSource(database.url, database.user, database.password))
+    }
 
-    /** A database where the server applied all its migrations, and one more row of [version], as a newer server leaves. */
+    /** A database with all migrations applied and one more row, of [version], as a newer server leaves it. */
     private fun databaseWithMigration(
         version: String,
         description: String = "from_the_future",
@@ -70,7 +74,8 @@ class DatabaseNewerThanServerIntegrationTest {
         jdbc().update(
             "insert into flyway_schema_history (installed_rank, version, description, type, script, checksum, " +
                 "installed_by, installed_on, execution_time, success) " +
-                "select max(installed_rank) + 1, ?, ?, 'SQL', 'V${version}__$description.sql', 1, 'sard', now(), 1, ? " +
+                "select max(installed_rank) + 1, ?, ?, 'SQL', 'V${version}__$description.sql', 1, 'sard', now(), " +
+                "1, ? " +
                 "from flyway_schema_history",
             version,
             description,
@@ -107,7 +112,9 @@ class DatabaseNewerThanServerIntegrationTest {
         val (failure, _) = installation.startFailing(StartOptions(beans = mapOf("buildProperties" to build("0.1.0"))))
 
         val message = failure.messages().first { "DATABASE_NEWER_THAN_SERVER" in it }
-        for (expected in listOf(FUTURE, "from_the_future", LAST_MIGRATION, "0.1.0", "docs/operator/12-server-recovery.md")) {
+        val page = "docs/operator/12-server-recovery.md"
+        val expectations = listOf(FUTURE, "from_the_future", LAST_MIGRATION, "0.1.0", page)
+        for (expected in expectations) {
             assertTrue(expected in message, "$expected not in $message")
         }
     }

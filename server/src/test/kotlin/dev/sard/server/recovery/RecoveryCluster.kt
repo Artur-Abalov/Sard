@@ -24,7 +24,9 @@ object RecoveryCluster {
     }
     private val counter = AtomicInteger()
 
-    private fun admin(block: (java.sql.Statement) -> Unit) = container.createConnection("").use { c -> c.createStatement().use(block) }
+    private fun admin(block: (java.sql.Statement) -> Unit) {
+        container.createConnection("").use { c -> c.createStatement().use(block) }
+    }
 
     /** No role of the dump in the cluster, as in a cluster that never ran a server. */
     fun dropDumpRole() = admin { it.execute("drop role if exists sard_self") }
@@ -64,7 +66,8 @@ object RecoveryCluster {
                 it.execute("alter database $name owner to $owner")
                 it.execute("alter schema public owner to $owner")
                 it.execute(
-                    "do $$ declare t text; begin for t in select tablename from pg_tables where schemaname = 'public' " +
+                    "do $$ declare t text; " +
+                        "begin for t in select tablename from pg_tables where schemaname = 'public' " +
                         "loop execute format('alter table %I owner to $owner', t); end loop; end $$",
                 )
             }

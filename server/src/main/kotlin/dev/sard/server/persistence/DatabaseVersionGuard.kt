@@ -31,7 +31,8 @@ class DatabaseNewerThanServer(
     serverVersion: String,
 ) : IllegalStateException(
         "Database startup refused: DATABASE_NEWER_THAN_SERVER: the database has migration " +
-            "${newest.version} (${newest.description}) ${newest.outcome()}, this server $serverVersion knows migrations up to " +
+            "${newest.version} (${newest.description}) ${newest.outcome()}, " +
+            "this server $serverVersion knows migrations up to " +
             "$knownNewest; start the Sard version the database was backed up with, or a newer one " +
             "(docs/operator/12-server-recovery.md)",
     )

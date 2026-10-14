@@ -124,12 +124,16 @@ class SelfRoleRestoredDatabaseIntegrationTest {
     fun `Созданная при старте роль sard_self читает каждую таблицу базы`() {
         val installation = installation()
         start(installation)
-        val tables = query(installation.database, "select table_name from information_schema.tables where table_schema = 'public'")
+        val sql = "select table_name from information_schema.tables where table_schema = 'public'"
+        val tables = query(installation.database, sql)
         assertTrue(tables.isNotEmpty())
 
-        DriverManager
-            .getConnection(installation.database.url, "sard_self", Files.readString(installation.selfDir.resolve("db-password")))
-            .use { c -> c.createStatement().use { s -> tables.forEach { s.executeQuery("select count(*) from \"$it\"").close() } } }
+        val password = Files.readString(installation.selfDir.resolve("db-password"))
+        DriverManager.getConnection(installation.database.url, "sard_self", password).use { c ->
+            c.createStatement().use { s ->
+                for (table in tables) s.executeQuery("select count(*) from \"$table\"").close()
+            }
+        }
     }
 
     @Test
@@ -153,7 +157,8 @@ class SelfRoleRestoredDatabaseIntegrationTest {
 
         start(installation, channel = false)
 
-        assertEquals(emptyList(), query(installation.database, "select rolname from pg_roles where rolname = 'sard_self'"))
+        val roles = query(installation.database, "select rolname from pg_roles where rolname = 'sard_self'")
+        assertEquals(emptyList(), roles)
     }
 
     @Test
@@ -185,13 +190,15 @@ class SelfRoleRestoredDatabaseIntegrationTest {
         }
         val pool = Executors.newFixedThreadPool(2)
         try {
-            val started = (1..2).map { pool.submit<RunningServer> { start(installation) } }.map { it.get(2, TimeUnit.MINUTES) }
+            val pending = (1..2).map { pool.submit<RunningServer> { start(installation) } }
+            val started = pending.map { it.get(2, TimeUnit.MINUTES) }
             assertEquals(2, started.size)
         } finally {
             pool.shutdownNow()
         }
 
-        assertEquals(1, query(installation.database, "select count(*) from pg_roles where rolname = 'sard_self'").single().toInt())
+        val roles = query(installation.database, "select count(*) from pg_roles where rolname = 'sard_self'")
+        assertEquals(1, roles.single().toInt())
         loginAs(Files.readString(installation.selfDir.resolve("db-password")), installation.database)
     }
 
