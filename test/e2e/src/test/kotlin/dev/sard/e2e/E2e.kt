@@ -27,6 +27,18 @@ internal object E2e {
     /** The stand's SFTP server (test/e2e/sftp, ADR 0047). */
     val sftpImage: String get() = property("e2e.sftpImage")
 
+    /** The machine of the recovery drill (test/e2e/recovery-vm): Docker in Docker with bash, coreutils and curl (F7, Р39). */
+    val recoveryVmImage: String get() = property("e2e.recoveryVmImage")
+
+    /** deploy/docker-compose.yml: the installation the drill's old machine runs. */
+    val composeFile: Path get() = Path.of(property("e2e.composeFile"))
+
+    /** docs/operator/12-server-recovery.md: the page the drill follows. */
+    val recoveryPage: Path get() = Path.of(property("e2e.recoveryPage"))
+
+    /** Where the drill writes `result.json` and `result.md` (test/e2e/build/recovery-drill). */
+    val recoveryDrillDir: Path get() = Path.of(property("e2e.recoveryDrillDir"))
+
     /** The version both images were built with (`VERSION` in the Makefile). */
     val version: String get() = property("e2e.version")
 
