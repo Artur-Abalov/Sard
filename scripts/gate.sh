@@ -81,7 +81,7 @@ gate_go() {
   mutation_total "$m" "$out"
 }
 
-# Go mutation testing (docs/adr/00XX-draft-go-mutation-exec.md). The files go-mutesting
+# Go mutation testing (docs/adr/0057-go-mutation-exec.md). The files go-mutesting
 # would mutate for ./..., minus those of a nested module (agent/plugins/sdk is
 # its own module and gate), in a stable order.
 mutation_files() {
@@ -95,14 +95,24 @@ mutation_files() {
     done
 }
 
-# mutation_shard <module> <i>/<n> <out>: mutates every n-th file starting at
-# the i-th into <out>/<module>-<i>-of-<n>.log. Never fails on survivors: the
+# mutation_shard_of <module> <i> <n>: the files (stdin) of shard i of n, heaviest
+# first to the lightest shard (scripts/lib/lpt.awk), by the weights in
+# scripts/mutation-weights/<module>.tsv (seconds per file, from
+# scripts/mutation-weights.sh); a file without a weight weighs the mean.
+mutation_shard_of() {
+  local weights="$ROOT/scripts/mutation-weights/$1.tsv"
+  [ -f "$weights" ] || weights=/dev/null
+  awk -f "$ROOT/scripts/lib/lpt.awk" -v i="$2" -v n="$3" -v wf="$weights"
+}
+
+# mutation_shard <module> <i>/<n> <out>: mutates the files of shard i of n
+# (mutation_shard_of) into <out>/<module>-<i>-of-<n>.log. Never fails on survivors: the
 # threshold applies to the sum of all shards (mutation_total).
 mutation_shard() {
   local m="$1" i="${2%/*}" n="${2#*/}" out="$3" dir log state files
   dir="$ROOT/$(module_dir "$1")"
   log="$out/$m-$i-of-$n.log"
-  mapfile -t files < <(mutation_files "$m" | awk -v i="$i" -v n="$n" '(NR - 1) % n == i - 1')
+  mapfile -t files < <(mutation_files "$m" | mutation_shard_of "$m" "$i" "$n")
   if [ "${#files[@]}" -eq 0 ]; then
     echo "The mutation score is 0.000000 (0 passed, 0 failed, 0 duplicated, 0 skipped, total is 0)" >"$log"
     return 0

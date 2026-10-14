@@ -59,6 +59,7 @@ func newSucceedingFakeFixture(t *testing.T, agentID string) *fakeFixture {
 
 // Регистрация по активному токену записывает ключ, сертификат и бандл
 func TestEnrollmentByAnActiveTokenWritesKeyCertificateAndBundle(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	code, out, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)
 	if code != exitOK {
@@ -75,6 +76,7 @@ func TestEnrollmentByAnActiveTokenWritesKeyCertificateAndBundle(t *testing.T) {
 
 // Ключ, записанный командой enroll, проходит проверку при старте (@a1 @fake)
 func TestTheKeyWrittenByEnrollPassesTheStartupCheck(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)
 	if code != exitOK {
@@ -91,6 +93,7 @@ func TestTheKeyWrittenByEnrollPassesTheStartupCheck(t *testing.T) {
 
 // Итог успеха называет agent_id, адрес, пути и следующий шаг
 func TestSuccessNamesAgentIDAddressPathsAndNextStep(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "agent-x")
 	code, out, _ := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)
 	if code != exitOK {
@@ -116,6 +119,7 @@ func TestSuccessNamesAgentIDAddressPathsAndNextStep(t *testing.T) {
 // verification, runs unmodified against a leaf certificate whose SAN is
 // the IPv6 address "::1".
 func TestIPv6ServerAddressInBracketsIsAccepted(t *testing.T) {
+	t.Parallel()
 	ca := newTestCA(t)
 	leaf := chainOf(ca.leaf(t, []string{"::1"}, 0), ca)
 	srv := &enrollServer{}
@@ -161,11 +165,13 @@ func TestTokenAcceptedFromAnySingleSource(t *testing.T) {
 
 // Один завершающий перевод строки в файле токена отбрасывается
 func TestOneTrailingNewlineInTheTokenFileIsDropped(t *testing.T) {
+	t.Parallel()
 	for _, ending := range []struct {
 		name string
 		nl   string
 	}{{"LF", "\n"}, {"CR LF", "\r\n"}} {
 		t.Run(ending.name, func(t *testing.T) {
+			t.Parallel()
 			f := newSucceedingFakeFixture(t, "a1")
 			path := writeTempFile(t, f.token+ending.nl)
 			code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token-file", path)
@@ -188,6 +194,7 @@ func TestEmptySARDEnrollTokenEnvIsUnset(t *testing.T) {
 
 // Без --server команда регистрируется по адресу из конфига
 func TestWithoutServerFlagTheConfigAddressIsUsed(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	code, out, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)
 	if code != exitOK {
@@ -200,6 +207,7 @@ func TestWithoutServerFlagTheConfigAddressIsUsed(t *testing.T) {
 
 // Команда не меняет файл конфига
 func TestTheCommandDoesNotChangeTheConfigFile(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	before, err := os.ReadFile(f.h.configPath)
 	if err != nil {
@@ -223,6 +231,7 @@ func TestTheCommandDoesNotChangeTheConfigFile(t *testing.T) {
 
 // Имя хоста в адресах сравнивается без учёта регистра
 func TestHostnameInAddressesIsComparedCaseInsensitively(t *testing.T) {
+	t.Parallel()
 	ca := newTestCA(t)
 	leaf := chainOf(ca.leaf(t, []string{"127.0.0.1"}, 0), ca)
 	srv := &enrollServer{answer: succeedingAnswer(ca, "a1")}
@@ -247,6 +256,7 @@ func TestHostnameInAddressesIsComparedCaseInsensitively(t *testing.T) {
 // certificate whose SAN is the literal IP "::1") — both must agree these
 // are the same address for the command to reach exitOK.
 func TestIPv6AddressesAreComparedByValue(t *testing.T) {
+	t.Parallel()
 	ca := newTestCA(t)
 	leaf := chainOf(ca.leaf(t, []string{"::1"}, 0), ca)
 	srv := &enrollServer{}
@@ -265,6 +275,7 @@ func TestIPv6AddressesAreComparedByValue(t *testing.T) {
 
 // Один бандл CA без ключа и сертификата не мешает регистрации
 func TestALoneCABundleDoesNotBlockEnrollment(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	if err := os.WriteFile(f.h.caFile, []byte("old bundle"), 0o644); err != nil {
 		t.Fatal(err)
@@ -278,6 +289,7 @@ func TestALoneCABundleDoesNotBlockEnrollment(t *testing.T) {
 
 // --force заменяет ключ, сертификат и бандл новой личностью
 func TestForceReplacesKeyCertificateAndBundleWithANewIdentity(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "old-agent")
 	code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)
 	if code != exitOK {
@@ -309,6 +321,7 @@ func TestForceReplacesKeyCertificateAndBundleWithANewIdentity(t *testing.T) {
 
 // --force не оставляет резервных копий прежней личности
 func TestForceLeavesNoBackupsOfThePreviousIdentity(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "old-agent")
 	if code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token); code != exitOK {
 		t.Fatalf("first enroll: code = %d, stderr = %q", code, errOut)
@@ -331,6 +344,7 @@ func TestForceLeavesNoBackupsOfThePreviousIdentity(t *testing.T) {
 
 // Итог --force называет брошенную личность
 func TestForceResultNamesTheAbandonedIdentity(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "old-agent")
 	if code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token); code != exitOK {
 		t.Fatalf("first enroll: code = %d, stderr = %q", code, errOut)
@@ -348,6 +362,7 @@ func TestForceResultNamesTheAbandonedIdentity(t *testing.T) {
 
 // Отказ при --force оставляет прежние файлы
 func TestARefusalWithForceLeavesThePreviousFiles(t *testing.T) {
+	t.Parallel()
 	cases := map[string]func(t *testing.T, f *fakeFixture) string{
 		"отказом TOKEN_USED": func(t *testing.T, f *fakeFixture) string {
 			f.srv.answer = failingAnswer(codes.Unauthenticated, "TOKEN_USED")
@@ -368,6 +383,7 @@ func TestARefusalWithForceLeavesThePreviousFiles(t *testing.T) {
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			f := newSucceedingFakeFixture(t, "old-agent")
 			if code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token); code != exitOK {
 				t.Fatalf("first enroll: code = %d, stderr = %q", code, errOut)
@@ -390,6 +406,7 @@ func TestARefusalWithForceLeavesThePreviousFiles(t *testing.T) {
 
 // --force без существующей идентичности регистрирует как обычно
 func TestForceWithoutAnExistingIdentityEnrollsNormally(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--force", "--token", f.token)
 	if code != exitOK {
@@ -399,6 +416,7 @@ func TestForceWithoutAnExistingIdentityEnrollsNormally(t *testing.T) {
 
 // Отпечаток CA сервера не совпал с токеном
 func TestServerCAFingerprintDoesNotMatchTheToken(t *testing.T) {
+	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	wrongToken := newToken(t, strings.Repeat("0", 64))
 	code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", wrongToken)
@@ -421,6 +439,7 @@ func TestServerCAFingerprintDoesNotMatchTheToken(t *testing.T) {
 
 // Сервер без корня CA в цепочке не проходит проверку
 func TestAServerWithoutTheRootInTheChainFailsVerification(t *testing.T) {
+	t.Parallel()
 	ca := newTestCA(t)
 	leaf := ca.leaf(t, []string{"127.0.0.1"}, 0) // no root appended
 	srv := &enrollServer{}
@@ -438,6 +457,7 @@ func TestAServerWithoutTheRootInTheChainFailsVerification(t *testing.T) {
 
 // Сертификат сервера не подписан корнем из цепочки
 func TestTheServerCertificateIsNotSignedByTheRootInTheChain(t *testing.T) {
+	t.Parallel()
 	ca := newTestCA(t)
 	signer := newTestCA(t)
 	leaf := signer.leaf(t, []string{"127.0.0.1"}, 0)
@@ -454,6 +474,7 @@ func TestTheServerCertificateIsNotSignedByTheRootInTheChain(t *testing.T) {
 
 // Просроченный сертификат сервера не проходит проверку
 func TestAnExpiredServerCertificateFailsVerification(t *testing.T) {
+	t.Parallel()
 	ca := newTestCA(t)
 	leaf := chainOf(ca.leaf(t, []string{"127.0.0.1"}, -time.Hour), ca)
 	srv := &enrollServer{}
@@ -468,6 +489,7 @@ func TestAnExpiredServerCertificateFailsVerification(t *testing.T) {
 
 // Сервер без TLS не проходит проверку
 func TestAServerWithoutTLSFailsVerification(t *testing.T) {
+	t.Parallel()
 	lis := listenNoTLS(t)
 	h := newHost(t, lis)
 	token := newToken(t, strings.Repeat("a", 64))
@@ -479,6 +501,7 @@ func TestAServerWithoutTLSFailsVerification(t *testing.T) {
 
 // Отказ сервера TOKEN_FOREIGN_CA — ошибка доверия
 func TestServerRefusalTokenForeignCAIsATrustError(t *testing.T) {
+	t.Parallel()
 	f := newFakeFixture(t, []string{"127.0.0.1"}, failingAnswer(codes.Unauthenticated, "TOKEN_FOREIGN_CA"))
 	code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)
 	if code != exitTrust {
@@ -491,6 +514,7 @@ func TestServerRefusalTokenForeignCAIsATrustError(t *testing.T) {
 
 // Имя хоста не совпало с сертификатом сервера
 func TestTheHostnameDoesNotMatchTheServerCertificate(t *testing.T) {
+	t.Parallel()
 	ca := newTestCA(t)
 	leaf := chainOf(ca.leaf(t, []string{"sard.example.com", "localhost", "127.0.0.1", "::1"}, 0), ca)
 	srv := &enrollServer{}
@@ -516,6 +540,7 @@ func TestTheHostnameDoesNotMatchTheServerCertificate(t *testing.T) {
 
 // Сообщение о несовпадении имени перечисляет имена сертификата
 func TestTheHostnameMismatchMessageListsTheCertificateNames(t *testing.T) {
+	t.Parallel()
 	ca := newTestCA(t)
 	leaf := chainOf(ca.leaf(t, []string{"sard.example.com", "localhost"}, 0), ca)
 	srv := &enrollServer{}
@@ -537,6 +562,7 @@ func TestTheHostnameMismatchMessageListsTheCertificateNames(t *testing.T) {
 
 // Несовпадение отпечатка важнее несовпадения имени
 func TestFingerprintMismatchOutranksNameMismatch(t *testing.T) {
+	t.Parallel()
 	ca := newTestCA(t)
 	other := newTestCA(t)
 	leaf := chainOf(ca.leaf(t, []string{"127.0.0.1"}, 0), ca) // no "backup.example.org"
@@ -555,6 +581,7 @@ func TestFingerprintMismatchOutranksNameMismatch(t *testing.T) {
 
 // Отказ сервера по причине даёт свой класс и совет о повторе
 func TestServerRefusalByReasonGivesItsClassAndRetryAdvice(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		code   codes.Code
 		reason string
@@ -569,6 +596,7 @@ func TestServerRefusalByReasonGivesItsClassAndRetryAdvice(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.reason, func(t *testing.T) {
+			t.Parallel()
 			f := newFakeFixture(t, []string{"127.0.0.1"}, failingAnswer(c.code, c.reason))
 			cmdCode, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)
 			if cmdCode != c.class {
@@ -586,8 +614,10 @@ func TestServerRefusalByReasonGivesItsClassAndRetryAdvice(t *testing.T) {
 
 // Отказ сервера по вине агента — класс «ошибка агента»
 func TestServerRefusalByTheAgentsFaultIsAgentError(t *testing.T) {
+	t.Parallel()
 	for _, reason := range []string{"CSR_INVALID", "HOSTNAME_INVALID"} {
 		t.Run(reason, func(t *testing.T) {
+			t.Parallel()
 			f := newFakeFixture(t, []string{"127.0.0.1"}, failingAnswer(codes.InvalidArgument, reason))
 			code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)
 			if code != exitAgentError {
@@ -605,6 +635,7 @@ func TestServerRefusalByTheAgentsFaultIsAgentError(t *testing.T) {
 
 // Непредусмотренный ответ сервера — класс «ошибка агента»
 func TestAnUnforeseenServerResponseIsAgentError(t *testing.T) {
+	t.Parallel()
 	cases := map[string]func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error){
 		"статусом UNIMPLEMENTED без ErrorInfo": func(*agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 			return nil, status.Error(codes.Unimplemented, "not implemented")
@@ -619,6 +650,7 @@ func TestAnUnforeseenServerResponseIsAgentError(t *testing.T) {
 	}
 	for name, answer := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			f := newFakeFixture(t, []string{"127.0.0.1"}, answer)
 			code, _, errOut := runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)
 			if code != exitAgentError {
@@ -630,6 +662,7 @@ func TestAnUnforeseenServerResponseIsAgentError(t *testing.T) {
 
 // Команда не повторяет регистрацию после временной ошибки
 func TestTheCommandDoesNotRetryAfterATemporaryFailure(t *testing.T) {
+	t.Parallel()
 	f := newFakeFixture(t, []string{"127.0.0.1"}, failingAnswer(codes.Unavailable, "INTERNAL_RETRYABLE"))
 	runEnrollCmdTest("--config", f.h.configPath, "--token", f.token)
 	if f.srv.callCount() != 1 {
@@ -639,6 +672,7 @@ func TestTheCommandDoesNotRetryAfterATemporaryFailure(t *testing.T) {
 
 // Сервер не принимает соединение
 func TestTheServerRefusesTheConnection(t *testing.T) {
+	t.Parallel()
 	h := newHost(t, "127.0.0.1:1")
 	token := newToken(t, strings.Repeat("a", 64))
 	code, _, errOut := runEnrollCmdTest("--config", h.configPath, "--token", token)
@@ -660,6 +694,7 @@ func TestTheServerRefusesTheConnection(t *testing.T) {
 // DialFunc returns the exact failure a real resolver gives for an unknown
 // name (*net.DNSError, IsNotFound) without performing one.
 func TestTheServerNameDoesNotResolve(t *testing.T) {
+	t.Parallel()
 	h := newHost(t, "sard.example.com:9090")
 	token := newToken(t, strings.Repeat("a", 64))
 	dial := func(context.Context, string, string) (net.Conn, error) {

@@ -13,6 +13,7 @@ import (
 // Rule "Без клиента OpenSSH подключение SFTP понятно отказывает".
 
 func TestWithoutAProgramOfTheOpenSSHClientTheConnectionIsRefusedBeforeAnyChange(t *testing.T) {
+	t.Parallel()
 	for _, program := range []string{"ssh", "sftp", "ssh-keygen", "ssh-keyscan"} {
 		h := newSFTPHost(t)
 		ok(t, os.Remove(filepath.Join(h.programsDir(), program)))
@@ -32,6 +33,7 @@ func TestWithoutAProgramOfTheOpenSSHClientTheConnectionIsRefusedBeforeAnyChange(
 }
 
 func TestAProgramThatIsNotInThePathOfResticIsMissing(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	elsewhere := h.path("elsewhere")
 	h.write(filepath.Join(elsewhere, "ssh"), "#!/bin/sh\n", 0o755)
@@ -44,6 +46,7 @@ func TestAProgramThatIsNotInThePathOfResticIsMissing(t *testing.T) {
 }
 
 func TestAProgramWithoutTheExecuteBitIsMissingAndADirectoryIsNoProgram(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	ok(t, os.Chmod(filepath.Join(h.programsDir(), "sftp"), 0o644))
 	code, _, stderr := h.sftpCmd()
@@ -56,6 +59,7 @@ func TestAProgramWithoutTheExecuteBitIsMissingAndADirectoryIsNoProgram(t *testin
 }
 
 func TestAnS3ConnectionNeedsNoOpenSSHClient(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.deps.pathEnv = h.path("empty")
 	code, _, stderr := h.s3Cmd()
@@ -67,6 +71,7 @@ func TestAnS3ConnectionNeedsNoOpenSSHClient(t *testing.T) {
 }
 
 func TestAnUnforeseenFailureOfTheKeygenIsAnAgentErrorWithoutAHostKeyOnDisk(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.srv.keygenStderr = "Saving key failed"
 	code, stdout, stderr := h.sftpCmd()

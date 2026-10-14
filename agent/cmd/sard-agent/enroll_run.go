@@ -13,6 +13,7 @@ package main
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
@@ -55,12 +56,14 @@ type enrollDeps struct {
 	fs         hostsetup.FS
 	// chownFile gives an open file to the service user (fchown).
 	chownFile func(f *os.File, uid, gid int) error
+	// random is the source of entropy for the identity key and the CSR.
+	random io.Reader
 }
 
 func productionEnrollDeps(hostname hostnameFunc) enrollDeps {
 	return enrollDeps{
 		hostname: hostname, clock: realEnrollClock{}, dial: enroll.RealDial,
-		euid: uint32(os.Geteuid()), lookupUser: hostsetup.LookupOS, fs: hostsetup.OS{}, chownFile: chownOpenFile,
+		euid: uint32(os.Geteuid()), lookupUser: hostsetup.LookupOS, fs: hostsetup.OS{}, chownFile: chownOpenFile, random: rand.Reader,
 	}
 }
 
@@ -225,7 +228,7 @@ func dialAndEnroll(ctx context.Context, st enrollPipelineState, stdout, stderr i
 	}
 	defer func() { _ = conn.Close() }()
 
-	key, csrDER, code := buildIdentityRequest(st.host, stderr)
+	key, csrDER, code := buildIdentityRequest(deps.random, st.host, stderr)
 	if code != exitOK {
 		return code
 	}
@@ -240,12 +243,12 @@ func dialAndEnroll(ctx context.Context, st enrollPipelineState, stdout, stderr i
 // buildIdentityRequest generates the fresh key and CSR every enrollment
 // sends; the private key never leaves this process as anything but PEM
 // written to disk (marshalKeyPEM, in writeIdentityAndReport).
-func buildIdentityRequest(host string, stderr io.Writer) (*ecdsa.PrivateKey, []byte, int) {
-	key, err := enroll.NewIdentityKey()
+func buildIdentityRequest(random io.Reader, host string, stderr io.Writer) (*ecdsa.PrivateKey, []byte, int) {
+	key, err := enroll.NewIdentityKey(random)
 	if err != nil {
 		return nil, nil, reportAgentError(stderr, err)
 	}
-	csrDER, err := enroll.BuildCSR(key, host)
+	csrDER, err := enroll.BuildCSR(random, key, host)
 	if err != nil {
 		return nil, nil, reportAgentError(stderr, err)
 	}

@@ -17,6 +17,7 @@ func (h *setupHost) s3Repo() *fakeRepo { return h.restic.repo(s3Address) }
 // Rule "Секретный ключ S3 передаётся как секрет и хранится только в env-файле пользователя службы".
 
 func TestTheS3KeysFromStandardInputAreWrittenToTheEnvFileOfTheServiceUser(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	mainBefore := h.fileContent(h.cfgPath)
 	code, stdout, stderr := h.s3Cmd("--region", "ru-central1")
@@ -40,6 +41,7 @@ func TestTheS3KeysFromStandardInputAreWrittenToTheEnvFileOfTheServiceUser(t *tes
 }
 
 func TestWithoutARegionTheEnvFileHasNoDefaultRegion(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, _ := h.s3Cmd()
 	assertCode(t, code, exitOK)
@@ -58,6 +60,7 @@ func TestTheModeOfTheEnvFileDoesNotDependOnTheUmask(t *testing.T) {
 }
 
 func TestTheS3SecretKeyFromAFileLeavesTheFileAlone(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	src := h.path("outside/F")
 	h.write(src, s3Marker, 0o644)
@@ -73,6 +76,7 @@ func TestTheS3SecretKeyFromAFileLeavesTheFileAlone(t *testing.T) {
 }
 
 func TestTheS3SecretKeyFromTheTerminalIsAskedTwice(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	term := h.terminalIs(s3Marker, s3Marker)
 	code, _, stderr := h.sudo("repo", "add", "extra", s3Address, "--access-key-id", keyID1, "--config", "C")
@@ -87,6 +91,7 @@ func TestTheS3SecretKeyFromTheTerminalIsAskedTwice(t *testing.T) {
 }
 
 func TestTwoDifferentTerminalAnswersForTheS3SecretKeyAreRefusedBeforeTheStorage(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.terminalIs(s3Marker, s3Marker+"-2")
 	before := h.hostTree()
@@ -98,6 +103,7 @@ func TestTwoDifferentTerminalAnswersForTheS3SecretKeyAreRefusedBeforeTheStorage(
 }
 
 func TestWithoutATerminalAndWithoutAFlagTheS3SecretKeyIsNotAskedAndTheFlagsAreNamed(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.hung = &hungInput{}
 	h.deps.stdin = h.hung
@@ -116,6 +122,7 @@ func TestWithoutATerminalAndWithoutAFlagTheS3SecretKeyIsNotAskedAndTheFlagsAreNa
 }
 
 func TestTwoSourcesOfSecretsAtOnceAreRefusedBeforeInputIsRead(t *testing.T) {
+	t.Parallel()
 	for _, flags := range [][]string{
 		{"--secret-key-stdin", "--password-stdin"},
 		{"--secret-key-stdin", "--secret-key-from-file", "F"},
@@ -134,6 +141,7 @@ func TestTwoSourcesOfSecretsAtOnceAreRefusedBeforeInputIsRead(t *testing.T) {
 }
 
 func TestAKeyFromStandardInputAndAPasswordFromAFileAreCompatible(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.s3Repo().initialized, h.s3Repo().password = true, passMarker
 	src := h.path("outside/F")
@@ -144,6 +152,7 @@ func TestAKeyFromStandardInputAndAPasswordFromAFileAreCompatible(t *testing.T) {
 }
 
 func TestOneTrailingLineBreakOfTheS3SecretKeyIsDropped(t *testing.T) {
+	t.Parallel()
 	for _, input := range []string{s3Marker + "\n", s3Marker + "\r\n", s3Marker} {
 		h := newSetupHost(t)
 		code, _, _ := h.s3At(s3Address, input)
@@ -156,6 +165,7 @@ func TestOneTrailingLineBreakOfTheS3SecretKeyIsDropped(t *testing.T) {
 }
 
 func TestAnS3SecretKeyWithAControlCharacterIsRefusedWithoutTraces(t *testing.T) {
+	t.Parallel()
 	for _, input := range []string{s3Marker + "\nX", s3Marker + "\n\n", s3Marker + "\rX", s3Marker + "\x00X"} {
 		h := newSetupHost(t)
 		before := h.hostTree()
@@ -168,6 +178,7 @@ func TestAnS3SecretKeyWithAControlCharacterIsRefusedWithoutTraces(t *testing.T) 
 }
 
 func TestAnEmptyOrTooLargeS3SecretKeyIsRefused(t *testing.T) {
+	t.Parallel()
 	for input, reason := range map[string]string{"": "SECRET_EMPTY", "\n": "SECRET_EMPTY", strings.Repeat("A", 65537): "SECRET_TOO_LARGE"} {
 		h := newSetupHost(t)
 		before := h.hostTree()
@@ -178,6 +189,7 @@ func TestAnEmptyOrTooLargeS3SecretKeyIsRefused(t *testing.T) {
 }
 
 func TestTheS3KeysReachResticOnlyThroughTheEnvironment(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, _ := h.s3Cmd()
 	assertCode(t, code, exitOK)

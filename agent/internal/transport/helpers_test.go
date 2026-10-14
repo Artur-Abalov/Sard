@@ -24,6 +24,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/stats"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
@@ -140,6 +141,19 @@ type fakeServer struct {
 	connects    int
 	closeStream error // what Connect returns when the call ends from the server side
 	streams     chan *serverStream
+	connEnded   chan struct{} // one value per client connection the server saw end
+}
+
+// connEnds reports every ended connection to the test.
+type connEnds struct{ ended chan<- struct{} }
+
+func (connEnds) TagRPC(ctx context.Context, _ *stats.RPCTagInfo) context.Context   { return ctx }
+func (connEnds) HandleRPC(context.Context, stats.RPCStats)                         {}
+func (connEnds) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Context { return ctx }
+func (c connEnds) HandleConn(_ context.Context, s stats.ConnStats) {
+	if _, ok := s.(*stats.ConnEnd); ok {
+		c.ended <- struct{}{}
+	}
 }
 
 // serverStream is one Connect call as the test sees it.
@@ -164,13 +178,14 @@ func startServer(t *testing.T, ca *authority, serverCA *authority) *fakeServer {
 		t.Fatal(err)
 	}
 	s := &fakeServer{
-		addr:    lis.Addr().String(), // the IP the server listens on: "localhost" may resolve to ::1 first
-		streams: make(chan *serverStream, 16),
+		addr:      lis.Addr().String(), // the IP the server listens on: "localhost" may resolve to ::1 first
+		streams:   make(chan *serverStream, 16),
+		connEnded: make(chan struct{}, 16),
 		register: func() (*agentv1.RegisterResponse, error) {
 			return registered("agent-1", 30*time.Second), nil
 		},
 	}
-	srv := grpc.NewServer(grpc.Creds(creds))
+	srv := grpc.NewServer(grpc.Creds(creds), grpc.StatsHandler(connEnds{ended: s.connEnded}))
 	agentv1.RegisterAgentServiceServer(srv, s)
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)

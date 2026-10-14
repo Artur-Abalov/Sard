@@ -91,7 +91,7 @@
 
 | Суть | Чем закрыто |
 |---|---|
-| OQ-030. Прерванный `go-mutesting` мог оставить в дереве мутированный файл и `*.go.tmp`. | `docs/adr/00XX-draft-go-mutation-exec.md`: `scripts/mutate-exec.sh` передаёт мутант через `go test -overlay`, рабочее дерево не пишется. |
+| OQ-030. Прерванный `go-mutesting` мог оставить в дереве мутированный файл и `*.go.tmp`. | `docs/adr/0057-go-mutation-exec.md`: `scripts/mutate-exec.sh` передаёт мутант через `go test -overlay`, рабочее дерево не пишется. |
 | OQ-130. Мутанты `cmd/sard-agent` убивались таймаутом 10 с, а не тестами; счёт менялся от прогона к прогону. | Там же: таймаут `max(3 × база пакета, 30 с)` по измеренной базе, немутированные тесты, которые падают или висят, — ошибка гейта; убитые по таймауту печатаются отдельно. Флейк `internal/enroll` (`TestLockOfAFileRemovedUnderneathDoesNotLeakAFileDescriptor`) исправлен в той же ветке. Ускорение тестов `cmd/sard-agent` — следующая задача. |
 
 ### 2026-10-09, спецификация F4a (первый запуск, ветка `claude/charming-gates-2om1mw`)

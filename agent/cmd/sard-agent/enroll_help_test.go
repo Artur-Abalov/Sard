@@ -24,6 +24,7 @@ func runEnrollCmdOn(hostname hostnameFunc, args ...string) (int, string, string)
 
 // Справка перечисляет флаги, способы передачи токена и коды выхода
 func TestHelpListsFlagsTokenSourcesAndExitCodes(t *testing.T) {
+	t.Parallel()
 	code, out, errOut := runEnrollCmdTest("--help")
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
@@ -46,6 +47,7 @@ func TestHelpListsFlagsTokenSourcesAndExitCodes(t *testing.T) {
 // this package compares against exitIdentityExists itself, which would
 // stay green even if the constant's value changed.
 func TestIdentityExistsExitCodeIsFour(t *testing.T) {
+	t.Parallel()
 	if exitIdentityExists != 4 {
 		t.Fatalf("exitIdentityExists = %d, want 4 (В3)", exitIdentityExists)
 	}
@@ -58,8 +60,10 @@ func TestIdentityExistsExitCodeIsFour(t *testing.T) {
 // hasHelpFlag must recognize each of its three spellings independently —
 // not just when all three happen to be tried together.
 func TestHasHelpFlagRecognizesEachSpellingIndependently(t *testing.T) {
+	t.Parallel()
 	for _, spelling := range []string{"-h", "-help", "--help"} {
 		t.Run(spelling, func(t *testing.T) {
+			t.Parallel()
 			if !hasHelpFlag([]string{spelling}) {
 				t.Fatalf("hasHelpFlag([%q]) = false, want true", spelling)
 			}
@@ -75,6 +79,7 @@ func TestHasHelpFlagRecognizesEachSpellingIndependently(t *testing.T) {
 // with the word this table gives it — not merely contain the digit
 // somewhere ("30s" would satisfy a bare "contains '3'" check).
 func TestEveryEnrollClassHasAnExitCodeAndTheHelpPrintsIt(t *testing.T) {
+	t.Parallel()
 	requireEveryClassHasItsCode(t, map[enroll.Class]int{
 		enroll.ClassAgentError:   1,
 		enroll.ClassUsage:        2,

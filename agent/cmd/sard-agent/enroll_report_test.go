@@ -20,6 +20,7 @@ import (
 )
 
 func TestReasonMeaningSuffixIsEmptyForClassAgentErrorRegardlessOfReason(t *testing.T) {
+	t.Parallel()
 	// A contrived state (ClassAgentError normally carries CSR_INVALID or
 	// HOSTNAME_INVALID, not TOKEN_USED) proves the Class check itself
 	// suppresses reasonMeaning, not merely that TOKEN_USED usually
@@ -31,6 +32,7 @@ func TestReasonMeaningSuffixIsEmptyForClassAgentErrorRegardlessOfReason(t *testi
 }
 
 func TestReasonMeaningSuffixAddsTheMeaningWhenOneExists(t *testing.T) {
+	t.Parallel()
 	e := &enroll.Error{Class: enroll.ClassTokenRefused, Reason: "TOKEN_USED"}
 	got := reasonMeaningSuffix(e)
 	if !strings.Contains(got, "already been used") {
@@ -39,6 +41,7 @@ func TestReasonMeaningSuffixAddsTheMeaningWhenOneExists(t *testing.T) {
 }
 
 func TestReasonMeaningSuffixIsEmptyWhenNoMeaningExists(t *testing.T) {
+	t.Parallel()
 	e := &enroll.Error{Class: enroll.ClassTrust, Reason: "TOKEN_FOREIGN_CA"}
 	if got := reasonMeaningSuffix(e); got != "" {
 		t.Fatalf("reasonMeaningSuffix = %q, want empty (TOKEN_FOREIGN_CA has no reasonMeanings entry)", got)
@@ -46,12 +49,14 @@ func TestReasonMeaningSuffixIsEmptyWhenNoMeaningExists(t *testing.T) {
 }
 
 func TestAddressSuffixIsEmptyWithoutAnAddress(t *testing.T) {
+	t.Parallel()
 	if got := addressSuffix(&enroll.Error{}); got != "" {
 		t.Fatalf("addressSuffix = %q, want empty", got)
 	}
 }
 
 func TestAddressSuffixNamesTheAddressWhenSet(t *testing.T) {
+	t.Parallel()
 	got := addressSuffix(&enroll.Error{Address: "sard.example.com:9090"})
 	if !strings.Contains(got, "sard.example.com:9090") {
 		t.Fatalf("addressSuffix = %q, want it to name the address", got)
@@ -59,12 +64,14 @@ func TestAddressSuffixNamesTheAddressWhenSet(t *testing.T) {
 }
 
 func TestNamesSuffixIsEmptyWithoutNames(t *testing.T) {
+	t.Parallel()
 	if got := namesSuffix(&enroll.Error{}); got != "" {
 		t.Fatalf("namesSuffix = %q, want empty", got)
 	}
 }
 
 func TestNamesSuffixListsExactlyOneName(t *testing.T) {
+	t.Parallel()
 	got := namesSuffix(&enroll.Error{Names: []string{"sard.example.com"}})
 	if !strings.Contains(got, "sard.example.com") {
 		t.Fatalf("namesSuffix = %q, want it to list the one name", got)
@@ -72,6 +79,7 @@ func TestNamesSuffixListsExactlyOneName(t *testing.T) {
 }
 
 func TestNamesSuffixListsMultipleNames(t *testing.T) {
+	t.Parallel()
 	got := namesSuffix(&enroll.Error{Names: []string{"a.example.com", "b.example.com"}})
 	if !strings.Contains(got, "a.example.com") || !strings.Contains(got, "b.example.com") {
 		t.Fatalf("namesSuffix = %q, want both names listed", got)
@@ -79,12 +87,14 @@ func TestNamesSuffixListsMultipleNames(t *testing.T) {
 }
 
 func TestCodeSuffixIsEmptyWithoutACode(t *testing.T) {
+	t.Parallel()
 	if got := codeSuffix(&enroll.Error{}); got != "" {
 		t.Fatalf("codeSuffix = %q, want empty", got)
 	}
 }
 
 func TestCodeSuffixNamesTheCodeWhenSet(t *testing.T) {
+	t.Parallel()
 	got := codeSuffix(&enroll.Error{Code: "Unavailable"})
 	if !strings.Contains(got, "Unavailable") {
 		t.Fatalf("codeSuffix = %q, want it to name the gRPC code", got)
@@ -96,6 +106,7 @@ func TestCodeSuffixNamesTheCodeWhenSet(t *testing.T) {
 // caller today only ever passes one, but nothing enforces that; this is
 // the only way to exercise it.
 func TestReportEnrollErrorHandlesANonEnrollError(t *testing.T) {
+	t.Parallel()
 	var out strings.Builder
 	plain := errors.New("boom")
 	code := reportEnrollError(&out, plain)
@@ -111,6 +122,7 @@ func TestReportEnrollErrorHandlesANonEnrollError(t *testing.T) {
 // just the two rows (0, identity-exists) added around it — checked against
 // a fixed, independent count, not enrollHelpCodes() comparing itself.
 func TestEnrollHelpCodesHasExactlyEightRows(t *testing.T) {
+	t.Parallel()
 	got := enrollHelpCodes()
 	if len(got) != 8 {
 		t.Fatalf("enrollHelpCodes() has %d rows, want 8 (6 classes + success + identity-exists)", len(got))

@@ -40,6 +40,7 @@ func TestAMissingSSHDirectoryIsMadeForTheServiceUserThroughTheHeldHome(t *testin
 }
 
 func TestAMissingHomeIsMadeWhenItsParentExists(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.setHome(h.path("state"))
 	code, _, stderr := h.sftpCmd()
@@ -52,6 +53,7 @@ func TestAMissingHomeIsMadeWhenItsParentExists(t *testing.T) {
 }
 
 func TestWithoutTheParentOfTheHomeNothingIsMadeAndTheMissingDirectoryIsNamed(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.setHome(h.path("var/lib/sard-agent"))
 	before := h.sshTree()
@@ -68,6 +70,7 @@ func TestWithoutTheParentOfTheHomeNothingIsMadeAndTheMissingDirectoryIsNamed(t *
 }
 
 func TestAnUnusableHomeOfThePasswdIsRefusedAndTheHostIsNotChanged(t *testing.T) {
+	t.Parallel()
 	for _, home := range []string{"/", "relative", ""} {
 		h := newSFTPHost(t)
 		h.setHome(home)
@@ -79,6 +82,7 @@ func TestAnUnusableHomeOfThePasswdIsRefusedAndTheHostIsNotChanged(t *testing.T) 
 }
 
 func TestAnExistingHomeAndSSHDirectoryKeepTheirOwnerAndMode(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.fsys.setOwner(h.homeDir(), 0, 0)
 	h.keyAndHostKnown()
@@ -96,6 +100,7 @@ func TestAnExistingHomeAndSSHDirectoryKeepTheirOwnerAndMode(t *testing.T) {
 }
 
 func TestALinkOnTheWayToTheSSHDirectoryIsRefusedAndNothingOutsideChanges(t *testing.T) {
+	t.Parallel()
 	for name, plant := range map[string]struct {
 		prepare func(h *sftpHostWorld, outside string)
 		reason  string
@@ -113,6 +118,7 @@ func TestALinkOnTheWayToTheSSHDirectoryIsRefusedAndNothingOutsideChanges(t *test
 		}, "SSH_HOME_INVALID", func(h *sftpHostWorld) string { return h.path("hlink") }},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			h := newSFTPHost(t)
 			outside := t.TempDir()
 			ok(t, os.WriteFile(filepath.Join(outside, "root-file"), []byte("root\n"), 0o600))
@@ -144,6 +150,7 @@ func TestALinkOnTheWayToTheSSHDirectoryIsRefusedAndNothingOutsideChanges(t *test
 }
 
 func TestADirectorySwappedForALinkAfterItWasOpenedDoesNotTakeTheWriteAway(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.putSSH("id_ed25519", "PRIVATE-KEY-MARKER", 0o600)
 	h.putSSH("id_ed25519.pub", "ssh-ed25519 AAAAexistingkey x\n", 0o644)
@@ -167,6 +174,7 @@ func TestADirectorySwappedForALinkAfterItWasOpenedDoesNotTakeTheWriteAway(t *tes
 }
 
 func TestAPlantedFileOfTheSSHDirectoryIsRefusedAndNotReadFurther(t *testing.T) {
+	t.Parallel()
 	victim := func(t *testing.T) string {
 		path := filepath.Join(t.TempDir(), "victim")
 		ok(t, os.WriteFile(path, []byte("root-secret\n"), 0o600))
@@ -190,6 +198,7 @@ func TestAPlantedFileOfTheSSHDirectoryIsRefusedAndNotReadFurther(t *testing.T) {
 		"the private key is a dangling link": {"id_ed25519", func(h *sftpHostWorld, v string) { ok(h.t, os.Symlink(v+".none", h.sshFile("id_ed25519"))) }},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			h := newSFTPHost(t)
 			ok(t, os.MkdirAll(h.sshDir(), 0o700))
 			v := victim(t)
@@ -216,6 +225,7 @@ func TestAPlantedFileOfTheSSHDirectoryIsRefusedAndNotReadFurther(t *testing.T) {
 }
 
 func TestAFileOfTheSSHDirectoryLargerThanOneMiBIsRefusedAndOneOfExactlyOneMiBIsAccepted(t *testing.T) {
+	t.Parallel()
 	padding := func(n int) string {
 		var b strings.Builder
 		for b.Len() < n-1 {
@@ -241,6 +251,7 @@ func TestAFileOfTheSSHDirectoryLargerThanOneMiBIsRefusedAndOneOfExactlyOneMiBIsA
 }
 
 func TestAFileOfRootWithOneNameIsAcceptedAndBelongsToTheServiceUserAfterwards(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.putSSH("config", "Host *\n    Compression yes\n", 0o644)
 	h.fsys.setOwner(h.sshFile("config"), 0, 0)
@@ -255,6 +266,7 @@ func TestAFileOfRootWithOneNameIsAcceptedAndBelongsToTheServiceUserAfterwards(t 
 }
 
 func TestAFileOfTheSSHDirectoryIsWrittenToATemporaryFileWithItsOwnerBeforeItsContentAndRenamedInTheSameDirectory(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	code, _, stderr := h.sftpCmd()
 	assertCode(t, code, exitOK)
@@ -300,6 +312,7 @@ func TestTheModesOfTheSSHFilesDoNotDependOnTheUmask(t *testing.T) {
 }
 
 func TestRootNeverOpensThePrivateKey(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
 	code, _, stderr := h.sftpCmd()
@@ -318,6 +331,7 @@ func TestRootNeverOpensThePrivateKey(t *testing.T) {
 }
 
 func TestAFailedWriteToTheSSHDirectoryIsAWriteErrorAndTheOldContentIsWhole(t *testing.T) {
+	t.Parallel()
 	for _, step := range []string{"chown", "rename", "sync"} {
 		h := newSFTPHost(t)
 		h.putSSH("known_hosts", keyRSA.line("other.example.com"), 0o600)
@@ -337,6 +351,7 @@ func TestAFailedWriteToTheSSHDirectoryIsAWriteErrorAndTheOldContentIsWhole(t *te
 }
 
 func TestAHomeOfAnotherUserOrOpenToOthersIsRefusedAndTheHostIsNotChanged(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.fsys.setOwner(h.homeDir(), aliceUID, aliceUID)
 	before := h.sshTree()
@@ -352,6 +367,7 @@ func TestAHomeOfAnotherUserOrOpenToOthersIsRefusedAndTheHostIsNotChanged(t *test
 }
 
 func TestAKnownHostsOthersCanWriteIsRefusedAndNeverTrusted(t *testing.T) {
+	t.Parallel()
 	h := newSFTPHost(t)
 	h.putSSH("known_hosts", keyED.line(sftpHost), 0o600)
 	ok(t, os.Chmod(h.sshFile("known_hosts"), 0o666))

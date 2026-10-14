@@ -15,6 +15,7 @@ import (
 // Rule "secret list показывает только имена".
 
 func TestSecretListNamesTheSecretsAndWhereTheyAreDefined(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.set("db", "SECRET-MARKER")
 	code, stdout, stderr := h.sudo("secret", "list", "--config", "C")
@@ -33,6 +34,7 @@ func TestSecretListNamesTheSecretsAndWhereTheyAreDefined(t *testing.T) {
 }
 
 func TestSecretListOpensNoValueFile(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	ok(t, os.Remove(h.path("secrets/pg")))
 	failing := func(string) ([]byte, error) { t.Error("a file was read"); return nil, os.ErrNotExist }
@@ -47,6 +49,7 @@ func TestSecretListOpensNoValueFile(t *testing.T) {
 }
 
 func TestSecretListInJSON(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.set("db", "SECRET-MARKER")
 	code, stdout, _ := h.sudo("secret", "list", "--json", "--config", "C")
@@ -63,6 +66,7 @@ func TestSecretListInJSON(t *testing.T) {
 }
 
 func TestSecretListWithoutSecretsSaysSo(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.cfg.Secrets = nil
 	h.saveConfig()
@@ -79,6 +83,7 @@ func TestSecretListWithoutSecretsSaysSo(t *testing.T) {
 }
 
 func TestTheServiceUserMayListSecrets(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, stderr := h.asService("secret", "list", "--config", "C")
 	assertCode(t, code, exitOK)
@@ -88,6 +93,7 @@ func TestTheServiceUserMayListSecrets(t *testing.T) {
 }
 
 func TestOneSecretNameInTwoFragmentsIsADuplicate(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	a := h.path("agent.d/secret-a.yaml")
 	b := h.path("agent.d/secret-b.yaml")
@@ -105,6 +111,7 @@ func TestOneSecretNameInTwoFragmentsIsADuplicate(t *testing.T) {
 // Rule "secret remove убирает секрет из настройки хоста".
 
 func TestRemovingASecretRemovesTheFragmentAndTheValueFile(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.set("db", "SECRET-MARKER")
 	h.sd.calls, h.log.lines = nil, nil
@@ -118,6 +125,7 @@ func TestRemovingASecretRemovesTheFragmentAndTheValueFile(t *testing.T) {
 }
 
 func TestRemovingAnUnsetSecretDoesNothing(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	before := h.hostTree()
 	code, stdout, _ := h.sudo("secret", "remove", "db", "--config", "C")
@@ -129,6 +137,7 @@ func TestRemovingAnUnsetSecretDoesNothing(t *testing.T) {
 }
 
 func TestASecretOfTheMainConfigIsNotRemoved(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	before := h.hostTree()
 	code, _, stderr := h.sudo("secret", "remove", "pg", "--config", "C")
@@ -140,6 +149,7 @@ func TestASecretOfTheMainConfigIsNotRemoved(t *testing.T) {
 }
 
 func TestRemovingKeepsAValueFileSomethingElseUses(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.set("db", "SECRET-MARKER")
 	h.cfg.Scripts = map[string]string{"s": h.path("secrets/db")}
@@ -152,6 +162,7 @@ func TestRemovingKeepsAValueFileSomethingElseUses(t *testing.T) {
 }
 
 func TestAFragmentThatCannotBeRemovedIsAWriteErrorNamingIt(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.set("db", "SECRET-MARKER")
 	h.sd.calls, h.log.lines = nil, nil
@@ -177,6 +188,7 @@ func (h *setupHost) journal(names ...string) {
 }
 
 func TestWithoutRunningStepsTheServiceIsRestarted(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, _ := h.set("db", "SECRET-MARKER")
 	assertCode(t, code, exitOK)
@@ -184,6 +196,7 @@ func TestWithoutRunningStepsTheServiceIsRestarted(t *testing.T) {
 }
 
 func TestARunningStepPostponesTheRestart(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.journal("a.json", "b.json")
 	code, stdout, _ := h.set("db", "SECRET-MARKER")
@@ -199,6 +212,7 @@ func TestARunningStepPostponesTheRestart(t *testing.T) {
 }
 
 func TestTemporaryJournalFilesAreNotSteps(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.journal(".tmp-123")
 	h.set("db", "SECRET-MARKER")
@@ -208,6 +222,7 @@ func TestTemporaryJournalFilesAreNotSteps(t *testing.T) {
 }
 
 func TestNoRestartNeverRestarts(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, stdout, _ := h.set("db", "SECRET-MARKER", "--no-restart")
 	assertCode(t, code, exitOK)
@@ -217,6 +232,7 @@ func TestNoRestartNeverRestarts(t *testing.T) {
 }
 
 func TestAStoppedServiceIsNotStarted(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.sd.active = false
 	code, stdout, _ := h.set("db", "SECRET-MARKER")
@@ -227,6 +243,7 @@ func TestAStoppedServiceIsNotStarted(t *testing.T) {
 }
 
 func TestWithoutSystemdTheOperatorIsToldToRestartTheAgent(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.sd.present = false
 	code, stdout, _ := h.set("db", "SECRET-MARKER")
@@ -237,6 +254,7 @@ func TestWithoutSystemdTheOperatorIsToldToRestartTheAgent(t *testing.T) {
 }
 
 func TestAnUnreadableJournalPostponesTheRestart(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.journal()
 	h.fsys.failOn, h.fsys.failPath = "readdir", "journal"
@@ -248,6 +266,7 @@ func TestAnUnreadableJournalPostponesTheRestart(t *testing.T) {
 }
 
 func TestAMissingStateDirectoryMeansNoSteps(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	code, _, _ := h.set("db", "SECRET-MARKER")
 	assertCode(t, code, exitOK)
@@ -257,6 +276,7 @@ func TestAMissingStateDirectoryMeansNoSteps(t *testing.T) {
 }
 
 func TestAFailedRestartIsAnAgentErrorAndTheChangeStays(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.sd.restartErr = os.ErrInvalid
 	code, _, stderr := h.set("db", "SECRET-MARKER")
@@ -270,6 +290,7 @@ func TestAFailedRestartIsAnAgentErrorAndTheChangeStays(t *testing.T) {
 }
 
 func TestCommandsThatChangeNothingLeaveTheServiceAlone(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.set("db", "SECRET-MARKER")
 	h.sd.calls = nil
@@ -287,6 +308,7 @@ func TestCommandsThatChangeNothingLeaveTheServiceAlone(t *testing.T) {
 // Rule "Каждое изменение оставляет строку аудита без значений".
 
 func TestAChangeWritesOneAuditLineNamingWhoMadeIt(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.set("db", "SECRET-MARKER")
 	if len(h.log.lines) != 1 {
@@ -301,6 +323,7 @@ func TestAChangeWritesOneAuditLineNamingWhoMadeIt(t *testing.T) {
 }
 
 func TestWithoutSudoTheAuditLineNamesTheProcessUser(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.env = map[string]string{}
 	h.set("db", "SECRET-MARKER")
@@ -310,6 +333,7 @@ func TestWithoutSudoTheAuditLineNamesTheProcessUser(t *testing.T) {
 }
 
 func TestAnUnavailableSystemLogOnlyWarns(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.log.down = true
 	code, _, stderr := h.set("db", "SECRET-MARKER")
@@ -323,6 +347,7 @@ func TestAnUnavailableSystemLogOnlyWarns(t *testing.T) {
 }
 
 func TestReadCommandsWriteNoAuditLines(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	for _, s := range [][]string{{"secret", "list"}, {"repo", "list"}} {
 		h.sudo(append(s, "--config", "C")...)
@@ -335,6 +360,7 @@ func TestReadCommandsWriteNoAuditLines(t *testing.T) {
 // Rule "Одновременные изменения хоста не смешиваются".
 
 func TestASecondChangeWhileTheFirstHoldsTheLockIsRefused(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.set("first", "SECRET-MARKER")
 	unlock := h.holdConfigLock()
@@ -345,6 +371,7 @@ func TestASecondChangeWhileTheFirstHoldsTheLockIsRefused(t *testing.T) {
 }
 
 func TestALeftoverConfigLockFileDoesNotBlock(t *testing.T) {
+	t.Parallel()
 	h := newSetupHost(t)
 	h.write(h.path("agent.d/.sard-config.lock"), "123\n", 0o600)
 	code, _, _ := h.set("db", "SECRET-MARKER")
