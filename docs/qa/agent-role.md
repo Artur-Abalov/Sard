@@ -135,6 +135,7 @@ IS=$(idu $S1/tls/agent.pem); IV=$(idu $V1/tls/agent.pem)
 ## Часть 3. Роль не берётся из сообщений агента
 
 18. CSR, в SAN которого `sard://roles/verifier` и URI личности верификатора, по токену source:
+
     ```bash
     openssl ecparam -name prime256v1 -genkey -noout -out $QA/k
     printf '[req]\ndistinguished_name=dn\nreq_extensions=ext\n[dn]\n[ext]\nsubjectAltName=URI:sard://roles/verifier,URI:%s\n' "$IV" > $QA/csr.cnf
@@ -143,6 +144,7 @@ IS=$(idu $S1/tls/agent.pem); IV=$(idu $V1/tls/agent.pem)
     $GRPC -d "{\"enrollment_token\":\"$T\",\"csr_der\":\"$CSR\",\"hostname\":\"qa-forge\"}" localhost:9090 sard.agent.v1.EnrollmentService/Enroll | tee $QA/f.json
     jq -r .certificateChainPem $QA/f.json > $QA/f.pem; san $QA/f.pem
     ```
+
     → регистрация успешна; ровно две строки: `URI:sard://tenants/$TEN/agents/<agentId из $QA/f.json>`
     и `URI:sard://roles/source`; `san $QA/f.pem | grep -c "verifier\|$XV"` → `0`;
     `$PSQL "select role from agents where id = '$(jq -r .agentId $QA/f.json)'"` → `source`.
@@ -162,6 +164,7 @@ IS=$(idu $S1/tls/agent.pem); IV=$(idu $V1/tls/agent.pem)
     → `CERT_ROLE_INVALID`; `$DC logs server | grep reason=CERT_ROLE_INVALID | tail -1`
     → строка называет `$XS` и тенант по умолчанию; `$DC logs server | grep -c marker-ROLE-7f` → `0`.
 22. Недопустимые URI роли:
+
     ```bash
     for s in "URI:$IS,URI:sard://roles/source,URI:sard://roles/source" \
              "URI:$IS,URI:sard://roles/source,URI:sard://roles/verifier" \
@@ -170,6 +173,7 @@ IS=$(idu $S1/tls/agent.pem); IV=$(idu $V1/tls/agent.pem)
       forge $S1 "$s" $QA/x.pem; reg $QA/x.pem $S1/tls/agent.key $(printf 'a%.0s' $(seq 64)) 2>&1 | grep -o 'CERT_[A-Z_]*' | sort -u
     done
     ```
+
     → шесть строк `CERT_ROLE_INVALID`.
 23. `forge $S1 "URI:$IS,URI:sard://roles/verifier" $QA/sv.pem; reg $QA/sv.pem $S1/tls/agent.key $(printf 'a%.0s' $(seq 64))`
     → `CERT_IDENTITY_MISMATCH` (агент-источник с сертификатом роли verifier).
@@ -248,6 +252,7 @@ SRC="{\"name\":\"etc\",\"agentId\":\"$XS\",\"plugin\":\"files\",\"repositoryName
     `$PSQL "select machine_id, hostname from agents where id = '$XS'"` не изменились.
     То же с `MARKER-MID-0001` → `FIELD_INVALID`; `$DC logs server | grep -c MARKER-MID-0001` → `0`.
 43. Хост без machine-id — агент в контейнере:
+
     ```bash
     C=$QA/ctr; host $C; enroll_as $C '{}'; sed -i "s|$C|/h|g" $C/agent.yaml
     # контейнер запускается от root, чтобы удалить machine-id образа, затем агент
@@ -258,6 +263,7 @@ SRC="{\"name\":\"etc\",\"agentId\":\"$XS\",\"plugin\":\"files\",\"repositoryName
       sh -c "rm -f /etc/machine-id /var/lib/dbus/machine-id; exec setpriv --reuid=$(id -u) --regid=$(id -g) --clear-groups timeout 8 /sard-agent --config /h/agent.yaml"; }
     run_ctr; ls -l $C/state/machine-id; cat $C/state/machine-id; echo
     ```
+
     Каталог `$C` смонтирован в `/h`, поэтому пути `tls.*` и `state_dir` в конфиге
     заменены на `/h/…`.
     → `-rw-------` (0600); 64 строчных шестнадцатеричных символа без перевода строки;
