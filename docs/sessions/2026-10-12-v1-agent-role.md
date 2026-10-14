@@ -394,3 +394,14 @@ After: 0 survivors. No `mutflow:falsePositive`, `mutflow:ignore` or `@SuppressMu
   `offeredSourceAgents` теперь `offeredAgents(agents).filter((a) => canCreateSourceOn(a.role))`, порядок и поведение те же.
 - `test.each` перенесён из `tokens.test.ts` в `sourceDraft.test.ts` без изменений утверждений; импорт в `pages/Agent.tsx` обновлён.
 - `./scripts/gate.sh web fast`: до и после 46 файлов, 759 тестов, PASSED.
+
+## hardener (фаза 3)
+
+- `./scripts/gate.sh web` (полный): PASSED. У web нет шага мутаций; полный гейт = oxlint + prettier + lint:api,
+  tsc, vitest, vite build.
+- `./scripts/gate.sh server` (полный, mutflow): PASSED. Выживших до: 0, после: 0 (107 тестовых классов с
+  отчётом mutflow, 1727 мутаций обнаружено, 1727 убито, 0 выжило, 0 таймаутов). Тесты и код не менялись,
+  исключений и подавлений нет.
+- Фаза 3 в серверном коде добавила только описания контракта (OpenAPI) и тесты; новых мутируемых
+  ветвей, не покрытых проверкой результата, нет.
+- `ResultsIntegrationTest` в этом прогоне не падал.
