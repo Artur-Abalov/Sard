@@ -227,6 +227,7 @@ restic под root не получает путь к файлу пароля, к
 root; оператор отдаёт их `postgres` сам (Н29).
 
 ### Классы отказов
+
 | причина | класс | код |
 |---|---|---|
 | `SNAPSHOT_UNKNOWN`, `SNAPSHOT_AMBIGUOUS`, `TARGET_INVALID`, `TARGET_NOT_EMPTY`, `ROOT_TARGET_REFUSED`, `PATH_NOT_IN_SNAPSHOT` (Н38: `TARGET_NOT_EMPTY` — использование) | использование | 2 |

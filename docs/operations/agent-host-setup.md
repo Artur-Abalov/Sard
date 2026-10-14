@@ -384,7 +384,7 @@ sudo sard-agent repo snapshots <имя> [--source <источник>] [--json] [
 после потери старого их видно сразу после `repo add`. Порядок — по времени
 по возрастанию, при равном времени по id:
 
-```
+```text
 ID TIME HOST SOURCE RUN PATHS
 dddd1111 2026-10-09T12:00:00Z old-host - - /etc
 aaaa1111 2026-10-10T03:00:00Z db1 s1 r1 /srv/data
