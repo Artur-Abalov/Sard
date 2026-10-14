@@ -19,6 +19,8 @@ data class AgentSnapshot(
     val repositories: List<RepositoryEntry>,
     val secretNames: List<String>,
     val scriptNames: List<String>,
+    /** The directory the host allows restores into (R2); empty for an agent without console restore. */
+    val restoreDir: String = "",
 )
 
 data class PluginEntry(
@@ -28,6 +30,8 @@ data class PluginEntry(
     val configSchema: String,
     /** Null stands for an action this server does not know (unspecified or newer than it). */
     val actions: List<PluginAction?>,
+    /** JSON Schema text of the restore config; empty when the plugin cannot be restored from the console. */
+    val restoreConfigSchema: String = "",
 )
 
 data class RepositoryEntry(

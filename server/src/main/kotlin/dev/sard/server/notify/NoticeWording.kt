@@ -25,20 +25,25 @@ internal class Wording(
     val onSchedule: String,
     val catchUpRun: String,
     val failuresBefore: String,
+    /** The words of a restore (R2). */
+    val restore: RestoreWording,
 ) {
     /** The headline of a finished step; null for a step still active (nothing to announce). */
-    fun headline(step: StepState): Headline? =
+    fun headline(
+        step: StepState,
+        of: Verdicts = verdicts,
+    ): Headline? =
         when (step) {
             StepState.SUCCEEDED -> {
-                Headline("✅", verdicts.succeeded)
+                Headline("✅", of.succeeded)
             }
 
             StepState.CANCELLED -> {
-                Headline("⏹", verdicts.cancelled)
+                Headline("⏹", of.cancelled)
             }
 
             StepState.FAILED, StepState.REJECTED, StepState.LOST, StepState.TIMED_OUT -> {
-                Headline("❌", verdicts.failure(step))
+                Headline("❌", of.failure(step))
             }
 
             StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING -> {
@@ -46,6 +51,21 @@ internal class Wording(
             }
         }
 }
+
+/** What a restore says that a backup does not (ВК39); the lines it shares with a backup use [Wording]. */
+internal class RestoreWording(
+    val verdicts: Verdicts,
+    val snapshot: String,
+    /** Between the short id and the time of the snapshot. */
+    val snapshotAt: String,
+    val filesRestored: String,
+    val size: String,
+    val where: String,
+    val nothingRestored: String,
+    val rollbackFailed: String,
+    val removeByHand: String,
+    val lost: String,
+)
 
 /** What each finished step is called in a headline. */
 internal class Verdicts(
@@ -117,6 +137,30 @@ private val EN =
         onSchedule = "On schedule",
         catchUpRun = "Catch-up run after server downtime",
         failuresBefore = "Failures in a row before this: ",
+        restore =
+            RestoreWording(
+                verdicts =
+                    Verdicts(
+                        succeeded = "Restore succeeded",
+                        failed = "Restore failed",
+                        rejected = "Restore rejected by the agent",
+                        lost = "Restore lost",
+                        timedOut = "Restore timed out",
+                        cancelled = "Restore cancelled",
+                        recovered = "Restore succeeded",
+                    ),
+                snapshot = "Snapshot: ",
+                snapshotAt = " of ",
+                filesRestored = "Files restored: ",
+                size = ", size: ",
+                where = ". Where: ",
+                nothingRestored = "Nothing was restored: the changes were rolled back.",
+                rollbackFailed = "Rollback failed, left behind: ",
+                removeByHand = " Remove it by hand.",
+                lost =
+                    "The connection to the agent was interrupted while the step was running. " +
+                        "The restore can be started again.",
+            ),
     )
 
 private val RU =
@@ -147,6 +191,28 @@ private val RU =
         onSchedule = "По расписанию",
         catchUpRun = "Догоняющий запуск после простоя сервера",
         failuresBefore = "Ошибок подряд перед этим: ",
+        restore =
+            RestoreWording(
+                verdicts =
+                    Verdicts(
+                        succeeded = "Восстановление выполнено",
+                        failed = "Восстановление завершилось ошибкой",
+                        rejected = "Восстановление отклонено агентом",
+                        lost = "Восстановление потеряно",
+                        timedOut = "Восстановление прервано по таймауту",
+                        cancelled = "Восстановление отменено",
+                        recovered = "Восстановление выполнено",
+                    ),
+                snapshot = "Снимок: ",
+                snapshotAt = " от ",
+                filesRestored = "Восстановлено файлов: ",
+                size = ", объём: ",
+                where = ". Куда: ",
+                nothingRestored = "Ничего не восстановлено: изменения отменены.",
+                rollbackFailed = "Откат не удался, осталось: ",
+                removeByHand = " Удалите вручную.",
+                lost = "Связь с агентом прервалась, пока шаг выполнялся. Можно повторить восстановление.",
+            ),
     )
 
 internal fun wording(language: NoticeLanguage): Wording =

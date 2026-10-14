@@ -60,3 +60,22 @@ class InvalidConfig(
 class SystemSourceProtected(
     val sourceId: UUID,
 ) : RunsException("source $sourceId is a system source")
+
+/** No snapshot with this restic id among the source's snapshots, or no such source in the tenant (404). */
+class SnapshotNotFound(
+    val sourceId: UUID,
+    val snapshotId: String,
+) : RunsException("no snapshot $snapshotId of source $sourceId")
+
+/** The console does not restore this snapshot (422 snapshot_not_restorable); [reason] says why (R2, ВВ8). */
+class SnapshotNotRestorable(
+    val reason: RestoreBlock,
+) : RunsException("the snapshot cannot be restored from the console: ${reason.stored}")
+
+/** The restore request names no agent of the tenant: missing, not an id, or unknown (422 at agentId). */
+class RestoreAgentInvalid : RunsException("the restore names no agent of this tenant")
+
+/** The restore config does not fit the restore schema of the agent (422 validation_failed at config/...). */
+class RestoreConfigInvalid(
+    val violations: List<ConfigViolation>,
+) : RunsException("the restore config has ${violations.size} violations")

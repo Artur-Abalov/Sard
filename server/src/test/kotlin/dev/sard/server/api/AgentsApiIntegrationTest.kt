@@ -96,6 +96,7 @@ class AgentsApiIntegrationTest(
                 "scriptNames",
                 "outdated",
                 "builtin",
+                "restoreDir",
             ),
             json.propertyNames().toSet(),
         )

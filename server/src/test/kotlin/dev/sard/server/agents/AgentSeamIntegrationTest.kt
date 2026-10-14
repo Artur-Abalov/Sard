@@ -172,9 +172,10 @@ class AgentSeamIntegrationTest(
             )
         val tenant = agent.identity.tenantId
         // Built-in plugins cannot verify a restored copy yet, so they offer no verify (A6a, ADR 0027).
+        // The console restores only files in R2a: postgresql announces no restore (ADR 0060).
         val expectedPlugins =
-            listOf("files", "postgresql").map {
-                listOf(it, agentVersion(), "backup,restore", "object", tenant)
+            listOf("files" to "backup,restore", "postgresql" to "backup").map {
+                listOf(it.first, agentVersion(), it.second, "object", tenant)
             }
         assertEquals(expectedPlugins, plugins.map { it.values.toList() })
 

@@ -44,6 +44,7 @@ private const val POLL_MILLIS = 20L
 private val HEX_A = "a".repeat(64)
 private val HEX_B = "b".repeat(64)
 private const val FILES_SCHEMA = """{"type":"object","properties":{"path":{"type":"string"}}}"""
+private const val RESTORE_SCHEMA = """{"type":"object","properties":{"destination":{"type":"string"}}}"""
 
 /** The server's clock in this test: fixed, so last_register_at is known exactly. */
 private val NOW: Instant = Instant.now().truncatedTo(ChronoUnit.MICROS)
@@ -259,6 +260,48 @@ class RegisterIntegrationTest(
         val stored = stored(agent)
         val sets = listOf(stored.plugins, stored.repositories, stored.agent["secrets"], stored.agent["scripts"])
         assertEquals(listOf(emptySet<Any>(), emptySet<Any>(), "", ""), sets)
+    }
+
+    // --- R2a: the restore directory and the restore schema
+
+    private fun restoreOf(agent: EnrolledAgent): Pair<String?, String?> =
+        jdbc.queryForObject(
+            "select restore_dir from agents where id = ?",
+            String::class.java,
+            agent.identity.agentId,
+        ) to
+            jdbc
+                .queryForList(
+                    "select restore_config_schema::text from agent_plugins where agent_id = ? and name = 'files'",
+                    String::class.java,
+                    agent.identity.agentId,
+                ).singleOrNull()
+
+    @Test
+    fun `Register stores the restore directory and the restore schema of a plugin`() {
+        val agent = fixtures.enrolled(fixtures.tenant())
+        val files = plugin("files", schema = FILES_SCHEMA).toBuilder().setRestoreConfigSchema(RESTORE_SCHEMA).build()
+        register(agent, snapshotA().clearPlugins().addPlugins(files).setRestoreDir("/var/lib/sard-agent/restore"))
+        assertEquals("/var/lib/sard-agent/restore" to jsonb(RESTORE_SCHEMA), restoreOf(agent))
+    }
+
+    @Test
+    fun `a later Register without them leaves neither`() {
+        val agent = fixtures.enrolled(fixtures.tenant())
+        val files = plugin("files", schema = FILES_SCHEMA).toBuilder().setRestoreConfigSchema(RESTORE_SCHEMA).build()
+        register(agent, snapshotA().clearPlugins().addPlugins(files).setRestoreDir("/srv/restore"))
+        register(agent, snapshotA())
+        assertEquals(null to null, restoreOf(agent))
+    }
+
+    @Test
+    fun `a restore directory that is not a path is INVALID_ARGUMENT and changes nothing`() {
+        val agent = fixtures.enrolled(fixtures.tenant())
+        register(agent, snapshotA().setRestoreDir("/srv/restore"))
+        val (code, info) = refusal(agent, snapshotB().setRestoreDir("relative"))
+        assertEquals(Status.Code.INVALID_ARGUMENT, code)
+        assertEquals("restore_dir", info.metadataMap["field"])
+        assertEquals("/srv/restore", restoreOf(agent).first)
     }
 
     // --- 2: two concurrent Registers of one agent never mix

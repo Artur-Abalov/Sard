@@ -16,6 +16,7 @@ import java.util.UUID
 private const val NAME_KEY = "sources_tenant_id_name_key"
 private const val ACTIVE_RUN =
     "select id from RunRecord where sourceId = :source and status in ('queued', 'dispatched', 'running')"
+private const val ACTIVE_RUN_OF_KIND = "$ACTIVE_RUN and kind = :kind"
 
 /** The live source [id] of the session's tenant, locked with [lock]; a deleted one is absent. */
 internal fun liveSource(
@@ -32,15 +33,22 @@ private fun SourceRecord.requireUserSource() {
     if (systemRole != null) throw SystemSourceProtected(id)
 }
 
-/** The active run of [sourceId], if any (D6: at most one). */
+/**
+ * The active run of [sourceId], if any. D6 holds for backups: at most one, a restore does not count ([kind] backup).
+ * A source is deleted only without any active run, so a delete asks with no [kind].
+ */
 internal fun activeRunOf(
     session: Session,
     sourceId: UUID,
-): UUID? =
-    session
-        .createSelectionQuery(ACTIVE_RUN, UUID::class.java)
-        .setParameter("source", sourceId)
-        .uniqueResult()
+    kind: RunKind? = null,
+): UUID? {
+    val query =
+        session
+            .createSelectionQuery(if (kind == null) ACTIVE_RUN else ACTIVE_RUN_OF_KIND, UUID::class.java)
+            .setParameter("source", sourceId)
+    kind?.let { query.setParameter("kind", it.stored) }
+    return query.resultList.firstOrNull()
+}
 
 /**
  * Sources of a tenant (S6a; S8b puts SourcesApi in front). The caller names the tenant it got

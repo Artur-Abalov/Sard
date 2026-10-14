@@ -130,3 +130,14 @@ class RunsConfiguration {
         queued: ObjectProvider<StepsQueued>,
     ) = Runs(sessions, clock, UuidV7(clock, SecureRandom()), queued.getIfUnique { StepsQueued.NONE })
 }
+
+/** Restore from the console (R2a): the service behind the restore endpoints. */
+@Configuration(proxyBeanMethods = false)
+class RestoresConfiguration {
+    @Bean
+    fun restores(
+        sessions: TenantSessions,
+        clock: Clock,
+        queued: ObjectProvider<StepsQueued>,
+    ) = Restores(sessions, clock, UuidV7(clock, SecureRandom()), queued.getIfUnique { StepsQueued.NONE })
+}

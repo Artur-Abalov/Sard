@@ -102,6 +102,12 @@ data class AgentDetails(
     val outdated: Boolean,
     @field:Schema(description = BUILTIN)
     val builtin: Boolean,
+    @field:Schema(
+        description =
+            "The directory the host's operator allows restores into (restore.dir of the agent); the console " +
+                "cannot change it. null for an agent that cannot restore from the console",
+    )
+    val restoreDir: String?,
 )
 
 @Schema(description = "A page of agents")

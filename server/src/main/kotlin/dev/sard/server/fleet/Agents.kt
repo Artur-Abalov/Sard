@@ -90,6 +90,8 @@ data class AgentCard(
     val repositories: List<AgentRepositoryView>,
     val secretNames: List<String>,
     val scriptNames: List<String>,
+    /** The directory the host allows restores into; null for an agent that announced none. */
+    val restoreDir: String? = null,
 )
 
 /** The outcome of [Agents.revoke]. */
@@ -294,6 +296,7 @@ class Agents(
             },
             agent.secretNames,
             agent.scriptNames,
+            agent.restoreDir,
         )
     }
 }

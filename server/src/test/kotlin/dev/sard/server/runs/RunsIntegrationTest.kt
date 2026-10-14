@@ -79,6 +79,7 @@ class RunsIntegrationTest(
                 RUNS_NOW,
                 null,
                 null,
+                requestedBy = "admin",
             ),
             run.copy(steps = emptyList()),
         )

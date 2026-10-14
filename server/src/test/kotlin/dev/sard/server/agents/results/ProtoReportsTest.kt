@@ -92,4 +92,26 @@ class ProtoReportsTest {
 
         assertEquals(StepOutput.Backup("s", -1, 0, "r"), output)
     }
+
+    @Test
+    fun `every field of a restore output is carried, sizes above the signed range stay negative`() {
+        val restore =
+            RestoreOutput
+                .newBuilder()
+                .setTarget("/t")
+                .setFilesRestored(2)
+                .setBytesRestored(1536)
+                .setDatabase("app_restored")
+                .setTablesRestored(12)
+                .setRolesRestored(3)
+                .setOwnersRestored(true)
+                .setLeftover("database x")
+        val huge = RestoreOutput.newBuilder().setBytesRestored(-1)
+
+        val output = MutFlow.underTest { ProtoReports.of(builder().setRestore(restore).build()) }.output
+        val negative = MutFlow.underTest { ProtoReports.of(builder().setRestore(huge).build()) }.output
+
+        assertEquals(StepOutput.Restore("/t", 2, 1536, "app_restored", 12, 3, true, "database x"), output)
+        assertEquals(StepOutput.Restore("", 0, -1, "", 0, 0, false, ""), negative)
+    }
 }

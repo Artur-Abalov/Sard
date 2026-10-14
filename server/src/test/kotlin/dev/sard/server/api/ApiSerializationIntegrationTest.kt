@@ -76,7 +76,8 @@ class ApiSerializationIntegrationTest(
             filesProcessed = 3,
             filesTotal = 4,
             message = null,
-            backup = BackupOutput("4f1c", 10, 2, "a1b2", partial = false),
+            backup = BackupOutput("4f1c", 10, 2, "a1b2", partial = false, restorable = true),
+            restore = RestoreOutput("/r/etc", 2, 4, null, null, null, ownersRestored = false, leftover = null),
             at,
             at,
             at,
@@ -99,6 +100,7 @@ class ApiSerializationIntegrationTest(
             filesTotal = null,
             message = null,
             backup = null,
+            restore = null,
             queuedAt = at,
             dispatchedAt = null,
             startedAt = null,
@@ -120,7 +122,23 @@ class ApiSerializationIntegrationTest(
     private val token =
         EnrollmentToken(id, EnrollmentTokenStatus.USED, at, at, at, revokedAt = null, agentId = id, label = null)
     private val snapshot =
-        Snapshot(id, "4f1c", id, id, id, id, "local", "a1b2", 10, 2, at, forgottenAt = null, partial = false)
+        Snapshot(
+            id,
+            "4f1c",
+            id,
+            id,
+            id,
+            id,
+            "local",
+            "a1b2",
+            10,
+            2,
+            at,
+            forgottenAt = null,
+            partial = false,
+            restorable = true,
+            restoreBlockedReason = null,
+        )
     private val schedule =
         Schedule(
             id,
@@ -153,7 +171,22 @@ class ApiSerializationIntegrationTest(
             recordedAt = at,
         )
     private val summaryRun =
-        RunSummary(id, id, "etc", false, id, RunTrigger.MANUAL, RunStatus.FAILED, "boom", at, at, at, catchUp = null)
+        RunSummary(
+            id,
+            id,
+            "etc",
+            false,
+            id,
+            RunTrigger.MANUAL,
+            RunStatus.FAILED,
+            "boom",
+            at,
+            at,
+            at,
+            catchUp = null,
+            kind = RunKind.BACKUP,
+            requestedBy = "admin",
+        )
 
     private fun onboarding(
         access: OnboardingAccess,
@@ -208,6 +241,27 @@ class ApiSerializationIntegrationTest(
                 scriptNames = listOf("flush"),
                 outdated = true,
                 builtin = false,
+                restoreDir = "/var/lib/sard-agent/restore",
+            ),
+            RestoreOptions(
+                RestoreSnapshot("4f1c", at, 10, "main", "etc", "files"),
+                listOf(RestoreTarget(id, "db1", true, true, "main", "/r", schema, mapOf("destination" to "etc/x"))),
+                listOf(IneligibleAgent(id, "db3", IneligibleReason.AGENT_OUTDATED)),
+                AttachHint("main", "sudo sard-agent repo add main <address> --password-from-file <file>"),
+            ),
+            RestoreRequest(id.toString(), mapOf("destination" to "etc/x")),
+            RestorePreview(
+                "etc",
+                "4f1c",
+                at,
+                10,
+                id,
+                "db1",
+                agentOnline = false,
+                "/r/etc/x",
+                listOf("/etc"),
+                restoreGlobals = false,
+                listOf(RestoreWarningCode.AGENT_OFFLINE),
             ),
             AgentInstall(
                 downloadsEnabled = true,
@@ -319,6 +373,9 @@ class ApiSerializationIntegrationTest(
                 finishedAt = null,
                 listOf(step, queuedStep),
                 catchUp = CatchUp(at, at, 4, missedCountCapped = false, timezone = "Europe/Berlin"),
+                kind = RunKind.RESTORE,
+                requestedBy = "admin",
+                restore = RunRestore("4f1c", at, "main", mapOf("destination" to "etc/x"), "/r/etc/x"),
             ),
             RunPage(listOf(summaryRun), nextCursor = null),
             LogPage(
@@ -456,6 +513,12 @@ class ApiSerializationIntegrationTest(
                 "CatchUp",
                 "RunStep",
                 "BackupOutput",
+                "RestoreOutput",
+                "RunRestore",
+                "RestoreSnapshot",
+                "RestoreTarget",
+                "IneligibleAgent",
+                "AttachHint",
                 "RunSummary",
                 "LogLine",
                 "FieldError",

@@ -56,6 +56,7 @@ object RunSteps {
             .setConfigJson(step.config)
             .setAction(actionOf(step.action))
             .setRepositoryName(step.repositoryName.orEmpty())
+            .setSnapshotId(step.snapshotId.orEmpty())
             .putTags(STEP_TAG, step.id.toString())
             .putTags(RUN_TAG, step.runId.toString())
             .putTags(SOURCE_TAG, step.sourceId?.toString().orEmpty())

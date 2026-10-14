@@ -53,6 +53,7 @@ class Registration(
         agent.protocolVersion = snapshot.protocolVersion.toInt()
         agent.secretNames = snapshot.secretNames
         agent.scriptNames = snapshot.scriptNames
+        agent.restoreDir = snapshot.restoreDir.ifEmpty { null }
         agent.lastRegisterAt = now
         for (statement in listOf(DELETE_PLUGINS, DELETE_REPOSITORIES)) {
             session.createMutationQuery(statement).setParameter("agent", agentId).executeUpdate()
@@ -71,6 +72,7 @@ class Registration(
         plugin.configSchema,
         // The rules have refused unknown actions already; nothing is dropped here.
         plugin.actions.filterNotNull().map { it.stored },
+        plugin.restoreConfigSchema.ifEmpty { null },
     )
 
     private fun repositoryRecord(

@@ -96,6 +96,9 @@ enum class ErrorCode {
 
     @JsonProperty("first_backup_pending")
     FIRST_BACKUP_PENDING,
+
+    @JsonProperty("snapshot_not_restorable")
+    SNAPSHOT_NOT_RESTORABLE,
 }
 
 private const val TYPE = "URI reference identifying the problem type; about:blank when the status says it all"

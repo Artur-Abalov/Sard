@@ -35,6 +35,7 @@ object SnapshotRules {
     const val MAX_SECRET_NAMES = 1024
     const val MAX_SCRIPT_NAMES = 1024
     const val MAX_CONFIG_SCHEMA_BYTES = 64 * 1024
+    private const val MAX_RESTORE_DIR_BYTES = 4096
 
     fun check(snapshot: AgentSnapshot) {
         checkProtocol(snapshot.protocolVersion)
@@ -46,7 +47,16 @@ object SnapshotRules {
         checkRepositories(snapshot.repositories)
         checkNames(snapshot.secretNames, "secret_names", MAX_SECRET_NAMES) { "secret_names[$it]" }
         checkNames(snapshot.scriptNames, "script_names", MAX_SCRIPT_NAMES) { "script_names[$it]" }
+        checkRestoreDir(snapshot.restoreDir)
     }
+
+    /** Empty means the agent cannot restore from the console; otherwise an absolute path without NUL. */
+    private fun checkRestoreDir(dir: String) {
+        if (dir.isNotEmpty() && !isRestoreDir(dir)) throw invalid("restore_dir")
+    }
+
+    private fun isRestoreDir(dir: String) =
+        dir.startsWith("/") && '\u0000' !in dir && dir.toByteArray(Charsets.UTF_8).size <= MAX_RESTORE_DIR_BYTES
 
     private fun checkProtocol(version: Long) {
         val supported = ProtocolVersions.SUPPORTED
@@ -60,6 +70,9 @@ object SnapshotRules {
         plugins.forEachIndexed { i, plugin ->
             checkLabel(plugin.version, "plugins[$i].version")
             checkConfigSchema(plugin.configSchema, "plugins[$i].config_schema")
+            if (plugin.restoreConfigSchema.isNotEmpty()) {
+                checkConfigSchema(plugin.restoreConfigSchema, "plugins[$i].restore_config_schema")
+            }
             val actions = plugin.actions
             if (null in actions || actions.toSet().size != actions.size) throw invalid("plugins[$i].actions")
         }

@@ -9,6 +9,7 @@ import dev.sard.proto.agent.v1.ConnectRequest
 import dev.sard.proto.agent.v1.LogChunk
 import dev.sard.proto.agent.v1.LogLevel
 import dev.sard.proto.agent.v1.LogLine
+import dev.sard.proto.agent.v1.RestoreOutput
 import dev.sard.proto.agent.v1.RunStep
 import dev.sard.proto.agent.v1.StepPhase
 import dev.sard.proto.agent.v1.StepProgress
@@ -88,6 +89,7 @@ class FakeAgent(
         status: StepStatus,
         message: String = "",
         backup: BackupOutput? = null,
+        restore: RestoreOutput? = null,
     ) = connection.send(
         ConnectRequest
             .newBuilder()
@@ -97,7 +99,10 @@ class FakeAgent(
                     .setCommandId(step)
                     .setStatus(status)
                     .setMessage(message)
-                    .also { builder -> backup?.let(builder::setBackup) },
+                    .also { builder ->
+                        backup?.let(builder::setBackup)
+                        restore?.let(builder::setRestore)
+                    },
             ).build(),
     )
 

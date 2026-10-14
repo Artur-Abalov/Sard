@@ -68,6 +68,16 @@ class RunRecord(
     val queuedAt: Instant,
     @Column(name = "schedule_id", updatable = false)
     val scheduleId: UUID? = null,
+    /** backup or restore (migration V202610141200). */
+    @Column(nullable = false, updatable = false)
+    val kind: String = "backup",
+    /** Who started a manual run; null for a schedule. */
+    @Column(name = "requested_by", updatable = false)
+    val requestedBy: String? = null,
+    /** What a restore restores, as JSON text; null for a backup. Holds the restore config: never logged. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(updatable = false)
+    val restore: String? = null,
     @TenantId
     @Column(name = "tenant_id", nullable = false, updatable = false)
     val tenantId: UUID? = null,
@@ -113,13 +123,13 @@ class RunStepRecord(
     val status: String,
     @Column(name = "queued_at", nullable = false, updatable = false)
     val queuedAt: Instant,
+    /** The snapshot a restore step restores (restic's full id); null for any other step. */
+    @Column(name = "snapshot_id", updatable = false)
+    val snapshotId: String? = null,
     @TenantId
     @Column(name = "tenant_id", nullable = false, updatable = false)
     val tenantId: UUID? = null,
 ) {
-    @Column(name = "snapshot_id", insertable = false, updatable = false)
-    val snapshotId: String? = null
-
     @Column(insertable = false, updatable = false)
     val phase: String? = null
 

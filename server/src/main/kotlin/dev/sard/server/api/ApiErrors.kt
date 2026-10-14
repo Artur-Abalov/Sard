@@ -22,7 +22,8 @@ class RequestInvalid(
 class RequestRefused(
     val code: ErrorCode,
     val errors: List<FieldError>,
-) : RuntimeException(code.name)
+    cause: Throwable? = null,
+) : RuntimeException(code.name, cause)
 
 /** A token cannot be revoked (409 token_used with its [agentId], or token_expired). */
 class TokenConflict(

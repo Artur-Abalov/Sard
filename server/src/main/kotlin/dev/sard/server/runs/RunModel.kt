@@ -71,6 +71,19 @@ enum class Trigger(
     }
 }
 
+/** What a run is: a backup of a source or a restore of one of its snapshots (R2). */
+enum class RunKind(
+    val stored: String,
+) {
+    BACKUP("backup"),
+    RESTORE("restore"),
+    ;
+
+    companion object {
+        fun of(stored: String): RunKind = entries.single { it.stored == stored }
+    }
+}
+
 /** What a step asks the agent to do (proto Action). */
 enum class Action(
     val stored: String,
@@ -135,6 +148,36 @@ data class BackupResult(
     val addedBytes: Long,
     val repositoryId: String,
     val partial: Boolean = false,
+    /** The console can restore this snapshot (R2): not partial, not forgotten, a plugin it restores. */
+    val restorable: Boolean = false,
+)
+
+/** What a restore run was asked for, as the console shows it; [config] is the JSON text the agent got. */
+data class RestoreInfo(
+    val snapshotId: String,
+    val snapshotCreatedAt: Instant,
+    /** The repository on the agent that restores, which need not be the one the snapshot was made through. */
+    val repositoryName: String,
+    val config: String,
+    /** Where the restore goes, as the server computed it when it was asked; the step's output has the real one. */
+    val target: String,
+) {
+    override fun toString() = "RestoreInfo(snapshotId=$snapshotId, repositoryName=$repositoryName)"
+}
+
+/**
+ * What a restore step reports. A succeeded one has its result; a failed one only [leftover], when its rollback
+ * failed; null stands for a field that did not come (R2, all or nothing).
+ */
+data class RestoreResult(
+    val target: String?,
+    val filesRestored: Long?,
+    val bytesRestored: Long?,
+    val database: String?,
+    val tablesRestored: Long?,
+    val rolesRestored: Long?,
+    val ownersRestored: Boolean?,
+    val leftover: String?,
 )
 
 /** A run with its steps; stage 1 runs have exactly one. */
@@ -152,6 +195,11 @@ data class RunView(
     val startedAt: Instant?,
     val finishedAt: Instant?,
     val steps: List<StepView> = emptyList(),
+    val kind: RunKind = RunKind.BACKUP,
+    /** Who started a manual run; null for a schedule (the open core has one administrator). */
+    val requestedBy: String? = null,
+    /** What a restore run restores; null for a backup. */
+    val restore: RestoreInfo? = null,
 )
 
 /** One step; [id] is the command_id the agent sees. Progress fields stay null until S7 fills them. */
@@ -177,6 +225,10 @@ data class StepView(
     val filesTotal: Long? = null,
     /** The valid backup output the agent sent, whatever the step's status (S8b В8); null if none. */
     val backup: BackupResult? = null,
+    /** The restore output the agent sent, whatever the step's status (R2); null if none. */
+    val restore: RestoreResult? = null,
+    /** The snapshot a restore step restores: restic's full id; null for any other step. */
+    val snapshotId: String? = null,
     /** The run the step belongs to; the agent tags its snapshot with it (FXs Д5). */
     val runId: UUID,
 ) {

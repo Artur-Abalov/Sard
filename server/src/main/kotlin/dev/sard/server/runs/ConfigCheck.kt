@@ -38,17 +38,19 @@ private class SecretName(
  * them. A string marked `sard-secret` must be one of the agent's secret names. Keywords the validator
  * does not know (`x-sard-i18n`) are ignored. What only the agent can judge (a path inside another path)
  * is not checked here. A message names the rule and a secret's name, never a value of the config.
+ * A restore config (R2) names a missing property at the property, like the form shows it.
  */
 internal object ConfigCheck {
     fun violations(
         schema: String,
         config: String,
         secretNames: Set<String>,
+        namesMissing: Boolean = false,
     ): List<ConfigViolation> {
         val compiled = compile(schema, secretNames) ?: return listOf(ConfigViolation(ROOT, BROKEN_SCHEMA))
         return compiled
             .validate(JSON.readTree(config))
-            .map { ConfigViolation(field(it.instanceLocation.toString()), message(it)) }
+            .map { ConfigViolation(field(it, namesMissing), message(it)) }
             .sortedWith(compareBy({ it.field }, { it.message }))
     }
 
@@ -82,7 +84,14 @@ internal object ConfigCheck {
         loader.block { true }
     }
 
-    private fun field(pointer: String) = ROOT + pointer
+    /** `config` plus the pointer of the value; a missing property is named at the property if [namesMissing]. */
+    private fun field(
+        error: com.networknt.schema.Error,
+        namesMissing: Boolean,
+    ): String {
+        val missing = error.property.takeIf { namesMissing && error.keyword == "required" }
+        return ROOT + error.instanceLocation + missing?.let { "/$it" }.orEmpty()
+    }
 
     private fun message(error: com.networknt.schema.Error): String =
         if (error.keyword == "format" && error.schemaNode.asString() == SECRET_FORMAT) {

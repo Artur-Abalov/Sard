@@ -76,7 +76,7 @@ class RunsApiImplTest(
         to: Instant? = null,
         cursor: String? = null,
         limit: Int = 50,
-    ) = MutFlow.underTest { api.listRuns(source, null, status, from, to, cursor, limit) }
+    ) = MutFlow.underTest { api.listRuns(source, null, status, from, to, null, cursor, limit) }
 
     private fun get(run: UUID) = MutFlow.underTest { api.getRun(run) }
 

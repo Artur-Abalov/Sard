@@ -50,6 +50,12 @@ annotation class RestApiTest
 /** The plugin config schema of the files plugin, the one the specification's "agent with a snapshot" announces. */
 val FILES_SCHEMA: String by lazy { File("../agent/plugins/files/schema.json").readText() }
 
+/** The restore config schema of the files plugin, as the agent announces it (R2a). */
+val RESTORE_SCHEMA: String by lazy { File("../agent/plugins/files/restore_schema.json").readText() }
+
+/** The restore directory of the agents of the tests, the default of the agent. */
+const val RESTORE_DIR = "/var/lib/sard-agent/restore"
+
 /** What Register left for an agent: the "agent with a snapshot" of the specification unless told otherwise. */
 fun snapshotOf(
     plugins: List<PluginEntry> = listOf(filesPlugin()),
@@ -58,13 +64,15 @@ fun snapshotOf(
     scriptNames: List<String> = emptyList(),
     version: String = "0.4.0",
     arch: String = "amd64",
-) = AgentSnapshot("db1", version, 1, "linux", arch, plugins, repositories, secretNames, scriptNames)
+    restoreDir: String = RESTORE_DIR,
+) = AgentSnapshot("db1", version, 1, "linux", arch, plugins, repositories, secretNames, scriptNames, restoreDir)
 
 fun filesPlugin(
     name: String = "files",
     schema: String = FILES_SCHEMA,
     actions: List<PluginAction?> = listOf(PluginAction.BACKUP, PluginAction.RESTORE),
-) = PluginEntry(name, "0.1.0", schema, actions)
+    restoreSchema: String = if (name == "files") RESTORE_SCHEMA else "",
+) = PluginEntry(name, "0.1.0", schema, actions, restoreSchema)
 
 /**
  * The tenants, agents and administrators of one test class, all removed by [close]. Agents are enrolled

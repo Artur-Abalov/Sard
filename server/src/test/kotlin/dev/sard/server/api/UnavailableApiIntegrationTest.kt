@@ -143,6 +143,26 @@ class UnavailableApiIntegrationTest(
         )
     }
 
+    @Test
+    fun `Восстановление при недоступной базе отвечает 503 без подробностей`() {
+        val agent = world.agent(tenant)
+        val base = "/api/v1/sources/${UUID.randomUUID()}/snapshots/${"a".repeat(64)}"
+        databaseDown()
+
+        val responses =
+            listOf(
+                world.api.get("$base/restore-options", admin),
+                world.api.post("$base/restores/preview", admin, restoreBody(agent.agentId)),
+                world.api.post("$base/restores", admin, restoreBody(agent.agentId)),
+            )
+
+        assertEquals(listOf(503, 503, 503), responses.map { it.status })
+        assertEquals(listOf("unavailable"), responses.map { it.code }.distinct())
+        assertFalse(responses.any { FAILURE in it.body })
+        databaseUp()
+        assertEquals(0, world.jdbc.queryForObject("select count(*) from runs where kind = 'restore'", Int::class.java))
+    }
+
     private companion object {
         const val QUIET_MILLIS = 300L
     }

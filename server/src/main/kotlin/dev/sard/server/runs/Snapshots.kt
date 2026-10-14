@@ -28,6 +28,8 @@ data class SnapshotView(
     val createdAt: Instant,
     val forgottenAt: Instant?,
     val partial: Boolean,
+    /** Why the console does not restore it; null when it does (R2). */
+    val restoreBlocked: RestoreBlock?,
 )
 
 /** The snapshots of a source (S8b): its history stays when the source is deleted (ADR 0013, rule 3). */
@@ -45,7 +47,7 @@ class Snapshots(
         limit: Int,
     ): List<SnapshotView>? =
         sessions.inTenant(tenantId) { session ->
-            session.find(SourceRecord::class.java, sourceId) ?: return@inTenant null
+            val source = session.find(SourceRecord::class.java, sourceId) ?: return@inTenant null
             val paging = after?.let { " and ${PageKey.condition("s.createdAt", "s.id")}" }.orEmpty()
             val query =
                 session
@@ -54,12 +56,13 @@ class Snapshots(
                         Array<Any?>::class.java,
                     ).setParameter("source", sourceId)
             after?.bind(query)
-            query.setMaxResults(limit).list().map { viewOf(it[0] as SnapshotRecord, it[1] as UUID) }
+            query.setMaxResults(limit).list().map { viewOf(it[0] as SnapshotRecord, it[1] as UUID, source.plugin) }
         }
 
     private fun viewOf(
         record: SnapshotRecord,
         runId: UUID,
+        plugin: String,
     ) = SnapshotView(
         record.id,
         record.snapshotId,
@@ -74,5 +77,6 @@ class Snapshots(
         record.createdAt,
         record.forgottenAt,
         record.partial,
+        RestoreSupport.blocked(plugin, record.partial, record.forgottenAt != null),
     )
 }

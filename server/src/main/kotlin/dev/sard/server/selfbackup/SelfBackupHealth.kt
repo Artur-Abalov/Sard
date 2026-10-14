@@ -11,11 +11,11 @@ import java.time.Instant
 import java.util.UUID
 
 private const val LAST_AT =
-    "select max(r.finishedAt) from RunRecord r where r.sourceId = :source and r.status = :status"
+    "select max(r.finishedAt) from RunRecord r where r.sourceId = :source and r.kind = 'backup' and r.status = :status"
 private const val LAST_RUN =
-    "from RunRecord r where r.sourceId = :source and r.finishedAt is not null order by r.finishedAt desc, r.id desc"
+    "from RunRecord r where r.sourceId = :source and r.kind = 'backup' and r.finishedAt is not null order by r.finishedAt desc, r.id desc"
 private const val SUCCEEDED_SINCE =
-    "select count(r) from RunRecord r where r.sourceId = :source and r.status = :status and r.queuedAt >= :since"
+    "select count(r) from RunRecord r where r.sourceId = :source and r.kind = 'backup' and r.status = :status and r.queuedAt >= :since"
 private const val SCHEDULE_ON = "select s.enabled from ScheduleRecord s where s.sourceId = :source"
 private const val OVERDUE_SINCE =
     "select e.deadline from OverdueEpisodeRecord e where e.sourceId = :source and e.closedAt is null"

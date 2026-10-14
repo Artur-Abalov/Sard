@@ -10,6 +10,7 @@ import dev.sard.server.persistence.RunStepRecord
 import dev.sard.server.persistence.ScheduleFireRecord
 import dev.sard.server.persistence.ScheduleRecord
 import dev.sard.server.persistence.SourceRecord
+import dev.sard.server.runs.RunKind
 import dev.sard.server.runs.RunState
 import dev.sard.server.runs.RunViews
 import dev.sard.server.runs.Trigger
@@ -23,7 +24,7 @@ private const val FIRST_STEP = "from RunStepRecord s where s.runId = :run order 
 
 // D6 keeps one active run per source, so every run queued before this one has finished: the answer is fixed.
 private const val PREVIOUS_STATUS =
-    "select r.status from RunRecord r where r.sourceId = :source and r.finishedAt is not null " +
+    "select r.status from RunRecord r where r.sourceId = :source and r.kind = 'backup' and r.finishedAt is not null " +
         "and (r.queuedAt < :queued or (r.queuedAt = :queued and r.id < :run)) order by r.queuedAt desc, r.id desc"
 
 /** What a claimed delivery tells about, read back from the database at send time (S9a, F3b). */
@@ -106,6 +107,14 @@ internal object Notices {
             previousStatus = previousStatus(session, run),
             failuresBefore = failuresBefore(session, run),
             notifyOnSuccess = notifiesOnSuccess(session, run),
+            kind = RunKind.of(run.kind),
+            restore =
+                run.restore
+                    ?.let {
+                        RunViews.restoreInfo(
+                            it,
+                        )
+                    }?.let { RestoreNotice(it.snapshotId, it.snapshotCreatedAt, stepView.restore) },
         )
     }
 

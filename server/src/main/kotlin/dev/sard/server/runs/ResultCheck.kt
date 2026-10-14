@@ -7,6 +7,7 @@ import tools.jackson.databind.json.JsonMapper
 
 private val JSON = JsonMapper.builder().build()
 private const val INVALID = "invalid result: "
+private const val RESULT_OF_FAILED_RESTORE = "a restore output with a result for a restore that did not succeed"
 
 /** What a finished step produced (proto StepResult.output), stored in run_steps.output. */
 sealed interface StepOutput {
@@ -46,12 +47,47 @@ sealed interface StepOutput {
             ).entries.firstOrNull { it.value }?.key
     }
 
+    /**
+     * A restore is all or nothing (R2): a succeeded one has everything but [leftover]; any other ends with
+     * output only when its rollback failed, and then it holds [leftover] alone. Empty means "not reported".
+     */
     data class Restore(
         val target: String,
+        val filesRestored: Long = 0,
+        val bytesRestored: Long = 0,
+        val database: String = "",
+        val tablesRestored: Long = 0,
+        val rolesRestored: Long = 0,
+        val ownersRestored: Boolean = false,
+        val leftover: String = "",
     ) : StepOutput {
         override val kind = Action.RESTORE
 
-        override fun fields() = mapOf("target" to target)
+        override fun fields() =
+            mapOf(
+                "target" to target,
+                "filesRestored" to filesRestored,
+                "bytesRestored" to bytesRestored,
+                "database" to database,
+                "tablesRestored" to tablesRestored,
+                "rolesRestored" to rolesRestored,
+                "ownersRestored" to ownersRestored,
+                "leftover" to leftover,
+            )
+
+        /** Nothing reported at all. */
+        fun isEmpty() = this == Restore(target = "")
+
+        /** Only what the rollback could not remove, as a restore that did not succeed may report. */
+        fun leftoverOnly() = leftover.isNotEmpty() && copy(leftover = "") == Restore(target = "")
+
+        /** Why this output cannot prove a restore that succeeded, or null when it can. */
+        fun problem(): String? =
+            mapOf(
+                "a succeeded restore with something left behind" to leftover.isNotEmpty(),
+                "a restore output with negative sizes" to
+                    (minOf(filesRestored, bytesRestored, tablesRestored, rolesRestored) < 0),
+            ).entries.firstOrNull { it.value }?.key
     }
 
     data class Verify(
@@ -111,6 +147,8 @@ object ResultCheck {
         report: StepReport,
     ): Verdict {
         val outcome = StepOutcome(status, report.message)
+        val output = report.output
+        if (action == Action.RESTORE && output is StepOutput.Restore) return judgeRestore(status, output, outcome)
         val problem = problem(action, report.output)
         return when {
             problem == null -> Verdict(outcome, marked(report.output, status), invalid = null)
@@ -118,6 +156,24 @@ object ResultCheck {
             else -> Verdict(outcome, null, invalid = null)
         }
     }
+
+    /** A restore that did not succeed carries nothing, or only what its rollback left behind. */
+    private fun judgeRestore(
+        status: StepState,
+        output: StepOutput.Restore,
+        outcome: StepOutcome,
+    ): Verdict =
+        when {
+            status == StepState.SUCCEEDED -> succeededRestore(output, outcome)
+            output.isEmpty() -> Verdict(outcome, null, invalid = null)
+            output.leftoverOnly() -> Verdict(outcome, output, invalid = null)
+            else -> invalid(RESULT_OF_FAILED_RESTORE)
+        }
+
+    private fun succeededRestore(
+        output: StepOutput.Restore,
+        outcome: StepOutcome,
+    ): Verdict = output.problem()?.let(::invalid) ?: Verdict(outcome, output, invalid = null)
 
     private fun isFinal(status: StepState) = !status.active && status != StepState.LOST
 

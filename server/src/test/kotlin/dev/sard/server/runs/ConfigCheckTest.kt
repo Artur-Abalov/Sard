@@ -43,6 +43,20 @@ class ConfigCheckTest {
     }
 
     @Test
+    fun `a restore config names a missing property at the property, an unknown one at the object`() {
+        val schema = File("../agent/plugins/files/restore_schema.json").readText()
+        val named = { config: String ->
+            MutFlow
+                .underTest { ConfigCheck.violations(schema, config, emptySet(), namesMissing = true) }
+                .map { it.field }
+        }
+
+        assertEquals(listOf("config/destination"), named("{}"))
+        assertEquals(listOf("config"), named("""{"destination":"x","overwrite":true}"""))
+        assertEquals(listOf("config/destination"), named("""{"destination":"../x"}"""))
+    }
+
+    @Test
     fun `fields the schema does not know, like the translations, change nothing`() {
         assertTrue(FILES.contains("x-sard-i18n"))
         assertEquals(emptyList(), fields(FILES, """{"paths":["/etc"]}"""))

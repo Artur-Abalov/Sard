@@ -16,7 +16,7 @@ import java.util.UUID
 
 /**
  * A registered agent; table created by Flyway migrations V1, V2, V202609271200, V202609281200, V202609281400,
- * V202610011200 and V202610081200.
+ * V202610011200, V202610081200 and V202610141200.
  */
 @Entity
 @Table(name = "agents")
@@ -63,6 +63,10 @@ class Agent(
 
     @Column(name = "last_register_at")
     var lastRegisterAt: Instant? = null
+
+    /** The directory the host allows restores into (R2, migration V202610141200); null if never announced. */
+    @Column(name = "restore_dir")
+    var restoreDir: String? = null
 
     /** The last confirmed duplicate session (S8b, migration V202610011200); null if there never was one. */
     @Column(name = "duplicate_session_at")

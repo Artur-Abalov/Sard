@@ -101,6 +101,7 @@ class AgentsApiImpl(
             card.scriptNames,
             versions.outdated(row.agentVersion),
             row.builtin,
+            card.restoreDir,
         )
     }
 

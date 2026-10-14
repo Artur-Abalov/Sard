@@ -10,6 +10,12 @@ import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepView
 import dev.sard.server.runs.Trigger
 import dev.sard.server.scheduler.CatchUpPeriod
+import tools.jackson.core.type.TypeReference
+import tools.jackson.databind.json.JsonMapper
+import dev.sard.server.runs.RunKind as DomainRunKind
+
+private val JSON = JsonMapper.builder().build()
+private val CONFIG = object : TypeReference<Map<String, Any?>>() {}
 
 /** Domain runs and steps to the contract's classes: the same facts, under the wire names. */
 internal object RunMapping {
@@ -30,6 +36,9 @@ internal object RunMapping {
         view.finishedAt,
         view.steps.map(::step),
         catchUp(period),
+        kind(view.kind),
+        view.requestedBy,
+        view.restore?.let(RestoreMapping::runRestore),
     )
 
     fun summary(
@@ -48,6 +57,8 @@ internal object RunMapping {
         view.startedAt,
         view.finishedAt,
         catchUp(period),
+        kind(view.kind),
+        view.requestedBy,
     )
 
     private fun catchUp(period: CatchUpPeriod?) =
@@ -69,7 +80,10 @@ internal object RunMapping {
             view.filesProcessed,
             view.filesTotal,
             view.message,
-            view.backup?.let { BackupOutput(it.snapshotId, it.totalBytes, it.addedBytes, it.repositoryId, it.partial) },
+            view.backup?.let {
+                BackupOutput(it.snapshotId, it.totalBytes, it.addedBytes, it.repositoryId, it.partial, it.restorable)
+            },
+            view.restore?.let(RestoreMapping::output),
             view.queuedAt,
             view.dispatchedAt,
             view.startedAt,
@@ -85,7 +99,36 @@ internal object RunMapping {
     /** The domain's state of a status a client filters by. */
     fun state(status: RunStatus): RunState = RunState.valueOf(status.name)
 
+    private fun kind(kind: DomainRunKind): RunKind = RunKind.valueOf(kind.name)
+
+    /** The domain's kind of a kind a client filters by. */
+    fun kindOf(kind: RunKind): DomainRunKind = DomainRunKind.valueOf(kind.name)
+
     private fun action(action: Action): StepAction = StepAction.valueOf(action.name)
 
     private fun stepStatus(state: StepState): StepStatus = StepStatus.valueOf(state.name)
+}
+
+/** The restore facts of a run and a step, under the wire names. */
+internal object RestoreMapping {
+    fun runRestore(restore: dev.sard.server.runs.RestoreInfo) =
+        RunRestore(
+            restore.snapshotId,
+            restore.snapshotCreatedAt,
+            restore.repositoryName,
+            JSON.readValue(restore.config, CONFIG),
+            restore.target,
+        )
+
+    fun output(result: dev.sard.server.runs.RestoreResult) =
+        RestoreOutput(
+            result.target,
+            result.filesRestored,
+            result.bytesRestored,
+            result.database,
+            result.tablesRestored,
+            result.rolesRestored,
+            result.ownersRestored,
+            result.leftover,
+        )
 }
