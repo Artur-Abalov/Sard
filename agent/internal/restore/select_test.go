@@ -156,3 +156,16 @@ func TestAPrefixFittingSnapshotsOfTwoSourcesIsAmbiguousWithinTheSourceOnly(t *te
 		t.Fatalf("got %v, %v", got.ID, f)
 	}
 }
+
+// A snapshot that carries both postgresql.part tags is what repo restore lays
+// out (KindOf takes the first), so latest must not skip it as globals.
+func TestLatestAndTheKindOfASnapshotAgreeWhenItCarriesTwoPartTags(t *testing.T) {
+	both := restore.Snapshot{ID: id("dddd1111"), ShortID: "dddd1111", Time: at(20).UTC(),
+		Tags: []string{"sard.source=s2", "postgresql.part=database", "postgresql.part=globals"}}
+	s := "s2"
+	both.Source = &s
+	got, f := restore.Select(append(snapshotsF(), both), "latest", "base", "s2")
+	if f != nil || got.ID != both.ID || restore.KindOf(got) != restore.KindDatabase {
+		t.Fatalf("got %v, %v", got.ID, f)
+	}
+}

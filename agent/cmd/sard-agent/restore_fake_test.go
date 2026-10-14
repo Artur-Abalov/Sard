@@ -178,6 +178,9 @@ func (f *fakeRestic) ls(_ context.Context, cmd restic.Command, r *fakeRepo) (int
 // does; the file is /app.dump or /app.globals.sql of the set.
 func (f *fakeRestic) dump(_ context.Context, cmd restic.Command, r *fakeRepo) (int, error) {
 	id, path := cmd.Args[len(cmd.Args)-2], cmd.Args[len(cmd.Args)-1]
+	if _, isFile := cmd.StdoutTo.(*os.File); isFile {
+		f.t.Errorf("restic dump got a file for stdout: the service user must never be handed the descriptor of a file of root, only a pipe")
+	}
 	for _, file := range r.restoreState.files[id] {
 		if file.path != path {
 			continue

@@ -22,10 +22,6 @@ const (
 	minPrefixChars = 8
 )
 
-// globalsTag marks the snapshot of the global objects of PostgreSQL, which is
-// written after the snapshot of its database (Р58).
-const globalsTag = "postgresql.part=globals"
-
 // CheckRef: the snapshot argument of repo restore is a full id, a prefix of
 // 8-63 lowercase hexadecimal characters or "latest", which needs a source.
 func CheckRef(ref, source string) error {
@@ -90,7 +86,7 @@ func unknown(ref, repoName, source string) *refusal.Failure {
 
 func newest(list []Snapshot, source string) (Snapshot, *refusal.Failure) {
 	candidates := slices.DeleteFunc(slices.Clone(list), func(s Snapshot) bool {
-		return !ofSource(s, source) || slices.Contains(s.Tags, globalsTag)
+		return !ofSource(s, source) || KindOf(s) == KindGlobals
 	})
 	if len(candidates) == 0 {
 		return Snapshot{}, refusal.Fail(refusal.SnapshotUnknown, "no snapshot of source %s in the repository", source)
