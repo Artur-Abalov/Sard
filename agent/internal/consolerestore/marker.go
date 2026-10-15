@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
@@ -88,8 +89,11 @@ func parseMarker(data []byte) (m marker, err error) {
 // Removing a tree is unordered, and a kill after root and before the marker
 // would leave a marker without root: the sign of a completed restore. So the
 // marker goes first and the directory is synced; if the marker stays,
-// root stays too, and the next start judges the entry again.
-func removeCommand(staging hostsetup.Dir, name string) error {
+// root stays too, and the next start judges the entry again. A directory that
+// cannot be synced does not stop the cleanup: the order then holds on the
+// in-order metadata commit of a journaling filesystem (one that does not
+// journal is not covered), and the failure is logged.
+func removeCommand(staging hostsetup.Dir, name string, log *slog.Logger) error {
 	if dir, err := staging.Open(name); err == nil {
 		defer func() { _ = dir.Close() }()
 		for _, n := range []string{markerName, markerTemp} {
@@ -97,9 +101,10 @@ func removeCommand(staging hostsetup.Dir, name string) error {
 				return err
 			}
 		}
-		// A directory that cannot be synced still keeps the order against a kill
-		// of the process; only a power loss in the same moment could undo it.
-		_ = dir.Sync()
+		if err := dir.Sync(); err != nil {
+			log.Warn("the removal of the marker could not be synced to disk; the order of marker and root rests on the filesystem journal",
+				"path", dir.Path(), "error", err)
+		}
 	}
 	return hostsetup.RemoveTree(staging, name)
 }

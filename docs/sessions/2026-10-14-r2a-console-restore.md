@@ -105,3 +105,28 @@
 3. proto против origin/main: `restore_dir = 10` в `RegisterRequest` совпадает с `machine_id = 10` в main
    (V1), `reject_reason = 14` main'а удалён в ветке: нужен rebase и перенумерация. Против основы R2a
    (`PROTO_BASE=4daa01e`) ворота проходят.
+
+## Coder, раунд после hardener (слияние с main)
+
+1. Слияние origin/main (merge commit, без rebase/force). Конфликты и решения:
+   - `proto/sard/agent/v1/agent.proto`: `machine_id = 10` main'а сохранён, `RegisterRequest.restore_dir`
+     переехал `10` -> `11` (R2a не выпущен). Остальные поля R2a (`Plugin.restore_config_schema = 5`,
+     `RestoreOutput` 2-8) не пересекаются с main (`reject_reason = 14`, `RejectReason`). `agent.pb.go`
+     перегенерирован `make proto`; `make breaking-proto` (против origin/main) проходит.
+   - `agent/cmd/sard-agent/main.go`: обе стороны (роль/machine_id main'а и движок восстановления,
+     recovery, `RestoreDir` R2a): `newAgent(cfg, hostname, restic, machineID, engine)`,
+     `serve(ctx, cfg, role, agent, recovery)`.
+   - Сервер (`RegisterRequests`, `AgentSnapshot`, `Registration`, `SnapshotRules`, `Agent`, `AgentsController`,
+     `AgentsApiImpl`, `Runs`): оба поля (`machineId` и `restoreDir`, `role` и `restoreDir`), обе проверки;
+     `Runs` берёт `Action.BACKUP` main'а и `RunKind.BACKUP` R2a. Тесты: оба набора кейсов.
+   - Миграция R2a и `agent_role` main'а были обе `V202610141200`: R2a переименована в
+     `V202610151200__console_restore.sql` (по дате+HHMM написания, монотонно после 141200); список версий в
+     `SardServerIntegrationTest` и комментарии обновлены.
+   - web: локали и `enums.test.ts` — `AgentRole` и `RunKind` оба; `openapi.json` и `schema.d.ts` перегенерированы
+     `make openapi`; в `fixtures.ts` у агента-верификатора добавлен `restoreDir: null`.
+   - agent/executor: тест «unsupported action» опирался на то, что files не умеет RESTORE; теперь файлы умеют,
+     а VERIFY отсекает роль source раньше — случай переведён на обработчик «backup-only» с действием RESTORE.
+2. Утечка дескриптора в `staging.go` закрыта (тест hardener'а `hardening_leak_test.go`).
+3. Удалён избыточный код (эквивалентные мутанты), поведение не менялось. `runtime.KeepAlive(target)` в
+   `hostsetup/osdir_linux.go` оставлен: нужен для корректности, мутант виден только по срокам GC.
+4. `removeCommand` пишет WARN с путём при сбое fsync каталога (тест), комментарий исправлен; ADR 0060 п. 8.

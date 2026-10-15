@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -78,5 +79,31 @@ func TestTheEngineClosesEverythingItOpens(t *testing.T) {
 			run(t, h)
 			h.faults.noLeaks(t)
 		})
+	}
+}
+
+// A directory that cannot be synced does not stop the cleanup, but the
+// operator is told: the order of marker and root then rests on the journal of
+// the filesystem.
+func TestAFailedSyncOfTheCommandDirectoryIsLoggedAndTheCleanupGoesOn(t *testing.T) {
+	h := newHost(t)
+	c1 := command(h, "c1")
+	if err := writeFile(filepath.Join(c1, "root/srv/a.txt"), "A", 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFile(filepath.Join(c1, "marker"), `{"destination":"d"}`, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.faults.syncErr = map[string]error{c1: syscall.EIO}
+	got := h.engine.CleanStaging()
+	if len(got) != 1 || got[0].Err != nil {
+		t.Fatalf("evidence = %+v", got)
+	}
+	if _, err := os.Stat(c1); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the directory was not removed: %v", err)
+	}
+	log := h.log.String()
+	if !strings.Contains(log, "level=WARN") || !strings.Contains(log, c1) {
+		t.Fatalf("want a WARN naming %s; log:\n%s", c1, log)
 	}
 }
