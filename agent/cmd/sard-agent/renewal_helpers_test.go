@@ -146,8 +146,12 @@ func (s *renewalServer) Connect(stream grpc.BidiStreamingServer[agentv1.ConnectR
 	s.note(stream.Context(), "hello")
 	go func() {
 		for {
-			if _, err := stream.Recv(); err != nil {
+			msg, err := stream.Recv()
+			if err != nil {
 				return
+			}
+			if msg.GetHeartbeat() != nil {
+				s.note(stream.Context(), "heartbeat")
 			}
 		}
 	}()
@@ -278,7 +282,6 @@ type renewalHost struct {
 
 func newRenewalHost(t *testing.T) *renewalHost {
 	t.Helper()
-	useMachineIDFiles(t, "", "")
 	ca := certtest.NewCA(t)
 	h := &renewalHost{t: t, ca: ca, dir: t.TempDir(), stateDir: filepath.Join(t.TempDir(), "state"), clock: certtest.NewClock(renewT0), log: &logBuffer{}, rnd: 0.999999}
 	h.server, h.address = newRenewalServer(t, ca, h.clock)
@@ -389,4 +392,21 @@ func (a *runningAgent) exited() bool {
 	default:
 		return false
 	}
+}
+
+// waitLog waits until the agent's log contains text.
+func (h *renewalHost) waitLog(text string) {
+	h.t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !strings.Contains(h.log.String(), text) {
+		if time.Now().After(deadline) {
+			h.t.Fatalf("the log does not contain %q:\n%s", text, h.log.String())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// renewalPause waits until the renewal sleeps for d (the heartbeat timers are 30 s).
+func (h *renewalHost) renewalPause() time.Duration {
+	return h.clock.WaitTimerOf(h.t, 30*time.Second)
 }
