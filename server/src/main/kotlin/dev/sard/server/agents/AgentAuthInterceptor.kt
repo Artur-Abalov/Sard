@@ -14,6 +14,7 @@ import io.grpc.ServerCallHandler
 import io.grpc.ServerInterceptor
 import io.grpc.StatusRuntimeException
 import org.slf4j.LoggerFactory
+import java.security.cert.CertificateParsingException
 import java.security.cert.X509Certificate
 import javax.net.ssl.SSLPeerUnverifiedException
 
@@ -83,15 +84,21 @@ class AgentAuthInterceptor(
         }
     }
 
-    /** The verdict, or null when the store behind the check failed (ADR 0009 amendment, A8d-3). */
+    /**
+     * The verdict, or null when the store behind the check failed (ADR 0009 amendment, A8d-3).
+     * Only the store is guarded: what the caller presented is read first, so a certificate that
+     * cannot be read is the caller's fault, never a retryable fault of the server.
+     */
     @Suppress("TooGenericExceptionCaught")
-    private fun authenticated(call: ServerCall<*, *>): AgentAuthResult? =
-        try {
-            authenticator.authenticate(presented(call))
+    private fun authenticated(call: ServerCall<*, *>): AgentAuthResult? {
+        val presented = presented(call)
+        return try {
+            authenticator.authenticate(presented)
         } catch (e: Exception) {
             log.error("agent authentication failed on {}", call.methodDescriptor.fullMethodName, e)
             null
         }
+    }
 
     private fun <Q, R> closed(
         call: ServerCall<Q, R>,
@@ -101,7 +108,10 @@ class AgentAuthInterceptor(
         return object : ServerCall.Listener<Q>() {}
     }
 
-    /** The leaf the TLS layer verified against the Sard CA, or null when none was presented. */
+    /**
+     * The leaf the TLS layer verified against the Sard CA, or null when none was presented or
+     * its names cannot be read: either way the call has no certificate to be known by.
+     */
     private fun presented(call: ServerCall<*, *>): PresentedCertificate? {
         val session = call.attributes.get(Grpc.TRANSPORT_ATTR_SSL_SESSION) ?: return null
         val leaf =
@@ -110,6 +120,10 @@ class AgentAuthInterceptor(
             } catch (_: SSLPeerUnverifiedException) {
                 null
             }
-        return leaf?.let(PresentedCertificate::of)
+        return try {
+            leaf?.let(PresentedCertificate::of)
+        } catch (_: CertificateParsingException) {
+            null
+        }
     }
 }

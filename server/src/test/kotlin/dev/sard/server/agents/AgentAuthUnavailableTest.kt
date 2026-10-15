@@ -16,13 +16,6 @@ import dev.sard.server.role.AgentRole
 import dev.sard.server.selfagent.captureEvents
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
-import org.bouncycastle.asn1.DERNull
-import org.bouncycastle.asn1.x500.X500Name
-import org.bouncycastle.asn1.x509.Extension
-import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
-import org.bouncycastle.cert.X509v3CertificateBuilder
-import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
-import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import io.grpc.Attributes
 import io.grpc.Grpc
 import io.grpc.Metadata
@@ -31,6 +24,13 @@ import io.grpc.ServerCall
 import io.grpc.ServerCallHandler
 import io.grpc.Status
 import io.grpc.protobuf.StatusProto
+import org.bouncycastle.asn1.DERNull
+import org.bouncycastle.asn1.x500.X500Name
+import org.bouncycastle.asn1.x509.Extension
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
+import org.bouncycastle.cert.X509v3CertificateBuilder
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import java.lang.reflect.Proxy
 import java.math.BigInteger
 import java.security.KeyPairGenerator
@@ -170,8 +170,13 @@ class AgentAuthUnavailableTest {
         assertFalse(intercept(call, CertificateStandings { standing }))
         val status = assertNotNull(call.status)
         assertNotEquals(Status.Code.UNAVAILABLE, status.code)
-        val info = StatusProto.fromStatusAndTrailers(status, call.trailers).detailsList.single().unpack(ErrorInfo::class.java)
-        assertNotEquals("INTERNAL_RETRYABLE", info.reason)
+        val info =
+            StatusProto
+                .fromStatusAndTrailers(status, call.trailers)
+                .detailsList
+                .single()
+                .unpack(ErrorInfo::class.java)
+        assertEquals("CERT_MISSING", info.reason)
     }
 
     private val ca = CaKeyPair.generate(PkiFixtures.CLOCK, PkiFixtures.random())
