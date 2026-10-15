@@ -36,10 +36,13 @@ internal object RenewalChecks {
         now: Instant,
         interval: Duration,
     ): Duration? {
-        if (latestIssue == null) return null
-        val wait = Duration.between(now, latestIssue + interval)
-        if (!wait.isPositive) return null
-        return Duration.ofSeconds((wait.toNanos() + NANOS_PER_SECOND - 1) / NANOS_PER_SECOND)
+        val wait = latestIssue?.let { Duration.between(now, it + interval) }
+        return wait?.takeIf { it.isPositive }?.let(::roundedUp)
+    }
+
+    private fun roundedUp(wait: Duration): Duration {
+        val seconds = (wait.toNanos() + NANOS_PER_SECOND - 1) / NANOS_PER_SECOND
+        return Duration.ofSeconds(seconds)
     }
 
     private fun csrKey(csrDer: ByteArray): ByteArray =
