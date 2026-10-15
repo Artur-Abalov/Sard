@@ -222,7 +222,7 @@ func (e *Engine) Settle(commandID string) {
 // UsableName: id is one component of a path, so a command can name a
 // directory after it.
 func UsableName(id string) bool {
-	return id != "" && id != "." && id != ".." && filepath.Base(id) == id
+	return id != "." && id != ".." && filepath.Base(id) == id
 }
 
 // stagingEntries opens .sard-staging without following a link and lists it;
@@ -438,7 +438,6 @@ func (a *attempt) move() *Failure {
 	if err := a.command.Move(rootName, dir, name); err != nil {
 		return moveFailure(err, a.destinationPath())
 	}
-	a.stagingMade = false // the directory is the destination now
 	if err := dir.Sync(); err != nil {
 		// The rename happened: the restore did too. Only its durability is in doubt.
 		a.e.opts.Logger.Warn("the restored directory is in place, but the directory that holds it could not be synced to disk",

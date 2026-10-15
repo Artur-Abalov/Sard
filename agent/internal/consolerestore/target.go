@@ -27,7 +27,7 @@ func (a *attempt) inspect() *Failure {
 	}
 	defer func() { _ = root.Close() }()
 	dest, f := a.walk(root)
-	if f != nil || dest == nil {
+	if dest == nil {
 		return f
 	}
 	defer func() { _ = dest.Close() }()

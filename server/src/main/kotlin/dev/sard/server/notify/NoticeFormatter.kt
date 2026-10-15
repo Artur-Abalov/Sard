@@ -44,7 +44,6 @@ class RunNoticeFormatter(
     ): Headline? {
         val recovered = Headline("✅", words.verdicts.recovered)
         return when {
-            notice.kind == RunKind.RESTORE -> words.headline(notice.stepStatus, words.restore.verdicts)
             telling == Telling.RECOVERY -> recovered
             else -> words.headline(notice.stepStatus)
         }
@@ -192,8 +191,7 @@ internal class RestoreNoticeFormatter(
     private fun restoreOutcome(notice: RunNotice): List<List<Message.Part>> {
         val result = notice.result
         return when (notice.stepStatus) {
-            // A finished run has no active step: the queued, dispatched and running ones are never reached.
-            StepState.SUCCEEDED, StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING -> {
+            StepState.SUCCEEDED -> {
                 listOfNotNull(result?.let(::restoredLine))
             }
 
@@ -203,6 +201,10 @@ internal class RestoreNoticeFormatter(
 
             StepState.FAILED, StepState.REJECTED, StepState.TIMED_OUT, StepState.CANCELLED -> {
                 lines.reasonLines(notice.message) + listOf(rollbackLine(result?.leftover))
+            }
+
+            StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING -> {
+                error("a finished run has no active step: ${notice.stepStatus}")
             }
         }
     }

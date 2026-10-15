@@ -55,7 +55,7 @@ internal object RestoreDefaults {
     private fun escaped(name: String): String =
         name.toByteArray(StandardCharsets.UTF_8).joinToString("") { byte ->
             val c = byte.toInt().toChar()
-            if (byte >= 0 && c in SAFE) c.toString() else "%%%02X".format(byte.toInt() and BYTE_MASK)
+            if (c in SAFE) c.toString() else "%%%02X".format(byte.toInt() and BYTE_MASK)
         }
 }
 
