@@ -207,8 +207,9 @@ func TestTheAgentRegistersWithTheLatestIssuedUsablePair(t *testing.T) {
 		h.clock.Set(row.now)
 		h.run()
 		h.server.waitCount(t, "register", 1)
-		if got := h.server.eventLog(); got[len(got)-1] != "register C"+row.presented {
-			t.Fatalf("%s: events = %v", row.name, got)
+		// The stream opens right after Register, so the Register is not the last event.
+		if got := h.server.registers(); len(got) != 1 || got[0] != "register C"+row.presented {
+			t.Fatalf("%s: Register calls = %v, events = %v", row.name, got, h.server.eventLog())
 		}
 		if h.exists("agent.key.new") != row.keepsNew {
 			t.Fatalf("%s: files = %s", row.name, h.names())

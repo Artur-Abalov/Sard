@@ -491,3 +491,14 @@ func (s *renewalServer) receive(stream grpc.BidiStreamingServer[agentv1.ConnectR
 		}
 	}
 }
+
+// registers are the Register events so far.
+func (s *renewalServer) registers() []string {
+	var out []string
+	for _, e := range s.eventLog() {
+		if strings.HasPrefix(e, "register") {
+			out = append(out, e)
+		}
+	}
+	return out
+}
