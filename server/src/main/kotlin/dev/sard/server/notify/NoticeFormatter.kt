@@ -192,7 +192,7 @@ internal class RestoreNoticeFormatter(
         val result = notice.result
         return when (notice.stepStatus) {
             StepState.SUCCEEDED -> {
-                listOfNotNull(result?.let(::restoredLine))
+                restoredLines(result)
             }
 
             StepState.LOST -> {
@@ -208,6 +208,8 @@ internal class RestoreNoticeFormatter(
             }
         }
     }
+
+    private fun restoredLines(r: RestoreResult?) = listOfNotNull(r?.let(::restoredLine))
 
     /** All or nothing: a failure left nothing, unless its rollback failed and the operator must clean up. */
     private fun rollbackLine(leftover: String?): List<Message.Part> =
