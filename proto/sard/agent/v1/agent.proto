@@ -83,6 +83,16 @@ service AgentService {
   // RenewCertificate issues a new client certificate before the current one
   // expires.
   rpc RenewCertificate(RenewCertificateRequest) returns (RenewCertificateResponse);
+
+  // ConfirmCertificate tells the server that the agent holds the certificate
+  // it presents, a renewed one, and works with it. The agent calls it over a
+  // separate connection that presents the new pair. Until then the new
+  // certificate authenticates only this call; afterwards the server rejects
+  // the certificate it replaced (CERT_SUPERSEDED), while a stream already
+  // open with it stays open. Repeating the call, or calling it with a
+  // certificate that replaced none, succeeds and changes nothing. The agent
+  // is identified by the certificate; the messages are empty.
+  rpc ConfirmCertificate(ConfirmCertificateRequest) returns (ConfirmCertificateResponse);
 }
 
 // RegisterRequest describes the agent to the server.
@@ -138,13 +148,23 @@ message RegisterResponse {
 }
 
 message RenewCertificateRequest {
-  // New CSR, DER-encoded; may reuse the existing key or carry a new one.
+  // New CSR, DER-encoded; must carry a new key: a CSR for the key of the
+  // presented certificate is rejected (CSR_KEY_REUSED).
   bytes csr_der = 1;
 }
 
 message RenewCertificateResponse {
+  // The new certificate chain in the same form as
+  // EnrollResponse.certificate_chain_pem. The expiry is read from the
+  // certificate.
   string certificate_chain_pem = 1;
 }
+
+// ConfirmCertificateRequest is empty: the presented certificate names the agent.
+message ConfirmCertificateRequest {}
+
+// ConfirmCertificateResponse is empty: success is the OK status.
+message ConfirmCertificateResponse {}
 
 // ---------------------------------------------------------------------------
 // Stream: agent -> server
