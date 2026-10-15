@@ -12,6 +12,7 @@ import dev.sard.server.agents.CertificateStanding
 import dev.sard.server.agents.CertificateStandings
 import dev.sard.server.agents.PresentedCertificate
 import dev.sard.server.pki.AgentIdentity
+import dev.sard.server.pki.CertificateRole
 import java.time.Clock
 
 /** Closes a stream as the interceptor would have refused it (S3's reasons, UNAUTHENTICATED). */
@@ -31,11 +32,22 @@ class SessionRevalidation(
         val authenticator = AgentAuthenticator(CertificateStandings(known::get), clock)
         return agents
             .mapNotNull { agent ->
-                (authenticator.authenticate(presented(agent)) as? AgentAuthResult.Rejected)?.let { agent to it.failure }
+                (authenticator.authenticate(presented(agent, known[agent.serial])) as? AgentAuthResult.Rejected)?.let {
+                    agent to it.failure
+                }
             }.toMap()
     }
 
-    /** What the certificate presented when the stream opened; its SAN matched the record then. */
-    private fun presented(agent: ConnectedAgent) =
-        PresentedCertificate(agent.serial, AgentIdentity(tenantId = agent.tenantId, agentId = agent.agentId))
+    /**
+     * What the certificate presented when the stream opened; its SAN and role matched the record then, and a
+     * role never changes, so the record's own role stands for the certificate's.
+     */
+    private fun presented(
+        agent: ConnectedAgent,
+        standing: CertificateStanding?,
+    ) = PresentedCertificate(
+        agent.serial,
+        AgentIdentity(tenantId = agent.tenantId, agentId = agent.agentId),
+        standing?.let { CertificateRole.Valid(it.role) } ?: CertificateRole.Missing,
+    )
 }

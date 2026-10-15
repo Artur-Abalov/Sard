@@ -9,6 +9,7 @@ import dev.sard.server.persistence.EnrollmentTokenRecord
 import dev.sard.server.persistence.HibernateTenantBridge
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.CertificateAuthority
+import dev.sard.server.role.AgentRole
 import jakarta.persistence.EntityManagerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -68,7 +69,7 @@ class EnrollmentTokensIntegrationTest(
 
     @Test
     fun `a created token is stored only as the hash of its secret`() {
-        val issued = tokens.create(acme, Duration.ofHours(24))
+        val issued = tokens.create(acme, Duration.ofHours(24), role = AgentRole.SOURCE)
         val token = EnrollmentToken.parse(issued.reveal())
         assertEquals(ca.fingerprint(), token.fingerprint)
 
@@ -89,23 +90,25 @@ class EnrollmentTokensIntegrationTest(
 
     @Test
     fun `a token must live for a positive duration`() {
-        assertFailsWith<IllegalArgumentException> { tokens.create(acme, Duration.ZERO) }
-        assertFailsWith<IllegalArgumentException> { tokens.create(acme, Duration.ofSeconds(-1)) }
+        assertFailsWith<IllegalArgumentException> { tokens.create(acme, Duration.ZERO, role = AgentRole.SOURCE) }
+        assertFailsWith<IllegalArgumentException> {
+            tokens.create(acme, Duration.ofSeconds(-1), role = AgentRole.SOURCE)
+        }
     }
 
     @Test
     fun `the system lookup finds a token of any tenant by its hash`() {
-        val foreign = tokens.create(acme, Duration.ofHours(1))
-        val own = tokens.create(DEFAULT_TENANT_ID, Duration.ofHours(1))
-        assertEquals(TokenOwner(foreign.id, acme), tokens.ownerOf(hashOf(foreign)))
-        assertEquals(TokenOwner(own.id, DEFAULT_TENANT_ID), tokens.ownerOf(hashOf(own)))
+        val foreign = tokens.create(acme, Duration.ofHours(1), role = AgentRole.SOURCE)
+        val own = tokens.create(DEFAULT_TENANT_ID, Duration.ofHours(1), role = AgentRole.SOURCE)
+        assertEquals(TokenOwner(foreign.id, acme, role = AgentRole.SOURCE), tokens.ownerOf(hashOf(foreign)))
+        assertEquals(TokenOwner(own.id, DEFAULT_TENANT_ID, role = AgentRole.SOURCE), tokens.ownerOf(hashOf(own)))
         assertNull(tokens.ownerOf(ByteArray(32)))
     }
 
     @Test
     fun `tenant-scoped reads still do not see a foreign token`() {
-        val foreign = tokens.create(acme, Duration.ofHours(1))
-        val own = tokens.create(DEFAULT_TENANT_ID, Duration.ofHours(1))
+        val foreign = tokens.create(acme, Duration.ofHours(1), role = AgentRole.SOURCE)
+        val own = tokens.create(DEFAULT_TENANT_ID, Duration.ofHours(1), role = AgentRole.SOURCE)
 
         emf.createEntityManager().use { em ->
             assertNull(em.find(EnrollmentTokenRecord::class.java, foreign.id), "the resolver's tenant saw acme")
@@ -121,7 +124,7 @@ class EnrollmentTokensIntegrationTest(
 
     @Test
     fun `the system session cannot write`() {
-        tokens.create(acme, Duration.ofHours(1))
+        tokens.create(acme, Duration.ofHours(1), role = AgentRole.SOURCE)
         val error =
             assertFailsWith<Exception> {
                 sessions.system { s ->

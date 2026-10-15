@@ -19,6 +19,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 private const val BEFORE_F4B = "202610121200"
+
+// F4b itself: later migrations (V1 makes agents.role NOT NULL) are not what this class checks.
+private const val F4B = "202610121300"
 private const val SCHEMA = "marks_migration"
 private val TENANT = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
@@ -149,7 +152,7 @@ class OnboardingMarksMigrationTest(
 
     @Test
     fun `Агент, появившийся после первого старта, отметку не ставит`() {
-        flyway().migrate()
+        flyway(F4B).migrate()
         jdbc.execute("set search_path to $SCHEMA")
         jdbc.execute("set session_replication_role = replica")
         agent(builtin = false, revoked = false)

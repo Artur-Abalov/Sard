@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# One executable rule for the agent role URI, read by the agent
+# (agent/internal/identity) and by the server (pki/AgentRoleUriTest).
+# A SAN URI is a role URI when its scheme is sard and its host is roles
+# (both case-insensitive); a certificate must carry exactly one, written
+# exactly sard://roles/source or sard://roles/verifier.
+#
+# Each row is <uri><TAB><outcome> for a certificate whose SAN carries that
+# single role-candidate URI next to the agent identity:
+#   source, verifier  the role
+#   missing           not a role URI, so no role
+#   invalid           a role URI that is not written exactly
+# Only URIs that both Go x509.ParseCertificate and Java
+# X509Certificate.getSubjectAlternativeNames accept are listed. Several
+# URIs and the order of names are module-local cases. sard://[roles]/source
+# is left out: Go refuses to parse a certificate that carries it.
+sard://roles/source	source
+sard://roles/verifier	verifier
+sard://role/source	missing
+sard://role/verifier	missing
+https://roles/source	missing
+https://roles/verifier	missing
+sard://tenants/x/agents/y	missing
+sard:roles	missing
+sard://roles/admin	invalid
+sard://roles/Source	invalid
+sard://roles/Verifier	invalid
+SARD://ROLES/source	invalid
+SARD://ROLES/verifier	invalid
+sard://Roles	invalid
+sard://roles	invalid
+sard://roles/	invalid
+sard://roles/source/	invalid
+sard://roles/verifier/	invalid
+sard://roles/source?x=1	invalid
+sard://roles/verifier?x=1	invalid
+sard://roles/source#x	invalid
+sard://roles/verifier#x	invalid
+sard://roles/verifier#	invalid
+sard://u@roles/source	invalid
+sard://u@roles/verifier	invalid
+sard://roles:443/source	invalid
+sard://roles:443/verifier	invalid

@@ -24,6 +24,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	"github.com/Artur-Abalov/sard/agent/plugins/files"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
@@ -326,7 +327,10 @@ type rig struct {
 	restoreDir string
 }
 
-func newRig(t *testing.T) *rig {
+func newRig(t *testing.T) *rig { return newRigAs(t, role.Source) }
+
+// newRigAs is a rig whose agent has that role.
+func newRigAs(t *testing.T, role role.Role) *rig {
 	t.Helper()
 	r := &rig{t: t, fs: newFS(), sink: &sink{results: make(chan *agentv1.StepResult, 8)}}
 	r.restic = &fakeRestic{t: t}
@@ -353,6 +357,7 @@ func newRig(t *testing.T) *rig {
 	}
 	r.stateDir = filepath.Join(t.TempDir(), "state")
 	r.exec, err = executor.New(executor.Options{
+		Role:         role,
 		Handlers:     handlers,
 		Sink:         r.sink,
 		StateDir:     r.stateDir,

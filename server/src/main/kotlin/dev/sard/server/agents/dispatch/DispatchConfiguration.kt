@@ -12,6 +12,9 @@ import dev.sard.server.agents.stream.AgentStreamSweeper
 import dev.sard.server.agents.stream.CommandReconciliation
 import dev.sard.server.agents.stream.SendResult
 import dev.sard.server.persistence.TenantSessions
+import dev.sard.server.runs.RoleLedger
+import dev.sard.server.runs.RoleRefusals
+import dev.sard.server.runs.RunAnnouncer
 import dev.sard.server.runs.StepCounts
 import dev.sard.server.runs.StepDeadlines
 import dev.sard.server.runs.StepTransitions
@@ -108,6 +111,13 @@ class DispatchConfiguration {
     fun stepDeadlines(sessions: TenantSessions) = StepDeadlines(sessions)
 
     @Bean
+    fun roleLedger(
+        sessions: TenantSessions,
+        clock: Clock,
+        announcer: RunAnnouncer,
+    ): RoleLedger = RoleRefusals(sessions, clock, announcer)
+
+    @Bean
     fun stepDispatcher(
         transitions: StepTransitions,
         deadlines: StepDeadlines,
@@ -117,6 +127,7 @@ class DispatchConfiguration {
         settings: DispatchSettings,
         meters: MeterRegistry,
         counts: StepCounts,
+        roles: RoleLedger,
     ) = StepDispatcher(
         transitions,
         deadlines,
@@ -124,6 +135,7 @@ class DispatchConfiguration {
         clock,
         settings.lostAfter,
         MicrometerDispatchMetrics(meters),
+        roles,
         counts::waiting,
     )
 

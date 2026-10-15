@@ -201,7 +201,14 @@ class Runs(
         sourceLock: LockModeType,
     ): RunView {
         val source = liveSource(session, sourceId, sourceLock)
-        AgentOffer.require(session, source.agentId, source.plugin, source.repositoryName, LockModeType.PESSIMISTIC_READ)
+        AgentOffer.require(
+            session,
+            source.agentId,
+            source.plugin,
+            source.repositoryName,
+            Action.BACKUP,
+            LockModeType.PESSIMISTIC_READ,
+        )
         activeRunOf(session, sourceId, RunKind.BACKUP)?.let { throw RunActive(it) }
         val now = clock.instant()
         val requestedBy = if (trigger == Trigger.MANUAL) ADMIN else null

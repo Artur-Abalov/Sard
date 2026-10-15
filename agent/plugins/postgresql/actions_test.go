@@ -6,6 +6,7 @@ package postgresql_test
 import (
 	"testing"
 
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
@@ -26,8 +27,9 @@ func TestRestoreByThePostgresqlPluginIsRejectedUntilItIsWritten(t *testing.T) {
 
 // Scenario: Проверка и запуск скрипта плагином postgresql отклоняются.
 func TestVerifyAndRunByThePostgresqlPluginAreRejected(t *testing.T) {
+	roles := map[agentv1.Action]role.Role{agentv1.Action_ACTION_VERIFY: role.Verifier, agentv1.Action_ACTION_RUN: role.Source}
 	for name, action := range map[string]agentv1.Action{"ACTION_VERIFY": agentv1.Action_ACTION_VERIFY, "ACTION_RUN": agentv1.Action_ACTION_RUN} {
-		r := newRig(t)
+		r := newRigAs(t, roles[action])
 		s := step(js(k()))
 		s.Action, s.SnapshotId = action, "abc"
 		res := r.run(s)

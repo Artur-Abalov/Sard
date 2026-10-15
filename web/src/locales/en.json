@@ -59,6 +59,7 @@
     "repoInitPage": "Open an agent that has a repository marked \"not initialized\", run sard-agent repo init <name> on its host and restart the agent service.",
     "repoInitRestart": "After it, restart the agent service so that it reports the repository.",
     "revokedAt": "Revoked <when/>",
+    "role": "Role",
     "status": "Status",
     "version": "Version",
     "outdated": "Update available: {{version}}",
@@ -120,6 +121,7 @@
     "validation_failed": "The values are not acceptable",
     "unknown_agent": "The agent does not exist",
     "agent_revoked": "The agent is revoked",
+    "agent_role_mismatch": "The agent is a verifier and cannot back up",
     "unknown_plugin": "The agent does not offer this plugin",
     "unknown_repository": "The agent does not report this repository",
     "invalid_config": "The source config is not valid",
@@ -203,6 +205,9 @@
     "revokeText": "A revoked token can no longer be used to register an agent.",
     "revokeTitle": "Revoke the token?",
     "revokedNow": "The token was revoked.",
+    "role": "Agent role",
+    "roleHint": "A source runs backups; a verifier only verifies restores. The role goes into the agent's certificate and never changes.",
+    "roleOf": "Agent role: {{role}}",
     "shownOnce": "The token string is shown once. Copy it now: it cannot be shown again.",
     "status": "Status",
     "token": "Token",
@@ -322,6 +327,10 @@
       "manual": "manual",
       "verification": "verification",
       "catch_up": "catch-up"
+    },
+    "AgentRole": {
+      "source": "source",
+      "verifier": "verifier"
     },
     "RunKind": {
       "backup": "Backup",
@@ -667,7 +676,8 @@
         },
         "refused": {
           "unknown_plugin": "not started — the agent does not offer the source’s plugin",
-          "unknown_repository": "not started — the agent does not report the source’s repository"
+          "unknown_repository": "not started — the agent does not report the source’s repository",
+          "agent_role_mismatch": "not started — the agent is a verifier and cannot run backups"
         }
       }
     }

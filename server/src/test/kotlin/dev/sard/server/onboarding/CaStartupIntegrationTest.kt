@@ -128,7 +128,8 @@ class CaStartupIntegrationTest {
     ) {
         val agent = UUID.randomUUID()
         jdbc.update(
-            "insert into agents (id, tenant_id, hostname, registered_at, builtin) values (?, ?, 'h', now(), ?)",
+            "insert into agents (id, tenant_id, hostname, registered_at, builtin, role) " +
+                "values (?, ?, 'h', now(), ?, 'source')",
             agent,
             tenant,
             builtin,
@@ -276,8 +277,8 @@ class CaStartupIntegrationTest {
         jdbc.update("insert into tenants (id, name) values (?, 'B')", TENANT_B)
         for (tenant in listOf(TENANT, TENANT_B)) {
             jdbc.update(
-                "insert into enrollment_tokens (id, tenant_id, token_hash, expires_at, created_at, label) " +
-                    "values (?, ?, ?, now() + interval '1 day', now(), '')",
+                "insert into enrollment_tokens (id, tenant_id, token_hash, expires_at, created_at, label, role) " +
+                    "values (?, ?, ?, now() + interval '1 day', now(), '', 'source')",
                 UUID.randomUUID(),
                 tenant,
                 ByteArray(32) { (tenant.hashCode() + it).toByte() },

@@ -6,6 +6,7 @@ package dev.sard.server.api
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.runs.AgentRevoked
+import dev.sard.server.runs.AgentRoleMismatch
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.SnapshotView
 import dev.sard.server.runs.Snapshots
@@ -63,6 +64,8 @@ class SourcesApiImpl(
             RunMapping.run(runs.start(tenants.currentTenantId(), sourceId), null)
         } catch (_: AgentRevoked) {
             throw RunRefused(ErrorCode.AGENT_REVOKED)
+        } catch (_: AgentRoleMismatch) {
+            throw RunRefused(ErrorCode.AGENT_ROLE_MISMATCH)
         } catch (_: UnknownPlugin) {
             throw RunRefused(ErrorCode.UNKNOWN_PLUGIN)
         } catch (_: UnknownRepository) {

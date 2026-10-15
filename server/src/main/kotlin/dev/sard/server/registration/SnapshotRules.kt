@@ -22,6 +22,9 @@ private val BACKEND = Regex("^[a-z][a-z0-9]{0,15}$")
 /** restic repository ids are 32 random bytes in lower-case hex. */
 private val REPOSITORY_ID = Regex("^[0-9a-f]{64}$")
 
+/** hex(HMAC-SHA256(...)) of the agent's machine id (V1). */
+private val MACHINE_ID = Regex("^[0-9a-f]{64}$")
+
 private val JSON = JsonMapper.builder().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build()
 
 /**
@@ -47,6 +50,7 @@ object SnapshotRules {
         checkRepositories(snapshot.repositories)
         checkNames(snapshot.secretNames, "secret_names", MAX_SECRET_NAMES) { "secret_names[$it]" }
         checkNames(snapshot.scriptNames, "script_names", MAX_SCRIPT_NAMES) { "script_names[$it]" }
+        if (!MACHINE_ID.matches(snapshot.machineId)) throw invalid("machine_id")
         checkRestoreDir(snapshot.restoreDir)
     }
 

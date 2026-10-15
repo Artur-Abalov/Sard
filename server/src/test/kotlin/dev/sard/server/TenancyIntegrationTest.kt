@@ -45,7 +45,7 @@ class TenancyIntegrationTest(
     @Test
     fun `a saved agent is stamped with the default tenant`() {
         val id = UUID.randomUUID()
-        agents.save(Agent(id, "db1", "1.2.3", Instant.now(), lastSeenAt = null))
+        agents.save(Agent(id, "db1", "1.2.3", Instant.now(), lastSeenAt = null, role = "source"))
         try {
             val stored = jdbc.queryForObject("select tenant_id from agents where id = ?", UUID::class.java, id)
             assertEquals(DEFAULT_TENANT_ID, stored)
@@ -61,7 +61,8 @@ class TenancyIntegrationTest(
         val foreign = UUID.randomUUID()
         jdbc.update("insert into tenants (id, name) values (?, ?)", acme, "acme-$acme")
         jdbc.update(
-            "insert into agents (id, tenant_id, hostname, agent_version, registered_at) values (?, ?, 'x', '1', now())",
+            "insert into agents (id, tenant_id, hostname, agent_version, registered_at, role) " +
+                "values (?, ?, 'x', '1', now(), 'source')",
             foreign,
             acme,
         )

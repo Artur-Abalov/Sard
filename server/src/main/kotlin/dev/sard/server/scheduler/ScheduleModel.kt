@@ -47,6 +47,7 @@ enum class FireReason(
     AGENT_REVOKED("agent_revoked"),
     UNKNOWN_PLUGIN("unknown_plugin"),
     UNKNOWN_REPOSITORY("unknown_repository"),
+    AGENT_ROLE_MISMATCH("agent_role_mismatch"),
     ;
 
     companion object {

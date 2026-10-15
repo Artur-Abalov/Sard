@@ -19,9 +19,17 @@ data class AgentSnapshot(
     val repositories: List<RepositoryEntry>,
     val secretNames: List<String>,
     val scriptNames: List<String>,
+    /**
+     * hex(HMAC-SHA256("sard-machine-id/v1" || tenant_id, raw machine id)): 64 lower-case hex characters. Required;
+     * stored and searched, never shown in REST or logged.
+     */
+    val machineId: String,
     /** The directory the host allows restores into (R2); empty for an agent without console restore. */
     val restoreDir: String = "",
-)
+) {
+    /** Never the machine id: the snapshot is logged when something goes wrong. */
+    override fun toString() = "AgentSnapshot(hostname=$hostname, agentVersion=$agentVersion)"
+}
 
 data class PluginEntry(
     val name: String,

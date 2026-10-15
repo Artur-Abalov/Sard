@@ -53,6 +53,7 @@ class Registration(
         agent.protocolVersion = snapshot.protocolVersion.toInt()
         agent.secretNames = snapshot.secretNames
         agent.scriptNames = snapshot.scriptNames
+        agent.machineId = snapshot.machineId
         agent.restoreDir = snapshot.restoreDir.ifEmpty { null }
         agent.lastRegisterAt = now
         for (statement in listOf(DELETE_PLUGINS, DELETE_REPOSITORIES)) {

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
@@ -301,10 +302,13 @@ func setup(t *testing.T, tune func(*executor.Options)) *fixture {
 	f := &fixture{sink: newSink(), clock: newClock(), files: newHandler(false), stubborn: newHandler(true), log: &syncBuffer{}}
 	sloppy := newHandler(false)
 	sloppy.actions = append(sloppy.actions, agentv1.Action_ACTION_UNSPECIFIED)
+	backupOnly := newHandler(false)
+	backupOnly.actions = []agentv1.Action{agentv1.Action_ACTION_BACKUP}
 	opts := executor.Options{
-		Handlers:     registry{"files": f.files, "stubborn": f.stubborn, "sloppy": sloppy},
+		Handlers:     registry{"files": f.files, "stubborn": f.stubborn, "sloppy": sloppy, "backup-only": backupOnly},
 		Sink:         f.sink,
 		StateDir:     stateDir(t),
+		Role:         role.Source,
 		Repositories: []string{"main"},
 		Clock:        f.clock,
 		Logger:       slog.New(slog.NewTextHandler(f.log, nil)),

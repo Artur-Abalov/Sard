@@ -26,6 +26,7 @@ export const ids = {
   duplicateAgent: '0192f7a0-0000-7000-8000-000000000104',
   bareAgent: '0192f7a0-0000-7000-8000-000000000105',
   selfAgent: '0192f7a0-0000-7000-8000-000000000106',
+  verifierAgent: '0192f7a0-0000-7000-8000-000000000107',
   etcSource: '0192f7a0-0000-7000-8000-000000000201',
   homeSource: '0192f7a0-0000-7000-8000-000000000202',
   srvSource: '0192f7a0-0000-7000-8000-000000000203',
@@ -158,6 +159,7 @@ export const agents: Schemas['AgentDetails'][] = [
     duplicateSessionAt: null,
     outdated: false,
     builtin: false,
+    role: 'source',
     protocolVersion: 1,
     plugins: [
       filesPlugin,
@@ -186,6 +188,7 @@ export const agents: Schemas['AgentDetails'][] = [
     duplicateSessionAt: null,
     outdated: true,
     builtin: false,
+    role: 'source',
     protocolVersion: 1,
     plugins: [{ ...filesPlugin, actions: ['backup'] }],
     repositories: [
@@ -208,6 +211,7 @@ export const agents: Schemas['AgentDetails'][] = [
     duplicateSessionAt: null,
     outdated: false,
     builtin: false,
+    role: 'source',
     protocolVersion: 1,
     plugins: [filesPlugin],
     repositories: [
@@ -230,6 +234,7 @@ export const agents: Schemas['AgentDetails'][] = [
     duplicateSessionAt: '2026-09-27T08:05:00Z',
     outdated: false,
     builtin: false,
+    role: 'source',
     protocolVersion: 1,
     plugins: [filesPlugin],
     repositories: [
@@ -252,6 +257,7 @@ export const agents: Schemas['AgentDetails'][] = [
     duplicateSessionAt: null,
     outdated: false,
     builtin: false,
+    role: 'source',
     protocolVersion: null,
     plugins: [],
     repositories: [],
@@ -272,6 +278,7 @@ export const agents: Schemas['AgentDetails'][] = [
     duplicateSessionAt: null,
     outdated: false,
     builtin: true,
+    role: 'source',
     protocolVersion: 1,
     plugins: [filesPlugin],
     // F6: the S3 repository the default mock is bound to (Рк18), another one, a local one (D10: needs a
@@ -288,6 +295,31 @@ export const agents: Schemas['AgentDetails'][] = [
       { name: 'fresh', backend: 'sftp', repositoryId: null, cryptoProvider: 'file' },
     ],
     secretNames: ['sard-db'],
+    scriptNames: [],
+    restoreDir: null,
+  },
+  // A verifier: it has a backup plugin and a repository so that the form can be reached by
+  // address and the server's refusal by role is seen (V1).
+  {
+    id: ids.verifierAgent,
+    hostname: 'verify6.example.com',
+    status: 'offline',
+    agentVersion: '0.1.0',
+    os: 'linux',
+    arch: 'amd64',
+    registeredAt: '2026-09-23T09:00:00Z',
+    lastSeenAt: '2026-09-27T09:00:00Z',
+    revokedAt: null,
+    duplicateSessionAt: null,
+    outdated: false,
+    builtin: false,
+    role: 'verifier',
+    protocolVersion: 1,
+    plugins: [filesPlugin],
+    repositories: [
+      { name: 'local', backend: 'local', repositoryId: '4f6a8c0e2d', cryptoProvider: 'file' },
+    ],
+    secretNames: [],
     scriptNames: [],
     restoreDir: null,
   },
@@ -707,6 +739,7 @@ export const enrollmentTokens: Schemas['EnrollmentToken'][] = [
     revokedAt: null,
     agentId: null,
     label: null,
+    role: 'source',
   },
   {
     id: ids.revokedToken,
@@ -717,6 +750,7 @@ export const enrollmentTokens: Schemas['EnrollmentToken'][] = [
     revokedAt: '2026-09-24T09:30:00Z',
     agentId: null,
     label: null,
+    role: 'source',
   },
   {
     id: ids.expiredToken,
@@ -727,6 +761,7 @@ export const enrollmentTokens: Schemas['EnrollmentToken'][] = [
     revokedAt: null,
     agentId: null,
     label: null,
+    role: 'source',
   },
   {
     id: ids.usedToken,
@@ -737,6 +772,7 @@ export const enrollmentTokens: Schemas['EnrollmentToken'][] = [
     revokedAt: null,
     agentId: ids.dbAgent,
     label: null,
+    role: 'source',
   },
 ]
 

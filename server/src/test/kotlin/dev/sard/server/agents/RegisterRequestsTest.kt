@@ -15,6 +15,7 @@ import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 /** Register's message becomes the domain snapshot field for field; unknown actions become null. */
 @MutFlowTest
@@ -64,6 +65,7 @@ class RegisterRequestsTest {
                 .addRepositories(repository)
                 .addSecretNames("s")
                 .addScriptNames("x")
+                .setMachineId("m".repeat(64))
                 .setRestoreDir("/srv/restore")
                 .build()
         val expected =
@@ -77,8 +79,20 @@ class RegisterRequestsTest {
                 repositories = listOf(RepositoryEntry("main", "s3", "id", "gost")),
                 secretNames = listOf("s"),
                 scriptNames = listOf("x"),
+                machineId = "m".repeat(64),
                 restoreDir = "/srv/restore",
             )
         assertEquals(expected, MutFlow.underTest { request.toSnapshot() })
+    }
+
+    @Test
+    fun `a snapshot printed for a log does not show the machine id`() {
+        val request =
+            RegisterRequest
+                .newBuilder()
+                .setHostname("h")
+                .setMachineId("c".repeat(64))
+                .build()
+        assertFalse("c".repeat(64) in request.toSnapshot().toString())
     }
 }

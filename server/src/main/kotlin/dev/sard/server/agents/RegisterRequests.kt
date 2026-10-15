@@ -40,5 +40,6 @@ internal fun RegisterRequest.toSnapshot(): AgentSnapshot =
             repositoriesList.map { RepositoryEntry(it.name, it.backend, it.repositoryId, it.cryptoProvider) },
         secretNames = secretNamesList.toList(),
         scriptNames = scriptNamesList.toList(),
+        machineId = machineId,
         restoreDir = restoreDir,
     )

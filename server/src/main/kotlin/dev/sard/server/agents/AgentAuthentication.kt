@@ -4,6 +4,9 @@
 package dev.sard.server.agents
 
 import dev.sard.server.pki.AgentIdentity
+import dev.sard.server.pki.AgentRoleUri
+import dev.sard.server.pki.CertificateRole
+import dev.sard.server.role.AgentRole
 import io.grpc.Context
 import java.security.cert.X509Certificate
 import java.time.Clock
@@ -17,6 +20,8 @@ enum class AgentAuthFailure {
     CERT_MISSING,
     CERT_UNKNOWN,
     CERT_IDENTITY_MISMATCH,
+    CERT_ROLE_MISSING,
+    CERT_ROLE_INVALID,
     CERT_REVOKED,
     CERT_EXPIRED,
     AGENT_REVOKED,
@@ -27,6 +32,8 @@ data class AgentPrincipal(
     val agentId: UUID,
     val tenantId: UUID,
     val serial: String,
+    /** From the agents table, which equals the one in the certificate (V1): a source or a verifier. */
+    val role: AgentRole,
 ) {
     companion object {
         /** Where [AgentAuthInterceptor] puts the principal: the call's gRPC [Context]. */
@@ -40,11 +47,13 @@ data class PresentedCertificate(
     val serial: String,
     /** The identity in its URI SAN, or null when it names none. */
     val identity: AgentIdentity?,
+    /** What its role URI says (V1). */
+    val role: CertificateRole,
 ) {
     companion object {
         fun of(certificate: X509Certificate): PresentedCertificate {
             val serial = certificate.serialNumber.toString(HEX)
-            return PresentedCertificate(serial, AgentIdentity.of(certificate))
+            return PresentedCertificate(serial, AgentIdentity.of(certificate), AgentRoleUri.read(certificate))
         }
     }
 }
@@ -55,6 +64,7 @@ data class CertificateStanding(
     val notAfter: Instant,
     val revokedAt: Instant?,
     val agentRevokedAt: Instant?,
+    val role: AgentRole,
 )
 
 /** Looks a certificate up by serial across tenants: the tenant is what it establishes. */
@@ -81,6 +91,8 @@ sealed interface AgentAuthResult {
     ) : AgentAuthResult
 }
 
+private val ROLE_REFUSALS = setOf(AgentAuthFailure.CERT_ROLE_MISSING, AgentAuthFailure.CERT_ROLE_INVALID)
+
 /**
  * Decides whether a presented certificate authenticates an agent (S3). No cache: every
  * call reads the record, so a revocation applies to the next call.
@@ -100,24 +112,57 @@ class AgentAuthenticator(
         presented: PresentedCertificate,
         standing: CertificateStanding?,
     ): AgentAuthResult {
-        if (standing == null) {
-            val claimed = presented.identity
-            val failure = AgentAuthFailure.CERT_UNKNOWN
-            return AgentAuthResult.Rejected(failure, presented.serial, claimed?.agentId, claimed?.tenantId)
-        }
-        val identity = standing.identity
-        return when (val failure = failureOf(presented, standing)) {
-            null -> AgentAuthResult.Accepted(AgentPrincipal(identity.agentId, identity.tenantId, presented.serial))
-            else -> AgentAuthResult.Rejected(failure, presented.serial, identity.agentId)
-        }
+        if (standing == null) return unknown(presented)
+        val failure = failureOf(presented, standing)
+        return if (failure == null) accepted(presented, standing) else rejected(failure, presented, standing)
     }
 
+    private fun unknown(presented: PresentedCertificate): AgentAuthResult {
+        val claimed = presented.identity
+        val failure = AgentAuthFailure.CERT_UNKNOWN
+        return AgentAuthResult.Rejected(failure, presented.serial, claimed?.agentId, claimed?.tenantId)
+    }
+
+    private fun rejected(
+        failure: AgentAuthFailure,
+        presented: PresentedCertificate,
+        standing: CertificateStanding,
+    ): AgentAuthResult {
+        val identity = standing.identity
+        // The role refusals are about the certificate, whose SAN matched the record: it may be named in the log.
+        val tenantId = if (failure in ROLE_REFUSALS) identity.tenantId else null
+        return AgentAuthResult.Rejected(failure, presented.serial, identity.agentId, tenantId)
+    }
+
+    private fun accepted(
+        presented: PresentedCertificate,
+        standing: CertificateStanding,
+    ): AgentAuthResult {
+        val identity = standing.identity
+        val principal = AgentPrincipal(identity.agentId, identity.tenantId, presented.serial, standing.role)
+        return AgentAuthResult.Accepted(principal)
+    }
+
+    /** The certificate first (who it names, what role it says), then the state of the record (ADR 0009, V1). */
     private fun failureOf(
+        presented: PresentedCertificate,
+        standing: CertificateStanding,
+    ): AgentAuthFailure? = certificateFailure(presented, standing) ?: stateFailure(standing)
+
+    private fun certificateFailure(
         presented: PresentedCertificate,
         standing: CertificateStanding,
     ): AgentAuthFailure? =
         when {
             presented.identity != standing.identity -> AgentAuthFailure.CERT_IDENTITY_MISMATCH
+            presented.role == CertificateRole.Missing -> AgentAuthFailure.CERT_ROLE_MISSING
+            presented.role == CertificateRole.Invalid -> AgentAuthFailure.CERT_ROLE_INVALID
+            presented.role != CertificateRole.Valid(standing.role) -> AgentAuthFailure.CERT_IDENTITY_MISMATCH
+            else -> null
+        }
+
+    private fun stateFailure(standing: CertificateStanding): AgentAuthFailure? =
+        when {
             standing.revokedAt != null -> AgentAuthFailure.CERT_REVOKED
             !clock.instant().isBefore(standing.notAfter) -> AgentAuthFailure.CERT_EXPIRED
             standing.agentRevokedAt != null -> AgentAuthFailure.AGENT_REVOKED

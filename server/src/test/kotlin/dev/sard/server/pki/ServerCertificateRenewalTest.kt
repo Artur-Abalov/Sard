@@ -3,6 +3,7 @@
 
 package dev.sard.server.pki
 
+import dev.sard.server.role.AgentRole
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -29,6 +30,7 @@ class ServerCertificateRenewalTest {
         override fun issueAgentCertificate(
             csrDer: ByteArray,
             agent: AgentIdentity,
+            role: AgentRole,
         ) = error("unused")
 
         override fun renewServerCertificate(): Boolean {

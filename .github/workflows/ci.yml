@@ -385,6 +385,16 @@ jobs:
             test/e2e/build/e2e-logs/
             test/e2e/build/reports/tests/
           if-no-files-found: ignore
+      # The recovery drill (F7, Р41) writes the time and the sizes the page's table "Сколько это займёт" takes
+      # a row from; whatever the outcome, only the shard that ran the class has the files.
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-drill-${{ matrix.shard }}
+          path: |
+            test/e2e/build/recovery-drill/result.json
+            test/e2e/build/recovery-drill/result.md
+          if-no-files-found: ignore
 
   # Every e2e class has a report, every shard passed; the time per class of the
   # whole run, and as weights for scripts/e2e-weights.tsv.

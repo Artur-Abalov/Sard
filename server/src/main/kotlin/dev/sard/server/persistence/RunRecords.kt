@@ -68,7 +68,7 @@ class RunRecord(
     val queuedAt: Instant,
     @Column(name = "schedule_id", updatable = false)
     val scheduleId: UUID? = null,
-    /** backup or restore (migration V202610141200). */
+    /** backup or restore (migration V202610151200). */
     @Column(nullable = false, updatable = false)
     val kind: String = "backup",
     /** Who started a manual run; null for a schedule. */

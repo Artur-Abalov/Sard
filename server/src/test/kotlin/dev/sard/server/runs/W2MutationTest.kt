@@ -88,8 +88,8 @@ class W2MutationTest(
 
     private fun token(of: RunsTenant) {
         jdbc.update(
-            "insert into enrollment_tokens (id, tenant_id, label, token_hash, expires_at, created_at) " +
-                "values (?, ?, ?, ?, ?, ?)",
+            "insert into enrollment_tokens (id, tenant_id, label, token_hash, expires_at, created_at, role) " +
+                "values (?, ?, ?, ?, ?, ?, 'source')",
             UUID.randomUUID(),
             of.id,
             "first",
@@ -228,6 +228,17 @@ class W2MutationTest(
             PLUGIN,
             assertFailsWith<UnknownPlugin> { MutFlow.underTest { sources.create(tenant.id, tenant.draft()) } }.plugin,
         )
+        assertEquals(0, tenant.count("sources"))
+    }
+
+    @Test
+    fun `a source needs an agent whose role allows backup`() {
+        jdbc.update("update agents set role = 'verifier' where id = ?", tenant.agentId)
+
+        val refusal =
+            assertFailsWith<AgentRoleMismatch> { MutFlow.underTest { sources.create(tenant.id, tenant.draft()) } }
+
+        assertEquals(tenant.agentId, refusal.agentId)
         assertEquals(0, tenant.count("sources"))
     }
 

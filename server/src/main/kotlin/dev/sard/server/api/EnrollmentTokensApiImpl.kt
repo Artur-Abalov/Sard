@@ -25,7 +25,8 @@ class EnrollmentTokensApiImpl(
 ) : EnrollmentTokensApi {
     override fun createEnrollmentToken(request: CreateEnrollmentTokenRequest): CreatedEnrollmentToken {
         val ttl = request.ttlSeconds?.let(Duration::ofSeconds) ?: DEFAULT_TTL
-        val issued = tokens.create(tenants.currentTenantId(), ttl, request.label.orEmpty())
+        val role = (request.role ?: AgentRole.SOURCE).toDomain()
+        val issued = tokens.create(tenants.currentTenantId(), ttl, request.label.orEmpty(), role)
         return CreatedEnrollmentToken(
             issued.id,
             issued.reveal(),
@@ -97,5 +98,6 @@ class EnrollmentTokensApiImpl(
             token.revokedAt,
             token.agentId,
             token.label.ifEmpty { null },
+            token.role.toApi(),
         )
 }

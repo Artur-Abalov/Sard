@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
@@ -273,8 +274,9 @@ func TestStepsThatCannotRunAreRejectedWithoutStartingTheHandler(t *testing.T) {
 		message string
 	}{
 		"unknown plugin": {func(s *agentv1.RunStep) { s.Plugin = "tape" }, `unknown plugin "tape"`},
-		"unsupported action": {func(s *agentv1.RunStep) { s.Action = agentv1.Action_ACTION_VERIFY },
-			`plugin "files" does not support ACTION_VERIFY`},
+		"unsupported action": {func(s *agentv1.RunStep) {
+			s.Plugin, s.Action = "backup-only", agentv1.Action_ACTION_RESTORE
+		}, `plugin "backup-only" does not support ACTION_RESTORE`},
 		"unspecified action": {func(s *agentv1.RunStep) { s.Action = agentv1.Action_ACTION_UNSPECIFIED },
 			`plugin "files" does not support ACTION_UNSPECIFIED`},
 		"unknown repository": {func(s *agentv1.RunStep) { s.RepositoryName = "offsite" }, `unknown repository "offsite"`},
@@ -675,7 +677,7 @@ func TestDefaultsAreSixteenWaitingStepsAndADayOfRuntime(t *testing.T) {
 	clock, sink, files := newClock(), newSink(), newHandler(false)
 	e, err := executor.New(executor.Options{
 		Handlers: registry{"files": files}, Sink: sink, StateDir: stateDir(t),
-		Repositories: []string{"main"}, Clock: clock,
+		Repositories: []string{"main"}, Clock: clock, Role: role.Source,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -701,6 +703,7 @@ func TestAnExecutorWithOnlyRequiredOptionsRunsOneStepAtATime(t *testing.T) {
 		Handlers:     registry{"files": files},
 		Sink:         sink,
 		StateDir:     stateDir(t),
+		Role:         role.Source,
 		Repositories: []string{"main"},
 	})
 	if err != nil {
@@ -718,13 +721,14 @@ func TestAnExecutorWithOnlyRequiredOptionsRunsOneStepAtATime(t *testing.T) {
 
 func TestNewRequiresHandlersSinkAndStateDir(t *testing.T) {
 	cases := map[string]func(*executor.Options){
-		"handlers":  func(o *executor.Options) { o.Handlers = nil },
-		"sink":      func(o *executor.Options) { o.Sink = nil },
-		"state dir": func(o *executor.Options) { o.StateDir = "" },
+		"handlers are required":  func(o *executor.Options) { o.Handlers = nil },
+		"sink is required":       func(o *executor.Options) { o.Sink = nil },
+		"state dir is required":  func(o *executor.Options) { o.StateDir = "" },
+		"role must be source or": func(o *executor.Options) { o.Role = "" },
 	}
 	for name, edit := range cases {
 		t.Run(name, func(t *testing.T) {
-			opts := executor.Options{Handlers: registry{}, Sink: newSink(), StateDir: stateDir(t)}
+			opts := executor.Options{Handlers: registry{}, Sink: newSink(), StateDir: stateDir(t), Role: role.Source}
 			edit(&opts)
 			if _, err := executor.New(opts); !errors.Is(err, executor.ErrInvalidOptions) || !strings.Contains(err.Error(), name) {
 				t.Fatalf("err = %v", err)

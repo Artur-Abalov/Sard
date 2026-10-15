@@ -59,6 +59,7 @@ class ApiSerializationIntegrationTest(
             duplicateSessionAt = at,
             outdated = false,
             builtin = true,
+            role = AgentRole.SOURCE,
         )
     private val step =
         RunStep(
@@ -122,7 +123,17 @@ class ApiSerializationIntegrationTest(
             SystemSourceRole.SELF_DATABASE,
         )
     private val token =
-        EnrollmentToken(id, EnrollmentTokenStatus.USED, at, at, at, revokedAt = null, agentId = id, label = null)
+        EnrollmentToken(
+            id,
+            EnrollmentTokenStatus.USED,
+            at,
+            at,
+            at,
+            revokedAt = null,
+            agentId = id,
+            label = null,
+            role = AgentRole.VERIFIER,
+        )
     private val snapshot =
         Snapshot(
             id,
@@ -243,6 +254,7 @@ class ApiSerializationIntegrationTest(
                 scriptNames = listOf("flush"),
                 outdated = true,
                 builtin = false,
+                role = AgentRole.VERIFIER,
                 restoreDir = "/var/lib/sard-agent/restore",
             ),
             RestoreOptions(

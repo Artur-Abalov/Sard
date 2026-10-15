@@ -122,6 +122,46 @@ class ApiContractIntegrationTest(
     }
 
     @Test
+    fun `agent_role_mismatch is documented on createSource and startRun`() {
+        for ((path, method) in listOf("/api/v1/sources" to "post", "/api/v1/sources/{sourceId}/runs" to "post")) {
+            val text =
+                spec
+                    .path("paths")
+                    .path(path)
+                    .path(method)
+                    .path("description")
+                    .asString()
+            assertTrue("agent_role_mismatch" in text, "$method $path: $text")
+        }
+    }
+
+    @Test
+    fun `В API нет операции, меняющей роль агента`() {
+        val offenders = mutableListOf<String>()
+        for ((path, item) in spec.path("paths").properties()) {
+            for ((method, operation) in item.properties()) {
+                val body =
+                    operation
+                        .path("requestBody")
+                        .path("content")
+                        .path("application/json")
+                        .path("schema")
+                val name = body.path("\$ref").asString("").substringAfterLast('/')
+                val role = schema(name).path("properties").path("role")
+                if (name != "CreateEnrollmentTokenRequest" && !role.isMissingNode) offenders += "$method $path"
+            }
+        }
+        assertEquals(emptyList(), offenders)
+        assertEquals(listOf("source", "verifier"), enumValues("AgentRole"))
+        assertTrue("role" in schema("CreateEnrollmentTokenRequest").path("properties").propertyNames())
+        assertFalse("role" in schema("CreateEnrollmentTokenRequest").path("required").strings())
+        for (name in listOf("AgentSummary", "AgentDetails", "EnrollmentToken")) {
+            assertTrue("role" in schema(name).path("required").strings(), name)
+        }
+        assertTrue("agent_role_mismatch" in enumValues("ErrorCode"))
+    }
+
+    @Test
     fun `step phase, log level and action are the proto values`() {
         assertEquals(protoValues(ProtoStepPhase.entries.toTypedArray()), enumValues("StepPhase"))
         assertEquals(protoValues(ProtoLogLevel.entries.toTypedArray()), enumValues("LogLevel"))

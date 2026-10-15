@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { call } from '../api/call'
 import { client } from '../api/client'
 import { agentQuery, PAGE_SIZE, type AgentDetails } from '../api/queries'
+import type { components } from '../api/schema'
 import { AgentMarks } from '../components/AgentMarks'
 import { AgentUpgradeBlock } from '../components/AgentUpgradeBlock'
 import { ConfirmModal } from '../components/ConfirmModal'
@@ -33,8 +34,10 @@ import { PagedList } from '../components/PagedList'
 import { RepoInitHint } from '../components/RepoInitHint'
 import { StatusBadge } from '../components/StatusBadge'
 import { usePaged } from '../components/usePaged'
+import { useRoleLabel } from '../components/useRoleLabel'
 import { EMPTY } from '../format'
 import { canConfirmRevoke, revokeQuery, SELF_AGENT_CONFIRMATION } from '../selfAgent'
+import { canCreateSourceOn } from '../sourceDraft'
 import { tones } from '../theme'
 import { Mono } from '../components/Mono'
 import { Time } from '../components/Time'
@@ -142,7 +145,13 @@ function DuplicateNote() {
   )
 }
 
-function AgentSources({ agentId }: { agentId: string }) {
+function AgentSources({
+  agentId,
+  role,
+}: {
+  agentId: string
+  role: components['schemas']['AgentRole']
+}) {
   const { t } = useTranslation()
   const paged = usePaged(['sources', 'of-agent', agentId], (cursor) =>
     call(
@@ -155,9 +164,11 @@ function AgentSources({ agentId }: { agentId: string }) {
     <Card withBorder>
       <Group justify="space-between">
         <Title order={4}>{t('agent.sources')}</Title>
-        <ButtonLink to="/sources/new" search={{ agentId }} size="xs">
-          {t('sources.create')}
-        </ButtonLink>
+        {canCreateSourceOn(role) && (
+          <ButtonLink to="/sources/new" search={{ agentId }} size="xs">
+            {t('sources.create')}
+          </ButtonLink>
+        )}
       </Group>
       <PagedList paged={paged} empty={<EmptyState text={t('agent.noSources')} />}>
         {(sources) => (
@@ -234,9 +245,14 @@ function RevokeButton({ agent }: { agent: AgentDetails }) {
 
 function Facts({ agent }: { agent: AgentDetails }) {
   const { t } = useTranslation()
+  const roleLabel = useRoleLabel()
   return (
     <Table>
       <Table.Tbody>
+        <Table.Tr>
+          <Table.Th>{t('agents.role')}</Table.Th>
+          <Table.Td>{roleLabel(agent.role)}</Table.Td>
+        </Table.Tr>
         <Table.Tr>
           <Table.Th>{t('agents.version')}</Table.Th>
           <Table.Td>
@@ -281,7 +297,7 @@ function AgentCard({ agent }: { agent: AgentDetails }) {
       {agent.outdated && <AgentUpgradeBlock agent={agent} />}
       <Facts agent={agent} />
       <Snapshot agent={agent} />
-      <AgentSources agentId={agent.id} />
+      <AgentSources agentId={agent.id} role={agent.role} />
     </Stack>
   )
 }

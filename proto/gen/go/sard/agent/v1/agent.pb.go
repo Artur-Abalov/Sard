@@ -165,6 +165,55 @@ func (LogLevel) EnumDescriptor() ([]byte, []int) {
 	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{1}
 }
 
+// RejectReason says why an agent refused to start a step.
+type RejectReason int32
+
+const (
+	RejectReason_REJECT_REASON_UNSPECIFIED RejectReason = 0
+	// The action is not allowed for the role in the agent's own certificate:
+	// a source runs BACKUP, RESTORE and RUN; a verifier runs only VERIFY.
+	RejectReason_REJECT_REASON_ROLE_MISMATCH RejectReason = 1
+)
+
+// Enum value maps for RejectReason.
+var (
+	RejectReason_name = map[int32]string{
+		0: "REJECT_REASON_UNSPECIFIED",
+		1: "REJECT_REASON_ROLE_MISMATCH",
+	}
+	RejectReason_value = map[string]int32{
+		"REJECT_REASON_UNSPECIFIED":   0,
+		"REJECT_REASON_ROLE_MISMATCH": 1,
+	}
+)
+
+func (x RejectReason) Enum() *RejectReason {
+	p := new(RejectReason)
+	*p = x
+	return p
+}
+
+func (x RejectReason) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RejectReason) Descriptor() protoreflect.EnumDescriptor {
+	return file_sard_agent_v1_agent_proto_enumTypes[2].Descriptor()
+}
+
+func (RejectReason) Type() protoreflect.EnumType {
+	return &file_sard_agent_v1_agent_proto_enumTypes[2]
+}
+
+func (x RejectReason) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RejectReason.Descriptor instead.
+func (RejectReason) EnumDescriptor() ([]byte, []int) {
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{2}
+}
+
 // StepStatus is the final state of a step.
 type StepStatus int32
 
@@ -214,11 +263,11 @@ func (x StepStatus) String() string {
 }
 
 func (StepStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_sard_agent_v1_agent_proto_enumTypes[2].Descriptor()
+	return file_sard_agent_v1_agent_proto_enumTypes[3].Descriptor()
 }
 
 func (StepStatus) Type() protoreflect.EnumType {
-	return &file_sard_agent_v1_agent_proto_enumTypes[2]
+	return &file_sard_agent_v1_agent_proto_enumTypes[3]
 }
 
 func (x StepStatus) Number() protoreflect.EnumNumber {
@@ -227,7 +276,7 @@ func (x StepStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use StepStatus.Descriptor instead.
 func (StepStatus) EnumDescriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{2}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{3}
 }
 
 // Action is what a step does with a plugin.
@@ -272,11 +321,11 @@ func (x Action) String() string {
 }
 
 func (Action) Descriptor() protoreflect.EnumDescriptor {
-	return file_sard_agent_v1_agent_proto_enumTypes[3].Descriptor()
+	return file_sard_agent_v1_agent_proto_enumTypes[4].Descriptor()
 }
 
 func (Action) Type() protoreflect.EnumType {
-	return &file_sard_agent_v1_agent_proto_enumTypes[3]
+	return &file_sard_agent_v1_agent_proto_enumTypes[4]
 }
 
 func (x Action) Number() protoreflect.EnumNumber {
@@ -285,7 +334,7 @@ func (x Action) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Action.Descriptor instead.
 func (Action) EnumDescriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{3}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{4}
 }
 
 type EnrollRequest struct {
@@ -437,11 +486,17 @@ type RegisterRequest struct {
 	SecretNames []string `protobuf:"bytes,8,rep,name=secret_names,json=secretNames,proto3" json:"secret_names,omitempty"`
 	// Names of scripts allowlisted on this host for ACTION_RUN.
 	ScriptNames []string `protobuf:"bytes,9,rep,name=script_names,json=scriptNames,proto3" json:"script_names,omitempty"`
+	// Stable identifier of the host: lowercase hex of
+	// HMAC-SHA256(key = "sard-machine-id/v1" || tenant_id, data = raw machine
+	// id), exactly 64 characters. Required; lets the server tell that two
+	// agents of different roles share one machine. The raw id never leaves
+	// the host.
+	MachineId string `protobuf:"bytes,10,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
 	// Absolute path of the directory the host's operator allows restores into
 	// (restore.dir in the agent config), shown in the console. Not a secret;
 	// the server cannot set or change it and never sends a path of its own in a
 	// command. Empty for an agent that cannot restore from the console.
-	RestoreDir    string `protobuf:"bytes,10,opt,name=restore_dir,json=restoreDir,proto3" json:"restore_dir,omitempty"`
+	RestoreDir    string `protobuf:"bytes,11,opt,name=restore_dir,json=restoreDir,proto3" json:"restore_dir,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -537,6 +592,13 @@ func (x *RegisterRequest) GetScriptNames() []string {
 		return x.ScriptNames
 	}
 	return nil
+}
+
+func (x *RegisterRequest) GetMachineId() string {
+	if x != nil {
+		return x.MachineId
+	}
+	return ""
 }
 
 func (x *RegisterRequest) GetRestoreDir() string {
@@ -1243,7 +1305,9 @@ type StepResult struct {
 	//	*StepResult_Restore
 	//	*StepResult_Verify
 	//	*StepResult_Run
-	Output        isStepResult_Output `protobuf_oneof:"output"`
+	Output isStepResult_Output `protobuf_oneof:"output"`
+	// Machine-readable reason for STEP_STATUS_REJECTED; unspecified otherwise.
+	RejectReason  RejectReason `protobuf:"varint,14,opt,name=reject_reason,json=rejectReason,proto3,enum=sard.agent.v1.RejectReason" json:"reject_reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1354,6 +1418,13 @@ func (x *StepResult) GetRun() *RunOutput {
 		}
 	}
 	return nil
+}
+
+func (x *StepResult) GetRejectReason() RejectReason {
+	if x != nil {
+		return x.RejectReason
+	}
+	return RejectReason_REJECT_REASON_UNSPECIFIED
 }
 
 type isStepResult_Output interface {
@@ -2139,7 +2210,7 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\x0eEnrollResponse\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x122\n" +
 	"\x15certificate_chain_pem\x18\x02 \x01(\tR\x13certificateChainPem\x12\"\n" +
-	"\rca_bundle_pem\x18\x03 \x01(\tR\vcaBundlePem\"\xfc\x02\n" +
+	"\rca_bundle_pem\x18\x03 \x01(\tR\vcaBundlePem\"\x9b\x03\n" +
 	"\x0fRegisterRequest\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12#\n" +
 	"\ragent_version\x18\x02 \x01(\tR\fagentVersion\x12/\n" +
@@ -2149,9 +2220,11 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\x04arch\x18\x06 \x01(\tR\x04arch\x12A\n" +
 	"\frepositories\x18\a \x03(\v2\x1d.sard.agent.v1.RepositoryInfoR\frepositories\x12!\n" +
 	"\fsecret_names\x18\b \x03(\tR\vsecretNames\x12!\n" +
-	"\fscript_names\x18\t \x03(\tR\vscriptNames\x12\x1f\n" +
-	"\vrestore_dir\x18\n" +
-	" \x01(\tR\n" +
+	"\fscript_names\x18\t \x03(\tR\vscriptNames\x12\x1d\n" +
+	"\n" +
+	"machine_id\x18\n" +
+	" \x01(\tR\tmachineId\x12\x1f\n" +
+	"\vrestore_dir\x18\v \x01(\tR\n" +
 	"restoreDir\"\xc0\x01\n" +
 	"\x06Plugin\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12#\n" +
@@ -2196,7 +2269,7 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\aLogLine\x12.\n" +
 	"\x04time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12-\n" +
 	"\x05level\x18\x02 \x01(\x0e2\x17.sard.agent.v1.LogLevelR\x05level\x12\x12\n" +
-	"\x04text\x18\x03 \x01(\tR\x04text\"\xe3\x03\n" +
+	"\x04text\x18\x03 \x01(\tR\x04text\"\xa5\x04\n" +
 	"\n" +
 	"StepResult\x12\x1d\n" +
 	"\n" +
@@ -2211,7 +2284,8 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	" \x01(\v2\x1b.sard.agent.v1.BackupOutputH\x00R\x06backup\x128\n" +
 	"\arestore\x18\v \x01(\v2\x1c.sard.agent.v1.RestoreOutputH\x00R\arestore\x125\n" +
 	"\x06verify\x18\f \x01(\v2\x1b.sard.agent.v1.VerifyOutputH\x00R\x06verify\x12,\n" +
-	"\x03run\x18\r \x01(\v2\x18.sard.agent.v1.RunOutputH\x00R\x03runB\b\n" +
+	"\x03run\x18\r \x01(\v2\x18.sard.agent.v1.RunOutputH\x00R\x03run\x12@\n" +
+	"\rreject_reason\x18\x0e \x01(\x0e2\x1b.sard.agent.v1.RejectReasonR\frejectReasonB\b\n" +
 	"\x06outputJ\x04\b\x04\x10\x05R\vsnapshot_id\"\x96\x01\n" +
 	"\fBackupOutput\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
@@ -2289,7 +2363,10 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\x0fLOG_LEVEL_DEBUG\x10\x01\x12\x12\n" +
 	"\x0eLOG_LEVEL_INFO\x10\x02\x12\x12\n" +
 	"\x0eLOG_LEVEL_WARN\x10\x03\x12\x13\n" +
-	"\x0fLOG_LEVEL_ERROR\x10\x04*\xac\x01\n" +
+	"\x0fLOG_LEVEL_ERROR\x10\x04*N\n" +
+	"\fRejectReason\x12\x1d\n" +
+	"\x19REJECT_REASON_UNSPECIFIED\x10\x00\x12\x1f\n" +
+	"\x1bREJECT_REASON_ROLE_MISMATCH\x10\x01*\xac\x01\n" +
 	"\n" +
 	"StepStatus\x12\x1b\n" +
 	"\x17STEP_STATUS_UNSPECIFIED\x10\x00\x12\x19\n" +
@@ -2326,84 +2403,86 @@ func file_sard_agent_v1_agent_proto_rawDescGZIP() []byte {
 	return file_sard_agent_v1_agent_proto_rawDescData
 }
 
-var file_sard_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_sard_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
 var file_sard_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_sard_agent_v1_agent_proto_goTypes = []any{
 	(StepPhase)(0),                   // 0: sard.agent.v1.StepPhase
 	(LogLevel)(0),                    // 1: sard.agent.v1.LogLevel
-	(StepStatus)(0),                  // 2: sard.agent.v1.StepStatus
-	(Action)(0),                      // 3: sard.agent.v1.Action
-	(*EnrollRequest)(nil),            // 4: sard.agent.v1.EnrollRequest
-	(*EnrollResponse)(nil),           // 5: sard.agent.v1.EnrollResponse
-	(*RegisterRequest)(nil),          // 6: sard.agent.v1.RegisterRequest
-	(*Plugin)(nil),                   // 7: sard.agent.v1.Plugin
-	(*RegisterResponse)(nil),         // 8: sard.agent.v1.RegisterResponse
-	(*RenewCertificateRequest)(nil),  // 9: sard.agent.v1.RenewCertificateRequest
-	(*RenewCertificateResponse)(nil), // 10: sard.agent.v1.RenewCertificateResponse
-	(*ConnectRequest)(nil),           // 11: sard.agent.v1.ConnectRequest
-	(*Hello)(nil),                    // 12: sard.agent.v1.Hello
-	(*Heartbeat)(nil),                // 13: sard.agent.v1.Heartbeat
-	(*StepProgress)(nil),             // 14: sard.agent.v1.StepProgress
-	(*LogChunk)(nil),                 // 15: sard.agent.v1.LogChunk
-	(*LogLine)(nil),                  // 16: sard.agent.v1.LogLine
-	(*StepResult)(nil),               // 17: sard.agent.v1.StepResult
-	(*BackupOutput)(nil),             // 18: sard.agent.v1.BackupOutput
-	(*RestoreOutput)(nil),            // 19: sard.agent.v1.RestoreOutput
-	(*VerifyOutput)(nil),             // 20: sard.agent.v1.VerifyOutput
-	(*CheckResult)(nil),              // 21: sard.agent.v1.CheckResult
-	(*RunOutput)(nil),                // 22: sard.agent.v1.RunOutput
-	(*ConnectResponse)(nil),          // 23: sard.agent.v1.ConnectResponse
-	(*ResultAck)(nil),                // 24: sard.agent.v1.ResultAck
-	(*RunStep)(nil),                  // 25: sard.agent.v1.RunStep
-	(*RepositoryInfo)(nil),           // 26: sard.agent.v1.RepositoryInfo
-	(*CancelStep)(nil),               // 27: sard.agent.v1.CancelStep
-	nil,                              // 28: sard.agent.v1.RunStep.TagsEntry
-	(*durationpb.Duration)(nil),      // 29: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),    // 30: google.protobuf.Timestamp
+	(RejectReason)(0),                // 2: sard.agent.v1.RejectReason
+	(StepStatus)(0),                  // 3: sard.agent.v1.StepStatus
+	(Action)(0),                      // 4: sard.agent.v1.Action
+	(*EnrollRequest)(nil),            // 5: sard.agent.v1.EnrollRequest
+	(*EnrollResponse)(nil),           // 6: sard.agent.v1.EnrollResponse
+	(*RegisterRequest)(nil),          // 7: sard.agent.v1.RegisterRequest
+	(*Plugin)(nil),                   // 8: sard.agent.v1.Plugin
+	(*RegisterResponse)(nil),         // 9: sard.agent.v1.RegisterResponse
+	(*RenewCertificateRequest)(nil),  // 10: sard.agent.v1.RenewCertificateRequest
+	(*RenewCertificateResponse)(nil), // 11: sard.agent.v1.RenewCertificateResponse
+	(*ConnectRequest)(nil),           // 12: sard.agent.v1.ConnectRequest
+	(*Hello)(nil),                    // 13: sard.agent.v1.Hello
+	(*Heartbeat)(nil),                // 14: sard.agent.v1.Heartbeat
+	(*StepProgress)(nil),             // 15: sard.agent.v1.StepProgress
+	(*LogChunk)(nil),                 // 16: sard.agent.v1.LogChunk
+	(*LogLine)(nil),                  // 17: sard.agent.v1.LogLine
+	(*StepResult)(nil),               // 18: sard.agent.v1.StepResult
+	(*BackupOutput)(nil),             // 19: sard.agent.v1.BackupOutput
+	(*RestoreOutput)(nil),            // 20: sard.agent.v1.RestoreOutput
+	(*VerifyOutput)(nil),             // 21: sard.agent.v1.VerifyOutput
+	(*CheckResult)(nil),              // 22: sard.agent.v1.CheckResult
+	(*RunOutput)(nil),                // 23: sard.agent.v1.RunOutput
+	(*ConnectResponse)(nil),          // 24: sard.agent.v1.ConnectResponse
+	(*ResultAck)(nil),                // 25: sard.agent.v1.ResultAck
+	(*RunStep)(nil),                  // 26: sard.agent.v1.RunStep
+	(*RepositoryInfo)(nil),           // 27: sard.agent.v1.RepositoryInfo
+	(*CancelStep)(nil),               // 28: sard.agent.v1.CancelStep
+	nil,                              // 29: sard.agent.v1.RunStep.TagsEntry
+	(*durationpb.Duration)(nil),      // 30: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),    // 31: google.protobuf.Timestamp
 }
 var file_sard_agent_v1_agent_proto_depIdxs = []int32{
-	7,  // 0: sard.agent.v1.RegisterRequest.plugins:type_name -> sard.agent.v1.Plugin
-	26, // 1: sard.agent.v1.RegisterRequest.repositories:type_name -> sard.agent.v1.RepositoryInfo
-	3,  // 2: sard.agent.v1.Plugin.actions:type_name -> sard.agent.v1.Action
-	29, // 3: sard.agent.v1.RegisterResponse.heartbeat_interval:type_name -> google.protobuf.Duration
-	13, // 4: sard.agent.v1.ConnectRequest.heartbeat:type_name -> sard.agent.v1.Heartbeat
-	17, // 5: sard.agent.v1.ConnectRequest.step_result:type_name -> sard.agent.v1.StepResult
-	12, // 6: sard.agent.v1.ConnectRequest.hello:type_name -> sard.agent.v1.Hello
-	14, // 7: sard.agent.v1.ConnectRequest.step_progress:type_name -> sard.agent.v1.StepProgress
-	15, // 8: sard.agent.v1.ConnectRequest.log_chunk:type_name -> sard.agent.v1.LogChunk
-	30, // 9: sard.agent.v1.Heartbeat.sent_at:type_name -> google.protobuf.Timestamp
+	8,  // 0: sard.agent.v1.RegisterRequest.plugins:type_name -> sard.agent.v1.Plugin
+	27, // 1: sard.agent.v1.RegisterRequest.repositories:type_name -> sard.agent.v1.RepositoryInfo
+	4,  // 2: sard.agent.v1.Plugin.actions:type_name -> sard.agent.v1.Action
+	30, // 3: sard.agent.v1.RegisterResponse.heartbeat_interval:type_name -> google.protobuf.Duration
+	14, // 4: sard.agent.v1.ConnectRequest.heartbeat:type_name -> sard.agent.v1.Heartbeat
+	18, // 5: sard.agent.v1.ConnectRequest.step_result:type_name -> sard.agent.v1.StepResult
+	13, // 6: sard.agent.v1.ConnectRequest.hello:type_name -> sard.agent.v1.Hello
+	15, // 7: sard.agent.v1.ConnectRequest.step_progress:type_name -> sard.agent.v1.StepProgress
+	16, // 8: sard.agent.v1.ConnectRequest.log_chunk:type_name -> sard.agent.v1.LogChunk
+	31, // 9: sard.agent.v1.Heartbeat.sent_at:type_name -> google.protobuf.Timestamp
 	0,  // 10: sard.agent.v1.StepProgress.phase:type_name -> sard.agent.v1.StepPhase
-	30, // 11: sard.agent.v1.StepProgress.sent_at:type_name -> google.protobuf.Timestamp
-	16, // 12: sard.agent.v1.LogChunk.lines:type_name -> sard.agent.v1.LogLine
-	30, // 13: sard.agent.v1.LogLine.time:type_name -> google.protobuf.Timestamp
+	31, // 11: sard.agent.v1.StepProgress.sent_at:type_name -> google.protobuf.Timestamp
+	17, // 12: sard.agent.v1.LogChunk.lines:type_name -> sard.agent.v1.LogLine
+	31, // 13: sard.agent.v1.LogLine.time:type_name -> google.protobuf.Timestamp
 	1,  // 14: sard.agent.v1.LogLine.level:type_name -> sard.agent.v1.LogLevel
-	2,  // 15: sard.agent.v1.StepResult.status:type_name -> sard.agent.v1.StepStatus
-	30, // 16: sard.agent.v1.StepResult.started_at:type_name -> google.protobuf.Timestamp
-	30, // 17: sard.agent.v1.StepResult.finished_at:type_name -> google.protobuf.Timestamp
-	18, // 18: sard.agent.v1.StepResult.backup:type_name -> sard.agent.v1.BackupOutput
-	19, // 19: sard.agent.v1.StepResult.restore:type_name -> sard.agent.v1.RestoreOutput
-	20, // 20: sard.agent.v1.StepResult.verify:type_name -> sard.agent.v1.VerifyOutput
-	22, // 21: sard.agent.v1.StepResult.run:type_name -> sard.agent.v1.RunOutput
-	21, // 22: sard.agent.v1.VerifyOutput.checks:type_name -> sard.agent.v1.CheckResult
-	25, // 23: sard.agent.v1.ConnectResponse.run_step:type_name -> sard.agent.v1.RunStep
-	27, // 24: sard.agent.v1.ConnectResponse.cancel_step:type_name -> sard.agent.v1.CancelStep
-	24, // 25: sard.agent.v1.ConnectResponse.result_ack:type_name -> sard.agent.v1.ResultAck
-	3,  // 26: sard.agent.v1.RunStep.action:type_name -> sard.agent.v1.Action
-	29, // 27: sard.agent.v1.RunStep.timeout:type_name -> google.protobuf.Duration
-	28, // 28: sard.agent.v1.RunStep.tags:type_name -> sard.agent.v1.RunStep.TagsEntry
-	4,  // 29: sard.agent.v1.EnrollmentService.Enroll:input_type -> sard.agent.v1.EnrollRequest
-	6,  // 30: sard.agent.v1.AgentService.Register:input_type -> sard.agent.v1.RegisterRequest
-	11, // 31: sard.agent.v1.AgentService.Connect:input_type -> sard.agent.v1.ConnectRequest
-	9,  // 32: sard.agent.v1.AgentService.RenewCertificate:input_type -> sard.agent.v1.RenewCertificateRequest
-	5,  // 33: sard.agent.v1.EnrollmentService.Enroll:output_type -> sard.agent.v1.EnrollResponse
-	8,  // 34: sard.agent.v1.AgentService.Register:output_type -> sard.agent.v1.RegisterResponse
-	23, // 35: sard.agent.v1.AgentService.Connect:output_type -> sard.agent.v1.ConnectResponse
-	10, // 36: sard.agent.v1.AgentService.RenewCertificate:output_type -> sard.agent.v1.RenewCertificateResponse
-	33, // [33:37] is the sub-list for method output_type
-	29, // [29:33] is the sub-list for method input_type
-	29, // [29:29] is the sub-list for extension type_name
-	29, // [29:29] is the sub-list for extension extendee
-	0,  // [0:29] is the sub-list for field type_name
+	3,  // 15: sard.agent.v1.StepResult.status:type_name -> sard.agent.v1.StepStatus
+	31, // 16: sard.agent.v1.StepResult.started_at:type_name -> google.protobuf.Timestamp
+	31, // 17: sard.agent.v1.StepResult.finished_at:type_name -> google.protobuf.Timestamp
+	19, // 18: sard.agent.v1.StepResult.backup:type_name -> sard.agent.v1.BackupOutput
+	20, // 19: sard.agent.v1.StepResult.restore:type_name -> sard.agent.v1.RestoreOutput
+	21, // 20: sard.agent.v1.StepResult.verify:type_name -> sard.agent.v1.VerifyOutput
+	23, // 21: sard.agent.v1.StepResult.run:type_name -> sard.agent.v1.RunOutput
+	2,  // 22: sard.agent.v1.StepResult.reject_reason:type_name -> sard.agent.v1.RejectReason
+	22, // 23: sard.agent.v1.VerifyOutput.checks:type_name -> sard.agent.v1.CheckResult
+	26, // 24: sard.agent.v1.ConnectResponse.run_step:type_name -> sard.agent.v1.RunStep
+	28, // 25: sard.agent.v1.ConnectResponse.cancel_step:type_name -> sard.agent.v1.CancelStep
+	25, // 26: sard.agent.v1.ConnectResponse.result_ack:type_name -> sard.agent.v1.ResultAck
+	4,  // 27: sard.agent.v1.RunStep.action:type_name -> sard.agent.v1.Action
+	30, // 28: sard.agent.v1.RunStep.timeout:type_name -> google.protobuf.Duration
+	29, // 29: sard.agent.v1.RunStep.tags:type_name -> sard.agent.v1.RunStep.TagsEntry
+	5,  // 30: sard.agent.v1.EnrollmentService.Enroll:input_type -> sard.agent.v1.EnrollRequest
+	7,  // 31: sard.agent.v1.AgentService.Register:input_type -> sard.agent.v1.RegisterRequest
+	12, // 32: sard.agent.v1.AgentService.Connect:input_type -> sard.agent.v1.ConnectRequest
+	10, // 33: sard.agent.v1.AgentService.RenewCertificate:input_type -> sard.agent.v1.RenewCertificateRequest
+	6,  // 34: sard.agent.v1.EnrollmentService.Enroll:output_type -> sard.agent.v1.EnrollResponse
+	9,  // 35: sard.agent.v1.AgentService.Register:output_type -> sard.agent.v1.RegisterResponse
+	24, // 36: sard.agent.v1.AgentService.Connect:output_type -> sard.agent.v1.ConnectResponse
+	11, // 37: sard.agent.v1.AgentService.RenewCertificate:output_type -> sard.agent.v1.RenewCertificateResponse
+	34, // [34:38] is the sub-list for method output_type
+	30, // [30:34] is the sub-list for method input_type
+	30, // [30:30] is the sub-list for extension type_name
+	30, // [30:30] is the sub-list for extension extendee
+	0,  // [0:30] is the sub-list for field type_name
 }
 
 func init() { file_sard_agent_v1_agent_proto_init() }
@@ -2434,7 +2513,7 @@ func file_sard_agent_v1_agent_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sard_agent_v1_agent_proto_rawDesc), len(file_sard_agent_v1_agent_proto_rawDesc)),
-			NumEnums:      4,
+			NumEnums:      5,
 			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   2,

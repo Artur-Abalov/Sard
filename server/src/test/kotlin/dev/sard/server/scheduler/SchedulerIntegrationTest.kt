@@ -418,6 +418,18 @@ class SchedulerIntegrationTest(
     }
 
     @Test
+    fun `Срабатывание расписания для источника верификатора записывается как refused`() {
+        val schedule = schedule(source())
+        jdbc.update("update agents set role = 'verifier' where id = ?", tenant.agentId)
+
+        tickAt(at("2026-09-30T11:00:00Z"))
+
+        assertEquals(emptyList(), tables.runs())
+        val fire = tables.fires(schedule.id).single()
+        assertEquals(Triple("refused", "agent_role_mismatch", 1), Triple(fire.outcome, fire.reason, fire.skippedInRow))
+    }
+
+    @Test
     fun `a manual start racing a scheduled fire leaves one active run and a journal that names it`() {
         repeat(5) { round ->
             val source = source("race-$round")

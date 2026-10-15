@@ -37,6 +37,8 @@ private val EN =
                     "Reason: the agent no longer offers the source's plugin",
                 (FireOutcome.REFUSED to FireReason.UNKNOWN_REPOSITORY) to
                     "Reason: the agent no longer reports the source's repository",
+                (FireOutcome.REFUSED to FireReason.AGENT_ROLE_MISMATCH) to
+                    "Reason: the source's agent is a verifier and cannot run backups",
             ),
     )
 
@@ -56,6 +58,8 @@ private val RU =
                     "Причина: агент больше не предлагает плагин источника",
                 (FireOutcome.REFUSED to FireReason.UNKNOWN_REPOSITORY) to
                     "Причина: агент больше не сообщает репозиторий источника",
+                (FireOutcome.REFUSED to FireReason.AGENT_ROLE_MISMATCH) to
+                    "Причина: агент источника — верификатор и не выполняет бэкап",
             ),
     )
 

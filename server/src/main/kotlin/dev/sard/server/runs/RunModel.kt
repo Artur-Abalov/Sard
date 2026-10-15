@@ -3,6 +3,7 @@
 
 package dev.sard.server.runs
 
+import dev.sard.server.role.AgentRole
 import java.time.Instant
 import java.util.UUID
 
@@ -98,6 +99,27 @@ enum class Action(
         fun of(stored: String): Action = entries.single { it.stored == stored }
     }
 }
+
+/**
+ * What each role may be asked to do (V1): a source runs BACKUP, RESTORE and RUN; a verifier only VERIFY. The
+ * one place the rule lives; sources, runs and the dispatcher ask it. Exhaustive, no `else`.
+ */
+fun AgentRole.allows(action: Action): Boolean =
+    when (this) {
+        AgentRole.SOURCE -> {
+            when (action) {
+                Action.BACKUP, Action.RESTORE, Action.RUN -> true
+                Action.VERIFY -> false
+            }
+        }
+
+        AgentRole.VERIFIER -> {
+            when (action) {
+                Action.VERIFY -> true
+                Action.BACKUP, Action.RESTORE, Action.RUN -> false
+            }
+        }
+    }
 
 /** A source the server creates and keeps itself (F6): the self-backup's two; null for a user's source. */
 enum class SystemRole(

@@ -72,7 +72,8 @@ class Sources(
                         draft.agentId,
                         draft.plugin,
                         draft.repositoryName,
-                        requireBackup = true,
+                        Action.BACKUP,
+                        requireListed = true,
                     ).requireConfig(draft.config)
                 val now = clock.instant()
                 val record =
@@ -99,7 +100,8 @@ class Sources(
                         draft.agentId,
                         draft.plugin,
                         draft.repositoryName,
-                        requireBackup = true,
+                        Action.BACKUP,
+                        requireListed = true,
                     ).requireConfig(draft.config)
                 record.name = draft.name
                 record.agentId = draft.agentId

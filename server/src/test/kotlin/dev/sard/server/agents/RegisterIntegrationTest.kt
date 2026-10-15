@@ -3,6 +3,8 @@
 
 package dev.sard.server.agents
 
+import com.google.protobuf.ByteString
+import com.google.protobuf.UnknownFieldSet
 import com.google.rpc.ErrorInfo
 import dev.sard.proto.agent.v1.Action
 import dev.sard.proto.agent.v1.AgentServiceGrpc
@@ -11,6 +13,9 @@ import dev.sard.proto.agent.v1.RegisterRequest
 import dev.sard.proto.agent.v1.RegisterResponse
 import dev.sard.proto.agent.v1.RepositoryInfo
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.api.MACHINE_ID
+import dev.sard.server.api.OTHER_MACHINE_ID
+import dev.sard.server.api.captureLogs
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.pki.CertificateAuthority
@@ -43,6 +48,7 @@ private const val DEADLINE_SECONDS = 10L
 private const val POLL_MILLIS = 20L
 private val HEX_A = "a".repeat(64)
 private val HEX_B = "b".repeat(64)
+private const val MARKER_MID = "MARKER-MID-0001"
 private const val FILES_SCHEMA = """{"type":"object","properties":{"path":{"type":"string"}}}"""
 private const val RESTORE_SCHEMA = """{"type":"object","properties":{"destination":{"type":"string"}}}"""
 
@@ -105,6 +111,7 @@ private fun snapshotA(): RegisterRequest.Builder =
         .addRepositories(repository("offsite", backend = "sftp"))
         .addAllSecretNames(listOf("pg-prod", "PG_PASSWORD"))
         .addAllScriptNames(listOf("pre-dump"))
+        .setMachineId(MACHINE_ID)
 
 /** Snapshot B: differs from A in every field Register stores. */
 private fun snapshotB(): RegisterRequest.Builder =
@@ -119,6 +126,7 @@ private fun snapshotB(): RegisterRequest.Builder =
         .addPlugins(plugin("mysql"))
         .addRepositories(repository("main", backend = "rest", id = HEX_B, crypto = "gost"))
         .addAllSecretNames(listOf("mysql-root"))
+        .setMachineId(OTHER_MACHINE_ID)
 
 /**
  * S4a, verification strategy 1-6: Register replaces the agent's snapshot atomically and only
@@ -165,7 +173,8 @@ class RegisterIntegrationTest(
         val id = agent.identity.agentId
         val columns =
             "tenant_id, hostname, agent_version, os, arch, protocol_version, " +
-                "array_to_string(secret_names, ',') secrets, array_to_string(script_names, ',') scripts, last_register_at"
+                "array_to_string(secret_names, ',') secrets, array_to_string(script_names, ',') scripts, " +
+                "last_register_at, machine_id"
         val row = jdbc.queryForMap("select $columns from agents where id = ?", id)
         val plugins =
             jdbc.queryForList(
@@ -198,6 +207,7 @@ class RegisterIntegrationTest(
                 "secrets" to "pg-prod,PG_PASSWORD",
                 "scripts" to "pre-dump",
                 "last_register_at" to Timestamp.from(NOW),
+                "machine_id" to MACHINE_ID,
             ),
             setOf(
                 listOf(tenant, "postgresql", "0.1.0", jsonb("""{"type": "object"}"""), "backup,restore"),
@@ -220,6 +230,7 @@ class RegisterIntegrationTest(
                 "secrets" to "mysql-root",
                 "scripts" to "",
                 "last_register_at" to Timestamp.from(NOW),
+                "machine_id" to OTHER_MACHINE_ID,
             ),
             setOf(
                 listOf(tenant, "postgresql", "0.2.0", "true", "verify"),
@@ -403,5 +414,96 @@ class RegisterIntegrationTest(
         val response = register(agent, snapshotA())
         assertEquals(agent.identity.agentId, UUID.fromString(response.agentId))
         assertEquals(17L to 0, response.heartbeatInterval.seconds to response.heartbeatInterval.nanos)
+    }
+
+    // --- V1: machine_id
+
+    private fun machineIdOf(agent: EnrolledAgent): String? =
+        jdbc.queryForObject("select machine_id from agents where id = ?", String::class.java, agent.identity.agentId)
+
+    @Test
+    fun `machine_id из Register сохраняется у агента`() {
+        val agent = fixtures.enrolled(fixtures.tenant())
+        assertEquals(null, machineIdOf(agent))
+        register(agent, snapshotA())
+        assertEquals(MACHINE_ID, machineIdOf(agent))
+    }
+
+    @Test
+    fun `Следующий Register перезаписывает machine_id`() {
+        val agent = fixtures.enrolled(fixtures.tenant())
+        register(agent, snapshotA())
+        register(agent, snapshotA().setMachineId(OTHER_MACHINE_ID))
+        assertEquals(OTHER_MACHINE_ID, machineIdOf(agent))
+    }
+
+    @Test
+    fun `Недопустимый machine_id отклоняет Register как FIELD_INVALID`() {
+        val agent = fixtures.enrolled(fixtures.tenant())
+        register(agent, snapshotA())
+        val bad =
+            listOf(
+                "",
+                "a".repeat(63),
+                "a".repeat(65),
+                "A".repeat(64),
+                "a".repeat(63) + "g",
+            )
+        for (value in bad) {
+            val (code, info) = refusal(agent, snapshotB().setHostname("db2").setMachineId(value))
+            assertEquals(Status.Code.INVALID_ARGUMENT, code, value)
+            assertEquals("FIELD_INVALID", info.reason, value)
+            assertEquals(mapOf("field" to "machine_id"), info.metadataMap, value)
+            assertEquals(expectedA(agent), stored(agent), value)
+        }
+    }
+
+    @Test
+    fun `Ошибка hostname важнее пустого machine_id`() {
+        val agent = fixtures.enrolled(fixtures.tenant())
+        val (code, info) = refusal(agent, snapshotA().setHostname("").setMachineId(""))
+        assertEquals(Status.Code.INVALID_ARGUMENT to "HOSTNAME_INVALID", code to info.reason)
+    }
+
+    @Test
+    fun `Отказ по machine_id не раскрывает значение в тексте статуса и в логе`() {
+        val agent = fixtures.enrolled(fixtures.tenant())
+        lateinit var error: StatusRuntimeException
+        val logs = captureLogs { error = assertFailsWith { register(agent, snapshotA().setMachineId(MARKER_MID)) } }
+
+        val info =
+            StatusProto
+                .fromThrowable(error)!!
+                .detailsList
+                .single()
+                .unpack(ErrorInfo::class.java)
+        assertEquals("FIELD_INVALID", info.reason)
+        assertTrue(MARKER_MID !in error.status.description.orEmpty())
+        assertTrue(MARKER_MID !in info.metadataMap.values.toString())
+        assertTrue(logs.none { MARKER_MID in it }, logs.toString())
+    }
+
+    @Test
+    fun `Успешный Register не пишет machine_id в лог`() {
+        val agent = fixtures.enrolled(fixtures.tenant())
+        val logs = captureLogs { register(agent, snapshotA()) }
+        assertTrue(logs.none { MACHINE_ID in it }, logs.toString())
+    }
+
+    @Test
+    fun `Неизвестное поле в Register не меняет роль агента`() {
+        val agent = fixtures.enrolled(fixtures.tenant())
+        val verifier =
+            UnknownFieldSet.Field
+                .newBuilder()
+                .addLengthDelimited(ByteString.copyFromUtf8("verifier"))
+                .build()
+        val request = snapshotA().setUnknownFields(UnknownFieldSet.newBuilder().addField(99, verifier).build())
+
+        register(agent, request)
+
+        val sql = "select role from agents where id = ?"
+        val role = jdbc.queryForObject(sql, String::class.java, agent.identity.agentId)
+        assertEquals("source", role)
     }
 }
