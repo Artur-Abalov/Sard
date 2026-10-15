@@ -41,8 +41,21 @@ class AgentRefusalMessageTest {
     }
 
     @Test
+    fun `the log line of a certificate without a valid role names the agent and tenant and says to enroll again`() {
+        for (failure in listOf(AgentAuthFailure.CERT_ROLE_MISSING, AgentAuthFailure.CERT_ROLE_INVALID)) {
+            val line = message(Rejected(failure, "8f0e", AGENT.agentId, AGENT.tenantId))
+            val documented =
+                "agent call refused: reason=$failure serial=8f0e agent=${AGENT.agentId} " +
+                    "tenant=${AGENT.tenantId} method=$METHOD: "
+            assertTrue(line.startsWith(documented), line)
+            assertTrue("re-enroll the agent" in line, line)
+        }
+    }
+
+    @Test
     fun `every other refusal keeps the short line`() {
-        for (failure in AgentAuthFailure.entries - AgentAuthFailure.CERT_UNKNOWN) {
+        val roleRefusals = setOf(AgentAuthFailure.CERT_ROLE_MISSING, AgentAuthFailure.CERT_ROLE_INVALID)
+        for (failure in AgentAuthFailure.entries - AgentAuthFailure.CERT_UNKNOWN - roleRefusals) {
             val line = message(Rejected(failure, "8f0e", AGENT.agentId))
             assertEquals("agent call refused: reason=$failure serial=8f0e agent=${AGENT.agentId} method=$METHOD", line)
             assertFalse("tenant" in line, line)

@@ -10,6 +10,7 @@ import dev.sard.server.persistence.AgentRepositoryRecord
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.hqlWhere
+import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.RunAnnouncer
 import dev.sard.server.runs.StepRevocation
 import jakarta.persistence.LockModeType
@@ -63,7 +64,25 @@ data class AgentRow(
     val duplicateSessionAt: Instant?,
     /** The agent next to the server, enrolled with a built-in token (docs/specs/server/self-agent.feature). */
     val builtin: Boolean,
+    /** What the agent may do; fixed by its token (V1). */
+    val role: AgentRole,
 )
+
+/** The row of an agent as the list and the card show it. */
+internal fun Agent.toRow() =
+    AgentRow(
+        id,
+        hostname,
+        agentVersion,
+        os,
+        arch,
+        registeredAt,
+        lastSeenAt,
+        revokedAt,
+        duplicateSessionAt,
+        builtin,
+        AgentRole.of(role),
+    )
 
 /** A plugin the agent announced; [configSchema] is the JSON text it sent. */
 data class AgentPluginView(
@@ -141,7 +160,7 @@ class Agents(
             // An empty list is no valid IN list: a placeholder id that no agent has stands for "nobody".
             if (connectivity != null) query.setParameterList("online", presence.onlineIds().ifEmpty { NOBODY })
             after?.bind(query)
-            query.setMaxResults(limit).list().map { rowOf(it) }
+            query.setMaxResults(limit).list().map { it.toRow() }
         }
 
     private fun connectivityCondition(connectivity: Connectivity?): String? =
@@ -248,20 +267,6 @@ class Agents(
         }
     }
 
-    private fun rowOf(agent: Agent) =
-        AgentRow(
-            agent.id,
-            agent.hostname,
-            agent.agentVersion,
-            agent.os,
-            agent.arch,
-            agent.registeredAt,
-            agent.lastSeenAt,
-            agent.revokedAt,
-            agent.duplicateSessionAt,
-            agent.builtin,
-        )
-
     private fun cardOf(
         session: Session,
         agent: Agent,
@@ -281,7 +286,7 @@ class Agents(
                 ).setParameter("agent", agent.id)
                 .list()
         return AgentCard(
-            rowOf(agent),
+            agent.toRow(),
             agent.protocolVersion,
             plugins.map { AgentPluginView(it.name, it.version, it.actions, it.configSchema) },
             repositories.map {

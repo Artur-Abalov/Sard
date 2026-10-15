@@ -33,20 +33,22 @@
 ## Перехватчик агентов (S3, 2026-09-28)
 - **Запрещено всё, что не разрешено явно.** `AgentAuthInterceptor` — глобальный (`@GlobalServerInterceptor`, первым в цепочке), применяется к каждому сервису сервера, в том числе добавленному позже. Без клиентского сертификата доступны только сервисы из `UNAUTHENTICATED_SERVICES` (`agents/AgentAuthConfiguration.kt`): `sard.agent.v1.EnrollmentService` и `grpc.health.v1.Health`. Изменение этого списка — пункт ревью. gRPC reflection выключен (`spring.grpc.server.reflection.enabled: false`): он раскрыл бы список сервисов без сертификата.
 - **Цепочку проверяет TLS.** `client-auth=optional` не значит «без проверки»: предъявленный сертификат обязан вести к CA Sard (`PkiAutoConfiguration.trustOnly`, `secure: true`), иначе рукопожатие рвётся и вызов получает `UNAVAILABLE` — до перехватчика он не доходит (тест `AgentAuthIntegrationTest`).
-- **Проверки перехватчика**, по порядку: сертификат предъявлен → запись `agent_certificates` по serial (lower-case hex, системный поиск ADR 0013) → тенант и агент записи совпадают с URI SAN `sard://tenants/<tenant>/agents/<agent>` → сертификат не отозван → `now < not_after` записи → агент не отозван (`agents.revoked_at`). Тенант берётся из сертификата и подтверждается записью; поля сообщений его не задают. Кэша принципалов нет: отзыв действует со следующего вызова.
+- **Проверки перехватчика**, по порядку: сертификат предъявлен → запись `agent_certificates` по serial (lower-case hex, системный поиск ADR 0013) → тенант и агент записи совпадают с URI SAN `sard://tenants/<tenant>/agents/<agent>` → в SAN есть ровно один допустимый URI роли (V1) → роль сертификата равна `agents.role` → сертификат не отозван → `now < not_after` записи → агент не отозван (`agents.revoked_at`). Тенант берётся из сертификата и подтверждается записью; поля сообщений его не задают. Кэша принципалов нет: отзыв действует со следующего вызова.
 - **Отказ** — `UNAUTHENTICATED`, сообщение `agent certificate rejected` и `google.rpc.ErrorInfo` с доменом `sard.dev` и причиной:
 
   | Причина | Когда |
   |---|---|
   | `CERT_MISSING` | сертификат не предъявлен |
   | `CERT_UNKNOWN` | сертификат нашего CA, но записи с таким serial нет |
-  | `CERT_IDENTITY_MISMATCH` | URI SAN называет другого агента или тенанта, чем запись (или не называет никого) |
+  | `CERT_IDENTITY_MISMATCH` | URI SAN называет другого агента или тенанта, чем запись (или не называет никого); роль сертификата не равна `agents.role` (V1) |
+  | `CERT_ROLE_MISSING` | в SAN нет URI роли `sard://roles/…` (V1, `docs/adr/00XX-draft-agent-role.md`) |
+  | `CERT_ROLE_INVALID` | URI роли не равен ровно `sard://roles/source` или `sard://roles/verifier`, или их больше одного (V1) |
   | `CERT_REVOKED` | `agent_certificates.revoked_at` задан |
   | `CERT_EXPIRED` | наступил `not_after` записи (истёкший X.509 обычно отсекает уже TLS) |
   | `AGENT_REVOKED` | `agents.revoked_at` задан |
 
   Держатель сертификата из причины не узнаёт ничего, чего не знал: свой сертификат он видит сам. Сервер пишет в лог причину, serial, agent_id и метод; сертификаты и ключи не логируются.
-- **Стрим.** Проверка выполняется при открытии вызова; принципал (`AgentPrincipal`: agent_id, tenant_id, serial) кладётся в gRPC `Context` и действует до конца вызова, в `Connect` — до закрытия стрима. Закрытие уже открытых стримов при отзыве и истечении `not_after` — S5a: периодическая сверка с БД тем же `AgentAuthenticator` (ADR 0026).
+- **Стрим.** Проверка выполняется при открытии вызова; принципал (`AgentPrincipal`: agent_id, tenant_id, serial, роль — с V1) кладётся в gRPC `Context` и действует до конца вызова, в `Connect` — до закрытия стрима. Закрытие уже открытых стримов при отзыве и истечении `not_after` — S5a: периодическая сверка с БД тем же `AgentAuthenticator` (ADR 0026).
 
 ## Отвергнуто
 - Сервер подключается к агентам — требует входящих портов на каждом хосте.

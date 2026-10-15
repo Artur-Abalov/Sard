@@ -37,7 +37,10 @@ type handlers map[string][]agentv1.Action
 
 func (h handlers) Handler(name string) (executor.Handler, bool) {
 	actions, ok := h[name]
-	return actionsOnly(actions), ok
+	if !ok {
+		return nil, false
+	}
+	return actionsOnly(actions), true
 }
 
 type actionsOnly []agentv1.Action
@@ -93,6 +96,16 @@ func TestRegisterRequestCarriesHostAndVersion(t *testing.T) {
 	want := []any{"db1", "1.2.3", uint32(1), "linux", "amd64"}
 	if !slices.Equal(got, want) {
 		t.Errorf("request = %v, want %v", got, want)
+	}
+}
+
+func TestRegisterRequestCarriesTheMachineIDOfEveryRegister(t *testing.T) {
+	a := newAgent(t, &fakeLink{})
+	a.MachineID = strings.Repeat("ab", 32)
+	for range 2 {
+		if got := a.RegisterRequest(context.Background()).GetMachineId(); got != a.MachineID {
+			t.Errorf("machine_id = %q", got)
+		}
 	}
 }
 

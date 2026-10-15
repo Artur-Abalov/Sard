@@ -256,6 +256,16 @@ func tlsConfig(files config.TLS, serverName string) (*tls.Config, error) {
 	}, nil
 }
 
+// CheckFiles reports a missing tls.ca_file, tls.cert_file or tls.key_file the
+// way New does, for the agent's checks that need the certificate before it
+// builds the transport.
+func CheckFiles(files config.TLS) error {
+	if err := requireFiles(files); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidOptions, err)
+	}
+	return nil
+}
+
 func requireFiles(files config.TLS) error {
 	for _, f := range []struct{ key, path string }{{"tls.ca_file", files.CAFile}, {"tls.cert_file", files.CertFile}, {"tls.key_file", files.KeyFile}} {
 		if f.path == "" {

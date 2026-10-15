@@ -122,6 +122,9 @@ enum class ScheduleFireReason {
 
     @JsonProperty("unknown_repository")
     UNKNOWN_REPOSITORY,
+
+    @JsonProperty("agent_role_mismatch")
+    AGENT_ROLE_MISMATCH,
 }
 
 @Schema(description = "One fire of a schedule and what came of it")

@@ -106,7 +106,11 @@ func withRestic(t *testing.T) string {
 
 func TestHostnameFailure(t *testing.T) {
 	t.Parallel()
-	cfg := writeConfig(t, "server:\n  address: sard.example.com:9090\n"+withRestic(t))
+	dir := t.TempDir()
+	writeIdentity(t, dir)
+	cfg := writeConfig(t, "server:\n  address: sard.example.com:9090\n"+
+		"tls: {ca_file: "+dir+"/ca.pem, cert_file: "+dir+"/agent.pem, key_file: "+dir+"/agent.key}\n"+
+		"executor: {state_dir: "+dir+"/state}\n"+withRestic(t))
 	broken := func() (string, error) { return "", errors.New("uname failed") }
 	code, _, errOut := runAgentOn(broken, "--config", cfg)
 	if code != 1 || errOut != "sard-agent: hostname: uname failed\n" {
@@ -153,7 +157,7 @@ func TestValidConfigDialsTheServerUntilStopped(t *testing.T) {
 	defer cancel()
 	var out, errOut bytes.Buffer
 	code := run(ctx, []string{"--config", writeConfig(t, cfg)}, &out, &errOut, fixedHostname)
-	if code != 0 || out.String() != "sard-agent dev: connecting to 127.0.0.1:1\n" || errOut.String() != "" {
+	if code != 0 || out.String() != "sard-agent dev: connecting to 127.0.0.1:1 as source\n" || errOut.String() != "" {
 		t.Fatalf("code = %d, out = %q, stderr = %q", code, out.String(), errOut.String())
 	}
 }
@@ -167,7 +171,7 @@ func TestAnUnusableStateDirStopsBeforeDialing(t *testing.T) {
 		"tls: {ca_file: " + ca + ", cert_file: " + dir + "/agent.pem, key_file: " + dir + "/agent.key}\n" +
 		"executor: {state_dir: " + ca + "/state}\n" + withRestic(t) // under a file
 	code, _, errOut := runAgent("--config", writeConfig(t, cfg))
-	if code != 1 || !strings.Contains(errOut, "invalid executor options") {
+	if code != 1 || !strings.Contains(errOut, ca+"/state") {
 		t.Fatalf("code = %d, stderr = %q", code, errOut)
 	}
 }
@@ -275,7 +279,9 @@ func TestResticPath(t *testing.T) {
 
 func TestStartStopsWhenResticCannotBeLocated(t *testing.T) {
 	t.Parallel()
-	cfg := writeConfig(t, "server:\n  address: sard.example.com:9090\n")
+	dir := t.TempDir()
+	writeIdentity(t, dir)
+	cfg := identityConfig(t, dir, "sard.example.com:9090")
 	broken := func() (string, error) { return "", errors.ErrUnsupported }
 	err := start(context.Background(), cfg, io.Discard, fixedHostname, broken)
 	if !errors.Is(err, errors.ErrUnsupported) {

@@ -11,6 +11,7 @@ import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.registration.Registration
+import dev.sard.server.role.AgentRole
 import io.grpc.Status
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
@@ -119,7 +120,7 @@ class SelfAgentApiIntegrationTest(
     @Test
     fun `Список, карточка и отзыв токенов не видят встроенный токен`() {
         val builtin = tokens.replaceBuiltin(tenant)
-        val ordinary = tokens.create(tenant)
+        val ordinary = tokens.create(tenant, role = AgentRole.SOURCE)
 
         val listed =
             world.api

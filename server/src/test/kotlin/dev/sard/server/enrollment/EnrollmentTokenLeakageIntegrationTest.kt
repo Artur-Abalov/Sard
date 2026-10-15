@@ -11,6 +11,7 @@ import dev.sard.server.agents.EnrollmentGrpcService
 import dev.sard.server.pki.CaFingerprint
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.resource
+import dev.sard.server.role.AgentRole
 import io.grpc.Status
 import io.grpc.StatusRuntimeException
 import io.grpc.protobuf.StatusProto
@@ -87,20 +88,20 @@ class EnrollmentTokenLeakageIntegrationTest(
     @Test
     fun `Строка токена не попадает в лог при создании токена`() {
         var reveal = ""
-        val log = capture { reveal = tokens.create(acme).reveal() }
+        val log = capture { reveal = tokens.create(acme, role = AgentRole.SOURCE).reveal() }
         assertNoLeak(log, secretsOf(reveal))
     }
 
     @Test
     fun `Строка токена не попадает в лог при отзыве`() {
-        val issued = tokens.create(acme, Duration.ofHours(1))
+        val issued = tokens.create(acme, Duration.ofHours(1), role = AgentRole.SOURCE)
         val log = capture { tokens.revoke(acme, issued.id, clock.now) }
         assertNoLeak(log, secretsOf(issued.reveal()))
     }
 
     @Test
     fun `Строка токена не попадает в лог при успешной регистрации`() {
-        val issued = tokens.create(acme, Duration.ofHours(1))
+        val issued = tokens.create(acme, Duration.ofHours(1), role = AgentRole.SOURCE)
         val log = capture { runBlocking { service.enroll(enrollRequest(issued.reveal(), csr)) } }
         assertNoLeak(log, secretsOf(issued.reveal()))
     }
@@ -108,7 +109,7 @@ class EnrollmentTokenLeakageIntegrationTest(
     @Test
     fun `Строка токена не попадает ни в лог, ни в текст отказа`() {
         for ((name, requestFor) in rejectionRequests()) {
-            val issued = tokens.create(acme, Duration.ofHours(1))
+            val issued = tokens.create(acme, Duration.ofHours(1), role = AgentRole.SOURCE)
             val secrets = secretsOf(issued.reveal())
             var status: StatusRuntimeException? = null
             val log =

@@ -58,6 +58,9 @@ enum class ErrorCode {
     @JsonProperty("agent_revoked")
     AGENT_REVOKED,
 
+    @JsonProperty("agent_role_mismatch")
+    AGENT_ROLE_MISMATCH,
+
     @JsonProperty("unavailable")
     UNAVAILABLE,
 

@@ -72,6 +72,7 @@ class AgentsApiImpl(
             row.duplicateSessionAt,
             versions.outdated(row.agentVersion),
             row.builtin,
+            row.role.toApi(),
         )
 
     private fun detailsOf(card: AgentCard): AgentDetails {
@@ -101,6 +102,7 @@ class AgentsApiImpl(
             card.scriptNames,
             versions.outdated(row.agentVersion),
             row.builtin,
+            row.role.toApi(),
         )
     }
 

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
@@ -283,7 +284,7 @@ func TestAStateDirOpenToOthersIsRefused(t *testing.T) {
 	if err := os.Chmod(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	_, err := executor.New(executor.Options{Handlers: registry{}, Sink: newSink(), StateDir: dir})
+	_, err := executor.New(executor.Options{Handlers: registry{}, Sink: newSink(), StateDir: dir, Role: role.Source})
 	if !errors.Is(err, executor.ErrInvalidOptions) || !strings.Contains(err.Error(), dir) {
 		t.Fatalf("err = %v", err)
 	}
@@ -294,7 +295,7 @@ func TestAStateDirThatCannotBeCreatedIsRefused(t *testing.T) {
 	if err := os.WriteFile(file, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := executor.New(executor.Options{Handlers: registry{}, Sink: newSink(), StateDir: filepath.Join(file, "state")})
+	_, err := executor.New(executor.Options{Handlers: registry{}, Sink: newSink(), StateDir: filepath.Join(file, "state"), Role: role.Source})
 	if !errors.Is(err, executor.ErrInvalidOptions) {
 		t.Fatalf("err = %v", err)
 	}
@@ -302,7 +303,7 @@ func TestAStateDirThatCannotBeCreatedIsRefused(t *testing.T) {
 
 func TestAMissingStateDirIsCreatedOwnerOnly(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "state", "executor")
-	if _, err := executor.New(executor.Options{Handlers: registry{}, Sink: newSink(), StateDir: dir}); err != nil {
+	if _, err := executor.New(executor.Options{Handlers: registry{}, Sink: newSink(), StateDir: dir, Role: role.Source}); err != nil {
 		t.Fatal(err)
 	}
 	if m := mode(t, dir); m != 0o700 {

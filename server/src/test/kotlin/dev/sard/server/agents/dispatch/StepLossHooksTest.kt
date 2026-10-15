@@ -38,7 +38,8 @@ class StepLossHooksTest {
         val clock = MovableClock(DISPATCH_NOW)
         val ledger = FakeLedger(step(1, StepState.RUNNING), now = { clock.now })
         val metrics = RecordingDispatchMetrics()
-        val dispatcher = StepDispatcher(ledger, ledger, FakeLinks(), clock, LOST_AFTER, metrics) { WaitingSteps(0, 0) }
+        val dispatcher =
+            StepDispatcher(ledger, ledger, FakeLinks(), clock, LOST_AFTER, metrics, ledger) { WaitingSteps(0, 0) }
 
         MutFlow.underTest { StepLossOnDisconnect(dispatcher).disconnected(AGENT, STREAM_ENDED) }
 

@@ -5,6 +5,7 @@ package dev.sard.server.api
 
 import dev.sard.server.enrollment.EnrollmentTokenValidationException
 import dev.sard.server.runs.AgentRevoked
+import dev.sard.server.runs.AgentRoleMismatch
 import dev.sard.server.runs.InvalidConfig
 import dev.sard.server.runs.RunActive
 import dev.sard.server.runs.SourceNameTaken
@@ -105,6 +106,14 @@ class AgentExceptionHandler {
     @ExceptionHandler(SelfAgentConfirmationRequired::class)
     fun confirmationRequired(): ResponseEntity<Problem> =
         problemResponse(HttpStatus.CONFLICT, "Conflict", ErrorCode.SELF_AGENT_CONFIRMATION_REQUIRED)
+
+    /** A source is bound to a verifier, which cannot back up (V1). */
+    @ExceptionHandler(AgentRoleMismatch::class)
+    fun roleMismatch(): ResponseEntity<ValidationProblem> =
+        unprocessableResponse(
+            ErrorCode.AGENT_ROLE_MISMATCH,
+            listOf(FieldError("agentId", "names a verifier, which cannot back up")),
+        )
 }
 
 /** Sources and runs: what the domain refuses, field by field. */

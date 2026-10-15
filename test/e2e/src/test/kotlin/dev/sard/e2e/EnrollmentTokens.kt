@@ -36,15 +36,17 @@ internal object EnrollmentTokens {
         env: SardEnvironment,
         ttl: Duration = Duration.ofHours(1),
         label: String = "e2e",
-    ): String = issue(env, ttl, label).token
+        role: String = "source",
+    ): String = issue(env, ttl, label, role).token
 
-    /** As [create], with the token's id. */
+    /** As [create], with the token's id; [role] is the agent role the token enrolls (`source` or `verifier`), always sent as the console does. */
     fun issue(
         env: SardEnvironment,
         ttl: Duration = Duration.ofHours(1),
         label: String = "e2e",
+        role: String = "source",
     ): Issued {
-        val created = SardApi(env).created("/api/v1/enrollment-tokens", """{"ttlSeconds":${ttl.seconds},"label":"$label"}""")
+        val created = SardApi(env).created("/api/v1/enrollment-tokens", """{"ttlSeconds":${ttl.seconds},"label":"$label","role":"$role"}""")
         val token = created.require("token")
         check(TOKEN.matches(token)) { "the answer has no well-formed token" }
         env.secret(token)

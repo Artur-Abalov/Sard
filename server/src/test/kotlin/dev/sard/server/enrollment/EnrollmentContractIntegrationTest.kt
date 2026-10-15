@@ -12,6 +12,7 @@ import dev.sard.server.pki.CaFingerprint
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.certificates
 import dev.sard.server.pki.PkiFixtures.resource
+import dev.sard.server.role.AgentRole
 import io.grpc.Status
 import io.grpc.StatusRuntimeException
 import io.grpc.protobuf.StatusProto
@@ -68,7 +69,7 @@ class EnrollmentContractIntegrationTest(
         jdbc.update("delete from tenants where id = ?", acme)
     }
 
-    private fun newToken(ttl: Duration = ENROLLMENT_TOKEN_TTL) = tokens.create(acme, ttl)
+    private fun newToken(ttl: Duration = ENROLLMENT_TOKEN_TTL) = tokens.create(acme, ttl, role = AgentRole.SOURCE)
 
     private fun countAgents(tenant: UUID = acme) = jdbc.countAgents(tenant)
 
@@ -80,7 +81,10 @@ class EnrollmentContractIntegrationTest(
         val enrolled = enrollment.enroll(issued.reveal(), csr, "db1")
         val leaf = certificates(enrolled.certificateChainPem).single()
         val uri = "sard://tenants/$acme/agents/${enrolled.agentId}"
-        assertEquals(listOf(listOf<Any>(6, uri)), leaf.subjectAlternativeNames.map { it.toList() })
+        assertEquals(
+            setOf(listOf<Any>(6, uri), listOf<Any>(6, "sard://roles/source")),
+            leaf.subjectAlternativeNames.map { it.toList() }.toSet(),
+        )
         assertEquals(ca.caBundlePem(), enrolled.caBundlePem)
     }
 

@@ -3,6 +3,7 @@
 
 package dev.sard.server.pki
 
+import dev.sard.server.role.AgentRole
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
@@ -69,8 +70,9 @@ class FileCertificateAuthority(
     override fun issueAgentCertificate(
         csrDer: ByteArray,
         agent: AgentIdentity,
+        role: AgentRole,
     ): IssuedCertificate {
-        val certificate = Certificates.agent(AgentCsr.verifiedKey(csrDer), agent, ca, clock.instant(), random)
+        val certificate = Certificates.agent(AgentCsr.verifiedKey(csrDer), agent, role, ca, clock.instant(), random)
         val notAfter = certificate.notAfter.toInstant()
         return IssuedCertificate(Pem.certificate(certificate), certificate.serialNumber, notAfter)
     }

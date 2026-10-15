@@ -8,6 +8,7 @@ import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.registration.Registration
+import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.SourceDraft
 import dev.sard.server.runs.Sources
@@ -88,7 +89,9 @@ class ListsApiIntegrationTest(
         val listings: List<Listing> =
             listOf(
                 Listing("agents", { "/api/v1/agents" }) { world.enroll(tenant).agentId.toString() },
-                Listing("tokens", { "/api/v1/enrollment-tokens" }) { tokens.create(tenant).id.toString() },
+                Listing("tokens", { "/api/v1/enrollment-tokens" }) {
+                    tokens.create(tenant, role = AgentRole.SOURCE).id.toString()
+                },
                 Listing("sources", { "/api/v1/sources" }) { newSource().toString() },
                 Listing("runs", { "/api/v1/runs" }) { newRun() },
                 Listing("snapshots", { "/api/v1/sources/$sourceId/snapshots" }) { newSnapshot() },
@@ -130,7 +133,7 @@ class ListsApiIntegrationTest(
     @Test
     fun `Страница размером 200 принимается`() {
         val scene = Scene()
-        repeat(250) { tokens.create(scene.tenant) }
+        repeat(250) { tokens.create(scene.tenant, role = AgentRole.SOURCE) }
 
         val json = world.api.get("/api/v1/enrollment-tokens?limit=200", scene.admin).json
 
@@ -149,7 +152,7 @@ class ListsApiIntegrationTest(
     @Test
     fun `Список по limit ровно равному числу элементов не даёт лишней пустой страницы`() {
         val scene = Scene()
-        repeat(50) { tokens.create(scene.tenant) }
+        repeat(50) { tokens.create(scene.tenant, role = AgentRole.SOURCE) }
 
         val json = world.api.get("/api/v1/enrollment-tokens?limit=50", scene.admin).json
 
@@ -210,7 +213,7 @@ class ListsApiIntegrationTest(
     @Test
     fun `Неверный параметр списка отклоняется ошибкой у этого параметра`() {
         val scene = Scene()
-        repeat(2) { tokens.create(scene.tenant) }
+        repeat(2) { tokens.create(scene.tenant, role = AgentRole.SOURCE) }
         val tokenCursor =
             world.api
                 .get("/api/v1/enrollment-tokens?limit=1", scene.admin)

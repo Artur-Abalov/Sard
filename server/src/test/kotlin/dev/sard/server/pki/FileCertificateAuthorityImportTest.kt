@@ -6,6 +6,7 @@ package dev.sard.server.pki
 import dev.sard.server.pki.CaImportFixtures.CLOCK
 import dev.sard.server.pki.CaImportFixtures.NOW
 import dev.sard.server.pki.PkiFixtures.random
+import dev.sard.server.role.AgentRole
 import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.api.io.TempDir
 import org.springframework.boot.test.system.CapturedOutput
@@ -62,7 +63,7 @@ class FileCertificateAuthorityImportTest {
     fun `an agent certificate is signed by the imported CA`() {
         CaImportFixtures.source(importDir, original)
         val csr = PkiFixtures.resource("agent-p256.csr")
-        val issued = ca().issueAgentCertificate(csr, PkiFixtures.AGENT)
+        val issued = ca().issueAgentCertificate(csr, PkiFixtures.AGENT, AgentRole.SOURCE)
         val leaf = PkiFixtures.certificates(issued.chainPem).first()
         leaf.verify(original.certificate.publicKey)
     }
