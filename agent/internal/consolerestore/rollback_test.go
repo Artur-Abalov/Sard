@@ -190,3 +190,18 @@ func TestAFailedRemovalOfTheStagingDirectoryIsACleanupFailureThatNamesWhatIsLeft
 	log := h.log.String()
 	mentions(t, log, "level=ERROR", staging)
 }
+
+// Scenario: a kill during a rollback never leaves a marker without root (ВК14).
+func TestARollbackRemovesTheMarkerBeforeRoot(t *testing.T) {
+	h := newHost(t)
+	h.faults.moveErr = syscall.ENOTEMPTY
+	if _, f := h.run(h.request()); f == nil {
+		t.Fatal("restored")
+	}
+	stage := filepath.Join(h.dir, ".sard-staging", "c1")
+	m := slices.Index(h.faults.removed, filepath.Join(stage, "marker"))
+	r := slices.Index(h.faults.removed, filepath.Join(stage, "root"))
+	if m < 0 || r < 0 || m > r {
+		t.Errorf("removal order %v: the marker must go before root", h.faults.removed)
+	}
+}

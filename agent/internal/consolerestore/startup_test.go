@@ -252,3 +252,35 @@ func TestSettleWithoutARestoreDirectoryDoesNothing(t *testing.T) {
 		t.Errorf("the restore directory was made: %v", err)
 	}
 }
+
+func TestAStartThatStopsHalfwayNeverLeavesAMarkerWithoutRoot(t *testing.T) {
+	h := newHost(t)
+	stage := filepath.Join(h.dir, ".sard-staging", "c1")
+	mustMkdirAll(t, filepath.Join(stage, "root", "srv"))
+	if err := os.WriteFile(filepath.Join(stage, "marker"), []byte(`{"destination":"d"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.faults.removeErr = map[string]error{filepath.Join(stage, "marker"): syscall.EIO}
+	h.engine.CleanStaging()
+	h.faults.removeErr = nil
+	h.rebuild()
+	for _, ev := range h.engine.CleanStaging() {
+		if ev.Verdict == consolerestore.Completed {
+			t.Fatalf("an interrupted restore that never moved is evidence of a completed one: %+v", ev)
+		}
+	}
+}
+
+func TestAMarkerWithAnInvalidDestinationIsNotEvidenceOfSuccess(t *testing.T) {
+	h := newHost(t)
+	stage := filepath.Join(h.dir, ".sard-staging", "c1")
+	mustMkdirAll(t, stage)
+	if err := os.WriteFile(filepath.Join(stage, "marker"), []byte(`{"destination":"../../etc"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range h.engine.CleanStaging() {
+		if ev.Verdict == consolerestore.Completed {
+			t.Fatalf("a marker naming %q is taken for a completed restore: %+v", ev.Destination, ev)
+		}
+	}
+}

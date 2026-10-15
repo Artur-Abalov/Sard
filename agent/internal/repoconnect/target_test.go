@@ -47,16 +47,21 @@ func TestTargetForHidesTheSecretsAndThePasswordOfTheAddress(t *testing.T) {
 
 // The console restore describes a failure of a repository like the commands
 // of the host do, with the secrets of that repository hidden.
-func TestAReadTargetHidesThePasswordAndTheEnvFileValuesOfTheRepository(t *testing.T) {
+func TestAReadTargetHidesTheEnvFileValuesAndNeverReadsThePasswordFile(t *testing.T) {
 	files := map[string]string{"/etc/sard/pw": "p4ss\n", "/etc/sard/env": "AWS_SECRET_ACCESS_KEY=s3cr3t\n"}
-	read := func(path string) ([]byte, error) { return []byte(files[path]), nil }
+	read := func(path string) ([]byte, error) {
+		if path == "/etc/sard/pw" {
+			t.Errorf("read the password file %s", path)
+		}
+		return []byte(files[path]), nil
+	}
 	cfg := []config.Repository{{Name: "main", URL: "s3:https://h.example/b", PasswordFile: "/etc/sard/pw", EnvFile: "/etc/sard/env"}}
 	target := repoconnect.TargetReading(cfg[0], read)
 	if target.Name != "main" || target.Backend != "s3" {
 		t.Errorf("target = %+v", target)
 	}
 	got := target.Scrub("denied p4ss and s3cr3t")
-	if strings.Contains(got, "p4ss") || strings.Contains(got, "s3cr3t") {
-		t.Errorf("secrets in %q", got)
+	if strings.Contains(got, "s3cr3t") || target.PasswordFile != "" {
+		t.Errorf("secrets in %q, password file %q", got, target.PasswordFile)
 	}
 }

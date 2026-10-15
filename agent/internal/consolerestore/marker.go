@@ -11,6 +11,7 @@ import (
 	"io/fs"
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
 const (
@@ -68,8 +69,37 @@ func readMarker(dir hostsetup.Dir) (m marker, found bool, err error) {
 	if err != nil {
 		return marker{}, false, err
 	}
+	m, err = parseMarker(data)
+	return m, err == nil, err
+}
+
+// parseMarker reads the marker and judges its destination by the rule of a plan.
+func parseMarker(data []byte) (m marker, err error) {
 	if err := json.Unmarshal(data, &m); err != nil {
-		return marker{}, false, fmt.Errorf("the marker is unreadable: %w", err)
+		return marker{}, fmt.Errorf("the marker is unreadable: %w", err)
 	}
-	return m, true, nil
+	if err := (sdk.RestorePlan{Destination: m.Destination}).Validate(); err != nil {
+		return marker{}, fmt.Errorf("the marker names an invalid destination: %w", err)
+	}
+	return m, nil
+}
+
+// removeCommand removes the directory of a command that did not complete.
+// Removing a tree is unordered, and a kill after root and before the marker
+// would leave a marker without root: the sign of a completed restore. So the
+// marker goes first and the directory is synced; if the marker stays,
+// root stays too, and the next start judges the entry again.
+func removeCommand(staging hostsetup.Dir, name string) error {
+	if dir, err := staging.Open(name); err == nil {
+		defer func() { _ = dir.Close() }()
+		for _, n := range []string{markerName, markerTemp} {
+			if err := dir.Remove(n); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+		}
+		// A directory that cannot be synced still keeps the order against a kill
+		// of the process; only a power loss in the same moment could undo it.
+		_ = dir.Sync()
+	}
+	return hostsetup.RemoveTree(staging, name)
 }

@@ -4,8 +4,6 @@
 package repoconnect
 
 import (
-	"strings"
-
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
@@ -36,18 +34,18 @@ func TargetFor(repo config.Repository, env []string, secrets ...string) repoinit
 	return target
 }
 
-// TargetReading is TargetFor for a running agent: the env file and the
-// password file are read now, to hide their values. A file that cannot be
-// read gives nothing to hide.
+// TargetReading is TargetFor for a running agent, whose messages go to the
+// server: the env file is read now, to hide its values. The password file is
+// never read (restic gets it by path, ADR 0008) and its path is not kept: the
+// messages name the repository instead. A file that cannot be read gives
+// nothing to hide.
 func TargetReading(repo config.Repository, readFile func(string) ([]byte, error)) repoinit.Target {
-	var env, secrets []string
-	if data, err := readFile(repo.PasswordFile); err == nil {
-		secrets = []string{string(data), strings.TrimSpace(string(data))}
-	}
+	var env []string
 	if repo.EnvFile != "" {
 		if data, err := readFile(repo.EnvFile); err == nil {
 			env, _ = restic.ParseEnvFile(data)
 		}
 	}
-	return TargetFor(repo, env, secrets...)
+	repo.PasswordFile = ""
+	return TargetFor(repo, env)
 }

@@ -44,3 +44,17 @@ func TestAFullDiskOfTheRestoreDirectoryIsNotPartialBecauseNothingStays(t *testin
 		t.Errorf("%s: %s", f.Reason, f.Detail)
 	}
 }
+
+// ADR 0008: the path of a password file does not go to the server; the
+// repository is named instead.
+func TestAFailureSentToTheServerNamesNoPasswordFile(t *testing.T) {
+	for _, err := range []error{restic.ErrWrongPassword, restic.ErrEmptyPassword} {
+		f := resticFailure(context.Background(), err, StageCheck, "/r", localTarget())
+		if strings.Contains(f.Detail, "  ") || strings.Contains(f.Detail, "/") {
+			t.Errorf("%v: names a password file: %s", err, f.Detail)
+		}
+		if !strings.Contains(f.Detail, `repository "main"`) {
+			t.Errorf("%v: does not name the repository: %s", err, f.Detail)
+		}
+	}
+}

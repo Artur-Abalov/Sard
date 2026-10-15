@@ -175,7 +175,7 @@ func (e *Engine) settleEntry(staging hostsetup.Dir, name, entry string) Evidence
 		e.opts.Logger.Info("the restore completed before the agent was restarted", "path", entry, "destination", m.Destination)
 		return Evidence{Name: name, Path: entry, Verdict: Completed, Destination: filepath.Join(e.opts.Dir, m.Destination), Files: m.Files, Bytes: m.Bytes}
 	}
-	if err := hostsetup.RemoveTree(staging, name); err != nil {
+	if err := removeCommand(staging, name); err != nil {
 		e.opts.Logger.Error("cannot remove the temporary directory of an interrupted restore; remove it by hand", "path", entry, "error", err)
 		return Evidence{Name: name, Path: entry, Verdict: CleanupFailed, Err: err}
 	}
@@ -395,7 +395,7 @@ func (a *attempt) prepare() *Failure {
 // it cannot remove turns the failure into CLEANUP_FAILED (ВК15).
 func (a *attempt) rollback(f *Failure) *Failure {
 	if a.stagingMade {
-		if err := hostsetup.RemoveTree(a.staging, a.req.CommandID); err != nil {
+		if err := removeCommand(a.staging, a.req.CommandID); err != nil {
 			f.Leftover = append(f.Leftover, a.stagingPath())
 			f.Cleanup = err.Error()
 			a.e.opts.Logger.Error("the rollback of a restore could not remove its temporary directory; remove it by hand",

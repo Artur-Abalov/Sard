@@ -50,3 +50,17 @@
   `Target == ""`).
 - Сервер: сценарий «Успех, о котором агент сообщил после перезапуска, записывается как
   успех» — добавлен интеграционный тест `RestoresGrpcApiIntegrationTest`.
+
+## 2026-10-15, re-review architect (CHANGES REQUIRED): два замечания P1
+
+- Уборка каталога команды, не завершившейся (`removeCommand` в `consolerestore/marker.go`): сначала
+  удаляются `marker.tmp` и `marker`, потом fsync каталога, только потом `RemoveTree`. Если метку удалить
+  нельзя, root остаётся и запись получает `CleanupFailed`. Применено в откате `attempt.rollback` и в
+  `settleEntry`. Ошибка fsync не прерывает уборку (как в `move`): порядок относительно
+  убийства процесса сохранён. Назначение в метке проверяется правилом плана; неверное — как нечитаемая метка.
+- Тесты: `TestARollbackRemovesTheMarkerBeforeRoot`, `TestAStartThatStopsHalfwayNeverLeavesAMarkerWithoutRoot`,
+  `TestAMarkerWithAnInvalidDestinationIsNotEvidenceOfSuccess`; в `rig_test.go` `Names` по убыванию, `removed`, `removeErr`.
+- ADR 0008: `repoconnect.TargetReading` читает только env-файл, путь файла пароля не хранит; `Target.passwordFile()`
+  называет файл пароля по имени репозитория, когда пути нет (команды `repo` печатают путь, как раньше).
+  Тесты: `TestRestoreTargetsNeverReadThePasswordFile`, `TestAFailureSentToTheServerNamesNoPasswordFile`.
+- OQ-220 и строка в ADR 0060: цель восстановления на сервере знает ключи плагина `files`.

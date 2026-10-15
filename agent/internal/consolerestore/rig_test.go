@@ -40,6 +40,8 @@ type faults struct {
 	syncErr      map[string]error // by the path of the directory synced
 	moveHook     func()
 	device       map[string]uint64 // by the path of the directory
+	removeErr    map[string]error  // by the path of the file removed
+	removed      []string          // paths of every Remove and RemoveDir, in order
 }
 
 type faultFS struct {
@@ -82,8 +84,29 @@ func (d faultDir) Mkdir(name string, perm fs.FileMode) (hostsetup.Dir, error) {
 	return faultDir{c, d.f}, nil
 }
 
+// Names lists the entries sorted descending: root before marker, the order
+// in which a kill leaves a marker without root.
+func (d faultDir) Names() ([]string, error) {
+	names, err := d.Dir.Names()
+	slices.Sort(names)
+	slices.Reverse(names)
+	return names, err
+}
+
+func (d faultDir) Remove(name string) error {
+	d.f.mu.Lock()
+	d.f.removed = append(d.f.removed, filepath.Join(d.Path(), name))
+	err := d.f.removeErr[filepath.Join(d.Path(), name)]
+	d.f.mu.Unlock()
+	if err != nil {
+		return &fs.PathError{Op: "unlinkat", Path: filepath.Join(d.Path(), name), Err: err}
+	}
+	return d.Dir.Remove(name)
+}
+
 func (d faultDir) RemoveDir(name string) error {
 	d.f.mu.Lock()
+	d.f.removed = append(d.f.removed, filepath.Join(d.Path(), name))
 	err := d.f.removeDirErr[filepath.Join(d.Path(), name)]
 	d.f.mu.Unlock()
 	if err != nil {
