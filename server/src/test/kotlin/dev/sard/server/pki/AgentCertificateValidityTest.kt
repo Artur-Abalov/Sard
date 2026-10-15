@@ -72,7 +72,7 @@ class AgentCertificateValidityTest {
     }
 }
 
-/** The configured validity reaches the certificate the file CA signs (no mutation: the CSR path is tested elsewhere). */
+/** The configured validity reaches the certificate the file CA signs (not mutated here). */
 class FileCertificateAuthorityValidityTest {
     @TempDir
     lateinit var tmp: Path
