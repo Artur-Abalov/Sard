@@ -232,4 +232,18 @@ class StepResultReceiverTest {
         assertEquals(1, calls.list.count { it.startsWith("ack") })
         assertEquals(listOf("succeeded"), metrics.outcomes)
     }
+
+    @Test
+    fun `the outcome is counted before the ack goes out, so whoever got the ack sees it counted`() {
+        val countedAtAck = mutableListOf<List<String>>()
+        val watching =
+            ResultAcks { _, _ ->
+                countedAtAck += metrics.outcomes.toList()
+                SendResult.Queued
+            }
+
+        MutFlow.underTest { StepResultReceiver(recorder, watching, metrics).handle(AGENT, result()) }
+
+        assertEquals(listOf(listOf("succeeded")), countedAtAck)
+    }
 }
