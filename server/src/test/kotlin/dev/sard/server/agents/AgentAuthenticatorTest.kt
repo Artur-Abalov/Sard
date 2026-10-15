@@ -48,10 +48,16 @@ class AgentAuthenticatorTest {
     private fun authenticate(
         presented: PresentedCertificate?,
         standing: CertificateStanding? = STANDING,
+        scope: AuthScope = AuthScope.CALL,
     ): AgentAuthResult {
         val standings = CertificateStandings { serial -> standing.takeIf { serial == SERIAL } }
-        return MutFlow.underTest { AgentAuthenticator(standings, CLOCK).authenticate(presented) }
+        return MutFlow.underTest { AgentAuthenticator(standings, CLOCK).authenticate(presented, scope) }
     }
+
+    private fun failureOf(
+        standing: CertificateStanding,
+        scope: AuthScope = AuthScope.CALL,
+    ) = (authenticate(PRESENTED, standing, scope) as? Rejected)?.failure
 
     @Test
     fun `a valid certificate of a live agent yields its principal`() {
@@ -173,5 +179,56 @@ class AgentAuthenticatorTest {
         assertEquals(AgentAuthFailure.CERT_IDENTITY_MISMATCH, (other as Rejected).failure)
         val revoked = authenticate(PRESENTED, everythingWrong)
         assertEquals(AgentAuthFailure.CERT_REVOKED, (revoked as Rejected).failure)
+    }
+
+    // --- C1: superseded and unconfirmed certificates
+
+    private val superseded = STANDING.copy(supersededAt = NOW - Duration.ofMinutes(5))
+    private val unconfirmed = STANDING.copy(unconfirmed = true)
+
+    @Test
+    fun `a superseded certificate is CERT_SUPERSEDED and the log may name its agent`() {
+        assertEquals(Rejected(AgentAuthFailure.CERT_SUPERSEDED, SERIAL, AGENT.agentId), authenticate(PRESENTED, superseded))
+    }
+
+    @Test
+    fun `an unconfirmed certificate is CERT_NOT_CONFIRMED for every call but the confirmation`() {
+        val refused = Rejected(AgentAuthFailure.CERT_NOT_CONFIRMED, SERIAL, AGENT.agentId)
+        assertEquals(refused, authenticate(PRESENTED, unconfirmed))
+        assertEquals(Accepted(PRINCIPAL), authenticate(PRESENTED, unconfirmed, AuthScope.CONFIRM))
+    }
+
+    @Test
+    fun `the confirmation refuses a superseded certificate like any other call`() {
+        assertEquals(AgentAuthFailure.CERT_SUPERSEDED, failureOf(superseded, AuthScope.CONFIRM))
+    }
+
+    @Test
+    fun `a certificate that is neither superseded nor unconfirmed passes in every scope`() {
+        for (scope in AuthScope.entries) assertEquals(null, failureOf(STANDING, scope), "$scope")
+    }
+
+    @Test
+    fun `revocation outranks supersession, which outranks non-confirmation, which outranks expiry and agent revocation`() {
+        val revoked = superseded.copy(revokedAt = NOW, notAfter = NOW, agentRevokedAt = NOW)
+        assertEquals(AgentAuthFailure.CERT_REVOKED, failureOf(revoked))
+        val expired = superseded.copy(notAfter = NOW, agentRevokedAt = NOW)
+        assertEquals(AgentAuthFailure.CERT_SUPERSEDED, failureOf(expired))
+        val waiting = unconfirmed.copy(notAfter = NOW, agentRevokedAt = NOW)
+        assertEquals(AgentAuthFailure.CERT_NOT_CONFIRMED, failureOf(waiting))
+        assertEquals(AgentAuthFailure.CERT_EXPIRED, failureOf(waiting, AuthScope.CONFIRM))
+        val both = superseded.copy(unconfirmed = true)
+        assertEquals(AgentAuthFailure.CERT_SUPERSEDED, failureOf(both))
+    }
+
+    @Test
+    fun `an open stream is never judged by supersession or non-confirmation, only by revocation and expiry`() {
+        assertEquals(null, failureOf(superseded, AuthScope.OPEN_STREAM))
+        assertEquals(null, failureOf(unconfirmed, AuthScope.OPEN_STREAM))
+        val revoked = superseded.copy(revokedAt = NOW)
+        assertEquals(AgentAuthFailure.CERT_REVOKED, failureOf(revoked, AuthScope.OPEN_STREAM))
+        assertEquals(AgentAuthFailure.CERT_EXPIRED, failureOf(superseded.copy(notAfter = NOW), AuthScope.OPEN_STREAM))
+        val agentRevoked = unconfirmed.copy(agentRevokedAt = NOW)
+        assertEquals(AgentAuthFailure.AGENT_REVOKED, failureOf(agentRevoked, AuthScope.OPEN_STREAM))
     }
 }

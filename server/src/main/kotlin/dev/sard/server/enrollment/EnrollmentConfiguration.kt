@@ -5,6 +5,7 @@ package dev.sard.server.enrollment
 
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
+import dev.sard.server.pki.AgentCertificatePolicy
 import dev.sard.server.pki.CertificateAuthority
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -37,4 +38,12 @@ class EnrollmentConfiguration {
         clock: Clock,
         gate: RegistrationGate,
     ) = Enrollment(sessions, tokens, ca, clock, UuidV7(clock, SecureRandom()), gate::open)
+
+    @Bean
+    fun certificateRenewal(
+        sessions: TenantSessions,
+        ca: CertificateAuthority,
+        clock: Clock,
+        policy: AgentCertificatePolicy,
+    ) = CertificateRenewal(sessions, ca, clock, policy.effectiveInterval)
 }
