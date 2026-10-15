@@ -39,6 +39,13 @@ val RENEWAL_T0: Instant = Instant.now().minus(1, ChronoUnit.DAYS).truncatedTo(Ch
 
 private const val DEADLINE_SECONDS = 10L
 
+/** A clock that starts at the real time: certificates with a short validity are presented while it still lasts. */
+@TestConfiguration(proxyBeanMethods = false)
+class NowClockConfiguration {
+    @Bean
+    fun clock() = MovableClock(Instant.now().truncatedTo(ChronoUnit.SECONDS))
+}
+
 /** The server's clock, which the test moves; starts at [RENEWAL_T0]. */
 @TestConfiguration(proxyBeanMethods = false)
 class RenewalClockConfiguration {
@@ -148,6 +155,22 @@ class RenewalHarness(
         agent: EnrolledAgent,
         before: Int,
     ) = assertEquals(before, count(agent))
+
+    /**
+     * An agent enrolled at the clock's time T renews: one second before T plus [effective] it is refused as
+     * RENEWAL_TOO_FREQUENT, at T plus [effective] it gets a certificate.
+     */
+    fun assertIntervalBoundary(
+        tenant: UUID,
+        effective: Duration,
+    ) {
+        val start = clock.now
+        val agent = fixtures.enrolled(tenant)
+        clock.now = start + effective - Duration.ofSeconds(1)
+        assertEquals(listOf("RENEWAL_TOO_FREQUENT"), refused { renew(agent) }.reasons)
+        clock.now = start + effective
+        renew(agent)
+    }
 
     companion object {
         fun toInstant(value: Any): Instant =
