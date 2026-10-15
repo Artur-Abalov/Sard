@@ -160,11 +160,7 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 	if stop, err := adoptPending(ctx, renewal, local, configPath, rt); stop || err != nil {
 		return err
 	}
-	agent := newAgent(cfg, hostname, resticBinary, me.machineID)
-	if rt.handlers != nil {
-		agent.Handlers = rt.handlers
-	}
-	return refuse(serve(ctx, cfg, me.role, agent, renewal, rt), configPath, cfg)
+	return refuse(serve(ctx, cfg, me.role, newAgentWith(cfg, hostname, resticBinary, me.machineID, rt), renewal, rt), configPath, cfg)
 }
 
 // checkHost finds restic and the host name, before the network.
@@ -271,6 +267,15 @@ func checkHostFiles(cfg config.Config, sel certpair.Selection) error {
 		cfg.TLS.KeyFile = sel.Pair.KeyFile
 	}
 	return secrets.CheckAll(cfg, uint32(os.Getuid()), secrets.RealStat)
+}
+
+// newAgentWith is newAgent whose steps a test may run with its own handlers.
+func newAgentWith(cfg config.Config, hostname, resticBinary, machineID string, rt agentRuntime) *app.Agent {
+	agent := newAgent(cfg, hostname, resticBinary, machineID)
+	if rt.handlers != nil {
+		agent.Handlers = rt.handlers
+	}
+	return agent
 }
 
 // newAgent wires the built-in plugins to restic and the host's secrets.
