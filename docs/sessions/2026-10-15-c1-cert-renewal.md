@@ -157,3 +157,6 @@ V1 (#70) уже в `main` (`2881821`), поэтому роль из V1 сохр�
 - `loadLocal` (main.go): the checks that come before the identity moved to `selectPair`; `certificateState` (status_cmd.go): reading the renewal state file moved to `renewalRecord`. CRAP of loadLocal 6.0 -> 3.0, certificateState 6.0 -> 5.0 (`./scripts/crap.sh agent`). `./scripts/gate.sh agent fast` passes.
 - Not done: certpair's `OSFS.WriteFile`/`syncDir` resemble `enroll.stage`/`syncParent`, but differ in prefix, owner handling and rename step; sharing them would couple two packages for no behaviour gain.
 - Server: no change. Without Docker the renewal code is covered only by Docker-only integration tests (0% in the local JaCoCo report), so no refactor could be verified here; left to CI. architect runs next.
+- Review of 4bdfc108 and a9d3f1d2: no touched agent function is above CRAP 5.4 (`adoptPending`) and none is at the limit (`./scripts/crap.sh agent`); no duplicated mapping (`transport.finalCode` and `certrenew.finalRefusal` sit on two sides of the `CallError` seam on purpose).
+- Only change: `transport.callError` renamed `wrapCallError`, since `certrenew.callError` does the opposite (extracts). No behavior change; `./scripts/gate.sh agent fast` passes.
+- Server: no change (Docker unavailable, so nothing could be verified locally). architect runs next.

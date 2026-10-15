@@ -71,13 +71,13 @@ func (c *CertClient) call(ctx context.Context, certFile, keyFile string, do func
 	defer func() { _ = conn.Close() }()
 	ctx, cancel := context.WithTimeout(ctx, CallTimeout)
 	defer cancel()
-	return callError(do(ctx, agentv1.NewAgentServiceClient(conn)))
+	return wrapCallError(do(ctx, agentv1.NewAgentServiceClient(conn)))
 }
 
-// callError tells the renewal what the server answered, without gRPC: whether
+// wrapCallError tells the renewal what the server answered, without gRPC: whether
 // the answer is final (the server will say the same again, П20), whether the
 // server lacks the call, and how long it asks to wait.
-func callError(err error) error {
+func wrapCallError(err error) error {
 	st := grpcStatus(err)
 	if st == nil {
 		return err
