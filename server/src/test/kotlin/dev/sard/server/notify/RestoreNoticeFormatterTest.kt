@@ -15,6 +15,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private val RUN: UUID = UUID.fromString("0192f0c4-7a10-7000-8000-00000000b001")
@@ -186,6 +187,14 @@ class RestoreNoticeFormatterTest {
     fun `Без адреса консоли ссылки нет`() {
         val text = RunNoticeFormatter(NoticeLanguage.RU, null).format(restoreNotice())!!.text()
         assertTrue(text.lines().last() == "Запуск: $RUN", text)
+    }
+
+    @Test
+    fun `Восстановление, шаг которого ещё не закончен, не сообщается`() {
+        val formatter = RunNoticeFormatter(NoticeLanguage.RU, null)
+        for (step in listOf(StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING)) {
+            assertNull(MutFlow.underTest { formatter.format(restoreNotice(step)) }, step.name)
+        }
     }
 
     @Test
