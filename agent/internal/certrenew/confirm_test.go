@@ -7,9 +7,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // docs/specs/agent/agent-certificate-renewal.feature: the rule on failures in the
@@ -50,11 +47,11 @@ func TestAFailedCertificateWriteLeavesNoHalfAPair(t *testing.T) {
 func TestAFinalRefusalOfTheConfirmationRemovesTheNewPair(t *testing.T) {
 	t.Parallel()
 	for _, refusal := range []error{
-		reasoned(codes.Unauthenticated, "CERT_SUPERSEDED"),
-		status.Error(codes.InvalidArgument, "x"),
-		status.Error(codes.FailedPrecondition, "x"),
-		status.Error(codes.PermissionDenied, "x"),
-		status.Error(codes.Unimplemented, "x"),
+		final("Unauthenticated CERT_SUPERSEDED"),
+		final("InvalidArgument"),
+		final("FailedPrecondition"),
+		final("PermissionDenied"),
+		unsupported(),
 	} {
 		e := newEnv(t)
 		e.server.confirm = func(int) error { return refusal }
@@ -77,9 +74,9 @@ func TestAFinalRefusalOfTheConfirmationRemovesTheNewPair(t *testing.T) {
 func TestATemporaryRefusalOfTheConfirmationRepeatsOnlyTheConfirmation(t *testing.T) {
 	t.Parallel()
 	for _, temporary := range []error{
-		reasoned(codes.Unavailable, "INTERNAL_RETRYABLE"),
-		status.Error(codes.Internal, "x"),
-		status.Error(codes.DeadlineExceeded, "x"),
+		temporary("Unavailable INTERNAL_RETRYABLE"),
+		temporary("Internal"),
+		temporary("DeadlineExceeded"),
 	} {
 		e := newEnv(t)
 		e.server.confirm = func(n int) error {

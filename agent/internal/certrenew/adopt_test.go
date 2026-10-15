@@ -9,9 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
 	"github.com/Artur-Abalov/sard/agent/internal/certpair"
 	"github.com/Artur-Abalov/sard/agent/internal/certrenew"
 	"github.com/Artur-Abalov/sard/agent/internal/certtest"
@@ -63,7 +60,7 @@ func TestAdoptRepeatsATemporaryRefusalAtTheReconnectDelays(t *testing.T) {
 	e.withNewPair()
 	e.server.confirm = func(n int) error {
 		if n <= 3 {
-			return status.Error(codes.Unavailable, "down")
+			return temporary("Unavailable")
 		}
 		return nil
 	}
@@ -88,7 +85,7 @@ func TestAdoptRemovesTheNewPairOnAFinalRefusal(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	e.withNewPair()
-	e.server.confirm = func(int) error { return reasoned(codes.Unauthenticated, "CERT_REVOKED") }
+	e.server.confirm = func(int) error { return final("Unauthenticated CERT_REVOKED") }
 	err := e.manager().Adopt(context.Background(), e.selection())
 	if !errors.Is(err, certrenew.ErrDiscarded) || e.names() != "agent.key agent.pem ca.pem" || e.read("agent.key") != string(e.p1.KeyPEM) {
 		t.Fatalf("err = %v, files = %s", err, e.names())
@@ -99,7 +96,7 @@ func TestAdoptStopsWhenTheAgentIsStopped(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	e.withNewPair()
-	e.server.confirm = func(int) error { return status.Error(codes.Unavailable, "down") }
+	e.server.confirm = func(int) error { return temporary("Unavailable") }
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- e.manager().Adopt(ctx, e.selection()) }()
@@ -139,7 +136,7 @@ func TestSupersededIsFinalWhenTheSpareIsRefused(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	e.withNewPair()
-	e.server.confirm = func(int) error { return reasoned(codes.Unauthenticated, "CERT_REVOKED") }
+	e.server.confirm = func(int) error { return final("Unauthenticated CERT_REVOKED") }
 	if e.manager().Superseded(context.Background()) {
 		t.Fatal("Superseded = true after a refused confirmation")
 	}

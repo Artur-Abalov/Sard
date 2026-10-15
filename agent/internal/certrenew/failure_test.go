@@ -10,23 +10,18 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/genproto/googleapis/rpc/errdetails"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/durationpb"
-
 	"github.com/Artur-Abalov/sard/agent/internal/certrenew"
 )
 
 // docs/specs/agent/agent-certificate-renewal.feature: the rule on repeats and
 // the state file (P19, P25, P28).
 
-func reasoned(code codes.Code, reason string) error {
-	st, err := status.New(code, "message").WithDetails(&errdetails.ErrorInfo{Domain: "sard.dev", Reason: reason})
-	if err != nil {
-		panic(err)
-	}
-	return st.Err()
+func temporary(text string) error { return &certrenew.CallError{Text: text} }
+
+func final(text string) error { return &certrenew.CallError{Text: text, Final: true} }
+
+func unsupported() error {
+	return &certrenew.CallError{Text: "Unimplemented", Final: true, Unsupported: true}
 }
 
 func failWith(err error) func(int, *ecdsa.PublicKey) (string, error) {
@@ -46,7 +41,7 @@ func (e *env) readState() certrenew.State {
 func TestAFailedAttemptWritesTheStateFileAndWarns(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	e.server.renewFn = failWith(reasoned(codes.Unavailable, "INTERNAL_RETRYABLE"))
+	e.server.renewFn = failWith(temporary("Unavailable INTERNAL_RETRYABLE"))
 	e.renewNow("WARN certificate renewal failed")
 	e.requireFirstFailureState()
 	line := e.logs.waitFor(t, "WARN certificate renewal failed")
@@ -78,7 +73,7 @@ func TestThePauseGrowsFromAMinuteToAnHourWithJitter(t *testing.T) {
 	} {
 		e := newEnv(t)
 		e.rnd = row.rnd
-		e.server.renewFn = failWith(reasoned(codes.Unavailable, "INTERNAL_RETRYABLE"))
+		e.server.renewFn = failWith(temporary("Unavailable INTERNAL_RETRYABLE"))
 		e.start()
 		e.clock.Advance(e.idle())
 		for i, want := range row.want {
@@ -98,13 +93,8 @@ func TestThePauseGrowsFromAMinuteToAnHourWithJitter(t *testing.T) {
 func TestTheDelayOfARetryInfoIsKept(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	st, err := status.New(codes.ResourceExhausted, "too often").WithDetails(
-		&errdetails.ErrorInfo{Domain: "sard.dev", Reason: "RENEWAL_TOO_FREQUENT"},
-		&errdetails.RetryInfo{RetryDelay: durationpb.New(40 * time.Minute)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	e.server.renewFn = failWith(st.Err())
+	refusal := &certrenew.CallError{Text: "ResourceExhausted RENEWAL_TOO_FREQUENT", RetryAfter: 40 * time.Minute}
+	e.server.renewFn = failWith(refusal)
 	e.start()
 	e.clock.Advance(e.idle())
 	if d := e.idle(); d < 40*time.Minute {
@@ -119,7 +109,7 @@ func TestTheDelayOfARetryInfoIsKept(t *testing.T) {
 func TestAServerWithoutRenewalIsAskedOnceADay(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	e.server.renewFn = failWith(status.Error(codes.Unimplemented, "no renewal"))
+	e.server.renewFn = failWith(unsupported())
 	e.start()
 	e.clock.Advance(e.idle())
 	for i := 0; i < 3; i++ {
@@ -155,7 +145,7 @@ func TestASuccessfulRenewalResetsTheFailureCount(t *testing.T) {
 		if n == 6 {
 			return e.server.issuePlain(pub)
 		}
-		return "", reasoned(codes.Unavailable, "INTERNAL_RETRYABLE")
+		return "", temporary("Unavailable INTERNAL_RETRYABLE")
 	}
 	e.start()
 	e.clock.Advance(e.idle())
@@ -176,7 +166,7 @@ func TestASuccessfulRenewalResetsTheFailureCount(t *testing.T) {
 func TestTheLastErrorIsOneLine(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	e.server.renewFn = failWith(reasoned(codes.InvalidArgument, "BAD\nREASON"))
+	e.server.renewFn = failWith(final(`InvalidArgument BAD\nREASON`))
 	e.renewNow("certificate renewal failed")
 	if got := e.readState().LastError; got != `InvalidArgument BAD\nREASON` {
 		t.Fatalf("last_error = %q", got)

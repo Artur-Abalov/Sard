@@ -7,9 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/certpair"
-	"github.com/Artur-Abalov/sard/agent/internal/transport"
 )
 
 // ErrDiscarded: the server refused the renewed pair for good (П20), so its
@@ -35,11 +35,11 @@ func (m *Manager) adopt(ctx context.Context, sel certpair.Selection) error {
 		}
 		if finalRefusal(err) {
 			removed := certpair.Discard(m.o.FS, m.o.Files)
-			m.o.Logger.Warn("the server refused the renewed certificate; removed it", "files", removed, "error", transport.Describe(err))
-			return fmt.Errorf("%w: %s", ErrDiscarded, transport.Describe(err))
+			m.o.Logger.Warn("the server refused the renewed certificate; removed it", "files", removed, "error", describe(err))
+			return fmt.Errorf("%w: %s", ErrDiscarded, describe(err))
 		}
-		m.o.Logger.Warn("confirming the renewed certificate failed", "error", transport.Describe(err))
-		if !m.sleep(ctx, transport.Backoff(attempt, m.o.Rand)) {
+		m.o.Logger.Warn("confirming the renewed certificate failed", "error", describe(err))
+		if !m.sleep(ctx, m.reconnectDelay(attempt)) {
 			return ctx.Err()
 		}
 	}
@@ -62,4 +62,11 @@ func (m *Manager) Superseded(ctx context.Context) bool {
 	}
 	m.reported = m.renamed
 	return true
+}
+
+func (m *Manager) reconnectDelay(attempt int) time.Duration {
+	if m.o.ReconnectDelay == nil {
+		return time.Minute
+	}
+	return m.o.ReconnectDelay(attempt)
 }

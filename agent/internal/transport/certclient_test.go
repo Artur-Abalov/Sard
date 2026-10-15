@@ -5,12 +5,17 @@ package transport_test
 
 import (
 	"context"
+	"errors"
+	"time"
+
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"path/filepath"
 	"testing"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/Artur-Abalov/sard/agent/internal/certrenew"
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
@@ -90,5 +95,38 @@ func TestACallWithoutAUsablePairOrCAFails(t *testing.T) {
 	}
 	if _, err := client.Renew(context.Background(), files.CertFile, missing, nil); err == nil {
 		t.Error("a missing key was accepted")
+	}
+}
+
+// The answers of the server reach the renewal as certrenew.CallError.
+func TestTheAnswersOfTheServerAreMadeIntoCallErrors(t *testing.T) {
+	r := newRig(t)
+	files := r.ca.agentFiles(t, r.ca)
+	retry, err := status.New(codes.ResourceExhausted, "often").WithDetails(
+		&errdetails.ErrorInfo{Domain: "sard.dev", Reason: "RENEWAL_TOO_FREQUENT"},
+		&errdetails.RetryInfo{RetryDelay: durationOf(40 * time.Minute)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := []struct {
+		answer error
+		want   certrenew.CallError
+	}{
+		{reasoned(codes.Unauthenticated, "x", "sard.dev", "CERT_SUPERSEDED", nil), certrenew.CallError{Text: "Unauthenticated CERT_SUPERSEDED", Final: true}},
+		{status.Error(codes.InvalidArgument, "x"), certrenew.CallError{Text: "InvalidArgument", Final: true}},
+		{status.Error(codes.FailedPrecondition, "x"), certrenew.CallError{Text: "FailedPrecondition", Final: true}},
+		{status.Error(codes.PermissionDenied, "x"), certrenew.CallError{Text: "PermissionDenied", Final: true}},
+		{status.Error(codes.Unimplemented, "x"), certrenew.CallError{Text: "Unimplemented", Final: true, Unsupported: true}},
+		{status.Error(codes.Unavailable, "x"), certrenew.CallError{Text: "Unavailable"}},
+		{status.Error(codes.Internal, "x"), certrenew.CallError{Text: "Internal"}},
+		{retry.Err(), certrenew.CallError{Text: "ResourceExhausted RENEWAL_TOO_FREQUENT", RetryAfter: 40 * time.Minute}},
+	}
+	for _, row := range rows {
+		r.server.confirm = func(context.Context) error { return row.answer }
+		err := transport.NewCertClient(r.server.addr, files.CAFile).Confirm(context.Background(), files.CertFile, files.KeyFile)
+		var got *certrenew.CallError
+		if !errors.As(err, &got) || got.Text != row.want.Text || got.Final != row.want.Final || got.Unsupported != row.want.Unsupported || got.RetryAfter != row.want.RetryAfter {
+			t.Errorf("%v: got %+v", row.answer, got)
+		}
 	}
 }

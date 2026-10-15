@@ -286,6 +286,7 @@ func (e *env) manager() *certrenew.Manager {
 	return certrenew.New(certrenew.Options{
 		Files: e.files(), StatePath: e.statePath(), FS: e.fs, Caller: e.server, Clock: e.clock,
 		Rand: func() float64 { return e.rnd }, Hostname: "db1", Logger: slog.New(e.logs),
+		ReconnectDelay: func(attempt int) time.Duration { return time.Duration(float64(time.Second<<attempt) * e.rnd) },
 	})
 }
 

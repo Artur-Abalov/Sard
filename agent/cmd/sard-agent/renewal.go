@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/certpair"
 	"github.com/Artur-Abalov/sard/agent/internal/certrenew"
@@ -27,6 +28,8 @@ func newRenewal(cfg config.Config, hostname string, rt agentRuntime) *certrenew.
 		Random:    rt.random,
 		Hostname:  hostname,
 		Logger:    rt.logger,
+		// Until the server confirms the renewed pair the agent waits as it does between connections.
+		ReconnectDelay: func(attempt int) time.Duration { return transport.Backoff(attempt, rt.rand) },
 	})
 }
 

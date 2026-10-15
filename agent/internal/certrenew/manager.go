@@ -6,8 +6,10 @@ package certrenew
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -17,18 +19,14 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
 	"github.com/Artur-Abalov/sard/agent/internal/certpair"
 	"github.com/Artur-Abalov/sard/agent/internal/config"
-	"github.com/Artur-Abalov/sard/agent/internal/enroll"
 	"github.com/Artur-Abalov/sard/agent/internal/tlsid"
-	"github.com/Artur-Abalov/sard/agent/internal/transport"
 )
 
 // Caller makes the two calls of a renewal, each over a connection of its own
-// that presents the given pair (transport.CertClient).
+// that presents the given pair (transport.CertClient). An answer of the server
+// comes back as a *CallError.
 type Caller interface {
 	Renew(ctx context.Context, certFile, keyFile string, csrDER []byte) (chainPEM string, err error)
 	Confirm(ctx context.Context, certFile, keyFile string) error
@@ -57,6 +55,9 @@ type Options struct {
 	// Hostname is only a label in the CSR; the server ignores it.
 	Hostname string
 	Logger   *slog.Logger
+	// ReconnectDelay is the pause after the n-th failed confirmation at start
+	// (from 0); the transport's reconnect delays (transport.Backoff). Nil is a minute.
+	ReconnectDelay func(attempt int) time.Duration
 }
 
 // Manager renews the certificate of this agent. Run it once; its Registered
@@ -156,7 +157,7 @@ func (m *Manager) unsupported() time.Duration {
 		m.unsupportedLogged = true
 		m.o.Logger.Warn("the server does not support certificate renewal; retrying every 24h")
 	}
-	m.save(State{Failures: m.failures, LastError: codes.Unimplemented.String(), Unsupported: true}, unsupportedPause)
+	m.save(State{Failures: m.failures, LastError: "Unimplemented", Unsupported: true}, unsupportedPause)
 	return unsupportedPause
 }
 
@@ -164,8 +165,8 @@ func (m *Manager) unsupported() time.Duration {
 // log, and returns the pause before the next attempt (П19, П25, П28).
 func (m *Manager) failed(err error) time.Duration {
 	m.failures++
-	delay := max(Delay(m.failures, m.o.Rand), transport.RetryDelay(err))
-	st := m.save(State{Failures: m.failures, LastError: transport.Describe(err)}, delay)
+	delay := max(Delay(m.failures, m.o.Rand), retryAfter(err))
+	st := m.save(State{Failures: m.failures, LastError: describe(err)}, delay)
 	m.o.Logger.Warn("certificate renewal failed", "last_error", st.LastError, "failures", st.Failures, "next_attempt", st.NextAttempt.Format(time.RFC3339))
 	return delay
 }
@@ -178,7 +179,7 @@ func (m *Manager) save(st State, delay time.Duration) State {
 	st.LastAttempt = now.UTC().Round(time.Second)
 	st.NextAttempt = now.Add(delay).UTC().Round(time.Second)
 	if err := WriteState(m.o.FS, m.o.StatePath, st); err != nil {
-		m.o.Logger.Warn("writing the certificate renewal state failed", "error", transport.Describe(err))
+		m.o.Logger.Warn("writing the certificate renewal state failed", "error", describe(err))
 	}
 	return st
 }
@@ -232,7 +233,7 @@ func (m *Manager) ask(ctx context.Context) (*ecdsa.PrivateKey, string, error) {
 		return nil, "", err
 	}
 	chain, err := m.o.Caller.Renew(ctx, m.o.Files.CertFile, m.o.Files.KeyFile, csr)
-	if status.Code(err) == codes.Unimplemented {
+	if ce := callError(err); ce != nil && ce.Unsupported {
 		return nil, "", errNoRenewal
 	}
 	if err != nil {
@@ -241,14 +242,22 @@ func (m *Manager) ask(ctx context.Context) (*ecdsa.PrivateKey, string, error) {
 	return key, chain, m.checkResponse(chain, key)
 }
 
-// newRequest generates the new key and the CSR for it.
+// newRequest generates the new key (ECDSA P-256, like the key of enroll) and
+// the CSR for it. The server ignores the subject; the host name only lets a
+// human read the request in transit.
 func (m *Manager) newRequest() (*ecdsa.PrivateKey, []byte, error) {
-	key, err := enroll.NewIdentityKey(m.o.Random)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), m.o.Random)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("generate the new key: %w", err)
 	}
-	csr, err := enroll.BuildCSR(m.o.Random, key, m.o.Hostname)
-	return key, csr, err
+	csr, err := x509.CreateCertificateRequest(m.o.Random, &x509.CertificateRequest{
+		Subject:            pkix.Name{CommonName: m.o.Hostname},
+		SignatureAlgorithm: x509.ECDSAWithSHA256,
+	}, key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create the CSR: %w", err)
+	}
+	return key, csr, nil
 }
 
 // pendingPair is a new pair on disk that the server has not confirmed yet.
@@ -283,18 +292,23 @@ func (m *Manager) confirm(ctx context.Context) error {
 
 // finalRefusal: the server will say the same to the same pair (П20).
 func finalRefusal(err error) bool {
-	switch status.Code(err) {
-	case codes.InvalidArgument, codes.FailedPrecondition, codes.Unauthenticated, codes.PermissionDenied, codes.Unimplemented:
-		return true
+	ce := callError(err)
+	return ce != nil && ce.Final
+}
+
+// retryAfter is the pause the server asked for, or 0.
+func retryAfter(err error) time.Duration {
+	if ce := callError(err); ce != nil {
+		return ce.RetryAfter
 	}
-	return false
+	return 0
 }
 
 // succeeded forgets the failures and plans the next renewal by the new certificate.
 func (m *Manager) succeeded() time.Duration {
 	m.failures = 0
 	if err := RemoveState(m.o.FS, m.o.StatePath); err != nil {
-		m.o.Logger.Warn("removing the certificate renewal state failed", "error", transport.Describe(err))
+		m.o.Logger.Warn("removing the certificate renewal state failed", "error", describe(err))
 	}
 	attrs := []any{"old_serial", m.old}
 	if cert, err := tlsid.ReadCertificate(m.o.Files.CertFile, m.o.FS.ReadFile); err == nil {

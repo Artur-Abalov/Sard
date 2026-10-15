@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 
+	"github.com/Artur-Abalov/sard/agent/internal/certrenew"
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
@@ -69,5 +71,30 @@ func (c *CertClient) call(ctx context.Context, certFile, keyFile string, do func
 	defer func() { _ = conn.Close() }()
 	ctx, cancel := context.WithTimeout(ctx, CallTimeout)
 	defer cancel()
-	return do(ctx, agentv1.NewAgentServiceClient(conn))
+	return callError(do(ctx, agentv1.NewAgentServiceClient(conn)))
+}
+
+// callError tells the renewal what the server answered, without gRPC: whether
+// the answer is final (the server will say the same again, П20), whether the
+// server lacks the call, and how long it asks to wait.
+func callError(err error) error {
+	st := grpcStatus(err)
+	if st == nil {
+		return err
+	}
+	return &certrenew.CallError{
+		Text:        Describe(err),
+		Final:       finalCode(st.Code()),
+		Unsupported: st.Code() == codes.Unimplemented,
+		RetryAfter:  RetryDelay(err),
+		Err:         err,
+	}
+}
+
+func finalCode(code codes.Code) bool {
+	switch code {
+	case codes.InvalidArgument, codes.FailedPrecondition, codes.Unauthenticated, codes.PermissionDenied, codes.Unimplemented:
+		return true
+	}
+	return false
 }
