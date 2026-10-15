@@ -29,7 +29,6 @@ import java.util.Date
 
 private const val SERIAL_BITS = 128
 private val CA_VALIDITY = Duration.ofDays(3650)
-private val AGENT_VALIDITY = Duration.ofDays(365)
 private val SERVER_VALIDITY = Duration.ofDays(90)
 
 /** Tolerates clocks behind the server's when checking the root and the server certificate. */
@@ -37,6 +36,9 @@ private val BACKDATE = Duration.ofHours(1)
 
 /** X.509 profiles of the file CA (ADR 0014). */
 internal object Certificates {
+    /** The profile of ADR 0014: exactly 365 days. */
+    val DEFAULT_AGENT_VALIDITY: Duration = Duration.ofDays(365)
+
     private val rootName = X500Name("CN=Sard CA")
     private val extensions = JcaX509ExtensionUtils()
 
@@ -62,10 +64,12 @@ internal object Certificates {
         role: AgentRole,
         ca: CaKeyPair,
         now: Instant,
+        validity: Duration,
         random: SecureRandom,
     ): X509Certificate {
         val san = GeneralNames(arrayOf(uri(agent.uri()), uri(AgentRoleUri.of(role))))
-        val profile = Leaf("CN=${agent.agentId}", KeyPurposeId.id_kp_clientAuth, san, now, now + AGENT_VALIDITY)
+        val notAfter = minOf(now + validity, ca.certificate.notAfter.toInstant())
+        val profile = Leaf("CN=${agent.agentId}", KeyPurposeId.id_kp_clientAuth, san, now, notAfter)
         return leaf(key, profile, ca, random)
     }
 
