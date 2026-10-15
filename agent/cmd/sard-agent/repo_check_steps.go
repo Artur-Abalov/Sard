@@ -39,7 +39,7 @@ type repoSteps struct {
 func newRepoSteps(c *repoCheck, ctx context.Context, index int) *repoSteps {
 	r := &repoSteps{repoCheck: c, ctx: ctx, repo: c.cfg.Repositories[index], index: index}
 	r.cli = newRestic(c.cfg, c.binary, c.deps, r.repo, runAs(c.who)).WithReadOnly().WithStderr(&r.log)
-	r.checks = []string{hostcheck.CheckRepositoryStorage, hostcheck.CheckRepositoryCredentials, hostcheck.CheckRepositoryInitialized, hostcheck.CheckRepositoryPassword, hostcheck.CheckRepositoryID, hostcheck.CheckRepositoryLocks}
+	r.checks = hostcheck.RepositoryChecks()
 	if c.opts.readData > 0 {
 		r.checks = append(r.checks, hostcheck.CheckRepositoryIntegrity)
 	}

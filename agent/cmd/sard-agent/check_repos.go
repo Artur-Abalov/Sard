@@ -8,7 +8,7 @@ import (
 )
 
 // repoChecks are the identifiers of the checks of one repository, in order.
-var repoChecks = []string{hostcheck.CheckRepositoryStorage, hostcheck.CheckRepositoryCredentials, hostcheck.CheckRepositoryInitialized, hostcheck.CheckRepositoryPassword, hostcheck.CheckRepositoryID, hostcheck.CheckRepositoryLocks}
+var repoChecks = hostcheck.RepositoryChecks()
 
 // repositoryLines are the six checks of every repository (Ч3), the same
 // steps as repo check without --read-data. Offline none is made, and the

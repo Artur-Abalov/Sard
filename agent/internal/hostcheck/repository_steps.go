@@ -15,6 +15,12 @@ func RepositoryOpenChecks() []string {
 	return []string{CheckRepositoryStorage, CheckRepositoryCredentials, CheckRepositoryInitialized, CheckRepositoryPassword}
 }
 
+// RepositoryChecks are the checks of one repository that every run makes, in
+// their order (Ч3): the open checks, then the id and the locks.
+func RepositoryChecks() []string {
+	return append(RepositoryOpenChecks(), CheckRepositoryID, CheckRepositoryLocks)
+}
+
 // RepositoryStepOf is the open check a refusal ends: the storage is the one
 // that fails for everything that does not belong to a later check.
 func RepositoryStepOf(reason refusal.Reason) string {
