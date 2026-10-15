@@ -58,7 +58,7 @@ func TestTroubleshootingHasOneAnchorForEveryCheck(t *testing.T) {
 	slices.Sort(ids)
 	for _, id := range slices.Compact(ids) {
 		anchor := strings.ReplaceAll(id, ".", "")
-		switch n := strings.Count(strings.Join(anchors, "\n")+"\n", "\n"+anchor+"\n"); n {
+		switch n := strings.Count("\n"+strings.Join(anchors, "\n")+"\n", "\n"+anchor+"\n"); n {
 		case 1:
 		default:
 			t.Errorf("anchor #%s of %s: %d sections, want 1", anchor, id, n)

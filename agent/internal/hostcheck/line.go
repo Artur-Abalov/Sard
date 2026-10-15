@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
+	"unicode"
 )
 
 // Status is the outcome of one check (Ч1, Ч2).
@@ -131,10 +133,21 @@ func nullIfEmpty(s string) *string {
 	return &s
 }
 
-var lineBreaks = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ")
-
-// oneLine keeps a text, which may come from restic, on one output line.
-func oneLine(s string) string { return lineBreaks.Replace(s) }
+// oneLine keeps a text, which may come from restic, on one output line and
+// harmless to a terminal: control characters are written as Go does ("\n" is
+// two characters), the same as in the refusals of the transport.
+func oneLine(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsControl(r) {
+			q := strconv.QuoteRune(r)
+			b.WriteString(q[1 : len(q)-1])
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
 
 // HelpURL is the section of the operator's troubleshooting guide for a check
 // (Ч25): the anchor is the identifier without its dots.

@@ -112,6 +112,19 @@ func TestALineIsOneLineWhateverTheMessageHolds(t *testing.T) {
 	}
 }
 
+// restic's words may hold an escape sequence that rewrites the terminal of the
+// operator: every control character is written as Go does, not passed on.
+func TestControlCharactersOfAMessageAreWrittenEscaped(t *testing.T) {
+	var out bytes.Buffer
+	hostcheck.NewPrinter(&out, false).Print(hostcheck.Line{
+		Check: "x", Status: hostcheck.Error, Message: "a\x1b[2Jb\tc\x7fd\r\ne é", Hint: "h\x00i",
+	})
+	want := "ERROR x - a\\x1b[2Jb\\tc\\x7fd\\r\\ne é\nhint: h\\x00i\n"
+	if out.String() != want {
+		t.Fatalf("got %q, want %q", out.String(), want)
+	}
+}
+
 func TestTheHelpLinkIsTheAnchorOfTheCheckWithoutDots(t *testing.T) {
 	want := "https://github.com/Artur-Abalov/sard/blob/main/docs/operator/09-troubleshooting.md#repositorypassword"
 	if got := hostcheck.HelpURL("repository.password"); got != want {

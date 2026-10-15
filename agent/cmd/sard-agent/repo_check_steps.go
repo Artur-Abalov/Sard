@@ -48,15 +48,7 @@ func newRepoSteps(c *repoCheck, ctx context.Context, index int) *repoSteps {
 
 // openChecks are the checks the files of the repository and one restic cat
 // config answer (Ч3).
-var openChecks = [...]string{hostcheck.CheckRepositoryStorage, hostcheck.CheckRepositoryCredentials, hostcheck.CheckRepositoryInitialized, hostcheck.CheckRepositoryPassword}
-
-// okMessages are what an OK line of the first checks says.
-var okMessages = map[string]string{
-	hostcheck.CheckRepositoryStorage:     "the storage at %s answers",
-	hostcheck.CheckRepositoryCredentials: "the storage accepts the credentials",
-	hostcheck.CheckRepositoryInitialized: "a repository is initialized at the address",
-	hostcheck.CheckRepositoryPassword:    "the password file opens the repository",
-}
+var openChecks = hostcheck.RepositoryOpenChecks()
 
 func (r *repoSteps) run() {
 	id, failed := r.open()
@@ -129,10 +121,7 @@ func (r *repoSteps) open() (id, failed string) {
 // okMessage is the message of an OK line; the storage is named by its address
 // with the password of the address hidden.
 func (r *repoSteps) okMessage(check string) string {
-	if check == hostcheck.CheckRepositoryStorage {
-		return fmt.Sprintf(okMessages[check], config.RedactURL(r.repo.URL))
-	}
-	return okMessages[check]
+	return hostcheck.RepositoryOKMessage(check, config.RedactURL(r.repo.URL))
 }
 
 func (r *repoSteps) openResult() openResult {
@@ -144,8 +133,8 @@ func (r *repoSteps) openResult() openResult {
 	id, initialized, f := r.bound().Inspect(r.ctx, r.cli, r.target, &r.log)
 	switch {
 	case f != nil:
-		f = reclassify(f)
-		return openResult{at: openStepOf(f.Reason), failure: f}
+		f = repoinit.Reclassify(f)
+		return openResult{at: slices.Index(openChecks, hostcheck.RepositoryStepOf(f.Reason)), failure: f}
 	case !initialized:
 		return openResult{at: 2, failure: refusal.Fail(refusal.RepositoryNotInitialized, "nothing is stored at the address of repository %q", r.repo.Name)}
 	}
@@ -172,43 +161,6 @@ func (r *repoSteps) localChecks() ([]string, *openResult) {
 		return nil, &openResult{at: 3, failure: f}
 	}
 	return env, nil
-}
-
-// openStepOf is the position in openChecks of the check a refusal ends.
-func openStepOf(reason refusal.Reason) int {
-	switch reason {
-	case refusal.S3KeyRejected, refusal.StorageAccessDenied, refusal.BucketNotFound, refusal.SSHKeyNotAuthorized,
-		refusal.HostKeyMismatch, refusal.HostKeyRejected, refusal.HostKeyChanged, refusal.BackendRefused:
-		return 1
-	case refusal.RepositoryNotInitialized, refusal.ResticOutputUnexpected:
-		return 2
-	case refusal.WrongPassword, refusal.PasswordFileEmpty:
-		return 3
-	}
-	return 0
-}
-
-// A restic that prints what restic does not (a certificate, ssh) is told
-// from the generic refusals by its words (Ч3).
-var refusalsByWords = []struct {
-	words string
-	from  []refusal.Reason
-	to    refusal.Reason
-}{
-	{"x509", []refusal.Reason{refusal.BackendRefused}, refusal.BackendUnavailable},
-	{"permission denied (publickey", []refusal.Reason{refusal.BackendRefused, refusal.StorageAccessDenied}, refusal.SSHKeyNotAuthorized},
-	{"host key verification failed", []refusal.Reason{refusal.BackendRefused, refusal.StorageAccessDenied}, refusal.HostKeyMismatch},
-}
-
-// reclassify gives a refusal the reason its words call for.
-func reclassify(f *refusal.Failure) *refusal.Failure {
-	text := strings.ToLower(f.Detail)
-	for _, c := range refusalsByWords {
-		if strings.Contains(text, c.words) && slices.Contains(c.from, f.Reason) {
-			return refusal.Fail(c.to, "%s", f.Detail)
-		}
-	}
-	return f
 }
 
 // hint says what to do about a failed check (Ч25): a command to run, or the
@@ -287,9 +239,9 @@ func (r *repoSteps) integrityMessage(err error, log *repoconnect.Log) string {
 		return r.refusalMessage(err)
 	case errors.Is(err, restic.ErrLocked):
 		return "restic check needs a lock of its own and the repository is locked by another process (a backup, a restore or another check is running); repeat when it has ended"
-	case cannotLock(log.String()):
+	case repoinit.CannotLock(log.String()):
 		return "restic check needs to create a lock in the repository and these credentials cannot write; checking with read-only credentials is not supported yet; restic said: " + causeOf(said)
-	case foundErrors(err):
+	case repoinit.FoundErrors(err):
 		return "restic check found errors in the repository: " + said
 	}
 	return r.refusalMessage(err)
@@ -297,20 +249,6 @@ func (r *repoSteps) integrityMessage(err error, log *repoconnect.Log) string {
 
 func (r *repoSteps) refusalMessage(err error) string {
 	return named(repoinit.FromRestic(r.ctx, err, r.target)).Error()
-}
-
-// foundErrors: restic check ended with exit code 1, which it uses for the
-// errors it found in the repository (not for a storage it could not reach).
-func foundErrors(err error) bool {
-	var exit *restic.ExitError
-	return errors.As(err, &exit) && exit.Code == 1 && !errors.Is(err, restic.ErrNetwork)
-}
-
-// cannotLock: restic could not create its lock because the credentials may not write.
-func cannotLock(text string) bool {
-	text = strings.ToLower(text)
-	return strings.Contains(text, "unable to create lock") &&
-		(strings.Contains(text, "access denied") || strings.Contains(text, "forbidden") || strings.Contains(text, "permission denied"))
 }
 
 // causeOf is the last part of a message of restic, after its last ": ".
