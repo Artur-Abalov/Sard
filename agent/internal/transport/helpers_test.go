@@ -142,6 +142,9 @@ type fakeServer struct {
 	closeStream error // what Connect returns when the call ends from the server side
 	streams     chan *serverStream
 	connEnded   chan struct{} // one value per client connection the server saw end
+	// renew and confirm answer RenewCertificate and ConfirmCertificate; nil is UNIMPLEMENTED.
+	renew   func(ctx context.Context, req *agentv1.RenewCertificateRequest) (*agentv1.RenewCertificateResponse, error)
+	confirm func(ctx context.Context) error
 }
 
 // connEnds reports every ended connection to the test.

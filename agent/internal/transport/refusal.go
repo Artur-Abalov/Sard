@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -24,12 +25,58 @@ const sardErrorDomain = "sard.dev"
 // when it gave one, and that the agent will not retry. Control characters
 // are escaped, so the result is one line.
 func RefusalLine(err error) string {
+	return RefusalDetail(err) + "; " + RefusalSuffix
+}
+
+// RefusalSuffix ends every line that reports a permanent refusal.
+const RefusalSuffix = "not reconnecting: fix the cause, then restart the agent"
+
+// RefusalDetail is RefusalLine without the suffix: what the server said.
+func RefusalDetail(err error) string {
 	parts := []string{statusText(err)}
 	if info := sardErrorInfo(err); info != nil {
 		parts = append(parts, "reason "+escape(info.GetReason()))
 		parts = append(parts, metadata(info.GetMetadata())...)
 	}
-	return strings.Join(parts, ", ") + "; not reconnecting: fix the cause, then restart the agent"
+	return strings.Join(parts, ", ")
+}
+
+// RefusalReason is the server's reason of err (the ErrorInfo of domain
+// sard.dev), or "".
+func RefusalReason(err error) string {
+	if info := sardErrorInfo(err); info != nil {
+		return info.GetReason()
+	}
+	return ""
+}
+
+// Describe is err in one line without control characters: the gRPC code
+// name and the server's reason, e.g. "Unavailable INTERNAL_RETRYABLE"; the
+// text of any other error. It never includes the status message, which may
+// echo what the agent sent.
+func Describe(err error) string {
+	st := grpcStatus(err)
+	if st == nil {
+		return escape(err.Error())
+	}
+	if reason := RefusalReason(err); reason != "" {
+		return st.Code().String() + " " + escape(reason)
+	}
+	return st.Code().String()
+}
+
+// RetryDelay is the delay the server asks for in a RetryInfo, or 0.
+func RetryDelay(err error) time.Duration {
+	st := grpcStatus(err)
+	if st == nil {
+		return 0
+	}
+	for _, d := range st.Details() {
+		if info, ok := d.(*errdetails.RetryInfo); ok {
+			return info.GetRetryDelay().AsDuration()
+		}
+	}
+	return 0
 }
 
 func grpcStatus(err error) *status.Status {
