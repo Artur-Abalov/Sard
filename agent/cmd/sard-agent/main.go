@@ -101,10 +101,30 @@ func runAgentCmd(ctx context.Context, args []string, stdout, stderr io.Writer, h
 	if proceed, code := selfEnrollIfAsked(ctx, *configPath, *tokenFile, stdout, stderr, self); !proceed {
 		return code
 	}
-	if err := startWith(ctx, *configPath, stdout, hostname, os.Executable, self.runtime.withDefaults()); err != nil {
-		return reportFailure(stderr, err)
+	return runUntilStopped(ctx, *configPath, *tokenFile, stdout, stderr, hostname, self)
+}
+
+// runUntilStopped starts the agent. The built-in agent (started with
+// --enroll-token-file) does not exit on a refusal that a restart cannot cure:
+// it waits for a new token and starts again (П24).
+func runUntilStopped(ctx context.Context, configPath, tokenFile string, stdout, stderr io.Writer, hostname hostnameFunc, self selfEnrollDeps) int {
+	for {
+		err := startWith(ctx, configPath, stdout, hostname, os.Executable, self.runtime.withDefaults())
+		var refused *refusedError
+		if tokenFile == "" || !errors.As(err, &refused) {
+			return exitCode(stderr, err)
+		}
+		if proceed, code := rejectedUntilNewToken(ctx, configPath, tokenFile, refused, stdout, stderr, self); !proceed {
+			return code
+		}
 	}
-	return exitOK
+}
+
+func exitCode(stderr io.Writer, err error) int {
+	if err == nil {
+		return exitOK
+	}
+	return reportFailure(stderr, err)
 }
 
 // reportFailure prints why the agent stopped and picks the exit code: a

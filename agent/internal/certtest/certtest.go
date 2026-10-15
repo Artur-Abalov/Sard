@@ -11,9 +11,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/pem"
 	"math/big"
 	"net"
@@ -58,7 +60,14 @@ func NewCA(t testing.TB) *CA {
 // PEM is the CA certificate, as tls.ca_file holds it.
 func (ca *CA) PEM() []byte { return ca.pem }
 
-// Server issues a TLS server certificate for the host names or addresses.
+// Fingerprint is what an enrollment token pins: the hex SHA-256 of the CA's
+// public key (SubjectPublicKeyInfo).
+func (ca *CA) Fingerprint() string {
+	sum := sha256.Sum256(ca.cert.RawSubjectPublicKeyInfo)
+	return hex.EncodeToString(sum[:])
+}
+
+// Server issues a TLS server certificate chain for the host names or addresses.
 func (ca *CA) Server(t testing.TB, names ...string) tls.Certificate {
 	t.Helper()
 	key := NewKey(t)
@@ -80,7 +89,8 @@ func (ca *CA) Server(t testing.TB, names ...string) tls.Certificate {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
+	// The chain ends with the CA, which is what an enrollment token pins.
+	return tls.Certificate{Certificate: [][]byte{der, ca.cert.Raw}, PrivateKey: key}
 }
 
 // Spec is what an agent certificate says.

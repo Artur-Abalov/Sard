@@ -179,3 +179,46 @@ func (s *selfEnroller) enrollWith(ctx context.Context, raw string) selfOutcome {
 	_, _ = fmt.Fprintf(s.stdout, "sard-agent: enrolled as agent %s\n", status.AgentID)
 	return selfOutcome{outcomeProceed, exitOK}
 }
+
+// rejectedRepeat is how often the built-in agent repeats why it was refused.
+const rejectedRepeat = time.Hour
+
+// rejectedUntilNewToken is the state "refused" of the built-in agent (П24): the
+// server is not called, the reason is written to stderr at once and every hour,
+// and the token file is polled like while waiting for the first token. An unspent
+// token is enrolled with the pipeline of the start, and the agent starts again
+// (true); SIGTERM ends it with code 0.
+func rejectedUntilNewToken(ctx context.Context, configPath, tokenPath string, refused *refusedError, stdout, stderr io.Writer, deps selfEnrollDeps) (bool, int) {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return false, reportFailure(stderr, err)
+	}
+	s := &selfEnroller{configPath: configPath, tokenPath: tokenPath, cfg: cfg, stdout: stdout, stderr: stderr, deps: deps}
+	say := func() { _, _ = fmt.Fprintln(stderr, "sard-agent:", refused.line(true)) }
+	say()
+	repeat := deps.clock.After(rejectedRepeat)
+	for {
+		select {
+		case <-ctx.Done():
+			return false, exitOK
+		case <-repeat:
+			say()
+			repeat = deps.clock.After(rejectedRepeat)
+		case <-deps.clock.After(selfEnrollPollInterval):
+			if o := s.newToken(ctx); o.kind != outcomeWait {
+				return o.kind == outcomeProceed, o.code
+			}
+		}
+	}
+}
+
+// newToken enrolls with the token in the file when it is there and unspent;
+// anything else is "keep waiting".
+func (s *selfEnroller) newToken(ctx context.Context) selfOutcome {
+	data, err := s.deps.readFile(s.tokenPath)
+	raw := enroll.NormalizeTokenFile(data)
+	if err != nil || raw == "" || s.spent(raw) {
+		return selfOutcome{outcomeWait, exitOK}
+	}
+	return s.enrollWith(ctx, raw)
+}

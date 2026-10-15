@@ -25,6 +25,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/Artur-Abalov/sard/agent/internal/certtest"
+	"github.com/Artur-Abalov/sard/agent/internal/enroll"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
@@ -410,3 +411,50 @@ func (h *renewalHost) waitLog(text string) {
 func (h *renewalHost) renewalPause() time.Duration {
 	return h.clock.WaitTimerOf(h.t, 30*time.Second)
 }
+
+// builtIn prepares the token file of the built-in agent: it holds the spent
+// token, whose digest the marker next to the certificate keeps (self-agent.feature).
+func (h *renewalHost) builtIn(token string) (tokenFile string) {
+	h.t.Helper()
+	tokenFile = filepath.Join(h.t.TempDir(), "enroll-token")
+	if err := os.WriteFile(tokenFile, []byte(token), 0o600); err != nil {
+		h.t.Fatal(err)
+	}
+	h.writeFile("agent.pem.token-sha256", []byte(enroll.TokenDigest(token)), 0o600)
+	return tokenFile
+}
+
+// newToken is an enrollment token that pins this host's CA.
+func (h *renewalHost) newToken() string { return newToken(h.t, h.ca.Fingerprint()) }
+
+// answerEnroll makes the server enroll a new agent identity.
+func (h *renewalHost) answerEnroll() {
+	h.server.enroll = func(req *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+		csr, err := x509.ParseCertificateRequest(req.GetCsrDer())
+		if err != nil {
+			return nil, status.Error(3, "bad CSR")
+		}
+		pub, _ := csr.PublicKey.(*ecdsa.PublicKey)
+		cert, err := h.ca.Issue(pub, certtest.Spec{Tenant: testTenant, Agent: "44444444-4444-4444-4444-444444444444", Role: "source", Serial: 77, NotBefore: h.clock.Now(), NotAfter: h.clock.Now().AddDate(0, 0, 300)})
+		return &agentv1.EnrollResponse{AgentId: "44444444-4444-4444-4444-444444444444", CertificateChainPem: string(cert), CaBundlePem: string(h.ca.PEM())}, err
+	}
+}
+
+// stderrLines counts the lines of stderr that contain text.
+func (a *runningAgent) stderrLines(text string) int {
+	return strings.Count(a.stderr.String(), text)
+}
+
+// waitStderr waits until stderr has n lines containing text.
+func (a *runningAgent) waitStderr(t *testing.T, text string, n int) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for a.stderrLines(text) < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("stderr has %d lines with %q, want %d: %q", a.stderrLines(text), text, n, a.stderr.String())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func writeTokenText(path, token string) error { return os.WriteFile(path, []byte(token), 0o600) }
