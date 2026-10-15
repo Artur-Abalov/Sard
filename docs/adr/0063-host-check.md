@@ -35,12 +35,14 @@ JSON Lines ровно с пятью полями), счётчик (`Tally`), с�
 «использование».
 
 ### Запись объявленных id
-Служба при каждом Register (`app.Agent.Announced`, вызывается из
-`RegisterRequest`) пишет `<executor.state_dir>/announced-repositories.json`:
+Служба при построении каждого `RegisterRequest` (`app.Agent.Announced`,
+вызывается оттуда же) пишет `<executor.state_dir>/announced-repositories.json`:
 `{"version":1,"repositories":[{"name","repository_id"}]}`. Файл создаётся
 временным файлом в том же каталоге (`.tmp-announced-*`, 0600, владелец —
 процесс службы), `fsync`, `rename`, `fsync` каталога; сбой не оставляет
-временного файла. В файле имена и id, ни ключа, ни адреса. Невозможность
+временного файла. Файл записывает то, что агент предложил серверу, а не то, что сервер принял:
+запись делается при построении запроса, до ответа. В файле имена и id, ни
+ключа, ни адреса. Невозможность
 записать — предупреждение в журнале, Register идёт дальше. `repo check`
 читает файл и сравнивает id (Ч4); работает с `--offline` будущего среза A8d-2 и
 не требует правок сервера (ЧВ5).
@@ -262,9 +264,8 @@ ERROR «the server could not tell whether it accepts this agent: code = <код>
 причину для `errors.Is`). Подсказку получают: `restic.ErrNetwork`
 (BACKEND_UNAVAILABLE), `restic.ErrWrongPassword`, `restic.ErrPasswordFile` вместе
 с `fs.ErrNotExist` (PASSWORD_FILE_MISSING), отказы ключа и доступа
-(S3_KEY_REJECTED, STORAGE_ACCESS_DENIED, SSH_KEY_NOT_AUTHORIZED) и сообщения
-плагина postgresql «pg_dump not found in the PATH», «psql not found at»,
-«pg_dumpall not found at». Остальное (нет каталога источника, блокировка,
+(S3_KEY_REJECTED, STORAGE_ACCESS_DENIED, SSH_KEY_NOT_AUTHORIZED) и ошибка плагина, обёрнутая
+`sdk.ErrProgramMissing` (postgresql: нет pg_dump, psql, pg_dumpall). Остальное (нет каталога источника, блокировка,
 BUCKET_NOT_FOUND, HOST_KEY_*, `REJECTED`) строки не получает.
 
 - Классы S3_KEY_REJECTED и STORAGE_ACCESS_DENIED определяет та же таблица, что у
@@ -272,10 +273,14 @@ BUCKET_NOT_FOUND, HOST_KEY_*, `REJECTED`) строки не получает.
   в сообщении шага отдельно не отличается: строка ssh «Permission denied
   (publickey)» входит в класс «доступ отказан». Ограничение: если restic не
   печатает строку ssh в свою фатальную строку (OQ-155), подсказки не будет.
-- Программа плагина распознаётся по началу текста сообщения плагина: это
-  единственный способ в рамках `sdk.Plugin`, не расширяя SDK (Apache-2.0).
-  Связь закреплена тестами `plugins/postgresql` с настоящим плагином
-  (`endsWithCheckHint`): изменение текста плагина без правки списка ломает их.
+- Программа плагина распознаётся по `errors.Is(err, sdk.ErrProgramMissing)`:
+  аддитивная ошибка-признак в `plugins/sdk` (Apache-2.0), которую плагин
+  оборачивает через `%w`. Текст сообщения плагина `pluginhost` не знает и не
+  сравнивает; прежнее решение (сопоставление начала текста, «единственный способ,
+  не расширяя SDK») отменено как нарушающее границу: хост знал слова одного
+  плагина. Текст сообщений postgresql не изменился (слово «not found» теперь
+  текст самой ошибки-признака). Связь закреплена тестами `plugins/postgresql`
+  (`errors.Is` для pg_dump, psql, pg_dumpall) и `pluginhost`.
 - Сообщение шага перестало быть однострочным только для этих причин; тесты F1,
   требовавшие одной строки у сообщения плагина, теперь проверяют плагинную часть
   и последнюю строку подсказки.

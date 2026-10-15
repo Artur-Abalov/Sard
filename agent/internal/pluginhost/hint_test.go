@@ -54,20 +54,15 @@ func TestFailedBackupStepOfAKnownCauseEndsWithTheCheckHint(t *testing.T) {
 	}
 }
 
-func TestFailedBackupStepOfAMissingPostgreSQLProgramEndsWithTheCheckHint(t *testing.T) {
-	for _, msg := range []string{
-		"pg_dump not found in the PATH of the agent: install postgresql-client or set pg_dump_path",
-		`psql not found at "/usr/bin/psql" (no such file), expected beside pg_dump: install postgresql-client`,
-		`pg_dumpall not found at "/usr/bin/pg_dumpall" (no such file), expected beside pg_dump: install x`,
-	} {
-		t.Run(msg[:8], func(t *testing.T) {
-			f := newHandlers(t, &plugin{prepare: func(context.Context, sdk.Host, sdk.Config) error { return errors.New(msg) }})
-			_, err := f.run(t, step(backup, `{}`))
-			want := "prepare: " + msg + "\n" + checkHint
-			if err == nil || err.Error() != want {
-				t.Fatalf("err = %v, want %q", err, want)
-			}
-		})
+func TestFailedBackupStepOfAMissingPluginProgramEndsWithTheCheckHint(t *testing.T) {
+	msg := fmt.Sprintf("mydb: %v: %q", sdk.ErrProgramMissing, "mongodump")
+	f := newHandlers(t, &plugin{prepare: func(context.Context, sdk.Host, sdk.Config) error {
+		return fmt.Errorf("mydb: %w: %q", sdk.ErrProgramMissing, "mongodump")
+	}})
+	_, err := f.run(t, step(backup, `{}`))
+	want := "prepare: " + msg + "\n" + checkHint
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
 	}
 }
 

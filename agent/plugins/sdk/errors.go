@@ -16,6 +16,12 @@ var ErrInvalidConfig = errors.New("invalid plugin config")
 // that names an unknown secret.
 var ErrUnknownSecret = errors.New("unknown secret")
 
+// ErrProgramMissing is wrapped (with %w) by a plugin into the error for a
+// program it needs and cannot find or start on the agent host. The agent
+// recognises it with errors.Is and points the operator to `sard-agent check`;
+// the words of the message are the plugin's own.
+var ErrProgramMissing = errors.New("not found")
+
 // ConfigError means a config does not satisfy the plugin's ConfigSchema,
 // or a check of the plugin itself. The agent rejects the step before
 // anything runs.

@@ -58,3 +58,18 @@ func TestDumpIsStreamedWhenItHasAFilename(t *testing.T) {
 		t.Error("a dump with a file name is streamed")
 	}
 }
+
+// A plugin reports a program it cannot start with ErrProgramMissing, wrapped
+// with %w; the agent recognises it with errors.Is, not by the words.
+func TestErrProgramMissingIsFoundThroughWrapping(t *testing.T) {
+	err := fmt.Errorf("prepare: mydb: %w: %q", sdk.ErrProgramMissing, "mongodump")
+	if !errors.Is(err, sdk.ErrProgramMissing) {
+		t.Error("a wrapped ErrProgramMissing must be found")
+	}
+	if errors.Is(err, sdk.ErrInvalidConfig) || errors.Is(err, sdk.ErrUnknownSecret) {
+		t.Error("a missing program is neither a config error nor an unknown secret")
+	}
+	if errors.Is(errors.New(sdk.ErrProgramMissing.Error()), sdk.ErrProgramMissing) {
+		t.Error("the same words are not the sentinel")
+	}
+}
