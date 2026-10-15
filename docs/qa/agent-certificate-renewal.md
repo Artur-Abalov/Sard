@@ -2,8 +2,9 @@
 
 Сценарии: `docs/specs/server/agent-certificate-renewal.feature` и
 `docs/specs/agent/agent-certificate-renewal.feature`. Решения владельца Р1–Р10
-— `docs/sessions/2026-10-15-c1-cert-renewal.md`; решения specifier П1–П31 — в
-заголовках спецификаций.
+— `docs/sessions/2026-10-15-c1-cert-renewal.md`; решения specifier П1–П31 и
+поправки владельца 1–6 от 2026-10-15 — в заголовках спецификаций (выбор пары
+при старте — по самому позднему NotBefore).
 
 Ожидаемый результат указан после «→» в каждом шаге. Любое расхождение — дефект.
 
@@ -120,8 +121,9 @@ cp $S1/tls/agent.pem $QA/c1.pem; cp $S1/tls/agent.key $QA/k1.key
     → `600`; `0`.
 12. `certrows $XS`
     → две строки: `$(serial $QA/c1.pem)|-|t|f` и `<новый>|$(serial $QA/c1.pem)|f|f`.
-13. Поток не переоткрывался: `grep -c 'connecting to' $QA/s1.out; grep -c reconnecting $QA/s1.out`
-    → `1`; `0`. `a GET /agents/$XS | body | jq -r .status` → `online`.
+13. Поток не переоткрывался и сверка S5a его не закрыла: подождать ещё 2 минуты,
+    `grep -c 'connecting to' $QA/s1.out; grep -c reconnecting $QA/s1.out; $DC logs --since 3m server | grep -c CERT_SUPERSEDED`
+    → `1`; `0`; `0`. `a GET /agents/$XS | body | jq -r .status` → `online`.
 14. Старый сертификат вытеснен: `reg $QA/c1.pem $QA/k1.key`
     → `UNAUTHENTICATED`, ровно один `ErrorInfo` с `reason` `CERT_SUPERSEDED`, `domain` `sard.dev`.
 15. `$AG status --config $S1/agent.yaml | tail -2` → `certificate_days_left: 0`, `certificate_state: ok`.
@@ -249,7 +251,7 @@ C=$S2/tls/agent.pem; K=$S2/tls/agent.key
     `T=$(a POST /enrollment-tokens '{}' | body | jq -r .token); $AG enroll --force --config $E/agent.yaml --server localhost:9090 --token $T; timeout 8 $AG --config $E/agent.yaml | head -1`
     → регистрация успешна; `connecting to localhost:9090 as source`.
 39. Юнит: `grep -E '^(ReadWritePaths|RestartPreventExitStatus|ProtectSystem)=' deploy/agent/sard-agent.service`
-    → `ReadWritePaths=/etc/sard/tls`, `RestartPreventExitStatus=78`, `ProtectSystem=strict`.
+    → `ReadWritePaths=-/etc/sard/tls` (с ведущим минусом), `RestartPreventExitStatus=78`, `ProtectSystem=strict`.
 40. (ВМ с systemd, пакет по `docs/qa/agent-install.md`.) Сертификат агента дать
     истечь при остановленной службе, затем `systemctl start sard-agent; sleep 30; systemctl show sard-agent -p ExecMainStatus -p NRestarts -p ActiveState`
     → `ExecMainStatus=78`, `NRestarts=0`, `ActiveState=failed`;
