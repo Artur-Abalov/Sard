@@ -16,6 +16,13 @@ import dev.sard.server.role.AgentRole
 import dev.sard.server.selfagent.captureEvents
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.bouncycastle.asn1.DERNull
+import org.bouncycastle.asn1.x500.X500Name
+import org.bouncycastle.asn1.x509.Extension
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
+import org.bouncycastle.cert.X509v3CertificateBuilder
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import io.grpc.Attributes
 import io.grpc.Grpc
 import io.grpc.Metadata
@@ -31,10 +38,12 @@ import java.security.cert.Certificate
 import java.security.cert.X509Certificate
 import java.security.spec.ECGenParameterSpec
 import java.time.Clock
+import java.util.Date
 import javax.net.ssl.SSLSession
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -87,6 +96,27 @@ private fun session(peer: X509Certificate): SSLSession =
         arrayOf<Certificate>(peer)
     } as SSLSession
 
+/** A certificate whose SAN extension is not a SAN: reading its names fails with a parsing error. */
+private fun unparseableCertificate(): X509Certificate {
+    val keys =
+        KeyPairGenerator
+            .getInstance("EC")
+            .apply { initialize(ECGenParameterSpec("secp256r1")) }
+            .generateKeyPair()
+    val name = X500Name("CN=broken")
+    val builder =
+        X509v3CertificateBuilder(
+            name,
+            BigInteger.TEN,
+            Date.from(PkiFixtures.NOW),
+            Date.from(PkiFixtures.NOW.plusSeconds(DAY)),
+            name,
+            SubjectPublicKeyInfo.getInstance(keys.public.encoded),
+        ).addExtension(Extension.subjectAlternativeName, false, DERNull.INSTANCE)
+    val signer = JcaContentSignerBuilder(Keys.SIGNATURE).build(keys.private)
+    return JcaX509CertificateConverter().getCertificate(builder.build(signer))
+}
+
 private const val HEX = 16
 private const val DAY = 86_400L
 
@@ -96,14 +126,17 @@ class AgentAuthUnavailableTest {
     private val broken = CertificateStandings { error("connection to db-secret-host refused") }
     private val method = AgentServiceGrpc.getProbeMethod()
 
-    private fun intercept(call: ClosedCall): Boolean {
+    private fun intercept(
+        call: ClosedCall,
+        standings: CertificateStandings = broken,
+    ): Boolean {
         var reached = false
         val next =
             ServerCallHandler<Any, Any> { _, _ ->
                 reached = true
                 object : ServerCall.Listener<Any>() {}
             }
-        val interceptor = AgentAuthInterceptor(AgentAuthenticator(broken, Clock.systemUTC()), emptySet())
+        val interceptor = AgentAuthInterceptor(AgentAuthenticator(standings, Clock.systemUTC()), emptySet())
         MutFlow.underTest { interceptor.interceptCall(call, Metadata(), next) }
         return reached
     }
@@ -128,6 +161,17 @@ class AgentAuthUnavailableTest {
         val text = "${call.status} ${StatusProto.fromStatusAndTrailers(call.status!!, call.trailers)}"
         assertFalse("db-secret-host" in text, text)
         assertNull(call.status!!.cause)
+    }
+
+    /** The verdict on a certificate is the caller's fault, not the server's: it is refused, never retried. */
+    @Test
+    fun `a certificate that cannot be parsed is not answered UNAVAILABLE`() {
+        val call = ClosedCall(method, peer = unparseableCertificate())
+        assertFalse(intercept(call, CertificateStandings { standing }))
+        val status = assertNotNull(call.status)
+        assertNotEquals(Status.Code.UNAVAILABLE, status.code)
+        val info = StatusProto.fromStatusAndTrailers(status, call.trailers).detailsList.single().unpack(ErrorInfo::class.java)
+        assertNotEquals("INTERNAL_RETRYABLE", info.reason)
     }
 
     private val ca = CaKeyPair.generate(PkiFixtures.CLOCK, PkiFixtures.random())
