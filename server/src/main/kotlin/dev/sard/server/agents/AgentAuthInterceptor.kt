@@ -76,25 +76,35 @@ class AgentAuthInterceptor(
     ): ServerCall.Listener<Q> {
         if (call.methodDescriptor.serviceName in open) return next.startCall(call, headers)
         val leaf = leaf(call)
-        val scope = if (call.methodDescriptor.fullMethodName == CONFIRM_METHOD) AuthScope.CONFIRM else AuthScope.CALL
-        return when (val result = authenticator.authenticate(leaf?.let(PresentedCertificate::of), scope)) {
-            is Accepted -> {
-                val context =
-                    Context
-                        .current()
-                        .withValue(AgentPrincipal.KEY, result.principal)
-                        .withValue(PresentedKey.KEY, checkNotNull(leaf).publicKey.encoded)
-                Contexts.interceptCall(context, call, headers, next)
-            }
-
-            is Rejected -> {
-                // Serial and agent id only: certificates and keys are never logged.
-                log.warn(refusalMessage(result, call.methodDescriptor.fullMethodName))
-                val error = AgentAuthStatus.of(result.failure)
-                call.close(error.status, error.trailers ?: Metadata())
-                object : ServerCall.Listener<Q>() {}
-            }
+        val presented = leaf?.let(PresentedCertificate::of)
+        return when (val result = authenticator.authenticate(presented, scopeOf(call))) {
+            is Accepted -> Contexts.interceptCall(contextOf(result.principal, leaf), call, headers, next)
+            is Rejected -> refuse(result, call)
         }
+    }
+
+    /** Only the confirmation of a renewed certificate may be made with a certificate nothing has confirmed yet. */
+    private fun scopeOf(call: ServerCall<*, *>): AuthScope =
+        if (call.methodDescriptor.fullMethodName == CONFIRM_METHOD) AuthScope.CONFIRM else AuthScope.CALL
+
+    private fun contextOf(
+        principal: AgentPrincipal,
+        leaf: X509Certificate?,
+    ): Context =
+        Context
+            .current()
+            .withValue(AgentPrincipal.KEY, principal)
+            .withValue(PresentedKey.KEY, checkNotNull(leaf).publicKey.encoded)
+
+    private fun <Q> refuse(
+        rejected: Rejected,
+        call: ServerCall<Q, *>,
+    ): ServerCall.Listener<Q> {
+        // Serial and agent id only: certificates and keys are never logged.
+        log.warn(refusalMessage(rejected, call.methodDescriptor.fullMethodName))
+        val error = AgentAuthStatus.of(rejected.failure)
+        call.close(error.status, error.trailers ?: Metadata())
+        return object : ServerCall.Listener<Q>() {}
     }
 
     /** The leaf the TLS layer verified against the Sard CA, or null when none was presented. */
