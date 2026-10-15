@@ -13,6 +13,7 @@ import dev.sard.server.pki.Keys
 import dev.sard.server.pki.PkiFixtures
 import dev.sard.server.pki.ROLE_URI_VECTORS
 import dev.sard.server.role.AgentRole
+import dev.sard.server.selfagent.captureEvents
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import io.grpc.Attributes
@@ -40,7 +41,7 @@ import kotlin.test.assertTrue
 
 private class ClosedCall(
     private val method: MethodDescriptor<*, *>,
-    private val peer: X509Certificate = anyCertificate(),
+    private val peer: X509Certificate? = anyCertificate(),
 ) : ServerCall<Any, Any>() {
     var status: Status? = null
     var trailers: Metadata? = null
@@ -67,7 +68,7 @@ private class ClosedCall(
     override fun getAttributes(): Attributes =
         Attributes
             .newBuilder()
-            .set(Grpc.TRANSPORT_ATTR_SSL_SESSION, session(peer))
+            .apply { peer?.let { set(Grpc.TRANSPORT_ATTR_SSL_SESSION, session(it)) } }
             .build()
 }
 
@@ -147,7 +148,13 @@ class AgentAuthUnavailableTest {
         val principal: AgentPrincipal?,
     )
 
-    private fun callWith(role: ForgedRole): Outcome {
+    private fun callWith(role: ForgedRole): Outcome = attempt(role, recorded = true).first
+
+    /** The outcome of a call and what the interceptor logged; [recorded]: does the database know the certificate. */
+    private fun attempt(
+        role: ForgedRole,
+        recorded: Boolean,
+    ): Pair<Outcome, List<String>> {
         val certificate = ForgedCertificates(ca).forge(agentKeys, serial, PkiFixtures.AGENT, role, PkiFixtures.NOW)
         val call = ClosedCall(method, certificate)
         var principal: AgentPrincipal? = null
@@ -156,9 +163,9 @@ class AgentAuthUnavailableTest {
                 principal = AgentPrincipal.KEY.get()
                 object : ServerCall.Listener<Any>() {}
             }
-        val standings = CertificateStandings { if (it == serial.toString(HEX)) standing else null }
+        val standings = CertificateStandings { if (recorded && it == serial.toString(HEX)) standing else null }
         val interceptor = AgentAuthInterceptor(AgentAuthenticator(standings, PkiFixtures.CLOCK), emptySet())
-        MutFlow.underTest { interceptor.interceptCall(call, Metadata(), next) }
+        val logged = captureEvents { MutFlow.underTest { interceptor.interceptCall(call, Metadata(), next) } }
         val reason =
             call.status?.let {
                 StatusProto
@@ -168,7 +175,7 @@ class AgentAuthUnavailableTest {
                     .unpack(ErrorInfo::class.java)
                     .reason
             }
-        return Outcome(reason, principal)
+        return Outcome(reason, principal) to logged.map { it.text }
     }
 
     @Test
@@ -214,4 +221,53 @@ class AgentAuthUnavailableTest {
         val agent = PkiFixtures.AGENT
         return AgentPrincipal(agent.agentId, agent.tenantId, "a", AgentRole.SOURCE)
     }
+
+    private fun refusalLog(
+        role: ForgedRole,
+        recorded: Boolean = true,
+    ) = attempt(role, recorded).second.single()
+
+    private val head = "agent call refused: reason="
+    private val who = "serial=${serial.toString(HEX)} agent=${PkiFixtures.AGENT.agentId}"
+    private val tenant = "tenant=${PkiFixtures.AGENT.tenantId}"
+    private val where = "method=${method.fullMethodName}"
+
+    @Test
+    fun `an unknown certificate is logged with its tenant and the missing-record hint`() {
+        val line = refusalLog(ForgedRole.Text("source"), recorded = false)
+        val hint =
+            "the certificate was issued by this server's CA, but the database has no record of it: " +
+                "the database was not restored or was restored from a copy older than the agent's enrollment"
+        assertEquals("${head}CERT_UNKNOWN $who $tenant $where: $hint", line)
+    }
+
+    @Test
+    fun `a certificate without a role URI is logged with its tenant and the re-enroll hint`() {
+        assertEquals("${head}CERT_ROLE_MISSING $who $tenant $where: $ROLE_HINT_TEXT", refusalLog(ForgedRole.Absent))
+    }
+
+    @Test
+    fun `a certificate with several role URIs is logged with its tenant and the re-enroll hint`() {
+        val twice = ForgedRole.Uris(listOf(AgentRoleUri.of(AgentRole.SOURCE), AgentRoleUri.of(AgentRole.SOURCE)))
+        assertEquals("${head}CERT_ROLE_INVALID $who $tenant $where: $ROLE_HINT_TEXT", refusalLog(twice))
+    }
+
+    @Test
+    fun `a call without a certificate is logged without tenant and without a hint`() {
+        val standings = CertificateStandings { standing }
+        val interceptor = AgentAuthInterceptor(AgentAuthenticator(standings, PkiFixtures.CLOCK), emptySet())
+        val next = ServerCallHandler<Any, Any> { _, _ -> object : ServerCall.Listener<Any>() {} }
+        val call = ClosedCall(method, peer = null)
+        val logged = captureEvents { MutFlow.underTest { interceptor.interceptCall(call, Metadata(), next) } }
+        assertEquals("${head}CERT_MISSING serial=null agent=null $where", logged.single().text)
+    }
+
+    @Test
+    fun `an identity mismatch is logged without tenant and without a hint`() {
+        assertEquals("${head}CERT_IDENTITY_MISMATCH $who $where", refusalLog(ForgedRole.Text("verifier")))
+    }
 }
+
+private const val ROLE_HINT_TEXT =
+    "the certificate carries no valid role of the agent (it was issued before roles existed, or is not ours): " +
+        "re-enroll the agent"
