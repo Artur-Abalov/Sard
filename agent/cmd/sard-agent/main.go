@@ -160,7 +160,11 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 	if stop, err := adoptPending(ctx, renewal, local, configPath, rt); stop || err != nil {
 		return err
 	}
-	return refuse(serve(ctx, cfg, me.role, newAgent(cfg, hostname, resticBinary, me.machineID), renewal, rt), configPath, cfg)
+	agent := newAgent(cfg, hostname, resticBinary, me.machineID)
+	if rt.handlers != nil {
+		agent.Handlers = rt.handlers
+	}
+	return refuse(serve(ctx, cfg, me.role, agent, renewal, rt), configPath, cfg)
 }
 
 // checkHost finds restic and the host name, before the network.

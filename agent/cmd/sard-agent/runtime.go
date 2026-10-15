@@ -10,6 +10,7 @@ import (
 	mathrand "math/rand/v2"
 
 	"github.com/Artur-Abalov/sard/agent/internal/certpair"
+	"github.com/Artur-Abalov/sard/agent/internal/executor"
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
 )
 
@@ -22,6 +23,8 @@ type agentRuntime struct {
 	random io.Reader
 	logger *slog.Logger
 	fs     certpair.FS
+	// handlers, when set, run the steps instead of the built-in plugins (tests).
+	handlers executor.Registry
 }
 
 func (r agentRuntime) withDefaults() agentRuntime {

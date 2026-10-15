@@ -26,6 +26,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/certtest"
 	"github.com/Artur-Abalov/sard/agent/internal/enroll"
+	"github.com/Artur-Abalov/sard/agent/internal/executor"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
@@ -52,6 +53,10 @@ type renewalServer struct {
 	// streams are the open Connect calls; closing one ends it.
 	streams []chan error
 	hellos  []*agentv1.Hello
+	// steps are sent on the first stream only; results are the StepResults
+	// received, each acknowledged at once.
+	steps   []*agentv1.RunStep
+	results []*agentv1.StepResult
 	serials int64
 
 	// answers; nil is success
@@ -145,17 +150,10 @@ func (s *renewalServer) Connect(stream grpc.BidiStreamingServer[agentv1.ConnectR
 	s.hellos = append(s.hellos, hello.GetHello())
 	s.mu.Unlock()
 	s.note(stream.Context(), "hello")
-	go func() {
-		for {
-			msg, err := stream.Recv()
-			if err != nil {
-				return
-			}
-			if msg.GetHeartbeat() != nil {
-				s.note(stream.Context(), "heartbeat")
-			}
-		}
-	}()
+	if err := s.sendSteps(stream); err != nil {
+		return err
+	}
+	go s.receive(stream)
 	select {
 	case err := <-end:
 		return err
@@ -279,6 +277,7 @@ type renewalHost struct {
 	log      *logBuffer
 	p1       certtest.Pair
 	rnd      float64
+	handlers executor.Registry
 }
 
 func newRenewalHost(t *testing.T) *renewalHost {
@@ -341,7 +340,7 @@ func (h *renewalHost) names() string {
 // deps are the agent's dependencies for this host.
 func (h *renewalHost) deps() selfEnrollDeps {
 	d := selfDepsFor(h.clock)
-	d.runtime = agentRuntime{clock: h.clock, rand: func() float64 { return h.rnd }, logger: h.log.logger()}
+	d.runtime = agentRuntime{clock: h.clock, rand: func() float64 { return h.rnd }, logger: h.log.logger(), handlers: h.handlers}
 	return d
 }
 
@@ -458,3 +457,37 @@ func (a *runningAgent) waitStderr(t *testing.T, text string, n int) {
 }
 
 func writeTokenText(path, token string) error { return os.WriteFile(path, []byte(token), 0o600) }
+
+// sendSteps hands the queued steps to the first stream only.
+func (s *renewalServer) sendSteps(stream grpc.BidiStreamingServer[agentv1.ConnectRequest, agentv1.ConnectResponse]) error {
+	s.mu.Lock()
+	steps := s.steps
+	s.steps = nil
+	s.mu.Unlock()
+	for _, step := range steps {
+		if err := stream.Send(&agentv1.ConnectResponse{Message: &agentv1.ConnectResponse_RunStep{RunStep: step}}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// receive notes heartbeats and results; a result is acknowledged at once.
+func (s *renewalServer) receive(stream grpc.BidiStreamingServer[agentv1.ConnectRequest, agentv1.ConnectResponse]) {
+	for {
+		msg, err := stream.Recv()
+		if err != nil {
+			return
+		}
+		if msg.GetHeartbeat() != nil {
+			s.note(stream.Context(), "heartbeat")
+		}
+		if r := msg.GetStepResult(); r != nil {
+			s.mu.Lock()
+			s.results = append(s.results, r)
+			s.mu.Unlock()
+			s.note(stream.Context(), "result "+r.GetCommandId())
+			_ = stream.Send(&agentv1.ConnectResponse{Message: &agentv1.ConnectResponse_ResultAck{ResultAck: &agentv1.ResultAck{CommandId: r.GetCommandId()}}})
+		}
+	}
+}
