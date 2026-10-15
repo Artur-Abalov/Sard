@@ -251,6 +251,11 @@ class AgentAuthIntegrationTest(
             // The one empty message is not a Hello (S5a).
             AgentServiceGrpc.getConnectMethod().fullMethodName to
                 Outcome(Status.Code.FAILED_PRECONDITION, "HELLO_REQUIRED"),
+            // The empty message is no CSR (C1).
+            AgentServiceGrpc.getRenewCertificateMethod().fullMethodName to
+                Outcome(Status.Code.INVALID_ARGUMENT, "CSR_INVALID"),
+            // A certificate that replaced none confirms with no change (C1).
+            AgentServiceGrpc.getConfirmCertificateMethod().fullMethodName to Outcome(Status.Code.OK, body = ""),
         )
 
     @Test
