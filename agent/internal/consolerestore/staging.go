@@ -35,9 +35,11 @@ func (a *attempt) makeStaging() *Failure {
 	}
 	a.stagingMade = true
 	a.command = dir
-	if _, err := dir.Mkdir(rootName, a.e.opts.Owner.Mode); err != nil {
+	made, err := dir.Mkdir(rootName, a.e.opts.Owner.Mode)
+	if err != nil {
 		return a.cannotWrite(filepath.Join(a.stagingPath(), rootName), err)
 	}
+	_ = made.Close() // only made here; whoever restores opens it again
 	return nil
 }
 
