@@ -35,7 +35,16 @@ class RunNoticeFormatter(
 
     override fun format(notice: RunNotice): Message? {
         val telling = Telling.of(notice) ?: return null
-        return headline(notice, telling)?.let { compose(notice, it, telling) }
+        return when (notice.kind) {
+            RunKind.RESTORE -> restore(notice)
+            RunKind.BACKUP -> headline(notice, telling)?.let { compose(notice, it, telling) }
+        }
+    }
+
+    /** A restore tells its own headline; here only whether its step is finished. */
+    private fun restore(notice: RunNotice): Message? {
+        val finished = words.headline(notice.stepStatus) != null
+        return if (finished) restores.compose(notice) else null
     }
 
     private fun headline(
@@ -54,7 +63,6 @@ class RunNoticeFormatter(
         headline: Headline,
         telling: Telling,
     ): Message {
-        if (notice.kind == RunKind.RESTORE) return restores.compose(notice)
         val parts =
             listOf(
                 listOf(listOf(Message.Bold("${headline.icon} ${headline.text}: ${notice.sourceName}"))),
