@@ -19,18 +19,6 @@ import (
 // (A8d, Ч9); with errors the code is exitAgentError.
 const exitWarnings = 8
 
-// The identifiers of the checks of one repository, in their order (Ч3). They
-// are stable between versions (Ч10).
-const (
-	checkStorage     = "repository.storage"
-	checkCredentials = "repository.credentials"
-	checkInitialized = "repository.initialized"
-	checkPassword    = "repository.password"
-	checkID          = "repository.id"
-	checkLocks       = "repository.locks"
-	checkIntegrity   = "repository.integrity"
-)
-
 // repoCheck is one run of "sard-agent repo check".
 type repoCheck struct {
 	ctx     context.Context
@@ -141,5 +129,5 @@ func skipLine(check, subject, failed string) hostcheck.Line {
 // noRepositoriesLine is the one line of a host with no repository: OK, with a
 // note that says how to add one (a host may have only sources that need none).
 func noRepositoriesLine() hostcheck.Line {
-	return hostcheck.Line{Check: checkStorage, Status: hostcheck.OK, Message: "no repositories configured; add one with `sudo sard-agent repo add <name> <address>`"}
+	return hostcheck.Line{Check: hostcheck.CheckRepositoryStorage, Status: hostcheck.OK, Message: "no repositories configured; add one with `sudo sard-agent repo add <name> <address>`"}
 }

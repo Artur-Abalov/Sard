@@ -39,23 +39,23 @@ type repoSteps struct {
 func newRepoSteps(c *repoCheck, ctx context.Context, index int) *repoSteps {
 	r := &repoSteps{repoCheck: c, ctx: ctx, repo: c.cfg.Repositories[index], index: index}
 	r.cli = newRestic(c.cfg, c.binary, c.deps, r.repo, runAs(c.who)).WithReadOnly().WithStderr(&r.log)
-	r.checks = []string{checkStorage, checkCredentials, checkInitialized, checkPassword, checkID, checkLocks}
+	r.checks = []string{hostcheck.CheckRepositoryStorage, hostcheck.CheckRepositoryCredentials, hostcheck.CheckRepositoryInitialized, hostcheck.CheckRepositoryPassword, hostcheck.CheckRepositoryID, hostcheck.CheckRepositoryLocks}
 	if c.opts.readData > 0 {
-		r.checks = append(r.checks, checkIntegrity)
+		r.checks = append(r.checks, hostcheck.CheckRepositoryIntegrity)
 	}
 	return r
 }
 
 // openChecks are the checks the files of the repository and one restic cat
 // config answer (Ч3).
-var openChecks = [...]string{checkStorage, checkCredentials, checkInitialized, checkPassword}
+var openChecks = [...]string{hostcheck.CheckRepositoryStorage, hostcheck.CheckRepositoryCredentials, hostcheck.CheckRepositoryInitialized, hostcheck.CheckRepositoryPassword}
 
 // okMessages are what an OK line of the first checks says.
 var okMessages = map[string]string{
-	checkStorage:     "the storage at %s answers",
-	checkCredentials: "the storage accepts the credentials",
-	checkInitialized: "a repository is initialized at the address",
-	checkPassword:    "the password file opens the repository",
+	hostcheck.CheckRepositoryStorage:     "the storage at %s answers",
+	hostcheck.CheckRepositoryCredentials: "the storage accepts the credentials",
+	hostcheck.CheckRepositoryInitialized: "a repository is initialized at the address",
+	hostcheck.CheckRepositoryPassword:    "the password file opens the repository",
 }
 
 func (r *repoSteps) run() {
@@ -74,7 +74,7 @@ func (r *repoSteps) laterSteps(id string) string {
 	steps := []struct {
 		check string
 		do    func() hostcheck.Line
-	}{{checkID, func() hostcheck.Line { return r.idStep(id) }}, {checkLocks, r.locksStep}, {checkIntegrity, r.integrityStep}}
+	}{{hostcheck.CheckRepositoryID, func() hostcheck.Line { return r.idStep(id) }}, {hostcheck.CheckRepositoryLocks, r.locksStep}, {hostcheck.CheckRepositoryIntegrity, r.integrityStep}}
 	for _, s := range steps {
 		if !slices.Contains(r.checks, s.check) {
 			continue
@@ -129,7 +129,7 @@ func (r *repoSteps) open() (id, failed string) {
 // okMessage is the message of an OK line; the storage is named by its address
 // with the password of the address hidden.
 func (r *repoSteps) okMessage(check string) string {
-	if check == checkStorage {
+	if check == hostcheck.CheckRepositoryStorage {
 		return fmt.Sprintf(okMessages[check], config.RedactURL(r.repo.URL))
 	}
 	return okMessages[check]
@@ -218,7 +218,7 @@ func (r *repoSteps) hint(check string, f *refusal.Failure) string {
 	switch f.Reason {
 	case refusal.SecretFileRejected:
 		path := r.repo.PasswordFile
-		if check == checkCredentials {
+		if check == hostcheck.CheckRepositoryCredentials {
 			path = r.repo.EnvFile
 		}
 		return fmt.Sprintf("sudo chown %s %s && sudo chmod 0600 %s", r.who.Service.Name, path, path)
@@ -243,7 +243,7 @@ func (r *repoSteps) idStep(id string) hostcheck.Line {
 func (r *repoSteps) locksStep() hostcheck.Line {
 	env, err := lockEnv(r.deps)
 	if err != nil {
-		return hostcheck.Line{Check: checkLocks, Subject: r.repo.Name, Status: hostcheck.Error, Message: fmt.Sprintf("the name of this host is unknown: %v", err), Hint: "see " + hostcheck.HelpURL(checkLocks)}
+		return hostcheck.Line{Check: hostcheck.CheckRepositoryLocks, Subject: r.repo.Name, Status: hostcheck.Error, Message: fmt.Sprintf("the name of this host is unknown: %v", err), Hint: "see " + hostcheck.HelpURL(hostcheck.CheckRepositoryLocks)}
 	}
 	var locks []hostcheck.Lock
 	var gone int
@@ -252,7 +252,7 @@ func (r *repoSteps) locksStep() hostcheck.Line {
 		return err
 	}, func(ctx context.Context, err error) *refusal.Failure { return repoinit.FromRestic(ctx, err, r.target) })
 	if f != nil {
-		return failureLine(checkLocks, r.repo.Name, f, r.hint(checkLocks, f))
+		return failureLine(hostcheck.CheckRepositoryLocks, r.repo.Name, f, r.hint(hostcheck.CheckRepositoryLocks, f))
 	}
 	return hostcheck.LockLine(r.repo.Name, env, locks, gone)
 }
@@ -262,7 +262,7 @@ func (r *repoSteps) integrityStep() hostcheck.Line {
 	var log repoconnect.Log
 	cli := newRestic(r.cfg, r.binary, r.deps, r.repo, runAs(r.who)).WithStderr(&log)
 	err := cli.CheckData(r.ctx, r.opts.readData)
-	line := hostcheck.Line{Check: checkIntegrity, Subject: r.repo.Name, Hint: "see " + hostcheck.HelpURL(checkIntegrity)}
+	line := hostcheck.Line{Check: hostcheck.CheckRepositoryIntegrity, Subject: r.repo.Name, Hint: "see " + hostcheck.HelpURL(hostcheck.CheckRepositoryIntegrity)}
 	if err == nil {
 		line.Status, line.Hint = hostcheck.OK, ""
 		line.Message = fmt.Sprintf("restic read %d%% of the data and found no errors", r.opts.readData)

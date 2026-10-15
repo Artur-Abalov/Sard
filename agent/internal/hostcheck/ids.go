@@ -23,3 +23,26 @@ const (
 	CheckServiceRunning   = "service.running"
 	CheckServiceSteps     = "service.steps"
 )
+
+// The identifiers of the checks of one repository, in their order (Ч3).
+const (
+	CheckRepositoryStorage     = "repository.storage"
+	CheckRepositoryCredentials = "repository.credentials"
+	CheckRepositoryInitialized = "repository.initialized"
+	CheckRepositoryPassword    = "repository.password"
+	CheckRepositoryID          = "repository.id"
+	CheckRepositoryLocks       = "repository.locks"
+	// CheckRepositoryIntegrity is asked for by name and is not in CheckIDs.
+	CheckRepositoryIntegrity = "repository.integrity"
+)
+
+// CheckIDs are the identifiers of the checks of sard-agent check in the
+// order of Ч10: the 28 lines of a run on a host with a repository.
+func CheckIDs() []string {
+	return []string{
+		CheckServiceUser, CheckConfigLoad, CheckConfigNames, CheckConfigReferences, CheckPermissions, CheckResticBinary,
+		CheckTLSIdentity, CheckTLSChain, CheckTLSExpiry, CheckTLSRole, CheckServerReachable, CheckServerTLS, CheckServerAccepted, CheckClockSkew,
+		CheckRepositoryStorage, CheckRepositoryCredentials, CheckRepositoryInitialized, CheckRepositoryPassword, CheckRepositoryID, CheckRepositoryLocks,
+		CheckSecretReadable, CheckPluginDeclared, CheckPluginPrograms, CheckRestoreLocations, CheckSELinuxLabels, CheckSELinuxDenials, CheckServiceRunning, CheckServiceSteps,
+	}
+}

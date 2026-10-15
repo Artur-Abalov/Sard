@@ -269,7 +269,7 @@ ERROR «the server could not tell whether it accepts this agent: code = <код>
 BUCKET_NOT_FOUND, HOST_KEY_*, `REJECTED`) строки не получает.
 
 - Классы S3_KEY_REJECTED и STORAGE_ACCESS_DENIED определяет та же таблица, что у
-  `repo add` и `repo check` (Р34): `repoinit.RemoteReason`. SSH_KEY_NOT_AUTHORIZED
+  `repo add` и `repo check` (Р34): `restic.RemoteRefusalOf`, на которую `repoinit` лишь накладывает `refusal.Reason`; `pluginhost` не импортирует `repoinit` и другие пакеты команд хоста (тест `imports_test.go`). SSH_KEY_NOT_AUTHORIZED
   в сообщении шага отдельно не отличается: строка ssh «Permission denied
   (publickey)» входит в класс «доступ отказан». Ограничение: если restic не
   печатает строку ssh в свою фатальную строку (OQ-155), подсказки не будет.

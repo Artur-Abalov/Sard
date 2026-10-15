@@ -127,7 +127,7 @@ func TestIntegrationALockOfARunningProcessStaysAndIsNoWarning(t *testing.T) {
 	assertCode(t, code, exitOK)
 	host, _ := os.Hostname()
 	lines, _ := parseOut(t, stdout)
-	if l := line(t, lines, checkLocks, "base"); l.status != "OK" || !strings.Contains(l.message, "1 lock") || !strings.Contains(l.message, host) {
+	if l := line(t, lines, hostcheck.CheckRepositoryLocks, "base"); l.status != "OK" || !strings.Contains(l.message, "1 lock") || !strings.Contains(l.message, host) {
 		t.Errorf("locks: %+v", l)
 	}
 }
@@ -142,7 +142,7 @@ func TestIntegrationRealResticChecksAPartOfTheData(t *testing.T) {
 	code, stdout, stderr := h.sudo("repo", "check", "--config", "C", "base", "--read-data", "100")
 	assertCode(t, code, exitOK)
 	lines, _ := parseOut(t, stdout)
-	if l := line(t, lines, checkIntegrity, "base"); l.status != "OK" {
+	if l := line(t, lines, hostcheck.CheckRepositoryIntegrity, "base"); l.status != "OK" {
 		t.Errorf("integrity: %+v (stderr %q)", l, stderr)
 	}
 }
@@ -155,7 +155,7 @@ func TestIntegrationACheckOfDataIsRefusedWhileABackupHoldsTheRepository(t *testi
 	code, stdout, _ := h.sudo("repo", "check", "--config", "C", "base", "--read-data", "100")
 	assertCode(t, code, exitWarnings)
 	lines, _ := parseOut(t, stdout)
-	if l := line(t, lines, checkIntegrity, "base"); l.status != "WARN" || !strings.Contains(l.message, "locked by another process") {
+	if l := line(t, lines, hostcheck.CheckRepositoryIntegrity, "base"); l.status != "WARN" || !strings.Contains(l.message, "locked by another process") {
 		t.Errorf("integrity: %+v", l)
 	}
 }
@@ -166,14 +166,14 @@ func TestIntegrationRealResticStaleLockOfADeadProcessIsWarnedAboutOnlyAfter24Hou
 	h.clock.now = time.Now()
 	_, stdout, _ := h.sudo("repo", "check", "--config", "C", "base")
 	lines, _ := parseOut(t, stdout)
-	if l := line(t, lines, checkLocks, "base"); l.status != "OK" {
+	if l := line(t, lines, hostcheck.CheckRepositoryLocks, "base"); l.status != "OK" {
 		t.Errorf("fresh: %+v", l)
 	}
 	h.thirtyHoursLater()
 	code, stdout, _ := h.sudo("repo", "check", "--config", "C", "base")
 	assertCode(t, code, exitWarnings)
 	lines, _ = parseOut(t, stdout)
-	if l := line(t, lines, checkLocks, "base"); l.status != "WARN" || !strings.Contains(l.hint, "repo unlock base --remove-stale") {
+	if l := line(t, lines, hostcheck.CheckRepositoryLocks, "base"); l.status != "WARN" || !strings.Contains(l.hint, "repo unlock base --remove-stale") {
 		t.Errorf("stale: %+v", l)
 	}
 }

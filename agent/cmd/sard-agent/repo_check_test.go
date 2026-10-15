@@ -142,37 +142,37 @@ func TestAStepThatFailsNamesTheReasonAndTheSkippedStepsFollow(t *testing.T) {
 	}{
 		{"no such host", func(h *setupHost) {
 			h.base().script = printsOn("cat", "Fatal: Stat: dial tcp: lookup nas: no such host")
-		}, checkStorage, "BACKEND_UNAVAILABLE", "09-troubleshooting.md#repositorystorage"},
+		}, hostcheck.CheckRepositoryStorage, "BACKEND_UNAVAILABLE", "09-troubleshooting.md#repositorystorage"},
 		{"connection refused", func(h *setupHost) {
 			h.base().script = printsOn("cat", "Fatal: unable to open config file: dial tcp 192.0.2.1:443: connect: connection refused")
-		}, checkStorage, "BACKEND_UNAVAILABLE", "09-troubleshooting.md#repositorystorage"},
+		}, hostcheck.CheckRepositoryStorage, "BACKEND_UNAVAILABLE", "09-troubleshooting.md#repositorystorage"},
 		{"x509", func(h *setupHost) {
 			h.base().script = printsOn("cat", "Fatal: Stat: tls: failed to verify certificate: x509 certificate signed by unknown authority")
-		}, checkStorage, "BACKEND_UNAVAILABLE", "09-troubleshooting.md#repositorystorage"},
+		}, hostcheck.CheckRepositoryStorage, "BACKEND_UNAVAILABLE", "09-troubleshooting.md#repositorystorage"},
 		{"invalid key id", func(h *setupHost) {
 			h.onS3()
 			h.base().script = printsOn("cat", "Fatal: unable to open config file: Stat: InvalidAccessKeyId: x")
-		}, checkCredentials, "S3_KEY_REJECTED", "09-troubleshooting.md#repositorycredentials"},
+		}, hostcheck.CheckRepositoryCredentials, "S3_KEY_REJECTED", "09-troubleshooting.md#repositorycredentials"},
 		{"access denied", func(h *setupHost) {
 			h.onS3()
 			h.base().script = printsOn("cat", "Fatal: unable to open config file: Stat: Access Denied.")
-		}, checkCredentials, "STORAGE_ACCESS_DENIED", "09-troubleshooting.md#repositorycredentials"},
+		}, hostcheck.CheckRepositoryCredentials, "STORAGE_ACCESS_DENIED", "09-troubleshooting.md#repositorycredentials"},
 		{"no such bucket", func(h *setupHost) {
 			h.onS3()
 			h.base().script = printsOn("cat", "Fatal: Stat: NoSuchBucket: x")
-		}, checkCredentials, "BUCKET_NOT_FOUND", "09-troubleshooting.md#repositorycredentials"},
+		}, hostcheck.CheckRepositoryCredentials, "BUCKET_NOT_FOUND", "09-troubleshooting.md#repositorycredentials"},
 		{"ssh key", func(h *setupHost) {
 			h.onSFTP()
 			h.base().script = printsOn("cat", "subprocess ssh: Permission denied (publickey).")
-		}, checkCredentials, "SSH_KEY_NOT_AUTHORIZED", "authorized_keys"},
+		}, hostcheck.CheckRepositoryCredentials, "SSH_KEY_NOT_AUTHORIZED", "authorized_keys"},
 		{"host key", func(h *setupHost) {
 			h.onSFTP()
 			h.base().script = printsOn("cat", "subprocess ssh: Host key verification failed.")
-		}, checkCredentials, "HOST_KEY_MISMATCH", "09-troubleshooting.md#repositorycredentials"},
-		{"not initialized", func(h *setupHost) { h.base().initialized = false }, checkInitialized, "REPOSITORY_NOT_INITIALIZED", "sudo sard-agent repo add base"},
-		{"no password file", func(h *setupHost) { ok(h.t, os.Remove(h.path("secrets/base.pass"))) }, checkPassword, "PASSWORD_FILE_MISSING", "sudo sard-agent repo add base"},
-		{"password file open to others", func(h *setupHost) { ok(h.t, os.Chmod(h.path("secrets/base.pass"), 0o644)) }, checkPassword, "SECRET_FILE_REJECTED", "sudo chmod 0600"},
-		{"wrong password", func(h *setupHost) { h.base().wrongPassword = true }, checkPassword, "WRONG_PASSWORD", "09-troubleshooting.md#repositorypassword"},
+		}, hostcheck.CheckRepositoryCredentials, "HOST_KEY_MISMATCH", "09-troubleshooting.md#repositorycredentials"},
+		{"not initialized", func(h *setupHost) { h.base().initialized = false }, hostcheck.CheckRepositoryInitialized, "REPOSITORY_NOT_INITIALIZED", "sudo sard-agent repo add base"},
+		{"no password file", func(h *setupHost) { ok(h.t, os.Remove(h.path("secrets/base.pass"))) }, hostcheck.CheckRepositoryPassword, "PASSWORD_FILE_MISSING", "sudo sard-agent repo add base"},
+		{"password file open to others", func(h *setupHost) { ok(h.t, os.Chmod(h.path("secrets/base.pass"), 0o644)) }, hostcheck.CheckRepositoryPassword, "SECRET_FILE_REJECTED", "sudo chmod 0600"},
+		{"wrong password", func(h *setupHost) { h.base().wrongPassword = true }, hostcheck.CheckRepositoryPassword, "WRONG_PASSWORD", "09-troubleshooting.md#repositorypassword"},
 	} {
 		h := checkHost(t)
 		c.arrange(h)
@@ -231,7 +231,7 @@ func TestAnS3FailureOfTheEnvFileNamesTheFileNotTheValuesAndNeverCallsRestic(t *t
 	code, stdout, stderr := h.repoCheck("base")
 	assertCode(t, code, exitAgentError)
 	lines, _ := parseOut(t, stdout)
-	bad := line(t, lines, checkCredentials, "base")
+	bad := line(t, lines, hostcheck.CheckRepositoryCredentials, "base")
 	env := h.path("secrets/restic-base.env")
 	if bad.status != "ERROR" || !strings.Contains(bad.message, "SECRET_FILE_REJECTED") || !strings.Contains(bad.message, env) {
 		t.Errorf("credentials: %+v", bad)
@@ -259,7 +259,7 @@ func TestASilentStorageIsCutOffByTheConnectTimeout(t *testing.T) {
 	r := within(t, done)
 	assertCode(t, r.code, exitAgentError)
 	lines, _ := parseOut(t, r.stdout)
-	bad := line(t, lines, checkStorage, "base")
+	bad := line(t, lines, hostcheck.CheckRepositoryStorage, "base")
 	if bad.status != "ERROR" || !strings.Contains(bad.message, "BACKEND_UNAVAILABLE") || !strings.Contains(bad.message, "2s") || !h.base().terminated {
 		t.Errorf("storage %+v, terminated %v", bad, h.base().terminated)
 	}
@@ -276,7 +276,7 @@ func TestTheConnectTimeoutOfACheckIsTenSecondsByDefault(t *testing.T) {
 	vc.advance(10 * time.Second)
 	r := within(t, done)
 	lines, _ := parseOut(t, r.stdout)
-	if bad := line(t, lines, checkStorage, "base"); !strings.Contains(bad.message, "10s") {
+	if bad := line(t, lines, hostcheck.CheckRepositoryStorage, "base"); !strings.Contains(bad.message, "10s") {
 		t.Errorf("storage %+v", bad)
 	}
 }
@@ -309,7 +309,7 @@ func TestTheRepositoryIDIsTheAnnouncedOne(t *testing.T) {
 	h := checkHost(t)
 	_, stdout, _ := h.repoCheck("base")
 	lines, _ := parseOut(t, stdout)
-	if l := line(t, lines, checkID, "base"); l.status != "OK" || !strings.Contains(l.message, "REPO-A") {
+	if l := line(t, lines, hostcheck.CheckRepositoryID, "base"); l.status != "OK" || !strings.Contains(l.message, "REPO-A") {
 		t.Errorf("%+v", l)
 	}
 }
@@ -331,7 +331,7 @@ func TestAnIDThatDiffersFromTheAnnouncedOneIsToBeRestartedOrFixed(t *testing.T) 
 		code, stdout, _ := h.repoCheck("base")
 		assertCode(t, code, c.code)
 		lines, _ := parseOut(t, stdout)
-		l := line(t, lines, checkID, "base")
+		l := line(t, lines, hostcheck.CheckRepositoryID, "base")
 		if l.status != c.status || !strings.Contains(l.message, c.text) || !strings.Contains(l.hint, "sudo systemctl restart sard-agent") {
 			t.Errorf("%s: %+v", c.name, l)
 		}
@@ -344,7 +344,7 @@ func TestWithoutARecordOfTheServiceTheComparisonIsSkipped(t *testing.T) {
 	code, stdout, _ := h.repoCheck("base")
 	assertCode(t, code, exitOK)
 	lines, _ := parseOut(t, stdout)
-	if l := line(t, lines, checkID, "base"); l.status != "SKIP" || !strings.Contains(l.hint, "sudo systemctl start sard-agent") {
+	if l := line(t, lines, hostcheck.CheckRepositoryID, "base"); l.status != "SKIP" || !strings.Contains(l.hint, "sudo systemctl start sard-agent") {
 		t.Errorf("%+v", l)
 	}
 }
@@ -354,7 +354,7 @@ func TestAnErrorOfTheIDStopsTheLocksStep(t *testing.T) {
 	h.announce(hostcheck.AnnouncedRepository{Name: "base", RepositoryID: "REPO-B"})
 	_, stdout, _ := h.repoCheck("base")
 	lines, _ := parseOut(t, stdout)
-	if l := line(t, lines, checkLocks, "base"); l.status != "SKIP" || l.message != "not checked: repository.id failed" {
+	if l := line(t, lines, hostcheck.CheckRepositoryLocks, "base"); l.status != "SKIP" || l.message != "not checked: repository.id failed" {
 		t.Errorf("%+v", l)
 	}
 	if len(h.restic.callsTo(h.path("base"), "list")) != 0 {
@@ -368,7 +368,7 @@ func (h *setupHost) lockLine() (outLine, int) {
 	h.t.Helper()
 	code, stdout, _ := h.repoCheck("base")
 	lines, _ := parseOut(h.t, stdout)
-	return line(h.t, lines, checkLocks, "base"), code
+	return line(h.t, lines, hostcheck.CheckRepositoryLocks, "base"), code
 }
 
 func TestNoLocks(t *testing.T) {
@@ -485,7 +485,7 @@ func TestTheIntegrityLineComesLastAfterTheLocks(t *testing.T) {
 	_, stdout, _ := h.repoCheck("base", "--read-data", "5")
 	lines, summary := parseOut(t, stdout)
 	last := lines[len(lines)-1]
-	if last.check != checkIntegrity || last.status != "OK" || lines[len(lines)-2].check != checkLocks {
+	if last.check != hostcheck.CheckRepositoryIntegrity || last.status != "OK" || lines[len(lines)-2].check != hostcheck.CheckRepositoryLocks {
 		t.Errorf("lines %v", lines)
 	}
 	if summary != "summary: 7 ok, 0 warnings, 0 errors, 0 skipped" {
@@ -500,7 +500,7 @@ func TestErrorsOfTheIntegrityAreAnErrorWithTheCountOfRestic(t *testing.T) {
 	code, stdout, _ := h.repoCheck("base", "--read-data", "5")
 	assertCode(t, code, exitAgentError)
 	lines, _ := parseOut(t, stdout)
-	l := line(t, lines, checkIntegrity, "base")
+	l := line(t, lines, hostcheck.CheckRepositoryIntegrity, "base")
 	if l.status != "ERROR" || !strings.Contains(l.message, "contains 1 errors") || !strings.Contains(l.hint, "09-troubleshooting.md#repositoryintegrity") {
 		t.Errorf("%+v", l)
 	}
@@ -524,7 +524,7 @@ func TestCredentialsThatCannotWriteGetAnExplanationInsteadOfTheTextOfRestic(t *t
 	h.base().checkState.checkStderr = []string{"Fatal: unable to create lock in backend: client.PutObject: Access Denied."}
 	_, stdout, _ := h.repoCheck("base", "--read-data", "5")
 	lines, _ := parseOut(t, stdout)
-	l := line(t, lines, checkIntegrity, "base")
+	l := line(t, lines, hostcheck.CheckRepositoryIntegrity, "base")
 	for _, want := range []string{"restic check needs to create a lock in the repository and these credentials cannot write", "checking with read-only credentials is not supported yet", "restic said: Access Denied"} {
 		if l.status != "ERROR" || !strings.Contains(l.message, want) {
 			t.Errorf("message lacks %q: %+v", want, l)
@@ -540,7 +540,7 @@ func TestAnErrorBeforeTheIntegrityStepSkipsIt(t *testing.T) {
 	h.base().wrongPassword = true
 	_, stdout, _ := h.repoCheck("base", "--read-data", "5")
 	lines, _ := parseOut(t, stdout)
-	if l := line(t, lines, checkIntegrity, "base"); l.status != "SKIP" {
+	if l := line(t, lines, hostcheck.CheckRepositoryIntegrity, "base"); l.status != "SKIP" {
 		t.Errorf("%+v", l)
 	}
 	if len(h.restic.callsTo(h.path("base"), "check")) != 0 {
@@ -554,7 +554,7 @@ func TestACheckOfAnUnreachableStorageInTheIntegrityStepIsToldAsTheStorageIs(t *t
 	h.base().checkState.checkStderr = []string{"Fatal: dial tcp 192.0.2.1:443: connect: connection refused"}
 	_, stdout, _ := h.repoCheck("base", "--read-data", "5")
 	lines, _ := parseOut(t, stdout)
-	if l := line(t, lines, checkIntegrity, "base"); l.status != "ERROR" || !strings.Contains(l.message, "BACKEND_UNAVAILABLE") {
+	if l := line(t, lines, hostcheck.CheckRepositoryIntegrity, "base"); l.status != "ERROR" || !strings.Contains(l.message, "BACKEND_UNAVAILABLE") {
 		t.Errorf("%+v", l)
 	}
 }
@@ -631,7 +631,7 @@ func TestTheErrorOfOneRepositoryDoesNotStopTheOthers(t *testing.T) {
 	code, stdout, _ := h.repoCheck()
 	assertCode(t, code, exitAgentError)
 	lines, _ := parseOut(t, stdout)
-	if l := line(t, lines, checkPassword, "obj"); l.status != "ERROR" {
+	if l := line(t, lines, hostcheck.CheckRepositoryPassword, "obj"); l.status != "ERROR" {
 		t.Errorf("%+v", l)
 	}
 	for _, l := range lines {
@@ -769,7 +769,7 @@ func TestARepositoryHeldByAnotherProcessExplainsWhyResticCheckCouldNotRun(t *tes
 	code, stdout, _ := h.repoCheck("base", "--read-data", "5")
 	assertCode(t, code, exitWarnings)
 	lines, _ := parseOut(t, stdout)
-	l := line(t, lines, checkIntegrity, "base")
+	l := line(t, lines, hostcheck.CheckRepositoryIntegrity, "base")
 	if l.status != "WARN" || !strings.Contains(l.message, "locked by another process") || !strings.Contains(l.message, "repeat") || strings.Contains(l.message, "BACKEND_REFUSED") {
 		t.Errorf("%+v", l)
 	}
@@ -783,7 +783,7 @@ func TestAnOtherFailureOfResticCheckIsToldAsTheStorageTellsIt(t *testing.T) {
 	h.base().checkState.checkCode = 12
 	_, stdout, _ := h.repoCheck("base", "--read-data", "5")
 	lines, _ := parseOut(t, stdout)
-	if l := line(t, lines, checkIntegrity, "base"); l.status != "ERROR" || !strings.Contains(l.message, "WRONG_PASSWORD") {
+	if l := line(t, lines, hostcheck.CheckRepositoryIntegrity, "base"); l.status != "ERROR" || !strings.Contains(l.message, "WRONG_PASSWORD") {
 		t.Errorf("%+v", l)
 	}
 }
