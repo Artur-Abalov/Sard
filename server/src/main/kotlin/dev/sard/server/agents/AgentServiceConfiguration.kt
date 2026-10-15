@@ -24,6 +24,9 @@ class AgentServiceConfiguration {
     ) = Registration(sessions, clock)
 
     @Bean
+    fun agentProbe(clock: Clock) = AgentProbe(clock)
+
+    @Bean
     fun agents(
         sessions: TenantSessions,
         presence: AgentPresence,

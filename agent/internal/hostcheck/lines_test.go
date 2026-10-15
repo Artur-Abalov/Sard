@@ -94,10 +94,3 @@ func TestACheckForRootIsSkippedForTheServiceUserWithTheReason(t *testing.T) {
 		t.Errorf("%+v", l)
 	}
 }
-
-func TestTheCheckOfTheServerIsNotMadeYet(t *testing.T) {
-	l := hostcheck.UnavailableLine("server.reachable")
-	if l.Status != hostcheck.Skip || l.Hint == "" {
-		t.Errorf("%+v", l)
-	}
-}

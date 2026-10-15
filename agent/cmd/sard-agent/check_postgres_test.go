@@ -36,7 +36,7 @@ func TestWithoutPostgreSQLToolsTheLineIsSkippedWithAMessageAndAHint(t *testing.T
 	if l := line(t, lines, "plugin.programs", "files"); l.status != "OK" {
 		t.Errorf("%+v", l)
 	}
-	if summary != "summary: 22 ok, 0 warnings, 0 errors, 7 skipped" {
+	if summary != "summary: 26 ok, 0 warnings, 0 errors, 3 skipped" {
 		t.Errorf("summary %q", summary)
 	}
 }

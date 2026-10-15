@@ -45,7 +45,12 @@ class AgentProbeTest {
     @Test
     fun `the answer carries the server time and no other field`() {
         val response = answer(at("2026-10-14T12:00:00Z"))
-        assertEquals(setOf(1), response.allFields.keys.map { it.number }.toSet())
+        assertEquals(
+            setOf(1),
+            response.allFields.keys
+                .map { it.number }
+                .toSet(),
+        )
     }
 }
 

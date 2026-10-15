@@ -82,9 +82,3 @@ func OfflineLine(check, subject string) Line {
 func NeedsRootLine(check, subject, what string) Line {
 	return Line{Check: check, Subject: subject, Status: Skip, Message: fmt.Sprintf("needs root: %s", what), Hint: fmt.Sprintf("run `%s`", checkAgain)}
 }
-
-// UnavailableLine is a check this version of the agent does not make yet.
-func UnavailableLine(check string) Line {
-	return Line{Check: check, Status: Skip, Message: "this version of the agent does not check the server yet",
-		Hint: "check the connection to the server in the log of the service: journalctl -u sard-agent"}
-}

@@ -65,6 +65,8 @@ type setupHost struct {
 	alive map[int]bool
 	// progs are the programs of the host that sard-agent check runs (A8d-2).
 	progs *fakePrograms
+	// server is the server that sard-agent check asks (A8d-3).
+	server *fakeServerProbe
 }
 
 type ownedRead struct {
@@ -84,6 +86,8 @@ func newSetupHost(t *testing.T) *setupHost {
 	h := &setupHost{repoHost: newRepoHost(t), fsys: newFakeFS(), sd: &fakeSystemd{present: true, active: true}, log: &fakeSyslog{}, stdin: &bytes.Buffer{}}
 	h.progs = &fakePrograms{answers: map[string]progAnswer{}}
 	h.deps.progExec = h.progs
+	h.server = &fakeServerProbe{}
+	h.deps.probeServer = h.server.run
 	h.env = map[string]string{"SUDO_USER": "alice", "SUDO_UID": "1000"}
 	h.people = []hostsetup.User{svcUser, backupUser, {Name: "root"}}
 	h.write(h.path("secrets/base.pass"), passMarker+"\n", 0o600)

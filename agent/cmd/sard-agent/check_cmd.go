@@ -71,6 +71,10 @@ type hostCheck struct {
 	// denied is the file a check was refused (EACCES) in the middle of a line.
 	needsRoot bool
 	denied    string
+	// server is what the checks of the server learned, asked once (A8d-3).
+	server *hostcheck.ServerFacts
+	// serverDenied is the file the service user was refused building TLS.
+	serverDenied string
 }
 
 func newHostCheck(ctx context.Context, deps hostDeps, opts hostOptions, who hostsetup.Principal, stdout io.Writer) *hostCheck {

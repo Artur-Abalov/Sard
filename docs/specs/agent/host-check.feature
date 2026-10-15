@@ -265,7 +265,14 @@
 #       не меняет регистрацию, не открывает сессию, не трогает присутствие
 #       агента; отвечает временем сервера. Проходит через проверку агента
 #       сервера (ADR 0009): CERT_REVOKED, AGENT_REVOKED, CERT_UNKNOWN,
-#       CERT_EXPIRED — ERROR с причиной, подсказка — повторная регистрация.
+#       CERT_EXPIRED, а также CERT_IDENTITY_MISMATCH и CERT_MISSING (решение
+#       владельца 2026-10-15, ПР) — ERROR с причиной, подсказка — повторная
+#       регистрация. Отказ — статус UNAUTHENTICATED, а не поле ответа. Агент
+#       сообщает только причину, если она состоит из заглавных букв, цифр и _ и
+#       из домена sard.dev; текст статуса сервера в вывод не попадает. Отзыв
+#       агента в консоли даёт CERT_REVOKED (сертификаты отзываются вместе с ним).
+#       Недоступная база сервера — UNAVAILABLE с INTERNAL_RETRYABLE: ERROR
+#       «the server could not tell whether it accepts this agent».
 #       Сервер без этого вызова (UNIMPLEMENTED) — WARN «the server is older
 #       than this agent; acceptance and clock were not checked», clock.skew —
 #       SKIP. check никогда не вызывает Register и Connect: Register
@@ -426,7 +433,8 @@
 #       иначе нет файла — SKIP «service has not registered yet»; иначе
 #       сравнение (OK, ERROR, WARN). Расхождение id, не пустое и не пропущенное,
 #       поэтому видно только онлайн.
-#   Ч33. Нарезка: check до среза A8d-3. Строки server.reachable, server.tls,
+#   Ч33. (Выполнено в A8d-3: строки сервера сделаны, см. Ч14-Ч16.) Нарезка:
+#       check до среза A8d-3. Строки server.reachable, server.tls,
 #       server.accepted и clock.skew занимают своё место и идентификаторы
 #       (Ч10), но проверка сервера ещё не сделана: онлайн каждая — SKIP «this
 #       version of the agent does not check the server yet» с подсказкой
@@ -937,10 +945,10 @@
   # A8d-2
   Правило: sard-agent check печатает по строке на каждую проверку хоста
 
-    # До среза A8d-3 строки server.reachable, server.tls, server.accepted и
-    # clock.skew — SKIP (Ч33): реализация A8d-2 ожидает в сводке здорового хоста
-    # "23 ok, 0 warnings, 0 errors, 6 skipped", а сценарии ниже со строками
-    # сервера OK — после A8d-3.
+    # С A8d-3 строки server.reachable, server.tls, server.accepted и clock.skew
+    # на здоровом хосте — OK (Ч14-Ч16), сводка "27 ok, 0 warnings, 0 errors,
+    # 2 skipped" (SKIP остаются tls.role и restore.locations). До A8d-3 они были
+    # SKIP (Ч33).
     @local
     Сценарий: Здоровый хост
       Когда оператор выполняет check
@@ -1093,7 +1101,7 @@
       Когда оператор выполняет check
       Тогда код выхода — 0
       И строка plugin.programs с предметом files — OK
-      # с A8d-3 так; в A8d-2 строки сервера SKIP (Ч33): "22 ok, 0 warnings, 0 errors, 7 skipped"
+      # до A8d-3 строки сервера были SKIP (Ч33): "22 ok, 0 warnings, 0 errors, 7 skipped"
       И последняя строка stdout — "summary: 26 ok, 0 warnings, 0 errors, 3 skipped"
 
     # ЧВ11 Ч31
@@ -1258,10 +1266,12 @@
 
       Примеры:
         | причина        |
-        | AGENT_REVOKED  |
-        | CERT_REVOKED   |
-        | CERT_UNKNOWN   |
-        | CERT_EXPIRED   |
+        | AGENT_REVOKED          |
+        | CERT_REVOKED           |
+        | CERT_UNKNOWN           |
+        | CERT_EXPIRED           |
+        | CERT_IDENTITY_MISMATCH |
+        | CERT_MISSING           |
 
     # ЧВ6
     @fake

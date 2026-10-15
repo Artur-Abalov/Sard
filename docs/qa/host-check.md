@@ -163,9 +163,9 @@ S3_MARK=$(sudo sed -n 's/^AWS_SECRET_ACCESS_KEY=//p' /etc/sard/secrets/restic-s1
 
 ## Часть 5. `sard-agent check` на здоровом хосте (A8d-2)
 
-28. До среза A8d-3 строки `server.reachable`, `server.tls`, `server.accepted` и
-    `clock.skew` — `SKIP` (`this version of the agent does not check the server
-    yet`), в сводке на четыре `skipped` больше (Ч33); с A8d-3 они `OK`.
+28. Строки `server.reachable`, `server.tls`, `server.accepted` и `clock.skew` —
+    `OK` (с A8d-3; до него были `SKIP`, Ч33), в сводке `2 skipped` (`tls.role`,
+    `restore.locations`).
     `time run sudo $AG check` → `exit=0`; строки в порядке Ч10: `service.user`,
     `config.*`, `files.permissions`, `restic.binary`, `tls.*`, `server.*`,
     `clock.skew`, по шесть `repository.*` на `main`, `s1`, `f1`,
@@ -296,8 +296,11 @@ S3_MARK=$(sudo sed -n 's/^AWS_SECRET_ACCESS_KEY=//p' /etc/sard/secrets/restic-s1
     `time run sudo $AG check --connect-timeout 3s` → `server.reachable` или
     `server.tls` — `ERROR` с `3s`; `real` — не больше суммы таймаутов.
 58. Отозвать агента в консоли → `server.accepted` — `ERROR`,
-    `AGENT_REVOKED`, подсказка `sudo sard-agent enroll --force`; `exit=1`.
-    (Перерегистрировать ВМ по `host-setup.md`.)
+    `CERT_REVOKED` (отзыв агента отзывает и его сертификаты; `AGENT_REVOKED`
+    бывает, только если отозван агент, а сертификат нет), подсказка
+    `sudo sard-agent enroll --force`; `exit=1`. Так же `ERROR` с подсказкой
+    `enroll --force` — `CERT_IDENTITY_MISMATCH` и `CERT_MISSING`, если сервер их
+    вернёт. (Перерегистрировать ВМ по `host-setup.md`.)
 59. Часы: `sudo timedatectl set-ntp false; sudo date -s '+3 minutes'` →
     `clock.skew` — `WARN`, расхождение около `180s`, подсказка
     `timedatectl set-ntp true`; `exit=8`. Вернуть синхронизацию.

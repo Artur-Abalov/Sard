@@ -177,21 +177,6 @@ func (c *hostCheck) tlsLines() {
 	c.emit(hostcheck.TLSRoleLine())
 }
 
-// serverLines are the checks of the server (A8d-3). This version leaves them
-// out, but keeps their place, so that the identifiers and the order are
-// those of the list of Ч10.
-func (c *hostCheck) serverLines() {
-	needs := append([]string{hostcheck.CheckTLSIdentity}, needConfig...)
-	for _, check := range []string{hostcheck.CheckServerReachable, hostcheck.CheckServerTLS, hostcheck.CheckServerAccepted, hostcheck.CheckClockSkew} {
-		c.step(check, needs, func() hostcheck.Line {
-			if c.opts.offline {
-				return hostcheck.OfflineLine(check, "")
-			}
-			return hostcheck.UnavailableLine(check)
-		})
-	}
-}
-
 // secretLines is secret.readable for every secret of the config (Ч17).
 func (c *hostCheck) secretLines() {
 	if failed := c.configBlock(); failed != "" {

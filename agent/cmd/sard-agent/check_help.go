@@ -29,8 +29,11 @@ repository.password, repository.id, repository.locks (see "sard-agent repo
 check --help"; restic check with --read-data is only run there), then
 secret.readable of every secret, plugin.declared, plugin.programs of every
 plugin, restore.locations, selinux.labels, selinux.denials, service.running and
-service.steps. The check of the server (server.*, clock.skew) is left out by this
-version of the agent: those lines are SKIP.
+service.steps. The server is asked once and read-only: a TCP connection, an mTLS
+handshake and the call Probe, which answers whether the server accepts this agent
+and what time it has. check never calls Register or Connect, so it does not
+touch the registration, the presence or the steps of the service. A server older
+than this agent (no Probe) is a WARN, and clock.skew is SKIP.
 
 Flags:
   --config string            path to the agent config (default /etc/sard/agent.yaml)
@@ -41,8 +44,9 @@ Flags:
                              repository: server.*, clock.skew and every repository
                              check are SKIP "offline" (restic.binary still runs
                              restic version)
-  --connect-timeout duration how long every access to a storage may take (default 10s);
-                             the check is an ERROR with BACKEND_UNAVAILABLE
+  --connect-timeout duration how long every access to the server or to a storage may
+                             take (default 10s); the check is an ERROR (a storage:
+                             BACKEND_UNAVAILABLE)
 
 A WARN gives exit code 8, an ERROR gives 1; SKIP counts for neither (a host without
 the programs of PostgreSQL gets 0). The data of the repositories is read only by

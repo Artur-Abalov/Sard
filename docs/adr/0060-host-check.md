@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 <!-- Copyright 2026 Artur Abalov -->
 
-# 0060 — Проверка хоста агента: `repo check`, `repo unlock`, запись объявленных id, `check` (A8d-1, A8d-2)
+# 0060 — Проверка хоста агента: `repo check`, `repo unlock`, запись объявленных id, `check` (A8d-1, A8d-2, A8d-3)
 
-- Статус: принято (A8d-1, A8d-2); решения владельца — 2026-10-14 (`docs/specs/agent/host-check.feature`, Ч1–Ч31, ЧВ1–ЧВ14) и 2026-10-15 (Ч32, Ч33, WARN занятого репозитория, OK без репозиториев)
+- Статус: принято (A8d-1, A8d-2, A8d-3); решения владельца — 2026-10-14 (`docs/specs/agent/host-check.feature`, Ч1–Ч31, ЧВ1–ЧВ14) и 2026-10-15 (Ч32, Ч33, WARN занятого репозитория, OK без репозиториев)
 - Дата: 2026-10-14, дополнено 2026-10-15
 - Дополняет: ADR 0025 (классы кодов выхода), ADR 0050 (права запуска), ADR 0059 (restic без блокировки и кэша), ADR 0044 (журнал шагов, `executor.state_dir`)
 
@@ -186,3 +186,69 @@ A8d-3: на четыре `skipped` больше, чем в сценариях с
 - В сообщение OK строки `repository.storage` вошёл адрес репозитория, пароль в
   нём скрыт `RedactURL` (`***`); так Ч24 «адрес — RedactURL» выполняется и в
   выводе `check`.
+
+## A8d-3: сервер и часы (`server.*`, `clock.skew`)
+
+Решения владельца 2026-10-15: ПР1–ПР10 и ПРВ1–ПРВ5 (`docs/specs/server/agent-probe.feature`).
+
+### Контракт: `AgentService.Probe`
+Добавление в proto (`buf breaking` проходит): `rpc Probe(ProbeRequest) returns
+(ProbeResponse)`, `ProbeRequest {}`, `ProbeResponse { Timestamp server_time = 1; }`.
+Запрос не несёт ничего: агента сервер знает по сертификату (ADR 0009). Сервер
+(`agents/AgentProbe`) отвечает показанием `Clock` в момент ответа, не держит ни
+хранилища, ни сессий, ни потоков и поэтому не может ничего изменить: не пишет
+`last_seen_at`, не открывает сессию, не трогает шаги и объявление, не пишет метрик
+и не логирует успешный вызов на INFO и выше. Агент без Register принимается.
+Отказ — не поле ответа, а статус `UNAUTHENTICATED` с `ErrorInfo` существующего
+перехватчика (ПРВ1): «принят» значит `OK`, а Probe не входит в
+`UNAUTHENTICATED_SERVICES`.
+
+### Агент: `internal/serverprobe` и `hostcheck`
+`serverprobe.Run` делает три шага и останавливается на первом отказавшем: TCP к
+`server.address` (`server.reachable`), рукопожатие mTLS по `tls.ca_file` и
+сертификату агента (`server.tls`), вызов Probe (`server.accepted`, `clock.skew`).
+Каждое обращение ограничено `--connect-timeout` (по умолчанию 10 с); молчащий
+слушатель — ERROR `server.tls` «did not answer within 10s». Пакет собирает факты
+(`hostcheck.ServerFacts`), а что они значат, решает `hostcheck` (`server.go`) и
+проверяет таблицами. Конфигурацию TLS собирает `cmd/sard-agent/check_server.go`
+из файлов, прочитанных так же, как читают остальные проверки; `serverprobe` не
+читает файлов. check не вызывает Register и Connect (Ч15, ADR 0038).
+
+Рукопожатие TLS 1.3 для клиента заканчивается раньше, чем сервер судит о его
+сертификате, и отказ приходит оповещением при первом чтении. Поэтому после
+рукопожатия агент читает до 500 мс (ALPN `h2`, сервер gRPC сразу шлёт SETTINGS);
+оповещение «remote error: tls: … certificate» даёт ERROR `server.tls` «did not
+accept the client certificate», подсказка `enroll --force`. Так же разбирается
+оповещение, пришедшее только в первом вызове.
+
+Разбор ответа Probe: `OK` — принят; `UNAUTHENTICATED` — ERROR с причиной из
+`ErrorInfo` домена `sard.dev`, если она состоит из `A-Z`, цифр и `_` (до 40
+знаков), иначе без причины; подсказка `sudo sard-agent enroll --force`.
+CERT_IDENTITY_MISMATCH и CERT_MISSING показываются так же ERROR, как прочие
+причины (ПРВ5). `UNIMPLEMENTED` — WARN «the server is older than this agent;
+acceptance and clock were not checked», `clock.skew` — SKIP. Иной код —
+ERROR «the server could not tell whether it accepts this agent: code = <код>
+(<причина>)»: текст статуса сервера никогда не копируется в вывод.
+
+### Часы (Ч16)
+`skew = server_time − (Sent + RTT/2)`, где `Sent` — время хоста перед вызовом
+(`deps.clock`), `RTT` — измеренная длительность вызова. `|skew| > 1 мин` — WARN
+(60 с — ещё OK), сообщение «the clock of this host is <n>s behind|ahead of the
+server's», подсказка `sudo timedatectl set-ntp true`.
+
+### Зависимости и `--offline`
+`server.reachable` → `server.tls` → `server.accepted` → `clock.skew`: ERROR
+предыдущей пропускает следующие («not checked: <шаг> failed»); WARN
+`server.accepted` пропускает только `clock.skew` (нет времени сервера). Как и
+раньше, все четыре пропускаются после отказа `config.load`, `config.names`,
+`tls.identity`. `--offline` — SKIP «offline», сервер не спрашивается. Служба
+(пользователь службы) без права читать файл TLS — SKIP «needs root». Заглушка
+Ч33 (`UnavailableLine`) удалена; сводка здорового хоста — `27 ok, 0 warnings,
+0 errors, 2 skipped`.
+
+### Следствия
+- Отзыв агента в консоли отзывает и его сертификаты, а CERT_REVOKED проверяется
+  раньше AGENT_REVOKED, поэтому check показывает CERT_REVOKED; шаги QA
+  `host-check.md` 58 и `agent-start-refusals.md` 6а исправлены.
+- Проверка Probe из cron или мониторинга раз в минуту ничего не пишет в базу и
+  в журнал сервера.

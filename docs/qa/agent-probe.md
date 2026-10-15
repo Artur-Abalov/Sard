@@ -4,8 +4,8 @@
 # QA: вызов проверки агента `AgentService/Probe` (A8d-3, сервер)
 
 Сценарии: `docs/specs/server/agent-probe.feature` (ПР1–ПР10). СТАТУС:
-ОЖИДАЕТ ОДОБРЕНИЯ вместе со спецификацией; ожидания шагов 11, 17 и 19 зависят от
-ответов на ПРВ3, ПРВ2 и ПРВ4. Агентская сторона (`sard-agent check`, строки
+ОДОБРЕНО вместе со спецификацией (решения ПР1–ПР10, ПРВ1–ПРВ5 приняты
+2026-10-15). Агентская сторона (`sard-agent check`, строки
 `server.accepted` и `clock.skew`) — `docs/qa/host-check.md`, часть 10.
 
 Ожидаемый результат — после «→». Любое расхождение — дефект.
@@ -82,7 +82,7 @@ SERIAL=$(openssl x509 -in $H/tls/agent.pem -noout -serial | cut -d= -f2 | tr 'A-
     `$DC logs server | grep -c "agent lost the step"` не выросло.
 11. `$DC logs server --since 1m | grep -c -e "$X" -e "$SERIAL" -e Probe` сразу
     после `probe` (агент остановлен, поток не пишет) → `0` строк уровня INFO и
-    выше (ПРВ3).
+    выше (ПРВ3: успешный Probe не логируется).
 
 ## Часть 4. Отказы
 
@@ -108,7 +108,7 @@ SERIAL=$(openssl x509 -in $H/tls/agent.pem -noout -serial | cut -d= -f2 | tr 'A-
     → строка с `serial=$SERIAL` и `method=sard.agent.v1.AgentService/Probe`;
     `$DC logs server | grep -c 'BEGIN CERTIFICATE'` → `0`. Вернуть `revoked_at = null`.
 17. Отзыв в консоли: `a POST /agents/$X/revoke` → `HTTP 200`; `probe` →
-    `CERT_REVOKED` (ПР7; по ответу на ПРВ2 — иначе). Ни текст, ни деталь не
+    `CERT_REVOKED` (ПР7, ПРВ2). Ни текст, ни деталь не
     содержат `$X` и `$SERIAL`: `probe 2>&1 | grep -c -e "$X" -e "$SERIAL"` → `0`.
 18. Неизвестный сертификат: `$DC exec -T postgres psql -U sard -d sard -c "delete from agent_certificates where serial = '$SERIAL'"`
     (агент `$X` уже отозван в шаге 17) → `probe` → `CERT_UNKNOWN`.
@@ -117,8 +117,9 @@ SERIAL=$(openssl x509 -in $H/tls/agent.pem -noout -serial | cut -d= -f2 | tr 'A-
 
 19. Второй агент из шага 6 жив. `$DC stop postgres`;
     `$GRPC -cert $H2/tls/agent.pem -key $H2/tls/agent.key -d '{}' localhost:9090 sard.agent.v1.AgentService/Probe`
-    → код не `OK`, не `Unauthenticated` и не `Unimplemented` (точный код — по
-    ПРВ4); текст не содержит имени хоста базы и `Exception`.
+    → `Code: Unavailable`, деталь `ErrorInfo` с `reason` `INTERNAL_RETRYABLE`,
+    `domain` `sard.dev` (ПРВ4); `serverTime` нет; текст не содержит имени хоста
+    базы и `Exception`.
 20. `$DC start postgres`, подождать готовности → тот же вызов → `serverTime`.
 
 ## Часть 6. Совместимость

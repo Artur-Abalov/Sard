@@ -27,7 +27,7 @@ func checkIDsOf(lines []outLine) []string {
 	return ids
 }
 
-var notYet = []string{"tls.role", "server.reachable", "server.tls", "server.accepted", "clock.skew", "restore.locations"}
+var notYet = []string{"tls.role", "restore.locations"}
 
 func TestAHealthyHostHasALineForEveryCheckInTheOrderOfTheList(t *testing.T) {
 	h := fullHost(t)
@@ -39,7 +39,7 @@ func TestAHealthyHostHasALineForEveryCheckInTheOrderOfTheList(t *testing.T) {
 	for _, l := range lines {
 		assertHealthyLine(t, l)
 	}
-	if summary != "summary: 23 ok, 0 warnings, 0 errors, 6 skipped" {
+	if summary != "summary: 27 ok, 0 warnings, 0 errors, 2 skipped" {
 		t.Errorf("summary %q", summary)
 	}
 }
