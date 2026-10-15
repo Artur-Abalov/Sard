@@ -19,6 +19,7 @@ import dev.sard.server.agents.stream.TestAgent
 import dev.sard.server.agents.stream.WAIT_SECONDS
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
+import dev.sard.server.fleet.Agents
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.Runs
@@ -55,6 +56,7 @@ class CertificateRenewalStreamIntegrationTest(
     @Autowired private val ca: CertificateAuthority,
     @Autowired enrollment: Enrollment,
     @Autowired tokens: EnrollmentTokens,
+    @Autowired private val agents: Agents,
     @Autowired private val hellos: ReconciledHellos,
     @Autowired private val connections: AgentConnections,
     @Autowired private val registry: AgentSessionRegistry,
@@ -227,16 +229,10 @@ class CertificateRenewalStreamIntegrationTest(
         val c1 = enrolled()
         val stream = greeted(c1)
         renewedAndConfirmed(c1)
-        // What an administrator's revocation writes (Agents.revokeIn): the agent and all its certificates.
-        // Agents.revoke
-        // would also close the stream at once as AGENT_REVOKED; this is the verdict of the periodic check.
-        val now = Timestamp.from(clock.now)
-        jdbc.update("update agents set revoked_at = ? where id = ?", now, c1.identity.agentId)
-        jdbc.update("update agent_certificates set revoked_at = ? where agent_id = ?", now, c1.identity.agentId)
+        // The real revocation path closes the stream at once, without waiting for the periodic check.
+        agents.revoke(tenant, c1.identity.agentId, confirmation = null)
 
-        connections.check()
-
-        assertEquals(Ended(Status.Code.UNAUTHENTICATED, "CERT_REVOKED"), stream.ended())
+        assertEquals(Ended(Status.Code.UNAUTHENTICATED, "AGENT_REVOKED"), stream.ended())
     }
 
     @Test
