@@ -207,8 +207,7 @@ func loadLocal(configPath string, rt agentRuntime) (localState, error) {
 	}
 	sel, err := certpair.Select(cfg.TLS, rt.fs, rt.clock.Now())
 	if err != nil {
-		// Without a usable pair the modes of the files are still told first.
-		return localState{}, firstError(checkHostFiles(cfg, sel), err)
+		return localState{}, err
 	}
 	if err := checkHostFiles(cfg, sel); err != nil {
 		return localState{}, err
@@ -218,14 +217,6 @@ func loadLocal(configPath string, rt agentRuntime) (localState, error) {
 	}
 	me, err := identifyHost(cfg, sel)
 	return localState{cfg: cfg, host: me, pair: sel}, err
-}
-
-// firstError is the first error that is not nil.
-func firstError(first, second error) error {
-	if first != nil {
-		return first
-	}
-	return second
 }
 
 // hostIdentity is what the agent knows about itself before it connects.
