@@ -56,7 +56,8 @@ func TestStatusOfAnEnrolledAgentPrintsAgentTenantRoleAndExpiry(t *testing.T) {
 		h.install(withRole(role)...)
 		code, stdout, stderr := h.status("--config", h.cfg)
 		want := "agent_id: " + testAgent + "\ntenant_id: " + testTenant + "\nrole: " + role + "\ncertificate_not_after: 2027-10-12T12:00:00Z\n"
-		if code != 0 || stdout != want || stderr != "" {
+		// The four lines of С6 come first; since C1 the lines about the certificate follow.
+		if code != 0 || !strings.HasPrefix(stdout, want) || stderr != "" {
 			t.Errorf("%s: code = %d, stdout = %q, stderr = %q", role, code, stdout, stderr)
 		}
 	}

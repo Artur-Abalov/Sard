@@ -117,8 +117,10 @@ IS=$(idu $S1/tls/agent.pem); IV=$(idu $V1/tls/agent.pem)
 10. `$PSQL "select id, role from agents where id in ('$XS','$XV') order by role"`
     → `$XS|source`, `$XV|verifier`.
 11. `$AG status --config $S1/agent.yaml; echo "exit=$?"`
-    → ровно четыре строки: `agent_id: $XS`, `tenant_id: 00000000-0000-0000-0000-000000000001`,
-    `role: source`, `certificate_not_after: <notAfter сертификата в RFC 3339 UTC с Z>`; `exit=0`.
+    → первые четыре строки: `agent_id: $XS`, `tenant_id: 00000000-0000-0000-0000-000000000001`,
+    `role: source`, `certificate_not_after: <notAfter сертификата в RFC 3339 UTC с Z>`; далее
+    (поправка C1 к С6) `certificate_days_left: <сутки>` и `certificate_state: ok` для свежего
+    сертификата, больше строк нет; `exit=0`.
     `openssl x509 -in $S1/tls/agent.pem -noout -enddate` → та же дата.
 12. `$AG status --config $V1/agent.yaml | grep role` → `role: verifier`.
 13. `host $QA/none; $AG status --config $QA/none/agent.yaml; echo "exit=$?"`

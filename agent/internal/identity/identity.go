@@ -27,6 +27,10 @@ type Identity struct {
 	AgentID  string
 	Role     role.Role
 	NotAfter time.Time
+	// NotBefore and Serial (lowercase hex) of the certificate: the renewal
+	// threshold and the key of its state file are read from them.
+	NotBefore time.Time
+	Serial    string
 }
 
 // RoleError is a certificate without a usable role. Its text names the
@@ -57,7 +61,7 @@ func Read(path string, read func(string) ([]byte, error)) (Identity, error) {
 		return Identity{}, err
 	}
 	uris := sanURIs(cert)
-	id := Identity{NotAfter: cert.NotAfter.UTC()}
+	id := Identity{NotAfter: cert.NotAfter.UTC(), NotBefore: cert.NotBefore.UTC(), Serial: cert.SerialNumber.Text(16)}
 	if !findIdentity(uris, &id) {
 		return Identity{}, &tlsid.FileError{Key: "tls.cert_file", Path: path, Err: errNoIdentity}
 	}

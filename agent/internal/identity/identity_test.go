@@ -76,7 +76,7 @@ func TestReadsTheIdentityAndRoleOfACertificate(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := identity.Identity{TenantID: tenant, AgentID: agent, Role: role, NotAfter: notAfter}
+		want := identity.Identity{TenantID: tenant, AgentID: agent, Role: role, NotAfter: notAfter, NotBefore: notAfter.Add(-time.Hour), Serial: "1"}
 		if got != want {
 			t.Errorf("got %+v, want %+v", got, want)
 		}
