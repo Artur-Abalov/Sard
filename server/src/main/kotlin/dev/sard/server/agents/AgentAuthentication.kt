@@ -198,8 +198,8 @@ class AgentAuthenticator(
         scope: AuthScope,
     ): AgentAuthFailure? =
         when {
-            standing.supersededAt != null && scope != AuthScope.OPEN_STREAM -> AgentAuthFailure.CERT_SUPERSEDED
-            standing.unconfirmed && scope == AuthScope.CALL -> AgentAuthFailure.CERT_NOT_CONFIRMED
+            scope != AuthScope.OPEN_STREAM && standing.supersededAt != null -> AgentAuthFailure.CERT_SUPERSEDED
+            scope == AuthScope.CALL && standing.unconfirmed -> AgentAuthFailure.CERT_NOT_CONFIRMED
             else -> null
         }
 
