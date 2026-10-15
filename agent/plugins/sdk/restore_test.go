@@ -78,3 +78,32 @@ func numbered(n int) []string {
 	}
 	return paths
 }
+
+// A violation says what is wrong, not just where: the message is what an
+// operator reads in the console.
+func TestRestorePlanViolationMessages(t *testing.T) {
+	tests := []struct {
+		name     string
+		plan     sdk.RestorePlan
+		wantPath string
+		wantMsg  string
+	}{
+		{"empty destination", sdk.RestorePlan{}, "/destination", "want 1-4096 bytes, got 0"},
+		{"absolute destination", sdk.RestorePlan{Destination: "/etc"}, "/destination", "must be a relative path inside the restore directory of the host"},
+		{"empty path", sdk.RestorePlan{Destination: "x", Paths: []string{""}}, "/paths/0", "want 1-4096 bytes, got 0"},
+		{"repeat of a valid path", sdk.RestorePlan{Destination: "x", Paths: []string{"/a", "/a"}}, "/paths/1", "repeats an earlier path"},
+		{"repeat of an invalid path keeps its own reason", sdk.RestorePlan{Destination: "x", Paths: []string{"a", "a"}}, "/paths/1", "must be an absolute path of the snapshot"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var cfgErr *sdk.ConfigError
+			if err := tt.plan.Validate(); !errors.As(err, &cfgErr) {
+				t.Fatalf("Validate() = %v, want a *ConfigError", err)
+			}
+			last := cfgErr.Violations[len(cfgErr.Violations)-1]
+			if last.Path != tt.wantPath || last.Message != tt.wantMsg {
+				t.Errorf("last violation = %q %q, want %q %q", last.Path, last.Message, tt.wantPath, tt.wantMsg)
+			}
+		})
+	}
+}

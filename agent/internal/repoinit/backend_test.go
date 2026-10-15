@@ -209,3 +209,21 @@ func TestScrubberIgnoresAddressesWithoutAPassword(t *testing.T) {
 		}
 	}
 }
+
+// A message that goes to the server names the repository, not the path of its
+// key: that path stays on the host (ADR 0008).
+func TestAMessageOfATargetWithoutAPasswordFileNamesTheRepositoryInstead(t *testing.T) {
+	named := repoinit.Named("main")
+	tests := []struct {
+		err  error
+		want string
+	}{
+		{restic.ErrWrongPassword, `WRONG_PASSWORD: a repository already exists at the address of "main", and the password file of repository "main" does not open it`},
+		{restic.ErrEmptyPassword, `PASSWORD_FILE_EMPTY: restic refuses an empty password: the password file of repository "main" holds no password`},
+	}
+	for _, tt := range tests {
+		if got := repoinit.FromRestic(t.Context(), fmt.Errorf("x: %w", tt.err), named).Error(); got != tt.want {
+			t.Errorf("%v:\n got %q\nwant %q", tt.err, got, tt.want)
+		}
+	}
+}

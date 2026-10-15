@@ -58,3 +58,26 @@ func TestAFailureSentToTheServerNamesNoPasswordFile(t *testing.T) {
 		}
 	}
 }
+
+// The storage of a remote repository can refuse; a local one cannot, and what
+// restic did there has no name of the storage's.
+func TestOnlyARemoteStorageCanRefuse(t *testing.T) {
+	remote := localTarget()
+	remote.Backend, remote.Remote, remote.Where = "s3", true, "s3.example.com"
+	tests := []struct {
+		name   string
+		target repoinit.Target
+		want   string
+	}{
+		{"remote", remote, "BACKEND_REFUSED"},
+		{"local", localTarget(), "RESTIC_FAILED"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := resticFailure(context.Background(), fmt.Errorf("boom"), StageRestore, "/r", tt.target)
+			if string(f.Reason) != tt.want {
+				t.Errorf("reason = %s, want %s", f.Reason, tt.want)
+			}
+		})
+	}
+}

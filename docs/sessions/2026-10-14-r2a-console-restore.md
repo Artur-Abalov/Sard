@@ -64,3 +64,44 @@
   называет файл пароля по имени репозитория, когда пути нет (команды `repo` печатают путь, как раньше).
   Тесты: `TestRestoreTargetsNeverReadThePasswordFile`, `TestAFailureSentToTheServerNamesNoPasswordFile`.
 - OQ-220 и строка в ADR 0060: цель восстановления на сервере знает ключи плагина `files`.
+
+## 2026-10-15, hardener: мутационное тестирование R2a (только тесты)
+
+Результаты, как их напечатали инструменты (`./scripts/gate.sh <модуль>`):
+
+- sdk: выжили 4 из 86 (счёт 0.953488) -> 0 (счёт 1.000000). Пустое назначение и пустой путь отклонялись
+  другим правилом, сообщение не проверялось; повтор недопустимого пути терял свою причину. Тест
+  `TestRestorePlanViolationMessages`.
+- agent (весь модуль): 368 выживших (0.927459) -> 322 (0.938585); новый код `consolerestore`, `pluginhost`,
+  `config`, `repoinit`, `cmd/sard-agent` — выжившие убиты, кроме перечисленных ниже. Первый прогон упёрся в
+  заполненный диск (кэш go-build 25 ГБ): 170 ERROR «baseline build», кэш очищен, прогон повторён.
+  Новые тесты: `consolerestore/hardening_test.go` (сообщения отказов, журнал, прогресс PREPARING/RESTORING,
+  ошибки Stat/Names/Open/Create/Write/Sync/Read через расширенный `faultFS` в `rig_test.go`, порядок
+  удаление метки -> fsync -> удаление root, закрытие дескрипторов при старте), `export_test.go`,
+  `pluginhost/console_hardening_test.go` (границы snapshot_id, хост без консольного восстановления, ошибка
+  плагина при PlanRestore, схема восстановления не компилируется), `cmd/sard-agent/recovery_test.go`
+  (подключение `executorStarted` в `serve`), `config/restore_test.go`, `repoinit/backend_test.go`.
+- server (mutflow): выжили 23 (W2MutationTest 8 из 52, RestoreNoticeFormatterTest 15 из 58) -> остались
+  только эквивалентные мутанты (ниже). Новые классы: `RestoresMutationTest` (сервис `Restores`,
+  `RestoreChoice`, `RestoreTargets`: до этого ни один класс mutflow их не затрагивал — 0 найденных мутаций),
+  `RestoresApiImplTest`, `RestoreDefaultsTest`, общий `RestoreScene`; дополнены `W2MutationTest`
+  (restorable, kind, restore-вывод) и `RestoreNoticeFormatterTest` (границы 500 знаков, 60 с, 3600 с,
+  двоичные единицы, пустой leftover, восстановление всегда сообщается).
+
+Не убито, ждёт coder (мутант эквивалентен или нашёл ошибку; тесты не подгонялись):
+
+1. ОШИБКА, `consolerestore/staging.go`: `dir.Mkdir(rootName, ...)` возвращает открытый каталог, который
+   отбрасывается и не закрывается — утечка одного дескриптора на каждое восстановление (до сборщика мусора).
+   Найдено счётчиком открытых/закрытых дескрипторов в `rig_test.go` (`faults.noLeaks`); тест на весь
+   `Restore` (`hardening_leak_test.go`) зелёный после правки `rd, err := dir.Mkdir(...); defer/Close`.
+   Мутанты `_ = d.Close` в `release`, `target.go`, `move` ждут этого теста.
+2. Эквивалентные, предложено удалить избыточный код: `engine.go: a.stagingMade = false` в `move` (после
+   переноса откат не вызывается), `UsableName: id != ""` (`filepath.Base("") == "."`), `target.go: f != nil ||`
+   в `inspect` (`walk` не возвращает оба), `osdir_linux.go: runtime.KeepAlive(target)` (GC, не наблюдаем),
+   `ConsoleRestore.kt:58 byte >= 0 &&` (отрицательный байт всегда даёт символ вне SAFE),
+   `NoticeFormatter.kt:47` (первая ветка `headline()` для restore лишняя: `RestoreNoticeFormatter.compose`
+   считает заголовок сам), `NoticeFormatter.kt:196` (ветки QUEUED/DISPATCHED/RUNNING недостижимы;
+   как у бэкапа — `error(...)`).
+3. proto против origin/main: `restore_dir = 10` в `RegisterRequest` совпадает с `machine_id = 10` в main
+   (V1), `reject_reason = 14` main'а удалён в ветке: нужен rebase и перенумерация. Против основы R2a
+   (`PROTO_BASE=4daa01e`) ворота проходят.

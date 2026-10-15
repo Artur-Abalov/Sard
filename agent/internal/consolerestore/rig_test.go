@@ -42,6 +42,40 @@ type faults struct {
 	device       map[string]uint64 // by the path of the directory
 	removeErr    map[string]error  // by the path of the file removed
 	removed      []string          // paths of every Remove and RemoveDir, in order
+
+	rootErr   error            // of OpenRootDir
+	openErr   map[string]error // by the path of the directory opened
+	statErr   map[string]error // by the path of the directory
+	namesErr  map[string]error // by the path of the directory listed
+	createErr map[string]error // by the path of the file created
+	fileErr   map[string]error // Sync of a file, by its path
+	writeErr  map[string]error // Write of a file, by its path
+	readErr   map[string]error // Read of a file opened for reading, by its path
+	openFile  map[string]error // OpenFile, by the path of the file
+	ops       []string         // "remove <path>" and "sync <path>", in order
+	opened    int              // descriptors opened (directories and files)
+	closed    int              // descriptors closed
+}
+
+// noLeaks fails the test if a directory or a file was opened and not closed
+// (or closed twice).
+func (f *faults) noLeaks(t *testing.T) {
+	t.Helper()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.opened != f.closed {
+		t.Errorf("%d descriptors opened, %d closed", f.opened, f.closed)
+	}
+}
+
+func (f *faults) count(opened bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if opened {
+		f.opened++
+	} else {
+		f.closed++
+	}
 }
 
 type faultFS struct {
@@ -50,10 +84,14 @@ type faultFS struct {
 }
 
 func (x faultFS) OpenRootDir() (hostsetup.Dir, error) {
+	if x.f.rootErr != nil {
+		return nil, x.f.rootErr
+	}
 	d, err := x.FS.OpenRootDir()
 	if err != nil {
 		return nil, err
 	}
+	x.f.count(true)
 	return faultDir{d, x.f}, nil
 }
 
@@ -63,11 +101,99 @@ type faultDir struct {
 }
 
 func (d faultDir) Open(name string) (hostsetup.Dir, error) {
+	if err := d.f.openErr[filepath.Join(d.Path(), name)]; err != nil {
+		return nil, &fs.PathError{Op: "openat", Path: filepath.Join(d.Path(), name), Err: err}
+	}
 	c, err := d.Dir.Open(name)
 	if err != nil {
 		return nil, err
 	}
+	d.f.count(true)
 	return faultDir{c, d.f}, nil
+}
+
+func (d faultDir) Close() error {
+	d.f.count(false)
+	return d.Dir.Close()
+}
+
+func (d faultDir) Names() ([]string, error) {
+	if err := d.f.namesErr[d.Path()]; err != nil {
+		return nil, &fs.PathError{Op: "getdents", Path: d.Path(), Err: err}
+	}
+	names, err := d.Dir.Names()
+	slices.Sort(names)
+	slices.Reverse(names)
+	return names, err
+}
+
+func (d faultDir) CreateFile(name string, perm fs.FileMode) (hostsetup.File, error) {
+	p := filepath.Join(d.Path(), name)
+	if err := d.f.createErr[p]; err != nil {
+		return nil, &fs.PathError{Op: "openat", Path: p, Err: err}
+	}
+	file, err := d.Dir.CreateFile(name, perm)
+	if err != nil {
+		return nil, err
+	}
+	d.f.count(true)
+	return faultFile{file, d.f, p}, nil
+}
+
+func (d faultDir) OpenFile(name string) (hostsetup.ReadFile, error) {
+	p := filepath.Join(d.Path(), name)
+	if err := d.f.openFile[p]; err != nil {
+		return nil, &fs.PathError{Op: "openat", Path: p, Err: err}
+	}
+	file, err := d.Dir.OpenFile(name)
+	if err != nil {
+		return nil, err
+	}
+	d.f.count(true)
+	return faultReadFile{file, d.f, p}, nil
+}
+
+type faultFile struct {
+	hostsetup.File
+	f    *faults
+	path string
+}
+
+func (x faultFile) Write(p []byte) (int, error) {
+	if err := x.f.writeErr[x.path]; err != nil {
+		return 0, &fs.PathError{Op: "write", Path: x.path, Err: err}
+	}
+	return x.File.Write(p)
+}
+
+func (x faultFile) Sync() error {
+	if err := x.f.fileErr[x.path]; err != nil {
+		return &fs.PathError{Op: "fsync", Path: x.path, Err: err}
+	}
+	return x.File.Sync()
+}
+
+func (x faultFile) Close() error {
+	x.f.count(false)
+	return x.File.Close()
+}
+
+type faultReadFile struct {
+	hostsetup.ReadFile
+	f    *faults
+	path string
+}
+
+func (x faultReadFile) Read(p []byte) (int, error) {
+	if err := x.f.readErr[x.path]; err != nil {
+		return 0, &fs.PathError{Op: "read", Path: x.path, Err: err}
+	}
+	return x.ReadFile.Read(p)
+}
+
+func (x faultReadFile) Close() error {
+	x.f.count(false)
+	return x.ReadFile.Close()
 }
 
 func (d faultDir) Mkdir(name string, perm fs.FileMode) (hostsetup.Dir, error) {
@@ -81,21 +207,14 @@ func (d faultDir) Mkdir(name string, perm fs.FileMode) (hostsetup.Dir, error) {
 	if err != nil {
 		return nil, err
 	}
+	d.f.count(true)
 	return faultDir{c, d.f}, nil
-}
-
-// Names lists the entries sorted descending: root before marker, the order
-// in which a kill leaves a marker without root.
-func (d faultDir) Names() ([]string, error) {
-	names, err := d.Dir.Names()
-	slices.Sort(names)
-	slices.Reverse(names)
-	return names, err
 }
 
 func (d faultDir) Remove(name string) error {
 	d.f.mu.Lock()
 	d.f.removed = append(d.f.removed, filepath.Join(d.Path(), name))
+	d.f.ops = append(d.f.ops, "remove "+filepath.Join(d.Path(), name))
 	err := d.f.removeErr[filepath.Join(d.Path(), name)]
 	d.f.mu.Unlock()
 	if err != nil {
@@ -107,6 +226,7 @@ func (d faultDir) Remove(name string) error {
 func (d faultDir) RemoveDir(name string) error {
 	d.f.mu.Lock()
 	d.f.removed = append(d.f.removed, filepath.Join(d.Path(), name))
+	d.f.ops = append(d.f.ops, "remove "+filepath.Join(d.Path(), name))
 	err := d.f.removeDirErr[filepath.Join(d.Path(), name)]
 	d.f.mu.Unlock()
 	if err != nil {
@@ -133,6 +253,9 @@ func (d faultDir) Rename(oldName, newName string) error {
 }
 
 func (d faultDir) Sync() error {
+	d.f.mu.Lock()
+	d.f.ops = append(d.f.ops, "sync "+d.Path())
+	d.f.mu.Unlock()
 	if err := d.f.syncErr[d.Path()]; err != nil {
 		return err
 	}
@@ -140,6 +263,9 @@ func (d faultDir) Sync() error {
 }
 
 func (d faultDir) Stat() (fs.FileInfo, error) {
+	if err := d.f.statErr[d.Path()]; err != nil {
+		return nil, &fs.PathError{Op: "fstat", Path: d.Path(), Err: err}
+	}
 	info, err := d.Dir.Stat()
 	if dev, ok := d.f.device[d.Path()]; ok && err == nil {
 		return onDevice{info, dev}, nil

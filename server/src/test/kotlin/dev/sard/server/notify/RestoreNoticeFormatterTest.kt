@@ -40,14 +40,16 @@ private fun restoreNotice(
     message: String? = null,
     result: RestoreResult? = if (step == StepState.SUCCEEDED) FILES else null,
     previous: RunState? = RunState.SUCCEEDED,
+    trigger: Trigger = Trigger.MANUAL,
+    tookSeconds: Long = 90,
 ) = RunNotice(
     tenantId = UUID.randomUUID(),
     runId = RUN,
-    trigger = Trigger.MANUAL,
+    trigger = trigger,
     status = RunState.following(step),
     message = message,
     queuedAt = T0,
-    finishedAt = T0.plusSeconds(95),
+    finishedAt = T0.plusSeconds(5 + tookSeconds),
     sourceId = UUID.randomUUID(),
     sourceName = "etc data",
     agentId = UUID.randomUUID(),
@@ -184,5 +186,71 @@ class RestoreNoticeFormatterTest {
     fun `Без адреса консоли ссылки нет`() {
         val text = RunNoticeFormatter(NoticeLanguage.RU, null).format(restoreNotice())!!.text()
         assertTrue(text.lines().last() == "Запуск: $RUN", text)
+    }
+
+    @Test
+    fun `Восстановление сообщается всегда, каким бы ни был запуск, который его начал`() {
+        for (trigger in Trigger.entries) {
+            for (previous in listOf(null, RunState.SUCCEEDED, RunState.FAILED)) {
+                // format() fails the test if the formatter says nothing
+                format(restoreNotice(trigger = trigger, previous = previous), NoticeLanguage.EN)
+            }
+        }
+    }
+
+    @Test
+    fun `Причина ровно предельной длины не обрезается, на один знак длиннее обрезается`() {
+        val exact = format(restoreNotice(StepState.FAILED, "y".repeat(500))).text().lines()
+        assertTrue("Причина: ${"y".repeat(500)}" in exact, exact.toString())
+        assertTrue("Полный текст — в консоли." !in exact, exact.toString())
+
+        val over = format(restoreNotice(StepState.FAILED, "y".repeat(501))).text().lines()
+        assertTrue("Причина: ${"y".repeat(500)}…" in over, over.toString())
+        assertTrue("Полный текст — в консоли." in over, over.toString())
+    }
+
+    @Test
+    fun `Длительность считается в секундах, минутах и часах по границам единиц`() {
+        val expected =
+            mapOf(
+                0L to "0 s",
+                59L to "59 s",
+                60L to "1 min 0 s",
+                61L to "1 min 1 s",
+                3599L to "59 min 59 s",
+                3600L to "1 h 0 min",
+                7500L to "2 h 5 min",
+            )
+        for ((seconds, text) in expected) {
+            val lines = format(restoreNotice(tookSeconds = seconds), NoticeLanguage.EN).text().lines()
+            assertTrue("Duration: $text" in lines, "$seconds s: $lines")
+        }
+    }
+
+    @Test
+    fun `Объём показан в двоичных единицах, последняя единица не заканчивается`() {
+        val expected =
+            mapOf(
+                0L to "0 B",
+                1023L to "1023 B",
+                1024L to "1 KiB",
+                1536L to "1.5 KiB",
+                1024L * 1024 to "1 MiB",
+                1L shl 40 to "1 TiB",
+                1L shl 50 to "1024 TiB",
+            )
+        for ((bytes, text) in expected) {
+            val notice = restoreNotice(result = FILES.copy(bytesRestored = bytes))
+            val line = format(notice, NoticeLanguage.EN).text().lines().single { it.startsWith("Files restored") }
+            assertEquals("Files restored: 2, size: $text. Where: $TARGET", line, "$bytes bytes")
+        }
+    }
+
+    @Test
+    fun `Пустой остаток после отката значит, что ничего не осталось`() {
+        val empty = RestoreResult(null, null, null, null, null, null, null, leftover = "")
+        val text = format(restoreNotice(StepState.FAILED, "boom", empty), NoticeLanguage.EN).text()
+        assertTrue("Nothing was restored: the changes were rolled back." in text.lines(), text)
+        assertTrue("Rollback failed" !in text, text)
     }
 }

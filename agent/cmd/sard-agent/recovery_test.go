@@ -4,10 +4,13 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/consolerestore"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
@@ -70,5 +73,26 @@ func TestAFailedResultDoesNotRemoveWhatItNames(t *testing.T) {
 	r.journaled(&agentv1.StepResult{CommandId: "c1", Status: agentv1.StepStatus_STEP_STATUS_SUCCEEDED})
 	if !present(dir, "c1") {
 		t.Error("c1 was removed")
+	}
+}
+
+// Scenario: Временный каталог неизвестной команды удаляется при старте (the wiring of the agent).
+func TestTheStartedAgentSettlesTheDirectoryOfACommandItDoesNotKnow(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	ca := writeIdentity(t, dir)
+	restoreDir := filepath.Join(dir, "restore")
+	completedRestore(t, restoreDir, "c9")
+	cfg := "server:\n  address: 127.0.0.1:1\n" +
+		"tls: {ca_file: " + ca + ", cert_file: " + dir + "/agent.pem, key_file: " + dir + "/agent.key}\n" +
+		"executor: {state_dir: " + dir + "/state}\nrestore: {dir: " + restoreDir + "}\n" + withRestic(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	var out, errOut bytes.Buffer
+	if code := run(ctx, []string{"--config", writeConfig(t, cfg)}, &out, &errOut, fixedHostname); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, errOut.String())
+	}
+	if present(restoreDir, "c9") {
+		t.Error("the directory of a command nobody waits for is still there")
 	}
 }

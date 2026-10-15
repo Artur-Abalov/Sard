@@ -122,3 +122,41 @@ func TestAFragmentWithAnEmptyRestoreSectionSetsNothing(t *testing.T) {
 		t.Fatalf("RestoreDir() = %q, %v", cfg.RestoreDir(), err)
 	}
 }
+
+// A restore.dir of the main config is not blamed on a file of agent.d, even when a fragment is what makes it
+// invalid (a repository of the fragment inside it).
+func TestAnInvalidRestoreDirectoryOfTheMainConfigIsNotAttributedToAFragment(t *testing.T) {
+	h := newOverlayHost(t, mainYAML+"restore:\n  dir: /srv/restore\n")
+	h.write("agent.d/repo.yaml", "repositories:\n  - {name: inside, url: /srv/restore/repo, password_file: /p}\n")
+	_, err := config.Load(h.main)
+	if !errors.Is(err, config.ErrInvalidRestore) || !strings.HasPrefix(err.Error(), config.ErrInvalidRestore.Error()) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestTheRootIsNotARestoreDirectoryWhateverElseIsConfigured(t *testing.T) {
+	_, err := config.Parse([]byte(restoreBase + "restore:\n  dir: /\n"))
+	if !errors.Is(err, config.ErrInvalidRestore) || !strings.Contains(err.Error(), "want an absolute path") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestOnlyARepositoryOnThisDisksHasALocalPath(t *testing.T) {
+	tests := []struct {
+		url   string
+		path  string
+		local bool
+	}{
+		{"/srv/repo", "/srv/repo", true},
+		{"local:/srv/repo/", "/srv/repo", true},
+		{"s3:https://h/b", "", false},
+		{"sftp:u@h:/srv/repo", "", false},
+		{"rest:https://h/", "", false},
+	}
+	for _, tt := range tests {
+		path, local := config.Repository{URL: tt.url}.LocalPath()
+		if path != tt.path || local != tt.local {
+			t.Errorf("LocalPath(%q) = %q, %v, want %q, %v", tt.url, path, local, tt.path, tt.local)
+		}
+	}
+}
