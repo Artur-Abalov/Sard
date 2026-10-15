@@ -29,7 +29,7 @@ import {
   buildSourceInput,
   draftOf,
   emptyDraft,
-  offeredAgents,
+  offeredSourceAgents,
   offeredPlugins,
   withAgent,
   withPlugin,
@@ -54,7 +54,7 @@ function AgentSelect({ draft, onChange, errors }: Omit<Props, 'agent'>) {
   const { t } = useTranslation()
   const text = useErrorText()
   const agents = useQuery(agentPickerQuery())
-  const offered = offeredAgents(agents.data?.items ?? [])
+  const offered = offeredSourceAgents(agents.data?.items ?? [])
   return (
     <Select
       label={t('sources.agent')}

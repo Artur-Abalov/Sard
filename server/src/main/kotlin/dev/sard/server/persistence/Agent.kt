@@ -16,7 +16,7 @@ import java.util.UUID
 
 /**
  * A registered agent; table created by Flyway migrations V1, V2, V202609271200, V202609281200, V202609281400,
- * V202610011200 and V202610081200.
+ * V202610011200, V202610081200 and V202610141200.
  */
 @Entity
 @Table(name = "agents")
@@ -38,6 +38,9 @@ class Agent(
     /** Enrolled with a built-in token: the agent next to the server (migration V202610081200). */
     @Column(name = "builtin", nullable = false, updatable = false)
     val builtin: Boolean = false,
+    /** What the agent may do, from its token; never changes (V1, migration V202610141200). */
+    @Column(name = "role", nullable = false, updatable = false)
+    val role: String,
     /** Set by Hibernate from the current tenant on insert (ADR 0013). */
     @TenantId
     @Column(name = "tenant_id", nullable = false, updatable = false)
@@ -63,6 +66,10 @@ class Agent(
 
     @Column(name = "last_register_at")
     var lastRegisterAt: Instant? = null
+
+    /** From the last Register: hex(HMAC-SHA256(...)) of the host's machine id; null before the first (V1). */
+    @Column(name = "machine_id")
+    var machineId: String? = null
 
     /** The last confirmed duplicate session (S8b, migration V202610011200); null if there never was one. */
     @Column(name = "duplicate_session_at")

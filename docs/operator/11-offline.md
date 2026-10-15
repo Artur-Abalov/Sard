@@ -4,13 +4,15 @@
 
 | Файл | Что |
 |---|---|
-| `sard-<версия>-images-linux-amd64.tar.gz` | `docker save` образов сервера и PostgreSQL для amd64 |
+| `sard-<версия>-images-linux-amd64.tar.gz` | `docker save` образов `sard-server`, `sard-agent` (вариант `<версия>-pg18`: агент-сосед и restic для [восстановления](12-server-recovery.md)) и PostgreSQL для amd64 |
 | `sard-<версия>-images-linux-arm64.tar.gz` | то же для arm64 |
 | `docker-compose.yml`, `sard.env.example` | файлы установки этой версии |
 | `SHA256SUMS.server` | суммы файлов выше |
 
 Пакеты агента уже внутри образа сервера: хосты агентов в закрытой сети берут
-их с сервера ([раздел 5](05-agents.md)), доступ в интернет им не нужен.
+их с сервера ([раздел 5](05-agents.md)), доступ в интернет им не нужен. Образ
+`sard-agent` из архива нужен и самому серверу: из него запускается агент-сосед
+и restic при [восстановлении сервера](12-server-recovery.md).
 
 ## На машине с интернетом
 

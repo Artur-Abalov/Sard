@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 <!-- Copyright 2026 Artur Abalov -->
 
-# 0060 — Проверка хоста агента: `repo check`, `repo unlock`, запись объявленных id, `check` (A8d-1, A8d-2, A8d-3)
+# 0063 — Проверка хоста агента: `repo check`, `repo unlock`, запись объявленных id, `check` (A8d-1, A8d-2, A8d-3)
 
 - Статус: принято (A8d-1, A8d-2, A8d-3); решения владельца — 2026-10-14 (`docs/specs/agent/host-check.feature`, Ч1–Ч31, ЧВ1–ЧВ14) и 2026-10-15 (Ч32, Ч33, WARN занятого репозитория, OK без репозиториев)
 - Дата: 2026-10-14, дополнено 2026-10-15

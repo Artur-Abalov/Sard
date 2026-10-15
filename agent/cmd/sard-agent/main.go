@@ -23,8 +23,11 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
+	"github.com/Artur-Abalov/sard/agent/internal/identity"
+	"github.com/Artur-Abalov/sard/agent/internal/machineid"
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 	"github.com/Artur-Abalov/sard/agent/internal/stepsecrets"
 	"github.com/Artur-Abalov/sard/agent/internal/tlsid"
@@ -60,6 +63,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, hostname 
 	}
 	if isCheckCommand(args) {
 		return runCheckCommand(ctx, args[1:], stdout, stderr)
+	}
+	if isStatusCommand(args) {
+		return runStatus(args[1:], stdout, stderr, realStatusDeps())
 	}
 	if isRepoCommand(args) {
 		return runRepo(ctx, args[1:], stdout, stderr)
@@ -130,11 +136,8 @@ func reportFailure(stderr io.Writer, err error) int {
 
 // start is the composition root: the only place that knows concrete types.
 func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf hostnameFunc, executable func() (string, error)) error {
-	cfg, err := config.Load(configPath)
+	cfg, me, err := loadLocal(configPath)
 	if err != nil {
-		return err
-	}
-	if err := checkLocal(cfg); err != nil {
 		return err
 	}
 	// A5b: no usable restic, no start — before the network (С5).
@@ -146,8 +149,50 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 	if err != nil {
 		return fmt.Errorf("hostname: %w", err)
 	}
-	_, _ = fmt.Fprintf(stdout, "sard-agent %s: connecting to %s\n", version, cfg.Server.Address)
-	return serve(ctx, cfg, newAgent(cfg, hostname, resticBinary))
+	_, _ = fmt.Fprintf(stdout, "sard-agent %s: connecting to %s as %s\n", version, cfg.Server.Address, me.role)
+	return serve(ctx, cfg, me.role, newAgent(cfg, hostname, resticBinary, me.machineID))
+}
+
+// loadLocal loads the config and runs every check that needs no network; V1:
+// the role comes from the certificate, then the machine id (С1).
+func loadLocal(configPath string) (config.Config, hostIdentity, error) {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return cfg, hostIdentity{}, err
+	}
+	if err := checkLocal(cfg); err != nil {
+		return cfg, hostIdentity{}, err
+	}
+	me, err := identifyHost(cfg)
+	return cfg, me, err
+}
+
+// hostIdentity is what the agent knows about itself before it connects.
+type hostIdentity struct {
+	role      role.Role
+	machineID string
+}
+
+// machineIDSources are the host's machine-id files; tests replace them.
+var machineIDSources = machineid.DefaultSources
+
+// identifyHost reads the role from tls.cert_file and computes the machine id
+// keyed by the certificate's tenant. Nothing here touches the network.
+func identifyHost(cfg config.Config) (hostIdentity, error) {
+	if err := transport.CheckFiles(cfg.TLS); err != nil {
+		return hostIdentity{}, err
+	}
+	id, err := identity.Read(cfg.TLS.CertFile, os.ReadFile)
+	if err != nil {
+		return hostIdentity{}, err
+	}
+	host := machineid.OS(slog.Default())
+	host.Sources = machineIDSources
+	machine, err := machineid.Compute(host, executorStateDir(cfg.Executor.StateDir), id.TenantID)
+	if err != nil {
+		return hostIdentity{}, err
+	}
+	return hostIdentity{role: id.Role, machineID: machine}, nil
 }
 
 // checkLocal runs the checks that need no network. OQ-050: the repositories'
@@ -172,7 +217,7 @@ func checkHostFiles(cfg config.Config) error {
 }
 
 // newAgent wires the built-in plugins to restic and the host's secrets.
-func newAgent(cfg config.Config, hostname, resticBinary string) *app.Agent {
+func newAgent(cfg config.Config, hostname, resticBinary, machineID string) *app.Agent {
 	// Repository keys stay on this host (ADR 0008).
 	repos := openRepositories(cfg, restic.Options{
 		Binary:   resticBinary,
@@ -185,13 +230,14 @@ func newAgent(cfg config.Config, hostname, resticBinary string) *app.Agent {
 	})
 	registry := plugins.Registry(version)
 	return &app.Agent{
-		Plugins:  registry,
-		Handlers: plugins.Handlers(registry, pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), repos.get, restoreDir(cfg.Executor.StateDir)),
-		Hostname: hostname,
-		Version:  version,
-		OS:       runtime.GOOS,
-		Arch:     runtime.GOARCH,
-		Local:    cfg,
+		Plugins:   registry,
+		Handlers:  plugins.Handlers(registry, pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), repos.get, restoreDir(cfg.Executor.StateDir)),
+		Hostname:  hostname,
+		MachineID: machineID,
+		Version:   version,
+		OS:        runtime.GOOS,
+		Arch:      runtime.GOARCH,
+		Local:     cfg,
 		RepositoryID: func(ctx context.Context, r config.Repository) (string, error) {
 			return repos[r.Name].ID(ctx)
 		},
@@ -210,7 +256,7 @@ func restoreDir(stateDir string) string {
 // the executor reports through the transport. The transport is built first
 // (it checks TLS before anything touches the disk); ref points it at the
 // executor before it starts.
-func serve(ctx context.Context, cfg config.Config, agent *app.Agent) error {
+func serve(ctx context.Context, cfg config.Config, role role.Role, agent *app.Agent) error {
 	ref := &executorRef{}
 	// A7b: the step's secrets are masked in its logs and result.
 	masking := stepsecrets.New(cfg, os.ReadFile, slog.Default())
@@ -230,6 +276,7 @@ func serve(ctx context.Context, cfg config.Config, agent *app.Agent) error {
 		Handlers:     agent.Handlers,
 		Sink:         link,
 		StateDir:     executorStateDir(cfg.Executor.StateDir),
+		Role:         role,
 		Repositories: repositoryNames(cfg.Repositories),
 		Secrets:      masking,
 		OutputLevel:  pluginhost.OutputLevel,

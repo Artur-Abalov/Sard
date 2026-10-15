@@ -10,6 +10,7 @@ import dev.sard.server.pki.PkiFixtures.certificate
 import dev.sard.server.pki.PkiFixtures.certificates
 import dev.sard.server.pki.PkiFixtures.random
 import dev.sard.server.pki.PkiFixtures.resource
+import dev.sard.server.role.AgentRole
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.junit.jupiter.api.io.TempDir
@@ -60,7 +61,7 @@ class AgentIdentityTest {
     @Test
     fun `an agent certificate carries its identity`() {
         val ca = FileCertificateAuthority(tmp.resolve("pki"), SERVER_NAMES, CLOCK, random(), FakeCaLedger())
-        val issued = ca.issueAgentCertificate(resource("agent-p256.csr"), AGENT)
+        val issued = ca.issueAgentCertificate(resource("agent-p256.csr"), AGENT, AgentRole.SOURCE)
         val leaf = certificates(issued.chainPem).first()
         assertEquals(AGENT, MutFlow.underTest { AgentIdentity.of(leaf) })
     }

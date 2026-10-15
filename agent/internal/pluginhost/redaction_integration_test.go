@@ -21,6 +21,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	"github.com/Artur-Abalov/sard/agent/internal/stepsecrets"
 	filesplugin "github.com/Artur-Abalov/sard/agent/plugins/files"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
@@ -106,6 +107,7 @@ func maskingAgent(t *testing.T, value, inPath string) (*executor.Executor, *logS
 	}
 	sink := &logSink{results: make(chan *agentv1.StepResult, 1)}
 	exec, err := executor.New(executor.Options{
+		Role:         role.Source,
 		Handlers:     handlers,
 		Sink:         sink,
 		StateDir:     filepath.Join(tmp, "state"),

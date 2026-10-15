@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
@@ -371,9 +372,12 @@ func TestRestoreOfFilesIntoAnUnknownRepositoryIsRejected(t *testing.T) {
 }
 
 // Scenario: Проверка и запуск скрипта плагином files отклоняются как неподдерживаемые.
+// VERIFY is run by an agent that may (a verifier), RUN by a source: the
+// role gate lets both reach the plugin check.
 func TestVerifyAndRunAreRejectedAsUnsupported(t *testing.T) {
+	roles := map[agentv1.Action]role.Role{agentv1.Action_ACTION_VERIFY: role.Verifier, agentv1.Action_ACTION_RUN: role.Source}
 	for _, action := range []agentv1.Action{agentv1.Action_ACTION_VERIFY, agentv1.Action_ACTION_RUN} {
-		r := newRig(t)
+		r := newRigAs(t, roles[action])
 		s := step(paths("/D"))
 		s.Action, s.SnapshotId = action, "abc"
 		res := r.run(s)

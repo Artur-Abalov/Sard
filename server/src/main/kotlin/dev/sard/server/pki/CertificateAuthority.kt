@@ -3,6 +3,7 @@
 
 package dev.sard.server.pki
 
+import dev.sard.server.role.AgentRole
 import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder
 import java.math.BigInteger
 import java.security.MessageDigest
@@ -41,12 +42,14 @@ interface CertificateAuthority {
     fun renewServerCertificate(): Boolean
 
     /**
-     * Signs an agent CSR (DER): a client-only certificate naming [agent], whatever the
-     * CSR asks for. Throws [InvalidCsrException] for a bad signature or an unsupported key.
+     * Signs an agent CSR (DER): a client-only certificate naming [agent] and carrying [role] as a second
+     * URI in its SAN, whatever the CSR asks for. Throws [InvalidCsrException] for a bad signature or an
+     * unsupported key.
      */
     fun issueAgentCertificate(
         csrDer: ByteArray,
         agent: AgentIdentity,
+        role: AgentRole,
     ): IssuedCertificate
 }
 

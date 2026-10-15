@@ -3,6 +3,7 @@
 
 package dev.sard.server.pki
 
+import dev.sard.server.role.AgentRole
 import org.bouncycastle.asn1.DEROctetString
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.asn1.x509.BasicConstraints
@@ -58,11 +59,12 @@ internal object Certificates {
     fun agent(
         key: SubjectPublicKeyInfo,
         agent: AgentIdentity,
+        role: AgentRole,
         ca: CaKeyPair,
         now: Instant,
         random: SecureRandom,
     ): X509Certificate {
-        val san = GeneralNames(GeneralName(GeneralName.uniformResourceIdentifier, agent.uri()))
+        val san = GeneralNames(arrayOf(uri(agent.uri()), uri(AgentRoleUri.of(role))))
         val profile = Leaf("CN=${agent.agentId}", KeyPurposeId.id_kp_clientAuth, san, now, now + AGENT_VALIDITY)
         return leaf(key, profile, ca, random)
     }
@@ -111,6 +113,8 @@ internal object Certificates {
                 .addExtension(Extension.authorityKeyIdentifier, false, authorityKeyIdentifier(ca))
         return sign(builder, ca.privateKey, random)
     }
+
+    private fun uri(value: String) = GeneralName(GeneralName.uniformResourceIdentifier, value)
 
     private fun authorityKeyIdentifier(ca: CaKeyPair) = extensions.createAuthorityKeyIdentifier(ca.certificate)
 

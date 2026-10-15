@@ -3,6 +3,7 @@
 
 package dev.sard.server.api
 
+import com.fasterxml.jackson.annotation.JsonCreator
 import com.fasterxml.jackson.annotation.JsonProperty
 import io.swagger.v3.oas.annotations.media.Schema
 
@@ -18,6 +19,32 @@ enum class AgentStatus {
 
     @JsonProperty("offline")
     OFFLINE,
+}
+
+/** What an agent may do, fixed when its token is issued (V1): a source backs up, a verifier verifies. */
+@Schema(enumAsRef = true)
+enum class AgentRole {
+    @JsonProperty("source")
+    SOURCE,
+
+    @JsonProperty("verifier")
+    VERIFIER,
+    ;
+
+    companion object {
+        /**
+         * Only the exact wire spelling: Jackson would take 1 for the second constant of an enum, and a role
+         * is not something to guess (V1: "SOURCE", "" and 1 are errors at the field).
+         */
+        @JvmStatic
+        @JsonCreator
+        fun fromWire(text: String): AgentRole =
+            when (text) {
+                "source" -> SOURCE
+                "verifier" -> VERIFIER
+                else -> throw IllegalArgumentException("not a role")
+            }
+    }
 }
 
 /** Enrollment token lifecycle (S2b). */

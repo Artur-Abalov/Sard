@@ -148,7 +148,7 @@ class SourcesController(
         summary = "Create a source",
         description =
             "422 codes: unknown_agent, agent_revoked, unknown_plugin (or the plugin does not offer backup), " +
-                "unknown_repository, invalid_config " +
+                "unknown_repository, agent_role_mismatch, invalid_config " +
                 "(errors name config/<JSON Pointer>), validation_failed.",
     )
     @Unprocessable
@@ -211,7 +211,8 @@ class SourcesController(
         description =
             "Queues a manual backup run; it waits for an offline agent. One active run per source (D6). 409 " +
                 "also when the agent is revoked (agent_revoked) or its last Register no longer offers the " +
-                "plugin (unknown_plugin) or the repository (unknown_repository).",
+                "plugin (unknown_plugin) or the repository (unknown_repository), or when the agent's role is " +
+                "not source (agent_role_mismatch).",
     )
     @NotFound
     @ApiResponse(

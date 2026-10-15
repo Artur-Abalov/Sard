@@ -46,8 +46,8 @@ class EnrollmentTokenSchemaIntegrationTest(
         val id = UUID.randomUUID()
         val now = Timestamp.from(Instant.now())
         jdbc.update(
-            "insert into enrollment_tokens (id, tenant_id, token_hash, created_at, expires_at, used_at, label) " +
-                "values (?, ?, ?, ?, ?, ?, ?)",
+            "insert into enrollment_tokens (id, tenant_id, token_hash, created_at, expires_at, used_at, label, role) " +
+                "values (?, ?, ?, ?, ?, ?, ?, 'source')",
             id,
             acme,
             ByteArray(32),

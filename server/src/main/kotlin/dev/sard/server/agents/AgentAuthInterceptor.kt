@@ -19,6 +19,10 @@ import javax.net.ssl.SSLPeerUnverifiedException
 
 private val log = LoggerFactory.getLogger(AgentAuthInterceptor::class.java)
 
+private const val ROLE_HINT =
+    "the certificate carries no valid role of the agent (it was issued before roles existed, or is not ours): " +
+        "re-enroll the agent"
+
 private const val UNKNOWN_CERTIFICATE_HINT =
     "the certificate was issued by this server's CA, but the database has no record of it: " +
         "the database was not restored or was restored from a copy older than the agent's enrollment"
@@ -29,10 +33,19 @@ internal fun refusalMessage(
     method: String,
 ): String {
     val line = "agent call refused: reason=${rejected.failure} serial=${rejected.serial} agent=${rejected.agentId}"
-    return if (rejected.failure == AgentAuthFailure.CERT_UNKNOWN) {
-        "$line tenant=${rejected.tenantId} method=$method: $UNKNOWN_CERTIFICATE_HINT"
-    } else {
-        "$line method=$method"
+    return when (rejected.failure) {
+        AgentAuthFailure.CERT_UNKNOWN -> "$line tenant=${rejected.tenantId} method=$method: $UNKNOWN_CERTIFICATE_HINT"
+
+        AgentAuthFailure.CERT_ROLE_MISSING,
+        AgentAuthFailure.CERT_ROLE_INVALID,
+        -> "$line tenant=${rejected.tenantId} method=$method: $ROLE_HINT"
+
+        AgentAuthFailure.CERT_MISSING,
+        AgentAuthFailure.CERT_IDENTITY_MISMATCH,
+        AgentAuthFailure.CERT_REVOKED,
+        AgentAuthFailure.CERT_EXPIRED,
+        AgentAuthFailure.AGENT_REVOKED,
+        -> "$line method=$method"
     }
 }
 

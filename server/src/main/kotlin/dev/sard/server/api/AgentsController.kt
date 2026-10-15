@@ -31,6 +31,9 @@ private const val BUILTIN =
     "True for the agent next to the server (sard-self), enrolled with the token the server wrote for it; " +
         "revoking it needs confirm=sard-self"
 
+private const val ROLE =
+    "source runs backups, restores and scripts; verifier only verifies restores. Chosen by the token, never changes"
+
 @Schema(description = "An agent in the list")
 data class AgentSummary(
     val id: UUID,
@@ -54,6 +57,8 @@ data class AgentSummary(
     val outdated: Boolean,
     @field:Schema(description = BUILTIN)
     val builtin: Boolean,
+    @field:Schema(description = ROLE)
+    val role: AgentRole,
 )
 
 @Schema(description = "A plugin the agent offers")
@@ -102,6 +107,8 @@ data class AgentDetails(
     val outdated: Boolean,
     @field:Schema(description = BUILTIN)
     val builtin: Boolean,
+    @field:Schema(description = ROLE)
+    val role: AgentRole,
 )
 
 @Schema(description = "A page of agents")

@@ -82,6 +82,13 @@ export function validateSource(
   const agent = agents.find((a) => a.id === source.agentId)
   if (agent === undefined) return rejected('unknown_agent', 'agentId', 'no such agent')
   if (agent.revokedAt !== null) return rejected('agent_revoked', 'agentId', 'the agent is revoked')
+  if (agent.role !== 'source') {
+    return rejected(
+      'agent_role_mismatch',
+      'agentId',
+      'the agent is a verifier and does not back up',
+    )
+  }
   if (!agent.plugins.some((p) => p.name === source.plugin && p.actions.includes('backup'))) {
     return rejected(
       'unknown_plugin',
@@ -97,6 +104,12 @@ export function validateSource(
     )
   }
   return null
+}
+
+/** A token's role: source or verifier, exactly; omitted or null is source (the server's R2). */
+export function validateRole(role: unknown): Schemas['ValidationProblem'] | null {
+  if (role === undefined || role === null || role === 'source' || role === 'verifier') return null
+  return rejected('validation_failed', 'role', 'must be source or verifier')
 }
 
 /** Token lifetime: 5 minutes to 7 days, or omitted. */
@@ -118,4 +131,13 @@ export function validateLabel(
 ): Schemas['ValidationProblem'] | null {
   if (label === null || label === undefined || label.length <= MAX_LABEL_LENGTH) return null
   return rejected('validation_failed', 'label', `at most ${MAX_LABEL_LENGTH} characters`)
+}
+
+/** The server's checks of a new token's request, in its order: the body is read first (role), then ttl and label. */
+export function validateToken(body: {
+  ttlSeconds?: number | null
+  label?: string | null
+  role?: unknown
+}): Schemas['ValidationProblem'] | null {
+  return validateRole(body.role) ?? validateTtl(body.ttlSeconds) ?? validateLabel(body.label)
 }

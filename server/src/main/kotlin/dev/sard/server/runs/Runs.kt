@@ -176,7 +176,14 @@ class Runs(
         sourceLock: LockModeType,
     ): RunView {
         val source = liveSource(session, sourceId, sourceLock)
-        AgentOffer.require(session, source.agentId, source.plugin, source.repositoryName, LockModeType.PESSIMISTIC_READ)
+        AgentOffer.require(
+            session,
+            source.agentId,
+            source.plugin,
+            source.repositoryName,
+            Action.BACKUP,
+            LockModeType.PESSIMISTIC_READ,
+        )
         activeRunOf(session, sourceId)?.let { throw RunActive(it) }
         val now = clock.instant()
         val run = RunRecord(ids.next(), sourceId, trigger.stored, RunState.QUEUED.stored, now, scheduleId)

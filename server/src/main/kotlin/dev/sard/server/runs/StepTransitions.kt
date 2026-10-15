@@ -18,28 +18,30 @@ private const val ACTIVE =
 
 // Native SQL names tenant_id explicitly (ADR 0013, rule 8); every WHERE names the status it expects.
 // A step the agent touches, or that is sent, has no lost deadline (FXs): only LOSE leaves it set.
-private const val STEP = "where tenant_id = :tenant and id = :step"
-private const val NO_DEADLINE = "lost_deadline = null"
+internal const val STEP = "where tenant_id = :tenant and id = :step"
+internal const val NO_DEADLINE = "lost_deadline = null"
 private const val CLAIM =
     "update run_steps set status = 'dispatched', dispatched_at = :now, $NO_DEADLINE $STEP and status = 'queued'"
 private const val SET_QUEUED = "set status = 'queued', dispatched_at = null, $NO_DEADLINE"
 private const val RELEASE = "update run_steps $SET_QUEUED $STEP and status = 'dispatched'"
 private const val REDISPATCH =
-    "update run_steps set dispatched_at = :now, $NO_DEADLINE $STEP and status = 'dispatched' and dispatched_at < :before"
+    "update run_steps set dispatched_at = :now, $NO_DEADLINE $STEP and status = 'dispatched' " +
+        "and dispatched_at < :before"
 private const val ACCEPT =
     "update run_steps set status = 'running', phase = :phase, started_at = :now, $NO_DEADLINE " +
         "$STEP and status = 'dispatched'"
-private const val MESSAGE = "message = cast(:message as text), finished_at = :now"
+internal const val MESSAGE = "message = cast(:message as text), finished_at = :now"
 private const val CLOSE = "update run_steps set status = :status, $MESSAGE $STEP"
 private const val FINISH =
     "update run_steps set status = :status, $MESSAGE, output = cast(:output as jsonb), $NO_DEADLINE $STEP " +
         "and status in ('dispatched', 'running')"
+
 private const val LOSE = "$CLOSE and status in ('dispatched', 'running') and lost_deadline <= :now"
 
 private const val OF_STEP = "where tenant_id = :tenant and id = (select run_id from run_steps $STEP)"
 private const val RUN_STATUS = "update runs set status = :run $OF_STEP"
 private const val RUN_STARTED = "update runs set status = :run, started_at = :now $OF_STEP"
-private const val RUN_FINISHED = "update runs set status = :run, $MESSAGE $OF_STEP"
+internal const val RUN_FINISHED = "update runs set status = :run, $MESSAGE $OF_STEP"
 
 /** How the agent says a step ended (S7 maps StepResult to it). */
 data class StepOutcome(
@@ -197,22 +199,4 @@ class StepTransitions(
         if (moved && run != null) execute(run, values)
         return moved
     }
-
-    /** Binds the [values] that [sql] names; text values are typed so that NULL binds as text. */
-    private fun Session.execute(
-        sql: String,
-        values: Map<String, Any?>,
-    ): Int {
-        val query = createNativeMutationQuery(sql)
-        for ((name, value) in values.filterKeys { ":$it" in sql }) {
-            if (name in TEXT_VALUES) {
-                query.setParameter(name, value as String?, String::class.java)
-            } else {
-                query.setParameter(name, value)
-            }
-        }
-        return query.executeUpdate()
-    }
 }
-
-private val TEXT_VALUES = setOf("message", "output")

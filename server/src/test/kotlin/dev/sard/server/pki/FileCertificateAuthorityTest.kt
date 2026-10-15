@@ -11,6 +11,7 @@ import dev.sard.server.pki.PkiFixtures.certificate
 import dev.sard.server.pki.PkiFixtures.certificates
 import dev.sard.server.pki.PkiFixtures.random
 import dev.sard.server.pki.PkiFixtures.resource
+import dev.sard.server.role.AgentRole
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.junit.jupiter.api.io.TempDir
@@ -85,9 +86,12 @@ class FileCertificateAuthorityTest {
 
     // --- agent certificates from Go CSRs
 
-    private fun issue(csr: String): X509Certificate {
+    private fun issue(
+        csr: String,
+        role: AgentRole = AgentRole.SOURCE,
+    ): X509Certificate {
         val ca = ca()
-        val issued = MutFlow.underTest { ca.issueAgentCertificate(resource(csr), AGENT) }
+        val issued = MutFlow.underTest { ca.issueAgentCertificate(resource(csr), AGENT, role) }
         val chain = certificates(issued.chainPem)
         val leaf = chain.first()
         leaf.verify(caCertificate(ca).publicKey)
@@ -101,7 +105,9 @@ class FileCertificateAuthorityTest {
         val leaf = issue("agent-p256.csr")
         assertEquals(listOf(CLIENT_AUTH), leaf.extendedKeyUsage)
         val uri = "sard://tenants/${AGENT.tenantId}/agents/${AGENT.agentId}"
-        assertEquals(listOf(listOf<Any>(SAN_URI, uri)), leaf.subjectAlternativeNames.map { it.toList() })
+        val names = leaf.subjectAlternativeNames.map { it.toList() }
+        assertEquals(setOf(listOf<Any>(SAN_URI, uri), listOf<Any>(SAN_URI, "sard://roles/source")), names.toSet())
+        assertEquals(2, names.size)
         assertEquals("CN=${AGENT.agentId}", leaf.subjectX500Principal.name)
         assertEquals(NOW, leaf.notBefore.toInstant())
         assertEquals(NOW + Duration.ofDays(365), leaf.notAfter.toInstant())
@@ -138,7 +144,9 @@ class FileCertificateAuthorityTest {
     fun `bytes that are not a CSR are refused`() {
         val ca = ca()
         val notCsr = byteArrayOf(1, 2, 3)
-        assertFailsWith<InvalidCsrException> { MutFlow.underTest { ca.issueAgentCertificate(notCsr, AGENT) } }
+        assertFailsWith<InvalidCsrException> {
+            MutFlow.underTest { ca.issueAgentCertificate(notCsr, AGENT, AgentRole.SOURCE) }
+        }
     }
 
     // --- server certificate

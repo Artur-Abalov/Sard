@@ -17,7 +17,7 @@
 # логируется на INFO и выше; ПРВ4: недоступная база — UNAVAILABLE с
 # INTERNAL_RETRYABLE, как у Enroll, поправка ADR 0009; ПРВ5: агент показывает
 # CERT_IDENTITY_MISMATCH и CERT_MISSING как ERROR). Реализация — A8d-3,
-# docs/adr/0060-host-check.md, docs/sessions/2026-10-15-a8d-3-probe.md.
+# docs/adr/0063-host-check.md, docs/sessions/2026-10-15-a8d-3-probe.md.
 #
 # Опирается на (готово): ADR 0009 (mTLS, перехватчик AgentAuthInterceptor,
 # deny by default, причины отказа), ADR 0014 (один порт, client-auth=optional),

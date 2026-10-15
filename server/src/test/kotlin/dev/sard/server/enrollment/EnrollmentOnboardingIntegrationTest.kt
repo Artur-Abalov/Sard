@@ -10,6 +10,7 @@ import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.completeOnboarding
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.resource
+import dev.sard.server.role.AgentRole
 import io.grpc.Grpc
 import io.grpc.Status
 import io.grpc.TlsChannelCredentials
@@ -79,7 +80,7 @@ class EnrollmentOnboardingIntegrationTest(
 
     @Test
     fun `Регистрация обычным токеном до завершения онбординга отклоняется`() {
-        val issued = tokens.create(acme, ENROLLMENT_TOKEN_TTL)
+        val issued = tokens.create(acme, ENROLLMENT_TOKEN_TTL, role = AgentRole.SOURCE)
 
         val failure = enroll(issued.reveal()).exceptionOrNull()
 
@@ -94,7 +95,7 @@ class EnrollmentOnboardingIntegrationTest(
 
     @Test
     fun `После завершения онбординга тот же токен регистрирует агента`() {
-        val issued = tokens.create(acme, ENROLLMENT_TOKEN_TTL)
+        val issued = tokens.create(acme, ENROLLMENT_TOKEN_TTL, role = AgentRole.SOURCE)
         assertTrue(enroll(issued.reveal()).isFailure)
 
         completeOnboarding(jdbc)

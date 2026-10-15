@@ -10,6 +10,7 @@ import dev.sard.server.agents.stream.StreamFixtures.NOW
 import dev.sard.server.agents.stream.StreamFixtures.agent
 import dev.sard.server.pki.AgentIdentity
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.role.AgentRole
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import java.time.Duration
@@ -21,7 +22,14 @@ private fun ConnectedAgent.standing(
     notAfter: java.time.Instant = NOW + Duration.ofDays(1),
     revokedAt: java.time.Instant? = null,
     agentRevokedAt: java.time.Instant? = null,
-) = CertificateStanding(AgentIdentity(tenantId = tenantId, agentId = agentId), notAfter, revokedAt, agentRevokedAt)
+    role: AgentRole = AgentRole.SOURCE,
+) = CertificateStanding(
+    AgentIdentity(tenantId = tenantId, agentId = agentId),
+    notAfter,
+    revokedAt,
+    agentRevokedAt,
+    role,
+)
 
 private fun withSerial(serial: String) = agent().copy(serial = serial)
 
@@ -80,6 +88,13 @@ class SessionRevalidationTest {
         val other = agent.copy(agentId = UUID.randomUUID()).standing()
         val found = failures(listOf(agent), mapOf(agent.serial to other))
         assertEquals(mapOf(agent to AgentAuthFailure.CERT_IDENTITY_MISMATCH), found)
+    }
+
+    @Test
+    fun `a verifier's session stays open, its role is not a reason to close it`() {
+        val verifier = withSerial("7".repeat(32))
+        val found = failures(listOf(verifier), mapOf(verifier.serial to verifier.standing(role = AgentRole.VERIFIER)))
+        assertEquals(emptyMap(), found)
     }
 
     @Test

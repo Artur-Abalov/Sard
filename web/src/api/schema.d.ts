@@ -107,7 +107,7 @@ export interface paths {
         put?: never;
         /**
          * Create a source
-         * @description 422 codes: unknown_agent, agent_revoked, unknown_plugin (or the plugin does not offer backup), unknown_repository, invalid_config (errors name config/<JSON Pointer>), validation_failed.
+         * @description 422 codes: unknown_agent, agent_revoked, unknown_plugin (or the plugin does not offer backup), unknown_repository, agent_role_mismatch, invalid_config (errors name config/<JSON Pointer>), validation_failed.
          */
         post: operations["createSource"];
         delete?: never;
@@ -127,7 +127,7 @@ export interface paths {
         put?: never;
         /**
          * Back up the source now
-         * @description Queues a manual backup run; it waits for an offline agent. One active run per source (D6). 409 also when the agent is revoked (agent_revoked) or its last Register no longer offers the plugin (unknown_plugin) or the repository (unknown_repository).
+         * @description Queues a manual backup run; it waits for an offline agent. One active run per source (D6). 409 also when the agent is revoked (agent_revoked) or its last Register no longer offers the plugin (unknown_plugin) or the repository (unknown_repository), or when the agent's role is not source (agent_role_mismatch).
          */
         post: operations["startRun"];
         delete?: never;
@@ -695,7 +695,7 @@ export interface components {
             };
         };
         /** @enum {string} */
-        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured" | "setup_required" | "setup_completed" | "ca_step_pending" | "wrong_password" | "onboarding_incomplete" | "first_backup_pending";
+        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "agent_role_mismatch" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured" | "setup_required" | "setup_completed" | "ca_step_pending" | "wrong_password" | "onboarding_incomplete" | "first_backup_pending";
         /** @description An error (RFC 9457) */
         Problem: {
             /** @description URI reference identifying the problem type; about:blank when the status says it all */
@@ -1101,6 +1101,8 @@ export interface components {
         AdminStepRequest: {
             password?: string | null;
         };
+        /** @enum {string} */
+        AgentRole: "source" | "verifier";
         /** @description A new enrollment token */
         CreateEnrollmentTokenRequest: {
             /**
@@ -1110,6 +1112,8 @@ export interface components {
             ttlSeconds?: number | null;
             /** @description What the token is for, shown in the list; up to 200 characters, empty means none */
             label?: string | null;
+            /** @description What the agent that enrolls with the token may do, for good: source runs backups, verifier only verifies restores; source when omitted or null */
+            role?: components["schemas"]["AgentRole"] | null;
         };
         /** @description A created token: the only response with the token string (docs/specs/enrollment-token.md) */
         CreatedEnrollmentToken: {
@@ -1168,6 +1172,8 @@ export interface components {
             agentId: string | null;
             /** @description What the token is for; null when it has no label */
             label: string | null;
+            /** @description The role of the agent that enrolls with it */
+            role: components["schemas"]["AgentRole"];
         };
         /** @enum {string} */
         EnrollmentTokenStatus: "active" | "used" | "expired" | "revoked";
@@ -1206,6 +1212,8 @@ export interface components {
             outdated: boolean;
             /** @description True for the agent next to the server (sard-self), enrolled with the token the server wrote for it; revoking it needs confirm=sard-self */
             builtin: boolean;
+            /** @description source runs backups, restores and scripts; verifier only verifies restores. Chosen by the token, never changes */
+            role: components["schemas"]["AgentRole"];
         };
         /** @description A plugin the agent offers */
         AgentPlugin: {
@@ -1332,7 +1340,7 @@ export interface components {
             nextCursor: string | null;
         };
         /** @enum {string} */
-        ScheduleFireReason: "source_deleted" | "agent_revoked" | "unknown_plugin" | "unknown_repository";
+        ScheduleFireReason: "source_deleted" | "agent_revoked" | "unknown_plugin" | "unknown_repository" | "agent_role_mismatch";
         /** @description The current administrator session */
         Session: {
             /**
@@ -1590,6 +1598,8 @@ export interface components {
             outdated: boolean;
             /** @description True for the agent next to the server (sard-self), enrolled with the token the server wrote for it; revoking it needs confirm=sard-self */
             builtin: boolean;
+            /** @description source runs backups, restores and scripts; verifier only verifies restores. Chosen by the token, never changes */
+            role: components["schemas"]["AgentRole"];
         };
         /** @enum {string} */
         InstallFormat: "deb" | "rpm" | "tar";

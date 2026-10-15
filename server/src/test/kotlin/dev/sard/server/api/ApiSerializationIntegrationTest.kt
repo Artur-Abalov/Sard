@@ -59,6 +59,7 @@ class ApiSerializationIntegrationTest(
             duplicateSessionAt = at,
             outdated = false,
             builtin = true,
+            role = AgentRole.SOURCE,
         )
     private val step =
         RunStep(
@@ -118,7 +119,17 @@ class ApiSerializationIntegrationTest(
             SystemSourceRole.SELF_DATABASE,
         )
     private val token =
-        EnrollmentToken(id, EnrollmentTokenStatus.USED, at, at, at, revokedAt = null, agentId = id, label = null)
+        EnrollmentToken(
+            id,
+            EnrollmentTokenStatus.USED,
+            at,
+            at,
+            at,
+            revokedAt = null,
+            agentId = id,
+            label = null,
+            role = AgentRole.VERIFIER,
+        )
     private val snapshot =
         Snapshot(id, "4f1c", id, id, id, id, "local", "a1b2", 10, 2, at, forgottenAt = null, partial = false)
     private val schedule =
@@ -208,6 +219,7 @@ class ApiSerializationIntegrationTest(
                 scriptNames = listOf("flush"),
                 outdated = true,
                 builtin = false,
+                role = AgentRole.VERIFIER,
             ),
             AgentInstall(
                 downloadsEnabled = true,

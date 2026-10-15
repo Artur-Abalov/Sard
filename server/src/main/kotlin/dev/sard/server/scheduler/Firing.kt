@@ -7,6 +7,7 @@ import dev.sard.server.persistence.ScheduleFireRecord
 import dev.sard.server.persistence.ScheduleRecord
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.runs.AgentRevoked
+import dev.sard.server.runs.AgentRoleMismatch
 import dev.sard.server.runs.RunActive
 import dev.sard.server.runs.RunView
 import dev.sard.server.runs.Runs
@@ -30,6 +31,7 @@ private val REFUSALS: Map<KClass<out RunsException>, Pair<FireOutcome, FireReaso
     mapOf(
         SourceNotFound::class to (FireOutcome.SKIPPED_GONE to FireReason.SOURCE_DELETED),
         AgentRevoked::class to (FireOutcome.SKIPPED_GONE to FireReason.AGENT_REVOKED),
+        AgentRoleMismatch::class to (FireOutcome.REFUSED to FireReason.AGENT_ROLE_MISMATCH),
         UnknownPlugin::class to (FireOutcome.REFUSED to FireReason.UNKNOWN_PLUGIN),
         UnknownRepository::class to (FireOutcome.REFUSED to FireReason.UNKNOWN_REPOSITORY),
     )

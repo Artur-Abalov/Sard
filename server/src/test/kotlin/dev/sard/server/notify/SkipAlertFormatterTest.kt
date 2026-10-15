@@ -104,6 +104,11 @@ class SkipAlertFormatterTest {
                     FireReason.UNKNOWN_REPOSITORY,
                     "Причина: агент больше не сообщает репозиторий источника",
                 ),
+                Triple(
+                    FireOutcome.REFUSED,
+                    FireReason.AGENT_ROLE_MISMATCH,
+                    "Причина: агент источника — верификатор и не выполняет бэкап",
+                ),
             )
         for ((outcome, reason, line) in reasons) {
             val lines = format(alert(outcome, reason)).plainText().lines()
@@ -121,9 +126,17 @@ class SkipAlertFormatterTest {
                 FireReason.SOURCE_DELETED to "Reason: the source was deleted",
                 FireReason.UNKNOWN_PLUGIN to "Reason: the agent no longer offers the source's plugin",
                 FireReason.UNKNOWN_REPOSITORY to "Reason: the agent no longer reports the source's repository",
+                FireReason.AGENT_ROLE_MISMATCH to "Reason: the source's agent is a verifier and cannot run backups",
             )
         for ((reason, line) in reasons) {
-            val outcome = if (reason.stored.startsWith("unknown")) FireOutcome.REFUSED else FireOutcome.SKIPPED_GONE
+            val outcome =
+                if (reason.stored.startsWith("unknown") ||
+                    reason == FireReason.AGENT_ROLE_MISMATCH
+                ) {
+                    FireOutcome.REFUSED
+                } else {
+                    FireOutcome.SKIPPED_GONE
+                }
             assertEquals(line, format(alert(outcome, reason), NoticeLanguage.EN).plainText().lines()[3], "$reason")
         }
     }

@@ -7,6 +7,8 @@ import dev.sard.server.agents.stream.STREAM_ENDED
 import dev.sard.server.agents.stream.SendResult
 import dev.sard.server.agents.stream.StreamCloseReason
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.role.AgentRole
+import dev.sard.server.runs.Action
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepView
 import dev.sard.server.runs.WaitingSteps
@@ -16,6 +18,8 @@ import java.time.Duration
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import dev.sard.proto.agent.v1.Action as ProtoAction
 
 /** The dispatch rules of ADR 0038 and the FXs lost deadline, against fake transitions and sessions. */
 @MutFlowTest
@@ -27,7 +31,7 @@ class StepDispatcherTest {
     private fun dispatcher(
         ledger: FakeLedger,
         waiting: WaitingSteps = WaitingSteps(0, 0),
-    ) = StepDispatcher(ledger, ledger, links, clock, LOST_AFTER, metrics) { waiting }
+    ) = StepDispatcher(ledger, ledger, links, clock, LOST_AFTER, metrics, ledger) { waiting }
 
     /** Steps whose lost deadline the dispatcher's clock judges. */
     private fun ledger(vararg steps: StepView) = FakeLedger(*steps, now = { clock.now })
@@ -46,6 +50,109 @@ class StepDispatcherTest {
 
         assertEquals(listOf(1L), links.sentIds())
         assertEquals(StepState.DISPATCHED, ledger.status(1))
+    }
+
+    /** Warnings the dispatcher logs while [block] runs, as formatted messages. */
+    private fun warnings(block: () -> Unit): List<String> {
+        val logger = org.slf4j.LoggerFactory.getLogger(StepDispatcher::class.java) as ch.qos.logback.classic.Logger
+        val appender =
+            ch.qos.logback.core.read
+                .ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>()
+        appender.start()
+        logger.addAppender(appender)
+        try {
+            block()
+        } finally {
+            logger.detachAppender(appender)
+            appender.stop()
+        }
+        return appender.list.filter { it.level == ch.qos.logback.classic.Level.WARN }.map { it.formattedMessage }
+    }
+
+    @Test
+    fun `a step the agent's role does not allow is never sent, it fails with a warning`() {
+        val cases =
+            listOf(
+                AgentRole.VERIFIER to Action.BACKUP,
+                AgentRole.VERIFIER to Action.RESTORE,
+                AgentRole.VERIFIER to Action.RUN,
+                AgentRole.SOURCE to Action.VERIFY,
+            )
+        for ((role, action) in cases) {
+            online()
+            links.sent.clear()
+            val ledger = ledger(step(1, action = action))
+            ledger.roles[AGENT.agentId] = role
+
+            val logged = warnings { MutFlow.underTest { dispatcher(ledger).onQueued(TENANT, AGENT.agentId) } }
+
+            assertEquals(emptyList(), links.sentIds(), "$role $action")
+            assertEquals(StepState.FAILED, ledger.status(1), "$role $action")
+            assertTrue(ledger.refusals.getValue(UUID(0, 1)).startsWith("agent role mismatch"), "$role $action")
+            val line = logged.single()
+            val expected = listOf(UUID(0, 1).toString(), AGENT.agentId.toString(), role.stored, action.stored)
+            assertTrue(expected.all { it in line }, "$line lacks one of $expected")
+            assertTrue("agent role mismatch" in line, line)
+        }
+    }
+
+    @Test
+    fun `a step the role allows is sent as before, a verifier gets VERIFY`() {
+        online()
+        val verifies = ledger(step(1, action = Action.VERIFY))
+        verifies.roles[AGENT.agentId] = AgentRole.VERIFIER
+
+        MutFlow.underTest { dispatcher(verifies).onQueued(TENANT, AGENT.agentId) }
+
+        assertEquals(listOf(1L), links.sentIds())
+        assertEquals(StepState.DISPATCHED, verifies.status(1))
+    }
+
+    @Test
+    fun `every action a role allows is sent as its own wire action`() {
+        val cases =
+            listOf(
+                AgentRole.SOURCE to (Action.BACKUP to ProtoAction.ACTION_BACKUP),
+                AgentRole.SOURCE to (Action.RESTORE to ProtoAction.ACTION_RESTORE),
+                AgentRole.SOURCE to (Action.RUN to ProtoAction.ACTION_RUN),
+                AgentRole.VERIFIER to (Action.VERIFY to ProtoAction.ACTION_VERIFY),
+            )
+        for ((role, pair) in cases) {
+            val (action, wire) = pair
+            online()
+            links.sent.clear()
+            val ledger = ledger(step(1, action = action))
+            ledger.roles[AGENT.agentId] = role
+
+            MutFlow.underTest { dispatcher(ledger).onQueued(TENANT, AGENT.agentId) }
+
+            assertEquals(listOf(wire), links.sent.map { it.action }, "$role $action")
+            assertEquals(StepState.DISPATCHED, ledger.status(1), "$role $action")
+        }
+    }
+
+    @Test
+    fun `a refused step does not hold back the allowed steps behind it`() {
+        online()
+        val ledger = ledger(step(1, action = Action.VERIFY), step(2, action = Action.BACKUP))
+
+        MutFlow.underTest { dispatcher(ledger).onQueued(TENANT, AGENT.agentId) }
+
+        assertEquals(listOf(StepState.FAILED, StepState.DISPATCHED), listOf(ledger.status(1), ledger.status(2)))
+        assertEquals(listOf(2L), links.sentIds())
+    }
+
+    @Test
+    fun `a dispatched step the role does not allow is refused on Hello, not sent again`() {
+        online()
+        val old = DISPATCH_NOW.minusSeconds(10)
+        val ledger = ledger(step(1, StepState.DISPATCHED, dispatchedAt = old, action = Action.BACKUP))
+        ledger.roles[AGENT.agentId] = AgentRole.VERIFIER
+
+        MutFlow.underTest { dispatcher(ledger).onHello(AGENT, emptyList()) }
+
+        assertEquals(StepState.FAILED, ledger.status(1))
+        assertEquals(emptyList(), links.sentIds())
     }
 
     @Test
@@ -184,7 +291,7 @@ class StepDispatcherTest {
             object : dev.sard.server.runs.LostDeadlines by ledger {
                 override fun overdue(now: java.time.Instant) = read
             }
-        val raced = StepDispatcher(ledger, racing, links, clock, LOST_AFTER, metrics) { WaitingSteps(0, 0) }
+        val raced = StepDispatcher(ledger, racing, links, clock, LOST_AFTER, metrics, ledger) { WaitingSteps(0, 0) }
 
         val log = dispatchLog { MutFlow.underTest { raced.tick() } }
 
@@ -291,7 +398,8 @@ class StepDispatcherTest {
                     deadline: java.time.Instant,
                 ) = error("database down")
             }
-        val dispatcher = StepDispatcher(ledger, broken, links, clock, LOST_AFTER, metrics) { WaitingSteps(0, 0) }
+        val dispatcher =
+            StepDispatcher(ledger, broken, links, clock, LOST_AFTER, metrics, ledger) { WaitingSteps(0, 0) }
 
         val log = dispatchLog { MutFlow.underTest { dispatcher.onDisconnected(AGENT, STREAM_ENDED) } }
 
@@ -327,7 +435,8 @@ class StepDispatcherTest {
                     agentId: UUID,
                 ) = error("database down")
             }
-        val dispatcher = StepDispatcher(broken, ledger(), links, clock, LOST_AFTER, metrics) { WaitingSteps(0, 0) }
+        val dispatcher =
+            StepDispatcher(broken, ledger(), links, clock, LOST_AFTER, metrics, ledger()) { WaitingSteps(0, 0) }
         val log = dispatchLog { MutFlow.underTest { dispatcher.onQueued(TENANT, AGENT.agentId) } }
         assertEquals(emptyList(), links.sentIds())
         val cause = "java.lang.IllegalStateException: database down"

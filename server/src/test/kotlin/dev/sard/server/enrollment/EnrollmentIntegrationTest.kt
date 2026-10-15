@@ -15,6 +15,7 @@ import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.certificate
 import dev.sard.server.pki.PkiFixtures.certificates
 import dev.sard.server.pki.PkiFixtures.resource
+import dev.sard.server.role.AgentRole
 import io.grpc.Grpc
 import io.grpc.Status
 import io.grpc.StatusException
@@ -57,10 +58,11 @@ class GatedCertificateAuthority(
     override fun issueAgentCertificate(
         csrDer: ByteArray,
         agent: dev.sard.server.pki.AgentIdentity,
+        role: dev.sard.server.role.AgentRole,
     ): dev.sard.server.pki.IssuedCertificate {
         entered.release()
         gate?.await(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS)
-        return delegate.issueAgentCertificate(csrDer, agent)
+        return delegate.issueAgentCertificate(csrDer, agent, role)
     }
 }
 
@@ -110,7 +112,7 @@ class EnrollmentIntegrationTest(
         jdbc.deleteEnrollmentTenantData(acme)
     }
 
-    private fun newToken() = tokens.create(acme, ENROLLMENT_TOKEN_TTL)
+    private fun newToken() = tokens.create(acme, ENROLLMENT_TOKEN_TTL, role = AgentRole.SOURCE)
 
     private fun tokenRow(issued: IssuedEnrollmentToken) =
         jdbc.queryForMap("select used_at, agent_id from enrollment_tokens where id = ?", issued.id)
@@ -140,7 +142,10 @@ class EnrollmentIntegrationTest(
 
         val leaf = certificates(enrolled.certificateChainPem).single()
         val uri = "sard://tenants/$acme/agents/${enrolled.agentId}"
-        assertEquals(listOf(listOf<Any>(6, uri)), leaf.subjectAlternativeNames.map { it.toList() })
+        assertEquals(
+            setOf(listOf<Any>(6, uri), listOf<Any>(6, "sard://roles/source")),
+            leaf.subjectAlternativeNames.map { it.toList() }.toSet(),
+        )
         assertEquals(ca.caBundlePem(), enrolled.caBundlePem)
         leaf.verify(certificate(enrolled.caBundlePem).publicKey)
 

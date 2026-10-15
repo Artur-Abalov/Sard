@@ -8,6 +8,7 @@ import dev.sard.server.completeOnboarding
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.resource
+import dev.sard.server.role.AgentRole
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.junit.jupiter.api.Tag
@@ -110,7 +111,7 @@ class BuiltinEnrollmentTokensIntegrationTest(
     @Test
     fun `Встроенный токен не виден в списке, карточке и отзыве`() {
         val builtin = replaceBuiltin()
-        val ordinary = tokens.create(tenant)
+        val ordinary = tokens.create(tenant, role = AgentRole.SOURCE)
 
         assertEquals(listOf(ordinary.id), list().map { it.id })
         assertEquals(EnrollmentTokenState.ACTIVE, list().single().state)
@@ -121,7 +122,7 @@ class BuiltinEnrollmentTokensIntegrationTest(
 
     @Test
     fun `Обычный токен после отзыва остаётся обычным`() {
-        val ordinary = tokens.create(tenant)
+        val ordinary = tokens.create(tenant, role = AgentRole.SOURCE)
         assertEquals(RevokeResult.Revoked(T0), revoke(ordinary.id, T0))
     }
 
@@ -138,7 +139,7 @@ class BuiltinEnrollmentTokensIntegrationTest(
     @Test
     fun `Чужой хэш, обычный токен и использованный токен не пригодны`() {
         val builtin = replaceBuiltin()
-        val ordinary = tokens.create(tenant)
+        val ordinary = tokens.create(tenant, role = AgentRole.SOURCE)
         val other = UUID.randomUUID()
         assertFalse(builtinUsable(tenant, ByteArray(32), MARGIN))
         assertFalse(usable(ordinary.reveal()))
@@ -151,7 +152,7 @@ class BuiltinEnrollmentTokensIntegrationTest(
     fun `Выпуск нового встроенного токена отзывает прочие активные встроенные, но не обычные`() {
         val first = replaceBuiltin()
         val second = replaceBuiltin()
-        val ordinary = tokens.create(tenant)
+        val ordinary = tokens.create(tenant, role = AgentRole.SOURCE)
         val expired = replaceBuiltin()
         clock.now = T0 + Duration.ofHours(2)
         val third = replaceBuiltin()
@@ -170,7 +171,7 @@ class BuiltinEnrollmentTokensIntegrationTest(
     fun `Регистрация по встроенному токену создаёт встроенного агента, по обычному - обычного`() {
         enroll(replaceBuiltin().reveal(), csr, "sard-self")
         assertEquals(1, builtinAgents())
-        enroll(tokens.create(tenant).reveal(), csr, "sard-self")
+        enroll(tokens.create(tenant, role = AgentRole.SOURCE).reveal(), csr, "sard-self")
         assertEquals(1, builtinAgents())
         assertEquals(2, jdbc.countAgents(tenant))
     }
@@ -179,7 +180,7 @@ class BuiltinEnrollmentTokensIntegrationTest(
     fun `Пока онбординг не завершён, обычный токен не регистрирует и не тратится, а встроенный регистрирует`() {
         jdbc.update("delete from onboarding_steps where step = 'keys_confirmed'")
         try {
-            val ordinary = tokens.create(tenant)
+            val ordinary = tokens.create(tenant, role = AgentRole.SOURCE)
 
             val reason = rejectionReason { enroll(ordinary.reveal(), csr, "sard-host") }
             assertEquals(EnrollmentRejectedException.Reason.ONBOARDING_INCOMPLETE, reason)

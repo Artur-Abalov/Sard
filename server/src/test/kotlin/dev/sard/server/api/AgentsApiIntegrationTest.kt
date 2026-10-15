@@ -96,6 +96,7 @@ class AgentsApiIntegrationTest(
                 "scriptNames",
                 "outdated",
                 "builtin",
+                "role",
             ),
             json.propertyNames().toSet(),
         )

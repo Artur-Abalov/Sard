@@ -34,6 +34,7 @@ const KNOWN: Record<ErrorCode, true> = {
   not_implemented: true,
   origin_rejected: true,
   agent_revoked: true,
+  agent_role_mismatch: true,
   unavailable: true,
   self_agent_confirmation_required: true,
   system_source: true,

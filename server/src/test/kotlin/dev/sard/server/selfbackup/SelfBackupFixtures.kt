@@ -39,8 +39,8 @@ internal class SelfBackupTenant(
     ) {
         jdbc.update(
             """
-            insert into agents (id, tenant_id, hostname, registered_at, builtin, secret_names)
-            values (?, ?, 'sard-self', ?, ?, ?)
+            insert into agents (id, tenant_id, hostname, registered_at, builtin, secret_names, role)
+            values (?, ?, 'sard-self', ?, ?, ?, 'source')
             """.trimIndent(),
             agent,
             id,

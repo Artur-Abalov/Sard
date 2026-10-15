@@ -8,6 +8,7 @@ import dev.sard.server.agents.EnrollmentGrpcService
 import dev.sard.server.enrollment.EnrollmentRejectedException.Reason
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.resource
+import dev.sard.server.role.AgentRole
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
@@ -63,7 +64,7 @@ class EnrollmentConcurrencyIntegrationTest(
         jdbc.deleteEnrollmentTenantData(acme)
     }
 
-    private fun newToken() = tokens.create(acme, ENROLLMENT_TOKEN_TTL)
+    private fun newToken() = tokens.create(acme, ENROLLMENT_TOKEN_TTL, role = AgentRole.SOURCE)
 
     private fun countAgents(): Int? = jdbc.countAgents(acme)
 

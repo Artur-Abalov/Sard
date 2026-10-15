@@ -23,6 +23,7 @@ import dev.sard.server.agents.stream.StreamFixtures.NOW
 import dev.sard.server.agents.stream.StreamFixtures.SETTINGS
 import dev.sard.server.pki.AgentIdentity
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.role.AgentRole
 import io.grpc.Context
 import io.grpc.Metadata
 import io.grpc.Status
@@ -177,7 +178,8 @@ class AgentStreamsTest {
     private val recorder = Recorder()
     private val registry = AgentSessionRegistry(clock, SETTINGS)
     private val standings = FakeStandings()
-    private val principal = AgentPrincipal(UUID.randomUUID(), UUID.randomUUID(), "8f0e5c2a9b7d4e6f8a1b2c3d4e5f6a7b")
+    private val principal =
+        AgentPrincipal(UUID.randomUUID(), UUID.randomUUID(), "8f0e5c2a9b7d4e6f8a1b2c3d4e5f6a7b", AgentRole.SOURCE)
     private val streams =
         AgentStreams(
             registry,
@@ -190,7 +192,8 @@ class AgentStreamsTest {
 
     init {
         val identity = AgentIdentity(tenantId = principal.tenantId, agentId = principal.agentId)
-        standings.records[principal.serial] = CertificateStanding(identity, NOW + Duration.ofDays(1), null, null)
+        val validity = NOW + Duration.ofDays(1)
+        standings.records[principal.serial] = CertificateStanding(identity, validity, null, null, AgentRole.SOURCE)
     }
 
     private fun CoroutineScope.open(): AgentSide {

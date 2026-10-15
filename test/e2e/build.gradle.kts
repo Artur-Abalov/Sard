@@ -49,6 +49,7 @@ val e2eProperties =
         "e2e.pg18AgentImage" to "sard-agent-pg18:e2e",
         "e2e.pg14AgentImage" to "sard-agent-pg14:e2e",
         "e2e.sftpImage" to "sard-sftp:e2e",
+        "e2e.recoveryVmImage" to "sard-recovery-vm:e2e",
         "e2e.version" to "dev",
     )
 
@@ -67,6 +68,10 @@ tasks.test {
         "e2e.resticVersionFile",
         rootProject.file("agent/internal/restic/restic-version").path,
     )
+    // The recovery drill (F7): the installation it starts on the old machine and the page it follows on the new one.
+    systemProperty("e2e.composeFile", rootProject.file("deploy/docker-compose.yml").path)
+    systemProperty("e2e.recoveryPage", rootProject.file("docs/operator/12-server-recovery.md").path)
+    systemProperty("e2e.recoveryDrillDir", layout.buildDirectory.dir("recovery-drill").get().asFile.path)
     testLogging {
         events("passed", "skipped", "failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

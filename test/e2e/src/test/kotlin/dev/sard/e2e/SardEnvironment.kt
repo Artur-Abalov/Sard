@@ -57,11 +57,14 @@ import java.util.HexFormat
 class SardEnvironment(
     serverEnv: Map<String, String> = emptyMap(),
     private val selfAgent: Boolean = false,
+    /** A network with no way out (no internet, no registries): the recovery drill's machines (F7, Р39). */
+    internalNetwork: Boolean = false,
 ) : BeforeAllCallback,
     AfterAllCallback,
     TestWatcher {
     // Not "network": inside a container's apply {} that name is the container's own getNetwork().
-    private val sardNetwork = Network.newNetwork()
+    private val sardNetwork: Network =
+        if (internalNetwork) Network.builder().createNetworkCmdModifier { it.withInternal(true) }.build() else Network.newNetwork()
     private val dbPassword = randomHex()
     /** The administrator's password, set in the first-start wizard by [ensureAdministrator], for signing in to the REST API. */
     internal val adminPassword = randomHex()

@@ -10,6 +10,7 @@ import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.registration.Registration
+import dev.sard.server.role.AgentRole
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.jdbc.core.JdbcTemplate
@@ -145,7 +146,7 @@ class EnrollmentTokensApiIntegrationTest(
     fun `Список токенов фильтруется по статусу`() {
         val active = create().json.path("id").asString()
         val used = world.enroll(admin.tenant).let { usedTokenOf(it.agentId) }
-        val expired = tokens.create(admin.tenant, Duration.ofMinutes(5)).id
+        val expired = tokens.create(admin.tenant, Duration.ofMinutes(5), role = AgentRole.SOURCE).id
         val revoked =
             create()
                 .json
@@ -223,7 +224,7 @@ class EnrollmentTokensApiIntegrationTest(
 
     @Test
     fun `Отзыв истёкшего токена отвечает 409 token_expired`() {
-        val id = tokens.create(admin.tenant, Duration.ofMinutes(5)).id
+        val id = tokens.create(admin.tenant, Duration.ofMinutes(5), role = AgentRole.SOURCE).id
         clock.now = T0.plus(Duration.ofMinutes(5))
 
         val response = world.api.post("/api/v1/enrollment-tokens/$id/revoke", admin, null)
