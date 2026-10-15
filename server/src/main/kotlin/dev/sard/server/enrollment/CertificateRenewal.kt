@@ -31,7 +31,8 @@ private const val LATEST_ISSUE = "select max(c.issuedAt) from AgentCertificateRe
 private const val SUPERSEDE_UNCONFIRMED =
     "update AgentCertificateRecord c set c.supersededAt = :now where c.agentId = :agent " +
         "and c.supersededAt is null and c.predecessorSerial is not null " +
-        "and exists (select 1 from AgentCertificateRecord p where p.serial = c.predecessorSerial and p.supersededAt is null)"
+        "and exists (select 1 from AgentCertificateRecord p " +
+        "where p.serial = c.predecessorSerial and p.supersededAt is null)"
 
 private const val PREDECESSOR_OF = "select c.predecessorSerial from AgentCertificateRecord c where c.serial = :serial"
 private const val SUPERSEDE_ONE =
@@ -111,7 +112,8 @@ class CertificateRenewal(
         try {
             val superseded = wrapUnexpected { sessions.inTenant(caller.tenantId) { confirmIn(it, caller) } }
             if (superseded != null) {
-                log.info("certificate confirmed: agent={} serial={} superseded={}", caller.agentId, caller.serial, superseded)
+                val line = "certificate confirmed: agent={} serial={} superseded={}"
+                log.info(line, caller.agentId, caller.serial, superseded)
             }
         } catch (e: RenewalRejectedException) {
             logRefusal(e, caller)
@@ -126,7 +128,8 @@ class CertificateRenewal(
         if (e.reason == RenewalReason.INTERNAL_RETRYABLE) {
             log.error("certificate renewal of agent {} failed (serial {})", caller.agentId, caller.serial, e)
         } else {
-            log.warn("certificate renewal refused: reason={} agent={} serial={}", e.reason, caller.agentId, caller.serial)
+            val line = "certificate renewal refused: reason={} agent={} serial={}"
+            log.warn(line, e.reason, caller.agentId, caller.serial)
         }
     }
 
@@ -146,14 +149,17 @@ class CertificateRenewal(
         // The lock on the agent row serialises renewals of one agent, so the rate check and the insert are one step.
         val agent = checkNotNull(session.find(Agent::class.java, caller.agentId, LockMode.PESSIMISTIC_WRITE))
         requireIntervalPassed(session, caller.agentId, now)
-        val issued = ca.issueAgentCertificate(csrDer, AgentIdentity(caller.tenantId, caller.agentId), AgentRole.of(agent.role))
+        val identity = AgentIdentity(caller.tenantId, caller.agentId)
+        val issued = ca.issueAgentCertificate(csrDer, identity, AgentRole.of(agent.role))
         session
             .createMutationQuery(SUPERSEDE_UNCONFIRMED)
             .setParameter("now", now)
             .setParameter("agent", caller.agentId)
             .executeUpdate()
         val serial = issued.serial.toString(SERIAL_RADIX)
-        session.persist(AgentCertificateRecord(serial, caller.agentId, now, issued.notAfter, predecessorSerial = caller.serial))
+        session.persist(
+            AgentCertificateRecord(serial, caller.agentId, now, issued.notAfter, predecessorSerial = caller.serial),
+        )
         return RenewedCertificate(issued.chainPem, serial, issued.notAfter)
     }
 
@@ -168,11 +174,16 @@ class CertificateRenewal(
                 .setParameter("agent", agentId)
                 .uniqueResult() ?: return
         val wait = Duration.between(now, latest + interval)
-        if (wait.isPositive) throw RenewalRejectedException(RenewalReason.RENEWAL_TOO_FREQUENT, retryAfter = wholeSeconds(wait))
+        if (wait.isPositive) {
+            throw RenewalRejectedException(RenewalReason.RENEWAL_TOO_FREQUENT, retryAfter = wholeSeconds(wait))
+        }
     }
 
     /** Rounded up to whole seconds; a positive [wait] is therefore at least one second. */
-    private fun wholeSeconds(wait: Duration): Duration = Duration.ofSeconds((wait.toNanos() + NANOS_PER_SECOND - 1) / NANOS_PER_SECOND)
+    private fun wholeSeconds(wait: Duration): Duration {
+        val seconds = (wait.toNanos() + NANOS_PER_SECOND - 1) / NANOS_PER_SECOND
+        return Duration.ofSeconds(seconds)
+    }
 
     /** The serial this call superseded, or null when it changed nothing. */
     private fun confirmIn(

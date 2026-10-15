@@ -188,7 +188,8 @@ class AgentAuthenticatorTest {
 
     @Test
     fun `a superseded certificate is CERT_SUPERSEDED and the log may name its agent`() {
-        assertEquals(Rejected(AgentAuthFailure.CERT_SUPERSEDED, SERIAL, AGENT.agentId), authenticate(PRESENTED, superseded))
+        val expected = Rejected(AgentAuthFailure.CERT_SUPERSEDED, SERIAL, AGENT.agentId)
+        assertEquals(expected, authenticate(PRESENTED, superseded))
     }
 
     @Test
@@ -209,7 +210,7 @@ class AgentAuthenticatorTest {
     }
 
     @Test
-    fun `revocation outranks supersession, which outranks non-confirmation, which outranks expiry and agent revocation`() {
+    fun `revocation outranks supersession, then non-confirmation, then expiry and agent revocation`() {
         val revoked = superseded.copy(revokedAt = NOW, notAfter = NOW, agentRevokedAt = NOW)
         assertEquals(AgentAuthFailure.CERT_REVOKED, failureOf(revoked))
         val expired = superseded.copy(notAfter = NOW, agentRevokedAt = NOW)

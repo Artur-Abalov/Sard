@@ -41,7 +41,10 @@ import kotlin.test.assertTrue
 private val HOUR = Duration.ofHours(1)
 private val DAY = Duration.ofDays(1)
 
-/** C1, rules "Подтверждение новым сертификатом вытесняет старый" and "Неподтверждённый сертификат годится только для подтверждения". */
+/**
+ * C1, rules "Подтверждение новым сертификатом вытесняет старый" and
+ * "Неподтверждённый сертификат годится только для подтверждения".
+ */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = ["spring.grpc.server.port=0", "sard.agent.stream.check-interval=1h"],
@@ -145,7 +148,8 @@ class CertificateConfirmationIntegrationTest(
 
         harness.confirm(c1)
 
-        assertEquals(before, jdbc.queryForList("select * from agent_certificates where agent_id = ?", c1.identity.agentId))
+        val sql = "select * from agent_certificates where agent_id = ?"
+        assertEquals(before, jdbc.queryForList(sql, c1.identity.agentId))
     }
 
     @Test
@@ -178,7 +182,10 @@ class CertificateConfirmationIntegrationTest(
     fun `Сбой базы при подтверждении не вытесняет старый сертификат`() {
         val (c1, c2) = renewed()
         val failure = JDBCConnectionException("down", SQLException("down"))
-        Mockito.doThrow(failure).`when`(sessions).inTenant(anything(UUID.randomUUID()), anything<(Session) -> Any?> { null })
+        Mockito
+            .doThrow(failure)
+            .`when`(sessions)
+            .inTenant(anything(UUID.randomUUID()), anything<(Session) -> Any?> { null })
 
         val refusal = harness.refused { harness.confirm(c2) }
 
@@ -209,7 +216,8 @@ class CertificateConfirmationIntegrationTest(
     @Test
     fun `Отзыв важнее вытеснения`() {
         val (c1, _) = confirmedPair()
-        jdbc.update("update agent_certificates set revoked_at = ? where serial = ?", java.sql.Timestamp.from(t0), harness.serial(c1))
+        val sql = "update agent_certificates set revoked_at = ? where serial = ?"
+        jdbc.update(sql, java.sql.Timestamp.from(t0), harness.serial(c1))
 
         harness.assertRefusedBy("CERT_REVOKED") { harness.register(c1) }
     }
@@ -247,7 +255,8 @@ class CertificateConfirmationIntegrationTest(
             )
         for ((_, call) in calls) harness.assertRefusedBy("CERT_NOT_CONFIRMED", call)
         val connect = harness.connectRefusal(c2)
-        assertEquals(CallRefusal(Status.Code.UNAUTHENTICATED, listOf("CERT_NOT_CONFIRMED"), listOf("sard.dev")), connect)
+        val expected = CallRefusal(Status.Code.UNAUTHENTICATED, listOf("CERT_NOT_CONFIRMED"), listOf("sard.dev"))
+        assertEquals(expected, connect)
         harness.assertNoNewCertificates(c1, before)
     }
 

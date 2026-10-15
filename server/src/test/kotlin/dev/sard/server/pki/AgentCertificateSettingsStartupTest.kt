@@ -43,7 +43,10 @@ class AgentCertificateSettingsStartupTest {
         runner().withPropertyValues(*properties).run { context ->
             val failure = assertNotNull(context.startupFailure, "the context started")
             message =
-                generateSequence<Throwable>(failure) { it.cause }.filterIsInstance<InvalidPkiSettingException>().firstOrNull()?.message
+                generateSequence<Throwable>(failure) { it.cause }
+                    .filterIsInstance<InvalidPkiSettingException>()
+                    .firstOrNull()
+                    ?.message
         }
         return assertNotNull(message, "no InvalidPkiSettingException in the startup failure")
     }
@@ -74,7 +77,9 @@ class AgentCertificateSettingsStartupTest {
     fun `Недопустимый срок сертификата агента не даёт серверу стартовать`() {
         for (value in listOf("PT9M59S", "PT0S", "-P1D", "year")) {
             val message = startupFailure("sard.pki.agent-certificate-validity=$value")
-            assertTrue("sard.pki.agent-certificate-validity" in message && value in message && "PT10M" in message, message)
+            for (part in listOf("sard.pki.agent-certificate-validity", value, "PT10M")) {
+                assertTrue(part in message, message)
+            }
         }
     }
 

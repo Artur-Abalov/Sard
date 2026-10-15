@@ -95,7 +95,8 @@ class CertificateRenewalRefusalsIntegrationTest(
     @Test
     fun `Запись сертификата отозвана, продление отклонено как CERT_REVOKED`() =
         assertRenewalRefused("CERT_REVOKED") {
-            jdbc.update("update agent_certificates set revoked_at = ? where serial = ?", Timestamp.from(t0), harness.serial(it))
+            val sql = "update agent_certificates set revoked_at = ? where serial = ?"
+            jdbc.update(sql, Timestamp.from(t0), harness.serial(it))
         }
 
     @Test
@@ -178,7 +179,7 @@ class CertificateRenewalRefusalsIntegrationTest(
     @Test
     fun `Сертификат CA сервера с серийным номером C1 и URI личности Y это CERT_IDENTITY_MISMATCH`() =
         assertForeignRefused("CERT_IDENTITY_MISMATCH") { x, y ->
-            fixtures.forged(x, ForgedRole.Text("source"), identity = AgentIdentity(y.identity.tenantId, y.identity.agentId))
+            fixtures.forged(x, ForgedRole.Text("source"), identity = y.identity)
         }
 
     @Test

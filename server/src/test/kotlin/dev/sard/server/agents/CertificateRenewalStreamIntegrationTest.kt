@@ -33,6 +33,7 @@ import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import java.sql.Timestamp
 import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
@@ -109,12 +110,30 @@ class CertificateRenewalStreamIntegrationTest(
         }
 
     /** Renewed and confirmed on separate connections while [stream] stays open. */
-    private fun renewedAndConfirmed(agent: EnrolledAgent): EnrolledAgent = harness.renew(agent).also { harness.confirm(it) }
+    private fun renewedAndConfirmed(agent: EnrolledAgent): EnrolledAgent {
+        val renewed = harness.renew(agent)
+        harness.confirm(renewed)
+        return renewed
+    }
+
+    private fun supersede(agent: EnrolledAgent) {
+        val sql = "update agent_certificates set superseded_at = ? where serial = ?"
+        jdbc.update(sql, Timestamp.from(clock.now), harness.serial(agent))
+    }
+
+    private fun notAfter(agent: EnrolledAgent): Instant {
+        val recorded = harness.row(harness.serial(agent))["not_after"]!!
+        return RenewalHarness.toInstant(recorded)
+    }
 
     private fun duplicates() = meters.counter("sard.agent.duplicate.sessions").count()
 
     private fun duplicateMark(agent: EnrolledAgent) =
-        jdbc.queryForObject("select duplicate_session_at from agents where id = ?", Timestamp::class.java, agent.identity.agentId)
+        jdbc.queryForObject(
+            "select duplicate_session_at from agents where id = ?",
+            Timestamp::class.java,
+            agent.identity.agentId,
+        )
 
     private fun dispatchedStep(agent: EnrolledAgent): UUID {
         val draft = SourceDraft("prod-db", agent.identity.agentId, "postgresql", "main", """{"database": "app"}""")
@@ -208,7 +227,8 @@ class CertificateRenewalStreamIntegrationTest(
         val c1 = enrolled()
         val stream = greeted(c1)
         renewedAndConfirmed(c1)
-        // What an administrator's revocation writes (Agents.revokeIn): the agent and all its certificates. Agents.revoke
+        // What an administrator's revocation writes (Agents.revokeIn): the agent and all its certificates.
+        // Agents.revoke
         // would also close the stream at once as AGENT_REVOKED; this is the verdict of the periodic check.
         val now = Timestamp.from(clock.now)
         jdbc.update("update agents set revoked_at = ? where id = ?", now, c1.identity.agentId)
@@ -224,7 +244,7 @@ class CertificateRenewalStreamIntegrationTest(
         val c1 = enrolled()
         val stream = greeted(c1)
         renewedAndConfirmed(c1)
-        clock.now = RenewalHarness.toInstant(harness.row(harness.serial(c1))["not_after"]!!)
+        clock.now = notAfter(c1)
 
         connections.check()
 
@@ -237,7 +257,7 @@ class CertificateRenewalStreamIntegrationTest(
     fun `Сверка открытых потоков не закрывает поток из-за вытеснения`() {
         val c = enrolled()
         val stream = greeted(c)
-        jdbc.update("update agent_certificates set superseded_at = ? where serial = ?", Timestamp.from(clock.now), harness.serial(c))
+        supersede(c)
 
         connections.check()
 
@@ -273,7 +293,7 @@ class CertificateRenewalStreamIntegrationTest(
     ) {
         val c = enrolled()
         val stream = greeted(c)
-        jdbc.update("update agent_certificates set superseded_at = ? where serial = ?", Timestamp.from(clock.now), harness.serial(c))
+        supersede(c)
         event(c)
 
         connections.check()
@@ -284,7 +304,8 @@ class CertificateRenewalStreamIntegrationTest(
     @Test
     fun `Сверка закрывает поток вытесненного сертификата при отзыве записи`() =
         supersededWith({
-            jdbc.update("update agent_certificates set revoked_at = ? where serial = ?", Timestamp.from(clock.now), harness.serial(it))
+            val sql = "update agent_certificates set revoked_at = ? where serial = ?"
+            jdbc.update(sql, Timestamp.from(clock.now), harness.serial(it))
         }, "CERT_REVOKED")
 
     @Test
@@ -295,5 +316,5 @@ class CertificateRenewalStreamIntegrationTest(
 
     @Test
     fun `Сверка закрывает поток вытесненного сертификата при наступлении not_after`() =
-        supersededWith({ clock.now = RenewalHarness.toInstant(harness.row(harness.serial(it))["not_after"]!!) }, "CERT_EXPIRED")
+        supersededWith({ clock.now = notAfter(it) }, "CERT_EXPIRED")
 }

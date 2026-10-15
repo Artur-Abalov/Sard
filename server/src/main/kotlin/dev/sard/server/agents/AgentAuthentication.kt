@@ -189,8 +189,22 @@ class AgentAuthenticator(
     ): AgentAuthFailure? =
         when {
             standing.revokedAt != null -> AgentAuthFailure.CERT_REVOKED
+            else -> replacementFailure(standing, scope) ?: lifetimeFailure(standing)
+        }
+
+    /** Superseded, then not confirmed: what an open stream does not care about, and the confirmation only partly. */
+    private fun replacementFailure(
+        standing: CertificateStanding,
+        scope: AuthScope,
+    ): AgentAuthFailure? =
+        when {
             standing.supersededAt != null && scope != AuthScope.OPEN_STREAM -> AgentAuthFailure.CERT_SUPERSEDED
             standing.unconfirmed && scope == AuthScope.CALL -> AgentAuthFailure.CERT_NOT_CONFIRMED
+            else -> null
+        }
+
+    private fun lifetimeFailure(standing: CertificateStanding): AgentAuthFailure? =
+        when {
             !clock.instant().isBefore(standing.notAfter) -> AgentAuthFailure.CERT_EXPIRED
             standing.agentRevokedAt != null -> AgentAuthFailure.AGENT_REVOKED
             else -> null

@@ -10,7 +10,8 @@ import java.time.Instant
 import java.util.UUID
 
 private const val COLUMNS =
-    "c.tenantId, c.agentId, c.notAfter, c.revokedAt, a.revokedAt, a.role, c.supersededAt, c.predecessorSerial, p.supersededAt"
+    "c.tenantId, c.agentId, c.notAfter, c.revokedAt, a.revokedAt, a.role, " +
+        "c.supersededAt, c.predecessorSerial, p.supersededAt"
 private const val JOIN =
     "from AgentCertificateRecord c join Agent a on a.tenantId = c.tenantId and a.id = c.agentId " +
         "left join AgentCertificateRecord p on p.serial = c.predecessorSerial "

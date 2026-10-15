@@ -123,7 +123,8 @@ class RenewalHarness(
                     ended.completeExceptionally(IllegalStateException("the stream was accepted and completed"))
                 }
             }
-        val stub = AgentServiceGrpc.newStub(fixtures.channel(agent)).withDeadlineAfter(DEADLINE_SECONDS, TimeUnit.SECONDS)
+        val channel = fixtures.channel(agent)
+        val stub = AgentServiceGrpc.newStub(channel).withDeadlineAfter(DEADLINE_SECONDS, TimeUnit.SECONDS)
         val requests = stub.connect(observer)
         val error = ended.get(DEADLINE_SECONDS, TimeUnit.SECONDS)
         runCatching { requests.onCompleted() }
@@ -144,7 +145,11 @@ class RenewalHarness(
     fun supersededAt(serial: String): Instant? = row(serial)["superseded_at"]?.let { toInstant(it) }
 
     fun count(agent: EnrolledAgent): Int =
-        jdbc.queryForObject("select count(*) from agent_certificates where agent_id = ?", Int::class.java, agent.identity.agentId)!!
+        jdbc.queryForObject(
+            "select count(*) from agent_certificates where agent_id = ?",
+            Int::class.java,
+            agent.identity.agentId,
+        )!!
 
     fun assertRefusedBy(
         reason: String,

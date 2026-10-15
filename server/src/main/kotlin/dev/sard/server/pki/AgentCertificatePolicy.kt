@@ -40,7 +40,9 @@ class AgentCertificatePolicy private constructor(
             val lifetime = duration(VALIDITY_SETTING, validity, "the minimum is $MIN_VALIDITY")
             if (lifetime < MIN_VALIDITY) throw refused(VALIDITY_SETTING, validity, "the minimum is $MIN_VALIDITY")
             val interval = duration(INTERVAL_SETTING, renewalMinInterval, "it must be greater than zero")
-            if (!interval.isPositive) throw refused(INTERVAL_SETTING, renewalMinInterval, "it must be greater than zero")
+            if (!interval.isPositive) {
+                throw refused(INTERVAL_SETTING, renewalMinInterval, "it must be greater than zero")
+            }
             return AgentCertificatePolicy(lifetime, interval)
         }
 

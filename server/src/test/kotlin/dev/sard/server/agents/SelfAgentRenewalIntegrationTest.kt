@@ -35,7 +35,11 @@ private const val SAN_URI = 6
 /** C1, rule "Продление выдаёт сертификат той же личности и роли на новый ключ": the built-in agent sard-self. */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = ["spring.grpc.server.port=0", "sard.self-agent.check-interval=1h", "sard.agent.stream.check-interval=1h"],
+    properties = [
+        "spring.grpc.server.port=0",
+        "sard.self-agent.check-interval=1h",
+        "sard.agent.stream.check-interval=1h",
+    ],
 )
 @Import(TestcontainersConfiguration::class, RenewalClockConfiguration::class, ConfirmedCaStep::class)
 class SelfAgentRenewalIntegrationTest(
@@ -75,7 +79,10 @@ class SelfAgentRenewalIntegrationTest(
         )
     }
 
-    private fun builtinTokens() = jdbc.queryForObject("select count(*) from enrollment_tokens where builtin", Int::class.java)
+    private fun builtinTokens(): Int? {
+        val sql = "select count(*) from enrollment_tokens where builtin"
+        return jdbc.queryForObject(sql, Int::class.java)
+    }
 
     @Test
     fun `Встроенный агент sard-self продлевает сертификат так же`() {

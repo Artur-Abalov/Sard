@@ -85,7 +85,8 @@ class PkiAutoConfiguration {
             }
         val random = SecureRandom()
         val time = clock.getIfAvailable { Clock.systemUTC() }
-        return FileCertificateAuthority(properties.dir, names, time, random, ledger, importDir, listener, policy.validity)
+        val validity = policy.validity
+        return FileCertificateAuthority(properties.dir, names, time, random, ledger, importDir, listener, validity)
     }
 
     /** Server key from the CA; client certificates, when presented, must chain to it. */

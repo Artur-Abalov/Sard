@@ -82,7 +82,10 @@ class CertificateRenewalIntegrationTest(
 
     private fun leaf(agent: EnrolledAgent): X509Certificate = PkiFixtures.certificate(agent.chainPem)
 
-    private fun uris(certificate: X509Certificate) = certificate.subjectAlternativeNames.filter { it[0] == SAN_URI }.map { it[1] as String }
+    private fun uris(certificate: X509Certificate): List<String> {
+        val names = certificate.subjectAlternativeNames
+        return names.filter { it[0] == SAN_URI }.map { it[1] as String }
+    }
 
     @Test
     fun `Агент получает новый сертификат той же личности на новый ключ`() {
@@ -181,7 +184,8 @@ class CertificateRenewalIntegrationTest(
         val certificate = leaf(x)
         assertEquals(t0, certificate.notBefore.toInstant())
         assertEquals(t0 + Duration.ofDays(365), certificate.notAfter.toInstant())
-        assertEquals(certificate.notAfter.toInstant(), RenewalHarness.toInstant(harness.row(harness.serial(x))["not_after"]!!))
+        val recorded = RenewalHarness.toInstant(harness.row(harness.serial(x))["not_after"]!!)
+        assertEquals(certificate.notAfter.toInstant(), recorded)
     }
 
     // --- CSR обязан нести новый допустимый ключ
@@ -214,7 +218,8 @@ class CertificateRenewalIntegrationTest(
             )
         for ((name, csr) in bad) {
             val refusal = harness.refused { harness.renew(x, csr = csr) }
-            assertEquals(CallRefusal(Status.Code.INVALID_ARGUMENT, listOf("CSR_INVALID"), listOf("sard.dev")), refusal, name)
+            val expected = CallRefusal(Status.Code.INVALID_ARGUMENT, listOf("CSR_INVALID"), listOf("sard.dev"))
+            assertEquals(expected, refusal, name)
         }
         harness.assertNoNewCertificates(x, before)
     }
@@ -254,7 +259,9 @@ class CertificateRenewalIntegrationTest(
 
         val refusal = harness.refused { harness.renew(x) }
 
-        assertEquals(CallRefusal(Status.Code.RESOURCE_EXHAUSTED, listOf("RENEWAL_TOO_FREQUENT"), listOf("sard.dev"), 2400), refusal)
+        val expected =
+            CallRefusal(Status.Code.RESOURCE_EXHAUSTED, listOf("RENEWAL_TOO_FREQUENT"), listOf("sard.dev"), 2400)
+        assertEquals(expected, refusal)
         harness.assertNoNewCertificates(x, before)
         assertNull(harness.supersededAt(harness.serial(c2)))
     }
@@ -372,7 +379,10 @@ class CertificateRenewalIntegrationTest(
     fun `Сбой записи в базу при продлении не выпускает сертификат и не расходует лимит`() {
         failedRenewalChangesNothing {
             val failure = JDBCConnectionException("down", SQLException("down"))
-            Mockito.doThrow(failure).`when`(sessions).inTenant(anything(UUID.randomUUID()), anything<(Session) -> Any?> { null })
+            Mockito
+                .doThrow(failure)
+                .`when`(sessions)
+                .inTenant(anything(UUID.randomUUID()), anything<(Session) -> Any?> { null })
         }
     }
 
@@ -382,7 +392,11 @@ class CertificateRenewalIntegrationTest(
             Mockito
                 .doThrow(IllegalStateException("signer down"))
                 .`when`(authority)
-                .issueAgentCertificate(anything(ByteArray(0)), anything(AgentIdentity(tenant, tenant)), anything(AgentRole.SOURCE))
+                .issueAgentCertificate(
+                    anything(ByteArray(0)),
+                    anything(AgentIdentity(tenant, tenant)),
+                    anything(AgentRole.SOURCE),
+                )
         }
     }
 
@@ -403,13 +417,22 @@ class CertificateRenewalIntegrationTest(
             }
 
         val renewed = logs.single { "certificate renewed" in it }
-        for (part in listOf("agent=${x.identity.agentId}", "tenant=$tenant", "old=${harness.serial(x)}", "new=${harness.serial(c2)}")) {
+        val parts =
+            listOf(
+                "agent=${x.identity.agentId}",
+                "tenant=$tenant",
+                "old=${harness.serial(x)}",
+                "new=${harness.serial(c2)}",
+            )
+        for (part in parts) {
             assertTrue(part in renewed, renewed)
         }
         assertTrue("notAfter=${leaf(c2).notAfter.toInstant()}" in renewed, renewed)
         val confirmed = logs.single { "certificate confirmed" in it }
-        assertTrue("agent=${x.identity.agentId}" in confirmed && "superseded=${harness.serial(x)}" in confirmed, confirmed)
-        val body = (c2.chainPem.lines() + Base64.getEncoder().encodeToString(csr)).filter { it.isNotBlank() && !it.startsWith("-----") }
+        assertTrue("agent=${x.identity.agentId}" in confirmed, confirmed)
+        assertTrue("superseded=${harness.serial(x)}" in confirmed, confirmed)
+        val secrets = c2.chainPem.lines() + Base64.getEncoder().encodeToString(csr)
+        val body = secrets.filter { it.isNotBlank() && !it.startsWith("-----") }
         assertFalse(logs.any { "BEGIN" in it || body.any { piece -> piece in it } }, logs.toString())
     }
 

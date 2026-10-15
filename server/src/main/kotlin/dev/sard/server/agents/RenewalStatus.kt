@@ -33,7 +33,9 @@ private fun codeOf(reason: RenewalReason): Status.Code =
  */
 object RenewalStatus {
     fun of(error: Throwable): StatusRuntimeException {
-        val rejected = error as? RenewalRejectedException ?: RenewalRejectedException(RenewalReason.INTERNAL_RETRYABLE, cause = error)
+        val rejected =
+            error as? RenewalRejectedException
+                ?: RenewalRejectedException(RenewalReason.INTERNAL_RETRYABLE, cause = error)
         val info =
             ErrorInfo
                 .newBuilder()
