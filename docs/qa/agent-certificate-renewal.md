@@ -163,6 +163,7 @@ C=$S2/tls/agent.pem; K=$S2/tls/agent.key
 26. Подтверждение сертификата без предшественника: `S5=$QA/s5; host $S5; enroll_as $S5 '{}'; confirm $S5/tls/agent.pem $S5/tls/agent.key; certrows $(cn $S5/tls/agent.pem)`
     → `{}`; одна строка `…|-|f|f`.
 27. Чужие сертификаты:
+
     ```bash
     printf 'subjectAltName=%s\nextendedKeyUsage=clientAuth\n' "$(san $QA/c3.pem | paste -sd,)" > $QA/ext.cnf
     openssl req -new -key $QA/k3.key -subj /CN=$X2 | openssl x509 -req -CA $QA/ca.crt -CAkey $QA/ca.key \
@@ -171,6 +172,7 @@ C=$S2/tls/agent.pem; K=$S2/tls/agent.key
     openssl req -x509 -new -key $QA/k3.key -subj /CN=$X2 -days 1 -addext "$(head -1 $QA/ext.cnf)" -out $QA/self.pem
     renew $QA/self.pem $QA/k3.key $QA/k2.key $QA/x.pem
     ```
+
     → первый — `UNAUTHENTICATED`, `CERT_UNKNOWN`; второй — ошибка рукопожатия TLS
     (`UNAVAILABLE`); `certrows $X2` — по-прежнему три строки.
 28. Отзыв: `a POST /agents/$X2/revoke | tail -1; sleep 61; renew $QA/c3.pem $QA/k3.key $QA/k2.key $QA/x.pem`
@@ -185,22 +187,26 @@ C=$S2/tls/agent.pem; K=$S2/tls/agent.key
 31 и 32 должно пройти не меньше минуты (интервал частоты).
 
 30. Сбой после записи новой пары до подтверждения:
+
     ```bash
     kill $SP; wait $SP; P=$S1/tls
     newkey $P/agent.key.new; renew $P/agent.pem $P/agent.key $P/agent.key.new $P/agent.pem.new; chmod 0644 $P/agent.pem.new
     NEW=$(serial $P/agent.pem.new); OLD=$(serial $P/agent.pem)
     $AG --config $S1/agent.yaml > $QA/s1.out 2>&1 & SP=$!; sleep 5
     ```
+
     → `serial $P/agent.pem` = `$NEW`; файлов `.new` нет; `certrows $XS` — у `$OLD` вытеснение `t`;
     агент `online`; `$DC logs --since 1m server | grep -c "reason=.*$OLD"` → `0`
     (агент не предъявлял старый сертификат).
 31. Сбой между двумя переименованиями (сервер уже подтвердил):
+
     ```bash
     sleep 61; kill $SP; wait $SP
     newkey $P/agent.key.new; renew $P/agent.pem $P/agent.key $P/agent.key.new $P/agent.pem.new; chmod 0644 $P/agent.pem.new
     confirm $P/agent.pem.new $P/agent.key.new; NEW=$(serial $P/agent.pem.new); mv $P/agent.key.new $P/agent.key
     $AG --config $S1/agent.yaml > $QA/s1.out 2>&1 & SP=$!; sleep 5
     ```
+
     → `serial $P/agent.pem` = `$NEW`; файлов `.new` нет; ключ подходит к сертификату
     (`[ "$(pub $P/agent.key)" = "$(pub $P/agent.pem)" ] && echo ok` → `ok`); агент `online`.
 32. Недописанная новая пара:
