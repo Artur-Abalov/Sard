@@ -48,17 +48,21 @@ func TestAFailedAttemptWritesTheStateFileAndWarns(t *testing.T) {
 	e := newEnv(t)
 	e.server.renewFn = failWith(reasoned(codes.Unavailable, "INTERNAL_RETRYABLE"))
 	e.renewNow("WARN certificate renewal failed")
-	st := e.readState()
-	if st.Serial != "1" || st.Failures != 1 || st.LastError != "Unavailable INTERNAL_RETRYABLE" || !st.LastAttempt.Equal(day(200)) || !st.NextAttempt.Equal(day(200).Add(time.Minute)) {
-		t.Fatalf("state = %+v", st)
-	}
-	info, _ := os.Stat(e.statePath())
-	if info.Mode().Perm() != 0o600 {
-		t.Errorf("mode = %v", info.Mode())
-	}
+	e.requireFirstFailureState()
 	line := e.logs.waitFor(t, "WARN certificate renewal failed")
 	if !strings.Contains(line, "last_error=Unavailable INTERNAL_RETRYABLE") || !strings.Contains(line, "next_attempt=2027-05-03T12:01:00Z") {
 		t.Errorf("log = %q", line)
+	}
+}
+
+func (e *env) requireFirstFailureState() {
+	e.t.Helper()
+	st := e.readState()
+	if st.Serial != "1" || st.Failures != 1 || st.LastError != "Unavailable INTERNAL_RETRYABLE" || !st.LastAttempt.Equal(day(200)) || !st.NextAttempt.Equal(day(200).Add(time.Minute)) {
+		e.t.Fatalf("state = %+v", st)
+	}
+	if info, _ := os.Stat(e.statePath()); info.Mode().Perm() != 0o600 {
+		e.t.Errorf("mode = %v", info.Mode())
 	}
 }
 

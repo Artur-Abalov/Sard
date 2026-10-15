@@ -60,11 +60,6 @@ func (h *host) install(p certtest.Pair, suffix string) {
 	h.write("agent.pem"+suffix, p.CertPEM)
 }
 
-func (h *host) exists(name string) bool {
-	_, err := os.Lstat(h.path(name))
-	return err == nil
-}
-
 func (h *host) selectAt(now time.Time) (certpair.Selection, error) {
 	return certpair.Select(h.files(), certpair.OSFS{}, now)
 }
@@ -79,14 +74,11 @@ func TestTheLatestIssuedUsablePairIsSelected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Pair.KeyFile != h.path("agent.key.new") || got.Pair.CertFile != h.path("agent.pem.new") || !got.KeyIsNew || !got.CertIsNew || !got.Pending() {
+	if got.Pair != (certpair.Pair{KeyFile: h.path("agent.key.new"), CertFile: h.path("agent.pem.new")}) || !got.KeyIsNew || !got.CertIsNew || !got.Pending() {
 		t.Fatalf("selection = %+v", got)
 	}
-	if got.Cert.Serial != "2" || !got.Cert.NotBefore.Equal(day(200)) || !got.Cert.NotAfter.Equal(day(500)) {
-		t.Fatalf("cert = %+v", got.Cert)
-	}
-	if len(got.Stale) != 0 {
-		t.Fatalf("stale = %v", got.Stale)
+	if want := (certpair.Cert{Serial: "2", NotBefore: day(200), NotAfter: day(500)}); got.Cert != want || len(got.Stale) != 0 {
+		t.Fatalf("cert = %+v, stale = %v", got.Cert, got.Stale)
 	}
 }
 
@@ -216,17 +208,22 @@ func TestAnIncompleteNewPairAndTempFilesAreStale(t *testing.T) {
 		if err != nil || got.Cert.Serial != "1" || got.Pending() {
 			t.Fatalf("%s: selection = %+v, err = %v", name, got, err)
 		}
-		entries, _ := os.ReadDir(h.dir)
-		var left []string
-		for _, e := range entries {
-			if e.Name() != "agent.key" && e.Name() != "agent.pem" {
-				left = append(left, filepath.Join(h.dir, e.Name()))
-			}
-		}
-		if len(got.Stale) != len(left) {
-			t.Fatalf("%s: stale = %v, files = %v", name, got.Stale, left)
+		if len(got.Stale) != len(h.extraFiles()) {
+			t.Fatalf("%s: stale = %v, files = %v", name, got.Stale, h.extraFiles())
 		}
 	}
+}
+
+// extraFiles are the files of the directory besides the current pair.
+func (h *host) extraFiles() []string {
+	entries, _ := os.ReadDir(h.dir)
+	var left []string
+	for _, e := range entries {
+		if e.Name() != "agent.key" && e.Name() != "agent.pem" {
+			left = append(left, e.Name())
+		}
+	}
+	return left
 }
 
 // Scenario: Без единой согласованной пары агент сообщает о незавершённой регистрации
@@ -264,7 +261,13 @@ func TestWhenEveryConsistentPairExpiredSelectionSaysWhen(t *testing.T) {
 	if got.Expired.Error() != want || got.Pair.KeyFile != h.path("agent.key") {
 		t.Fatalf("error = %q, pair = %+v", got.Expired.Error(), got.Pair)
 	}
-	if got, err = h.selectAt(day(300).Add(-time.Second)); err != nil || got.Expired != nil {
+}
+
+func TestOneSecondBeforeTheExpiryThePairIsUsable(t *testing.T) {
+	t.Parallel()
+	h := newHost(t)
+	h.install(h.pair(1, t0, day(300)), "")
+	if got, err := h.selectAt(day(300).Add(-time.Second)); err != nil || got.Expired != nil {
 		t.Fatalf("selection = %+v, err = %v", got, err)
 	}
 }

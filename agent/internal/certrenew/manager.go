@@ -206,11 +206,7 @@ func (m *Manager) request(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	key, err := enroll.NewIdentityKey(m.o.Random)
-	if err != nil {
-		return err
-	}
-	csr, err := enroll.BuildCSR(m.o.Random, key, m.o.Hostname)
+	key, csr, err := m.newRequest()
 	if err != nil {
 		return err
 	}
@@ -233,6 +229,16 @@ func (m *Manager) request(ctx context.Context) error {
 	}
 	m.pending = &pendingPair{old: cur.SerialNumber.Text(16), sel: certpair.Selection{Pair: certpair.NewPair(m.o.Files), KeyIsNew: true, CertIsNew: true}}
 	return nil
+}
+
+// newRequest generates the new key and the CSR for it.
+func (m *Manager) newRequest() (*ecdsa.PrivateKey, []byte, error) {
+	key, err := enroll.NewIdentityKey(m.o.Random)
+	if err != nil {
+		return nil, nil, err
+	}
+	csr, err := enroll.BuildCSR(m.o.Random, key, m.o.Hostname)
+	return key, csr, err
 }
 
 // pendingPair is a new pair on disk that the server has not confirmed yet.

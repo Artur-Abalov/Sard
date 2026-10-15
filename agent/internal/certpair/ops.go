@@ -6,7 +6,6 @@ package certpair
 import (
 	"errors"
 	"os"
-	"path/filepath"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 )
@@ -55,16 +54,7 @@ func Promote(fsys FS, files config.TLS, sel Selection) error {
 func Discard(fsys FS, files config.TLS) []string {
 	var found []string
 	for _, dir := range dirsOf(files) {
-		entries, err := fsys.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			path := filepath.Join(dir, e.Name())
-			if isRenewalFile(files, path) {
-				found = append(found, path)
-			}
-		}
+		found = append(found, renewalFilesIn(dir, files, fsys)...)
 	}
 	return Remove(fsys, found)
 }

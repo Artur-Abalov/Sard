@@ -141,25 +141,41 @@ func (c *candidate) read(owner string, fsys FS, now time.Time) error {
 // pair needs: a usable pair that was not selected keeps its files, because
 // the next renewal overwrites them.
 func stale(files config.TLS, fsys FS, consistent []candidate) []string {
-	keep := map[string]bool{}
-	for _, c := range consistent {
-		if !c.expired {
-			for _, f := range c.newFiles {
-				keep[f] = true
+	keep := keptFiles(consistent)
+	var out []string
+	for _, dir := range dirsOf(files) {
+		for _, path := range renewalFilesIn(dir, files, fsys) {
+			if !keep[path] {
+				out = append(out, path)
 			}
 		}
 	}
-	var out []string
-	for _, dir := range dirsOf(files) {
-		entries, err := fsys.ReadDir(dir)
-		if err != nil {
+	return out
+}
+
+// keptFiles are the ".new" files of the pairs that are not expired.
+func keptFiles(consistent []candidate) map[string]bool {
+	keep := map[string]bool{}
+	for _, c := range consistent {
+		if c.expired {
 			continue
 		}
-		for _, e := range entries {
-			path := filepath.Join(dir, e.Name())
-			if isRenewalFile(files, path) && !keep[path] {
-				out = append(out, path)
-			}
+		for _, f := range c.newFiles {
+			keep[f] = true
+		}
+	}
+	return keep
+}
+
+func renewalFilesIn(dir string, files config.TLS, fsys FS) []string {
+	entries, err := fsys.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if path := filepath.Join(dir, e.Name()); isRenewalFile(files, path) {
+			out = append(out, path)
 		}
 	}
 	return out

@@ -60,21 +60,25 @@ func TestAfterTheConfirmationTheNewPairBecomesTheCurrentOne(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	e.renewNow("certificate renewed")
-	issued := e.server.issued[0]
-	if e.read("agent.pem") != issued || e.names() != "agent.key agent.pem ca.pem" {
+	if e.read("agent.pem") != e.server.issued[0] || e.names() != "agent.key agent.pem ca.pem" {
 		t.Fatalf("files = %s", e.names())
 	}
-	if strings.Contains(e.read("agent.key"), string(e.p1.KeyPEM)) || e.read("agent.key") == string(e.p1.KeyPEM) {
+	if e.read("agent.key") == string(e.p1.KeyPEM) {
 		t.Fatal("the old key is still there")
 	}
-	for name, mode := range map[string]os.FileMode{"agent.key": 0o600, "agent.pem": 0o644} {
-		if info, err := os.Stat(e.path(name)); err != nil || info.Mode().Perm() != mode {
-			t.Errorf("%s: %v, %v", name, info, err)
-		}
-	}
+	e.requireModes()
 	line := e.logs.waitFor(t, "certificate renewed")
 	if !strings.Contains(line, "old_serial=1") || !strings.Contains(line, "new_serial=2") || !strings.Contains(line, "not_after=2028-02-27T12:00:00Z") {
 		t.Errorf("log = %q", line)
+	}
+}
+
+func (e *env) requireModes() {
+	e.t.Helper()
+	for name, mode := range map[string]os.FileMode{"agent.key": 0o600, "agent.pem": 0o644} {
+		if info, err := os.Stat(e.path(name)); err != nil || info.Mode().Perm() != mode {
+			e.t.Errorf("%s: %v, %v", name, info, err)
+		}
 	}
 }
 

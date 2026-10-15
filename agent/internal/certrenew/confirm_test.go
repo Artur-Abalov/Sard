@@ -94,13 +94,18 @@ func TestATemporaryRefusalOfTheConfirmationRepeatsOnlyTheConfirmation(t *testing
 		}
 		e.clock.Advance(e.idle())
 		e.logs.waitFor(t, "certificate renewed")
-		confirms := e.server.callsOf("confirm")
-		if n := len(e.server.callsOf("renew")); n != 1 || len(confirms) != 2 || confirms[0].presented != "2" || confirms[1].presented != "2" {
-			t.Fatalf("%v: renewals = %d, confirmations = %+v", temporary, n, confirms)
-		}
-		if e.names() != "agent.key agent.pem ca.pem" || e.read("agent.pem") != e.server.issued[0] {
-			t.Errorf("%v: files = %s", temporary, e.names())
-		}
+		e.requireConfirmedTwice(temporary)
+	}
+}
+
+func (e *env) requireConfirmedTwice(why error) {
+	e.t.Helper()
+	confirms := e.server.callsOf("confirm")
+	if n := len(e.server.callsOf("renew")); n != 1 || len(confirms) != 2 || confirms[0].presented != "2" || confirms[1].presented != "2" {
+		e.t.Fatalf("%v: renewals = %d, confirmations = %+v", why, n, confirms)
+	}
+	if e.names() != "agent.key agent.pem ca.pem" || e.read("agent.pem") != e.server.issued[0] {
+		e.t.Errorf("%v: files = %s", why, e.names())
 	}
 }
 
