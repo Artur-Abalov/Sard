@@ -14,6 +14,7 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Duration
 import java.time.Instant
+import java.util.UUID
 
 private const val BINARY = 1024
 private const val SECONDS_PER_MINUTE = 60L
@@ -29,8 +30,8 @@ class RunNoticeFormatter(
 ) : NotificationFormatter {
     private val words = wording(language)
     private val figures = NoticeFigures(words)
-    private val lines = NoticeLines(words, figures)
-    private val restores = RestoreNoticeFormatter(words, figures, lines, console)
+    private val lines = NoticeLines(words, figures, console)
+    private val restores = RestoreNoticeFormatter(words, figures, lines)
 
     override fun format(notice: RunNotice): Message? {
         val telling = Telling.of(notice) ?: return null
@@ -63,8 +64,7 @@ class RunNoticeFormatter(
                 listOf(listOf(Message.Text(words.agent), Message.Code(notice.agentHostname))),
                 listOfNotNull(lines.durationLine(notice.startedAt, notice.finishedAt)),
                 outcome(notice),
-                listOf(listOf(Message.Text(words.run), Message.Code("${notice.runId}"))),
-                listOfNotNull(console?.let { listOf(Message.Text(it.run(notice.runId))) }),
+                lines.runLines(notice.runId),
             ).flatten()
         return Message.ofLines(parts)
     }
@@ -123,11 +123,17 @@ class RunNoticeFormatter(
 /** What the restore step reported, null when it reported nothing. */
 private val RunNotice.result get() = restore?.result
 
-/** The lines a backup's message and a restore's share: the reason (cut to a limit) and the duration. */
+/** The lines a backup's message and a restore's share: the reason (cut to a limit), the duration and the run. */
 internal class NoticeLines(
     private val words: Wording,
     private val figures: NoticeFigures,
+    private val console: ConsoleUrl?,
 ) {
+    /** The run's id, and its address in the console when there is one. */
+    fun runLines(runId: UUID): List<List<Message.Part>> =
+        listOf(listOf(Message.Text(words.run), Message.Code("$runId"))) +
+            listOfNotNull(console?.let { listOf(Message.Text(it.run(runId))) })
+
     fun reasonLines(message: String?): List<List<Message.Part>> {
         val text = message.orEmpty()
         if (text.isBlank()) return listOf(listOf(Message.Text(words.notGiven)))
@@ -157,7 +163,6 @@ internal class RestoreNoticeFormatter(
     private val words: Wording,
     private val figures: NoticeFigures,
     private val lines: NoticeLines,
-    private val console: ConsoleUrl?,
 ) {
     /** A restore (ВК39): what it restored, or why not and what is left. */
     fun compose(notice: RunNotice): Message {
@@ -170,8 +175,7 @@ internal class RestoreNoticeFormatter(
                 listOfNotNull(snapshotLine(notice.restore)),
                 listOfNotNull(lines.durationLine(notice.startedAt, notice.finishedAt)),
                 restoreOutcome(notice),
-                listOf(listOf(Message.Text(words.run), Message.Code("${notice.runId}"))),
-                listOfNotNull(console?.let { listOf(Message.Text(it.run(notice.runId))) }),
+                lines.runLines(notice.runId),
             ).flatten()
         return Message.ofLines(parts)
     }

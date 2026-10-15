@@ -16,7 +16,6 @@ private val JSON = JsonMapper.builder().build()
 private const val HOLDERS =
     "select a, r.name from Agent a, AgentRepositoryRecord r " +
         "where r.agentId = a.id and r.repositoryId = :repository and a.revokedAt is null order by r.name"
-private const val FILES = "files"
 private const val ADDRESS = "адрес хранилища"
 private const val PASSWORD_FILE = "файл с копией пароля"
 
@@ -87,7 +86,7 @@ internal object RestoreTargets {
         snapshot: SnapshotRecord,
     ): String {
         val config =
-            if (source.plugin == FILES) {
+            if (source.plugin == FILES_PLUGIN) {
                 mapOf("destination" to RestoreDefaults.destination(source.name, snapshot.createdAt))
             } else {
                 emptyMap()

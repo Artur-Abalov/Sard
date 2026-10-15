@@ -39,6 +39,12 @@ const route = getRouteApi('/_app/sources/$sourceId/snapshots/$snapshotId/restore
 
 type Config = Record<string, unknown>
 
+// What the check and the start POST.
+interface RestoreRequest {
+  agentId: string
+  config: Config
+}
+
 // What the form holds for the chosen agent: its values for a form schema, the JSON text otherwise.
 interface Draft {
   agentId: string
@@ -159,9 +165,7 @@ function Preview({ preview }: { preview: RestorePreview }) {
   )
 }
 
-interface Previewed {
-  agentId: string
-  config: Config
+interface Previewed extends RestoreRequest {
   preview: RestorePreview
 }
 
@@ -171,7 +175,7 @@ function useRestoreCalls(sourceId: string, snapshotId: string) {
   const queryClient = useQueryClient()
   const path = { params: { path: { sourceId, snapshotId } } }
   const check = useMutation({
-    mutationFn: (body: { agentId: string; config: Config }) =>
+    mutationFn: (body: RestoreRequest) =>
       call(
         client.POST('/api/v1/sources/{sourceId}/snapshots/{snapshotId}/restores/preview', {
           ...path,
@@ -180,7 +184,7 @@ function useRestoreCalls(sourceId: string, snapshotId: string) {
       ).then((preview): Previewed => ({ ...body, preview })),
   })
   const start = useMutation({
-    mutationFn: (body: { agentId: string; config: Config }) =>
+    mutationFn: (body: RestoreRequest) =>
       call(
         client.POST('/api/v1/sources/{sourceId}/snapshots/{snapshotId}/restores', {
           ...path,
@@ -265,9 +269,9 @@ function Actions({
   start,
   ready,
 }: {
-  request: { agentId: string; config: Config } | null
-  check: { isPending: boolean; mutate: (body: { agentId: string; config: Config }) => void }
-  start: { isPending: boolean; mutate: (body: { agentId: string; config: Config }) => void }
+  request: RestoreRequest | null
+  check: { isPending: boolean; mutate: (body: RestoreRequest) => void }
+  start: { isPending: boolean; mutate: (body: RestoreRequest) => void }
   ready: boolean
 }) {
   const { t } = useTranslation()

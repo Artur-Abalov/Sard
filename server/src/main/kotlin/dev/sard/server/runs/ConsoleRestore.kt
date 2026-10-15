@@ -18,10 +18,13 @@ enum class RestoreBlock(
     PLUGIN_NOT_SUPPORTED("plugin_not_supported"),
 }
 
+/** The plugin whose restore the console writes (R2a). */
+internal const val FILES_PLUGIN = "files"
+
 /** Which snapshots the console restores: complete, still in the repository, of a plugin whose restore is written. */
 internal object RestoreSupport {
     /** The plugins the console restores: files (R2a); postgresql comes with R2b. */
-    private val PLUGINS = setOf("files")
+    private val PLUGINS = setOf(FILES_PLUGIN)
 
     fun blocked(
         plugin: String,

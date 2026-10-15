@@ -12,6 +12,8 @@ import dev.sard.server.runs.Trigger
 import dev.sard.server.scheduler.CatchUpPeriod
 import tools.jackson.core.type.TypeReference
 import tools.jackson.databind.json.JsonMapper
+import dev.sard.server.runs.RestoreInfo as DomainRestoreInfo
+import dev.sard.server.runs.RestoreResult as DomainRestoreResult
 import dev.sard.server.runs.RunKind as DomainRunKind
 
 private val JSON = JsonMapper.builder().build()
@@ -112,7 +114,7 @@ internal object RunMapping {
 
 /** The restore facts of a run and a step, under the wire names. */
 internal object RestoreMapping {
-    fun runRestore(restore: dev.sard.server.runs.RestoreInfo) =
+    fun runRestore(restore: DomainRestoreInfo) =
         RunRestore(
             restore.snapshotId,
             restore.snapshotCreatedAt,
@@ -121,7 +123,7 @@ internal object RestoreMapping {
             restore.target,
         )
 
-    fun output(result: dev.sard.server.runs.RestoreResult) =
+    fun output(result: DomainRestoreResult) =
         RestoreOutput(
             result.target,
             result.filesRestored,
@@ -135,7 +137,6 @@ internal object RestoreMapping {
 
     /**
      * A restore is all or nothing: a failed step restored nothing unless the agent names what its rollback left.
-     * A lost step is late only when its late output says where the data is.
      */
     fun outcome(step: StepView): RestoreOutcome? =
         when {
@@ -146,7 +147,7 @@ internal object RestoreMapping {
 
     private fun ended(
         status: StepState,
-        result: dev.sard.server.runs.RestoreResult?,
+        result: DomainRestoreResult?,
     ): RestoreOutcome? =
         when {
             status == StepState.SUCCEEDED -> if (result == null) null else RestoreOutcome.RESTORED
@@ -156,6 +157,9 @@ internal object RestoreMapping {
         }
 
     // A lost step is late only when its late output says where the data is.
-    private fun late(result: dev.sard.server.runs.RestoreResult?): RestoreOutcome? =
-        if (result?.target.isNullOrEmpty()) null else RestoreOutcome.LATE
+    private fun late(result: DomainRestoreResult?): RestoreOutcome? =
+        when {
+            result?.target.isNullOrEmpty() -> null
+            else -> RestoreOutcome.LATE
+        }
 }
