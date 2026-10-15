@@ -251,6 +251,19 @@ class CertificateRenewalStreamIntegrationTest(
         assertEquals(Ended(Status.Code.UNAUTHENTICATED, "CERT_EXPIRED"), stream.ended())
     }
 
+    @Test
+    fun `Агент без продления работает со своим сертификатом до его срока`() {
+        val c1 = enrolled()
+        clock.now = start - Duration.ofDays(1) + Duration.ofDays(364)
+
+        val response = harness.register(c1)
+        val stream = greeted(c1)
+
+        assertEquals(c1.identity.agentId.toString(), response.agentId)
+        assertTrue(stream.isOpen)
+        assertTrue(registry.online(c1.identity.agentId))
+    }
+
     // --- Сверка открытых потоков (S5a)
 
     @Test

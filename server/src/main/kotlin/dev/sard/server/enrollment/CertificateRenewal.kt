@@ -6,7 +6,6 @@ package dev.sard.server.enrollment
 import dev.sard.server.persistence.Agent
 import dev.sard.server.persistence.AgentCertificateRecord
 import dev.sard.server.persistence.TenantSessions
-import dev.sard.server.pki.AgentCsr
 import dev.sard.server.pki.AgentIdentity
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.InvalidCsrException
@@ -23,7 +22,6 @@ import kotlin.coroutines.cancellation.CancellationException
 private val log = LoggerFactory.getLogger(CertificateRenewal::class.java)
 
 private const val SERIAL_RADIX = 16
-private const val NANOS_PER_SECOND = 1_000_000_000L
 
 private const val LATEST_ISSUE = "select max(c.issuedAt) from AgentCertificateRecord c where c.agentId = :agent"
 
@@ -90,8 +88,7 @@ class CertificateRenewal(
         csrDer: ByteArray,
     ): RenewedCertificate =
         try {
-            val csrKey = csrKey(csrDer)
-            if (csrKey.contentEquals(caller.key)) throw RenewalRejectedException(RenewalReason.CSR_KEY_REUSED)
+            RenewalChecks.requireNewKey(csrDer, caller.key)
             val renewed = wrapUnexpected { sessions.inTenant(caller.tenantId) { renewIn(it, caller, csrDer) } }
             log.info(
                 "certificate renewed: agent={} tenant={} old={} new={} notAfter={}",
@@ -133,13 +130,6 @@ class CertificateRenewal(
         }
     }
 
-    private fun csrKey(csrDer: ByteArray): ByteArray =
-        try {
-            AgentCsr.verifiedKey(csrDer).encoded
-        } catch (e: InvalidCsrException) {
-            throw RenewalRejectedException(RenewalReason.CSR_INVALID, cause = e)
-        }
-
     private fun renewIn(
         session: Session,
         caller: RenewalCaller,
@@ -172,17 +162,9 @@ class CertificateRenewal(
             session
                 .createSelectionQuery(LATEST_ISSUE, Instant::class.java)
                 .setParameter("agent", agentId)
-                .uniqueResult() ?: return
-        val wait = Duration.between(now, latest + interval)
-        if (wait.isPositive) {
-            throw RenewalRejectedException(RenewalReason.RENEWAL_TOO_FREQUENT, retryAfter = wholeSeconds(wait))
-        }
-    }
-
-    /** Rounded up to whole seconds; a positive [wait] is therefore at least one second. */
-    private fun wholeSeconds(wait: Duration): Duration {
-        val seconds = (wait.toNanos() + NANOS_PER_SECOND - 1) / NANOS_PER_SECOND
-        return Duration.ofSeconds(seconds)
+                .uniqueResult()
+        val wait = RenewalChecks.retryAfter(latest, now, interval) ?: return
+        throw RenewalRejectedException(RenewalReason.RENEWAL_TOO_FREQUENT, retryAfter = wait)
     }
 
     /** The serial this call superseded, or null when it changed nothing. */
