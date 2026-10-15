@@ -66,13 +66,7 @@ func decide(files config.TLS, fsys FS, now time.Time, consistent []candidate) (S
 	if len(consistent) == 0 {
 		return Selection{}, currentPairError(files, fsys)
 	}
-	var best *candidate
-	for i := range consistent {
-		c := &consistent[i]
-		if !c.expired && (best == nil || c.cert.NotBefore.After(best.cert.NotBefore)) {
-			best = c
-		}
-	}
+	best := latest(consistent)
 	if best == nil {
 		return expiredSelection(files, fsys), nil
 	}
@@ -80,6 +74,18 @@ func decide(files config.TLS, fsys FS, now time.Time, consistent []candidate) (S
 		Pair: best.pair, KeyIsNew: best.keyIsNew, CertIsNew: best.certIsNew, Cert: best.cert,
 		Stale: stale(files, fsys, consistent),
 	}, nil
+}
+
+// latest is the pair not expired with the latest NotBefore; the first of equals.
+func latest(consistent []candidate) *candidate {
+	var best *candidate
+	for i := range consistent {
+		c := &consistent[i]
+		if !c.expired && (best == nil || c.cert.NotBefore.After(best.cert.NotBefore)) {
+			best = c
+		}
+	}
+	return best
 }
 
 // currentPairError is why the current pair is not a pair of its own.

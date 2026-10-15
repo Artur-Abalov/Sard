@@ -151,14 +151,9 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 	}
 	cfg, me := local.cfg, local.host
 	removeStale(local, rt)
-	// A5b: no usable restic, no start — before the network (С5).
-	resticBinary, err := checkRestic(ctx, cfg, configPath, executable, restic.ProcessExecutor{}, nil)
+	resticBinary, hostname, err := checkHost(ctx, cfg, configPath, hostnameOf, executable)
 	if err != nil {
 		return err
-	}
-	hostname, err := hostnameOf()
-	if err != nil {
-		return fmt.Errorf("hostname: %w", err)
 	}
 	_, _ = fmt.Fprintf(stdout, "sard-agent %s: connecting to %s as %s\n", version, cfg.Server.Address, me.role)
 	renewal := newRenewal(cfg, hostname, rt)
@@ -166,6 +161,20 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 		return err
 	}
 	return refuse(serve(ctx, cfg, me.role, newAgent(cfg, hostname, resticBinary, me.machineID), renewal, rt), configPath, cfg)
+}
+
+// checkHost finds restic and the host name, before the network.
+func checkHost(ctx context.Context, cfg config.Config, configPath string, hostnameOf hostnameFunc, executable func() (string, error)) (resticBinary, hostname string, err error) {
+	// A5b: no usable restic, no start — before the network (С5).
+	resticBinary, err = checkRestic(ctx, cfg, configPath, executable, restic.ProcessExecutor{}, nil)
+	if err != nil {
+		return "", "", err
+	}
+	hostname, err = hostnameOf()
+	if err != nil {
+		return "", "", fmt.Errorf("hostname: %w", err)
+	}
+	return resticBinary, hostname, nil
 }
 
 // removeStale deletes the renewal files that belong to no usable pair and

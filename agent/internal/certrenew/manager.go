@@ -206,18 +206,8 @@ func (m *Manager) request(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	key, csr, err := m.newRequest()
+	key, chain, err := m.ask(ctx)
 	if err != nil {
-		return err
-	}
-	chain, err := m.o.Caller.Renew(ctx, m.o.Files.CertFile, m.o.Files.KeyFile, csr)
-	if status.Code(err) == codes.Unimplemented {
-		return errNoRenewal
-	}
-	if err != nil {
-		return err
-	}
-	if err := m.checkResponse(chain, key); err != nil {
 		return err
 	}
 	keyPEM, err := marshalKey(key)
@@ -229,6 +219,22 @@ func (m *Manager) request(ctx context.Context) error {
 	}
 	m.pending = &pendingPair{old: cur.SerialNumber.Text(16), sel: certpair.Selection{Pair: certpair.NewPair(m.o.Files), KeyIsNew: true, CertIsNew: true}}
 	return nil
+}
+
+// ask sends a CSR for a new key over the current pair and checks the answer.
+func (m *Manager) ask(ctx context.Context) (*ecdsa.PrivateKey, string, error) {
+	key, csr, err := m.newRequest()
+	if err != nil {
+		return nil, "", err
+	}
+	chain, err := m.o.Caller.Renew(ctx, m.o.Files.CertFile, m.o.Files.KeyFile, csr)
+	if status.Code(err) == codes.Unimplemented {
+		return nil, "", errNoRenewal
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	return key, chain, m.checkResponse(chain, key)
 }
 
 // newRequest generates the new key and the CSR for it.

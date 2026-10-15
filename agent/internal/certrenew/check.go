@@ -54,10 +54,8 @@ func parseChain(chain string) []*x509.Certificate {
 
 // checkNames: the identity URI and the role URI of the answer are the current ones.
 func (m *Manager) checkNames(chain string) error {
-	want, err := identity.Read(m.o.Files.CertFile, m.o.FS.ReadFile)
-	if err != nil {
-		return err
-	}
+	// An unreadable current certificate leaves nothing to match: the answer is refused.
+	want, _ := identity.Read(m.o.Files.CertFile, m.o.FS.ReadFile)
 	got, err := identity.Read("the answer", func(string) ([]byte, error) { return []byte(chain), nil })
 	if err != nil {
 		return invalid("the certificate carries no usable identity or role")

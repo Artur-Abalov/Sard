@@ -4,8 +4,13 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"strconv"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // docs/specs/agent/agent-certificate-renewal.feature, tag @renewal: the agent whole.
@@ -100,5 +105,23 @@ func (h *renewalHost) reconnect(n int) {
 		}
 		h.clock.Advance(time.Minute)
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// Scenario: Неудачное продление не останавливает агента и не трогает поток
+func TestAFailingRenewalDoesNotStopTheAgentOrTouchTheStream(t *testing.T) {
+	t.Parallel()
+	h := newRenewalHost(t)
+	h.server.renew = func(string, int, *ecdsa.PublicKey) (string, error) { return "", status.Error(codes.Internal, "boom") }
+	a := h.registered()
+	h.renewalPause()
+	h.clock.Advance(200 * 24 * time.Hour)
+	for n := 1; n <= 3; n++ {
+		h.server.waitCount(t, "renew", n)
+		h.waitLog("failures=" + strconv.Itoa(n))
+		h.clock.Advance(time.Hour)
+	}
+	if a.exited() || h.server.count("connect") != 1 || h.server.count("register") != 1 {
+		t.Fatalf("exited = %v, events = %v", a.exited(), h.server.eventLog())
 	}
 }

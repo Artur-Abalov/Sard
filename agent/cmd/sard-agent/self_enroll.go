@@ -194,22 +194,30 @@ func rejectedUntilNewToken(ctx context.Context, configPath, tokenPath string, re
 		return false, reportFailure(stderr, err)
 	}
 	s := &selfEnroller{configPath: configPath, tokenPath: tokenPath, cfg: cfg, stdout: stdout, stderr: stderr, deps: deps}
-	say := func() { _, _ = fmt.Fprintln(stderr, "sard-agent:", refused.line(true)) }
-	say()
-	repeat := deps.clock.After(rejectedRepeat)
+	return s.waitRejected(ctx, refused)
+}
+
+// waitRejected is the loop of rejectedUntilNewToken.
+func (s *selfEnroller) waitRejected(ctx context.Context, refused *refusedError) (bool, int) {
+	s.sayRefused(refused)
+	repeat := s.deps.clock.After(rejectedRepeat)
 	for {
 		select {
 		case <-ctx.Done():
 			return false, exitOK
 		case <-repeat:
-			say()
-			repeat = deps.clock.After(rejectedRepeat)
-		case <-deps.clock.After(selfEnrollPollInterval):
+			s.sayRefused(refused)
+			repeat = s.deps.clock.After(rejectedRepeat)
+		case <-s.deps.clock.After(selfEnrollPollInterval):
 			if o := s.newToken(ctx); o.kind != outcomeWait {
 				return o.kind == outcomeProceed, o.code
 			}
 		}
 	}
+}
+
+func (s *selfEnroller) sayRefused(refused *refusedError) {
+	_, _ = fmt.Fprintln(s.stderr, "sard-agent:", refused.line(true))
 }
 
 // newToken enrolls with the token in the file when it is there and unspent;
