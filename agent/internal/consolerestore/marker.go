@@ -95,16 +95,26 @@ func parseMarker(data []byte) (m marker, err error) {
 // journal is not covered), and the failure is logged.
 func removeCommand(staging hostsetup.Dir, name string, log *slog.Logger) error {
 	if dir, err := staging.Open(name); err == nil {
-		defer func() { _ = dir.Close() }()
-		for _, n := range []string{markerName, markerTemp} {
-			if err := dir.Remove(n); err != nil && !errors.Is(err, fs.ErrNotExist) {
-				return err
-			}
-		}
-		if err := dir.Sync(); err != nil {
-			log.Warn("the removal of the marker could not be synced to disk; the order of marker and root rests on the filesystem journal",
-				"path", dir.Path(), "error", err)
+		err = removeMarkers(dir, log)
+		_ = dir.Close()
+		if err != nil {
+			return err
 		}
 	}
 	return hostsetup.RemoveTree(staging, name)
+}
+
+// removeMarkers removes the marker and its temporary file from the directory
+// of a command and syncs the directory.
+func removeMarkers(dir hostsetup.Dir, log *slog.Logger) error {
+	for _, n := range []string{markerName, markerTemp} {
+		if err := dir.Remove(n); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	if err := dir.Sync(); err != nil {
+		log.Warn("the removal of the marker could not be synced to disk; the order of marker and root rests on the filesystem journal",
+			"path", dir.Path(), "error", err)
+	}
+	return nil
 }
