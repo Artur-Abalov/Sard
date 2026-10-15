@@ -8,6 +8,7 @@ import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder
 import java.math.BigInteger
 import java.security.MessageDigest
 import java.security.cert.X509Certificate
+import java.time.Duration
 import java.time.Instant
 import java.util.HexFormat
 import java.util.UUID
@@ -44,12 +45,14 @@ interface CertificateAuthority {
     /**
      * Signs an agent CSR (DER): a client-only certificate naming [agent] and carrying [role] as a second
      * URI in its SAN, whatever the CSR asks for. Throws [InvalidCsrException] for a bad signature or an
-     * unsupported key.
+     * unsupported key. The certificate lives [validity] (`sard.pki.agent-certificate-validity`, C1 П1); the
+     * implementation clamps the end to the end of its own CA.
      */
     fun issueAgentCertificate(
         csrDer: ByteArray,
         agent: AgentIdentity,
         role: AgentRole,
+        validity: Duration,
     ): IssuedCertificate
 }
 

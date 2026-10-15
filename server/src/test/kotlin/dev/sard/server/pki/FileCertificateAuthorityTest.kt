@@ -91,7 +91,7 @@ class FileCertificateAuthorityTest {
         role: AgentRole = AgentRole.SOURCE,
     ): X509Certificate {
         val ca = ca()
-        val issued = MutFlow.underTest { ca.issueAgentCertificate(resource(csr), AGENT, role) }
+        val issued = MutFlow.underTest { ca.issueAgentCertificate(resource(csr), AGENT, role, YEAR) }
         val chain = certificates(issued.chainPem)
         val leaf = chain.first()
         leaf.verify(caCertificate(ca).publicKey)
@@ -145,7 +145,7 @@ class FileCertificateAuthorityTest {
         val ca = ca()
         val notCsr = byteArrayOf(1, 2, 3)
         assertFailsWith<InvalidCsrException> {
-            MutFlow.underTest { ca.issueAgentCertificate(notCsr, AGENT, AgentRole.SOURCE) }
+            MutFlow.underTest { ca.issueAgentCertificate(notCsr, AGENT, AgentRole.SOURCE, YEAR) }
         }
     }
 

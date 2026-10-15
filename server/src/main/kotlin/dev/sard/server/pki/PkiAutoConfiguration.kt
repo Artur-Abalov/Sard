@@ -14,6 +14,7 @@ import org.springframework.boot.ssl.SslBundle
 import org.springframework.boot.ssl.SslManagerBundle
 import org.springframework.context.SmartLifecycle
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.DependsOn
 import java.nio.file.Path
 import java.security.KeyStore
 import java.security.SecureRandom
@@ -65,9 +66,9 @@ class PkiAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    @DependsOn("agentCertificatePolicy")
     fun certificateAuthority(
         properties: PkiProperties,
-        policy: AgentCertificatePolicy,
         clock: ObjectProvider<Clock>,
         preconditions: ObjectProvider<CaStartPrecondition>,
         ledger: CaLedger,
@@ -85,8 +86,7 @@ class PkiAutoConfiguration {
             }
         val random = SecureRandom()
         val time = clock.getIfAvailable { Clock.systemUTC() }
-        val validity = policy.validity
-        return FileCertificateAuthority(properties.dir, names, time, random, ledger, importDir, listener, validity)
+        return FileCertificateAuthority(properties.dir, names, time, random, ledger, importDir, listener)
     }
 
     /** Server key from the CA; client certificates, when presented, must chain to it. */

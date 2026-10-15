@@ -31,6 +31,7 @@ class ServerCertificateRenewalTest {
             csrDer: ByteArray,
             agent: AgentIdentity,
             role: AgentRole,
+            validity: java.time.Duration,
         ) = error("unused")
 
         override fun renewServerCertificate(): Boolean {

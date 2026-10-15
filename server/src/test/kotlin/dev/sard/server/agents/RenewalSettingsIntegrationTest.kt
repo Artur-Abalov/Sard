@@ -10,11 +10,13 @@ import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures
 import dev.sard.server.role.AgentRole
+import org.mockito.Mockito
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.grpc.test.autoconfigure.LocalGrpcServerPort
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import java.time.Duration
 import java.time.Instant
 import kotlin.test.AfterTest
@@ -59,6 +61,24 @@ class TenMinuteValidityIntegrationTest(
     @Autowired clock: MovableClock,
     @LocalGrpcServerPort grpcPort: Int,
 ) : RenewalSettingsTestBase(ca, enrollment, tokens, jdbc, clock, grpcPort) {
+    @MockitoSpyBean
+    lateinit var authority: CertificateAuthority
+
+    @Test
+    fun `Регистрация и продление передают CA настроенный срок`() {
+        val x = fixtures.enrolled(tenant)
+        clock.now = t0 + Duration.ofMinutes(7)
+        harness.renew(x)
+
+        val asked =
+            Mockito
+                .mockingDetails(authority)
+                .invocations
+                .filter { it.method.name == "issueAgentCertificate" }
+                .map { it.arguments[3] }
+        assertEquals(listOf(Duration.ofMinutes(10), Duration.ofMinutes(10)), asked)
+    }
+
     @Test
     fun `Настроенный срок действует на регистрацию`() {
         val x = fixtures.enrolled(tenant)

@@ -80,6 +80,8 @@ class CertificateRenewal(
     private val sessions: TenantSessions,
     private val ca: CertificateAuthority,
     private val clock: Clock,
+    /** How long the certificate lives: `sard.pki.agent-certificate-validity` (C1, П1). */
+    private val validity: Duration,
     /** At most one issue per agent in this time (C1, П12). */
     private val interval: Duration,
 ) {
@@ -140,7 +142,7 @@ class CertificateRenewal(
         val agent = checkNotNull(session.find(Agent::class.java, caller.agentId, LockMode.PESSIMISTIC_WRITE))
         requireIntervalPassed(session, caller.agentId, now)
         val identity = AgentIdentity(caller.tenantId, caller.agentId)
-        val issued = ca.issueAgentCertificate(csrDer, identity, AgentRole.of(agent.role))
+        val issued = ca.issueAgentCertificate(csrDer, identity, AgentRole.of(agent.role), validity)
         session
             .createMutationQuery(SUPERSEDE_UNCONFIRMED)
             .setParameter("now", now)

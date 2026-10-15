@@ -120,7 +120,7 @@ class AgentAuthenticator(
 ) {
     fun authenticate(
         presented: PresentedCertificate?,
-        scope: AuthScope = AuthScope.CALL,
+        scope: AuthScope,
     ): AgentAuthResult =
         if (presented == null) {
             AgentAuthResult.Rejected(AgentAuthFailure.CERT_MISSING, serial = null, agentId = null)

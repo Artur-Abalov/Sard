@@ -37,7 +37,8 @@ class EnrollmentConfiguration {
         ca: CertificateAuthority,
         clock: Clock,
         gate: RegistrationGate,
-    ) = Enrollment(sessions, tokens, ca, clock, UuidV7(clock, SecureRandom()), gate::open)
+        policy: AgentCertificatePolicy,
+    ) = Enrollment(sessions, tokens, ca, clock, UuidV7(clock, SecureRandom()), policy.validity, gate::open)
 
     @Bean
     fun certificateRenewal(
@@ -45,5 +46,5 @@ class EnrollmentConfiguration {
         ca: CertificateAuthority,
         clock: Clock,
         policy: AgentCertificatePolicy,
-    ) = CertificateRenewal(sessions, ca, clock, policy.effectiveInterval)
+    ) = CertificateRenewal(sessions, ca, clock, policy.validity, policy.effectiveInterval)
 }

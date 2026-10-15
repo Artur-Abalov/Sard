@@ -62,14 +62,13 @@ class AgentCertificateSettingsStartupTest {
     }
 
     @Test
-    fun `Срок ровно 10 минут допустим и доходит до выпуска сертификата по времени сервера`() {
+    fun `Срок ровно 10 минут допустим, а CA подписывает по времени сервера`() {
         runner().withPropertyValues("sard.pki.agent-certificate-validity=PT10M").run { context ->
             assertEquals(null, context.startupFailure)
+            assertEquals(Duration.ofMinutes(10), context.getBean(AgentCertificatePolicy::class.java).validity)
             val ca = context.getBean(CertificateAuthority::class.java)
-            val issued = ca.issueAgentCertificate(resource("agent-p256.csr"), AGENT, AgentRole.SOURCE)
-            val leaf = certificate(issued.chainPem)
-            assertEquals(T0, leaf.notBefore.toInstant())
-            assertEquals(T0 + Duration.ofMinutes(10), leaf.notAfter.toInstant())
+            val issued = ca.issueAgentCertificate(resource("agent-p256.csr"), AGENT, AgentRole.SOURCE, YEAR)
+            assertEquals(T0, certificate(issued.chainPem).notBefore.toInstant())
         }
     }
 

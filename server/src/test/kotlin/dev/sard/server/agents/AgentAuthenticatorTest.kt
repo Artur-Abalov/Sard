@@ -16,6 +16,7 @@ import dev.sard.server.pki.PkiFixtures.SERVER_NAMES
 import dev.sard.server.pki.PkiFixtures.certificates
 import dev.sard.server.pki.PkiFixtures.random
 import dev.sard.server.pki.PkiFixtures.resource
+import dev.sard.server.pki.YEAR
 import dev.sard.server.role.AgentRole
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
@@ -127,7 +128,7 @@ class AgentAuthenticatorTest {
     @Test
     fun `a presented certificate is its serial in lower-case hex and its URI identity`() {
         val ca = FileCertificateAuthority(tmp.resolve("pki"), SERVER_NAMES, CLOCK, random(), FakeCaLedger())
-        val issued = ca.issueAgentCertificate(resource("agent-p256.csr"), AGENT, AgentRole.VERIFIER)
+        val issued = ca.issueAgentCertificate(resource("agent-p256.csr"), AGENT, AgentRole.VERIFIER, YEAR)
         val presented = MutFlow.underTest { PresentedCertificate.of(certificates(issued.chainPem).first()) }
         assertEquals(PresentedCertificate(issued.serial.toString(16), AGENT, VERIFIER), presented)
     }

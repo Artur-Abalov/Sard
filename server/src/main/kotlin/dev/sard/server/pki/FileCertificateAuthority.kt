@@ -30,8 +30,6 @@ class FileCertificateAuthority(
     ledger: CaLedger,
     importDir: Path? = null,
     replacements: CaReplacementListener = CaReplacementListener { _, _ -> },
-    /** How long an agent certificate lives, at most; never past the CA itself (C1, П3). */
-    private val agentValidity: Duration = Certificates.DEFAULT_AGENT_VALIDITY,
 ) : CertificateAuthority {
     init {
         ServerNames.validate(serverNames)
@@ -73,9 +71,10 @@ class FileCertificateAuthority(
         csrDer: ByteArray,
         agent: AgentIdentity,
         role: AgentRole,
+        validity: Duration,
     ): IssuedCertificate {
         val key = AgentCsr.verifiedKey(csrDer)
-        val certificate = Certificates.agent(key, agent, role, ca, clock.instant(), agentValidity, random)
+        val certificate = Certificates.agent(key, agent, role, ca, clock.instant(), validity, random)
         val notAfter = certificate.notAfter.toInstant()
         return IssuedCertificate(Pem.certificate(certificate), certificate.serialNumber, notAfter)
     }

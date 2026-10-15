@@ -163,7 +163,7 @@ class CertificateRenewalRefusalsIntegrationTest(
                     FakeCaLedger(permissive = true),
                 )
             val keys = fixtures.newKeys()
-            val issued = stranger.issueAgentCertificate(fixtures.csr(keys), x.identity, AgentRole.SOURCE)
+            val issued = stranger.issueAgentCertificate(fixtures.csr(keys), x.identity, AgentRole.SOURCE, DAY)
             EnrolledAgent(x.identity, issued.chainPem, keys)
         }
 

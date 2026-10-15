@@ -87,11 +87,11 @@ class FileCertificateAuthorityValidityTest {
                 clock,
                 random(),
                 FakeCaLedger(),
-                agentValidity = Duration.ofMinutes(10),
             )
         clock.now = T0 + Duration.ofMinutes(7)
 
-        val issued = ca.issueAgentCertificate(resource("agent-p256.csr"), AGENT, AgentRole.SOURCE)
+        val csr = resource("agent-p256.csr")
+        val issued = ca.issueAgentCertificate(csr, AGENT, AgentRole.SOURCE, Duration.ofMinutes(10))
 
         val leaf = certificate(issued.chainPem)
         assertEquals(T0 + Duration.ofMinutes(7), leaf.notBefore.toInstant())

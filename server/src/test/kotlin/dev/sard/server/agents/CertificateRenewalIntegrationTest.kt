@@ -396,6 +396,7 @@ class CertificateRenewalIntegrationTest(
                     anything(ByteArray(0)),
                     anything(AgentIdentity(tenant, tenant)),
                     anything(AgentRole.SOURCE),
+                    anything(Duration.ZERO),
                 )
         }
     }

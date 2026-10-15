@@ -16,6 +16,7 @@ import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.FakeCaLedger
 import dev.sard.server.pki.FileCertificateAuthority
 import dev.sard.server.pki.Pem
+import dev.sard.server.pki.YEAR
 import dev.sard.server.role.AgentRole
 import io.grpc.CallOptions
 import io.grpc.ChannelCredentials
@@ -144,7 +145,7 @@ class AgentAuthIntegrationTest(
         identity: AgentIdentity,
     ): AgentKey {
         val keys = newKeys()
-        val issued = issuer.issueAgentCertificate(csr(keys), identity, AgentRole.SOURCE)
+        val issued = issuer.issueAgentCertificate(csr(keys), identity, AgentRole.SOURCE, YEAR)
         return AgentKey(identity, issued.serial.toString(16), issued.chainPem, keys)
     }
 
