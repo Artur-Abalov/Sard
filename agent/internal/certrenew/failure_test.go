@@ -135,8 +135,9 @@ func TestAServerWithoutRenewalIsAskedOnceADay(t *testing.T) {
 	if got := strings.Count(e.logs.all(), "the server does not support certificate renewal; retrying every 24h"); got != 1 {
 		t.Errorf("the line was logged %d times:\n%s", got, e.logs.all())
 	}
-	if _, err := os.Stat(e.statePath()); err == nil {
-		t.Error("a server without renewal makes no failing renewal")
+	st := e.readState()
+	if !st.Unsupported || st.Failures != 0 || st.Serial != "1" || !st.LastAttempt.Equal(day(203)) || !st.NextAttempt.Equal(day(204)) {
+		t.Errorf("state = %+v", st)
 	}
 }
 

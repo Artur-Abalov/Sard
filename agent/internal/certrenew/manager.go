@@ -149,13 +149,14 @@ var errNoRenewal = errors.New("the server does not support certificate renewal")
 // unsupportedPause is how often an agent asks a server that cannot renew.
 const unsupportedPause = 24 * time.Hour
 
-// unsupported logs the missing feature once per process; it is no failure of
-// the agent, so the failure count stays.
+// unsupported logs the missing feature once per process and records it for
+// `sard-agent status`; it is no failure of the agent, so the failure count stays.
 func (m *Manager) unsupported() time.Duration {
 	if !m.unsupportedLogged {
 		m.unsupportedLogged = true
 		m.o.Logger.Warn("the server does not support certificate renewal; retrying every 24h")
 	}
+	m.save(State{Failures: m.failures, LastError: codes.Unimplemented.String(), Unsupported: true}, unsupportedPause)
 	return unsupportedPause
 }
 
@@ -164,19 +165,22 @@ func (m *Manager) unsupported() time.Duration {
 func (m *Manager) failed(err error) time.Duration {
 	m.failures++
 	delay := max(Delay(m.failures, m.o.Rand), transport.RetryDelay(err))
+	st := m.save(State{Failures: m.failures, LastError: transport.Describe(err)}, delay)
+	m.o.Logger.Warn("certificate renewal failed", "last_error", st.LastError, "failures", st.Failures, "next_attempt", st.NextAttempt.Format(time.RFC3339))
+	return delay
+}
+
+// save fills in the certificate and the times of an attempt that is made now
+// and has its next one after delay, and writes the state file.
+func (m *Manager) save(st State, delay time.Duration) State {
 	now := m.o.Clock.Now()
-	st := State{
-		Serial:      m.serial(),
-		Failures:    m.failures,
-		LastError:   transport.Describe(err),
-		LastAttempt: now.UTC().Round(time.Second),
-		NextAttempt: now.Add(delay).UTC().Round(time.Second),
-	}
+	st.Serial = m.serial()
+	st.LastAttempt = now.UTC().Round(time.Second)
+	st.NextAttempt = now.Add(delay).UTC().Round(time.Second)
 	if err := WriteState(m.o.FS, m.o.StatePath, st); err != nil {
 		m.o.Logger.Warn("writing the certificate renewal state failed", "error", transport.Describe(err))
 	}
-	m.o.Logger.Warn("certificate renewal failed", "last_error", st.LastError, "failures", st.Failures, "next_attempt", st.NextAttempt.Format(time.RFC3339))
-	return delay
+	return st
 }
 
 // serial is the serial number of the certificate being renewed, lowercase hex.

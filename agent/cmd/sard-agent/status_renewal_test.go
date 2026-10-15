@@ -56,6 +56,9 @@ func TestStatusNamesTheStateOfTheCertificate(t *testing.T) {
 		{"failing", renewDay(210), func(h *renewalHost) { h.writeState("1", 3) }, func(*renewalHost) string {
 			return "certificate_days_left: 90\ncertificate_state: renewal-failing\nrenewal_failures: 3\nrenewal_last_error: Unavailable INTERNAL_RETRYABLE\nrenewal_next_attempt: 2027-05-13T12:04:00Z\n"
 		}},
+		{"unsupported", renewDay(210), func(h *renewalHost) { h.writeUnsupported("1") }, func(*renewalHost) string {
+			return "certificate_days_left: 90\ncertificate_state: renewal-due\ncertificate_renewal: unsupported by server\n"
+		}},
 		{"expired", renewDay(300), nil, func(h *renewalHost) string {
 			return "certificate_days_left: 0\ncertificate_state: expired\nre_enroll: " + h.reenroll() + "\n"
 		}},
@@ -131,5 +134,16 @@ func TestStatusReadsNeitherTheKeyNorTheNewPair(t *testing.T) {
 	code, stdout, _ := h.statusAt(renewDay(10))
 	if code != 0 || !strings.Contains(stdout, "certificate_not_after: 2027-08-11T12:00:00Z\n") {
 		t.Fatalf("code = %d, stdout = %q", code, stdout)
+	}
+}
+
+func (h *renewalHost) writeUnsupported(serial string) {
+	h.t.Helper()
+	st := certrenew.State{Serial: serial, LastError: "Unimplemented", LastAttempt: renewDay(209), NextAttempt: renewDay(210), Unsupported: true}
+	if err := os.MkdirAll(h.stateDir, 0o700); err != nil {
+		h.t.Fatal(err)
+	}
+	if err := certrenew.WriteState(certpair.OSFS{}, filepath.Join(h.stateDir, certrenew.StateFile), st); err != nil {
+		h.t.Fatal(err)
 	}
 }

@@ -27,6 +27,9 @@ type State struct {
 	LastError   string    `json:"last_error"`
 	LastAttempt time.Time `json:"last_attempt"`
 	NextAttempt time.Time `json:"next_attempt"`
+	// Unsupported: the server answered RenewCertificate with UNIMPLEMENTED. It
+	// is no failure of the agent, so Failures does not grow.
+	Unsupported bool `json:"unsupported,omitempty"`
 }
 
 // WriteState replaces the state file atomically.

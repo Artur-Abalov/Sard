@@ -82,6 +82,9 @@ func renewalLines(id identity.Identity, c statusCert, deps statusDeps) string {
 	case stateExpired:
 		out += "re_enroll: " + reenrollCommand(c.configPath, c.cfg) + "\n"
 	}
+	if state.unsupported {
+		out += "certificate_renewal: unsupported by server\n"
+	}
 	return out
 }
 
@@ -95,6 +98,8 @@ const (
 type certState struct {
 	name    string
 	failing certrenew.State
+	// unsupported: the server cannot renew certificates (the state file says so).
+	unsupported bool
 }
 
 // certificateState: expired; else failing when the state file is about this
@@ -106,13 +111,16 @@ func certificateState(id identity.Identity, now time.Time, cfg config.Config, de
 		return certState{name: stateExpired}
 	}
 	path := filepath.Join(executorStateDir(cfg.Executor.StateDir), certrenew.StateFile)
-	if st, ok := certrenew.ReadState(deps.readFile, path); ok && st.Serial == id.Serial {
+	st, ok := certrenew.ReadState(deps.readFile, path)
+	ok = ok && st.Serial == id.Serial
+	if ok && !st.Unsupported {
 		return certState{name: stateFailing, failing: st}
 	}
+	state := certState{name: stateOK, unsupported: ok}
 	if !now.Before(certrenew.Threshold(id.NotBefore, id.NotAfter)) {
-		return certState{name: stateDue}
+		state.name = stateDue
 	}
-	return certState{name: stateOK}
+	return state
 }
 
 // statusFlags returns the config path, or exitUsage after saying what is wrong.
