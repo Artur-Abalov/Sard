@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/app"
+	"github.com/Artur-Abalov/sard/agent/internal/certpair"
+	"github.com/Artur-Abalov/sard/agent/internal/certrenew"
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
@@ -30,7 +32,6 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/role"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 	"github.com/Artur-Abalov/sard/agent/internal/stepsecrets"
-	"github.com/Artur-Abalov/sard/agent/internal/tlsid"
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
 	"github.com/Artur-Abalov/sard/agent/plugins"
 )
@@ -100,17 +101,18 @@ func runAgentCmd(ctx context.Context, args []string, stdout, stderr io.Writer, h
 	if proceed, code := selfEnrollIfAsked(ctx, *configPath, *tokenFile, stdout, stderr, self); !proceed {
 		return code
 	}
-	if err := start(ctx, *configPath, stdout, hostname, os.Executable); err != nil {
+	if err := startWith(ctx, *configPath, stdout, hostname, os.Executable, self.runtime.withDefaults()); err != nil {
 		return reportFailure(stderr, err)
 	}
 	return exitOK
 }
 
 // reportFailure prints why the agent stopped and picks the exit code: a
-// permanent refusal by the server is told apart from any other error.
+// refusal that no restart cures is told apart from any other error.
 func reportFailure(stderr io.Writer, err error) int {
-	if transport.IsPermanent(err) {
-		_, _ = fmt.Fprintln(stderr, "sard-agent:", transport.RefusalLine(err))
+	var refused *refusedError
+	if errors.As(err, &refused) {
+		_, _ = fmt.Fprintln(stderr, "sard-agent:", refused.line(false))
 		return exitRefused
 	}
 	_, _ = fmt.Fprintln(stderr, "sard-agent:", err)
@@ -119,10 +121,16 @@ func reportFailure(stderr io.Writer, err error) int {
 
 // start is the composition root: the only place that knows concrete types.
 func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf hostnameFunc, executable func() (string, error)) error {
-	cfg, me, err := loadLocal(configPath)
+	return startWith(ctx, configPath, stdout, hostnameOf, executable, agentRuntime{}.withDefaults())
+}
+
+func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnameOf hostnameFunc, executable func() (string, error), rt agentRuntime) error {
+	local, err := loadLocal(configPath, rt)
 	if err != nil {
 		return err
 	}
+	cfg, me := local.cfg, local.host
+	removeStale(local, rt)
 	// A5b: no usable restic, no start — before the network (С5).
 	resticBinary, err := checkRestic(ctx, cfg, configPath, executable, restic.ProcessExecutor{}, nil)
 	if err != nil {
@@ -133,21 +141,62 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 		return fmt.Errorf("hostname: %w", err)
 	}
 	_, _ = fmt.Fprintf(stdout, "sard-agent %s: connecting to %s as %s\n", version, cfg.Server.Address, me.role)
-	return serve(ctx, cfg, me.role, newAgent(cfg, hostname, resticBinary, me.machineID))
+	renewal := newRenewal(cfg, hostname, rt)
+	if stop, err := adoptPending(ctx, renewal, local, configPath, rt); stop || err != nil {
+		return err
+	}
+	return refuse(serve(ctx, cfg, me.role, newAgent(cfg, hostname, resticBinary, me.machineID), renewal, rt), configPath, cfg)
 }
 
-// loadLocal loads the config and runs every check that needs no network; V1:
-// the role comes from the certificate, then the machine id (С1).
-func loadLocal(configPath string) (config.Config, hostIdentity, error) {
+// removeStale deletes the renewal files that belong to no usable pair and
+// says which (П21).
+func removeStale(local localState, rt agentRuntime) {
+	if removed := certpair.Remove(rt.fs, local.pair.Stale); len(removed) > 0 {
+		rt.logger.Warn("removed renewal files that belong to no usable key and certificate", "files", removed)
+	}
+}
+
+// localState is what the checks that need no network found out.
+type localState struct {
+	cfg  config.Config
+	host hostIdentity
+	// pair is the key and certificate to start with.
+	pair certpair.Selection
+}
+
+// loadLocal loads the config and runs every check that needs no network, in
+// the order of П29: the crypto providers, the pair of key and certificate
+// (a renewal may have left a second one), the files' modes, the expiry, then
+// V1: the role from the certificate, and the machine id (С1).
+func loadLocal(configPath string, rt agentRuntime) (localState, error) {
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		return cfg, hostIdentity{}, err
+		return localState{}, err
 	}
-	if err := checkLocal(cfg); err != nil {
-		return cfg, hostIdentity{}, err
+	if err := checkCryptoProviders(cfg); err != nil {
+		return localState{}, err
 	}
-	me, err := identifyHost(cfg)
-	return cfg, me, err
+	sel, err := certpair.Select(cfg.TLS, rt.fs, rt.clock.Now())
+	if err != nil {
+		// Without a usable pair the modes of the files are still told first.
+		return localState{}, firstError(checkHostFiles(cfg, sel), err)
+	}
+	if err := checkHostFiles(cfg, sel); err != nil {
+		return localState{}, err
+	}
+	if sel.Expired != nil {
+		return localState{}, expiredRefusal(sel.Expired, configPath, cfg)
+	}
+	me, err := identifyHost(cfg, sel)
+	return localState{cfg: cfg, host: me, pair: sel}, err
+}
+
+// firstError is the first error that is not nil.
+func firstError(first, second error) error {
+	if first != nil {
+		return first
+	}
+	return second
 }
 
 // hostIdentity is what the agent knows about itself before it connects.
@@ -159,13 +208,14 @@ type hostIdentity struct {
 // machineIDSources are the host's machine-id files; tests replace them.
 var machineIDSources = machineid.DefaultSources
 
-// identifyHost reads the role from tls.cert_file and computes the machine id
-// keyed by the certificate's tenant. Nothing here touches the network.
-func identifyHost(cfg config.Config) (hostIdentity, error) {
+// identifyHost reads the role from the certificate of the selected pair and
+// computes the machine id keyed by the certificate's tenant. Nothing here
+// touches the network.
+func identifyHost(cfg config.Config, sel certpair.Selection) (hostIdentity, error) {
 	if err := transport.CheckFiles(cfg.TLS); err != nil {
 		return hostIdentity{}, err
 	}
-	id, err := identity.Read(cfg.TLS.CertFile, os.ReadFile)
+	id, err := identity.Read(sel.Pair.CertFile, os.ReadFile)
 	if err != nil {
 		return hostIdentity{}, err
 	}
@@ -178,25 +228,16 @@ func identifyHost(cfg config.Config) (hostIdentity, error) {
 	return hostIdentity{role: id.Role, machineID: machine}, nil
 }
 
-// checkLocal runs the checks that need no network. OQ-050: the repositories'
-// encryption comes first, before any file (Р7).
-func checkLocal(cfg config.Config) error {
-	if err := checkCryptoProviders(cfg); err != nil {
-		return err
+// checkHostFiles runs the checks of local files that need no network. A1:
+// refuse to start with a secret file readable beyond its owner, or owned by
+// someone else, before touching the network (В20); the key is the one of the
+// selected pair. That the key belongs to the certificate (OQ-027) was
+// settled by the selection.
+func checkHostFiles(cfg config.Config, sel certpair.Selection) error {
+	if sel.Pair.KeyFile != "" {
+		cfg.TLS.KeyFile = sel.Pair.KeyFile
 	}
-	return checkHostFiles(cfg)
-}
-
-// checkHostFiles runs the checks of local files that need no network.
-func checkHostFiles(cfg config.Config) error {
-	// A1: refuse to start with a secret file readable beyond its owner, or
-	// owned by someone else, before touching the network (В20).
-	if err := secrets.CheckAll(cfg, uint32(os.Getuid()), secrets.RealStat); err != nil {
-		return err
-	}
-	// OQ-027: an interrupted `enroll --force` leaves a key that does not
-	// belong to the certificate; say so before dialing.
-	return tlsid.Check(cfg.TLS, os.ReadFile)
+	return secrets.CheckAll(cfg, uint32(os.Getuid()), secrets.RealStat)
 }
 
 // newAgent wires the built-in plugins to restic and the host's secrets.
@@ -238,7 +279,7 @@ func restoreDir(stateDir string) string {
 // the executor reports through the transport. The transport is built first
 // (it checks TLS before anything touches the disk); ref points it at the
 // executor before it starts.
-func serve(ctx context.Context, cfg config.Config, role role.Role, agent *app.Agent) error {
+func serve(ctx context.Context, cfg config.Config, role role.Role, agent *app.Agent, renewal *certrenew.Manager, rt agentRuntime) error {
 	ref := &executorRef{}
 	// A7b: the step's secrets are masked in its logs and result.
 	masking := stepsecrets.New(cfg, os.ReadFile, slog.Default())
@@ -250,6 +291,13 @@ func serve(ctx context.Context, cfg config.Config, role role.Role, agent *app.Ag
 		Commands: ref,
 		State:    ref,
 		Logger:   slog.Default(),
+		Clock:    rt.clock,
+		Rand:     rt.rand,
+		// The certificate is renewed after the first Register; a Register
+		// refused because the certificate was replaced may go on with the
+		// pair that replaced it (П17, П23).
+		OnRegistered: renewal.Registered,
+		OnSuperseded: renewal.Superseded,
 	})
 	if err != nil {
 		return err
@@ -270,7 +318,7 @@ func serve(ctx context.Context, cfg config.Config, role role.Role, agent *app.Ag
 	}
 	ref.Executor = exec
 	agent.Link = link
-	err = agent.Run(ctx)
+	err = runRenewing(ctx, renewal, agent.Run)
 	return errors.Join(err, stopExecutor(exec))
 }
 

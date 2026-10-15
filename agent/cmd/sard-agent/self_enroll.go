@@ -38,6 +38,9 @@ type selfEnrollDeps struct {
 	clock     clock
 	inspect   func(config.TLS) (enroll.IdentityStatus, error)
 	enroll    enrollDeps
+	// runtime is the clock, randomness and log of the running agent; its zero
+	// value is the production one.
+	runtime agentRuntime
 }
 
 func realSelfEnrollDeps(hostname hostnameFunc) selfEnrollDeps {
