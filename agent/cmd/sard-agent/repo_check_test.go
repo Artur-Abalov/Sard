@@ -650,6 +650,10 @@ func TestTheWorstResultDecidesTheExitCode(t *testing.T) {
 	assertCode(t, code, exitWarnings)
 }
 
+// noRepositoriesNote is the informational note of the OK line (owner decision
+// of A8d-2: no repositories is not a warning).
+const noRepositoriesNote = "no repositories configured; add one with `sudo sard-agent repo add <name> <address>`"
+
 func TestWithoutRepositoriesTheCheckIsOneOKLine(t *testing.T) {
 	h := checkHost(t)
 	h.cfg.Repositories = nil
@@ -657,7 +661,7 @@ func TestWithoutRepositoriesTheCheckIsOneOKLine(t *testing.T) {
 	code, stdout, _ := h.repoCheck()
 	assertCode(t, code, exitOK)
 	lines, summary := parseOut(t, stdout)
-	if len(lines) != 1 || lines[0].status != "OK" || lines[0].message != "no repositories configured" || summary != "summary: 1 ok, 0 warnings, 0 errors, 0 skipped" {
+	if len(lines) != 1 || lines[0].status != "OK" || lines[0].message != noRepositoriesNote || lines[0].hint != "" || summary != "summary: 1 ok, 0 warnings, 0 errors, 0 skipped" {
 		t.Errorf("lines %v, summary %q", lines, summary)
 	}
 	if h.restic.backendCalls() != 0 {
@@ -763,11 +767,14 @@ func TestARepositoryHeldByAnotherProcessExplainsWhyResticCheckCouldNotRun(t *tes
 	h := checkHost(t)
 	h.base().checkState.checkCode = 11
 	code, stdout, _ := h.repoCheck("base", "--read-data", "5")
-	assertCode(t, code, exitAgentError)
+	assertCode(t, code, exitWarnings)
 	lines, _ := parseOut(t, stdout)
 	l := line(t, lines, checkIntegrity, "base")
-	if l.status != "ERROR" || !strings.Contains(l.message, "locked by another process") || !strings.Contains(l.message, "repeat") || strings.Contains(l.message, "BACKEND_REFUSED") {
+	if l.status != "WARN" || !strings.Contains(l.message, "locked by another process") || !strings.Contains(l.message, "repeat") || strings.Contains(l.message, "BACKEND_REFUSED") {
 		t.Errorf("%+v", l)
+	}
+	if !strings.Contains(l.hint, "repo check base --read-data 5") {
+		t.Errorf("hint %q", l.hint)
 	}
 }
 

@@ -147,6 +147,12 @@ S3_MARK=$(sudo sed -n 's/^AWS_SECRET_ACCESS_KEY=//p' /etc/sard/secrets/restic-s1
     `/srv/sard/main/data/*/`; `run sudo $AG repo check main --read-data 100`
     → `repository.integrity` — `ERROR`, подсказка
     `…#repositoryintegrity`; `exit=1`. Восстановить репозиторий из копии.
+26a. Репозиторий занят бэкапом (решение владельца 2026-10-15): запустить долгий
+    бэкап источника `qa-files` на `main`; во время него
+    `run sudo $AG repo check main --read-data 5` → `repository.integrity` —
+    `WARN`, сообщение содержит `locked by another process` и просьбу повторить,
+    подсказка `sudo sard-agent repo check main --read-data 5`; `exit=8`.
+    После конца бэкапа та же команда → `OK`, `exit=0`.
 27. Учётка только на чтение (V0 — заглушка): в Garage выдать ключ только на
     чтение, подключить `s1ro` (`sudo $AG repo add s1ro … --access-key-id <ro>`
     — подключение может отказать на записи; тогда записать `env`-файл и
@@ -157,7 +163,10 @@ S3_MARK=$(sudo sed -n 's/^AWS_SECRET_ACCESS_KEY=//p' /etc/sard/secrets/restic-s1
 
 ## Часть 5. `sard-agent check` на здоровом хосте (A8d-2)
 
-28. `time run sudo $AG check` → `exit=0`; строки в порядке Ч10: `service.user`,
+28. До среза A8d-3 строки `server.reachable`, `server.tls`, `server.accepted` и
+    `clock.skew` — `SKIP` (`this version of the agent does not check the server
+    yet`), в сводке на четыре `skipped` больше (Ч33); с A8d-3 они `OK`.
+    `time run sudo $AG check` → `exit=0`; строки в порядке Ч10: `service.user`,
     `config.*`, `files.permissions`, `restic.binary`, `tls.*`, `server.*`,
     `clock.skew`, по шесть `repository.*` на `main`, `s1`, `f1`,
     `secret.readable pg`, `plugin.declared`, `plugin.programs files`,
@@ -215,8 +224,11 @@ S3_MARK=$(sudo sed -n 's/^AWS_SECRET_ACCESS_KEY=//p' /etc/sard/secrets/restic-s1
     `pg_dump` → `plugin.programs postgresql` — `ERROR`, подсказка
     `postgresql-client`; `exit=1`. Вернуть.
 41. Нет репозиториев (отдельная ВМ или временно убрать фрагменты в `$OUT`)
-    → строка `repository.storage` с предметом `-` — `WARN`
-    `no repositories configured`, подсказка `sudo sard-agent repo add`.
+    → строка `repository.storage` с предметом `-` — `OK`, сообщение начинается
+    с `no repositories configured` и содержит `sudo sard-agent repo add`
+    (решение владельца 2026-10-15: не предупреждение), строки `hint:` нет,
+    `exit=0`. То же у `sudo $AG repo check` без имени (шаг 2 при пустом
+    конфиге).
 
 ## Часть 7. `--json`, `--offline`, коды (A8d-2)
 
@@ -232,6 +244,12 @@ S3_MARK=$(sudo sed -n 's/^AWS_SECRET_ACCESS_KEY=//p' /etc/sard/secrets/restic-s1
     `run sudo $AG check --offline` → соединений процесса check нет;
     `server.*`, `clock.skew`, все `repository.*` — `SKIP` `offline`;
     `exit=0`.
+45a. `repository.id` offline (Ч32): `run sudo $AG check --offline` →
+    `repository.id` у каждого репозитория — `SKIP`, сообщение `offline`,
+    подсказка `…without --offline…`, `exit=0` — и при файле объявленных id в
+    `/var/lib/sard-agent/`, и после `sudo mv` этого файла в `$OUT` (вернуть);
+    `sudo ls -l /var/lib/sard-agent/` до и после — без изменений. Без
+    `--offline` и без файла: `SKIP` с подсказкой `sudo systemctl start sard-agent`.
 46. Ansible: задача `command: sard-agent check --json` с
     `failed_when: rc not in [0, 8]` → проходит на здоровом хосте и при
     шаге 32; падает при шаге 30. С `failed_when: rc != 0` → проходит при

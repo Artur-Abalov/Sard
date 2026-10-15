@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/repoconnect"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
@@ -25,9 +26,15 @@ type hostDeps struct {
 	// sshExec runs the programs of the OpenSSH client (ssh-keyscan,
 	// ssh-keygen, sftp) as the service user (A8b-2).
 	sshExec restic.Executor
+	// progExec runs the programs of the host that sard-agent check looks at:
+	// getenforce, matchpathcon, ausearch, systemctl show and the tools of
+	// PostgreSQL (A8d-2).
+	progExec restic.Executor
 	// hostname is the name of this host, for the comment of a new ssh key.
 	hostname   func() (string, error)
 	executable func() (string, error)
+	// loadConfig reads the config of sard-agent check (A8d-2).
+	loadConfig func(path string) (config.Config, error)
 	// pidAlive says whether a process of this host is running: a lock of
 	// restic from a process that is gone is stale (A8d).
 	pidAlive func(pid int) bool
@@ -73,9 +80,11 @@ func productionHostDeps() hostDeps {
 		clock:      realEnrollClock{},
 		exec:       restic.ProcessExecutor{},
 		sshExec:    restic.ProcessExecutor{},
+		progExec:   restic.ProcessExecutor{},
 		hostname:   os.Hostname,
 		executable: os.Executable,
 		pidAlive:   processAlive,
+		loadConfig: config.Load,
 		euid:       uint32(os.Geteuid()),
 		stat:       secrets.RealStat,
 		readFile:   os.ReadFile,

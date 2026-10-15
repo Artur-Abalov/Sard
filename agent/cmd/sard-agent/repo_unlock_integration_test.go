@@ -153,9 +153,9 @@ func TestIntegrationACheckOfDataIsRefusedWhileABackupHoldsTheRepository(t *testi
 	h.announceBase()
 	h.clock.now = time.Now()
 	code, stdout, _ := h.sudo("repo", "check", "--config", "C", "base", "--read-data", "100")
-	assertCode(t, code, exitAgentError)
+	assertCode(t, code, exitWarnings)
 	lines, _ := parseOut(t, stdout)
-	if l := line(t, lines, checkIntegrity, "base"); l.status != "ERROR" || !strings.Contains(l.message, "locked by another process") {
+	if l := line(t, lines, checkIntegrity, "base"); l.status != "WARN" || !strings.Contains(l.message, "locked by another process") {
 		t.Errorf("integrity: %+v", l)
 	}
 }

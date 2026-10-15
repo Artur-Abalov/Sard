@@ -24,7 +24,9 @@ the rest of its checks are SKIP:
                           (WARN if it did not, SKIP if it never registered)
   repository.locks        the locks of restic: how many, which host, how old;
                           WARN for one older than 24 hours
-  repository.integrity    only with --read-data
+  repository.integrity    only with --read-data; a WARN, not an ERROR, when the repository is
+                          locked by another process (a backup or a restore is running:
+                          restic check cannot take its own lock), repeat it later
 
 It only reads: nothing on the host or in the storage is created, changed or
 removed (restic runs with --no-lock and --no-cache), nothing is written to the system

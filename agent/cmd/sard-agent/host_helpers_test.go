@@ -63,6 +63,8 @@ type setupHost struct {
 	plainReads []string
 	// alive are the processes of this host that are running (A8d).
 	alive map[int]bool
+	// progs are the programs of the host that sard-agent check runs (A8d-2).
+	progs *fakePrograms
 }
 
 type ownedRead struct {
@@ -80,6 +82,8 @@ func (h *setupHost) dropIns() string    { return h.path("dropin") }
 func newSetupHost(t *testing.T) *setupHost {
 	t.Helper()
 	h := &setupHost{repoHost: newRepoHost(t), fsys: newFakeFS(), sd: &fakeSystemd{present: true, active: true}, log: &fakeSyslog{}, stdin: &bytes.Buffer{}}
+	h.progs = &fakePrograms{answers: map[string]progAnswer{}}
+	h.deps.progExec = h.progs
 	h.env = map[string]string{"SUDO_USER": "alice", "SUDO_UID": "1000"}
 	h.people = []hostsetup.User{svcUser, backupUser, {Name: "root"}}
 	h.write(h.path("secrets/base.pass"), passMarker+"\n", 0o600)
@@ -119,6 +123,8 @@ func (h *setupHost) runAs(euid uint32, args ...string) (code int, stdout, stderr
 	switch args[0] {
 	case "secret":
 		code = runSecretWithDeps(ctx, args[1:], &out, &errOut, h.deps)
+	case "check":
+		code = runCheck(ctx, args[1:], &out, &errOut, h.deps)
 	default:
 		code = runRepoWithDeps(ctx, args[1:], &out, &errOut, h.deps)
 	}

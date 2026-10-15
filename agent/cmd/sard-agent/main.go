@@ -58,6 +58,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, hostname 
 	if isEnrollCommand(args) {
 		return runEnroll(ctx, args[1:], stdout, stderr, hostname)
 	}
+	if isCheckCommand(args) {
+		return runCheckCommand(ctx, args[1:], stdout, stderr)
+	}
 	if isRepoCommand(args) {
 		return runRepo(ctx, args[1:], stdout, stderr)
 	}
@@ -76,6 +79,11 @@ func isEnrollCommand(args []string) bool {
 func runAgentCmd(ctx context.Context, args []string, stdout, stderr io.Writer, hostname hostnameFunc, self selfEnrollDeps) int {
 	fs := flag.NewFlagSet("sard-agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	fs.Usage = func() {
+		_, _ = fmt.Fprintln(stderr, "Usage of sard-agent:")
+		fs.PrintDefaults()
+		_, _ = fmt.Fprint(stderr, commandList)
+	}
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	configPath := fs.String("config", "", "path to the agent YAML config")
 	tokenFile := fs.String("enroll-token-file", "", "file in which the server leaves an enrollment token; the agent enrolls itself with it")
@@ -99,6 +107,15 @@ func runAgentCmd(ctx context.Context, args []string, stdout, stderr io.Writer, h
 	}
 	return exitOK
 }
+
+// commandList is what the usage of the agent names besides running it (Ч29).
+const commandList = `
+Commands (each has --help):
+  sard-agent check            check that this host is ready to back up and restore
+  sard-agent enroll           register this host with sard-server
+  sard-agent repo ...         the repositories of this host (init, list, add, show, remove, password, snapshots, restore, check, unlock)
+  sard-agent secret ...       the secrets of this host (set, list, remove)
+`
 
 // reportFailure prints why the agent stopped and picks the exit code: a
 // permanent refusal by the server is told apart from any other error.

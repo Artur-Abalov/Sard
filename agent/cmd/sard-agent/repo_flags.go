@@ -44,6 +44,10 @@ const (
 	offerReadData
 	// offerRemoveStale: --remove-stale, which repo unlock needs (Ч6).
 	offerRemoveStale
+	// offerOffline: --offline of check (Ч22); offerNoReadData: --read-data is
+	// refused with the name of the command that has it (A8d-2).
+	offerOffline
+	offerNoReadData
 )
 
 // hostOptions are the flags and the positional arguments of one command of
@@ -76,6 +80,8 @@ type hostOptions struct {
 	// not given; removeStale is --remove-stale of repo unlock (A8d).
 	readData    int
 	removeStale bool
+	// offline is --offline of check: no network, no restic on a repository.
+	offline bool
 	// The flags of repo restore (Р59, Р61): the directory to restore into,
 	// the permission to replace files in it and to restore into the root of
 	// the file system, and the paths of the snapshot to restore.
@@ -121,6 +127,9 @@ var repoSpecs = map[string]cmdSpec{
 	"unlock":    {"repo unlock", offerTimeout | offerConnectTimeout | offerRemoveStale, 1, "the name of a repository is required: sard-agent repo unlock <name> --remove-stale", 0},
 }
 
+// checkSpec is sard-agent check (A8d-2).
+var checkSpec = cmdSpec{"check", offerJSON | offerConnectTimeout | offerShortConnect | offerOffline | offerNoReadData, 0, "", 0}
+
 // secretSpecs are the commands of "sard-agent secret".
 var secretSpecs = map[string]cmdSpec{
 	"set":    {"secret set", offerNoRestart | offerStdin | offerFromFile, 1, "the name of a secret is required: sard-agent secret set [flags] <name>", 0},
@@ -155,7 +164,7 @@ type flagValues struct {
 	hostKeyFingerprint           *string
 	replaceHostKey               *bool
 	readData                     *int
-	removeStale                  *bool
+	removeStale, offline         *bool
 	target                       *string
 	overwrite, allowRoot         *bool
 	paths                        *stringList
@@ -170,7 +179,7 @@ func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
 		secretKeyStdin: new(bool), connectTimeout: new(time.Duration), source: new(string),
 		hostKeyFingerprint: new(string), replaceHostKey: new(bool),
 		target: new(string), overwrite: new(bool), allowRoot: new(bool), paths: new(stringList),
-		readData: new(int), removeStale: new(bool),
+		readData: new(int), removeStale: new(bool), offline: new(bool),
 	}
 	if o&offerTimeout != 0 {
 		v.timeout = fs.Duration("timeout", defaultRepoTimeout, "")
@@ -267,7 +276,20 @@ func defineHostCheckFlags(fs *flag.FlagSet, o offer, v *flagValues) {
 	if o&offerRemoveStale != 0 {
 		v.removeStale = fs.Bool("remove-stale", false, "")
 	}
+	if o&offerOffline != 0 {
+		v.offline = fs.Bool("offline", false, "")
+	}
+	if o&offerNoReadData != 0 {
+		fs.Var(refusedFlag{"--read-data is a flag of `sard-agent repo check`: check reads no data of the repositories"}, "read-data", "")
+	}
 }
+
+// refusedFlag is a flag that is known only to say that the command does not
+// take it.
+type refusedFlag struct{ message string }
+
+func (r refusedFlag) Set(string) error { return errors.New(r.message) }
+func (r refusedFlag) String() string   { return "" }
 
 // shortConnectTimeout is --connect-timeout of the checks (A8d, ЧВ9).
 const shortConnectTimeout = 10 * time.Second
@@ -336,7 +358,7 @@ func parseFlags(spec cmdSpec, args []string, stderr io.Writer, defaultConfig str
 		secretKeyFromFile: *v.secretKeyFromFile, connectTimeout: *v.connectTimeout, source: *v.source, set: map[string]bool{},
 		hostKeyFingerprint: *v.hostKeyFingerprint, replaceHostKey: *v.replaceHostKey,
 		target: *v.target, overwrite: *v.overwrite, allowRoot: *v.allowRoot, paths: *v.paths,
-		readData: *v.readData, removeStale: *v.removeStale,
+		readData: *v.readData, removeStale: *v.removeStale, offline: *v.offline,
 	}
 	fs.Visit(func(f *flag.Flag) { opts.set[f.Name] = true })
 	setNames(&opts, positional)

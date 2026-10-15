@@ -18,7 +18,7 @@ func TestTheHelpOfRepoCheckAndRepoUnlockNamesFlagsRightsAndCodes(t *testing.T) {
 		wants []string
 		codes []int
 	}{
-		{[]string{"repo", "check"}, []string{"--read-data", "--json", "--timeout", "--connect-timeout", "--config", "sudo", "only reads", "09-troubleshooting.md", "WARN"}, []int{0, 1, 2, 6, 8}},
+		{[]string{"repo", "check"}, []string{"--read-data", "--json", "--timeout", "--connect-timeout", "--config", "sudo", "only reads", "09-troubleshooting.md", "WARN", "locked by another process"}, []int{0, 1, 2, 6, 8}},
 		{[]string{"repo", "unlock"}, []string{"--remove-stale", "--timeout", "--connect-timeout", "--config", "24", "this host", "never", "STALE_LOCKS_FOREIGN"}, []int{0, 1, 2, 6}},
 	} {
 		name := strings.Join(c.words, " ")

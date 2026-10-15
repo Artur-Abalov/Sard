@@ -89,7 +89,7 @@ func checkTargets(opts hostOptions, stderr io.Writer) (config.Config, []int, int
 
 func (c *repoCheck) run(targets []int, stderr io.Writer) int {
 	if len(targets) == 0 {
-		c.printer.Print(hostcheck.Line{Check: checkStorage, Status: hostcheck.OK, Message: "no repositories configured"})
+		c.printer.Print(noRepositoriesLine())
 	}
 	for _, index := range targets {
 		if c.interrupted() {
@@ -136,4 +136,10 @@ func skipLine(check, subject, failed string) hostcheck.Line {
 	return hostcheck.Line{Check: check, Subject: subject, Status: hostcheck.Skip,
 		Message: fmt.Sprintf("not checked: %s failed", failed),
 		Hint:    fmt.Sprintf("fix %s first, then run `sudo sard-agent repo check %s` again", failed, subject)}
+}
+
+// noRepositoriesLine is the one line of a host with no repository: OK, with a
+// note that says how to add one (a host may have only sources that need none).
+func noRepositoriesLine() hostcheck.Line {
+	return hostcheck.Line{Check: checkStorage, Status: hostcheck.OK, Message: "no repositories configured; add one with `sudo sard-agent repo add <name> <address>`"}
 }

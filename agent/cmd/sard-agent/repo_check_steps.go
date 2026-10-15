@@ -52,7 +52,7 @@ var openChecks = [...]string{checkStorage, checkCredentials, checkInitialized, c
 
 // okMessages are what an OK line of the first checks says.
 var okMessages = map[string]string{
-	checkStorage:     "the storage answers",
+	checkStorage:     "the storage at %s answers",
 	checkCredentials: "the storage accepts the credentials",
 	checkInitialized: "a repository is initialized at the address",
 	checkPassword:    "the password file opens the repository",
@@ -116,7 +116,7 @@ func (r *repoSteps) open() (id, failed string) {
 	for i, check := range openChecks {
 		switch {
 		case res.failure == nil || i < res.at:
-			r.printer.Print(hostcheck.Line{Check: check, Subject: r.repo.Name, Status: hostcheck.OK, Message: okMessages[check]})
+			r.printer.Print(hostcheck.Line{Check: check, Subject: r.repo.Name, Status: hostcheck.OK, Message: r.okMessage(check)})
 		case i == res.at:
 			f := res.failure
 			r.printer.Print(failureLine(check, r.repo.Name, f, r.hint(check, f)))
@@ -124,6 +124,15 @@ func (r *repoSteps) open() (id, failed string) {
 		}
 	}
 	return res.id, failed
+}
+
+// okMessage is the message of an OK line; the storage is named by its address
+// with the password of the address hidden.
+func (r *repoSteps) okMessage(check string) string {
+	if check == checkStorage {
+		return fmt.Sprintf(okMessages[check], config.RedactURL(r.repo.URL))
+	}
+	return okMessages[check]
 }
 
 func (r *repoSteps) openResult() openResult {
@@ -261,6 +270,11 @@ func (r *repoSteps) integrityStep() hostcheck.Line {
 	}
 	line.Status = hostcheck.Error
 	line.Message = r.integrityMessage(err, &log)
+	if r.ctx.Err() == nil && errors.Is(err, restic.ErrLocked) {
+		// a backup or a restore holds the repository: nothing is wrong with it
+		line.Status = hostcheck.Warn
+		line.Hint = fmt.Sprintf("run `sudo sard-agent repo check %s --read-data %d` again when it has ended", r.repo.Name, r.opts.readData)
+	}
 	return line
 }
 
