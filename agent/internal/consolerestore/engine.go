@@ -60,7 +60,7 @@ func (e *Engine) targetOf(name string) repoinit.Target {
 	if e.opts.Target != nil {
 		return e.opts.Target(name)
 	}
-	return repoinit.Target{Name: name, Scrub: func(s string) string { return s }}
+	return repoinit.Named(name)
 }
 
 // Engine restores snapshots into Dir.
@@ -202,7 +202,7 @@ func (e *Engine) completed(staging hostsetup.Dir, name string) (m marker, ok boo
 // it is known not to matter), and logs it. A name that is not one component of
 // .sard-staging is ignored.
 func (e *Engine) Settle(commandID string) {
-	if filepath.Base(commandID) != commandID || commandID == "." || commandID == ".." {
+	if !UsableName(commandID) {
 		return
 	}
 	path := filepath.Join(e.opts.Dir, stagingName, commandID)
@@ -217,6 +217,12 @@ func (e *Engine) Settle(commandID string) {
 		return
 	}
 	e.opts.Logger.Info("removed the temporary directory of a restore", "path", path)
+}
+
+// UsableName: id is one component of a path, so a command can name a
+// directory after it.
+func UsableName(id string) bool {
+	return id != "" && id != "." && id != ".." && filepath.Base(id) == id
 }
 
 // stagingEntries opens .sard-staging without following a link and lists it;

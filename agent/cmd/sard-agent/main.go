@@ -161,7 +161,7 @@ func restoreTargets(cfg config.Config, readFile func(string) ([]byte, error)) fu
 				return repoconnect.TargetReading(repo, readFile)
 			}
 		}
-		return repoinit.Target{Name: name, Scrub: func(s string) string { return s }}
+		return repoinit.Named(name)
 	}
 }
 

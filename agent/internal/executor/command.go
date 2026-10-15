@@ -66,11 +66,8 @@ func (s *stopCause) Error() string { return s.message }
 
 const shutdownMessage = "agent is shutting down"
 
-// interruptedMessage is the D13 failure of a step the agent was killed in;
+// InterruptedMessage is the D13 failure of a step the agent was killed in;
 // the console and notifications show it, so it does not change.
-const interruptedMessage = InterruptedMessage
-
-// InterruptedMessage is the D13 failure of a step the agent was killed in.
 const InterruptedMessage = "interrupted: agent restarted before the step finished"
 
 func cancelledByServer() *stopCause {

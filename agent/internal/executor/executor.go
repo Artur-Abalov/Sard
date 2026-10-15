@@ -386,7 +386,7 @@ func (e *Executor) interruption(c *command) *agentv1.StepResult {
 		i = e.opts.Interrupted(c.step.GetCommandId(), c.step.GetAction())
 	}
 	if i == nil {
-		return e.outcome(c, agentv1.StepStatus_STEP_STATUS_FAILED, interruptedMessage)
+		return e.outcome(c, agentv1.StepStatus_STEP_STATUS_FAILED, InterruptedMessage)
 	}
 	status := agentv1.StepStatus_STEP_STATUS_FAILED
 	if i.Succeeded {

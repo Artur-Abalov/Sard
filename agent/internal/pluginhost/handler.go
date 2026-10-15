@@ -224,7 +224,7 @@ func (h *handler) restoreRequest(step *agentv1.RunStep) (consolerestore.Request,
 	switch {
 	case h.console == nil:
 		return consolerestore.Request{}, errors.New("restore from the console is not enabled on this host")
-	case !usableName(id):
+	case !consolerestore.UsableName(id):
 		return consolerestore.Request{}, fmt.Errorf("command id %q cannot name a temporary directory", id)
 	case !isSnapshotID(step.GetSnapshotId()):
 		return consolerestore.Request{}, fmt.Errorf("snapshot_id %q: want 64 lower-case hexadecimal characters, the full id of the snapshot", step.GetSnapshotId())
@@ -241,10 +241,6 @@ func (h *handler) restoreRequest(step *agentv1.RunStep) (consolerestore.Request,
 // isSnapshotID: 64 lower-case hexadecimal characters.
 func isSnapshotID(id string) bool {
 	return len(id) == 64 && !strings.ContainsFunc(id, func(r rune) bool { return (r < '0' || r > '9') && (r < 'a' || r > 'f') })
-}
-
-func usableName(id string) bool {
-	return id != "" && id != "." && id != ".." && filepath.Base(id) == id
 }
 
 // verify restores the snapshot, lets the plugin check the copy and
@@ -287,7 +283,7 @@ func (h *handler) restoreSnapshot(ctx context.Context, step *agentv1.RunStep, re
 
 // newTarget creates restoreDir/id, 0700; an existing one is never reused.
 func (h *handler) newTarget(id string) (string, error) {
-	if !usableName(id) {
+	if !consolerestore.UsableName(id) {
 		return "", rejected(fmt.Errorf("command id %q cannot name a restore directory", id))
 	}
 	if err := os.MkdirAll(h.restoreDir, 0o700); err != nil {

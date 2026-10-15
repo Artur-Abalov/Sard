@@ -19,6 +19,12 @@ import (
 // --timeout runs out; any other cancellation is an interrupt.
 var ErrTimeout = errors.New("timeout")
 
+// Named is the target of a repository about which only the name is known:
+// nothing to hide in the text of a failure.
+func Named(name string) Target {
+	return Target{Name: name, Scrub: func(s string) string { return s }}
+}
+
 // Target is the repository a failure is about.
 type Target struct {
 	Name         string
