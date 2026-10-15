@@ -32,3 +32,9 @@ func TestNoPidIsNotAProcess(t *testing.T) {
 		}
 	}
 }
+
+func TestTheFirstProcessOfTheHostIsAliveEvenForAnotherUser(t *testing.T) {
+	if !processAlive(1) {
+		t.Fatal("process 1 is not alive")
+	}
+}

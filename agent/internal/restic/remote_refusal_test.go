@@ -82,3 +82,16 @@ func TestBucketCreationRefusedIsToldByTheMakeBucketCause(t *testing.T) {
 		t.Error("plain denial taken for a bucket creation")
 	}
 }
+
+func TestAFailedCreationOfTheBucketForAnotherReasonIsNoRefusal(t *testing.T) {
+	if got := restic.RemoteRefusalOf(fatal("Fatal: create repository: client.MakeBucket: something else")); got != restic.NoRemoteRefusal {
+		t.Errorf("RemoteRefusalOf = %v", got)
+	}
+}
+
+func TestAnExitWithoutAMessageHasNoWordsOfRestic(t *testing.T) {
+	words, ok := restic.RefusalWords(fmt.Errorf("restic: %w", &restic.ExitError{Code: 1}))
+	if ok || words != "" {
+		t.Errorf("RefusalWords = %q, %v", words, ok)
+	}
+}

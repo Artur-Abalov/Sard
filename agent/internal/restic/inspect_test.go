@@ -93,3 +93,11 @@ func TestTheNewCommandsReportTheExitCodesOfRestic(t *testing.T) {
 		t.Errorf("check: %v", err)
 	}
 }
+
+func TestCatLockReportsTheExitCodeOfRestic(t *testing.T) {
+	f := newFixture(t, map[string]reply{"cat": {code: 12}})
+	data, err := f.build().CatLock(context.Background(), "aa11")
+	if !errors.Is(err, restic.ErrWrongPassword) || data != nil {
+		t.Errorf("CatLock = %q, %v", data, err)
+	}
+}
