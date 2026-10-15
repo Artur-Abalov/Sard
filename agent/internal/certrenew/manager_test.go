@@ -4,7 +4,6 @@
 package certrenew_test
 
 import (
-	"context"
 	"os"
 	"strings"
 	"testing"
@@ -120,10 +119,7 @@ func TestAnAgentStartedAfterTheThresholdRenewsRightAfterRegistering(t *testing.T
 	t.Parallel()
 	e := newEnv(t)
 	e.clock.Advance(250 * 24 * time.Hour)
-	e.mgr = e.manager()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go e.mgr.Run(ctx)
+	e.startWith(e.manager())
 	e.mgr.Registered()
 	if got := e.server.next(); got != "renew" {
 		t.Fatalf("call = %s", got)

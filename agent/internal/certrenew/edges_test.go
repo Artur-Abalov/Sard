@@ -76,10 +76,7 @@ func TestAMissingCAFileFailsTheAttemptWithoutWritingAnything(t *testing.T) {
 func TestTheDefaultsAreTheProductionOnes(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	e.mgr = certrenew.New(certrenew.Options{Files: e.files(), StatePath: e.statePath(), FS: e.fs, Caller: e.server, Clock: e.clock})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go e.mgr.Run(ctx)
+	e.startWith(certrenew.New(certrenew.Options{Files: e.files(), StatePath: e.statePath(), FS: e.fs, Caller: e.server, Clock: e.clock}))
 	e.mgr.Registered()
 	e.mgr.Registered()
 	e.idle()

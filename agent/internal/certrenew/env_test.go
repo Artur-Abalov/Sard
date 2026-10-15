@@ -292,12 +292,19 @@ func (e *env) manager() *certrenew.Manager {
 // start runs the renewal as an agent that has just registered.
 func (e *env) start() {
 	e.t.Helper()
-	e.mgr = e.manager()
+	e.startWith(e.manager())
+	e.mgr.Registered()
+}
+
+// startWith runs mgr; the test ends only after Run has returned, so that no
+// attempt still works on the files of a directory that is being removed.
+func (e *env) startWith(mgr *certrenew.Manager) {
+	e.t.Helper()
+	e.mgr = mgr
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancel = cancel
 	e.done = make(chan struct{})
-	go func() { e.mgr.Run(ctx); close(e.done) }()
-	e.mgr.Registered()
+	go func() { mgr.Run(ctx); close(e.done) }()
 	e.t.Cleanup(e.stop)
 }
 

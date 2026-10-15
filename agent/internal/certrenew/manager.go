@@ -292,8 +292,11 @@ func (m *Manager) succeeded() time.Duration {
 	if err := RemoveState(m.o.FS, m.o.StatePath); err != nil {
 		m.o.Logger.Warn("removing the certificate renewal state failed", "error", transport.Describe(err))
 	}
-	cert, _ := tlsid.ReadCertificate(m.o.Files.CertFile, m.o.FS.ReadFile)
-	m.o.Logger.Info("certificate renewed", "old_serial", m.old, "new_serial", cert.SerialNumber.Text(16), "not_after", cert.NotAfter.UTC().Format(time.RFC3339))
+	attrs := []any{"old_serial", m.old}
+	if cert, err := tlsid.ReadCertificate(m.o.Files.CertFile, m.o.FS.ReadFile); err == nil {
+		attrs = append(attrs, "new_serial", cert.SerialNumber.Text(16), "not_after", cert.NotAfter.UTC().Format(time.RFC3339))
+	}
+	m.o.Logger.Info("certificate renewed", attrs...)
 	return m.untilDue()
 }
 

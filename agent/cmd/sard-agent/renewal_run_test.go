@@ -36,7 +36,21 @@ func TestRenewalDoesNotReopenTheStream(t *testing.T) {
 	if h.server.count("register") != 1 || h.server.count("connect") != 1 || a.exited() {
 		t.Fatalf("events = %v", h.server.eventLog())
 	}
-	h.server.waitCount(t, "heartbeat", 1)
+	h.heartbeat()
+}
+
+// heartbeat lets the stream's heartbeat timer come due and waits for the beat;
+// the timer may have been started after the renewal's clock jump.
+func (h *renewalHost) heartbeat() {
+	h.t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for h.server.count("heartbeat") < 1 {
+		if time.Now().After(deadline) {
+			h.t.Fatalf("no heartbeat; events: %v", h.server.eventLog())
+		}
+		h.clock.Advance(30 * time.Second)
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 // Scenario: Подтверждение идёт новой парой по отдельному соединению
@@ -117,11 +131,23 @@ func TestAFailingRenewalDoesNotStopTheAgentOrTouchTheStream(t *testing.T) {
 	h.renewalPause()
 	h.clock.Advance(200 * 24 * time.Hour)
 	for n := 1; n <= 3; n++ {
-		h.server.waitCount(t, "renew", n)
+		h.advanceUntilCount("renew", n)
 		h.waitLog("failures=" + strconv.Itoa(n))
-		h.clock.Advance(time.Hour)
 	}
 	if a.exited() || h.server.count("connect") != 1 || h.server.count("register") != 1 {
 		t.Fatalf("exited = %v, events = %v", a.exited(), h.server.eventLog())
+	}
+}
+
+// advanceUntilCount moves the clock an hour at a time until the server has seen n events with the prefix.
+func (h *renewalHost) advanceUntilCount(prefix string, n int) {
+	h.t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for h.server.count(prefix) < n {
+		if time.Now().After(deadline) {
+			h.t.Fatalf("the server saw %d x %q, want %d; events: %v", h.server.count(prefix), prefix, n, h.server.eventLog())
+		}
+		h.clock.Advance(time.Hour)
+		time.Sleep(5 * time.Millisecond)
 	}
 }

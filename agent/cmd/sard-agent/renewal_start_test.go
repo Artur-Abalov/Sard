@@ -166,8 +166,9 @@ func TestAnUnreachableServerAtConfirmationKeepsTheAgentFromRegisteringWithTheOld
 func TestAFinalRefusalAtConfirmationReturnsTheAgentToTheCurrentPair(t *testing.T) {
 	t.Parallel()
 	h := newRenewalHost(t)
-	h.install(h.issuePair(2, renewDay(200), renewDay(500)), ".new")
-	h.clock.Set(renewDay(201))
+	// Before the threshold of pair 1 (day 200): no renewal runs beside the check of the files.
+	h.install(h.issuePair(2, renewDay(100), renewDay(400)), ".new")
+	h.clock.Set(renewDay(101))
 	h.server.confirm = func(string, int) error {
 		return refusedWith(codes.Unauthenticated, "no", "sard.dev", "CERT_REVOKED", nil)(nil)
 	}

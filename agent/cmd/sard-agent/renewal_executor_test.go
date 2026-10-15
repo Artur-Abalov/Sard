@@ -123,6 +123,7 @@ func TestAStepStartedBeforeTheRenewalFinishesAndReportsOnTheSameStream(t *testin
 // lists Q nor sends its result again.
 func (h *renewalHost) requireAcknowledged() {
 	h.t.Helper()
+	h.waitAcked()
 	h.server.dropStreams()
 	h.reconnect(2)
 	h.server.waitCount(h.t, "hello", 2)
@@ -147,5 +148,22 @@ func TestAStreamLostAfterARenewalDuringAStepRecoversWithTheNewCertificate(t *tes
 	h.server.waitCount(t, "result Q", 1)
 	if h.server.results[0].GetStatus() != agentv1.StepStatus_STEP_STATUS_SUCCEEDED {
 		t.Fatalf("result = %v", h.server.results[0])
+	}
+}
+
+// waitAcked waits until the executor has recorded the server's ack of a result.
+func (h *renewalHost) waitAcked() {
+	h.t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		for path := range h.journal() {
+			if strings.Contains(path, string(filepath.Separator)+"acked"+string(filepath.Separator)) {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			h.t.Fatalf("the result was never acknowledged: %v", h.journal())
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
