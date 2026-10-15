@@ -202,21 +202,31 @@ func loadLocal(configPath string, rt agentRuntime) (localState, error) {
 	if err != nil {
 		return localState{}, err
 	}
-	if err := checkCryptoProviders(cfg); err != nil {
-		return localState{}, err
-	}
-	sel, err := certpair.Select(cfg.TLS, rt.fs, rt.clock.Now())
+	sel, err := selectPair(cfg, configPath, rt)
 	if err != nil {
 		return localState{}, err
 	}
-	if err := checkHostFiles(cfg, sel); err != nil {
-		return localState{}, err
-	}
-	if sel.Expired != nil {
-		return localState{}, expiredRefusal(sel.Expired, configPath, cfg)
-	}
 	me, err := identifyHost(cfg, sel)
 	return localState{cfg: cfg, host: me, pair: sel}, err
+}
+
+// selectPair runs the checks of loadLocal that come before the identity: the
+// crypto providers, the pair, the files' modes and the expiry.
+func selectPair(cfg config.Config, configPath string, rt agentRuntime) (certpair.Selection, error) {
+	if err := checkCryptoProviders(cfg); err != nil {
+		return certpair.Selection{}, err
+	}
+	sel, err := certpair.Select(cfg.TLS, rt.fs, rt.clock.Now())
+	if err != nil {
+		return certpair.Selection{}, err
+	}
+	if err := checkHostFiles(cfg, sel); err != nil {
+		return certpair.Selection{}, err
+	}
+	if sel.Expired != nil {
+		return certpair.Selection{}, expiredRefusal(sel.Expired, configPath, cfg)
+	}
+	return sel, nil
 }
 
 // hostIdentity is what the agent knows about itself before it connects.

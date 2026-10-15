@@ -151,3 +151,9 @@ V1 (#70) уже в `main` (`2881821`), поэтому роль из V1 сохр�
   Первая попытка ждёт первого успешного Register (П17).
 - Не сделано: два сценария `@executor` (шаг во время продления) — продление не
   обращается к исполнителю и потоку, но теста с блокируемым обработчиком нет.
+
+## Cleaner
+
+- `loadLocal` (main.go): the checks that come before the identity moved to `selectPair`; `certificateState` (status_cmd.go): reading the renewal state file moved to `renewalRecord`. CRAP of loadLocal 6.0 -> 3.0, certificateState 6.0 -> 5.0 (`./scripts/crap.sh agent`). `./scripts/gate.sh agent fast` passes.
+- Not done: certpair's `OSFS.WriteFile`/`syncDir` resemble `enroll.stage`/`syncParent`, but differ in prefix, owner handling and rename step; sharing them would couple two packages for no behaviour gain.
+- Server: no change. Without Docker the renewal code is covered only by Docker-only integration tests (0% in the local JaCoCo report), so no refactor could be verified here; left to CI. architect runs next.

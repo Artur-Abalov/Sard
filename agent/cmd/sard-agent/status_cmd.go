@@ -110,9 +110,7 @@ func certificateState(id identity.Identity, now time.Time, cfg config.Config, de
 	if !now.Before(id.NotAfter) {
 		return certState{name: stateExpired}
 	}
-	path := filepath.Join(executorStateDir(cfg.Executor.StateDir), certrenew.StateFile)
-	st, ok := certrenew.ReadState(deps.readFile, path)
-	ok = ok && st.Serial == id.Serial
+	st, ok := renewalRecord(id, cfg, deps)
 	if ok && !st.Unsupported {
 		return certState{name: stateFailing, failing: st}
 	}
@@ -121,6 +119,14 @@ func certificateState(id identity.Identity, now time.Time, cfg config.Config, de
 		state.name = stateDue
 	}
 	return state
+}
+
+// renewalRecord is the renewal state file's content, when it is about the
+// certificate id.
+func renewalRecord(id identity.Identity, cfg config.Config, deps statusDeps) (certrenew.State, bool) {
+	path := filepath.Join(executorStateDir(cfg.Executor.StateDir), certrenew.StateFile)
+	st, ok := certrenew.ReadState(deps.readFile, path)
+	return st, ok && st.Serial == id.Serial
 }
 
 // statusFlags returns the config path, or exitUsage after saying what is wrong.
