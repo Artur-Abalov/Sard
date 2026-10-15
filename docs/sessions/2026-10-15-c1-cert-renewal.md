@@ -93,3 +93,15 @@ V1 (#70) уже в `main` (`2881821`), поэтому роль из V1 сохр�
 - Р10. В C1 расширяется только `status` (дни и состояние); `check` — A8d.
 
 ## Фаза 2 — сервер и агент
+
+### specifier
+
+- `docs/specs/server/agent-certificate-renewal.feature`,
+  `docs/specs/agent/agent-certificate-renewal.feature`,
+  `docs/qa/agent-certificate-renewal.md`; поправки C1 в О2
+  (`agent-start-refusals.feature`) и С6 (`agent-role.feature`).
+- Владелец в чате принял П1–П26 и поправки 1–6, затем П27–П31.
+- Поправки: S5a закрывает поток только при отзыве и истечении (не при
+  «заменён» и «не подтверждён»); пара выбирается по самому позднему
+  `notBefore`; `ReadWritePaths=-/etc/sard/tls`.
+- Хвост: шаг 11 `docs/qa/agent-role.md` ещё ждёт четыре строки `status`.
