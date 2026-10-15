@@ -44,7 +44,7 @@ func TestRemoteRefusalIsReadFromTheWordsOfRestic(t *testing.T) {
 }
 
 // A bucket or host named "forbidden" must not decide the class.
-func TestRemoteRefusalIgnoresTheAddressesRestioEchoes(t *testing.T) {
+func TestRemoteRefusalIgnoresTheAddressesResticEchoes(t *testing.T) {
 	err := fatal(`Fatal: unable to open repository at s3:https://forbidden.example.com/bucket: connection refused`)
 	if got := restic.RemoteRefusalOf(err); got != restic.NoRemoteRefusal {
 		t.Errorf("RemoteRefusalOf = %v", got)

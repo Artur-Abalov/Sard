@@ -8,8 +8,6 @@ import (
 	"io/fs"
 
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
-	"github.com/Artur-Abalov/sard/agent/internal/refusal"
-	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
@@ -35,7 +33,7 @@ func checkExplains(err error) bool {
 		return true
 	case errors.Is(err, restic.ErrPasswordFile) && errors.Is(err, fs.ErrNotExist):
 		return true
-	case repoinit.RemoteReason(err) != refusal.Reason(""):
+	case restic.RemoteRefusalOf(err) != restic.NoRemoteRefusal:
 		return true
 	}
 	return errors.Is(err, sdk.ErrProgramMissing)
