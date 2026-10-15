@@ -17,7 +17,7 @@
 - F3: связь `pluginhost -> repoinit` убрана: классификатор отказов restic по
   тексту переехал в `internal/restic` (`RemoteRefusalOf`), `repoinit` только
   отображает класс в `refusal.Reason`; тест на запрещённые импорты.
-- R1 (реальная ошибка): сертификат с нечитаемым SAN давал не отказ, а сбой
+- R1 из первого вердикта (рекомендация, оказавшаяся реальной ошибкой): сертификат с нечитаемым SAN давал не отказ, а сбой
   `UNAVAILABLE`. Теперь `CertificateParsingException` в `presented()` значит
   «сертификат не предъявлен» и ведёт к `CERT_MISSING`. Тест
   `AgentAuthUnavailableTest`.
@@ -27,7 +27,8 @@
   якорей в `check_docs_test.go` теперь считает и первый заголовок.
 - Cleaner, проход 2: удалён неиспользуемый `repoinit.RemoteReason`; два
   одинаковых списка проверок репозитория сведены в
-  `hostcheck.RepositoryChecks()`. Метрики CRAP не менялись.
+  `hostcheck.RepositoryChecks()`. Таблица `crap.sh agent` до и после совпала,
+  функций выше 6,0 нет (см. итоги прогонов).
 
 ## Раунд 2
 - ADR 0009: строка `CERT_MISSING` и поправка A8d; отдельной причины нет:
@@ -44,4 +45,17 @@
   экспорта или нового пакета/зависимости hostcheck от transport.
 
 ## Итоги прогонов
-См. итоговое сообщение сессии (числа от инструментов).
+Выводы инструментов на коммите раунда 2:
+
+- `./scripts/gate.sh agent fast`: `gate: PASSED (agent, fast)`, golangci-lint
+  `0 issues.`
+- `./scripts/gate.sh sdk fast`: `gate: PASSED (sdk, fast)`.
+- `./scripts/gate.sh proto fast`: `gate: PASSED (proto, fast)`.
+- `./scripts/crap.sh agent`: ни одной функции с CRAP выше 6,0 (худшие строки
+  6.0, CC 6, покрытие 100.0%).
+- `make license-check`: `1402 files OK`.
+- `markdownlint-cli2@0.18.1`: `0 error(s)`.
+- Kotlin (`AgentAuthUnavailableTest`, `AgentAuthenticatorTest`,
+  `AgentRefusalMessageTest`, `AgentRoleUriTest`, `AgentProbeTest`) с
+  `-Pmutflow.enabled=true`: `BUILD SUCCESSFUL`; `spotlessCheck`, `detekt`:
+  `BUILD SUCCESSFUL`.
