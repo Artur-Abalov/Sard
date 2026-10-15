@@ -33,15 +33,21 @@ func TestPackageMainDeclaresNoCheckIdentifier(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ast.Inspect(file, func(n ast.Node) bool {
-			lit, ok := n.(*ast.BasicLit)
-			if !ok || lit.Kind != token.STRING {
-				return true
-			}
+		for _, lit := range literalsOf(file) {
 			if value, err := strconv.Unquote(lit.Value); err == nil && slices.Contains(ids, value) {
 				t.Errorf("%s declares the check identifier %q", fset.Position(lit.Pos()), value)
 			}
-			return true
-		})
+		}
 	}
+}
+
+func literalsOf(file *ast.File) []*ast.BasicLit {
+	var lits []*ast.BasicLit
+	ast.Inspect(file, func(n ast.Node) bool {
+		if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+			lits = append(lits, lit)
+		}
+		return true
+	})
+	return lits
 }
