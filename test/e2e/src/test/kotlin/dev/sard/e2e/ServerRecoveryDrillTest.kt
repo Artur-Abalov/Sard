@@ -307,7 +307,13 @@ class ServerRecoveryDrillTest {
     fun `Расписание источника A1 даёт один догоняющий запуск`() {
         val source = old.sourceIds.getValue("A1")
         fun catchUps() = api.items("/api/v1/runs?sourceId=$source").filter { it["trigger"].text == "catch_up" }
-        Await.until("the catch-up run of A1", Duration.ofMinutes(4)) { catchUps().isNotEmpty() }
+        try {
+            Await.until("the catch-up run of A1", Duration.ofMinutes(4)) { catchUps().isNotEmpty() }
+        } catch (e: AssertionError) {
+            val fires = api.get("/api/v1/sources/$source/schedule/fires").body
+            val recent = api.get("/api/v1/runs?sourceId=$source").body
+            throw AssertionError("${e.message}\nschedule fires of A1: $fires\nruns of A1: $recent", e)
+        }
         Thread.sleep(SCHEDULER_PASSES.toMillis())
 
         val found = catchUps()
