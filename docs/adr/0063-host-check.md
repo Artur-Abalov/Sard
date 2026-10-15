@@ -233,8 +233,8 @@ ERROR «the server could not tell whether it accepts this agent: code = <код>
 ### Часы (Ч16)
 `skew = server_time − (Sent + RTT/2)`, где `Sent` — время хоста перед вызовом
 (`deps.clock`), `RTT` — измеренная длительность вызова. `|skew| > 1 мин` — WARN
-(60 с — ещё OK), сообщение «the clock of this host is <n>s behind|ahead of the
-server's», подсказка `sudo timedatectl set-ntp true`.
+(60 с — ещё OK), сообщение `the clock of this host is <n>s behind|ahead of the server's`,
+подсказка `sudo timedatectl set-ntp true`.
 
 ### Зависимости и `--offline`
 `server.reachable` → `server.tls` → `server.accepted` → `clock.skew`: ERROR
