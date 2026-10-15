@@ -19,7 +19,10 @@ var ErrUnknownSecret = errors.New("unknown secret")
 // ErrProgramMissing is wrapped (with %w) by a plugin into the error for a
 // program it needs and cannot find or start on the agent host. The agent
 // recognises it with errors.Is and points the operator to `sard-agent check`;
-// the words of the message are the plugin's own.
+// the words of the message are the plugin's own. The text of the sentinel is
+// "not found", so a plugin composes its message around it, for example
+// fmt.Errorf("%s %w ...", name, sdk.ErrProgramMissing), and does not repeat
+// "not found".
 var ErrProgramMissing = errors.New("not found")
 
 // ConfigError means a config does not satisfy the plugin's ConfigSchema,

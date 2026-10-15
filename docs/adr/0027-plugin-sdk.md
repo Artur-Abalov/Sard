@@ -58,6 +58,9 @@
   `Plugin.Version()`. Ошибки `sdk.ErrInvalidConfig` и `sdk.ErrUnknownSecret`
   оборачиваются в `executor.ErrRejected`, как и теги, которые restic не
   примет (пустой ключ, запятая). Теги шага — `ключ=значение`, по порядку.
+  Программу, которой нет на хосте, плагин сообщает ошибкой с `sdk.ErrProgramMissing`
+  (оборачивает через `%w`); `pluginhost` узнаёт её через `errors.Is` и дописывает
+  подсказку `sudo sard-agent check` (ADR 0063).
   Итог restic → `BackupOutput{snapshot_id, total_bytes, added_bytes,
   repository_id}`; снимок без части файлов — FAILED с выводом.
 - **RESTORE и VERIFY.** Снимок восстанавливается в новый каталог

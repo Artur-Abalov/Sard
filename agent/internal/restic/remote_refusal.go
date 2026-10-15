@@ -58,7 +58,7 @@ var refusalClasses = []struct {
 // RemoteRefusalOf is the class of a refusal of a remote storage that err
 // says, by the words of restic; NoRemoteRefusal for any other error.
 func RemoteRefusalOf(err error) RemoteRefusal {
-	cause, ok := RefusalWords(err)
+	cause, ok := refusalWords(err)
 	if !ok {
 		return NoRemoteRefusal // an error of the agent, not a word of the storage
 	}
@@ -74,9 +74,9 @@ func RemoteRefusalOf(err error) RemoteRefusal {
 // it asked the storage to create.
 func BucketCreationRefused(cause string) bool { return mentions(cause, makeBucketCause) }
 
-// RefusalWords is what restic said, without the addresses it echoes; false
+// refusalWords is what restic said, without the addresses it echoes; false
 // when restic said nothing: the error is the agent's own.
-func RefusalWords(err error) (string, bool) {
+func refusalWords(err error) (string, bool) {
 	var exit *ExitError
 	if !errors.As(err, &exit) || exit.Message == "" {
 		return "", false
