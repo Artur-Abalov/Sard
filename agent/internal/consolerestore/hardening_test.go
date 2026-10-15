@@ -418,3 +418,18 @@ func TestTheTargetOfTheOptionsDescribesTheRepositoryInTheMessages(t *testing.T) 
 		t.Errorf("detail = %q", f.Detail)
 	}
 }
+
+// A directory that cannot be synced after the marker went does not stop the
+// cleanup, and the failure is logged for the operator.
+func TestAFailedSyncOfTheMarkerRemovalIsLoggedAndTheCleanupGoesOn(t *testing.T) {
+	h := newHost(t)
+	leaveStaging(t, h, "c1")
+	h.faults.syncErr = map[string]error{command(h, "c1"): syscall.EIO}
+	if left := stuck(h.engine.CleanStaging()); len(left) != 0 {
+		t.Fatalf("left = %+v", left)
+	}
+	if _, err := os.Stat(command(h, "c1")); !os.IsNotExist(err) {
+		t.Errorf("c1: %v", err)
+	}
+	mentions(t, h.log.String(), "level=WARN", "could not be synced", command(h, "c1"), "input/output error")
+}

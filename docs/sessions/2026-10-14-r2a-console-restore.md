@@ -140,3 +140,15 @@
 - `RestoreTargets.holders`: агенты, чья роль не разрешает RESTORE, не попадают ни в `targets`, ни в `ineligible`.
 - `AgentRoleMismatch` получил `action`; сообщение называет действие. Текст поля в 422 стал общим.
 - ADR 0060 п. 4: шаг роли в порядке проверок.
+
+## 2026-10-15, hardener, второй проход (HEAD 6efb87d)
+
+- sdk, gen, proto (против origin/main), web: ворота пройдены. server: выжили `RunModel.kt:111/119`
+  (`AgentRole.allows`) и `NoticeFormatter.kt:47`. Убиты тестами: `RestoresMutationTest` (verifier не цель и
+  отказ `AgentRoleMismatch` после `AgentRevoked`, таблица `allows`). Агент: `consolerestore` 138/138
+  (счёт 1.000000), тест на WARN при сбое fsync после удаления метки.
+- Остался один эквивалентный мутант: `NoticeFormatter.kt:47` (`telling == Telling.RECOVERY` в
+  `headline()`): для restore `compose` не использует заголовок, `headline()` лишь проверяется на null.
+  Предложение: убрать параметр `headline` из `compose` для restore или вызывать `headline()` только для
+  бэкапа. Убить его из класса RestoreNoticeFormatterTest нельзя без дублирования тестов бэкапа.
+- Полный прогон ворот agent после 6efb87d не повторён (остановка по правилу «неубиваемый выживший»).

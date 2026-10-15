@@ -97,6 +97,7 @@ internal class RestoreScene(
         plugins: List<String> = listOf("files"),
         restore: Boolean = true,
         revoked: Boolean = false,
+        role: String = "source",
     ): UUID {
         val agent = UUID.randomUUID()
         tenant.insertAgent(agent, plugins = emptyList(), repositories = listOf(name))
@@ -107,6 +108,7 @@ internal class RestoreScene(
             dir,
             agent,
         )
+        jdbc.update("update agents set role = ? where id = ?", role, agent)
         if (revoked) jdbc.update("update agents set revoked_at = ? where id = ?", Timestamp.from(RUNS_NOW), agent)
         for (plugin in plugins) files(agent, plugin, restore)
         return agent

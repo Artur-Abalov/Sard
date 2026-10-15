@@ -5,6 +5,7 @@ package dev.sard.server.runs
 
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.RestoreScene.Companion.DESTINATION
 import dev.sard.server.runs.RestoreScene.Companion.DIR
 import dev.sard.server.runs.RestoreScene.Companion.RESTORE_SCHEMA
@@ -78,7 +79,8 @@ class RestoresMutationTest(
         plugins: List<String> = listOf("files"),
         restore: Boolean = true,
         revoked: Boolean = false,
-    ) = scene.agent(host, name, id, dir, plugins, restore, revoked)
+        role: String = "source",
+    ) = scene.agent(host, name, id, dir, plugins, restore, revoked, role)
 
     private fun files(
         agent: UUID,
@@ -370,6 +372,33 @@ class RestoresMutationTest(
 
             val refused = refusedBy(s, draft(a, """{"a":"x"}""")) as RestoreConfigInvalid
             assertEquals(listOf(broken), refused.violations, schema)
+        }
+    }
+
+    @Test
+    fun `a verifier agent is no restore target and is refused as one, after the revoked check`() {
+        val s = source()
+        snapshot(s)
+        val verifier = agent("verifier", role = "verifier")
+        val revoked = agent("revoked-verifier", role = "verifier", revoked = true)
+
+        val got = options(s)
+
+        assertEquals(listOf(a), got.targets.map { it.agentId })
+        assertEquals(emptyList(), got.ineligible)
+        val refused = refusedBy(s, draft(verifier)) as AgentRoleMismatch
+        assertEquals(verifier, refused.agentId)
+        assertEquals(Action.RESTORE, refused.action)
+        assertEquals(revoked, (refusedBy(s, draft(revoked)) as AgentRevoked).agentId)
+    }
+
+    @Test
+    fun `a source may be asked to back up, restore and run, a verifier only to verify`() {
+        for (action in Action.entries) {
+            val source = MutFlow.underTest { AgentRole.SOURCE.allows(action) }
+            val verifier = MutFlow.underTest { AgentRole.VERIFIER.allows(action) }
+            assertEquals(action != Action.VERIFY, source, "source $action")
+            assertEquals(action == Action.VERIFY, verifier, "verifier $action")
         }
     }
 
