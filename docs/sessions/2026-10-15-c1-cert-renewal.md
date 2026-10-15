@@ -1,0 +1,74 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Copyright 2026 Artur Abalov -->
+
+# 2026-10-15 — C1: продление сертификата агента
+
+Ветка `ccr-1a57e1dc-ha8h4a`: её назначила сессия. В задаче указана
+`feat/c1-cert-renewal`, переименовать можно по решению владельца. PR #61, #62 и
+V1 (#70) уже в `main` (`2881821`), поэтому роль из V1 сохраняется при продлении.
+Продуктовая возможность: после контрольной точки 1 работа идёт по
+`/ship-feature`.
+
+## Фаза 1 — исследование
+
+«Проверил» — видел в коде. «Полагаю» — не проверено.
+
+### Чего нет в репозитории
+
+- D19 и D4.4 в `docs/` не найдены (они в основном плане). Есть OQ-022
+  (`docs/open-questions.md:32`) и раздел «Отложено» ADR 0014.
+- `sard-agent check` (A8d) не реализован: `run()` знает только enroll, status,
+  repo, secret (`agent/cmd/sard-agent/main.go:61-73`). Срок показывает только
+  `status`.
+
+### Сервер (проверил)
+
+| Тема | Факт | Где |
+|---|---|---|
+| Выпуск | `issueAgentCertificate(csrDer, AgentIdentity, AgentRole)`, Clock и SecureRandom внедрены | `pki/CertificateAuthority.kt`, `pki/FileCertificateAuthority.kt:28-29,75` |
+| Срок | `AGENT_VALIDITY = Duration.ofDays(365)`, константа, `notBefore = now`. С `notAfter` CA не сверяется | `pki/Certificates.kt:32,68` |
+| Атрибуты | `CN=<agentId>`, SAN: `sard://tenants/<t>/agents/<a>` и `sard://roles/<role>`, EKU clientAuth, serial 128 бит | `pki/Certificates.kt:68,115-129`, `pki/AgentRoleUri.kt` |
+| CSR | только ECDSA P-256/P-384, подпись проверяется, остальное игнорируется | `pki/AgentCsr.kt` |
+| БД | `agent_certificates(serial, tenant_id, agent_id, issued_at, not_after, revoked_at)`; несколько сертификатов на агента схема допускает | `V202609271200__enrollment.sql:27-38` |
+| S3 | поиск по serial на каждый вызов, проверки: SAN = БД, роль = `agents.role`, `CERT_REVOKED`, `CERT_EXPIRED`, `AGENT_REVOKED` | `agents/AgentAuthentication.kt:100+` |
+| RenewCertificate | в `AgentService` (под mTLS), не переопределён — UNIMPLEMENTED. Истёкший сертификат до него не доходит (`CERT_EXPIRED`) | `agent.proto:83-85,140-147`; `agents/AgentGrpcService.kt:29` |
+| Отзыв | `revokeIn` ставит `revoked_at` агенту и всем его сертификатам | `fleet/Agents.kt:240` |
+| Дубликат сессии | второй стрим того же сертификата — `AGENT_DUPLICATE_SESSION` | `agents/stream/AgentStreams.kt:90-135` |
+| Уведомления | событий-«push» нет; `NotificationService.tick()` планирует из строк БД, дедупликация уникальными ключами `notification_deliveries`, `num_nonnulls(run_id, fire_id, episode_id) = 1`. Тексты в Kotlin (`NoticeWording.kt`, `OverdueNoticeFormatter.kt`) | `notify/` |
+| Периодика | образец — `FreshnessLoop` + `FreshnessCheck.tick()` | `freshness/` |
+| REST | `AgentSummary`, `AgentDetails` — полей сертификата нет | `api/AgentsController.kt:38,86` |
+| Ограничение частоты | `LoginAttemptTracker` (по адресу, константы не настраиваются); Enroll не ограничен | `auth/LoginAttemptTracker.kt` |
+| sard-self | тот же Enroll по встроенному токену; токен пишется в `SARD_SELF_DIR/enroll-token`, пока нет живого встроенного агента | `selfagent/SelfAgentCheck.kt:62-66` |
+
+### Агент (проверил)
+
+| Тема | Факт | Где |
+|---|---|---|
+| Файлы | `/etc/sard/tls/{ca.pem,agent.pem,agent.key}`; каталог 0700 `sard-agent` | `deploy/agent/agent.example.yaml:13-15`, `postinstall.sh:43-44` |
+| Запись при enroll | temp рядом + fchown/chmod/fsync + rename, порядок CA → ключ → сертификат, fsync каталога | `internal/enroll/write.go:24-260` |
+| Ключ | ECDSA P-256, PKCS#8 | `internal/enroll/csr.go`, `enroll_run.go:290` |
+| Срок при старте | не проверяется; истёкший даёт Unauthenticated на Register → `ErrNotAuthorized` → 78 | `internal/transport/transport.go:89-98`, `main.go:111-117` |
+| Коды демона | 0, 1, 2, 78; коды A2b (0–7) — только у enroll | `main.go:42-47`, `enroll_flags.go:20-27` |
+| systemd | `RestartPreventExitStatus=78`, `ProtectSystem=strict`, **без** `ReadWritePaths=/etc/sard/tls` — демон сейчас не может записать продлённую пару | `deploy/agent/sard-agent.service:22-30` |
+| Транспорт | `GetClientCertificate` читает пару при каждом рукопожатии; новый `grpc.NewClient` на каждое подключение; часы `transport.Clock` внедрены | `transport.go:54-57,131,233-283` |
+| Журнал FXa | запись до ACCEPTED, удаление после сохранения результата; при старте незавершённые — FAILED «interrupted» | `internal/executor/store.go`, `executor.go:314-359` |
+| sard-self | тот же бинарник, файлы в `/var/lib/sard-self/tls`, compose `restart: unless-stopped` — защиты от бесконечного перезапуска нет | `deploy/docker-compose.yml:87-112`, `deploy/agent/Dockerfile:87-106` |
+| SELinux | в коде и `deploy/` не упоминается; проверки в enforcing нет (ADR 0048) | `docs/specs/agent/agent-install.feature:20` |
+
+### Предварительный дизайн (на ревью)
+
+- Ротация ключа обязательна: сервер отказывает, если ключ CSR совпадает с
+  ключом предъявленного сертификата.
+- Подтверждение нового сертификата — отдельный унарный вызов по новой паре на
+  отдельном соединении; после него старый отклоняется, но открытый стрим не
+  рвётся и не дублируется, переход — при следующем переподключении.
+- Пара `agent.key.new` / `agent.pem.new` рядом со старой; при старте берётся
+  согласованная пара с самым поздним `notAfter`.
+- Порог продления — 2/3 срока от `notBefore`; предупреждение и уведомления —
+  см. вопросы.
+
+### Открытые вопросы фазы 1
+
+Заданы владельцу одним списком; ответы — в начале фазы 2.
+
+СТОП: ждём ревью.
