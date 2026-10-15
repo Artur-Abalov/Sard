@@ -7,6 +7,7 @@ import dev.sard.server.agents.stream.TestAgent
 import dev.sard.server.registration.PluginAction
 import dev.sard.server.registration.PluginEntry
 import dev.sard.server.registration.RepositoryEntry
+import dev.sard.server.role.AgentRole
 import tools.jackson.databind.JsonNode
 import java.sql.Timestamp
 import java.time.Instant
@@ -57,6 +58,9 @@ class RestoreWorld(
     val a: TestAgent = world.agent(tenant, snapshot("main", RID), "db1")
     val b: TestAgent = world.agent(tenant, snapshot("copy", RID), "db2")
     val c: TestAgent = world.agent(tenant, snapshot("other", RID2), "db3")
+
+    /** A verifier that holds [RID] too: never a restore target (R2a). */
+    val v: TestAgent = world.agent(tenant, snapshot("verify", RID), "v1", role = AgentRole.VERIFIER)
 
     /** A source of [agent] on [repository]; its id. */
     fun source(

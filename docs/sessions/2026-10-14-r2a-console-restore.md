@@ -130,3 +130,13 @@
 3. Удалён избыточный код (эквивалентные мутанты), поведение не менялось. `runtime.KeepAlive(target)` в
    `hostsetup/osdir_linux.go` оставлен: нужен для корректности, мутант виден только по срокам GC.
 4. `removeCommand` пишет WARN с путём при сбое fsync каталога (тест), комментарий исправлен; ADR 0060 п. 8.
+
+## Поправка architect P1: верификатор не цель восстановления
+
+- Тест `Агент-верификатор не цель восстановления` (`RestoresApiIntegrationTest`, агент `v` в `RestoreWorld`)
+  сначала упал на утверждении «verifier offered as a target»; остальные сценарии с `v` в мире падали на списках целей.
+- `RestoreChoice.agentOf`: после проверки отзыва `AgentRole.of(role).allows(Action.RESTORE)`, иначе
+  `AgentRoleMismatch(id, RESTORE)` (422 `agent_role_mismatch` у `agentId`, предпросмотр и запуск, запуск не создаётся).
+- `RestoreTargets.holders`: агенты, чья роль не разрешает RESTORE, не попадают ни в `targets`, ни в `ineligible`.
+- `AgentRoleMismatch` получил `action`; сообщение называет действие. Текст поля в 422 стал общим.
+- ADR 0060 п. 4: шаг роли в порядке проверок.

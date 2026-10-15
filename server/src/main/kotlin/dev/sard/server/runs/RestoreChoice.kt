@@ -9,6 +9,7 @@ import dev.sard.server.persistence.AgentPluginRecord
 import dev.sard.server.persistence.AgentRepositoryRecord
 import dev.sard.server.persistence.SnapshotRecord
 import dev.sard.server.persistence.SourceRecord
+import dev.sard.server.role.AgentRole
 import jakarta.persistence.LockModeType
 import org.hibernate.Session
 import tools.jackson.databind.JsonNode
@@ -47,8 +48,9 @@ internal class RestoreChoice(
     companion object {
         /**
          * The request checked in the order of ВК33, each refusal the first that applies: the snapshot of the
-         * source (404), whether the console restores it (422), the agent (422, 409), its repository and plugin
-         * (409), the config against the agent's restore schema and secrets (422).
+         * source (404), whether the console restores it (422), the agent (422, 409: unknown, revoked, then a role
+         * that cannot restore), its repository and plugin (409), the config against the agent's restore schema and
+         * secrets (422).
          */
         fun resolve(
             session: Session,
@@ -92,7 +94,13 @@ internal class RestoreChoice(
         ): Agent {
             val id = agentId?.let { runCatching { UUID.fromString(it) }.getOrNull() }
             val agent = id?.let { session.find(Agent::class.java, it, lock) } ?: throw RestoreAgentInvalid()
-            return agent.also { if (it.revokedAt != null) throw AgentRevoked(agent.id) }
+            return agent.also(::requireRestoring)
+        }
+
+        /** An unrevoked (409) agent whose role restores (422), in the order of agent-role Р7. */
+        private fun requireRestoring(agent: Agent) {
+            if (agent.revokedAt != null) throw AgentRevoked(agent.id)
+            if (!AgentRole.of(agent.role).allows(Action.RESTORE)) throw AgentRoleMismatch(agent.id, Action.RESTORE)
         }
 
         private fun repositoryOf(

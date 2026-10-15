@@ -81,6 +81,6 @@ internal object AgentOffer {
         agent: Agent,
         action: Action,
     ) {
-        if (!AgentRole.of(agent.role).allows(action)) throw AgentRoleMismatch(agent.id)
+        if (!AgentRole.of(agent.role).allows(action)) throw AgentRoleMismatch(agent.id, action)
     }
 }

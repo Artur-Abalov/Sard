@@ -326,6 +326,28 @@ class RestoresApiIntegrationTest(
     }
 
     @Test
+    fun `Агент-верификатор не цель восстановления`() {
+        w.snapshot(source)
+        val options = w.options(source).json
+        val targets = options.path("targets").list().map { it.path("agentId").asString() }
+        val ineligible = options.path("ineligible").list().map { it.path("agentId").asString() }
+        val verifier = w.v.agentId.toString()
+        assertFalse(verifier in targets, "verifier offered as a target: $targets")
+        assertFalse(verifier in ineligible, "verifier listed as ineligible: $ineligible")
+
+        val response = w.restore(source, restoreBody(verifier))
+        assertEquals(422, response.status)
+        assertEquals("agent_role_mismatch", response.code)
+        assertEquals(listOf("agentId"), response.errorFields())
+        assertEquals(0, w.restoreRuns())
+
+        val preview = w.preview(source, restoreBody(verifier))
+        assertEquals(422, preview.status)
+        assertEquals("agent_role_mismatch", preview.code)
+        assertEquals(listOf("agentId"), preview.errorFields())
+    }
+
+    @Test
     fun `Запрос на агент без схемы восстановления отклоняется`() {
         w.snapshot(source)
         w.reRegister(w.b, listOf(RepositoryEntry("copy", "local", RID, "")), listOf(filesPlugin(restoreSchema = "")))

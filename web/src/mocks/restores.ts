@@ -43,10 +43,13 @@ export function snapshotOf(sourceId: string, snapshotId: string) {
   return source && snapshot ? { source, snapshot } : undefined
 }
 
+/** Unrevoked agents of a restoring role (never a verifier) that hold the snapshot's repository. */
 function holding(snapshot: Schemas['Snapshot']) {
   return state.agents.flatMap((agent) => {
     const repository = agent.repositories.find((r) => r.repositoryId === snapshot.repositoryId)
-    return agent.revokedAt === null && repository ? [{ agent, repository: repository.name }] : []
+    return agent.revokedAt === null && agent.role !== 'verifier' && repository
+      ? [{ agent, repository: repository.name }]
+      : []
   })
 }
 

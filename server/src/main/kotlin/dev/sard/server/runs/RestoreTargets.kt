@@ -8,6 +8,7 @@ import dev.sard.server.persistence.AgentOwnedKey
 import dev.sard.server.persistence.AgentPluginRecord
 import dev.sard.server.persistence.SnapshotRecord
 import dev.sard.server.persistence.SourceRecord
+import dev.sard.server.role.AgentRole
 import org.hibernate.Session
 import tools.jackson.databind.json.JsonMapper
 
@@ -49,7 +50,7 @@ internal object RestoreTargets {
     /** The command to attach the repository on another host: placeholders, never an address (ADR 0008, ВК31). */
     private fun attachCommand(repository: String) = "sudo sard-agent repo add $repository <$ADDRESS> --password-from-file <$PASSWORD_FILE>"
 
-    /** Each unrevoked agent that holds the repository once, with its first name for it. */
+    /** Each unrevoked agent whose role restores that holds the repository once, with its first name for it. */
     private fun holders(
         session: Session,
         snapshot: SnapshotRecord,
@@ -59,6 +60,7 @@ internal object RestoreTargets {
             .setParameter("repository", snapshot.repositoryId)
             .resultList
             .map { it[0] as Agent to it[1] as String }
+            .filter { (agent, _) -> AgentRole.of(agent.role).allows(Action.RESTORE) }
             .distinctBy { it.first.id }
 
     private fun target(

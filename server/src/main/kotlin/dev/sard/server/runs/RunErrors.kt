@@ -45,10 +45,11 @@ class AgentRevoked(
     val agentId: UUID,
 ) : RunsException("agent $agentId is revoked")
 
-/** The agent is a verifier but a backup is needed (422 agent_role_mismatch; 409 when a run starts). */
+/** The agent is a verifier but a backup or a restore is needed (422 agent_role_mismatch; 409 when a run starts). */
 class AgentRoleMismatch(
     val agentId: UUID,
-) : RunsException("agent $agentId cannot run backups")
+    val action: Action,
+) : RunsException("agent $agentId has a role that does not allow ${action.stored}")
 
 /** One thing wrong with a source's config: [field] is `config` plus the JSON Pointer of the value. */
 data class ConfigViolation(

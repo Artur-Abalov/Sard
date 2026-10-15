@@ -107,12 +107,12 @@ class AgentExceptionHandler {
     fun confirmationRequired(): ResponseEntity<Problem> =
         problemResponse(HttpStatus.CONFLICT, "Conflict", ErrorCode.SELF_AGENT_CONFIRMATION_REQUIRED)
 
-    /** A source is bound to a verifier, which cannot back up (V1). */
+    /** A source or a restore names a verifier, which neither backs up nor restores (V1, R2a). */
     @ExceptionHandler(AgentRoleMismatch::class)
     fun roleMismatch(): ResponseEntity<ValidationProblem> =
         unprocessableResponse(
             ErrorCode.AGENT_ROLE_MISMATCH,
-            listOf(FieldError("agentId", "names a verifier, which cannot back up")),
+            listOf(FieldError("agentId", "names a verifier, which cannot do this")),
         )
 }
 
