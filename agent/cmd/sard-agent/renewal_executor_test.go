@@ -116,12 +116,18 @@ func TestAStepStartedBeforeTheRenewalFinishesAndReportsOnTheSameStream(t *testin
 	if r.GetStatus() != agentv1.StepStatus_STEP_STATUS_SUCCEEDED || strings.Contains(r.GetMessage(), "interrupted") {
 		t.Fatalf("result = %v", r)
 	}
-	// The ack reached the executor: the next stream neither lists Q nor sends its result again.
+	h.requireAcknowledged()
+}
+
+// requireAcknowledged: the ack reached the executor, so the next stream neither
+// lists Q nor sends its result again.
+func (h *renewalHost) requireAcknowledged() {
+	h.t.Helper()
 	h.server.dropStreams()
 	h.reconnect(2)
-	h.server.waitCount(t, "hello", 2)
+	h.server.waitCount(h.t, "hello", 2)
 	if h.server.count("result Q") != 1 || len(h.server.hellos[1].GetRunningCommandIds()) != 0 {
-		t.Fatalf("events = %v, hello = %v", h.server.eventLog(), h.server.hellos[1])
+		h.t.Fatalf("events = %v, hello = %v", h.server.eventLog(), h.server.hellos[1])
 	}
 }
 
