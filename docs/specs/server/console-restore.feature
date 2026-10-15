@@ -15,6 +15,8 @@
 # ВВ8–ВВ11 приняты как написаны. Нарезка — R2a (files и всё общее), R2b
 # (postgresql), R2c (перезапись), как в агентской спецификации; над
 # правилами — «# R2a» / «# R2b» / «# R2c».
+# Поправка владельца 2026-10-15 («Согласен. Пшел»): успех, о котором агент
+# сообщает после перезапуска (агентская ВК14, случай 2), — обычный succeeded.
 # ОБЪЁМ: этот прогон реализует только правила «# R2a»; «# R2b» — следующий
 # прогон; «# R2c» и «После D21» — не реализуются (OQ-216, OQ-016).
 #
@@ -414,6 +416,13 @@
       Когда агент присылает SUCCEEDED с RestoreOutput target "/var/lib/sard-agent/restore/etc%20data/20261010T030000Z", files_restored 2, bytes_restored 4, owners_restored false
       Тогда запуск succeeded
       И restore шага — target этот путь, filesRestored 2, bytesRestored 4, ownersRestored false, leftover null
+
+    # Поправка владельца 2026-10-15 (агентская ВК14, случай 2)
+    @http @grpc
+    Сценарий: Успех, о котором агент сообщил после перезапуска, записывается как успех
+      Когда агент после перезапуска присылает SUCCEEDED с RestoreOutput target T1, files_restored 2 и сообщением "agent restarted after the restore completed"
+      Тогда запуск succeeded
+      И restore шага — target T1, filesRestored 2, leftover null
 
     @http @grpc
     Сценарий: Неудачное восстановление называет стадию и причину и ничего не оставляет

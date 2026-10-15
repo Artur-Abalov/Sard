@@ -164,14 +164,26 @@ REPO_PASS=$(sudo cat /etc/sard/secrets/restic-s1.pass)   # на ВМ-1, толь
     нет. В консоли «Повторить» → страница восстановления с тем же агентом и
     назначением; «Проверить», «Запустить» → `succeeded` в то же назначение.
 27а. Временный каталог: во время шага 24 `sudo inotifywait -m /var/lib/sard-agent/restore -r -e create,moved_to`
-    → сначала `.sard-staging/<id шага>`, назначение появляется одним
-    `moved_to`; пока идёт restic, `sudo ls /var/lib/sard-agent/restore/<назначение>`
-    → нет такого каталога.
-27б. Перезапуск без потери: во время восстановления `qa-big` на db1
+    → сначала `.sard-staging/<id шага>` и в нём `root`, перед переносом —
+    метка в `.sard-staging/<id шага>`, назначение появляется одним
+    `moved_to` подкаталога `root`; пока идёт restic, `sudo ls /var/lib/sard-agent/restore/<назначение>`
+    → нет такого каталога; после шага `.sard-staging` пуст.
+27б. Перезапуск без потери (поправка 2026-10-15, случай 1): во время
+    восстановления `qa-big` на db1
     `sudo systemctl kill -s KILL sard-agent; sudo systemctl start sard-agent`
     (быстрее окна потери) → запуск `failed`, сообщение «interrupted: agent
     restarted before the step finished» и «nothing was restored»; `traces` →
     пусто.
+27г. Перезапуск после переноса (поправка 2026-10-15, случай 2; копия ВМ):
+    восстановить `qa files` на db1 и в другом терминале
+    `sudo inotifywait -m -r /var/lib/sard-agent/restore -e moved_to --format '%w%f' | grep --line-buffered -v '/.sard-staging/' | while read p; do sudo systemctl kill -s KILL sard-agent; break; done`
+    (перенос метки внутри `.sard-staging` отфильтрован: убить нужно после
+    переноса `root` в назначение);
+    затем `sudo systemctl start sard-agent` → запуск `succeeded`, сообщение
+    содержит «agent restarted after the restore completed», итог — путь и
+    число файлов; содержимое назначения совпадает с источником (`diff -r`);
+    `.sard-staging` пуст. Если `kill` опоздал и шаг завершился сам —
+    отметить случай как проверенный только тестом `@unit`.
 27в. Отмена агентом недоступна из консоли (J1); таймаут и отмену проверяют
     тесты `@unit`.
 28. Одновременно с бэкапом: запустить бэкап `qa-big`, сразу восстановление
@@ -296,7 +308,9 @@ REPO_PASS=$(sudo cat /etc/sard/secrets/restic-s1.pass)   # на ВМ-1, толь
 `TARGET_BUSY` при двух командах в одно назначение, база, созданная другим между
 проверкой и `CREATE DATABASE`, имя базы с кавычкой, таймаут шага,
 `RESTORE_INCOMPLETE` (снимок без части файлов — отказ целиком, следов нет),
-сбой переноса (`ENOTEMPTY`, `EXDEV`, `EIO`), удаление базы по OID при подмене
+сбой переноса (`ENOTEMPTY`, `EXDEV`, `EIO`), перезапуск после метки до
+переноса и не начатое восстановление (случаи 1 и 3 поправки 2026-10-15),
+неудачная запись результата при разборе метки, удаление базы по OID при подмене
 имени, неудачный `DROP ROLE`, недоступный при перезапуске PostgreSQL,
 повторно присланный `command_id`, укорачивание длинного имени базы по
 умолчанию, вывод бэкапа в шаге восстановления, поздний успех потерянного шага
