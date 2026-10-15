@@ -48,8 +48,8 @@ func TestCannotLockIsResticSayingItsLockWasDeniedForTheCredentials(t *testing.T)
 		"unable to create lock: 403 Forbidden":                                      true,
 		"UNABLE TO CREATE LOCK: Permission denied":                                  true,
 		"unable to create lock in backend: connection reset":                        false,
-		"Access Denied.":                                                            false,
-		"": false,
+		"Access Denied.": false,
+		"":               false,
 	}
 	for text, want := range cases {
 		if got := repoinit.CannotLock(text); got != want {
