@@ -40,7 +40,7 @@ func TestMissingPgDumpInPathFailsTheStepWithAHintAboutThePackage(t *testing.T) {
 	res := r.backup(k())
 	want(t, res, failed)
 	mentions(t, res.GetMessage(), "pg_dump not found", "postgresql-client", "postgresql", "pg_dump_path")
-	oneLine(t, res.GetMessage())
+	endsWithCheckHint(t, res.GetMessage())
 	r.noDump(t)
 	r.lastPhase(t, preparing)
 	noOutput(t, res)

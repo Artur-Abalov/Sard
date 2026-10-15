@@ -17,6 +17,11 @@
 [«Настройка хоста агента»](../operations/agent-host-setup.md) и
 [«Репозиторий агента»](../operations/repo-init.md).
 
+После подключения хранилища выполните `sudo sard-agent check` (или `sudo
+sard-agent repo check <имя>`): он проверит адрес, ключи, пароль репозитория и
+блокировки, а при отказе назовёт причину и готовую команду
+([диагностика](09-troubleshooting.md#проверка-хоста-агента-sard-agent-check)).
+
 Всё ниже проверено сквозными тестами на Garage (S3) и OpenSSH (SFTP): классы
 `StorageChainTest`, `StorageFailureTest`, `StorageOutageTest` и
 `StorageLockTest` в [`test/e2e`](../../test/e2e/README.md), ADR 0047.

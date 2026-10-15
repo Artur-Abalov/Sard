@@ -130,3 +130,13 @@ func RetryReason(stderr string) string {
 	}
 	return reason
 }
+
+// RemoteReason is the class of a refusal of a remote storage that err says,
+// by what restic printed (Р34): S3_KEY_REJECTED, BUCKET_NOT_FOUND or
+// STORAGE_ACCESS_DENIED; "" for any other error.
+func RemoteReason(err error) refusal.Reason {
+	if reason := storageReason(err, Target{Remote: true}); reason != refusal.BackendRefused {
+		return reason
+	}
+	return ""
+}

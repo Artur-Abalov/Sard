@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 <!-- Copyright 2026 Artur Abalov -->
 
-# 0063 — Проверка хоста агента: `repo check`, `repo unlock`, запись объявленных id, `check` (A8d-1, A8d-2, A8d-3)
+# 0063 — Проверка хоста агента: `repo check`, `repo unlock`, запись объявленных id, `check` (A8d-1, A8d-2, A8d-3, A8d-4)
 
-- Статус: принято (A8d-1, A8d-2, A8d-3); решения владельца — 2026-10-14 (`docs/specs/agent/host-check.feature`, Ч1–Ч31, ЧВ1–ЧВ14) и 2026-10-15 (Ч32, Ч33, WARN занятого репозитория, OK без репозиториев)
+- Статус: принято (A8d-1 … A8d-4); решения владельца — 2026-10-14 (`docs/specs/agent/host-check.feature`, Ч1–Ч31, ЧВ1–ЧВ14) и 2026-10-15 (Ч32, Ч33, WARN занятого репозитория, OK без репозиториев)
 - Дата: 2026-10-14, дополнено 2026-10-15
 - Дополняет: ADR 0025 (классы кодов выхода), ADR 0050 (права запуска), ADR 0059 (restic без блокировки и кэша), ADR 0044 (журнал шагов, `executor.state_dir`)
 
@@ -252,3 +252,47 @@ ERROR «the server could not tell whether it accepts this agent: code = <код>
   `host-check.md` 58 и `agent-start-refusals.md` 6а исправлены.
 - Проверка Probe из cron или мониторинга раз в минуту ничего не пишет в базу и
   в журнал сервера.
+
+## A8d-4: подсказка в ошибках шагов и документация оператора
+
+### Подсказка (Ч28)
+`internal/pluginhost` (`hint.go`) дописывает к сообщению FAILED шага бэкапа,
+восстановления или проверки отдельную последнюю строку
+``run `sudo sard-agent check` on the host`` (ошибка `hinted`: `Unwrap` сохраняет
+причину для `errors.Is`). Подсказку получают: `restic.ErrNetwork`
+(BACKEND_UNAVAILABLE), `restic.ErrWrongPassword`, `restic.ErrPasswordFile` вместе
+с `fs.ErrNotExist` (PASSWORD_FILE_MISSING), отказы ключа и доступа
+(S3_KEY_REJECTED, STORAGE_ACCESS_DENIED, SSH_KEY_NOT_AUTHORIZED) и сообщения
+плагина postgresql «pg_dump not found in the PATH», «psql not found at»,
+«pg_dumpall not found at». Остальное (нет каталога источника, блокировка,
+BUCKET_NOT_FOUND, HOST_KEY_*, `REJECTED`) строки не получает.
+
+- Классы S3_KEY_REJECTED и STORAGE_ACCESS_DENIED определяет та же таблица, что у
+  `repo add` и `repo check` (Р34): `repoinit.RemoteReason`. SSH_KEY_NOT_AUTHORIZED
+  в сообщении шага отдельно не отличается: строка ssh «Permission denied
+  (publickey)» входит в класс «доступ отказан». Ограничение: если restic не
+  печатает строку ssh в свою фатальную строку (OQ-155), подсказки не будет.
+- Программа плагина распознаётся по началу текста сообщения плагина: это
+  единственный способ в рамках `sdk.Plugin`, не расширяя SDK (Apache-2.0).
+  Связь закреплена тестами `plugins/postgresql` с настоящим плагином
+  (`endsWithCheckHint`): изменение текста плагина без правки списка ломает их.
+- Сообщение шага перестало быть однострочным только для этих причин; тесты F1,
+  требовавшие одной строки у сообщения плагина, теперь проверяют плагинную часть
+  и последнюю строку подсказки.
+- Сервер и web не менялись: консоль показывает текст как есть (ЧВ3).
+
+### Документация (Ч30)
+`docs/operator/09-troubleshooting.md`: раздел «Проверка хоста агента:
+sard-agent check» с подразделом `### ` на каждый идентификатор (заголовок —
+идентификатор в обратных кавычках; якорь GitHub — идентификатор без точек:
+`#repositorypassword`). 29 якорей: 28 строк `check` и `repository.integrity` у
+`repo check --read-data`. Ручные шаги раздела «Агент не подключается» заменены
+командой `check`. `agent-install.md`, `agent-host-setup.md`, `02-install.md`,
+`05-agents.md`, `05a-storage.md` говорят выполнить `sudo sard-agent check` после
+установки и `repo add`; итог `postinstall.sh` называет её последним шагом.
+
+Тест `cmd/sard-agent/check_docs_test.go` читает руководство и проверяет, что
+у каждого идентификатора ровно один якорь и что каждая ссылка
+`09-troubleshooting.md#…` в спецификации указывает на существующий якорь. Якоря
+считаются как у GitHub (нижний регистр, без знаков препинания); проверка
+ссылок в CI (lychee с `--include-fragments`) подтверждает то же независимо.
