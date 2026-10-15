@@ -20,7 +20,7 @@ import (
 // writesThenFails plays a restic that writes a.txt and then fails.
 func writesThenFails(err error) func(context.Context, restic.RestoreRequest) (restic.RestoreSummary, error) {
 	return func(_ context.Context, req restic.RestoreRequest) (restic.RestoreSummary, error) {
-		if werr := writeFile(filepath.Join(req.Target, "srv/data/a.txt"), "AAA", 0o640); werr != nil {
+		if werr := writeFile(filepath.Join(restoreRoot(req), "srv/data/a.txt"), "AAA", 0o640); werr != nil {
 			return restic.RestoreSummary{}, werr
 		}
 		return restic.RestoreSummary{Files: 1}, err
@@ -101,7 +101,7 @@ func TestAStoppedStepRemovesTheStagingDirectory(t *testing.T) {
 	h := newHost(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	h.repo.restore = func(ctx context.Context, req restic.RestoreRequest) (restic.RestoreSummary, error) {
-		if err := writeFile(filepath.Join(req.Target, "a"), "A", 0o600); err != nil {
+		if err := writeFile(filepath.Join(restoreRoot(req), "a"), "A", 0o600); err != nil {
 			return restic.RestoreSummary{}, err
 		}
 		cancel()

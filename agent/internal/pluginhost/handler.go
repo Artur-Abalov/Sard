@@ -173,27 +173,36 @@ func (h *handler) restore(ctx context.Context, step *agentv1.RunStep, repo resti
 	return &agentv1.StepResult{Output: &agentv1.StepResult_Restore{Restore: restored}}, nil
 }
 
-// Interrupted words the failure of a restore the previous run of the agent
-// did not finish (ВК14): the temporary directories it left were removed at
-// start, so nothing was restored, except what is in left (ВК15). Steps of
-// other actions keep the failure of the executor.
-func Interrupted(left []consolerestore.Leftover) func(commandID string, action agentv1.Action) *executor.Interruption {
-	byCommand := map[string]consolerestore.Leftover{}
-	for _, l := range left {
-		byCommand[l.Name] = l
+// Interrupted words the outcome of a restore the previous run of the agent
+// did not finish (ВК14) from what the start found in .sard-staging: a
+// completed move is a success with the totals of the marker, a directory that
+// could not be removed is CLEANUP_FAILED, anything else (no root, no marker, a
+// root that was removed, no directory at all) is a failure with nothing
+// restored. Steps of other actions keep the failure of the executor.
+func Interrupted(found []consolerestore.Evidence) func(commandID string, action agentv1.Action) *executor.Interruption {
+	byCommand := map[string]consolerestore.Evidence{}
+	for _, ev := range found {
+		byCommand[ev.Name] = ev
 	}
 	return func(commandID string, action agentv1.Action) *executor.Interruption {
 		if action != agentv1.Action_ACTION_RESTORE {
 			return nil
 		}
-		l, ok := byCommand[commandID]
-		if !ok {
-			return &executor.Interruption{Message: executor.InterruptedMessage + "; nothing was restored"}
+		ev := byCommand[commandID]
+		switch ev.Verdict {
+		case consolerestore.Completed:
+			return &executor.Interruption{
+				Succeeded: true,
+				Message:   "agent restarted after the restore completed",
+				Output:    &agentv1.RestoreOutput{Target: ev.Destination, FilesRestored: ev.Files, BytesRestored: ev.Bytes},
+			}
+		case consolerestore.CleanupFailed:
+			return &executor.Interruption{
+				Message: fmt.Sprintf("%s (%s): %s; left behind: %s (%v); remove it by hand", refusal.CleanupFailed, consolerestore.StageRollback, executor.InterruptedMessage, ev.Path, ev.Err),
+				Output:  &agentv1.RestoreOutput{Leftover: ev.Path},
+			}
 		}
-		return &executor.Interruption{
-			Message: fmt.Sprintf("%s (%s): %s; left behind: %s (%v); remove it by hand", refusal.CleanupFailed, consolerestore.StageRollback, executor.InterruptedMessage, l.Path, l.Err),
-			Output:  &agentv1.RestoreOutput{Leftover: l.Path},
-		}
+		return &executor.Interruption{Message: executor.InterruptedMessage + "; nothing was restored"}
 	}
 }
 

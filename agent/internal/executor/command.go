@@ -350,6 +350,9 @@ func (e *Executor) save(r *agentv1.StepResult) {
 	if err := e.store.remove(journalDir, id); err != nil {
 		e.opts.Logger.Warn("cannot remove the journal entry", "command_id", id, "error", err)
 	}
+	if e.opts.Journaled != nil {
+		e.opts.Journaled(r)
+	}
 }
 
 func (e *Executor) stopTimers(c *command) {

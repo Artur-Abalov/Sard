@@ -36,7 +36,8 @@ type faults struct {
 	mkdirErr     map[string]error // by the path of the new directory
 	removeDirErr map[string]error // by the path of the directory removed
 	moveErr      error
-	syncErr      error
+	renameErr    error            // of a rename inside a directory
+	syncErr      map[string]error // by the path of the directory synced
 	moveHook     func()
 	device       map[string]uint64 // by the path of the directory
 }
@@ -101,9 +102,16 @@ func (d faultDir) Move(oldName string, newDir hostsetup.Dir, newName string) err
 	return d.Dir.Move(oldName, newDir, newName)
 }
 
+func (d faultDir) Rename(oldName, newName string) error {
+	if d.f.renameErr != nil {
+		return &fs.PathError{Op: "renameat", Path: newName, Err: d.f.renameErr}
+	}
+	return d.Dir.Rename(oldName, newName)
+}
+
 func (d faultDir) Sync() error {
-	if d.f.syncErr != nil {
-		return d.f.syncErr
+	if err := d.f.syncErr[d.Path()]; err != nil {
+		return err
 	}
 	return d.Dir.Sync()
 }
@@ -171,10 +179,10 @@ func snapshotF() restic.Snapshot {
 
 // writesF plays a restic that restores the snapshot F.
 func writesF(_ context.Context, req restic.RestoreRequest) (restic.RestoreSummary, error) {
-	if err := writeFile(filepath.Join(req.Target, "srv/data/a.txt"), "AAA", 0o640); err != nil {
+	if err := writeFile(filepath.Join(restoreRoot(req), "srv/data/a.txt"), "AAA", 0o640); err != nil {
 		return restic.RestoreSummary{}, err
 	}
-	if err := writeFile(filepath.Join(req.Target, "srv/data/sub/b.txt"), "B", 0o644); err != nil {
+	if err := writeFile(filepath.Join(restoreRoot(req), "srv/data/sub/b.txt"), "B", 0o644); err != nil {
 		return restic.RestoreSummary{}, err
 	}
 	return restic.RestoreSummary{Files: 2, Bytes: 4}, nil
@@ -312,4 +320,21 @@ func mentions(t *testing.T, text string, words ...string) {
 			t.Errorf("%q does not mention %q", text, w)
 		}
 	}
+}
+
+// restoreRoot is where a restic that plays by the rules of the request writes:
+// below root of the held staging directory, or below the target.
+func restoreRoot(req restic.RestoreRequest) string {
+	if req.Staging != nil {
+		return filepath.Join(req.Staging.Name(), "root")
+	}
+	return req.Target
+}
+
+// heldPath is the staging directory restic inherits, "" if it gets none.
+func heldPath(req restic.RestoreRequest) string {
+	if req.Staging == nil {
+		return ""
+	}
+	return req.Staging.Name()
 }

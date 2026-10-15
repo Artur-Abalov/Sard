@@ -4,6 +4,8 @@
 package executor_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
@@ -72,4 +74,75 @@ func TestWithoutAnOwnerOfRestoresAnInterruptedRestoreHasTheD13Message(t *testing
 	f.files.next(t)
 	f.restart(t)
 	wantResult(t, pendingResult(t, f.e, "c1"), "c1", failed, interrupted)
+}
+
+// Scenario: Убитое после переноса восстановление сообщает об успехе с итогом из метки (ВК14, случай 2).
+func TestARestoreInterruptedAfterItsMoveIsReportedAsSucceeded(t *testing.T) {
+	f := setup(t, func(o *executor.Options) {
+		o.Interrupted = func(string, agentv1.Action) *executor.Interruption {
+			return &executor.Interruption{
+				Succeeded: true,
+				Message:   "agent restarted after the restore completed",
+				Output:    &agentv1.RestoreOutput{Target: "/r/s1", FilesRestored: 2, BytesRestored: 4},
+			}
+		}
+	})
+	f.e.Submit(restoreStep("c1"))
+	accepted(t, f.sink, "c1")
+	f.files.next(t)
+	f.restart(t)
+	r := pendingResult(t, f.e, "c1")
+	wantResult(t, r, "c1", succeeded, "agent restarted after the restore completed")
+	if got := r.GetRestore(); got.GetTarget() != "/r/s1" || got.GetFilesRestored() != 2 || got.GetBytesRestored() != 4 {
+		t.Errorf("output = %v", got)
+	}
+}
+
+// Scenario: Каталог с меткой удаляется только после записи результата.
+func TestTheJournaledHookRunsAfterTheResultIsSaved(t *testing.T) {
+	var journaled []string
+	f := setup(t, func(o *executor.Options) {
+		o.Journaled = func(r *agentv1.StepResult) {
+			if _, err := os.Stat(fileOf(&fixture{opts: *o}, "results", r.GetCommandId())); err != nil {
+				t.Errorf("the result of %s is not on disk when the hook runs: %v", r.GetCommandId(), err)
+			}
+			journaled = append(journaled, r.GetCommandId()+" "+r.GetStatus().String())
+		}
+	})
+	wantResult(t, runOnce(t, f, "c1"), "c1", succeeded, "")
+	if len(journaled) != 1 || journaled[0] != "c1 STEP_STATUS_SUCCEEDED" {
+		t.Errorf("journaled = %v", journaled)
+	}
+}
+
+func TestTheJournaledHookIsNotToldOfAResultThatCouldNotBeSaved(t *testing.T) {
+	var journaled []string
+	f := setup(t, func(o *executor.Options) {
+		o.Journaled = func(r *agentv1.StepResult) { journaled = append(journaled, r.GetCommandId()) }
+	})
+	results := filepath.Join(f.opts.StateDir, "results")
+	if err := os.RemoveAll(results); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(results, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wantResult(t, runOnce(t, f, "c1"), "c1", succeeded, "")
+	if len(journaled) != 0 {
+		t.Errorf("journaled = %v", journaled)
+	}
+}
+
+func TestTheJournaledHookIsToldOfAnInterruptedStepOnceItsResultIsSaved(t *testing.T) {
+	var journaled []string
+	f := setup(t, func(o *executor.Options) {
+		o.Journaled = func(r *agentv1.StepResult) { journaled = append(journaled, r.GetCommandId()) }
+	})
+	f.e.Submit(restoreStep("c1"))
+	accepted(t, f.sink, "c1")
+	f.files.next(t)
+	f.restart(t)
+	if len(journaled) != 1 || journaled[0] != "c1" {
+		t.Errorf("journaled = %v", journaled)
+	}
 }

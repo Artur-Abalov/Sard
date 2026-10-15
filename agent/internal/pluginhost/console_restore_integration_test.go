@@ -119,8 +119,14 @@ func TestIntegrationConsoleRestoreOfTheWholeSnapshotUnderTheOriginalPaths(t *tes
 			t.Errorf("%s: %q, %v", rel, got, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(w.c.restoreD, ".sard-staging", "c1")); !os.IsNotExist(err) {
-		t.Errorf("the staging directory is still there: %v", err)
+	// restic wrote through the held descriptor into root, and root moved; the
+	// marker stays until the executor has journaled the result (ВК13).
+	command := filepath.Join(w.c.restoreD, ".sard-staging", "c1")
+	if _, err := os.Stat(filepath.Join(command, "root")); !os.IsNotExist(err) {
+		t.Errorf("root is still in the staging directory: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(command, "marker")); err != nil {
+		t.Errorf("the marker: %v", err)
 	}
 }
 

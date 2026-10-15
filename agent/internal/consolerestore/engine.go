@@ -119,27 +119,104 @@ type Output struct {
 	Files, Bytes uint64
 }
 
-// CleanStaging removes everything in .sard-staging: a restore that was
-// killed left it, and no step runs yet (ВК14). It logs each entry it
-// removes; what it cannot remove is returned (and logged as an error).
-func (e *Engine) CleanStaging() []Leftover {
+// Verdict is what the start found of a restore the previous run left.
+type Verdict int
+
+const (
+	// NothingRestored: the restore did not reach the destination; whatever it
+	// left was removed (ВК14, cases 1 and 3).
+	NothingRestored Verdict = iota
+	// Completed: the destination is whole, only the result was not journaled
+	// (ВК14, case 2). The directory with the marker stays until Settle.
+	Completed
+	// CleanupFailed: what the restore left could not be removed or judged.
+	CleanupFailed
+)
+
+// Evidence is what the start found in .sard-staging for one command.
+type Evidence struct {
+	// Name is the entry, the command_id of the restore.
+	Name    string
+	Path    string
+	Verdict Verdict
+	// Destination, Files and Bytes come from the marker of a Completed restore.
+	Destination  string
+	Files, Bytes uint64
+	// Err is why a CleanupFailed entry stays.
+	Err error
+}
+
+// CleanStaging goes through .sard-staging before any step runs (ВК14) and
+// settles every entry: a root there means the move did not happen and it is
+// removed with the rest; a marker without root means the move did, and the
+// entry stays (Completed) until Settle; nothing at all means the restore never
+// started. It logs each entry it removes, and each it cannot (as an error).
+func (e *Engine) CleanStaging() []Evidence {
 	path := filepath.Join(e.opts.Dir, stagingName)
 	names, staging, err := e.stagingEntries()
 	if err != nil {
 		return e.unusableStaging(path, err)
 	}
 	defer func() { _ = staging.Close() }()
-	var left []Leftover
+	var found []Evidence
 	for _, name := range names {
-		entry := filepath.Join(path, name)
-		if err := hostsetup.RemoveTree(staging, name); err != nil {
-			e.opts.Logger.Error("cannot remove the temporary directory of an interrupted restore; remove it by hand", "path", entry, "error", err)
-			left = append(left, Leftover{Name: name, Path: entry, Err: err})
-			continue
-		}
-		e.opts.Logger.Info("removed the temporary directory of an interrupted restore", "path", entry)
+		found = append(found, e.settleEntry(staging, name, filepath.Join(path, name)))
 	}
-	return left
+	return found
+}
+
+// settleEntry judges one entry of .sard-staging and removes it unless it is the
+// evidence of a restore that completed.
+func (e *Engine) settleEntry(staging hostsetup.Dir, name, entry string) Evidence {
+	if m, ok, err := e.completed(staging, name); err != nil {
+		e.opts.Logger.Error("cannot judge the temporary directory of an interrupted restore; remove it by hand", "path", entry, "error", err)
+		return Evidence{Name: name, Path: entry, Verdict: CleanupFailed, Err: err}
+	} else if ok {
+		e.opts.Logger.Info("the restore completed before the agent was restarted", "path", entry, "destination", m.Destination)
+		return Evidence{Name: name, Path: entry, Verdict: Completed, Destination: filepath.Join(e.opts.Dir, m.Destination), Files: m.Files, Bytes: m.Bytes}
+	}
+	if err := hostsetup.RemoveTree(staging, name); err != nil {
+		e.opts.Logger.Error("cannot remove the temporary directory of an interrupted restore; remove it by hand", "path", entry, "error", err)
+		return Evidence{Name: name, Path: entry, Verdict: CleanupFailed, Err: err}
+	}
+	e.opts.Logger.Info("removed the temporary directory of an interrupted restore", "path", entry)
+	return Evidence{Name: name, Path: entry, Verdict: NothingRestored}
+}
+
+// completed: the entry holds a marker and no root, the sign of a restore that
+// moved root into the destination.
+func (e *Engine) completed(staging hostsetup.Dir, name string) (m marker, ok bool, err error) {
+	dir, err := staging.Open(name)
+	if err != nil {
+		return marker{}, false, nil // a file or a link: not a restore, just removed
+	}
+	defer func() { _ = dir.Close() }()
+	if _, err := dir.Lstat(rootName); err == nil {
+		return marker{}, false, nil
+	}
+	m, found, err := readMarker(dir)
+	return m, found, err
+}
+
+// Settle removes the directory of a command once its result is journaled (or
+// it is known not to matter), and logs it. A name that is not one component of
+// .sard-staging is ignored.
+func (e *Engine) Settle(commandID string) {
+	if filepath.Base(commandID) != commandID || commandID == "." || commandID == ".." {
+		return
+	}
+	path := filepath.Join(e.opts.Dir, stagingName, commandID)
+	_, staging, err := e.stagingEntries()
+	if err != nil {
+		e.unusableStaging(filepath.Dir(path), err)
+		return
+	}
+	defer func() { _ = staging.Close() }()
+	if err := hostsetup.RemoveTree(staging, commandID); err != nil {
+		e.opts.Logger.Error("cannot remove the temporary directory of a restore; remove it by hand", "path", path, "error", err)
+		return
+	}
+	e.opts.Logger.Info("removed the temporary directory of a restore", "path", path)
 }
 
 // stagingEntries opens .sard-staging without following a link and lists it;
@@ -165,26 +242,21 @@ func (e *Engine) stagingEntries() ([]string, hostsetup.Dir, error) {
 
 // unusableStaging: no restore directory or no .sard-staging is nothing to
 // clean; anything else (a link, a file) is left alone and reported.
-func (e *Engine) unusableStaging(path string, err error) []Leftover {
+func (e *Engine) unusableStaging(path string, err error) []Evidence {
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
 	e.opts.Logger.Error("cannot clean the temporary directories of interrupted restores", "path", path, "error", err)
-	return []Leftover{{Path: path, Err: err}}
-}
-
-// Leftover is a temporary directory of an interrupted restore that could not
-// be removed at start.
-type Leftover struct {
-	// Name is the entry, the command_id of the restore.
-	Name string
-	Path string
-	Err  error
+	return []Evidence{{Path: path, Verdict: CleanupFailed, Err: err}}
 }
 
 // stagingName is the directory of the restore directory where the temporary
 // directories of restores are made, one per command (ВК13).
 const stagingName = ".sard-staging"
+
+// rootName is the subdirectory of <command_id> restic writes into and the one
+// rename moves to the destination (ВК13).
+const rootName = "root"
 
 // Restore restores the snapshot into the destination of the plan, or leaves
 // no trace.
@@ -201,7 +273,7 @@ func (e *Engine) Restore(ctx context.Context, repo Repository, req Request, r Re
 	}
 	r.Progress(agentv1.StepPhase_STEP_PHASE_RESTORING, 0, 0)
 	_, err := repo.RestoreTo(ctx, restic.RestoreRequest{
-		SnapshotID: req.SnapshotID, Target: a.stagingPath(), Include: req.Plan.Paths,
+		SnapshotID: req.SnapshotID, Staging: a.command.Handle(), Include: req.Plan.Paths,
 		Progress: func(p restic.Progress) {
 			r.ProgressFiles(agentv1.StepPhase_STEP_PHASE_RESTORING, p.BytesDone, p.TotalBytes, p.FilesDone, p.TotalFiles)
 		},
@@ -209,7 +281,10 @@ func (e *Engine) Restore(ctx context.Context, repo Repository, req Request, r Re
 	if err != nil {
 		return Output{}, a.rollback(resticFailure(ctx, err, StageRestore, e.opts.Dir, a.target))
 	}
-	files, bytes := countFiles(a.stagingPath())
+	files, bytes := countFiles(filepath.Join(a.stagingPath(), rootName))
+	if err := writeMarker(a.command, marker{Destination: a.destination, Files: files, Bytes: bytes}); err != nil {
+		return Output{}, a.rollback(&Failure{Reason: refusal.TargetWrite, Stage: StageMove, Detail: "cannot write the marker of the restore in " + a.stagingPath() + ": " + err.Error()})
+	}
 	if f := a.move(); f != nil {
 		return Output{}, a.rollback(f)
 	}
@@ -248,6 +323,7 @@ type attempt struct {
 	claimed bool
 	root    hostsetup.Dir // restore.dir, held
 	staging hostsetup.Dir // .sard-staging, held
+	command hostsetup.Dir // <command_id> in it, held: restic writes into its root
 	// created are the directories this attempt made and removes if they are
 	// empty, in the order it made them.
 	created []string
@@ -264,7 +340,7 @@ func (a *attempt) stagingPath() string {
 }
 
 func (a *attempt) release() {
-	for _, d := range []hostsetup.Dir{a.staging, a.root} {
+	for _, d := range []hostsetup.Dir{a.command, a.staging, a.root} {
 		if d != nil {
 			_ = d.Close()
 		}
@@ -353,7 +429,7 @@ func (a *attempt) move() *Failure {
 		return &Failure{Reason: refusal.TargetWrite, Stage: StageMove, Detail: err.Error()}
 	}
 	defer func() { _ = dir.Close() }()
-	if err := a.staging.Move(a.req.CommandID, dir, name); err != nil {
+	if err := a.command.Move(rootName, dir, name); err != nil {
 		return moveFailure(err, a.destinationPath())
 	}
 	a.stagingMade = false // the directory is the destination now

@@ -141,6 +141,11 @@ type Options struct {
 	// failure, an Interruption words it instead (the rollback of a restore).
 	Interrupted func(commandID string, action agentv1.Action) *Interruption
 
+	// Journaled, if not nil, is called with each result right after it was
+	// saved to disk (not when saving failed): whoever kept something for a
+	// crash between the end of the step and its journal entry lets go of it.
+	Journaled func(*agentv1.StepResult)
+
 	MaxParallel      int           // steps running at once; default 1
 	MaxQueue         int           // steps waiting; default 16; beyond it → REJECTED
 	MaxTimeout       time.Duration // timeout of a step without one; default 24h
@@ -165,7 +170,10 @@ const (
 // Interruption is the failure of an interrupted step in the words of whoever
 // undid its effects at start.
 type Interruption struct {
-	Message string
+	// Succeeded: the step had finished its work before the restart, so the
+	// result is SUCCEEDED, not FAILED.
+	Succeeded bool
+	Message   string
 	// Output, if not nil, is the restore output the failed result carries:
 	// what the rollback could not remove.
 	Output *agentv1.RestoreOutput
@@ -380,7 +388,11 @@ func (e *Executor) interruption(c *command) *agentv1.StepResult {
 	if i == nil {
 		return e.outcome(c, agentv1.StepStatus_STEP_STATUS_FAILED, interruptedMessage)
 	}
-	r := e.outcome(c, agentv1.StepStatus_STEP_STATUS_FAILED, i.Message)
+	status := agentv1.StepStatus_STEP_STATUS_FAILED
+	if i.Succeeded {
+		status = agentv1.StepStatus_STEP_STATUS_SUCCEEDED
+	}
+	r := e.outcome(c, status, i.Message)
 	if i.Output != nil {
 		r.Output = &agentv1.StepResult_Restore{Restore: i.Output}
 	}

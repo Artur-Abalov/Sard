@@ -33,8 +33,11 @@ func (a *attempt) makeStaging() *Failure {
 	if err != nil {
 		return a.cannotWrite(a.stagingPath(), err)
 	}
-	_ = dir.Close()
 	a.stagingMade = true
+	a.command = dir
+	if _, err := dir.Mkdir(rootName, a.e.opts.Owner.Mode); err != nil {
+		return a.cannotWrite(filepath.Join(a.stagingPath(), rootName), err)
+	}
 	return nil
 }
 

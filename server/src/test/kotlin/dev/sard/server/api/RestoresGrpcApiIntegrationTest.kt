@@ -161,6 +161,25 @@ class RestoresGrpcApiIntegrationTest(
     }
 
     @Test
+    fun `Успех, о котором агент сообщил после перезапуска, записывается как успех`() {
+        val fake = connect()
+        val started = started(fake)
+
+        fake.result(
+            started.step,
+            StepStatus.STEP_STATUS_SUCCEEDED,
+            "agent restarted after the restore completed",
+            restore = restored(),
+        )
+
+        val card = eventually { card(started.run).also { assertEquals("succeeded", it.path("status").asString()) } }
+        val restore = card.path("steps").get(0).path("restore")
+        assertEquals(TARGET, restore.path("target").asString())
+        assertEquals(2L, restore.path("filesRestored").asLong())
+        assertTrue(restore.path("leftover").isNull)
+    }
+
+    @Test
     fun `Неудачное восстановление называет стадию и причину и ничего не оставляет`() {
         val fake = connect()
         val started = started(fake)

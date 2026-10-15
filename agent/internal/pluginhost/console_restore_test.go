@@ -62,10 +62,10 @@ func newConsoleHost(t *testing.T, p sdk.Plugin) *consoleHost {
 	f := &handlersFixture{repo: &repo{}, restoreDir: filepath.Join(t.TempDir(), "verify")}
 	f.repo.snapshots = []restic.Snapshot{{ID: fullID, Time: time.Date(2026, 10, 10, 3, 0, 0, 0, time.UTC), Tags: []string{"sard.source=s1"}}}
 	f.repo.restoreTo = func(_ context.Context, req restic.RestoreRequest) (restic.RestoreSummary, error) {
-		if err := os.MkdirAll(filepath.Join(req.Target, "srv"), 0o700); err != nil {
+		if err := os.MkdirAll(filepath.Join(restoreRoot(req), "srv"), 0o700); err != nil {
 			return restic.RestoreSummary{}, err
 		}
-		return restic.RestoreSummary{Files: 2, Bytes: 1536}, os.WriteFile(filepath.Join(req.Target, "srv/a"), []byte("A"), 0o600)
+		return restic.RestoreSummary{Files: 2, Bytes: 1536}, os.WriteFile(filepath.Join(restoreRoot(req), "srv/a"), []byte("A"), 0o600)
 	}
 	dir := filepath.Join(t.TempDir(), "restore")
 	engine := consolerestore.New(consolerestore.Options{
@@ -324,9 +324,9 @@ func TestOnlyAnInterruptedRestoreIsWorded(t *testing.T) {
 
 // Scenario: Неудачная уборка при старте называется в результате прерванного шага.
 func TestAnInterruptedRestoreWhoseDirectoryCouldNotBeRemovedNamesWhatIsLeft(t *testing.T) {
-	interrupted := pluginhost.Interrupted([]consolerestore.Leftover{
-		{Name: "c1", Path: "/r/.sard-staging/c1", Err: errors.New("unlinkat: input/output error")},
-		{Name: "other", Path: "/r/.sard-staging/other", Err: errors.New("x")},
+	interrupted := pluginhost.Interrupted([]consolerestore.Evidence{
+		{Name: "c1", Path: "/r/.sard-staging/c1", Verdict: consolerestore.CleanupFailed, Err: errors.New("unlinkat: input/output error")},
+		{Name: "other", Path: "/r/.sard-staging/other", Verdict: consolerestore.CleanupFailed, Err: errors.New("x")},
 	})
 	got := interrupted("c1", restore)
 	want := "CLEANUP_FAILED (rollback): interrupted: agent restarted before the step finished; " +
@@ -336,5 +336,39 @@ func TestAnInterruptedRestoreWhoseDirectoryCouldNotBeRemovedNamesWhatIsLeft(t *t
 	}
 	if other := interrupted("c2", restore); other == nil || other.Output != nil || !strings.HasSuffix(other.Message, "nothing was restored") {
 		t.Errorf("another restore: %+v", other)
+	}
+}
+
+// restoreRoot is where a restic that plays by the rules of the request writes.
+func restoreRoot(req restic.RestoreRequest) string {
+	if req.Staging != nil {
+		return filepath.Join(req.Staging.Name(), "root")
+	}
+	return req.Target
+}
+
+// Scenario: Убитое после переноса восстановление сообщает об успехе с итогом из метки (ВК14, случай 2).
+func TestAnInterruptedRestoreWhoseMoveHappenedSucceedsWithTheTotalsOfTheMarker(t *testing.T) {
+	interrupted := pluginhost.Interrupted([]consolerestore.Evidence{
+		{Name: "c1", Path: "/r/.sard-staging/c1", Verdict: consolerestore.Completed, Destination: "/r/s1/20261010T030000Z", Files: 2, Bytes: 4},
+	})
+	got := interrupted("c1", restore)
+	if got == nil || !got.Succeeded || !strings.Contains(got.Message, "agent restarted after the restore completed") {
+		t.Fatalf("Interruption = %+v", got)
+	}
+	want := &agentv1.RestoreOutput{Target: "/r/s1/20261010T030000Z", FilesRestored: 2, BytesRestored: 4}
+	if !proto.Equal(got.Output, want) {
+		t.Errorf("output = %v, want %v", got.Output, want)
+	}
+}
+
+// Scenario: Убитое во время restic: the evidence says the directory was removed.
+func TestAnInterruptedRestoreWhoseRootWasRemovedSaysThatNothingWasRestored(t *testing.T) {
+	interrupted := pluginhost.Interrupted([]consolerestore.Evidence{
+		{Name: "c1", Path: "/r/.sard-staging/c1", Verdict: consolerestore.NothingRestored},
+	})
+	got := interrupted("c1", restore)
+	if got == nil || got.Succeeded || got.Output != nil || !strings.HasSuffix(got.Message, "; nothing was restored") {
+		t.Fatalf("Interruption = %+v", got)
 	}
 }

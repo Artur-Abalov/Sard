@@ -34,7 +34,6 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/tlsid"
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
 	"github.com/Artur-Abalov/sard/agent/plugins"
-	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
 // version is set at build time: -ldflags "-X main.version=...".
@@ -137,8 +136,7 @@ func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf 
 	_, _ = fmt.Fprintf(stdout, "sard-agent %s: connecting to %s\n", version, cfg.Server.Address)
 	// R2a: before any step is accepted, what a killed restore left is removed.
 	engine := newRestoreEngine(cfg)
-	interrupted := pluginhost.Interrupted(engine.CleanStaging())
-	return serve(ctx, cfg, newAgent(cfg, hostname, resticBinary, engine), interrupted)
+	return serve(ctx, cfg, newAgent(cfg, hostname, resticBinary, engine), newRecovery(engine))
 }
 
 // newRestoreEngine restores for the console into restore.dir, as the
@@ -228,7 +226,7 @@ func restoreDir(stateDir string) string {
 // the executor reports through the transport. The transport is built first
 // (it checks TLS before anything touches the disk); ref points it at the
 // executor before it starts.
-func serve(ctx context.Context, cfg config.Config, agent *app.Agent, interrupted func(string, agentv1.Action) *executor.Interruption) error {
+func serve(ctx context.Context, cfg config.Config, agent *app.Agent, recovery *recovery) error {
 	ref := &executorRef{}
 	// A7b: the step's secrets are masked in its logs and result.
 	masking := stepsecrets.New(cfg, os.ReadFile, slog.Default())
@@ -251,13 +249,15 @@ func serve(ctx context.Context, cfg config.Config, agent *app.Agent, interrupted
 		Repositories: repositoryNames(cfg.Repositories),
 		Secrets:      masking,
 		OutputLevel:  pluginhost.OutputLevel,
-		Interrupted:  interrupted,
+		Interrupted:  recovery.interrupted,
+		Journaled:    recovery.journaled,
 		MaxParallel:  cfg.Executor.MaxParallel,
 		Logger:       slog.Default(),
 	})
 	if err != nil {
 		return err
 	}
+	recovery.executorStarted()
 	ref.Executor = exec
 	agent.Link = link
 	err = agent.Run(ctx)
