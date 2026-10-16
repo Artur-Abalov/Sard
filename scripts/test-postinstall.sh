@@ -28,6 +28,7 @@ expect_hint() {
   local out
   out="$(run_script "$@")" || die "$*: the script failed: $out"
   grep -q 'sudo sard-agent enroll --server' <<<"$out" || die "$*: no enroll command through sudo in: $out"
+  grep -q 'sudo sard-agent check' <<<"$out" || die "$*: the last step, sudo sard-agent check, is not named in: $out"
   ! grep -q 'sudo -u' <<<"$out" || die "$*: the hint still says sudo -u: $out" # allow-sudo-u: absence guard, the hint must not tell to use it
   grep -qi 'console' <<<"$out" || die "$*: no mention of the console (the token) in: $out"
   ! grep -qi 'systemctl' <<<"$out" || die "$*: the script runs or advises systemctl before enrollment: $out"

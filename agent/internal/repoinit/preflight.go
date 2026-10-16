@@ -98,3 +98,16 @@ func checkEnvFile(h Host, repo config.Repository, index int) ([]string, *refusal
 	}
 	return env, nil
 }
+
+// CheckPasswordFile is the check of the password file alone: A1, then that
+// it exists and is not empty. repo check judges it apart from the env_file.
+func CheckPasswordFile(h Host, repo config.Repository, index int) *refusal.Failure {
+	_, f := checkPasswordFile(h, repo, index, false)
+	return f
+}
+
+// CheckEnvFile is the check of the env file alone (A1, readable, valid); its
+// KEY=VALUE lines are returned.
+func CheckEnvFile(h Host, repo config.Repository, index int) ([]string, *refusal.Failure) {
+	return checkEnvFile(h, repo, index)
+}

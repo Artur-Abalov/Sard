@@ -60,5 +60,9 @@ Next, take a token in the Sard console (Tokens, Create a token) and register thi
 
 The steps from the configuration to the start of the service:
 https://github.com/Artur-Abalov/sard/blob/main/docs/operations/agent-install.md
+
+The last step, once the repository is added, tells whether this host is ready to back up:
+
+  sudo sard-agent check
 NEXT
 fi

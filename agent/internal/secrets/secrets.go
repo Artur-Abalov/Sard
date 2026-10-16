@@ -25,6 +25,8 @@ const groupOtherBits = 0o077
 type Info struct {
 	Mode fs.FileMode
 	UID  uint32
+	// GID is the owning group (A8d: who of the group may read a file).
+	GID  uint32
 	Size int64
 }
 
@@ -42,7 +44,7 @@ func RealStat(path string) (Info, error) {
 	if !ok {
 		return Info{}, fmt.Errorf("secrets: %s: cannot determine the file owner on this platform", path)
 	}
-	return Info{Mode: info.Mode(), UID: stat.Uid, Size: info.Size()}, nil
+	return Info{Mode: info.Mode(), UID: stat.Uid, GID: stat.Gid, Size: info.Size()}, nil
 }
 
 // Error is CheckAll's typed refusal: it names the offending config key,

@@ -85,13 +85,13 @@ func (p Plugin) searchPath() (string, error) {
 			return path, nil
 		}
 	}
-	return "", fmt.Errorf("pg_dump not found in the PATH of the agent: %s or set pg_dump_path", packageHint)
+	return "", fmt.Errorf("pg_dump %w in the PATH of the agent: %s or set pg_dump_path", sdk.ErrProgramMissing, packageHint)
 }
 
 // neighbour checks a tool that must lie beside pg_dump.
 func (p Plugin) neighbour(path, name, hint string) error {
 	if reason := p.runnable(path); reason != "" {
-		return fmt.Errorf("%s not found at %q (%s), expected beside pg_dump: %s%s", name, path, reason, packageHint, hint)
+		return fmt.Errorf("%s %w at %q (%s), expected beside pg_dump: %s%s", name, sdk.ErrProgramMissing, path, reason, packageHint, hint)
 	}
 	return nil
 }

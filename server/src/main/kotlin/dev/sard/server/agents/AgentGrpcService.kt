@@ -6,6 +6,8 @@ package dev.sard.server.agents
 import dev.sard.proto.agent.v1.AgentServiceGrpcKt
 import dev.sard.proto.agent.v1.ConnectRequest
 import dev.sard.proto.agent.v1.ConnectResponse
+import dev.sard.proto.agent.v1.ProbeRequest
+import dev.sard.proto.agent.v1.ProbeResponse
 import dev.sard.proto.agent.v1.RegisterRequest
 import dev.sard.proto.agent.v1.RegisterResponse
 import dev.sard.server.agents.stream.AgentStreams
@@ -26,8 +28,9 @@ private val log = LoggerFactory.getLogger(AgentGrpcService::class.java)
 /**
  * gRPC endpoint agents dial into, behind the S3 interceptor: the agent is always the one of
  * the call's certificate. Register is implemented (S4a), Connect is the stream manager (S5a);
- * RenewCertificate still answers UNIMPLEMENTED (inherited). Blocking database work runs on
- * [dispatcher]. Request values are never logged: a refusal logs its reason and field only.
+ * Probe answers the server clock (A8d-3); RenewCertificate still answers UNIMPLEMENTED (inherited).
+ * Blocking database work runs on [dispatcher]. Request values are never logged: a refusal logs
+ * its reason and field only.
  */
 @GrpcService
 class AgentGrpcService(
@@ -35,8 +38,11 @@ class AgentGrpcService(
     private val agentProperties: AgentEndpointProperties,
     @param:Qualifier("agentServiceDispatcher") private val dispatcher: CoroutineDispatcher,
     private val streams: AgentStreams,
+    private val probe: AgentProbe,
 ) : AgentServiceGrpcKt.AgentServiceCoroutineImplBase() {
     override fun connect(requests: Flow<ConnectRequest>): Flow<ConnectResponse> = streams.connect(requests)
+
+    override suspend fun probe(request: ProbeRequest): ProbeResponse = probe.answer()
 
     override suspend fun register(request: RegisterRequest): RegisterResponse {
         val principal = checkNotNull(AgentPrincipal.KEY.get()) { "Register outside an authenticated agent call" }

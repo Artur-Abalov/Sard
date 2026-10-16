@@ -522,9 +522,9 @@ func (f *fakeFS) ownerStat(serviceUID int) secrets.StatFunc {
 		if err != nil {
 			return info, err
 		}
-		info.UID = uint32(serviceUID)
+		info.UID, info.GID = uint32(serviceUID), uint32(serviceUID)
 		if o, ok := f.ownerOf(path); ok {
-			info.UID = uint32(o.uid)
+			info.UID, info.GID = uint32(o.uid), uint32(o.gid)
 		}
 		return info, nil
 	}

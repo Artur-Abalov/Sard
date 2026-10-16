@@ -205,6 +205,8 @@ var repoHelpPrinters = map[string]func(io.Writer){
 	"password":  printRepoPasswordHelp,
 	"snapshots": printRepoSnapshotsHelp,
 	"restore":   printRepoRestoreHelp,
+	"check":     printRepoCheckHelp,
+	"unlock":    printRepoUnlockHelp,
 }
 
 func printRepoHelp(stdout io.Writer, sub string) {

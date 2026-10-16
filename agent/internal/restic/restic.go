@@ -73,6 +73,9 @@ type Options struct {
 	// environment then holds only the variables of the kind of storage that
 	// the env_file may set, and the password reaches it through a pipe.
 	AsRoot bool
+	// ReadOnly adds --no-lock and --no-cache to every repository command
+	// (see WithReadOnly).
+	ReadOnly bool
 }
 
 // Errors for restic's documented exit codes and for output the wrapper
@@ -202,7 +205,9 @@ func (c *CLI) Restore(ctx context.Context, snapshotID, target string) error {
 
 // call is one restic invocation; zero fields discard or leave empty.
 type call struct {
-	args   []string
+	args []string
+	// tail goes after the flags the wrapper adds: the arguments that follow "--".
+	tail   []string
 	stdout func(line []byte)
 	// stdoutTo, if not nil, gets the raw stdout instead of stdout.
 	stdoutTo io.Writer
@@ -216,6 +221,10 @@ type call struct {
 
 // runRepo runs a restic command against the repository.
 func (c *CLI) runRepo(ctx context.Context, cl call) (*result, error) {
+	if c.opts.ReadOnly {
+		cl.args = append(slices.Clone(cl.args), readOnlyFlags...)
+	}
+	cl.args = append(slices.Clone(cl.args), cl.tail...)
 	env, err := c.repoEnv(ctx)
 	if err != nil {
 		return &result{}, err
