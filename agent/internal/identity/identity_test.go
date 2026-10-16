@@ -53,7 +53,7 @@ func certPEMNames(t *testing.T, names ...asn1.RawValue) []byte {
 		t.Fatal(err)
 	}
 	tmpl := &x509.Certificate{
-		SerialNumber:    big.NewInt(1),
+		SerialNumber:    big.NewInt(0xabcdef12), // hex letters: the base of the text matters
 		Subject:         pkix.Name{CommonName: agent},
 		NotBefore:       notAfter.Add(-time.Hour),
 		NotAfter:        notAfter,
@@ -76,7 +76,7 @@ func TestReadsTheIdentityAndRoleOfACertificate(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := identity.Identity{TenantID: tenant, AgentID: agent, Role: role, NotAfter: notAfter, NotBefore: notAfter.Add(-time.Hour), Serial: "1"}
+		want := identity.Identity{TenantID: tenant, AgentID: agent, Role: role, NotAfter: notAfter, NotBefore: notAfter.Add(-time.Hour), Serial: "abcdef12"}
 		if got != want {
 			t.Errorf("got %+v, want %+v", got, want)
 		}

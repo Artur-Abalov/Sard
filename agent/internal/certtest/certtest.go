@@ -57,6 +57,32 @@ func NewCA(t testing.TB) *CA {
 	return &CA{cert: cert, key: key, pem: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})}
 }
 
+// Intermediate creates a CA that this CA signed: the certificates it issues
+// lead to this CA only through the intermediate's own certificate (PEM).
+func (ca *CA) Intermediate(t testing.TB) *CA {
+	t.Helper()
+	key := NewKey(t)
+	now := time.Now()
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(2),
+		Subject:               pkix.Name{CommonName: "test intermediate CA"},
+		NotBefore:             now.AddDate(-1, 0, 0),
+		NotAfter:              now.AddDate(10, 0, 0),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.cert, &key.PublicKey, ca.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &CA{cert: cert, key: key, pem: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})}
+}
+
 // PEM is the CA certificate, as tls.ca_file holds it.
 func (ca *CA) PEM() []byte { return ca.pem }
 

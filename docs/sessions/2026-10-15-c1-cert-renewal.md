@@ -160,3 +160,30 @@ V1 (#70) уже в `main` (`2881821`), поэтому роль из V1 сохр�
 - Review of 4bdfc108 and a9d3f1d2: no touched agent function is above CRAP 5.4 (`adoptPending`) and none is at the limit (`./scripts/crap.sh agent`); no duplicated mapping (`transport.finalCode` and `certrenew.finalRefusal` sit on two sides of the `CallError` seam on purpose).
 - Only change: `transport.callError` renamed `wrapCallError`, since `certrenew.callError` does the opposite (extracts). No behavior change; `./scripts/gate.sh agent fast` passes.
 - Server: no change (Docker unavailable, so nothing could be verified locally). architect runs next.
+
+## Hardener
+
+Mutation testing of what the branch added or changed in `agent/` and `server/`. Tests only: no production file was edited.
+
+### Agent (go-mutesting through `scripts/mutate-exec.sh`, 4 shards)
+
+- Target: the new and changed sources (`internal/certpair`, `internal/certrenew`, `internal/transport/{certclient,refusal,transport}.go`, `internal/identity/identity.go`, `cmd/sard-agent/{main,renewal,runtime,self_enroll,status_cmd,refused}.go`).
+- Before: 109 survivors (shards 17 / 34 / 27 / 31, scores 0.86 / 0.82 / 0.86 / 0.78).
+- After: 25 survivors (4 / 8 / 7 / 6, scores 0.967 / 0.958 / 0.964 / 0.958).
+- Tests added (all behaviour, none names a mutant): `certpair/hardening_test.go`, `sync_internal_test.go`; `certrenew/hardening_test.go`, `describe_internal_test.go`, `response_test.go` (exact refusal details, intermediate CA, non-CERTIFICATE block); `transport/certclient_hardening_test.go`, `spare_internal_test.go`; `cmd/sard-agent/renewal_hardening_test.go`, `status_hardening_test.go`; `identity_test.go` and `certtest.CA.Intermediate`.
+- Noteworthy: a write that fails after the temporary file exists is tested in a child process under `RLIMIT_FSIZE` (the limit is lifted again before the coverage file is written). `//go:debug cryptocustomrand=1` in `certrenew/hardening_test.go` makes Go 1.26+ honour `Options.Random`, which otherwise is ignored by `ecdsa.GenerateKey`.
+- Full `./scripts/gate.sh agent` (with mutation), exit 0: 5490 mutants, 4129 killed (293 by timeout), 390 survived, 971 did not compile, 0 errors; score 0.928962 (threshold 0.80). A first run failed on a full disk (`no space left on device`, go build cache); after `go clean -cache` the rerun passed.
+- No bug found: no mutant revealed wrong behaviour.
+
+Survivors left, none killable by a behavioural test:
+
+- Equivalent: `certpair/select.go` `err != nil ||` in `candidate.read` (a non-role error leaves `who` empty, which never equals the owner) and the `ReadCertificate` error return right after `tlsid.Check` has parsed the same certificate; `certrenew/schedule.go` `n <= 6` vs `n <= 7` (capped by `min` anyway); `certrenew/state.go` `err != nil &&` (`return err` with nil is `return nil`); `certrenew/manager.go` `retryAfter` returning 0 vs 1 or -1 (the jitter delay is never below 30 s); `transport/transport.go` `Backoff` `attempt < 6` vs `<= 6`/`< 7` (capped by `min`); `transport/refusal.go` `st == nil` returns (`(*status.Status)(nil).Details()` is nil-safe).
+- Dead error paths: `certrenew/manager.go` `marshalKey` (PKCS#8 of a P-256 key cannot fail) and the CSR creation error (would need an entropy source that works for key generation and fails for signing). Proposal to coder: drop both error returns or accept them as defensive.
+- Not in this branch (lines untouched by it, survivors before C1): `cmd/sard-agent/main.go` `shutdownTimeout`, `stop()` before `os.Exit`, `args[1:]` of `runEnroll`, the two `return err` after `transport.New` and `executor.New`; `identity.go` `uriNames` error return.
+
+### Server (mutflow, ADR 0006)
+
+Docker is unavailable here, so only the `@MutFlowTest` classes that need no container ran: `./gradlew --offline :server:test -Pmutflow.enabled=true --rerun --tests` for `RenewalChecksTest`, `AgentAuthenticatorTest`, `SessionRevalidationTest`, `AgentCertificatePolicyTest`, `AgentCertificateValidityTest`, `FileCertificateAuthorityTest`, `CertificatesTest`, `RenewalStatusTest`, `AgentAuthStatusTest`, `AgentRefusalMessageTest`, `StepResultReceiverTest`, `EnrollmentStatusTest`: exit 0, 12 classes, 0 survivors, 0 timeouts.
+
+- Before: 0 survivors in the existing C1 classes. `RenewalStatus` had no `@MutFlowTest` (0 mutations discovered): added `agents/RenewalStatusTest.kt`, 5 mutations, 5 killed. `AgentAuthStatusTest` discovers 0 mutations: it is not hardened by that run.
+- Not mutation-tested, because they have no `@MutFlowTest` and need PostgreSQL: `CertificateRenewal`, `AgentGrpcService`, `AgentAuthInterceptor`, `AgentCertificateStandings`, `AgentCertificateRecord`. Zero discovered mutations is not hardening; the full `./scripts/gate.sh server` in CI is the judge.
