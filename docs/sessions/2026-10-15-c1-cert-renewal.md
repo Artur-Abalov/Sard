@@ -187,3 +187,26 @@ Docker is unavailable here, so only the `@MutFlowTest` classes that need no cont
 
 - Before: 0 survivors in the existing C1 classes. `RenewalStatus` had no `@MutFlowTest` (0 mutations discovered): added `agents/RenewalStatusTest.kt`, 5 mutations, 5 killed. `AgentAuthStatusTest` discovers 0 mutations: it is not hardened by that run.
 - Not mutation-tested, because they have no `@MutFlowTest` and need PostgreSQL: `CertificateRenewal`, `AgentGrpcService`, `AgentAuthInterceptor`, `AgentCertificateStandings`, `AgentCertificateRecord`. Zero discovered mutations is not hardening; the full `./scripts/gate.sh server` in CI is the judge.
+
+## Итог фазы 2
+
+- Пайплайн: specifier → coder (сервер, агент) → cleaner → architect
+  (CHANGES REQUIRED: страж импортов бинарника, `certrenew` без gRPC, срок в
+  шве CA) → coder → cleaner → architect (APPROVED) → hardener.
+- CI на `7f6ac7c` (проверил): `server` (полный гейт с Docker и mutflow),
+  `go (agent)`, `agent-mutation-total`, proto, web, пакеты, e2e-шарды 1–2 —
+  зелёные.
+- Попутно найдено и исправлено по корню: гонка счётчика в
+  `StepResultReceiver` (счёт до ResultAck); тест дескрипторов, считавший
+  процесс параллельно с другими; гонки в новых тестах агента.
+- Красный только e2e-шард 3: `ServerRecoveryDrillTest`, догоняющий запуск
+  A1. Журнал срабатываний (диагностика `756a775`) показывает простой короче
+  одного слота cron: строки `skipped_downtime` нет, догон не положен. Это
+  допущение теста F7 о длительности простоя, не C1; исправление теста — на
+  решение владельца (комментарий в PR #73).
+- Тесты задачи: 1, 2, 3, 4, 5, 7 — модульные и интеграционные (проверил в
+  CI). 6 и 8 — фаза 3.
+- Открыто для фазы 3: консоль, уведомления S9a/S9b, документация оператора,
+  ADR; предложение hardener убрать мёртвые ветки `marshalKey`/`newRequest`;
+  повтор генерации ключа P-256 в `certrenew` и `enroll` (architect,
+  необязательно).
