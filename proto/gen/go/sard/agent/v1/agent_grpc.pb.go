@@ -156,9 +156,10 @@ var EnrollmentService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	AgentService_Register_FullMethodName         = "/sard.agent.v1.AgentService/Register"
-	AgentService_Connect_FullMethodName          = "/sard.agent.v1.AgentService/Connect"
-	AgentService_RenewCertificate_FullMethodName = "/sard.agent.v1.AgentService/RenewCertificate"
+	AgentService_Register_FullMethodName           = "/sard.agent.v1.AgentService/Register"
+	AgentService_Connect_FullMethodName            = "/sard.agent.v1.AgentService/Connect"
+	AgentService_RenewCertificate_FullMethodName   = "/sard.agent.v1.AgentService/RenewCertificate"
+	AgentService_ConfirmCertificate_FullMethodName = "/sard.agent.v1.AgentService/ConfirmCertificate"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -180,6 +181,15 @@ type AgentServiceClient interface {
 	// RenewCertificate issues a new client certificate before the current one
 	// expires.
 	RenewCertificate(ctx context.Context, in *RenewCertificateRequest, opts ...grpc.CallOption) (*RenewCertificateResponse, error)
+	// ConfirmCertificate tells the server that the agent holds the certificate
+	// it presents, a renewed one, and works with it. The agent calls it over a
+	// separate connection that presents the new pair. Until then the new
+	// certificate authenticates only this call; afterwards the server rejects
+	// the certificate it replaced (CERT_SUPERSEDED), while a stream already
+	// open with it stays open. Repeating the call, or calling it with a
+	// certificate that replaced none, succeeds and changes nothing. The agent
+	// is identified by the certificate; the messages are empty.
+	ConfirmCertificate(ctx context.Context, in *ConfirmCertificateRequest, opts ...grpc.CallOption) (*ConfirmCertificateResponse, error)
 }
 
 type agentServiceClient struct {
@@ -223,6 +233,16 @@ func (c *agentServiceClient) RenewCertificate(ctx context.Context, in *RenewCert
 	return out, nil
 }
 
+func (c *agentServiceClient) ConfirmCertificate(ctx context.Context, in *ConfirmCertificateRequest, opts ...grpc.CallOption) (*ConfirmCertificateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ConfirmCertificateResponse)
+	err := c.cc.Invoke(ctx, AgentService_ConfirmCertificate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -242,6 +262,15 @@ type AgentServiceServer interface {
 	// RenewCertificate issues a new client certificate before the current one
 	// expires.
 	RenewCertificate(context.Context, *RenewCertificateRequest) (*RenewCertificateResponse, error)
+	// ConfirmCertificate tells the server that the agent holds the certificate
+	// it presents, a renewed one, and works with it. The agent calls it over a
+	// separate connection that presents the new pair. Until then the new
+	// certificate authenticates only this call; afterwards the server rejects
+	// the certificate it replaced (CERT_SUPERSEDED), while a stream already
+	// open with it stays open. Repeating the call, or calling it with a
+	// certificate that replaced none, succeeds and changes nothing. The agent
+	// is identified by the certificate; the messages are empty.
+	ConfirmCertificate(context.Context, *ConfirmCertificateRequest) (*ConfirmCertificateResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -260,6 +289,9 @@ func (UnimplementedAgentServiceServer) Connect(grpc.BidiStreamingServer[ConnectR
 }
 func (UnimplementedAgentServiceServer) RenewCertificate(context.Context, *RenewCertificateRequest) (*RenewCertificateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RenewCertificate not implemented")
+}
+func (UnimplementedAgentServiceServer) ConfirmCertificate(context.Context, *ConfirmCertificateRequest) (*ConfirmCertificateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ConfirmCertificate not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -325,6 +357,24 @@ func _AgentService_RenewCertificate_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_ConfirmCertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConfirmCertificateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ConfirmCertificate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_ConfirmCertificate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ConfirmCertificate(ctx, req.(*ConfirmCertificateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -339,6 +389,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RenewCertificate",
 			Handler:    _AgentService_RenewCertificate_Handler,
+		},
+		{
+			MethodName: "ConfirmCertificate",
+			Handler:    _AgentService_ConfirmCertificate_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

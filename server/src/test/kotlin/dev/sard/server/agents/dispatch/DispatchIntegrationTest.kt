@@ -118,7 +118,10 @@ class DispatchIntegrationTest(
 ) {
     private val clients = StreamClients(ca, enrollment, tokens, jdbc, port)
     private val other = StreamClients(ca, enrollment, tokens, jdbc, port)
-    private val start = clock.now
+
+    // The CA signs at the injected clock's time and the TLS handshake checks the real one: every test starts at the
+    // real time, not where the previous test left the clock.
+    private val start = Instant.now().truncatedTo(ChronoUnit.SECONDS)
 
     @BeforeTest
     fun `fresh tenants`() {

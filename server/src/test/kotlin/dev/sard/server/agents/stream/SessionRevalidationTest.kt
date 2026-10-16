@@ -23,12 +23,16 @@ private fun ConnectedAgent.standing(
     revokedAt: java.time.Instant? = null,
     agentRevokedAt: java.time.Instant? = null,
     role: AgentRole = AgentRole.SOURCE,
+    supersededAt: java.time.Instant? = null,
+    unconfirmed: Boolean = false,
 ) = CertificateStanding(
     AgentIdentity(tenantId = tenantId, agentId = agentId),
     notAfter,
     revokedAt,
     agentRevokedAt,
     role,
+    supersededAt,
+    unconfirmed,
 )
 
 private fun withSerial(serial: String) = agent().copy(serial = serial)
@@ -101,5 +105,37 @@ class SessionRevalidationTest {
     fun `no sessions, no lookup`() {
         assertEquals(emptyMap(), failures(emptyList(), emptyMap()))
         assertEquals(emptyList(), asked)
+    }
+
+    @Test
+    fun `Сверка открытых потоков не закрывает поток из-за вытеснения и неподтверждённости`() {
+        val superseded = withSerial("8".repeat(32))
+        val unconfirmed = withSerial("9".repeat(32))
+        val records =
+            mapOf(
+                superseded.serial to superseded.standing(supersededAt = NOW),
+                unconfirmed.serial to unconfirmed.standing(unconfirmed = true),
+            )
+        assertEquals(emptyMap(), failures(listOf(superseded, unconfirmed), records))
+    }
+
+    @Test
+    fun `Сверка открытых потоков закрывает поток при отзыве и истечении, как раньше, даже у вытесненного`() {
+        val revoked = withSerial("a".repeat(32))
+        val agentRevoked = withSerial("b".repeat(32))
+        val expired = withSerial("c".repeat(32))
+        val records =
+            mapOf(
+                revoked.serial to revoked.standing(supersededAt = NOW, revokedAt = NOW),
+                agentRevoked.serial to agentRevoked.standing(supersededAt = NOW, agentRevokedAt = NOW),
+                expired.serial to expired.standing(supersededAt = NOW, notAfter = NOW),
+            )
+        val expected =
+            mapOf(
+                revoked to AgentAuthFailure.CERT_REVOKED,
+                agentRevoked to AgentAuthFailure.AGENT_REVOKED,
+                expired to AgentAuthFailure.CERT_EXPIRED,
+            )
+        assertEquals(expected, failures(listOf(revoked, agentRevoked, expired), records))
     }
 }
