@@ -288,3 +288,13 @@ Go: `go-mutesting` через `scripts/mutate-exec.sh` по `certpair/pair.go`,
 `AgentCertificatePolicyTest` 5, 0 выживших. Классы с БД
 (`AgentCertificates`, `AgentCertificateCheck`, нотификации) проверяет только CI
 по `./scripts/gate.sh server`.
+
+## Слияние с `main` @ `fa7be76b` (2026-10-19)
+
+PR #73 был в конфликте с `main` (`mergeable_state: dirty`), поэтому CI не
+запускался. Конфликт один: `ServerRecoveryDrillTest`. `main` закрыл ту же
+гонку учений F7 своим способом (`6848fb2a`,
+`RecoveryOldVm.awaitTwoMissedFires`, корень разобран в
+`docs/sessions/2026-10-19-release-beta1-fixes.md`). Файл взят из `main`, а
+ожидание C1 (`awaitTwoMissedSlotsOfA1`) снято: два ожидания одной гонки не
+нужны. OQ-229 перенесён в «Закрыто при сверке».

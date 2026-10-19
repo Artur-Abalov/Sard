@@ -11,7 +11,6 @@ import java.nio.file.Files
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
-import java.time.temporal.ChronoUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -53,21 +52,6 @@ class ServerRecoveryDrillTest {
 
     private fun agents() = api.items("/api/v1/agents")
 
-    /**
-     * A1 fires every minute. The restored server owes A1 a catch-up with missedCount >= 2 (test 23) only if two
-     * slots passed between the last A1 fire in the snapshot and the start of the server; on a fast stand they may
-     * not. No A1 fire of the snapshot is later than the last A1 run the old machine knew, so waiting for the second
-     * whole minute after that run guarantees it. The wait comes before the first block of the page (test 3) runs:
-     * the recovery time is measured from that block, and the wait must not count into it.
-     */
-    private fun awaitTwoMissedSlotsOfA1() {
-        val source = old.sourceIds.getValue("A1")
-        val last = old.runs.filter { it.sourceId == source }.maxOf { Instant.parse(it.queuedAt) }
-        val secondSlot = last.truncatedTo(ChronoUnit.MINUTES).plus(Duration.ofMinutes(2))
-        val wait = Duration.between(Instant.now(), secondSlot)
-        if (wait.isPositive) Thread.sleep(wait.toMillis())
-    }
-
     private fun runs() = api.items("/api/v1/runs")
 
     @Test
@@ -100,7 +84,6 @@ class ServerRecoveryDrillTest {
     @Test
     @Order(3)
     fun `Сверка id репозитория из хранилища совпадает с карточкой`() {
-        awaitTwoMissedSlotsOfA1()
         new.advance("snapshots")
 
         val output = new.runs.getValue("snapshots").stdout
@@ -327,15 +310,20 @@ class ServerRecoveryDrillTest {
         try {
             Await.until("the catch-up run of A1", Duration.ofMinutes(4)) { catchUps().isNotEmpty() }
         } catch (e: AssertionError) {
-            val fires = api.get("/api/v1/sources/$source/schedule/fires").body
-            val recent = api.get("/api/v1/runs?sourceId=$source").body
-            throw AssertionError("${e.message}\nschedule fires of A1: $fires\nruns of A1: $recent", e)
+            throw AssertionError("${e.message}\n${a1Journal(source)}", e)
         }
         Thread.sleep(SCHEDULER_PASSES.toMillis())
 
         val found = catchUps()
         assertEquals(1, found.size)
         assertTrue(found.single()["catchUp"]["missedCount"].int >= 2)
+    }
+
+    /** What the server knows of A1's schedule when the catch-up is missing: its journal and its runs, newest first. */
+    private fun a1Journal(source: String): String {
+        val fires = api.get("/api/v1/sources/$source/schedule/fires?limit=50").body
+        val runs = api.items("/api/v1/runs?sourceId=$source").joinToString("\n") { "  ${it["trigger"].text} ${it["status"].text} ${it["queuedAt"].text}" }
+        return "schedule fires of A1: $fires\nruns of A1:\n$runs"
     }
 
     @Test

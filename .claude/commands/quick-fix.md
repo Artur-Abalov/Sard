@@ -60,12 +60,18 @@ license to skip the boundary check.
    `hardener` yourself.
 
 4. **Give a short status line after each stage** — which agent ran,
-   pass/fail, one line on what happened — so the user can follow the
-   pipeline without reading every subagent transcript.
+   pass/fail, one line on what happened, and its `subagent_tokens` and
+   `tool_uses` — so the user can follow the pipeline without reading
+   every subagent transcript. A subagent started in the background
+   returns no usage in the call result; take the figures from its
+   completion notification, and write "not reported" if there are none.
+   Never estimate them.
 
 5. At the end, summarize what shipped: files changed, final CRAP/
-   coverage numbers (as printed by `./scripts/crap.sh` and the gate), and the architect's final verdict. State
-   explicitly that `hardener` did not run as part of this quick-fix.
+   coverage numbers (as printed by `./scripts/crap.sh` and the gate), and the architect's final verdict. Add a table
+   with one row per stage: `subagent_tokens`, `tool_uses`, `duration_ms`,
+   copied from each stage's completion notification, plus a total row.
+   State explicitly that `hardener` did not run as part of this quick-fix.
 
 If, once underway, the fix turns out not to be small and well-understood
 after all — the change is larger than expected, needs a spec, or

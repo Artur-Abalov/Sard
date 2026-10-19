@@ -5,6 +5,9 @@
       "Bash(./gradlew:*)",
       "Bash(./scripts/gate.sh:*)",
       "Bash(./scripts/crap.sh:*)",
+      "Bash(./scripts/claude/arch-edges.sh:*)",
+      "Bash(./scripts/claude/docs-index.sh:*)",
+      "Bash(./scripts/claude/test-quiet.sh:*)",
       "Bash(go build:*)",
       "Bash(go test:*)",
       "Bash(go vet:*)",
@@ -86,5 +89,13 @@
         ]
       }
     ]
+  },
+  "env": {
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+    "OTEL_METRICS_EXPORTER": "otlp",
+    "OTEL_LOGS_EXPORTER": "otlp",
+    "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
+    "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative",
+    "OTEL_RESOURCE_ATTRIBUTES": "service.name=claude-code,repo=sard"
   }
 }
