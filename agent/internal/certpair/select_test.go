@@ -279,3 +279,20 @@ func TestWithoutTLSPathsThereIsNothingToSelect(t *testing.T) {
 		t.Fatalf("selection = %+v, err = %v", got, err)
 	}
 }
+
+// Scenario: check с истёкшими всеми парами называет истечение (П45): the
+// expired pair issued last is the one to describe, not the current one.
+func TestWhenEveryPairExpiredTheLatestIssuedOneIsNamed(t *testing.T) {
+	t.Parallel()
+	h := newHost(t)
+	h.install(h.pair(1, t0, day(300)), "")
+	h.install(h.pair(2, day(200), day(500)), ".new")
+	got, err := h.selectAt(day(600))
+	if err != nil || got.Expired == nil {
+		t.Fatalf("selection = %+v, err = %v", got, err)
+	}
+	want := certpair.Pair{KeyFile: h.path("agent.key.new"), CertFile: h.path("agent.pem.new")}
+	if got.Latest != want {
+		t.Fatalf("latest = %+v, want %+v", got.Latest, want)
+	}
+}

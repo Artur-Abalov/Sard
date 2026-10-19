@@ -38,6 +38,9 @@
 | `SARD_FORWARD_HEADERS` | `native` — сервер за обратным прокси, завершающим TLS: схема и адрес клиента берутся из `X-Forwarded-Proto` и `X-Forwarded-For` прокси с loopback или частного адреса ([раздел 4](04-tls-and-names.md), ADR 0046); `none` — эти заголовки игнорируются; другие значения не поддерживаются | `none` | `native` |
 | `SARD_AGENT_PACKAGES_DIR` | каталог пакетов агента внутри контейнера; менять не нужно | `/usr/share/sard/agent-packages` | — |
 | `SARD_PKI_IMPORT_DIR` | каталог с CA старого сервера (`ca/ca.crt`, `ca/ca.key`, права только владельцу), который сервер принимает при первом старте, пока в `SARD_PKI_DIR` нет CA; пусто — сервер создаёт новый CA. Монтируется через `docker-compose.override.yml`, [раздел 8](08-migrate-and-remove.md) | пусто | `/var/lib/sard/pki-import` |
+| `SARD_PKI_AGENT_CERTIFICATE_VALIDITY` | срок сертификата агента при регистрации и продлении (ISO 8601); не меньше `PT2M`, меньше или неразбираемое значение — сервер не стартует; сертификат обрезается по сроку CA. Compose не пробрасывает: добавьте строку в `environment` сервера. [Раздел 13](13-agent-certificates.md) | `P365D` | `P90D` |
+| `SARD_PKI_AGENT_RENEWAL_MIN_INTERVAL` | не чаще одного выпуска сертификата на агента за этот срок (действует меньшее из него и 1/10 срока сертификата), лишний запрос получает `RENEWAL_TOO_FREQUENT`; больше нуля. Compose не пробрасывает | `PT1H` | `PT30M` |
+| `SARD_PKI_AGENT_CERTIFICATE_CHECK_INTERVAL` | как часто сервер проверяет сроки сертификатов агентов для уведомлений «скоро истечёт» и «истёк»; больше нуля. Compose не пробрасывает | `PT1H` | `PT15M` |
 | `SARD_PKI_DIR` | каталог CA внутри контейнера; в compose на нём том `sard_sard-pki` | `/var/lib/sard/pki` | — |
 | `SARD_HTTP_PORT` | HTTP-порт внутри контейнера | `8080` | — |
 | `SARD_GRPC_PORT` | порт агентов внутри контейнера | `9090` | — |

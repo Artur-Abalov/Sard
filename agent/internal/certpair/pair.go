@@ -41,6 +41,10 @@ type Selection struct {
 	// Expired is set when every consistent pair has expired; Pair is then the
 	// current one.
 	Expired *ExpiredError
+	// Latest is, when Expired is set, the consistent pair issued last (the
+	// latest NotBefore, the current pair on a tie): the one sard-agent check
+	// describes (П45). Startup uses Pair.
+	Latest Pair
 }
 
 // Pending reports whether the selected pair still has to be confirmed and renamed.

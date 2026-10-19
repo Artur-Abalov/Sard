@@ -66,9 +66,11 @@ func decide(files config.TLS, fsys FS, now time.Time, consistent []candidate) (S
 	if len(consistent) == 0 {
 		return Selection{}, currentPairError(files, fsys)
 	}
-	best := latest(consistent)
+	best := latest(consistent, false)
 	if best == nil {
-		return expiredSelection(files, fsys), nil
+		sel := expiredSelection(files, fsys)
+		sel.Latest = latest(consistent, true).pair
+		return sel, nil
 	}
 	return Selection{
 		Pair: best.pair, KeyIsNew: best.keyIsNew, CertIsNew: best.certIsNew, Cert: best.cert,
@@ -76,12 +78,13 @@ func decide(files config.TLS, fsys FS, now time.Time, consistent []candidate) (S
 	}, nil
 }
 
-// latest is the pair not expired with the latest NotBefore; the first of equals.
-func latest(consistent []candidate) *candidate {
+// latest is the pair with the latest NotBefore, the first of equals; the
+// expired ones count only with anyExpiry.
+func latest(consistent []candidate, anyExpiry bool) *candidate {
 	var best *candidate
 	for i := range consistent {
 		c := &consistent[i]
-		if !c.expired && (best == nil || c.cert.NotBefore.After(best.cert.NotBefore)) {
+		if (anyExpiry || !c.expired) && (best == nil || c.cert.NotBefore.After(best.cert.NotBefore)) {
 			best = c
 		}
 	}

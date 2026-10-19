@@ -186,7 +186,7 @@ func TestHostWarningsHaveAHint(t *testing.T) {
 			ok(h.t, os.Chmod(h.path("agent.d/repo-x.yaml"), 0o666))
 		}, "files.permissions", "-", "sudo chmod 0640"},
 		{"a restic older than the shipped one", func(h *setupHost) { h.restic.version = "0.19.0" }, "restic.binary", "-", "restic.path"},
-		{"a certificate that ends in 10 days", func(h *setupHost) { h.installIdentity(h.certHolding(10 * 24 * time.Hour)) }, "tls.expiry", "-", "sudo sard-agent enroll --force"},
+		{"a certificate with 10 days of a year left", func(h *setupHost) { h.installIdentity(h.certEnding(10 * 24 * time.Hour)) }, "tls.expiry", "-", "sudo sard-agent status"},
 		{"no pg_restore", func(h *setupHost) { h.progs.remove(pgBin + "/pg_restore --version") }, "plugin.programs", "postgresql", "postgresql-client"},
 		{"pg_dumpall of another major", func(h *setupHost) { h.progs.answer(pgBin+"/pg_dumpall --version", pgVersionLine("pg_dumpall", "15.2")) }, "plugin.programs", "postgresql", "postgresql-client"},
 		{"a service that restarted", func(h *setupHost) {
@@ -277,16 +277,24 @@ func TestAnInconvenientButAllowedModeIsNoViolation(t *testing.T) {
 	}
 }
 
-func TestACertificateThatEndsIn30DaysIsStillFine(t *testing.T) {
-	l, _ := breakAndCheck(t, func(h *setupHost) { h.installIdentity(h.certHolding(30 * 24 * time.Hour)) }, "tls.expiry", "-")
-	if l.status != "OK" || !strings.Contains(l.message, "2026-11-13") {
+func TestACertificateWith31DaysOfAYearLeftIsStillFine(t *testing.T) {
+	l, _ := breakAndCheck(t, func(h *setupHost) { h.installIdentity(h.certEnding(31 * 24 * time.Hour)) }, "tls.expiry", "-")
+	if l.status != "OK" || !strings.Contains(l.message, "2026-11-14") {
 		t.Errorf("%+v", l)
 	}
 }
 
-func TestTheWarningAboutTheExpirySaysThereIsNoRenewalYet(t *testing.T) {
-	l, _ := breakAndCheck(t, func(h *setupHost) { h.installIdentity(h.certHolding(10 * 24 * time.Hour)) }, "tls.expiry", "-")
-	if !strings.Contains(l.message, "expires in 10 days") || !strings.Contains(l.message, "automatic renewal is not available yet") {
+func TestACertificateWith30DaysOfAYearLeftIsWarned(t *testing.T) {
+	l, _ := breakAndCheck(t, func(h *setupHost) { h.installIdentity(h.certEnding(30 * 24 * time.Hour)) }, "tls.expiry", "-")
+	if l.status != "WARN" {
+		t.Errorf("%+v", l)
+	}
+}
+
+func TestTheWarningAboutTheExpiryPointsAtTheStatusNotAtANewRegistration(t *testing.T) {
+	l, _ := breakAndCheck(t, func(h *setupHost) { h.installIdentity(h.certEnding(10 * 24 * time.Hour)) }, "tls.expiry", "-")
+	if !strings.Contains(l.message, "expires in 10 days") || !strings.Contains(l.message, "has not been renewed") ||
+		strings.Contains(l.message, "automatic renewal is not available yet") {
 		t.Errorf("%+v", l)
 	}
 }

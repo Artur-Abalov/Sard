@@ -31,13 +31,13 @@ func TestTheExitCodeFollowsTheWorstLine(t *testing.T) {
 		code    int
 	}{
 		{"a warning and an error", func(h *setupHost) {
-			h.installIdentity(h.certHolding(10 * 24 * time.Hour))
+			h.installIdentity(h.certEnding(10 * 24 * time.Hour))
 			ok(h.t, os.Chmod(h.cfg.TLS.KeyFile, 0o644))
 		}, exitAgentError},
 		{"skipped after offline", func(h *setupHost) {}, exitOK},
 		{"no PostgreSQL tools and a warning", func(h *setupHost) {
 			h.withoutPostgres()
-			h.installIdentity(h.certHolding(10 * 24 * time.Hour))
+			h.installIdentity(h.certEnding(10 * 24 * time.Hour))
 		}, exitWarnings},
 		{"no PostgreSQL tools and an error", func(h *setupHost) {
 			h.withoutPostgres()

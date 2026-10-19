@@ -210,3 +210,25 @@ Docker is unavailable here, so only the `@MutFlowTest` classes that need no cont
   ADR; предложение hardener убрать мёртвые ветки `marshalKey`/`newRequest`;
   повтор генерации ключа P-256 в `certrenew` и `enroll` (architect,
   необязательно).
+
+## Фаза 3 — coder, агент, документация и ADR (2026-10-19)
+
+Спецификация утверждена владельцем 2026-10-19 (П45, П46, ответы 1–4).
+
+- `sard-agent check`: строки `tls.identity`, `tls.chain`, `tls.expiry` берут пару
+  из `certpair.Select` (П45) через файловую систему только для чтения: ничего не
+  удаляется и не переименовывается. `Selection.Latest` — выпущенная последней
+  пара, когда истекли все. Без согласованной пары действуют файлы конфига и
+  прежнее сообщение.
+- `tls.expiry` (П46): сравнение `R × 365 <= L × 30` в `math/big`; текст WARN и
+  подсказка `sudo sard-agent status`; `RenewWithin` и фраза «automatic renewal is
+  not available yet (C1)» удалены. Старые тесты порога 30 суток переписаны под
+  долю срока (сертификат на год, `certEnding`).
+- Документация: `docs/operator/13-agent-certificates.md`, строка 13 в README,
+  правки 03, 05, 09 (`tls.expiry`), `docs/qa/host-check.md` (шаг 38), ADR
+  `00XX-draft-agent-certificate-renewal.md`, ADR 0014 («Отложено»), реестр:
+  OQ-022, OQ-228 (срок CA), OQ-229 (допущение `ServerRecoveryDrillTest`).
+- Не сделано, чтобы не выходить за сценарии: `server.tls` (`clientTLS`) и
+  `files.permissions` (`secretFiles`) по-прежнему берут файлы `tls.*` из
+  конфига, а не выбранную пару. Для хоста с годной парой `.new` и истёкшей
+  основной `server.tls` предъявит истёкший сертификат.

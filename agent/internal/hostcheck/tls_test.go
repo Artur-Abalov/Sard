@@ -176,30 +176,62 @@ func TestACAFileThatIsNotACertificateIsAnError(t *testing.T) {
 	}
 }
 
-func TestExpiryByTheNumberOfDaysLeft(t *testing.T) {
+// Scenario "Строка tls.expiry судит по доле срока сертификата" (П46): the
+// certificate lives 300 days from T0.
+func TestExpiryByTheShareOfTheLifetimeLeft(t *testing.T) {
+	const day = 24 * time.Hour
+	start := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
 	for _, c := range []struct {
-		name   string
-		left   time.Duration
-		status hostcheck.Status
-		in     []string
+		name    string
+		elapsed time.Duration
+		status  hostcheck.Status
+		message string
+		hint    string
 	}{
-		{"200 days", 200 * 24 * time.Hour, hostcheck.OK, []string{"2027-05-02"}},
-		{"exactly 30 days", 30 * 24 * time.Hour, hostcheck.OK, []string{"2026-11-13"}},
-		{"just under 30 days", 30*24*time.Hour - time.Second, hostcheck.Warn, []string{"expires in 29 days"}},
-		{"10 days", 10 * 24 * time.Hour, hostcheck.Warn, []string{"expires in 10 days", "automatic renewal is not available yet"}},
+		{"25 days left of 300", 275 * day, hostcheck.OK, "the certificate is valid until 2027-08-11 (25 days)", ""},
+		{"24 days left of 300", 276 * day, hostcheck.Warn,
+			"the certificate expires in 24 days (2027-08-11) and has not been renewed: see renewal_last_error in sudo sard-agent status",
+			"sudo sard-agent status"},
+		{"expired", 300 * day, hostcheck.Error, "the certificate expired on 2027-08-11", "sudo sard-agent enroll --force (see "},
 	} {
-		l := hostcheck.TLSExpiryLine(tlsFiles, tlsNow, validPKI(t, c.left).read)
-		if l.Check != "tls.expiry" || l.Status != c.status {
+		p := newPKI(t, start, start.Add(300*day))
+		l := hostcheck.TLSExpiryLine(tlsFiles, start.Add(c.elapsed), p.read)
+		if l.Check != "tls.expiry" || l.Status != c.status || l.Message != c.message {
 			t.Errorf("%s: %+v", c.name, l)
 		}
-		for _, want := range c.in {
-			if !strings.Contains(l.Message, want) {
-				t.Errorf("%s: message %q lacks %q", c.name, l.Message, want)
-			}
-		}
-		if c.status == hostcheck.Warn && !strings.Contains(l.Hint, "sudo sard-agent enroll --force") {
+		if !strings.HasPrefix(l.Hint, c.hint) || (c.hint == "" && l.Hint != "") {
 			t.Errorf("%s: hint %q", c.name, l.Hint)
 		}
+	}
+}
+
+// The threshold is exactly 30/365 of the lifetime, to the nanosecond.
+func TestTheWarningStartsAtExactly30In365OfTheLifetime(t *testing.T) {
+	const day = 24 * time.Hour
+	p := newPKI(t, tlsNow, tlsNow.Add(365*day))
+	end := tlsNow.Add(365 * day)
+	if l := hostcheck.TLSExpiryLine(tlsFiles, end.Add(-30*day), p.read); l.Status != hostcheck.Warn {
+		t.Errorf("at 30 days: %+v", l)
+	}
+	if l := hostcheck.TLSExpiryLine(tlsFiles, end.Add(-30*day-time.Nanosecond), p.read); l.Status != hostcheck.OK {
+		t.Errorf("a nanosecond before: %+v", l)
+	}
+}
+
+func TestAShortCertificateWarnsInProportion(t *testing.T) {
+	p := newPKI(t, tlsNow, tlsNow.Add(10*time.Minute))
+	if l := hostcheck.TLSExpiryLine(tlsFiles, tlsNow.Add(9*time.Minute+10*time.Second), p.read); l.Status != hostcheck.OK {
+		t.Errorf("%+v", l)
+	}
+	if l := hostcheck.TLSExpiryLine(tlsFiles, tlsNow.Add(9*time.Minute+11*time.Second), p.read); l.Status != hostcheck.Warn {
+		t.Errorf("%+v", l)
+	}
+}
+
+func TestTheExpiryTextNoLongerSaysThereIsNoRenewal(t *testing.T) {
+	p := newPKI(t, tlsNow.Add(-362*24*time.Hour), tlsNow.Add(3*24*time.Hour))
+	if l := hostcheck.TLSExpiryLine(tlsFiles, tlsNow, p.read); strings.Contains(l.Message, "automatic renewal is not available yet") {
+		t.Errorf("%+v", l)
 	}
 }
 

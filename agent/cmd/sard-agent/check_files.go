@@ -6,9 +6,11 @@ package main
 import (
 	"errors"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
 
+	"github.com/Artur-Abalov/sard/agent/internal/certpair"
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostcheck"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
@@ -160,22 +162,61 @@ func secretFiles(cfg config.Config) []string {
 	return files
 }
 
-// tlsLines are tls.identity, tls.chain, tls.expiry and tls.role.
+// tlsLines are tls.identity, tls.chain, tls.expiry and tls.role. The first
+// three describe the pair that the start would select (П45).
 func (c *hostCheck) tlsLines() {
-	tls := c.cfg.TLS
 	c.step(hostcheck.CheckTLSIdentity, needConfig, func() hostcheck.Line {
 		return c.guarded(hostcheck.CheckTLSIdentity, "", func() hostcheck.Line {
-			return hostcheck.TLSIdentityLine(tls, c.cfg.Server.Address, c.read)
+			return hostcheck.TLSIdentityLine(c.selectedTLS(), c.cfg.Server.Address, c.read)
 		})
 	})
 	c.step(hostcheck.CheckTLSChain, needConfig, func() hostcheck.Line {
-		return c.guarded(hostcheck.CheckTLSChain, "", func() hostcheck.Line { return hostcheck.TLSChainLine(tls, c.now, c.read) })
+		return c.guarded(hostcheck.CheckTLSChain, "", func() hostcheck.Line {
+			return hostcheck.TLSChainLine(c.selectedTLS(), c.now, c.read)
+		})
 	})
 	c.step(hostcheck.CheckTLSExpiry, needConfig, func() hostcheck.Line {
-		return c.guarded(hostcheck.CheckTLSExpiry, "", func() hostcheck.Line { return hostcheck.TLSExpiryLine(tls, c.now, c.read) })
+		return c.guarded(hostcheck.CheckTLSExpiry, "", func() hostcheck.Line {
+			return hostcheck.TLSExpiryLine(c.selectedTLS(), c.now, c.read)
+		})
 	})
 	c.emit(hostcheck.TLSRoleLine())
 }
+
+// selectedTLS is tls.* with the key and certificate files that certpair.Select
+// picks, as the start would; nothing is removed or renamed. Without a pair
+// that Select can name, the files of the config stand, and the lines say what
+// is wrong with them.
+func (c *hostCheck) selectedTLS() config.TLS {
+	if c.pair != nil {
+		return *c.pair
+	}
+	files := c.cfg.TLS
+	sel, err := certpair.Select(files, readOnlyFiles{read: c.read, readDir: c.deps.fs.ReadDir}, c.now)
+	if err == nil {
+		files.KeyFile, files.CertFile = sel.Pair.KeyFile, sel.Pair.CertFile
+		if sel.Expired != nil {
+			files.KeyFile, files.CertFile = sel.Latest.KeyFile, sel.Latest.CertFile
+		}
+	}
+	c.pair = &files
+	return files
+}
+
+// readOnlyFiles is the file system of certpair.Select for a command that
+// changes nothing.
+type readOnlyFiles struct {
+	read    func(string) ([]byte, error)
+	readDir func(string) ([]os.DirEntry, error)
+}
+
+var errReadOnly = errors.New("sard-agent check changes no files")
+
+func (f readOnlyFiles) ReadFile(name string) ([]byte, error)      { return f.read(name) }
+func (f readOnlyFiles) ReadDir(dir string) ([]os.DirEntry, error) { return f.readDir(dir) }
+func (readOnlyFiles) Remove(string) error                         { return errReadOnly }
+func (readOnlyFiles) Rename(string, string) error                 { return errReadOnly }
+func (readOnlyFiles) WriteFile(string, []byte, os.FileMode) error { return errReadOnly }
 
 // secretLines is secret.readable for every secret of the config (Ч17).
 func (c *hostCheck) secretLines() {
