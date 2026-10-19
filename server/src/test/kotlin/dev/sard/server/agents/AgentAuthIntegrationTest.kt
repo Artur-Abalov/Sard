@@ -263,8 +263,14 @@ class AgentAuthIntegrationTest(
     fun `a live agent's certificate passes the interceptor on every AgentService method`() {
         val agent = enrolled(acme)
         for (method in agentMethods()) {
+            val actual = call(presenting(agent), method)
+            if (method == AgentServiceGrpc.getProbeMethod().fullMethodName) {
+                // A8d-3: Probe answers the server clock; the body is binary, the code is the point.
+                assertEquals(Status.Code.OK, actual.code, method)
+                continue
+            }
             val expected = handlerAnswersToEmpty[method] ?: Outcome(Status.Code.UNIMPLEMENTED)
-            assertEquals(expected, call(presenting(agent), method), method)
+            assertEquals(expected, actual, method)
         }
     }
 

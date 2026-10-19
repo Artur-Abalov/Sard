@@ -5,6 +5,7 @@ package main
 
 import (
 	"io"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -20,6 +21,8 @@ type virtualClock struct {
 	mu     sync.Mutex
 	now    time.Time
 	timers []*virtualTimer
+	// waits are the durations the timers were set for.
+	waits []time.Duration
 }
 
 type virtualTimer struct {
@@ -34,6 +37,7 @@ func newVirtualClock() *virtualClock {
 func (c *virtualClock) After(d time.Duration) <-chan time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.waits = append(c.waits, d)
 	t := &virtualTimer{at: c.now.Add(d), ch: make(chan time.Time, 1)}
 	c.timers = append(c.timers, t)
 	return t.ch
@@ -73,6 +77,13 @@ func (c *virtualClock) waitTimers(t *testing.T, n int) {
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatalf("fewer than %d timers were set", n)
+}
+
+// hasTimer: a timer of d was set.
+func (c *virtualClock) hasTimer(d time.Duration) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Contains(c.waits, d)
 }
 
 // runInBackground runs the S3 command line in a goroutine.

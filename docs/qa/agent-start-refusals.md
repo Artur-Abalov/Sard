@@ -69,10 +69,11 @@ line() { grep '^sard-agent: ' "$QA/serr"; }
    → `exit=124` (агент работал до `timeout`); `grep -cF "$SUF" "$QA/serr"` → `0`;
    в stderr есть записи журнала `reconnecting`.
 
-6а. Отозванный агент (`UNAUTHENTICATED`): отозвать агента в консоли (страница
+6а. Отозванный агент (`UNAUTHENTICATED`; отзыв в консоли отзывает и сертификаты
+   агента, поэтому причина `CERT_REVOKED`, а не `AGENT_REVOKED`): отозвать агента в консоли (страница
    агента, «Отозвать») или `POST /api/v1/agents/<agent_id>/revoke` с сессией
    администратора (S8b); затем `mk main ""; start`
-   → `exit=78`; `line` содержит `code = Unauthenticated`, `reason AGENT_REVOKED`
+   → `exit=78`; `line` содержит `code = Unauthenticated`, `reason CERT_REVOKED`
    и оканчивается `$SUF`. После этого шага агент зарегистрирован заново только
    через `sard-agent enroll --force` с новым токеном.
 

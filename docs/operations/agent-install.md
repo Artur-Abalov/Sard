@@ -89,7 +89,14 @@ sudoedit /etc/sard/agent.yaml     # server.address и пути tls.*; репоз
 sudo sard-agent enroll --server <адрес сервера> --token <токен из консоли>
 sudo sard-agent repo add main /srv/sard/main        # локальный репозиторий: создаёт его, пароль и фрагмент agent.d
 sudo systemctl enable --now sard-agent.service
+sudo sard-agent check                               # последний шаг: готов ли хост к бэкапу и восстановлению
 ```
+
+После установки и после каждого `repo add` выполняйте `sudo sard-agent check`:
+по строке на проверку, под каждой неудачной — готовая команда или ссылка на
+раздел [«Диагностика»](../operator/09-troubleshooting.md#проверка-хоста-агента-sard-agent-check).
+Команда ничего не меняет на хосте; код выхода `0` — всё в порядке, `8` — есть
+предупреждения, `1` — есть ошибки.
 
 Регистрацию, секреты и локальные репозитории выполняйте через `sudo`: команды
 сами отдают созданные файлы пользователю службы `sard-agent`, создают

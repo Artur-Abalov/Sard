@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
@@ -40,7 +41,7 @@ func TestMissingPgDumpInPathFailsTheStepWithAHintAboutThePackage(t *testing.T) {
 	res := r.backup(k())
 	want(t, res, failed)
 	mentions(t, res.GetMessage(), "pg_dump not found", "postgresql-client", "postgresql", "pg_dump_path")
-	oneLine(t, res.GetMessage())
+	endsWithCheckHint(t, res.GetMessage())
 	r.noDump(t)
 	r.lastPhase(t, preparing)
 	noOutput(t, res)
@@ -387,5 +388,24 @@ func TestДлинныеОшибкаИDetailОбрезаютсяКаждаяОт�
 	wantText := errLine[:512] + "... — detail: " + detail[:512] + "..."
 	if !strings.HasSuffix(res.GetMessage(), wantText) {
 		t.Errorf("message = %q, want it to end with %q", res.GetMessage(), wantText)
+	}
+}
+
+// A8d-4 (F1): the plugin tells the agent a program is missing with the SDK
+// sentinel, not only with words.
+func TestMissingProgramsAreReportedWithTheSDKSentinel(t *testing.T) {
+	for program, cfg := range map[string]map[string]any{
+		"pg_dump":    k(),
+		"psql":       k(),
+		"pg_dumpall": k(map[string]any{"include_globals": true}),
+	} {
+		t.Run(program, func(t *testing.T) {
+			d := newDirect()
+			delete(d.plugin.FS.(*fakeFS).nodes, "/usr/bin/"+program)
+			err := d.plugin.Prepare(context.Background(), d.host, cfgOf(cfg))
+			if !errors.Is(err, sdk.ErrProgramMissing) {
+				t.Errorf("err = %v, want it to match sdk.ErrProgramMissing", err)
+			}
+		})
 	}
 }

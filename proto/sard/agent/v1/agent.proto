@@ -93,6 +93,24 @@ service AgentService {
   // certificate that replaced none, succeeds and changes nothing. The agent
   // is identified by the certificate; the messages are empty.
   rpc ConfirmCertificate(ConfirmCertificateRequest) returns (ConfirmCertificateResponse);
+
+  // Probe tells the agent whether the server accepts its certificate and what
+  // time the server has. Read-only: it does not register, open a session, mark
+  // the agent seen or touch its steps. Refusals are those of every
+  // AgentService call (ADR 0009): UNAUTHENTICATED with google.rpc.ErrorInfo,
+  // domain "sard.dev". Servers older than this method answer UNIMPLEMENTED to
+  // an accepted agent.
+  rpc Probe(ProbeRequest) returns (ProbeResponse);
+}
+
+// ProbeRequest carries nothing: the server knows the agent by its
+// certificate (ADR 0009).
+message ProbeRequest {}
+
+message ProbeResponse {
+  // Server clock when it answered; the agent compares it with its own clock,
+  // corrected for half the round trip.
+  google.protobuf.Timestamp server_time = 1;
 }
 
 // RegisterRequest describes the agent to the server.

@@ -62,6 +62,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, hostname 
 	if isEnrollCommand(args) {
 		return runEnroll(ctx, args[1:], stdout, stderr, hostname)
 	}
+	if isCheckCommand(args) {
+		return runCheckCommand(ctx, args[1:], stdout, stderr)
+	}
 	if isStatusCommand(args) {
 		return runStatus(args[1:], stdout, stderr, realStatusDeps())
 	}
@@ -83,6 +86,11 @@ func isEnrollCommand(args []string) bool {
 func runAgentCmd(ctx context.Context, args []string, stdout, stderr io.Writer, hostname hostnameFunc, self selfEnrollDeps) int {
 	fs := flag.NewFlagSet("sard-agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	fs.Usage = func() {
+		_, _ = fmt.Fprintln(stderr, "Usage of sard-agent:")
+		fs.PrintDefaults()
+		_, _ = fmt.Fprint(stderr, commandList)
+	}
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	configPath := fs.String("config", "", "path to the agent YAML config")
 	tokenFile := fs.String("enroll-token-file", "", "file in which the server leaves an enrollment token; the agent enrolls itself with it")
@@ -127,6 +135,15 @@ func exitCode(stderr io.Writer, err error) int {
 	return reportFailure(stderr, err)
 }
 
+// commandList is what the usage of the agent names besides running it (Ч29).
+const commandList = `
+Commands (each has --help):
+  sard-agent check            check that this host is ready to back up and restore
+  sard-agent enroll           register this host with sard-server
+  sard-agent repo ...         the repositories of this host (init, list, add, show, remove, password, snapshots, restore, check, unlock)
+  sard-agent secret ...       the secrets of this host (set, list, remove)
+`
+
 // reportFailure prints why the agent stopped and picks the exit code: a
 // refusal that no restart cures is told apart from any other error.
 func reportFailure(stderr io.Writer, err error) int {
@@ -151,7 +168,7 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 	}
 	cfg, me := local.cfg, local.host
 	removeStale(local, rt)
-	resticBinary, hostname, err := checkHost(ctx, cfg, configPath, hostnameOf, executable)
+	resticBinary, hostname, err := checkHostRuntime(ctx, cfg, configPath, hostnameOf, executable)
 	if err != nil {
 		return err
 	}
@@ -163,8 +180,8 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 	return refuse(serve(ctx, cfg, me.role, newAgentWith(cfg, hostname, resticBinary, me.machineID, rt), renewal, rt), configPath, cfg)
 }
 
-// checkHost finds restic and the host name, before the network.
-func checkHost(ctx context.Context, cfg config.Config, configPath string, hostnameOf hostnameFunc, executable func() (string, error)) (resticBinary, hostname string, err error) {
+// checkHostRuntime finds restic and the host name, before the network.
+func checkHostRuntime(ctx context.Context, cfg config.Config, configPath string, hostnameOf hostnameFunc, executable func() (string, error)) (resticBinary, hostname string, err error) {
 	// A5b: no usable restic, no start — before the network (С5).
 	resticBinary, err = checkRestic(ctx, cfg, configPath, executable, restic.ProcessExecutor{}, nil)
 	if err != nil {
@@ -304,6 +321,7 @@ func newAgent(cfg config.Config, hostname, resticBinary, machineID string) *app.
 		RepositoryID: func(ctx context.Context, r config.Repository) (string, error) {
 			return repos[r.Name].ID(ctx)
 		},
+		Announced: recordAnnounced(executorStateDir(cfg.Executor.StateDir), slog.Default()),
 	}
 }
 

@@ -8,6 +8,8 @@ import dev.sard.proto.agent.v1.ConfirmCertificateRequest
 import dev.sard.proto.agent.v1.ConfirmCertificateResponse
 import dev.sard.proto.agent.v1.ConnectRequest
 import dev.sard.proto.agent.v1.ConnectResponse
+import dev.sard.proto.agent.v1.ProbeRequest
+import dev.sard.proto.agent.v1.ProbeResponse
 import dev.sard.proto.agent.v1.RegisterRequest
 import dev.sard.proto.agent.v1.RegisterResponse
 import dev.sard.proto.agent.v1.RenewCertificateRequest
@@ -33,8 +35,9 @@ private val log = LoggerFactory.getLogger(AgentGrpcService::class.java)
 /**
  * gRPC endpoint agents dial into, behind the S3 interceptor: the agent is always the one of
  * the call's certificate. Register is implemented (S4a), Connect is the stream manager (S5a);
- * RenewCertificate and ConfirmCertificate renew the certificate (C1). Blocking database work runs on
- * [dispatcher]. Request values are never logged: a refusal logs its reason and field only.
+ * Probe answers the server clock (A8d-3); RenewCertificate and ConfirmCertificate renew the
+ * certificate (C1). Blocking database work runs on [dispatcher]. Request values are never logged:
+ * a refusal logs its reason and field only.
  */
 @GrpcService
 class AgentGrpcService(
@@ -43,8 +46,11 @@ class AgentGrpcService(
     private val renewal: CertificateRenewal,
     @param:Qualifier("agentServiceDispatcher") private val dispatcher: CoroutineDispatcher,
     private val streams: AgentStreams,
+    private val probe: AgentProbe,
 ) : AgentServiceGrpcKt.AgentServiceCoroutineImplBase() {
     override fun connect(requests: Flow<ConnectRequest>): Flow<ConnectResponse> = streams.connect(requests)
+
+    override suspend fun probe(request: ProbeRequest): ProbeResponse = probe.answer()
 
     override suspend fun renewCertificate(request: RenewCertificateRequest): RenewCertificateResponse {
         val caller = callerOf()

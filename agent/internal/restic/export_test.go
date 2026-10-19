@@ -10,6 +10,7 @@ var (
 	SignalGroup   = signalGroup
 	MustVersions  = mustVersions
 	CredentialFor = credentialFor
+	RefusalWords  = refusalWords
 )
 
 func (p ProcessExecutor) GraceForTest() time.Duration { return p.grace() }

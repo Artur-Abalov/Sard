@@ -13,7 +13,9 @@ import io.grpc.Metadata
 import io.grpc.ServerCall
 import io.grpc.ServerCallHandler
 import io.grpc.ServerInterceptor
+import io.grpc.StatusRuntimeException
 import org.slf4j.LoggerFactory
+import java.security.cert.CertificateParsingException
 import java.security.cert.X509Certificate
 import javax.net.ssl.SSLPeerUnverifiedException
 
@@ -76,10 +78,39 @@ class AgentAuthInterceptor(
     ): ServerCall.Listener<Q> {
         if (call.methodDescriptor.serviceName in open) return next.startCall(call, headers)
         val leaf = leaf(call)
-        val presented = leaf?.let(PresentedCertificate::of)
-        return when (val result = authenticator.authenticate(presented, scopeOf(call))) {
-            is Accepted -> Contexts.interceptCall(contextOf(result.principal, leaf), call, headers, next)
-            is Rejected -> refuse(result, call)
+        return when (val result = authenticated(call, leaf)) {
+            null -> {
+                closed(call, AgentAuthStatus.unavailable())
+            }
+
+            is Accepted -> {
+                Contexts.interceptCall(contextOf(result.principal, leaf), call, headers, next)
+            }
+
+            is Rejected -> {
+                // Serial and agent id only: certificates and keys are never logged.
+                log.warn(refusalMessage(result, call.methodDescriptor.fullMethodName))
+                closed(call, AgentAuthStatus.of(result.failure))
+            }
+        }
+    }
+
+    /**
+     * The verdict, or null when the store behind the check failed (ADR 0009 amendment, A8d-3).
+     * Only the store is guarded: what the caller presented is read first, so a certificate that
+     * cannot be read is the caller's fault, never a retryable fault of the server.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun authenticated(
+        call: ServerCall<*, *>,
+        leaf: X509Certificate?,
+    ): AgentAuthResult? {
+        val presented = presented(leaf)
+        return try {
+            authenticator.authenticate(presented, scopeOf(call))
+        } catch (e: Exception) {
+            log.error("agent authentication failed on {}", call.methodDescriptor.fullMethodName, e)
+            null
         }
     }
 
@@ -96,13 +127,10 @@ class AgentAuthInterceptor(
             .withValue(AgentPrincipal.KEY, principal)
             .withValue(PresentedKey.KEY, checkNotNull(leaf).publicKey.encoded)
 
-    private fun <Q> refuse(
-        rejected: Rejected,
-        call: ServerCall<Q, *>,
+    private fun <Q, R> closed(
+        call: ServerCall<Q, R>,
+        error: StatusRuntimeException,
     ): ServerCall.Listener<Q> {
-        // Serial and agent id only: certificates and keys are never logged.
-        log.warn(refusalMessage(rejected, call.methodDescriptor.fullMethodName))
-        val error = AgentAuthStatus.of(rejected.failure)
         call.close(error.status, error.trailers ?: Metadata())
         return object : ServerCall.Listener<Q>() {}
     }
@@ -116,4 +144,12 @@ class AgentAuthInterceptor(
             null
         }
     }
+
+    /** What [leaf] says of its holder, or null when there is none or its names cannot be read. */
+    private fun presented(leaf: X509Certificate?): PresentedCertificate? =
+        try {
+            leaf?.let(PresentedCertificate::of)
+        } catch (_: CertificateParsingException) {
+            null
+        }
 }

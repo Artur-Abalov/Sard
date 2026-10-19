@@ -4,15 +4,19 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"io"
 	"os"
 
+	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/hostcheck"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/repoconnect"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
+	"github.com/Artur-Abalov/sard/agent/internal/serverprobe"
 )
 
 // hostDeps is everything the commands "sard-agent repo ..." and "sard-agent
@@ -25,9 +29,20 @@ type hostDeps struct {
 	// sshExec runs the programs of the OpenSSH client (ssh-keyscan,
 	// ssh-keygen, sftp) as the service user (A8b-2).
 	sshExec restic.Executor
+	// progExec runs the programs of the host that sard-agent check looks at:
+	// getenforce, matchpathcon, ausearch, systemctl show and the tools of
+	// PostgreSQL (A8d-2).
+	progExec restic.Executor
+	// probeServer asks the server: connect, handshake, Probe (A8d-3).
+	probeServer func(ctx context.Context, r serverprobe.Request) hostcheck.ServerFacts
 	// hostname is the name of this host, for the comment of a new ssh key.
 	hostname   func() (string, error)
 	executable func() (string, error)
+	// loadConfig reads the config of sard-agent check (A8d-2).
+	loadConfig func(path string) (config.Config, error)
+	// pidAlive says whether a process of this host is running: a lock of
+	// restic from a process that is gone is stale (A8d).
+	pidAlive func(pid int) bool
 	// euid is the effective user id of the process: the right to run a
 	// command comes from it (Р5).
 	euid     uint32
@@ -67,19 +82,23 @@ type hostDeps struct {
 
 func productionHostDeps() hostDeps {
 	return hostDeps{
-		clock:      realEnrollClock{},
-		exec:       restic.ProcessExecutor{},
-		sshExec:    restic.ProcessExecutor{},
-		hostname:   os.Hostname,
-		executable: os.Executable,
-		euid:       uint32(os.Geteuid()),
-		stat:       secrets.RealStat,
-		readFile:   os.ReadFile,
-		readOwned:  secrets.ReadOwned,
-		writeNew:   repoinit.WriteNew,
-		random:     rand.Reader,
-		openLock:   os.OpenFile,
-		pathEnv:    os.Getenv("PATH"),
+		clock:       realEnrollClock{},
+		exec:        restic.ProcessExecutor{},
+		sshExec:     restic.ProcessExecutor{},
+		progExec:    restic.ProcessExecutor{},
+		hostname:    os.Hostname,
+		executable:  os.Executable,
+		pidAlive:    processAlive,
+		loadConfig:  config.Load,
+		probeServer: serverprobe.Run,
+		euid:        uint32(os.Geteuid()),
+		stat:        secrets.RealStat,
+		readFile:    os.ReadFile,
+		readOwned:   secrets.ReadOwned,
+		writeNew:    repoinit.WriteNew,
+		random:      rand.Reader,
+		openLock:    os.OpenFile,
+		pathEnv:     os.Getenv("PATH"),
 
 		defaultConfig:   defaultEnrollConfigPath,
 		defaultCacheDir: restic.DefaultCacheDir,
