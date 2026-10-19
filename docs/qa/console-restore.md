@@ -10,7 +10,9 @@
 **УТВЕРЖДЕНО владельцем 2026-10-14** («Согласен по всем. Пошел»; ВВ1–ВВ13 —
 как рекомендовано). Шаги, которые зависят от ответа, помечены «(ВВ<номер>)».
 Части 1–4 и 6–7 — срез R2a (реализован), часть 5 — R2b (текущий прогон;
-сверено 2026-10-19 с построенным R2a, A8d Ч28 и A8c-3);
+сверено 2026-10-19 с построенным R2a, A8d Ч28 и A8c-3; R2b утверждён в
+редакции сверки владельцем 2026-10-19, решения РВ1–РВ7 — шапка
+`docs/specs/agent/console-restore.feature`, шаги помечены «(РВ<номер>)»);
 в частях 6 и 7 пункты о PostgreSQL проверяются с R2b. R2c (перезапись) вне
 R2 (ВВ1, OQ-216) и не проверяется.
 
@@ -48,6 +50,8 @@ traces() { sudo find /var/lib/sard-agent/restore -mindepth 1 -newer "$OUT/mark" 
   командой `repo add` с паролем из копии (`docs/qa/host-setup.md`, шаг 50).
 - **ВМ-3** (`db3`): агент предыдущей версии (до R2) с подключённым `s1`.
 - **PG-14**: отдельный PostgreSQL 14 (`pg14:5432`), доступный с ВМ-1, роль
+  `restorer` с `CREATEDB`.
+- **PG-13** (R2b, РВ2): PostgreSQL 13 (`pg13:5432`), доступный с ВМ-1, роль
   `restorer` с `CREATEDB`.
 
 Источники в консоли (бэкап каждого — `succeeded` перед частью 2):
@@ -236,11 +240,39 @@ REPO_PASS=$(sudo cat /etc/sard/secrets/restic-s1.pass)   # на ВМ-1, толь
 35. Повторить шаг 34 → `failed`, `DATABASE_EXISTS`, называет базу; база не
     изменилась (число строк то же).
 36. Версии: целевой `host pg14` → `failed`, `PG_SERVER_TOO_OLD`, называет 14 и
-    16 (ВВ5); на PG-14 базы нет.
+    16 (ВВ5); на PG-14 базы нет. Ручной снимок базы без меток версий (как
+    шаг 63 `docs/qa/repo-restore.md`: `--tag postgresql.part=database --tag
+    postgresql.database=app`) на `host pg13` → `failed`, `PG_SERVER_TOO_OLD`,
+    называет 13 и минимум 14 (РВ2); на PG-13 базы нет.
+36а. Режим pg_restore (РВ1): в логе шага 34 строка
+    `pg_restore mode: single transaction (<N> objects, lock capacity <C>, share 0.5)`,
+    где `C` = `max_locks_per_transaction × (max_connections + max_prepared_transactions)`
+    целевого сервера (`psql -tAc "select current_setting('max_locks_per_transaction')::int * (current_setting('max_connections')::int + current_setting('max_prepared_transactions')::int)"`),
+    `N` — `restic dump … /app.dump | pg_restore -l | grep -vc '^;'`. Затем
+    `restore: {postgresql_lock_share: 0}` в `agent.d`, перезапуск, восстановление
+    в новое имя → `succeeded`, строка `separate transactions`; во время шага
+    `ps -o args= -C pg_restore` не содержит `--single-transaction`.
+    `postgresql_lock_share: 2` → служба не стартует, журнал называет
+    `restore.postgresql_lock_share`. Убрать настройку.
+36б. Предупреждение о владельцах (РВ3): предпросмотр шага 34 (без глобальных
+    объектов) показывает «Глобальные объекты не восстанавливаются: все объекты
+    новой базы будут принадлежать роли подключения…»; с `restore_globals` —
+    нет, вместо него предупреждение об изменении кластера.
+36в. Кластер источника (РВ8): предпросмотр шага 34 (агент db1, host и port
+    из конфига бэкапа `qa-pg`) показывает «База будет восстановлена в тот же
+    кластер PostgreSQL…»; запуск доступен → `succeeded`; лог шага — строка
+    WARN `the target is the cluster the snapshot was taken from (system identifier …)`,
+    число равно `psql -tAc 'select system_identifier from pg_control_system()'`
+    (от суперпользователя). У снимка `qa-pg` метка
+    `postgresql.system_identifier` (`sudo sard-agent repo snapshots s1 --json | jq …tags`).
+    В host вместо имени — IP того же сервера → предупреждения в
+    предпросмотре нет (признак сервера, ВК32b), а строка WARN в логе шага
+    есть. Целевой кластер 5433 → ни предупреждения, ни строки WARN.
 37. Глобальные объекты: `restore_globals` включить при роли `restorer` →
     предпросмотр предупреждает об изменении кластера; запуск → `failed`,
     `SUPERUSER_REQUIRED`. Со второй, пустой копией кластера (`pg_createcluster 16 qa --start`,
-    порт 5433, секрет `pg-super`) → `succeeded`; итог — число ролей; роль
+    порт 5433, секрет `pg-super`) → `succeeded`; страница запуска показывает
+    число ролей, например «2 роли» (РВ4); Telegram — только база и таблицы; роль
     `app_rw` есть и владеет `t1` в новой базе; лог шага — строка INFO о
     пропуске роли `postgres`.
 37а. Существующая роль (ВВ13): повторить шаг 37 в тот же кластер 5433 с
@@ -310,7 +342,8 @@ REPO_PASS=$(sudo cat /etc/sard/secrets/restic-s1.pass)   # на ВМ-1, толь
     `rsync -a` и `restorecon -R`. `docs/plugins/postgresql.md` — роль для
     восстановления (`CREATEDB`, суперпользователь для глобальных объектов),
     клиент PostgreSQL на целевом хосте не старше версии `pg_dump` снимка, откат
-    базы и ролей при ошибке, отказы `ROLES_EXIST` и `GLOBALS_TABLESPACES`.
+    базы и ролей при ошибке, отказы `ROLES_EXIST` и `GLOBALS_TABLESPACES`,
+    целевой сервер не ниже 14, настройка `restore.postgresql_lock_share`.
 46. Пройти шаги 18 и 34 по документации, не заглядывая в эту процедуру →
     результат тот же.
 

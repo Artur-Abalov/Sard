@@ -23,6 +23,11 @@
 # (A8d Ч28) — часть сообщения агента, показывается как есть. Для R2b консоль
 # ничего не вычисляет о PostgreSQL: target, предупреждения и форма приходят
 # от сервера (ВК32a).
+# R2b УТВЕРЖДЁН В РЕДАКЦИИ СВЕРКИ владельцем 2026-10-19 (решения РВ1–РВ7 —
+# шапка docs/specs/agent/console-restore.feature). Для консоли: РВ3 — текст
+# предупреждения pg_owners_not_restored (ВК43); РВ4 — страница запуска
+# показывает число ролей, если rolesRestored больше 0; РВ8 — текст
+# предупреждения pg_same_cluster (ВК43), запуск им не блокируется.
 #
 # ПОПРАВКА ВЛАДЕЛЬЦА 2026-10-14: восстановление — всё или ничего. Текст и
 # сценарий о «частично восстановленных данных» убраны; вместо них —
@@ -64,6 +69,24 @@
 #         время изменения сохраняются.» / «Files will belong to the agent's
 #         service user: owners and groups from the snapshot are not restored.
 #         Permissions and modification times are kept.»
+#       pg_owners_not_restored (РВ3, R2b) — «Глобальные объекты не
+#         восстанавливаются: все объекты новой базы будут принадлежать роли
+#         подключения, права доступа из снимка не переносятся.» / «Global
+#         objects are not restored: every object of the new database will
+#         belong to the connecting role, and access privileges from the
+#         snapshot are not carried over.»
+#       pg_same_cluster (РВ8, R2b) — «База будет восстановлена в тот же
+#         кластер PostgreSQL, с которого сделан бэкап. Восстановление нагрузит
+#         живой кластер: диск и процессор, журнал WAL уйдёт на реплики и в
+#         архив, займёт место на диске и возьмёт блокировки. Лучше
+#         восстанавливать в отдельный кластер. Сервер определяет это по агенту
+#         и адресу подключения и может не заметить тот же кластер под другим
+#         адресом.» / «The database will be restored into the same PostgreSQL
+#         cluster the backup was taken from. The restore loads the live
+#         cluster: disk and CPU, WAL shipped to replicas and the archive, disk
+#         space and locks. A separate cluster is the better target. The server
+#         tells this by the agent and the connection address and may miss the
+#         same cluster under another address.»
 #       globals_change_cluster — «Глобальные объекты (роли, табличные
 #         пространства) меняют весь кластер PostgreSQL, а не только новую
 #         базу.» / «Global objects (roles, tablespaces) change the whole
@@ -288,6 +311,29 @@
       Дано restore шага — database "app_restored_20261011", tablesRestored 12
       Когда администратор открывает запуск
       Тогда видны "app_restored_20261011" моноширинным шрифтом и «12 таблиц»
+      И числа ролей нет
+
+    # РВ4
+    @vitest
+    Сценарий: Восстановление базы с глобальными объектами показывает число ролей
+      Дано restore шага — database "app_restored_20261011", tablesRestored 12, rolesRestored 3
+      Когда администратор открывает запуск
+      Тогда видно «3 роли»
+
+    # РВ8
+    @vitest
+    Сценарий: Предупреждение о кластере источника показано, а запуск доступен
+      Дано мок отвечает на preview снимка SQ с warnings pg_same_cluster
+      Когда администратор нажимает «Проверить»
+      Тогда виден текст предупреждения pg_same_cluster
+      И кнопка «Запустить восстановление» видна
+
+    # РВ3
+    @vitest
+    Сценарий: Предпросмотр PostgreSQL без глобальных объектов предупреждает о владельцах объектов
+      Дано мок отвечает на preview снимка SQ с warnings pg_owners_not_restored
+      Когда администратор нажимает «Проверить»
+      Тогда виден текст предупреждения pg_owners_not_restored
 
   # ===========================================================================
   # R2a
