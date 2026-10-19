@@ -57,8 +57,8 @@ class Restores(
                 hostname = chosen.agent.hostname,
                 target = chosen.target,
                 paths = chosen.paths,
-                restoreGlobals = false,
-                warnings = listOf(RestoreWarning.OWNERS_NOT_RESTORED),
+                restoreGlobals = chosen.restoreGlobals,
+                warnings = chosen.warnings,
             )
         }
 

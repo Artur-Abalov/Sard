@@ -47,7 +47,7 @@ class RestoreWorld(
         repository: String,
         id: String,
         restoreDir: String = RESTORE_DIR,
-        plugins: List<PluginEntry> = listOf(filesPlugin(), filesPlugin("mysql")),
+        plugins: List<PluginEntry> = listOf(filesPlugin(), filesPlugin("mysql"), postgresqlPlugin()),
     ) = snapshotOf(
         plugins = plugins,
         repositories = listOf(RepositoryEntry(repository, "local", id, "")),
@@ -68,10 +68,11 @@ class RestoreWorld(
         agent: TestAgent = a,
         repository: String = "main",
         plugin: String = "files",
+        config: String = """{"paths":["/etc"]}""",
     ): String {
         val body =
             """{"name":"$name","agentId":"${agent.agentId}","plugin":"$plugin","repositoryName":"$repository",""" +
-                """"config":{"paths":["/etc"]}}"""
+                """"config":$config}"""
         val created = world.api.post("/api/v1/sources", admin, body)
         check(created.status == 201) { "source: $created" }
         return created.json.path("id").asString()

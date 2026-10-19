@@ -62,6 +62,21 @@ internal class RestoreScene(
                 """"token":{"type":"string","format":"sard-secret"}},"required":["destination"],""" +
                 """"additionalProperties":false}"""
         const val DESTINATION = """{"destination":"etc%20data/20261010T030000Z"}"""
+
+        /** The restore schema of postgresql as an agent announces it (R2b). */
+        const val PG_SCHEMA =
+            """{"type":"object","properties":{"host":{"type":"string"},"port":{"type":"integer"},""" +
+                """"user":{"type":"string"},"password_ref":{"type":"string","format":"sard-secret"},""" +
+                """"tls_mode":{"type":"string"},"tls_root_cert":{"type":"string"},""" +
+                """"database":{"type":"string","minLength":1,"maxLength":63},"restore_globals":{"type":"boolean"},""" +
+                """"pg_restore_path":{"type":"string"}},"required":["host","database","user","password_ref"],""" +
+                """"additionalProperties":false}"""
+
+        /** The config of the backup step of the source Q: a database app on db1. */
+        const val PG_BACKUP =
+            """{"host":"DB1","port":5432,"database":"app","user":"backup","password_ref":"pg-app","tls_mode":"disable"}"""
+        const val PG_RESTORED =
+            """{"host":"other-db","user":"restorer","password_ref":"pg-app","database":"app_restored_20261011"}"""
     }
 
     /** The agent offers the plugin [plugin], and the restore of it if [restore]. */
@@ -82,7 +97,13 @@ internal class RestoreScene(
         }
         jdbc.update(
             "update agent_plugins set restore_config_schema = ?::jsonb where agent_id = ? and name = ?",
-            if (restore) RESTORE_SCHEMA else null,
+            if (!restore) {
+                null
+            } else if (plugin == "postgresql") {
+                PG_SCHEMA
+            } else {
+                RESTORE_SCHEMA
+            },
             agent,
             plugin,
         )
@@ -117,8 +138,9 @@ internal class RestoreScene(
     fun source(
         name: String = "etc data",
         plugin: String = "files",
+        config: String = """{"paths":["/etc"]}""",
     ): UUID {
-        val draft = tenant.draft(name = name, plugin = plugin, config = """{"paths":["/etc"]}""")
+        val draft = tenant.draft(name = name, plugin = plugin, config = config)
         return sources.create(tenant.id, draft).id
     }
 
@@ -130,9 +152,10 @@ internal class RestoreScene(
         forgotten: Boolean = false,
         repositoryId: String = RID,
         agent: UUID = a,
+        createdAt: Instant = SF_AT,
     ) {
         val run = runs.start(tenant.id, source)
-        val at = Timestamp.from(SF_AT)
+        val at = Timestamp.from(createdAt)
         val status = if (partial) "failed" else "succeeded"
         jdbc.update(
             "update run_steps set status = ?, dispatched_at = ?, finished_at = ? where run_id = ?",

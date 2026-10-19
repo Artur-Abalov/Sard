@@ -54,6 +54,10 @@ val FILES_SCHEMA: String by lazy { File("../agent/plugins/files/schema.json").re
 /** The restore config schema of the files plugin, as the agent announces it (R2a). */
 val RESTORE_SCHEMA: String by lazy { File("../agent/plugins/files/restore_schema.json").readText() }
 
+/** The schemas of the postgresql plugin of the agent, as it announces them in Register (R2b). */
+val PG_SCHEMA: String by lazy { File("../agent/plugins/postgresql/schema.json").readText() }
+val PG_RESTORE_SCHEMA: String by lazy { File("../agent/plugins/postgresql/restore_schema.json").readText() }
+
 /** The restore directory of the agents of the tests, the default of the agent. */
 const val RESTORE_DIR = "/var/lib/sard-agent/restore"
 
@@ -86,6 +90,10 @@ const val MACHINE_ID = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c
 
 /** Another machine (M2). */
 const val OTHER_MACHINE_ID = "0f9e8d7c6b5a49382716f5e4d3c2b1a00f9e8d7c6b5a49382716f5e4d3c2b1a0"
+
+/** The postgresql plugin of an agent; [restoreSchema] empty: an agent that does not restore it from the console. */
+fun postgresqlPlugin(restoreSchema: String = PG_RESTORE_SCHEMA) =
+    PluginEntry("postgresql", "0.1.0", PG_SCHEMA, listOf(PluginAction.BACKUP, PluginAction.RESTORE), restoreSchema)
 
 fun filesPlugin(
     name: String = "files",

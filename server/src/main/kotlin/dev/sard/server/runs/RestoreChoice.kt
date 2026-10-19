@@ -7,6 +7,7 @@ import dev.sard.server.persistence.Agent
 import dev.sard.server.persistence.AgentOwnedKey
 import dev.sard.server.persistence.AgentPluginRecord
 import dev.sard.server.persistence.AgentRepositoryRecord
+import dev.sard.server.persistence.RunStepRecord
 import dev.sard.server.persistence.SnapshotRecord
 import dev.sard.server.persistence.SourceRecord
 import dev.sard.server.role.AgentRole
@@ -30,20 +31,20 @@ internal class RestoreChoice(
     /** The repository on [agent] that holds the snapshot. */
     val repositoryName: String,
     val config: JsonNode,
+    /** What the console knows of the restore of the plugin of the source (ВК32a); the rest reads no key of a plugin. */
+    private val plugin: RestorePlugin,
+    /** The copy of the config of the step that made the snapshot. */
+    private val backupConfig: JsonNode,
 ) {
-    /** The restore directory with the destination of a files restore, as the agent will write it (ВК32). */
-    val target: String =
-        agent.restoreDir
-            .orEmpty()
-            .trimEnd('/') + "/" + config.path("destination").asString()
+    /** Where the restore goes: an absolute path of the restore directory, or the name of the database (ВК32). */
+    val target: String = plugin.target(agent.restoreDir.orEmpty(), config)
 
-    val paths: List<String> =
-        config
-            .path("paths")
-            .iterator()
-            .asSequence()
-            .map { it.asString() }
-            .toList()
+    val paths: List<String> = plugin.paths(config)
+
+    val restoreGlobals: Boolean = plugin.restoreGlobals(config)
+
+    /** The agent that restores is the agent that made the backup (ВК32b). */
+    val warnings: List<RestoreWarning> = plugin.warnings(config, backupConfig, agent.id == snapshot.agentId)
 
     companion object {
         /**
@@ -63,11 +64,20 @@ internal class RestoreChoice(
             RestoreSupport.blocked(source.plugin, snapshot.partial, snapshot.forgottenAt != null)?.let {
                 throw SnapshotNotRestorable(it)
             }
+            val plugin = checkNotNull(RestorePlugins.of(source.plugin)) { "only the registry's plugins pass blocked()" }
             val agent = agentOf(session, draft.agentId, lock)
             val repository = repositoryOf(session, agent, snapshot)
             val config = configOf(session, agent, source, draft)
-            return RestoreChoice(source, snapshot, agent, repository, config)
+            return RestoreChoice(source, snapshot, agent, repository, config, plugin, backupConfigOf(session, snapshot))
         }
+
+        /** The config the step that made [snapshot] ran with; an empty object if the step is gone. */
+        fun backupConfigOf(
+            session: Session,
+            snapshot: SnapshotRecord,
+        ): JsonNode =
+            session.find(RunStepRecord::class.java, snapshot.stepId)?.let { JSON.readTree(it.config) }
+                ?: JSON.createObjectNode()
 
         /** The source (deleted or not) and its snapshot with restic's id [snapshotId]; 404 for either missing. */
         fun snapshotOf(

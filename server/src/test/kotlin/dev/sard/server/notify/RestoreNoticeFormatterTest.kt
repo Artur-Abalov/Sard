@@ -106,6 +106,29 @@ class RestoreNoticeFormatterTest {
         assertEquals(expected, format(restoreNotice(), NoticeLanguage.EN).text())
     }
 
+    /** R2b (ВК39, РВ4): a restore of a database names the database and the tables, not the roles. */
+    @Test
+    fun `Успешное восстановление базы называет базу и число таблиц на обоих языках`() {
+        val database = RestoreResult("app_restored_20261011", null, null, "app_restored_20261011", 12, 3, null, null)
+        val notice = restoreNotice(result = database)
+        val ru = format(notice).text().lines()
+        val en = format(notice, NoticeLanguage.EN).text().lines()
+        assertTrue("База: app_restored_20261011, таблиц: 12" in ru, ru.toString())
+        assertTrue("Database: app_restored_20261011, tables: 12" in en, en.toString())
+        assertTrue(ru.none { it.contains("Восстановлено файлов") || it.contains("роль") })
+        assertTrue(en.none { it.contains("roles") })
+    }
+
+    @Test
+    fun `Имя базы выделено кодом, остальное текстом`() {
+        val database = RestoreResult("app", null, null, "app", 2, 0, null, null)
+        val parts = format(restoreNotice(result = database), NoticeLanguage.EN).parts
+        val at = parts.indexOf(Message.Code("app"))
+        assertTrue(at > 0, parts.toString())
+        assertEquals(Message.Text("Database: "), parts[at - 1])
+        assertEquals(Message.Text(", tables: 2"), parts[at + 1])
+    }
+
     @Test
     fun `Заголовок зависит от статуса шага и языка`() {
         val ru =

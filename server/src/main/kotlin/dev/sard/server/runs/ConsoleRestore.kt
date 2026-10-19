@@ -18,14 +18,8 @@ enum class RestoreBlock(
     PLUGIN_NOT_SUPPORTED("plugin_not_supported"),
 }
 
-/** The plugin whose restore the console writes (R2a). */
-internal const val FILES_PLUGIN = "files"
-
 /** Which snapshots the console restores: complete, still in the repository, of a plugin whose restore is written. */
 internal object RestoreSupport {
-    /** The plugins the console restores: files (R2a); postgresql comes with R2b. */
-    private val PLUGINS = setOf(FILES_PLUGIN)
-
     fun blocked(
         plugin: String,
         partial: Boolean,
@@ -34,7 +28,7 @@ internal object RestoreSupport {
         when {
             partial -> RestoreBlock.PARTIAL
             forgotten -> RestoreBlock.FORGOTTEN
-            plugin !in PLUGINS -> RestoreBlock.PLUGIN_NOT_SUPPORTED
+            !RestorePlugins.restores(plugin) -> RestoreBlock.PLUGIN_NOT_SUPPORTED
             else -> null
         }
 }
@@ -118,6 +112,8 @@ enum class RestoreWarning(
 ) {
     OWNERS_NOT_RESTORED("owners_not_restored"),
     GLOBALS_CHANGE_CLUSTER("globals_change_cluster"),
+    PG_OWNERS_NOT_RESTORED("pg_owners_not_restored"),
+    PG_SAME_CLUSTER("pg_same_cluster"),
 }
 
 /** What a restore request would do (КВ3); nothing is created. */

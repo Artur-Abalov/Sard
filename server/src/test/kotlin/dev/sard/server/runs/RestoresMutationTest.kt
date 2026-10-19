@@ -91,7 +91,8 @@ class RestoresMutationTest(
     private fun source(
         name: String = "etc data",
         plugin: String = "files",
-    ) = scene.source(name, plugin)
+        config: String = """{"paths":["/etc"]}""",
+    ) = scene.source(name, plugin, config)
 
     private fun snapshot(
         source: UUID,
@@ -176,18 +177,6 @@ class RestoresMutationTest(
     }
 
     @Test
-    fun `a plugin without a destination of its own starts the form from an empty config`() {
-        val s = source("database", "postgresql")
-        snapshot(s)
-        files(a, "postgresql")
-
-        val got = options(s)
-
-        assertEquals(listOf("{}"), got.targets.map { it.defaults })
-        assertEquals("postgresql", got.snapshot.plugin)
-    }
-
-    @Test
     fun `the options of a snapshot are found for a deleted source too, and only for a snapshot of that source`() {
         val s = source()
         snapshot(s)
@@ -266,7 +255,8 @@ class RestoresMutationTest(
         snapshot(forgotten, "e".repeat(64), forgotten = true)
         val both = source("both")
         snapshot(both, "f".repeat(64), partial = true, forgotten = true)
-        val database = source("database", "postgresql")
+        files(a, "mysql", restore = false)
+        val database = source("database", "mysql")
         snapshot(database, "9".repeat(64))
 
         val reasons =

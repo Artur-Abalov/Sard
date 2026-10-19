@@ -412,15 +412,18 @@ class W2MutationTest(
             ?.restorable
 
     @Test
-    fun `the console restores a whole snapshot of the files plugin that is still in the repository, and no other`() {
+    fun `the console restores a whole snapshot of files and postgresql that is still there, and no other`() {
         withPlugin("files")
+        withPlugin("mysql")
 
         assertEquals(true, restorable(backup(null, plugin = "files", name = "whole")), "whole")
         assertEquals(false, restorable(backup("true", "failed", plugin = "files", name = "partial")), "partial")
         val forgotten = backup(null, plugin = "files", name = "forgotten")
         forget(forgotten)
         assertEquals(false, restorable(forgotten), "forgotten")
-        assertEquals(false, restorable(backup(null, name = "database")), "a plugin the console does not restore")
+        assertEquals(true, restorable(backup(null, name = "database")), "postgresql")
+        val mysql = backup(null, plugin = "mysql", name = "mysql")
+        assertEquals(false, restorable(mysql), "a plugin the console does not restore")
     }
 
     @Test

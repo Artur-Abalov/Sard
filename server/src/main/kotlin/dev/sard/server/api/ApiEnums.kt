@@ -145,6 +145,12 @@ enum class RestoreWarningCode {
 
     @JsonProperty("globals_change_cluster")
     GLOBALS_CHANGE_CLUSTER,
+
+    @JsonProperty("pg_owners_not_restored")
+    PG_OWNERS_NOT_RESTORED,
+
+    @JsonProperty("pg_same_cluster")
+    PG_SAME_CLUSTER,
 }
 
 /** How a restore step ended, for the page to word; the server decides it from the status and the output. */

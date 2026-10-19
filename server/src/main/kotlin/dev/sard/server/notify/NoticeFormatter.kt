@@ -231,7 +231,21 @@ internal class RestoreNoticeFormatter(
             )
         }
 
-    private fun restoredLine(result: RestoreResult): List<Message.Part> {
+    private fun restoredLine(result: RestoreResult): List<Message.Part> =
+        if (result.database != null) databaseLine(result.database, result.tablesRestored ?: 0) else filesLine(result)
+
+    /** A restore of a database: its name and its tables, not its roles (РВ4). */
+    private fun databaseLine(
+        database: String,
+        tables: Long,
+    ): List<Message.Part> =
+        listOf(
+            Message.Text(words.restore.database),
+            Message.Code(database),
+            Message.Text("${words.restore.tables}$tables"),
+        )
+
+    private fun filesLine(result: RestoreResult): List<Message.Part> {
         val size = figures.size(result.bytesRestored ?: 0)
         val count = "${words.restore.filesRestored}${result.filesRestored ?: 0}${words.restore.size}$size"
         return listOf(Message.Text("$count${words.restore.where}"), Message.Code(result.target.orEmpty()))

@@ -10,6 +10,7 @@ import dev.sard.server.persistence.SnapshotRecord
 import dev.sard.server.persistence.SourceRecord
 import dev.sard.server.role.AgentRole
 import org.hibernate.Session
+import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 
 private val JSON = JsonMapper.builder().build()
@@ -28,7 +29,11 @@ internal object RestoreTargets {
         snapshot: SnapshotRecord,
     ): RestoreOptions {
         val holders = holders(session, snapshot)
-        val targets = holders.mapNotNull { (agent, repository) -> target(session, agent, repository, source, snapshot) }
+        val backupConfig = RestoreChoice.backupConfigOf(session, snapshot)
+        val targets =
+            holders.mapNotNull { (agent, repository) ->
+                target(session, agent, repository, source, snapshot, backupConfig)
+            }
         val unable = holders.filter { (agent, _) -> targets.none { it.agentId == agent.id } }
         return RestoreOptions(
             snapshot =
@@ -69,6 +74,7 @@ internal object RestoreTargets {
         repository: String,
         source: SourceRecord,
         snapshot: SnapshotRecord,
+        backupConfig: JsonNode,
     ): RestoreTarget? {
         val schema = RestoreChoice.restoreSchema(session, agent, source.plugin) ?: return null
         return RestoreTarget(
@@ -78,22 +84,18 @@ internal object RestoreTargets {
             repository,
             agent.restoreDir.orEmpty(),
             schema,
-            defaults(source, snapshot),
+            defaults(source, snapshot, backupConfig),
         )
     }
 
-    /** The config the form starts from: a files restore goes to `<source name>/<snapshot time>`. */
+    /** The config the form starts from; the entry of the plugin says what it is (ВК32, ВК32a). */
     private fun defaults(
         source: SourceRecord,
         snapshot: SnapshotRecord,
+        backupConfig: JsonNode,
     ): String {
-        val config =
-            if (source.plugin == FILES_PLUGIN) {
-                mapOf("destination" to RestoreDefaults.destination(source.name, snapshot.createdAt))
-            } else {
-                emptyMap()
-            }
-        return JSON.writeValueAsString(config)
+        val plugin = checkNotNull(RestorePlugins.of(source.plugin)) { "a restorable plugin is in the registry" }
+        return JSON.writeValueAsString(plugin.defaults(source.name, snapshot.createdAt, backupConfig))
     }
 
     private fun ineligible(

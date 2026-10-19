@@ -225,6 +225,20 @@ class RunMappingTest {
         assertNull(outcomeOf(StepState.SUCCEEDED, null))
     }
 
+    /** R2b: the outcome of a restore of a database is told like that of files. */
+    @Test
+    fun `a restore of a database ends as restored, nothing or a failed rollback`() {
+        val database = RestoreResult("app_restored", null, null, "app_restored", 2, 0, null, null)
+        val left = RestoreResult(null, null, null, null, null, null, null, "database app_restored")
+        assertEquals(RestoreOutcome.RESTORED, outcomeOf(StepState.SUCCEEDED, database))
+        assertEquals(RestoreOutcome.NOTHING, outcomeOf(StepState.FAILED, null))
+        assertEquals(RestoreOutcome.ROLLBACK_FAILED, outcomeOf(StepState.FAILED, left))
+        assertEquals(RestoreOutcome.LATE, outcomeOf(StepState.LOST, database))
+        val finished = step(StepState.SUCCEEDED, Action.RESTORE).copy(restore = database)
+        val mapped = MutFlow.underTest { RunMapping.step(finished) }
+        assertEquals(RestoreOutput("app_restored", null, null, "app_restored", 2, 0, null, null), mapped.restore)
+    }
+
     @Test
     fun `a restore step that did not succeed restored nothing`() {
         for (status in listOf(StepState.FAILED, StepState.REJECTED, StepState.TIMED_OUT, StepState.CANCELLED)) {
