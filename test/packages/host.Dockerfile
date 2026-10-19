@@ -3,12 +3,14 @@
 #
 # A clean Debian/Ubuntu host with systemd as PID 1, for installing and
 # upgrading the sard-agent deb (scripts/test-agent-install.sh). Only the
-# distribution's own packages: systemd, sudo, curl.
+# distribution's own packages: systemd, sudo, curl and openssh-client, the
+# deb's one dependency (ADR 0047): dpkg -i, as the console runs it, resolves
+# nothing, and the test network has no mirrors for apt to resolve it from.
 ARG DISTRO=debian:12
 FROM ${DISTRO}
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      systemd systemd-sysv sudo curl ca-certificates && \
+      systemd systemd-sysv sudo curl ca-certificates openssh-client && \
     apt-get clean
 STOPSIGNAL SIGRTMIN+3
 CMD ["/lib/systemd/systemd"]
