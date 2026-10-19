@@ -19,7 +19,7 @@ class RegistrationTest {
     fun `without a client certificate AgentService is UNAUTHENTICATED`() {
         val root = ServerTls.presentedChain(sard).last()
         val caPem = "-----BEGIN CERTIFICATE-----\n" + Base64.getMimeEncoder().encodeToString(root.encoded) + "\n-----END CERTIFICATE-----\n"
-        assertEquals(Status.Code.UNAUTHENTICATED, ServerTls.renewCertificateStatus(sard, ServerTls.trusting(caPem).build()))
+        assertEquals(Status.Code.UNAUTHENTICATED, ServerTls.confirmCertificateStatus(sard, ServerTls.trusting(caPem).build()))
     }
 
     companion object {

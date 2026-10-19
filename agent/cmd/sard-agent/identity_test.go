@@ -154,15 +154,16 @@ func TestAKeyOfAnotherPairStopsTheAgentBeforeConnecting(t *testing.T) {
 	requireNoKeyMaterial(t, out, errOut)
 }
 
-// A1 reports the key's permissions before the pair is compared.
-func TestKeyPermissionsAreReportedBeforeTheMismatch(t *testing.T) {
+// П29: the pair is chosen before the modes are checked; without a consistent
+// pair the pair error is reported, not the key's mode.
+func TestTheMismatchIsReportedBeforeKeyPermissions(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	writeIdentity(t, dir)
 	other, _ := identityPEM(t)
 	writeFile(t, filepath.Join(dir, "agent.key"), other, 0o644)
 	code, _, errOut := runAgent("--config", identityConfig(t, dir, "127.0.0.1:1"))
-	if code != 1 || !strings.Contains(errOut, "tls.key_file") || !strings.Contains(errOut, "-rw-r--r--") || strings.Contains(errOut, incompleteEnrollment) {
+	if code != 1 || errOut != "sard-agent: "+incompleteEnrollment+"\n" || strings.Contains(errOut, "-rw-r--r--") {
 		t.Fatalf("code = %d, stderr = %q", code, errOut)
 	}
 }

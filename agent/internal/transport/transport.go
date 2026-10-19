@@ -114,6 +114,13 @@ type Options struct {
 	Rand func() float64
 	// LogQueue is how many log lines may wait to be sent; zero is DefaultLogQueue.
 	LogQueue int
+	// OnRegistered, when set, is called after every successful Register.
+	OnRegistered func()
+	// OnSuperseded, when set, is called when Register is refused with the
+	// reason CERT_SUPERSEDED: the server has confirmed a newer certificate of
+	// this agent. It returns true when the agent now holds another pair, and
+	// the transport reconnects at once; false makes the refusal final.
+	OnSuperseded func(ctx context.Context) bool
 	// Logger receives the life of the connection: streams opened and lost,
 	// reconnects, Hello, results sent and acknowledged. Never a message's
 	// content. Nil discards.
@@ -182,6 +189,9 @@ func (t *Transport) Run(ctx context.Context) error {
 	for {
 		started := t.opts.Clock.Now()
 		err := t.Connect(ctx)
+		if t.trySpare(ctx, err) {
+			continue
+		}
 		if stop, err := t.stopReconnecting(ctx, err); stop {
 			return err
 		}
@@ -195,6 +205,15 @@ func (t *Transport) Run(ctx context.Context) error {
 		}
 		attempt++
 	}
+}
+
+// trySpare: the server refused the certificate as superseded; when the agent
+// has another pair (OnSuperseded) it connects again without waiting.
+func (t *Transport) trySpare(ctx context.Context, err error) bool {
+	if t.opts.OnSuperseded == nil || ctx.Err() != nil || !errors.Is(err, ErrNotAuthorized) || RefusalReason(err) != "CERT_SUPERSEDED" {
+		return false
+	}
+	return t.opts.OnSuperseded(ctx)
 }
 
 // stopReconnecting: a stopped agent returns nil, a permanent refusal its
@@ -222,11 +241,19 @@ func (t *Transport) sleep(ctx context.Context, d time.Duration) bool {
 }
 
 func (t *Transport) backoff(attempt int) time.Duration {
+	return Backoff(attempt, t.opts.Rand)
+}
+
+// Backoff is the wait after the attempt-th failed connection (from 0): full
+// jitter up to BackoffBase·2ⁿ, capped at BackoffMax. The agent waits the same
+// way when it cannot reach the server to confirm a renewed certificate at
+// start (docs/specs/agent/agent-certificate-renewal.feature, П21).
+func Backoff(attempt int, rnd func() float64) time.Duration {
 	limit := BackoffMax
 	if attempt < 6 { // 1 s · 2⁶ already exceeds the cap
 		limit = min(BackoffBase<<attempt, BackoffMax)
 	}
-	return time.Duration(t.opts.Rand() * float64(limit))
+	return time.Duration(rnd() * float64(limit))
 }
 
 // tlsConfig trusts only the Sard CA and verifies the server's name.
@@ -292,6 +319,9 @@ func (t *Transport) Connect(ctx context.Context) error {
 	resp, err := client.Register(ctx, t.opts.Register(ctx))
 	if err != nil {
 		return registerError(ctx, err)
+	}
+	if t.opts.OnRegistered != nil {
+		t.opts.OnRegistered()
 	}
 	return t.serve(ctx, client, heartbeatInterval(resp))
 }

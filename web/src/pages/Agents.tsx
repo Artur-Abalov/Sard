@@ -17,6 +17,7 @@ import { StatusBadge } from '../components/StatusBadge'
 import { usePaged } from '../components/usePaged'
 import { useRoleLabel } from '../components/useRoleLabel'
 import { EMPTY } from '../format'
+import { CertificateCell } from '../components/CertificateMark'
 import { tones } from '../theme'
 import { Mono } from '../components/Mono'
 import { Time } from '../components/Time'
@@ -45,6 +46,9 @@ function AgentRow({ agent }: { agent: components['schemas']['AgentSummary'] }) {
         ) : (
           <Time value={agent.lastSeenAt} />
         )}
+      </Table.Td>
+      <Table.Td>
+        <CertificateCell certificate={agent.certificate} />
       </Table.Td>
       <Table.Td>
         <Mono>{agent.agentVersion ?? EMPTY}</Mono>
@@ -93,6 +97,7 @@ export function Agents() {
                   <Table.Th>{t('agents.role')}</Table.Th>
                   <Table.Th>{t('agents.status')}</Table.Th>
                   <Table.Th>{t('agents.lastSeen')}</Table.Th>
+                  <Table.Th>{t('agents.certificate')}</Table.Th>
                   <Table.Th>{t('agents.version')}</Table.Th>
                   <Table.Th>{t('agents.os')}</Table.Th>
                   <Table.Th />

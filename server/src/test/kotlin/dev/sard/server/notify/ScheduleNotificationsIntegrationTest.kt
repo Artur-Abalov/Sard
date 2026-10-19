@@ -342,12 +342,14 @@ class ScheduleNotificationsIntegrationTest(
         alertRow(schedule)
         val restarted =
             NotificationService(
-                Deliveries(sessions, UuidV7(clock, SecureRandom())),
+                Deliveries(sessions, UuidV7(clock, SecureRandom()), { false }),
                 OverdueDeliveries(sessions, UuidV7(clock, SecureRandom())),
+                CertificateDeliveries(sessions, UuidV7(clock, SecureRandom())),
                 listOf(CapturingChannel()),
                 formatter,
                 alertFormatter,
                 { null },
+                { Message(Message.Text("certificate")) },
                 RetryPolicy(RetrySettings()),
                 QueueSettings(batch = 10, lease = Duration.ofMinutes(5), ttl = TTL),
                 clock,
@@ -376,12 +378,14 @@ class ScheduleNotificationsIntegrationTest(
         val lease = Duration.ofMinutes(5)
         val queue =
             NotificationService(
-                Deliveries(sessions, UuidV7(clock, SecureRandom())),
+                Deliveries(sessions, UuidV7(clock, SecureRandom()), { false }),
                 OverdueDeliveries(sessions, UuidV7(clock, SecureRandom())),
+                CertificateDeliveries(sessions, UuidV7(clock, SecureRandom())),
                 listOf(channel),
                 formatter,
                 alertFormatter,
                 { null },
+                { Message(Message.Text("certificate")) },
                 RetryPolicy(RetrySettings()),
                 QueueSettings(batch = 10, lease = lease, ttl = TTL),
                 clock,

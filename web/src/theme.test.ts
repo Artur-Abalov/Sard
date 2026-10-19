@@ -7,6 +7,7 @@ import spec from './api/openapi.json'
 import { DEFAULT_THEME, mergeMantineTheme } from '@mantine/core'
 import { readFileSync } from 'node:fs'
 import {
+  certificateMarkTone,
   cssVariablesResolver,
   logoNodeFill,
   logLevelColors,
@@ -213,5 +214,22 @@ describe('design tokens', () => {
 
   test('a tooltip opens on keyboard focus too', () => {
     expect(full.components.Tooltip.defaultProps.events).toMatchObject({ hover: true, focus: true })
+  })
+})
+
+describe('certificate mark', () => {
+  test.each([
+    ['ok', null],
+    ['renewal_due', null],
+    ['expiring', tones.notice],
+    ['expired', tones.error],
+  ])('the mark of a certificate in state %s is %s', (state, tone) => {
+    expect(certificateMarkTone(state)).toBe(tone)
+  })
+
+  test('every state of the contract is decided', () => {
+    for (const state of values('AgentCertificateState')) {
+      expect(['ok', 'renewal_due', 'expiring', 'expired']).toContain(state)
+    }
   })
 })

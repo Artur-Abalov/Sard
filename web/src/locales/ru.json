@@ -63,7 +63,8 @@
     "status": "Статус",
     "version": "Версия",
     "outdated": "Доступно обновление: {{version}}",
-    "outdatedPlain": "Доступно обновление"
+    "outdatedPlain": "Доступно обновление",
+    "certificate": "Сертификат"
   },
   "sources": {
     "title": "Источники",
@@ -178,7 +179,13 @@
     "revokeTitle": "Отозвать {{host}}?",
     "scripts": "Скрипты",
     "secrets": "Секреты",
-    "sources": "Источники"
+    "sources": "Источники",
+    "certificateNotAfter": "Сертификат действует до",
+    "certificateDaysLeft": "Осталось суток",
+    "certificateState": "Состояние сертификата",
+    "certificateRenewalIssued": "Новый сертификат выдан <when/>, агент его ещё не подтвердил",
+    "certificateExpiringHint": "Агент не продлил сертификат. Что проверить на хосте — в руководстве оператора, раздел «Сертификаты агентов».",
+    "certificateExpiredHint": "Сертификат истёк, агент не подключится. Зарегистрируйте его заново (руководство оператора, раздел «Сертификаты агентов»); встроенного агента отзовите — он зарегистрируется сам."
   },
   "tokens": {
     "caFingerprint": "Отпечаток CA сервера",
@@ -329,6 +336,12 @@
     "AgentRole": {
       "source": "источник",
       "verifier": "верификатор"
+    },
+    "AgentCertificateState": {
+      "ok": "в порядке",
+      "renewal_due": "пора продлить",
+      "expiring": "скоро истечёт",
+      "expired": "истёк"
     }
   },
   "install": {

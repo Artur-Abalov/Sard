@@ -182,6 +182,13 @@ func TestWithoutAKeyFileThereIsNoDirectoryOfItToJudge(t *testing.T) {
 	h := fullHost(t)
 	h.cfg.TLS.KeyFile = ""
 	h.saveHostConfig()
+	stat := h.deps.stat
+	h.deps.stat = func(p string) (secrets.Info, error) {
+		if p == "" {
+			return secrets.Info{Mode: 0o777}, nil
+		}
+		return stat(p)
+	}
 	lines, _, _ := h.checkLines()
 	if l := line(t, lines, "files.permissions", "-"); strings.Contains(l.message, "has mode") {
 		t.Errorf("%+v", l)
@@ -444,12 +451,16 @@ func TestAFileThatIsNotThereIsNoMatterOfRootForTheServerChecks(t *testing.T) {
 func TestARefusalOfTheLastCheckBeforeTheServerIsNotTakenForTheRefusalOfTheServerChecks(t *testing.T) {
 	h := fullHost(t)
 	cert := h.cfg.TLS.CertFile
-	h.onReads(cert, func(n int) ([]byte, error) {
-		if n == 3 { // identity, chain, and then only the expiry is refused
+	plain, chainDone := h.deps.readFile, false
+	h.deps.readFile = func(p string) ([]byte, error) {
+		if p == h.cfg.TLS.CAFile {
+			chainDone = true // identity and chain are over, only the expiry is refused
+		}
+		if p == cert && chainDone {
 			return nil, refusedRead(cert)
 		}
-		return nil, nil
-	})
+		return plain(p)
+	}
 	ok(t, os.Remove(h.cfg.TLS.CAFile))
 	_, stdout, _ := h.asService("check", "--config", "C")
 	lines, _ := parseOut(t, strings.ReplaceAll(stdout, needsRootNote, ""))

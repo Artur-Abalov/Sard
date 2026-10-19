@@ -36,6 +36,8 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import java.time.Duration
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
@@ -78,6 +80,9 @@ class ResultsIntegrationTest(
 
     @BeforeTest
     fun `fresh tenants`() {
+        // The CA signs at the injected clock's time and the TLS handshake checks the real one: every test starts
+        // at the real time, not where the previous test left the clock.
+        clock.now = Instant.now().truncatedTo(ChronoUnit.SECONDS)
         clients.createTenant()
         other.createTenant()
     }

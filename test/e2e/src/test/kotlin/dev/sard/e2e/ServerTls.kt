@@ -4,7 +4,7 @@
 package dev.sard.e2e
 
 import dev.sard.proto.agent.v1.AgentServiceGrpcKt
-import dev.sard.proto.agent.v1.RenewCertificateRequest
+import dev.sard.proto.agent.v1.ConfirmCertificateRequest
 import io.grpc.ChannelCredentials
 import io.grpc.Grpc
 import io.grpc.ManagedChannel
@@ -62,11 +62,11 @@ internal object ServerTls {
             .build()
 
     /**
-     * The status AgentService.RenewCertificate answers with [credentials]. It is the one method
-     * still unimplemented: UNIMPLEMENTED proves the call passed agent authentication (S3), while
-     * a call the interceptor refuses is UNAUTHENTICATED.
+     * The status AgentService.ConfirmCertificate answers with [credentials]: OK proves the call passed
+     * agent authentication (S3) (a certificate that replaced none confirms with no change), while a call
+     * the interceptor refuses is UNAUTHENTICATED.
      */
-    fun renewCertificateStatus(
+    fun confirmCertificateStatus(
         env: SardEnvironment,
         credentials: ChannelCredentials,
     ): Status.Code {
@@ -74,9 +74,9 @@ internal object ServerTls {
         try {
             val stub = AgentServiceGrpcKt.AgentServiceCoroutineStub(channel)
             val failure =
-                runCatching { runBlocking { stub.renewCertificate(RenewCertificateRequest.getDefaultInstance()) } }
+                runCatching { runBlocking { stub.confirmCertificate(ConfirmCertificateRequest.getDefaultInstance()) } }
                     .exceptionOrNull()
-            return (failure as StatusException).status.code
+            return (failure as? StatusException)?.status?.code ?: Status.Code.OK
         } finally {
             channel.shutdownNow()
         }

@@ -3,7 +3,11 @@
 
 package dev.sard.server.notify
 
+import dev.sard.server.fleet.CertificateEvent
+import dev.sard.server.fleet.CurrentCertificate
+import dev.sard.server.fleet.currentCertificates
 import dev.sard.server.persistence.Agent
+import dev.sard.server.persistence.AgentCertificateEventRecord
 import dev.sard.server.persistence.OverdueEpisodeRecord
 import dev.sard.server.persistence.RunRecord
 import dev.sard.server.persistence.RunStepRecord
@@ -17,6 +21,7 @@ import dev.sard.server.scheduler.FireOutcome
 import dev.sard.server.scheduler.FireReason
 import org.hibernate.Session
 import org.hibernate.query.SelectionQuery
+import java.time.Instant
 import java.util.UUID
 
 private const val FIRST_STEP = "from RunStepRecord s where s.runId = :run order by s.ordinal"
@@ -48,6 +53,43 @@ internal object Notices {
             closedBy = closing?.let { finished(session, tenantId, it) },
         )
     }
+
+    /**
+     * The certificate of a delivery's event, or null when there is nothing to tell any more (П37): the certificate is
+     * not the agent's current one (superseded by a confirmed renewal, revoked, or its agent revoked), or the event
+     * is a threshold and the certificate has expired since: the expiry notice tells of the end.
+     */
+    fun certificate(
+        session: Session,
+        delivery: DueDelivery,
+        now: Instant,
+        connected: AgentConnected,
+    ): CertificateNotice? {
+        val event = session.find(AgentCertificateEventRecord::class.java, checkNotNull(delivery.certificateEventId))
+        val current = currentCertificates(session, listOf(event.agentId))[event.agentId]
+        val kind = CertificateEvent.of(event.event)
+        if (current == null || current.serial != event.serial || endedBefore(kind, current, now)) return null
+        val agent = session.find(Agent::class.java, event.agentId)
+        return CertificateNotice(
+            tenantId = delivery.tenantId,
+            agentId = agent.id,
+            hostname = agent.hostname,
+            builtin = agent.builtin,
+            event = kind,
+            notAfter = current.lifetime.notAfter,
+            now = now,
+            renewalIssuedAt = current.renewalIssuedAt,
+            online = connected.online(agent.id),
+            lastSeenAt = agent.lastSeenAt,
+        )
+    }
+
+    /** A threshold event of a certificate that has expired by [now]: the expiry notice tells of the end. */
+    private fun endedBefore(
+        kind: CertificateEvent,
+        current: CurrentCertificate,
+        now: Instant,
+    ) = kind != CertificateEvent.EXPIRED && !now.isBefore(current.lifetime.notAfter)
 
     fun alert(
         session: Session,

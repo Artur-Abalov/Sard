@@ -7,6 +7,7 @@ import dev.sard.server.agents.AgentAuthFailure
 import dev.sard.server.agents.AgentAuthResult
 import dev.sard.server.agents.AgentAuthStatus
 import dev.sard.server.agents.AgentAuthenticator
+import dev.sard.server.agents.AuthScope
 import dev.sard.server.agents.BatchStandings
 import dev.sard.server.agents.CertificateStanding
 import dev.sard.server.agents.CertificateStandings
@@ -21,6 +22,8 @@ fun AgentAuthFailure.close(): StreamClose = StreamClose(name) { AgentAuthStatus.
 /**
  * Re-judges open sessions against the database with S3's [AgentAuthenticator], so a revoked
  * agent or certificate, or one past `not_after`, fails here exactly as it would on a new call.
+ * A superseded or unconfirmed certificate is no reason to close a stream (C1, П11): that is
+ * [AuthScope.OPEN_STREAM], apart from the verdict on a call that opens.
  */
 class SessionRevalidation(
     private val standings: BatchStandings,
@@ -32,7 +35,12 @@ class SessionRevalidation(
         val authenticator = AgentAuthenticator(CertificateStandings(known::get), clock)
         return agents
             .mapNotNull { agent ->
-                (authenticator.authenticate(presented(agent, known[agent.serial])) as? AgentAuthResult.Rejected)?.let {
+                (
+                    authenticator.authenticate(
+                        presented(agent, known[agent.serial]),
+                        AuthScope.OPEN_STREAM,
+                    ) as? AgentAuthResult.Rejected
+                )?.let {
                     agent to it.failure
                 }
             }.toMap()

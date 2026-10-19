@@ -63,7 +63,8 @@
     "status": "Status",
     "version": "Version",
     "outdated": "Update available: {{version}}",
-    "outdatedPlain": "Update available"
+    "outdatedPlain": "Update available",
+    "certificate": "Certificate"
   },
   "sources": {
     "title": "Sources",
@@ -178,7 +179,13 @@
     "revokeTitle": "Revoke {{host}}?",
     "scripts": "Scripts",
     "secrets": "Secrets",
-    "sources": "Sources"
+    "sources": "Sources",
+    "certificateNotAfter": "Certificate valid until",
+    "certificateDaysLeft": "Days left",
+    "certificateState": "Certificate state",
+    "certificateRenewalIssued": "A new certificate was issued <when/>; the agent has not confirmed it yet",
+    "certificateExpiringHint": "The agent has not renewed its certificate. What to check on the host is in the operator guide, section “Agent certificates”.",
+    "certificateExpiredHint": "The certificate has expired; the agent cannot connect. Enroll it again (operator guide, section “Agent certificates”); revoke the built-in agent and it enrolls again by itself."
   },
   "tokens": {
     "caFingerprint": "CA fingerprint of the server",
@@ -329,6 +336,12 @@
     "AgentRole": {
       "source": "source",
       "verifier": "verifier"
+    },
+    "AgentCertificateState": {
+      "ok": "ok",
+      "renewal_due": "renewal due",
+      "expiring": "expires soon",
+      "expired": "expired"
     }
   },
   "install": {

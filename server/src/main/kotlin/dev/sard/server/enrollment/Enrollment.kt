@@ -17,6 +17,7 @@ import org.hibernate.Session
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
@@ -69,6 +70,8 @@ class Enrollment(
     private val ca: CertificateAuthority,
     private val clock: Clock,
     private val ids: UuidV7,
+    /** How long the agent certificate lives: `sard.pki.agent-certificate-validity` (C1, П1). */
+    private val agentValidity: Duration,
     /** False while the onboarding is not complete: a token other than the built-in one then enrolls nobody (F4b). */
     private val registrationOpen: () -> Boolean = { true },
 ) {
@@ -158,7 +161,7 @@ class Enrollment(
         role: AgentRole,
     ): IssuedCertificate =
         try {
-            ca.issueAgentCertificate(csrDer, identity, role)
+            ca.issueAgentCertificate(csrDer, identity, role, agentValidity)
         } catch (e: InvalidCsrException) {
             throw EnrollmentRejectedException(Reason.CSR_INVALID, e)
         }

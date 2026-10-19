@@ -263,14 +263,15 @@ func TestTheDaysLeftAreTheDaysOfAValidCertificate(t *testing.T) {
 	if want := "the certificate is valid until 2027-05-02 (200 days)"; l.Message != want {
 		t.Errorf("%q, want %q", l.Message, want)
 	}
-	l = hostcheck.TLSExpiryLine(tlsFiles, tlsNow, validPKI(t, 36*time.Hour).read)
-	if want := "the certificate expires in 1 days (2026-10-16); automatic renewal is not available yet (C1)"; l.Message != want {
+	l = hostcheck.TLSExpiryLine(tlsFiles, tlsNow, newPKI(t, tlsNow.Add(-364*24*time.Hour), tlsNow.Add(36*time.Hour)).read)
+	want := "the certificate expires in 1 days (2026-10-16) and has not been renewed: see renewal_last_error in sudo sard-agent status"
+	if l.Message != want {
 		t.Errorf("%q, want %q", l.Message, want)
 	}
 }
 
 func TestTheExpiryIsJudgedAtTheLastMomentOfTheCertificate(t *testing.T) {
-	p := validPKI(t, 10*24*time.Hour)
+	p := newPKI(t, tlsNow.Add(-355*24*time.Hour), tlsNow.Add(10*24*time.Hour))
 	end := tlsNow.Add(10 * 24 * time.Hour)
 	for name, c := range map[string]struct {
 		now    time.Time

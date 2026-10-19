@@ -62,7 +62,7 @@ class AgentEnrollTest {
 
         val credentials = agent.host.credentials(agent.agentId).channelCredentials()
 
-        assertEquals(Status.Code.UNIMPLEMENTED, ServerTls.renewCertificateStatus(sard, credentials))
+        assertEquals(Status.Code.OK, ServerTls.confirmCertificateStatus(sard, credentials))
     }
 
     @Test

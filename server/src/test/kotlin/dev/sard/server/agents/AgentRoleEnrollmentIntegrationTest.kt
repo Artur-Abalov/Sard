@@ -20,6 +20,7 @@ import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.CertificateRole
 import dev.sard.server.pki.IssuedCertificate
 import dev.sard.server.pki.PkiFixtures
+import dev.sard.server.pki.YEAR
 import dev.sard.server.role.AgentRole
 import org.bouncycastle.asn1.DEROctetString
 import org.bouncycastle.asn1.x509.BasicConstraints
@@ -50,8 +51,9 @@ private class UnrecordableCa(
         csrDer: ByteArray,
         agent: AgentIdentity,
         role: AgentRole,
+        validity: java.time.Duration,
     ): IssuedCertificate {
-        val issued = delegate.issueAgentCertificate(csrDer, agent, role)
+        val issued = delegate.issueAgentCertificate(csrDer, agent, role, validity)
         return IssuedCertificate(issued.chainPem, BigInteger.ONE, issued.notAfter)
     }
 }
@@ -154,7 +156,8 @@ class AgentRoleEnrollmentIntegrationTest(
     @Test
     fun `Сбой записи агента не оставляет ни сертификата, ни агента с ролью`() {
         val issued = tokens.create(tenant, role = AgentRole.VERIFIER)
-        val broken = Enrollment(sessions, tokens, UnrecordableCa(ca), clock, UuidV7(clock, SecureRandom()))
+        val broken =
+            Enrollment(sessions, tokens, UnrecordableCa(ca), clock, UuidV7(clock, SecureRandom()), YEAR)
 
         val error =
             assertFailsWith<dev.sard.server.enrollment.EnrollmentRejectedException> {
