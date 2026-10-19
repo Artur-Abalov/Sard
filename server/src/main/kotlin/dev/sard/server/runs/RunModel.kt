@@ -201,6 +201,10 @@ data class StepView(
     val backup: BackupResult? = null,
     /** The run the step belongs to; the agent tags its snapshot with it (FXs Д5). */
     val runId: UUID,
+    /** The snapshot a VERIFY step checks (V4); null for any other step. */
+    val snapshotId: String? = null,
+    /** What a VERIFY step carries besides its snapshot (V4); null for any other step. */
+    val verifyTask: VerifyTask? = null,
 ) {
     override fun toString() = "StepView(id=$id, action=$action, status=$status, agentId=$agentId)"
 }

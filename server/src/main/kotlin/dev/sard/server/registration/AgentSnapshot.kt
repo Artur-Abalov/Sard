@@ -24,6 +24,8 @@ data class AgentSnapshot(
      * stored and searched, never shown in REST or logged.
      */
     val machineId: String,
+    /** RegisterRequest.verifier; null from an agent older than V4, which is never handed a verification. */
+    val verifier: VerifierReport? = null,
 ) {
     /** Never the machine id: the snapshot is logged when something goes wrong. */
     override fun toString() = "AgentSnapshot(hostname=$hostname, agentVersion=$agentVersion)"
@@ -47,6 +49,21 @@ data class RepositoryEntry(
     /** Empty means restic's built-in AES (ADR 0008). */
     val cryptoProvider: String,
 )
+
+/** What a verifier reports about its host (V4); null fields are unknown to the agent. */
+data class VerifierReport(
+    val workFreeBytes: Long?,
+    val sandbox: SandboxKind?,
+)
+
+/** The container runtime a verifier has; [stored] is agents.verify_sandbox. */
+enum class SandboxKind(
+    val stored: String,
+) {
+    NONE("none"),
+    DOCKER("docker"),
+    PODMAN("podman"),
+}
 
 /** Actions a plugin implements; [stored] is the lower_snake_case form in the database (ADR 0013, rule 7). */
 enum class PluginAction(

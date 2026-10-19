@@ -116,10 +116,14 @@ class RunStepRecord(
     @TenantId
     @Column(name = "tenant_id", nullable = false, updatable = false)
     val tenantId: UUID? = null,
+    /** RunStep.snapshot_id: the snapshot a VERIFY step checks (V4); null for a backup. */
+    @Column(name = "snapshot_id", updatable = false)
+    val snapshotId: String? = null,
+    /** RunStep.verify as sent, JSON text (runs/VerifyTask); null but for a VERIFY step. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "verify_task", updatable = false)
+    val verifyTask: String? = null,
 ) {
-    @Column(name = "snapshot_id", insertable = false, updatable = false)
-    val snapshotId: String? = null
-
     @Column(insertable = false, updatable = false)
     val phase: String? = null
 

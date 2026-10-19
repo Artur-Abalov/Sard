@@ -140,6 +140,32 @@ message RegisterRequest {
   // agents of different roles share one machine. The raw id never leaves
   // the host.
   string machine_id = 10;
+  // What a verifier can offer restore verification (V4). Set by every agent
+  // of this version or later, whatever its role; absent from an older agent,
+  // which the server never hands a verification. A verifier's keys are the
+  // repository_id of its repositories, its plugins those that list
+  // ACTION_VERIFY.
+  VerifierStatus verifier = 11;
+}
+
+// VerifierStatus is what a verifier reports about its own host for restore
+// verification: what it has, never a secret.
+message VerifierStatus {
+  // Free bytes in the directory where verifications restore; absent when the
+  // agent does not know (yet).
+  optional uint64 work_free_bytes = 1;
+  // Container runtime available for the verification sandbox.
+  Sandbox sandbox = 2;
+}
+
+// Sandbox is the container runtime a verifier can start a sandbox with.
+enum Sandbox {
+  // Not reported or not known.
+  SANDBOX_UNSPECIFIED = 0;
+  // Neither Docker nor Podman was found.
+  SANDBOX_NONE = 1;
+  SANDBOX_DOCKER = 2;
+  SANDBOX_PODMAN = 3;
 }
 
 // Plugin is a source plugin available on the agent.
@@ -221,6 +247,9 @@ message Heartbeat {
   reserved "agent_id";
   // Agent clock at send time; lets the server detect clock skew.
   google.protobuf.Timestamp sent_at = 2;
+  // The verifier's status now, as in RegisterRequest.verifier; absent when
+  // unchanged or unknown.
+  VerifierStatus verifier = 3;
 }
 
 // StepProgress reports that a command is accepted or advancing.
@@ -237,6 +266,9 @@ message StepProgress {
   uint64 files_processed = 6;
   // Expected total files; 0 when unknown.
   uint64 files_total = 7;
+  // A verification stage that has just finished (ACTION_VERIFY only); the
+  // final VerifyOutput repeats every stage.
+  VerifyStage stage = 8;
 }
 
 // StepPhase follows the plugin interface prepare -> dump -> stream -> verify.
@@ -347,6 +379,67 @@ message VerifyOutput {
   // Snapshot that was restored and checked.
   string snapshot_id = 1;
   repeated CheckResult checks = 2;
+  // Stages in the order they ran; the pipeline stops at the first that does
+  // not pass.
+  repeated VerifyStage stages = 3;
+  // The verifier's verdict. Unspecified from an agent that sends none: the
+  // server then records "cannot verify".
+  VerifyVerdict verdict = 4;
+  // Differences between the source's fingerprint and the copy's.
+  repeated FingerprintMismatch mismatches = 5;
+  // Time to restore: the sum of the stages' durations (level 5).
+  google.protobuf.Duration restore_duration = 6;
+}
+
+// VerifyStage is one stage of the verification pipeline and its evidence.
+message VerifyStage {
+  // Level the stage proves (1 storage integrity, 2 extraction, 3 the
+  // application starts, 4 the data matches the fingerprint); 0 for
+  // preparation and cleanup, which prove no level.
+  uint32 level = 1;
+  // Stage name, e.g. "fingerprint_tag", "restic_check", "restore".
+  string name = 2;
+  StageStatus status = 3;
+  google.protobuf.Timestamp started_at = 4;
+  google.protobuf.Timestamp finished_at = 5;
+  // Exit code of the stage's command; 0 when it ran none.
+  int32 exit_code = 6;
+  // Tail of the command's output, redacted on the agent.
+  string output = 7;
+  // Digest of the sandbox image, e.g. "sha256:..."; empty without one.
+  string image_digest = 8;
+}
+
+enum StageStatus {
+  STAGE_STATUS_UNSPECIFIED = 0;
+  STAGE_STATUS_PASSED = 1;
+  // The backup is bad: the stage found it so.
+  STAGE_STATUS_FAILED = 2;
+  // The stage could not run here (missing extension, too little disk).
+  STAGE_STATUS_CANNOT_RUN = 3;
+  // The stage does not apply to this source, e.g. level 3 for files.
+  STAGE_STATUS_NOT_APPLICABLE = 4;
+}
+
+// VerifyVerdict is the verifier's conclusion; "infrastructure failure" and
+// "no verifier" are the server's own and never sent.
+enum VerifyVerdict {
+  VERIFY_VERDICT_UNSPECIFIED = 0;
+  // Every stage passed and the fingerprints match.
+  VERIFY_VERDICT_PASSED = 1;
+  // A stage failed or the fingerprints differ: the backup is bad.
+  VERIFY_VERDICT_FAILED = 2;
+  // The verifier's environment could not run the check.
+  VERIFY_VERDICT_CANNOT_VERIFY = 3;
+}
+
+// FingerprintMismatch is one fact that differs between the source and the
+// restored copy.
+message FingerprintMismatch {
+  // Fact name, e.g. "tables_count" or "count(public.orders)".
+  string name = 1;
+  string expected = 2;
+  string actual = 3;
 }
 
 message CheckResult {
@@ -431,6 +524,26 @@ message RunStep {
   google.protobuf.Duration timeout = 8;
   // Tags written to the snapshot, e.g. workflow and run ids.
   map<string, string> tags = 9;
+  // What a verification needs besides snapshot_id (ACTION_VERIFY only). No
+  // secret: the verifier opens the repository with its own key.
+  VerifyTask verify = 11;
+}
+
+// VerifyTask is the verification job a VERIFY step carries out.
+message VerifyTask {
+  // Server id of the verification job; the step's command_id differs on
+  // every attempt.
+  string job_id = 1;
+  // restic id of the repository, as in RepositoryInfo.repository_id.
+  string repository_id = 2;
+  // The source's fingerprint as the backup reported it; empty when there is
+  // none.
+  bytes fingerprint = 3;
+  // Lower-case hex SHA-256 of fingerprint, compared with the snapshot's tag;
+  // empty when there is no fingerprint.
+  string fingerprint_sha256 = 4;
+  // When the job expires.
+  google.protobuf.Timestamp deadline = 5;
 }
 
 // RepositoryInfo is a repository configured on the agent host, as reported

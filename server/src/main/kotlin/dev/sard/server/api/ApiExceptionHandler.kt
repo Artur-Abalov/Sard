@@ -21,6 +21,8 @@ import dev.sard.server.selfbackup.LocationInvalid
 import dev.sard.server.selfbackup.RepositoryNotInitialized
 import dev.sard.server.selfbackup.SelfAgentMissing
 import dev.sard.server.selfbackup.SelfBackupNotConfigured
+import dev.sard.server.verify.SnapshotUnusable
+import dev.sard.server.verify.VerificationActive
 import jakarta.persistence.PersistenceException
 import org.hibernate.HibernateException
 import org.slf4j.LoggerFactory
@@ -114,6 +116,23 @@ class AgentExceptionHandler {
             ErrorCode.AGENT_ROLE_MISMATCH,
             listOf(FieldError("agentId", "names a verifier, which cannot back up")),
         )
+}
+
+/** Restore verification (V4): «verify now» refused. */
+@RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
+class VerificationExceptionHandler {
+    @ExceptionHandler(VerificationActive::class)
+    fun verificationActive(): ResponseEntity<Problem> {
+        val code = ErrorCode.VERIFICATION_ACTIVE
+        return problemResponse(HttpStatus.CONFLICT, "Conflict", code)
+    }
+
+    @ExceptionHandler(SnapshotUnusable::class)
+    fun snapshotUnusable(e: SnapshotUnusable): ResponseEntity<ValidationProblem> {
+        val errors = listOf(FieldError("snapshotId", e.message.orEmpty()))
+        return unprocessableResponse(ErrorCode.SNAPSHOT_UNUSABLE, errors)
+    }
 }
 
 /** Sources and runs: what the domain refuses, field by field. */

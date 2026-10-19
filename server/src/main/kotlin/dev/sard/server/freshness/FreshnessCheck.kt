@@ -24,6 +24,7 @@ private const val SCHEDULED = """
     left join lateral (
         select r.id, r.finished_at from runs r
         where r.tenant_id = s.tenant_id and r.source_id = s.id and r.status = 'succeeded'
+        and r.trigger <> 'verification'
         order by r.finished_at desc, r.id desc limit 1) ok on true
     left join overdue_episodes e on e.tenant_id = s.tenant_id and e.source_id = s.id and e.closed_at is null
     where s.deleted_at is null"""

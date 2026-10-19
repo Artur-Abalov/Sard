@@ -48,6 +48,8 @@ const KNOWN: Record<ErrorCode, true> = {
   wrong_password: true,
   onboarding_incomplete: true,
   first_backup_pending: true,
+  verification_active: true,
+  snapshot_unusable: true,
 }
 
 function codeOf(error: unknown): string | null {

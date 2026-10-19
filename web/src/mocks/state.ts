@@ -4,6 +4,7 @@
 import type { components } from '../api/schema'
 import { freshTracker, type Tracker } from './lockout'
 import { defaultSelfBackup } from './selfBackupSources'
+import { verificationSchedule } from './verification'
 import {
   agents,
   deletedSources,
@@ -63,6 +64,11 @@ export interface MockState {
   >
   /** The first run of the database fails once with a message of the step (VITE_MOCK_SELF_BACKUP_FAIL=1). */
   failFirstBackup: boolean
+  /** The open verification job of each source (V4): «verify now» makes one, a second is 409. */
+  verificationJobs: Record<string, Schemas['VerificationJob']>
+  /** Recorded verifications, newest first. */
+  verifications: Schemas['Verification'][]
+  verificationSchedule: Schemas['VerificationSchedule']
 }
 
 export interface ResetOptions {
@@ -115,6 +121,9 @@ function fresh(options: ResetOptions): MockState {
     pendingRepository: null,
     runOutcomes: {},
     failFirstBackup: options.failFirstBackup ?? false,
+    verificationJobs: {},
+    verifications: [],
+    verificationSchedule,
   })
 }
 

@@ -10,6 +10,7 @@ import { CONFIGS, NAMES, nightly, PLUGINS, ROLES, type Role } from '../selfBacku
 import { state } from '../state'
 import { activeRun, queuedRun } from './sources'
 import { FINGERPRINT } from './tokens'
+import { neverVerified } from '../verification'
 
 type Schemas = components['schemas']
 
@@ -278,6 +279,7 @@ function keep(role: Role, agentId: string, repositoryName: string, now: string):
       agentId,
       plugin: PLUGINS[role],
       repositoryName,
+      ...neverVerified,
       config: CONFIGS[role],
       createdAt: now,
       updatedAt: now,

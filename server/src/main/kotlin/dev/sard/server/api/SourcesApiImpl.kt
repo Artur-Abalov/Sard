@@ -15,6 +15,8 @@ import dev.sard.server.runs.SourceView
 import dev.sard.server.runs.Sources
 import dev.sard.server.runs.UnknownPlugin
 import dev.sard.server.runs.UnknownRepository
+import dev.sard.server.verify.VerificationSummary
+import dev.sard.server.verify.Verifications
 import org.springframework.stereotype.Component
 import tools.jackson.core.type.TypeReference
 import tools.jackson.databind.ObjectMapper
@@ -24,6 +26,9 @@ private const val NAME_MAX = 200
 private const val CONFIG_MAX_BYTES = 64 * 1024
 private val CONFIG = object : TypeReference<Map<String, Any?>>() {}
 
+/** A source the summaries do not name: verified by default, never yet (V4). */
+private val NEVER_VERIFIED = VerificationSummary(true, null, null, null, null)
+
 /** The source endpoints over [Sources] and [Runs], in the tenant of the session. */
 @Component
 class SourcesApiImpl(
@@ -32,6 +37,7 @@ class SourcesApiImpl(
     private val snapshots: Snapshots,
     private val tenants: TenantResolver,
     private val mapper: ObjectMapper,
+    private val verifications: Verifications,
 ) : SourcesApi {
     override fun listSources(
         agentId: UUID?,
@@ -41,7 +47,8 @@ class SourcesApiImpl(
         val page = pageRequest(CursorKind.SOURCES, cursor, limit)
         val rows = sources.list(tenants.currentTenantId(), agentId, page.after, page.fetch)
         val slice = page.slice(rows) { PageKey(it.createdAt, it.id) }
-        return SourcePage(slice.items.map(::sourceOf), slice.nextCursor)
+        val summaries = verifications.summaries(tenants.currentTenantId(), slice.items.map { it.id })
+        return SourcePage(slice.items.map { sourceOf(it, summaries[it.id] ?: NEVER_VERIFIED) }, slice.nextCursor)
     }
 
     override fun createSource(source: SourceInput): Source {
@@ -111,16 +118,27 @@ class SourcesApiImpl(
         return SourceDraft(input.name, input.agentId, input.plugin, input.repositoryName, config)
     }
 
-    private fun sourceOf(view: SourceView) =
-        Source(
-            view.id,
-            view.name,
-            view.agentId,
-            view.plugin,
-            view.repositoryName,
-            mapper.readValue(view.config, CONFIG),
-            view.createdAt,
-            view.updatedAt,
-            view.systemRole?.let { SystemSourceRole.valueOf(it.name) },
-        )
+    private fun sourceOf(view: SourceView): Source {
+        val summaries = verifications.summaries(tenants.currentTenantId(), listOf(view.id))
+        return sourceOf(view, summaries[view.id] ?: NEVER_VERIFIED)
+    }
+
+    private fun sourceOf(
+        view: SourceView,
+        verification: VerificationSummary,
+    ) = Source(
+        view.id,
+        view.name,
+        view.agentId,
+        view.plugin,
+        view.repositoryName,
+        mapper.readValue(view.config, CONFIG),
+        view.createdAt,
+        view.updatedAt,
+        view.systemRole?.let { SystemSourceRole.valueOf(it.name) },
+        verificationEnabled = verification.enabled,
+        verificationStatus = verification.status?.let(::outcomeOf),
+        lastVerifiedAt = verification.lastVerifiedAt,
+        lastVerifiedLevel = verification.lastVerifiedLevel,
+    )
 }

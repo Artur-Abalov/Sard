@@ -3,6 +3,7 @@
 
 import type { Status } from '../api/client'
 import type { components } from '../api/schema'
+import { neverVerified } from './verification'
 
 type Schemas = components['schemas']
 
@@ -372,6 +373,7 @@ export const sources: Schemas['Source'][] = [
     createdAt: '2026-09-22T10:00:00Z',
     updatedAt: '2026-09-22T10:00:00Z',
     systemRole: null,
+    ...neverVerified,
   },
   {
     id: ids.homeSource,
@@ -383,6 +385,7 @@ export const sources: Schemas['Source'][] = [
     createdAt: '2026-09-23T11:00:00Z',
     updatedAt: '2026-09-24T08:15:00Z',
     systemRole: null,
+    ...neverVerified,
   },
   {
     id: ids.srvSource,
@@ -394,6 +397,7 @@ export const sources: Schemas['Source'][] = [
     createdAt: '2026-09-27T09:50:00Z',
     updatedAt: '2026-09-27T09:50:00Z',
     systemRole: null,
+    ...neverVerified,
   },
 ]
 
@@ -409,6 +413,7 @@ export const deletedSources: Schemas['Source'][] = [
     createdAt: '2026-09-18T10:00:00Z',
     updatedAt: '2026-09-18T10:00:00Z',
     systemRole: null,
+    ...neverVerified,
   },
 ]
 

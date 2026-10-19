@@ -71,3 +71,12 @@ annotation class ConfirmationRequired
     content = [Content(mediaType = PROBLEM_JSON, schema = Schema(implementation = Problem::class))],
 )
 annotation class SystemSourceConflict
+
+@Target(AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.RUNTIME)
+@ApiResponse(
+    responseCode = "409",
+    description = "The source has an open verification job (verification_active); nothing was queued",
+    content = [Content(mediaType = PROBLEM_JSON, schema = Schema(implementation = Problem::class))],
+)
+annotation class VerificationActiveConflict

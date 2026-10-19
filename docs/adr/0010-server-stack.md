@@ -10,7 +10,7 @@
 - REST — webmvc; OpenAPI — `springdoc-openapi-starter-webmvc-api` без Swagger UI (на одну зависимость меньше). Документ выгружает интеграционный тест в `server/build/openapi/openapi.json` без поля `servers`; `make openapi` копирует его в веб.
 - Хранение — Spring Data JPA + Flyway, `ddl-auto=validate`: расхождение сущности и миграции роняет старт; интеграционный тест дополнительно делает round-trip `Agent`.
 - Расширения — интерфейс `SardExtension`; enterprise-стартер регистрирует бин из своей автоконфигурации (`AutoConfiguration.imports`), ядро собирает их в `ExtensionRegistry` через `ObjectProvider` в `SardExtensionsAutoConfiguration`. Ноль расширений — проверяемая конфигурация (интеграционный тест и `ApplicationContextRunner`).
-- `/api/v1/status` возвращает версию из `build-info.properties` (`-PsardVersion`, по умолчанию `dev`) и `lastVerifiedRestoreAt: null` из заглушки `NoRestoreVerifications`.
+- `/api/v1/status` возвращает версию из `build-info.properties` (`-PsardVersion`, по умолчанию `dev`) и `lastVerifiedRestoreAt`; до V4 это был `null` из заглушки `NoRestoreVerifications`, с V4 — самая старая из последних успешных проверок по источникам с включённой проверкой (`RecordedRestoreVerifications`).
 - Configuration cache Gradle выключен: protobuf-gradle-plugin 0.10.0 с ним несовместим.
 - detekt 2.0.0-alpha.6 собран на Kotlin 2.4.10; в конфигурации `detekt` версия Kotlin закреплена на 2.4.10, иначе BOM Spring подменяет её на 2.4.20.
 - В `proto-jvm` BOM Spring импортируется с `bomProperty("kotlin.version", "2.4.20")`: без этого BOM подменял классы компилятора Kotlin на 2.3.x и компиляция падала внутри Build Tools API.

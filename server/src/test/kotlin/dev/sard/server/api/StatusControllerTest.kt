@@ -3,7 +3,6 @@
 
 package dev.sard.server.api
 
-import dev.sard.server.verify.NoRestoreVerifications
 import dev.sard.server.verify.RestoreVerifications
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
@@ -35,13 +34,13 @@ class StatusControllerTest {
 
     @Test
     fun `no verification yet means null`() {
-        val status = MutFlow.underTest { StatusController(build("1.2.3"), NoRestoreVerifications()).status() }
+        val status = MutFlow.underTest { StatusController(build("1.2.3"), RestoreVerifications { null }).status() }
         assertNull(status.lastVerifiedRestoreAt)
     }
 
     @Test
     fun `a build without version reports unknown`() {
-        val status = MutFlow.underTest { StatusController(build(null), NoRestoreVerifications()).status() }
+        val status = MutFlow.underTest { StatusController(build(null), RestoreVerifications { null }).status() }
         assertEquals("unknown", status.version)
     }
 }

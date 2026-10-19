@@ -12,6 +12,8 @@ import dev.sard.proto.agent.v1.Plugin
 import dev.sard.proto.agent.v1.RegisterRequest
 import dev.sard.proto.agent.v1.RegisterResponse
 import dev.sard.proto.agent.v1.RepositoryInfo
+import dev.sard.proto.agent.v1.Sandbox
+import dev.sard.proto.agent.v1.VerifierStatus
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.api.MACHINE_ID
 import dev.sard.server.api.OTHER_MACHINE_ID
@@ -371,6 +373,38 @@ class RegisterIntegrationTest(
         val response = register(agent, snapshotA())
         assertEquals(agent.identity.agentId, UUID.fromString(response.agentId))
         assertEquals(17L to 0, response.heartbeatInterval.seconds to response.heartbeatInterval.nanos)
+    }
+
+    // --- V4: verifier status
+
+    private fun verifierOf(agent: EnrolledAgent): List<Any?> =
+        jdbc
+            .queryForList(
+                "select verifier_reported, verify_free_bytes, verify_sandbox from agents where id = ?",
+                agent.identity.agentId,
+            ).single()
+            .values
+            .toList()
+
+    @Test
+    fun `a Register stores the verifier status and the next one without it forgets it`() {
+        val agent = fixtures.enrolled(fixtures.tenant())
+        val status = VerifierStatus.newBuilder().setWorkFreeBytes(1_000).setSandbox(Sandbox.SANDBOX_PODMAN)
+
+        register(agent, snapshotA().setVerifier(status))
+        assertEquals(listOf<Any?>(true, 1_000L, "podman"), verifierOf(agent))
+
+        register(agent, snapshotA())
+        assertEquals(listOf<Any?>(false, null, null), verifierOf(agent))
+    }
+
+    @Test
+    fun `an empty verifier status is reported with free space and sandbox unknown`() {
+        val agent = fixtures.enrolled(fixtures.tenant())
+
+        register(agent, snapshotA().setVerifier(VerifierStatus.getDefaultInstance()))
+
+        assertEquals(listOf<Any?>(true, null, null), verifierOf(agent))
     }
 
     // --- V1: machine_id

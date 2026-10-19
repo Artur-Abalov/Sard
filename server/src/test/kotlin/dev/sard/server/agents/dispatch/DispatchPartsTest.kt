@@ -3,17 +3,21 @@
 
 package dev.sard.server.agents.dispatch
 
+import com.google.protobuf.ByteString
 import dev.sard.proto.agent.v1.RunStep
 import dev.sard.server.runs.Action
+import dev.sard.server.runs.VerifyTask
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import dev.sard.proto.agent.v1.Action as ProtoAction
+import dev.sard.proto.agent.v1.VerifyTask as ProtoVerifyTask
 
 @MutFlowTest
 class DispatchPartsTest {
@@ -32,6 +36,86 @@ class DispatchPartsTest {
                 .putTags("sard.source", UUID(9, 1).toString())
                 .build()
         assertEquals(expected, MutFlow.underTest { RunSteps.of(step(1)) })
+    }
+
+    @Test
+    fun `a verify step carries its snapshot, its task and its timeout, and nothing else`() {
+        val deadline = Instant.parse("2026-10-20T04:30:00Z")
+        val task = VerifyTask(UUID(7, 1), "a".repeat(64), byteArrayOf(1, 2), "f".repeat(64), deadline, 21_600)
+        val step =
+            step(1).copy(
+                action = Action.VERIFY,
+                repositoryName = "shared",
+                snapshotId = "4e5f",
+                verifyTask = task,
+            )
+
+        val command = MutFlow.underTest { RunSteps.of(step) }
+
+        val expected =
+            ProtoVerifyTask
+                .newBuilder()
+                .setJobId(UUID(7, 1).toString())
+                .setRepositoryId("a".repeat(64))
+                .setFingerprint(ByteString.copyFrom(byteArrayOf(1, 2)))
+                .setFingerprintSha256("f".repeat(64))
+                .setDeadline(
+                    com.google.protobuf.Timestamp
+                        .newBuilder()
+                        .setSeconds(deadline.epochSecond),
+                ).build()
+        assertEquals(expected, command.verify)
+        assertEquals("4e5f", command.snapshotId)
+        assertEquals("shared", command.repositoryName)
+        assertEquals(21_600L, command.timeout.seconds)
+    }
+
+    @Test
+    fun `a verify step without a fingerprint sends none, a backup step has no verify task and no timeout`() {
+        val task = VerifyTask(UUID(7, 1), "a".repeat(64), null, null, Instant.EPOCH, 60)
+        val verify = MutFlow.underTest { RunSteps.of(step(1).copy(action = Action.VERIFY, verifyTask = task)) }
+        val sent = listOf(verify.verify.fingerprint, verify.verify.fingerprintSha256)
+        assertEquals(listOf<Any>(ByteString.EMPTY, ""), sent)
+
+        val backup = MutFlow.underTest { RunSteps.of(step(1)) }
+        assertEquals(listOf(false, false), listOf(backup.hasVerify(), backup.hasTimeout()))
+    }
+
+    /**
+     * ADR 0008 and V4 test 3: a verification's RunStep names the repository, the snapshot and the plugin; it
+     * holds no field of a secret, no URL, no password file. Every field the message sets is listed here, so a new
+     * one fails this test until someone looks at it.
+     */
+    @Test
+    fun `a verify RunStep sets only fields that hold no secret`() {
+        val task = VerifyTask(UUID(7, 1), "a".repeat(64), byteArrayOf(1), "f".repeat(64), Instant.EPOCH, 60)
+        val step = step(1).copy(action = Action.VERIFY, repositoryName = "shared", snapshotId = "s", verifyTask = task)
+
+        val command = MutFlow.underTest { RunSteps.of(step) }
+
+        val set =
+            command.allFields.keys
+                .map { it.name }
+                .toSet()
+        val expected =
+            setOf(
+                "command_id",
+                "plugin",
+                "config_json",
+                "action",
+                "repository_name",
+                "snapshot_id",
+                "timeout",
+                "tags",
+                "verify",
+            )
+        assertEquals(expected, set)
+        assertEquals(
+            setOf("job_id", "repository_id", "fingerprint", "fingerprint_sha256", "deadline"),
+            command.verify.allFields.keys
+                .map { it.name }
+                .toSet(),
+        )
     }
 
     @Test

@@ -13,7 +13,8 @@ private const val INITIALIZED =
     "select count(r) from AgentRepositoryRecord r where r.repositoryId is not null " +
         "and r.agentId in (select a.id from Agent a where a.revokedAt is null)"
 private const val LIVE_SOURCES = "select count(s) from SourceRecord s where s.deletedAt is null"
-private const val SUCCEEDED_RUNS = "select count(r) from RunRecord r where r.status = 'succeeded'"
+private const val SUCCEEDED_RUNS =
+    "select count(r) from RunRecord r where r.status = 'succeeded' and r.trigger <> 'verification'"
 
 /** The five first steps of a tenant, each by its own rule; computed on every request, never stored (W2 К14). */
 data class FirstSteps(

@@ -59,6 +59,14 @@ data class Source(
                 "through the API, only its schedule changes; null for an administrator's source",
     )
     val systemRole: SystemSourceRole?,
+    @field:Schema(description = "Whether the daily cycle verifies its latest whole snapshot (V4)")
+    val verificationEnabled: Boolean,
+    @field:Schema(description = "The last verification's status; no_verifier while the installation has no verifier")
+    val verificationStatus: VerificationOutcome?,
+    @field:Schema(description = "The last successful restore verification; null if never")
+    val lastVerifiedAt: Instant?,
+    @field:Schema(description = "The level the last successful verification reached")
+    val lastVerifiedLevel: Int?,
 ) {
     override fun toString() = "Source(id=$id, name=$name, agentId=$agentId, plugin=$plugin)"
 }

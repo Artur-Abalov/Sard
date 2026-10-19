@@ -2,6 +2,7 @@
 // Copyright 2026 Artur Abalov
 
 import type { components } from '../api/schema'
+import { neverVerified } from './verification'
 
 type Schemas = components['schemas']
 export type Role = Schemas['SystemSourceRole']
@@ -60,6 +61,7 @@ function systemSource(role: Role, agentId: string): Schemas['Source'] {
     name: NAMES[role],
     agentId,
     plugin: PLUGINS[role],
+    ...neverVerified,
     repositoryName: DEFAULT_REPOSITORY,
     config: CONFIGS[role],
     createdAt: DEFAULT_BOUND_AT,
