@@ -232,3 +232,21 @@ Docker is unavailable here, so only the `@MutFlowTest` classes that need no cont
   `files.permissions` (`secretFiles`) по-прежнему берут файлы `tls.*` из
   конфига, а не выбранную пару. Для хоста с годной парой `.new` и истёкшей
   основной `server.tls` предъявит истёкший сертификат.
+
+## Фаза 3 — coder, сервер и e2e (2026-10-19)
+
+Коммит `73393055`: поле `certificate` в REST, проверка срока, события и
+уведомления S9a, минимум `PT2M`. Docker недоступен: интеграционные тесты
+проходили на локальном PostgreSQL 16 в копии репозитория, `gate.sh server fast`
+не запускался.
+
+- Решение coder для владельца. В сценарии «Брошенный после перерегистрации
+  агент получает одно уведомление об истечении» сертификат нового агента в
+  тесте выдан в T0 плюс 300 суток: выданный вскоре после T0, он в T0 плюс 365
+  суток сам попал бы в предупреждение 30/365 и дал бы второе сообщение.
+  Сценарий этого не оговаривает.
+- Хранение событий записано в ADR `00XX-draft-agent-certificate-renewal.md`;
+  `fleet/AgentCertificateCheck.kt` добавлен в список `sessions.system` ADR 0013.
+- e2e @t8: `CertificateLifetimesTest` (стенд с `SARD_PKI_AGENT_CERTIFICATE_VALIDITY=PT2M`,
+  агент X и sard-self, наблюдение 7 минут, сценарии @t1, @t7, @t8). Компилируется
+  (`:e2e:compileTestKotlin`), не запускался.
