@@ -257,3 +257,29 @@ func TestTheEntryOfAFailedRestoreGoesOnlyIfNothingWithAnOIDIsLeftToDrop(t *testi
 	h.engine.Abandon("c9") // no entry
 	h.engine.Abandon("../x")
 }
+
+// Scenario: Пустой секрет записи журнала не используется для отката.
+func TestAnEmptySecretOfAnInterruptedRestoreIsNotUsedToRollBack(t *testing.T) {
+	h := newPGHost(t)
+	h.server.databases[pgNewDatabase] = 20001
+	h.secrets["pg-restore"] = []byte("\n")
+	h.leftByAKill(`,"database":{"name":"` + pgNewDatabase + `","oid":20001}`)
+	ev := only(t, h.engine.CleanDatabases())
+	if ev.Verdict != consolerestore.CleanupFailed || ev.Err == nil || !strings.Contains(ev.Err.Error(), "empty") {
+		t.Errorf("evidence %+v", ev)
+	}
+	if !h.server.hasDatabase(pgNewDatabase) {
+		t.Error("the database was dropped with an empty password")
+	}
+}
+
+func TestASecretWithANulByteOfAnInterruptedRestoreIsNotUsedToRollBack(t *testing.T) {
+	h := newPGHost(t)
+	h.server.databases[pgNewDatabase] = 20001
+	h.secrets["pg-restore"] = []byte("pa\x00ss")
+	h.leftByAKill(`,"database":{"name":"` + pgNewDatabase + `","oid":20001}`)
+	ev := only(t, h.engine.CleanDatabases())
+	if ev.Verdict != consolerestore.CleanupFailed || ev.Err == nil || !strings.Contains(ev.Err.Error(), "NUL") {
+		t.Errorf("evidence %+v", ev)
+	}
+}

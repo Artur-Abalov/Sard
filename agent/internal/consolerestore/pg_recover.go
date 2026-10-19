@@ -120,7 +120,9 @@ func (e *Engine) connectionOf(rec pgRecord) (pgConn, error) {
 	if err != nil {
 		return pgConn{}, errors.New("cannot read the secret " + rec.Connection.PasswordRef + " of the interrupted restore: " + err.Error())
 	}
-	password = []byte(strings.TrimRight(string(password), "\r\n"))
+	if password, err = Password(rec.Connection.PasswordRef, password); err != nil {
+		return pgConn{}, errors.New("the secret of the interrupted restore cannot be used: " + err.Error())
+	}
 	tools, f := e.locate(rec.Connection.ClientPath, e.environ()())
 	if f != nil {
 		return pgConn{}, errors.New(string(refusal.PGClientMissing) + ": " + f.Detail)

@@ -4,6 +4,7 @@
 package consolerestore
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -19,6 +20,20 @@ import (
 
 // maxQuoteBytes keeps the quote of an error of a program short.
 const maxQuoteBytes = 512
+
+// Password is the content of the secret called name without its line ending,
+// neither empty nor holding a NUL byte (F1 ПГ3): the one reading of a password
+// of the restore, for a step and for the rollback of an interrupted one.
+func Password(name string, content []byte) ([]byte, error) {
+	value := bytes.TrimRight(content, "\r\n")
+	switch {
+	case len(value) == 0:
+		return nil, fmt.Errorf("secret %q is empty", name)
+	case bytes.IndexByte(value, 0) >= 0:
+		return nil, fmt.Errorf("secret %q contains a NUL byte", name)
+	}
+	return value, nil
+}
 
 // pgConn is the connection to the target server: the parameters of the plan,
 // the password and the programs of the host.

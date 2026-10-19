@@ -4,9 +4,7 @@
 package pluginhost
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 
 	"github.com/Artur-Abalov/sard/agent/internal/consolerestore"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
@@ -42,12 +40,5 @@ func (h *handler) password(name string, r executor.Reporter) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	value = bytes.TrimRight(value, "\r\n")
-	switch {
-	case len(value) == 0:
-		return nil, fmt.Errorf("secret %q is empty", name)
-	case bytes.IndexByte(value, 0) >= 0:
-		return nil, fmt.Errorf("secret %q contains a NUL byte", name)
-	}
-	return value, nil
+	return consolerestore.Password(name, value)
 }
