@@ -45,9 +45,12 @@ type fakeChecks struct {
 
 func (f *fakeRestic) list(ctx context.Context, cmd restic.Command, r *fakeRepo) (int, error) {
 	cs := &r.checkState
+	f.mu.Lock()
 	cs.lists++
+	n := cs.lists
+	f.mu.Unlock()
 	if cs.onList != nil {
-		cs.onList(cs.lists)
+		cs.onList(n)
 	}
 	if cs.hangList {
 		return f.hang(ctx, cmd, r, r.hangLine)
