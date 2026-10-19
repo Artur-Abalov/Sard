@@ -250,3 +250,12 @@ Docker is unavailable here, so only the `@MutFlowTest` classes that need no cont
 - e2e @t8: `CertificateLifetimesTest` (стенд с `SARD_PKI_AGENT_CERTIFICATE_VALIDITY=PT2M`,
   агент X и sard-self, наблюдение 7 минут, сценарии @t1, @t7, @t8). Компилируется
   (`:e2e:compileTestKotlin`), не запускался.
+
+## Фаза 3 — cleaner (2026-10-19)
+
+Замеры `./scripts/crap.sh agent`: в затронутых фазой 3 файлах выше предела
+только `certpair.latest` (CRAP 6.0, CC 6, флаг `anyExpiry`). Разделена на
+`newest` и `unexpired`, поведение прежнее; `latest` из списка ушла. Сервер и web
+не менялись: дублирования внутри модуля и логики в компонентах
+(`CertificateMark.tsx` использует только `certificateMarkTone` из `theme.ts`)
+замеры не выявили. Серверный CRAP (`NotificationService.plan`, 6.0) судит CI.
