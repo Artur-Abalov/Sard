@@ -191,8 +191,35 @@
 #   П31. enroll не меняется: файлы .new и состояние прежней личности
 #        отбрасываются правилами П21 (другая личность) и П25 (другой serial).
 #
-# Вне среза (фаза 3): консоль, уведомления, документация оператора, ADR.
-# Вне фичи: sard-agent check (A8d), сертификат на TPM или HSM, SELinux.
+# Фаза 3 — утверждено владельцем 2026-10-19 (ответ на вопрос 1 спецификации
+# docs/specs/server/agent-certificate-expiry.feature; передано координатором,
+# перед передачей coder владелец подтверждает сам). sard-agent check уже есть
+# (A8d) и меняется здесь; поправка C1 внесена в Ч13 host-check.feature.
+#   П45. sard-agent check: строки tls.identity, tls.chain и tls.expiry
+#        описывают пару, которую выбрал бы старт, — тот же выбор кандидатов
+#        П21 (certpair.Select), но без уборки: check ничего не удаляет и не
+#        переименовывает. Выбран кандидат с файлом .new — сообщение tls.identity
+#        называет пути выбранных файлов. Годного кандидата нет, но есть
+#        согласованный истёкший — tls.expiry описывает его (истёк, ERROR). Нет
+#        ни одного согласованного — tls.identity ERROR о незавершённой
+#        регистрации, как раньше.
+#   П46. tls.expiry, L = NotAfter − NotBefore, R = NotAfter − сейчас (часы
+#        хоста), сравнения точные:
+#          сейчас раньше NotBefore — ERROR, как раньше;
+#          R ≤ 0 — ERROR «the certificate expired on <ГГГГ-ММ-ДД>», подсказка
+#            «sudo sard-agent enroll --force (see <ссылка tls.expiry>)», как раньше;
+#          R × 365 ≤ L × 30 — WARN «the certificate expires in <n> days
+#            (<ГГГГ-ММ-ДД>) and has not been renewed: see renewal_last_error in
+#            sudo sard-agent status», подсказка «sudo sard-agent status»;
+#            n — целые сутки вниз;
+#          иначе — OK «the certificate is valid until <ГГГГ-ММ-ДД> (<n> days)», как
+#            раньше.
+#        Фиксированный порог 30 дней (hostcheck.RenewWithin) и фраза
+#        «automatic renewal is not available yet (C1)» уходят.
+#
+# Вне среза (фаза 3): консоль, уведомления, документация оператора, ADR —
+# серверная и web-спецификации фазы 3.
+# Вне фичи: сертификат на TPM или HSM, SELinux.
 #
 # Теги
 #   @renewal    агент, запущенный целиком в процессе теста (run с аргументами
@@ -735,3 +762,54 @@
       Дано пара 1 и успешное продление
       Когда агент продлевает сертификат
       Тогда ни stdout, ни stderr, ни журнал агента не содержат "PRIVATE KEY", "CERTIFICATE", "CERTIFICATE REQUEST" и base64-тела новых ключа и сертификата
+
+  # ===========================================================================
+  # Фаза 3, П45 и П46. Тег @local здесь — sard-agent check --offline с
+  # конфигом C во временном каталоге, часы подставляет тест (как @local
+  # host-check.feature).
+  Правило: sard-agent check описывает пару, которую взял бы старт
+
+    @local @phase3
+    Структура сценария: Строка tls.expiry судит по доле срока сертификата
+      Дано пара 1, часы показывают <время>
+      Когда оператор выполняет sard-agent check --offline --config C
+      Тогда строка tls.expiry — <статус> с сообщением "<сообщение>"
+      И подсказка <подсказка>
+
+      Примеры:
+        | время                       | статус | сообщение                                                                                                                  | подсказка                                                    |
+        | T0 плюс 275 суток           | OK     | the certificate is valid until 2027-08-11 (25 days)                                                                        | отсутствует                                                  |
+        | T0 плюс 276 суток           | WARN   | the certificate expires in 24 days (2027-08-11) and has not been renewed: see renewal_last_error in sudo sard-agent status | "sudo sard-agent status"                                     |
+        | T0 плюс 300 суток           | ERROR  | the certificate expired on 2027-08-11                                                                                      | начинается с "sudo sard-agent enroll --force (see "          |
+
+    @local @phase3
+    Сценарий: Строка tls.expiry больше не говорит, что продления нет
+      Дано пара 1, часы показывают T0 плюс 290 суток
+      Когда оператор выполняет sard-agent check --offline --config C
+      Тогда вывод не содержит "automatic renewal is not available yet"
+
+    @local @phase3
+    Сценарий: check описывает новую пару, которую выбрал бы старт
+      Дано пара 1 в основных файлах истекла по часам хоста, рядом лежит новая пара 2
+      Когда оператор выполняет sard-agent check --offline --config C
+      Тогда строка tls.identity — OK и её сообщение называет D/agent.key.new и D/agent.pem.new
+      И строка tls.expiry — OK с датой NotAfter C2
+
+    @local @phase3
+    Сценарий: check не убирает файлы, которые убрал бы старт
+      Дано пара 1 в основных файлах и только D/agent.key.new
+      Когда оператор выполняет sard-agent check --offline --config C
+      Тогда D/agent.key.new на месте, основные файлы побайтно те же
+      И строки tls.identity и tls.expiry описывают пару 1
+
+    @local @phase3
+    Сценарий: check с истёкшими всеми парами называет истечение
+      Дано пара 1 истекла по часам хоста, рядом новая пара того же агента, тоже истёкшая
+      Когда оператор выполняет sard-agent check --offline --config C
+      Тогда строка tls.expiry — ERROR с сообщением о дате истечения сертификата с самым поздним NotBefore
+
+    @local @phase3
+    Сценарий: check без согласованной пары сообщает о незавершённой регистрации, как раньше
+      Дано по D/agent.key лежит ключ K3, по D/agent.pem — C1, файлов .new нет
+      Когда оператор выполняет sard-agent check --offline --config C
+      Тогда строка tls.identity — ERROR "tls.key_file is not the key of tls.cert_file: a registration was not finished"

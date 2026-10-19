@@ -1,6 +1,10 @@
 # QA: срок сертификата агента — консоль, уведомления, документация (C1, фаза 3)
 
+Утверждено владельцем 2026-10-19 (П32–П44 с поправками 5, 10; ответы на
+вопросы 1–4) — передано координатором.
+
 Сценарии: `docs/specs/server/agent-certificate-expiry.feature` (П32–П44),
+`docs/specs/agent/agent-certificate-renewal.feature` (П45, П46 — `sard-agent check`),
 `docs/specs/web/agent-certificate-renewal.feature` (КС1–КС6) и сценарии `@t8`
 правила «Продление на стенде» в `docs/specs/server/agent-certificate-renewal.feature`.
 Продление (фаза 2) проверяет `docs/qa/agent-certificate-renewal.md`; его
@@ -11,7 +15,9 @@
 Стенд работает со сроком сертификата `PT10M`. Тогда (П33, П36): `renewal_due` —
 с 6 мин 40 с после выпуска, `expiring` и порог 30 — когда до конца осталось не
 больше 49,3 с (с 9 мин 11 с), порог 7 — не больше 11,5 с (с 9 мин 49 с), порог 1 —
-не больше 1,6 с (с 9 мин 59 с), `expired` — с 10 мин. Проверка срока идёт раз в
+не больше 1,6 с (с 9 мин 59 с), `expired` и уведомление об истечении (поправка
+5) — с 10 мин. Стенд остаётся на `PT10M`, хотя минимум теперь `PT2M` (поправка
+10): при `PT2M` пороги 7 и 1 отстоят на 2 с и вручную не различаются. Проверка срока идёт раз в
 5 с (`SARD_PKI_AGENT_CERTIFICATE_CHECK_INTERVAL=PT5S`), поэтому каждый порог
 ловится отдельно; ожидания в шагах — с запасом на проверку и тик доставки.
 
@@ -122,10 +128,10 @@ $AG --config $S1/agent.yaml > $QA/s1.out 2>&1 & SP=$!
 Шаги смотрят в чат и в базу. Агент `E` из части 2 к этому моменту уже прошёл
 все пороги; его уведомления пришли во время шагов 8–9.
 
-12. Чат → о `E` ровно три сообщения, по одному у каждого порога, первое — около
-    9 мин 11 с после регистрации `E`, второе — около 9 мин 49 с, третье — около
-    9 мин 59 с (каждое не позже чем через 10 с после своей отметки). Текст
-    первого:
+12. Чат → о `E` ровно четыре сообщения: по одному у каждого порога — около
+    9 мин 11 с после регистрации `E`, около 9 мин 49 с и около 9 мин 59 с — и
+    об истечении около 10 мин (каждое не позже чем через 10 с после своей
+    отметки). Текст первого:
 
     ```text
     ⚠️ Сертификат агента скоро истечёт: <hostname хоста проверяющего>
@@ -139,11 +145,23 @@ $AG --config $S1/agent.yaml > $QA/s1.out 2>&1 & SP=$!
     ```
 
     Первая строка жирная, id агента и `sudo sard-agent status` — моноширинные.
-    В тексте нет «30 дней», серийного номера и `BEGIN`.
-13. `certdel` → `delivered|3` (агенты `S1` и `R` строк не дали).
-14. `$DC logs server | grep -E "reached (30|7|1)/365" | grep -c $XE` → `3`.
-15. Повторов нет: подождать 2 минуты → в чате о `E` по-прежнему три сообщения;
-    `certdel` → `delivered|3`.
+    В тексте нет «30 дней», серийного номера и `BEGIN`. Текст четвёртого
+    (поправка 5):
+
+    ```text
+    ⛔ Сертификат агента истёк: <hostname хоста проверяющего>
+    Истёк: <notAfter E как ГГГГ-ММ-ДД ЧЧ:ММ> UTC
+    ID агента: <$XE>
+    Новый сертификат выдан <время шага 7> UTC, но агент его не подтвердил
+    Агент не подключится, пока его не зарегистрируют заново: sudo sard-agent enroll --force с новым токеном — у агента будет новый ID
+    https://sard.example.com/agents/<$XE>
+    ```
+
+    `sudo sard-agent enroll --force` — моноширинная.
+13. `certdel` → `delivered|4` (агенты `S1` и `R` строк не дали).
+14. `$DC logs server | grep -E "reached (30|7|1)/365|expired$" | grep -c $XE` → `4`.
+15. Повторов нет: подождать 2 минуты → в чате о `E` по-прежнему четыре сообщения;
+    `certdel` → `delivered|4`.
 16. Подтверждённое продление прекращает уведомления. Агент `F` регистрируется
     и не запускается; после первого уведомления (порог 30) его продлевают
     вручную:
@@ -155,19 +173,26 @@ $AG --config $S1/agent.yaml > $QA/s1.out 2>&1 & SP=$!
     ```
 
     → к 560 с в чате одно сообщение о `F`, в его пятой строке «Агент ни разу не
-    подключался»; подтверждение `{}`; через 2 минуты о `F` по-прежнему одно
-    сообщение; `cert $XF | jq -r .state` → `ok`, `notBefore` — время продления.
+    подключался»; подтверждение `{}`; через 2 минуты и после 600 с от
+    регистрации `F` о нём по-прежнему одно сообщение (уведомления об истечении
+    старого сертификата нет); `cert $XF | jq -r .state` → `ok`, `notBefore` —
+    время продления.
 17. Английский текст: `QA_LANG=en $DC up -d --wait server`, агент `G`
-    регистрируется и не запускается, через 10 мин 10 с → три сообщения о `G`,
-    первая строка `⚠️ Agent certificate expires soon: …`, третья `Time left: … s`,
-    пятая `The agent has never connected`. `$DC up -d --wait server` (снова `ru`).
+    регистрируется и не запускается, через 10 мин 10 с → четыре сообщения о `G`;
+    в первом первая строка `⚠️ Agent certificate expires soon: …`, третья
+    `Time left: … s`, пятая `The agent has never connected`; в четвёртом первая
+    строка `⛔ Agent certificate expired: …`, пятая начинается с `The agent
+    cannot connect until it is enrolled again: sudo sard-agent enroll --force`.
+    `$DC up -d --wait server` (снова `ru`).
 18. Встроенный агент (если стенд — установка compose с sard-self): остановить
     соседа на время срока, `$DC stop self-agent`, дождаться 10 мин 10 с с
     последнего продления sard-self
-    → в чате три сообщения о хосте `sard-self`: шестая строка «Встроенный агент:
-    docker compose logs self-agent», седьмая — «Если сертификат истечёт,
-    отзовите встроенного агента в консоли — он зарегистрируется заново сам»,
-    `sudo sard-agent` в тексте нет. `$DC start self-agent`; восстановление — шаг
+    → в чате четыре сообщения о хосте `sard-self`: в трёх о скором истечении
+    шестая строка «Встроенный агент: docker compose logs self-agent», седьмая —
+    «Если сертификат истечёт, отзовите встроенного агента в консоли — он
+    зарегистрируется заново сам»; в сообщении об истечении пятая строка
+    «Отзовите встроенного агента в консоли — он зарегистрируется заново сам»;
+    `sudo sard-agent` ни в одном тексте нет. `$DC start self-agent`; восстановление — шаг
     44 `docs/qa/agent-certificate-renewal.md`.
 
 ## Часть 4. Сбой доставки и режим без бота
@@ -176,7 +201,7 @@ $AG --config $S1/agent.yaml > $QA/s1.out 2>&1 & SP=$!
     регистрируется и не запускается; через 10 мин 10 с
     `$DC logs server | grep 'Notification of agent certificate'`
     → строки WARN `… (30/365) through telegram failed: …chat not found…`
-    (и для 7/365, 1/365); в чате о `H` ничего.
+    (и для 7/365, 1/365 и `(expired)`); в чате о `H` ничего.
 20. **Без бота.** `QA_TG_TOKEN= QA_TG_CHAT= $DC up -d --wait server`; агент `I`
     регистрируется и не запускается; через 10 мин 10 с
     → `certdel` не изменился с шага 19; `$DC logs server | grep -E 'WARN|ERROR' | grep dev.sard.server.notify`
@@ -186,7 +211,7 @@ $AG --config $S1/agent.yaml > $QA/s1.out 2>&1 & SP=$!
     запускается; на 9 мин 5 с `$DC pause postgres`, на 9 мин 20 с
     `$DC unpause postgres`
     → `$DC logs server | grep 'Agent certificate check failed; retrying at the next one'` — не меньше одной строки WARN;
-    в чате о `K` три сообщения, без дублей.
+    в чате о `K` четыре сообщения, без дублей.
 
 ## Часть 5. Консоль (КС1–КС6)
 
@@ -218,10 +243,28 @@ $AG --config $S1/agent.yaml > $QA/s1.out 2>&1 & SP=$!
 
 29. `$AG status --config $E/agent.yaml | tail -3`
     → `certificate_days_left: 0`, `certificate_state: expired`, `re_enroll: sudo sard-agent enroll --force --config $E/agent.yaml --server localhost:9090 --token <TOKEN>`.
-30. `$AG check --config $S1/agent.yaml --offline | grep tls.expiry`
-    → одна строка `tls.expiry`. Сообщение и порог предупреждения — открытый
-    вопрос 1 серверной спецификации: записать фактическую строку в отчёт QA,
-    дефектом не считать до ответа владельца.
+30. Строка `tls.expiry` (П46). Агент `L` регистрируется и не запускается:
+    `L=$QA/l; host $L; enroll_as $L '{}'`; затем
+    `$AG check --offline --config $L/agent.yaml | grep tls.expiry` сразу,
+    после `wait_to $L/tls/agent.pem 560` и после `wait_to $L/tls/agent.pem 601`
+    → `OK` «the certificate is valid until … (0 days)»; затем `WARN` «the
+    certificate expires in 0 days (…) and has not been renewed: see
+    renewal_last_error in sudo sard-agent status» с подсказкой
+    `sudo sard-agent status`; затем `ERROR` «the certificate expired on …» с
+    подсказкой `sudo sard-agent enroll --force`. Нигде нет «automatic renewal
+    is not available yet».
+    Пара, которую взял бы старт (П45), — отдельный агент `M`, тоже без запуска:
+
+    ```bash
+    M=$QA/m; host $M; enroll_as $M '{}'; wait_to $M/tls/agent.pem 120
+    newkey $M/tls/agent.key.new; renew $M/tls/agent.pem $M/tls/agent.key $M/tls/agent.key.new $M/tls/agent.pem.new; chmod 0644 $M/tls/agent.pem.new
+    wait_to $M/tls/agent.pem 601
+    $AG check --offline --config $M/agent.yaml | grep -E 'tls.identity|tls.expiry'; ls $M/tls
+    ```
+
+    → `tls.identity` `OK` и называет `agent.key.new` и `agent.pem.new`;
+    `tls.expiry` `OK` с датой нового сертификата; файлы `.new` на месте (check
+    ничего не убирает).
 
 ## Часть 7. Документация и ADR (П40, П41)
 
@@ -235,8 +278,10 @@ $AG --config $S1/agent.yaml > $QA/s1.out 2>&1 & SP=$!
     (`sudo systemctl edit sard-agent`, `ReadWritePaths=`), настройки сервера
     → каждая команда страницы выполняется как написана (для перерегистрации —
     на агенте `E`, новым токеном): `E` после неё `online` с новым id.
-33. `grep -n 'Автоматического продления нет' docs/operator/09-troubleshooting.md` → пусто.
-34. `grep -E 'SARD_PKI_AGENT_(CERTIFICATE_VALIDITY|RENEWAL_MIN_INTERVAL|CERTIFICATE_CHECK_INTERVAL)' docs/operator/03-configuration.md | wc -l` → `3`.
+33. `grep -n 'Автоматического продления нет' docs/operator/09-troubleshooting.md` → пусто;
+    раздел `tls.expiry` называет `30/365` и `sudo sard-agent status`.
+34. `grep -E 'SARD_PKI_AGENT_(CERTIFICATE_VALIDITY|RENEWAL_MIN_INTERVAL|CERTIFICATE_CHECK_INTERVAL)' docs/operator/03-configuration.md | wc -l` → `3`;
+    у срока сертификата указан минимум `PT2M`.
 35. `ls docs/adr/00XX-draft-agent-certificate-renewal.md; grep -n 'RenewCertificate' docs/open-questions.md | head`
     → ADR есть; в строке OQ-022 раздела «Открыто» `RenewCertificate` нет, есть
     запись о закрытии со ссылкой на ADR; есть новые OQ о сроке CA и о
@@ -244,16 +289,19 @@ $AG --config $S1/agent.yaml > $QA/s1.out 2>&1 & SP=$!
 
 ## Часть 8. Долгая жизнь на стенде (задача 8, по желанию)
 
-Автоматически — сценарии `@e2e @t8`. Вручную, если стенд свободен 35 минут:
-агент `S1` с репозиторием и источником `files` с расписанием `*/2 * * * *`
-(как в `docs/qa/agent-role.md`, часть 6).
+Автоматически — сценарии `@e2e @t8` (поправка 10: срок `PT2M`, 7 минут).
+Вручную — после уборки части 9 поднять стенд заново по подготовке с
+`SARD_PKI_AGENT_CERTIFICATE_VALIDITY: PT2M` в `override.yml`; агент `S1` с
+репозиторием и источником `files` с расписанием `* * * * *` (как в
+`docs/qa/agent-role.md`, часть 6), запущен как в части 2.
 
-36. Через 32 минуты после регистрации `S1`
+36. Через 7 минут после регистрации `S1`
     → `$PSQL "select count(*), count(*) filter (where superseded_at is not null) from agent_certificates where agent_id = '$XS'"`
     — не меньше 4 и на одну меньше; все запуски источника `succeeded`, их не
-    меньше 12; процесс `$SP` жив (`kill -0 $SP && echo alive` → `alive`);
+    меньше 5; процесс `$SP` жив (`kill -0 $SP && echo alive` → `alive`);
     `grep -c 'not reconnecting' $QA/s1.out` → `0`; в чате о `S1` ни одного
-    сообщения.
+    сообщения; встроенный агент `online`, счётчик перезапусков `self-agent` не
+    изменился.
 
 ## Часть 9. Уборка
 
