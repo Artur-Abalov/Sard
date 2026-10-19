@@ -11,6 +11,7 @@ import java.nio.file.Files
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -61,7 +62,7 @@ class ServerRecoveryDrillTest {
     private fun awaitTwoMissedSlotsOfA1() {
         val source = old.sourceIds.getValue("A1")
         val last = old.runs.filter { it.sourceId == source }.maxOf { Instant.parse(it.queuedAt) }
-        val secondSlot = last.truncatedTo(java.time.temporal.ChronoUnit.MINUTES).plus(Duration.ofMinutes(2))
+        val secondSlot = last.truncatedTo(ChronoUnit.MINUTES).plus(Duration.ofMinutes(2))
         val wait = Duration.between(Instant.now(), secondSlot)
         if (wait.isPositive) Thread.sleep(wait.toMillis())
     }
