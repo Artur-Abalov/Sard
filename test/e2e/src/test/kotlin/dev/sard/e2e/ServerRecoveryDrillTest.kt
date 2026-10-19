@@ -56,8 +56,9 @@ class ServerRecoveryDrillTest {
     /**
      * A1 fires every minute. The restored server owes A1 a catch-up with missedCount >= 2 (test 23) only if two
      * slots passed between the last A1 fire in the snapshot and the start of the server; on a fast stand they may
-     * not. No A1 fire of the snapshot is later than the last A1 run the old machine knew, so the server starts
-     * once the second whole minute after that run has come.
+     * not. No A1 fire of the snapshot is later than the last A1 run the old machine knew, so waiting for the second
+     * whole minute after that run guarantees it. The wait comes before the first block of the page (test 3) runs:
+     * the recovery time is measured from that block, and the wait must not count into it.
      */
     private fun awaitTwoMissedSlotsOfA1() {
         val source = old.sourceIds.getValue("A1")
@@ -99,6 +100,7 @@ class ServerRecoveryDrillTest {
     @Test
     @Order(3)
     fun `Сверка id репозитория из хранилища совпадает с карточкой`() {
+        awaitTwoMissedSlotsOfA1()
         new.advance("snapshots")
 
         val output = new.runs.getValue("snapshots").stdout
@@ -140,7 +142,6 @@ class ServerRecoveryDrillTest {
     @Test
     @Order(6)
     fun `Отпечаток CA в логе нового сервера равен отпечатку карточки`() {
-        awaitTwoMissedSlotsOfA1()
         new.advance("server")
 
         assertTrue("CA fingerprint=${old.card.caFingerprint} origin=existing" in compose("docker compose logs server"))
