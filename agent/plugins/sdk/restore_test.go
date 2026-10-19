@@ -126,6 +126,8 @@ func TestRestorePlanOfADatabase(t *testing.T) {
 	}{
 		{"plain name", db("app_restored_20261011"), ""},
 		{"name with a quote and a space", db(`x"; DROP DATABASE app; --`), ""},
+		{"name of 1 byte", db("a"), ""},
+		{"name of 2 bytes", db("ab"), ""},
 		{"name of 63 bytes", db(strings.Repeat("a", 63)), ""},
 		{"name of 64 bytes", db(strings.Repeat("a", 64)), "/database"},
 		{"name of 32 two-byte characters", db(strings.Repeat("ж", 32)), "/database"},

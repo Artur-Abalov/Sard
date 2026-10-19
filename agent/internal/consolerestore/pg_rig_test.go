@@ -82,6 +82,10 @@ type pgCall struct {
 	Stdin string
 	// Vars are the psql variables (-v name=value).
 	Vars map[string]string
+	// StdinReader is the standard input of a pg_restore of the dump, as the process sees it.
+	StdinReader io.Reader
+	// Deadline is the time the context of the call had left when it started, 0 if it had none.
+	Deadline time.Duration
 }
 
 func (c pgCall) has(arg string) bool { return slices.Contains(c.Args, arg) }
@@ -120,8 +124,9 @@ type pgServer struct {
 	locks, conns  int
 	prepared      int
 	bootstrap     string
-	tables        int // tables the new database holds after a restore
-	toc           int // entries of the table of contents of the dump
+	tables        int  // tables the new database holds after a restore
+	toc           int  // entries of the table of contents of the dump
+	tocBlank      bool // the listing holds blank lines
 
 	databases map[string]uint32
 	roles     map[string]uint32
@@ -146,6 +151,9 @@ type pgServer struct {
 	afterGlobals     func()
 	killOnCreate     bool // CREATE DATABASE succeeds, the psql dies before it prints the OID
 	killAfterGlobals bool // the script commits, the psql dies before it ends
+	globalsExit      int  // the psql ends with this code after the script committed (not 3, not killed)
+	createExit       int  // CREATE DATABASE fails with this exit code instead of 3
+	exitErr          bool // globalsExit and createExit come with an error of the process, as after a signal
 
 	calls  []pgCall
 	events []string
@@ -153,6 +161,8 @@ type pgServer struct {
 	// make it fail with the text; hooks run when the event begins.
 	answers map[string]string
 	failOn  map[string]string
+	// failOut is failOn that prints lines to stdout as well.
+	failOut map[string][2]string
 	hooks   map[string]func()
 	// journalFile is the file of the rollback journal of the step; journalAt
 	// is what it held when each event began.
@@ -167,6 +177,7 @@ func newPGServer() *pgServer {
 		databases: map[string]uint32{"postgres": 5, "template0": 4, "template1": 1, "app": 16384},
 		roles:     map[string]uint32{"postgres": 10, "restorer": 16390}, nextOID: 20000,
 		dropRoleError: map[string]string{}, answers: map[string]string{}, failOn: map[string]string{}, hooks: map[string]func(){},
+		failOut: map[string][2]string{},
 	}
 }
 
@@ -247,7 +258,7 @@ func (s *pgServer) Run(ctx context.Context, cmd restic.Command) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return -1, err // a process is not started for a context that has ended
 	}
-	call := pgCall{Tool: filepath.Base(cmd.Path), Path: cmd.Path, Args: slices.Clone(cmd.Args), Env: slices.Clone(cmd.Env), Vars: map[string]string{}}
+	call := pgCall{Tool: filepath.Base(cmd.Path), Path: cmd.Path, Args: slices.Clone(cmd.Args), Env: slices.Clone(cmd.Env), Vars: map[string]string{}, Deadline: timeLeft(ctx)}
 	for i, a := range cmd.Args {
 		if a == "-v" && i+1 < len(cmd.Args) {
 			k, v, _ := strings.Cut(cmd.Args[i+1], "=")
@@ -277,6 +288,7 @@ func (s *pgServer) pgRestore(ctx context.Context, call pgCall, cmd restic.Comman
 	case call.has("-l"):
 		return s.contents(call, cmd)
 	}
+	call.StdinReader = cmd.Stdin
 	s.mu.Lock()
 	s.calls = append(s.calls, call)
 	s.event("pg_restore")
@@ -307,6 +319,9 @@ func (s *pgServer) pgVersion(call pgCall, cmd restic.Command) (int, error) {
 		hook()
 	}
 	if fails {
+		if out != "" {
+			say(cmd, out)
+		}
 		complain(cmd, "pg_restore: error: cannot run")
 		return 127, nil
 	}
@@ -332,6 +347,9 @@ func (s *pgServer) contents(call pgCall, cmd restic.Command) (int, error) {
 		return 1, nil
 	}
 	say(cmd, ";", "; Archive created at 2026-10-11 03:00:00 UTC", ";     dbname: app")
+	if s.tocBlank {
+		say(cmd, "", "   ")
+	}
 	for i := range toc {
 		say(cmd, fmt.Sprintf("%d; 1259 %d TABLE public t%d app", i+200, i+16500, i))
 	}
@@ -388,6 +406,13 @@ func (s *pgServer) scripted(call pgCall, cmd restic.Command) (code int, handled 
 	for marker, text := range s.failOn {
 		if strings.Contains(call.Stdin, marker) {
 			complain(cmd, text)
+			return 3, true
+		}
+	}
+	for marker, text := range s.failOut {
+		if strings.Contains(call.Stdin, marker) {
+			say(cmd, strings.Split(text[0], "\n")...)
+			complain(cmd, text[1])
 			return 3, true
 		}
 	}
@@ -505,7 +530,14 @@ func (s *pgServer) createDatabase(call pgCall, cmd restic.Command) (int, error) 
 	s.event("create database")
 	if s.createError != "" {
 		complain(cmd, s.createError)
-		return 3, nil
+		code := 3
+		if s.createExit != 0 {
+			code = s.createExit
+		}
+		if s.exitErr {
+			return code, errors.New("signal: killed")
+		}
+		return code, nil
 	}
 	if _, ok := s.databases[name]; ok {
 		complain(cmd, fmt.Sprintf(`ERROR:  database "%s" already exists`, name))
@@ -551,6 +583,13 @@ func (s *pgServer) applyGlobals(sql string, cmd restic.Command) (int, error) {
 	}
 	if s.killAfterGlobals {
 		return -1, errors.New("signal: killed")
+	}
+	if s.globalsExit != 0 {
+		complain(cmd, "psql: error: the connection was lost")
+		if s.exitErr {
+			return s.globalsExit, errors.New("signal: killed")
+		}
+		return s.globalsExit, nil
 	}
 	return 0, nil
 }
@@ -631,6 +670,8 @@ type pgHost struct {
 	path string
 	// noSecrets: the engine has no way to read a secret.
 	noSecrets bool
+	// noState: the host keeps no rollback journal (no executor state directory).
+	noState bool
 	// before are the databases and the roles the server had when the test began.
 	before struct{ databases, roles map[string]uint32 }
 }
@@ -678,11 +719,18 @@ func (h *pgHost) rebuild() {
 			Environ: func() []string {
 				return []string{"PATH=" + h.path, "HOME=/home/sard", "PGPASSWORD=leaked", "PGHOST=evil", "LC_ALL=ru_RU.UTF-8"}
 			},
-			StateDir:  h.stateDir,
+			StateDir:  h.stateDirOrNone(),
 			LockShare: h.share,
 			Secret:    h.secretReader(),
 		},
 	})
+}
+
+func (h *pgHost) stateDirOrNone() string {
+	if h.noState {
+		return ""
+	}
+	return h.stateDir
 }
 
 func (h *pgHost) secret(name string) ([]byte, error) {
@@ -790,4 +838,12 @@ func firstIdentifier(rest string) string {
 		}
 	}
 	return b.String()
+}
+
+// timeLeft is what the context has left before its deadline, 0 if it has none.
+func timeLeft(ctx context.Context) time.Duration {
+	if d, ok := ctx.Deadline(); ok {
+		return time.Until(d)
+	}
+	return 0
 }

@@ -4,7 +4,9 @@
 package dev.sard.server.runs
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.persistence.HibernateTenantBridge
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.RestoreScene.Companion.PG_BACKUP
 import dev.sard.server.runs.RestoreScene.Companion.PG_RESTORED
 import dev.sard.server.runs.RestoreScene.Companion.PG_SCHEMA
@@ -26,6 +28,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private val JSON = JsonMapper.builder().build()
@@ -282,5 +285,111 @@ class RestorePostgresMutationTest(
         val globals = """{"host":"h","user":"r","password_ref":"pg-app","database":"x","restore_globals":"yes"}"""
         val type = ConfigViolation("config/restore_globals", """violates "type" of the schema""")
         assertEquals(listOf(type), violations(globals))
+    }
+
+    // --- the rest of what the restore of a database reaches
+
+    private fun newName(database: String): String {
+        val config = """{"host":"h","database":"$database","user":"b","password_ref":"pg-app"}"""
+        val defaults = options(q(config)).targets.single().defaults
+        return JSON.readTree(defaults).path("database").asString()
+    }
+
+    @Test
+    fun `a name that just fits is kept whole, one byte more is cut`() {
+        val room = 63 - "_restored_20261011".length
+        assertEquals("a".repeat(room) + "_restored_20261011", newName("a".repeat(room)))
+    }
+
+    @Test
+    fun `a name one byte too long loses that byte`() {
+        val room = 63 - "_restored_20261011".length
+        assertEquals("a".repeat(room) + "_restored_20261011", newName("a".repeat(room + 1)))
+    }
+
+    @Test
+    fun `a database target has no restore directory, a files target has one, the source agent is told`() {
+        val s = q()
+        val b = agent("db2")
+        val files = scene.source("etc data")
+        scene.snapshot(files)
+
+        val targets = options(s).targets
+
+        assertEquals(listOf(a, b), targets.map { it.agentId })
+        assertEquals(listOf(true, false), targets.map { it.sourceAgent })
+        assertEquals(listOf(null, null), targets.map { it.restoreDir })
+        val filesTarget = MutFlow.underTest { restores.options(tenant.id, files, RestoreScene.SF) }.targets.first()
+        assertEquals(RestoreScene.DIR, filesTarget.restoreDir)
+    }
+
+    @Test
+    fun `what the agent reported of a database restore reads back with the run`() {
+        val s = q()
+        val run = start(s, draft(a))
+        jdbc.update(
+            "update run_steps set output = ?::jsonb where run_id = ?",
+            """{"kind":"restore","database":"app_restored_20261011","tablesRestored":3,"rolesRestored":1}""",
+            run.id,
+        )
+
+        val got = assertNotNull(MutFlow.underTest { runs.get(tenant.id, run.id) })
+
+        assertEquals(
+            RestoreResult(null, null, null, "app_restored_20261011", 3, 1, null, null),
+            got.steps.single().restore,
+        )
+        assertNull(got.steps.single().backup)
+    }
+
+    @Test
+    fun `a restore schema that is no schema or loads a resource refuses every config`() {
+        val s = q()
+        val broken = ConfigViolation("config", "the plugin's config schema is not a valid JSON Schema")
+        val schemas =
+            listOf(
+                """{"${'$'}ref":"classpath:schemas/string-only.json"}""",
+                """{"properties":{"a":{"pattern":"("}}}""",
+            )
+        for (schema in schemas) {
+            jdbc.update(
+                "update agent_plugins set restore_config_schema = ?::jsonb where agent_id = ? and name = 'postgresql'",
+                schema,
+                a,
+            )
+
+            val refused = assertFailsWith<RestoreConfigInvalid> { start(s, draft(a)) }
+            assertEquals(listOf(broken), refused.violations, schema)
+        }
+    }
+
+    @Test
+    fun `a revoked agent and a verifier are refused as targets of a database restore`() {
+        val s = q()
+        val revoked = agent("gone").also { jdbc.update("update agents set revoked_at = now() where id = ?", it) }
+        val verifier = scene.agent("ver", plugins = listOf("postgresql"), role = "verifier")
+
+        assertEquals(revoked, assertFailsWith<AgentRevoked> { start(s, draft(revoked)) }.agentId)
+        val mismatch = assertFailsWith<AgentRoleMismatch> { start(s, draft(verifier)) }
+        assertEquals(verifier, mismatch.agentId)
+        assertEquals(Action.RESTORE, mismatch.action)
+        assertEquals(0, restoreRuns())
+    }
+
+    @Test
+    fun `a source may be asked to back up, restore and run, a verifier only to verify`() {
+        for (action in Action.entries) {
+            val source = MutFlow.underTest { AgentRole.SOURCE.allows(action) }
+            val verifier = MutFlow.underTest { AgentRole.VERIFIER.allows(action) }
+            assertEquals(action != Action.VERIFY, source, "source $action")
+            assertEquals(action == Action.VERIFY, verifier, "verifier $action")
+        }
+    }
+
+    @Test
+    fun `only the system tenant is root`() {
+        val bridge = HibernateTenantBridge { tenant.id }
+        assertEquals(false, MutFlow.underTest { bridge.isRoot(tenant.id) })
+        assertEquals(true, MutFlow.underTest { bridge.isRoot(HibernateTenantBridge.SYSTEM_TENANT_ID) })
     }
 }

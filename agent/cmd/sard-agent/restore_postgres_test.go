@@ -40,7 +40,7 @@ func TestTheSecretsOfTheHostAreReadByName(t *testing.T) {
 	if v, err := o.Secret("pg"); err != nil || string(v) != "pw\n" {
 		t.Errorf("Secret(pg) = %q, %v", v, err)
 	}
-	if _, err := o.Secret("other"); err == nil || !strings.Contains(err.Error(), `"other"`) {
+	if _, err := o.Secret("other"); err == nil || err.Error() != `secret "other" is not defined on this host` {
 		t.Errorf("an undefined secret: %v", err)
 	}
 }

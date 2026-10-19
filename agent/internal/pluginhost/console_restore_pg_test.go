@@ -167,6 +167,12 @@ type pgConsoleHost struct {
 
 func newPGConsoleHost(t *testing.T, tools onlyTools) *pgConsoleHost {
 	t.Helper()
+	return newPGConsoleHostWith(t, tools, map[string]string{"/etc/sard/pg": "s3cret\n"})
+}
+
+// newPGConsoleHostWith is a host whose secret files are data.
+func newPGConsoleHostWith(t *testing.T, tools onlyTools, data map[string]string) *pgConsoleHost {
+	t.Helper()
 	reg, err := sdk.NewRegistry(&dbRestorer{})
 	if err != nil {
 		t.Fatal(err)
@@ -185,7 +191,7 @@ func newPGConsoleHost(t *testing.T, tools onlyTools) *pgConsoleHost {
 		Postgres: consolerestore.PostgresOptions{Exec: programs, Tools: tools, StateDir: state, LockShare: 0.5,
 			Environ: func() []string { return []string{"PATH=" + pgBin} }},
 	})
-	secrets := pluginhost.NewSecrets(map[string]string{"pg": "/etc/sard/pg"}, (&files{data: map[string]string{"/etc/sard/pg": "s3cret\n"}}).read)
+	secrets := pluginhost.NewSecrets(map[string]string{"pg": "/etc/sard/pg"}, (&files{data: data}).read)
 	repos := func(name, commandID string, stderr io.Writer) (restic.Repository, bool) {
 		return f.repo, name == "main"
 	}
@@ -265,6 +271,19 @@ func TestAMissingPgRestoreFailsTheStepWithTheCheckHint(t *testing.T) {
 	var f *consolerestore.Failure
 	if !errors.As(err, &f) {
 		t.Errorf("the cause is lost: %v", err)
+	}
+	if len(h.programs.psqlCalls()) != 0 {
+		t.Error("psql ran")
+	}
+}
+
+// A secret that cannot be read is told as it is, not as an empty one.
+func TestASecretThatCannotBeReadFailsTheStepWithTheReadError(t *testing.T) {
+	h := newPGConsoleHostWith(t, healthyTools(), map[string]string{})
+	handler, _ := h.handlers.Handler("fake")
+	_, err := handler.Run(context.Background(), pgStep(pgCfg), &reporter{})
+	if err == nil || !strings.HasPrefix(err.Error(), "SECRET_INVALID (check)") || !strings.Contains(err.Error(), `secret "pg"`) || strings.Contains(err.Error(), "is empty") {
+		t.Fatalf("err = %v", err)
 	}
 	if len(h.programs.psqlCalls()) != 0 {
 		t.Error("psql ran")
