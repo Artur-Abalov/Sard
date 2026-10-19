@@ -22,7 +22,7 @@ import (
 // dump. What the step created is dropped by OID when anything fails; the
 // rollback journal says what that is, also after a kill of the agent.
 func (e *Engine) RestoreDatabase(ctx context.Context, repo DatabaseRepository, req DatabaseRequest, r Reporter) (DatabaseOutput, *Failure) {
-	if err := (sdk.RestorePlan{Database: &req.Plan}).Validate(); err != nil {
+	if err := (sdk.RestorePlan{Postgres: &req.Plan}).Validate(); err != nil {
 		return DatabaseOutput{}, &Failure{Reason: refusal.TargetInvalid, Stage: StageCheck, Detail: "the restore plan is invalid: " + err.Error()}
 	}
 	if !UsableName(req.CommandID) {

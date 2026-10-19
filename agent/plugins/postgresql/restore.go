@@ -48,7 +48,7 @@ func (Plugin) PlanRestore(cfg sdk.Config) (sdk.RestorePlan, error) {
 	if c.Port != nil {
 		port = *c.Port
 	}
-	plan := sdk.RestorePlan{Database: &sdk.DatabaseRestore{
+	plan := sdk.RestorePlan{Postgres: &sdk.PostgresRestore{
 		Host: c.Host, Port: port, User: c.User, PasswordRef: c.PasswordRef, TLSMode: c.TLSMode, TLSRootCert: c.TLSRootCert,
 		Name: c.Database, Globals: c.RestoreGlobals, ClientPath: c.PgRestorePath,
 	}}

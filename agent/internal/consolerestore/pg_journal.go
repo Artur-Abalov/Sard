@@ -64,7 +64,7 @@ type pgRecord struct {
 	Result     *pgResult    `json:"result,omitempty"`
 }
 
-func recordOf(commandID string, plan sdk.DatabaseRestore) pgRecord {
+func recordOf(commandID string, plan sdk.PostgresRestore) pgRecord {
 	return pgRecord{CommandID: commandID, Connection: pgConnection{
 		Host: plan.Host, Port: plan.Port, User: plan.User, PasswordRef: plan.PasswordRef,
 		TLSMode: plan.TLSMode, TLSRootCert: plan.TLSRootCert, ClientPath: plan.ClientPath,
@@ -72,9 +72,9 @@ func recordOf(commandID string, plan sdk.DatabaseRestore) pgRecord {
 }
 
 // plan is the connection of the record as a plan, for the connection string.
-func (r pgRecord) plan() sdk.DatabaseRestore {
+func (r pgRecord) plan() sdk.PostgresRestore {
 	c := r.Connection
-	return sdk.DatabaseRestore{Host: c.Host, Port: c.Port, User: c.User, PasswordRef: c.PasswordRef, TLSMode: c.TLSMode, TLSRootCert: c.TLSRootCert, ClientPath: c.ClientPath}
+	return sdk.PostgresRestore{Host: c.Host, Port: c.Port, User: c.User, PasswordRef: c.PasswordRef, TLSMode: c.TLSMode, TLSRootCert: c.TLSRootCert, ClientPath: c.ClientPath}
 }
 
 // created reports whether some object of the record has an OID: the restore

@@ -41,7 +41,7 @@ func (*dbRestorer) RestoreConfigSchema() []byte {
 }
 
 func (*dbRestorer) PlanRestore(cfg sdk.Config) (sdk.RestorePlan, error) {
-	return sdk.RestorePlan{Database: &sdk.DatabaseRestore{Host: "db2", Port: 5432, User: "restorer", PasswordRef: "pg", TLSMode: "disable", Name: "app_restored_20261011"}}, nil
+	return sdk.RestorePlan{Postgres: &sdk.PostgresRestore{Host: "db2", Port: 5432, User: "restorer", PasswordRef: "pg", TLSMode: "disable", Name: "app_restored_20261011"}}, nil
 }
 
 // pgProgram plays psql and pg_restore: the target answers what a healthy

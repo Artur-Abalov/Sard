@@ -81,7 +81,7 @@ func TestIntegrationADatabaseIsStreamedFromResticIntoPgRestoreByteForByte(t *tes
 
 	out, f := engine.RestoreDatabase(context.Background(), r.cli, consolerestore.DatabaseRequest{
 		CommandID: "c1", Repository: "it", SnapshotID: sum.SnapshotID, Source: "s2",
-		Plan:     sdk.DatabaseRestore{Host: "db", Port: 5432, User: "restorer", PasswordRef: "pg", TLSMode: "disable", Name: "app_restored"},
+		Plan:     sdk.PostgresRestore{Host: "db", Port: 5432, User: "restorer", PasswordRef: "pg", TLSMode: "disable", Name: "app_restored"},
 		Password: []byte("x"),
 	}, quiet{})
 	if f != nil {

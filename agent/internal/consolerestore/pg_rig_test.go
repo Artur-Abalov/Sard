@@ -708,7 +708,7 @@ func (h *pgHost) rebuildWithoutSecrets() {
 func (h *pgHost) request() consolerestore.DatabaseRequest {
 	return consolerestore.DatabaseRequest{
 		CommandID: "c1", Repository: "main", SnapshotID: pgSnapshotID, Source: "s2",
-		Plan:     sdk.DatabaseRestore{Host: "db2", Port: 5432, User: "restorer", PasswordRef: passwordSecret, TLSMode: "disable", Name: pgNewDatabase},
+		Plan:     sdk.PostgresRestore{Host: "db2", Port: 5432, User: "restorer", PasswordRef: passwordSecret, TLSMode: "disable", Name: pgNewDatabase},
 		Password: []byte(secretValue),
 	}
 }

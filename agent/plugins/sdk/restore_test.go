@@ -113,7 +113,7 @@ func TestRestorePlanViolationMessages(t *testing.T) {
 // paths of a snapshot.
 func TestRestorePlanOfADatabase(t *testing.T) {
 	db := func(name string) sdk.RestorePlan {
-		return sdk.RestorePlan{Database: &sdk.DatabaseRestore{Host: "db2", Port: 5432, User: "restorer", Name: name}}
+		return sdk.RestorePlan{Postgres: &sdk.PostgresRestore{Host: "db2", Port: 5432, User: "restorer", Name: name}}
 	}
 	withDestination := db("app")
 	withDestination.Destination = "x"

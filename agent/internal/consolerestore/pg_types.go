@@ -51,7 +51,7 @@ type DatabaseRequest struct {
 	SnapshotID string
 	// Source is the sard.source of the step: the snapshot must carry it.
 	Source string
-	Plan   sdk.DatabaseRestore
+	Plan   sdk.PostgresRestore
 	// Password is the content of the secret Plan.PasswordRef.
 	Password []byte
 }

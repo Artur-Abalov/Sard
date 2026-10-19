@@ -82,17 +82,17 @@ func TestTheRestoreSchemaRejectsAnInvalidConfig(t *testing.T) {
 
 func TestThePlanOfARestoreIntoADatabaseCarriesTheConnectionAndTheChoices(t *testing.T) {
 	plan, err := postgresql.Plugin{}.PlanRestore([]byte(kp(`, "port": 6432, "tls_root_cert": "/etc/ca.pem", "restore_globals": true, "pg_restore_path": "/opt/pg/bin/pg_restore"`)))
-	want := sdk.DatabaseRestore{Host: "db2", Port: 6432, User: "restorer", PasswordRef: "pg-restore", TLSMode: "disable", TLSRootCert: "/etc/ca.pem",
+	want := sdk.PostgresRestore{Host: "db2", Port: 6432, User: "restorer", PasswordRef: "pg-restore", TLSMode: "disable", TLSRootCert: "/etc/ca.pem",
 		Name: "app_restored_20261011", Globals: true, ClientPath: "/opt/pg/bin/pg_restore"}
-	if err != nil || plan.Database == nil || *plan.Database != want || plan.Destination != "" || plan.Paths != nil {
+	if err != nil || plan.Postgres == nil || *plan.Postgres != want || plan.Destination != "" || plan.Paths != nil {
 		t.Fatalf("plan = %+v, %v", plan, err)
 	}
 }
 
 func TestThePlanOfARestoreDefaultsThePortAndLeavesGlobalsOff(t *testing.T) {
 	plan, err := postgresql.Plugin{}.PlanRestore([]byte(kp("")))
-	if err != nil || plan.Database.Port != 5432 || plan.Database.Globals || plan.Database.ClientPath != "" {
-		t.Fatalf("plan = %+v, %v", plan.Database, err)
+	if err != nil || plan.Postgres.Port != 5432 || plan.Postgres.Globals || plan.Postgres.ClientPath != "" {
+		t.Fatalf("plan = %+v, %v", plan.Postgres, err)
 	}
 }
 

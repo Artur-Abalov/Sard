@@ -168,7 +168,7 @@ func (h *handler) restore(ctx context.Context, step *agentv1.RunStep, repo resti
 	if err != nil {
 		return nil, rejected(err)
 	}
-	if req.Plan.Database != nil {
+	if req.Plan.Postgres != nil {
 		return h.restoreDatabase(ctx, step, repo, req, r)
 	}
 	out, failure := h.console.Restore(ctx, repo, req, r)

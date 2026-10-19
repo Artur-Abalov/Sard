@@ -19,7 +19,7 @@ import (
 // all or nothing. The password is the secret the plan names, as the step
 // started with it.
 func (h *handler) restoreDatabase(ctx context.Context, step *agentv1.RunStep, repo restic.Repository, req consolerestore.Request, r executor.Reporter) (*agentv1.StepResult, error) {
-	plan := *req.Plan.Database
+	plan := *req.Plan.Postgres
 	password, err := h.password(plan.PasswordRef, r)
 	if err != nil {
 		failure := &consolerestore.Failure{Reason: refusal.SecretInvalid, Stage: consolerestore.StageCheck, Detail: err.Error()}

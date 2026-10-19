@@ -23,7 +23,7 @@ const maxQuoteBytes = 512
 // pgConn is the connection to the target server: the parameters of the plan,
 // the password and the programs of the host.
 type pgConn struct {
-	plan     sdk.DatabaseRestore
+	plan     sdk.PostgresRestore
 	password []byte
 	tools    pgTools
 	environ  func() []string

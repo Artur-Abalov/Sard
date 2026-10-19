@@ -40,14 +40,14 @@ type RestorePlan struct {
 	// taken literally (no * ? [ \ and no ".." component), 1-4096 bytes, at
 	// most MaxRestorePaths, without repeats. Empty: the whole snapshot.
 	Paths []string
-	// Database, if not nil, makes this a restore into a new database of a
+	// Postgres, if not nil, makes this a restore into a new database of a
 	// server instead of a directory: Destination and Paths stay empty.
-	Database *DatabaseRestore
+	Postgres *PostgresRestore
 }
 
-// DatabaseRestore is a restore into a new database of a server (R2b). The
+// PostgresRestore is a restore into a new database of a server (R2b). The
 // password is not here: PasswordRef names a secret of the host.
-type DatabaseRestore struct {
+type PostgresRestore struct {
 	Host string
 	Port int
 	User string
@@ -79,7 +79,7 @@ const (
 // reported as a *ConfigError whose paths are those of the restore config
 // ("/destination", "/paths", "/paths/<index>").
 func (p RestorePlan) Validate() error {
-	if p.Database != nil {
+	if p.Postgres != nil {
 		return p.validateDatabase()
 	}
 	var violations []Violation
@@ -96,7 +96,7 @@ func (p RestorePlan) Validate() error {
 // validateDatabase: a database plan names a database and nothing else.
 func (p RestorePlan) validateDatabase() error {
 	var violations []Violation
-	if msg := checkDatabaseName(p.Database.Name); msg != "" {
+	if msg := checkDatabaseName(p.Postgres.Name); msg != "" {
 		violations = append(violations, Violation{Path: "/database", Message: msg})
 	}
 	if p.Destination != "" {

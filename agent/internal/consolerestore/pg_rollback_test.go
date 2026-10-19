@@ -313,7 +313,7 @@ func TestAJournalThatCannotBeWrittenStopsTheRestoreBeforeAnyChange(t *testing.T)
 func TestAPlanKeepsItsConnectionInTheJournalWithoutThePassword(t *testing.T) {
 	h := newPGHost(t)
 	req := h.request()
-	req.Plan = sdk.DatabaseRestore{Host: "/var/run/postgresql", Port: 5433, User: "u", PasswordRef: "ref", TLSMode: "verify-full", TLSRootCert: "/etc/ca.pem", Name: "x", ClientPath: pgBin + "/pg_restore"}
+	req.Plan = sdk.PostgresRestore{Host: "/var/run/postgresql", Port: 5433, User: "u", PasswordRef: "ref", TLSMode: "verify-full", TLSRootCert: "/etc/ca.pem", Name: "x", ClientPath: pgBin + "/pg_restore"}
 	h.secrets["ref"] = []byte("p")
 	req.Password = []byte("p")
 	if _, f := h.run(req); f != nil {

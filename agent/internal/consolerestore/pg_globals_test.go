@@ -213,3 +213,15 @@ func TestAPsqlThatDiesAfterTheGlobalsCommittedNeverHidesTheRoles(t *testing.T) {
 		t.Errorf("claims nothing was restored while role app_rw exists: %s", f.Error())
 	}
 }
+
+// Scenario: Если цель не отвечает, какие роли созданы, намерения остаются все.
+func TestWhenTheTargetCannotTellWhichRolesExistAllTheIntentsAreNamed(t *testing.T) {
+	h := newPGHost(t)
+	h.server.killAfterGlobals = true
+	h.server.afterGlobals = func() { h.server.failOn["string_to_array"] = "connection lost" }
+	_, f := h.run(h.withGlobals())
+	if f == nil {
+		t.Fatal("restored")
+	}
+	mentions(t, f.Error(), "CLEANUP_FAILED", "role app_rw", "role app_ro")
+}
