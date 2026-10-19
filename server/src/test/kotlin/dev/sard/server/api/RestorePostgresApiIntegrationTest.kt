@@ -102,6 +102,18 @@ class RestorePostgresApiIntegrationTest(
     }
 
     @Test
+    fun `Цель восстановления базы не называет каталог восстановления`() {
+        val target =
+            w
+                .options(q, SQ)
+                .json
+                .path("targets")
+                .get(0)
+
+        assertTrue(target.path("restoreDir").isNull)
+    }
+
+    @Test
     fun `Конфиг по умолчанию берёт подключение из бэкапа и даёт новое имя базы`() {
         val target =
             w

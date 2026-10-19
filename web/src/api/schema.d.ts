@@ -1482,8 +1482,8 @@ export interface components {
             sourceAgent: boolean;
             /** @description The repository on this agent that holds the snapshot, by this agent's name for it */
             repositoryName: string;
-            /** @description restore.dir of the agent: every restore goes into a new directory inside it */
-            restoreDir: string;
+            /** @description restore.dir of the agent: every restore goes into a new directory inside it; null when the plugin restores elsewhere (a database) */
+            restoreDir: string | null;
             /** @description JSON Schema (draft 2020-12) of the restore config this agent accepts */
             restoreConfigSchema: {
                 [key: string]: unknown;

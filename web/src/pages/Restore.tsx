@@ -24,7 +24,7 @@ import { Mono } from '../components/Mono'
 import { Time } from '../components/Time'
 import { fieldFailures } from '../errors'
 import { groupFieldErrors } from '../fieldErrors'
-import { parseRestoreSearch, restorePreviewStale, restoresIntoDirectory } from '../restoreView'
+import { parseRestoreSearch, restorePreviewStale } from '../restoreView'
 import {
   buildConfig,
   buildFormModel,
@@ -356,7 +356,7 @@ function RestoreForm({
         onPick={(next) => setDraft(draftFor(next, null))}
         invalid={errors.agentId !== undefined}
       />
-      {restoresIntoDirectory(target.restoreConfigSchema) && (
+      {target.restoreDir !== null && (
         <Text size="sm">
           <Trans
             i18nKey="restore.dir"

@@ -26,6 +26,8 @@ type Warning = Schemas['RestoreWarningCode']
 
 /** What the server knows of the restore of one plugin (ВК32a): the form, the place, the warnings. */
 interface RestorePlugin {
+  /** The restore goes into a directory below the restore directory of the host, not a database. */
+  intoDirectory: boolean
   schema: Schemas['RestoreTarget']['restoreConfigSchema']
   defaults(source: Schemas['Source'], snapshot: Schemas['Snapshot']): Config
   configError(config: Config, agent: Schemas['AgentDetails']): Violation | null
@@ -90,7 +92,7 @@ export function restoreOptionsOf(
       online: agent.status === 'online',
       sourceAgent: agent.id === snapshot.agentId,
       repositoryName: repository,
-      restoreDir: agent.restoreDir ?? '',
+      restoreDir: plugin?.intoDirectory ? (agent.restoreDir ?? '') : null,
       restoreConfigSchema: plugin?.schema as Schemas['RestoreTarget']['restoreConfigSchema'],
       defaults: plugin?.defaults(source, snapshot) as Config,
     }))
@@ -307,6 +309,7 @@ export function queuedRestore(choice: Choice): Schemas['Run'] {
 }
 
 const filesRestore: RestorePlugin = {
+  intoDirectory: true,
   schema: filesRestoreSchema as Schemas['RestoreTarget']['restoreConfigSchema'],
   defaults: (source, snapshot) => ({
     destination: defaultDestination(source.name, snapshot.createdAt),
@@ -409,6 +412,7 @@ function stringError(property: Property, value: string, secrets: string[]): stri
 }
 
 const postgresqlRestore: RestorePlugin = {
+  intoDirectory: false,
   schema: postgresqlRestoreSchema as unknown as Schemas['RestoreTarget']['restoreConfigSchema'],
   defaults: (source, snapshot) => {
     const backup = source.config as Config

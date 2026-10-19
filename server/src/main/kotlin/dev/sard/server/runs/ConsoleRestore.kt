@@ -77,7 +77,8 @@ data class RestoreTarget(
     val hostname: String,
     val sourceAgent: Boolean,
     val repositoryName: String,
-    val restoreDir: String,
+    /** The restore directory of the agent; null when the plugin restores elsewhere (a database). */
+    val restoreDir: String?,
     val restoreConfigSchema: String,
     val defaults: String,
 )

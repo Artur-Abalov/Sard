@@ -43,8 +43,12 @@ data class RestoreTarget(
     val sourceAgent: Boolean,
     @field:Schema(description = "The repository on this agent that holds the snapshot, by this agent's name for it")
     val repositoryName: String,
-    @field:Schema(description = "restore.dir of the agent: every restore goes into a new directory inside it")
-    val restoreDir: String,
+    @field:Schema(
+        description =
+            "restore.dir of the agent: every restore goes into a new directory inside it; " +
+                "null when the plugin restores elsewhere (a database)",
+    )
+    val restoreDir: String?,
     @field:Schema(description = "JSON Schema (draft 2020-12) of the restore config this agent accepts")
     val restoreConfigSchema: Map<String, Any?>,
     @field:Schema(description = "The config the form starts from")

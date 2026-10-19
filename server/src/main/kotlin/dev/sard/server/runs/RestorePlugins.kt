@@ -15,6 +15,9 @@ import java.time.format.DateTimeFormatter
  * the entry of the plugin here.
  */
 internal interface RestorePlugin {
+    /** Whether the restore goes into a directory below the restore directory of the host, not into a database. */
+    val intoDirectory: Boolean
+
     /** The config the form starts from; [backupConfig] is the copy of the config of the step that made the snapshot. */
     fun defaults(
         sourceName: String,
@@ -58,6 +61,8 @@ internal const val POSTGRESQL_PLUGIN = "postgresql"
 
 /** A files restore goes to a new directory below the restore directory of the host (ВК32). */
 private object FilesRestore : RestorePlugin {
+    override val intoDirectory = true
+
     override fun defaults(
         sourceName: String,
         snapshotAt: Instant,
@@ -88,6 +93,8 @@ private object FilesRestore : RestorePlugin {
 
 /** A PostgreSQL restore goes into a new database of the server the config names (ВК32, ВК32a, ВК32b). */
 private object PostgresqlRestore : RestorePlugin {
+    override val intoDirectory = false
+
     private val CONNECTION = listOf("host", "port", "user", "password_ref", "tls_mode", "tls_root_cert")
     private val DAY = DateTimeFormatter.ofPattern("yyyyMMdd").withZone(ZoneOffset.UTC)
     private const val MAX_NAME_BYTES = 63

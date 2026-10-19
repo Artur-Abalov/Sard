@@ -272,6 +272,7 @@ describe('a restore of a database', () => {
       restore_globals: false,
     })
     expect(first.restoreConfigSchema).toEqual(postgresqlRestoreSchema)
+    expect(first.restoreDir).toBeNull()
   })
 
   test('a preview names the database and warns that owners are not restored', async () => {

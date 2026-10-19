@@ -77,12 +77,13 @@ internal object RestoreTargets {
         backupConfig: JsonNode,
     ): RestoreTarget? {
         val schema = RestoreChoice.restoreSchema(session, agent, source.plugin) ?: return null
+        val plugin = checkNotNull(RestorePlugins.of(source.plugin)) { "a restorable plugin is in the registry" }
         return RestoreTarget(
             agent.id,
             agent.hostname,
             agent.id == snapshot.agentId,
             repository,
-            agent.restoreDir.orEmpty(),
+            agent.restoreDir.orEmpty().takeIf { plugin.intoDirectory },
             schema,
             defaults(source, snapshot, backupConfig),
         )
