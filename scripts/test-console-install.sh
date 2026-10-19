@@ -109,11 +109,11 @@ start_server() {
 
 start_host() {
   local distro="$1"
-  docker build -q ${HOST_BUILD_FLAGS:-} --build-arg DISTRO="$distro" -t "sard-pkgtest:${distro//:/-}" \
+  docker build -q ${HOST_BUILD_FLAGS:-} --build-arg DISTRO="$distro" -t "sard-pkgtest:${distro//[:\/]/-}" \
     -f "$ROOT/test/packages/$HOST_DOCKERFILE" "$ROOT/test/packages" >/dev/null
   docker run -d --name "$HOST" --hostname agent-host --network "$NET" --privileged \
     --cgroupns=host --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
-    "sard-pkgtest:${distro//:/-}" >/dev/null
+    "sard-pkgtest:${distro//[:\/]/-}" >/dev/null
   # Before any on_host: it runs in WORKDIR, and docker exec fails while that is missing.
   docker exec "$HOST" mkdir -p "$WORKDIR"
   wait_for "systemd on $distro" 'systemctl is-system-running | grep -Eq "running|degraded"'
