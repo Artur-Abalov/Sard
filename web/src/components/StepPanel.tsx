@@ -6,7 +6,12 @@ import type { ReactNode } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import type { RunStep } from '../api/queries'
 import type { components } from '../api/schema'
-import { formatPercent, formatRestoreResult } from '../format'
+import {
+  formatPercent,
+  formatRestoreResult,
+  formatRolesRestored,
+  formatTablesRestored,
+} from '../format'
 import { stepPollInterval } from '../polling'
 import { partialNoteShown, stepNoteShown } from '../stepNotes'
 import { useFormat } from '../useFormat'
@@ -103,8 +108,25 @@ function BackupBlock({ step }: { step: RunStep }) {
   )
 }
 
+// A restore of a database: its name, its tables and, when it brought global objects, its roles.
+function RestoredDatabase({ restore }: { restore: Schemas['RestoreOutput'] }) {
+  const { i18n } = useTranslation()
+  const roles = restore.rolesRestored ?? 0
+  return (
+    <Alert color={tones.success} role="status">
+      <Text>
+        <Mono>{restore.database ?? ''}</Mono>
+        {' — '}
+        {formatTablesRestored(restore.tablesRestored ?? 0, i18n.language)}
+        {roles > 0 && `, ${formatRolesRestored(roles, i18n.language)}`}
+      </Text>
+    </Alert>
+  )
+}
+
 function Restored({ restore }: { restore: Schemas['RestoreOutput'] }) {
   const { t, i18n } = useTranslation()
+  if (restore.database !== null) return <RestoredDatabase restore={restore} />
   return (
     <Alert color={tones.success} role="status">
       <Text>

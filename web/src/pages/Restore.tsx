@@ -9,6 +9,7 @@ import { Trans, useTranslation } from 'react-i18next'
 import { ApiError, call } from '../api/call'
 import { client } from '../api/client'
 import {
+  agentQuery,
   restoreOptionsQuery,
   type RestoreOptions,
   type RestorePreview,
@@ -23,7 +24,7 @@ import { Mono } from '../components/Mono'
 import { Time } from '../components/Time'
 import { fieldFailures } from '../errors'
 import { groupFieldErrors } from '../fieldErrors'
-import { parseRestoreSearch, restorePreviewStale } from '../restoreView'
+import { parseRestoreSearch, restorePreviewStale, restoresIntoDirectory } from '../restoreView'
 import {
   buildConfig,
   buildFormModel,
@@ -240,6 +241,7 @@ function ConfigFields({
   onChange: (draft: Draft) => void
   errors: Errors
 }) {
+  const agent = useQuery(agentQuery(target.agentId))
   const model = buildFormModel(target.restoreConfigSchema)
   if (model.kind === 'json') {
     return (
@@ -256,7 +258,7 @@ function ConfigFields({
       model={model}
       values={draft.values}
       onChange={(values) => onChange({ ...draft, values })}
-      secretNames={[]}
+      secretNames={agent.data?.secretNames ?? []}
       errors={errors}
     />
   )
@@ -354,13 +356,15 @@ function RestoreForm({
         onPick={(next) => setDraft(draftFor(next, null))}
         invalid={errors.agentId !== undefined}
       />
-      <Text size="sm">
-        <Trans
-          i18nKey="restore.dir"
-          values={{ dir: target.restoreDir }}
-          components={{ m: <Mono /> }}
-        />
-      </Text>
+      {restoresIntoDirectory(target.restoreConfigSchema) && (
+        <Text size="sm">
+          <Trans
+            i18nKey="restore.dir"
+            values={{ dir: target.restoreDir }}
+            components={{ m: <Mono /> }}
+          />
+        </Text>
+      )}
       <ConfigFields target={target} draft={draft} onChange={setDraft} errors={errors} />
       <Answers
         checkError={count === 0 ? check.error : null}

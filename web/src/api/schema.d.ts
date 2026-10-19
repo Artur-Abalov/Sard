@@ -1185,7 +1185,7 @@ export interface components {
             warnings: components["schemas"]["RestoreWarningCode"][];
         };
         /** @enum {string} */
-        RestoreWarningCode: "agent_offline" | "owners_not_restored" | "globals_change_cluster";
+        RestoreWarningCode: "agent_offline" | "owners_not_restored" | "globals_change_cluster" | "pg_owners_not_restored" | "pg_same_cluster";
         /** @description The source already has an active run (D6); no new run was created (RFC 9457) */
         RunActiveProblem: {
             /** @description URI reference identifying the problem type; about:blank when the status says it all */

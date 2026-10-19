@@ -2,7 +2,12 @@
 // Copyright 2026 Artur Abalov
 
 import { describe, expect, test } from 'vitest'
-import { parseRestoreSearch, restoreSearchOf, restorePreviewStale } from './restoreView'
+import {
+  parseRestoreSearch,
+  restoresIntoDirectory,
+  restoreSearchOf,
+  restorePreviewStale,
+} from './restoreView'
 
 const agent = '0192f7a0-0000-7000-8000-000000000101'
 
@@ -56,5 +61,22 @@ describe('the preview that no longer matches the form', () => {
 
   test('no preview at all is a stale one', () => {
     expect(restorePreviewStale(null, sent)).toBe(true)
+  })
+})
+
+// R2b: the restore directory of the host is told only for a form that restores into a directory.
+describe('the form of a restore into a directory', () => {
+  test('a schema with a destination restores into a directory of the host', () => {
+    expect(restoresIntoDirectory({ properties: { destination: { type: 'string' } } })).toBe(true)
+  })
+
+  test.each([
+    ['a database', { properties: { database: { type: 'string' } } }],
+    ['no properties', {}],
+    ['properties that are no object', { properties: 5 }],
+    ['a schema that is no object', 'x'],
+    ['nothing', null],
+  ])('%s does not', (_name, schema) => {
+    expect(restoresIntoDirectory(schema)).toBe(false)
   })
 })

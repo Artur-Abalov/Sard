@@ -4140,7 +4140,7 @@
       },
       "RestoreWarningCode" : {
         "type" : "string",
-        "enum" : [ "agent_offline", "owners_not_restored", "globals_change_cluster" ]
+        "enum" : [ "agent_offline", "owners_not_restored", "globals_change_cluster", "pg_owners_not_restored", "pg_same_cluster" ]
       },
       "RunActiveProblem" : {
         "type" : "object",

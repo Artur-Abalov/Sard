@@ -322,7 +322,7 @@ describe('sources', () => {
     expect(
       (await api.GET('/api/v1/sources', { params: { query: { agentId: ids.dbAgent } } })).data
         ?.items,
-    ).toHaveLength(2)
+    ).toHaveLength(3) // the sources of the agent: /etc, the database app and the new one
     expect((await api.DELETE('/api/v1/sources/{sourceId}', path)).response.status).toBe(204)
     expect((await api.GET('/api/v1/sources/{sourceId}', path)).response.status).toBe(404)
   })

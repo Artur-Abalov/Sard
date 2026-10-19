@@ -2,6 +2,7 @@
 // Copyright 2026 Artur Abalov
 
 import type { components } from '../api/schema'
+import { postgresqlRestoreSchema } from './postgresqlSchemas'
 import { filesRestoreSchema } from './restoreSchema'
 import { problem } from './problems'
 import { state } from './state'
@@ -18,6 +19,20 @@ export interface Choice {
   repositoryName: string
   config: Config
   target: string
+}
+
+type Violation = { field: string; message: string }
+type Warning = Schemas['RestoreWarningCode']
+
+/** What the server knows of the restore of one plugin (ВК32a): the form, the place, the warnings. */
+interface RestorePlugin {
+  schema: Schemas['RestoreTarget']['restoreConfigSchema']
+  defaults(source: Schemas['Source'], snapshot: Schemas['Snapshot']): Config
+  configError(config: Config, agent: Schemas['AgentDetails']): Violation | null
+  target(agent: Schemas['AgentDetails'], config: Config): string
+  paths(config: Config): string[]
+  restoreGlobals(config: Config): boolean
+  warnings(choice: Choice): Warning[]
 }
 
 const SAFE = /[A-Za-z0-9_-]/
@@ -66,8 +81,9 @@ export function restoreOptionsOf(
   snapshot: Schemas['Snapshot'],
 ): Schemas['RestoreOptions'] {
   const holders = holding(snapshot)
+  const plugin = restorePlugins[source.plugin]
   const targets = holders
-    .filter(({ agent }) => restores(agent, source.plugin))
+    .filter(({ agent }) => plugin !== undefined && restores(agent, source.plugin))
     .map(({ agent, repository }) => ({
       agentId: agent.id,
       hostname: agent.hostname,
@@ -75,15 +91,15 @@ export function restoreOptionsOf(
       sourceAgent: agent.id === snapshot.agentId,
       repositoryName: repository,
       restoreDir: agent.restoreDir ?? '',
-      restoreConfigSchema: filesRestoreSchema as Schemas['RestoreTarget']['restoreConfigSchema'],
-      defaults: { destination: defaultDestination(source.name, snapshot.createdAt) },
+      restoreConfigSchema: plugin?.schema as Schemas['RestoreTarget']['restoreConfigSchema'],
+      defaults: plugin?.defaults(source, snapshot) as Config,
     }))
     .sort(
       (a, b) =>
         Number(b.sourceAgent) - Number(a.sourceAgent) || a.hostname.localeCompare(b.hostname),
     )
   const ineligible = holders
-    .filter(({ agent }) => !restores(agent, source.plugin))
+    .filter(({ agent }) => plugin === undefined || !restores(agent, source.plugin))
     .map(({ agent }) => ({
       agentId: agent.id,
       hostname: agent.hostname,
@@ -178,7 +194,7 @@ function holder(
   if (agent.revokedAt !== null) return conflict('agent_revoked')
   const repository = agent.repositories.find((r) => r.repositoryId === snapshot.repositoryId)
   if (repository === undefined) return conflict('unknown_repository')
-  return restores(agent, source.plugin)
+  return restorePlugins[source.plugin] !== undefined && restores(agent, source.plugin)
     ? { agent, repository: repository.name }
     : conflict('unknown_plugin')
 }
@@ -207,9 +223,10 @@ export function resolveRestore(
   if (!('agent' in held)) return held
   const { agent, repository } = held
   const config = request.config ?? {}
-  const error = configError(config)
+  const plugin = restorePlugins[source.plugin] as RestorePlugin
+  const error = plugin.configError(config, agent)
   if (error !== null) return invalid(error.field, error.message)
-  const target = `${(agent.restoreDir ?? '').replace(/\/+$/, '')}/${String(config.destination)}`
+  const target = plugin.target(agent, config)
   return { source, snapshot, agent, repositoryName: repository, config, target }
 }
 
@@ -220,7 +237,7 @@ export function isChoice(value: Choice | Problem): value is Choice {
 /** What the preview says: the place, and the warnings (an offline agent first, ВК36). */
 export function previewOf(choice: Choice): Schemas['RestorePreview'] {
   const online = choice.agent.status === 'online'
-  const paths = Array.isArray(choice.config.paths) ? (choice.config.paths as string[]) : []
+  const plugin = restorePlugins[choice.source.plugin] as RestorePlugin
   return {
     sourceName: choice.source.name,
     snapshotId: choice.snapshot.snapshotId,
@@ -230,9 +247,9 @@ export function previewOf(choice: Choice): Schemas['RestorePreview'] {
     hostname: choice.agent.hostname,
     agentOnline: online,
     target: choice.target,
-    paths,
-    restoreGlobals: false,
-    warnings: [...(online ? [] : (['agent_offline'] as const)), 'owners_not_restored'],
+    paths: plugin.paths(choice.config),
+    restoreGlobals: plugin.restoreGlobals(choice.config),
+    warnings: [...(online ? [] : (['agent_offline'] as const)), ...plugin.warnings(choice)],
   }
 }
 
@@ -287,4 +304,155 @@ export function queuedRestore(choice: Choice): Schemas['Run'] {
       target: choice.target,
     },
   }
+}
+
+const filesRestore: RestorePlugin = {
+  schema: filesRestoreSchema as Schemas['RestoreTarget']['restoreConfigSchema'],
+  defaults: (source, snapshot) => ({
+    destination: defaultDestination(source.name, snapshot.createdAt),
+  }),
+  configError: (config) => configError(config),
+  target: (agent, config) =>
+    `${(agent.restoreDir ?? '').replace(/\/+$/, '')}/${String(config.destination)}`,
+  paths: (config) => (Array.isArray(config.paths) ? (config.paths as string[]) : []),
+  restoreGlobals: () => false,
+  warnings: () => ['owners_not_restored'],
+}
+
+const DEFAULT_PORT = 5432
+const MAX_NAME_BYTES = 63
+
+// <database>_restored_<day of the snapshot, UTC>, the database cut at a character to fit 63 bytes.
+export function newDatabaseName(database: string, createdAt: string): string {
+  const suffix = `_restored_${createdAt.slice(0, 10).replace(/-/g, '')}`
+  const room = MAX_NAME_BYTES - new TextEncoder().encode(suffix).length
+  let used = 0
+  let kept = ''
+  for (const char of database) {
+    used += new TextEncoder().encode(char).length
+    if (used > room) break
+    kept += char
+  }
+  return kept + suffix
+}
+
+const CONNECTION = ['host', 'port', 'user', 'password_ref', 'tls_mode', 'tls_root_cert']
+
+interface Property {
+  type?: string
+  format?: string
+  enum?: unknown[]
+  minLength?: number
+  maxLength?: number
+  minimum?: number
+  maximum?: number
+  pattern?: string
+}
+
+// The first thing the schema refuses, as the server words its fields: config/<property>, or config
+// for an unknown property; a secret must be one of the agent's.
+function schemaError(
+  schema: { properties: Record<string, Property>; required: string[] },
+  config: Config,
+  secrets: string[],
+): Violation | null {
+  const unknown = Object.keys(config).find((name) => !(name in schema.properties))
+  if (unknown !== undefined) return { field: 'config', message: 'is not allowed' }
+  const missing = schema.required.find((name) => config[name] === undefined)
+  if (missing !== undefined) return { field: `config/${missing}`, message: 'is required' }
+  for (const [name, value] of Object.entries(config)) {
+    const message = propertyError(schema.properties[name], value, secrets)
+    if (message !== null) return { field: `config/${name}`, message }
+  }
+  return null
+}
+
+const TYPES: Record<string, (value: unknown) => boolean> = {
+  string: (value) => typeof value === 'string',
+  integer: (value) => Number.isInteger(value),
+  boolean: (value) => typeof value === 'boolean',
+}
+
+function propertyError(property: Property, value: unknown, secrets: string[]): string | null {
+  if (property.type !== undefined && !TYPES[property.type]?.(value)) {
+    return `must be of type ${property.type}`
+  }
+  if (typeof value === 'number') return rangeError(property, value)
+  return typeof value === 'string' ? stringError(property, value, secrets) : null
+}
+
+function rangeError(property: Property, value: number): string | null {
+  const below = property.minimum !== undefined && value < property.minimum
+  const above = property.maximum !== undefined && value > property.maximum
+  return below || above ? 'is out of range' : null
+}
+
+type StringRule = (property: Property, value: string, secrets: string[]) => string | null
+
+const STRING_RULES: StringRule[] = [
+  (p, v) => (p.enum !== undefined && !p.enum.includes(v) ? 'is not one of the values' : null),
+  (p, v) => (p.minLength !== undefined && [...v].length < p.minLength ? 'is too short' : null),
+  (p, v) => (p.maxLength !== undefined && [...v].length > p.maxLength ? 'is too long' : null),
+  (p, v) =>
+    p.pattern !== undefined && !new RegExp(p.pattern).test(v) ? 'does not fit the pattern' : null,
+  (p, v, secrets) =>
+    p.format === 'sard-secret' && !secrets.includes(v) ? 'is not a secret of the agent' : null,
+]
+
+// The first rule the string breaks.
+function stringError(property: Property, value: string, secrets: string[]): string | null {
+  for (const rule of STRING_RULES) {
+    const message = rule(property, value, secrets)
+    if (message !== null) return message
+  }
+  return null
+}
+
+const postgresqlRestore: RestorePlugin = {
+  schema: postgresqlRestoreSchema as unknown as Schemas['RestoreTarget']['restoreConfigSchema'],
+  defaults: (source, snapshot) => {
+    const backup = source.config as Config
+    const connection = Object.fromEntries(
+      CONNECTION.filter((name) => name in backup).map((name) => [name, backup[name]]),
+    )
+    const database = typeof backup.database === 'string' ? backup.database : source.name
+    return {
+      ...connection,
+      database: newDatabaseName(database, snapshot.createdAt),
+      restore_globals: false,
+    }
+  },
+  configError: (config, agent) =>
+    schemaError(
+      postgresqlRestoreSchema as unknown as Parameters<typeof schemaError>[0],
+      config,
+      agent.secretNames,
+    ),
+  target: (_agent, config) => String(config.database),
+  paths: () => [],
+  restoreGlobals: (config) => config.restore_globals === true,
+  warnings: (choice) => {
+    const kind = postgresqlRestore.restoreGlobals(choice.config)
+      ? ('globals_change_cluster' as const)
+      : ('pg_owners_not_restored' as const)
+    return sameCluster(choice) ? [kind, 'pg_same_cluster'] : [kind]
+  },
+}
+
+// ВК32b: the agent of the backup and the host and port of the backup (the host without case).
+function sameCluster({ agent, snapshot, source, config }: Choice): boolean {
+  const backup = source.config as Config
+  const host = typeof config.host === 'string' ? config.host : ''
+  const port = (value: unknown) => (typeof value === 'number' ? value : DEFAULT_PORT)
+  return (
+    agent.id === snapshot.agentId &&
+    host !== '' &&
+    host.toLowerCase() === String(backup.host ?? '').toLowerCase() &&
+    port(config.port) === port(backup.port)
+  )
+}
+
+const restorePlugins: Record<string, RestorePlugin | undefined> = {
+  files: filesRestore,
+  postgresql: postgresqlRestore,
 }

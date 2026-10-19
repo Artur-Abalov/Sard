@@ -51,3 +51,11 @@ export function restorePreviewStale(previewed: Request | null, current: Request)
     JSON.stringify(previewed.config) !== JSON.stringify(current.config)
   )
 }
+
+// Whether the restore form of a plugin puts the data into a directory of the host (it has a
+// destination) or elsewhere (a database): the page tells the restore directory only for the first.
+export function restoresIntoDirectory(schema: unknown): boolean {
+  if (typeof schema !== 'object' || schema === null) return false
+  const { properties } = schema as { properties?: unknown }
+  return typeof properties === 'object' && properties !== null && 'destination' in properties
+}

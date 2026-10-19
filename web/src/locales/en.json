@@ -723,6 +723,18 @@
     "many": "{{count}} files",
     "other": "{{count}} files"
   },
+  "tablesRestored": {
+    "one": "{{count}} table",
+    "few": "{{count}} tables",
+    "many": "{{count}} tables",
+    "other": "{{count}} tables"
+  },
+  "rolesRestored": {
+    "one": "{{count}} role",
+    "few": "{{count}} roles",
+    "many": "{{count}} roles",
+    "other": "{{count}} roles"
+  },
   "restore": {
     "title": "Restore a snapshot",
     "button": "Restore",
@@ -748,6 +760,8 @@
     "warning": {
       "agent_offline": "The agent is offline: the restore starts when it connects.",
       "owners_not_restored": "Files will belong to the agent's service user: owners and groups from the snapshot are not restored. Permissions and modification times are kept.",
+      "pg_owners_not_restored": "Global objects are not restored: every object of the new database will belong to the connecting role, and access privileges from the snapshot are not carried over.",
+      "pg_same_cluster": "The database will be restored into the same PostgreSQL cluster the backup was taken from. The restore loads the live cluster: disk and CPU, WAL shipped to replicas and the archive, disk space and locks. A separate cluster is the better target. The server tells this by the agent and the connection address and may miss the same cluster under another address.",
       "globals_change_cluster": "Global objects (roles, tablespaces) change the whole PostgreSQL cluster, not just the new database."
     },
     "blocked": {

@@ -12,6 +12,8 @@ import {
   formatMissed,
   formatPercent,
   formatRestoreResult,
+  formatRolesRestored,
+  formatTablesRestored,
   formatRelative,
   formatScheduleTime,
   formatTimestamp,
@@ -239,5 +241,31 @@ describe('formatRestoreResult', () => {
 
   test('nothing known is a dash', () => {
     expect(formatRestoreResult(null, null, 'en')).toBe('—')
+  })
+})
+
+// R2b: what a restore of a database made, the count with the plural form of the language.
+describe('formatTablesRestored', () => {
+  test.each([
+    ['ru', 12, '12 таблиц'],
+    ['ru', 1, '1 таблица'],
+    ['ru', 2, '2 таблицы'],
+    ['en', 12, '12 tables'],
+    ['en', 1, '1 table'],
+    ['en', 0, '0 tables'],
+  ])('%s: %s is %s', (language, count, text) => {
+    expect(formatTablesRestored(count, language)).toBe(text)
+  })
+})
+
+describe('formatRolesRestored', () => {
+  test.each([
+    ['ru', 3, '3 роли'],
+    ['ru', 1, '1 роль'],
+    ['ru', 5, '5 ролей'],
+    ['en', 3, '3 roles'],
+    ['en', 1, '1 role'],
+  ])('%s: %s is %s', (language, count, text) => {
+    expect(formatRolesRestored(count, language)).toBe(text)
   })
 })

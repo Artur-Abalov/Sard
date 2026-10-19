@@ -3,6 +3,7 @@
 
 import type { Status } from '../api/client'
 import type { components } from '../api/schema'
+import { postgresqlSchema } from './postgresqlSchemas'
 
 type Schemas = components['schemas']
 
@@ -31,6 +32,7 @@ export const ids = {
   homeSource: '0192f7a0-0000-7000-8000-000000000202',
   srvSource: '0192f7a0-0000-7000-8000-000000000203',
   oldSource: '0192f7a0-0000-7000-8000-000000000204',
+  appSource: '0192f7a0-0000-7000-8000-000000000205',
   succeededRun: '0192f7a0-0000-7000-8000-000000000301',
   failedRun: '0192f7a0-0000-7000-8000-000000000302',
   runningRun: '0192f7a0-0000-7000-8000-000000000303',
@@ -51,6 +53,7 @@ export const ids = {
   deletedSourceStep: '0192f7a0-0000-7000-8000-000000000319',
   snapshot: '0192f7a0-0000-7000-8000-000000000401',
   partialSnapshot: '0192f7a0-0000-7000-8000-000000000402',
+  appSnapshot: '0192f7a0-0000-7000-8000-000000000403',
   activeToken: '0192f7a0-0000-7000-8000-000000000501',
   usedToken: '0192f7a0-0000-7000-8000-000000000502',
   expiredToken: '0192f7a0-0000-7000-8000-000000000503',
@@ -118,19 +121,6 @@ const filesSchema = {
   additionalProperties: false,
 }
 
-// A plugin whose schema has a secret field, a number and a choice: the form of a source shows them.
-const postgresSchema = {
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  type: 'object',
-  required: ['database', 'password'],
-  properties: {
-    database: { type: 'string', title: 'Database' },
-    port: { type: 'integer', title: 'Port', default: 5432 },
-    password: { type: 'string', format: 'sard-secret', title: 'Password secret' },
-    format: { type: 'string', enum: ['custom', 'plain'], title: 'Dump format' },
-  },
-}
-
 // A schema the form cannot lay out (a nested object): the source is edited as JSON.
 const nestedSchema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -163,7 +153,12 @@ export const agents: Schemas['AgentDetails'][] = [
     protocolVersion: 1,
     plugins: [
       filesPlugin,
-      { name: 'postgres', version: '0.1.0', actions: ['backup'], configSchema: postgresSchema },
+      {
+        name: 'postgresql',
+        version: '0.1.0',
+        actions: ['backup', 'restore'],
+        configSchema: postgresqlSchema,
+      },
       { name: 'custom', version: '0.1.0', actions: ['backup'], configSchema: nestedSchema },
       { name: 'hooks', version: '0.1.0', actions: ['run'], configSchema: filesSchema },
     ],
@@ -360,6 +355,27 @@ export const sources: Schemas['Source'][] = [
     systemRole: null,
   },
 ]
+
+// The database app of db1, backed up with global objects: the source of the restores of a database (R2b).
+const appSource: Schemas['Source'] = {
+  id: ids.appSource,
+  name: 'db1 app',
+  agentId: ids.dbAgent,
+  plugin: 'postgresql',
+  repositoryName: 'local',
+  config: {
+    host: 'db1.example.com',
+    port: 5432,
+    database: 'app',
+    user: 'backup',
+    password_ref: 'pg-password',
+    tls_mode: 'disable',
+  },
+  createdAt: '2026-09-22T10:30:00Z',
+  updatedAt: '2026-09-22T10:30:00Z',
+  systemRole: null,
+}
+sources.push(appSource)
 
 /** A source that was deleted: gone from the list and the card, its run stays. */
 export const deletedSources: Schemas['Source'][] = [
@@ -669,6 +685,25 @@ export const snapshots: Schemas['Snapshot'][] = [
     restoreBlockedReason: null,
   },
 ]
+
+// The snapshot of the database app (the run and step are those of a succeeded backup).
+snapshots.push({
+  id: ids.appSnapshot,
+  snapshotId: '9d3e5f7a',
+  sourceId: ids.appSource,
+  runId: ids.succeededRun,
+  stepId: ids.succeededStep,
+  agentId: ids.dbAgent,
+  repositoryName: 'local',
+  repositoryId: '5a1f0c3e9b',
+  totalBytes: 8_388_608,
+  addedBytes: 2_097_152,
+  createdAt: '2026-10-11T03:00:00Z',
+  forgottenAt: null,
+  partial: false,
+  restorable: true,
+  restoreBlockedReason: null,
+})
 
 const levels: Schemas['LogLevel'][] = ['debug', 'info', 'info', 'info', 'warn']
 
