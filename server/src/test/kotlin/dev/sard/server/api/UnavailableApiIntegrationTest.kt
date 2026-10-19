@@ -88,6 +88,18 @@ class UnavailableApiIntegrationTest(
     }
 
     @Test
+    fun `Сбой базы при запросе агента не даёт выдуманного состояния сертификата`() {
+        val agent = world.agent(tenant)
+        databaseDown()
+
+        val response = world.api.get("/api/v1/agents/${agent.agentId}", admin)
+
+        assertEquals(503, response.status)
+        assertEquals("unavailable", response.code)
+        assertTrue(response.json.path("certificate").isMissingNode)
+    }
+
+    @Test
     fun `Обзор при недоступной базе отвечает 503 без подробностей`() {
         databaseDown()
 

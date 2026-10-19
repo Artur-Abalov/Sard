@@ -108,5 +108,5 @@ spring.grpc.server.ssl:
 - **RSA и Ed25519 для агентов** — агент генерирует P-256. RSA может понадобиться для TPM и HSM на хостах; это этап 2.
 
 ## Отложено
-- `RenewCertificate` агента, промежуточный CA, серверный сертификат из корпоративной PKI, Vault/PKCS#11, ГОСТ.
+- Промежуточный CA, серверный сертификат из корпоративной PKI, Vault/PKCS#11, ГОСТ. Продление сертификата агента (`RenewCertificate`) сделано в C1: [00XX-draft-agent-certificate-renewal.md](00XX-draft-agent-certificate-renewal.md).
 - Отзыв сертификатов: проверка `agent_certificates.revoked_at` в перехватчике — сделано в S3; закрытие открытых стримов — S5a (сверка раз в `check-interval`); API и UI отзыва — отложены.

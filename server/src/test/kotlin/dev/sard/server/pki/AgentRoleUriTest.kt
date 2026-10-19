@@ -29,7 +29,8 @@ class AgentRoleUriTest {
 
     private fun issued(role: AgentRole): X509Certificate {
         val key = SubjectPublicKeyInfo.getInstance(keys.public.encoded)
-        return MutFlow.underTest { Certificates.agent(key, AGENT, role, ca, NOW, random()) }
+        val validity = Certificates.DEFAULT_AGENT_VALIDITY
+        return MutFlow.underTest { Certificates.agent(key, AGENT, role, ca, NOW, validity, random()) }
     }
 
     private fun read(role: ForgedRole): CertificateRole {

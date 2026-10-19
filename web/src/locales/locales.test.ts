@@ -19,3 +19,31 @@ describe('locales', () => {
     expect(new Set(keyPaths(ru))).toEqual(new Set(keyPaths(en)))
   })
 })
+
+describe('certificate texts', () => {
+  const paths = [
+    'agents.certificate',
+    'agent.certificateNotAfter',
+    'agent.certificateDaysLeft',
+    'agent.certificateState',
+    'agent.certificateRenewalIssued',
+    'agent.certificateExpiringHint',
+    'agent.certificateExpiredHint',
+  ]
+
+  test('the new keys exist in both dictionaries', () => {
+    for (const dictionary of [ru, en]) {
+      const present = new Set(keyPaths(dictionary))
+      for (const path of paths) expect(present.has(path), path).toBe(true)
+    }
+  })
+
+  test('the hints do not contain commands', () => {
+    for (const dictionary of [ru, en]) {
+      const { agent } = dictionary
+      for (const text of [agent.certificateExpiringHint, agent.certificateExpiredHint]) {
+        expect(text).not.toContain('sard-agent')
+      }
+    }
+  })
+})

@@ -20,6 +20,8 @@ import org.springframework.core.env.Environment
 import org.springframework.jdbc.core.JdbcTemplate
 import java.sql.Timestamp
 import java.time.Duration
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -51,7 +53,12 @@ class AgentStreamIntegrationTest(
     private val clients = StreamClients(ca, enrollment, tokens, jdbc, port)
 
     @BeforeTest
-    fun `a fresh tenant`() = clients.createTenant()
+    fun `a fresh tenant`() {
+        // The CA signs at the injected clock's time and the TLS handshake checks the real one: every test starts
+        // at the real time, not where the previous test left the clock.
+        clock.now = Instant.now().truncatedTo(ChronoUnit.SECONDS)
+        clients.createTenant()
+    }
 
     @AfterTest
     fun `drop the tenant`() = clients.close()

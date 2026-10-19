@@ -8,6 +8,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
@@ -23,10 +24,6 @@ const (
 
 // ReadFunc reads a file, as the service would.
 type ReadFunc func(name string) ([]byte, error)
-
-// RenewWithin is how long before the end of a certificate the check warns:
-// automatic renewal (C1) is not available yet.
-const RenewWithin = 30 * 24 * time.Hour
 
 const enrollForce = "sudo sard-agent enroll --force"
 
@@ -152,6 +149,7 @@ func expiryOf(cert *x509.Certificate, now time.Time) Line {
 	line := Line{Check: CheckTLSExpiry}
 	left := cert.NotAfter.Sub(now)
 	end := cert.NotAfter.UTC().Format("2006-01-02")
+	days := int(left / (24 * time.Hour))
 	switch {
 	case now.Before(cert.NotBefore):
 		line.Status = Error
@@ -161,13 +159,21 @@ func expiryOf(cert *x509.Certificate, now time.Time) Line {
 		line.Status = Error
 		line.Message = "the certificate expired on " + end
 		line.Hint = enrollForce + " (see " + HelpURL(CheckTLSExpiry) + ")"
-	case left < RenewWithin:
+	case warnShare(left, cert.NotAfter.Sub(cert.NotBefore)):
 		line.Status = Warn
-		line.Message = fmt.Sprintf("the certificate expires in %d days (%s); automatic renewal is not available yet (C1)", int(left/(24*time.Hour)), end)
-		line.Hint = enrollForce
+		line.Message = fmt.Sprintf("the certificate expires in %d days (%s) and has not been renewed: see renewal_last_error in sudo sard-agent status", days, end)
+		line.Hint = "sudo sard-agent status"
 	default:
 		line.Status = OK
-		line.Message = fmt.Sprintf("the certificate is valid until %s (%d days)", end, int(left/(24*time.Hour)))
+		line.Message = fmt.Sprintf("the certificate is valid until %s (%d days)", end, days)
 	}
 	return line
+}
+
+// warnShare is the exact test left * 365 <= lifetime * 30 (П46), in integers
+// wide enough for a lifetime of years in nanoseconds.
+func warnShare(left, lifetime time.Duration) bool {
+	l := new(big.Int).Mul(big.NewInt(int64(left)), big.NewInt(365))
+	r := new(big.Int).Mul(big.NewInt(int64(lifetime)), big.NewInt(30))
+	return l.Cmp(r) <= 0
 }

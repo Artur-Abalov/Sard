@@ -71,8 +71,10 @@ class FileCertificateAuthority(
         csrDer: ByteArray,
         agent: AgentIdentity,
         role: AgentRole,
+        validity: Duration,
     ): IssuedCertificate {
-        val certificate = Certificates.agent(AgentCsr.verifiedKey(csrDer), agent, role, ca, clock.instant(), random)
+        val key = AgentCsr.verifiedKey(csrDer)
+        val certificate = Certificates.agent(key, agent, role, ca, clock.instant(), validity, random)
         val notAfter = certificate.notAfter.toInstant()
         return IssuedCertificate(Pem.certificate(certificate), certificate.serialNumber, notAfter)
     }

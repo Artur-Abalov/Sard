@@ -431,3 +431,14 @@ export const tones = {
   success: 'ok',
   neutral: 'paused',
 } as const
+
+// The mark of an agent certificate by the state the server reports; null: no mark.
+// The only place where the console tells the states apart.
+const CERTIFICATE_MARKS: Record<string, (typeof tones)[keyof typeof tones]> = {
+  expiring: tones.notice,
+  expired: tones.error,
+}
+
+export function certificateMarkTone(state: string): (typeof tones)[keyof typeof tones] | null {
+  return Object.hasOwn(CERTIFICATE_MARKS, state) ? CERTIFICATE_MARKS[state] : null
+}

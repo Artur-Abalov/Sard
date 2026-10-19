@@ -370,12 +370,14 @@ class NotificationsIntegrationTest(
         val run = finished()
         val restarted =
             NotificationService(
-                Deliveries(sessions, UuidV7(clock, SecureRandom())),
+                Deliveries(sessions, UuidV7(clock, SecureRandom()), { false }),
                 OverdueDeliveries(sessions, UuidV7(clock, SecureRandom())),
+                CertificateDeliveries(sessions, UuidV7(clock, SecureRandom())),
                 listOf(CapturingChannel()),
                 { Message(Message.Text("after restart")) },
                 { Message(Message.Text("alert after restart")) },
                 { null },
+                { Message(Message.Text("certificate")) },
                 RetryPolicy(RetrySettings()),
                 QueueSettings(batch = 10, lease = LEASE, ttl = Duration.ofHours(24)),
                 clock,
@@ -389,7 +391,7 @@ class NotificationsIntegrationTest(
     @Test
     fun `a sender that died during the send sends again when the lease ends`() {
         val run = finished()
-        val deliveriesOfTest = Deliveries(sessions, UuidV7(clock, SecureRandom()))
+        val deliveriesOfTest = Deliveries(sessions, UuidV7(clock, SecureRandom()), { false })
         deliveriesOfTest.plan(tenant.id, listOf(run), "telegram", clock.now)
         val due = deliveriesOfTest.due(clock.now, listOf("telegram"), 10).single()
         // The sender claimed the row and crashed before it recorded the outcome.
@@ -430,7 +432,7 @@ class NotificationsIntegrationTest(
     @Test
     fun `the notice carries the run, its source and its agent`() {
         val run = finished()
-        val due = Deliveries(sessions, UuidV7(clock, SecureRandom()))
+        val due = Deliveries(sessions, UuidV7(clock, SecureRandom()), { false })
         due.plan(tenant.id, listOf(run), "test-channel", clock.now)
         val delivery = due.due(clock.now, listOf("test-channel"), 10).single()
 
@@ -447,7 +449,7 @@ class NotificationsIntegrationTest(
     }
 
     private fun noticeOf(run: UUID): RunNotice {
-        val queue = Deliveries(sessions, UuidV7(clock, SecureRandom()))
+        val queue = Deliveries(sessions, UuidV7(clock, SecureRandom()), { false })
         queue.plan(tenant.id, listOf(run), "test-channel", clock.now)
         val due = queue.due(clock.now, listOf("test-channel"), 10).single()
         return (queue.claim(due, clock.now, clock.now + LEASE) as Claimed.Finished).notice

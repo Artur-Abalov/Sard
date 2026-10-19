@@ -195,4 +195,11 @@ class NoticeFormatterConfiguration {
         @Value("\${sard.notify.language:en}") language: String,
         @Value("\${sard.console.public-url:}") publicUrl: String,
     ): OverdueFormatter = OverdueNoticeFormatter(NoticeLanguage.of(language), ConsoleUrl.parse(publicUrl))
+
+    /** An agent certificate that reached a threshold or expired (C1 phase 3): the same language and console address. */
+    @Bean
+    fun certificateFormatter(
+        @Value("\${sard.notify.language:en}") language: String,
+        @Value("\${sard.console.public-url:}") publicUrl: String,
+    ): CertificateFormatter = CertificateNoticeFormatter(NoticeLanguage.of(language), ConsoleUrl.parse(publicUrl))
 }

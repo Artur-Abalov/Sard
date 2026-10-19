@@ -23,8 +23,21 @@ enum class AgentAuthFailure {
     CERT_ROLE_MISSING,
     CERT_ROLE_INVALID,
     CERT_REVOKED,
+    CERT_SUPERSEDED,
+    CERT_NOT_CONFIRMED,
     CERT_EXPIRED,
     AGENT_REVOKED,
+}
+
+/**
+ * What a judgement is for. A new call is judged by every check; the confirmation of a renewed certificate
+ * is the one call an unconfirmed certificate may make (C1, П8); an open stream is never closed because its
+ * certificate was superseded or not yet confirmed (C1, П11) and is judged only by revocation and expiry.
+ */
+enum class AuthScope {
+    CALL,
+    CONFIRM,
+    OPEN_STREAM,
 }
 
 /** The agent a call is authenticated as, for as long as the call (or stream) lasts. */
@@ -65,6 +78,10 @@ data class CertificateStanding(
     val revokedAt: Instant?,
     val agentRevokedAt: Instant?,
     val role: AgentRole,
+    /** Set when a confirmed renewal, or a later renewal, replaced this certificate (C1, П7). */
+    val supersededAt: Instant? = null,
+    /** Issued by a renewal that nothing has confirmed or replaced yet (C1, П7). */
+    val unconfirmed: Boolean = false,
 )
 
 /** Looks a certificate up by serial across tenants: the tenant is what it establishes. */
@@ -101,19 +118,23 @@ class AgentAuthenticator(
     private val standings: CertificateStandings,
     private val clock: Clock,
 ) {
-    fun authenticate(presented: PresentedCertificate?): AgentAuthResult =
+    fun authenticate(
+        presented: PresentedCertificate?,
+        scope: AuthScope,
+    ): AgentAuthResult =
         if (presented == null) {
             AgentAuthResult.Rejected(AgentAuthFailure.CERT_MISSING, serial = null, agentId = null)
         } else {
-            judge(presented, standings.of(presented.serial))
+            judge(presented, standings.of(presented.serial), scope)
         }
 
     private fun judge(
         presented: PresentedCertificate,
         standing: CertificateStanding?,
+        scope: AuthScope,
     ): AgentAuthResult {
         if (standing == null) return unknown(presented)
-        val failure = failureOf(presented, standing)
+        val failure = failureOf(presented, standing, scope)
         return if (failure == null) accepted(presented, standing) else rejected(failure, presented, standing)
     }
 
@@ -147,7 +168,8 @@ class AgentAuthenticator(
     private fun failureOf(
         presented: PresentedCertificate,
         standing: CertificateStanding,
-    ): AgentAuthFailure? = certificateFailure(presented, standing) ?: stateFailure(standing)
+        scope: AuthScope,
+    ): AgentAuthFailure? = certificateFailure(presented, standing) ?: stateFailure(standing, scope)
 
     private fun certificateFailure(
         presented: PresentedCertificate,
@@ -161,9 +183,28 @@ class AgentAuthenticator(
             else -> null
         }
 
-    private fun stateFailure(standing: CertificateStanding): AgentAuthFailure? =
+    private fun stateFailure(
+        standing: CertificateStanding,
+        scope: AuthScope,
+    ): AgentAuthFailure? =
         when {
             standing.revokedAt != null -> AgentAuthFailure.CERT_REVOKED
+            else -> replacementFailure(standing, scope) ?: lifetimeFailure(standing)
+        }
+
+    /** Superseded, then not confirmed: what an open stream does not care about, and the confirmation only partly. */
+    private fun replacementFailure(
+        standing: CertificateStanding,
+        scope: AuthScope,
+    ): AgentAuthFailure? =
+        when {
+            scope != AuthScope.OPEN_STREAM && standing.supersededAt != null -> AgentAuthFailure.CERT_SUPERSEDED
+            scope == AuthScope.CALL && standing.unconfirmed -> AgentAuthFailure.CERT_NOT_CONFIRMED
+            else -> null
+        }
+
+    private fun lifetimeFailure(standing: CertificateStanding): AgentAuthFailure? =
+        when {
             !clock.instant().isBefore(standing.notAfter) -> AgentAuthFailure.CERT_EXPIRED
             standing.agentRevokedAt != null -> AgentAuthFailure.AGENT_REVOKED
             else -> null

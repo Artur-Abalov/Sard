@@ -73,11 +73,12 @@ class StepResultReceiver(
                     report(agent, stepId, it)
                 }
             }
+        // Counted before the ack: whoever sees the ack may read the counter at once.
+        metrics.recorded(outcome(recorded))
         val sent = acks.ack(agent.agentId, result.commandId)
         if (sent != SendResult.Queued) {
             log.debug("ResultAck for {} not queued ({}); the agent resends on its next stream", stepId, sent)
         }
-        metrics.recorded(outcome(recorded))
     }
 
     private fun report(

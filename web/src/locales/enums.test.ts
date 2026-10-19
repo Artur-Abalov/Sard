@@ -29,6 +29,7 @@ const enums = [
   'StepAction',
   'RunTrigger',
   'AgentRole',
+  'AgentCertificateState',
 ]
 
 describe('every value of the contract is translated', () => {

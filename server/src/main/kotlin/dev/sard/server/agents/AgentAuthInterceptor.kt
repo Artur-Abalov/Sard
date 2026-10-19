@@ -3,6 +3,7 @@
 
 package dev.sard.server.agents
 
+import dev.sard.proto.agent.v1.AgentServiceGrpc
 import dev.sard.server.agents.AgentAuthResult.Accepted
 import dev.sard.server.agents.AgentAuthResult.Rejected
 import io.grpc.Context
@@ -19,6 +20,14 @@ import java.security.cert.X509Certificate
 import javax.net.ssl.SSLPeerUnverifiedException
 
 private val log = LoggerFactory.getLogger(AgentAuthInterceptor::class.java)
+
+/** The one call a certificate that nothing has confirmed yet may make (C1, П8). */
+private val CONFIRM_METHOD = AgentServiceGrpc.getConfirmCertificateMethod().fullMethodName
+
+/** The public key of the certificate a call presented (SubjectPublicKeyInfo, DER): the renewal must not reuse it. */
+object PresentedKey {
+    val KEY: Context.Key<ByteArray> = Context.key("sard.presented-key")
+}
 
 private const val ROLE_HINT =
     "the certificate carries no valid role of the agent (it was issued before roles existed, or is not ours): " +
@@ -44,6 +53,8 @@ internal fun refusalMessage(
         AgentAuthFailure.CERT_MISSING,
         AgentAuthFailure.CERT_IDENTITY_MISMATCH,
         AgentAuthFailure.CERT_REVOKED,
+        AgentAuthFailure.CERT_SUPERSEDED,
+        AgentAuthFailure.CERT_NOT_CONFIRMED,
         AgentAuthFailure.CERT_EXPIRED,
         AgentAuthFailure.AGENT_REVOKED,
         -> "$line method=$method"
@@ -66,14 +77,14 @@ class AgentAuthInterceptor(
         next: ServerCallHandler<Q, R>,
     ): ServerCall.Listener<Q> {
         if (call.methodDescriptor.serviceName in open) return next.startCall(call, headers)
-        return when (val result = authenticated(call)) {
+        val leaf = leaf(call)
+        return when (val result = authenticated(call, leaf)) {
             null -> {
                 closed(call, AgentAuthStatus.unavailable())
             }
 
             is Accepted -> {
-                val context = Context.current().withValue(AgentPrincipal.KEY, result.principal)
-                Contexts.interceptCall(context, call, headers, next)
+                Contexts.interceptCall(contextOf(result.principal, leaf), call, headers, next)
             }
 
             is Rejected -> {
@@ -90,15 +101,31 @@ class AgentAuthInterceptor(
      * cannot be read is the caller's fault, never a retryable fault of the server.
      */
     @Suppress("TooGenericExceptionCaught")
-    private fun authenticated(call: ServerCall<*, *>): AgentAuthResult? {
-        val presented = presented(call)
+    private fun authenticated(
+        call: ServerCall<*, *>,
+        leaf: X509Certificate?,
+    ): AgentAuthResult? {
+        val presented = presented(leaf)
         return try {
-            authenticator.authenticate(presented)
+            authenticator.authenticate(presented, scopeOf(call))
         } catch (e: Exception) {
             log.error("agent authentication failed on {}", call.methodDescriptor.fullMethodName, e)
             null
         }
     }
+
+    /** Only the confirmation of a renewed certificate may be made with a certificate nothing has confirmed yet. */
+    private fun scopeOf(call: ServerCall<*, *>): AuthScope =
+        if (call.methodDescriptor.fullMethodName == CONFIRM_METHOD) AuthScope.CONFIRM else AuthScope.CALL
+
+    private fun contextOf(
+        principal: AgentPrincipal,
+        leaf: X509Certificate?,
+    ): Context =
+        Context
+            .current()
+            .withValue(AgentPrincipal.KEY, principal)
+            .withValue(PresentedKey.KEY, checkNotNull(leaf).publicKey.encoded)
 
     private fun <Q, R> closed(
         call: ServerCall<Q, R>,
@@ -108,22 +135,21 @@ class AgentAuthInterceptor(
         return object : ServerCall.Listener<Q>() {}
     }
 
-    /**
-     * The leaf the TLS layer verified against the Sard CA, or null when none was presented or
-     * its names cannot be read: either way the call has no certificate to be known by.
-     */
-    private fun presented(call: ServerCall<*, *>): PresentedCertificate? {
+    /** The leaf the TLS layer verified against the Sard CA, or null when none was presented. */
+    private fun leaf(call: ServerCall<*, *>): X509Certificate? {
         val session = call.attributes.get(Grpc.TRANSPORT_ATTR_SSL_SESSION) ?: return null
-        val leaf =
-            try {
-                session.peerCertificates.firstOrNull() as? X509Certificate
-            } catch (_: SSLPeerUnverifiedException) {
-                null
-            }
         return try {
+            session.peerCertificates.firstOrNull() as? X509Certificate
+        } catch (_: SSLPeerUnverifiedException) {
+            null
+        }
+    }
+
+    /** What [leaf] says of its holder, or null when there is none or its names cannot be read. */
+    private fun presented(leaf: X509Certificate?): PresentedCertificate? =
+        try {
             leaf?.let(PresentedCertificate::of)
         } catch (_: CertificateParsingException) {
             null
         }
-    }
 }

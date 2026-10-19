@@ -39,6 +39,7 @@ import { EMPTY } from '../format'
 import { canConfirmRevoke, revokeQuery, SELF_AGENT_CONFIRMATION } from '../selfAgent'
 import { canCreateSourceOn } from '../sourceDraft'
 import { tones } from '../theme'
+import { CertificateAlert, CertificateRows } from '../components/CertificateMark'
 import { Mono } from '../components/Mono'
 import { Time } from '../components/Time'
 
@@ -279,6 +280,7 @@ function Facts({ agent }: { agent: AgentDetails }) {
             <Time value={agent.registeredAt} />
           </Table.Td>
         </Table.Tr>
+        <CertificateRows certificate={agent.certificate} />
       </Table.Tbody>
     </Table>
   )
@@ -296,6 +298,7 @@ function AgentCard({ agent }: { agent: AgentDetails }) {
       {agent.duplicateSessionAt !== null && <DuplicateNote />}
       {agent.outdated && <AgentUpgradeBlock agent={agent} />}
       <Facts agent={agent} />
+      <CertificateAlert certificate={agent.certificate} />
       <Snapshot agent={agent} />
       <AgentSources agentId={agent.id} role={agent.role} />
     </Stack>

@@ -1053,7 +1053,8 @@ func (x *RegisterResponse) GetHeartbeatInterval() *durationpb.Duration {
 
 type RenewCertificateRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// New CSR, DER-encoded; may reuse the existing key or carry a new one.
+	// New CSR, DER-encoded; must carry a new key: a CSR for the key of the
+	// presented certificate is rejected (CSR_KEY_REUSED).
 	CsrDer        []byte `protobuf:"bytes,1,opt,name=csr_der,json=csrDer,proto3" json:"csr_der,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1097,8 +1098,11 @@ func (x *RenewCertificateRequest) GetCsrDer() []byte {
 }
 
 type RenewCertificateResponse struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	CertificateChainPem string                 `protobuf:"bytes,1,opt,name=certificate_chain_pem,json=certificateChainPem,proto3" json:"certificate_chain_pem,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The new certificate chain in the same form as
+	// EnrollResponse.certificate_chain_pem. The expiry is read from the
+	// certificate.
+	CertificateChainPem string `protobuf:"bytes,1,opt,name=certificate_chain_pem,json=certificateChainPem,proto3" json:"certificate_chain_pem,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -1140,6 +1144,80 @@ func (x *RenewCertificateResponse) GetCertificateChainPem() string {
 	return ""
 }
 
+// ConfirmCertificateRequest is empty: the presented certificate names the agent.
+type ConfirmCertificateRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfirmCertificateRequest) Reset() {
+	*x = ConfirmCertificateRequest{}
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfirmCertificateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfirmCertificateRequest) ProtoMessage() {}
+
+func (x *ConfirmCertificateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfirmCertificateRequest.ProtoReflect.Descriptor instead.
+func (*ConfirmCertificateRequest) Descriptor() ([]byte, []int) {
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{10}
+}
+
+// ConfirmCertificateResponse is empty: success is the OK status.
+type ConfirmCertificateResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfirmCertificateResponse) Reset() {
+	*x = ConfirmCertificateResponse{}
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfirmCertificateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfirmCertificateResponse) ProtoMessage() {}
+
+func (x *ConfirmCertificateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfirmCertificateResponse.ProtoReflect.Descriptor instead.
+func (*ConfirmCertificateResponse) Descriptor() ([]byte, []int) {
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{11}
+}
+
 // ConnectRequest is one message from the agent to the server.
 type ConnectRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1157,7 +1235,7 @@ type ConnectRequest struct {
 
 func (x *ConnectRequest) Reset() {
 	*x = ConnectRequest{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[10]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1169,7 +1247,7 @@ func (x *ConnectRequest) String() string {
 func (*ConnectRequest) ProtoMessage() {}
 
 func (x *ConnectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[10]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1182,7 +1260,7 @@ func (x *ConnectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectRequest.ProtoReflect.Descriptor instead.
 func (*ConnectRequest) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{10}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ConnectRequest) GetMessage() isConnectRequest_Message {
@@ -1292,7 +1370,7 @@ type Hello struct {
 
 func (x *Hello) Reset() {
 	*x = Hello{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[11]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1304,7 +1382,7 @@ func (x *Hello) String() string {
 func (*Hello) ProtoMessage() {}
 
 func (x *Hello) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[11]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1317,7 +1395,7 @@ func (x *Hello) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Hello.ProtoReflect.Descriptor instead.
 func (*Hello) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{11}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Hello) GetRunningCommandIds() []string {
@@ -1341,7 +1419,7 @@ type Heartbeat struct {
 
 func (x *Heartbeat) Reset() {
 	*x = Heartbeat{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[12]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1353,7 +1431,7 @@ func (x *Heartbeat) String() string {
 func (*Heartbeat) ProtoMessage() {}
 
 func (x *Heartbeat) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[12]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1366,7 +1444,7 @@ func (x *Heartbeat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Heartbeat.ProtoReflect.Descriptor instead.
 func (*Heartbeat) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{12}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Heartbeat) GetSentAt() *timestamppb.Timestamp {
@@ -1407,7 +1485,7 @@ type StepProgress struct {
 
 func (x *StepProgress) Reset() {
 	*x = StepProgress{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[13]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1419,7 +1497,7 @@ func (x *StepProgress) String() string {
 func (*StepProgress) ProtoMessage() {}
 
 func (x *StepProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[13]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1432,7 +1510,7 @@ func (x *StepProgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StepProgress.ProtoReflect.Descriptor instead.
 func (*StepProgress) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{13}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *StepProgress) GetCommandId() string {
@@ -1502,7 +1580,7 @@ type LogChunk struct {
 
 func (x *LogChunk) Reset() {
 	*x = LogChunk{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[14]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1514,7 +1592,7 @@ func (x *LogChunk) String() string {
 func (*LogChunk) ProtoMessage() {}
 
 func (x *LogChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[14]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1527,7 +1605,7 @@ func (x *LogChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogChunk.ProtoReflect.Descriptor instead.
 func (*LogChunk) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{14}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *LogChunk) GetCommandId() string {
@@ -1556,7 +1634,7 @@ type LogLine struct {
 
 func (x *LogLine) Reset() {
 	*x = LogLine{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[15]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1568,7 +1646,7 @@ func (x *LogLine) String() string {
 func (*LogLine) ProtoMessage() {}
 
 func (x *LogLine) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[15]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1581,7 +1659,7 @@ func (x *LogLine) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogLine.ProtoReflect.Descriptor instead.
 func (*LogLine) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{15}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *LogLine) GetTime() *timestamppb.Timestamp {
@@ -1635,7 +1713,7 @@ type StepResult struct {
 
 func (x *StepResult) Reset() {
 	*x = StepResult{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[16]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1647,7 +1725,7 @@ func (x *StepResult) String() string {
 func (*StepResult) ProtoMessage() {}
 
 func (x *StepResult) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[16]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1660,7 +1738,7 @@ func (x *StepResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StepResult.ProtoReflect.Descriptor instead.
 func (*StepResult) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{16}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *StepResult) GetCommandId() string {
@@ -1793,7 +1871,7 @@ type BackupOutput struct {
 
 func (x *BackupOutput) Reset() {
 	*x = BackupOutput{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[17]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1805,7 +1883,7 @@ func (x *BackupOutput) String() string {
 func (*BackupOutput) ProtoMessage() {}
 
 func (x *BackupOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[17]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1818,7 +1896,7 @@ func (x *BackupOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BackupOutput.ProtoReflect.Descriptor instead.
 func (*BackupOutput) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{17}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *BackupOutput) GetSnapshotId() string {
@@ -1859,7 +1937,7 @@ type RestoreOutput struct {
 
 func (x *RestoreOutput) Reset() {
 	*x = RestoreOutput{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[18]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1871,7 +1949,7 @@ func (x *RestoreOutput) String() string {
 func (*RestoreOutput) ProtoMessage() {}
 
 func (x *RestoreOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[18]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1884,7 +1962,7 @@ func (x *RestoreOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreOutput.ProtoReflect.Descriptor instead.
 func (*RestoreOutput) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{18}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *RestoreOutput) GetTarget() string {
@@ -1916,7 +1994,7 @@ type VerifyOutput struct {
 
 func (x *VerifyOutput) Reset() {
 	*x = VerifyOutput{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[19]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1928,7 +2006,7 @@ func (x *VerifyOutput) String() string {
 func (*VerifyOutput) ProtoMessage() {}
 
 func (x *VerifyOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[19]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1941,7 +2019,7 @@ func (x *VerifyOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyOutput.ProtoReflect.Descriptor instead.
 func (*VerifyOutput) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{19}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *VerifyOutput) GetSnapshotId() string {
@@ -2010,7 +2088,7 @@ type VerifyStage struct {
 
 func (x *VerifyStage) Reset() {
 	*x = VerifyStage{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[20]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2022,7 +2100,7 @@ func (x *VerifyStage) String() string {
 func (*VerifyStage) ProtoMessage() {}
 
 func (x *VerifyStage) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[20]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2035,7 +2113,7 @@ func (x *VerifyStage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyStage.ProtoReflect.Descriptor instead.
 func (*VerifyStage) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{20}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *VerifyStage) GetLevel() uint32 {
@@ -2108,7 +2186,7 @@ type FingerprintMismatch struct {
 
 func (x *FingerprintMismatch) Reset() {
 	*x = FingerprintMismatch{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[21]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2120,7 +2198,7 @@ func (x *FingerprintMismatch) String() string {
 func (*FingerprintMismatch) ProtoMessage() {}
 
 func (x *FingerprintMismatch) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[21]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2133,7 +2211,7 @@ func (x *FingerprintMismatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FingerprintMismatch.ProtoReflect.Descriptor instead.
 func (*FingerprintMismatch) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{21}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *FingerprintMismatch) GetName() string {
@@ -2170,7 +2248,7 @@ type CheckResult struct {
 
 func (x *CheckResult) Reset() {
 	*x = CheckResult{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[22]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2182,7 +2260,7 @@ func (x *CheckResult) String() string {
 func (*CheckResult) ProtoMessage() {}
 
 func (x *CheckResult) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[22]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2195,7 +2273,7 @@ func (x *CheckResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckResult.ProtoReflect.Descriptor instead.
 func (*CheckResult) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{22}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *CheckResult) GetName() string {
@@ -2229,7 +2307,7 @@ type RunOutput struct {
 
 func (x *RunOutput) Reset() {
 	*x = RunOutput{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[23]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2241,7 +2319,7 @@ func (x *RunOutput) String() string {
 func (*RunOutput) ProtoMessage() {}
 
 func (x *RunOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[23]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2254,7 +2332,7 @@ func (x *RunOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunOutput.ProtoReflect.Descriptor instead.
 func (*RunOutput) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{23}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *RunOutput) GetExitCode() int32 {
@@ -2279,7 +2357,7 @@ type ConnectResponse struct {
 
 func (x *ConnectResponse) Reset() {
 	*x = ConnectResponse{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[24]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2291,7 +2369,7 @@ func (x *ConnectResponse) String() string {
 func (*ConnectResponse) ProtoMessage() {}
 
 func (x *ConnectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[24]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2304,7 +2382,7 @@ func (x *ConnectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectResponse.ProtoReflect.Descriptor instead.
 func (*ConnectResponse) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{24}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ConnectResponse) GetMessage() isConnectResponse_Message {
@@ -2383,7 +2461,7 @@ type ResultAck struct {
 
 func (x *ResultAck) Reset() {
 	*x = ResultAck{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[25]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2395,7 +2473,7 @@ func (x *ResultAck) String() string {
 func (*ResultAck) ProtoMessage() {}
 
 func (x *ResultAck) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[25]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2408,7 +2486,7 @@ func (x *ResultAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResultAck.ProtoReflect.Descriptor instead.
 func (*ResultAck) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{25}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ResultAck) GetCommandId() string {
@@ -2455,7 +2533,7 @@ type RunStep struct {
 
 func (x *RunStep) Reset() {
 	*x = RunStep{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[26]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2467,7 +2545,7 @@ func (x *RunStep) String() string {
 func (*RunStep) ProtoMessage() {}
 
 func (x *RunStep) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[26]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2480,7 +2558,7 @@ func (x *RunStep) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunStep.ProtoReflect.Descriptor instead.
 func (*RunStep) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{26}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *RunStep) GetCommandId() string {
@@ -2568,7 +2646,7 @@ type VerifyTask struct {
 
 func (x *VerifyTask) Reset() {
 	*x = VerifyTask{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[27]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2580,7 +2658,7 @@ func (x *VerifyTask) String() string {
 func (*VerifyTask) ProtoMessage() {}
 
 func (x *VerifyTask) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[27]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2593,7 +2671,7 @@ func (x *VerifyTask) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyTask.ProtoReflect.Descriptor instead.
 func (*VerifyTask) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{27}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *VerifyTask) GetJobId() string {
@@ -2651,7 +2729,7 @@ type RepositoryInfo struct {
 
 func (x *RepositoryInfo) Reset() {
 	*x = RepositoryInfo{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[28]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2663,7 +2741,7 @@ func (x *RepositoryInfo) String() string {
 func (*RepositoryInfo) ProtoMessage() {}
 
 func (x *RepositoryInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[28]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2676,7 +2754,7 @@ func (x *RepositoryInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepositoryInfo.ProtoReflect.Descriptor instead.
 func (*RepositoryInfo) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{28}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *RepositoryInfo) GetName() string {
@@ -2719,7 +2797,7 @@ type CancelStep struct {
 
 func (x *CancelStep) Reset() {
 	*x = CancelStep{}
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[29]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2731,7 +2809,7 @@ func (x *CancelStep) String() string {
 func (*CancelStep) ProtoMessage() {}
 
 func (x *CancelStep) ProtoReflect() protoreflect.Message {
-	mi := &file_sard_agent_v1_agent_proto_msgTypes[29]
+	mi := &file_sard_agent_v1_agent_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2744,7 +2822,7 @@ func (x *CancelStep) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelStep.ProtoReflect.Descriptor instead.
 func (*CancelStep) Descriptor() ([]byte, []int) {
-	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{29}
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *CancelStep) GetCommandId() string {
@@ -2800,7 +2878,9 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\x17RenewCertificateRequest\x12\x17\n" +
 	"\acsr_der\x18\x01 \x01(\fR\x06csrDer\"N\n" +
 	"\x18RenewCertificateResponse\x122\n" +
-	"\x15certificate_chain_pem\x18\x01 \x01(\tR\x13certificateChainPem\"\xbd\x02\n" +
+	"\x15certificate_chain_pem\x18\x01 \x01(\tR\x13certificateChainPem\"\x1b\n" +
+	"\x19ConfirmCertificateRequest\"\x1c\n" +
+	"\x1aConfirmCertificateResponse\"\xbd\x02\n" +
 	"\x0eConnectRequest\x128\n" +
 	"\theartbeat\x18\x01 \x01(\v2\x18.sard.agent.v1.HeartbeatH\x00R\theartbeat\x12<\n" +
 	"\vstep_result\x18\x02 \x01(\v2\x19.sard.agent.v1.StepResultH\x00R\n" +
@@ -2985,11 +3065,12 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
 	"ACTION_RUN\x10\x042Z\n" +
 	"\x11EnrollmentService\x12E\n" +
-	"\x06Enroll\x12\x1c.sard.agent.v1.EnrollRequest\x1a\x1d.sard.agent.v1.EnrollResponse2\xd2\x02\n" +
+	"\x06Enroll\x12\x1c.sard.agent.v1.EnrollRequest\x1a\x1d.sard.agent.v1.EnrollResponse2\xbd\x03\n" +
 	"\fAgentService\x12K\n" +
 	"\bRegister\x12\x1e.sard.agent.v1.RegisterRequest\x1a\x1f.sard.agent.v1.RegisterResponse\x12L\n" +
 	"\aConnect\x12\x1d.sard.agent.v1.ConnectRequest\x1a\x1e.sard.agent.v1.ConnectResponse(\x010\x01\x12c\n" +
-	"\x10RenewCertificate\x12&.sard.agent.v1.RenewCertificateRequest\x1a'.sard.agent.v1.RenewCertificateResponse\x12B\n" +
+	"\x10RenewCertificate\x12&.sard.agent.v1.RenewCertificateRequest\x1a'.sard.agent.v1.RenewCertificateResponse\x12i\n" +
+	"\x12ConfirmCertificate\x12(.sard.agent.v1.ConfirmCertificateRequest\x1a).sard.agent.v1.ConfirmCertificateResponse\x12B\n" +
 	"\x05Probe\x12\x1b.sard.agent.v1.ProbeRequest\x1a\x1c.sard.agent.v1.ProbeResponseB\xb6\x01\n" +
 	"\x11com.sard.agent.v1B\n" +
 	"AgentProtoP\x01Z?github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1;agentv1\xa2\x02\x03SAX\xaa\x02\rSard.Agent.V1\xca\x02\rSard\\Agent\\V1\xe2\x02\x19Sard\\Agent\\V1\\GPBMetadata\xea\x02\x0fSard::Agent::V1b\x06proto3"
@@ -3007,107 +3088,111 @@ func file_sard_agent_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_sard_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_sard_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
+var file_sard_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
 var file_sard_agent_v1_agent_proto_goTypes = []any{
-	(Sandbox)(0),                     // 0: sard.agent.v1.Sandbox
-	(StepPhase)(0),                   // 1: sard.agent.v1.StepPhase
-	(LogLevel)(0),                    // 2: sard.agent.v1.LogLevel
-	(RejectReason)(0),                // 3: sard.agent.v1.RejectReason
-	(StepStatus)(0),                  // 4: sard.agent.v1.StepStatus
-	(StageStatus)(0),                 // 5: sard.agent.v1.StageStatus
-	(VerifyVerdict)(0),               // 6: sard.agent.v1.VerifyVerdict
-	(Action)(0),                      // 7: sard.agent.v1.Action
-	(*EnrollRequest)(nil),            // 8: sard.agent.v1.EnrollRequest
-	(*EnrollResponse)(nil),           // 9: sard.agent.v1.EnrollResponse
-	(*ProbeRequest)(nil),             // 10: sard.agent.v1.ProbeRequest
-	(*ProbeResponse)(nil),            // 11: sard.agent.v1.ProbeResponse
-	(*RegisterRequest)(nil),          // 12: sard.agent.v1.RegisterRequest
-	(*VerifierStatus)(nil),           // 13: sard.agent.v1.VerifierStatus
-	(*Plugin)(nil),                   // 14: sard.agent.v1.Plugin
-	(*RegisterResponse)(nil),         // 15: sard.agent.v1.RegisterResponse
-	(*RenewCertificateRequest)(nil),  // 16: sard.agent.v1.RenewCertificateRequest
-	(*RenewCertificateResponse)(nil), // 17: sard.agent.v1.RenewCertificateResponse
-	(*ConnectRequest)(nil),           // 18: sard.agent.v1.ConnectRequest
-	(*Hello)(nil),                    // 19: sard.agent.v1.Hello
-	(*Heartbeat)(nil),                // 20: sard.agent.v1.Heartbeat
-	(*StepProgress)(nil),             // 21: sard.agent.v1.StepProgress
-	(*LogChunk)(nil),                 // 22: sard.agent.v1.LogChunk
-	(*LogLine)(nil),                  // 23: sard.agent.v1.LogLine
-	(*StepResult)(nil),               // 24: sard.agent.v1.StepResult
-	(*BackupOutput)(nil),             // 25: sard.agent.v1.BackupOutput
-	(*RestoreOutput)(nil),            // 26: sard.agent.v1.RestoreOutput
-	(*VerifyOutput)(nil),             // 27: sard.agent.v1.VerifyOutput
-	(*VerifyStage)(nil),              // 28: sard.agent.v1.VerifyStage
-	(*FingerprintMismatch)(nil),      // 29: sard.agent.v1.FingerprintMismatch
-	(*CheckResult)(nil),              // 30: sard.agent.v1.CheckResult
-	(*RunOutput)(nil),                // 31: sard.agent.v1.RunOutput
-	(*ConnectResponse)(nil),          // 32: sard.agent.v1.ConnectResponse
-	(*ResultAck)(nil),                // 33: sard.agent.v1.ResultAck
-	(*RunStep)(nil),                  // 34: sard.agent.v1.RunStep
-	(*VerifyTask)(nil),               // 35: sard.agent.v1.VerifyTask
-	(*RepositoryInfo)(nil),           // 36: sard.agent.v1.RepositoryInfo
-	(*CancelStep)(nil),               // 37: sard.agent.v1.CancelStep
-	nil,                              // 38: sard.agent.v1.RunStep.TagsEntry
-	(*timestamppb.Timestamp)(nil),    // 39: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),      // 40: google.protobuf.Duration
+	(Sandbox)(0),                       // 0: sard.agent.v1.Sandbox
+	(StepPhase)(0),                     // 1: sard.agent.v1.StepPhase
+	(LogLevel)(0),                      // 2: sard.agent.v1.LogLevel
+	(RejectReason)(0),                  // 3: sard.agent.v1.RejectReason
+	(StepStatus)(0),                    // 4: sard.agent.v1.StepStatus
+	(StageStatus)(0),                   // 5: sard.agent.v1.StageStatus
+	(VerifyVerdict)(0),                 // 6: sard.agent.v1.VerifyVerdict
+	(Action)(0),                        // 7: sard.agent.v1.Action
+	(*EnrollRequest)(nil),              // 8: sard.agent.v1.EnrollRequest
+	(*EnrollResponse)(nil),             // 9: sard.agent.v1.EnrollResponse
+	(*ProbeRequest)(nil),               // 10: sard.agent.v1.ProbeRequest
+	(*ProbeResponse)(nil),              // 11: sard.agent.v1.ProbeResponse
+	(*RegisterRequest)(nil),            // 12: sard.agent.v1.RegisterRequest
+	(*VerifierStatus)(nil),             // 13: sard.agent.v1.VerifierStatus
+	(*Plugin)(nil),                     // 14: sard.agent.v1.Plugin
+	(*RegisterResponse)(nil),           // 15: sard.agent.v1.RegisterResponse
+	(*RenewCertificateRequest)(nil),    // 16: sard.agent.v1.RenewCertificateRequest
+	(*RenewCertificateResponse)(nil),   // 17: sard.agent.v1.RenewCertificateResponse
+	(*ConfirmCertificateRequest)(nil),  // 18: sard.agent.v1.ConfirmCertificateRequest
+	(*ConfirmCertificateResponse)(nil), // 19: sard.agent.v1.ConfirmCertificateResponse
+	(*ConnectRequest)(nil),             // 20: sard.agent.v1.ConnectRequest
+	(*Hello)(nil),                      // 21: sard.agent.v1.Hello
+	(*Heartbeat)(nil),                  // 22: sard.agent.v1.Heartbeat
+	(*StepProgress)(nil),               // 23: sard.agent.v1.StepProgress
+	(*LogChunk)(nil),                   // 24: sard.agent.v1.LogChunk
+	(*LogLine)(nil),                    // 25: sard.agent.v1.LogLine
+	(*StepResult)(nil),                 // 26: sard.agent.v1.StepResult
+	(*BackupOutput)(nil),               // 27: sard.agent.v1.BackupOutput
+	(*RestoreOutput)(nil),              // 28: sard.agent.v1.RestoreOutput
+	(*VerifyOutput)(nil),               // 29: sard.agent.v1.VerifyOutput
+	(*VerifyStage)(nil),                // 30: sard.agent.v1.VerifyStage
+	(*FingerprintMismatch)(nil),        // 31: sard.agent.v1.FingerprintMismatch
+	(*CheckResult)(nil),                // 32: sard.agent.v1.CheckResult
+	(*RunOutput)(nil),                  // 33: sard.agent.v1.RunOutput
+	(*ConnectResponse)(nil),            // 34: sard.agent.v1.ConnectResponse
+	(*ResultAck)(nil),                  // 35: sard.agent.v1.ResultAck
+	(*RunStep)(nil),                    // 36: sard.agent.v1.RunStep
+	(*VerifyTask)(nil),                 // 37: sard.agent.v1.VerifyTask
+	(*RepositoryInfo)(nil),             // 38: sard.agent.v1.RepositoryInfo
+	(*CancelStep)(nil),                 // 39: sard.agent.v1.CancelStep
+	nil,                                // 40: sard.agent.v1.RunStep.TagsEntry
+	(*timestamppb.Timestamp)(nil),      // 41: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),        // 42: google.protobuf.Duration
 }
 var file_sard_agent_v1_agent_proto_depIdxs = []int32{
-	39, // 0: sard.agent.v1.ProbeResponse.server_time:type_name -> google.protobuf.Timestamp
+	41, // 0: sard.agent.v1.ProbeResponse.server_time:type_name -> google.protobuf.Timestamp
 	14, // 1: sard.agent.v1.RegisterRequest.plugins:type_name -> sard.agent.v1.Plugin
-	36, // 2: sard.agent.v1.RegisterRequest.repositories:type_name -> sard.agent.v1.RepositoryInfo
+	38, // 2: sard.agent.v1.RegisterRequest.repositories:type_name -> sard.agent.v1.RepositoryInfo
 	13, // 3: sard.agent.v1.RegisterRequest.verifier:type_name -> sard.agent.v1.VerifierStatus
 	0,  // 4: sard.agent.v1.VerifierStatus.sandbox:type_name -> sard.agent.v1.Sandbox
 	7,  // 5: sard.agent.v1.Plugin.actions:type_name -> sard.agent.v1.Action
-	40, // 6: sard.agent.v1.RegisterResponse.heartbeat_interval:type_name -> google.protobuf.Duration
-	20, // 7: sard.agent.v1.ConnectRequest.heartbeat:type_name -> sard.agent.v1.Heartbeat
-	24, // 8: sard.agent.v1.ConnectRequest.step_result:type_name -> sard.agent.v1.StepResult
-	19, // 9: sard.agent.v1.ConnectRequest.hello:type_name -> sard.agent.v1.Hello
-	21, // 10: sard.agent.v1.ConnectRequest.step_progress:type_name -> sard.agent.v1.StepProgress
-	22, // 11: sard.agent.v1.ConnectRequest.log_chunk:type_name -> sard.agent.v1.LogChunk
-	39, // 12: sard.agent.v1.Heartbeat.sent_at:type_name -> google.protobuf.Timestamp
+	42, // 6: sard.agent.v1.RegisterResponse.heartbeat_interval:type_name -> google.protobuf.Duration
+	22, // 7: sard.agent.v1.ConnectRequest.heartbeat:type_name -> sard.agent.v1.Heartbeat
+	26, // 8: sard.agent.v1.ConnectRequest.step_result:type_name -> sard.agent.v1.StepResult
+	21, // 9: sard.agent.v1.ConnectRequest.hello:type_name -> sard.agent.v1.Hello
+	23, // 10: sard.agent.v1.ConnectRequest.step_progress:type_name -> sard.agent.v1.StepProgress
+	24, // 11: sard.agent.v1.ConnectRequest.log_chunk:type_name -> sard.agent.v1.LogChunk
+	41, // 12: sard.agent.v1.Heartbeat.sent_at:type_name -> google.protobuf.Timestamp
 	13, // 13: sard.agent.v1.Heartbeat.verifier:type_name -> sard.agent.v1.VerifierStatus
 	1,  // 14: sard.agent.v1.StepProgress.phase:type_name -> sard.agent.v1.StepPhase
-	39, // 15: sard.agent.v1.StepProgress.sent_at:type_name -> google.protobuf.Timestamp
-	28, // 16: sard.agent.v1.StepProgress.stage:type_name -> sard.agent.v1.VerifyStage
-	23, // 17: sard.agent.v1.LogChunk.lines:type_name -> sard.agent.v1.LogLine
-	39, // 18: sard.agent.v1.LogLine.time:type_name -> google.protobuf.Timestamp
+	41, // 15: sard.agent.v1.StepProgress.sent_at:type_name -> google.protobuf.Timestamp
+	30, // 16: sard.agent.v1.StepProgress.stage:type_name -> sard.agent.v1.VerifyStage
+	25, // 17: sard.agent.v1.LogChunk.lines:type_name -> sard.agent.v1.LogLine
+	41, // 18: sard.agent.v1.LogLine.time:type_name -> google.protobuf.Timestamp
 	2,  // 19: sard.agent.v1.LogLine.level:type_name -> sard.agent.v1.LogLevel
 	4,  // 20: sard.agent.v1.StepResult.status:type_name -> sard.agent.v1.StepStatus
-	39, // 21: sard.agent.v1.StepResult.started_at:type_name -> google.protobuf.Timestamp
-	39, // 22: sard.agent.v1.StepResult.finished_at:type_name -> google.protobuf.Timestamp
-	25, // 23: sard.agent.v1.StepResult.backup:type_name -> sard.agent.v1.BackupOutput
-	26, // 24: sard.agent.v1.StepResult.restore:type_name -> sard.agent.v1.RestoreOutput
-	27, // 25: sard.agent.v1.StepResult.verify:type_name -> sard.agent.v1.VerifyOutput
-	31, // 26: sard.agent.v1.StepResult.run:type_name -> sard.agent.v1.RunOutput
+	41, // 21: sard.agent.v1.StepResult.started_at:type_name -> google.protobuf.Timestamp
+	41, // 22: sard.agent.v1.StepResult.finished_at:type_name -> google.protobuf.Timestamp
+	27, // 23: sard.agent.v1.StepResult.backup:type_name -> sard.agent.v1.BackupOutput
+	28, // 24: sard.agent.v1.StepResult.restore:type_name -> sard.agent.v1.RestoreOutput
+	29, // 25: sard.agent.v1.StepResult.verify:type_name -> sard.agent.v1.VerifyOutput
+	33, // 26: sard.agent.v1.StepResult.run:type_name -> sard.agent.v1.RunOutput
 	3,  // 27: sard.agent.v1.StepResult.reject_reason:type_name -> sard.agent.v1.RejectReason
-	30, // 28: sard.agent.v1.VerifyOutput.checks:type_name -> sard.agent.v1.CheckResult
-	28, // 29: sard.agent.v1.VerifyOutput.stages:type_name -> sard.agent.v1.VerifyStage
+	32, // 28: sard.agent.v1.VerifyOutput.checks:type_name -> sard.agent.v1.CheckResult
+	30, // 29: sard.agent.v1.VerifyOutput.stages:type_name -> sard.agent.v1.VerifyStage
 	6,  // 30: sard.agent.v1.VerifyOutput.verdict:type_name -> sard.agent.v1.VerifyVerdict
-	29, // 31: sard.agent.v1.VerifyOutput.mismatches:type_name -> sard.agent.v1.FingerprintMismatch
-	40, // 32: sard.agent.v1.VerifyOutput.restore_duration:type_name -> google.protobuf.Duration
+	31, // 31: sard.agent.v1.VerifyOutput.mismatches:type_name -> sard.agent.v1.FingerprintMismatch
+	42, // 32: sard.agent.v1.VerifyOutput.restore_duration:type_name -> google.protobuf.Duration
 	5,  // 33: sard.agent.v1.VerifyStage.status:type_name -> sard.agent.v1.StageStatus
-	39, // 34: sard.agent.v1.VerifyStage.started_at:type_name -> google.protobuf.Timestamp
-	39, // 35: sard.agent.v1.VerifyStage.finished_at:type_name -> google.protobuf.Timestamp
-	34, // 36: sard.agent.v1.ConnectResponse.run_step:type_name -> sard.agent.v1.RunStep
-	37, // 37: sard.agent.v1.ConnectResponse.cancel_step:type_name -> sard.agent.v1.CancelStep
-	33, // 38: sard.agent.v1.ConnectResponse.result_ack:type_name -> sard.agent.v1.ResultAck
+	41, // 34: sard.agent.v1.VerifyStage.started_at:type_name -> google.protobuf.Timestamp
+	41, // 35: sard.agent.v1.VerifyStage.finished_at:type_name -> google.protobuf.Timestamp
+	36, // 36: sard.agent.v1.ConnectResponse.run_step:type_name -> sard.agent.v1.RunStep
+	39, // 37: sard.agent.v1.ConnectResponse.cancel_step:type_name -> sard.agent.v1.CancelStep
+	35, // 38: sard.agent.v1.ConnectResponse.result_ack:type_name -> sard.agent.v1.ResultAck
 	7,  // 39: sard.agent.v1.RunStep.action:type_name -> sard.agent.v1.Action
-	40, // 40: sard.agent.v1.RunStep.timeout:type_name -> google.protobuf.Duration
-	38, // 41: sard.agent.v1.RunStep.tags:type_name -> sard.agent.v1.RunStep.TagsEntry
-	35, // 42: sard.agent.v1.RunStep.verify:type_name -> sard.agent.v1.VerifyTask
-	39, // 43: sard.agent.v1.VerifyTask.deadline:type_name -> google.protobuf.Timestamp
+	42, // 40: sard.agent.v1.RunStep.timeout:type_name -> google.protobuf.Duration
+	40, // 41: sard.agent.v1.RunStep.tags:type_name -> sard.agent.v1.RunStep.TagsEntry
+	37, // 42: sard.agent.v1.RunStep.verify:type_name -> sard.agent.v1.VerifyTask
+	41, // 43: sard.agent.v1.VerifyTask.deadline:type_name -> google.protobuf.Timestamp
 	8,  // 44: sard.agent.v1.EnrollmentService.Enroll:input_type -> sard.agent.v1.EnrollRequest
 	12, // 45: sard.agent.v1.AgentService.Register:input_type -> sard.agent.v1.RegisterRequest
-	18, // 46: sard.agent.v1.AgentService.Connect:input_type -> sard.agent.v1.ConnectRequest
+	20, // 46: sard.agent.v1.AgentService.Connect:input_type -> sard.agent.v1.ConnectRequest
 	16, // 47: sard.agent.v1.AgentService.RenewCertificate:input_type -> sard.agent.v1.RenewCertificateRequest
-	10, // 48: sard.agent.v1.AgentService.Probe:input_type -> sard.agent.v1.ProbeRequest
-	9,  // 49: sard.agent.v1.EnrollmentService.Enroll:output_type -> sard.agent.v1.EnrollResponse
-	15, // 50: sard.agent.v1.AgentService.Register:output_type -> sard.agent.v1.RegisterResponse
-	32, // 51: sard.agent.v1.AgentService.Connect:output_type -> sard.agent.v1.ConnectResponse
-	17, // 52: sard.agent.v1.AgentService.RenewCertificate:output_type -> sard.agent.v1.RenewCertificateResponse
-	11, // 53: sard.agent.v1.AgentService.Probe:output_type -> sard.agent.v1.ProbeResponse
-	49, // [49:54] is the sub-list for method output_type
-	44, // [44:49] is the sub-list for method input_type
+	18, // 48: sard.agent.v1.AgentService.ConfirmCertificate:input_type -> sard.agent.v1.ConfirmCertificateRequest
+	10, // 49: sard.agent.v1.AgentService.Probe:input_type -> sard.agent.v1.ProbeRequest
+	9,  // 50: sard.agent.v1.EnrollmentService.Enroll:output_type -> sard.agent.v1.EnrollResponse
+	15, // 51: sard.agent.v1.AgentService.Register:output_type -> sard.agent.v1.RegisterResponse
+	34, // 52: sard.agent.v1.AgentService.Connect:output_type -> sard.agent.v1.ConnectResponse
+	17, // 53: sard.agent.v1.AgentService.RenewCertificate:output_type -> sard.agent.v1.RenewCertificateResponse
+	19, // 54: sard.agent.v1.AgentService.ConfirmCertificate:output_type -> sard.agent.v1.ConfirmCertificateResponse
+	11, // 55: sard.agent.v1.AgentService.Probe:output_type -> sard.agent.v1.ProbeResponse
+	50, // [50:56] is the sub-list for method output_type
+	44, // [44:50] is the sub-list for method input_type
 	44, // [44:44] is the sub-list for extension type_name
 	44, // [44:44] is the sub-list for extension extendee
 	0,  // [0:44] is the sub-list for field type_name
@@ -3119,20 +3204,20 @@ func file_sard_agent_v1_agent_proto_init() {
 		return
 	}
 	file_sard_agent_v1_agent_proto_msgTypes[5].OneofWrappers = []any{}
-	file_sard_agent_v1_agent_proto_msgTypes[10].OneofWrappers = []any{
+	file_sard_agent_v1_agent_proto_msgTypes[12].OneofWrappers = []any{
 		(*ConnectRequest_Heartbeat)(nil),
 		(*ConnectRequest_StepResult)(nil),
 		(*ConnectRequest_Hello)(nil),
 		(*ConnectRequest_StepProgress)(nil),
 		(*ConnectRequest_LogChunk)(nil),
 	}
-	file_sard_agent_v1_agent_proto_msgTypes[16].OneofWrappers = []any{
+	file_sard_agent_v1_agent_proto_msgTypes[18].OneofWrappers = []any{
 		(*StepResult_Backup)(nil),
 		(*StepResult_Restore)(nil),
 		(*StepResult_Verify)(nil),
 		(*StepResult_Run)(nil),
 	}
-	file_sard_agent_v1_agent_proto_msgTypes[24].OneofWrappers = []any{
+	file_sard_agent_v1_agent_proto_msgTypes[26].OneofWrappers = []any{
 		(*ConnectResponse_RunStep)(nil),
 		(*ConnectResponse_CancelStep)(nil),
 		(*ConnectResponse_ResultAck)(nil),
@@ -3143,7 +3228,7 @@ func file_sard_agent_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sard_agent_v1_agent_proto_rawDesc), len(file_sard_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   31,
+			NumMessages:   33,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

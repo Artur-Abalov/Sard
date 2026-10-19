@@ -245,12 +245,14 @@ func TestMainProcess(t *testing.T) {
 }
 
 // A1: a secret file open to the group or others stops the agent before it
-// tries to connect to anything.
+// tries to connect to anything; the mode checked is the one of the key of the
+// selected pair (П29).
 func TestASecretFileOpenBeyondItsOwnerRefusesStart(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
+	writeIdentity(t, dir)
 	keyFile := filepath.Join(dir, "agent.key")
-	if err := os.WriteFile(keyFile, nil, 0o640); err != nil {
+	if err := os.Chmod(keyFile, 0o640); err != nil {
 		t.Fatal(err)
 	}
 	cfg := "server:\n  address: sard.example.com:9090\n" +

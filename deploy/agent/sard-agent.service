@@ -30,6 +30,12 @@ PrivateTmp=true
 # drop-in (systemctl edit sard-agent) with ReadWritePaths=<that directory>.
 # So does a local repository (a plain path as url): restic locks it even
 # to read its config, and waits for a writable lock forever.
+# The agent renews its certificate by writing agent.key.new and agent.pem.new
+# next to agent.key and agent.pem in /etc/sard/tls (tls.*). The leading "-"
+# lets the service start where that directory does not exist yet; without it
+# systemd refuses with status 226/NAMESPACE. A tls.* in another directory
+# needs a drop-in with ReadWritePaths=<that directory>, like restic.cache_dir.
+ReadWritePaths=-/etc/sard/tls
 StateDirectory=sard-agent
 CacheDirectory=sard/restic
 # Keep the directory private as the package made it: systemd would set 0755.

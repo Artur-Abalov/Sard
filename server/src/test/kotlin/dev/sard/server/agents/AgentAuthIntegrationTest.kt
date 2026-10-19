@@ -16,6 +16,7 @@ import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.FakeCaLedger
 import dev.sard.server.pki.FileCertificateAuthority
 import dev.sard.server.pki.Pem
+import dev.sard.server.pki.YEAR
 import dev.sard.server.role.AgentRole
 import io.grpc.CallOptions
 import io.grpc.ChannelCredentials
@@ -144,7 +145,7 @@ class AgentAuthIntegrationTest(
         identity: AgentIdentity,
     ): AgentKey {
         val keys = newKeys()
-        val issued = issuer.issueAgentCertificate(csr(keys), identity, AgentRole.SOURCE)
+        val issued = issuer.issueAgentCertificate(csr(keys), identity, AgentRole.SOURCE, YEAR)
         return AgentKey(identity, issued.serial.toString(16), issued.chainPem, keys)
     }
 
@@ -251,6 +252,11 @@ class AgentAuthIntegrationTest(
             // The one empty message is not a Hello (S5a).
             AgentServiceGrpc.getConnectMethod().fullMethodName to
                 Outcome(Status.Code.FAILED_PRECONDITION, "HELLO_REQUIRED"),
+            // The empty message is no CSR (C1).
+            AgentServiceGrpc.getRenewCertificateMethod().fullMethodName to
+                Outcome(Status.Code.INVALID_ARGUMENT, "CSR_INVALID"),
+            // A certificate that replaced none confirms with no change (C1).
+            AgentServiceGrpc.getConfirmCertificateMethod().fullMethodName to Outcome(Status.Code.OK, body = ""),
         )
 
     @Test

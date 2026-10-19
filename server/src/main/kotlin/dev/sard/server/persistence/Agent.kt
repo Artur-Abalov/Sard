@@ -16,7 +16,7 @@ import java.util.UUID
 
 /**
  * A registered agent; table created by Flyway migrations V1, V2, V202609271200, V202609281200, V202609281400,
- * V202610011200, V202610081200, V202610141200 and V202610191200.
+ * V202610011200, V202610081200, V202610141200 and V202610191300.
  */
 @Entity
 @Table(name = "agents")

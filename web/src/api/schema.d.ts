@@ -1391,6 +1391,30 @@ export interface components {
         };
         /** @enum {string} */
         EnrollmentTokenStatus: "active" | "used" | "expired" | "revoked";
+        /** @description The current certificate of an agent; no key, no serial, nothing but the dates */
+        AgentCertificate: {
+            /**
+             * Format: date-time
+             * @description When the certificate became valid: its notBefore
+             */
+            notBefore: string;
+            /** Format: date-time */
+            notAfter: string;
+            /**
+             * Format: int32
+             * @description Whole days to notAfter, rounded down, never negative
+             */
+            daysLeft: number;
+            /** @description expired: nothing is left. expiring: at most 30/365 of its lifetime is left. renewal_due: two thirds of its lifetime have passed and no confirmed new certificate exists. ok: otherwise */
+            state: components["schemas"]["AgentCertificateState"];
+            /**
+             * Format: date-time
+             * @description When a renewal was issued that the agent has not confirmed; null if none
+             */
+            renewalIssuedAt: string | null;
+        };
+        /** @enum {string} */
+        AgentCertificateState: "ok" | "renewal_due" | "expiring" | "expired";
         /** @description An agent with what it reported in its last Register */
         AgentDetails: {
             /** Format: uuid */
@@ -1428,6 +1452,8 @@ export interface components {
             builtin: boolean;
             /** @description source runs backups, restores and scripts; verifier only verifies restores. Chosen by the token, never changes */
             role: components["schemas"]["AgentRole"];
+            /** @description The agent's current certificate: the last one that is not revoked, not superseded and confirmed (a renewal the agent has not confirmed does not count); null for a revoked agent and for an agent without one */
+            certificate: components["schemas"]["AgentCertificate"] | null;
         };
         /** @description A plugin the agent offers */
         AgentPlugin: {
@@ -1928,6 +1954,8 @@ export interface components {
             builtin: boolean;
             /** @description source runs backups, restores and scripts; verifier only verifies restores. Chosen by the token, never changes */
             role: components["schemas"]["AgentRole"];
+            /** @description The agent's current certificate: the last one that is not revoked, not superseded and confirmed (a renewal the agent has not confirmed does not count); null for a revoked agent and for an agent without one */
+            certificate: components["schemas"]["AgentCertificate"] | null;
         };
         /** @enum {string} */
         InstallFormat: "deb" | "rpm" | "tar";

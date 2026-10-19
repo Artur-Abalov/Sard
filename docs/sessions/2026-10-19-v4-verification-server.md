@@ -132,7 +132,7 @@
   `RunStep.verify` (`VerifyTask`: задание, `repository_id`, отпечаток, хеш, срок).
 - **Агент**: каждый агент шлёт пустой `VerifierStatus` («неизвестно» до V5);
   исполнение проверки не менялось (решение 4).
-- **Миграция** `V202610191200__restore_verification.sql`: D6-индекс без
+- **Миграция** `V202610191300__restore_verification.sql`: D6-индекс без
   `trigger = 'verification'`; `run_steps.verify_task`; `sources.verification_enabled`
   (по умолчанию включено); статус верификатора в `agents`; глобальная
   `verification_schedule`; `verification_jobs` (одно открытое на источник);
@@ -217,7 +217,7 @@
   `verificationStatus`, `lastVerifiedAt`, `lastVerifiedLevel`.
 - **Веб**: `make openapi`, типы, словарь ошибок (ru/en), моки
   (`api/verifications.ts`, `verification.ts`), README моков.
-- **ADR** `00XX-draft-verification-server.md`; ADR 0013 (системный вызов 9),
+- **ADR** `00XX-draft-verification-server.md`; ADR 0013 (системный вызов 10),
   ADR 0010 (заглушка `/status` заменена).
 
 ### Проверки (проверил)

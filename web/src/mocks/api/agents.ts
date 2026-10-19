@@ -26,6 +26,7 @@ function summary(agent: Schemas['AgentDetails']): Schemas['AgentSummary'] {
     outdated,
     builtin,
     role,
+    certificate,
   } = agent
   return {
     id,
@@ -41,6 +42,7 @@ function summary(agent: Schemas['AgentDetails']): Schemas['AgentSummary'] {
     outdated,
     builtin,
     role,
+    certificate,
   }
 }
 
@@ -97,7 +99,11 @@ export const agentHandlers = [
     }
     // Revoking a revoked agent changes nothing; otherwise it goes offline for good.
     if (agent.revokedAt === null) {
-      Object.assign(agent, { revokedAt: new Date().toISOString(), status: 'offline' })
+      Object.assign(agent, {
+        revokedAt: new Date().toISOString(),
+        status: 'offline',
+        certificate: null,
+      })
       loseActiveSteps(agent.id)
     }
     return response(200).json(agent)

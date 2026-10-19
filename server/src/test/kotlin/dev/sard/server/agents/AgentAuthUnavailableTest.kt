@@ -197,22 +197,28 @@ class AgentAuthUnavailableTest {
         val principal: AgentPrincipal?,
     )
 
-    private fun callWith(role: ForgedRole): Outcome = attempt(role, recorded = true).first
+    private fun callWith(
+        role: ForgedRole,
+        recorded: CertificateStanding = standing,
+        on: MethodDescriptor<*, *> = method,
+    ): Outcome = attempt(role, true, recorded, on).first
 
     /** The outcome of a call and what the interceptor logged; [recorded]: does the database know the certificate. */
     private fun attempt(
         role: ForgedRole,
         recorded: Boolean,
+        record: CertificateStanding = standing,
+        on: MethodDescriptor<*, *> = method,
     ): Pair<Outcome, List<String>> {
         val certificate = ForgedCertificates(ca).forge(agentKeys, serial, PkiFixtures.AGENT, role, PkiFixtures.NOW)
-        val call = ClosedCall(method, certificate)
+        val call = ClosedCall(on, certificate)
         var principal: AgentPrincipal? = null
         val next =
             ServerCallHandler<Any, Any> { _, _ ->
                 principal = AgentPrincipal.KEY.get()
                 object : ServerCall.Listener<Any>() {}
             }
-        val standings = CertificateStandings { if (recorded && it == serial.toString(HEX)) standing else null }
+        val standings = CertificateStandings { if (recorded && it == serial.toString(HEX)) record else null }
         val interceptor = AgentAuthInterceptor(AgentAuthenticator(standings, PkiFixtures.CLOCK), emptySet())
         val logged = captureEvents { MutFlow.underTest { interceptor.interceptCall(call, Metadata(), next) } }
         val reason =
@@ -225,6 +231,24 @@ class AgentAuthUnavailableTest {
                     .reason
             }
         return Outcome(reason, principal) to logged.map { it.text }
+    }
+
+    private val source = ForgedRole.Text("source")
+    private val confirm = AgentServiceGrpc.getConfirmCertificateMethod()
+
+    @Test
+    fun `a superseded certificate is refused CERT_SUPERSEDED on every call including the confirmation`() {
+        val superseded = standing.copy(supersededAt = PkiFixtures.NOW.minusSeconds(DAY))
+        assertEquals(Outcome("CERT_SUPERSEDED", null), callWith(source, superseded))
+        assertEquals(Outcome("CERT_SUPERSEDED", null), callWith(source, superseded, confirm))
+    }
+
+    @Test
+    fun `an unconfirmed certificate is refused CERT_NOT_CONFIRMED except on the confirmation`() {
+        val unconfirmed = standing.copy(unconfirmed = true)
+        assertEquals(Outcome("CERT_NOT_CONFIRMED", null), callWith(source, unconfirmed))
+        assertNull(callWith(source, unconfirmed, confirm).reason)
+        assertNull(callWith(source, standing, confirm).reason)
     }
 
     @Test
@@ -274,7 +298,8 @@ class AgentAuthUnavailableTest {
     private fun refusalLog(
         role: ForgedRole,
         recorded: Boolean = true,
-    ) = attempt(role, recorded).second.single()
+        record: CertificateStanding = standing,
+    ) = attempt(role, recorded, record).second.single()
 
     private val head = "agent call refused: reason="
     private val who = "serial=${serial.toString(HEX)} agent=${PkiFixtures.AGENT.agentId}"
@@ -314,6 +339,16 @@ class AgentAuthUnavailableTest {
     @Test
     fun `an identity mismatch is logged without tenant and without a hint`() {
         assertEquals("${head}CERT_IDENTITY_MISMATCH $who $where", refusalLog(ForgedRole.Text("verifier")))
+    }
+
+    @Test
+    fun `a revoked, superseded or unconfirmed certificate is logged without tenant and without a hint`() {
+        val revoked = standing.copy(revokedAt = PkiFixtures.NOW)
+        val superseded = standing.copy(supersededAt = PkiFixtures.NOW.minusSeconds(DAY))
+        val unconfirmed = standing.copy(unconfirmed = true)
+        assertEquals("${head}CERT_REVOKED $who $where", refusalLog(source, record = revoked))
+        assertEquals("${head}CERT_SUPERSEDED $who $where", refusalLog(source, record = superseded))
+        assertEquals("${head}CERT_NOT_CONFIRMED $who $where", refusalLog(source, record = unconfirmed))
     }
 }
 

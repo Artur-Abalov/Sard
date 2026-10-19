@@ -57,10 +57,12 @@ data class QueueSettings(
 class NotificationService(
     private val deliveries: Deliveries,
     private val episodes: OverdueDeliveries,
+    private val certificates: CertificateDeliveries,
     channels: List<NotificationChannel>,
     private val formatter: NotificationFormatter,
     private val alertFormatter: SkipAlertFormatter,
     private val overdueFormatter: OverdueFormatter,
+    private val certificateFormatter: CertificateFormatter,
     private val policy: RetryPolicy,
     private val settings: QueueSettings,
     private val clock: Clock,
@@ -90,6 +92,10 @@ class NotificationService(
             val overdue = episodes.unplanned(channel, since, settings.batch)
             for ((tenantId, tenantEpisodes) in overdue.groupBy { it.tenantId }) {
                 episodes.plan(tenantId, tenantEpisodes, channel, now)
+            }
+            val expiring = certificates.unplanned(channel, since, settings.batch)
+            for ((tenantId, tenantEvents) in expiring.groupBy({ it.tenantId }, { it.eventId })) {
+                certificates.plan(tenantId, tenantEvents, channel, now)
             }
         }
     }
@@ -132,6 +138,7 @@ class NotificationService(
             is Claimed.Finished -> formatter.format(claimed.notice)
             is Claimed.Alert -> alertFormatter.format(claimed.notice)
             is Claimed.Overdue -> overdueFormatter.format(claimed.notice)
+            is Claimed.Certificate -> claimed.notice?.let(certificateFormatter::format)
         }
 
     private fun finish(

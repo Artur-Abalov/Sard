@@ -199,6 +199,11 @@ func (h *setupHost) certHolding(left time.Duration) testPKI {
 	return newTestPKI(h.t, h.clock.now.Add(-24*time.Hour), h.clock.now.Add(left))
 }
 
+// certEnding is a certificate of a year that ends after left.
+func (h *setupHost) certEnding(left time.Duration) testPKI {
+	return newTestPKI(h.t, h.clock.now.Add(left-365*24*time.Hour), h.clock.now.Add(left))
+}
+
 // fullHost is the healthy host: everything sard-agent check looks at is as it
 // should be.
 func fullHost(t *testing.T) *setupHost {

@@ -11,7 +11,7 @@ import org.hibernate.annotations.TenantId
 import java.time.Instant
 import java.util.UUID
 
-/** A certificate issued to an agent, keyed by its serial in lower-case hex (migration V202609271200). */
+/** A certificate issued to an agent, keyed by its serial in lower-case hex (migration V202609271200, V202610151200). */
 @Entity
 @Table(name = "agent_certificates")
 class AgentCertificateRecord(
@@ -25,6 +25,12 @@ class AgentCertificateRecord(
     val notAfter: Instant,
     @Column(name = "revoked_at")
     var revokedAt: Instant? = null,
+    /** The certificate of the same agent this one was issued against by a renewal (migration V202610151200). */
+    @Column(name = "predecessor_serial", updatable = false)
+    val predecessorSerial: String? = null,
+    /** Set when a confirmed renewal, or a later one, replaced this certificate (migration V202610151200). */
+    @Column(name = "superseded_at")
+    var supersededAt: Instant? = null,
     /** Set by Hibernate from the session's tenant on insert (ADR 0013). */
     @TenantId
     @Column(name = "tenant_id", nullable = false, updatable = false)

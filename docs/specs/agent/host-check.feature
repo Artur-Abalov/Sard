@@ -254,6 +254,14 @@
 #       регистрация; иначе OK с датой. После C1 условие WARN — «< 30 дней и
 #       продление не удалось» (поправка). tls.role — SKIP «agent role is
 #       checked once V1 is available».
+#       Поправка C1 фаза 3 (владелец 2026-10-19, передано координатором;
+#       заменяет обе фразы о WARN выше): строки tls.* описывают пару, которую
+#       выбрал бы старт (certpair.Select, П21), без уборки файлов; WARN —
+#       остаток не больше 30/365 собственного срока сертификата, сообщение
+#       «the certificate expires in <n> days (<дата>) and has not been renewed:
+#       see renewal_last_error in sudo sard-agent status», подсказка «sudo
+#       sard-agent status». Полностью — П45, П46
+#       docs/specs/agent/agent-certificate-renewal.feature.
 #   Ч14. Сервер (A8d-3). server.reachable — DNS и TCP к server.address;
 #       server.tls — рукопожатие mTLS: сервер проверяется по tls.ca_file и
 #       имени, клиент предъявляет сертификат агента. Отказы рукопожатия
@@ -1018,8 +1026,8 @@
         | C доступен на запись группе пользователя службы                 | files.permissions | "sudo chmod g-w"                                  |
         | фрагмент D/agent.d/repo-x.yaml с правами 0666                   | files.permissions | "sudo chmod 0640"                                 |
         | restic версии 0.19.0 при поставляемой 0.19.1                    | restic.binary     | "restic.path"                                     |
-        | сертификат истекает через 10 дней                               | tls.expiry        | "sudo sard-agent enroll --force"                  |
-        | pg_restore рядом с pg_dump нет                                  | plugin.programs   | "postgresql-client"                               |
+        | сертификат сроком 365 суток истекает через 10 дней (поправка C1 фаза 3) | tls.expiry | "sudo sard-agent status"                  |
+        | pg_restore рядом с pg_dump нет                                | plugin.programs   | "postgresql-client"                               |
         | pg_dump версии 16.4, а pg_dumpall рядом — 15.2                  | plugin.programs   | "postgresql-client"                               |
         | служба active с NRestarts=3                                     | service.running   | "journalctl -u sard-agent"                        |
         | каталог журнала S/journal не читается                           | service.steps     | "09-troubleshooting.md#servicesteps"              |
@@ -1057,18 +1065,22 @@
       Когда оператор выполняет check
       Тогда строка files.permissions — OK
 
+    # Поправка C1 фаза 3: было «ровно через 30 дней — OK» без срока
+    # сертификата; теперь порог — 30/365 срока (П46 agent-certificate-renewal).
     @local
     Сценарий: Сертификат на пороге 30 дней ещё в порядке
-      Дано сертификат истекает ровно через 30 дней
+      Дано сертификат сроком 365 суток истекает через 30 суток и 1 секунду
       Когда оператор выполняет check
       Тогда строка tls.expiry — OK и сообщение называет дату окончания
 
-    # C1 не влит
+    # Поправка C1 фаза 3: C1 влит, текст «automatic renewal is not available
+    # yet» заменён (П46 agent-certificate-renewal.feature).
     @local
-    Сценарий: Предупреждение о сроке говорит, что продления пока нет
-      Дано сертификат истекает через 10 дней
+    Сценарий: Предупреждение о сроке отправляет к состоянию продления
+      Дано сертификат сроком 365 суток истекает через 10 дней
       Когда оператор выполняет check
-      Тогда сообщение строки tls.expiry содержит "expires in 10 days" и "automatic renewal is not available yet"
+      Тогда сообщение строки tls.expiry содержит "expires in 10 days" и "has not been renewed"
+      И не содержит "automatic renewal is not available yet"
 
     @local
     Сценарий: Список объявляемых плагинов с версиями

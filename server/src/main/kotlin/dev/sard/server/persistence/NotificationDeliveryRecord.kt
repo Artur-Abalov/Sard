@@ -13,7 +13,7 @@ import java.util.UUID
 
 /**
  * One notification through one channel, of one run, of one schedule fire that raised an alert (F3b) or of an
- * overdue episode (F6);
+ * overdue episode (F6) or of a certificate event (C1 phase 3);
  * migrations V202610021200 (S9a) and V202610101300. Rows are written and moved only by guarded native
  * statements in `notify/Deliveries`, so the entity serves reads and the schema validation.
  */
@@ -48,6 +48,9 @@ class NotificationDeliveryRecord(
     val episodeId: UUID? = null,
     @Column(name = "episode_event", updatable = false)
     val episodeEvent: String? = null,
+    /** An agent certificate event (C1 phase 3, migration V202610191200). */
+    @Column(name = "certificate_event_id", updatable = false)
+    val certificateEventId: UUID? = null,
 ) {
     override fun toString() = "NotificationDeliveryRecord(id=$id, run=$runId, fire=$fireId, $channel, $status)"
 }
