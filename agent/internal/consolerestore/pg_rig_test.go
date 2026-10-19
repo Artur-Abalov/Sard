@@ -128,23 +128,24 @@ type pgServer struct {
 	nextOID   uint32
 
 	// failures
-	connectError  string // psql cannot sign in
-	createError   string // CREATE DATABASE
-	globalsError  string // the script of the global objects
-	dropDBError   string
-	dropRoleError map[string]string
-	roleOIDError  string
-	tocError      string
-	toolVersion   string // pg_restore --version
-	versionOutput string // replaces the answer of pg_restore --version
-	versionFails  bool
-	versionHook   func()
-	stderr        []string // printed by pg_restore of the dump
-	restoreError  string   // pg_restore of the dump, exit 1
-	restoreHook   func(ctx context.Context, c pgCall) (int, error)
-	createHook    func(name string, oid uint32) // right after CREATE DATABASE
-	afterGlobals  func()
-	killOnCreate  bool // CREATE DATABASE succeeds, the psql dies before it prints the OID
+	connectError     string // psql cannot sign in
+	createError      string // CREATE DATABASE
+	globalsError     string // the script of the global objects
+	dropDBError      string
+	dropRoleError    map[string]string
+	roleOIDError     string
+	tocError         string
+	toolVersion      string // pg_restore --version
+	versionOutput    string // replaces the answer of pg_restore --version
+	versionFails     bool
+	versionHook      func()
+	stderr           []string // printed by pg_restore of the dump
+	restoreError     string   // pg_restore of the dump, exit 1
+	restoreHook      func(ctx context.Context, c pgCall) (int, error)
+	createHook       func(name string, oid uint32) // right after CREATE DATABASE
+	afterGlobals     func()
+	killOnCreate     bool // CREATE DATABASE succeeds, the psql dies before it prints the OID
+	killAfterGlobals bool // the script commits, the psql dies before it ends
 
 	calls  []pgCall
 	events []string
@@ -547,6 +548,9 @@ func (s *pgServer) applyGlobals(sql string, cmd restic.Command) (int, error) {
 	}
 	if s.afterGlobals != nil {
 		s.afterGlobals()
+	}
+	if s.killAfterGlobals {
+		return -1, errors.New("signal: killed")
 	}
 	return 0, nil
 }

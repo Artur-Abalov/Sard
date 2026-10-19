@@ -6,6 +6,7 @@ package consolerestore
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -81,13 +82,39 @@ func (a *pgAttempt) applyGlobals() *Failure {
 	args := []string{"-X", "-w", "-q", "-v", "ON_ERROR_STOP=1", "--single-transaction", "--dbname=" + a.conn.conninfo(maintenanceDB)}
 	o := a.conn.run(a.ctx, a.r, a.conn.tools.psql, args, strings.NewReader(a.script))
 	if !o.ok() {
-		// The transaction is rolled back when psql fails, or its session ends.
-		a.rec.Roles = nil
+		// Only a script that psql refused is rolled back as a whole. Any other
+		// end (a kill after COMMIT, a lost connection) leaves the outcome
+		// unknown: the intents of the roles that exist stay in the journal and
+		// the rollback names them.
+		a.rec.Roles = a.unsettledRoles(o)
 		_ = a.save(StageGlobals)
 		return a.fail(refusal.PGGlobalsFailed, StageGlobals, "%s", o.text())
 	}
 	a.globalsApplied = true
 	return a.recordRoles(a.ctx)
+}
+
+// unsettledRoles are the intents to keep after a psql that did not apply the
+// script. A refused script created nothing. After any other end the target is
+// asked, read-only, which of the roles exist: those were absent before the
+// transaction (ВК26), so they are its own; if the target cannot tell, all stay.
+func (a *pgAttempt) unsettledRoles(o outcome) []pgObject {
+	if o.err == nil && o.code == scriptErrorExit {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(a.ctx), rollbackTimeout)
+	defer cancel()
+	q := a.conn.psql(ctx, a.r, maintenanceDB, rolesScript, "names", strings.Join(a.roles, "\x01"))
+	if !q.ok() {
+		return a.rec.Roles
+	}
+	var kept []pgObject
+	for _, role := range a.rec.Roles {
+		if slices.Contains(q.stdout, "f|"+role.Name) {
+			kept = append(kept, role)
+		}
+	}
+	return kept
 }
 
 // roleOIDScript reads the OID of a role by its name.

@@ -196,3 +196,20 @@ func TestAFileOfGlobalsThatIsTooLargeIsRefused(t *testing.T) {
 	hasPrefix(t, f, "PG_GLOBALS_FAILED (check)")
 	mentions(t, f.Error(), "64 MiB")
 }
+
+// Scenario: psql убит после COMMIT глобальных объектов: роли не скрываются.
+func TestAPsqlThatDiesAfterTheGlobalsCommittedNeverHidesTheRoles(t *testing.T) {
+	h := newPGHost(t)
+	h.server.killAfterGlobals = true
+	_, f := h.run(h.withGlobals())
+	if f == nil {
+		t.Fatal("restored")
+	}
+	if !h.server.hasRole("app_rw") {
+		t.Fatal("rig: the globals did not create app_rw")
+	}
+	mentions(t, f.Error(), "CLEANUP_FAILED", "app_rw")
+	if strings.Contains(f.Error(), "nothing was restored") {
+		t.Errorf("claims nothing was restored while role app_rw exists: %s", f.Error())
+	}
+}
