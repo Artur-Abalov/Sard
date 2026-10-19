@@ -161,6 +161,31 @@ class ApiContractIntegrationTest(
         assertTrue("agent_role_mismatch" in enumValues("ErrorCode"))
     }
 
+    /** C1 phase 3, П33: the dates and the state of the current certificate, nothing else. */
+    @Test
+    fun `Схема сертификата агента содержит ровно пять полей`() {
+        val fields = setOf("notBefore", "notAfter", "daysLeft", "state", "renewalIssuedAt")
+        val certificate = schema("AgentCertificate")
+
+        assertEquals(fields, certificate.path("properties").propertyNames().toSet())
+        assertEquals(fields, certificate.path("required").strings().toSet())
+        assertTrue(
+            "null" in
+                certificate
+                    .path("properties")
+                    .path("renewalIssuedAt")
+                    .path("type")
+                    .strings(),
+        )
+        assertEquals(listOf("ok", "renewal_due", "expiring", "expired"), enumValues("AgentCertificateState"))
+        for (name in listOf("AgentSummary", "AgentDetails")) {
+            assertTrue("certificate" in schema(name).path("required").strings(), name)
+            val property = schema(name).path("properties").path("certificate")
+            assertTrue("\"null\"" in property.toString(), "$name: $property")
+            assertTrue("AgentCertificate\"" in property.toString(), "$name: $property")
+        }
+    }
+
     @Test
     fun `step phase, log level and action are the proto values`() {
         assertEquals(protoValues(ProtoStepPhase.entries.toTypedArray()), enumValues("StepPhase"))

@@ -3913,6 +3913,40 @@
         "type" : "string",
         "enum" : [ "active", "used", "expired", "revoked" ]
       },
+      "AgentCertificate" : {
+        "type" : "object",
+        "description" : "The current certificate of an agent; no key, no serial, nothing but the dates",
+        "properties" : {
+          "notBefore" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "When the certificate became valid: its notBefore"
+          },
+          "notAfter" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "daysLeft" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Whole days to notAfter, rounded down, never negative"
+          },
+          "state" : {
+            "$ref" : "#/components/schemas/AgentCertificateState",
+            "description" : "expired: nothing is left. expiring: at most 30/365 of its lifetime is left. renewal_due: two thirds of its lifetime have passed and no confirmed new certificate exists. ok: otherwise"
+          },
+          "renewalIssuedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "When a renewal was issued that the agent has not confirmed; null if none"
+          }
+        },
+        "required" : [ "daysLeft", "notAfter", "notBefore", "renewalIssuedAt", "state" ]
+      },
+      "AgentCertificateState" : {
+        "type" : "string",
+        "enum" : [ "ok", "renewal_due", "expiring", "expired" ]
+      },
       "AgentDetails" : {
         "type" : "object",
         "description" : "An agent with what it reported in its last Register",
@@ -3995,9 +4029,17 @@
           "role" : {
             "$ref" : "#/components/schemas/AgentRole",
             "description" : "source runs backups, restores and scripts; verifier only verifies restores. Chosen by the token, never changes"
+          },
+          "certificate" : {
+            "description" : "The agent's current certificate: the last one that is not revoked, not superseded and confirmed (a renewal the agent has not confirmed does not count); null for a revoked agent and for an agent without one",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/AgentCertificate"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "agentVersion", "arch", "builtin", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "plugins", "protocolVersion", "registeredAt", "repositories", "revokedAt", "role", "scriptNames", "secretNames", "status" ]
+        "required" : [ "agentVersion", "arch", "builtin", "certificate", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "plugins", "protocolVersion", "registeredAt", "repositories", "revokedAt", "role", "scriptNames", "secretNames", "status" ]
       },
       "AgentPlugin" : {
         "type" : "object",
@@ -4726,9 +4768,17 @@
           "role" : {
             "$ref" : "#/components/schemas/AgentRole",
             "description" : "source runs backups, restores and scripts; verifier only verifies restores. Chosen by the token, never changes"
+          },
+          "certificate" : {
+            "description" : "The agent's current certificate: the last one that is not revoked, not superseded and confirmed (a renewal the agent has not confirmed does not count); null for a revoked agent and for an agent without one",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/AgentCertificate"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "agentVersion", "arch", "builtin", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "registeredAt", "revokedAt", "role", "status" ]
+        "required" : [ "agentVersion", "arch", "builtin", "certificate", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "registeredAt", "revokedAt", "role", "status" ]
       },
       "InstallFormat" : {
         "type" : "string",

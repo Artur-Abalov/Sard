@@ -372,10 +372,12 @@ class NotificationsIntegrationTest(
             NotificationService(
                 Deliveries(sessions, UuidV7(clock, SecureRandom())),
                 OverdueDeliveries(sessions, UuidV7(clock, SecureRandom())),
+                CertificateDeliveries(sessions, UuidV7(clock, SecureRandom())),
                 listOf(CapturingChannel()),
                 { Message(Message.Text("after restart")) },
                 { Message(Message.Text("alert after restart")) },
                 { null },
+                { Message(Message.Text("certificate")) },
                 RetryPolicy(RetrySettings()),
                 QueueSettings(batch = 10, lease = LEASE, ttl = Duration.ofHours(24)),
                 clock,

@@ -36,6 +36,8 @@ class ConsoleUrl private constructor(
 
     fun source(sourceId: UUID): String = "$base/sources/$sourceId"
 
+    fun agent(agentId: UUID): String = "$base/agents/$agentId"
+
     companion object {
         /** The address, or null when the setting is empty; anything but an http(s) address with a host fails. */
         fun parse(setting: String): ConsoleUrl? =

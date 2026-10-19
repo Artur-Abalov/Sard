@@ -10,6 +10,7 @@ import dev.sard.server.role.AgentRole
 import org.junit.jupiter.api.io.TempDir
 import org.springframework.boot.autoconfigure.AutoConfigurations
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
+import org.springframework.core.env.SystemEnvironmentPropertySource
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Duration
@@ -74,9 +75,9 @@ class AgentCertificateSettingsStartupTest {
 
     @Test
     fun `Недопустимый срок сертификата агента не даёт серверу стартовать`() {
-        for (value in listOf("PT9M59S", "PT0S", "-P1D", "year")) {
+        for (value in listOf("PT1M59S", "PT0S", "-P1D", "year")) {
             val message = startupFailure("sard.pki.agent-certificate-validity=$value")
-            for (part in listOf("sard.pki.agent-certificate-validity", value, "PT10M")) {
+            for (part in listOf("sard.pki.agent-certificate-validity", value, "PT2M")) {
                 assertTrue(part in message, message)
             }
         }
@@ -88,5 +89,37 @@ class AgentCertificateSettingsStartupTest {
             val message = startupFailure("sard.pki.agent-renewal-min-interval=$value")
             assertTrue("sard.pki.agent-renewal-min-interval" in message && value in message, message)
         }
+    }
+
+    @Test
+    fun `Без настройки проверка срока выполняется раз в час и по умолчанию интервал именно такой`() {
+        runner().run { context ->
+            assertEquals(Duration.ofHours(1), context.getBean(AgentCertificatePolicy::class.java).checkInterval)
+            assertEquals(Duration.ofHours(1), context.getBean(AGENT_CERTIFICATE_CHECK_INTERVAL))
+        }
+    }
+
+    @Test
+    fun `Недопустимый интервал проверки срока не даёт серверу стартовать`() {
+        for (value in listOf("PT0S", "-PT1M", "hourly")) {
+            val message = startupFailure("sard.pki.agent-certificate-check-interval=$value")
+            assertTrue("sard.pki.agent-certificate-check-interval" in message && value in message, message)
+        }
+    }
+
+    @Test
+    fun `Переменная окружения задаёт интервал проверки срока`() {
+        val environment =
+            SystemEnvironmentPropertySource(
+                "process-environment",
+                mapOf("SARD_PKI_AGENT_CERTIFICATE_CHECK_INTERVAL" to "PT5S"),
+            )
+        runner()
+            .withInitializer { it.environment.propertySources.addLast(environment) }
+            .run { context ->
+                assertEquals(null, context.startupFailure)
+                assertEquals(Duration.ofSeconds(5), context.getBean(AgentCertificatePolicy::class.java).checkInterval)
+                assertEquals(Duration.ofSeconds(5), context.getBean(AGENT_CERTIFICATE_CHECK_INTERVAL))
+            }
     }
 }

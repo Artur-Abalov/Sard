@@ -60,6 +60,7 @@ class ApiSerializationIntegrationTest(
             outdated = false,
             builtin = true,
             role = AgentRole.SOURCE,
+            certificate = AgentCertificate(at, at.plusSeconds(600), daysLeft = 0, AgentCertificateState.EXPIRING, at),
         )
     private val step =
         RunStep(
@@ -220,6 +221,7 @@ class ApiSerializationIntegrationTest(
                 outdated = true,
                 builtin = false,
                 role = AgentRole.VERIFIER,
+                certificate = null,
             ),
             AgentInstall(
                 downloadsEnabled = true,
@@ -459,6 +461,7 @@ class ApiSerializationIntegrationTest(
                 "InstallStep",
                 "ReleaseKey",
                 "FirstSteps",
+                "AgentCertificate",
                 "AgentPlugin",
                 "AgentRepository",
                 "EnrollmentToken",
