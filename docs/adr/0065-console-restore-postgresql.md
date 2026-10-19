@@ -25,8 +25,8 @@ R2a восстанавливает только `files`. R2b добавляет 
    не строится. Дамп идёт `restic dump` → канал → `pg_restore` (stdin); оглавление читается
    первым `restic dump`, который обрывается (SIGTERM группе) после `pg_restore -l`; для
    восстановления запускается второй. `restic.Repository` получает `Dump`. `conninfo` и среда
-   программ повторяют плагин (ПГ3, ПГ4): плагин из движка не импортируется, дублирование
-   небольшое и закрыто тестами обеих сторон.
+   программ (ПГ3, ПГ4) — один код в `agent/plugins/sdk/pgclient` (Apache-2.0, stdlib), им
+   пользуются и плагин, и движок; тест следит, что `PGPASSWORD` задаёт только он.
 3. **Режим pg_restore (РВ1, ВК28).** `N < restore.postgresql_lock_share × C` → одна
    транзакция; `C = max_locks_per_transaction × (max_connections + max_prepared_transactions)`;
    доля — 0…1, по умолчанию 0.5, вне диапазона агент не стартует (`config.LockShare`

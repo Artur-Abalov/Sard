@@ -13,6 +13,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk/pgclient"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
@@ -45,11 +46,7 @@ func (c pgConn) conninfo(dbname string) string {
 	}
 	pairs = append(pairs, [2]string{"connect_timeout", "30"}, [2]string{"keepalives_idle", "60"},
 		[2]string{"keepalives_interval", "10"}, [2]string{"keepalives_count", "6"}, [2]string{"application_name", "sard-agent"})
-	parts := make([]string, len(pairs))
-	for i, kv := range pairs {
-		parts[i] = fmt.Sprintf("%s=%s", kv[0], quoteConninfo(kv[1]))
-	}
-	return strings.Join(parts, " ")
+	return pgclient.Conninfo(pairs)
 }
 
 // sslmode is the TLS mode of the plan: require for a TCP host, disable for a
@@ -64,26 +61,8 @@ func (c pgConn) sslmode() string {
 	return "require"
 }
 
-func quoteConninfo(v string) string {
-	return "'" + strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(v) + "'"
-}
-
-// env is the environment of a program: the environment of the agent without
-// its PG* variables and locale, messages in English and the password (F1 ПГ3).
-func (c pgConn) env() []string {
-	var out []string
-	for _, kv := range c.environ() {
-		name, _, _ := strings.Cut(kv, "=")
-		if !strings.HasPrefix(name, "PG") && name != "LC_ALL" && name != "LC_MESSAGES" {
-			out = append(out, kv)
-		}
-	}
-	out = append(out, "LC_MESSAGES=C")
-	if c.password != nil {
-		out = append(out, "PGPASSWORD="+string(c.password))
-	}
-	return out
-}
+// env is the environment of a program (F1 ПГ3).
+func (c pgConn) env() []string { return pgclient.Env(c.environ(), c.password) }
 
 // outcome is how a run of a program ended.
 type outcome struct {

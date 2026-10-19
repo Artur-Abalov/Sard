@@ -4,9 +4,9 @@
 package postgresql
 
 import (
-	"fmt"
 	"strconv"
-	"strings"
+
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk/pgclient"
 )
 
 // applicationName marks the sessions of the agent on the server.
@@ -33,14 +33,5 @@ func (c config) conninfo() string {
 		[2]string{"keepalives_count", "6"},
 		[2]string{"application_name", applicationName},
 	)
-	parts := make([]string, len(pairs))
-	for i, kv := range pairs {
-		parts[i] = fmt.Sprintf("%s=%s", kv[0], quote(kv[1]))
-	}
-	return strings.Join(parts, " ")
-}
-
-// quote puts a value in single quotes; \ and ' are escaped.
-func quote(v string) string {
-	return "'" + strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(v) + "'"
+	return pgclient.Conninfo(pairs)
 }
