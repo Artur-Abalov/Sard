@@ -124,8 +124,10 @@ func (c *hostCheck) permFiles() []hostcheck.PermFile {
 			}
 		}
 	}
-	add(hostcheck.PermSecret, uniqueOf(secretFiles(c.cfg))...)
-	add(hostcheck.PermSecretDir, layout.SecretsDir(), keyDir(c.cfg.TLS))
+	selected := c.cfg
+	selected.TLS = c.selectedTLS()
+	add(hostcheck.PermSecret, uniqueOf(secretFiles(selected))...)
+	add(hostcheck.PermSecretDir, layout.SecretsDir(), keyDir(selected.TLS))
 	add(hostcheck.PermConfig, c.opts.configPath, layout.FragmentDir())
 	add(hostcheck.PermFragment, fragments...)
 	return files

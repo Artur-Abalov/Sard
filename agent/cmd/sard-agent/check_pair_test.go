@@ -4,6 +4,7 @@
 package main
 
 import (
+	"crypto/x509"
 	"os"
 	"strings"
 	"testing"
@@ -104,5 +105,39 @@ func TestCheckWithoutAConsistentPairReportsAnUnfinishedRegistration(t *testing.T
 	want := "tls.key_file is not the key of tls.cert_file: a registration was not finished"
 	if id := line(t, lines, "tls.identity", "-"); id.status != "ERROR" || id.message != want {
 		t.Errorf("tls.identity %+v", id)
+	}
+}
+
+// Scenario: check описывает новую пару которую выбрал бы старт (server.tls)
+func TestCheckPresentsTheSelectedPairToTheServer(t *testing.T) {
+	h := newPairHost(t, pairDay(310))
+	h.install(1, pairT0, pairDay(300), "")
+	h.install(2, pairDay(200), pairDay(500), ".new")
+	h.checkLines()
+	calls := h.server.calls
+	if len(calls) == 0 || calls[0].TLS == nil || len(calls[0].TLS.Certificates) != 1 {
+		t.Fatalf("calls %+v", calls)
+	}
+	cert, err := x509.ParseCertificate(calls[0].TLS.Certificates[0].Certificate[0])
+	if err != nil || cert.SerialNumber.Int64() != 2 {
+		t.Errorf("presented %v, %v", cert, err)
+	}
+}
+
+// Scenario: files.permissions judges the key file of the selected pair.
+func TestCheckJudgesThePermissionsOfTheKeyOfTheSelectedPair(t *testing.T) {
+	h := newPairHost(t, pairDay(310))
+	h.install(1, pairT0, pairDay(300), "")
+	h.install(2, pairDay(200), pairDay(500), ".new")
+	ok(t, os.Chmod(h.cfg.TLS.KeyFile+".new", 0o644))
+	lines, _, _ := h.checkLines()
+	if l := line(t, lines, "files.permissions", "-"); l.status != "ERROR" || !strings.Contains(l.message, "agent.key.new") {
+		t.Errorf("open key.new: %+v", l)
+	}
+	ok(t, os.Chmod(h.cfg.TLS.KeyFile+".new", 0o600))
+	ok(t, os.Chmod(h.cfg.TLS.KeyFile, 0o644))
+	lines, _, _ = h.checkLines()
+	if l := line(t, lines, "files.permissions", "-"); l.status != "OK" {
+		t.Errorf("open main key, selected key.new fine: %+v", l)
 	}
 }
