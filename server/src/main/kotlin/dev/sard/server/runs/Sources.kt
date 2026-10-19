@@ -15,7 +15,8 @@ import java.util.UUID
 
 private const val NAME_KEY = "sources_tenant_id_name_key"
 private const val ACTIVE_RUN =
-    "select id from RunRecord where sourceId = :source and status in ('queued', 'dispatched', 'running')"
+    "select id from RunRecord where sourceId = :source and status in ('queued', 'dispatched', 'running') " +
+        "and trigger <> 'verification'"
 
 /** The live source [id] of the session's tenant, locked with [lock]; a deleted one is absent. */
 internal fun liveSource(

@@ -135,7 +135,8 @@ class ResultCheckTest {
                     """"repositoryId":"$REPOSITORY_ID","partial":false}""",
                 """{"kind":"restore","target":"/r"}""",
                 """{"kind":"verify","snapshotId":"4a","checks":[{"name":"read-data","passed":false,""" +
-                    """"detail":"pack 1f: \"bad\""}]}""",
+                    """"detail":"pack 1f: \"bad\""}],"stages":[],"verdict":null,"mismatches":[],""" +
+                    """"restoreMillis":null}""",
                 """{"kind":"run","exitCode":-1}""",
             )
         assertEquals(expected, stored)

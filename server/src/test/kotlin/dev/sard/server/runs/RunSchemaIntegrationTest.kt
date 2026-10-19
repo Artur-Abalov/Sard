@@ -133,9 +133,17 @@ class RunSchemaIntegrationTest(
     }
 
     @Test
-    fun `a verification run needs a workflow, manual and scheduled runs go without one`() {
-        // ADR 0022 as amended by F3a: a schedule fires its source, not a workflow.
-        refused("runs_workflow_check") { insertRun("succeeded", trigger = "verification") }
+    fun `an active verification run does not count for D6, a backup run beside it does`() {
+        insertRun("running", trigger = "verification")
+        insertRun("queued", trigger = "verification")
+        insertRun("queued")
+        refused("runs_active_source_key") { insertRun("running") }
+    }
+
+    @Test
+    fun `manual, scheduled and verification runs go without a workflow, an unknown trigger is refused`() {
+        // ADR 0022 as amended by F3a: a schedule fires its source, not a workflow; V4: so does a verification.
+        insertRun("succeeded", trigger = "verification")
         insertRun("succeeded", trigger = "schedule")
         insertRun("succeeded", trigger = "catch_up")
         refused("runs_trigger_check") { insertRun("succeeded", trigger = "cron") }
