@@ -23,7 +23,7 @@ private fun due(
     }
 
 /** C1 phase 3, П36: which event a check records for a certificate, if any. */
-@MutFlowTest(includeTargets = [CertificateEvent::class])
+@MutFlowTest(includeTargets = [CertificateEvent::class, CertificateEvent.Companion::class])
 class CertificateEventsTest {
     @Test
     fun `Пока порог не достигнут, события нет`() {

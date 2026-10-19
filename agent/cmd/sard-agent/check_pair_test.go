@@ -4,7 +4,10 @@
 package main
 
 import (
+	"path/filepath"
+
 	"crypto/x509"
+	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"os"
 	"strings"
 	"testing"
@@ -139,5 +142,31 @@ func TestCheckJudgesThePermissionsOfTheKeyOfTheSelectedPair(t *testing.T) {
 	lines, _, _ = h.checkLines()
 	if l := line(t, lines, "files.permissions", "-"); l.status != "OK" {
 		t.Errorf("open main key, selected key.new fine: %+v", l)
+	}
+}
+
+// countingFS counts the directories read through it.
+type countingFS struct {
+	hostsetup.FS
+	dirs map[string]int
+}
+
+func (c *countingFS) ReadDir(name string) ([]os.DirEntry, error) {
+	c.dirs[name]++
+	return c.FS.ReadDir(name)
+}
+
+// Scenario: check выбирает пару один раз, и все строки описывают одну и ту же
+func TestCheckSelectsThePairOnceForAllItsLines(t *testing.T) {
+	h := newPairHost(t, pairDay(310))
+	h.install(1, pairT0, pairDay(300), "")
+	h.install(2, pairDay(200), pairDay(500), ".new")
+	counting := &countingFS{FS: h.deps.fs, dirs: map[string]int{}}
+	h.deps.fs = counting
+
+	h.checkLines()
+
+	if got := counting.dirs[filepath.Dir(h.cfg.TLS.CertFile)]; got != 1 {
+		t.Errorf("the directory of the certificate was read %d times, want once: %v", got, counting.dirs)
 	}
 }

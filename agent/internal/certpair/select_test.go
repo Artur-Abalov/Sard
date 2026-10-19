@@ -296,3 +296,42 @@ func TestWhenEveryPairExpiredTheLatestIssuedOneIsNamed(t *testing.T) {
 		t.Fatalf("latest = %+v, want %+v", got.Latest, want)
 	}
 }
+
+// flakyCert is the file system of a host where one read of the certificate
+// fails (a renewal replaced the file under the check) and the others succeed.
+type flakyCert struct {
+	certpair.OSFS
+	cert   string
+	failAt int
+	reads  int
+}
+
+func (f *flakyCert) ReadFile(name string) ([]byte, error) {
+	if name == f.cert {
+		f.reads++
+		if f.reads == f.failAt {
+			return nil, os.ErrNotExist
+		}
+	}
+	return f.OSFS.ReadFile(name)
+}
+
+func TestACertificateThatCannotBeReadAtAnyStepMakesNoPair(t *testing.T) {
+	t.Parallel()
+	h := newHost(t)
+	h.install(h.pair(1, t0, day(300)), "")
+	total := &flakyCert{cert: h.path("agent.pem")}
+	if _, err := certpair.Select(h.files(), total, day(1)); err != nil {
+		t.Fatal(err)
+	}
+	if total.reads < 2 {
+		t.Fatalf("the certificate is read %d times, the test does not reach a second read", total.reads)
+	}
+	// The last read is made after the pair is chosen, to name its serial.
+	for at := 1; at < total.reads; at++ {
+		sel, err := certpair.Select(h.files(), &flakyCert{cert: h.path("agent.pem"), failAt: at}, day(1))
+		if err == nil {
+			t.Errorf("read %d of %d failed, yet %+v was selected", at, total.reads, sel)
+		}
+	}
+}

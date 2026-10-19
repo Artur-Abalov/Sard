@@ -259,3 +259,32 @@ Docker is unavailable here, so only the `@MutFlowTest` classes that need no cont
 не менялись: дублирования внутри модуля и логики в компонентах
 (`CertificateMark.tsx` использует только `certificateMarkTone` из `theme.ts`)
 замеры не выявили. Серверный CRAP (`NotificationService.plan`, 6.0) судит CI.
+
+## Фаза 3 — hardener (2026-10-19)
+
+Go: `go-mutesting` через `scripts/mutate-exec.sh` по `certpair/pair.go`,
+`certpair/select.go`, `hostcheck/tls.go`, `cmd/sard-agent/check_files.go`,
+`check_server.go`: 9 выживших (оценка 0.960870) до, после усиления тестов
+остались 5, все эквивалентные, расчёт ниже. Новые тесты: выбор пары один раз на
+запуск `check` (`TestCheckSelectsThePairOnceForAllItsLines`), пустой путь не
+файл для `files.permissions`, сбой чтения сертификата на любом шаге выбора пары
+(`TestACertificateThatCannotBeReadAtAnyStepMakesNoPair`).
+
+Эквивалентные, исходный код не менялся: `ConfigLoadLine(path, 0, err)` (при
+`err != nil` число фрагментов не читается; двое мутантов); `var pem [3][]byte`
+в `clientTLS` (лишний пустой элемент); `chain[1:]` в `hostcheck/tls.go`
+(лист как промежуточный не меняет проверку цепочки); `err != nil ||` в
+`certpair.candidate.read` (при ошибке чтения личности `who` пуст и не равен
+владельцу, тот же отказ). Предложение coder: убрать параметр `fragments` из
+`ConfigLoadLine` для ветки ошибки и `pem` сделать срезом по числу файлов.
+
+Сервер (mutflow, без Docker): `CertificateEventsTest` обнаруживал 0 мутаций
+(цель `CertificateEvent::class` не включает `companion`); добавлен
+`CertificateEvent.Companion::class`, теперь 4 мутации, 0 выживших.
+`AgentCertificateLoopTest` стал `@MutFlowTest` (3 мутации; одна выживала, пока
+тест не проверил имя и daemon-статус потока). Новый `AgentCertificateMappingTest`
+(`toApi`, 17 мутаций, 4 выживали до границ состояний). Остальные чистые классы:
+`AgentCertificateLifetimeTest` 13, `CertificateNoticeFormatterTest` 18,
+`AgentCertificatePolicyTest` 5, 0 выживших. Классы с БД
+(`AgentCertificates`, `AgentCertificateCheck`, нотификации) проверяет только CI
+по `./scripts/gate.sh server`.

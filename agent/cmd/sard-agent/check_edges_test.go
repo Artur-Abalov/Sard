@@ -182,6 +182,13 @@ func TestWithoutAKeyFileThereIsNoDirectoryOfItToJudge(t *testing.T) {
 	h := fullHost(t)
 	h.cfg.TLS.KeyFile = ""
 	h.saveHostConfig()
+	stat := h.deps.stat
+	h.deps.stat = func(p string) (secrets.Info, error) {
+		if p == "" {
+			return secrets.Info{Mode: 0o777}, nil
+		}
+		return stat(p)
+	}
 	lines, _, _ := h.checkLines()
 	if l := line(t, lines, "files.permissions", "-"); strings.Contains(l.message, "has mode") {
 		t.Errorf("%+v", l)
