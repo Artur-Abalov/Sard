@@ -6,8 +6,6 @@ package dev.sard.server.verify
 import dev.sard.server.persistence.HibernateTenantBridge
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.runs.StepsQueued
-import dev.sard.server.scheduler.CronSchedule
-import dev.sard.server.scheduler.Fires
 import org.hibernate.Session
 import org.slf4j.LoggerFactory
 import org.springframework.context.SmartLifecycle
@@ -22,10 +20,6 @@ import java.util.concurrent.TimeUnit
 private val log = LoggerFactory.getLogger(VerificationLoop::class.java)
 
 private const val TENANTS = "select id, true from tenants order by id"
-private const val SCHEDULE = "select cron, timezone, updated_at from verification_schedule"
-
-/** The furthest back a cycle moment is looked for: a monthly cron's. */
-private val LOOK_BACK: Duration = Duration.ofDays(32)
 
 /**
  * One tick of restore verification (V4) per tenant, in one transaction of that tenant: settle the attempts that
@@ -41,12 +35,12 @@ class VerificationLoop(
     private val queue: VerificationQueue,
     private val settlement: VerificationSettlement,
     private val queued: StepsQueued,
-    private val settings: VerificationSettings,
+    private val schedule: VerificationSchedule,
+    private val stale: StaleEpisodes,
 ) {
     fun tick() {
         val now = clock.instant()
-        val (tenants, schedule) = sessions.system { session -> tenants(session) to schedule(session) }
-        val moments = CycleMoments.of(schedule.fires, maxOf(schedule.since, now - LOOK_BACK), now)
+        val (tenants, moments) = sessions.system { session -> tenants(session) to schedule.moments(session, now) }
         for (tenantId in tenants.filter { it != HibernateTenantBridge.SYSTEM_TENANT_ID }) {
             runCatching { tick(tenantId, moments, now) }
                 .onFailure { log.warn("verification of tenant {} waits for the next tick", tenantId, it) }
@@ -62,6 +56,7 @@ class VerificationLoop(
         val woken =
             sessions.inTenant(tenantId) { session ->
                 settlement.settle(session, tenantId, now)
+                stale.update(session, tenantId, now)
                 val before = queue.assign(session, tenantId, now)
                 val made = cycles.fire(session, tenantId, moments, now)
                 before + if (made > 0) queue.assign(session, tenantId, now) else emptySet()
@@ -71,20 +66,7 @@ class VerificationLoop(
 
     private fun tenants(session: Session): List<UUID> =
         session.createNativeQuery(TENANTS, Array<Any?>::class.java).list().map { it[0] as UUID }
-
-    /** The installation's schedule; without a row, the default since ever (V-D9). */
-    private fun schedule(session: Session): CycleSchedule {
-        val row = session.createNativeQuery(SCHEDULE, Array<Any?>::class.java).list().firstOrNull()
-        val (cron, zone, since) = row ?: arrayOf(settings.defaultCron, settings.defaultTimezone, Instant.EPOCH)
-        return CycleSchedule(CronSchedule.parse(cron as String, zone as String), since as Instant)
-    }
 }
-
-/** The cron of the cycle and when it was set: moments before that do not count. */
-private class CycleSchedule(
-    val fires: Fires,
-    val since: Instant,
-)
 
 /** Runs [tick] every [interval] on one thread; ticks never overlap and a failing one never stops the next. */
 class VerificationTicker(

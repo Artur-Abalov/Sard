@@ -3,17 +3,21 @@
 
 package dev.sard.server.verify
 
+import dev.sard.server.extension.TenantResolver
 import org.springframework.stereotype.Component
 import java.time.Instant
 
-/** Orchestrates restore verification runs and remembers their outcome. */
-interface RestoreVerifications {
-    /** Time of the last successful restore verification, or null if none happened yet. */
+/** The figure of `GET /status`: when restore was last proven for every source that is verified. */
+fun interface RestoreVerifications {
+    /** The oldest of the sources' last successful verifications; null if one has none or none is verified (V4). */
     fun lastVerifiedAt(): Instant?
 }
 
-/** Placeholder until restore verification exists (roadmap: restore verification, stage 2). */
+/** [RestoreVerifications] read from the history of the current tenant (restore_verifications, V4). */
 @Component
-class NoRestoreVerifications : RestoreVerifications {
-    override fun lastVerifiedAt(): Instant? = null
+class RecordedRestoreVerifications(
+    private val verifications: Verifications,
+    private val tenants: TenantResolver,
+) : RestoreVerifications {
+    override fun lastVerifiedAt(): Instant? = verifications.lastVerifiedAt(tenants.currentTenantId())
 }

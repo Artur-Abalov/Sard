@@ -78,7 +78,8 @@ CREATE UNIQUE INDEX verification_jobs_open_key ON verification_jobs (tenant_id, 
 -- The cycle's check «a cycle job since this moment» per source.
 CREATE INDEX verification_jobs_tenant_id_source_id_created_at_idx ON verification_jobs (tenant_id, source_id, created_at DESC);
 
--- The history (ADR 0013): one row per finished job. Immutable. level is the highest level
+-- The history (ADR 0013): one row per finished job. Immutable. Its rows are the events of V6: status 'failed' is
+-- «the verification failed»; recovered marks a pass right after a failure, «it passes again». level is the highest level
 -- reached (0-5); stages and mismatches are the verifier's evidence; unsuitable is why no verifier fit.
 -- key_holders is how many live agents of the tenant report the repository's id (ADR 0008: a key on one
 -- host only is flagged). on_origin_host is not stored: it is verifier_agent_id = snapshots.agent_id.
@@ -99,6 +100,7 @@ CREATE TABLE restore_verifications (
     mismatches          JSONB       NOT NULL DEFAULT '[]',
     unsuitable          JSONB,
     restore_duration_ms BIGINT CHECK (restore_duration_ms >= 0),
+    recovered           BOOLEAN     NOT NULL DEFAULT FALSE,
     verified_at         TIMESTAMPTZ NOT NULL,
     CONSTRAINT restore_verifications_tenant_id_id_key UNIQUE (tenant_id, id),
     CONSTRAINT restore_verifications_tenant_id_job_id_key UNIQUE (tenant_id, job_id),
@@ -110,9 +112,31 @@ CREATE TABLE restore_verifications (
         REFERENCES agents (tenant_id, id),
     CONSTRAINT restore_verifications_verdict_check
         CHECK (status IN ('infrastructure_failure', 'no_verifier') OR (step_id IS NOT NULL AND verifier_agent_id IS NOT NULL)),
-    CONSTRAINT restore_verifications_passed_check CHECK (status <> 'passed' OR level >= 4)
+    CONSTRAINT restore_verifications_passed_check CHECK (status <> 'passed' OR level >= 4),
+    CONSTRAINT restore_verifications_recovered_check CHECK (status = 'passed' OR NOT recovered)
 );
 -- The main metric: the last passed verification of a source.
 CREATE INDEX restore_verifications_passed_idx ON restore_verifications (tenant_id, source_id, verified_at DESC)
     WHERE status = 'passed';
 CREATE INDEX restore_verifications_source_idx ON restore_verifications (tenant_id, source_id, verified_at DESC);
+
+-- «Not verified successfully for longer than N days» (sard.verification.stale-after): an episode opens once when a
+-- source with verification on goes that long without a pass, counted from its last pass or, never passed, from its
+-- first whole snapshot; the next pass closes it (closed_by_id), losing verification or the source closes it with
+-- none. One event per turn, not one per cycle: at most one open episode per source.
+CREATE TABLE verification_stale_episodes (
+    id           UUID        NOT NULL PRIMARY KEY,
+    tenant_id    UUID        NOT NULL REFERENCES tenants (id),
+    source_id    UUID        NOT NULL,
+    counted_from TIMESTAMPTZ NOT NULL,
+    opened_at    TIMESTAMPTZ NOT NULL,
+    closed_at    TIMESTAMPTZ,
+    closed_by_id UUID,
+    CONSTRAINT verification_stale_episodes_tenant_id_id_key UNIQUE (tenant_id, id),
+    CONSTRAINT verification_stale_episodes_source_fkey FOREIGN KEY (tenant_id, source_id) REFERENCES sources (tenant_id, id),
+    CONSTRAINT verification_stale_episodes_closed_by_fkey FOREIGN KEY (tenant_id, closed_by_id)
+        REFERENCES restore_verifications (tenant_id, id),
+    CONSTRAINT verification_stale_episodes_closed_check CHECK (closed_at IS NOT NULL OR closed_by_id IS NULL)
+);
+CREATE UNIQUE INDEX verification_stale_episodes_open_key ON verification_stale_episodes (tenant_id, source_id)
+    WHERE closed_at IS NULL;

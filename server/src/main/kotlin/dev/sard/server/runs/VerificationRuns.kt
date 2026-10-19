@@ -13,6 +13,7 @@ import java.time.Instant
 import java.util.UUID
 
 private val JSON = JsonMapper.builder().build()
+private const val NO_CONFIG = "{}"
 
 /** One attempt of a verification job (V4): who verifies what, under which local repository name. */
 data class VerificationAttempt(
@@ -21,8 +22,6 @@ data class VerificationAttempt(
     val plugin: String,
     /** The verifier's own name of the repository; it reaches the same restic id. */
     val repositoryName: String,
-    /** The source's config as of now, secret names only (ADR 0008). */
-    val config: String,
     /** restic's snapshot id. */
     val snapshotId: String,
     val task: VerifyTask,
@@ -54,7 +53,9 @@ class VerificationRuns(
                 plugin = attempt.plugin,
                 action = Action.VERIFY.stored,
                 repositoryName = attempt.repositoryName,
-                config = attempt.config,
+                // The verifier reaches no production system (design document): the source's config is none of its
+                // business, everything it checks against comes in the fingerprint (owner decision, V4).
+                config = NO_CONFIG,
                 status = StepState.QUEUED.stored,
                 queuedAt = now,
                 snapshotId = attempt.snapshotId,
@@ -83,14 +84,21 @@ class VerificationRuns(
                     .asStringOpt()
                     .orElse(null)
                     ?.let(VerifierVerdict::of),
-                items(node.path("mismatches")).map {
-                    StepOutput.Mismatch(
-                        it.path("name").asString(),
-                        it.path("expected").asString(),
-                        it.path("actual").asString(),
-                    )
-                },
+                items(node.path("mismatches")).map(::mismatchOf),
                 node.path("restoreMillis").takeIf { it.isNumber }?.asLong(),
+            )
+
+        /** Stages stored as a JSON array of [StepOutput.Stage.fields] (restore_verifications.stages). */
+        fun stagesOf(json: String): List<StepOutput.Stage> = items(JSON.readTree(json)).map(::stageOf)
+
+        /** Mismatches stored as a JSON array of [StepOutput.Mismatch.fields]. */
+        fun mismatchesOf(json: String): List<StepOutput.Mismatch> = items(JSON.readTree(json)).map(::mismatchOf)
+
+        private fun mismatchOf(node: JsonNode) =
+            StepOutput.Mismatch(
+                node.path("name").asString(),
+                node.path("expected").asString(),
+                node.path("actual").asString(),
             )
 
         private fun items(array: JsonNode): List<JsonNode> = (0 until array.size()).map(array::get)

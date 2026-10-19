@@ -99,6 +99,12 @@ enum class ErrorCode {
 
     @JsonProperty("first_backup_pending")
     FIRST_BACKUP_PENDING,
+
+    @JsonProperty("verification_active")
+    VERIFICATION_ACTIVE,
+
+    @JsonProperty("snapshot_unusable")
+    SNAPSHOT_UNUSABLE,
 }
 
 private const val TYPE = "URI reference identifying the problem type; about:blank when the status says it all"

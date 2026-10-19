@@ -105,7 +105,8 @@ class ApiSerializationIntegrationTest(
             startedAt = null,
             finishedAt = null,
         )
-    private val source = Source(id, "etc", id, "files", "local", mapOf("paths" to listOf("/etc")), at, at, null)
+    private val source =
+        Source(id, "etc", id, "files", "local", mapOf("paths" to listOf("/etc")), at, at, null, true, null, null, null)
     private val systemSource =
         Source(
             id,
@@ -117,6 +118,10 @@ class ApiSerializationIntegrationTest(
             at,
             at,
             SystemSourceRole.SELF_DATABASE,
+            verificationEnabled = true,
+            verificationStatus = VerificationOutcome.PASSED,
+            lastVerifiedAt = at,
+            lastVerifiedLevel = 5,
         )
     private val token =
         EnrollmentToken(
@@ -188,9 +193,46 @@ class ApiSerializationIntegrationTest(
         restriction = OnboardingRestriction.FULL,
     )
 
+    private val verifierSample =
+        Verifier(id, "verifier1", true, true, null, SandboxRuntime.DOCKER, listOf("e"), listOf("files"), false, 0, null)
+    private val verificationJob =
+        VerificationJob(id, VerificationJobStatus.QUEUED, VerificationJobReason.CYCLE, at, at, 1, emptyList())
+    private val verificationRecord =
+        Verification(
+            id,
+            id,
+            id,
+            id,
+            "4a3b2c1d",
+            null,
+            null,
+            1,
+            VerificationOutcome.NO_VERIFIER,
+            0,
+            "no verifier fits",
+            listOf(VerificationStage(0, "fingerprint_tag", null, null, null, 0, "", "")),
+            listOf(FingerprintMismatch("tables", "12", "0")),
+            listOf(VerifierMisfit(id, "verifier1", listOf(VerifierReason.OFFLINE))),
+            null,
+            false,
+            at,
+        )
+
     private val samples: List<Any> =
         listOf(
             StatusResponse("1.0.0", lastVerifiedRestoreAt = null),
+            SourceVerificationInput(enabled = false),
+            VerifyNowInput(snapshotId = id),
+            VerificationScheduleInput("30 4 * * *", "UTC"),
+            VerificationSchedule("30 4 * * *", "UTC", at),
+            VerifierMisfit(id, "verifier1", listOf(VerifierReason.SAME_HOST, VerifierReason.SPACE_UNKNOWN)),
+            verificationJob,
+            SourceVerificationState(true, VerificationOutcome.NO_VERIFIER, at, 5, at, verificationJob),
+            VerificationStage(1, "restic_check", VerificationStageStatus.PASSED, at, at, 0, "ok", ""),
+            FingerprintMismatch("tables", "12", "0"),
+            verificationRecord,
+            VerificationPage(listOf(verificationRecord), nextCursor = null),
+            verifierSample,
             Overview(1, 3, FirstSteps(true, true, false, false, false, complete = false)),
             CaInfo(CA_FINGERPRINT, CaOrigin.GENERATED, "/var/lib/sard/pki/ca/ca.key"),
             SessionRequest("secret"),

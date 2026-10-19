@@ -22,6 +22,7 @@ class VerificationPropertiesTest {
         assertEquals(ZoneId.systemDefault().id, settings.defaultTimezone)
         assertEquals(SpaceNeed(2.0, 1L shl 30), settings.space)
         assertEquals(Duration.ofHours(6), settings.stepTimeout)
+        assertEquals(Duration.ofDays(7), settings.staleAfter)
     }
 
     @Test
@@ -43,6 +44,7 @@ class VerificationPropertiesTest {
                 VerificationProperties(spaceHeadroom = -1) to "sard.verification.space-headroom must not be negative",
                 VerificationProperties(stepTimeout = Duration.ZERO) to
                     "sard.verification.step-timeout must be positive",
+                VerificationProperties(staleAfter = Duration.ZERO) to "sard.verification.stale-after must be positive",
             )
         for ((properties, message) in cases) {
             val error = assertFailsWith<IllegalArgumentException> { MutFlow.underTest { properties.settings() } }

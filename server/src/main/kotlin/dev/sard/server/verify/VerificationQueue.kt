@@ -14,7 +14,7 @@ import java.util.UUID
 // that made the snapshot are both the source's (V-D7). Another server's jobs are skipped, not waited for.
 private const val QUEUED = """
     select j.id, j.source_id, j.snapshot_ref, j.repository_id, j.plugin, j.fingerprint, j.fingerprint_sha256,
-        j.deadline, sn.snapshot_id, sn.total_bytes, cast(src.config as text), src.deleted_at is not null,
+        j.deadline, sn.snapshot_id, sn.total_bytes, src.deleted_at is not null,
         sa.machine_id, na.machine_id
     from verification_jobs j
     join snapshots sn on sn.tenant_id = j.tenant_id and sn.id = j.snapshot_ref
@@ -45,9 +45,8 @@ private class QueuedJob(
     val deadline = row[7] as Instant
     val resticSnapshot = row[8] as String
     val totalBytes = (row[9] as Number).toLong()
-    val config = row[10] as String
-    val sourceDeleted = row[11] as Boolean
-    val sourceMachines = setOfNotNull(row[12] as String?, row[13] as String?)
+    val sourceDeleted = row[10] as Boolean
+    val sourceMachines = setOfNotNull(row[11] as String?, row[12] as String?)
 }
 
 /**
@@ -122,7 +121,6 @@ class VerificationQueue(
                 verifier,
                 job.plugin,
                 match.repositoryName,
-                job.config,
                 job.resticSnapshot,
                 task,
             )

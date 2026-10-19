@@ -88,6 +88,7 @@ class VerificationIntegrationTest(
     @Autowired private val online: TestOnlineAgents,
     @Autowired private val queued: RecordingStepsQueued,
     @Autowired private val clock: MovableClock,
+    @Autowired private val verifications: Verifications,
 ) {
     private lateinit var tenant: RunsTenant
     private lateinit var sourceId: UUID
@@ -107,7 +108,8 @@ class VerificationIntegrationTest(
 
     @AfterTest
     fun tearDown() {
-        for (table in listOf("restore_verifications", "verification_jobs", "snapshots")) {
+        val tables = listOf("verification_stale_episodes", "restore_verifications", "verification_jobs", "snapshots")
+        for (table in tables) {
             jdbc.update("delete from $table where tenant_id = ?", tenant.id)
         }
         jdbc.update("delete from step_logs where tenant_id = ?", tenant.id)
@@ -182,14 +184,15 @@ class VerificationIntegrationTest(
             tenant.id,
         )
 
-    /** The VERIFY step of the job's current attempt (of the first job when there are several). */
+    /** The VERIFY step of the current attempt of the oldest open job, else of the oldest job. */
     private fun attempt(): Map<String, Any?> =
         jdbc
             .queryForList(
                 "select st.id, st.agent_id, st.action, st.status, st.snapshot_id, st.repository_name, " +
-                    "cast(st.verify_task as text) as task, r.trigger from verification_jobs j " +
+                    "cast(st.verify_task as text) as task, cast(st.config as text) as config, r.trigger " +
+                    "from verification_jobs j " +
                     "join runs r on r.id = j.run_id join run_steps st on st.run_id = r.id " +
-                    "where j.tenant_id = ? order by j.created_at, j.id limit 1",
+                    "where j.tenant_id = ? order by j.status = 'closed', j.created_at, j.id limit 1",
                 tenant.id,
             ).single()
 
@@ -285,6 +288,8 @@ class VerificationIntegrationTest(
         assertEquals(snapshot, attempt["snapshot_id"])
         val task = VerifyTask.of(attempt["task"] as String)!!
         assertEquals(REPOSITORY_ID, task.repositoryId)
+        // Owner decision: the verifier reaches no production system, the source's config is not its business.
+        assertEquals("{}", attempt["config"])
         assertEquals(Instant.parse("2026-10-01T04:30:00Z"), task.deadline)
         assertEquals(Duration.ofHours(6).seconds, task.timeoutSeconds)
         assertEquals(listOf(tenant.id to verifier), queued.calls)
@@ -381,6 +386,116 @@ class VerificationIntegrationTest(
             3,
             count("select count(*) from runs where tenant_id = ? and trigger = 'verification'", tenant.id),
         )
+    }
+
+    // --- test 6: events
+
+    private fun episodes(): List<Map<String, Any?>> =
+        jdbc.queryForList(
+            "select counted_from, opened_at, closed_at, closed_by_id from verification_stale_episodes " +
+                "where tenant_id = ? order by opened_at, id",
+            tenant.id,
+        )
+
+    @Test
+    fun `a pass right after a failure is marked recovered, the first pass and the failure are not`() {
+        val verifier = verifier()
+        loop.tick()
+        report(verifier, StepState.SUCCEEDED, passed)
+        loop.tick()
+        clock.now = Instant.parse("2026-10-01T04:30:00Z")
+        loop.tick()
+        val failed = passed.copy(stages = listOf(stage(1, StageState.FAILED)), verdict = VerifierVerdict.FAILED)
+        report(verifier, StepState.FAILED, failed)
+        loop.tick()
+        clock.now = Instant.parse("2026-10-02T04:30:00Z")
+        loop.tick()
+        report(verifier, StepState.SUCCEEDED, passed)
+        loop.tick()
+
+        val marks =
+            jdbc.queryForList(
+                "select status, recovered from restore_verifications where tenant_id = ? order by verified_at",
+                tenant.id,
+            )
+        assertEquals(listOf("passed", "failed", "passed"), marks.map { it["status"] })
+        assertEquals(listOf(false, false, true), marks.map { it["recovered"] })
+    }
+
+    @Test
+    fun `a source not verified for more than seven days opens one episode, and a pass closes it`() {
+        loop.tick()
+        assertEquals(emptyList(), episodes())
+
+        clock.now = RUNS_NOW + Duration.ofDays(7) + Duration.ofSeconds(1)
+        loop.tick()
+        loop.tick()
+        clock.now = clock.now + Duration.ofDays(1)
+        loop.tick()
+
+        val opened = episodes().single()
+        assertEquals(Timestamp.from(RUNS_NOW), opened["counted_from"])
+        assertEquals(null, opened["closed_at"])
+
+        val verifier = verifier()
+        loop.tick()
+        report(verifier, StepState.SUCCEEDED, passed)
+        loop.tick()
+
+        val closed = episodes().single()
+        assertTrue(closed["closed_at"] != null)
+        val pass =
+            jdbc.queryForObject("select id from restore_verifications where tenant_id = ?", UUID::class.java, tenant.id)
+        assertEquals(pass, closed["closed_by_id"])
+    }
+
+    @Test
+    fun `turning verification off closes an open episode without a pass`() {
+        clock.now = RUNS_NOW + Duration.ofDays(8)
+        loop.tick()
+        jdbc.update("update sources set verification_enabled = false where id = ?", sourceId)
+
+        loop.tick()
+
+        val closed = episodes().single()
+        assertTrue(closed["closed_at"] != null)
+        assertEquals(null, closed["closed_by_id"])
+    }
+
+    // --- test 8: lastVerifiedAt, and a self-backup source like any other
+
+    @Test
+    fun `lastVerifiedAt is the oldest last pass of the verified sources, null while one has none`() {
+        val verifier = verifier()
+        val second = sources.create(tenant.id, tenant.draft(name = "second")).id
+        backup(second)
+        assertEquals(null, verifications.lastVerifiedAt(tenant.id))
+
+        loop.tick()
+        report(verifier, StepState.SUCCEEDED, passed)
+        val firstPass = clock.now
+        loop.tick()
+        assertEquals(null, verifications.lastVerifiedAt(tenant.id), "the second source is not verified yet")
+
+        clock.now = clock.now.plusSeconds(60)
+        loop.tick()
+        report(verifier, StepState.SUCCEEDED, passed)
+        loop.tick()
+
+        assertEquals(firstPass, verifications.lastVerifiedAt(tenant.id))
+    }
+
+    @Test
+    fun `a self-backup source is verified the same way`() {
+        jdbc.update("update sources set system_role = 'self_database' where id = ?", sourceId)
+        val verifier = verifier()
+
+        loop.tick()
+        report(verifier, StepState.SUCCEEDED, passed)
+        loop.tick()
+
+        assertEquals(listOf("passed"), records().map { it["status"] })
+        assertEquals(clock.now, verifications.lastVerifiedAt(tenant.id))
     }
 
     // --- test 7: a backup and a verification of one source side by side

@@ -13,16 +13,20 @@ import java.util.UUID
 private val JSON = JsonMapper.builder().build()
 
 // Native SQL names tenant_id explicitly (ADR 0013, rule 8). key_holders: live agents of the tenant that report
-// the repository's id (ADR 0008).
+// the repository's id (ADR 0008). recovered: a pass right after a failure of the same source (V6: «passes again»).
 private const val RECORD = """
     insert into restore_verifications (id, tenant_id, job_id, source_id, snapshot_id, step_id, verifier_agent_id,
-        key_holders, status, level, reason, stages, mismatches, unsuitable, restore_duration_ms, verified_at)
+        key_holders, status, level, reason, stages, mismatches, unsuitable, restore_duration_ms, recovered, verified_at)
     values (:id, :tenant, :job, :source, :snapshot, :step, :verifier,
         (select count(distinct r.agent_id) from agent_repositories r
             join agents a on a.tenant_id = r.tenant_id and a.id = r.agent_id
             where r.tenant_id = :tenant and r.repository_id = :repository and a.revoked_at is null),
         :status, :level, :reason, cast(:stages as jsonb), cast(:mismatches as jsonb), cast(:unsuitable as jsonb),
-        :restore, :now)"""
+        :restore,
+        :status = 'passed' and coalesce((select last.status = 'failed' from restore_verifications last
+            where last.tenant_id = :tenant and last.source_id = :source
+            order by last.verified_at desc, last.id desc limit 1), false),
+        :now)"""
 
 /** Which snapshot of which source a verification is about. */
 data class VerifiedSnapshot(

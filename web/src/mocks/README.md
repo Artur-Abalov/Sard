@@ -32,6 +32,11 @@
   `GET /overview` считает по правилам `docs/specs/server/rest-api-w2.feature`; `sourceName` и
   `sourceDeleted` запусков берутся из источников на момент ответа;
   проверка конфига по схеме плагина остаётся на сервере и в моках не воспроизводится (К13).
+- Проверка восстановления (V4, `api/verifications.ts`): у источников проверка включена и ещё не
+  проходила (`verification.ts`); «проверить сейчас» ставит ручное задание `queued`, второе — 409
+  `verification_active`; история пуста; верификатор один — `verify6`, без ключа и плагина проверки
+  (`no_key`, `no_plugin`, `space_unknown`); цикл — `30 4 * * *`. Очередь, выбор верификатора и
+  записи — на сервере (`docs/design/sard-restore-verification.md`).
 - Установка агента (U1b): `GET /agent-install` и `GET /agents/{id}/upgrade` отвечают
   заготовленными командами релиза `v1.4.0` (restic `0.19.1`, подписанный); настоящие
   команды, адреса и правила — на сервере (`docs/specs/server/agent-install.feature`).
