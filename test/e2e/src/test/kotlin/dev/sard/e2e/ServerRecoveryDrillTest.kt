@@ -307,12 +307,23 @@ class ServerRecoveryDrillTest {
     fun `Расписание источника A1 даёт один догоняющий запуск`() {
         val source = old.sourceIds.getValue("A1")
         fun catchUps() = api.items("/api/v1/runs?sourceId=$source").filter { it["trigger"].text == "catch_up" }
-        Await.until("the catch-up run of A1", Duration.ofMinutes(4)) { catchUps().isNotEmpty() }
+        try {
+            Await.until("the catch-up run of A1", Duration.ofMinutes(4)) { catchUps().isNotEmpty() }
+        } catch (e: AssertionError) {
+            throw AssertionError("${e.message}\n${a1Journal(source)}", e)
+        }
         Thread.sleep(SCHEDULER_PASSES.toMillis())
 
         val found = catchUps()
         assertEquals(1, found.size)
         assertTrue(found.single()["catchUp"]["missedCount"].int >= 2)
+    }
+
+    /** What the server knows of A1's schedule when the catch-up is missing: its journal and its runs, newest first. */
+    private fun a1Journal(source: String): String {
+        val fires = api.get("/api/v1/sources/$source/schedule/fires?limit=50").body
+        val runs = api.items("/api/v1/runs?sourceId=$source").joinToString("\n") { "  ${it["trigger"].text} ${it["status"].text} ${it["queuedAt"].text}" }
+        return "schedule fires of A1: $fires\nruns of A1:\n$runs"
     }
 
     @Test
