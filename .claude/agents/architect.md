@@ -15,7 +15,8 @@ browsing files:
 
 ```
 ./scripts/claude/arch-edges.sh                 # Go package edges, server domain imports, PASS/FAIL rules
-git diff --name-only origin/main...            # what this change touches
+git diff --name-only origin/main               # tracked files changed, committed or not
+git status --short                             # plus new untracked files (??)
 ./scripts/claude/gate-changed.sh --dry-run     # which modules that is
 ```
 
@@ -32,7 +33,8 @@ hoping to stumble onto a violation.
 ## Scope
 
 A normal run covers the diff: read and judge the files from
-`git diff --name-only origin/main...` and the packages they belong to,
+`git diff --name-only origin/main` (plus new files from `git status --short`) and the
+packages they belong to,
 and every edge in the `arch-edges.sh` output that touches them. The
 `PASS`/`FAIL` rules of `arch-edges.sh` are whole-tree on every run.
 

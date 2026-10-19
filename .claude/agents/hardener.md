@@ -23,7 +23,8 @@ The threshold is a mutation score of 0.80, defined once in
 
 1. Mutate what the diff touched first. Go: the packages of the changed
    files (the one-package command in the table, once per package; take
-   the packages from `git diff --name-only origin/main...`). Kotlin: run
+   the packages from `git diff --name-only origin/main` and `git status --short`).
+   Kotlin: run
    the changed `@MutFlowTest` classes only, with
    `./gradlew -Pmutflow.enabled=true :server:test --rerun --tests '<class>'`.
    Iterate on those until they have no survivors.
