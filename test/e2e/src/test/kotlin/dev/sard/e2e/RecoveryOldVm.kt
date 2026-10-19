@@ -106,7 +106,7 @@ internal class RecoveryOldVm(
         val a2 = agent("A2", schedule = false)
         val sources = mutableMapOf("A1" to a1.second, "A2" to a2.second)
         threeRuns(a1.second, a2.second)
-        val (selfRuns, queuedAt) = snapshotRun()
+        val (selfRuns, queuedAt) = snapshotRun(a1.second)
         val counts = OldInstallation.Counts(agents().size, sources().size, runs().size)
         val snapshots = selfSnapshots(selfRuns)
         val a3 = agent("A3", schedule = false, source = false)
@@ -277,7 +277,15 @@ internal class RecoveryOldVm(
      * "Run now" of the self-backup in the first half of a minute with no active run of A1 or A2 (the dump is taken
      * inside the run, so it has none of theirs in progress). Returns role → run and the time the runs were queued.
      */
-    private fun snapshotRun(): Pair<Map<String, String>, Instant> {
+    private fun snapshotRun(a1: String): Pair<Map<String, String>, Instant> {
+        repeat(SNAPSHOT_ATTEMPTS) {
+            val attempt = quietSnapshotRun()
+            if (!overlaps(a1, attempt)) return attempt
+        }
+        error("no snapshot of the self-backup without an active run of A1 in $SNAPSHOT_ATTEMPTS attempts")
+    }
+
+    private fun quietSnapshotRun(): Pair<Map<String, String>, Instant> {
         Await.until("a quiet moment in the first half of a minute", Duration.ofMinutes(3)) {
             val second = Instant.now().epochSecond % SECONDS_IN_MINUTE
             second in WINDOW && runs().none { it.finishedAt == null }
@@ -286,6 +294,24 @@ internal class RecoveryOldVm(
         val started = startSelfBackup()
         started.values.forEach { awaitSucceeded(it) }
         return started to queuedAt
+    }
+
+    /**
+     * A run of A1 whose time touches the self-backup runs: the dump is taken at some moment inside them, and A1, a
+     * schedule every minute, may have started a run before that moment (Р40 wants none in the dump, or the catch-up
+     * after the restore is skipped as skipped_active). The quiet moment is checked before the runs start, not at the dump.
+     */
+    private fun overlaps(
+        a1: String,
+        attempt: Pair<Map<String, String>, Instant>,
+    ): Boolean {
+        val all = runs()
+        val end = all.filter { it.id in attempt.first.values }.maxOf { Instant.parse(checkNotNull(it.finishedAt)) }
+        return all.any {
+            it.sourceId == a1 &&
+                Instant.parse(it.queuedAt) <= end &&
+                (it.finishedAt == null || Instant.parse(it.finishedAt) >= attempt.second)
+        }
     }
 
     private fun awaitSucceeded(run: String) {
@@ -328,6 +354,7 @@ internal class RecoveryOldVm(
         private const val RUNS_BEFORE = 3
         private const val SECONDS_IN_MINUTE = 60L
         private val WINDOW = 8L..28L
+        private const val SNAPSHOT_ATTEMPTS = 5
         private const val WINDOW_PAD = 5L
         private val FINAL = setOf("succeeded", "failed", "cancelled")
     }
