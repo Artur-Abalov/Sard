@@ -48,19 +48,24 @@ data class CycleMoments(
     fun currentAt(now: Instant): Boolean = now < next
 
     companion object {
+        /**
+         * Counting stops here, as in the scheduler's Due: a cron every minute over the look back of
+         * VerificationSchedule (32 days) has 46 080 moments, so the cap is never reached in use.
+         */
+        const val MOMENT_LIMIT = 50_000
+
         /** The moments of [fires] after [since] (the schedule's change, or a bound in the past) around [now]. */
         fun of(
             fires: Fires,
             since: Instant,
             now: Instant,
         ): CycleMoments {
-            var last: Instant? = null
-            var next = fires.nextAfter(since)
-            while (next <= now) {
-                last = next
-                next = fires.nextAfter(next)
-            }
-            return CycleMoments(last, next)
+            val last =
+                generateSequence(fires.nextAfter(since), fires::nextAfter)
+                    .take(MOMENT_LIMIT)
+                    .takeWhile { it <= now }
+                    .lastOrNull()
+            return CycleMoments(last, fires.nextAfter(now))
         }
     }
 }

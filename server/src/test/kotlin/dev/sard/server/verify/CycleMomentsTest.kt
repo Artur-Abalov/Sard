@@ -3,15 +3,22 @@
 
 package dev.sard.server.verify
 
-import dev.sard.server.scheduler.CronSchedule
+import dev.sard.server.scheduler.Fires
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import java.time.Duration
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-private val NIGHTLY = CronSchedule.parse("30 4 * * *", "UTC")
+/** Every night at 04:30 UTC; a fake, so the mutants of this test stay in CycleMoments, not in the cron parser. */
+private val NIGHTLY =
+    Fires { after ->
+        val today = after.truncatedTo(ChronoUnit.DAYS).plus(Duration.ofMinutes(4 * 60 + 30))
+        if (today > after) today else today.plus(Duration.ofDays(1))
+    }
+private val EVERY_MINUTE = Fires { it.truncatedTo(ChronoUnit.MINUTES).plus(Duration.ofMinutes(1)) }
 private val DAY_START: Instant = Instant.parse("2026-10-19T00:00:00Z")
 private val TODAY_0430: Instant = Instant.parse("2026-10-19T04:30:00Z")
 private val TOMORROW_0430: Instant = Instant.parse("2026-10-20T04:30:00Z")
@@ -49,6 +56,16 @@ class CycleMomentsTest {
         val moments = MutFlow.underTest { CycleMoments.of(NIGHTLY, TODAY_0430, TODAY_0430) }
 
         assertEquals(CycleMoments(null, TOMORROW_0430), moments)
+    }
+
+    @Test
+    fun `counting stops at the limit, the next moment is still the one after now`() {
+        val now = DAY_START + Duration.ofMinutes(CycleMoments.MOMENT_LIMIT + 500L)
+
+        val moments = MutFlow.underTest { CycleMoments.of(EVERY_MINUTE, DAY_START, now) }
+
+        val lastCounted = DAY_START + Duration.ofMinutes(CycleMoments.MOMENT_LIMIT.toLong())
+        assertEquals(CycleMoments(lastCounted, now + Duration.ofMinutes(1)), moments)
     }
 
     @Test

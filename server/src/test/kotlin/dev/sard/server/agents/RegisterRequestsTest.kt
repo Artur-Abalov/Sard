@@ -113,6 +113,7 @@ class RegisterRequestsTest {
                 VerifierStatus.newBuilder().setSandbox(Sandbox.SANDBOX_PODMAN) to
                     VerifierReport(null, SandboxKind.PODMAN),
                 VerifierStatus.newBuilder().setSandbox(Sandbox.SANDBOX_NONE) to VerifierReport(null, SandboxKind.NONE),
+                VerifierStatus.newBuilder().setWorkFreeBytes(0) to VerifierReport(0, null),
                 VerifierStatus.newBuilder().setWorkFreeBytes(-1) to VerifierReport(null, null),
                 VerifierStatus.newBuilder().setSandboxValue(99) to VerifierReport(null, null),
                 VerifierStatus.newBuilder() to VerifierReport(null, null),

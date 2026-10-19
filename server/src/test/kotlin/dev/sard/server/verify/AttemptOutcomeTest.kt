@@ -128,6 +128,20 @@ class AttemptOutcomeTest {
     }
 
     @Test
+    fun `a passed verdict at level 4 exactly is a pass, at level 3 it is not believed`() {
+        val toThree = listOf(stage(1), stage(2), stage(3))
+        val atFour = output(VerifierVerdict.PASSED, toThree + stage(4), restoreMillis = null)
+        val atThree = output(VerifierVerdict.PASSED, toThree, restoreMillis = null)
+
+        val four = assertIs<AttemptOutcome.Settled>(outcome(StepState.SUCCEEDED, atFour))
+        val three = assertIs<AttemptOutcome.Settled>(outcome(StepState.SUCCEEDED, atThree))
+
+        val statuses = listOf(four.status, three.status)
+        assertEquals(listOf(VerificationStatus.PASSED, VerificationStatus.CANNOT_VERIFY), statuses)
+        assertEquals(listOf(4, 3), listOf(four.level, three.level))
+    }
+
+    @Test
     fun `a lost, rejected, timed out or cancelled attempt is tried again`() {
         for (status in listOf(StepState.LOST, StepState.REJECTED, StepState.TIMED_OUT, StepState.CANCELLED)) {
             assertEquals(AttemptOutcome.Retry(failedAttempts = 2), outcome(status, null, failedBefore = 1))

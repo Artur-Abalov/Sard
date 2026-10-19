@@ -243,3 +243,24 @@
 - Мутационный гейт (полный `./scripts/gate.sh server`) не запускал.
 - Хранение стадий по ходу (`StepProgress.stage`) не делал: итоговые стадии
   приходят в `VerifyOutput`, показ по ходу — забота V6, если понадобится.
+
+## CI красный на `3efeba6`: мутационный гейт
+
+Джоба `server` (мутации mutflow) упала, остальные зелёные. Мутационный гейт я
+локально не запускал — это и пропустило.
+
+- `CycleMomentsTest` вызывал настоящий `CronSchedule`: его мутанты (около 20)
+  выживали в чужом тесте. Тест переведён на фейковые `Fires`.
+- Цикл `while` в `CycleMoments.of` под мутацией условия становился
+  бесконечным (`MutationTimedOutException`). Переписан приёмом `Due.missed`:
+  `generateSequence` с пределом `MOMENT_LIMIT` (50 000 > 46 080 моментов
+  минутного cron за 32 дня) и тест на предел.
+- Выжившие на границах: `RegisterRequests` (`>= 0`) и `AttemptOutcome`
+  (`level >= 4`) — добавлены тесты для 0 свободных байт и для уровней 4 и 3.
+
+Проверил: мутационный прогон (`-Pmutflow.enabled=true`) классов `verify.*`,
+`RegisterRequestsTest`, `ProtoReportsTest`, `DispatchPartsTest`,
+`VerificationMappingTest`, `VerificationOutputJsonTest`, `ResultCheckTest`,
+`StatusControllerTest` — без выживших и таймаутов; `./scripts/gate.sh server fast`
+— PASSED. Полный мутационный гейт по всему серверу локально не гонял (в CI
+~22 минуты) — смотрю результат CI.
