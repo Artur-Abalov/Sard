@@ -39,15 +39,27 @@ func parseGlobals(content string) globals {
 	return g
 }
 
-// isMetaCommand: a line that starts with a backslash is a command of psql
-// (\! runs a shell command), which the file of a snapshot must not hold. The
-// \restrict and \unrestrict lines that pg_dump of 2025 and later writes
-// around the script are the exception.
+// isMetaCommand: psql runs a backslash command anywhere outside quotes (`; \!
+// id`, an indented `\!`, `\gexec`), and \! runs a shell command, which the
+// file of a snapshot must not hold. The rule is fail-safe (ADR 0065 §6): a line
+// with a backslash is refused, except the exact \restrict and \unrestrict
+// lines that pg_dump of 2025 and later writes around the script. A backslash
+// in a literal is refused too, with a clear message.
 func isMetaCommand(line string) bool {
-	if !strings.HasPrefix(line, `\`) {
+	if !strings.Contains(line, `\`) {
 		return false
 	}
-	return !strings.HasPrefix(line, `\restrict `) && !strings.HasPrefix(line, `\unrestrict `)
+	for _, guard := range []string{`\restrict `, `\unrestrict `} {
+		if token, ok := strings.CutPrefix(line, guard); ok && isGuardToken(token) {
+			return false
+		}
+	}
+	return true
+}
+
+// isGuardToken: the key of a guard is letters and digits.
+func isGuardToken(token string) bool {
+	return token != "" && strings.Trim(token, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") == ""
 }
 
 // identAfter reads the identifier that follows prefix at the start of the
