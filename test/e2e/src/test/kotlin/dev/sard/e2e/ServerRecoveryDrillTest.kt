@@ -52,6 +52,20 @@ class ServerRecoveryDrillTest {
 
     private fun agents() = api.items("/api/v1/agents")
 
+    /**
+     * A1 fires every minute. The restored server owes A1 a catch-up with missedCount >= 2 (test 23) only if two
+     * slots passed between the last A1 fire in the snapshot and the start of the server; on a fast stand they may
+     * not. No A1 fire of the snapshot is later than the last A1 run the old machine knew, so the server starts
+     * once the second whole minute after that run has come.
+     */
+    private fun awaitTwoMissedSlotsOfA1() {
+        val source = old.sourceIds.getValue("A1")
+        val last = old.runs.filter { it.sourceId == source }.maxOf { Instant.parse(it.queuedAt) }
+        val secondSlot = last.truncatedTo(java.time.temporal.ChronoUnit.MINUTES).plus(Duration.ofMinutes(2))
+        val wait = Duration.between(Instant.now(), secondSlot)
+        if (wait.isPositive) Thread.sleep(wait.toMillis())
+    }
+
     private fun runs() = api.items("/api/v1/runs")
 
     @Test
@@ -125,6 +139,7 @@ class ServerRecoveryDrillTest {
     @Test
     @Order(6)
     fun `Отпечаток CA в логе нового сервера равен отпечатку карточки`() {
+        awaitTwoMissedSlotsOfA1()
         new.advance("server")
 
         assertTrue("CA fingerprint=${old.card.caFingerprint} origin=existing" in compose("docker compose logs server"))
