@@ -160,6 +160,13 @@ export const agents: Schemas['AgentDetails'][] = [
     outdated: false,
     builtin: false,
     role: 'source',
+    certificate: {
+      notBefore: '2026-09-01T00:00:00Z',
+      notAfter: '2027-09-01T00:00:00Z',
+      daysLeft: 360,
+      state: 'ok',
+      renewalIssuedAt: null,
+    },
     protocolVersion: 1,
     plugins: [
       filesPlugin,
@@ -188,6 +195,13 @@ export const agents: Schemas['AgentDetails'][] = [
     outdated: true,
     builtin: false,
     role: 'source',
+    certificate: {
+      notBefore: '2026-09-01T00:00:00Z',
+      notAfter: '2027-01-25T00:00:00Z',
+      daysLeft: 120,
+      state: 'renewal_due',
+      renewalIssuedAt: null,
+    },
     protocolVersion: 1,
     plugins: [{ ...filesPlugin, actions: ['backup'] }],
     repositories: [
@@ -210,6 +224,7 @@ export const agents: Schemas['AgentDetails'][] = [
     outdated: false,
     builtin: false,
     role: 'source',
+    certificate: null,
     protocolVersion: 1,
     plugins: [filesPlugin],
     repositories: [
@@ -232,6 +247,13 @@ export const agents: Schemas['AgentDetails'][] = [
     outdated: false,
     builtin: false,
     role: 'source',
+    certificate: {
+      notBefore: '2026-09-01T00:00:00Z',
+      notAfter: '2026-10-07T00:00:00Z',
+      daysLeft: 10,
+      state: 'expiring',
+      renewalIssuedAt: '2026-09-27T08:00:00Z',
+    },
     protocolVersion: 1,
     plugins: [filesPlugin],
     repositories: [
@@ -254,6 +276,13 @@ export const agents: Schemas['AgentDetails'][] = [
     outdated: false,
     builtin: false,
     role: 'source',
+    certificate: {
+      notBefore: '2026-09-01T00:00:00Z',
+      notAfter: '2026-09-26T00:00:00Z',
+      daysLeft: 0,
+      state: 'expired',
+      renewalIssuedAt: null,
+    },
     protocolVersion: null,
     plugins: [],
     repositories: [],
@@ -274,6 +303,13 @@ export const agents: Schemas['AgentDetails'][] = [
     outdated: false,
     builtin: true,
     role: 'source',
+    certificate: {
+      notBefore: '2026-09-01T00:00:00Z',
+      notAfter: '2027-07-20T00:00:00Z',
+      daysLeft: 300,
+      state: 'ok',
+      renewalIssuedAt: null,
+    },
     protocolVersion: 1,
     plugins: [filesPlugin],
     // F6: the S3 repository the default mock is bound to (Рк18), another one, a local one (D10: needs a
@@ -308,6 +344,13 @@ export const agents: Schemas['AgentDetails'][] = [
     outdated: false,
     builtin: false,
     role: 'verifier',
+    certificate: {
+      notBefore: '2026-09-01T00:00:00Z',
+      notAfter: '2026-10-09T00:00:00Z',
+      daysLeft: 12,
+      state: 'expiring',
+      renewalIssuedAt: null,
+    },
     protocolVersion: 1,
     plugins: [filesPlugin],
     repositories: [
