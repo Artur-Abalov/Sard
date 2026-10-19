@@ -83,3 +83,4 @@ Ad-hoc тест (не в репозитории, зависит от класт�
 - Секрет записи журнала читается так же, как секрет шага (`consolerestore.Password`:
   пустой и NUL — отказ).
 - Не менялось: причина `RESTIC_OUTPUT_UNEXPECTED` для «не снимок базы» названа в ВК21 спецификации.
+- R2b: правило «PGPASSWORD только через sdk/pgclient» перенесено из SDK-модуля в agent/plugins/pgclient_test.go (архитектурный тест через `go list`, как imports_test.go; SDK исключён).
