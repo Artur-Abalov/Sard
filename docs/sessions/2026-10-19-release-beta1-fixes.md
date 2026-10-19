@@ -18,3 +18,11 @@ Not a product feature: no `/ship-feature` pipeline.
   (docs/specs/server/server-recovery.feature, OQ-227) and no `catch_up` run exists.
   `snapshotRun` now repeats the snapshot (up to 5 times) until no A1 run overlaps the self-backup runs.
   Not run: the drill needs Docker VMs; `:e2e:compileTestKotlin` is green.
+
+## Follow-up: the drill still fails
+
+The fix above did not remove the failure (same assertion, "no the catch-up run of A1 within PT4M"), so the
+overlap of A1's run with the dump was at most one cause, or not the cause. The logs were still unreadable from
+this session (`blob.core.windows.net` is not allowed by the network policy). The test now appends the journal of
+A1's schedule (`GET /api/v1/sources/{id}/schedule/fires`) and A1's runs to its failure message: the outcome of the
+catch-up fire (`skipped_active`, `refused` with a reason, or no fire at all) tells which of the three it is.
