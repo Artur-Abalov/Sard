@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -590,9 +591,10 @@ func TestARefusedCreateDatabaseForgetsTheIntentInTheJournalBeforeTheRollback(t *
 	}
 }
 
-func TestTheOutputOfPgRestoreIsFedWhileTheDumpIsStoppedAtTheEnd(t *testing.T) {
+// The step waits for the dump it stopped: nothing of it runs on after the table of contents is read.
+func TestTheDumpStoppedAfterTheContentsAreReadHasEndedBeforeTheStepGoesOn(t *testing.T) {
 	h := newPGHost(t)
-	var ended bool
+	var ended atomic.Bool
 	h.repo.dumpHook = func(ctx context.Context, id, path string, w io.Writer) error {
 		if path != "/app.dump" {
 			return nil
@@ -601,15 +603,17 @@ func TestTheOutputOfPgRestoreIsFedWhileTheDumpIsStoppedAtTheEnd(t *testing.T) {
 			return err
 		}
 		<-ctx.Done()
-		time.Sleep(30 * time.Millisecond)
-		ended = true
+		time.Sleep(150 * time.Millisecond)
+		ended.Store(true)
 		return ctx.Err()
 	}
-	h.server.restoreHook = func(ctx context.Context, c pgCall) (int, error) { return 0, nil }
-	_, _ = h.run(h.request())
-	if !ended {
-		t.Error("the step ended before the dump did")
+	h.server.hooks["lock capacity"] = func() {
+		if !ended.Load() {
+			t.Error("the step went on while the dump it stopped was still running")
+		}
 	}
+	h.server.restoreHook = func(context.Context, pgCall) (int, error) { return 0, nil }
+	_, _ = h.run(h.request())
 }
 
 func TestAPgRestoreThatFailsStopsTheDumpThatIsStillRunning(t *testing.T) {

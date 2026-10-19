@@ -84,3 +84,33 @@ Ad-hoc тест (не в репозитории, зависит от класт�
   пустой и NUL — отказ).
 - Не менялось: причина `RESTIC_OUTPUT_UNEXPECTED` для «не снимок базы» названа в ВК21 спецификации.
 - R2b: правило «PGPASSWORD только через sdk/pgclient» перенесено из SDK-модуля в agent/plugins/pgclient_test.go (архитектурный тест через `go list`, как imports_test.go; SDK исключён).
+
+## 2026-10-19, hardener: мутационное тестирование R2b (только тесты)
+
+Результаты, как их напечатали инструменты (HEAD de4bd252 плюс тесты):
+
+- sdk: 2 выживших из 129 (0.984496) -> 0 из 129 (1.000000); границы имени базы (1 и 2 байта).
+- agent, `consolerestore` (пакет, go-mutesting): 144 выживших (0.822002) -> 10, все эквивалентны (ниже);
+  `plugins/postgresql`: 6 -> 0; `pluginhost`: 2 -> 1 (эквивалентен); `cmd/sard-agent/restore_postgres.go`: 2 -> 0.
+  Весь модуль agent, полный прогон: 7189 мутантов, 367 выживших, счёт 0.948950, ворота пройдены
+  (первый полный прогон потерян: заполнился диск, кэш go-build; повторён с охраной диска).
+- server (mutflow): `RestorePostgresMutationTest` 9 выживших из 61 -> 0 (ворота пройдены).
+
+Новые тесты: `consolerestore/pg_hardening_test.go`, `pg_pure_internal_test.go` (читалки и писатели на границах),
+расширенный стенд `pg_rig_test.go` (`failOut`, `globalsExit`, `createExit`, `exitErr`, `Deadline`, `StdinReader`),
+`plugins/postgresql/hardening_test.go`, `pluginhost` (секрет не читается), `restore_postgres_test.go`,
+`RestorePostgresMutationTest` (длина имени, sourceAgent, restoreDir, вывод восстановления базы, схема,
+отозванный и verifier, `allows`, `isRoot`).
+
+Эквивалентные мутанты R2b (тестом не убить; coder может убрать избыточность):
+
+1. `pg_check.go` (`checkConnection`, `compareCluster`) и `pg_prepare.go` (`streamFailure`): ранний
+   `return a.interrupted(...)` по `ctx.Err()` дублирует правило `a.fail`: следующий же запрос или проверка с
+   завершённым контекстом даёт тот же отказ INTERRUPTED той же стадии.
+2. `pg_prepare.go` `checkRoles`: `f == nil &&` (при `f != nil` список `existing` пуст).
+3. `pg_prepare.go` `FormatFloat(share, 'g', -1, 64)`: любое отрицательное число знаков значит «кратчайшее»;
+   предложение: `%g`.
+4. `pg_prepare.go` `countObjects` и `pg_sequence.go` `countTables`: число при отказе (`return 0, f`) не читается.
+5. `pg_sequence.go` строки `_ = a.save(...)` после `unsettledRoles` и после отказанного CREATE: следующий
+   откат (`resolveOIDs`/`rollback`) переписывает журнал тем же состоянием до любого действия.
+6. `pluginhost/hint.go` `err == nil ||`: при nil остальные условия уже возвращают err.
