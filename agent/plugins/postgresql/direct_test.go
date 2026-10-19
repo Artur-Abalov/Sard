@@ -259,3 +259,24 @@ func TestStreamFailsWhenTheSecretCannotBeRead(t *testing.T) {
 		t.Errorf("Stream: %v", err)
 	}
 }
+
+// The query of the system identifier stopped by the context returns the cause
+// too: a step that is cancelled is not a snapshot without the tag.
+func TestTheQueryOfTheClusterIdentifierStoppedByTheContextReturnsItsCause(t *testing.T) {
+	d := newDirect()
+	cause := errors.New("cancelled during preparation")
+	ctx, cancel := context.WithCancelCause(context.Background())
+	d.proc.on("psql", func(c context.Context, pc plugCmd) (int, error) {
+		for i, a := range pc.Args {
+			if a == "-c" && strings.Contains(pc.Args[i+1], "pg_control_system") {
+				cancel(cause)
+				<-c.Done()
+				return -1, errTerminated
+			}
+		}
+		return say(psqlRow(160004, false, true, "backup"), nil, 0)(c, pc)
+	})
+	if err := d.plugin.Prepare(ctx, d.host, cfgOf(k())); !errors.Is(err, cause) {
+		t.Errorf("Prepare: %v", err)
+	}
+}

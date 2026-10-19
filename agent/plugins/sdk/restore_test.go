@@ -107,3 +107,46 @@ func TestRestorePlanViolationMessages(t *testing.T) {
 		})
 	}
 }
+
+// A restore into a new database of a server has a name instead of a
+// destination: 1-63 bytes without NUL, and it neither names a directory nor
+// paths of a snapshot.
+func TestRestorePlanOfADatabase(t *testing.T) {
+	db := func(name string) sdk.RestorePlan {
+		return sdk.RestorePlan{Database: &sdk.DatabaseRestore{Host: "db2", Port: 5432, User: "restorer", Name: name}}
+	}
+	withDestination := db("app")
+	withDestination.Destination = "x"
+	withPaths := db("app")
+	withPaths.Paths = []string{"/srv"}
+	tests := []struct {
+		name    string
+		plan    sdk.RestorePlan
+		wantErr string
+	}{
+		{"plain name", db("app_restored_20261011"), ""},
+		{"name with a quote and a space", db(`x"; DROP DATABASE app; --`), ""},
+		{"name of 63 bytes", db(strings.Repeat("a", 63)), ""},
+		{"name of 64 bytes", db(strings.Repeat("a", 64)), "/database"},
+		{"name of 32 two-byte characters", db(strings.Repeat("ж", 32)), "/database"},
+		{"empty name", db(""), "/database"},
+		{"NUL in the name", db("a\x00b"), "/database"},
+		{"a destination as well", withDestination, "/destination"},
+		{"paths as well", withPaths, "/paths"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.plan.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			var cfgErr *sdk.ConfigError
+			if !errors.As(err, &cfgErr) || cfgErr.Violations[0].Path != tt.wantErr {
+				t.Fatalf("Validate() = %v, want a violation at %q", err, tt.wantErr)
+			}
+		})
+	}
+}

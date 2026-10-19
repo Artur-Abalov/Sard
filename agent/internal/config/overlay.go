@@ -188,6 +188,9 @@ func namesOf(c Config, path string) map[string]string {
 	if c.Restore.Dir != "" {
 		owners["setting restore.dir"] = path
 	}
+	if c.Restore.PostgresqlLockShare != nil {
+		owners["setting restore.postgresql_lock_share"] = path
+	}
 	return owners
 }
 
@@ -204,6 +207,12 @@ func merge(c Config, frag fragment, file string, owners map[string]string) (Conf
 // mergeRestore takes restore.dir of a fragment; a second definition is a
 // clash like a repository name defined twice.
 func (c *Config) mergeRestore(frag fragment, file string, owners map[string]string) error {
+	if frag.Restore.PostgresqlLockShare != nil {
+		if err := claim(owners, "setting", "restore.postgresql_lock_share", file); err != nil {
+			return err
+		}
+		c.Restore.PostgresqlLockShare = frag.Restore.PostgresqlLockShare
+	}
 	if frag.Restore.Dir == "" {
 		return nil
 	}

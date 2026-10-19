@@ -258,3 +258,65 @@ func TestCancelAndTimeoutStopPgDumpWhileUploading(t *testing.T) {
 		})
 	}
 }
+
+// byQuery is a psql that answers the query of the system identifier with
+// identifier (or fails with denied) and every other query with the row of the probe.
+func byQuery(identifier, denied string) behaviour {
+	return func(ctx context.Context, c plugCmd) (int, error) {
+		for i, a := range c.Args {
+			if a == "-c" && strings.Contains(c.Args[i+1], "pg_control_system") {
+				if denied != "" {
+					return fail(denied)(ctx, c)
+				}
+				return say(identifier+"\n", nil, 0)(ctx, c)
+			}
+		}
+		return say(psqlRow(160004, false, true, "backup"), nil, 0)(ctx, c)
+	}
+}
+
+// Scenario: Бэкап PostgreSQL пишет метку идентификатора кластера.
+func TestTheBackupTagsTheDatabaseSnapshotWithTheIdentifierOfTheCluster(t *testing.T) {
+	r := newRig(t)
+	r.proc.on("psql", byQuery("7412345678901234567", ""))
+	want(t, r.backup(k()), succeeded)
+	if tags := tagsOf(r.restic.backups()[0]); !slices.Contains(tags, "postgresql.system_identifier=7412345678901234567") {
+		t.Errorf("tags %q lack the system identifier", tags)
+	}
+	for _, c := range r.restic.backups()[1:] {
+		if tags := tagsOf(c); slices.Contains(tags, "postgresql.system_identifier=7412345678901234567") {
+			t.Errorf("the snapshot of the global objects carries the identifier: %q", tags)
+		}
+	}
+}
+
+// Scenario: Без права читать идентификатор кластера бэкап идёт без метки.
+func TestWithoutTheRightToReadTheClusterIdentifierTheBackupGoesOnWithoutTheTag(t *testing.T) {
+	r := newRig(t)
+	r.proc.on("psql", byQuery("", "ERROR:  permission denied for function pg_control_system"))
+	want(t, r.backup(k()), succeeded)
+	for _, tag := range tagsOf(r.restic.backups()[0]) {
+		if strings.Contains(tag, "system_identifier") {
+			t.Errorf("tag %s written without the identifier", tag)
+		}
+	}
+	info := false
+	for _, l := range r.sink.lines() {
+		info = info || l.Level == agentv1.LogLevel_LOG_LEVEL_INFO && strings.Contains(l.Text, "system identifier of the cluster is not recorded")
+	}
+	if !info {
+		t.Errorf("no INFO line about the identifier in the log:\n%s", r.sink.text())
+	}
+}
+
+// An answer that is not a number (a psql of a test, a proxy) is no identifier.
+func TestAnAnswerThatIsNotANumberIsNotWrittenAsTheClusterIdentifier(t *testing.T) {
+	r := newRig(t)
+	r.proc.on("psql", byQuery("not a number", ""))
+	want(t, r.backup(k()), succeeded)
+	for _, tag := range tagsOf(r.restic.backups()[0]) {
+		if strings.Contains(tag, "system_identifier") {
+			t.Errorf("tag %s", tag)
+		}
+	}
+}

@@ -211,6 +211,8 @@ func newRestoreEngine(cfg config.Config) *consolerestore.Engine {
 		Owner:  hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid(), Mode: 0o700},
 		Logger: slog.Default(),
 		Target: restoreTargets(cfg, os.ReadFile),
+		// R2b: restore of a database.
+		Postgres: postgresOptions(cfg, os.ReadFile),
 	})
 }
 

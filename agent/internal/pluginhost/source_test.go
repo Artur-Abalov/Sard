@@ -148,6 +148,8 @@ type repo struct {
 	holds       map[string]bool
 	restoreTo   func(context.Context, restic.RestoreRequest) (restic.RestoreSummary, error)
 	restoreReqs []restic.RestoreRequest
+	// dump plays restic dump.
+	dump func(ctx context.Context, id, path string, w io.Writer) error
 }
 
 var summary = restic.BackupSummary{SnapshotID: "snap", RepositoryID: "repo-id", TotalBytes: 42}
@@ -163,6 +165,13 @@ func (r *repo) Restore(_ context.Context, snapshotID, target string) error {
 
 func (r *repo) Snapshots(context.Context, []string) ([]restic.Snapshot, error) {
 	return r.snapshots, r.listErr
+}
+
+func (r *repo) Dump(ctx context.Context, id, path string, w io.Writer) error {
+	if r.dump == nil {
+		return errors.New("fake: no dump")
+	}
+	return r.dump(ctx, id, path, w)
 }
 
 func (r *repo) HasPath(_ context.Context, _, path string) (bool, error) { return r.holds[path], nil }

@@ -43,18 +43,19 @@ type faults struct {
 	removeErr    map[string]error  // by the path of the file removed
 	removed      []string          // paths of every Remove and RemoveDir, in order
 
-	rootErr   error            // of OpenRootDir
-	openErr   map[string]error // by the path of the directory opened
-	statErr   map[string]error // by the path of the directory
-	namesErr  map[string]error // by the path of the directory listed
-	createErr map[string]error // by the path of the file created
-	fileErr   map[string]error // Sync of a file, by its path
-	writeErr  map[string]error // Write of a file, by its path
-	readErr   map[string]error // Read of a file opened for reading, by its path
-	openFile  map[string]error // OpenFile, by the path of the file
-	ops       []string         // "remove <path>" and "sync <path>", in order
-	opened    int              // descriptors opened (directories and files)
-	closed    int              // descriptors closed
+	rootErr    error            // of OpenRootDir
+	openErr    map[string]error // by the path of the directory opened
+	statErr    map[string]error // by the path of the directory
+	namesErr   map[string]error // by the path of the directory listed
+	createErr  map[string]error // by the path of the file created
+	createSkip map[string]int   // creates of that path that succeed before createErr applies
+	fileErr    map[string]error // Sync of a file, by its path
+	writeErr   map[string]error // Write of a file, by its path
+	readErr    map[string]error // Read of a file opened for reading, by its path
+	openFile   map[string]error // OpenFile, by the path of the file
+	ops        []string         // "remove <path>" and "sync <path>", in order
+	opened     int              // descriptors opened (directories and files)
+	closed     int              // descriptors closed
 }
 
 // noLeaks fails the test if a directory or a file was opened and not closed
@@ -66,6 +67,18 @@ func (f *faults) noLeaks(t *testing.T) {
 	if f.opened != f.closed {
 		t.Errorf("%d descriptors opened, %d closed", f.opened, f.closed)
 	}
+}
+
+// skipCreate reports whether the create of the path fails now: the creates
+// that createSkip lets succeed come first.
+func (f *faults) skipCreate(path string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.createSkip[path] > 0 {
+		f.createSkip[path]--
+		return false
+	}
+	return true
 }
 
 func (f *faults) count(opened bool) {
@@ -129,7 +142,7 @@ func (d faultDir) Names() ([]string, error) {
 
 func (d faultDir) CreateFile(name string, perm fs.FileMode) (hostsetup.File, error) {
 	p := filepath.Join(d.Path(), name)
-	if err := d.f.createErr[p]; err != nil {
+	if err := d.f.createErr[p]; err != nil && d.f.skipCreate(p) {
 		return nil, &fs.PathError{Op: "openat", Path: p, Err: err}
 	}
 	file, err := d.Dir.CreateFile(name, perm)

@@ -20,9 +20,10 @@ type recovery struct {
 	notified map[string]bool // commands the executor asked about
 }
 
-// newRecovery settles .sard-staging, before any step is accepted.
+// newRecovery settles .sard-staging and the rollback journal of restores of
+// databases, before any step is accepted.
 func newRecovery(engine *consolerestore.Engine) *recovery {
-	found := engine.CleanStaging()
+	found := append(engine.CleanStaging(), engine.CleanDatabases()...)
 	return &recovery{engine: engine, found: found, worded: pluginhost.Interrupted(found), notified: map[string]bool{}}
 }
 
@@ -34,10 +35,15 @@ func (r *recovery) interrupted(commandID string, action agentv1.Action) *executo
 
 // journaled is the Journaled option of the executor: a restore that
 // succeeded has its result on disk, so its marker is no longer needed. A
-// failed result may name what the rollback left behind: that stays.
+// failed result may name what the rollback left behind: that stays, except an
+// entry of a database that holds nothing the next start could drop.
 func (r *recovery) journaled(res *agentv1.StepResult) {
-	if res.GetStatus() == agentv1.StepStatus_STEP_STATUS_SUCCEEDED && res.GetRestore() != nil {
+	switch {
+	case res.GetRestore() == nil:
+	case res.GetStatus() == agentv1.StepStatus_STEP_STATUS_SUCCEEDED:
 		r.engine.Settle(res.GetCommandId())
+	default:
+		r.engine.Abandon(res.GetCommandId())
 	}
 }
 

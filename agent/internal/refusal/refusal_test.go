@@ -18,7 +18,9 @@ func TestEveryReasonHasAClass(t *testing.T) {
 		SSHClientMissing, SSHClientFailed, SSHHomeInvalid, SSHFileRejected, SSHKeyNotAuthorized,
 		HostKeyUnconfirmed, HostKeyMismatch, HostKeyRejected, HostKeyChanged, RepositoryNotInitialized,
 		SnapshotUnknown, SnapshotAmbiguous, TargetInvalid, TargetNotEmpty, RootTargetRefused, PathNotInSnapshot,
-		RestoreIncomplete, TargetWrite, TargetBusy, SetprivMissing, ResticFailed, CleanupFailed, StaleLocksForeign}
+		RestoreIncomplete, TargetWrite, TargetBusy, SetprivMissing, ResticFailed, CleanupFailed, StaleLocksForeign,
+		PGClientMissing, PGClientTooOld, PGServerTooOld, PGConnect, CreatedbRequired, SuperuserRequired,
+		GlobalsSnapshotMissing, GlobalsTablespaces, RolesExist, DatabaseExists, PGGlobalsFailed, PGCreateDatabase, PGRestoreFailed}
 	if len(classes) != len(reasons) {
 		t.Errorf("%d reasons have a class, %d exist", len(classes), len(reasons))
 	}
@@ -79,5 +81,22 @@ func TestTheReasonsOfTheRestoreFromTheConsoleHaveTheirClasses(t *testing.T) {
 		if got := ClassOf(reason); got != class {
 			t.Errorf("%s: class %d, want %d", reason, got, class)
 		}
+	}
+}
+
+// R2b: the reasons only the restore of a PostgreSQL database from the console has.
+func TestTheReasonsOfTheRestoreOfADatabaseHaveTheirClasses(t *testing.T) {
+	for reason, class := range map[Reason]Class{
+		PGClientMissing: ClassAgentError, PGClientTooOld: ClassAgentError, PGServerTooOld: ClassUsage,
+		PGConnect: ClassTemporary, CreatedbRequired: ClassUsage, SuperuserRequired: ClassUsage,
+		GlobalsSnapshotMissing: ClassUsage, GlobalsTablespaces: ClassUsage, RolesExist: ClassUsage,
+		DatabaseExists: ClassUsage, PGGlobalsFailed: ClassAgentError, PGCreateDatabase: ClassAgentError, PGRestoreFailed: ClassAgentError,
+	} {
+		if got := ClassOf(reason); got != class {
+			t.Errorf("%s: class %d, want %d", reason, got, class)
+		}
+	}
+	if string(PGClientMissing) != "PG_CLIENT_MISSING" || string(PGRestoreFailed) != "PG_RESTORE_FAILED" {
+		t.Errorf("names %q %q", PGClientMissing, PGRestoreFailed)
 	}
 }

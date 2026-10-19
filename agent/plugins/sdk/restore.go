@@ -40,7 +40,32 @@ type RestorePlan struct {
 	// taken literally (no * ? [ \ and no ".." component), 1-4096 bytes, at
 	// most MaxRestorePaths, without repeats. Empty: the whole snapshot.
 	Paths []string
+	// Database, if not nil, makes this a restore into a new database of a
+	// server instead of a directory: Destination and Paths stay empty.
+	Database *DatabaseRestore
 }
+
+// DatabaseRestore is a restore into a new database of a server (R2b). The
+// password is not here: PasswordRef names a secret of the host.
+type DatabaseRestore struct {
+	Host string
+	Port int
+	User string
+	// PasswordRef is the name of a secret of the host that holds the password.
+	PasswordRef string
+	TLSMode     string
+	TLSRootCert string
+	// Name is the new database: 1-63 bytes, no NUL.
+	Name string
+	// Globals also restores the global objects of the cluster (roles).
+	Globals bool
+	// ClientPath is the absolute path of the restore tool of the host, if the
+	// config names one; empty: the tools of the PATH of the agent.
+	ClientPath string
+}
+
+// MaxDatabaseName is the longest name of a database, in bytes.
+const MaxDatabaseName = 63
 
 // Limits of a RestorePlan.
 const (
@@ -54,6 +79,9 @@ const (
 // reported as a *ConfigError whose paths are those of the restore config
 // ("/destination", "/paths", "/paths/<index>").
 func (p RestorePlan) Validate() error {
+	if p.Database != nil {
+		return p.validateDatabase()
+	}
 	var violations []Violation
 	if msg := checkDestination(p.Destination); msg != "" {
 		violations = append(violations, Violation{Path: "/destination", Message: msg})
@@ -63,6 +91,34 @@ func (p RestorePlan) Validate() error {
 		return nil
 	}
 	return &ConfigError{Violations: violations}
+}
+
+// validateDatabase: a database plan names a database and nothing else.
+func (p RestorePlan) validateDatabase() error {
+	var violations []Violation
+	if msg := checkDatabaseName(p.Database.Name); msg != "" {
+		violations = append(violations, Violation{Path: "/database", Message: msg})
+	}
+	if p.Destination != "" {
+		violations = append(violations, Violation{Path: "/destination", Message: "a restore into a database has no destination directory"})
+	}
+	if len(p.Paths) > 0 {
+		violations = append(violations, Violation{Path: "/paths", Message: "a restore into a database has no paths"})
+	}
+	if len(violations) == 0 {
+		return nil
+	}
+	return &ConfigError{Violations: violations}
+}
+
+func checkDatabaseName(name string) string {
+	switch {
+	case len(name) < 1 || len(name) > MaxDatabaseName:
+		return fmt.Sprintf("want 1-%d bytes, got %d", MaxDatabaseName, len(name))
+	case strings.ContainsRune(name, 0):
+		return "must not contain a NUL byte"
+	}
+	return ""
 }
 
 func checkDestination(d string) string {

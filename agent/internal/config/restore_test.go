@@ -160,3 +160,69 @@ func TestOnlyARepositoryOnThisDisksHasALocalPath(t *testing.T) {
 		}
 	}
 }
+
+// Scenario: Без настройки доля таблицы блокировок — 0.5.
+func TestWithoutALockShareItIsAHalf(t *testing.T) {
+	c, err := config.Parse([]byte(restoreBase))
+	if err != nil || c.PostgresqlLockShare() != 0.5 {
+		t.Fatalf("PostgresqlLockShare() = %v, %v", c.PostgresqlLockShare(), err)
+	}
+}
+
+func TestTheLockShareOfTheConfigIsKept(t *testing.T) {
+	for body, want := range map[string]float64{"0": 0, "1": 1, "0.25": 0.25, "1.0": 1} {
+		c, err := config.Parse([]byte(restoreBase + "restore:\n  postgresql_lock_share: " + body + "\n"))
+		if err != nil || c.PostgresqlLockShare() != want {
+			t.Errorf("%s: PostgresqlLockShare() = %v, %v, want %v", body, c.PostgresqlLockShare(), err, want)
+		}
+	}
+}
+
+// Scenario: Недопустимая доля таблицы блокировок останавливает старт агента.
+func TestAnInvalidLockShareStopsTheAgent(t *testing.T) {
+	for _, value := range []string{"-0.1", "1.5", `"half"`, ".nan", ".inf"} {
+		t.Run(value, func(t *testing.T) {
+			_, err := config.Parse([]byte(restoreBase + "restore:\n  postgresql_lock_share: " + value + "\n"))
+			if err == nil || !strings.Contains(err.Error(), "restore.postgresql_lock_share") {
+				t.Fatalf("err = %v, want one naming restore.postgresql_lock_share", err)
+			}
+		})
+	}
+}
+
+func TestAFragmentMaySetTheLockShare(t *testing.T) {
+	h := newOverlayHost(t, mainYAML)
+	h.write("agent.d/restore.yaml", "restore:\n  postgresql_lock_share: 0.2\n")
+	cfg, err := config.Load(h.main)
+	if err != nil || cfg.PostgresqlLockShare() != 0.2 {
+		t.Fatalf("PostgresqlLockShare() = %v, %v", cfg.PostgresqlLockShare(), err)
+	}
+}
+
+func TestAFragmentThatSetsNoLockShareKeepsThatOfTheMainConfig(t *testing.T) {
+	h := newOverlayHost(t, mainYAML+"restore:\n  postgresql_lock_share: 0.3\n")
+	h.write("agent.d/restore.yaml", "restore:\n  dir: /srv/restore\n")
+	cfg, err := config.Load(h.main)
+	if err != nil || cfg.PostgresqlLockShare() != 0.3 {
+		t.Fatalf("PostgresqlLockShare() = %v, %v", cfg.PostgresqlLockShare(), err)
+	}
+}
+
+func TestTheLockShareCannotBeSetTwice(t *testing.T) {
+	h := newOverlayHost(t, mainYAML+"restore:\n  postgresql_lock_share: 0.3\n")
+	h.write("agent.d/restore.yaml", "restore:\n  postgresql_lock_share: 0.4\n")
+	_, err := config.Load(h.main)
+	var dup *config.DuplicateNameError
+	if !errors.As(err, &dup) || dup.Name != "restore.postgresql_lock_share" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestAnInvalidLockShareOfAFragmentNamesTheSettingAndTheFile(t *testing.T) {
+	h := newOverlayHost(t, mainYAML)
+	path := h.write("agent.d/restore.yaml", "restore:\n  postgresql_lock_share: 2\n")
+	_, err := config.Load(h.main)
+	if err == nil || !strings.Contains(err.Error(), "restore.postgresql_lock_share") || !strings.Contains(err.Error(), path) {
+		t.Fatalf("err = %v", err)
+	}
+}

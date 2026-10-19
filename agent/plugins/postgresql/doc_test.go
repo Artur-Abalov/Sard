@@ -76,3 +76,30 @@ func TestTheDocumentationExplainsTheRestoreByHand(t *testing.T) {
 		"my%20db.globals.sql",    //
 	)
 }
+
+// Scenario: Документация PostgreSQL описывает роль для восстановления и откат.
+func TestTheDocumentationExplainsTheRestoreFromTheConsole(t *testing.T) {
+	wantAll(t, pluginDoc(t),
+		"## Восстановление из консоли",
+		"CREATEDB",                         // the role of a restore
+		"суперпользовател",                 // for the global objects
+		"restore_globals",                  //
+		"клиент PostgreSQL не старше",      // pg_restore not older than pg_dump of the snapshot
+		"postgresql.pg_dump_version",       //
+		"не ниже 14",                       // the target server
+		"удаляются",                        // the database and the roles are dropped on a failure
+		"CLEANUP_FAILED",                   // and what is left is named
+		"restore.postgresql_lock_share",    // the setting of the host
+		"таблиц",                           // the lock table
+		"одной транзакцией",                // the mode of pg_restore
+		"max_locks_per_transaction",        //
+		"postgresql.system_identifier",     // the tag of the cluster
+		"pg_control_system()",              // and the right it needs
+		"EXECUTE",                          //
+		"тот же кластер",                   // the warning of a restore into the cluster of the source
+		"PG_CLIENT_MISSING",                // the messages
+		"DATABASE_EXISTS", "ROLES_EXIST", "GLOBALS_TABLESPACES",
+		"executor.state_dir",               // the rollback journal
+		"pg_restore_path",                  //
+	)
+}

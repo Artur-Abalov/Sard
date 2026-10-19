@@ -168,6 +168,9 @@ func (h *handler) restore(ctx context.Context, step *agentv1.RunStep, repo resti
 	if err != nil {
 		return nil, rejected(err)
 	}
+	if req.Plan.Database != nil {
+		return h.restoreDatabase(ctx, step, repo, req, r)
+	}
 	out, failure := h.console.Restore(ctx, repo, req, r)
 	if failure != nil {
 		return failedRestore(failure), failure
@@ -194,19 +197,33 @@ func Interrupted(found []consolerestore.Evidence) func(commandID string, action 
 		ev := byCommand[commandID]
 		switch ev.Verdict {
 		case consolerestore.Completed:
-			return &executor.Interruption{
-				Succeeded: true,
-				Message:   "agent restarted after the restore completed",
-				Output:    &agentv1.RestoreOutput{Target: ev.Destination, FilesRestored: ev.Files, BytesRestored: ev.Bytes},
-			}
+			return &executor.Interruption{Succeeded: true, Message: "agent restarted after the restore completed", Output: completedOutput(ev)}
 		case consolerestore.CleanupFailed:
+			left := firstNonEmpty(ev.Leftover, ev.Path)
 			return &executor.Interruption{
-				Message: fmt.Sprintf("%s (%s): %s; left behind: %s (%v); remove it by hand", refusal.CleanupFailed, consolerestore.StageRollback, executor.InterruptedMessage, ev.Path, ev.Err),
-				Output:  &agentv1.RestoreOutput{Leftover: ev.Path},
+				Message: fmt.Sprintf("%s (%s): %s; left behind: %s (%v); remove it by hand", refusal.CleanupFailed, consolerestore.StageRollback, executor.InterruptedMessage, left, ev.Err),
+				Output:  &agentv1.RestoreOutput{Leftover: left},
 			}
 		}
 		return &executor.Interruption{Message: executor.InterruptedMessage + "; nothing was restored"}
 	}
+}
+
+// completedOutput is the outcome of a restore that completed before the
+// restart: the totals of the marker for files, those of the rollback journal
+// for a database.
+func completedOutput(ev consolerestore.Evidence) *agentv1.RestoreOutput {
+	if db := ev.Database; db != nil {
+		return &agentv1.RestoreOutput{Target: db.Database, Database: db.Database, TablesRestored: db.Tables, RolesRestored: db.Roles}
+	}
+	return &agentv1.RestoreOutput{Target: ev.Destination, FilesRestored: ev.Files, BytesRestored: ev.Bytes}
+}
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 // failedRestore carries the output of a failed restore: only what the

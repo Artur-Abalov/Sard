@@ -53,6 +53,8 @@ type Options struct {
 	// Target describes a repository by its name for the messages of a failure
 	// (secrets hidden); nil: just the name, nothing to hide.
 	Target func(repository string) repoinit.Target
+	// Postgres is what the restore of a database needs (R2b).
+	Postgres PostgresOptions
 }
 
 // targetOf is the repository as the messages of a failure describe it.
@@ -144,6 +146,12 @@ type Evidence struct {
 	Files, Bytes uint64
 	// Err is why a CleanupFailed entry stays.
 	Err error
+	// Database is the outcome of a Completed restore of a database, from the
+	// rollback journal (ВК27); nil for a restore of files.
+	Database *DatabaseOutput
+	// Leftover names what the rollback of a restore of a database could not
+	// drop, "database app, role x" (ВК15); for files it is Path.
+	Leftover string
 }
 
 // CleanStaging goes through .sard-staging before any step runs (ВК14) and
@@ -205,6 +213,7 @@ func (e *Engine) Settle(commandID string) {
 	if !UsableName(commandID) {
 		return
 	}
+	e.settleDatabase(commandID)
 	path := filepath.Join(e.opts.Dir, stagingName, commandID)
 	_, staging, err := e.stagingEntries()
 	if err != nil {

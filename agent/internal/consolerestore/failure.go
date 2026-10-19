@@ -15,6 +15,8 @@ type Stage string
 // The stages of a restore.
 const (
 	StageCheck    Stage = "check"
+	StageGlobals  Stage = "globals"
+	StageCreateDB Stage = "create-database"
 	StageRestore  Stage = "restore"
 	StageMove     Stage = "move"
 	StageRollback Stage = "rollback"

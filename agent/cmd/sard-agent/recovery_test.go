@@ -96,3 +96,64 @@ func TestTheStartedAgentSettlesTheDirectoryOfACommandItDoesNotKnow(t *testing.T)
 		t.Error("the directory of a command nobody waits for is still there")
 	}
 }
+
+// completedDatabase leaves the journal entry of a restore of a database killed
+// after pg_restore: the result is in it.
+func completedDatabase(t *testing.T, state string, ids ...string) *consolerestore.Engine {
+	t.Helper()
+	for _, id := range ids {
+		if err := os.MkdirAll(filepath.Join(state, "pg-restore"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		entry := `{"command_id":"` + id + `","connection":{"host":"db","port":5432,"user":"u","password_ref":"p"},"database":{"name":"d","oid":7},"result":{"database":"d","tables_restored":3,"roles_restored":1}}`
+		writeFile(t, filepath.Join(state, "pg-restore", id+".json"), []byte(entry), 0o600)
+	}
+	return consolerestore.New(consolerestore.Options{
+		Dir: filepath.Join(state, "restore"), FS: hostsetup.OS{}, Owner: hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid(), Mode: 0o700}, Logger: slog.New(slog.DiscardHandler),
+		Postgres: consolerestore.PostgresOptions{StateDir: state},
+	})
+}
+
+func journalHas(state, id string) bool {
+	_, err := os.Stat(filepath.Join(state, "pg-restore", id+".json"))
+	return err == nil
+}
+
+// Scenario: Убитое после завершения pg_restore восстановление сообщает об успехе из журнала отката.
+func TestTheEntryOfACompletedDatabaseRestoreGoesOnlyOnceItsResultIsJournaled(t *testing.T) {
+	state := t.TempDir()
+	r := newRecovery(completedDatabase(t, state, "c1"))
+	got := r.interrupted("c1", agentv1.Action_ACTION_RESTORE)
+	if got == nil || !got.Succeeded || got.Output.GetDatabase() != "d" || got.Output.GetTablesRestored() != 3 || got.Output.GetRolesRestored() != 1 {
+		t.Fatalf("Interruption = %+v", got)
+	}
+	r.executorStarted()
+	if !journalHas(state, "c1") {
+		t.Fatal("the entry went before the result was journaled")
+	}
+	r.journaled(&agentv1.StepResult{CommandId: "c1", Status: agentv1.StepStatus_STEP_STATUS_SUCCEEDED, Output: &agentv1.StepResult_Restore{Restore: got.Output}})
+	if journalHas(state, "c1") {
+		t.Error("the entry stays after its result was journaled")
+	}
+}
+
+func TestTheEntryOfACommandTheExecutorNeverAskedAboutGoesWhenTheExecutorHasStarted(t *testing.T) {
+	state := t.TempDir()
+	r := newRecovery(completedDatabase(t, state, "c1", "c9"))
+	r.interrupted("c1", agentv1.Action_ACTION_RESTORE)
+	r.executorStarted()
+	if journalHas(state, "c9") || !journalHas(state, "c1") {
+		t.Errorf("c9: %v, c1: %v", journalHas(state, "c9"), journalHas(state, "c1"))
+	}
+}
+
+func TestTheEntryOfAFailedRestoreOfADatabaseWithNothingToDropGoesWithItsResult(t *testing.T) {
+	state := t.TempDir()
+	e := completedDatabase(t, state, "c0")
+	writeFile(t, filepath.Join(state, "pg-restore", "c1.json"), []byte(`{"command_id":"c1","connection":{},"database":{"name":"d"}}`), 0o600)
+	r := newRecovery(e)
+	r.journaled(&agentv1.StepResult{CommandId: "c1", Status: agentv1.StepStatus_STEP_STATUS_FAILED, Output: &agentv1.StepResult_Restore{Restore: &agentv1.RestoreOutput{Leftover: "database d"}}})
+	if journalHas(state, "c1") {
+		t.Error("an entry of intents stays")
+	}
+}

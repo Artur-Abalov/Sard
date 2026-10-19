@@ -44,6 +44,9 @@ func (p Plugin) Dump(ctx context.Context, h sdk.Host, cfg sdk.Config) (sdk.Dump,
 			"part":            "database",
 		},
 	}
+	if done.systemID != "" {
+		d.Tags["system_identifier"] = done.systemID
+	}
 	if !c.globals() {
 		return d, nil
 	}

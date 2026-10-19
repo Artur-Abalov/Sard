@@ -25,6 +25,9 @@ const probeQuery = `select current_setting('server_version_num'), r.rolsuper, ` 
 type checked struct {
 	server, pgDump version
 	pgDumpall      version
+	// systemID is the system_identifier of the cluster; empty when it could
+	// not be read (F1 ПГ11, R2b ВК29).
+	systemID string
 }
 
 // prepared holds the results of Prepare until Dump takes them, per step.
@@ -63,6 +66,9 @@ func (p Plugin) check(ctx context.Context, h sdk.Host, c config, t tools, passwo
 		return checked{}, err
 	}
 	done := checked{server: role.server, pgDump: pgDump}
+	if done.systemID, err = p.systemIdentifier(ctx, h, c, t, password); err != nil {
+		return checked{}, err
+	}
 	if c.globals() {
 		done.pgDumpall, err = p.checkPgDumpall(ctx, h, t, role.server)
 	}
@@ -113,8 +119,7 @@ type role struct {
 
 // probe signs in with psql and asks the server about itself and the role.
 func (p Plugin) probe(ctx context.Context, h sdk.Host, c config, t tools, password []byte) (role, error) {
-	args := []string{"-X", "-w", "-A", "-t", "-v", "ON_ERROR_STOP=1", "--dbname=" + c.conninfo(), "-c", probeQuery}
-	out, o := p.output(ctx, h, t.psql, args, p.childEnv(password))
+	out, o := p.output(ctx, h, t.psql, queryArgs(c, probeQuery), p.childEnv(password))
 	if ctx.Err() != nil {
 		return role{}, context.Cause(ctx)
 	}
@@ -122,6 +127,41 @@ func (p Plugin) probe(ctx context.Context, h sdk.Host, c config, t tools, passwo
 		return role{}, err
 	}
 	return parseProbe(out)
+}
+
+// queryArgs are the arguments of a psql that runs one query and prints its
+// row without decoration.
+func queryArgs(c config, query string) []string {
+	return []string{"-X", "-w", "-A", "-t", "-v", "ON_ERROR_STOP=1", "--dbname=" + c.conninfo(), "-c", query}
+}
+
+// systemIDQuery needs no more right than a role has by default on some
+// versions and EXECUTE on pg_control_system() on others (docs/plugins/postgresql.md).
+const systemIDQuery = `select system_identifier from pg_control_system()`
+
+// systemIdentifier reads the identifier of the cluster, which tells a restore
+// that its target is the cluster the snapshot was taken from. A role that may
+// not read it, or an answer that is no number, is no failure: the snapshot
+// goes without the tag (R2b ВК29).
+func (p Plugin) systemIdentifier(ctx context.Context, h sdk.Host, c config, t tools, password []byte) (string, error) {
+	out, o := p.output(ctx, h, t.psql, queryArgs(c, systemIDQuery), p.childEnv(password))
+	if ctx.Err() != nil {
+		return "", context.Cause(ctx)
+	}
+	id := strings.TrimSpace(out)
+	err := o.failure()
+	if err == nil && !isDigits(id) {
+		err = fmt.Errorf("unexpected answer of psql: %q", id)
+	}
+	if err != nil {
+		h.Log(sdk.LevelInfo, "the system identifier of the cluster is not recorded in the snapshot: "+err.Error())
+		return "", nil
+	}
+	return id, nil
+}
+
+func isDigits(s string) bool {
+	return s != "" && strings.IndexFunc(s, func(r rune) bool { return r < '0' || r > '9' }) < 0
 }
 
 // parseProbe reads the row of the probe: version number, superuser, member of

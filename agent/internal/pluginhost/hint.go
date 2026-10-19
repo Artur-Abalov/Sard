@@ -34,6 +34,8 @@ func withCheckHint(err error) error {
 var checkExplained = map[refusal.Reason]bool{
 	refusal.BackendUnavailable: true, refusal.StorageAccessDenied: true, refusal.S3KeyRejected: true,
 	refusal.SSHKeyNotAuthorized: true, refusal.WrongPassword: true, refusal.PasswordFileMissing: true,
+	// R2b: pg_restore or psql is not on the host.
+	refusal.PGClientMissing: true,
 }
 
 func checkExplains(err error) bool {

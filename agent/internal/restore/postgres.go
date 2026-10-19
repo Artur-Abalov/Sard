@@ -33,6 +33,8 @@ const (
 	databaseTag  = "postgresql.database"
 	mainTag      = "postgresql.main_snapshot"
 	versionTag   = "postgresql.pg_dump_version"
+	serverTag    = "postgresql.server_version"
+	clusterTag   = "postgresql.system_identifier"
 	partDatabase = "database"
 	partGlobals  = "globals"
 )
@@ -64,6 +66,9 @@ type PGPlan struct {
 	Database string
 	// Version is postgresql.pg_dump_version; empty without the tag.
 	Version string
+	// ServerVersion is postgresql.server_version, SystemIdentifier
+	// postgresql.system_identifier (R2b); empty without the tag.
+	ServerVersion, SystemIdentifier string
 	// Dump and Globals say which of the two files the plan holds.
 	Dump, Globals bool
 }
@@ -76,9 +81,9 @@ type PGPlan struct {
 // written to the host.
 func PlanPostgres(list []Snapshot, s Snapshot) (PGPlan, *refusal.Failure) {
 	plan := PGPlan{Dump: KindOf(s) == KindDatabase, Globals: KindOf(s) == KindGlobals}
-	if value := tagValue(s.Tags, versionTag); value != nil {
-		plan.Version = *value
-	}
+	plan.Version = valueOf(s.Tags, versionTag)
+	plan.ServerVersion = valueOf(s.Tags, serverTag)
+	plan.SystemIdentifier = valueOf(s.Tags, clusterTag)
 	db, f := databaseName(s)
 	if f != nil {
 		return plan, f
@@ -123,6 +128,14 @@ func newestGlobals(list []Snapshot, database Snapshot) (Snapshot, bool) {
 	return slices.MaxFunc(found, func(a, b Snapshot) int {
 		return cmp.Or(a.Time.Compare(b.Time), strings.Compare(a.ID, b.ID))
 	}), true
+}
+
+// valueOf is the value of the tag, "" without it.
+func valueOf(tags []string, name string) string {
+	if value := tagValue(tags, name); value != nil {
+		return *value
+	}
+	return ""
 }
 
 func malformed(s Snapshot, format string, args ...any) *refusal.Failure {

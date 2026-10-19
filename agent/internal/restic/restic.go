@@ -46,6 +46,9 @@ type Repository interface {
 	// RestoreTo restores a snapshot, or paths of it, into a directory
 	// without overwriting (restore from the console, repo restore).
 	RestoreTo(ctx context.Context, req RestoreRequest) (RestoreSummary, error)
+	// Dump writes the content of one file of a snapshot to w as it comes
+	// (restore of a database from the console, repo restore of PostgreSQL).
+	Dump(ctx context.Context, snapshotID, path string, w io.Writer) error
 }
 
 // Defaults for Options.

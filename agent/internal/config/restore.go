@@ -6,8 +6,11 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
+
+	"go.yaml.in/yaml/v3"
 )
 
 // Defaults of the directories the restore dir is judged against; they are
@@ -28,6 +31,21 @@ type Restore struct {
 	// Dir is the directory every restore from the console writes into, as
 	// a new subdirectory; empty means DefaultRestoreDir.
 	Dir string `yaml:"dir"`
+	// PostgresqlLockShare is the share of the lock table of a PostgreSQL
+	// cluster one pg_restore transaction may fill (ВК28); nil means
+	// DefaultLockShare.
+	PostgresqlLockShare *LockShare `yaml:"postgresql_lock_share"`
+}
+
+// DefaultLockShare is restore.postgresql_lock_share when the config sets none.
+const DefaultLockShare = 0.5
+
+// PostgresqlLockShare is restore.postgresql_lock_share, or DefaultLockShare.
+func (c Config) PostgresqlLockShare() float64 {
+	if c.Restore.PostgresqlLockShare == nil {
+		return DefaultLockShare
+	}
+	return float64(*c.Restore.PostgresqlLockShare)
 }
 
 // ErrInvalidRestore is returned for a restore.dir the agent cannot use.
@@ -89,4 +107,17 @@ func (r Repository) LocalPath() (string, bool) {
 // overlaps: a and b are one directory, or one lies inside the other.
 func overlaps(a, b string) bool {
 	return a == b || strings.HasPrefix(a, strings.TrimSuffix(b, "/")+"/") || strings.HasPrefix(b, strings.TrimSuffix(a, "/")+"/")
+}
+
+// LockShare is a number from 0 to 1: restore.postgresql_lock_share.
+type LockShare float64
+
+// UnmarshalYAML refuses anything but a number from 0 to 1, naming the setting.
+func (s *LockShare) UnmarshalYAML(n *yaml.Node) error {
+	var v float64
+	if err := n.Decode(&v); err != nil || math.IsNaN(v) || v < 0 || v > 1 {
+		return fmt.Errorf("%w: restore.postgresql_lock_share: want a number from 0 to 1, got %q (line %d)", ErrInvalidRestore, n.Value, n.Line)
+	}
+	*s = LockShare(v)
+	return nil
 }
