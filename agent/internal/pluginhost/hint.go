@@ -7,7 +7,9 @@ import (
 	"errors"
 	"io/fs"
 
+	"github.com/Artur-Abalov/sard/agent/internal/consolerestore"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
@@ -27,8 +29,18 @@ func withCheckHint(err error) error {
 	return &hinted{err}
 }
 
+// checkExplained are the reasons of a failed console restore (R2) that
+// sard-agent check diagnoses (Ч28).
+var checkExplained = map[refusal.Reason]bool{
+	refusal.BackendUnavailable: true, refusal.StorageAccessDenied: true, refusal.S3KeyRejected: true,
+	refusal.SSHKeyNotAuthorized: true, refusal.WrongPassword: true, refusal.PasswordFileMissing: true,
+}
+
 func checkExplains(err error) bool {
+	var restoreFailure *consolerestore.Failure
 	switch {
+	case errors.As(err, &restoreFailure):
+		return checkExplained[restoreFailure.Reason]
 	case errors.Is(err, restic.ErrNetwork), errors.Is(err, restic.ErrWrongPassword):
 		return true
 	case errors.Is(err, restic.ErrPasswordFile) && errors.Is(err, fs.ErrNotExist):
