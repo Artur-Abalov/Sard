@@ -23,8 +23,13 @@
 # восстановления».
 # Поправка владельца 2026-10-15 («Согласен. Пшел»): успех, о котором агент
 # сообщает после перезапуска (агентская ВК14, случай 2), — обычный succeeded.
-# ОБЪЁМ: этот прогон реализует только правила «# R2a»; «# R2b» — следующий
-# прогон; «# R2c» и «После D21» — не реализуются (OQ-216, OQ-016).
+# ОБЪЁМ: правила «# R2a» реализованы (ADR 0060); текущий прогон — «# R2b»;
+# «# R2c» и «После D21» — не реализуются (OQ-216, OQ-016).
+# СВЕРКА specifier 2026-10-19 перед R2b (без новых решений владельца): КВ5
+# дополнен построенным RunStep.restoreOutcome; ВК32a — цель, части и
+# предупреждения по плагину вместо чтения ключей files в общем коде (закрывает
+# OQ-220); добавлены сценарии R2b «# Сверка 2026-10-19». Подсказка check (A8d
+# Ч28) приходит в тексте сообщения агента, сервер показывает его как есть.
 #
 # ПОПРАВКА ВЛАДЕЛЬЦА 2026-10-14: восстановление — всё или ничего, правило 11
 # описания отменено (агентская спецификация, ВК8, ВК13–ВК16, ВК23, ВК26,
@@ -75,6 +80,15 @@
 #        исходов restore есть только при неудачном откате и несёт только
 #        leftover (что осталось на хосте или в PostgreSQL). GET /api/v1/runs +
 #        kind (фильтр). ErrorCode + snapshot_not_restorable.
+#        [Сверка 2026-10-19, как построено в R2a.] RunStep + restoreOutcome
+#        (RestoreOutcome: restored | nothing | rollback_failed | late; null,
+#        пока шаг идёт, и у других действий): rollback_failed — есть leftover;
+#        restored — succeeded с выводом; late — lost с поздним выводом, где
+#        есть target; nothing — любой другой конец (failed, rejected,
+#        timed_out, cancelled). Консоль выбирает текст по этому полю. У
+#        вывода восстановления базы filesRestored, bytesRestored и
+#        ownersRestored — null, у восстановления файлов tablesRestored,
+#        rolesRestored и database — null.
 #   КВ6. AgentDetails + restoreDir (string, null — агент до R2).
 #
 # Решения specifier (предложены, ждут одобрения)
@@ -102,6 +116,24 @@
 #         из копии конфига шага бэкапа этого снимка; database —
 #         <база>_restored_<YYYYMMDD даты снимка UTC>; если длиннее 63 байт,
 #         <база> укорачивается по границе символа UTF-8; restore_globals false.
+#   ВК32a. [Сверка 2026-10-19, закрывает OQ-220.] Цель по плагину на сервере,
+#       а не цель от агента: всё, что зависит от плагина — конфиг по
+#       умолчанию (ВК32), target предпросмотра и запуска, paths,
+#       restoreGlobals, предупреждения (КВ3) и признак «плагин восстановим»
+#       (КВ1), — даёт одна запись на плагин в реестре восстановимых плагинов
+#       сервера; общий код запуска и проверки ключей конфига не читает.
+#         files      — target = restoreDir агента + «/» + destination; paths
+#                      — config.paths; restoreGlobals false; предупреждение
+#                      owners_not_restored;
+#         postgresql — target = config.database; paths пусто; restoreGlobals
+#                      — config.restore_globals; предупреждение
+#                      globals_change_cluster, если restore_globals true.
+#       Плагин вне реестра — plugin_not_supported (КВ1). Почему не цель от
+#       агента: target нужен в предпросмотре, до того как агент что-то сделал
+#       (агент может быть офлайн), а конфиг по умолчанию на сервере уже
+#       плагинный (ВК32, утверждено). Фактическую цель агент по-прежнему
+#       сообщает в RestoreOutput.target, и консоль после завершения
+#       показывает её.
 #   ВК33. Проверка запроса — в порядке: снимок источника есть (404) → снимок
 #       restorable (422 snapshot_not_restorable) → agentId (422 у agentId) →
 #       агент не отозван (409 agent_revoked) → роль агента допускает RESTORE
@@ -681,6 +713,45 @@
   # ===========================================================================
   # R2b
   Правило: Восстановление PostgreSQL — в новую базу с подключением на целевом агенте
+
+    # Сверка 2026-10-19 (КВ1, ВК32a)
+    @http
+    Сценарий: Снимок источника PostgreSQL отмечен как восстановимый
+      Когда администратор запрашивает снимки источника Q
+      Тогда у снимка SQ restorable true и restoreBlockedReason null
+
+    # Сверка 2026-10-19 (ВК30)
+    @http @grpc
+    Сценарий: Агент без схемы восстановления postgresql назван устаревшим
+      Дано агент B с RID прислал Register, где у postgresql нет restoreConfigSchema, а у files есть
+      Когда администратор запрашивает restore-options снимка SQ
+      Тогда B в ineligible с reason agent_outdated и нет в targets
+
+    # Сверка 2026-10-19 (ВК32a)
+    @http @grpc
+    Сценарий: Предпросмотр PostgreSQL называет базу и не предупреждает о владельцах файлов
+      Когда администратор отправляет preview снимка SQ на агент A с database "app_restored_20261011" без restore_globals
+      Тогда target "app_restored_20261011", paths пусто, restoreGlobals false
+      И warnings не содержит owners_not_restored и globals_change_cluster
+
+    # Сверка 2026-10-19 (ВК32a)
+    @http @grpc
+    Сценарий: Запуск восстановления PostgreSQL хранит базу как цель
+      Когда администратор отправляет POST restores снимка SQ на агент A с database "app_restored_20261011"
+      Тогда ответ 201, restore запуска — target "app_restored_20261011"
+      И агент A получил RunStep с plugin postgresql и config_json запроса
+
+    # Сверка 2026-10-19 (КВ5)
+    @http @grpc
+    Структура сценария: Исход шага восстановления базы
+      Когда агент присылает для шага восстановления SQ <результат>
+      Тогда restoreOutcome шага — <исход>
+
+      Примеры:
+        | результат                                                                    | исход           |
+        | SUCCEEDED с database "app_restored_20261011" и tables_restored 2             | restored        |
+        | FAILED "PG_RESTORE_FAILED (restore): …; nothing was restored" без вывода     | nothing         |
+        | FAILED с RestoreOutput только leftover "database app_restored_20261011"      | rollback_failed |
 
     @http @grpc
     Сценарий: Конфиг по умолчанию для PostgreSQL берёт подключение из бэкапа и даёт новое имя базы

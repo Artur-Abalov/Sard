@@ -9,7 +9,8 @@
 
 **УТВЕРЖДЕНО владельцем 2026-10-14** («Согласен по всем. Пошел»; ВВ1–ВВ13 —
 как рекомендовано). Шаги, которые зависят от ответа, помечены «(ВВ<номер>)».
-Части 1–4 и 6–7 — срез R2a (этот прогон), часть 5 — R2b (следующий прогон);
+Части 1–4 и 6–7 — срез R2a (реализован), часть 5 — R2b (текущий прогон;
+сверено 2026-10-19 с построенным R2a, A8d Ч28 и A8c-3);
 в частях 6 и 7 пункты о PostgreSQL проверяются с R2b. R2c (перезапись) вне
 R2 (ВВ1, OQ-216) и не проверяется.
 
@@ -213,8 +214,9 @@ REPO_PASS=$(sudo cat /etc/sard/secrets/restic-s1.pass)   # на ВМ-1, толь
     `sudo chattr -i …`, перезапустить службу → строка журнала об удалении,
     каталог удалён. Убрать правило порта.
 30. Хранилище пропало: на ВМ-2 `sudo iptables -I OUTPUT -p tcp -d <адрес S3> -j REJECT`,
-    восстановить `qa files` на db2 → `failed`, `BACKEND_UNAVAILABLE`; сервер
-    при этом онлайн. Убрать правило.
+    восстановить `qa files` на db2 → `failed`, `BACKEND_UNAVAILABLE`, последняя
+    строка сообщения — «run `sudo sard-agent check` on the host» (A8d Ч28);
+    сервер при этом онлайн. Убрать правило.
 31. Удалённый источник (ВВ9): создать и забэкапить источник `qa-del`, удалить
     его; в списке запусков открыть его успешный бэкап → «Восстановить» →
     `succeeded`.
@@ -274,10 +276,18 @@ REPO_PASS=$(sudo cat /etc/sard/secrets/restic-s1.pass)   # на ВМ-1, толь
     `pg_restore` → `failed`, `CLEANUP_FAILED (rollback)`
     с причиной и ошибкой DROP; страница — «Откат не удался, осталось: database
     …»; Telegram — то же. Удалить базу вручную.
+38в. Перезапуск после завершения (сверка 2026-10-19, ВК27; копия стенда):
+    восстановить `qa-pg` (база шага 34) и убить агента сразу после конца
+    `pg_restore` — `until pgrep -x pg_restore >/dev/null; do sleep 0.1; done; while pgrep -x pg_restore >/dev/null; do sleep 0.05; done; sudo systemctl kill -s KILL sard-agent`,
+    затем `start` → запуск `succeeded`, сообщение содержит «agent restarted
+    after the restore completed», база на месте с теми же строками. Если
+    шаг успел завершиться сам — отметить случай как проверенный только тестом
+    `@unit`.
 39. Дамп не на диске: во время шага 34 `sudo inotifywait -m -r /var/lib/sard-agent /tmp -e create`
     → ни одного файла дампа.
 40. Нет клиента: на ВМ-2 без пакета `postgresql-client` восстановить `qa-pg` на
-    db2 → `failed`, `PG_CLIENT_MISSING`, называет пакет.
+    db2 → `failed`, `PG_CLIENT_MISSING`, называет пакет; последняя строка
+    сообщения — «run `sudo sard-agent check` on the host» (A8d Ч28).
 41. Telegram (en на копии стенда) → «Database: app_restored_…, tables: 2».
 
 ## Часть 6. Секреты и утечки
