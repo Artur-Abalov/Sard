@@ -14,13 +14,32 @@ Start from the dependency graph the toolchain gives you, not from
 browsing files:
 
 ```
-cd agent && go list -deps ./... | grep Artur-Abalov/sard     # Go import graph
-cd agent/plugins/sdk && go list -deps ./...                  # must stay AGPL-free
-./gradlew :server:dependencies --configuration runtimeClasspath
+./scripts/claude/arch-edges.sh                 # Go package edges, server domain imports, PASS/FAIL rules
+git diff --name-only origin/main...            # what this change touches
+./scripts/claude/gate-changed.sh --dry-run     # which modules that is
 ```
+
+`arch-edges.sh` prints one `pkg -> pkg` line per edge between Sard
+packages, forbidden imports in server domain code (or `domain: clean`),
+and `PASS`/`FAIL` for the license boundary and the agent's no-listener
+rule. A `FAIL` is a top-priority finding. It does not print the server's
+third-party dependency tree and you do not need it: that tree says
+nothing about module boundaries.
 
 Then read the specific files those point at. Don't grep the whole tree
 hoping to stumble onto a violation.
+
+## Scope
+
+A normal run covers the diff: read and judge the files from
+`git diff --name-only origin/main...` and the packages they belong to,
+and every edge in the `arch-edges.sh` output that touches them. The
+`PASS`/`FAIL` rules of `arch-edges.sh` are whole-tree on every run.
+
+On a normal run you do **not** review files the diff does not touch for
+seams, dependency direction or size. Say so in the verdict. Run a
+full-tree audit of those rules when the caller says "before starting a
+large feature" or asks for a full audit.
 
 ## What you check
 

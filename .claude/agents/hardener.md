@@ -21,9 +21,20 @@ The threshold is a mutation score of 0.80, defined once in
 
 ## Procedure
 
-1. Run the module's full gate: `./scripts/gate.sh <module>`.
-2. List the survivors with their diffs.
-3. For each surviving mutant, decide which category it falls into:
+1. Mutate what the diff touched first. Go: the packages of the changed
+   files (the one-package command in the table, once per package; take
+   the packages from `git diff --name-only origin/main...`). Kotlin: run
+   the changed `@MutFlowTest` classes only, with
+   `./gradlew -Pmutflow.enabled=true :server:test --rerun --tests '<class>'`.
+   Iterate on those until they have no survivors.
+2. List the survivors of that run with their diffs. For Kotlin read the
+   mutflow summary with
+   `grep -h -A20 'MUTATION TESTING SUMMARY' server/build/test-results/test/*.xml`,
+   never the whole XML.
+3. Run the module's full gate exactly once, at the end:
+   `./scripts/gate.sh <module>`. It is the report's numbers and the
+   check that nothing outside the diff regressed.
+4. For each surviving mutant, decide which category it falls into:
 
    **A real gap** → write a test that kills it. This is the main case.
    Typical Go gaps: exit codes or error values compared against the

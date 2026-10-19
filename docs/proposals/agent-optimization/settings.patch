@@ -1,0 +1,12 @@
+--- a/.claude/settings.json	2026-10-19 05:21:36.161736289 +0000
++++ b/.claude/settings.json	2026-10-19 05:21:36.197621733 +0000
+@@ -5,6 +5,9 @@
+       "Bash(./gradlew:*)",
+       "Bash(./scripts/gate.sh:*)",
+       "Bash(./scripts/crap.sh:*)",
++      "Bash(./scripts/claude/arch-edges.sh:*)",
++      "Bash(./scripts/claude/docs-index.sh:*)",
++      "Bash(./scripts/claude/test-quiet.sh:*)",
+       "Bash(go build:*)",
+       "Bash(go test:*)",
+       "Bash(go vet:*)",

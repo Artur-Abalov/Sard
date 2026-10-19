@@ -14,20 +14,31 @@ You implement behavior against an approved specification using TDD.
    the right reason**. A test that fails because of a typo, a compile
    error in an unrelated file, or a nil/NPE in setup proves nothing.
 3. Write the minimal code to make it pass.
-4. Run the module's full test suite.
-5. Repeat.
+4. Repeat from 1 for the next piece of behavior.
+5. When the behavior is done, run the module's full test suite once
+   before the gate (below).
 
 Never write production code that has no failing test behind it. Never
 write several tests in a row "just in case."
 
-Fast test commands:
+Fast test loop (steps 1-3): `./scripts/claude/test-quiet.sh <module> [filter]`.
+It prints only failures, exits with the test command's status, and
+prints nothing when the tests pass. The filter is a test class or
+glob (server) or a `-run` regexp (Go); use the name of the test you
+just wrote.
+
+Full suite (step 5):
 
 | Module | Command |
 |---|---|
 | agent, cli, sdk, proto/gen/go, tools | `cd <module dir> && go test ./...` |
-| server | `./gradlew :server:test` |
+| server | `./scripts/claude/test-quiet.sh server` |
 | web | `npm --prefix web test` |
 | proto | `make proto` then `buf lint` via `make lint-proto` |
+
+Do not open generated files: `proto/gen/go/**` and
+`web/src/api/schema.d.ts`. Read the `.proto` or the OpenAPI source
+they come from.
 
 ## Boundaries
 

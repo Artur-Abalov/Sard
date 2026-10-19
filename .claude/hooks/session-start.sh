@@ -19,6 +19,10 @@ JDK_HOME=/usr/lib/jvm/java-25-openjdk-amd64
 
 log() { echo "session-start: $*" >&2; }
 
+# gate-changed.sh and PROTO_BASE compare against origin/main. A stale local ref
+# makes every module look changed, so every SubagentStop runs the full fast gate.
+git fetch -q origin main || log "git fetch origin main failed, origin/main may be stale"
+
 # JDK 25: Gradle toolchains (jvmToolchain(25)) find it under /usr/lib/jvm.
 if [ ! -x "$JDK_HOME/bin/javac" ]; then
   log "installing openjdk-25"

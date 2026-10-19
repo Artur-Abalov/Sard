@@ -40,12 +40,18 @@ Feature: $ARGUMENTS
    `coder` silently reinterpreting the spec.
 
 4. **Give a short status line after each stage** — which agent ran,
-   pass/fail, one line on what happened — so the user can follow the
-   pipeline without reading every subagent transcript.
+   pass/fail, one line on what happened, and its `subagent_tokens` and
+   `tool_uses` — so the user can follow the pipeline without reading
+   every subagent transcript. A subagent started in the background
+   returns no usage in the call result; take the figures from its
+   completion notification, and write "not reported" if there are none.
+   Never estimate them.
 
 5. At the end, summarize what shipped: files changed, final CRAP/coverage
    numbers (as printed by `./scripts/crap.sh` and the gate), mutation survivors if `hardener` ran, and the architect's
-   final verdict.
+   final verdict. Add a table with one row per stage: `subagent_tokens`,
+   `tool_uses`, `duration_ms`, copied from each stage's completion
+   notification, plus a total row.
 
 If the feature is trivial (a small, well-understood fix), say so and
 propose the shortened `coder → cleaner` path (`/quick-fix`) instead of
