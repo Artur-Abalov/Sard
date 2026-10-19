@@ -115,6 +115,10 @@ const (
 	CleanupFailed Reason = "CLEANUP_FAILED"
 )
 
+// StaleLocksForeign: repo unlock would make restic remove a lock it may not
+// (a lock of another host, or an own one younger than the threshold; A8d-1, Ч6).
+const StaleLocksForeign Reason = "STALE_LOCKS_FOREIGN"
+
 // Class is the kind of a failure; the command maps it to an exit code
 // (the numbers are A2b's, docs/adr/0025-grpc-error-model.md).
 type Class int
@@ -156,6 +160,7 @@ var classes = map[Reason]Class{
 
 	SnapshotUnknown: ClassUsage, SnapshotAmbiguous: ClassUsage, TargetInvalid: ClassUsage,
 	TargetNotEmpty: ClassUsage, RootTargetRefused: ClassUsage, PathNotInSnapshot: ClassUsage,
+	StaleLocksForeign: ClassUsage,
 	RestoreIncomplete: ClassAgentError, TargetWrite: ClassWrite, TargetBusy: ClassTemporary, SetprivMissing: ClassAgentError,
 
 	ResticFailed: ClassAgentError, CleanupFailed: ClassWrite,

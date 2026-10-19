@@ -159,6 +159,7 @@ const (
 	AgentService_Register_FullMethodName         = "/sard.agent.v1.AgentService/Register"
 	AgentService_Connect_FullMethodName          = "/sard.agent.v1.AgentService/Connect"
 	AgentService_RenewCertificate_FullMethodName = "/sard.agent.v1.AgentService/RenewCertificate"
+	AgentService_Probe_FullMethodName            = "/sard.agent.v1.AgentService/Probe"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -180,6 +181,13 @@ type AgentServiceClient interface {
 	// RenewCertificate issues a new client certificate before the current one
 	// expires.
 	RenewCertificate(ctx context.Context, in *RenewCertificateRequest, opts ...grpc.CallOption) (*RenewCertificateResponse, error)
+	// Probe tells the agent whether the server accepts its certificate and what
+	// time the server has. Read-only: it does not register, open a session, mark
+	// the agent seen or touch its steps. Refusals are those of every
+	// AgentService call (ADR 0009): UNAUTHENTICATED with google.rpc.ErrorInfo,
+	// domain "sard.dev". Servers older than this method answer UNIMPLEMENTED to
+	// an accepted agent.
+	Probe(ctx context.Context, in *ProbeRequest, opts ...grpc.CallOption) (*ProbeResponse, error)
 }
 
 type agentServiceClient struct {
@@ -223,6 +231,16 @@ func (c *agentServiceClient) RenewCertificate(ctx context.Context, in *RenewCert
 	return out, nil
 }
 
+func (c *agentServiceClient) Probe(ctx context.Context, in *ProbeRequest, opts ...grpc.CallOption) (*ProbeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProbeResponse)
+	err := c.cc.Invoke(ctx, AgentService_Probe_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -242,6 +260,13 @@ type AgentServiceServer interface {
 	// RenewCertificate issues a new client certificate before the current one
 	// expires.
 	RenewCertificate(context.Context, *RenewCertificateRequest) (*RenewCertificateResponse, error)
+	// Probe tells the agent whether the server accepts its certificate and what
+	// time the server has. Read-only: it does not register, open a session, mark
+	// the agent seen or touch its steps. Refusals are those of every
+	// AgentService call (ADR 0009): UNAUTHENTICATED with google.rpc.ErrorInfo,
+	// domain "sard.dev". Servers older than this method answer UNIMPLEMENTED to
+	// an accepted agent.
+	Probe(context.Context, *ProbeRequest) (*ProbeResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -260,6 +285,9 @@ func (UnimplementedAgentServiceServer) Connect(grpc.BidiStreamingServer[ConnectR
 }
 func (UnimplementedAgentServiceServer) RenewCertificate(context.Context, *RenewCertificateRequest) (*RenewCertificateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RenewCertificate not implemented")
+}
+func (UnimplementedAgentServiceServer) Probe(context.Context, *ProbeRequest) (*ProbeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Probe not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -325,6 +353,24 @@ func _AgentService_RenewCertificate_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_Probe_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProbeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).Probe(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_Probe_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).Probe(ctx, req.(*ProbeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -339,6 +385,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RenewCertificate",
 			Handler:    _AgentService_RenewCertificate_Handler,
+		},
+		{
+			MethodName: "Probe",
+			Handler:    _AgentService_Probe_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

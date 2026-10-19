@@ -677,6 +677,17 @@ func oneLine(t *testing.T, msg string) {
 	}
 }
 
+// endsWithCheckHint is "A8d-4: сообщение кончается подсказкой check": the message
+// of the plugin is one line and the agent adds the line with the hint.
+func endsWithCheckHint(t *testing.T, msg string) {
+	t.Helper()
+	plugin, hint, found := strings.Cut(msg, "\n")
+	if !found || hint != "run `sudo sard-agent check` on the host" {
+		t.Errorf("message does not end with the hint of sard-agent check: %q", msg)
+	}
+	oneLine(t, plugin)
+}
+
 // notDisclosed is "Пароль не раскрыт" for what the step reported.
 func (r *rig) notDisclosed(res *agentv1.StepResult) {
 	r.t.Helper()

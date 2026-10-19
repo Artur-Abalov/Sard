@@ -16,8 +16,13 @@ Start every session by running, for the module you were given:
 ./scripts/gate.sh <module> fast     # includes complexity lint (gocyclo, detekt, oxlint)
 ```
 
-Work down the CRAP list, highest first. Never eyeball complexity, and
-never state a number that a tool didn't produce.
+Work down the CRAP list, highest first, but only on functions in files
+from the diff: `git diff --name-only origin/main` (committed or not) plus new
+files from `git status --short`. Anything else
+over the limit goes into the report as one backlog line (function, CRAP,
+file) and is not touched: unrelated refactoring is a different change.
+Never eyeball complexity, and never state a number that a tool didn't
+produce.
 
 ## How to lower CRAP
 

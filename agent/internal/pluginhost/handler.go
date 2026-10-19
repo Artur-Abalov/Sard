@@ -101,14 +101,17 @@ func (h *handler) Run(ctx context.Context, step *agentv1.RunStep, r executor.Rep
 	if !ok {
 		return nil, rejected(fmt.Errorf("unknown repository %q", step.GetRepositoryName()))
 	}
+	var result *agentv1.StepResult
+	var err error
 	switch step.GetAction() {
 	case agentv1.Action_ACTION_BACKUP:
-		return h.backup(ctx, step, repo, r)
+		result, err = h.backup(ctx, step, repo, r)
 	case agentv1.Action_ACTION_RESTORE:
-		return h.restore(ctx, step, repo, r)
+		result, err = h.restore(ctx, step, repo, r)
 	default:
-		return h.verify(ctx, step, repo, r)
+		result, err = h.verify(ctx, step, repo, r)
 	}
+	return result, withCheckHint(err)
 }
 
 func (h *handler) backup(ctx context.Context, step *agentv1.RunStep, repo restic.Repository, r executor.Reporter) (*agentv1.StepResult, error) {

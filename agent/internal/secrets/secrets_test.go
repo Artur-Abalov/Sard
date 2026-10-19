@@ -236,6 +236,9 @@ func TestRealStatReportsModeAndOwner(t *testing.T) {
 	if info.UID != uint32(os.Getuid()) {
 		t.Fatalf("uid = %d, want %d", info.UID, os.Getuid())
 	}
+	if info.GID != uint32(os.Getgid()) {
+		t.Fatalf("gid = %d, want %d", info.GID, os.Getgid())
+	}
 }
 
 // RealStat must propagate the underlying os.Stat error for a path that does

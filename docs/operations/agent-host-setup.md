@@ -25,7 +25,13 @@ S3» ниже) и **SFTP** (срез A8b-2, раздел «Репозитори�
 ```bash
 sudo sard-agent secret set pg-prod --stdin < /root/pg-prod.pass
 sudo sard-agent repo add main /srv/sard/main
+sudo sard-agent check
 ```
+
+После `repo add` выполните `sudo sard-agent check` (или `sudo sard-agent repo
+check <имя>` для одного репозитория): он покажет, доступно ли хранилище,
+приняты ли ключи, открывает ли пароль репозиторий и нет ли зависших блокировок
+([диагностика](../operator/09-troubleshooting.md#проверка-хоста-агента-sard-agent-check)).
 
 | кто запускает | что может |
 |---|---|

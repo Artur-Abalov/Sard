@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +37,17 @@ const (
 	// offerRestore: --target, --overwrite, --allow-root-target, --path and a
 	// --timeout that is not set unless the operator gives it (Р59, Р61, Р64).
 	offerRestore
+	// offerShortConnect: --connect-timeout is 10s by default, not 30s (A8d,
+	// ЧВ9: a check is a matter of seconds).
+	offerShortConnect
+	// offerReadData: --read-data <percent> of repo check (Ч7).
+	offerReadData
+	// offerRemoveStale: --remove-stale, which repo unlock needs (Ч6).
+	offerRemoveStale
+	// offerOffline: --offline of check (Ч22); offerNoReadData: --read-data is
+	// refused with the name of the command that has it (A8d-2).
+	offerOffline
+	offerNoReadData
 )
 
 // hostOptions are the flags and the positional arguments of one command of
@@ -64,6 +76,12 @@ type hostOptions struct {
 	connectTimeout time.Duration
 	// source is --source: the id of a source of Sard (Р57).
 	source string
+	// readData is --read-data: the percent of the data repo check reads, 0 if
+	// not given; removeStale is --remove-stale of repo unlock (A8d).
+	readData    int
+	removeStale bool
+	// offline is --offline of check: no network, no restic on a repository.
+	offline bool
 	// The flags of repo restore (Р59, Р61): the directory to restore into,
 	// the permission to replace files in it and to restore into the root of
 	// the file system, and the paths of the snapshot to restore.
@@ -91,25 +109,32 @@ type cmdSpec struct {
 	positional int
 	// missing is the message for too few of them.
 	missing string
+	// optional is how many more names it takes, beyond positional.
+	optional int
 }
 
 // repoSpecs are the commands of "sard-agent repo".
 var repoSpecs = map[string]cmdSpec{
-	"init":      {"repo init", offerTimeout | offerGenerate, 1, "the name of a repository of the agent config is required: sard-agent repo init [flags] <name>"},
-	"list":      {"repo list", offerTimeout | offerJSON, 0, ""},
-	"add":       {"repo add", offerTimeout | offerNoRestart | offerPasswordSource | offerRemote, 2, "a name and an address are required: sard-agent repo add [flags] <name> <address>"},
-	"show":      {"repo show", offerTimeout | offerJSON, 1, "the name of a repository is required: sard-agent repo show [flags] <name>"},
-	"remove":    {"repo remove", offerNoRestart, 1, "the name of a repository is required: sard-agent repo remove [flags] <name>"},
-	"password":  {"repo password", offerReveal, 1, "the name of a repository is required: sard-agent repo password <name> --reveal"},
-	"snapshots": {"repo snapshots", offerTimeout | offerJSON | offerConnectTimeout | offerSource, 1, "the name of a repository is required: sard-agent repo snapshots [flags] <name>"},
-	"restore":   {"repo restore", offerRestore | offerConnectTimeout | offerSource, 2, "a repository name and a snapshot are required: sard-agent repo restore [flags] <name> <snapshot> --target <dir>"},
+	"init":      {"repo init", offerTimeout | offerGenerate, 1, "the name of a repository of the agent config is required: sard-agent repo init [flags] <name>", 0},
+	"list":      {"repo list", offerTimeout | offerJSON, 0, "", 0},
+	"add":       {"repo add", offerTimeout | offerNoRestart | offerPasswordSource | offerRemote, 2, "a name and an address are required: sard-agent repo add [flags] <name> <address>", 0},
+	"show":      {"repo show", offerTimeout | offerJSON, 1, "the name of a repository is required: sard-agent repo show [flags] <name>", 0},
+	"remove":    {"repo remove", offerNoRestart, 1, "the name of a repository is required: sard-agent repo remove [flags] <name>", 0},
+	"password":  {"repo password", offerReveal, 1, "the name of a repository is required: sard-agent repo password <name> --reveal", 0},
+	"snapshots": {"repo snapshots", offerTimeout | offerJSON | offerConnectTimeout | offerSource, 1, "the name of a repository is required: sard-agent repo snapshots [flags] <name>", 0},
+	"restore":   {"repo restore", offerRestore | offerConnectTimeout | offerSource, 2, "a repository name and a snapshot are required: sard-agent repo restore [flags] <name> <snapshot> --target <dir>", 0},
+	"check":     {"repo check", offerTimeout | offerJSON | offerConnectTimeout | offerShortConnect | offerReadData, 0, "", 1},
+	"unlock":    {"repo unlock", offerTimeout | offerConnectTimeout | offerRemoveStale, 1, "the name of a repository is required: sard-agent repo unlock <name> --remove-stale", 0},
 }
+
+// checkSpec is sard-agent check (A8d-2).
+var checkSpec = cmdSpec{"check", offerJSON | offerConnectTimeout | offerShortConnect | offerOffline | offerNoReadData, 0, "", 0}
 
 // secretSpecs are the commands of "sard-agent secret".
 var secretSpecs = map[string]cmdSpec{
-	"set":    {"secret set", offerNoRestart | offerStdin | offerFromFile, 1, "the name of a secret is required: sard-agent secret set [flags] <name>"},
-	"list":   {"secret list", offerJSON, 0, ""},
-	"remove": {"secret remove", offerNoRestart, 1, "the name of a secret is required: sard-agent secret remove [flags] <name>"},
+	"set":    {"secret set", offerNoRestart | offerStdin | offerFromFile, 1, "the name of a secret is required: sard-agent secret set [flags] <name>", 0},
+	"list":   {"secret list", offerJSON, 0, "", 0},
+	"remove": {"secret remove", offerNoRestart, 1, "the name of a secret is required: sard-agent secret remove [flags] <name>", 0},
 }
 
 // parseRepoFlags reads the flags of a command of "sard-agent repo". Flags
@@ -138,6 +163,8 @@ type flagValues struct {
 	source                       *string
 	hostKeyFingerprint           *string
 	replaceHostKey               *bool
+	readData                     *int
+	removeStale, offline         *bool
 	target                       *string
 	overwrite, allowRoot         *bool
 	paths                        *stringList
@@ -152,6 +179,7 @@ func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
 		secretKeyStdin: new(bool), connectTimeout: new(time.Duration), source: new(string),
 		hostKeyFingerprint: new(string), replaceHostKey: new(bool),
 		target: new(string), overwrite: new(bool), allowRoot: new(bool), paths: new(stringList),
+		readData: new(int), removeStale: new(bool), offline: new(bool),
 	}
 	if o&offerTimeout != 0 {
 		v.timeout = fs.Duration("timeout", defaultRepoTimeout, "")
@@ -185,8 +213,12 @@ func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
 func defineReadFlags(fs *flag.FlagSet, o offer, v *flagValues) {
 	if o&(offerRemote|offerConnectTimeout) != 0 {
 		*v.connectTimeout = defaultConnectTimeout
+		if o&offerShortConnect != 0 {
+			*v.connectTimeout = shortConnectTimeout
+		}
 		fs.Var(positiveDuration{name: "connect-timeout", d: v.connectTimeout}, "connect-timeout", "")
 	}
+	defineHostCheckFlags(fs, o, v)
 	if o&offerSource != 0 {
 		v.source = fs.String("source", "", "")
 	}
@@ -235,6 +267,52 @@ func defineRemoteFlags(fs *flag.FlagSet, v *flagValues) {
 // --connect-timeout says otherwise (Р33).
 const defaultConnectTimeout = 30 * time.Second
 
+// defineHostCheckFlags are --read-data of repo check and --remove-stale of
+// repo unlock (A8d).
+func defineHostCheckFlags(fs *flag.FlagSet, o offer, v *flagValues) {
+	if o&offerReadData != 0 {
+		fs.Var(percentFlag{d: v.readData}, "read-data", "")
+	}
+	if o&offerRemoveStale != 0 {
+		v.removeStale = fs.Bool("remove-stale", false, "")
+	}
+	if o&offerOffline != 0 {
+		v.offline = fs.Bool("offline", false, "")
+	}
+	if o&offerNoReadData != 0 {
+		fs.Var(refusedFlag{"--read-data is a flag of `sard-agent repo check`: check reads no data of the repositories"}, "read-data", "")
+	}
+}
+
+// refusedFlag is a flag that is known only to say that the command does not
+// take it.
+type refusedFlag struct{ message string }
+
+func (r refusedFlag) Set(string) error { return errors.New(r.message) }
+func (r refusedFlag) String() string   { return "" }
+
+// shortConnectTimeout is --connect-timeout of the checks (A8d, ЧВ9).
+const shortConnectTimeout = 10 * time.Second
+
+// percentFlag is --read-data: a whole number from 1 to 100.
+type percentFlag struct{ d *int }
+
+func (p percentFlag) Set(s string) error {
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 || n > 100 {
+		return errors.New("--read-data must be a whole number from 1 to 100")
+	}
+	*p.d = n
+	return nil
+}
+
+func (p percentFlag) String() string {
+	if p.d == nil || *p.d == 0 {
+		return ""
+	}
+	return strconv.Itoa(*p.d)
+}
+
 // positiveDuration is a duration flag that refuses zero and less, naming itself.
 type positiveDuration struct {
 	name string
@@ -280,13 +358,32 @@ func parseFlags(spec cmdSpec, args []string, stderr io.Writer, defaultConfig str
 		secretKeyFromFile: *v.secretKeyFromFile, connectTimeout: *v.connectTimeout, source: *v.source, set: map[string]bool{},
 		hostKeyFingerprint: *v.hostKeyFingerprint, replaceHostKey: *v.replaceHostKey,
 		target: *v.target, overwrite: *v.overwrite, allowRoot: *v.allowRoot, paths: *v.paths,
+		readData: *v.readData, removeStale: *v.removeStale, offline: *v.offline,
 	}
 	fs.Visit(func(f *flag.Flag) { opts.set[f.Name] = true })
 	setNames(&opts, positional)
-	if err := checkFlagValues(spec, &opts); err != nil {
+	applyCheckDefaults(spec, &opts)
+	if err := checkCommandFlags(spec, &opts); err != nil {
 		return hostOptions{}, usageFailure(stderr, spec.words, err.Error())
 	}
 	return opts, exitOK
+}
+
+// applyCheckDefaults: repo check with --read-data has no time limit unless
+// --timeout is given (Ч27); the data of the storage takes as long as it takes.
+func applyCheckDefaults(spec cmdSpec, opts *hostOptions) {
+	if spec.offer&offerReadData != 0 && opts.readData > 0 && !opts.set["timeout"] {
+		opts.timeout = 0
+	}
+}
+
+// checkCommandFlags: repo unlock removes nothing without --remove-stale
+// (Ч6); then the values of the flags of every command.
+func checkCommandFlags(spec cmdSpec, opts *hostOptions) error {
+	if spec.offer&offerRemoveStale != 0 && !opts.removeStale {
+		return errors.New("--remove-stale is required: the command removes only the stale locks of this host, and only when asked to")
+	}
+	return checkFlagValues(spec, opts)
 }
 
 // checkFlagValues are the checks of the values that follow the parse: the
@@ -332,7 +429,7 @@ func setNames(opts *hostOptions, positional []string) {
 // checkPositional is the message for a wrong number of names.
 func checkPositional(spec cmdSpec, positional []string) string {
 	switch {
-	case len(positional) > spec.positional:
+	case len(positional) > spec.positional+spec.optional:
 		return "unexpected extra argument"
 	case len(positional) < spec.positional:
 		return spec.missing

@@ -30,4 +30,24 @@ object AgentAuthStatus {
                 .build()
         return StatusProto.toStatusRuntimeException(status)
     }
+
+    /**
+     * The store behind the check failed (ADR 0009 amendment, A8d-3): a retryable server fault
+     * like Enroll's INTERNAL_RETRYABLE, never a refusal and never UNIMPLEMENTED. No cause or text.
+     */
+    fun unavailable(): StatusRuntimeException {
+        val info =
+            ErrorInfo
+                .newBuilder()
+                .setReason("INTERNAL_RETRYABLE")
+                .setDomain(ERROR_DOMAIN)
+                .build()
+        val status =
+            com.google.rpc.Status
+                .newBuilder()
+                .setCode(Code.UNAVAILABLE_VALUE)
+                .addDetails(Any.pack(info))
+                .build()
+        return StatusProto.toStatusRuntimeException(status)
+    }
 }

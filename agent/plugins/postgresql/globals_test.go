@@ -137,7 +137,7 @@ func TestMissingPgDumpallNextToPgDumpFailsTheStep(t *testing.T) {
 	res := r.backup(kg())
 	want(t, res, failed)
 	mentions(t, res.GetMessage(), "pg_dumpall", "/usr/bin/pg_dumpall", "postgresql-client", "postgresql", "include_globals")
-	oneLine(t, res.GetMessage())
+	endsWithCheckHint(t, res.GetMessage())
 	r.noDump(t)
 }
 

@@ -171,7 +171,7 @@ func TestRepositoryFailuresNameTheRepository(t *testing.T) {
 		f := newHandlers(t, &plugin{})
 		f.repo.err = cause
 		res, err := f.run(t, step(backup, `{}`))
-		if !errors.Is(err, cause) || res != nil || !strings.Contains(err.Error(), `repository "main": `) || strings.Contains(err.Error(), "\n") {
+		if !errors.Is(err, cause) || res != nil || !strings.Contains(err.Error(), `repository "main": `) || strings.Contains(strings.TrimSuffix(err.Error(), "\n"+checkHint), "\n") {
 			t.Errorf("%s: Run = %v, %v", name, res, err)
 		}
 	}

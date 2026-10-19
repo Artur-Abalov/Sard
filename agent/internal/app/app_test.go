@@ -155,3 +155,18 @@ func TestRunConnectsThroughTheLink(t *testing.T) {
 }
 
 // Until the executor (A4) is wired in, nothing runs and commands are dropped.
+
+// A8d-1 (Ч4): the service records what it announces, for sard-agent repo check.
+func TestRegisterRequestHandsTheAnnouncedRepositoriesToTheRecorder(t *testing.T) {
+	agent := newAgent(t, &fakeLink{})
+	var got []string
+	agent.Announced = func(repos []*agentv1.RepositoryInfo) {
+		for _, r := range repos {
+			got = append(got, r.GetName()+"="+r.GetRepositoryId())
+		}
+	}
+	agent.RegisterRequest(context.Background())
+	if want := []string{"main=5e3f0a9c", "nas="}; !slices.Equal(got, want) {
+		t.Fatalf("recorded %q, want %q", got, want)
+	}
+}

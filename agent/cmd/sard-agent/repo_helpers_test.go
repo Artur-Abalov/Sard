@@ -74,6 +74,9 @@ type fakeRepo struct {
 	hangSnapshots bool
 	// restoreState is how the repository answers restore and ls (A8c-2).
 	restoreState fakeRestore
+	// checkState is how the repository answers list locks, cat lock, unlock
+	// and check (A8d-1).
+	checkState fakeChecks
 }
 
 // fakeCall is one restic invocation.
@@ -239,6 +242,7 @@ func (f *fakeRestic) runRepoCommand(ctx context.Context, cmd restic.Command, sub
 	}
 	handlers := map[string]func(context.Context, restic.Command, *fakeRepo) (int, error){
 		"cat": f.cat, "init": f.init, "snapshots": f.snapshots, "restore": f.restore, "ls": f.ls, "dump": f.dump,
+		"list": f.list, "unlock": f.unlock, "check": f.check,
 	}
 	if handle, ok := handlers[sub]; ok {
 		return handle(ctx, cmd, r)
@@ -261,6 +265,13 @@ func (f *fakeRestic) hang(ctx context.Context, cmd restic.Command, r *fakeRepo, 
 }
 
 func (f *fakeRestic) cat(ctx context.Context, cmd restic.Command, r *fakeRepo) (int, error) {
+	if len(cmd.Args) > 1 && cmd.Args[1] == "lock" {
+		return f.catLock(cmd, r)
+	}
+	return f.catConfig(ctx, cmd, r)
+}
+
+func (f *fakeRestic) catConfig(ctx context.Context, cmd restic.Command, r *fakeRepo) (int, error) {
 	switch {
 	case r.hangCat:
 		return f.hang(ctx, cmd, r, r.hangLine)
