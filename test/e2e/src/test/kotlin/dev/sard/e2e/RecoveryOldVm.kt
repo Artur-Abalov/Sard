@@ -7,6 +7,7 @@ import java.nio.file.Path
 import java.security.SecureRandom
 import java.time.Duration
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.HexFormat
 
 /** The card of the recovery (GET /api/v1/self-backup/recovery-card), the fields the page substitutes. */
@@ -111,6 +112,7 @@ internal class RecoveryOldVm(
         val snapshots = selfSnapshots(selfRuns)
         val a3 = agent("A3", schedule = false, source = false)
         val after = runAfter(sources.getValue("A1"), queuedAt)
+        awaitTwoMissedFires(queuedAt)
         val selfSources = selfSources()
         val x = checkNotNull(api.get("/api/v1/self-backup").json["agentId"].text)
         val old =
@@ -338,6 +340,17 @@ internal class RecoveryOldVm(
                 ?.id
         }
 
+    /**
+     * The dump holds A1's next fire at the minute after it was taken. The new server owes a catch-up only if two or
+     * more fires passed by its first scheduler pass; one passed fire is a late ordinary run (D16, ADR 0053). A fast
+     * new machine starts within that minute, so the old one is not handed over before two fires are certain.
+     */
+    private fun awaitTwoMissedFires(queuedAt: Instant) {
+        val owed = queuedAt.truncatedTo(ChronoUnit.MINUTES).plus(1, ChronoUnit.MINUTES)
+        val ready = owed.plus(1, ChronoUnit.MINUTES).plusSeconds(SCHEDULER_PAD)
+        Await.until("two fires of A1 pass after the dump", Duration.ofMinutes(4)) { !Instant.now().isBefore(ready) }
+    }
+
     private fun runs(): List<RunRecord> =
         api.items("/api/v1/runs").map {
             RunRecord(it["id"].text!!, it["sourceId"].text!!, it["trigger"].text!!, it["status"].text!!, it["queuedAt"].text!!, it["finishedAt"].text)
@@ -356,6 +369,7 @@ internal class RecoveryOldVm(
         private val WINDOW = 8L..28L
         private const val SNAPSHOT_ATTEMPTS = 5
         private const val WINDOW_PAD = 5L
+        private const val SCHEDULER_PAD = 5L
         private val FINAL = setOf("succeeded", "failed", "cancelled")
     }
 }
