@@ -20,7 +20,8 @@ private fun shown(
     elapsed: Duration,
     renewalIssuedAt: Instant? = null,
 ) = MutFlow.underTest {
-    CurrentCertificate("1", AgentCertificateLifetime(ISSUED, ISSUED + validity), renewalIssuedAt).toApi(ISSUED + elapsed)
+    val lifetime = AgentCertificateLifetime(ISSUED, ISSUED + validity)
+    CurrentCertificate("1", lifetime, renewalIssuedAt).toApi(ISSUED + elapsed)
 }
 
 /** C1 phase 3, П33: the certificate as the REST API shows it. */
