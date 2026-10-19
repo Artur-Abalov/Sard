@@ -151,7 +151,7 @@ class RunNotificationsRestIntegrationTest(
         val channel = CapturingChannel()
         val withoutLink =
             NotificationService(
-                Deliveries(sessions, UuidV7(clock, SecureRandom())),
+                Deliveries(sessions, UuidV7(clock, SecureRandom()), { false }),
                 OverdueDeliveries(sessions, UuidV7(clock, SecureRandom())),
                 CertificateDeliveries(sessions, UuidV7(clock, SecureRandom())),
                 listOf(channel),

@@ -191,7 +191,7 @@ private const val CLOSE = """
 class Deliveries(
     private val sessions: TenantSessions,
     private val ids: UuidV7,
-    private val connected: AgentConnected = AgentConnected { false },
+    private val connected: AgentConnected,
 ) {
     /** Finished runs since [since] without a delivery through [channel], oldest first. */
     fun unplanned(

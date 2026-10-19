@@ -69,18 +69,18 @@ export function CertificateRows({ certificate }: { certificate: Certificate }) {
   )
 }
 
-const HINTS = {
-  expiring: 'agent.certificateExpiringHint',
-  expired: 'agent.certificateExpiredHint',
-} as const
+const HINTS = new Map<string, string>([
+  ['expiring', 'agent.certificateExpiringHint'],
+  ['expired', 'agent.certificateExpiredHint'],
+])
 
 // What to do, under the facts; the colour is the theme's.
 export function CertificateAlert({ certificate }: { certificate: Certificate }) {
   const { t } = useTranslation()
   const tone = certificate === null ? null : certificateMarkTone(certificate.state)
-  if (certificate === null || tone === null) {
+  const hint = certificate === null ? undefined : HINTS.get(certificate.state)
+  if (tone === null || hint === undefined) {
     return null
   }
-  const state = certificate.state as keyof typeof HINTS
-  return <Alert color={tone}>{t(HINTS[state])}</Alert>
+  return <Alert color={tone}>{t(hint)}</Alert>
 }
