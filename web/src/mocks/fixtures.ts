@@ -421,6 +421,7 @@ const appSource: Schemas['Source'] = {
   createdAt: '2026-09-22T10:30:00Z',
   updatedAt: '2026-09-22T10:30:00Z',
   systemRole: null,
+  ...neverVerified,
 }
 sources.push(appSource)
 
