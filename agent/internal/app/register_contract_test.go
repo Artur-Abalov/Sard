@@ -80,9 +80,9 @@ func checkPlugin(t *testing.T, p *agentv1.Plugin) {
 	}
 }
 
-// A6b, F1: Register announces backup and restore for files and postgresql,
-// with the version of the agent.
-func TestRegisterAnnouncesTheBackupAndRestoreOfFilesAndPostgresql(t *testing.T) {
+// A6b, F1, R2a, R2b: Register announces the backup of files and postgresql, and
+// their restore from the console, with the version of the agent.
+func TestRegisterAnnouncesTheBackupAndTheRestoreOfFilesAndPostgresql(t *testing.T) {
 	reg := plugins.Registry(agentVersionInRelease)
 	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return nil, false }, t.TempDir())
 	if err != nil {
@@ -90,22 +90,91 @@ func TestRegisterAnnouncesTheBackupAndRestoreOfFilesAndPostgresql(t *testing.T) 
 	}
 	a := &app.Agent{Plugins: reg, Handlers: handlers, Hostname: "db1", Version: agentVersionInRelease, OS: "linux", Arch: "amd64",
 		RepositoryID: func(context.Context, config.Repository) (string, error) { return "", nil }}
-	found := map[string]bool{}
+	found := map[string]*agentv1.Plugin{}
 	for _, p := range a.RegisterRequest(context.Background()).GetPlugins() {
-		if p.GetName() == "files" || p.GetName() == "postgresql" {
-			found[p.GetName()] = true
-			checkBackupAndRestore(t, p)
-		}
+		found[p.GetName()] = p
 	}
-	if !found["files"] || !found["postgresql"] {
-		t.Fatalf("Register announces %v", found)
+	wantActions := map[string][]agentv1.Action{
+		"files":      {agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE},
+		"postgresql": {agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE},
+	}
+	for name, actions := range wantActions {
+		p := found[name]
+		if p == nil || !slices.Equal(p.GetActions(), actions) || p.GetVersion() != agentVersionInRelease {
+			t.Errorf("%s: %v", name, p)
+		}
 	}
 }
 
-func checkBackupAndRestore(t *testing.T, p *agentv1.Plugin) {
+// Scenario: Register сообщает каталог восстановления и схемы восстановления плагинов.
+func TestRegisterAnnouncesTheRestoreDirectoryAndTheRestoreSchemasOfThePlugins(t *testing.T) {
+	reg := plugins.Registry(agentVersionInRelease)
+	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return nil, false }, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &app.Agent{Plugins: reg, Handlers: handlers, Hostname: "db1", Version: agentVersionInRelease, OS: "linux", Arch: "amd64",
+		RestoreDir:   "/srv/restore",
+		RepositoryID: func(context.Context, config.Repository) (string, error) { return "", nil }}
+	req := a.RegisterRequest(context.Background())
+	if req.GetRestoreDir() != "/srv/restore" {
+		t.Errorf("restore_dir = %q", req.GetRestoreDir())
+	}
+	for _, p := range req.GetPlugins() {
+		switch p.GetName() {
+		case "files", "postgresql":
+			checkRestoreSchema(t, p)
+		default:
+			if p.GetRestoreConfigSchema() != "" {
+				t.Errorf("%s announces a restore schema", p.GetName())
+			}
+		}
+	}
+}
+
+// Scenario: С R2b плагин postgresql объявляет схему восстановления.
+func TestRegisterAnnouncesTheRestoreSchemaOfPostgresql(t *testing.T) {
+	reg := plugins.Registry(agentVersionInRelease)
+	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return nil, false }, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &app.Agent{Plugins: reg, Handlers: handlers, Hostname: "db1", Version: agentVersionInRelease, OS: "linux", Arch: "amd64",
+		RepositoryID: func(context.Context, config.Repository) (string, error) { return "", nil }}
+	for _, p := range a.RegisterRequest(context.Background()).GetPlugins() {
+		if p.GetName() != "postgresql" {
+			continue
+		}
+		var doc struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+		}
+		if err := json.Unmarshal([]byte(p.GetRestoreConfigSchema()), &doc); err != nil {
+			t.Fatal(err)
+		}
+		for _, field := range []string{"host", "port", "user", "password_ref", "tls_mode", "tls_root_cert", "database", "restore_globals", "pg_restore_path"} {
+			if _, ok := doc.Properties[field]; !ok {
+				t.Errorf("the restore schema of postgresql has no %s", field)
+			}
+		}
+		if !slices.Contains(p.GetActions(), agentv1.Action_ACTION_RESTORE) {
+			t.Errorf("postgresql actions %v", p.GetActions())
+		}
+		return
+	}
+	t.Error("postgresql is not announced")
+}
+
+func checkRestoreSchema(t *testing.T, p *agentv1.Plugin) {
 	t.Helper()
-	wantActions := []agentv1.Action{agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE}
-	if !slices.Equal(p.GetActions(), wantActions) || p.GetVersion() != agentVersionInRelease {
-		t.Errorf("%s: actions %v, version %q", p.GetName(), p.GetActions(), p.GetVersion())
+	schema := p.GetRestoreConfigSchema()
+	var doc struct {
+		Schema string `json:"$schema"`
+	}
+	if err := json.Unmarshal([]byte(schema), &doc); err != nil || doc.Schema != "https://json-schema.org/draft/2020-12/schema" {
+		t.Errorf("%s: restore schema %q: %v", p.GetName(), schema, err)
+	}
+	checkPlugin(t, p)
+	if len(schema) > serverMaxSchemaBytes {
+		t.Errorf("%s: restore schema of %d bytes", p.GetName(), len(schema))
 	}
 }

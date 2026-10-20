@@ -140,6 +140,16 @@ type Options struct {
 	// OutputLevel is the level of a line of a tool's output; default INFO.
 	OutputLevel func(line string) agentv1.LogLevel
 
+	// Interrupted, if not nil, is asked at start about every step the
+	// previous run left unfinished, with its action: nil keeps the D13
+	// failure, an Interruption words it instead (the rollback of a restore).
+	Interrupted func(commandID string, action agentv1.Action) *Interruption
+
+	// Journaled, if not nil, is called with each result right after it was
+	// saved to disk (not when saving failed): whoever kept something for a
+	// crash between the end of the step and its journal entry lets go of it.
+	Journaled func(*agentv1.StepResult)
+
 	MaxParallel      int           // steps running at once; default 1
 	MaxQueue         int           // steps waiting; default 16; beyond it → REJECTED
 	MaxTimeout       time.Duration // timeout of a step without one; default 24h
@@ -160,6 +170,18 @@ const (
 	defaultProgressInterval = time.Second
 	defaultRetention        = 7 * 24 * time.Hour
 )
+
+// Interruption is the failure of an interrupted step in the words of whoever
+// undid its effects at start.
+type Interruption struct {
+	// Succeeded: the step had finished its work before the restart, so the
+	// result is SUCCEEDED, not FAILED.
+	Succeeded bool
+	Message   string
+	// Output, if not nil, is the restore output the failed result carries:
+	// what the rollback could not remove.
+	Output *agentv1.RestoreOutput
+}
 
 // Executor runs steps. All its state lives here; it is safe for concurrent use.
 type Executor struct {
@@ -352,15 +374,35 @@ func (e *Executor) interrupted(journal []entry) {
 			e.dropLeftover(journalDir, j.CommandID, "cannot remove the journal entry")
 			continue
 		}
-		c := &command{step: &agentv1.RunStep{CommandId: j.CommandID}, state: finished}
+		c := &command{step: &agentv1.RunStep{CommandId: j.CommandID, Action: agentv1.Action(j.Action)}, state: finished}
 		if j.StartedAt != nil {
 			c.started = *j.StartedAt
 		}
-		c.result = e.outcome(c, agentv1.StepStatus_STEP_STATUS_FAILED, interruptedMessage)
+		c.result = e.interruption(c)
 		e.cmds[j.CommandID] = c
 		e.save(c.result)
 		ids = append(ids, j.CommandID)
 	}
+}
+
+// interruption is the result of a step the previous run did not finish.
+func (e *Executor) interruption(c *command) *agentv1.StepResult {
+	var i *Interruption
+	if e.opts.Interrupted != nil {
+		i = e.opts.Interrupted(c.step.GetCommandId(), c.step.GetAction())
+	}
+	if i == nil {
+		return e.outcome(c, agentv1.StepStatus_STEP_STATUS_FAILED, InterruptedMessage)
+	}
+	status := agentv1.StepStatus_STEP_STATUS_FAILED
+	if i.Succeeded {
+		status = agentv1.StepStatus_STEP_STATUS_SUCCEEDED
+	}
+	r := e.outcome(c, status, i.Message)
+	if i.Output != nil {
+		r.Output = &agentv1.StepResult_Restore{Restore: i.Output}
+	}
+	return r
 }
 
 // dropLeftover removes a file a crash left next to the one that wins.

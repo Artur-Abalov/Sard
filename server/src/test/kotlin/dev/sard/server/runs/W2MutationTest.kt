@@ -73,6 +73,7 @@ class W2MutationTest(
 
     @AfterTest
     fun `drop both tenants`() {
+        jdbc.update("delete from snapshots where tenant_id in (?, ?)", tenant.id, other.id)
         jdbc.update("delete from enrollment_tokens where tenant_id in (?, ?)", tenant.id, other.id)
         tenant.drop()
         other.drop()
@@ -110,8 +111,10 @@ class W2MutationTest(
     private fun backup(
         partial: String?,
         status: String = "succeeded",
+        plugin: String = PLUGIN,
+        name: String = "prod-db",
     ): UUID {
-        val run = runs.start(tenant.id, sources.create(tenant.id, tenant.draft()).id)
+        val run = runs.start(tenant.id, sources.create(tenant.id, tenant.draft(name = name, plugin = plugin)).id)
         val output =
             """{"kind":"backup","snapshotId":"s1","totalBytes":10,"addedBytes":4,"repositoryId":"$REPOSITORY_ID"""" +
                 (partial?.let { ""","partial":$it""" } ?: "") + "}"
@@ -371,5 +374,90 @@ class W2MutationTest(
         assertEquals(setOf(first.id, second.id), ids(RunFilter()).toSet())
         assertEquals(listOf(first.id), ids(RunFilter(sourceId = first.sourceId)))
         assertEquals(listOf(second.id), ids(RunFilter(statuses = setOf(RunState.DISPATCHED))))
+    }
+
+    private fun withPlugin(name: String) =
+        jdbc.update(
+            "insert into agent_plugins (tenant_id, agent_id, name, version, config_schema, actions) " +
+                "values (?, ?, ?, '0.1.0', '{\"type\":\"object\"}'::jsonb, array['backup','restore'])",
+            tenant.id,
+            tenant.agentId,
+            name,
+        )
+
+    private fun forget(run: UUID) {
+        val step = jdbc.queryForObject("select id from run_steps where run_id = ?", UUID::class.java, run)
+        val source = jdbc.queryForObject("select source_id from runs where id = ?", UUID::class.java, run)
+        jdbc.update(
+            "insert into snapshots (id, tenant_id, source_id, step_id, agent_id, repository_name, repository_id, " +
+                "snapshot_id, total_bytes, added_bytes, created_at, forgotten_at) " +
+                "values (?, ?, ?, ?, ?, 'main', ?, 's1', 10, 4, ?, ?)",
+            UUID.randomUUID(),
+            tenant.id,
+            source,
+            step,
+            tenant.agentId,
+            REPOSITORY_ID,
+            at,
+            at,
+        )
+    }
+
+    private fun restorable(run: UUID): Boolean? =
+        MutFlow
+            .underTest { runs.get(tenant.id, run) }
+            ?.steps
+            ?.single()
+            ?.backup
+            ?.restorable
+
+    @Test
+    fun `the console restores a whole snapshot of files and postgresql that is still there, and no other`() {
+        withPlugin("files")
+        withPlugin("mysql")
+
+        assertEquals(true, restorable(backup(null, plugin = "files", name = "whole")), "whole")
+        assertEquals(false, restorable(backup("true", "failed", plugin = "files", name = "partial")), "partial")
+        val forgotten = backup(null, plugin = "files", name = "forgotten")
+        forget(forgotten)
+        assertEquals(false, restorable(forgotten), "forgotten")
+        assertEquals(true, restorable(backup(null, name = "database")), "postgresql")
+        val mysql = backup(null, plugin = "mysql", name = "mysql")
+        assertEquals(false, restorable(mysql), "a plugin the console does not restore")
+    }
+
+    @Test
+    fun `a backup run is of the kind backup and says nothing of a restore`() {
+        val run = backup(null)
+
+        val got = assertNotNull(MutFlow.underTest { runs.get(tenant.id, run) })
+        assertEquals(RunKind.BACKUP, got.kind)
+        assertNull(got.restore)
+        assertNull(got.steps.single().restore)
+    }
+
+    @Test
+    fun `a restore run reads back its kind, what it was asked for and what its step reported`() {
+        val run = backup(null, plugin = PLUGIN)
+        jdbc.update(
+            "update runs set kind = 'restore', requested_by = 'admin', restore = ?::jsonb where id = ?",
+            """{"snapshotId":"s1","snapshotCreatedAt":"2026-09-30T09:00:00Z","repositoryName":"main",""" +
+                """"config":{"destination":"x"},"target":"/r/x"}""",
+            run,
+        )
+        jdbc.update(
+            "update run_steps set action = 'restore', output = ?::jsonb where run_id = ?",
+            """{"kind":"restore","target":"/r/x","filesRestored":2,"bytesRestored":10,"ownersRestored":false}""",
+            run,
+        )
+
+        val got = assertNotNull(MutFlow.underTest { runs.get(tenant.id, run) })
+
+        assertEquals(RunKind.RESTORE, got.kind)
+        assertEquals("/r/x", got.restore?.target)
+        assertEquals(
+            RestoreResult("/r/x", 2, 10, null, null, null, false, null),
+            got.steps.single().restore,
+        )
     }
 }

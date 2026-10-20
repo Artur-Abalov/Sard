@@ -207,7 +207,7 @@ type fakeHandler struct {
 
 func newHandler(stubborn bool) *fakeHandler {
 	return &fakeHandler{
-		actions:  []agentv1.Action{agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RUN},
+		actions:  []agentv1.Action{agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE, agentv1.Action_ACTION_RUN},
 		stubborn: stubborn,
 		calls:    make(chan *call, 100),
 	}
@@ -302,8 +302,10 @@ func setup(t *testing.T, tune func(*executor.Options)) *fixture {
 	f := &fixture{sink: newSink(), clock: newClock(), files: newHandler(false), stubborn: newHandler(true), log: &syncBuffer{}}
 	sloppy := newHandler(false)
 	sloppy.actions = append(sloppy.actions, agentv1.Action_ACTION_UNSPECIFIED)
+	backupOnly := newHandler(false)
+	backupOnly.actions = []agentv1.Action{agentv1.Action_ACTION_BACKUP}
 	opts := executor.Options{
-		Handlers:     registry{"files": f.files, "stubborn": f.stubborn, "sloppy": sloppy},
+		Handlers:     registry{"files": f.files, "stubborn": f.stubborn, "sloppy": sloppy, "backup-only": backupOnly},
 		Sink:         f.sink,
 		StateDir:     stateDir(t),
 		Role:         role.Source,

@@ -16,7 +16,8 @@ import java.util.UUID
 
 /**
  * A registered agent; table created by Flyway migrations V1, V2, V202609271200, V202609281200, V202609281400,
- * V202610011200, V202610081200, V202610141200 and V202610191300.
+ * V202610011200, V202610081200, V202610141200, V202610151200, V202610191200, V202610191300 and
+ * V202610191400.
  */
 @Entity
 @Table(name = "agents")
@@ -70,6 +71,10 @@ class Agent(
     /** From the last Register: hex(HMAC-SHA256(...)) of the host's machine id; null before the first (V1). */
     @Column(name = "machine_id")
     var machineId: String? = null
+
+    /** The directory the host allows restores into (R2, migration V202610191400); null if never announced. */
+    @Column(name = "restore_dir")
+    var restoreDir: String? = null
 
     /** The last Register carried RegisterRequest.verifier (V4); false for an older agent. */
     @Column(name = "verifier_reported", nullable = false)

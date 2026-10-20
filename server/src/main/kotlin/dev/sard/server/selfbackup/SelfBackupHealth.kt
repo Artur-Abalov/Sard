@@ -10,8 +10,8 @@ import org.hibernate.Session
 import java.time.Instant
 import java.util.UUID
 
-// A verification run of a self-backup source is not a backup (V4).
-private const val BACKUP = "and r.trigger <> 'verification'"
+// Only a backup counts: neither a restore (R2) nor a verification run (V4) is one.
+private const val BACKUP = "and r.kind = 'backup' and r.trigger <> 'verification'"
 private const val LAST_AT =
     "select max(r.finishedAt) from RunRecord r where r.sourceId = :source and r.status = :status $BACKUP"
 private const val LAST_RUN =

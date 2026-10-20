@@ -8,6 +8,7 @@ import dev.sard.server.notify.telegram.BotReply
 import dev.sard.server.notify.telegram.FakeBotApi
 import dev.sard.server.notify.telegram.TEST_TOKEN
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.runs.PLUGIN
 import dev.sard.server.runs.RUNS_NOW
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.RunsTenant
@@ -518,5 +519,100 @@ class RunNotificationsIntegrationTest(
     fun `С ботом нет предупреждения об отсутствии форматтера`(output: CapturedOutput) {
         assertTrue("Notifications go through [telegram]" in output.all)
         assertFalse("no NotificationFormatter bean" in output.all)
+    }
+
+    // --- R2a: a restore is told always, and is not a part of the series of a source
+
+    /** A restore run of [sourceId] that ends with [report] 2 min 30 s after it was queued, [hour] hours after T0. */
+    private fun restored(
+        sourceId: UUID,
+        report: StepReport,
+        hour: Long,
+    ): UUID {
+        clock.now = RUNS_NOW.plusSeconds(3600 * hour)
+        val run = UUID.randomUUID()
+        val step = UUID.randomUUID()
+        val info =
+            """{"snapshotId":"4f1c2a9e${"0".repeat(56)}","snapshotCreatedAt":"2026-10-10T03:00:00Z",""" +
+                """"repositoryName":"main","config":{"destination":"etc/x"},"target":"/r/etc/x"}"""
+        jdbc.update(
+            "insert into runs (id, tenant_id, source_id, trigger, status, queued_at, kind, requested_by, restore) " +
+                "values (?, ?, ?, 'manual', 'queued', ?, 'restore', 'admin', ?::jsonb)",
+            run,
+            tenant.id,
+            sourceId,
+            Timestamp.from(clock.now),
+            info,
+        )
+        jdbc.update(
+            "insert into run_steps (id, tenant_id, run_id, ordinal, agent_id, source_id, plugin, action, " +
+                "repository_name, snapshot_id, config, status, queued_at) " +
+                "values (?, ?, ?, 0, ?, ?, ?, 'restore', 'main', ?, '{}'::jsonb, 'queued', ?)",
+            step,
+            tenant.id,
+            run,
+            tenant.agentId,
+            sourceId,
+            PLUGIN,
+            "4f1c2a9e" + "0".repeat(56),
+            Timestamp.from(clock.now),
+        )
+        assertTrue(steps.claim(tenant.id, step))
+        assertTrue(steps.accepted(tenant.id, step, "restoring"))
+        clock.now = clock.now.plusSeconds(150)
+        results.record(tenant.id, tenant.agentId, step, report)
+        return run
+    }
+
+    private val restoredFiles = StepOutput.Restore("/r/etc/x", filesRestored = 2, bytesRestored = 1536)
+
+    @Test
+    fun `Успешное восстановление уведомляет, хотя успех запуска по расписанию после успеха молчит`() {
+        val source = sources.create(tenant.id, tenant.draft("db-main")).id
+        val quiet = scheduled(source, SUCCEEDED, 0)
+
+        val restore = restored(source, StepReport(StepState.SUCCEEDED, null, restoredFiles), 1)
+        ticks()
+
+        assertEquals("skipped", status(quiet))
+        assertEquals("delivered", status(restore))
+        val expected =
+            """
+            ✅ Восстановление выполнено: db-main
+            Агент: db1
+            Снимок: 4f1c2a9e от 2026-10-10T03:00:00Z
+            Длительность: 2 мин 30 с
+            Восстановлено файлов: 2, объём: 1,5 КиБ. Куда: /r/etc/x
+            Запуск: $restore
+            $CONSOLE/runs/$restore
+            """.trimIndent()
+        assertEquals(expected, shown())
+    }
+
+    @Test
+    fun `Неудачное восстановление сообщает причину агента и что ничего не восстановлено`() {
+        val source = sources.create(tenant.id, tenant.draft("db-main")).id
+        val message = "TARGET_NOT_EMPTY (check): the destination /r/etc/x is not empty; nothing was restored"
+
+        val restore = restored(source, StepReport(StepState.FAILED, message, null), 1)
+        ticks()
+
+        assertEquals("delivered", status(restore))
+        val lines = shown().lines()
+        assertEquals("❌ Восстановление завершилось ошибкой: db-main", lines.first())
+        assertTrue("Причина: $message" in lines, shown())
+        assertTrue("Ничего не восстановлено: изменения отменены." in lines, shown())
+    }
+
+    @Test
+    fun `Восстановление не нарушает серию уведомлений запусков по расписанию`() {
+        val source = sources.create(tenant.id, tenant.draft("db-main")).id
+        val failure = StepReport(StepState.FAILED, "disk full", null)
+
+        val first = scheduled(source, failure, 0)
+        restored(source, StepReport(StepState.SUCCEEDED, null, restoredFiles), 1)
+        val second = scheduled(source, failure, 2)
+
+        assertEquals(listOf("delivered", "skipped"), listOf(first, second).map(::status))
     }
 }

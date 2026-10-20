@@ -27,6 +27,7 @@ const KNOWN: Record<ErrorCode, true> = {
   unknown_agent: true,
   unknown_plugin: true,
   unknown_repository: true,
+  snapshot_not_restorable: true,
   invalid_config: true,
   run_active: true,
   token_used: true,

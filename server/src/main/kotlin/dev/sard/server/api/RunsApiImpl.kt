@@ -29,6 +29,7 @@ class RunsApiImpl(
         status: List<RunStatus>?,
         queuedFrom: Instant?,
         queuedTo: Instant?,
+        kind: RunKind?,
         cursor: String?,
         limit: Int,
     ): RunPage {
@@ -36,7 +37,15 @@ class RunsApiImpl(
         if (queuedFrom != null && queuedTo != null && queuedFrom.isAfter(queuedTo)) {
             throw RequestInvalid("queuedFrom", "must not be later than queuedTo")
         }
-        val filter = RunFilter(sourceId, agentId, status.orEmpty().map(RunMapping::state).toSet(), queuedFrom, queuedTo)
+        val filter =
+            RunFilter(
+                sourceId,
+                agentId,
+                status.orEmpty().map(RunMapping::state).toSet(),
+                queuedFrom,
+                queuedTo,
+                kind?.let(RunMapping::kindOf),
+            )
         val rows = runs.list(tenants.currentTenantId(), filter, page.after, page.fetch)
         val slice = page.slice(rows) { PageKey(it.queuedAt, it.id) }
         val periods = catchUps.periods(tenants.currentTenantId(), slice.items.map { it.id })

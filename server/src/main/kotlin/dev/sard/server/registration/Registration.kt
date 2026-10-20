@@ -54,6 +54,7 @@ class Registration(
         agent.secretNames = snapshot.secretNames
         agent.scriptNames = snapshot.scriptNames
         agent.machineId = snapshot.machineId
+        agent.restoreDir = snapshot.restoreDir.ifEmpty { null }
         verifier(agent, snapshot.verifier)
         agent.lastRegisterAt = now
         for (statement in listOf(DELETE_PLUGINS, DELETE_REPOSITORIES)) {
@@ -83,6 +84,7 @@ class Registration(
         plugin.configSchema,
         // The rules have refused unknown actions already; nothing is dropped here.
         plugin.actions.filterNotNull().map { it.stored },
+        plugin.restoreConfigSchema.ifEmpty { null },
     )
 
     private fun repositoryRecord(

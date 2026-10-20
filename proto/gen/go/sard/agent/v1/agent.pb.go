@@ -751,7 +751,12 @@ type RegisterRequest struct {
 	// which the server never hands a verification. A verifier's keys are the
 	// repository_id of its repositories, its plugins those that list
 	// ACTION_VERIFY.
-	Verifier      *VerifierStatus `protobuf:"bytes,11,opt,name=verifier,proto3" json:"verifier,omitempty"`
+	Verifier *VerifierStatus `protobuf:"bytes,11,opt,name=verifier,proto3" json:"verifier,omitempty"`
+	// Absolute path of the directory the host's operator allows restores into
+	// (restore.dir in the agent config), shown in the console. Not a secret;
+	// the server cannot set or change it and never sends a path of its own in a
+	// command. Empty for an agent that cannot restore from the console.
+	RestoreDir    string `protobuf:"bytes,12,opt,name=restore_dir,json=restoreDir,proto3" json:"restore_dir,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -863,6 +868,13 @@ func (x *RegisterRequest) GetVerifier() *VerifierStatus {
 	return nil
 }
 
+func (x *RegisterRequest) GetRestoreDir() string {
+	if x != nil {
+		return x.RestoreDir
+	}
+	return ""
+}
+
 // VerifierStatus is what a verifier reports about its own host for restore
 // verification: what it has, never a secret.
 type VerifierStatus struct {
@@ -932,9 +944,13 @@ type Plugin struct {
 	// Plugin version, e.g. "0.1.0".
 	Version string `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
 	// Actions the plugin implements.
-	Actions       []Action `protobuf:"varint,4,rep,packed,name=actions,proto3,enum=sard.agent.v1.Action" json:"actions,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Actions []Action `protobuf:"varint,4,rep,packed,name=actions,proto3,enum=sard.agent.v1.Action" json:"actions,omitempty"`
+	// JSON Schema (draft 2020-12) of the configuration of ACTION_RESTORE, which
+	// the console renders and the server validates before it sends the
+	// command. Empty: the plugin cannot be restored from the console.
+	RestoreConfigSchema string `protobuf:"bytes,5,opt,name=restore_config_schema,json=restoreConfigSchema,proto3" json:"restore_config_schema,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *Plugin) Reset() {
@@ -993,6 +1009,13 @@ func (x *Plugin) GetActions() []Action {
 		return x.Actions
 	}
 	return nil
+}
+
+func (x *Plugin) GetRestoreConfigSchema() string {
+	if x != nil {
+		return x.RestoreConfigSchema
+	}
+	return ""
 }
 
 // RegisterResponse identifies the agent in all later calls.
@@ -1927,10 +1950,30 @@ func (x *BackupOutput) GetRepositoryId() string {
 	return ""
 }
 
+// RestoreOutput is the outcome of ACTION_RESTORE. A restore is all or
+// nothing: on SUCCEEDED every field but leftover is set; on any other
+// status the output exists only when the rollback failed, and then holds
+// leftover alone.
 type RestoreOutput struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Where the data was restored, e.g. a path or a database name.
-	Target        string `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
+	// Where the data was restored: the absolute path of a directory, or the
+	// name of a database.
+	Target string `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
+	// Files and bytes written to the target, as restic reports them.
+	FilesRestored uint64 `protobuf:"varint,2,opt,name=files_restored,json=filesRestored,proto3" json:"files_restored,omitempty"`
+	BytesRestored uint64 `protobuf:"varint,3,opt,name=bytes_restored,json=bytesRestored,proto3" json:"bytes_restored,omitempty"`
+	// Name of the database a PostgreSQL restore created.
+	Database string `protobuf:"bytes,4,opt,name=database,proto3" json:"database,omitempty"`
+	// Tables and roles a PostgreSQL restore created.
+	TablesRestored uint64 `protobuf:"varint,5,opt,name=tables_restored,json=tablesRestored,proto3" json:"tables_restored,omitempty"`
+	RolesRestored  uint64 `protobuf:"varint,6,opt,name=roles_restored,json=rolesRestored,proto3" json:"roles_restored,omitempty"`
+	// Whether the owners and groups of the snapshot were restored. False for
+	// files: the service user is not privileged, so everything it writes is
+	// its own.
+	OwnersRestored bool `protobuf:"varint,7,opt,name=owners_restored,json=ownersRestored,proto3" json:"owners_restored,omitempty"`
+	// What the rollback of a failed restore could not remove and the operator
+	// must remove by hand: a path, "database <name>", "role <name>".
+	Leftover      string `protobuf:"bytes,8,opt,name=leftover,proto3" json:"leftover,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1968,6 +2011,55 @@ func (*RestoreOutput) Descriptor() ([]byte, []int) {
 func (x *RestoreOutput) GetTarget() string {
 	if x != nil {
 		return x.Target
+	}
+	return ""
+}
+
+func (x *RestoreOutput) GetFilesRestored() uint64 {
+	if x != nil {
+		return x.FilesRestored
+	}
+	return 0
+}
+
+func (x *RestoreOutput) GetBytesRestored() uint64 {
+	if x != nil {
+		return x.BytesRestored
+	}
+	return 0
+}
+
+func (x *RestoreOutput) GetDatabase() string {
+	if x != nil {
+		return x.Database
+	}
+	return ""
+}
+
+func (x *RestoreOutput) GetTablesRestored() uint64 {
+	if x != nil {
+		return x.TablesRestored
+	}
+	return 0
+}
+
+func (x *RestoreOutput) GetRolesRestored() uint64 {
+	if x != nil {
+		return x.RolesRestored
+	}
+	return 0
+}
+
+func (x *RestoreOutput) GetOwnersRestored() bool {
+	if x != nil {
+		return x.OwnersRestored
+	}
+	return false
+}
+
+func (x *RestoreOutput) GetLeftover() string {
+	if x != nil {
+		return x.Leftover
 	}
 	return ""
 }
@@ -2848,7 +2940,7 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\fProbeRequest\"L\n" +
 	"\rProbeResponse\x12;\n" +
 	"\vserver_time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"serverTime\"\xb5\x03\n" +
+	"serverTime\"\xd6\x03\n" +
 	"\x0fRegisterRequest\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12#\n" +
 	"\ragent_version\x18\x02 \x01(\tR\fagentVersion\x12/\n" +
@@ -2862,16 +2954,19 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
 	"machine_id\x18\n" +
 	" \x01(\tR\tmachineId\x129\n" +
-	"\bverifier\x18\v \x01(\v2\x1d.sard.agent.v1.VerifierStatusR\bverifier\"\x83\x01\n" +
+	"\bverifier\x18\v \x01(\v2\x1d.sard.agent.v1.VerifierStatusR\bverifier\x12\x1f\n" +
+	"\vrestore_dir\x18\f \x01(\tR\n" +
+	"restoreDir\"\x83\x01\n" +
 	"\x0eVerifierStatus\x12+\n" +
 	"\x0fwork_free_bytes\x18\x01 \x01(\x04H\x00R\rworkFreeBytes\x88\x01\x01\x120\n" +
 	"\asandbox\x18\x02 \x01(\x0e2\x16.sard.agent.v1.SandboxR\asandboxB\x12\n" +
-	"\x10_work_free_bytes\"\x8c\x01\n" +
+	"\x10_work_free_bytes\"\xc0\x01\n" +
 	"\x06Plugin\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12#\n" +
 	"\rconfig_schema\x18\x02 \x01(\tR\fconfigSchema\x12\x18\n" +
 	"\aversion\x18\x03 \x01(\tR\aversion\x12/\n" +
-	"\aactions\x18\x04 \x03(\x0e2\x15.sard.agent.v1.ActionR\aactions\"w\n" +
+	"\aactions\x18\x04 \x03(\x0e2\x15.sard.agent.v1.ActionR\aactions\x122\n" +
+	"\x15restore_config_schema\x18\x05 \x01(\tR\x13restoreConfigSchema\"w\n" +
 	"\x10RegisterResponse\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12H\n" +
 	"\x12heartbeat_interval\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x11heartbeatInterval\"2\n" +
@@ -2938,9 +3033,16 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"totalBytes\x12\x1f\n" +
 	"\vadded_bytes\x18\x03 \x01(\x04R\n" +
 	"addedBytes\x12#\n" +
-	"\rrepository_id\x18\x04 \x01(\tR\frepositoryId\"'\n" +
+	"\rrepository_id\x18\x04 \x01(\tR\frepositoryId\"\xa6\x02\n" +
 	"\rRestoreOutput\x12\x16\n" +
-	"\x06target\x18\x01 \x01(\tR\x06target\"\xd9\x02\n" +
+	"\x06target\x18\x01 \x01(\tR\x06target\x12%\n" +
+	"\x0efiles_restored\x18\x02 \x01(\x04R\rfilesRestored\x12%\n" +
+	"\x0ebytes_restored\x18\x03 \x01(\x04R\rbytesRestored\x12\x1a\n" +
+	"\bdatabase\x18\x04 \x01(\tR\bdatabase\x12'\n" +
+	"\x0ftables_restored\x18\x05 \x01(\x04R\x0etablesRestored\x12%\n" +
+	"\x0eroles_restored\x18\x06 \x01(\x04R\rrolesRestored\x12'\n" +
+	"\x0fowners_restored\x18\a \x01(\bR\x0eownersRestored\x12\x1a\n" +
+	"\bleftover\x18\b \x01(\tR\bleftover\"\xd9\x02\n" +
 	"\fVerifyOutput\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
 	"snapshotId\x122\n" +

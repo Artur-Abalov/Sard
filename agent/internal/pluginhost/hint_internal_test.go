@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Artur-Abalov/sard/agent/internal/consolerestore"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
@@ -38,5 +40,39 @@ func TestAMissingFileThatIsNotThePasswordFileGetsNoHint(t *testing.T) {
 	noFile := fmt.Errorf("%w of repository %q", restic.ErrPasswordFile, "main")
 	if got := withCheckHint(noFile); got != noFile {
 		t.Errorf("a password file error that is not a missing file got the hint: %q", got)
+	}
+}
+
+// A8d-4 Ч28 with R2 and R2b: a failed console restore ends with the hint for
+// the reasons sard-agent check explains, each one, and for no other.
+func TestAFailedConsoleRestoreEndsWithTheCheckHintForEveryReasonCheckExplains(t *testing.T) {
+	for _, reason := range []refusal.Reason{
+		refusal.BackendUnavailable, refusal.StorageAccessDenied, refusal.S3KeyRejected,
+		refusal.SSHKeyNotAuthorized, refusal.WrongPassword, refusal.PasswordFileMissing,
+		refusal.PGClientMissing,
+	} {
+		t.Run(string(reason), func(t *testing.T) {
+			failure := &consolerestore.Failure{Reason: reason, Stage: consolerestore.StageCheck, Detail: "x"}
+			got := withCheckHint(failure)
+			want := failure.Error() + "\n" + checkHint
+			if got.Error() != want || !errors.Is(got, error(failure)) {
+				t.Errorf("message %q, want %q", got.Error(), want)
+			}
+		})
+	}
+}
+
+func TestAFailedConsoleRestoreOfAnotherReasonGetsNoHint(t *testing.T) {
+	for _, reason := range []refusal.Reason{
+		refusal.TargetNotEmpty, refusal.RestoreIncomplete, refusal.PGConnect, refusal.PGClientTooOld, refusal.PGServerTooOld,
+		refusal.CreatedbRequired, refusal.SuperuserRequired, refusal.DatabaseExists, refusal.PGRestoreFailed, refusal.CleanupFailed,
+		refusal.ResticFailed, refusal.TargetWrite,
+	} {
+		t.Run(string(reason), func(t *testing.T) {
+			failure := &consolerestore.Failure{Reason: reason, Stage: consolerestore.StageCheck, Detail: "x"}
+			if got := withCheckHint(failure); got != error(failure) {
+				t.Errorf("message %q", got.Error())
+			}
+		})
 	}
 }

@@ -68,12 +68,17 @@ func TestBuiltinPluginsShareTheAgentVersionAndDoNotVerifyYet(t *testing.T) {
 	}
 }
 
+// Every built-in plugin backs up, and both restore from the console (R2a, R2b).
 func TestBuiltinPluginsGetHandlersThatBackUpAndRestore(t *testing.T) {
 	reg := plugins.Registry("1.2.3")
 	h := plugins.Handlers(reg, pluginhost.NewSecrets(nil, nil), nil, t.TempDir())
 	for _, name := range reg.Names() {
 		handler, ok := h.Handler(name)
-		if !ok || len(handler.Actions()) != 2 {
+		wantActions := 1
+		if name == "files" || name == "postgresql" {
+			wantActions = 2
+		}
+		if !ok || len(handler.Actions()) != wantActions {
 			t.Errorf("%s: handler %v, %v", name, handler, ok)
 		}
 	}

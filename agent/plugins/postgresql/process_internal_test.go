@@ -57,3 +57,27 @@ func TestSignalGroup(t *testing.T) {
 		t.Errorf("an invalid signal: %v", err)
 	}
 }
+
+// The detail line of a tool belongs to the error before it, once.
+func TestTheQuoteOfAnErrorTakesTheDetailThatFollowsIt(t *testing.T) {
+	tests := []struct {
+		name  string
+		lines []string
+		want  string
+	}{
+		{"detail after the error", []string{"pg_dump: error: boom", "pg_dump: detail: why"}, "pg_dump: error: boom — detail: why"},
+		{"the first detail only", []string{"pg_dump: error: boom", "pg_dump: detail: one", "pg_dump: detail: two"}, "pg_dump: error: boom — detail: one"},
+		{"another line is no detail", []string{"pg_dump: error: boom", "pg_dump: something else"}, "pg_dump: error: boom"},
+		{"a detail before any error is none", []string{"pg_dump: detail: early"}, "pg_dump: detail: early"},
+		{"a new error drops the old detail", []string{"pg_dump: error: one", "pg_dump: detail: x", "pg_dump: error: two"}, "pg_dump: error: two"},
+	}
+	for _, tt := range tests {
+		q := &quoter{detailPrefix: "pg_dump: detail: "}
+		for _, l := range tt.lines {
+			q.add(l)
+		}
+		if got := q.reason(); got != tt.want {
+			t.Errorf("%s: %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}

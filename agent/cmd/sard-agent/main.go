@@ -23,11 +23,15 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/certpair"
 	"github.com/Artur-Abalov/sard/agent/internal/certrenew"
 	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/consolerestore"
 	"github.com/Artur-Abalov/sard/agent/internal/crypto"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
+	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/identity"
 	"github.com/Artur-Abalov/sard/agent/internal/machineid"
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
+	"github.com/Artur-Abalov/sard/agent/internal/repoconnect"
+	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/role"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
@@ -177,7 +181,10 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 	if stop, err := adoptPending(ctx, renewal, local, configPath, rt); stop || err != nil {
 		return err
 	}
-	return refuse(serve(ctx, cfg, me.role, newAgentWith(cfg, hostname, resticBinary, me.machineID, rt), renewal, rt), configPath, cfg)
+	// R2a: before any step is accepted, what a killed restore left is removed.
+	engine := newRestoreEngine(cfg)
+	agent := newAgentWith(cfg, hostname, resticBinary, me.machineID, engine, rt)
+	return refuse(serve(ctx, cfg, me.role, agent, newRecovery(engine), renewal, rt), configPath, cfg)
 }
 
 // checkHostRuntime finds restic and the host name, before the network.
@@ -275,6 +282,34 @@ func identifyHost(cfg config.Config, sel certpair.Selection) (hostIdentity, erro
 	return hostIdentity{role: id.Role, machineID: machine}, nil
 }
 
+// newRestoreEngine restores for the console into restore.dir, as the
+// service user: it makes the directories it needs with the owner of this
+// process and mode 0700.
+func newRestoreEngine(cfg config.Config) *consolerestore.Engine {
+	return consolerestore.New(consolerestore.Options{
+		Dir:    cfg.RestoreDir(),
+		FS:     hostsetup.OS{},
+		Owner:  hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid(), Mode: 0o700},
+		Logger: slog.Default(),
+		Target: restoreTargets(cfg, os.ReadFile),
+		// R2b: restore of a database.
+		Postgres: postgresOptions(cfg, os.ReadFile),
+	})
+}
+
+// restoreTargets describes the repositories of the host for the messages of
+// a failed restore, with their secrets hidden.
+func restoreTargets(cfg config.Config, readFile func(string) ([]byte, error)) func(name string) repoinit.Target {
+	return func(name string) repoinit.Target {
+		for _, repo := range cfg.Repositories {
+			if repo.Name == name {
+				return repoconnect.TargetReading(repo, readFile)
+			}
+		}
+		return repoinit.Named(name)
+	}
+}
+
 // checkHostFiles runs the checks of local files that need no network. A1:
 // refuse to start with a secret file readable beyond its owner, or owned by
 // someone else, before touching the network (В20); the key is the one of the
@@ -288,8 +323,8 @@ func checkHostFiles(cfg config.Config, sel certpair.Selection) error {
 }
 
 // newAgentWith is newAgent whose steps a test may run with its own handlers.
-func newAgentWith(cfg config.Config, hostname, resticBinary, machineID string, rt agentRuntime) *app.Agent {
-	agent := newAgent(cfg, hostname, resticBinary, machineID)
+func newAgentWith(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine, rt agentRuntime) *app.Agent {
+	agent := newAgent(cfg, hostname, resticBinary, machineID, restores)
 	if rt.handlers != nil {
 		agent.Handlers = rt.handlers
 	}
@@ -297,7 +332,7 @@ func newAgentWith(cfg config.Config, hostname, resticBinary, machineID string, r
 }
 
 // newAgent wires the built-in plugins to restic and the host's secrets.
-func newAgent(cfg config.Config, hostname, resticBinary, machineID string) *app.Agent {
+func newAgent(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine) *app.Agent {
 	// Repository keys stay on this host (ADR 0008).
 	repos := openRepositories(cfg, restic.Options{
 		Binary:   resticBinary,
@@ -311,13 +346,15 @@ func newAgent(cfg config.Config, hostname, resticBinary, machineID string) *app.
 	registry := plugins.Registry(version)
 	return &app.Agent{
 		Plugins:   registry,
-		Handlers:  plugins.Handlers(registry, pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), repos.get, restoreDir(cfg.Executor.StateDir)),
+		Handlers:  plugins.Handlers(registry, pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), repos.get, restoreDir(cfg.Executor.StateDir), pluginhost.WithConsoleRestore(restores)),
 		Hostname:  hostname,
 		MachineID: machineID,
 		Version:   version,
 		OS:        runtime.GOOS,
 		Arch:      runtime.GOARCH,
 		Local:     cfg,
+		// Only the operator of the host says where the console may restore.
+		RestoreDir: cfg.RestoreDir(),
 		RepositoryID: func(ctx context.Context, r config.Repository) (string, error) {
 			return repos[r.Name].ID(ctx)
 		},
@@ -336,7 +373,7 @@ func restoreDir(stateDir string) string {
 // the executor reports through the transport. The transport is built first
 // (it checks TLS before anything touches the disk); ref points it at the
 // executor before it starts.
-func serve(ctx context.Context, cfg config.Config, role role.Role, agent *app.Agent, renewal *certrenew.Manager, rt agentRuntime) error {
+func serve(ctx context.Context, cfg config.Config, role role.Role, agent *app.Agent, recovery *recovery, renewal *certrenew.Manager, rt agentRuntime) error {
 	ref := &executorRef{}
 	// A7b: the step's secrets are masked in its logs and result.
 	masking := stepsecrets.New(cfg, os.ReadFile, slog.Default())
@@ -367,12 +404,15 @@ func serve(ctx context.Context, cfg config.Config, role role.Role, agent *app.Ag
 		Repositories: repositoryNames(cfg.Repositories),
 		Secrets:      masking,
 		OutputLevel:  pluginhost.OutputLevel,
+		Interrupted:  recovery.interrupted,
+		Journaled:    recovery.journaled,
 		MaxParallel:  cfg.Executor.MaxParallel,
 		Logger:       slog.Default(),
 	})
 	if err != nil {
 		return err
 	}
+	recovery.executorStarted()
 	ref.Executor = exec
 	agent.Link = link
 	err = runRenewing(ctx, renewal, agent.Run)

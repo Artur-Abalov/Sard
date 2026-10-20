@@ -90,7 +90,8 @@
     "source": "Source",
     "sourceDeleted": "deleted",
     "status": "Status",
-    "startedBy": "Started"
+    "startedBy": "Started",
+    "kind": "Kind"
   },
   "notFound": {
     "title": "Page not found",
@@ -149,7 +150,8 @@
     "first_backup_pending": "Both parts of the self-backup must back up successfully first: run the first backup",
     "verification_active": "A verification of this source is already queued or running",
     "snapshot_unusable": "The snapshot cannot be verified: it is not this source's, or it is partial or forgotten",
-    "openWizard": "Open the wizard"
+    "openWizard": "Open the wizard",
+    "snapshot_not_restorable": "The console cannot restore this snapshot"
   },
   "common": {
     "cancel": "Cancel",
@@ -338,6 +340,10 @@
     "AgentRole": {
       "source": "source",
       "verifier": "verifier"
+    },
+    "RunKind": {
+      "backup": "Backup",
+      "restore": "Restore"
     },
     "AgentCertificateState": {
       "ok": "ok",
@@ -725,5 +731,65 @@
     "title": "Set up the backup of the server",
     "message": "The server accepts no new agents until its own backup is set up and the key copy is confirmed.",
     "link": "Open the wizard"
+  },
+  "filesRestored": {
+    "one": "{{count}} file",
+    "few": "{{count}} files",
+    "many": "{{count}} files",
+    "other": "{{count}} files"
+  },
+  "tablesRestored": {
+    "one": "{{count}} table",
+    "few": "{{count}} tables",
+    "many": "{{count}} tables",
+    "other": "{{count}} tables"
+  },
+  "rolesRestored": {
+    "one": "{{count}} role",
+    "few": "{{count}} roles",
+    "many": "{{count}} roles",
+    "other": "{{count}} roles"
+  },
+  "restore": {
+    "title": "Restore a snapshot",
+    "button": "Restore",
+    "retry": "Retry",
+    "check": "Check",
+    "start": "Start the restore",
+    "backToSource": "Sources",
+    "agent": "Restore on the agent",
+    "sourceAgent": "source",
+    "offline": "offline",
+    "dir": "Restore directory of the agent: <m>{{dir}}</m>",
+    "total": "Total: <m>{{size}}</m>",
+    "ineligibleTitle": "These agents hold the repository but cannot restore from the console",
+    "ineligible": {
+      "agent_outdated": "The agent cannot restore from the console: update sard-agent.",
+      "plugin_missing": "The agent has no plugin of the source."
+    },
+    "noTargets": "No agent can restore this snapshot yet. First attach the repository, with the password from your copy, on the host that should get the data.",
+    "attachCommand": "Command to attach the repository",
+    "previewTitle": "What will be restored",
+    "willGoTo": "The data goes to <m>{{target}}</m> on <m>{{host}}</m>.",
+    "paths": "Paths:",
+    "warning": {
+      "agent_offline": "The agent is offline: the restore starts when it connects.",
+      "owners_not_restored": "Files will belong to the agent's service user: owners and groups from the snapshot are not restored. Permissions and modification times are kept.",
+      "pg_owners_not_restored": "Global objects are not restored: every object of the new database will belong to the connecting role, and access privileges from the snapshot are not carried over.",
+      "pg_same_cluster": "The database will be restored into the same PostgreSQL cluster the backup was taken from. The restore loads the live cluster: disk and CPU, WAL shipped to replicas and the archive, disk space and locks. A separate cluster is the better target. The server tells this by the agent and the connection address and may miss the same cluster under another address.",
+      "globals_change_cluster": "Global objects (roles, tablespaces) change the whole PostgreSQL cluster, not just the new database."
+    },
+    "blocked": {
+      "partial": "The snapshot is incomplete: it can only be restored on the host with repo restore.",
+      "forgotten": "The snapshot was removed from the repository.",
+      "plugin_not_supported": "Restoring from the console is not supported for this plugin yet."
+    },
+    "snapshot": "Snapshot",
+    "target": "Restores to",
+    "requestedBy": "Requested by",
+    "ownersNotRestored": "Owners and groups from the snapshot were not restored: the files belong to the agent's service user.",
+    "nothingRestored": "Nothing was restored: the changes were rolled back.",
+    "rollbackFailed": "Rollback failed, left behind: <m>{{leftover}}</m>. Remove it by hand.",
+    "lateSuccess": "The agent reported later: the restore succeeded. Data: <m>{{target}}</m>."
   }
 }

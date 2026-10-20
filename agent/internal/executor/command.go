@@ -66,9 +66,9 @@ func (s *stopCause) Error() string { return s.message }
 
 const shutdownMessage = "agent is shutting down"
 
-// interruptedMessage is the D13 failure of a step the agent was killed in;
+// InterruptedMessage is the D13 failure of a step the agent was killed in;
 // the console and notifications show it, so it does not change.
-const interruptedMessage = "interrupted: agent restarted before the step finished"
+const InterruptedMessage = "interrupted: agent restarted before the step finished"
 
 func cancelledByServer() *stopCause {
 	return &stopCause{agentv1.StepStatus_STEP_STATUS_CANCELLED, "cancelled by the server"}
@@ -148,7 +148,7 @@ func (e *Executor) check(c *command) string {
 // refused, since nothing has been done yet.
 func (e *Executor) record(c *command) string {
 	c.accepted = e.opts.Clock.Now()
-	if err := e.store.journal(c.step.GetCommandId(), c.accepted, nil); err != nil {
+	if err := e.store.journal(c.step.GetCommandId(), c.step.GetAction(), c.accepted, nil); err != nil {
 		return fmt.Sprintf("cannot record the command: %v", err)
 	}
 	return ""
@@ -198,7 +198,7 @@ func (e *Executor) start(c *command) {
 	c.state, c.cancel, c.started = running, cancel, e.opts.Clock.Now()
 	e.active++
 	e.opts.Logger.Info("step started", "command_id", c.step.GetCommandId())
-	if err := e.store.journal(c.step.GetCommandId(), c.accepted, &c.started); err != nil {
+	if err := e.store.journal(c.step.GetCommandId(), c.step.GetAction(), c.accepted, &c.started); err != nil {
 		// The entry of the accept stays: after a crash the failure lacks started_at.
 		e.opts.Logger.Warn("cannot record the start of the step", "command_id", c.step.GetCommandId(), "error", err)
 	}
@@ -367,6 +367,9 @@ func (e *Executor) save(r *agentv1.StepResult) {
 	}
 	if err := e.store.remove(journalDir, id); err != nil {
 		e.opts.Logger.Warn("cannot remove the journal entry", "command_id", id, "error", err)
+	}
+	if e.opts.Journaled != nil {
+		e.opts.Journaled(r)
 	}
 }
 

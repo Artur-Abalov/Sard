@@ -18,6 +18,7 @@ import { ErrorBlock } from '../components/ErrorBlock'
 import { AppLink, ButtonLink } from '../components/links'
 import { Loaded } from '../components/Loaded'
 import { PagedList } from '../components/PagedList'
+import { RestoreButton } from '../components/RestoreButton'
 import { RunBackupButton } from '../components/RunBackupButton'
 import { SystemSourceMark } from '../components/SystemSourceMark'
 import { ScheduleBlock } from '../components/ScheduleBlock'
@@ -60,9 +61,17 @@ function SnapshotRow({ snapshot }: { snapshot: Snapshot }) {
         <Time value={snapshot.createdAt} />
       </Table.Td>
       <Table.Td>
-        <AppLink to="/runs/$runId" params={{ runId: snapshot.runId }}>
-          {t('runs.open')}
-        </AppLink>
+        <Group gap="xs">
+          <RestoreButton
+            sourceId={snapshot.sourceId}
+            snapshotId={snapshot.snapshotId}
+            restorable={snapshot.restorable}
+            blockedReason={snapshot.restoreBlockedReason}
+          />
+          <AppLink to="/runs/$runId" params={{ runId: snapshot.runId }}>
+            {t('runs.open')}
+          </AppLink>
+        </Group>
       </Table.Td>
     </Table.Tr>
   )

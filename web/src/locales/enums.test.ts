@@ -28,6 +28,7 @@ const enums = [
   'LogLevel',
   'StepAction',
   'RunTrigger',
+  'RunKind',
   'AgentRole',
   'AgentCertificateState',
 ]
@@ -56,6 +57,19 @@ describe('every value of the contract is translated', () => {
       for (const dictionary of [ru, en]) {
         const text = lookup(dictionary, `selfBackup.warning.${code}`)
         expect(typeof text === 'string' && text !== '', code).toBe(true)
+      }
+    }
+  })
+
+  test.each([
+    ['RestoreWarningCode', 'restore.warning'],
+    ['IneligibleReason', 'restore.ineligible'],
+    ['RestoreBlockedReason', 'restore.blocked'],
+  ])('%s has a message under %s.<value> in both languages', (schema, prefix) => {
+    for (const value of schemas[schema].enum) {
+      for (const dictionary of [ru, en]) {
+        const text = lookup(dictionary, `${prefix}.${value}`)
+        expect(typeof text === 'string' && text !== '', value).toBe(true)
       }
     }
   })

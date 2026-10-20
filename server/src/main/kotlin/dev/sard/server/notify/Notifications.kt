@@ -4,6 +4,8 @@
 package dev.sard.server.notify
 
 import dev.sard.server.fleet.CertificateEvent
+import dev.sard.server.runs.RestoreResult
+import dev.sard.server.runs.RunKind
 import dev.sard.server.runs.RunState
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.Trigger
@@ -42,6 +44,18 @@ data class RunNotice(
     val failuresBefore: Int = 0,
     /** The schedule asks to hear of successful scheduled runs too; read when the message is sent (F3b). */
     val notifyOnSuccess: Boolean = false,
+    /** A restore is told on its own terms, always (R2, ВК39). */
+    val kind: RunKind = RunKind.BACKUP,
+    /** What a restore restored; null for a backup. */
+    val restore: RestoreNotice? = null,
+)
+
+/** The snapshot a restore run restores and what its step reported of it; [result] is null when it reported none. */
+data class RestoreNotice(
+    /** restic's full id. */
+    val snapshotId: String,
+    val snapshotCreatedAt: Instant,
+    val result: RestoreResult?,
 )
 
 /**
@@ -76,6 +90,13 @@ enum class Telling {
     companion object {
         /** Null when the run needs no notification: a scheduled run in the middle of a series, a verification. */
         fun of(notice: RunNotice): Telling? =
+            if (notice.kind == RunKind.RESTORE) {
+                RESULT // a restore is a person's act and is always told: no series, no skipping (ВК39)
+            } else {
+                ofBackup(notice)
+            }
+
+        private fun ofBackup(notice: RunNotice): Telling? =
             when (notice.trigger) {
                 Trigger.MANUAL -> RESULT
                 Trigger.SCHEDULE, Trigger.CATCH_UP -> turn(notice)

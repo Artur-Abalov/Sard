@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk/pgclient"
 )
 
 // maxQuoteBytes keeps the quote of a tool's error short.
@@ -36,25 +37,7 @@ func (p Plugin) environ() []string {
 // childEnv is the environment of psql, pg_dump and pg_dumpall (F1 ПГ3): the
 // environment of the agent without the PG* variables and LC_ALL, with
 // messages in English and the password, if there is one.
-func (p Plugin) childEnv(password []byte) []string {
-	var out []string
-	for _, kv := range p.environ() {
-		name, _, _ := strings.Cut(kv, "=")
-		if !dropped(name) {
-			out = append(out, kv)
-		}
-	}
-	out = append(out, "LC_MESSAGES=C")
-	if password != nil {
-		out = append(out, "PGPASSWORD="+string(password))
-	}
-	return out
-}
-
-// dropped tells the variables childEnv does not pass on.
-func dropped(name string) bool {
-	return strings.HasPrefix(name, "PG") || name == "LC_ALL" || name == "LC_MESSAGES"
-}
+func (p Plugin) childEnv(password []byte) []string { return pgclient.Env(p.environ(), password) }
 
 // outcome is how a run of a tool ended.
 type outcome struct {

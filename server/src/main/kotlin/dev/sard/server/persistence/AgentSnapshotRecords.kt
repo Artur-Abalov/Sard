@@ -44,6 +44,10 @@ class AgentPluginRecord(
     @JdbcTypeCode(SqlTypes.ARRAY)
     @Column(nullable = false, updatable = false)
     val actions: List<String>,
+    /** JSON text of the restore config schema; null when the plugin cannot be restored from the console (R2). */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "restore_config_schema", updatable = false)
+    val restoreConfigSchema: String? = null,
     @TenantId
     @Column(name = "tenant_id", nullable = false, updatable = false)
     val tenantId: UUID? = null,

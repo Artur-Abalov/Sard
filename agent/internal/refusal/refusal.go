@@ -106,6 +106,32 @@ const (
 	SetprivMissing Reason = "SETPRIV_MISSING"
 )
 
+// The reasons of the restore from the console (R2, docs/specs/agent/console-restore.feature).
+const (
+	// ResticFailed: restic failed in a way the agent has no name for.
+	ResticFailed Reason = "RESTIC_FAILED"
+	// CleanupFailed: a restore failed and the rollback could not remove what
+	// it wrote; the message names what is left.
+	CleanupFailed Reason = "CLEANUP_FAILED"
+)
+
+// The reasons of the restore of a PostgreSQL database from the console (R2b).
+const (
+	PGClientMissing        Reason = "PG_CLIENT_MISSING"
+	PGClientTooOld         Reason = "PG_CLIENT_TOO_OLD"
+	PGServerTooOld         Reason = "PG_SERVER_TOO_OLD"
+	PGConnect              Reason = "PG_CONNECT"
+	CreatedbRequired       Reason = "CREATEDB_REQUIRED"
+	SuperuserRequired      Reason = "SUPERUSER_REQUIRED"
+	GlobalsSnapshotMissing Reason = "GLOBALS_SNAPSHOT_MISSING"
+	GlobalsTablespaces     Reason = "GLOBALS_TABLESPACES"
+	RolesExist             Reason = "ROLES_EXIST"
+	DatabaseExists         Reason = "DATABASE_EXISTS"
+	PGGlobalsFailed        Reason = "PG_GLOBALS_FAILED"
+	PGCreateDatabase       Reason = "PG_CREATE_DATABASE"
+	PGRestoreFailed        Reason = "PG_RESTORE_FAILED"
+)
+
 // StaleLocksForeign: repo unlock would make restic remove a lock it may not
 // (a lock of another host, or an own one younger than the threshold; A8d-1, Ч6).
 const StaleLocksForeign Reason = "STALE_LOCKS_FOREIGN"
@@ -153,6 +179,13 @@ var classes = map[Reason]Class{
 	TargetNotEmpty: ClassUsage, RootTargetRefused: ClassUsage, PathNotInSnapshot: ClassUsage,
 	StaleLocksForeign: ClassUsage,
 	RestoreIncomplete: ClassAgentError, TargetWrite: ClassWrite, TargetBusy: ClassTemporary, SetprivMissing: ClassAgentError,
+
+	ResticFailed: ClassAgentError, CleanupFailed: ClassWrite,
+
+	PGClientMissing: ClassAgentError, PGClientTooOld: ClassAgentError, PGServerTooOld: ClassUsage,
+	PGConnect: ClassTemporary, CreatedbRequired: ClassUsage, SuperuserRequired: ClassUsage,
+	GlobalsSnapshotMissing: ClassUsage, GlobalsTablespaces: ClassUsage, RolesExist: ClassUsage,
+	DatabaseExists: ClassUsage, PGGlobalsFailed: ClassAgentError, PGCreateDatabase: ClassAgentError, PGRestoreFailed: ClassAgentError,
 
 	AddressInvalid: ClassUsage, SecretInvalid: ClassUsage, S3KeyRejected: ClassUsage,
 	StorageAccessDenied: ClassUsage, BucketNotFound: ClassUsage,

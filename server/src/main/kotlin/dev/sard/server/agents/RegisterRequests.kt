@@ -36,12 +36,16 @@ internal fun RegisterRequest.toSnapshot(): AgentSnapshot =
         os = os,
         arch = arch,
         plugins =
-            pluginsList.map { PluginEntry(it.name, it.version, it.configSchema, it.actionsList.map(::pluginActionOf)) },
+            pluginsList.map {
+                val actions = it.actionsList.map(::pluginActionOf)
+                PluginEntry(it.name, it.version, it.configSchema, actions, it.restoreConfigSchema)
+            },
         repositories =
             repositoriesList.map { RepositoryEntry(it.name, it.backend, it.repositoryId, it.cryptoProvider) },
         secretNames = secretNamesList.toList(),
         scriptNames = scriptNamesList.toList(),
         machineId = machineId,
+        restoreDir = restoreDir,
         verifier = if (hasVerifier()) verifier.toReport() else null,
     )
 

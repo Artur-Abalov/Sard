@@ -211,3 +211,18 @@ func TestARootRestoreWithoutAStagingDirectoryIsRefused(t *testing.T) {
 		t.Fatalf("err = %v, calls %d", err, len(f.exec.calls))
 	}
 }
+
+// R2a: the progress of the restore of the console is what restic reports in its status lines.
+func TestRestoreToReportsTheProgressOfRestic(t *testing.T) {
+	f := newFixture(t, map[string]reply{"restore": {inline: `{"message_type":"status","percent_done":0.5,"total_files":2,"files_restored":1,"total_bytes":200,"bytes_restored":100}` + "\n" +
+		`{"message_type":"summary","total_files":2,"files_restored":2,"total_bytes":200,"bytes_restored":200}`}})
+	var got []restic.Progress
+	_, err := f.build().RestoreTo(context.Background(), restic.RestoreRequest{SnapshotID: fullID, Target: "/r", Progress: func(p restic.Progress) { got = append(got, p) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []restic.Progress{{FilesDone: 1, TotalFiles: 2, BytesDone: 100, TotalBytes: 200, PercentDone: 0.5}}
+	if !slices.Equal(got, want) {
+		t.Errorf("progress %+v, want %+v", got, want)
+	}
+}

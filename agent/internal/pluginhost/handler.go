@@ -13,7 +13,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Artur-Abalov/sard/agent/internal/consolerestore"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
@@ -28,15 +30,29 @@ type Repositories func(name, commandID string, stderr io.Writer) (restic.Reposit
 type Handlers struct {
 	sources map[string]*Source
 	repos   Repositories
-	// restoreDir holds one new directory per restore or verify command.
+	// restoreDir holds one new directory per verify command.
 	restoreDir string
+	// console restores for the console (R2); nil: a host without it.
+	console *consolerestore.Engine
+}
+
+// Option configures Handlers.
+type Option func(*Handlers)
+
+// WithConsoleRestore lets plugins that implement sdk.Restorer be restored
+// from the console, into the restore directory of the engine.
+func WithConsoleRestore(e *consolerestore.Engine) Option {
+	return func(h *Handlers) { h.console = e }
 }
 
 var _ executor.Registry = (*Handlers)(nil)
 
 // NewHandlers compiles every plugin's schema against the host's secrets.
-func NewHandlers(reg *sdk.Registry, secrets *Secrets, repos Repositories, restoreDir string) (*Handlers, error) {
+func NewHandlers(reg *sdk.Registry, secrets *Secrets, repos Repositories, restoreDir string, opts ...Option) (*Handlers, error) {
 	h := &Handlers{sources: make(map[string]*Source), repos: repos, restoreDir: restoreDir}
+	for _, opt := range opts {
+		opt(h)
+	}
 	for _, name := range reg.Names() {
 		p, _ := reg.Get(name)
 		src, err := NewSource(p, secrets)
@@ -63,9 +79,13 @@ type handler struct {
 	src *Source
 }
 
-// Actions: every plugin backs up and restores; verify needs sdk.Verifier.
+// Actions: every plugin backs up; restore needs sdk.Restorer, verify
+// sdk.Verifier.
 func (h *handler) Actions() []agentv1.Action {
-	actions := []agentv1.Action{agentv1.Action_ACTION_BACKUP, agentv1.Action_ACTION_RESTORE}
+	actions := []agentv1.Action{agentv1.Action_ACTION_BACKUP}
+	if h.src.CanRestore() {
+		actions = append(actions, agentv1.Action_ACTION_RESTORE)
+	}
 	if h.src.CanVerify() {
 		actions = append(actions, agentv1.Action_ACTION_VERIFY)
 	}
@@ -141,23 +161,106 @@ func resticTags(tags map[string]string) ([]string, error) {
 	return out, nil
 }
 
-// RestoreDeferred is implemented by a plugin that announces the restore
-// action before it can restore (A6b Ф5). The step fails with the message,
-// restic does not run and nothing changes on disk. A request without a
-// snapshot_id is still rejected first.
-type RestoreDeferred interface {
-	RestoreNotImplemented() string
+// restore restores the snapshot for the console (R2): into a new directory
+// of the restore directory of the host, all or nothing.
+func (h *handler) restore(ctx context.Context, step *agentv1.RunStep, repo restic.Repository, r executor.Reporter) (*agentv1.StepResult, error) {
+	req, err := h.restoreRequest(step)
+	if err != nil {
+		return nil, rejected(err)
+	}
+	if req.Plan.Postgres != nil {
+		return h.restoreDatabase(ctx, step, repo, req, r)
+	}
+	out, failure := h.console.Restore(ctx, repo, req, r)
+	if failure != nil {
+		return failedRestore(failure), failure
+	}
+	restored := &agentv1.RestoreOutput{Target: out.Target, FilesRestored: out.Files, BytesRestored: out.Bytes}
+	return &agentv1.StepResult{Output: &agentv1.StepResult_Restore{Restore: restored}}, nil
 }
 
-func (h *handler) restore(ctx context.Context, step *agentv1.RunStep, repo restic.Repository, r executor.Reporter) (*agentv1.StepResult, error) {
-	if d, ok := h.src.Plugin().(RestoreDeferred); ok && step.GetSnapshotId() != "" {
-		return nil, errors.New(d.RestoreNotImplemented())
+// Interrupted words the outcome of a restore the previous run of the agent
+// did not finish (ВК14) from what the start found in .sard-staging: a
+// completed move is a success with the totals of the marker, a directory that
+// could not be removed is CLEANUP_FAILED, anything else (no root, no marker, a
+// root that was removed, no directory at all) is a failure with nothing
+// restored. Steps of other actions keep the failure of the executor.
+func Interrupted(found []consolerestore.Evidence) func(commandID string, action agentv1.Action) *executor.Interruption {
+	byCommand := map[string]consolerestore.Evidence{}
+	for _, ev := range found {
+		byCommand[ev.Name] = ev
 	}
-	target, err := h.restoreSnapshot(ctx, step, repo, r)
+	return func(commandID string, action agentv1.Action) *executor.Interruption {
+		if action != agentv1.Action_ACTION_RESTORE {
+			return nil
+		}
+		ev := byCommand[commandID]
+		switch ev.Verdict {
+		case consolerestore.Completed:
+			return &executor.Interruption{Succeeded: true, Message: "agent restarted after the restore completed", Output: completedOutput(ev)}
+		case consolerestore.CleanupFailed:
+			left := firstNonEmpty(ev.Leftover, ev.Path)
+			return &executor.Interruption{
+				Message: fmt.Sprintf("%s (%s): %s; left behind: %s (%v); remove it by hand", refusal.CleanupFailed, consolerestore.StageRollback, executor.InterruptedMessage, left, ev.Err),
+				Output:  &agentv1.RestoreOutput{Leftover: left},
+			}
+		}
+		return &executor.Interruption{Message: executor.InterruptedMessage + "; nothing was restored"}
+	}
+}
+
+// completedOutput is the outcome of a restore that completed before the
+// restart: the totals of the marker for files, those of the rollback journal
+// for a database.
+func completedOutput(ev consolerestore.Evidence) *agentv1.RestoreOutput {
+	if db := ev.Database; db != nil {
+		return &agentv1.RestoreOutput{Target: db.Database, Database: db.Database, TablesRestored: db.Tables, RolesRestored: db.Roles}
+	}
+	return &agentv1.RestoreOutput{Target: ev.Destination, FilesRestored: ev.Files, BytesRestored: ev.Bytes}
+}
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+// failedRestore carries the output of a failed restore: only what the
+// rollback could not remove.
+func failedRestore(f *consolerestore.Failure) *agentv1.StepResult {
+	if len(f.Leftover) == 0 {
+		return nil
+	}
+	left := &agentv1.RestoreOutput{Leftover: strings.Join(f.Leftover, ", ")}
+	return &agentv1.StepResult{Output: &agentv1.StepResult_Restore{Restore: left}}
+}
+
+// restoreRequest checks everything that can be checked before the repository
+// or the disk is touched: the host, the command, the snapshot, the config.
+func (h *handler) restoreRequest(step *agentv1.RunStep) (consolerestore.Request, error) {
+	id := step.GetCommandId()
+	source := step.GetTags()[consolerestore.SourceTag]
+	switch {
+	case h.console == nil:
+		return consolerestore.Request{}, errors.New("restore from the console is not enabled on this host")
+	case !consolerestore.UsableName(id):
+		return consolerestore.Request{}, fmt.Errorf("command id %q cannot name a temporary directory", id)
+	case !isSnapshotID(step.GetSnapshotId()):
+		return consolerestore.Request{}, fmt.Errorf("snapshot_id %q: want 64 lower-case hexadecimal characters, the full id of the snapshot", step.GetSnapshotId())
+	case source == "":
+		return consolerestore.Request{}, fmt.Errorf("tag %s is required: it names the source the snapshot belongs to", consolerestore.SourceTag)
+	}
+	plan, err := h.src.PlanRestore(sdk.Config(step.GetConfigJson()))
 	if err != nil {
-		return nil, err
+		return consolerestore.Request{}, err
 	}
-	return &agentv1.StepResult{Output: &agentv1.StepResult_Restore{Restore: &agentv1.RestoreOutput{Target: target}}}, nil
+	return consolerestore.Request{CommandID: id, Repository: step.GetRepositoryName(), SnapshotID: step.GetSnapshotId(), Source: source, Plan: plan}, nil
+}
+
+// isSnapshotID: 64 lower-case hexadecimal characters.
+func isSnapshotID(id string) bool {
+	return len(id) == 64 && !strings.ContainsFunc(id, func(r rune) bool { return (r < '0' || r > '9') && (r < 'a' || r > 'f') })
 }
 
 // verify restores the snapshot, lets the plugin check the copy and
@@ -200,7 +303,7 @@ func (h *handler) restoreSnapshot(ctx context.Context, step *agentv1.RunStep, re
 
 // newTarget creates restoreDir/id, 0700; an existing one is never reused.
 func (h *handler) newTarget(id string) (string, error) {
-	if id == "" || id == "." || id == ".." || filepath.Base(id) != id {
+	if !consolerestore.UsableName(id) {
 		return "", rejected(fmt.Errorf("command id %q cannot name a restore directory", id))
 	}
 	if err := os.MkdirAll(h.restoreDir, 0o700); err != nil {

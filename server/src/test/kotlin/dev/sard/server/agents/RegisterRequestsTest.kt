@@ -46,6 +46,7 @@ class RegisterRequestsTest {
                 .setName("pg")
                 .setVersion("1")
                 .setConfigSchema("{}")
+                .setRestoreConfigSchema("""{"type":"object"}""")
                 .addActions(Action.ACTION_RUN)
                 .build()
         val repository =
@@ -69,6 +70,7 @@ class RegisterRequestsTest {
                 .addSecretNames("s")
                 .addScriptNames("x")
                 .setMachineId("m".repeat(64))
+                .setRestoreDir("/srv/restore")
                 .build()
         val expected =
             AgentSnapshot(
@@ -77,11 +79,12 @@ class RegisterRequestsTest {
                 protocolVersion = 4_294_967_295L,
                 os = "linux",
                 arch = "arm64",
-                plugins = listOf(PluginEntry("pg", "1", "{}", listOf(PluginAction.RUN))),
+                plugins = listOf(PluginEntry("pg", "1", "{}", listOf(PluginAction.RUN), """{"type":"object"}""")),
                 repositories = listOf(RepositoryEntry("main", "s3", "id", "gost")),
                 secretNames = listOf("s"),
                 scriptNames = listOf("x"),
                 machineId = "m".repeat(64),
+                restoreDir = "/srv/restore",
             )
         assertEquals(expected, MutFlow.underTest { request.toSnapshot() })
     }

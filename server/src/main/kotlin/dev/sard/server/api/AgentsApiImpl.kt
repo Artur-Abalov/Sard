@@ -113,6 +113,7 @@ class AgentsApiImpl(
             versions.outdated(row.agentVersion),
             row.builtin,
             row.role.toApi(),
+            card.restoreDir,
             certificate?.toApi(clock.instant()),
         )
     }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
@@ -67,11 +68,11 @@ func TestFailedBackupStepOfAMissingPluginProgramEndsWithTheCheckHint(t *testing.
 }
 
 func TestFailedRestoreStepOfAKnownCauseEndsWithTheCheckHint(t *testing.T) {
-	f := newHandlers(t, &plugin{})
-	f.repo.restoreErr = fmt.Errorf("restic restore: %w", restic.ErrWrongPassword)
-	rs := step(restore, `{}`)
-	rs.SnapshotId = "snap"
-	_, err := f.run(t, rs)
+	h := newConsoleHost(t, &restorer{})
+	h.repo.restoreTo = func(context.Context, restic.RestoreRequest) (restic.RestoreSummary, error) {
+		return restic.RestoreSummary{}, fmt.Errorf("restic restore: %w", restic.ErrWrongPassword)
+	}
+	_, err := h.run(t, restoreStep(restoreConfigD))
 	if err == nil || !strings.HasSuffix(err.Error(), "\n"+checkHint) {
 		t.Fatalf("err = %v", err)
 	}
@@ -108,5 +109,17 @@ func TestAMissingSourceAndARejectedStepGetNoHint(t *testing.T) {
 	_, err = f.run(t, step(backup, `{"nope": 1}`))
 	if !errors.Is(err, executor.ErrRejected) || strings.Contains(err.Error(), "sard-agent check") {
 		t.Fatalf("rejected: %v", err)
+	}
+}
+
+// A8d-4 with R2: the restore failures of the other reasons get no hint.
+func TestFailedRestoreStepOfAnotherCauseGetsNoHint(t *testing.T) {
+	h := newConsoleHost(t, &restorer{})
+	h.repo.restoreTo = func(context.Context, restic.RestoreRequest) (restic.RestoreSummary, error) {
+		return restic.RestoreSummary{}, syscall.ENOSPC
+	}
+	_, err := h.run(t, restoreStep(restoreConfigD))
+	if err == nil || strings.Contains(err.Error(), "sard-agent check") {
+		t.Fatalf("err = %v", err)
 	}
 }

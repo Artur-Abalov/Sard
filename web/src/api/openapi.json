@@ -1205,6 +1205,226 @@
         }
       }
     },
+    "/api/v1/sources/{sourceId}/snapshots/{snapshotId}/restores" : {
+      "post" : {
+        "tags" : [ "restores" ],
+        "summary" : "Restore a snapshot",
+        "description" : "Queues a restore run on the chosen agent; it waits for an offline agent. 422 snapshot_not_restorable for a snapshot the console does not restore, validation_failed for the agent or the config (errors name agentId or config/<JSON Pointer>). The agent decides whether the destination is free.",
+        "operationId" : "startRestore",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "snapshotId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RestoreRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "409" : {
+            "description" : "The agent is revoked (agent_revoked), does not hold the snapshot's repository (unknown_repository) or cannot restore this plugin from the console (unknown_plugin); or the onboarding is not complete",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "anyOf" : [ {
+                    "$ref" : "#/components/schemas/Problem"
+                  }, {
+                    "$ref" : "#/components/schemas/Problem"
+                  } ]
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "201" : {
+            "description" : "Created",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{sourceId}/snapshots/{snapshotId}/restores/preview" : {
+      "post" : {
+        "tags" : [ "restores" ],
+        "summary" : "Preview a restore",
+        "description" : "Checks the request like the restore itself and creates nothing.",
+        "operationId" : "previewRestore",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "snapshotId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RestoreRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "409" : {
+            "description" : "The agent is revoked (agent_revoked), does not hold the snapshot's repository (unknown_repository) or cannot restore this plugin from the console (unknown_plugin); or the onboarding is not complete",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "anyOf" : [ {
+                    "$ref" : "#/components/schemas/Problem"
+                  }, {
+                    "$ref" : "#/components/schemas/Problem"
+                  } ]
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RestorePreview"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sources/{sourceId}/runs" : {
       "post" : {
         "tags" : [ "sources" ],
@@ -2389,6 +2609,72 @@
         }
       }
     },
+    "/api/v1/sources/{sourceId}/snapshots/{snapshotId}/restore-options" : {
+      "get" : {
+        "tags" : [ "restores" ],
+        "summary" : "Who can restore a snapshot",
+        "description" : "The agents that hold the snapshot's repository and restore from the console, the source's agent first; the ones that hold it but cannot, with the reason; how to attach the repository to another host.",
+        "operationId" : "restoreOptions",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "snapshotId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RestoreOptions"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sources/{sourceId}/schedule/fires" : {
       "get" : {
         "tags" : [ "sources" ],
@@ -2830,6 +3116,14 @@
           "schema" : {
             "type" : "string",
             "format" : "date-time"
+          }
+        }, {
+          "name" : "kind",
+          "in" : "query",
+          "description" : "Only runs of this kind: backup or restore",
+          "required" : false,
+          "schema" : {
+            "$ref" : "#/components/schemas/RunKind"
           }
         }, {
           "name" : "cursor",
@@ -3540,7 +3834,7 @@
       },
       "ErrorCode" : {
         "type" : "string",
-        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "agent_role_mismatch", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password", "onboarding_incomplete", "first_backup_pending", "verification_active", "snapshot_unusable" ]
+        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "agent_role_mismatch", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password", "onboarding_incomplete", "first_backup_pending", "snapshot_not_restorable", "verification_active", "snapshot_unusable" ]
       },
       "FieldError" : {
         "type" : "object",
@@ -4218,38 +4512,21 @@
           }
         }
       },
-      "RunActiveProblem" : {
+      "RestoreRequest" : {
         "type" : "object",
-        "description" : "The source already has an active run (D6); no new run was created (RFC 9457)",
+        "description" : "Where to restore and with which config",
         "properties" : {
-          "type" : {
-            "type" : "string",
-            "description" : "URI reference identifying the problem type; about:blank when the status says it all"
-          },
-          "title" : {
-            "type" : "string",
-            "description" : "Short summary for people; not for matching, use code"
-          },
-          "status" : {
-            "type" : "integer",
-            "format" : "int32",
-            "description" : "HTTP status code"
-          },
-          "detail" : {
+          "agentId" : {
             "type" : [ "string", "null" ],
-            "description" : "Explanation of this occurrence; null when the title says it all"
+            "description" : "A target of the restore options"
           },
-          "code" : {
-            "$ref" : "#/components/schemas/ErrorCode",
-            "description" : "run_active"
-          },
-          "activeRunId" : {
-            "type" : "string",
-            "format" : "uuid",
-            "description" : "The run that is queued, dispatched or running"
+          "config" : {
+            "type" : [ "object", "null" ],
+            "additionalProperties" : { },
+            "description" : "Valid against the target's restoreConfigSchema; secrets by name only"
           }
         },
-        "required" : [ "activeRunId", "code", "detail", "status", "title", "type" ]
+        "required" : [ "agentId", "config" ]
       },
       "BackupOutput" : {
         "type" : "object",
@@ -4274,9 +4551,13 @@
           "partial" : {
             "type" : "boolean",
             "description" : "The result that brought this output failed: the snapshot is usable but incomplete, like Snapshot.partial"
+          },
+          "restorable" : {
+            "type" : "boolean",
+            "description" : "The console can restore this snapshot: not partial, not forgotten, a plugin it restores"
           }
         },
-        "required" : [ "addedBytes", "partial", "repositoryId", "snapshotId", "totalBytes" ]
+        "required" : [ "addedBytes", "partial", "repositoryId", "restorable", "snapshotId", "totalBytes" ]
       },
       "CatchUp" : {
         "type" : "object",
@@ -4307,6 +4588,48 @@
           }
         },
         "required" : [ "missedCount", "missedCountCapped", "missedFrom", "missedUntil", "timezone" ]
+      },
+      "RestoreOutcome" : {
+        "type" : "string",
+        "enum" : [ "restored", "nothing", "rollback_failed", "late" ]
+      },
+      "RestoreOutput" : {
+        "type" : "object",
+        "description" : "What a restore step reported. A restore is all or nothing: a succeeded one has everything it did, any other has this only when its rollback failed, and then leftover alone. A field the restore does not have is null: a database restore has no files, a restore of files no tables",
+        "properties" : {
+          "target" : {
+            "type" : [ "string", "null" ],
+            "description" : "The absolute path of the directory, or the name of the database"
+          },
+          "filesRestored" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64"
+          },
+          "bytesRestored" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64"
+          },
+          "database" : {
+            "type" : [ "string", "null" ]
+          },
+          "tablesRestored" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64"
+          },
+          "rolesRestored" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64"
+          },
+          "ownersRestored" : {
+            "type" : [ "boolean", "null" ],
+            "description" : "Whether the owners and groups of the snapshot were restored; false for files"
+          },
+          "leftover" : {
+            "type" : [ "string", "null" ],
+            "description" : "What the rollback could not remove and the operator must remove by hand"
+          }
+        },
+        "required" : [ "bytesRestored", "database", "filesRestored", "leftover", "ownersRestored", "rolesRestored", "tablesRestored", "target" ]
       },
       "Run" : {
         "type" : "object",
@@ -4367,9 +4690,56 @@
             }, {
               "type" : "null"
             } ]
+          },
+          "kind" : {
+            "$ref" : "#/components/schemas/RunKind"
+          },
+          "requestedBy" : {
+            "type" : [ "string", "null" ],
+            "description" : "Who started a manual run: \"admin\" in the open core, which has one administrator; null for a schedule"
+          },
+          "restore" : {
+            "description" : "Set for a restore run; null for a backup",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/RunRestore"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "agentId", "catchUp", "finishedAt", "id", "message", "queuedAt", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "steps", "trigger" ]
+        "required" : [ "agentId", "catchUp", "finishedAt", "id", "kind", "message", "queuedAt", "requestedBy", "restore", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "steps", "trigger" ]
+      },
+      "RunKind" : {
+        "type" : "string",
+        "enum" : [ "backup", "restore" ]
+      },
+      "RunRestore" : {
+        "type" : "object",
+        "description" : "What a restore run restores",
+        "properties" : {
+          "snapshotId" : {
+            "type" : "string",
+            "description" : "restic snapshot id"
+          },
+          "snapshotCreatedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "repositoryName" : {
+            "type" : "string",
+            "description" : "The repository on the agent that restores, by the name that agent has for it"
+          },
+          "config" : {
+            "type" : "object",
+            "additionalProperties" : { },
+            "description" : "The restore config the agent got: destination and paths; no secrets"
+          },
+          "target" : {
+            "type" : "string",
+            "description" : "Where it goes as the server computed it; the step's restore has the real one"
+          }
+        },
+        "required" : [ "config", "repositoryName", "snapshotCreatedAt", "snapshotId", "target" ]
       },
       "RunStep" : {
         "type" : "object",
@@ -4445,6 +4815,22 @@
               "type" : "null"
             } ]
           },
+          "restore" : {
+            "description" : "Set when a restore step reported an output, whatever its status: a lost step shows a late one (R2)",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/RestoreOutput"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "restoreOutcome" : {
+            "description" : "How a restore step ended: restored, nothing (all or nothing: the step failed and left no trace), rollback_failed (restore.leftover must be removed by hand) or late (a lost step's late output is at restore.target); null while it runs and for any other action",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/RestoreOutcome"
+            }, {
+              "type" : "null"
+            } ]
+          },
           "queuedAt" : {
             "type" : "string",
             "format" : "date-time"
@@ -4462,7 +4848,7 @@
             "format" : "date-time"
           }
         },
-        "required" : [ "action", "agentId", "backup", "bytesProcessed", "bytesTotal", "dispatchedAt", "filesProcessed", "filesTotal", "finishedAt", "id", "message", "ordinal", "phase", "plugin", "queuedAt", "repositoryName", "sourceId", "startedAt", "status" ]
+        "required" : [ "action", "agentId", "backup", "bytesProcessed", "bytesTotal", "dispatchedAt", "filesProcessed", "filesTotal", "finishedAt", "id", "message", "ordinal", "phase", "plugin", "queuedAt", "repositoryName", "restore", "restoreOutcome", "sourceId", "startedAt", "status" ]
       },
       "StepAction" : {
         "type" : "string",
@@ -4475,6 +4861,95 @@
       "StepStatus" : {
         "type" : "string",
         "enum" : [ "queued", "dispatched", "running", "succeeded", "failed", "cancelled", "timed_out", "rejected", "lost" ]
+      },
+      "RestorePreview" : {
+        "type" : "object",
+        "description" : "What a restore request would do; nothing is created",
+        "properties" : {
+          "sourceName" : {
+            "type" : "string"
+          },
+          "snapshotId" : {
+            "type" : "string",
+            "description" : "restic snapshot id"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "totalBytes" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "agentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "hostname" : {
+            "type" : "string"
+          },
+          "agentOnline" : {
+            "type" : "boolean"
+          },
+          "target" : {
+            "type" : "string",
+            "description" : "The absolute path of the new directory, or the name of the new database"
+          },
+          "paths" : {
+            "type" : "array",
+            "description" : "The paths of the snapshot to restore; empty: the whole snapshot",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "restoreGlobals" : {
+            "type" : "boolean"
+          },
+          "warnings" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/RestoreWarningCode"
+            }
+          }
+        },
+        "required" : [ "agentId", "agentOnline", "createdAt", "hostname", "paths", "restoreGlobals", "snapshotId", "sourceName", "target", "totalBytes", "warnings" ]
+      },
+      "RestoreWarningCode" : {
+        "type" : "string",
+        "enum" : [ "agent_offline", "owners_not_restored", "globals_change_cluster", "pg_owners_not_restored", "pg_same_cluster" ]
+      },
+      "RunActiveProblem" : {
+        "type" : "object",
+        "description" : "The source already has an active run (D6); no new run was created (RFC 9457)",
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "description" : "URI reference identifying the problem type; about:blank when the status says it all"
+          },
+          "title" : {
+            "type" : "string",
+            "description" : "Short summary for people; not for matching, use code"
+          },
+          "status" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "HTTP status code"
+          },
+          "detail" : {
+            "type" : [ "string", "null" ],
+            "description" : "Explanation of this occurrence; null when the title says it all"
+          },
+          "code" : {
+            "$ref" : "#/components/schemas/ErrorCode",
+            "description" : "run_active"
+          },
+          "activeRunId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "The run that is queued, dispatched or running"
+          }
+        },
+        "required" : [ "activeRunId", "code", "detail", "status", "title", "type" ]
       },
       "SessionRequest" : {
         "type" : "object",
@@ -4806,6 +5281,10 @@
             "$ref" : "#/components/schemas/AgentRole",
             "description" : "source runs backups, restores and scripts; verifier only verifies restores. Chosen by the token, never changes"
           },
+          "restoreDir" : {
+            "type" : [ "string", "null" ],
+            "description" : "The directory the host's operator allows restores into (restore.dir of the agent); the console cannot change it. null for an agent that cannot restore from the console"
+          },
           "certificate" : {
             "description" : "The agent's current certificate: the last one that is not revoked, not superseded and confirmed (a renewal the agent has not confirmed does not count); null for a revoked agent and for an agent without one",
             "oneOf" : [ {
@@ -4815,7 +5294,7 @@
             } ]
           }
         },
-        "required" : [ "agentVersion", "arch", "builtin", "certificate", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "plugins", "protocolVersion", "registeredAt", "repositories", "revokedAt", "role", "scriptNames", "secretNames", "status" ]
+        "required" : [ "agentVersion", "arch", "builtin", "certificate", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "plugins", "protocolVersion", "registeredAt", "repositories", "restoreDir", "revokedAt", "role", "scriptNames", "secretNames", "status" ]
       },
       "AgentPlugin" : {
         "type" : "object",
@@ -5133,6 +5612,10 @@
         },
         "required" : [ "items", "nextCursor" ]
       },
+      "RestoreBlockedReason" : {
+        "type" : "string",
+        "enum" : [ "partial", "forgotten", "plugin_not_supported" ]
+      },
       "Snapshot" : {
         "type" : "object",
         "description" : "A restic snapshot made by a run of the source",
@@ -5188,9 +5671,21 @@
           "partial" : {
             "type" : "boolean",
             "description" : "The backup failed after saving it (some files unreadable): usable, but incomplete"
+          },
+          "restorable" : {
+            "type" : "boolean",
+            "description" : "The console can restore it: not partial, not forgotten, a plugin it restores"
+          },
+          "restoreBlockedReason" : {
+            "description" : "Why it cannot be restored from the console; null when restorable",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/RestoreBlockedReason"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "addedBytes", "agentId", "createdAt", "forgottenAt", "id", "partial", "repositoryId", "repositoryName", "runId", "snapshotId", "sourceId", "stepId", "totalBytes" ]
+        "required" : [ "addedBytes", "agentId", "createdAt", "forgottenAt", "id", "partial", "repositoryId", "repositoryName", "restorable", "restoreBlockedReason", "runId", "snapshotId", "sourceId", "stepId", "totalBytes" ]
       },
       "SnapshotPage" : {
         "type" : "object",
@@ -5208,6 +5703,134 @@
           }
         },
         "required" : [ "items", "nextCursor" ]
+      },
+      "AttachHint" : {
+        "type" : "object",
+        "description" : "How to attach the repository on another host: placeholders, never an address or a key",
+        "properties" : {
+          "repositoryName" : {
+            "type" : "string"
+          },
+          "command" : {
+            "type" : "string",
+            "description" : "A command of the agent with placeholders for the address and the copy of the password"
+          }
+        },
+        "required" : [ "command", "repositoryName" ]
+      },
+      "IneligibleAgent" : {
+        "type" : "object",
+        "description" : "An agent with the snapshot's repository that cannot restore it",
+        "properties" : {
+          "agentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "hostname" : {
+            "type" : "string"
+          },
+          "reason" : {
+            "$ref" : "#/components/schemas/IneligibleReason"
+          }
+        },
+        "required" : [ "agentId", "hostname", "reason" ]
+      },
+      "IneligibleReason" : {
+        "type" : "string",
+        "enum" : [ "agent_outdated", "plugin_missing" ]
+      },
+      "RestoreOptions" : {
+        "type" : "object",
+        "description" : "Who can restore a snapshot and how",
+        "properties" : {
+          "snapshot" : {
+            "$ref" : "#/components/schemas/RestoreSnapshot"
+          },
+          "targets" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/RestoreTarget"
+            }
+          },
+          "ineligible" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/IneligibleAgent"
+            }
+          },
+          "attachHint" : {
+            "$ref" : "#/components/schemas/AttachHint"
+          }
+        },
+        "required" : [ "attachHint", "ineligible", "snapshot", "targets" ]
+      },
+      "RestoreSnapshot" : {
+        "type" : "object",
+        "description" : "The snapshot to restore",
+        "properties" : {
+          "snapshotId" : {
+            "type" : "string",
+            "description" : "restic snapshot id"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "totalBytes" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "repositoryName" : {
+            "type" : "string",
+            "description" : "The repository the snapshot was made in, by the name of the agent that made it"
+          },
+          "sourceName" : {
+            "type" : "string"
+          },
+          "plugin" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "createdAt", "plugin", "repositoryName", "snapshotId", "sourceName", "totalBytes" ]
+      },
+      "RestoreTarget" : {
+        "type" : "object",
+        "description" : "An agent that can restore the snapshot",
+        "properties" : {
+          "agentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "hostname" : {
+            "type" : "string"
+          },
+          "online" : {
+            "type" : "boolean"
+          },
+          "sourceAgent" : {
+            "type" : "boolean",
+            "description" : "The agent that made the snapshot"
+          },
+          "repositoryName" : {
+            "type" : "string",
+            "description" : "The repository on this agent that holds the snapshot, by this agent's name for it"
+          },
+          "restoreDir" : {
+            "type" : [ "string", "null" ],
+            "description" : "restore.dir of the agent: every restore goes into a new directory inside it; null when the plugin restores elsewhere (a database)"
+          },
+          "restoreConfigSchema" : {
+            "type" : "object",
+            "additionalProperties" : { },
+            "description" : "JSON Schema (draft 2020-12) of the restore config this agent accepts"
+          },
+          "defaults" : {
+            "type" : "object",
+            "additionalProperties" : { },
+            "description" : "The config the form starts from"
+          }
+        },
+        "required" : [ "agentId", "defaults", "hostname", "online", "repositoryName", "restoreConfigSchema", "restoreDir", "sourceAgent" ]
       },
       "ScheduleFire" : {
         "type" : "object",
@@ -5478,9 +6101,16 @@
             }, {
               "type" : "null"
             } ]
+          },
+          "kind" : {
+            "$ref" : "#/components/schemas/RunKind"
+          },
+          "requestedBy" : {
+            "type" : [ "string", "null" ],
+            "description" : "Who started a manual run: \"admin\" in the open core, which has one administrator; null for a schedule"
           }
         },
-        "required" : [ "agentId", "catchUp", "finishedAt", "id", "message", "queuedAt", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "trigger" ]
+        "required" : [ "agentId", "catchUp", "finishedAt", "id", "kind", "message", "queuedAt", "requestedBy", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "trigger" ]
       },
       "LogLevel" : {
         "type" : "string",

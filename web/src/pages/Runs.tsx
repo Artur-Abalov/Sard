@@ -15,7 +15,7 @@ import { PagedList } from '../components/PagedList'
 import { RunsTable } from '../components/RunsTable'
 import { usePaged } from '../components/usePaged'
 import { runListPollInterval } from '../polling'
-import { RUN_STATUSES, type RunFilter } from '../runFilter'
+import { RUN_KINDS, RUN_STATUSES, type RunFilter } from '../runFilter'
 
 const route = getRouteApi('/_app/runs/')
 
@@ -45,6 +45,7 @@ function Filters({ filter, runs }: { filter: RunFilter; runs: RunSummary[] | und
       search: {
         ...(next.statuses.length > 0 ? { status: next.statuses } : {}),
         ...(next.sourceId === null ? {} : { sourceId: next.sourceId }),
+        ...(next.kind === null ? {} : { kind: next.kind }),
       },
     })
   return (
@@ -56,6 +57,14 @@ function Filters({ filter, runs }: { filter: RunFilter; runs: RunSummary[] | und
         data={options}
         value={filter.sourceId}
         onChange={(sourceId) => go({ ...filter, sourceId })}
+      />
+      <Select
+        w={200}
+        label={t('runs.kind')}
+        clearable
+        data={RUN_KINDS.map((value) => ({ value, label: t(`enum.RunKind.${value}`) }))}
+        value={filter.kind}
+        onChange={(kind) => go({ ...filter, kind: kind as RunFilter['kind'] })}
       />
       <MultiSelect
         w={360}
@@ -91,7 +100,11 @@ function NoRuns({ filtered }: { filtered: boolean }) {
 export function Runs() {
   const { t } = useTranslation()
   const search = route.useSearch()
-  const filter: RunFilter = { statuses: search.status ?? [], sourceId: search.sourceId ?? null }
+  const filter: RunFilter = {
+    statuses: search.status ?? [],
+    sourceId: search.sourceId ?? null,
+    kind: search.kind ?? null,
+  }
   const paged = usePaged(
     ['runs', 'list', filter],
     (cursor) =>
@@ -101,6 +114,7 @@ export function Runs() {
             query: {
               status: filter.statuses.length > 0 ? filter.statuses : undefined,
               sourceId: filter.sourceId ?? undefined,
+              kind: filter.kind ?? undefined,
               limit: PAGE_SIZE,
               cursor: cursor ?? undefined,
             },
@@ -109,7 +123,7 @@ export function Runs() {
       ),
     runListPollInterval,
   )
-  const filtered = filter.statuses.length > 0 || filter.sourceId !== null
+  const filtered = filter.statuses.length > 0 || filter.sourceId !== null || filter.kind !== null
   return (
     <Stack>
       <Title order={2}>{t('runs.title')}</Title>

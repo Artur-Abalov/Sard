@@ -16,6 +16,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	filesplugin "github.com/Artur-Abalov/sard/agent/plugins/files"
@@ -276,4 +277,10 @@ func symlink(t *testing.T, target, path string) {
 	if err := os.Symlink(target, path); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// fileOwner is the user id the file system reports for the file.
+func fileOwner(info os.FileInfo) int {
+	uid, _, _ := hostsetup.OwnerOf(info)
+	return int(uid)
 }

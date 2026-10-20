@@ -132,6 +132,12 @@ data class AgentDetails(
     val builtin: Boolean,
     @field:Schema(description = ROLE)
     val role: AgentRole,
+    @field:Schema(
+        description =
+            "The directory the host's operator allows restores into (restore.dir of the agent); the console " +
+                "cannot change it. null for an agent that cannot restore from the console",
+    )
+    val restoreDir: String?,
     @field:Schema(description = CERTIFICATE)
     val certificate: AgentCertificate?,
 )

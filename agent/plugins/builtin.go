@@ -38,8 +38,8 @@ func Registry(agentVersion string) *sdk.Registry {
 // Handlers adapts the built-in plugins to the executor. It panics when a
 // schema does not compile: a programming error, caught by the contract
 // test in this package.
-func Handlers(r *sdk.Registry, secrets *pluginhost.Secrets, repos pluginhost.Repositories, restoreDir string) *pluginhost.Handlers {
-	h, err := pluginhost.NewHandlers(r, secrets, repos, restoreDir)
+func Handlers(r *sdk.Registry, secrets *pluginhost.Secrets, repos pluginhost.Repositories, restoreDir string, opts ...pluginhost.Option) *pluginhost.Handlers {
+	h, err := pluginhost.NewHandlers(r, secrets, repos, restoreDir, opts...)
 	if err != nil {
 		panic(err)
 	}

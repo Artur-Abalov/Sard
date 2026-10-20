@@ -350,6 +350,17 @@ class ApiContractIntegrationTest(
         }
     }
 
+    /** The restore operations of a snapshot (R2). */
+    private fun restoreCalls(agentId: String): List<Triple<String, String, String?>> {
+        val path = "/api/v1/sources/{sourceId}/snapshots/{snapshotId}"
+        val body = """{"agentId":"$agentId","config":{}}"""
+        return listOf(
+            Triple("GET", "$path/restore-options", null),
+            Triple("POST", "$path/restores/preview", body),
+            Triple("POST", "$path/restores", body),
+        )
+    }
+
     /**
      * Every operation of the spec but session and status is here, so a new operation cannot skip this
      * check; none answers 501 any more (S8b replaced the stubs).
@@ -424,7 +435,7 @@ class ApiContractIntegrationTest(
             // A wrong cron: the installation's cycle stays as it was for the other tests of this database.
             Triple("PUT", "/api/v1/verification-schedule", """{"cron":"nope","timezone":"UTC"}"""),
             Triple("GET", "/api/v1/verifiers?sourceId=$id", null),
-        )
+        ) + restoreCalls(id)
     }
 
     private companion object {

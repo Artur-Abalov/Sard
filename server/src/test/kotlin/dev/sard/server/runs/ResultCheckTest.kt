@@ -10,6 +10,9 @@ import kotlin.test.assertEquals
 
 private const val REPOSITORY_ID = "5f0c3e2d9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d"
 private val BACKUP = StepOutput.Backup("4a3b2c1d", 1_000, 100, REPOSITORY_ID)
+private val RESTORED =
+    StepOutput.Restore("/var/lib/sard-agent/restore/etc", filesRestored = 2, bytesRestored = 4, ownersRestored = false)
+private val LEFTOVER = StepOutput.Restore(target = "", leftover = "/var/lib/sard-agent/restore/.sard-staging/c1")
 
 /** A result is checked against the step's action before it is recorded (S7a, answer 5). */
 @MutFlowTest
@@ -133,12 +136,94 @@ class ResultCheckTest {
             listOf(
                 """{"kind":"backup","snapshotId":"4a3b2c1d","totalBytes":1000,"addedBytes":100,""" +
                     """"repositoryId":"$REPOSITORY_ID","partial":false}""",
-                """{"kind":"restore","target":"/r"}""",
+                """{"kind":"restore","target":"/r","filesRestored":0,"bytesRestored":0,"database":"",""" +
+                    """"tablesRestored":0,"rolesRestored":0,"ownersRestored":false,"leftover":""}""",
                 """{"kind":"verify","snapshotId":"4a","checks":[{"name":"read-data","passed":false,""" +
                     """"detail":"pack 1f: \"bad\""}],"stages":[],"verdict":null,"mismatches":[],""" +
                     """"restoreMillis":null}""",
                 """{"kind":"run","exitCode":-1}""",
             )
+        assertEquals(expected, stored)
+    }
+
+    // --- R2a: the output of a restore (all or nothing: a failure carries only what the rollback left)
+
+    @Test
+    fun `a succeeded restore keeps its output`() {
+        assertEquals(RESTORED, check(Action.RESTORE, StepState.SUCCEEDED, RESTORED).output)
+    }
+
+    @Test
+    fun `a failed restore whose rollback failed keeps what is left, whatever the status`() {
+        for (status in listOf(StepState.FAILED, StepState.CANCELLED, StepState.TIMED_OUT, StepState.REJECTED)) {
+            val verdict = check(Action.RESTORE, status, LEFTOVER, "CLEANUP_FAILED (rollback): boom")
+
+            val outcome = StepOutcome(status, "CLEANUP_FAILED (rollback): boom")
+            assertEquals(Verdict(outcome, LEFTOVER, invalid = null), verdict, status.name)
+        }
+    }
+
+    @Test
+    fun `a failed restore with the fields of a result is an invalid result`() {
+        for (status in listOf(StepState.FAILED, StepState.CANCELLED, StepState.TIMED_OUT)) {
+            val verdict = check(Action.RESTORE, status, RESTORED, "no space")
+
+            val problem = "a restore output with a result for a restore that did not succeed"
+            assertEquals(Verdict(StepOutcome(StepState.FAILED, "invalid result: $problem"), null, problem), verdict)
+        }
+    }
+
+    @Test
+    fun `a failed restore with leftover and result fields together is an invalid result`() {
+        val mixed = LEFTOVER.copy(target = "/t", filesRestored = 1)
+
+        val verdict = check(Action.RESTORE, StepState.FAILED, mixed, "boom")
+
+        assertEquals(StepState.FAILED, verdict.outcome.status)
+        assertEquals(
+            "invalid result: a restore output with a result for a restore that did not succeed",
+            verdict.outcome.message,
+        )
+    }
+
+    @Test
+    fun `a failed restore with an empty output carries nothing`() {
+        val verdict = check(Action.RESTORE, StepState.FAILED, StepOutput.Restore(target = ""), "boom")
+
+        assertEquals(Verdict(StepOutcome(StepState.FAILED, "boom"), null, invalid = null), verdict)
+    }
+
+    @Test
+    fun `a succeeded restore with leftover or negative sizes is an invalid result`() {
+        val broken =
+            mapOf(
+                RESTORED.copy(leftover = "/x") to "a succeeded restore with something left behind",
+                RESTORED.copy(filesRestored = -1) to "a restore output with negative sizes",
+                RESTORED.copy(bytesRestored = -1) to "a restore output with negative sizes",
+                RESTORED.copy(tablesRestored = -1) to "a restore output with negative sizes",
+                RESTORED.copy(rolesRestored = -1) to "a restore output with negative sizes",
+            )
+        for ((output, problem) in broken) {
+            val verdict = check(Action.RESTORE, StepState.SUCCEEDED, output)
+
+            assertEquals(Verdict(StepOutcome(StepState.FAILED, "invalid result: $problem"), null, problem), verdict)
+        }
+    }
+
+    @Test
+    fun `a backup output for a restore step that failed is dropped, not an invalid result`() {
+        val verdict = check(Action.RESTORE, StepState.FAILED, BACKUP, "boom")
+
+        assertEquals(Verdict(StepOutcome(StepState.FAILED, "boom"), null, invalid = null), verdict)
+    }
+
+    @Test
+    fun `the output of a restore is stored with every field`() {
+        val stored = MutFlow.underTest { RESTORED.json() }
+
+        val expected =
+            """{"kind":"restore","target":"/var/lib/sard-agent/restore/etc","filesRestored":2,"bytesRestored":4,""" +
+                """"database":"","tablesRestored":0,"rolesRestored":0,"ownersRestored":false,"leftover":""}"""
         assertEquals(expected, stored)
     }
 }

@@ -57,6 +57,8 @@ type RestoreRequest struct {
 	// SFTPCommand, if not empty, is the command restic starts instead of ssh
 	// to reach an sftp: repository (sftp.command).
 	SFTPCommand string
+	// Progress, if not nil, is called with each status line restic prints.
+	Progress func(Progress)
 }
 
 // stagingTarget is the root directory of the staging directory, which restic
@@ -100,7 +102,10 @@ func (c *CLI) RestoreTo(ctx context.Context, req RestoreRequest) (RestoreSummary
 		return RestoreSummary{}, fmt.Errorf("%w: snapshot and target are required", ErrInvalidRequest)
 	}
 	var summary RestoreSummary
-	res, err := c.runRepo(ctx, call{args: restoreArgs(req, target), extra: extra, stdout: func(line []byte) { summary = readSummary(line, summary) }})
+	res, err := c.runRepo(ctx, call{args: restoreArgs(req, target), extra: extra, stdout: func(line []byte) {
+		summary = readSummary(line, summary)
+		reportProgress(line, req.Progress)
+	}})
 	return summary, incomplete(res, err)
 }
 
@@ -114,6 +119,22 @@ func restoreArgs(req RestoreRequest, target string) []string {
 		args = append(args, "-o", "sftp.command="+req.SFTPCommand)
 	}
 	return append(args, "--", req.SnapshotID)
+}
+
+// reportProgress passes the status line of restic restore to progress.
+func reportProgress(line []byte, progress func(Progress)) {
+	var msg struct {
+		Type          string  `json:"message_type"`
+		PercentDone   float64 `json:"percent_done"`
+		TotalFiles    uint64  `json:"total_files"`
+		FilesRestored uint64  `json:"files_restored"`
+		TotalBytes    uint64  `json:"total_bytes"`
+		BytesRestored uint64  `json:"bytes_restored"`
+	}
+	if progress == nil || json.Unmarshal(line, &msg) != nil || msg.Type != "status" {
+		return
+	}
+	progress(Progress{BytesDone: msg.BytesRestored, TotalBytes: msg.TotalBytes, FilesDone: msg.FilesRestored, TotalFiles: msg.TotalFiles, PercentDone: msg.PercentDone})
 }
 
 // readSummary is the summary the line holds, or the one given.

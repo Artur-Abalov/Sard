@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PostgreSQL restore",
+  "description": "Restores the database of a snapshot into a NEW database of a PostgreSQL server (pg_restore, from the stream of restic dump). Needs pg_restore and psql on the host. Nothing is restored over an existing database; if the restore fails, the database and the roles it created are dropped.",
+  "type": "object",
+  "properties": {
+    "host": {
+      "type": "string",
+      "title": "Host",
+      "description": "Host name, IPv4 or IPv6 address (without brackets) of the TARGET server, or the absolute path of the directory of its Unix socket, such as /var/run/postgresql. At most 255 bytes; no comma, @ or space.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Хост",
+          "description": "Имя хоста, адрес IPv4 или IPv6 (без скобок) ЦЕЛЕВОГО сервера либо абсолютный путь каталога его сокета Unix, например /var/run/postgresql. Не больше 255 байт; без запятой, @ и пробела."
+        }
+      },
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^(/[^,@\\s\\x00]*|[^,@\\s/\\x00]+)$",
+      "examples": [
+        "db.example.com",
+        "10.0.0.5",
+        "::1",
+        "/var/run/postgresql"
+      ]
+    },
+    "port": {
+      "type": "integer",
+      "title": "Port",
+      "description": "TCP port of the server, or the number in the name of the socket file .s.PGSQL.<port> when the host is a socket directory. 5432 by default.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Порт",
+          "description": "Порт TCP сервера либо номер в имени файла сокета .s.PGSQL.<порт>, когда хост — каталог сокета. По умолчанию 5432."
+        }
+      },
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 5432,
+      "examples": [
+        5432,
+        6432
+      ]
+    },
+    "user": {
+      "type": "string",
+      "title": "User",
+      "description": "Role the agent signs in as on the target server. It needs CREATEDB (or to be a superuser); with restore_globals it must be a superuser. At most 63 bytes.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Пользователь",
+          "description": "Роль, под которой агент входит на целевой сервер. Нужен CREATEDB (или суперпользователь); с restore_globals — суперпользователь. Не больше 63 байт."
+        }
+      },
+      "minLength": 1,
+      "maxLength": 63,
+      "pattern": "^[^\\x00]+$",
+      "examples": [
+        "backup"
+      ]
+    },
+    "password_ref": {
+      "type": "string",
+      "format": "sard-secret",
+      "title": "Password secret",
+      "description": "Name of a secret defined on the agent host (secrets: in agent.yaml) whose file holds the role's password; never the password itself.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Секрет с паролем",
+          "description": "Имя секрета, заданного на хосте агента (secrets: в agent.yaml), в файле которого лежит пароль роли; не сам пароль."
+        }
+      },
+      "examples": [
+        "pg-app"
+      ]
+    },
+    "tls_mode": {
+      "type": "string",
+      "enum": [
+        "disable",
+        "require",
+        "verify-full"
+      ],
+      "title": "TLS mode",
+      "description": "disable: no TLS. require: TLS without checking the server's certificate. verify-full: TLS with the certificate and the host name checked. Default: require for a TCP host, disable for a socket directory, where only disable works.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Режим TLS",
+          "description": "disable: без TLS. require: TLS без проверки сертификата сервера. verify-full: TLS с проверкой сертификата и имени хоста. По умолчанию require для хоста TCP и disable для каталога сокета, где работает только disable."
+        }
+      },
+      "examples": [
+        "verify-full",
+        "disable"
+      ]
+    },
+    "tls_root_cert": {
+      "type": "string",
+      "title": "CA certificate",
+      "description": "Absolute path, on the agent host, of the file with the CA certificate that signed the server's certificate. Only with verify-full; without it libpq reads ~/.postgresql/root.crt of the agent user.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Сертификат CA",
+          "description": "Абсолютный путь на хосте агента файла с сертификатом CA, подписавшего сертификат сервера. Только с verify-full; без него libpq читает ~/.postgresql/root.crt пользователя агента."
+        }
+      },
+      "minLength": 2,
+      "maxLength": 4096,
+      "pattern": "^/[^\\x00]+$",
+      "examples": [
+        "/etc/sard/pg-ca.pem"
+      ]
+    },
+    "database": {
+      "type": "string",
+      "title": "New database",
+      "description": "Name of the NEW database to create and restore into, at most 63 bytes. It must not exist: the restore never writes into an existing database.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Новая база данных",
+          "description": "Имя НОВОЙ базы, которую нужно создать и в которую восстановить данные, не больше 63 байт. Она не должна существовать: восстановление никогда не пишет в существующую базу."
+        }
+      },
+      "minLength": 1,
+      "maxLength": 63,
+      "pattern": "^[^\\x00]+$",
+      "examples": [
+        "app_restored_20261011"
+      ]
+    },
+    "restore_globals": {
+      "type": "boolean",
+      "title": "Restore global objects",
+      "description": "Also restore the roles of the snapshot of the global objects before the database. They belong to the whole cluster, not to this database, and need a superuser. Fails if a role already exists on the target server. Off by default: the database is restored without owners and rights.",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Восстановить глобальные объекты",
+          "description": "Дополнительно восстановить роли из снимка глобальных объектов перед базой. Они принадлежат кластеру целиком, а не этой базе, и требуют суперпользователя. Откажет, если роль уже есть на целевом сервере. По умолчанию выключено: база восстанавливается без владельцев и прав."
+        }
+      },
+      "default": false,
+      "examples": [
+        true
+      ]
+    },
+    "pg_restore_path": {
+      "type": "string",
+      "title": "pg_restore path",
+      "description": "Absolute path of the pg_restore executable. psql is taken from the same directory. Without it pg_restore is searched in the PATH of the agent. It must not be older than the pg_dump that made the snapshot (the major version counts).",
+      "x-sard-i18n": {
+        "ru": {
+          "title": "Путь к pg_restore",
+          "description": "Абсолютный путь исполняемого файла pg_restore. psql берётся из того же каталога. Без него pg_restore ищется в PATH агента. Он не должен быть старше pg_dump, сделавшего снимок (сравнивается старший номер версии)."
+        }
+      },
+      "minLength": 2,
+      "maxLength": 4096,
+      "pattern": "^/[^\\x00]+$",
+      "examples": [
+        "/usr/lib/postgresql/18/bin/pg_restore"
+      ]
+    }
+  },
+  "required": [
+    "host",
+    "database",
+    "user",
+    "password_ref"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "host": {
+            "pattern": "^/"
+          }
+        },
+        "required": [
+          "host"
+        ]
+      },
+      "then": {
+        "properties": {
+          "tls_mode": {
+            "const": "disable"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "tls_mode": {
+            "const": "verify-full"
+          }
+        },
+        "required": [
+          "tls_mode"
+        ]
+      },
+      "else": {
+        "properties": {
+          "tls_root_cert": false
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

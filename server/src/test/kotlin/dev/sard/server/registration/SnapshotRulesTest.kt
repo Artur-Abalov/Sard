@@ -18,7 +18,8 @@ private fun plugin(
     version: String = "0.1.0",
     configSchema: String = """{"type":"object"}""",
     actions: List<PluginAction?> = listOf(PluginAction.BACKUP, PluginAction.RESTORE, PluginAction.VERIFY),
-) = PluginEntry(name, version, configSchema, actions)
+    restoreConfigSchema: String = "",
+) = PluginEntry(name, version, configSchema, actions, restoreConfigSchema)
 
 private fun repository(
     name: String = "main",
@@ -38,6 +39,7 @@ private fun snapshot(
     secretNames: List<String> = listOf("pg-prod"),
     scriptNames: List<String> = listOf("pre-dump"),
     machineId: String = HEX64,
+    restoreDir: String = "",
 ) = AgentSnapshot(
     hostname,
     agentVersion,
@@ -49,6 +51,7 @@ private fun snapshot(
     secretNames,
     scriptNames,
     machineId,
+    restoreDir,
 )
 
 /** What a refusal says on the wire: the reason and the ErrorInfo metadata. */
@@ -334,5 +337,44 @@ class SnapshotRulesTest {
         assertEquals(Reason.HOSTNAME_INVALID, refusalOf(snapshot(hostname = "", machineId = ""))?.reason)
         val scripts = snapshot(scriptNames = listOf("../x"), machineId = "")
         assertEquals(Reason.NAME_INVALID, refusalOf(scripts)?.reason)
+    }
+
+    // --- R2a: the restore directory and the restore schemas
+
+    @Test
+    fun `a restore directory and a restore schema are accepted`() {
+        val candidate =
+            snapshot(
+                restoreDir = "/var/lib/sard-agent/restore",
+                plugins = listOf(plugin(restoreConfigSchema = """{"type":"object"}""")),
+            )
+        assertNull(refusalOf(candidate))
+    }
+
+    @Test
+    fun `a restore directory that is not an absolute path of up to 4096 bytes is FIELD_INVALID`() {
+        for (dir in listOf("relative/dir", "/a\u0000b", "/" + "a".repeat(4096))) {
+            assertEquals(invalid("restore_dir"), refusalOf(snapshot(restoreDir = dir)), dir.take(20))
+        }
+        assertNull(refusalOf(snapshot(restoreDir = "/" + "a".repeat(4095))))
+    }
+
+    @Test
+    fun `a restore schema over 64 KiB is SNAPSHOT_TOO_LARGE`() {
+        val big = """{"x":"${"a".repeat(64 * 1024)}"}"""
+        val refusal = refusalOf(snapshot(plugins = listOf(plugin(restoreConfigSchema = big))))
+        assertEquals(tooLarge("plugins[0].restore_config_schema", 64 * 1024), refusal)
+    }
+
+    @Test
+    fun `a restore schema that is not one JSON value is CONFIG_SCHEMA_INVALID`() {
+        for (schema in listOf("{", "{} {}", """{"a":"\u0000"}""")) {
+            val refusal = refusalOf(snapshot(plugins = listOf(plugin(restoreConfigSchema = schema))))
+            assertEquals(
+                Refusal(Reason.CONFIG_SCHEMA_INVALID, mapOf("field" to "plugins[0].restore_config_schema")),
+                refusal,
+                schema,
+            )
+        }
     }
 }

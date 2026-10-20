@@ -91,7 +91,18 @@ object ProtoReports {
             }
 
             StepResult.OutputCase.RESTORE -> {
-                StepOutput.Restore(result.restore.target)
+                with(result.restore) {
+                    StepOutput.Restore(
+                        target,
+                        filesRestored,
+                        bytesRestored,
+                        database,
+                        tablesRestored,
+                        rolesRestored,
+                        ownersRestored,
+                        leftover,
+                    )
+                }
             }
 
             StepResult.OutputCase.VERIFY -> {

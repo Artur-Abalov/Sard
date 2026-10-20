@@ -182,6 +182,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sources/{sourceId}/snapshots/{snapshotId}/restores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a snapshot
+         * @description Queues a restore run on the chosen agent; it waits for an offline agent. 422 snapshot_not_restorable for a snapshot the console does not restore, validation_failed for the agent or the config (errors name agentId or config/<JSON Pointer>). The agent decides whether the destination is free.
+         */
+        post: operations["startRestore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources/{sourceId}/snapshots/{snapshotId}/restores/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview a restore
+         * @description Checks the request like the restore itself and creates nothing.
+         */
+        post: operations["previewRestore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sources/{sourceId}/runs": {
         parameters: {
             query?: never;
@@ -463,6 +503,26 @@ export interface paths {
          * @description Newest first; also of a deleted source.
          */
         get: operations["listSourceSnapshots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources/{sourceId}/snapshots/{snapshotId}/restore-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who can restore a snapshot
+         * @description The agents that hold the snapshot's repository and restore from the console, the source's agent first; the ones that hold it but cannot, with the reason; how to attach the repository to another host.
+         */
+        get: operations["restoreOptions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -797,7 +857,7 @@ export interface components {
             timezone: string;
         };
         /** @enum {string} */
-        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "agent_role_mismatch" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured" | "setup_required" | "setup_completed" | "ca_step_pending" | "wrong_password" | "onboarding_incomplete" | "first_backup_pending" | "verification_active" | "snapshot_unusable";
+        ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "agent_role_mismatch" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured" | "setup_required" | "setup_completed" | "ca_step_pending" | "wrong_password" | "onboarding_incomplete" | "first_backup_pending" | "snapshot_not_restorable" | "verification_active" | "snapshot_unusable";
         /** @description A field of the request that failed validation */
         FieldError: {
             /** @description JSON name of the field, e.g. repositoryName */
@@ -1141,26 +1201,14 @@ export interface components {
              */
             snapshotId?: string | null;
         };
-        /** @description The source already has an active run (D6); no new run was created (RFC 9457) */
-        RunActiveProblem: {
-            /** @description URI reference identifying the problem type; about:blank when the status says it all */
-            type: string;
-            /** @description Short summary for people; not for matching, use code */
-            title: string;
-            /**
-             * Format: int32
-             * @description HTTP status code
-             */
-            status: number;
-            /** @description Explanation of this occurrence; null when the title says it all */
-            detail: string | null;
-            /** @description run_active */
-            code: components["schemas"]["ErrorCode"];
-            /**
-             * Format: uuid
-             * @description The run that is queued, dispatched or running
-             */
-            activeRunId: string;
+        /** @description Where to restore and with which config */
+        RestoreRequest: {
+            /** @description A target of the restore options */
+            agentId: string | null;
+            /** @description Valid against the target's restoreConfigSchema; secrets by name only */
+            config: {
+                [key: string]: unknown;
+            } | null;
         };
         /** @description What a backup step produced */
         BackupOutput: {
@@ -1174,6 +1222,8 @@ export interface components {
             repositoryId: string;
             /** @description The result that brought this output failed: the snapshot is usable but incomplete, like Snapshot.partial */
             partial: boolean;
+            /** @description The console can restore this snapshot: not partial, not forgotten, a plugin it restores */
+            restorable: boolean;
         };
         /** @description What a catch-up run stands for: the fires missed while the server was down */
         CatchUp: {
@@ -1196,6 +1246,26 @@ export interface components {
             missedCountCapped: boolean;
             /** @description The schedule's time zone, to show the period in */
             timezone: string;
+        };
+        /** @enum {string} */
+        RestoreOutcome: "restored" | "nothing" | "rollback_failed" | "late";
+        /** @description What a restore step reported. A restore is all or nothing: a succeeded one has everything it did, any other has this only when its rollback failed, and then leftover alone. A field the restore does not have is null: a database restore has no files, a restore of files no tables */
+        RestoreOutput: {
+            /** @description The absolute path of the directory, or the name of the database */
+            target: string | null;
+            /** Format: int64 */
+            filesRestored: number | null;
+            /** Format: int64 */
+            bytesRestored: number | null;
+            database: string | null;
+            /** Format: int64 */
+            tablesRestored: number | null;
+            /** Format: int64 */
+            rolesRestored: number | null;
+            /** @description Whether the owners and groups of the snapshot were restored; false for files */
+            ownersRestored: boolean | null;
+            /** @description What the rollback could not remove and the operator must remove by hand */
+            leftover: string | null;
         };
         /** @description A run with its steps */
         Run: {
@@ -1222,6 +1292,28 @@ export interface components {
             steps: components["schemas"]["RunStep"][];
             /** @description Set only for trigger catch_up: the downtime it stands for */
             catchUp: components["schemas"]["CatchUp"] | null;
+            kind: components["schemas"]["RunKind"];
+            /** @description Who started a manual run: "admin" in the open core, which has one administrator; null for a schedule */
+            requestedBy: string | null;
+            /** @description Set for a restore run; null for a backup */
+            restore: components["schemas"]["RunRestore"] | null;
+        };
+        /** @enum {string} */
+        RunKind: "backup" | "restore";
+        /** @description What a restore run restores */
+        RunRestore: {
+            /** @description restic snapshot id */
+            snapshotId: string;
+            /** Format: date-time */
+            snapshotCreatedAt: string;
+            /** @description The repository on the agent that restores, by the name that agent has for it */
+            repositoryName: string;
+            /** @description The restore config the agent got: destination and paths; no secrets */
+            config: {
+                [key: string]: unknown;
+            };
+            /** @description Where it goes as the server computed it; the step's restore has the real one */
+            target: string;
         };
         /** @description One command to the agent */
         RunStep: {
@@ -1267,6 +1359,10 @@ export interface components {
             message: string | null;
             /** @description Set when the step sent a valid backup output, whatever its status: a failed backup that saved a snapshot shows it, and a lost step shows a late one */
             backup: components["schemas"]["BackupOutput"] | null;
+            /** @description Set when a restore step reported an output, whatever its status: a lost step shows a late one (R2) */
+            restore: components["schemas"]["RestoreOutput"] | null;
+            /** @description How a restore step ended: restored, nothing (all or nothing: the step failed and left no trace), rollback_failed (restore.leftover must be removed by hand) or late (a lost step's late output is at restore.target); null while it runs and for any other action */
+            restoreOutcome: components["schemas"]["RestoreOutcome"] | null;
             /** Format: date-time */
             queuedAt: string;
             /** Format: date-time */
@@ -1282,6 +1378,49 @@ export interface components {
         StepPhase: "accepted" | "preparing" | "dumping" | "uploading" | "restoring" | "verifying";
         /** @enum {string} */
         StepStatus: "queued" | "dispatched" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out" | "rejected" | "lost";
+        /** @description What a restore request would do; nothing is created */
+        RestorePreview: {
+            sourceName: string;
+            /** @description restic snapshot id */
+            snapshotId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            totalBytes: number;
+            /** Format: uuid */
+            agentId: string;
+            hostname: string;
+            agentOnline: boolean;
+            /** @description The absolute path of the new directory, or the name of the new database */
+            target: string;
+            /** @description The paths of the snapshot to restore; empty: the whole snapshot */
+            paths: string[];
+            restoreGlobals: boolean;
+            warnings: components["schemas"]["RestoreWarningCode"][];
+        };
+        /** @enum {string} */
+        RestoreWarningCode: "agent_offline" | "owners_not_restored" | "globals_change_cluster" | "pg_owners_not_restored" | "pg_same_cluster";
+        /** @description The source already has an active run (D6); no new run was created (RFC 9457) */
+        RunActiveProblem: {
+            /** @description URI reference identifying the problem type; about:blank when the status says it all */
+            type: string;
+            /** @description Short summary for people; not for matching, use code */
+            title: string;
+            /**
+             * Format: int32
+             * @description HTTP status code
+             */
+            status: number;
+            /** @description Explanation of this occurrence; null when the title says it all */
+            detail: string | null;
+            /** @description run_active */
+            code: components["schemas"]["ErrorCode"];
+            /**
+             * Format: uuid
+             * @description The run that is queued, dispatched or running
+             */
+            activeRunId: string;
+        };
         /** @description Sign-in with the administrator password (D2) */
         SessionRequest: {
             /** @description The administrator password set in the first-start wizard or changed since */
@@ -1452,6 +1591,8 @@ export interface components {
             builtin: boolean;
             /** @description source runs backups, restores and scripts; verifier only verifies restores. Chosen by the token, never changes */
             role: components["schemas"]["AgentRole"];
+            /** @description The directory the host's operator allows restores into (restore.dir of the agent); the console cannot change it. null for an agent that cannot restore from the console */
+            restoreDir: string | null;
             /** @description The agent's current certificate: the last one that is not revoked, not superseded and confirmed (a renewal the agent has not confirmed does not count); null for a revoked agent and for an agent without one */
             certificate: components["schemas"]["AgentCertificate"] | null;
         };
@@ -1607,6 +1748,8 @@ export interface components {
             /** @description Pass as cursor to get the next page; null on the last page */
             nextCursor: string | null;
         };
+        /** @enum {string} */
+        RestoreBlockedReason: "partial" | "forgotten" | "plugin_not_supported";
         /** @description A restic snapshot made by a run of the source */
         Snapshot: {
             /** Format: uuid */
@@ -1637,12 +1780,72 @@ export interface components {
             forgottenAt: string | null;
             /** @description The backup failed after saving it (some files unreadable): usable, but incomplete */
             partial: boolean;
+            /** @description The console can restore it: not partial, not forgotten, a plugin it restores */
+            restorable: boolean;
+            /** @description Why it cannot be restored from the console; null when restorable */
+            restoreBlockedReason: components["schemas"]["RestoreBlockedReason"] | null;
         };
         /** @description A page of snapshots */
         SnapshotPage: {
             items: components["schemas"]["Snapshot"][];
             /** @description Pass as cursor to get the next page; null on the last page */
             nextCursor: string | null;
+        };
+        /** @description How to attach the repository on another host: placeholders, never an address or a key */
+        AttachHint: {
+            repositoryName: string;
+            /** @description A command of the agent with placeholders for the address and the copy of the password */
+            command: string;
+        };
+        /** @description An agent with the snapshot's repository that cannot restore it */
+        IneligibleAgent: {
+            /** Format: uuid */
+            agentId: string;
+            hostname: string;
+            reason: components["schemas"]["IneligibleReason"];
+        };
+        /** @enum {string} */
+        IneligibleReason: "agent_outdated" | "plugin_missing";
+        /** @description Who can restore a snapshot and how */
+        RestoreOptions: {
+            snapshot: components["schemas"]["RestoreSnapshot"];
+            targets: components["schemas"]["RestoreTarget"][];
+            ineligible: components["schemas"]["IneligibleAgent"][];
+            attachHint: components["schemas"]["AttachHint"];
+        };
+        /** @description The snapshot to restore */
+        RestoreSnapshot: {
+            /** @description restic snapshot id */
+            snapshotId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            totalBytes: number;
+            /** @description The repository the snapshot was made in, by the name of the agent that made it */
+            repositoryName: string;
+            sourceName: string;
+            plugin: string;
+        };
+        /** @description An agent that can restore the snapshot */
+        RestoreTarget: {
+            /** Format: uuid */
+            agentId: string;
+            hostname: string;
+            online: boolean;
+            /** @description The agent that made the snapshot */
+            sourceAgent: boolean;
+            /** @description The repository on this agent that holds the snapshot, by this agent's name for it */
+            repositoryName: string;
+            /** @description restore.dir of the agent: every restore goes into a new directory inside it; null when the plugin restores elsewhere (a database) */
+            restoreDir: string | null;
+            /** @description JSON Schema (draft 2020-12) of the restore config this agent accepts */
+            restoreConfigSchema: {
+                [key: string]: unknown;
+            };
+            /** @description The config the form starts from */
+            defaults: {
+                [key: string]: unknown;
+            };
         };
         /** @description One fire of a schedule and what came of it */
         ScheduleFire: {
@@ -1783,6 +1986,9 @@ export interface components {
             finishedAt: string | null;
             /** @description Set only for trigger catch_up: the downtime it stands for */
             catchUp: components["schemas"]["CatchUp"] | null;
+            kind: components["schemas"]["RunKind"];
+            /** @description Who started a manual run: "admin" in the open core, which has one administrator; null for a schedule */
+            requestedBy: string | null;
         };
         /** @enum {string} */
         LogLevel: "debug" | "info" | "warn" | "error";
@@ -2995,6 +3201,168 @@ export interface operations {
             };
         };
     };
+    startRestore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+                snapshotId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found in the session's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The agent is revoked (agent_revoked), does not hold the snapshot's repository (unknown_repository) or cannot restore this plugin from the console (unknown_plugin); or the onboarding is not complete */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"] | components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    previewRestore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+                snapshotId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestorePreview"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found in the session's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The agent is revoked (agent_revoked), does not hold the snapshot's repository (unknown_repository) or cannot restore this plugin from the console (unknown_plugin); or the onboarding is not complete */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"] | components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     startRun: {
         parameters: {
             query?: never;
@@ -3973,6 +4341,56 @@ export interface operations {
             };
         };
     };
+    restoreOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+                snapshotId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreOptions"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found in the session's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listScheduleFires: {
         parameters: {
             query?: {
@@ -4250,6 +4668,8 @@ export interface operations {
                 queuedFrom?: string;
                 /** @description Queued before this time; must not be earlier than queuedFrom */
                 queuedTo?: string;
+                /** @description Only runs of this kind: backup or restore */
+                kind?: components["schemas"]["RunKind"];
                 /** @description nextCursor of the previous page; omit for the first page */
                 cursor?: string;
                 /** @description Page size */

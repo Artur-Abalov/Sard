@@ -61,6 +61,7 @@ export function RunsTable({ runs }: { runs: RunSummary[] }) {
       <Table.Thead>
         <Table.Tr>
           <Table.Th>{t('runs.source')}</Table.Th>
+          <Table.Th>{t('runs.kind')}</Table.Th>
           <Table.Th>{t('runs.status')}</Table.Th>
           <Table.Th>{t('runs.startedBy')}</Table.Th>
           <Table.Th>{t('runs.queuedAt')}</Table.Th>
@@ -72,6 +73,11 @@ export function RunsTable({ runs }: { runs: RunSummary[] }) {
           <Table.Tr key={run.id}>
             <Table.Td>
               <SourceLabel run={run} />
+            </Table.Td>
+            <Table.Td>
+              <Badge variant="outline" color={tones.neutral}>
+                {t(`enum.RunKind.${run.kind}`)}
+              </Badge>
             </Table.Td>
             <Table.Td>
               <StatusBadge group="RunStatus" value={run.status} />

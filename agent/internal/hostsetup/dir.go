@@ -63,6 +63,12 @@ type Dir interface {
 	// RemoveDir removes the empty directory called name (unlinkat with
 	// AT_REMOVEDIR).
 	RemoveDir(name string) error
+	// Move renames the entry oldName of this directory to newName in newDir
+	// (renameat): the name appears with the whole entry or not at all. A name
+	// that is taken by an empty directory is replaced by it; one taken by
+	// anything else is not (ENOTEMPTY, ENOTDIR). Another file system is
+	// ErrCrossDevice.
+	Move(oldName string, newDir Dir, newName string) error
 }
 
 // ErrCrossDevice: the entry cannot be moved because the two directories are

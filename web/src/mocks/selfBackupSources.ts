@@ -88,6 +88,8 @@ function succeededRun(source: Schemas['Source']): Schemas['Run'] {
     filesTotal: null,
     message: null,
     backup: null,
+    restore: null,
+    restoreOutcome: null,
     queuedAt,
     dispatchedAt: queuedAt,
     startedAt: queuedAt,
@@ -107,6 +109,9 @@ function succeededRun(source: Schemas['Source']): Schemas['Run'] {
     finishedAt: DEFAULT_BACKED_UP_AT,
     steps: [step],
     catchUp: null,
+    kind: 'backup',
+    requestedBy: 'admin',
+    restore: null,
   }
 }
 

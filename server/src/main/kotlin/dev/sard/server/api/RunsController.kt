@@ -37,6 +37,22 @@ data class CatchUp(
 
 private const val CATCH_UP = "Set only for trigger catch_up: the downtime it stands for"
 
+private const val REQUESTED_BY =
+    "Who started a manual run: \"admin\" in the open core, which has one administrator; null for a schedule"
+
+@Schema(description = "What a restore run restores")
+data class RunRestore(
+    @field:Schema(description = "restic snapshot id")
+    val snapshotId: String,
+    val snapshotCreatedAt: Instant,
+    @field:Schema(description = "The repository on the agent that restores, by the name that agent has for it")
+    val repositoryName: String,
+    @field:Schema(description = "The restore config the agent got: destination and paths; no secrets")
+    val config: Map<String, Any?>,
+    @field:Schema(description = "Where it goes as the server computed it; the step's restore has the real one")
+    val target: String,
+)
+
 @Schema(description = "A run in the list")
 data class RunSummary(
     val id: UUID,
@@ -57,6 +73,9 @@ data class RunSummary(
     val finishedAt: Instant?,
     @field:Schema(description = CATCH_UP)
     val catchUp: CatchUp?,
+    val kind: RunKind,
+    @field:Schema(description = REQUESTED_BY)
+    val requestedBy: String?,
 )
 
 @Schema(description = "What a backup step produced")
@@ -73,6 +92,30 @@ data class BackupOutput(
                 "Snapshot.partial",
     )
     val partial: Boolean,
+    @field:Schema(
+        description = "The console can restore this snapshot: not partial, not forgotten, a plugin it restores",
+    )
+    val restorable: Boolean,
+)
+
+@Schema(
+    description =
+        "What a restore step reported. A restore is all or nothing: a succeeded one has everything it did, any " +
+            "other has this only when its rollback failed, and then leftover alone. A field the restore does not " +
+            "have is null: a database restore has no files, a restore of files no tables",
+)
+data class RestoreOutput(
+    @field:Schema(description = "The absolute path of the directory, or the name of the database")
+    val target: String?,
+    val filesRestored: Long?,
+    val bytesRestored: Long?,
+    val database: String?,
+    val tablesRestored: Long?,
+    val rolesRestored: Long?,
+    @field:Schema(description = "Whether the owners and groups of the snapshot were restored; false for files")
+    val ownersRestored: Boolean?,
+    @field:Schema(description = "What the rollback could not remove and the operator must remove by hand")
+    val leftover: String?,
 )
 
 @Schema(description = "One command to the agent")
@@ -105,6 +148,18 @@ data class RunStep(
                 "snapshot shows it, and a lost step shows a late one",
     )
     val backup: BackupOutput?,
+    @field:Schema(
+        description =
+            "Set when a restore step reported an output, whatever its status: a lost step shows a late one (R2)",
+    )
+    val restore: RestoreOutput?,
+    @field:Schema(
+        description =
+            "How a restore step ended: restored, nothing (all or nothing: the step failed and left no trace), " +
+                "rollback_failed (restore.leftover must be removed by hand) or late (a lost step's late output is " +
+                "at restore.target); null while it runs and for any other action",
+    )
+    val restoreOutcome: RestoreOutcome?,
     val queuedAt: Instant,
     val dispatchedAt: Instant?,
     val startedAt: Instant?,
@@ -130,6 +185,11 @@ data class Run(
     val steps: List<RunStep>,
     @field:Schema(description = CATCH_UP)
     val catchUp: CatchUp?,
+    val kind: RunKind,
+    @field:Schema(description = REQUESTED_BY)
+    val requestedBy: String?,
+    @field:Schema(description = "Set for a restore run; null for a backup")
+    val restore: RunRestore?,
 )
 
 @Schema(description = "A page of runs")
@@ -169,6 +229,7 @@ interface RunsApi {
         status: List<RunStatus>?,
         queuedFrom: Instant?,
         queuedTo: Instant?,
+        kind: RunKind?,
         cursor: String?,
         limit: Int,
     ): RunPage
@@ -208,9 +269,12 @@ class RunsController(
         @Parameter(description = "Queued before this time; must not be earlier than queuedFrom")
         @RequestParam(required = false)
         queuedTo: Instant?,
+        @Parameter(description = "Only runs of this kind: backup or restore")
+        @RequestParam(required = false)
+        kind: RunKind?,
         @PageCursor @RequestParam(required = false) cursor: String?,
         @PageLimit @RequestParam(defaultValue = DEFAULT_LIMIT) limit: Int,
-    ): RunPage = api.listRuns(sourceId, agentId, status, queuedFrom, queuedTo, cursor, limit)
+    ): RunPage = api.listRuns(sourceId, agentId, status, queuedFrom, queuedTo, kind, cursor, limit)
 
     @GetMapping("/{runId}")
     @ResponseStatus(HttpStatus.OK)

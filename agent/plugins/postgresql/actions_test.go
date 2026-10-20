@@ -10,14 +10,15 @@ import (
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
-// Scenario: Восстановление плагином postgresql завершается FAILED без restic.
-func TestRestoreByThePostgresqlPluginFailsWithoutRestic(t *testing.T) {
+// R2b: the restore of postgresql from the console is done by the restore
+// engine of the host; a host without one rejects the step and starts nothing.
+func TestRestoreByThePostgresqlPluginIsRejectedOnAHostWithoutConsoleRestore(t *testing.T) {
 	r := newRig(t)
 	s := step(js(k()))
 	s.Action, s.SnapshotId = agentv1.Action_ACTION_RESTORE, "abc"
 	res := r.run(s)
-	want(t, res, failed)
-	mentions(t, res.GetMessage(), "restore for the postgresql plugin is not implemented yet")
+	want(t, res, rejected)
+	mentions(t, res.GetMessage(), "restore from the console is not enabled")
 	if len(r.restic.run) != 0 || r.proc.started() != 0 {
 		t.Errorf("restic ran %d times, processes %d", len(r.restic.run), r.proc.started())
 	}

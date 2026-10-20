@@ -761,3 +761,18 @@ func TestTheFirstOfSeveralRemainsIsTheOneNamed(t *testing.T) {
 		t.Fatalf("failure %v", f)
 	}
 }
+
+// R2b (ВК22, ВК29): the plan also carries the version of the source server and
+// the identifier of its cluster, which the console restore compares the target with.
+func TestThePlanCarriesTheServerVersionAndTheClusterIdentifierOfTheSnapshot(t *testing.T) {
+	p := pgDatabase("app", "app.dump", "postgresql.server_version=16.4", "postgresql.system_identifier=7412345678901234567")
+	plan, f := restore.PlanPostgres([]restore.Snapshot{p}, p)
+	if f != nil || plan.ServerVersion != "16.4" || plan.SystemIdentifier != "7412345678901234567" {
+		t.Fatalf("plan %+v, %v", plan, f)
+	}
+	bare := pgDatabase("app", "app.dump")
+	plan, _ = restore.PlanPostgres([]restore.Snapshot{bare}, bare)
+	if plan.ServerVersion != "" || plan.SystemIdentifier != "" {
+		t.Errorf("plan without the tags: %+v", plan)
+	}
+}

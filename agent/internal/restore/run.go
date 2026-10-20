@@ -61,7 +61,7 @@ const maxNamedPaths = 10
 
 func restoreFailure(ctx context.Context, err error, path string, target repoinit.Target) *refusal.Failure {
 	if ctx.Err() == nil {
-		if f := targetFailure(err, path, target); f != nil {
+		if f := TargetFailure(err, path, target, true); f != nil {
 			return f
 		}
 	}
@@ -72,29 +72,43 @@ func restoreFailure(ctx context.Context, err error, path string, target repoinit
 	return f
 }
 
-// targetFailure: restic could not write the target (no space, quota, read-only
+// TargetFailure: restic could not write the target (no space, quota, read-only
 // file system) or could not restore some files; nil for any other failure.
-func targetFailure(err error, path string, target repoinit.Target) *refusal.Failure {
+// partial says that what restic did write stays in path; a restore that
+// leaves nothing (the console's) says nothing of it.
+func TargetFailure(err error, path string, target repoinit.Target, partial bool) *refusal.Failure {
 	var missing *restic.RestoreError
+	var text string
+	var reason refusal.Reason
 	switch {
 	case errors.Is(err, restic.ErrNoSpace):
-		return refusal.Fail(refusal.TargetWrite, "no space left on device (or the quota is used up) while writing to %s; %s", path, partialNote(path))
+		reason, text = refusal.TargetWrite, "no space left on device (or the quota is used up) while writing to "+path
 	case errors.Is(err, restic.ErrReadOnly):
-		return refusal.Fail(refusal.TargetWrite, "the file system of %s is read-only; %s", path, partialNote(path))
+		reason, text = refusal.TargetWrite, "the file system of "+path+" is read-only"
 	case errors.As(err, &missing):
-		return refusal.Fail(refusal.RestoreIncomplete, "%s", target.Scrub(incompleteText(missing.Paths(), path)))
+		reason, text = refusal.RestoreIncomplete, target.Scrub(IncompleteText(missing.Paths()))
+		if partial {
+			text += "; everything else was restored and stays in " + path
+		}
+		return refusal.Fail(reason, "%s", text)
+	default:
+		return nil
 	}
-	return nil
+	if partial {
+		text += "; " + partialNote(path)
+	}
+	return refusal.Fail(reason, "%s", text)
 }
 
 func partialNote(path string) string {
 	return "partially restored files may remain in " + path
 }
 
-func incompleteText(paths []string, target string) string {
-	count := len(paths)
-	head := fmt.Sprintf("restic could not restore %d paths", count)
-	if count > maxNamedPaths {
+// IncompleteText names the number of the paths restic could not restore and
+// the first of them.
+func IncompleteText(paths []string) string {
+	head := fmt.Sprintf("restic could not restore %d paths", len(paths))
+	if len(paths) > maxNamedPaths {
 		head += fmt.Sprintf(" (the first %d)", maxNamedPaths)
 		paths = paths[:maxNamedPaths]
 	}
@@ -102,7 +116,7 @@ func incompleteText(paths []string, target string) string {
 	for i, p := range paths {
 		quoted[i] = fmt.Sprintf("%q", p)
 	}
-	return fmt.Sprintf("%s: %s; everything else was restored and stays in %s", head, strings.Join(quoted, ", "), target)
+	return head + ": " + strings.Join(quoted, ", ")
 }
 
 // RequirePaths: the snapshot holds every path (Р61); a path it does not hold

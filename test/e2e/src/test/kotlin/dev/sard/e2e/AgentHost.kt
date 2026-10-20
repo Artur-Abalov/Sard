@@ -204,6 +204,14 @@ internal class AgentHost(
         return tree
     }
 
+    /** The tree at [path] on this host: relative path to bytes, null for a directory; empty when [path] is not there. */
+    fun tree(path: String): Map<String, ByteArray?> {
+        var tree: Map<String, ByteArray?> = emptyMap()
+        val exit = run(AgentImage.RESTIC_BINARY, "version") { c -> tree = runCatching { readTree(c, path) }.getOrDefault(emptyMap()) }
+        check(exit.code == 0) { "reading $path: restic version exited ${exit.code}" }
+        return tree
+    }
+
     /** The bytes of [path] on this host (read through a container of the image: `docker cp`). */
     fun read(path: String): ByteArray {
         var bytes: ByteArray? = null

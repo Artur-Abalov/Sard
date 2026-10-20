@@ -117,6 +117,74 @@ enum class RunTrigger {
     CATCH_UP,
 }
 
+/** What a run is (R2): a backup of a source or a restore of one of its snapshots. */
+@Schema(enumAsRef = true)
+enum class RunKind {
+    @JsonProperty("backup")
+    BACKUP,
+
+    @JsonProperty("restore")
+    RESTORE,
+}
+
+/** Why the console does not restore a snapshot. */
+@Schema(enumAsRef = true)
+enum class RestoreBlockedReason {
+    @JsonProperty("partial")
+    PARTIAL,
+
+    @JsonProperty("forgotten")
+    FORGOTTEN,
+
+    @JsonProperty("plugin_not_supported")
+    PLUGIN_NOT_SUPPORTED,
+}
+
+/** Why an agent with the snapshot's repository cannot restore it. */
+@Schema(enumAsRef = true)
+enum class IneligibleReason {
+    @JsonProperty("agent_outdated")
+    AGENT_OUTDATED,
+
+    @JsonProperty("plugin_missing")
+    PLUGIN_MISSING,
+}
+
+/** What a restore preview warns about. */
+@Schema(enumAsRef = true)
+enum class RestoreWarningCode {
+    @JsonProperty("agent_offline")
+    AGENT_OFFLINE,
+
+    @JsonProperty("owners_not_restored")
+    OWNERS_NOT_RESTORED,
+
+    @JsonProperty("globals_change_cluster")
+    GLOBALS_CHANGE_CLUSTER,
+
+    @JsonProperty("pg_owners_not_restored")
+    PG_OWNERS_NOT_RESTORED,
+
+    @JsonProperty("pg_same_cluster")
+    PG_SAME_CLUSTER,
+}
+
+/** How a restore step ended, for the page to word; the server decides it from the status and the output. */
+@Schema(enumAsRef = true)
+enum class RestoreOutcome {
+    @JsonProperty("restored")
+    RESTORED,
+
+    @JsonProperty("nothing")
+    NOTHING,
+
+    @JsonProperty("rollback_failed")
+    ROLLBACK_FAILED,
+
+    @JsonProperty("late")
+    LATE,
+}
+
 /** Step state (ADR 0013, run_steps.status): the server's own states around the agent's final ones. */
 @Schema(enumAsRef = true)
 enum class StepStatus {

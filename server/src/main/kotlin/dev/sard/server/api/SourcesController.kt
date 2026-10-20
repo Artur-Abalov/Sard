@@ -97,6 +97,10 @@ data class Snapshot(
     val forgottenAt: Instant?,
     @field:Schema(description = "The backup failed after saving it (some files unreadable): usable, but incomplete")
     val partial: Boolean,
+    @field:Schema(description = "The console can restore it: not partial, not forgotten, a plugin it restores")
+    val restorable: Boolean,
+    @field:Schema(description = "Why it cannot be restored from the console; null when restorable")
+    val restoreBlockedReason: RestoreBlockedReason?,
 )
 
 @Schema(description = "A page of snapshots")

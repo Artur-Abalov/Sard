@@ -3,6 +3,8 @@
 
 package dev.sard.server.notify
 
+import dev.sard.server.runs.RestoreResult
+import dev.sard.server.runs.RunKind
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.Trigger
 import org.springframework.beans.factory.annotation.Value
@@ -12,12 +14,14 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Duration
 import java.time.Instant
+import java.util.UUID
 
 private const val BINARY = 1024
 private const val SECONDS_PER_MINUTE = 60L
 private const val SECONDS_PER_HOUR = 3600L
 private const val MAX_REASON = 500
 private const val ELLIPSIS = "…"
+private const val SHORT_ID = 8
 
 /** What a finished run looks like in a message (S9b); the wording is the specification's, per language. */
 class RunNoticeFormatter(
@@ -26,10 +30,21 @@ class RunNoticeFormatter(
 ) : NotificationFormatter {
     private val words = wording(language)
     private val figures = NoticeFigures(words)
+    private val lines = NoticeLines(words, figures, console)
+    private val restores = RestoreNoticeFormatter(words, figures, lines)
 
     override fun format(notice: RunNotice): Message? {
         val telling = Telling.of(notice) ?: return null
-        return headline(notice, telling)?.let { compose(notice, it, telling) }
+        return when (notice.kind) {
+            RunKind.RESTORE -> restore(notice)
+            RunKind.BACKUP -> headline(notice, telling)?.let { compose(notice, it, telling) }
+        }
+    }
+
+    /** A restore tells its own headline; here only whether its step is finished. */
+    private fun restore(notice: RunNotice): Message? {
+        val finished = words.headline(notice.stepStatus) != null
+        return if (finished) restores.compose(notice) else null
     }
 
     private fun headline(
@@ -37,7 +52,10 @@ class RunNoticeFormatter(
         telling: Telling,
     ): Headline? {
         val recovered = Headline("✅", words.verdicts.recovered)
-        return if (telling == Telling.RECOVERY) recovered else words.headline(notice.stepStatus)
+        return when {
+            telling == Telling.RECOVERY -> recovered
+            else -> words.headline(notice.stepStatus)
+        }
     }
 
     private fun compose(
@@ -45,18 +63,17 @@ class RunNoticeFormatter(
         headline: Headline,
         telling: Telling,
     ): Message {
-        val lines =
+        val parts =
             listOf(
                 listOf(listOf(Message.Bold("${headline.icon} ${headline.text}: ${notice.sourceName}"))),
                 listOfNotNull(triggerLine(notice.trigger)),
                 recoveryLines(telling, notice),
                 listOf(listOf(Message.Text(words.agent), Message.Code(notice.agentHostname))),
-                listOfNotNull(durationLine(notice.startedAt, notice.finishedAt)),
+                listOfNotNull(lines.durationLine(notice.startedAt, notice.finishedAt)),
                 outcome(notice),
-                listOf(listOf(Message.Text(words.run), Message.Code("${notice.runId}"))),
-                listOfNotNull(console?.let { listOf(Message.Text(it.run(notice.runId))) }),
+                lines.runLines(notice.runId),
             ).flatten()
-        return Message.ofLines(lines)
+        return Message.ofLines(parts)
     }
 
     /** A scheduled run says so on the line after the headline; a manual one does not (F3b). */
@@ -87,11 +104,11 @@ class RunNoticeFormatter(
             }
 
             StepState.LOST -> {
-                reasonLines(notice.message) + listOf(listOf(Message.Text(words.connectionLost)))
+                lines.reasonLines(notice.message) + listOf(listOf(Message.Text(words.connectionLost)))
             }
 
             StepState.FAILED, StepState.REJECTED, StepState.TIMED_OUT, StepState.CANCELLED -> {
-                reasonLines(notice.message) + snapshotLines(sizes)
+                lines.reasonLines(notice.message) + snapshotLines(sizes)
             }
 
             StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING -> {
@@ -103,7 +120,28 @@ class RunNoticeFormatter(
     private fun snapshotLines(sizes: List<Message.Part>?): List<List<Message.Part>> =
         if (sizes == null) emptyList() else listOf(listOf(Message.Text(words.snapshotMade)), sizes)
 
-    private fun reasonLines(message: String?): List<List<Message.Part>> {
+    private fun sizesLine(sizes: BackupSizes): List<Message.Part> {
+        val total = figures.size(sizes.totalBytes)
+        val added = figures.size(sizes.addedBytes)
+        return listOf(Message.Text("${words.total}$total${words.added}$added"))
+    }
+}
+
+/** What the restore step reported, null when it reported nothing. */
+private val RunNotice.result get() = restore?.result
+
+/** The lines a backup's message and a restore's share: the reason (cut to a limit), the duration and the run. */
+internal class NoticeLines(
+    private val words: Wording,
+    private val figures: NoticeFigures,
+    private val console: ConsoleUrl?,
+) {
+    /** The run's id, and its address in the console when there is one. */
+    fun runLines(runId: UUID): List<List<Message.Part>> =
+        listOf(listOf(Message.Text(words.run), Message.Code("$runId"))) +
+            listOfNotNull(console?.let { listOf(Message.Text(it.run(runId))) })
+
+    fun reasonLines(message: String?): List<List<Message.Part>> {
         val text = message.orEmpty()
         if (text.isBlank()) return listOf(listOf(Message.Text(words.notGiven)))
         val shown = limited(text)
@@ -118,18 +156,99 @@ class RunNoticeFormatter(
             text.substring(0, text.offsetByCodePoints(0, MAX_REASON)) + ELLIPSIS
         }
 
-    private fun durationLine(
+    fun durationLine(
         start: Instant?,
         end: Instant,
     ): List<Message.Part>? {
         val elapsed = start?.let { Duration.between(it, end) } ?: return null
         return listOf(Message.Text(words.duration + figures.duration(elapsed)))
     }
+}
 
-    private fun sizesLine(sizes: BackupSizes): List<Message.Part> {
-        val total = figures.size(sizes.totalBytes)
-        val added = figures.size(sizes.addedBytes)
-        return listOf(Message.Text("${words.total}$total${words.added}$added"))
+/** A restore's message (ВК39): what it restored, or why not and what is left; the lines it shares are the backup's. */
+internal class RestoreNoticeFormatter(
+    private val words: Wording,
+    private val figures: NoticeFigures,
+    private val lines: NoticeLines,
+) {
+    /** A restore (ВК39): what it restored, or why not and what is left. */
+    fun compose(notice: RunNotice): Message {
+        val headline =
+            checkNotNull(words.headline(notice.stepStatus, words.restore.verdicts)) { "a finished restore" }
+        val parts =
+            listOf(
+                listOf(listOf(Message.Bold("${headline.icon} ${headline.text}: ${notice.sourceName}"))),
+                listOf(listOf(Message.Text(words.agent), Message.Code(notice.agentHostname))),
+                listOfNotNull(snapshotLine(notice.restore)),
+                listOfNotNull(lines.durationLine(notice.startedAt, notice.finishedAt)),
+                restoreOutcome(notice),
+                lines.runLines(notice.runId),
+            ).flatten()
+        return Message.ofLines(parts)
+    }
+
+    private fun snapshotLine(restore: RestoreNotice?): List<Message.Part>? =
+        restore?.let {
+            listOf(
+                Message.Text(words.restore.snapshot),
+                Message.Code(it.snapshotId.take(SHORT_ID)),
+                Message.Text("${words.restore.snapshotAt}${it.snapshotCreatedAt}"),
+            )
+        }
+
+    private fun restoreOutcome(notice: RunNotice): List<List<Message.Part>> {
+        val result = notice.result
+        return when (notice.stepStatus) {
+            StepState.SUCCEEDED -> {
+                restoredLines(result)
+            }
+
+            StepState.LOST -> {
+                lines.reasonLines(notice.message) + listOf(listOf(Message.Text(words.restore.lost)))
+            }
+
+            StepState.FAILED, StepState.REJECTED, StepState.TIMED_OUT, StepState.CANCELLED -> {
+                lines.reasonLines(notice.message) + listOf(rollbackLine(result?.leftover))
+            }
+
+            StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING -> {
+                error("a finished run has no active step: ${notice.stepStatus}")
+            }
+        }
+    }
+
+    private fun restoredLines(r: RestoreResult?) = listOfNotNull(r?.let(::restoredLine))
+
+    /** All or nothing: a failure left nothing, unless its rollback failed and the operator must clean up. */
+    private fun rollbackLine(leftover: String?): List<Message.Part> =
+        if (leftover.isNullOrEmpty()) {
+            listOf(Message.Text(words.restore.nothingRestored))
+        } else {
+            listOf(
+                Message.Text(words.restore.rollbackFailed),
+                Message.Code(leftover),
+                Message.Text(words.restore.removeByHand),
+            )
+        }
+
+    private fun restoredLine(result: RestoreResult): List<Message.Part> =
+        if (result.database != null) databaseLine(result.database, result.tablesRestored ?: 0) else filesLine(result)
+
+    /** A restore of a database: its name and its tables, not its roles (РВ4). */
+    private fun databaseLine(
+        database: String,
+        tables: Long,
+    ): List<Message.Part> =
+        listOf(
+            Message.Text(words.restore.database),
+            Message.Code(database),
+            Message.Text("${words.restore.tables}$tables"),
+        )
+
+    private fun filesLine(result: RestoreResult): List<Message.Part> {
+        val size = figures.size(result.bytesRestored ?: 0)
+        val count = "${words.restore.filesRestored}${result.filesRestored ?: 0}${words.restore.size}$size"
+        return listOf(Message.Text("$count${words.restore.where}"), Message.Code(result.target.orEmpty()))
     }
 }
 

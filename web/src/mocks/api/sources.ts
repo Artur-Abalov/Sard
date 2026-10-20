@@ -40,6 +40,8 @@ export function queuedRun(source: Schemas['Source']): Schemas['Run'] {
     filesTotal: null,
     message: null,
     backup: null,
+    restore: null,
+    restoreOutcome: null,
     queuedAt: now,
     dispatchedAt: null,
     startedAt: null,
@@ -59,6 +61,9 @@ export function queuedRun(source: Schemas['Source']): Schemas['Run'] {
     finishedAt: null,
     steps: [step],
     catchUp: null,
+    kind: 'backup',
+    requestedBy: 'admin',
+    restore: null,
   }
   return run
 }

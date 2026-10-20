@@ -97,6 +97,7 @@ class AgentsApiIntegrationTest(
                 "outdated",
                 "builtin",
                 "role",
+                "restoreDir",
                 "certificate",
             ),
             json.propertyNames().toSet(),

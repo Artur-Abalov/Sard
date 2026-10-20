@@ -76,7 +76,8 @@ func TestPhasesGoFromPreparingToUploading(t *testing.T) {
 	if got, want := r.sink.phases(), []agentv1.StepPhase{agentv1.StepPhase_STEP_PHASE_ACCEPTED, preparing, dumping, uploading}; !slices.Equal(got, want) {
 		t.Errorf("phases = %v, want %v", got, want)
 	}
-	if got := r.proc.ran("psql"); len(got) != 1 || got[0].Phase != preparing {
+	// The probe and the query of the system identifier (R2b).
+	if got := r.proc.ran("psql"); len(got) != 2 || got[0].Phase != preparing || got[1].Phase != preparing {
 		t.Errorf("psql: %+v", got)
 	}
 	if got := r.proc.ran("pg_dump"); len(got) != 1 || got[0].Phase != uploading {

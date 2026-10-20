@@ -15,12 +15,14 @@ import (
 //go:embed schema.json
 var schema []byte
 
+//go:embed restore_schema.json
+var restoreSchema []byte
+
 // Plugin backs up files and directories: Prepare checks that the listed
 // paths can be read, restic then stores them (see docs/plugins/files.md).
-// Restore is announced by the agent but not written yet: RestoreNotImplemented
-// makes the adapter fail it without running restic (A6b Ф5). Restore
-// verification will compare the restored tree with the snapshot listing
-// (roadmap: restore verification, stage 2).
+// It restores from the console into a new directory of the host
+// (sdk.Restorer, restore.go). Restore verification will compare the restored
+// tree with the snapshot listing (roadmap: restore verification, stage 2).
 type Plugin struct {
 	// AgentVersion is the version of sard-agent, which ships the plugin.
 	AgentVersion string
@@ -29,7 +31,10 @@ type Plugin struct {
 	FS FS
 }
 
-var _ sdk.Plugin = Plugin{}
+var (
+	_ sdk.Plugin   = Plugin{}
+	_ sdk.Restorer = Plugin{}
+)
 
 // Name implements sdk.Plugin.
 func (Plugin) Name() string { return "files" }
@@ -39,12 +44,6 @@ func (p Plugin) Version() string { return p.AgentVersion }
 
 // ConfigSchema implements sdk.Plugin.
 func (Plugin) ConfigSchema() []byte { return schema }
-
-// RestoreNotImplemented is the message of a restore step: the restore of
-// files is not written yet.
-func (Plugin) RestoreNotImplemented() string {
-	return "restore for the files plugin is not implemented yet"
-}
 
 // Prepare implements sdk.Plugin. The schema cannot tell repeats after
 // normalisation and nested paths: those are a *sdk.ConfigError. Then every

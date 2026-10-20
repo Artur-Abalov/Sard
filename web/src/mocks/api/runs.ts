@@ -28,19 +28,24 @@ function queuedWithin(run: Schemas['Run'], from: string | null, to: string | nul
   return (from === null || queued >= Date.parse(from)) && (to === null || queued < Date.parse(to))
 }
 
+/** A filter that is not given lets every value through. */
+const same = (value: string, wanted: string | null) => wanted === null || value === wanted
+
 function matches(
   run: Schemas['Run'],
   filter: {
     sourceId: string | null
     agentId: string | null
     status: string[]
+    kind: string | null
     queuedFrom: string | null
     queuedTo: string | null
   },
 ) {
   return (
-    (filter.sourceId === null || run.sourceId === filter.sourceId) &&
-    (filter.agentId === null || run.agentId === filter.agentId) &&
+    same(run.sourceId, filter.sourceId) &&
+    same(run.agentId, filter.agentId) &&
+    same(run.kind, filter.kind) &&
     (filter.status.length === 0 || filter.status.includes(run.status)) &&
     queuedWithin(run, filter.queuedFrom, filter.queuedTo)
   )
@@ -54,6 +59,7 @@ export const runHandlers = [
       sourceId: query.get('sourceId'),
       agentId: query.get('agentId'),
       status: query.getAll('status'),
+      kind: query.get('kind'),
       queuedFrom: query.get('queuedFrom'),
       queuedTo: query.get('queuedTo'),
     }

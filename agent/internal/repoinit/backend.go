@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
@@ -18,6 +19,12 @@ import (
 // ErrTimeout is the cause the command cancels its context with when
 // --timeout runs out; any other cancellation is an interrupt.
 var ErrTimeout = errors.New("timeout")
+
+// Named is the target of a repository about which only the name is known:
+// nothing to hide in the text of a failure.
+func Named(name string) Target {
+	return Target{Name: name, Scrub: func(s string) string { return s }}
+}
 
 // Target is the repository a failure is about.
 type Target struct {
@@ -125,6 +132,16 @@ func fromContext(ctx context.Context) *refusal.Failure {
 // Interruption reports how ctx ended: nil while it is running.
 func Interruption(ctx context.Context) *refusal.Failure { return fromContext(ctx) }
 
+// passwordFile is how the messages name the password: by its file when the
+// target is described on the host, by the repository when the message goes to
+// the server (a path of a key stays on its host, ADR 0008).
+func (t Target) passwordFile() string {
+	if t.PasswordFile == "" {
+		return "the password file of repository " + strconv.Quote(t.Name)
+	}
+	return "the password file " + t.PasswordFile
+}
+
 func describe(reason refusal.Reason, err error, t Target) *refusal.Failure {
 	cause := t.Scrub(causeOf(err))
 	if f := describeRemote(reason, cause, t); f != nil {
@@ -132,9 +149,9 @@ func describe(reason refusal.Reason, err error, t Target) *refusal.Failure {
 	}
 	switch reason {
 	case refusal.WrongPassword:
-		return refusal.Fail(reason, "a repository already exists at the address of %q, and the password file %s does not open it", t.Name, t.PasswordFile)
+		return refusal.Fail(reason, "a repository already exists at the address of %q, and %s does not open it", t.Name, t.passwordFile())
 	case refusal.PasswordFileEmpty:
-		return refusal.Fail(reason, "restic refuses an empty password: the password file %s holds no password", t.PasswordFile)
+		return refusal.Fail(reason, "restic refuses an empty password: %s holds no password", t.passwordFile())
 	case refusal.BackendUnavailable:
 		return refusal.Fail(reason, "backend %s: %s; the command can be repeated", t.Backend, cause)
 	case refusal.ResticOutputUnexpected:

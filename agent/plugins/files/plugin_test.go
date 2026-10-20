@@ -8,8 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -324,30 +322,6 @@ func TestCancelDuringThePathCheckStopsBeforeRestic(t *testing.T) {
 }
 
 // --- actions
-
-// Scenario: Восстановление плагином files завершается FAILED без restic и без изменений на диске.
-func TestRestoreOfFilesFailsWithoutResticAndWithoutChangesOnDisk(t *testing.T) {
-	r := newRig(t)
-	before := tree(t, r.stateDir)
-	s := step(paths("/D"))
-	s.Action, s.SnapshotId = agentv1.Action_ACTION_RESTORE, "abc"
-	res := r.run(s)
-	want(t, res, failed)
-	mentions(t, res.GetMessage(), "restore", "files", "not implemented yet")
-	noOutput(t, res)
-	if r.restic.ran() != 0 {
-		t.Error("restic ran")
-	}
-	if _, err := os.Stat(filepath.Join(r.restoreDir, "c1")); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("restore directory: %v", err)
-	}
-	// Only the saved result of the step is new.
-	for _, p := range tree(t, r.stateDir) {
-		if !slices.Contains(before, p) && !strings.HasPrefix(p, "results") {
-			t.Errorf("new entry %q in the state dir", p)
-		}
-	}
-}
 
 // Scenario: Восстановление плагином files с пустым snapshot_id отклоняется.
 func TestRestoreOfFilesWithoutASnapshotIsRejected(t *testing.T) {

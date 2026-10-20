@@ -3,6 +3,7 @@
 
 import type { Status } from '../api/client'
 import type { components } from '../api/schema'
+import { postgresqlSchema } from './postgresqlSchemas'
 import { neverVerified } from './verification'
 
 type Schemas = components['schemas']
@@ -32,6 +33,7 @@ export const ids = {
   homeSource: '0192f7a0-0000-7000-8000-000000000202',
   srvSource: '0192f7a0-0000-7000-8000-000000000203',
   oldSource: '0192f7a0-0000-7000-8000-000000000204',
+  appSource: '0192f7a0-0000-7000-8000-000000000205',
   succeededRun: '0192f7a0-0000-7000-8000-000000000301',
   failedRun: '0192f7a0-0000-7000-8000-000000000302',
   runningRun: '0192f7a0-0000-7000-8000-000000000303',
@@ -52,6 +54,7 @@ export const ids = {
   deletedSourceStep: '0192f7a0-0000-7000-8000-000000000319',
   snapshot: '0192f7a0-0000-7000-8000-000000000401',
   partialSnapshot: '0192f7a0-0000-7000-8000-000000000402',
+  appSnapshot: '0192f7a0-0000-7000-8000-000000000403',
   activeToken: '0192f7a0-0000-7000-8000-000000000501',
   usedToken: '0192f7a0-0000-7000-8000-000000000502',
   expiredToken: '0192f7a0-0000-7000-8000-000000000503',
@@ -119,19 +122,6 @@ const filesSchema = {
   additionalProperties: false,
 }
 
-// A plugin whose schema has a secret field, a number and a choice: the form of a source shows them.
-const postgresSchema = {
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  type: 'object',
-  required: ['database', 'password'],
-  properties: {
-    database: { type: 'string', title: 'Database' },
-    port: { type: 'integer', title: 'Port', default: 5432 },
-    password: { type: 'string', format: 'sard-secret', title: 'Password secret' },
-    format: { type: 'string', enum: ['custom', 'plain'], title: 'Dump format' },
-  },
-}
-
 // A schema the form cannot lay out (a nested object): the source is edited as JSON.
 const nestedSchema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -171,7 +161,12 @@ export const agents: Schemas['AgentDetails'][] = [
     protocolVersion: 1,
     plugins: [
       filesPlugin,
-      { name: 'postgres', version: '0.1.0', actions: ['backup'], configSchema: postgresSchema },
+      {
+        name: 'postgresql',
+        version: '0.1.0',
+        actions: ['backup', 'restore'],
+        configSchema: postgresqlSchema,
+      },
       { name: 'custom', version: '0.1.0', actions: ['backup'], configSchema: nestedSchema },
       { name: 'hooks', version: '0.1.0', actions: ['run'], configSchema: filesSchema },
     ],
@@ -181,6 +176,7 @@ export const agents: Schemas['AgentDetails'][] = [
     ],
     secretNames: ['pg-password', 'api-token'],
     scriptNames: ['flush-caches'],
+    restoreDir: '/var/lib/sard-agent/restore',
   },
   {
     id: ids.webAgent,
@@ -206,10 +202,11 @@ export const agents: Schemas['AgentDetails'][] = [
     protocolVersion: 1,
     plugins: [{ ...filesPlugin, actions: ['backup'] }],
     repositories: [
-      { name: 'local', backend: 'local', repositoryId: '9c7d2b1a04', cryptoProvider: 'file' },
+      { name: 'local', backend: 'local', repositoryId: '5a1f0c3e9b', cryptoProvider: 'file' },
     ],
     secretNames: [],
     scriptNames: [],
+    restoreDir: null,
   },
   {
     id: ids.revokedAgent,
@@ -233,6 +230,7 @@ export const agents: Schemas['AgentDetails'][] = [
     ],
     secretNames: [],
     scriptNames: [],
+    restoreDir: null,
   },
   {
     id: ids.duplicateAgent,
@@ -262,6 +260,7 @@ export const agents: Schemas['AgentDetails'][] = [
     ],
     secretNames: [],
     scriptNames: [],
+    restoreDir: '/srv/restore',
   },
   {
     id: ids.bareAgent,
@@ -289,6 +288,7 @@ export const agents: Schemas['AgentDetails'][] = [
     repositories: [],
     secretNames: [],
     scriptNames: [],
+    restoreDir: null,
   },
   {
     id: ids.selfAgent,
@@ -328,6 +328,7 @@ export const agents: Schemas['AgentDetails'][] = [
     ],
     secretNames: ['sard-db'],
     scriptNames: [],
+    restoreDir: null,
   },
   // A verifier: it has a backup plugin and a repository so that the form can be reached by
   // address and the server's refusal by role is seen (V1).
@@ -359,6 +360,7 @@ export const agents: Schemas['AgentDetails'][] = [
     ],
     secretNames: [],
     scriptNames: [],
+    restoreDir: null,
   },
 ]
 
@@ -400,6 +402,28 @@ export const sources: Schemas['Source'][] = [
     ...neverVerified,
   },
 ]
+
+// The database app of db1, backed up with global objects: the source of the restores of a database (R2b).
+const appSource: Schemas['Source'] = {
+  id: ids.appSource,
+  name: 'db1 app',
+  agentId: ids.dbAgent,
+  plugin: 'postgresql',
+  repositoryName: 'local',
+  config: {
+    host: 'db1.example.com',
+    port: 5432,
+    database: 'app',
+    user: 'backup',
+    password_ref: 'pg-password',
+    tls_mode: 'disable',
+  },
+  createdAt: '2026-09-22T10:30:00Z',
+  updatedAt: '2026-09-22T10:30:00Z',
+  systemRole: null,
+  ...neverVerified,
+}
+sources.push(appSource)
 
 /** A source that was deleted: gone from the list and the card, its run stays. */
 export const deletedSources: Schemas['Source'][] = [
@@ -444,6 +468,8 @@ function backupStep(facts: StepFacts): Schemas['RunStep'] {
     filesTotal: null,
     message: null,
     backup: null,
+    restore: null,
+    restoreOutcome: null,
     queuedAt: facts.queuedAt,
     dispatchedAt: facts.startedAt === null ? null : facts.queuedAt,
     startedAt: facts.startedAt,
@@ -481,6 +507,9 @@ function runOf(
     finishedAt: step.finishedAt,
     steps: [step],
     catchUp: null,
+    kind: 'backup',
+    requestedBy: (extra.trigger ?? 'manual') === 'manual' ? 'admin' : null,
+    restore: null,
     ...extra,
   }
 }
@@ -490,6 +519,7 @@ const snapshotOutput = {
   totalBytes: 31_457_280,
   addedBytes: 524_288,
   repositoryId: '5a1f0c3e9b',
+  restorable: true,
 }
 
 // Newest first, as the list endpoint returns them.
@@ -562,7 +592,7 @@ export const runs: Schemas['Run'][] = [
       bytesProcessed: 31_457_280,
       bytesTotal: 31_457_280,
       message: '2 files unreadable',
-      backup: { ...snapshotOutput, partial: true },
+      backup: { ...snapshotOutput, partial: true, restorable: false },
     },
     'failed',
   ),
@@ -632,6 +662,7 @@ export const runs: Schemas['Run'][] = [
         addedBytes: 1_048_576,
         repositoryId: '5a1f0c3e9b',
         partial: false,
+        restorable: true,
       },
     },
     'succeeded',
@@ -682,6 +713,8 @@ export const snapshots: Schemas['Snapshot'][] = [
     createdAt: '2026-09-26T15:01:09Z',
     forgottenAt: null,
     partial: true,
+    restorable: false,
+    restoreBlockedReason: 'partial',
   },
   {
     id: ids.snapshot,
@@ -697,8 +730,29 @@ export const snapshots: Schemas['Snapshot'][] = [
     createdAt: '2026-09-25T21:02:30Z',
     forgottenAt: null,
     partial: false,
+    restorable: true,
+    restoreBlockedReason: null,
   },
 ]
+
+// The snapshot of the database app (the run and step are those of a succeeded backup).
+snapshots.push({
+  id: ids.appSnapshot,
+  snapshotId: '9d3e5f7a',
+  sourceId: ids.appSource,
+  runId: ids.succeededRun,
+  stepId: ids.succeededStep,
+  agentId: ids.dbAgent,
+  repositoryName: 'local',
+  repositoryId: '5a1f0c3e9b',
+  totalBytes: 8_388_608,
+  addedBytes: 2_097_152,
+  createdAt: '2026-10-11T03:00:00Z',
+  forgottenAt: null,
+  partial: false,
+  restorable: true,
+  restoreBlockedReason: null,
+})
 
 const levels: Schemas['LogLevel'][] = ['debug', 'info', 'info', 'info', 'warn']
 

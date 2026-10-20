@@ -100,6 +100,9 @@ enum class ErrorCode {
     @JsonProperty("first_backup_pending")
     FIRST_BACKUP_PENDING,
 
+    @JsonProperty("snapshot_not_restorable")
+    SNAPSHOT_NOT_RESTORABLE,
+
     @JsonProperty("verification_active")
     VERIFICATION_ACTIVE,
 

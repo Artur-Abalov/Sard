@@ -13,13 +13,19 @@ import dev.sard.server.persistence.hqlWhere
 import jakarta.persistence.LockModeType
 import org.hibernate.Session
 import org.hibernate.exception.ConstraintViolationException
+import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
 
+/** The one requester of the open core (F4a: one administrator); names come with roles (D21). */
+internal const val ADMIN = "admin"
+
 private const val ACTIVE_RUN_KEY = "runs_active_source_key"
 private const val STEPS_OF = "from RunStepRecord where runId = :run order by ordinal"
+private const val FORGOTTEN =
+    "select s.stepId from SnapshotRecord s where s.stepId = :step and s.forgottenAt is not null"
 private const val LIST_RUNS =
     "select r, s.agentId, src from RunRecord r join RunStepRecord s on s.runId = r.id and s.ordinal = 0 " +
         "join SourceRecord src on src.id = r.sourceId"
@@ -51,6 +57,7 @@ data class RunFilter(
     val statuses: Set<RunState> = emptySet(),
     val queuedFrom: Instant? = null,
     val queuedTo: Instant? = null,
+    val kind: RunKind? = null,
 ) {
     /** A condition of the list and the value of its parameter; a filter that is not given has no value. */
     private class Term(
@@ -66,6 +73,7 @@ data class RunFilter(
             Term("r.status in :statuses", "statuses", statuses.map { it.stored }.ifEmpty { null }),
             Term("r.queuedAt >= :from", "from", queuedFrom),
             Term("r.queuedAt < :to", "to", queuedTo),
+            Term("r.kind = :kind", "kind", kind?.stored),
         ).filter { it.value != null }
 
     internal fun conditions(): List<String> = terms().map { it.condition }
@@ -104,7 +112,7 @@ class Runs(
             } catch (e: ConstraintViolationException) {
                 if (e.constraintName != ACTIVE_RUN_KEY) throw e
                 // The run that won the index; if it has finished meanwhile, the source is free again.
-                val active = sessions.inTenant(tenantId) { session -> activeRunOf(session, sourceId) }
+                val active = sessions.inTenant(tenantId) { session -> activeRunOf(session, sourceId, RunKind.BACKUP) }
                 throw RunActive(active ?: return start(tenantId, sourceId))
             }
         queued.onQueued(tenantId, run.agentId)
@@ -139,8 +147,25 @@ class Runs(
                     ).setParameter("run", runId)
                     .list()
             val source = session.find(SourceRecord::class.java, run.sourceId)!!
-            RunViews.of(run, steps.first().agentId, source, steps)
+            val view = RunViews.of(run, steps.first().agentId, source, steps)
+            view.copy(steps = view.steps.map { withRestorable(session, it) })
         }
+
+    /** A step with a backup output learns whether the console can restore its snapshot (R2). */
+    private fun withRestorable(
+        session: Session,
+        step: StepView,
+    ): StepView {
+        val backup = step.backup ?: return step
+        val forgotten =
+            session
+                .createSelectionQuery(FORGOTTEN, UUID::class.java)
+                .setParameter("step", step.id)
+                .resultList
+                .isNotEmpty()
+        val blocked = RestoreSupport.blocked(step.plugin, backup.partial, forgotten)
+        return step.copy(backup = backup.copy(restorable = blocked == null))
+    }
 
     /**
      * Runs newest first, those matching [filter], after [after] if given, at most [limit], without their
@@ -189,9 +214,19 @@ class Runs(
             Action.BACKUP,
             LockModeType.PESSIMISTIC_READ,
         )
-        activeRunOf(session, sourceId)?.let { throw RunActive(it) }
+        activeRunOf(session, sourceId, RunKind.BACKUP)?.let { throw RunActive(it) }
         val now = clock.instant()
-        val run = RunRecord(ids.next(), sourceId, trigger.stored, RunState.QUEUED.stored, now, scheduleId)
+        val requestedBy = if (trigger == Trigger.MANUAL) ADMIN else null
+        val run =
+            RunRecord(
+                ids.next(),
+                sourceId,
+                trigger.stored,
+                RunState.QUEUED.stored,
+                now,
+                scheduleId,
+                requestedBy = requestedBy,
+            )
         val step = backupStep(run, source)
         session.persist(run)
         session.persist(step)
@@ -237,6 +272,9 @@ internal object RunViews {
         startedAt = run.startedAt,
         finishedAt = run.finishedAt,
         steps = steps.map { step(it) },
+        kind = RunKind.of(run.kind),
+        requestedBy = run.requestedBy,
+        restore = run.restore?.let(::restoreInfo),
     )
 
     fun step(record: RunStepRecord) =
@@ -262,9 +300,60 @@ internal object RunViews {
             filesTotal = record.filesTotal,
             backup = backupOf(record.output),
             runId = record.runId,
+            restore = restoreOf(record.output),
             snapshotId = record.snapshotId,
             verifyTask = VerifyTask.of(record.verifyTask),
         )
+
+    fun restoreInfo(json: String): RestoreInfo {
+        val node = JSON.readTree(json)
+        return RestoreInfo(
+            node.path("snapshotId").asString(),
+            Instant.parse(node.path("snapshotCreatedAt").asString()),
+            node.path("repositoryName").asString(),
+            node.path("config").toString(),
+            node.path("target").asString(),
+        )
+    }
+
+    /**
+     * The restore output of a step, null for any other output or none. What a kind of restore does not report is
+     * null: a database restore has no file counts, a restore of files no tables; a failed one has only its leftover.
+     */
+    private fun restoreOf(output: String?): RestoreResult? {
+        val node = output?.let { JSON.readTree(it) }?.takeIf { it.path("kind").asString() == Action.RESTORE.stored }
+        return node?.let(::restoreResult)
+    }
+
+    private fun restoreResult(node: JsonNode): RestoreResult? {
+        val target = node.text("target")
+        val database = node.text("database")
+        val leftover = node.text("leftover")
+        return when {
+            database != null -> {
+                val tables = node.path("tablesRestored").asLong()
+                val roles = node.path("rolesRestored").asLong()
+                RestoreResult(target, null, null, database, tables, roles, null, leftover)
+            }
+
+            target != null -> {
+                val files = node.path("filesRestored").asLong()
+                val bytes = node.path("bytesRestored").asLong()
+                RestoreResult(target, files, bytes, null, null, null, node.path("ownersRestored").asBoolean(), leftover)
+            }
+
+            leftover != null -> {
+                RestoreResult(null, null, null, null, null, null, null, leftover)
+            }
+
+            else -> {
+                null
+            }
+        }
+    }
+
+    /** A text field of the output, null when absent or empty. */
+    private fun JsonNode.text(name: String): String? = path(name).asString().ifEmpty { null }
 
     /** The backup output of a step, null for any other output or none. */
     private fun backupOf(output: String?): BackupResult? =
