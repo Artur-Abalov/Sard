@@ -18,7 +18,7 @@ func TestEveryReasonHasAClass(t *testing.T) {
 		SSHClientMissing, SSHClientFailed, SSHHomeInvalid, SSHFileRejected, SSHKeyNotAuthorized,
 		HostKeyUnconfirmed, HostKeyMismatch, HostKeyRejected, HostKeyChanged, RepositoryNotInitialized,
 		SnapshotUnknown, SnapshotAmbiguous, TargetInvalid, TargetNotEmpty, RootTargetRefused, PathNotInSnapshot,
-		RestoreIncomplete, TargetWrite, TargetBusy, SetprivMissing, ResticFailed, CleanupFailed, StaleLocksForeign,
+		RestoreIncomplete, TargetWrite, TargetBusy, SetprivMissing, ResticFailed, CleanupFailed, PluginFailed, StaleLocksForeign,
 		PGClientMissing, PGClientTooOld, PGServerTooOld, PGConnect, CreatedbRequired, SuperuserRequired,
 		GlobalsSnapshotMissing, GlobalsTablespaces, RolesExist, DatabaseExists, PGGlobalsFailed, PGCreateDatabase, PGRestoreFailed}
 	if len(classes) != len(reasons) {
@@ -98,5 +98,13 @@ func TestTheReasonsOfTheRestoreOfADatabaseHaveTheirClasses(t *testing.T) {
 	}
 	if string(PGClientMissing) != "PG_CLIENT_MISSING" || string(PGRestoreFailed) != "PG_RESTORE_FAILED" {
 		t.Errorf("names %q %q", PGClientMissing, PGRestoreFailed)
+	}
+}
+
+// R2c: a plugin's reason that does not fit the pattern of reason codes is worded
+// as the agent's own PLUGIN_FAILED.
+func TestPluginFailedIsAnAgentError(t *testing.T) {
+	if PluginFailed != "PLUGIN_FAILED" || ClassOf(PluginFailed) != ClassAgentError {
+		t.Errorf("PluginFailed = %q, class %d", PluginFailed, ClassOf(PluginFailed))
 	}
 }

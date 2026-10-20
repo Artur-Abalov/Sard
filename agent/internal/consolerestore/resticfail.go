@@ -36,3 +36,18 @@ func asFailure(f *refusal.Failure, stage Stage, target repoinit.Target) *Failure
 	}
 	return &Failure{Reason: reason, Stage: stage, Detail: strings.TrimSuffix(f.Detail, "; nothing was restored")}
 }
+
+// SnapshotsFailure words a failure of restic while a plugin listed the
+// snapshots of the repository, as the console words one: the stage is left to
+// the plugin.
+func (e *Engine) SnapshotsFailure(ctx context.Context, repository string, err error) *Failure {
+	target := e.targetOf(repository)
+	return asFailure(restore.ListFailure(ctx, err, target), "", target)
+}
+
+// DumpFailure words a failure of restic while a plugin read a file of a
+// snapshot, as the console words one: the stage is left to the plugin.
+func (e *Engine) DumpFailure(ctx context.Context, repository string, err error) *Failure {
+	target := e.targetOf(repository)
+	return asFailure(repoinit.FromRestic(ctx, err, target), "", target)
+}

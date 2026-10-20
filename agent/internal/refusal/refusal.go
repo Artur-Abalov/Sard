@@ -113,6 +113,9 @@ const (
 	// CleanupFailed: a restore failed and the rollback could not remove what
 	// it wrote; the message names what is left.
 	CleanupFailed Reason = "CLEANUP_FAILED"
+	// PluginFailed: a plugin refused a restore with a reason that is no reason
+	// code, or failed in a way it did not word (R2c, ADR 0066).
+	PluginFailed Reason = "PLUGIN_FAILED"
 )
 
 // The reasons of the restore of a PostgreSQL database from the console (R2b).
@@ -180,7 +183,7 @@ var classes = map[Reason]Class{
 	StaleLocksForeign: ClassUsage,
 	RestoreIncomplete: ClassAgentError, TargetWrite: ClassWrite, TargetBusy: ClassTemporary, SetprivMissing: ClassAgentError,
 
-	ResticFailed: ClassAgentError, CleanupFailed: ClassWrite,
+	ResticFailed: ClassAgentError, CleanupFailed: ClassWrite, PluginFailed: ClassAgentError,
 
 	PGClientMissing: ClassAgentError, PGClientTooOld: ClassAgentError, PGServerTooOld: ClassUsage,
 	PGConnect: ClassTemporary, CreatedbRequired: ClassUsage, SuperuserRequired: ClassUsage,
