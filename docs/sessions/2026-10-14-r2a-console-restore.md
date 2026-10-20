@@ -63,7 +63,7 @@
 - ADR 0008: `repoconnect.TargetReading` читает только env-файл, путь файла пароля не хранит; `Target.passwordFile()`
   называет файл пароля по имени репозитория, когда пути нет (команды `repo` печатают путь, как раньше).
   Тесты: `TestRestoreTargetsNeverReadThePasswordFile`, `TestAFailureSentToTheServerNamesNoPasswordFile`.
-- OQ-220 и строка в ADR 0060: цель восстановления на сервере знает ключи плагина `files`.
+- OQ-234 и строка в ADR 0060: цель восстановления на сервере знает ключи плагина `files`.
 
 ## 2026-10-15, hardener: мутационное тестирование R2a (только тесты)
 

@@ -59,7 +59,7 @@ func (c *hostCheck) serverFacts() hostcheck.ServerFacts {
 // clientTLS is the configuration of the connection of the service: the CA of
 // Sard, the name of the server and the certificate of the agent.
 func (c *hostCheck) clientTLS() (*tls.Config, error) {
-	files := c.cfg.TLS
+	files := c.selectedTLS()
 	c.denied = ""
 	var pem [3][]byte
 	for i, f := range []struct{ key, path string }{{"tls.ca_file", files.CAFile}, {"tls.cert_file", files.CertFile}, {"tls.key_file", files.KeyFile}} {

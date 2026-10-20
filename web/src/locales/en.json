@@ -63,7 +63,8 @@
     "status": "Status",
     "version": "Version",
     "outdated": "Update available: {{version}}",
-    "outdatedPlain": "Update available"
+    "outdatedPlain": "Update available",
+    "certificate": "Certificate"
   },
   "sources": {
     "title": "Sources",
@@ -147,6 +148,8 @@
     "self_backup_not_configured": "The self-backup is not configured: choose its repository first",
     "onboarding_incomplete": "The server is not set up yet: finish the first-start wizard (the self-backup and the key copy) before making changes",
     "first_backup_pending": "Both parts of the self-backup must back up successfully first: run the first backup",
+    "verification_active": "A verification of this source is already queued or running",
+    "snapshot_unusable": "The snapshot cannot be verified: it is not this source's, or it is partial or forgotten",
     "openWizard": "Open the wizard",
     "snapshot_not_restorable": "The console cannot restore this snapshot"
   },
@@ -180,7 +183,13 @@
     "revokeTitle": "Revoke {{host}}?",
     "scripts": "Scripts",
     "secrets": "Secrets",
-    "sources": "Sources"
+    "sources": "Sources",
+    "certificateNotAfter": "Certificate valid until",
+    "certificateDaysLeft": "Days left",
+    "certificateState": "Certificate state",
+    "certificateRenewalIssued": "A new certificate was issued <when/>; the agent has not confirmed it yet",
+    "certificateExpiringHint": "The agent has not renewed its certificate. What to check on the host is in the operator guide, section “Agent certificates”.",
+    "certificateExpiredHint": "The certificate has expired; the agent cannot connect. Enroll it again (operator guide, section “Agent certificates”); revoke the built-in agent and it enrolls again by itself."
   },
   "tokens": {
     "caFingerprint": "CA fingerprint of the server",
@@ -335,6 +344,12 @@
     "RunKind": {
       "backup": "Backup",
       "restore": "Restore"
+    },
+    "AgentCertificateState": {
+      "ok": "ok",
+      "renewal_due": "renewal due",
+      "expiring": "expires soon",
+      "expired": "expired"
     }
   },
   "install": {

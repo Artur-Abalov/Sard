@@ -12,6 +12,7 @@ import { selfBackupHandlers } from './api/selfBackup'
 import { sessionHandlers } from './api/session'
 import { sourceHandlers } from './api/sources'
 import { tokenHandlers } from './api/tokens'
+import { verificationHandlers } from './api/verifications'
 import { status } from './fixtures'
 import { http } from './http'
 import { originGuardHandlers } from './origin'
@@ -33,4 +34,5 @@ export const handlers = [
   ...runHandlers,
   ...restoreHandlers,
   ...selfBackupHandlers,
+  ...verificationHandlers,
 ]

@@ -22,6 +22,123 @@
     "description" : "The first-start wizard"
   } ],
   "paths" : {
+    "/api/v1/verification-schedule" : {
+      "get" : {
+        "tags" : [ "verifications" ],
+        "summary" : "The daily verification cycle of the installation",
+        "operationId" : "getVerificationSchedule",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/VerificationSchedule"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put" : {
+        "tags" : [ "verifications" ],
+        "summary" : "Set the daily verification cycle",
+        "description" : "The change counts from now: a moment it skipped is not fired. 422 names cron or timezone.",
+        "operationId" : "setVerificationSchedule",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/VerificationScheduleInput"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/VerificationSchedule"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "The onboarding is not complete (onboarding_incomplete); or the onboarding is not complete",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sources/{sourceId}" : {
       "get" : {
         "tags" : [ "sources" ],
@@ -248,6 +365,161 @@
           },
           "503" : {
             "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{sourceId}/verification" : {
+      "get" : {
+        "tags" : [ "verifications" ],
+        "summary" : "The source's restore verification",
+        "operationId" : "getSourceVerification",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SourceVerificationState"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put" : {
+        "tags" : [ "verifications" ],
+        "summary" : "Turn the source's verification on or off",
+        "description" : "Off: the cycle makes no job for it; an open job runs to its end.",
+        "operationId" : "setSourceVerification",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SourceVerificationInput"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SourceVerificationState"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "The onboarding is not complete (onboarding_incomplete); or the onboarding is not complete",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -732,6 +1004,196 @@
           },
           "409" : {
             "description" : "The onboarding is not complete (onboarding_incomplete); or the onboarding is not complete",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{sourceId}/verifications" : {
+      "get" : {
+        "tags" : [ "verifications" ],
+        "summary" : "The source's verifications",
+        "description" : "Newest first.",
+        "operationId" : "listSourceVerifications",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "cursor",
+          "in" : "query",
+          "description" : "nextCursor of the previous page; omit for the first page",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "description" : "Page size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 50,
+            "maximum" : 200,
+            "minimum" : 1
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/VerificationPage"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "verifications" ],
+        "summary" : "Verify now",
+        "description" : "Queues a job for the given snapshot or the source's latest whole one; it waits for a fitting verifier until the cycle's next moment. 409 verification_active while the source has an open job; 422 snapshot_unusable for a snapshot that is not the source's or not whole.",
+        "operationId" : "verifyNow",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/VerifyNowInput"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "The source has an open verification job (verification_active); nothing was queued; or the onboarding is not complete",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "anyOf" : [ {
+                    "$ref" : "#/components/schemas/Problem"
+                  }, {
+                    "$ref" : "#/components/schemas/Problem"
+                  } ]
+                }
+              }
+            }
+          },
+          "202" : {
+            "description" : "Accepted",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/VerificationJob"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -1886,6 +2348,126 @@
           },
           "403" : {
             "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/verifiers" : {
+      "get" : {
+        "tags" : [ "verifications" ],
+        "summary" : "The installation's verifiers",
+        "description" : "With sourceId, why each one would not take a job of the source's latest whole snapshot.",
+        "operationId" : "listVerifiers",
+        "parameters" : [ {
+          "name" : "sourceId",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/Verifier"
+                  }
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/verifications/{verificationId}" : {
+      "get" : {
+        "tags" : [ "verifications" ],
+        "summary" : "A verification with its stages",
+        "operationId" : "getVerification",
+        "parameters" : [ {
+          "name" : "verificationId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "Not found in the session's tenant",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Verification"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
             "content" : {
               "application/problem+json" : {
                 "schema" : {
@@ -3233,63 +3815,26 @@
   },
   "components" : {
     "schemas" : {
-      "SourceInput" : {
+      "VerificationScheduleInput" : {
         "type" : "object",
-        "description" : "What to back up, where from and where to",
+        "description" : "The daily verification cycle of the installation",
         "properties" : {
-          "name" : {
-            "type" : "string"
-          },
-          "agentId" : {
+          "cron" : {
             "type" : "string",
-            "format" : "uuid"
+            "description" : "Standard cron: five fields",
+            "example" : "30 4 * * *"
           },
-          "plugin" : {
+          "timezone" : {
             "type" : "string",
-            "description" : "A plugin the agent offers"
-          },
-          "repositoryName" : {
-            "type" : "string",
-            "description" : "A repository from the agent's last Register; its snapshots live there"
-          },
-          "config" : {
-            "type" : "object",
-            "additionalProperties" : { },
-            "description" : "Plugin config, valid against the plugin's configSchema; secrets by name only"
+            "description" : "An IANA time zone",
+            "example" : "Europe/Moscow"
           }
         },
-        "required" : [ "agentId", "config", "name", "plugin", "repositoryName" ]
+        "required" : [ "cron", "timezone" ]
       },
       "ErrorCode" : {
         "type" : "string",
-        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "agent_role_mismatch", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password", "onboarding_incomplete", "first_backup_pending", "snapshot_not_restorable" ]
-      },
-      "Problem" : {
-        "type" : "object",
-        "description" : "An error (RFC 9457)",
-        "properties" : {
-          "type" : {
-            "type" : "string",
-            "description" : "URI reference identifying the problem type; about:blank when the status says it all"
-          },
-          "title" : {
-            "type" : "string",
-            "description" : "Short summary for people; not for matching, use code"
-          },
-          "status" : {
-            "type" : "integer",
-            "format" : "int32",
-            "description" : "HTTP status code"
-          },
-          "detail" : {
-            "type" : [ "string", "null" ],
-            "description" : "Explanation of this occurrence; null when the title says it all"
-          },
-          "code" : {
-            "$ref" : "#/components/schemas/ErrorCode"
-          }
-        },
-        "required" : [ "code", "detail", "status", "title", "type" ]
+        "enum" : [ "unauthenticated", "too_many_attempts", "not_found", "validation_failed", "unknown_agent", "unknown_plugin", "unknown_repository", "invalid_config", "run_active", "token_used", "token_expired", "not_implemented", "origin_rejected", "agent_revoked", "agent_role_mismatch", "unavailable", "self_agent_confirmation_required", "system_source", "self_agent_missing", "repository_not_initialized", "local_storage_unconfirmed", "self_backup_not_configured", "setup_required", "setup_completed", "ca_step_pending", "wrong_password", "onboarding_incomplete", "first_backup_pending", "snapshot_not_restorable", "verification_active", "snapshot_unusable" ]
       },
       "FieldError" : {
         "type" : "object",
@@ -3340,6 +3885,78 @@
         },
         "required" : [ "code", "detail", "errors", "status", "title", "type" ]
       },
+      "VerificationSchedule" : {
+        "type" : "object",
+        "description" : "The daily verification cycle of the installation",
+        "properties" : {
+          "cron" : {
+            "type" : "string"
+          },
+          "timezone" : {
+            "type" : "string"
+          },
+          "nextRunAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "The cycle's next moment"
+          }
+        },
+        "required" : [ "cron", "nextRunAt", "timezone" ]
+      },
+      "SourceInput" : {
+        "type" : "object",
+        "description" : "What to back up, where from and where to",
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "agentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "plugin" : {
+            "type" : "string",
+            "description" : "A plugin the agent offers"
+          },
+          "repositoryName" : {
+            "type" : "string",
+            "description" : "A repository from the agent's last Register; its snapshots live there"
+          },
+          "config" : {
+            "type" : "object",
+            "additionalProperties" : { },
+            "description" : "Plugin config, valid against the plugin's configSchema; secrets by name only"
+          }
+        },
+        "required" : [ "agentId", "config", "name", "plugin", "repositoryName" ]
+      },
+      "Problem" : {
+        "type" : "object",
+        "description" : "An error (RFC 9457)",
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "description" : "URI reference identifying the problem type; about:blank when the status says it all"
+          },
+          "title" : {
+            "type" : "string",
+            "description" : "Short summary for people; not for matching, use code"
+          },
+          "status" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "HTTP status code"
+          },
+          "detail" : {
+            "type" : [ "string", "null" ],
+            "description" : "Explanation of this occurrence; null when the title says it all"
+          },
+          "code" : {
+            "$ref" : "#/components/schemas/ErrorCode"
+          }
+        },
+        "required" : [ "code", "detail", "status", "title", "type" ]
+      },
       "Source" : {
         "type" : "object",
         "description" : "A backup source",
@@ -3382,13 +3999,161 @@
             }, {
               "type" : "null"
             } ]
+          },
+          "verificationEnabled" : {
+            "type" : "boolean",
+            "description" : "Whether the daily cycle verifies its latest whole snapshot (V4)"
+          },
+          "verificationStatus" : {
+            "description" : "The last verification's status; no_verifier while the installation has no verifier",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/VerificationOutcome"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "lastVerifiedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "The last successful restore verification; null if never"
+          },
+          "lastVerifiedLevel" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32",
+            "description" : "The level the last successful verification reached"
           }
         },
-        "required" : [ "agentId", "config", "createdAt", "id", "name", "plugin", "repositoryName", "systemRole", "updatedAt" ]
+        "required" : [ "agentId", "config", "createdAt", "id", "lastVerifiedAt", "lastVerifiedLevel", "name", "plugin", "repositoryName", "systemRole", "updatedAt", "verificationEnabled", "verificationStatus" ]
       },
       "SystemSourceRole" : {
         "type" : "string",
         "enum" : [ "self_database", "self_keys" ]
+      },
+      "VerificationOutcome" : {
+        "type" : "string",
+        "description" : "passed; failed (the backup is bad); cannot_verify (the verifier's environment could not check it); infrastructure_failure (three attempts without a verdict); no_verifier (no verifier fitted)",
+        "enum" : [ "passed", "failed", "cannot_verify", "infrastructure_failure", "no_verifier" ]
+      },
+      "SourceVerificationInput" : {
+        "type" : "object",
+        "description" : "Whether the source is verified",
+        "properties" : {
+          "enabled" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "enabled" ]
+      },
+      "SourceVerificationState" : {
+        "type" : "object",
+        "description" : "A source's restore verification",
+        "properties" : {
+          "enabled" : {
+            "type" : "boolean",
+            "description" : "Whether the daily cycle verifies the source's latest whole snapshot"
+          },
+          "status" : {
+            "description" : "The last verification's status; no_verifier while the installation has no verifier",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/VerificationOutcome"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "lastVerifiedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "The last successful verification; null if never"
+          },
+          "lastVerifiedLevel" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32",
+            "description" : "The level of the last successful verification"
+          },
+          "staleSince" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "Not verified successfully since this moment, for longer than the configured days"
+          },
+          "openJob" : {
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/VerificationJob"
+            }, {
+              "type" : "null"
+            } ]
+          }
+        },
+        "required" : [ "enabled", "lastVerifiedAt", "lastVerifiedLevel", "openJob", "staleSince", "status" ]
+      },
+      "VerificationJob" : {
+        "type" : "object",
+        "description" : "A verification job that is queued or running",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/VerificationJobStatus"
+          },
+          "reason" : {
+            "$ref" : "#/components/schemas/VerificationJobReason"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "deadline" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "A job no verifier takes until then ends as no_verifier"
+          },
+          "failedAttempts" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Attempts in a row without a verdict; the third is an infrastructure failure"
+          },
+          "unsuitable" : {
+            "type" : [ "array", "null" ],
+            "description" : "Why each verifier did not fit at the last try; null before the first",
+            "items" : {
+              "$ref" : "#/components/schemas/VerifierMisfit"
+            }
+          }
+        },
+        "required" : [ "createdAt", "deadline", "failedAttempts", "id", "reason", "status", "unsuitable" ]
+      },
+      "VerificationJobReason" : {
+        "type" : "string",
+        "enum" : [ "cycle", "manual" ]
+      },
+      "VerificationJobStatus" : {
+        "type" : "string",
+        "enum" : [ "queued", "running" ]
+      },
+      "VerifierMisfit" : {
+        "type" : "object",
+        "description" : "A verifier that did not fit, with every reason",
+        "properties" : {
+          "agentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "hostname" : {
+            "type" : "string"
+          },
+          "reasons" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/VerifierReason"
+            }
+          }
+        },
+        "required" : [ "agentId", "hostname", "reasons" ]
+      },
+      "VerifierReason" : {
+        "type" : "string",
+        "enum" : [ "offline", "outdated", "no_key", "no_plugin", "same_host", "low_space", "busy", "space_unknown" ]
       },
       "ScheduleInput" : {
         "type" : "object",
@@ -3735,6 +4500,17 @@
       "SelfBackupWarningCode" : {
         "type" : "string",
         "enum" : [ "agent_replaced", "overdue", "failing", "schedule_disabled", "local_storage", "keys_unconfirmed" ]
+      },
+      "VerifyNowInput" : {
+        "type" : "object",
+        "description" : "What to verify now",
+        "properties" : {
+          "snapshotId" : {
+            "type" : [ "string", "null" ],
+            "format" : "uuid",
+            "description" : "A snapshot of the source (Snapshot.id); null: its latest whole one"
+          }
+        }
       },
       "RestoreRequest" : {
         "type" : "object",
@@ -4388,6 +5164,40 @@
         "type" : "string",
         "enum" : [ "active", "used", "expired", "revoked" ]
       },
+      "AgentCertificate" : {
+        "type" : "object",
+        "description" : "The current certificate of an agent; no key, no serial, nothing but the dates",
+        "properties" : {
+          "notBefore" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "When the certificate became valid: its notBefore"
+          },
+          "notAfter" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "daysLeft" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Whole days to notAfter, rounded down, never negative"
+          },
+          "state" : {
+            "$ref" : "#/components/schemas/AgentCertificateState",
+            "description" : "expired: nothing is left. expiring: at most 30/365 of its lifetime is left. renewal_due: two thirds of its lifetime have passed and no confirmed new certificate exists. ok: otherwise"
+          },
+          "renewalIssuedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "When a renewal was issued that the agent has not confirmed; null if none"
+          }
+        },
+        "required" : [ "daysLeft", "notAfter", "notBefore", "renewalIssuedAt", "state" ]
+      },
+      "AgentCertificateState" : {
+        "type" : "string",
+        "enum" : [ "ok", "renewal_due", "expiring", "expired" ]
+      },
       "AgentDetails" : {
         "type" : "object",
         "description" : "An agent with what it reported in its last Register",
@@ -4474,9 +5284,17 @@
           "restoreDir" : {
             "type" : [ "string", "null" ],
             "description" : "The directory the host's operator allows restores into (restore.dir of the agent); the console cannot change it. null for an agent that cannot restore from the console"
+          },
+          "certificate" : {
+            "description" : "The agent's current certificate: the last one that is not revoked, not superseded and confirmed (a renewal the agent has not confirmed does not count); null for a revoked agent and for an agent without one",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/AgentCertificate"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "agentVersion", "arch", "builtin", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "plugins", "protocolVersion", "registeredAt", "repositories", "restoreDir", "revokedAt", "role", "scriptNames", "secretNames", "status" ]
+        "required" : [ "agentVersion", "arch", "builtin", "certificate", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "plugins", "protocolVersion", "registeredAt", "repositories", "restoreDir", "revokedAt", "role", "scriptNames", "secretNames", "status" ]
       },
       "AgentPlugin" : {
         "type" : "object",
@@ -4529,6 +5347,222 @@
         "type" : "string",
         "enum" : [ "online", "offline" ]
       },
+      "SandboxRuntime" : {
+        "type" : "string",
+        "enum" : [ "none", "docker", "podman" ]
+      },
+      "Verifier" : {
+        "type" : "object",
+        "description" : "A verifier agent, what it reported and whether it fits",
+        "properties" : {
+          "agentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "hostname" : {
+            "type" : "string"
+          },
+          "online" : {
+            "type" : "boolean"
+          },
+          "reported" : {
+            "type" : "boolean",
+            "description" : "It reported a verifier status: V4 or later"
+          },
+          "freeBytes" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64",
+            "description" : "Free bytes where it restores; null when unknown"
+          },
+          "sandbox" : {
+            "description" : "Null when unknown",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/SandboxRuntime"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "repositoryIds" : {
+            "type" : "array",
+            "description" : "restic ids of the repositories it holds a key to",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "verifyPlugins" : {
+            "type" : "array",
+            "description" : "Plugins that verify",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "busy" : {
+            "type" : "boolean"
+          },
+          "recentVerifications" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Verifications handed to it in the last day"
+          },
+          "reasons" : {
+            "type" : [ "array", "null" ],
+            "description" : "With sourceId: why it would not take the source's job now (empty: it would)",
+            "items" : {
+              "$ref" : "#/components/schemas/VerifierReason"
+            }
+          }
+        },
+        "required" : [ "agentId", "busy", "freeBytes", "hostname", "online", "reasons", "recentVerifications", "reported", "repositoryIds", "sandbox", "verifyPlugins" ]
+      },
+      "FingerprintMismatch" : {
+        "type" : "object",
+        "description" : "A fact of the fingerprint that differs between the source and the restored copy",
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "expected" : {
+            "type" : "string"
+          },
+          "actual" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "actual", "expected", "name" ]
+      },
+      "Verification" : {
+        "type" : "object",
+        "description" : "One restore verification of a snapshot",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "jobId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "sourceId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "snapshotId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "The snapshot verified (Snapshot.id)"
+          },
+          "resticSnapshotId" : {
+            "type" : "string",
+            "description" : "restic's id of that snapshot"
+          },
+          "stepId" : {
+            "type" : [ "string", "null" ],
+            "format" : "uuid",
+            "description" : "The VERIFY step of the attempt that ended the job; null for no_verifier"
+          },
+          "verifierAgentId" : {
+            "type" : [ "string", "null" ],
+            "format" : "uuid"
+          },
+          "keyHolders" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Live agents holding a key to the repository then; 1 means a single host (ADR 0008)"
+          },
+          "status" : {
+            "$ref" : "#/components/schemas/VerificationOutcome"
+          },
+          "level" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Highest level reached (V-D2): 1 storage integrity, 2 extraction, 3 the application starts, 4 the data matches the fingerprint, 5 the restore time is known; 0 when none"
+          },
+          "reason" : {
+            "type" : [ "string", "null" ],
+            "description" : "Why it did not pass, in words; null when it passed"
+          },
+          "stages" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/VerificationStage"
+            }
+          },
+          "mismatches" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FingerprintMismatch"
+            }
+          },
+          "unsuitable" : {
+            "type" : [ "array", "null" ],
+            "description" : "no_verifier: why each verifier did not fit",
+            "items" : {
+              "$ref" : "#/components/schemas/VerifierMisfit"
+            }
+          },
+          "restoreDurationMs" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64",
+            "description" : "The actual time to restore (level 5)"
+          },
+          "recovered" : {
+            "type" : "boolean",
+            "description" : "A pass right after a failure"
+          },
+          "verifiedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "id", "jobId", "keyHolders", "level", "mismatches", "reason", "recovered", "resticSnapshotId", "restoreDurationMs", "snapshotId", "sourceId", "stages", "status", "stepId", "unsuitable", "verifiedAt", "verifierAgentId" ]
+      },
+      "VerificationStage" : {
+        "type" : "object",
+        "description" : "A stage of the verification pipeline and its evidence",
+        "properties" : {
+          "level" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Level the stage proves; 0 for preparation and cleanup"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "status" : {
+            "description" : "Null for a status this server does not know",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/VerificationStageStatus"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "startedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "finishedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "exitCode" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "output" : {
+            "type" : "string",
+            "description" : "Tail of the command's output, redacted on the verifier"
+          },
+          "imageDigest" : {
+            "type" : "string",
+            "description" : "Digest of the sandbox image; empty without one"
+          }
+        },
+        "required" : [ "exitCode", "finishedAt", "imageDigest", "level", "name", "output", "startedAt", "status" ]
+      },
+      "VerificationStageStatus" : {
+        "type" : "string",
+        "enum" : [ "passed", "failed", "cannot_run", "not_applicable" ]
+      },
       "StatusResponse" : {
         "type" : "object",
         "properties" : {
@@ -4552,6 +5586,23 @@
             "type" : "array",
             "items" : {
               "$ref" : "#/components/schemas/Source"
+            }
+          },
+          "nextCursor" : {
+            "type" : [ "string", "null" ],
+            "description" : "Pass as cursor to get the next page; null on the last page"
+          }
+        },
+        "required" : [ "items", "nextCursor" ]
+      },
+      "VerificationPage" : {
+        "type" : "object",
+        "description" : "A page of verifications",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Verification"
             }
           },
           "nextCursor" : {
@@ -5356,9 +6407,17 @@
           "role" : {
             "$ref" : "#/components/schemas/AgentRole",
             "description" : "source runs backups, restores and scripts; verifier only verifies restores. Chosen by the token, never changes"
+          },
+          "certificate" : {
+            "description" : "The agent's current certificate: the last one that is not revoked, not superseded and confirmed (a renewal the agent has not confirmed does not count); null for a revoked agent and for an agent without one",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/AgentCertificate"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "agentVersion", "arch", "builtin", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "registeredAt", "revokedAt", "role", "status" ]
+        "required" : [ "agentVersion", "arch", "builtin", "certificate", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "registeredAt", "revokedAt", "role", "status" ]
       },
       "InstallFormat" : {
         "type" : "string",

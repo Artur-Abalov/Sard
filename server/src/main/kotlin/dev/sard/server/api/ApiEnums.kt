@@ -21,6 +21,22 @@ enum class AgentStatus {
     OFFLINE,
 }
 
+/** How far an agent certificate is from the end of its lifetime, by the server's clock (C1 phase 3, П33). */
+@Schema(enumAsRef = true)
+enum class AgentCertificateState {
+    @JsonProperty("ok")
+    OK,
+
+    @JsonProperty("renewal_due")
+    RENEWAL_DUE,
+
+    @JsonProperty("expiring")
+    EXPIRING,
+
+    @JsonProperty("expired")
+    EXPIRED,
+}
+
 /** What an agent may do, fixed when its token is issued (V1): a source backs up, a verifier verifies. */
 @Schema(enumAsRef = true)
 enum class AgentRole {

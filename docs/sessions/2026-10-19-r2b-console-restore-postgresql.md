@@ -19,7 +19,7 @@
   `executor.state_dir/pg-restore` (ВК27) и разбор при старте (`CleanDatabases`, `Settle`,
   `Abandon`); `restore.postgresql_lock_share` в конфиге (`agent.yaml`, `agent.d`); 13 причин
   в `refusal`; подсказка check и для `PG_CLIENT_MISSING`; `restic.Repository.Dump`.
-- Сервер: реестр `RestorePlugins` (ВК32a, закрывает OQ-220), postgresql в `RestoreSupport`,
+- Сервер: реестр `RestorePlugins` (ВК32a, закрывает OQ-234), postgresql в `RestoreSupport`,
   умолчания из копии конфига бэкапа, новое имя базы до 63 байт, предупреждения
   `pg_owners_not_restored`, `pg_same_cluster` (ВК32b), строка уведомления «База: …, таблиц: N».
   `make openapi` перегенерировал `openapi.json` и `schema.d.ts` (два кода предупреждений).
@@ -31,7 +31,7 @@
   `PG_SERVER_TOO_OLD`; сбой `pg_restore` удаляет базу) — компилируется, нужны образы
   `make e2e-images` и `make e2e-pg-agent-images`.
 - Документация: `docs/plugins/postgresql.md` («Восстановление из консоли»),
-  `docs/operations/agent-host-setup.md`, ADR 0065, OQ-220.
+  `docs/operations/agent-host-setup.md`, ADR 0065, OQ-234.
 
 ## Находка: право на `pg_control_system()`
 На PostgreSQL 14 (14.24), 16 (16.15) и 18 (18.6) `EXECUTE` на `pg_control_system()` выдано
@@ -78,7 +78,7 @@ Ad-hoc тест (не в репозитории, зависит от класт�
 - P3. Сервер говорит, куда идёт восстановление: `RestoreTarget.restoreDir` — null для
   плагина, который восстанавливает не в каталог (запись `RestorePlugin.intoDirectory`).
   `restoresIntoDirectory` из веба удалена, моки обновлены.
-- OQ-228: целевой дизайн — восстановление принадлежит плагину postgresql, SDK даёт
+- OQ-235: целевой дизайн — восстановление принадлежит плагину postgresql, SDK даёт
   возможности хоста; закрывает принятый долг ADR 0065 п. 1.
 - Секрет записи журнала читается так же, как секрет шага (`consolerestore.Password`:
   пустой и NUL — отказ).

@@ -43,6 +43,7 @@ import java.util.UUID
         "sard.agent.stream.check-interval=1h",
         "sard.scheduler.interval=1h",
         "sard.freshness.interval=1h",
+        "sard.verification.interval=1h",
     ],
 )
 @Import(TestcontainersConfiguration::class, RestApiTestConfiguration::class)
@@ -295,6 +296,9 @@ class RestWorld(
             listOf(
                 "notification_deliveries",
                 "overdue_episodes",
+                "verification_stale_episodes",
+                "restore_verifications",
+                "verification_jobs",
                 "schedule_fires",
                 "snapshots",
                 "step_logs",

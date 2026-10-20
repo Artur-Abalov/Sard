@@ -31,6 +31,9 @@ private const val LIST_RUNS =
         "join SourceRecord src on src.id = r.sourceId"
 private val JSON = JsonMapper.builder().build()
 
+/** The run history of REST lists backups; verifications have their own (V4). */
+private const val BACKUPS_ONLY = "r.trigger <> 'verification'"
+
 /**
  * Learns that an agent has a new queued step, once its run is committed; the dispatcher
  * (agents/dispatch, S6a) sends it if the agent is online. Must not throw: the run exists already.
@@ -175,7 +178,9 @@ class Runs(
         limit: Int,
     ): List<RunView> =
         sessions.inTenant(tenantId) { session ->
-            val conditions = filter.conditions() + listOfNotNull(after?.let { PageKey.condition("r.queuedAt", "r.id") })
+            val conditions =
+                listOf(BACKUPS_ONLY) + filter.conditions() +
+                    listOfNotNull(after?.let { PageKey.condition("r.queuedAt", "r.id") })
             val where = hqlWhere(conditions)
             val query =
                 session.createSelectionQuery(
@@ -297,6 +302,7 @@ internal object RunViews {
             runId = record.runId,
             restore = restoreOf(record.output),
             snapshotId = record.snapshotId,
+            verifyTask = VerifyTask.of(record.verifyTask),
         )
 
     fun restoreInfo(json: String): RestoreInfo {

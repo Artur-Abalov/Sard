@@ -21,7 +21,7 @@ private const val BACKUP =
 
 private fun json(text: String): JsonNode = JSON.readTree(text)
 
-/** ВК32a: what the console knows of the restore of each plugin, one entry per plugin (closes OQ-220). */
+/** ВК32a: what the console knows of the restore of each plugin, one entry per plugin (closes OQ-234). */
 @MutFlowTest
 class RestorePluginsTest {
     private val files = assertNotNull(RestorePlugins.of("files"))

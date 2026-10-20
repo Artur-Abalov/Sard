@@ -204,9 +204,10 @@ S3_MARK=$(sudo sed -n 's/^AWS_SECRET_ACCESS_KEY=//p' /etc/sard/secrets/restic-s1
     другой ключ (`openssl genpkey -algorithm ed25519`) с владельцем
     `sard-agent` `0600` → `tls.identity` — `ERROR`, подсказка
     `sudo sard-agent enroll --force`; `server.*` — `SKIP`. Вернуть ключ.
-38. Срок < 30 дней: на стенде с сервером, выдающим короткие сертификаты (или
-    часы ВМ вперёд на срок минус 10 дней при `set-ntp false`) → `tls.expiry`
-    — `WARN`, `expires in`, `automatic renewal is not available yet`.
+38. Остаток не больше 30/365 срока сертификата: на стенде с сервером, выдающим
+    короткие сертификаты (или часы ВМ вперёд на срок минус 10 дней при
+    `set-ntp false`, сертификат на 365 суток) → `tls.expiry` — `WARN`,
+    `expires in`, `has not been renewed`, подсказка `sudo sard-agent status`.
     Вернуть часы.
 39. `sudo systemctl stop sard-agent` → `service.running` — `ERROR`,
     подсказка `sudo systemctl start sard-agent`; `sudo systemctl start sard-agent`.

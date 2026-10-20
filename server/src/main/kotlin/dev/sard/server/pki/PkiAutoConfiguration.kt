@@ -14,6 +14,7 @@ import org.springframework.boot.ssl.SslBundle
 import org.springframework.boot.ssl.SslManagerBundle
 import org.springframework.context.SmartLifecycle
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.DependsOn
 import java.nio.file.Path
 import java.security.KeyStore
 import java.security.SecureRandom
@@ -29,6 +30,9 @@ import javax.net.ssl.KeyManagerFactorySpi
 import javax.net.ssl.ManagerFactoryParameters
 import javax.net.ssl.TrustManagerFactory
 
+/** The bean name of the interval of the agent certificate expiry check. */
+const val AGENT_CERTIFICATE_CHECK_INTERVAL = "agentCertificateCheckInterval"
+
 /** The SSL bundle `spring.grpc.server.ssl.bundle` names. */
 const val GRPC_SSL_BUNDLE = "sard-grpc"
 
@@ -37,6 +41,10 @@ private val log = LoggerFactory.getLogger(PkiAutoConfiguration::class.java)
 /**
  * `sard.pki.*`: where the file CA keeps its key and which names the server certificate carries.
  * [importDir] (SARD_PKI_IMPORT_DIR): a CA to take at the first start, empty means none (ADR 0052).
+ * [agentCertificateValidity] and [agentRenewalMinInterval] (SARD_PKI_AGENT_CERTIFICATE_VALIDITY,
+ * SARD_PKI_AGENT_RENEWAL_MIN_INTERVAL) and [agentCertificateCheckInterval]
+ * (SARD_PKI_AGENT_CERTIFICATE_CHECK_INTERVAL): ISO-8601 durations, text so that [AgentCertificatePolicy] can refuse
+ * an unparsable value with the same message as a too small one (C1, П1, П2 and П35).
  */
 @ConfigurationProperties("sard.pki")
 data class PkiProperties(
@@ -44,6 +52,9 @@ data class PkiProperties(
     val serverNames: List<String>,
     val renewalCheckInterval: Duration = Duration.ofDays(1),
     val importDir: String = "",
+    val agentCertificateValidity: String = AgentCertificatePolicy.DEFAULT_VALIDITY,
+    val agentRenewalMinInterval: String = AgentCertificatePolicy.DEFAULT_INTERVAL,
+    val agentCertificateCheckInterval: String = AgentCertificatePolicy.DEFAULT_CHECK_INTERVAL,
 )
 
 /**
@@ -53,10 +64,28 @@ data class PkiProperties(
 @AutoConfiguration
 @EnableConfigurationProperties(PkiProperties::class)
 class PkiAutoConfiguration {
+    /** Refuses a setting the server cannot run with, before the CA directory is touched (C1, П1 and П2). */
+    @Bean
+    fun agentCertificatePolicy(properties: PkiProperties) =
+        AgentCertificatePolicy.parse(
+            properties.agentCertificateValidity,
+            properties.agentRenewalMinInterval,
+            properties.agentCertificateCheckInterval,
+        )
+
+    /**
+     * How often the expiry of the agents' certificates is checked (C1 phase 3, П35), as a plain duration named by the
+     * bean, so that the slice that runs the check does not need to know the policy or this package.
+     */
+    @Bean(AGENT_CERTIFICATE_CHECK_INTERVAL)
+    fun agentCertificateCheckInterval(policy: AgentCertificatePolicy): Duration = policy.checkInterval
+
     @Bean
     @ConditionalOnMissingBean
+    @DependsOn("agentCertificatePolicy")
     fun certificateAuthority(
         properties: PkiProperties,
+        clock: ObjectProvider<Clock>,
         preconditions: ObjectProvider<CaStartPrecondition>,
         ledger: CaLedger,
         replacements: ObjectProvider<CaReplacementListener>,
@@ -72,7 +101,8 @@ class PkiAutoConfiguration {
                 replacements.orderedStream().forEach { it.replaced(previous, current) }
             }
         val random = SecureRandom()
-        return FileCertificateAuthority(properties.dir, names, Clock.systemUTC(), random, ledger, importDir, listener)
+        val time = clock.getIfAvailable { Clock.systemUTC() }
+        return FileCertificateAuthority(properties.dir, names, time, random, ledger, importDir, listener)
     }
 
     /** Server key from the CA; client certificates, when presented, must chain to it. */

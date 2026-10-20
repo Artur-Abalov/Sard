@@ -70,6 +70,10 @@ func (a *Agent) RegisterRequest(ctx context.Context) *agentv1.RegisterRequest {
 		RestoreDir:      a.RestoreDir,
 		SecretNames:     a.Local.SecretNames(),
 		ScriptNames:     a.Local.ScriptNames(),
+		// Free space and sandbox are unknown until the verification executor
+		// measures them (V5); an empty status still tells the server this agent
+		// speaks the verification contract.
+		Verifier: &agentv1.VerifierStatus{},
 	}
 	if a.Announced != nil {
 		a.Announced(req.Repositories)

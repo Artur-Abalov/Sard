@@ -249,10 +249,12 @@ data class StepView(
     val backup: BackupResult? = null,
     /** The restore output the agent sent, whatever the step's status (R2); null if none. */
     val restore: RestoreResult? = null,
-    /** The snapshot a restore step restores: restic's full id; null for any other step. */
+    /** The snapshot a restore step restores or a VERIFY step checks: restic's full id; null for any other step. */
     val snapshotId: String? = null,
     /** The run the step belongs to; the agent tags its snapshot with it (FXs Д5). */
     val runId: UUID,
+    /** What a VERIFY step carries besides its snapshot (V4); null for any other step. */
+    val verifyTask: VerifyTask? = null,
 ) {
     override fun toString() = "StepView(id=$id, action=$action, status=$status, agentId=$agentId)"
 }

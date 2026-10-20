@@ -1,4 +1,5 @@
 # seconds<TAB>e2e class, from the JUnit reports of CI run 38455685808 (6f45648); refresh with scripts/e2e-shard.sh times --tsv
+436	dev.sard.e2e.CertificateLifetimesTest
 352	dev.sard.e2e.StreamBreakTest
 285	dev.sard.e2e.PostgresqlSourceTest
 284	dev.sard.e2e.StorageOutageTest

@@ -10,12 +10,16 @@ import org.hibernate.Session
 import java.time.Instant
 import java.util.UUID
 
+// Only a backup counts: neither a restore (R2) nor a verification run (V4) is one.
+private const val BACKUP = "and r.kind = 'backup' and r.trigger <> 'verification'"
 private const val LAST_AT =
-    "select max(r.finishedAt) from RunRecord r where r.sourceId = :source and r.kind = 'backup' and r.status = :status"
+    "select max(r.finishedAt) from RunRecord r where r.sourceId = :source and r.status = :status $BACKUP"
 private const val LAST_RUN =
-    "from RunRecord r where r.sourceId = :source and r.kind = 'backup' and r.finishedAt is not null order by r.finishedAt desc, r.id desc"
+    "from RunRecord r where r.sourceId = :source and r.finishedAt is not null $BACKUP " +
+        "order by r.finishedAt desc, r.id desc"
 private const val SUCCEEDED_SINCE =
-    "select count(r) from RunRecord r where r.sourceId = :source and r.kind = 'backup' and r.status = :status and r.queuedAt >= :since"
+    "select count(r) from RunRecord r where r.sourceId = :source and r.status = :status and r.queuedAt >= :since " +
+        BACKUP
 private const val SCHEDULE_ON = "select s.enabled from ScheduleRecord s where s.sourceId = :source"
 private const val OVERDUE_SINCE =
     "select e.deadline from OverdueEpisodeRecord e where e.sourceId = :source and e.closedAt is null"

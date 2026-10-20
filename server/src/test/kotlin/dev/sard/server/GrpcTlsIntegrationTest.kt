@@ -11,6 +11,7 @@ import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.FakeCaLedger
 import dev.sard.server.pki.FileCertificateAuthority
 import dev.sard.server.pki.Pem
+import dev.sard.server.pki.YEAR
 import dev.sard.server.role.AgentRole
 import io.grpc.ChannelCredentials
 import io.grpc.Grpc
@@ -73,7 +74,7 @@ class GrpcTlsIntegrationTest(
         val signer = JcaContentSignerBuilder("SHA256withECDSA").build(keys.private)
         val csr = JcaPKCS10CertificationRequestBuilder(X500Name("CN=test"), keys.public).build(signer).encoded
         val identity = AgentIdentity(UUID.randomUUID(), UUID.randomUUID())
-        val issued = issuer.issueAgentCertificate(csr, identity, AgentRole.SOURCE)
+        val issued = issuer.issueAgentCertificate(csr, identity, AgentRole.SOURCE, YEAR)
         return trusting()
             .keyManager(issued.chainPem.byteInputStream(), Pem.privateKey(keys.private).byteInputStream())
             .build()

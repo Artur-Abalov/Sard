@@ -161,6 +161,31 @@ class ApiContractIntegrationTest(
         assertTrue("agent_role_mismatch" in enumValues("ErrorCode"))
     }
 
+    /** C1 phase 3, П33: the dates and the state of the current certificate, nothing else. */
+    @Test
+    fun `Схема сертификата агента содержит ровно пять полей`() {
+        val fields = setOf("notBefore", "notAfter", "daysLeft", "state", "renewalIssuedAt")
+        val certificate = schema("AgentCertificate")
+
+        assertEquals(fields, certificate.path("properties").propertyNames().toSet())
+        assertEquals(fields, certificate.path("required").strings().toSet())
+        assertTrue(
+            "null" in
+                certificate
+                    .path("properties")
+                    .path("renewalIssuedAt")
+                    .path("type")
+                    .strings(),
+        )
+        assertEquals(listOf("ok", "renewal_due", "expiring", "expired"), enumValues("AgentCertificateState"))
+        for (name in listOf("AgentSummary", "AgentDetails")) {
+            assertTrue("certificate" in schema(name).path("required").strings(), name)
+            val property = schema(name).path("properties").path("certificate")
+            assertTrue("\"null\"" in property.toString(), "$name: $property")
+            assertTrue("AgentCertificate\"" in property.toString(), "$name: $property")
+        }
+    }
+
     @Test
     fun `step phase, log level and action are the proto values`() {
         assertEquals(protoValues(ProtoStepPhase.entries.toTypedArray()), enumValues("StepPhase"))
@@ -343,42 +368,7 @@ class ApiContractIntegrationTest(
     @Test
     fun `no operation of the contract answers 501 not_implemented`() {
         val id = "0192f7a0-0000-7000-8000-000000000001"
-        val source = """{"name":"n","agentId":"$id","plugin":"files","repositoryName":"r","config":{}}"""
-        val schedule = """{"cron":"* * * * *","timezone":"UTC","enabled":true}"""
-        val calls =
-            listOf(
-                Triple("GET", "/api/v1/overview", null),
-                Triple("GET", "/api/v1/ca", null),
-                Triple("GET", "/api/v1/agents?status=online", null),
-                Triple("GET", "/api/v1/agents/{agentId}", null),
-                Triple("GET", "/api/v1/agents/{agentId}/upgrade", null),
-                Triple("GET", "/api/v1/agent-install", null),
-                Triple("POST", "/api/v1/agents/{agentId}/revoke", null),
-                Triple("POST", "/api/v1/enrollment-tokens", "{}"),
-                Triple("GET", "/api/v1/enrollment-tokens?status=active", null),
-                Triple("GET", "/api/v1/enrollment-tokens/{tokenId}", null),
-                Triple("POST", "/api/v1/enrollment-tokens/{tokenId}/revoke", null),
-                Triple("GET", "/api/v1/sources", null),
-                Triple("POST", "/api/v1/sources", source),
-                Triple("GET", "/api/v1/sources/{sourceId}", null),
-                Triple("PUT", "/api/v1/sources/{sourceId}", source),
-                Triple("DELETE", "/api/v1/sources/{sourceId}", null),
-                Triple("POST", "/api/v1/sources/{sourceId}/runs", null),
-                Triple("GET", "/api/v1/sources/{sourceId}/snapshots", null),
-                Triple("GET", "/api/v1/sources/{sourceId}/schedule", null),
-                Triple("PUT", "/api/v1/sources/{sourceId}/schedule", schedule),
-                Triple("GET", "/api/v1/sources/{sourceId}/schedule/fires", null),
-                Triple("GET", "/api/v1/schedule-preview?cron=0%202%20*%20*%20*&timezone=UTC", null),
-                Triple("GET", "/api/v1/runs?status=queued&status=failed", null),
-                Triple("GET", "/api/v1/runs/{runId}", null),
-                Triple("GET", "/api/v1/runs/{runId}/steps/{stepId}/logs", null),
-                Triple("GET", "/api/v1/self-backup", null),
-                Triple("PUT", "/api/v1/self-backup/repository", """{"repositoryName":"r"}"""),
-                Triple("POST", "/api/v1/self-backup/runs", null),
-                Triple("POST", "/api/v1/self-backup/keys-confirmation", """{"copiedOutsideServer":true}"""),
-                Triple("GET", "/api/v1/self-backup/repository-command?storage=local", null),
-                Triple("GET", "/api/v1/self-backup/recovery-card", null),
-            ) + restoreCalls(id)
+        val calls = contractCalls(id)
         val implemented =
             setOf(
                 "POST /api/v1/session",
@@ -398,6 +388,54 @@ class ApiContractIntegrationTest(
             assertTrue(response.statusCode() != 501, "$method $path: ${response.body()}")
             assertTrue(!response.body().contains("not_implemented"), "$method $path: ${response.body()}")
         }
+    }
+
+    /** One call of every operation but the session's and the wizard's, with a body where it needs one. */
+    private fun contractCalls(id: String): List<Triple<String, String, String?>> {
+        val source = """{"name":"n","agentId":"$id","plugin":"files","repositoryName":"r","config":{}}"""
+        val schedule = """{"cron":"* * * * *","timezone":"UTC","enabled":true}"""
+        return listOf(
+            Triple("GET", "/api/v1/overview", null),
+            Triple("GET", "/api/v1/ca", null),
+            Triple("GET", "/api/v1/agents?status=online", null),
+            Triple("GET", "/api/v1/agents/{agentId}", null),
+            Triple("GET", "/api/v1/agents/{agentId}/upgrade", null),
+            Triple("GET", "/api/v1/agent-install", null),
+            Triple("POST", "/api/v1/agents/{agentId}/revoke", null),
+            Triple("POST", "/api/v1/enrollment-tokens", "{}"),
+            Triple("GET", "/api/v1/enrollment-tokens?status=active", null),
+            Triple("GET", "/api/v1/enrollment-tokens/{tokenId}", null),
+            Triple("POST", "/api/v1/enrollment-tokens/{tokenId}/revoke", null),
+            Triple("GET", "/api/v1/sources", null),
+            Triple("POST", "/api/v1/sources", source),
+            Triple("GET", "/api/v1/sources/{sourceId}", null),
+            Triple("PUT", "/api/v1/sources/{sourceId}", source),
+            Triple("DELETE", "/api/v1/sources/{sourceId}", null),
+            Triple("POST", "/api/v1/sources/{sourceId}/runs", null),
+            Triple("GET", "/api/v1/sources/{sourceId}/snapshots", null),
+            Triple("GET", "/api/v1/sources/{sourceId}/schedule", null),
+            Triple("PUT", "/api/v1/sources/{sourceId}/schedule", schedule),
+            Triple("GET", "/api/v1/sources/{sourceId}/schedule/fires", null),
+            Triple("GET", "/api/v1/schedule-preview?cron=0%202%20*%20*%20*&timezone=UTC", null),
+            Triple("GET", "/api/v1/runs?status=queued&status=failed", null),
+            Triple("GET", "/api/v1/runs/{runId}", null),
+            Triple("GET", "/api/v1/runs/{runId}/steps/{stepId}/logs", null),
+            Triple("GET", "/api/v1/self-backup", null),
+            Triple("PUT", "/api/v1/self-backup/repository", """{"repositoryName":"r"}"""),
+            Triple("POST", "/api/v1/self-backup/runs", null),
+            Triple("POST", "/api/v1/self-backup/keys-confirmation", """{"copiedOutsideServer":true}"""),
+            Triple("GET", "/api/v1/self-backup/repository-command?storage=local", null),
+            Triple("GET", "/api/v1/self-backup/recovery-card", null),
+            Triple("GET", "/api/v1/sources/{sourceId}/verification", null),
+            Triple("PUT", "/api/v1/sources/{sourceId}/verification", """{"enabled":true}"""),
+            Triple("GET", "/api/v1/sources/{sourceId}/verifications", null),
+            Triple("POST", "/api/v1/sources/{sourceId}/verifications", "{}"),
+            Triple("GET", "/api/v1/verifications/{verificationId}", null),
+            Triple("GET", "/api/v1/verification-schedule", null),
+            // A wrong cron: the installation's cycle stays as it was for the other tests of this database.
+            Triple("PUT", "/api/v1/verification-schedule", """{"cron":"nope","timezone":"UTC"}"""),
+            Triple("GET", "/api/v1/verifiers?sourceId=$id", null),
+        ) + restoreCalls(id)
     }
 
     private companion object {

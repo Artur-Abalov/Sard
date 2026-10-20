@@ -34,6 +34,27 @@ private const val BUILTIN =
 private const val ROLE =
     "source runs backups, restores and scripts; verifier only verifies restores. Chosen by the token, never changes"
 
+private const val CERTIFICATE =
+    "The agent's current certificate: the last one that is not revoked, not superseded and confirmed (a renewal " +
+        "the agent has not confirmed does not count); null for a revoked agent and for an agent without one"
+
+@Schema(description = "The current certificate of an agent; no key, no serial, nothing but the dates")
+data class AgentCertificate(
+    @field:Schema(description = "When the certificate became valid: its notBefore")
+    val notBefore: Instant,
+    val notAfter: Instant,
+    @field:Schema(description = "Whole days to notAfter, rounded down, never negative")
+    val daysLeft: Int,
+    @field:Schema(
+        description =
+            "expired: nothing is left. expiring: at most 30/365 of its lifetime is left. renewal_due: two thirds " +
+                "of its lifetime have passed and no confirmed new certificate exists. ok: otherwise",
+    )
+    val state: AgentCertificateState,
+    @field:Schema(description = "When a renewal was issued that the agent has not confirmed; null if none")
+    val renewalIssuedAt: Instant?,
+)
+
 @Schema(description = "An agent in the list")
 data class AgentSummary(
     val id: UUID,
@@ -59,6 +80,8 @@ data class AgentSummary(
     val builtin: Boolean,
     @field:Schema(description = ROLE)
     val role: AgentRole,
+    @field:Schema(description = CERTIFICATE)
+    val certificate: AgentCertificate?,
 )
 
 @Schema(description = "A plugin the agent offers")
@@ -115,6 +138,8 @@ data class AgentDetails(
                 "cannot change it. null for an agent that cannot restore from the console",
     )
     val restoreDir: String?,
+    @field:Schema(description = CERTIFICATE)
+    val certificate: AgentCertificate?,
 )
 
 @Schema(description = "A page of agents")

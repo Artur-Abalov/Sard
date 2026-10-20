@@ -151,12 +151,14 @@ class RunNotificationsRestIntegrationTest(
         val channel = CapturingChannel()
         val withoutLink =
             NotificationService(
-                Deliveries(sessions, UuidV7(clock, SecureRandom())),
+                Deliveries(sessions, UuidV7(clock, SecureRandom()), { false }),
                 OverdueDeliveries(sessions, UuidV7(clock, SecureRandom())),
+                CertificateDeliveries(sessions, UuidV7(clock, SecureRandom())),
                 listOf(channel),
                 RunNoticeFormatter(NoticeLanguage.EN, ConsoleUrl.parse("")),
                 ScheduleAlertFormatter(NoticeLanguage.EN, ConsoleUrl.parse("")),
                 OverdueNoticeFormatter(NoticeLanguage.EN, ConsoleUrl.parse("")),
+                CertificateNoticeFormatter(NoticeLanguage.EN, ConsoleUrl.parse("")),
                 RetryPolicy(RetrySettings()),
                 QueueSettings(batch = 10, lease = Duration.ofMinutes(5), ttl = Duration.ofHours(24)),
                 clock,

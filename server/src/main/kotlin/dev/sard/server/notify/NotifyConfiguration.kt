@@ -3,6 +3,7 @@
 
 package dev.sard.server.notify
 
+import dev.sard.server.fleet.AgentPresence
 import dev.sard.server.notify.telegram.BotToken
 import dev.sard.server.notify.telegram.TelegramBotApi
 import dev.sard.server.notify.telegram.TelegramChannel
@@ -182,18 +183,22 @@ class NotifyConfiguration {
         formatter: NotificationFormatter,
         alertFormatter: SkipAlertFormatter,
         overdueFormatter: OverdueFormatter,
+        certificateFormatter: CertificateFormatter,
+        presence: ObjectProvider<AgentPresence>,
         meters: MeterRegistry,
     ): NotificationService {
         val telegram = telegramChannel(credentials, properties.telegram, json)
         val channels = listOfNotNull(telegram) + extraChannels.orderedStream().toList()
         val ids = UuidV7(clock, SecureRandom())
         return NotificationService(
-            Deliveries(sessions, ids),
+            Deliveries(sessions, ids) { agent -> presence.getIfAvailable()?.online(agent) ?: false },
             OverdueDeliveries(sessions, ids),
+            CertificateDeliveries(sessions, ids),
             activeChannels(channels),
             formatter,
             alertFormatter,
             overdueFormatter,
+            certificateFormatter,
             RetryPolicy(properties.retry()),
             properties.queue(),
             clock,

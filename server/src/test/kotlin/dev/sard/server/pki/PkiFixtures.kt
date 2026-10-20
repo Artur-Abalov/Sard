@@ -24,6 +24,9 @@ import java.time.ZoneOffset
 import java.util.Date
 import java.util.UUID
 
+/** The validity of the profile of ADR 0014, for tests that do not care. */
+val YEAR: Duration = Duration.ofDays(365)
+
 /** A clock the test moves by hand. */
 class MovableClock(
     var now: Instant,

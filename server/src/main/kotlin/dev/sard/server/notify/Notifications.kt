@@ -3,6 +3,7 @@
 
 package dev.sard.server.notify
 
+import dev.sard.server.fleet.CertificateEvent
 import dev.sard.server.runs.RestoreResult
 import dev.sard.server.runs.RunKind
 import dev.sard.server.runs.RunState
@@ -189,6 +190,36 @@ data class OverdueNotice(
 /** The wording of an overdue episode (F6); null when its end is told by the run that ended it. */
 fun interface OverdueFormatter {
     fun format(notice: OverdueNotice): Message?
+}
+
+/**
+ * An agent certificate that reached a threshold of its lifetime or expired (C1 phase 3, П36), as a notification sees
+ * it: read back at send time, with what the server knows of the agent. Never the certificate itself.
+ */
+data class CertificateNotice(
+    val tenantId: UUID,
+    val agentId: UUID,
+    val hostname: String,
+    /** The agent next to the server (sard-self): its advice differs. */
+    val builtin: Boolean,
+    val event: CertificateEvent,
+    val notAfter: Instant,
+    /** The moment of sending: the time left is counted from it. */
+    val now: Instant,
+    /** When a renewal was issued that the agent has not confirmed; null if none. */
+    val renewalIssuedAt: Instant?,
+    val online: Boolean,
+    val lastSeenAt: Instant?,
+)
+
+/** Whether an agent holds a stream with the server right now (the stream manager's answer, not a heartbeat). */
+fun interface AgentConnected {
+    fun online(agentId: UUID): Boolean
+}
+
+/** The wording of a notice about an agent certificate (C1 phase 3, П38 and П38б). */
+fun interface CertificateFormatter {
+    fun format(notice: CertificateNotice): Message
 }
 
 /** The wording of the alert about fires skipped in a row (F3b); the one text a skip can have. */

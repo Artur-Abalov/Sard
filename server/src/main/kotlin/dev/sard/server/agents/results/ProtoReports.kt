@@ -3,17 +3,25 @@
 
 package dev.sard.server.agents.results
 
+import com.google.protobuf.Duration
+import com.google.protobuf.Timestamp
 import dev.sard.proto.agent.v1.LogChunk
 import dev.sard.proto.agent.v1.LogLevel
+import dev.sard.proto.agent.v1.StageStatus
 import dev.sard.proto.agent.v1.StepPhase
 import dev.sard.proto.agent.v1.StepProgress
 import dev.sard.proto.agent.v1.StepResult
 import dev.sard.proto.agent.v1.StepStatus
+import dev.sard.proto.agent.v1.VerifyOutput
+import dev.sard.proto.agent.v1.VerifyStage
+import dev.sard.proto.agent.v1.VerifyVerdict
 import dev.sard.server.runs.LogLine
 import dev.sard.server.runs.ProgressReport
+import dev.sard.server.runs.StageState
 import dev.sard.server.runs.StepOutput
 import dev.sard.server.runs.StepReport
 import dev.sard.server.runs.StepState
+import dev.sard.server.runs.VerifierVerdict
 import java.time.Instant
 
 /**
@@ -46,7 +54,7 @@ object ProtoReports {
     /** Lines in the chunk's order; a line without a time keeps none, one without a level is info. */
     fun lines(chunk: LogChunk) =
         chunk.linesList.map { line ->
-            val time = if (line.hasTime()) Instant.ofEpochSecond(line.time.seconds, line.time.nanos.toLong()) else null
+            val time = if (line.hasTime()) ProtoVerifyOutputs.instant(line.time) else null
             LogLine(time, level(line.level), line.text)
         }
 
@@ -98,10 +106,7 @@ object ProtoReports {
             }
 
             StepResult.OutputCase.VERIFY -> {
-                StepOutput.Verify(
-                    result.verify.snapshotId,
-                    result.verify.checksList.map { StepOutput.Check(it.name, it.passed, it.detail) },
-                )
+                ProtoVerifyOutputs.of(result.verify)
             }
 
             StepResult.OutputCase.RUN -> {

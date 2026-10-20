@@ -3,6 +3,7 @@
 
 package dev.sard.server
 
+import dev.sard.server.pki.AgentCertificatePolicy
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -35,6 +36,21 @@ class FirstStartDocsTest {
     fun `Compose and the environment example do not mention the administrator password`() {
         for (path in listOf("deploy/docker-compose.yml", "deploy/.env.example")) {
             assertFalse(text(path).contains("SARD_ADMIN_PASSWORD"), path)
+        }
+    }
+
+    @Test
+    fun `Compose passes the certificate settings with the defaults of the server`() {
+        val compose = text("deploy/docker-compose.yml")
+        val defaults =
+            mapOf(
+                "SARD_PKI_AGENT_CERTIFICATE_VALIDITY" to AgentCertificatePolicy.DEFAULT_VALIDITY,
+                "SARD_PKI_AGENT_RENEWAL_MIN_INTERVAL" to AgentCertificatePolicy.DEFAULT_INTERVAL,
+                "SARD_PKI_AGENT_CERTIFICATE_CHECK_INTERVAL" to AgentCertificatePolicy.DEFAULT_CHECK_INTERVAL,
+            )
+        for ((variable, default) in defaults) {
+            val line = "\${$variable:-$default}"
+            assertTrue(compose.contains(line), "docker-compose.yml: $variable defaults to $default")
         }
     }
 

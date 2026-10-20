@@ -109,6 +109,16 @@ func TestRegisterRequestCarriesTheMachineIDOfEveryRegister(t *testing.T) {
 	}
 }
 
+func TestRegisterRequestReportsAVerifierStatusThatKnowsNothingYet(t *testing.T) {
+	status := registered(t).GetVerifier()
+	if status == nil {
+		t.Fatal("verifier status absent: the server would take this agent for an older one")
+	}
+	if status.WorkFreeBytes != nil || status.GetSandbox() != agentv1.Sandbox_SANDBOX_UNSPECIFIED {
+		t.Errorf("verifier status = %v, want free space and sandbox unknown", status)
+	}
+}
+
 func TestRegisterRequestAnnouncesPluginsWithSchemasSortedByName(t *testing.T) {
 	var got []string
 	for _, p := range registered(t).GetPlugins() {

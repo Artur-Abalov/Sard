@@ -4,6 +4,7 @@
 package dev.sard.server.runs
 
 import tools.jackson.databind.json.JsonMapper
+import java.time.Instant
 
 private val JSON = JsonMapper.builder().build()
 private const val INVALID = "invalid result: "
@@ -90,13 +91,61 @@ sealed interface StepOutput {
             ).entries.firstOrNull { it.value }?.key
     }
 
+    /** A verification's evidence (V4): its stages, the verifier's verdict, the differences, the restore time. */
     data class Verify(
         val snapshotId: String,
         val checks: List<Check>,
+        val stages: List<Stage> = emptyList(),
+        /** Null when the agent sent none it knows. */
+        val verdict: VerifierVerdict? = null,
+        val mismatches: List<Mismatch> = emptyList(),
+        /** The sum of the stages' durations (level 5); null when the agent sent none. */
+        val restoreMillis: Long? = null,
     ) : StepOutput {
         override val kind = Action.VERIFY
 
-        override fun fields() = mapOf("snapshotId" to snapshotId, "checks" to checks.map { it.fields() })
+        override fun fields() =
+            mapOf(
+                "snapshotId" to snapshotId,
+                "checks" to checks.map { it.fields() },
+                "stages" to stages.map { it.fields() },
+                "verdict" to verdict?.stored,
+                "mismatches" to mismatches.map { it.fields() },
+                "restoreMillis" to restoreMillis,
+            )
+    }
+
+    /** One stage of the verification pipeline (proto VerifyStage); [state] is null for a status unknown here. */
+    data class Stage(
+        val level: Int,
+        val name: String,
+        val state: StageState?,
+        val startedAt: Instant?,
+        val finishedAt: Instant?,
+        val exitCode: Int,
+        val output: String,
+        val imageDigest: String,
+    ) {
+        fun fields() =
+            mapOf(
+                "level" to level,
+                "name" to name,
+                "state" to state?.stored,
+                "startedAt" to startedAt?.toString(),
+                "finishedAt" to finishedAt?.toString(),
+                "exitCode" to exitCode,
+                "output" to output,
+                "imageDigest" to imageDigest,
+            )
+    }
+
+    /** A fact of the fingerprint that differs between the source and the copy. */
+    data class Mismatch(
+        val name: String,
+        val expected: String,
+        val actual: String,
+    ) {
+        fun fields() = mapOf("name" to name, "expected" to expected, "actual" to actual)
     }
 
     data class Check(
@@ -113,6 +162,35 @@ sealed interface StepOutput {
         override val kind = Action.RUN
 
         override fun fields() = mapOf("exitCode" to exitCode)
+    }
+}
+
+/** How a verification stage ended (proto StageStatus). */
+enum class StageState(
+    val stored: String,
+) {
+    PASSED("passed"),
+    FAILED("failed"),
+    CANNOT_RUN("cannot_run"),
+    NOT_APPLICABLE("not_applicable"),
+    ;
+
+    companion object {
+        fun of(stored: String): StageState = entries.single { it.stored == stored }
+    }
+}
+
+/** What the verifier concluded (proto VerifyVerdict); the server's own outcomes are not among them. */
+enum class VerifierVerdict(
+    val stored: String,
+) {
+    PASSED("passed"),
+    FAILED("failed"),
+    CANNOT_VERIFY("cannot_verify"),
+    ;
+
+    companion object {
+        fun of(stored: String): VerifierVerdict = entries.single { it.stored == stored }
     }
 }
 

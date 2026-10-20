@@ -102,6 +102,12 @@ enum class ErrorCode {
 
     @JsonProperty("snapshot_not_restorable")
     SNAPSHOT_NOT_RESTORABLE,
+
+    @JsonProperty("verification_active")
+    VERIFICATION_ACTIVE,
+
+    @JsonProperty("snapshot_unusable")
+    SNAPSHOT_UNUSABLE,
 }
 
 private const val TYPE = "URI reference identifying the problem type; about:blank when the status says it all"

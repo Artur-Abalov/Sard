@@ -139,7 +139,8 @@ class ResultCheckTest {
                 """{"kind":"restore","target":"/r","filesRestored":0,"bytesRestored":0,"database":"",""" +
                     """"tablesRestored":0,"rolesRestored":0,"ownersRestored":false,"leftover":""}""",
                 """{"kind":"verify","snapshotId":"4a","checks":[{"name":"read-data","passed":false,""" +
-                    """"detail":"pack 1f: \"bad\""}]}""",
+                    """"detail":"pack 1f: \"bad\""}],"stages":[],"verdict":null,"mismatches":[],""" +
+                    """"restoreMillis":null}""",
                 """{"kind":"run","exitCode":-1}""",
             )
         assertEquals(expected, stored)

@@ -65,6 +65,9 @@ type hostCheck struct {
 	// what could be read of the main file when they did not.
 	cfg     config.Config
 	partial config.Config
+	// pair is tls.* with the files of the pair that the start would select,
+	// found once (П45).
+	pair *config.TLS
 	// binary is the restic that restic.binary found.
 	binary string
 	// needsRoot is set when a check was left out for want of root (Ч20);

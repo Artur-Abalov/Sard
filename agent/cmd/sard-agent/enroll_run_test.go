@@ -295,8 +295,12 @@ func TestTheHostnameReadEarlyReachesTheCSRAndTheRequest(t *testing.T) {
 // dialAndEnroll must close conn on every path, including success — a
 // deferred Close that is never actually called would leak the TLS
 // connection to the fake server forever.
+//
+// It counts the descriptors of the whole process, so it must not run beside
+// other tests: no t.Parallel(). Top-level tests that are not parallel run
+// before the parallel ones are resumed, which keeps the fake servers of the
+// others out of the measurement.
 func TestASuccessfulEnrollClosesTheConnection(t *testing.T) {
-	t.Parallel()
 	f := newSucceedingFakeFixture(t, "a1")
 	before := openFDCountForTest(t)
 	for i := 0; i < 20; i++ {

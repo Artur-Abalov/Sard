@@ -23,7 +23,8 @@ ALTER TABLE runs
 
 UPDATE runs SET requested_by = 'admin' WHERE trigger = 'manual';
 
--- D6 holds for backups only: a restore neither blocks a backup of its source nor is blocked by one.
+-- D6 holds for backups only: a restore neither blocks a backup of its source nor is blocked by one (nor is a
+-- verification, V4).
 DROP INDEX runs_active_source_key;
 CREATE UNIQUE INDEX runs_active_source_key ON runs (tenant_id, source_id)
-    WHERE kind = 'backup' AND status IN ('queued', 'dispatched', 'running');
+    WHERE kind = 'backup' AND status IN ('queued', 'dispatched', 'running') AND trigger <> 'verification';

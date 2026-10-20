@@ -5,16 +5,19 @@ package dev.sard.server.api
 
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.fleet.AgentCard
+import dev.sard.server.fleet.AgentCertificates
 import dev.sard.server.fleet.AgentPluginView
 import dev.sard.server.fleet.AgentRevocation
 import dev.sard.server.fleet.AgentRow
 import dev.sard.server.fleet.Agents
 import dev.sard.server.fleet.Connectivity
+import dev.sard.server.fleet.CurrentCertificate
 import dev.sard.server.install.AgentVersions
 import dev.sard.server.persistence.PageKey
 import org.springframework.stereotype.Component
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectMapper
+import java.time.Clock
 import java.util.UUID
 
 /** The agent endpoints over [Agents], in the tenant of the session. */
@@ -24,6 +27,8 @@ class AgentsApiImpl(
     private val tenants: TenantResolver,
     private val mapper: ObjectMapper,
     private val versions: AgentVersions,
+    private val certificates: AgentCertificates,
+    private val clock: Clock,
 ) : AgentsApi {
     override fun listAgents(
         status: AgentStatus?,
@@ -34,7 +39,8 @@ class AgentsApiImpl(
         val connectivity = status?.let(::connectivityOf)
         val rows = agents.list(tenants.currentTenantId(), connectivity, page.after, page.fetch)
         val slice = page.slice(rows) { PageKey(it.registeredAt, it.id) }
-        return AgentPage(slice.items.map(::summaryOf), slice.nextCursor)
+        val current = certificates.current(tenants.currentTenantId(), slice.items.map { it.id })
+        return AgentPage(slice.items.map { summaryOf(it, current[it.id]) }, slice.nextCursor)
     }
 
     override fun getAgent(agentId: UUID): AgentDetails =
@@ -58,25 +64,29 @@ class AgentsApiImpl(
 
     private fun statusOf(row: AgentRow) = if (agents.online(row)) AgentStatus.ONLINE else AgentStatus.OFFLINE
 
-    private fun summaryOf(row: AgentRow) =
-        AgentSummary(
-            row.id,
-            row.hostname,
-            statusOf(row),
-            row.agentVersion,
-            row.os,
-            row.arch,
-            row.registeredAt,
-            row.lastSeenAt,
-            row.revokedAt,
-            row.duplicateSessionAt,
-            versions.outdated(row.agentVersion),
-            row.builtin,
-            row.role.toApi(),
-        )
+    private fun summaryOf(
+        row: AgentRow,
+        certificate: CurrentCertificate?,
+    ) = AgentSummary(
+        row.id,
+        row.hostname,
+        statusOf(row),
+        row.agentVersion,
+        row.os,
+        row.arch,
+        row.registeredAt,
+        row.lastSeenAt,
+        row.revokedAt,
+        row.duplicateSessionAt,
+        versions.outdated(row.agentVersion),
+        row.builtin,
+        row.role.toApi(),
+        certificate?.toApi(clock.instant()),
+    )
 
     private fun detailsOf(card: AgentCard): AgentDetails {
         val row = card.row
+        val certificate = certificates.current(tenants.currentTenantId(), listOf(row.id))[row.id]
         return AgentDetails(
             row.id,
             row.hostname,
@@ -104,6 +114,7 @@ class AgentsApiImpl(
             row.builtin,
             row.role.toApi(),
             card.restoreDir,
+            certificate?.toApi(clock.instant()),
         )
     }
 

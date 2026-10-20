@@ -7,10 +7,14 @@ import dev.sard.proto.agent.v1.Action
 import dev.sard.proto.agent.v1.Plugin
 import dev.sard.proto.agent.v1.RegisterRequest
 import dev.sard.proto.agent.v1.RepositoryInfo
+import dev.sard.proto.agent.v1.Sandbox
+import dev.sard.proto.agent.v1.VerifierStatus
 import dev.sard.server.registration.AgentSnapshot
 import dev.sard.server.registration.PluginAction
 import dev.sard.server.registration.PluginEntry
 import dev.sard.server.registration.RepositoryEntry
+import dev.sard.server.registration.SandboxKind
+import dev.sard.server.registration.VerifierReport
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import kotlin.test.Test
@@ -94,5 +98,32 @@ class RegisterRequestsTest {
                 .setMachineId("c".repeat(64))
                 .build()
         assertFalse("c".repeat(64) in request.toSnapshot().toString())
+    }
+
+    @Test
+    fun `a request without a verifier status is an agent older than V4`() {
+        val request = RegisterRequest.newBuilder().setHostname("h").build()
+
+        assertEquals(null, MutFlow.underTest { request.toSnapshot() }.verifier)
+    }
+
+    @Test
+    fun `a verifier status maps its free space and sandbox, unknown ones to null`() {
+        val cases =
+            mapOf(
+                VerifierStatus.newBuilder().setWorkFreeBytes(7).setSandbox(Sandbox.SANDBOX_DOCKER) to
+                    VerifierReport(7, SandboxKind.DOCKER),
+                VerifierStatus.newBuilder().setSandbox(Sandbox.SANDBOX_PODMAN) to
+                    VerifierReport(null, SandboxKind.PODMAN),
+                VerifierStatus.newBuilder().setSandbox(Sandbox.SANDBOX_NONE) to VerifierReport(null, SandboxKind.NONE),
+                VerifierStatus.newBuilder().setWorkFreeBytes(0) to VerifierReport(0, null),
+                VerifierStatus.newBuilder().setWorkFreeBytes(-1) to VerifierReport(null, null),
+                VerifierStatus.newBuilder().setSandboxValue(99) to VerifierReport(null, null),
+                VerifierStatus.newBuilder() to VerifierReport(null, null),
+            )
+        for ((status, expected) in cases) {
+            val request = RegisterRequest.newBuilder().setVerifier(status).build()
+            assertEquals(expected, MutFlow.underTest { request.toSnapshot() }.verifier, status.toString())
+        }
     }
 }

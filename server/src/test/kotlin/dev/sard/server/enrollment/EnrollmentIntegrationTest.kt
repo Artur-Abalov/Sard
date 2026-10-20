@@ -59,10 +59,11 @@ class GatedCertificateAuthority(
         csrDer: ByteArray,
         agent: dev.sard.server.pki.AgentIdentity,
         role: dev.sard.server.role.AgentRole,
+        validity: java.time.Duration,
     ): dev.sard.server.pki.IssuedCertificate {
         entered.release()
         gate?.await(ENROLLMENT_RACE_WAIT.toSeconds(), TimeUnit.SECONDS)
-        return delegate.issueAgentCertificate(csrDer, agent, role)
+        return delegate.issueAgentCertificate(csrDer, agent, role, validity)
     }
 }
 

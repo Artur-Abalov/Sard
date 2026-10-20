@@ -37,6 +37,11 @@ services:
       # A CA to take at the first start (a move to a new machine, ADR 0052): the path inside the container
       # where docker-compose.override.yml mounts it (docs/operator/08-migrate-and-remove.md). Empty means none.
       SARD_PKI_IMPORT_DIR: ${SARD_PKI_IMPORT_DIR:-}
+      # Lifetime of agent certificates, the least time between two issues per agent, and how often the server
+      # checks expiry (C1; docs/operator/13-agent-certificates.md). The defaults are the server's own.
+      SARD_PKI_AGENT_CERTIFICATE_VALIDITY: ${SARD_PKI_AGENT_CERTIFICATE_VALIDITY:-P365D}
+      SARD_PKI_AGENT_RENEWAL_MIN_INTERVAL: ${SARD_PKI_AGENT_RENEWAL_MIN_INTERVAL:-PT1H}
+      SARD_PKI_AGENT_CERTIFICATE_CHECK_INTERVAL: ${SARD_PKI_AGENT_CERTIFICATE_CHECK_INTERVAL:-PT1H}
       # Address agents dial (decision 5, S2b); unset means the first of the names above and the gRPC port.
       SARD_AGENT_ENDPOINT: ${SARD_AGENT_ENDPOINT:-}
       # Telegram notifications (S9a); both empty means notifications are off, with a warning.

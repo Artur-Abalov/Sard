@@ -55,12 +55,23 @@ class Registration(
         agent.scriptNames = snapshot.scriptNames
         agent.machineId = snapshot.machineId
         agent.restoreDir = snapshot.restoreDir.ifEmpty { null }
+        verifier(agent, snapshot.verifier)
         agent.lastRegisterAt = now
         for (statement in listOf(DELETE_PLUGINS, DELETE_REPOSITORIES)) {
             session.createMutationQuery(statement).setParameter("agent", agentId).executeUpdate()
         }
         snapshot.plugins.forEach { session.persist(pluginRecord(agentId, it)) }
         snapshot.repositories.forEach { session.persist(repositoryRecord(agentId, it)) }
+    }
+
+    /** What the agent reported for verification (V4); an older agent reports nothing and forgets the last. */
+    private fun verifier(
+        agent: Agent,
+        report: VerifierReport?,
+    ) {
+        agent.verifierReported = report != null
+        agent.verifyFreeBytes = report?.workFreeBytes
+        agent.verifySandbox = report?.sandbox?.stored
     }
 
     private fun pluginRecord(

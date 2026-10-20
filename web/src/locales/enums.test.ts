@@ -30,6 +30,7 @@ const enums = [
   'RunTrigger',
   'RunKind',
   'AgentRole',
+  'AgentCertificateState',
 ]
 
 describe('every value of the contract is translated', () => {

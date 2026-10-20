@@ -9,7 +9,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 /**
- * What the console knows of the restore of one plugin (ВК32a, closes OQ-220): the config a form starts from,
+ * What the console knows of the restore of one plugin (ВК32a, closes OQ-234): the config a form starts from,
  * where the restore goes, which parts of the snapshot it takes, whether it restores global objects, and what it
  * warns about. The code that starts a restore and checks the config reads none of the keys of a plugin: it asks
  * the entry of the plugin here.

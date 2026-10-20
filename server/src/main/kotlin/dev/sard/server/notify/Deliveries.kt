@@ -3,6 +3,7 @@
 
 package dev.sard.server.notify
 
+import dev.sard.server.fleet.CertificateEvent
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import org.hibernate.Session
@@ -30,9 +31,15 @@ data class UnplannedEpisode(
     val event: String,
 )
 
+/** A recorded certificate event that has no delivery through a channel yet (C1 phase 3). */
+data class UnplannedCertificateEvent(
+    val tenantId: UUID,
+    val eventId: UUID,
+)
+
 /**
- * A pending delivery whose time has come: about a run, a schedule fire (F3b) or an overdue episode's [episodeEvent]
- * (F6), exactly one of them.
+ * A pending delivery whose time has come: about a run, a schedule fire (F3b), an overdue episode's [episodeEvent]
+ * (F6) or an agent certificate event (C1 phase 3), exactly one of them.
  */
 data class DueDelivery(
     val tenantId: UUID,
@@ -44,15 +51,26 @@ data class DueDelivery(
     val createdAt: Instant,
     val episodeId: UUID? = null,
     val episodeEvent: String? = null,
+    val certificateEventId: UUID? = null,
+    /** The serial and the stored name of the certificate event, for the log. */
+    val certificateSerial: String? = null,
+    val certificateEvent: String? = null,
 ) {
     /** What the delivery is about, as the log names it. */
     val subject: String
         get() =
             when {
                 fireId != null -> "schedule fire $fireId"
+                certificateEventId != null -> "agent certificate $certificateSerial (${certificateLabel()})"
                 episodeId != null -> "overdue episode $episodeId ($episodeEvent)"
                 else -> "run $runId"
             }
+}
+
+/** "30/365" of a threshold event, "expired" of the expiry (П39). */
+private fun DueDelivery.certificateLabel(): String {
+    val event = CertificateEvent.of(checkNotNull(certificateEvent))
+    return event.days?.let { "$it/365" } ?: "expired"
 }
 
 /** The event of an overdue episode a delivery tells of: it opened, or a success closed it. */
@@ -71,6 +89,11 @@ sealed interface Claimed {
 
     data class Overdue(
         val notice: OverdueNotice,
+    ) : Claimed
+
+    /** [notice] is null when the certificate is no longer the agent's current one: nothing to tell. */
+    data class Certificate(
+        val notice: CertificateNotice?,
     ) : Claimed
 }
 
@@ -112,10 +135,26 @@ private const val PLAN_EPISODE = """
     values (:id, :tenant, :episode, :event, :channel, 'pending', :now, :now)
     on conflict (tenant_id, episode_id, episode_event, channel) do nothing"""
 
+private const val UNPLANNED_CERTIFICATES = """
+    select new dev.sard.server.notify.UnplannedCertificateEvent(e.tenantId, e.id) from AgentCertificateEventRecord e
+    where e.recordedAt >= :since
+      and not exists (
+        select 1 from NotificationDeliveryRecord d
+        where d.tenantId = e.tenantId and d.certificateEventId = e.id and d.channel = :channel)
+    order by e.recordedAt, e.id"""
+
+private const val PLAN_CERTIFICATE = """
+    insert into notification_deliveries
+        (id, tenant_id, certificate_event_id, channel, status, next_attempt_at, created_at)
+    values (:id, :tenant, :event, :channel, 'pending', :now, :now)
+    on conflict (tenant_id, certificate_event_id, channel) do nothing"""
+
 private const val DUE = """
     select new dev.sard.server.notify.DueDelivery(
-        d.tenantId, d.id, d.runId, d.fireId, d.channel, d.attempts, d.createdAt, d.episodeId, d.episodeEvent)
+        d.tenantId, d.id, d.runId, d.fireId, d.channel, d.attempts, d.createdAt, d.episodeId, d.episodeEvent,
+        d.certificateEventId, e.serial, e.event)
     from NotificationDeliveryRecord d
+    left join AgentCertificateEventRecord e on e.tenantId = d.tenantId and e.id = d.certificateEventId
     where d.status = 'pending' and d.nextAttemptAt <= :now and d.channel in :channels
     order by d.nextAttemptAt, d.id"""
 
@@ -152,6 +191,7 @@ private const val CLOSE = """
 class Deliveries(
     private val sessions: TenantSessions,
     private val ids: UuidV7,
+    private val connected: AgentConnected,
 ) {
     /** Finished runs since [since] without a delivery through [channel], oldest first. */
     fun unplanned(
@@ -219,7 +259,7 @@ class Deliveries(
                     .setParameter("id", delivery.id)
                     .setParameter("now", now)
                     .executeUpdate() == 1
-            if (claimed) claimed(session, delivery) else null
+            if (claimed) claimed(session, delivery, now) else null
         }
 
     /** Stores how the attempt ended; false when the delivery is no longer pending. */
@@ -287,11 +327,24 @@ class Deliveries(
     private fun claimed(
         session: Session,
         delivery: DueDelivery,
+        now: Instant,
     ): Claimed =
         when {
-            delivery.fireId != null -> Claimed.Alert(Notices.alert(session, delivery.tenantId, delivery.fireId))
-            delivery.episodeId != null -> Claimed.Overdue(Notices.overdue(session, delivery.tenantId, delivery))
-            else -> Claimed.Finished(Notices.finished(session, delivery.tenantId, checkNotNull(delivery.runId)))
+            delivery.fireId != null -> {
+                Claimed.Alert(Notices.alert(session, delivery.tenantId, delivery.fireId))
+            }
+
+            delivery.episodeId != null -> {
+                Claimed.Overdue(Notices.overdue(session, delivery.tenantId, delivery))
+            }
+
+            delivery.certificateEventId != null -> {
+                Claimed.Certificate(Notices.certificate(session, delivery, now, connected))
+            }
+
+            else -> {
+                Claimed.Finished(Notices.finished(session, delivery.tenantId, checkNotNull(delivery.runId)))
+            }
         }
 }
 
@@ -377,4 +430,45 @@ private class Closing(
                 is Decision.Retry -> error("a retry keeps the delivery pending")
             }
     }
+}
+
+/** The certificate events' side of the queue (C1 phase 3): finding events without a delivery, planning one. */
+class CertificateDeliveries(
+    private val sessions: TenantSessions,
+    private val ids: UuidV7,
+) {
+    /** Events recorded since [since] without a delivery through [channel], oldest first. */
+    fun unplanned(
+        channel: String,
+        since: Instant,
+        limit: Int,
+    ): List<UnplannedCertificateEvent> =
+        sessions.system { session ->
+            session
+                .createSelectionQuery(UNPLANNED_CERTIFICATES, UnplannedCertificateEvent::class.java)
+                .setParameter("since", since)
+                .setParameter("channel", channel)
+                .setMaxResults(limit)
+                .list()
+        }
+
+    /** One pending delivery through [channel] for each of [events] of [tenantId]; returns how many are new. */
+    fun plan(
+        tenantId: UUID,
+        events: List<UUID>,
+        channel: String,
+        now: Instant,
+    ): Int =
+        sessions.inTenant(tenantId) { session ->
+            events.sumOf { event ->
+                session
+                    .createNativeMutationQuery(PLAN_CERTIFICATE)
+                    .setParameter("id", ids.next())
+                    .setParameter("tenant", tenantId)
+                    .setParameter("event", event)
+                    .setParameter("channel", channel)
+                    .setParameter("now", now)
+                    .executeUpdate()
+            }
+        }
 }

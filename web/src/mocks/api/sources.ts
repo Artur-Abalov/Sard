@@ -8,6 +8,7 @@ import { noSession, notFound, PROBLEM, problem, runActive } from '../problems'
 import { onboardingIncomplete, refusedUntilComplete } from '../restriction'
 import { state } from '../state'
 import { validateSource } from '../validation'
+import { neverVerified } from '../verification'
 
 type Schemas = components['schemas']
 
@@ -90,6 +91,7 @@ export const sourceHandlers = [
       createdAt: now,
       updatedAt: now,
       systemRole: null,
+      ...neverVerified,
     }
     state.sources.unshift(source)
     return response(201).json(source)

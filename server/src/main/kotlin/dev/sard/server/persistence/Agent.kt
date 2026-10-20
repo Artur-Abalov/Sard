@@ -16,7 +16,8 @@ import java.util.UUID
 
 /**
  * A registered agent; table created by Flyway migrations V1, V2, V202609271200, V202609281200, V202609281400,
- * V202610011200, V202610081200, V202610141200 and V202610151200.
+ * V202610011200, V202610081200, V202610141200, V202610151200, V202610191200, V202610191300 and
+ * V202610191400.
  */
 @Entity
 @Table(name = "agents")
@@ -71,9 +72,21 @@ class Agent(
     @Column(name = "machine_id")
     var machineId: String? = null
 
-    /** The directory the host allows restores into (R2, migration V202610151200); null if never announced. */
+    /** The directory the host allows restores into (R2, migration V202610191400); null if never announced. */
     @Column(name = "restore_dir")
     var restoreDir: String? = null
+
+    /** The last Register carried RegisterRequest.verifier (V4); false for an older agent. */
+    @Column(name = "verifier_reported", nullable = false)
+    var verifierReported: Boolean = false
+
+    /** Free bytes where verifications restore, from the last Register; null when unknown (V4). */
+    @Column(name = "verify_free_bytes")
+    var verifyFreeBytes: Long? = null
+
+    /** Container runtime for the verification sandbox, as stored (none, docker, podman); null when unknown (V4). */
+    @Column(name = "verify_sandbox")
+    var verifySandbox: String? = null
 
     /** The last confirmed duplicate session (S8b, migration V202610011200); null if there never was one. */
     @Column(name = "duplicate_session_at")

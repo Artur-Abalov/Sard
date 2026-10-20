@@ -204,6 +204,34 @@ describe('with a session', () => {
     expect(missing.response.status).toBe(404)
   })
 
+  test('the certificates of the fixtures cover every state, one renewal issued, none when revoked', async () => {
+    const { data } = await api.GET('/api/v1/agents')
+    const live = data?.items.filter((a) => a.revokedAt === null) ?? []
+    expect(new Set(live.map((a) => a.certificate?.state))).toEqual(
+      new Set(['ok', 'renewal_due', 'expiring', 'expired']),
+    )
+    expect(live.filter((a) => a.certificate?.renewalIssuedAt != null)).toHaveLength(1)
+    const revoked = data?.items.filter((a) => a.revokedAt !== null) ?? []
+    expect(revoked.every((a) => a.certificate === null)).toBe(true)
+  })
+
+  test('the card of every agent carries the certificate of the list', async () => {
+    const { data } = await api.GET('/api/v1/agents')
+    for (const a of data?.items ?? []) {
+      const card = await api.GET('/api/v1/agents/{agentId}', {
+        params: { path: { agentId: a.id } },
+      })
+      expect(card.data?.certificate).toEqual(a.certificate)
+    }
+  })
+
+  test('revoking an agent drops its certificate', async () => {
+    const { data } = await api.POST('/api/v1/agents/{agentId}/revoke', {
+      params: { path: { agentId: ids.dbAgent } },
+    })
+    expect(data?.certificate).toBeNull()
+  })
+
   test('the log of a step pages through every line once, in order', async () => {
     const seqs: number[] = []
     let afterSeq = 0
