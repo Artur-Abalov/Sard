@@ -76,7 +76,7 @@
 
 ## cleaner
 
-- Метрики до: все функции из файлов R2c-1 не выше CRAP 6.0, покрытие 100.0%
+- Метрики до: все функции из файлов R2c-1 не выше CRAP 6.0
   (sdk: `ValidReason` 6.0, `ValidStage` 5.0, остальные не выше 3.0; agent:
   `run` 6.0, `agentRuntime.withDefaults` 6.0, прочее ниже порога).
 - Просмотрены `restore_run.go`, `journal.go`, `journal_recovery.go`,
@@ -104,5 +104,5 @@
   и закрытие журнала шага.
 - `./scripts/gate.sh sdk fast` и `./scripts/gate.sh agent fast`: PASSED
   (0 issues линтера; CRAP не выше 6.0, худшие функции `repo_restore_run.go:
-  restoreRun.restore` и прочие по 6.0, 100.0% покрытия).
+  restoreRun.restore` и прочие по 6.0; процент покрытия agent в этом прогоне не печатался).
 - Дальше: `cleaner`.
