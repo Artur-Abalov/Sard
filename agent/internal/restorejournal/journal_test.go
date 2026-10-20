@@ -407,7 +407,7 @@ func TestEntriesOfTwoCommandsWrittenAtOnceAreEachWhole(t *testing.T) {
 
 func TestACommandIdThatIsNotAFileNameIsRefused(t *testing.T) {
 	r := newRig(t)
-	for _, id := range []string{"", ".", "..", "a/b", "../x"} {
+	for _, id := range []string{"", ".", "..", "a/b", "../x", ".hidden", ".c1", "a/..", "/abs"} {
 		if err := r.store.Save("journaltest", id, nil); err == nil {
 			t.Errorf("%q: Save returned no error", id)
 		}
@@ -514,6 +514,36 @@ func TestListLeavesFilesThatAreNotItsOwnAndNamesADirectoryThatLooksLikeAnEntry(t
 	}
 }
 
+func TestListNamesTheReasonAnEntryCannotBeRead(t *testing.T) {
+	r := newRig(t)
+	mkdir(t, filepath.Join(r.dir, "dir.json"))
+	_, bad, err := r.store.List()
+	if err != nil || len(bad) != 1 {
+		t.Fatalf("List = %+v, %v", bad, err)
+	}
+	if !errors.Is(bad[0].Err, syscall.EISDIR) || strings.Contains(bad[0].Err.Error(), "unreadable") {
+		t.Errorf("the reason is %v: it must be the error of the read itself", bad[0].Err)
+	}
+}
+
+func TestListNeitherReadsNorSweepsHiddenFilesThatAreNoTemporaryFiles(t *testing.T) {
+	r := newRig(t)
+	mkdir(t, r.dir)
+	hidden := filepath.Join(r.dir, ".c9.json")
+	writeFile(t, hidden, `{"plugin": "journaltest", "command_id": ".c9", "entry": ""}`)
+	writeFile(t, filepath.Join(r.dir, ".keep"), "x")
+	writeFile(t, filepath.Join(r.dir, "c2.json.tmp-1"), "x") // a temporary file of ours starts with a dot
+	records, bad, err := r.store.List()
+	if err != nil || len(records) != 0 || len(bad) != 0 {
+		t.Fatalf("List = %+v, %+v, %v", records, bad, err)
+	}
+	for _, name := range []string{".c9.json", ".keep", "c2.json.tmp-1"} {
+		if _, err := os.Stat(filepath.Join(r.dir, name)); err != nil {
+			t.Errorf("%s went: %v", name, err)
+		}
+	}
+}
+
 func TestListFailsWhenTheJournalCannotBeRead(t *testing.T) {
 	r := newRig(t)
 	if err := os.WriteFile(r.dir, []byte("a file"), 0o600); err != nil {
@@ -543,9 +573,15 @@ func TestRemoveDeletesTheEntryAndAMissingOneIsNoError(t *testing.T) {
 }
 
 func TestRemoveRefusesANameThatIsNoFile(t *testing.T) {
-	if err := newRig(t).store.Remove("../x"); err == nil {
-		t.Error("Remove returned no error")
+	r := newRig(t)
+	mkdir(t, r.dir)
+	writeFile(t, filepath.Join(r.dir, ".c9.json"), "x")
+	for _, id := range []string{"", ".", "..", "../x", "a/b", ".c9"} {
+		if err := r.store.Remove(id); err == nil {
+			t.Errorf("Remove(%q) returned no error", id)
+		}
 	}
+	assertContent(t, filepath.Join(r.dir, ".c9.json"), "x")
 }
 
 func TestPathIsTheFileOfTheCommand(t *testing.T) {

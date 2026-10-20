@@ -170,3 +170,21 @@ func mustConfig(t *testing.T, yaml string) config.Config {
 	}
 	return cfg
 }
+
+// The outcome a plugin made of its entry is the result of the interrupted command,
+// not the "nothing was restored" the staging directory would give.
+func TestTheOutcomeOfAPluginIsTheResultOfTheInterruptedCommand(t *testing.T) {
+	state := t.TempDir()
+	p := &journaltest.Plugin{RecoverFn: func(context.Context, sdk.RecoveryHost, string, []byte) sdk.Recovery {
+		return sdk.Restored(sdk.RestoreResult{Database: "x1", Tables: 3})
+	}}
+	engine := consolerestore.New(consolerestore.Options{Dir: t.TempDir(), FS: hostsetup.OS{}, Logger: slog.New(slog.DiscardHandler)})
+	r := recoveryWithJournal(t, engine, journalOf(t, state, map[string]string{"c2": "journaltest"}), registryOf(t, p))
+	got := r.interrupted("c2", agentv1.Action_ACTION_RESTORE)
+	if got == nil || !got.Succeeded || got.Output.GetDatabase() != "x1" || got.Output.GetTablesRestored() != 3 {
+		t.Fatalf("Interruption = %+v", got)
+	}
+	if other := r.interrupted("c9", agentv1.Action_ACTION_RESTORE); other == nil || other.Succeeded {
+		t.Errorf("a command without an entry: %+v", other)
+	}
+}

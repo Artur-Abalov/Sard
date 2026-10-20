@@ -57,8 +57,7 @@ func RecoverJournal(o RecoveryOptions) *JournalRecovery {
 	records, unreadable, err := o.Journal.store.List()
 	if err != nil {
 		o.Logger.Error("cannot read the restore journal; judge the restores by hand", "error", err)
-		return rec
-	}
+	} // nothing was listed then: there is nothing to go through below
 	for _, u := range unreadable {
 		o.Logger.Error("cannot read an entry of the restore journal; judge the restore by hand", "command_id", u.CommandID, "path", u.Path, "error", u.Err)
 		rec.outcomes[u.CommandID] = leftBehind([]string{u.Path}, u.Err.Error())
@@ -109,10 +108,7 @@ func (rec *JournalRecovery) recoverEntry(o RecoveryOptions, id, pluginName, path
 }
 
 func recovererOf(reg *sdk.Registry, name string) sdk.Recoverer {
-	p, ok := reg.Get(name)
-	if !ok {
-		return nil
-	}
+	p, _ := reg.Get(name) // nil for a plugin that is not there, and nil is no Recoverer
 	r, _ := p.(sdk.Recoverer)
 	return r
 }
@@ -130,7 +126,8 @@ func recoverWithin(o RecoveryOptions, r sdk.Recoverer, host *recoveryHost, id st
 	defer host.journal.close()
 	ctx, cancel := context.WithTimeout(context.Background(), o.Timeout)
 	defer cancel()
-	out := awaitRecovery(ctx, startRecovery(ctx, r, host, id, entry), o.Grace)
+	finished, said := startRecovery(ctx, r, host, id, entry)
+	out := awaitRecovery(ctx, finished, said, o.Grace)
 	switch {
 	case out.panicked != nil:
 		return sdk.Recovery{}, fmt.Errorf("the plugin panicked: %v", out.panicked)
@@ -141,29 +138,30 @@ func recoverWithin(o RecoveryOptions, r sdk.Recoverer, host *recoveryHost, id st
 }
 
 // startRecovery runs the recovery in a goroutine of its own; a panic is a value.
-func startRecovery(ctx context.Context, r sdk.Recoverer, host sdk.RecoveryHost, id string, entry []byte) <-chan recovered {
-	done := make(chan recovered, 1)
+// What it says is read once finished is closed, never before: a recovery that
+// ends after the host stopped waiting writes where nobody reads, and its
+// goroutine ends all the same.
+func startRecovery(ctx context.Context, r sdk.Recoverer, host sdk.RecoveryHost, id string, entry []byte) (finished <-chan struct{}, said *recovered) {
+	done := make(chan struct{})
+	out := &recovered{}
 	go func() {
-		var out recovered
-		defer func() {
-			out.panicked = recover()
-			done <- out
-		}()
+		defer close(done)
+		defer func() { out.panicked = recover() }()
 		out.got = r.Recover(ctx, host, id, entry)
 	}()
-	return done
+	return done, out
 }
 
 // awaitRecovery waits for the recovery until its context ends, then for grace more.
-func awaitRecovery(ctx context.Context, done <-chan recovered, grace time.Duration) recovered {
+func awaitRecovery(ctx context.Context, finished <-chan struct{}, said *recovered, grace time.Duration) recovered {
 	select {
-	case out := <-done:
-		return out
+	case <-finished:
+		return *said
 	case <-ctx.Done():
 	}
 	select {
-	case out := <-done:
-		return out
+	case <-finished:
+		return *said
 	case <-time.After(grace):
 		return recovered{}
 	}
@@ -201,14 +199,13 @@ func leftBehind(leftover []string, cleanup string) *executor.Interruption {
 // plugins that keep a journal): the outcome of the recovery of the command, or
 // nil if the journal had nothing for it.
 func (rec *JournalRecovery) Interrupted(commandID string, action agentv1.Action) *executor.Interruption {
-	rec.mu.Lock()
-	defer rec.mu.Unlock()
-	out := rec.outcomes[commandID]
-	if out == nil || action != agentv1.Action_ACTION_RESTORE {
+	if action != agentv1.Action_ACTION_RESTORE {
 		return nil
 	}
-	rec.notified[commandID] = true
-	return out
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	rec.notified[commandID] = true // only an adopted command has an outcome to wait for
+	return rec.outcomes[commandID]
 }
 
 // ExecutorStarted: the executor has judged the journal. The entry of a command
@@ -216,17 +213,22 @@ func (rec *JournalRecovery) Interrupted(commandID string, action agentv1.Action)
 // stored already: nothing waits for it, and it goes unless the plugin asked to
 // keep it.
 func (rec *JournalRecovery) ExecutorStarted() {
-	rec.mu.Lock()
-	var settle []string
-	for _, id := range rec.adopted {
-		if !rec.notified[id] {
-			settle = append(settle, id)
-		}
-	}
-	rec.mu.Unlock()
-	for _, id := range settle {
+	for _, id := range rec.unnotified() {
 		rec.journal.settle(id)
 	}
+}
+
+// unnotified are the adopted commands the executor did not ask about.
+func (rec *JournalRecovery) unnotified() []string {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	var ids []string
+	for _, id := range rec.adopted {
+		if !rec.notified[id] {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // recoveryHost is the sdk.RecoveryHost of one entry.
@@ -254,11 +256,7 @@ var slogLevels = map[sdk.Level]slog.Level{
 
 // Log implements sdk.RecoveryHost; an unknown level is INFO.
 func (h *recoveryHost) Log(level sdk.Level, text string) {
-	lvl, ok := slogLevels[level]
-	if !ok {
-		lvl = slog.LevelInfo
-	}
-	h.log.Log(context.Background(), lvl, text)
+	h.log.Log(context.Background(), slogLevels[level], text) // an unknown level is the zero slog.Level: INFO
 }
 
 // Journal implements sdk.RecoveryHost.

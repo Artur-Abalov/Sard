@@ -56,6 +56,14 @@ func TestAStageIsALowerCaseWordWithHyphensOfAtMost32Characters(t *testing.T) {
 		"check it":                   false,
 		"check\n":                    false,
 		"a" + strings.Repeat("-", 5): true,
+		"z":                          true,
+		"az":                         true,
+		"za-az":                      true,
+		"{":                          false,
+		"a{":                         false,
+		"`a":                         false,
+		"a`":                         false,
+		"@":                          false,
 	}
 	for stage, want := range tests {
 		if got := sdk.ValidStage(stage); got != want {

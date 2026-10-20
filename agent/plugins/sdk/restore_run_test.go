@@ -33,3 +33,11 @@ func TestBothHostsGiveThePluginThatJournalAndNoWayToListOrRemoveEntries(t *testi
 		}
 	}
 }
+
+// The phases are told to the server by number: zero is "none", and the
+// restore comes after the preparation.
+func TestThePhasesAreNumberedFromOneInTheOrderTheyHappen(t *testing.T) {
+	if sdk.PhasePreparing != 1 || sdk.PhaseRestoring != 2 {
+		t.Errorf("PhasePreparing = %d, PhaseRestoring = %d, want 1 and 2", sdk.PhasePreparing, sdk.PhaseRestoring)
+	}
+}

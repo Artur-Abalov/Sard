@@ -41,20 +41,25 @@ const (
 // ValidReason reports whether s is a reason code: ^[A-Z][A-Z0-9_]{0,63}$.
 // The agent replaces any other with PLUGIN_FAILED.
 func ValidReason(s string) bool {
-	return len(s) >= 1 && len(s) <= maxReason && upper(s[0]) && allBytes(s[1:], func(c byte) bool { return upper(c) || digit(c) || c == '_' })
+	return len(s) >= 1 && len(s) <= maxReason && matches(s, upper, func(c byte) bool { return upper(c) || digit(c) || c == '_' })
 }
 
 // ValidStage reports whether s is a stage of a restore: ^[a-z][a-z-]{0,31}$.
 func ValidStage(s string) bool {
-	return len(s) >= 1 && len(s) <= maxStage && lower(s[0]) && allBytes(s[1:], func(c byte) bool { return lower(c) || c == '-' })
+	return len(s) >= 1 && len(s) <= maxStage && matches(s, lower, func(c byte) bool { return lower(c) || c == '-' })
 }
 
 func upper(c byte) bool { return c >= 'A' && c <= 'Z' }
 func lower(c byte) bool { return c >= 'a' && c <= 'z' }
 func digit(c byte) bool { return c >= '0' && c <= '9' }
 
-func allBytes(s string, ok func(byte) bool) bool {
+// matches: the first byte of s is first, every other is rest.
+func matches(s string, first, rest func(byte) bool) bool {
 	for i := 0; i < len(s); i++ {
+		ok := rest
+		if i == 0 {
+			ok = first
+		}
 		if !ok(s[i]) {
 			return false
 		}

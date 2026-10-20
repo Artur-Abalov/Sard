@@ -127,7 +127,7 @@ func (s *Source) upload(ctx context.Context, h *host, cfg sdk.Config, repo resti
 	switch {
 	case err == nil:
 		return sum, nil
-	case streamErr != nil && errors.Is(err, streamErr):
+	case errors.Is(err, streamErr): // no streamErr is nil, which no err is
 		return sum, err // the plugin's failure, not the repository's
 	}
 	return sum, &repositoryError{err}

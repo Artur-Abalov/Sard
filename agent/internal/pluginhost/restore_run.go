@@ -74,12 +74,7 @@ type pluginFailure struct {
 	retain bool
 }
 
-func (f *pluginFailure) Unwrap() []error {
-	if f.cause == nil {
-		return []error{f.Failure}
-	}
-	return []error{f.Failure, f.cause}
-}
+func (f *pluginFailure) Unwrap() []error { return []error{f.Failure, f.cause} }
 
 // pluginFailure words the error a plugin returned from Restore. A reason or a
 // stage that is no code never reaches the server: PLUGIN_FAILED takes its place.

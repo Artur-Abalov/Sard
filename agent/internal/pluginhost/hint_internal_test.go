@@ -76,3 +76,9 @@ func TestAFailedConsoleRestoreOfAnotherReasonGetsNoHint(t *testing.T) {
 		})
 	}
 }
+
+func TestNoFailureHasNoHint(t *testing.T) {
+	if got := withCheckHint(nil); got != nil {
+		t.Errorf("withCheckHint(nil) = %v", got)
+	}
+}

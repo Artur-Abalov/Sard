@@ -49,7 +49,14 @@ func (s *safeBuffer) String() string {
 // faultyFS is the file system of the journal; it fails what the test asks.
 type faultyFS struct {
 	hostsetup.FS
-	writeErr, syncErr, renameErr, mkdirErr error
+	writeErr, syncErr, renameErr, mkdirErr, removeErr error
+}
+
+func (f *faultyFS) Remove(path string) error {
+	if f.removeErr != nil {
+		return f.removeErr
+	}
+	return f.FS.Remove(path)
 }
 
 func (f *faultyFS) CreateTemp(dir, pattern string) (hostsetup.File, error) {

@@ -145,7 +145,8 @@ type Class int
 
 // The classes repo init and repo list use.
 const (
-	ClassAgentError Class = iota + 1
+	_ Class = iota // 0 is no class (ClassOf)
+	ClassAgentError
 	ClassUsage
 	ClassExists
 	ClassTemporary

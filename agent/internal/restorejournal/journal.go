@@ -84,7 +84,7 @@ func (s *Store) Path(commandID string) string {
 
 // usable: the command id is one component of a path, not a hidden file.
 func usable(id string) bool {
-	return id != "" && id != "." && id != ".." && filepath.Base(id) == id && !strings.HasPrefix(id, ".")
+	return filepath.Base(id) == id && !strings.HasPrefix(id, ".") // Base("") is ".": "" is no name either
 }
 
 // Save writes the entry of the command of the plugin, replacing the previous
@@ -151,7 +151,7 @@ func (s *Store) Remove(commandID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	removed, err := hostsetup.RemoveFile(s.opts.FS, s.Path(commandID))
-	if err != nil || !removed {
+	if !removed { // RemoveFile says false with the error or without one
 		return err
 	}
 	return s.opts.FS.SyncDir(s.opts.Dir)

@@ -23,7 +23,7 @@ const checkHint = "run `sudo sard-agent check` on the host"
 // wrong or its file is missing, a program of the plugin is not found.
 // Every other failure, and a rejected step, is returned as it is.
 func withCheckHint(err error) error {
-	if err == nil || errors.Is(err, executor.ErrRejected) || !checkExplains(err) {
+	if errors.Is(err, executor.ErrRejected) || !checkExplains(err) {
 		return err
 	}
 	return &hinted{err}
