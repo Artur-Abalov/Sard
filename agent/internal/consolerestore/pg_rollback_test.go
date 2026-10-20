@@ -29,7 +29,10 @@ func TestAFailureAfterTheDatabaseIsCreatedDropsItAndTheRoles(t *testing.T) {
 		{"pg_restore fails with globals", true, func(h *pgHost) { h.server.restoreError = "pg_restore: error: could not execute query" }, "PG_RESTORE_FAILED", "restore"},
 		{"the storage stops", true, func(h *pgHost) {
 			h.repo.dumpHook = func(_ context.Context, _, path string, w io.Writer) error {
-				if path == "/app.dump" && len(h.repo.dumped()) > 1 {
+				// The storage stops on the second dump of the database: the
+				// first one feeds the table of contents (stage check). The dump
+				// of the global objects comes before both and is not counted.
+				if path == "/app.dump" && dumpsOf(h.repo, "/app.dump") > 1 {
 					_, _ = io.WriteString(w, "PGDMP")
 					return restic.ErrNetwork
 				}
@@ -325,4 +328,15 @@ func TestAPlanKeepsItsConnectionInTheJournalWithoutThePassword(t *testing.T) {
 			t.Errorf("journal lacks %s: %s", want, data)
 		}
 	}
+}
+
+// dumpsOf is how many times restic dump was asked for path, this call included.
+func dumpsOf(r *pgRepo, path string) int {
+	n := 0
+	for _, d := range r.dumped() {
+		if d[1] == path {
+			n++
+		}
+	}
+	return n
 }
