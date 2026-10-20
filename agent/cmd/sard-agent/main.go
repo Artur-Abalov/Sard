@@ -355,7 +355,7 @@ func checkHostFiles(cfg config.Config, sel certpair.Selection) error {
 	return secrets.CheckAll(cfg, uint32(os.Getuid()), secrets.RealStat)
 }
 
-// newAgentWith is newAgent whose steps a test may run with its own handlers.
+// newAgentWith is buildAgent whose steps a test may run with its own handlers.
 func newAgentWith(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine, journal *pluginhost.Journal, rt agentRuntime) *app.Agent {
 	agent := buildAgent(cfg, hostname, resticBinary, machineID, restores, journal)
 	if rt.handlers != nil {
@@ -364,11 +364,7 @@ func newAgentWith(cfg config.Config, hostname, resticBinary, machineID string, r
 	return agent
 }
 
-// newAgent wires the built-in plugins to restic and the host's secrets.
-func newAgent(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine) *app.Agent {
-	return buildAgent(cfg, hostname, resticBinary, machineID, restores, newRestoreJournal(cfg))
-}
-
+// buildAgent wires the built-in plugins to restic and the host's secrets.
 func buildAgent(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine, journal *pluginhost.Journal) *app.Agent {
 	// Repository keys stay on this host (ADR 0008).
 	repos := openRepositories(cfg, restic.Options{

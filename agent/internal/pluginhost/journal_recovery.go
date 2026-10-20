@@ -126,7 +126,8 @@ type recovered struct {
 // recoverWithin runs the recovery of a plugin for at most Timeout, and Grace
 // more for a plugin that does not heed its context. What a recovery says after
 // its time is over is not believed.
-func recoverWithin(o RecoveryOptions, r sdk.Recoverer, host sdk.RecoveryHost, id string, entry []byte) (sdk.Recovery, error) {
+func recoverWithin(o RecoveryOptions, r sdk.Recoverer, host *recoveryHost, id string, entry []byte) (sdk.Recovery, error) {
+	defer host.journal.close()
 	ctx, cancel := context.WithTimeout(context.Background(), o.Timeout)
 	defer cancel()
 	out := awaitRecovery(ctx, startRecovery(ctx, r, host, id, entry), o.Grace)

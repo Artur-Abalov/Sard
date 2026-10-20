@@ -443,6 +443,53 @@ func TestARecoveryThatIgnoresItsContextDoesNotHoldTheAgentEither(t *testing.T) {
 	}
 }
 
+func TestARecoveryThatSavesAfterTheHostGaveUpLeavesTheEntryAsItWas(t *testing.T) {
+	var ev events
+	release := make(chan struct{})
+	saved := make(chan error, 1)
+	late := func(_ context.Context, h sdk.RecoveryHost, _ string, _ []byte) sdk.Recovery {
+		<-release
+		saved <- h.Journal().Save([]byte("late"))
+		return sdk.NothingRestored()
+	}
+	r := newOwnRig(t, recovering("journaltest", &ev, late))
+	r.killSteps("c1")
+	if err := r.store.Save("journaltest", "c1", []byte("e1")); err != nil {
+		t.Fatal(err)
+	}
+	r.start(20 * time.Millisecond)
+	close(release)
+	if err := <-saved; err == nil {
+		t.Error("the late Save succeeded")
+	}
+	if got := r.entryOf("c1"); got != "e1" {
+		t.Errorf("entry = %q", got)
+	}
+}
+
+func TestARestoreThatSavesAfterTheStepEndedCannotWriteTheEntry(t *testing.T) {
+	release := make(chan struct{})
+	saved := make(chan error, 1)
+	p := &journaltest.Plugin{RestoreFn: func(_ context.Context, h sdk.RestoreHost, _ sdk.Config, _ sdk.RestoreRequest) (sdk.RestoreResult, error) {
+		j := h.Journal()
+		go func() {
+			<-release
+			saved <- j.Save([]byte("late"))
+		}()
+		return sdk.RestoreResult{Database: "x1"}, nil
+	}}
+	r := newOwnRig(t, p)
+	_, s := r.executorRun("c1")
+	if res := s.result(t); res.GetStatus() != agentv1.StepStatus_STEP_STATUS_SUCCEEDED {
+		t.Fatalf("result = %v", res)
+	}
+	close(release)
+	if err := <-saved; err == nil {
+		t.Error("the late Save succeeded")
+	}
+	waitFor(t, func() bool { return !r.hasEntry("c1") })
+}
+
 func TestThePluginsGetFiveMinutesToRecover(t *testing.T) {
 	if pluginhost.RecoveryTimeout != 5*time.Minute {
 		t.Errorf("RecoveryTimeout = %v", pluginhost.RecoveryTimeout)

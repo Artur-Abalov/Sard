@@ -87,3 +87,22 @@
 - Код и тесты не менялись. `./scripts/gate.sh sdk fast` и
   `./scripts/gate.sh agent fast`: пройдены.
 - Дальше: `architect`.
+
+## coder: замечания architect (APPROVED)
+
+- `stepJournal` получил флаг `closed` (под тем же мьютексом, что и проверка
+  секретов); `Save` после закрытия возвращает ошибку и запись не меняется.
+  Закрывается при выходе из `recoverWithin` (в том числе по сроку, после
+  grace и по панике) и при выходе из `restoreByPlugin`. Тесты вперёд: плагин,
+  игнорирующий контекст и сохраняющий после срока, оставил запись `late`;
+  плагин, сохранивший из горутины после конца шага, воссоздал удалённую
+  запись (дыра в Restore была настоящей). Теперь оба `Save` отказывают.
+- Обёртки `newAgent` и `newRecovery` удалены; тесты зовут `buildAgent` и
+  `newRecoveryWith`.
+- ADR 0066 п. 7: Extractor — R2c-3; записаны пустой этап -> `restore`,
+  замена на `PLUGIN_FAILED` (теряет `Detail`, сохраняет `Leftover`, `Retain`)
+  и закрытие журнала шага.
+- `./scripts/gate.sh sdk fast` и `./scripts/gate.sh agent fast`: PASSED
+  (0 issues линтера; CRAP не выше 6.0, худшие функции `repo_restore_run.go:
+  restoreRun.restore` и прочие по 6.0, 100.0% покрытия).
+- Дальше: `cleaner`.

@@ -33,6 +33,8 @@ func (h *handler) restoreByPlugin(ctx context.Context, step *agentv1.RunStep, re
 		return nil, rejected(errors.New("the restore journal is not enabled on this host"))
 	}
 	host := h.newRestoreHost(ctx, step, repo, r)
+	// A plugin that goes on after its step ended cannot write the entry again.
+	defer host.journal.close()
 	req := sdk.RestoreRequest{CommandID: step.GetCommandId(), SnapshotID: step.GetSnapshotId()}
 	res, err := h.src.runner.Restore(ctx, host, sdk.Config(step.GetConfigJson()), req)
 	if err != nil {
@@ -220,8 +222,17 @@ type stepJournal struct {
 	plugin    string
 	commandID string
 
-	mu   sync.Mutex
-	read map[string][]byte
+	mu     sync.Mutex
+	read   map[string][]byte
+	closed bool
+}
+
+// close ends the journal: a plugin that goes on after the host stopped
+// waiting for it cannot change the entry any more.
+func (j *stepJournal) close() {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.closed = true
 }
 
 func (j *stepJournal) noteSecret(name string, value []byte) {
@@ -234,9 +245,7 @@ func (j *stepJournal) noteSecret(name string, value []byte) {
 }
 
 // leaked names a secret of the step whose value the entry holds, "" if none.
-func (j *stepJournal) leaked(entry []byte) string {
-	j.mu.Lock()
-	defer j.mu.Unlock()
+func (j *stepJournal) leakedLocked(entry []byte) string {
 	for _, name := range slices.Sorted(maps.Keys(j.read)) {
 		if value := j.read[name]; len(value) > 0 && bytes.Contains(entry, value) {
 			return name
@@ -247,7 +256,12 @@ func (j *stepJournal) leaked(entry []byte) string {
 
 // Save implements sdk.Journal.
 func (j *stepJournal) Save(entry []byte) error {
-	if name := j.leaked(entry); name != "" {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.closed {
+		return errors.New("the journal is closed: the host does not wait for this plugin any more")
+	}
+	if name := j.leakedLocked(entry); name != "" {
 		return fmt.Errorf("the journal entry holds the value of the secret %q: an entry names a secret, it never holds its value", name)
 	}
 	return j.store.save(j.plugin, j.commandID, entry)

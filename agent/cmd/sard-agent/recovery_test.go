@@ -40,7 +40,7 @@ func present(dir, id string) bool {
 // Scenario: Убитое после переноса восстановление сообщает об успехе; the directory goes once the result is journaled.
 func TestTheDirectoryOfACompletedRestoreGoesOnlyOnceItsResultIsJournaled(t *testing.T) {
 	dir := t.TempDir()
-	r := newRecovery(completedRestore(t, dir, "c1"))
+	r := newRecoveryWith(completedRestore(t, dir, "c1"), nil, nil)
 	got := r.interrupted("c1", agentv1.Action_ACTION_RESTORE)
 	if got == nil || !got.Succeeded || got.Output.GetFilesRestored() != 2 {
 		t.Fatalf("Interruption = %+v", got)
@@ -58,7 +58,7 @@ func TestTheDirectoryOfACompletedRestoreGoesOnlyOnceItsResultIsJournaled(t *test
 // Scenario: Временный каталог неизвестной команды удаляется при старте.
 func TestTheDirectoryOfACommandTheExecutorNeverAskedAboutGoesWhenTheExecutorHasStarted(t *testing.T) {
 	dir := t.TempDir()
-	r := newRecovery(completedRestore(t, dir, "c1", "c9"))
+	r := newRecoveryWith(completedRestore(t, dir, "c1", "c9"), nil, nil)
 	r.interrupted("c1", agentv1.Action_ACTION_RESTORE)
 	r.executorStarted()
 	if present(dir, "c9") || !present(dir, "c1") {
@@ -68,7 +68,7 @@ func TestTheDirectoryOfACommandTheExecutorNeverAskedAboutGoesWhenTheExecutorHasS
 
 func TestAFailedResultDoesNotRemoveWhatItNames(t *testing.T) {
 	dir := t.TempDir()
-	r := newRecovery(completedRestore(t, dir, "c1"))
+	r := newRecoveryWith(completedRestore(t, dir, "c1"), nil, nil)
 	r.journaled(&agentv1.StepResult{CommandId: "c1", Status: agentv1.StepStatus_STEP_STATUS_FAILED, Output: &agentv1.StepResult_Restore{Restore: &agentv1.RestoreOutput{Leftover: "x"}}})
 	r.journaled(&agentv1.StepResult{CommandId: "c1", Status: agentv1.StepStatus_STEP_STATUS_SUCCEEDED})
 	if !present(dir, "c1") {
@@ -122,7 +122,7 @@ func journalHas(state, id string) bool {
 // Scenario: Убитое после завершения pg_restore восстановление сообщает об успехе из журнала отката.
 func TestTheEntryOfACompletedDatabaseRestoreGoesOnlyOnceItsResultIsJournaled(t *testing.T) {
 	state := t.TempDir()
-	r := newRecovery(completedDatabase(t, state, "c1"))
+	r := newRecoveryWith(completedDatabase(t, state, "c1"), nil, nil)
 	got := r.interrupted("c1", agentv1.Action_ACTION_RESTORE)
 	if got == nil || !got.Succeeded || got.Output.GetDatabase() != "d" || got.Output.GetTablesRestored() != 3 || got.Output.GetRolesRestored() != 1 {
 		t.Fatalf("Interruption = %+v", got)
@@ -139,7 +139,7 @@ func TestTheEntryOfACompletedDatabaseRestoreGoesOnlyOnceItsResultIsJournaled(t *
 
 func TestTheEntryOfACommandTheExecutorNeverAskedAboutGoesWhenTheExecutorHasStarted(t *testing.T) {
 	state := t.TempDir()
-	r := newRecovery(completedDatabase(t, state, "c1", "c9"))
+	r := newRecoveryWith(completedDatabase(t, state, "c1", "c9"), nil, nil)
 	r.interrupted("c1", agentv1.Action_ACTION_RESTORE)
 	r.executorStarted()
 	if journalHas(state, "c9") || !journalHas(state, "c1") {
@@ -151,7 +151,7 @@ func TestTheEntryOfAFailedRestoreOfADatabaseWithNothingToDropGoesWithItsResult(t
 	state := t.TempDir()
 	e := completedDatabase(t, state, "c0")
 	writeFile(t, filepath.Join(state, "pg-restore", "c1.json"), []byte(`{"command_id":"c1","connection":{},"database":{"name":"d"}}`), 0o600)
-	r := newRecovery(e)
+	r := newRecoveryWith(e, nil, nil)
 	r.journaled(&agentv1.StepResult{CommandId: "c1", Status: agentv1.StepStatus_STEP_STATUS_FAILED, Output: &agentv1.StepResult_Restore{Restore: &agentv1.RestoreOutput{Leftover: "database d"}}})
 	if journalHas(state, "c1") {
 		t.Error("an entry of intents stays")

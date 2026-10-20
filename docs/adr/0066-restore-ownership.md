@@ -133,9 +133,19 @@ R2c-2; версию этот ADR записывает при выпуске (В1
 
 | Этап | Что | Передоказывает |
 |---|---|---|
-| R2c-1 | SDK (п. 2), выбор пути в `pluginhost`, `files` в режиме дерева, журнал хоста (п. 3), тестовый плагин через настоящий хост; PostgreSQL ещё через движок | правила «R2a» `console-restore.feature` и Register; правила «R2b» — регрессия |
+| R2c-1 | SDK (п. 2) без `Extractor` — он приходит в R2c-3; выбор пути в `pluginhost`, `files` в режиме дерева, журнал хоста (п. 3), тестовый плагин через настоящий хост; PostgreSQL ещё через движок | правила «R2a» `console-restore.feature` и Register; правила «R2b» — регрессия |
 | R2c-2 | `consolerestore/pg_*.go` → `plugins/postgresql` со слиянием с `exec.go` и `tools.go`; удаление `pluginhost/handler_database.go`; разбор при старте через `Recoverer`; прежний журнал (п. 4) | правила «R2b» `console-restore.feature` целиком, разбор при старте «R2a», `postgresql-plugin.feature` |
 | R2c-3 | `repo restore` через `Extractor`, удаление `internal/restore/postgres*.go` и `sdk.PostgresRestore`, `sdk/pgclient` → `plugins/postgresql`, поправки ADR 0065 и 0027, архитектурные тесты | правило PostgreSQL в `repo-restore.feature`, `latest` и временные файлы PostgreSQL; ПГ3, ПГ4 `postgresql-plugin.feature`; `console-restore.feature` — регрессия |
+
+Решения R2c-1, не названные выше:
+
+- Пустой этап в `RestoreError` хост читает как `restore`.
+- Если причина или этап `RestoreError` не являются кодами, хост заменяет отказ
+  на `PLUGIN_FAILED`: `Detail` плагина отбрасывается (его заменяет текст хоста),
+  а `Leftover` и `Retain` сохраняются.
+- Журнал шага (`stepJournal`) закрывается, когда хост перестал ждать плагин
+  (шаг закончился или отменён; разбор завершился, истёк срок или паника):
+  `Save` после этого возвращает ошибку и запись не меняется.
 
 На каждом этапе каждый сценарий `docs/specs/agent/console-restore.feature`
 остаётся зелёным и неизменным — те же причина, стадия, текст и `leftover`.

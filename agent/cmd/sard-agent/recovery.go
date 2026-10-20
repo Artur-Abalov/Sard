@@ -25,14 +25,10 @@ type recovery struct {
 	recovered *pluginhost.JournalRecovery
 }
 
-// newRecovery settles .sard-staging and the rollback journal of restores of
-// databases, before any step is accepted.
-func newRecovery(engine *consolerestore.Engine) *recovery {
-	return newRecoveryWith(engine, nil, nil)
-}
-
-// newRecoveryWith is newRecovery for a host whose plugins keep entries in the
-// restore journal: recovered is what they made of them.
+// newRecoveryWith settles .sard-staging and the rollback journal of restores of
+// databases, before any step is accepted; journal and recovered belong to a host
+// whose plugins keep entries in the restore journal (recovered is what they made
+// of them), nil on a host without one.
 func newRecoveryWith(engine *consolerestore.Engine, journal *pluginhost.Journal, recovered *pluginhost.JournalRecovery) *recovery {
 	found := append(engine.CleanStaging(), engine.CleanDatabases()...)
 	return &recovery{
