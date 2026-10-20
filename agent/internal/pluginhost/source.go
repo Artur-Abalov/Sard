@@ -36,6 +36,10 @@ type Source struct {
 	// restorer and restoreSchema are set for a plugin the console can restore.
 	restorer      sdk.Restorer
 	restoreSchema *Schema
+	// runner is set for a plugin that restores itself (R2c); recoverer for one
+	// that recovers its journal entries at start.
+	runner    sdk.RestoreRunner
+	recoverer sdk.Recoverer
 }
 
 // NewSource compiles the plugin's ConfigSchema; a schema that does not
@@ -48,10 +52,12 @@ func NewSource(p sdk.Plugin, secrets *Secrets) (*Source, error) {
 	src := &Source{plugin: p, schema: schema, secrets: secrets}
 	if r, ok := p.(sdk.Restorer); ok {
 		src.restorer = r
+		src.runner, _ = p.(sdk.RestoreRunner)
 		if src.restoreSchema, err = CompileSchema(p.Name()+"/restore", r.RestoreConfigSchema(), secrets.Has); err != nil {
 			return nil, err
 		}
 	}
+	src.recoverer, _ = p.(sdk.Recoverer)
 	return src, nil
 }
 
@@ -60,7 +66,8 @@ func (s *Source) CanRestore() bool { return s.restorer != nil }
 
 // PlanRestore validates the restore config against the plugin's restore
 // schema and gives the plan the plugin makes of it, checked against the rules
-// of a plan. Any violation is a *sdk.ConfigError.
+// of a plan. Any violation is a *sdk.ConfigError. The plan of a plugin that
+// restores itself is not used, so its rules are not applied.
 func (s *Source) PlanRestore(cfg sdk.Config) (sdk.RestorePlan, error) {
 	if err := s.restoreSchema.Validate(cfg); err != nil {
 		return sdk.RestorePlan{}, err
@@ -68,6 +75,9 @@ func (s *Source) PlanRestore(cfg sdk.Config) (sdk.RestorePlan, error) {
 	plan, err := s.restorer.PlanRestore(cfg)
 	if err != nil {
 		return sdk.RestorePlan{}, err
+	}
+	if s.runner != nil {
+		return plan, nil
 	}
 	return plan, plan.Validate()
 }

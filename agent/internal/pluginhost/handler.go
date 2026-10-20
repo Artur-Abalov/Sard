@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -34,6 +35,10 @@ type Handlers struct {
 	restoreDir string
 	// console restores for the console (R2); nil: a host without it.
 	console *consolerestore.Engine
+	// journal keeps the entries of plugins that restore themselves (R2c); nil:
+	// a host where none can.
+	journal *Journal
+	log     *slog.Logger
 }
 
 // Option configures Handlers.
@@ -45,11 +50,22 @@ func WithConsoleRestore(e *consolerestore.Engine) Option {
 	return func(h *Handlers) { h.console = e }
 }
 
+// WithRestoreJournal lets plugins that restore themselves (sdk.RestoreRunner)
+// keep a journal entry of the command in the store.
+func WithRestoreJournal(j *Journal) Option {
+	return func(h *Handlers) { h.journal = j }
+}
+
+// WithLogger sets the log of the agent the handlers write to; default: none.
+func WithLogger(l *slog.Logger) Option {
+	return func(h *Handlers) { h.log = l }
+}
+
 var _ executor.Registry = (*Handlers)(nil)
 
 // NewHandlers compiles every plugin's schema against the host's secrets.
 func NewHandlers(reg *sdk.Registry, secrets *Secrets, repos Repositories, restoreDir string, opts ...Option) (*Handlers, error) {
-	h := &Handlers{sources: make(map[string]*Source), repos: repos, restoreDir: restoreDir}
+	h := &Handlers{sources: make(map[string]*Source), repos: repos, restoreDir: restoreDir, log: slog.New(slog.DiscardHandler)}
 	for _, opt := range opts {
 		opt(h)
 	}
@@ -168,6 +184,9 @@ func (h *handler) restore(ctx context.Context, step *agentv1.RunStep, repo resti
 	if err != nil {
 		return nil, rejected(err)
 	}
+	if h.src.runner != nil {
+		return h.restoreByPlugin(ctx, step, repo, r)
+	}
 	if req.Plan.Postgres != nil {
 		return h.restoreDatabase(ctx, step, repo, req, r)
 	}
@@ -239,23 +258,34 @@ func failedRestore(f *consolerestore.Failure) *agentv1.StepResult {
 // restoreRequest checks everything that can be checked before the repository
 // or the disk is touched: the host, the command, the snapshot, the config.
 func (h *handler) restoreRequest(step *agentv1.RunStep) (consolerestore.Request, error) {
-	id := step.GetCommandId()
-	source := step.GetTags()[consolerestore.SourceTag]
-	switch {
-	case h.console == nil:
-		return consolerestore.Request{}, errors.New("restore from the console is not enabled on this host")
-	case !consolerestore.UsableName(id):
-		return consolerestore.Request{}, fmt.Errorf("command id %q cannot name a temporary directory", id)
-	case !isSnapshotID(step.GetSnapshotId()):
-		return consolerestore.Request{}, fmt.Errorf("snapshot_id %q: want 64 lower-case hexadecimal characters, the full id of the snapshot", step.GetSnapshotId())
-	case source == "":
-		return consolerestore.Request{}, fmt.Errorf("tag %s is required: it names the source the snapshot belongs to", consolerestore.SourceTag)
+	if err := h.checkRestoreStep(step); err != nil {
+		return consolerestore.Request{}, err
 	}
 	plan, err := h.src.PlanRestore(sdk.Config(step.GetConfigJson()))
 	if err != nil {
 		return consolerestore.Request{}, err
 	}
-	return consolerestore.Request{CommandID: id, Repository: step.GetRepositoryName(), SnapshotID: step.GetSnapshotId(), Source: source, Plan: plan}, nil
+	return consolerestore.Request{
+		CommandID: step.GetCommandId(), Repository: step.GetRepositoryName(), SnapshotID: step.GetSnapshotId(),
+		Source: step.GetTags()[consolerestore.SourceTag], Plan: plan,
+	}, nil
+}
+
+// checkRestoreStep judges the step itself. The source of the snapshot is the
+// engine's to check; a plugin that restores itself judges its snapshots.
+func (h *handler) checkRestoreStep(step *agentv1.RunStep) error {
+	id := step.GetCommandId()
+	switch {
+	case h.console == nil:
+		return errors.New("restore from the console is not enabled on this host")
+	case !consolerestore.UsableName(id):
+		return fmt.Errorf("command id %q cannot name a temporary directory", id)
+	case !isSnapshotID(step.GetSnapshotId()):
+		return fmt.Errorf("snapshot_id %q: want 64 lower-case hexadecimal characters, the full id of the snapshot", step.GetSnapshotId())
+	case step.GetTags()[consolerestore.SourceTag] == "" && h.src.runner == nil:
+		return fmt.Errorf("tag %s is required: it names the source the snapshot belongs to", consolerestore.SourceTag)
+	}
+	return nil
 }
 
 // isSnapshotID: 64 lower-case hexadecimal characters.

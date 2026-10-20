@@ -33,11 +33,13 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/repoconnect"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/internal/restorejournal"
 	"github.com/Artur-Abalov/sard/agent/internal/role"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 	"github.com/Artur-Abalov/sard/agent/internal/stepsecrets"
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
 	"github.com/Artur-Abalov/sard/agent/plugins"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
 // version is set at build time: -ldflags "-X main.version=...".
@@ -183,8 +185,39 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 	}
 	// R2a: before any step is accepted, what a killed restore left is removed.
 	engine := newRestoreEngine(cfg)
-	agent := newAgentWith(cfg, hostname, resticBinary, me.machineID, engine, rt)
-	return refuse(serve(ctx, cfg, me.role, agent, newRecovery(engine), renewal, rt), configPath, cfg)
+	journal := newRestoreJournal(cfg)
+	agent := newAgentWith(cfg, hostname, resticBinary, me.machineID, engine, journal, rt)
+	// R2c: the plugins recover their entries of the restore journal now, before
+	// the first step and before the first connection to the server.
+	recovered := recoverJournal(cfg, journal, rt.journalPlugins, agent.Plugins)
+	return refuse(serve(ctx, cfg, me.role, agent, newRecoveryWith(engine, journal, recovered), renewal, rt), configPath, cfg)
+}
+
+// newRestoreJournal is the restore journal of the plugins that restore
+// themselves: a directory of executor.state_dir, written as the service user.
+func newRestoreJournal(cfg config.Config) *pluginhost.Journal {
+	store := restorejournal.New(restorejournal.Options{
+		Dir:   restoreJournalDir(cfg),
+		FS:    hostsetup.OS{},
+		Owner: hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid()},
+	})
+	return pluginhost.NewJournal(store, slog.Default())
+}
+
+func restoreJournalDir(cfg config.Config) string {
+	return filepath.Join(executorStateDir(cfg.Executor.StateDir), "restore-journal")
+}
+
+// recoverJournal gives the entries of the journal to the plugins that keep
+// them: those of the test, if it names some, else the agent's own.
+func recoverJournal(cfg config.Config, journal *pluginhost.Journal, test, builtin *sdk.Registry) *pluginhost.JournalRecovery {
+	reg := builtin
+	if test != nil {
+		reg = test
+	}
+	return pluginhost.RecoverJournal(pluginhost.RecoveryOptions{
+		Journal: journal, Plugins: reg, Secrets: pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), Logger: slog.Default(),
+	})
 }
 
 // checkHostRuntime finds restic and the host name, before the network.
@@ -323,8 +356,8 @@ func checkHostFiles(cfg config.Config, sel certpair.Selection) error {
 }
 
 // newAgentWith is newAgent whose steps a test may run with its own handlers.
-func newAgentWith(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine, rt agentRuntime) *app.Agent {
-	agent := newAgent(cfg, hostname, resticBinary, machineID, restores)
+func newAgentWith(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine, journal *pluginhost.Journal, rt agentRuntime) *app.Agent {
+	agent := buildAgent(cfg, hostname, resticBinary, machineID, restores, journal)
 	if rt.handlers != nil {
 		agent.Handlers = rt.handlers
 	}
@@ -333,6 +366,10 @@ func newAgentWith(cfg config.Config, hostname, resticBinary, machineID string, r
 
 // newAgent wires the built-in plugins to restic and the host's secrets.
 func newAgent(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine) *app.Agent {
+	return buildAgent(cfg, hostname, resticBinary, machineID, restores, newRestoreJournal(cfg))
+}
+
+func buildAgent(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine, journal *pluginhost.Journal) *app.Agent {
 	// Repository keys stay on this host (ADR 0008).
 	repos := openRepositories(cfg, restic.Options{
 		Binary:   resticBinary,
@@ -346,7 +383,7 @@ func newAgent(cfg config.Config, hostname, resticBinary, machineID string, resto
 	registry := plugins.Registry(version)
 	return &app.Agent{
 		Plugins:   registry,
-		Handlers:  plugins.Handlers(registry, pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), repos.get, restoreDir(cfg.Executor.StateDir), pluginhost.WithConsoleRestore(restores)),
+		Handlers:  plugins.Handlers(registry, pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), repos.get, restoreDir(cfg.Executor.StateDir), pluginhost.WithConsoleRestore(restores), pluginhost.WithRestoreJournal(journal), pluginhost.WithLogger(slog.Default())),
 		Hostname:  hostname,
 		MachineID: machineID,
 		Version:   version,

@@ -42,7 +42,7 @@ func checkExplains(err error) bool {
 	var restoreFailure *consolerestore.Failure
 	switch {
 	case errors.As(err, &restoreFailure):
-		return checkExplained[restoreFailure.Reason]
+		return explainedFailure(restoreFailure, err)
 	case errors.Is(err, restic.ErrNetwork), errors.Is(err, restic.ErrWrongPassword):
 		return true
 	case errors.Is(err, restic.ErrPasswordFile) && errors.Is(err, fs.ErrNotExist):
@@ -51,6 +51,11 @@ func checkExplains(err error) bool {
 		return true
 	}
 	return errors.Is(err, sdk.ErrProgramMissing)
+}
+
+// explainedFailure: check diagnoses the reason, or the program a plugin missed.
+func explainedFailure(f *consolerestore.Failure, err error) bool {
+	return checkExplained[f.Reason] || errors.Is(err, sdk.ErrProgramMissing)
 }
 
 // hinted is an error whose message ends with the hint; the cause stays
