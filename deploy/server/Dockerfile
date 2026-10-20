@@ -51,9 +51,12 @@ RUN --mount=type=cache,target=/root/.npm \
     if [ -f /run/secrets/build-ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/build-ca; fi && \
     npm ci --no-audit --no-fund
 COPY web ./
-# The only file outside web/ that "tsc -b" (the typecheck in npm run build) reads: the files plugin's
-# config schema, which the console's tests import.
+# The only files outside web/ that "tsc -b" (the typecheck in npm run build) reads: the plugins'
+# config and restore schemas, which the console's tests import.
 COPY agent/plugins/files/schema.json /src/agent/plugins/files/schema.json
+COPY agent/plugins/files/restore_schema.json /src/agent/plugins/files/restore_schema.json
+COPY agent/plugins/postgresql/schema.json /src/agent/plugins/postgresql/schema.json
+COPY agent/plugins/postgresql/restore_schema.json /src/agent/plugins/postgresql/restore_schema.json
 # The version is written into index.html (<meta name="sard-version">), as into the jar below.
 ARG SARD_VERSION=dev
 RUN SARD_VERSION="${SARD_VERSION}" npm run build

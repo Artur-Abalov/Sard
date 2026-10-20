@@ -24,9 +24,8 @@ R2 (ВВ1, OQ-230) и не проверяется.
 
 ```bash
 mark() { OUT=${OUT:-$(mktemp -d)}; touch "$OUT/mark"; }
-# allow-sudo-u: psql от суперпользователя PostgreSQL, не sard-agent
 traces() { sudo find /var/lib/sard-agent/restore -mindepth 1 -newer "$OUT/mark" -printf '%p\n'; \
-           sudo -u postgres psql -tAc "select datname from pg_database where datname like 'app_restored%'"; }
+           sudo -u postgres psql -tAc "select datname from pg_database where datname like 'app_restored%'"; }  # allow-sudo-u: psql от суперпользователя PostgreSQL, не sard-agent
 ```
 
 `traces` после `mark` перед шагом → пусто означает «следов нет».
