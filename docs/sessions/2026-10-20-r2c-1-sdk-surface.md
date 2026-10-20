@@ -73,3 +73,17 @@
 
 Дальше: `cleaner` (метрики), затем architect и hardener (мутационное
 тестирование — на их шаге).
+
+## cleaner
+
+- Метрики до: все функции из файлов R2c-1 не выше CRAP 6.0, покрытие 100.0%
+  (sdk: `ValidReason` 6.0, `ValidStage` 5.0, остальные не выше 3.0; agent:
+  `run` 6.0, `agentRuntime.withDefaults` 6.0, прочее ниже порога).
+- Просмотрены `restore_run.go`, `journal.go`, `journal_recovery.go`,
+  `restorejournal/journal.go`, `sdk/restore_error.go`: длинных функций, мёртвого
+  кода и значимого дублирования нет. Единственное повторение — запись
+  `noteSecret` после успешного `Secret` в `restoreHost` и `recoveryHost`
+  (три строки); вынос не оправдан, не тронуто.
+- Код и тесты не менялись. `./scripts/gate.sh sdk fast` и
+  `./scripts/gate.sh agent fast`: пройдены.
+- Дальше: `architect`.
