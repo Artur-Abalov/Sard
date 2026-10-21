@@ -11,6 +11,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
+	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/restickeys"
 )
@@ -97,9 +98,6 @@ func (c *hostCmd) issueUnderLock(ctx context.Context, access *keyAccess, issue k
 	if err != nil {
 		return c.fail(refusal.Fail(refusal.ResticFailed, "%v", err))
 	}
-	if f := c.createKey(ctx, access, issue.tag, password); f != nil {
-		return c.fail(f)
-	}
 	return c.finishIssue(ctx, access, issue, password)
 }
 
@@ -121,31 +119,81 @@ func describeTag(t restickeys.Tag) string {
 	return fmt.Sprintf("purpose %s, label %s", t.Purpose, t.Label)
 }
 
-// createKey runs restic key add. A call that ended with the time, or an
-// interrupt, may have made the key: the message says how to find out (K20).
-func (c *hostCmd) createKey(ctx context.Context, access *keyAccess, tag restickeys.Tag, password string) *refusal.Failure {
-	host, err := c.deps.hostname()
+// keyIssuer is the one way a key is issued, by repo key add and by the
+// recovery key of repo add and repo init: restic key add within
+// --connect-timeout, the id of the new key, the password handed over once,
+// the audit line and the next steps.
+type keyIssuer struct {
+	c *hostCmd
+	// target describes the repository to the messages; secret is one more
+	// value they must not show.
+	target func(secret string) repoinit.Target
+	// attempt runs one restic call within the time --connect-timeout gives.
+	attempt func(ctx context.Context, target repoinit.Target, call func(ctx context.Context, cli *restic.CLI) error) *refusal.Failure
+}
+
+// issue makes the key and hands its password over. A call that ended with the
+// time, or an interrupt, may have made the key: the message says how to find
+// out (K20).
+func (k keyIssuer) issue(ctx context.Context, issue keyIssue, password string) *refusal.Failure {
+	target := k.target(password)
+	if f := k.create(ctx, target, issue.tag, password); f != nil {
+		return f
+	}
+	id := k.newKeyID(ctx, target, issue.tag)
+	if f := k.c.showPassword(issue, password, id); f != nil {
+		return f
+	}
+	k.c.recordKey("added", id, issue.tag)
+	k.c.printNextSteps(issue.tag)
+	return nil
+}
+
+// create runs restic key add.
+func (k keyIssuer) create(ctx context.Context, target repoinit.Target, tag restickeys.Tag, password string) *refusal.Failure {
+	host, err := k.c.deps.hostname()
 	if err != nil {
 		return refusal.Fail(refusal.ResticFailed, "the name of this host is unknown: %v", err)
 	}
-	f := access.attempt(ctx, access.target(password), func(ctx context.Context, cli *restic.CLI) error {
+	f := k.attempt(ctx, target, func(ctx context.Context, cli *restic.CLI) error {
 		return cli.AddKey(ctx, restic.NewKey{User: tag.User(), Host: host, Password: password})
 	})
-	if f != nil && (f.Reason == refusal.Timeout || f.Reason == refusal.Interrupted) {
-		f.Detail += fmt.Sprintf("; the key may have been created: check with `sudo sard-agent repo key list %s` and remove it with `sudo sard-agent repo key remove %s <id>`", c.opts.name, c.opts.name)
+	if f != nil && mayHaveCreated(f.Reason) {
+		f.Detail += fmt.Sprintf("; the key may have been created: check with `sudo sard-agent repo key list %s` and remove it with `sudo sard-agent repo key remove %s <id>`", k.c.opts.name, k.c.opts.name)
 	}
 	return f
 }
 
-// finishIssue hands the password over once, records the change, prints the
-// next steps and applies the change when it matters to the server.
+// mayHaveCreated: a call that ended with a time limit (--timeout, or
+// --connect-timeout, which is BACKEND_UNAVAILABLE) or an interrupt may have
+// finished the key before it was stopped.
+func mayHaveCreated(reason refusal.Reason) bool {
+	return reason == refusal.Timeout || reason == refusal.Interrupted || reason == refusal.BackendUnavailable
+}
+
+// newKeyID is the id of the key just made: restic does not print it, the
+// list does. "" if the list cannot be read now; the key exists anyway.
+func (k keyIssuer) newKeyID(ctx context.Context, target repoinit.Target, tag restickeys.Tag) string {
+	var keys []restic.Key
+	f := k.attempt(ctx, target, func(ctx context.Context, cli *restic.CLI) (err error) {
+		keys, err = cli.Keys(ctx)
+		return err
+	})
+	if f != nil {
+		_, _ = fmt.Fprintf(k.c.stderr, "warning: the id of the new key is unknown (%s); find it with `sudo sard-agent repo key list %s`\n", f.Detail, k.c.opts.name)
+		return ""
+	}
+	key, _ := restickeys.Find(restickeys.Sorted(keys), tag)
+	return key.ID
+}
+
+// finishIssue issues the key and applies the change when it matters to the
+// server.
 func (c *hostCmd) finishIssue(ctx context.Context, access *keyAccess, issue keyIssue, password string) int {
-	id := c.newKeyID(ctx, access, issue.tag)
-	if f := c.showPassword(issue, password, id); f != nil {
+	issuer := keyIssuer{c: c, target: func(secret string) repoinit.Target { return access.target(secret) }, attempt: access.attempt}
+	if f := issuer.issue(ctx, issue, password); f != nil {
 		return c.fail(f)
 	}
-	c.recordKey("added", id, issue.tag)
-	c.printNextSteps(issue.tag)
 	if issue.tag.Purpose != restickeys.Recovery {
 		return exitOK
 	}
@@ -153,18 +201,6 @@ func (c *hostCmd) finishIssue(ctx context.Context, access *keyAccess, issue keyI
 		return c.fail(f)
 	}
 	return exitOK
-}
-
-// newKeyID is the id of the key just made: restic does not print it, the
-// list does. "" if the list cannot be read now; the key exists anyway.
-func (c *hostCmd) newKeyID(ctx context.Context, access *keyAccess, tag restickeys.Tag) string {
-	keys, f := access.keys(ctx)
-	if f != nil {
-		_, _ = fmt.Fprintf(c.stderr, "warning: the id of the new key is unknown (%s); find it with `sudo sard-agent repo key list %s`\n", f.Detail, c.opts.name)
-		return ""
-	}
-	key, _ := restickeys.Find(keys, tag)
-	return key.ID
 }
 
 // showPassword puts the password in the file or on the screen, once (K7).

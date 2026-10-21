@@ -52,8 +52,10 @@ type keyAccess struct {
 func prepareKeys(ctx context.Context, sub string, opts hostOptions, who hostsetup.Principal, stderr io.Writer, deps hostDeps) (*keyAccess, int) {
 	mutating := sub != "key list"
 	st, code := prepareRepository(ctx, sub, opts, stderr, deps, func(cfg config.Config, _ config.Repository) (hostsetup.Principal, int) {
-		if mutating && deps.hostRole(cfg.TLS.CertFile) == role.Verifier {
-			return who, report(stderr, "repo "+sub, refusal.Fail(refusal.VerifierReadOnly, "this host is a verifier: a verifier only reads repositories, so it neither issues nor removes keys; run the command on a source host"))
+		if mutating {
+			if f := refuseOnVerifier(deps, cfg, "issue or remove keys"); f != nil {
+				return who, report(stderr, "repo "+sub, f)
+			}
 		}
 		return who, exitOK
 	}, noTools)
@@ -61,6 +63,22 @@ func prepareKeys(ctx context.Context, sub string, opts hostOptions, who hostsetu
 		return nil, code
 	}
 	return &keyAccess{snapshotsState: st, opts: opts, deps: deps}, exitOK
+}
+
+// isVerifier says that the certificate of this host gives it the role of a
+// verifier, which only reads (V3, K17).
+func isVerifier(deps hostDeps, cfg config.Config) bool {
+	return deps.hostRole(cfg.TLS.CertFile) == role.Verifier
+}
+
+// refuseOnVerifier is the refusal of every command that changes a repository
+// (K17); words say what the command does. A new command that changes a
+// repository calls it, and keys_verifier_test.go lists it.
+func refuseOnVerifier(deps hostDeps, cfg config.Config, words string) *refusal.Failure {
+	if !isVerifier(deps, cfg) {
+		return nil
+	}
+	return refusal.Fail(refusal.VerifierReadOnly, "this host is a verifier: a verifier only reads repositories, so it cannot %s; run the command on a source host", words)
 }
 
 // cli is restic for the repository; its stderr is kept for the message of a

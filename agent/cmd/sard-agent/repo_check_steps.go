@@ -202,7 +202,7 @@ func (r *repoSteps) keysStep() hostcheck.Line {
 	if f != nil {
 		return failureLine(hostcheck.CheckRepositoryKeys, r.repo.Name, f, r.hint(hostcheck.CheckRepositoryKeys, f))
 	}
-	return hostcheck.KeysLine(r.repo.Name, len(keys), restickeys.HasRecovery(keys))
+	return hostcheck.KeysLine(r.repo.Name, len(keys), restickeys.Warnings(keys))
 }
 
 // locksStep is repository.locks (Ch5); the whole step is one access to the

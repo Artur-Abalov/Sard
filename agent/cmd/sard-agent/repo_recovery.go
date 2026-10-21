@@ -13,6 +13,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
+	"github.com/Artur-Abalov/sard/agent/internal/repoconnect"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/restickeys"
@@ -85,42 +86,35 @@ func (c *hostCmd) issueRecovery(ctx context.Context, plan recoveryPlan, cli *res
 		return nil
 	}
 	password, err := restickeys.NewPassword(c.deps.random)
-	if err == nil {
-		err = c.addRecoveryKey(ctx, plan, cli, withSecret(target, password), password)
-	}
-	if err == nil {
-		return nil
-	}
-	return refusal.Fail(refusal.RecoveryKeyFailed, "the repository was created, but its recovery key was not issued: %v; issue it with `sudo sard-agent repo key add %s --for recovery`", err, c.opts.name)
-}
-
-// addRecoveryKey makes the key and hands its password over.
-func (c *hostCmd) addRecoveryKey(ctx context.Context, plan recoveryPlan, cli *restic.CLI, target repoinit.Target, password string) error {
-	host, err := c.deps.hostname()
 	if err != nil {
-		return fmt.Errorf("the name of this host is unknown: %w", err)
+		return recoveryFailed(c.opts.name, err.Error())
 	}
-	tag := restickeys.Tag{Purpose: restickeys.Recovery}
-	if err := cli.AddKey(ctx, restic.NewKey{User: tag.User(), Host: host, Password: password}); err != nil {
-		return errors.New(repoinit.FromRestic(ctx, err, target).Detail)
+	if f := c.recoveryIssuer(cli, target).issue(ctx, keyIssue{tag: restickeys.Tag{Purpose: restickeys.Recovery}, file: plan.file}, password); f != nil {
+		return recoveryFailed(c.opts.name, f.Detail)
 	}
-	id := recoveryKeyID(ctx, cli, tag)
-	if f := c.showPassword(keyIssue{tag: tag, file: plan.file}, password, id); f != nil {
-		return errors.New(f.Detail)
-	}
-	c.recordKey("added", id, tag)
-	c.printNextSteps(tag)
 	return nil
 }
 
-// recoveryKeyID is the id of the key just made; "" if the list cannot be read.
-func recoveryKeyID(ctx context.Context, cli *restic.CLI, tag restickeys.Tag) string {
-	keys, err := cli.Keys(ctx)
-	if err != nil {
-		return ""
+// recoveryFailed is the failure of a recovery key whatever its cause.
+func recoveryFailed(name, cause string) *refusal.Failure {
+	return refusal.Fail(refusal.RecoveryKeyFailed, "the repository was created, but its recovery key was not issued: %s; issue it with `sudo sard-agent repo key add %s --for recovery`", cause, name)
+}
+
+// recoveryIssuer issues keys of the repository just created, within
+// --connect-timeout like every other first access to the storage.
+func (c *hostCmd) recoveryIssuer(cli *restic.CLI, target repoinit.Target) keyIssuer {
+	var log repoconnect.Log
+	cli = cli.WithStderr(&log)
+	bound := repoconnect.Bound{Clock: c.deps.clock, Timeout: c.opts.connectTimeout}
+	return keyIssuer{
+		c:      c,
+		target: func(secret string) repoinit.Target { return withSecret(target, secret) },
+		attempt: func(ctx context.Context, target repoinit.Target, call func(context.Context, *restic.CLI) error) *refusal.Failure {
+			return bound.Attempt(ctx, target, &log,
+				func(limited context.Context) error { return call(limited, cli) },
+				func(ctx context.Context, err error) *refusal.Failure { return repoinit.FromRestic(ctx, err, target) })
+		},
 	}
-	key, _ := restickeys.Find(keys, tag)
-	return key.ID
 }
 
 // withSecret is the target whose messages hide one more value.

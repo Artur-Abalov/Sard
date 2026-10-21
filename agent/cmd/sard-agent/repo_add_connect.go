@@ -15,7 +15,6 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/repoconnect"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
-	"github.com/Artur-Abalov/sard/agent/internal/role"
 )
 
 // reportUnchanged is the repeat of a command that already succeeded
@@ -118,7 +117,7 @@ func (c *hostCmd) finishAdded(st *addState) int {
 // isVerifier says that the certificate of this host gives it the role of a
 // verifier, which only reads (V3, K17).
 func (c *hostCmd) isVerifier() bool {
-	return c.deps.hostRole(c.cfg.TLS.CertFile) == role.Verifier
+	return isVerifier(c.deps, c.cfg)
 }
 
 // beforeNew is asked when the repository turns out not to exist: a verifier

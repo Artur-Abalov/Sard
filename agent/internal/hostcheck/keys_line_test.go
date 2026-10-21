@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostcheck"
+	"github.com/Artur-Abalov/sard/agent/internal/restickeys"
 )
 
 // V3 (K16): repository.keys.
@@ -15,18 +16,18 @@ func TestKeysLine(t *testing.T) {
 	cases := []struct {
 		name         string
 		total        int
-		hasRecovery  bool
+		warnings     []string
 		status       hostcheck.Status
 		message      string
 		hintRequired bool
 	}{
-		{"a recovery key and another key", 2, true, hostcheck.OK, "2 keys, recovery key present", false},
-		{"only the recovery key", 1, true, hostcheck.OK, "1 key, recovery key present", false},
-		{"no recovery key", 2, false, hostcheck.Warn, "no recovery key", true},
-		{"no recovery key and one key", 1, false, hostcheck.Warn, "no recovery key; only one key", true},
+		{"a recovery key and another key", 2, nil, hostcheck.OK, "2 keys, recovery key present", false},
+		{"only the recovery key", 1, nil, hostcheck.OK, "1 key, recovery key present", false},
+		{"no recovery key", 2, []string{restickeys.WarnNoRecoveryKey}, hostcheck.Warn, "no recovery key", true},
+		{"no recovery key and one key", 1, []string{restickeys.WarnSingleKey, restickeys.WarnNoRecoveryKey}, hostcheck.Warn, "no recovery key; only one key", true},
 	}
 	for _, c := range cases {
-		l := hostcheck.KeysLine("base", c.total, c.hasRecovery)
+		l := hostcheck.KeysLine("base", c.total, c.warnings)
 		hint := ""
 		if c.hintRequired {
 			hint = "sudo sard-agent repo key add base --for recovery"

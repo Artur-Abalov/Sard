@@ -12,7 +12,6 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
-	"github.com/Artur-Abalov/sard/agent/internal/role"
 )
 
 // initState is what the checks before the lock leave for the rest of the command.
@@ -72,8 +71,8 @@ func prepareInit(ctx context.Context, opts hostOptions, who hostsetup.Principal,
 	if f != nil {
 		return initState{}, report(stderr, "repo init", f)
 	}
-	if deps.hostRole(cfg.TLS.CertFile) == role.Verifier {
-		return initState{}, report(stderr, "repo init", refusal.Fail(refusal.VerifierReadOnly, "this host is a verifier: a verifier only reads repositories and never creates one; run the command on a source host"))
+	if f := refuseOnVerifier(deps, cfg, "create a repository"); f != nil {
+		return initState{}, report(stderr, "repo init", f)
 	}
 	checked, f := repoinit.Preflight(deps.host(who.Service.UID), repo, index, opts.generate)
 	if f != nil {

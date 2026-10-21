@@ -4,9 +4,12 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // docs/specs/agent/restic-keys.feature, rule "repo add нового репозитория сразу выпускает ключ восстановления".
@@ -166,5 +169,39 @@ func (h *keysHost) assertNoKeyAddOf(r *fakeRepo) {
 	h.t.Helper()
 	if n := len(r.keyring.adds); n != 0 {
 		h.t.Fatalf("restic key add was called %d times", n)
+	}
+}
+
+// The recovery key of a new repository is one access to the storage like any
+// other: --connect-timeout bounds it, and a call that ended with the time may
+// have made the key (K20).
+func TestARecoveryKeyThatHangsEndsWithTheConnectTimeoutAndSaysTheKeyMayExist(t *testing.T) {
+	t.Parallel()
+	h := newKeysHost(t)
+	clock := newSplitClock()
+	h.deps.clock = clock
+	h.deps.euid = 0
+	h.fresh().keyring.hang = "add"
+	h.fresh().keyring.entered = make(chan struct{}, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan cmdResult, 1)
+	go func() {
+		var out, errOut bytes.Buffer
+		args := h.subst([]string{"add", "fresh", h.newDir(), "--config", "C", "--connect-timeout", "2s"})
+		code := runRepoWithDeps(ctx, args, &out, &errOut, h.deps)
+		done <- cmdResult{code, out.String(), errOut.String()}
+	}()
+	select {
+	case <-h.fresh().keyring.entered:
+	case r := <-done:
+		t.Fatalf("the command ended before restic hung: %+v", r)
+	case <-time.After(3 * time.Second):
+		t.Fatal("restic key add was not reached")
+	}
+	clock.fireTimer(2 * time.Second)
+	r := within(t, done)
+	for _, want := range []string{"RECOVERY_KEY_FAILED", "the key may have been created", "repo key list fresh", "repo key remove fresh"} {
+		assertReason(t, r.stderr, want)
 	}
 }

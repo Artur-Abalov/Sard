@@ -5,8 +5,10 @@ package hostcheck
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
+	"github.com/Artur-Abalov/sard/agent/internal/restickeys"
 )
 
 // RepositoryOpenChecks are the checks the files of the repository and one
@@ -21,15 +23,16 @@ func RepositoryChecks() []string {
 	return append(RepositoryOpenChecks(), CheckRepositoryID, CheckRepositoryKeys, CheckRepositoryLocks)
 }
 
-// KeysLine is the line of repository.keys (V3, K16): the repository has a key
-// issued for recovery, or the operator is told to issue one.
-func KeysLine(repo string, total int, hasRecovery bool) Line {
+// KeysLine is the line of repository.keys (V3, K16): the warnings are those
+// of restickeys.Warnings, the one rule of what a list of keys earns (K13); the
+// repository has a key issued for recovery, or the operator is told to issue one.
+func KeysLine(repo string, total int, warnings []string) Line {
 	line := Line{Check: CheckRepositoryKeys, Subject: repo, Status: OK}
 	switch {
-	case hasRecovery:
+	case !slices.Contains(warnings, restickeys.WarnNoRecoveryKey):
 		line.Message = plural(total, "key") + ", recovery key present"
 		return line
-	case total == 1:
+	case slices.Contains(warnings, restickeys.WarnSingleKey):
 		line.Message = "no recovery key; only one key"
 	default:
 		line.Message = "no recovery key"

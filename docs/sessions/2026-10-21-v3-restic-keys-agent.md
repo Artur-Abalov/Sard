@@ -73,3 +73,22 @@
 - `./scripts/gate.sh proto fast`, `gen fast`, `sdk fast`, `cli fast` — PASSED;
   `make breaking-proto` и `make license-check` — без замечаний.
 - Мутационный прогон агента (`./scripts/gate.sh agent`) не запускался.
+
+## Правки по замечаниям архитектора (срез B, agent)
+
+- N3: один `keyIssuer` (`repo_key_add.go`) выпускает ключ и для `repo key add`, и для
+  ключа восстановления `repo add`/`repo init` (`repo_recovery.go`): `restic key add` и
+  поиск id идут через `--connect-timeout`, а после таймаута или прерывания в сообщении
+  есть подсказка К20. Подсказка теперь есть и у `BACKEND_UNAVAILABLE` (так
+  заканчивается `--connect-timeout`): ключ мог успеть создаться. Тест первым:
+  `TestARecoveryKeyThatHangsEndsWithTheConnectTimeoutAndSaysTheKeyMayExist`.
+- N4: правило К13 одно — `restickeys.Warnings`; `hostcheck.KeysLine` принимает его
+  результат вместо отдельного `total == 1`.
+- N5: `refuseOnVerifier` и `isVerifier` вместо трёх копий проверки; таблица
+  `TestARepositoryChangingCommandOnAVerifierIsRefused` перечисляет key add, key remove,
+  repo init и repo add несуществующего репозитория.
+- N6: `internal/restickeys/seam_test.go` — пакет не импортирует os, os/exec, net,
+  syscall, io/fs, crypto/rand, time и берёт из restic только `Key`. `NewPassword` в
+  листовой пакет не вынесен (затронул бы вызывающих в repoinit; не дёшево).
+- Не сделано, только замечено: `repo unlock` меняет репозиторий (снимает блокировки), но
+  отказа верификатору не имеет.

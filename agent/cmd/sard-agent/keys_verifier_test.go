@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Artur-Abalov/sard/agent/internal/config"
+	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/role"
 )
 
@@ -118,17 +120,55 @@ func TestAnUnregisteredHostWithReadOnlyCredentialsIsToldAboutTheRole(t *testing.
 	assertReason(t, stderr, "register this host first with a verifier token")
 }
 
+// Every command that changes a repository is in this table, so that a new one
+// cannot forget the refusal of a verifier: it is refused before restic is
+// run, and nothing on the host changes.
 func TestARepositoryChangingCommandOnAVerifierIsRefused(t *testing.T) {
 	t.Parallel()
-	for _, args := range [][]string{
-		{"repo", "init", "base", "--generate-password"},
-		{"repo", "key", "add", "base", "--for", "recovery"},
-		{"repo", "key", "remove", "base", "deadbeef", "--yes"},
+	for _, c := range []struct {
+		name   string
+		run    func(h *keysHost) (int, string, string)
+		reason string
+	}{
+		{"repo key add", func(h *keysHost) (int, string, string) {
+			return h.sudo("repo", "key", "add", "base", "--for", "recovery")
+		}, "VERIFIER_READ_ONLY"},
+		{"repo key remove", func(h *keysHost) (int, string, string) {
+			return h.sudo("repo", "key", "remove", "base", "deadbeef", "--yes")
+		}, "VERIFIER_READ_ONLY"},
+		{"repo init", func(h *keysHost) (int, string, string) {
+			return h.sudo("repo", "init", "base", "--generate-password")
+		}, "VERIFIER_READ_ONLY"},
+		{"repo add of a repository that does not exist", func(h *keysHost) (int, string, string) {
+			return h.addFresh()
+		}, "REPOSITORY_NOT_INITIALIZED"},
 	} {
 		h := newKeysHost(t)
 		h.deps.hostRole = verifierRole
-		code, _, stderr := h.sudo(args...)
-		assertRefusal(t, code, stderr, exitUsage, "VERIFIER_READ_ONLY")
-		h.assertNoResticCalls()
+		before := h.hostTree()
+		code, _, stderr := c.run(h)
+		assertRefusal(t, code, stderr, exitUsage, c.reason)
+		h.assertHostUnchanged(before)
+		if len(h.restic.callsTo(h.newDir(), "init")) != 0 {
+			t.Errorf("%s: restic init was called", c.name)
+		}
+	}
+}
+
+func TestRefuseOnVerifierRefusesOnlyTheCertificateOfAVerifier(t *testing.T) {
+	t.Parallel()
+	cfg := config.Config{}
+	for _, c := range []struct {
+		as      role.Role
+		refused bool
+	}{{role.Verifier, true}, {role.Source, false}} {
+		deps := hostDeps{hostRole: func(string) role.Role { return c.as }}
+		f := refuseOnVerifier(deps, cfg, "issue or remove keys")
+		if (f != nil) != c.refused {
+			t.Fatalf("role %v: failure %v", c.as, f)
+		}
+		if f != nil && (f.Reason != refusal.VerifierReadOnly || !strings.Contains(f.Detail, "issue or remove keys")) {
+			t.Errorf("failure %+v", f)
+		}
 	}
 }
