@@ -31,9 +31,9 @@ const writeTempPrefix = ".sard-enroll-"
 // CheckWritable checks that each of files' directories exists and can be
 // written to, without creating anything (В12: directories are never
 // created by enroll), and that each target path is either absent or an
-// ordinary file that a later WriteIdentity could replace — a target that
+// ordinary file that a later WriteIdentityAs could replace — a target that
 // is a directory (or any other non-regular file, e.g. a symlink) would
-// only be caught by WriteIdentity's own checkTargetReplaceable otherwise,
+// only be caught by WriteIdentityAs's own checkTargetReplaceable otherwise,
 // after a successful Enroll had already spent the token for nothing
 // (В12, В16: this has to be a local check, before the network). The first
 // path that fails either check is named, by its config key, in the
@@ -65,11 +65,19 @@ func probeWritable(dir string) error {
 	return os.Remove(name)
 }
 
-// WriteIdentity atomically replaces the key, certificate and CA bundle:
+// Owner is who the written files belong to when the command runs as root:
+// the service user (Р25 of docs/specs/agent/host-setup.feature). Chown is
+// fchown of the open file in production; it is a field so a test is not root.
+type Owner struct {
+	UID, GID int
+	Chown    func(f *os.File, uid, gid int) error
+}
+
+// WriteIdentityAs atomically replaces the key, certificate and CA bundle:
 // either all three land or none do (rule "Неудачная запись не оставляет
 // полуготовой идентичности"). Every file is first written to a temporary
 // name next to its target, fsynced and closed; only once every write has
-// succeeded does WriteIdentity rename them into place, CA first and the
+// succeeded does WriteIdentityAs rename them into place, CA first and the
 // certificate last (F4): the certificate is what InspectIdentity reads
 // agent_id from, so it is the single marker of "a full identity landed" —
 // a reader can never see a certificate whose key or CA bundle is missing.
@@ -85,22 +93,10 @@ func probeWritable(dir string) error {
 // replaced the previous files — so what already landed is left in place;
 // this is the one window rule 7 cannot fully close (documented in
 // docs/sessions/2026-09-28-a2a-enroll-mechanism.md).
-func WriteIdentity(files Files, key, cert, ca []byte) error {
-	return WriteIdentityAs(files, key, cert, ca, nil)
-}
-
-// Owner is who the written files belong to when the command runs as root:
-// the service user (Р25 of docs/specs/agent/host-setup.feature). Chown is
-// fchown of the open file in production; it is a field so a test is not root.
-type Owner struct {
-	UID, GID int
-	Chown    func(f *os.File, uid, gid int) error
-}
-
-// WriteIdentityAs is WriteIdentity with an owner for the files: each
-// temporary file gets it before it is renamed, so no target path ever
-// belongs to the user who ran the command. A nil owner leaves the files
-// with the user who ran it.
+//
+// owner is who the files belong to: each temporary file gets it before it is
+// renamed, so no target path ever belongs to the user who ran the command. A
+// nil owner leaves the files with the user who ran it.
 func WriteIdentityAs(files Files, key, cert, ca []byte, owner *Owner) error {
 	hadPrevious, err := anyTargetExists(files)
 	if err != nil {
@@ -209,7 +205,7 @@ func commitOrder(staged []stagedFile, files Files) []stagedFile {
 	return order
 }
 
-// removeCommitted deletes files WriteIdentity already renamed into place,
+// removeCommitted deletes files WriteIdentityAs already renamed into place,
 // undoing them because there was nothing at any of the three paths before
 // this call — an incomplete new identity is worse than none.
 func removeCommitted(committed []stagedFile) {

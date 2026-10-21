@@ -91,9 +91,6 @@ func ownedByRoot(info fs.FileInfo) bool {
 	return found && uid == 0 && info.IsDir() && info.Mode().Perm() == rootOnly.Mode
 }
 
-// Path is the staging directory, for messages.
-func (s *Staging) Path() string { return s.path }
-
 // Dir is the staging directory, which restic inherits by its descriptor.
 func (s *Staging) Dir() hostsetup.Dir { return s.dir }
 

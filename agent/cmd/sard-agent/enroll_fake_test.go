@@ -758,7 +758,7 @@ func failingAnswer(code codes.Code, reason string) func(*agentv1.EnrollRequest) 
 }
 
 // requireCertKeyMatch checks the certificate's public key matches the
-// private key WriteIdentity put on disk.
+// private key WriteIdentityAs put on disk.
 func requireCertKeyMatch(t *testing.T, certFile, keyFile string) {
 	t.Helper()
 	cert := parsePEMCertificateForTest(t, certFile)

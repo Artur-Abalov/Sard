@@ -272,7 +272,7 @@ func writeIdentityAndReport(stdout, stderr io.Writer, st enrollPipelineState, ke
 	}
 	if err := enroll.WriteIdentityAs(files, keyPEM, []byte(result.CertificateChainPEM), []byte(result.CABundlePEM), st.owner); err != nil {
 		_, _ = fmt.Fprintf(stderr, "sard-agent enroll: the server enrolled agent %s but writing the identity to disk failed: %v; the enrollment token has been spent, a new one is required\n", result.AgentID, err)
-		// F11: errors.As's result was ignored here, so a WriteIdentity
+		// F11: errors.As's result was ignored here, so a WriteIdentityAs
 		// failure that was not a *enroll.Error (none is today, but nothing
 		// enforces that) would dereference a nil eerr. Same safe pattern as
 		// reportEnrollError (enroll_report.go).

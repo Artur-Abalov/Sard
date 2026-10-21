@@ -112,7 +112,7 @@ func TestTheAgentDoesNotStartWhenResticIsNotNextToIt(t *testing.T) {
 	exe := func() (string, error) { return filepath.Join(h.dir, "bin", "sard-agent"), nil }
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	err := start(ctx, h.config(""), &bytes.Buffer{}, fixedHostname, exe)
+	err := startWith(ctx, h.config(""), &bytes.Buffer{}, fixedHostname, exe, agentRuntime{}.withDefaults())
 	if err == nil {
 		t.Fatal("the agent started")
 	}
@@ -145,8 +145,8 @@ func TestTheResticNextToTheAgentIsFoundByTheRealFileNotTheSymlink(t *testing.T) 
 	exe := func() (string, error) { return filepath.Join(link, "sard-agent"), nil }
 	ctx, cancel := contextUntil(eventWait, h.firstAccept)
 	defer cancel()
-	if err := start(ctx, h.config(""), &bytes.Buffer{}, fixedHostname, exe); err != nil {
-		t.Fatalf("start: %v", err)
+	if err := startWith(ctx, h.config(""), &bytes.Buffer{}, fixedHostname, exe, agentRuntime{}.withDefaults()); err != nil {
+		t.Fatalf("startWith: %v", err)
 	}
 	if h.accepted() == 0 {
 		t.Fatal("the agent did not connect")

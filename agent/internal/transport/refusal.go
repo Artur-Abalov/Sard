@@ -20,18 +20,13 @@ import (
 // reasons (docs/adr/0025-grpc-error-model.md).
 const sardErrorDomain = "sard.dev"
 
-// RefusalLine explains a permanent refusal (see IsPermanent) to the
-// operator: the status code and text, the server's reason and metadata
-// when it gave one, and that the agent will not retry. Control characters
-// are escaped, so the result is one line.
-func RefusalLine(err error) string {
-	return RefusalDetail(err) + "; " + RefusalSuffix
-}
-
 // RefusalSuffix ends every line that reports a permanent refusal.
 const RefusalSuffix = "not reconnecting: fix the cause, then restart the agent"
 
-// RefusalDetail is RefusalLine without the suffix: what the server said.
+// RefusalDetail explains a permanent refusal (see IsPermanent) to the
+// operator: the status code and text, and the server's reason and metadata
+// when it gave one. Control characters are escaped, so the result is one
+// line; the agent ends it with RefusalSuffix.
 func RefusalDetail(err error) string {
 	parts := []string{statusText(err)}
 	if info := sardErrorInfo(err); info != nil {

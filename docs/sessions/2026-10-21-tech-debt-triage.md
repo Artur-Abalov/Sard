@@ -52,12 +52,20 @@ ADR `docs/adr/00XX-draft-dead-code.md`.
 - Инструменты: `golang.org/x/tools/cmd/deadcode` v0.50.0 в `tools/go.mod` и `GO_TOOLS`
   (`make tools`); `knip` 6.40.0 в `web` (`npm run lint`, `web/knip.json`).
 - Находки при включении (вывод инструментов):
-  - `deadcode -test -tags e2e`: agent — 1 (`restore.Held.Dir`), cli, tools, sdk — 0. Без `-test`
-    — 54, из них 45 в тестовых пакетах `certtest`, `testplugin` и плагине стенда `e2eslow`.
+  - `deadcode -tags e2e` (корни — только `main`; решение владельца: код, который вызывают одни
+    тесты, мёртв, и тесты на него тоже): agent — 9 вне `certtest` и `testplugin`, cli и tools —
+    0, sdk покрывает прогон agent (проверено функцией-пробой). Удалены с переводом тестов на
+    продовый путь: `start`, `enroll.WriteIdentity`, `hostcheck.CheckIDs`,
+    `repoconnect.Known.Matches`, `restore.Staging.Path`, `transport.RefusalLine`. Пакеты
+    `internal/runner` и `internal/sandbox` (ничем не импортируются) — к удалению; удаление
+    каталогов заблокировал классификатор окружения, его выполняет владелец. `restore.Held.Dir`
+    — PostgreSQL, OQ-250. (С `-test` было бы 1 — только `Held.Dir`.)
   - `unparam`: agent — 29 (2 в коде: `certpair.decide`, параметр `now`, и
     `pluginhost.restoreDatabase`; 27 в тестах). Исправлено 25, остались 4 в коде PostgreSQL.
   - `knip`: 22 неиспользуемых экспорта и 3 типа — всё использовалось только внутри своего
     файла, `export` снят; `tsc` чистый.
+    `knip --production` (тесты не точки входа): 9 экспортов вне моков нужны только тестам, все
+    вызываются внутри своего модуля — мёртвого кода нет; в шлюз не включён.
   - detekt с `UnusedImport` (конфиг подменён init-скриптом Gradle, проверка подмены — порог
     сложности 1 даёт 1675 нарушений): 0 находок.
 - Код PostgreSQL агента не менялся (решение владельца): пять находок — OQ-250; `deadcode` и

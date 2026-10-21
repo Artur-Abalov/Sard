@@ -16,12 +16,16 @@
 
 ## Решение
 1. **Go, `golang.org/x/tools/cmd/deadcode`** (`tools/go.mod`, `.bin/deadcode`). Шлюз
-   (`gate_go_basic`, модули sdk, tools, agent, cli) запускает `deadcode -test -tags e2e ./...`
-   и падает на любой строке вывода. Корни — `main` и тестовые бинари: функция, которую вызывает
-   только тест, не мертва (тестовые пакеты `certtest` и `testplugin` иначе были бы мёртвыми
-   целиком; что они не попадают в бинарь, проверяет `agent/cmd/sard-agent/imports_test.go`).
-   Тег `e2e` добавляет плагины стенда e2e (`plugins/e2eslow`). Сгенерированный `proto/gen/go`
-   не проверяется: `gate_gen` его только собирает.
+   (`gate_go_basic`, модули tools, agent, cli) запускает `deadcode -tags e2e ./...` и падает на
+   любой строке вывода. Корни — только `main`: функция, которую вызывают одни тесты, мертва, а
+   тест на неё проверяет то, чем продукт не пользуется (решение владельца 2026-10-21: «Тесты,
+   которые вызывают мёртвый код, — мёртвые тесты; тестировать надо функционал, который
+   используется»). Исключены пакеты, существующие только для тестов, — `internal/certtest` и
+   `internal/pluginhost/testplugin` (что они не попадают в бинарь, проверяет
+   `agent/cmd/sard-agent/imports_test.go`). Тег `e2e` добавляет плагины стенда e2e
+   (`plugins/e2eslow`). У sdk нет `main`: его покрывает прогон agent, который его линкует
+   (проверено функцией-пробой в sdk). Сгенерированный `proto/gen/go` не проверяется: `gate_gen`
+   его только собирает.
 2. **Go, `unparam`** в `.golangci.yml`: параметр, который всегда получает одно значение, и
    результат, который никто не читает, — в коде и в тестах.
 3. **web, `knip`** (devDependency) в `npm run lint`: неиспользуемые файлы, экспорты, типы и
@@ -42,17 +46,23 @@
 
 ## Последствия
 - Находки исправлены без подавлений (правило 2 CLAUDE.md); до OQ-235 остаются только пять находок в коде PostgreSQL.
-- Код, который вызывают только тесты (например, `enroll.WriteIdentity`, `hostcheck.CheckIDs`,
-  `transport.RefusalLine`), проверкой не считается мёртвым: `deadcode` без `-test` перечисляет
-  его, это отдельный разбор, не шлюз.
+- Код, который вызывали только тесты, удалён, а тесты переведены на то, чем пользуется продукт:
+  `start` → `startWith`, `enroll.WriteIdentity` → `WriteIdentityAs`, `transport.RefusalLine` →
+  `RefusalDetail` (суффикс проверяют тесты `cmd/sard-agent`), `repoconnect.Known.Matches` →
+  `Key`, `restore.Staging.Path` → путь из теста, `hostcheck.CheckIDs` — порядок Ч10 проверяет
+  `TestTheIdentifiersAreTheOnesOfTheList` на настоящем прогоне. Пакеты-заготовки
+  `internal/runner` и `internal/sandbox` (ничем не импортируются) удаляются.
+- web: `knip` считает тесты Vitest точками входа, поэтому экспорт, нужный только тестам, для
+  него жив. `knip --production` 2026-10-21 нашёл 9 таких экспортов вне моков — все они
+  вызываются внутри своего модуля (хелперы, проверяемые тестом напрямую), мёртвого кода нет.
 - Kotlin: публичный и `internal` код без вызовов detekt не видит — он проверяет файлы по
   отдельности. Инструмента в шлюзе для этого нет.
 - Ещё один шаг шлюза Go: `deadcode` на модуле agent — 11 с в облачном окружении разработки
   (2026-10-21, анализ всей программы).
 
 ## Отклонённые варианты
-- **`deadcode` без `-test`.** Шлюз падал бы на тестовых пакетах и на функциях-обёртках для
-  тестов; их перенос в `_test.go` невозможен, когда ими пользуются тесты других пакетов.
+- **`deadcode -test`** (корни — ещё и тестовые бинари). Код, нужный только тестам, считался бы
+  живым, а тесты на него — полезными.
 - **`unparam` только вне тестов.** Исключение путей — то же подавление; тестовые хелперы с
   параметром-константой лгут о своём назначении так же, как код.
 
@@ -72,16 +82,20 @@
  }
  
  # Go modules outside go.work (tools) are built with GOWORK=off.
-@@ -51,6 +51,13 @@
+@@ -51,6 +51,17 @@
    [ -z "$unformatted" ] || die "$m: gofmt needed: $unformatted"
    (cd "$dir" && GOWORK="$(go_env "$m")" go vet ./...) || die "$m: go vet"
    (cd "$dir" && GOWORK="$(go_env "$m")" "$BIN/golangci-lint" run --config "$ROOT/.golangci.yml" ./...) || die "$m: golangci-lint"
-+  # Dead code (ADR 00XX-draft-dead-code): a function no main and no test reaches.
-+  # The e2e tag adds the plugins of the e2e stand to the agent.
++  # Dead code (ADR 00XX-draft-dead-code): a function no main reaches, even if a
++  # test calls it. The e2e tag adds the plugins of the e2e stand; certtest and
++  # testplugin exist for tests only (imports_test.go keeps them out of the
++  # binary). sdk has no main: the run of agent, which links it, covers it.
++  [ "$m" = sdk ] && return 0
 +  say "$m" "deadcode"
 +  local dead
-+  dead="$(cd "$dir" && GOWORK="$(go_env "$m")" "$BIN/deadcode" -test -tags e2e ./...)" || die "$m: deadcode"
-+  [ -z "$dead" ] || die "$m: unreachable functions:
++  dead="$(cd "$dir" && GOWORK="$(go_env "$m")" "$BIN/deadcode" -tags e2e ./...)" || die "$m: deadcode"
++  dead="$(grep -Ev '^internal/(certtest|pluginhost/testplugin)/' <<<"$dead" || true)"
++  [ -z "$dead" ] || die "$m: functions no main reaches:
 +$dead"
  }
  

@@ -62,9 +62,7 @@ func TestRefusalInvalidArgumentAfterAHealthyStreamStopsReconnecting(t *testing.T
 	}
 }
 
-const refusalSuffix = "not reconnecting: fix the cause, then restart the agent"
-
-func refusalLine(t *testing.T, err error) string {
+func refusalDetail(t *testing.T, err error) string {
 	t.Helper()
 	r := newRig(t)
 	r.server.register = func() (*agentv1.RegisterResponse, error) { return nil, err }
@@ -72,41 +70,41 @@ func refusalLine(t *testing.T, err error) string {
 	if !transport.IsPermanent(got) {
 		t.Fatalf("err = %v, want a permanent refusal", got)
 	}
-	return transport.RefusalLine(got)
+	return transport.RefusalDetail(got)
 }
 
 // Scenario: Отказ Register с причиной сервера завершает агента с кодом 78
-func TestRefusalLineShowsTheCodeTheReasonAndSortedMetadata(t *testing.T) {
-	line := refusalLine(t, reasoned(codes.InvalidArgument, "register rejected", "sard.dev", "SNAPSHOT_TOO_LARGE",
+func TestRefusalDetailShowsTheCodeTheReasonAndSortedMetadata(t *testing.T) {
+	line := refusalDetail(t, reasoned(codes.InvalidArgument, "register rejected", "sard.dev", "SNAPSHOT_TOO_LARGE",
 		map[string]string{"limit": "256", "field": "repositories"}))
-	want := "code = InvalidArgument desc = register rejected, reason SNAPSHOT_TOO_LARGE, field=repositories, limit=256; " + refusalSuffix
+	want := "code = InvalidArgument desc = register rejected, reason SNAPSHOT_TOO_LARGE, field=repositories, limit=256"
 	if line != want {
 		t.Fatalf("line = %q, want %q", line, want)
 	}
 }
 
 // Scenario: Отказ Register без ErrorInfo тоже завершает агента с кодом 78
-func TestRefusalLineWithoutErrorInfoHasNoReason(t *testing.T) {
+func TestRefusalDetailWithoutErrorInfoHasNoReason(t *testing.T) {
 	for _, code := range []codes.Code{codes.InvalidArgument, codes.FailedPrecondition, codes.Unauthenticated, codes.PermissionDenied} {
-		line := refusalLine(t, status.Error(code, "refused-marker"))
+		line := refusalDetail(t, status.Error(code, "refused-marker"))
 		if !strings.Contains(line, "code = "+code.String()) || !strings.Contains(line, "refused-marker") ||
-			strings.Contains(line, "reason ") || !strings.HasSuffix(line, refusalSuffix) {
+			strings.Contains(line, "reason ") {
 			t.Errorf("%v: line = %q", code, line)
 		}
 	}
 }
 
 // Scenario: ErrorInfo чужого домена не выдаётся за причину сервера
-func TestRefusalLineIgnoresErrorInfoOfAnotherDomain(t *testing.T) {
-	line := refusalLine(t, reasoned(codes.InvalidArgument, "register rejected", "other.example", "NAME_DUPLICATE", nil))
+func TestRefusalDetailIgnoresErrorInfoOfAnotherDomain(t *testing.T) {
+	line := refusalDetail(t, reasoned(codes.InvalidArgument, "register rejected", "other.example", "NAME_DUPLICATE", nil))
 	if strings.Contains(line, "NAME_DUPLICATE") {
 		t.Fatalf("line = %q", line)
 	}
 }
 
 // Scenario: Управляющие символы в ответе сервера не разрывают строку отказа
-func TestRefusalLineEscapesControlCharacters(t *testing.T) {
-	line := refusalLine(t, reasoned(codes.InvalidArgument, "bad\ntext", "sard.dev", "BAD\nREASON", map[string]string{"field": "x\ny"}))
+func TestRefusalDetailEscapesControlCharacters(t *testing.T) {
+	line := refusalDetail(t, reasoned(codes.InvalidArgument, "bad\ntext", "sard.dev", "BAD\nREASON", map[string]string{"field": "x\ny"}))
 	if strings.ContainsAny(line, "\n\r") || !strings.Contains(line, `reason BAD\nREASON, field=x\ny`) || !strings.Contains(line, `desc = bad\ntext`) {
 		t.Fatalf("line = %q", line)
 	}
@@ -168,9 +166,9 @@ func TestAStreamClosedWithAnyCodeIsReconnected(t *testing.T) {
 }
 
 // An error that carries no gRPC status is shown as its own text, one line.
-func TestRefusalLineOfAnErrorWithoutAStatus(t *testing.T) {
-	got := transport.RefusalLine(errors.New("dial\nfailed"))
-	if want := `dial\nfailed; ` + refusalSuffix; got != want {
+func TestRefusalDetailOfAnErrorWithoutAStatus(t *testing.T) {
+	got := transport.RefusalDetail(errors.New("dial\nfailed"))
+	if want := `dial\nfailed`; got != want {
 		t.Fatalf("line = %q, want %q", got, want)
 	}
 }
