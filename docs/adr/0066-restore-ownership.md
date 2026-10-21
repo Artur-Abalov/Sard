@@ -207,7 +207,7 @@ R2c-2; версию этот ADR записывает при выпуске (В1
 
 - `agent/internal/nopostgres_test.go`: `go/parser` по файлам `agent/internal` и
   `agent/cmd/sard-agent`, кроме `_test.go` и каталогов `testdata`; нарушение — импорт пакета `.../pgclient` или строковый литерал,
-  который начинается или кончается на `postgresql.`, `PG_`, `pg_restore`, или
+  который содержит где-либо `postgresql.`, `PG_`, `pg_restore`, `pg_dump`, `psql`, `createdb`, или
   равен одному из кодов R2b без приставки `PG_` (О4). Тест проверяет себя на
   подложенных файлах `testdata` (нарушения и допустимые строки). `restore.postgresql_lock_share`
   правилам не подпадает (РВ-7). В2 принят.

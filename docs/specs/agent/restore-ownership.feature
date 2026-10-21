@@ -767,7 +767,7 @@
     @arch @r2c-3
     Сценарий: Код агента вне плагинов не знает PostgreSQL
       Тогда ни один файл agent/internal, кроме тестов, не импортирует pgclient
-      И ни в одном таком файле нет строки, которая начинается или кончается на "postgresql.", "PG_" или "pg_restore"
+      И ни в одном таком файле нет строки, содержащей где-либо "postgresql.", "PG_", "pg_restore", "pg_dump", "psql" или "createdb"
       И ни в одном таком файле нет строки CREATEDB_REQUIRED, SUPERUSER_REQUIRED, GLOBALS_SNAPSHOT_MISSING, GLOBALS_TABLESPACES, ROLES_EXIST или DATABASE_EXISTS
 
     @arch @r2c-3
