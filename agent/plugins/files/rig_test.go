@@ -64,14 +64,13 @@ func (f *fakeFS) dir(paths ...string) *fakeFS {
 	return f
 }
 
-func (f *fakeFS) file(paths ...string) *fakeFS {
+func (f *fakeFS) file(paths ...string) {
 	for _, p := range paths {
 		f.nodes[p] = node{mode: 0o644}
 	}
-	return f
 }
 
-func (f *fakeFS) set(p string, n node) *fakeFS { f.nodes[p] = n; return f }
+func (f *fakeFS) set(p string, n node) { f.nodes[p] = n }
 
 func pathError(op, name string, errno syscall.Errno) error {
 	return &fs.PathError{Op: op, Path: name, Err: errno}
@@ -170,8 +169,8 @@ const (
 	snapshotID = "6c719cbc95d86f49b63cf9535bad29ad721287277e8bc419bc7168a82fd1ad01"
 )
 
-func summaryLine(snapshot string) string {
-	return `{"message_type":"summary","files_new":3,"data_added":2000,"data_added_packed":1500,"total_bytes_processed":1024,"snapshot_id":"` + snapshot + `"}`
+func summaryLine() string {
+	return `{"message_type":"summary","files_new":3,"data_added":2000,"data_added_packed":1500,"total_bytes_processed":1024,"snapshot_id":"` + snapshotID + `"}`
 }
 
 func statusLine(bytesDone, filesDone uint64) string {
@@ -203,7 +202,7 @@ func (f *fakeRestic) Run(ctx context.Context, cmd restic.Command) (int, error) {
 			return -1, f.startErr
 		}
 		if f.backup == nil {
-			cmd.Stdout([]byte(summaryLine(snapshotID)))
+			cmd.Stdout([]byte(summaryLine()))
 			return 0, nil
 		}
 		return f.backup(ctx, cmd), nil

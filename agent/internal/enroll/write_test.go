@@ -71,7 +71,7 @@ func TestWriteIdentitySurfacesAnUnexpectedStatErrorFromAnyTargetExists(t *testin
 		CertFile: filepath.Join(notADir, "tls.crt"), // parent is a file: ENOTDIR, not ENOENT
 		CAFile:   filepath.Join(dir, "ca.crt"),
 	}
-	err := enroll.WriteIdentity(files, []byte("key"), []byte("cert"), []byte("ca"))
+	err := enroll.WriteIdentityAs(files, []byte("key"), []byte("cert"), []byte("ca"), nil)
 	var eerr *enroll.Error
 	if !errors.As(err, &eerr) || eerr.Class != enroll.ClassWrite {
 		t.Fatalf("err = %v, want a ClassWrite *enroll.Error", err)
@@ -104,8 +104,8 @@ func TestWriteIdentityWritesAllThreeFilesWithTheirModesRegardlessOfUmask(t *test
 	old := setUmask(0o000)
 	defer setUmask(old)
 	files := threeFiles(t)
-	if err := enroll.WriteIdentity(files, []byte("key"), []byte("cert"), []byte("ca")); err != nil {
-		t.Fatalf("WriteIdentity: %v", err)
+	if err := enroll.WriteIdentityAs(files, []byte("key"), []byte("cert"), []byte("ca"), nil); err != nil {
+		t.Fatalf("WriteIdentityAs: %v", err)
 	}
 	requireContents(t, files.KeyFile, "key")
 	requireContents(t, files.CertFile, "cert")
@@ -117,11 +117,11 @@ func TestWriteIdentityWritesAllThreeFilesWithTheirModesRegardlessOfUmask(t *test
 
 func TestWriteIdentityReplacesAllThreeFilesTogether(t *testing.T) {
 	files := threeFiles(t)
-	if err := enroll.WriteIdentity(files, []byte("key1"), []byte("cert1"), []byte("ca1")); err != nil {
-		t.Fatalf("WriteIdentity: %v", err)
+	if err := enroll.WriteIdentityAs(files, []byte("key1"), []byte("cert1"), []byte("ca1"), nil); err != nil {
+		t.Fatalf("WriteIdentityAs: %v", err)
 	}
-	if err := enroll.WriteIdentity(files, []byte("key2"), []byte("cert2"), []byte("ca2")); err != nil {
-		t.Fatalf("WriteIdentity: %v", err)
+	if err := enroll.WriteIdentityAs(files, []byte("key2"), []byte("cert2"), []byte("ca2"), nil); err != nil {
+		t.Fatalf("WriteIdentityAs: %v", err)
 	}
 	requireContents(t, files.KeyFile, "key2")
 	requireContents(t, files.CertFile, "cert2")
@@ -164,7 +164,7 @@ func checkWriteIdentityRefusesANonEmptyDirectoryTarget(t *testing.T, broken stri
 	targets := map[string]string{"key": files.KeyFile, "cert": files.CertFile, "ca": files.CAFile}
 	makeNonEmptyDirectory(t, targets[broken])
 
-	err := enroll.WriteIdentity(files, []byte("key"), []byte("cert"), []byte("ca"))
+	err := enroll.WriteIdentityAs(files, []byte("key"), []byte("cert"), []byte("ca"), nil)
 	var eerr *enroll.Error
 	if !errors.As(err, &eerr) || eerr.Class != enroll.ClassWrite {
 		t.Fatalf("err = %v, want a ClassWrite *enroll.Error", err)
@@ -220,7 +220,7 @@ func TestWriteIdentityFirstEnrollmentRemovesTheAlreadyCommittedCAWhenKeyFailsToR
 	restore := enroll.SetRenameForTest(failRenameOnto(t, files.KeyFile))
 	defer restore()
 
-	err := enroll.WriteIdentity(files, []byte("key"), []byte("cert"), []byte("ca"))
+	err := enroll.WriteIdentityAs(files, []byte("key"), []byte("cert"), []byte("ca"), nil)
 	requireClassWrite(t, err)
 	requireNoneExist(t, files)
 	requireNoLeftoverTemps(t, filepath.Dir(files.KeyFile))
@@ -233,7 +233,7 @@ func TestWriteIdentityFirstEnrollmentRemovesCAAndKeyWhenCertFailsToRename(t *tes
 	restore := enroll.SetRenameForTest(failRenameOnto(t, files.CertFile))
 	defer restore()
 
-	err := enroll.WriteIdentity(files, []byte("key"), []byte("cert"), []byte("ca"))
+	err := enroll.WriteIdentityAs(files, []byte("key"), []byte("cert"), []byte("ca"), nil)
 	requireClassWrite(t, err)
 	requireNoneExist(t, files)
 	requireNoLeftoverTemps(t, filepath.Dir(files.KeyFile))
@@ -249,14 +249,14 @@ func TestWriteIdentityFirstEnrollmentRemovesCAAndKeyWhenCertFailsToRename(t *tes
 // replaced the previous identity, so there is nothing safe to revert to).
 func TestWriteIdentityForceOverwriteMidCommitFailureLeavesUnreplacedFilesUntouched(t *testing.T) {
 	files := threeFiles(t)
-	if err := enroll.WriteIdentity(files, []byte("key1"), []byte("cert1"), []byte("ca1")); err != nil {
-		t.Fatalf("first WriteIdentity: %v", err)
+	if err := enroll.WriteIdentityAs(files, []byte("key1"), []byte("cert1"), []byte("ca1"), nil); err != nil {
+		t.Fatalf("first WriteIdentityAs: %v", err)
 	}
 
 	restore := enroll.SetRenameForTest(failRenameOnto(t, files.KeyFile))
 	defer restore()
 
-	err := enroll.WriteIdentity(files, []byte("key2"), []byte("cert2"), []byte("ca2"))
+	err := enroll.WriteIdentityAs(files, []byte("key2"), []byte("cert2"), []byte("ca2"), nil)
 	requireClassWrite(t, err)
 
 	// The documented exception: CA already committed before the failure
@@ -332,12 +332,12 @@ func (f writeIdentityFixture) contents() map[string]struct{ path, want string } 
 func checkFailedWriteLeavesFilesIntact(t *testing.T, broken string) {
 	t.Helper()
 	f := newWriteIdentityFixture(t)
-	if err := enroll.WriteIdentity(f.files, []byte("key1"), []byte("cert1"), []byte("ca1")); err != nil {
-		t.Fatalf("first WriteIdentity: %v", err)
+	if err := enroll.WriteIdentityAs(f.files, []byte("key1"), []byte("cert1"), []byte("ca1"), nil); err != nil {
+		t.Fatalf("first WriteIdentityAs: %v", err)
 	}
 	makeUnwritable(t, f.dirs[broken])
 
-	err := enroll.WriteIdentity(f.files, []byte("key2"), []byte("cert2"), []byte("ca2"))
+	err := enroll.WriteIdentityAs(f.files, []byte("key2"), []byte("cert2"), []byte("ca2"), nil)
 	var eerr *enroll.Error
 	if !errors.As(err, &eerr) || eerr.Class != enroll.ClassWrite {
 		t.Fatalf("err = %v, want a ClassWrite *enroll.Error", err)
@@ -346,7 +346,7 @@ func checkFailedWriteLeavesFilesIntact(t *testing.T, broken string) {
 }
 
 // requireUnchangedExcept checks every file and directory but the broken one
-// still holds exactly what the first, successful WriteIdentity put there.
+// still holds exactly what the first, successful WriteIdentityAs put there.
 func requireUnchangedExcept(t *testing.T, f writeIdentityFixture, broken string) {
 	t.Helper()
 	for name, dir := range f.dirs {
@@ -364,7 +364,7 @@ func requireUnchangedExcept(t *testing.T, f writeIdentityFixture, broken string)
 }
 
 // requireOnlyTheOriginalFile: dir (not the broken one) has exactly the file
-// WriteIdentity put there the first time — no leftover temporary files.
+// WriteIdentityAs put there the first time — no leftover temporary files.
 func requireOnlyTheOriginalFile(t *testing.T, name, dir string) {
 	t.Helper()
 	entries, err := os.ReadDir(dir)

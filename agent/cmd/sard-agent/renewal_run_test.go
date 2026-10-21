@@ -80,7 +80,7 @@ func TestTheNextConnectionPresentsTheNewCertificate(t *testing.T) {
 	h.clock.Advance(200 * 24 * time.Hour)
 	h.waitLog("certificate renewed")
 	h.server.dropStreams()
-	h.reconnect(2)
+	h.reconnect()
 	if got := h.server.eventLog(); !contains(got, "register C2") {
 		t.Fatalf("events = %v", got)
 	}
@@ -100,7 +100,7 @@ func TestASupersededRegisterWithAUsableNewPairMovesTheAgentToIt(t *testing.T) {
 		return nil
 	}
 	h.server.dropStreams()
-	h.reconnect(2)
+	h.reconnect()
 	h.server.waitCount(t, "register C2", 1)
 	h.requireEvents("register C1", "connect C1", "hello C1")
 	if !contains(h.server.eventLog(), "confirm C2") || a.exited() {
@@ -109,13 +109,13 @@ func TestASupersededRegisterWithAUsableNewPairMovesTheAgentToIt(t *testing.T) {
 }
 
 // reconnect lets the transport's pauses pass, a minute at a time, until the
-// server has seen n Register calls.
-func (h *renewalHost) reconnect(n int) {
+// server has seen a second Register call.
+func (h *renewalHost) reconnect() {
 	h.t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
-	for h.server.count("register") < n {
+	for h.server.count("register") < 2 {
 		if time.Now().After(deadline) {
-			h.t.Fatalf("the agent did not register %d times; events: %v", n, h.server.eventLog())
+			h.t.Fatalf("the agent did not register twice; events: %v", h.server.eventLog())
 		}
 		h.clock.Advance(time.Minute)
 		time.Sleep(5 * time.Millisecond)

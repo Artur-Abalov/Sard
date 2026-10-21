@@ -29,9 +29,9 @@ func (h *renewalHost) statusWith(now time.Time, read func(string) ([]byte, error
 	return code, out.String(), errOut.String()
 }
 
-func (h *renewalHost) writeState(serial string, failures int) {
+func (h *renewalHost) writeState(serial string) {
 	h.t.Helper()
-	st := certrenew.State{Serial: serial, Failures: failures, LastError: "Unavailable INTERNAL_RETRYABLE", LastAttempt: renewDay(210), NextAttempt: time.Date(2027, 5, 13, 12, 4, 0, 0, time.UTC)}
+	st := certrenew.State{Serial: serial, Failures: 3, LastError: "Unavailable INTERNAL_RETRYABLE", LastAttempt: renewDay(210), NextAttempt: time.Date(2027, 5, 13, 12, 4, 0, 0, time.UTC)}
 	if err := os.MkdirAll(h.stateDir, 0o700); err != nil {
 		h.t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestStatusNamesTheStateOfTheCertificate(t *testing.T) {
 	}{
 		{"ok", renewDay(10), nil, func(*renewalHost) string { return "certificate_days_left: 290\ncertificate_state: ok\n" }},
 		{"due", renewDay(200), nil, func(*renewalHost) string { return "certificate_days_left: 100\ncertificate_state: renewal-due\n" }},
-		{"failing", renewDay(210), func(h *renewalHost) { h.writeState("1", 3) }, func(*renewalHost) string {
+		{"failing", renewDay(210), func(h *renewalHost) { h.writeState("1") }, func(*renewalHost) string {
 			return "certificate_days_left: 90\ncertificate_state: renewal-failing\nrenewal_failures: 3\nrenewal_last_error: Unavailable INTERNAL_RETRYABLE\nrenewal_next_attempt: 2027-05-13T12:04:00Z\n"
 		}},
 		{"unsupported", renewDay(210), func(h *renewalHost) { h.writeUnsupported("1") }, func(*renewalHost) string {
@@ -95,16 +95,16 @@ func TestDaysLeftAreWholeDaysRoundedDown(t *testing.T) {
 func TestAStateFileThatDoesNotConcernTheCertificateIsIgnored(t *testing.T) {
 	t.Parallel()
 	rows := map[string]func(h *renewalHost) func(string) ([]byte, error){
-		"another serial": func(h *renewalHost) func(string) ([]byte, error) { h.writeState("ff", 3); return os.ReadFile },
+		"another serial": func(h *renewalHost) func(string) ([]byte, error) { h.writeState("ff"); return os.ReadFile },
 		"not JSON": func(h *renewalHost) func(string) ([]byte, error) {
-			h.writeState("1", 3)
+			h.writeState("1")
 			if err := os.WriteFile(filepath.Join(h.stateDir, certrenew.StateFile), []byte("not json"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			return os.ReadFile
 		},
 		"unreadable": func(h *renewalHost) func(string) ([]byte, error) {
-			h.writeState("1", 3)
+			h.writeState("1")
 			return func(name string) ([]byte, error) {
 				if strings.HasSuffix(name, certrenew.StateFile) {
 					return nil, os.ErrPermission

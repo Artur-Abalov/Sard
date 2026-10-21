@@ -20,7 +20,7 @@ import { FINGERPRINT } from './tokens'
 type Schemas = components['schemas']
 
 /** The setup code of the mocks (VITE_MOCK_ONBOARDING=1): what the server prints in its log. */
-export const MOCK_SETUP_CODE = 'ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345'
+const MOCK_SETUP_CODE = 'ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345'
 
 const SETUP_COOKIE = 'sard_setup=mock; HttpOnly; SameSite=Strict; Path=/api/v1/onboarding'
 const CLEARED_SETUP_COOKIE =
@@ -34,13 +34,13 @@ function normalized(code: string): string {
 }
 
 /** The server's rule: 12 to 1024 Unicode code points. */
-export function passwordLengthOk(password: string | null | undefined): boolean {
+function passwordLengthOk(password: string | null | undefined): boolean {
   if (typeof password !== 'string') return false
   const length = [...password].length
   return length >= MIN_PASSWORD && length <= MAX_PASSWORD
 }
 
-export function passwordProblem(field: string): Schemas['ValidationProblem'] {
+function passwordProblem(field: string): Schemas['ValidationProblem'] {
   return {
     ...problem(422, 'Unprocessable Entity', 'validation_failed'),
     errors: [{ field, message: 'must be 12 to 1024 characters' }],

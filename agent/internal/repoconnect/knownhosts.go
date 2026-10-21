@@ -73,12 +73,6 @@ type Known struct {
 	keys     []HostKey
 }
 
-// Matches says whether one of the keys is the key of an entry.
-func (k Known) Matches(keys []HostKey) bool {
-	_, ok := k.Key(keys)
-	return ok
-}
-
 // Key is the key of an entry that one of the keys offered matches.
 func (k Known) Key(keys []HostKey) (HostKey, bool) {
 	for _, offered := range keys {

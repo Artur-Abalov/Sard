@@ -35,7 +35,7 @@ func TestReconnectsWithGrowingDelay(t *testing.T) {
 			t.Fatal("stream did not open with Hello")
 		}
 		close(ss.done)
-		if d := r.backoff(t, beat); d != want*time.Second {
+		if d := r.backoff(t); d != want*time.Second {
 			t.Fatalf("delay = %v, want %v", d, want*time.Second)
 		}
 		r.clock.Advance(want * time.Second)
@@ -56,11 +56,11 @@ func TestDelayResetsAfterAHealthyStream(t *testing.T) {
 	ss := r.server.next(t)
 	ss.read(t)
 	close(ss.done)
-	r.clock.Advance(r.backoff(t, beat)) // 1 s
+	r.clock.Advance(r.backoff(t)) // 1 s
 	ss = r.server.next(t)
 	ss.read(t)
 	close(ss.done)
-	if d := r.backoff(t, beat); d != 2*time.Second {
+	if d := r.backoff(t); d != 2*time.Second {
 		t.Fatalf("delay = %v", d)
 	}
 	r.clock.Advance(2 * time.Second)
@@ -68,7 +68,7 @@ func TestDelayResetsAfterAHealthyStream(t *testing.T) {
 	ss.read(t)
 	r.clock.Advance(transport.HealthyStream)
 	close(ss.done)
-	if d := r.backoff(t, beat); d != time.Second {
+	if d := r.backoff(t); d != time.Second {
 		t.Fatalf("delay after a healthy stream = %v, want 1s", d)
 	}
 }
@@ -86,7 +86,7 @@ func TestUnavailableRegisterIsRetried(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	r.run(ctx)
-	r.clock.Advance(r.backoff(t, beat))
+	r.clock.Advance(r.backoff(t))
 	if r.server.next(t).read(t).GetHello() == nil {
 		t.Fatal("no Hello after the retry")
 	}
@@ -113,7 +113,7 @@ func TestRunStopsWithTheContext(t *testing.T) {
 	ss := r.server.next(t)
 	ss.read(t)
 	close(ss.done)
-	r.backoff(t, beat)
+	r.backoff(t)
 	cancel()
 	if err := wait(t, done); err != nil {
 		t.Fatalf("err = %v", err)
@@ -141,7 +141,7 @@ func TestHelloAfterReconnectCarriesTheCurrentCommands(t *testing.T) {
 	r.state.running = []string{"a", "b"}
 	r.state.mu.Unlock()
 	close(ss.done)
-	r.clock.Advance(r.backoff(t, beat))
+	r.clock.Advance(r.backoff(t))
 	if got := r.server.next(t).read(t).GetHello().GetRunningCommandIds(); !slices.Equal(got, []string{"a", "b"}) {
 		t.Fatalf("second Hello = %v", got)
 	}
@@ -169,7 +169,7 @@ func TestOnlyUnackedResultsAreResent(t *testing.T) {
 		t.Fatalf("got %q, want r3", id)
 	}
 	close(ss.done)
-	r.clock.Advance(r.backoff(t, beat))
+	r.clock.Advance(r.backoff(t))
 	ss = r.server.next(t)
 	ss.read(t)
 	got = []string{ss.read(t).GetStepResult().GetCommandId(), ss.read(t).GetStepResult().GetCommandId()}
@@ -230,12 +230,12 @@ func TestHealthyStreamIsThirtySeconds(t *testing.T) {
 		ss := r.server.next(t)
 		ss.read(t)
 		close(ss.done)
-		r.clock.Advance(r.backoff(t, beat)) // 1 s
+		r.clock.Advance(r.backoff(t)) // 1 s
 		ss = r.server.next(t)
 		ss.read(t)
 		r.clock.Advance(tc.lived)
 		close(ss.done)
-		if d := r.backoff(t, beat); d != tc.want {
+		if d := r.backoff(t); d != tc.want {
 			t.Errorf("stream lived %v: delay = %v, want %v", tc.lived, d, tc.want)
 		}
 		cancel()
@@ -266,7 +266,7 @@ func TestStoppingWhileWaitingToReconnectDoesNotConnectAgain(t *testing.T) {
 	ss := r.server.next(t)
 	ss.read(t)
 	close(ss.done)
-	r.backoff(t, beat)
+	r.backoff(t)
 	cancel()
 	if err := wait(t, done); err != nil {
 		t.Fatalf("err = %v", err)

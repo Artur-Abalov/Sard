@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -63,12 +64,10 @@ func (c *fakeEnrollClock) fireNow() {
 	c.fire <- now
 }
 
-func runEnrollCmdWithClock(clk clock, args ...string) (int, string, string) {
-	var out, errOut strings.Builder
+func runEnrollCmdWithClock(clk clock, args ...string) int {
 	deps := testEnrollDeps(fixedHostname)
 	deps.clock = clk
-	code := runEnrollWithDeps(context.Background(), args, &out, &errOut, deps)
-	return code, out.String(), errOut.String()
+	return runEnrollWithDeps(context.Background(), args, io.Discard, io.Discard, deps)
 }
 
 func newBlockingFixture(t *testing.T) (*host, string, *enrollServer) {
@@ -90,7 +89,7 @@ func TestWithoutATimeoutFlagTheCommandWaits30Seconds(t *testing.T) {
 	clk := newFakeEnrollClock()
 	done := make(chan int, 1)
 	go func() {
-		code, _, _ := runEnrollCmdWithClock(clk, "--config", h.configPath, "--token", token)
+		code := runEnrollCmdWithClock(clk, "--config", h.configPath, "--token", token)
 		done <- code
 	}()
 	d := clk.waitTimer(t)
@@ -124,7 +123,7 @@ func TestTheTimeoutFlagChangesHowLongTheCommandWaits(t *testing.T) {
 	clk := newFakeEnrollClock()
 	done := make(chan int, 1)
 	go func() {
-		code, _, _ := runEnrollCmdWithClock(clk, "--config", h.configPath, "--token", token, "--timeout", "5s")
+		code := runEnrollCmdWithClock(clk, "--config", h.configPath, "--token", token, "--timeout", "5s")
 		done <- code
 	}()
 	if d := clk.waitTimer(t); d != 5*time.Second {
@@ -265,7 +264,7 @@ func TestASecondEnrollRacingBetweenTheIdentityCheckAndTheLockIsRefused(t *testin
 
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	blockedHostname := func() (string, error) {
+	var blockedHostname hostnameFunc = func() (string, error) {
 		close(entered)
 		<-release
 		return "db1", nil

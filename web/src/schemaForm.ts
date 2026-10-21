@@ -7,7 +7,7 @@
 
 type Json = Record<string, unknown>
 
-export type FieldKind =
+type FieldKind =
   | 'string'
   | 'integer'
   | 'number'

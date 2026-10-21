@@ -13,7 +13,7 @@ type Schemas = components['schemas']
 
 export const PAGE_SIZE = 50
 // The most one page may hold: pickers of agents and sources take one such page.
-export const PICKER_SIZE = 200
+const PICKER_SIZE = 200
 
 export const overviewQuery = () =>
   queryOptions({

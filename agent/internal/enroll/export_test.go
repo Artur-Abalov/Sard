@@ -5,7 +5,7 @@ package enroll
 
 // Internals exposed to the external tests of this package.
 
-// SetRenameForTest replaces the rename step WriteIdentity's commit uses
+// SetRenameForTest replaces the rename step WriteIdentityAs's commit uses
 // with fn, and returns a function that restores the real os.Rename.
 // Needed to fail one specific commit deterministically (which file, which
 // attempt) — racing the real filesystem to fail a rename after staging

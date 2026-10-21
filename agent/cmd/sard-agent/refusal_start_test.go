@@ -101,9 +101,9 @@ func (h *refusalHost) run(limit time.Duration) (code int, stdout, stderr string)
 }
 
 // runUntilRegistered is run that stops the agent once the server has recorded
-// a Register; limit stays the upper bound.
-func (h *refusalHost) runUntilRegistered(limit time.Duration) (code int, stdout, stderr string) {
-	return h.runUntil(limit, h.server.first)
+// a Register; eventWait stays the upper bound.
+func (h *refusalHost) runUntilRegistered() (code int, stdout, stderr string) {
+	return h.runUntil(eventWait, h.server.first)
 }
 
 func (h *refusalHost) runUntil(limit time.Duration, event <-chan struct{}) (code int, stdout, stderr string) {

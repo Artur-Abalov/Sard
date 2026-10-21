@@ -35,10 +35,10 @@ func writeState(t *testing.T, path, body string) {
 	}
 }
 
-// breakDir replaces a state subdirectory by a file: every write into it fails, even for root.
-func breakDir(t *testing.T, f *fixture, sub string) {
+// breakJournal replaces the journal subdirectory of the state by a file: every write into it fails, even for root.
+func breakJournal(t *testing.T, f *fixture) {
 	t.Helper()
-	dir := filepath.Join(f.opts.StateDir, sub)
+	dir := filepath.Join(f.opts.StateDir, "journal")
 	if err := os.RemoveAll(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestAJournalEntryHoldsNoStepConfig(t *testing.T) {
 // Scenario: Команду, которую нельзя записать на диск, агент отклоняет
 func TestACommandThatCannotBeJournaledIsRejectedWithoutRunning(t *testing.T) {
 	f := setup(t, nil)
-	breakDir(t, f, "journal")
+	breakJournal(t, f)
 	f.e.Submit(backup("c1"))
 	r := f.sink.result(t)
 	if r.GetStatus() != rejected || !strings.HasPrefix(r.GetMessage(), "cannot record the command: ") {
@@ -253,7 +253,7 @@ func TestAJournalThatBreaksAfterAcceptLetsTheStepsRunAndIsReported(t *testing.T)
 	first := f.files.next(t)
 	f.e.Submit(backup("c2"))
 	accepted(t, f.sink, "c2")
-	breakDir(t, f, "journal")
+	breakJournal(t, f)
 
 	first.finish(snapshot("snap-c1"), nil)
 	wantResult(t, f.sink.result(t), "c1", succeeded, "")
@@ -303,7 +303,7 @@ func TestCorruptOrUnknownJournalEntriesAreKeptAndReported(t *testing.T) {
 
 func TestAnUnreadableJournalDirStopsTheStart(t *testing.T) {
 	f := setup(t, nil)
-	breakDir(t, f, "journal")
+	breakJournal(t, f)
 	if _, err := executor.New(f.opts); err == nil {
 		t.Fatal("New reads a journal that is not a directory")
 	}

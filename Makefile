@@ -66,6 +66,7 @@ GO_TOOLS := \
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint \
 	github.com/avito-tech/go-mutesting/cmd/go-mutesting \
 	github.com/goreleaser/nfpm/v2/cmd/nfpm \
+	golang.org/x/tools/cmd/deadcode \
 	./cmd/crap
 
 .PHONY: tools gate gate-fast proto build build-agent build-cli package package-stand server-jar server-image image e2e e2e-images e2e-assemble e2e-agent-images e2e-pg-agent-images e2e-test test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check check-sudo-u up down openapi

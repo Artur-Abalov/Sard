@@ -285,7 +285,7 @@ func TestStartStopsWhenResticCannotBeLocated(t *testing.T) {
 	writeIdentity(t, dir)
 	cfg := identityConfig(t, dir, "sard.example.com:9090")
 	broken := func() (string, error) { return "", errors.ErrUnsupported }
-	err := start(context.Background(), cfg, io.Discard, fixedHostname, broken)
+	err := startWith(context.Background(), cfg, io.Discard, fixedHostname, broken, agentRuntime{}.withDefaults())
 	if !errors.Is(err, errors.ErrUnsupported) {
 		t.Fatalf("err = %v", err)
 	}

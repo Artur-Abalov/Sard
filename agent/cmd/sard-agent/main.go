@@ -160,11 +160,7 @@ func reportFailure(stderr io.Writer, err error) int {
 	return exitError
 }
 
-// start is the composition root: the only place that knows concrete types.
-func start(ctx context.Context, configPath string, stdout io.Writer, hostnameOf hostnameFunc, executable func() (string, error)) error {
-	return startWith(ctx, configPath, stdout, hostnameOf, executable, agentRuntime{}.withDefaults())
-}
-
+// startWith is the composition root: the only place that knows concrete types.
 func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnameOf hostnameFunc, executable func() (string, error), rt agentRuntime) error {
 	local, err := loadLocal(configPath, rt)
 	if err != nil {
