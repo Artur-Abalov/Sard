@@ -126,6 +126,12 @@ data class SelfBackup(
         description = "The command that prints the repository password on the server's machine; null until configured",
     )
     val passwordRevealCommand: String?,
+    @field:Schema(
+        description =
+            "The command that issues a recovery key for the bound repository on the server's machine, in a terminal; " +
+                "repeating it changes nothing. Null until configured",
+    )
+    val recoveryKeyCommand: String?,
 )
 
 @Schema(description = "A run of one system source")

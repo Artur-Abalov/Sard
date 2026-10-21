@@ -10,6 +10,7 @@ import dev.sard.server.persistence.AgentRepositoryRecord
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.hqlWhere
+import dev.sard.server.registration.RecoveryKey
 import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.RunAnnouncer
 import dev.sard.server.runs.StepRevocation
@@ -84,6 +85,10 @@ internal fun Agent.toRow() =
         AgentRole.of(role),
     )
 
+/** The repository as the card shows it. */
+internal fun AgentRepositoryRecord.toView() =
+    AgentRepositoryView(name, backend, repositoryId, cryptoProvider ?: BUILT_IN_PROVIDER, RecoveryKey.of(recoveryKey))
+
 /** A plugin the agent announced; [configSchema] is the JSON text it sent. */
 data class AgentPluginView(
     val name: String,
@@ -99,6 +104,8 @@ data class AgentRepositoryView(
     val repositoryId: String?,
     /** The provider that hands the key to restic; restic's own AES when the repository names none (ADR 0008). */
     val cryptoProvider: String,
+    /** The flag of the last Register; unknown for an agent older than V3 (V3). */
+    val recoveryKey: RecoveryKey = RecoveryKey.UNKNOWN,
 )
 
 /** An agent with what its last Register announced. */
@@ -291,14 +298,7 @@ class Agents(
             agent.toRow(),
             agent.protocolVersion,
             plugins.map { AgentPluginView(it.name, it.version, it.actions, it.configSchema) },
-            repositories.map {
-                AgentRepositoryView(
-                    it.name,
-                    it.backend,
-                    it.repositoryId,
-                    it.cryptoProvider ?: BUILT_IN_PROVIDER,
-                )
-            },
+            repositories.map { it.toView() },
             agent.secretNames,
             agent.scriptNames,
             agent.restoreDir,

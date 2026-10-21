@@ -3,6 +3,7 @@
 
 package dev.sard.server.api
 
+import dev.sard.server.registration.RecoveryKey
 import dev.sard.server.role.AgentRole as DomainRole
 
 /** The wire role as the domain knows it. Exhaustive, no `else`. */
@@ -17,4 +18,12 @@ internal fun DomainRole.toApi(): AgentRole =
     when (this) {
         DomainRole.SOURCE -> AgentRole.SOURCE
         DomainRole.VERIFIER -> AgentRole.VERIFIER
+    }
+
+/** The domain recovery key flag as the wire knows it. Exhaustive, no `else`. */
+internal fun RecoveryKey.toApi(): RecoveryKeyFlag =
+    when (this) {
+        RecoveryKey.PRESENT -> RecoveryKeyFlag.PRESENT
+        RecoveryKey.ABSENT -> RecoveryKeyFlag.ABSENT
+        RecoveryKey.UNKNOWN -> RecoveryKeyFlag.UNKNOWN
     }

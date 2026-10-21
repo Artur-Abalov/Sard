@@ -7,11 +7,14 @@ import dev.sard.server.extension.TenantResolver
 import dev.sard.server.fleet.AgentCard
 import dev.sard.server.fleet.AgentCertificates
 import dev.sard.server.fleet.AgentPluginView
+import dev.sard.server.fleet.AgentRepositoryView
 import dev.sard.server.fleet.AgentRevocation
 import dev.sard.server.fleet.AgentRow
 import dev.sard.server.fleet.Agents
 import dev.sard.server.fleet.Connectivity
 import dev.sard.server.fleet.CurrentCertificate
+import dev.sard.server.fleet.Repositories
+import dev.sard.server.fleet.VerifierSetupItem
 import dev.sard.server.install.AgentVersions
 import dev.sard.server.persistence.PageKey
 import org.springframework.stereotype.Component
@@ -19,6 +22,7 @@ import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectMapper
 import java.time.Clock
 import java.util.UUID
+import dev.sard.server.role.AgentRole as DomainRole
 
 /** The agent endpoints over [Agents], in the tenant of the session. */
 @Component
@@ -29,6 +33,7 @@ class AgentsApiImpl(
     private val versions: AgentVersions,
     private val certificates: AgentCertificates,
     private val clock: Clock,
+    private val repositories: Repositories,
 ) : AgentsApi {
     override fun listAgents(
         status: AgentStatus?,
@@ -40,7 +45,12 @@ class AgentsApiImpl(
         val rows = agents.list(tenants.currentTenantId(), connectivity, page.after, page.fetch)
         val slice = page.slice(rows) { PageKey(it.registeredAt, it.id) }
         val current = certificates.current(tenants.currentTenantId(), slice.items.map { it.id })
-        return AgentPage(slice.items.map { summaryOf(it, current[it.id]) }, slice.nextCursor)
+        val announced = repositories.announcedBy(tenants.currentTenantId(), slice.items.map { it.id })
+        val summaries =
+            slice.items.map { row ->
+                summaryOf(row, current[row.id], announced[row.id].orEmpty().map { it.toApi() })
+            }
+        return AgentPage(summaries, slice.nextCursor)
     }
 
     override fun getAgent(agentId: UUID): AgentDetails =
@@ -67,6 +77,7 @@ class AgentsApiImpl(
     private fun summaryOf(
         row: AgentRow,
         certificate: CurrentCertificate?,
+        repositories: List<AgentRepository>,
     ) = AgentSummary(
         row.id,
         row.hostname,
@@ -82,6 +93,7 @@ class AgentsApiImpl(
         row.builtin,
         row.role.toApi(),
         certificate?.toApi(clock.instant()),
+        repositories,
     )
 
     private fun detailsOf(card: AgentCard): AgentDetails {
@@ -100,14 +112,7 @@ class AgentsApiImpl(
             row.duplicateSessionAt,
             card.protocolVersion,
             card.plugins.map(::pluginOf),
-            card.repositories.map {
-                AgentRepository(
-                    it.name,
-                    it.backend,
-                    it.repositoryId,
-                    it.cryptoProvider,
-                )
-            },
+            card.repositories.map { it.toApi() },
             card.secretNames,
             card.scriptNames,
             versions.outdated(row.agentVersion),
@@ -115,8 +120,16 @@ class AgentsApiImpl(
             row.role.toApi(),
             card.restoreDir,
             certificate?.toApi(clock.instant()),
+            verifierSetupOf(row),
         )
     }
+
+    /** A verifier's card says what its sources hold that it does not; a source has no such block. */
+    private fun verifierSetupOf(row: AgentRow): List<VerifierSetupEntry>? =
+        when (row.role) {
+            DomainRole.SOURCE -> null
+            DomainRole.VERIFIER -> repositories.verifierSetup(tenants.currentTenantId(), row.id).map { it.toApi() }
+        }
 
     private fun pluginOf(plugin: AgentPluginView) =
         AgentPlugin(

@@ -184,7 +184,7 @@ internal class RecoveryOldVm(
             "cd ~/sard && docker compose run --rm --no-deps --pull never -u 0 -v /root/s3.secret:/s3.secret:ro " +
                 "--cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER --cap-add SETUID --cap-add SETGID " +
                 "self-agent repo add self s3:$garageEndpoint/$BUCKET --access-key-id ${key.id} --region ${GarageS3.REGION} " +
-                "--secret-key-from-file /s3.secret --no-restart --config /etc/sard/self/agent.yaml && " +
+                "--secret-key-from-file /s3.secret --no-restart --no-recovery-key --config /etc/sard/self/agent.yaml && " +
                 "docker compose restart self-agent",
             timeout = Duration.ofMinutes(3),
         )

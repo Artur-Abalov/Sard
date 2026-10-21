@@ -433,6 +433,25 @@ class OnboardingSelfBackupApiIntegrationTest(
         )
     }
 
+    @Test
+    fun `Команда ключа восстановления появляется после привязки, до неё её нет`() {
+        world.selfAgent(DEFAULT_TENANT)
+        assertTrue(selfBackup().path("recoveryKeyCommand").isNull)
+
+        bind()
+
+        assertEquals(
+            "docker compose run --rm --no-deps -u 0 --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER " +
+                "--cap-add SETUID --cap-add SETGID self-agent repo key add self --for recovery --if-missing " +
+                "--config /etc/sard/self/agent.yaml",
+            selfBackup().path("recoveryKeyCommand").asString(),
+        )
+        assertEquals(
+            "docker compose exec self-agent sard-agent repo password self --reveal --config /etc/sard/self/agent.yaml",
+            selfBackup().path("passwordRevealCommand").asString(),
+        )
+    }
+
     // ---- Правило: Команду добавления репозитория собирает сервер, без секретов ----
 
     private fun command(

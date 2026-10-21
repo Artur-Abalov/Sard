@@ -99,6 +99,7 @@ class AgentsApiIntegrationTest(
                 "role",
                 "restoreDir",
                 "certificate",
+                "verifierSetup",
             ),
             json.propertyNames().toSet(),
         )

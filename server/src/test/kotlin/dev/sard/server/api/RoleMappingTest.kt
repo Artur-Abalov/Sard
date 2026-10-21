@@ -3,6 +3,7 @@
 
 package dev.sard.server.api
 
+import dev.sard.server.registration.RecoveryKey
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import kotlin.test.Test
@@ -31,5 +32,12 @@ class RoleMappingTest {
         for (text in listOf("", "SOURCE", "Verifier", "admin", "1", " source")) {
             assertFailsWith<IllegalArgumentException>(text) { AgentRole.fromWire(text) }
         }
+    }
+
+    @Test
+    fun `each domain recovery key flag maps to the wire flag of the same name`() {
+        assertEquals(RecoveryKeyFlag.PRESENT, MutFlow.underTest { RecoveryKey.PRESENT.toApi() })
+        assertEquals(RecoveryKeyFlag.ABSENT, MutFlow.underTest { RecoveryKey.ABSENT.toApi() })
+        assertEquals(RecoveryKeyFlag.UNKNOWN, MutFlow.underTest { RecoveryKey.UNKNOWN.toApi() })
     }
 }

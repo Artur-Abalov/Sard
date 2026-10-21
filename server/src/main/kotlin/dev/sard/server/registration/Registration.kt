@@ -96,6 +96,7 @@ class Registration(
         repository.backend,
         repository.repositoryId.ifEmpty { null },
         repository.cryptoProvider.ifEmpty { null },
+        repository.recoveryKey.stored,
     )
 
     /** Whatever the database throws is the server's fault and retryable: INTERNAL_RETRYABLE (gRPC error model). */

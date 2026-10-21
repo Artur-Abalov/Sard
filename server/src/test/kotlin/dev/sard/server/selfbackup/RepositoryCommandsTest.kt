@@ -310,4 +310,15 @@ class RepositoryCommandsTest {
             passwordRevealCommand("a b"),
         )
     }
+
+    @Test
+    fun `Команда ключа восстановления - префикс запуска, имя и --if-missing`() {
+        assertEquals(
+            "docker compose run --rm --no-deps -u 0 --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER " +
+                "--cap-add SETUID --cap-add SETGID self-agent repo key add self --for recovery --if-missing " +
+                "--config /etc/sard/self/agent.yaml",
+            MutFlow.underTest { recoveryKeyCommand("self") },
+        )
+        assertTrue(recoveryKeyCommand("a b").contains("self-agent repo key add 'a b' --for recovery --if-missing"))
+    }
 }

@@ -105,6 +105,7 @@ class SelfBackupApiImpl(
             view.firstBackupDone,
             view.keysConfirmedAt,
             view.passwordRevealCommand,
+            view.recoveryKeyCommand,
         )
 
     private fun planItemOf(item: PlanItem) =

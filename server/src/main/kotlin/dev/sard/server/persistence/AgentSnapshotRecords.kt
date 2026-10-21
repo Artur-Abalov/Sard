@@ -69,6 +69,9 @@ class AgentRepositoryRecord(
     val repositoryId: String?,
     @Column(name = "crypto_provider", updatable = false)
     val cryptoProvider: String?,
+    /** present, absent or unknown: the flag of the last Register (V3, migration V202610211200). */
+    @Column(name = "recovery_key", nullable = false, updatable = false)
+    val recoveryKey: String = "unknown",
     @TenantId
     @Column(name = "tenant_id", nullable = false, updatable = false)
     val tenantId: UUID? = null,

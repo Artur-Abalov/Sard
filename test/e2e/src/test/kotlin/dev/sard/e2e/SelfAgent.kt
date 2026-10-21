@@ -80,7 +80,7 @@ internal class SelfAgent(
      * container of the service, as root with only the capabilities it needs:
      * `docker compose run --rm --no-deps -u 0 --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER --cap-add SETUID
      * --cap-add SETGID self-agent
-     * repo add <name> <path> --no-restart --config /etc/sard/self/agent.yaml`, then a restart of the sidecar, which
+     * repo add <name> <path> --no-restart --no-recovery-key --config /etc/sard/self/agent.yaml`, then a restart of the sidecar, which
      * reads the new fragment. Waits until Register reports the repository's id; returns the command's output.
      */
     fun addLocalRepository(
@@ -89,7 +89,7 @@ internal class SelfAgent(
     ): String {
         val output = StringBuilder()
         GenericContainer<Nothing>(DockerImageName.parse(E2e.agentPgImage)).apply {
-            withCommand("repo", "add", name, "$STATE/$name", "--no-restart", "--config", CONFIG)
+            withCommand("repo", "add", name, "$STATE/$name", "--no-restart", "--no-recovery-key", "--config", CONFIG)
             withLogConsumer { output.append(it.utf8String) }
             withCreateContainerCmdModifier {
                 it.withUser("0")

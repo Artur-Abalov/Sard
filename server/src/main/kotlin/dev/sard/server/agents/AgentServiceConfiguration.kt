@@ -7,9 +7,11 @@ import dev.sard.server.fleet.AgentPresence
 import dev.sard.server.fleet.Agents
 import dev.sard.server.fleet.MachineAgents
 import dev.sard.server.fleet.Overviews
+import dev.sard.server.fleet.Repositories
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.registration.Registration
 import dev.sard.server.runs.RunAnnouncer
+import dev.sard.server.selfbackup.recoveryKeyCommand
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import org.springframework.context.annotation.Bean
@@ -34,6 +36,9 @@ class AgentServiceConfiguration {
         announcer: RunAnnouncer,
         clock: Clock,
     ) = Agents(sessions, presence, announcer, clock)
+
+    @Bean
+    fun repositories(sessions: TenantSessions) = Repositories(sessions, ::recoveryKeyCommand)
 
     @Bean
     fun machineAgents(sessions: TenantSessions) = MachineAgents(sessions)

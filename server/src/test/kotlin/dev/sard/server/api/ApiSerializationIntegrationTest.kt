@@ -61,6 +61,7 @@ class ApiSerializationIntegrationTest(
             builtin = true,
             role = AgentRole.SOURCE,
             certificate = AgentCertificate(at, at.plusSeconds(600), daysLeft = 0, AgentCertificateState.EXPIRING, at),
+            repositories = listOf(AgentRepository("local", "local", "r1", "file", RecoveryKeyFlag.ABSENT)),
         )
     private val step =
         RunStep(
@@ -292,7 +293,8 @@ class ApiSerializationIntegrationTest(
                 duplicateSessionAt = null,
                 protocolVersion = 1,
                 plugins = listOf(AgentPlugin("files", "0.1.0", listOf(StepAction.BACKUP), schema)),
-                repositories = listOf(AgentRepository("local", "local", repositoryId = null, "file")),
+                repositories =
+                    listOf(AgentRepository("local", "local", repositoryId = null, "file", RecoveryKeyFlag.UNKNOWN)),
                 secretNames = listOf("pg"),
                 scriptNames = listOf("flush"),
                 outdated = true,
@@ -300,6 +302,21 @@ class ApiSerializationIntegrationTest(
                 role = AgentRole.VERIFIER,
                 restoreDir = "/var/lib/sard-agent/restore",
                 certificate = null,
+                verifierSetup =
+                    listOf(VerifierSetupEntry("r1", id, "src1", "main", "sudo sard-agent repo key add main", null)),
+            ),
+            RepositoryList(
+                listOf(
+                    RepositoryInfo(
+                        "r1",
+                        RecoveryKeyFlag.ABSENT,
+                        at,
+                        id,
+                        "sudo sard-agent repo key add main",
+                        listOf(RepositoryHolderInfo(id, "src1", AgentRole.SOURCE, "main")),
+                    ),
+                ),
+                withoutRecoveryKey = 1,
             ),
             RestoreOptions(
                 RestoreSnapshot("4f1c", at, 10, "main", "etc", "files"),
@@ -386,6 +403,7 @@ class ApiSerializationIntegrationTest(
                 firstBackupDone = true,
                 keysConfirmedAt = at,
                 passwordRevealCommand = "docker compose exec self-agent sard-agent repo password offsite --reveal",
+                recoveryKeyCommand = "docker compose run self-agent repo key add offsite --for recovery --if-missing",
             ),
             SelfBackup(
                 configured = false,
@@ -401,6 +419,7 @@ class ApiSerializationIntegrationTest(
                 firstBackupDone = false,
                 keysConfirmedAt = null,
                 passwordRevealCommand = null,
+                recoveryKeyCommand = null,
             ),
             KeysConfirmationInput(copiedOutsideServer = true),
             RepositoryCommand("self", "/var/lib/sard-self/self", listOf("docker compose restart self-agent")),
@@ -565,6 +584,9 @@ class ApiSerializationIntegrationTest(
                 "AgentCertificate",
                 "AgentPlugin",
                 "AgentRepository",
+                "VerifierSetupEntry",
+                "RepositoryInfo",
+                "RepositoryHolderInfo",
                 "EnrollmentToken",
                 "Snapshot",
                 "ScheduleFire",

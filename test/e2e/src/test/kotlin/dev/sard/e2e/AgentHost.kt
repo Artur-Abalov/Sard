@@ -126,11 +126,15 @@ internal class AgentHost(
             timeout = timeout,
         )
 
-    /** `sard-agent repo init <name> [flags]` with the host's config (A5b). */
+    /**
+     * `sard-agent repo init <name> [flags]` with the host's config (A5b). A container has no terminal, so a new
+     * repository needs `--recovery-key-file` or `--no-recovery-key` (V3, В2): [withRecoveryKeyChoice] adds the
+     * second unless the caller made the choice.
+     */
     fun repoInit(
         name: String,
         vararg flags: String,
-    ): Exit = run(AgentImage.AGENT_BINARY, "repo", "init", "--config", CONFIG, *flags, name)
+    ): Exit = run(AgentImage.AGENT_BINARY, "repo", "init", "--config", CONFIG, *withRecoveryKeyChoice(flags), name)
 
     /**
      * `sudo sard-agent repo add <name> <address> [flags]` (A8b): as root, on the host's `/etc/sard`
@@ -148,10 +152,15 @@ internal class AgentHost(
         check(etc != null) { "repo add needs a host with persistentEtc" }
         secretKey?.let(sardEnv::secret)
         val stdin = if (secretKey != null) " --secret-key-stdin < $SECRET_KEY_FILE" else ""
-        val line = listOf(AgentImage.AGENT_BINARY, "repo", "add", "--config", CONFIG, name, address, *flags).joinToString(" ") { "'$it'" }
+        val words = listOf(AgentImage.AGENT_BINARY, "repo", "add", "--config", CONFIG, name, address, *withRecoveryKeyChoice(flags))
+        val line = words.joinToString(" ") { "'$it'" }
         val keyFile = secretKey?.let { mapOf(SECRET_KEY_FILE to Transferable.of(it.toByteArray(), TarFiles.OWNER_ONLY)) }.orEmpty()
         return run("/bin/sh", "-c", "exec $line$stdin", files = files + keyFile, timeout = timeout, asRoot = true)
     }
+
+    /** [flags], plus `--no-recovery-key` when they name neither `--recovery-key-file` nor `--no-recovery-key` (V3, В2). */
+    private fun withRecoveryKeyChoice(flags: Array<out String>): Array<String> =
+        if (flags.any { it == "--recovery-key-file" || it == "--no-recovery-key" }) arrayOf(*flags) else arrayOf(*flags, "--no-recovery-key")
 
     /** `sudo sard-agent repo password <name> --reveal`: the password, with its line break dropped; registered as a log secret. */
     fun revealPassword(name: String): String {

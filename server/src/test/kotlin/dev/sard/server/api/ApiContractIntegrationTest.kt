@@ -396,6 +396,7 @@ class ApiContractIntegrationTest(
         val schedule = """{"cron":"* * * * *","timezone":"UTC","enabled":true}"""
         return listOf(
             Triple("GET", "/api/v1/overview", null),
+            Triple("GET", "/api/v1/repositories", null),
             Triple("GET", "/api/v1/ca", null),
             Triple("GET", "/api/v1/agents?status=online", null),
             Triple("GET", "/api/v1/agents/{agentId}", null),

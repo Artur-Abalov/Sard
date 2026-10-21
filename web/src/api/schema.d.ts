@@ -685,6 +685,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/repositories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Repositories and their recovery keys
+         * @description One item per repository id that a not revoked agent of the tenant reports, by repository id. Only the flag is known to the server: no key, password, key id or label (ADR 0008).
+         */
+        get: operations["listRepositories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/overview": {
         parameters: {
             query?: never;
@@ -1147,6 +1167,8 @@ export interface components {
             keysConfirmedAt: string | null;
             /** @description The command that prints the repository password on the server's machine; null until configured */
             passwordRevealCommand: string | null;
+            /** @description The command that issues a recovery key for the bound repository on the server's machine, in a terminal; repeating it changes nothing. Null until configured */
+            recoveryKeyCommand: string | null;
         };
         /** @description A system source's last finished run */
         SelfBackupLastRun: {
@@ -1595,6 +1617,8 @@ export interface components {
             restoreDir: string | null;
             /** @description The agent's current certificate: the last one that is not revoked, not superseded and confirmed (a renewal the agent has not confirmed does not count); null for a revoked agent and for an agent without one */
             certificate: components["schemas"]["AgentCertificate"] | null;
+            /** @description For a verifier: the repositories its sources hold and it does not, with the commands to give it a key; empty when there is nothing to do. Null for a source */
+            verifierSetup: components["schemas"]["VerifierSetupEntry"][] | null;
         };
         /** @description A plugin the agent offers */
         AgentPlugin: {
@@ -1616,9 +1640,29 @@ export interface components {
             repositoryId: string | null;
             /** @description crypto.Provider that hands the key to restic */
             cryptoProvider: string;
+            /** @description Whether the repository has a recovery key, from the agent's last Register; unknown for an agent older than V3 or one that could not read the keys (not the same as absent). Only the flag, never a key */
+            recoveryKey: components["schemas"]["RecoveryKeyFlag"];
         };
         /** @enum {string} */
         AgentStatus: "online" | "offline";
+        /** @enum {string} */
+        RecoveryKeyFlag: "present" | "absent" | "unknown";
+        /** @description What a verifier needs to hold a repository that the sources hold: whom to ask and what to run */
+        VerifierSetupEntry: {
+            repositoryId: string;
+            /**
+             * Format: uuid
+             * @description The source that holds the repository with the latest Register, the smaller agent id on a tie
+             */
+            sourceAgentId: string;
+            sourceHostname: string;
+            /** @description The name of the repository on that source */
+            repositoryName: string;
+            /** @description Run on the source: issues a key for this verifier and prints the repo add command with the address. Null when the name cannot be put into a command safely (a quote or a control character) */
+            keyAddCommand: string | null;
+            /** @description Run on the verifier: the repo add command with the literal placeholders <address> and <file>, which the key add command fills in; the server does not know them (ADR 0008). Null as keyAddCommand */
+            repoAddTemplate: string | null;
+        };
         /** @enum {string} */
         SandboxRuntime: "none" | "docker" | "podman";
         /** @description A verifier agent, what it reported and whether it fits */
@@ -2021,6 +2065,46 @@ export interface components {
             /** @description The server cut this step's log at its size limit; the last line says so */
             truncated: boolean;
         };
+        /** @description An agent that reports a repository, under the name it gives it */
+        RepositoryHolderInfo: {
+            /** Format: uuid */
+            agentId: string;
+            hostname: string;
+            role: components["schemas"]["AgentRole"];
+            /** @description The name of the repository on that agent */
+            repositoryName: string;
+        };
+        /** @description A restic repository by its id, with what the agents of the tenant say about its recovery key */
+        RepositoryInfo: {
+            /** @description restic repository id */
+            repositoryId: string;
+            /** @description From the latest Register among the holders that know the answer (ties: the smaller agent id); unknown when none does, which is not absent */
+            recoveryKey: components["schemas"]["RecoveryKeyFlag"];
+            /**
+             * Format: date-time
+             * @description When the Register that decided recoveryKey was received; null when unknown
+             */
+            reportedAt: string | null;
+            /**
+             * Format: uuid
+             * @description The agent whose Register decided recoveryKey; null when unknown
+             */
+            reportedByAgentId: string | null;
+            /** @description Run on the host of a source that holds the repository to issue a recovery key, in a terminal; only when recoveryKey is absent and a source holds it, else null. No key passes through the server */
+            recoveryKeyCommand: string | null;
+            /** @description Every not revoked agent that reports the repository, by agent id */
+            holders: components["schemas"]["RepositoryHolderInfo"][];
+        };
+        /** @description The repositories of the tenant that its agents report */
+        RepositoryList: {
+            /** @description By repository id; a repository without an id is not listed */
+            items: components["schemas"]["RepositoryInfo"][];
+            /**
+             * Format: int32
+             * @description How many items have recoveryKey absent; unknown ones are not counted
+             */
+            withoutRecoveryKey: number;
+        };
         /** @description The first steps of a tenant, each marked by the server by its own rule; recomputed per request */
         FirstSteps: {
             /** @description At least one enrollment token was created, in any status */
@@ -2162,6 +2246,8 @@ export interface components {
             role: components["schemas"]["AgentRole"];
             /** @description The agent's current certificate: the last one that is not revoked, not superseded and confirmed (a renewal the agent has not confirmed does not count); null for a revoked agent and for an agent without one */
             certificate: components["schemas"]["AgentCertificate"] | null;
+            /** @description The repositories of the last Register, by name; empty before the first one */
+            repositories: components["schemas"]["AgentRepository"][];
         };
         /** @enum {string} */
         InstallFormat: "deb" | "rpm" | "tar";
@@ -4819,6 +4905,44 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listRepositories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepositoryList"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */
