@@ -102,6 +102,20 @@ sard:
     # step_logs has monthly partitions; the server keeps this many months ahead of the current one.
     partitions-ahead-months: 2
     partitions-check-interval: 1d
+  retention:
+    # How long the server keeps what it records (H1, phase 2). Global, not per tenant. Snapshots, the last success of
+    # each kind of a source, the last passed and the last not passed verification, active runs and whatever a kept
+    # row refers to are never deleted. Positive durations; the server does not start with anything else.
+    # Log lines leave by whole monthly partitions, so the real term is 30 to 61 days.
+    step-logs: 30d
+    runs: 180d
+    verifications: 180d
+    schedule-fires: 180d
+    # Longer than sard.notify.ttl, or the notification planner would make a deleted delivery again.
+    notification-deliveries: 30d
+    # The first pass is one interval after the start; a pass deletes in batches until nothing old is left.
+    interval: 1h
+    batch-size: 500
   console:
     # Where people open the console, as the notification link: <address>/runs/<runId>. Empty means no link.
     # An absolute http or https address with a host, without a query or a fragment; the server does not

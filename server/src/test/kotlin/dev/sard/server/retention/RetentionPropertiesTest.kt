@@ -30,6 +30,16 @@ class RetentionPropertiesTest {
     }
 
     @Test
+    fun `Наименьшие допустимые интервал и размер пачки принимаются`() {
+        val properties = RetentionProperties(interval = Duration.ofMillis(1), batchSize = 1)
+
+        val settings = MutFlow.underTest { properties.settings(TTL) }
+
+        assertEquals(Duration.ofMillis(1), settings.interval)
+        assertEquals(1, settings.batchSize)
+    }
+
+    @Test
     fun `Неположительный срок не даёт серверу стартовать`() {
         val refused =
             mapOf(
