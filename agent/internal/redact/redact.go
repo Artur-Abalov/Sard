@@ -231,10 +231,9 @@ func (w *Writer) settle(final int64) {
 
 // keep writes the pending bytes before offset to the output.
 func (w *Writer) keep(offset int64) {
-	if offset > w.base {
-		w.out = w.appendStream(w.out, w.base, offset)
-		w.base = offset
-	}
+	end := max(offset, w.base)
+	w.out = w.appendStream(w.out, w.base, end)
+	w.base = end
 }
 
 // drop discards the pending bytes before offset.
@@ -250,17 +249,13 @@ func (w *Writer) holdTail() {
 	w.cur, w.curAt = nil, w.pos
 }
 
-// appendStream appends stream bytes [from, to) to dst; from >= base.
+// appendStream appends stream bytes [from, to) to dst; base <= from <= to.
+// The bytes before curAt are the tail of pend, the rest are in cur; each
+// part is clamped to its side of curAt, so an empty part appends nothing.
 func (w *Writer) appendStream(dst []byte, from, to int64) []byte {
-	if from < w.curAt {
-		tail := w.pend[len(w.pend)-int(w.curAt-from):]
-		dst = append(dst, tail[:min(to, w.curAt)-from]...)
-		if to <= w.curAt {
-			return dst
-		}
-		from = w.curAt
-	}
-	return append(dst, w.cur[from-w.curAt:to-w.curAt]...)
+	held := min(from, w.curAt)
+	dst = append(dst, w.pend[len(w.pend)-int(w.curAt-held):][:min(to, w.curAt)-held]...)
+	return append(dst, w.cur[max(from, w.curAt)-w.curAt:max(to, w.curAt)-w.curAt]...)
 }
 
 func (w *Writer) emit() error {
