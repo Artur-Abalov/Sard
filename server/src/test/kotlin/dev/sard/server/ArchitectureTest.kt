@@ -55,7 +55,10 @@ private val SQL_CONSTANT =
     Regex("""\bconst\s+val\s+\w+\s*=\s*\"{3}\s*(select|delete|update|insert|with)\b""", RegexOption.IGNORE_CASE)
 
 /** A file that runs native SQL by a JDBC call, or keeps its queries as constants (retention/RetentionSql.kt). */
-private fun isNativeSqlSource(text: String): Boolean = NATIVE_SQL_SOURCE.containsMatchIn(text) || SQL_CONSTANT.containsMatchIn(text)
+private fun isNativeSqlSource(text: String): Boolean {
+    val callsJdbc = NATIVE_SQL_SOURCE.containsMatchIn(text)
+    return callsJdbc || SQL_CONSTANT.containsMatchIn(text)
+}
 
 private val CREATE_TABLE = Regex("""CREATE TABLE (\w+) \((.*?)\n\);""", RegexOption.DOT_MATCHES_ALL)
 private val TENANT_ID_COLUMN = Regex("""^\s*tenant_id\s+UUID\b""", RegexOption.MULTILINE)
@@ -449,7 +452,9 @@ class ArchitectureTest {
         val text = file.readText()
 
         assertTrue(isNativeSqlSource(text), "RetentionSql.kt holds its queries as constants and must be scanned")
-        val scanned = STRING_LITERAL.findAll(withoutComments(text)).count { tenantTableRegex().containsMatchIn(it.value) }
+        val tenantTable = tenantTableRegex()
+        val literals = STRING_LITERAL.findAll(withoutComments(text))
+        val scanned = literals.count { tenantTable.containsMatchIn(it.value) }
         assertTrue(scanned >= 5, "the scan sees only $scanned queries of RetentionSql.kt")
         val fixture = "private const val BAD = \"\"\"delete from runs where id = 1\"\"\""
         assertTrue(isNativeSqlSource(fixture))

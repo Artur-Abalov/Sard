@@ -350,7 +350,8 @@ class RetentionVolumeIntegrationTest(
         try {
             reader.autoCommit = false
             reader.createStatement().use { it.execute("select count(*) from step_logs_2027_01") }
-            val drop = pool.submit<Result<Boolean>> { runCatching { StepLogRetention(jdbc, lockTimeout).drop("step_logs_2027_01") } }
+            val impatient = StepLogRetention(jdbc, lockTimeout)
+            val drop = pool.submit<Result<Boolean>> { runCatching { impatient.drop("step_logs_2027_01") } }
             waitForPendingLock()
 
             val started = System.nanoTime()
@@ -362,14 +363,16 @@ class RetentionVolumeIntegrationTest(
             val runMs = Duration.ofNanos(System.nanoTime() - startedRun).toMillis()
             val dropped = drop.get(30, TimeUnit.SECONDS)
 
-            println("RETENTION F2: append waited $appendMs ms, run creation $runMs ms, drop failed=${dropped.isFailure}")
+            println("RETENTION F2: append $appendMs ms, run $runMs ms, drop failed=${dropped.isFailure}")
             assertTrue(written != null, "the line was written")
             assertTrue(appendMs <= lockTimeout.toMillis() + 1000, "the write waited $appendMs ms")
             assertTrue(runMs <= lockTimeout.toMillis(), "run creation waited $runMs ms")
             assertTrue(dropped.isFailure, "the drop gave up at lock_timeout")
             assertEquals(1, count(a, "step_logs", "step_id = '$step'"))
-            assertEquals("running", jdbc.queryForObject("select status from run_steps where id = ?", String::class.java, step))
-            assertEquals("running", jdbc.queryForObject("select status from runs where id = ?", String::class.java, running.id))
+            val stepStatus = jdbc.queryForObject("select status from run_steps where id = ?", String::class.java, step)
+            val runStatus = jdbc.queryForObject("select status from runs where id = ?", String::class.java, running.id)
+            assertEquals("running", stepStatus)
+            assertEquals("running", runStatus)
         } finally {
             reader.rollback()
             reader.close()

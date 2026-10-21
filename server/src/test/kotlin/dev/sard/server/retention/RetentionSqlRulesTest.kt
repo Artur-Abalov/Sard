@@ -9,8 +9,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 private val SQL_COMMENT = Regex("""--.*$""", RegexOption.MULTILINE)
+private const val DELETE_FROM = """delete from \w+(?:\s+\w+)?"""
 private val STATEMENT_OWNER = Regex("""^\s*(?:CREATE|ALTER) TABLE (\w+)""", RegexOption.IGNORE_CASE)
-private val TENANT_FOREIGN_KEY = Regex("""FOREIGN KEY \(tenant_id, (\w+)\)\s+REFERENCES (\w+)""", RegexOption.IGNORE_CASE)
+private val TENANT_FOREIGN_KEY =
+    Regex("""FOREIGN KEY \(tenant_id, (\w+)\)\s+REFERENCES (\w+)""", RegexOption.IGNORE_CASE)
 
 /** The tables the cleaning deletes from: a foreign key into any of them must be dealt with by a batch. */
 private val CLEANED =
@@ -55,7 +57,8 @@ class RetentionSqlRulesTest {
             .flatMap { it.readText().replace(SQL_COMMENT, "").split(';') }
             .flatMap { statement ->
                 val owner = STATEMENT_OWNER.find(statement)?.groupValues?.get(1) ?: return@flatMap emptyList()
-                TENANT_FOREIGN_KEY.findAll(statement).map { ForeignKey(owner, it.groupValues[1], it.groupValues[2]) }.toList()
+                val found = TENANT_FOREIGN_KEY.findAll(statement)
+                found.map { ForeignKey(owner, it.groupValues[1], it.groupValues[2]) }.toList()
             }
     }
 
@@ -82,23 +85,24 @@ class RetentionSqlRulesTest {
                 .filter { it.target in CLEANED && it !in unnamedOnPurpose }
                 .filter { key -> BATCHES.values.none { names(it, key.owner) && names(it, key.column) } }
 
-        assertTrue(missing.isEmpty(), "foreign keys into cleaned tables that no batch names:\n${missing.joinToString("\n")}")
+        val report = missing.joinToString("\n")
+        assertTrue(missing.isEmpty(), "foreign keys into cleaned tables that no batch names:\n$report")
     }
 
     @Test
     fun `Каждая пачка выбирает и удаляет внутри одного тенанта`() {
         for ((name, sql) in BATCHES) {
             val deletes = Regex("""\bdelete from\b""").findAll(sql).count()
-            val scopedDeletes =
-                Regex(
-                    """delete from \w+(?:\s+\w+)?(?:\s+using\s+\w+\s+\w+)?\s+where\s+(?:\w+\.)?tenant_id\s*=\s*:tenant""",
-                ).findAll(sql).count()
+            val scopedDelete =
+                Regex(DELETE_FROM + """(?:\s+using\s+\w+\s+\w+)?\s+where\s+(?:\w+\.)?tenant_id\s*=\s*:tenant""")
+            val scopedDeletes = scopedDelete.findAll(sql).count()
             assertEquals(deletes, scopedDeletes, "$name: a delete without tenant_id = :tenant")
 
             for (lock in Regex("""for update of""").findAll(sql)) {
                 val before = sql.substring(0, lock.range.first)
                 val start = maxOf(before.lastIndexOf("picked as ("), before.lastIndexOf("id in ("))
-                assertTrue("tenant_id = :tenant" in before.substring(start), "$name: a pick without tenant_id = :tenant")
+                val pick = before.substring(start)
+                assertTrue("tenant_id = :tenant" in pick, "$name: a pick without tenant_id = :tenant")
             }
         }
     }

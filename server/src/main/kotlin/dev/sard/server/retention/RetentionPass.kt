@@ -82,7 +82,8 @@ class RetentionPass(
 
     /** The class of the failure, and `lock_timeout` when PostgreSQL gave up waiting for a lock; never its message. */
     private fun describe(failure: Throwable): String {
-        val lockTimeout = generateSequence(failure) { it.cause }.any { it is SQLException && it.sqlState == LOCK_NOT_AVAILABLE }
+        val causes = generateSequence(failure) { it.cause }
+        val lockTimeout = causes.any { it is SQLException && it.sqlState == LOCK_NOT_AVAILABLE }
         return failure.javaClass.name + if (lockTimeout) " (lock_timeout)" else ""
     }
 
