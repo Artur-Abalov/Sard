@@ -8,12 +8,16 @@ import dev.sard.server.persistence.TenantSessions
 import org.hibernate.Session
 import org.hibernate.query.CommonQueryContract
 import org.slf4j.LoggerFactory
+import java.sql.SQLException
 import java.time.Clock
 import java.time.Instant
 import java.util.EnumMap
 import java.util.UUID
 
 private val log = LoggerFactory.getLogger(RetentionPass::class.java)
+
+/** SQLSTATE of a statement that waited for a lock longer than lock_timeout. */
+private const val LOCK_NOT_AVAILABLE = "55P03"
 
 private const val TENANTS = "select id from tenants"
 
@@ -72,8 +76,14 @@ class RetentionPass(
         for (name in logs.expired(now.minus(settings.stepLogs))) {
             runCatching { logs.drop(name) }
                 .onSuccess { dropped -> if (dropped) count(RetentionKind.STEP_LOG_PARTITION, 1, totals) }
-                .onFailure { log.error("Retention could not drop log partition {}: {}", name, it.javaClass.name) }
+                .onFailure { log.error("Retention could not drop log partition {}: {}", name, describe(it)) }
         }
+    }
+
+    /** The class of the failure, and `lock_timeout` when PostgreSQL gave up waiting for a lock; never its message. */
+    private fun describe(failure: Throwable): String {
+        val lockTimeout = generateSequence(failure) { it.cause }.any { it is SQLException && it.sqlState == LOCK_NOT_AVAILABLE }
+        return failure.javaClass.name + if (lockTimeout) " (lock_timeout)" else ""
     }
 
     private fun clean(

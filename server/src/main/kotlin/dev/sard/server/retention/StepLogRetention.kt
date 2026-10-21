@@ -45,8 +45,9 @@ class StepLogRetention(
 
     /**
      * Drops [name]; false if another server dropped it first. The partitions are dropped one at a time, serialised on
-     * `step_logs` in a mode that lets lines be written meanwhile, so two servers never both count the same drop. A
-     * partition held by another transaction longer than the lock timeout fails the drop.
+     * `step_logs`, so two servers never both count the same drop. The drop itself takes `step_logs` too, so while it
+     * waits for a reader of the partition the writing of lines waits with it; a partition held longer than the lock
+     * timeout fails the drop and frees the writers.
      */
     fun drop(name: String): Boolean {
         require(PARTITION_NAME.matches(name)) { "not a log partition: $name" }

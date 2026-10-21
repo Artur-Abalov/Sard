@@ -625,16 +625,22 @@ class RetentionPassIntegrationTest(
             val impatient = RetentionPass(sessions, quick, clock, settings()) { _, _ -> }
 
             MutFlow.underTest { impatient.run() }
+            val errors = output.out.lines().filter { "ERROR" in it && "Retention" in it }
+            assertTrue(
+                errors.any { "step_logs_2027_01" in it && "Exception" in it && "lock_timeout" in it },
+                errors.toString(),
+            )
+            assertTrue("step_logs_2027_01" in partitions())
+            holder.rollback()
+            impatient.run()
+            assertFalse("step_logs_2027_01" in partitions(), "the next pass drops the partition")
         } finally {
             holder.rollback()
             holder.close()
         }
 
-        val errors = output.out.lines().filter { "ERROR" in it && "Retention" in it }
-        assertTrue(errors.any { "step_logs_2027_01" in it && "Exception" in it }, errors.toString())
         assertFalse("secret log text" in output.out)
         assertTrue(old.none { run(a, it.id) })
-        assertTrue("step_logs_2027_01" in partitions())
     }
 
     // ---- tenants, writes and reports -------------------------------------------------------------------------

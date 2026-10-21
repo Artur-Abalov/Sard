@@ -21,7 +21,7 @@ private val log = LoggerFactory.getLogger(StepLogPartitions::class.java)
  * Monthly partitions of `step_logs` (ADR 0013), created ahead by the server: at start, for the
  * clock's month and [monthsAhead] after it, then every [interval]. A line whose month has no
  * partition fails its chunk, so the months ahead are the margin for a server that was down.
- * Dropping expired partitions (`sard.logs.retention`) is not done yet.
+ * Dropping expired partitions is `retention.StepLogRetention`'s, by `sard.retention.step-logs`.
  */
 class StepLogPartitions(
     private val jdbc: JdbcTemplate,

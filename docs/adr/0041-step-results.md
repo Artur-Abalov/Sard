@@ -71,7 +71,7 @@ S6a закрыл шаг условными переходами: «резуль�
   - миграция создаёт секции на текущий и следующий месяц;
   - `persistence/StepLogPartitions` при старте и раз в `sard.logs.partitions-check-interval` (1 сутки) создаёт секции на `sard.logs.partitions-ahead-months` (2) вперёд — по внедрённым часам;
   - секции `DEFAULT` нет: строка вне секций упадёт видимо, а не осядет там, откуда её не удалить через `DROP`;
-  - `DROP` по сроку хранения — не в S7a (OQ-048).
+  - `DROP` по сроку хранения — не в S7a; его делает `retention.StepLogRetention` по `sard.retention.step-logs` (H1, фаза 2, OQ-048).
 - **Метрики логов**: `sard.run.step.logs.dropped` (строки), `sard.run.step.logs.truncated` (шаги).
 
 ## Отвергнуто

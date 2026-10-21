@@ -7,8 +7,10 @@ import dev.sard.server.api.RestApiTest
 import dev.sard.server.persistence.StepLogPartitions
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.runs.LogLine
 import dev.sard.server.runs.RUNS_NOW
 import dev.sard.server.runs.Runs
+import dev.sard.server.runs.StepLogs
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
@@ -39,6 +41,7 @@ class RetentionVolumeIntegrationTest(
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
     @Autowired private val runs: Runs,
+    @Autowired private val stepLogs: StepLogs,
 ) {
     private val a = SceneTenant(jdbc)
     private val b = SceneTenant(jdbc)
@@ -328,5 +331,59 @@ class RetentionVolumeIntegrationTest(
         pass(finishing).run()
 
         assertTrue(a.exists("runs", active.id))
+    }
+
+    /**
+     * The drop of a partition needs the parent `step_logs` to itself while it waits for a reader of the partition, so
+     * the lines of every tenant wait with it, for at most the lock timeout (decision F2, variant b).
+     */
+    @Test
+    fun `Запись строки лога во время ожидающего удаления секции ждёт не дольше lock_timeout`() {
+        jdbc.createPartition("2027_01")
+        jdbc.createPartition("2027_06")
+        val source = a.source()
+        val running = a.run(source, T0, status = "running")
+        val step = running.steps.single()
+        val lockTimeout = Duration.ofSeconds(2)
+        val reader = jdbc.dataSource!!.connection
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            reader.autoCommit = false
+            reader.createStatement().use { it.execute("select count(*) from step_logs_2027_01") }
+            val drop = pool.submit<Result<Boolean>> { runCatching { StepLogRetention(jdbc, lockTimeout).drop("step_logs_2027_01") } }
+            waitForPendingLock()
+
+            val started = System.nanoTime()
+            val written = stepLogs.append(a.id, a.agentId, step, listOf(LogLine(null, "info", "while the drop waits")))
+            val appendMs = Duration.ofNanos(System.nanoTime() - started).toMillis()
+            val other = a.source("other")
+            val startedRun = System.nanoTime()
+            runs.start(a.id, other)
+            val runMs = Duration.ofNanos(System.nanoTime() - startedRun).toMillis()
+            val dropped = drop.get(30, TimeUnit.SECONDS)
+
+            println("RETENTION F2: append waited $appendMs ms, run creation $runMs ms, drop failed=${dropped.isFailure}")
+            assertTrue(written != null, "the line was written")
+            assertTrue(appendMs <= lockTimeout.toMillis() + 1000, "the write waited $appendMs ms")
+            assertTrue(runMs <= lockTimeout.toMillis(), "run creation waited $runMs ms")
+            assertTrue(dropped.isFailure, "the drop gave up at lock_timeout")
+            assertEquals(1, count(a, "step_logs", "step_id = '$step'"))
+            assertEquals("running", jdbc.queryForObject("select status from run_steps where id = ?", String::class.java, step))
+            assertEquals("running", jdbc.queryForObject("select status from runs where id = ?", String::class.java, running.id))
+        } finally {
+            reader.rollback()
+            reader.close()
+            pool.shutdown()
+        }
+    }
+
+    private fun waitForPendingLock() {
+        val deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos()
+        while (System.nanoTime() < deadline) {
+            val waiting = jdbc.queryForObject("select count(*) from pg_locks where not granted", Int::class.java) ?: 0
+            if (waiting > 0) return
+            Thread.sleep(20)
+        }
+        error("the drop never started to wait for a lock")
     }
 }
