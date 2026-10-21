@@ -23,6 +23,7 @@ private val ISOLATED_PACKAGES =
         "downloads",
         "selfagent",
         "selfbackup",
+        "retention",
     )
 
 // downloads/ holds both domain types and the HTTP adapter that serves the package files. Only the
@@ -50,6 +51,12 @@ private val STRING_CONCATENATION = Regex(""""\s*\+\s*"""")
 private val STRING_LITERAL = Regex("""\"{3}(.*?)\"{3}|"((?:[^"\\]++|\\.)*+)"""", RegexOption.DOT_MATCHES_ALL)
 private val NATIVE_SQL_SOURCE =
     Regex("""\bimport org\.springframework\.jdbc\b|\bcreateNative(Mutation)?Query\b|\bprepareStatement\b""")
+private val SQL_CONSTANT =
+    Regex("""\bconst\s+val\s+\w+\s*=\s*\"{3}\s*(select|delete|update|insert|with)\b""", RegexOption.IGNORE_CASE)
+
+/** A file that runs native SQL by a JDBC call, or keeps its queries as constants (retention/RetentionSql.kt). */
+private fun isNativeSqlSource(text: String): Boolean = NATIVE_SQL_SOURCE.containsMatchIn(text) || SQL_CONSTANT.containsMatchIn(text)
+
 private val CREATE_TABLE = Regex("""CREATE TABLE (\w+) \((.*?)\n\);""", RegexOption.DOT_MATCHES_ALL)
 private val TENANT_ID_COLUMN = Regex("""^\s*tenant_id\s+UUID\b""", RegexOption.MULTILINE)
 private val ADD_TENANT_ID = Regex("""ALTER TABLE (\w+)\s+ADD COLUMN tenant_id\b""")
@@ -437,12 +444,25 @@ class ArchitectureTest {
     }
 
     @Test
+    fun `a file of SQL constants is checked by rule 8 like a file that calls JDBC`() {
+        val file = File(mainRoot, "retention/RetentionSql.kt")
+        val text = file.readText()
+
+        assertTrue(isNativeSqlSource(text), "RetentionSql.kt holds its queries as constants and must be scanned")
+        val scanned = STRING_LITERAL.findAll(withoutComments(text)).count { tenantTableRegex().containsMatchIn(it.value) }
+        assertTrue(scanned >= 5, "the scan sees only $scanned queries of RetentionSql.kt")
+        val fixture = "private const val BAD = \"\"\"delete from runs where id = 1\"\"\""
+        assertTrue(isNativeSqlSource(fixture))
+        assertEquals(listOf("delete from runs where id = 1"), unscopedTenantSql(fixture, tenantTableRegex()))
+    }
+
+    @Test
     fun `native SQL on a tenant table names tenant_id (ADR 0013, rule 8)`() {
         val tenantTable = tenantTableRegex()
         val found = mutableMapOf<String, Set<String>>()
         val offenders =
             ktFiles(mainRoot)
-                .filter { NATIVE_SQL_SOURCE.containsMatchIn(it.readText()) }
+                .filter { isNativeSqlSource(it.readText()) }
                 .flatMap { file ->
                     val unscoped = unscopedTenantSql(file.readText(), tenantTable)
                     val listed = TENANT_SQL_EXCEPTIONS[file.name].orEmpty()
