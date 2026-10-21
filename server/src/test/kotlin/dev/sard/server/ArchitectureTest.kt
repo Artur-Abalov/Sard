@@ -416,6 +416,12 @@ class ArchitectureTest {
         return Regex("""\b(from|update|into|join|delete)\s+($names)\b""", RegexOption.IGNORE_CASE)
     }
 
+    /** The named string literals of [source] (`val NAME = "..."`), by name. */
+    private fun namedLiterals(source: String): Map<String, String> {
+        val text = withoutComments(source).replace(STRING_CONCATENATION, "")
+        return NAMED_LITERAL.findAll(text).associate { it.groupValues[1] to literalText(it) }
+    }
+
     /** The string literals of [source] (constants expanded) that read a tenant table without `tenant_id`. */
     private fun unscopedTenantSql(
         source: String,
@@ -423,7 +429,7 @@ class ArchitectureTest {
         shared: Map<String, String> = emptyMap(),
     ): List<String> {
         val text = withoutComments(source).replace(STRING_CONCATENATION, "")
-        val constants = shared + NAMED_LITERAL.findAll(text).associate { it.groupValues[1] to literalText(it) }
+        val constants = shared + namedLiterals(source)
         return STRING_LITERAL
             .findAll(text)
             .map { expanded(it.groupValues[1] + it.groupValues[2], constants).trim() }
@@ -469,12 +475,7 @@ class ArchitectureTest {
     fun `native SQL on a tenant table names tenant_id (ADR 0013, rule 8)`() {
         val tenantTable = tenantTableRegex()
         // A fragment such as STEP is declared in one file and used in another.
-        val shared =
-            ktFiles(mainRoot)
-                .flatMap { file ->
-                    val text = withoutComments(file.readText()).replace(STRING_CONCATENATION, "")
-                    NAMED_LITERAL.findAll(text).map { it.groupValues[1] to literalText(it) }.toList()
-                }.toMap()
+        val shared = ktFiles(mainRoot).flatMap { namedLiterals(it.readText()).toList() }.toMap()
         val found = mutableMapOf<String, Set<String>>()
         val offenders =
             ktFiles(mainRoot)
