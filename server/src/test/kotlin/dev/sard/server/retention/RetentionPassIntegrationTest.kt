@@ -23,6 +23,9 @@ import org.springframework.jdbc.core.JdbcTemplate
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -30,11 +33,22 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+private val PASS_PATIENCE: Duration = Duration.ofSeconds(4)
 private val LOGS_TERM: Duration = Duration.ofDays(30)
 
 /** H1 phase 2: what the cleaning deletes by term, what it never deletes and in which order. */
 @Tag("mutflow-isolated")
-@MutFlowTest(includeTargets = [RetentionPass::class, StepLogRetention::class, RetentionTotals::class])
+@MutFlowTest(
+    includeTargets = [
+        RetentionPass::class,
+        StepLogRetention::class,
+        RetentionTotals::class,
+        MicrometerRetentionMetrics::class,
+    ],
+    // A mutant of the batch loop never ends: finishing() interrupts it and fails the test (a kill); mutflow's own
+    // timeout, which would fail the whole run as "timed out", stays behind that as the last guard.
+    timeoutMs = 20_000,
+)
 @ExtendWith(OutputCaptureExtension::class)
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
@@ -73,7 +87,30 @@ class RetentionPassIntegrationTest(
         clock.now = RUNS_NOW
     }
 
-    private fun pass(): RetentionTotals = MutFlow.underTest { retention.run() }
+    private fun pass(): RetentionTotals = finishing { retention.run() }
+
+    /**
+     * Runs [block] as the mutated code under test and requires it to end by itself: the pass deletes in batches
+     * until one is short, so a pass that is still going after [PASS_PATIENCE] never will end, and the batch loop
+     * ends at once on an interrupted thread. A watchdog interrupts it and the test then fails.
+     */
+    private fun <T> finishing(block: () -> T): T {
+        val worker = Thread.currentThread()
+        val interrupted = AtomicBoolean(false)
+        val watchdog =
+            Executors.newSingleThreadScheduledExecutor { Thread(it, "pass-watchdog").apply { isDaemon = true } }
+        watchdog.schedule({
+            interrupted.set(true)
+            worker.interrupt()
+        }, PASS_PATIENCE.toMillis(), TimeUnit.MILLISECONDS)
+        try {
+            return MutFlow.underTest { block() }
+        } finally {
+            watchdog.shutdownNow()
+            Thread.interrupted()
+            assertFalse(interrupted.get(), "the pass did not end by itself within $PASS_PATIENCE")
+        }
+    }
 
     private fun dropPartitions() {
         for (name in jdbc.partitionNames()) jdbc.execute("drop table $name")
@@ -624,7 +661,7 @@ class RetentionPassIntegrationTest(
             val quick = StepLogRetention(jdbc, Duration.ofMillis(200))
             val impatient = RetentionPass(sessions, quick, clock, settings()) { _, _ -> }
 
-            MutFlow.underTest { impatient.run() }
+            finishing { impatient.run() }
             val errors = output.out.lines().filter { "ERROR" in it && "Retention" in it }
             assertTrue(
                 errors.any { "step_logs_2027_01" in it && "Exception" in it && "lock_timeout" in it },
