@@ -109,12 +109,12 @@ func TestKnownHostsFindsPlainListedHashedAndPortEntriesOfAHostAndNoOthers(t *tes
 		t.Fatalf("lines %v", m.Lines)
 	}
 	for _, k := range []repoconnect.HostKey{rsaKey, ecKey, oldEd, wildKey} {
-		if !m.Matches([]repoconnect.HostKey{k}) {
-			t.Errorf("the key %s of an entry is not matched", k.Type)
+		if got, ok := m.Key([]repoconnect.HostKey{k}); !ok || got != k {
+			t.Errorf("the key %s of an entry is not matched: %v, %v", k.Type, got, ok)
 		}
 	}
 	for _, keys := range [][]repoconnect.HostKey{{edKey}, {otherKey}, nil} {
-		if m.Matches(keys) {
+		if _, ok := m.Key(keys); ok {
 			t.Errorf("the keys %v that are no entry's are matched", keys)
 		}
 	}
@@ -123,9 +123,14 @@ func TestKnownHostsFindsPlainListedHashedAndPortEntriesOfAHostAndNoOthers(t *tes
 func TestKnownHostsFindsTheEntriesOfAPortOnly(t *testing.T) {
 	content := line(nasHost, oldEd) + line(nasPort, otherKey) + line("*.example.com", wildKey)
 	port := repoconnect.FindKnown([]byte(content), nasPort)
-	if !slices.Equal(port.Lines, []int{2}) || !port.Matches([]repoconnect.HostKey{otherKey}) {
+	if !slices.Equal(port.Lines, []int{2}) || !portMatches(port, otherKey) {
 		t.Errorf("the entries of the port: %+v", port)
 	}
+}
+
+func portMatches(port repoconnect.Known, key repoconnect.HostKey) bool {
+	got, ok := port.Key([]repoconnect.HostKey{key})
+	return ok && got == key
 }
 
 // hashedName is the |1|salt|hash form ssh writes with HashKnownHosts.

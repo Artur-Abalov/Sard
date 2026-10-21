@@ -57,7 +57,7 @@ export function freeName(taken: string[]): string {
   }
 }
 
-export function shellWord(value: string): string {
+function shellWord(value: string): string {
   return PLAIN_WORD.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`
 }
 

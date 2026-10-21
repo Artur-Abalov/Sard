@@ -452,14 +452,14 @@ func unreadableRun(items ...string) func(context.Context, restic.Command) int {
 		stderr = append(stderr, errorLine(i, "archival"))
 	}
 	stderr = append(stderr, exitLine(3, "Warning: at least one source file could not be read"))
-	return script([]string{summaryLine(snapshotID)}, stderr, 3)
+	return script([]string{summaryLine()}, stderr, 3)
 }
 
 // Scenario: Нечитаемые файлы внутри дерева дают FAILED со снимком в результате.
 func TestUnreadableFilesInTheTreeFailTheStepButKeepTheSnapshot(t *testing.T) {
 	r := newRig(t)
 	r.fs.dir("/D")
-	r.restic.backup = script([]string{summaryLine(snapshotID)}, []string{
+	r.restic.backup = script([]string{summaryLine()}, []string{
 		errorLine("/D/locked", "scan"), errorLine("/D/locked", "archival"), errorLine("/D/sub/x.txt", "archival"),
 		exitLine(3, "Warning: at least one source file could not be read"),
 	}, 3)
@@ -495,7 +495,7 @@ func TestMoreThanTenUnreadableFilesNameTheFirstTenAndTheirNumber(t *testing.T) {
 func TestAFileThatVanishedDuringTheBackupCountsAsUnreadable(t *testing.T) {
 	r := newRig(t)
 	r.fs.dir("/D")
-	r.restic.backup = script([]string{summaryLine(snapshotID)}, []string{
+	r.restic.backup = script([]string{summaryLine()}, []string{
 		`{"message_type":"error","error":{"message":"lstat /D/tmp.1: no such file or directory"},"during":"archival","item":"/D/tmp.1"}`,
 		exitLine(3, "Warning: at least one source file could not be read"),
 	}, 3)
@@ -521,7 +521,7 @@ func TestAnUnreadableFileNameWithALineBreakDoesNotBreakTheMessage(t *testing.T) 
 func TestAPathThatVanishedAfterTheCheckDoesNotGiveASuccessfulStep(t *testing.T) {
 	r := newRig(t)
 	r.fs.dir("/gone", "/D")
-	r.restic.backup = script([]string{summaryLine(snapshotID)}, []string{
+	r.restic.backup = script([]string{summaryLine()}, []string{
 		"/gone does not exist, skipping",
 		exitLine(3, "Warning: at least one source file could not be read"),
 	}, 3)
@@ -571,7 +571,7 @@ func TestByteAndFileCountersOfTheUploadReachTheServerInOrder(t *testing.T) {
 	r := newRig(t)
 	r.fs.dir("/D")
 	r.restic.backup = script([]string{
-		statusLine(100, 1), statusLine(400, 5), statusLine(1024, 9), summaryLine(snapshotID),
+		statusLine(100, 1), statusLine(400, 5), statusLine(1024, 9), summaryLine(),
 	}, nil, 0)
 	want(t, r.run(step(paths("/D"))), succeeded)
 	var bytes, filesDone []uint64
@@ -663,7 +663,7 @@ func TestACancelAfterResticSavedTheSnapshotKeepsTheSnapshot(t *testing.T) {
 	r := newRig(t)
 	r.fs.dir("/D")
 	r.restic.backup = func(_ context.Context, cmd restic.Command) int {
-		cmd.Stdout([]byte(summaryLine(snapshotID)))
+		cmd.Stdout([]byte(summaryLine()))
 		r.exec.Cancel("c1") // arrives after restic printed the summary and before it returned
 		return 0
 	}

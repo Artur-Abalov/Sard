@@ -608,7 +608,7 @@ func TestAnUnusableDirectoryIsFoundBeforeContactingTheServer(t *testing.T) {
 }
 
 // В12/В16: a target path that is a directory (or any non-regular file)
-// must be refused before the network, not only inside WriteIdentity after
+// must be refused before the network, not only inside WriteIdentityAs after
 // a successful Enroll — which would otherwise spend the token for nothing.
 func TestATargetPathThatIsADirectoryIsRefusedBeforeContactingTheServer(t *testing.T) {
 	t.Parallel()

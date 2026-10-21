@@ -224,7 +224,7 @@ func TestTheRefusedBuiltInAgentWaitsWhileThereIsNoNewToken(t *testing.T) {
 	t.Parallel()
 	h := newRenewalHost(t)
 	h.server.register = refuseRegister("AGENT_REVOKED")
-	tokenFile := h.builtIn("spent-token")
+	tokenFile := h.builtIn()
 	a := h.run("--enroll-token-file", tokenFile)
 	a.waitStderr(t, "AGENT_REVOKED", 1)
 	steps := []struct {

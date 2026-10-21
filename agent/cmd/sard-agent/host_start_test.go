@@ -42,12 +42,11 @@ func newFragmentHost(t *testing.T, extraMain string) *fragmentHost {
 	return &fragmentHost{refusalHost: h, fragments: filepath.Join(filepath.Dir(h.cfg), "agent.d")}
 }
 
-func (h *fragmentHost) fragment(name, body string) string {
+func (h *fragmentHost) fragment(name, body string) {
 	h.t.Helper()
 	path := filepath.Join(h.fragments, name)
 	ok(h.t, os.MkdirAll(h.fragments, 0o750))
 	writeFile(h.t, path, []byte(body), 0o640)
-	return path
 }
 
 func (h *fragmentHost) registered() (repos, secretNames []string) {
@@ -72,7 +71,7 @@ func TestTheAgentRegistersTheRepositoryOfAFragment(t *testing.T) {
 	pass := filepath.Join(t.TempDir(), "extra.pass")
 	writeFile(t, pass, []byte("x\n"), 0o600)
 	h.fragment("repo-extra.yaml", "repositories:\n  - {name: extra, url: /srv/extra, password_file: "+pass+"}\n")
-	h.runUntilRegistered(eventWait)
+	h.runUntilRegistered()
 	repos, _ := h.registered()
 	if strings.Join(repos, ",") != "base,extra" {
 		t.Fatalf("repositories %v", repos)
@@ -87,7 +86,7 @@ func TestTheAgentRegistersTheSecretOfAFragment(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "db")
 	writeFile(t, db, []byte("v"), 0o600)
 	h.fragment("secret-db.yaml", "secrets:\n  db: "+db+"\n")
-	h.runUntilRegistered(eventWait)
+	h.runUntilRegistered()
 	_, names := h.registered()
 	if strings.Join(names, ",") != "db,pg" {
 		t.Fatalf("secret names %v", names)
@@ -199,7 +198,7 @@ func TestAfterRepoAddTheAgentTellsTheServerTheRepositoryID(t *testing.T) {
 	if !strings.Contains(out.String(), id) {
 		t.Fatalf("stdout %q, stderr %q", out.String(), errOut.String())
 	}
-	h.runUntilRegistered(eventWait)
+	h.runUntilRegistered()
 	req := h.server.last.Load()
 	if req == nil || len(req.GetRepositories()) != 1 || req.GetRepositories()[0].GetName() != "extra" || req.GetRepositories()[0].GetRepositoryId() != id {
 		t.Fatalf("register request %v", req)
@@ -232,7 +231,7 @@ func TestAfterRepoAddOfS3TheAgentTellsTheServerTheBackendAndTheID(t *testing.T) 
 	if err := secrets.CheckAll(cfg, uint32(os.Getuid()), secrets.RealStat); err != nil {
 		t.Fatalf("A1: %v (stderr %q)", err, errOut.String())
 	}
-	h.runUntilRegistered(eventWait)
+	h.runUntilRegistered()
 	req := h.server.last.Load()
 	if req == nil || len(req.GetRepositories()) != 1 {
 		t.Fatalf("register request %v", req)
@@ -276,7 +275,7 @@ func TestAfterRepoAddOfSFTPTheAgentTellsTheServerTheBackendAndTheID(t *testing.T
 	if code != exitOK || !strings.Contains(out.String(), id) {
 		t.Fatalf("exit code %d, stdout %q, stderr %q", code, out.String(), errOut.String())
 	}
-	h.runUntilRegistered(eventWait)
+	h.runUntilRegistered()
 	req := h.server.last.Load()
 	if req == nil || len(req.GetRepositories()) != 1 {
 		t.Fatalf("register request %v", req)

@@ -11,9 +11,9 @@ import (
 )
 
 // answers makes the fake restic answer the commands named by sub with the
-// stderr line and the exit code.
-func (r *fakeRepo) answers(sub, line string, code int) {
-	r.script = func(s string, _ []string) (string, int, bool) { return line, code, s == sub }
+// stderr line and the exit code 1.
+func (r *fakeRepo) answers(sub, line string) {
+	r.script = func(s string, _ []string) (string, int, bool) { return line, 1, s == sub }
 }
 
 func (h *setupHost) assertNoS3Traces() {
@@ -47,7 +47,7 @@ func (h *setupHost) tempFilesIn(dir string) []string {
 func TestARejectedS3KeyLeavesNoEnvFileAndNoTemporaryFiles(t *testing.T) {
 	t.Parallel()
 	h := newSetupHost(t)
-	h.s3Repo().answers("cat", "Fatal: unable to open config file: Stat: Access Denied.", 1)
+	h.s3Repo().answers("cat", "Fatal: unable to open config file: Stat: Access Denied.")
 	code, stdout, stderr := h.s3Cmd()
 	assertRefusal(t, code, stderr, exitUsage, "STORAGE_ACCESS_DENIED")
 	h.assertNoS3Traces()
@@ -269,7 +269,7 @@ func TestAWrongPasswordOfAnExistingS3RepositoryIsRefusedWithoutTraces(t *testing
 func TestAResticRefusalWhileCreatingAnS3RepositoryKeepsTheFilesForARepeat(t *testing.T) {
 	t.Parallel()
 	h := newSetupHost(t)
-	h.s3Repo().answers("init", "Fatal: create key in repository at "+s3Address+" failed: client.PutObject: Internal Error", 1)
+	h.s3Repo().answers("init", "Fatal: create key in repository at "+s3Address+" failed: client.PutObject: Internal Error")
 	code, _, stderr := h.s3Cmd()
 	assertRefusal(t, code, stderr, exitAgentError, "BACKEND_REFUSED")
 	if !strings.Contains(stderr, "Internal Error") || !strings.Contains(stderr, "will be used when the command is repeated") {
@@ -500,7 +500,7 @@ func TestARepeatThatTheStorageRefusesIsNotASuccess(t *testing.T) {
 	t.Parallel()
 	h := newSetupHost(t)
 	h.connectedS3()
-	h.s3Repo().answers("cat", "Fatal: unable to open config file: Stat: Access Denied.", 1)
+	h.s3Repo().answers("cat", "Fatal: unable to open config file: Stat: Access Denied.")
 	code, _, stderr := h.sudo("repo", "add", "extra", s3Address, "--access-key-id", keyID1, "--config", "C")
 	assertRefusal(t, code, stderr, exitUsage, "STORAGE_ACCESS_DENIED")
 }

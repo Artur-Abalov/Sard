@@ -56,7 +56,7 @@ func request(t *testing.T, r *fakeRestorer) (restore.Request, string) {
 	if f != nil {
 		t.Fatal(f)
 	}
-	r.staging = stage.Path()
+	r.staging = stagingPath(dir)
 	return restore.Request{Snapshot: theSnapshot(), Target: "/r", Staging: stage}, dir
 }
 

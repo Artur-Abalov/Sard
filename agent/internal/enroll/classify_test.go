@@ -54,7 +54,8 @@ func dialClassifyServer(t *testing.T, s *classifyServer) *grpc.ClientConn {
 
 // dialClassifyServerManual is dialClassifyServer, except the caller stops
 // the server by hand instead of on t.Cleanup — needed to drop the
-// connection mid-request.
+// connection mid-request. Stop is idempotent, so the cleanup also stops a
+// server a test failed before stopping.
 func dialClassifyServerManual(t *testing.T, s *classifyServer) (*grpc.ClientConn, func()) {
 	t.Helper()
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
@@ -64,6 +65,7 @@ func dialClassifyServerManual(t *testing.T, s *classifyServer) (*grpc.ClientConn
 	srv := grpc.NewServer()
 	agentv1.RegisterEnrollmentServiceServer(srv, s)
 	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
 	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		t.Fatal(err)

@@ -32,17 +32,6 @@ const (
 	CheckRepositoryPassword    = "repository.password"
 	CheckRepositoryID          = "repository.id"
 	CheckRepositoryLocks       = "repository.locks"
-	// CheckRepositoryIntegrity is asked for by name and is not in CheckIDs.
+	// CheckRepositoryIntegrity is asked for by name and is not in the default run.
 	CheckRepositoryIntegrity = "repository.integrity"
 )
-
-// CheckIDs are the identifiers of the checks of sard-agent check in the
-// order of Ч10: the 28 lines of a run on a host with a repository.
-func CheckIDs() []string {
-	return []string{
-		CheckServiceUser, CheckConfigLoad, CheckConfigNames, CheckConfigReferences, CheckPermissions, CheckResticBinary,
-		CheckTLSIdentity, CheckTLSChain, CheckTLSExpiry, CheckTLSRole, CheckServerReachable, CheckServerTLS, CheckServerAccepted, CheckClockSkew,
-		CheckRepositoryStorage, CheckRepositoryCredentials, CheckRepositoryInitialized, CheckRepositoryPassword, CheckRepositoryID, CheckRepositoryLocks,
-		CheckSecretReadable, CheckPluginDeclared, CheckPluginPrograms, CheckRestoreLocations, CheckSELinuxLabels, CheckSELinuxDenials, CheckServiceRunning, CheckServiceSteps,
-	}
-}

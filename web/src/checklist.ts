@@ -7,7 +7,7 @@ type FirstSteps = components['schemas']['FirstSteps']
 type Step = Exclude<keyof FirstSteps, 'complete'>
 
 // Where an unfinished step leads; hints are explained on the page it opens.
-export type Target =
+type Target =
   | { to: '/tokens'; search: { create: true } | { hint: 'enroll' } }
   | { to: '/agents'; search: { hint: 'repo-init' } }
   | { to: '/sources/new' }

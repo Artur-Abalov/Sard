@@ -32,8 +32,8 @@ backups you have proven you can restore.
 
 ### Not yet
 
-Restore from the console (today restore is a manual `restic restore`, see
-[docs/demo.md](docs/demo.md)), restore verification, other sources (MySQL, network devices, 1C), more than one tenant,
+Restore over existing data from the console (today the console restores files
+and PostgreSQL into a new place only), restore verification, other sources (MySQL, network devices, 1C), more than one tenant,
 `sardctl` commands beyond `version`. Plans, not promises: [docs/roadmap.en.md](docs/roadmap.en.md).
 
 ## How it works
@@ -75,7 +75,7 @@ that line to install another release.
 
 <!-- quickstart:begin -->
 ```bash
-SARD_TAG=v0.0.1-rc.1
+SARD_TAG=v0.1.0-beta.1
 mkdir -p ~/sard && cd ~/sard
 curl -fsSLO "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/docker-compose.yml"
 curl -fsSL -o .env "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/sard.env.example"

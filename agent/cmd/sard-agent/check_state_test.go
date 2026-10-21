@@ -151,9 +151,9 @@ func TestSevenDenialsOfTheLast24HoursAreAWarningWithTheFirstFive(t *testing.T) {
 	h.onSELinux()
 	var out strings.Builder
 	for i := 1; i <= 7; i++ {
-		out.WriteString(avcAt("restic", i, h.clock.now.Add(-time.Hour).Unix()) + "\n----\n")
+		out.WriteString(avcAt(i, h.clock.now.Add(-time.Hour).Unix()) + "\n----\n")
 	}
-	out.WriteString(avcAt("restic", 8, h.clock.now.Add(-30*time.Hour).Unix()) + "\n")
+	out.WriteString(avcAt(8, h.clock.now.Add(-30*time.Hour).Unix()) + "\n")
 	h.progs.prefix("ausearch -m avc -ts yesterday", out.String())
 	lines, _, code := h.checkLines()
 	assertCode(t, code, exitWarnings)
@@ -163,8 +163,8 @@ func TestSevenDenialsOfTheLast24HoursAreAWarningWithTheFirstFive(t *testing.T) {
 	}
 }
 
-func avcAt(comm string, n int, at int64) string {
-	return fmt.Sprintf(`type=AVC msg=audit(%d.123:%d): avc:  denied  { read } for  pid=1 comm=%q name="pg%d" scontext=a:b:c:s0 tcontext=a:b:d:s0 tclass=file permissive=0`, at, n, comm, n)
+func avcAt(n int, at int64) string {
+	return fmt.Sprintf(`type=AVC msg=audit(%d.123:%d): avc:  denied  { read } for  pid=1 comm="restic" name="pg%d" scontext=a:b:c:s0 tcontext=a:b:d:s0 tclass=file permissive=0`, at, n, n)
 }
 
 func TestWithoutAusearchTheDenialsAreSkippedAndThePackageIsNamed(t *testing.T) {

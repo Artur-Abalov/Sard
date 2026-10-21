@@ -234,7 +234,7 @@ jobs:
         run: |
           python3 - <<'EOF'
           import glob, xml.etree.ElementTree as ET
-          for path in sorted(glob.glob("server/build/test-results/test/*.xml")):
+          for path in sorted(glob.glob("server/build/test-results/*/*.xml")):
               for case in ET.parse(path).getroot().iter("testcase"):
                   for problem in case:
                       if problem.tag not in ("failure", "error"):

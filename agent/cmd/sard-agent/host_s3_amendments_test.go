@@ -172,7 +172,7 @@ func TestALeftoverPasswordFileThatA1RejectsIsRefusedAndKept(t *testing.T) {
 			t.Parallel()
 			h := newSetupHost(t)
 			h.deps.readOwned = ownedAsUID(uint32(os.Getuid()))
-			h.s3Repo().answers("init", "Fatal: create repository failed: Internal Error", 1)
+			h.s3Repo().answers("init", "Fatal: create repository failed: Internal Error")
 			h.s3Cmd()
 			spoil(h)
 			h.s3Repo().script = nil

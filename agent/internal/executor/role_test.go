@@ -135,7 +135,7 @@ func TestTheRoleGateWorksWithAFullQueue(t *testing.T) {
 // Scenario: Шлюз роли не зависит от записи на диск
 func TestTheRoleGateDoesNotDependOnTheDisk(t *testing.T) {
 	f, qa := withRole(t, role.Verifier)
-	breakDir(t, f, "journal")
+	breakJournal(t, f)
 	f.e.Submit(step("c1", "qa", agentv1.Action_ACTION_BACKUP))
 	r := f.sink.result(t)
 	if r.GetRejectReason() != roleMismatch || strings.HasPrefix(r.GetMessage(), "cannot record the command: ") {

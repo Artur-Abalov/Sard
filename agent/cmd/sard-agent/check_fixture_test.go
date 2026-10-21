@@ -238,12 +238,11 @@ func (h *setupHost) check(extra ...string) (int, string, string) {
 }
 
 // writeFragment writes a fragment of agent.d, root's, as repo add makes it.
-func (h *setupHost) writeFragment(name, content string, mode os.FileMode) string {
+func (h *setupHost) writeFragment(name, content string, mode os.FileMode) {
 	h.t.Helper()
 	path := filepath.Join(h.agentD(), name)
 	h.write(path, content, mode)
 	h.rootOwns(path)
-	return path
 }
 
 // checkLines runs check and returns the lines it printed.

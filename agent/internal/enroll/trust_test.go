@@ -147,43 +147,6 @@ func listenNoTLS(t *testing.T) string {
 	return lis.Addr().String()
 }
 
-// listenIdleTLS accepts plain TCP and never sends anything back, so a TLS
-// handshake against it only ends when its context does. Accepted
-// connections are kept referenced until cleanup: otherwise the garbage
-// collector's finalizer closes them and the "silent" server aborts the
-// handshake before the context ends.
-func listenIdleTLS(t *testing.T) string {
-	t.Helper()
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var (
-		mu    sync.Mutex
-		conns []net.Conn
-	)
-	go func() {
-		for {
-			conn, err := lis.Accept()
-			if err != nil {
-				return
-			}
-			mu.Lock()
-			conns = append(conns, conn)
-			mu.Unlock()
-		}
-	}()
-	t.Cleanup(func() {
-		_ = lis.Close()
-		mu.Lock()
-		defer mu.Unlock()
-		for _, c := range conns {
-			_ = c.Close()
-		}
-	})
-	return lis.Addr().String()
-}
-
 type fakeEnrollmentServer struct {
 	agentv1.UnimplementedEnrollmentServiceServer
 }
@@ -348,10 +311,14 @@ func TestDialTOFUNamesATimeoutSpecificallyWhenTheContextWasAlreadyDoneAtDialTime
 }
 
 func TestDialTOFUClassifiesAContextDeadlineAsTemporary(t *testing.T) {
-	addr := listenIdleTLS(t) // accepts and sits idle, so the dial itself succeeds
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	// The dial succeeds and the server never answers, so only the context,
+	// whose deadline has passed, ends the handshake.
+	clientSide, serverSide := net.Pipe()
+	t.Cleanup(func() { _ = serverSide.Close() })
+	fakeDial := func(context.Context, string, string) (net.Conn, error) { return clientSide, nil }
+	ctx, cancel := context.WithDeadline(context.Background(), time.Unix(0, 0))
 	defer cancel()
-	_, err := enroll.DialTOFU(ctx, enroll.RealDial, addr, "0000000000000000000000000000000000000000000000000000000000000000"[:64])
+	_, err := enroll.DialTOFU(ctx, fakeDial, "127.0.0.1:9999", "0000000000000000000000000000000000000000000000000000000000000000"[:64])
 	var eerr *enroll.Error
 	if !errors.As(err, &eerr) {
 		t.Fatalf("error type = %T, want *enroll.Error", err)
