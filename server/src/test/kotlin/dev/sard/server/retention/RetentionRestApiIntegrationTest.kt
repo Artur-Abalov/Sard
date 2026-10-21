@@ -216,7 +216,7 @@ class RetentionRestApiIntegrationTest(
         val admin = world.admin(tenant)
         val restores = RestoreWorld(world, tenant, admin)
         val source = restores.source()
-        val snapshots = (0 until 5).map { n -> restores.snapshot(source, snapshotId = "%08x".format(n) + "0".repeat(56)) }
+        val snapshots = (0 until 5).map { restores.snapshot(source, snapshotId = "%08x".format(it) + "0".repeat(56)) }
         val sourceId = UUID.fromString(source)
         scene.runs(sourceId, 60, old(RUNS_TERM))
         val listed =
@@ -233,7 +233,8 @@ class RetentionRestApiIntegrationTest(
             tenant,
         )
         jdbc.update(
-            "update run_steps set finished_at = ?, queued_at = ?, dispatched_at = ?, started_at = ? where tenant_id = ?",
+            "update run_steps set finished_at = ?, queued_at = ?, dispatched_at = ?, started_at = ? " +
+                "where tenant_id = ?",
             stamp(old(RUNS_TERM)),
             stamp(old(RUNS_TERM)),
             stamp(old(RUNS_TERM)),

@@ -92,7 +92,11 @@ class RetentionNotificationsIntegrationTest(
 
         assertEquals(
             listOf(delivery),
-            jdbc.queryForList("select id from notification_deliveries where tenant_id = ?", java.util.UUID::class.java, tenant.id),
+            jdbc.queryForList(
+                "select id from notification_deliveries where tenant_id = ?",
+                java.util.UUID::class.java,
+                tenant.id,
+            ),
         )
         assertEquals(0, fake.requests.size)
     }

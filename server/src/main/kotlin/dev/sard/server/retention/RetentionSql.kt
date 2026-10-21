@@ -84,7 +84,8 @@ internal const val RUNS =
     with picked as (
         select r.id from runs r
         where r.tenant_id = :tenant and r.finished_at < :cutoff
-          and not exists (select 1 from run_steps s join snapshots sn on sn.tenant_id = s.tenant_id and sn.step_id = s.id
+          and not exists (select 1 from run_steps s
+                          join snapshots sn on sn.tenant_id = s.tenant_id and sn.step_id = s.id
                           where $STEP_OF_RUN)
           and not exists (select 1 from run_steps s join step_logs l on l.tenant_id = s.tenant_id and l.step_id = s.id
                           where $STEP_OF_RUN)

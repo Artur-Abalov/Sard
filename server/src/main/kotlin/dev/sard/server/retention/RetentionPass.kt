@@ -30,7 +30,10 @@ class RetentionTotals {
     }
 
     /** The one line the server's log gets for a pass. */
-    fun summary(): String = RetentionKind.entries.joinToString(" ", "Retention pass deleted ") { "${it.tag}=${get(it)}" }
+    fun summary(): String {
+        val counts = RetentionKind.entries.map { "${it.tag}=${get(it)}" }
+        return counts.joinToString(" ", "Retention pass deleted ")
+    }
 }
 
 /**
@@ -53,7 +56,9 @@ class RetentionPass(
         val tenants = sessions.system { session -> tenants(session) }
         for (tenantId in tenants.filter { it != HibernateTenantBridge.SYSTEM_TENANT_ID }) {
             runCatching { clean(tenantId, now, totals) }
-                .onFailure { log.error("Retention of tenant {} stopped by {}; the next pass starts again", tenantId, it.javaClass.name) }
+                .onFailure {
+                    log.error("Retention of tenant {} stopped by {}; again next pass", tenantId, it.javaClass.name)
+                }
         }
         log.info(totals.summary())
         return totals
@@ -100,7 +105,7 @@ class RetentionPass(
     ) {
         do {
             val deleted = sessions.inTenant(tenantId, batch)
-            kinds.zip(deleted).filter { (_, count) -> count > 0 }.forEach { (kind, count) -> count(kind, count, totals) }
+            for ((kind, rows) in kinds.zip(deleted)) if (rows > 0) count(kind, rows, totals)
             val full = deleted.first() >= settings.batchSize
         } while (full && !Thread.currentThread().isInterrupted)
     }

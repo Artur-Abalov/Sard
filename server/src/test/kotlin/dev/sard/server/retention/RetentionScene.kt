@@ -10,6 +10,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import java.sql.Timestamp
 import java.time.Duration
 import java.time.Instant
+import java.time.YearMonth
 import java.util.UUID
 
 /** The moment of the pass in the specification (docs/specs/server/server-retention.feature, general conventions). */
@@ -144,6 +145,12 @@ internal class SceneTenant(
         steps: Int = 1,
     ): SceneRun = runs(source, 1, at, status, trigger, kind, steps).single()
 
+    /** A snapshot of a long finished backup of [source], which nothing but the snapshot keeps. */
+    fun oldSnapshot(source: UUID): UUID {
+        val backup = run(source, T0.minus(Duration.ofDays(900)), status = "succeeded")
+        return snapshot(backup.steps.single(), source)
+    }
+
     fun stepsOf(run: UUID): List<UUID> =
         jdbc
             .queryForList(
@@ -249,7 +256,8 @@ internal class SceneTenant(
         val schedule = UUID.randomUUID()
         jdbc.update(
             """
-            insert into schedules (id, tenant_id, source_id, cron, timezone, enabled, next_run_at, created_at, updated_at)
+            insert into schedules (id, tenant_id, source_id, cron, timezone, enabled, next_run_at, created_at,
+                                   updated_at)
             values (?, ?, ?, '0 3 * * *', 'UTC', true, ?, ?, ?)
             """.trimIndent(),
             schedule,
@@ -282,7 +290,8 @@ internal class SceneTenant(
         jdbc.update(
             """
             insert into schedule_fires (id, tenant_id, schedule_id, kind, scheduled_for, outcome, run_id, reason,
-                                        missed_count, missed_until, skipped_in_row, alert, recorded_at, catch_up_fire_id)
+                                        missed_count, missed_until, skipped_in_row, alert, recorded_at,
+                                        catch_up_fire_id)
             values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
             """.trimIndent(),
             fire,
@@ -324,7 +333,8 @@ internal class SceneTenant(
         val job = UUID.randomUUID()
         jdbc.update(
             """
-            insert into verification_jobs (id, tenant_id, source_id, snapshot_ref, repository_id, plugin, reason, status,
+            insert into verification_jobs (id, tenant_id, source_id, snapshot_ref, repository_id, plugin, reason,
+                                           status,
                                            run_id, created_at, deadline, closed_at)
             values (?, ?, ?, ?, ?, 'postgresql', 'cycle', ?, ?, ?, ?, ?)
             """.trimIndent(),
@@ -360,7 +370,8 @@ internal class SceneTenant(
         val verification = UUID.randomUUID()
         jdbc.update(
             """
-            insert into restore_verifications (id, tenant_id, job_id, source_id, snapshot_id, step_id, verifier_agent_id,
+            insert into restore_verifications (id, tenant_id, job_id, source_id, snapshot_id, step_id,
+                                               verifier_agent_id,
                                                key_holders, status, level, verified_at)
             values (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
             """.trimIndent(),
@@ -392,7 +403,8 @@ internal class SceneTenant(
         val step = run(source, at, status = "succeeded", trigger = "verification").steps.single()
         jdbc.update(
             """
-            insert into verification_jobs (id, tenant_id, source_id, snapshot_ref, repository_id, plugin, reason, status,
+            insert into verification_jobs (id, tenant_id, source_id, snapshot_ref, repository_id, plugin, reason,
+                                           status,
                                            created_at, deadline, closed_at)
             select gen_random_uuid(), ?, ?, ?, ?, 'postgresql', 'cycle', 'closed', ?::timestamptz, ?::timestamptz,
                    ?::timestamptz
@@ -409,7 +421,8 @@ internal class SceneTenant(
         )
         jdbc.update(
             """
-            insert into restore_verifications (id, tenant_id, job_id, source_id, snapshot_id, step_id, verifier_agent_id,
+            insert into restore_verifications (id, tenant_id, job_id, source_id, snapshot_id, step_id,
+                                               verifier_agent_id,
                                                key_holders, status, level, verified_at)
             select gen_random_uuid(), j.tenant_id, j.id, j.source_id, j.snapshot_ref, ?, ?, 1, ?,
                    case when ? = 'passed' then 4 else 1 end, ?::timestamptz
@@ -437,7 +450,8 @@ internal class SceneTenant(
         val episode = UUID.randomUUID()
         jdbc.update(
             """
-            insert into verification_stale_episodes (id, tenant_id, source_id, counted_from, opened_at, closed_at, closed_by_id)
+            insert into verification_stale_episodes (id, tenant_id, source_id, counted_from, opened_at, closed_at,
+                                                     closed_by_id)
             values (?, ?, ?, ?, ?, ?, ?)
             """.trimIndent(),
             episode,
@@ -572,7 +586,10 @@ internal class SceneTenant(
     fun count(
         table: String,
         where: String = "true",
-    ): Int = jdbc.queryForObject("select count(*) from $table where tenant_id = ? and ($where)", Int::class.java, id) ?: 0
+    ): Int {
+        val sql = "select count(*) from $table where tenant_id = ? and ($where)"
+        return jdbc.queryForObject(sql, Int::class.java, id) ?: 0
+    }
 
     fun exists(
         table: String,
@@ -609,4 +626,21 @@ internal fun stamp(at: Instant): Timestamp = Timestamp.from(at)
 internal fun restorePartitions(partitions: StepLogPartitions) {
     partitions.ensure(Instant.now(), 2)
     partitions.ensure(RUNS_NOW, 2)
+}
+
+/** The names of the partitions of `step_logs`. */
+internal fun JdbcTemplate.partitionNames(): List<String> =
+    queryForList(
+        "select c.relname from pg_inherits i join pg_class c on c.oid = i.inhrelid " +
+            "where i.inhparent = 'step_logs'::regclass",
+        String::class.java,
+    ).filterNotNull()
+
+/** The partition `step_logs_YYYY_MM` of a month, if it is not there yet. */
+internal fun JdbcTemplate.createPartition(month: String) {
+    val (year, number) = month.split("_").map { it.toInt() }
+    val from = "%04d-%02d-01 00:00:00+00".format(year, number)
+    val next =
+        YearMonth.of(year, number).plusMonths(1).let { "%04d-%02d-01 00:00:00+00".format(it.year, it.monthValue) }
+    execute("create table if not exists step_logs_$month partition of step_logs for values from ('$from') to ('$next')")
 }

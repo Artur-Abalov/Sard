@@ -254,7 +254,8 @@ class ArchitectureTest {
     fun `retention deletes log lines by whole partitions only`() {
         val lineDeletes =
             ktFiles(File(mainRoot, "retention")).filter {
-                Regex("""delete\s+from\s+step_logs\b""", RegexOption.IGNORE_CASE).containsMatchIn(withoutComments(it.readText()))
+                Regex("""delete\s+from\s+step_logs\b""", RegexOption.IGNORE_CASE)
+                    .containsMatchIn(withoutComments(it.readText()))
             }
 
         assertTrue(lineDeletes.isEmpty(), "DELETE from step_logs: ${lineDeletes.joinToString { it.name }}")

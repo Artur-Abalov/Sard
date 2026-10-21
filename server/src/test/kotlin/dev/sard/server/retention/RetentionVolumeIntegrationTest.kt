@@ -184,7 +184,8 @@ class RetentionVolumeIntegrationTest(
         }
 
         assertEquals(701, count(a, "runs"), "the stopped pass left the second batch whole, not half of it")
-        assertEquals(0, count(a, "runs r", "not exists (select 1 from run_steps s where s.run_id = r.id and s.tenant_id = r.tenant_id)"))
+        val stepless = "not exists (select 1 from run_steps s where s.run_id = r.id and s.tenant_id = r.tenant_id)"
+        assertEquals(0, count(a, "runs r", stepless))
         assertEquals(1402, count(a, "run_steps"))
     }
 
@@ -227,15 +228,9 @@ class RetentionVolumeIntegrationTest(
     @Test
     fun `Два экземпляра не удаляют одну секцию дважды`(output: CapturedOutput) {
         jdbc.execute("drop table if exists step_logs_2027_01")
-        jdbc.execute(
-            "create table step_logs_2027_01 partition of step_logs for values from ('2027-01-01 00:00:00+00') to ('2027-02-01 00:00:00+00')",
-        )
+        jdbc.createPartition("2027_01")
         val before =
-            jdbc
-                .queryForList(
-                    "select c.relname from pg_inherits i join pg_class c on c.oid = i.inhrelid where i.inhparent = 'step_logs'::regclass",
-                    String::class.java,
-                ).filterNotNull()
+            jdbc.partitionNames()
         val meters = listOf(SimpleMeterRegistry(), SimpleMeterRegistry())
         val instances = meters.map { pass(MicrometerRetentionMetrics(it)) }
         val start = CountDownLatch(1)
@@ -253,11 +248,7 @@ class RetentionVolumeIntegrationTest(
         pool.shutdown()
 
         val left =
-            jdbc
-                .queryForList(
-                    "select c.relname from pg_inherits i join pg_class c on c.oid = i.inhrelid where i.inhparent = 'step_logs'::regclass",
-                    String::class.java,
-                ).filterNotNull()
+            jdbc.partitionNames()
         assertTrue("step_logs_2027_01" in before && "step_logs_2027_01" !in left)
         val dropped =
             meters.sumOf {
@@ -341,7 +332,8 @@ class RetentionVolumeIntegrationTest(
                         stamp(T0.minusSeconds(1)),
                         active.id,
                     )
-                    jdbc.update("update runs set status = 'failed', finished_at = ? where id = ?", stamp(T0.minusSeconds(1)), active.id)
+                    val at = stamp(T0.minusSeconds(1))
+                    jdbc.update("update runs set status = 'failed', finished_at = ? where id = ?", at, active.id)
                 }
             }
 

@@ -5,6 +5,7 @@ package dev.sard.server.retention
 
 import org.springframework.jdbc.core.ConnectionCallback
 import org.springframework.jdbc.core.JdbcTemplate
+import java.sql.Connection
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -49,36 +50,46 @@ class StepLogRetention(
      */
     fun drop(name: String): Boolean {
         require(PARTITION_NAME.matches(name)) { "not a log partition: $name" }
-        return checkNotNull(
-            jdbc.execute(
-                ConnectionCallback { connection ->
-                    connection.autoCommit = false
-                    try {
-                        connection.createStatement().use { it.execute("set local lock_timeout = ${lockTimeout.toMillis()}") }
-                        connection.createStatement().use { it.execute("lock table step_logs in share update exclusive mode") }
-                        val attached =
-                            connection.prepareStatement(ATTACHED).use {
-                                it.setString(1, name)
-                                it.executeQuery().use { rows -> rows.next() && rows.getBoolean(1) }
-                            }
-                        // The name matched the pattern above: digits only.
-                        if (attached) connection.createStatement().use { it.execute("drop table $name") }
-                        connection.commit()
-                        attached
-                    } catch (e: Exception) {
-                        connection.rollback()
-                        throw e
-                    } finally {
-                        connection.autoCommit = true
-                    }
-                },
-            ),
-        )
+        return checkNotNull(jdbc.execute(ConnectionCallback { connection -> dropIn(connection, name) }))
     }
+
+    /** One transaction: wait for the other servers' drops and for readers, then drop if still attached. */
+    private fun dropIn(
+        connection: Connection,
+        name: String,
+    ): Boolean {
+        connection.autoCommit = false
+        var committed = false
+        try {
+            connection.createStatement().use {
+                it.execute("set local lock_timeout = ${lockTimeout.toMillis()}")
+                it.execute("lock table step_logs in share update exclusive mode")
+            }
+            val attached = isAttached(connection, name)
+            // The name matched the pattern: digits only.
+            if (attached) connection.createStatement().use { it.execute("drop table $name") }
+            connection.commit()
+            committed = true
+            return attached
+        } finally {
+            if (!committed) connection.rollback()
+            connection.autoCommit = true
+        }
+    }
+
+    private fun isAttached(
+        connection: Connection,
+        name: String,
+    ): Boolean =
+        connection.prepareStatement(ATTACHED).use { statement ->
+            statement.setString(1, name)
+            statement.executeQuery().use { rows -> rows.next() && rows.getBoolean(1) }
+        }
 }
 
 private const val PARTITIONS =
-    "select c.relname from pg_inherits i join pg_class c on c.oid = i.inhrelid where i.inhparent = 'step_logs'::regclass"
+    "select c.relname from pg_inherits i join pg_class c on c.oid = i.inhrelid " +
+        "where i.inhparent = 'step_logs'::regclass"
 
 private const val ATTACHED =
     "select exists (select 1 from pg_inherits where inhparent = 'step_logs'::regclass and inhrelid = to_regclass(?))"

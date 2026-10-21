@@ -32,7 +32,7 @@ import kotlin.test.assertTrue
 
 private val LOGS_TERM: Duration = Duration.ofDays(30)
 
-/** H1 phase 2: what the cleaning deletes by term, what it never deletes and in which order (server-retention.feature). */
+/** H1 phase 2: what the cleaning deletes by term, what it never deletes and in which order. */
 @Tag("mutflow-isolated")
 @MutFlowTest(includeTargets = [RetentionPass::class, StepLogRetention::class, RetentionTotals::class])
 @ExtendWith(OutputCaptureExtension::class)
@@ -76,28 +76,12 @@ class RetentionPassIntegrationTest(
     private fun pass(): RetentionTotals = MutFlow.underTest { retention.run() }
 
     private fun dropPartitions() {
-        val names =
-            jdbc.queryForList(
-                "select c.relname from pg_inherits i join pg_class c on c.oid = i.inhrelid where i.inhparent = 'step_logs'::regclass",
-                String::class.java,
-            )
-        for (name in names.filterNotNull()) jdbc.execute("drop table $name")
+        for (name in jdbc.partitionNames()) jdbc.execute("drop table $name")
     }
 
-    private fun partition(month: String) {
-        val (year, number) = month.split("_").map { it.toInt() }
-        val from = "%04d-%02d-01 00:00:00+00".format(year, number)
-        val next = if (number == 12) "%04d-01-01 00:00:00+00".format(year + 1) else "%04d-%02d-01 00:00:00+00".format(year, number + 1)
-        jdbc.execute("create table if not exists step_logs_$month partition of step_logs for values from ('$from') to ('$next')")
-    }
+    private fun partition(month: String) = jdbc.createPartition(month)
 
-    private fun partitions(): Set<String> =
-        jdbc
-            .queryForList(
-                "select c.relname from pg_inherits i join pg_class c on c.oid = i.inhrelid where i.inhparent = 'step_logs'::regclass",
-                String::class.java,
-            ).filterNotNull()
-            .toSet()
+    private fun partitions(): Set<String> = jdbc.partitionNames().toSet()
 
     private fun counter(kind: String): Double =
         meters
@@ -107,8 +91,8 @@ class RetentionPassIntegrationTest(
             .count()
 
     /**
-     * A source of [owner] that protects nothing it is not asked to: a fresh success of each kind (backup with a snapshot,
-     * restore, verify) and a fresh passed and a fresh not passed verification.
+     * A source of [owner] that protects nothing it is not asked to: a fresh success of each kind (backup with a
+     * snapshot, restore, verify) and a fresh passed and a fresh not passed verification.
      */
     private fun anchored(owner: SceneTenant = a): UUID {
         val source = owner.source()
@@ -169,7 +153,8 @@ class RetentionPassIntegrationTest(
 
     @Test
     fun `Активный запуск со старым созданием остаётся`() {
-        val runs = listOf("queued", "dispatched", "running").map { a.run(a.source(), T0.minus(Duration.ofDays(400)), status = it) }
+        val created = T0.minus(Duration.ofDays(400))
+        val runs = listOf("queued", "dispatched", "running").map { a.run(a.source(), created, status = it) }
 
         pass()
 
@@ -179,7 +164,7 @@ class RetentionPassIntegrationTest(
     @Test
     fun `Запись проверки удаляется вместе со своим закрытым заданием`() {
         val source = anchored()
-        val snapshot = a.snapshot(a.run(source, T0.minus(Duration.ofDays(900)), status = "succeeded").steps.single(), source)
+        val snapshot = a.oldSnapshot(source)
         val oldRun = a.run(source, old(RUNS_TERM), trigger = "verification", status = "failed")
         val record = a.verification(source, snapshot, old(RUNS_TERM), "failed", oldRun)
         val job = jdbc.queryForObject("select job_id from restore_verifications where id = ?", UUID::class.java, record)
@@ -276,7 +261,7 @@ class RetentionPassIntegrationTest(
         a.fire(schedule, T0.minus(Duration.ofDays(100)), run = withFire.id)
         a.delivery(withDelivery.id, T0.minus(Duration.ofDays(20)))
         a.overdueEpisode(source, withEpisode.id)
-        val snapshot = a.snapshot(a.run(source, T0.minus(Duration.ofDays(900)), status = "succeeded").steps.single(), source)
+        val snapshot = a.oldSnapshot(source)
         a.job(source, snapshot, status = "running", run = withJob.id)
         a.verification(source, snapshot, T0.minus(Duration.ofDays(100)), "failed", withRecord)
         partition("2027_06")
@@ -310,7 +295,10 @@ class RetentionPassIntegrationTest(
     @Test
     fun `Последний успех вида остаётся, более ранние удаляются`() {
         val source = a.source()
-        val restores = (1L..3L).map { a.run(source, old(RUNS_TERM).minus(Duration.ofDays(it)), status = "succeeded", kind = "restore") }
+        val restores =
+            (1L..3L).map {
+                a.run(source, old(RUNS_TERM).minus(Duration.ofDays(it)), status = "succeeded", kind = "restore")
+            }
         val verifies =
             (1L..3L).map {
                 a.run(
@@ -379,14 +367,15 @@ class RetentionPassIntegrationTest(
 
     private fun verifiedSource(): Pair<UUID, UUID> {
         val source = a.source()
-        val snapshot = a.snapshot(a.run(source, T0.minus(Duration.ofDays(900)), status = "succeeded").steps.single(), source)
+        val snapshot = a.oldSnapshot(source)
         return source to snapshot
     }
 
     @Test
     fun `Последняя успешная проверка источника остаётся`() {
         val (source, snapshot) = verifiedSource()
-        val records = (1L..4L).map { a.verification(source, snapshot, old(RUNS_TERM).minus(Duration.ofDays(it)), "passed") }
+        val records =
+            (1L..4L).map { a.verification(source, snapshot, old(RUNS_TERM).minus(Duration.ofDays(it)), "passed") }
 
         pass()
 
@@ -632,7 +621,8 @@ class RetentionPassIntegrationTest(
             holder.autoCommit = false
             // An open transaction that has read the partition: the drop needs it to itself and waits.
             holder.createStatement().use { it.execute("select count(*) from step_logs_2027_01") }
-            val impatient = RetentionPass(sessions, StepLogRetention(jdbc, Duration.ofMillis(200)), clock, settings(), { _, _ -> })
+            val quick = StepLogRetention(jdbc, Duration.ofMillis(200))
+            val impatient = RetentionPass(sessions, quick, clock, settings()) { _, _ -> }
 
             MutFlow.underTest { impatient.run() }
         } finally {
@@ -695,7 +685,8 @@ class RetentionPassIntegrationTest(
         val line = output.out.lines().single { "Retention pass deleted" in it }
         assertTrue(
             line.endsWith(
-                "step_log_partition=0 notification_delivery=0 schedule_fire=0 restore_verification=0 verification_job=0 run_step=0 run=0",
+                "step_log_partition=0 notification_delivery=0 schedule_fire=0 restore_verification=0 " +
+                    "verification_job=0 run_step=0 run=0",
             ),
             line,
         )
