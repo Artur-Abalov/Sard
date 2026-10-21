@@ -17,6 +17,9 @@ private const val HTTP_PORT = 8080
 private const val GRPC_PORT = 9090
 private const val MIN_TOKEN_LENGTH = 32
 
+/** The console's and the agents' ports: the listener never takes them. */
+private val RESERVED_PORTS = setOf(HTTP_PORT, GRPC_PORT)
+
 /**
  * `sard.metrics.*` (H1 phase 3), set by SARD_METRICS_BIND, SARD_METRICS_PORT, SARD_METRICS_TOKEN and
  * SARD_METRICS_STATE_INTERVAL. Not a data class: its text form would carry the token.
@@ -45,7 +48,7 @@ class MetricsProperties(
     }
 
     private fun checkPort() =
-        require(port in 1..MAX_PORT && port != HTTP_PORT && port != GRPC_PORT) {
+        require(port in 1..MAX_PORT && port !in RESERVED_PORTS) {
             "SARD_METRICS_PORT (sard.metrics.port) must be a port from 1 to $MAX_PORT " +
                 "other than $HTTP_PORT and $GRPC_PORT"
         }
