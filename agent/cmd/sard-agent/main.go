@@ -185,38 +185,46 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 	}
 	// R2a: before any step is accepted, what a killed restore left is removed.
 	engine := newRestoreEngine(cfg)
-	journal := newRestoreJournal(cfg)
+	journal := newRestoreJournal(cfg, slog.Default())
 	agent := newAgentWith(cfg, hostname, resticBinary, me.machineID, engine, journal, rt)
 	// R2c: the plugins recover their entries of the restore journal now, before
 	// the first step and before the first connection to the server.
-	recovered := recoverJournal(cfg, journal, rt.journalPlugins, agent.Plugins)
+	recovered := recoverJournal(cfg, journal, rt.journalPlugins, agent.Plugins, slog.Default())
 	return refuse(serve(ctx, cfg, me.role, agent, newRecoveryWith(engine, journal, recovered), renewal, rt), configPath, cfg)
 }
 
 // newRestoreJournal is the restore journal of the plugins that restore
 // themselves: a directory of executor.state_dir, written as the service user.
-func newRestoreJournal(cfg config.Config) *pluginhost.Journal {
+// The directory of the previous release, <state_dir>/pg-restore, is read as the
+// entries of the plugin postgresql for one release (ADR 0066 point 4) and never written.
+func newRestoreJournal(cfg config.Config, log *slog.Logger) *pluginhost.Journal {
 	store := restorejournal.New(restorejournal.Options{
-		Dir:   restoreJournalDir(cfg),
-		FS:    hostsetup.OS{},
-		Owner: hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid()},
+		Dir:    restoreJournalDir(cfg),
+		FS:     hostsetup.OS{},
+		Owner:  hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid()},
+		Legacy: []restorejournal.Legacy{{Dir: legacyJournalDir(cfg), Plugin: "postgresql"}},
 	})
-	return pluginhost.NewJournal(store, slog.Default())
+	return pluginhost.NewJournal(store, log)
 }
 
 func restoreJournalDir(cfg config.Config) string {
 	return filepath.Join(executorStateDir(cfg.Executor.StateDir), "restore-journal")
 }
 
+// legacyJournalDir is the journal of the rollback of restores of databases of the previous release.
+func legacyJournalDir(cfg config.Config) string {
+	return filepath.Join(executorStateDir(cfg.Executor.StateDir), "pg-restore")
+}
+
 // recoverJournal gives the entries of the journal to the plugins that keep
 // them: those of the test, if it names some, else the agent's own.
-func recoverJournal(cfg config.Config, journal *pluginhost.Journal, test, builtin *sdk.Registry) *pluginhost.JournalRecovery {
+func recoverJournal(cfg config.Config, journal *pluginhost.Journal, test, builtin *sdk.Registry, log *slog.Logger) *pluginhost.JournalRecovery {
 	reg := builtin
 	if test != nil {
 		reg = test
 	}
 	return pluginhost.RecoverJournal(pluginhost.RecoveryOptions{
-		Journal: journal, Plugins: reg, Secrets: pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), Logger: slog.Default(),
+		Journal: journal, Plugins: reg, Secrets: pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), Logger: log,
 	})
 }
 
@@ -325,9 +333,13 @@ func newRestoreEngine(cfg config.Config) *consolerestore.Engine {
 		Owner:  hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid(), Mode: 0o700},
 		Logger: slog.Default(),
 		Target: restoreTargets(cfg, os.ReadFile),
-		// R2b: restore of a database.
-		Postgres: postgresOptions(cfg, os.ReadFile),
 	})
+}
+
+// pluginOptions are the settings of the host the built-in plugins get from the
+// configuration of the agent: they read none themselves.
+func pluginOptions(cfg config.Config) []plugins.Option {
+	return []plugins.Option{plugins.WithPostgresLockShare(cfg.PostgresqlLockShare())}
 }
 
 // restoreTargets describes the repositories of the host for the messages of
@@ -376,10 +388,10 @@ func buildAgent(cfg config.Config, hostname, resticBinary, machineID string, res
 		ReadFile: os.ReadFile,
 		Logger:   slog.Default(),
 	})
-	registry := plugins.Registry(version)
+	registry := plugins.Registry(version, pluginOptions(cfg)...)
 	return &app.Agent{
 		Plugins:   registry,
-		Handlers:  plugins.Handlers(registry, pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), repos.get, restoreDir(cfg.Executor.StateDir), pluginhost.WithConsoleRestore(restores), pluginhost.WithRestoreJournal(journal), pluginhost.WithLogger(slog.Default())),
+		Handlers:  plugins.Handlers(registry, pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), repos.get, restoreDir(cfg.Executor.StateDir), pluginhost.WithConsoleRestore(restores), pluginhost.WithRestoreJournal(journal), pluginhost.WithRepositoryWords(consolerestore.NewClassifier(restoreTargets(cfg, os.ReadFile))), pluginhost.WithLogger(slog.Default())),
 		Hostname:  hostname,
 		MachineID: machineID,
 		Version:   version,

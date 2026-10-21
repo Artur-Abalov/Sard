@@ -75,11 +75,14 @@ func TestACommandInBothJournalsIsListedOnceFromTheNewOne(t *testing.T) {
 	if err != nil || len(records) != 2 {
 		t.Fatalf("List = %+v, %v", records, err)
 	}
-	if records[0].CommandID != "c1" || string(records[0].Entry) != "new" || records[0].Path != l.path("c1") {
-		t.Errorf("c1 = %+v: the new entry wins", records[0])
-	}
-	if records[1].CommandID != "c2" || string(records[1].Entry) != "old2" {
-		t.Errorf("c2 = %+v", records[1])
+	wantRecord(t, records[0], "c1", "new", l.path("c1"))
+	wantRecord(t, records[1], "c2", "old2", l.file("c2"))
+}
+
+func wantRecord(t *testing.T, got restorejournal.Record, id, entry, path string) {
+	t.Helper()
+	if got.CommandID != id || string(got.Entry) != entry || got.Path != path {
+		t.Errorf("record = %+v, want %s %q at %s", got, id, entry, path)
 	}
 }
 

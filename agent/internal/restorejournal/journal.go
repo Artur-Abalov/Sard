@@ -230,19 +230,24 @@ func (s *Store) collectLegacy(l Legacy, named map[string]bool, found *listing) e
 		return err
 	}
 	for _, n := range names {
-		id, isEntry := strings.CutSuffix(n.Name(), suffix)
-		if !isEntry || !usable(id) || named[id] {
-			continue
-		}
-		path := filepath.Join(l.Dir, n.Name())
-		data, err := s.opts.FS.ReadFile(path)
-		if err != nil {
-			found.bad = append(found.bad, Unreadable{CommandID: id, Path: path, Err: err})
-			continue
-		}
-		found.records = append(found.records, Record{Plugin: l.Plugin, CommandID: id, Entry: data, Path: path})
+		s.collectLegacyFile(l, n.Name(), named, found)
 	}
 	return nil
+}
+
+// collectLegacyFile judges one name of a directory of the previous release.
+func (s *Store) collectLegacyFile(l Legacy, name string, named map[string]bool, found *listing) {
+	id, isEntry := strings.CutSuffix(name, suffix)
+	if !isEntry || !usable(id) || named[id] {
+		return
+	}
+	path := filepath.Join(l.Dir, name)
+	data, err := s.opts.FS.ReadFile(path)
+	if err != nil {
+		found.bad = append(found.bad, Unreadable{CommandID: id, Path: path, Err: err})
+		return
+	}
+	found.records = append(found.records, Record{Plugin: l.Plugin, CommandID: id, Entry: data, Path: path})
 }
 
 // listing is what List found so far.

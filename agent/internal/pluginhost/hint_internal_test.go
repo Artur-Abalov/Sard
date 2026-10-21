@@ -43,13 +43,12 @@ func TestAMissingFileThatIsNotThePasswordFileGetsNoHint(t *testing.T) {
 	}
 }
 
-// A8d-4 Ч28 with R2 and R2b: a failed console restore ends with the hint for
-// the reasons sard-agent check explains, each one, and for no other.
+// A8d-4 Ч28 with R2: a failed console restore ends with the hint for the
+// reasons sard-agent check explains, each one, and for no other.
 func TestAFailedConsoleRestoreEndsWithTheCheckHintForEveryReasonCheckExplains(t *testing.T) {
 	for _, reason := range []refusal.Reason{
 		refusal.BackendUnavailable, refusal.StorageAccessDenied, refusal.S3KeyRejected,
 		refusal.SSHKeyNotAuthorized, refusal.WrongPassword, refusal.PasswordFileMissing,
-		refusal.PGClientMissing,
 	} {
 		t.Run(string(reason), func(t *testing.T) {
 			failure := &consolerestore.Failure{Reason: reason, Stage: consolerestore.StageCheck, Detail: "x"}
@@ -64,9 +63,7 @@ func TestAFailedConsoleRestoreEndsWithTheCheckHintForEveryReasonCheckExplains(t 
 
 func TestAFailedConsoleRestoreOfAnotherReasonGetsNoHint(t *testing.T) {
 	for _, reason := range []refusal.Reason{
-		refusal.TargetNotEmpty, refusal.RestoreIncomplete, refusal.PGConnect, refusal.PGClientTooOld, refusal.PGServerTooOld,
-		refusal.CreatedbRequired, refusal.SuperuserRequired, refusal.DatabaseExists, refusal.PGRestoreFailed, refusal.CleanupFailed,
-		refusal.ResticFailed, refusal.TargetWrite,
+		refusal.TargetNotEmpty, refusal.RestoreIncomplete, refusal.CleanupFailed, refusal.ResticFailed, refusal.TargetWrite,
 	} {
 		t.Run(string(reason), func(t *testing.T) {
 			failure := &consolerestore.Failure{Reason: reason, Stage: consolerestore.StageCheck, Detail: "x"}

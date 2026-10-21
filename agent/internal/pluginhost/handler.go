@@ -196,9 +196,6 @@ func (h *handler) restore(ctx context.Context, step *agentv1.RunStep, repo resti
 	if h.src.runner != nil {
 		return h.restoreByPlugin(ctx, step, repo, r)
 	}
-	if req.Plan.Postgres != nil {
-		return h.restoreDatabase(ctx, step, repo, req, r)
-	}
 	out, failure := h.console.Restore(ctx, repo, req, r)
 	if failure != nil {
 		return failedRestore(failure), failure
@@ -207,8 +204,8 @@ func (h *handler) restore(ctx context.Context, step *agentv1.RunStep, repo resti
 	return &agentv1.StepResult{Output: &agentv1.StepResult_Restore{Restore: restored}}, nil
 }
 
-// Interrupted words the outcome of a restore the previous run of the agent
-// did not finish (ВК14) from what the start found in .sard-staging: a
+// Interrupted words the outcome of a restore of files the previous run of the
+// agent did not finish (ВК14) from what the start found in .sard-staging: a
 // completed move is a success with the totals of the marker, a directory that
 // could not be removed is CLEANUP_FAILED, anything else (no root, no marker, a
 // root that was removed, no directory at all) is a failure with nothing
@@ -227,10 +224,9 @@ func Interrupted(found []consolerestore.Evidence) func(commandID string, action 
 		case consolerestore.Completed:
 			return &executor.Interruption{Succeeded: true, Message: "agent restarted after the restore completed", Output: completedOutput(ev)}
 		case consolerestore.CleanupFailed:
-			left := firstNonEmpty(ev.Leftover, ev.Path)
 			return &executor.Interruption{
-				Message: fmt.Sprintf("%s (%s): %s; left behind: %s (%v); remove it by hand", refusal.CleanupFailed, consolerestore.StageRollback, executor.InterruptedMessage, left, ev.Err),
-				Output:  &agentv1.RestoreOutput{Leftover: left},
+				Message: fmt.Sprintf("%s (%s): %s; left behind: %s (%v); remove it by hand", refusal.CleanupFailed, consolerestore.StageRollback, executor.InterruptedMessage, ev.Path, ev.Err),
+				Output:  &agentv1.RestoreOutput{Leftover: ev.Path},
 			}
 		}
 		return &executor.Interruption{Message: executor.InterruptedMessage + "; nothing was restored"}
@@ -238,12 +234,8 @@ func Interrupted(found []consolerestore.Evidence) func(commandID string, action 
 }
 
 // completedOutput is the outcome of a restore that completed before the
-// restart: the totals of the marker for files, those of the rollback journal
-// for a database.
+// restart: the totals of the marker.
 func completedOutput(ev consolerestore.Evidence) *agentv1.RestoreOutput {
-	if db := ev.Database; db != nil {
-		return &agentv1.RestoreOutput{Target: db.Database, Database: db.Database, TablesRestored: db.Tables, RolesRestored: db.Roles}
-	}
 	return &agentv1.RestoreOutput{Target: ev.Destination, FilesRestored: ev.Files, BytesRestored: ev.Bytes}
 }
 
@@ -284,15 +276,22 @@ func (h *handler) restoreRequest(step *agentv1.RunStep) (consolerestore.Request,
 // engine's to check; a plugin that restores itself needs no engine and judges
 // its snapshots.
 func (h *handler) checkRestoreStep(step *agentv1.RunStep) error {
+	if h.console == nil && h.src.runner == nil {
+		return errors.New("restore from the console is not enabled on this host")
+	}
 	id := step.GetCommandId()
 	switch {
-	case h.console == nil && h.src.runner == nil:
-		return errors.New("restore from the console is not enabled on this host")
 	case !consolerestore.UsableName(id):
 		return fmt.Errorf("command id %q cannot name a temporary directory", id)
 	case !isSnapshotID(step.GetSnapshotId()):
 		return fmt.Errorf("snapshot_id %q: want 64 lower-case hexadecimal characters, the full id of the snapshot", step.GetSnapshotId())
-	case step.GetTags()[consolerestore.SourceTag] == "" && h.src.runner == nil:
+	}
+	return h.checkSourceTag(step)
+}
+
+// checkSourceTag: the engine restores only snapshots of the source the step names.
+func (h *handler) checkSourceTag(step *agentv1.RunStep) error {
+	if h.src.runner == nil && step.GetTags()[consolerestore.SourceTag] == "" {
 		return fmt.Errorf("tag %s is required: it names the source the snapshot belongs to", consolerestore.SourceTag)
 	}
 	return nil

@@ -34,8 +34,6 @@ func withCheckHint(err error) error {
 var checkExplained = map[refusal.Reason]bool{
 	refusal.BackendUnavailable: true, refusal.StorageAccessDenied: true, refusal.S3KeyRejected: true,
 	refusal.SSHKeyNotAuthorized: true, refusal.WrongPassword: true, refusal.PasswordFileMissing: true,
-	// R2b: pg_restore or psql is not on the host.
-	refusal.PGClientMissing: true,
 }
 
 func checkExplains(err error) bool {
@@ -53,7 +51,8 @@ func checkExplains(err error) bool {
 	return errors.Is(err, sdk.ErrProgramMissing)
 }
 
-// explainedFailure: check diagnoses the reason, or the program a plugin missed.
+// explainedFailure: check diagnoses the reason, or the program a plugin missed
+// (a plugin that restores itself says so with sdk.ErrProgramMissing).
 func explainedFailure(f *consolerestore.Failure, err error) bool {
 	return checkExplained[f.Reason] || errors.Is(err, sdk.ErrProgramMissing)
 }

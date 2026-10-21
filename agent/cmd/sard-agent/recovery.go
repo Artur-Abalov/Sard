@@ -25,12 +25,11 @@ type recovery struct {
 	recovered *pluginhost.JournalRecovery
 }
 
-// newRecoveryWith settles .sard-staging and the rollback journal of restores of
-// databases, before any step is accepted; journal and recovered belong to a host
-// whose plugins keep entries in the restore journal (recovered is what they made
-// of them), nil on a host without one.
+// newRecoveryWith settles .sard-staging before any step is accepted; journal and
+// recovered belong to a host whose plugins keep entries in the restore journal
+// (recovered is what they made of them), nil on a host without one.
 func newRecoveryWith(engine *consolerestore.Engine, journal *pluginhost.Journal, recovered *pluginhost.JournalRecovery) *recovery {
-	found := append(engine.CleanStaging(), engine.CleanDatabases()...)
+	found := engine.CleanStaging()
 	return &recovery{
 		engine: engine, found: found, worded: pluginhost.Interrupted(found), notified: map[string]bool{},
 		journal: journal, recovered: recovered,
@@ -51,18 +50,14 @@ func (r *recovery) interrupted(commandID string, action agentv1.Action) *executo
 
 // journaled is the Journaled option of the executor: a restore that
 // succeeded has its result on disk, so its marker is no longer needed. A
-// failed result may name what the rollback left behind: that stays, except an
-// entry of a database that holds nothing the next start could drop.
+// failed result may name what the rollback left behind: that stays. The entry
+// of the restore journal goes unless its plugin asked to keep it.
 func (r *recovery) journaled(res *agentv1.StepResult) {
 	if r.journal != nil {
 		r.journal.Journaled(res)
 	}
-	switch {
-	case res.GetRestore() == nil:
-	case res.GetStatus() == agentv1.StepStatus_STEP_STATUS_SUCCEEDED:
+	if res.GetRestore() != nil && res.GetStatus() == agentv1.StepStatus_STEP_STATUS_SUCCEEDED {
 		r.engine.Settle(res.GetCommandId())
-	default:
-		r.engine.Abandon(res.GetCommandId())
 	}
 }
 
