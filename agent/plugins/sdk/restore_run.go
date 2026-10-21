@@ -30,6 +30,12 @@ type RestoreRequest struct {
 	CommandID string
 	// SnapshotID is the full id of the snapshot, 64 lower-case hexadecimal characters.
 	SnapshotID string
+	// Repository is the name of the repository of the step, for the words of a
+	// refusal; the host keeps its address and keys to itself.
+	Repository string
+	// Source is the sard.source tag of the step: the source the snapshot must
+	// belong to. Empty when the step carries none.
+	Source string
 }
 
 // RestoreResult is what a restore achieved. Fields that do not apply stay zero.
@@ -61,6 +67,8 @@ type SnapshotInfo struct {
 	Time time.Time
 	// Tags are all tags of the snapshot, "key=value", as restic gives them.
 	Tags []string
+	// Paths are the paths the snapshot was made of, as restic gives them.
+	Paths []string
 }
 
 // Journal keeps the entry of the command a plugin needs to undo a restore the

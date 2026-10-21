@@ -35,7 +35,10 @@ func (h *handler) restoreByPlugin(ctx context.Context, step *agentv1.RunStep, re
 	host := h.newRestoreHost(ctx, step, repo, r)
 	// A plugin that goes on after its step ended cannot write the entry again.
 	defer host.journal.close()
-	req := sdk.RestoreRequest{CommandID: step.GetCommandId(), SnapshotID: step.GetSnapshotId()}
+	req := sdk.RestoreRequest{
+		CommandID: step.GetCommandId(), SnapshotID: step.GetSnapshotId(),
+		Repository: step.GetRepositoryName(), Source: step.GetTags()[consolerestore.SourceTag],
+	}
 	res, err := h.src.runner.Restore(ctx, host, sdk.Config(step.GetConfigJson()), req)
 	if err != nil {
 		failure := h.pluginFailure(err)
@@ -103,7 +106,7 @@ func (h *handler) pluginFailure(err error) *pluginFailure {
 type restoreHost struct {
 	*host
 	ctx        context.Context // of the step
-	engine     *consolerestore.Engine
+	words      *consolerestore.Classifier
 	repo       restic.Repository
 	repository string
 	journal    *stepJournal
@@ -113,7 +116,7 @@ var _ sdk.RestoreHost = (*restoreHost)(nil)
 
 func (h *handler) newRestoreHost(ctx context.Context, step *agentv1.RunStep, repo restic.Repository, r executor.Reporter) *restoreHost {
 	return &restoreHost{
-		host: &host{secrets: h.src.secrets, r: r}, ctx: ctx, engine: h.console, repo: repo, repository: step.GetRepositoryName(),
+		host: &host{secrets: h.src.secrets, r: r}, ctx: ctx, words: h.words, repo: repo, repository: step.GetRepositoryName(),
 		journal: &stepJournal{store: h.journal, plugin: h.src.plugin.Name(), commandID: step.GetCommandId()},
 	}
 }
@@ -137,11 +140,11 @@ func (h *restoreHost) Journal() sdk.Journal { return h.journal }
 func (h *restoreHost) Snapshots(ctx context.Context) ([]sdk.SnapshotInfo, error) {
 	listed, err := h.repo.Snapshots(ctx, nil)
 	if err != nil {
-		return nil, h.repositoryError(h.engine.SnapshotsFailure(h.ctx, h.repository, err), err)
+		return nil, h.repositoryError(h.words.Snapshots(h.ctx, h.repository, err), err)
 	}
 	snapshots := make([]sdk.SnapshotInfo, len(listed))
 	for i, s := range listed {
-		snapshots[i] = sdk.SnapshotInfo{ID: s.ID, Time: s.Time, Tags: slices.Clone(s.Tags)}
+		snapshots[i] = sdk.SnapshotInfo{ID: s.ID, Time: s.Time, Tags: slices.Clone(s.Tags), Paths: slices.Clone(s.Paths)}
 	}
 	return snapshots, nil
 }
@@ -164,7 +167,7 @@ func (h *restoreHost) Dump(ctx context.Context, snapshotID, path string, w io.Wr
 	case ctx.Err() != nil && h.ctx.Err() == nil:
 		return fmt.Errorf("the snapshot stream was stopped: %w", context.Cause(ctx))
 	}
-	return h.repositoryError(h.engine.DumpFailure(h.ctx, h.repository, err), err)
+	return h.repositoryError(h.words.Dump(h.ctx, h.repository, err), err)
 }
 
 // repositoryError hands the failure of the repository, worded by the host, to

@@ -38,7 +38,9 @@ type Handlers struct {
 	// journal keeps the entries of plugins that restore themselves (R2c); nil:
 	// a host where none can.
 	journal *Journal
-	log     *slog.Logger
+	// words words the failures of restic that reach those plugins.
+	words *consolerestore.Classifier
+	log   *slog.Logger
 }
 
 // Option configures Handlers.
@@ -56,6 +58,12 @@ func WithRestoreJournal(j *Journal) Option {
 	return func(h *Handlers) { h.journal = j }
 }
 
+// WithRepositoryWords sets how the failures of restic are worded for the
+// plugins that restore themselves; default: the repositories just by their names.
+func WithRepositoryWords(c *consolerestore.Classifier) Option {
+	return func(h *Handlers) { h.words = c }
+}
+
 // WithLogger sets the log of the agent the handlers write to; default: none.
 func WithLogger(l *slog.Logger) Option {
 	return func(h *Handlers) { h.log = l }
@@ -65,7 +73,8 @@ var _ executor.Registry = (*Handlers)(nil)
 
 // NewHandlers compiles every plugin's schema against the host's secrets.
 func NewHandlers(reg *sdk.Registry, secrets *Secrets, repos Repositories, restoreDir string, opts ...Option) (*Handlers, error) {
-	h := &Handlers{sources: make(map[string]*Source), repos: repos, restoreDir: restoreDir, log: slog.New(slog.DiscardHandler)}
+	h := &Handlers{sources: make(map[string]*Source), repos: repos, restoreDir: restoreDir, log: slog.New(slog.DiscardHandler),
+		words: consolerestore.NewClassifier(nil)}
 	for _, opt := range opts {
 		opt(h)
 	}
@@ -272,11 +281,12 @@ func (h *handler) restoreRequest(step *agentv1.RunStep) (consolerestore.Request,
 }
 
 // checkRestoreStep judges the step itself. The source of the snapshot is the
-// engine's to check; a plugin that restores itself judges its snapshots.
+// engine's to check; a plugin that restores itself needs no engine and judges
+// its snapshots.
 func (h *handler) checkRestoreStep(step *agentv1.RunStep) error {
 	id := step.GetCommandId()
 	switch {
-	case h.console == nil:
+	case h.console == nil && h.src.runner == nil:
 		return errors.New("restore from the console is not enabled on this host")
 	case !consolerestore.UsableName(id):
 		return fmt.Errorf("command id %q cannot name a temporary directory", id)

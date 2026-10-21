@@ -85,8 +85,8 @@ func TestTheListOfSnapshotsIsThatOfTheRepositoryOfTheStep(t *testing.T) {
 	if !slices.Equal(r.lookedUp(), []string{"main"}) {
 		t.Errorf("repositories = %q", r.lookedUp())
 	}
-	want := []sdk.SnapshotInfo{{ID: fullID, Time: time.Date(2026, 10, 10, 3, 0, 0, 0, time.UTC), Tags: []string{"sard.source=s1", "x.part=main"}}}
-	if len(got) != 1 || got[0].ID != want[0].ID || !got[0].Time.Equal(want[0].Time) || !slices.Equal(got[0].Tags, want[0].Tags) {
+	want := []sdk.SnapshotInfo{{ID: fullID, Time: time.Date(2026, 10, 10, 3, 0, 0, 0, time.UTC), Tags: []string{"sard.source=s1", "x.part=main"}, Paths: []string{"/main.bin"}}}
+	if len(got) != 1 || got[0].ID != want[0].ID || !got[0].Time.Equal(want[0].Time) || !slices.Equal(got[0].Tags, want[0].Tags) || !slices.Equal(got[0].Paths, want[0].Paths) {
 		t.Errorf("snapshots = %+v, want %+v", got, want)
 	}
 }

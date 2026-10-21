@@ -14,6 +14,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost/journaltest"
+	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	filesplugin "github.com/Artur-Abalov/sard/agent/plugins/files"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
@@ -80,13 +81,15 @@ func uniq(s []string) []string { return slices.Compact(slices.Clone(s)) }
 func TestAPluginWithItsOwnRestoreGetsTheStepAndTheHostMakesNoDirectory(t *testing.T) {
 	var got []string
 	r := newOwnRig(t, &journaltest.Plugin{RestoreFn: func(_ context.Context, _ sdk.RestoreHost, cfg sdk.Config, req sdk.RestoreRequest) (sdk.RestoreResult, error) {
-		got = append(got, fmt.Sprintf("%s %s %s", req.CommandID, req.SnapshotID, cfg))
+		got = append(got, fmt.Sprintf("%s %s %s %s %s", req.CommandID, req.SnapshotID, cfg, req.Repository, req.Source))
 		return sdk.RestoreResult{}, nil
 	}})
-	if _, err := r.run(r.step()); err != nil {
+	step := r.step()
+	step.Tags = map[string]string{"sard.source": "s1"}
+	if _, err := r.run(step); err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"c1 " + fullID + " {}"}; !slices.Equal(got, want) {
+	if want := []string{"c1 " + fullID + " {} main s1"}; !slices.Equal(got, want) {
 		t.Errorf("the plugin was called %q, want %q", got, want)
 	}
 	if _, err := os.Stat(r.dir); !errors.Is(err, os.ErrNotExist) {
@@ -330,6 +333,34 @@ func TestARefusalBecauseAProgramIsMissingEndsWithTheCheckHint(t *testing.T) {
 func TestAnotherRefusalHasNoCheckHint(t *testing.T) {
 	r := newOwnRig(t, refuses(&sdk.RestoreError{Reason: "TEST_REFUSED", Stage: "check", Detail: "no luck"}))
 	if _, err := r.run(r.step()); err == nil || strings.Contains(err.Error(), "sard-agent check") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// Scenario: Плагин с собственным восстановлением не требует движка консоли на хосте.
+func TestAPluginWithItsOwnRestoreNeedsNoRestoreEngineOnTheHost(t *testing.T) {
+	var listed []sdk.SnapshotInfo
+	p := &journaltest.Plugin{RestoreFn: func(ctx context.Context, h sdk.RestoreHost, _ sdk.Config, _ sdk.RestoreRequest) (sdk.RestoreResult, error) {
+		var err error
+		listed, err = h.Snapshots(ctx)
+		return sdk.RestoreResult{Database: "x1"}, sdk.AtStage(err, "check")
+	}}
+	r := newOwnRig(t, p)
+	r.noEngine = true
+	r.rebuild()
+	res, err := r.run(r.step())
+	if err != nil || res.GetRestore().GetDatabase() != "x1" || len(listed) != 1 {
+		t.Fatalf("res %v, err %v, snapshots %v", res, err, listed)
+	}
+}
+
+func TestTheFailuresOfTheRepositoryAreWordedOnAHostWithoutTheRestoreEngineToo(t *testing.T) {
+	var listed []sdk.SnapshotInfo
+	r := newOwnRig(t, snapshotsOf(&listed))
+	r.noEngine = true
+	r.rebuild()
+	r.repo.listErr = restic.ErrNetwork
+	if _, err := r.run(r.step()); err == nil || !strings.HasPrefix(err.Error(), "BACKEND_UNAVAILABLE (check)") {
 		t.Fatalf("err = %v", err)
 	}
 }

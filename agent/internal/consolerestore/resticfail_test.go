@@ -84,12 +84,12 @@ func TestOnlyARemoteStorageCanRefuse(t *testing.T) {
 
 // R2c: a plugin that restores itself reads the repository through the host; the
 // host words what restic says as the restore from the console does, with no stage.
-func engineOfTarget(target repoinit.Target) *Engine {
-	return New(Options{Target: func(string) repoinit.Target { return target }})
+func classifierOf(target repoinit.Target) *Classifier {
+	return NewClassifier(func(string) repoinit.Target { return target })
 }
 
 func TestAFailureOfTheSnapshotsOfAPluginIsWordedLikeOneOfTheConsole(t *testing.T) {
-	e := engineOfTarget(localTarget())
+	e := classifierOf(localTarget())
 	tests := []struct {
 		name string
 		err  error
@@ -102,7 +102,7 @@ func TestAFailureOfTheSnapshotsOfAPluginIsWordedLikeOneOfTheConsole(t *testing.T
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := e.SnapshotsFailure(context.Background(), "main", tt.err)
+			f := e.Snapshots(context.Background(), "main", tt.err)
 			if string(f.Reason) != tt.want || f.Stage != "" || strings.HasSuffix(f.Detail, "nothing was restored") {
 				t.Errorf("%s (%q): %s", f.Reason, f.Stage, f.Detail)
 			}
@@ -111,9 +111,9 @@ func TestAFailureOfTheSnapshotsOfAPluginIsWordedLikeOneOfTheConsole(t *testing.T
 }
 
 func TestAFailureOfADumpOfAPluginIsWordedLikeOneOfTheConsole(t *testing.T) {
-	e := engineOfTarget(localTarget())
+	e := classifierOf(localTarget())
 	for err, want := range map[error]string{restic.ErrNetwork: "BACKEND_UNAVAILABLE", restic.ErrWrongPassword: "WRONG_PASSWORD", restic.ErrNoRepository: "RESTIC_FAILED"} {
-		f := e.DumpFailure(context.Background(), "main", err)
+		f := e.Dump(context.Background(), "main", err)
 		if string(f.Reason) != want || f.Stage != "" {
 			t.Errorf("%v: %s (%q): %s", err, f.Reason, f.Stage, f.Detail)
 		}
@@ -121,10 +121,10 @@ func TestAFailureOfADumpOfAPluginIsWordedLikeOneOfTheConsole(t *testing.T) {
 }
 
 func TestAStoppedStepIsInterruptedOrTimedOutWhateverRestic(t *testing.T) {
-	e := engineOfTarget(localTarget())
+	e := classifierOf(localTarget())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if f := e.DumpFailure(ctx, "main", restic.ErrNetwork); f.Reason != "INTERRUPTED" {
+	if f := e.Dump(ctx, "main", restic.ErrNetwork); f.Reason != "INTERRUPTED" {
 		t.Errorf("reason = %s", f.Reason)
 	}
 }
@@ -132,14 +132,14 @@ func TestAStoppedStepIsInterruptedOrTimedOutWhateverRestic(t *testing.T) {
 func TestTheRepositoryOfAPluginFailureIsDescribedByTheTargetOfTheHost(t *testing.T) {
 	target := localTarget()
 	target.Scrub = func(s string) string { return strings.ReplaceAll(s, "hunter2", "[hidden]") }
-	f := engineOfTarget(target).DumpFailure(context.Background(), "main", fmt.Errorf("dial hunter2: %w", restic.ErrNetwork))
+	f := classifierOf(target).Dump(context.Background(), "main", fmt.Errorf("dial hunter2: %w", restic.ErrNetwork))
 	if strings.Contains(f.Detail, "hunter2") {
 		t.Errorf("the secret is in the failure: %s", f.Detail)
 	}
 }
 
 func TestWithoutATargetTheRepositoryIsJustNamed(t *testing.T) {
-	f := New(Options{}).DumpFailure(context.Background(), "main", restic.ErrWrongPassword)
+	f := NewClassifier(nil).Dump(context.Background(), "main", restic.ErrWrongPassword)
 	if !strings.Contains(f.Detail, `repository "main"`) {
 		t.Errorf("detail = %s", f.Detail)
 	}

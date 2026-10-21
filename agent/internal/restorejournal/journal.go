@@ -6,7 +6,8 @@
 // executor.state_dir, holding an envelope {plugin, command_id, entry}. The
 // entry is the plugin's own bytes. The host writes the file whole or not at
 // all, bounds its size and the number of entries of a plugin, and is the only
-// one to remove it.
+// one to remove it. It also reads, and never writes, the journal of the previous
+// release (Options.Legacy).
 package restorejournal
 
 import (
@@ -43,6 +44,17 @@ type Options struct {
 	FS  hostsetup.FS
 	// Owner is the service user; the modes are the journal's own (0700, 0600).
 	Owner hostsetup.Attrs
+	// Legacy are the journals of the previous release, read for one release.
+	Legacy []Legacy
+}
+
+// Legacy is a directory of the previous release: <command_id>.json files whose
+// whole content is the entry of Plugin. The journal reads them as entries of
+// that plugin and removes them with the entry of the command; it never writes
+// there.
+type Legacy struct {
+	Dir    string
+	Plugin string
 }
 
 // Store is the journal directory. It is safe for concurrent use.
@@ -84,7 +96,8 @@ func (s *Store) Path(commandID string) string {
 
 // usable: the command id is one component of a path, not a hidden file.
 func usable(id string) bool {
-	return filepath.Base(id) == id && !strings.HasPrefix(id, ".") // Base("") is ".": "" is no name either
+	// Base("") is ".": "" is no name either; Base("/") is "/": the root is none.
+	return filepath.Base(id) == id && id != string(filepath.Separator) && !strings.HasPrefix(id, ".")
 }
 
 // Save writes the entry of the command of the plugin, replacing the previous
@@ -143,45 +156,111 @@ func (s *Store) countOf(plugin string) (int, error) {
 	return have, err
 }
 
-// Remove deletes the entry of a command; one that is not there is no error.
+// Remove deletes the entry of a command, in the journal and in the journals of
+// the previous release; one that is not there is no error.
 func (s *Store) Remove(commandID string) error {
 	if !usable(commandID) {
 		return fmt.Errorf("command id %q cannot name a journal entry", commandID)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	removed, err := hostsetup.RemoveFile(s.opts.FS, s.Path(commandID))
+	errs := []error{s.removeFrom(s.opts.Dir, commandID)}
+	for _, l := range s.opts.Legacy {
+		errs = append(errs, s.removeFrom(l.Dir, commandID), s.sweepTemporary(l.Dir, commandID))
+	}
+	return errors.Join(errs...)
+}
+
+// removeFrom deletes <dir>/<command_id>.json and makes that durable.
+func (s *Store) removeFrom(dir, commandID string) error {
+	removed, err := hostsetup.RemoveFile(s.opts.FS, filepath.Join(dir, commandID+suffix))
 	if !removed { // RemoveFile says false with the error or without one
 		return err
 	}
-	return s.opts.FS.SyncDir(s.opts.Dir)
+	return s.opts.FS.SyncDir(dir)
 }
 
-// List reads the journal, entries ordered by command id. A file that is no
-// entry is reported in the second result and left alone; a temporary file a
-// crash left is removed. A journal that was never made is empty. The error is
-// that the directory cannot be read.
+// sweepTemporary deletes the temporary file the previous release wrote its entry to.
+func (s *Store) sweepTemporary(dir, commandID string) error {
+	_, err := hostsetup.RemoveFile(s.opts.FS, filepath.Join(dir, commandID+suffix+".tmp"))
+	return err
+}
+
+// List reads the journal, entries ordered by command id, then the journals of
+// the previous release: their files are entries of their plugin, and a command
+// that is in the journal itself is taken from it only. A file that is no entry
+// is reported in the second result and left alone; a temporary file a crash
+// left is removed. A journal that was never made is empty. The error is that a
+// directory cannot be read; what could be read is listed all the same.
 func (s *Store) List() ([]Record, []Unreadable, error) {
-	names, err := s.opts.FS.ReadDir(s.opts.Dir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil, nil
-	}
-	if err != nil {
-		return nil, nil, err
-	}
 	var found listing
-	for _, n := range names {
-		s.collect(n.Name(), &found)
+	err := s.collectDir(&found)
+	named := found.named()
+	for _, l := range s.opts.Legacy {
+		err = errors.Join(err, s.collectLegacy(l, named, &found))
 	}
 	slices.SortFunc(found.records, func(a, b Record) int { return strings.Compare(a.CommandID, b.CommandID) })
 	slices.SortFunc(found.bad, func(a, b Unreadable) int { return strings.Compare(a.CommandID, b.CommandID) })
-	return found.records, found.bad, nil
+	return found.records, found.bad, err
+}
+
+// collectDir reads the journal directory into found.
+func (s *Store) collectDir(found *listing) error {
+	names, err := s.opts.FS.ReadDir(s.opts.Dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, n := range names {
+		s.collect(n.Name(), found)
+	}
+	return nil
+}
+
+// collectLegacy reads a directory of the previous release into found, except the
+// commands in named: those have their entry in the journal.
+func (s *Store) collectLegacy(l Legacy, named map[string]bool, found *listing) error {
+	names, err := s.opts.FS.ReadDir(l.Dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, n := range names {
+		id, isEntry := strings.CutSuffix(n.Name(), suffix)
+		if !isEntry || !usable(id) || named[id] {
+			continue
+		}
+		path := filepath.Join(l.Dir, n.Name())
+		data, err := s.opts.FS.ReadFile(path)
+		if err != nil {
+			found.bad = append(found.bad, Unreadable{CommandID: id, Path: path, Err: err})
+			continue
+		}
+		found.records = append(found.records, Record{Plugin: l.Plugin, CommandID: id, Entry: data, Path: path})
+	}
+	return nil
 }
 
 // listing is what List found so far.
 type listing struct {
 	records []Record
 	bad     []Unreadable
+}
+
+// named are the commands found so far, readable or not.
+func (l *listing) named() map[string]bool {
+	ids := map[string]bool{}
+	for _, r := range l.records {
+		ids[r.CommandID] = true
+	}
+	for _, u := range l.bad {
+		ids[u.CommandID] = true
+	}
+	return ids
 }
 
 // collect judges one name of the directory.

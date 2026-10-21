@@ -127,7 +127,9 @@ type ownRig struct {
 	store      *restorejournal.Store
 	journal    *pluginhost.Journal
 	plugins    []sdk.Plugin
-	logs       *safeBuffer
+	// noEngine: a host without the restore engine of the console.
+	noEngine bool
+	logs     *safeBuffer
 	// repositories are the names the handlers looked up.
 	mu           sync.Mutex
 	repositories []string
@@ -153,7 +155,7 @@ func newOwnRig(t *testing.T, plugins ...sdk.Plugin) *ownRig {
 		t.Fatal(err)
 	}
 	r.dir = filepath.Join(t.TempDir(), "restore")
-	r.repo.snapshots = []restic.Snapshot{{ID: fullID, Time: time.Date(2026, 10, 10, 3, 0, 0, 0, time.UTC), Tags: []string{"sard.source=s1", "x.part=main"}}}
+	r.repo.snapshots = []restic.Snapshot{{ID: fullID, Time: time.Date(2026, 10, 10, 3, 0, 0, 0, time.UTC), Tags: []string{"sard.source=s1", "x.part=main"}, Paths: []string{"/main.bin"}}}
 	r.journalFS = &faultyFS{FS: hostsetup.OS{}}
 	r.store = restorejournal.New(restorejournal.Options{Dir: r.journalDir(), FS: r.journalFS, Owner: r.attrs()})
 	r.secrets = pluginhost.NewSecrets(map[string]string{"pg-restore": "/etc/sard/pg-restore", "gone": "/etc/sard/gone"},
@@ -186,8 +188,11 @@ func (r *ownRig) rebuild(plugins ...sdk.Plugin) {
 		r.looked(name)
 		return r.repo, name == "main"
 	}
-	r.handlers, err = pluginhost.NewHandlers(reg, r.secrets, repos, filepath.Join(r.t.TempDir(), "verify"),
-		pluginhost.WithConsoleRestore(engine), pluginhost.WithRestoreJournal(r.journal), pluginhost.WithLogger(logger))
+	opts := []pluginhost.Option{pluginhost.WithRestoreJournal(r.journal), pluginhost.WithLogger(logger)}
+	if !r.noEngine {
+		opts = append(opts, pluginhost.WithConsoleRestore(engine))
+	}
+	r.handlers, err = pluginhost.NewHandlers(reg, r.secrets, repos, filepath.Join(r.t.TempDir(), "verify"), opts...)
 	if err != nil {
 		r.t.Fatal(err)
 	}

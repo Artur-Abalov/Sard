@@ -37,17 +37,35 @@ func asFailure(f *refusal.Failure, stage Stage, target repoinit.Target) *Failure
 	return &Failure{Reason: reason, Stage: stage, Detail: strings.TrimSuffix(f.Detail, "; nothing was restored")}
 }
 
-// SnapshotsFailure words a failure of restic while a plugin listed the
-// snapshots of the repository, as the console words one: the stage is left to
-// the plugin.
-func (e *Engine) SnapshotsFailure(ctx context.Context, repository string, err error) *Failure {
-	target := e.targetOf(repository)
+// Classifier words the failures of restic for the plugins that restore
+// themselves (R2c): as the console words them, the stage left to the plugin.
+// The repositories are described by target (secrets hidden); nil: just by
+// their names.
+type Classifier struct {
+	target func(repository string) repoinit.Target
+}
+
+// NewClassifier returns a Classifier of the repositories target describes.
+func NewClassifier(target func(repository string) repoinit.Target) *Classifier {
+	return &Classifier{target: target}
+}
+
+func (c *Classifier) targetOf(name string) repoinit.Target {
+	if c.target != nil {
+		return c.target(name)
+	}
+	return repoinit.Named(name)
+}
+
+// Snapshots words a failure of restic while a plugin listed the snapshots of
+// the repository.
+func (c *Classifier) Snapshots(ctx context.Context, repository string, err error) *Failure {
+	target := c.targetOf(repository)
 	return asFailure(restore.ListFailure(ctx, err, target), "", target)
 }
 
-// DumpFailure words a failure of restic while a plugin read a file of a
-// snapshot, as the console words one: the stage is left to the plugin.
-func (e *Engine) DumpFailure(ctx context.Context, repository string, err error) *Failure {
-	target := e.targetOf(repository)
+// Dump words a failure of restic while a plugin read a file of a snapshot.
+func (c *Classifier) Dump(ctx context.Context, repository string, err error) *Failure {
+	target := c.targetOf(repository)
 	return asFailure(repoinit.FromRestic(ctx, err, target), "", target)
 }
