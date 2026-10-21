@@ -34,7 +34,7 @@ class ConsoleRestorePostgresTest {
         assertEquals("2", Backups.outputField(sard, started.stepId, "tablesRestored"))
         assertEquals(TABLES.map { pg.query(it, "app") }, TABLES.map { pg.query(it, "app_restored") }, "the tables or the rows differ")
         assertEquals("1", pg.query("select count(*) from pg_database where datname = 'app_restored'", "postgres"))
-        assertTrue(agent.agent.host.tree("${AgentHost.STATE_DIR}/executor/pg-restore").isEmpty(), "the rollback journal stays after the result")
+        assertTrue(agent.agent.host.tree("${AgentHost.STATE_DIR}/executor/restore-journal").isEmpty(), "the rollback journal stays after the result")
     }
 
     @Test
