@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
 // Package pgclient is the one place that knows how the agent talks to a
 // PostgreSQL client program: the connection string and the environment of
-// psql, pg_dump, pg_dumpall and pg_restore (F1 ПГ3, ПГ4). The plugin and the
-// restore engine of the agent both use it.
+// psql, pg_dump, pg_dumpall and pg_restore (F1 ПГ3, ПГ4). Only the plugin
+// postgresql imports it (ADR 0066).
 package pgclient
 
 import (

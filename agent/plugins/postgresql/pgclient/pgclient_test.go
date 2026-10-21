@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
 package pgclient_test
@@ -7,7 +7,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/Artur-Abalov/sard/agent/plugins/sdk/pgclient"
+	"github.com/Artur-Abalov/sard/agent/plugins/postgresql/pgclient"
 )
 
 func TestEnvDropsTheVariablesOfPostgresAndTheLocale(t *testing.T) {

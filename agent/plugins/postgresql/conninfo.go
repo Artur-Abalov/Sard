@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Artur-Abalov/sard/agent/plugins/sdk/pgclient"
+	"github.com/Artur-Abalov/sard/agent/plugins/postgresql/pgclient"
 )
 
 // applicationName marks the sessions of the agent on the server.

@@ -12,42 +12,64 @@ import (
 	"testing"
 )
 
-// agentGoFiles lists the Go files of the agent module, without the SDK:
-// it is a separate module and the one place that builds PGPASSWORD.
-func agentGoFiles(t *testing.T) []string {
+const (
+	pgclientPkg   = module + "/plugins/postgresql/pgclient"
+	postgresqlPkg = module + "/plugins/postgresql"
+)
+
+// agentGoFiles lists the Go files of the agent module, and the package of each.
+func agentGoFiles(t *testing.T) map[string]string {
 	t.Helper()
 	out, err := exec.Command("go", "list", "-f", "{{.ImportPath}}\t{{.Dir}}\t{{join .GoFiles \"\\t\"}}", module+"/...").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go list: %v\n%s", err, out)
 	}
-	var files []string
+	files := map[string]string{}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		fields := strings.Split(line, "\t")
-		if isSDK(fields[0]) {
-			continue
-		}
 		for _, name := range fields[2:] {
 			if name != "" {
-				files = append(files, filepath.Join(fields[1], name))
+				files[filepath.Join(fields[1], name)] = fields[0]
 			}
 		}
 	}
 	return files
 }
 
-// The password reaches a PostgreSQL program through sdk/pgclient only (ADR 0065 §2).
+// Scenario: Клиент PostgreSQL принадлежит плагину postgresql. The password
+// reaches a PostgreSQL program through pgclient only (ADR 0065 §2, ПГ3).
 func TestOnlyPgclientPutsThePasswordIntoTheEnvironment(t *testing.T) {
 	files := agentGoFiles(t)
 	if len(files) == 0 {
 		t.Fatal("go list found no Go files: the rule checked nothing")
 	}
-	for _, path := range files {
+	for path, pkg := range files {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if bytes.Contains(data, []byte(`"PGPASSWORD="`)) {
+		if pkg != pgclientPkg && bytes.Contains(data, []byte(`"PGPASSWORD="`)) {
 			t.Errorf("%s sets PGPASSWORD itself; use pgclient.Env", path)
 		}
+	}
+}
+
+func TestOnlyThePluginPostgresqlImportsTheClientOfPostgreSQL(t *testing.T) {
+	out, err := exec.Command("go", "list", "-f", "{{.ImportPath}} {{join .Imports \" \"}}", module+"/...").CombinedOutput()
+	if err != nil {
+		t.Fatalf("go list: %v\n%s", err, out)
+	}
+	found := false
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		fields := strings.Fields(line)
+		found = found || fields[0] == pgclientPkg
+		for _, imp := range fields[1:] {
+			if strings.HasSuffix(imp, "/pgclient") && (imp != pgclientPkg || fields[0] != postgresqlPkg) {
+				t.Errorf("%s imports %s: only %s may import %s", fields[0], imp, postgresqlPkg, pgclientPkg)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("there is no package %s: the client of PostgreSQL lies inside the plugin", pgclientPkg)
 	}
 }

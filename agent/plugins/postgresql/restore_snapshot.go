@@ -31,7 +31,7 @@ const (
 // empty value.
 func tagValue(tags []string, name string) string {
 	for _, t := range tags {
-		if value, ok := strings.CutPrefix(t, name+"="); ok {
+		if value, ok := strings.CutPrefix(t, name+"="); ok && value != "" {
 			return value
 		}
 	}

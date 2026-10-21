@@ -13,8 +13,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Artur-Abalov/sard/agent/plugins/postgresql/pgclient"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
-	"github.com/Artur-Abalov/sard/agent/plugins/sdk/pgclient"
 )
 
 // logger is where the lines of the tools go: the host of a step, or that of a

@@ -99,22 +99,21 @@ type restoreRun struct {
 // newRestoreRun reads the config and the password: what can be judged before
 // the repository or the target is touched.
 func (p Plugin) newRestoreRun(ctx context.Context, h sdk.RestoreHost, cfg sdk.Config, req sdk.RestoreRequest) (*restoreRun, *sdk.RestoreError) {
-	plan, err := p.PlanRestore(cfg)
+	settings, err := parseRestore(cfg)
 	if err != nil {
 		// The code that writes enforces the rules of a plan itself (ADR 0008).
 		return nil, refuse(ReasonTargetInvalid, stageCheck, "the restore plan is invalid: %s", err)
 	}
-	pg := plan.Postgres
 	if req.Source == "" {
 		return nil, refuse(ReasonTargetInvalid, stageCheck, "tag %s is required: it names the source the snapshot belongs to", sourceTag)
 	}
-	to := target{Host: pg.Host, Port: pg.Port, User: pg.User, PasswordRef: pg.PasswordRef, TLSMode: pg.TLSMode, TLSRootCert: pg.TLSRootCert, ClientPath: pg.ClientPath}
-	password, err := readPassword(h, pg.PasswordRef)
+	to := settings.to
+	password, err := readPassword(h, to.PasswordRef)
 	if err != nil {
 		return nil, refuse(ReasonSecretInvalid, stageCheck, "%s", err)
 	}
 	return &restoreRun{
-		p: p, ctx: ctx, h: h, req: req, database: pg.Name, globals: pg.Globals,
+		p: p, ctx: ctx, h: h, req: req, database: settings.database, globals: settings.globals,
 		conn: conn{p: p, log: h, to: to, password: password}, entry: newEntry(req.CommandID, to),
 	}, nil
 }
