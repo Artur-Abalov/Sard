@@ -15,6 +15,11 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 )
 
+// Dumper gives the content of a file of a snapshot; restic.CLI is one.
+type Dumper interface {
+	Dump(ctx context.Context, snapshotID, path string, w io.Writer) error
+}
+
 // maxTempNames is how many random names a temporary file is tried with.
 const maxTempNames = 8
 
@@ -28,22 +33,26 @@ type written struct {
 	out hostsetup.File
 }
 
-// WritePostgres writes the files of the plan into the held target, each
-// the way Р62 says: a temporary file .<name>.tmp-<random> made O_EXCL, given
+// File is a file of a snapshot that the agent writes to the root of the target:
+// the file of snapshot SnapshotID at Path, called Name. A plugin plans it
+// (sdk.ExtractFile).
+type File struct{ SnapshotID, Path, Name string }
+
+// WriteFiles writes the files into the held target, each the way Р62 says: a temporary file .<name>.tmp-<random> made O_EXCL, given
 // root:root and 0600 before any content (Н29, whatever the umask), filled by
 // restic, synced, moved to its name without replacing, compared with the file
 // written (Р87) and the directory synced. A failure leaves neither a temporary
 // nor a final file: the files this run already finished are taken back. A
 // name that leads to another file than the agent wrote is never removed; the
 // failure names it. random is the random part of a name.
-func WritePostgres(ctx context.Context, d Dumper, h *Held, plan PGPlan, random func() string, target repoinit.Target) *refusal.Failure {
+func WriteFiles(ctx context.Context, d Dumper, h *Held, files []File, random func() string, target repoinit.Target) *refusal.Failure {
 	var done []written
 	defer func() {
 		for _, w := range done {
 			_ = w.out.Close()
 		}
 	}()
-	for _, file := range plan.Files {
+	for _, file := range files {
 		w, f := writeFile(ctx, d, h, file, random, target)
 		if f != nil {
 			for _, back := range done {
@@ -82,7 +91,7 @@ type pending struct {
 	closed bool
 }
 
-func writeFile(ctx context.Context, d Dumper, h *Held, file PGFile, random func() string, target repoinit.Target) (written, *refusal.Failure) {
+func writeFile(ctx context.Context, d Dumper, h *Held, file File, random func() string, target repoinit.Target) (written, *refusal.Failure) {
 	p, f := newPending(h, file.Name, random)
 	if f != nil {
 		return written{}, f
@@ -94,7 +103,7 @@ func writeFile(ctx context.Context, d Dumper, h *Held, file PGFile, random func(
 		f.Detail += p.abandon()
 		return written{}, f
 	}
-	p.closed = true // WritePostgres closes it at the end
+	p.closed = true // WriteFiles closes it at the end
 	return written{name: file.Name, info: p.info, out: p.out}, nil
 }
 
@@ -116,7 +125,7 @@ func newPending(h *Held, name string, random func() string) (*pending, *refusal.
 // fill gives the file its owner and mode and then its content. The file is
 // not closed when that fails: abandon judges its name first, with it still
 // open, and closes it after.
-func (p *pending) fill(ctx context.Context, d Dumper, file PGFile, target repoinit.Target) *refusal.Failure {
+func (p *pending) fill(ctx context.Context, d Dumper, file File, target repoinit.Target) *refusal.Failure {
 	w := &countingWriter{w: p.out}
 	f := prepare(p.out, p.h.Path, p.remove)
 	if f == nil {

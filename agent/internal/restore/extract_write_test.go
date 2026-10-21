@@ -20,92 +20,8 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/restore"
 )
 
-// Rules Р60 and Р62 (A8c-3): a snapshot of PostgreSQL is laid out as files
-// and the commands that restore it are told, not run.
-
-func pgDatabase(db, file string, extra ...string) restore.Snapshot {
-	tags := append([]string{"postgresql.database=" + db, "postgresql.part=database", "postgresql.pg_dump_version=16.4"}, extra...)
-	return restore.Snapshot{ID: id("bbbb1111"), ShortID: "bbbb1111", Time: at(6).UTC(), Paths: []string{"/" + file}, Tags: tags}
-}
-
-func pgGlobals(of restore.Snapshot, hour int, prefix, file string) restore.Snapshot {
-	return restore.Snapshot{ID: id(prefix), ShortID: prefix, Time: at(hour).UTC(), Paths: []string{"/" + file},
-		Tags: []string{"postgresql.database=app", "postgresql.part=globals", "postgresql.main_snapshot=" + of.ID}}
-}
-
-func TestTheKindOfASnapshotComesFromItsTags(t *testing.T) {
-	for tags, want := range map[string]restore.Kind{
-		"postgresql.part=database": restore.KindDatabase,
-		"postgresql.part=globals":  restore.KindGlobals,
-		"postgresql.part=other":    restore.KindDirectory,
-		"sard.source=s1":           restore.KindDirectory,
-		"":                         restore.KindDirectory,
-	} {
-		s := restore.Snapshot{Tags: strings.Fields(tags)}
-		if got := restore.KindOf(s); got != want {
-			t.Errorf("%q: kind %v, want %v", tags, got, want)
-		}
-	}
-}
-
-func TestADatabaseSnapshotIsPlannedWithTheNewestGlobalsSnapshotOfIt(t *testing.T) {
-	p := pgDatabase("app", "app.dump")
-	older, newer := pgGlobals(p, 7, "cccc1111", "app.globals.sql"), pgGlobals(p, 8, "cccc2222", "app.globals.sql")
-	other := pgGlobals(restore.Snapshot{ID: id("eeee1111")}, 9, "cccc3333", "app.globals.sql")
-	plan, f := restore.PlanPostgres([]restore.Snapshot{newer, other, p, older}, p)
-	if f != nil {
-		t.Fatal(f)
-	}
-	want := []restore.PGFile{{SnapshotID: p.ID, Path: "/app.dump", Name: "app.dump"}, {SnapshotID: newer.ID, Path: "/app.globals.sql", Name: "app.globals.sql"}}
-	if !slices.Equal(plan.Files, want) || plan.Database != "app" || plan.Version != "16.4" {
-		t.Errorf("plan %+v", plan)
-	}
-}
-
-func TestWithoutAGlobalsSnapshotOnlyTheDumpIsPlanned(t *testing.T) {
-	p := pgDatabase("app", "app.dump")
-	plan, f := restore.PlanPostgres([]restore.Snapshot{p}, p)
-	if f != nil || len(plan.Files) != 1 || plan.Files[0].Name != "app.dump" {
-		t.Fatalf("plan %+v, %v", plan, f)
-	}
-}
-
-func TestAGlobalsSnapshotChosenByItselfIsPlannedAlone(t *testing.T) {
-	g := pgGlobals(pgDatabase("app", "app.dump"), 7, "cccc1111", "app.globals.sql")
-	plan, f := restore.PlanPostgres([]restore.Snapshot{g}, g)
-	if f != nil || len(plan.Files) != 1 || plan.Files[0].SnapshotID != g.ID || plan.Database != "app" {
-		t.Fatalf("plan %+v, %v", plan, f)
-	}
-}
-
-func TestTheNameOfTheDatabaseIsDecodedAndTheNameOfTheFileIsKept(t *testing.T) {
-	p := pgDatabase("my%20db", "my%20db.dump")
-	plan, f := restore.PlanPostgres([]restore.Snapshot{p}, p)
-	if f != nil || plan.Database != "my db" || plan.Files[0].Name != "my%20db.dump" {
-		t.Fatalf("plan %+v, %v", plan, f)
-	}
-}
-
-func TestASnapshotThatDoesNotLookLikeOneOfTheAgentIsRefused(t *testing.T) {
-	good := pgDatabase("app", "app.dump")
-	for name, mutate := range map[string]func(*restore.Snapshot){
-		"two paths":      func(s *restore.Snapshot) { s.Paths = []string{"/a.dump", "/b.dump"} },
-		"no paths":       func(s *restore.Snapshot) { s.Paths = nil },
-		"relative":       func(s *restore.Snapshot) { s.Paths = []string{"app.dump"} },
-		"nested":         func(s *restore.Snapshot) { s.Paths = []string{"/x/app.dump"} },
-		"root":           func(s *restore.Snapshot) { s.Paths = []string{"/"} },
-		"dotdot":         func(s *restore.Snapshot) { s.Paths = []string{"/.."} },
-		"no database":    func(s *restore.Snapshot) { s.Tags = []string{"postgresql.part=database"} },
-		"broken escape":  func(s *restore.Snapshot) { s.Tags = []string{"postgresql.part=database", "postgresql.database=a%zz"} },
-		"empty database": func(s *restore.Snapshot) { s.Tags = []string{"postgresql.part=database", "postgresql.database="} },
-	} {
-		s := good
-		mutate(&s)
-		if _, f := restore.PlanPostgres([]restore.Snapshot{s}, s); f == nil || f.Reason != refusal.ResticOutputUnexpected || f.Class != refusal.ClassAgentError {
-			t.Errorf("%s: failure %v", name, f)
-		}
-	}
-}
+// Rule Р62 (A8c-3, R2c-3): the files a plugin plans for a snapshot are laid out in
+// the root of the target, each one whole or not at all.
 
 // fakeDumper gives the content of each file by snapshot id and path.
 type fakeDumper struct {
@@ -132,19 +48,24 @@ func (d *fakeDumper) Dump(_ context.Context, snapshotID, path string, w io.Write
 	return err
 }
 
-func pgContent(p, g restore.Snapshot) map[string]string {
-	return map[string]string{p.ID + " " + p.Paths[0]: "DUMP-BYTES", g.ID + " " + g.Paths[0]: "GLOBALS-BYTES"}
+func fullPlan(t *testing.T) ([]restore.File, map[string]string) {
+	t.Helper()
+	dump, globals := id("bbbb1111"), id("cccc1111")
+	files := []restore.File{{SnapshotID: dump, Path: "/app.dump", Name: "app.dump"}, {SnapshotID: globals, Path: "/app.globals.sql", Name: "app.globals.sql"}}
+	return files, map[string]string{dump + " /app.dump": "DUMP-BYTES", globals + " /app.globals.sql": "GLOBALS-BYTES"}
 }
 
-func fullPlan(t *testing.T) (restore.PGPlan, map[string]string) {
+// wantFailure: f is the reason of the class, and its detail holds each mention.
+func wantFileFailure(t *testing.T, f *refusal.Failure, reason refusal.Reason, class refusal.Class, mentions ...string) {
 	t.Helper()
-	p := pgDatabase("app", "app.dump")
-	g := pgGlobals(p, 7, "cccc1111", "app.globals.sql")
-	plan, f := restore.PlanPostgres([]restore.Snapshot{p, g}, p)
-	if f != nil {
-		t.Fatal(f)
+	if f == nil || f.Reason != reason || f.Class != class {
+		t.Fatalf("failure %v, want %s of class %v", f, reason, class)
 	}
-	return plan, pgContent(p, g)
+	for _, m := range mentions {
+		if !strings.Contains(f.Detail, m) {
+			t.Errorf("%q is not in %q", m, f.Detail)
+		}
+	}
 }
 
 func entries(t *testing.T, dir string) []string {
@@ -169,8 +90,8 @@ func TestTheFilesAreWrittenToTheRootOfTheTargetWithOwnerAndModeOfRoot(t *testing
 		t.Fatal(f)
 	}
 	defer held.Release()
-	plan, content := fullPlan(t)
-	if f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1"), repoTarget()); f != nil {
+	files, content := fullPlan(t)
+	if f := restore.WriteFiles(context.Background(), &fakeDumper{content: content}, held, files, names("x1"), repoTarget()); f != nil {
 		t.Fatal(f)
 	}
 	if got := entries(t, dir); !slices.Equal(got, []string{"app.dump", "app.globals.sql"}) {
@@ -189,8 +110,8 @@ func TestOwnerAndModeAreSetBeforeTheFirstByteOfContent(t *testing.T) {
 	dir, fsys := t.TempDir(), newRecordingFS()
 	held, _ := openTarget(fsys, dir)
 	defer held.Release()
-	plan, content := fullPlan(t)
-	if f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1", "x2"), repoTarget()); f != nil {
+	files, content := fullPlan(t)
+	if f := restore.WriteFiles(context.Background(), &fakeDumper{content: content}, held, files, names("x1", "x2"), repoTarget()); f != nil {
 		t.Fatal(f)
 	}
 	want := []string{
@@ -208,10 +129,10 @@ func TestAnOwnerThatCannotBeSetLeavesNoFile(t *testing.T) {
 	fsys.files.failChown = true
 	held, _ := openTarget(fsys, dir)
 	defer held.Release()
-	plan, content := fullPlan(t)
+	files, content := fullPlan(t)
 	d := &fakeDumper{content: content}
-	f := restore.WritePostgres(context.Background(), d, held, plan, names("x1"), repoTarget())
-	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite)
+	f := restore.WriteFiles(context.Background(), d, held, files, names("x1"), repoTarget())
+	wantFileFailure(t, f, refusal.TargetWrite, refusal.ClassWrite)
 	if len(entries(t, dir)) != 0 || len(d.asked) != 0 {
 		t.Errorf("left %v, dumped %v", entries(t, dir), d.asked)
 	}
@@ -224,8 +145,8 @@ func TestATempNameThatIsTakenIsReplacedByAnotherName(t *testing.T) {
 	}
 	defer held.Release()
 	mustWrite(t, filepath.Join(held.Path, ".app.dump.tmp-x1"), "other") // turned up after the target was judged
-	plan, content := fullPlan(t)
-	if f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1", "x2"), repoTarget()); f != nil {
+	files, content := fullPlan(t)
+	if f := restore.WriteFiles(context.Background(), &fakeDumper{content: content}, held, files, names("x1", "x2"), repoTarget()); f != nil {
 		t.Fatal(f)
 	}
 	data, _ := os.ReadFile(filepath.Join(held.Path, ".app.dump.tmp-x1"))
@@ -238,25 +159,25 @@ func TestAFailureInTheMiddleOfTheDumpLeavesNeitherTempNorFinalFile(t *testing.T)
 	dir := t.TempDir()
 	held, _ := openTarget(newRecordingFS(), dir)
 	defer held.Release()
-	plan, content := fullPlan(t)
+	files, content := fullPlan(t)
 	d := &fakeDumper{content: content, failAfter: 4, err: restic.ErrNetwork}
-	f := restore.WritePostgres(context.Background(), d, held, plan, names("x1"), repoTarget())
-	wantPG(t, f, refusal.BackendUnavailable, refusal.ClassTemporary, "the command can be repeated", "; there is no dump file in "+dir)
+	f := restore.WriteFiles(context.Background(), d, held, files, names("x1"), repoTarget())
+	wantFileFailure(t, f, refusal.BackendUnavailable, refusal.ClassTemporary, "the command can be repeated", "; there is no dump file in "+dir)
 	if got := entries(t, dir); len(got) != 0 {
 		t.Errorf("left %v", got)
 	}
 }
 
 func TestACancelledDumpIsInterruptedAndLeavesNoFile(t *testing.T) {
-	plan, content := fullPlan(t)
+	files, content := fullPlan(t)
 	dir := t.TempDir()
 	held, _ := openTarget(newRecordingFS(), dir)
 	defer held.Release()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	d := &fakeDumper{content: content, failAfter: 2, err: errors.New("signal: terminated")}
-	f := restore.WritePostgres(ctx, d, held, plan, names("x1"), repoTarget())
-	wantPG(t, f, refusal.Interrupted, refusal.ClassTemporary, "no dump file")
+	f := restore.WriteFiles(ctx, d, held, files, names("x1"), repoTarget())
+	wantFileFailure(t, f, refusal.Interrupted, refusal.ClassTemporary, "no dump file")
 	if got := entries(t, dir); len(got) != 0 {
 		t.Errorf("left %v", got)
 	}
@@ -267,11 +188,11 @@ func TestNoSpaceForTheDumpIsATargetWriteFailureWithoutTraces(t *testing.T) {
 	fsys.files.failWritePrefix, fsys.files.failWrite = ".app.dump.tmp-", syscall.ENOSPC
 	held, _ := openTarget(fsys, dir)
 	defer held.Release()
-	plan, content := fullPlan(t)
+	files, content := fullPlan(t)
 	// restic, whose output cannot be written, ends with an error of its own
 	d := &fakeDumper{content: content, err: errors.New("restic dump: exit status 1: broken pipe")}
-	f := restore.WritePostgres(context.Background(), &writeFailing{fakeDumper: d}, held, plan, names("x1"), repoTarget())
-	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, "no space left on device", dir)
+	f := restore.WriteFiles(context.Background(), &writeFailing{fakeDumper: d}, held, files, names("x1"), repoTarget())
+	wantFileFailure(t, f, refusal.TargetWrite, refusal.ClassWrite, "no space left on device", dir)
 	if len(entries(t, dir)) != 0 {
 		t.Errorf("left %v", entries(t, dir))
 	}
@@ -292,9 +213,9 @@ func TestAFailureOfTheSecondFileTakesTheFirstBack(t *testing.T) {
 	fsys.files.failWritePrefix, fsys.files.failWrite = ".app.globals.sql.tmp-", syscall.EIO
 	held, _ := openTarget(fsys, dir)
 	defer held.Release()
-	plan, content := fullPlan(t)
-	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1", "x2"), repoTarget())
-	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite)
+	files, content := fullPlan(t)
+	f := restore.WriteFiles(context.Background(), &fakeDumper{content: content}, held, files, names("x1", "x2"), repoTarget())
+	wantFileFailure(t, f, refusal.TargetWrite, refusal.ClassWrite)
 	if strings.Contains(f.Detail, "not removed") || strings.Contains(f.Detail, "not the file") {
 		t.Errorf("a file that was taken back is said to stay: %q", f.Detail)
 	}
@@ -308,9 +229,9 @@ func TestAFinalNameThatTurnedUpIsNotReplaced(t *testing.T) {
 	fsys.files.failRename = true
 	held, _ := openTarget(fsys, dir)
 	defer held.Release()
-	plan, content := fullPlan(t)
-	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1"), repoTarget())
-	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, "app.dump")
+	files, content := fullPlan(t)
+	f := restore.WriteFiles(context.Background(), &fakeDumper{content: content}, held, files, names("x1"), repoTarget())
+	wantFileFailure(t, f, refusal.TargetWrite, refusal.ClassWrite, "app.dump")
 	if got := entries(t, dir); len(got) != 0 {
 		t.Errorf("left %v", got)
 	}
@@ -321,17 +242,12 @@ func TestADirectoryThatCannotBeSyncedFailsTheWrite(t *testing.T) {
 	fsys.failSync = true
 	held, _ := openTarget(fsys, dir)
 	defer held.Release()
-	plan, content := fullPlan(t)
-	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1"), repoTarget())
-	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite)
+	files, content := fullPlan(t)
+	f := restore.WriteFiles(context.Background(), &fakeDumper{content: content}, held, files, names("x1"), repoTarget())
+	wantFileFailure(t, f, refusal.TargetWrite, refusal.ClassWrite)
 	if got := entries(t, dir); len(got) != 0 {
 		t.Errorf("left %v", got)
 	}
-}
-
-func hintsOf(t *testing.T, plan restore.PGPlan) string {
-	t.Helper()
-	return strings.Join(plan.Hints("/srv/pg 1"), "\n")
 }
 
 func inOrder(t *testing.T, text string, parts ...string) {
@@ -346,84 +262,15 @@ func inOrder(t *testing.T, text string, parts ...string) {
 	}
 }
 
-func TestTheHintsNameTheCommandsInOrderWithQuotedPaths(t *testing.T) {
-	plan, _ := fullPlan(t)
-	text := hintsOf(t, plan)
-	inOrder(t, text, "psql -X -d postgres -f '/srv/pg 1/app.globals.sql'", "createdb 'app'", "pg_restore -d 'app' '/srv/pg 1/app.dump'")
-	for _, want := range []string{"not older than 16.4", "database is not restored", "root only"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("no %q in\n%s", want, text)
-		}
-	}
-	if strings.Contains(text, "--no-owner") {
-		t.Errorf("no-owner with globals:\n%s", text)
-	}
-}
-
-func TestTheHintsWithoutGlobalsTellSoAndDropOwnersWithoutPsql(t *testing.T) {
-	p := pgDatabase("app", "app.dump")
-	plan, _ := restore.PlanPostgres([]restore.Snapshot{p}, p)
-	text := hintsOf(t, plan)
-	inOrder(t, text, "no global objects", "createdb 'app'", "pg_restore --no-owner --no-acl -d 'app' '/srv/pg 1/app.dump'")
-	if strings.Contains(text, "psql") {
-		t.Errorf("psql in\n%s", text)
-	}
-}
-
-func TestTheHintsOfAGlobalsSnapshotHoldPsqlOnly(t *testing.T) {
-	g := pgGlobals(pgDatabase("app", "app.dump"), 7, "cccc1111", "app.globals.sql")
-	plan, _ := restore.PlanPostgres([]restore.Snapshot{g}, g)
-	text := hintsOf(t, plan)
-	if !strings.Contains(text, "psql -X -d postgres -f '/srv/pg 1/app.globals.sql'") || strings.Contains(text, "pg_restore") || strings.Contains(text, "createdb") {
-		t.Errorf("hints\n%s", text)
-	}
-}
-
-func TestAQuoteInTheNameOfTheDatabaseIsEscaped(t *testing.T) {
-	p := pgDatabase("o%27brien", "o%27brien.dump")
-	plan, _ := restore.PlanPostgres([]restore.Snapshot{p}, p)
-	text := hintsOf(t, plan)
-	if !strings.Contains(text, `createdb 'o'\''brien'`) || !strings.Contains(text, `pg_restore --no-owner --no-acl -d 'o'\''brien' '/srv/pg 1/o%27brien.dump'`) {
-		t.Errorf("hints\n%s", text)
-	}
-}
-
-func TestWithoutTheVersionTagTheHintsDoNotInventOne(t *testing.T) {
-	p := pgDatabase("app", "app.dump")
-	p.Tags = slices.DeleteFunc(p.Tags, func(s string) bool { return strings.HasPrefix(s, "postgresql.pg_dump_version") })
-	plan, _ := restore.PlanPostgres([]restore.Snapshot{p}, p)
-	if text := hintsOf(t, plan); !strings.Contains(text, "not older than the version of pg_dump") {
-		t.Errorf("hints\n%s", text)
-	}
-}
-
-func wantPG(t *testing.T, f *refusal.Failure, reason refusal.Reason, class refusal.Class, mentions ...string) {
-	t.Helper()
-	if f == nil || f.Reason != reason || f.Class != class {
-		t.Fatalf("failure %v, want %s of class %v", f, reason, class)
-	}
-	for _, m := range mentions {
-		if !strings.Contains(f.Detail, m) {
-			t.Errorf("%q is not in %q", m, f.Detail)
-		}
-	}
-}
-
-func TestHintsOfAnEmptyPlanDoNotPanic(t *testing.T) {
-	for _, p := range []restore.PGPlan{{}, {Dump: true}, {Globals: true}, {Dump: true, Globals: true}} {
-		_ = p.Hints("/t") // no file in the plan: nothing to name, but no panic
-	}
-}
-
 func TestAFileThatCannotBeMadeIsATargetWriteFailureAndNothingIsDumped(t *testing.T) {
 	dir, fsys := t.TempDir(), newRecordingFS()
 	fsys.files.failCreate = syscall.EROFS
 	held, _ := openTarget(fsys, dir)
 	defer held.Release()
-	plan, content := fullPlan(t)
+	files, content := fullPlan(t)
 	d := &fakeDumper{content: content}
-	f := restore.WritePostgres(context.Background(), d, held, plan, names("x1"), repoTarget())
-	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, "cannot make a file in the target "+dir, "read-only file system")
+	f := restore.WriteFiles(context.Background(), d, held, files, names("x1"), repoTarget())
+	wantFileFailure(t, f, refusal.TargetWrite, refusal.ClassWrite, "cannot make a file in the target "+dir, "read-only file system")
 	if len(d.asked) != 0 || len(entries(t, dir)) != 0 {
 		t.Errorf("dumped %v, left %v", d.asked, entries(t, dir))
 	}
@@ -433,11 +280,8 @@ func TestAFileThatCannotBeMadeIsATargetWriteFailureAndNothingIsDumped(t *testing
 // names n1..n<taken> are in use and n1..n9 are offered.
 func writeWithTaken(t *testing.T, taken int) (*refusal.Failure, []string) {
 	t.Helper()
-	p := pgDatabase("app", "app.dump")
-	plan, f := restore.PlanPostgres([]restore.Snapshot{p}, p)
-	if f != nil {
-		t.Fatal(f)
-	}
+	files, content := fullPlan(t)
+	files = files[:1]
 	held, _ := openTarget(newRecordingFS(), t.TempDir())
 	defer held.Release()
 	var offered []string
@@ -447,8 +291,8 @@ func writeWithTaken(t *testing.T, taken int) (*refusal.Failure, []string) {
 			mustWrite(t, filepath.Join(held.Path, ".app.dump.tmp-n"+strconv.Itoa(i)), "other")
 		}
 	}
-	d := &fakeDumper{content: pgContent(p, p)}
-	return restore.WritePostgres(context.Background(), d, held, plan, names(offered...), repoTarget()), d.asked
+	d := &fakeDumper{content: content}
+	return restore.WriteFiles(context.Background(), d, held, files, names(offered...), repoTarget()), d.asked
 }
 
 func TestATempNameIsLookedForEightTimes(t *testing.T) {
@@ -456,7 +300,7 @@ func TestATempNameIsLookedForEightTimes(t *testing.T) {
 		t.Errorf("seven names taken: %v, dumped %v", f, asked)
 	}
 	f, asked := writeWithTaken(t, 8)
-	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, "cannot find a free name for a temporary file")
+	wantFileFailure(t, f, refusal.TargetWrite, refusal.ClassWrite, "cannot find a free name for a temporary file")
 	if len(asked) != 0 {
 		t.Errorf("eight names taken: dumped %v", asked)
 	}
@@ -467,9 +311,9 @@ func TestAFileThatCannotBeSyncedLeavesNoFile(t *testing.T) {
 	fsys.files.failFileSync = true
 	held, _ := openTarget(fsys, dir)
 	defer held.Release()
-	plan, content := fullPlan(t)
-	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1"), repoTarget())
-	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, "cannot save "+dir+"/app.dump", "input/output error")
+	files, content := fullPlan(t)
+	f := restore.WriteFiles(context.Background(), &fakeDumper{content: content}, held, files, names("x1"), repoTarget())
+	wantFileFailure(t, f, refusal.TargetWrite, refusal.ClassWrite, "cannot save "+dir+"/app.dump", "input/output error")
 	if got := entries(t, dir); len(got) != 0 {
 		t.Errorf("left %v", got)
 	}
@@ -491,10 +335,10 @@ func TestEveryFileIsClosedWhateverTheOutcome(t *testing.T) {
 	} {
 		fsys, dir := newRecordingFS(), t.TempDir()
 		d := arrange(fsys, dir)
-		plan, content := fullPlan(t)
+		files, content := fullPlan(t)
 		d.content = content
 		held, _ := openTarget(fsys, dir)
-		_ = restore.WritePostgres(context.Background(), d, held, plan, names("x1", "x2"), repoTarget())
+		_ = restore.WriteFiles(context.Background(), d, held, files, names("x1", "x2"), repoTarget())
 		held.Release()
 		fsys.mu.Lock()
 		closed := slices.Clone(fsys.files.closed)
@@ -514,10 +358,10 @@ func TestTheFirstErrorOfTheFileIsTheOneReported(t *testing.T) {
 	fsys.files.failWritePrefix, fsys.files.failWrite, fsys.files.failWriteLater = ".app.dump.tmp-", syscall.ENOSPC, syscall.EIO
 	held, _ := openTarget(fsys, dir)
 	defer held.Release()
-	plan, _ := fullPlan(t)
+	files, _ := fullPlan(t)
 	two := &twoWrites{err: errors.New("restic dump: exit status 1")}
-	f := restore.WritePostgres(context.Background(), two, held, plan, names("x1"), repoTarget())
-	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, "no space left on device")
+	f := restore.WriteFiles(context.Background(), two, held, files, names("x1"), repoTarget())
+	wantFileFailure(t, f, refusal.TargetWrite, refusal.ClassWrite, "no space left on device")
 	if strings.Contains(f.Detail, "input/output error") {
 		t.Errorf("a later error was reported: %q", f.Detail)
 	}
@@ -530,36 +374,6 @@ func (d *twoWrites) Dump(_ context.Context, _, _ string, w io.Writer) error {
 	_, _ = io.WriteString(w, "a")
 	_, _ = io.WriteString(w, "b")
 	return d.err
-}
-
-func TestGlobalsOfADatabaseAreOnlyThoseThatSayWhichSnapshotTheyBelongTo(t *testing.T) {
-	p := pgDatabase("app", "app.dump")
-	noMain := pgGlobals(p, 9, "cccc1111", "app.globals.sql")
-	noMain.Tags = []string{"postgresql.part=globals"}
-	notGlobals := pgGlobals(p, 10, "cccc2222", "app.other")
-	notGlobals.Tags = []string{"postgresql.part=other", "postgresql.main_snapshot=" + p.ID}
-	plan, f := restore.PlanPostgres([]restore.Snapshot{p, noMain, notGlobals}, p)
-	if f != nil {
-		t.Fatal(f)
-	}
-	if plan.Globals || len(plan.Files) != 1 || plan.Files[0].Name != "app.dump" {
-		t.Errorf("plan %+v", plan)
-	}
-}
-
-func TestAMalformedGlobalsSnapshotRefusesTheWholeRestore(t *testing.T) {
-	p := pgDatabase("app", "app.dump")
-	g := pgGlobals(p, 7, "cccc1111", "app.globals.sql")
-	g.Paths = []string{"/a", "/b"}
-	_, f := restore.PlanPostgres([]restore.Snapshot{p, g}, p)
-	wantPG(t, f, refusal.ResticOutputUnexpected, refusal.ClassAgentError, "cccc1111", "2 paths")
-}
-
-func TestTheHintsNameTheProgramsThatMustBeNotOlderThanTheDump(t *testing.T) {
-	plan, _ := fullPlan(t)
-	if text := hintsOf(t, plan); !strings.Contains(text, "You run these commands; pg_restore and psql must be not older than 16.4:") {
-		t.Errorf("hints %q", text)
-	}
 }
 
 // Р87: after the move every file is looked for by its name, without following
@@ -586,8 +400,8 @@ func TestEveryFileIsComparedWithTheOneWrittenAfterTheMoveAndBeforeTheDirectorySy
 	dir, fsys := t.TempDir(), newRecordingFS()
 	held, _ := openTarget(fsys, dir)
 	defer held.Release()
-	plan, content := fullPlan(t)
-	if f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1", "x2"), repoTarget()); f != nil {
+	files, content := fullPlan(t)
+	if f := restore.WriteFiles(context.Background(), &fakeDumper{content: content}, held, files, names("x1", "x2"), repoTarget()); f != nil {
 		t.Fatal(f)
 	}
 	var seen []string
@@ -610,9 +424,9 @@ func TestADumpSwappedBeforeTheMoveIsATargetWriteFailureAndTheForeignFileStays(t 
 	}
 	held, _ := openTarget(fsys, dir)
 	defer held.Release()
-	plan, content := fullPlan(t)
-	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1"), repoTarget())
-	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, filepath.Join(dir, "app.dump"), "is not the file the agent wrote", "was not removed", "new target")
+	files, content := fullPlan(t)
+	f := restore.WriteFiles(context.Background(), &fakeDumper{content: content}, held, files, names("x1"), repoTarget())
+	wantFileFailure(t, f, refusal.TargetWrite, refusal.ClassWrite, filepath.Join(dir, "app.dump"), "is not the file the agent wrote", "was not removed", "new target")
 	if n := strings.Count(f.Detail, "not the file the agent wrote"); n != 1 {
 		t.Errorf("the failure says it %d times: %q", n, f.Detail)
 	}
@@ -626,9 +440,9 @@ func TestANameThatVanishedAfterTheMoveIsTheSameFailure(t *testing.T) {
 	fsys.files.afterRename = func(name string) { _ = os.Remove(filepath.Join(dir, name)) }
 	held, _ := openTarget(fsys, dir)
 	defer held.Release()
-	plan, content := fullPlan(t)
-	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1"), repoTarget())
-	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, filepath.Join(dir, "app.dump"), "is not the file the agent wrote")
+	files, content := fullPlan(t)
+	f := restore.WriteFiles(context.Background(), &fakeDumper{content: content}, held, files, names("x1"), repoTarget())
+	wantFileFailure(t, f, refusal.TargetWrite, refusal.ClassWrite, filepath.Join(dir, "app.dump"), "is not the file the agent wrote")
 }
 
 func TestASwappedGlobalsFileTakesTheDumpBackAndStays(t *testing.T) {
@@ -640,9 +454,9 @@ func TestASwappedGlobalsFileTakesTheDumpBackAndStays(t *testing.T) {
 	}
 	held, _ := openTarget(fsys, dir)
 	defer held.Release()
-	plan, content := fullPlan(t)
-	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1", "x2"), repoTarget())
-	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, "app.globals.sql", "is not the file the agent wrote")
+	files, content := fullPlan(t)
+	f := restore.WriteFiles(context.Background(), &fakeDumper{content: content}, held, files, names("x1", "x2"), repoTarget())
+	wantFileFailure(t, f, refusal.TargetWrite, refusal.ClassWrite, "app.globals.sql", "is not the file the agent wrote")
 	if got := entries(t, dir); !slices.Equal(got, []string{"app.globals.sql"}) || foreignContent(t, dir, "app.globals.sql") != "FOREIGN-G" {
 		t.Errorf("entries %v", got)
 	}
@@ -658,9 +472,9 @@ func TestAForeignFileUnderTheNameOfAFinishedDumpIsNotRemovedWhenTakingBack(t *te
 	}
 	held, _ := openTarget(fsys, dir)
 	defer held.Release()
-	plan, content := fullPlan(t)
-	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1", "x2"), repoTarget())
-	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, filepath.Join(dir, "app.dump"), "not removed", "not the file the agent wrote")
+	files, content := fullPlan(t)
+	f := restore.WriteFiles(context.Background(), &fakeDumper{content: content}, held, files, names("x1", "x2"), repoTarget())
+	wantFileFailure(t, f, refusal.TargetWrite, refusal.ClassWrite, filepath.Join(dir, "app.dump"), "not removed", "not the file the agent wrote")
 	if got := entries(t, dir); !slices.Equal(got, []string{"app.dump"}) || foreignContent(t, dir, "app.dump") != "FOREIGN" {
 		t.Errorf("entries %v", got)
 	}
@@ -670,10 +484,10 @@ func TestAForeignFileUnderTheNameOfTheTempFileIsNotRemovedWhenTheDumpFails(t *te
 	dir := t.TempDir()
 	held, _ := openTarget(newRecordingFS(), dir)
 	defer held.Release()
-	plan, content := fullPlan(t)
+	files, content := fullPlan(t)
 	d := &fakeDumper{content: content, failAfter: 2, err: restic.ErrNetwork, during: func() { swap(t, dir, ".app.dump.tmp-x1", "FOREIGN") }}
-	f := restore.WritePostgres(context.Background(), d, held, plan, names("x1"), repoTarget())
-	wantPG(t, f, refusal.BackendUnavailable, refusal.ClassTemporary, ".app.dump.tmp-x1", "not removed")
+	f := restore.WriteFiles(context.Background(), d, held, files, names("x1"), repoTarget())
+	wantFileFailure(t, f, refusal.BackendUnavailable, refusal.ClassTemporary, ".app.dump.tmp-x1", "not removed")
 	if foreignContent(t, dir, ".app.dump.tmp-x1") != "FOREIGN" {
 		t.Error("the foreign file was removed")
 	}
@@ -684,9 +498,9 @@ func TestAnUnreadableWrittenFileIsATargetWriteFailureAndIsNotRemovedUnchecked(t 
 	fsys.files.failFileStat = true
 	held, _ := openTarget(fsys, dir)
 	defer held.Release()
-	plan, content := fullPlan(t)
-	f := restore.WritePostgres(context.Background(), &fakeDumper{content: content}, held, plan, names("x1"), repoTarget())
-	wantPG(t, f, refusal.TargetWrite, refusal.ClassWrite, ".app.dump.tmp-x1", "was not removed")
+	files, content := fullPlan(t)
+	f := restore.WriteFiles(context.Background(), &fakeDumper{content: content}, held, files, names("x1"), repoTarget())
+	wantFileFailure(t, f, refusal.TargetWrite, refusal.ClassWrite, ".app.dump.tmp-x1", "was not removed")
 	fsys.mu.Lock()
 	closed := slices.Clone(fsys.files.closed)
 	fsys.mu.Unlock()
@@ -707,7 +521,7 @@ func TestTheTempFileIsStillOpenWhenItsNameIsJudgedForRemoval(t *testing.T) {
 	} {
 		fsys := newRecordingFS()
 		d := arrange(fsys)
-		plan, content := fullPlan(t)
+		files, content := fullPlan(t)
 		d.content = content
 		var judged []bool
 		fsys.files.onLstat = func(n string) {
@@ -718,7 +532,7 @@ func TestTheTempFileIsStillOpenWhenItsNameIsJudgedForRemoval(t *testing.T) {
 			}
 		}
 		held, _ := openTarget(fsys, t.TempDir())
-		_ = restore.WritePostgres(context.Background(), d, held, plan, names("x1"), repoTarget())
+		_ = restore.WriteFiles(context.Background(), d, held, files, names("x1"), repoTarget())
 		held.Release()
 		if !slices.Equal(judged, []bool{false}) {
 			t.Errorf("%s: judged with the file closed? %v, want exactly one judgement with it open", name, judged)
@@ -728,7 +542,7 @@ func TestTheTempFileIsStillOpenWhenItsNameIsJudgedForRemoval(t *testing.T) {
 
 // Р88: the temporary file of a PostgreSQL restore that was killed makes the
 // target not empty, and the refusal names it as the remains of it.
-func TestATempFileOfAKilledPostgreSQLRestoreIsNamedAsTheRemainsInTheRefusal(t *testing.T) {
+func TestATempFileOfAKilledRestoreOfFilesIsNamedAsTheRemainsInTheRefusal(t *testing.T) {
 	for _, name := range []string{".app.dump.tmp-x1", ".app.globals.sql.tmp-x2", ".a.tmp-"} {
 		dir := t.TempDir()
 		mustWrite(t, filepath.Join(dir, name), "HALF")
@@ -759,20 +573,5 @@ func TestTheFirstOfSeveralRemainsIsTheOneNamed(t *testing.T) {
 	_, f := check(t, restore.Target{Path: dir})
 	if f == nil || strings.Count(f.Detail, "remains of an interrupted") != 1 {
 		t.Fatalf("failure %v", f)
-	}
-}
-
-// R2b (ВК22, ВК29): the plan also carries the version of the source server and
-// the identifier of its cluster, which the console restore compares the target with.
-func TestThePlanCarriesTheServerVersionAndTheClusterIdentifierOfTheSnapshot(t *testing.T) {
-	p := pgDatabase("app", "app.dump", "postgresql.server_version=16.4", "postgresql.system_identifier=7412345678901234567")
-	plan, f := restore.PlanPostgres([]restore.Snapshot{p}, p)
-	if f != nil || plan.ServerVersion != "16.4" || plan.SystemIdentifier != "7412345678901234567" {
-		t.Fatalf("plan %+v, %v", plan, f)
-	}
-	bare := pgDatabase("app", "app.dump")
-	plan, _ = restore.PlanPostgres([]restore.Snapshot{bare}, bare)
-	if plan.ServerVersion != "" || plan.SystemIdentifier != "" {
-		t.Errorf("plan without the tags: %+v", plan)
 	}
 }

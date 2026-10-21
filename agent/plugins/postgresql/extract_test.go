@@ -220,3 +220,13 @@ func TestTheHintsStartWithTheOwnerOfTheFiles(t *testing.T) {
 		t.Errorf("hints %q", plan.Hints)
 	}
 }
+
+func TestThePlanNamesTheKindOfSnapshotForTheMessagesOfTheAgent(t *testing.T) {
+	p := exDatabase("app", "app.dump")
+	g := exGlobals(p, 7, "cccc1111", "app.globals.sql")
+	for _, s := range []sdk.SnapshotInfo{p, g} {
+		if plan, err := planExtract(t, s, p, g); err != nil || plan.Label != "PostgreSQL" {
+			t.Errorf("plan %+v, %v", plan, err)
+		}
+	}
+}

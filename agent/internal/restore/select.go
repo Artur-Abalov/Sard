@@ -49,8 +49,8 @@ func notLowerHex(r rune) bool { return (r < '0' || r > '9') && (r < 'a' || r > '
 
 // Select is the snapshot ref names among list, which holds the snapshots of
 // the source asked for (all of them without one): by a full id, by a prefix
-// of an id or, for latest, the newest of them except a snapshot of global
-// objects of PostgreSQL.
+// of an id or, for latest, the newest of them except an extra snapshot of a
+// plugin.
 func Select(list []Snapshot, ref, repoName, source string) (Snapshot, *refusal.Failure) {
 	if ref == Latest {
 		return newest(list, source)
@@ -86,7 +86,7 @@ func unknown(ref, repoName, source string) *refusal.Failure {
 
 func newest(list []Snapshot, source string) (Snapshot, *refusal.Failure) {
 	candidates := slices.DeleteFunc(slices.Clone(list), func(s Snapshot) bool {
-		return !ofSource(s, source) || KindOf(s) == KindGlobals
+		return !ofSource(s, source) || isExtra(s)
 	})
 	if len(candidates) == 0 {
 		return Snapshot{}, refusal.Fail(refusal.SnapshotUnknown, "no snapshot of source %s in the repository", source)
@@ -94,6 +94,22 @@ func newest(list []Snapshot, source string) (Snapshot, *refusal.Failure) {
 	return slices.MaxFunc(candidates, func(a, b Snapshot) int {
 		return cmp.Or(a.Time.Compare(b.Time), strings.Compare(a.ID, b.ID))
 	}), nil
+}
+
+// mainSnapshotSuffix ends the key of the tag the agent writes on a file a plugin
+// stores besides its main dump (Dump.Extra, ADR 0051 point 4):
+// <plugin>.main_snapshot=<id of the main snapshot>.
+const mainSnapshotSuffix = ".main_snapshot"
+
+// isExtra: the snapshot is an extra file of a plugin, which belongs to its main
+// snapshot and is restored with it, never by itself as the newest (О2).
+func isExtra(s Snapshot) bool {
+	for _, t := range s.Tags {
+		if key, value, found := strings.Cut(t, "="); found && value != "" && len(key) > len(mainSnapshotSuffix) && strings.HasSuffix(key, mainSnapshotSuffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func ofSource(s Snapshot, source string) bool { return s.Source != nil && *s.Source == source }

@@ -13,6 +13,9 @@ import (
 
 var _ sdk.Extractor = Plugin{}
 
+// planLabel is what the agent calls these snapshots in its messages.
+const planLabel = "PostgreSQL"
+
 // PlanExtract implements sdk.Extractor: a snapshot of a database is laid out as
 // its dump file and the file of the newest global objects of it, a snapshot of
 // global objects as that one file (Р60, Р62). The agent restores a snapshot
@@ -40,7 +43,7 @@ func planDatabase(req sdk.ExtractRequest) (sdk.ExtractPlan, error) {
 		files = append(files, extractFile(*l.globals))
 		h.globals = files[1].Name
 	}
-	return sdk.ExtractPlan{Files: files, Hints: h.lines()}, nil
+	return sdk.ExtractPlan{Label: planLabel, Files: files, Hints: h.lines()}, nil
 }
 
 func planGlobals(req sdk.ExtractRequest) (sdk.ExtractPlan, error) {
@@ -54,7 +57,7 @@ func planGlobals(req sdk.ExtractRequest) (sdk.ExtractPlan, error) {
 	}
 	out := extractFile(file)
 	h := hints{target: req.Target, version: tagValue(s.Tags, versionTag), globals: out.Name}
-	return sdk.ExtractPlan{Files: []sdk.ExtractFile{out}, Hints: h.lines()}, nil
+	return sdk.ExtractPlan{Label: planLabel, Files: []sdk.ExtractFile{out}, Hints: h.lines()}, nil
 }
 
 // plain is the words of the refusal without its reason and stage: the agent

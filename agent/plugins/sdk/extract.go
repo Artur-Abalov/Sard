@@ -39,6 +39,10 @@ type ExtractRequest struct {
 
 // ExtractPlan is what the agent lays out.
 type ExtractPlan struct {
+	// Label says what the snapshot is, in the words of the operator ("PostgreSQL"
+	// for "a PostgreSQL snapshot"); the agent uses it in its own messages. Empty:
+	// the agent names the plugin.
+	Label string
 	// Files are written into the root of the target, in this order.
 	Files []ExtractFile
 	// Hints are lines the agent prints after the files: what the operator

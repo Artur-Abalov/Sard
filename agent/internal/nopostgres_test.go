@@ -9,6 +9,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -16,26 +17,28 @@ import (
 )
 
 // The agent holds no code of a concrete database (ADR 0066, the principle of the
-// owner): what talks to PostgreSQL lives in the plugin. R2c-2 proves it for the
-// restore from the console and the host of the plugins; R2c-3 widens the scope
-// to the whole of agent/internal.
+// owner): what talks to PostgreSQL lives in the plugin. The rule holds for the
+// whole of agent/internal and for the root of the build, agent/cmd/sard-agent
+// (В2); the plugins are where the code of a database belongs.
 
-// scope are the directories, below agent/internal, the rule holds for.
-var scope = []string{"consolerestore", "pluginhost"}
+// scope are the directories the rule holds for: agent/internal, where the test
+// runs, and the root of the build.
+var scope = []string{".", filepath.Join("..", "cmd", "sard-agent")}
 
-const pgclientImport = "/plugins/sdk/pgclient"
+const pgclientImport = "/pgclient"
 
 var (
 	// affixes are the starts and ends of a string that is a tag, a reason or a
 	// tool of PostgreSQL.
 	affixes = []string{"postgresql.", "PG_", "pg_restore"}
-	// codes are the reasons of the restore of a database that have no PG_ in them.
+	// codes are the reasons of the restore of a database that have no PG_ in them (О4).
 	codes = []string{"CREATEDB_REQUIRED", "SUPERUSER_REQUIRED", "GLOBALS_SNAPSHOT_MISSING", "GLOBALS_TABLESPACES", "ROLES_EXIST", "DATABASE_EXISTS"}
 )
 
 // violations are the places of the source where it knows PostgreSQL: the
-// import of the client package, a string that starts or ends with one of the
-// affixes, a string that holds one of the codes. Comments are not code.
+// import of a client package, a string that starts or ends with one of the
+// affixes, a string that holds one of the codes. Comments are not code. src is
+// the text of the file, nil to read it.
 func violations(name string, src any) ([]string, error) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, name, src, parser.SkipObjectResolution)
@@ -89,73 +92,127 @@ func knows(value string) string {
 	return ""
 }
 
-// sources are the files of the scope that are not tests.
-func sources(t *testing.T) []string {
-	t.Helper()
+// sources are the Go files below the roots that are neither tests nor test data.
+func sources(roots ...string) ([]string, error) {
 	var files []string
-	for _, dir := range scope {
-		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-			if err == nil && !d.IsDir() && strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "_test.go") {
+	for _, root := range roots {
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			switch {
+			case err != nil:
+				return err
+			case d.IsDir() && d.Name() == "testdata":
+				return fs.SkipDir
+			case !d.IsDir() && strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "_test.go"):
 				files = append(files, path)
 			}
-			return err
+			return nil
 		})
 		if err != nil {
-			t.Fatal(err)
+			return nil, err
 		}
 	}
-	return files
+	return files, nil
 }
 
-// Scenario: В восстановлении из консоли агента нет кода PostgreSQL.
-func TestTheRestoreFromTheConsoleOfTheAgentHoldsNoCodeOfPostgreSQL(t *testing.T) {
-	files := sources(t)
+// scan is the violations of every source below the roots and how many files it looked at.
+func scan(roots ...string) (found []string, files int, err error) {
+	paths, err := sources(roots...)
+	if err != nil {
+		return nil, 0, err
+	}
+	for _, path := range paths {
+		v, err := violations(path, nil)
+		if err != nil {
+			return nil, 0, err
+		}
+		found = append(found, v...)
+	}
+	return found, len(paths), nil
+}
+
+// Scenario: Код агента вне плагинов не знает PostgreSQL.
+func TestTheAgentOutsideThePluginsHoldsNoCodeOfPostgreSQL(t *testing.T) {
+	found, files, err := scan(scope...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range found {
+		t.Error(v)
+	}
+	if files < 100 {
+		t.Errorf("only %d files were looked at: the scope %v is not where the code is", files, scope)
+	}
+}
+
+// Scenario: Архитектурный тест ловит подложенное нарушение.
+func TestThePlantedViolationsAreFoundWithTheFileAndTheLine(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join("testdata", "nopostgres", "violations", "*.go"))
+	if err != nil || len(files) < 10 {
+		t.Fatalf("fixtures %v, %v", files, err)
+	}
 	for _, path := range files {
-		found, err := violations(path, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, v := range found {
-			t.Error(v)
-		}
-	}
-	if len(files) < 10 {
-		t.Errorf("only %d files were looked at: the scope %v is not where the code is", len(files), scope)
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			found, err := violations(path, nil)
+			if err != nil || len(found) != 1 {
+				t.Fatalf("found %v, %v", found, err)
+			}
+			if !strings.HasPrefix(found[0], path+":6:") {
+				t.Errorf("the file and the line are not named: %s", found[0])
+			}
+		})
 	}
 }
 
-func TestTheCheckFindsWhatItLooksForAndNothingElse(t *testing.T) {
-	tests := []struct {
-		name  string
-		src   string
-		count int
-	}{
-		{"the client package", `package x; import _ "github.com/Artur-Abalov/sard/agent/plugins/sdk/pgclient"`, 1},
-		{"a tag", `package x; var _ = "postgresql.part"`, 1},
-		{"a tag after a word", `package x; var _ = "tag postgresql."`, 1},
-		{"a reason", `package x; var _ = "PG_CONNECT"`, 1},
-		{"the restore tool", `package x; var _ = "pg_restore"`, 1},
-		{"the restore tool in a command", `package x; var _ = "run pg_restore"`, 1},
-		{"a reason without PG_", `package x; var _ = "ROLES_EXIST"`, 1},
-		{"a reason in a sentence", `package x; var _ = "the reason is DATABASE_EXISTS here"`, 1},
-		{"every code", `package x; var _ = []string{"CREATEDB_REQUIRED", "SUPERUSER_REQUIRED", "GLOBALS_SNAPSHOT_MISSING", "GLOBALS_TABLESPACES"}`, 4},
-		{"the key of the setting", `package x; var _ = "restore.postgresql_lock_share"`, 0},
-		{"the name of the plugin", `package x; var _ = "postgresql"`, 0},
-		{"a comment", "package x\n// pg_restore, PG_CONNECT, postgresql.part\nvar _ = 1", 0},
-		{"an unrelated import", `package x; import _ "github.com/Artur-Abalov/sard/agent/plugins/sdk"`, 0},
-		{"a raw string", "package x; var _ = `pg_restore`", 1},
+// Scenario: Архитектурный тест не путает допустимые строки с кодом базы.
+func TestWhatIsNoCodeOfADatabaseIsNotFound(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join("testdata", "nopostgres", "allowed", "*.go"))
+	if err != nil || len(files) < 4 {
+		t.Fatalf("fixtures %v, %v", files, err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			found, err := violations("testdata.go", tt.src)
-			if err != nil || len(found) != tt.count {
-				t.Fatalf("found %v, %v; want %d", found, err, tt.count)
+	for _, path := range files {
+		if found, err := violations(path, nil); err != nil || len(found) != 0 {
+			t.Errorf("%s: found %v, %v", path, found, err)
+		}
+	}
+}
+
+func TestEveryCodeOfTheRestoreOfADatabaseIsFound(t *testing.T) {
+	for _, code := range codes {
+		found, err := violations("x.go", "package x; var _ = \""+code+"\"")
+		if err != nil || len(found) != 1 {
+			t.Errorf("%s: found %v, %v", code, found, err)
+		}
+	}
+	for _, affix := range affixes {
+		for _, text := range []string{affix + "x", "x" + affix} {
+			if found, err := violations("x.go", "package x; var _ = \""+text+"\""); err != nil || len(found) != 1 {
+				t.Errorf("%s: found %v, %v", text, found, err)
 			}
-			for _, v := range found {
-				if !strings.HasPrefix(v, "testdata.go:1:") {
-					t.Errorf("the place is not named: %s", v)
-				}
-			}
-		})
+		}
+	}
+}
+
+// Scenario: Тестовые файлы агента архитектурный тест не проверяет.
+func TestTestFilesAndTestDataAreNotScanned(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("fine.go", "package x\n")
+	write("fine_test.go", "package x\nvar _ = \"pg_restore\"\n")
+	write("testdata/planted.go", "package x\nvar _ = \"pg_restore\"\n")
+	found, files, err := scan(dir)
+	if err != nil || len(found) != 0 || files != 1 {
+		t.Fatalf("found %v in %d files, %v", found, files, err)
+	}
+	write("sub/bad.go", "package x\nvar _ = \"pg_restore\"\n")
+	if found, files, err = scan(dir); err != nil || len(found) != 1 || files != 2 {
+		t.Fatalf("found %v in %d files, %v", found, files, err)
 	}
 }
