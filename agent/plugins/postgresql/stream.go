@@ -31,7 +31,7 @@ func (p Plugin) Stream(ctx context.Context, h sdk.Host, cfg sdk.Config, _ sdk.Du
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	out := &archive{w: w, stop: cancel}
-	o := p.run(runCtx, h, t.pgDump, c.pgDumpArgs(), p.childEnv(password), out)
+	o := p.run(runCtx, h, call{path: t.pgDump, args: c.pgDumpArgs(), environ: p.childEnv(password), stdout: out})
 	return out.verdict(ctx, o)
 }
 

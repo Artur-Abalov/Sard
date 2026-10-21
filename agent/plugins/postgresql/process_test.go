@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -37,6 +38,8 @@ var helperModes = map[string]func(){
 			fmt.Println(kv)
 		}
 	},
+	// cat prints its standard input.
+	"cat":      func() { _, _ = io.Copy(os.Stdout, os.Stdin) },
 	"selfkill": func() { _ = syscall.Kill(os.Getpid(), syscall.SIGKILL) },
 	"sleep":    func() { time.Sleep(time.Minute) },
 	// leak leaves a child of its process group behind and exits; the child's
@@ -89,6 +92,17 @@ func (l *lines) list() []string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return slices.Clone(l.got)
+}
+
+// A process reads the standard input of its command: the script of psql, the
+// dump for pg_restore.
+func TestProcessRunnerGivesTheProcessItsStandardInput(t *testing.T) {
+	var out bytes.Buffer
+	c := helper(t, "cat")
+	c.Stdin, c.Stdout = strings.NewReader("select 1;"), &out
+	if code, err := (postgresql.ProcessRunner{}).Run(context.Background(), c); code != 0 || err != nil || out.String() != "select 1;" {
+		t.Fatalf("code %d, err %v, output %q", code, err, out.String())
+	}
 }
 
 // The last line of stderr, with a line ending or without, is one line, and an

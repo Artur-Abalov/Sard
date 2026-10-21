@@ -11,24 +11,35 @@ import (
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
+// Option sets what the agent tells the built-in plugins about its host.
+type Option func(*postgresql.Plugin)
+
+// WithPostgresLockShare is restore.postgresql_lock_share of the agent: the share
+// of the lock table of the target cluster one pg_restore may take (R2b ВК28).
+func WithPostgresLockShare(share float64) Option {
+	return func(p *postgresql.Plugin) { p.LockShare = &share }
+}
+
 // Builtin returns the plugins compiled into the agent; they share the
 // agent's version. Only plugins that really back up are built in: the
 // agent announces every one of them to the server (ADR 0056). A build with
 // the "e2e" tag adds the e2e stand's plugins (stand_e2e.go); a release
-// build has none (stand.go).
-func Builtin(agentVersion string) []sdk.Plugin {
-	return append([]sdk.Plugin{
-		postgresql.Plugin{AgentVersion: agentVersion},
-		files.Plugin{AgentVersion: agentVersion},
-	}, stand(agentVersion)...)
+// build has none (stand.go). The options are the settings of the host that
+// reach the plugins; the plugin reads no configuration of the agent itself.
+func Builtin(agentVersion string, opts ...Option) []sdk.Plugin {
+	pg := postgresql.Plugin{AgentVersion: agentVersion}
+	for _, opt := range opts {
+		opt(&pg)
+	}
+	return append([]sdk.Plugin{pg, files.Plugin{AgentVersion: agentVersion}}, stand(agentVersion)...)
 }
 
 // Registry returns a registry of the built-in plugins. It panics on a
 // plugin the registry refuses (a duplicate or invalid name, an invalid
 // version or schema): that is a programming error, caught by the contract
 // test in this package, or an agent version outside the server's format.
-func Registry(agentVersion string) *sdk.Registry {
-	r, err := sdk.NewRegistry(Builtin(agentVersion)...)
+func Registry(agentVersion string, opts ...Option) *sdk.Registry {
+	r, err := sdk.NewRegistry(Builtin(agentVersion, opts...)...)
 	if err != nil {
 		panic(err)
 	}

@@ -90,19 +90,26 @@ func (p Plugin) password(h sdk.Host, c config) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	value = bytes.TrimRight(value, "\r\n")
+	return checkPassword(c.PasswordRef, value)
+}
+
+// checkPassword is the content of the secret called name without its line
+// ending, neither empty nor holding a NUL byte (F1 ПГ3): the one reading of a
+// password, for a backup, a restore and the rollback of an interrupted one.
+func checkPassword(name string, content []byte) ([]byte, error) {
+	value := bytes.TrimRight(content, "\r\n")
 	switch {
 	case len(value) == 0:
-		return nil, fmt.Errorf("secret %q is empty", c.PasswordRef)
+		return nil, fmt.Errorf("secret %q is empty", name)
 	case bytes.IndexByte(value, 0) >= 0:
-		return nil, fmt.Errorf("secret %q contains a NUL byte", c.PasswordRef)
+		return nil, fmt.Errorf("secret %q contains a NUL byte", name)
 	}
 	return value, nil
 }
 
 // toolVersion runs `<tool> --version`.
 func (p Plugin) toolVersion(ctx context.Context, h sdk.Host, path string) (version, error) {
-	out, o := p.output(ctx, h, path, []string{"--version"}, p.childEnv(nil))
+	out, o := p.output(ctx, h, call{path: path, args: []string{"--version"}, environ: p.childEnv(nil)})
 	if err := o.failure(); err != nil {
 		return version{}, err
 	}
@@ -119,7 +126,7 @@ type role struct {
 
 // probe signs in with psql and asks the server about itself and the role.
 func (p Plugin) probe(ctx context.Context, h sdk.Host, c config, t tools, password []byte) (role, error) {
-	out, o := p.output(ctx, h, t.psql, queryArgs(c, probeQuery), p.childEnv(password))
+	out, o := p.output(ctx, h, call{path: t.psql, args: queryArgs(c, probeQuery), environ: p.childEnv(password)})
 	if ctx.Err() != nil {
 		return role{}, context.Cause(ctx)
 	}
@@ -144,7 +151,7 @@ const systemIDQuery = `select system_identifier from pg_control_system()`
 // not read it, or an answer that is no number, is no failure: the snapshot
 // goes without the tag (R2b ВК29).
 func (p Plugin) systemIdentifier(ctx context.Context, h sdk.Host, c config, t tools, password []byte) (string, error) {
-	out, o := p.output(ctx, h, t.psql, queryArgs(c, systemIDQuery), p.childEnv(password))
+	out, o := p.output(ctx, h, call{path: t.psql, args: queryArgs(c, systemIDQuery), environ: p.childEnv(password)})
 	if ctx.Err() != nil {
 		return "", context.Cause(ctx)
 	}

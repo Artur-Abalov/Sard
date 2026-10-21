@@ -30,6 +30,10 @@ type Plugin struct {
 	// Environ is the environment of the agent, from which the tools get
 	// their PATH and HOME; nil is os.Environ.
 	Environ func() []string
+	// LockShare is the share of the lock table of the target cluster a restore
+	// may take for one transaction of pg_restore (R2b ВК28); nil is DefaultLockShare.
+	// The agent sets it from its configuration.
+	LockShare *float64
 }
 
 var _ sdk.Plugin = Plugin{}

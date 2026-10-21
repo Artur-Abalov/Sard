@@ -6,7 +6,6 @@ package postgresql
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
@@ -72,26 +71,11 @@ func tooLong(field string, values []string, limit int, list bool) []sdk.Violatio
 	return out
 }
 
-// socket reports whether the host is the directory of a Unix socket.
-func (c config) socket() bool { return strings.HasPrefix(c.Host, "/") }
-
 func (c config) port() int {
 	if c.Port == nil {
 		return defaultPort
 	}
 	return *c.Port
-}
-
-// sslmode is the TLS mode of the connection: require for a TCP host and
-// disable for a socket unless the config says otherwise.
-func (c config) sslmode() string {
-	switch {
-	case c.TLSMode != "":
-		return c.TLSMode
-	case c.socket():
-		return tlsDisable
-	}
-	return tlsRequire
 }
 
 func (c config) globals() bool { return c.IncludeGlobals == nil || *c.IncludeGlobals }
