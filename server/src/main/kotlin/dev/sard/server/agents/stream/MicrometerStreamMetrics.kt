@@ -3,6 +3,7 @@
 
 package dev.sard.server.agents.stream
 
+import dev.sard.server.metrics.SardMetricNames
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.DistributionSummary
 import io.micrometer.core.instrument.Gauge
@@ -20,11 +21,12 @@ class MicrometerStreamMetrics(
     meters: MeterRegistry,
     registry: AgentSessionRegistry,
 ) : StreamMetrics {
-    private val duplicates = Counter.builder("sard.agent.duplicate.sessions").register(meters)
-    private val skew = DistributionSummary.builder("sard.agent.clock.skew").baseUnit("seconds").register(meters)
+    private val duplicates = Counter.builder(SardMetricNames.AGENT_DUPLICATE_SESSIONS).register(meters)
+    private val skew =
+        DistributionSummary.builder(SardMetricNames.AGENT_CLOCK_SKEW).baseUnit("seconds").register(meters)
 
     init {
-        Gauge.builder("sard.agents.connected", registry) { it.count().toDouble() }.register(meters)
+        Gauge.builder(SardMetricNames.AGENTS_CONNECTED, registry) { it.count().toDouble() }.register(meters)
     }
 
     override fun duplicateDetected() = duplicates.increment()

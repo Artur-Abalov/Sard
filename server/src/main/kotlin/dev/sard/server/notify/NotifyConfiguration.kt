@@ -4,6 +4,7 @@
 package dev.sard.server.notify
 
 import dev.sard.server.fleet.AgentPresence
+import dev.sard.server.metrics.SardMetricNames
 import dev.sard.server.notify.telegram.BotToken
 import dev.sard.server.notify.telegram.TelegramBotApi
 import dev.sard.server.notify.telegram.TelegramChannel
@@ -134,18 +135,18 @@ class MicrometerNotifyMetrics(
     private val pending = AtomicLong()
 
     init {
-        Gauge.builder("sard.notify.pending", pending) { it.get().toDouble() }.register(meters)
+        Gauge.builder(SardMetricNames.NOTIFY_PENDING, pending) { it.get().toDouble() }.register(meters)
     }
 
-    override fun sent(channel: String) = counter("sard.notify.sent", channel).increment()
+    override fun sent(channel: String) = counter(SardMetricNames.NOTIFY_SENT, channel).increment()
 
-    override fun retried(channel: String) = counter("sard.notify.retries", channel).increment()
+    override fun retried(channel: String) = counter(SardMetricNames.NOTIFY_RETRIES, channel).increment()
 
     override fun undelivered(
         channel: String,
         reason: String,
     ) = Counter
-        .builder("sard.notify.undelivered")
+        .builder(SardMetricNames.NOTIFY_UNDELIVERED)
         .tag("channel", channel)
         .tag("reason", reason)
         .register(meters)

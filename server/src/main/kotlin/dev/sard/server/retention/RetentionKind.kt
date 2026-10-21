@@ -3,6 +3,7 @@
 
 package dev.sard.server.retention
 
+import dev.sard.server.metrics.SardMetricNames
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
 
@@ -36,7 +37,7 @@ class MicrometerRetentionMetrics(
 ) : RetentionMetrics {
     private val counters =
         RetentionKind.entries.associateWith {
-            Counter.builder("sard.retention.deleted").tag("kind", it.tag).register(meters)
+            Counter.builder(SardMetricNames.RETENTION_DELETED).tag("kind", it.tag).register(meters)
         }
 
     override fun deleted(

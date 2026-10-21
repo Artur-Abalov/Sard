@@ -173,9 +173,11 @@ class StepResultsIntegrationTest(
                 run.sourceId,
                 tenant.agentId,
                 Trigger.MANUAL,
+                RunKind.BACKUP,
                 RunState.SUCCEEDED,
                 null,
                 clock.now,
+                RUNS_NOW,
             )
         assertEquals(listOf(Heard(expected, "succeeded")), finished.heard)
     }

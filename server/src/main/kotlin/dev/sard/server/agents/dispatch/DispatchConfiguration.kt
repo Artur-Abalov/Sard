@@ -11,6 +11,7 @@ import dev.sard.server.agents.stream.AgentStreamSettings
 import dev.sard.server.agents.stream.AgentStreamSweeper
 import dev.sard.server.agents.stream.CommandReconciliation
 import dev.sard.server.agents.stream.SendResult
+import dev.sard.server.metrics.SardMetricNames
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.runs.RoleLedger
 import dev.sard.server.runs.RoleRefusals
@@ -78,14 +79,14 @@ class ConnectionLinks(
 class MicrometerDispatchMetrics(
     meters: MeterRegistry,
 ) : DispatchMetrics {
-    private val redispatched = Counter.builder("sard.run.steps.redispatched").register(meters)
-    private val refused = Counter.builder("sard.run.steps.dispatch.failed").register(meters)
+    private val redispatched = Counter.builder(SardMetricNames.RUN_STEPS_REDISPATCHED).register(meters)
+    private val refused = Counter.builder(SardMetricNames.RUN_STEPS_DISPATCH_FAILED).register(meters)
     private val queued = AtomicLong()
     private val dispatched = AtomicLong()
 
     init {
-        Gauge.builder("sard.run.steps.queued", queued) { it.get().toDouble() }.register(meters)
-        Gauge.builder("sard.run.steps.dispatched", dispatched) { it.get().toDouble() }.register(meters)
+        Gauge.builder(SardMetricNames.RUN_STEPS_QUEUED, queued) { it.get().toDouble() }.register(meters)
+        Gauge.builder(SardMetricNames.RUN_STEPS_DISPATCHED, dispatched) { it.get().toDouble() }.register(meters)
     }
 
     override fun redispatched() = redispatched.increment()

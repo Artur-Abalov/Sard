@@ -23,10 +23,14 @@ data class RunFinished(
     val sourceId: UUID,
     val agentId: UUID,
     val trigger: Trigger,
+    /** Backup or restore; a run with the trigger verification is told apart by [trigger]. */
+    val kind: RunKind,
     val status: RunState,
     /** Why it failed; null on success. */
     val message: String?,
     val finishedAt: Instant,
+    /** When the server started the run; null for one cancelled before it started. */
+    val startedAt: Instant?,
 )
 
 /** A subscriber to [RunFinished] (S9); called on the thread that finished the run, so it must be quick. */
@@ -75,9 +79,11 @@ class RunAnnouncer(
                     run.sourceId,
                     step.agentId,
                     Trigger.of(run.trigger),
+                    RunKind.of(run.kind),
                     RunState.of(run.status),
                     run.message,
                     checkNotNull(run.finishedAt) { "run ${run.id} is not finished" },
+                    run.startedAt,
                 )
             }
         publisher.publish(event)

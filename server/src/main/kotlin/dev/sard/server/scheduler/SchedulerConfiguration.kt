@@ -3,6 +3,7 @@
 
 package dev.sard.server.scheduler
 
+import dev.sard.server.metrics.SardMetricNames
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.runs.Runs
@@ -66,14 +67,16 @@ class MicrometerSchedulerMetrics(
     private val lagMillis = AtomicLong()
 
     init {
-        Gauge.builder("sard.scheduler.lag.seconds", lagMillis) { it.get() / MILLIS_PER_SECOND }.register(meters)
+        Gauge
+            .builder(SardMetricNames.SCHEDULER_LAG_SECONDS, lagMillis) { it.get() / MILLIS_PER_SECOND }
+            .register(meters)
     }
 
     override fun fired(
         kind: FireKind,
         outcome: FireOutcome,
     ) = Counter
-        .builder("sard.scheduler.fires")
+        .builder(SardMetricNames.SCHEDULER_FIRES)
         .tag("kind", kind.stored)
         .tag("outcome", outcome.stored)
         .register(meters)
