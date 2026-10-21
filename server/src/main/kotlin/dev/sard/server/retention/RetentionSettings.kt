@@ -39,10 +39,9 @@ data class RetentionProperties(
         positive("sard.retention.notification-deliveries", notificationDeliveries)
         positive("sard.retention.interval", interval)
         require(batchSize >= 1) { "sard.retention.batch-size must be at least 1" }
-        require(notificationDeliveries > notifyTtl) {
-            "sard.retention.notification-deliveries ($notificationDeliveries) must be longer than " +
-                "sard.notify.ttl ($notifyTtl)"
-        }
+        longerThanTtl("sard.retention.notification-deliveries", notificationDeliveries, notifyTtl)
+        longerThanTtl("sard.retention.runs", runs, notifyTtl)
+        longerThanTtl("sard.retention.schedule-fires", scheduleFires, notifyTtl)
         return RetentionSettings(
             stepLogs,
             runs,
@@ -53,6 +52,12 @@ data class RetentionProperties(
             batchSize,
         )
     }
+
+    private fun longerThanTtl(
+        name: String,
+        value: Duration,
+        notifyTtl: Duration,
+    ) = require(value > notifyTtl) { "$name ($value) must be longer than sard.notify.ttl ($notifyTtl)" }
 
     private fun positive(
         name: String,

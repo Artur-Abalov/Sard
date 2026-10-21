@@ -88,4 +88,32 @@ class RetentionPropertiesTest {
 
         assertEquals(Duration.ofHours(25), settings.notificationDeliveries)
     }
+
+    @Test
+    fun `Срок запусков или срабатываний не больше ttl уведомлений не даёт серверу стартовать`() {
+        for (hours in listOf(24L, 23L)) {
+            val term = Duration.ofHours(hours)
+            val refused =
+                mapOf(
+                    RetentionProperties(runs = term) to "sard.retention.runs",
+                    RetentionProperties(scheduleFires = term) to "sard.retention.schedule-fires",
+                )
+            for ((properties, name) in refused) {
+                val e = assertFailsWith<IllegalArgumentException> { MutFlow.underTest { properties.settings(TTL) } }
+                val message = e.message.orEmpty()
+                assertTrue(name in message && "sard.notify.ttl" in message, message)
+            }
+        }
+    }
+
+    @Test
+    fun `Срок запусков или срабатываний чуть больше ttl принимается`() {
+        val settings =
+            MutFlow.underTest {
+                RetentionProperties(runs = Duration.ofHours(25), scheduleFires = Duration.ofHours(25)).settings(TTL)
+            }
+
+        assertEquals(Duration.ofHours(25), settings.runs)
+        assertEquals(Duration.ofHours(25), settings.scheduleFires)
+    }
 }

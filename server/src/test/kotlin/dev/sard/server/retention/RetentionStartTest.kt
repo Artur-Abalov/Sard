@@ -67,4 +67,17 @@ class RetentionStartTest {
             )
         }
     }
+
+    @Test
+    fun `Срок запусков или срабатываний не больше ttl уведомлений не даёт серверу стартовать при запуске`() {
+        for (property in listOf("sard.retention.runs", "sard.retention.schedule-fires")) {
+            for (value in listOf("24h", "23h")) {
+                val message = refusal("sard.notify.ttl=24h", "$property=$value")
+                assertTrue(property in message && "sard.notify.ttl" in message, message)
+            }
+            runner.withPropertyValues("sard.notify.ttl=24h", "$property=25h").run { context ->
+                assertNotNull(context.getBean(RetentionSettings::class.java))
+            }
+        }
+    }
 }
