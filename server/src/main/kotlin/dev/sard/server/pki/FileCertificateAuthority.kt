@@ -10,6 +10,7 @@ import java.nio.file.Path
 import java.security.SecureRandom
 import java.time.Clock
 import java.time.Duration
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicLong
 import javax.net.ssl.X509KeyManager
 
@@ -56,6 +57,8 @@ class FileCertificateAuthority(
     override fun fingerprint() = fingerprint
 
     override fun provenance() = opened.provenance
+
+    override fun notAfter(): Instant = ca.certificate.notAfter.toInstant()
 
     override fun keyLocation() = keyFile.toString()
 

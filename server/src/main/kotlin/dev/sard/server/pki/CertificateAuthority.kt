@@ -29,6 +29,9 @@ interface CertificateAuthority {
     /** Where this CA came from, as recorded when it was created or imported (F4a, Р12). */
     fun provenance(): CaProvenance
 
+    /** The end of the root's validity: with it every certificate of the CA stops being accepted (state metrics). */
+    fun notAfter(): Instant
+
     /** Where the root key is kept, as an operator finds it: an absolute file path for the open core. */
     fun keyLocation(): String
 

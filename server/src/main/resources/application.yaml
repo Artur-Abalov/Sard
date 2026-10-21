@@ -117,6 +117,22 @@ sard:
     # The first pass is one interval after the start; a pass deletes in batches until nothing old is left.
     interval: 1h
     batch-size: 500
+  metrics:
+    # Prometheus metrics (H1, phase 3) on a listener of their own, not on the console's port: /actuator/health and
+    # /actuator/info stay on SARD_HTTP_PORT, metrics are on no path of it. GET /metrics only (docs/operator/14-monitoring.md).
+    # Inside the container by default: docker-compose does not publish the port. The server does not start with a
+    # value it cannot work with, and the message names the variable.
+    # An IPv4 or IPv6 address, never a name. Outside loopback (127.0.0.0/8, ::1), including 0.0.0.0 and ::, the
+    # listener opens only with a token.
+    bind: ${SARD_METRICS_BIND:127.0.0.1}
+    # 1 to 65535, not the console's 8080 and not the agents' 9090.
+    port: ${SARD_METRICS_PORT:8081}
+    # Bearer token, at least 32 characters; empty means none. With a token every request needs it, on any address;
+    # without one, loopback answers without authentication. It is never logged or shown in a label or in actuator.
+    token: ${SARD_METRICS_TOKEN:}
+    # How often the state gauges (last success of each source, agents, queues, certificates, self-backup) are read
+    # from the database: the first time at the start, then this long after each reading. A scrape reads memory only.
+    state-interval: ${SARD_METRICS_STATE_INTERVAL:60s}
   console:
     # Where people open the console, as the notification link: <address>/runs/<runId>. Empty means no link.
     # An absolute http or https address with a host, without a query or a fragment; the server does not
@@ -154,6 +170,10 @@ management:
     web:
       exposure:
         include: health,info
+  endpoint:
+    # The exposition is served by sard.metrics.* and by nothing on the console's port (H1, phase 3).
+    prometheus:
+      access: none
 springdoc:
   api-docs:
     path: /v3/api-docs

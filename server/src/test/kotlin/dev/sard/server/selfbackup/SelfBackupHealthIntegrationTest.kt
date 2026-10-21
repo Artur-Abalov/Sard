@@ -6,6 +6,7 @@ package dev.sard.server.selfbackup
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.completeOnboarding
 import dev.sard.server.freshness.FreshnessCheck
+import dev.sard.server.metrics.SelfBackupMetric
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.RUNS_NOW
 import dev.sard.server.runs.RunState
@@ -211,5 +212,44 @@ class SelfBackupHealthIntegrationTest(
 
         assertEquals(SelfBackupHealth.AGENT_REPLACED, state.health)
         assertEquals(listOf(SelfBackupWarning.AGENT_REPLACED, SelfBackupWarning.FAILING), state.warnings)
+    }
+
+    private fun standing(): SelfBackupMetric = MutFlow.underTest { MetricsSelfBackup(selfBackups, tenant.id).current() }
+
+    @Test
+    fun `Состояние для метрик - то же, что в представлении, и время последнего успеха любого системного источника`() {
+        assertEquals(SelfBackupMetric("not_configured", null), standing())
+        val bound = bound()
+        assertEquals(SelfBackupMetric("ok", null), standing())
+
+        val keysAt = RUNS_NOW.plus(Duration.ofHours(1))
+        ran(bound.sources[1].sourceId, "succeeded", keysAt)
+        assertEquals(SelfBackupMetric("ok", keysAt), standing())
+
+        val databaseAt = RUNS_NOW.plus(Duration.ofHours(2))
+        ran(bound.sources[0].sourceId, "succeeded", databaseAt)
+        ran(bound.sources[0].sourceId, "failed", RUNS_NOW.plus(Duration.ofHours(3)))
+        assertEquals(SelfBackupMetric("failing", databaseAt), standing())
+        assertEquals(state().health.name.lowercase(), standing().health)
+        assertEquals(state(), MutFlow.underTest { selfBackups.get(tenant.id, readOnly = true) })
+    }
+
+    @Test
+    fun `Состояние для метрик по просрочке, отключённому расписанию и замене агента`() {
+        val bound = bound()
+        clock.now = RUNS_NOW.plus(Duration.ofDays(3))
+        freshness.tick()
+        assertEquals("overdue", standing().health)
+
+        val closed = java.sql.Timestamp.from(clock.now)
+        jdbc.update("update overdue_episodes set closed_at = ? where tenant_id = ?", closed, tenant.id)
+        val keys = bound.sources[1].sourceId
+        val schedule = schedules.get(tenant.id, keys)!!
+        schedules.set(tenant.id, keys, ScheduleDraft(schedule.cron, schedule.timezone, false))
+        assertEquals("schedule_disabled", standing().health)
+
+        tenant.revoke(tenant.agentId)
+        tenant.insertAgent(UUID.randomUUID())
+        assertEquals("agent_replaced", standing().health)
     }
 }

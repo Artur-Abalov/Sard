@@ -18,15 +18,19 @@ internal const val LOCAL_REPOSITORY = "self-local"
 internal const val FRESH_REPOSITORY = "self-fresh"
 internal const val S3_ID = "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9"
 
-/** A tenant whose built-in agent offers the postgresql and files plugins, its secret and four repositories. */
+/**
+ * A tenant whose built-in agent offers the postgresql and files plugins, its secret and four repositories. [existing]
+ * is a tenant that is there already, such as the installation's default one: it is not created and not dropped.
+ */
 internal class SelfBackupTenant(
     private val jdbc: JdbcTemplate,
+    private val existing: UUID? = null,
 ) {
-    val id: UUID = UUID.randomUUID()
+    val id: UUID = existing ?: UUID.randomUUID()
     val agentId: UUID = UUID.randomUUID()
 
     fun create(): SelfBackupTenant {
-        jdbc.update("insert into tenants (id, name) values (?, ?)", id, "self-$id")
+        if (existing == null) jdbc.update("insert into tenants (id, name) values (?, ?)", id, "self-$id")
         insertAgent(agentId)
         return this
     }
@@ -136,6 +140,6 @@ internal class SelfBackupTenant(
         for (table in tables) {
             jdbc.update("delete from $table where tenant_id = ?", id)
         }
-        jdbc.update("delete from tenants where id = ?", id)
+        if (existing == null) jdbc.update("delete from tenants where id = ?", id)
     }
 }

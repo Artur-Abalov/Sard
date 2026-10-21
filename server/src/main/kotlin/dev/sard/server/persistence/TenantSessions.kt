@@ -31,14 +31,27 @@ class TenantSessions(
      * must find a row before its tenant is known (ADR 0013, "Целевая схема"); each
      * caller is listed in ADR 0013.
      */
-    fun <T> system(work: (Session) -> T): T =
-        open(SYSTEM_TENANT_ID) { session ->
-            session.isDefaultReadOnly = true
-            session.doWork { connection: Connection ->
-                connection.createStatement().use { it.execute("SET TRANSACTION READ ONLY") }
-            }
-            work(session)
+    fun <T> system(work: (Session) -> T): T = open(SYSTEM_TENANT_ID) { session -> work(readOnly(session)) }
+
+    /**
+     * Reads as [tenantId], in a read-only transaction: for the work that must be seen to write nothing, such as the
+     * state metrics' look at the self-backup. A write in [work] fails in the database.
+     */
+    fun <T> inTenantReadOnly(
+        tenantId: UUID,
+        work: (Session) -> T,
+    ): T {
+        require(tenantId != SYSTEM_TENANT_ID) { "the system identifier is not a tenant" }
+        return open(tenantId) { session -> work(readOnly(session)) }
+    }
+
+    private fun readOnly(session: Session): Session {
+        session.isDefaultReadOnly = true
+        session.doWork { connection: Connection ->
+            connection.createStatement().use { it.execute("SET TRANSACTION READ ONLY") }
         }
+        return session
+    }
 
     private fun <T> open(
         tenantId: UUID,

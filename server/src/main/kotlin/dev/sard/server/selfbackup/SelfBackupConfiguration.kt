@@ -3,6 +3,7 @@
 
 package dev.sard.server.selfbackup
 
+import dev.sard.server.extension.TenantResolver
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.persistence.UuidV7
 import dev.sard.server.runs.Runs
@@ -29,6 +30,10 @@ class SelfBackupConfiguration {
 
     @Bean
     fun systemSourceLookup(sessions: TenantSessions) = SystemSourceLookup(sessions)
+
+    /** What the metrics tick asks about the self-backup: the installation's default tenant's (H1 phase 3). */
+    @Bean
+    fun selfBackupSource(selfBackups: SelfBackups) = MetricsSelfBackup(selfBackups, TenantResolver.DEFAULT_TENANT_ID)
 
     @Bean
     fun selfBackups(

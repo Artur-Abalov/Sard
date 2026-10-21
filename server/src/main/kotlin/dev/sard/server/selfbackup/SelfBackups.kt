@@ -171,9 +171,17 @@ class SelfBackups internal constructor(
         }
     }
 
-    fun get(tenantId: UUID): SelfBackupView {
+    /** The self-backup of [tenantId]; [readOnly] reads in a read-only transaction, as the state metrics must. */
+    fun get(
+        tenantId: UUID,
+        readOnly: Boolean = false,
+    ): SelfBackupView {
         val complete = onboardingComplete()
-        return sessions.inTenant(tenantId) { session -> viewIn(session, complete) }
+        return if (readOnly) {
+            sessions.inTenantReadOnly(tenantId) { session -> viewIn(session, complete) }
+        } else {
+            sessions.inTenant(tenantId) { session -> viewIn(session, complete) }
+        }
     }
 
     /**

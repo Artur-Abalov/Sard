@@ -24,6 +24,7 @@ private val ISOLATED_PACKAGES =
         "selfagent",
         "selfbackup",
         "retention",
+        "metrics",
     )
 
 // downloads/ holds both domain types and the HTTP adapter that serves the package files. Only the
@@ -51,6 +52,18 @@ private val STRING_CONCATENATION = Regex(""""\s*\+\s*"""")
 private val STRING_LITERAL = Regex("""\"{3}(.*?)\"{3}|"((?:[^"\\]++|\\.)*+)"""", RegexOption.DOT_MATCHES_ALL)
 private val NATIVE_SQL_SOURCE =
     Regex("""\bimport org\.springframework\.jdbc\b|\bcreateNative(Mutation)?Query\b|\bprepareStatement\b""")
+private val METRIC_NAME_CONSTANT = Regex("""const\s+val\s+(\w+)\s*=\s*"(sard\.[a-z.]+)"""")
+private val METRIC_BUILDER_LITERAL =
+    Regex(
+        """\b(Counter|Gauge|Timer|DistributionSummary|LongTaskTimer|FunctionCounter|TimeGauge)""" +
+            """\s*\.builder\(\s*"sard\.|\.(counter|gauge|timer|summary)\(\s*"sard\.""",
+    )
+private const val EXPECTED_METRIC_NAMES = 31
+private val TOKEN_STRING_COMPARISON =
+    Regex(
+        """\.equals\(|contentEquals|\b(token|offered|expected|authorization)\s*[!=]=\s*+(?!null\b)""" +
+            """|[!=]=\s*(token|offered|expected|authorization)\b""",
+    )
 private val SQL_CONSTANT =
     Regex("""\bconst\s+val\s+\w+\s*=\s*\"{1,3}\s*(select|delete|update|insert|with)\b""", RegexOption.IGNORE_CASE)
 
@@ -243,6 +256,7 @@ class ArchitectureTest {
                 "fleet/AgentCertificateCheck.kt",
                 "freshness/FreshnessCheck.kt",
                 "notify/Deliveries.kt",
+                "metrics/StateQueries.kt",
                 "retention/RetentionPass.kt",
                 "runs/StepCounts.kt",
                 "runs/StepDeadlines.kt",
@@ -258,6 +272,56 @@ class ArchitectureTest {
         val named = ktFiles(mainRoot).sumOf { Regex("sard\\.retention\\.deleted").findAll(it.readText()).count() }
 
         assertEquals(1, named, "the name of the counter of deleted rows is written once, in main")
+    }
+
+    private fun metricNames(): Map<String, String> {
+        val file = File(mainRoot, "metrics/SardMetricNames.kt")
+        check(file.isFile) { "the names of the metrics of Sard are declared in $file" }
+        val declarations = METRIC_NAME_CONSTANT.findAll(withoutComments(file.readText()))
+        return declarations.associate { it.groupValues[1] to it.groupValues[2] }
+    }
+
+    @Test
+    fun `the names of the metrics of Sard are declared in one file and each is written once in main`() {
+        val names = metricNames()
+        val sources = ktFiles(mainRoot).associateWith { withoutComments(it.readText()) }
+
+        assertTrue(names.size >= EXPECTED_METRIC_NAMES, "the file declares only ${names.size} names")
+        assertEquals(names.size, names.values.toSet().size, "a name is declared twice: ${names.values}")
+        for ((constant, name) in names) {
+            val written = sources.values.sumOf { Regex(Regex.escape("\"$name\"")).findAll(it).count() }
+            assertEquals(1, written, "$constant = \"$name\" is written $written times in main")
+        }
+        val others = sources.filterKeys { it.name != "SardMetricNames.kt" }
+        val outside = others.filterValues { METRIC_BUILDER_LITERAL.containsMatchIn(it) }.keys.map { it.name }
+        assertTrue(outside.isEmpty(), "a metric named by a literal outside the names file: $outside")
+    }
+
+    @Test
+    fun `the token of the metrics listener is compared in constant time over bytes`() {
+        val files = ktFiles(File(mainRoot, "metrics"))
+        val token = withoutComments(File(mainRoot, "metrics/BearerToken.kt").readText())
+
+        assertTrue("MessageDigest.isEqual(" in token, "the token is compared by MessageDigest.isEqual")
+        val offenders = files.filter { TOKEN_STRING_COMPARISON.containsMatchIn(withoutComments(it.readText())) }
+        assertTrue(offenders.isEmpty(), "string comparison near the token: ${offenders.map { it.name }}")
+        assertTrue(TOKEN_STRING_COMPARISON.containsMatchIn("if (token == offered) ok"))
+        assertTrue(TOKEN_STRING_COMPARISON.containsMatchIn("header.equals(token)"))
+        assertTrue(!TOKEN_STRING_COMPARISON.containsMatchIn("MessageDigest.isEqual(expected, offered)"))
+    }
+
+    @Test
+    fun `a metric builder given a literal name is found by the scan`() {
+        val fixtures =
+            listOf(
+                "Counter.builder(\"sard.x\").register(m)",
+                "Counter\n.builder(\n\"sard.x.y\")",
+                "meters.counter(\"sard.x\")",
+                "Gauge.builder(\"sard.q\", a) { 1.0 }",
+                "Timer.builder(\"sard.q\")",
+            )
+        for (fixture in fixtures) assertTrue(METRIC_BUILDER_LITERAL.containsMatchIn(fixture), fixture)
+        assertTrue(!METRIC_BUILDER_LITERAL.containsMatchIn("Counter.builder(SardMetricNames.RETENTION_DELETED)"))
     }
 
     @Test
