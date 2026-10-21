@@ -31,8 +31,8 @@ Sard — консоль резервного копирования для ра�
 
 ### Чего пока нет
 
-Восстановления из консоли (сейчас восстановление — ручной `restic restore`,
-см. [docs/demo.md](docs/demo.md)), проверки восстановления, других источников (MySQL, сетевые устройства, 1С), больше одного
+Восстановления из консоли поверх данных (сейчас консоль восстанавливает files и
+PostgreSQL только в новое место), проверки восстановления, других источников (MySQL, сетевые устройства, 1С), больше одного
 тенанта, команд `sardctl`, кроме `version`. Планы, не обещания: [docs/roadmap.md](docs/roadmap.md).
 
 ## Как устроено
@@ -75,7 +75,7 @@ Sard — консоль резервного копирования для ра�
 
 <!-- quickstart:begin -->
 ```bash
-SARD_TAG=v0.0.1-rc.1
+SARD_TAG=v0.1.0-beta.1
 mkdir -p ~/sard && cd ~/sard
 curl -fsSLO "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/docker-compose.yml"
 curl -fsSL -o .env "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/sard.env.example"
