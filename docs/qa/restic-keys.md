@@ -4,9 +4,11 @@
 # QA: ключи restic — ключ верификатора и ключ восстановления (V3)
 
 Спецификация: `docs/specs/agent/restic-keys.feature`,
-`docs/specs/server/restic-keys.feature`, `docs/specs/web/restic-keys.feature`.
+`docs/specs/proto/restic-keys.feature`, `docs/specs/server/restic-keys.feature`,
+`docs/specs/web/restic-keys.feature`.
 
-Статус: черновик, вместе со спецификацией ждёт утверждения владельцем.
+Статус: черновик, вместе со спецификацией ждёт утверждения владельцем (ответы
+на вопросы В1–В10, ВС1 получены 2026-10-21).
 
 ## Стенд
 
@@ -53,6 +55,16 @@
    `journalctl -t sard-agent` строка «repository recovery key skipped» с
    `base3` и вашим пользователем.
 
+6а. В `/etc/sard/agent.yaml` добавить репозиторий `init1` (локальный путь
+   `/srv/init1`, `password_file /etc/sard/secrets/restic-init1.pass`), затем
+   `sudo sard-agent repo init init1 --generate-password` в терминале.
+   Ожидается: код 0; после init пароль ключа восстановления один раз;
+   `sudo sard-agent repo key list init1` показывает ключ `recovery`.
+6б. Добавить `init2` так же и выполнить
+   `sudo sard-agent repo init init2 --generate-password < /dev/null | cat`.
+   Ожидается: код 2, `RECOVERY_KEY_OUTPUT_MISSING`; каталог `/srv/init2` не
+   содержит репозитория, файла пароля нет.
+
 ## B. Ключ верификатора (SRC)
 
 7. `sudo sard-agent repo key add base --for verifier --label vrf-1`.
@@ -69,7 +81,8 @@
     Ожидается: код 2, `KEY_OUTPUT_MISSING`, подсказка `--to-file`; новых ключей
     нет.
 11. `sudo sard-agent repo key add base --for verifier --label vrf-2 --to-file /root/vrf2.key`.
-    Ожидается: код 0; `stat -c '%U %G %a'` → `root root 600`; в stdout нет
+    Ожидается: код 0; служба не перезапускалась (`systemctl show -p
+    ActiveEnterTimestamp sard-agent` не изменился); `stat -c '%U %G %a'` → `root root 600`; в stdout нет
     пароля; повтор той же команды с `--label vrf-3` и тем же путём — код 2,
     `KEY_FILE_EXISTS`, файл не изменён.
 12. `sard-agent repo key add base --for recovery` без sudo.
@@ -163,9 +176,40 @@
 38. В инструментах разработчика браузера просмотреть все ответы `/api/v1/self-backup*`.
     Ожидается: ни один не содержит пароль из шага 34.
 
-## G. Документация
+## G. Признак на сервере и баннер (SRC, VRF, консоль обычной установки)
 
-39. Открыть раздел документации оператора о ключах restic.
+40. На SRC подключить `base4` (новый S3-префикс) с `--no-recovery-key`
+    (команда перезапускает службу). Открыть консоль.
+    Ожидается: в течение минуты на каждой странице баннер «нет ключа
+    восстановления» с числом 1; страница репозиториев показывает id `base4`,
+    держателя `src1`, отметку «нет ключа» и команду
+    `sudo sard-agent repo key add base4 --for recovery`.
+41. Выполнить эту команду на SRC.
+    Ожидается: код 0, пароль один раз, stdout «restarted»; в течение минуты
+    баннер пропадает, `base4` — «есть ключ».
+42. `sudo sard-agent repo key remove base4 <id ключа recovery> --yes`.
+    Ожидается: код 0, «restarted»; в течение минуты баннер возвращается.
+43. Карточка агента SRC.
+    Ожидается: у каждого репозитория отметка признака; `base` — «есть ключ».
+44. Карточка агента VRF.
+    Ожидается: блок «ключ верификатора» по репозиториям SRC, которых VRF не
+    держит (`base4`): команда
+    `sudo sard-agent repo key add base4 --for verifier --label vrf-<8 знаков id VRF>`
+    и шаблон `sudo sard-agent repo add base4 <address> --password-from-file <file>`.
+    Выполнить команду на SRC: напечатанная команда `repo add` совпадает с
+    шаблоном, кроме адреса и файла.
+45. В инструментах разработчика просмотреть ответы `/api/v1/repositories` и
+    `/api/v1/agents/*`.
+    Ожидается: нет паролей, id ключей и меток — только `recoveryKey`.
+46. Остановить агент SRC, подменить restic недоступным хранилищем (отключить
+    сеть к Garage на SRC), запустить агент.
+    Ожидается: агент подключается; в `journalctl -u sard-agent` строка WARN с
+    именем репозитория без учётных данных; консоль показывает признак
+    «неизвестно», баннер не считает такие репозитории. Вернуть сеть.
+
+## H. Документация
+
+47. Открыть раздел документации оператора о ключах restic.
     Ожидается: описаны три команды, хранение ключа восстановления, учётка
     только на чтение для верификатора и то, что удаление ключа не меняет
     мастер-ключ — полная смена доступа означает новый репозиторий.
