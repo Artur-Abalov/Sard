@@ -6,6 +6,7 @@ package dev.sard.server.retention
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 private val SQL_COMMENT = Regex("""--.*$""", RegexOption.MULTILINE)
@@ -48,29 +49,44 @@ private data class ForeignKey(
  * inside one tenant (ADR 0013, rule 8).
  */
 class RetentionSqlRulesTest {
-    private fun foreignKeys(): List<ForeignKey> {
+    /** The text of every migration without its comments, in the order Flyway applies them. */
+    private fun migrations(): List<String> {
         val dir = File("src/main/resources/db/migration")
         check(dir.isDirectory) { "expected the Flyway migrations at $dir" }
         return dir
             .listFiles { f -> f.extension == "sql" }!!
             .sortedBy { it.name }
-            .flatMap { it.readText().replace(SQL_COMMENT, "").split(';') }
+            .map { it.readText().replace(SQL_COMMENT, "") }
+    }
+
+    private fun foreignKeys(): List<ForeignKey> =
+        migrations()
+            .flatMap { it.split(';') }
             .flatMap { statement ->
                 val owner = STATEMENT_OWNER.find(statement)?.groupValues?.get(1) ?: return@flatMap emptyList()
                 val found = TENANT_FOREIGN_KEY.findAll(statement)
                 found.map { ForeignKey(owner, it.groupValues[1], it.groupValues[2]) }.toList()
             }
-    }
 
-    private fun names(
-        text: String,
-        word: String,
-    ) = Regex("""\b$word\b""").containsMatchIn(text)
+    /** Words that can follow a table name in SQL without being its alias. */
+    private val notAliases = setOf("where", "using", "on", "join", "set")
+
+    /** [owner] appears in [sql] under an alias, and that alias is used with [column]: `owner o ... o.column`. */
+    private fun refersBy(
+        sql: String,
+        owner: String,
+        column: String,
+    ): Boolean =
+        Regex("""\b$owner\s+(\w+)\b""")
+            .findAll(sql)
+            .map { it.groupValues[1] }
+            .filter { it.lowercase() !in notAliases }
+            .any { alias -> Regex("""\b$alias\.$column\b""").containsMatchIn(sql) }
 
     /**
-     * References that the cleaning does not meet in a batch: the rows of `snapshots` are never deleted and a run
-     * with one is not picked at all, and `step_logs` lines leave with their partition; the batches name both in
-     * their NOT EXISTS (checked below), so they need no entry here. Listed only when a batch cannot name the key.
+     * References that the cleaning does not meet in a batch: none today. The rows of `snapshots` are never deleted and a
+     * run with one is not picked at all, and `step_logs` lines leave with their partition; the batches name both in their
+     * NOT EXISTS, so they need no entry here. Listed only when a batch cannot name the key.
      */
     private val unnamedOnPurpose = emptySet<ForeignKey>()
 
@@ -83,7 +99,7 @@ class RetentionSqlRulesTest {
         val missing =
             keys
                 .filter { it.target in CLEANED && it !in unnamedOnPurpose }
-                .filter { key -> BATCHES.values.none { names(it, key.owner) && names(it, key.column) } }
+                .filter { key -> BATCHES.values.none { refersBy(it, key.owner, key.column) } }
 
         val report = missing.joinToString("\n")
         assertTrue(missing.isEmpty(), "foreign keys into cleaned tables that no batch names:\n$report")
@@ -111,6 +127,22 @@ class RetentionSqlRulesTest {
     fun `Охрана находит пропущенную ссылку`() {
         val key = ForeignKey("invented_table", "run_id", "runs")
 
-        assertTrue(BATCHES.values.none { names(it, key.owner) && names(it, key.column) })
+        assertTrue(BATCHES.values.none { refersBy(it, key.owner, key.column) })
+    }
+
+    @Test
+    fun `Охрана различает таблицу и колонку из разных мест пачки`() {
+        assertTrue(refersBy(RUNS, "verification_jobs", "run_id"))
+        assertFalse(refersBy(RUNS, "verification_jobs", "step_id"))
+    }
+
+    @Test
+    fun `Каждый REFERENCES на очищаемую таблицу разобран`() {
+        val sql = migrations().joinToString("\n")
+        val tables = CLEANED.joinToString("|")
+        val references = Regex("""\bREFERENCES\s+($tables)\b""", RegexOption.IGNORE_CASE).findAll(sql).count()
+        val parsed = foreignKeys().count { it.target in CLEANED }
+
+        assertEquals(references, parsed, "FK не разобран TENANT_FOREIGN_KEY — 3+ колонок или другой порядок")
     }
 }

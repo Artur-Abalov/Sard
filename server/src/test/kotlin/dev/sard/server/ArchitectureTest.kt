@@ -52,7 +52,7 @@ private val STRING_LITERAL = Regex("""\"{3}(.*?)\"{3}|"((?:[^"\\]++|\\.)*+)"""",
 private val NATIVE_SQL_SOURCE =
     Regex("""\bimport org\.springframework\.jdbc\b|\bcreateNative(Mutation)?Query\b|\bprepareStatement\b""")
 private val SQL_CONSTANT =
-    Regex("""\bconst\s+val\s+\w+\s*=\s*\"{3}\s*(select|delete|update|insert|with)\b""", RegexOption.IGNORE_CASE)
+    Regex("""\bconst\s+val\s+\w+\s*=\s*\"{1,3}\s*(select|delete|update|insert|with)\b""", RegexOption.IGNORE_CASE)
 
 /** A file that runs native SQL by a JDBC call, or keeps its queries as constants (retention/RetentionSql.kt). */
 private fun isNativeSqlSource(text: String): Boolean {
@@ -420,9 +420,10 @@ class ArchitectureTest {
     private fun unscopedTenantSql(
         source: String,
         tenantTable: Regex,
+        shared: Map<String, String> = emptyMap(),
     ): List<String> {
         val text = withoutComments(source).replace(STRING_CONCATENATION, "")
-        val constants = NAMED_LITERAL.findAll(text).associate { it.groupValues[1] to literalText(it) }
+        val constants = shared + NAMED_LITERAL.findAll(text).associate { it.groupValues[1] to literalText(it) }
         return STRING_LITERAL
             .findAll(text)
             .map { expanded(it.groupValues[1] + it.groupValues[2], constants).trim() }
@@ -456,20 +457,30 @@ class ArchitectureTest {
         val literals = STRING_LITERAL.findAll(withoutComments(text))
         val scanned = literals.count { tenantTable.containsMatchIn(it.value) }
         assertTrue(scanned >= 5, "the scan sees only $scanned queries of RetentionSql.kt")
-        val fixture = "private const val BAD = \"\"\"delete from runs where id = 1\"\"\""
-        assertTrue(isNativeSqlSource(fixture))
-        assertEquals(listOf("delete from runs where id = 1"), unscopedTenantSql(fixture, tenantTableRegex()))
+        val quoted = "private const val BAD = \"delete from runs where id = 1\""
+        val raw = "private const val BAD = \"\"\"delete from runs where id = 1\"\"\""
+        for (fixture in listOf(quoted, raw)) {
+            assertTrue(isNativeSqlSource(fixture), fixture)
+            assertEquals(listOf("delete from runs where id = 1"), unscopedTenantSql(fixture, tenantTableRegex()))
+        }
     }
 
     @Test
     fun `native SQL on a tenant table names tenant_id (ADR 0013, rule 8)`() {
         val tenantTable = tenantTableRegex()
+        // A fragment such as STEP is declared in one file and used in another.
+        val shared =
+            ktFiles(mainRoot)
+                .flatMap { file ->
+                    val text = withoutComments(file.readText()).replace(STRING_CONCATENATION, "")
+                    NAMED_LITERAL.findAll(text).map { it.groupValues[1] to literalText(it) }.toList()
+                }.toMap()
         val found = mutableMapOf<String, Set<String>>()
         val offenders =
             ktFiles(mainRoot)
                 .filter { isNativeSqlSource(it.readText()) }
                 .flatMap { file ->
-                    val unscoped = unscopedTenantSql(file.readText(), tenantTable)
+                    val unscoped = unscopedTenantSql(file.readText(), tenantTable, shared)
                     val listed = TENANT_SQL_EXCEPTIONS[file.name].orEmpty()
                     found[file.name] = unscoped.filter { it in listed }.toSet()
                     unscoped.filter { it !in listed }.map { "${file.path}: $it" }

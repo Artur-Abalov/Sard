@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.system.CapturedOutput
 import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.jdbc.core.JdbcTemplate
+import java.sql.SQLException
 import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -368,6 +369,9 @@ class RetentionVolumeIntegrationTest(
             assertTrue(appendMs <= lockTimeout.toMillis() + 1000, "the write waited $appendMs ms")
             assertTrue(runMs <= lockTimeout.toMillis(), "run creation waited $runMs ms")
             assertTrue(dropped.isFailure, "the drop gave up at lock_timeout")
+            val causes = generateSequence(dropped.exceptionOrNull()) { it.cause }
+            val states = causes.filterIsInstance<SQLException>().map { it.sqlState }.toList()
+            assertTrue("55P03" in states, "the drop failed by lock_timeout (55P03), not otherwise: $states")
             assertEquals(1, count(a, "step_logs", "step_id = '$step'"))
             val stepStatus = jdbc.queryForObject("select status from run_steps where id = ?", String::class.java, step)
             val runStatus = jdbc.queryForObject("select status from runs where id = ?", String::class.java, running.id)
@@ -383,7 +387,12 @@ class RetentionVolumeIntegrationTest(
     private fun waitForPendingLock() {
         val deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos()
         while (System.nanoTime() < deadline) {
-            val waiting = jdbc.queryForObject("select count(*) from pg_locks where not granted", Int::class.java) ?: 0
+            val waiting =
+                jdbc.queryForObject(
+                    "select count(*) from pg_locks where not granted " +
+                        "and relation in ('step_logs_2027_01'::regclass, 'step_logs'::regclass)",
+                    Int::class.java,
+                ) ?: 0
             if (waiting > 0) return
             Thread.sleep(20)
         }
