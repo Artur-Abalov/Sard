@@ -18,7 +18,9 @@ import (
 //go:embed schema.json
 var schema []byte
 
-// Plugin backs up one PostgreSQL database.
+// Plugin backs up one PostgreSQL database and restores it into a new one; it
+// also plans the files of a snapshot for "sard-agent repo restore" and looks for
+// the client programs on the host.
 // Restore verification will start the restored dump in a sandbox container and run check queries (roadmap: restore verification, stage 2).
 type Plugin struct {
 	// AgentVersion is the version of sard-agent, which ships the plugin.

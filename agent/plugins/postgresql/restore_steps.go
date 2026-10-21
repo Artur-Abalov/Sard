@@ -6,7 +6,6 @@ package postgresql
 import (
 	"context"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
@@ -119,8 +118,8 @@ func (a *restoreRun) recordRoles(ctx context.Context) *sdk.RestoreError {
 			continue
 		}
 		o := a.conn.psql(ctx, maintenanceDB, roleOIDScript, "name", role.Name)
-		oid, err := strconv.ParseUint(o.last(), 10, 32)
-		if !o.ok() || err != nil || oid == 0 {
+		oid, ok := o.number(32)
+		if !ok || oid == 0 {
 			return a.fail(ReasonGlobalsFailed, stageGlobals, "the role %q was created but its OID cannot be read: %s", role.Name, o.problem())
 		}
 		a.entry.Roles[i].OID = uint32(oid)
@@ -155,8 +154,8 @@ func (a *restoreRun) createDatabase() *sdk.RestoreError {
 // is the step's: its CREATE succeeded, so the name leads to it now.
 func (a *restoreRun) recordDatabase(ctx context.Context) *sdk.RestoreError {
 	o := a.conn.psql(ctx, maintenanceDB, databaseOIDScript, "dbname", a.database)
-	oid, err := strconv.ParseUint(o.last(), 10, 32)
-	if !o.ok() || err != nil || oid == 0 {
+	oid, ok := o.number(32)
+	if !ok || oid == 0 {
 		return a.fail(ReasonCreateDatabase, stageCreateDB, "the database %q was created but its OID cannot be read: %s", a.database, o.problem())
 	}
 	a.entry.Database.OID = uint32(oid)
@@ -206,8 +205,8 @@ const tablesScript = `select count(*) from pg_class c join pg_namespace n on n.o
 
 func (a *restoreRun) countTables() (uint64, *sdk.RestoreError) {
 	o := a.conn.psql(a.ctx, a.database, tablesScript)
-	n, err := strconv.ParseUint(o.last(), 10, 64)
-	if !o.ok() || err != nil {
+	n, ok := o.number(64)
+	if !ok {
 		return 0, a.fail(ReasonRestoreFailed, stageRestore, "cannot count the tables of the new database: %s", o.problem())
 	}
 	return n, nil

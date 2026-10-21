@@ -41,7 +41,7 @@ func (p Plugin) Dump(ctx context.Context, h sdk.Host, cfg sdk.Config) (sdk.Dump,
 			"pg_dump_version": done.pgDump.text,
 			"database":        name,
 			"format":          "custom",
-			"part":            "database",
+			"part":            partDatabase,
 		},
 	}
 	if done.systemID != "" {
@@ -84,7 +84,7 @@ func (p Plugin) globals(ctx context.Context, h sdk.Host, c config, done checked)
 		"server_version":  done.server.text,
 		"pg_dump_version": done.pgDumpall.text,
 		"format":          "plain",
-		"part":            "globals",
+		"part":            partGlobals,
 		"role_passwords":  fmt.Sprint(c.GlobalsRolePasswords),
 	}}, nil
 }

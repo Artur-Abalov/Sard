@@ -38,10 +38,11 @@ type written struct {
 // (sdk.ExtractFile).
 type File struct{ SnapshotID, Path, Name string }
 
-// WriteFiles writes the files into the held target, each the way Р62 says: a temporary file .<name>.tmp-<random> made O_EXCL, given
-// root:root and 0600 before any content (Н29, whatever the umask), filled by
-// restic, synced, moved to its name without replacing, compared with the file
-// written (Р87) and the directory synced. A failure leaves neither a temporary
+// WriteFiles writes the files into the held target, each the way Р62 says: a
+// temporary file .<name>.tmp-<random> made O_EXCL, given root:root and 0600
+// before any content (Н29, whatever the umask), filled by restic, synced,
+// moved to its name without replacing, compared with the file written (Р87)
+// and the directory synced. A failure leaves neither a temporary
 // nor a final file: the files this run already finished are taken back. A
 // name that leads to another file than the agent wrote is never removed; the
 // failure names it. random is the random part of a name.
@@ -126,7 +127,7 @@ func newPending(h *Held, name string, random func() string) (*pending, *refusal.
 // not closed when that fails: abandon judges its name first, with it still
 // open, and closes it after.
 func (p *pending) fill(ctx context.Context, d Dumper, file File, target repoinit.Target) *refusal.Failure {
-	w := &countingWriter{w: p.out}
+	w := &errWriter{w: p.out}
 	f := prepare(p.out, p.h.Path, p.remove)
 	if f == nil {
 		err := d.Dump(ctx, file.SnapshotID, file.Path, w)
@@ -218,14 +219,14 @@ func outcome(ctx context.Context, dumpErr, writeErr error, dir string, target re
 	return nil
 }
 
-// countingWriter remembers the first error of the file, so that it can be
+// errWriter remembers the first error of the file, so that it can be
 // told from the error restic ends with when its output cannot be written.
-type countingWriter struct {
+type errWriter struct {
 	w   io.Writer
 	err error
 }
 
-func (c *countingWriter) Write(p []byte) (int, error) {
+func (c *errWriter) Write(p []byte) (int, error) {
 	n, err := c.w.Write(p)
 	if err != nil && c.err == nil {
 		c.err = err

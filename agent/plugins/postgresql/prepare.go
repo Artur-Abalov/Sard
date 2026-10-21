@@ -171,19 +171,36 @@ func isDigits(s string) bool {
 	return s != "" && strings.IndexFunc(s, func(r rune) bool { return r < '0' || r > '9' }) < 0
 }
 
-// parseProbe reads the row of the probe: version number, superuser, member of
-// pg_read_all_data, role (last, it may hold any character).
-func parseProbe(out string) (role, error) {
-	line, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+// probeRow is the row both probes (of a backup and of a restore) read: the
+// version number of the server, superuser, a right the probe asks about, role
+// (last, it may hold any character).
+type probeRow struct {
+	server           version
+	super, privilege bool
+	name             string
+}
+
+func parseProbeRow(line string) (probeRow, error) {
 	f := strings.SplitN(line, "|", 4)
 	if len(f) != 4 {
-		return role{}, fmt.Errorf("unexpected answer of psql: %q", line)
+		return probeRow{}, fmt.Errorf("unexpected answer of psql: %q", line)
 	}
 	num, err := strconv.Atoi(f[0])
 	if err != nil {
-		return role{}, fmt.Errorf("unexpected answer of psql: %q", line)
+		return probeRow{}, fmt.Errorf("unexpected answer of psql: %q", line)
 	}
-	return role{server: serverVersion(num), super: f[1] == "t", readsData: f[2] == "t", name: f[3]}, nil
+	return probeRow{server: serverVersion(num), super: f[1] == "t", privilege: f[2] == "t", name: f[3]}, nil
+}
+
+// parseProbe reads the row of the probe: the right asked about is the
+// membership of pg_read_all_data.
+func parseProbe(out string) (role, error) {
+	line, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+	row, err := parseProbeRow(line)
+	if err != nil {
+		return role{}, err
+	}
+	return role{server: row.server, super: row.super, readsData: row.privilege, name: row.name}, nil
 }
 
 // checkVersions: the server is supported and pg_dump is not older (F1 ПГ7).

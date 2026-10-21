@@ -206,33 +206,38 @@ func (s *Store) List() ([]Record, []Unreadable, error) {
 
 // collectDir reads the journal directory into found.
 func (s *Store) collectDir(found *listing) error {
-	names, err := s.opts.FS.ReadDir(s.opts.Dir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
+	names, err := s.names(s.opts.Dir)
 	for _, n := range names {
-		s.collect(n.Name(), found)
+		s.collect(n, found)
 	}
-	return nil
+	return err
+}
+
+// names are the names in a directory of the journal; a directory that was
+// never made has none, and is no error.
+func (s *Store) names(dir string) ([]string, error) {
+	entries, err := s.opts.FS.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			err = nil
+		}
+		return nil, err
+	}
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.Name()
+	}
+	return names, nil
 }
 
 // collectLegacy reads a directory of the previous release into found, except the
 // commands in named: those have their entry in the journal.
 func (s *Store) collectLegacy(l Legacy, named map[string]bool, found *listing) error {
-	names, err := s.opts.FS.ReadDir(l.Dir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
+	names, err := s.names(l.Dir)
 	for _, n := range names {
-		s.collectLegacyFile(l, n.Name(), named, found)
+		s.collectLegacyFile(l, n, named, found)
 	}
-	return nil
+	return err
 }
 
 // collectLegacyFile judges one name of a directory of the previous release.

@@ -5,9 +5,7 @@ package postgresql
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"strconv"
 	"strings"
 )
 
@@ -55,17 +53,11 @@ type restoreProbe struct {
 // version goes first so that a server without a column the rest needs still answers.
 const restoreProbeScript = `select current_setting('server_version_num'), r.rolsuper, r.rolcreatedb, current_user from pg_roles r where r.rolname = current_user;`
 
-// parseRestoreProbe reads the row: version number, superuser, CREATEDB, role
-// (last, it may hold any character).
+// parseRestoreProbe reads the row: the right asked about is CREATEDB.
 func parseRestoreProbe(o outcome) (restoreProbe, error) {
-	line := o.last()
-	f := strings.SplitN(line, "|", 4)
-	if len(f) != 4 {
-		return restoreProbe{}, fmt.Errorf("unexpected answer of psql: %q", line)
-	}
-	num, err := strconv.Atoi(f[0])
+	row, err := parseProbeRow(o.last())
 	if err != nil {
-		return restoreProbe{}, fmt.Errorf("unexpected answer of psql: %q", line)
+		return restoreProbe{}, err
 	}
-	return restoreProbe{server: serverVersion(num), super: f[1] == "t", createdb: f[2] == "t", user: f[3]}, nil
+	return restoreProbe{server: row.server, super: row.super, createdb: row.privilege, user: row.name}, nil
 }

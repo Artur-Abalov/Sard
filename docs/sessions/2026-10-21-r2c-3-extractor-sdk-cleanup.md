@@ -105,3 +105,37 @@
 - `make license-check`: 1666 файлов в порядке.
 
 Дальше: `cleaner` (метрики), затем architect и hardener (мутационное тестирование — один раз).
+
+## cleaner
+
+Объём: `git diff 6075d52..HEAD -- agent` (R2c-2 и R2c-3), прочитаны все файлы кроме тестов
+в `plugins/postgresql` (включая `pgclient`), `plugins/sdk` (`extract`, `programs`, `restore*`),
+`internal/restore`, `internal/restorejournal`, а также диффы `pluginhost`, `consolerestore`,
+`refusal`, `hostcheck`, `cmd/sard-agent`; тесты просмотрены на дубли помощников (общий стенд
+`restore_rig_test.go` уже общий, дублей нет).
+
+Метрики до: `crap.sh agent` и `crap.sh sdk` — максимум 6.0 (порог), ни одна функция выше.
+
+Сделано (поведение не менялось):
+- `plugins/postgresql/restore_prepare.go` (269 строк) разделён по ответственности: потоковый
+  запуск `pg_restore` с `restic dump` (`stream`, `dumpRun`, `countingWriter`, `streamFailure`)
+  вынесен в `restore_stream.go`.
+- `outcome.number(bits)` заменил четыре одинаковых разбора «последняя строка psql — число»
+  (`chooseMode`, `recordRoles`, `recordDatabase`, `countTables`).
+- `parseProbeRow` — общий разбор строки зонда для резервной копии (`parseProbe`) и восстановления
+  (`parseRestoreProbe`).
+- `dump.go`: значения тега `part` — константы `partDatabase`/`partGlobals`, а не повтор литералов.
+- `plugin.go`: устаревший комментарий типа `Plugin` («только копирует») приведён к фактическому.
+- `internal/restore/extract_write.go`: `countingWriter`, который ничего не считает, переименован
+  в `errWriter`; длинная строка комментария `WriteFiles` перенесена.
+- `internal/restorejournal/journal.go`: `collectDir` и `collectLegacy` повторяли чтение каталога
+  с «нет каталога — не ошибка»; общая функция `Store.names`.
+
+Не тронуто, в отчёте: `DefaultLockShare` есть и в `plugins/postgresql`, и в `internal/config`
+(плагин не импортирует `internal/`; граница, не дубль для чистки). Остатков hostcheck/refusal,
+мёртвых экспортов и устаревших имён удалённых файлов в комментариях не найдено.
+
+Результаты: `gate.sh sdk fast` PASSED, `gate.sh agent fast` PASSED (CRAP не выше 6.0,
+golangci-lint 0 issues). `cli` не затрагивался.
+
+Дальше: `architect`.

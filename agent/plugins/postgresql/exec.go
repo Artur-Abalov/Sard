@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -120,6 +121,13 @@ func (o outcome) last() string {
 		}
 	}
 	return ""
+}
+
+// number is the last line the tool printed read as a number of that many bits;
+// false when the run failed or the line is no such number.
+func (o outcome) number(bits int) (uint64, bool) {
+	n, err := strconv.ParseUint(o.last(), 10, bits)
+	return n, o.ok() && err == nil
 }
 
 // run starts a tool. Its stderr goes to the log of the step line by line,
