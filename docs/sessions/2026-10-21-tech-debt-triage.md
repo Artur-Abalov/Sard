@@ -73,3 +73,12 @@ ADR `docs/adr/00XX-draft-dead-code.md`.
 - `scripts/gate.sh`, `.golangci.yml`, `server/config/detekt.yml` защищены: правку `detekt.yml`
   (`UnusedImport`) применяет владелец.
 - `./scripts/gate.sh web` — PASSED; markdownlint по изменённым документам — 0 ошибок.
+
+## CI: `CertificateLifetimesTest`
+
+На `15b642e` `e2e-shard (1)` упал в «an agent keeps backing up through the changes of the
+certificate»: ожидался пустой список не-`succeeded`, был `[running]`. Гонка теста: расписание
+выключается в конце наблюдения, а запуск, начатый в последнюю минуту, ещё идёт, когда тест читает
+запуски (на `c516089` тест прошёл; продовый код агента и сервера между коммитами поведения не
+менял). `observe()` теперь ждёт (`Await.until`), пока у источника не останется активных запусков.
+Локально: `:e2e:compileTestKotlin` — зелёный; e2e без Docker не запускались.
