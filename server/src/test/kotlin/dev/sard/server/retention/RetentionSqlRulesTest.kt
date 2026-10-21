@@ -84,9 +84,9 @@ class RetentionSqlRulesTest {
             .any { alias -> Regex("""\b$alias\.$column\b""").containsMatchIn(sql) }
 
     /**
-     * References that the cleaning does not meet in a batch: none today. The rows of `snapshots` are never deleted and a
-     * run with one is not picked at all, and `step_logs` lines leave with their partition; the batches name both in their
-     * NOT EXISTS, so they need no entry here. Listed only when a batch cannot name the key.
+     * References that the cleaning does not meet in a batch: none today. The rows of `snapshots` are never deleted
+     * and a run with one is not picked at all, and `step_logs` lines leave with their partition; the batches name
+     * both in their NOT EXISTS, so they need no entry here. Listed only when a batch cannot name the key.
      */
     private val unnamedOnPurpose = emptySet<ForeignKey>()
 
