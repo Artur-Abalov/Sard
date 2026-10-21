@@ -15,6 +15,7 @@ import {
   type MantineColorsTuple,
 } from '@mantine/core'
 import type { CSSProperties } from 'react'
+import type { components } from './api/schema'
 
 // The single place for visual design (docs/design/DESIGN.md, ADR 0035): the tokens, the
 // Mantine theme built on them, the CSS variables both color schemes receive, and the few
@@ -441,4 +442,20 @@ const CERTIFICATE_MARKS: Record<string, (typeof tones)[keyof typeof tones]> = {
 
 export function certificateMarkTone(state: string): (typeof tones)[keyof typeof tones] | null {
   return Object.hasOwn(CERTIFICATE_MARKS, state) ? CERTIFICATE_MARKS[state] : null
+}
+
+// The mark of a repository's recovery key flag (V3): the server decides the flag, the theme only dresses it.
+const RECOVERY_KEY_TONES: Record<
+  components['schemas']['RecoveryKeyFlag'],
+  (typeof tones)[keyof typeof tones]
+> = {
+  present: tones.success,
+  absent: tones.error,
+  unknown: tones.neutral,
+}
+
+export function recoveryKeyTone(
+  flag: components['schemas']['RecoveryKeyFlag'],
+): (typeof tones)[keyof typeof tones] {
+  return RECOVERY_KEY_TONES[flag]
 }

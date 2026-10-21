@@ -31,8 +31,10 @@ import { ErrorBlock } from '../components/ErrorBlock'
 import { AppLink, ButtonLink } from '../components/links'
 import { Loaded } from '../components/Loaded'
 import { PagedList } from '../components/PagedList'
+import { RecoveryKeyMark } from '../components/RecoveryKeyMark'
 import { RepoInitHint } from '../components/RepoInitHint'
 import { StatusBadge } from '../components/StatusBadge'
+import { VerifierSetup } from '../components/VerifierSetup'
 import { usePaged } from '../components/usePaged'
 import { useRoleLabel } from '../components/useRoleLabel'
 import { EMPTY } from '../format'
@@ -63,6 +65,7 @@ function Repositories({ agent }: { agent: AgentDetails }) {
                   {t('agent.initialized', { id: repository.repositoryId })}
                 </Badge>
               )}
+              <RecoveryKeyMark flag={repository.recoveryKey} />
             </Group>
             {repository.repositoryId === null && <RepoInitHint repository={repository.name} />}
           </Stack>
@@ -128,6 +131,7 @@ function Snapshot({ agent }: { agent: AgentDetails }) {
     <>
       <Plugins agent={agent} />
       <Repositories agent={agent} />
+      {agent.verifierSetup !== null && <VerifierSetup entries={agent.verifierSetup} />}
       <Names title={t('agent.secrets')} names={agent.secretNames} />
       <Names title={t('agent.scripts')} names={agent.scriptNames} />
     </>

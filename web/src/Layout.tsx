@@ -17,6 +17,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { signOut } from './auth/session'
 import { OnboardingBanner } from './components/OnboardingBanner'
+import { RecoveryKeyBanner } from './components/RecoveryKeyBanner'
 import { SelfBackupBanner } from './components/SelfBackupBanner'
 import { Wordmark } from './components/Wordmark'
 import { languages } from './languages'
@@ -104,6 +105,7 @@ function Navigation({ onNavigate }: { onNavigate: () => void }) {
         activeOptions={{ exact: true }}
       />
       <NavLink to="/agents" label={t('agents.title')} onClick={onNavigate} />
+      <NavLink to="/repositories" label={t('repositories.title')} onClick={onNavigate} />
       <NavLink to="/tokens" label={t('tokens.title')} onClick={onNavigate} />
       <NavLink to="/sources" label={t('sources.title')} onClick={onNavigate} />
       <NavLink to="/runs" label={t('runs.title')} onClick={onNavigate} />
@@ -131,6 +133,7 @@ export function Layout() {
         <Box maw={contentMaxWidth}>
           <OnboardingBanner />
           <SelfBackupBanner />
+          <RecoveryKeyBanner />
           <Outlet />
         </Box>
       </AppShell.Main>

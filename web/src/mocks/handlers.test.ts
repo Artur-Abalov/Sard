@@ -1234,3 +1234,37 @@ describe('agent role', () => {
     })
   })
 })
+
+// docs/specs/web/restic-keys.feature, КВ7 and КВ6: the fixture of GET /api/v1/repositories.
+describe('repositories', () => {
+  test('are refused without a session', async () => {
+    const { response } = await api.GET('/api/v1/repositories')
+    expect(response.status).toBe(401)
+  })
+
+  test('the default fixture has repositories with the flag absent, present and unknown', async () => {
+    await signIn()
+    const list = must(await api.GET('/api/v1/repositories'))
+    const flags = new Set(list.items.map((item) => item.recoveryKey))
+    expect(flags).toEqual(new Set(['absent', 'present', 'unknown']))
+    expect(list.withoutRecoveryKey).toBe(1)
+  })
+
+  test('only the repository without a key has a command, and it names the holders', async () => {
+    await signIn()
+    const { items } = must(await api.GET('/api/v1/repositories'))
+    const withCommand = items.filter((item) => item.recoveryKeyCommand !== null)
+    expect(withCommand.map((item) => item.recoveryKey)).toEqual(['absent'])
+    expect(withCommand[0].holders.length).toBeGreaterThan(0)
+  })
+
+  test('the verifier of the fixture has two entries to set up', async () => {
+    await signIn()
+    const verifier = must(
+      await api.GET('/api/v1/agents/{agentId}', {
+        params: { path: { agentId: ids.verifierAgent } },
+      }),
+    )
+    expect(verifier.verifierSetup).toHaveLength(2)
+  })
+})

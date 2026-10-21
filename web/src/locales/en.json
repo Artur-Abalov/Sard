@@ -577,16 +577,17 @@
     },
     "keys": {
       "title": "Keep the key copy outside this machine",
-      "intro": "Without the password of the repository and the access to the storage the backup cannot be restored. The server does not know the password: it exists only on the built-in agent.",
-      "command": "Print the password on the machine of the server (as root or as the service user) and keep it in a password manager or on paper:",
+      "intro": "Restoring needs a recovery key (or the password of this host) and access to the storage. The server holds neither: the key is printed in the terminal once.",
       "commandLabel": "Command",
       "storage": "Keep the access to the storage as well: the key ID and the secret key of the S3 service, or the SSH key for SFTP.",
       "card": "The recovery card says where the storage is and which CA the server has. It holds no password.",
       "cardLink": "Open the recovery card",
-      "confirm": "A copy of the repository password and of the storage access is kept outside this VM",
+      "confirm": "The recovery key and the access to the storage are kept outside this VM",
       "submit": "Finish",
       "unavailable": "The server is unavailable. Nothing was confirmed.",
-      "pending": "The first backup is not done yet."
+      "pending": "The first backup is not done yet.",
+      "recoveryCommand": "Run this command on the machine of the server in a terminal: it issues a recovery key and prints it once. Keep the key outside this VM:",
+      "secondCommand": "Or keep the password of this host, printed by this command:"
     }
   },
   "settings": {
@@ -725,7 +726,8 @@
     "download": "Download .txt",
     "back": "Back",
     "unavailable": "The recovery card is not available: bind the repository of the self-backup first.",
-    "fileName": "sard-recovery-card.txt"
+    "fileName": "sard-recovery-card.txt",
+    "requires": "Restoring needs the recovery key (or the password of the host that made the backup) and access to the storage."
   },
   "onboardingBanner": {
     "title": "Set up the backup of the server",
@@ -791,5 +793,29 @@
     "nothingRestored": "Nothing was restored: the changes were rolled back.",
     "rollbackFailed": "Rollback failed, left behind: <m>{{leftover}}</m>. Remove it by hand.",
     "lateSuccess": "The agent reported later: the restore succeeded. Data: <m>{{target}}</m>."
+  },
+  "banners": {
+    "noRecoveryKey": "{{count}} repositories have no recovery key: if the password of their host is lost, the backups cannot be restored."
+  },
+  "repositories": {
+    "title": "Repositories",
+    "repositoryId": "Repository ID",
+    "holders": "Held by",
+    "recoveryKey": {
+      "label": "Recovery key",
+      "present": "has a recovery key",
+      "absent": "no recovery key",
+      "unknown": "unknown"
+    },
+    "command": "Command on a host that holds it",
+    "empty": "The agents report no repositories yet."
+  },
+  "verifierSetup": {
+    "title": "Verifier key",
+    "keyAddHint": "Run on the source host",
+    "repoAddHint": "The exact command is printed by key add: run it on this verifier with a read-only storage account",
+    "unsafeName": "The repository name cannot be put into a command safely: rename the repository on the source host.",
+    "empty": "Nothing to set up: the verifier holds every repository of the sources.",
+    "source": "Source"
   }
 }

@@ -17,6 +17,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppRepositoriesRouteImport } from './routes/_app/repositories'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppTokensRouteImport } from './routes/_app/tokens'
 import { Route as SetupRecoveryCardRouteImport } from './routes/setup_.recovery-card'
@@ -48,6 +49,11 @@ const SetupRoute = SetupRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRepositoriesRoute = AppRepositoriesRouteImport.update({
+  id: '/repositories',
+  path: '/repositories',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
@@ -121,6 +127,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/repositories': typeof AppRepositoriesRoute
   '/settings': typeof AppSettingsRoute
   '/tokens': typeof AppTokensRoute
   '/setup/recovery-card': typeof SetupRecoveryCardRoute
@@ -138,6 +145,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/repositories': typeof AppRepositoriesRoute
   '/settings': typeof AppSettingsRoute
   '/tokens': typeof AppTokensRoute
   '/setup/recovery-card': typeof SetupRecoveryCardRoute
@@ -158,6 +166,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/_app/repositories': typeof AppRepositoriesRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/tokens': typeof AppTokensRoute
   '/setup_/recovery-card': typeof SetupRecoveryCardRoute
@@ -179,6 +188,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/setup'
+    | '/repositories'
     | '/settings'
     | '/tokens'
     | '/setup/recovery-card'
@@ -196,6 +206,7 @@ export interface FileRouteTypes {
   to:
     | '/login'
     | '/setup'
+    | '/repositories'
     | '/settings'
     | '/tokens'
     | '/setup/recovery-card'
@@ -215,6 +226,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/login'
     | '/setup'
+    | '/_app/repositories'
     | '/_app/settings'
     | '/_app/tokens'
     | '/setup_/recovery-card'
@@ -266,6 +278,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/repositories': {
+      id: '/_app/repositories'
+      path: '/repositories'
+      fullPath: '/repositories'
+      preLoaderRoute: typeof AppRepositoriesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/settings': {
@@ -363,6 +382,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
+  AppRepositoriesRoute: typeof AppRepositoriesRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppTokensRoute: typeof AppTokensRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -379,6 +399,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppRepositoriesRoute: AppRepositoriesRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppTokensRoute: AppTokensRoute,
   AppIndexRoute: AppIndexRoute,

@@ -11,6 +11,7 @@ import {
   cssVariablesResolver,
   logoNodeFill,
   logLevelColors,
+  recoveryKeyTone,
   reducedMotionCss,
   statusVisual,
   statusVisuals,
@@ -231,5 +232,13 @@ describe('certificate mark', () => {
     for (const state of values('AgentCertificateState')) {
       expect(['ok', 'renewal_due', 'expiring', 'expired']).toContain(state)
     }
+  })
+})
+
+describe('recoveryKeyTone', () => {
+  test('tells the three flags apart', () => {
+    expect(recoveryKeyTone('present')).toBe(tones.success)
+    expect(recoveryKeyTone('absent')).toBe(tones.error)
+    expect(recoveryKeyTone('unknown')).toBe(tones.neutral)
   })
 })

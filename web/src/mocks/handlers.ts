@@ -5,6 +5,7 @@ import { agentHandlers } from './api/agents'
 import { installHandlers } from './api/install'
 import { onboardingHandlers } from './api/onboarding'
 import { overviewHandlers } from './api/overview'
+import { repositoryHandlers } from './api/repositories'
 import { restoreHandlers } from './api/restores'
 import { runHandlers } from './api/runs'
 import { scheduleHandlers } from './api/schedules'
@@ -33,6 +34,7 @@ export const handlers = [
   ...scheduleHandlers,
   ...runHandlers,
   ...restoreHandlers,
+  ...repositoryHandlers,
   ...selfBackupHandlers,
   ...verificationHandlers,
 ]

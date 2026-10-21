@@ -3,6 +3,7 @@
 
 import { queryOptions } from '@tanstack/react-query'
 import { runPollInterval, schedulePollInterval, tokenPollInterval } from '../polling'
+import { REPOSITORIES_POLL_MS } from '../recoveryKeyBanner'
 import { SELF_BACKUP_POLL_MS } from '../selfBackupBanner'
 import { ApiError, call } from './call'
 import { client } from './client'
@@ -27,6 +28,15 @@ export const selfBackupQuery = () =>
     queryKey: ['self-backup'],
     queryFn: () => call(client.GET('/api/v1/self-backup')),
     refetchInterval: SELF_BACKUP_POLL_MS,
+  })
+
+// The repositories the agents report and the flag of their recovery key (V3): the banner of every page and
+// the page of repositories read it.
+export const repositoriesQuery = () =>
+  queryOptions({
+    queryKey: ['repositories'],
+    queryFn: () => call(client.GET('/api/v1/repositories')),
+    refetchInterval: REPOSITORIES_POLL_MS,
   })
 
 // What the owner needs to restore from the self-backup (F4b); a 409 means there is no binding yet.
