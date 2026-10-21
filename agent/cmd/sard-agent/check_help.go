@@ -49,7 +49,7 @@ Flags:
                              BACKEND_UNAVAILABLE)
 
 A WARN gives exit code 8, an ERROR gives 1; SKIP counts for neither (a host without
-the programs of PostgreSQL gets 0). The data of the repositories is read only by
+the programs a plugin looks for, when it has no source of that plugin, gets 0). The data of the repositories is read only by
 sard-agent repo check --read-data.
 `
 

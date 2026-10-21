@@ -7,7 +7,7 @@
 // tally that gives the exit code, the reading of restic locks, the record of
 // the repositories the service announced to the server and the judgement of
 // the facts of the host (permissions, certificate, config, secrets, the
-// programs of PostgreSQL, SELinux, the service).
+// programs of the plugins, SELinux, the service).
 // It decides nothing about the host: the commands collect the facts and
 // pass them in.
 package hostcheck

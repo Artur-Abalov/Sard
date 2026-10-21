@@ -9,6 +9,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
 // ServiceUserLine is service.user (Ч10).
@@ -53,6 +54,27 @@ func PluginDeclaredLine(plugins []PluginInfo) Line {
 // NoProgramsLine is plugin.programs of a plugin that needs no program of the host.
 func NoProgramsLine(plugin string) Line {
 	return Line{Check: CheckPluginPrograms, Subject: plugin, Status: OK, Message: "the plugin needs no program of the host"}
+}
+
+// ProgramsLine is plugin.programs of a plugin that looks for its programs
+// itself (sdk.ProgramChecker): the plugin's words, with the status mapped. An
+// answer without a status the agent knows is an error of the check.
+func ProgramsLine(plugin string, c sdk.ProgramsCheck) Line {
+	line := Line{Check: CheckPluginPrograms, Subject: plugin, Message: c.Message, Hint: c.Hint}
+	switch c.Status {
+	case sdk.ProgramsOK:
+		line.Status = OK
+	case sdk.ProgramsSkip:
+		line.Status = Skip
+	case sdk.ProgramsWarn:
+		line.Status = Warn
+	case sdk.ProgramsError:
+		line.Status = Error
+	default:
+		line.Status = Error
+		line.Message = fmt.Sprintf("the plugin %s answered with no status: %s", plugin, c.Message)
+	}
+	return line
 }
 
 const checkAgain = "sudo sard-agent check"
