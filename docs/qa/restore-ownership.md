@@ -118,9 +118,10 @@ msg() { $C "$API/runs/$1" | jq -r '.steps[] | .message'; }   # сообщени�
     в эталоне R2b).
 19. `sudo sard-agent check` на ВМ-1 и на ВМ-2 без клиента PostgreSQL → строка
     `plugin.programs` плагина postgresql та же, что у агента R2b (В1).
-20. В корне репозитория: `cd agent && go test ./internal/ ./plugins/...` → `ok`;
-    `grep -rnE '"(postgresql\.|PG_|pg_restore)' internal --include='*.go' --exclude='*_test.go'`
-    → пусто.
+20. В корне репозитория: `cd agent && go test ./internal/... ./plugins/... ./cmd/...` → `ok`;
+    `grep -rnE '"(postgresql\.|PG_|pg_restore)' internal cmd/sard-agent --include='*.go' --exclude='*_test.go'`
+    → пусто (каталоги `testdata` с подложенными нарушениями, `internal/testdata`, не
+    считаются); `ls agent/plugins/sdk/pgclient` → нет такого каталога.
 
 Вручную не воспроизводятся и проверяются тестами с теми же названиями: пределы
 размера и числа записей журнала, сбои fsync и rename при сохранении записи,

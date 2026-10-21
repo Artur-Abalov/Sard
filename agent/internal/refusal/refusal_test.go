@@ -89,3 +89,18 @@ func TestPluginFailedIsAnAgentError(t *testing.T) {
 		t.Errorf("PluginFailed = %q, class %d", PluginFailed, ClassOf(PluginFailed))
 	}
 }
+
+// Scenario: В причинах агента нет причин PostgreSQL (R2c-3): the reasons of a
+// database are those of its plugin.
+func TestTheReasonsOfTheAgentHoldNoReasonOfADatabase(t *testing.T) {
+	for _, code := range []Reason{"PG_CLIENT_MISSING", "PG_CLIENT_TOO_OLD", "PG_SERVER_TOO_OLD", "PG_CONNECT", "CREATEDB_REQUIRED",
+		"SUPERUSER_REQUIRED", "GLOBALS_SNAPSHOT_MISSING", "GLOBALS_TABLESPACES", "ROLES_EXIST", "DATABASE_EXISTS",
+		"PG_GLOBALS_FAILED", "PG_CREATE_DATABASE", "PG_RESTORE_FAILED"} {
+		if _, found := classes[code]; found {
+			t.Errorf("the agent has the reason %s", code)
+		}
+	}
+	if len(classes) < 60 {
+		t.Errorf("only %d reasons were looked at", len(classes))
+	}
+}
