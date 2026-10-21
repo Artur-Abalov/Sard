@@ -124,16 +124,12 @@ func (r *restoreRun) restore(ctx context.Context) int {
 	if f != nil {
 		return report(r.stderr, "repo restore", f)
 	}
-	snap, f := restore.Select(list, r.opts.address, st.repo.Name, r.opts.source)
+	snap, ext, f := r.choose(list)
 	if f != nil {
 		return report(r.stderr, "repo restore", f)
 	}
 	target := targetOf(st, who, r.deps)
 	reader := newRestic(st.cfg, st.binary, r.deps, st.repo, runAs(who))
-	ext, f := restore.PlanExtraction(extractors(r.deps.plugins), list, snap, r.target())
-	if f != nil {
-		return report(r.stderr, "repo restore", f)
-	}
 	if !ext.Tree() {
 		return r.restoreFiles(ctx, reader, snap, ext)
 	}
@@ -145,6 +141,17 @@ func (r *restoreRun) restore(ctx context.Context) int {
 		return report(r.stderr, "repo restore", f)
 	}
 	return r.write(ctx, req)
+}
+
+// choose is the snapshot the command names and how it is laid out: by the plugin
+// that owns it, or as a tree.
+func (r *restoreRun) choose(list []restore.Snapshot) (restore.Snapshot, restore.Extraction, *refusal.Failure) {
+	snap, f := restore.Select(list, r.opts.address, r.st.repo.Name, r.opts.source)
+	if f != nil {
+		return snap, restore.Extraction{}, f
+	}
+	ext, f := restore.PlanExtraction(extractors(r.deps.plugins), list, snap, r.target())
+	return snap, ext, f
 }
 
 // restoreFiles lays out a snapshot of a plugin as the files the plugin planned

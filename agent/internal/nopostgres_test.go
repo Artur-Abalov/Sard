@@ -97,21 +97,23 @@ func sources(roots ...string) ([]string, error) {
 	var files []string
 	for _, root := range roots {
 		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			switch {
-			case err != nil:
-				return err
-			case d.IsDir() && d.Name() == "testdata":
+			if err == nil && d.IsDir() && d.Name() == "testdata" {
 				return fs.SkipDir
-			case !d.IsDir() && strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "_test.go"):
+			}
+			if err == nil && isSource(path, d) {
 				files = append(files, path)
 			}
-			return nil
+			return err
 		})
 		if err != nil {
 			return nil, err
 		}
 	}
 	return files, nil
+}
+
+func isSource(path string, d fs.DirEntry) bool {
+	return !d.IsDir() && strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "_test.go")
 }
 
 // scan is the violations of every source below the roots and how many files it looked at.
@@ -192,26 +194,29 @@ func TestEveryCodeOfTheRestoreOfADatabaseIsFound(t *testing.T) {
 	}
 }
 
+// writeTree writes the file below dir, with the directories on its way.
+func writeTree(t *testing.T, dir, name, body string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // Scenario: Тестовые файлы агента архитектурный тест не проверяет.
 func TestTestFilesAndTestDataAreNotScanned(t *testing.T) {
 	dir := t.TempDir()
-	write := func(name, body string) {
-		path := filepath.Join(dir, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("fine.go", "package x\n")
-	write("fine_test.go", "package x\nvar _ = \"pg_restore\"\n")
-	write("testdata/planted.go", "package x\nvar _ = \"pg_restore\"\n")
+	writeTree(t, dir, "fine.go", "package x\n")
+	writeTree(t, dir, "fine_test.go", "package x\nvar _ = \"pg_restore\"\n")
+	writeTree(t, dir, "testdata/planted.go", "package x\nvar _ = \"pg_restore\"\n")
 	found, files, err := scan(dir)
 	if err != nil || len(found) != 0 || files != 1 {
 		t.Fatalf("found %v in %d files, %v", found, files, err)
 	}
-	write("sub/bad.go", "package x\nvar _ = \"pg_restore\"\n")
+	writeTree(t, dir, "sub/bad.go", "package x\nvar _ = \"pg_restore\"\n")
 	if found, files, err = scan(dir); err != nil || len(found) != 1 || files != 2 {
 		t.Fatalf("found %v in %d files, %v", found, files, err)
 	}

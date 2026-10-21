@@ -50,18 +50,30 @@ func TestTheFilesOfAPluginSnapshotAreThoseOfTheOnePlanningThem(t *testing.T) {
 	}
 }
 
-func TestThePluginIsToldTheSnapshotTheSnapshotsOfTheRepositoryAndTheTarget(t *testing.T) {
-	snap := tagged("aaaa1111", "x.part=main")
-	other := tagged("bbbb1111", "sard.source=s")
+// asked is the one request the plugin got.
+func asked(t *testing.T, snap restore.Snapshot, list []restore.Snapshot) sdk.ExtractRequest {
+	t.Helper()
 	x := &extractor{plan: oneFile(snap.ID)}
-	_, f := restore.PlanExtraction(map[string]sdk.Extractor{"x": x}, []restore.Snapshot{other, snap}, snap, "/srv/t")
-	if f != nil || len(x.got) != 1 {
+	if _, f := restore.PlanExtraction(map[string]sdk.Extractor{"x": x}, list, snap, "/srv/t"); f != nil || len(x.got) != 1 {
 		t.Fatalf("%v, asked %d times", f, len(x.got))
 	}
-	req := x.got[0]
-	if req.Snapshot.ID != snap.ID || req.Target != "/srv/t" || len(req.Snapshots) != 2 || req.Snapshots[0].ID != other.ID ||
-		!slices.Equal(req.Snapshot.Tags, snap.Tags) || !slices.Equal(req.Snapshot.Paths, snap.Paths) || !req.Snapshot.Time.Equal(snap.Time) {
+	return x.got[0]
+}
+
+func TestThePluginIsToldTheSnapshotsOfTheRepositoryAndTheTarget(t *testing.T) {
+	snap := tagged("aaaa1111", "x.part=main")
+	other := tagged("bbbb1111", "sard.source=s")
+	req := asked(t, snap, []restore.Snapshot{other, snap})
+	if req.Target != "/srv/t" || len(req.Snapshots) != 2 || req.Snapshots[0].ID != other.ID {
 		t.Errorf("request %+v", req)
+	}
+}
+
+func TestThePluginIsToldWhatTheSnapshotIs(t *testing.T) {
+	snap := tagged("aaaa1111", "x.part=main")
+	got := asked(t, snap, nil).Snapshot
+	if got.ID != snap.ID || !slices.Equal(got.Tags, snap.Tags) || !slices.Equal(got.Paths, snap.Paths) || !got.Time.Equal(snap.Time) {
+		t.Errorf("snapshot %+v", got)
 	}
 }
 

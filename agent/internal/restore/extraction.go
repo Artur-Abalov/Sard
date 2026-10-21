@@ -32,15 +32,10 @@ func (e Extraction) Tree() bool { return len(e.Files) == 0 }
 // "<plugin>.<key>=<value>"). A snapshot of no such plugin is a tree. The agent
 // knows no plugin by name, nor what a snapshot of one holds: the plugin says.
 func PlanExtraction(extractors map[string]sdk.Extractor, list []Snapshot, snap Snapshot, target string) (Extraction, *refusal.Failure) {
-	owners := claimants(extractors, snap)
-	switch len(owners) {
-	case 0:
-		return Extraction{}, nil
-	case 1:
-	default:
-		return Extraction{}, refusal.Fail(refusal.PluginFailed, "snapshot %s carries tags of several plugins that lay out files (%s); it cannot be restored, and nothing was written", snap.ShortID, strings.Join(owners, ", "))
+	name, f := ownerOf(extractors, snap)
+	if f != nil || name == "" {
+		return Extraction{}, f
 	}
-	name := owners[0]
 	plan, err := extractors[name].PlanExtract(sdk.ExtractRequest{Snapshot: info(snap), Snapshots: infos(list), Target: target})
 	if err != nil {
 		return Extraction{}, refusal.Fail(refusal.ResticOutputUnexpected, "%s", err)
@@ -48,6 +43,22 @@ func PlanExtraction(extractors map[string]sdk.Extractor, list []Snapshot, snap S
 	if err := plan.Validate(); err != nil {
 		return Extraction{}, refusal.Fail(refusal.PluginFailed, "the plan of the plugin %s for snapshot %s cannot be laid out: %v; nothing was written", name, snap.ShortID, err)
 	}
+	return extractionOf(name, plan), nil
+}
+
+// ownerOf is the name of the one plugin that owns the snapshot, "" if none does.
+func ownerOf(extractors map[string]sdk.Extractor, snap Snapshot) (string, *refusal.Failure) {
+	owners := claimants(extractors, snap)
+	switch len(owners) {
+	case 0:
+		return "", nil
+	case 1:
+		return owners[0], nil
+	}
+	return "", refusal.Fail(refusal.PluginFailed, "snapshot %s carries tags of several plugins that lay out files (%s); it cannot be restored, and nothing was written", snap.ShortID, strings.Join(owners, ", "))
+}
+
+func extractionOf(name string, plan sdk.ExtractPlan) Extraction {
 	files := make([]File, len(plan.Files))
 	for i, f := range plan.Files {
 		files[i] = File(f)
@@ -56,7 +67,7 @@ func PlanExtraction(extractors map[string]sdk.Extractor, list []Snapshot, snap S
 	if label == "" {
 		label = name
 	}
-	return Extraction{Plugin: name, Label: label, Files: files, Hints: plan.Hints}, nil
+	return Extraction{Plugin: name, Label: label, Files: files, Hints: plan.Hints}
 }
 
 // claimants are the names, sorted, of the extractors that have a tag on the snapshot.

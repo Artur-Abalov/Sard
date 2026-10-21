@@ -71,32 +71,44 @@ func TestAPluginAnswerWithoutAStatusIsAnErrorOfTheCheck(t *testing.T) {
 	}
 }
 
-func TestAPluginRunsItsProgramsAsTheServiceUserInTheDirectoriesOfThePath(t *testing.T) {
+func TestAPluginIsGivenTheDirectoriesOfThePathWithoutTheEmptyEntries(t *testing.T) {
 	h := fullHost(t)
 	h.deps.pathEnv = ":/opt/z/bin::/usr/bin"
-	h.progs.answer("/opt/z/bin/ztool --version", "ztool 3\n")
 	var path []string
-	var out string
-	var err error
 	h.withPlugin(programsPlugin{stubPlugin: stubPlugin{"zeta"}, check: func(ph sdk.ProgramHost) sdk.ProgramsCheck {
 		path = ph.Path()
+		return sdk.ProgramsCheck{Status: sdk.ProgramsOK, Message: "m"}
+	}})
+	h.checkLines()
+	if got := strings.Join(path, "|"); got != "/opt/z/bin|/usr/bin" {
+		t.Errorf("path %q: the empty entries stand for the current directory and are dropped", got)
+	}
+}
+
+func TestAPluginRunsItsProgramsAsTheServiceUser(t *testing.T) {
+	h := fullHost(t)
+	h.progs.answer("/opt/z/bin/ztool --version", "ztool 3\n")
+	var err error
+	h.withPlugin(programsPlugin{stubPlugin: stubPlugin{"zeta"}, check: func(ph sdk.ProgramHost) sdk.ProgramsCheck {
+		var out string
 		out, err = ph.Run("/opt/z/bin/ztool", "--version")
 		return sdk.ProgramsCheck{Status: sdk.ProgramsOK, Message: strings.TrimSpace(out)}
 	}})
 	lines, _, _ := h.checkLines()
-	if got := strings.Join(path, "|"); got != "/opt/z/bin|/usr/bin" {
-		t.Errorf("path %q: the empty entries stand for the current directory and are dropped", got)
-	}
 	if l := line(t, lines, "plugin.programs", "zeta"); err != nil || l.message != "ztool 3" {
 		t.Errorf("%+v, %v", l, err)
 	}
+	ran := 0
 	for _, c := range h.progs.calls {
-		if c.key == "/opt/z/bin/ztool --version" && (c.runAs == nil || c.runAs.UID != serviceUID) {
-			t.Errorf("ztool ran as %+v", c.runAs)
+		if c.key == "/opt/z/bin/ztool --version" {
+			ran++
+			if c.runAs == nil || c.runAs.UID != serviceUID {
+				t.Errorf("ztool ran as %+v", c.runAs)
+			}
 		}
 	}
-	if _, err := h.deps.plugins.Get("zeta"); !err {
-		t.Fatal("zeta is not registered")
+	if ran != 1 {
+		t.Errorf("ztool was run %d times", ran)
 	}
 }
 

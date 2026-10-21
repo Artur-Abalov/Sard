@@ -64,7 +64,7 @@ func TestOnlyThePluginPostgresqlImportsTheClientOfPostgreSQL(t *testing.T) {
 		fields := strings.Fields(line)
 		found = found || fields[0] == pgclientPkg
 		for _, imp := range fields[1:] {
-			if strings.HasSuffix(imp, "/pgclient") && (imp != pgclientPkg || fields[0] != postgresqlPkg) {
+			if !mayImportClient(fields[0], imp) {
 				t.Errorf("%s imports %s: only %s may import %s", fields[0], imp, postgresqlPkg, pgclientPkg)
 			}
 		}
@@ -72,4 +72,10 @@ func TestOnlyThePluginPostgresqlImportsTheClientOfPostgreSQL(t *testing.T) {
 	if !found {
 		t.Errorf("there is no package %s: the client of PostgreSQL lies inside the plugin", pgclientPkg)
 	}
+}
+
+// mayImportClient: pkg imports imp, and if imp is a client package of a database
+// it is the client of PostgreSQL and pkg is the plugin postgresql.
+func mayImportClient(pkg, imp string) bool {
+	return !strings.HasSuffix(imp, "/pgclient") || (imp == pgclientPkg && pkg == postgresqlPkg)
 }

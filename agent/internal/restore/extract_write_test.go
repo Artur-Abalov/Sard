@@ -250,18 +250,6 @@ func TestADirectoryThatCannotBeSyncedFailsTheWrite(t *testing.T) {
 	}
 }
 
-func inOrder(t *testing.T, text string, parts ...string) {
-	t.Helper()
-	at := 0
-	for _, p := range parts {
-		i := strings.Index(text[at:], p)
-		if i < 0 {
-			t.Fatalf("%q not found in order in\n%s", p, text)
-		}
-		at += i + len(p)
-	}
-}
-
 func TestAFileThatCannotBeMadeIsATargetWriteFailureAndNothingIsDumped(t *testing.T) {
 	dir, fsys := t.TempDir(), newRecordingFS()
 	fsys.files.failCreate = syscall.EROFS

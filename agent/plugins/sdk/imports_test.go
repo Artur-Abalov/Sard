@@ -54,31 +54,56 @@ func TestTheRuleOfTheSDKImportsNamesTheGeneratedCode(t *testing.T) {
 	}
 }
 
+// sourceFiles are the Go files of the directory that are not tests.
+func sourceFiles(t *testing.T) []string {
+	t.Helper()
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".go") && !strings.HasSuffix(e.Name(), "_test.go") {
+			names = append(names, e.Name())
+		}
+	}
+	return names
+}
+
+// exportedNames are the exported names the file declares, with their places.
+func exportedNames(t *testing.T, path string) (names, positions []string) {
+	t.Helper()
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ast.Inspect(file, func(n ast.Node) bool {
+		if id, ok := n.(*ast.Ident); ok && id.IsExported() && id.Obj != nil {
+			names = append(names, id.Name)
+			positions = append(positions, fset.Position(id.Pos()).String())
+		}
+		return true
+	})
+	return names, positions
+}
+
 // Scenario: SDK не содержит типов конкретной базы данных.
 func TestSDKHoldsNoTypeOfAConcreteDatabase(t *testing.T) {
 	if _, err := os.Stat("pgclient"); err == nil {
 		t.Error("the SDK holds a package pgclient")
 	}
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool { return !strings.HasSuffix(fi.Name(), "_test.go") }, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	named := 0
-	for _, pkg := range pkgs {
-		for _, file := range pkg.Files {
-			ast.Inspect(file, func(n ast.Node) bool {
-				if id, ok := n.(*ast.Ident); ok && id.IsExported() && id.Obj != nil {
-					named++
-					if strings.Contains(strings.ToLower(id.Name), "postgres") {
-						t.Errorf("%s: the exported name %s", fset.Position(id.Pos()), id.Name)
-					}
-				}
-				return true
-			})
+	seen := 0
+	for _, path := range sourceFiles(t) {
+		names, positions := exportedNames(t, path)
+		seen += len(names)
+		for i, name := range names {
+			if strings.Contains(strings.ToLower(name), "postgres") {
+				t.Errorf("%s: the exported name %s", positions[i], name)
+			}
 		}
 	}
-	if named < 20 {
-		t.Errorf("only %d exported names were looked at", named)
+	if seen < 20 {
+		t.Errorf("only %d exported names were looked at", seen)
 	}
 }

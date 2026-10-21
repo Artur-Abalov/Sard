@@ -64,11 +64,17 @@ func TestASnapshotOfAPluginIsLaidOutAsTheFilesOfItsPlan(t *testing.T) {
 	if !strings.Contains(stdout, "run x-load "+h.target()+"/out.bin") || !strings.Contains(stdout, "file:     "+h.target()+"/out.bin") {
 		t.Errorf("stdout:\n%s", stdout)
 	}
-	if len(*asked) != 1 || (*asked)[0].Target != h.target() || (*asked)[0].Snapshot.ID != idX {
-		t.Errorf("the plugin was asked %+v", *asked)
-	}
+	assertAskedOnce(t, *asked, h.target())
 	if len(h.log.lines) != 1 || !strings.Contains(h.log.lines[0], "restored to "+h.target()) {
 		t.Errorf("audit %q", h.log.lines)
+	}
+}
+
+// assertAskedOnce: the plugin was asked once, for the snapshot X and the target.
+func assertAskedOnce(t *testing.T, asked []sdk.ExtractRequest, target string) {
+	t.Helper()
+	if len(asked) != 1 || asked[0].Target != target || asked[0].Snapshot.ID != idX {
+		t.Errorf("the plugin was asked %+v", asked)
 	}
 }
 
