@@ -24,6 +24,9 @@ type State struct {
 	ID string
 	// Attached: the repository existed, it was not created.
 	Attached bool
+	// CanWrite: the credentials of a verifier take the lock of a remote
+	// storage, so they may write (V3, K2).
+	CanWrite bool
 }
 
 // Files are the files restic gets to open the repository.
@@ -76,6 +79,21 @@ type Connector struct {
 	// password file is judged by it like the env file (O1); nil: its
 	// existence is all that is looked at.
 	Owned Owned
+	// BeforeCreate, if not nil, is asked once the repository is known not to
+	// exist, before a password file is committed and before init: a failure
+	// ends the connection with nothing written (V3, K15).
+	BeforeCreate func() *refusal.Failure
+	// Created, if not nil, is called once the repository has been created,
+	// with the password file in place and before the command writes the rest
+	// of the connection (V3, K15).
+	Created func(ctx context.Context)
+	// Verifier: the host is a verifier, which only reads (V3, K2). A storage
+	// that refuses the lock is what it is given; one that does not is
+	// reported in State.CanWrite.
+	Verifier bool
+	// LockHint, if not empty, is added to the refusal of a storage that
+	// refuses the lock to a host that is not a verifier.
+	LockHint string
 	*State
 
 	// env is the env file candidate; accessed: the first access is made.
@@ -265,13 +283,53 @@ func (c *Connector) try(ctx context.Context, cand candidate) outcome {
 	var log Log
 	target, cli := c.Open(Files{Password: cand.path, Env: c.env.path}, &log)
 	id, initialized, f := c.inspect(ctx, cli, target, &log)
-	if f == nil && initialized {
-		f = c.Bound.CheckLock(ctx, cli, target, &log) // cat config takes no lock (П29)
+	if f == nil {
+		f = c.vet(ctx, cli, target, &log, initialized)
 	}
 	if f != nil {
 		return c.rejected(cand, f)
 	}
 	return c.accepted(ctx, cand, id, initialized)
+}
+
+// vet is what is asked of the repository once it is known whether it exists:
+// an existing one must give the lock (cat config takes none, П29), a new one
+// must be allowed by the command.
+func (c *Connector) vet(ctx context.Context, cli restic.Repository, target repoinit.Target, log *Log, initialized bool) *refusal.Failure {
+	switch {
+	case initialized:
+		return c.checkLock(ctx, cli, target, log)
+	case c.BeforeCreate != nil:
+		return c.BeforeCreate()
+	}
+	return nil
+}
+
+// checkLock is the check of the lock (П29). A verifier reads it the other way
+// round (K2): a storage that refuses the lock is as it should be, and one that
+// gives it is told to the command as credentials that can write.
+func (c *Connector) checkLock(ctx context.Context, cli restic.Repository, target repoinit.Target, log *Log) *refusal.Failure {
+	f := c.Bound.CheckLock(ctx, cli, target, log)
+	if c.Verifier {
+		return c.verifierLock(f, target)
+	}
+	if f != nil && f.Reason == refusal.StorageAccessDenied && c.LockHint != "" {
+		f.Detail += "; " + c.LockHint
+	}
+	return f
+}
+
+// verifierLock reads the answer of the lock for a verifier: a refusal is
+// accepted, a lock that is given means the credentials can write.
+func (c *Connector) verifierLock(f *refusal.Failure, target repoinit.Target) *refusal.Failure {
+	switch {
+	case f == nil:
+		c.CanWrite = target.Remote
+		return nil
+	case f.Reason == refusal.StorageAccessDenied:
+		return nil
+	}
+	return f
 }
 
 // inspect asks whether the repository is there; the first time within the
@@ -314,6 +372,9 @@ func (c *Connector) create(ctx context.Context) *refusal.Failure {
 	target, cli := c.Open(Files{Password: c.Final, Env: c.envFinal()}, nil)
 	id, f := repoinit.Create(ctx, cli, target)
 	c.ID = id
+	if f == nil && c.Created != nil {
+		c.Created(ctx)
+	}
 	return f
 }
 

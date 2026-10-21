@@ -588,6 +588,19 @@ message RepositoryInfo {
   string repository_id = 3;
   // Crypto provider; empty means restic built-in AES. Reserved for GOST.
   string crypto_provider = 4;
+  // Whether the repository has a recovery key, read by the agent from the
+  // user field of the repository's restic keys on every Register. Only the
+  // flag: never a key, a password, a key id or a count of keys (ADR 0008).
+  RecoveryKeyState recovery_key = 5;
+}
+
+// RecoveryKeyState tells whether a repository has a recovery key. An agent
+// older than this field and an agent that could not read the keys both leave
+// it UNSPECIFIED, which must not be read as ABSENT.
+enum RecoveryKeyState {
+  RECOVERY_KEY_STATE_UNSPECIFIED = 0;
+  RECOVERY_KEY_STATE_PRESENT = 1;
+  RECOVERY_KEY_STATE_ABSENT = 2;
 }
 
 // CancelStep asks the agent to stop a running step. The agent answers with

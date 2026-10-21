@@ -51,6 +51,7 @@ func realHost(t *testing.T) *repoHost {
 	h.saveConfig()
 	h.deps = productionHostDeps()
 	useTestServiceUser(&h.deps)
+	h.deps.stdoutTerminal = true // the recovery key of a new repository is shown at the terminal
 	return h
 }
 

@@ -20,7 +20,10 @@ func TestEveryReasonHasAClass(t *testing.T) {
 		SnapshotUnknown, SnapshotAmbiguous, TargetInvalid, TargetNotEmpty, RootTargetRefused, PathNotInSnapshot,
 		RestoreIncomplete, TargetWrite, TargetBusy, SetprivMissing, ResticFailed, CleanupFailed, StaleLocksForeign,
 		PGClientMissing, PGClientTooOld, PGServerTooOld, PGConnect, CreatedbRequired, SuperuserRequired,
-		GlobalsSnapshotMissing, GlobalsTablespaces, RolesExist, DatabaseExists, PGGlobalsFailed, PGCreateDatabase, PGRestoreFailed}
+		GlobalsSnapshotMissing, GlobalsTablespaces, RolesExist, DatabaseExists, PGGlobalsFailed, PGCreateDatabase, PGRestoreFailed,
+		KeyPurposeMissing, KeyPurposeInvalid, KeyLabelRequired, LabelInvalid, KeyExists, KeyOutputMissing,
+		KeyFileExists, KeyFileRejected, KeyFileWrite, KeyIDAmbiguous, KeyInUse, LastKey, ConfirmationRequired,
+		ConfirmationRejected, RecoveryKeyOutputMissing, RecoveryKeyFailed, VerifierReadOnly}
 	if len(classes) != len(reasons) {
 		t.Errorf("%d reasons have a class, %d exist", len(classes), len(reasons))
 	}

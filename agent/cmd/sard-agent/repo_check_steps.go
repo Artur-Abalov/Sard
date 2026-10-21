@@ -16,6 +16,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/repoconnect"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/internal/restickeys"
 )
 
 // repoSteps are the checks of one repository (Ч3), in their order.
@@ -66,7 +67,7 @@ func (r *repoSteps) laterSteps(id string) string {
 	steps := []struct {
 		check string
 		do    func() hostcheck.Line
-	}{{hostcheck.CheckRepositoryID, func() hostcheck.Line { return r.idStep(id) }}, {hostcheck.CheckRepositoryLocks, r.locksStep}, {hostcheck.CheckRepositoryIntegrity, r.integrityStep}}
+	}{{hostcheck.CheckRepositoryID, func() hostcheck.Line { return r.idStep(id) }}, {hostcheck.CheckRepositoryKeys, r.keysStep}, {hostcheck.CheckRepositoryLocks, r.locksStep}, {hostcheck.CheckRepositoryIntegrity, r.integrityStep}}
 	for _, s := range steps {
 		if !slices.Contains(r.checks, s.check) {
 			continue
@@ -188,6 +189,20 @@ func (r *repoSteps) hint(check string, f *refusal.Failure) string {
 func (r *repoSteps) idStep(id string) hostcheck.Line {
 	announced, err := hostcheck.ReadAnnounced(r.deps.readFile, executorStateDir(r.cfg.Executor.StateDir))
 	return hostcheck.IDLine(r.repo.Name, id, announced, err)
+}
+
+// keysStep is repository.keys (V3, K16): the repository has a key issued for
+// recovery, or the operator is told to issue one.
+func (r *repoSteps) keysStep() hostcheck.Line {
+	var keys []restic.Key
+	f := r.bound().Attempt(r.ctx, r.target, &r.log, func(limited context.Context) (err error) {
+		keys, err = r.cli.Keys(limited)
+		return err
+	}, func(ctx context.Context, err error) *refusal.Failure { return repoinit.FromRestic(ctx, err, r.target) })
+	if f != nil {
+		return failureLine(hostcheck.CheckRepositoryKeys, r.repo.Name, f, r.hint(hostcheck.CheckRepositoryKeys, f))
+	}
+	return hostcheck.KeysLine(r.repo.Name, len(keys), restickeys.HasRecovery(keys))
 }
 
 // locksStep is repository.locks (Ch5); the whole step is one access to the

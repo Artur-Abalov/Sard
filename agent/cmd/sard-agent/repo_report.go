@@ -49,8 +49,8 @@ func printRepoCodes(stdout io.Writer, codes []repoHelpCode) {
 
 var repoInitHelpCodes = []repoHelpCode{
 	{exitOK, "success", "the repository was created, or --help"},
-	{exitAgentError, "agent error", "restic is missing, too old or unusable; the backend refused (credentials, permissions, TLS); unexpected restic output"},
-	{exitUsage, "usage", "flags, rights (PRIVILEGES_REQUIRED, SERVICE_USER_UNKNOWN), config, unknown repository name, crypto_provider, password_file or env_file, or a password that does not open the existing repository"},
+	{exitAgentError, "agent error", "restic is missing, too old or unusable; the backend refused (credentials, permissions, TLS); unexpected restic output; RECOVERY_KEY_FAILED"},
+	{exitUsage, "usage", "flags, rights (PRIVILEGES_REQUIRED, SERVICE_USER_UNKNOWN), config, unknown repository name, crypto_provider, password_file or env_file, or a password that does not open the existing repository; RECOVERY_KEY_OUTPUT_MISSING, KEY_FILE_EXISTS, KEY_FILE_REJECTED, VERIFIER_READ_ONLY"},
 	{exitIdentityExists, "identity exists", "the repository is already initialised; nothing was changed and its repository_id is printed"},
 	{exitTemporary, "temporary", "the backend is unreachable, --timeout ran out, the command was interrupted, or another init of this repository is running; it can be repeated"},
 	{exitWrite, "write", "the password file could not be created, or the lock file in restic.cache_dir (LOCK_WRITE: the directory must exist and be writable)"},
@@ -71,7 +71,19 @@ Flags:
   --config string       path to the agent config (default /etc/sard/agent.yaml)
   --generate-password   create password_file with a random password if it does not exist
                         (an existing file is used as it is and never overwritten)
+  --recovery-key-file string  write the password of the recovery key to this new file
+                        (an absolute path, mode 0600) instead of the terminal
+  --no-recovery-key     go without a recovery key (warned and logged)
   --timeout duration    how long the whole command may take (default 2m)
+
+A repository this command creates gets a recovery key right after restic init
+(V3): its password is shown once on the terminal, or written to
+--recovery-key-file. Without a terminal, and without --recovery-key-file, the
+command stops before it creates anything (RECOVERY_KEY_OUTPUT_MISSING) unless
+--no-recovery-key says to go without one: then losing this host means losing
+the backups. A recovery key that cannot be issued ends the command with
+RECOVERY_KEY_FAILED, the repository and its password file stay (issue the key
+with repo key add). An initialised repository gets no key (code 4).
 
 The key of the repository exists only on this host: save a copy of the
 password file outside it. Afterwards restart the sard-agent service so that

@@ -176,6 +176,9 @@ Flags:
   --replace-host-key           sftp: replace a host key that changed (still needs the confirmation)
   --password-stdin             read the password of an existing repository from standard input
   --password-from-file string  read it from a file
+  --recovery-key-file string   a new repository: write the password of its recovery key to this new
+                               file (an absolute path, mode 0600) instead of the terminal
+  --no-recovery-key            a new repository: go without a recovery key (warned and logged)
   --no-restart                 do not restart the service, say how to
   --connect-timeout duration   how long every network call may take (restic cat config,
                                ssh-keyscan, the ssh login check; default 30s); the program
@@ -188,6 +191,17 @@ A local path must not pass through a symbolic link, in any component, and must
 be given in its resolved form (/run, not /var/run): the command refuses a link
 (LOCAL_PATH_INVALID) so that nobody can redirect the creation of directories
 and the change of owner, which it makes as root, to another place.
+
+A repository that this command creates gets a recovery key right after restic
+init (V3): the password of the key is shown once on the terminal, or written to
+--recovery-key-file; without a terminal, and without --recovery-key-file, the
+command stops before it creates anything (RECOVERY_KEY_OUTPUT_MISSING) unless
+--no-recovery-key says to go without one: then losing this host means losing
+the backups. A recovery key that cannot be issued leaves the repository
+connected and ends the command with RECOVERY_KEY_FAILED (issue it with
+repo key add). A repository that existed already, and a repeat, get no key.
+On a verifier host the repository must exist (REPOSITORY_NOT_INITIALIZED), and
+storage credentials that can write are a warning, not an error.
 
 The same name and address again changes nothing (unchanged).
 
@@ -210,6 +224,10 @@ var repoHelpPrinters = map[string]func(io.Writer){
 }
 
 func printRepoHelp(stdout io.Writer, sub string) {
+	if strings.HasPrefix(sub, "key") {
+		printKeyHelp(stdout, sub)
+		return
+	}
 	if printer, ok := repoHelpPrinters[sub]; ok {
 		printer(stdout)
 		return
@@ -221,7 +239,7 @@ func printRepoAddHelp(stdout io.Writer) {
 	text := strings.NewReplacer("{providers}", strings.Join(hostsetup.ProviderNames(), ", "), "{defaults}", hostsetup.ProviderDefaults()).Replace(repoAddHelpText)
 	printHelp(stdout, "repo add [flags] <name> <address>", text, []repoHelpCode{
 		codeOK, codeRestart,
-		usageCode("flags, rights (PRIVILEGES_REQUIRED, SERVICE_USER_UNKNOWN), NAME_INVALID, BACKEND_NOT_SUPPORTED, ADDRESS_INVALID, LOCAL_PATH_INVALID, config, DEFINED_IN_CONFIG, PATH_IN_USE, SECRET_SOURCE_MISSING, SECRET_SOURCE_CONFLICT, SECRET_INVALID, SECRET_FILE_REJECTED, WRONG_PASSWORD, S3_KEY_REJECTED, STORAGE_ACCESS_DENIED, BUCKET_NOT_FOUND, SSH_HOME_INVALID, SSH_FILE_REJECTED, SSH_KEY_NOT_AUTHORIZED, HOST_KEY_UNCONFIRMED"),
+		usageCode("flags, rights (PRIVILEGES_REQUIRED, SERVICE_USER_UNKNOWN), NAME_INVALID, BACKEND_NOT_SUPPORTED, RECOVERY_KEY_OUTPUT_MISSING, KEY_FILE_EXISTS, KEY_FILE_REJECTED, REPOSITORY_NOT_INITIALIZED (verifier), ADDRESS_INVALID, LOCAL_PATH_INVALID, config, DEFINED_IN_CONFIG, PATH_IN_USE, SECRET_SOURCE_MISSING, SECRET_SOURCE_CONFLICT, SECRET_INVALID, SECRET_FILE_REJECTED, WRONG_PASSWORD, S3_KEY_REJECTED, STORAGE_ACCESS_DENIED, BUCKET_NOT_FOUND, SSH_HOME_INVALID, SSH_FILE_REJECTED, SSH_KEY_NOT_AUTHORIZED, HOST_KEY_UNCONFIRMED"),
 		codeConflict,
 		{exitTrust, "trust", "HOST_KEY_MISMATCH, HOST_KEY_REJECTED, HOST_KEY_CHANGED: the host key of an sftp: server was not confirmed or is not the known one"},
 		codeLocked, codeWrite,

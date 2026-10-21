@@ -25,8 +25,11 @@ func TestHelpDescribesFlagsPrivilegesAndExitCodes(t *testing.T) {
 		{[]string{"repo", "remove"}, []string{"--no-restart", "--config"}, "sudo", []int{0, 1, 2, 6, 7}},
 		{[]string{"repo", "password"}, []string{"--reveal", "--config"}, "service user", []int{0, 2}},
 		{[]string{"repo", "list"}, []string{"--json", "--timeout", "--config"}, "service user", []int{0, 1, 2, 6}},
-		{[]string{"repo", "init"}, []string{"--generate-password", "--timeout", "--config"}, "sudo", []int{0, 1, 2, 4, 6, 7}},
-		{[]string{"repo", "add"}, []string{"--password-stdin", "--password-from-file", "--no-restart", "--timeout", "--connect-timeout", "--config"}, "sudo", []int{0, 1, 2, 4, 5, 6, 7}},
+		{[]string{"repo", "init"}, []string{"--generate-password", "--recovery-key-file", "--no-recovery-key", "--timeout", "--config"}, "sudo", []int{0, 1, 2, 4, 6, 7}},
+		{[]string{"repo", "add"}, []string{"--password-stdin", "--password-from-file", "--recovery-key-file", "--no-recovery-key", "--no-restart", "--timeout", "--connect-timeout", "--config"}, "sudo", []int{0, 1, 2, 4, 5, 6, 7}},
+		{[]string{"repo", "key", "add"}, []string{"--for", "--label", "--to-file", "--if-missing", "--no-restart", "--timeout", "--connect-timeout", "--config"}, "sudo", []int{0, 1, 2, 6, 7}},
+		{[]string{"repo", "key", "list"}, []string{"--json", "--timeout", "--connect-timeout", "--config"}, "service user", []int{0, 1, 2, 6}},
+		{[]string{"repo", "key", "remove"}, []string{"--yes", "--no-restart", "--timeout", "--connect-timeout", "--config"}, "sudo", []int{0, 1, 2, 6, 7}},
 	}
 	for _, c := range cases {
 		name := strings.Join(c.words, " ")
@@ -133,5 +136,47 @@ func TestRepoAddHelpDescribesTheS3Flags(t *testing.T) {
 	}
 	if strings.Contains(stdout, "only a local path") {
 		t.Errorf("help still calls s3: unsupported:\n%s", stdout)
+	}
+}
+
+// V3: the help of the key commands says what the commands promise.
+func TestKeyHelpSaysWhatTheCommandsPromise(t *testing.T) {
+	t.Parallel()
+	h := newSetupHost(t)
+	for _, c := range []struct {
+		words []string
+		wants []string
+	}{
+		{[]string{"repo", "key", "add"}, []string{"verifier", "recovery", "other", "shown once", "stored nowhere else", "KEY_OUTPUT_MISSING", "KEY_EXISTS", "sard:<purpose>"}},
+		{[]string{"repo", "key", "list"}, []string{"CURRENT", "SINGLE_KEY", "NO_RECOVERY_KEY", "single_key"}},
+		{[]string{"repo", "key", "remove"}, []string{"master key", "create a new repository", "CONFIRMATION_REQUIRED", "KEY_IN_USE", "LAST_KEY"}},
+		{[]string{"repo", "add"}, []string{"recovery key", "RECOVERY_KEY_OUTPUT_MISSING", "RECOVERY_KEY_FAILED"}},
+		{[]string{"repo", "init"}, []string{"recovery key", "RECOVERY_KEY_OUTPUT_MISSING", "RECOVERY_KEY_FAILED"}},
+	} {
+		code, stdout, _ := h.sudo(append(c.words, "--help")...)
+		assertCode(t, code, exitOK)
+		for _, want := range c.wants {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("%v: help lacks %q:\n%s", c.words, want, stdout)
+			}
+		}
+	}
+}
+
+func TestRepoKeyWithoutASubcommandNamesThemAndItsHelpListsThem(t *testing.T) {
+	t.Parallel()
+	code, _, stderr := runAgent("repo", "key")
+	assertCode(t, code, exitUsage)
+	for _, want := range []string{"add", "list", "remove"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr lacks %q: %q", want, stderr)
+		}
+	}
+	code, stdout, _ := runAgent("repo", "key", "--help")
+	assertCode(t, code, exitOK)
+	for _, want := range []string{"repo key add", "repo key list", "repo key remove"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("help lacks %q:\n%s", want, stdout)
+		}
 	}
 }

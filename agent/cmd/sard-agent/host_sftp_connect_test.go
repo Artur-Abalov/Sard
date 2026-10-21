@@ -126,7 +126,7 @@ func TestAfterTheKeyIsAuthorizedARepeatConnectsWithoutQuestionsAndWithoutANewKey
 	if len(term.prompts) != 0 || len(h.ssh.called("ssh-keygen")) != keygens {
 		t.Fatalf("prompts %q, keygens %d", term.prompts, len(h.ssh.called("ssh-keygen")))
 	}
-	if len(h.log.lines) != 1 || !strings.Contains(h.log.lines[0], "repository extra added") {
+	if len(h.log.lines) != 2 || !strings.Contains(h.log.lines[0], "repository key added") || !strings.Contains(h.log.lines[1], "repository extra added") {
 		t.Fatalf("audit %q", h.log.lines)
 	}
 }
@@ -385,9 +385,9 @@ func TestTheAuditLinesOfARemoteConnectionHoldNoValues(t *testing.T) {
 			h.putSSH("id_ed25519", "PRIVATE-KEY-MARKER", 0o600)
 			h.putSSH("id_ed25519.pub", "ssh-ed25519 AAAAk x\n", 0o644)
 		},
-			[]string{"ssh host key of nas.example.com trusted", "repository extra added"}},
+			[]string{"ssh host key of nas.example.com trusted", "repository key added", "repository extra added"}},
 		"nothing exists": {func(h *sftpHostWorld) {},
-			[]string{"ssh key of service user sard-agent created", "ssh host key of nas.example.com trusted", "repository extra added"}},
+			[]string{"ssh key of service user sard-agent created", "ssh host key of nas.example.com trusted", "repository key added", "repository extra added"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

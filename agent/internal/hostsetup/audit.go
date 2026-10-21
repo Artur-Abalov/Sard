@@ -61,3 +61,34 @@ func Record(warn io.Writer, open OpenAuditor, who Actor, kind, name, action stri
 		_, _ = fmt.Fprintf(warn, "warning: the change was not recorded in the system log: %v\n", err)
 	}
 }
+
+// KeyChange is a change of a key of a repository for the audit line (V3, K18).
+// Purpose and Label are "-" for a key that Sard did not issue. No password.
+type KeyChange struct {
+	Action, Repository, ID, Purpose, Label string
+}
+
+// RecordKey writes the line of a key change; like Record it cannot fail the
+// command: a system log that is not there is a warning.
+func RecordKey(warn io.Writer, open OpenAuditor, who Actor, c KeyChange) {
+	a, err := open()
+	if err == nil {
+		err = a.Write(fmt.Sprintf("repository key %s: repository %s, key %s, purpose %s, label %s, by %s (uid %s)",
+			c.Action, auditName(c.Repository), auditName(c.ID), auditName(c.Purpose), auditName(c.Label), who.Name, who.UID))
+	}
+	if err != nil {
+		_, _ = fmt.Fprintf(warn, "warning: the change was not recorded in the system log: %v\n", err)
+	}
+}
+
+// RecordRecoveryKeySkipped writes the line of a repository created without a
+// recovery key, at the operator's request (V3, K15).
+func RecordRecoveryKeySkipped(warn io.Writer, open OpenAuditor, who Actor, repository string) {
+	a, err := open()
+	if err == nil {
+		err = a.Write(fmt.Sprintf("repository recovery key skipped: repository %s, by %s (uid %s)", auditName(repository), who.Name, who.UID))
+	}
+	if err != nil {
+		_, _ = fmt.Fprintf(warn, "warning: the change was not recorded in the system log: %v\n", err)
+	}
+}

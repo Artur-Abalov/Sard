@@ -45,3 +45,20 @@ func TestRedactURLHidesThePasswordOfTheUserinfoAndNothingElse(t *testing.T) {
 		}
 	}
 }
+
+// V3 (K11): the address printed for a verifier's repo add holds no password.
+func TestStripPasswordRemovesThePasswordOfTheUserinfo(t *testing.T) {
+	cases := map[string]string{
+		"sftp://backup:URL-MARKER@nas.example.com:2222/srv/b": "sftp://backup@nas.example.com:2222/srv/b",
+		"rest:https://u:URL-MARKER@rest.example.net/base":     "rest:https://u@rest.example.net/base",
+		"sftp:backup@nas.example.com:/srv/base":               "sftp:backup@nas.example.com:/srv/base",
+		"s3:https://s3.example.net/acme/base":                 "s3:https://s3.example.net/acme/base",
+		"/srv/base":                                           "/srv/base",
+		"rest:https://u:p@a:b@host/x@y":                       "rest:https://u@host/x@y",
+	}
+	for in, want := range cases {
+		if got := config.StripPassword(in); got != want {
+			t.Errorf("StripPassword(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

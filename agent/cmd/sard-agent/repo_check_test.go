@@ -29,6 +29,7 @@ func checkHost(t *testing.T) *setupHost {
 	h.clock.now = time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
 	h.base().initialized = true
 	h.base().id = "REPO-A"
+	h.base().keyring.keys = []fakeKey{keyH(), keyR()}
 	h.alive = map[int]bool{}
 	h.deps.hostname = func() (string, error) { return "db1", nil }
 	h.deps.pidAlive = func(pid int) bool { return h.alive[pid] }
@@ -82,7 +83,7 @@ func line(t *testing.T, lines []outLine, check, subject string) outLine {
 	return outLine{}
 }
 
-var wantSteps = []string{"repository.storage", "repository.credentials", "repository.initialized", "repository.password", "repository.id", "repository.locks"}
+var wantSteps = []string{"repository.storage", "repository.credentials", "repository.initialized", "repository.password", "repository.id", "repository.keys", "repository.locks"}
 
 // Rule "repo check проверяет репозиторий по шагам и останавливается на первой ошибке".
 
@@ -99,7 +100,7 @@ func TestAHealthyRepositoryPassesAllTheSteps(t *testing.T) {
 			t.Errorf("line %d: %+v", i, l)
 		}
 	}
-	if summary != "summary: 6 ok, 0 warnings, 0 errors, 0 skipped" {
+	if summary != "summary: 7 ok, 0 warnings, 0 errors, 0 skipped" {
 		t.Errorf("summary %q", summary)
 	}
 }
@@ -298,7 +299,7 @@ func TestTheStepsOfResticRunWithoutLockAndCacheAndNeverCheck(t *testing.T) {
 			t.Errorf("restic %q ran with a lock or a cache", c.args)
 		}
 	}
-	if !slices.Equal(subs, []string{"cat", "list", "cat"}) {
+	if !slices.Equal(subs, []string{"cat", "key", "list", "cat"}) {
 		t.Errorf("restic ran %v", subs)
 	}
 }
@@ -488,7 +489,7 @@ func TestTheIntegrityLineComesLastAfterTheLocks(t *testing.T) {
 	if last.check != hostcheck.CheckRepositoryIntegrity || last.status != "OK" || lines[len(lines)-2].check != hostcheck.CheckRepositoryLocks {
 		t.Errorf("lines %v", lines)
 	}
-	if summary != "summary: 7 ok, 0 warnings, 0 errors, 0 skipped" {
+	if summary != "summary: 8 ok, 0 warnings, 0 errors, 0 skipped" {
 		t.Errorf("summary %q", summary)
 	}
 }
@@ -599,6 +600,7 @@ func (h *setupHost) fragmentRepo(name string) *fakeRepo {
 	repo := h.restic.repo(url)
 	repo.initialized = true
 	repo.id = "REPO-" + strings.ToUpper(name)
+	repo.keyring.keys = []fakeKey{keyH(), keyR()}
 	return repo
 }
 
@@ -615,11 +617,11 @@ func TestEveryRepositoryIsCheckedInTheOrderOfTheConfig(t *testing.T) {
 		subjects = append(subjects, l.subject)
 	}
 	// the fragments follow the main config in the order of their file names
-	want := strings.Repeat("base ", 6) + strings.Repeat("arch ", 6) + strings.Repeat("obj ", 6)
+	want := strings.Repeat("base ", 7) + strings.Repeat("arch ", 7) + strings.Repeat("obj ", 7)
 	if got := strings.Join(subjects, " ") + " "; got != want {
 		t.Errorf("subjects %q", got)
 	}
-	if summary != "summary: 18 ok, 0 warnings, 0 errors, 0 skipped" {
+	if summary != "summary: 21 ok, 0 warnings, 0 errors, 0 skipped" {
 		t.Errorf("summary %q", summary)
 	}
 }
@@ -758,7 +760,7 @@ func TestTheJSONOfACheckIsOneObjectPerLineWithoutASummary(t *testing.T) {
 	code, stdout, _ := h.repoCheck("base", "--json")
 	assertCode(t, code, exitOK)
 	rows := strings.Split(strings.TrimSpace(stdout), "\n")
-	if len(rows) != 6 || strings.Contains(stdout, "summary") || !strings.HasPrefix(rows[0], `{"check":"repository.storage","subject":"base","status":"ok"`) {
+	if len(rows) != 7 || strings.Contains(stdout, "summary") || !strings.HasPrefix(rows[0], `{"check":"repository.storage","subject":"base","status":"ok"`) {
 		t.Errorf("stdout %q", stdout)
 	}
 }

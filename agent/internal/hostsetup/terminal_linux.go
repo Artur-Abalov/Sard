@@ -31,6 +31,12 @@ func StdinTerminal(f *os.File, out io.Writer) Terminal {
 	return TTY{In: f, Out: out}
 }
 
+// IsTerminal says whether f is a terminal.
+func IsTerminal(f *os.File) bool {
+	_, err := tcget(f.Fd())
+	return err == nil
+}
+
 func tcget(fd uintptr) (*syscall.Termios, error) {
 	var t syscall.Termios
 	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, fd, syscall.TCGETS, uintptr(unsafe.Pointer(&t))); errno != 0 {

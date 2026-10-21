@@ -6,6 +6,7 @@ package app
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
@@ -48,6 +49,13 @@ type Agent struct {
 	// Announced, if not nil, gets the repositories every Register announces
 	// (names and ids), for the record sard-agent repo check compares with.
 	Announced func(repos []*agentv1.RepositoryInfo)
+	// RecoveryKey says whether the repository has a recovery key, by reading
+	// its keys (restic key list). Its error text must be scrubbed already.
+	// Nil, or an error, leaves the flag unknown.
+	RecoveryKey func(ctx context.Context, r config.Repository) (agentv1.RecoveryKeyState, error)
+	// Logger receives the WARN line of a repository whose keys could not be
+	// read; nil discards.
+	Logger *slog.Logger
 }
 
 // Run keeps the agent connected to the server until ctx ends or the
@@ -102,9 +110,27 @@ func (a *Agent) repositoryInfos(ctx context.Context) []*agentv1.RepositoryInfo {
 			Backend:        r.Backend(),
 			RepositoryId:   id,
 			CryptoProvider: r.CryptoProvider,
+			RecoveryKey:    a.recoveryKey(ctx, r, id),
 		})
 	}
 	return infos
+}
+
+// recoveryKey is read at every Register and never kept. A repository whose id
+// is not known yet is not opened, and one whose keys cannot be read is unknown
+// (K21): the registration goes on either way.
+func (a *Agent) recoveryKey(ctx context.Context, r config.Repository, id string) agentv1.RecoveryKeyState {
+	if id == "" || a.RecoveryKey == nil {
+		return agentv1.RecoveryKeyState_RECOVERY_KEY_STATE_UNSPECIFIED
+	}
+	state, err := a.RecoveryKey(ctx, r)
+	if err != nil {
+		if a.Logger != nil {
+			a.Logger.Warn("cannot read the keys of the repository", "repository", r.Name, "reason", err.Error())
+		}
+		return agentv1.RecoveryKeyState_RECOVERY_KEY_STATE_UNSPECIFIED
+	}
+	return state
 }
 
 // actions are what the plugin's handler runs; none without a handler.

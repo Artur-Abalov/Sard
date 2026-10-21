@@ -31,6 +31,7 @@ const (
 	CheckRepositoryInitialized = "repository.initialized"
 	CheckRepositoryPassword    = "repository.password"
 	CheckRepositoryID          = "repository.id"
+	CheckRepositoryKeys        = "repository.keys"
 	CheckRepositoryLocks       = "repository.locks"
 	// CheckRepositoryIntegrity is asked for by name and is not in the default run.
 	CheckRepositoryIntegrity = "repository.integrity"

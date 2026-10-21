@@ -36,7 +36,7 @@ check <имя>` для одного репозитория): он покажет
 | кто запускает | что может |
 |---|---|
 | root (`sudo`) | всё, в том числе `repo restore`, которое пишет файлы хоста и доступно только root |
-| пользователь службы (`sard-agent`, или `service.user` основного конфига) | только чтение: `secret list`, `repo list`, `repo show`, `repo snapshots`, `repo password --reveal`; а также `repo init` и `enroll`, как раньше |
+| пользователь службы (`sard-agent`, или `service.user` основного конфига) | только чтение: `secret list`, `repo list`, `repo show`, `repo snapshots`, `repo key list`, `repo password --reveal`; а также `repo init` и `enroll`, как раньше |
 | любой другой | ничего: `PRIVILEGES_REQUIRED`, код 2, в сообщении готовая команда с `sudo` |
 
 Проверка идёт сразу после разбора флагов, до чтения конфига. Изменяющая
@@ -147,6 +147,21 @@ sudo sard-agent repo remove <имя> [--no-restart]
    (`docs/operations/repo-init.md`);
 5. пишет фрагмент `agent.d/repo-<имя>.yaml` последним, записывает строку
    аудита и применяет изменение.
+
+**Ключ восстановления нового репозитория.** Репозиторий, который `repo add`
+(или `repo init`) *создаёт*, сразу после `restic init` получает ключ
+восстановления (`sard:recovery`, [раздел ниже](#ключи-restic-repo-key)).
+Куда пойдёт его пароль, команда решает до создания: `--recovery-key-file
+<абсолютный путь>` (новый файл, `0600`), иначе терминал, иначе
+`--no-recovery-key` (предупреждение «потеря хоста — потеря бэкапов» и строка
+аудита `repository recovery key skipped`). Без терминала и без этих флагов —
+`RECOVERY_KEY_OUTPUT_MISSING`, ничего не создано и не изменено. Следствие для
+плейбуков и e2e: неинтерактивный `repo add` нового репозитория должен
+получить `--recovery-key-file` или `--no-recovery-key`. Подключение
+существующего репозитория и повтор команды ключ не выпускают и эти флаги
+принимают. Не удалось выпустить ключ после `init` — репозиторий подключён как
+обычно, команда заканчивается `RECOVERY_KEY_FAILED` (код 1) с подсказкой
+`sudo sard-agent repo key add <имя> --for recovery`.
 
 Адрес не должен проходить через символьную ссылку ни в одном компоненте и
 должен быть задан в разрешённом виде (`/run`, а не `/var/run`): команда
@@ -725,6 +740,95 @@ sudo journalctl -t sard-agent --since today
 файлов нет. Если syslog недоступен, изменение выполняется, а stderr
 предупреждает.
 
+## Ключи restic: `repo key`
+
+Ключ restic — пароль, открывающий репозиторий; у репозитория их может быть
+несколько, и каждый отзывается отдельно. Сервер ключей не держит (ADR 0008):
+ключи выпускает и удаляет оператор на хосте, у которого уже есть доступ.
+
+```bash
+sudo sard-agent repo key add <имя> --for verifier|recovery|other [--label <метка>] [--to-file <путь>] [--if-missing] [--no-restart]
+sudo sard-agent repo key list <имя> [--json]
+sudo sard-agent repo key remove <имя> <id> [--yes] [--no-restart]
+```
+
+У всех трёх `--timeout` (по умолчанию 2m) и `--connect-timeout` (30s).
+
+**`key add`** добавляет ключ со случайным паролем (32 байта генератора, 43
+символа base64url) и обязательным назначением: `verifier` (ключ хоста
+верификатора), `recovery` (ключ для владельца, который хранит его вне
+инфраструктуры) или `other` с `--label` (1–64 знака `A-Z a-z 0-9 - _`, первый —
+буква или цифра; для `verifier` и `recovery` метка необязательна). Назначение и
+метка записываются в сам ключ, в поле пользователя (`sard:<назначение>[:<метка>]`,
+имя хоста ключа — имя этого хоста), поэтому `key list` на любом хосте показывает,
+чей это ключ; ключи, выпущенные не через Sard, показываются с `-`.
+
+- **Пароль показывается один раз** и нигде больше не хранится: в терминал, с
+  предупреждением «this password is stored nowhere else; copy it now», или в
+  новый файл `--to-file` (абсолютный путь без символьных ссылок, каталог
+  существует; владелец root, права `0600` при любой umask; существующий файл не
+  перезаписывается — `KEY_FILE_EXISTS`). Без терминала и без `--to-file` —
+  `KEY_OUTPUT_MISSING`, ключ не выпущен. Пароль не попадает ни в журнал, ни в
+  логи, ни в конфиг. Restic получает его по унаследованному дескриптору, не
+  через аргумент, окружение или файл. Нет блокировки конфига — `CONFIG_LOCKED`.
+- **Повтор.** Ключ с тем же назначением и той же меткой, кем бы он ни был
+  выпущен, — `KEY_EXISTS`; `--if-missing` в этом случае печатает `unchanged` и
+  ничего не делает. Два хоста, одновременно выпускающие одну метку, оба пройдут
+  проверку: метки уникальны по соглашению, не по гарантии restic.
+- **Дальше.** Для `verifier` команда печатает готовую строку `sudo sard-agent
+  repo add <имя> <адрес без учётных данных> --password-from-file <файл>` для
+  хоста верификатора и напоминает: на верификаторе нужна учётка хранилища
+  **только на чтение**; для локального пути верификатор должен видеть то же
+  хранилище. Для `recovery` — хранить вне этой инфраструктуры: без ключа
+  восстановления и без пароля этого хоста бэкапы теряются вместе с хостом.
+- **Служба.** Признак «есть ключ восстановления» агент сообщает серверу при
+  каждом Register, поэтому `key add --for recovery` и `key remove` ключа
+  восстановления применяют изменение как команды, меняющие конфиг (перезапуск
+  службы, `--no-restart`, см. «Применение изменения»); ключи других назначений
+  службу не трогают. Конфиг команды не меняют.
+- Если время `--timeout` истекло или команду прервали во время `restic key
+  add`, ключ мог быть создан: проверьте `repo key list` и при нужде удалите
+  `repo key remove`; пароль в этом случае не показан.
+
+**`key list`**: колонки `ID` (8 знаков), `PURPOSE`, `LABEL`, `HOST`, `CREATED`
+(RFC 3339, UTC), `CURRENT` (`*` у ключа, которым этот хост открывает
+репозиторий), по времени выпуска. Ключи читаются без блокировки
+репозитория, поэтому список доступен и на верификаторе с учёткой только на
+чтение. Предупреждения идут в stderr после таблицы и не меняют код выхода:
+`SINGLE_KEY` (ключ один: потеря этого хоста — потеря бэкапов) и
+`NO_RECOVERY_KEY` (нет ключа восстановления, с командой для его выпуска). С
+`--json` — один объект `{"repository","keys":[{"id","purpose","label","host",
+"created","current"}],"warnings":["single_key","no_recovery_key"]}`: `id` полный
+(64 знака), `purpose` и `label` — `null` для не выпущенного через Sard ключа.
+Паролей в выводе нет.
+
+**`key remove`**: `<id>` — от 8 до 64 шестнадцатеричных знаков. Префикс двух
+ключей — `KEY_ID_AMBIGUOUS` со списком; ни одного — `nothing to remove`, код 0.
+Нельзя удалить ключ этого хоста (`KEY_IN_USE`) и последний ключ (`LAST_KEY`).
+Команда показывает ключ (id, назначение, метка, хост, время) и ждёт ответ
+ровно `yes` (иначе `CONFIRMATION_REJECTED`); `--yes` — без вопроса; без
+терминала и без `--yes` — `CONFIRMATION_REQUIRED` сразу, ввод не читается.
+
+> **Удаление ключа не меняет мастер-ключ репозитория.** Кто владел удалённым
+> ключом, мог извлечь мастер-ключ и по-прежнему расшифрует уже существующие
+> бэкапы. Команда говорит это при каждом удалении. Полностью отозвать доступ
+> можно только новым репозиторием: создайте его (`repo add` с новым именем и
+> адресом), перенесите бэкапы на него и выведите старый из работы.
+
+**Верификатор** (роль в сертификате, `docs/specs/agent/agent-role.feature`)
+только читает: `repo init`, `repo key add` и `repo key remove` на нём —
+`VERIFIER_READ_ONLY` до любого обращения к хранилищу; `repo add` не создаёт
+репозиторий (`REPOSITORY_NOT_INITIALIZED`). Проверка блокировки при `repo add`
+читается наоборот: учётка хранилища, которой блокировка недоступна, — то, что
+верификатору нужно; учётка, которой блокировка доступна, — предупреждение
+«these storage credentials can write». Хост без сертификата ведёт себя как
+источник: учётку только на чтение он отклонит (`STORAGE_ACCESS_DENIED`), и в
+сообщении будет подсказка сначала зарегистрировать хост токеном верификатора.
+
+`sard-agent check` и `repo check` получили шаг `repository.keys` (после
+`repository.id`, до `repository.locks`): предупреждение «no recovery key»
+(«…; only one key»), если нет ключа восстановления.
+
 ## Параллельные команды
 
 Изменяющая команда держит блокировку `agent.d/.sard-config.lock` от чтения
@@ -737,12 +841,12 @@ sudo journalctl -t sard-agent --since today
 | код | класс | когда |
 |---|---|---|
 | 0 | успех | изменение применено или не требовалось; чтение; `--help` |
-| 1 | ошибка агента | restic не найден, старый, непригоден; `BACKEND_REFUSED`; `SSH_CLIENT_MISSING`, `SSH_CLIENT_FAILED`; `SERVICE_RESTART_FAILED`; `RESTORE_INCOMPLETE`; `SETPRIV_MISSING` |
-| 2 | использование | флаги, `PRIVILEGES_REQUIRED`, `SERVICE_USER_UNKNOWN`, `NAME_INVALID`, конфиг и `DUPLICATE_NAME`, `DEFINED_IN_CONFIG`, `PATH_IN_USE`, `SECRET_SOURCE_MISSING`, `SECRET_SOURCE_CONFLICT`, `SECRET_EMPTY`, `SECRET_TOO_LARGE`, `SECRET_MISMATCH`, `SECRET_INVALID`, `SECRET_FILE_REJECTED`, `BACKEND_NOT_SUPPORTED`, `ENV_FILE_INVALID`, `ADDRESS_INVALID`, `LOCAL_PATH_INVALID`, `WRONG_PASSWORD`, `S3_KEY_REJECTED`, `STORAGE_ACCESS_DENIED`, `BUCKET_NOT_FOUND`, `SSH_HOME_INVALID`, `SSH_FILE_REJECTED`, `SSH_KEY_NOT_AUTHORIZED`, `HOST_KEY_UNCONFIRMED`, `REPOSITORY_UNKNOWN`, `REPOSITORY_NOT_INITIALIZED`, `REVEAL_REQUIRED`, `PASSWORD_FILE_MISSING`, `SNAPSHOT_UNKNOWN`, `SNAPSHOT_AMBIGUOUS`, `TARGET_INVALID`, `TARGET_NOT_EMPTY`, `ROOT_TARGET_REFUSED`, `PATH_NOT_IN_SNAPSHOT` |
+| 1 | ошибка агента | restic не найден, старый, непригоден; `BACKEND_REFUSED`; `RECOVERY_KEY_FAILED`; `SSH_CLIENT_MISSING`, `SSH_CLIENT_FAILED`; `SERVICE_RESTART_FAILED`; `RESTORE_INCOMPLETE`; `SETPRIV_MISSING` |
+| 2 | использование | флаги, `PRIVILEGES_REQUIRED`, `SERVICE_USER_UNKNOWN`, `NAME_INVALID`, конфиг и `DUPLICATE_NAME`, `DEFINED_IN_CONFIG`, `PATH_IN_USE`, `SECRET_SOURCE_MISSING`, `SECRET_SOURCE_CONFLICT`, `SECRET_EMPTY`, `SECRET_TOO_LARGE`, `SECRET_MISMATCH`, `SECRET_INVALID`, `SECRET_FILE_REJECTED`, `BACKEND_NOT_SUPPORTED`, `ENV_FILE_INVALID`, `ADDRESS_INVALID`, `LOCAL_PATH_INVALID`, `WRONG_PASSWORD`, `S3_KEY_REJECTED`, `STORAGE_ACCESS_DENIED`, `BUCKET_NOT_FOUND`, `SSH_HOME_INVALID`, `SSH_FILE_REJECTED`, `SSH_KEY_NOT_AUTHORIZED`, `HOST_KEY_UNCONFIRMED`, `REPOSITORY_UNKNOWN`, `REPOSITORY_NOT_INITIALIZED`, `REVEAL_REQUIRED`, `KEY_PURPOSE_MISSING`, `KEY_PURPOSE_INVALID`, `KEY_LABEL_REQUIRED`, `LABEL_INVALID`, `KEY_EXISTS`, `KEY_OUTPUT_MISSING`, `KEY_FILE_EXISTS`, `KEY_FILE_REJECTED`, `KEY_ID_AMBIGUOUS`, `KEY_IN_USE`, `LAST_KEY`, `CONFIRMATION_REQUIRED`, `CONFIRMATION_REJECTED`, `RECOVERY_KEY_OUTPUT_MISSING`, `VERIFIER_READ_ONLY`, `PASSWORD_FILE_MISSING`, `SNAPSHOT_UNKNOWN`, `SNAPSHOT_AMBIGUOUS`, `TARGET_INVALID`, `TARGET_NOT_EMPTY`, `ROOT_TARGET_REFUSED`, `PATH_NOT_IN_SNAPSHOT` |
 | 4 | идентичность есть | `REPOSITORY_CONFLICT`: имя уже подключено к другому адресу |
 | 5 | доверие | `HOST_KEY_MISMATCH`, `HOST_KEY_REJECTED`, `HOST_KEY_CHANGED`: ключ хоста SFTP не подтверждён, не совпал или сменился |
 | 6 | временная | `BACKEND_UNAVAILABLE` (в том числе `--connect-timeout`), `TIMEOUT`, `INTERRUPTED`, `CONFIG_LOCKED`, `INIT_IN_PROGRESS`, `TARGET_BUSY` |
-| 7 | запись | `CONFIG_WRITE` (каталог или файл `agent.d`, `secrets`, drop-in, каталог репозитория, домашний каталог, `~/.ssh` и его файлы, смена владельца), `LOCK_WRITE`, `TARGET_WRITE` (создание цели или запись файла у `repo restore`, нет места или квоты, только чтение, имя занято при переносе) |
+| 7 | запись | `CONFIG_WRITE` (каталог или файл `agent.d`, `secrets`, drop-in, каталог репозитория, домашний каталог, `~/.ssh` и его файлы, смена владельца), `LOCK_WRITE`, `KEY_FILE_WRITE` (файл пароля ключа), `TARGET_WRITE` (создание цели или запись файла у `repo restore`, нет места или квоты, только чтение, имя занято при переносе) |
 
 Таблица каждой команды — в её `--help`.
 

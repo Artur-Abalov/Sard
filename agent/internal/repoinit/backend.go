@@ -58,13 +58,37 @@ func Inspect(ctx context.Context, r restic.Repository, t Target) (id string, ini
 // Create initialises the repository unless it exists (С10: restic cat
 // config first, then init) and returns the new id.
 func Create(ctx context.Context, r restic.Repository, t Target) (string, *refusal.Failure) {
+	return CreateGated(ctx, r, t, nil)
+}
+
+// CreateGated is Create that asks gate once it knows the repository is absent
+// and before it makes it; a failure of the gate ends the command with nothing
+// created. A repository that exists is refused without asking.
+func CreateGated(ctx context.Context, r restic.Repository, t Target, gate func() *refusal.Failure) (string, *refusal.Failure) {
 	id, initialized, f := Inspect(ctx, r, t)
-	if f != nil {
+	switch {
+	case f != nil:
 		return "", f
-	}
-	if initialized {
+	case initialized:
 		return "", existsFailure(t, id)
 	}
+	if f := askGate(gate); f != nil {
+		return "", f
+	}
+	return initialise(ctx, r, t)
+}
+
+// askGate asks the gate, if there is one.
+func askGate(gate func() *refusal.Failure) *refusal.Failure {
+	if gate == nil {
+		return nil
+	}
+	return gate()
+}
+
+// initialise runs restic init; an init that finds the repository there meanwhile
+// is the refusal of an existing repository.
+func initialise(ctx context.Context, r restic.Repository, t Target) (string, *refusal.Failure) {
 	id, err := r.Init(ctx)
 	if err == nil {
 		return id, nil

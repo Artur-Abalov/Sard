@@ -550,7 +550,7 @@ func TestRepoAddIsAppliedAndAudited(t *testing.T) {
 	code, stdout, _ := h.add()
 	assertCode(t, code, exitOK)
 	h.assertApplied(stdout)
-	if len(h.log.lines) != 1 || !strings.Contains(h.log.lines[0], "repository extra added") || !strings.Contains(h.log.lines[0], "alice") {
+	if len(h.log.lines) != 2 || !strings.Contains(h.log.lines[0], "repository key added") || !strings.Contains(h.log.lines[1], "repository extra added") || !strings.Contains(h.log.lines[1], "alice") {
 		t.Fatalf("audit %q", h.log.lines)
 	}
 	h.assertValuesHidden()

@@ -39,7 +39,7 @@ func TestAHealthyHostHasALineForEveryCheckInTheOrderOfTheList(t *testing.T) {
 	for _, l := range lines {
 		assertHealthyLine(t, l)
 	}
-	if summary != "summary: 27 ok, 0 warnings, 0 errors, 2 skipped" {
+	if summary != "summary: 28 ok, 0 warnings, 0 errors, 2 skipped" {
 		t.Errorf("summary %q", summary)
 	}
 }

@@ -113,6 +113,7 @@ func newSetupHost(t *testing.T) *setupHost {
 		return os.ReadFile(p)
 	}
 	h.deps.terminal = func(io.Writer) hostsetup.Terminal { return nil }
+	h.deps.stdoutTerminal = true // the conventions of restic-keys.feature: stdout is a terminal unless a scenario says otherwise
 	h.deps.openFile = func(p string) (io.ReadCloser, error) { return os.Open(p) }
 	h.deps.lookupUser = func(name string) (hostsetup.User, error) { return users(h.people...)(name) }
 	return h

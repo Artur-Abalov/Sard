@@ -12,8 +12,8 @@
 #      command through sudo (A8a, ADR 0050) and the console for the token
 #      string (U1b);
 #   2. as an administrator would: agent.yaml, "sudo sard-agent enroll",
-#      "sudo sard-agent repo add main /srv/sard/main" (it creates the
-#      repository, its password, the agent.d fragment and the ReadWritePaths
+#      "sudo sard-agent repo add main /srv/sard/main --no-recovery-key" (no terminal
+#      here, so the choice of V3 В2 is explicit; it creates the repository, its password, the agent.d fragment and the ReadWritePaths
 #      drop-in itself, Q5 Р4), then the service;
 #      the agent comes online with version N;
 #   3. upgrade to N+1 (a newer package version, ADR 0048: 0.1.0~beta.1 →
@@ -186,7 +186,7 @@ chown root:sard-agent /etc/sard/agent.yaml && chmod 0640 /etc/sard/agent.yaml"
       journalctl --no-pager -n 15 | grep -iE 'sudo|pam' | sed 's/--token [^ ]*/--token ***/'" || true
     die "enroll under sudo"
   }
-  on_host "cd / && sudo sard-agent repo add main /srv/sard/main" || die "repo add under sudo"
+  on_host "cd / && sudo sard-agent repo add main /srv/sard/main --no-recovery-key" || die "repo add under sudo"
   expect "agent key" "stat -c '%U %a' /etc/sard/tls/agent.key" "sard-agent 600"
   expect "repository password" "stat -c '%U %a' /etc/sard/secrets/restic-main.pass" "sard-agent 600"
   on_host "systemctl enable --now sard-agent"

@@ -507,6 +507,58 @@ func (Action) EnumDescriptor() ([]byte, []int) {
 	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{7}
 }
 
+// RecoveryKeyState tells whether a repository has a recovery key. An agent
+// older than this field and an agent that could not read the keys both leave
+// it UNSPECIFIED, which must not be read as ABSENT.
+type RecoveryKeyState int32
+
+const (
+	RecoveryKeyState_RECOVERY_KEY_STATE_UNSPECIFIED RecoveryKeyState = 0
+	RecoveryKeyState_RECOVERY_KEY_STATE_PRESENT     RecoveryKeyState = 1
+	RecoveryKeyState_RECOVERY_KEY_STATE_ABSENT      RecoveryKeyState = 2
+)
+
+// Enum value maps for RecoveryKeyState.
+var (
+	RecoveryKeyState_name = map[int32]string{
+		0: "RECOVERY_KEY_STATE_UNSPECIFIED",
+		1: "RECOVERY_KEY_STATE_PRESENT",
+		2: "RECOVERY_KEY_STATE_ABSENT",
+	}
+	RecoveryKeyState_value = map[string]int32{
+		"RECOVERY_KEY_STATE_UNSPECIFIED": 0,
+		"RECOVERY_KEY_STATE_PRESENT":     1,
+		"RECOVERY_KEY_STATE_ABSENT":      2,
+	}
+)
+
+func (x RecoveryKeyState) Enum() *RecoveryKeyState {
+	p := new(RecoveryKeyState)
+	*p = x
+	return p
+}
+
+func (x RecoveryKeyState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RecoveryKeyState) Descriptor() protoreflect.EnumDescriptor {
+	return file_sard_agent_v1_agent_proto_enumTypes[8].Descriptor()
+}
+
+func (RecoveryKeyState) Type() protoreflect.EnumType {
+	return &file_sard_agent_v1_agent_proto_enumTypes[8]
+}
+
+func (x RecoveryKeyState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RecoveryKeyState.Descriptor instead.
+func (RecoveryKeyState) EnumDescriptor() ([]byte, []int) {
+	return file_sard_agent_v1_agent_proto_rawDescGZIP(), []int{8}
+}
+
 type EnrollRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// One-time token created in the UI or CLI.
@@ -2815,8 +2867,12 @@ type RepositoryInfo struct {
 	RepositoryId string `protobuf:"bytes,3,opt,name=repository_id,json=repositoryId,proto3" json:"repository_id,omitempty"`
 	// Crypto provider; empty means restic built-in AES. Reserved for GOST.
 	CryptoProvider string `protobuf:"bytes,4,opt,name=crypto_provider,json=cryptoProvider,proto3" json:"crypto_provider,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Whether the repository has a recovery key, read by the agent from the
+	// user field of the repository's restic keys on every Register. Only the
+	// flag: never a key, a password, a key id or a count of keys (ADR 0008).
+	RecoveryKey   RecoveryKeyState `protobuf:"varint,5,opt,name=recovery_key,json=recoveryKey,proto3,enum=sard.agent.v1.RecoveryKeyState" json:"recovery_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RepositoryInfo) Reset() {
@@ -2875,6 +2931,13 @@ func (x *RepositoryInfo) GetCryptoProvider() string {
 		return x.CryptoProvider
 	}
 	return ""
+}
+
+func (x *RepositoryInfo) GetRecoveryKey() RecoveryKeyState {
+	if x != nil {
+		return x.RecoveryKey
+	}
+	return RecoveryKeyState_RECOVERY_KEY_STATE_UNSPECIFIED
 }
 
 // CancelStep asks the agent to stop a running step. The agent answers with
@@ -3108,12 +3171,13 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\rrepository_id\x18\x02 \x01(\tR\frepositoryId\x12 \n" +
 	"\vfingerprint\x18\x03 \x01(\fR\vfingerprint\x12-\n" +
 	"\x12fingerprint_sha256\x18\x04 \x01(\tR\x11fingerprintSha256\x126\n" +
-	"\bdeadline\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bdeadline\"\x8c\x01\n" +
+	"\bdeadline\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bdeadline\"\xd0\x01\n" +
 	"\x0eRepositoryInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\abackend\x18\x02 \x01(\tR\abackend\x12#\n" +
 	"\rrepository_id\x18\x03 \x01(\tR\frepositoryId\x12'\n" +
-	"\x0fcrypto_provider\x18\x04 \x01(\tR\x0ecryptoProvider\"+\n" +
+	"\x0fcrypto_provider\x18\x04 \x01(\tR\x0ecryptoProvider\x12B\n" +
+	"\frecovery_key\x18\x05 \x01(\x0e2\x1f.sard.agent.v1.RecoveryKeyStateR\vrecoveryKey\"+\n" +
 	"\n" +
 	"CancelStep\x12\x1d\n" +
 	"\n" +
@@ -3165,7 +3229,11 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\x0eACTION_RESTORE\x10\x02\x12\x11\n" +
 	"\rACTION_VERIFY\x10\x03\x12\x0e\n" +
 	"\n" +
-	"ACTION_RUN\x10\x042Z\n" +
+	"ACTION_RUN\x10\x04*u\n" +
+	"\x10RecoveryKeyState\x12\"\n" +
+	"\x1eRECOVERY_KEY_STATE_UNSPECIFIED\x10\x00\x12\x1e\n" +
+	"\x1aRECOVERY_KEY_STATE_PRESENT\x10\x01\x12\x1d\n" +
+	"\x19RECOVERY_KEY_STATE_ABSENT\x10\x022Z\n" +
 	"\x11EnrollmentService\x12E\n" +
 	"\x06Enroll\x12\x1c.sard.agent.v1.EnrollRequest\x1a\x1d.sard.agent.v1.EnrollResponse2\xbd\x03\n" +
 	"\fAgentService\x12K\n" +
@@ -3189,7 +3257,7 @@ func file_sard_agent_v1_agent_proto_rawDescGZIP() []byte {
 	return file_sard_agent_v1_agent_proto_rawDescData
 }
 
-var file_sard_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
+var file_sard_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
 var file_sard_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
 var file_sard_agent_v1_agent_proto_goTypes = []any{
 	(Sandbox)(0),                       // 0: sard.agent.v1.Sandbox
@@ -3200,104 +3268,106 @@ var file_sard_agent_v1_agent_proto_goTypes = []any{
 	(StageStatus)(0),                   // 5: sard.agent.v1.StageStatus
 	(VerifyVerdict)(0),                 // 6: sard.agent.v1.VerifyVerdict
 	(Action)(0),                        // 7: sard.agent.v1.Action
-	(*EnrollRequest)(nil),              // 8: sard.agent.v1.EnrollRequest
-	(*EnrollResponse)(nil),             // 9: sard.agent.v1.EnrollResponse
-	(*ProbeRequest)(nil),               // 10: sard.agent.v1.ProbeRequest
-	(*ProbeResponse)(nil),              // 11: sard.agent.v1.ProbeResponse
-	(*RegisterRequest)(nil),            // 12: sard.agent.v1.RegisterRequest
-	(*VerifierStatus)(nil),             // 13: sard.agent.v1.VerifierStatus
-	(*Plugin)(nil),                     // 14: sard.agent.v1.Plugin
-	(*RegisterResponse)(nil),           // 15: sard.agent.v1.RegisterResponse
-	(*RenewCertificateRequest)(nil),    // 16: sard.agent.v1.RenewCertificateRequest
-	(*RenewCertificateResponse)(nil),   // 17: sard.agent.v1.RenewCertificateResponse
-	(*ConfirmCertificateRequest)(nil),  // 18: sard.agent.v1.ConfirmCertificateRequest
-	(*ConfirmCertificateResponse)(nil), // 19: sard.agent.v1.ConfirmCertificateResponse
-	(*ConnectRequest)(nil),             // 20: sard.agent.v1.ConnectRequest
-	(*Hello)(nil),                      // 21: sard.agent.v1.Hello
-	(*Heartbeat)(nil),                  // 22: sard.agent.v1.Heartbeat
-	(*StepProgress)(nil),               // 23: sard.agent.v1.StepProgress
-	(*LogChunk)(nil),                   // 24: sard.agent.v1.LogChunk
-	(*LogLine)(nil),                    // 25: sard.agent.v1.LogLine
-	(*StepResult)(nil),                 // 26: sard.agent.v1.StepResult
-	(*BackupOutput)(nil),               // 27: sard.agent.v1.BackupOutput
-	(*RestoreOutput)(nil),              // 28: sard.agent.v1.RestoreOutput
-	(*VerifyOutput)(nil),               // 29: sard.agent.v1.VerifyOutput
-	(*VerifyStage)(nil),                // 30: sard.agent.v1.VerifyStage
-	(*FingerprintMismatch)(nil),        // 31: sard.agent.v1.FingerprintMismatch
-	(*CheckResult)(nil),                // 32: sard.agent.v1.CheckResult
-	(*RunOutput)(nil),                  // 33: sard.agent.v1.RunOutput
-	(*ConnectResponse)(nil),            // 34: sard.agent.v1.ConnectResponse
-	(*ResultAck)(nil),                  // 35: sard.agent.v1.ResultAck
-	(*RunStep)(nil),                    // 36: sard.agent.v1.RunStep
-	(*VerifyTask)(nil),                 // 37: sard.agent.v1.VerifyTask
-	(*RepositoryInfo)(nil),             // 38: sard.agent.v1.RepositoryInfo
-	(*CancelStep)(nil),                 // 39: sard.agent.v1.CancelStep
-	nil,                                // 40: sard.agent.v1.RunStep.TagsEntry
-	(*timestamppb.Timestamp)(nil),      // 41: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),        // 42: google.protobuf.Duration
+	(RecoveryKeyState)(0),              // 8: sard.agent.v1.RecoveryKeyState
+	(*EnrollRequest)(nil),              // 9: sard.agent.v1.EnrollRequest
+	(*EnrollResponse)(nil),             // 10: sard.agent.v1.EnrollResponse
+	(*ProbeRequest)(nil),               // 11: sard.agent.v1.ProbeRequest
+	(*ProbeResponse)(nil),              // 12: sard.agent.v1.ProbeResponse
+	(*RegisterRequest)(nil),            // 13: sard.agent.v1.RegisterRequest
+	(*VerifierStatus)(nil),             // 14: sard.agent.v1.VerifierStatus
+	(*Plugin)(nil),                     // 15: sard.agent.v1.Plugin
+	(*RegisterResponse)(nil),           // 16: sard.agent.v1.RegisterResponse
+	(*RenewCertificateRequest)(nil),    // 17: sard.agent.v1.RenewCertificateRequest
+	(*RenewCertificateResponse)(nil),   // 18: sard.agent.v1.RenewCertificateResponse
+	(*ConfirmCertificateRequest)(nil),  // 19: sard.agent.v1.ConfirmCertificateRequest
+	(*ConfirmCertificateResponse)(nil), // 20: sard.agent.v1.ConfirmCertificateResponse
+	(*ConnectRequest)(nil),             // 21: sard.agent.v1.ConnectRequest
+	(*Hello)(nil),                      // 22: sard.agent.v1.Hello
+	(*Heartbeat)(nil),                  // 23: sard.agent.v1.Heartbeat
+	(*StepProgress)(nil),               // 24: sard.agent.v1.StepProgress
+	(*LogChunk)(nil),                   // 25: sard.agent.v1.LogChunk
+	(*LogLine)(nil),                    // 26: sard.agent.v1.LogLine
+	(*StepResult)(nil),                 // 27: sard.agent.v1.StepResult
+	(*BackupOutput)(nil),               // 28: sard.agent.v1.BackupOutput
+	(*RestoreOutput)(nil),              // 29: sard.agent.v1.RestoreOutput
+	(*VerifyOutput)(nil),               // 30: sard.agent.v1.VerifyOutput
+	(*VerifyStage)(nil),                // 31: sard.agent.v1.VerifyStage
+	(*FingerprintMismatch)(nil),        // 32: sard.agent.v1.FingerprintMismatch
+	(*CheckResult)(nil),                // 33: sard.agent.v1.CheckResult
+	(*RunOutput)(nil),                  // 34: sard.agent.v1.RunOutput
+	(*ConnectResponse)(nil),            // 35: sard.agent.v1.ConnectResponse
+	(*ResultAck)(nil),                  // 36: sard.agent.v1.ResultAck
+	(*RunStep)(nil),                    // 37: sard.agent.v1.RunStep
+	(*VerifyTask)(nil),                 // 38: sard.agent.v1.VerifyTask
+	(*RepositoryInfo)(nil),             // 39: sard.agent.v1.RepositoryInfo
+	(*CancelStep)(nil),                 // 40: sard.agent.v1.CancelStep
+	nil,                                // 41: sard.agent.v1.RunStep.TagsEntry
+	(*timestamppb.Timestamp)(nil),      // 42: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),        // 43: google.protobuf.Duration
 }
 var file_sard_agent_v1_agent_proto_depIdxs = []int32{
-	41, // 0: sard.agent.v1.ProbeResponse.server_time:type_name -> google.protobuf.Timestamp
-	14, // 1: sard.agent.v1.RegisterRequest.plugins:type_name -> sard.agent.v1.Plugin
-	38, // 2: sard.agent.v1.RegisterRequest.repositories:type_name -> sard.agent.v1.RepositoryInfo
-	13, // 3: sard.agent.v1.RegisterRequest.verifier:type_name -> sard.agent.v1.VerifierStatus
+	42, // 0: sard.agent.v1.ProbeResponse.server_time:type_name -> google.protobuf.Timestamp
+	15, // 1: sard.agent.v1.RegisterRequest.plugins:type_name -> sard.agent.v1.Plugin
+	39, // 2: sard.agent.v1.RegisterRequest.repositories:type_name -> sard.agent.v1.RepositoryInfo
+	14, // 3: sard.agent.v1.RegisterRequest.verifier:type_name -> sard.agent.v1.VerifierStatus
 	0,  // 4: sard.agent.v1.VerifierStatus.sandbox:type_name -> sard.agent.v1.Sandbox
 	7,  // 5: sard.agent.v1.Plugin.actions:type_name -> sard.agent.v1.Action
-	42, // 6: sard.agent.v1.RegisterResponse.heartbeat_interval:type_name -> google.protobuf.Duration
-	22, // 7: sard.agent.v1.ConnectRequest.heartbeat:type_name -> sard.agent.v1.Heartbeat
-	26, // 8: sard.agent.v1.ConnectRequest.step_result:type_name -> sard.agent.v1.StepResult
-	21, // 9: sard.agent.v1.ConnectRequest.hello:type_name -> sard.agent.v1.Hello
-	23, // 10: sard.agent.v1.ConnectRequest.step_progress:type_name -> sard.agent.v1.StepProgress
-	24, // 11: sard.agent.v1.ConnectRequest.log_chunk:type_name -> sard.agent.v1.LogChunk
-	41, // 12: sard.agent.v1.Heartbeat.sent_at:type_name -> google.protobuf.Timestamp
-	13, // 13: sard.agent.v1.Heartbeat.verifier:type_name -> sard.agent.v1.VerifierStatus
+	43, // 6: sard.agent.v1.RegisterResponse.heartbeat_interval:type_name -> google.protobuf.Duration
+	23, // 7: sard.agent.v1.ConnectRequest.heartbeat:type_name -> sard.agent.v1.Heartbeat
+	27, // 8: sard.agent.v1.ConnectRequest.step_result:type_name -> sard.agent.v1.StepResult
+	22, // 9: sard.agent.v1.ConnectRequest.hello:type_name -> sard.agent.v1.Hello
+	24, // 10: sard.agent.v1.ConnectRequest.step_progress:type_name -> sard.agent.v1.StepProgress
+	25, // 11: sard.agent.v1.ConnectRequest.log_chunk:type_name -> sard.agent.v1.LogChunk
+	42, // 12: sard.agent.v1.Heartbeat.sent_at:type_name -> google.protobuf.Timestamp
+	14, // 13: sard.agent.v1.Heartbeat.verifier:type_name -> sard.agent.v1.VerifierStatus
 	1,  // 14: sard.agent.v1.StepProgress.phase:type_name -> sard.agent.v1.StepPhase
-	41, // 15: sard.agent.v1.StepProgress.sent_at:type_name -> google.protobuf.Timestamp
-	30, // 16: sard.agent.v1.StepProgress.stage:type_name -> sard.agent.v1.VerifyStage
-	25, // 17: sard.agent.v1.LogChunk.lines:type_name -> sard.agent.v1.LogLine
-	41, // 18: sard.agent.v1.LogLine.time:type_name -> google.protobuf.Timestamp
+	42, // 15: sard.agent.v1.StepProgress.sent_at:type_name -> google.protobuf.Timestamp
+	31, // 16: sard.agent.v1.StepProgress.stage:type_name -> sard.agent.v1.VerifyStage
+	26, // 17: sard.agent.v1.LogChunk.lines:type_name -> sard.agent.v1.LogLine
+	42, // 18: sard.agent.v1.LogLine.time:type_name -> google.protobuf.Timestamp
 	2,  // 19: sard.agent.v1.LogLine.level:type_name -> sard.agent.v1.LogLevel
 	4,  // 20: sard.agent.v1.StepResult.status:type_name -> sard.agent.v1.StepStatus
-	41, // 21: sard.agent.v1.StepResult.started_at:type_name -> google.protobuf.Timestamp
-	41, // 22: sard.agent.v1.StepResult.finished_at:type_name -> google.protobuf.Timestamp
-	27, // 23: sard.agent.v1.StepResult.backup:type_name -> sard.agent.v1.BackupOutput
-	28, // 24: sard.agent.v1.StepResult.restore:type_name -> sard.agent.v1.RestoreOutput
-	29, // 25: sard.agent.v1.StepResult.verify:type_name -> sard.agent.v1.VerifyOutput
-	33, // 26: sard.agent.v1.StepResult.run:type_name -> sard.agent.v1.RunOutput
+	42, // 21: sard.agent.v1.StepResult.started_at:type_name -> google.protobuf.Timestamp
+	42, // 22: sard.agent.v1.StepResult.finished_at:type_name -> google.protobuf.Timestamp
+	28, // 23: sard.agent.v1.StepResult.backup:type_name -> sard.agent.v1.BackupOutput
+	29, // 24: sard.agent.v1.StepResult.restore:type_name -> sard.agent.v1.RestoreOutput
+	30, // 25: sard.agent.v1.StepResult.verify:type_name -> sard.agent.v1.VerifyOutput
+	34, // 26: sard.agent.v1.StepResult.run:type_name -> sard.agent.v1.RunOutput
 	3,  // 27: sard.agent.v1.StepResult.reject_reason:type_name -> sard.agent.v1.RejectReason
-	32, // 28: sard.agent.v1.VerifyOutput.checks:type_name -> sard.agent.v1.CheckResult
-	30, // 29: sard.agent.v1.VerifyOutput.stages:type_name -> sard.agent.v1.VerifyStage
+	33, // 28: sard.agent.v1.VerifyOutput.checks:type_name -> sard.agent.v1.CheckResult
+	31, // 29: sard.agent.v1.VerifyOutput.stages:type_name -> sard.agent.v1.VerifyStage
 	6,  // 30: sard.agent.v1.VerifyOutput.verdict:type_name -> sard.agent.v1.VerifyVerdict
-	31, // 31: sard.agent.v1.VerifyOutput.mismatches:type_name -> sard.agent.v1.FingerprintMismatch
-	42, // 32: sard.agent.v1.VerifyOutput.restore_duration:type_name -> google.protobuf.Duration
+	32, // 31: sard.agent.v1.VerifyOutput.mismatches:type_name -> sard.agent.v1.FingerprintMismatch
+	43, // 32: sard.agent.v1.VerifyOutput.restore_duration:type_name -> google.protobuf.Duration
 	5,  // 33: sard.agent.v1.VerifyStage.status:type_name -> sard.agent.v1.StageStatus
-	41, // 34: sard.agent.v1.VerifyStage.started_at:type_name -> google.protobuf.Timestamp
-	41, // 35: sard.agent.v1.VerifyStage.finished_at:type_name -> google.protobuf.Timestamp
-	36, // 36: sard.agent.v1.ConnectResponse.run_step:type_name -> sard.agent.v1.RunStep
-	39, // 37: sard.agent.v1.ConnectResponse.cancel_step:type_name -> sard.agent.v1.CancelStep
-	35, // 38: sard.agent.v1.ConnectResponse.result_ack:type_name -> sard.agent.v1.ResultAck
+	42, // 34: sard.agent.v1.VerifyStage.started_at:type_name -> google.protobuf.Timestamp
+	42, // 35: sard.agent.v1.VerifyStage.finished_at:type_name -> google.protobuf.Timestamp
+	37, // 36: sard.agent.v1.ConnectResponse.run_step:type_name -> sard.agent.v1.RunStep
+	40, // 37: sard.agent.v1.ConnectResponse.cancel_step:type_name -> sard.agent.v1.CancelStep
+	36, // 38: sard.agent.v1.ConnectResponse.result_ack:type_name -> sard.agent.v1.ResultAck
 	7,  // 39: sard.agent.v1.RunStep.action:type_name -> sard.agent.v1.Action
-	42, // 40: sard.agent.v1.RunStep.timeout:type_name -> google.protobuf.Duration
-	40, // 41: sard.agent.v1.RunStep.tags:type_name -> sard.agent.v1.RunStep.TagsEntry
-	37, // 42: sard.agent.v1.RunStep.verify:type_name -> sard.agent.v1.VerifyTask
-	41, // 43: sard.agent.v1.VerifyTask.deadline:type_name -> google.protobuf.Timestamp
-	8,  // 44: sard.agent.v1.EnrollmentService.Enroll:input_type -> sard.agent.v1.EnrollRequest
-	12, // 45: sard.agent.v1.AgentService.Register:input_type -> sard.agent.v1.RegisterRequest
-	20, // 46: sard.agent.v1.AgentService.Connect:input_type -> sard.agent.v1.ConnectRequest
-	16, // 47: sard.agent.v1.AgentService.RenewCertificate:input_type -> sard.agent.v1.RenewCertificateRequest
-	18, // 48: sard.agent.v1.AgentService.ConfirmCertificate:input_type -> sard.agent.v1.ConfirmCertificateRequest
-	10, // 49: sard.agent.v1.AgentService.Probe:input_type -> sard.agent.v1.ProbeRequest
-	9,  // 50: sard.agent.v1.EnrollmentService.Enroll:output_type -> sard.agent.v1.EnrollResponse
-	15, // 51: sard.agent.v1.AgentService.Register:output_type -> sard.agent.v1.RegisterResponse
-	34, // 52: sard.agent.v1.AgentService.Connect:output_type -> sard.agent.v1.ConnectResponse
-	17, // 53: sard.agent.v1.AgentService.RenewCertificate:output_type -> sard.agent.v1.RenewCertificateResponse
-	19, // 54: sard.agent.v1.AgentService.ConfirmCertificate:output_type -> sard.agent.v1.ConfirmCertificateResponse
-	11, // 55: sard.agent.v1.AgentService.Probe:output_type -> sard.agent.v1.ProbeResponse
-	50, // [50:56] is the sub-list for method output_type
-	44, // [44:50] is the sub-list for method input_type
-	44, // [44:44] is the sub-list for extension type_name
-	44, // [44:44] is the sub-list for extension extendee
-	0,  // [0:44] is the sub-list for field type_name
+	43, // 40: sard.agent.v1.RunStep.timeout:type_name -> google.protobuf.Duration
+	41, // 41: sard.agent.v1.RunStep.tags:type_name -> sard.agent.v1.RunStep.TagsEntry
+	38, // 42: sard.agent.v1.RunStep.verify:type_name -> sard.agent.v1.VerifyTask
+	42, // 43: sard.agent.v1.VerifyTask.deadline:type_name -> google.protobuf.Timestamp
+	8,  // 44: sard.agent.v1.RepositoryInfo.recovery_key:type_name -> sard.agent.v1.RecoveryKeyState
+	9,  // 45: sard.agent.v1.EnrollmentService.Enroll:input_type -> sard.agent.v1.EnrollRequest
+	13, // 46: sard.agent.v1.AgentService.Register:input_type -> sard.agent.v1.RegisterRequest
+	21, // 47: sard.agent.v1.AgentService.Connect:input_type -> sard.agent.v1.ConnectRequest
+	17, // 48: sard.agent.v1.AgentService.RenewCertificate:input_type -> sard.agent.v1.RenewCertificateRequest
+	19, // 49: sard.agent.v1.AgentService.ConfirmCertificate:input_type -> sard.agent.v1.ConfirmCertificateRequest
+	11, // 50: sard.agent.v1.AgentService.Probe:input_type -> sard.agent.v1.ProbeRequest
+	10, // 51: sard.agent.v1.EnrollmentService.Enroll:output_type -> sard.agent.v1.EnrollResponse
+	16, // 52: sard.agent.v1.AgentService.Register:output_type -> sard.agent.v1.RegisterResponse
+	35, // 53: sard.agent.v1.AgentService.Connect:output_type -> sard.agent.v1.ConnectResponse
+	18, // 54: sard.agent.v1.AgentService.RenewCertificate:output_type -> sard.agent.v1.RenewCertificateResponse
+	20, // 55: sard.agent.v1.AgentService.ConfirmCertificate:output_type -> sard.agent.v1.ConfirmCertificateResponse
+	12, // 56: sard.agent.v1.AgentService.Probe:output_type -> sard.agent.v1.ProbeResponse
+	51, // [51:57] is the sub-list for method output_type
+	45, // [45:51] is the sub-list for method input_type
+	45, // [45:45] is the sub-list for extension type_name
+	45, // [45:45] is the sub-list for extension extendee
+	0,  // [0:45] is the sub-list for field type_name
 }
 
 func init() { file_sard_agent_v1_agent_proto_init() }
@@ -3329,7 +3399,7 @@ func file_sard_agent_v1_agent_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sard_agent_v1_agent_proto_rawDesc), len(file_sard_agent_v1_agent_proto_rawDesc)),
-			NumEnums:      8,
+			NumEnums:      9,
 			NumMessages:   33,
 			NumExtensions: 0,
 			NumServices:   2,

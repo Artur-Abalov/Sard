@@ -16,9 +16,27 @@ func RepositoryOpenChecks() []string {
 }
 
 // RepositoryChecks are the checks of one repository that every run makes, in
-// their order (Ч3): the open checks, then the id and the locks.
+// their order (Ч3): the open checks, then the id, the keys (V3, K16) and the locks.
 func RepositoryChecks() []string {
-	return append(RepositoryOpenChecks(), CheckRepositoryID, CheckRepositoryLocks)
+	return append(RepositoryOpenChecks(), CheckRepositoryID, CheckRepositoryKeys, CheckRepositoryLocks)
+}
+
+// KeysLine is the line of repository.keys (V3, K16): the repository has a key
+// issued for recovery, or the operator is told to issue one.
+func KeysLine(repo string, total int, hasRecovery bool) Line {
+	line := Line{Check: CheckRepositoryKeys, Subject: repo, Status: OK}
+	switch {
+	case hasRecovery:
+		line.Message = plural(total, "key") + ", recovery key present"
+		return line
+	case total == 1:
+		line.Message = "no recovery key; only one key"
+	default:
+		line.Message = "no recovery key"
+	}
+	line.Status = Warn
+	line.Hint = "sudo sard-agent repo key add " + repo + " --for recovery"
+	return line
 }
 
 // RepositoryStepOf is the open check a refusal ends: the storage is the one

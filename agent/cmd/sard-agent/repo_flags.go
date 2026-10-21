@@ -48,6 +48,12 @@ const (
 	// refused with the name of the command that has it (A8d-2).
 	offerOffline
 	offerNoReadData
+	// offerKeyAdd: --for, --label, --to-file and --if-missing of repo key add (V3).
+	offerKeyAdd
+	// offerYes: --yes of repo key remove.
+	offerYes
+	// offerRecoveryKey: --recovery-key-file and --no-recovery-key of repo add and repo init (K15).
+	offerRecoveryKey
 )
 
 // hostOptions are the flags and the positional arguments of one command of
@@ -92,6 +98,16 @@ type hostOptions struct {
 	// host key, and the permission to replace a host key that changed.
 	hostKeyFingerprint string
 	replaceHostKey     bool
+	// The flags of repo key add: what the key is for, its label, the file its
+	// password goes to, and whether an existing key is no refusal.
+	purpose, label, toFile string
+	ifMissing              bool
+	// yes is --yes of repo key remove.
+	yes bool
+	// The flags of repo add and repo init (K15): the file the password of the
+	// recovery key goes to, and the refusal to issue one.
+	recoveryKeyFile string
+	noRecoveryKey   bool
 	// set are the flags the command line gave, even with an empty value.
 	set map[string]bool
 	// name and address are the first and the second positional argument.
@@ -115,16 +131,19 @@ type cmdSpec struct {
 
 // repoSpecs are the commands of "sard-agent repo".
 var repoSpecs = map[string]cmdSpec{
-	"init":      {"repo init", offerTimeout | offerGenerate, 1, "the name of a repository of the agent config is required: sard-agent repo init [flags] <name>", 0},
-	"list":      {"repo list", offerTimeout | offerJSON, 0, "", 0},
-	"add":       {"repo add", offerTimeout | offerNoRestart | offerPasswordSource | offerRemote, 2, "a name and an address are required: sard-agent repo add [flags] <name> <address>", 0},
-	"show":      {"repo show", offerTimeout | offerJSON, 1, "the name of a repository is required: sard-agent repo show [flags] <name>", 0},
-	"remove":    {"repo remove", offerNoRestart, 1, "the name of a repository is required: sard-agent repo remove [flags] <name>", 0},
-	"password":  {"repo password", offerReveal, 1, "the name of a repository is required: sard-agent repo password <name> --reveal", 0},
-	"snapshots": {"repo snapshots", offerTimeout | offerJSON | offerConnectTimeout | offerSource, 1, "the name of a repository is required: sard-agent repo snapshots [flags] <name>", 0},
-	"restore":   {"repo restore", offerRestore | offerConnectTimeout | offerSource, 2, "a repository name and a snapshot are required: sard-agent repo restore [flags] <name> <snapshot> --target <dir>", 0},
-	"check":     {"repo check", offerTimeout | offerJSON | offerConnectTimeout | offerShortConnect | offerReadData, 0, "", 1},
-	"unlock":    {"repo unlock", offerTimeout | offerConnectTimeout | offerRemoveStale, 1, "the name of a repository is required: sard-agent repo unlock <name> --remove-stale", 0},
+	"init":       {"repo init", offerTimeout | offerGenerate | offerRecoveryKey, 1, "the name of a repository of the agent config is required: sard-agent repo init [flags] <name>", 0},
+	"list":       {"repo list", offerTimeout | offerJSON, 0, "", 0},
+	"add":        {"repo add", offerTimeout | offerNoRestart | offerPasswordSource | offerRemote | offerRecoveryKey, 2, "a name and an address are required: sard-agent repo add [flags] <name> <address>", 0},
+	"show":       {"repo show", offerTimeout | offerJSON, 1, "the name of a repository is required: sard-agent repo show [flags] <name>", 0},
+	"remove":     {"repo remove", offerNoRestart, 1, "the name of a repository is required: sard-agent repo remove [flags] <name>", 0},
+	"password":   {"repo password", offerReveal, 1, "the name of a repository is required: sard-agent repo password <name> --reveal", 0},
+	"snapshots":  {"repo snapshots", offerTimeout | offerJSON | offerConnectTimeout | offerSource, 1, "the name of a repository is required: sard-agent repo snapshots [flags] <name>", 0},
+	"restore":    {"repo restore", offerRestore | offerConnectTimeout | offerSource, 2, "a repository name and a snapshot are required: sard-agent repo restore [flags] <name> <snapshot> --target <dir>", 0},
+	"check":      {"repo check", offerTimeout | offerJSON | offerConnectTimeout | offerShortConnect | offerReadData, 0, "", 1},
+	"key add":    {"repo key add", offerTimeout | offerNoRestart | offerConnectTimeout | offerKeyAdd, 1, "the name of a repository is required: sard-agent repo key add [flags] <name> --for verifier|recovery|other", 0},
+	"key list":   {"repo key list", offerTimeout | offerJSON | offerConnectTimeout, 1, "the name of a repository is required: sard-agent repo key list [flags] <name>", 0},
+	"key remove": {"repo key remove", offerTimeout | offerNoRestart | offerConnectTimeout | offerYes, 2, "a repository name and a key id are required: sard-agent repo key remove [flags] <name> <id>", 0},
+	"unlock":     {"repo unlock", offerTimeout | offerConnectTimeout | offerRemoveStale, 1, "the name of a repository is required: sard-agent repo unlock <name> --remove-stale", 0},
 }
 
 // checkSpec is sard-agent check (A8d-2).
@@ -168,6 +187,9 @@ type flagValues struct {
 	target                       *string
 	overwrite, allowRoot         *bool
 	paths                        *stringList
+	purpose, label, toFile       *string
+	ifMissing, yes, noRecovery   *bool
+	recoveryKeyFile              *string
 }
 
 func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
@@ -180,6 +202,8 @@ func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
 		hostKeyFingerprint: new(string), replaceHostKey: new(bool),
 		target: new(string), overwrite: new(bool), allowRoot: new(bool), paths: new(stringList),
 		readData: new(int), removeStale: new(bool), offline: new(bool),
+		purpose: new(string), label: new(string), toFile: new(string), recoveryKeyFile: new(string),
+		ifMissing: new(bool), yes: new(bool), noRecovery: new(bool),
 	}
 	if o&offerTimeout != 0 {
 		v.timeout = fs.Duration("timeout", defaultRepoTimeout, "")
@@ -205,7 +229,26 @@ func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
 		defineRemoteFlags(fs, &v)
 	}
 	defineReadFlags(fs, o, &v)
+	defineKeyFlags(fs, o, &v)
 	return v
+}
+
+// defineKeyFlags are the flags of the restic key commands and of the recovery
+// key that repo add and repo init issue (V3).
+func defineKeyFlags(fs *flag.FlagSet, o offer, v *flagValues) {
+	if o&offerKeyAdd != 0 {
+		v.purpose = fs.String("for", "", "")
+		v.label = fs.String("label", "", "")
+		v.toFile = fs.String("to-file", "", "")
+		v.ifMissing = fs.Bool("if-missing", false, "")
+	}
+	if o&offerYes != 0 {
+		v.yes = fs.Bool("yes", false, "")
+	}
+	if o&offerRecoveryKey != 0 {
+		v.recoveryKeyFile = fs.String("recovery-key-file", "", "")
+		v.noRecovery = fs.Bool("no-recovery-key", false, "")
+	}
 }
 
 // defineReadFlags are --connect-timeout, which the commands that reach a
@@ -359,6 +402,8 @@ func parseFlags(spec cmdSpec, args []string, stderr io.Writer, defaultConfig str
 		hostKeyFingerprint: *v.hostKeyFingerprint, replaceHostKey: *v.replaceHostKey,
 		target: *v.target, overwrite: *v.overwrite, allowRoot: *v.allowRoot, paths: *v.paths,
 		readData: *v.readData, removeStale: *v.removeStale, offline: *v.offline,
+		purpose: *v.purpose, label: *v.label, toFile: *v.toFile, ifMissing: *v.ifMissing, yes: *v.yes,
+		recoveryKeyFile: *v.recoveryKeyFile, noRecoveryKey: *v.noRecovery,
 	}
 	fs.Visit(func(f *flag.Flag) { opts.set[f.Name] = true })
 	setNames(&opts, positional)
