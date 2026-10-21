@@ -53,12 +53,12 @@ func masked(t *testing.T) (*fixture, *fakeSecrets) {
 	return setup(t, tune), s
 }
 
-// wantLog takes the next event, which must be a log line of id.
-func wantLog(t *testing.T, s *fakeSink, id string, level agentv1.LogLevel, text string) {
+// wantLog takes the next event, which must be a log line of c1.
+func wantLog(t *testing.T, s *fakeSink, level agentv1.LogLevel, text string) {
 	t.Helper()
 	e := s.next(t)
-	if e.log == nil || e.logID != id || e.log.GetLevel() != level || e.log.GetText() != text || e.log.GetTime() == nil {
-		t.Fatalf("event = %+v, want log %s %v %q", e, id, level, text)
+	if e.log == nil || e.logID != "c1" || e.log.GetLevel() != level || e.log.GetText() != text || e.log.GetTime() == nil {
+		t.Fatalf("event = %+v, want log c1 %v %q", e, level, text)
 	}
 }
 
@@ -71,10 +71,10 @@ func writeOutput(t *testing.T, w io.Writer, chunks ...string) {
 	}
 }
 
-func startMasked(t *testing.T, f *fixture, id string) *call {
+func startMasked(t *testing.T, f *fixture) *call {
 	t.Helper()
-	f.e.Submit(backup(id))
-	accepted(t, f.sink, id)
+	f.e.Submit(backup("c1"))
+	accepted(t, f.sink, "c1")
 	return f.files.next(t)
 }
 
@@ -82,48 +82,48 @@ func startMasked(t *testing.T, f *fixture, id string) *call {
 
 func TestThePluginsLogLinesAreMasked(t *testing.T) {
 	f, secrets := masked(t)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	if got := <-secrets.steps; got.GetCommandId() != "c1" {
 		t.Fatalf("values asked for %v", got)
 	}
 	c.r.Log(info, "connecting with "+secretValue+" now")
-	wantLog(t, f.sink, "c1", info, "connecting with [REDACTED] now")
+	wantLog(t, f.sink, info, "connecting with [REDACTED] now")
 	c.r.Log(warn, "nothing to hide")
-	wantLog(t, f.sink, "c1", warn, "nothing to hide")
+	wantLog(t, f.sink, warn, "nothing to hide")
 	c.r.Log(info, `{"password":"`+secretValue+`"}`)
-	wantLog(t, f.sink, "c1", info, `{"password":"[REDACTED]"}`)
+	wantLog(t, f.sink, info, `{"password":"[REDACTED]"}`)
 	c.finish(snapshot("s1"), nil)
 	wantResult(t, f.sink.result(t), "c1", succeeded, "")
 }
 
 func TestToolOutputIsMaskedAcrossWritesAndCutIntoWholeLines(t *testing.T) {
 	f, _ := masked(t)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	out := c.r.Output()
 	writeOutput(t, out, "Fatal: wrong password hun", "ter2-very-se", "cret\nplain line\npartial")
-	wantLog(t, f.sink, "c1", warn, "Fatal: wrong password [REDACTED]")
-	wantLog(t, f.sink, "c1", info, "plain line")
+	wantLog(t, f.sink, warn, "Fatal: wrong password [REDACTED]")
+	wantLog(t, f.sink, info, "plain line")
 	f.sink.quiet(t)
 	c.finish(snapshot("s1"), nil)
-	wantLog(t, f.sink, "c1", info, "partial") // the last line precedes the result
+	wantLog(t, f.sink, info, "partial") // the last line precedes the result
 	wantResult(t, f.sink.result(t), "c1", succeeded, "")
 }
 
 func TestASecretSplitAcrossLogChunksNeverReachesTheSink(t *testing.T) {
 	f, _ := masked(t)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	in := "a " + secretValue + " b\n"
 	for i := range len(in) {
 		writeOutput(t, c.r.Output(), in[i:i+1])
 	}
 	c.finish(snapshot("s1"), nil)
-	wantLog(t, f.sink, "c1", info, "a [REDACTED] b")
+	wantLog(t, f.sink, info, "a [REDACTED] b")
 	wantResult(t, f.sink.result(t), "c1", succeeded, "")
 }
 
 func TestTheResultMessageIsMaskedBeforeItIsSentOrStored(t *testing.T) {
 	f, _ := masked(t)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	c.finish(nil, errors.New("restic backup: exit code 1: Fatal: s3://u:"+secretValue+"@host"))
 	want := "restic backup: exit code 1: Fatal: s3://u:[REDACTED]@host"
 	wantResult(t, f.sink.result(t), "c1", failed, want)
@@ -136,13 +136,13 @@ func TestTheResultMessageIsMaskedBeforeItIsSentOrStored(t *testing.T) {
 
 func TestAPanicValueIsMasked(t *testing.T) {
 	f, _ := masked(t)
-	startMasked(t, f, "c1").panic("bad key " + secretValue)
+	startMasked(t, f).panic("bad key " + secretValue)
 	wantResult(t, f.sink.result(t), "c1", failed, "plugin panicked: bad key [REDACTED]")
 }
 
 func TestAPanicValueIsMaskedInTheAgentLogToo(t *testing.T) {
 	f, _ := masked(t)
-	startMasked(t, f, "c1").panic("boom " + secretValue)
+	startMasked(t, f).panic("boom " + secretValue)
 	f.sink.result(t)
 	log := f.log.String()
 	if !strings.Contains(log, "boom [REDACTED]") || strings.Contains(log, secretValue) {
@@ -154,12 +154,12 @@ func TestAStepThatPrintsSecretsOnEveryPathLeavesNoValueInTheAgentLog(t *testing.
 	const env = "ENV-MARKER-value"
 	_, tune := withSecrets(executor.Secret{Name: "db", Value: []byte(secretValue)}, executor.Secret{Name: "env", Value: []byte(env)})
 	f := setup(t, tune)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	c.r.Log(info, "token "+secretValue)
 	writeOutput(t, c.r.Output(), "key "+secretValue+"\n")
 	c.finish(nil, errors.New("failed "+env))
-	wantLog(t, f.sink, "c1", info, "token [REDACTED]")
-	wantLog(t, f.sink, "c1", info, "key [REDACTED]")
+	wantLog(t, f.sink, info, "token [REDACTED]")
+	wantLog(t, f.sink, info, "key [REDACTED]")
 	wantResult(t, f.sink.result(t), "c1", failed, "failed [REDACTED]")
 	if log := f.log.String(); strings.Contains(log, secretValue) || strings.Contains(log, env) {
 		t.Fatalf("log:\n%s", log)
@@ -168,7 +168,7 @@ func TestAStepThatPrintsSecretsOnEveryPathLeavesNoValueInTheAgentLog(t *testing.
 
 func TestVerifyCheckDetailsAreMasked(t *testing.T) {
 	f, _ := masked(t)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	out := &agentv1.StepResult{Output: &agentv1.StepResult_Verify{Verify: &agentv1.VerifyOutput{
 		Checks: []*agentv1.CheckResult{{Name: "files", Detail: "token " + secretValue + " differs"}},
 	}}}
@@ -183,11 +183,11 @@ func TestVerifyCheckDetailsAreMasked(t *testing.T) {
 
 func TestTheTailIsReleasedMaskedWhenTheStepIsCancelled(t *testing.T) {
 	f, _ := masked(t)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	writeOutput(t, c.r.Output(), "done\nkey "+secretValue)
-	wantLog(t, f.sink, "c1", info, "done")
+	wantLog(t, f.sink, info, "done")
 	f.e.Cancel("c1")
-	wantLog(t, f.sink, "c1", info, "key [REDACTED]")
+	wantLog(t, f.sink, info, "key [REDACTED]")
 	wantResult(t, f.sink.result(t), "c1", cancelled, "cancelled by the server")
 }
 
@@ -200,16 +200,16 @@ func TestTheTailIsReleasedMaskedWhenTheStepTimesOut(t *testing.T) {
 	c := f.files.next(t)
 	writeOutput(t, c.r.Output(), "key "+secretValue[:5])
 	f.clock.Advance(time.Second)
-	wantLog(t, f.sink, "c1", info, "key "+secretValue[:5])
+	wantLog(t, f.sink, info, "key "+secretValue[:5])
 	wantResult(t, f.sink.result(t), "c1", timedOut, "exceeded the step timeout of 1s")
 }
 
 func TestTheTailIsReleasedMaskedWhenThePluginPanics(t *testing.T) {
 	f, _ := masked(t)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	writeOutput(t, c.r.Output(), "key "+secretValue)
 	c.panic("boom")
-	wantLog(t, f.sink, "c1", info, "key [REDACTED]")
+	wantLog(t, f.sink, info, "key [REDACTED]")
 	wantResult(t, f.sink.result(t), "c1", failed, "plugin panicked: boom")
 }
 
@@ -226,7 +226,7 @@ func TestTheTailOfAGivenUpStepIsReleasedAndLaterOutputDropped(t *testing.T) {
 	f.e.Cancel("c1")
 	f.clock.Advance(30 * time.Second)
 	wantResult(t, f.sink.result(t), "c1", cancelled, "cancelled by the server; the plugin did not stop within 30s")
-	wantLog(t, f.sink, "c1", info, "key [REDACTED]")
+	wantLog(t, f.sink, info, "key [REDACTED]")
 	writeOutput(t, c.r.Output(), "late "+secretValue+"\n")
 	f.sink.quiet(t)
 }
@@ -249,29 +249,29 @@ func TestAStepWhoseSecretsCannotBeReadFailsWithoutStarting(t *testing.T) {
 func TestWithoutValuesLinesPassUnchanged(t *testing.T) {
 	_, tune := withSecrets(executor.Secret{Name: "empty"})
 	f := setup(t, tune)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	c.r.Log(info, "as is")
-	wantLog(t, f.sink, "c1", info, "as is")
+	wantLog(t, f.sink, info, "as is")
 	writeOutput(t, c.r.Output(), "raw\n")
-	wantLog(t, f.sink, "c1", info, "raw")
+	wantLog(t, f.sink, info, "raw")
 	c.finish(nil, errors.New("plain error"))
 	wantResult(t, f.sink.result(t), "c1", failed, "plain error")
 }
 
 func TestWithoutASecretsSourceOutputIsLoggedAtInfo(t *testing.T) {
 	f := setup(t, nil)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	writeOutput(t, c.r.Output(), "Fatal: x\n")
-	wantLog(t, f.sink, "c1", info, "Fatal: x")
+	wantLog(t, f.sink, info, "Fatal: x")
 }
 
 // Short values are warned about by stepsecrets, once, not by every step.
 func TestAShortSecretIsMaskedAndNotWarnedAboutByTheExecutor(t *testing.T) {
 	_, tune := withSecrets(executor.Secret{Name: "pin", Value: []byte("471")}, executor.Secret{Name: "db", Value: []byte(secretValue)})
 	f := setup(t, tune)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	c.r.Log(info, "pin 471")
-	wantLog(t, f.sink, "c1", info, "pin [REDACTED]")
+	wantLog(t, f.sink, info, "pin [REDACTED]")
 	if log := f.log.String(); strings.Contains(log, "471") || strings.Contains(log, "level=WARN") && strings.Contains(log, "short") {
 		t.Fatalf("log:\n%s", log)
 	}
@@ -281,9 +281,9 @@ func TestAShortSecretIsMaskedAndNotWarnedAboutByTheExecutor(t *testing.T) {
 func TestAnEmptySecretDoesNotDisableTheOthers(t *testing.T) {
 	_, tune := withSecrets(executor.Secret{Name: "empty"}, executor.Secret{Name: "one", Value: []byte("Z")})
 	f := setup(t, tune)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	c.r.Log(info, "aZb")
-	wantLog(t, f.sink, "c1", info, "a[REDACTED]b")
+	wantLog(t, f.sink, info, "a[REDACTED]b")
 }
 
 // OQ-122: Host.Secret answers from the read that built the masker.
@@ -293,7 +293,7 @@ func TestTheHandlerGetsTheContentTheMaskerWasBuiltFrom(t *testing.T) {
 		executor.Secret{Name: "url of repository", Value: []byte("url-pass")},
 	)
 	f := setup(t, tune)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	got, ok := c.r.Secret("tok")
 	if !ok || string(got) != secretValue+"\n" {
 		t.Fatalf("Secret(tok) = %q, %v", got, ok)
@@ -322,48 +322,48 @@ func keyMasked(t *testing.T) *fixture {
 
 func TestAMultilineKeyInToolOutputBecomesOneMarkerInOneLine(t *testing.T) {
 	f := keyMasked(t)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	writeOutput(t, c.r.Output(), "before\nkey "+keyPEM+" end\nafter\n")
-	wantLog(t, f.sink, "c1", info, "before")
-	wantLog(t, f.sink, "c1", info, "key [REDACTED] end")
-	wantLog(t, f.sink, "c1", info, "after")
+	wantLog(t, f.sink, info, "before")
+	wantLog(t, f.sink, info, "key [REDACTED] end")
+	wantLog(t, f.sink, info, "after")
 }
 
 func TestAKeyFollowedByANewlineLeavesTheNewlineOutOfTheValue(t *testing.T) {
 	f := keyMasked(t)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	writeOutput(t, c.r.Output(), keyPEM+"\ndone\n")
-	wantLog(t, f.sink, "c1", info, "[REDACTED]")
-	wantLog(t, f.sink, "c1", info, "done")
+	wantLog(t, f.sink, info, "[REDACTED]")
+	wantLog(t, f.sink, info, "done")
 }
 
 func TestOneLineOfAKeyPrintedAloneIsNotMasked(t *testing.T) {
 	f := keyMasked(t)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	c.r.Log(info, "BKcwggSjAgEAAoIBAQC7")
-	wantLog(t, f.sink, "c1", info, "BKcwggSjAgEAAoIBAQC7")
+	wantLog(t, f.sink, info, "BKcwggSjAgEAAoIBAQC7")
 }
 
 func TestASecretLongerThanALogLineIsOneMarker(t *testing.T) {
 	big := strings.Repeat("q", 20000)
 	_, tune := withSecrets(executor.Secret{Name: "big", Value: []byte(big)})
 	f := setup(t, tune)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	writeOutput(t, c.r.Output(), "x"+big+"y\n")
-	wantLog(t, f.sink, "c1", info, "x[REDACTED]y")
+	wantLog(t, f.sink, info, "x[REDACTED]y")
 }
 
 func TestAShortSecretIsMaskedEverywhere(t *testing.T) {
 	_, tune := withSecrets(executor.Secret{Name: "short", Value: []byte("ab7")})
 	f := setup(t, tune)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	writeOutput(t, c.r.Output(), "xab7y ab7\n")
-	wantLog(t, f.sink, "c1", info, "x[REDACTED]y [REDACTED]")
+	wantLog(t, f.sink, info, "x[REDACTED]y [REDACTED]")
 }
 
 func TestLinesWithoutSecretsArriveUnchangedAndInOrder(t *testing.T) {
 	f, _ := masked(t)
-	step := startMasked(t, f, "c1")
+	step := startMasked(t, f)
 	var in strings.Builder
 	for i := range 100 {
 		if i%10 == 0 {
@@ -378,18 +378,18 @@ func TestLinesWithoutSecretsArriveUnchangedAndInOrder(t *testing.T) {
 		if i%10 == 0 {
 			want = "line [REDACTED]"
 		}
-		wantLog(t, f.sink, "c1", info, want)
+		wantLog(t, f.sink, info, want)
 	}
 }
 
 func TestATextLookingLikeTheMarkerOrAlmostTheSecretIsLeftAlone(t *testing.T) {
 	f, _ := masked(t)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	c.r.Log(info, "value [REDACTED] already")
-	wantLog(t, f.sink, "c1", info, "value [REDACTED] already")
+	wantLog(t, f.sink, info, "value [REDACTED] already")
 	almost := secretValue[:len(secretValue)-1] + "X"
 	c.r.Log(info, almost)
-	wantLog(t, f.sink, "c1", info, almost)
+	wantLog(t, f.sink, info, almost)
 }
 
 func TestStepsRunningInParallelAreMaskedApartFromEachOther(t *testing.T) {
@@ -424,11 +424,11 @@ func TestStepsRunningInParallelAreMaskedApartFromEachOther(t *testing.T) {
 func TestBase64OfASecretIsMaskedOnEveryPathOfAStepsText(t *testing.T) {
 	enc := base64.StdEncoding.EncodeToString([]byte(secretValue))
 	f, _ := masked(t)
-	c := startMasked(t, f, "c1")
+	c := startMasked(t, f)
 	c.r.Log(info, "auth "+enc)
-	wantLog(t, f.sink, "c1", info, "auth [REDACTED]")
+	wantLog(t, f.sink, info, "auth [REDACTED]")
 	writeOutput(t, c.r.Output(), "Authorization: "+enc+"\n")
-	wantLog(t, f.sink, "c1", info, "Authorization: [REDACTED]")
+	wantLog(t, f.sink, info, "Authorization: [REDACTED]")
 	out := &agentv1.StepResult{Output: &agentv1.StepResult_Verify{Verify: &agentv1.VerifyOutput{
 		Checks: []*agentv1.CheckResult{{Name: "files", Detail: "got " + enc}},
 	}}}

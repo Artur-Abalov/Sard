@@ -100,7 +100,7 @@ func TestACleanupNeverFollowsALinkOfTheStagingDirectory(t *testing.T) {
 	}
 }
 
-func command(h *host, id string) string { return filepath.Join(h.dir, ".sard-staging", id) }
+func c1Dir(h *host) string { return filepath.Join(h.dir, ".sard-staging", "c1") }
 
 // killedAfterTheMove is a host where a restore finished its move and the agent
 // was killed before the executor journaled the result.
@@ -118,14 +118,14 @@ func killedAfterTheMove(t *testing.T) *host {
 func TestAtStartARestoreKilledAfterItsMoveIsEvidenceOfSuccessAndTheDestinationIsUntouched(t *testing.T) {
 	h := killedAfterTheMove(t)
 	got := h.engine.CleanStaging()
-	want := []consolerestore.Evidence{{Name: "c1", Path: command(h, "c1"), Verdict: consolerestore.Completed, Destination: h.dest(), Files: 2, Bytes: 4}}
+	want := []consolerestore.Evidence{{Name: "c1", Path: c1Dir(h), Verdict: consolerestore.Completed, Destination: h.dest(), Files: 2, Bytes: 4}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("evidence = %+v, want %+v", got, want)
 	}
 	if _, err := os.Stat(filepath.Join(h.dest(), "srv/data/a.txt")); err != nil {
 		t.Errorf("the destination was touched: %v", err)
 	}
-	if _, err := os.Stat(command(h, "c1")); err != nil {
+	if _, err := os.Stat(c1Dir(h)); err != nil {
 		t.Errorf("the directory with the marker goes only once the result is journaled: %v", err)
 	}
 }
@@ -138,7 +138,7 @@ func TestSettleRemovesTheDirectoryOfACommandAndLogsIt(t *testing.T) {
 	if got := tree(t, filepath.Join(h.dir, ".sard-staging")); !slices.Equal(got, []string{"."}) {
 		t.Errorf("staging holds %v", got)
 	}
-	mentions(t, h.log.String(), command(h, "c1"))
+	mentions(t, h.log.String(), c1Dir(h))
 	if _, err := os.Stat(filepath.Join(h.dest(), "srv/data/a.txt")); err != nil {
 		t.Errorf("the destination was touched: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestSettleNeverLeavesTheStagingDirectory(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(keep, "f")); err != nil {
 		t.Errorf("Settle left .sard-staging: %v", err)
 	}
-	if _, err := os.Stat(command(h, "c1")); err != nil {
+	if _, err := os.Stat(c1Dir(h)); err != nil {
 		t.Errorf("c1: %v", err)
 	}
 }
@@ -165,11 +165,11 @@ func TestSettleNeverLeavesTheStagingDirectory(t *testing.T) {
 // Scenario: Убитое во время restic восстановление сообщает о провале и удаляет root.
 func TestAtStartARestoreKilledDuringResticIsEvidenceOfNothingRestoredAndRootIsRemoved(t *testing.T) {
 	h := newHost(t)
-	if err := writeFile(filepath.Join(command(h, "c1"), "root/srv/a.txt"), "A", 0o600); err != nil {
+	if err := writeFile(filepath.Join(c1Dir(h), "root/srv/a.txt"), "A", 0o600); err != nil {
 		t.Fatal(err)
 	}
 	got := h.engine.CleanStaging()
-	want := []consolerestore.Evidence{{Name: "c1", Path: command(h, "c1"), Verdict: consolerestore.NothingRestored}}
+	want := []consolerestore.Evidence{{Name: "c1", Path: c1Dir(h), Verdict: consolerestore.NothingRestored}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("evidence = %+v, want %+v", got, want)
 	}
@@ -182,7 +182,7 @@ func TestAtStartARestoreKilledDuringResticIsEvidenceOfNothingRestoredAndRootIsRe
 func TestAtStartARestoreKilledAfterTheMarkerButBeforeTheMoveIsEvidenceOfNothingRestored(t *testing.T) {
 	h := killedAfterTheMove(t)
 	// the destination is gone and root is back: the rename did not happen
-	if err := os.Rename(h.dest(), filepath.Join(command(h, "c1"), "root")); err != nil {
+	if err := os.Rename(h.dest(), filepath.Join(c1Dir(h), "root")); err != nil {
 		t.Fatal(err)
 	}
 	got := h.engine.CleanStaging()
@@ -200,12 +200,12 @@ func TestAtStartARestoreKilledAfterTheMarkerButBeforeTheMoveIsEvidenceOfNothingR
 // Scenario: Принятое, но не начатое восстановление; a directory made and nothing in it.
 func TestAtStartAnEmptyDirectoryOfACommandIsEvidenceOfNothingRestored(t *testing.T) {
 	h := newHost(t)
-	mustMkdirAll(t, command(h, "c1"))
+	mustMkdirAll(t, c1Dir(h))
 	got := h.engine.CleanStaging()
 	if len(got) != 1 || got[0].Verdict != consolerestore.NothingRestored || got[0].Name != "c1" {
 		t.Fatalf("evidence = %+v", got)
 	}
-	if _, err := os.Stat(command(h, "c1")); !os.IsNotExist(err) {
+	if _, err := os.Stat(c1Dir(h)); !os.IsNotExist(err) {
 		t.Errorf("c1: %v", err)
 	}
 }
@@ -214,35 +214,35 @@ func TestAtStartAnEmptyDirectoryOfACommandIsEvidenceOfNothingRestored(t *testing
 func TestAtStartARootThatCannotBeRemovedIsCleanupFailedNamingTheDirectory(t *testing.T) {
 	h := newHost(t)
 	leaveStaging(t, h, "c1")
-	mustMkdirAll(t, filepath.Join(command(h, "c1"), "root"))
-	h.faults.removeDirErr = map[string]error{filepath.Join(command(h, "c1"), "root"): syscall.EIO}
+	mustMkdirAll(t, filepath.Join(c1Dir(h), "root"))
+	h.faults.removeDirErr = map[string]error{filepath.Join(c1Dir(h), "root"): syscall.EIO}
 	got := h.engine.CleanStaging()
-	if len(got) != 1 || got[0].Verdict != consolerestore.CleanupFailed || got[0].Path != command(h, "c1") || got[0].Err == nil {
+	if len(got) != 1 || got[0].Verdict != consolerestore.CleanupFailed || got[0].Path != c1Dir(h) || got[0].Err == nil {
 		t.Fatalf("evidence = %+v", got)
 	}
-	mentions(t, h.log.String(), "level=ERROR", command(h, "c1"))
+	mentions(t, h.log.String(), "level=ERROR", c1Dir(h))
 }
 
 func TestAtStartAMarkerThatCannotBeReadIsCleanupFailedAndTheDirectoryStays(t *testing.T) {
 	h := newHost(t)
-	if err := writeFile(filepath.Join(command(h, "c1"), "marker"), "{not json", 0o600); err != nil {
+	if err := writeFile(filepath.Join(c1Dir(h), "marker"), "{not json", 0o600); err != nil {
 		t.Fatal(err)
 	}
 	got := h.engine.CleanStaging()
 	if len(got) != 1 || got[0].Verdict != consolerestore.CleanupFailed || got[0].Err == nil {
 		t.Fatalf("evidence = %+v", got)
 	}
-	if _, err := os.Stat(command(h, "c1")); err != nil {
+	if _, err := os.Stat(c1Dir(h)); err != nil {
 		t.Errorf("c1: %v", err)
 	}
-	mentions(t, h.log.String(), "level=ERROR", command(h, "c1"))
+	mentions(t, h.log.String(), "level=ERROR", c1Dir(h))
 }
 
 func TestSettleOfACommandThatCannotBeRemovedLogsAnError(t *testing.T) {
 	h := killedAfterTheMove(t)
-	h.faults.removeDirErr = map[string]error{command(h, "c1"): syscall.EIO}
+	h.faults.removeDirErr = map[string]error{c1Dir(h): syscall.EIO}
 	h.engine.Settle("c1")
-	mentions(t, h.log.String(), "level=ERROR", command(h, "c1"))
+	mentions(t, h.log.String(), "level=ERROR", c1Dir(h))
 }
 
 func TestSettleWithoutARestoreDirectoryDoesNothing(t *testing.T) {

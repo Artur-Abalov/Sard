@@ -125,7 +125,7 @@ func (h *renewalHost) requireAcknowledged() {
 	h.t.Helper()
 	h.waitAcked()
 	h.server.dropStreams()
-	h.reconnect(2)
+	h.reconnect()
 	h.server.waitCount(h.t, "hello", 2)
 	if h.server.count("result Q") != 1 || len(h.server.hellos[1].GetRunningCommandIds()) != 0 {
 		h.t.Fatalf("events = %v, hello = %v", h.server.eventLog(), h.server.hellos[1])
@@ -139,7 +139,7 @@ func TestAStreamLostAfterARenewalDuringAStepRecoversWithTheNewCertificate(t *tes
 	_, handler := h.runStepQ()
 	h.renewDuringStep()
 	h.server.dropStreams()
-	h.reconnect(2)
+	h.reconnect()
 	h.server.waitCount(t, "hello C2", 1)
 	if !contains(h.server.eventLog(), "register C2") || len(h.server.hellos[1].GetRunningCommandIds()) != 1 || h.server.hellos[1].GetRunningCommandIds()[0] != "Q" {
 		t.Fatalf("events = %v, hello = %v", h.server.eventLog(), h.server.hellos[1])

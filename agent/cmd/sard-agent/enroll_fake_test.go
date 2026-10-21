@@ -130,7 +130,7 @@ func TestIPv6ServerAddressInBracketsIsAccepted(t *testing.T) {
 	h := newHost(t, ipv6Addr)
 	token := newToken(t, ca.fingerprint())
 
-	code, _, errOut := runEnrollCmdWithDial(dialToInstead(t, ipv6Addr, addr), "--config", h.configPath, "--server", ipv6Addr, "--token", token)
+	code, errOut := runEnrollCmdWithDial(dialToInstead(t, ipv6Addr, addr), "--config", h.configPath, "--server", ipv6Addr, "--token", token)
 	if code != exitOK {
 		t.Fatalf("code = %d, want 0; stderr = %q", code, errOut)
 	}
@@ -267,7 +267,7 @@ func TestIPv6AddressesAreComparedByValue(t *testing.T) {
 	h := newHost(t, configAddr)
 	token := newToken(t, ca.fingerprint())
 
-	code, _, errOut := runEnrollCmdWithDial(dialToInstead(t, configAddr, addr), "--config", h.configPath, "--server", "[::1]:"+port, "--token", token)
+	code, errOut := runEnrollCmdWithDial(dialToInstead(t, configAddr, addr), "--config", h.configPath, "--server", "[::1]:"+port, "--token", token)
 	if code != exitOK {
 		t.Fatalf("code = %d, want 0; stderr = %q", code, errOut)
 	}
@@ -700,7 +700,7 @@ func TestTheServerNameDoesNotResolve(t *testing.T) {
 	dial := func(context.Context, string, string) (net.Conn, error) {
 		return nil, &net.DNSError{Err: "no such host", Name: "sard.example.com", IsNotFound: true}
 	}
-	code, _, errOut := runEnrollCmdWithDial(dial, "--config", h.configPath, "--token", token)
+	code, errOut := runEnrollCmdWithDial(dial, "--config", h.configPath, "--token", token)
 	if code != exitTemporary {
 		t.Fatalf("code = %d, want %d (temporary); stderr = %q", code, exitTemporary, errOut)
 	}
@@ -713,12 +713,12 @@ func TestTheServerNameDoesNotResolve(t *testing.T) {
 // real one (F6): needed wherever a scenario cannot be dialed for real in
 // this environment (no IPv6, no DNS lookups in tests) but the rest of the
 // pipeline — including TLS verification — must still run unmodified.
-func runEnrollCmdWithDial(dial enroll.DialFunc, args ...string) (int, string, string) {
+func runEnrollCmdWithDial(dial enroll.DialFunc, args ...string) (int, string) {
 	var out, errOut strings.Builder
 	deps := testEnrollDeps(fixedHostname)
 	deps.dial = dial
 	code := runEnrollWithDeps(context.Background(), args, &out, &errOut, deps)
-	return code, out.String(), errOut.String()
+	return code, errOut.String()
 }
 
 // dialToInstead returns a DialFunc that insists on being asked to dial

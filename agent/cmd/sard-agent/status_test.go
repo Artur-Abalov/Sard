@@ -206,7 +206,7 @@ func TestStatusWithABrokenConfigIsALocalError(t *testing.T) {
 
 // Scenario: Статус не печатает идентификатор машины
 func TestStatusDoesNotPrintTheMachineID(t *testing.T) {
-	useMachineIDFiles(t, machineIDFile(t, rawMachineID), "")
+	useMachineIDFiles(t, machineIDFile(t, rawMachineID))
 	h := newStatusHost(t, "127.0.0.1:1")
 	h.install(withRole("source")...)
 	_, stdout, stderr := h.status("--config", h.cfg)

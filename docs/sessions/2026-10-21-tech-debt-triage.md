@@ -44,3 +44,24 @@ TODO/FIXME/XXX/HACK в коде нет. Гейт `server` не прогонял�
 
 - Мутационный прогон всего модуля agent (`./scripts/gate.sh agent`) не
   запускался: менялись только `redact` и тесты.
+
+## Проверка мёртвого кода (решение владельца: «Все это добавляй. В kotlin используй detekt»)
+
+ADR `docs/adr/00XX-draft-dead-code.md`.
+
+- Инструменты: `golang.org/x/tools/cmd/deadcode` v0.50.0 в `tools/go.mod` и `GO_TOOLS`
+  (`make tools`); `knip` 6.40.0 в `web` (`npm run lint`, `web/knip.json`).
+- Находки при включении (вывод инструментов):
+  - `deadcode -test -tags e2e`: agent — 1 (`restore.Held.Dir`), cli, tools, sdk — 0. Без `-test`
+    — 54, из них 45 в тестовых пакетах `certtest`, `testplugin` и плагине стенда `e2eslow`.
+  - `unparam`: agent — 29 (2 в коде: `certpair.decide`, параметр `now`, и
+    `pluginhost.restoreDatabase`; 27 в тестах). Исправлено 25, остались 4 в коде PostgreSQL.
+  - `knip`: 22 неиспользуемых экспорта и 3 типа — всё использовалось только внутри своего
+    файла, `export` снят; `tsc` чистый.
+  - detekt с `UnusedImport` (конфиг подменён init-скриптом Gradle, проверка подмены — порог
+    сложности 1 даёт 1675 нарушений): 0 находок.
+- Код PostgreSQL агента не менялся (решение владельца): пять находок — OQ-250; `deadcode` и
+  `unparam` в шлюз включаются после OQ-235 патчем из приложения ADR.
+- `scripts/gate.sh`, `.golangci.yml`, `server/config/detekt.yml` защищены: правку `detekt.yml`
+  (`UnusedImport`) применяет владелец.
+- `./scripts/gate.sh web` — PASSED; markdownlint по изменённым документам — 0 ошибок.

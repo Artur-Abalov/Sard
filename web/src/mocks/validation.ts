@@ -5,11 +5,11 @@ import type { components } from '../api/schema'
 
 type Schemas = components['schemas']
 
-export const MIN_TTL_SECONDS = 300
-export const MAX_TTL_SECONDS = 604_800
-export const MAX_LABEL_LENGTH = 200
+const MIN_TTL_SECONDS = 300
+const MAX_TTL_SECONDS = 604_800
+const MAX_LABEL_LENGTH = 200
 
-export function rejected(
+function rejected(
   code: Schemas['ErrorCode'],
   field: string,
   message: string,
@@ -26,7 +26,7 @@ export function rejected(
 
 const CRON_FIELDS = 5
 // The server refuses a normalised cron longer than this (F3b, К0), without echoing it.
-export const MAX_CRON_LENGTH = 200
+const MAX_CRON_LENGTH = 200
 
 /** A cron as the server stores it: its fields single-spaced. */
 export function normalCron(cron: string): string {
@@ -38,10 +38,7 @@ function isZone(timezone: string): boolean {
 }
 
 /** The server's checks of a cron and a zone that the mock can make: five fields, a sane length, a known IANA zone. */
-export function validateCronAndZone(
-  cron: string,
-  timezone: string,
-): Schemas['ValidationProblem'] | null {
+function validateCronAndZone(cron: string, timezone: string): Schemas['ValidationProblem'] | null {
   const normal = normalCron(cron)
   if (normal.split(' ').length !== CRON_FIELDS) {
     return rejected('validation_failed', 'cron', 'must have five fields')
@@ -107,7 +104,7 @@ export function validateSource(
 }
 
 /** A token's role: source or verifier, exactly; omitted or null is source (the server's R2). */
-export function validateRole(role: unknown): Schemas['ValidationProblem'] | null {
+function validateRole(role: unknown): Schemas['ValidationProblem'] | null {
   if (role === undefined || role === null || role === 'source' || role === 'verifier') return null
   return rejected('validation_failed', 'role', 'must be source or verifier')
 }
@@ -126,9 +123,7 @@ export function validateTtl(
 }
 
 /** A token's label: up to 200 characters, or omitted. */
-export function validateLabel(
-  label: string | null | undefined,
-): Schemas['ValidationProblem'] | null {
+function validateLabel(label: string | null | undefined): Schemas['ValidationProblem'] | null {
   if (label === null || label === undefined || label.length <= MAX_LABEL_LENGTH) return null
   return rejected('validation_failed', 'label', `at most ${MAX_LABEL_LENGTH} characters`)
 }

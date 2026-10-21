@@ -128,7 +128,7 @@ func TestARegionThePresetDoesNotKnowFailsAtTheStorageWithItsAddress(t *testing.T
 	t.Parallel()
 	h := newSetupHost(t)
 	url := "s3:https://s3.xx-nowhere-9.amazonaws.com/bucket-b/extra"
-	h.restic.repo(url).answers("cat", "Fatal: unable to open config file: Stat: Get \"https://s3.xx-nowhere-9.amazonaws.com/bucket-b/extra/config\": dial tcp: lookup s3.xx-nowhere-9.amazonaws.com: no such host", 1)
+	h.restic.repo(url).answers("cat", "Fatal: unable to open config file: Stat: Get \"https://s3.xx-nowhere-9.amazonaws.com/bucket-b/extra/config\": dial tcp: lookup s3.xx-nowhere-9.amazonaws.com: no such host")
 	code, _, stderr := h.s3At("s3:bucket-b/extra", s3Marker, "--provider", "aws", "--region", "xx-nowhere-9")
 	assertRefusal(t, code, stderr, exitTemporary, "BACKEND_UNAVAILABLE")
 	if !strings.Contains(stderr, url) {

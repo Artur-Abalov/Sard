@@ -413,8 +413,9 @@ func (h *renewalHost) renewalPause() time.Duration {
 
 // builtIn prepares the token file of the built-in agent: it holds the spent
 // token, whose digest the marker next to the certificate keeps (self-agent.feature).
-func (h *renewalHost) builtIn(token string) (tokenFile string) {
+func (h *renewalHost) builtIn() (tokenFile string) {
 	h.t.Helper()
+	const token = "spent-token"
 	tokenFile = filepath.Join(h.t.TempDir(), "enroll-token")
 	if err := os.WriteFile(tokenFile, []byte(token), 0o600); err != nil {
 		h.t.Fatal(err)

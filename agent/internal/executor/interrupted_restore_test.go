@@ -12,8 +12,8 @@ import (
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
-func restoreStep(id string) *agentv1.RunStep {
-	return &agentv1.RunStep{CommandId: id, Plugin: "files", Action: agentv1.Action_ACTION_RESTORE, RepositoryName: "main"}
+func restoreStep() *agentv1.RunStep {
+	return &agentv1.RunStep{CommandId: "c1", Plugin: "files", Action: agentv1.Action_ACTION_RESTORE, RepositoryName: "main"}
 }
 
 // R2a (ВК14). Scenario: Прерванное восстановление сообщает о провале и об откате.
@@ -28,7 +28,7 @@ func TestARestoreInterruptedByARestartIsWordedByTheOwnerOfRestores(t *testing.T)
 			return &executor.Interruption{Message: interrupted + "; nothing was restored"}
 		}
 	})
-	f.e.Submit(restoreStep("c1"))
+	f.e.Submit(restoreStep())
 	accepted(t, f.sink, "c1")
 	f.files.next(t)
 	f.e.Submit(backup("c2"))
@@ -51,7 +51,7 @@ func TestAnInterruptedRestoreWhoseRollbackFailedCarriesWhatIsLeft(t *testing.T) 
 			}
 		}
 	})
-	f.e.Submit(restoreStep("c1"))
+	f.e.Submit(restoreStep())
 	accepted(t, f.sink, "c1")
 	f.files.next(t)
 	f.restart(t)
@@ -69,7 +69,7 @@ func TestAnInterruptedRestoreWhoseRollbackFailedCarriesWhatIsLeft(t *testing.T) 
 
 func TestWithoutAnOwnerOfRestoresAnInterruptedRestoreHasTheD13Message(t *testing.T) {
 	f := setup(t, nil)
-	f.e.Submit(restoreStep("c1"))
+	f.e.Submit(restoreStep())
 	accepted(t, f.sink, "c1")
 	f.files.next(t)
 	f.restart(t)
@@ -87,7 +87,7 @@ func TestARestoreInterruptedAfterItsMoveIsReportedAsSucceeded(t *testing.T) {
 			}
 		}
 	})
-	f.e.Submit(restoreStep("c1"))
+	f.e.Submit(restoreStep())
 	accepted(t, f.sink, "c1")
 	f.files.next(t)
 	f.restart(t)
@@ -138,7 +138,7 @@ func TestTheJournaledHookIsToldOfAnInterruptedStepOnceItsResultIsSaved(t *testin
 	f := setup(t, func(o *executor.Options) {
 		o.Journaled = func(r *agentv1.StepResult) { journaled = append(journaled, r.GetCommandId()) }
 	})
-	f.e.Submit(restoreStep("c1"))
+	f.e.Submit(restoreStep())
 	accepted(t, f.sink, "c1")
 	f.files.next(t)
 	f.restart(t)

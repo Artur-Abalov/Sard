@@ -113,13 +113,14 @@ var roleRefusalRows = []struct {
 }
 
 // useMachineIDFiles points the agent at these machine-id files for the test
-// (the host's own files are never read); "" is a path that does not exist.
-func useMachineIDFiles(t *testing.T, etc, dbus string) {
+// (the host's own files are never read); "" is a path that does not exist,
+// and the D-Bus one is always absent.
+func useMachineIDFiles(t *testing.T, etc string) {
 	t.Helper()
 	missing := filepath.Join(t.TempDir(), "absent")
 	old := machineIDSources
 	t.Cleanup(func() { machineIDSources = old })
-	machineIDSources = []string{or(etc, missing), or(dbus, missing)}
+	machineIDSources = []string{or(etc, missing), missing}
 }
 
 func or(a, b string) string {

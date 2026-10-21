@@ -59,10 +59,10 @@ func Select(files config.TLS, fsys FS, now time.Time) (Selection, error) {
 			consistent = append(consistent, c)
 		}
 	}
-	return decide(files, fsys, now, consistent)
+	return decide(files, fsys, consistent)
 }
 
-func decide(files config.TLS, fsys FS, now time.Time, consistent []candidate) (Selection, error) {
+func decide(files config.TLS, fsys FS, consistent []candidate) (Selection, error) {
 	if len(consistent) == 0 {
 		return Selection{}, currentPairError(files, fsys)
 	}

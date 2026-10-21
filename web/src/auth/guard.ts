@@ -13,7 +13,7 @@ export interface Destination {
 }
 
 /** Where a visitor without a session goes: the wizard before the admin step, sign-in after it. */
-export function unauthenticatedRedirect(onboarding: Onboarding, destination: Destination) {
+function unauthenticatedRedirect(onboarding: Onboarding, destination: Destination) {
   return adminPending(onboarding)
     ? ({ to: '/setup' } as const)
     : ({

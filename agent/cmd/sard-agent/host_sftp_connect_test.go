@@ -299,7 +299,7 @@ func TestTheLoginCheckTellsTheClassEvenWhenResticPassesOnNoReasonOfSSH(t *testin
 		h := newSFTPHost(t)
 		h.keyAndHostKnown()
 		h.srv.loginStderr, h.srv.loginCode = c.stderr, 255
-		h.sftpRepo().answers("cat", "Fatal: unable to open repository at "+sftpAddress+": unable to start the sftp session, error: EOF", 1)
+		h.sftpRepo().answers("cat", "Fatal: unable to open repository at "+sftpAddress+": unable to start the sftp session, error: EOF")
 		code, stdout, stderr := h.sftpAt(sftpAddress)
 		assertRefusal(t, code, stderr, c.code, c.reason)
 		if !strings.Contains(stderr, c.text) {
@@ -314,7 +314,7 @@ func TestADirectoryOfTheSFTPServerWithoutTheRightToWriteIsAccessDenied(t *testin
 	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
-	h.sftpRepo().answers("cat", "unable to create lock in backend: OpenFile /srv/extra/locks/1a2b: permission denied", 1)
+	h.sftpRepo().answers("cat", "unable to create lock in backend: OpenFile /srv/extra/locks/1a2b: permission denied")
 	code, _, stderr := h.sftpAt(sftpAddress)
 	assertRefusal(t, code, stderr, exitUsage, "STORAGE_ACCESS_DENIED")
 	for _, want := range []string{"permission denied", "/srv/extra"} {
@@ -329,7 +329,7 @@ func TestADirectoryOfTheSFTPServerThatCannotBeCreatedKeepsThePasswordForARepeat(
 	t.Parallel()
 	h := newSFTPHost(t)
 	h.keyAndHostKnown()
-	h.sftpRepo().answers("init", "Fatal: create repository at "+sftpAddress+" failed: sftp: MkdirAll /srv/extra/keys: permission denied", 1)
+	h.sftpRepo().answers("init", "Fatal: create repository at "+sftpAddress+" failed: sftp: MkdirAll /srv/extra/keys: permission denied")
 	code, _, stderr := h.sftpAt(sftpAddress)
 	assertRefusal(t, code, stderr, exitUsage, "STORAGE_ACCESS_DENIED")
 	for _, want := range []string{"permission denied", "/srv/extra", "will be used when the command is repeated", h.path("secrets/restic-extra.pass")} {
@@ -454,7 +454,7 @@ func TestTheHelpOfRepoAddNamesTheSFTPFlagsAndWhereTheSSHFilesAre(t *testing.T) {
 func TestTheSSHFilesStayWhenResticRefusesTheStorage(t *testing.T) {
 	t.Parallel()
 	h := newSFTPHost(t)
-	h.sftpRepo().answers("cat", "unable to create lock in backend: OpenFile /srv/extra/locks/1a2b: permission denied", 1)
+	h.sftpRepo().answers("cat", "unable to create lock in backend: OpenFile /srv/extra/locks/1a2b: permission denied")
 	code, _, stderr := h.sftpCmd()
 	assertRefusal(t, code, stderr, exitUsage, "STORAGE_ACCESS_DENIED")
 	for _, name := range []string{"id_ed25519", "id_ed25519.pub", "known_hosts", "config"} {

@@ -255,7 +255,7 @@ func TestTheRoleURIOfTheCertificateIsNotPrinted(t *testing.T) {
 // Scenario: Агент с URI роли перед URI личности стартует с этой ролью
 func TestARoleURIBeforeTheIdentityURIStartsWithThatRole(t *testing.T) {
 	h := newAgentHost(t)
-	useMachineIDFiles(t, machineIDFile(t, rawMachineID+"\n"), "")
+	useMachineIDFiles(t, machineIDFile(t, rawMachineID+"\n"))
 	installPair(t, h.dir, "sard://roles/verifier", testIdentityURI)
 	code, stdout, stderr := h.registered(1)
 	if code != 0 || !strings.Contains(stdout, " as verifier") {
@@ -308,7 +308,7 @@ func TestAMissingRoleIsReportedBeforeAMachineIDProblem(t *testing.T) {
 	h := newAgentHost(t)
 	installPair(t, h.dir, testIdentityURI)
 	dir := t.TempDir()
-	useMachineIDFiles(t, dir, "")
+	useMachineIDFiles(t, dir)
 	_, stderr := h.refuses()
 	if !strings.Contains(stderr, "CERT_ROLE_MISSING") || strings.Contains(stderr, dir) {
 		t.Errorf("stderr = %q", stderr)
@@ -338,7 +338,7 @@ func TestAnUnusableMachineIDSourceStopsTheAgentBeforeConnecting(t *testing.T) {
 	t.Run("a directory in place of the file", func(t *testing.T) {
 		h := newAgentHost(t)
 		dir := t.TempDir()
-		useMachineIDFiles(t, dir, "")
+		useMachineIDFiles(t, dir)
 		_, stderr := h.refuses()
 		if !strings.Contains(stderr, dir) {
 			t.Errorf("stderr = %q", stderr)
@@ -377,7 +377,7 @@ func TestAnUnusableMachineIDSourceStopsTheAgentBeforeConnecting(t *testing.T) {
 // Scenario: Исходный идентификатор и machine_id не попадают в вывод и журнал агента
 func TestNeitherTheRawIDNorTheMachineIDReachesTheOutputOrTheLog(t *testing.T) {
 	h := newAgentHost(t)
-	useMachineIDFiles(t, machineIDFile(t, rawMachineID), "")
+	useMachineIDFiles(t, machineIDFile(t, rawMachineID))
 	code, stdout, stderr := h.registered(1)
 	if code != 0 {
 		t.Fatalf("code = %d", code)

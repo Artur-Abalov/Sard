@@ -18,7 +18,7 @@ func TestTheBuiltInAgentWithAnExpiredCertificateDoesNotExit(t *testing.T) {
 	t.Parallel()
 	h := newRenewalHost(t)
 	h.clock.Set(renewDay(300))
-	a := h.run("--enroll-token-file", h.builtIn("spent-token"))
+	a := h.run("--enroll-token-file", h.builtIn())
 	a.waitStderr(t, "CERT_EXPIRED", 1)
 	h.clock.Advance(time.Hour)
 	a.waitStderr(t, "CERT_EXPIRED", 2)
@@ -40,7 +40,7 @@ func TestTheBuiltInAgentAfterAFinalRefusalDoesNotExitOrCallAgain(t *testing.T) {
 	t.Parallel()
 	h := newRenewalHost(t)
 	h.server.register = refuseRegister("AGENT_REVOKED")
-	a := h.run("--enroll-token-file", h.builtIn("spent-token"))
+	a := h.run("--enroll-token-file", h.builtIn())
 	a.waitStderr(t, "AGENT_REVOKED", 1)
 	h.clock.Advance(time.Hour)
 	a.waitStderr(t, "AGENT_REVOKED", 2)
@@ -62,7 +62,7 @@ func TestANewTokenTakesTheBuiltInAgentOutOfTheRefusal(t *testing.T) {
 		}
 		return nil
 	}
-	tokenFile := h.builtIn("spent-token")
+	tokenFile := h.builtIn()
 	a := h.run("--enroll-token-file", tokenFile)
 	a.waitStderr(t, "AGENT_REVOKED", 1)
 	if err := writeTokenText(tokenFile, h.newToken()); err != nil {
@@ -87,7 +87,7 @@ func TestSIGTERMInTheRefusedStateEndsTheBuiltInAgentWithCode0(t *testing.T) {
 	t.Parallel()
 	h := newRenewalHost(t)
 	h.server.register = refuseRegister("AGENT_REVOKED")
-	a := h.run("--enroll-token-file", h.builtIn("spent-token"))
+	a := h.run("--enroll-token-file", h.builtIn())
 	a.waitStderr(t, "AGENT_REVOKED", 1)
 	if code := a.stop(t); code != 0 {
 		t.Fatalf("code = %d", code)
@@ -98,7 +98,7 @@ func TestSIGTERMInTheRefusedStateEndsTheBuiltInAgentWithCode0(t *testing.T) {
 func TestTheBuiltInAgentRenewsItsCertificateToo(t *testing.T) {
 	t.Parallel()
 	h := newRenewalHost(t)
-	marker := h.builtIn("spent-token")
+	marker := h.builtIn()
 	_ = marker
 	before := h.read("agent.pem.token-sha256")
 	h.run("--enroll-token-file", marker)

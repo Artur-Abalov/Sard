@@ -92,10 +92,10 @@ func (r *rig) run(ctx context.Context) <-chan error {
 }
 
 // backoff returns the next reconnect delay, skipping heartbeat timers.
-func (r *rig) backoff(t *testing.T, heartbeat time.Duration) time.Duration {
+func (r *rig) backoff(t *testing.T) time.Duration {
 	t.Helper()
 	for {
-		if d := r.clock.waitTimer(t); d != heartbeat {
+		if d := r.clock.waitTimer(t); d != beat {
 			return d
 		}
 	}

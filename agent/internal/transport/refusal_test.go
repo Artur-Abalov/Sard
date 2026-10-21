@@ -44,7 +44,7 @@ func TestRefusalInvalidArgumentAfterAHealthyStreamStopsReconnecting(t *testing.T
 	ss.read(t)
 	r.clock.Advance(transport.HealthyStream + time.Second)
 	close(ss.done)
-	r.backoff(t, beat)
+	r.backoff(t)
 	timersBefore := len(r.clock.added)
 	r.clock.Advance(time.Hour)
 	err := wait(t, done)
@@ -125,7 +125,7 @@ func TestOtherRegisterCodesAreRetriedAfterADelay(t *testing.T) {
 			return registered("a", beat), nil
 		}
 		done := r.run(context.Background())
-		r.clock.Advance(r.backoff(t, beat))
+		r.clock.Advance(r.backoff(t))
 		if r.server.next(t).read(t).GetHello() == nil || r.server.registerCount() != 2 {
 			t.Errorf("%v: the agent did not register again", code)
 		}
@@ -154,7 +154,7 @@ func TestAStreamClosedWithAnyCodeIsReconnected(t *testing.T) {
 		ss := r.server.next(t)
 		ss.read(t)
 		close(ss.done)
-		r.clock.Advance(r.backoff(t, beat))
+		r.clock.Advance(r.backoff(t))
 		r.server.next(t)
 		if n := r.server.registerCount(); n != 2 {
 			t.Errorf("%s: Register calls = %d", name, n)

@@ -25,7 +25,7 @@ func TestTheRefusalOfAnS3StorageOnTheFirstAccessNamesItsClassCauseAndWhatToDo(t 
 		{"cat", "Fatal: unable to open config file: Stat: unexpected response 418", exitAgentError, "BACKEND_REFUSED", "unexpected response 418"},
 	} {
 		h := newSetupHost(t)
-		h.s3Repo().answers(c.sub, c.line, 1)
+		h.s3Repo().answers(c.sub, c.line)
 		code, stdout, stderr := h.s3Cmd()
 		assertRefusal(t, code, stderr, c.code, c.reason)
 		for _, want := range []string{c.text, s3Address} {
@@ -48,7 +48,7 @@ func TestARefusalOfAnS3StorageWhileCreatingKeepsTheEnvFileAndThePasswordForARepe
 		{"Fatal: create repository at s3:http://garage:3900/bucket-b/extra failed: client.MakeBucket: Forbidden: Access key KEY-ID-1 is not allowed to create buckets", "BUCKET_NOT_FOUND", "may not create it"},
 	} {
 		h := newSetupHost(t)
-		h.s3Repo().answers("init", c.line, 1)
+		h.s3Repo().answers("init", c.line)
 		code, stdout, stderr := h.s3Cmd()
 		assertRefusal(t, code, stderr, exitUsage, c.reason)
 		for _, want := range []string{c.text, "will be used when the command is repeated", h.envPath(), h.path("secrets/restic-extra.pass")} {
@@ -71,7 +71,7 @@ func TestARefusalOfAnS3StorageWhileCreatingKeepsTheEnvFileAndThePasswordForARepe
 func TestAnAccessDeniedOfS3NamesBothCausesAndTheBucket(t *testing.T) {
 	t.Parallel()
 	h := newSetupHost(t)
-	h.s3Repo().answers("cat", "Fatal: unable to open config file: Stat: Access Denied.", 1)
+	h.s3Repo().answers("cat", "Fatal: unable to open config file: Stat: Access Denied.")
 	_, _, stderr := h.s3Cmd()
 	for _, want := range []string{"key id", "secret", "read, write and delete in the bucket bucket-b"} {
 		if !strings.Contains(stderr, want) {
@@ -83,7 +83,7 @@ func TestAnAccessDeniedOfS3NamesBothCausesAndTheBucket(t *testing.T) {
 func TestTheTextOfResticInTheMessageIsScrubbedOfTheKeyAndThePassword(t *testing.T) {
 	t.Parallel()
 	h := newSetupHost(t)
-	h.s3Repo().answers("cat", "Fatal: the storage said "+s3Marker+" and "+passMarker, 1)
+	h.s3Repo().answers("cat", "Fatal: the storage said "+s3Marker+" and "+passMarker)
 	key := h.path("outside/key")
 	h.write(key, s3Marker, 0o600)
 	h.stdinIs(passMarker + "\n")
@@ -114,7 +114,7 @@ func TestNoLineOfTheAuditAndNoOutputOfASuccessfulS3CommandShowsASecret(t *testin
 func TestAPasswordWithSpacesAroundItIsScrubbedToo(t *testing.T) {
 	t.Parallel()
 	h := newSetupHost(t)
-	h.s3Repo().answers("cat", "Fatal: the storage said "+passMarker, 1)
+	h.s3Repo().answers("cat", "Fatal: the storage said "+passMarker)
 	h.stdinIs("  " + passMarker + " \t\n")
 	key := h.path("outside/key")
 	h.write(key, s3Marker, 0o600)
@@ -134,7 +134,7 @@ func TestAReadOnlyKeyWithAPasswordFromAFileIsRefusedWithoutAQuestionAndWithoutFi
 	h.s3Repo().initialized, h.s3Repo().password = true, passMarker
 	src := h.path("outside/F")
 	h.write(src, passMarker+"\n", 0o600)
-	h.s3Repo().answers("snapshots", lockDenied, 1)
+	h.s3Repo().answers("snapshots", lockDenied)
 	term := h.terminalIs()
 	code, stdout, stderr := h.sudo("repo", "add", "extra", s3Address, "--access-key-id", keyID1, "--secret-key-from-file", src, "--password-from-file", src, "--config", "C")
 	assertRefusal(t, code, stderr, exitUsage, "STORAGE_ACCESS_DENIED")

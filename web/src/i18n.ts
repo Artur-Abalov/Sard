@@ -18,5 +18,3 @@ void i18n.use(initReactI18next).init({
   fallbackLng: 'en',
   interpolation: { escapeValue: false }, // React escapes already
 })
-
-export default i18n
