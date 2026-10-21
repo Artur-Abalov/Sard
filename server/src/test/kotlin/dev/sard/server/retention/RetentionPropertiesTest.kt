@@ -47,12 +47,14 @@ class RetentionPropertiesTest {
 
     @Test
     fun `Неположительный интервал или размер пачки не даёт серверу стартовать`() {
-        val interval = assertFailsWith<IllegalArgumentException> {
-            MutFlow.underTest { RetentionProperties(interval = Duration.ZERO).settings(TTL) }
-        }
-        val batch = assertFailsWith<IllegalArgumentException> {
-            MutFlow.underTest { RetentionProperties(batchSize = 0).settings(TTL) }
-        }
+        val interval =
+            assertFailsWith<IllegalArgumentException> {
+                MutFlow.underTest { RetentionProperties(interval = Duration.ZERO).settings(TTL) }
+            }
+        val batch =
+            assertFailsWith<IllegalArgumentException> {
+                MutFlow.underTest { RetentionProperties(batchSize = 0).settings(TTL) }
+            }
 
         assertEquals("sard.retention.interval must be positive", interval.message)
         assertEquals("sard.retention.batch-size must be at least 1", batch.message)

@@ -233,6 +233,7 @@ class ArchitectureTest {
                 "fleet/AgentCertificateCheck.kt",
                 "freshness/FreshnessCheck.kt",
                 "notify/Deliveries.kt",
+                "retention/RetentionPass.kt",
                 "runs/StepCounts.kt",
                 "runs/StepDeadlines.kt",
                 "scheduler/Scheduler.kt",
@@ -240,6 +241,23 @@ class ArchitectureTest {
             ).map { File(mainRoot, it) }
         val callers = ktFiles(mainRoot).filter { SESSIONS_SYSTEM_CALL.containsMatchIn(it.readText()) }
         assertEquals(allowed.toSet(), callers.toSet(), "sessions.system callers must match ADR 0013's list exactly")
+    }
+
+    @Test
+    fun `the retention counter is named in one place of main`() {
+        val named = ktFiles(mainRoot).sumOf { Regex("sard\\.retention\\.deleted").findAll(it.readText()).count() }
+
+        assertEquals(1, named, "the name of the counter of deleted rows is written once, in main")
+    }
+
+    @Test
+    fun `retention deletes log lines by whole partitions only`() {
+        val lineDeletes =
+            ktFiles(File(mainRoot, "retention")).filter {
+                Regex("""delete\s+from\s+step_logs\b""", RegexOption.IGNORE_CASE).containsMatchIn(withoutComments(it.readText()))
+            }
+
+        assertTrue(lineDeletes.isEmpty(), "DELETE from step_logs: ${lineDeletes.joinToString { it.name }}")
     }
 
     @Test
