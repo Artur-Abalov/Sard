@@ -3,6 +3,8 @@
 
 package dev.sard.server.retention
 
+import dev.sard.server.persistence.StepLogPartitions
+import dev.sard.server.runs.RUNS_NOW
 import dev.sard.server.runs.RunsTenant
 import org.springframework.jdbc.core.JdbcTemplate
 import java.sql.Timestamp
@@ -42,10 +44,11 @@ internal data class SceneRun(
  */
 internal class SceneTenant(
     private val jdbc: JdbcTemplate,
+    existing: Pair<UUID, UUID>? = null,
 ) {
-    private val owner = RunsTenant(jdbc).create()
-    val id: UUID = owner.id
-    val agentId: UUID = owner.agentId
+    private val owner = if (existing == null) RunsTenant(jdbc).create() else null
+    val id: UUID = existing?.first ?: owner!!.id
+    val agentId: UUID = existing?.second ?: owner!!.agentId
 
     fun source(
         name: String = "src-${UUID.randomUUID()}",
@@ -488,6 +491,65 @@ internal class SceneTenant(
         )
     }
 
+    /** A delivered notification that the overdue [episode] opened. */
+    fun episodeDelivery(
+        episode: UUID,
+        createdAt: Instant,
+    ): UUID {
+        val delivery = UUID.randomUUID()
+        jdbc.update(
+            """
+            insert into notification_deliveries (id, tenant_id, episode_id, episode_event, channel, status, attempts,
+                                                 next_attempt_at, created_at, finished_at)
+            values (?, ?, ?, 'opened', 'telegram', 'delivered', 1, ?, ?, ?)
+            """.trimIndent(),
+            delivery,
+            id,
+            episode,
+            stamp(createdAt),
+            stamp(createdAt),
+            stamp(createdAt),
+        )
+        return delivery
+    }
+
+    /** A recorded certificate event of the agent and a delivered notification about it; the event's id. */
+    fun certificateEventDelivery(createdAt: Instant): UUID {
+        val serial = UUID.randomUUID().toString().replace("-", "")
+        val event = UUID.randomUUID()
+        jdbc.update(
+            "insert into agent_certificates (serial, tenant_id, agent_id, issued_at, not_after) values (?, ?, ?, ?, ?)",
+            serial,
+            id,
+            agentId,
+            stamp(T0.minus(Duration.ofDays(900))),
+            stamp(T0.minus(Duration.ofDays(500))),
+        )
+        jdbc.update(
+            "insert into agent_certificate_events (id, tenant_id, serial, agent_id, event, recorded_at) " +
+                "values (?, ?, ?, ?, 'expired', ?)",
+            event,
+            id,
+            serial,
+            agentId,
+            stamp(createdAt),
+        )
+        jdbc.update(
+            """
+            insert into notification_deliveries (id, tenant_id, certificate_event_id, channel, status, attempts,
+                                                 next_attempt_at, created_at, finished_at)
+            values (?, ?, ?, 'telegram', 'delivered', 1, ?, ?, ?)
+            """.trimIndent(),
+            UUID.randomUUID(),
+            id,
+            event,
+            stamp(createdAt),
+            stamp(createdAt),
+            stamp(createdAt),
+        )
+        return event
+    }
+
     fun fireDelivery(
         fire: UUID,
         createdAt: Instant,
@@ -519,7 +581,7 @@ internal class SceneTenant(
 
     fun drop() {
         for (table in TABLES) jdbc.update("delete from $table where tenant_id = ?", id)
-        owner.drop()
+        owner?.drop()
     }
 
     private companion object {
@@ -527,6 +589,8 @@ internal class SceneTenant(
         val TABLES =
             listOf(
                 "notification_deliveries",
+                "agent_certificate_events",
+                "agent_certificates",
                 "overdue_episodes",
                 "verification_stale_episodes",
                 "restore_verifications",
@@ -540,3 +604,9 @@ internal class SceneTenant(
 }
 
 internal fun stamp(at: Instant): Timestamp = Timestamp.from(at)
+
+/** The partitions the other tests of the same database expect, which a pass of the time of the test has dropped. */
+internal fun restorePartitions(partitions: StepLogPartitions) {
+    partitions.ensure(Instant.now(), 2)
+    partitions.ensure(RUNS_NOW, 2)
+}

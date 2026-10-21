@@ -4,6 +4,7 @@
 package dev.sard.server.retention
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.persistence.StepLogPartitions
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.RUNS_NOW
@@ -37,13 +38,19 @@ private val LOGS_TERM: Duration = Duration.ofDays(30)
 @ExtendWith(OutputCaptureExtension::class)
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
-    properties = ["spring.grpc.server.port=0"],
+    properties = [
+        "spring.grpc.server.port=0",
+        "sard.scheduler.interval=1h",
+        "sard.freshness.interval=1h",
+        "sard.verification.interval=1h",
+    ],
 )
 @Import(TestcontainersConfiguration::class, RunsTestConfiguration::class)
 class RetentionPassIntegrationTest(
     @Autowired private val retention: RetentionPass,
     @Autowired private val sessions: TenantSessions,
     @Autowired private val logs: StepLogRetention,
+    @Autowired private val logPartitions: StepLogPartitions,
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
     @Autowired private val meters: MeterRegistry,
@@ -62,6 +69,7 @@ class RetentionPassIntegrationTest(
         dropPartitions()
         a.drop()
         b.drop()
+        restorePartitions(logPartitions)
         clock.now = RUNS_NOW
     }
 
@@ -215,6 +223,22 @@ class RetentionPassIntegrationTest(
 
         assertEquals(0, a.count("notification_deliveries", "fire_id = '$fire'"))
         assertTrue(a.exists("schedule_fires", fire))
+    }
+
+    @Test
+    fun `Старая доставка об эпизоде просрочки и о событии сертификата удаляется, предмет остаётся`() {
+        val source = anchored()
+        val success = a.run(source, boundary(RUNS_TERM), status = "succeeded")
+        val episode = a.overdueEpisode(source, success.id)
+        val episodeDelivery = a.episodeDelivery(episode, old(DELIVERIES_TERM))
+        val event = a.certificateEventDelivery(old(DELIVERIES_TERM))
+
+        val totals = pass()
+
+        assertFalse(a.exists("notification_deliveries", episodeDelivery))
+        assertEquals(0, a.count("notification_deliveries", "certificate_event_id = '$event'"))
+        assertTrue(a.exists("overdue_episodes", episode) && a.exists("agent_certificate_events", event))
+        assertEquals(2, totals[RetentionKind.NOTIFICATION_DELIVERY])
     }
 
     // ---- snapshots and what keeps a run -----------------------------------------------------------------------
