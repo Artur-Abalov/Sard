@@ -6,6 +6,7 @@ package dev.sard.server.retention
 import dev.sard.server.persistence.HibernateTenantBridge
 import dev.sard.server.persistence.TenantSessions
 import org.hibernate.Session
+import org.hibernate.query.CommonQueryContract
 import org.slf4j.LoggerFactory
 import java.time.Clock
 import java.time.Instant
@@ -124,15 +125,7 @@ class RetentionPass(
         sql: String,
         tenantId: UUID,
         cutoff: Instant,
-    ): List<Int> =
-        listOf(
-            session
-                .createNativeMutationQuery(sql)
-                .setParameter("tenant", tenantId)
-                .setParameter("cutoff", cutoff)
-                .setParameter("limit", settings.batchSize)
-                .executeUpdate(),
-        )
+    ): List<Int> = listOf(session.createNativeMutationQuery(sql).bound(tenantId, cutoff).executeUpdate())
 
     private fun deleteWith(
         session: Session,
@@ -140,15 +133,20 @@ class RetentionPass(
         tenantId: UUID,
         cutoff: Instant,
     ): List<Int> {
-        val counts =
-            session
-                .createNativeQuery(sql, Array<Any?>::class.java)
-                .setParameter("tenant", tenantId)
-                .setParameter("cutoff", cutoff)
-                .setParameter("limit", settings.batchSize)
-                .singleResult
+        val counts = session.createNativeQuery(sql, Array<Any?>::class.java).bound(tenantId, cutoff).singleResult
         return counts.map { (it as Number).toInt() }
     }
+
+    /** The three parameters every batch of the SQL takes. */
+    private fun <Q : CommonQueryContract> Q.bound(
+        tenantId: UUID,
+        cutoff: Instant,
+    ): Q =
+        apply {
+            setParameter("tenant", tenantId)
+            setParameter("cutoff", cutoff)
+            setParameter("limit", settings.batchSize)
+        }
 
     private fun tenants(session: Session): List<UUID> = session.createNativeQuery(TENANTS, UUID::class.java).list()
 }
