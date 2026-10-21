@@ -69,3 +69,53 @@
 
 Запуск удаляется (или помечается), когда L1 забыл его снимок.
 `snapshots.forgotten_at` пока не ставит никто.
+
+## Фаза 2 — сроки хранения и фоновая уборка
+
+Конвейер `/ship-feature`: specifier → coder → cleaner → architect (три
+обзора) → hardener. Ветка `ccr-5dea5d74-xsgws1`, HEAD `f4ddf4c`.
+
+### Что сделано
+
+- Пакет `retention` в сервере: `RetentionLoop` (раз в час, первый проход
+  через интервал), `RetentionPass` (пачки по 500, `FOR UPDATE SKIP
+  LOCKED`, без advisory-lock, всё подходящее за проход), `StepLogRetention`
+  (`DROP` месячных секций `step_logs`, `lock_timeout` 2 с), `RetentionSql`,
+  `RetentionSettings` с проверкой при старте, миграция
+  `V202610211200__retention_indexes.sql`, блок `sard.retention` в
+  `application.yaml`.
+- Сроки: логи шагов и доставки 30 дней; запуски, записи V4 и журнал
+  расписания 180 дней (решение владельца: всё для аудита — полгода).
+- `runs`, `schedule-fires` и `notification-deliveries` строго больше
+  `sard.notify.ttl` (проверка при старте).
+- Счётчик `sard.retention.deleted{kind}`; одна строка итога на проход.
+- Спецификация `docs/specs/server/server-retention.feature`, QA
+  `docs/qa/server-retention.md`, черновик
+  `docs/adr/00XX-draft-server-retention.md`; правки ADR 0013, 0041, 0042,
+  OQ-048, OQ-071.
+
+### Проверено / не проверено
+
+- Проверил: CRAP функций retention ≤ 6.0 (`.bin/crap` по JaCoCo); в
+  результатах нет `SURVIVED`; diff только в ожидаемых файлах;
+  `build.gradle.kts` не менялся.
+- По отчётам агентов (логи, не мой прогон): `gate.sh server fast` и
+  полный `gate.sh server` с мутациями — exit 0, покрытие 96.7%, мутантов
+  выживших 0.
+- Не воспроизведено мной: полный `:server:test` в этой среде (16 ГБ)
+  падает по памяти (SIGKILL воркера, `java.io.EOFException`) даже на
+  чистой `origin/main`: Testcontainers держит контейнер Postgres на каждый
+  кэшированный Spring-контекст. Решение — отдельная задача «один
+  контейнер на JVM» (C).
+- F2: запись лога во время ожидающего `DROP` ждала 1994 мс при
+  `lock_timeout` 2 с и не падала (один прогон); вариант (a)
+  `DETACH … CONCURRENTLY` не понадобился.
+
+### Известные ограничения
+
+- R2: `run_steps` удаляются без `SKIP LOCKED` — поздний результат шага
+  может отложить уборку тенанта на один проход.
+- R3: индексы миграции строятся без `CONCURRENTLY`.
+- В9: поздний результат потерянного шага после удаления его запуска
+  подтверждается, но снимок не записывается.
+- Ветка отстаёт от `origin/main` на 9 коммитов (слияние не делалось).
