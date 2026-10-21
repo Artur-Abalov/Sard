@@ -7,7 +7,9 @@ import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.notify.telegram.BotReply
 import dev.sard.server.notify.telegram.FakeBotApi
 import dev.sard.server.notify.telegram.TEST_TOKEN
+import dev.sard.server.persistence.StepLogPartitions
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.retention.RetentionPass
 import dev.sard.server.runs.PLUGIN
 import dev.sard.server.runs.RUNS_NOW
 import dev.sard.server.runs.Runs
@@ -77,6 +79,8 @@ class RunNotificationsIntegrationTest(
     @Autowired private val results: StepResults,
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
+    @Autowired private val retention: RetentionPass,
+    @Autowired private val logPartitions: StepLogPartitions,
 ) {
     private val tenant = RunsTenant(jdbc)
 
@@ -614,5 +618,59 @@ class RunNotificationsIntegrationTest(
         val second = scheduled(source, failure, 2)
 
         assertEquals(listOf("delivered", "skipped"), listOf(first, second).map(::status))
+    }
+
+    // H1 phase 2: the cleaning and the planner share the window of sard.notify.ttl (24 h here).
+    private fun cleanedAt(
+        at: java.time.Instant,
+        scene: (dev.sard.server.retention.SceneTenant) -> Unit,
+    ): dev.sard.server.retention.SceneTenant {
+        val owned =
+            dev.sard.server.retention
+                .SceneTenant(jdbc, tenant.id to tenant.agentId)
+        scene(owned)
+        clock.now = at
+        try {
+            retention.run()
+            service.tick()
+        } finally {
+            dev.sard.server.retention
+                .restorePartitions(logPartitions)
+        }
+        return owned
+    }
+
+    @Test
+    fun `Доставка старше ttl, но моложе своего срока, остаётся, и второй планировщик не создаёт`() {
+        val at = java.time.Instant.parse("2027-06-15T12:00:00Z")
+        val created = at.minus(Duration.ofDays(29))
+        var delivery: UUID? = null
+
+        val owned =
+            cleanedAt(at) {
+                val run = it.run(it.source(), created, status = "succeeded")
+                delivery = it.delivery(run.id, created)
+            }
+
+        assertEquals(
+            listOf(delivery),
+            jdbc.queryForList("select id from notification_deliveries where tenant_id = ?", UUID::class.java, owned.id),
+        )
+        assertEquals(0, fake.requests.size)
+    }
+
+    @Test
+    fun `Удалённая доставка не создаётся заново планировщиком`() {
+        val at = java.time.Instant.parse("2027-06-15T12:00:00Z")
+        val created = at.minus(Duration.ofDays(31))
+
+        val owned =
+            cleanedAt(at) {
+                val run = it.run(it.source(), created, status = "failed")
+                it.delivery(run.id, created)
+            }
+
+        assertEquals(0, owned.count("notification_deliveries"))
+        assertEquals(0, fake.requests.size)
     }
 }

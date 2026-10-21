@@ -3,20 +3,17 @@
 
 package dev.sard.server.retention
 
-import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.api.RestApiTest
 import dev.sard.server.persistence.StepLogPartitions
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.RUNS_NOW
 import dev.sard.server.runs.Runs
-import dev.sard.server.runs.RunsTestConfiguration
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.system.CapturedOutput
 import org.springframework.boot.test.system.OutputCaptureExtension
-import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
@@ -34,16 +31,7 @@ private val LOGS_TERM: Duration = Duration.ofDays(30)
 
 /** The same cleaning at the sizes of the specification: whole batches, two servers, a held row, an open transaction. */
 @ExtendWith(OutputCaptureExtension::class)
-@SpringBootTest(
-    webEnvironment = SpringBootTest.WebEnvironment.NONE,
-    properties = [
-        "spring.grpc.server.port=0",
-        "sard.scheduler.interval=1h",
-        "sard.freshness.interval=1h",
-        "sard.verification.interval=1h",
-    ],
-)
-@Import(TestcontainersConfiguration::class, RunsTestConfiguration::class)
+@RestApiTest
 class RetentionVolumeIntegrationTest(
     @Autowired private val sessions: TenantSessions,
     @Autowired private val logs: StepLogRetention,
