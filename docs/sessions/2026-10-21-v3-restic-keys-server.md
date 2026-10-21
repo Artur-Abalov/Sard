@@ -53,3 +53,37 @@
    оператор в терминале, где `repo add` по умолчанию печатает ключ
    восстановления один раз (правило 10 агентской спецификации), поэтому флаги
    не добавлялись; менять нужно только неинтерактивные вызовы (e2e, скрипты).
+
+## Исправления по замечаниям architect (срез A: сервер и e2e)
+
+- **B1.** `recoveryKeyCommand` в одноразовом контейнере compose не мог
+  перезапустить соседа (нет systemd: `hostsetup.Applier.Apply` отвечает
+  «перезапустите агент сами»), поэтому `self-agent` не вызывал Register заново и
+  сервер и баннер показывали `absent`. Команда собирается из того же префикса
+  одноразового запуска, что и `repo add` (`oneOffAgent` в `selfbackup`), с
+  `--no-restart` и продолжением ` && docker compose restart self-agent`.
+  Тест: «Команда ключа восстановления перезапускает соседа, иначе сервер не
+  узнает признак». Обновлены точные строки в тестах API, описание
+  `SelfBackup.recoveryKeyCommand`, OpenAPI (`make openapi`) и мок
+  `web/src/mocks/commands.ts` (там живёт `recoveryKeyCommand` мока
+  `mocks/api/selfBackup.ts`).
+- **Правка заметки КС2** в `restic-keys.feature` (фактическая поправка, не смена
+  поведения): прежнее «команда перезапускает соседа по Р8 сама» неверно для
+  compose; теперь вид команды включает `--no-restart` и `&& docker compose
+  restart self-agent`.
+- **e2e.** `SelfRecoveryKeyTest` (команда самобэкапа выпускает ключ, сервер
+  узнаёт признак за 60 с; повтор печатает `unchanged`) и `HostRecoveryKeyTest`
+  (`key add` на хосте: `present`; `key remove`: `absent`). Компилируются
+  (`:e2e:compileTestKotlin`); на стенде НЕ запускались (нужны образы `make
+  e2e-images`).
+- **N1/N2.** `fleet/RepositoryRules.kt` разрезан без смены поведения:
+  `RepositoryHolders.kt` (holder, `latest`, `latestSource`), `RecoveryKeyRules.kt`
+  (`RecoveryKeyRules.summaries`, `withoutRecoveryKey`), `VerifierSetupRules.kt`
+  (`VerifierSetupRules.verifierSetup`), `AgentCommands.kt` (три команды для
+  хоста). Две функции кавычек лежат рядом в новом пакете `shell`
+  (`shellWord` всегда отвечает, `shellWordOrNull` отказывает на кавычке и
+  управляющем символе: так требует спецификация КС6/КС7); `fleet` не импортирует
+  `selfbackup`. `RepositoryRulesTest` разрезан так же.
+- **N7.** `FleetImportsTest`: `fleet` не импортирует `selfbackup`, `api`,
+  `agents`, `dev.sard.proto`, `org.springframework.web` (проверено: с запретным
+  импортом тест краснеет).

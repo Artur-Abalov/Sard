@@ -87,12 +87,50 @@ internal class SelfAgent(
         agentId: String,
         name: String,
     ): String {
+        val output = oneOff("repo", "add", name, "$STATE/$name", "--no-restart", "--no-recovery-key", "--config", CONFIG)
+        container.dockerClient.restartContainerCmd(container.containerId).exec()
+        Await.until("repository_id of $name in Register of sard-self") { Backups.repositoryId(sard, agentId, name) != null }
+        return output
+    }
+
+    /**
+     * The `recoveryKeyCommand` of the self-backup state as the operator runs it on the server's machine (V3, КС2): the
+     * one-off container of `docker compose run`, with a terminal as compose gives it (the key is shown only on one),
+     * and then `docker compose restart self-agent`. The test has no compose: it takes the words after `self-agent`
+     * from the command itself, so a command that changes shape is not run as it was. Returns the one-off's output.
+     */
+    fun runRecoveryKeyCommand(command: String): String {
+        val (run, restart) = command.split(" && ", limit = 2).let { it[0] to it.getOrNull(1) }
+        check(run.startsWith("docker compose run --rm ") && " self-agent " in run) { "not a one-off of the sidecar: $run" }
+        val output = oneOff(*run.substringAfter(" self-agent ").split(' ').toTypedArray(), terminal = true)
+        if (restart != null) {
+            check(restart == "docker compose restart self-agent") { "not a restart of the sidecar: $restart" }
+            container.dockerClient.restartContainerCmd(container.containerId).exec()
+        }
+        return output
+    }
+
+    /** The keys of the repository [name] as `repo key list --json` prints them, in the running sidecar as the agent. */
+    fun keys(name: String): Json {
+        val exit = exec("10001", AgentImage.AGENT_BINARY, "repo", "key", "list", "--json", "--config", CONFIG, name)
+        check(exit.code == 0) { "repo key list exited ${exit.code}: ${exit.stderr}" }
+        return Json.parse(exit.stdout)["keys"]
+    }
+
+    /**
+     * A container of the service's image as `docker compose run --rm --no-deps -u 0 --cap-add ...` makes it, running
+     * `sard-agent` with [args]; [terminal] gives it a pseudo terminal. Fails with the output unless it exits 0.
+     */
+    private fun oneOff(
+        vararg args: String,
+        terminal: Boolean = false,
+    ): String {
         val output = StringBuilder()
         GenericContainer<Nothing>(DockerImageName.parse(E2e.agentPgImage)).apply {
-            withCommand("repo", "add", name, "$STATE/$name", "--no-restart", "--no-recovery-key", "--config", CONFIG)
+            withCommand(*args)
             withLogConsumer { output.append(it.utf8String) }
             withCreateContainerCmdModifier {
-                it.withUser("0")
+                it.withUser("0").withTty(terminal).withStdinOpen(terminal)
                 it.hostConfig
                     ?.withReadonlyRootfs(true)
                     ?.withCapDrop(Capability.ALL)
@@ -103,10 +141,8 @@ internal class SelfAgent(
             }
             withStartupCheckStrategy(OneShotStartupCheckStrategy().withTimeout(java.time.Duration.ofMinutes(2)))
         }.use { oneOff ->
-            runCatching { oneOff.start() }.onFailure { throw IllegalStateException("repo add failed: $output", it) }
+            runCatching { oneOff.start() }.onFailure { throw IllegalStateException("${args.take(MAX_NAME_WORDS).joinToString(" ")} failed: $output", it) }
         }
-        container.dockerClient.restartContainerCmd(container.containerId).exec()
-        Await.until("repository_id of $name in Register of sard-self") { Backups.repositoryId(sard, agentId, name) != null }
         return output.toString()
     }
 
@@ -247,6 +283,7 @@ internal class SelfAgent(
 
         private val SNAPSHOT_ID = Regex("\"id\":\"([0-9a-f]{64})\"")
         private const val LOG_TAIL = 40
+        private const val MAX_NAME_WORDS = 3
         private val SELF_LINE = Regex("(?i)self|builtin|enroll")
     }
 }

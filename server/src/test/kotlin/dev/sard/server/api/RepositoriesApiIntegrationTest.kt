@@ -206,7 +206,8 @@ class RepositoriesApiIntegrationTest(
 
         assertTrue(
             item(R1).path("recoveryKeyCommand").asString().endsWith(
-                "self-agent repo key add self --for recovery --if-missing --config /etc/sard/self/agent.yaml",
+                "self-agent repo key add self --for recovery --if-missing --no-restart " +
+                    "--config /etc/sard/self/agent.yaml && docker compose restart self-agent",
             ),
         )
     }

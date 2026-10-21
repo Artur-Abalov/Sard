@@ -17,17 +17,21 @@
 #        которая на машине сервера выпускает ключ восстановления репозитория
 #        привязки; null до привязки. Добавочное изменение OpenAPI.
 #   КС2. Вид команды — префикс строки 1 Р24 F4b, затем
-#        «self-agent repo key add <имя> --for recovery --if-missing --config
-#        /etc/sard/self/agent.yaml»:
+#        «self-agent repo key add <имя> --for recovery --if-missing --no-restart
+#        --config /etc/sard/self/agent.yaml», затем restart соседа:
 #          docker compose run --rm --no-deps -u 0 --cap-add CHOWN --cap-add
 #          DAC_OVERRIDE --cap-add FOWNER --cap-add SETUID --cap-add SETGID
-#          self-agent repo key add <имя> --for recovery --if-missing --config
-#          /etc/sard/self/agent.yaml
+#          self-agent repo key add <имя> --for recovery --if-missing
+#          --no-restart --config /etc/sard/self/agent.yaml
+#          && docker compose restart self-agent
 #        --if-missing: если repo add уже выпустил ключ восстановления при
 #        создании репозитория (правило 10), команда отвечает «unchanged».
-#        Точная форма подтверждается сценарием @e2e (как Р27 F4b). Команда
-#        перезапускает соседа по Р8 сама (К19 агентской части), поэтому сервер
-#        получает признак из нового Register.
+#        Точная форма подтверждается сценарием @e2e (как Р27 F4b). Одноразовый
+#        контейнер compose без systemd не может перезапустить соседа сам (Р8
+#        агентской части: «перезапустите агент сами»), поэтому команда
+#        вызывается с --no-restart и продолжается « && docker compose restart
+#        self-agent» (как строка перезапуска repo add, Р24): сосед заново
+#        вызывает Register, и сервер получает признак.
 #   КС3. passwordRevealCommand остаётся (ответ ВС1); подтверждение копии
 #        ключей (К14), шаги онбординга (Р20) и журнал (Р30) не меняются.
 #   КС4. Признак у агента. Карточка агента (GET /api/v1/agents/{id}) и его

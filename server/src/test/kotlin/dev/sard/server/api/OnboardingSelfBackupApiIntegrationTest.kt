@@ -443,7 +443,7 @@ class OnboardingSelfBackupApiIntegrationTest(
         assertEquals(
             "docker compose run --rm --no-deps -u 0 --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER " +
                 "--cap-add SETUID --cap-add SETGID self-agent repo key add self --for recovery --if-missing " +
-                "--config /etc/sard/self/agent.yaml",
+                "--no-restart --config /etc/sard/self/agent.yaml && docker compose restart self-agent",
             selfBackup().path("recoveryKeyCommand").asString(),
         )
         assertEquals(

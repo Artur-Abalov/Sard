@@ -128,8 +128,9 @@ data class SelfBackup(
     val passwordRevealCommand: String?,
     @field:Schema(
         description =
-            "The command that issues a recovery key for the bound repository on the server's machine, in a terminal; " +
-                "repeating it changes nothing. Null until configured",
+            "The command that issues a recovery key for the bound repository on the server's machine, in a terminal, " +
+                "and then restarts the built-in agent so that the server learns the flag; repeating it changes " +
+                "nothing. Null until configured",
     )
     val recoveryKeyCommand: String?,
 )

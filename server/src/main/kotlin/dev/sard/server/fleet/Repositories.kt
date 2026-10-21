@@ -32,15 +32,15 @@ class Repositories(
     private val selfCommand: (String) -> String,
 ) {
     fun overview(tenantId: UUID): RepositoryOverview {
-        val items = RepositoryRules.summaries(holders(tenantId), selfCommand)
-        return RepositoryOverview(items, RepositoryRules.withoutRecoveryKey(items))
+        val items = RecoveryKeyRules.summaries(holders(tenantId), selfCommand)
+        return RepositoryOverview(items, RecoveryKeyRules.withoutRecoveryKey(items))
     }
 
     /** What [verifier] still has to connect, by repository id; the card of a verifier shows it (КС7). */
     fun verifierSetup(
         tenantId: UUID,
         verifier: UUID,
-    ): List<VerifierSetupItem> = RepositoryRules.verifierSetup(holders(tenantId), verifier)
+    ): List<VerifierSetupItem> = VerifierSetupRules.verifierSetup(holders(tenantId), verifier)
 
     /** The repositories the given agents announced, by agent, each by name; an agent without any has no entry. */
     fun announcedBy(
