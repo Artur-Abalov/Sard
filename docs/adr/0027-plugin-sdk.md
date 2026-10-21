@@ -74,7 +74,8 @@
   нужно): `RestoreRunner` (плагин восстанавливает сам; без него хост выкладывает дерево по
   `PlanRestore`), `RestoreHost` (`Phase`, `Snapshots`, `Dump`, `Journal`), `RestoreError`,
   `Recoverer` (разбор записей журнала при старте), `Extractor` (`PlanExtract` — файлы
-  снимка для `sard-agent repo restore` без сервера) и `ProgramChecker` (строка
+  снимка для `sard-agent repo restore` без сервера), `ExtractHelper` (`ExtractHelp` —
+  абзац справки `repo restore --help` о снимках плагина: агент слов не знает) и `ProgramChecker` (строка
   `plugin.programs` команды `sard-agent check`; любой плагин может её реализовать).
 - **Коды причин плагин задаёт сам** по образцу `^[A-Z][A-Z0-9_]{0,63}$`, стадии — по образцу
   `^[a-z][a-z-]{0,31}$`; в SDK только общие коды (классы хранилища и restic,

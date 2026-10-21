@@ -339,7 +339,11 @@ func newRestoreEngine(cfg config.Config) *consolerestore.Engine {
 // pluginOptions are the settings of the host the built-in plugins get from the
 // configuration of the agent: they read none themselves.
 func pluginOptions(cfg config.Config) []plugins.Option {
-	return []plugins.Option{plugins.WithPostgresLockShare(cfg.PostgresqlLockShare())}
+	var opts []plugins.Option
+	if share := cfg.PostgresqlLockShare(); share != nil {
+		opts = append(opts, plugins.WithPostgresLockShare(*share))
+	}
+	return opts
 }
 
 // restoreTargets describes the repositories of the host for the messages of

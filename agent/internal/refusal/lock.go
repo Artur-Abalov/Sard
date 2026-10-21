@@ -86,7 +86,8 @@ func CheckLockFile(f *os.File) error {
 // SameFileAtPath says whether f is still the file at path, looked at
 // without following a link.
 func SameFileAtPath(f *os.File, path string) bool {
-	// A Stat or Lstat that fails gives nil, and nil is the same file as nothing.
+	// A Stat or Lstat that fails gives nil, and os.SameFile says false for a nil:
+	// a file that cannot be looked at is not taken for the same one.
 	held, _ := f.Stat()
 	current, _ := os.Lstat(path)
 	return os.SameFile(held, current)

@@ -10,6 +10,7 @@ import (
 	"io"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
@@ -184,6 +185,22 @@ func extractors(registry *sdk.Registry) map[string]sdk.Extractor {
 		}
 	}
 	return found
+}
+
+// extractHelp is the help paragraphs of the extractors, one line break after each:
+// what a plugin says about the layout of its own snapshots.
+func extractHelp(registry *sdk.Registry) string {
+	var b strings.Builder
+	for _, name := range registry.Names() {
+		p, _ := registry.Get(name)
+		if _, ok := p.(sdk.Extractor); !ok {
+			continue
+		}
+		if h, ok := p.(sdk.ExtractHelper); ok {
+			b.WriteString(h.ExtractHelp() + "\n")
+		}
+	}
+	return b.String()
 }
 
 // request is what to restore and how restic reaches the storage.

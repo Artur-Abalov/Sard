@@ -272,9 +272,8 @@ func (h *handler) restoreRequest(step *agentv1.RunStep) (consolerestore.Request,
 	}, nil
 }
 
-// checkRestoreStep judges the step itself. The source of the snapshot is the
-// engine's to check; a plugin that restores itself needs no engine and judges
-// its snapshots.
+// checkRestoreStep judges the step itself: every restore names the source of
+// the snapshot, whoever does it.
 func (h *handler) checkRestoreStep(step *agentv1.RunStep) error {
 	if h.console == nil && h.src.runner == nil {
 		return errors.New("restore from the console is not enabled on this host")
@@ -289,9 +288,9 @@ func (h *handler) checkRestoreStep(step *agentv1.RunStep) error {
 	return h.checkSourceTag(step)
 }
 
-// checkSourceTag: the engine restores only snapshots of the source the step names.
+// checkSourceTag: only snapshots of the source the step names are restored.
 func (h *handler) checkSourceTag(step *agentv1.RunStep) error {
-	if h.src.runner == nil && step.GetTags()[consolerestore.SourceTag] == "" {
+	if step.GetTags()[consolerestore.SourceTag] == "" {
 		return fmt.Errorf("tag %s is required: it names the source the snapshot belongs to", consolerestore.SourceTag)
 	}
 	return nil

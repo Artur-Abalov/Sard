@@ -36,7 +36,7 @@ var (
 )
 
 // violations are the places of the source where it knows PostgreSQL: the
-// import of a client package, a string that starts or ends with one of the
+// import of a client package, a string that holds one of the
 // affixes, a string that holds one of the codes. Comments are not code. src is
 // the text of the file, nil to read it.
 func violations(name string, src any) ([]string, error) {
@@ -80,8 +80,8 @@ func knowsLiteral(lit *ast.BasicLit) string {
 // knows says what in the string is PostgreSQL's, "" if nothing.
 func knows(value string) string {
 	for _, a := range affixes {
-		if strings.HasPrefix(value, a) || strings.HasSuffix(value, a) {
-			return fmt.Sprintf("the string %q starts or ends with %q", value, a)
+		if strings.Contains(value, a) {
+			return fmt.Sprintf("the string %q holds %q", value, a)
 		}
 	}
 	for _, c := range codes {
@@ -132,6 +132,7 @@ func scan(roots ...string) (found []string, files int, err error) {
 	return found, len(paths), nil
 }
 
+// Scenario: В восстановлении из консоли агента нет кода PostgreSQL
 // Scenario: Код агента вне плагинов не знает PostgreSQL.
 func TestTheAgentOutsideThePluginsHoldsNoCodeOfPostgreSQL(t *testing.T) {
 	found, files, err := scan(scope...)

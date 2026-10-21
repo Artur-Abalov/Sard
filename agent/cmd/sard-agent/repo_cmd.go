@@ -37,7 +37,7 @@ func runRepoWithDeps(ctx context.Context, args []string, stdout, stderr io.Write
 		return exitUsage
 	}
 	if hasHelpFlag(args[1:]) {
-		printRepoHelp(stdout, args[0])
+		printRepoHelp(stdout, args[0], deps.plugins)
 		return exitOK
 	}
 	return run(ctx, args[1:], stdout, stderr, deps)

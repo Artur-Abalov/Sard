@@ -34,7 +34,7 @@ type RestoreRequest struct {
 	// refusal; the host keeps its address and keys to itself.
 	Repository string
 	// Source is the sard.source tag of the step: the source the snapshot must
-	// belong to. Empty when the step carries none.
+	// belong to. Never empty: the agent refuses a step without the tag.
 	Source string
 }
 

@@ -104,9 +104,6 @@ func (p Plugin) newRestoreRun(ctx context.Context, h sdk.RestoreHost, cfg sdk.Co
 		// The code that writes enforces the rules of a plan itself (ADR 0008).
 		return nil, refuse(ReasonTargetInvalid, stageCheck, "the restore plan is invalid: %s", err)
 	}
-	if req.Source == "" {
-		return nil, refuse(ReasonTargetInvalid, stageCheck, "tag %s is required: it names the source the snapshot belongs to", sourceTag)
-	}
 	to := settings.to
 	password, err := readPassword(h, to.PasswordRef)
 	if err != nil {

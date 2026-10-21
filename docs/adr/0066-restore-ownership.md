@@ -196,9 +196,23 @@ R2c-2; версию этот ADR записывает при выпуске (В1
 - Архитектурный тест (п. 8) читает `agent/internal` и `agent/cmd/sard-agent` (В2),
   пропускает каталоги `testdata`. Остаются строки о PostgreSQL в агенте, которые
   тест не ловит и спецификация допускает: ключ `restore.postgresql_lock_share`
-  (РВ-7), имя плагина `"postgresql"` для прежнего журнала в корне сборки, параметр
-  сборки `plugins.WithPostgresLockShare` и справка `repo restore --help`, где описано,
-  что делает плагин postgresql.
+  (РВ-7), имя плагина `"postgresql"` для прежнего журнала в корне сборки и параметр
+  сборки `plugins.WithPostgresLockShare`. Исключения для справки `repo restore --help`
+  нет: абзац о снимках PostgreSQL принадлежит плагину. SDK получил необязательный
+  интерфейс `ExtractHelper` (`ExtractHelp() string`), `repo restore --help` дописывает
+  абзац каждого плагина из `hostDeps.plugins`, который его реализует; агент не знает слов.
+- Тег `sard.source` обязателен для любого шага восстановления, в том числе плагина с
+  собственным восстановлением: без него шаг — `REJECTED` с текстом R2b «tag sard.source
+  is required…», плагин не вызывается. `RestoreRequest.Source` поэтому не пуст, а
+  проверка в плагине postgresql убрана.
+- Доля блокировок по умолчанию (0.5) живёт только в `plugins/postgresql`.
+  `config.PostgresqlLockShare()` возвращает `*float64` (nil, если ключ не задан), корень
+  сборки передаёт `WithPostgresLockShare` только при заданном ключе. Тип
+  `plugins.Option` не называет плагин (`func(*builtinSet)`), второй параметр другого
+  плагина его не меняет.
+- `RESTIC_OUTPUT_UNEXPECTED` для ошибки `PlanExtract` оставлен только ради сохранения
+  R2b (те же причина и слова); общий `SNAPSHOT_UNEXPECTED` может прийти в одном из
+  следующих срезов.
 
 На каждом этапе каждый сценарий `docs/specs/agent/console-restore.feature`
 остаётся зелёным и неизменным — те же причина, стадия, текст и `leftover`.

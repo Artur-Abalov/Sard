@@ -364,3 +364,21 @@ func TestTheFailuresOfTheRepositoryAreWordedOnAHostWithoutTheRestoreEngineToo(t 
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// Scenario: Шаг восстановления без тега sard.source отклоняется, плагин не вызывается.
+func TestAStepOfAPluginThatRestoresItselfWithoutTheSourceTagIsRejected(t *testing.T) {
+	called := false
+	r := newOwnRig(t, &journaltest.Plugin{RestoreFn: func(context.Context, sdk.RestoreHost, sdk.Config, sdk.RestoreRequest) (sdk.RestoreResult, error) {
+		called = true
+		return sdk.RestoreResult{}, nil
+	}})
+	step := r.step()
+	step.Tags = nil
+	_, err := r.run(step)
+	if !errors.Is(err, executor.ErrRejected) || !strings.Contains(err.Error(), "tag sard.source is required") {
+		t.Errorf("err = %v", err)
+	}
+	if called {
+		t.Error("the plugin was called")
+	}
+}

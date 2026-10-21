@@ -282,18 +282,6 @@ func TestAnUnknownSnapshotOrOneOfAnotherSourceIsRefusedBeforeConnecting(t *testi
 	}
 }
 
-func TestAStepWithoutTheSourceOfTheSnapshotIsRefused(t *testing.T) {
-	h := newPGHost(t)
-	req := h.request()
-	req.Source = ""
-	_, f := h.run(req)
-	hasPrefix(t, f, "TARGET_INVALID (check)")
-	mentions(t, f.Error(), "sard.source")
-	if n := len(h.server.ran("psql")); n != 0 {
-		t.Errorf("psql ran %d times", n)
-	}
-}
-
 func TestAListOfSnapshotsThatCannotBeReadIsAFailureOfTheCheck(t *testing.T) {
 	h := newPGHost(t)
 	h.repo.listError = errors.New("connection refused")

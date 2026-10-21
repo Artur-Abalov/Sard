@@ -11,13 +11,20 @@ import (
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
-// Option sets what the agent tells the built-in plugins about its host.
-type Option func(*postgresql.Plugin)
+// Option sets what the agent tells the built-in plugins about its host. It
+// does not name a plugin: a setting of a plugin is a field of builtinSet.
+type Option func(*builtinSet)
+
+// builtinSet are the settings of the built-in plugins, one field per plugin
+// that takes any.
+type builtinSet struct {
+	postgresLockShare *float64
+}
 
 // WithPostgresLockShare is restore.postgresql_lock_share of the agent: the share
 // of the lock table of the target cluster one pg_restore may take (R2b ВК28).
 func WithPostgresLockShare(share float64) Option {
-	return func(p *postgresql.Plugin) { p.LockShare = &share }
+	return func(s *builtinSet) { s.postgresLockShare = &share }
 }
 
 // Builtin returns the plugins compiled into the agent; they share the
@@ -27,10 +34,11 @@ func WithPostgresLockShare(share float64) Option {
 // build has none (stand.go). The options are the settings of the host that
 // reach the plugins; the plugin reads no configuration of the agent itself.
 func Builtin(agentVersion string, opts ...Option) []sdk.Plugin {
-	pg := postgresql.Plugin{AgentVersion: agentVersion}
+	var set builtinSet
 	for _, opt := range opts {
-		opt(&pg)
+		opt(&set)
 	}
+	pg := postgresql.Plugin{AgentVersion: agentVersion, LockShare: set.postgresLockShare}
 	return append([]sdk.Plugin{pg, files.Plugin{AgentVersion: agentVersion}}, stand(agentVersion)...)
 }
 

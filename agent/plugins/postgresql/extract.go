@@ -11,7 +11,10 @@ import (
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
-var _ sdk.Extractor = Plugin{}
+var (
+	_ sdk.Extractor     = Plugin{}
+	_ sdk.ExtractHelper = Plugin{}
+)
 
 // planLabel is what the agent calls these snapshots in its messages.
 const planLabel = "PostgreSQL"
@@ -120,3 +123,15 @@ func (h hints) versionLine() string {
 // inside it is written as a quote, a backslash and two quotes (gofmt would turn
 // the literal text of that into a typographic quote in a comment).
 func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
+// ExtractHelp implements sdk.ExtractHelper: what "sard-agent repo restore --help"
+// says about the snapshots of a database.
+func (Plugin) ExtractHelp() string {
+	return `A snapshot of PostgreSQL (tags postgresql.part=database or globals) is not
+laid out under paths: the agent writes <database>.dump and, if the backup has
+them, <database>.globals.sql into the root of the target, owned by root:root
+with mode 0600 (only root reads them; give them to the user of PostgreSQL
+yourself). The commands that restore the database (psql, createdb,
+pg_restore) are printed and not run, the database itself is not restored,
+and no PostgreSQL client is needed on the host. --path does not apply to it.`
+}

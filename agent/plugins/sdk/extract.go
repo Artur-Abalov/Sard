@@ -25,6 +25,16 @@ type Extractor interface {
 	PlanExtract(req ExtractRequest) (ExtractPlan, error)
 }
 
+// ExtractHelper is implemented by an Extractor that has something to tell the
+// operator about its snapshots in the help of "sard-agent repo restore": how
+// they are laid out, which files appear in the target. The agent appends the
+// paragraph of every such plugin to the help and knows nothing of its words.
+type ExtractHelper interface {
+	// ExtractHelp is a paragraph of plain text, wrapped to 80 columns, with
+	// no line break at its end.
+	ExtractHelp() string
+}
+
 // ExtractRequest is the snapshot to plan and what is known around it.
 type ExtractRequest struct {
 	// Snapshot is the snapshot the operator named.

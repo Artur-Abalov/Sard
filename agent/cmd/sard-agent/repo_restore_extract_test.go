@@ -166,3 +166,18 @@ func TestAPlanWithAnUnsafeNameWritesNothing(t *testing.T) {
 	assertRefusal(t, code, stderr, exitAgentError, "PLUGIN_FAILED")
 	h.assertNothingWritten("unsafe name")
 }
+
+// helpingPlugin is an extractor of the tests that tells the operator about its snapshots.
+type helpingPlugin struct{ extractPlugin }
+
+func (helpingPlugin) ExtractHelp() string { return "A snapshot of X lies in out.bin." }
+
+// Scenario: Справка repo restore дописывает абзац каждого плагина-выгрузчика.
+func TestTheHelpOfRepoRestoreHoldsTheParagraphOfEveryExtractor(t *testing.T) {
+	h := newSetupHost(t)
+	h.withPlugin(helpingPlugin{extractPlugin{stubPlugin: stubPlugin{"x"}}})
+	_, stdout, _ := h.sudo("repo", "restore", "--help")
+	if !strings.Contains(stdout, "A snapshot of X lies in out.bin.\n\nFlags:") {
+		t.Errorf("the paragraph of the plugin is not in the help:\n%s", stdout)
+	}
+}

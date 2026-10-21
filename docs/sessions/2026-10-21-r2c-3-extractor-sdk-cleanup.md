@@ -139,3 +139,23 @@
 golangci-lint 0 issues). `cli` не затрагивался.
 
 Дальше: `architect`.
+
+## Правки по замечаниям architect (CHANGES REQUIRED)
+
+Принцип владельца: в агенте нет кода конкретной базы данных.
+
+- Архитектурный тест `nopostgres_test.go` ищет `postgresql.`, `PG_`, `pg_restore`, `pg_dump`,
+  `psql`, `createdb` в любом месте строки; подложенный файл `violations/help_text.go`. Тест
+  сначала упал на `cmd/sard-agent/host_help.go`.
+- Абзац справки о PostgreSQL ушёл из `host_help.go`: SDK получил `ExtractHelper`, плагин
+  postgresql возвращает абзац слово в слово, `repo restore --help` дописывает абзацы
+  плагинов из `hostDeps.plugins`. Тест: чужой плагин-выгрузчик с абзацем.
+- Тег `sard.source` проверяется для каждого шага восстановления (снято исключение для
+  плагина с собственным восстановлением); проверка и её тест в плагине postgresql убраны
+  как недостижимые; `RestoreRequest.Source` — «никогда не пуст». Рабочий шаг тестового
+  стенда `ownRig` теперь несёт тег.
+- `config.DefaultLockShare` удалён; `PostgresqlLockShare()` возвращает `*float64`; 0.5 только
+  в плагине.
+- `plugins.Option` не называет плагин (`func(*builtinSet)`).
+- Комментарий-трассировка сценария в архитектурном тесте; поправлен неверный комментарий
+  в `refusal/lock.go` (`os.SameFile` для nil даёт false); ADR 0027 и 0066 обновлены.

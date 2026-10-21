@@ -301,7 +301,8 @@ func streaming() *journaltest.Plugin {
 }
 
 func ownStep() *agentv1.RunStep {
-	return &agentv1.RunStep{CommandId: "c1", Plugin: "journaltest", Action: restore, RepositoryName: "main", SnapshotId: fullID, ConfigJson: "{}"}
+	return &agentv1.RunStep{CommandId: "c1", Plugin: "journaltest", Action: restore, RepositoryName: "main", SnapshotId: fullID, ConfigJson: "{}",
+		Tags: map[string]string{"sard.source": "s1"}}
 }
 
 // Scenario: Отмена шага во время потока снимка останавливает restic и даёт CANCELLED.

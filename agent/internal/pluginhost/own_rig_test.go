@@ -204,7 +204,8 @@ func (r *ownRig) entryPath(id string) string { return filepath.Join(r.journalDir
 
 // step is the step T: command c1, plugin journaltest, the snapshot F.
 func (r *ownRig) step() *agentv1.RunStep {
-	return &agentv1.RunStep{CommandId: "c1", Plugin: "journaltest", Action: restore, RepositoryName: "main", SnapshotId: fullID, ConfigJson: "{}"}
+	return &agentv1.RunStep{CommandId: "c1", Plugin: "journaltest", Action: restore, RepositoryName: "main", SnapshotId: fullID, ConfigJson: "{}",
+		Tags: map[string]string{"sard.source": "s1"}}
 }
 
 // run runs the step of the plugin named by the step the way the executor does.
