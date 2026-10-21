@@ -29,8 +29,9 @@ type ProgramsStatus int
 
 // The statuses; the zero value is none.
 const (
+	_ ProgramsStatus = iota
 	// ProgramsOK: everything the plugin needs is there.
-	ProgramsOK ProgramsStatus = iota + 1
+	ProgramsOK
 	// ProgramsSkip: the plugin cannot tell whether the host needs the
 	// programs (e.g. it has no sources of the plugin), so nothing is wrong.
 	ProgramsSkip

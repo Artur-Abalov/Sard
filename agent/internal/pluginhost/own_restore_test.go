@@ -12,8 +12,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Artur-Abalov/sard/agent/internal/consolerestore"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost/journaltest"
+	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	filesplugin "github.com/Artur-Abalov/sard/agent/plugins/files"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
@@ -362,6 +364,27 @@ func TestTheFailuresOfTheRepositoryAreWordedOnAHostWithoutTheRestoreEngineToo(t 
 	r.repo.listErr = restic.ErrNetwork
 	if _, err := r.run(r.step()); err == nil || !strings.HasPrefix(err.Error(), "BACKEND_UNAVAILABLE (check)") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// The classifier the host is given (WithRepositoryWords) words the failures of
+// the repository the plugin meets; without one the repository is told by name.
+func TestTheFailuresOfTheRepositoryAreWordedByTheClassifierOfTheHost(t *testing.T) {
+	var listed []sdk.SnapshotInfo
+	r := newOwnRig(t, snapshotsOf(&listed))
+	r.words = consolerestore.NewClassifier(func(name string) repoinit.Target {
+		return repoinit.Target{Name: name, PasswordFile: "/etc/sard/main.pw", Scrub: func(s string) string { return s }}
+	})
+	r.rebuild()
+	r.repo.listErr = restic.ErrWrongPassword
+	_, err := r.run(r.step())
+	if err == nil || !strings.Contains(err.Error(), "the password file /etc/sard/main.pw") {
+		t.Fatalf("err = %v", err)
+	}
+	r.words = nil
+	r.rebuild()
+	if _, err = r.run(r.step()); err == nil || !strings.Contains(err.Error(), `the password file of repository "main"`) {
+		t.Fatalf("without a classifier: err = %v", err)
 	}
 }
 

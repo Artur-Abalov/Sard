@@ -159,3 +159,111 @@ golangci-lint 0 issues). `cli` не затрагивался.
 - `plugins.Option` не называет плагин (`func(*builtinSet)`).
 - Комментарий-трассировка сценария в архитектурном тесте; поправлен неверный комментарий
   в `refusal/lock.go` (`os.SameFile` для nil даёт false); ADR 0027 и 0066 обновлены.
+
+## hardener R2c-2/R2c-3
+
+Один мутационный прогон на обе стадии. Мутанты считались инструментом
+(`go-mutesting` через `scripts/mutate-exec.sh`) по пакетам и файлам изменённого
+кода, как в разделе hardener R2c-1; числа ниже из его вывода. Опциональный тест
+architect (`RestoreRequest.Source` равен тегу `sard.source` шага) уже есть:
+`TestAPluginWithItsOwnRestoreGetsTheStepAndTheHostMakesNoDirectory`
+(`pluginhost/own_restore_test.go`), сравнивает `req.Source` со `s1`.
+
+Выживших до -> после:
+
+| Пакет / файлы | до | после |
+|---|---|---|
+| sdk (пакет) | 1 (`ProgramsOK = iota + 2`; оценка 0.993789) | 0 (полный gate: 158 мутантов, 136 убито, 0 выжило, 1.000000) |
+| agent/plugins/postgresql (пакет; все выжившие в файлах R2c-2/R2c-3) | 27 (0.969832) | 0 в изменённых файлах (`check_programs.go`, `extract.go`, `restore_*.go`: 390 мутантов, 0 выжило после правки `describeTools`/`restore_check.go`: 93 мутанта, 0 выжило) |
+| agent/plugins/postgresql/pgclient | 0 (1.000000) | 0 |
+| agent/plugins (`builtin.go`) | 0 (1.000000) | 0 |
+| agent/internal/restore | 7 (0.978979) | 0 (1.000000) |
+| agent/internal/restorejournal | 0 (1.000000) | 0 |
+| agent/internal/consolerestore | 0 (1.000000) | 0 |
+| agent/internal/pluginhost (`handler.go`) | 5 (0.984026 по пакету) | 0 в `handler.go`; 4 остались в `schema.go` (до R2c) |
+| agent/internal/pluginhost/journaltest | 0 | 0 |
+| agent/internal/hostcheck | 10 (0.979424) | 10, все в файлах, которые R2c не трогал |
+| agent/internal/config | 10 (0.932886) | 10, все в `address.go`, `overlay.go`, `password.go` (до R2c); `restore.go` (`*float64`) без выживших |
+| agent/cmd/sard-agent (изменённые файлы) | 12 (0.962617) | 9: восемь в `main.go` и один в `repo_cmd.go`, все в строках до R2c-1 |
+
+Тесты (поведение, не мутанты): шаг, у которого кончился контекст (на версии
+`pg_restore`, пробе сервера, идентификаторе системы, оглавлении дампа), больше
+не запускает программ и кончается `INTERRUPTED (check)` (стенд считает старты,
+в том числе отказанные из-за конца контекста); пустые строки в ответе о ролях
+пропускаются и не обрывают ответ; отказанный скрипт глобальных объектов и
+отказанный `CREATE DATABASE` снимают роли и базу с записи журнала; откат,
+который отменил всё, не пишет в журнал ничего после себя; повторный откат,
+оставивший базу и сбросивший часть ролей, записывает в журнал только остаток;
+`PG_CLIENT_MISSING` по `pg_restore --version` несёт `sdk.ErrProgramMissing`;
+текст «unknown secret» от хоста доходит до отказа; сообщение `CheckPrograms`
+(ровно, с примечаниями после списка инструментов); снимок globals, не похожий на
+снимок агента, отказывается (без базы, два пути, вложенный путь), короткий id
+в тексте из 8 знаков; тег без значения не считается тегом; классификатор
+хоста (`WithRepositoryWords`) формулирует отказы репозитория (пароль названа
+путём из цели), без него репозиторий называется по имени; справка `repo
+restore --help` не содержит абзаца плагина, который не выгружает файлы
+(`ExtractHelp` без `PlanExtract`); `getenforce`, завершившийся с ошибкой, не
+считается «Enforcing». Стенд `fakePrograms` теперь отдаёт вывод и до ошибки
+процесса (убитая программа успевает что-то напечатать).
+
+Изменения кода (поведение прежнее, избыточное убрано), каждое — по мутанту:
+
+- `restore.pending`: поле `closed` и `close()` мертвы (`closed` читалось только
+  из `close`, которую зовёт один `abandon` один раз; на успехе файл закрывает
+  `WriteFiles`); остался `p.out.Close()` в `abandon`. `errWriter.Write`:
+  `err != nil &&` избыточно. `PlanExtraction`: `f != nil ||` избыточно
+  (при отказе `ownerOf` имя пустое). `IsRoot`: `path.IsAbs &&` избыточно
+  (чистый относительный путь не равен `/`). `isEmpty`: `err == nil &&`
+  избыточно (вызывающий проверяет `err` первым).
+- `sdk.ProgramsStatus`: `_ ProgramsStatus = iota` вместо `iota + 1`
+  (мутант `iota + 2` эквивалентен, как `refusal.Class` в R2c-1).
+- `postgresql/check_programs.go`: цикл, заполняющий имена инструментов, убран
+  (имена ставит `probeTool` у каждого найденного каталога, а без `pg_dump`
+  ответ SKIP их не читает); `worseStatus`: `a == ProgramsWarn ||` избыточно
+  (при `a` = WARN результат тот же `a`); `differentMajors`: `t.path != "" &&`
+  избыточно (у отсутствующего инструмента версия пуста); `describeTools`: пустая
+  ветка `case t.path == ""` заменена `continue` (мутатор `branch/case` делал
+  из пустого тела то же самое тело: «мутант» без отличия в тексте, шум
+  инструмента, не отдельный тест).
+- `postgresql/restore_prepare.go`: `checkRoles` без `f == nil &&` (при ошибке
+  `existing` пуст); `countObjects` с именованным результатом вместо констант
+  в провале (значение при ошибке не читается); строка режима с `%g` вместо
+  `strconv.FormatFloat(..., 'g', -1, 64)` (мутант `-2` эквивалентен).
+  `restore_rollback.go`/`restore_run.go`/`restore_steps.go`: поле `opened` и
+  проверка `!a.opened` в `rollback` убраны (до открытия журнала в записи нет
+  ни базы, ни ролей, `undo` ничего не делает и не запускает программ);
+  `countTables` возвращает `n` вместо константы при провале.
+- `cmd/sard-agent/check_host.go`: `secretFiles(cfg)[1:]` -> `secretFiles(cfg)`
+  (ключ TLS уже среди кандидатов, имя берётся один раз).
+
+Не убито, оставлено как есть (все вне изменённых R2c-2/R2c-3 строк):
+
+- `cmd/sard-agent/main.go`: восемь известных (`return err` в двух местах,
+  `args[0:]` вместо `args[1:]` в `runEnroll`/`runCheckCommand`,
+  `shutdownTimeout` 44/46 с, `stop()`, `Usage of sard-agent:`) —
+  те же, что в разделе R2c-1.
+- `cmd/sard-agent/repo_cmd.go`: `hasHelpFlag(args[0:])` вместо `args[1:]`
+  — эквивалентен: `args[0]` — имя подкоманды, не флаг.
+- `internal/hostcheck`: `announced.go` (три `return err` из `WriteAnnounced`),
+  `perms.go` (`iota + 2`, эквивалент), `selinux.go` (два), `server.go`
+  (границы `skew`); `internal/config`: `address.go`, `overlay.go`,
+  `password.go`; `internal/pluginhost/schema.go` (четыре). Строки до R2c, в
+  разделе «Не тронуто» чужого кода; общий gate их допускает (порог 0.80).
+
+Результаты полных gate (вывод `scripts/gate.sh`):
+
+- `./scripts/gate.sh sdk`: PASSED (full), код выхода 0; 158 мутантов, 136 убито
+  (0 по таймауту), 0 выжило, 22 не скомпилировались, оценка 1.000000.
+- `./scripts/gate.sh agent`: PASSED (full), код выхода 0; gofmt, vet, golangci-lint
+  (0 issues), тесты и покрытие, CRAP, интеграционные тесты с restic и сборка
+  стенда e2e пройдены. Мутанты: 7684 всего, 5860 убито (305 по таймауту), 408
+  выжило, 1416 не скомпилировались, 0 ошибок, 477 дубликатов; оценка 0.946903
+  (до этой работы: 7799 всего, 431 выжило, 0.944737). По шардам: 1 — 0.929797
+  (135 выжило), 2 — 0.971253 (56), 3 — 0.932584 (132), 4 — 0.954178 (85).
+  Среди 408 выживших нет ни одного в файлах R2c-2/R2c-3 (`plugins/postgresql`,
+  `plugins/sdk`, `internal/restore`, `internal/restorejournal`,
+  `internal/consolerestore`, `internal/pluginhost/handler.go`, `check_host.go`,
+  `repo_restore_run.go`); остались выжившие других пакетов и строк до R2c
+  (`repoconnect/sshconfig.go`, `testplugin/plugin.go`, `main.go`, `schema.go`,
+  `config`, `hostcheck` и т. д.).
+- `cli` не затрагивался, `gate.sh cli fast` не запускался.

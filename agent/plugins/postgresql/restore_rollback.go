@@ -21,9 +21,6 @@ const rollbackTimeout = 5 * time.Minute
 // the next start if it holds an OID to drop (the agent keeps it: Retain); a
 // rollback that drops everything leaves the entry to the agent to remove.
 func (a *restoreRun) rollback(f *sdk.RestoreError) *sdk.RestoreError {
-	if !a.opened {
-		return f
-	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(a.ctx), rollbackTimeout)
 	defer cancel()
 	a.resolveOIDs(ctx)

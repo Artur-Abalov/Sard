@@ -62,9 +62,6 @@ func (Plugin) CheckPrograms(h sdk.ProgramHost) sdk.ProgramsCheck {
 // the other tools in that directory.
 func locateClient(h sdk.ProgramHost) []foundTool {
 	tools := make([]foundTool, len(clientTools))
-	for i, name := range clientTools {
-		tools[i].name = name
-	}
 	for _, dir := range h.Path() {
 		if tools[0] = probeTool(h, dir, clientTools[0]); tools[0].path == "" {
 			continue
@@ -103,7 +100,7 @@ func worseStatus(a, b sdk.ProgramsStatus) sdk.ProgramsStatus {
 	if a == sdk.ProgramsError || b == sdk.ProgramsError {
 		return sdk.ProgramsError
 	}
-	if a == sdk.ProgramsWarn || b == sdk.ProgramsWarn {
+	if b == sdk.ProgramsWarn {
 		return sdk.ProgramsWarn
 	}
 	return a
@@ -113,7 +110,7 @@ func worseStatus(a, b sdk.ProgramsStatus) sdk.ProgramsStatus {
 func differentMajors(tools []foundTool) bool {
 	seen := map[int]bool{}
 	for _, t := range tools {
-		if t.path != "" && t.version.text != "" {
+		if t.version.text != "" { // a tool that is not there has no version
 			seen[t.version.major] = true
 		}
 	}
@@ -123,11 +120,12 @@ func differentMajors(tools []foundTool) bool {
 func describeTools(tools []foundTool) string {
 	var parts []string
 	for _, t := range tools {
-		switch {
-		case t.path == "":
-		case t.version.text == "":
+		if t.path == "" {
+			continue // not there: the notes of CheckPrograms name it
+		}
+		if t.version.text == "" {
 			parts = append(parts, t.name+" "+t.path)
-		default:
+		} else {
 			parts = append(parts, fmt.Sprintf("%s %s %s", t.name, t.path, t.version.text))
 		}
 	}

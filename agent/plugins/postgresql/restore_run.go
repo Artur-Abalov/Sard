@@ -91,9 +91,7 @@ type restoreRun struct {
 	// could not record.
 	globalsApplied, dbCreated bool
 
-	// opened: the first entry of the journal is written.
-	opened bool
-	entry  journalEntry
+	entry journalEntry
 }
 
 // newRestoreRun reads the config and the password: what can be judged before

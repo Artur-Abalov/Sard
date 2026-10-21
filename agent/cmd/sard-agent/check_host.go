@@ -151,7 +151,7 @@ func (c *hostCheck) labelPaths() []string {
 	layout := hostsetup.Layout{Config: c.opts.configPath}
 	candidates := []string{c.opts.configPath, layout.FragmentDir(), layout.SecretsDir(), filepath.Dir(cfg.TLS.KeyFile),
 		cfg.TLS.CAFile, cfg.TLS.CertFile, cfg.TLS.KeyFile, c.binary, cfg.Restic.CacheDir, c.deps.defaultCacheDir, c.stateDir()}
-	candidates = append(candidates, secretFiles(cfg)[1:]...)
+	candidates = append(candidates, secretFiles(cfg)...) // the key file is among the candidates already: a name is kept once
 	for _, r := range cfg.Repositories {
 		if r.Backend() == "local" {
 			candidates = append(candidates, r.URL)

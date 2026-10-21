@@ -123,6 +123,9 @@ func TestAPgRestoreThatFailsIsMissingEvenIfItPrintedAVersion(t *testing.T) {
 	_, f := h.run(h.request())
 	hasPrefix(t, f, "PG_CLIENT_MISSING (check)")
 	mentions(t, f.Error(), "cannot read the version")
+	if !errors.Is(f, sdk.ErrProgramMissing) {
+		t.Errorf("the cause of %v is lost", f)
+	}
 	h.untouched(t)
 }
 

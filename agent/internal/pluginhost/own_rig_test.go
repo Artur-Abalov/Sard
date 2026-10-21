@@ -129,7 +129,9 @@ type ownRig struct {
 	plugins    []sdk.Plugin
 	// noEngine: a host without the restore engine of the console.
 	noEngine bool
-	logs     *safeBuffer
+	// words, when set, words the failures of restic (pluginhost.WithRepositoryWords).
+	words *consolerestore.Classifier
+	logs  *safeBuffer
 	// repositories are the names the handlers looked up.
 	mu           sync.Mutex
 	repositories []string
@@ -191,6 +193,9 @@ func (r *ownRig) rebuild(plugins ...sdk.Plugin) {
 	opts := []pluginhost.Option{pluginhost.WithRestoreJournal(r.journal), pluginhost.WithLogger(logger)}
 	if !r.noEngine {
 		opts = append(opts, pluginhost.WithConsoleRestore(engine))
+	}
+	if r.words != nil {
+		opts = append(opts, pluginhost.WithRepositoryWords(r.words))
 	}
 	r.handlers, err = pluginhost.NewHandlers(reg, r.secrets, repos, filepath.Join(r.t.TempDir(), "verify"), opts...)
 	if err != nil {

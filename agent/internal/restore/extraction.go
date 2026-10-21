@@ -33,7 +33,7 @@ func (e Extraction) Tree() bool { return len(e.Files) == 0 }
 // knows no plugin by name, nor what a snapshot of one holds: the plugin says.
 func PlanExtraction(extractors map[string]sdk.Extractor, list []Snapshot, snap Snapshot, target string) (Extraction, *refusal.Failure) {
 	name, f := ownerOf(extractors, snap)
-	if f != nil || name == "" {
+	if name == "" { // no owner: a tree, or the failure of ownerOf
 		return Extraction{}, f
 	}
 	plan, err := extractors[name].PlanExtract(sdk.ExtractRequest{Snapshot: info(snap), Snapshots: infos(list), Target: target})

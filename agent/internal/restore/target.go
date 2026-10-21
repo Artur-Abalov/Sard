@@ -173,7 +173,7 @@ func isEmpty(dir hostsetup.Dir, names []string) (bool, error) {
 	}
 	defer func() { _ = child.Close() }()
 	inside, err := child.Names()
-	return err == nil && len(inside) == 0, err
+	return len(inside) == 0, err
 }
 
 // Held is the target while the restore into it runs: opened by its

@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -950,6 +951,9 @@ type rpHostRig struct {
 	share  float64
 	// path is the PATH of the agent.
 	path string
+	// started counts the programs the plugin asked the runner to start, those
+	// that were refused for an ended context too.
+	started atomic.Int64
 	// last is the failure of the last restore, nil if it succeeded.
 	last *rpFailure
 	// before are the databases and the roles the server had when the test began.
@@ -988,11 +992,17 @@ func newPGHost(t *testing.T) *rpHostRig {
 func (h *rpHostRig) plugin() postgresql.Plugin {
 	share := h.share
 	return postgresql.Plugin{
-		AgentVersion: "1.2.3", Runner: h.server, FS: h.tools, LockShare: &share,
+		AgentVersion: "1.2.3", Runner: h, FS: h.tools, LockShare: &share,
 		Environ: func() []string {
 			return []string{"PATH=" + h.path, "HOME=/home/sard", "PGPASSWORD=leaked", "PGHOST=evil", "LC_ALL=ru_RU.UTF-8"}
 		},
 	}
+}
+
+// Run is the runner of the plugin: the server, with the starts counted.
+func (h *rpHostRig) Run(ctx context.Context, cmd postgresql.Cmd) (int, error) {
+	h.started.Add(1)
+	return h.server.Run(ctx, cmd)
 }
 
 func (h *rpHostRig) request() rpRequest {

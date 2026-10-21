@@ -89,7 +89,6 @@ type pending struct {
 	out    hostsetup.File
 	info   fs.FileInfo
 	remove string // the name an abandoned file is taken back by
-	closed bool
 }
 
 func writeFile(ctx context.Context, d Dumper, h *Held, file File, random func() string, target repoinit.Target) (written, *refusal.Failure) {
@@ -104,7 +103,6 @@ func writeFile(ctx context.Context, d Dumper, h *Held, file File, random func() 
 		f.Detail += p.abandon()
 		return written{}, f
 	}
-	p.closed = true // WriteFiles closes it at the end
 	return written{name: file.Name, info: p.info, out: p.out}, nil
 }
 
@@ -136,17 +134,6 @@ func (p *pending) fill(ctx context.Context, d Dumper, file File, target repoinit
 	return f
 }
 
-// close closes the file once. The file stays open until its name is judged:
-// while the agent holds it, its inode cannot be given to another file, so the
-// comparison of Р87 cannot be fooled by a file that reuses the number.
-func (p *pending) close() error {
-	if p.closed {
-		return nil
-	}
-	p.closed = true
-	return p.out.Close()
-}
-
 // commit syncs the file, gives it its name, compares the name with the file
 // written (Р87) and syncs the directory.
 func (p *pending) commit(name string) *refusal.Failure {
@@ -170,9 +157,12 @@ func (p *pending) commit(name string) *refusal.Failure {
 
 // abandon takes back what the file left: the temporary file, or the final
 // one if it was judged to be the file written. The text it returns names a
-// name that was left because it is not that file.
+// name that was left because it is not that file. The file stays open until
+// its name is judged: while the agent holds it, its inode cannot be given to
+// another file, so the comparison of Р87 cannot be fooled by a file that
+// reuses the number. A file that was written is closed by WriteFiles.
 func (p *pending) abandon() string {
-	defer func() { _ = p.close() }()
+	defer func() { _ = p.out.Close() }()
 	if p.remove == "" {
 		return ""
 	}
@@ -228,7 +218,7 @@ type errWriter struct {
 
 func (c *errWriter) Write(p []byte) (int, error) {
 	n, err := c.w.Write(p)
-	if err != nil && c.err == nil {
+	if c.err == nil {
 		c.err = err
 	}
 	return n, err

@@ -41,7 +41,6 @@ func (a *restoreRun) finish() *sdk.RestoreError {
 // openJournal saves the first entry of the journal, with the connection and
 // the name of the secret, before the target is changed (ВК27).
 func (a *restoreRun) openJournal() *sdk.RestoreError {
-	a.opened = true
 	return a.save(stageCheck)
 }
 
@@ -207,7 +206,7 @@ func (a *restoreRun) countTables() (uint64, *sdk.RestoreError) {
 	o := a.conn.psql(a.ctx, a.database, tablesScript)
 	n, ok := o.number(64)
 	if !ok {
-		return 0, a.fail(ReasonRestoreFailed, stageRestore, "cannot count the tables of the new database: %s", o.problem())
+		return n, a.fail(ReasonRestoreFailed, stageRestore, "cannot count the tables of the new database: %s", o.problem())
 	}
 	return n, nil
 }

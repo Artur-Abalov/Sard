@@ -134,6 +134,31 @@ func TestASnapshotThatDoesNotLookLikeOneOfTheAgentIsRefused(t *testing.T) {
 	}
 }
 
+func TestASnapshotOfGlobalsThatDoesNotLookLikeOneOfTheAgentIsRefused(t *testing.T) {
+	good := exGlobals(exDatabase("app", "app.dump"), 7, "cccc1111", "app.globals.sql")
+	for name, mutate := range map[string]func(*sdk.SnapshotInfo){
+		"two paths":   func(s *sdk.SnapshotInfo) { s.Paths = []string{"/a.sql", "/b.sql"} },
+		"nested":      func(s *sdk.SnapshotInfo) { s.Paths = []string{"/x/app.globals.sql"} },
+		"no database": func(s *sdk.SnapshotInfo) { s.Tags = []string{"postgresql.part=globals"} },
+	} {
+		s := good
+		mutate(&s)
+		plan, err := Plugin{}.PlanExtract(sdk.ExtractRequest{Snapshot: s, Snapshots: []sdk.SnapshotInfo{s}})
+		if err == nil || len(plan.Files) != 0 || !strings.Contains(err.Error(), "snapshot cccc1111 is tagged as PostgreSQL but ") || !strings.Contains(err.Error(), "nothing was written") {
+			t.Errorf("%s: plan %+v, error %v", name, plan, err)
+		}
+	}
+}
+
+func TestATagWithoutAValueIsNoTag(t *testing.T) {
+	s := exDatabase("app", "app.dump")
+	s.Tags = []string{"postgresql.part=database", "postgresql.database=", "postgresql.database=app"}
+	plan, err := planExtract(t, s, s)
+	if err != nil || len(plan.Files) != 1 || !strings.Contains(hintText(plan), "createdb 'app'") {
+		t.Fatalf("plan %+v, %v", plan, err)
+	}
+}
+
 func TestGlobalsOfADatabaseAreOnlyThoseThatSayWhichSnapshotTheyBelongTo(t *testing.T) {
 	p := exDatabase("app", "app.dump")
 	noMain := exGlobals(p, 9, "cccc1111", "app.globals.sql")

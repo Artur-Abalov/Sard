@@ -321,7 +321,7 @@ func TestASecretThatIsNotThereOrUnusableFailsTheStepBeforeAnyProgramRuns(t *test
 		set   func(h *rpHostRig)
 		words []string
 	}{
-		"unknown":        {func(h *rpHostRig) { delete(h.host.secrets, rpPasswordRef) }, []string{`"pg-restore"`}},
+		"unknown":        {func(h *rpHostRig) { delete(h.host.secrets, rpPasswordRef) }, []string{`"pg-restore"`, "unknown secret"}},
 		"empty":          {func(h *rpHostRig) { h.host.secrets[rpPasswordRef] = []byte("\r\n") }, []string{`"pg-restore"`, "is empty"}},
 		"holds a NUL":    {func(h *rpHostRig) { h.host.secrets[rpPasswordRef] = []byte("a\x00b") }, []string{"NUL"}},
 		"only a newline": {func(h *rpHostRig) { h.host.secrets[rpPasswordRef] = []byte("\n") }, []string{"is empty"}},

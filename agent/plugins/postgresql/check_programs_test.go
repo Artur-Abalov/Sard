@@ -107,6 +107,18 @@ func TestAnIncompleteClientIsAnErrorOrAWarning(t *testing.T) {
 	}
 }
 
+func TestTheFaultsOfTheClientFollowTheToolsInTheMessage(t *testing.T) {
+	m := client("/usr/bin", "16.4")
+	delete(m, "/usr/bin/psql")
+	m["/usr/bin/pg_dumpall"] = "15.2"
+	l := checkPrograms(&programHost{path: []string{"/usr/bin"}, versions: m})
+	want := "pg_dump /usr/bin/pg_dump 16.4, pg_dumpall /usr/bin/pg_dumpall 15.2, pg_restore /usr/bin/pg_restore 16.4" +
+		": psql is not beside pg_dump; the tools are of different major versions"
+	if l.Status != sdk.ProgramsError || l.Message != want || l.Hint != programsHint {
+		t.Errorf("%+v, want message %q", l, want)
+	}
+}
+
 func TestAToolWithoutAVersionIsNamedByItsPathAndDoesNotChangeTheMajor(t *testing.T) {
 	m := client("/usr/bin", "16.4")
 	m["/usr/bin/psql"] = ""

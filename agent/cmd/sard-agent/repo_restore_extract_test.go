@@ -181,3 +181,17 @@ func TestTheHelpOfRepoRestoreHoldsTheParagraphOfEveryExtractor(t *testing.T) {
 		t.Errorf("the paragraph of the plugin is not in the help:\n%s", stdout)
 	}
 }
+
+// helpOnlyPlugin has a paragraph for the help but lays out no files: it is no extractor.
+type helpOnlyPlugin struct{ stubPlugin }
+
+func (helpOnlyPlugin) ExtractHelp() string { return "A snapshot of Y lies in y.bin." }
+
+func TestTheHelpOfRepoRestoreLacksTheParagraphOfAPluginThatIsNoExtractor(t *testing.T) {
+	h := newSetupHost(t)
+	h.withPlugin(helpingPlugin{extractPlugin{stubPlugin: stubPlugin{"x"}}}, helpOnlyPlugin{stubPlugin{"y"}})
+	_, stdout, _ := h.sudo("repo", "restore", "--help")
+	if !strings.Contains(stdout, "A snapshot of X lies in out.bin.\n\nFlags:") || strings.Contains(stdout, "Y lies") {
+		t.Errorf("the help of repo restore:\n%s", stdout)
+	}
+}

@@ -6,7 +6,6 @@ package postgresql
 import (
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
@@ -46,7 +45,7 @@ func (a *restoreRun) checkGlobals() *sdk.RestoreError {
 // the bootstrap superuser, whose name it returns.
 func (a *restoreRun) checkRoles(names []string) (bootstrap string, f *sdk.RestoreError) {
 	bootstrap, existing, f := a.existingRoles(names)
-	if f == nil && len(existing) > 0 {
+	if len(existing) > 0 { // existingRoles lists none when it fails
 		f = a.fail(ReasonRolesExist, stageCheck,
 			"the roles %s already exist on the target server and the restore does not change an existing role; restore without restore_globals", quoted(existing))
 	}
@@ -144,19 +143,18 @@ func (a *restoreRun) chooseMode() *sdk.RestoreError {
 	if a.single {
 		mode = "single transaction"
 	}
-	a.h.Log(sdk.LevelInfo, fmt.Sprintf("pg_restore mode: %s (%d objects, lock capacity %d, share %s)", mode, objects, capacity, strconv.FormatFloat(share, 'g', -1, 64)))
+	a.h.Log(sdk.LevelInfo, fmt.Sprintf("pg_restore mode: %s (%d objects, lock capacity %d, share %g)", mode, objects, capacity, share))
 	return nil
 }
 
 // countObjects is the number of entries of the table of contents of the dump:
 // its head goes to pg_restore -l (the table lies at the start of an archive of
 // the custom format), and restic dump is stopped.
-func (a *restoreRun) countObjects() (int, *sdk.RestoreError) {
+func (a *restoreRun) countObjects() (n int, f *sdk.RestoreError) {
 	res := a.stream([]string{"-l"}, true, nil)
-	if f := a.streamFailure(res, stageCheck, "cannot read the table of contents of the dump"); f != nil {
-		return 0, f
+	if f = a.streamFailure(res, stageCheck, "cannot read the table of contents of the dump"); f != nil {
+		return n, f
 	}
-	n := 0
 	for _, line := range res.o.lines() {
 		if t := strings.TrimSpace(line); t != "" && !strings.HasPrefix(t, ";") {
 			n++
