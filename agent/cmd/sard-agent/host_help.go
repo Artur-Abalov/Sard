@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
 // applyingHelp is what every command that changes the config says about
@@ -204,12 +205,15 @@ var repoHelpPrinters = map[string]func(io.Writer){
 	"remove":    printRepoRemoveHelp,
 	"password":  printRepoPasswordHelp,
 	"snapshots": printRepoSnapshotsHelp,
-	"restore":   printRepoRestoreHelp,
 	"check":     printRepoCheckHelp,
 	"unlock":    printRepoUnlockHelp,
 }
 
-func printRepoHelp(stdout io.Writer, sub string) {
+func printRepoHelp(stdout io.Writer, sub string, registry *sdk.Registry) {
+	if sub == "restore" {
+		printRepoRestoreHelp(stdout, extractHelp(registry))
+		return
+	}
 	if printer, ok := repoHelpPrinters[sub]; ok {
 		printer(stdout)
 		return
@@ -315,7 +319,10 @@ A repository with no snapshots prints one line and exits 0.
 	})
 }
 
-func printRepoRestoreHelp(stdout io.Writer) {
+// printRepoRestoreHelp writes the help of repo restore; extracted is the help of
+// the plugins that lay out their snapshots (sdk.ExtractHelper), one paragraph
+// each, ending with a line break.
+func printRepoRestoreHelp(stdout io.Writer, extracted string) {
 	printHelp(stdout, "repo restore [flags] <name> <snapshot> --target <dir>", `Restores a snapshot of one repository of the config on this host, into the
 directory given with --target. Run it with sudo: it writes files with the
 owners, groups and modes of the snapshot (restic runs as root; the storage is
@@ -336,14 +343,7 @@ that only root can change, and the entries are moved into the target when it
 is done; a restore that was killed leaves that directory, and the next run
 asks you to remove it. --overwrite is not available yet (restoring into a
 directory that is not empty, and into /, comes with a later release).
-A snapshot of PostgreSQL (tags postgresql.part=database or globals) is not
-laid out under paths: the agent writes <database>.dump and, if the backup has
-them, <database>.globals.sql into the root of the target, owned by root:root
-with mode 0600 (only root reads them; give them to the user of PostgreSQL
-yourself). The commands that restore the database (psql, createdb,
-pg_restore) are printed and not run, the database itself is not restored,
-and no PostgreSQL client is needed on the host. --path does not apply to it.
-
+`+extracted+`
 Flags:
   --config string            path to the agent config (default /etc/sard/agent.yaml)
   --target string            the directory to restore into (required, absolute path); it is

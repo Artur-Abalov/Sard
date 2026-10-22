@@ -57,7 +57,7 @@ func snapshotsF() []restore.Snapshot {
 		mk("aaaa1111", 3, "sard.source=s1"),
 		mk("aaaa2222", 9, "sard.source=s1"),
 		mk("bbbb1111", 6, "sard.source=s2", "postgresql.part=database"),
-		mk("cccc1111", 7, "sard.source=s2", "postgresql.part=globals"),
+		mk("cccc1111", 7, "sard.source=s2", "postgresql.part=globals", "postgresql.main_snapshot="+id("bbbb1111")),
 	}
 }
 
@@ -113,10 +113,44 @@ func TestLatestIsTheNewestSnapshotOfTheSource(t *testing.T) {
 	}
 }
 
-func TestLatestSkipsTheGlobalsSnapshotOfPostgreSQL(t *testing.T) {
+// Scenario: latest пропускает дополнительный снимок любого плагина (О2).
+func TestLatestSkipsTheExtraSnapshotOfAnyPlugin(t *testing.T) {
+	s3 := "s3"
+	main := restore.Snapshot{ID: id("dddd1111"), Time: at(5).UTC(), Source: &s3, Tags: []string{"sard.source=s3", "x.part=main"}}
+	extra := restore.Snapshot{ID: id("eeee1111"), Time: at(6).UTC(), Source: &s3, Tags: []string{"sard.source=s3", "x.main_snapshot=" + main.ID}}
+	got, f := restore.Select([]restore.Snapshot{main, extra}, "latest", "base", "s3")
+	if f != nil || got.ID != main.ID {
+		t.Fatalf("got %v, %v", got.ID, f)
+	}
+}
+
+func TestLatestSkipsTheGlobalsSnapshotOfThePlugin(t *testing.T) {
 	got, f := restore.Select(snapshotsF(), "latest", "base", "s2")
 	if f != nil || got.ID != id("bbbb1111") {
 		t.Fatalf("got %v, %v", got.ID, f)
+	}
+}
+
+func TestOnlyATagOfAPluginWithAValueMakesASnapshotExtra(t *testing.T) {
+	for tag, extra := range map[string]bool{
+		"x.main_snapshot=a":             true,
+		"my-plugin.main_snapshot=abc":   true,
+		"main_snapshot=a":               false,
+		".main_snapshot=a":              false,
+		"x.main_snapshot=":              false,
+		"x.main_snapshot":               false,
+		"x.main_snapshots=a":            false,
+		"x.not_main_snapshot=a":         false,
+		"sard.source=x.main_snapshot=a": false,
+		"x.y.main_snapshot=a":           true,
+	} {
+		s := "s"
+		old := restore.Snapshot{ID: id("aaaa1111"), Time: at(1).UTC(), Source: &s}
+		newer := restore.Snapshot{ID: id("bbbb1111"), Time: at(2).UTC(), Source: &s, Tags: []string{tag}}
+		got, _ := restore.Select([]restore.Snapshot{old, newer}, "latest", "base", "s")
+		if skipped := got.ID == old.ID; skipped != extra {
+			t.Errorf("%q: the newer snapshot was skipped: %v, want %v", tag, skipped, extra)
+		}
 	}
 }
 
@@ -153,19 +187,6 @@ func TestAPrefixFittingSnapshotsOfTwoSourcesIsAmbiguousWithinTheSourceOnly(t *te
 	list[2].ID = "aaaa1111f" + strings.Repeat("0", 55) // s2
 	got, f := restore.Select(list, "aaaa1111", "base", "s1")
 	if f != nil || got.ID != list[0].ID {
-		t.Fatalf("got %v, %v", got.ID, f)
-	}
-}
-
-// A snapshot that carries both postgresql.part tags is what repo restore lays
-// out (KindOf takes the first), so latest must not skip it as globals.
-func TestLatestAndTheKindOfASnapshotAgreeWhenItCarriesTwoPartTags(t *testing.T) {
-	both := restore.Snapshot{ID: id("dddd1111"), ShortID: "dddd1111", Time: at(20).UTC(),
-		Tags: []string{"sard.source=s2", "postgresql.part=database", "postgresql.part=globals"}}
-	s := "s2"
-	both.Source = &s
-	got, f := restore.Select(append(snapshotsF(), both), "latest", "base", "s2")
-	if f != nil || got.ID != both.ID || restore.KindOf(got) != restore.KindDatabase {
 		t.Fatalf("got %v, %v", got.ID, f)
 	}
 }

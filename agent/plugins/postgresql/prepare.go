@@ -90,19 +90,26 @@ func (p Plugin) password(h sdk.Host, c config) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	value = bytes.TrimRight(value, "\r\n")
+	return checkPassword(c.PasswordRef, value)
+}
+
+// checkPassword is the content of the secret called name without its line
+// ending, neither empty nor holding a NUL byte (F1 ПГ3): the one reading of a
+// password, for a backup, a restore and the rollback of an interrupted one.
+func checkPassword(name string, content []byte) ([]byte, error) {
+	value := bytes.TrimRight(content, "\r\n")
 	switch {
 	case len(value) == 0:
-		return nil, fmt.Errorf("secret %q is empty", c.PasswordRef)
+		return nil, fmt.Errorf("secret %q is empty", name)
 	case bytes.IndexByte(value, 0) >= 0:
-		return nil, fmt.Errorf("secret %q contains a NUL byte", c.PasswordRef)
+		return nil, fmt.Errorf("secret %q contains a NUL byte", name)
 	}
 	return value, nil
 }
 
 // toolVersion runs `<tool> --version`.
 func (p Plugin) toolVersion(ctx context.Context, h sdk.Host, path string) (version, error) {
-	out, o := p.output(ctx, h, path, []string{"--version"}, p.childEnv(nil))
+	out, o := p.output(ctx, h, call{path: path, args: []string{"--version"}, environ: p.childEnv(nil)})
 	if err := o.failure(); err != nil {
 		return version{}, err
 	}
@@ -119,7 +126,7 @@ type role struct {
 
 // probe signs in with psql and asks the server about itself and the role.
 func (p Plugin) probe(ctx context.Context, h sdk.Host, c config, t tools, password []byte) (role, error) {
-	out, o := p.output(ctx, h, t.psql, queryArgs(c, probeQuery), p.childEnv(password))
+	out, o := p.output(ctx, h, call{path: t.psql, args: queryArgs(c, probeQuery), environ: p.childEnv(password)})
 	if ctx.Err() != nil {
 		return role{}, context.Cause(ctx)
 	}
@@ -144,7 +151,7 @@ const systemIDQuery = `select system_identifier from pg_control_system()`
 // not read it, or an answer that is no number, is no failure: the snapshot
 // goes without the tag (R2b ВК29).
 func (p Plugin) systemIdentifier(ctx context.Context, h sdk.Host, c config, t tools, password []byte) (string, error) {
-	out, o := p.output(ctx, h, t.psql, queryArgs(c, systemIDQuery), p.childEnv(password))
+	out, o := p.output(ctx, h, call{path: t.psql, args: queryArgs(c, systemIDQuery), environ: p.childEnv(password)})
 	if ctx.Err() != nil {
 		return "", context.Cause(ctx)
 	}
@@ -164,19 +171,36 @@ func isDigits(s string) bool {
 	return s != "" && strings.IndexFunc(s, func(r rune) bool { return r < '0' || r > '9' }) < 0
 }
 
-// parseProbe reads the row of the probe: version number, superuser, member of
-// pg_read_all_data, role (last, it may hold any character).
-func parseProbe(out string) (role, error) {
-	line, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+// probeRow is the row both probes (of a backup and of a restore) read: the
+// version number of the server, superuser, a right the probe asks about, role
+// (last, it may hold any character).
+type probeRow struct {
+	server           version
+	super, privilege bool
+	name             string
+}
+
+func parseProbeRow(line string) (probeRow, error) {
 	f := strings.SplitN(line, "|", 4)
 	if len(f) != 4 {
-		return role{}, fmt.Errorf("unexpected answer of psql: %q", line)
+		return probeRow{}, fmt.Errorf("unexpected answer of psql: %q", line)
 	}
 	num, err := strconv.Atoi(f[0])
 	if err != nil {
-		return role{}, fmt.Errorf("unexpected answer of psql: %q", line)
+		return probeRow{}, fmt.Errorf("unexpected answer of psql: %q", line)
 	}
-	return role{server: serverVersion(num), super: f[1] == "t", readsData: f[2] == "t", name: f[3]}, nil
+	return probeRow{server: serverVersion(num), super: f[1] == "t", privilege: f[2] == "t", name: f[3]}, nil
+}
+
+// parseProbe reads the row of the probe: the right asked about is the
+// membership of pg_read_all_data.
+func parseProbe(out string) (role, error) {
+	line, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+	row, err := parseProbeRow(line)
+	if err != nil {
+		return role{}, err
+	}
+	return role{server: row.server, super: row.super, readsData: row.privilege, name: row.name}, nil
 }
 
 // checkVersions: the server is supported and pg_dump is not older (F1 ПГ7).

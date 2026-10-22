@@ -143,22 +143,6 @@ func TestAFileOfRootsThatItsOwnerCannotWriteIsNotAFault(t *testing.T) {
 	}
 }
 
-func TestAToolWithoutAVersionIsNamedByItsPathAndDoesNotChangeTheMajor(t *testing.T) {
-	l := hostcheck.PostgresLine(tool("pg_dump", "16.4"), hostcheck.Tool{Name: "psql", Path: "/usr/bin/psql"}, tool("pg_dumpall", "16.4"), tool("pg_restore", "16.4"))
-	want := "pg_dump /usr/bin/pg_dump 16.4, psql /usr/bin/psql, pg_dumpall /usr/bin/pg_dumpall 16.4, pg_restore /usr/bin/pg_restore 16.4"
-	if l.Status != hostcheck.OK || l.Message != want {
-		t.Errorf("%+v, want message %q", l, want)
-	}
-}
-
-func TestAMissingToolDoesNotTakePartInTheMajorComparison(t *testing.T) {
-	ghost := hostcheck.Tool{Name: "psql", Version: "15.2"}
-	l := hostcheck.PostgresLine(tool("pg_dump", "16.4"), ghost, tool("pg_dumpall", "16.4"), tool("pg_restore", "16.4"))
-	if l.Status != hostcheck.Error || strings.Contains(l.Message, "different major versions") {
-		t.Errorf("%+v", l)
-	}
-}
-
 func TestEveryWayAFileOfASecretCannotBeUsedHasItsOwnWords(t *testing.T) {
 	for _, c := range []struct {
 		err  error

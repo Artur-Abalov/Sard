@@ -13,6 +13,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/plugins"
 	"github.com/Artur-Abalov/sard/agent/plugins/files"
+	"github.com/Artur-Abalov/sard/agent/plugins/postgresql"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
@@ -81,6 +82,31 @@ func TestBuiltinPluginsGetHandlersThatBackUpAndRestore(t *testing.T) {
 		if !ok || len(handler.Actions()) != wantActions {
 			t.Errorf("%s: handler %v, %v", name, handler, ok)
 		}
+	}
+}
+
+// R2c-2: the setting of the host that shapes the restore of PostgreSQL reaches
+// the plugin through the options of the build; without one the plugin keeps its default.
+func TestTheLockShareOfTheHostReachesThePostgresqlPlugin(t *testing.T) {
+	share := func(opts ...plugins.Option) *float64 {
+		for _, p := range plugins.Builtin("1.2.3", opts...) {
+			if pg, ok := p.(postgresql.Plugin); ok {
+				return pg.LockShare
+			}
+		}
+		t.Fatal("no postgresql plugin")
+		return nil
+	}
+	if got := share(); got != nil {
+		t.Errorf("without an option the share is %v", *got)
+	}
+	for _, want := range []float64{0.25, 0} {
+		if got := share(plugins.WithPostgresLockShare(want)); got == nil || *got != want {
+			t.Errorf("share %v, want %v", got, want)
+		}
+	}
+	if reg := plugins.Registry("1.2.3", plugins.WithPostgresLockShare(0.25)); len(reg.Names()) < 2 {
+		t.Errorf("registry %v", reg.Names())
 	}
 }
 

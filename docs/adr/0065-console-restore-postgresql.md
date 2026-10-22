@@ -73,6 +73,25 @@ R2a восстанавливает только `files`. R2b добавляет 
    пароль в запросе отклоняет схема агента (`format: sard-secret`, `additionalProperties`).
 9. **Подсказка check (Ч28, РВ5)** добавлена и для `PG_CLIENT_MISSING`.
 
+## Поправки (R2c-3, ADR 0066)
+- **п. 1 — долг закрыт.** Восстановление базы выполняет плагин `postgresql` через необязательный
+  интерфейс SDK `RestoreRunner`; `consolerestore/pg_*.go` и `pluginhost/handler_database.go`
+  удалены (R2c-2), `sdk.PostgresRestore` и поле `RestorePlan.Postgres` — тоже (R2c-3). Выбор
+  пути — по `RestoreRunner`, а не по `plan.Postgres`. `PlanRestore` плагина только читает
+  конфиг; настройки восстановления (подключение, имя базы, глобальные объекты) плагин держит
+  у себя. OQ-235 закрыт.
+- **п. 2 — `conninfo` и среда программ** живут в пакете `agent/plugins/postgresql/pgclient`
+  (AGPL-3.0, stdlib), а не в `agent/plugins/sdk/pgclient`: SDK не знает ни одной базы. Его
+  импортирует только плагин; `PGPASSWORD` задаёт только он (тест
+  `TestOnlyPgclientPutsThePasswordIntoTheEnvironment`).
+- **п. 4 — журнал отката** лежит в `executor.state_dir/restore-journal/<command_id>.json` в
+  конверте `{plugin, command_id, entry}` (ADR 0066 п. 3); запись плагина `postgresql` хранит
+  те же поля, что запись `pg-restore/`. Прежний путь `pg-restore/` читается один выпуск и
+  никогда не пишется.
+- **п. 5 — `Engine.Settle`/`Abandon` заменены** удалением записи хостом после записи
+  результата; запись с остатком, который ещё нужен, плагин помечает `Retain`
+  (`sdk.RestoreError.Retain`, `sdk.Recovery.Retain`), и она остаётся до следующего старта.
+
 ## Последствия
 - Агент ходит к PostgreSQL процессами `psql` и `pg_restore` от пользователя службы; пароль
   читается из секрета хоста (`PGPASSWORD`), в журнале отката лежит только имя секрета.

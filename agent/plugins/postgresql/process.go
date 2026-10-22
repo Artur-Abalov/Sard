@@ -31,7 +31,7 @@ func (r ProcessRunner) Run(ctx context.Context, c Cmd) (int, error) {
 	cmd.Env = append([]string{}, c.Env...) // non-nil: an empty Env inherits nothing
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stderr := &lineWriter{emit: c.Stderr}
-	cmd.Stdout, cmd.Stderr = c.Stdout, stderr
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = c.Stdin, c.Stdout, stderr
 	cmd.Cancel = func() error { return signalGroup(cmd.Process.Pid, syscall.SIGTERM) }
 	cmd.WaitDelay = r.grace()
 	if err := cmd.Start(); err != nil {
