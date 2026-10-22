@@ -9,6 +9,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
+private const val STOP_PATIENCE_SECONDS = 10L
+
 /**
  * Runs [tick] at the start and then [interval] after the end of each tick, on one thread of its own: ticks never
  * overlap, a slow one delays the next and nothing else, and a scrape never waits for either (МР6). The first tick is
@@ -29,8 +31,12 @@ class StateLoop(
 
     private fun daemon(task: Runnable) = Thread(task, "sard-metrics-state").apply { isDaemon = true }
 
+    /** Interrupts a tick that is running and waits for it, so that when this returns no tick runs and none will. */
     override fun stop() {
-        executor?.shutdownNow()
+        executor?.let {
+            it.shutdownNow()
+            it.awaitTermination(STOP_PATIENCE_SECONDS, TimeUnit.SECONDS)
+        }
         executor = null
     }
 

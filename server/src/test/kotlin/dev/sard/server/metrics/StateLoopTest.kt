@@ -147,4 +147,33 @@ class StateLoopTest {
 
         assertFalse(overlapped.get())
     }
+
+    @Test
+    fun `Когда stop вернулся, идущий тик закончен и новых нет`() {
+        val inside =
+            java.util.concurrent.atomic
+                .AtomicBoolean()
+        val entered = CountDownLatch(1)
+        val ticks = AtomicInteger()
+        val loop =
+            StateLoop(Duration.ofMillis(5)) {
+                ticks.incrementAndGet()
+                inside.set(true)
+                entered.countDown()
+                try {
+                    Thread.sleep(200)
+                } finally {
+                    inside.set(false)
+                }
+            }
+        loop.begin()
+        assertTrue(entered.await(10, TimeUnit.SECONDS))
+
+        loop.end()
+
+        assertFalse(inside.get(), "a tick still runs after stop() returned")
+        val atStop = ticks.get()
+        Thread.sleep(100)
+        assertEquals(atStop, ticks.get())
+    }
 }
