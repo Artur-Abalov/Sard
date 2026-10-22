@@ -3,6 +3,7 @@
 
 package dev.sard.server.selfbackup
 
+import dev.sard.server.shell.shellWord
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import kotlin.test.Test
@@ -309,5 +310,28 @@ class RepositoryCommandsTest {
             "docker compose exec self-agent sard-agent repo password 'a b' --reveal --config /etc/sard/self/agent.yaml",
             passwordRevealCommand("a b"),
         )
+    }
+
+    @Test
+    fun `Команда ключа восстановления - префикс запуска, имя и --if-missing`() {
+        assertEquals(
+            "docker compose run --rm --no-deps -u 0 --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER " +
+                "--cap-add SETUID --cap-add SETGID self-agent repo key add self --for recovery --if-missing " +
+                "--no-restart --config /etc/sard/self/agent.yaml && docker compose restart self-agent",
+            MutFlow.underTest { recoveryKeyCommand("self") },
+        )
+        assertTrue(recoveryKeyCommand("a b").contains("self-agent repo key add 'a b' --for recovery --if-missing"))
+    }
+
+    @Test
+    fun `Команда ключа восстановления перезапускает соседа, иначе сервер не узнает признак`() {
+        val command = MutFlow.underTest { recoveryKeyCommand("self") }
+        assertTrue(
+            command.contains(
+                "self-agent repo key add self --for recovery --if-missing --no-restart " +
+                    "--config /etc/sard/self/agent.yaml",
+            ),
+        )
+        assertTrue(command.endsWith(" && docker compose restart self-agent"))
     }
 }

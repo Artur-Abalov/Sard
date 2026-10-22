@@ -13,3 +13,6 @@ import (
 // StdinTerminal is nil: the agent reads a secret from a terminal on
 // Linux only; elsewhere the value comes from a flag.
 func StdinTerminal(*os.File, io.Writer) Terminal { return nil }
+
+// IsTerminal is false: the agent treats a terminal on Linux only.
+func IsTerminal(*os.File) bool { return false }

@@ -34,6 +34,9 @@ type addState struct {
 	sftp *sftpState
 	// plan is what the config says of the name before the command acts.
 	plan hostsetup.AddPlan
+	// recoveryFailure is why the recovery key of a new repository was not
+	// issued (V3, K15).
+	recoveryFailure *refusal.Failure
 }
 
 func (s *addState) final(c *hostCmd) string { return c.layout.PasswordFile(s.name) }
@@ -166,6 +169,9 @@ func runRepoAdd(ctx context.Context, args []string, stdout, stderr io.Writer, de
 		return code
 	}
 	if f := checkAddSources(opts); f != nil {
+		return report(stderr, "repo add", f)
+	}
+	if f := checkRecoveryFlags(opts); f != nil {
 		return report(stderr, "repo add", f)
 	}
 	who, f := authorize(deps, "repo add", opts, true, true)

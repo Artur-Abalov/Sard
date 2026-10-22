@@ -174,3 +174,19 @@ func TestALineAskedAtTheTerminalIsReadWithTheEchoOn(t *testing.T) {
 		t.Fatalf("prompt %q", spy.promptSeen.String())
 	}
 }
+
+// V3 (K7): a key's password goes to the screen only when stdout is a terminal.
+func TestIsTerminalSaysWhetherTheFileIsATerminal(t *testing.T) {
+	_, slave := openPTY(t)
+	if !hostsetup.IsTerminal(slave) {
+		t.Error("a pseudo-terminal is not taken for a terminal")
+	}
+	plain, err := os.Create(t.TempDir() + "/out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = plain.Close() }()
+	if hostsetup.IsTerminal(plain) {
+		t.Error("a regular file is taken for a terminal")
+	}
+}

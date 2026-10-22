@@ -12,9 +12,11 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostcheck"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
+	"github.com/Artur-Abalov/sard/agent/internal/identity"
 	"github.com/Artur-Abalov/sard/agent/internal/repoconnect"
 	"github.com/Artur-Abalov/sard/agent/internal/repoinit"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/internal/role"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 	"github.com/Artur-Abalov/sard/agent/internal/serverprobe"
 	"github.com/Artur-Abalov/sard/agent/plugins"
@@ -83,6 +85,12 @@ type hostDeps struct {
 	// not a terminal; out receives its prompts.
 	terminal func(out io.Writer) hostsetup.Terminal
 	openFile func(path string) (io.ReadCloser, error)
+	// stdoutTerminal says that standard output is a terminal: the only place
+	// the password of a new key may be shown (V3, K7).
+	stdoutTerminal bool
+	// hostRole is the role the certificate at the path says this host has;
+	// a host without a usable certificate acts as a source (V3, В5).
+	hostRole func(certFile string) role.Role
 }
 
 func productionHostDeps() hostDeps {
@@ -119,6 +127,9 @@ func productionHostDeps() hostDeps {
 		stdin:       os.Stdin,
 		terminal:    func(out io.Writer) hostsetup.Terminal { return hostsetup.StdinTerminal(os.Stdin, out) },
 		openFile:    func(path string) (io.ReadCloser, error) { return os.Open(path) },
+
+		stdoutTerminal: hostsetup.IsTerminal(os.Stdout),
+		hostRole:       certificateRole(os.ReadFile),
 	}
 }
 
@@ -129,4 +140,16 @@ func (d hostDeps) host(serviceUID uint32) repoinit.Host {
 // ownedReader reads files as the service user owns them (A1).
 func (d hostDeps) ownedReader(uid uint32) func(string) ([]byte, error) {
 	return func(path string) ([]byte, error) { return d.readOwned(path, uid) }
+}
+
+// certificateRole is the role of the certificate at the path; a host that has
+// none, or one that cannot be read, behaves as a source (V3, В5).
+func certificateRole(read func(string) ([]byte, error)) func(string) role.Role {
+	return func(certFile string) role.Role {
+		id, err := identity.Read(certFile, read)
+		if err != nil {
+			return role.Source
+		}
+		return id.Role
+	}
 }

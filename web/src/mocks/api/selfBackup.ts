@@ -2,7 +2,13 @@
 // Copyright 2026 Artur Abalov
 
 import type { components } from '../../api/schema'
-import { buildCommand, freeName, passwordRevealCommand, safeLocation } from '../commands'
+import {
+  buildCommand,
+  freeName,
+  passwordRevealCommand,
+  recoveryKeyCommand,
+  safeLocation,
+} from '../commands'
 import { http } from '../http'
 import { noSession, PROBLEM, problem } from '../problems'
 import { status } from '../fixtures'
@@ -111,6 +117,7 @@ function reportPendingRepository(): void {
     backend: pending.backend,
     repositoryId,
     cryptoProvider: 'file',
+    recoveryKey: 'present',
   })
 }
 
@@ -214,6 +221,7 @@ function current(): Schemas['SelfBackup'] {
       firstBackupDone: false,
       keysConfirmedAt: null,
       passwordRevealCommand: null,
+      recoveryKeyCommand: null,
     }
   }
   const repository = repositoryOf(sources[0])
@@ -235,6 +243,7 @@ function current(): Schemas['SelfBackup'] {
     firstBackupDone: firstBackupDone(),
     keysConfirmedAt: confirmedAt,
     passwordRevealCommand: passwordRevealCommand(repository.name),
+    recoveryKeyCommand: recoveryKeyCommand(repository.name),
   }
 }
 

@@ -161,3 +161,12 @@ export function passwordRevealCommand(repository: string): string {
     '--reveal --config /etc/sard/self/agent.yaml'
   )
 }
+
+/** The command that issues a recovery key on the server's machine and restarts the sidecar (V3, КС2); a repeat changes nothing. */
+export function recoveryKeyCommand(repository: string): string {
+  return (
+    'docker compose run --rm --no-deps -u 0 --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER ' +
+    `--cap-add SETUID --cap-add SETGID self-agent repo key add ${shellWord(repository)} --for recovery ` +
+    '--if-missing --no-restart --config /etc/sard/self/agent.yaml && docker compose restart self-agent'
+  )
+}

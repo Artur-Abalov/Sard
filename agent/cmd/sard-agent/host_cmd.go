@@ -86,6 +86,9 @@ type hostCmd struct {
 	sftp hostsetup.SFTPAddress
 	// budget is the time --timeout allows; nil outside repo add.
 	budget *repoconnect.Budget
+	// recovery is where the password of the recovery key of a new repository
+	// goes, once it is known that one is made (V3, K15).
+	recovery *recoveryPlan
 }
 
 func newHostCmd(words string, opts hostOptions, who hostsetup.Principal, stdout, stderr io.Writer, deps hostDeps) *hostCmd {

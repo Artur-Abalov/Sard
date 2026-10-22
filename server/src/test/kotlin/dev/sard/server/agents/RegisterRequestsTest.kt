@@ -5,6 +5,7 @@ package dev.sard.server.agents
 
 import dev.sard.proto.agent.v1.Action
 import dev.sard.proto.agent.v1.Plugin
+import dev.sard.proto.agent.v1.RecoveryKeyState
 import dev.sard.proto.agent.v1.RegisterRequest
 import dev.sard.proto.agent.v1.RepositoryInfo
 import dev.sard.proto.agent.v1.Sandbox
@@ -12,6 +13,7 @@ import dev.sard.proto.agent.v1.VerifierStatus
 import dev.sard.server.registration.AgentSnapshot
 import dev.sard.server.registration.PluginAction
 import dev.sard.server.registration.PluginEntry
+import dev.sard.server.registration.RecoveryKey
 import dev.sard.server.registration.RepositoryEntry
 import dev.sard.server.registration.SandboxKind
 import dev.sard.server.registration.VerifierReport
@@ -125,5 +127,32 @@ class RegisterRequestsTest {
             val request = RegisterRequest.newBuilder().setVerifier(status).build()
             assertEquals(expected, MutFlow.underTest { request.toSnapshot() }.verifier, status.toString())
         }
+    }
+
+    @Test
+    fun `every wire recovery key state maps to its flag, unspecified to unknown and never to absent`() {
+        val expected =
+            mapOf(
+                RecoveryKeyState.RECOVERY_KEY_STATE_PRESENT to RecoveryKey.PRESENT,
+                RecoveryKeyState.RECOVERY_KEY_STATE_ABSENT to RecoveryKey.ABSENT,
+                RecoveryKeyState.RECOVERY_KEY_STATE_UNSPECIFIED to RecoveryKey.UNKNOWN,
+                RecoveryKeyState.UNRECOGNIZED to RecoveryKey.UNKNOWN,
+            )
+        assertEquals(expected, RecoveryKeyState.entries.associateWith { MutFlow.underTest { recoveryKeyOf(it) } })
+    }
+
+    @Test
+    fun `a repository of the request carries its recovery key flag, one without the field is unknown`() {
+        val request =
+            RegisterRequest
+                .newBuilder()
+                .addRepositories(
+                    RepositoryInfo.newBuilder().setName("a").setRecoveryKey(RecoveryKeyState.RECOVERY_KEY_STATE_ABSENT),
+                ).addRepositories(RepositoryInfo.newBuilder().setName("b"))
+                .build()
+
+        val flags = MutFlow.underTest { request.toSnapshot() }.repositories.map { it.recoveryKey }
+
+        assertEquals(listOf(RecoveryKey.ABSENT, RecoveryKey.UNKNOWN), flags)
     }
 }

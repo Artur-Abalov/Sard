@@ -58,9 +58,16 @@ describe('recoveryCardText (Рк15, OQ-202, OQ-203)', () => {
     expect(text).toContain(`${en.recoveryCard.repositoryId}: —`)
   })
 
+  test.each([
+    ['ru', ru],
+    ['en', en],
+  ] as const)('the %s text says what restoring needs', (lang, dictionary) => {
+    expect(recoveryCardText(card, lang)).toContain(dictionary.recoveryCard.requires)
+  })
+
   test('has one line per field, in the order of the card, and nothing else about secrets', () => {
     const lines = recoveryCardText(card, 'en').split('\n').filter(Boolean)
-    expect(lines).toHaveLength(1 + 1 + 8)
+    expect(lines).toHaveLength(1 + 1 + 1 + 8)
     expect(recoveryCardText(card, 'en').toLowerCase()).not.toMatch(/secret key|private key/)
   })
 })

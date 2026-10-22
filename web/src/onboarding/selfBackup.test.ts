@@ -67,6 +67,7 @@ function selfBackupState(
     firstBackupDone: false,
     keysConfirmedAt: null,
     passwordRevealCommand: null,
+    recoveryKeyCommand: null,
     ...extra,
   }
 }

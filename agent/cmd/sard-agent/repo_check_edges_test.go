@@ -124,6 +124,7 @@ var arity = map[string][2]int{
 	"check": {0, 0}, "repo init": {1, 0}, "repo list": {0, 0}, "repo add": {2, 0}, "repo show": {1, 0}, "repo remove": {1, 0},
 	"repo password": {1, 0}, "repo snapshots": {1, 0}, "repo restore": {2, 0}, "repo check": {0, 1}, "repo unlock": {1, 0},
 	"secret set": {1, 0}, "secret list": {0, 0}, "secret remove": {1, 0},
+	"repo key add": {1, 0}, "repo key list": {1, 0}, "repo key remove": {2, 0},
 }
 
 // argsOf is n names and the flags the command needs for its names to be the
@@ -342,7 +343,7 @@ func TestAnInterruptAtTheFirstAccessReportsNoCheckAsOKAndSkipsTheRest(t *testing
 			t.Errorf("%+v", l)
 		}
 	}
-	want := []string{"repository.credentials", "repository.initialized", "repository.password", "repository.id", "repository.locks", "repository.integrity"}
+	want := []string{"repository.credentials", "repository.initialized", "repository.password", "repository.id", "repository.keys", "repository.locks", "repository.integrity"}
 	if !slices.Equal(ids, want) {
 		t.Errorf("lines %v, want %v", ids, want)
 	}
@@ -353,7 +354,7 @@ func TestAnInterruptWhileTheLocksAreReadLeavesTheLocksLineOut(t *testing.T) {
 	code, stdout := h.interruptedAt("list")
 	assertCode(t, code, exitTemporary)
 	lines, _ := parseOut(t, stdout)
-	if last := lines[len(lines)-1]; last.check != "repository.id" || last.status != "OK" {
+	if last := lines[len(lines)-1]; last.check != "repository.keys" || last.status != "OK" {
 		t.Errorf("lines %v", lines)
 	}
 }

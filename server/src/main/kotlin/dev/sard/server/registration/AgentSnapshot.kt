@@ -52,7 +52,28 @@ data class RepositoryEntry(
     val repositoryId: String,
     /** Empty means restic's built-in AES (ADR 0008). */
     val cryptoProvider: String,
+    /** Whether the repository has a recovery key, as the agent read it on this Register (V3). */
+    val recoveryKey: RecoveryKey = RecoveryKey.UNKNOWN,
 )
+
+/**
+ * The recovery key flag of a repository (V3). [UNKNOWN] is an agent older than V3 and an agent that could not read
+ * the keys: it is never read as [ABSENT]. [stored] is the form in the database and in REST.
+ */
+enum class RecoveryKey(
+    val stored: String,
+) {
+    PRESENT("present"),
+    ABSENT("absent"),
+    UNKNOWN("unknown"),
+    ;
+
+    companion object {
+        /** The flag stored as [stored]; fails for anything else (the database CHECK allows nothing else). */
+        fun of(stored: String): RecoveryKey =
+            checkNotNull(entries.firstOrNull { it.stored == stored }) { "unknown recovery key flag '$stored'" }
+    }
+}
 
 /** What a verifier reports about its host (V4); null fields are unknown to the agent. */
 data class VerifierReport(

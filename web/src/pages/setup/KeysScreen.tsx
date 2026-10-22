@@ -12,10 +12,10 @@ import { ButtonLink } from '../../components/links'
 import { confirmKeysCopy } from '../../onboarding/selfBackup'
 import { tones } from '../../theme'
 
-// Step 4 of the wizard, and the confirmation after a change of the storage (Рк14, Рк17): the command that prints the
-// password of the repository on the machine of the server, the recovery card, the owner's mark and the button that
-// is active only with it. Every text is a key of setup.keys: a later change of the step to "issue a recovery key"
-// (V3) changes the dictionaries and not the state or the requests.
+// Step 4 of the wizard, and the confirmation after a change of the storage (Рк14, Рк17, V3 КВ1): the command that
+// issues a recovery key on the machine of the server first, below it the command that prints the password of the
+// repository, the recovery card, the owner's mark and the button that is active only with it. No password passes
+// through the console (КВ6). Every text is a key of setup.keys.
 export function KeysScreen({
   cardTo,
   onConfirmed,
@@ -45,13 +45,23 @@ export function KeysScreen({
     <Stack>
       <Title order={3}>{t('setup.keys.title')}</Title>
       <Text>{t('setup.keys.intro')}</Text>
-      <Text>{t('setup.keys.command')}</Text>
       <Loaded query={query}>
-        {(state) =>
-          state.passwordRevealCommand && (
-            <CopyBox value={state.passwordRevealCommand} label={t('setup.keys.commandLabel')} />
-          )
-        }
+        {(state) => (
+          <>
+            {state.recoveryKeyCommand && (
+              <>
+                <Text>{t('setup.keys.recoveryCommand')}</Text>
+                <CopyBox value={state.recoveryKeyCommand} label={t('setup.keys.commandLabel')} />
+              </>
+            )}
+            {state.passwordRevealCommand && (
+              <>
+                <Text>{t('setup.keys.secondCommand')}</Text>
+                <CopyBox value={state.passwordRevealCommand} label={t('setup.keys.commandLabel')} />
+              </>
+            )}
+          </>
+        )}
       </Loaded>
       <Text>{t('setup.keys.storage')}</Text>
       <Text>{t('setup.keys.card')}</Text>

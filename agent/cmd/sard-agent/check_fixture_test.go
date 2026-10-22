@@ -262,7 +262,7 @@ var wantIDs = []string{
 	"service.user", "config.load", "config.names", "config.references", "files.permissions", "restic.binary",
 	"tls.identity", "tls.chain", "tls.expiry", "tls.role",
 	"server.reachable", "server.tls", "server.accepted", "clock.skew",
-	"repository.storage", "repository.credentials", "repository.initialized", "repository.password", "repository.id", "repository.locks",
+	"repository.storage", "repository.credentials", "repository.initialized", "repository.password", "repository.id", "repository.keys", "repository.locks",
 	"secret.readable", "plugin.declared", "plugin.programs", "plugin.programs", "restore.locations",
 	"selinux.labels", "selinux.denials", "service.running", "service.steps",
 }

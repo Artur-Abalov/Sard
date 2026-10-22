@@ -38,6 +38,7 @@ export function RecoveryCardPage({ back }: { back: '/setup' | '/settings' }) {
         <Stack>
           <Title order={2}>{t('recoveryCard.title')}</Title>
           <Text>{t('recoveryCard.intro')}</Text>
+          <Text>{t('recoveryCard.requires')}</Text>
           <Loaded query={query}>
             {(card) => (
               <>

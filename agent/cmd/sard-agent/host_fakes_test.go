@@ -32,7 +32,7 @@ type fakeFS struct {
 	mu     sync.Mutex
 	owners map[string]ownerRec
 	// failOn is the operation that fails ("chown", "chmod", "sync",
-	// "rename", "createtemp", "mkdir", "syncdir", "readdir"); failPath
+	// "rename", "createtemp", "mkdir", "syncdir", "readdir", "opendir"); failPath
 	// limits it to paths that contain it.
 	failOn, failPath string
 	// failChownAt, if not zero, makes the owner change with this number
@@ -286,7 +286,12 @@ func (d fakeDir) wrap(next hostsetup.Dir, err error) (hostsetup.Dir, error) {
 	return fakeDir{Dir: next, fsys: d.fsys}, nil
 }
 
-func (d fakeDir) Open(name string) (hostsetup.Dir, error) { return d.wrap(d.Dir.Open(name)) }
+func (d fakeDir) Open(name string) (hostsetup.Dir, error) {
+	if err := d.fsys.fails("opendir", filepath.Join(d.Path(), name)); err != nil {
+		return nil, err
+	}
+	return d.wrap(d.Dir.Open(name))
+}
 
 func (d fakeDir) Mkdir(name string, perm os.FileMode) (hostsetup.Dir, error) {
 	if err := d.fsys.fails("mkdir", filepath.Join(d.Path(), name)); err != nil {

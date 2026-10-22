@@ -4,12 +4,14 @@
 package dev.sard.server.agents
 
 import dev.sard.proto.agent.v1.Action
+import dev.sard.proto.agent.v1.RecoveryKeyState
 import dev.sard.proto.agent.v1.RegisterRequest
 import dev.sard.proto.agent.v1.Sandbox
 import dev.sard.proto.agent.v1.VerifierStatus
 import dev.sard.server.registration.AgentSnapshot
 import dev.sard.server.registration.PluginAction
 import dev.sard.server.registration.PluginEntry
+import dev.sard.server.registration.RecoveryKey
 import dev.sard.server.registration.RepositoryEntry
 import dev.sard.server.registration.SandboxKind
 import dev.sard.server.registration.VerifierReport
@@ -27,6 +29,14 @@ internal fun pluginActionOf(action: Action): PluginAction? =
         Action.ACTION_UNSPECIFIED, Action.UNRECOGNIZED -> null
     }
 
+/** The wire flag as the domain knows it; what is not a clear yes or no is UNKNOWN, never ABSENT (V3). Exhaustive. */
+internal fun recoveryKeyOf(state: RecoveryKeyState): RecoveryKey =
+    when (state) {
+        RecoveryKeyState.RECOVERY_KEY_STATE_PRESENT -> RecoveryKey.PRESENT
+        RecoveryKeyState.RECOVERY_KEY_STATE_ABSENT -> RecoveryKey.ABSENT
+        RecoveryKeyState.RECOVERY_KEY_STATE_UNSPECIFIED, RecoveryKeyState.UNRECOGNIZED -> RecoveryKey.UNKNOWN
+    }
+
 /** Register's message as a domain snapshot; nothing is checked here (SnapshotRules does). */
 internal fun RegisterRequest.toSnapshot(): AgentSnapshot =
     AgentSnapshot(
@@ -41,7 +51,9 @@ internal fun RegisterRequest.toSnapshot(): AgentSnapshot =
                 PluginEntry(it.name, it.version, it.configSchema, actions, it.restoreConfigSchema)
             },
         repositories =
-            repositoriesList.map { RepositoryEntry(it.name, it.backend, it.repositoryId, it.cryptoProvider) },
+            repositoriesList.map {
+                RepositoryEntry(it.name, it.backend, it.repositoryId, it.cryptoProvider, recoveryKeyOf(it.recoveryKey))
+            },
         secretNames = secretNamesList.toList(),
         scriptNames = scriptNamesList.toList(),
         machineId = machineId,

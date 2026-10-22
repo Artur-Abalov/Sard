@@ -63,6 +63,22 @@ enum class AgentRole {
     }
 }
 
+/**
+ * Whether a repository has a recovery key, as its agent reported it (V3). unknown is an agent older than V3 or one
+ * that could not read the keys: it is not absent.
+ */
+@Schema(enumAsRef = true)
+enum class RecoveryKeyFlag {
+    @JsonProperty("present")
+    PRESENT,
+
+    @JsonProperty("absent")
+    ABSENT,
+
+    @JsonProperty("unknown")
+    UNKNOWN,
+}
+
 /** Enrollment token lifecycle (S2b). */
 @Schema(enumAsRef = true)
 enum class EnrollmentTokenStatus {

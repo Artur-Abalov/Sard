@@ -93,7 +93,70 @@ func (c *hostCmd) connectAndWrite(ctx context.Context, st *addState) int {
 	}
 	c.record("repository", st.name, "added")
 	c.printAdded(st)
-	return c.finish()
+	return c.finishAdded(st)
+}
+
+// warnIfCanWrite: a verifier is given credentials that only read; ones that
+// write are a risk it does not need (K2).
+func (c *hostCmd) warnIfCanWrite(st *addState) {
+	if st.CanWrite {
+		_, _ = fmt.Fprintf(c.stderr, "warning: these storage credentials can write: a verifier does not need to write, and a leak of credentials that can write would let an attacker spoil the backups; use credentials that only read\n")
+	}
+}
+
+// finishAdded applies the change; a recovery key that could not be issued is
+// the command's failure once the repository is connected (K15).
+func (c *hostCmd) finishAdded(st *addState) int {
+	code := c.finish()
+	if code == exitOK && st.recoveryFailure != nil {
+		return c.fail(st.recoveryFailure)
+	}
+	return code
+}
+
+// isVerifier says that the certificate of this host gives it the role of a
+// verifier, which only reads (V3, K17).
+func (c *hostCmd) isVerifier() bool {
+	return isVerifier(c.deps, c.cfg)
+}
+
+// beforeNew is asked when the repository turns out not to exist: a verifier
+// never creates one (K17); a source decides where the recovery key goes.
+func (c *hostCmd) beforeNew(st *addState) *refusal.Failure {
+	if c.isVerifier() {
+		return refusal.Fail(refusal.RepositoryNotInitialized, "nothing is stored at the address of repository %q, and a verifier never creates a repository: give the address of the repository of the source host", st.name)
+	}
+	return c.decideRecovery()
+}
+
+// lockHint is what an unregistered host is told when the storage refuses the
+// lock: credentials that only read are for a verifier (K2, В5).
+func (c *hostCmd) lockHint() string {
+	if c.exists(c.cfg.TLS.CertFile) {
+		return ""
+	}
+	return "if this host is a verifier, register this host first with a verifier token (sard-agent enroll): a registered verifier accepts credentials that only read"
+}
+
+// decideRecoveryOfNewLocal decides the recovery key before the directory of a
+// local repository is made: a path with no repository in it is certainly new.
+func (c *hostCmd) decideRecoveryOfNewLocal(st *addState) *refusal.Failure {
+	if !c.localRepositoryIsNew(st.url) {
+		return nil
+	}
+	return c.beforeNew(st)
+}
+
+// recoverNewRepository issues the recovery key of the repository just
+// created; the files restic needs are in place.
+func (c *hostCmd) recoverNewRepository(ctx context.Context, st *addState) {
+	repo := config.Repository{Name: st.name, URL: st.url, PasswordFile: st.final(c)}
+	if st.isS3() {
+		repo.EnvFile = c.layout.EnvFile(st.name)
+	}
+	target, _ := c.resticFor(st, repoconnect.Files{Password: repo.PasswordFile, Env: repo.EnvFile}, nil)
+	cli := newRestic(c.cfg, st.binary, c.deps, repo, runAs(c.who))
+	st.recoveryFailure = c.issueRecovery(ctx, *c.recovery, cli, target)
 }
 
 // finishConnected ends the command for a repository that was connected
@@ -117,6 +180,9 @@ func (c *hostCmd) prepareStorage(ctx context.Context, st *addState) *refusal.Fai
 		return nil
 	case st.isSFTP():
 		return c.setupSSH(ctx, st)
+	}
+	if f := c.decideRecoveryOfNewLocal(st); f != nil {
+		return f
 	}
 	if err := c.prepareRepositoryDir(st.url); err != nil {
 		return writeFailed(err)
@@ -170,7 +236,11 @@ func (c *hostCmd) prepareRepositoryDir(path string) error {
 // connect finds out whether the repository exists and either attaches it
 // or creates it (С10 of repo-init.feature).
 func (c *hostCmd) connect(ctx context.Context, st *addState) *refusal.Failure {
-	return c.connector(st).Connect(ctx)
+	f := c.connector(st).Connect(ctx)
+	if f == nil {
+		c.warnIfCanWrite(st)
+	}
+	return f
 }
 
 // connector is the connection of the repository of st to this host.
@@ -184,11 +254,15 @@ func (c *hostCmd) connector(st *addState) *repoconnect.Connector {
 		Open: func(files repoconnect.Files, stderr io.Writer) (repoinit.Target, restic.Repository) {
 			return c.resticFor(st, files, stderr)
 		},
-		AskPassword: func() ([]byte, *refusal.Failure) { return c.readSource(passwordSource(c.opts)) },
-		Bound:       c.bound(),
-		KeysOnly:    st.rotation || st.isSFTP() && st.plan == hostsetup.AddUnchanged,
-		Owned:       c.owned(),
-		State:       &st.State,
+		AskPassword:  func() ([]byte, *refusal.Failure) { return c.readSource(passwordSource(c.opts)) },
+		Bound:        c.bound(),
+		KeysOnly:     st.rotation || st.isSFTP() && st.plan == hostsetup.AddUnchanged,
+		BeforeCreate: func() *refusal.Failure { return c.beforeNew(st) },
+		Created:      func(ctx context.Context) { c.recoverNewRepository(ctx, st) },
+		Verifier:     c.isVerifier(),
+		LockHint:     c.lockHint(),
+		Owned:        c.owned(),
+		State:        &st.State,
 	}
 	if st.isS3() {
 		conn.Env = &repoconnect.EnvFile{Final: c.layout.EnvFile(st.name), Content: st.s3.Content}
@@ -227,7 +301,7 @@ func (c *hostCmd) writeDropIn(st *addState) *refusal.Failure {
 func (c *hostCmd) printAdded(st *addState) {
 	what := "Result: created a new repository."
 	if st.Attached {
-		what = "Result: attached an existing repository."
+		what = "Result: attached an existing repository.\nA recovery key was not issued: the repository existed already. Issue one with `sudo sard-agent repo key add " + st.name + " --for recovery`."
 	}
 	backend, files := "local", "  password file: "+st.final(c)+generatedNote(st)+"\n"
 	switch {

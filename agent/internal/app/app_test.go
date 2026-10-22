@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
@@ -178,5 +179,61 @@ func TestRegisterRequestHandsTheAnnouncedRepositoriesToTheRecorder(t *testing.T)
 	agent.RegisterRequest(context.Background())
 	if want := []string{"main=5e3f0a9c", "nas="}; !slices.Equal(got, want) {
 		t.Fatalf("recorded %q, want %q", got, want)
+	}
+}
+
+// docs/specs/agent/restic-keys.feature, K21: every Register carries the flag of
+// the recovery key of each repository the agent could read the keys of.
+func TestRegisterRequestCarriesTheRecoveryKeyStateOfEachRepository(t *testing.T) {
+	agent := newAgent(t, &fakeLink{})
+	var asked []string
+	agent.RecoveryKey = func(_ context.Context, r config.Repository) (agentv1.RecoveryKeyState, error) {
+		asked = append(asked, r.Name)
+		return agentv1.RecoveryKeyState_RECOVERY_KEY_STATE_PRESENT, nil
+	}
+	var got []string
+	for _, r := range agent.RegisterRequest(context.Background()).GetRepositories() {
+		got = append(got, r.GetName()+"="+r.GetRecoveryKey().String())
+	}
+	want := []string{"main=RECOVERY_KEY_STATE_PRESENT", "nas=RECOVERY_KEY_STATE_UNSPECIFIED"}
+	if !slices.Equal(got, want) {
+		t.Errorf("recovery keys = %v, want %v", got, want)
+	}
+	// nas has no repository_id: its keys are not read.
+	if !slices.Equal(asked, []string{"main"}) {
+		t.Errorf("keys read of %v, want main only", asked)
+	}
+}
+
+// A failure to read the keys does not stop the registration: unknown, and a
+// WARN line that names the repository.
+func TestRegisterRequestSurvivesAFailureToReadTheKeys(t *testing.T) {
+	agent := newAgent(t, &fakeLink{})
+	var logged strings.Builder
+	agent.Logger = slog.New(slog.NewTextHandler(&logged, nil))
+	agent.RecoveryKey = func(context.Context, config.Repository) (agentv1.RecoveryKeyState, error) {
+		return agentv1.RecoveryKeyState_RECOVERY_KEY_STATE_PRESENT, errors.New("scrubbed reason")
+	}
+	req := agent.RegisterRequest(context.Background())
+	if got := req.GetRepositories()[0].GetRecoveryKey(); got != agentv1.RecoveryKeyState_RECOVERY_KEY_STATE_UNSPECIFIED {
+		t.Errorf("recovery_key = %v, want UNSPECIFIED", got)
+	}
+	for _, want := range []string{"level=WARN", "main", "scrubbed reason"} {
+		if !strings.Contains(logged.String(), want) {
+			t.Errorf("log %q does not contain %q", logged.String(), want)
+		}
+	}
+}
+
+// The state is read again at every Register, never cached.
+func TestRegisterRequestReadsTheRecoveryKeyAgainEveryTime(t *testing.T) {
+	agent := newAgent(t, &fakeLink{})
+	state := agentv1.RecoveryKeyState_RECOVERY_KEY_STATE_ABSENT
+	agent.RecoveryKey = func(context.Context, config.Repository) (agentv1.RecoveryKeyState, error) { return state, nil }
+	first := agent.RegisterRequest(context.Background()).GetRepositories()[0].GetRecoveryKey()
+	state = agentv1.RecoveryKeyState_RECOVERY_KEY_STATE_PRESENT
+	second := agent.RegisterRequest(context.Background()).GetRepositories()[0].GetRecoveryKey()
+	if first != agentv1.RecoveryKeyState_RECOVERY_KEY_STATE_ABSENT || second != agentv1.RecoveryKeyState_RECOVERY_KEY_STATE_PRESENT {
+		t.Errorf("first %v, second %v", first, second)
 	}
 }

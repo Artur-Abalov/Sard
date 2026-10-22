@@ -404,6 +404,9 @@ func buildAgent(cfg config.Config, hostname, resticBinary, machineID string, res
 			return repos[r.Name].ID(ctx)
 		},
 		Announced: recordAnnounced(executorStateDir(cfg.Executor.StateDir), slog.Default()),
+		// V3: whether each repository has a recovery key, read again at every Register.
+		RecoveryKey: recoveryKeyReader(repos, os.ReadFile, registerKeysLimit),
+		Logger:      slog.Default(),
 	}
 }
 

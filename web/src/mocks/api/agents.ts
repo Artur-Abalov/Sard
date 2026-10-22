@@ -27,6 +27,7 @@ function summary(agent: Schemas['AgentDetails']): Schemas['AgentSummary'] {
     builtin,
     role,
     certificate,
+    repositories,
   } = agent
   return {
     id,
@@ -43,6 +44,7 @@ function summary(agent: Schemas['AgentDetails']): Schemas['AgentSummary'] {
     builtin,
     role,
     certificate,
+    repositories,
   }
 }
 

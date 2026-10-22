@@ -115,6 +115,8 @@ data class SelfBackupView(
     val keysConfirmedAt: Instant? = null,
     /** What prints the repository password on the server's machine; null until bound (Р27). */
     val passwordRevealCommand: String? = null,
+    /** What issues a recovery key for the bound repository on the server's machine; null until bound (V3, КС1). */
+    val recoveryKeyCommand: String? = null,
     /** The storage address the wizard built the command for, without credentials (OQ-203). */
     val location: String? = null,
 )
@@ -440,6 +442,7 @@ private fun viewOf(
         firstBackupDone = HealthRules.firstBackupDone(states),
         keysConfirmedAt = keysConfirmedAt,
         passwordRevealCommand = passwordRevealCommand(repository.name),
+        recoveryKeyCommand = recoveryKeyCommand(repository.name),
         location = record.location,
     )
 }

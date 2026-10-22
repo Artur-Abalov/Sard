@@ -5,8 +5,10 @@ package hostcheck
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
+	"github.com/Artur-Abalov/sard/agent/internal/restickeys"
 )
 
 // RepositoryOpenChecks are the checks the files of the repository and one
@@ -16,9 +18,28 @@ func RepositoryOpenChecks() []string {
 }
 
 // RepositoryChecks are the checks of one repository that every run makes, in
-// their order (Ч3): the open checks, then the id and the locks.
+// their order (Ч3): the open checks, then the id, the keys (V3, K16) and the locks.
 func RepositoryChecks() []string {
-	return append(RepositoryOpenChecks(), CheckRepositoryID, CheckRepositoryLocks)
+	return append(RepositoryOpenChecks(), CheckRepositoryID, CheckRepositoryKeys, CheckRepositoryLocks)
+}
+
+// KeysLine is the line of repository.keys (V3, K16): the warnings are those
+// of restickeys.Warnings, the one rule of what a list of keys earns (K13); the
+// repository has a key issued for recovery, or the operator is told to issue one.
+func KeysLine(repo string, total int, warnings []string) Line {
+	line := Line{Check: CheckRepositoryKeys, Subject: repo, Status: OK}
+	switch {
+	case !slices.Contains(warnings, restickeys.WarnNoRecoveryKey):
+		line.Message = plural(total, "key") + ", recovery key present"
+		return line
+	case slices.Contains(warnings, restickeys.WarnSingleKey):
+		line.Message = "no recovery key; only one key"
+	default:
+		line.Message = "no recovery key"
+	}
+	line.Status = Warn
+	line.Hint = "sudo sard-agent repo key add " + repo + " --for recovery"
+	return line
 }
 
 // RepositoryStepOf is the open check a refusal ends: the storage is the one

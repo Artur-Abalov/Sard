@@ -108,3 +108,52 @@ func TestAnAuditNameWithALineBreakCannotMakeASecondLine(t *testing.T) {
 		t.Fatalf("line %q", sl.lines[0])
 	}
 }
+
+// V3 (K18): the line of a key change names the repository, the id of the key,
+// its purpose and label, and who; no password.
+func TestKeyAuditLineNamesRepositoryKeyPurposeLabelAndWho(t *testing.T) {
+	sl := &fakeSyslog{}
+	actor := hostsetup.Actor{Name: "alice", UID: "1000"}
+	hostsetup.RecordKey(&bytes.Buffer{}, func() (hostsetup.Auditor, error) { return sl, nil }, actor,
+		hostsetup.KeyChange{Action: "added", Repository: "base", ID: strings.Repeat("ab", 32), Purpose: "verifier", Label: "vrf-1"})
+	if len(sl.lines) != 1 {
+		t.Fatalf("lines %q", sl.lines)
+	}
+	for _, want := range []string{"repository key added", "base", strings.Repeat("ab", 32), "verifier", "vrf-1", "alice", "1000"} {
+		if !strings.Contains(sl.lines[0], want) {
+			t.Errorf("the line lacks %q: %s", want, sl.lines[0])
+		}
+	}
+}
+
+func TestKeyAuditLineQuotesARepositoryNameWithALineBreak(t *testing.T) {
+	sl := &fakeSyslog{}
+	hostsetup.RecordKey(&bytes.Buffer{}, func() (hostsetup.Auditor, error) { return sl, nil }, hostsetup.Actor{Name: "a", UID: "1"},
+		hostsetup.KeyChange{Action: "removed", Repository: "x\nrepository key added", ID: "i", Purpose: "-", Label: "-"})
+	if len(sl.lines) != 1 || strings.Contains(sl.lines[0], "\n") {
+		t.Fatalf("lines %q", sl.lines)
+	}
+}
+
+func TestKeyAuditWarnsWhenTheSystemLogIsNotThere(t *testing.T) {
+	var warn bytes.Buffer
+	hostsetup.RecordKey(&warn, func() (hostsetup.Auditor, error) { return nil, errors.New("no /dev/log") }, hostsetup.Actor{},
+		hostsetup.KeyChange{Action: "added"})
+	if !strings.Contains(warn.String(), "not recorded in the system log") {
+		t.Fatalf("warning %q", warn.String())
+	}
+}
+
+func TestRecoveryKeySkippedIsRecordedWithTheRepositoryAndWho(t *testing.T) {
+	sl := &fakeSyslog{}
+	hostsetup.RecordRecoveryKeySkipped(&bytes.Buffer{}, func() (hostsetup.Auditor, error) { return sl, nil },
+		hostsetup.Actor{Name: "alice", UID: "1000"}, "fresh")
+	if len(sl.lines) != 1 {
+		t.Fatalf("lines %q", sl.lines)
+	}
+	for _, want := range []string{"repository recovery key skipped", "fresh", "alice", "1000"} {
+		if !strings.Contains(sl.lines[0], want) {
+			t.Errorf("the line lacks %q: %s", want, sl.lines[0])
+		}
+	}
+}

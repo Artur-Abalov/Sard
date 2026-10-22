@@ -118,6 +118,27 @@ const (
 	PluginFailed Reason = "PLUGIN_FAILED"
 )
 
+// The reasons of the restic key commands (V3, docs/specs/agent/restic-keys.feature).
+const (
+	KeyPurposeMissing        Reason = "KEY_PURPOSE_MISSING"
+	KeyPurposeInvalid        Reason = "KEY_PURPOSE_INVALID"
+	KeyLabelRequired         Reason = "KEY_LABEL_REQUIRED"
+	LabelInvalid             Reason = "LABEL_INVALID"
+	KeyExists                Reason = "KEY_EXISTS"
+	KeyOutputMissing         Reason = "KEY_OUTPUT_MISSING"
+	KeyFileExists            Reason = "KEY_FILE_EXISTS"
+	KeyFileRejected          Reason = "KEY_FILE_REJECTED"
+	KeyFileWrite             Reason = "KEY_FILE_WRITE"
+	KeyIDAmbiguous           Reason = "KEY_ID_AMBIGUOUS"
+	KeyInUse                 Reason = "KEY_IN_USE"
+	LastKey                  Reason = "LAST_KEY"
+	ConfirmationRequired     Reason = "CONFIRMATION_REQUIRED"
+	ConfirmationRejected     Reason = "CONFIRMATION_REJECTED"
+	RecoveryKeyOutputMissing Reason = "RECOVERY_KEY_OUTPUT_MISSING"
+	RecoveryKeyFailed        Reason = "RECOVERY_KEY_FAILED"
+	VerifierReadOnly         Reason = "VERIFIER_READ_ONLY"
+)
+
 // StaleLocksForeign: repo unlock would make restic remove a lock it may not
 // (a lock of another host, or an own one younger than the threshold; A8d-1, Ч6).
 const StaleLocksForeign Reason = "STALE_LOCKS_FOREIGN"
@@ -168,6 +189,13 @@ var classes = map[Reason]Class{
 	RestoreIncomplete: ClassAgentError, TargetWrite: ClassWrite, TargetBusy: ClassTemporary, SetprivMissing: ClassAgentError,
 
 	ResticFailed: ClassAgentError, CleanupFailed: ClassWrite, PluginFailed: ClassAgentError,
+
+	KeyPurposeMissing: ClassUsage, KeyPurposeInvalid: ClassUsage, KeyLabelRequired: ClassUsage,
+	LabelInvalid: ClassUsage, KeyExists: ClassUsage, KeyOutputMissing: ClassUsage,
+	KeyFileExists: ClassUsage, KeyFileRejected: ClassUsage, KeyIDAmbiguous: ClassUsage,
+	KeyInUse: ClassUsage, LastKey: ClassUsage, ConfirmationRequired: ClassUsage,
+	ConfirmationRejected: ClassUsage, RecoveryKeyOutputMissing: ClassUsage, VerifierReadOnly: ClassUsage,
+	RecoveryKeyFailed: ClassAgentError, KeyFileWrite: ClassWrite,
 
 	AddressInvalid: ClassUsage, SecretInvalid: ClassUsage, S3KeyRejected: ClassUsage,
 	StorageAccessDenied: ClassUsage, BucketNotFound: ClassUsage,

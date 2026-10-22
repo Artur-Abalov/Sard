@@ -3347,6 +3347,46 @@
         }
       }
     },
+    "/api/v1/repositories" : {
+      "get" : {
+        "tags" : [ "repositories" ],
+        "summary" : "Repositories and their recovery keys",
+        "description" : "One item per repository id that a not revoked agent of the tenant reports, by repository id. Only the flag is known to the server: no key, password, key id or label (ADR 0008).",
+        "operationId" : "listRepositories",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RepositoryList"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/overview" : {
       "get" : {
         "tags" : [ "overview" ],
@@ -4384,9 +4424,13 @@
           "passwordRevealCommand" : {
             "type" : [ "string", "null" ],
             "description" : "The command that prints the repository password on the server's machine; null until configured"
+          },
+          "recoveryKeyCommand" : {
+            "type" : [ "string", "null" ],
+            "description" : "The command that issues a recovery key for the bound repository on the server's machine, in a terminal, and then restarts the built-in agent so that the server learns the flag; repeating it changes nothing. Null until configured"
           }
         },
-        "required" : [ "agentId", "boundAt", "configured", "firstBackupDone", "keysConfirmedAt", "overdueSince", "passwordRevealCommand", "plan", "repositories", "repository", "sources", "status", "warnings" ]
+        "required" : [ "agentId", "boundAt", "configured", "firstBackupDone", "keysConfirmedAt", "overdueSince", "passwordRevealCommand", "plan", "recoveryKeyCommand", "repositories", "repository", "sources", "status", "warnings" ]
       },
       "SelfBackupLastRun" : {
         "type" : "object",
@@ -5292,9 +5336,16 @@
             }, {
               "type" : "null"
             } ]
+          },
+          "verifierSetup" : {
+            "type" : [ "array", "null" ],
+            "description" : "For a verifier: the repositories its sources hold and it does not, with the commands to give it a key; empty when there is nothing to do. Null for a source",
+            "items" : {
+              "$ref" : "#/components/schemas/VerifierSetupEntry"
+            }
           }
         },
-        "required" : [ "agentVersion", "arch", "builtin", "certificate", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "plugins", "protocolVersion", "registeredAt", "repositories", "restoreDir", "revokedAt", "role", "scriptNames", "secretNames", "status" ]
+        "required" : [ "agentVersion", "arch", "builtin", "certificate", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "plugins", "protocolVersion", "registeredAt", "repositories", "restoreDir", "revokedAt", "role", "scriptNames", "secretNames", "status", "verifierSetup" ]
       },
       "AgentPlugin" : {
         "type" : "object",
@@ -5339,13 +5390,51 @@
           "cryptoProvider" : {
             "type" : "string",
             "description" : "crypto.Provider that hands the key to restic"
+          },
+          "recoveryKey" : {
+            "$ref" : "#/components/schemas/RecoveryKeyFlag",
+            "description" : "Whether the repository has a recovery key, from the agent's last Register; unknown for an agent older than V3 or one that could not read the keys (not the same as absent). Only the flag, never a key"
           }
         },
-        "required" : [ "backend", "cryptoProvider", "name", "repositoryId" ]
+        "required" : [ "backend", "cryptoProvider", "name", "recoveryKey", "repositoryId" ]
       },
       "AgentStatus" : {
         "type" : "string",
         "enum" : [ "online", "offline" ]
+      },
+      "RecoveryKeyFlag" : {
+        "type" : "string",
+        "enum" : [ "present", "absent", "unknown" ]
+      },
+      "VerifierSetupEntry" : {
+        "type" : "object",
+        "description" : "What a verifier needs to hold a repository that the sources hold: whom to ask and what to run",
+        "properties" : {
+          "repositoryId" : {
+            "type" : "string"
+          },
+          "sourceAgentId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "The source that holds the repository with the latest Register, the smaller agent id on a tie"
+          },
+          "sourceHostname" : {
+            "type" : "string"
+          },
+          "repositoryName" : {
+            "type" : "string",
+            "description" : "The name of the repository on that source"
+          },
+          "keyAddCommand" : {
+            "type" : [ "string", "null" ],
+            "description" : "Run on the source: issues a key for this verifier and prints the repo add command with the address. Null when the name cannot be put into a command safely (a quote or a control character)"
+          },
+          "repoAddTemplate" : {
+            "type" : [ "string", "null" ],
+            "description" : "Run on the verifier: the repo add command with the literal placeholders <address> and <file>, which the key add command fills in; the server does not know them (ADR 0008). Null as keyAddCommand"
+          }
+        },
+        "required" : [ "keyAddCommand", "repoAddTemplate", "repositoryId", "repositoryName", "sourceAgentId", "sourceHostname" ]
       },
       "SandboxRuntime" : {
         "type" : "string",
@@ -6166,6 +6255,82 @@
         },
         "required" : [ "hasMore", "items", "nextAfterSeq", "truncated" ]
       },
+      "RepositoryHolderInfo" : {
+        "type" : "object",
+        "description" : "An agent that reports a repository, under the name it gives it",
+        "properties" : {
+          "agentId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "hostname" : {
+            "type" : "string"
+          },
+          "role" : {
+            "$ref" : "#/components/schemas/AgentRole"
+          },
+          "repositoryName" : {
+            "type" : "string",
+            "description" : "The name of the repository on that agent"
+          }
+        },
+        "required" : [ "agentId", "hostname", "repositoryName", "role" ]
+      },
+      "RepositoryInfo" : {
+        "type" : "object",
+        "description" : "A restic repository by its id, with what the agents of the tenant say about its recovery key",
+        "properties" : {
+          "repositoryId" : {
+            "type" : "string",
+            "description" : "restic repository id"
+          },
+          "recoveryKey" : {
+            "$ref" : "#/components/schemas/RecoveryKeyFlag",
+            "description" : "From the latest Register among the holders that know the answer (ties: the smaller agent id); unknown when none does, which is not absent"
+          },
+          "reportedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "When the Register that decided recoveryKey was received; null when unknown"
+          },
+          "reportedByAgentId" : {
+            "type" : [ "string", "null" ],
+            "format" : "uuid",
+            "description" : "The agent whose Register decided recoveryKey; null when unknown"
+          },
+          "recoveryKeyCommand" : {
+            "type" : [ "string", "null" ],
+            "description" : "Run on the host of a source that holds the repository to issue a recovery key, in a terminal; only when recoveryKey is absent and a source holds it, else null. No key passes through the server"
+          },
+          "holders" : {
+            "type" : "array",
+            "description" : "Every not revoked agent that reports the repository, by agent id",
+            "items" : {
+              "$ref" : "#/components/schemas/RepositoryHolderInfo"
+            }
+          }
+        },
+        "required" : [ "holders", "recoveryKey", "recoveryKeyCommand", "reportedAt", "reportedByAgentId", "repositoryId" ]
+      },
+      "RepositoryList" : {
+        "type" : "object",
+        "description" : "The repositories of the tenant that its agents report",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "description" : "By repository id; a repository without an id is not listed",
+            "items" : {
+              "$ref" : "#/components/schemas/RepositoryInfo"
+            }
+          },
+          "withoutRecoveryKey" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "How many items have recoveryKey absent; unknown ones are not counted"
+          }
+        },
+        "required" : [ "items", "withoutRecoveryKey" ]
+      },
       "FirstSteps" : {
         "type" : "object",
         "description" : "The first steps of a tenant, each marked by the server by its own rule; recomputed per request",
@@ -6415,9 +6580,16 @@
             }, {
               "type" : "null"
             } ]
+          },
+          "repositories" : {
+            "type" : "array",
+            "description" : "The repositories of the last Register, by name; empty before the first one",
+            "items" : {
+              "$ref" : "#/components/schemas/AgentRepository"
+            }
           }
         },
-        "required" : [ "agentVersion", "arch", "builtin", "certificate", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "registeredAt", "revokedAt", "role", "status" ]
+        "required" : [ "agentVersion", "arch", "builtin", "certificate", "duplicateSessionAt", "hostname", "id", "lastSeenAt", "os", "outdated", "registeredAt", "repositories", "revokedAt", "role", "status" ]
       },
       "InstallFormat" : {
         "type" : "string",

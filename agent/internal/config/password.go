@@ -23,11 +23,26 @@ func URLPassword(repoURL string) string {
 // RedactURL is the repository URL with the password of its userinfo
 // replaced by ***, for the places that show an address.
 func RedactURL(repoURL string) string {
+	return replaceUserinfo(repoURL, func(user string) string { return user + ":***" })
+}
+
+// StripPassword is the repository URL without the password of its userinfo:
+// an address that can be given to another host (V3, K11).
+func StripPassword(repoURL string) string {
+	return replaceUserinfo(repoURL, func(user string) string { return user })
+}
+
+// replaceUserinfo replaces the userinfo of a URL that has a password by what
+// with(user) says; a URL without a password is returned as it is.
+func replaceUserinfo(repoURL string, with func(user string) string) string {
 	_, rest, found := strings.Cut(repoURL, ":")
 	if !found {
 		return repoURL
 	}
-	_, afterScheme, found := strings.Cut(rest, "://")
+	afterScheme, found := strings.CutPrefix(rest, "//") // sftp://host/path
+	if !found {
+		_, afterScheme, found = strings.Cut(rest, "://") // rest:https://host/path
+	}
 	if !found {
 		return repoURL
 	}
@@ -40,5 +55,5 @@ func RedactURL(repoURL string) string {
 	if !hasPassword {
 		return repoURL
 	}
-	return strings.Replace(repoURL, authority[:at], user+":***", 1)
+	return strings.Replace(repoURL, authority[:at], with(user), 1)
 }

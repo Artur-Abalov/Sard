@@ -323,6 +323,16 @@ class SelfBackupOnboardingIntegrationTest(
         assertEquals(expected, bound.passwordRevealCommand)
     }
 
+    @Test
+    fun `Команда ключа восстановления называет имя текущей привязки и появляется после неё`() {
+        assertNull(state().recoveryKeyCommand)
+
+        val bound = bind()
+
+        assertEquals(recoveryKeyCommand(S3_REPOSITORY), bound.recoveryKeyCommand)
+        assertTrue(bound.recoveryKeyCommand.orEmpty().contains("self-agent repo key add $S3_REPOSITORY --for recovery"))
+    }
+
     // ---- Правило: Адрес хранилища без учётных данных сохраняется для карточки ----
 
     @Test

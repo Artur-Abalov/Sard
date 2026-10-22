@@ -82,6 +82,8 @@ data class AgentSummary(
     val role: AgentRole,
     @field:Schema(description = CERTIFICATE)
     val certificate: AgentCertificate?,
+    @field:Schema(description = "The repositories of the last Register, by name; empty before the first one")
+    val repositories: List<AgentRepository>,
 )
 
 @Schema(description = "A plugin the agent offers")
@@ -103,6 +105,12 @@ data class AgentRepository(
     val repositoryId: String?,
     @field:Schema(description = "crypto.Provider that hands the key to restic")
     val cryptoProvider: String,
+    @field:Schema(
+        description =
+            "Whether the repository has a recovery key, from the agent's last Register; unknown for an agent older " +
+                "than V3 or one that could not read the keys (not the same as absent). Only the flag, never a key",
+    )
+    val recoveryKey: RecoveryKeyFlag,
 )
 
 @Schema(description = "An agent with what it reported in its last Register")
@@ -140,6 +148,36 @@ data class AgentDetails(
     val restoreDir: String?,
     @field:Schema(description = CERTIFICATE)
     val certificate: AgentCertificate?,
+    @field:Schema(
+        description =
+            "For a verifier: the repositories its sources hold and it does not, with the commands to give it a key; " +
+                "empty when there is nothing to do. Null for a source",
+    )
+    val verifierSetup: List<VerifierSetupEntry>?,
+)
+
+@Schema(description = "What a verifier needs to hold a repository that the sources hold: whom to ask and what to run")
+data class VerifierSetupEntry(
+    val repositoryId: String,
+    @field:Schema(
+        description = "The source that holds the repository with the latest Register, the smaller agent id on a tie",
+    )
+    val sourceAgentId: UUID,
+    val sourceHostname: String,
+    @field:Schema(description = "The name of the repository on that source")
+    val repositoryName: String,
+    @field:Schema(
+        description =
+            "Run on the source: issues a key for this verifier and prints the repo add command with the address. " +
+                "Null when the name cannot be put into a command safely (a quote or a control character)",
+    )
+    val keyAddCommand: String?,
+    @field:Schema(
+        description =
+            "Run on the verifier: the repo add command with the literal placeholders <address> and <file>, " +
+                "which the key add command fills in; the server does not know them (ADR 0008). Null as keyAddCommand",
+    )
+    val repoAddTemplate: String?,
 )
 
 @Schema(description = "A page of agents")

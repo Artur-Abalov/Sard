@@ -3,6 +3,8 @@
 
 package dev.sard.server.selfbackup
 
+import dev.sard.server.shell.shellWord
+
 /** The outcome of building the command that adds a repository to the built-in agent. */
 sealed interface CommandBuild {
     /** [commands] are the lines to run in a terminal on the server's machine, in order. */
@@ -20,12 +22,6 @@ sealed interface CommandBuild {
 private const val SELF_STORAGE_DIR = "/var/lib/sard-self"
 private const val KEY_ID_PROMPT = "read -r -p \"S3 access key ID: \" SARD_S3_KEY_ID"
 private const val KEY_ID_FLAG = "--access-key-id \"\$SARD_S3_KEY_ID\""
-private const val RESTART = "docker compose restart self-agent"
-
-/** One-off container of the built-in agent's image: root, with the five capabilities `repo add` needs for files. */
-private const val RUN =
-    "docker compose run --rm --no-deps -u 0 --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER " +
-        "--cap-add SETUID --cap-add SETGID self-agent repo add"
 
 /** The parameters as the request carried them; what is empty is absent. Collects the fields that do not fit. */
 private class Fields(
@@ -141,7 +137,7 @@ object RepositoryCommands {
         storage: Storage,
     ): List<String> {
         val words = storage.flags + shellWord(name) + shellWord(storage.address)
-        val add = "$RUN ${words.joinToString(" ")} --no-restart --config $SELF_AGENT_CONFIG"
+        val add = oneOffAgent("repo", "add", *words.toTypedArray(), "--no-restart", "--config", SELF_AGENT_CONFIG)
         return listOfNotNull(KEY_ID_PROMPT.takeIf { storage.asksKeyId }, add, RESTART)
     }
 }

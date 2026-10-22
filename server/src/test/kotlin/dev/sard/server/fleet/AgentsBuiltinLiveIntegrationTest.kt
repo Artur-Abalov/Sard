@@ -7,11 +7,14 @@ import dev.sard.server.agents.dispatch.ReconciledHellos
 import dev.sard.server.agents.stream.Ended
 import dev.sard.server.api.RestApiTest
 import dev.sard.server.api.RestWorld
+import dev.sard.server.api.snapshotOf
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.registration.RecoveryKey
 import dev.sard.server.registration.Registration
+import dev.sard.server.registration.RepositoryEntry
 import dev.sard.server.role.AgentRole
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
@@ -143,5 +146,19 @@ class AgentsBuiltinLiveIntegrationTest(
 
         assertEquals(true, MutFlow.underTest { agents.get(tenant, builtin.agentId) }?.row?.builtin)
         assertEquals(false, MutFlow.underTest { agents.get(tenant, ordinary.agentId) }?.row?.builtin)
+    }
+
+    @Test
+    fun `the card carries the recovery key flag of each repository`() {
+        val repositories =
+            RecoveryKey.entries.map { RepositoryEntry("repo-${it.stored}", "local", "", "", it) }
+        val agent = world.agent(tenant, snapshotOf(repositories = repositories))
+
+        val card = MutFlow.underTest { agents.get(tenant, agent.agentId) }
+
+        assertEquals(
+            RecoveryKey.entries.associateBy { "repo-${it.stored}" },
+            card?.repositories?.associate { it.name to it.recoveryKey },
+        )
     }
 }

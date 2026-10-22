@@ -37,7 +37,7 @@ func runRepoWithDeps(ctx context.Context, args []string, stdout, stderr io.Write
 		return exitUsage
 	}
 	if hasHelpFlag(args[1:]) {
-		printRepoHelp(stdout, args[0], deps.plugins)
+		printRepoHelp(stdout, helpTopic(args), deps.plugins)
 		return exitOK
 	}
 	return run(ctx, args[1:], stdout, stderr, deps)
@@ -51,7 +51,7 @@ func repoSubcommand(args []string) hostCommand {
 	return map[string]hostCommand{
 		"init": runRepoInit, "list": runRepoList, "add": runRepoAdd,
 		"show": runRepoShow, "remove": runRepoRemove, "password": runRepoPassword, "snapshots": runRepoSnapshots, "restore": runRepoRestore,
-		"check": runRepoCheck, "unlock": runRepoUnlock,
+		"check": runRepoCheck, "unlock": runRepoUnlock, "key": runRepoKey,
 	}[args[0]]
 }
 
@@ -95,4 +95,13 @@ func runUID(deps hostDeps, as *restic.RunAs) uint32 {
 		return as.UID
 	}
 	return deps.euid
+}
+
+// helpTopic is what --help is about: the subcommand, or for "key" the command
+// of "repo key" ("key add").
+func helpTopic(args []string) string {
+	if args[0] == "key" && len(args) > 1 && !hasHelpFlag(args[1:2]) {
+		return "key " + args[1]
+	}
+	return args[0]
 }

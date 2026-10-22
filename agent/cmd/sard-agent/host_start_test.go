@@ -193,7 +193,7 @@ func TestAfterRepoAddTheAgentTellsTheServerTheRepositoryID(t *testing.T) {
 	deps.executable = func() (string, error) { return script, nil }
 	repoDir := filepath.Join(t.TempDir(), "repo-extra")
 	var out, errOut bytes.Buffer
-	code := runRepoWithDeps(context.Background(), []string{"add", "extra", repoDir, "--config", h.cfg}, &out, &errOut, deps)
+	code := runRepoWithDeps(context.Background(), []string{"add", "extra", repoDir, "--config", h.cfg, "--no-recovery-key"}, &out, &errOut, deps)
 	assertCode(t, code, exitOK)
 	if !strings.Contains(out.String(), id) {
 		t.Fatalf("stdout %q, stderr %q", out.String(), errOut.String())

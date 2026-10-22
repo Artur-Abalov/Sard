@@ -31,6 +31,9 @@ func runRepoInit(ctx context.Context, args []string, stdout, stderr io.Writer, d
 	if code != exitOK {
 		return code
 	}
+	if f := checkRecoveryFlags(opts); f != nil {
+		return report(stderr, "repo init", f)
+	}
 	who, f := authorize(deps, "repo init", opts, false, true)
 	if f != nil {
 		return report(stderr, "repo init", f)
@@ -68,6 +71,9 @@ func prepareInit(ctx context.Context, opts hostOptions, who hostsetup.Principal,
 	if f != nil {
 		return initState{}, report(stderr, "repo init", f)
 	}
+	if f := refuseOnVerifier(deps, cfg, "create a repository"); f != nil {
+		return initState{}, report(stderr, "repo init", f)
+	}
 	checked, f := repoinit.Preflight(deps.host(who.Service.UID), repo, index, opts.generate)
 	if f != nil {
 		return initState{}, report(stderr, "repo init", f)
@@ -80,26 +86,46 @@ func prepareInit(ctx context.Context, opts hostOptions, who hostsetup.Principal,
 }
 
 // initRepository generates the password if asked, then creates the
-// repository and reports.
+// repository, issues its recovery key (K15а) and reports.
 func initRepository(ctx context.Context, st initState, opts hostOptions, stdout, stderr io.Writer, deps hostDeps) int {
-	var generated []string
-	if st.checked.PasswordMissing {
-		password, err := repoinit.CreatePassword(ownedWriter(deps, st.who), deps.random, st.repo)
-		if err != nil {
-			return reportRepoError(ctx, stderr, "init", err)
-		}
-		generated = []string{password}
+	c := newHostCmd("repo init", opts, st.who, stdout, stderr, deps)
+	c.cfg = st.cfg
+	generated, code := c.generateInitPassword(ctx, st)
+	if code != exitOK {
+		return code
 	}
 	target := repoTarget(st.repo, st.checked, generated...)
-	id, f := repoinit.Create(ctx, newRestic(st.cfg, st.binary, deps, st.repo, runAs(st.who)), target)
+	cli := newRestic(st.cfg, st.binary, deps, st.repo, runAs(st.who))
+	id, f := repoinit.CreateGated(ctx, cli, target, c.decideRecovery)
 	if f != nil {
 		if generated != nil {
 			_, _ = fmt.Fprintf(stderr, "sard-agent repo init: the password file %s created by this command was kept and will be used when the command is repeated\n", st.repo.PasswordFile)
 		}
 		return report(stderr, "repo init", f)
 	}
+	recoveryFailure := c.issueRecovery(ctx, *c.recovery, cli, target)
 	printInitSuccess(stdout, st.repo, id, passwordNote(opts.generate, st.checked.PasswordMissing))
+	if recoveryFailure != nil {
+		return c.fail(recoveryFailure)
+	}
 	return exitOK
+}
+
+// generateInitPassword makes the password file when it is missing and the
+// operator asked for it. No password file means the repository cannot be one
+// this host opens, so the output of the recovery key is settled first.
+func (c *hostCmd) generateInitPassword(ctx context.Context, st initState) ([]string, int) {
+	if !st.checked.PasswordMissing {
+		return nil, exitOK
+	}
+	if f := c.decideRecovery(); f != nil {
+		return nil, c.fail(f)
+	}
+	password, err := repoinit.CreatePassword(ownedWriter(c.deps, st.who), c.deps.random, st.repo)
+	if err != nil {
+		return nil, reportRepoError(ctx, c.stderr, "init", err)
+	}
+	return []string{password}, exitOK
 }
 
 // repoTarget is what repoinit needs to know of one repository; secrets are

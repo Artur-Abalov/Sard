@@ -59,8 +59,8 @@ func TestInspectSaysWhetherTheRepositoryIsInitialised(t *testing.T) {
 	if id != "abc" || !ok || f != nil {
 		t.Fatalf("initialised: %q %v %v", id, ok, f)
 	}
-	noRepo := fmt.Errorf("restic cat: %w", restic.ErrNoRepository)
-	id, ok, f = repoinit.Inspect(t.Context(), &fakeRepo{idErrs: []error{noRepo}}, target)
+	errNoRepo := fmt.Errorf("restic cat: %w", restic.ErrNoRepository)
+	id, ok, f = repoinit.Inspect(t.Context(), &fakeRepo{idErrs: []error{errNoRepo}}, target)
 	if id != "" || ok || f != nil {
 		t.Fatalf("not initialised: %q %v %v", id, ok, f)
 	}
@@ -130,8 +130,8 @@ func TestACancelledContextIsATimeoutOrAnInterruptNamingTheBackend(t *testing.T) 
 }
 
 func TestCreateInitialisesAnAbsentRepository(t *testing.T) {
-	noRepo := fmt.Errorf("restic cat: %w", restic.ErrNoRepository)
-	r := &fakeRepo{idErrs: []error{noRepo}, initID: "new"}
+	errNoRepo := fmt.Errorf("restic cat: %w", restic.ErrNoRepository)
+	r := &fakeRepo{idErrs: []error{errNoRepo}, initID: "new"}
 	id, f := repoinit.Create(t.Context(), r, target)
 	if id != "new" || f != nil || r.initRuns != 1 {
 		t.Fatalf("%q %v %d", id, f, r.initRuns)
@@ -147,14 +147,14 @@ func TestCreateNeverInitialisesAnExistingRepository(t *testing.T) {
 }
 
 func TestCreateReportsARepositoryThatAppearedBeforeInit(t *testing.T) {
-	noRepo := fmt.Errorf("restic cat: %w", restic.ErrNoRepository)
+	errNoRepo := fmt.Errorf("restic cat: %w", restic.ErrNoRepository)
 	exists := fmt.Errorf("restic init: %w", restic.ErrRepositoryExists)
-	r := &fakeRepo{idErrs: []error{noRepo, nil}, id: "abc", initErr: exists}
+	r := &fakeRepo{idErrs: []error{errNoRepo, nil}, id: "abc", initErr: exists}
 	_, f := repoinit.Create(t.Context(), r, target)
 	if f.Reason != refusal.RepositoryExists || f.ID != "abc" {
 		t.Fatalf("%+v", f)
 	}
-	r = &fakeRepo{idErrs: []error{noRepo, noRepo}, initErr: exists}
+	r = &fakeRepo{idErrs: []error{errNoRepo, errNoRepo}, initErr: exists}
 	_, f = repoinit.Create(t.Context(), r, target)
 	if f.Reason != refusal.RepositoryExists || f.ID != "" || strings.Contains(f.Detail, "repository_id") {
 		t.Fatalf("without an id: %+v", f)
@@ -162,8 +162,8 @@ func TestCreateReportsARepositoryThatAppearedBeforeInit(t *testing.T) {
 }
 
 func TestCreateExplainsAnInitFailure(t *testing.T) {
-	noRepo := fmt.Errorf("restic cat: %w", restic.ErrNoRepository)
-	r := &fakeRepo{idErrs: []error{noRepo}, initErr: exitErr("Access Denied", nil)}
+	errNoRepo := fmt.Errorf("restic cat: %w", restic.ErrNoRepository)
+	r := &fakeRepo{idErrs: []error{errNoRepo}, initErr: exitErr("Access Denied", nil)}
 	_, f := repoinit.Create(t.Context(), r, target)
 	if f.Reason != refusal.BackendRefused || strings.Contains(f.Detail, "partially") {
 		t.Fatalf("%+v", f)
@@ -225,5 +225,36 @@ func TestAMessageOfATargetWithoutAPasswordFileNamesTheRepositoryInstead(t *testi
 		if got := repoinit.FromRestic(t.Context(), fmt.Errorf("x: %w", tt.err), named).Error(); got != tt.want {
 			t.Errorf("%v:\n got %q\nwant %q", tt.err, got, tt.want)
 		}
+	}
+}
+
+var errNoRepo = fmt.Errorf("restic cat: %w", restic.ErrNoRepository)
+
+// V3 (K15а): repo init asks where the recovery key goes once it knows the
+// repository is absent, and before it makes it.
+func TestCreateGatedAsksBeforeInitialisingAnAbsentRepository(t *testing.T) {
+	r := &fakeRepo{idErrs: []error{errNoRepo}, initID: "new"}
+	var initsWhenAsked = -1
+	id, f := repoinit.CreateGated(t.Context(), r, target, func() *refusal.Failure { initsWhenAsked = r.initRuns; return nil })
+	if f != nil || id != "new" || initsWhenAsked != 0 || r.initRuns != 1 {
+		t.Fatalf("id %q, failure %v, inits when asked %d, inits %d", id, f, initsWhenAsked, r.initRuns)
+	}
+}
+
+func TestCreateGatedStopsWhenTheGateRefuses(t *testing.T) {
+	r := &fakeRepo{idErrs: []error{errNoRepo}}
+	_, f := repoinit.CreateGated(t.Context(), r, target, func() *refusal.Failure {
+		return refusal.Fail(refusal.RecoveryKeyOutputMissing, "no output")
+	})
+	if f == nil || f.Reason != refusal.RecoveryKeyOutputMissing || r.initRuns != 0 {
+		t.Fatalf("failure %v, inits %d", f, r.initRuns)
+	}
+}
+
+func TestCreateGatedDoesNotAskAboutAnExistingRepository(t *testing.T) {
+	r := &fakeRepo{idErrs: []error{nil}, id: "old"}
+	_, f := repoinit.CreateGated(t.Context(), r, target, func() *refusal.Failure { t.Error("the gate was asked"); return nil })
+	if f == nil || f.Reason != refusal.RepositoryExists {
+		t.Fatalf("failure %v", f)
 	}
 }

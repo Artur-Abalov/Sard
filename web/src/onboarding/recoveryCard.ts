@@ -35,5 +35,5 @@ export function recoveryCardText(card: RecoveryCard, language: Language): string
     return value
   }
   const lines = CARD_FIELDS.map((field) => `${words[field]}: ${valueOf(field)}`)
-  return [words.title, words.intro, ...lines].join('\n') + '\n'
+  return [words.title, words.intro, words.requires, ...lines].join('\n') + '\n'
 }

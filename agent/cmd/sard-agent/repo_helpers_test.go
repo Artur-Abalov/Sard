@@ -77,6 +77,8 @@ type fakeRepo struct {
 	// checkState is how the repository answers list locks, cat lock, unlock
 	// and check (A8d-1).
 	checkState fakeChecks
+	// keyring is how the repository answers restic key (V3).
+	keyring fakeKeyring
 }
 
 // fakeCall is one restic invocation.
@@ -242,7 +244,7 @@ func (f *fakeRestic) runRepoCommand(ctx context.Context, cmd restic.Command, sub
 	}
 	handlers := map[string]func(context.Context, restic.Command, *fakeRepo) (int, error){
 		"cat": f.cat, "init": f.init, "snapshots": f.snapshots, "restore": f.restore, "ls": f.ls, "dump": f.dump,
-		"list": f.list, "unlock": f.unlock, "check": f.check,
+		"list": f.list, "unlock": f.unlock, "check": f.check, "key": f.key,
 	}
 	if handle, ok := handlers[sub]; ok {
 		return handle(ctx, cmd, r)
@@ -338,6 +340,8 @@ func (f *fakeRestic) init(ctx context.Context, cmd restic.Command, r *fakeRepo) 
 	}
 	r.initialized = true
 	r.password = passwordOf(cmd)
+	// restic init makes the first key, the one the password opens.
+	r.keyring.keys = []fakeKey{{id: keyID("init-" + r.id), user: "sard-agent", host: "src1", password: r.password, created: at(-120)}}
 	lines(cmd.Stdout, strings.ReplaceAll(golden(f.t, "init.json"), goldenID, r.id))
 	return 0, nil
 }
@@ -431,6 +435,7 @@ func newRepoHost(t *testing.T) *repoHost {
 	h.deps = productionHostDeps()
 	useTestServiceUser(&h.deps)
 	h.deps.defaultCacheDir = h.path("default-cache")
+	h.deps.stdoutTerminal = true // the recovery key of a new repository is shown at the terminal
 	h.deps.clock = h.clock
 	h.deps.exec = h.restic
 	h.deps.openLock = openAsNonRoot
