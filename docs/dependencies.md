@@ -56,6 +56,7 @@
 | Kotlin stdlib, kotlin-reflect | 2.4.20 | Apache-2.0 | runtime | язык; reflect нужен Spring/Jackson |
 | spring-boot-starter-webmvc (Spring Framework 7, Tomcat 11) | 4.1.1 | Apache-2.0 | runtime | REST `/api/v1/status` |
 | spring-boot-starter-actuator | 4.1.1 | Apache-2.0 | runtime | `/actuator/health` |
+| io.micrometer:micrometer-registry-prometheus (+ io.prometheus:prometheus-metrics-* транзитивно) | 1.17.1 (BOM Spring Boot 4.1.1) | Apache-2.0 | runtime | текстовая экспозиция Prometheus 0.0.4 для слушателя метрик (`GET /metrics` на `sard.metrics.*`, не на порту консоли): метрики `sard_`, `jvm_`, `process_`; HTTP-сервер слушателя — `com.sun.net.httpserver` из JDK, без новых зависимостей (H1, фаза 3) |
 | spring-boot-starter-data-jpa (Hibernate ORM 7.4, jakarta.persistence-api 3.2) | 4.1.1 | Apache-2.0; persistence-api — EPL-2.0 **или** EDL-1.0 (BSD-3), используем EDL | runtime | таблица `agents` |
 | spring-boot-starter-flyway + flyway-database-postgresql | 4.1.1 / 12.4.0 | Apache-2.0 | runtime | миграции |
 | org.postgresql:postgresql | 42.7.13 | BSD-2-Clause | runtime; в коде — только PGConnection.alterUserPassword (пароль роли sard_self, SCRAM на стороне клиента) | JDBC-драйвер |

@@ -59,6 +59,14 @@ services:
       SARD_AGENT_DOWNLOADS_URL: ${SARD_AGENT_DOWNLOADS_URL:-}
       # native behind a TLS-terminating reverse proxy on this host (ADR 0046); empty means none.
       SARD_FORWARD_HEADERS: ${SARD_FORWARD_HEADERS:-none}
+      # Prometheus metrics (H1, docs/operator/14-monitoring.md): a listener of its own inside the container, not on
+      # the console's port and not published below. The defaults keep it on the container's loopback, where only
+      # the container itself reaches it. Opening it to the network is the operator's step: SARD_METRICS_BIND to an
+      # address other than loopback needs SARD_METRICS_TOKEN (at least 32 characters) or the server does not start.
+      SARD_METRICS_BIND: ${SARD_METRICS_BIND:-127.0.0.1}
+      SARD_METRICS_PORT: ${SARD_METRICS_PORT:-8081}
+      SARD_METRICS_TOKEN: ${SARD_METRICS_TOKEN:-}
+      SARD_METRICS_STATE_INTERVAL: ${SARD_METRICS_STATE_INTERVAL:-60s}
       # The channel to self-agent: the server writes the password of the sard_self role and the agent's
       # enrollment token here; only this service and self-agent mount the volume.
       SARD_SELF_DIR: /var/lib/sard/self

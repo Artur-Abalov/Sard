@@ -32,6 +32,10 @@
 | `SARD_TELEGRAM_CHAT_ID` | чат, куда бот пишет; задаются обе переменные или ни одной, иначе сервер не стартует; обе пустые — уведомления выключены, в логе предупреждение | пусто | `-1001234567890` |
 | `SARD_CONSOLE_PUBLIC_URL` | адрес, по которому открывают консоль; уведомление заканчивается ссылкой `<адрес>/runs/<id>`; абсолютный `http`/`https` без запроса и фрагмента, иначе сервер не стартует; из заголовков запроса не берётся | пусто (без ссылки) | `https://sard.example.com` |
 | `SARD_NOTIFY_LANGUAGE` | язык уведомлений: `en` или `ru`, иначе сервер не стартует | `en` | `ru` |
+| `SARD_METRICS_BIND` | адрес слушателя метрик внутри контейнера, IP-литерал; не loopback — только с `SARD_METRICS_TOKEN`, иначе сервер не стартует ([раздел 14](14-monitoring.md)) | `127.0.0.1` | `0.0.0.0` |
+| `SARD_METRICS_PORT` | порт слушателя метрик внутри контейнера, 1–65535, не 8080 и не 9090; compose его не публикует | `8081` | `8081` |
+| `SARD_METRICS_TOKEN` | токен bearer слушателя метрик, не короче 32 символов; секрет, в логи и метки не попадает; пусто — без токена (только loopback) | пусто | `openssl rand -hex 24` |
+| `SARD_METRICS_STATE_INTERVAL` | как часто читается состояние установки для метрик | `60s` | `30s` |
 | `TZ` | часовой пояс сервера (IANA, например `Europe/Berlin`): в нём читается расписание без своего пояса, и консоль называет его поясом по умолчанию; не идентификатор IANA (например, смещение `+03:00`) читается как UTC | `UTC` | `Europe/Berlin` |
 | `SARD_AGENT_DOWNLOADS` | раздача пакетов агента по `/downloads/agent/` без сессии; `false` — путь отвечает 404 | `true` | `false` |
 | `SARD_AGENT_DOWNLOADS_URL` | адрес, с которого хосты скачивают пакеты в командах установки консоли; абсолютный `http`/`https` без запроса и фрагмента | пусто: `http://<хост из SARD_AGENT_ENDPOINT>:8080` | `https://sard.example.com` |
@@ -65,6 +69,13 @@
 | `sard.logs.max-step-bytes` | `16777216` | предел журнала одного шага (16 МиБ) |
 | `sard.notify.max-attempts` | `8` | попыток доставки уведомления |
 | `sard.notify.ttl` | `24h` | сколько уведомление ждёт доставки |
+| `sard.retention.step-logs` | `30d` | срок журналов шагов, переменная `SARD_RETENTION_STEPLOGS` ([раздел 15](15-data-retention.md)) |
+| `sard.retention.runs` | `180d` | срок запусков, `SARD_RETENTION_RUNS` |
+| `sard.retention.verifications` | `180d` | срок записей проверок, `SARD_RETENTION_VERIFICATIONS` |
+| `sard.retention.schedule-fires` | `180d` | срок журнала срабатываний, `SARD_RETENTION_SCHEDULEFIRES` |
+| `sard.retention.notification-deliveries` | `30d` | срок доставок, `SARD_RETENTION_NOTIFICATIONDELIVERIES` |
+| `sard.retention.interval` | `1h` | как часто идёт уборка, `SARD_RETENTION_INTERVAL` |
+| `sard.retention.batch-size` | `500` | строк в пачке удаления, `SARD_RETENTION_BATCHSIZE` |
 
 Для этих переменных compose ничего не пробрасывает: добавьте строку в секцию
 `environment` сервера в `docker-compose.yml` (и повторите правку после

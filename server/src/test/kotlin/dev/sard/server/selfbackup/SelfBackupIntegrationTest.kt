@@ -5,6 +5,7 @@ package dev.sard.server.selfbackup
 
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.completeOnboarding
+import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.InvalidConfig
 import dev.sard.server.runs.RUNS_NOW
@@ -21,10 +22,12 @@ import dev.sard.server.scheduler.Schedules
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.junit.jupiter.api.Tag
+import org.mockito.Mockito
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import tools.jackson.databind.ObjectMapper
 import java.time.Duration
 import java.util.UUID
@@ -58,6 +61,9 @@ class SelfBackupIntegrationTest(
     @Autowired private val mapper: ObjectMapper,
     @Autowired private val settings: SelfBackupSettings,
 ) {
+    @MockitoSpyBean
+    lateinit var sessions: TenantSessions
+
     private val tenant = SelfBackupTenant(jdbc)
 
     @BeforeTest
@@ -82,6 +88,36 @@ class SelfBackupIntegrationTest(
     private fun runNow(): List<SelfBackupRun> = MutFlow.underTest { selfBackups.runNow(tenant.id) }
 
     private fun state(): SelfBackupView = MutFlow.underTest { selfBackups.get(tenant.id) }
+
+    private fun sessionKindsDuring(read: () -> Unit): List<String> {
+        Mockito.clearInvocations(sessions)
+        read()
+        return Mockito
+            .mockingDetails(sessions)
+            .invocations
+            .map { it.method.name }
+            .filter { it == "inTenant" || it == "inTenantReadOnly" }
+    }
+
+    @Test
+    fun `Состояние для метрик читается в транзакции только для чтения, обычное - в обычной`() {
+        val readOnly = sessionKindsDuring { MutFlow.underTest { selfBackups.get(tenant.id, readOnly = true) } }
+        val ordinary = sessionKindsDuring { MutFlow.underTest { selfBackups.get(tenant.id) } }
+
+        assertEquals(listOf("inTenantReadOnly"), readOnly)
+        assertEquals(listOf("inTenant"), ordinary)
+    }
+
+    @Test
+    fun `Состояние для метрик знает, завершён ли онбординг, как и обычное`() {
+        bind(S3_REPOSITORY, confirmLocalStorage = false)
+        val during = MutFlow.underTest { selfBackups.get(tenant.id, readOnly = true) }
+        completeOnboarding(jdbc)
+        val after = MutFlow.underTest { selfBackups.get(tenant.id, readOnly = true) }
+
+        assertEquals(emptyList(), during.warnings)
+        assertEquals(listOf(SelfBackupWarning.KEYS_UNCONFIRMED), after.warnings)
+    }
 
     @Test
     fun `Привязка создаёт два системных источника с конфигами плана и ночным расписанием`() {

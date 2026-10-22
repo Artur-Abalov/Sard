@@ -27,6 +27,12 @@ private fun importsOf(slice: String): List<Pair<String, String>> {
         }.toList()
 }
 
+private val FRAMEWORK_IMPORT =
+    Regex(
+        """^import\s+(org\.springframework|jakarta\.|javax\.|org\.hibernate|io\.grpc|dev\.sard\.proto""" +
+            """|com\.sun\.net\.httpserver)""",
+    )
+
 private fun importedBy(slice: String): Set<String> = importsOf(slice).map { it.second }.filter { it != slice }.toSet()
 
 class PackageDependencyTest {
@@ -49,5 +55,28 @@ class PackageDependencyTest {
             val viaPki = importsOf(slice).filter { it.second == "pki" }
             assertTrue(viaPki.isEmpty(), "$slice imports pki: $viaPki")
         }
+    }
+
+    @Test
+    fun `the metrics package is domain code without framework, HTTP server, gRPC or persistence imports`() {
+        val files = MAIN.resolve("metrics").listFiles { f -> f.extension == "kt" }.orEmpty()
+        assertTrue(files.size >= 5, "the scan found only ${files.size} files of metrics")
+        val offenders =
+            files.flatMap { file ->
+                file.readLines().filter { FRAMEWORK_IMPORT.containsMatchIn(it) }.map { "${file.name}: $it" }
+            }
+        assertEquals(emptyList(), offenders)
+    }
+
+    @Test
+    fun `selfbackup knows metrics and metrics does not know selfbackup`() {
+        assertTrue("metrics" in importedBy("selfbackup"))
+        assertTrue("selfbackup" !in importedBy("metrics"))
+    }
+
+    @Test
+    fun `the prometheus adapter depends on metrics and metrics does not depend on it`() {
+        assertTrue("metrics" in importedBy("prometheus"))
+        assertTrue("prometheus" !in importedBy("metrics"))
     }
 }

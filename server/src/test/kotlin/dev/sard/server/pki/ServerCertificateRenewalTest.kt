@@ -23,6 +23,8 @@ class ServerCertificateRenewalTest {
 
         override fun provenance() = error("unused")
 
+        override fun notAfter() = error("unused")
+
         override fun keyLocation() = error("unused")
 
         override fun serverKeyManager(): X509KeyManager = error("unused")

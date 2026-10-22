@@ -74,6 +74,7 @@ make e2e-test       # только тесты, на уже собранных о
 |---|---|
 | `ServerSmokeTest` | `/api/v1/status` — 200 и версия сборки; порт gRPC — TLS, SAN `sard-server`, корень = `ca/ca.crt` сервера; Enroll доступен по TLS |
 | `ConsoleImageTest` | сценарии `@e2e` `docs/specs/server/console-serving.feature`: `GET /` образа — HTML с `meta sard-version` = `VERSION` и `/api/v1/status` с той же версией; каждый `src`/`href` под `/assets/` страницы отдаётся с `immutable`; воркера моков `/mockServiceWorker.js` нет |
+| `MetricsRetentionTest` | сценарии `@e2e` `docs/specs/server/server-metrics.feature` (ОВ8, часов в образе нет): три успешных бэкапа и один неуспешный, возраст запусков сдвинут в базе на 200 дней, проход уборки (`SARD_RETENTION_INTERVAL=1m`), список снимков через REST прежний, scrape слушателя метрик из контейнера сервера с токеном (bash и `/dev/tcp`, `curl` в образе нет); на основном порту метрик нет. Не прогонялся в среде без образов |
 | `AgentImageSmokeTest` | `sard-agent --version` = `VERSION`; `restic version` = `restic-version` |
 | `RegistrationTest` | перехватчик S3: без сертификата клиента `AgentService` — UNAUTHENTICATED |
 | `AgentEnrollTest` | сценарии `@e2e` `docs/specs/agent/agent-enroll.feature` (имена тестов — названия сценариев): `sard-agent enroll` пишет ключ, сертификат и бандл, агент в тенанте токена с именем хоста, сервер принимает выданный сертификат; испорченный токен, существующая идентичность, чужой отпечаток не расходуют токен; `--force`; отказы `TOKEN_USED/UNKNOWN/EXPIRED/REVOKED` |

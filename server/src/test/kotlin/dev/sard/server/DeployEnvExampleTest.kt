@@ -28,4 +28,13 @@ class DeployEnvExampleTest {
         assertEquals("", value)
         assertTrue(lines.any { it.contains("SARD_TELEGRAM_CHAT_ID=") }, lines.joinToString("\n"))
     }
+
+    @Test
+    fun `переменные метрик в env-примере закомментированы, а у SARD_METRICS_TOKEN нет значения`() {
+        for (name in METRICS_VARIABLES) {
+            assertTrue(lines.none { it.startsWith("$name=") }, "$name is set, not commented out")
+            assertTrue(lines.any { it.startsWith("# $name=") }, "$name is not in the example")
+        }
+        assertEquals("", lines.first { it.startsWith("# SARD_METRICS_TOKEN=") }.substringAfter("="))
+    }
 }

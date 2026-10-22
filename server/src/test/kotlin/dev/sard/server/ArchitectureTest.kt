@@ -23,6 +23,9 @@ private val ISOLATED_PACKAGES =
         "downloads",
         "selfagent",
         "selfbackup",
+        "retention",
+        "metrics",
+        "prometheus",
     )
 
 // downloads/ holds both domain types and the HTTP adapter that serves the package files. Only the
@@ -50,6 +53,27 @@ private val STRING_CONCATENATION = Regex(""""\s*\+\s*"""")
 private val STRING_LITERAL = Regex("""\"{3}(.*?)\"{3}|"((?:[^"\\]++|\\.)*+)"""", RegexOption.DOT_MATCHES_ALL)
 private val NATIVE_SQL_SOURCE =
     Regex("""\bimport org\.springframework\.jdbc\b|\bcreateNative(Mutation)?Query\b|\bprepareStatement\b""")
+private val METRIC_NAME_CONSTANT = Regex("""const\s+val\s+(\w+)\s*=\s*"(sard\.[a-z.]+)"""")
+private val METRIC_BUILDER_LITERAL =
+    Regex(
+        """\b(Counter|Gauge|Timer|DistributionSummary|LongTaskTimer|FunctionCounter|TimeGauge)""" +
+            """\s*\.builder\(\s*"sard\.|\.(counter|gauge|timer|summary)\(\s*"sard\.""",
+    )
+private const val EXPECTED_METRIC_NAMES = 31
+private val TOKEN_STRING_COMPARISON =
+    Regex(
+        """\.equals\(|contentEquals|\b(token|offered|expected|authorization)\s*[!=]=\s*+(?!null\b)""" +
+            """|[!=]=\s*(token|offered|expected|authorization)\b""",
+    )
+private val SQL_CONSTANT =
+    Regex("""\bconst\s+val\s+\w+\s*=\s*\"{1,3}\s*(select|delete|update|insert|with)\b""", RegexOption.IGNORE_CASE)
+
+/** A file that runs native SQL by a JDBC call, or keeps its queries as constants (retention/RetentionSql.kt). */
+private fun isNativeSqlSource(text: String): Boolean {
+    val callsJdbc = NATIVE_SQL_SOURCE.containsMatchIn(text)
+    return callsJdbc || SQL_CONSTANT.containsMatchIn(text)
+}
+
 private val CREATE_TABLE = Regex("""CREATE TABLE (\w+) \((.*?)\n\);""", RegexOption.DOT_MATCHES_ALL)
 private val TENANT_ID_COLUMN = Regex("""^\s*tenant_id\s+UUID\b""", RegexOption.MULTILINE)
 private val ADD_TENANT_ID = Regex("""ALTER TABLE (\w+)\s+ADD COLUMN tenant_id\b""")
@@ -233,6 +257,8 @@ class ArchitectureTest {
                 "fleet/AgentCertificateCheck.kt",
                 "freshness/FreshnessCheck.kt",
                 "notify/Deliveries.kt",
+                "prometheus/StateQueries.kt",
+                "retention/RetentionPass.kt",
                 "runs/StepCounts.kt",
                 "runs/StepDeadlines.kt",
                 "scheduler/Scheduler.kt",
@@ -240,6 +266,74 @@ class ArchitectureTest {
             ).map { File(mainRoot, it) }
         val callers = ktFiles(mainRoot).filter { SESSIONS_SYSTEM_CALL.containsMatchIn(it.readText()) }
         assertEquals(allowed.toSet(), callers.toSet(), "sessions.system callers must match ADR 0013's list exactly")
+    }
+
+    @Test
+    fun `the retention counter is named in one place of main`() {
+        val named = ktFiles(mainRoot).sumOf { Regex("sard\\.retention\\.deleted").findAll(it.readText()).count() }
+
+        assertEquals(1, named, "the name of the counter of deleted rows is written once, in main")
+    }
+
+    private fun metricNames(): Map<String, String> {
+        val file = File(mainRoot, "metrics/SardMetricNames.kt")
+        check(file.isFile) { "the names of the metrics of Sard are declared in $file" }
+        val declarations = METRIC_NAME_CONSTANT.findAll(withoutComments(file.readText()))
+        return declarations.associate { it.groupValues[1] to it.groupValues[2] }
+    }
+
+    @Test
+    fun `the names of the metrics of Sard are declared in one file and each is written once in main`() {
+        val names = metricNames()
+        val sources = ktFiles(mainRoot).associateWith { withoutComments(it.readText()) }
+
+        assertTrue(names.size >= EXPECTED_METRIC_NAMES, "the file declares only ${names.size} names")
+        assertEquals(names.size, names.values.toSet().size, "a name is declared twice: ${names.values}")
+        for ((constant, name) in names) {
+            val written = sources.values.sumOf { Regex(Regex.escape("\"$name\"")).findAll(it).count() }
+            assertEquals(1, written, "$constant = \"$name\" is written $written times in main")
+        }
+        val others = sources.filterKeys { it.name != "SardMetricNames.kt" }
+        val outside = others.filterValues { METRIC_BUILDER_LITERAL.containsMatchIn(it) }.keys.map { it.name }
+        assertTrue(outside.isEmpty(), "a metric named by a literal outside the names file: $outside")
+    }
+
+    @Test
+    fun `the token of the metrics listener is compared in constant time over bytes`() {
+        val files = ktFiles(File(mainRoot, "prometheus"))
+        val token = withoutComments(File(mainRoot, "prometheus/BearerToken.kt").readText())
+
+        assertTrue("MessageDigest.isEqual(" in token, "the token is compared by MessageDigest.isEqual")
+        val offenders = files.filter { TOKEN_STRING_COMPARISON.containsMatchIn(withoutComments(it.readText())) }
+        assertTrue(offenders.isEmpty(), "string comparison near the token: ${offenders.map { it.name }}")
+        assertTrue(TOKEN_STRING_COMPARISON.containsMatchIn("if (token == offered) ok"))
+        assertTrue(TOKEN_STRING_COMPARISON.containsMatchIn("header.equals(token)"))
+        assertTrue(!TOKEN_STRING_COMPARISON.containsMatchIn("MessageDigest.isEqual(expected, offered)"))
+    }
+
+    @Test
+    fun `a metric builder given a literal name is found by the scan`() {
+        val fixtures =
+            listOf(
+                "Counter.builder(\"sard.x\").register(m)",
+                "Counter\n.builder(\n\"sard.x.y\")",
+                "meters.counter(\"sard.x\")",
+                "Gauge.builder(\"sard.q\", a) { 1.0 }",
+                "Timer.builder(\"sard.q\")",
+            )
+        for (fixture in fixtures) assertTrue(METRIC_BUILDER_LITERAL.containsMatchIn(fixture), fixture)
+        assertTrue(!METRIC_BUILDER_LITERAL.containsMatchIn("Counter.builder(SardMetricNames.RETENTION_DELETED)"))
+    }
+
+    @Test
+    fun `retention deletes log lines by whole partitions only`() {
+        val lineDeletes =
+            ktFiles(File(mainRoot, "retention")).filter {
+                Regex("""delete\s+from\s+step_logs\b""", RegexOption.IGNORE_CASE)
+                    .containsMatchIn(withoutComments(it.readText()))
+            }
+
+        assertTrue(lineDeletes.isEmpty(), "DELETE from step_logs: ${lineDeletes.joinToString { it.name }}")
     }
 
     @Test
@@ -387,13 +481,20 @@ class ArchitectureTest {
         return Regex("""\b(from|update|into|join|delete)\s+($names)\b""", RegexOption.IGNORE_CASE)
     }
 
+    /** The named string literals of [source] (`val NAME = "..."`), by name. */
+    private fun namedLiterals(source: String): Map<String, String> {
+        val text = withoutComments(source).replace(STRING_CONCATENATION, "")
+        return NAMED_LITERAL.findAll(text).associate { it.groupValues[1] to literalText(it) }
+    }
+
     /** The string literals of [source] (constants expanded) that read a tenant table without `tenant_id`. */
     private fun unscopedTenantSql(
         source: String,
         tenantTable: Regex,
+        shared: Map<String, String> = emptyMap(),
     ): List<String> {
         val text = withoutComments(source).replace(STRING_CONCATENATION, "")
-        val constants = NAMED_LITERAL.findAll(text).associate { it.groupValues[1] to literalText(it) }
+        val constants = shared + namedLiterals(source)
         return STRING_LITERAL
             .findAll(text)
             .map { expanded(it.groupValues[1] + it.groupValues[2], constants).trim() }
@@ -418,14 +519,34 @@ class ArchitectureTest {
     }
 
     @Test
+    fun `a file of SQL constants is checked by rule 8 like a file that calls JDBC`() {
+        val file = File(mainRoot, "retention/RetentionSql.kt")
+        val text = file.readText()
+
+        assertTrue(isNativeSqlSource(text), "RetentionSql.kt holds its queries as constants and must be scanned")
+        val tenantTable = tenantTableRegex()
+        val literals = STRING_LITERAL.findAll(withoutComments(text))
+        val scanned = literals.count { tenantTable.containsMatchIn(it.value) }
+        assertTrue(scanned >= 5, "the scan sees only $scanned queries of RetentionSql.kt")
+        val quoted = "private const val BAD = \"delete from runs where id = 1\""
+        val raw = "private const val BAD = \"\"\"delete from runs where id = 1\"\"\""
+        for (fixture in listOf(quoted, raw)) {
+            assertTrue(isNativeSqlSource(fixture), fixture)
+            assertEquals(listOf("delete from runs where id = 1"), unscopedTenantSql(fixture, tenantTableRegex()))
+        }
+    }
+
+    @Test
     fun `native SQL on a tenant table names tenant_id (ADR 0013, rule 8)`() {
         val tenantTable = tenantTableRegex()
+        // A fragment such as STEP is declared in one file and used in another.
+        val shared = ktFiles(mainRoot).flatMap { namedLiterals(it.readText()).toList() }.toMap()
         val found = mutableMapOf<String, Set<String>>()
         val offenders =
             ktFiles(mainRoot)
-                .filter { NATIVE_SQL_SOURCE.containsMatchIn(it.readText()) }
+                .filter { isNativeSqlSource(it.readText()) }
                 .flatMap { file ->
-                    val unscoped = unscopedTenantSql(file.readText(), tenantTable)
+                    val unscoped = unscopedTenantSql(file.readText(), tenantTable, shared)
                     val listed = TENANT_SQL_EXCEPTIONS[file.name].orEmpty()
                     found[file.name] = unscoped.filter { it in listed }.toSet()
                     unscoped.filter { it !in listed }.map { "${file.path}: $it" }

@@ -9,6 +9,7 @@ import dev.sard.server.agents.stream.AgentConnections
 import dev.sard.server.agents.stream.LogChunkHandler
 import dev.sard.server.agents.stream.StepProgressHandler
 import dev.sard.server.agents.stream.StepResultHandler
+import dev.sard.server.metrics.SardMetricNames
 import dev.sard.server.runs.ProgressThrottle
 import dev.sard.server.runs.RunFinishedTrace
 import dev.sard.server.runs.StepLogs
@@ -25,7 +26,7 @@ class MicrometerResultMetrics(
 ) : ResultMetrics {
     override fun recorded(outcome: String) =
         Counter
-            .builder("sard.run.step.results")
+            .builder(SardMetricNames.RUN_STEP_RESULTS)
             .tag("outcome", outcome)
             .register(meters)
             .increment()
@@ -35,8 +36,8 @@ class MicrometerResultMetrics(
 class MicrometerLogMetrics(
     meters: MeterRegistry,
 ) : LogMetrics {
-    private val dropped = Counter.builder("sard.run.step.logs.dropped").baseUnit("lines").register(meters)
-    private val truncated = Counter.builder("sard.run.step.logs.truncated").register(meters)
+    private val dropped = Counter.builder(SardMetricNames.RUN_STEP_LOGS_DROPPED).baseUnit("lines").register(meters)
+    private val truncated = Counter.builder(SardMetricNames.RUN_STEP_LOGS_TRUNCATED).register(meters)
 
     override fun dropped(lines: Int) = dropped.increment(lines.toDouble())
 
@@ -78,7 +79,7 @@ class ResultsConfiguration {
     fun runFinishedTrace(meters: MeterRegistry) =
         RunFinishedTrace { status ->
             Counter
-                .builder("sard.run.finished")
+                .builder(SardMetricNames.RUN_FINISHED)
                 .tag("status", status.stored)
                 .register(meters)
                 .increment()

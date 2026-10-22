@@ -50,6 +50,14 @@ class FileCertificateAuthorityTest {
 
     private fun perms(path: Path) = PosixFilePermissions.toString(Files.getPosixFilePermissions(path))
 
+    @Test
+    fun `the CA reports the end of its own certificate as notAfter`() {
+        val ca = ca()
+
+        assertEquals(caCertificate(ca).notAfter.toInstant(), ca.notAfter())
+        assertEquals(NOW.plus(Duration.ofDays(3650)).truncatedTo(java.time.temporal.ChronoUnit.SECONDS), ca.notAfter())
+    }
+
     // --- first start and restart
 
     @Test

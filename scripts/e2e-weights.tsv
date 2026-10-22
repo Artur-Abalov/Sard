@@ -17,6 +17,7 @@
 38	dev.sard.e2e.CaImportMoveTest
 38	dev.sard.e2e.StorageChainTest
 35	dev.sard.e2e.SelfBackupTest
+150	dev.sard.e2e.MetricsRetentionTest
 25	dev.sard.e2e.CaImportWithoutDatabaseTest
 24	dev.sard.e2e.ServerRecreateTest
 23	dev.sard.e2e.AgentConnectTest

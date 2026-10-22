@@ -53,6 +53,13 @@ class FileCertificateAuthorityImportTest {
     }
 
     @Test
+    fun `the end of an imported CA is the end of the imported certificate, not of a new one`() {
+        CaImportFixtures.source(importDir, original)
+
+        assertEquals(original.certificate.notAfter.toInstant(), ca().notAfter())
+    }
+
+    @Test
     fun `the server certificate carries the names of the new configuration`() {
         CaImportFixtures.source(importDir, original)
         val names = chain(ca()).first().subjectAlternativeNames.map { it[1] }

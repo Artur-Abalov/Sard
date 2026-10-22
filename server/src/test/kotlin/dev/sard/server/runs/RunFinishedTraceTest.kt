@@ -18,7 +18,18 @@ class RunFinishedTraceTest {
     private fun finished(
         n: Long,
         status: RunState,
-    ) = RunFinished(UUID(1, 1), UUID(0, n), UUID(2, n), UUID(3, 3), Trigger.MANUAL, status, null, RUNS_NOW)
+    ) = RunFinished(
+        UUID(1, 1),
+        UUID(0, n),
+        UUID(2, n),
+        UUID(3, 3),
+        Trigger.MANUAL,
+        RunKind.BACKUP,
+        status,
+        null,
+        RUNS_NOW,
+        null,
+    )
 
     private fun logged(block: () -> Unit): List<String> {
         val logger = LoggerFactory.getLogger(RunFinishedTrace::class.java) as Logger
