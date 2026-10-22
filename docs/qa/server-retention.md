@@ -114,7 +114,7 @@ STEP2=$(curl -sS -b $QA/jf $API/runs/$B2 | jq -r '.steps[0].id')
 $PSQL "select count(*) from step_logs where step_id='$STEP2'"           # запомнить N2
 ```
 
-    → `N` больше `0`; последняя выборка из `step_logs_2026_08` равна `N`.
+→ `N` больше `0`; последняя выборка из `step_logs_2026_08` равна `N`.
 17. `waitpass`
     → строка итога с `step_log_partition=1` (или больше, если в базе были
     другие секции старше срока).

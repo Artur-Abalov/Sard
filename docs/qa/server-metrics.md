@@ -88,8 +88,8 @@ $DC up -d server; sleep 20; $DC ps server
 $DC logs server | grep -E 'SARD_METRICS_TOKEN' | tail -1
 ```
 
-    → контейнер не `healthy` (перезапускается или вышел); последняя строка
-    называет `SARD_METRICS_TOKEN` и `SARD_METRICS_BIND`.
+→ контейнер не `healthy` (перезапускается или вышел); последняя строка
+называет `SARD_METRICS_TOKEN` и `SARD_METRICS_BIND`.
 12. (ОВ7) Добавить `SARD_METRICS_TOKEN: short-token-123` под `environment`;
     `$DC up -d server; sleep 20; $DC logs server | grep -c short-token-123`
     → `0`; сервер не `healthy`; в логе строка, называющая `SARD_METRICS_TOKEN`.
@@ -136,7 +136,7 @@ FIN=$(curl -sS -b $QA/jf $API/runs/$RUN | jq -r .finishedAt)
 mv 'sard_run_duration_seconds_count{kind="backup",status="succeeded"}'
 ```
 
-    → значение на 1 больше `$B0` сразу, без ожидания тика.
+→ значение на 1 больше `$B0` сразу, без ожидания тика.
 24. `sleep 11; mv "sard_source_last_backup_success_timestamp_seconds{source_id=\"$SRC\"}"`
     → равно `date -d "$FIN" +%s` (с точностью до секунды; запись в
     экспоненциальной форме допустима).
@@ -181,10 +181,10 @@ for s in "$HOSTN" "$NAME" "$D" "$QA/missing" "$MSG" "$TOK"; do [ -n "$s" ] && gr
 grep -oE '[a-z_]+="' $QA/expo.txt | grep -v '^le="\|^quantile="' | sort -u
 ```
 
-    → каждое число `0`; имена меток — только из `source_id`, `role`, `kind`,
-    `status`, `outcome`, `health`, `channel`, `reason`, а также меток
-    `jvm_`/`process_` (`area`, `id`, `gc`, `state` и т. п.), ни одной с адресом,
-    путём или текстом.
+→ каждое число `0`; имена меток — только из `source_id`, `role`, `kind`,
+`status`, `outcome`, `health`, `channel`, `reason`, а также меток
+`jvm_`/`process_` (`area`, `id`, `gc`, `state` и т. п.), ни одной с адресом,
+путём или текстом.
 31. **Удалённый источник исчезает.**
     `curl -sS -b $QA/jf -X DELETE $API/sources/$FSRC -o /dev/null -w '%{http_code}\n'; sleep 11; m | grep -c "$FSRC"`
     → код `204` (или `200`), затем `0`.
