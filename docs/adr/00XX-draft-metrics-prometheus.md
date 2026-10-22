@@ -23,8 +23,9 @@
 2. **JDK `com.sun.net.httpserver`, а не коннектор Jetty/Tomcat.** Модуль `jdk.httpserver` есть в каждой
    JRE образа: ни новой зависимости, ни сервлетного стека, ни маршрута Spring MVC, до которого мог бы
    добраться обратный прокси консоли. Слушателю нужен один путь и один метод; пул из четырёх потоков-демонов.
-   Он открывается при старте контекста до веб-сервера и закрывается вместе с ним; занятый порт
-   останавливает старт сообщением с `SARD_METRICS_PORT`.
+   Он открывается при запуске жизненного цикла контекста (у веб-сервера своя, более ранняя фаза — порядок
+   между ними не обещан и спецификации не нужен) и закрывается вместе с ним; занятый порт останавливает
+   старт сообщением с `SARD_METRICS_PORT`.
 3. **Токен и адрес.** По умолчанию `127.0.0.1:8081` внутри контейнера, compose порт не публикует.
    Адрес — только IP-литерал (имена не разрешаются). Вне loopback (`127.0.0.0/8`, `::1`; `0.0.0.0` и
    `::` — вне) без токена старт отвергается сообщением с `SARD_METRICS_TOKEN` и `SARD_METRICS_BIND`.
@@ -58,7 +59,13 @@
    `verify` — запуск с триггером `verification`. Запуск без `startedAt` (отменён до начала) не
    наблюдается, в `sard_run_finished_total` считается как прежде. Корзины 60, 300, 900, 1800, 3600,
    7200, 14400, 28800, 86400 с (ОВ6). Гистограмма не зависит от базы и тика.
-10. **12-й вызов `TenantSessions.system`.** `StateQueries.read` — шесть запросов в одной транзакции только
+10. **Два пакета.** `metrics` — чистое ядро без фреймворка (`SardMetricNames`, `MetricRunKind`, `RunDurations`,
+    `StateGauges`, `StateRefresh`, `StateReader`, `StateSnapshot` с портом `SelfBackupSource`): `scripts/claude/arch-edges.sh`
+    считает его доменным (ADR 0064 п.2), там разрешены `java.*`, `kotlin`, Micrometer и запрещены Spring, Hibernate, gRPC,
+    jakarta и `com.sun.net.httpserver`. Всё, что тянет фреймворк, — адаптерный пакет `prometheus` (`MetricsConfiguration`,
+    `MetricsSettings`, `MetricsListener`, `MetricsEndpoint`, `BearerToken`, `StateLoop`, `StateQueries`). Рёбра только
+    `prometheus -> metrics` и `selfbackup -> metrics`; `PackageDependencyTest` следит за ними и за чистотой `metrics`.
+    **12-й вызов `TenantSessions.system`.** `prometheus/StateQueries.read` — шесть запросов в одной транзакции только
     для чтения по всем тенантам, число запросов не зависит от числа источников; нативный SQL с `tenant_id`
     (правило 8). Файл в списке `ArchitectureTest` и в ADR 0013. Состояние самобэкапа читается отдельно:
     `SelfBackups.get(tenant, readOnly = true)` через порт `SelfBackupSource` (пакеты `metrics` и
@@ -95,6 +102,16 @@
   (`SelfBackupSource`). Время последнего успеха — новейшее из двух системных источников.
 - **Счётчики событий обнуляются при перезапуске** (`sard_run_finished_total`, `sard_run_duration_seconds`,
   `sard_notify_*`, `sard_scheduler_fires_total`, `sard_retention_deleted_total`): считать через `rate()`.
+- **Слушатель без тайм-аутов чтения.** JDK `HttpServer` не ограничивает чтение запроса, пул — четыре потока с
+  неограниченной очередью: медленные клиенты без токена при открытом наружу порту могут занять потоки. Деградирует только
+  доступность метрик; защита — сеть оператора и токен.
+- **Фикстура `SelfBackupTenant(jdbc, DEFAULT_TENANT_ID).drop()`** в `MetricsStateIntegrationTest` удаляет все строки
+  тенанта по умолчанию из 11 таблиц в базе общего контекста `@MetricsServerTest`. Другие классы этого контекста
+  (`MetricsScrapeIntegrationTest`) данных этого тенанта не создают, кроме администратора, которого фикстура не трогает;
+  риск принят и записан, фикстуру не меняли.
+- **E2E `MetricsRetentionTest` не прогонялся** (образов `sard-*:e2e` нет), как и наличие модуля `jdk.httpserver` в
+  `eclipse-temurin:25-jre` (образа нет локально, `java --list-modules` не выполнялся): полный JRE его содержит, но это
+  не проверено.
 - **Токен виден в `docker inspect`** (переменная окружения контейнера); `SARD_METRICS_TOKEN_FILE` отложен (ОВ10).
 - Порт метрик — HTTP без TLS; защита — токен и сеть оператора.
 - Агенты только отзываются, не удаляются: сценарии спецификации про «удалённого агента» не применимы,

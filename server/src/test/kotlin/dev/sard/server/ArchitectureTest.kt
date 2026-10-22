@@ -25,6 +25,7 @@ private val ISOLATED_PACKAGES =
         "selfbackup",
         "retention",
         "metrics",
+        "prometheus",
     )
 
 // downloads/ holds both domain types and the HTTP adapter that serves the package files. Only the
@@ -256,7 +257,7 @@ class ArchitectureTest {
                 "fleet/AgentCertificateCheck.kt",
                 "freshness/FreshnessCheck.kt",
                 "notify/Deliveries.kt",
-                "metrics/StateQueries.kt",
+                "prometheus/StateQueries.kt",
                 "retention/RetentionPass.kt",
                 "runs/StepCounts.kt",
                 "runs/StepDeadlines.kt",
@@ -299,8 +300,8 @@ class ArchitectureTest {
 
     @Test
     fun `the token of the metrics listener is compared in constant time over bytes`() {
-        val files = ktFiles(File(mainRoot, "metrics"))
-        val token = withoutComments(File(mainRoot, "metrics/BearerToken.kt").readText())
+        val files = ktFiles(File(mainRoot, "prometheus"))
+        val token = withoutComments(File(mainRoot, "prometheus/BearerToken.kt").readText())
 
         assertTrue("MessageDigest.isEqual(" in token, "the token is compared by MessageDigest.isEqual")
         val offenders = files.filter { TOKEN_STRING_COMPARISON.containsMatchIn(withoutComments(it.readText())) }

@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
-package dev.sard.server.metrics
+package dev.sard.server.prometheus
 
 import dev.sard.server.fleet.AgentPresence
+import dev.sard.server.metrics.RunDurations
+import dev.sard.server.metrics.SelfBackupSource
+import dev.sard.server.metrics.StateGauges
+import dev.sard.server.metrics.StateReader
+import dev.sard.server.metrics.StateRefresh
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.CertificateAuthority
 import io.micrometer.core.instrument.config.MeterFilter

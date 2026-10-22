@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
-package dev.sard.server.metrics
+package dev.sard.server.prometheus
 
 import org.springframework.context.SmartLifecycle
 import java.time.Duration
@@ -31,7 +31,10 @@ class StateLoop(
 
     private fun daemon(task: Runnable) = Thread(task, "sard-metrics-state").apply { isDaemon = true }
 
-    /** Interrupts a tick that is running and waits for it, so that when this returns no tick runs and none will. */
+    /**
+     * Interrupts a tick that is running and waits for it for [STOP_PATIENCE_SECONDS] at most, so that when this returns
+     * no tick runs and none will start, unless the tick ignores the interrupt (a JDBC call may) for longer than that.
+     */
     override fun stop() {
         executor?.let {
             it.shutdownNow()

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
-package dev.sard.server.metrics
+package dev.sard.server.prometheus
 
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
@@ -21,7 +21,9 @@ private const val NO_BODY = -1L
  * The listener of the metrics (H1 phase 3, the owner's decision 1): a server of its own, on its own address and port,
  * so the console's port 8080 serves no metrics under any path. It is the JDK's `com.sun.net.httpserver` (module
  * jdk.httpserver, in every JRE the image runs on): no dependency is added, no servlet stack, no Spring MVC route that
- * a proxy of the console could reach. It opens at the start, before the web server, and closes with the context.
+ * a proxy of the console could reach. It opens when the context starts its lifecycle beans (the web server has an
+ * earlier phase of its own, so the order between the two is not promised) and closes with the context; a port it
+ * cannot open stops the start.
  */
 class MetricsListener(
     private val settings: MetricsSettings,
@@ -33,7 +35,7 @@ class MetricsListener(
     private var server: HttpServer? = null
     private var workers: ExecutorService? = null
 
-    /** The port the listener is bound to; differs from the setting only when that is 0 (tests). */
+    /** The port the listener is bound to: the setting (tests get a free one from FreeMetricsPort; 0 is refused). */
     val boundPort: Int get() = checkNotNull(server) { "the metrics listener is not running" }.address.port
 
     override fun start() {

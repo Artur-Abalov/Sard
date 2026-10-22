@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
-package dev.sard.server.metrics
+package dev.sard.server.prometheus
 
+import dev.sard.server.metrics.MetricRunKind
+import dev.sard.server.metrics.SourceSuccess
+import dev.sard.server.metrics.StateRows
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.RunState

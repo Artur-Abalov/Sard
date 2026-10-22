@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
-package dev.sard.server.metrics
+package dev.sard.server.prometheus
 
 import io.micrometer.core.instrument.Gauge
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
