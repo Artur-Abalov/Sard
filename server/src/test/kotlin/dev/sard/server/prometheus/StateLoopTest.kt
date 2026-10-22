@@ -3,8 +3,13 @@
 
 package dev.sard.server.prometheus
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -14,6 +19,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** The loop of the state tick: the first tick at once, then one per interval, on its own thread, never stopped. */
@@ -192,5 +198,64 @@ class StateLoopTest {
         val atStop = ticks.get()
         Thread.sleep(100)
         assertEquals(atStop, ticks.get())
+    }
+
+    private fun warningsOf(block: () -> Unit): List<ILoggingEvent> {
+        val logger = LoggerFactory.getLogger(StateLoop::class.java) as Logger
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        logger.addAppender(appender)
+        try {
+            block()
+        } finally {
+            logger.detachAppender(appender)
+        }
+        return appender.list.filter { it.level == Level.WARN }
+    }
+
+    @Test
+    fun `Тик, не ушедший за время ожидания остановки, даёт одну WARN, а stop всё равно возвращается`() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val loop =
+            StateLoop(Duration.ofHours(1), Duration.ofMillis(100)) {
+                entered.countDown()
+                // Deaf to the interrupt, like a JDBC call may be.
+                while (release.count > 0) {
+                    try {
+                        release.await()
+                    } catch (_: InterruptedException) {
+                        // keeps going
+                    }
+                }
+            }
+        loop.begin()
+        try {
+            assertTrue(entered.await(10, TimeUnit.SECONDS))
+
+            val warnings = warningsOf { loop.end() }
+
+            assertEquals(1, warnings.size)
+            assertTrue(warnings.single().formattedMessage.contains("still running"))
+            assertNull(warnings.single().throwableProxy)
+            assertFalse(loop.isRunning)
+        } finally {
+            release.countDown()
+        }
+    }
+
+    @Test
+    fun `Тик, закончившийся за время ожидания остановки, не даёт предупреждения`() {
+        val entered = CountDownLatch(1)
+        val loop =
+            StateLoop(Duration.ofHours(1), Duration.ofSeconds(10)) {
+                entered.countDown()
+                Thread.sleep(10_000)
+            }
+        loop.begin()
+        assertTrue(entered.await(10, TimeUnit.SECONDS))
+
+        val warnings = warningsOf { loop.end() }
+
+        assertEquals(emptyList(), warnings)
     }
 }

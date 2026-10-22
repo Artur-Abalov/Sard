@@ -92,5 +92,5 @@ class MetricsStateConfiguration {
     fun stateLoop(
         settings: MetricsSettings,
         refresh: StateRefresh,
-    ) = StateLoop(settings.stateInterval, refresh::tick)
+    ) = StateLoop(settings.stateInterval, tick = refresh::tick)
 }
