@@ -92,7 +92,7 @@
 
 ## C. Список и предупреждения (SRC)
 
-14. `sudo -u sard-agent sard-agent repo key list base --json | jq .`
+14. `sudo -u sard-agent sard-agent repo key list base --json | jq .` <!-- allow-sudo-u: проверка, что пользователь службы может прочитать список ключей -->
     Ожидается: `keys` — 4 ключа (хост, recovery, vrf-1, vrf-2) с полными id,
     `current: true` только у ключа хоста; `warnings: []`.
 15. На тестовом репозитории `base3` (без ключа восстановления):
