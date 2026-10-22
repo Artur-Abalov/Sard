@@ -35,7 +35,10 @@ class MetricsListener(
     private var server: HttpServer? = null
     private var workers: ExecutorService? = null
 
-    /** The port the listener is bound to: the setting (tests get a free one from FreeMetricsPort; 0 is refused). */
+    /**
+     * The port the listener is bound to: the setting, or the one the OS picked when the settings were built with 0
+     * directly (unit tests). `sard.metrics.port=0` is refused by [MetricsProperties].
+     */
     val boundPort: Int get() = checkNotNull(server) { "the metrics listener is not running" }.address.port
 
     override fun start() {
