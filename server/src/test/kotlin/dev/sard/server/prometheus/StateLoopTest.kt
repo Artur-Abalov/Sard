@@ -55,6 +55,23 @@ class StateLoopTest {
     }
 
     @Test
+    fun `Тик выполняется, пока сессия мутаций открыта, а не только после неё`() {
+        val first = CountDownLatch(1)
+        val loop = StateLoop(Duration.ofHours(1)) { first.countDown() }
+        started += loop
+
+        // The tick runs on the loop's own thread: it carries the mutant of the tick only if the session is still open.
+        val ran =
+            MutFlow.underTest {
+                loop.start()
+                first.await(10, TimeUnit.SECONDS)
+            }
+
+        loop.end()
+        assertTrue(ran, "the tick did not run within 10 s of the start")
+    }
+
+    @Test
     fun `Следующие тики идут по интервалу`() {
         val ticks = AtomicInteger()
         val third = CountDownLatch(3)
