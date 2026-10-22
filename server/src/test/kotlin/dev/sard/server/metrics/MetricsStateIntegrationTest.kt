@@ -8,6 +8,7 @@ import dev.sard.server.extension.TenantResolver
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.prometheus.StateQueries
 import dev.sard.server.retention.SceneTenant
 import dev.sard.server.retention.T0
 import dev.sard.server.runs.RUNS_NOW
@@ -15,7 +16,10 @@ import dev.sard.server.runs.RunAnnouncer
 import dev.sard.server.selfbackup.S3_REPOSITORY
 import dev.sard.server.selfbackup.SelfBackupTenant
 import dev.sard.server.selfbackup.SelfBackups
+import io.github.anschnapp.mutflow.MutFlow
+import io.github.anschnapp.mutflow.junit.MutFlowTest
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
+import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.jdbc.core.JdbcTemplate
 import java.sql.Connection
@@ -40,6 +44,8 @@ private val DAY: Duration = Duration.ofDays(1)
 private fun epoch(at: Instant) = at.epochSecond.toDouble()
 
 /** What the state tick reads from PostgreSQL and puts into the exposition (H1 phase 3), across tenants. */
+@Tag("mutflow-isolated")
+@MutFlowTest(includeTargets = [StateQueries::class])
 @MetricsServerTest
 class MetricsStateIntegrationTest(
     @Autowired private val refresh: StateRefresh,
@@ -77,7 +83,7 @@ class MetricsStateIntegrationTest(
 
     private fun tick(at: Instant = clock.now) {
         clock.now = at
-        refresh.tick()
+        MutFlow.underTest { refresh.tick() }
     }
 
     private fun exposition() = Exposition(registry.scrape())

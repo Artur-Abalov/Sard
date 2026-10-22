@@ -3,6 +3,8 @@
 
 package dev.sard.server.prometheus
 
+import io.github.anschnapp.mutflow.MutFlow
+import io.github.anschnapp.mutflow.junit.MutFlowTest
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.URI
@@ -22,6 +24,7 @@ import kotlin.test.assertTrue
 private val LOOPBACK: InetAddress = InetAddress.ofLiteral("127.0.0.1")
 
 /** The listener on a real socket: the glue between the endpoint and HTTP, its port and its life with the server. */
+@MutFlowTest(includeTargets = [MetricsListener::class])
 class MetricsListenerTest {
     private val started = mutableListOf<MetricsListener>()
     private val http = HttpClient.newHttpClient()
@@ -39,7 +42,7 @@ class MetricsListenerTest {
     ): MetricsListener {
         val settings = MetricsSettings(LOOPBACK, port, token?.let(::BearerToken), Duration.ofSeconds(60))
         return MetricsListener(settings, scrape).also {
-            it.start()
+            MutFlow.underTest { it.start() }
             started += it
         }
     }
@@ -108,12 +111,12 @@ class MetricsListenerTest {
     @Test
     fun `Слушатель закрывается вместе с остановкой и не принимает соединения`() {
         val metrics = listener()
-        val port = metrics.boundPort
-        assertTrue(metrics.isRunning)
+        val port = MutFlow.underTest { metrics.boundPort }
+        assertTrue(MutFlow.underTest { metrics.isRunning })
 
-        metrics.stop()
+        MutFlow.underTest { metrics.stop() }
 
-        assertFalse(metrics.isRunning)
+        assertFalse(MutFlow.underTest { metrics.isRunning })
         assertFailsWith<java.io.IOException> { java.net.Socket(LOOPBACK, port).close() }
     }
 
