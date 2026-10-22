@@ -24,6 +24,7 @@ import dev.sard.server.scheduler.FireOutcome
 import dev.sard.server.scheduler.MicrometerSchedulerMetrics
 import io.micrometer.prometheusmetrics.PrometheusConfig
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
+import java.lang.ref.Reference
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -108,13 +109,18 @@ class ExistingMetricsExpositionTest {
 
     @Test
     fun `Отставание планировщика и очередь шагов видны числами`() {
-        MicrometerSchedulerMetrics(registry).lag(Duration.ofSeconds(45))
-        MicrometerDispatchMetrics(registry).waiting(WaitingSteps(queued = 2, dispatched = 3))
+        // A gauge holds its source weakly: the adapters stay referenced until the exposition was read.
+        val scheduler = MicrometerSchedulerMetrics(registry)
+        val dispatch = MicrometerDispatchMetrics(registry)
+        scheduler.lag(Duration.ofSeconds(45))
+        dispatch.waiting(WaitingSteps(queued = 2, dispatched = 3))
 
         val now = exposition()
         assertEquals(45.0, now.value("sard_scheduler_lag_seconds"))
         assertEquals(2.0, now.value("sard_run_steps_queued"))
         assertEquals(3.0, now.value("sard_run_steps_dispatched"))
         assertTrue(now.families().all { it.startsWith("sard_") }, now.families().toString())
+        Reference.reachabilityFence(scheduler)
+        Reference.reachabilityFence(dispatch)
     }
 }
