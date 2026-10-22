@@ -81,6 +81,7 @@ class SelfAgentWiringIntegrationTest(
     @Autowired private val jdbc: JdbcTemplate,
     @Autowired private val postgres: PostgreSQLContainer,
     @Autowired private val dataSource: javax.sql.DataSource,
+    @Autowired private val meters: io.micrometer.prometheusmetrics.PrometheusMeterRegistry,
 ) {
     private val tokenFile = channel.resolve("enroll-token")
     private val passwordFile = channel.resolve("db-password")
@@ -121,6 +122,20 @@ class SelfAgentWiringIntegrationTest(
     private fun tokenOnDisk() = Files.readString(tokenFile)
 
     private fun loginAs(password: String) = DriverManager.getConnection(postgres.jdbcUrl, "sard_self", password).use { }
+
+    @Test
+    fun `Реестр метрик принимает только счётчики sard, jvm и process`() {
+        // A name per call: a meter that exists already is not asked of the filter again.
+        val suffix = UUID.randomUUID().toString().replace("-", "")
+        val names = listOf("sard", "jvm", "process", "http").map { "$it.wiring.probe.$suffix" }
+
+        MutFlow.underTest { names.forEach { meters.counter(it) } }
+
+        assertEquals(
+            listOf(true, true, true, false),
+            names.map { meters.find(it).counter() != null },
+        )
+    }
 
     @Test
     fun `Сервер при старте пишет пароль, а роль входит с ним и хранит проверочные данные SCRAM`() {
