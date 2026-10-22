@@ -12,9 +12,9 @@ import { POLL_INTERVAL_MS } from '../polling'
 type LogLine = components['schemas']['LogLine']
 
 // The first page and the next ones (P8).
-export const LOG_PAGE = 500
+const LOG_PAGE = 500
 
-export interface StepLog {
+interface StepLog {
   lines: LogLine[]
   nextAfterSeq: number
   hasMore: boolean

@@ -1,0 +1,84 @@
+# 2026-10-21 — разбор техдолга по реестру открытых вопросов
+
+Не продуктовая фича: без конвейера `/ship-feature`. Механика (тесты, рефакторинг
+без смены поведения, CI, web) и правка документации.
+
+## Решения владельца
+
+- Код агента, связанный с PostgreSQL, не трогать (OQ-213 оставлен открытым;
+  правка `agent/internal/restore/postgres_write.go` откачена).
+- OQ-048 и OQ-071 делаются отдельно.
+- В этой сессии — только механика пункта 1 разбора и правка документации;
+  пункты, ждущие решения владельца (OQ-154, OQ-137, OQ-156, OQ-138, OQ-155,
+  OQ-236, OQ-036), не начинались.
+
+## Базовая линия до правок
+
+`./scripts/gate.sh <m> fast`: sdk, tools, agent, cli — PASSED. `./scripts/crap.sh`:
+худший CRAP 6.0 (порог 6) — десяток функций `cmd/sard-agent` и три в `tools`.
+TODO/FIXME/XXX/HACK в коде нет. Гейт `server` не прогонялся: Docker-демон в
+окружении не запущен (OQ-095).
+
+## Сделано
+
+- OQ-087, OQ-094, OQ-108, OQ-127, OQ-128, OQ-129, OQ-145, OQ-214, OQ-215,
+  OQ-234 закрыты — подробности в «Закрыто при сверке», 2026-10-21.
+- `agent/internal/enroll/classify_test.go`: `dialClassifyServerManual` берёт
+  `t.Cleanup(srv.Stop)` (необязательное замечание architect, журнал
+  2026-10-13-gate-mutation-performance).
+- README: тег быстрого старта `v0.1.0-beta.1`; восстановление из консоли есть,
+  «пока нет» — восстановления поверх данных (OQ-230).
+- В реестр внесены пункты журналов, которых в нём не было: OQ-237…OQ-249.
+
+## Проверка
+
+- `./scripts/gate.sh web` — PASSED.
+- `./scripts/gate.sh agent fast` — PASSED (после всех правок агента).
+- go-mutesting по `agent/internal/redact/base64.go` — 1.000 (20/20),
+  `agent/internal/redact/redact.go` — 1.000 (92/92, 18 skipped). До правки:
+  0.950 и 0.974 (1 и 3 выживших).
+- Новые тесты видели красными: OQ-127 — с убранным из списка модулем,
+  OQ-128 — на мутанте `3→4`, OQ-129 — с выключенной проверкой контекста.
+
+## Открыто
+
+- Мутационный прогон всего модуля agent (`./scripts/gate.sh agent`) не
+  запускался: менялись только `redact` и тесты.
+
+## Проверка мёртвого кода (решение владельца: «Все это добавляй. В kotlin используй detekt»)
+
+ADR `docs/adr/00XX-draft-dead-code.md`.
+
+- Инструменты: `golang.org/x/tools/cmd/deadcode` v0.50.0 в `tools/go.mod` и `GO_TOOLS`
+  (`make tools`); `knip` 6.40.0 в `web` (`npm run lint`, `web/knip.json`).
+- Находки при включении (вывод инструментов):
+  - `deadcode -tags e2e` (корни — только `main`; решение владельца: код, который вызывают одни
+    тесты, мёртв, и тесты на него тоже): agent — 9 вне `certtest` и `testplugin`, cli и tools —
+    0, sdk покрывает прогон agent (проверено функцией-пробой). Удалены с переводом тестов на
+    продовый путь: `start`, `enroll.WriteIdentity`, `hostcheck.CheckIDs`,
+    `repoconnect.Known.Matches`, `restore.Staging.Path`, `transport.RefusalLine`. Пакеты
+    `internal/runner` и `internal/sandbox` (ничем не импортируются) — к удалению; удаление
+    каталогов заблокировал классификатор окружения, его выполняет владелец. `restore.Held.Dir`
+    — PostgreSQL, OQ-250. (С `-test` было бы 1 — только `Held.Dir`.)
+  - `unparam`: agent — 29 (2 в коде: `certpair.decide`, параметр `now`, и
+    `pluginhost.restoreDatabase`; 27 в тестах). Исправлено 25, остались 4 в коде PostgreSQL.
+  - `knip`: 22 неиспользуемых экспорта и 3 типа — всё использовалось только внутри своего
+    файла, `export` снят; `tsc` чистый.
+    `knip --production` (тесты не точки входа): 9 экспортов вне моков нужны только тестам, все
+    вызываются внутри своего модуля — мёртвого кода нет; в шлюз не включён.
+  - detekt с `UnusedImport` (конфиг подменён init-скриптом Gradle, проверка подмены — порог
+    сложности 1 даёт 1675 нарушений): 0 находок.
+- Код PostgreSQL агента не менялся (решение владельца): пять находок — OQ-250; `deadcode` и
+  `unparam` в шлюз включаются после OQ-235 патчем из приложения ADR.
+- `scripts/gate.sh`, `.golangci.yml`, `server/config/detekt.yml` защищены: правку `detekt.yml`
+  (`UnusedImport`) применяет владелец.
+- `./scripts/gate.sh web` — PASSED; markdownlint по изменённым документам — 0 ошибок.
+
+## CI: `CertificateLifetimesTest`
+
+На `15b642e` `e2e-shard (1)` упал в «an agent keeps backing up through the changes of the
+certificate»: ожидался пустой список не-`succeeded`, был `[running]`. Гонка теста: расписание
+выключается в конце наблюдения, а запуск, начатый в последнюю минуту, ещё идёт, когда тест читает
+запуски (на `c516089` тест прошёл; продовый код агента и сервера между коммитами поведения не
+менял). `observe()` теперь ждёт (`Await.until`), пока у источника не останется активных запусков.
+Локально: `:e2e:compileTestKotlin` — зелёный; e2e без Docker не запускались.

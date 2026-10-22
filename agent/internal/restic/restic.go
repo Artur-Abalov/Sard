@@ -47,7 +47,7 @@ type Repository interface {
 	// without overwriting (restore from the console, repo restore).
 	RestoreTo(ctx context.Context, req RestoreRequest) (RestoreSummary, error)
 	// Dump writes the content of one file of a snapshot to w as it comes
-	// (restore of a database from the console, repo restore of PostgreSQL).
+	// (a restore by a plugin from the console, repo restore of the files a plugin plans).
 	Dump(ctx context.Context, snapshotID, path string, w io.Writer) error
 }
 

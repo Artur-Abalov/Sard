@@ -22,6 +22,8 @@ type tools struct {
 	pgDump, psql string
 	// pgDumpall is set by locateDumpall, when the global objects are dumped.
 	pgDumpall string
+	// pgRestore is set by locateRestore: a restore needs it, a backup does not.
+	pgRestore string
 }
 
 func (p Plugin) fs() FS {
@@ -49,7 +51,7 @@ func (p Plugin) locate(c config) (tools, error) {
 		return tools{}, err
 	}
 	t := tools{pgDump: pgDump, psql: filepath.Join(filepath.Dir(pgDump), "psql")}
-	if err := p.neighbour(t.psql, "psql", ""); err != nil {
+	if err := p.neighbour(t.psql, "psql", "pg_dump", ""); err != nil {
 		return tools{}, err
 	}
 	return t, nil
@@ -59,7 +61,7 @@ func (p Plugin) locate(c config) (tools, error) {
 // once the versions are known: an old pg_dump is the first thing to tell.
 func (p Plugin) locateDumpall(t tools) (tools, error) {
 	t.pgDumpall = filepath.Join(filepath.Dir(t.pgDump), "pg_dumpall")
-	if err := p.neighbour(t.pgDumpall, "pg_dumpall", "; or set include_globals to false"); err != nil {
+	if err := p.neighbour(t.pgDumpall, "pg_dumpall", "pg_dump", "; or set include_globals to false"); err != nil {
 		return tools{}, err
 	}
 	return t, nil
@@ -77,23 +79,64 @@ func (p Plugin) findPgDump(c config) (string, error) {
 
 // searchPath looks for pg_dump in the PATH of the agent.
 func (p Plugin) searchPath() (string, error) {
-	for _, dir := range filepath.SplitList(env(p.environ(), "PATH")) {
-		if dir == "" {
-			continue
-		}
-		if path := filepath.Join(dir, "pg_dump"); p.runnable(path) == "" {
-			return path, nil
-		}
+	if path := p.lookPath("pg_dump"); path != "" {
+		return path, nil
 	}
 	return "", fmt.Errorf("pg_dump %w in the PATH of the agent: %s or set pg_dump_path", sdk.ErrProgramMissing, packageHint)
 }
 
-// neighbour checks a tool that must lie beside pg_dump.
-func (p Plugin) neighbour(path, name, hint string) error {
+// lookPath finds the tool in the PATH of the agent; "" if it is not there. An
+// empty entry of the PATH is not the current directory.
+func (p Plugin) lookPath(tool string) string {
+	for _, dir := range filepath.SplitList(env(p.environ(), "PATH")) {
+		if dir == "" {
+			continue
+		}
+		if path := filepath.Join(dir, tool); p.runnable(path) == "" {
+			return path
+		}
+	}
+	return ""
+}
+
+// neighbour checks a tool that must lie beside another one, the anchor.
+func (p Plugin) neighbour(path, name, anchor, hint string) error {
 	if reason := p.runnable(path); reason != "" {
-		return fmt.Errorf("%s %w at %q (%s), expected beside pg_dump: %s%s", name, sdk.ErrProgramMissing, path, reason, packageHint, hint)
+		return fmt.Errorf("%s %w at %q (%s), expected beside %s: %s%s", name, sdk.ErrProgramMissing, path, reason, anchor, packageHint, hint)
 	}
 	return nil
+}
+
+// locateRestore finds pg_restore (pg_restore_path or the PATH of the agent) and
+// psql beside it, for a restore (F1 ПГ8, R2b ВК22). Whatever is missing is
+// PG_CLIENT_MISSING, with the sentinel of the SDK for the hint of check.
+func (p Plugin) locateRestore(clientPath string) (tools, *sdk.RestoreError) {
+	pgRestore, f := p.findPgRestore(clientPath)
+	if f != nil {
+		return tools{}, f
+	}
+	psql := filepath.Join(filepath.Dir(pgRestore), "psql")
+	if err := p.neighbour(psql, "psql", "pg_restore", ""); err != nil {
+		return tools{}, clientMissing(err.Error(), err)
+	}
+	return tools{pgRestore: pgRestore, psql: psql}, nil
+}
+
+func (p Plugin) findPgRestore(clientPath string) (string, *sdk.RestoreError) {
+	if clientPath != "" {
+		if reason := p.runnable(clientPath); reason != "" {
+			return "", clientMissing(fmt.Sprintf("pg_restore_path %q: %s; %s or correct pg_restore_path", clientPath, reason, packageHint), sdk.ErrProgramMissing)
+		}
+		return clientPath, nil
+	}
+	if path := p.lookPath("pg_restore"); path != "" {
+		return path, nil
+	}
+	return "", clientMissing("pg_restore not found in the PATH of the agent: "+packageHint+" or set pg_restore_path", sdk.ErrProgramMissing)
+}
+
+func clientMissing(detail string, cause error) *sdk.RestoreError {
+	return &sdk.RestoreError{Reason: ReasonClientMissing, Stage: stageCheck, Detail: detail, Err: cause}
 }
 
 // runnable says why path cannot be started, or "".

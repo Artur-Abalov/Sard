@@ -116,6 +116,10 @@ class CertificateLifetimesTest {
             Thread.sleep(POLL.toMillis())
         }
         api.put("/api/v1/sources/$sourceId/schedule", """{"cron":"* * * * *","timezone":"UTC","enabled":false}""")
+        // A run the schedule started in the last minute of the observation may still be under way.
+        Await.until("the scheduled runs of X finished") {
+            scheduledRuns(sourceId).none { it.status in ACTIVE }
+        }
         return Observed(x, container, sourceId, selfId, started, states, notAfter)
     }
 
@@ -187,6 +191,9 @@ class CertificateLifetimesTest {
         private val POLL: Duration = Duration.ofSeconds(2)
         private const val MIN_CERTIFICATES = 4
         private const val MIN_RUNS = 5
+
+        /** The stored statuses of a run that has not finished (RunState.active). */
+        private val ACTIVE = setOf("queued", "dispatched", "running")
         private val LOCAL = Chain.repository("${AgentHost.STATE_DIR}/repo")
         private val self by lazy { SelfAgent(sard) }
         private val observed by lazy { observe() }

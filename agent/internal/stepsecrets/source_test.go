@@ -202,7 +202,7 @@ func (w *warned) lines() []string {
 	return strings.Split(strings.TrimSpace(w.buf.String()), "\n")
 }
 
-func (w *warned) count(substr string) int { return strings.Count(w.buf.String(), substr) }
+func (w *warned) warnings() int { return strings.Count(w.buf.String(), "level=WARN") }
 
 func TestAShortSecretIsWarnedAboutAtStartByNameNeverByValue(t *testing.T) {
 	w := warnSetup(t, map[string]string{"short": "ab7", "long": "a-long-secret"}, "")
@@ -218,7 +218,7 @@ func TestTheShortValueLimitIsFourCharacters(t *testing.T) {
 	for value, want := range map[string]int{"abc": 1, "abcd": 0, "пар": 1, "паро": 0} {
 		w := warnSetup(t, map[string]string{"s": value}, "")
 		w.src.Audit()
-		if got := w.count("level=WARN"); got != want {
+		if got := w.warnings(); got != want {
 			t.Errorf("%q: %d warnings, want %d", value, got, want)
 		}
 	}
@@ -228,7 +228,7 @@ func TestAShortEnvFileValueIsWarnedAboutByRepositoryAndVariable(t *testing.T) {
 	w := warnSetup(t, nil, "AWS_DEFAULT_REGION=eu\nAWS_SECRET_ACCESS_KEY=a-long-secret\n")
 	w.src.Audit()
 	log := w.buf.String()
-	if w.count("level=WARN") != 1 || !strings.Contains(log, "main") || !strings.Contains(log, "AWS_DEFAULT_REGION") ||
+	if w.warnings() != 1 || !strings.Contains(log, "main") || !strings.Contains(log, "AWS_DEFAULT_REGION") ||
 		strings.Contains(log, "=eu") || strings.Contains(log, "AWS_SECRET_ACCESS_KEY") {
 		t.Fatalf("log:\n%s", log)
 	}
@@ -250,7 +250,7 @@ func TestAShortSecretIsNotWarnedAboutAgainOnSteps(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := w.count("level=WARN"); got != 1 {
+	if got := w.warnings(); got != 1 {
 		t.Fatalf("%d warnings:\n%s", got, w.buf.String())
 	}
 }
@@ -264,7 +264,7 @@ func TestAValueThatTurnedShortAfterStartIsWarnedAboutOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := w.count("level=WARN"); got != 1 || !strings.Contains(w.buf.String(), "tok") {
+	if got := w.warnings(); got != 1 || !strings.Contains(w.buf.String(), "tok") {
 		t.Fatalf("%d warnings:\n%s", got, w.buf.String())
 	}
 }
@@ -278,7 +278,7 @@ func TestAValueThatTurnsShortAgainIsWarnedAboutAgain(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := w.count("level=WARN"); got != 2 {
+	if got := w.warnings(); got != 2 {
 		t.Fatalf("%d warnings:\n%s", got, w.buf.String())
 	}
 }
@@ -288,7 +288,7 @@ func TestAnUnreadableFileAtStartIsNamedWithoutItsPathAndStopsNothing(t *testing.
 	delete(w.fs, "/s/tok")
 	w.src.Audit()
 	log := w.buf.String()
-	if w.count("level=WARN") != 2 || !strings.Contains(log, "tok") || strings.Contains(log, "/s/tok") || !strings.Contains(log, "short") {
+	if w.warnings() != 2 || !strings.Contains(log, "tok") || strings.Contains(log, "/s/tok") || !strings.Contains(log, "short") {
 		t.Fatalf("log:\n%s", log)
 	}
 }
@@ -468,7 +468,7 @@ func TestAForeignFileThatBreaksAgainIsWarnedAboutAgain(t *testing.T) {
 func TestAOneCharacterSecretIsWarnedAbout(t *testing.T) {
 	w := warnSetup(t, map[string]string{"one": "x"}, "")
 	w.src.Audit()
-	if w.count("level=WARN") != 1 || !strings.Contains(w.buf.String(), "less readable") {
+	if w.warnings() != 1 || !strings.Contains(w.buf.String(), "less readable") {
 		t.Fatalf("log:\n%s", w.buf.String())
 	}
 }

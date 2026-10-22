@@ -28,6 +28,7 @@
 | google.golang.org/grpc/cmd/protoc-gen-go-grpc | v1.6.2 | Apache-2.0 | генерация gRPC-стабов |
 | github.com/golangci/golangci-lint/v2 | v2.14.0 | GPL-3.0 | линтер; запускается, не линкуется и не распространяется — на лицензию Sard не влияет |
 | github.com/avito-tech/go-mutesting | v0.0.0-20251226130216-48d0401f00fb | MIT | мутационное тестирование Go |
+| golang.org/x/tools/cmd/deadcode | v0.50.0 | BSD-3-Clause | мёртвый код Go: функции, недостижимые из `main` и тестов (ADR 00XX-draft-dead-code) |
 | github.com/goreleaser/nfpm/v2 | v2.47.0 | MIT | сборка deb и rpm агента (`make package`); запускается, в пакеты не попадает |
 
 ## Инструменты релиза (из apt раннера, не в `tools/go.mod`)
@@ -126,6 +127,7 @@
 | @types/react 19.3.0 | MIT | сборка/тесты | типы React |
 | @types/react-dom 19.3.0 | MIT | сборка/тесты | типы React DOM |
 | @vitejs/plugin-react 6.1.1 | MIT | сборка/тесты | React в Vite |
+| knip 6.40.0 | ISC | сборка/тесты | неиспользуемые файлы, экспорты и зависимости (ADR 00XX-draft-dead-code) |
 | msw 2.15.0 | MIT | сборка/тесты | моки API в dev и Vitest (ADR 0016) |
 | openapi-msw 2.0.0 | MIT | сборка/тесты | типизация обработчиков MSW из OpenAPI (ADR 0016) |
 | openapi-typescript 7.13.0 | MIT | сборка/тесты | генерация типов из OpenAPI |

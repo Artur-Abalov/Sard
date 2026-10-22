@@ -113,23 +113,9 @@ const (
 	// CleanupFailed: a restore failed and the rollback could not remove what
 	// it wrote; the message names what is left.
 	CleanupFailed Reason = "CLEANUP_FAILED"
-)
-
-// The reasons of the restore of a PostgreSQL database from the console (R2b).
-const (
-	PGClientMissing        Reason = "PG_CLIENT_MISSING"
-	PGClientTooOld         Reason = "PG_CLIENT_TOO_OLD"
-	PGServerTooOld         Reason = "PG_SERVER_TOO_OLD"
-	PGConnect              Reason = "PG_CONNECT"
-	CreatedbRequired       Reason = "CREATEDB_REQUIRED"
-	SuperuserRequired      Reason = "SUPERUSER_REQUIRED"
-	GlobalsSnapshotMissing Reason = "GLOBALS_SNAPSHOT_MISSING"
-	GlobalsTablespaces     Reason = "GLOBALS_TABLESPACES"
-	RolesExist             Reason = "ROLES_EXIST"
-	DatabaseExists         Reason = "DATABASE_EXISTS"
-	PGGlobalsFailed        Reason = "PG_GLOBALS_FAILED"
-	PGCreateDatabase       Reason = "PG_CREATE_DATABASE"
-	PGRestoreFailed        Reason = "PG_RESTORE_FAILED"
+	// PluginFailed: a plugin refused a restore with a reason that is no reason
+	// code, or failed in a way it did not word (R2c, ADR 0066).
+	PluginFailed Reason = "PLUGIN_FAILED"
 )
 
 // StaleLocksForeign: repo unlock would make restic remove a lock it may not
@@ -142,7 +128,8 @@ type Class int
 
 // The classes repo init and repo list use.
 const (
-	ClassAgentError Class = iota + 1
+	_ Class = iota // 0 is no class (ClassOf)
+	ClassAgentError
 	ClassUsage
 	ClassExists
 	ClassTemporary
@@ -180,12 +167,7 @@ var classes = map[Reason]Class{
 	StaleLocksForeign: ClassUsage,
 	RestoreIncomplete: ClassAgentError, TargetWrite: ClassWrite, TargetBusy: ClassTemporary, SetprivMissing: ClassAgentError,
 
-	ResticFailed: ClassAgentError, CleanupFailed: ClassWrite,
-
-	PGClientMissing: ClassAgentError, PGClientTooOld: ClassAgentError, PGServerTooOld: ClassUsage,
-	PGConnect: ClassTemporary, CreatedbRequired: ClassUsage, SuperuserRequired: ClassUsage,
-	GlobalsSnapshotMissing: ClassUsage, GlobalsTablespaces: ClassUsage, RolesExist: ClassUsage,
-	DatabaseExists: ClassUsage, PGGlobalsFailed: ClassAgentError, PGCreateDatabase: ClassAgentError, PGRestoreFailed: ClassAgentError,
+	ResticFailed: ClassAgentError, CleanupFailed: ClassWrite, PluginFailed: ClassAgentError,
 
 	AddressInvalid: ClassUsage, SecretInvalid: ClassUsage, S3KeyRejected: ClassUsage,
 	StorageAccessDenied: ClassUsage, BucketNotFound: ClassUsage,

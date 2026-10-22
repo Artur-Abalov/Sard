@@ -41,7 +41,8 @@ export default defineConfig({
   plugins: [
     // Generates src/routes -> src/routeTree.gen.ts (settings in tsr.config.json);
     // must run before the React plugin.
-    tanstackRouter({ target: 'react' }),
+    // autoCodeSplitting loads each route's component on first visit (one chunk per route).
+    tanstackRouter({ target: 'react', autoCodeSplitting: true }),
     react(),
     mockServiceWorker(),
     sardVersion(),

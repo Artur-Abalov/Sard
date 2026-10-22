@@ -37,8 +37,9 @@ func CheckTargetFlags(target string, allowRoot bool) error {
 	return nil
 }
 
-// IsRoot: the target is the root of the file system, however it is spelled.
-func IsRoot(target string) bool { return path.IsAbs(target) && path.Clean(target) == "/" }
+// IsRoot: the target is the root of the file system, however it is spelled
+// (the clean form of a relative path is never "/").
+func IsRoot(target string) bool { return path.Clean(target) == "/" }
 
 // OverwriteUnavailable is the usage error of --overwrite: replacing files in
 // a target that is not empty is the slice A8c-2b (Р74, OQ-211). The flag is

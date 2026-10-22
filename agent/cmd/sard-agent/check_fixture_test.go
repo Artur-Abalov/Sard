@@ -69,13 +69,14 @@ func (p *fakePrograms) Run(_ context.Context, cmd restic.Command) (int, error) {
 	if !ok {
 		return -1, &fs.PathError{Op: "fork/exec", Path: cmd.Path, Err: syscall.ENOENT}
 	}
-	if a.err != nil {
-		return -1, a.err
-	}
+	// A program that fails (killed after its time) may have said something first.
 	if cmd.Stdout != nil {
 		for l := range strings.Lines(a.out) {
 			cmd.Stdout([]byte(strings.TrimSuffix(l, "\n")))
 		}
+	}
+	if a.err != nil {
+		return -1, a.err
 	}
 	return a.code, nil
 }
@@ -237,12 +238,11 @@ func (h *setupHost) check(extra ...string) (int, string, string) {
 }
 
 // writeFragment writes a fragment of agent.d, root's, as repo add makes it.
-func (h *setupHost) writeFragment(name, content string, mode os.FileMode) string {
+func (h *setupHost) writeFragment(name, content string, mode os.FileMode) {
 	h.t.Helper()
 	path := filepath.Join(h.agentD(), name)
 	h.write(path, content, mode)
 	h.rootOwns(path)
-	return path
 }
 
 // checkLines runs check and returns the lines it printed.

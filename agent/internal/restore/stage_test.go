@@ -31,6 +31,9 @@ func names(list ...string) func() string {
 	}
 }
 
+// stagingPath is the staging directory names("x1y2") gives in dir.
+func stagingPath(dir string) string { return filepath.Join(dir, ".sard-restore-x1y2") }
+
 // staged holds the target dir and makes the staging directory in it.
 func staged(t *testing.T, fsys *recordingFS, dir string, random func() string) (*restore.Held, *restore.Staging, *refusal.Failure) {
 	t.Helper()
@@ -47,7 +50,7 @@ func TestTheStagingDirectoryAndItsRootBelongToRootWithMode0700EvenWithUmask000(t
 	dir := t.TempDir()
 	defer syscall.Umask(syscall.Umask(0))
 	fsys := newRecordingFS()
-	_, stage, f := staged(t, fsys, dir, names("x1y2"))
+	_, _, f := staged(t, fsys, dir, names("x1y2"))
 	if f != nil {
 		t.Fatal(f)
 	}
@@ -61,9 +64,6 @@ func TestTheStagingDirectoryAndItsRootBelongToRootWithMode0700EvenWithUmask000(t
 			t.Errorf("%s owner %v", p, got)
 		}
 	}
-	if stage.Path() != filepath.Join(dir, ".sard-restore-x1y2") {
-		t.Errorf("path %q", stage.Path())
-	}
 }
 
 func TestAStagingNameThatIsTakenIsReplacedByAnotherName(t *testing.T) {
@@ -74,9 +74,9 @@ func TestAStagingNameThatIsTakenIsReplacedByAnotherName(t *testing.T) {
 	}
 	defer held.Release()
 	mustMkdir(t, dir, ".sard-restore-taken") // turned up after the target was judged
-	stage, f := held.Stage(names("taken", "free"))
-	if f != nil || filepath.Base(stage.Path()) != ".sard-restore-free" {
-		t.Fatalf("stage %v, failure %v", stage, f)
+	_, f = held.Stage(names("taken", "free"))
+	if info, err := os.Stat(filepath.Join(dir, ".sard-restore-free")); f != nil || err != nil || !info.IsDir() {
+		t.Fatalf("staging %v, %v, failure %v", info, err, f)
 	}
 }
 
@@ -136,7 +136,7 @@ func TestTheEntriesOfTheRootDirectoryAreMovedIntoTheTargetAndTheStagingDirectory
 	if f != nil {
 		t.Fatal(f)
 	}
-	root := filepath.Join(stage.Path(), "root")
+	root := filepath.Join(stagingPath(dir), "root")
 	mustWrite(t, filepath.Join(root, "srv/data/a.txt"), "A")
 	mustWrite(t, filepath.Join(root, "app.dump"), "D")
 	if f := stage.Commit(); f != nil {
@@ -158,7 +158,7 @@ func TestANameThatTurnedUpInTheTargetIsNotReplacedAndTheRestIsRemoved(t *testing
 	if f != nil {
 		t.Fatal(f)
 	}
-	root := filepath.Join(stage.Path(), "root")
+	root := filepath.Join(stagingPath(dir), "root")
 	mustWrite(t, filepath.Join(root, "srv/a.txt"), "NEW")
 	mustWrite(t, filepath.Join(root, "zzz"), "Z")
 	mustWrite(t, filepath.Join(dir, "srv/theirs"), "THEIRS") // turned up while restic worked
@@ -197,7 +197,7 @@ func TestAMountPointOnTheWayOfAMoveIsAnInvalidTarget(t *testing.T) {
 	if f != nil {
 		t.Fatal(f)
 	}
-	mustWrite(t, filepath.Join(stage.Path(), "root/srv/a.txt"), "A")
+	mustWrite(t, filepath.Join(stagingPath(dir), "root/srv/a.txt"), "A")
 	f = stage.Commit()
 	if f == nil || f.Reason != refusal.TargetInvalid || f.Class != refusal.ClassUsage || !strings.Contains(f.Detail, "mount point inside the target") {
 		t.Fatalf("failure %v", f)
@@ -214,7 +214,7 @@ func TestDiscardRemovesTheStagingDirectoryWithoutFollowingALinkInIt(t *testing.T
 	if f != nil {
 		t.Fatal(f)
 	}
-	root := filepath.Join(stage.Path(), "root")
+	root := filepath.Join(stagingPath(dir), "root")
 	mustWrite(t, filepath.Join(root, "partial"), "x")
 	if err := os.Symlink(outside, filepath.Join(root, "link")); err != nil {
 		t.Fatal(err)
@@ -222,7 +222,7 @@ func TestDiscardRemovesTheStagingDirectoryWithoutFollowingALinkInIt(t *testing.T
 	if err := stage.Discard(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Lstat(stage.Path()); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Lstat(stagingPath(dir)); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("staging left: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(outside, "precious")); err != nil {
@@ -237,7 +237,7 @@ func TestTheStagingDirectoryIsHandedOnByItsDescriptor(t *testing.T) {
 		t.Fatal(f)
 	}
 	got, err := stage.Dir().Handle().Stat()
-	want, _ := os.Stat(stage.Path())
+	want, _ := os.Stat(stagingPath(dir))
 	if err != nil || !os.SameFile(got, want) {
 		t.Fatalf("the descriptor is not the staging directory: %v", err)
 	}

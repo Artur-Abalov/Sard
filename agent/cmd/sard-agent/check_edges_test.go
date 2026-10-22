@@ -645,8 +645,8 @@ func TestTheLabelOfAFileIsAskedOnceWhenTwoSettingsNameIt(t *testing.T) {
 func TestADenialAtTheEdgeOfTheLast24HoursIsCountedAndOneBeyondIsNot(t *testing.T) {
 	h := fullHost(t)
 	h.onSELinux()
-	in := avcAt("restic", 1, h.clock.now.Add(-23*time.Hour-30*time.Minute).Unix())
-	out := avcAt("restic", 2, h.clock.now.Add(-24*time.Hour-30*time.Minute).Unix())
+	in := avcAt(1, h.clock.now.Add(-23*time.Hour-30*time.Minute).Unix())
+	out := avcAt(2, h.clock.now.Add(-24*time.Hour-30*time.Minute).Unix())
 	h.progs.prefix("ausearch -m avc -ts yesterday", in+"\n----\n"+out+"\n")
 	lines, _, _ := h.checkLines()
 	l := line(t, lines, "selinux.denials", "-")

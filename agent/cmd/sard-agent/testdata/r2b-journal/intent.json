@@ -1,0 +1,1 @@
+{"command_id":"c1","connection":{"host":"db2","port":5432,"user":"restorer","password_ref":"pg-restore","tls_mode":"disable"},"database":{"name":"app_restored_20261011"}}

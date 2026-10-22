@@ -134,7 +134,7 @@ func (h *Held) checkEmpty() *refusal.Failure {
 }
 
 // tempMarker follows the name in .<name>.tmp-<random>, the temporary file of
-// a PostgreSQL restore (Р62).
+// the files a plugin plans for repo restore (Р62).
 const tempMarker = ".tmp-"
 
 // isRemains: the name of what a restore that was killed leaves: a staging
@@ -173,7 +173,7 @@ func isEmpty(dir hostsetup.Dir, names []string) (bool, error) {
 	}
 	defer func() { _ = child.Close() }()
 	inside, err := child.Names()
-	return err == nil && len(inside) == 0, err
+	return len(inside) == 0, err
 }
 
 // Held is the target while the restore into it runs: opened by its

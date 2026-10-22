@@ -10,12 +10,19 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/Artur-Abalov/sard/agent/plugins/postgresql/pgclient"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
-	"github.com/Artur-Abalov/sard/agent/plugins/sdk/pgclient"
 )
+
+// logger is where the lines of the tools go: the host of a step, or that of a
+// recovery at the start of the agent.
+type logger interface {
+	Log(level sdk.Level, text string)
+}
 
 // maxQuoteBytes keeps the quote of a tool's error short.
 const maxQuoteBytes = 512
@@ -39,6 +46,16 @@ func (p Plugin) environ() []string {
 // messages in English and the password, if there is one.
 func (p Plugin) childEnv(password []byte) []string { return pgclient.Env(p.environ(), password) }
 
+// call is one run of a tool.
+type call struct {
+	path    string
+	args    []string
+	environ []string
+	// stdin and stdout are the standard input and output; nil: empty and discarded.
+	stdin  io.Reader
+	stdout io.Writer
+}
+
 // outcome is how a run of a tool ended.
 type outcome struct {
 	tool string
@@ -46,7 +63,12 @@ type outcome struct {
 	err  error // the tool did not start or was killed by a signal
 	// reason is the last line of stderr that names an error.
 	reason string
+	// out is what the tool printed, when the caller asked for it (output).
+	out string
 }
+
+// ok: the tool started and ended with 0.
+func (o outcome) ok() bool { return o.err == nil && o.code == 0 }
 
 // failure is the error of a run that did not succeed, nil otherwise.
 func (o outcome) failure() error {
@@ -61,17 +83,64 @@ func (o outcome) failure() error {
 	return nil
 }
 
+// text is the failure of the run in a line: "psql failed (exit code 3): <quote>".
+func (o outcome) text() string {
+	if err := o.failure(); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// why is the quote of the error of a failed run, or the failure in words.
+func (o outcome) why() string { return firstNonEmpty(o.reason, o.text()) }
+
+// problem is what to tell of a run that failed or answered with something the
+// plugin cannot read.
+func (o outcome) problem() string {
+	if !o.ok() {
+		return o.text()
+	}
+	return fmt.Sprintf("unexpected answer of psql: %q", o.last())
+}
+
+// lines are the lines the tool printed.
+func (o outcome) lines() []string {
+	lines := strings.Split(strings.TrimSuffix(o.out, "\n"), "\n")
+	for i, l := range lines {
+		lines[i] = strings.TrimSuffix(l, "\r")
+	}
+	return lines
+}
+
+// last is the last line the tool printed that is not blank, "" if none.
+func (o outcome) last() string {
+	lines := o.lines()
+	for i := len(lines) - 1; i >= 0; i-- {
+		if line := strings.TrimSpace(lines[i]); line != "" {
+			return line
+		}
+	}
+	return ""
+}
+
+// number is the last line the tool printed read as a number of that many bits;
+// false when the run failed or the line is no such number.
+func (o outcome) number(bits int) (uint64, bool) {
+	n, err := strconv.ParseUint(o.last(), 10, bits)
+	return n, o.ok() && err == nil
+}
+
 // run starts a tool. Its stderr goes to the log of the step line by line,
 // WARN for the lines that report an error or a warning (F1 ПГ22).
-func (p Plugin) run(ctx context.Context, h sdk.Host, path string, args, environ []string, stdout io.Writer) outcome {
-	o := outcome{tool: filepath.Base(path)}
+func (p Plugin) run(ctx context.Context, log logger, c call) outcome {
+	o := outcome{tool: filepath.Base(c.path)}
 	quote := &quoter{detailPrefix: o.tool + ": detail: "}
-	code, err := p.runner().Run(ctx, Cmd{Path: path, Args: args, Env: environ, Stdout: stdout, Stderr: func(line string) {
+	code, err := p.runner().Run(ctx, Cmd{Path: c.path, Args: c.args, Env: c.environ, Stdin: c.stdin, Stdout: c.stdout, Stderr: func(line string) {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			return
 		}
-		h.Log(logLevel(line), line)
+		log.Log(logLevel(line), line)
 		quote.add(line)
 	}})
 	o.code, o.err, o.reason = code, err, quote.reason()
@@ -118,9 +187,9 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
-// isError tells the lines libpq and pg_dump use for errors.
+// isError tells the lines libpq, psql, pg_dump and pg_restore use for errors.
 func isError(line string) bool {
-	return strings.Contains(line, "error:") || strings.Contains(line, "FATAL:")
+	return strings.Contains(line, "error:") || strings.Contains(line, "FATAL:") || strings.Contains(line, "ERROR:")
 }
 
 func logLevel(line string) sdk.Level {
@@ -137,9 +206,11 @@ func cut(s string) string {
 	return s
 }
 
-// output runs a tool and returns what it printed.
-func (p Plugin) output(ctx context.Context, h sdk.Host, path string, args, environ []string) (string, outcome) {
+// output runs a tool and returns what it printed, which is also in the outcome.
+func (p Plugin) output(ctx context.Context, log logger, c call) (string, outcome) {
 	var out bytes.Buffer
-	o := p.run(ctx, h, path, args, environ, &out)
-	return out.String(), o
+	c.stdout = &out
+	o := p.run(ctx, log, c)
+	o.out = out.String()
+	return o.out, o
 }

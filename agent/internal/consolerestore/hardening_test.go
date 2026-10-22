@@ -25,32 +25,32 @@ import (
 // Every directory and file the start and the settling open, they close.
 func TestTheStartAndTheSettlingCloseEverythingTheyOpen(t *testing.T) {
 	completed := func(t *testing.T, h *host) {
-		if err := os.WriteFile(filepath.Join(command(h, "c1"), "marker"), []byte(`{"destination":"s1/x"}`), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(c1Dir(h), "marker"), []byte(`{"destination":"s1/x"}`), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	tests := map[string]func(t *testing.T, h *host){
 		"a restore that completed": func(t *testing.T, h *host) {
-			mustMkdirAll(t, command(h, "c1"))
+			mustMkdirAll(t, c1Dir(h))
 			completed(t, h)
 			h.engine.CleanStaging()
 			h.engine.Settle("c1")
 		},
 		"a restore killed during restic": func(t *testing.T, h *host) {
 			leaveStaging(t, h, "c1")
-			mustMkdirAll(t, filepath.Join(command(h, "c1"), "root"))
+			mustMkdirAll(t, filepath.Join(c1Dir(h), "root"))
 			h.engine.CleanStaging()
 		},
 		"a staging directory that cannot be listed": func(t *testing.T, h *host) {
-			mustMkdirAll(t, command(h, "c1"))
+			mustMkdirAll(t, c1Dir(h))
 			h.faults.namesErr = map[string]error{filepath.Join(h.dir, ".sard-staging"): syscall.EIO}
 			h.engine.CleanStaging()
 			h.engine.Settle("c1")
 		},
 		"a marker that cannot be read": func(t *testing.T, h *host) {
-			mustMkdirAll(t, command(h, "c1"))
+			mustMkdirAll(t, c1Dir(h))
 			completed(t, h)
-			h.faults.readErr = map[string]error{filepath.Join(command(h, "c1"), "marker"): syscall.EIO}
+			h.faults.readErr = map[string]error{filepath.Join(c1Dir(h), "marker"): syscall.EIO}
 			h.engine.CleanStaging()
 		},
 	}
@@ -111,17 +111,17 @@ func TestAMissingRootAfterResticIsAFailureThatLeavesNoTrace(t *testing.T) {
 func TestTheStartLogsARestoreThatCompletedAndTheSettlingOfIt(t *testing.T) {
 	h := killedAfterTheMove(t)
 	h.engine.CleanStaging()
-	mentions(t, h.log.String(), "level=INFO", "the restore completed before the agent was restarted", command(h, "c1"), "destination="+destRel)
+	mentions(t, h.log.String(), "level=INFO", "the restore completed before the agent was restarted", c1Dir(h), "destination="+destRel)
 	h.log.Reset()
 	h.engine.Settle("c1")
-	mentions(t, h.log.String(), "level=INFO", "removed the temporary directory of a restore", command(h, "c1"))
+	mentions(t, h.log.String(), "level=INFO", "removed the temporary directory of a restore", c1Dir(h))
 }
 
 func TestTheStartLogsTheRemovalOfAnInterruptedRestore(t *testing.T) {
 	h := newHost(t)
 	leaveStaging(t, h, "c1")
 	h.engine.CleanStaging()
-	mentions(t, h.log.String(), "level=INFO", "removed the temporary directory of an interrupted restore", command(h, "c1"))
+	mentions(t, h.log.String(), "level=INFO", "removed the temporary directory of an interrupted restore", c1Dir(h))
 }
 
 func TestSettleLogsAnErrorWhenStagingCannotBeOpened(t *testing.T) {
@@ -145,7 +145,7 @@ func TestAStagingDirectoryThatCannotBeListedIsReportedAndNothingIsRemoved(t *tes
 		t.Fatalf("evidence = %+v", got)
 	}
 	mentions(t, h.log.String(), "level=ERROR", staging)
-	if _, err := os.Stat(command(h, "c1")); err != nil {
+	if _, err := os.Stat(c1Dir(h)); err != nil {
 		t.Errorf("c1: %v", err)
 	}
 }
@@ -175,7 +175,7 @@ func TestAFailedMoveTellsWhatHappenedToTheDestination(t *testing.T) {
 
 func TestACleanupFailureOfARollbackSaysWhyInTheFailure(t *testing.T) {
 	h := newHost(t)
-	staging := command(h, "c1")
+	staging := c1Dir(h)
 	h.faults.removeDirErr = map[string]error{staging: syscall.EIO}
 	h.repo.restore = writesThenFails(errors.New("boom"))
 	_, f := h.run(h.request())
@@ -201,7 +201,7 @@ func TestATemporaryRootThatCannotBeMadeLeavesNothing(t *testing.T) {
 	h := newHost(t)
 	mustMkdirAll(t, h.dir)
 	before := tree(t, h.dir)
-	root := filepath.Join(command(h, "c1"), "root")
+	root := filepath.Join(c1Dir(h), "root")
 	h.faults.mkdirErr = map[string]error{root: syscall.EROFS}
 	_, f := h.run(h.request())
 	hasPrefix(t, f, "TARGET_WRITE (check)")
@@ -219,7 +219,7 @@ func TestAMarkerThatCannotBeWrittenFailsTheRestoreAndLeavesNothing(t *testing.T)
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := newHost(t)
-			inject(h.faults, filepath.Join(command(h, "c1"), "marker.tmp"))
+			inject(h.faults, filepath.Join(c1Dir(h), "marker.tmp"))
 			_, f := h.run(h.request())
 			hasPrefix(t, f, "TARGET_WRITE (move)")
 			mentions(t, f.Error(), "cannot write the marker of the restore")
@@ -251,33 +251,33 @@ func TestAMarkerThatFailsToBeRenamedLeavesNoTemporaryFile(t *testing.T) {
 }
 
 // stuckAt is the evidence of the start on a host where c1 holds a marker the setup spoiled.
-func stuckAt(t *testing.T, setup func(h *host)) (*host, consolerestore.Evidence) {
+func stuckAt(t *testing.T, setup func(h *host)) consolerestore.Evidence {
 	t.Helper()
 	h := newHost(t)
-	mustMkdirAll(t, command(h, "c1"))
+	mustMkdirAll(t, c1Dir(h))
 	setup(h)
 	got := h.engine.CleanStaging()
 	if len(got) != 1 || got[0].Verdict != consolerestore.CleanupFailed || got[0].Err == nil {
 		t.Fatalf("evidence = %+v", got)
 	}
-	if _, err := os.Stat(command(h, "c1")); err != nil {
+	if _, err := os.Stat(c1Dir(h)); err != nil {
 		t.Errorf("c1: %v", err)
 	}
 	h.faults.noLeaks(t)
-	return h, got[0]
+	return got[0]
 }
 
 func TestAMarkerThatIsALinkIsNotEvidenceAndStays(t *testing.T) {
 	stuckAt(t, func(h *host) {
-		if err := os.Symlink("elsewhere", filepath.Join(command(h, "c1"), "marker")); err != nil {
+		if err := os.Symlink("elsewhere", filepath.Join(c1Dir(h), "marker")); err != nil {
 			t.Fatal(err)
 		}
 	})
 }
 
 func TestAMarkerThatCannotBeReadIsNotEvidenceAndStaysAndNamesTheError(t *testing.T) {
-	_, ev := stuckAt(t, func(h *host) {
-		m := filepath.Join(command(h, "c1"), "marker")
+	ev := stuckAt(t, func(h *host) {
+		m := filepath.Join(c1Dir(h), "marker")
 		if err := os.WriteFile(m, []byte(`{"destination":"d"}`), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -290,7 +290,7 @@ func TestAMarkerThatCannotBeReadIsNotEvidenceAndStaysAndNamesTheError(t *testing
 
 func TestAnUnreadableMarkerSaysSo(t *testing.T) {
 	h := newHost(t)
-	if err := writeFile(filepath.Join(command(h, "c1"), "marker"), "{not json", 0o600); err != nil {
+	if err := writeFile(filepath.Join(c1Dir(h), "marker"), "{not json", 0o600); err != nil {
 		t.Fatal(err)
 	}
 	got := h.engine.CleanStaging()
@@ -304,7 +304,7 @@ func TestAnUnreadableMarkerSaysSo(t *testing.T) {
 // touched: a kill in between never leaves a marker without root.
 func TestTheRemovalOfTheMarkerIsSyncedBeforeRootIsRemoved(t *testing.T) {
 	h := newHost(t)
-	c1 := command(h, "c1")
+	c1 := c1Dir(h)
 	if err := writeFile(filepath.Join(c1, "root/srv/a.txt"), "A", 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -424,12 +424,12 @@ func TestTheTargetOfTheOptionsDescribesTheRepositoryInTheMessages(t *testing.T) 
 func TestAFailedSyncOfTheMarkerRemovalIsLoggedAndTheCleanupGoesOn(t *testing.T) {
 	h := newHost(t)
 	leaveStaging(t, h, "c1")
-	h.faults.syncErr = map[string]error{command(h, "c1"): syscall.EIO}
+	h.faults.syncErr = map[string]error{c1Dir(h): syscall.EIO}
 	if left := stuck(h.engine.CleanStaging()); len(left) != 0 {
 		t.Fatalf("left = %+v", left)
 	}
-	if _, err := os.Stat(command(h, "c1")); !os.IsNotExist(err) {
+	if _, err := os.Stat(c1Dir(h)); !os.IsNotExist(err) {
 		t.Errorf("c1: %v", err)
 	}
-	mentions(t, h.log.String(), "level=WARN", "could not be synced", command(h, "c1"), "input/output error")
+	mentions(t, h.log.String(), "level=WARN", "could not be synced", c1Dir(h), "input/output error")
 }

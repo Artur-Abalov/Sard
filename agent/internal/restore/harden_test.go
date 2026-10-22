@@ -195,7 +195,7 @@ func TestAStagingDirectoryThatCannotBeRemovedAfterACommitIsATargetWriteFailure(t
 		t.Fatal(f)
 	}
 	f = stage.Commit()
-	if f == nil || f.Reason != refusal.TargetWrite || !strings.Contains(f.Detail, "cannot remove the temporary directory "+stage.Path()) {
+	if f == nil || f.Reason != refusal.TargetWrite || !strings.Contains(f.Detail, "cannot remove the temporary directory "+stagingPath(dir)) {
 		t.Fatalf("failure %v", f)
 	}
 }
@@ -204,11 +204,12 @@ func TestTheFailureOfAMoveIsNotReplacedByTheFailureToRemoveTheStagingDirectory(t
 	fsys := newRecordingFS()
 	fsys.failMove = "srv"
 	fsys.failRemoveDir = ".sard-restore-x1y2"
-	_, stage, f := staged(t, fsys, t.TempDir(), names("x1y2"))
+	dir := t.TempDir()
+	_, stage, f := staged(t, fsys, dir, names("x1y2"))
 	if f != nil {
 		t.Fatal(f)
 	}
-	mustWrite(t, filepath.Join(stage.Path(), "root/srv/a.txt"), "A")
+	mustWrite(t, filepath.Join(stagingPath(dir), "root/srv/a.txt"), "A")
 	if f = stage.Commit(); f == nil || f.Reason != refusal.TargetInvalid {
 		t.Fatalf("failure %v", f)
 	}
@@ -237,10 +238,10 @@ func TestAFailureOfResticThatLeavesTheStagingDirectoryAddsItToTheDetail(t *testi
 	if f != nil {
 		t.Fatal(f)
 	}
-	r.staging = stage.Path()
+	r.staging = stagingPath(dir)
 	_, f = restore.Run(context.Background(), r, restore.Request{Snapshot: theSnapshot(), Target: "/r", Staging: stage}, repoTarget())
 	if f == nil || f.Reason != refusal.TargetWrite ||
-		!strings.Contains(f.Detail, "no space left on device") || !strings.Contains(f.Detail, "; the temporary directory could not be removed: "+stage.Path()) {
+		!strings.Contains(f.Detail, "no space left on device") || !strings.Contains(f.Detail, "; the temporary directory could not be removed: "+stagingPath(dir)) {
 		t.Fatalf("failure %v", f)
 	}
 }
@@ -249,11 +250,12 @@ func TestWhenTheMoveAfterSomeFilesCouldNotBeRestoredFailsTheMoveIsTold(t *testin
 	fsys := newRecordingFS()
 	fsys.failMove = "srv"
 	r := &fakeRestorer{writes: map[string]string{"srv/ok": "x"}, err: &restic.RestoreError{Items: []restic.ItemError{{Item: "/srv/bad"}}}}
-	_, stage, f := staged(t, fsys, t.TempDir(), names("x1y2"))
+	dir := t.TempDir()
+	_, stage, f := staged(t, fsys, dir, names("x1y2"))
 	if f != nil {
 		t.Fatal(f)
 	}
-	r.staging = stage.Path()
+	r.staging = stagingPath(dir)
 	_, f = restore.Run(context.Background(), r, restore.Request{Snapshot: theSnapshot(), Target: "/r", Staging: stage}, repoTarget())
 	if f == nil || f.Reason != refusal.TargetInvalid {
 		t.Fatalf("failure %v", f)
@@ -273,12 +275,13 @@ func TestTheStagingDirectoryHasTheModeOfRootOnly(t *testing.T) {
 func TestARootDirectoryThatCannotBeListedIsATargetWriteFailure(t *testing.T) {
 	fsys := newRecordingFS()
 	fsys.failNames = "x1y2/root"
-	_, stage, f := staged(t, fsys, t.TempDir(), names("x1y2"))
+	dir := t.TempDir()
+	_, stage, f := staged(t, fsys, dir, names("x1y2"))
 	if f != nil {
 		t.Fatal(f)
 	}
 	f = stage.Commit()
-	if f == nil || f.Reason != refusal.TargetWrite || !strings.Contains(f.Detail, "cannot read "+stage.Path()+"/root") {
+	if f == nil || f.Reason != refusal.TargetWrite || !strings.Contains(f.Detail, "cannot read "+stagingPath(dir)+"/root") {
 		t.Fatalf("failure %v", f)
 	}
 }

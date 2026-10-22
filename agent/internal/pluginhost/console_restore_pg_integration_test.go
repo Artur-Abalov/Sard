@@ -15,22 +15,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Artur-Abalov/sard/agent/internal/consolerestore"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
+	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/internal/restorejournal"
+	"github.com/Artur-Abalov/sard/agent/plugins/postgresql"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
-// The restore of a database (R2b) with the pinned restic and a local repository: the dump comes out of
-// restic dump byte for byte into the standard input of pg_restore, and restic dump that read the table of
-// contents is stopped. pg_restore and psql are scripts of the test.
-
-type quiet struct{}
-
-func (quiet) Progress(agentv1.StepPhase, uint64, uint64)                      {}
-func (quiet) ProgressFiles(agentv1.StepPhase, uint64, uint64, uint64, uint64) {}
-func (quiet) Log(agentv1.LogLevel, string)                                    {}
+// The restore of a database (R2b, R2c-2) by the postgresql plugin through the host, with the pinned restic and
+// a local repository: the dump comes out of restic dump byte for byte into the standard input of pg_restore,
+// and restic dump that read the table of contents is stopped. pg_restore and psql are scripts of the test.
 
 // scriptTools writes pg_restore (it saves the dump it is given to out) and psql (it answers like a healthy server).
 func scriptTools(t *testing.T, out string) string {
@@ -60,6 +56,30 @@ esac
 	return dir
 }
 
+// pgHandler is the handler of the plugin postgresql over the repository, with the tools of the test.
+func pgHandler(t *testing.T, repo restic.Repository, tools string) *pluginhost.Handlers {
+	t.Helper()
+	state := t.TempDir()
+	reg, err := sdk.NewRegistry(postgresql.Plugin{AgentVersion: "test", Environ: func() []string { return []string{"PATH=" + tools + ":/usr/bin:/bin"} }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	password := filepath.Join(t.TempDir(), "pg")
+	if err := os.WriteFile(password, []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	journal := pluginhost.NewJournal(restorejournal.New(restorejournal.Options{
+		Dir: filepath.Join(state, "restore-journal"), FS: hostsetup.OS{}, Owner: hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid(), Mode: 0o700},
+	}), slog.New(slog.DiscardHandler))
+	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(map[string]string{"pg": password}, os.ReadFile),
+		func(string, string, io.Writer) (restic.Repository, bool) { return repo, true }, filepath.Join(state, "restore"),
+		pluginhost.WithRestoreJournal(journal))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return handlers
+}
+
 func TestIntegrationADatabaseIsStreamedFromResticIntoPgRestoreByteForByte(t *testing.T) {
 	r := newRepo(t)
 	archive := "PGDMP" + strings.Repeat("x", 3<<20)
@@ -73,33 +93,24 @@ func TestIntegrationADatabaseIsStreamedFromResticIntoPgRestoreByteForByte(t *tes
 	}
 	restored := filepath.Join(t.TempDir(), "restored.dump")
 	tools := scriptTools(t, restored)
-	engine := consolerestore.New(consolerestore.Options{
-		Dir: filepath.Join(t.TempDir(), "restore"), FS: hostsetup.OS{}, Owner: hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid(), Mode: 0o700}, Logger: slog.New(slog.DiscardHandler),
-		Postgres: consolerestore.PostgresOptions{Exec: restic.ProcessExecutor{}, Tools: osTools2{}, Environ: func() []string { return []string{"PATH=" + tools + ":/usr/bin:/bin"} }, StateDir: t.TempDir(), LockShare: 0.5,
-			Secret: func(string) ([]byte, error) { return []byte("x"), nil }},
-	})
-
-	out, f := engine.RestoreDatabase(context.Background(), r.cli, consolerestore.DatabaseRequest{
-		CommandID: "c1", Repository: "it", SnapshotID: sum.SnapshotID, Source: "s2",
-		Plan:     sdk.PostgresRestore{Host: "db", Port: 5432, User: "restorer", PasswordRef: "pg", TLSMode: "disable", Name: "app_restored"},
-		Password: []byte("x"),
-	}, quiet{})
-	if f != nil {
-		t.Fatal(f)
+	handler, _ := pgHandler(t, r.cli, tools).Handler("postgresql")
+	res, err := handler.Run(context.Background(), &agentv1.RunStep{
+		CommandId: "c1", Plugin: "postgresql", Action: agentv1.Action_ACTION_RESTORE, RepositoryName: "it", SnapshotId: sum.SnapshotID,
+		Tags:       map[string]string{"sard.source": "s2"},
+		ConfigJson: `{"host": "db", "user": "restorer", "tls_mode": "disable", "password_ref": "pg", "database": "app_restored"}`,
+	}, &reporter{})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	got, err := os.ReadFile(restored)
 	if err != nil || !bytes.Equal(got, []byte(archive)) {
 		t.Errorf("the dump differs: %d bytes, %v", len(got), err)
 	}
-	if out.Database != "app_restored" || out.Tables != 3 {
-		t.Errorf("output %+v", out)
+	if out := res.GetRestore(); out.GetDatabase() != "app_restored" || out.GetTablesRestored() != 3 {
+		t.Errorf("output %v", out)
 	}
 	if leftovers := processesOf(tools); len(leftovers) != 0 {
 		t.Errorf("processes left: %v", leftovers)
 	}
 }
-
-type osTools2 struct{}
-
-func (osTools2) Stat(name string) (os.FileInfo, error) { return os.Stat(name) }

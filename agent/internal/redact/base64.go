@@ -16,8 +16,8 @@ const minBase64 = 4
 // plus the same run extended to the end of the text for a value that ends it.
 func base64Forms(v []byte) [][]byte {
 	var out [][]byte
-	for _, shift := range []int{0, 1, 2} {
-		from := (8*shift + 5) / 6 // the first character made of value bits only
+	// For each shift, the first character made of value bits only: (8*shift+5)/6.
+	for shift, from := range []int{0, 2, 3} {
 		to := 8 * (shift + len(v)) / 6
 		raw := append(make([]byte, shift), v...)
 		for _, enc := range []*base64.Encoding{base64.RawStdEncoding, base64.RawURLEncoding} {

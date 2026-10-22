@@ -4,7 +4,7 @@
 import { PROBLEM, problem } from './problems'
 
 /** Failures before the lockout and its window (К4: matches the server). */
-export const MAX_FAILURES = 5
+const MAX_FAILURES = 5
 const WINDOW_MS = 15 * 60_000
 
 /** Failed attempts of one kind (sign-in, setup code) and the lock the fifth one sets. */

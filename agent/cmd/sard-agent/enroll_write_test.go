@@ -40,7 +40,7 @@ func TestAWriteFailureAfterASuccessfulEnrollmentLeavesNoFiles(t *testing.T) {
 			// CheckWritable runs before Enroll and must see a normal,
 			// writable directory; only once the request is in flight does
 			// this replace it with a file, so the failure genuinely lands
-			// in WriteIdentity, after a successful Enroll.
+			// in WriteIdentityAs, after a successful Enroll.
 			go func() {
 				<-srv.started
 				replaceDirWithFileForTest(t, dirForTLSFile(h, which))

@@ -49,9 +49,9 @@ export function nightly(sourceId: string, now: string): Schemas['Schedule'] {
 }
 
 /** The repository the default mock is bound to, and when (Рк18). */
-export const DEFAULT_REPOSITORY = 'self'
-export const DEFAULT_BOUND_AT = '2026-09-19T09:41:00Z'
-export const DEFAULT_LOCATION = 's3:acme-sard/prod'
+const DEFAULT_REPOSITORY = 'self'
+const DEFAULT_BOUND_AT = '2026-09-19T09:41:00Z'
+const DEFAULT_LOCATION = 's3:acme-sard/prod'
 const DEFAULT_BACKED_UP_AT = '2026-09-19T09:42:00Z'
 const DEFAULT_KEYS_CONFIRMED_AT = '2026-09-19T09:43:00Z'
 

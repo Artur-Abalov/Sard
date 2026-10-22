@@ -12,21 +12,16 @@ import (
 	"testing"
 
 	"google.golang.org/grpc/codes"
-
-	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 )
 
 // Rule "enroll под sudo пишет идентичность для пользователя службы".
 
 // rootEnrollDeps is the command run by root, the service user being
 // sard-agent (uid 990) and backup (uid 991); chown is the fake's.
-func rootEnrollDeps(fsys *fakeFS, people ...hostsetup.User) enrollDeps {
-	if people == nil {
-		people = []hostsetup.User{svcUser, backupUser}
-	}
+func rootEnrollDeps(fsys *fakeFS) enrollDeps {
 	d := testEnrollDeps(fixedHostname)
 	d.euid = 0
-	d.lookupUser = users(people...)
+	d.lookupUser = users(svcUser, backupUser)
 	d.fs = fsys
 	d.chownFile = fsys.chownFile
 	return d

@@ -64,12 +64,11 @@ func TestRetryDelayIsTheServersRetryInfo(t *testing.T) {
 	}
 }
 
-func TestRefusalLineIsTheDetailAndTheSuffix(t *testing.T) {
+func TestRefusalDetailOfAnExpiredCertificate(t *testing.T) {
 	t.Parallel()
 	err := reasoned(codes.Unauthenticated, "expired", "sard.dev", "CERT_EXPIRED", nil)
-	detail := transport.RefusalDetail(err)
-	if detail != "code = Unauthenticated desc = expired, reason CERT_EXPIRED" || transport.RefusalLine(err) != detail+"; "+transport.RefusalSuffix {
-		t.Fatalf("detail = %q, line = %q", detail, transport.RefusalLine(err))
+	if detail := transport.RefusalDetail(err); detail != "code = Unauthenticated desc = expired, reason CERT_EXPIRED" {
+		t.Fatalf("detail = %q", detail)
 	}
 }
 

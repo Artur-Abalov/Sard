@@ -27,7 +27,7 @@ func TestTheServiceRecordsTheRepositoriesItAnnouncesAtRegister(t *testing.T) {
 		"tls: {ca_file: "+h.dir+"/ca.pem, cert_file: "+h.dir+"/agent.pem, key_file: "+h.dir+"/agent.key}\n"+
 		"executor: {state_dir: "+h.dir+"/state}\nrestic: {path: "+script+", cache_dir: "+t.TempDir()+"}\n"+
 		"repositories:\n  - {name: base, url: "+filepath.Join(h.dir, "base")+", password_file: "+pass+"}\n")
-	h.runUntilRegistered(eventWait)
+	h.runUntilRegistered()
 	state := filepath.Join(h.dir, "state")
 	got, err := hostcheck.ReadAnnounced(os.ReadFile, state)
 	if err != nil || len(got) != 1 || got[0].Name != "base" || got[0].RepositoryID != "REPO-A" {

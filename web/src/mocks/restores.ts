@@ -40,7 +40,7 @@ interface RestorePlugin {
 const SAFE = /[A-Za-z0-9_-]/
 
 // <source name>/<snapshot time>: the bytes of the name outside [A-Za-z0-9_-] as %XX, the time in UTC (ВК32).
-export function defaultDestination(sourceName: string, createdAt: string): string {
+function defaultDestination(sourceName: string, createdAt: string): string {
   const name = [...new TextEncoder().encode(sourceName)]
     .map((byte) => {
       const char = String.fromCharCode(byte)
@@ -326,7 +326,7 @@ const DEFAULT_PORT = 5432
 const MAX_NAME_BYTES = 63
 
 // <database>_restored_<day of the snapshot, UTC>, the database cut at a character to fit 63 bytes.
-export function newDatabaseName(database: string, createdAt: string): string {
+function newDatabaseName(database: string, createdAt: string): string {
   const suffix = `_restored_${createdAt.slice(0, 10).replace(/-/g, '')}`
   const room = MAX_NAME_BYTES - new TextEncoder().encode(suffix).length
   let used = 0

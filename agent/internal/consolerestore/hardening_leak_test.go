@@ -74,11 +74,11 @@ var leakCases = map[string]func(t *testing.T, h *host){
 	},
 	"the start after a restore killed during restic": func(t *testing.T, h *host) {
 		leaveStaging(t, h, "c1")
-		mustMkdirAll(t, filepath.Join(command(h, "c1"), "root"))
+		mustMkdirAll(t, filepath.Join(c1Dir(h), "root"))
 		h.engine.CleanStaging()
 	},
 	"a staging directory that cannot be listed": func(t *testing.T, h *host) {
-		mustMkdirAll(t, command(h, "c1"))
+		mustMkdirAll(t, c1Dir(h))
 		h.faults.namesErr = map[string]error{filepath.Join(h.dir, ".sard-staging"): syscall.EIO}
 		h.engine.CleanStaging()
 		h.engine.Settle("c1")
@@ -90,7 +90,7 @@ var leakCases = map[string]func(t *testing.T, h *host){
 // the filesystem.
 func TestAFailedSyncOfTheCommandDirectoryIsLoggedAndTheCleanupGoesOn(t *testing.T) {
 	h := newHost(t)
-	c1 := command(h, "c1")
+	c1 := c1Dir(h)
 	if err := writeFile(filepath.Join(c1, "root/srv/a.txt"), "A", 0o600); err != nil {
 		t.Fatal(err)
 	}

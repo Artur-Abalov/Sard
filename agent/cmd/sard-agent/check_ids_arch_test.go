@@ -19,7 +19,7 @@ import (
 // The identifiers of the checks belong to hostcheck (Ч10): package main
 // takes them from there and never spells one out.
 func TestPackageMainDeclaresNoCheckIdentifier(t *testing.T) {
-	ids := append(hostcheck.CheckIDs(), hostcheck.CheckRepositoryIntegrity)
+	ids := append(slices.Clone(pinnedIDs), hostcheck.CheckRepositoryIntegrity)
 	files, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatal(err)

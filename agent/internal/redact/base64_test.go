@@ -58,10 +58,17 @@ func TestAValueInsideALongerBase64TextIsMaskedAtEveryShift(t *testing.T) {
 	for _, text := range []struct{ prefix, suffix string }{
 		{"", ""}, {"u:", ""}, {"us:", ""}, {"user:", ""}, {"", "\n"}, {"user:", "\n"}, {"a", "bcd"},
 	} {
-		line := "Authorization Basic " + base64.StdEncoding.EncodeToString([]byte(text.prefix+secretT+text.suffix))
+		const header = "Authorization Basic "
+		line := header + base64.StdEncoding.EncodeToString([]byte(text.prefix+secretT+text.suffix))
 		got := s.Mask(line)
 		if !strings.Contains(got, Marker) {
 			t.Errorf("%q: no marker in %q", text, got)
+		}
+		// The marker starts at the first character made of value bits only, so
+		// not even one character of the value is left before it.
+		lead := len(header) + (8*len(text.prefix)+5)/6
+		if i := strings.Index(got, Marker); i > lead {
+			t.Errorf("%q: %q of the value is left before the marker in %q", text, got[lead:i], got)
 		}
 		d := determined(text.prefix, secretT)
 		for i := 0; i+4 <= len(d); i++ {
