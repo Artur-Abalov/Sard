@@ -136,3 +136,25 @@ func assertNothingLeft(t *testing.T, r realRepo) {
 		t.Errorf("restic still running: %v", pids)
 	}
 }
+
+// A key added with its password on stdin shows in the key list. The e2e shard
+// (HostRecoveryKeyTest, SelfRecoveryKeyTest) runs the same call as the service
+// user, which this test, running as one uid, cannot.
+func TestIntegrationAddKeyReadsThePasswordFromStdin(t *testing.T) {
+	r := initRepo(t)
+	ctx := context.Background()
+	if err := r.cli.AddKey(ctx, restic.NewKey{User: "sard:verifier", Host: "h", Password: "another-password"}); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := r.cli.Keys(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, k := range keys {
+		found = found || (k.UserName == "sard:verifier" && k.HostName == "h")
+	}
+	if !found {
+		t.Errorf("keys %+v: the new key is missing", keys)
+	}
+}

@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io"
 	"slices"
 	"strings"
@@ -153,12 +152,16 @@ func (kr *fakeKeyring) list(f *fakeRestic, cmd restic.Command) (int, error) {
 	return 0, nil
 }
 
-// parseKeyAdd reads the call of restic key add, and the password from the
-// descriptor --new-password-file names.
+// parseKeyAdd reads the call of restic key add, and the password from its
+// stdin, as restic does when stdin is not a terminal.
 func (f *fakeRestic) parseKeyAdd(cmd restic.Command) keyAdd {
 	call := keyAdd{args: slices.Clone(cmd.Args), user: flagValue(cmd.Args, "--user"), host: flagValue(cmd.Args, "--host")}
-	if file := flagValue(cmd.Args, "--new-password-file"); file != "" {
-		call.password = f.readInherited(cmd, file)
+	if cmd.Stdin != nil {
+		data, err := io.ReadAll(cmd.Stdin)
+		if err != nil {
+			f.t.Fatal(err)
+		}
+		call.password = strings.TrimRight(string(data), "\r\n")
 	}
 	return call
 }
@@ -170,20 +173,6 @@ func flagValue(args []string, flag string) string {
 		return ""
 	}
 	return args[i+1]
-}
-
-// readInherited reads the descriptor "/proc/self/fd/N" names, which in the
-// fake is the Nth inherited file of the command.
-func (f *fakeRestic) readInherited(cmd restic.Command, path string) string {
-	var n int
-	if _, err := fmt.Sscanf(path, "/proc/self/fd/%d", &n); err != nil || n-3 >= len(cmd.ExtraFiles) {
-		f.t.Fatalf("restic key add: --new-password-file %q is not an inherited descriptor", path)
-	}
-	data, err := io.ReadAll(cmd.ExtraFiles[n-3])
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	return strings.TrimRight(string(data), "\r\n")
 }
 
 // add makes the key of the call parseKeyAdd recorded last.

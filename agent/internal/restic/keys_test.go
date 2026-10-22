@@ -56,22 +56,32 @@ func TestKeysReportsTheExitCodeOfRestic(t *testing.T) {
 	}
 }
 
-func TestAddKeyHandsTheNewPasswordOverAnInheritedDescriptor(t *testing.T) {
-	f := newFixture(t, map[string]reply{"key": {}})
+// restic run as the service user cannot open /proc/self/fd/N of a descriptor
+// root created (the process is not dumpable after the uid change), so the new
+// password goes over restic's stdin; this guard is the fake-Exec side of the
+// e2e shard (HostRecoveryKeyTest, SelfRecoveryKeyTest) that runs it for real.
+func TestAddKeyHandsTheNewPasswordToResticOnStdin(t *testing.T) {
+	f := newFixture(t, map[string]reply{"key": {readStdin: true}})
 	err := f.build().AddKey(context.Background(), restic.NewKey{User: "sard:verifier:vrf-1", Host: "src1", Password: "NEW-PASSWORD"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	args := f.exec.call("key").Args
-	want := []string{"key", "add", "--user", "sard:verifier:vrf-1", "--host", "src1", "--new-password-file", "/proc/self/fd/3"}
-	if !slices.Equal(args, want) {
-		t.Errorf("args %q, want %q", args, want)
+	c := f.exec.call("key")
+	want := []string{"key", "add", "--user", "sard:verifier:vrf-1", "--host", "src1"}
+	if !slices.Equal(c.Args, want) {
+		t.Errorf("args %q, want %q", c.Args, want)
 	}
-	if slices.ContainsFunc(args, func(a string) bool { return strings.Contains(a, "NEW-PASSWORD") }) {
-		t.Errorf("the password is in the arguments: %q", args)
+	if string(f.exec.stdin) != "NEW-PASSWORD\n" {
+		t.Errorf("stdin held %q, want the password and a line end", f.exec.stdin)
 	}
-	if !slices.Equal(f.exec.extra, []string{"NEW-PASSWORD\n"}) {
-		t.Errorf("descriptor 3 held %q, want the password", f.exec.extra)
+	if len(c.ExtraFiles) != 0 {
+		t.Errorf("inherited %v, want none for the new password", c.ExtraFiles)
+	}
+	if slices.ContainsFunc(c.Args, func(a string) bool { return strings.Contains(a, "NEW-PASSWORD") }) {
+		t.Errorf("the password is in the arguments: %q", c.Args)
+	}
+	if slices.ContainsFunc(c.Env, func(e string) bool { return strings.Contains(e, "NEW-PASSWORD") }) {
+		t.Errorf("the password is in the environment: %q", c.Env)
 	}
 }
 

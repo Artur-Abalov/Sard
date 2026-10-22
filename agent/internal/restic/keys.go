@@ -8,7 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
+	"strings"
 	"time"
 )
 
@@ -70,8 +70,8 @@ func ParseKeyTime(s string, loc *time.Location) (time.Time, error) {
 // NewKey is a key restic key add creates.
 type NewKey struct {
 	User, Host string
-	// Password is handed to restic over an inherited descriptor, never in
-	// an argument, an environment variable or a file.
+	// Password is handed to restic on its stdin, never in an argument, an
+	// environment variable or a file.
 	Password string
 }
 
@@ -89,24 +89,14 @@ func (c *CLI) Keys(ctx context.Context) ([]Key, error) {
 	return keys, nil
 }
 
-// AddKey runs `restic key add`; the new password reaches restic through a
-// pipe that restic reads as descriptor 3, so no copy of it is left on the host.
+// AddKey runs `restic key add`; the new password reaches restic on its stdin
+// (restic reads one line from a stdin that is not a terminal), so no copy of it
+// is left on the host. An inherited descriptor named by --new-password-file
+// does not work: restic runs as the service user, and after the uid change its
+// process is not dumpable, so it cannot open /proc/self/fd/N of a pipe root made.
 func (c *CLI) AddKey(ctx context.Context, key NewKey) error {
-	r, w, err := os.Pipe()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = r.Close() }()
-	// A password is a few dozen bytes: it fits the pipe, no goroutine is needed.
-	_, err = w.WriteString(key.Password + "\n")
-	if closeErr := w.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return err
-	}
-	args := []string{"key", "add", "--user", key.User, "--host", key.Host, "--new-password-file", fmt.Sprintf("/proc/self/fd/%d", firstFD)}
-	_, err = c.runRepo(ctx, call{args: args, extra: []*os.File{r}})
+	args := []string{"key", "add", "--user", key.User, "--host", key.Host}
+	_, err := c.runRepo(ctx, call{args: args, stdin: strings.NewReader(key.Password + "\n")})
 	return err
 }
 
