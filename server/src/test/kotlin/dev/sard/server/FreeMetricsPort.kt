@@ -8,6 +8,22 @@ import org.springframework.context.ApplicationContextInitializer
 import org.springframework.context.ConfigurableApplicationContext
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.random.Random
+
+private val TAKEN: MutableSet<Int> = ConcurrentHashMap.newKeySet()
+
+/**
+ * A port below the range the OS hands out to outgoing connections (32768 and up on Linux), that no context of this JVM
+ * has had: a cached context that is restarted later finds its port as it left it, not taken by a client socket or by
+ * a context created after it.
+ */
+private fun freePort(loopback: InetAddress): Int {
+    while (true) {
+        val port = Random.nextInt(20_000, 30_000)
+        if (TAKEN.add(port) && runCatching { ServerSocket(port, 1, loopback).close() }.isSuccess) return port
+    }
+}
 
 /**
  * The metrics listener of a context (H1 phase 3) opens a port at its start, 8081 by default. A test JVM keeps many
@@ -24,7 +40,7 @@ class FreeMetricsPort : ApplicationContextInitializer<ConfigurableApplicationCon
                 environment.propertySources[it]?.containsProperty(property) == true
             }
         if (!named("sard.metrics.port")) {
-            val port = ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1")).use { it.localPort }
+            val port = freePort(InetAddress.ofLiteral("127.0.0.1"))
             TestPropertyValues.of("sard.metrics.port=$port").applyTo(environment)
         }
         if (!named("sard.metrics.state-interval")) {
