@@ -12,6 +12,7 @@ import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -26,12 +27,21 @@ import kotlin.test.assertTrue
 @MutFlowTest(includeTargets = [StateLoop::class])
 class StateLoopTest {
     private val started = mutableListOf<StateLoop>()
+    private val executors = mutableListOf<ScheduledExecutorService>()
 
-    /** As in RetentionLoopTest: only a call inside underTest has a mutation, so a loop is stopped outside it. */
+    /**
+     * As in RetentionLoopTest: only a call inside underTest has a mutation, so a loop is stopped outside it. A
+     * mutated stop() that does nothing still clears the loop's own handle, and a later stop() would find nothing to
+     * shut down, so the executor is taken at the start and shut down here directly: otherwise its thread would go on
+     * ticking inside the mutation session of every later class.
+     */
     @AfterTest
     fun `no loop thread outlives its test`() {
         started.forEach { it.stop() }
         started.clear()
+        executors.forEach { it.shutdownNow() }
+        executors.forEach { it.awaitTermination(10, TimeUnit.SECONDS) }
+        executors.clear()
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
         while (System.nanoTime() < deadline && loopThreads().any { it.isAlive }) Thread.sleep(5)
         assertTrue(loopThreads().none { it.isAlive }, "a sard-metrics-state thread is still alive")
@@ -42,6 +52,13 @@ class StateLoopTest {
     private fun StateLoop.begin() {
         started += this
         MutFlow.underTest { start() }
+        remember()
+    }
+
+    /** Outside any session: the executor of a started loop, for the clean-up in [no loop thread outlives its test]. */
+    private fun StateLoop.remember() {
+        val field = StateLoop::class.java.getDeclaredField("executor").apply { isAccessible = true }
+        (field.get(this) as ScheduledExecutorService?)?.let { executors += it }
     }
 
     private fun StateLoop.end() = MutFlow.underTest { stop() }
@@ -72,6 +89,7 @@ class StateLoopTest {
                 loop.start()
                 first.await(10, TimeUnit.SECONDS)
             }
+        loop.remember()
 
         loop.end()
         assertTrue(ran, "the tick did not run within 10 s of the start")
