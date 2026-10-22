@@ -110,15 +110,19 @@ class StateGauges(
         }
 
     private fun queueSeries(state: StateSnapshot): List<Pair<Series, Double>> =
-        JOB_STATUSES.map { status ->
-            val labels = listOf("status" to status)
-            Series(SardMetricNames.VERIFICATION_JOBS, labels) to (state.verificationJobs[status] ?: 0L).toDouble()
-        } +
-            UNDELIVERED_STATUSES.map { status ->
-                val labels = listOf("status" to status)
-                val count = (state.undelivered[status] ?: 0L).toDouble()
-                Series(SardMetricNames.NOTIFY_DELIVERIES_UNDELIVERED, labels) to count
-            }
+        countSeries(SardMetricNames.VERIFICATION_JOBS, JOB_STATUSES, state.verificationJobs) +
+            countSeries(SardMetricNames.NOTIFY_DELIVERIES_UNDELIVERED, UNDELIVERED_STATUSES, state.undelivered)
+
+    /** One series `name{status}` for each of the [statuses], zero where [counts] has none. */
+    private fun countSeries(
+        name: String,
+        statuses: List<String>,
+        counts: Map<String, Long>,
+    ): List<Pair<Series, Double>> =
+        statuses.map { status ->
+            val count = (counts[status] ?: 0L).toDouble()
+            Series(name, listOf("status" to status)) to count
+        }
 
     private fun certificateSeries(state: StateSnapshot): List<Pair<Series, Double>> =
         listOfNotNull(

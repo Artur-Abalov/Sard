@@ -42,17 +42,8 @@ class StateReader(
         val standing = selfBackup.current()
         return StateSnapshot(
             sources = database.sources,
-            agents =
-                database.agents
-                    .groupingBy { it.first }
-                    .eachCount()
-                    .mapValues { it.value.toLong() },
-            agentsOnline =
-                database.agents
-                    .filter { it.second in connected }
-                    .groupingBy { it.first }
-                    .eachCount()
-                    .mapValues { it.value.toLong() },
+            agents = database.agents.perRole(),
+            agentsOnline = database.agents.filter { it.second in connected }.perRole(),
             runsActive = database.runsActive,
             verificationJobs = database.verificationJobs,
             undelivered = database.undelivered,
@@ -63,3 +54,7 @@ class StateReader(
         )
     }
 }
+
+/** How many agents of each role are in the list. */
+private fun List<Pair<AgentRole, UUID>>.perRole(): Map<AgentRole, Long> =
+    groupingBy { it.first }.eachCount().mapValues { it.value.toLong() }
