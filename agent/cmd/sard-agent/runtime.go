@@ -12,6 +12,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/certpair"
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
 // agentRuntime is what the running agent takes from the outside world: time,
@@ -25,6 +26,9 @@ type agentRuntime struct {
 	fs     certpair.FS
 	// handlers, when set, run the steps instead of the built-in plugins (tests).
 	handlers executor.Registry
+	// journalPlugins, when set, are the plugins whose restore journal entries
+	// the start recovers, instead of the built-in ones (tests).
+	journalPlugins *sdk.Registry
 }
 
 func (r agentRuntime) withDefaults() agentRuntime {

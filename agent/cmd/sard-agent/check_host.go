@@ -18,7 +18,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
-	"github.com/Artur-Abalov/sard/agent/plugins"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
 // programTimeout bounds one run of a program of the host.
@@ -73,56 +73,50 @@ func (c *hostCheck) resticBinary() hostcheck.Line {
 	return hostcheck.ResticVersionLine(binary, version, restic.Pinned)
 }
 
-// pluginLines are plugin.declared and plugin.programs of every plugin.
+// pluginLines are plugin.declared and plugin.programs of every plugin. The
+// plugin that needs programs of the host looks for them itself (sdk.ProgramChecker);
+// the agent knows none (R2c-3).
 func (c *hostCheck) pluginLines() {
-	registry := plugins.Registry(version)
+	registry := c.deps.plugins
 	var declared []hostcheck.PluginInfo
 	for _, name := range registry.Names() {
 		p, _ := registry.Get(name)
 		declared = append(declared, hostcheck.PluginInfo{Name: name, Version: p.Version()})
 	}
 	c.emit(hostcheck.PluginDeclaredLine(declared))
-	for _, p := range declared {
-		if p.Name == "postgresql" {
-			c.emit(c.postgresLine())
-		} else {
-			c.emit(hostcheck.NoProgramsLine(p.Name))
-		}
-	}
-}
-
-// postgresLine looks for the tools of PostgreSQL the way the plugin does: pg_dump in the
-// PATH of the agent, the others beside it. A tool is looked for by running it as the
-// service user: a directory the service cannot enter has no tools (Ч31).
-func (c *hostCheck) postgresLine() hostcheck.Line {
-	tools := make([]hostcheck.Tool, 4)
-	names := []string{"pg_dump", "psql", "pg_dumpall", "pg_restore"}
-	for _, dir := range filepath.SplitList(c.deps.pathEnv) {
-		if dir == "" {
+	for _, info := range declared {
+		p, _ := registry.Get(info.Name)
+		checker, ok := p.(sdk.ProgramChecker)
+		if !ok {
+			c.emit(hostcheck.NoProgramsLine(info.Name))
 			continue
 		}
-		if t := c.probe(dir, names[0]); t.Path != "" {
-			tools[0] = t
-			for i := 1; i < len(names); i++ {
-				tools[i] = c.probe(dir, names[i])
-			}
-			break
-		}
+		c.emit(hostcheck.ProgramsLine(info.Name, checker.CheckPrograms(programHost{c})))
 	}
-	for i, name := range names {
-		tools[i].Name = name
-	}
-	return hostcheck.PostgresLine(tools[0], tools[1], tools[2], tools[3])
 }
 
-// probe runs dir/name --version; a tool that does not start is not there.
-func (c *hostCheck) probe(dir, name string) hostcheck.Tool {
-	path := filepath.Join(dir, name)
-	p := c.runProgram(c.serviceRunAs(), path, "--version")
-	if p.err != nil {
-		return hostcheck.Tool{Name: name}
+// programHost is what the agent offers a plugin that looks for its programs:
+// the PATH of the agent and the run of a program as the service user. A program
+// is looked for by running it as that user: a directory the service cannot
+// enter has no programs (Ч31).
+type programHost struct{ c *hostCheck }
+
+// Path is the directories of the PATH; an empty entry stands for the current
+// directory and is left out.
+func (h programHost) Path() []string {
+	var dirs []string
+	for _, dir := range filepath.SplitList(h.c.deps.pathEnv) {
+		if dir != "" {
+			dirs = append(dirs, dir)
+		}
 	}
-	return hostcheck.Tool{Name: name, Path: path, Version: hostcheck.PostgresVersion(p.out)}
+	return dirs
+}
+
+// Run runs the program with its standard output captured; an error means it did not start.
+func (h programHost) Run(path string, args ...string) (string, error) {
+	p := h.c.runProgram(h.c.serviceRunAs(), path, args...)
+	return p.out, p.err
 }
 
 // selinuxLines are selinux.labels and selinux.denials (Ч19): only a host where
@@ -157,7 +151,7 @@ func (c *hostCheck) labelPaths() []string {
 	layout := hostsetup.Layout{Config: c.opts.configPath}
 	candidates := []string{c.opts.configPath, layout.FragmentDir(), layout.SecretsDir(), filepath.Dir(cfg.TLS.KeyFile),
 		cfg.TLS.CAFile, cfg.TLS.CertFile, cfg.TLS.KeyFile, c.binary, cfg.Restic.CacheDir, c.deps.defaultCacheDir, c.stateDir()}
-	candidates = append(candidates, secretFiles(cfg)[1:]...)
+	candidates = append(candidates, secretFiles(cfg)...) // the key file is among the candidates already: a name is kept once
 	for _, r := range cfg.Repositories {
 		if r.Backend() == "local" {
 			candidates = append(candidates, r.URL)

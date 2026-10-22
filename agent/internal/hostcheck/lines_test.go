@@ -10,6 +10,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/hostcheck"
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
 // The small lines of sard-agent check (Ч10, Ч12, Ч2, Ч20).
@@ -92,5 +93,26 @@ func TestACheckForRootIsSkippedForTheServiceUserWithTheReason(t *testing.T) {
 	l := hostcheck.NeedsRootLine("selinux.denials", "", "the audit log")
 	if l.Status != hostcheck.Skip || !strings.Contains(l.Message, "needs root") || !strings.Contains(l.Message, "the audit log") || !strings.Contains(l.Hint, "sudo sard-agent check") {
 		t.Errorf("%+v", l)
+	}
+}
+
+// The line of the programs of a plugin is what the plugin says (R2c-3, Ч18).
+func TestTheLineOfTheProgramsOfAPluginIsWhatThePluginSays(t *testing.T) {
+	for status, want := range map[sdk.ProgramsStatus]hostcheck.Status{
+		sdk.ProgramsOK: hostcheck.OK, sdk.ProgramsSkip: hostcheck.Skip, sdk.ProgramsWarn: hostcheck.Warn, sdk.ProgramsError: hostcheck.Error,
+	} {
+		l := hostcheck.ProgramsLine("zeta", sdk.ProgramsCheck{Status: status, Message: "m", Hint: "h"})
+		if l.Check != "plugin.programs" || l.Subject != "zeta" || l.Status != want || l.Message != "m" || l.Hint != "h" {
+			t.Errorf("%v: %+v", status, l)
+		}
+	}
+}
+
+func TestAnAnswerWithoutAKnownStatusIsAnError(t *testing.T) {
+	for _, status := range []sdk.ProgramsStatus{0, 99, -1} {
+		l := hostcheck.ProgramsLine("zeta", sdk.ProgramsCheck{Status: status, Message: "m"})
+		if l.Status != hostcheck.Error || !strings.Contains(l.Message, "no status") || !strings.Contains(l.Message, "m") {
+			t.Errorf("%v: %+v", status, l)
+		}
 	}
 }

@@ -10,12 +10,14 @@ import (
 	"io"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/restore"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
 // restoreRun is what repo restore carries from step to step.
@@ -123,14 +125,14 @@ func (r *restoreRun) restore(ctx context.Context) int {
 	if f != nil {
 		return report(r.stderr, "repo restore", f)
 	}
-	snap, f := restore.Select(list, r.opts.address, st.repo.Name, r.opts.source)
+	snap, ext, f := r.choose(list)
 	if f != nil {
 		return report(r.stderr, "repo restore", f)
 	}
 	target := targetOf(st, who, r.deps)
 	reader := newRestic(st.cfg, st.binary, r.deps, st.repo, runAs(who))
-	if restore.KindOf(snap) != restore.KindDirectory {
-		return r.restorePostgres(ctx, reader, list, snap)
+	if !ext.Tree() {
+		return r.restoreFiles(ctx, reader, snap, ext)
 	}
 	if f := restore.RequirePaths(ctx, reader, snap, r.opts.paths, target); f != nil {
 		return report(r.stderr, "repo restore", f)
@@ -142,28 +144,63 @@ func (r *restoreRun) restore(ctx context.Context) int {
 	return r.write(ctx, req)
 }
 
-// restorePostgres lays out a snapshot of PostgreSQL as files and tells the
-// commands that restore it (Р62). The content comes from restic dump, run as
-// the service user like the list; root writes the files itself.
-func (r *restoreRun) restorePostgres(ctx context.Context, reader *restic.CLI, list []restore.Snapshot, snap restore.Snapshot) int {
+// choose is the snapshot the command names and how it is laid out: by the plugin
+// that owns it, or as a tree.
+func (r *restoreRun) choose(list []restore.Snapshot) (restore.Snapshot, restore.Extraction, *refusal.Failure) {
+	snap, f := restore.Select(list, r.opts.address, r.st.repo.Name, r.opts.source)
+	if f != nil {
+		return snap, restore.Extraction{}, f
+	}
+	ext, f := restore.PlanExtraction(extractors(r.deps.plugins), list, snap, r.target())
+	return snap, ext, f
+}
+
+// restoreFiles lays out a snapshot of a plugin as the files the plugin planned
+// and tells what the plugin tells to do next (Р62). The content comes from restic
+// dump, run as the service user like the list; root writes the files itself.
+func (r *restoreRun) restoreFiles(ctx context.Context, reader *restic.CLI, snap restore.Snapshot, ext restore.Extraction) int {
 	if len(r.opts.paths) > 0 {
 		return report(r.stderr, "repo restore", &refusal.Failure{Class: refusal.ClassUsage,
-			Detail: "--path does not apply to a PostgreSQL snapshot: it holds one file and is laid out whole"})
-	}
-	plan, f := restore.PlanPostgres(list, snap)
-	if f != nil {
-		return report(r.stderr, "repo restore", f)
+			Detail: fmt.Sprintf("--path does not apply to a %s snapshot: its files are laid out whole", ext.Label)})
 	}
 	if f := r.held.Create(); f != nil {
 		return report(r.stderr, "repo restore", f)
 	}
-	if f := restore.WritePostgres(ctx, reader, r.held, plan, r.randomName, targetOf(r.st, r.st.who, r.deps)); f != nil {
+	if f := restore.WriteFiles(ctx, reader, r.held, ext.Files, r.randomName, targetOf(r.st, r.st.who, r.deps)); f != nil {
 		return r.writeFailed(snap, f)
 	}
 	r.held.Release()
 	r.record(snap, "restored to "+auditPath(r.target()))
-	printPostgres(r.stdout, r.st.repo.Name, snap, r.target(), plan)
+	printExtracted(r.stdout, r.st.repo.Name, snap, r.target(), ext)
 	return exitOK
+}
+
+// extractors are the plugins that lay out the files of their snapshots.
+func extractors(registry *sdk.Registry) map[string]sdk.Extractor {
+	found := map[string]sdk.Extractor{}
+	for _, name := range registry.Names() {
+		p, _ := registry.Get(name)
+		if e, ok := p.(sdk.Extractor); ok {
+			found[name] = e
+		}
+	}
+	return found
+}
+
+// extractHelp is the help paragraphs of the extractors, one line break after each:
+// what a plugin says about the layout of its own snapshots.
+func extractHelp(registry *sdk.Registry) string {
+	var b strings.Builder
+	for _, name := range registry.Names() {
+		p, _ := registry.Get(name)
+		if _, ok := p.(sdk.Extractor); !ok {
+			continue
+		}
+		if h, ok := p.(sdk.ExtractHelper); ok {
+			b.WriteString(h.ExtractHelp() + "\n")
+		}
+	}
+	return b.String()
 }
 
 // request is what to restore and how restic reaches the storage.
@@ -257,12 +294,12 @@ func printRestored(stdout io.Writer, repoName string, snap restore.Snapshot, tar
 	}
 }
 
-func printPostgres(stdout io.Writer, repoName string, snap restore.Snapshot, target string, plan restore.PGPlan) {
+func printExtracted(stdout io.Writer, repoName string, snap restore.Snapshot, target string, ext restore.Extraction) {
 	printSnapshotHeader(stdout, repoName, snap, target)
-	for _, file := range plan.Files {
+	for _, file := range ext.Files {
 		_, _ = fmt.Fprintf(stdout, "  file:     %s\n", filepath.Join(target, file.Name))
 	}
-	for _, line := range plan.Hints(target) {
+	for _, line := range ext.Hints {
 		_, _ = fmt.Fprintln(stdout, line)
 	}
 }

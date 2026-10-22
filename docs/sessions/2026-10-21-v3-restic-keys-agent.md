@@ -4,7 +4,7 @@
 # 2026-10-21 — V3: ключи restic, срез 1 из 3 (контракт и агент) (coder)
 
 Спецификации: `docs/specs/proto/restic-keys.feature`, `docs/specs/agent/restic-keys.feature`
-(утверждены владельцем вместе с К1 и К2); ADR `docs/adr/0066-restic-keys.md`.
+(утверждены владельцем вместе с К1 и К2); ADR `docs/adr/0067-restic-keys.md`.
 Срезы 2 (сервер) и 3 (консоль) не начинались.
 
 ## Сделано
@@ -28,7 +28,7 @@
   `Verifier`, `LockHint`), `repoinit.CreateGated`.
 - **Документация.** `docs/operations/agent-host-setup.md` (раздел «Ключи restic»,
   ключ восстановления в `repo add`, коды), `docs/operator/09-troubleshooting.md`
-  (`repository.keys`), справка команд, ADR 0066. Новых зависимостей нет.
+  (`repository.keys`), справка команд, ADR 0067. Новых зависимостей нет.
 - **Интеграционные тесты** (`-tags integration`, настоящий restic 0.19.1):
   `keys_integration_test.go` — выпущенный ключ открывает репозиторий, удалённый
   не открывает.
@@ -95,4 +95,4 @@
 
 ## Итог конвейера V3 (оркестрация, 2026-10-22)
 
-Прошли specifier → coder (3 среза) → cleaner → architect (CHANGES REQUIRED, фиксы A и B, повторно APPROVED). Hardener не завершён: прерван рестартом контейнера и остановлен владельцем по токенам; мутационный порог 0.80 для `agent` и `server` не подтверждён. Релиз по решению владельца — в текущем виде (`d640a6c`). Все остатки и техдолги внесены в `docs/open-questions.md` (OQ-251…OQ-259). Незавершённые тесты hardener не вошли в ветку.
+Прошли specifier → coder (3 среза) → cleaner → architect (CHANGES REQUIRED, фиксы A и B, повторно APPROVED). Hardener не завершён: прерван рестартом контейнера и остановлен владельцем по токенам; мутационный порог 0.80 для `agent` и `server` не подтверждён. Релиз по решению владельца — в текущем виде (`d640a6c`). Все остатки и техдолги внесены в `docs/open-questions.md` (OQ-252…OQ-260). Незавершённые тесты hardener не вошли в ветку.

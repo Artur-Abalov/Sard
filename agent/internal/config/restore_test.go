@@ -162,18 +162,27 @@ func TestOnlyARepositoryOnThisDisksHasALocalPath(t *testing.T) {
 }
 
 // Scenario: Без настройки доля таблицы блокировок — 0.5.
-func TestWithoutALockShareItIsAHalf(t *testing.T) {
+// The default is the plugin's: the config says only that nothing is set.
+func TestWithoutALockShareTheConfigSetsNone(t *testing.T) {
 	c, err := config.Parse([]byte(restoreBase))
-	if err != nil || c.PostgresqlLockShare() != 0.5 {
+	if err != nil || c.PostgresqlLockShare() != nil {
 		t.Fatalf("PostgresqlLockShare() = %v, %v", c.PostgresqlLockShare(), err)
 	}
+}
+
+// lockShare is the share the config sets, -1 for none.
+func lockShare(c config.Config) float64 {
+	if share := c.PostgresqlLockShare(); share != nil {
+		return *share
+	}
+	return -1
 }
 
 func TestTheLockShareOfTheConfigIsKept(t *testing.T) {
 	for body, want := range map[string]float64{"0": 0, "1": 1, "0.25": 0.25, "1.0": 1} {
 		c, err := config.Parse([]byte(restoreBase + "restore:\n  postgresql_lock_share: " + body + "\n"))
-		if err != nil || c.PostgresqlLockShare() != want {
-			t.Errorf("%s: PostgresqlLockShare() = %v, %v, want %v", body, c.PostgresqlLockShare(), err, want)
+		if err != nil || lockShare(c) != want {
+			t.Errorf("%s: PostgresqlLockShare() = %v, %v, want %v", body, lockShare(c), err, want)
 		}
 	}
 }
@@ -194,8 +203,8 @@ func TestAFragmentMaySetTheLockShare(t *testing.T) {
 	h := newOverlayHost(t, mainYAML)
 	h.write("agent.d/restore.yaml", "restore:\n  postgresql_lock_share: 0.2\n")
 	cfg, err := config.Load(h.main)
-	if err != nil || cfg.PostgresqlLockShare() != 0.2 {
-		t.Fatalf("PostgresqlLockShare() = %v, %v", cfg.PostgresqlLockShare(), err)
+	if err != nil || lockShare(cfg) != 0.2 {
+		t.Fatalf("PostgresqlLockShare() = %v, %v", lockShare(cfg), err)
 	}
 }
 
@@ -203,8 +212,8 @@ func TestAFragmentThatSetsNoLockShareKeepsThatOfTheMainConfig(t *testing.T) {
 	h := newOverlayHost(t, mainYAML+"restore:\n  postgresql_lock_share: 0.3\n")
 	h.write("agent.d/restore.yaml", "restore:\n  dir: /srv/restore\n")
 	cfg, err := config.Load(h.main)
-	if err != nil || cfg.PostgresqlLockShare() != 0.3 {
-		t.Fatalf("PostgresqlLockShare() = %v, %v", cfg.PostgresqlLockShare(), err)
+	if err != nil || lockShare(cfg) != 0.3 {
+		t.Fatalf("PostgresqlLockShare() = %v, %v", lockShare(cfg), err)
 	}
 }
 

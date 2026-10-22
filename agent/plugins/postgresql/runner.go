@@ -22,6 +22,8 @@ type Cmd struct {
 	Args []string
 	// Env is the complete environment; nothing is inherited from the agent.
 	Env []string
+	// Stdin is the standard input of the process; nil is an empty one.
+	Stdin io.Reader
 	// Stdout receives the process's standard output as it is written; nil
 	// discards it. A write error stops the process.
 	Stdout io.Writer

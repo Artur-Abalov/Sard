@@ -23,7 +23,7 @@ const checkHint = "run `sudo sard-agent check` on the host"
 // wrong or its file is missing, a program of the plugin is not found.
 // Every other failure, and a rejected step, is returned as it is.
 func withCheckHint(err error) error {
-	if err == nil || errors.Is(err, executor.ErrRejected) || !checkExplains(err) {
+	if errors.Is(err, executor.ErrRejected) || !checkExplains(err) {
 		return err
 	}
 	return &hinted{err}
@@ -34,15 +34,13 @@ func withCheckHint(err error) error {
 var checkExplained = map[refusal.Reason]bool{
 	refusal.BackendUnavailable: true, refusal.StorageAccessDenied: true, refusal.S3KeyRejected: true,
 	refusal.SSHKeyNotAuthorized: true, refusal.WrongPassword: true, refusal.PasswordFileMissing: true,
-	// R2b: pg_restore or psql is not on the host.
-	refusal.PGClientMissing: true,
 }
 
 func checkExplains(err error) bool {
 	var restoreFailure *consolerestore.Failure
 	switch {
 	case errors.As(err, &restoreFailure):
-		return checkExplained[restoreFailure.Reason]
+		return explainedFailure(restoreFailure, err)
 	case errors.Is(err, restic.ErrNetwork), errors.Is(err, restic.ErrWrongPassword):
 		return true
 	case errors.Is(err, restic.ErrPasswordFile) && errors.Is(err, fs.ErrNotExist):
@@ -51,6 +49,12 @@ func checkExplains(err error) bool {
 		return true
 	}
 	return errors.Is(err, sdk.ErrProgramMissing)
+}
+
+// explainedFailure: check diagnoses the reason, or the program a plugin missed
+// (a plugin that restores itself says so with sdk.ErrProgramMissing).
+func explainedFailure(f *consolerestore.Failure, err error) bool {
+	return checkExplained[f.Reason] || errors.Is(err, sdk.ErrProgramMissing)
 }
 
 // hinted is an error whose message ends with the hint; the cause stays

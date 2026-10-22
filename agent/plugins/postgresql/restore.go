@@ -6,6 +6,8 @@ package postgresql
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
@@ -32,25 +34,53 @@ type restoreConfig struct {
 	PgRestorePath  string `json:"pg_restore_path"`
 }
 
-// PlanRestore implements sdk.Restorer. The schema counts characters, the plan
-// the bytes PostgreSQL limits.
+// PlanRestore implements sdk.Restorer. The plugin restores a database itself
+// (sdk.RestoreRunner), so the plan names no directory: the call only reads the
+// config, and an invalid one rejects the step before anything runs.
 func (Plugin) PlanRestore(cfg sdk.Config) (sdk.RestorePlan, error) {
+	_, err := parseRestore(cfg)
+	return sdk.RestorePlan{}, err
+}
+
+// restoreSettings are what a restore into a new database needs from the config.
+type restoreSettings struct {
+	// to is the server the database is created on, and the tool that restores it.
+	to target
+	// database is the name of the new database: 1-63 bytes, no NUL.
+	database string
+	// globals also restores the global objects of the cluster (roles).
+	globals bool
+}
+
+// parseRestore reads the restore config. The schema counts characters, this
+// the bytes PostgreSQL limits.
+func parseRestore(cfg sdk.Config) (restoreSettings, error) {
 	var c restoreConfig
 	if err := json.Unmarshal(cfg, &c); err != nil {
-		return sdk.RestorePlan{}, &sdk.ConfigError{Violations: []sdk.Violation{{Message: err.Error()}}}
+		return restoreSettings{}, &sdk.ConfigError{Violations: []sdk.Violation{{Message: err.Error()}}}
 	}
 	v := tooLong("/host", []string{c.Host}, maxHostBytes, false)
 	v = append(v, tooLong("/user", []string{c.User}, maxNameBytes, false)...)
+	v = append(v, checkDatabaseName(c.Database)...)
 	if len(v) > 0 {
-		return sdk.RestorePlan{}, &sdk.ConfigError{Violations: v}
+		return restoreSettings{}, &sdk.ConfigError{Violations: v}
 	}
 	port := defaultPort
 	if c.Port != nil {
 		port = *c.Port
 	}
-	plan := sdk.RestorePlan{Postgres: &sdk.PostgresRestore{
-		Host: c.Host, Port: port, User: c.User, PasswordRef: c.PasswordRef, TLSMode: c.TLSMode, TLSRootCert: c.TLSRootCert,
-		Name: c.Database, Globals: c.RestoreGlobals, ClientPath: c.PgRestorePath,
-	}}
-	return plan, plan.Validate()
+	return restoreSettings{
+		to:       target{Host: c.Host, Port: port, User: c.User, PasswordRef: c.PasswordRef, TLSMode: c.TLSMode, TLSRootCert: c.TLSRootCert, ClientPath: c.PgRestorePath},
+		database: c.Database, globals: c.RestoreGlobals,
+	}, nil
+}
+
+func checkDatabaseName(name string) []sdk.Violation {
+	switch {
+	case len(name) < 1 || len(name) > maxNameBytes:
+		return []sdk.Violation{{Path: "/database", Message: fmt.Sprintf("want 1-%d bytes, got %d", maxNameBytes, len(name))}}
+	case strings.ContainsRune(name, 0):
+		return []sdk.Violation{{Path: "/database", Message: "must not contain a NUL byte"}}
+	}
+	return nil
 }

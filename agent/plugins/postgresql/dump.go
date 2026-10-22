@@ -12,8 +12,8 @@ import (
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
-// maxGlobalsBytes is the largest output of pg_dumpall the plugin keeps in
-// memory (F1 ПГ17d).
+// maxGlobalsBytes is the largest file of global objects the plugin keeps in
+// memory, when it dumps them (F1 ПГ17d) and when it restores them.
 const maxGlobalsBytes = 64 << 20
 
 // archiveSignature starts every pg_dump archive of the custom format.
@@ -41,7 +41,7 @@ func (p Plugin) Dump(ctx context.Context, h sdk.Host, cfg sdk.Config) (sdk.Dump,
 			"pg_dump_version": done.pgDump.text,
 			"database":        name,
 			"format":          "custom",
-			"part":            "database",
+			"part":            partDatabase,
 		},
 	}
 	if done.systemID != "" {
@@ -73,43 +73,45 @@ func (p Plugin) globals(ctx context.Context, h sdk.Host, c config, done checked)
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	out := &limited{max: maxGlobalsBytes, stop: cancel}
-	o := p.run(runCtx, h, t.pgDumpall, args, p.childEnv(password), out)
-	if err := out.verdict(ctx, o); err != nil {
+	out := &limitedBuffer{max: maxGlobalsBytes, stop: cancel}
+	o := p.run(runCtx, h, call{path: t.pgDumpall, args: args, environ: p.childEnv(password), stdout: out})
+	if err := verdict(ctx, out, o); err != nil {
 		return sdk.ExtraFile{}, err
 	}
 	name := encodeName(c.Database)
-	return sdk.ExtraFile{Name: name + ".globals.sql", Content: out.buf.Bytes(), Tags: map[string]string{
+	return sdk.ExtraFile{Name: name + ".globals.sql", Content: out.Bytes(), Tags: map[string]string{
 		"database":        name,
 		"server_version":  done.server.text,
 		"pg_dump_version": done.pgDumpall.text,
 		"format":          "plain",
-		"part":            "globals",
+		"part":            partGlobals,
 		"role_passwords":  fmt.Sprint(c.GlobalsRolePasswords),
 	}}, nil
 }
 
-// limited keeps what is written to it, up to max bytes; more stops the
-// process that writes.
-type limited struct {
-	buf      bytes.Buffer
+// limitedBuffer keeps what is written to it, up to max bytes; more is refused
+// and stops the process that writes, if stop is set.
+type limitedBuffer struct {
+	bytes.Buffer
 	max      int
 	exceeded bool
 	stop     func()
 }
 
-func (l *limited) Write(p []byte) (int, error) {
-	if l.buf.Len()+len(p) > l.max {
+func (l *limitedBuffer) Write(p []byte) (int, error) {
+	if l.Len()+len(p) > l.max {
 		l.exceeded = true
-		l.stop()
+		if l.stop != nil {
+			l.stop()
+		}
 		return 0, errors.New("output too large")
 	}
-	return l.buf.Write(p)
+	return l.Buffer.Write(p)
 }
 
 // verdict is the error of the run of pg_dumpall, nil when it left output; ctx
 // is the context of the step, not the one that stopped pg_dumpall.
-func (l *limited) verdict(ctx context.Context, o outcome) error {
+func verdict(ctx context.Context, l *limitedBuffer, o outcome) error {
 	switch {
 	case l.exceeded:
 		return fmt.Errorf("pg_dumpall failed: the output is larger than %d MiB", l.max>>20)
@@ -119,7 +121,7 @@ func (l *limited) verdict(ctx context.Context, o outcome) error {
 	if err := o.failure(); err != nil {
 		return err
 	}
-	if l.buf.Len() == 0 {
+	if l.Len() == 0 {
 		return errors.New("pg_dumpall failed: empty output")
 	}
 	return nil

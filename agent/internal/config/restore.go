@@ -33,19 +33,18 @@ type Restore struct {
 	Dir string `yaml:"dir"`
 	// PostgresqlLockShare is the share of the lock table of a PostgreSQL
 	// cluster one pg_restore transaction may fill (ВК28); nil means
-	// DefaultLockShare.
+	// the default of the plugin.
 	PostgresqlLockShare *LockShare `yaml:"postgresql_lock_share"`
 }
 
-// DefaultLockShare is restore.postgresql_lock_share when the config sets none.
-const DefaultLockShare = 0.5
-
-// PostgresqlLockShare is restore.postgresql_lock_share, or DefaultLockShare.
-func (c Config) PostgresqlLockShare() float64 {
+// PostgresqlLockShare is restore.postgresql_lock_share, nil if the config sets
+// none: the default is the plugin's, not the agent's.
+func (c Config) PostgresqlLockShare() *float64 {
 	if c.Restore.PostgresqlLockShare == nil {
-		return DefaultLockShare
+		return nil
 	}
-	return float64(*c.Restore.PostgresqlLockShare)
+	share := float64(*c.Restore.PostgresqlLockShare)
+	return &share
 }
 
 // ErrInvalidRestore is returned for a restore.dir the agent cannot use.

@@ -4,7 +4,7 @@
 # 2026-10-21 — V3: ключи restic, срез 2 из 3 (сервер) (coder)
 
 Спецификация: `docs/specs/server/restic-keys.feature` (КС1–КС8, ВС1); ADR
-`docs/adr/0066-restic-keys.md`. Срез 1 (контракт и агент) — журнал
+`docs/adr/0067-restic-keys.md`. Срез 1 (контракт и агент) — журнал
 `2026-10-21-v3-restic-keys-agent.md`. Срез 3 (консоль) не начинался.
 
 ## Сделано

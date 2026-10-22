@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -34,6 +35,12 @@ type Handlers struct {
 	restoreDir string
 	// console restores for the console (R2); nil: a host without it.
 	console *consolerestore.Engine
+	// journal keeps the entries of plugins that restore themselves (R2c); nil:
+	// a host where none can.
+	journal *Journal
+	// words words the failures of restic that reach those plugins.
+	words *consolerestore.Classifier
+	log   *slog.Logger
 }
 
 // Option configures Handlers.
@@ -45,11 +52,29 @@ func WithConsoleRestore(e *consolerestore.Engine) Option {
 	return func(h *Handlers) { h.console = e }
 }
 
+// WithRestoreJournal lets plugins that restore themselves (sdk.RestoreRunner)
+// keep a journal entry of the command in the store.
+func WithRestoreJournal(j *Journal) Option {
+	return func(h *Handlers) { h.journal = j }
+}
+
+// WithRepositoryWords sets how the failures of restic are worded for the
+// plugins that restore themselves; default: the repositories just by their names.
+func WithRepositoryWords(c *consolerestore.Classifier) Option {
+	return func(h *Handlers) { h.words = c }
+}
+
+// WithLogger sets the log of the agent the handlers write to; default: none.
+func WithLogger(l *slog.Logger) Option {
+	return func(h *Handlers) { h.log = l }
+}
+
 var _ executor.Registry = (*Handlers)(nil)
 
 // NewHandlers compiles every plugin's schema against the host's secrets.
 func NewHandlers(reg *sdk.Registry, secrets *Secrets, repos Repositories, restoreDir string, opts ...Option) (*Handlers, error) {
-	h := &Handlers{sources: make(map[string]*Source), repos: repos, restoreDir: restoreDir}
+	h := &Handlers{sources: make(map[string]*Source), repos: repos, restoreDir: restoreDir, log: slog.New(slog.DiscardHandler),
+		words: consolerestore.NewClassifier(nil)}
 	for _, opt := range opts {
 		opt(h)
 	}
@@ -168,8 +193,8 @@ func (h *handler) restore(ctx context.Context, step *agentv1.RunStep, repo resti
 	if err != nil {
 		return nil, rejected(err)
 	}
-	if req.Plan.Postgres != nil {
-		return h.restoreDatabase(ctx, step, repo, req, r)
+	if h.src.runner != nil {
+		return h.restoreByPlugin(ctx, step, repo, r)
 	}
 	out, failure := h.console.Restore(ctx, repo, req, r)
 	if failure != nil {
@@ -179,8 +204,8 @@ func (h *handler) restore(ctx context.Context, step *agentv1.RunStep, repo resti
 	return &agentv1.StepResult{Output: &agentv1.StepResult_Restore{Restore: restored}}, nil
 }
 
-// Interrupted words the outcome of a restore the previous run of the agent
-// did not finish (ВК14) from what the start found in .sard-staging: a
+// Interrupted words the outcome of a restore of files the previous run of the
+// agent did not finish (ВК14) from what the start found in .sard-staging: a
 // completed move is a success with the totals of the marker, a directory that
 // could not be removed is CLEANUP_FAILED, anything else (no root, no marker, a
 // root that was removed, no directory at all) is a failure with nothing
@@ -199,10 +224,9 @@ func Interrupted(found []consolerestore.Evidence) func(commandID string, action 
 		case consolerestore.Completed:
 			return &executor.Interruption{Succeeded: true, Message: "agent restarted after the restore completed", Output: completedOutput(ev)}
 		case consolerestore.CleanupFailed:
-			left := firstNonEmpty(ev.Leftover, ev.Path)
 			return &executor.Interruption{
-				Message: fmt.Sprintf("%s (%s): %s; left behind: %s (%v); remove it by hand", refusal.CleanupFailed, consolerestore.StageRollback, executor.InterruptedMessage, left, ev.Err),
-				Output:  &agentv1.RestoreOutput{Leftover: left},
+				Message: fmt.Sprintf("%s (%s): %s; left behind: %s (%v); remove it by hand", refusal.CleanupFailed, consolerestore.StageRollback, executor.InterruptedMessage, ev.Path, ev.Err),
+				Output:  &agentv1.RestoreOutput{Leftover: ev.Path},
 			}
 		}
 		return &executor.Interruption{Message: executor.InterruptedMessage + "; nothing was restored"}
@@ -210,12 +234,8 @@ func Interrupted(found []consolerestore.Evidence) func(commandID string, action 
 }
 
 // completedOutput is the outcome of a restore that completed before the
-// restart: the totals of the marker for files, those of the rollback journal
-// for a database.
+// restart: the totals of the marker.
 func completedOutput(ev consolerestore.Evidence) *agentv1.RestoreOutput {
-	if db := ev.Database; db != nil {
-		return &agentv1.RestoreOutput{Target: db.Database, Database: db.Database, TablesRestored: db.Tables, RolesRestored: db.Roles}
-	}
 	return &agentv1.RestoreOutput{Target: ev.Destination, FilesRestored: ev.Files, BytesRestored: ev.Bytes}
 }
 
@@ -239,23 +259,41 @@ func failedRestore(f *consolerestore.Failure) *agentv1.StepResult {
 // restoreRequest checks everything that can be checked before the repository
 // or the disk is touched: the host, the command, the snapshot, the config.
 func (h *handler) restoreRequest(step *agentv1.RunStep) (consolerestore.Request, error) {
-	id := step.GetCommandId()
-	source := step.GetTags()[consolerestore.SourceTag]
-	switch {
-	case h.console == nil:
-		return consolerestore.Request{}, errors.New("restore from the console is not enabled on this host")
-	case !consolerestore.UsableName(id):
-		return consolerestore.Request{}, fmt.Errorf("command id %q cannot name a temporary directory", id)
-	case !isSnapshotID(step.GetSnapshotId()):
-		return consolerestore.Request{}, fmt.Errorf("snapshot_id %q: want 64 lower-case hexadecimal characters, the full id of the snapshot", step.GetSnapshotId())
-	case source == "":
-		return consolerestore.Request{}, fmt.Errorf("tag %s is required: it names the source the snapshot belongs to", consolerestore.SourceTag)
+	if err := h.checkRestoreStep(step); err != nil {
+		return consolerestore.Request{}, err
 	}
 	plan, err := h.src.PlanRestore(sdk.Config(step.GetConfigJson()))
 	if err != nil {
 		return consolerestore.Request{}, err
 	}
-	return consolerestore.Request{CommandID: id, Repository: step.GetRepositoryName(), SnapshotID: step.GetSnapshotId(), Source: source, Plan: plan}, nil
+	return consolerestore.Request{
+		CommandID: step.GetCommandId(), Repository: step.GetRepositoryName(), SnapshotID: step.GetSnapshotId(),
+		Source: step.GetTags()[consolerestore.SourceTag], Plan: plan,
+	}, nil
+}
+
+// checkRestoreStep judges the step itself: every restore names the source of
+// the snapshot, whoever does it.
+func (h *handler) checkRestoreStep(step *agentv1.RunStep) error {
+	if h.console == nil && h.src.runner == nil {
+		return errors.New("restore from the console is not enabled on this host")
+	}
+	id := step.GetCommandId()
+	switch {
+	case !consolerestore.UsableName(id):
+		return fmt.Errorf("command id %q cannot name a temporary directory", id)
+	case !isSnapshotID(step.GetSnapshotId()):
+		return fmt.Errorf("snapshot_id %q: want 64 lower-case hexadecimal characters, the full id of the snapshot", step.GetSnapshotId())
+	}
+	return h.checkSourceTag(step)
+}
+
+// checkSourceTag: only snapshots of the source the step names are restored.
+func (h *handler) checkSourceTag(step *agentv1.RunStep) error {
+	if step.GetTags()[consolerestore.SourceTag] == "" {
+		return fmt.Errorf("tag %s is required: it names the source the snapshot belongs to", consolerestore.SourceTag)
+	}
+	return nil
 }
 
 // isSnapshotID: 64 lower-case hexadecimal characters.

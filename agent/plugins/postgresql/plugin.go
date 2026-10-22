@@ -18,7 +18,9 @@ import (
 //go:embed schema.json
 var schema []byte
 
-// Plugin backs up one PostgreSQL database.
+// Plugin backs up one PostgreSQL database and restores it into a new one; it
+// also plans the files of a snapshot for "sard-agent repo restore" and looks for
+// the client programs on the host.
 // Restore verification will start the restored dump in a sandbox container and run check queries (roadmap: restore verification, stage 2).
 type Plugin struct {
 	// AgentVersion is the version of sard-agent, which ships the plugin.
@@ -30,6 +32,10 @@ type Plugin struct {
 	// Environ is the environment of the agent, from which the tools get
 	// their PATH and HOME; nil is os.Environ.
 	Environ func() []string
+	// LockShare is the share of the lock table of the target cluster a restore
+	// may take for one transaction of pg_restore (R2b ВК28); nil is DefaultLockShare.
+	// The agent sets it from its configuration.
+	LockShare *float64
 }
 
 var _ sdk.Plugin = Plugin{}

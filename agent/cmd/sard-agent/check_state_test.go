@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -75,6 +76,22 @@ func TestWithoutRepositoriesTheCheckIsOKWithANote(t *testing.T) {
 }
 
 const enforcing = "Enforcing\n"
+
+// A getenforce that failed has not answered, whatever it wrote before.
+func TestAGetenforceThatFailedIsTakenAsSELinuxNotEnforcing(t *testing.T) {
+	h := fullHost(t)
+	h.onSELinux()
+	h.progs.answers["getenforce"] = progAnswer{out: enforcing, err: errors.New("killed")}
+	lines, _, _ := h.checkLines()
+	for _, id := range []string{"selinux.labels", "selinux.denials"} {
+		if l := line(t, lines, id, "-"); l.status != "OK" || l.message != "SELinux is not enforcing" {
+			t.Errorf("%+v", l)
+		}
+	}
+	if h.progs.ran("matchpathcon") != 0 || h.progs.ran("ausearch") != 0 {
+		t.Errorf("programs %v", h.progs.keys())
+	}
+}
 
 func TestWithoutEnforcingSELinuxIsNotAsked(t *testing.T) {
 	h := fullHost(t)

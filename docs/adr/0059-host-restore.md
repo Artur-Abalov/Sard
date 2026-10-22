@@ -230,6 +230,10 @@ restic под root не получает путь к файлу пароля, к
 `postgresql.part=globals` — глобальные объекты, иначе каталог (Р60, Р61). Логика
 лежит в `internal/restore` (`KindOf`, `PlanPostgres`, `WritePostgres`,
 `PGPlan.Hints`), `package main` не разбирает теги `postgresql.*`.
+*Поправка R2c-3 (ADR 0066):* разбор тегов и подсказки переехали в плагин `postgresql`
+(`Extractor`); в `internal/restore` остались выкладка файлов по плану плагина
+(`PlanExtraction`, `WriteFiles`) и пропуск любого дополнительного снимка при `latest`
+(метка `<плагин>.main_snapshot`).
 
 - **Что пишется.** База: файл из `paths` снимка (`/<база>.dump`) и, если есть,
   файл самого нового снимка глобальных объектов с тегом

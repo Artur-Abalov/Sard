@@ -19,6 +19,8 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/role"
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 	"github.com/Artur-Abalov/sard/agent/internal/serverprobe"
+	"github.com/Artur-Abalov/sard/agent/plugins"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
 // hostDeps is everything the commands "sard-agent repo ..." and "sard-agent
@@ -32,9 +34,12 @@ type hostDeps struct {
 	// ssh-keygen, sftp) as the service user (A8b-2).
 	sshExec restic.Executor
 	// progExec runs the programs of the host that sard-agent check looks at:
-	// getenforce, matchpathcon, ausearch, systemctl show and the tools of
-	// PostgreSQL (A8d-2).
+	// getenforce, matchpathcon, ausearch, systemctl show and the programs
+	// the plugins ask for (A8d-2, R2c-3).
 	progExec restic.Executor
+	// plugins are the plugins of the agent: sard-agent check asks them for their
+	// programs and repo restore for the files of a snapshot (R2c-3).
+	plugins *sdk.Registry
 	// probeServer asks the server: connect, handshake, Probe (A8d-3).
 	probeServer func(ctx context.Context, r serverprobe.Request) hostcheck.ServerFacts
 	// hostname is the name of this host, for the comment of a new ssh key.
@@ -94,6 +99,7 @@ func productionHostDeps() hostDeps {
 		exec:        restic.ProcessExecutor{},
 		sshExec:     restic.ProcessExecutor{},
 		progExec:    restic.ProcessExecutor{},
+		plugins:     plugins.Registry(version),
 		hostname:    os.Hostname,
 		executable:  os.Executable,
 		pidAlive:    processAlive,
