@@ -119,3 +119,61 @@
 - В9: поздний результат потерянного шага после удаления его запуска
   подтверждается, но снимок не записывается.
 - Ветка отстаёт от `origin/main` на 9 коммитов (слияние не делалось).
+
+## Фаза 3 — метрики Prometheus и документация оператора (не закрыта)
+
+Конвейер `/ship-feature`: specifier (спека одобрена владельцем,
+ОВ1–ОВ10 по рекомендациям) → coder (части 1 и 2, исправление `StateLoop`,
+разделение пакета) → cleaner → architect (два обзора, второй
+`STRUCTURE ACCEPTED`) → hardener (остановлен владельцем по токенам).
+Ветка `ccr-5dea5d74-xsgws1`, HEAD `a4bf276`, всё запушено.
+
+### Что сделано
+
+- Отдельный слушатель метрик (JDK `HttpServer`) на порту 8081, по
+  умолчанию `127.0.0.1`, в compose не публикуется; вне loopback старт
+  отвергается без токена `SARD_METRICS_TOKEN` (≥32 символов), 401 без
+  тела, сравнение за постоянное время. `/actuator/health` и `/info`
+  остаются на 8080, метрик на 8080 нет.
+- Пакет `metrics` — чистое ядро (имена в `SardMetricNames`, гистограмма
+  длительности, gauge состояния по тику с кэшем), адаптеры во фреймворк —
+  в `prometheus` (причина: `scripts/claude/arch-edges.sh`, домен без
+  фреймворка). 12-й вызов `system` в ADR 0013.
+- `RunFinished` получил `kind` и `startedAt`; `CertificateAuthority.notAfter()`.
+- Документация: `docs/operator/14-monitoring.md`, `15-data-retention.md`,
+  правки README, `10-security.md`, `03-configuration.md`, `.env.example`;
+  ADR-черновики `00XX-draft-metrics-prometheus.md` и
+  `00XX-draft-server-retention.md`; тест `MonitoringDocsTest`.
+- Спека `docs/specs/server/server-metrics.feature`, QA
+  `docs/qa/server-metrics.md`, e2e `MetricsRetentionTest`.
+
+### Подтверждено / не подтверждено
+
+- Проверил сам: `arch-edges.sh` — `domain: clean`, exit 0; CRAP
+  затронутых функций ≤ 6.0 (`.bin/crap` по JaCoCo после правок); в
+  `build.gradle.kts` только зависимость `micrometer-registry-prometheus`.
+- По отчётам агентов (не мой прогон): `gate.sh server fast` — exit 0
+  после каждого круга coder'а.
+- Не сделано: полный `gate.sh server` с мутациями для фазы 3. Hardener
+  успел закоммитить чекпоинты (`0bce6c2` слушатель и `StateQueries`
+  под mutflow, `4584f8d` порты тестов, `a4bf276` выжившие в
+  `SelfBackupIntegrationTest` и `SelfAgentWiringIntegrationTest`), итоговые
+  числа выживших не получены.
+- Не прогонялось: e2e `MetricsRetentionTest` (нет образов
+  `sard-*:e2e`), `promtool`, `markdownlint-cli2`, `lychee`; модуль
+  `jdk.httpserver` в `eclipse-temurin:25-jre` не проверен.
+- Среда: полный `:server:test` на 16 ГБ упирается в память (контейнер
+  Postgres на каждый кэшированный Spring-контекст), см. фазу 2; решение —
+  отдельная задача «один контейнер на JVM» (C). 22 октября ~03:35 UTC
+  виртуальная машина сессии была заменена платформой, незавершённый
+  прогон мутаций потерян.
+
+### Дальше
+
+1. Довести hardener: выжившие до/после по `metrics` и `prometheus`,
+   полный `./scripts/gate.sh server` (≈47 минут по опыту фазы 2).
+2. Прогнать e2e (`make e2e-images` + `make e2e-test`), `promtool check
+   rules` по примерам из `14-monitoring.md`, markdownlint и lychee.
+3. Задача C (общий контейнер Postgres на JVM).
+4. Переименовать черновики ADR в `00XX-draft-*` → реальные номера при
+   слиянии; ветка отстаёт от `origin/main` на 9 коммитов.
