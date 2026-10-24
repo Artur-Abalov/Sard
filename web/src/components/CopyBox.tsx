@@ -43,8 +43,8 @@ export function CopyBox({
           block
           style={
             unbroken
-              ? { flex: 1, whiteSpace: 'nowrap', overflowX: 'auto' }
-              : { flex: 1, wordBreak: 'break-all' }
+              ? { flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflowX: 'auto' }
+              : { flex: 1, minWidth: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
           }
         >
           {value}

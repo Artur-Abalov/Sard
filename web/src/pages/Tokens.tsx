@@ -37,7 +37,7 @@ import { StatusBadge } from '../components/StatusBadge'
 import { usePaged } from '../components/usePaged'
 import { useRoleLabel } from '../components/useRoleLabel'
 import { EMPTY } from '../format'
-import { canRevokeToken, ttlSeconds, type TtlUnit } from '../tokens'
+import { canRevokeToken, revokeRefusal, ttlSeconds, type TtlUnit } from '../tokens'
 import { useFormat } from '../useFormat'
 import { tones } from '../theme'
 import { Time } from '../components/Time'
@@ -200,14 +200,12 @@ function CreateTokenModal({ opened, onClose }: { opened: boolean; onClose: () =>
 }
 
 // A token that lost the race to an agent or to its own expiry says so, with the agent when it has one.
-function RevokeRefused({ error }: { error: ApiError }) {
+function RevokeRefused({ error, refusal }: { error: ApiError; refusal: 'used' | 'expired' }) {
   const { t } = useTranslation()
   const body = error.body as { agentId?: string | null } | undefined
   return (
     <Alert color={tones.notice}>
-      {error.failure.kind === 'problem' && error.failure.code === 'token_used'
-        ? t('tokens.alreadyUsed')
-        : t('tokens.alreadyExpired')}{' '}
+      {refusal === 'used' ? t('tokens.alreadyUsed') : t('tokens.alreadyExpired')}{' '}
       {body?.agentId != null && <AgentName agentId={body.agentId} />}
     </Alert>
   )
@@ -217,6 +215,7 @@ function RevokeButton({ token }: { token: EnrollmentToken }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [opened, { open, close }] = useDisclosure()
+  const reload = () => queryClient.invalidateQueries({ queryKey: ['tokens'] })
   const revoke = useMutation({
     mutationFn: () =>
       call(
@@ -224,9 +223,19 @@ function RevokeButton({ token }: { token: EnrollmentToken }) {
           params: { path: { tokenId: token.id } },
         }),
       ),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['tokens'] }),
-    onSuccess: close,
+    onSuccess: () => {
+      close()
+      void reload()
+    },
   })
+  const refusal = revoke.error instanceof ApiError ? revokeRefusal(revoke.error.failure) : null
+  // The list reloads only when the dialog closes: a refused token is no longer active, and
+  // reloading at once would drop the row's button and this dialog with the refusal.
+  function dismiss() {
+    close()
+    if (revoke.isError) void reload()
+    revoke.reset()
+  }
   return (
     <>
       <Button variant="default" c={tones.error} size="xs" onClick={open}>
@@ -238,16 +247,13 @@ function RevokeButton({ token }: { token: EnrollmentToken }) {
         confirmLabel={t('tokens.revoke')}
         busy={revoke.isPending}
         onConfirm={() => revoke.mutate()}
-        onClose={close}
+        onClose={dismiss}
       >
         <Text>{t('tokens.revokeText')}</Text>
-        {revoke.error instanceof ApiError && revoke.error.failure.kind === 'problem' && (
-          <RevokeRefused error={revoke.error} />
+        {refusal !== null && revoke.error instanceof ApiError && (
+          <RevokeRefused error={revoke.error} refusal={refusal} />
         )}
-        {revoke.isError &&
-          !(revoke.error instanceof ApiError && revoke.error.body !== undefined) && (
-            <ErrorBlock error={revoke.error} />
-          )}
+        {revoke.isError && refusal === null && <ErrorBlock error={revoke.error} />}
       </ConfirmModal>
     </>
   )
