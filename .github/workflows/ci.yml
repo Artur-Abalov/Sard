@@ -419,6 +419,37 @@ jobs:
       - name: Every shard passed
         run: test "${{ needs.e2e-shard.result }}" = success
 
+  # The release compose file as an operator runs it (scripts/test-self-agent.sh): the stack with the agent
+  # next to the server (sard-self), the first-start wizard, the self-backup to a local repository, and the
+  # database a new installation gets (DB1: PostgreSQL pinned in deploy/postgres.env, page checksums, the
+  # builtin C.UTF-8 locale, UTC, the profile small). The upgrade from a release (UPGRADE_FROM) needs that
+  # release's images and stays a check run by hand (docs/release.md).
+  self-agent:
+    needs: [packages, server-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: sard-agent-packages
+          path: dist
+      - uses: actions/download-artifact@v7
+        with:
+          name: sard-server-image
+          path: ${{ runner.temp }}
+      - name: Images
+        run: |
+          docker load -i "$RUNNER_TEMP/sard-server-image.tar"
+          make e2e-agent-pg-image DIST=dist
+      - run: SARD_IMAGE=sard-server SARD_AGENT_IMAGE=sard-agent SARD_VERSION=e2e scripts/test-self-agent.sh "$RUNNER_TEMP/self-agent"
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: self-agent-compose-log
+          path: ${{ runner.temp }}/self-agent/compose.log
+          if-no-files-found: ignore
+
   install-rpm:
     # The rpm installed, enrolled and upgraded on Rocky 9
     # with systemd, as release.yml's install job does on a tag (ADR 0048): here

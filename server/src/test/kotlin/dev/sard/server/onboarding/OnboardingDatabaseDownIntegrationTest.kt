@@ -3,6 +3,7 @@
 
 package dev.sard.server.onboarding
 
+import dev.sard.server.TestPorts
 import dev.sard.server.api.SESSION_COOKIE
 import dev.sard.server.api.list
 import org.junit.jupiter.api.io.TempDir
@@ -30,7 +31,9 @@ class DatabaseRelay(
     private val targetPort: Int,
 ) : AutoCloseable {
     private val loopback = InetAddress.getLoopbackAddress()
-    val port: Int = ServerSocket(0, 50, loopback).use { it.localPort }
+
+    // Bound again after every cut: a port of its own for the JVM, not one the OS may give a client meanwhile.
+    val port: Int = TestPorts.reserve(loopback)
     private val sockets = CopyOnWriteArrayList<Socket>()
     private var server: ServerSocket? = null
 

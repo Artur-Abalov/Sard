@@ -63,12 +63,17 @@ private fun newestFuture(all: Array<MigrationInfo>) =
 
 private fun newestKnown(all: Array<MigrationInfo>) = all.filter { it.state.isResolved }.mapNotNull { it.version }.max()
 
+/** Before any migration: the database's PostgreSQL and initdb parameters (DB1), then its Sard version (ADR 0060). */
 @Configuration(proxyBeanMethods = false)
 class DatabaseVersionConfiguration {
     @Bean
-    fun databaseVersionGuard(build: BuildProperties) =
-        FlywayMigrationStrategy { flyway ->
-            refuseNewerDatabase(flyway, build.version ?: "unknown")
-            flyway.migrate()
-        }
+    fun databaseVersionGuard(
+        build: BuildProperties,
+        mismatches: DatabaseMismatchListener,
+    ) = FlywayMigrationStrategy { flyway ->
+        flyway.configuration.dataSource.connection
+            .use(DatabaseSettingsCheck(mismatches)::check)
+        refuseNewerDatabase(flyway, build.version ?: "unknown")
+        flyway.migrate()
+    }
 }

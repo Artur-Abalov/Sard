@@ -34,7 +34,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVER_IMAGE="${SERVER_IMAGE:-sard-server:e2e}"
-POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:18-alpine}"
+# The PostgreSQL of an installation (deploy/postgres.env, DB1).
+# shellcheck source=../deploy/postgres.env
+POSTGRES_IMAGE="${POSTGRES_IMAGE:-$(. "$ROOT/deploy/postgres.env" && echo "$SARD_POSTGRES_IMAGE")}"
 # Set in the first-start wizard, with the code from the server's log (F4a).
 ADMIN_PASSWORD="install-test-admin"
 RUN_ID="sard-pkgtest-$$"
@@ -101,7 +103,8 @@ expect() {
 start_server() {
   docker network create "$NET" >/dev/null
   docker run -d --name "$RUN_ID-db" --network "$NET" --network-alias db \
-    -e POSTGRES_DB=sard -e POSTGRES_USER=sard -e POSTGRES_PASSWORD=sard "$POSTGRES_IMAGE" >/dev/null
+    -e POSTGRES_DB=sard -e POSTGRES_USER=sard -e POSTGRES_PASSWORD=sard \
+    -e POSTGRES_INITDB_ARGS="$(. "$ROOT/deploy/postgres.env" && echo "$SARD_POSTGRES_INITDB_ARGS")" "$POSTGRES_IMAGE" >/dev/null
   docker run -d --name "$RUN_ID-server" --network "$NET" --network-alias sard-server \
     -e SARD_DB_URL=jdbc:postgresql://db:5432/sard -e SARD_DB_USER=sard -e SARD_DB_PASSWORD=sard \
     -e SARD_PKI_SERVER_NAMES=sard-server -e SARD_AGENT_ENDPOINT=sard-server:9090 \

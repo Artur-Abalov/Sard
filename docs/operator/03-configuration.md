@@ -14,7 +14,7 @@
 |---|---|---|---|
 | `SARD_VERSION` | версия образа сервера: тег без `v` | обязательна, в `sard.env.example` релиза уже стоит | `0.0.1-rc.1` |
 | `SARD_IMAGE` | репозиторий образа (зеркало, локальный образ) | `ghcr.io/artur-abalov/sard-server` | `registry.local/sard-server` |
-| `SARD_POSTGRES_IMAGE` | образ PostgreSQL; офлайн-архив несёт ровно этот тег | `postgres:18-alpine` | `postgres:18-alpine` |
+| `SARD_POSTGRES_IMAGE` | образ PostgreSQL ([раздел 16](16-postgresql.md)); офлайн-установка указывает тег из архива, без `@sha256:…` ([раздел 11](11-offline.md)) | `postgres:18.6-alpine@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5` | `postgres:18.6-alpine` |
 | `SARD_HTTP_PUBLISH` | где слушает HTTP-порт на хосте, `[адрес:]порт` | `127.0.0.1:8080` | `0.0.0.0:8080` |
 | `SARD_GRPC_PUBLISH` | где слушает порт агентов на хосте, `[адрес:]порт` | `9090` (все адреса) | `0.0.0.0:9090` |
 

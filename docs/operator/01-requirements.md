@@ -5,7 +5,7 @@
 | Что | Требование |
 |---|---|
 | ОС | Linux amd64 или arm64 (образ собирается под обе; например OCI Ampere A1 — arm64) |
-| Docker | Docker Engine с плагином Compose v2 (`docker compose`); проверено на Docker 29.6.2 |
+| Docker | Docker Engine с плагином Compose 2.23 или новее (`docker compose`; `configs: content:` в compose-файле); проверено на Docker 29.6.2 |
 | Утилиты | `curl`, `openssl` (для quickstart и проверок) |
 | CPU | 1 vCPU достаточно для демо и десятков агентов (не нагружалось) |
 | Память | 2 ГБ и больше; замер без нагрузки: сервер 491 МиБ, PostgreSQL 60 МиБ (Docker 29.6.2, amd64, JVM по умолчанию) |

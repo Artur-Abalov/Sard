@@ -51,4 +51,7 @@ object SardMetricNames {
     const val SELF_BACKUP_LAST_SUCCESS = "sard.self.backup.last.success.timestamp.seconds"
     const val METRICS_STATE_REFRESH_TIMESTAMP = "sard.metrics.state.refresh.timestamp.seconds"
     const val METRICS_STATE_REFRESH_FAILURES = "sard.metrics.state.refresh.failures"
+
+    // The server's database (DB1): 1 per way it differs from a new installation's, read at start.
+    const val DATABASE_SETTINGS_MISMATCH = "sard.database.settings.mismatch"
 }

@@ -4,6 +4,7 @@
 package dev.sard.server.prometheus
 
 import dev.sard.server.fleet.AgentPresence
+import dev.sard.server.metrics.DatabaseSettingsGauges
 import dev.sard.server.metrics.RunDurations
 import dev.sard.server.metrics.SelfBackupSource
 import dev.sard.server.metrics.StateGauges
@@ -11,7 +12,6 @@ import dev.sard.server.metrics.StateReader
 import dev.sard.server.metrics.StateRefresh
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.CertificateAuthority
-import io.micrometer.core.instrument.config.MeterFilter
 import io.micrometer.prometheusmetrics.PrometheusConfig
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
 import org.springframework.beans.factory.ObjectProvider
@@ -19,9 +19,6 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Import
 import java.time.Clock
-
-/** The prefixes of the meters the exposition carries: Sard's own, the JVM's and the process's (owner's answer OV3). */
-private val EXPOSED = listOf("sard.", "jvm.", "process.")
 
 /**
  * Metrics for Prometheus (H1 phase 3), the part that needs no database: the registry that renders them, which
@@ -39,15 +36,15 @@ class MetricsListenerConfiguration {
     @Bean
     fun prometheusMeterRegistry(): PrometheusMeterRegistry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
 
-    /** Only Sard's, the JVM's and the process's meters: no URI, class of exception or other free text in a label. */
+    /** What the start found about the database (DB1), registered before any migration runs. */
     @Bean
-    fun exposedMetersOnly(): MeterFilter = MeterFilter.deny { id -> EXPOSED.none { id.name.startsWith(it) } }
+    fun databaseSettingsGauges(meters: PrometheusMeterRegistry) = DatabaseSettingsGauges(meters)
 
     @Bean
     fun metricsListener(
         settings: MetricsSettings,
         meters: PrometheusMeterRegistry,
-    ) = MetricsListener(settings, meters::scrape)
+    ) = MetricsListener(settings, ExposedMeters(meters)::text)
 }
 
 /** The metrics that come from the server's work: the run durations and the state tick (H1 phase 3). */

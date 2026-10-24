@@ -64,6 +64,8 @@ tasks.test {
     val logsDir = layout.buildDirectory.dir("e2e-logs")
     doFirst { delete(logsDir) }
     systemProperty("e2e.logsDir", logsDir.get().asFile.path)
+    // The PostgreSQL of an installation (DB1): the server's database of the stand and of the recovery drill.
+    systemProperty("e2e.postgresPinFile", rootProject.file("deploy/postgres.env").path)
     systemProperty(
         "e2e.resticVersionFile",
         rootProject.file("agent/internal/restic/restic-version").path,

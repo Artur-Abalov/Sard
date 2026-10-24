@@ -105,7 +105,7 @@ sudo systemctl restart sard-agent
 ```bash
 cd ~/sard
 docker compose down -v          # контейнеры и оба тома: база и ключ CA
-docker image rm "$(docker compose config --images | grep sard-server)" postgres:18-alpine
+docker image rm "$(docker compose config --images | grep sard-server)" "$(docker compose config --images | grep postgres)"
 rm -f .env docker-compose.yml
 ```
 

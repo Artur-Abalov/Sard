@@ -163,7 +163,7 @@ chmod 600 "sard-db-$STAMP.dump" "sard-pki-$STAMP.tgz"
 Дамп базы разворачивается во временный PostgreSQL и сверяется с живой базой:
 
 ```bash
-docker run -d --name sard-verify -e POSTGRES_PASSWORD=verify postgres:18-alpine
+docker run -d --name sard-verify -e POSTGRES_PASSWORD=verify "$(docker compose config --images | grep postgres)"
 until docker exec sard-verify pg_isready -U postgres -q; do sleep 1; done
 docker exec -i sard-verify pg_restore -U postgres -d postgres --no-owner < "sard-db-$STAMP.dump"
 docker exec sard-verify psql -U postgres -tAc 'select count(*) from agents'

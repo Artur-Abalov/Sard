@@ -464,6 +464,16 @@ class ArchitectureTest {
         return (created + altered).toSet()
     }
 
+    /** Flyway refuses to start on two migrations of one version (DUPLICATE_VERSIONED_MIGRATION); parallel
+     * branches picking the same timestamp is how that happens. */
+    @Test
+    fun `every migration has a version of its own`() {
+        val dir = File("src/main/resources/db/migration")
+        val versions = dir.listFiles { f -> f.extension == "sql" }!!.groupBy { it.name.substringBefore("__") }
+        val shared = versions.filterValues { it.size > 1 }.mapValues { (_, files) -> files.map { it.name }.sorted() }
+        assertEquals(emptyMap(), shared)
+    }
+
     @Test
     fun `the tenant tables are read from the migrations`() {
         val tables = tenantTables()

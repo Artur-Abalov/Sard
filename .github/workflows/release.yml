@@ -372,7 +372,10 @@ jobs:
           build-args: SARD_VERSION=${{ env.VERSION }}
           push: true
           tags: ${{ env.AGENT_TAGS }}
-      # The same agent on postgres:18 (F6): docker-compose.yml's sard-self dumps the database with its pg_dump.
+      # The same agent on the pinned PostgreSQL (F6, deploy/postgres.env): docker-compose.yml's sard-self dumps
+      # the database with its pg_dump, of the server's version.
+      - name: the pinned base of the -pg18 agent
+        run: grep '^SARD_AGENT_PG_BASE_IMAGE=' deploy/postgres.env >> "$GITHUB_ENV"
       - name: build and push sard-agent -pg18 for amd64 and arm64
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -381,7 +384,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           build-args: |
             SARD_VERSION=${{ env.VERSION }}
-            BASE_IMAGE=postgres:18
+            BASE_IMAGE=${{ env.SARD_AGENT_PG_BASE_IMAGE }}
           push: true
           tags: ${{ env.AGENT_PG_TAGS }}
       - name: the published agent images are this version, on both architectures
@@ -500,6 +503,8 @@ jobs:
           gunzip -c "sard-${VERSION#v}-images-linux-${{ matrix.arch }}.tar.gz" | docker load
           cp sard.env.example .env
           sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" .env
+          # A loaded image has no registry digest: PostgreSQL by the tag the archive carries (docs/operator/11-offline.md).
+          echo "SARD_POSTGRES_IMAGE=$(grep '^SARD_POSTGRES_IMAGE=' "$GITHUB_WORKSPACE/deploy/postgres.env" | cut -d= -f2 | cut -d@ -f1)" >> .env
           docker compose up -d --wait --pull never
       - run: scripts/smoke-server.sh "$RUNNER_TEMP/offline/.env" "$VERSION"
       - if: failure()

@@ -88,7 +88,10 @@ class RecoveryDrillStand :
         val arch = if (System.getProperty("os.arch") in setOf("aarch64", "arm64")) "arm64" else "amd64"
         Files.createDirectories(offline)
         val file = offline.resolve("sard-$version-images-linux-$arch.tar.gz")
-        host("sh", "-c", "docker save sard-server:$version sard-agent:$version-pg18 ${E2e.POSTGRES_IMAGE} | gzip -1 > '$file'")
+        // As scripts/offline-archive.sh: PostgreSQL by its pinned digest, saved under its tag alone.
+        host("docker", "pull", "--quiet", E2e.postgresImage)
+        host("docker", "tag", E2e.postgresImage, E2e.postgresTag)
+        host("sh", "-c", "docker save sard-server:$version sard-agent:$version-pg18 ${E2e.postgresTag} | gzip -1 > '$file'")
     }
 
     private fun host(vararg command: String): String {

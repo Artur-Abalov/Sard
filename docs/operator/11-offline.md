@@ -35,8 +35,14 @@ cd ~/sard-offline
 sha256sum --check --ignore-missing SHA256SUMS.server
 gunzip -c sard-*-images-linux-*.tar.gz | docker load
 mkdir -p ~/sard && cp docker-compose.yml ~/sard/ && cp sard.env.example ~/sard/.env
+# PostgreSQL по тегу из архива: у загруженного образа нет digest реестра (раздел 16)
+sed -n 's/^# SARD_POSTGRES_IMAGE=\(.*\)@.*/SARD_POSTGRES_IMAGE=\1/p' sard.env.example >> ~/sard/.env
 cd ~/sard && sudo chgrp 10001 .env && chmod 640 .env
 ```
+
+Последняя строка `.env` должна стать `SARD_POSTGRES_IMAGE=postgres:<версия>-alpine`.
+Образ в compose-файле закреплён по digest реестра. `docker load` такого digest
+образу не даёт, поэтому без этой строки `--pull never` ответит `No such image`.
 
 Дальше — [раздел 2](02-install.md), шаги 2–3 (секреты и имя), и запуск с
 запретом скачивания образов:
