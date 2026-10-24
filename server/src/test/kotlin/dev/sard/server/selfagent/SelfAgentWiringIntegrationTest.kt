@@ -11,10 +11,12 @@ import dev.sard.server.enrollment.TokenServiceTestConfiguration
 import dev.sard.server.enrollment.deleteEnrollmentTenantData
 import dev.sard.server.enrollment.insertTenant
 import dev.sard.server.extension.TenantResolver
+import dev.sard.server.metrics.Exposition
 import dev.sard.server.onboarding.ConfirmedCaStep
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.resource
+import dev.sard.server.prometheus.ExposedMeters
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.junit.jupiter.api.Tag
@@ -125,17 +127,19 @@ class SelfAgentWiringIntegrationTest(
     private fun loginAs(password: String) = DriverManager.getConnection(postgres.jdbcUrl, "sard_self", password).use { }
 
     @Test
-    fun `Реестр метрик принимает только счётчики sard, jvm и process`() {
-        // A name per call: a meter that exists already is not asked of the filter again.
+    fun `Экспозиция метрик несёт только счётчики sard, jvm и process, остальные остаются в реестре`() {
         val suffix = UUID.randomUUID().toString().replace("-", "")
-        val names = listOf("sard", "jvm", "process", "http").map { "$it.wiring.probe.$suffix" }
+        val prefixes = listOf("sard", "jvm", "process", "http")
+        prefixes.forEach { meters.counter("$it.wiring.probe.$suffix") }
 
-        MutFlow.underTest { names.forEach { meters.counter(it) } }
+        // Outside MutFlow.underTest: a scrape reads every gauge of the context, and their mutants are not this test's.
+        val families = Exposition(ExposedMeters(meters).text()).families()
 
         assertEquals(
             listOf(true, true, true, false),
-            names.map { meters.find(it).counter() != null },
+            prefixes.map { "${it}_wiring_probe_${suffix}_total" in families },
         )
+        assertNotNull(meters.find("http.wiring.probe.$suffix").counter())
     }
 
     @Test
