@@ -9,7 +9,7 @@ import { tabularNums } from '../theme'
 // in the monospace font, its digits tabular.
 export function Mono({ children, ...props }: PropsWithChildren<TextProps>) {
   return (
-    <Text span ff="monospace" style={tabularNums} {...props}>
+    <Text span ff="monospace" style={{ ...tabularNums, overflowWrap: 'anywhere' }} {...props}>
       {children}
     </Text>
   )

@@ -2,7 +2,7 @@
 // Copyright 2026 Artur Abalov
 
 import { describe, expect, test } from 'vitest'
-import { canRevokeToken, shortId, ttlSeconds } from './tokens'
+import { canRevokeToken, revokeRefusal, shortId, ttlSeconds } from './tokens'
 
 describe('the lifetime of a new token', () => {
   test.each([
@@ -29,6 +29,19 @@ describe('the revoke button', () => {
     ['revoked', false],
   ] as const)('a %s token: %s', (status, shown) => {
     expect(canRevokeToken(status)).toBe(shown)
+  })
+})
+
+describe('the refusal of a revoke', () => {
+  test.each([
+    [{ kind: 'problem', status: 409, code: 'token_used' }, 'used'],
+    [{ kind: 'problem', status: 409, code: 'token_expired' }, 'expired'],
+    [{ kind: 'problem', status: 500, code: 'internal' }, null],
+    [{ kind: 'problem', status: 409, code: 'onboarding_incomplete' }, null],
+    [{ kind: 'http', status: 503 }, null],
+    [{ kind: 'network' }, null],
+  ] as const)('%j is %j', (failure, refusal) => {
+    expect(revokeRefusal(failure)).toBe(refusal)
   })
 })
 

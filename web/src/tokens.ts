@@ -2,6 +2,7 @@
 // Copyright 2026 Artur Abalov
 
 import type { components } from './api/schema'
+import type { Failure } from './errors'
 
 export type TtlUnit = 'minutes' | 'hours' | 'days'
 
@@ -21,6 +22,14 @@ export function canRevokeToken(status: components['schemas']['EnrollmentTokenSta
 }
 
 // An id as a short label where no name is known yet.
+// Why the server refused to revoke the token: it was used or expired meanwhile. Any other
+// failure is no refusal of the token and is shown as an error.
+export function revokeRefusal(failure: Failure): 'used' | 'expired' | null {
+  if (failure.kind !== 'problem') return null
+  if (failure.code === 'token_used') return 'used'
+  return failure.code === 'token_expired' ? 'expired' : null
+}
+
 export function shortId(id: string): string {
   return id.slice(0, 8)
 }

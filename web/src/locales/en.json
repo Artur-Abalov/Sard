@@ -516,7 +516,7 @@
         "user": "User",
         "host": "Host",
         "port": "Port (optional)",
-        "fingerprint": "Fingerprint of the host key, SHA256:… (optional)"
+        "hostKeyFingerprint": "Fingerprint of the host key, SHA256:… (optional)"
       },
       "noSecrets": "No keys or passwords are entered here: the key ID and the secret key are typed in the terminal of the server, and they never reach the browser or the server.",
       "local": {
@@ -795,7 +795,7 @@
     "lateSuccess": "The agent reported later: the restore succeeded. Data: <m>{{target}}</m>."
   },
   "banners": {
-    "noRecoveryKey": "{{count}} repositories have no recovery key: if the password of their host is lost, the backups cannot be restored."
+    "noRecoveryKey": "Repositories without a recovery key: {{count}}. If the password of their host is lost, the backups cannot be restored."
   },
   "repositories": {
     "title": "Repositories",

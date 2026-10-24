@@ -8,6 +8,7 @@ import {
   Button,
   Group,
   SegmentedControl,
+  Stack,
   useMantineColorScheme,
   type MantineColorScheme,
 } from '@mantine/core'
@@ -59,9 +60,31 @@ function LogoutButton() {
 
 const schemes: MantineColorScheme[] = ['light', 'dark', 'auto']
 
-function Header({ opened, toggle }: { opened: boolean; toggle: () => void }) {
+// The language and the colour scheme: in the header on wide screens, in the navigation on a phone,
+// where the header has no room for them.
+function Preferences() {
   const { t, i18n } = useTranslation()
   const { colorScheme, setColorScheme } = useMantineColorScheme()
+  return (
+    <>
+      <SegmentedControl
+        aria-label={t('app.language')}
+        value={i18n.language}
+        onChange={(lng) => void i18n.changeLanguage(lng)}
+        data={languages.map((lng) => ({ value: lng, label: lng.toUpperCase() }))}
+      />
+      <SegmentedControl
+        aria-label={t('app.colorScheme')}
+        value={colorScheme}
+        onChange={(value) => setColorScheme(value as MantineColorScheme)}
+        data={schemes.map((scheme) => ({ value: scheme, label: t(`app.${scheme}`) }))}
+      />
+    </>
+  )
+}
+
+function Header({ opened, toggle }: { opened: boolean; toggle: () => void }) {
+  const { t } = useTranslation()
 
   return (
     <Group h="100%" px="md" justify="space-between">
@@ -76,18 +99,9 @@ function Header({ opened, toggle }: { opened: boolean; toggle: () => void }) {
         <Wordmark />
       </Group>
       <Group>
-        <SegmentedControl
-          aria-label={t('app.language')}
-          value={i18n.language}
-          onChange={(lng) => void i18n.changeLanguage(lng)}
-          data={languages.map((lng) => ({ value: lng, label: lng.toUpperCase() }))}
-        />
-        <SegmentedControl
-          aria-label={t('app.colorScheme')}
-          value={colorScheme}
-          onChange={(value) => setColorScheme(value as MantineColorScheme)}
-          data={schemes.map((scheme) => ({ value: scheme, label: t(`app.${scheme}`) }))}
-        />
+        <Group visibleFrom="sm">
+          <Preferences />
+        </Group>
         <LogoutButton />
       </Group>
     </Group>
@@ -128,6 +142,9 @@ export function Layout() {
       </AppShell.Header>
       <AppShell.Navbar p="xs">
         <Navigation onNavigate={close} />
+        <Stack hiddenFrom="sm" mt="md" gap="xs">
+          <Preferences />
+        </Stack>
       </AppShell.Navbar>
       <AppShell.Main>
         <Box maw={contentMaxWidth}>
