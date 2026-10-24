@@ -257,3 +257,13 @@ Docker в окружении нет, поэтому ни одна база из 
     `fireTimer` срабатывает на последнем.
   - После правки 0 падений из 600, `gate.sh agent fast` — PASSED,
     покрытие 98.7%.
+- `server` (mutflow): два выживших в `MetricsConfiguration.kt:45`
+  (`exposedMetersOnly`) под `BuiltinEnrollmentTokensIntegrationTest`.
+  - Причина: фоновый тик `StateLoop` регистрирует серии во время окна
+    `underTest` (ADR mutflow isolation), это код H1.
+  - Локально прогон класса без выживших.
+  - Предложение — в комментарии PR, в этом PR не исправлялось.
+- `agent-mutation-total`: `mutate-exec ERROR` — тесты `cmd/sard-agent` без
+  мутаций повисли на 600 с в одном шарде. Локально 60 прогонов под нагрузкой
+  без зависаний. Причина не установлена.
+- Прогон перезапущен один раз целиком: всё зелёное, PR без конфликтов.
