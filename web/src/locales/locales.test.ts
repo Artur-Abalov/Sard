@@ -2,6 +2,7 @@
 // Copyright 2026 Artur Abalov
 
 import { describe, expect, test } from 'vitest'
+import { emptyForm } from '../onboarding/selfBackup'
 import en from './en.json'
 import ru from './ru.json'
 
@@ -43,6 +44,19 @@ describe('certificate texts', () => {
       const { agent } = dictionary
       for (const text of [agent.certificateExpiringHint, agent.certificateExpiredHint]) {
         expect(text).not.toContain('sard-agent')
+      }
+    }
+  })
+})
+
+describe('the labels of the self-backup storage form', () => {
+  const fields = Object.keys(emptyForm).filter((field) => !['storage', 'provider'].includes(field))
+
+  test('every field of the form has a label in both dictionaries', () => {
+    for (const dictionary of [ru, en]) {
+      const present = new Set(keyPaths(dictionary))
+      for (const field of fields) {
+        expect(present.has(`setup.selfBackup.field.${field}`), field).toBe(true)
       }
     }
   })
