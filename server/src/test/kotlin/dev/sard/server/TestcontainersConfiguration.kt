@@ -10,7 +10,6 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.DependsOn
 import org.springframework.jdbc.core.JdbcTemplate
 import org.testcontainers.postgresql.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.time.Instant
 
 /**
@@ -22,7 +21,7 @@ import java.time.Instant
 class TestcontainersConfiguration {
     @Bean
     @ServiceConnection
-    fun postgres(): PostgreSQLContainer = PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"))
+    fun postgres(): PostgreSQLContainer = EmbeddedPostgres.container()
 
     @Bean
     @DependsOn("flywayInitializer")

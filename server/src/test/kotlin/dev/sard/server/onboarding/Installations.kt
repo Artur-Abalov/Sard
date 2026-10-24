@@ -7,6 +7,7 @@ import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
+import dev.sard.server.EmbeddedPostgres
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.selfagent.Logged
 import org.slf4j.LoggerFactory
@@ -23,7 +24,6 @@ import org.springframework.core.type.classreading.MetadataReader
 import org.springframework.core.type.classreading.MetadataReaderFactory
 import org.springframework.core.type.filter.TypeFilter
 import org.testcontainers.postgresql.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import tools.jackson.databind.ObjectMapper
 import java.nio.file.Files
 import java.nio.file.Path
@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /** One PostgreSQL for the restart tests; each installation gets a database of its own in it. */
 object TestPostgres {
     private val container: PostgreSQLContainer by lazy {
-        PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine")).also { it.start() }
+        EmbeddedPostgres.container().also { it.start() }
     }
     private val counter = AtomicInteger()
 

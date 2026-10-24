@@ -88,7 +88,9 @@ class SardEnvironment(
     val postgres: PostgreSQLContainer =
         track(
             POSTGRES_ALIAS,
-            PostgreSQLContainer(DockerImageName.parse(E2e.POSTGRES_IMAGE)).apply {
+            PostgreSQLContainer(DockerImageName.parse(E2e.postgresImage).asCompatibleSubstituteFor("postgres")).apply {
+                withEnv("POSTGRES_INITDB_ARGS", E2e.postgresInitdbArgs)
+                withEnv("TZ", "UTC")
                 withNetwork(sardNetwork)
                 withNetworkAliases(POSTGRES_ALIAS)
                 withDatabaseName("sard")
@@ -374,7 +376,7 @@ class SardEnvironment(
         /** Where the server keeps its CA. */
         const val CA_CERT_PATH = "$PKI_DIR/ca/ca.crt"
 
-        /** The data volume of the postgres:18 image (PGDATA is a directory below it). */
+        /** The data volume of the postgres image (PGDATA is a directory below it). */
         private const val PG_DATA_DIR = "/var/lib/postgresql"
 
         private val STARTUP_TIMEOUT = Duration.ofMinutes(3)

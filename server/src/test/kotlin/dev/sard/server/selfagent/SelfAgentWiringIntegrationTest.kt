@@ -3,6 +3,7 @@
 
 package dev.sard.server.selfagent
 
+import dev.sard.server.EmbeddedPostgres
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentToken
 import dev.sard.server.enrollment.EnrollmentTokens
@@ -27,7 +28,6 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.postgresql.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
@@ -56,7 +56,8 @@ class StatementLoggingPostgres {
     @Bean
     @ServiceConnection
     fun postgres(): PostgreSQLContainer =
-        PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"))
+        EmbeddedPostgres
+            .container()
             .withCommand("postgres", "-c", "log_statement=all")
 }
 

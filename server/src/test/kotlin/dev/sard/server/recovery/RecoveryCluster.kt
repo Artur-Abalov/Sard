@@ -3,10 +3,10 @@
 
 package dev.sard.server.recovery
 
+import dev.sard.server.EmbeddedPostgres
 import dev.sard.server.onboarding.Database
 import org.flywaydb.core.Flyway
 import org.testcontainers.postgresql.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -18,7 +18,8 @@ private const val OWNER_PASSWORD = "appowner-password"
  */
 object RecoveryCluster {
     val container: PostgreSQLContainer by lazy {
-        PostgreSQLContainer(DockerImageName.parse("postgres:18-alpine"))
+        EmbeddedPostgres
+            .container()
             .withCommand("postgres", "-c", "log_statement=all")
             .also { it.start() }
     }

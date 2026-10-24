@@ -52,7 +52,22 @@ internal object E2e {
                 .single { it.startsWith("version=") }
                 .removePrefix("version=")
 
-    const val POSTGRES_IMAGE = "postgres:18-alpine"
+    /** deploy/postgres.env (DB1): the server's database image and its initdb arguments, as the compose file has them. */
+    private val postgresPin: Map<String, String>
+        get() =
+            Files
+                .readAllLines(Path.of(property("e2e.postgresPinFile")))
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("#") }
+                .associate { it.substringBefore("=") to it.substringAfter("=").removeSurrounding("\"") }
+
+    /** The server's database, pinned by digest. */
+    val postgresImage: String get() = postgresPin.getValue("SARD_POSTGRES_IMAGE")
+
+    /** [postgresImage] without its digest: the name an offline archive carries it under (docs/operator/11-offline.md). */
+    val postgresTag: String get() = postgresImage.substringBefore("@")
+
+    val postgresInitdbArgs: String get() = postgresPin.getValue("SARD_POSTGRES_INITDB_ARGS")
 
     /** The server a source of the postgresql plugin backs up: the official image of [major]. */
     fun pgServerImage(major: Int): String = "postgres:$major"

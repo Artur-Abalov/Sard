@@ -29,6 +29,10 @@
 #   7  (F6) what the self-backup reads stays read-only in the sidecar: the CA directory and
 #      the installation directory are mounted read-only and refuse a write, .env is readable
 #      through group 10001; the role sard_self still cannot write to the database
+#   9  (DB1) a clean install's database: the pinned PostgreSQL, page checksums, UTF8, the builtin
+#      C.UTF-8 locale, UTC and the settings of the profile small, and no warning in the server's
+#      log; after the upgrade (5) the old database keeps its locale, gets the profile, and the
+#      server's log names the difference
 #
 # Usage: SARD_IMAGE=sard-server SARD_AGENT_IMAGE=sard-agent SARD_VERSION=<tag> \
 #          [UPGRADE_FROM=ghcr.io/artur-abalov/sard-server:0.1.0-beta.1] scripts/test-self-agent.sh <workdir>
@@ -84,6 +88,16 @@ wait_online() { # $1: seconds; prints the online built-in agent id
   return 1
 }
 channel() { docker compose exec -T server sh -c "$1"; }
+# DB1: what initdb fixed and what the mounted settings say, one line.
+db1_settings() {
+  docker compose exec -T postgres psql -U sard -d sard -qAt -F' ' -c "select current_setting('server_version'), \
+    current_setting('data_checksums'), pg_encoding_to_char(encoding), datlocprovider, coalesce(datlocale, '-'), \
+    current_setting('log_timezone'), current_setting('shared_buffers'), current_setting('max_connections'), \
+    current_setting('wal_level'), current_setting('track_io_timing') from pg_database where datname = 'sard'"
+}
+db1_warning='the database differs from what a new installation creates'
+# shellcheck source=../deploy/postgres.env
+pinned_version="$(. "$root/deploy/postgres.env" && echo "$SARD_POSTGRES_IMAGE" | sed -E 's/^postgres:([0-9.]+)-.*/\1/')"
 
 docker compose down -v --remove-orphans >/dev/null 2>&1 || true
 
@@ -146,6 +160,13 @@ EOF
   id="$(wait_online 180)" || fail "5: no online built-in agent within 180 s after the upgrade"
   [ "$id" = "$sidecar" ] || fail "5: the built-in agent is $id after the upgrade, was $sidecar"
   pass "5: after the upgrade: same CA, agents and tokens, steps ca and admin done, no setup code in the log, Flyway $applied applied; built-in agent $id online"
+  settings="$(db1_settings)"
+  case "$settings" in
+    "$pinned_version "*" c - UTC 256MB 50 replica on") ;;
+    *) fail "9: the upgraded database: $settings (want the pinned $pinned_version, libc locale kept, the profile small)" ;;
+  esac
+  server_log | grep "$db1_warning" | grep -q 'locale=libc' || fail "9: no warning about the old database's locale in the server's log"
+  pass "9: the old database keeps its locale, has the profile small ($settings), the server warns about it"
   captured=""
 else
   start=$(date +%s)
@@ -180,6 +201,14 @@ pw="$(channel 'cat /var/lib/sard/self/db-password')"
 docker compose exec -T -e PGPASSWORD="$pw" postgres psql -h 127.0.0.1 -U sard_self -d sard -qAtc 'select count(*) from agents' >/dev/null \
   || fail "1: sard_self does not log in with the channel's password"
 pass "1: sard_self logs in with the password from the channel"
+
+if [ -z "${UPGRADE_FROM:-}" ]; then
+  settings="$(db1_settings)"
+  [ "$settings" = "$pinned_version on UTF8 b C.UTF-8 UTC 256MB 50 replica on" ] \
+    || fail "9: the new database: $settings (want $pinned_version on UTF8 b C.UTF-8 UTC 256MB 50 replica on)"
+  server_log | grep -q "$db1_warning" && fail "9: the server warns about a database it created itself"
+  pass "9: the new database: $settings, no warning in the server's log"
+fi
 
 # 2: re-created twice, the same agent and no new token.
 tokens_issued() { docker compose exec -T postgres psql -U sard -d sard -qAtc 'select count(*) from enrollment_tokens where builtin'; }

@@ -5,6 +5,10 @@
 MODULE_PATH := github.com/Artur-Abalov/sard
 
 BIN := $(CURDIR)/.bin
+# The PostgreSQL of an installation (DB1): the server's image and the base of the -pg18 agent.
+include deploy/postgres.env
+# docker-compose.build.yml builds the -pg18 agent of make up on it.
+export SARD_AGENT_PG_BASE_IMAGE
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
 GO_MODULES := agent agent/plugins/sdk cli
@@ -43,7 +47,7 @@ E2E_BUILD := $(CURDIR)/test/e2e/build
 STAND_DIST ?= $(E2E_BUILD)/stand-dist
 E2E_SERVER_IMAGE ?= sard-server:e2e
 E2E_AGENT_IMAGE ?= sard-agent:e2e
-# The same agent on postgres:18 (deploy/agent/Dockerfile, BASE_IMAGE): the compose file's sard-self (F6).
+# The same agent on the pinned PostgreSQL (deploy/agent/Dockerfile, BASE_IMAGE): the compose file's sard-self (F6).
 E2E_AGENT_PG_IMAGE ?= $(E2E_AGENT_IMAGE)-pg18
 E2E_STAND_AGENT_IMAGE ?= sard-agent-stand:e2e
 # The agent on the official postgres image (F1 ПГ20): pg_dump 18, and 14 for the old-client scenario.
@@ -138,7 +142,7 @@ e2e-assemble: e2e-agent-images e2e-pg-agent-images
 ## e2e-agent-images: the release agent images (plain and -pg18) and the stand's from the tar.gz in DIST and STAND_DIST, and the stand's SFTP server
 e2e-agent-images:
 	$(call agent_image,$(DIST),$(E2E_AGENT_IMAGE))
-	$(call agent_image,$(DIST),$(E2E_AGENT_PG_IMAGE),--build-arg BASE_IMAGE=postgres:18)
+	$(call agent_image,$(DIST),$(E2E_AGENT_PG_IMAGE),--build-arg BASE_IMAGE=$(SARD_AGENT_PG_BASE_IMAGE))
 	$(call agent_image,$(STAND_DIST),$(E2E_STAND_AGENT_IMAGE))
 	docker buildx build $(E2E_BUILD_FLAGS) --load -t $(E2E_SFTP_IMAGE) test/e2e/sftp
 	docker buildx build $(E2E_BUILD_FLAGS) --load -t $(E2E_RECOVERY_VM_IMAGE) test/e2e/recovery-vm

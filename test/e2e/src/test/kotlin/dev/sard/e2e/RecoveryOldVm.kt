@@ -153,6 +153,7 @@ internal class RecoveryOldVm(
             SARD_VERSION=$version
             SARD_IMAGE=sard-server
             SARD_AGENT_IMAGE=sard-agent
+            SARD_POSTGRES_IMAGE=${E2e.postgresTag}
             SARD_DB_PASSWORD=$dbPassword
             SARD_PKI_SERVER_NAMES=localhost,127.0.0.1,$SERVER_NAME
             SARD_AGENT_ENDPOINT=$SERVER_NAME:9090

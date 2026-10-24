@@ -140,6 +140,7 @@ scrape_configs:
 | `sard_metrics_state_refresh_timestamp_seconds` | Unix-время последнего успешного чтения состояния |
 | `sard_metrics_state_refresh_failures_total` | сколько чтений состояния не удалось |
 | `sard_retention_deleted_total{kind}` | сколько строк удалила уборка ([раздел 15](15-data-retention.md)) |
+| `sard_database_settings_mismatch{reason}` | пять серий, читаются при старте: `1`, если база сервера отличается от базы новой установки по `data_checksums`, `encoding`, `locale`, `timezone` или `version` ([раздел 16](16-postgresql.md)) |
 
 Метрики событий (`sard_run_finished_total`, `sard_run_duration_seconds`,
 `sard_notify_*`, `sard_scheduler_fires_total`, `sard_retention_deleted_total`)

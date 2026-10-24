@@ -86,7 +86,7 @@
 | testcontainers-junit-jupiter, testcontainers-postgresql | 2.0.5 | MIT | контейнеры PostgreSQL, sard-server, sard-agent |
 | kotlin-test-junit5 | 2.4.20 | Apache-2.0 | assert-функции |
 
-Образы: `postgres:18-alpine` (как в `deploy/`), `ubuntu:24.04` с `openssh-client`/`openssh-server` из архива Ubuntu — база образов агента и SFTP-сервера стенда (ADR 0047).
+Образы: `postgres:18.6-alpine@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5` (закреплён в `deploy/postgres.env`, DB1), основа агента `-pg18` — `postgres:18.6-trixie` оттуда же, `ubuntu:24.04` с `openssh-client`/`openssh-server` из архива Ubuntu — база образов агента и SFTP-сервера стенда (ADR 0047).
 `dxflrs/garage:v2.1.0` (AGPL-3.0) — S3-хранилище стенда (ADR 0047), только запускается.
 `nicolaka/netshoot:v0.14` (Apache-2.0) — только `iptables` в сетевом пространстве контейнера агента: односторонний обрыв связи в T3 (`Interruptions.block`).
 
