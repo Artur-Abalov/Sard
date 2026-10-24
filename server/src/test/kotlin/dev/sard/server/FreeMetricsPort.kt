@@ -4,6 +4,7 @@
 package dev.sard.server
 
 import dev.sard.server.metrics.SardMetricNames
+import dev.sard.server.metrics.StateGauges
 import dev.sard.server.prometheus.StateLoop
 import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.boot.context.event.ApplicationReadyEvent
@@ -50,18 +51,33 @@ class FreeMetricsPort : ApplicationContextInitializer<ConfigurableApplicationCon
     }
 }
 
-/** A tick is behind once it refreshed the state (the gauge of its time exists) or failed (counted). */
+/**
+ * A tick is behind once it failed (counted) or its [StateGauges.publish] returned. The gauge of the tick's time is
+ * the first series `publish` registers, the others follow, so its presence only says `publish` began; `publish` is
+ * synchronized on the gauges, and taking their monitor waits for it to return.
+ */
 private fun awaitFirstTick(context: ConfigurableApplicationContext) {
     if (context.getBeanNamesForType(StateLoop::class.java).isEmpty()) return
     val meters = context.getBean(MeterRegistry::class.java)
+    val gauges = context.getBean(StateGauges::class.java)
     val deadline = Instant.now().plus(FIRST_TICK)
-    while (Instant.now().isBefore(deadline)) {
-        val refreshed = meters.find(SardMetricNames.METRICS_STATE_REFRESH_TIMESTAMP).gauge() != null
-        val failed = (meters.find(SardMetricNames.METRICS_STATE_REFRESH_FAILURES).counter()?.count() ?: 0.0) > 0
-        if (refreshed || failed) return
+    while (!published(meters) && !failed(meters)) {
+        check(Instant.now().isBefore(deadline)) { "the first state tick did not end within $FIRST_TICK" }
         Thread.sleep(POLL_MILLIS)
     }
-    error("the first state tick did not end within $FIRST_TICK")
+    synchronized(gauges) {
+        // publish has returned
+    }
+}
+
+private fun published(meters: MeterRegistry): Boolean {
+    val time = meters.find(SardMetricNames.METRICS_STATE_REFRESH_TIMESTAMP).gauge()
+    return time != null
+}
+
+private fun failed(meters: MeterRegistry): Boolean {
+    val failures = meters.find(SardMetricNames.METRICS_STATE_REFRESH_FAILURES).counter()
+    return failures != null && failures.count() > 0
 }
 
 private const val POLL_MILLIS = 20L

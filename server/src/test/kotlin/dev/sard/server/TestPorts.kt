@@ -10,6 +10,7 @@ import java.nio.channels.FileLock
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.PosixFilePermissions
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
 
@@ -27,8 +28,12 @@ private const val LAST = 30_000
 object TestPorts {
     private val reserved: MutableSet<Int> = ConcurrentHashMap.newKeySet()
     private val locks: MutableList<FileLock> = java.util.Collections.synchronizedList(mutableListOf())
+    /** Only the owner's: the locks say nothing, but no other local user creates or removes them. */
     private val directory: Path by lazy {
-        Files.createDirectories(Path.of(System.getProperty("java.io.tmpdir"), "sard-test-ports"))
+        Files.createDirectories(
+            Path.of(System.getProperty("java.io.tmpdir"), "sard-test-ports"),
+            PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")),
+        )
     }
 
     /** A loopback port no other test JVM holds and that nothing listens on now. */
