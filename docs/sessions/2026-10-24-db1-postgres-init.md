@@ -169,6 +169,43 @@ Docker в окружении нет, поэтому ни одна база из 
   Без вызова проверки в стратегии падают три теста старта (проверено
   временной правкой).
 - `DeployPostgresTest` (6): красный до правок копий, зелёный после.
+- Первый быстрый гейт сервера: 3031 тест, 2 красных.
+  - `PackageCycleTest`: цикл `persistence → metrics → runs → persistence`.
+    Исправлен по образцу `RunDurations`: в `persistence` остался интерфейс
+    `DatabaseMismatchListener`, реализация `DatabaseSettingsGauges` перешла
+    в `metrics`, бин регистрируется в `prometheus`.
+  - `MonitoringDocsTest`: ссылка на `16-postgresql.md` — страница появилась
+    после старта гейта. При повторном прогоне зелёный.
+- Сеть окружения: `deb.debian.org` и `apt.postgresql.org` запрещены
+  (`connect_rejected`), apt по HTTP прокси отклоняет (405). Поэтому не
+  собираются:
+  - образ агента `-pg18` (основа trixie, apt `openssh-client`);
+  - образ ВМ учений (apt по HTTP).
+
+  Не запускались: `test-self-agent.sh`, e2e-классы `SelfBackupTest`,
+  `SelfRecoveryKeyTest`, `HostRecoveryKeyTest`, `CertificateLifetimesTest`,
+  `ServerRecoveryDrillTest` и verify-quickstart/verify-offline (работают
+  только в `release.yml`). Самобэкап и восстановление F6/F7 здесь проверить
+  нельзя.
+- Jar собран локально (`bootJar`, консоль `npm run build`), образ
+  `sard-server:e2e` — `make server-image`.
+- Чистая установка по compose релиза (`postgres` + `server`, без агента-соседа):
+  - база: `18.6 on UTF8 b C.UTF-8 UTC 256MB 50 replica on`;
+  - `/api/v1/status` отвечает, предупреждений 0;
+  - `sard_database_settings_mismatch` — пять серий, все 0.
+- Обновление (проверка 4). Старая база получена тем же compose без
+  `POSTGRES_INITDB_ARGS` и без файла настроек (так создавались базы до DB1),
+  в ней строка агента. После подъёма нового compose на том же томе:
+  - строка на месте, Flyway без ошибок;
+  - `shared_buffers` 128MB → 256MB;
+  - одна строка WARN `locale=libc en_US.utf8/en_US.utf8 (want C.UTF-8)`;
+  - метрика `reason="locale"` 1, остальные 0.
+- Перенос (проверка 5), шаги раздела 16 как написаны:
+  - дамп → `rm` тома → `pg_restore` (rc 0) → старт;
+  - «нет отличий», строка на месте.
+
+  Найдено и исправлено: без `--since` `docker compose logs` показывает WARN
+  прошлого старта того же контейнера.
 - actionlint по `release.yml` — 0 замечаний. ShellCheck: новые только SC1091
   (note), как у существующих `source`. markdownlint по новым страницам —
   0 ошибок. `license-check` — OK.

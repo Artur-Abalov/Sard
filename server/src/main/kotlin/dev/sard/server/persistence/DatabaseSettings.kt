@@ -3,9 +3,6 @@
 
 package dev.sard.server.persistence
 
-import dev.sard.server.metrics.SardMetricNames
-import io.micrometer.core.instrument.Gauge
-import io.micrometer.core.instrument.MeterRegistry
 import org.slf4j.LoggerFactory
 import java.sql.Connection
 
@@ -141,13 +138,18 @@ fun readDatabaseSettings(connection: Connection): DatabaseSettings =
             }
     }
 
+/** Told what the start found (DB1): the metrics show it (dev.sard.server.metrics.DatabaseSettingsGauges). */
+fun interface DatabaseMismatchListener {
+    fun found(mismatches: Set<DatabaseMismatch>)
+}
+
 /**
  * The check of the start (DB1), before any migration: an unsupported version refuses the start; any other
- * difference is one WARN line and `sard.database.settings.mismatch{reason}` at 1, because an external database may
- * be set up otherwise on purpose. Every reason is registered, at 0 when it does not apply.
+ * difference is one WARN line, and [listener] hears every start's differences, none included, because an external
+ * database may be set up otherwise on purpose.
  */
 class DatabaseSettingsCheck(
-    private val meters: MeterRegistry,
+    private val listener: DatabaseMismatchListener,
 ) {
     private val log = LoggerFactory.getLogger(DatabaseSettingsCheck::class.java)
 
@@ -155,13 +157,7 @@ class DatabaseSettingsCheck(
         val settings = readDatabaseSettings(connection)
         refuseUnsupportedVersion(settings)
         val found = databaseMismatches(settings)
-        for (mismatch in DatabaseMismatch.entries) {
-            val value = if (mismatch in found) 1.0 else 0.0
-            Gauge
-                .builder(SardMetricNames.DATABASE_SETTINGS_MISMATCH) { value }
-                .tag("reason", mismatch.label)
-                .register(meters)
-        }
+        listener.found(found)
         if (found.isNotEmpty()) log.warn(databaseWarning(settings, found))
     }
 }

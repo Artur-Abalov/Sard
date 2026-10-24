@@ -4,6 +4,7 @@
 package dev.sard.server.prometheus
 
 import dev.sard.server.fleet.AgentPresence
+import dev.sard.server.metrics.DatabaseSettingsGauges
 import dev.sard.server.metrics.RunDurations
 import dev.sard.server.metrics.SelfBackupSource
 import dev.sard.server.metrics.StateGauges
@@ -42,6 +43,10 @@ class MetricsListenerConfiguration {
     /** Only Sard's, the JVM's and the process's meters: no URI, class of exception or other free text in a label. */
     @Bean
     fun exposedMetersOnly(): MeterFilter = MeterFilter.deny { id -> EXPOSED.none { id.name.startsWith(it) } }
+
+    /** What the start found about the database (DB1), registered before any migration runs. */
+    @Bean
+    fun databaseSettingsGauges(meters: PrometheusMeterRegistry) = DatabaseSettingsGauges(meters)
 
     @Bean
     fun metricsListener(

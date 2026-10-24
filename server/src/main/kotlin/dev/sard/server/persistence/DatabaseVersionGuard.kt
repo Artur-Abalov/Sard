@@ -3,7 +3,6 @@
 
 package dev.sard.server.persistence
 
-import io.micrometer.core.instrument.MeterRegistry
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.MigrationInfo
 import org.flywaydb.core.api.MigrationState
@@ -70,10 +69,10 @@ class DatabaseVersionConfiguration {
     @Bean
     fun databaseVersionGuard(
         build: BuildProperties,
-        meters: MeterRegistry,
+        mismatches: DatabaseMismatchListener,
     ) = FlywayMigrationStrategy { flyway ->
         flyway.configuration.dataSource.connection
-            .use(DatabaseSettingsCheck(meters)::check)
+            .use(DatabaseSettingsCheck(mismatches)::check)
         refuseNewerDatabase(flyway, build.version ?: "unknown")
         flyway.migrate()
     }

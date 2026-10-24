@@ -126,9 +126,13 @@ docker compose up -d --wait postgres
 4. Запустите остальное и проверьте:
 
    ```bash
+   since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
    docker compose up -d --wait
-   docker compose logs server | grep 'the database differs' || echo "нет отличий"
+   docker compose logs --since "$since" server | grep 'the database differs' || echo "нет отличий"
    ```
+
+   `--since` нужен: без него `logs` покажет и предупреждение прошлого старта
+   того же контейнера.
 
    Агенты, источники и история запусков на месте; строки `WARN` об отличиях нет.
    Роль самобэкапа `sard_self` сервер создаёт сам при старте.
