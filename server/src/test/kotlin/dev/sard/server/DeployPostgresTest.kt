@@ -103,12 +103,20 @@ class DeployPostgresTest {
     @Test
     fun `the -pg18 agent image is built on the pinned base`() {
         val literal =
-            listOf(".github/workflows/release.yml", "deploy/docker-compose.build.yml", "Makefile").flatMap { path ->
+            listOf(".github/workflows/release.yml", "Makefile").flatMap { path ->
                 lines(path)
                     .filter { "BASE_IMAGE" in it && "postgres:" in it && "Dockerfile.postgres" !in it }
                     .map { "$path: ${it.trim()}" }
             }
 
         assertEquals(emptyList(), literal)
+    }
+
+    /** The development build resolves on its own (ci.yml checks it without make): the pin's copy is its default. */
+    @Test
+    fun `the development build of the -pg18 agent defaults to the pinned base`() {
+        val build = lines("deploy/docker-compose.build.yml").map { it.trim() }.filter { it.startsWith("BASE_IMAGE:") }
+
+        assertEquals(listOf("BASE_IMAGE: \${SARD_AGENT_PG_BASE_IMAGE:-$agentBase}"), build)
     }
 }

@@ -20,5 +20,6 @@ services:
       dockerfile: ../deploy/agent/Dockerfile
       args:
         SARD_VERSION: ${SARD_VERSION:-dev}
-        # The pinned base (deploy/postgres.env), exported by the Makefile.
-        BASE_IMAGE: ${SARD_AGENT_PG_BASE_IMAGE:?run make up: the base comes from deploy/postgres.env}
+        # The pinned base: deploy/postgres.env, which the Makefile exports; the default is its copy
+        # (DeployPostgresTest), so the file resolves without make too.
+        BASE_IMAGE: ${SARD_AGENT_PG_BASE_IMAGE:-postgres:18.6-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6}
