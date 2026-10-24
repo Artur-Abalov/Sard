@@ -73,7 +73,7 @@ GO_TOOLS := \
 	golang.org/x/tools/cmd/deadcode \
 	./cmd/crap
 
-.PHONY: tools gate gate-fast proto build build-agent build-cli package package-stand server-jar server-image image e2e e2e-images e2e-assemble e2e-agent-images e2e-pg-agent-images e2e-test test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check check-sudo-u up down openapi
+.PHONY: tools gate gate-fast proto build build-agent build-cli package package-stand server-jar server-image image e2e e2e-images e2e-assemble e2e-agent-images e2e-agent-pg-image e2e-pg-agent-images e2e-test test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check check-sudo-u up down openapi
 
 ## proto: generate Go code from proto/ into proto/gen/go (committed)
 proto: tools
@@ -140,12 +140,15 @@ e2e-assemble: e2e-agent-images e2e-pg-agent-images
 	$(MAKE) server-image SERVER_IMAGE=$(E2E_SERVER_IMAGE)
 
 ## e2e-agent-images: the release agent images (plain and -pg18) and the stand's from the tar.gz in DIST and STAND_DIST, and the stand's SFTP server
-e2e-agent-images:
+e2e-agent-images: e2e-agent-pg-image
 	$(call agent_image,$(DIST),$(E2E_AGENT_IMAGE))
-	$(call agent_image,$(DIST),$(E2E_AGENT_PG_IMAGE),--build-arg BASE_IMAGE=$(SARD_AGENT_PG_BASE_IMAGE))
 	$(call agent_image,$(STAND_DIST),$(E2E_STAND_AGENT_IMAGE))
 	docker buildx build $(E2E_BUILD_FLAGS) --load -t $(E2E_SFTP_IMAGE) test/e2e/sftp
 	docker buildx build $(E2E_BUILD_FLAGS) --load -t $(E2E_RECOVERY_VM_IMAGE) test/e2e/recovery-vm
+
+## e2e-agent-pg-image: the -pg18 release agent alone (the compose file's sard-self), from the tar.gz in DIST
+e2e-agent-pg-image:
+	$(call agent_image,$(DIST),$(E2E_AGENT_PG_IMAGE),--build-arg BASE_IMAGE=$(SARD_AGENT_PG_BASE_IMAGE))
 
 ## e2e-pg-agent-images: the agent on postgres:18 and on postgres:14 (test/e2e/agent/Dockerfile.postgres) from the tar.gz in DIST
 e2e-pg-agent-images:

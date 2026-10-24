@@ -6,7 +6,7 @@
 Документ описывает базу, на которой работает `sard-server`. В нём собраны
 решения D25 (параметры инициализации) и D29 (внешний кластер — после 0.1.0).
 Эксплуатация — в [разделе 16 руководства оператора](operator/16-postgresql.md),
-обоснование — в [ADR 00XX-draft-embedded-postgresql](adr/00XX-draft-embedded-postgresql.md).
+обоснование — в [ADR 0068](adr/0068-embedded-postgresql.md).
 
 ## Что хранится в базе
 
