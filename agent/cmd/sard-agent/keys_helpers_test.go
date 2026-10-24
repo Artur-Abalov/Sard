@@ -165,7 +165,10 @@ func known32() ([]byte, string) {
 }
 
 // splitClock gives every duration its own timer channel, so that a test fires
-// the --timeout of a command without firing its --connect-timeout.
+// the --timeout of a command without firing its --connect-timeout. Every After
+// gets a new channel and fireTimer fires the newest of its duration: the
+// watcher of an earlier bounded call (repoconnect.Bound) may still wait on its
+// own channel, and must not take the tick meant for the call that hangs.
 type splitClock struct {
 	*fakeEnrollClock
 	mu    sync.Mutex
@@ -177,18 +180,15 @@ func newSplitClock() *splitClock {
 }
 
 func (c *splitClock) After(d time.Duration) <-chan time.Time {
+	ch := make(chan time.Time, 1)
 	c.mu.Lock()
-	ch, found := c.timer[d]
-	if !found {
-		ch = make(chan time.Time, 1)
-		c.timer[d] = ch
-	}
+	c.timer[d] = ch
 	c.mu.Unlock()
 	c.added <- d
 	return ch
 }
 
-// fireTimer fires the timer of d.
+// fireTimer fires the newest timer of d.
 func (c *splitClock) fireTimer(d time.Duration) {
 	c.mu.Lock()
 	ch := c.timer[d]

@@ -239,3 +239,21 @@ Docker в окружении нет, поэтому ни одна база из 
   хранилищах образов;
 - `scripts/test-self-agent.sh` с проверкой 9: ни в одном workflow, нужен
   запуск руками на машине, где собирается `-pg18`.
+
+## CI PR #86
+
+- `ci.yml` не запускался: конфликт с `main` в `docs/sessions/INDEX.md`
+  (после #85). `main` влит, обе строки оставлены.
+- `server-image`: `docker-compose.build.yml` не разбирался без `make`. В
+  значении `${…:?run make up: …}` стоял `: `, и переменной в CI нет. По
+  умолчанию теперь копия пина, `DeployPostgresTest` её сверяет.
+- `go (agent)`: нестабилен
+  `TestARecoveryKeyThatHangsEndsWithTheConnectTimeoutAndSaysTheKeyMayExist`.
+  На `main` джоба зелёная; локально с `-cpu 1,2` тест падал 28 раз из 600.
+  - Причина: `splitClock` отдавал всем `After(d)` одной длительности один
+    канал. Наблюдатель предыдущего шага (`repoconnect.Bound.limit`) иногда
+    забирал тик, предназначенный зависшему `key add`.
+  - Исправлено по решению владельца в этом PR: каждому `After` новый канал,
+    `fireTimer` срабатывает на последнем.
+  - После правки 0 падений из 600, `gate.sh agent fast` — PASSED,
+    покрытие 98.7%.
