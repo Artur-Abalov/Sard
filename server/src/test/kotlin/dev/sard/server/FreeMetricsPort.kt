@@ -26,8 +26,8 @@ private val FIRST_TICK = Duration.ofSeconds(60)
  * properties (or on a command line of its own) keeps its value.
  *
  * The first tick runs at the start, in the background, and registers a gauge for every series it finds; the start
- * waits for it. A registration runs the meter filter, and one that ran while a mutation test was inside
- * `MutFlow.underTest` counted the filter as code of that test, whose mutants then "survived" (ADR mutflow isolation).
+ * waits for it. A tick that ran while a mutation test was inside `MutFlow.underTest` counted the code of the state
+ * gauges as code of that test, whose mutants then "survived" (ADR mutflow isolation).
  * With the tick hourly and the first one behind, no tick runs inside a test.
  */
 class FreeMetricsPort : ApplicationContextInitializer<ConfigurableApplicationContext> {
