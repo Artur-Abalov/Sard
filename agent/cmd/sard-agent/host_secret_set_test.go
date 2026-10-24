@@ -22,7 +22,9 @@ func (h *setupHost) set(name, value string, extra ...string) (int, string, strin
 
 func assertRefusal(t *testing.T, code int, stderr string, wantCode int, reason string) {
 	t.Helper()
-	assertCode(t, code, wantCode)
+	if code != wantCode {
+		t.Fatalf("exit code = %d, want %d; stderr:\n%s", code, wantCode, stderr)
+	}
 	assertReason(t, stderr, reason)
 }
 

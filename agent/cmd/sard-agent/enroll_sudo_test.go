@@ -79,12 +79,20 @@ func TestEnrollmentUnderSudoHandsTheIdentityToTheServiceUser(t *testing.T) {
 	}
 }
 
+// enrollUnderUmask enrolls under sudo with the umask set to mask, and puts the umask back even when the
+// enrollment stops the test.
+func enrollUnderUmask(t *testing.T, mask int) (int, *fakeFixture) {
+	t.Helper()
+	old := syscall.Umask(mask)
+	defer syscall.Umask(old)
+	f := newSucceedingFakeFixture(t, "a1")
+	code, _, _ := f.enrollWith(rootEnrollDeps(newFakeFS()))
+	return code, f
+}
+
 func TestIdentityFileModesDoNotDependOnTheUmaskUnderSudo(t *testing.T) {
 	for _, mask := range []int{0o000, 0o077} {
-		old := syscall.Umask(mask)
-		f := newSucceedingFakeFixture(t, "a1")
-		code, _, _ := f.enrollWith(rootEnrollDeps(newFakeFS()))
-		syscall.Umask(old)
+		code, f := enrollUnderUmask(t, mask)
 		assertCode(t, code, exitOK)
 		assertMode(t, f.h.keyFile, 0o600)
 		assertMode(t, f.h.certFile, 0o644)

@@ -57,8 +57,8 @@ func TestWithoutATerminalAndWithoutAFileNoKeyIsIssued(t *testing.T) {
 	h.assertNoResticCalls()
 }
 
+// Not parallel: the umask is the process', and a parallel test would create its directories under 0.
 func TestThePasswordGoesToAFileWithMode0600OwnedByRootWhateverTheUmask(t *testing.T) {
-	t.Parallel()
 	h := newIssueHost(t)
 	old := syscall.Umask(0)
 	defer syscall.Umask(old)

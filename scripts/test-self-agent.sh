@@ -270,11 +270,19 @@ done
 pass "4: neither a token nor the role password in any service's log"
 # Decision 7: revoked only with the confirmation, then the sidecar enrolls again by itself.
 post() { curl -s -o /dev/null -w '%{http_code}' -b "$cookies" -X POST "$api$1"; }
-[ "$(post "/agents/$id/revoke")" = 409 ] || fail "revoke without confirm is not 409"
+status="$(post "/agents/$id/revoke")"
+[ "$status" = 409 ] || fail "revoke without confirm is $status, not 409"
 [ "$(builtin_agents | awk '{print $1}')" = "$id" ] || fail "revoke without confirm changed the agent"
-[ "$(post "/agents/$id/revoke?confirm=sard-self")" = 200 ] || fail "revoke with confirm is not 200"
-[ "$(post "/agents/$id/revoke")" = 200 ] || fail "a repeated revoke without confirm is not 200"
-pass "revoke: 409 without confirm, 200 with it, 200 again for the revoked agent"
+status="$(post "/agents/$id/revoke?confirm=sard-self")"
+[ "$status" = 200 ] || fail "revoke with confirm is $status, not 200"
+# Until the onboarding is complete (F4b Р22) only the revoke of the live built-in agent is allowed: a repeated
+# one is refused as onboarding_incomplete and leaves the revocation as it was.
+revoked_at() { get "/agents/$id" | python3 -c 'import json,sys; print(json.load(sys.stdin)["revokedAt"])'; }
+before="$(revoked_at)"
+again="$(curl -s -b "$cookies" -X POST "$api/agents/$id/revoke")"
+case "$again" in *'"onboarding_incomplete"'*) ;; *) fail "a repeated revoke before the onboarding is complete: $again" ;; esac
+[ "$(revoked_at)" = "$before" ] || fail "a refused repeated revoke changed revokedAt"
+pass "revoke: 409 without confirm, 200 with it; a repeated one is onboarding_incomplete and changes nothing"
 next="$(wait_online 180)" || fail "no new built-in agent within 180 s after the revoke"
 [ "$next" != "$id" ] || fail "the revoked agent is online again"
 pass "revoke: the sidecar enrolled again by itself as $next"
@@ -308,9 +316,12 @@ repo="$(printf '%s' "$cmd" | json_field 'd["repositoryName"]')"
 address="$(printf '%s' "$cmd" | json_field 'd["address"]')"
 printf '%s' "$cmd" | json_field '"\n".join(d["commands"])' >"$work/repo-commands.sh"
 [ -s "$work/repo-commands.sh" ] || fail "8: the returned command list is empty"
+# In a terminal, as the owner runs them: docker compose run gives the container a TTY, and repo add shows the
+# password of the recovery key there once (V3); without one it refuses (RECOVERY_KEY_OUTPUT_MISSING).
 while IFS= read -r line; do
   [ -n "$line" ] || continue
-  bash -c "$line" </dev/null >>"$work/repo-add.log" 2>&1 || fail "8: command failed: $line: $(tail -5 "$work/repo-add.log")"
+  script -qec "$line" /dev/null </dev/null >>"$work/repo-add.log" 2>&1 \
+    || fail "8: command failed: $line: $(tail -5 "$work/repo-add.log")"
 done <"$work/repo-commands.sh"
 pass "8: the commands of repository-command for $repo ran"
 repo_id=""
