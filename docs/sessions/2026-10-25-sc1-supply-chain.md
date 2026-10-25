@@ -260,3 +260,71 @@ Renovate. В отгружаемых образах apt один — `openssh-cli
 apt на нём (`minisign`, `gnupg`, `rpm`) — принятый риск в ADR, либо
 self-hosted раннеры (вне объёма). Не сделано: собрать образ здесь нельзя
 (нет демона Docker), поддержку `--snapshot` в базах полагаю, не проверял.
+
+## CI первого прогона PR #88 (фаза 2)
+
+- `selftest` (security.yml) — зелёный: фикстуры `test/vuln` блокируются,
+  исключение пропускает, просроченное валит. **Проверка 5 — проверил в CI.**
+- `deps` — красный по делу: Tomcat 11.0.24 (3 critical, исправлено в 11.0.25),
+  Jackson 2.21.5 и 3.1.5 (high). Исправлено поднятием Spring Boot 4.1.1 → 4.1.2
+  (Tomcat 11.0.27, Jackson 2.21.7, 3.1.7; заодно grpc 1.84.1, protobuf 4.36.2,
+  Hibernate 7.4.13 — патч-релиз BOM), `docs/dependencies.md` обновлён.
+- `server`, `server-image`, `e2e` — красные: чистая сборка не прошла
+  `verification-metadata.xml` (нет `.module`/`.pom` промежуточных версий BOM:
+  junit-bom 5.10.2 и др.). Причина — метаданные писались с тёплым кэшем.
+  `scripts/gradle-lock.sh` пишет их из пустого Gradle home; сборка `--offline`
+  в этом home (bootJar, тест, jacoco, detekt, spotless, e2e, режим мутаций)
+  прошла — **проверил локально**.
+- `supply-chain` — красный: shellcheck SC2086 в `renovate-pins.yml`
+  (локальный actionlint шёл без shellcheck в PATH). Исправлено.
+
+## Фаза 3 — подпись образов, SBOM, происхождение, офлайн, документация
+
+### Сделано
+- `release.yml`:
+  - `sbom-packages` (после `reproduce`): SBOM CycloneDX на архитектуру
+    (`scripts/release-sbom.sh packages`), `SHA256SUMS` заново — подпись
+    `sign` покрывает SBOM;
+  - `image`: `images.json` (digest индекса каждого образа), происхождение
+    (`attest-build-provenance`, в реестр);
+  - `sbom-images`: SBOM каждого образа и архитектуры (syft по digest);
+  - `assets` → `sign-server` (окружение `release`, второе подтверждение):
+    cosign `sign --recursive` и `attest --type cyclonedx` по digest индекса,
+    minisign над `SHA256SUMS.server` («sard-server <версия>»), сразу проверка
+    публичными ключами → `server-assets` (проверка ещё раз, загрузка,
+    происхождение файлов);
+  - `publish`: происхождение файлов релиза;
+  - `version`: без `deploy/release/cosign.pub` релиз не начинается;
+  - `verify-quickstart`: блок проверки образов из `docs/operator/10-security.md`
+    дословно; `verify-offline`: блок из `docs/operator/11-offline.md` дословно,
+    в `unshare --net` (сначала проверка, что сети нет).
+- `scripts/release-cosign.sh` (sign | attest | verify), `release-sbom.sh`,
+  `release-verify-server.sh`; `release-sign.sh` подписывает и
+  `SHA256SUMS.server`. `test-release-signing.sh` — 6 новых случаев подделки
+  файлов сервера (в том числе подпись агента над теми же суммами) —
+  **проверил локально**, тестовым ключом.
+- D24: `deploy/release/identity.env` (имена образов, пути ключей);
+  `check-identity.sh` (+ тест) сверяет копии; `release.yml`, `security.yml`,
+  `offline-archive.sh` читают его.
+- Документация: `docs/operator/10-security.md` «Проверка релиза»,
+  `11-offline.md`, `docs/release.md` (шаги 7–9: ключ cosign, Renovate, два
+  подтверждения; смена ключа), `SECURITY.md` (оба языка), README, ADR
+  `00XX-draft-supply-chain.md`.
+- Офлайн-блок проверки — **проверил локально** в `unshare --net` на
+  подписанных тестовым ключом файлах.
+
+### Не проверено (полагаю)
+- cosign v3.1.4 из образа: `sign --recursive`, `attest`, `verify-attestation`
+  по тегу, `env://COSIGN_PRIVATE_KEY` — без демона Docker и реестра здесь не
+  запускал. Проверки 3 и 4 — только тестовым релизом.
+- syft из образа: запись в смонтированный каталог, каталог Go-бинарей в
+  распакованном tar.gz.
+- grype: запись отчёта в смонтированный каталог — проверено CI (`deps`).
+
+### Нужно от владельца
+1. `cosign generate-key-pair` (docs/release.md, шаг 7): `cosign.pub` — в
+   `deploy/release/` коммитом в этот PR или следующий; секреты
+   `COSIGN_PRIVATE_KEY`, `COSIGN_PASSWORD` — в окружение `release`.
+2. Установить приложение Renovate (шаг 8) — проверка 7.
+3. Тестовый релиз `vX.Y.Z-beta.N` после слияния — проверки 3 и 4.
+4. Вопрос 9 (apt): снимок архива для образа агента — делать или принять риск.
