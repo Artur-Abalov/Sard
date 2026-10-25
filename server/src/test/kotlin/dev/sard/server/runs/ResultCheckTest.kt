@@ -235,14 +235,44 @@ private fun hexOf(bytes: ByteArray) =
         .digest(bytes)
         .joinToString("") { "%02x".format(it) }
 
+private const val WHOLE = "a fingerprint without its hash or a hash without its fingerprint"
+private const val NOT_ONE = "a fingerprint that is not one"
+
 private val FP_BYTES =
     """{"facts":[{"name":"tables","rule":"exact","value":"3"}],"format":1,"plugin":"postgresql"}""".toByteArray()
 
 /** The fingerprint a backup brings is checked with it (V2): a hash that is not that of the bytes fails the step. */
 @MutFlowTest
 class FingerprintResultCheckTest {
-    private fun check(output: StepOutput.Backup) =
-        MutFlow.underTest { ResultCheck.of(Action.BACKUP, StepReport(StepState.SUCCEEDED, null, output)) }
+    // ResultCheckTest kills the mutants of the verdict; here only what a backup's fingerprint and count make of it.
+    private fun check(output: StepOutput.Backup) = ResultCheck.of(Action.BACKUP, StepReport(StepState.SUCCEEDED, null, output))
+
+    private fun problem(output: StepOutput.Backup) = MutFlow.underTest { output.problem() }
+
+    private fun fingerprinted(
+        bytes: ByteArray,
+        sha256: String = hexOf(bytes),
+    ) = BACKUP.copy(fingerprint = SourceFingerprint(bytes, sha256), totalFiles = 1)
+
+    @Test
+    fun `a backup's problem is that of its sizes or of its fingerprint`() {
+        val big = ByteArray(SourceFingerprint.MAX_BYTES + 1) { 'x'.code.toByte() }
+        val largest = big.copyOf(SourceFingerprint.MAX_BYTES)
+        val cases =
+            mapOf(
+                fingerprinted(FP_BYTES) to null,
+                BACKUP.copy(addedBytes = 0, totalFiles = 0) to null,
+                BACKUP.copy(totalFiles = -1) to "a backup output with negative sizes",
+                fingerprinted(ByteArray(0), hexOf(FP_BYTES)) to WHOLE,
+                fingerprinted(FP_BYTES, "") to WHOLE,
+                fingerprinted(big) to "a fingerprint larger than 1 MiB",
+                fingerprinted(largest) to NOT_ONE,
+                fingerprinted("""{"facts":{}}""".toByteArray()) to NOT_ONE,
+            )
+        for ((backup, expected) in cases) {
+            assertEquals(expected, problem(backup), backup.fingerprint?.sha256)
+        }
+    }
 
     @Test
     fun `a backup with its fingerprint and number of files is kept`() {

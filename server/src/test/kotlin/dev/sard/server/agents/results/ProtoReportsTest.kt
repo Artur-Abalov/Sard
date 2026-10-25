@@ -90,6 +90,13 @@ class ProtoReportsTest {
             StepOutput.Backup("s", 10, 0, "r"),
             MutFlow.underTest { ProtoReports.of(builder().setBackup(older.setTotalFiles(4)).build()) }.output,
         )
+        // Bytes without their hash are still a fingerprint sent, for the result check to refuse.
+        val halved = older.setFingerprint(ByteString.copyFrom(bytes)).setFingerprintSha256("")
+        assertEquals(
+            SourceFingerprint(bytes, ""),
+            (MutFlow.underTest { ProtoReports.of(builder().setBackup(halved).build()) }.output as StepOutput.Backup)
+                .fingerprint,
+        )
     }
 
     @Test

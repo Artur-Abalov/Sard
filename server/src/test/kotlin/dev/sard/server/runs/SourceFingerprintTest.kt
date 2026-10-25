@@ -50,6 +50,7 @@ class SourceFingerprintTest {
                 SourceFingerprint(ByteArray(0), sha256(BYTES)) to WHOLE,
                 SourceFingerprint("[1]".toByteArray(), sha256("[1]".toByteArray())) to NOT_ONE,
                 SourceFingerprint("{".toByteArray(), sha256("{".toByteArray())) to NOT_ONE,
+                SourceFingerprint("""{"facts":{}}""".toByteArray(), sha256("""{"facts":{}}""".toByteArray())) to NOT_ONE,
             )
         for ((fingerprint, problem) in cases) {
             assertEquals(problem, MutFlow.underTest { fingerprint.problem() }, fingerprint.sha256)
@@ -78,6 +79,9 @@ class SourceFingerprintTest {
     fun `none sent is no fingerprint, an older agent's or a plugin's that takes none`() {
         assertNull(MutFlow.underTest { SourceFingerprint.of(ByteArray(0), "") })
         assertEquals(FINGERPRINT, MutFlow.underTest { SourceFingerprint.of(BYTES, sha256(BYTES)) })
+        // Half of one is still sent: kept, for problem() to refuse it.
+        assertEquals(SourceFingerprint(BYTES, ""), MutFlow.underTest { SourceFingerprint.of(BYTES, "") })
+        assertEquals(SourceFingerprint(ByteArray(0), "ab"), MutFlow.underTest { SourceFingerprint.of(ByteArray(0), "ab") })
     }
 
     // The sample names files and their content hashes: the summary shows that there is one, not what it holds.
