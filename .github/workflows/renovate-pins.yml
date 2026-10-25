@@ -60,9 +60,9 @@ jobs:
         run: scripts/fetch-restic.sh --update-pins
       - name: The patch
         run: |
-          # shellcheck disable=SC2086 # PIN_FILES is a list of paths
-          git diff --binary -- $PIN_FILES >"$RUNNER_TEMP/pins.patch"
-          git diff --stat -- $PIN_FILES
+          read -ra files <<<"$PIN_FILES"
+          git diff --binary -- "${files[@]}" >"$RUNNER_TEMP/pins.patch"
+          git diff --stat -- "${files[@]}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pins-patch
