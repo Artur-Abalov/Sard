@@ -135,7 +135,8 @@ class ResultCheckTest {
         val expected =
             listOf(
                 """{"kind":"backup","snapshotId":"4a3b2c1d","totalBytes":1000,"addedBytes":100,""" +
-                    """"repositoryId":"$REPOSITORY_ID","partial":false}""",
+                    """"repositoryId":"$REPOSITORY_ID","partial":false,"totalFiles":null,"fingerprint":null,""" +
+                    """"warnings":[]}""",
                 """{"kind":"restore","target":"/r","filesRestored":0,"bytesRestored":0,"database":"",""" +
                     """"tablesRestored":0,"rolesRestored":0,"ownersRestored":false,"leftover":""}""",
                 """{"kind":"verify","snapshotId":"4a","checks":[{"name":"read-data","passed":false,""" +
