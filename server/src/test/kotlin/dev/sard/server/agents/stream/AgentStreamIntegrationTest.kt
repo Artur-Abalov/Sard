@@ -3,13 +3,19 @@
 
 package dev.sard.server.agents.stream
 
+import dev.sard.proto.agent.v1.ConnectRequest
 import dev.sard.proto.agent.v1.ConnectResponse
+import dev.sard.proto.agent.v1.Heartbeat
 import dev.sard.proto.agent.v1.RunStep
+import dev.sard.proto.agent.v1.Sandbox
+import dev.sard.proto.agent.v1.SandboxImage
+import dev.sard.proto.agent.v1.VerifierStatus
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentTokens
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
+import dev.sard.server.role.AgentRole
 import io.grpc.Status
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.context.properties.bind.Binder
@@ -165,6 +171,38 @@ class AgentStreamIntegrationTest(
         connection.progress("b")
         recorded.await("${agent.agentId} progress b")
         assertEquals(start + settings.heartbeatInterval, clients.lastSeenAt(agent))
+    }
+
+    // V5: free space changes between Registers; a heartbeat carrying the verifier's status updates it.
+    @Test
+    fun `a heartbeat with a verifier status updates what Register stored, an older agent's stays empty`() {
+        val verifier = clients.enrolled(AgentRole.VERIFIER)
+        val older = clients.enrolled(AgentRole.VERIFIER)
+        clients.reportedVerifier(verifier)
+        val image =
+            SandboxImage
+                .newBuilder()
+                .setName("postgres")
+                .setVersion("17.6")
+                .setDigest("sha256:ab")
+        val status =
+            VerifierStatus
+                .newBuilder()
+                .setWorkFreeBytes(4_096)
+                .setSandbox(Sandbox.SANDBOX_PODMAN)
+                .setSandboxVersion("5.4.0")
+                .addImages(image)
+        for (agent in listOf(verifier, older)) {
+            val connection = greeted(agent)
+            val heartbeat = Heartbeat.newBuilder().setVerifier(status)
+            connection.send(ConnectRequest.newBuilder().setHeartbeat(heartbeat).build())
+            connection.progress("after")
+            recorded.await("${agent.agentId} progress after")
+        }
+
+        val images = """[{"name": "postgres", "digest": "sha256:ab", "version": "17.6"}]"""
+        assertEquals(listOf<Any?>(4_096L, "podman", "5.4.0", images), clients.verifierStatus(verifier))
+        assertEquals(listOf<Any?>(null, null, null, "[]"), clients.verifierStatus(older))
     }
 
     @Test

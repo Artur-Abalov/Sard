@@ -43,6 +43,8 @@ internal class AgentHost(
     persistentEtc: Boolean = false,
     /** What the agent dials (`server.address`): the environment's server unless a test brings a server of its own (F7). */
     private val endpoint: String = SardEnvironment.AGENT_ENDPOINT,
+    /** More volumes of the host, e.g. a repository two hosts share or a verifier's work volume (V5). */
+    private val mounts: List<Bind> = emptyList(),
 ) {
     /** The volume mounted at [STATE_DIR]: state, TLS files, repository, the executor's journal. */
     val state = sardEnv.volume()
@@ -288,7 +290,7 @@ internal class AgentHost(
         }
 
     private fun binds(): List<Bind> =
-        listOfNotNull(Bind(state, Volume(STATE_DIR)), Bind(cache, Volume(CACHE_DIR)), etc?.let { Bind(it, Volume(ETC_DIR)) })
+        listOfNotNull(Bind(state, Volume(STATE_DIR)), Bind(cache, Volume(CACHE_DIR)), etc?.let { Bind(it, Volume(ETC_DIR)) }) + mounts
 
     /** The text of the host's `/etc/sard/agent.yaml`: the server, the TLS files and [local]. */
     fun configText() =

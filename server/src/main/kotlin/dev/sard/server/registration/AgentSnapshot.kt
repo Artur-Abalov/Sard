@@ -3,6 +3,10 @@
 
 package dev.sard.server.registration
 
+import tools.jackson.databind.json.JsonMapper
+
+private val JSON = JsonMapper.builder().build()
+
 /**
  * What an agent announces about itself in Register (ADR 0008: names and metadata only,
  * never a secret value, a key or a URL with credentials). Strings are as received; empty
@@ -79,6 +83,21 @@ enum class RecoveryKey(
 data class VerifierReport(
     val workFreeBytes: Long?,
     val sandbox: SandboxKind?,
+    /** The runtime's version as its CLI reports it (V5). */
+    val sandboxVersion: String? = null,
+    /** Sandbox images the verifier has (V5). */
+    val images: List<SandboxImageEntry> = emptyList(),
+) {
+    /** [images] as agents.verify_images stores them. */
+    fun imagesJson(): String =
+        JSON.writeValueAsString(images.map { mapOf("name" to it.name, "version" to it.version, "digest" to it.digest) })
+}
+
+/** A sandbox image a verifier has: its name, the semantic version and the digest it runs it by (V5). */
+data class SandboxImageEntry(
+    val name: String,
+    val version: String,
+    val digest: String,
 )
 
 /** The container runtime a verifier has; [stored] is agents.verify_sandbox. */

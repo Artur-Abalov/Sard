@@ -49,6 +49,8 @@ type rig struct {
 	logs     *recorder
 	tr       *transport.Transport
 	prepared atomic.Int32 // how often the transport built a RegisterRequest
+	// verifier answers Options.Verifier; nil answers nil (V5).
+	verifier atomic.Pointer[agentv1.VerifierStatus]
 }
 
 func newRig(t *testing.T) *rig {
@@ -70,6 +72,7 @@ func newRigWith(t *testing.T, ca, serverCA *authority) *rig {
 			r.prepared.Add(1)
 			return &agentv1.RegisterRequest{Hostname: "db1", ProtocolVersion: 1}
 		},
+		Verifier: func(context.Context) *agentv1.VerifierStatus { return r.verifier.Swap(nil) },
 		Commands: r.commands,
 		State:    r.state,
 		Clock:    r.clock,
@@ -199,6 +202,26 @@ func TestHeartbeatFollowsTheRegisteredInterval(t *testing.T) {
 		msg := ss.read(t)
 		if hb := msg.GetHeartbeat(); hb == nil || !hb.GetSentAt().AsTime().Equal(r.clock.Now()) {
 			t.Fatalf("message = %v, want heartbeat at %v", msg, r.clock.Now())
+		}
+	}
+}
+
+// V5: a verifier's status rides on the heartbeat when it changed.
+func TestAHeartbeatCarriesTheStatusOfAVerifierWhenThereIsOne(t *testing.T) {
+	r := newRig(t)
+	r.server.register = func() (*agentv1.RegisterResponse, error) { return registered("agent-1", 45*time.Second), nil }
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r.connect(ctx)
+	ss := r.server.next(t)
+	ss.read(t)
+	r.verifier.Store(&agentv1.VerifierStatus{Sandbox: agentv1.Sandbox_SANDBOX_PODMAN})
+	for _, want := range []agentv1.Sandbox{agentv1.Sandbox_SANDBOX_PODMAN, agentv1.Sandbox_SANDBOX_UNSPECIFIED} {
+		r.clock.waitTimer(t)
+		r.clock.Advance(45 * time.Second)
+		hb := ss.read(t).GetHeartbeat()
+		if hb.GetVerifier().GetSandbox() != want || hb.GetSentAt() == nil || (want == agentv1.Sandbox_SANDBOX_UNSPECIFIED) != (hb.GetVerifier() == nil) {
+			t.Fatalf("heartbeat = %v, want sandbox %v", hb, want)
 		}
 	}
 }

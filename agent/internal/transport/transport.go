@@ -107,6 +107,9 @@ type Options struct {
 	TLS     config.TLS
 	// Register builds the RegisterRequest; it runs before every stream.
 	Register func(ctx context.Context) *agentv1.RegisterRequest
+	// Verifier, when set, is the status of a verifier a heartbeat carries;
+	// nil when it did not change (V5).
+	Verifier func(ctx context.Context) *agentv1.VerifierStatus
 	Commands Commands
 	State    State
 	Clock    Clock
@@ -421,7 +424,7 @@ func (t *Transport) send(ctx context.Context, stream agentv1.AgentService_Connec
 
 // step sends a due heartbeat, then one queued message, or waits for work.
 func (s *sender) step(ctx context.Context) error {
-	if err := s.beatIfDue(); err != nil {
+	if err := s.beatIfDue(ctx); err != nil {
 		return err
 	}
 	sent, err := s.sendNext()
@@ -438,10 +441,10 @@ type sender struct {
 	beat     <-chan time.Time
 }
 
-func (s *sender) beatIfDue() error {
+func (s *sender) beatIfDue(ctx context.Context) error {
 	select {
 	case <-s.beat:
-		return s.heartbeat()
+		return s.heartbeat(ctx)
 	default:
 		return nil
 	}
@@ -471,12 +474,15 @@ func (s *sender) wait(ctx context.Context) error {
 	case <-s.t.out.ready():
 		return nil
 	case <-s.beat:
-		return s.heartbeat()
+		return s.heartbeat(ctx)
 	}
 }
 
-func (s *sender) heartbeat() error {
+func (s *sender) heartbeat(ctx context.Context) error {
 	s.beat = s.t.opts.Clock.After(s.interval)
 	hb := &agentv1.Heartbeat{SentAt: timestamppb.New(s.t.opts.Clock.Now())}
+	if s.t.opts.Verifier != nil {
+		hb.Verifier = s.t.opts.Verifier(ctx)
+	}
 	return s.stream.Send(&agentv1.ConnectRequest{Message: &agentv1.ConnectRequest_Heartbeat{Heartbeat: hb}})
 }

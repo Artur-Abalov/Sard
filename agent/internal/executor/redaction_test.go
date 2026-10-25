@@ -179,6 +179,53 @@ func TestVerifyCheckDetailsAreMasked(t *testing.T) {
 	}
 }
 
+// V5: a stage's output quotes a tool (restic check, the sandbox); the verdict's
+// mismatches quote the data; both are masked before they are sent or stored.
+func TestVerifyStageOutputsAndMismatchesAreMasked(t *testing.T) {
+	f, _ := masked(t)
+	c := startMasked(t, f)
+	out := &agentv1.StepResult{Output: &agentv1.StepResult_Verify{Verify: &agentv1.VerifyOutput{
+		Stages:     []*agentv1.VerifyStage{{Name: "restic_check", Output: "Fatal: " + secretValue}},
+		Mismatches: []*agentv1.FingerprintMismatch{{Name: "control:/etc", Expected: secretValue, Actual: "x " + secretValue}},
+	}}}
+	c.finish(out, errors.New("check failed"))
+	v := f.sink.result(t).GetVerify()
+	got := []string{v.GetStages()[0].GetOutput(), v.GetMismatches()[0].GetExpected(), v.GetMismatches()[0].GetActual()}
+	if strings.Join(got, "|") != "Fatal: [REDACTED]|[REDACTED]|x [REDACTED]" {
+		t.Fatalf("masked = %q", got)
+	}
+}
+
+func TestAStageReportedWhileItRunsIsMaskedAndPassesTheRateLimit(t *testing.T) {
+	f, _ := masked(t)
+	c := startMasked(t, f)
+	c.r.Progress(agentv1.StepPhase_STEP_PHASE_VERIFYING, 1, 0)
+	_ = f.sink.progress(t)
+	stage := &agentv1.VerifyStage{Level: 1, Name: "restic_check", Output: "key " + secretValue}
+
+	c.r.Stage(stage)
+
+	p := f.sink.progress(t)
+	if p.GetPhase() != agentv1.StepPhase_STEP_PHASE_VERIFYING || p.GetStage().GetName() != "restic_check" ||
+		p.GetStage().GetOutput() != "key [REDACTED]" || p.GetSentAt() == nil {
+		t.Fatalf("progress = %v", p)
+	}
+	if stage.GetOutput() != "key "+secretValue {
+		t.Fatalf("the caller's stage was changed: %v", stage)
+	}
+}
+
+func TestAStageReportedAfterTheStepFinishedIsDropped(t *testing.T) {
+	f, _ := masked(t)
+	c := startMasked(t, f)
+	c.finish(snapshot("s1"), nil)
+	_ = f.sink.result(t)
+
+	c.r.Stage(&agentv1.VerifyStage{Name: "cleanup"})
+
+	f.sink.quiet(t)
+}
+
 // --- 2. the held-back tail on every way a step ends
 
 func TestTheTailIsReleasedMaskedWhenTheStepIsCancelled(t *testing.T) {

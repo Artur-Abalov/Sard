@@ -28,6 +28,7 @@ class InboundHandlers(
         listeners: List<AgentSessionListener>,
         lastSeen: LastSeenStore,
         metrics: StreamMetrics,
+        verifierStatus: VerifierStatusStore,
     ) = StreamExtensions(
         reconciliation.getIfUnique { LoggingInbound },
         progress.getIfUnique { LoggingInbound },
@@ -36,6 +37,7 @@ class InboundHandlers(
         listeners,
         lastSeen,
         metrics,
+        verifierStatus,
     )
 }
 
@@ -75,7 +77,12 @@ class AgentStreamConfiguration {
         registry: AgentSessionRegistry,
     ): StreamExtensions {
         val metrics = MicrometerStreamMetrics(meters, registry)
-        return inbound.extensions(listeners.orderedStream().toList(), AgentLastSeen(sessions), metrics)
+        return inbound.extensions(
+            listeners.orderedStream().toList(),
+            AgentLastSeen(sessions),
+            metrics,
+            AgentVerifierStatus(sessions),
+        )
     }
 
     @Bean
