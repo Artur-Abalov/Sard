@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Artur-Abalov/sard/agent/internal/fingerprint"
+	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
 	filesplugin "github.com/Artur-Abalov/sard/agent/plugins/files"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
@@ -66,23 +67,7 @@ func TestIntegrationTheFingerprintOfFilesIsASnapshotTaggedWithItsHash(t *testing
 	if got.FingerprintSHA256 != sdk.HashBytes(got.Fingerprint) || len(got.Fingerprint) == 0 {
 		t.Fatalf("result = %+v", got)
 	}
-	all := r.snapshots(t)
-	if len(all) != 2 {
-		t.Fatalf("snapshots = %+v", all)
-	}
-	var fp string
-	for _, s := range all {
-		if slices.Contains(s.Tags, "files.part=fingerprint") {
-			fp = s.ID
-			want := []string{"sard.source=s1", "files.main_snapshot=" + got.SnapshotID, "files.part=fingerprint", "sard.fp=" + got.FingerprintSHA256}
-			if !slices.Equal(s.Tags, want) {
-				t.Errorf("tags = %q, want %q", s.Tags, want)
-			}
-		} else if s.ID != got.SnapshotID || slices.ContainsFunc(s.Tags, func(t string) bool { return strings.HasPrefix(t, "sard.fp=") }) {
-			// The main snapshot is the one restic made: not rewritten, no tag added.
-			t.Errorf("main snapshot = %+v, result %s", s, got.SnapshotID)
-		}
-	}
+	fp := r.fingerprintSnapshot(t, got)
 	if stored := r.resticOut(t, "dump", fp, "/sard-fingerprint.json"); stored != string(got.Fingerprint) {
 		t.Errorf("stored fingerprint = %q", stored)
 	}
@@ -92,11 +77,46 @@ func TestIntegrationTheFingerprintOfFilesIsASnapshotTaggedWithItsHash(t *testing
 	}
 	// restic keeps its totals in the main snapshot: those of the fingerprint.
 	files, bytes := r.snapshotSummary(t, got.SnapshotID)
-	if v, _ := f.Lookup("files"); v.Value != strconv.FormatUint(files, 10) || got.TotalFiles != files {
-		t.Errorf("files: fingerprint %q, snapshot %d, result %d", v.Value, files, got.TotalFiles)
+	want := []sdk.Fact{
+		{Name: "bytes", Rule: sdk.RuleExact, Value: strconv.FormatUint(bytes, 10)},
+		{Name: "files", Rule: sdk.RuleExact, Value: strconv.FormatUint(files, 10)},
 	}
-	if v, _ := f.Lookup("bytes"); v.Value != strconv.FormatUint(bytes, 10) || bytes != 1024 {
-		t.Errorf("bytes: fingerprint %q, snapshot %d", v.Value, bytes)
+	gotFiles, _ := f.Lookup("files")
+	gotBytes, _ := f.Lookup("bytes")
+	if !slices.Equal([]sdk.Fact{gotBytes, gotFiles}, want) || got.TotalFiles != files || bytes != 1024 {
+		t.Errorf("totals: fingerprint %v %v, snapshot %d files %d bytes, result %d", gotFiles, gotBytes, files, bytes, got.TotalFiles)
+	}
+}
+
+// fingerprintSnapshot checks the two snapshots of a backup of files: the main
+// one as restic made it (not rewritten, no tag added) and that of the
+// fingerprint, tagged with its hash and linked to the main one; it returns the
+// id of the latter.
+func (r itRepo) fingerprintSnapshot(t *testing.T, got pluginhost.Backup) string {
+	t.Helper()
+	all := r.snapshots(t)
+	if len(all) != 2 {
+		t.Fatalf("snapshots = %+v", all)
+	}
+	var fp string
+	for _, s := range all {
+		if !slices.Contains(s.Tags, "files.part=fingerprint") {
+			r.wantMainSnapshot(t, s.ID, s.Tags, got.SnapshotID)
+			continue
+		}
+		fp = s.ID
+		want := []string{"sard.source=s1", "files.main_snapshot=" + got.SnapshotID, "files.part=fingerprint", "sard.fp=" + got.FingerprintSHA256}
+		if !slices.Equal(s.Tags, want) {
+			t.Errorf("tags = %q, want %q", s.Tags, want)
+		}
+	}
+	return fp
+}
+
+func (itRepo) wantMainSnapshot(t *testing.T, id string, tags []string, want string) {
+	t.Helper()
+	if id != want || slices.ContainsFunc(tags, func(t string) bool { return strings.HasPrefix(t, "sard.fp=") }) {
+		t.Errorf("main snapshot %s %q, result %s", id, tags, want)
 	}
 }
 
