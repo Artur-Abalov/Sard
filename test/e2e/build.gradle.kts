@@ -68,6 +68,7 @@ tasks.test {
     systemProperty("e2e.postgresPinFile", rootProject.file("deploy/postgres.env").path)
     // Every other image the tests run, pinned by digest (SC1).
     systemProperty("e2e.testImagesFile", rootProject.file("test/images.env").path)
+    inputs.file(rootProject.file("test/images.env"))
     systemProperty(
         "e2e.resticVersionFile",
         rootProject.file("agent/internal/restic/restic-version").path,

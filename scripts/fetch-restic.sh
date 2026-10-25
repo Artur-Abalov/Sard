@@ -91,13 +91,18 @@ install_arch() {
 # version, the fingerprint and everything else stay as they are.
 update_pins() {
   local arch sha
+  local -A pins=()
   mkdir -p "$DL"
   fetch "$BASE/SHA256SUMS" "$DL/SHA256SUMS"
   check_signature
+  # Both sums first: a release without one of the archives changes nothing.
   for arch in amd64 arm64; do
     sha="$(awk -v f="restic_${VERSION}_linux_$arch.bz2" '$2 == f { print $1 }' "$DL/SHA256SUMS")"
     [[ "$sha" =~ ^[0-9a-f]{64}$ ]] || { echo "fetch-restic: no linux_$arch archive in SHA256SUMS of $VERSION" >&2; exit 1; }
-    sed -i "s/^sha256_linux_$arch=.*/sha256_linux_$arch=$sha/" "$VERSION_FILE"
+    pins[$arch]="$sha"
+  done
+  for arch in amd64 arm64; do
+    sed -i "s/^sha256_linux_$arch=.*/sha256_linux_$arch=${pins[$arch]}/" "$VERSION_FILE"
   done
   echo "fetch-restic: $VERSION_FILE pinned to the signed SHA256SUMS of restic $VERSION"
 }

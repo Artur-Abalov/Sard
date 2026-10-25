@@ -29,7 +29,15 @@ if [ -d "$dists" ] && [ ! -e "$home/wrapper/dists" ]; then
   mkdir -p "$home/wrapper" && ln -s "$dists" "$home/wrapper/dists"
 fi
 rm -f gradle/verification-metadata.xml
-GRADLE_USER_HOME="$home" ./gradlew --no-configuration-cache -Pmutflow.enabled=true \
-  --write-locks --write-verification-metadata sha256 \
-  resolveAndLockAll :server:spotlessCheck :server:detekt
+lock() {
+  GRADLE_USER_HOME="$home" ./gradlew --no-configuration-cache -Pmutflow.enabled=true \
+    --write-locks --write-verification-metadata sha256 "$@" \
+    resolveAndLockAll :server:spotlessCheck :server:detekt
+}
+lock
+# Once more with the metadata fetched anew: which of a version's .pom and
+# .module Gradle reads depends on what it has cached, and a build must pass
+# with either (the first pass in a clean home reads some BOMs as .pom only,
+# a warm cache reads them as .module). The second pass adds, never removes.
+lock --refresh-dependencies
 echo "gradle-lock: lock files and gradle/verification-metadata.xml written"

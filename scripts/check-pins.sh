@@ -58,6 +58,18 @@ while IFS= read -r -d '' file; do
       if (match($0, /^[ \t]*(-[ \t]+)?(container|image):[ \t]*[^ \t{]/)) {
         ref = strip(substr($0, RLENGTH))
         if (!digest(ref)) report("image not pinned by digest: " ref)
+        return
+      }
+      flow()
+    }
+    # flow: every "image:" of a flow mapping, as in container: { image: x }.
+    function flow(   rest, ref) {
+      if ($0 !~ /\{/) return
+      rest = $0
+      while (match(rest, /[{,][ \t]*image:[ \t]*/)) {
+        rest = substr(rest, RSTART + RLENGTH)
+        ref = rest; sub(/[,}].*$/, "", ref); gsub(/["\047 \t]/, "", ref)
+        if (!digest(ref)) report("image not pinned by digest: " ref)
       }
     }
     function dockerfile(   n, f, i, img) {

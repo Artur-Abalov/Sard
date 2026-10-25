@@ -170,6 +170,7 @@ tasks.withType<Test>().configureEach {
     systemProperty("sard.test.postgres-pin-file", rootProject.file("deploy/postgres.env").path)
     // Every other image the tests run, pinned by digest (SC1).
     systemProperty("sard.test.images-file", rootProject.file("test/images.env").path)
+    inputs.file(rootProject.file("test/images.env"))
     // The release order of versions, shared with the dpkg and rpm checks (ADR 0048).
     systemProperty("sard.test.version-order-file", rootProject.file("deploy/release/version-order.txt").path)
     // Tags that are not releases, shared with scripts/test-release-version.sh (ADR 0048).

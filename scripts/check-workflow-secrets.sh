@@ -11,7 +11,8 @@
 #   - the signing keys (secrets.MINISIGN_*, secrets.COSIGN_*) only in a job
 #     of the environment "release" (owner's approval, v* tags only:
 #     docs/release.md) of a workflow that nothing but a tag push starts;
-#   - never every secret at once (toJSON(secrets), secrets[...]).
+#   - never every secret at once (toJSON(secrets), secrets[...], secrets: inherit);
+#   - a workflow whose triggers it cannot read fails rather than passes.
 # Every occurrence counts, comments included: an expression in a run block is
 # evaluated even inside a shell comment.
 # Optional argument: the directory of the workflows (default .github/workflows).
@@ -28,13 +29,14 @@ for file in "$DIR"/*.yml "$DIR"/*.yaml; do
     function report(line, why) { printf "check-workflow-secrets: %s:%d: %s\n", file, line, why }
     function trigger(name) {
       triggers[name] = 1
+      seen_trigger = 1
       if (name == "pull_request_target" || name == "workflow_run")
         report(FNR, name " runs with the secrets for code nobody reviewed")
     }
     function close_job(   i) {
       for (i = 1; i <= nrefs; i++) {
-        if (refs[i] ~ /GITHUB_TOKEN/) continue
-        if (refs[i] ~ /toJSON|\[/)
+        if (refs[i] == "secrets.GITHUB_TOKEN") continue
+        if (refs[i] ~ /toJSON|\[|inherit/)
           report(reflines[i], refs[i] " hands on every secret at once")
         else if ("pull_request" in triggers)
           report(reflines[i], refs[i] " in a workflow that pull requests run")
@@ -50,7 +52,7 @@ for file in "$DIR"/*.yml "$DIR"/*.yaml; do
     # on: a scalar, a list or a map of triggers (before jobs:).
     /^on:[ \t]*[A-Za-z_]/ { sub(/^on:[ \t]*/, ""); trigger($1) }
     /^on:[ \t]*\[/ { s = $0; sub(/^on:[ \t]*\[/, "", s); sub(/\].*/, "", s); n = split(s, l, /[ \t]*,[ \t]*/); for (i = 1; i <= n; i++) trigger(l[i]) }
-    /^on:[ \t]*$/ { in_on = 1; next }
+    /^on:[ \t]*(#.*)?$/ { in_on = 1; next }
     in_on && /^[^ \t#]/ { in_on = 0 }
     in_on && /^  [A-Za-z_]+:/ { name = $1; sub(/:.*/, "", name); trigger(name); current = name }
     in_on && current == "push" && /^    tags(-ignore)?:/ { push_tags = 1 }
@@ -59,6 +61,7 @@ for file in "$DIR"/*.yml "$DIR"/*.yaml; do
     in_jobs && /^  [A-Za-z0-9_-]+:[ \t]*$/ { close_job() }
     in_jobs && /^    environment:[ \t]*[^ \t]/ { env = $2 }
     in_jobs && /^      name:[ \t]*/ && prev ~ /^    environment:[ \t]*$/ { env = $2 }
+    /^[ \t]*secrets:[ \t]*inherit/ { refs[++nrefs] = "secrets: inherit"; reflines[nrefs] = FNR }
     {
       line = $0
       while (match(line, /secrets\.[A-Za-z_][A-Za-z0-9_]*|secrets\[|toJSON\(secrets\)/)) {
@@ -67,7 +70,10 @@ for file in "$DIR"/*.yml "$DIR"/*.yaml; do
       }
       prev = $0
     }
-    END { close_job() }
+    END {
+      close_job()
+      if (!seen_trigger) report(1, "no trigger the checker can read (on: as a scalar, a list or a block map): cannot check it")
+    }
   ' "$file")"
   if [ -n "$offenders" ]; then
     echo "$offenders"

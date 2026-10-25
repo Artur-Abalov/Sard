@@ -61,6 +61,9 @@ expect_file_rc 1 "reusable workflow by tag" "$W" "    uses: org/repo/.github/wor
 expect_file_rc 1 "container by tag" "$W" "    container: node:24"
 expect_file_rc 1 "service image by tag" "$W" "        image: postgres:18"
 expect_file_rc 0 "service image by digest" "$W" "        image: postgres:18@$DIGEST"
+expect_file_rc 1 "container as a flow mapping, by tag" "$W" "    container: { image: node:24, options: --cpus 1 }"
+expect_file_rc 0 "container as a flow mapping, by digest" "$W" "    container: { image: \"node:24@$DIGEST\" }"
+expect_file_rc 1 "service as a flow mapping, by tag" "$W" "      db: {image: postgres:18}"
 expect_file_rc 1 "uses in .github/actions" .github/actions/a/action.yml "    - uses: actions/cache@v4"
 expect_file_rc 1 ".yaml workflow" .github/workflows/y.yaml "      - uses: actions/cache@v4"
 

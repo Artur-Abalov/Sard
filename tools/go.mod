@@ -1,6 +1,6 @@
 module github.com/Artur-Abalov/sard/tools
 
-go 1.27.1
+go 1.27.3
 
 tool (
 	github.com/avito-tech/go-mutesting/cmd/go-mutesting
