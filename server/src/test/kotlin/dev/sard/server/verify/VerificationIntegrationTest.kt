@@ -10,6 +10,7 @@ import dev.sard.server.runs.RecordingStepsQueued
 import dev.sard.server.runs.Runs
 import dev.sard.server.runs.RunsTenant
 import dev.sard.server.runs.RunsTestConfiguration
+import dev.sard.server.runs.SourceFingerprint
 import dev.sard.server.runs.Sources
 import dev.sard.server.runs.StageState
 import dev.sard.server.runs.StepOutput
@@ -119,12 +120,23 @@ class VerificationIntegrationTest(
     // --- fixtures
 
     /** A succeeded backup of [source] through the real results path: it leaves a snapshot row. */
-    private fun backup(source: UUID): String {
+    private fun backup(
+        source: UUID,
+        fingerprint: SourceFingerprint? = null,
+    ): String {
         val run = runs.start(tenant.id, source)
         val step = run.steps.single().id
         steps.claim(tenant.id, step)
         val snapshot = "snap-${UUID.randomUUID()}"
-        val output = StepOutput.Backup(snapshot, 2_000, 200, REPOSITORY_ID)
+        val output =
+            StepOutput.Backup(
+                snapshot,
+                2_000,
+                200,
+                REPOSITORY_ID,
+                fingerprint = fingerprint,
+                totalFiles = fingerprint?.let { 1 },
+            )
         results.record(tenant.id, tenant.agentId, step, StepReport(StepState.SUCCEEDED, null, output))
         return snapshot
     }
@@ -294,6 +306,35 @@ class VerificationIntegrationTest(
         assertEquals(Duration.ofHours(6).seconds, task.timeoutSeconds)
         assertEquals(listOf(tenant.id to verifier), queued.calls)
         assertEquals(listOf("running"), jobs().map { it["status"] })
+    }
+
+    // Scenario (V2, checks 6 and 7): the job carries the fingerprint of the snapshot and its hash; a snapshot from
+    // before V2 has none, and its job goes without, for the verifier to stop at level 3.
+    @Test
+    fun `the job carries the fingerprint of the snapshot and its hash, or none for a snapshot without one`() {
+        verifier()
+        loop.tick()
+        val before = VerifyTask.of(attempt()["task"] as String)!!
+        assertEquals(listOf<Any?>(null, null), listOf(before.fingerprint, before.fingerprintSha256))
+        report(verifier = jobs().single()["verifier_agent_id"] as UUID, StepState.SUCCEEDED, passed)
+        loop.tick()
+
+        val canonical = """{"facts":[{"name":"tables","rule":"exact","value":"3"}],"format":1,"plugin":"postgresql"}"""
+        val bytes = canonical.toByteArray()
+        val sha256 =
+            java.security.MessageDigest
+                .getInstance("SHA-256")
+                .digest(bytes)
+                .joinToString("") { "%02x".format(it) }
+        // A newer snapshot than setUp's: at the same instant the cycle's pick would depend on the ids' random bits.
+        clock.now = clock.now.plusSeconds(60)
+        backup(sourceId, SourceFingerprint(bytes, sha256))
+        clock.now = Instant.parse("2026-10-01T04:30:00Z")
+        loop.tick()
+
+        val task = VerifyTask.of(attempt()["task"] as String)!!
+        assertEquals(sha256, task.fingerprintSha256)
+        assertTrue(bytes.contentEquals(task.fingerprint))
     }
 
     @Test

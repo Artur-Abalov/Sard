@@ -36,10 +36,7 @@ type Config struct {
 // Plugin is the test source plugin.
 type Plugin struct{}
 
-var (
-	_ sdk.Plugin   = Plugin{}
-	_ sdk.Verifier = Plugin{}
-)
+var _ sdk.Plugin = Plugin{}
 
 // Name implements sdk.Plugin.
 func (Plugin) Name() string { return "test" }
@@ -146,8 +143,9 @@ func copyChunks(ctx context.Context, h sdk.Host, w io.Writer, r io.Reader, total
 	}
 }
 
-// Verify compares a restored copy with the source. restic restores paths
-// under their absolute path, and a stream as one file in restoredPath.
+// Verify compares a restored copy with the source, for the integration tests
+// of the host. restic restores paths under their absolute path, and a stream
+// as one file in restoredPath.
 func (Plugin) Verify(_ context.Context, _ sdk.Host, cfg sdk.Config, restoredPath string) error {
 	c, err := parse(cfg)
 	if err != nil {

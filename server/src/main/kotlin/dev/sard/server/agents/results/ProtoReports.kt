@@ -5,6 +5,7 @@ package dev.sard.server.agents.results
 
 import com.google.protobuf.Duration
 import com.google.protobuf.Timestamp
+import dev.sard.proto.agent.v1.BackupOutput
 import dev.sard.proto.agent.v1.LogChunk
 import dev.sard.proto.agent.v1.LogLevel
 import dev.sard.proto.agent.v1.StageStatus
@@ -17,6 +18,7 @@ import dev.sard.proto.agent.v1.VerifyStage
 import dev.sard.proto.agent.v1.VerifyVerdict
 import dev.sard.server.runs.LogLine
 import dev.sard.server.runs.ProgressReport
+import dev.sard.server.runs.SourceFingerprint
 import dev.sard.server.runs.StageState
 import dev.sard.server.runs.StepOutput
 import dev.sard.server.runs.StepReport
@@ -84,10 +86,24 @@ object ProtoReports {
             StepStatus.STEP_STATUS_UNSPECIFIED, StepStatus.UNRECOGNIZED -> null
         }
 
+    private fun backup(output: BackupOutput): StepOutput.Backup =
+        with(output) {
+            val sent = SourceFingerprint.of(fingerprint.toByteArray(), fingerprintSha256)
+            // An agent older than V2 sends no fingerprint and no count: 0 files is not known then.
+            StepOutput.Backup(
+                snapshotId,
+                totalBytes,
+                addedBytes,
+                repositoryId,
+                fingerprint = sent,
+                totalFiles = totalFiles.takeIf { sent != null },
+            )
+        }
+
     private fun output(result: StepResult): StepOutput? =
         when (result.outputCase) {
             StepResult.OutputCase.BACKUP -> {
-                with(result.backup) { StepOutput.Backup(snapshotId, totalBytes, addedBytes, repositoryId) }
+                backup(result.backup)
             }
 
             StepResult.OutputCase.RESTORE -> {

@@ -5,6 +5,7 @@ package dev.sard.server.api
 
 import dev.sard.server.runs.Action
 import dev.sard.server.runs.BackupResult
+import dev.sard.server.runs.FingerprintSummary
 import dev.sard.server.runs.RestoreInfo
 import dev.sard.server.runs.RestoreResult
 import dev.sard.server.runs.RunState
@@ -20,6 +21,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import dev.sard.server.runs.FingerprintFact as DomainFact
 
 private val AT = Instant.parse("2026-10-01T12:00:00Z")
 private val ID = UUID.fromString("0192f7a0-0000-7000-8000-000000000001")
@@ -51,7 +53,18 @@ class RunMappingTest {
         finishedAt = null,
         filesProcessed = 3,
         filesTotal = 4,
-        backup = BackupResult("snap", 10, 5, "repo", partial = true),
+        backup =
+            BackupResult(
+                "snap",
+                10,
+                5,
+                "repo",
+                partial = true,
+                totalFiles = 7,
+                fingerprint =
+                    FingerprintSummary("f".repeat(64), 1, "postgresql", listOf(DomainFact("tables", "exact", "2")), 0),
+                warnings = listOf("w"),
+            ),
     )
 
     private fun run(
@@ -110,7 +123,12 @@ class RunMappingTest {
             listOf(1L, 2L, 3L, 4L),
             listOf(mapped.bytesProcessed, mapped.bytesTotal, mapped.filesProcessed, mapped.filesTotal),
         )
-        assertEquals(BackupOutput("snap", 10, 5, "repo", partial = true, restorable = false), mapped.backup)
+        val fingerprint =
+            Fingerprint("f".repeat(64), 1, "postgresql", listOf(FingerprintFact("tables", "exact", "2")), 0)
+        assertEquals(
+            BackupOutput("snap", 10, 5, "repo", partial = true, restorable = false, 7, fingerprint, listOf("w")),
+            mapped.backup,
+        )
         assertEquals(listOf("files", "qa", "m"), listOf(mapped.plugin, mapped.repositoryName, mapped.message))
         assertEquals(
             listOf(AT, AT, AT, null),

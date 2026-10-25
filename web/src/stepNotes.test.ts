@@ -11,6 +11,9 @@ const backup = (partial: boolean) => ({
   repositoryId: 'r',
   partial,
   restorable: !partial,
+  totalFiles: null,
+  fingerprint: null,
+  warnings: [],
 })
 
 describe('the note that a snapshot is incomplete', () => {

@@ -3,6 +3,7 @@
 
 package dev.sard.server.agents.results
 
+import com.google.protobuf.ByteString
 import com.google.protobuf.Duration
 import com.google.protobuf.Timestamp
 import dev.sard.proto.agent.v1.BackupOutput
@@ -16,6 +17,7 @@ import dev.sard.proto.agent.v1.StepStatus
 import dev.sard.proto.agent.v1.VerifyOutput
 import dev.sard.proto.agent.v1.VerifyStage
 import dev.sard.proto.agent.v1.VerifyVerdict
+import dev.sard.server.runs.SourceFingerprint
 import dev.sard.server.runs.StageState
 import dev.sard.server.runs.StepOutput
 import dev.sard.server.runs.StepReport
@@ -58,6 +60,43 @@ class ProtoReportsTest {
         for (result in listOf(builder(StepStatus.STEP_STATUS_UNSPECIFIED).build(), unknown)) {
             assertEquals(StepReport(null, "m", null), MutFlow.underTest { ProtoReports.of(result) })
         }
+    }
+
+    // V2: the fingerprint and the number of files of a backup; an agent older than V2 sends neither, and its 0 files
+    // is not a count.
+    @Test
+    fun `a backup brings its fingerprint and number of files, an older agent's neither`() {
+        val bytes = "{}".toByteArray()
+        val backup =
+            BackupOutput
+                .newBuilder()
+                .setSnapshotId("s")
+                .setTotalBytes(10)
+                .setRepositoryId("r")
+                .setFingerprint(ByteString.copyFrom(bytes))
+                .setFingerprintSha256("f".repeat(64))
+                .setTotalFiles(4)
+        val older =
+            BackupOutput
+                .newBuilder()
+                .setSnapshotId("s")
+                .setTotalBytes(10)
+                .setRepositoryId("r")
+
+        val expected =
+            StepOutput.Backup("s", 10, 0, "r", fingerprint = SourceFingerprint(bytes, "f".repeat(64)), totalFiles = 4)
+        assertEquals(expected, MutFlow.underTest { ProtoReports.of(builder().setBackup(backup).build()) }.output)
+        assertEquals(
+            StepOutput.Backup("s", 10, 0, "r"),
+            MutFlow.underTest { ProtoReports.of(builder().setBackup(older.setTotalFiles(4)).build()) }.output,
+        )
+        // Bytes without their hash are still a fingerprint sent, for the result check to refuse.
+        val halved = older.setFingerprint(ByteString.copyFrom(bytes)).setFingerprintSha256("")
+        assertEquals(
+            SourceFingerprint(bytes, ""),
+            (MutFlow.underTest { ProtoReports.of(builder().setBackup(halved).build()) }.output as StepOutput.Backup)
+                .fingerprint,
+        )
     }
 
     @Test

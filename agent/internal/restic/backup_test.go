@@ -28,6 +28,7 @@ func TestBackupReturnsTheSummary(t *testing.T) {
 		SnapshotID:    "00174f77f214115e5b9b0a492e0cf23fc85411e93b42d5cd81c15b6512a6478a",
 		RepositoryID:  goldenRepoID,
 		TotalBytes:    240000000,
+		TotalFiles:    4,
 		AddedBytes:    240025786,
 		AddedBytesRaw: 240012629,
 		FilesNew:      4,
@@ -64,8 +65,9 @@ func TestBackupReportsProgress(t *testing.T) {
 func TestBackupSummaryOfAnUnchangedBackup(t *testing.T) {
 	f := backupFixture(t, reply{stdout: "backup-again.stdout"})
 	sum, err := f.build().Backup(context.Background(), request, nil)
-	if err != nil || sum.FilesUnmodified != 2 || sum.FilesNew != 0 || sum.FilesChanged != 0 ||
-		sum.AddedBytes != 288 || sum.AddedBytesRaw != 348 || sum.TotalBytes != 12 {
+	type counts struct{ unmodified, added, changed, addedBytes, addedRaw, totalBytes, totalFiles uint64 }
+	got := counts{sum.FilesUnmodified, sum.FilesNew, sum.FilesChanged, sum.AddedBytes, sum.AddedBytesRaw, sum.TotalBytes, sum.TotalFiles}
+	if want := (counts{2, 0, 0, 288, 348, 12, 2}); err != nil || got != want {
 		t.Fatalf("summary = %+v, err = %v", sum, err)
 	}
 }

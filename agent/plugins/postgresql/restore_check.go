@@ -105,7 +105,7 @@ func (a *restoreRun) checkRole() *sdk.RestoreError {
 	return nil
 }
 
-// quoteIdent is an identifier as SQL writes it, for the hints of messages.
+// quoteIdent is an identifier as SQL writes it, for queries and the hints of messages.
 func quoteIdent(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }

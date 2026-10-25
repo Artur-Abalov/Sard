@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -110,6 +111,9 @@ type restoreHost struct {
 	repo       restic.Repository
 	repository string
 	journal    *stepJournal
+	// commandID names the directory of RestoreTree, newTarget makes it.
+	commandID string
+	newTarget func(id string) (string, error)
 }
 
 var _ sdk.RestoreHost = (*restoreHost)(nil)
@@ -117,6 +121,7 @@ var _ sdk.RestoreHost = (*restoreHost)(nil)
 func (h *handler) newRestoreHost(ctx context.Context, step *agentv1.RunStep, repo restic.Repository, r executor.Reporter) *restoreHost {
 	return &restoreHost{
 		host: &host{secrets: h.src.secrets, r: r}, ctx: ctx, words: h.words, repo: repo, repository: step.GetRepositoryName(),
+		commandID: step.GetCommandId(), newTarget: h.newTarget,
 		journal: &stepJournal{store: h.journal, plugin: h.src.plugin.Name(), commandID: step.GetCommandId()},
 	}
 }
@@ -168,6 +173,21 @@ func (h *restoreHost) Dump(ctx context.Context, snapshotID, path string, w io.Wr
 		return fmt.Errorf("the snapshot stream was stopped: %w", context.Cause(ctx))
 	}
 	return h.repositoryError(h.words.Dump(h.ctx, h.repository, err), err)
+}
+
+// RestoreTree implements sdk.RestoreHost: restic restore of the whole snapshot
+// into restoreDir/<command id>, which must not exist yet; a failed restore
+// removes it.
+func (h *restoreHost) RestoreTree(ctx context.Context, snapshotID string) (string, error) {
+	dir, err := h.newTarget(h.commandID)
+	if err != nil {
+		return "", &sdk.RestoreError{Reason: string(refusal.PluginFailed), Detail: fmt.Sprintf("cannot make the directory of the copy: %v", err), Err: err}
+	}
+	if err := h.repo.Restore(ctx, snapshotID, dir); err != nil {
+		_ = os.RemoveAll(dir)
+		return "", h.repositoryError(h.words.Dump(h.ctx, h.repository, err), err)
+	}
+	return dir, nil
 }
 
 // repositoryError hands the failure of the repository, worded by the host, to

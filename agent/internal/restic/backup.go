@@ -43,8 +43,10 @@ type Progress struct {
 type BackupSummary struct {
 	SnapshotID   string
 	RepositoryID string
-	// TotalBytes is the size of the files the snapshot covers.
+	// TotalBytes is the size of the files the snapshot covers, TotalFiles
+	// their number (total_files_processed).
 	TotalBytes uint64
+	TotalFiles uint64
 	// AddedBytes is how much the repository grew (after compression);
 	// AddedBytesRaw is the same before compression.
 	AddedBytes    uint64
@@ -121,6 +123,7 @@ type message struct {
 	DataAdded           uint64    `json:"data_added"`
 	DataAddedPacked     uint64    `json:"data_added_packed"`
 	TotalBytesProcessed uint64    `json:"total_bytes_processed"`
+	TotalFilesProcessed uint64    `json:"total_files_processed"`
 	BackupStart         time.Time `json:"backup_start"`
 	BackupEnd           time.Time `json:"backup_end"`
 	// error
@@ -279,6 +282,7 @@ func (m message) summary(repositoryID string) BackupSummary {
 		SnapshotID:      m.SnapshotID,
 		RepositoryID:    repositoryID,
 		TotalBytes:      m.TotalBytesProcessed,
+		TotalFiles:      m.TotalFilesProcessed,
 		AddedBytes:      m.DataAddedPacked,
 		AddedBytesRaw:   m.DataAdded,
 		FilesNew:        m.FilesNew,

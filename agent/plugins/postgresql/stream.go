@@ -16,9 +16,12 @@ import (
 // (F1 ПГ9).
 const lockWaitMillis = 300000
 
-// Stream implements sdk.Plugin: pg_dump writes the archive to w. It returns
-// nil only when pg_dump exited with 0 and the whole non-empty archive, which
-// starts with the signature of the custom format, reached w (F1 ПГ10).
+// Stream implements sdk.Plugin: pg_dump writes the archive to w, from the
+// snapshot that the transaction of the fingerprint exported (Dump), which
+// stays open until pg_dump has finished. It returns nil only when pg_dump
+// exited with 0, the whole non-empty archive, which starts with the signature
+// of the custom format, reached w (F1 ПГ10), and the transaction was open all
+// along (V2): otherwise the dump and the fingerprint may not be of one state.
 func (p Plugin) Stream(ctx context.Context, h sdk.Host, cfg sdk.Config, _ sdk.Dump, w io.Writer) error {
 	c, err := parse(cfg)
 	if err != nil {
@@ -28,16 +31,37 @@ func (p Plugin) Stream(ctx context.Context, h sdk.Host, cfg sdk.Config, _ sdk.Du
 	if err != nil {
 		return err
 	}
+	v, ok := snapshots.Load(h)
+	if !ok {
+		return errNoSnapshot
+	}
+	return p.dumpSnapshot(ctx, h, call{path: t.pgDump, args: c.pgDumpArgs(v.(*exported).name), environ: p.childEnv(password)}, v.(*exported).session, w)
+}
+
+// dumpSnapshot runs pg_dump into w while the session holds the snapshot open:
+// psql that exits stops pg_dump and fails the stream.
+func (p Plugin) dumpSnapshot(ctx context.Context, h sdk.Host, c call, s *session, w io.Writer) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	go func() {
+		select {
+		case <-s.done:
+			cancel()
+		case <-runCtx.Done():
+		}
+	}()
 	out := &archive{w: w, stop: cancel}
-	o := p.run(runCtx, h, call{path: t.pgDump, args: c.pgDumpArgs(), environ: p.childEnv(password), stdout: out})
+	c.stdout = out
+	o := p.run(runCtx, h, c)
+	if ctx.Err() == nil && !s.alive() {
+		return fmt.Errorf("pg_dump cannot be trusted: %w before it finished", s.ended())
+	}
 	return out.verdict(ctx, o)
 }
 
-// pgDumpArgs are the arguments of pg_dump (F1 ПГ9).
-func (c config) pgDumpArgs() []string {
-	args := []string{"--format=custom", "--compress=0", "--no-password", fmt.Sprintf("--lock-wait-timeout=%d", lockWaitMillis)}
+// pgDumpArgs are the arguments of pg_dump (F1 ПГ9), on the exported snapshot (V2).
+func (c config) pgDumpArgs(snapshot string) []string {
+	args := []string{"--format=custom", "--compress=0", "--no-password", fmt.Sprintf("--lock-wait-timeout=%d", lockWaitMillis), "--snapshot=" + snapshot}
 	for _, s := range c.ExcludeSchemas {
 		args = append(args, "--exclude-schema="+s)
 	}

@@ -57,6 +57,20 @@ func (p Plugin) locate(c config) (tools, error) {
 	return t, nil
 }
 
+// locatePsql finds psql alone, for a fingerprint: beside pg_dump_path when the
+// config names one (pg_dump itself need not be there: a verifier has pg_restore
+// and psql), else in the PATH of the agent.
+func (p Plugin) locatePsql(c config) (string, error) {
+	if c.PgDumpPath != "" {
+		psql := filepath.Join(filepath.Dir(c.PgDumpPath), "psql")
+		return psql, p.neighbour(psql, "psql", "pg_dump_path", "")
+	}
+	if path := p.lookPath("psql"); path != "" {
+		return path, nil
+	}
+	return "", fmt.Errorf("psql %w in the PATH of the agent: %s or set pg_dump_path", sdk.ErrProgramMissing, packageHint)
+}
+
 // locateDumpall finds pg_dumpall beside pg_dump (F1 ПГ17d). It is looked for
 // once the versions are known: an old pg_dump is the first thing to tell.
 func (p Plugin) locateDumpall(t tools) (tools, error) {

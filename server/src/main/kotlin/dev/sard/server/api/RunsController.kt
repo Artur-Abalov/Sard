@@ -96,6 +96,44 @@ data class BackupOutput(
         description = "The console can restore this snapshot: not partial, not forgotten, a plugin it restores",
     )
     val restorable: Boolean,
+    @field:Schema(description = "restic's number of files of the snapshot; null from an agent older than V2")
+    val totalFiles: Long?,
+    @field:Schema(
+        description =
+            "The fingerprint of the source the backup took, which a restore check compares with the copy; null " +
+                "when the agent or the plugin takes none (the check then stops at level 3)",
+    )
+    val fingerprint: Fingerprint?,
+    @field:Schema(
+        description =
+            "What the server noticed: the number of files or the size fell by more than 30% since the last " +
+                "snapshot of the source. The backup still succeeded",
+    )
+    val warnings: List<String>,
+)
+
+@Schema(
+    description =
+        "The fingerprint of a source as the console shows it. The facts of the hashed sample of files (their paths " +
+            "and the SHA-256 of their content) are only counted: they stay in the snapshot and with the verifier",
+)
+data class Fingerprint(
+    @field:Schema(description = "Lower-case hex SHA-256 of the canonical fingerprint: the snapshot's tag sard.fp")
+    val sha256: String,
+    @field:Schema(description = "Version of the format of the fingerprint")
+    val format: Int,
+    val plugin: String,
+    val facts: List<FingerprintFact>,
+    @field:Schema(description = "How many facts of the hashed sample are not shown")
+    val hiddenFacts: Int,
+)
+
+@Schema(description = "One measured property of a source, such as the rows of a table")
+data class FingerprintFact(
+    val name: String,
+    @field:Schema(description = "exact: the copy must have the same value; info: shown, never compared")
+    val rule: String,
+    val value: String,
 )
 
 @Schema(

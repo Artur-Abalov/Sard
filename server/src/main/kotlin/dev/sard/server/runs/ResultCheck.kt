@@ -27,6 +27,12 @@ sealed interface StepOutput {
         val repositoryId: String,
         /** The result that brought it failed: the snapshot is usable but incomplete (same as the snapshot's). */
         val partial: Boolean = false,
+        /** The fingerprint of the source (V2); null from an older agent or a plugin that takes none. */
+        val fingerprint: SourceFingerprint? = null,
+        /** restic's number of files; null when unknown: a backup without a fingerprint is from before V2. */
+        val totalFiles: Long? = null,
+        /** What the server noticed about this backup: a fall of its volume (V2); it still succeeded. */
+        val warnings: List<String> = emptyList(),
     ) : StepOutput {
         override val kind = Action.BACKUP
 
@@ -37,14 +43,22 @@ sealed interface StepOutput {
                 "addedBytes" to addedBytes,
                 "repositoryId" to repositoryId,
                 "partial" to partial,
+                "totalFiles" to totalFiles,
+                "fingerprint" to fingerprint?.summary()?.fields(),
+                "warnings" to warnings,
             )
 
+        /** What restic counted: its bytes always, its files when the agent knows them (V2). */
+        fun totals(): SnapshotTotals = SnapshotTotals(totalFiles, totalBytes)
+
         /** Why this output cannot prove a snapshot, or null when it can. */
-        fun problem(): String? =
+        fun problem(): String? = outputProblem() ?: fingerprint?.problem()
+
+        private fun outputProblem(): String? =
             mapOf(
                 "a backup output without a snapshot id" to snapshotId.isEmpty(),
                 "a backup output without a repository id" to repositoryId.isEmpty(),
-                "a backup output with negative sizes" to (minOf(totalBytes, addedBytes) < 0),
+                "a backup output with negative sizes" to (minOf(totalBytes, addedBytes, totalFiles ?: 0) < 0),
             ).entries.firstOrNull { it.value }?.key
     }
 

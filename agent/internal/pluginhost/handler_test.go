@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -111,11 +110,6 @@ func TestActionsOfAPluginFollowWhatItImplements(t *testing.T) {
 	if got := h.Actions(); !slices.Equal(got, []agentv1.Action{backup}) {
 		t.Errorf("plugin: %v", got)
 	}
-	f = newHandlers(t, &verifier{})
-	h, _ = f.handlers.Handler("fake")
-	if got := h.Actions(); !slices.Equal(got, []agentv1.Action{backup, verify}) {
-		t.Errorf("verifier: %v", got)
-	}
 	f = newHandlers(t, &restorer{})
 	h, _ = f.handlers.Handler("fake")
 	if got := h.Actions(); !slices.Equal(got, []agentv1.Action{backup, restore}) {
@@ -209,9 +203,8 @@ func TestInvalidStepsAreRejectedBeforeThePluginRuns(t *testing.T) {
 		"tag with an empty key":  func() *agentv1.RunStep { s := step(backup, `{}`); s.Tags = map[string]string{"": "b"}; return s }(),
 		"unknown repository":     func() *agentv1.RunStep { s := step(backup, `{}`); s.RepositoryName = "nas"; return s }(),
 		"unsupported action":     step(run, `{}`),
-		"verify without Verify":  func() *agentv1.RunStep { s := step(verify, `{}`); s.SnapshotId = "snap"; return s }(),
+		"verify":                 func() *agentv1.RunStep { s := step(verify, `{}`); s.SnapshotId = "snap"; return s }(),
 		"restore without a snap": step(restore, `{}`),
-		"verify without a snap":  step(verify, `{}`),
 	} {
 		p := &plugin{}
 		f := newHandlers(t, p)
@@ -230,94 +223,6 @@ func TestRejectionNamesTheViolation(t *testing.T) {
 	want := `step rejected: invalid plugin config: /token: unknown secret "mysql"`
 	if err == nil || err.Error() != want || !errors.Is(err, sdk.ErrUnknownSecret) {
 		t.Fatalf("err = %v, want %s", err, want)
-	}
-}
-
-func TestVerifyRestoresChecksAndRemovesTheCopy(t *testing.T) {
-	v := &verifier{}
-	f := newHandlers(t, v)
-	st := step(verify, `{}`)
-	st.SnapshotId = "snap"
-	res, err := f.run(t, st)
-	target := filepath.Join(f.restoreDir, "cmd-1")
-	want := &agentv1.VerifyOutput{SnapshotId: "snap", Checks: []*agentv1.CheckResult{{Name: "fake", Passed: true}}}
-	if err != nil || !proto.Equal(res.GetVerify(), want) {
-		t.Fatalf("Run = %v, %v", res, err)
-	}
-	if !slices.Equal(v.calls, []string{"verify {} " + target}) {
-		t.Errorf("calls = %q", v.calls)
-	}
-	if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("the restored copy was kept: %v", err)
-	}
-}
-
-func TestFailedVerificationIsAFailedCheck(t *testing.T) {
-	v := &verifier{err: errors.New("db.sql differs")}
-	f := newHandlers(t, v)
-	st := step(verify, `{}`)
-	st.SnapshotId = "snap"
-	res, err := f.run(t, st)
-	check := res.GetVerify().GetChecks()[0]
-	if !errors.Is(err, v.err) || errors.Is(err, executor.ErrRejected) || check.GetPassed() || !strings.Contains(check.GetDetail(), "differs") {
-		t.Fatalf("Run = %v, %v", res, err)
-	}
-}
-
-func TestVerifyStopsWhenTheRestoreFails(t *testing.T) {
-	v := &verifier{}
-	f := newHandlers(t, v)
-	f.repo.restoreErr = restic.ErrLocked
-	st := step(verify, `{}`)
-	st.SnapshotId = "snap"
-	if res, err := f.run(t, st); !errors.Is(err, restic.ErrLocked) || res != nil || len(v.calls) != 0 {
-		t.Fatalf("Run = %v, %v, calls %q", res, err, v.calls)
-	}
-}
-
-func TestVerifyFailsWhenTheRestoreDirCannotBeCreated(t *testing.T) {
-	f := newHandlers(t, &verifier{})
-	blocker := filepath.Join(t.TempDir(), "file")
-	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	reg, _ := sdk.NewRegistry(&verifier{})
-	h, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return f.repo, true }, filepath.Join(blocker, "restore"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler, _ := h.Handler("fake")
-	st := step(verify, `{}`)
-	st.SnapshotId = "snap"
-	if _, err := handler.Run(context.Background(), st, &reporter{}); err == nil || errors.Is(err, executor.ErrRejected) || len(f.repo.restores) != 0 {
-		t.Fatalf("err = %v, restores %q", err, f.repo.restores)
-	}
-}
-
-func TestVerifyRejectsACommandIDThatIsNotADirectoryName(t *testing.T) {
-	for _, id := range []string{"", ".", "..", "a/b", "../x"} {
-		st := step(verify, `{}`)
-		st.SnapshotId, st.CommandId = "snap", id
-		f := newHandlers(t, &verifier{})
-		if _, err := f.run(t, st); !errors.Is(err, executor.ErrRejected) || len(f.repo.restores) != 0 {
-			t.Errorf("%q: err = %v", id, err)
-		}
-	}
-}
-
-// The restore of a verification starts with a RESTORING report without counters.
-func TestVerifyReportsTheRestoringPhaseBeforeRestic(t *testing.T) {
-	f := newHandlers(t, &verifier{})
-	st := step(verify, `{}`)
-	st.SnapshotId = "snap"
-	h, _ := f.handlers.Handler("fake")
-	var rep reporter
-	if _, err := h.Run(context.Background(), st, &rep); err != nil {
-		t.Fatal(err)
-	}
-	want := []event{{phase: agentv1.StepPhase_STEP_PHASE_RESTORING}, {phase: agentv1.StepPhase_STEP_PHASE_VERIFYING}, {phase: agentv1.StepPhase_STEP_PHASE_VERIFYING, done: 1, total: 2}}
-	if got := rep.all(); !slices.Equal(got, want) {
-		t.Errorf("events = %+v, want %+v", got, want)
 	}
 }
 

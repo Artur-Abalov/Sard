@@ -102,6 +102,57 @@ const filesSchema = {
       maxItems: 256,
       examples: [['*.log', '/var/www/cache']],
     },
+    control_paths: {
+      type: 'array',
+      title: 'Control paths',
+      description:
+        'Files and directories that must exist and not be empty at every backup, each inside one of the paths. A missing or empty one fails the backup before restic runs: this catches an unmounted disk, which otherwise backs up as an empty directory. A restore check finds them in the copy. At most 64.',
+      'x-sard-i18n': {
+        ru: {
+          title: 'Контрольные пути',
+          description:
+            'Файлы и каталоги, которые при каждом бэкапе обязаны существовать и быть непустыми; каждый внутри одного из путей. Если такого нет или он пуст, бэкап падает до запуска restic: так ловится отмонтированный диск, который иначе сохранился бы пустым каталогом. Проверка восстановления ищет их в копии. Не больше 64.',
+        },
+      },
+      items: { type: 'string', minLength: 1, maxLength: 4096, pattern: '^/[^\\x00]*$' },
+      maxItems: 64,
+      uniqueItems: true,
+      examples: [['/var/www/index.html', '/srv/data/db']],
+    },
+    sample_files: {
+      type: 'integer',
+      title: 'Hashed sample',
+      description:
+        'How many random files the agent hashes (SHA-256) before each backup, for a restore check to compare with the copy; 0 turns the sample off. 100 by default.',
+      'x-sard-i18n': {
+        ru: {
+          title: 'Выборка хешей',
+          description:
+            'Сколько случайных файлов агент хеширует (SHA-256) перед каждым бэкапом, чтобы проверка восстановления сравнила их с копией; 0 выключает выборку. По умолчанию 100.',
+        },
+      },
+      minimum: 0,
+      maximum: 1000,
+      default: 100,
+      examples: [100, 0],
+    },
+    sample_max_file_bytes: {
+      type: 'integer',
+      title: 'Largest sampled file',
+      description:
+        'Files larger than this many bytes are never in the sample. 67108864 (64 MiB) by default.',
+      'x-sard-i18n': {
+        ru: {
+          title: 'Наибольший файл выборки',
+          description:
+            'Файлы больше этого числа байт в выборку не попадают. По умолчанию 67108864 (64 МиБ).',
+        },
+      },
+      minimum: 1,
+      maximum: 1073741824,
+      default: 67108864,
+      examples: [67108864],
+    },
     one_file_system: {
       type: 'boolean',
       title: 'Stay on one file system',
@@ -599,6 +650,9 @@ const snapshotOutput = {
   addedBytes: 524_288,
   repositoryId: '5a1f0c3e9b',
   restorable: true,
+  totalFiles: 1_204,
+  fingerprint: null,
+  warnings: [],
 }
 
 // Newest first, as the list endpoint returns them.
@@ -742,6 +796,9 @@ export const runs: Schemas['Run'][] = [
         repositoryId: '5a1f0c3e9b',
         partial: false,
         restorable: true,
+        totalFiles: null,
+        fingerprint: null,
+        warnings: [],
       },
     },
     'succeeded',

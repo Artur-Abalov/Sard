@@ -1939,7 +1939,18 @@ type BackupOutput struct {
 	AddedBytes uint64 `protobuf:"varint,3,opt,name=added_bytes,json=addedBytes,proto3" json:"added_bytes,omitempty"`
 	// restic's id of the repository the snapshot is in (64 lower-case hex
 	// characters), as in RepositoryInfo.repository_id; not a secret.
-	RepositoryId  string `protobuf:"bytes,4,opt,name=repository_id,json=repositoryId,proto3" json:"repository_id,omitempty"`
+	RepositoryId string `protobuf:"bytes,4,opt,name=repository_id,json=repositoryId,proto3" json:"repository_id,omitempty"`
+	// Fingerprint of the source taken by the plugin (V2), in its canonical
+	// form (sorted keys, no white space); empty when the plugin takes none or
+	// the agent is older than V2. The snapshot that carries the tag
+	// sard.fp=<fingerprint_sha256> holds the same fingerprint: the main
+	// snapshot, or for files a snapshot of its own linked to it.
+	Fingerprint []byte `protobuf:"bytes,5,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
+	// Lower-case hex SHA-256 of fingerprint; empty when fingerprint is.
+	FingerprintSha256 string `protobuf:"bytes,6,opt,name=fingerprint_sha256,json=fingerprintSha256,proto3" json:"fingerprint_sha256,omitempty"`
+	// Number of files of the main snapshot (restic's total_files_processed);
+	// 0 from an agent older than V2.
+	TotalFiles    uint64 `protobuf:"varint,7,opt,name=total_files,json=totalFiles,proto3" json:"total_files,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2000,6 +2011,27 @@ func (x *BackupOutput) GetRepositoryId() string {
 		return x.RepositoryId
 	}
 	return ""
+}
+
+func (x *BackupOutput) GetFingerprint() []byte {
+	if x != nil {
+		return x.Fingerprint
+	}
+	return nil
+}
+
+func (x *BackupOutput) GetFingerprintSha256() string {
+	if x != nil {
+		return x.FingerprintSha256
+	}
+	return ""
+}
+
+func (x *BackupOutput) GetTotalFiles() uint64 {
+	if x != nil {
+		return x.TotalFiles
+	}
+	return 0
 }
 
 // RestoreOutput is the outcome of ACTION_RESTORE. A restore is all or
@@ -3088,7 +3120,7 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"\x06verify\x18\f \x01(\v2\x1b.sard.agent.v1.VerifyOutputH\x00R\x06verify\x12,\n" +
 	"\x03run\x18\r \x01(\v2\x18.sard.agent.v1.RunOutputH\x00R\x03run\x12@\n" +
 	"\rreject_reason\x18\x0e \x01(\x0e2\x1b.sard.agent.v1.RejectReasonR\frejectReasonB\b\n" +
-	"\x06outputJ\x04\b\x04\x10\x05R\vsnapshot_id\"\x96\x01\n" +
+	"\x06outputJ\x04\b\x04\x10\x05R\vsnapshot_id\"\x88\x02\n" +
 	"\fBackupOutput\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
 	"snapshotId\x12\x1f\n" +
@@ -3096,7 +3128,11 @@ const file_sard_agent_v1_agent_proto_rawDesc = "" +
 	"totalBytes\x12\x1f\n" +
 	"\vadded_bytes\x18\x03 \x01(\x04R\n" +
 	"addedBytes\x12#\n" +
-	"\rrepository_id\x18\x04 \x01(\tR\frepositoryId\"\xa6\x02\n" +
+	"\rrepository_id\x18\x04 \x01(\tR\frepositoryId\x12 \n" +
+	"\vfingerprint\x18\x05 \x01(\fR\vfingerprint\x12-\n" +
+	"\x12fingerprint_sha256\x18\x06 \x01(\tR\x11fingerprintSha256\x12\x1f\n" +
+	"\vtotal_files\x18\a \x01(\x04R\n" +
+	"totalFiles\"\xa6\x02\n" +
 	"\rRestoreOutput\x12\x16\n" +
 	"\x06target\x18\x01 \x01(\tR\x06target\x12%\n" +
 	"\x0efiles_restored\x18\x02 \x01(\x04R\rfilesRestored\x12%\n" +

@@ -4599,9 +4599,29 @@
           "restorable" : {
             "type" : "boolean",
             "description" : "The console can restore this snapshot: not partial, not forgotten, a plugin it restores"
+          },
+          "totalFiles" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64",
+            "description" : "restic's number of files of the snapshot; null from an agent older than V2"
+          },
+          "fingerprint" : {
+            "description" : "The fingerprint of the source the backup took, which a restore check compares with the copy; null when the agent or the plugin takes none (the check then stops at level 3)",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/Fingerprint"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "warnings" : {
+            "type" : "array",
+            "description" : "What the server noticed: the number of files or the size fell by more than 30% since the last snapshot of the source. The backup still succeeded",
+            "items" : {
+              "type" : "string"
+            }
           }
         },
-        "required" : [ "addedBytes", "partial", "repositoryId", "restorable", "snapshotId", "totalBytes" ]
+        "required" : [ "addedBytes", "fingerprint", "partial", "repositoryId", "restorable", "snapshotId", "totalBytes", "totalFiles", "warnings" ]
       },
       "CatchUp" : {
         "type" : "object",
@@ -4632,6 +4652,53 @@
           }
         },
         "required" : [ "missedCount", "missedCountCapped", "missedFrom", "missedUntil", "timezone" ]
+      },
+      "Fingerprint" : {
+        "type" : "object",
+        "description" : "The fingerprint of a source as the console shows it. The facts of the hashed sample of files (their paths and the SHA-256 of their content) are only counted: they stay in the snapshot and with the verifier",
+        "properties" : {
+          "sha256" : {
+            "type" : "string",
+            "description" : "Lower-case hex SHA-256 of the canonical fingerprint: the snapshot's tag sard.fp"
+          },
+          "format" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Version of the format of the fingerprint"
+          },
+          "plugin" : {
+            "type" : "string"
+          },
+          "facts" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/FingerprintFact"
+            }
+          },
+          "hiddenFacts" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "How many facts of the hashed sample are not shown"
+          }
+        },
+        "required" : [ "facts", "format", "hiddenFacts", "plugin", "sha256" ]
+      },
+      "FingerprintFact" : {
+        "type" : "object",
+        "description" : "One measured property of a source, such as the rows of a table",
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "rule" : {
+            "type" : "string",
+            "description" : "exact: the copy must have the same value; info: shown, never compared"
+          },
+          "value" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "name", "rule", "value" ]
       },
       "RestoreOutcome" : {
         "type" : "string",

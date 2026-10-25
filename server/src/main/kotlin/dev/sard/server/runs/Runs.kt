@@ -360,13 +360,19 @@ internal object RunViews {
         output
             ?.let { JSON.readTree(it) }
             ?.takeIf { it.path("kind").asString() == Action.BACKUP.stored }
-            ?.let {
-                BackupResult(
-                    it.path("snapshotId").asString(),
-                    it.path("totalBytes").asLong(),
-                    it.path("addedBytes").asLong(),
-                    it.path("repositoryId").asString(),
-                    it.path("partial").asBoolean(false),
-                )
-            }
+            ?.let(::backupResult)
+
+    private fun backupResult(node: JsonNode): BackupResult =
+        BackupResult(
+            node.path("snapshotId").asString(),
+            node.path("totalBytes").asLong(),
+            node.path("addedBytes").asLong(),
+            node.path("repositoryId").asString(),
+            node.path("partial").asBoolean(false),
+            totalFiles = node.path("totalFiles").takeIf(JsonNode::isNumber)?.asLong(),
+            fingerprint = node.path("fingerprint").takeIf(JsonNode::isObject)?.let(FingerprintSummary::of),
+            warnings = warningsOf(node.path("warnings")),
+        )
+
+    private fun warningsOf(node: JsonNode): List<String> = (0 until node.size()).map { node.get(it).asString() }
 }

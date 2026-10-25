@@ -1246,6 +1246,15 @@ export interface components {
             partial: boolean;
             /** @description The console can restore this snapshot: not partial, not forgotten, a plugin it restores */
             restorable: boolean;
+            /**
+             * Format: int64
+             * @description restic's number of files of the snapshot; null from an agent older than V2
+             */
+            totalFiles: number | null;
+            /** @description The fingerprint of the source the backup took, which a restore check compares with the copy; null when the agent or the plugin takes none (the check then stops at level 3) */
+            fingerprint: components["schemas"]["Fingerprint"] | null;
+            /** @description What the server noticed: the number of files or the size fell by more than 30% since the last snapshot of the source. The backup still succeeded */
+            warnings: string[];
         };
         /** @description What a catch-up run stands for: the fires missed while the server was down */
         CatchUp: {
@@ -1268,6 +1277,30 @@ export interface components {
             missedCountCapped: boolean;
             /** @description The schedule's time zone, to show the period in */
             timezone: string;
+        };
+        /** @description The fingerprint of a source as the console shows it. The facts of the hashed sample of files (their paths and the SHA-256 of their content) are only counted: they stay in the snapshot and with the verifier */
+        Fingerprint: {
+            /** @description Lower-case hex SHA-256 of the canonical fingerprint: the snapshot's tag sard.fp */
+            sha256: string;
+            /**
+             * Format: int32
+             * @description Version of the format of the fingerprint
+             */
+            format: number;
+            plugin: string;
+            facts: components["schemas"]["FingerprintFact"][];
+            /**
+             * Format: int32
+             * @description How many facts of the hashed sample are not shown
+             */
+            hiddenFacts: number;
+        };
+        /** @description One measured property of a source, such as the rows of a table */
+        FingerprintFact: {
+            name: string;
+            /** @description exact: the copy must have the same value; info: shown, never compared */
+            rule: string;
+            value: string;
         };
         /** @enum {string} */
         RestoreOutcome: "restored" | "nothing" | "rollback_failed" | "late";

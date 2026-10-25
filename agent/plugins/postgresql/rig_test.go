@@ -106,8 +106,11 @@ func (c call) version() bool { return slices.Equal(c.Args, []string{"--version"}
 // key is how a test names the behaviour of a call: "psql", "pg_dump",
 // "pg_dump --version" ...
 func (c call) key() string {
-	if c.version() {
+	switch {
+	case c.version():
 		return c.Tool + " --version"
+	case c.Tool == "psql" && slices.Contains(c.Args, "ON_ERROR_STOP=0"):
+		return "psql session"
 	}
 	return c.Tool
 }
@@ -230,6 +233,7 @@ func newRunner(phase phaseNow) *fakeRunner {
 	f.script["psql"] = say(psqlRow(180000, false, true, "backup"), nil, 0)
 	f.script["pg_dump"] = say(archive(1<<20), nil, 0)
 	f.script["pg_dumpall"] = say(globalsSQL, nil, 0)
+	f.script["psql session"] = newSession().behaviour()
 	return f
 }
 

@@ -135,7 +135,8 @@ class ResultCheckTest {
         val expected =
             listOf(
                 """{"kind":"backup","snapshotId":"4a3b2c1d","totalBytes":1000,"addedBytes":100,""" +
-                    """"repositoryId":"$REPOSITORY_ID","partial":false}""",
+                    """"repositoryId":"$REPOSITORY_ID","partial":false,"totalFiles":null,"fingerprint":null,""" +
+                    """"warnings":[]}""",
                 """{"kind":"restore","target":"/r","filesRestored":0,"bytesRestored":0,"database":"",""" +
                     """"tablesRestored":0,"rolesRestored":0,"ownersRestored":false,"leftover":""}""",
                 """{"kind":"verify","snapshotId":"4a","checks":[{"name":"read-data","passed":false,""" +
@@ -225,5 +226,93 @@ class ResultCheckTest {
             """{"kind":"restore","target":"/var/lib/sard-agent/restore/etc","filesRestored":2,"bytesRestored":4,""" +
                 """"database":"","tablesRestored":0,"rolesRestored":0,"ownersRestored":false,"leftover":""}"""
         assertEquals(expected, stored)
+    }
+}
+
+private fun hexOf(bytes: ByteArray) =
+    java.security.MessageDigest
+        .getInstance("SHA-256")
+        .digest(bytes)
+        .joinToString("") { "%02x".format(it) }
+
+private const val WHOLE = "a fingerprint without its hash or a hash without its fingerprint"
+private const val NOT_ONE = "a fingerprint that is not one"
+
+private val FP_BYTES =
+    """{"facts":[{"name":"tables","rule":"exact","value":"3"}],"format":1,"plugin":"postgresql"}""".toByteArray()
+
+/** The fingerprint a backup brings is checked with it (V2): a hash that is not that of the bytes fails the step. */
+@MutFlowTest
+class FingerprintResultCheckTest {
+    // ResultCheckTest kills the mutants of the verdict; here only what a backup's fingerprint and count make of it.
+    private fun check(output: StepOutput.Backup) = ResultCheck.of(Action.BACKUP, succeeded(output))
+
+    private fun succeeded(output: StepOutput.Backup) = StepReport(StepState.SUCCEEDED, null, output)
+
+    private fun problem(output: StepOutput.Backup) = MutFlow.underTest { output.problem() }
+
+    private fun fingerprinted(
+        bytes: ByteArray,
+        sha256: String = hexOf(bytes),
+    ) = BACKUP.copy(fingerprint = SourceFingerprint(bytes, sha256), totalFiles = 1)
+
+    @Test
+    fun `a backup's problem is that of its sizes or of its fingerprint`() {
+        val big = ByteArray(SourceFingerprint.MAX_BYTES + 1) { 'x'.code.toByte() }
+        val largest = big.copyOf(SourceFingerprint.MAX_BYTES)
+        val cases =
+            mapOf(
+                fingerprinted(FP_BYTES) to null,
+                BACKUP.copy(addedBytes = 0, totalFiles = 0) to null,
+                BACKUP.copy(totalFiles = -1) to "a backup output with negative sizes",
+                fingerprinted(ByteArray(0), hexOf(FP_BYTES)) to WHOLE,
+                fingerprinted(FP_BYTES, "") to WHOLE,
+                fingerprinted(big) to "a fingerprint larger than 1 MiB",
+                fingerprinted(largest) to NOT_ONE,
+                fingerprinted("""{"facts":{}}""".toByteArray()) to NOT_ONE,
+            )
+        for ((backup, expected) in cases) {
+            assertEquals(expected, problem(backup), backup.fingerprint?.sha256)
+        }
+    }
+
+    @Test
+    fun `a backup with its fingerprint and number of files is kept`() {
+        val backup = BACKUP.copy(fingerprint = SourceFingerprint(FP_BYTES, hexOf(FP_BYTES)), totalFiles = 1)
+
+        assertEquals(Verdict(StepOutcome(StepState.SUCCEEDED, null), backup, invalid = null), check(backup))
+    }
+
+    @Test
+    fun `a fingerprint whose hash is not that of its bytes is an invalid result`() {
+        val backup = BACKUP.copy(fingerprint = SourceFingerprint(FP_BYTES, "0".repeat(64)), totalFiles = 1)
+
+        val problem = "a fingerprint whose hash is not that of its bytes"
+        assertEquals(Verdict(StepOutcome(StepState.FAILED, "invalid result: $problem"), null, problem), check(backup))
+    }
+
+    @Test
+    fun `a negative number of files is an invalid result`() {
+        assertEquals("a backup output with negative sizes", check(BACKUP.copy(totalFiles = -1)).invalid)
+    }
+
+    @Test
+    fun `the stored output has the summary of the fingerprint, the number of files and the warnings`() {
+        val backup =
+            BACKUP.copy(
+                fingerprint = SourceFingerprint(FP_BYTES, hexOf(FP_BYTES)),
+                totalFiles = 1,
+                warnings = listOf("w"),
+            )
+        val json = MutFlow.underTest { backup.json() }
+
+        val expected =
+            """{"kind":"backup","snapshotId":"4a3b2c1d","totalBytes":1000,"addedBytes":100,""" +
+                """"repositoryId":"$REPOSITORY_ID","partial":false,"totalFiles":1,""" +
+                """"fingerprint":{"sha256":"${hexOf(FP_BYTES)}","format":1,"plugin":"postgresql",""" +
+                """"facts":[{"name":"tables","rule":"exact","value":"3"}],"hidden":0},"warnings":["w"]}"""
+        assertEquals(expected, json)
+        assertEquals(SnapshotTotals(1, 1_000), backup.totals())
+        assertEquals(SnapshotTotals(null, 1_000), BACKUP.totals())
     }
 }

@@ -25,10 +25,13 @@ private const val LATEST = """
     order by s.id"""
 
 // At most one open job per source (V-D9): the partial unique index refuses a second, the insert does nothing.
+// The job carries the snapshot's fingerprint and its hash (V2), both null for a snapshot without one.
 private const val ENQUEUE = """
     insert into verification_jobs (id, tenant_id, source_id, snapshot_ref, repository_id, plugin, reason, status,
-        created_at, deadline)
-    values (:id, :tenant, :source, :snapshot, :repository, :plugin, :reason, 'queued', :now, :deadline)
+        created_at, deadline, fingerprint, fingerprint_sha256)
+    select :id, :tenant, :source, :snapshot, :repository, :plugin, :reason, 'queued', :now, :deadline,
+        sn.fingerprint, sn.fingerprint_sha256
+    from snapshots sn where sn.tenant_id = :tenant and sn.id = :snapshot
     on conflict do nothing"""
 
 /** Why a job was made; [stored] is verification_jobs.reason. */

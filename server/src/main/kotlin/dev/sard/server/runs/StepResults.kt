@@ -20,8 +20,15 @@ private const val KEEP_LATE =
         "where tenant_id = :tenant and id = :step and status = 'lost' and output is null"
 private const val SNAPSHOT =
     "insert into snapshots (id, tenant_id, source_id, step_id, agent_id, repository_name, repository_id, " +
-        "snapshot_id, total_bytes, added_bytes, created_at, partial) values (:id, :tenant, :source, :step, :agent, " +
-        ":repositoryName, :repositoryId, :snapshotId, :totalBytes, :addedBytes, :now, :partial) on conflict do nothing"
+        "snapshot_id, total_bytes, added_bytes, created_at, partial, fingerprint, fingerprint_sha256, total_files) " +
+        "values (:id, :tenant, :source, :step, :agent, :repositoryName, :repositoryId, :snapshotId, :totalBytes, " +
+        ":addedBytes, :now, :partial, :fingerprint, :fingerprintSha256, :totalFiles) on conflict do nothing"
+
+// The last whole snapshot of the source: what a fall of the volume is measured from. Its number of files is null
+// when an agent older than V2 made it; its size is compared all the same.
+private const val PREVIOUS =
+    "select total_files, total_bytes from snapshots where tenant_id = :tenant and source_id = :source " +
+        "and not partial and forgotten_at is null order by created_at desc, id desc limit 1"
 
 /** What [StepResults.record] did with a result; every case but an exception is acknowledged. */
 sealed interface Recorded {
@@ -83,7 +90,7 @@ class StepResults(
                 .setParameter("step", stepId)
                 .setParameter("agent", agentId)
                 .uniqueResult() ?: return Recorded.Unknown
-        val verdict = ResultCheck.of(Action.of(step.action), report)
+        val verdict = withWarnings(session, step, ResultCheck.of(Action.of(step.action), report))
         return if (transitions.finish(session, tenantId, stepId, verdict.outcome, verdict.output?.json())) {
             snapshot(session, step, verdict)
             Recorded.Closed(verdict.outcome.status, verdict.invalid)
@@ -91,6 +98,30 @@ class StepResults(
             closedBefore(session, tenantId, step, verdict)
         }
     }
+
+    /** A backup much smaller than the last snapshot of its source gets the warnings of [VolumeDrop] (V2). */
+    private fun withWarnings(
+        session: Session,
+        step: RunStepRecord,
+        verdict: Verdict,
+    ): Verdict {
+        val backup = verdict.output as? StepOutput.Backup
+        backup ?: return verdict
+        val warnings = VolumeDrop.warnings(previous(session, step), backup.totals())
+        return verdict.copy(output = backup.copy(warnings = warnings))
+    }
+
+    /** What restic counted in the last whole snapshot of the source of [step], if it is known. */
+    private fun previous(
+        session: Session,
+        step: RunStepRecord,
+    ): SnapshotTotals? =
+        session
+            .createNativeQuery(PREVIOUS, Array<Any?>::class.java)
+            .setParameter("tenant", step.tenantId)
+            .setParameter("source", step.sourceId)
+            .uniqueResult()
+            ?.let { SnapshotTotals((it[0] as Number?)?.toLong(), (it[1] as Number).toLong()) }
 
     /** The guarded update moved nothing: the step was closed before, or never dispatched. */
     private fun closedBefore(
@@ -158,6 +189,9 @@ class StepResults(
                 .setParameter("addedBytes", backup.addedBytes)
                 .setParameter("now", clock.instant())
                 .setParameter("partial", backup.partial)
+                .setParameter("fingerprint", backup.fingerprint?.bytes, ByteArray::class.java)
+                .setParameter("fingerprintSha256", backup.fingerprint?.sha256, String::class.java)
+                .setParameter("totalFiles", backup.totalFiles, Long::class.javaObjectType)
                 .executeUpdate()
         if (inserted == 0) {
             log.warn("snapshot {} of step {} is already recorded for another step", backup.snapshotId, step.id)

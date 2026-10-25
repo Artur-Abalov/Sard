@@ -57,9 +57,6 @@ func TestMetadata(t *testing.T) {
 	if p.Name() != "test" || p.Version() != "0.0.0-test" || !bytes.Contains(p.ConfigSchema(), []byte(`"sard-secret"`)) {
 		t.Fatalf("%s %s %s", p.Name(), p.Version(), p.ConfigSchema())
 	}
-	if _, ok := any(p).(sdk.Verifier); !ok {
-		t.Error("the test plugin verifies restored copies")
-	}
 }
 
 func TestPrepareReadsTheTokenAndChecksTheSource(t *testing.T) {

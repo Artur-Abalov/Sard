@@ -119,18 +119,6 @@ func (p *plugin) Stream(ctx context.Context, h sdk.Host, cfg sdk.Config, d sdk.D
 	return p.stream(ctx, h, cfg, d, w)
 }
 
-// verifier is a plugin that can check a restored copy.
-type verifier struct {
-	plugin
-	err error
-}
-
-func (v *verifier) Verify(_ context.Context, h sdk.Host, cfg sdk.Config, restoredPath string) error {
-	v.calls = append(v.calls, "verify "+string(cfg)+" "+restoredPath)
-	h.Progress(1, 2)
-	return v.err
-}
-
 // repo is a fake restic repository; a streamed request is read to the end.
 type repo struct {
 	requests []restic.BackupRequest
@@ -211,7 +199,6 @@ var (
 	preparing = agentv1.StepPhase_STEP_PHASE_PREPARING
 	dumping   = agentv1.StepPhase_STEP_PHASE_DUMPING
 	uploading = agentv1.StepPhase_STEP_PHASE_UPLOADING
-	verifying = agentv1.StepPhase_STEP_PHASE_VERIFYING
 )
 
 func TestBackupByPathsRunsPrepareDumpAndResticInPhases(t *testing.T) {
@@ -219,7 +206,7 @@ func TestBackupByPathsRunsPrepareDumpAndResticInPhases(t *testing.T) {
 	r := &repo{progress: []restic.Progress{{BytesDone: 10, TotalBytes: 100}, {BytesDone: 100, TotalBytes: 100}}}
 	var rep reporter
 	sum, err := newSource(t, p).Backup(context.Background(), []byte(`{}`), r, []string{"run=7"}, &rep)
-	if err != nil || sum != summary {
+	if err != nil || sum.BackupSummary != summary {
 		t.Fatalf("Backup = %+v, %v", sum, err)
 	}
 	if want := []string{"prepare {}", "dump {}"}; !slices.Equal(p.calls, want) {
@@ -410,40 +397,6 @@ func TestHostGivesSecretsByNameAndForwardsLogs(t *testing.T) {
 	}
 	if !slices.Equal(logs, want) {
 		t.Errorf("logs = %+v", logs)
-	}
-}
-
-func TestVerifyRunsTheVerifierInTheVerifyingPhase(t *testing.T) {
-	v := &verifier{}
-	var rep reporter
-	if err := newSource(t, v).Verify(context.Background(), []byte(`{}`), "/restore", &rep); err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(v.calls, []string{"verify {} /restore"}) {
-		t.Errorf("calls = %q", v.calls)
-	}
-	if want := []event{{phase: verifying}, {phase: verifying, done: 1, total: 2}}; !slices.Equal(rep.all(), want) {
-		t.Errorf("events = %+v", rep.all())
-	}
-	v.err = errors.New("checksum mismatch")
-	if err := newSource(t, v).Verify(context.Background(), []byte(`{}`), "/restore", &rep); !errors.Is(err, v.err) {
-		t.Errorf("err = %v", err)
-	}
-	if err := newSource(t, v).Verify(context.Background(), []byte(`{"x":1}`), "/restore", &rep); !errors.Is(err, sdk.ErrInvalidConfig) {
-		t.Errorf("err = %v", err)
-	}
-}
-
-func TestVerifyOfAPluginThatCannotVerify(t *testing.T) {
-	s := newSource(t, &plugin{})
-	if s.CanVerify() {
-		t.Error("CanVerify of a plugin without Verify")
-	}
-	if !newSource(t, &verifier{}).CanVerify() {
-		t.Error("CanVerify of a verifier")
-	}
-	if err := s.Verify(context.Background(), []byte(`{}`), "/restore", &reporter{}); !errors.Is(err, sdk.ErrNotImplemented) {
-		t.Fatalf("err = %v", err)
 	}
 }
 

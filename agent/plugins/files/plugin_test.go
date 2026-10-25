@@ -15,6 +15,7 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	"github.com/Artur-Abalov/sard/agent/internal/role"
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
 
@@ -376,9 +377,14 @@ func TestABackupReportsTheSnapshotItsSizesAndTheRepository(t *testing.T) {
 	if res.GetMessage() != "" {
 		t.Errorf("message = %q", res.GetMessage())
 	}
+	// The repository grew by the main snapshot and the snapshot of the
+	// fingerprint (V2), each 1500 bytes for the fake restic.
 	out := res.GetBackup()
-	if out.GetSnapshotId() != snapshotID || out.GetRepositoryId() != repoID || out.GetTotalBytes() != 1024 || out.GetAddedBytes() != 1500 {
+	if out.GetSnapshotId() != snapshotID || out.GetRepositoryId() != repoID || out.GetTotalBytes() != 1024 || out.GetAddedBytes() != 3000 {
 		t.Errorf("output = %v", out)
+	}
+	if out.GetFingerprintSha256() != sdk.HashBytes(out.GetFingerprint()) || len(out.GetFingerprint()) == 0 {
+		t.Errorf("fingerprint = %s, %s", out.GetFingerprint(), out.GetFingerprintSha256())
 	}
 }
 
@@ -671,5 +677,20 @@ func TestACancelAfterResticSavedTheSnapshotKeepsTheSnapshot(t *testing.T) {
 	want(t, res, succeeded)
 	if res.GetBackup().GetSnapshotId() != snapshotID {
 		t.Errorf("output = %v", res.GetOutput())
+	}
+}
+
+// V2: a control path that is missing (an unmounted disk) fails the step
+// before restic runs, naming it; the snapshot of an empty directory is never made.
+func TestAMissingControlPathFailsTheStepBeforeRestic(t *testing.T) {
+	r := newRig(t)
+	r.fs.dir("/D")
+	res := r.run(step(`{"paths": ["/D"], "control_paths": ["/D/disk"]}`))
+	want(t, res, failed)
+	if wantMsg := `prepare: paths that cannot be backed up (1): "/D/disk": control path: no such file or directory`; res.GetMessage() != wantMsg {
+		t.Errorf("message = %q, want %q", res.GetMessage(), wantMsg)
+	}
+	if r.restic.ran() != 0 {
+		t.Error("restic ran")
 	}
 }

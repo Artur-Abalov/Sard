@@ -396,4 +396,149 @@ class StepResultsIntegrationTest(
             }
         }
     }
+
+    // ---- V2: the fingerprint of the source and the fall of the volume
+
+    private fun fingerprinted(
+        snapshotId: String,
+        files: Long,
+        bytes: Long,
+    ): StepReport {
+        val fingerprint = """{"facts":[{"name":"files","rule":"exact","value":"$files"}],"format":1,"plugin":"files"}"""
+        val digest =
+            java.security.MessageDigest
+                .getInstance("SHA-256")
+                .digest(fingerprint.toByteArray())
+        val sha256 = digest.joinToString("") { "%02x".format(it) }
+        val backup =
+            StepOutput.Backup(
+                snapshotId,
+                bytes,
+                1,
+                REPOSITORY_ID,
+                fingerprint = SourceFingerprint(fingerprint.toByteArray(), sha256),
+                totalFiles = files,
+            )
+        return StepReport(StepState.SUCCEEDED, null, backup)
+    }
+
+    /** A backup of the source of [run] that the agent accepted, then the result [report]. */
+    private fun backedUp(
+        sourceId: UUID,
+        report: StepReport,
+    ): UUID {
+        val step =
+            runs
+                .start(tenant.id, sourceId)
+                .steps
+                .single()
+                .id
+        assertTrue(steps.claim(tenant.id, step))
+        assertTrue(steps.accepted(tenant.id, step, "accepted"))
+        clock.now = clock.now + LATER
+        assertEquals(Recorded.Closed(StepState.SUCCEEDED, invalid = null), record(step, report))
+        return step
+    }
+
+    @Test
+    fun `the fingerprint, its hash and the number of files are kept with the snapshot`() {
+        val (_, step) = running()
+        val report = fingerprinted("fp-1", 3, 1_000)
+
+        assertEquals(Recorded.Closed(StepState.SUCCEEDED, invalid = null), record(step, report))
+
+        val snapshot = snapshots(step).single()
+        val backup = report.output as StepOutput.Backup
+        assertTrue((snapshot["fingerprint"] as ByteArray).contentEquals(backup.fingerprint!!.bytes))
+        assertEquals(
+            listOf<Any?>(backup.fingerprint.sha256, 3L),
+            listOf(snapshot["fingerprint_sha256"], snapshot["total_files"]),
+        )
+        val output = json(row("run_steps", step)["output"])!!
+        assertEquals(backup.fingerprint.sha256, output.path("fingerprint").path("sha256").asString())
+    }
+
+    @Test
+    fun `a backup without a fingerprint keeps a snapshot without one, as before V2`() {
+        val (_, step) = running()
+
+        record(step)
+
+        val snapshot = snapshots(step).single()
+        assertEquals(
+            listOf<Any?>(null, null, null),
+            listOf(snapshot["fingerprint"], snapshot["fingerprint_sha256"], snapshot["total_files"]),
+        )
+    }
+
+    @Test
+    fun `a fingerprint whose hash is not that of its bytes fails the step and keeps no snapshot`() {
+        val (_, step) = running()
+        val good = fingerprinted("fp-bad", 3, 1_000).output as StepOutput.Backup
+        val bad = good.copy(fingerprint = SourceFingerprint(good.fingerprint!!.bytes, "0".repeat(64)))
+
+        val recorded = record(step, StepReport(StepState.SUCCEEDED, null, bad))
+
+        assertEquals(Recorded.Closed(StepState.FAILED, "a fingerprint whose hash is not that of its bytes"), recorded)
+        assertEquals(emptyList(), snapshots(step))
+    }
+
+    // Scenario (V2, check 5): a fall of the volume by more than 30% is a warning at the run; the backup succeeded.
+    @Test
+    fun `a backup much smaller than the last snapshot of its source succeeds with a warning`() {
+        val source = sources.create(tenant.id, tenant.draft("www"))
+        backedUp(source.id, fingerprinted("fp-a", 1_000, 4_000))
+        val steady = backedUp(source.id, fingerprinted("fp-b", 900, 3_800))
+        val fell = backedUp(source.id, fingerprinted("fp-c", 100, 3_700))
+
+        assertEquals(
+            emptyList(),
+            runs
+                .get(tenant.id, runOf(steady))!!
+                .steps
+                .single()
+                .backup!!
+                .warnings,
+        )
+        val view = runs.get(tenant.id, runOf(fell))!!
+        assertEquals(RunState.SUCCEEDED, view.status)
+        assertEquals(
+            listOf("the number of files fell by 88% since the last snapshot (900 → 100)"),
+            view.steps
+                .single()
+                .backup!!
+                .warnings,
+        )
+        assertEquals(
+            100L,
+            view.steps
+                .single()
+                .backup!!
+                .totalFiles,
+        )
+    }
+
+    // The last whole snapshot is what the backup is measured from, also when an agent older than V2 made it: its
+    // size is compared, its unknown number of files is not.
+    @Test
+    fun `a backup is measured from the last whole snapshot even when it has no number of files`() {
+        val source = sources.create(tenant.id, tenant.draft("www-old"))
+        backedUp(source.id, fingerprinted("fp-old-a", 1_000, 10_000))
+        val older = StepOutput.Backup("fp-old-b", 4_000, 1, REPOSITORY_ID)
+        val old = backedUp(source.id, StepReport(StepState.SUCCEEDED, null, older))
+        val now = backedUp(source.id, fingerprinted("fp-old-c", 990, 3_900))
+
+        assertEquals(listOf("the size fell by 60% since the last snapshot (10000 → 4000 bytes)"), warningsOf(old))
+        assertEquals(emptyList(), warningsOf(now))
+    }
+
+    private fun warningsOf(step: UUID): List<String> =
+        runs
+            .get(tenant.id, runOf(step))!!
+            .steps
+            .single()
+            .backup!!
+            .warnings
+
+    private fun runOf(step: UUID): UUID = row("run_steps", step)["run_id"] as UUID
 }

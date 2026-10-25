@@ -50,7 +50,7 @@ func readSchema(t *testing.T) schemaDoc {
 }
 
 var fields = []string{"host", "port", "database", "user", "password_ref", "tls_mode", "tls_root_cert",
-	"exclude_schemas", "exclude_tables", "pg_dump_path", "include_globals", "globals_role_passwords"}
+	"exclude_schemas", "exclude_tables", "key_tables", "pg_dump_path", "include_globals", "globals_role_passwords"}
 
 // Scenario: Схема postgresql проходит ограничения Register.
 func TestTheSchemaPassesTheLimitsOfRegister(t *testing.T) {

@@ -15,9 +15,11 @@ const (
 	maxHostBytes    = 255
 	maxNameBytes    = 63
 	maxPatternBytes = 1024
-	defaultPort     = 5432
-	tlsDisable      = "disable"
-	tlsRequire      = "require"
+	// maxKeyTableBytes is schema.table: two names and the dot.
+	maxKeyTableBytes = 2*maxNameBytes + 1
+	defaultPort      = 5432
+	tlsDisable       = "disable"
+	tlsRequire       = "require"
 )
 
 // config is a valid document of the schema.
@@ -31,6 +33,7 @@ type config struct {
 	TLSRootCert          string   `json:"tls_root_cert"`
 	ExcludeSchemas       []string `json:"exclude_schemas"`
 	ExcludeTables        []string `json:"exclude_tables"`
+	KeyTables            []string `json:"key_tables"`
 	PgDumpPath           string   `json:"pg_dump_path"`
 	IncludeGlobals       *bool    `json:"include_globals"`
 	GlobalsRolePasswords bool     `json:"globals_role_passwords"`
@@ -48,6 +51,7 @@ func parse(cfg sdk.Config) (config, error) {
 	v = append(v, tooLong("/user", []string{c.User}, maxNameBytes, false)...)
 	v = append(v, tooLong("/exclude_schemas", c.ExcludeSchemas, maxPatternBytes, true)...)
 	v = append(v, tooLong("/exclude_tables", c.ExcludeTables, maxPatternBytes, true)...)
+	v = append(v, tooLong("/key_tables", c.KeyTables, maxKeyTableBytes, true)...)
 	if len(v) > 0 {
 		return c, &sdk.ConfigError{Violations: v}
 	}

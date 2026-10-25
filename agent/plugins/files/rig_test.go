@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -326,6 +327,9 @@ type rig struct {
 	restoreDir string
 }
 
+// tree is what the fingerprint reads: no file, the rig never reads the host's.
+func (r *rig) tree(string) fs.FS { return fstest.MapFS{} }
+
 func newRig(t *testing.T) *rig { return newRigAs(t, role.Source) }
 
 // newRigAs is a rig whose agent has that role.
@@ -342,7 +346,7 @@ func newRigAs(t *testing.T, role role.Role) *rig {
 		ReadFile: func(string) ([]byte, error) { return nil, fs.ErrNotExist },
 	}, config.Repository{Name: "R", URL: "/srv/restic/R", PasswordFile: "/etc/sard/R.pass"})
 
-	reg, err := sdk.NewRegistry(files.Plugin{AgentVersion: "1.2.3", FS: r.fs})
+	reg, err := sdk.NewRegistry(files.Plugin{AgentVersion: "1.2.3", FS: r.fs, Tree: r.tree})
 	if err != nil {
 		t.Fatal(err)
 	}

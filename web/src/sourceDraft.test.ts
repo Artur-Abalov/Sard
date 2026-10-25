@@ -93,7 +93,14 @@ describe('the draft of a source', () => {
     const next = withPlugin(filled, files as never)
 
     expect(next.plugin).toBe('files')
-    expect(next.values).toEqual({ paths: [], exclude: [], one_file_system: false })
+    expect(next.values).toEqual({
+      paths: [],
+      exclude: [],
+      control_paths: [],
+      sample_files: '',
+      sample_max_file_bytes: '',
+      one_file_system: false,
+    })
     expect(next.repository).toBe('local')
   })
 

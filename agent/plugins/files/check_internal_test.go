@@ -52,7 +52,7 @@ func TestTheCheckEndsAfterACancelledStepWhenTheFileSystemAnswers(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	fsys := &slowFS{gate: make(chan struct{})}
 	done := make(chan error, 1)
-	go func() { done <- Plugin{FS: fsys}.checkPaths(ctx, []string{"/slow"}) }()
+	go func() { done <- Plugin{FS: fsys}.checkPaths(ctx, []string{"/slow"}, nil) }()
 	for fsys.lstats.Load() == 0 {
 		time.Sleep(time.Millisecond)
 	}

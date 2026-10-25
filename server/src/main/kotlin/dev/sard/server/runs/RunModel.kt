@@ -172,6 +172,12 @@ data class BackupResult(
     val partial: Boolean = false,
     /** The console can restore this snapshot (R2): not partial, not forgotten, a plugin it restores. */
     val restorable: Boolean = false,
+    /** restic's number of files; null before V2. */
+    val totalFiles: Long? = null,
+    /** What the console shows of the fingerprint of the source (V2); null without one. */
+    val fingerprint: FingerprintSummary? = null,
+    /** What the server noticed about the backup, such as a fall of its volume (V2). */
+    val warnings: List<String> = emptyList(),
 )
 
 /** What a restore run was asked for, as the console shows it; [config] is the JSON text the agent got. */
