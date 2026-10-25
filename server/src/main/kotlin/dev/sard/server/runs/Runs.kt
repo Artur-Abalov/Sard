@@ -360,16 +360,20 @@ internal object RunViews {
         output
             ?.let { JSON.readTree(it) }
             ?.takeIf { it.path("kind").asString() == Action.BACKUP.stored }
-            ?.let {
-                BackupResult(
-                    it.path("snapshotId").asString(),
-                    it.path("totalBytes").asLong(),
-                    it.path("addedBytes").asLong(),
-                    it.path("repositoryId").asString(),
-                    it.path("partial").asBoolean(false),
-                    totalFiles = it.path("totalFiles").takeIf(JsonNode::isNumber)?.asLong(),
-                    fingerprint = it.path("fingerprint").takeIf(JsonNode::isObject)?.let(FingerprintSummary::of),
-                    warnings = it.path("warnings").let { w -> (0 until w.size()).map { i -> w.get(i).asString() } },
-                )
-            }
+            ?.let(::backupResult)
+
+    private fun backupResult(node: JsonNode): BackupResult =
+        BackupResult(
+            node.path("snapshotId").asString(),
+            node.path("totalBytes").asLong(),
+            node.path("addedBytes").asLong(),
+            node.path("repositoryId").asString(),
+            node.path("partial").asBoolean(false),
+            totalFiles = node.path("totalFiles").takeIf(JsonNode::isNumber)?.asLong(),
+            fingerprint = node.path("fingerprint").takeIf(JsonNode::isObject)?.let(FingerprintSummary::of),
+            warnings = warningsOf(node.path("warnings")),
+        )
+
+    private fun warningsOf(warnings: JsonNode): List<String> =
+        (0 until warnings.size()).map { warnings.get(it).asString() }
 }

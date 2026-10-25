@@ -21,11 +21,20 @@ class SourceFingerprint(
     val sha256: String,
 ) {
     /** Why this fingerprint cannot be kept, or null when it can. */
-    fun problem(): String? =
+    fun problem(): String? = formProblem() ?: contentProblem()
+
+    /** What is wrong with the fields as they came, before their bytes are read. */
+    private fun formProblem(): String? =
         when {
             bytes.isEmpty() || sha256.isEmpty() -> "a fingerprint without its hash or a hash without its fingerprint"
             bytes.size > MAX_BYTES -> "a fingerprint larger than 1 MiB"
             !HEX64.matches(sha256) -> "a fingerprint hash that is not 64 lower-case hex digits"
+            else -> null
+        }
+
+    /** What is wrong with the bytes: another hash, or not a fingerprint at all. */
+    private fun contentProblem(): String? =
+        when {
             hex(bytes) != sha256 -> "a fingerprint whose hash is not that of its bytes"
             parsed() == null -> "a fingerprint that is not one"
             else -> null

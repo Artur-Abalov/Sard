@@ -52,12 +52,14 @@ sealed interface StepOutput {
         fun totals(): SnapshotTotals = SnapshotTotals(totalFiles, totalBytes)
 
         /** Why this output cannot prove a snapshot, or null when it can. */
-        fun problem(): String? =
+        fun problem(): String? = outputProblem() ?: fingerprint?.problem()
+
+        private fun outputProblem(): String? =
             mapOf(
                 "a backup output without a snapshot id" to snapshotId.isEmpty(),
                 "a backup output without a repository id" to repositoryId.isEmpty(),
                 "a backup output with negative sizes" to (minOf(totalBytes, addedBytes, totalFiles ?: 0) < 0),
-            ).entries.firstOrNull { it.value }?.key ?: fingerprint?.problem()
+            ).entries.firstOrNull { it.value }?.key
     }
 
     /**
