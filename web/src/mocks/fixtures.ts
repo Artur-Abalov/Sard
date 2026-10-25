@@ -650,6 +650,9 @@ const snapshotOutput = {
   addedBytes: 524_288,
   repositoryId: '5a1f0c3e9b',
   restorable: true,
+  totalFiles: 1_204,
+  fingerprint: null,
+  warnings: [],
 }
 
 // Newest first, as the list endpoint returns them.
@@ -793,6 +796,9 @@ export const runs: Schemas['Run'][] = [
         repositoryId: '5a1f0c3e9b',
         partial: false,
         restorable: true,
+        totalFiles: null,
+        fingerprint: null,
+        warnings: [],
       },
     },
     'succeeded',
