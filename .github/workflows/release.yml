@@ -82,15 +82,12 @@ jobs:
           cache: false
       - name: rpm and gpg
         run: sudo apt-get update && sudo apt-get install -y rpm gnupg
-      # restic's release key, accepted only if it has the fingerprint pinned in
-      # agent/internal/restic/restic-version (ADR 0017): fetch-restic.sh checks the signer.
-      - name: restic signing key
-        run: cp agent/internal/restic/restic-signing-key.asc "$RUNNER_TEMP/restic.asc"
+      # restic is accepted only with SHA256SUMS signed by the key of the
+      # fingerprint pinned in agent/internal/restic/restic-version (ADR 0017,
+      # SC1): fetch-restic.sh checks the signer on every build.
       - name: package
         env:
           REQUIRE_RPM: "1"
-          REQUIRE_SIGNATURE: "1"
-          RESTIC_SIGNING_KEY: ${{ runner.temp }}/restic.asc
         run: make package VERSION="$VERSION"
       # Never shipped: the T3 e2e classes run it (ADR 0036).
       - name: e2e stand's agent

@@ -10,10 +10,10 @@
 #   scripts/fetch-restic.sh amd64 arm64  both release architectures
 #
 # The archive must match the SHA-256 pinned in the version file AND the line
-# in the release's SHA256SUMS. The signature on SHA256SUMS is checked when gpg
-# is installed and RESTIC_SIGNING_KEY names a file holding the release key;
-# its fingerprint must equal the pinned one. REQUIRE_SIGNATURE=1 makes a
-# missing check fatal.
+# in the release's SHA256SUMS, and SHA256SUMS must carry a GPG signature by
+# the key with the pinned fingerprint (SC1: every build, not only a release).
+# The key is agent/internal/restic/restic-signing-key.asc, or the file
+# RESTIC_SIGNING_KEY names; without gpg or the key nothing is installed.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -42,15 +42,12 @@ host_arch() {
 }
 
 check_signature() {
-  if [ -z "${RESTIC_SIGNING_KEY:-}" ] || ! command -v gpg >/dev/null; then
-    [ "${REQUIRE_SIGNATURE:-0}" = 1 ] && { echo "fetch-restic: signature required but gpg or RESTIC_SIGNING_KEY missing" >&2; exit 1; }
-    echo "fetch-restic: signature not checked (needs gpg and RESTIC_SIGNING_KEY); SHA-256 pinned in the repo"
-    return
-  fi
-  local fpr
+  local fpr key="${RESTIC_SIGNING_KEY:-$ROOT/agent/internal/restic/restic-signing-key.asc}"
+  command -v gpg >/dev/null || { echo "fetch-restic: gpg is needed to check the signature of SHA256SUMS" >&2; exit 1; }
+  [ -f "$key" ] || { echo "fetch-restic: no restic signing key at $key" >&2; exit 1; }
   fpr="$(pinned signing_key_fingerprint)"
   fetch "$BASE/SHA256SUMS.asc" "$DL/SHA256SUMS.asc"
-  verify_signature "$RESTIC_SIGNING_KEY" "$DL/SHA256SUMS.asc" "$DL/SHA256SUMS" "$fpr" ||
+  verify_signature "$key" "$DL/SHA256SUMS.asc" "$DL/SHA256SUMS" "$fpr" ||
     { echo "fetch-restic: SHA256SUMS is not signed by the pinned key $fpr" >&2; exit 1; }
   echo "fetch-restic: SHA256SUMS signature OK ($fpr)"
 }

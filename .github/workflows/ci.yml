@@ -159,8 +159,8 @@ jobs:
         with:
           go-version-file: tools/go.mod
           cache-dependency-path: "**/go.sum"
-      - name: rpm and minisign
-        run: sudo apt-get update && sudo apt-get install -y rpm minisign
+      - name: rpm, minisign and gpg
+        run: sudo apt-get update && sudo apt-get install -y rpm minisign gnupg
       # One rule from a tag to every version; dpkg and rpm order pre-releases
       # below their release (docs/adr/0048-release-versions.md).
       - name: Release version rule
@@ -171,6 +171,9 @@ jobs:
       # The helper that scripts use to go through the first-start wizard by the code from the log (F4a).
       - name: Setup wizard helper
         run: scripts/test-setup-wizard.sh
+      # restic is installed only as pinned and signed by its release key (SC1).
+      - name: restic checksum and signature
+        run: scripts/test-fetch-restic.sh
       - name: Package the agent with restic (tar.gz, deb, rpm; amd64 and arm64)
         env:
           REQUIRE_RPM: "1"
@@ -242,6 +245,9 @@ jobs:
           } >>"$GITHUB_ENV"
       # Testcontainers uses the runner's Docker.
       - run: ./scripts/gate.sh server
+      # A forged checksum or a version other than the locked one fails the build (SC1).
+      - name: Gradle refuses what it did not pin
+        run: scripts/test-gradle-verification.sh
       # gate.sh runs Gradle quietly; name the failed tests and their root causes in the log.
       - name: Failed server tests
         if: failure()
