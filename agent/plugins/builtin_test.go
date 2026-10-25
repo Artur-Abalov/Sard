@@ -61,10 +61,15 @@ func TestEveryConfigSchemaIsValidJSONSchema(t *testing.T) {
 // completes its fingerprint after restic: the files that changed meanwhile.
 func TestBuiltinPluginsShareTheAgentVersionAndFingerprintTheirSource(t *testing.T) {
 	completes := map[string]bool{"files": true, "postgresql": false}
+	seen := 0
 	for _, p := range plugins.Builtin("1.2.3") {
 		if p.Version() != "1.2.3" {
 			t.Errorf("%s: Version() = %q", p.Name(), p.Version())
 		}
+		if _, release := completes[p.Name()]; !release {
+			continue // a plugin of the e2e stand (tag e2e) takes no fingerprint
+		}
+		seen++
 		if _, ok := p.(sdk.Fingerprinter); !ok {
 			t.Errorf("%s is no sdk.Fingerprinter", p.Name())
 		}
@@ -74,6 +79,9 @@ func TestBuiltinPluginsShareTheAgentVersionAndFingerprintTheirSource(t *testing.
 		if _, ok := p.(sdk.FingerprintCompleter); ok != completes[p.Name()] {
 			t.Errorf("%s: sdk.FingerprintCompleter %v", p.Name(), ok)
 		}
+	}
+	if seen != len(completes) {
+		t.Errorf("%d of the plugins of a release are built in", seen)
 	}
 }
 
