@@ -42,6 +42,16 @@ class VolumeDropTest {
         )
     }
 
+    // The last whole snapshot may be an older agent's: its size is known, its number of files is not.
+    @Test
+    fun `a previous snapshot without a number of files is compared by its size alone`() {
+        assertEquals(
+            listOf("the size fell by 50% since the last snapshot (4000 → 2000 bytes)"),
+            warnings(SnapshotTotals(null, 4000), SnapshotTotals(1, 2000)),
+        )
+        assertEquals(emptyList(), warnings(SnapshotTotals(null, 4000), SnapshotTotals(1, 4000)))
+    }
+
     @Test
     fun `without a previous snapshot, or one of nothing, there is nothing to fall from`() {
         assertEquals(emptyList(), warnings(null, SnapshotTotals(0, 0)))

@@ -3,9 +3,9 @@
 
 package dev.sard.server.runs
 
-/** What restic counted in a snapshot: its files and their bytes. */
+/** What restic counted in a snapshot: its files, null when an agent older than V2 made it, and their bytes. */
 data class SnapshotTotals(
-    val files: Long,
+    val files: Long?,
     val bytes: Long,
 )
 
@@ -25,13 +25,22 @@ object VolumeDrop {
     ): List<String> {
         previous ?: return emptyList()
         return listOfNotNull(
-            fall(previous.files, current.files)?.let {
+            fallOfFiles(previous, current)?.let {
                 "the number of files fell by $it% since the last snapshot (${previous.files} → ${current.files})"
             },
             fall(previous.bytes, current.bytes)?.let {
                 "the size fell by $it% since the last snapshot (${previous.bytes} → ${current.bytes} bytes)"
             },
         )
+    }
+
+    /** The fall of the number of files, when both snapshots know it. */
+    private fun fallOfFiles(
+        previous: SnapshotTotals,
+        current: SnapshotTotals,
+    ): Long? {
+        val before = previous.files ?: return null
+        return current.files?.let { fall(before, it) }
     }
 
     /** The percent [current] fell by from [previous] when it is more than [PERCENT], else null. */

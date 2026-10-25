@@ -518,5 +518,26 @@ class StepResultsIntegrationTest(
         )
     }
 
+    // The last whole snapshot is what the backup is measured from, also when an agent older than V2 made it: its
+    // size is compared, its unknown number of files is not.
+    @Test
+    fun `a backup is measured from the last whole snapshot even when it has no number of files`() {
+        val source = sources.create(tenant.id, tenant.draft("www-old"))
+        backedUp(source.id, fingerprinted("fp-old-a", 1_000, 10_000))
+        val older = StepOutput.Backup("fp-old-b", 4_000, 1, REPOSITORY_ID)
+        backedUp(source.id, StepReport(StepState.SUCCEEDED, null, older))
+        val now = backedUp(source.id, fingerprinted("fp-old-c", 990, 3_900))
+
+        assertEquals(
+            emptyList(),
+            runs
+                .get(tenant.id, runOf(now))!!
+                .steps
+                .single()
+                .backup!!
+                .warnings,
+        )
+    }
+
     private fun runOf(step: UUID): UUID = row("run_steps", step)["run_id"] as UUID
 }

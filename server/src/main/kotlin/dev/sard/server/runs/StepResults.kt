@@ -24,10 +24,11 @@ private const val SNAPSHOT =
         "values (:id, :tenant, :source, :step, :agent, :repositoryName, :repositoryId, :snapshotId, :totalBytes, " +
         ":addedBytes, :now, :partial, :fingerprint, :fingerprintSha256, :totalFiles) on conflict do nothing"
 
-// The last whole snapshot of the source whose files restic counted: what a fall of the volume is measured from.
+// The last whole snapshot of the source: what a fall of the volume is measured from. Its number of files is null
+// when an agent older than V2 made it; its size is compared all the same.
 private const val PREVIOUS =
     "select total_files, total_bytes from snapshots where tenant_id = :tenant and source_id = :source " +
-        "and not partial and forgotten_at is null and total_files is not null order by created_at desc, id desc limit 1"
+        "and not partial and forgotten_at is null order by created_at desc, id desc limit 1"
 
 /** What [StepResults.record] did with a result; every case but an exception is acknowledged. */
 sealed interface Recorded {
@@ -120,7 +121,7 @@ class StepResults(
             .setParameter("tenant", step.tenantId)
             .setParameter("source", step.sourceId)
             .uniqueResult()
-            ?.let { SnapshotTotals((it[0] as Number).toLong(), (it[1] as Number).toLong()) }
+            ?.let { SnapshotTotals((it[0] as Number?)?.toLong(), (it[1] as Number).toLong()) }
 
     /** The guarded update moved nothing: the step was closed before, or never dispatched. */
     private fun closedBefore(
