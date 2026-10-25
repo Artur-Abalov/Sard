@@ -26,11 +26,13 @@ class SourceFingerprint(
     /** What is wrong with the fields as they came, before their bytes are read. */
     private fun formProblem(): String? =
         when {
-            bytes.isEmpty() || sha256.isEmpty() -> "a fingerprint without its hash or a hash without its fingerprint"
+            incomplete() -> "a fingerprint without its hash or a hash without its fingerprint"
             bytes.size > MAX_BYTES -> "a fingerprint larger than 1 MiB"
             !HEX64.matches(sha256) -> "a fingerprint hash that is not 64 lower-case hex digits"
             else -> null
         }
+
+    private fun incomplete(): Boolean = bytes.isEmpty() || sha256.isEmpty()
 
     /** What is wrong with the bytes: another hash, or not a fingerprint at all. */
     private fun contentProblem(): String? =
