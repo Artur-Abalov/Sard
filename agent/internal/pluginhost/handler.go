@@ -104,15 +104,12 @@ type handler struct {
 	src *Source
 }
 
-// Actions: every plugin backs up; restore needs sdk.Restorer, verify
-// sdk.Verifier.
+// Actions: every plugin backs up; restore needs sdk.Restorer. A restore
+// check (verify) is the verifier's (V5), not a step of a plugin.
 func (h *handler) Actions() []agentv1.Action {
 	actions := []agentv1.Action{agentv1.Action_ACTION_BACKUP}
 	if h.src.CanRestore() {
 		actions = append(actions, agentv1.Action_ACTION_RESTORE)
-	}
-	if h.src.CanVerify() {
-		actions = append(actions, agentv1.Action_ACTION_VERIFY)
 	}
 	return actions
 }
@@ -128,13 +125,10 @@ func (h *handler) Run(ctx context.Context, step *agentv1.RunStep, r executor.Rep
 	}
 	var result *agentv1.StepResult
 	var err error
-	switch step.GetAction() {
-	case agentv1.Action_ACTION_BACKUP:
+	if step.GetAction() == agentv1.Action_ACTION_BACKUP {
 		result, err = h.backup(ctx, step, repo, r)
-	case agentv1.Action_ACTION_RESTORE:
+	} else {
 		result, err = h.restore(ctx, step, repo, r)
-	default:
-		result, err = h.verify(ctx, step, repo, r)
 	}
 	return result, withCheckHint(err)
 }
@@ -163,13 +157,16 @@ func nameRepository(err error, name string) error {
 	return fmt.Errorf("repository %q: %w", name, err)
 }
 
-// BackupOutput maps restic's summary to the protocol (OQ-018).
-func BackupOutput(sum restic.BackupSummary) *agentv1.BackupOutput {
+// BackupOutput maps the outcome of a backup to the protocol (OQ-018, V2).
+func BackupOutput(b Backup) *agentv1.BackupOutput {
 	return &agentv1.BackupOutput{
-		SnapshotId:   sum.SnapshotID,
-		TotalBytes:   sum.TotalBytes,
-		AddedBytes:   sum.AddedBytes,
-		RepositoryId: sum.RepositoryID,
+		SnapshotId:        b.SnapshotID,
+		TotalBytes:        b.TotalBytes,
+		AddedBytes:        b.AddedBytes,
+		RepositoryId:      b.RepositoryID,
+		Fingerprint:       b.Fingerprint,
+		FingerprintSha256: b.FingerprintSHA256,
+		TotalFiles:        b.TotalFiles,
 	}
 }
 
@@ -299,44 +296,6 @@ func (h *handler) checkSourceTag(step *agentv1.RunStep) error {
 // isSnapshotID: 64 lower-case hexadecimal characters.
 func isSnapshotID(id string) bool {
 	return len(id) == 64 && !strings.ContainsFunc(id, func(r rune) bool { return (r < '0' || r > '9') && (r < 'a' || r > 'f') })
-}
-
-// verify restores the snapshot, lets the plugin check the copy and
-// removes it. A failed check fails the step with the check in the output.
-func (h *handler) verify(ctx context.Context, step *agentv1.RunStep, repo restic.Repository, r executor.Reporter) (*agentv1.StepResult, error) {
-	cfg := sdk.Config(step.GetConfigJson())
-	if err := h.src.schema.Validate(cfg); err != nil {
-		return nil, rejected(err)
-	}
-	target, err := h.restoreSnapshot(ctx, step, repo, r)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = os.RemoveAll(target) }()
-	err = h.src.Verify(ctx, cfg, target, r)
-	check := &agentv1.CheckResult{Name: h.src.Plugin().Name(), Passed: err == nil}
-	if err != nil {
-		check.Detail = err.Error()
-	}
-	out := &agentv1.VerifyOutput{SnapshotId: step.GetSnapshotId(), Checks: []*agentv1.CheckResult{check}}
-	return &agentv1.StepResult{Output: &agentv1.StepResult_Verify{Verify: out}}, err
-}
-
-// restoreSnapshot restores the step's snapshot into a new directory named
-// after the command (RESTORING).
-func (h *handler) restoreSnapshot(ctx context.Context, step *agentv1.RunStep, repo restic.Repository, r executor.Reporter) (string, error) {
-	if step.GetSnapshotId() == "" {
-		return "", rejected(errors.New("snapshot_id is required: the latest snapshot by tags is not supported yet"))
-	}
-	target, err := h.newTarget(step.GetCommandId())
-	if err != nil {
-		return "", err
-	}
-	r.Progress(agentv1.StepPhase_STEP_PHASE_RESTORING, 0, 0)
-	if err := repo.Restore(ctx, step.GetSnapshotId(), target); err != nil {
-		return "", err
-	}
-	return target, nil
 }
 
 // newTarget creates restoreDir/id, 0700; an existing one is never reused.

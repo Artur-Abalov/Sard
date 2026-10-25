@@ -29,12 +29,12 @@ func (p Plugin) fs() FS {
 	return p.FS
 }
 
-// checkPaths looks at every listed path and returns one error naming the
-// ones that fail (A6b Ф8). The file system may not answer, so the check runs
+// checkPaths looks at every listed path, then at every control path (V2), and
+// returns one error naming the ones that fail (A6b Ф8). The file system may not answer, so the check runs
 // beside ctx: a cancelled step does not wait for it.
-func (p Plugin) checkPaths(ctx context.Context, paths []string) error {
+func (p Plugin) checkPaths(ctx context.Context, paths, controls []string) error {
 	done := make(chan []failure, 1)
-	go func() { done <- checkAll(ctx, p.fs(), paths) }()
+	go func() { done <- append(checkAll(ctx, p.fs(), paths), checkControls(p.tree(""), controls)...) }()
 	select {
 	case <-ctx.Done():
 		return context.Cause(ctx)

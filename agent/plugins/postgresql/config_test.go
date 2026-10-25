@@ -54,6 +54,8 @@ func TestConfigThatBreaksTheSchemaIsRejectedWithTheField(t *testing.T) {
 		{"exclude_schemas pattern of 1025 bytes with 514 characters", js(k(o{"exclude_schemas": []string{strings.Repeat("ж", 511) + "abc"}})), "/exclude_schemas/0"},
 		{"the second of the patterns is too long", js(k(o{"exclude_tables": []string{"a", strings.Repeat("ж", 513)}})), "/exclude_tables/1"},
 		{"user of 64 bytes in 32 letters", js(k(o{"user": strings.Repeat("ж", 32)})), "/user"},
+		{"key table of 128 bytes in 65 characters", js(k(o{"key_tables": []string{"s." + strings.Repeat("ж", 63)}})), "/key_tables/0"},
+		{"key table without a schema", js(k(o{"key_tables": []string{"users"}})), "/key_tables/0"},
 		{"exclude_schemas pattern of 1026 bytes in letters", js(k(o{"exclude_schemas": []string{strings.Repeat("ж", 513)}})), "/exclude_schemas/0"},
 		{"password_ref a number", js(k(o{"password_ref": 7})), "/password_ref"},
 		{"tls_mode prefer", js(k(o{"tls_mode": "prefer"})), "/tls_mode"},

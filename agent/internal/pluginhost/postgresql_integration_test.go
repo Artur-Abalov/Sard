@@ -49,11 +49,37 @@ func pgTools(t *testing.T, pgDump, pgDumpall string) pgHost {
 	}
 	write("pg_dump", `if [ "$1" = "--version" ]; then echo "pg_dump (PostgreSQL) 18.0"; exit 0; fi`+"\n"+pgDump)
 	write("pg_dumpall", `if [ "$1" = "--version" ]; then echo "pg_dumpall (PostgreSQL) 18.0"; exit 0; fi`+"\n"+pgDumpall)
-	write("psql", `echo "160004|f|t|backup"`)
+	write("psql", psqlScript)
 	password := filepath.Join(dir, "pg-app.secret")
 	writeFile(t, password, "pw\n")
 	return pgHost{dir: dir, secrets: pluginhost.NewSecrets(map[string]string{"pg-app": password}, os.ReadFile)}
 }
+
+// psqlScript answers the probe of PREPARING and, as the session of the
+// fingerprint (ON_ERROR_STOP=0), the requests up to each \echo, for an empty
+// database of version 16.
+const psqlScript = `case " $* " in
+*" ON_ERROR_STOP=0 "*)
+  req=""
+  while IFS= read -r line; do
+    case "$line" in
+    '\echo '*)
+      case "$req" in
+      *transaction_isolation*) echo "Rrepeatable read on" ;;
+      *pg_export_snapshot*) echo "R00000003-00000002-1" ;;
+      *server_version_num*) echo "R160004 16.4" ;;
+      *pg_extension*) echo "R[]" ;;
+      *pg_database_size*) echo "R8192" ;;
+      *pg_total_relation_size*) echo "R[]" ;;
+      esac
+      echo "${line#?echo }"
+      req="" ;;
+    *) req="$req $line" ;;
+    esac
+  done ;;
+*) echo "160004|f|t|backup" ;;
+esac
+`
 
 // archiveOf is a script body that prints PGDMP and n-5 more bytes.
 func archiveOf(n int) string {
@@ -157,8 +183,10 @@ func TestIntegrationPostgresqlSnapshotGetsTheTagsOfTheStepAndThePlugin(t *testin
 	got := r.snapshots(t)[0].Tags
 	slices.Sort(got)
 	want := []string{"postgresql.database=app", "postgresql.format=custom", "postgresql.part=database", "postgresql.pg_dump_version=18.0",
-		"postgresql.server_version=16.4", "sard.run=r1", "sard.source=s1"}
-	if !slices.Equal(got, want) || r.snapshots(t)[0].ID != sum.SnapshotID {
+		"postgresql.server_version=16.4", "sard.fp=" + sum.FingerprintSHA256, "sard.run=r1", "sard.source=s1"}
+	// The hash of the fingerprint is a tag restic wrote when it made the
+	// snapshot (V2): its id is the one of the result.
+	if !slices.Equal(got, want) || r.snapshots(t)[0].ID != sum.SnapshotID || sum.FingerprintSHA256 != sdk.HashBytes(sum.Fingerprint) {
 		t.Errorf("tags = %q\nwant   %q", got, want)
 	}
 }

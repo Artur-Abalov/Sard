@@ -37,6 +37,32 @@ func (h *host) Log(_ sdk.Level, text string) {
 	h.logs = append(h.logs, text)
 }
 
+// psqlScript is a psql that answers the probe of PREPARING, and, run as the
+// session of the fingerprint (ON_ERROR_STOP=0), reads the requests up to each
+// \echo and answers those of an empty database of version 18.
+const psqlScript = `case " $* " in
+*" ON_ERROR_STOP=0 "*)
+  req=""
+  while IFS= read -r line; do
+    case "$line" in
+    '\echo '*)
+      case "$req" in
+      *transaction_isolation*) echo "Rrepeatable read on" ;;
+      *pg_export_snapshot*) echo "R00000003-00000002-1" ;;
+      *server_version_num*) echo "R180000 18.0" ;;
+      *pg_extension*) echo "R[]" ;;
+      *pg_database_size*) echo "R8192" ;;
+      *pg_total_relation_size*) echo "R[]" ;;
+      esac
+      echo "${line#?echo }"
+      req="" ;;
+    *) req="$req $line" ;;
+    esac
+  done ;;
+*) echo "180000|f|t|backup" ;;
+esac
+`
+
 // scripts writes fake pg_dump, psql and pg_dumpall into a directory of the
 // test; they answer like version 18 and print the password they got.
 func scripts(t *testing.T) string {
@@ -49,7 +75,7 @@ func scripts(t *testing.T) string {
 	}
 	write("pg_dump", `case "$1" in --version) echo "pg_dump (PostgreSQL) 18.0";; *) printf 'PGDMP'; printf '%s' "$PGPASSWORD";; esac`)
 	write("pg_dumpall", `case "$1" in --version) echo "pg_dumpall (PostgreSQL) 18.0";; *) echo "CREATE ROLE r;";; esac`)
-	write("psql", `echo "180000|f|t|backup"`)
+	write("psql", psqlScript)
 	return dir
 }
 

@@ -48,8 +48,9 @@ func TestGlobalsSnapshotGetsTheTagsOfTheStepAndThePluginAndALink(t *testing.T) {
 	if got := tagsOf(r.restic.backups()[1]); !slices.Equal(got, want2) {
 		t.Errorf("tags = %q\nwant   %q", got, want2)
 	}
+	// The main snapshot alone carries the hash of the fingerprint (V2).
 	main := []string{"postgresql.database=app", "postgresql.format=custom", "postgresql.part=database",
-		"postgresql.pg_dump_version=18.0", "postgresql.server_version=16.4", "sard.run=r1", "sard.source=s1"}
+		"postgresql.pg_dump_version=18.0", "postgresql.server_version=16.4", "sard.fp=" + res.GetBackup().GetFingerprintSha256(), "sard.run=r1", "sard.source=s1"}
 	if got := tagsOf(r.restic.backups()[0]); !slices.Equal(got, main) {
 		t.Errorf("tags of the main snapshot = %q\nwant %q", got, main)
 	}

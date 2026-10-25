@@ -3,8 +3,10 @@
 
 // Package sdk defines the contract every Sard source plugin implements.
 //
-// A backup of one source runs Prepare → Dump → Stream; a restore check runs
-// Verify against a restored copy. The agent validates the configuration
+// A backup of one source runs Prepare → Dump → Stream. A restore check
+// restores a copy (RestoreInto, or the agent restores a tree) and measures it
+// with the same Fingerprint that measured the source; the agent compares the
+// two fingerprints, the plugin never does. The agent validates the configuration
 // against ConfigSchema before Prepare, so a plugin sees only valid Config.
 // The package is Apache-2.0 and imports no AGPL code, so third-party
 // plugins can depend on it freely.
@@ -54,6 +56,17 @@ type Dump struct {
 	// Extra are small files stored after the main snapshot, each as a
 	// snapshot of its own (restic stores one stdin file per snapshot).
 	Extra []ExtraFile
+	// Fingerprint is the fingerprint of the source in the state the dump
+	// holds, taken by a Fingerprinter; nil: the backup carries none. The
+	// agent tags the main snapshot with sard.fp=<its hash> when restic
+	// creates it, unless the plugin is a FingerprintCompleter: then it is the
+	// draft handed to CompleteFingerprint.
+	Fingerprint *Fingerprint
+	// Release, if set, frees what Dump holds for Stream, such as the
+	// transaction whose snapshot the stream dumps. The agent calls it once,
+	// after restic has stored the main snapshot or the backup gave up,
+	// whether Stream ran or not.
+	Release func()
 }
 
 // ExtraFile is a small file a plugin stores in addition to its main dump,
@@ -110,7 +123,8 @@ type Host interface {
 // Dump and Stream, and calls Dump after every Prepare that returned nil, even
 // when the step's context was cancelled meanwhile. Hosts of different steps
 // are distinct values comparable with ==, so a plugin may keep per-step state
-// keyed by its Host; it must remove that state in Dump.
+// keyed by its Host; it must remove that state in Dump, or in the
+// Dump.Release it returns.
 type Plugin interface {
 	// Name is the unique plugin identifier, e.g. "postgresql".
 	Name() string
@@ -130,11 +144,4 @@ type Plugin interface {
 	// when ctx is done: the agent then stops restic without storing a
 	// snapshot. A returned error also discards the snapshot.
 	Stream(ctx context.Context, h Host, cfg Config, d Dump, w io.Writer) error
-}
-
-// Verifier is implemented by plugins that can check a restored copy.
-// Only they are offered the verify action.
-type Verifier interface {
-	// Verify checks a restored copy located at restoredPath.
-	Verify(ctx context.Context, h Host, cfg Config, restoredPath string) error
 }

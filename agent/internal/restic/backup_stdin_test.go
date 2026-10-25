@@ -35,6 +35,7 @@ func TestBackupFromStdinStoresTheStreamUnderTheFilename(t *testing.T) {
 		SnapshotID:    "34c3de58d938fd95651bab4f5d9cd0ea414b90deaffe23156275a51f7ac01367",
 		RepositoryID:  goldenRepoID,
 		TotalBytes:    12,
+		TotalFiles:    1,
 		AddedBytes:    344,
 		AddedBytesRaw: 295,
 		FilesNew:      1,

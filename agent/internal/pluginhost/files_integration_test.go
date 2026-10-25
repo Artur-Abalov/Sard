@@ -18,7 +18,6 @@ import (
 
 	"github.com/Artur-Abalov/sard/agent/internal/hostsetup"
 	"github.com/Artur-Abalov/sard/agent/internal/pluginhost"
-	"github.com/Artur-Abalov/sard/agent/internal/restic"
 	filesplugin "github.com/Artur-Abalov/sard/agent/plugins/files"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
@@ -66,6 +65,23 @@ func (r itRepo) snapshots(t *testing.T) []struct {
 	return out
 }
 
+// mainSnapshots are the snapshots of the files, without those of their fingerprints (V2).
+func (r itRepo) mainSnapshots(t *testing.T) []struct {
+	ID    string   `json:"id"`
+	Tags  []string `json:"tags"`
+	Paths []string `json:"paths"`
+} {
+	t.Helper()
+	all := r.snapshots(t)
+	return slices.DeleteFunc(all, func(s struct {
+		ID    string   `json:"id"`
+		Tags  []string `json:"tags"`
+		Paths []string `json:"paths"`
+	}) bool {
+		return slices.Contains(s.Tags, "files.part=fingerprint")
+	})
+}
+
 // entry is one node of `restic ls --json`.
 type entry struct {
 	Path string `json:"path"`
@@ -84,7 +100,7 @@ func (r itRepo) ls(t *testing.T, snapshot string) map[string]entry {
 	return out
 }
 
-func (r itRepo) backup(t *testing.T, cfg string, tags ...string) restic.BackupSummary {
+func (r itRepo) backup(t *testing.T, cfg string, tags ...string) pluginhost.Backup {
 	t.Helper()
 	sum, err := filesSource(t).Backup(context.Background(), sdk.Config(cfg), r.cli, tags, &reporter{})
 	if err != nil || sum.SnapshotID == "" {
@@ -123,7 +139,7 @@ func writeFile(t *testing.T, path, content string) {
 func TestIntegrationFilesBackupOfATree(t *testing.T) {
 	r, d := newRepo(t), tree(t)
 	sum := r.backup(t, cfgPaths(d))
-	snaps := r.snapshots(t)
+	snaps := r.mainSnapshots(t)
 	if len(snaps) != 1 || snaps[0].ID != sum.SnapshotID {
 		t.Fatalf("snapshots = %+v, summary %+v", snaps, sum)
 	}
@@ -208,7 +224,7 @@ func TestIntegrationFilesTags(t *testing.T) {
 func TestIntegrationFilesTwoBackupsAtOnceLeaveNoLocks(t *testing.T) {
 	r, d1, d2 := newRepo(t), tree(t), tree(t)
 	var wg sync.WaitGroup
-	sums := make([]restic.BackupSummary, 2)
+	sums := make([]pluginhost.Backup, 2)
 	for i, d := range []string{d1, d2} {
 		wg.Add(1)
 		go func() {
@@ -217,7 +233,7 @@ func TestIntegrationFilesTwoBackupsAtOnceLeaveNoLocks(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if sums[0].SnapshotID == "" || sums[1].SnapshotID == "" || sums[0].SnapshotID == sums[1].SnapshotID || len(r.snapshots(t)) != 2 {
+	if sums[0].SnapshotID == "" || sums[1].SnapshotID == "" || sums[0].SnapshotID == sums[1].SnapshotID || len(r.mainSnapshots(t)) != 2 {
 		t.Fatalf("summaries = %+v", sums)
 	}
 	if locks, _ := os.ReadDir(filepath.Join(r.dir, "locks")); len(locks) != 0 {

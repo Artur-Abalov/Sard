@@ -100,6 +100,10 @@ type RestoreHost interface {
 	// is done or w fails; a failure of w is then returned, recognised with
 	// errors.Is. Other failures are a *RestoreError, as for Snapshots.
 	Dump(ctx context.Context, snapshotID, path string, w io.Writer) error
+	// RestoreTree restores the whole snapshot into a new directory of the
+	// host, the original absolute paths inside it, and returns the directory
+	// (restic restore, run as the service user). Failures are as for Dump.
+	RestoreTree(ctx context.Context, snapshotID string) (string, error)
 	// Journal is the journal of this command.
 	Journal() Journal
 }

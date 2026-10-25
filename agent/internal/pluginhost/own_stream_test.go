@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -337,5 +338,58 @@ func TestTheTimeoutOfTheStepDuringTheStreamIsTimedOutAndResticDoesNotStayRunning
 	defer fake.mu.Unlock()
 	if !fake.stopped {
 		t.Error("restic is still running")
+	}
+}
+
+// treeOf is the plugin T that restores the snapshot as a tree and keeps the directory.
+func treeOf(root *string, seen *error) *journaltest.Plugin {
+	return &journaltest.Plugin{RestoreFn: func(ctx context.Context, h sdk.RestoreHost, _ sdk.Config, req sdk.RestoreRequest) (sdk.RestoreResult, error) {
+		*root, *seen = h.RestoreTree(ctx, req.SnapshotID)
+		return sdk.RestoreResult{}, sdk.AtStage(*seen, "restore")
+	}}
+}
+
+// A copy for a check is restored by restic into a new directory of the host,
+// named after the command, 0700.
+func TestTheTreeOfASnapshotIsRestoredIntoANewDirectoryOfTheHost(t *testing.T) {
+	var root string
+	var seen error
+	r := newOwnRig(t, treeOf(&root, &seen))
+	if _, err := r.run(r.step()); err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(root) != "c1" {
+		t.Errorf("root = %q", root)
+	}
+	if info, err := os.Stat(root); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("root: %v, %v", info, err)
+	}
+	if want := []string{fullID + " " + root}; !slices.Equal(r.repo.restores, want) {
+		t.Errorf("restic restore %q, want %q", r.repo.restores, want)
+	}
+	// A second restore of the command never reuses the directory.
+	if _, err := r.run(r.step()); err == nil || !errors.Is(seen, fs.ErrExist) {
+		t.Errorf("second restore: %v, %v", err, seen)
+	}
+}
+
+func TestAFailedTreeRestoreLeavesNoDirectoryAndIsWordedByTheHost(t *testing.T) {
+	var root string
+	var seen error
+	r := newOwnRig(t, treeOf(&root, &seen))
+	r.repo.restoreErr = restic.ErrWrongPassword
+	_, err := r.run(r.step())
+	if err == nil || !strings.HasPrefix(err.Error(), "WRONG_PASSWORD (restore)") {
+		t.Fatalf("err = %v", err)
+	}
+	if root != "" {
+		t.Errorf("root = %q", root)
+	}
+	if len(r.repo.restores) != 1 {
+		t.Fatalf("restores = %q", r.repo.restores)
+	}
+	dir := strings.Fields(r.repo.restores[0])[1]
+	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("%s is left: %v", dir, err)
 	}
 }

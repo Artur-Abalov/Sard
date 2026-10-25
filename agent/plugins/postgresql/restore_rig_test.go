@@ -835,6 +835,11 @@ func (f *rpWatched) failure() error {
 
 // Dump is restic dump as the host runs it: a receiver that fails stops it and
 // gets its own error back, the context of the plugin stops it quietly.
+// RestoreTree: a database is never restored as a tree.
+func (h *rpHost) RestoreTree(context.Context, string) (string, error) {
+	return "", errors.New("rpHost: no tree")
+}
+
 func (h *rpHost) Dump(ctx context.Context, id, path string, w io.Writer) error {
 	dumpCtx, stop := context.WithCancel(ctx)
 	defer stop()

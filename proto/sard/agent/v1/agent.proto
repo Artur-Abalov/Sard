@@ -376,6 +376,17 @@ message BackupOutput {
   // restic's id of the repository the snapshot is in (64 lower-case hex
   // characters), as in RepositoryInfo.repository_id; not a secret.
   string repository_id = 4;
+  // Fingerprint of the source taken by the plugin (V2), in its canonical
+  // form (sorted keys, no white space); empty when the plugin takes none or
+  // the agent is older than V2. The snapshot that carries the tag
+  // sard.fp=<fingerprint_sha256> holds the same fingerprint: the main
+  // snapshot, or for files a snapshot of its own linked to it.
+  bytes fingerprint = 5;
+  // Lower-case hex SHA-256 of fingerprint; empty when fingerprint is.
+  string fingerprint_sha256 = 6;
+  // Number of files of the main snapshot (restic's total_files_processed);
+  // 0 from an agent older than V2.
+  uint64 total_files = 7;
 }
 
 // RestoreOutput is the outcome of ACTION_RESTORE. A restore is all or

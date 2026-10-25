@@ -40,7 +40,7 @@ func readSchema(t *testing.T) schemaDoc {
 	return doc
 }
 
-var fields = []string{"paths", "exclude", "one_file_system"}
+var fields = []string{"paths", "exclude", "control_paths", "sample_files", "sample_max_file_bytes", "one_file_system"}
 
 // Scenario: У каждого поля схемы есть заголовок, описание и пример.
 func TestEveryFieldOfTheSchemaHasATitleADescriptionAndExamples(t *testing.T) {

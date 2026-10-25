@@ -118,7 +118,7 @@ func backupAndRestore(t *testing.T, cfg string) {
 	if err := r.cli.Restore(ctx, sum.SnapshotID, target); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Verify(ctx, sdk.Config(cfg), target, &rep); err != nil {
+	if err := (testplugin.Plugin{}).Verify(ctx, nil, sdk.Config(cfg), target); err != nil {
 		t.Fatalf("restored copy: %v", err)
 	}
 }

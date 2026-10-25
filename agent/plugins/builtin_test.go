@@ -56,15 +56,23 @@ func TestEveryConfigSchemaIsValidJSONSchema(t *testing.T) {
 	}
 }
 
-// Built-in plugins ship with the agent and share its version; none can
-// verify a restored copy yet (roadmap: restore verification, stage 2).
-func TestBuiltinPluginsShareTheAgentVersionAndDoNotVerifyYet(t *testing.T) {
+// Built-in plugins ship with the agent and share its version; each takes the
+// fingerprint of its source and restores a copy for a check (V2). Only files
+// completes its fingerprint after restic: the files that changed meanwhile.
+func TestBuiltinPluginsShareTheAgentVersionAndFingerprintTheirSource(t *testing.T) {
+	completes := map[string]bool{"files": true, "postgresql": false}
 	for _, p := range plugins.Builtin("1.2.3") {
 		if p.Version() != "1.2.3" {
 			t.Errorf("%s: Version() = %q", p.Name(), p.Version())
 		}
-		if _, ok := p.(sdk.Verifier); ok {
-			t.Errorf("%s implements sdk.Verifier before it can verify", p.Name())
+		if _, ok := p.(sdk.Fingerprinter); !ok {
+			t.Errorf("%s is no sdk.Fingerprinter", p.Name())
+		}
+		if _, ok := p.(sdk.CopyRestorer); !ok {
+			t.Errorf("%s is no sdk.CopyRestorer", p.Name())
+		}
+		if _, ok := p.(sdk.FingerprintCompleter); ok != completes[p.Name()] {
+			t.Errorf("%s: sdk.FingerprintCompleter %v", p.Name(), ok)
 		}
 	}
 }

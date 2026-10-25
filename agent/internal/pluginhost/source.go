@@ -10,6 +10,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
@@ -85,36 +86,56 @@ func (s *Source) PlanRestore(cfg sdk.Config) (sdk.RestorePlan, error) {
 // Plugin returns the plugin.
 func (s *Source) Plugin() sdk.Plugin { return s.plugin }
 
-// CanVerify reports whether the plugin implements sdk.Verifier.
-func (s *Source) CanVerify() bool {
-	_, ok := s.plugin.(sdk.Verifier)
-	return ok
-}
-
 // Backup stores a snapshot of the source in repo, tagged with tags:
 // the config is validated, then Prepare (PREPARING) and Dump (DUMPING)
-// run, then restic stores the paths or the stream (UPLOADING). An invalid
+// run, then restic stores the paths or the stream (UPLOADING), then the extra
+// files and the fingerprint (see withFingerprint). An invalid
 // config or unknown secret is returned before anything runs, as a
 // *sdk.ConfigError.
-func (s *Source) Backup(ctx context.Context, cfg sdk.Config, repo restic.Repository, tags []string, r Reporter) (restic.BackupSummary, error) {
+func (s *Source) Backup(ctx context.Context, cfg sdk.Config, repo restic.Repository, tags []string, r Reporter) (Backup, error) {
 	if err := s.schema.Validate(cfg); err != nil {
-		return restic.BackupSummary{}, err
+		return Backup{}, err
 	}
 	h := &host{secrets: s.secrets, r: r}
 	d, err := s.prepareAndDump(ctx, h, cfg)
 	if err != nil {
-		return restic.BackupSummary{}, err
+		return Backup{}, err
 	}
+	release := releaseOnce(d)
+	defer release()
 	merged, err := s.withPluginTags(tags, d.Tags)
 	if err != nil {
-		return restic.BackupSummary{}, err
+		return Backup{}, err
+	}
+	early, merged, err := s.withFingerprintTag(merged, d)
+	if err != nil {
+		return Backup{}, err
 	}
 	h.enter(agentv1.StepPhase_STEP_PHASE_UPLOADING)
+	sum, err := s.store(ctx, h, cfg, repo, d, merged, tags, r, release)
+	if err != nil {
+		return Backup{BackupSummary: sum}, err
+	}
+	return s.withFingerprint(ctx, h, cfg, repo, tags, d, Backup{BackupSummary: sum}, early)
+}
+
+// store makes the main snapshot with the tags merged, releases what the dump
+// held for it, then makes the extra snapshots with the tags of the step.
+func (s *Source) store(ctx context.Context, h *host, cfg sdk.Config, repo restic.Repository, d sdk.Dump, merged, step []string, r Reporter, release func()) (restic.BackupSummary, error) {
 	sum, err := s.upload(ctx, h, cfg, repo, d, merged, r)
+	release()
 	if err != nil {
 		return sum, err
 	}
-	return s.backupExtra(ctx, repo, tags, sum, d.Extra)
+	return s.backupExtra(ctx, repo, step, sum, d.Extra)
+}
+
+// releaseOnce is d.Release, called at most once; nothing without one.
+func releaseOnce(d sdk.Dump) func() {
+	if d.Release == nil {
+		return func() {}
+	}
+	return sync.OnceFunc(d.Release)
 }
 
 // upload stores the dump itself: the paths or the stream. A failure of the
@@ -212,21 +233,6 @@ func (s *Source) request(h sdk.Host, cfg sdk.Config, d sdk.Dump, tags []string, 
 		return err
 	}
 	return req
-}
-
-// Verify checks a restored copy at restoredPath (VERIFYING). A plugin that
-// is not an sdk.Verifier returns sdk.ErrNotImplemented.
-func (s *Source) Verify(ctx context.Context, cfg sdk.Config, restoredPath string, r Reporter) error {
-	v, ok := s.plugin.(sdk.Verifier)
-	if !ok {
-		return fmt.Errorf("plugin %q: verify: %w", s.plugin.Name(), sdk.ErrNotImplemented)
-	}
-	if err := s.schema.Validate(cfg); err != nil {
-		return err
-	}
-	h := &host{secrets: s.secrets, r: r}
-	h.enter(agentv1.StepPhase_STEP_PHASE_VERIFYING)
-	return v.Verify(ctx, h, cfg, restoredPath)
 }
 
 // host is the sdk.Host of one step; progress goes to the current phase.

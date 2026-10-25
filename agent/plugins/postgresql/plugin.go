@@ -11,6 +11,7 @@ import (
 	_ "embed"
 	"io/fs"
 	"os"
+	"time"
 
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
@@ -21,7 +22,8 @@ var schema []byte
 // Plugin backs up one PostgreSQL database and restores it into a new one; it
 // also plans the files of a snapshot for "sard-agent repo restore" and looks for
 // the client programs on the host.
-// Restore verification will start the restored dump in a sandbox container and run check queries (roadmap: restore verification, stage 2).
+// Each backup carries a fingerprint of the database taken in the snapshot
+// pg_dump dumps (fingerprint.go, session.go).
 type Plugin struct {
 	// AgentVersion is the version of sard-agent, which ships the plugin.
 	AgentVersion string
@@ -36,6 +38,11 @@ type Plugin struct {
 	// may take for one transaction of pg_restore (R2b ВК28); nil is DefaultLockShare.
 	// The agent sets it from its configuration.
 	LockShare *float64
+	// CountTimeout bounds the count of the rows of one key table, a minute
+	// when zero; CountBudget all of them, ten minutes when zero (V2).
+	CountTimeout, CountBudget time.Duration
+	// Now is the clock of CountBudget; nil is time.Now.
+	Now func() time.Time
 }
 
 var _ sdk.Plugin = Plugin{}
