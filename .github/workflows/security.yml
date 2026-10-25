@@ -1,0 +1,158 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# Vulnerability scans (SC1, ADR 00XX-draft-supply-chain), by the threshold of
+# tools/cmd/vulngate: what the Go code calls (govulncheck), fixable critical
+# and high vulnerabilities in the lock files of the server and web and in the
+# released images (grype); exceptions with a reason and an expiry date in
+# security/vuln-exceptions.
+#
+#   pull request  the lock files, when a dependency or the scan itself changes
+#                 (govulncheck runs on every PR in ci.yml), and the test that
+#                 the scans block what they must
+#   every night   all of it on main and the images of the latest release: a
+#                 new advisory needs no change of ours; a failure opens (or
+#                 updates) one issue, a clean run closes it
+name: Security
+
+on:
+  pull_request:
+    paths:
+      - "**/go.mod"
+      - "**/go.sum"
+      - "**/package-lock.json"
+      - "**/gradle.lockfile"
+      - "buildscript-gradle.lockfile"
+      - "security/**"
+      - "test/vuln/**"
+      - "tools/images.env"
+      - "tools/cmd/vulngate/**"
+      - "tools/internal/vulngate/**"
+      - "scripts/vuln-scan.sh"
+      - "scripts/test-vuln-scan.sh"
+      - ".github/workflows/security.yml"
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/go.mod
+          cache-dependency-path: "**/go.sum"
+      - name: Lock files (grype)
+        run: make tools && scripts/vuln-scan.sh deps
+      - name: Go code (govulncheck)
+        if: github.event_name != 'pull_request' && !cancelled()
+        run: make ci-tools && VULN_OUT=build/vuln-go scripts/vuln-scan.sh go
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: vuln-deps
+          path: build/vuln*/verdict.txt
+          if-no-files-found: ignore
+
+  # The scans of the gate itself: known vulnerable fixtures block, an exception lets them through.
+  selftest:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/go.mod
+          cache-dependency-path: "**/go.sum"
+      - run: make tools ci-tools && scripts/test-vuln-scan.sh
+
+  # What an operator runs: the server and agent images of the latest release, pulled from GHCR.
+  images:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/go.mod
+          cache-dependency-path: "**/go.sum"
+      - name: Images of the latest release (grype)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(gh release list --limit 1 --json tagName --jq '.[0].tagName')"
+          version="$(scripts/release-version.sh image "$tag")"
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          make tools
+          scripts/vuln-scan.sh image "ghcr.io/$owner/sard-server:$version" "ghcr.io/$owner/sard-agent:$version-pg18"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: vuln-images
+          path: build/vuln/verdict.txt
+          if-no-files-found: ignore
+
+  # A failed nightly scan is an issue, not only a red run nobody looks at.
+  report:
+    if: github.event_name == 'schedule' && !cancelled()
+    needs: [deps, images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: vuln-*
+          path: verdicts
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FAILED: ${{ contains(needs.*.result, 'failure') }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Vulnerability scan of main fails"
+          issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
+          if [ "$FAILED" != true ]; then
+            if [ -n "$issue" ]; then
+              gh issue close "$issue" --repo "$GITHUB_REPOSITORY" --comment "Clean again: $RUN_URL"
+            fi
+            exit 0
+          fi
+          {
+            echo "The nightly scan failed: $RUN_URL"
+            echo
+            echo "Fix the dependency, or add a reasoned exception with an expiry date to \`security/vuln-exceptions\`."
+            echo
+            echo '```'
+            cat verdicts/*/verdict.txt verdicts/*/*/verdict.txt 2>/dev/null || echo "(no verdict: the scan itself failed, see the run)"
+            echo '```'
+          } >body.md
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body-file body.md
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file body.md
+          fi

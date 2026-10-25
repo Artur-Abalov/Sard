@@ -16,7 +16,8 @@
     ":semanticCommits",
   ],
   // config:recommended skips test/: the images and dependencies of the tests are pinned too.
-  ignorePaths: ["**/node_modules/**"],
+  // test/vuln holds known vulnerable versions on purpose (scripts/test-vuln-scan.sh).
+  ignorePaths: ["**/node_modules/**", "test/vuln/**"],
   timezone: "Europe/Moscow",
   // Once a week, before the working day; security fixes do not wait for it.
   schedule: ["before 7am on monday"],
@@ -52,6 +53,7 @@
         "/^deploy/\\.env\\.example$/",
         "/^deploy/docker-compose\\.build\\.yml$/",
         "/^test/images\\.env$/",
+        "/^tools/images\\.env$/",
         "/^\\.github/workflows/.+\\.ya?ml$/",
       ],
       matchStrings: [

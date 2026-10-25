@@ -72,11 +72,15 @@ GO_TOOLS := \
 	github.com/avito-tech/go-mutesting/cmd/go-mutesting \
 	github.com/goreleaser/nfpm/v2/cmd/nfpm \
 	golang.org/x/tools/cmd/deadcode \
-	github.com/rhysd/actionlint/cmd/actionlint \
-	golang.org/x/vuln/cmd/govulncheck \
-	./cmd/crap
+	./cmd/crap \
+	./cmd/vulngate
 
-.PHONY: tools gate gate-fast proto build build-agent build-cli package package-stand server-jar server-image image e2e e2e-images e2e-assemble e2e-agent-images e2e-agent-pg-image e2e-pg-agent-images e2e-test test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check check-sudo-u check-pins up down openapi
+# The CI-only tools, a module of their own (tools/ci): their dependencies clash with the ones above.
+CI_TOOLS := \
+	github.com/rhysd/actionlint/cmd/actionlint \
+	golang.org/x/vuln/cmd/govulncheck
+
+.PHONY: tools ci-tools lint-workflows vuln-scan gate gate-fast proto build build-agent build-cli package package-stand server-jar server-image image e2e e2e-images e2e-assemble e2e-agent-images e2e-agent-pg-image e2e-pg-agent-images e2e-test test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check check-sudo-u check-pins up down openapi
 
 ## proto: generate Go code from proto/ into proto/gen/go (committed)
 proto: tools
@@ -240,6 +244,20 @@ lint-go: tools
 ## tools: build pinned dev tools (tools/go.mod) into .bin/
 tools:
 	cd tools && GOWORK=off go build -o $(BIN)/ $(GO_TOOLS)
+
+## ci-tools: build the pinned CI tools (tools/ci/go.mod) into .bin/
+ci-tools:
+	cd tools/ci && GOWORK=off go build -o $(BIN)/ $(CI_TOOLS)
+
+## lint-workflows: actionlint and zizmor over .github/workflows (SC1); zizmor runs in Docker
+lint-workflows: ci-tools
+	$(BIN)/actionlint
+	. tools/images.env && docker run --rm -v "$(CURDIR):/src:ro" -w /src -e GH_TOKEN "$$TOOL_IMAGE_ZIZMOR" .github/workflows
+
+## vuln-scan: govulncheck over the Go modules and grype over the lock files, by the threshold of SC1
+vuln-scan: tools ci-tools
+	./scripts/vuln-scan.sh go
+	./scripts/vuln-scan.sh deps
 
 ## gate: full quality gate for every module (M=<module> for one)
 gate:

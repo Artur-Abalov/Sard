@@ -54,6 +54,28 @@ jobs:
       - run: make check-sudo-u
       - run: make check-pins
 
+  # The supply chain of SC1 (ADR 00XX-draft-supply-chain), fast and in parallel with the rest:
+  # the workflows (actionlint, zizmor) and the vulnerabilities the Go code calls (govulncheck).
+  # The heavier scans of dependencies and images are in security.yml.
+  supply-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/go.mod
+          cache-dependency-path: "**/go.sum"
+      - name: actionlint and zizmor
+        env:
+          # zizmor's online audits (impostor commits, known vulnerable actions) read public data only.
+          GH_TOKEN: ${{ github.token }}
+        run: make lint-workflows
+      - name: govulncheck
+        run: make tools ci-tools && scripts/vuln-scan.sh go
+
   proto:
     runs-on: ubuntu-latest
     timeout-minutes: 15
