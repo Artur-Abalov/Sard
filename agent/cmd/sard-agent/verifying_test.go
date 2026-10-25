@@ -103,3 +103,49 @@ func TestStorageCredentialsThatCanWriteAreWarnedAboutAtStart(t *testing.T) {
 		t.Fatalf("log %q", log.String())
 	}
 }
+
+// V5, found on the stand: restic 0.19.1 takes a lock even for `cat config`,
+// which storage that only reads refuses; a verifier reads without one.
+func TestAVerifierReadsItsRepositoriesWithoutLockOrCache(t *testing.T) {
+	script, calls := recordingRestic(t)
+	cfg, err := config.Parse([]byte("server:\n  address: s:1\nrepositories:\n  - {name: main, url: /srv/main, password_file: /etc/sard/main.pass}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, readOnly := range []bool{true, false} {
+		agent := buildAgent(cfg, "v1", script, "", nil, nil, readOnly)
+		if id, err := agent.RepositoryID(t.Context(), cfg.Repositories[0]); err != nil || id != "REPO-A" {
+			t.Fatalf("id %q, %v", id, err)
+		}
+	}
+	lines := calls()
+	if len(lines) != 2 || !strings.Contains(lines[0], "--no-lock --no-cache") || strings.Contains(lines[1], "--no-lock") {
+		t.Fatalf("restic was run as %q", lines)
+	}
+}
+
+func TestOnlyAVerifierReadsOnly(t *testing.T) {
+	if !(&verifying{}).readsOnly() || (*verifying)(nil).readsOnly() {
+		t.Error("readsOnly")
+	}
+}
+
+// recordingRestic is a restic that writes its arguments to a file and prints
+// the config of repository REPO-A; calls reads what it was run with.
+func recordingRestic(t *testing.T) (string, func() []string) {
+	t.Helper()
+	dir := t.TempDir()
+	file := filepath.Join(dir, "calls")
+	script := filepath.Join(dir, "restic")
+	body := "#!/bin/sh\necho \"$@\" >> " + file + "\necho '{\"id\":\"REPO-A\"}'\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return script, func() []string {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Split(strings.TrimSpace(string(data)), "\n")
+	}
+}

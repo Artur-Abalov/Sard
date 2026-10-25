@@ -46,11 +46,11 @@ func TestTheAgentAnnouncesTheRestoreDirectoryOfTheConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := buildAgent(cfg, "db1", "restic", "", nil, nil).RestoreDir; got != "/srv/restore" {
+	if got := buildAgent(cfg, "db1", "restic", "", nil, nil, false).RestoreDir; got != "/srv/restore" {
 		t.Errorf("RestoreDir = %q", got)
 	}
 	cfg, _ = config.Parse([]byte("server:\n  address: s:1\n"))
-	if got := buildAgent(cfg, "db1", "restic", "", nil, nil).RestoreDir; got != "/var/lib/sard-agent/restore" {
+	if got := buildAgent(cfg, "db1", "restic", "", nil, nil, false).RestoreDir; got != "/var/lib/sard-agent/restore" {
 		t.Errorf("default RestoreDir = %q", got)
 	}
 }

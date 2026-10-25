@@ -185,7 +185,7 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 	journal := newRestoreJournal(cfg, slog.Default())
 	// V5: what a killed verification left is removed before any step, too.
 	verify := newVerifying(cfg, me, verifier.OSDisk{}, slog.Default())
-	agent := newAgentWith(cfg, hostname, resticBinary, me.machineID, engine, journal, rt, verify.options()...)
+	agent := newAgentWith(cfg, hostname, resticBinary, me.machineID, engine, journal, rt, verify.readsOnly(), verify.options()...)
 	verify.attach(agent)
 	verify.warnIfWritable(ctx, openRepositories(cfg, resticOptions(cfg, resticBinary)), slog.Default())
 	// R2c: the plugins recover their entries of the restore journal now, before
@@ -373,8 +373,8 @@ func checkHostFiles(cfg config.Config, sel certpair.Selection) error {
 }
 
 // newAgentWith is buildAgent whose steps a test may run with its own handlers.
-func newAgentWith(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine, journal *pluginhost.Journal, rt agentRuntime, extra ...pluginhost.Option) *app.Agent {
-	agent := buildAgent(cfg, hostname, resticBinary, machineID, restores, journal, extra...)
+func newAgentWith(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine, journal *pluginhost.Journal, rt agentRuntime, readOnly bool, extra ...pluginhost.Option) *app.Agent {
+	agent := buildAgent(cfg, hostname, resticBinary, machineID, restores, journal, readOnly, extra...)
 	if rt.handlers != nil {
 		agent.Handlers = rt.handlers
 	}
@@ -382,8 +382,12 @@ func newAgentWith(cfg config.Config, hostname, resticBinary, machineID string, r
 }
 
 // buildAgent wires the built-in plugins to restic and the host's secrets.
-func buildAgent(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine, journal *pluginhost.Journal, extra ...pluginhost.Option) *app.Agent {
-	repos := openRepositories(cfg, resticOptions(cfg, resticBinary))
+// A verifier (readOnly) opens every repository without lock and cache: it
+// never writes to one, and restic takes a lock even to read the config.
+func buildAgent(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine, journal *pluginhost.Journal, readOnly bool, extra ...pluginhost.Option) *app.Agent {
+	opts := resticOptions(cfg, resticBinary)
+	opts.ReadOnly = readOnly
+	repos := openRepositories(cfg, opts)
 	registry := plugins.Registry(version, pluginOptions(cfg)...)
 	handlerOpts := append([]pluginhost.Option{pluginhost.WithConsoleRestore(restores), pluginhost.WithRestoreJournal(journal), pluginhost.WithRepositoryWords(consolerestore.NewClassifier(restoreTargets(cfg, os.ReadFile))), pluginhost.WithLogger(slog.Default())}, extra...)
 	return &app.Agent{

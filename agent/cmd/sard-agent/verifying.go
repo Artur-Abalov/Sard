@@ -58,6 +58,9 @@ func sweep(v *verifier.Verifier, log *slog.Logger) {
 	}
 }
 
+// readsOnly: a verifier reads its repositories without lock and cache (V5).
+func (v *verifying) readsOnly() bool { return v != nil }
+
 // options are the options of the handlers of a verifier: it runs VERIFY steps.
 func (v *verifying) options() []pluginhost.Option {
 	if v == nil {
