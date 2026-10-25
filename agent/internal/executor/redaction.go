@@ -61,10 +61,4 @@ func maskResult(set *redact.Set, r *agentv1.StepResult) {
 	for _, check := range r.GetVerify().GetChecks() {
 		check.Detail = set.Mask(check.GetDetail())
 	}
-	for _, stage := range r.GetVerify().GetStages() {
-		stage.Output = set.Mask(stage.GetOutput())
-	}
-	for _, m := range r.GetVerify().GetMismatches() {
-		m.Expected, m.Actual = set.Mask(m.GetExpected()), set.Mask(m.GetActual())
-	}
 }

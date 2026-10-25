@@ -63,10 +63,6 @@ type Reporter interface {
 	// stderr): it is masked, cut into lines and logged at OutputLevel.
 	// Writes never fail; after the step finished they are discarded.
 	Output() io.Writer
-	// Stage reports a verification stage that has just finished (V5): a
-	// progress of phase VERIFYING carrying a masked copy of it, past the
-	// rate limit.
-	Stage(stage *agentv1.VerifyStage)
 }
 
 // Secret is a value a step's log lines and result must not contain.

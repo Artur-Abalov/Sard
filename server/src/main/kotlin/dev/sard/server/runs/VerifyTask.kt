@@ -25,8 +25,6 @@ class VerifyTask(
     val deadline: Instant,
     /** RunStep.timeout: the agent stops the step after it. */
     val timeoutSeconds: Long,
-    /** Machines of the source's agent and of the agent that made the snapshot; the verifier refuses its own (V-D7). */
-    val sourceMachineIds: List<String> = emptyList(),
 ) {
     fun json(): String =
         JSON.writeValueAsString(
@@ -37,21 +35,13 @@ class VerifyTask(
                 "fingerprintSha256" to fingerprintSha256,
                 "deadline" to deadline.toString(),
                 "timeoutSeconds" to timeoutSeconds,
-                "sourceMachineIds" to sourceMachineIds,
             ),
         )
 
     override fun equals(other: Any?): Boolean =
         other is VerifyTask &&
-            listOf(jobId, repositoryId, fingerprintSha256, deadline, timeoutSeconds, sourceMachineIds) ==
-            listOf(
-                other.jobId,
-                other.repositoryId,
-                other.fingerprintSha256,
-                other.deadline,
-                other.timeoutSeconds,
-                other.sourceMachineIds,
-            ) &&
+            listOf(jobId, repositoryId, fingerprintSha256, deadline, timeoutSeconds) ==
+            listOf(other.jobId, other.repositoryId, other.fingerprintSha256, other.deadline, other.timeoutSeconds) &&
             fingerprint.contentEquals(other.fingerprint)
 
     override fun hashCode(): Int = listOf(jobId, repositoryId, deadline).hashCode()
@@ -73,7 +63,6 @@ class VerifyTask(
                     node.path("fingerprintSha256").asStringOpt().orElse(null),
                     Instant.parse(node.path("deadline").asString()),
                     node.path("timeoutSeconds").asLong(),
-                    node.path("sourceMachineIds").let { ids -> (0 until ids.size()).map { ids.get(it).asString() } },
                 )
             }
     }

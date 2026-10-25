@@ -13,7 +13,6 @@ import dev.sard.proto.agent.v1.RegisterRequest
 import dev.sard.proto.agent.v1.RegisterResponse
 import dev.sard.proto.agent.v1.RepositoryInfo
 import dev.sard.proto.agent.v1.Sandbox
-import dev.sard.proto.agent.v1.SandboxImage
 import dev.sard.proto.agent.v1.VerifierStatus
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.api.MACHINE_ID
@@ -449,38 +448,6 @@ class RegisterIntegrationTest(
         register(agent, snapshotA().setVerifier(VerifierStatus.getDefaultInstance()))
 
         assertEquals(listOf<Any?>(true, null, null), verifierOf(agent))
-    }
-
-    @Test
-    fun `a Register stores the sandbox version and the images, the next one without them forgets them (V5)`() {
-        val agent = fixtures.enrolled(fixtures.tenant())
-        val image =
-            SandboxImage
-                .newBuilder()
-                .setName("postgres")
-                .setVersion("17.6")
-                .setDigest("sha256:ab")
-        val status =
-            VerifierStatus
-                .newBuilder()
-                .setSandbox(Sandbox.SANDBOX_DOCKER)
-                .setSandboxVersion("29.9.2")
-                .addImages(image)
-        val query = "select verify_sandbox_version, verify_images::text from agents where id = ?"
-        val stored = {
-            jdbc
-                .queryForList(query, agent.identity.agentId)
-                .single()
-                .values
-                .toList()
-        }
-
-        register(agent, snapshotA().setVerifier(status))
-        val images = """[{"name": "postgres", "digest": "sha256:ab", "version": "17.6"}]"""
-        assertEquals(listOf<Any?>("29.9.2", images), stored())
-
-        register(agent, snapshotA())
-        assertEquals(listOf<Any?>(null, "[]"), stored())
     }
 
     // --- V1: machine_id

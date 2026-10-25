@@ -51,7 +51,6 @@ internal object ProtoVerifyOutputs {
             VerifyVerdict.VERIFY_VERDICT_PASSED -> VerifierVerdict.PASSED
             VerifyVerdict.VERIFY_VERDICT_FAILED -> VerifierVerdict.FAILED
             VerifyVerdict.VERIFY_VERDICT_CANNOT_VERIFY -> VerifierVerdict.CANNOT_VERIFY
-            VerifyVerdict.VERIFY_VERDICT_INFRASTRUCTURE_FAILURE -> VerifierVerdict.INFRASTRUCTURE_FAILURE
             VerifyVerdict.VERIFY_VERDICT_UNSPECIFIED, VerifyVerdict.UNRECOGNIZED -> null
         }
 

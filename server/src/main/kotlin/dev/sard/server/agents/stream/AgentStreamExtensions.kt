@@ -7,7 +7,6 @@ import dev.sard.proto.agent.v1.LogChunk
 import dev.sard.proto.agent.v1.StepProgress
 import dev.sard.proto.agent.v1.StepResult
 import dev.sard.server.agents.AgentPrincipal
-import dev.sard.server.registration.VerifierReport
 import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.time.Instant
@@ -83,14 +82,6 @@ fun interface LastSeenStore {
     )
 }
 
-/** Where a verifier's status from a heartbeat is written (V5); Register writes the same columns. */
-fun interface VerifierStatusStore {
-    fun record(
-        agent: ConnectedAgent,
-        report: VerifierReport,
-    )
-}
-
 /** Stream metrics besides the connected gauge (see `MicrometerStreamMetrics`). */
 interface StreamMetrics {
     fun duplicateDetected() {}
@@ -108,7 +99,6 @@ data class StreamExtensions(
     val listeners: List<AgentSessionListener>,
     val lastSeen: LastSeenStore,
     val metrics: StreamMetrics,
-    val verifierStatus: VerifierStatusStore,
 )
 
 /** The defaults until S6 and S7: a debug line with ids only, never message content. */

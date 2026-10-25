@@ -18,7 +18,6 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/executor"
 	"github.com/Artur-Abalov/sard/agent/internal/refusal"
 	"github.com/Artur-Abalov/sard/agent/internal/restic"
-	"github.com/Artur-Abalov/sard/agent/internal/verifier"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
 )
@@ -41,9 +40,7 @@ type Handlers struct {
 	journal *Journal
 	// words words the failures of restic that reach those plugins.
 	words *consolerestore.Classifier
-	// verifier runs the VERIFY steps of a verifier's host (V5); nil elsewhere.
-	verifier *verifier.Verifier
-	log      *slog.Logger
+	log   *slog.Logger
 }
 
 // Option configures Handlers.
@@ -65,12 +62,6 @@ func WithRestoreJournal(j *Journal) Option {
 // plugins that restore themselves; default: the repositories just by their names.
 func WithRepositoryWords(c *consolerestore.Classifier) Option {
 	return func(h *Handlers) { h.words = c }
-}
-
-// WithVerifier lets the plugins that restore and measure a copy run VERIFY
-// steps with v (V5): only a verifier's host has one.
-func WithVerifier(v *verifier.Verifier) Option {
-	return func(h *Handlers) { h.verifier = v }
 }
 
 // WithLogger sets the log of the agent the handlers write to; default: none.
@@ -113,15 +104,12 @@ type handler struct {
 	src *Source
 }
 
-// Actions: every plugin backs up; restore needs sdk.Restorer; verify needs
-// the verifier of a verifier's host and a plugin it can verify (V5).
+// Actions: every plugin backs up; restore needs sdk.Restorer. A restore
+// check (verify) is the verifier's (V5), not a step of a plugin.
 func (h *handler) Actions() []agentv1.Action {
 	actions := []agentv1.Action{agentv1.Action_ACTION_BACKUP}
 	if h.src.CanRestore() {
 		actions = append(actions, agentv1.Action_ACTION_RESTORE)
-	}
-	if h.verifier != nil && verifier.Supports(h.src.plugin) {
-		actions = append(actions, agentv1.Action_ACTION_VERIFY)
 	}
 	return actions
 }
@@ -137,25 +125,12 @@ func (h *handler) Run(ctx context.Context, step *agentv1.RunStep, r executor.Rep
 	}
 	var result *agentv1.StepResult
 	var err error
-	switch step.GetAction() {
-	case agentv1.Action_ACTION_BACKUP:
+	if step.GetAction() == agentv1.Action_ACTION_BACKUP {
 		result, err = h.backup(ctx, step, repo, r)
-	case agentv1.Action_ACTION_VERIFY:
-		result, err = h.verify(ctx, step, repo, r)
-	default:
+	} else {
 		result, err = h.restore(ctx, step, repo, r)
 	}
 	return result, withCheckHint(err)
-}
-
-// verify runs the restore check of a verifier over the repository of the step,
-// which it reads without a lock (V5).
-func (h *handler) verify(ctx context.Context, step *agentv1.RunStep, repo restic.Repository, r executor.Reporter) (*agentv1.StepResult, error) {
-	store, ok := repo.(verifier.Store)
-	if !ok {
-		return nil, rejected(fmt.Errorf("repository %q cannot be read by a verifier", step.GetRepositoryName()))
-	}
-	return h.verifier.Run(ctx, step, h.src.plugin.(verifier.Plugin), store, r)
 }
 
 func (h *handler) backup(ctx context.Context, step *agentv1.RunStep, repo restic.Repository, r executor.Reporter) (*agentv1.StepResult, error) {

@@ -224,7 +224,6 @@ class ProtoReportsTest {
                 VerifyVerdict.VERIFY_VERDICT_PASSED to VerifierVerdict.PASSED,
                 VerifyVerdict.VERIFY_VERDICT_FAILED to VerifierVerdict.FAILED,
                 VerifyVerdict.VERIFY_VERDICT_CANNOT_VERIFY to VerifierVerdict.CANNOT_VERIFY,
-                VerifyVerdict.VERIFY_VERDICT_INFRASTRUCTURE_FAILURE to VerifierVerdict.INFRASTRUCTURE_FAILURE,
                 VerifyVerdict.VERIFY_VERDICT_UNSPECIFIED to null,
             )
         val states =

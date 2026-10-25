@@ -172,21 +172,6 @@ class StreamClients(
     fun lastSeenAt(agent: TestAgent): Instant? =
         jdbc.queryForObject("select last_seen_at from agents where id = ?", Instant::class.java, agent.agentId)
 
-    /** As if its Register carried a verifier status (V4); [verifierStatus] reads what is stored. */
-    fun reportedVerifier(agent: TestAgent) {
-        jdbc.update("update agents set verifier_reported = true where id = ?", agent.agentId)
-    }
-
-    fun verifierStatus(agent: TestAgent): List<Any?> =
-        jdbc
-            .queryForList(
-                "select verify_free_bytes, verify_sandbox, verify_sandbox_version, verify_images::text " +
-                    "from agents where id = ?",
-                agent.agentId,
-            ).single()
-            .values
-            .toList()
-
     private fun csr(keys: KeyPair): ByteArray {
         val signer = JcaContentSignerBuilder("SHA256withECDSA").build(keys.private)
         return JcaPKCS10CertificationRequestBuilder(X500Name("CN=test"), keys.public).build(signer).encoded

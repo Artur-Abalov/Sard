@@ -36,13 +36,7 @@ PrivateTmp=true
 # systemd refuses with status 226/NAMESPACE. A tls.* in another directory
 # needs a drop-in with ReadWritePaths=<that directory>, like restic.cache_dir.
 ReadWritePaths=-/etc/sard/tls
-# verify.work_dir of a verifier (V5): the copies a verification restores.
-# NoExecPaths= mounts it noexec for the service, which needs no root for it;
-# the agent refuses to verify on a work volume without noexec ("-": a unit
-# that cannot mount it still starts, and its verifications say why). A different
-# verify.work_dir needs a drop-in with ReadWritePaths= and NoExecPaths=.
-StateDirectory=sard-agent sard-agent/verify
-NoExecPaths=-/var/lib/sard-agent/verify
+StateDirectory=sard-agent
 CacheDirectory=sard/restic
 # Keep the directory private as the package made it: systemd would set 0755.
 CacheDirectoryMode=0700

@@ -69,12 +69,9 @@ class Registration(
         agent: Agent,
         report: VerifierReport?,
     ) {
-        val reported = report ?: NOT_REPORTED
         agent.verifierReported = report != null
-        agent.verifyFreeBytes = reported.workFreeBytes
-        agent.verifySandbox = reported.sandbox?.stored
-        agent.verifySandboxVersion = reported.sandboxVersion
-        agent.verifyImages = reported.imagesJson()
+        agent.verifyFreeBytes = report?.workFreeBytes
+        agent.verifySandbox = report?.sandbox?.stored
     }
 
     private fun pluginRecord(
@@ -111,6 +108,3 @@ class Registration(
             throw RegistrationRejectedException(RegistrationRejectedException.Reason.INTERNAL_RETRYABLE, cause = e)
         }
 }
-
-/** What an agent older than V4 reports: nothing, so the last report is forgotten. */
-private val NOT_REPORTED = VerifierReport(null, null)

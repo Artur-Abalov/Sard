@@ -70,10 +70,7 @@ object RunSteps {
         return command.build()
     }
 
-    /**
-     * A VERIFY step (V4): its job, the repository's restic id, the fingerprint and the deadline, and the source's
-     * machines (V5); it has a timeout.
-     */
+    /** A VERIFY step (V4): its job, the repository's restic id, the fingerprint and the deadline; it has a timeout. */
     private fun verify(
         command: RunStep.Builder,
         task: VerifyTask,
@@ -86,7 +83,6 @@ object RunSteps {
                 .setFingerprint(ByteString.copyFrom(task.fingerprint ?: ByteArray(0)))
                 .setFingerprintSha256(task.fingerprintSha256.orEmpty())
                 .setDeadline(Timestamp.newBuilder().setSeconds(task.deadline.epochSecond).setNanos(task.deadline.nano))
-                .addAllSourceMachineIds(task.sourceMachineIds)
         command.setVerify(verify).setTimeout(Duration.newBuilder().setSeconds(task.timeoutSeconds))
     }
 

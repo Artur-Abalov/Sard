@@ -28,7 +28,6 @@ type event struct {
 	files, filesTotal uint64
 	level             agentv1.LogLevel
 	text              string
-	stage             *agentv1.VerifyStage
 }
 
 type reporter struct {
@@ -42,13 +41,6 @@ type reporter struct {
 func (r *reporter) Secret(name string) ([]byte, bool) {
 	v, ok := r.snapshot[name]
 	return v, ok
-}
-
-// Stage records a finished verification stage (V5).
-func (r *reporter) Stage(stage *agentv1.VerifyStage) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.events = append(r.events, event{phase: agentv1.StepPhase_STEP_PHASE_VERIFYING, stage: stage})
 }
 
 // Output is the step's tool output; tests read it with outputText.

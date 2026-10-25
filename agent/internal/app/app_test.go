@@ -120,20 +120,6 @@ func TestRegisterRequestReportsAVerifierStatusThatKnowsNothingYet(t *testing.T) 
 	}
 }
 
-func TestRegisterRequestOfAVerifierReportsWhatItMeasured(t *testing.T) {
-	a := newAgent(t, &fakeLink{})
-	free := uint64(7)
-	a.Verifier = func(context.Context) *agentv1.VerifierStatus {
-		return &agentv1.VerifierStatus{WorkFreeBytes: &free, Sandbox: agentv1.Sandbox_SANDBOX_DOCKER}
-	}
-
-	status := a.RegisterRequest(context.Background()).GetVerifier()
-
-	if status.GetWorkFreeBytes() != 7 || status.GetSandbox() != agentv1.Sandbox_SANDBOX_DOCKER {
-		t.Fatalf("verifier status = %v", status)
-	}
-}
-
 func TestRegisterRequestAnnouncesPluginsWithSchemasSortedByName(t *testing.T) {
 	var got []string
 	for _, p := range registered(t).GetPlugins() {

@@ -12,10 +12,8 @@ import dev.sard.proto.agent.v1.Hello
 import dev.sard.proto.agent.v1.LogChunk
 import dev.sard.proto.agent.v1.LogLine
 import dev.sard.proto.agent.v1.RunStep
-import dev.sard.proto.agent.v1.Sandbox
 import dev.sard.proto.agent.v1.StepProgress
 import dev.sard.proto.agent.v1.StepResult
-import dev.sard.proto.agent.v1.VerifierStatus
 import dev.sard.server.agents.AgentAuthFailure
 import dev.sard.server.agents.AgentPrincipal
 import dev.sard.server.agents.BatchStandings
@@ -25,7 +23,6 @@ import dev.sard.server.agents.stream.StreamFixtures.NOW
 import dev.sard.server.agents.stream.StreamFixtures.SETTINGS
 import dev.sard.server.pki.AgentIdentity
 import dev.sard.server.pki.MovableClock
-import dev.sard.server.registration.VerifierReport
 import dev.sard.server.role.AgentRole
 import io.grpc.Context
 import io.grpc.Metadata
@@ -67,7 +64,6 @@ private class Recorder :
     LogChunkHandler,
     AgentSessionListener,
     LastSeenStore,
-    VerifierStatusStore,
     StreamMetrics {
     val events: MutableList<String> = Collections.synchronizedList(mutableListOf())
     val signals = Channel<String>(Channel.UNLIMITED)
@@ -114,11 +110,6 @@ private class Recorder :
         agent: ConnectedAgent,
         at: Instant,
     ) = record("last-seen $at")
-
-    override fun record(
-        agent: ConnectedAgent,
-        report: VerifierReport,
-    ) = record("verifier ${report.workFreeBytes} ${report.sandbox}")
 
     suspend fun await(event: String) {
         withTimeout(WAIT_MS) {
@@ -195,7 +186,7 @@ class AgentStreamsTest {
             SETTINGS,
             clock,
             Dispatchers.Unconfined,
-            StreamExtensions(recorder, recorder, recorder, recorder, listOf(recorder), recorder, recorder, recorder),
+            StreamExtensions(recorder, recorder, recorder, recorder, listOf(recorder), recorder, recorder),
         )
     private val connections = AgentConnections(registry, SessionRevalidation(standings, clock))
 
@@ -273,28 +264,6 @@ class AgentStreamsTest {
             agent.requests.send(progress("sync"))
             recorder.await("progress sync")
             assertEquals(1, recorder.events.count { it.startsWith("hello") })
-            agent.requests.close()
-            agent.closedWith()
-        }
-
-    // V5: free space changes between Registers; the verifier reports it in a heartbeat when it changed.
-    @Test
-    fun `a heartbeat with a verifier status records it, one without records nothing`() =
-        test {
-            val agent = open()
-            agent.requests.send(hello())
-            recorder.await("hello ")
-            val status = VerifierStatus.newBuilder().setWorkFreeBytes(5).setSandbox(Sandbox.SANDBOX_PODMAN)
-            agent.requests.send(heartbeat())
-            agent.requests.send(
-                ConnectRequest
-                    .newBuilder()
-                    .setHeartbeat(Heartbeat.newBuilder().setVerifier(status))
-                    .build(),
-            )
-            agent.requests.send(progress("after"))
-            recorder.await("progress after")
-            assertEquals(listOf("verifier 5 PODMAN"), recorder.events.filter { it.startsWith("verifier") })
             agent.requests.close()
             agent.closedWith()
         }

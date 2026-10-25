@@ -1,3 +1,0 @@
-{"message_type":"error","message":"pack 7054adb01ef83e321ef24fec17a22eb2e474b2ca723a388eb1f8e352ad21c4b4: does not exist\n"}
-{"message_type":"error","message":"\nThe repository is damaged and must be repaired. Please follow the troubleshooting guide at https://restic.readthedocs.io/en/stable/077_troubleshooting.html .\n\n"}
-{"message_type":"exit_error","code":1,"message":"Fatal: repository contains errors"}

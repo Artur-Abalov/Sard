@@ -56,12 +56,6 @@ type Agent struct {
 	// Logger receives the WARN line of a repository whose keys could not be
 	// read; nil discards.
 	Logger *slog.Logger
-	// Verifier, set on a verifier, measures what it offers restore
-	// verification (V5); nil reports a status that knows nothing.
-	Verifier func(ctx context.Context) *agentv1.VerifierStatus
-	// VerifierChanged, set on a verifier, is its status when it changed since
-	// it was last reported, for a heartbeat; nil when it did not.
-	VerifierChanged func(ctx context.Context) *agentv1.VerifierStatus
 }
 
 // Run keeps the agent connected to the server until ctx ends or the
@@ -84,12 +78,10 @@ func (a *Agent) RegisterRequest(ctx context.Context) *agentv1.RegisterRequest {
 		RestoreDir:      a.RestoreDir,
 		SecretNames:     a.Local.SecretNames(),
 		ScriptNames:     a.Local.ScriptNames(),
-		// An empty status still tells the server this agent speaks the
-		// verification contract; a verifier measures its own (V5).
+		// Free space and sandbox are unknown until the verification executor
+		// measures them (V5); an empty status still tells the server this agent
+		// speaks the verification contract.
 		Verifier: &agentv1.VerifierStatus{},
-	}
-	if a.Verifier != nil {
-		req.Verifier = a.Verifier(ctx)
 	}
 	if a.Announced != nil {
 		a.Announced(req.Repositories)

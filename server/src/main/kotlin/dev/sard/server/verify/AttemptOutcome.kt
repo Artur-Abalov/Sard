@@ -99,11 +99,11 @@ sealed interface AttemptOutcome {
         ): AttemptOutcome =
             when (status) {
                 StepState.SUCCEEDED, StepState.FAILED -> {
-                    verdict(status, message, verify, failedBefore)
+                    verdict(status, message, verify)
                 }
 
                 StepState.LOST, StepState.REJECTED, StepState.TIMED_OUT, StepState.CANCELLED -> {
-                    noVerdict(status.stored, message, failedBefore + 1)
+                    noVerdict(status, message, failedBefore + 1)
                 }
 
                 StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING -> {
@@ -112,46 +112,38 @@ sealed interface AttemptOutcome {
             }
 
         private fun noVerdict(
-            how: String,
+            status: StepState,
             message: String?,
             failed: Int,
         ): AttemptOutcome {
             if (failed < ATTEMPTS) return Retry(failed)
-            val reason = "$ATTEMPTS attempts without a verdict; the last: $how: $message"
+            val reason = "$ATTEMPTS attempts without a verdict; the last: ${status.stored}: $message"
             return Settled(VerificationStatus.INFRASTRUCTURE_FAILURE, 0, reason)
         }
 
-        /** A verifier's «infrastructure failure» (V5) counts as an attempt without a verdict, naming its stage. */
         private fun verdict(
             status: StepState,
             message: String?,
             verify: StepOutput.Verify?,
-            failedBefore: Int,
-        ): AttemptOutcome {
-            val verdict = verify?.verdict ?: return noVerdictOf(verify, message)
-            val level = levelOf(verify)
-            return when (verdict) {
-                VerifierVerdict.FAILED -> Settled(VerificationStatus.FAILED, level, message)
-                VerifierVerdict.CANNOT_VERIFY -> Settled(VerificationStatus.CANNOT_VERIFY, level, message)
-                VerifierVerdict.INFRASTRUCTURE_FAILURE -> noVerdict(stageOutOfTime(verify), message, failedBefore + 1)
-                VerifierVerdict.PASSED -> passed(status, level)
+        ): Settled {
+            val level = verify?.let { Levels.reached(it.stages, it.restoreMillis) } ?: 0
+            return when (verify?.verdict) {
+                null -> {
+                    Settled(VerificationStatus.CANNOT_VERIFY, level, "no verdict: $message")
+                }
+
+                VerifierVerdict.FAILED -> {
+                    Settled(VerificationStatus.FAILED, level, message)
+                }
+
+                VerifierVerdict.CANNOT_VERIFY -> {
+                    Settled(VerificationStatus.CANNOT_VERIFY, level, message)
+                }
+
+                VerifierVerdict.PASSED -> {
+                    passed(status, level)
+                }
             }
-        }
-
-        /** A result without a verdict (an agent older than V4) cannot verify, whatever the step says. */
-        private fun noVerdictOf(
-            verify: StepOutput.Verify?,
-            message: String?,
-        ) = Settled(VerificationStatus.CANNOT_VERIFY, levelOf(verify), "no verdict: $message")
-
-        private fun levelOf(verify: StepOutput.Verify?): Int {
-            val stages = verify ?: return 0
-            return Levels.reached(stages.stages, stages.restoreMillis)
-        }
-
-        private fun stageOutOfTime(verify: StepOutput.Verify): String {
-            val stage = verify.stages.lastOrNull()?.name
-            return "stage $stage ran out of time"
         }
 
         private fun passed(

@@ -40,16 +40,9 @@ type handlersFixture struct {
 	restoreDir string
 	stderr     []io.Writer // what each repository lookup was given
 	commands   []string
-	// readOnly, if set, is the repository instead of repo (a verifier's, V5).
-	readOnly restic.Repository
 }
 
 func newHandlers(t *testing.T, plugins ...sdk.Plugin) *handlersFixture {
-	t.Helper()
-	return newHandlersWith(t, nil, plugins...)
-}
-
-func newHandlersWith(t *testing.T, opts []pluginhost.Option, plugins ...sdk.Plugin) *handlersFixture {
 	t.Helper()
 	reg, err := sdk.NewRegistry(plugins...)
 	if err != nil {
@@ -60,12 +53,9 @@ func newHandlersWith(t *testing.T, opts []pluginhost.Option, plugins ...sdk.Plug
 	repos := func(name, commandID string, stderr io.Writer) (restic.Repository, bool) {
 		f.stderr = append(f.stderr, stderr)
 		f.commands = append(f.commands, commandID)
-		if f.readOnly != nil {
-			return f.readOnly, name == "main"
-		}
 		return f.repo, name == "main"
 	}
-	f.handlers, err = pluginhost.NewHandlers(reg, secrets, repos, f.restoreDir, opts...)
+	f.handlers, err = pluginhost.NewHandlers(reg, secrets, repos, f.restoreDir)
 	if err != nil {
 		t.Fatal(err)
 	}

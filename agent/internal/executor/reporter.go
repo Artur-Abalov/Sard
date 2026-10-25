@@ -8,7 +8,6 @@ import (
 	"io"
 
 	agentv1 "github.com/Artur-Abalov/sard/proto/gen/go/sard/agent/v1"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -73,24 +72,4 @@ func (r *reporter) Output() io.Writer {
 	r.e.mu.Lock()
 	defer r.e.mu.Unlock()
 	return r.c.out
-}
-
-// Stage sends the stage with its output masked; the caller's stage is not changed.
-func (r *reporter) Stage(stage *agentv1.VerifyStage) {
-	r.e.mu.Lock()
-	defer r.e.mu.Unlock()
-	if !r.c.live() {
-		return
-	}
-	masked := proto.CloneOf(stage)
-	masked.Output = r.c.mask.Mask(masked.GetOutput())
-	now := r.e.opts.Clock.Now()
-	p := &agentv1.StepProgress{
-		CommandId: r.c.step.GetCommandId(),
-		Phase:     agentv1.StepPhase_STEP_PHASE_VERIFYING,
-		SentAt:    timestamppb.New(now),
-		Stage:     masked,
-	}
-	r.c.progress, r.c.sentAt = p, now
-	r.e.opts.Sink.Progress(p)
 }

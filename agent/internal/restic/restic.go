@@ -365,18 +365,10 @@ func (r *result) stderr(observe func([]byte)) func([]byte) {
 		}
 		switch msg.Type {
 		case "error":
-			r.item(msg)
+			r.items = append(r.items, ItemError{Item: msg.Item, During: msg.During, Message: msg.Error.Message})
 		case "exit_error":
 			r.fatal = msg.Message
 		}
-	}
-}
-
-// item keeps a per-file error; an error line about no file (restic check
-// says what it found that way) is not one.
-func (r *result) item(msg message) {
-	if msg.Item != "" {
-		r.items = append(r.items, ItemError{Item: msg.Item, During: msg.During, Message: msg.Error.Message})
 	}
 }
 

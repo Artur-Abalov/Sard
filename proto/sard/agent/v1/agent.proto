@@ -161,21 +161,6 @@ message VerifierStatus {
   optional uint64 work_free_bytes = 1;
   // Container runtime available for the verification sandbox.
   Sandbox sandbox = 2;
-  // Version of that runtime as its CLI reports it, e.g. "29.9.2"; empty with
-  // no runtime or when unknown.
-  string sandbox_version = 3;
-  // Sandbox images present on the host, from the verifier's image list.
-  repeated SandboxImage images = 4;
-}
-
-// SandboxImage is a sandbox image a verifier has locally.
-message SandboxImage {
-  // Image name from the list, e.g. "postgres".
-  string name = 1;
-  // Semantic version the digest is of, e.g. "17.6".
-  string version = 2;
-  // Content digest the verifier runs it by, e.g. "sha256:...".
-  string digest = 3;
 }
 
 // Sandbox is the container runtime a verifier can start a sandbox with.
@@ -476,8 +461,8 @@ enum StageStatus {
   STAGE_STATUS_NOT_APPLICABLE = 4;
 }
 
-// VerifyVerdict is the verifier's conclusion; "no verifier" is the server's
-// own and never sent.
+// VerifyVerdict is the verifier's conclusion; "infrastructure failure" and
+// "no verifier" are the server's own and never sent.
 enum VerifyVerdict {
   VERIFY_VERDICT_UNSPECIFIED = 0;
   // Every stage passed and the fingerprints match.
@@ -486,9 +471,6 @@ enum VerifyVerdict {
   VERIFY_VERDICT_FAILED = 2;
   // The verifier's environment could not run the check.
   VERIFY_VERDICT_CANNOT_VERIFY = 3;
-  // The check did not take place: a stage ran out of its time. The last
-  // stage names it. The server retries as after a lost attempt.
-  VERIFY_VERDICT_INFRASTRUCTURE_FAILURE = 4;
 }
 
 // FingerprintMismatch is one fact that differs between the source and the
@@ -602,10 +584,6 @@ message VerifyTask {
   string fingerprint_sha256 = 4;
   // When the job expires.
   google.protobuf.Timestamp deadline = 5;
-  // machine_id of the source's agent and of the agent that made the
-  // snapshot. A verifier whose own machine is among them refuses the step
-  // (V-D7): it never checks a source on its own host.
-  repeated string source_machine_ids = 6;
 }
 
 // RepositoryInfo is a repository configured on the agent host, as reported

@@ -63,11 +63,3 @@ type RestoredCopy struct {
 	// Result is what the restore achieved.
 	Result RestoreResult
 }
-
-// CopySizer is implemented by a CopyRestorer that can tell from the
-// fingerprint of a source how many bytes a restored copy of it takes, so that
-// a restore check knows before it restores whether the copy fits (V5).
-type CopySizer interface {
-	// CopySize is the size of the copy in bytes; false when f does not say.
-	CopySize(f Fingerprint) (uint64, bool)
-}

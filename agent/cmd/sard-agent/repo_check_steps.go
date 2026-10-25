@@ -44,9 +44,6 @@ func newRepoSteps(c *repoCheck, ctx context.Context, index int) *repoSteps {
 	if c.opts.readData > 0 {
 		r.checks = append(r.checks, hostcheck.CheckRepositoryIntegrity)
 	}
-	if isVerifier(c.deps, c.cfg) {
-		r.checks = append(r.checks, hostcheck.CheckRepositoryReadOnly)
-	}
 	return r
 }
 
@@ -70,7 +67,7 @@ func (r *repoSteps) laterSteps(id string) string {
 	steps := []struct {
 		check string
 		do    func() hostcheck.Line
-	}{{hostcheck.CheckRepositoryID, func() hostcheck.Line { return r.idStep(id) }}, {hostcheck.CheckRepositoryKeys, r.keysStep}, {hostcheck.CheckRepositoryLocks, r.locksStep}, {hostcheck.CheckRepositoryIntegrity, r.integrityStep}, {hostcheck.CheckRepositoryReadOnly, r.readOnlyStep}}
+	}{{hostcheck.CheckRepositoryID, func() hostcheck.Line { return r.idStep(id) }}, {hostcheck.CheckRepositoryKeys, r.keysStep}, {hostcheck.CheckRepositoryLocks, r.locksStep}, {hostcheck.CheckRepositoryIntegrity, r.integrityStep}}
 	for _, s := range steps {
 		if !slices.Contains(r.checks, s.check) {
 			continue
@@ -227,12 +224,11 @@ func (r *repoSteps) locksStep() hostcheck.Line {
 	return hostcheck.LockLine(r.repo.Name, env, locks, gone)
 }
 
-// integrityStep is repository.integrity (Ч7): restic check of a part of the
-// data; a verifier's takes no lock, as its verifications (V5).
+// integrityStep is repository.integrity (Ч7): restic check of a part of the data.
 func (r *repoSteps) integrityStep() hostcheck.Line {
 	var log repoconnect.Log
 	cli := newRestic(r.cfg, r.binary, r.deps, r.repo, runAs(r.who)).WithStderr(&log)
-	err := r.checkData(cli)
+	err := cli.CheckData(r.ctx, r.opts.readData)
 	line := hostcheck.Line{Check: hostcheck.CheckRepositoryIntegrity, Subject: r.repo.Name, Hint: "see " + hostcheck.HelpURL(hostcheck.CheckRepositoryIntegrity)}
 	if err == nil {
 		line.Status, line.Hint = hostcheck.OK, ""
@@ -245,27 +241,6 @@ func (r *repoSteps) integrityStep() hostcheck.Line {
 		// a backup or a restore holds the repository: nothing is wrong with it
 		line.Status = hostcheck.Warn
 		line.Hint = fmt.Sprintf("run `sudo sard-agent repo check %s --read-data %d` again when it has ended", r.repo.Name, r.opts.readData)
-	}
-	return line
-}
-
-func (r *repoSteps) checkData(cli *restic.CLI) error {
-	if isVerifier(r.deps, r.cfg) {
-		_, err := cli.VerifyData(r.ctx, r.opts.readData)
-		return err
-	}
-	return cli.CheckData(r.ctx, r.opts.readData)
-}
-
-// readOnlyStep is repository.readonly (V5, K2): a verifier's credentials
-// should only read. The storage is asked for a lock, which only credentials
-// that can write get, and which restic removes at once.
-func (r *repoSteps) readOnlyStep() hostcheck.Line {
-	line := hostcheck.Line{Check: hostcheck.CheckRepositoryReadOnly, Subject: r.repo.Name, Status: hostcheck.OK, Message: "the credentials only read: the storage refuses a lock"}
-	cli := newRestic(r.cfg, r.binary, r.deps, r.repo, runAs(r.who))
-	if cli.CheckLock(r.ctx) == nil {
-		line.Status, line.Message = hostcheck.Warn, "these storage credentials can write: a verifier needs none that do, and a leak of them would let an attacker spoil the backups"
-		line.Hint = "give the verifier storage credentials that only read, see " + hostcheck.HelpURL(hostcheck.CheckRepositoryReadOnly)
 	}
 	return line
 }
