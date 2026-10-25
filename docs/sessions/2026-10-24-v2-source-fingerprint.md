@@ -163,3 +163,50 @@
 - `exclude.go` (files) написан на шаг раньше своего теста.
 - Шаблоны `--exclude` с переменными окружения restic не раскрывает, плагин тоже.
 - e2e на стенде, сервер, REST, V4, документация и ADR — фаза 3.
+
+## Фаза 3 — сервер, V4, документация, ADR (начата 2026-10-25)
+
+Владелец: «пошёл фазу 3», без ревью фазы 2.
+
+### Что сделано
+
+- Миграция `V202610251200__source_fingerprint.sql`: `snapshots.fingerprint`,
+  `fingerprint_sha256` (64 hex), `total_files`, CHECK «оба или ни одного», ≤ 1 МиБ.
+- `runs/SourceFingerprint.kt`: проверка (оба поля, 64 hex, хеш = SHA-256 байтов, ≤ 1 МиБ,
+  JSON-объект с `facts`) и сводка для консоли — все факты, кроме выборки файлов
+  (`sha256:`, `stat:`), которые лишь считаются (`hidden`).
+- `StepOutput.Backup`: `fingerprint`, `totalFiles`, `warnings`; неверный отпечаток —
+  недействительный результат (шаг FAILED, снимка нет). `ProtoReports`: агент N−1 — без
+  отпечатка, число файлов неизвестно (0 без отпечатка не число).
+- `runs/VolumeDrop.kt` и `StepResults.withWarnings`: падение числа файлов или объёма больше
+  чем на 30 % к последнему целому снимку источника с известными итогами — предупреждение у
+  шага; запуск `succeeded`. Правило общее для плагинов (не только files): у PostgreSQL падение
+  объёма дампа на 30 % — тоже повод посмотреть.
+- `snapshots` получают отпечаток, хеш и число файлов; вывод шага — сводку.
+- REST: `BackupOutput.totalFiles`, `fingerprint` (`Fingerprint`, `FingerprintFact`),
+  `warnings`.
+- V4: `ENQUEUE` — `INSERT … SELECT` отпечатка и хеша из снимка.
+- Тесты: `SourceFingerprintTest`, `VolumeDropTest`, `FingerprintResultCheckTest`,
+  `ProtoReportsTest` (отпечаток и агент N−1), `RunMappingTest`, `ApiSerializationIntegrationTest`,
+  `StepResultsIntegrationTest` (отпечаток в снимке, снимок без отпечатка, неверный хеш,
+  проверка 5 — предупреждение 30 %), `VerificationIntegrationTest` (проверки 6–7: задание с
+  отпечатком и без).
+- Документация: `docs/plugins/postgresql.md` и `files.md` — «Отпечаток базы»/«Отпечаток»,
+  `key_tables`, `control_paths`, выборка, цена на источнике. ADR
+  `docs/adr/00XX-draft-source-fingerprint.md`.
+
+### Чего не проверил (окружение)
+
+Maven Central в этой сессии сначала отвечал 404/429 на зависимости ktlint и detekt (их не
+было в кэше Gradle), а после моего `--refresh-dependencies` — 429 и на остальное; затем
+Gradle не нашёл и плагин mutflow. Поэтому:
+
+- `./gradlew :server:test` по новым тестам — **не запускался до конца**: последний успешный
+  прогон — только `SourceFingerprintTest` и `VolumeDropTest` (зелёные, до доработки
+  `factsOf`); `compileTestKotlin` всего сервера — **проходит**.
+- spotless (ktlint) и detekt — **не запускались**; строки > 140 символов поправил руками.
+- mutflow, JaCoCo, CRAP сервера — не запускались.
+- `make openapi` (схема web) и e2e (нужна сборка сервера) — не запускались.
+
+Проверка 7 стратегии (e2e на стенде) не выполнена; проверки 5–6 есть как интеграционные
+тесты сервера, но не прогнаны.

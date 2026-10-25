@@ -367,6 +367,9 @@ internal object RunViews {
                     it.path("addedBytes").asLong(),
                     it.path("repositoryId").asString(),
                     it.path("partial").asBoolean(false),
+                    totalFiles = it.path("totalFiles").takeIf(JsonNode::isNumber)?.asLong(),
+                    fingerprint = it.path("fingerprint").takeIf(JsonNode::isObject)?.let(FingerprintSummary::of),
+                    warnings = it.path("warnings").let { w -> (0 until w.size()).map { i -> w.get(i).asString() } },
                 )
             }
 }

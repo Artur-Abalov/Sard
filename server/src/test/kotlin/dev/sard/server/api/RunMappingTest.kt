@@ -5,6 +5,8 @@ package dev.sard.server.api
 
 import dev.sard.server.runs.Action
 import dev.sard.server.runs.BackupResult
+import dev.sard.server.runs.FingerprintSummary
+import dev.sard.server.runs.FingerprintFact as DomainFact
 import dev.sard.server.runs.RestoreInfo
 import dev.sard.server.runs.RestoreResult
 import dev.sard.server.runs.RunState
@@ -51,7 +53,17 @@ class RunMappingTest {
         finishedAt = null,
         filesProcessed = 3,
         filesTotal = 4,
-        backup = BackupResult("snap", 10, 5, "repo", partial = true),
+        backup =
+            BackupResult(
+                "snap",
+                10,
+                5,
+                "repo",
+                partial = true,
+                totalFiles = 7,
+                fingerprint = FingerprintSummary("f".repeat(64), 1, "postgresql", listOf(DomainFact("tables", "exact", "2")), 0),
+                warnings = listOf("w"),
+            ),
     )
 
     private fun run(
@@ -110,7 +122,11 @@ class RunMappingTest {
             listOf(1L, 2L, 3L, 4L),
             listOf(mapped.bytesProcessed, mapped.bytesTotal, mapped.filesProcessed, mapped.filesTotal),
         )
-        assertEquals(BackupOutput("snap", 10, 5, "repo", partial = true, restorable = false), mapped.backup)
+        val fingerprint = Fingerprint("f".repeat(64), 1, "postgresql", listOf(FingerprintFact("tables", "exact", "2")), 0)
+        assertEquals(
+            BackupOutput("snap", 10, 5, "repo", partial = true, restorable = false, 7, fingerprint, listOf("w")),
+            mapped.backup,
+        )
         assertEquals(listOf("files", "qa", "m"), listOf(mapped.plugin, mapped.repositoryName, mapped.message))
         assertEquals(
             listOf(AT, AT, AT, null),

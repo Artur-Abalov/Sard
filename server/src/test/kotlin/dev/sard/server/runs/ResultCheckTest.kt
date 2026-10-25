@@ -227,3 +227,57 @@ class ResultCheckTest {
         assertEquals(expected, stored)
     }
 }
+
+private fun hexOf(bytes: ByteArray) =
+    java.security.MessageDigest
+        .getInstance("SHA-256")
+        .digest(bytes)
+        .joinToString("") { "%02x".format(it) }
+
+private val FP_BYTES = """{"facts":[{"name":"tables","rule":"exact","value":"3"}],"format":1,"plugin":"postgresql"}""".toByteArray()
+
+/** The fingerprint a backup brings is checked with it (V2): a hash that is not that of the bytes fails the step. */
+@MutFlowTest
+class FingerprintResultCheckTest {
+    private fun check(output: StepOutput.Backup) =
+        MutFlow.underTest { ResultCheck.of(Action.BACKUP, StepReport(StepState.SUCCEEDED, null, output)) }
+
+    @Test
+    fun `a backup with its fingerprint and number of files is kept`() {
+        val backup = BACKUP.copy(fingerprint = SourceFingerprint(FP_BYTES, hexOf(FP_BYTES)), totalFiles = 1)
+
+        assertEquals(Verdict(StepOutcome(StepState.SUCCEEDED, null), backup, invalid = null), check(backup))
+    }
+
+    @Test
+    fun `a fingerprint whose hash is not that of its bytes is an invalid result`() {
+        val backup = BACKUP.copy(fingerprint = SourceFingerprint(FP_BYTES, "0".repeat(64)), totalFiles = 1)
+
+        val problem = "a fingerprint whose hash is not that of its bytes"
+        assertEquals(Verdict(StepOutcome(StepState.FAILED, "invalid result: $problem"), null, problem), check(backup))
+    }
+
+    @Test
+    fun `a negative number of files is an invalid result`() {
+        assertEquals("a backup output with negative sizes", check(BACKUP.copy(totalFiles = -1)).invalid)
+    }
+
+    @Test
+    fun `the stored output has the summary of the fingerprint, the number of files and the warnings`() {
+        val backup =
+            BACKUP.copy(
+                fingerprint = SourceFingerprint(FP_BYTES, hexOf(FP_BYTES)),
+                totalFiles = 1,
+                warnings = listOf("w"),
+            )
+        val json = MutFlow.underTest { backup.json() }
+
+        val expected =
+            """{"kind":"backup","snapshotId":"4a3b2c1d","totalBytes":1000,"addedBytes":100,"repositoryId":"$REPOSITORY_ID",""" +
+                """"partial":false,"totalFiles":1,"fingerprint":{"sha256":"${hexOf(FP_BYTES)}","format":1,""" +
+                """"plugin":"postgresql","facts":[{"name":"tables","rule":"exact","value":"3"}],"hidden":0},"warnings":["w"]}"""
+        assertEquals(expected, json)
+        assertEquals(SnapshotTotals(1, 1_000), backup.totals())
+        assertEquals(null, BACKUP.totals())
+    }
+}
