@@ -353,3 +353,9 @@ self-hosted раннеры (вне объёма). Не сделано: собр�
   `release-cosign.sh` проходил проверку образов с пустым списком — исправлено,
   `test-release-cosign.sh`); один — вопрос владельцу: считать ли `t.TempDir()`
   файловой системой хоста для тестов модуля tools (`crap` и `vulngate`).
+- `server`: `DeployPostgresTest` (DB1) нашёл `postgres:18-alpine` в образцах
+  `test-check-pins.sh` — образцы переведены на образ redis, обновление
+  PostgreSQL их больше не ломает.
+- Третий круг CodeRabbit: `tags-ignore:` без `branches` считался запуском
+  только по тегам, хотя такой workflow запускает любой другой тег, —
+  исправлено, тест в `test-check-workflow-secrets.sh`.

@@ -56,7 +56,7 @@ for file in "$DIR"/*.yml "$DIR"/*.yaml; do
     in_on && /^[^ \t#]/ { in_on = 0 }
     in_on && /^  [A-Za-z_]+:/ { name = $1; sub(/:.*/, "", name); trigger(name); current = name }
     in_on && /^  [^ \t#A-Za-z_]/ { report(FNR, "a trigger key the checker cannot read: cannot check it") }
-    in_on && current == "push" && /^    tags(-ignore)?:/ { push_tags = 1 }
+    in_on && current == "push" && /^    tags:/ { push_tags = 1 }
     in_on && current == "push" && /^    branches(-ignore)?:/ { push_branches = 1 }
     /^jobs:/ { in_jobs = 1; next }
     in_jobs && /^  [A-Za-z0-9_-]+:[ \t]*$/ { close_job() }

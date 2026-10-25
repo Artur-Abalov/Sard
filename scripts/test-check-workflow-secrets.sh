@@ -34,6 +34,7 @@ expect 1 "signing key without the environment" "$RELEASE_ON${SIGN_JOB//    envir
 expect 1 "signing key in another environment" "$RELEASE_ON${SIGN_JOB//environment: release/environment: staging}"
 expect 1 "signing key in a workflow pull requests run" $'on:\n  pull_request:\n  push:\n    tags: ["v*"]\n'"$SIGN_JOB"
 expect 1 "signing key in a workflow pushes to branches run" $'on:\n  push:\n    branches: [main]\n    tags: ["v*"]\n'"$SIGN_JOB"
+expect 1 "signing key in a workflow every tag but some runs" $'on:\n  push:\n    tags-ignore: ["x*"]\n'"$SIGN_JOB"
 expect 1 "signing key on workflow_dispatch" $'on:\n  workflow_dispatch:\n'"$SIGN_JOB"
 expect 1 "the environment of another job" "$RELEASE_ON"$'jobs:\n  a:\n    environment: release\n    steps: []\n  b:\n    steps:\n      - run: x\n        env:\n          K: ${{ secrets.COSIGN_PASSWORD }}\n'
 expect 1 "any secret in a pull request workflow" $'on: [pull_request]\njobs:\n  a:\n    steps:\n      - run: x\n        env:\n          T: ${{ secrets.QODANA_TOKEN }}\n'
