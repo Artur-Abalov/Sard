@@ -359,3 +359,6 @@ self-hosted раннеры (вне объёма). Не сделано: собр�
 - Третий круг CodeRabbit: `tags-ignore:` без `branches` считался запуском
   только по тегам, хотя такой workflow запускает любой другой тег, —
   исправлено, тест в `test-check-workflow-secrets.sh`.
+- Владелец создал ключ cosign и положил секреты в окружение `release`;
+  `deploy/release/cosign.pub` (ECDSA P-256) закоммичен, отпечаток — в
+  `docs/release.md`.

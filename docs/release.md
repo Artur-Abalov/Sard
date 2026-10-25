@@ -72,7 +72,12 @@ cosign — образы `sard-server`, `sard-agent` и аттестации их
 | | |
 |---|---|
 | Файл | `deploy/release/cosign.pub` |
-| С | дата первого релиза с ним (заполняет владелец вместе с ключом) |
+| Ключ | ECDSA P-256 |
+| SHA-256 ключа (DER) | `267e03ec0973b7a02868eb4a42fee8c8dba7b351b87a803925c164a7b0ca9dae` |
+| С | 2026-10-25 |
+
+Отпечаток считает
+`openssl pkey -pubin -in cosign.pub -outform DER | sha256sum`.
 
 ## Проверить релиз
 
