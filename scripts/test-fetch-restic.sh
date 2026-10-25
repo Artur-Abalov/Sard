@@ -121,8 +121,13 @@ update() { # description, want exit
   (
     # shellcheck source=fetch-restic.sh
     . "$HERE/fetch-restic.sh"
-    ROOT="$WORK/root" VERSION_FILE="$pin_file" VERSION=9.9.9 BASE="$REL"
-    RESTIC_SIGNING_KEY="$WORK/restic.asc" DEST="$WORK/root/.bin/restic/9.9.9" DL="$WORK/root/.bin/restic/9.9.9/download"
+    ROOT="$WORK/root"
+    VERSION_FILE="$pin_file"
+    VERSION=9.9.9
+    RESTIC_SIGNING_KEY="$WORK/restic.asc"
+    DEST="$ROOT/.bin/restic/9.9.9"
+    DL="$DEST/download"
+    BASE="$REL"
     fetch() { cp "$1" "$2"; }
     update_pins
   ) >"$WORK/out" 2>&1 || rc=1

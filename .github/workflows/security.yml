@@ -105,9 +105,9 @@ jobs:
         run: |
           tag="$(gh release list --limit 1 --json tagName --jq '.[0].tagName')"
           version="$(scripts/release-version.sh image "$tag")"
-          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          . deploy/release/identity.env
           make tools
-          scripts/vuln-scan.sh image "ghcr.io/$owner/sard-server:$version" "ghcr.io/$owner/sard-agent:$version-pg18"
+          scripts/vuln-scan.sh image "$SARD_REGISTRY_SERVER:$version" "$SARD_REGISTRY_AGENT:$version-pg18"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

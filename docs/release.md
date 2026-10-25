@@ -9,7 +9,12 @@
 сверяет суммы, собирает jar сервера один раз, проверяет подделки, установку и
 обновление deb (Debian, Ubuntu) и rpm (Rocky 9) и e2e на образе
 из этого jar и этих пакетов, подписывает `SHA256SUMS` ключом релизов и
-публикует GitHub Release и образ из того же jar (ADR 0045).
+публикует GitHub Release и образ из того же jar (ADR 0045). С SC1 (ADR
+00XX-draft-supply-chain) к каждому релизу прилагаются SBOM (CycloneDX)
+пакетов и образов и происхождение сборки, образы подписываются cosign, а
+файлы установки сервера — minisign через `SHA256SUMS.server`; окружение
+`release` подтверждается дважды: `sign` (пакеты) и `sign-server` (образы и
+файлы сервера).
 
 ## Схема версий
 
@@ -47,7 +52,13 @@ v0.1.0-beta.1 → v0.1.0-beta.2 → … → v0.1.0-rc.1 → v0.1.0-rc.2 → … 
 `0.0.0~dev.v0.0.1.rc1`, ниже любой `0.1.0~…`) проверяйте по `SHA256SUMS`,
 переименовав скачанные файлы обратно (`.dev.` → `~dev.`).
 
-## Ключ релизов
+## Ключи релизов
+
+Имена образов и пути ключей — в одном месте, `deploy/release/identity.env`
+(D24); `scripts/check-identity.sh` сверяет с ним копии в compose-файле и
+`.env.example`, а `release.yml` до сборки проверяет, что оба ключа на месте.
+
+minisign — `SHA256SUMS` пакетов агента и `SHA256SUMS.server`:
 
 | | |
 |---|---|
@@ -55,6 +66,13 @@ v0.1.0-beta.1 → v0.1.0-beta.2 → … → v0.1.0-rc.1 → v0.1.0-rc.2 → … 
 | ID ключа | `DF5D5B6DB257DBFA` |
 | Публичный ключ | `RWT621eybVtd38CL7B33xZrcc8ArYiPt3GlKXyJuk9ZQzDnoUV+kLi2d` |
 | С | 2026-10-04 |
+
+cosign — образы `sard-server`, `sard-agent` и аттестации их SBOM:
+
+| | |
+|---|---|
+| Файл | `deploy/release/cosign.pub` |
+| С | дата первого релиза с ним (заполняет владелец вместе с ключом) |
 
 ## Проверить релиз
 
@@ -67,7 +85,12 @@ sha256sum -c --ignore-missing SHA256SUMS         # скачанные файлы
 ```
 
 Полная проверка каталога релиза (все файлы, версия в подписи и манифесте):
-`scripts/release-verify.sh <каталог> vX.Y.Z`.
+`scripts/release-verify.sh <каталог> vX.Y.Z`; файлов сервера —
+`scripts/release-verify-server.sh <каталог> vX.Y.Z`; образов —
+`scripts/release-cosign.sh verify images.json`. Что запускает оператор —
+`docs/operator/10-security.md`, «Проверка релиза», и
+`docs/operator/11-offline.md`; `release.yml` выполняет эти блоки дословно
+(`verify-quickstart`, `verify-offline`, без сети).
 
 Сборка воспроизводима: `git checkout vX.Y.Z && make package VERSION=vX.Y.Z`
 даёт тот же `SHA256SUMS` при тех же версиях Go и restic.
@@ -109,9 +132,26 @@ curl -fsSO http://sard.example.com:8080/downloads/agent/sard-agent_vX.Y.Z_amd64.
    collaborators» для PR из форков; права `GITHUB_TOKEN` по умолчанию —
    только чтение.
 6. Удалить `sard-release.key` с машины, если копия в хранилище проверена.
+7. Ключ cosign (SC1), так же на своей машине:
+   `cosign generate-key-pair` — с паролем; получаются `cosign.key` и
+   `cosign.pub`. Копию `cosign.key` и пароль — в офлайн-хранилище.
+   `cosign.pub` — в `deploy/release/`, дата — в таблицу выше, коммит через
+   PR (`release.yml` без него не начнёт сборку). В окружение `release`:
+   `COSIGN_PRIVATE_KEY` — содержимое `cosign.key` целиком,
+   `COSIGN_PASSWORD` — пароль. Затем удалить `cosign.key` с машины.
+8. Renovate: установить приложение GitHub Renovate на репозиторий
+   (конфигурация — `.github/renovate.json5`); первый PR — dependency
+   dashboard. Права workflow `renovate-pins.yml` не требуют секретов.
+9. Подтверждение релиза — дважды: задача `sign` (пакеты агента) и
+   `sign-server` (образы и файлы сервера, после сборки образов). Обе видят
+   ключи; остальные задачи — нет (`scripts/check-workflow-secrets.sh`).
 
 ## Смена ключа
 
-Утечка или потеря ключа: новый ключ по шагам 1–3, новый
-`deploy/release/sard-release.pub`, запись в `README.md` и здесь с датой смены.
-До автообновления (этап 2) агенты ключ не знают, поэтому смена их не ломает.
+Утечка или потеря ключа: новый ключ по шагам 1–3 (minisign) или 7 (cosign),
+новый `deploy/release/sard-release.pub` или `cosign.pub`, запись в `README.md`
+и здесь с датой смены. До автообновления (этап 2) агенты ключ не знают,
+поэтому смена их не ломает. Старые релизы остаются подписаны старым ключом:
+храните его публичную часть рядом с датой смены, чтобы их можно было
+проверить. Подписи cosign прежних образов после утечки ключа не отзываются
+сами — перевыпустите релиз и сообщите в `SECURITY.md`-порядке.

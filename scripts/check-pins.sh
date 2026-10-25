@@ -26,7 +26,7 @@ kind() {
   case "$1" in
     docs/* | scripts/check-pins.sh | scripts/test-check-pins.sh) return ;;
     .github/workflows/*.yml | .github/workflows/*.yaml | .github/actions/*.yml | .github/actions/*.yaml) echo workflow ;;
-    *Dockerfile | *Dockerfile.* | *.Dockerfile) echo dockerfile ;;
+    *Dockerfile | *Dockerfile.*) echo dockerfile ;;
     *compose*.yml | *compose*.yaml) echo compose ;;
     *.env | *.env.example) echo env ;;
   esac

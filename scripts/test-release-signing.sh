@@ -94,4 +94,60 @@ refuses "$d" "a file not covered by SHA256SUMS" "does not list exactly"
 d="$(fresh nosig)"
 rm "$d/SHA256SUMS.minisig"
 refuses "$d" "no signature" "SHA256SUMS.minisig missing"
+# The server assets (SC1): SHA256SUMS.server over the offline archives, the
+# compose file, images.json and the image SBOMs, signed by the same key with
+# "sard-server <version>" and checked by release-verify-server.sh.
+server_fresh() { # name: a fake asset directory, signed by the test key
+  local d="$WORK/server-$1"
+  mkdir -p "$d"
+  echo archive >"$d/sard-${VERSION#v}-images-linux-amd64.tar.gz"
+  echo compose >"$d/docker-compose.yml"
+  echo '{"images":[]}' >"$d/images.json"
+  (cd "$d" && sha256sum -- * >SHA256SUMS.server)
+  server_sign "$d" release "$VERSION"
+  echo "$d"
+}
+server_sign() { # dir, key name, version
+  MINISIGN_SECRET_KEY="$(cat "$WORK/$2.key")" MINISIGN_PASSWORD="test-$2" \
+    "$ROOT/scripts/release-sign.sh" "$1" "$3" SHA256SUMS.server >/dev/null 2>&1
+}
+server_accepts() {
+  "$ROOT/scripts/release-verify-server.sh" "$1" "$VERSION" "$WORK/release.pub" >/dev/null 2>&1 || die "$2: refused"
+  echo "ok: $2 — accepted"
+}
+server_refuses() {
+  local out
+  ! out="$("$ROOT/scripts/release-verify-server.sh" "$1" "$VERSION" "$WORK/release.pub" 2>&1)" || die "$2: accepted"
+  grep -qF -- "$3" <<<"$out" || die "$2: refused for another reason: $out"
+  echo "ok: $2 — refused ($3)"
+}
+
+server_accepts "$(server_fresh good)" "the server assets as built"
+
+d="$(server_fresh byte)"
+echo tampered >>"$d/docker-compose.yml"
+server_refuses "$d" "docker-compose.yml changed" "a file does not match"
+
+d="$(server_fresh foreign)"
+server_sign "$d" foreign "$VERSION"
+server_refuses "$d" "SHA256SUMS.server signed by a foreign key" "signature does not verify"
+
+d="$(server_fresh version)"
+server_sign "$d" release "v0.0.0-other"
+server_refuses "$d" "SHA256SUMS.server signed for another version" "expected \"sard-server $VERSION\""
+
+d="$(server_fresh agent)"
+cp "$d/SHA256SUMS.server" "$d/SHA256SUMS"
+sign "$d" release "$VERSION"
+mv "$d/SHA256SUMS.minisig" "$d/SHA256SUMS.server.minisig" && rm "$d/SHA256SUMS"
+server_refuses "$d" "the agent's signature over the same sums" "expected \"sard-server $VERSION\""
+
+d="$(server_fresh extra)"
+echo extra >"$d/extra.json"
+server_refuses "$d" "a file not covered by SHA256SUMS.server" "does not list exactly"
+
+d="$(server_fresh nosig)"
+rm "$d/SHA256SUMS.server.minisig"
+server_refuses "$d" "no signature" "SHA256SUMS.server.minisig missing"
+
 echo "test-release-signing: all checks passed"

@@ -225,8 +225,10 @@ check-pins:
 	./scripts/test-check-pins.sh
 	./scripts/test-lib-test-image.sh
 	./scripts/test-check-workflow-secrets.sh
+	./scripts/test-check-identity.sh
 	./scripts/check-pins.sh
 	./scripts/check-workflow-secrets.sh
+	./scripts/check-identity.sh
 
 lint-proto: tools
 	cd proto && $(BIN)/buf lint
