@@ -83,10 +83,10 @@ expect_file_rc 1 "name.Dockerfile" test/host.Dockerfile "FROM debian:12"
 expect_file_rc 0 "an ARG FROM never uses" "$D" $'ARG VERSION=1.2\nFROM scratch'
 
 C=deploy/docker-compose.yml
-expect_file_rc 1 "compose image by tag" "$C" "    image: postgres:18-alpine"
-expect_file_rc 0 "compose image by digest" "$C" "    image: postgres:18-alpine@$DIGEST"
-expect_file_rc 0 "compose image, default by digest" "$C" "    image: \${SARD_POSTGRES_IMAGE:-postgres:18.6-alpine@$DIGEST}"
-expect_file_rc 1 "compose image, default by tag" "$C" "    image: \${SARD_POSTGRES_IMAGE:-postgres:18.6-alpine}"
+expect_file_rc 1 "compose image by tag" "$C" "    image: redis:8-alpine"
+expect_file_rc 0 "compose image by digest" "$C" "    image: redis:8-alpine@$DIGEST"
+expect_file_rc 0 "compose image, default by digest" "$C" "    image: \${SARD_REDIS_IMAGE:-redis:8.2-alpine@$DIGEST}"
+expect_file_rc 1 "compose image, default by tag" "$C" "    image: \${SARD_REDIS_IMAGE:-redis:8.2-alpine}"
 expect_file_rc 0 "compose image, reason on the line above" "$C" \
   $'    # allow-unpinned: our release image, signed with cosign\n    image: ghcr.io/o/sard-server:${SARD_VERSION}'
 expect_file_rc 0 "compose image, reason on the same line" "$C" \
@@ -97,8 +97,8 @@ expect_file_rc 1 "compose image, reason two lines above" "$C" \
 expect_file_rc 1 "compose.yaml" compose.yaml "    image: redis:8"
 
 E=deploy/postgres.env
-expect_file_rc 1 "env image by tag" "$E" "SARD_POSTGRES_IMAGE=postgres:18.6-alpine"
-expect_file_rc 0 "env image by digest" "$E" "SARD_POSTGRES_IMAGE=postgres:18.6-alpine@$DIGEST"
+expect_file_rc 1 "env image by tag" "$E" "SARD_REDIS_IMAGE=redis:8.2-alpine"
+expect_file_rc 0 "env image by digest" "$E" "SARD_REDIS_IMAGE=redis:8.2-alpine@$DIGEST"
 expect_file_rc 0 "env, not an image" "$E" 'SARD_POSTGRES_INITDB_ARGS="--data-checksums"'
 expect_file_rc 1 "env.example image by tag" deploy/.env.example "SARD_IMAGE=ghcr.io/o/sard-server"
 expect_file_rc 1 "test images by tag" test/images.env "TEST_IMAGE_DEBIAN_12=debian:12"
