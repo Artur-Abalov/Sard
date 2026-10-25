@@ -6,7 +6,6 @@ package dev.sard.server.api
 import dev.sard.server.runs.Action
 import dev.sard.server.runs.BackupResult
 import dev.sard.server.runs.FingerprintSummary
-import dev.sard.server.runs.FingerprintFact as DomainFact
 import dev.sard.server.runs.RestoreInfo
 import dev.sard.server.runs.RestoreResult
 import dev.sard.server.runs.RunState
@@ -22,6 +21,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import dev.sard.server.runs.FingerprintFact as DomainFact
 
 private val AT = Instant.parse("2026-10-01T12:00:00Z")
 private val ID = UUID.fromString("0192f7a0-0000-7000-8000-000000000001")

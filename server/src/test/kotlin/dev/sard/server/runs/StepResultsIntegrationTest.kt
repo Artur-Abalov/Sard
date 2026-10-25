@@ -405,7 +405,10 @@ class StepResultsIntegrationTest(
         bytes: Long,
     ): StepReport {
         val fingerprint = """{"facts":[{"name":"files","rule":"exact","value":"$files"}],"format":1,"plugin":"files"}"""
-        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(fingerprint.toByteArray())
+        val digest =
+            java.security.MessageDigest
+                .getInstance("SHA-256")
+                .digest(fingerprint.toByteArray())
         val sha256 = digest.joinToString("") { "%02x".format(it) }
         val backup =
             StepOutput.Backup(
@@ -424,7 +427,12 @@ class StepResultsIntegrationTest(
         sourceId: UUID,
         report: StepReport,
     ): UUID {
-        val step = runs.start(tenant.id, sourceId).steps.single().id
+        val step =
+            runs
+                .start(tenant.id, sourceId)
+                .steps
+                .single()
+                .id
         assertTrue(steps.claim(tenant.id, step))
         assertTrue(steps.accepted(tenant.id, step, "accepted"))
         clock.now = clock.now + LATER
@@ -483,14 +491,31 @@ class StepResultsIntegrationTest(
         val steady = backedUp(source.id, fingerprinted("fp-b", 900, 3_800))
         val fell = backedUp(source.id, fingerprinted("fp-c", 100, 3_700))
 
-        assertEquals(emptyList(), runs.get(tenant.id, runOf(steady))!!.steps.single().backup!!.warnings)
+        assertEquals(
+            emptyList(),
+            runs
+                .get(tenant.id, runOf(steady))!!
+                .steps
+                .single()
+                .backup!!
+                .warnings,
+        )
         val view = runs.get(tenant.id, runOf(fell))!!
         assertEquals(RunState.SUCCEEDED, view.status)
         assertEquals(
             listOf("the number of files fell by 88% since the last snapshot (900 → 100)"),
-            view.steps.single().backup!!.warnings,
+            view.steps
+                .single()
+                .backup!!
+                .warnings,
         )
-        assertEquals(100L, view.steps.single().backup!!.totalFiles)
+        assertEquals(
+            100L,
+            view.steps
+                .single()
+                .backup!!
+                .totalFiles,
+        )
     }
 
     private fun runOf(step: UUID): UUID = row("run_steps", step)["run_id"] as UUID

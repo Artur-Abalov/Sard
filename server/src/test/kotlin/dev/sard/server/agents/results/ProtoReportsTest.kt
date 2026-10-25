@@ -76,7 +76,12 @@ class ProtoReportsTest {
                 .setFingerprint(ByteString.copyFrom(bytes))
                 .setFingerprintSha256("f".repeat(64))
                 .setTotalFiles(4)
-        val older = BackupOutput.newBuilder().setSnapshotId("s").setTotalBytes(10).setRepositoryId("r")
+        val older =
+            BackupOutput
+                .newBuilder()
+                .setSnapshotId("s")
+                .setTotalBytes(10)
+                .setRepositoryId("r")
 
         val expected =
             StepOutput.Backup("s", 10, 0, "r", fingerprint = SourceFingerprint(bytes, "f".repeat(64)), totalFiles = 4)

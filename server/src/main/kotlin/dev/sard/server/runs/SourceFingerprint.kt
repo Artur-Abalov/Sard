@@ -46,8 +46,10 @@ class SourceFingerprint(
             null
         }
 
-    override fun equals(other: Any?): Boolean =
-        other is SourceFingerprint && sha256 == other.sha256 && bytes.contentEquals(other.bytes)
+    override fun equals(other: Any?): Boolean {
+        if (other !is SourceFingerprint) return false
+        return sha256 == other.sha256 && bytes.contentEquals(other.bytes)
+    }
 
     override fun hashCode(): Int = sha256.hashCode()
 

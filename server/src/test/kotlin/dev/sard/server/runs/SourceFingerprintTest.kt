@@ -19,8 +19,10 @@ private const val CANONICAL =
         """{"name":"stat:/srv/www/a.txt","rule":"info","value":"5 2026-10-25T03:00:00Z"}],""" +
         """"format":1,"plugin":"files"}"""
 
-private fun sha256(bytes: ByteArray) =
-    MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+private fun sha256(bytes: ByteArray): String {
+    val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+    return digest.joinToString("") { "%02x".format(it) }
+}
 
 private const val WHOLE = "a fingerprint without its hash or a hash without its fingerprint"
 private const val NOT_ONE = "a fingerprint that is not one"
@@ -110,6 +112,9 @@ class SourceFingerprintTest {
     }
 }
 
-private val MAPPER = tools.jackson.databind.json.JsonMapper.builder().build()
+private val MAPPER =
+    tools.jackson.databind.json.JsonMapper
+        .builder()
+        .build()
 
 private fun jsonOf(fields: Map<String, Any?>) = MAPPER.readTree(MAPPER.writeValueAsString(fields))
