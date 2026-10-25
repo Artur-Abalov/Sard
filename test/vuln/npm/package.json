@@ -1,0 +1,8 @@
+{
+  "name": "sard-vuln-fixture",
+  "private": true,
+  "description": "A known vulnerable version on purpose (lodash 4.17.15): scripts/test-vuln-scan.sh checks that grype finds it and vulngate blocks it. Never installed or shipped.",
+  "dependencies": {
+    "lodash": "4.17.15"
+  }
+}

@@ -4,6 +4,7 @@
 package dev.sard.server.persistence
 
 import dev.sard.server.EmbeddedPostgres
+import dev.sard.server.TestImages
 import dev.sard.server.onboarding.Database
 import dev.sard.server.onboarding.Installation
 import dev.sard.server.onboarding.RunningServer
@@ -33,7 +34,10 @@ private val imageDefaults: PostgreSQLContainer by lazy {
 private val newInstallation: PostgreSQLContainer by lazy { EmbeddedPostgres.container().also { it.start() } }
 
 /** External databases: the oldest supported major, and one below it. */
-private fun external(major: Int) = PostgreSQLContainer(DockerImageName.parse("postgres:$major")).also { it.start() }
+private fun external(major: Int): PostgreSQLContainer {
+    val image = DockerImageName.parse(TestImages.pinned("postgres:$major")).asCompatibleSubstituteFor("postgres")
+    return PostgreSQLContainer(image).also { it.start() }
+}
 
 private fun PostgreSQLContainer.settings(
     user: String = username,

@@ -31,6 +31,29 @@
 | golang.org/x/tools/cmd/deadcode | v0.50.0 | BSD-3-Clause | мёртвый код Go: функции, недостижимые из `main` и тестов (ADR 00XX-draft-dead-code) |
 | github.com/goreleaser/nfpm/v2 | v2.47.0 | MIT | сборка deb и rpm агента (`make package`); запускается, в пакеты не попадает |
 
+`tools/cmd/vulngate` (порог сканирования уязвимостей, SC1) — свой код в том же модуле, только stdlib.
+
+## Инструменты CI (`tools/ci/go.mod`, отдельный модуль; в бинарники не попадают)
+
+Отдельный модуль: actionlint требует версию `go.yaml.in/yaml/v4`, несовместимую с зависимостями `tools/go.mod`.
+
+| Инструмент | Версия | Лицензия | Зачем |
+|---|---|---|---|
+| github.com/rhysd/actionlint | v1.7.12 | MIT | проверка workflow `.github/workflows` (`make lint-workflows`, SC1) |
+| golang.org/x/vuln/cmd/govulncheck | v1.9.0 | BSD-3-Clause | уязвимости, которые вызывает Go-код агента, CLI, SDK и proto (`scripts/vuln-scan.sh go`, SC1) |
+
+## Образы инструментов CI (`tools/images.env`, по digest)
+
+Запускаются в контейнере, в сборку и в пакеты не попадают.
+
+| Образ | Версия | Лицензия | Зачем |
+|---|---|---|---|
+| anchore/grype | v0.121.0 | Apache-2.0 | уязвимости в lock-файлах сервера и web и в образах релиза (`scripts/vuln-scan.sh`, SC1) |
+| anchore/syft | v1.55.0 | Apache-2.0 | SBOM образов и пакетов релиза (SC1) |
+| ghcr.io/zizmorcore/zizmor | 1.31.1 | MIT | анализ безопасности workflow (`make lint-workflows`, SC1) |
+
+Обновления зависимостей приходят PR от Renovate (`.github/renovate.json5`, приложение GitHub, в репозиторий не входит).
+
 ## Инструменты релиза (из apt раннера, не в `tools/go.mod`)
 
 | Инструмент | Версия | Лицензия | Зачем |
@@ -49,40 +72,40 @@
 
 ## Сервер (Kotlin, Gradle)
 
-Версии без явного номера управляются BOM Spring Boot 4.1.1. Лицензии — из POM на Maven Central.
+Версии без явного номера управляются BOM Spring Boot 4.1.2. Лицензии — из POM на Maven Central.
 
 | Зависимость | Версия | Лицензия | Где | Зачем |
 |---|---|---|---|---|
 | Kotlin stdlib, kotlin-reflect | 2.4.20 | Apache-2.0 | runtime | язык; reflect нужен Spring/Jackson |
-| spring-boot-starter-webmvc (Spring Framework 7, Tomcat 11) | 4.1.1 | Apache-2.0 | runtime | REST `/api/v1/status` |
-| spring-boot-starter-actuator | 4.1.1 | Apache-2.0 | runtime | `/actuator/health` |
-| io.micrometer:micrometer-registry-prometheus (+ io.prometheus:prometheus-metrics-* транзитивно) | 1.17.1 (BOM Spring Boot 4.1.1) | Apache-2.0 | runtime | текстовая экспозиция Prometheus 0.0.4 для слушателя метрик (`GET /metrics` на `sard.metrics.*`, не на порту консоли): метрики `sard_`, `jvm_`, `process_`; HTTP-сервер слушателя — `com.sun.net.httpserver` из JDK, без новых зависимостей (H1, фаза 3) |
-| spring-boot-starter-data-jpa (Hibernate ORM 7.4, jakarta.persistence-api 3.2) | 4.1.1 | Apache-2.0; persistence-api — EPL-2.0 **или** EDL-1.0 (BSD-3), используем EDL | runtime | таблица `agents` |
-| spring-boot-starter-flyway + flyway-database-postgresql | 4.1.1 / 12.4.0 | Apache-2.0 | runtime | миграции |
-| org.postgresql:postgresql | 42.7.13 | BSD-2-Clause | runtime; в коде — только PGConnection.alterUserPassword (пароль роли sard_self, SCRAM на стороне клиента) | JDBC-драйвер |
+| spring-boot-starter-webmvc (Spring Framework 7, Tomcat 11) | 4.1.2 | Apache-2.0 | runtime | REST `/api/v1/status` |
+| spring-boot-starter-actuator | 4.1.2 | Apache-2.0 | runtime | `/actuator/health` |
+| io.micrometer:micrometer-registry-prometheus (+ io.prometheus:prometheus-metrics-* транзитивно) | 1.17.2 (BOM Spring Boot 4.1.2) | Apache-2.0 | runtime | текстовая экспозиция Prometheus 0.0.4 для слушателя метрик (`GET /metrics` на `sard.metrics.*`, не на порту консоли): метрики `sard_`, `jvm_`, `process_`; HTTP-сервер слушателя — `com.sun.net.httpserver` из JDK, без новых зависимостей (H1, фаза 3) |
+| spring-boot-starter-data-jpa (Hibernate ORM 7.4, jakarta.persistence-api 3.2) | 4.1.2 | Apache-2.0; persistence-api — EPL-2.0 **или** EDL-1.0 (BSD-3), используем EDL | runtime | таблица `agents` |
+| spring-boot-starter-flyway + flyway-database-postgresql | 4.1.2 / 12.4.0 | Apache-2.0 | runtime | миграции |
+| org.postgresql:postgresql | 42.7.14 | BSD-2-Clause | runtime; в коде — только PGConnection.alterUserPassword (пароль роли sard_self, SCRAM на стороне клиента) | JDBC-драйвер |
 | org.bouncycastle:bcpkix-jdk18on (+ bcprov-jdk18on, bcutil-jdk18on транзитивно) | 1.86 | Bouncy Castle Licence (MIT) | runtime | локальный CA: разбор CSR агента, выпуск X.509 (у JDK нет публичного API для этого) — ADR 0014 |
-| org.springframework.security:spring-security-crypto | 7.1.1 (BOM Spring Boot 4.1.1) | Apache-2.0 | runtime; в коде — только `Argon2PasswordEncoder` (хэш пароля администратора, m=19456 КиБ, t=2, p=1; использует bcprov, уже на classpath) | хэш Argon2id пароля администратора в базе (F4a, ответ владельца на П3); остальной Spring Security не подключается, вход остаётся на своём `SessionAuthFilter` (ADR 0021) |
-| spring-boot-starter-grpc-server (spring-grpc-core 1.1.1, grpc-netty 1.83.1) | 4.1.1 | Apache-2.0 | runtime | gRPC-сервер `AgentService`; `grpc-services` из него — health-check (`HealthGrpc` в списке открытых сервисов S3) |
-| io.grpc:grpc-protobuf (+ com.google.api.grpc:proto-google-common-protos транзитивно) | 1.83.1 / 2.64.1 | Apache-2.0 | runtime | `google.rpc.ErrorInfo` в деталях статуса Enroll (S2b, контракт отказов) — уже транзитивная зависимость spring-boot-starter-grpc-server, объявлена явно, так как код использует её классы напрямую |
-| com.google.api.grpc:proto-google-common-protos | 2.64.1 (та же, что приходит транзитивно через grpc-protobuf 1.83.1) | Apache-2.0 | runtime | `google.rpc.ErrorInfo` в отказах перехватчика агентов (S3, ADR 0009) и `Enroll` (S2b); объявлена явно, потому что используется напрямую |
+| org.springframework.security:spring-security-crypto | 7.1.2 (BOM Spring Boot 4.1.2) | Apache-2.0 | runtime; в коде — только `Argon2PasswordEncoder` (хэш пароля администратора, m=19456 КиБ, t=2, p=1; использует bcprov, уже на classpath) | хэш Argon2id пароля администратора в базе (F4a, ответ владельца на П3); остальной Spring Security не подключается, вход остаётся на своём `SessionAuthFilter` (ADR 0021) |
+| spring-boot-starter-grpc-server (spring-grpc-core 1.1.2, grpc-netty 1.84.1) | 4.1.2 | Apache-2.0 | runtime | gRPC-сервер `AgentService`; `grpc-services` из него — health-check (`HealthGrpc` в списке открытых сервисов S3) |
+| io.grpc:grpc-protobuf (+ com.google.api.grpc:proto-google-common-protos транзитивно) | 1.84.1 / 2.64.1 | Apache-2.0 | runtime | `google.rpc.ErrorInfo` в деталях статуса Enroll (S2b, контракт отказов) — уже транзитивная зависимость spring-boot-starter-grpc-server, объявлена явно, так как код использует её классы напрямую |
+| com.google.api.grpc:proto-google-common-protos | 2.64.1 (та же, что приходит транзитивно через grpc-protobuf 1.84.1) | Apache-2.0 | runtime | `google.rpc.ErrorInfo` в отказах перехватчика агентов (S3, ADR 0009) и `Enroll` (S2b); объявлена явно, потому что используется напрямую |
 | springdoc-openapi-starter-webmvc-api (без Swagger UI) | 3.1.1 | Apache-2.0 | runtime | `/v3/api-docs`, из него генерируется клиент веба |
 | com.networknt:json-schema-validator (+ com.ethlo.time:itu 1.14.0, tools.jackson.dataformat:jackson-dataformat-yaml 3.1.5 и org.snakeyaml:snakeyaml-engine 3.0.1 транзитивно) | 3.0.8 (собрана с Jackson 3.2.1; BOM сводит к 3.1.5) | Apache-2.0 (транзитивные — Apache-2.0) | runtime | проверка `config` источника по `config_schema` плагина — JSON Schema 2020-12, формат `sard-secret`, без загрузки внешних `$ref` (S8b, ADR 0031) |
 | tools.jackson.module:jackson-module-kotlin | 3.x (BOM) | Apache-2.0 | runtime | JSON для Kotlin-классов |
-| proto-jvm: grpc-protobuf, grpc-stub, grpc-kotlin-stub, protobuf-java, kotlinx-coroutines-core | 1.83.1 / 1.5.0 / 4.35.1 / 1.10.2 | Apache-2.0; protobuf-java — BSD-3-Clause | runtime | JVM-стабы контракта |
-| spring-boot-starter-webmvc-test, spring-boot-starter-grpc-server-test, spring-boot-testcontainers | 4.1.1 | Apache-2.0 | только тесты | тестовая инфраструктура |
+| proto-jvm: grpc-protobuf, grpc-stub, grpc-kotlin-stub, protobuf-java, kotlinx-coroutines-core | 1.84.1 / 1.5.0 / 4.36.2 / 1.10.2 | Apache-2.0; protobuf-java — BSD-3-Clause | runtime | JVM-стабы контракта |
+| spring-boot-starter-webmvc-test, spring-boot-starter-grpc-server-test, spring-boot-testcontainers | 4.1.2 | Apache-2.0 | только тесты | тестовая инфраструктура |
 | testcontainers-postgresql, testcontainers-junit-jupiter | 2.0.5 | MIT | только тесты | настоящий PostgreSQL в тестах |
 | kotlin-test-junit5 | 2.4.20 | Apache-2.0 | только тесты | assert-функции |
 | mutflow (плагин, core, runtime, junit6) | 1.5.0 | Apache-2.0 | тесты; `mutflow-core` (аннотации) в runtime-classpath, мутированный код в jar не попадает | мутационное тестирование (ADR 0006) |
 
 ## Сквозные тесты (`test/e2e`, Gradle-модуль `:e2e`, только тесты)
 
-Новых библиотек нет — те же версии, что у сервера, через BOM Spring Boot 4.1.1.
+Новых библиотек нет — те же версии, что у сервера, через BOM Spring Boot 4.1.2.
 
 | Зависимость | Версия | Лицензия | Зачем |
 |---|---|---|---|
 | proto-jvm (см. выше) | — | Apache-2.0 | клиент `EnrollmentService` и `AgentService` |
-| io.grpc:grpc-netty | 1.83.1 | Apache-2.0 | транспорт gRPC-клиента (у сервера — тот же артефакт в runtime) |
-| org.postgresql:postgresql | 42.7.13 | BSD-2-Clause | чтение записей сервера (агенты, шаги, снимки, логи); строки запуска швов S6a/S7a; истечение токена |
+| io.grpc:grpc-netty | 1.84.1 | Apache-2.0 | транспорт gRPC-клиента (у сервера — тот же артефакт в runtime) |
+| org.postgresql:postgresql | 42.7.14 | BSD-2-Clause | чтение записей сервера (агенты, шаги, снимки, логи); строки запуска швов S6a/S7a; истечение токена |
 | testcontainers-junit-jupiter, testcontainers-postgresql | 2.0.5 | MIT | контейнеры PostgreSQL, sard-server, sard-agent |
 | kotlin-test-junit5 | 2.4.20 | Apache-2.0 | assert-функции |
 
@@ -95,7 +118,7 @@
 | Инструмент | Версия | Лицензия | Зачем |
 |---|---|---|---|
 | Gradle (wrapper) | 9.7.1 | Apache-2.0 | сборка |
-| com.google.protobuf (Gradle-плагин) + protoc, protoc-gen-grpc-java, protoc-gen-grpc-kotlin | 0.10.0 / 4.35.1 / 1.83.1 / 1.5.0 | BSD-3-Clause / Apache-2.0 | генерация JVM-кода из proto |
+| com.google.protobuf (Gradle-плагин) + protoc, protoc-gen-grpc-java, protoc-gen-grpc-kotlin | 0.10.0 / 4.36.2 / 1.84.1 / 1.5.0 | BSD-3-Clause / Apache-2.0 | генерация JVM-кода из proto |
 | io.spring.dependency-management | 1.1.7 | Apache-2.0 | BOM Spring Boot |
 | detekt | 2.0.0-alpha.6 | Apache-2.0 | статический анализ, сложность ≤ 8 |
 | Spotless + ktlint | 8.10.3 / 1.8.0 | Apache-2.0 / MIT | форматирование Kotlin |

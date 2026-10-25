@@ -33,14 +33,18 @@ jobs:
   sudo-u:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: ./scripts/check-sudo-u.sh
 
   markdownlint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
       - run: npx --yes markdownlint-cli2@0.18.1 "**/*.md"
@@ -48,8 +52,10 @@ jobs:
   links:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: lycheeverse/lychee-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
           lycheeVersion: v0.24.2
           args: >-

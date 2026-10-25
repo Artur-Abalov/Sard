@@ -72,6 +72,51 @@ Usually out of scope:
 - denial of service by sheer traffic volume, and missing hardening without a
   demonstrated impact.
 
+### Supply chain and signing keys
+
+Between a commit on `main` and what you install, nothing should change
+unnoticed (ADR 00XX-draft-supply-chain):
+
+- **Pinned inputs.** Every GitHub Action is pinned to a commit SHA, every
+  base and test image to a digest, every Gradle dependency by its lock file
+  and SHA-256 (`gradle/verification-metadata.xml`), Go modules by `go.sum`,
+  npm packages by `package-lock.json`; restic, shipped with the agent, by its
+  SHA-256 and the GPG signature of its release. CI fails on an action or
+  image named by tag (`scripts/check-pins.sh`), on a Gradle dependency off
+  its lock file or checksum (Gradle itself, `scripts/test-gradle-verification.sh`),
+  on a restic archive that is not as pinned and signed (`scripts/fetch-restic.sh`,
+  `scripts/test-fetch-restic.sh`), on a `go.sum` or `package-lock.json` the
+  build disagrees with (`go`, `npm ci`). Updates arrive as Renovate pull
+  requests through the same checks.
+- **Scans.** `govulncheck` on every pull request that runs CI (one that
+  changes only documentation does not); `grype` over the lock files
+  and, nightly, over the released images. A fixable critical or high
+  vulnerability, or one the Go code calls, fails the build unless
+  `security/vuln-exceptions` names it with a reason and an expiry date at
+  most 90 days ahead.
+- **Signing keys.** Two keys, both held by the maintainer and kept as secrets
+  of the protected `release` environment on GitHub, which only `v*` tags may
+  use and which waits for the maintainer's approval; no pull request, fork or
+  other job can read them (`scripts/check-workflow-secrets.sh`).
+  - minisign (`deploy/release/sard-release.pub`, key ID `DF5D5B6DB257DBFA`):
+    `SHA256SUMS` of the agent packages and their SBOMs, `SHA256SUMS.server`
+    of the offline archives and install files;
+  - cosign (`deploy/release/cosign.pub`): the images in GHCR and their SBOM
+    attestations.
+- **What every release carries.** SBOMs (CycloneDX) of the packages and
+  images, signed as above, and GitHub build provenance. Verification:
+  [docs/operator/10-security.md](docs/operator/10-security.md#проверка-релиза),
+  offline: [docs/operator/11-offline.md](docs/operator/11-offline.md).
+- **A leaked or lost key** is rotated as described in
+  [docs/release.md](docs/release.md); the new public key is published in the
+  repository and README with the date of the change. Report a suspected leak
+  as a vulnerability.
+
+In scope: an artifact or image that verifies with these keys but was not
+built from this repository by the release workflow; a pull request that
+reaches a signing secret; a dependency that the build takes without checking
+its pin.
+
 ### Disclosure
 
 We prefer coordinated disclosure: we agree on a publication date with you,
@@ -150,6 +195,47 @@ Sard на ранней стадии разработки, выходят тол�
   усугубляет: сообщайте их авторам, а нам — если Sard делает их достижимыми;
 - отказ в обслуживании одним объёмом трафика и отсутствие защитной настройки
   без показанного ущерба.
+
+### Цепочка поставки и ключи подписи
+
+Между коммитом в `main` и тем, что вы ставите, ничего не должно меняться
+незаметно (ADR 00XX-draft-supply-chain):
+
+- **Закреплённые входы.** Каждое действие GitHub — по SHA коммита, каждый
+  базовый и тестовый образ — по digest, зависимости Gradle — lock-файлами и
+  SHA-256 (`gradle/verification-metadata.xml`), Go — `go.sum`, npm —
+  `package-lock.json`; restic, который поставляется с агентом, — по SHA-256
+  и подписи GPG его релиза. CI падает на действии или образе по тегу
+  (`scripts/check-pins.sh`), на зависимости Gradle не по lock-файлу или не с
+  той суммой (сам Gradle, `scripts/test-gradle-verification.sh`), на архиве
+  restic не по закреплению или без подписи (`scripts/fetch-restic.sh`,
+  `scripts/test-fetch-restic.sh`), на `go.sum` или `package-lock.json`, с
+  которыми не согласна сборка (`go`, `npm ci`). Обновления приходят PR от
+  Renovate через те же проверки.
+- **Сканирование.** `govulncheck` на каждом PR, который запускает CI (PR
+  только с документацией его не запускает); `grype` по lock-файлам и
+  каждую ночь по образам релиза. Исправимая критическая или высокая
+  уязвимость или та, что вызывает Go-код, валит сборку, если её не называет
+  `security/vuln-exceptions` с причиной и сроком не дальше 90 дней.
+- **Ключи подписи.** Два ключа, оба у владельца; хранятся как секреты
+  защищённого окружения `release` на GitHub, которым пользуются только теги
+  `v*` и которое ждёт подтверждения владельца; ни PR, ни форк, ни другая
+  задача их не читает (`scripts/check-workflow-secrets.sh`).
+  - minisign (`deploy/release/sard-release.pub`, ID `DF5D5B6DB257DBFA`):
+    `SHA256SUMS` пакетов агента и их SBOM, `SHA256SUMS.server` офлайн-архивов
+    и файлов установки;
+  - cosign (`deploy/release/cosign.pub`): образы в GHCR и аттестации их SBOM.
+- **Что несёт каждый релиз.** SBOM (CycloneDX) пакетов и образов,
+  подписанные как выше, и происхождение сборки GitHub. Проверка —
+  [docs/operator/10-security.md](docs/operator/10-security.md#проверка-релиза),
+  без сети — [docs/operator/11-offline.md](docs/operator/11-offline.md).
+- **Утечка или потеря ключа** — смена по [docs/release.md](docs/release.md);
+  новый публичный ключ публикуется в репозитории и README с датой смены. О
+  подозрении на утечку сообщайте как об уязвимости.
+
+Входит в рамки: артефакт или образ, который проходит проверку этими ключами,
+но собран не workflow релиза из этого репозитория; PR, который добирается до
+секрета подписи; зависимость, которую сборка берёт без проверки закрепления.
 
 ### Раскрытие
 

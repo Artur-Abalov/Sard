@@ -119,8 +119,8 @@ internal class GarageS3(
         """.trimIndent() + "\n"
 
     companion object {
-        /** Garage v2.1.0 (Docker Hub; the cloud workaround of OQ-132 pulls it via a mirror and tags it). */
-        const val IMAGE = "dxflrs/garage:v2.1.0"
+        /** Garage v2.1.0 (Docker Hub), pinned in test/images.env; the cloud workaround of OQ-132 pulls it via a mirror. */
+        val IMAGE = E2e.testImage("dxflrs/garage:v2.1.0")
         const val ALIAS = "garage"
         const val S3_PORT = 3900
         const val REGION = "garage"

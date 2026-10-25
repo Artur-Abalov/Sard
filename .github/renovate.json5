@@ -1,0 +1,117 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright 2026 Artur Abalov
+//
+// Renovate (SC1, ADR 00XX-draft-supply-chain): every update of what the build
+// takes arrives as a PR through the usual gates. Actions stay pinned by commit
+// SHA and images by digest; Renovate moves the pin and the version comment
+// together. Lock files and checksums it cannot write itself are written on its
+// branch by .github/workflows/renovate-pins.yml.
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    "docker:pinDigests",
+    ":dependencyDashboard",
+    ":semanticCommits",
+  ],
+  // config:recommended skips test/: the images and dependencies of the tests are pinned too.
+  // test/vuln holds known vulnerable versions on purpose (scripts/test-vuln-scan.sh).
+  ignorePaths: ["**/node_modules/**", "test/vuln/**"],
+  timezone: "Europe/Moscow",
+  // Once a week, before the working day; security fixes do not wait for it.
+  schedule: ["before 7am on monday"],
+  vulnerabilityAlerts: {
+    schedule: ["at any time"],
+    labels: ["security"],
+  },
+  prConcurrentLimit: 6,
+  prHourlyLimit: 3,
+  labels: ["dependencies"],
+  // Major versions change behaviour: only on request from the dependency dashboard.
+  major: {
+    dependencyDashboardApproval: true,
+  },
+  // The commit of renovate-pins.yml on a Renovate branch does not stop Renovate from rebasing it.
+  gitIgnoredAuthors: ["41898282+github-actions[bot]@users.noreply.github.com"],
+  postUpdateOptions: ["gomodTidy", "gomodUpdateImportPaths"],
+  customManagers: [
+    {
+      // restic shipped with the agent; renovate-pins.yml pins its SHA-256 from the signed SHA256SUMS.
+      customType: "regex",
+      managerFilePatterns: ["/^agent/internal/restic/restic-version$/"],
+      matchStrings: ["(^|\\n)version=(?<currentValue>\\d+\\.\\d+\\.\\d+)\\n"],
+      depNameTemplate: "restic/restic",
+      datasourceTemplate: "github-releases",
+      extractVersionTemplate: "^v(?<version>.+)$",
+    },
+    {
+      // Images pinned in env files and in compose and workflow lines: name:tag@sha256:digest.
+      customType: "regex",
+      managerFilePatterns: [
+        "/^deploy/postgres\\.env$/",
+        "/^deploy/\\.env\\.example$/",
+        "/^deploy/docker-compose\\.build\\.yml$/",
+        "/^test/images\\.env$/",
+        "/^tools/images\\.env$/",
+        "/^\\.github/workflows/.+\\.ya?ml$/",
+      ],
+      matchStrings: [
+        "(?<depName>(?:[a-z0-9.-]+\\.[a-z]{2,}/)?[a-z0-9][a-z0-9._/-]*):(?<currentValue>[A-Za-z0-9][A-Za-z0-9._-]*)@(?<currentDigest>sha256:[a-f0-9]{64})",
+      ],
+      datasourceTemplate: "docker",
+    },
+  ],
+  packageRules: [
+    {
+      groupName: "GitHub Actions",
+      matchManagers: ["github-actions"],
+      semanticCommitType: "ci",
+    },
+    {
+      // Both images of an installation move together, to the same minor (deploy/postgres.env).
+      groupName: "PostgreSQL of an installation",
+      matchFileNames: ["deploy/**"],
+      matchDepNames: ["postgres"],
+    },
+    {
+      // The tests run fixed distributions and PostgreSQL majors: only their digests move.
+      groupName: "test images",
+      matchFileNames: ["test/images.env", "test/**/Dockerfile*", "test/**/*.Dockerfile"],
+      matchUpdateTypes: ["major", "minor", "patch"],
+      enabled: false,
+    },
+    {
+      groupName: "test images",
+      matchFileNames: ["test/images.env", "test/**/Dockerfile*", "test/**/*.Dockerfile"],
+      matchUpdateTypes: ["digest"],
+    },
+    {
+      groupName: "base images",
+      matchDatasources: ["docker"],
+      matchFileNames: ["deploy/agent/Dockerfile", "deploy/server/Dockerfile"],
+    },
+    {
+      groupName: "Gradle",
+      matchManagers: ["gradle", "gradle-wrapper"],
+      matchUpdateTypes: ["minor", "patch"],
+    },
+    {
+      groupName: "Go modules",
+      matchManagers: ["gomod"],
+      matchUpdateTypes: ["minor", "patch", "digest"],
+    },
+    {
+      groupName: "web",
+      matchManagers: ["npm"],
+      matchUpdateTypes: ["minor", "patch"],
+    },
+    {
+      // The go directive is the toolchain of every module and of CI (go-version-file): one PR for all.
+      groupName: "Go toolchain",
+      matchManagers: ["gomod"],
+      matchDepTypes: ["golang", "toolchain"],
+      rangeStrategy: "bump",
+    },
+  ],
+}

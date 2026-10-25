@@ -16,7 +16,7 @@ plugins {
 group = "dev.sard"
 version = providers.gradleProperty("sardVersion").getOrElse("dev")
 
-// Kotlin 2.4.20 overrides the 2.3.x managed by Spring Boot 4.1.1 (owner's decision, see session log).
+// Kotlin 2.4.20 overrides the 2.3.x managed by Spring Boot 4.1.2 (owner's decision, see session log).
 extra["kotlin.version"] = "2.4.20"
 
 kotlin {
@@ -168,6 +168,9 @@ tasks.withType<Test>().configureEach {
     )
     // The PostgreSQL of an installation (DB1): the test databases use its image and initdb arguments.
     systemProperty("sard.test.postgres-pin-file", rootProject.file("deploy/postgres.env").path)
+    // Every other image the tests run, pinned by digest (SC1).
+    systemProperty("sard.test.images-file", rootProject.file("test/images.env").path)
+    inputs.file(rootProject.file("test/images.env"))
     // The release order of versions, shared with the dpkg and rpm checks (ADR 0048).
     systemProperty("sard.test.version-order-file", rootProject.file("deploy/release/version-order.txt").path)
     // Tags that are not releases, shared with scripts/test-release-version.sh (ADR 0048).

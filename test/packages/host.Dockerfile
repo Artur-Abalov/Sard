@@ -6,7 +6,7 @@
 # distribution's own packages: systemd, sudo, curl and openssh-client, the
 # deb's one dependency (ADR 0047): dpkg -i, as the console runs it, resolves
 # nothing, and the test network has no mirrors for apt to resolve it from.
-ARG DISTRO=debian:12
+ARG DISTRO=debian:12@sha256:854dd8ab51d62866dbd8f5431d15ce77b12983a2a4a1e1fe43a2395dc7ef9f61
 FROM ${DISTRO}
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \

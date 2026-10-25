@@ -69,6 +69,79 @@ docker compose logs server | grep "SARD SETUP CODE"
 - Выключить: `SARD_AGENT_DOWNLOADS=false` — путь отвечает 404, консоль
   предлагает ручную установку.
 
+## Проверка релиза
+
+Каждый релиз подписан двумя ключами владельца; закрытые ключи есть только в
+защищённом окружении `release` на GitHub, публичные — в репозитории
+(`deploy/release/`) и в [README](../../README.md#verifying-releases).
+Берите их из репозитория по тегу релиза, а не с сервера, с которого скачали
+пакет, и сверяйте с README; храните копию у себя.
+
+| Что | Чем подписано | Публичный ключ |
+|---|---|---|
+| пакеты агента (tar.gz, deb, rpm), их SBOM, `manifest.json` — через `SHA256SUMS` | minisign | `deploy/release/sard-release.pub` |
+| офлайн-архивы, `docker-compose.yml`, `sard.env.example`, `images.json`, SBOM образов — через `SHA256SUMS.server` | minisign | `deploy/release/sard-release.pub` |
+| образы `sard-server`, `sard-agent` в GHCR и их SBOM (аттестации CycloneDX) | cosign | `deploy/release/cosign.pub` |
+
+Подписи с ключом проверяются без доступа к внешним сервисам: нужны только
+файлы и публичный ключ. Подпись cosign дополнительно записана в журнал
+прозрачности Rekor; он нужен только тем, кто хочет сверить и его.
+
+### Пакеты агента
+
+```bash
+minisign -Vm SHA256SUMS -p sard-release.pub && sha256sum -c --ignore-missing SHA256SUMS
+```
+
+`minisign` печатает `Trusted comment: sard-agent <версия>` — это версия, для
+которой сделана подпись; она должна совпасть с той, что вы ставите.
+
+### Образы
+
+Нужен [cosign](https://docs.sigstore.dev/cosign/system_config/installation/)
+2.x или 3.x.
+
+<!-- verify-image:begin -->
+```bash
+SARD_TAG=<vX.Y.Z>
+curl -fsSLO "https://raw.githubusercontent.com/Artur-Abalov/Sard/$SARD_TAG/deploy/release/cosign.pub"
+for image in "sard-server:${SARD_TAG#v}" "sard-agent:${SARD_TAG#v}" "sard-agent:${SARD_TAG#v}-pg18"; do
+  cosign verify --key cosign.pub "ghcr.io/artur-abalov/$image" >/dev/null
+  cosign verify-attestation --key cosign.pub --type cyclonedx "ghcr.io/artur-abalov/$image" >/dev/null
+  echo "ok: $image is signed by the Sard release key, its SBOM too"
+done
+```
+<!-- verify-image:end -->
+
+Чтобы запускать ровно проверенное, закрепите образ по digest: он есть в
+`images.json` релиза (подписан через `SHA256SUMS.server`) и в выводе
+`cosign verify`.
+
+### SBOM
+
+Состав каждого релиза в формате CycloneDX JSON:
+
+- пакеты агента: `sard-agent_<версия>_linux_<arch>.cdx.json` в файлах релиза
+  (что входит в tar.gz, deb и rpm этой архитектуры: `sard-agent`, `restic`);
+- образы: `sard-server_linux_<arch>.cdx.json`,
+  `sard-agent-image_linux_<arch>.cdx.json`,
+  `sard-agent-pg18-image_linux_<arch>.cdx.json` в файлах релиза и те же
+  документы в аттестациях образов (`cosign verify-attestation` выше,
+  `cosign download attestation`).
+
+### Происхождение сборки
+
+Дополнительно, не взамен подписей: у файлов релиза и образов есть
+аттестация происхождения GitHub (SLSA provenance) — из какого коммита и
+каким workflow собрано. Проверка требует доступа к GitHub и Sigstore:
+
+```bash
+gh attestation verify sard-agent_<версия>_linux_amd64.tar.gz --repo Artur-Abalov/Sard
+gh attestation verify oci://ghcr.io/artur-abalov/sard-server:<версия> --repo Artur-Abalov/Sard
+```
+
+Без сети — подписи ключом выше; офлайн-установка — [раздел 11](11-offline.md).
+
 ## Образ
 
 - Процесс — пользователь `sard` (uid 10001), не root.

@@ -7,6 +7,7 @@ MODULE_PATH := github.com/Artur-Abalov/sard
 BIN := $(CURDIR)/.bin
 # The PostgreSQL of an installation (DB1): the server's image and the base of the -pg18 agent.
 include deploy/postgres.env
+include test/images.env
 # docker-compose.build.yml builds the -pg18 agent of make up on it.
 export SARD_AGENT_PG_BASE_IMAGE
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -71,9 +72,15 @@ GO_TOOLS := \
 	github.com/avito-tech/go-mutesting/cmd/go-mutesting \
 	github.com/goreleaser/nfpm/v2/cmd/nfpm \
 	golang.org/x/tools/cmd/deadcode \
-	./cmd/crap
+	./cmd/crap \
+	./cmd/vulngate
 
-.PHONY: tools gate gate-fast proto build build-agent build-cli package package-stand server-jar server-image image e2e e2e-images e2e-assemble e2e-agent-images e2e-agent-pg-image e2e-pg-agent-images e2e-test test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check check-sudo-u up down openapi
+# The CI-only tools, a module of their own (tools/ci): their dependencies clash with the ones above.
+CI_TOOLS := \
+	github.com/rhysd/actionlint/cmd/actionlint \
+	golang.org/x/vuln/cmd/govulncheck
+
+.PHONY: tools ci-tools lint-workflows vuln-scan gate gate-fast proto build build-agent build-cli package package-stand server-jar server-image image e2e e2e-images e2e-assemble e2e-agent-images e2e-agent-pg-image e2e-pg-agent-images e2e-test test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check check-sudo-u check-pins up down openapi
 
 ## proto: generate Go code from proto/ into proto/gen/go (committed)
 proto: tools
@@ -152,8 +159,8 @@ e2e-agent-pg-image:
 
 ## e2e-pg-agent-images: the agent on postgres:18 and on postgres:14 (test/e2e/agent/Dockerfile.postgres) from the tar.gz in DIST
 e2e-pg-agent-images:
-	$(call agent_image_unpacked,$(DIST),$(E2E_PG18_AGENT_IMAGE),pg18-agent-image,test/e2e/agent/Dockerfile.postgres,--build-arg BASE_IMAGE=postgres:18)
-	$(call agent_image_unpacked,$(DIST),$(E2E_PG14_AGENT_IMAGE),pg14-agent-image,test/e2e/agent/Dockerfile.postgres,--build-arg BASE_IMAGE=postgres:14)
+	$(call agent_image_unpacked,$(DIST),$(E2E_PG18_AGENT_IMAGE),pg18-agent-image,test/e2e/agent/Dockerfile.postgres,--build-arg BASE_IMAGE=$(TEST_IMAGE_POSTGRES_18))
+	$(call agent_image_unpacked,$(DIST),$(E2E_PG14_AGENT_IMAGE),pg14-agent-image,test/e2e/agent/Dockerfile.postgres,--build-arg BASE_IMAGE=$(TEST_IMAGE_POSTGRES_14))
 
 ## e2e-test: the end-to-end tests against the assembled images, E2E_SHARD=i/n for one shard (needs Docker)
 e2e-test:
@@ -178,7 +185,7 @@ test:
 	cd web && npm test
 
 ## lint: licenses, formatting, static analysis
-lint: license-check check-sudo-u lint-proto lint-go lint-server lint-web
+lint: license-check check-sudo-u check-pins lint-proto lint-go lint-server lint-web
 
 lint-server:
 	$(GRADLE) :server:spotlessCheck :server:detekt
@@ -213,6 +220,17 @@ check-sudo-u:
 	./scripts/test-check-sudo-u.sh
 	./scripts/check-sudo-u.sh
 
+## check-pins: every action by commit SHA, every image by digest, no secret within reach of a PR, the release identity (SC1), and the tests of these checks and of release-cosign.sh
+check-pins:
+	./scripts/test-check-pins.sh
+	./scripts/test-lib-test-image.sh
+	./scripts/test-check-workflow-secrets.sh
+	./scripts/test-check-identity.sh
+	./scripts/test-release-cosign.sh
+	./scripts/check-pins.sh
+	./scripts/check-workflow-secrets.sh
+	./scripts/check-identity.sh
+
 lint-proto: tools
 	cd proto && $(BIN)/buf lint
 
@@ -231,6 +249,20 @@ lint-go: tools
 ## tools: build pinned dev tools (tools/go.mod) into .bin/
 tools:
 	cd tools && GOWORK=off go build -o $(BIN)/ $(GO_TOOLS)
+
+## ci-tools: build the pinned CI tools (tools/ci/go.mod) into .bin/
+ci-tools:
+	cd tools/ci && GOWORK=off go build -o $(BIN)/ $(CI_TOOLS)
+
+## lint-workflows: actionlint and zizmor over .github/workflows (SC1); zizmor runs in Docker
+lint-workflows: ci-tools
+	$(BIN)/actionlint
+	. tools/images.env && docker run --rm -v "$(CURDIR):/src:ro" -w /src -e GH_TOKEN "$$TOOL_IMAGE_ZIZMOR" .github/workflows
+
+## vuln-scan: govulncheck over the Go modules and grype over the lock files, by the threshold of SC1
+vuln-scan: tools ci-tools
+	./scripts/vuln-scan.sh go
+	./scripts/vuln-scan.sh deps
 
 ## gate: full quality gate for every module (M=<module> for one)
 gate:

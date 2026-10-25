@@ -7,7 +7,7 @@
 # Docker with compose. No restic, psql, jq, python or openssl; the page takes restic from the agent image.
 # `make e2e-agent-images` builds it as sard-recovery-vm:e2e; at run time it has no way out of the
 # drill's network.
-FROM ubuntu:24.04
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 RUN apt-get update \
  && apt-get install -y --no-install-recommends docker.io docker-compose-v2 iptables curl ca-certificates \
  && dpkg --remove --force-depends openssl \

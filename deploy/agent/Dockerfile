@@ -26,10 +26,10 @@
 # psql of that major version (/usr/lib/postgresql/18/bin) the postgresql plugin
 # runs. The compose file's sard-self uses it to dump the server's database; a
 # containerised agent of a client can take it too. Any Debian or Ubuntu base works.
-ARG BASE_IMAGE=ubuntu:24.04
+ARG BASE_IMAGE=ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 
 # The tarballs are files for every architecture: unpacked once, on the builder's platform.
-FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS unpack
+FROM --platform=$BUILDPLATFORM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS unpack
 ARG SARD_VERSION=dev
 ARG TARGETARCH
 COPY SHA256SUMS sard-agent_${SARD_VERSION}_linux_${TARGETARCH}.tar.gz /in/
