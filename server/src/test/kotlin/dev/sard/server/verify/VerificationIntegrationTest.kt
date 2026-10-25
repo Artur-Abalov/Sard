@@ -326,6 +326,8 @@ class VerificationIntegrationTest(
                 .getInstance("SHA-256")
                 .digest(bytes)
                 .joinToString("") { "%02x".format(it) }
+        // A newer snapshot than setUp's: at the same instant the cycle's pick would depend on the ids' random bits.
+        clock.now = clock.now.plusSeconds(60)
         backup(sourceId, SourceFingerprint(bytes, sha256))
         clock.now = Instant.parse("2026-10-01T04:30:00Z")
         loop.tick()
