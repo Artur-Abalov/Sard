@@ -61,7 +61,8 @@ class RunMappingTest {
                 "repo",
                 partial = true,
                 totalFiles = 7,
-                fingerprint = FingerprintSummary("f".repeat(64), 1, "postgresql", listOf(DomainFact("tables", "exact", "2")), 0),
+                fingerprint =
+                    FingerprintSummary("f".repeat(64), 1, "postgresql", listOf(DomainFact("tables", "exact", "2")), 0),
                 warnings = listOf("w"),
             ),
     )
@@ -122,7 +123,8 @@ class RunMappingTest {
             listOf(1L, 2L, 3L, 4L),
             listOf(mapped.bytesProcessed, mapped.bytesTotal, mapped.filesProcessed, mapped.filesTotal),
         )
-        val fingerprint = Fingerprint("f".repeat(64), 1, "postgresql", listOf(FingerprintFact("tables", "exact", "2")), 0)
+        val fingerprint =
+            Fingerprint("f".repeat(64), 1, "postgresql", listOf(FingerprintFact("tables", "exact", "2")), 0)
         assertEquals(
             BackupOutput("snap", 10, 5, "repo", partial = true, restorable = false, 7, fingerprint, listOf("w")),
             mapped.backup,

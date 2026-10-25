@@ -442,7 +442,10 @@ class StepResultsIntegrationTest(
         val snapshot = snapshots(step).single()
         val backup = report.output as StepOutput.Backup
         assertTrue((snapshot["fingerprint"] as ByteArray).contentEquals(backup.fingerprint!!.bytes))
-        assertEquals(listOf<Any?>(backup.fingerprint.sha256, 3L), listOf(snapshot["fingerprint_sha256"], snapshot["total_files"]))
+        assertEquals(
+            listOf<Any?>(backup.fingerprint.sha256, 3L),
+            listOf(snapshot["fingerprint_sha256"], snapshot["total_files"]),
+        )
         val output = json(row("run_steps", step)["output"])!!
         assertEquals(backup.fingerprint.sha256, output.path("fingerprint").path("sha256").asString())
     }

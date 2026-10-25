@@ -168,6 +168,23 @@ export const postgresqlSchema = {
       uniqueItems: true,
       examples: [['public.log_*', 'sessions']],
     },
+    key_tables: {
+      type: 'array',
+      title: 'Key tables',
+      description:
+        'Tables whose rows are counted exactly at every backup, as schema.table (the names as they are, not patterns), for a restore check to compare with the copy. Without them the 10 largest tables are counted. Each count runs in the transaction the dump is taken in, for at most a minute; a count over the limit is recorded as not counted, the backup goes on. At most 64.',
+      'x-sard-i18n': {
+        ru: {
+          title: 'Ключевые таблицы',
+          description:
+            'Таблицы, строки которых точно считаются при каждом бэкапе, в виде схема.таблица (имена как есть, не шаблоны), чтобы проверка восстановления сравнила их с копией. Если не заданы, считаются 10 самых больших таблиц. Каждый подсчёт идёт в той же транзакции, что и дамп, не дольше минуты; подсчёт сверх лимита записывается как не выполненный, бэкап продолжается. Не больше 64.',
+        },
+      },
+      items: { type: 'string', minLength: 3, maxLength: 127, pattern: '^[^.\\x00]+\\.[^\\x00]+$' },
+      maxItems: 64,
+      uniqueItems: true,
+      examples: [['public.orders', 'public.users']],
+    },
     pg_dump_path: {
       type: 'string',
       title: 'pg_dump path',

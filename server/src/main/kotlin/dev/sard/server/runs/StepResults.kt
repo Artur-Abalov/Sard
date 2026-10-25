@@ -104,17 +104,23 @@ class StepResults(
         step: RunStepRecord,
         verdict: Verdict,
     ): Verdict {
-        val backup = verdict.output as? StepOutput.Backup ?: return verdict
-        val totals = backup.totals() ?: return verdict
-        val previous =
-            session
-                .createNativeQuery(PREVIOUS, Array<Any?>::class.java)
-                .setParameter("tenant", step.tenantId)
-                .setParameter("source", step.sourceId)
-                .uniqueResult()
-                ?.let { SnapshotTotals((it[0] as Number).toLong(), (it[1] as Number).toLong()) }
-        return verdict.copy(output = backup.copy(warnings = VolumeDrop.warnings(previous, totals)))
+        val backup = verdict.output as? StepOutput.Backup
+        val totals = backup?.totals() ?: return verdict
+        val warnings = VolumeDrop.warnings(previous(session, step), totals)
+        return verdict.copy(output = backup.copy(warnings = warnings))
     }
+
+    /** What restic counted in the last whole snapshot of the source of [step], if it is known. */
+    private fun previous(
+        session: Session,
+        step: RunStepRecord,
+    ): SnapshotTotals? =
+        session
+            .createNativeQuery(PREVIOUS, Array<Any?>::class.java)
+            .setParameter("tenant", step.tenantId)
+            .setParameter("source", step.sourceId)
+            .uniqueResult()
+            ?.let { SnapshotTotals((it[0] as Number).toLong(), (it[1] as Number).toLong()) }
 
     /** The guarded update moved nothing: the step was closed before, or never dispatched. */
     private fun closedBefore(

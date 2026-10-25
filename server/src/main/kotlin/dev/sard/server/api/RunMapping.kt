@@ -5,6 +5,7 @@ package dev.sard.server.api
 
 import dev.sard.server.runs.Action
 import dev.sard.server.runs.BackupResult
+import dev.sard.server.runs.FingerprintSummary
 import dev.sard.server.runs.RunState
 import dev.sard.server.runs.RunView
 import dev.sard.server.runs.StepState
@@ -83,28 +84,13 @@ internal object RunMapping {
             view.filesProcessed,
             view.filesTotal,
             view.message,
-            view.backup?.let(::backupOutput),
+            view.backup?.let(BackupMapping::output),
             view.restore?.let(RestoreMapping::output),
             RestoreMapping.outcome(view),
             view.queuedAt,
             view.dispatchedAt,
             view.startedAt,
             view.finishedAt,
-        )
-
-    private fun backupOutput(it: BackupResult) =
-        BackupOutput(
-            it.snapshotId,
-            it.totalBytes,
-            it.addedBytes,
-            it.repositoryId,
-            it.partial,
-            it.restorable,
-            it.totalFiles,
-            it.fingerprint?.let { f ->
-                Fingerprint(f.sha256, f.format, f.plugin, f.facts.map { FingerprintFact(it.name, it.rule, it.value) }, f.hidden)
-            },
-            it.warnings,
         )
 
     // The domain's enums and the contract's have the same constants: one name is one value. RunMappingTest
@@ -176,4 +162,23 @@ internal object RestoreMapping {
             result?.target.isNullOrEmpty() -> null
             else -> RestoreOutcome.LATE
         }
+}
+
+/** The backup facts of a step, under the wire names. */
+internal object BackupMapping {
+    fun output(backup: BackupResult) =
+        BackupOutput(
+            backup.snapshotId,
+            backup.totalBytes,
+            backup.addedBytes,
+            backup.repositoryId,
+            backup.partial,
+            backup.restorable,
+            backup.totalFiles,
+            backup.fingerprint?.let(::fingerprint),
+            backup.warnings,
+        )
+
+    private fun fingerprint(f: FingerprintSummary) =
+        Fingerprint(f.sha256, f.format, f.plugin, f.facts.map { FingerprintFact(it.name, it.rule, it.value) }, f.hidden)
 }

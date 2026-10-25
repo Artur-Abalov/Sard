@@ -113,5 +113,7 @@ private fun JsonNode.text(name: String): String = path(name).asString()
 /** The facts of a fingerprint or of a summary, in their order. */
 private fun factsOf(node: JsonNode): List<FingerprintFact> {
     val facts = node.path("facts")
-    return (0 until facts.size()).map { facts.get(it) }.map { FingerprintFact(it.text("name"), it.text("rule"), it.text("value")) }
+    return (0 until facts.size()).map { facts.get(it) }.map {
+        FingerprintFact(it.text("name"), it.text("rule"), it.text("value"))
+    }
 }

@@ -61,9 +61,19 @@ describe('the form model of a config schema', () => {
     expect(model.fields.map((f) => [f.name, f.kind, f.required])).toEqual([
       ['paths', 'stringArray', true],
       ['exclude', 'stringArray', false],
+      ['control_paths', 'stringArray', false],
+      ['sample_files', 'integer', false],
+      ['sample_max_file_bytes', 'integer', false],
       ['one_file_system', 'boolean', false],
     ])
-    expect(initialValues(model)).toEqual({ paths: [], exclude: [], one_file_system: false })
+    expect(initialValues(model)).toEqual({
+      paths: [],
+      exclude: [],
+      control_paths: [],
+      sample_files: '',
+      sample_max_file_bytes: '',
+      one_file_system: false,
+    })
   })
 
   test('every supported type has its field kind', () => {
@@ -177,6 +187,9 @@ describe('the form of an existing source', () => {
     expect(valuesFromConfig(model, { paths: ['/etc'] })).toEqual({
       paths: ['/etc'],
       exclude: [],
+      control_paths: [],
+      sample_files: '',
+      sample_max_file_bytes: '',
       one_file_system: false,
     })
   })

@@ -92,7 +92,14 @@ object ProtoReports {
                     val sent = SourceFingerprint.of(fingerprint.toByteArray(), fingerprintSha256)
                     // An agent older than V2 sends no fingerprint and no count: 0 files is not known then.
                     val files = totalFiles.takeIf { sent != null }
-                    StepOutput.Backup(snapshotId, totalBytes, addedBytes, repositoryId, fingerprint = sent, totalFiles = files)
+                    StepOutput.Backup(
+                        snapshotId,
+                        totalBytes,
+                        addedBytes,
+                        repositoryId,
+                        fingerprint = sent,
+                        totalFiles = files,
+                    )
                 }
             }
 

@@ -12,12 +12,18 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 private const val CANONICAL =
-    """{"facts":[{"name":"bytes","rule":"exact","value":"1024"},{"name":"control:/srv/www","rule":"exact",""" +
-        """"value":"nonempty"},{"name":"files","rule":"exact","value":"2"},{"name":"sample","rule":"info",""" +
+    """{"facts":[{"name":"bytes","rule":"exact","value":"1024"},""" +
+        """{"name":"control:/srv/www","rule":"exact","value":"nonempty"},""" +
+        """{"name":"files","rule":"exact","value":"2"},{"name":"sample","rule":"info",""" +
         """"value":"1 of 2 files hashed"},{"name":"sha256:/srv/www/a.txt","rule":"exact","value":"ab"},""" +
-        """{"name":"stat:/srv/www/a.txt","rule":"info","value":"5 2026-10-25T03:00:00Z"}],"format":1,"plugin":"files"}"""
+        """{"name":"stat:/srv/www/a.txt","rule":"info","value":"5 2026-10-25T03:00:00Z"}],""" +
+        """"format":1,"plugin":"files"}"""
 
-private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+private fun sha256(bytes: ByteArray) =
+    MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+
+private const val WHOLE = "a fingerprint without its hash or a hash without its fingerprint"
+private const val NOT_ONE = "a fingerprint that is not one"
 
 private val BYTES = CANONICAL.toByteArray()
 private val FINGERPRINT = SourceFingerprint(BYTES, sha256(BYTES))
@@ -34,12 +40,14 @@ class SourceFingerprintTest {
     fun `a hash that is not that of the bytes, not hex or missing is a problem`() {
         val cases =
             mapOf(
-                SourceFingerprint(BYTES, sha256("other".toByteArray())) to "a fingerprint whose hash is not that of its bytes",
-                SourceFingerprint(BYTES, sha256(BYTES).uppercase()) to "a fingerprint hash that is not 64 lower-case hex digits",
-                SourceFingerprint(BYTES, "") to "a fingerprint without its hash or a hash without its fingerprint",
-                SourceFingerprint(ByteArray(0), sha256(BYTES)) to "a fingerprint without its hash or a hash without its fingerprint",
-                SourceFingerprint("[1]".toByteArray(), sha256("[1]".toByteArray())) to "a fingerprint that is not one",
-                SourceFingerprint("{".toByteArray(), sha256("{".toByteArray())) to "a fingerprint that is not one",
+                SourceFingerprint(BYTES, sha256("other".toByteArray())) to
+                    "a fingerprint whose hash is not that of its bytes",
+                SourceFingerprint(BYTES, sha256(BYTES).uppercase()) to
+                    "a fingerprint hash that is not 64 lower-case hex digits",
+                SourceFingerprint(BYTES, "") to WHOLE,
+                SourceFingerprint(ByteArray(0), sha256(BYTES)) to WHOLE,
+                SourceFingerprint("[1]".toByteArray(), sha256("[1]".toByteArray())) to NOT_ONE,
+                SourceFingerprint("{".toByteArray(), sha256("{".toByteArray())) to NOT_ONE,
             )
         for ((fingerprint, problem) in cases) {
             assertEquals(problem, MutFlow.underTest { fingerprint.problem() }, fingerprint.sha256)
@@ -50,14 +58,18 @@ class SourceFingerprintTest {
     fun `a fingerprint over 1 MiB is a problem`() {
         val big = ByteArray(SourceFingerprint.MAX_BYTES + 1) { 'x'.code.toByte() }
 
-        assertEquals("a fingerprint larger than 1 MiB", MutFlow.underTest { SourceFingerprint(big, sha256(big)).problem() })
+        val problem = MutFlow.underTest { SourceFingerprint(big, sha256(big)).problem() }
+
+        assertEquals("a fingerprint larger than 1 MiB", problem)
     }
 
     @Test
     fun `the largest fingerprint is no problem for its size`() {
         val big = ByteArray(SourceFingerprint.MAX_BYTES) { 'x'.code.toByte() }
 
-        assertEquals("a fingerprint that is not one", MutFlow.underTest { SourceFingerprint(big, sha256(big)).problem() })
+        val problem = MutFlow.underTest { SourceFingerprint(big, sha256(big)).problem() }
+
+        assertEquals(NOT_ONE, problem)
     }
 
     @Test

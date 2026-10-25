@@ -88,7 +88,8 @@ class ApiSerializationIntegrationTest(
                     partial = false,
                     restorable = true,
                     totalFiles = 3,
-                    fingerprint = Fingerprint("f".repeat(64), 1, "files", listOf(FingerprintFact("files", "exact", "3")), 2),
+                    fingerprint =
+                        Fingerprint("f".repeat(64), 1, "files", listOf(FingerprintFact("files", "exact", "3")), 2),
                     warnings = listOf("the size fell by 50% since the last snapshot (20 → 10 bytes)"),
                 ),
             restore = RestoreOutput("/r/etc", 2, 4, null, null, null, ownersRestored = false, leftover = null),

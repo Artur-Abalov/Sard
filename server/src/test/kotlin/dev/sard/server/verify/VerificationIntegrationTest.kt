@@ -129,7 +129,14 @@ class VerificationIntegrationTest(
         steps.claim(tenant.id, step)
         val snapshot = "snap-${UUID.randomUUID()}"
         val output =
-            StepOutput.Backup(snapshot, 2_000, 200, REPOSITORY_ID, fingerprint = fingerprint, totalFiles = fingerprint?.let { 1 })
+            StepOutput.Backup(
+                snapshot,
+                2_000,
+                200,
+                REPOSITORY_ID,
+                fingerprint = fingerprint,
+                totalFiles = fingerprint?.let { 1 },
+            )
         results.record(tenant.id, tenant.agentId, step, StepReport(StepState.SUCCEEDED, null, output))
         return snapshot
     }
@@ -311,8 +318,13 @@ class VerificationIntegrationTest(
         assertEquals(listOf<Any?>(null, null), listOf(before.fingerprint, before.fingerprintSha256))
         report(verifier = jobs().single()["verifier_agent_id"] as UUID, StepState.SUCCEEDED, passed)
 
-        val bytes = """{"facts":[{"name":"tables","rule":"exact","value":"3"}],"format":1,"plugin":"postgresql"}""".toByteArray()
-        val sha256 = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        val canonical = """{"facts":[{"name":"tables","rule":"exact","value":"3"}],"format":1,"plugin":"postgresql"}"""
+        val bytes = canonical.toByteArray()
+        val sha256 =
+            java.security.MessageDigest
+                .getInstance("SHA-256")
+                .digest(bytes)
+                .joinToString("") { "%02x".format(it) }
         backup(sourceId, SourceFingerprint(bytes, sha256))
         clock.now = Instant.parse("2026-10-01T04:30:00Z")
         loop.tick()

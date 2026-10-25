@@ -234,7 +234,8 @@ private fun hexOf(bytes: ByteArray) =
         .digest(bytes)
         .joinToString("") { "%02x".format(it) }
 
-private val FP_BYTES = """{"facts":[{"name":"tables","rule":"exact","value":"3"}],"format":1,"plugin":"postgresql"}""".toByteArray()
+private val FP_BYTES =
+    """{"facts":[{"name":"tables","rule":"exact","value":"3"}],"format":1,"plugin":"postgresql"}""".toByteArray()
 
 /** The fingerprint a backup brings is checked with it (V2): a hash that is not that of the bytes fails the step. */
 @MutFlowTest
@@ -273,9 +274,10 @@ class FingerprintResultCheckTest {
         val json = MutFlow.underTest { backup.json() }
 
         val expected =
-            """{"kind":"backup","snapshotId":"4a3b2c1d","totalBytes":1000,"addedBytes":100,"repositoryId":"$REPOSITORY_ID",""" +
-                """"partial":false,"totalFiles":1,"fingerprint":{"sha256":"${hexOf(FP_BYTES)}","format":1,""" +
-                """"plugin":"postgresql","facts":[{"name":"tables","rule":"exact","value":"3"}],"hidden":0},"warnings":["w"]}"""
+            """{"kind":"backup","snapshotId":"4a3b2c1d","totalBytes":1000,"addedBytes":100,""" +
+                """"repositoryId":"$REPOSITORY_ID","partial":false,"totalFiles":1,""" +
+                """"fingerprint":{"sha256":"${hexOf(FP_BYTES)}","format":1,"plugin":"postgresql",""" +
+                """"facts":[{"name":"tables","rule":"exact","value":"3"}],"hidden":0},"warnings":["w"]}"""
         assertEquals(expected, json)
         assertEquals(SnapshotTotals(1, 1_000), backup.totals())
         assertEquals(null, BACKUP.totals())
