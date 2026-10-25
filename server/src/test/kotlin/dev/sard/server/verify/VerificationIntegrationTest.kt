@@ -304,6 +304,8 @@ class VerificationIntegrationTest(
         assertEquals("{}", attempt["config"])
         assertEquals(Instant.parse("2026-10-01T04:30:00Z"), task.deadline)
         assertEquals(Duration.ofHours(6).seconds, task.timeoutSeconds)
+        // V5, V-D7: the verifier refuses its own machine, so the task names the source's.
+        assertEquals(listOf(SOURCE_MACHINE), task.sourceMachineIds)
         assertEquals(listOf(tenant.id to verifier), queued.calls)
         assertEquals(listOf("running"), jobs().map { it["status"] })
     }

@@ -9,6 +9,7 @@ import dev.sard.proto.agent.v1.ConnectRequest.MessageCase
 import dev.sard.proto.agent.v1.ConnectResponse
 import dev.sard.proto.agent.v1.Heartbeat
 import dev.sard.server.agents.AgentPrincipal
+import dev.sard.server.agents.toReport
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.coroutineScope
@@ -141,6 +142,7 @@ class AgentStreams(
         stream: AgentStream,
         heartbeat: Heartbeat,
     ) {
+        if (heartbeat.hasVerifier()) extensions.verifierStatus.record(stream.agent, heartbeat.verifier.toReport())
         if (!heartbeat.hasSentAt()) return
         val skew = Duration.between(clock.instant(), heartbeat.sentAt.toInstant())
         extensions.metrics.clockSkew(skew)
