@@ -35,4 +35,6 @@ const (
 	CheckRepositoryLocks       = "repository.locks"
 	// CheckRepositoryIntegrity is asked for by name and is not in the default run.
 	CheckRepositoryIntegrity = "repository.integrity"
+	// CheckRepositoryReadOnly is a verifier's only (V5): its credentials only read.
+	CheckRepositoryReadOnly = "repository.readonly"
 )
