@@ -7,6 +7,7 @@ MODULE_PATH := github.com/Artur-Abalov/sard
 BIN := $(CURDIR)/.bin
 # The PostgreSQL of an installation (DB1): the server's image and the base of the -pg18 agent.
 include deploy/postgres.env
+include test/images.env
 # docker-compose.build.yml builds the -pg18 agent of make up on it.
 export SARD_AGENT_PG_BASE_IMAGE
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -71,9 +72,11 @@ GO_TOOLS := \
 	github.com/avito-tech/go-mutesting/cmd/go-mutesting \
 	github.com/goreleaser/nfpm/v2/cmd/nfpm \
 	golang.org/x/tools/cmd/deadcode \
+	github.com/rhysd/actionlint/cmd/actionlint \
+	golang.org/x/vuln/cmd/govulncheck \
 	./cmd/crap
 
-.PHONY: tools gate gate-fast proto build build-agent build-cli package package-stand server-jar server-image image e2e e2e-images e2e-assemble e2e-agent-images e2e-agent-pg-image e2e-pg-agent-images e2e-test test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check check-sudo-u up down openapi
+.PHONY: tools gate gate-fast proto build build-agent build-cli package package-stand server-jar server-image image e2e e2e-images e2e-assemble e2e-agent-images e2e-agent-pg-image e2e-pg-agent-images e2e-test test lint lint-proto breaking-proto lint-go lint-server lint-web web-deps license-check check-sudo-u check-pins up down openapi
 
 ## proto: generate Go code from proto/ into proto/gen/go (committed)
 proto: tools
@@ -152,8 +155,8 @@ e2e-agent-pg-image:
 
 ## e2e-pg-agent-images: the agent on postgres:18 and on postgres:14 (test/e2e/agent/Dockerfile.postgres) from the tar.gz in DIST
 e2e-pg-agent-images:
-	$(call agent_image_unpacked,$(DIST),$(E2E_PG18_AGENT_IMAGE),pg18-agent-image,test/e2e/agent/Dockerfile.postgres,--build-arg BASE_IMAGE=postgres:18)
-	$(call agent_image_unpacked,$(DIST),$(E2E_PG14_AGENT_IMAGE),pg14-agent-image,test/e2e/agent/Dockerfile.postgres,--build-arg BASE_IMAGE=postgres:14)
+	$(call agent_image_unpacked,$(DIST),$(E2E_PG18_AGENT_IMAGE),pg18-agent-image,test/e2e/agent/Dockerfile.postgres,--build-arg BASE_IMAGE=$(TEST_IMAGE_POSTGRES_18))
+	$(call agent_image_unpacked,$(DIST),$(E2E_PG14_AGENT_IMAGE),pg14-agent-image,test/e2e/agent/Dockerfile.postgres,--build-arg BASE_IMAGE=$(TEST_IMAGE_POSTGRES_14))
 
 ## e2e-test: the end-to-end tests against the assembled images, E2E_SHARD=i/n for one shard (needs Docker)
 e2e-test:
@@ -178,7 +181,7 @@ test:
 	cd web && npm test
 
 ## lint: licenses, formatting, static analysis
-lint: license-check check-sudo-u lint-proto lint-go lint-server lint-web
+lint: license-check check-sudo-u check-pins lint-proto lint-go lint-server lint-web
 
 lint-server:
 	$(GRADLE) :server:spotlessCheck :server:detekt
@@ -212,6 +215,12 @@ license-check:
 check-sudo-u:
 	./scripts/test-check-sudo-u.sh
 	./scripts/check-sudo-u.sh
+
+## check-pins: every action by commit SHA, every image by digest (SC1), and the tests of that check and of test_image
+check-pins:
+	./scripts/test-check-pins.sh
+	./scripts/test-lib-test-image.sh
+	./scripts/check-pins.sh
 
 lint-proto: tools
 	cd proto && $(BIN)/buf lint

@@ -15,7 +15,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IMAGE="${1:-debian:12}"
+. "$ROOT/scripts/lib/test-image.sh"
+IMAGE="$(test_image "${1:-debian:12}")"
 die() { echo "test-postinstall: FAIL: $*" >&2; exit 1; }
 
 # run_script <script arguments>...: the post-install script's output, in a clean container.

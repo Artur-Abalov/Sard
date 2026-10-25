@@ -168,6 +168,8 @@ tasks.withType<Test>().configureEach {
     )
     // The PostgreSQL of an installation (DB1): the test databases use its image and initdb arguments.
     systemProperty("sard.test.postgres-pin-file", rootProject.file("deploy/postgres.env").path)
+    // Every other image the tests run, pinned by digest (SC1).
+    systemProperty("sard.test.images-file", rootProject.file("test/images.env").path)
     // The release order of versions, shared with the dpkg and rpm checks (ADR 0048).
     systemProperty("sard.test.version-order-file", rootProject.file("deploy/release/version-order.txt").path)
     // Tags that are not releases, shared with scripts/test-release-version.sh (ADR 0048).

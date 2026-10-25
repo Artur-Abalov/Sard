@@ -7,7 +7,7 @@
 # decides (docs/adr/0048-release-versions.md). openssh-clients, which a
 # minimal server install has, is the rpm's one dependency (ADR 0047): rpm -U,
 # as the console runs it, resolves nothing from repositories.
-ARG DISTRO=rockylinux/rockylinux:9
+ARG DISTRO=rockylinux/rockylinux:9@sha256:8101994123cf3d0a8fee517bee7f39e555c7d92bd2d9eb3303cc988a0eeed00f
 FROM ${DISTRO}
 RUN dnf install -y --setopt=install_weak_deps=False \
       systemd sudo /usr/bin/curl findutils procps-ng shadow-utils openssh-clients && \

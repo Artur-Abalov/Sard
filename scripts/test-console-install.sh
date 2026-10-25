@@ -46,6 +46,7 @@ HOST="$RUN_ID-host"
 # scripts/lib/setup-wizard.sh); the server is reachable from the host container only.
 # shellcheck source=lib/setup-wizard.sh
 source "$ROOT/scripts/lib/setup-wizard.sh"
+source "$ROOT/scripts/lib/test-image.sh"
 sard_curl() { docker exec -i "$HOST" curl "$@"; }
 server_log() { docker logs "$RUN_ID-server" 2>&1; }
 export SARD_WIZARD_COOKIES=/root/jar
@@ -112,7 +113,7 @@ start_server() {
 
 start_host() {
   local distro="$1"
-  docker build -q ${HOST_BUILD_FLAGS:-} --build-arg DISTRO="$distro" -t "sard-pkgtest:${distro//[:\/]/-}" \
+  docker build -q ${HOST_BUILD_FLAGS:-} --build-arg DISTRO="$(test_image "$distro")" -t "sard-pkgtest:${distro//[:\/]/-}" \
     -f "$ROOT/test/packages/$HOST_DOCKERFILE" "$ROOT/test/packages" >/dev/null
   docker run -d --name "$HOST" --hostname agent-host --network "$NET" --privileged \
     --cgroupns=host --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:rw \

@@ -37,6 +37,7 @@ services:
       retries: 30
 
   server:
+    # allow-unpinned: the release image of SARD_VERSION, signed with cosign (docs/operator/10-security.md)
     image: ${SARD_IMAGE:-ghcr.io/artur-abalov/sard-server}:${SARD_VERSION:?set SARD_VERSION in .env}
     restart: unless-stopped
     environment:
@@ -110,6 +111,7 @@ services:
   # volume, which this service mounts read-only (no SARD_ENROLL_TOKEN here).
   self-agent:
     # The agent on postgres:18: pg_dump of the database's major version for the self-backup (F6).
+    # allow-unpinned: the release image of SARD_VERSION, signed with cosign (docs/operator/10-security.md)
     image: ${SARD_AGENT_IMAGE:-ghcr.io/artur-abalov/sard-agent}:${SARD_VERSION:?set SARD_VERSION in .env}-pg18
     restart: unless-stopped
     hostname: sard-self
