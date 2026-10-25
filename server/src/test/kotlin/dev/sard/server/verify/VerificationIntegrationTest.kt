@@ -317,6 +317,7 @@ class VerificationIntegrationTest(
         val before = VerifyTask.of(attempt()["task"] as String)!!
         assertEquals(listOf<Any?>(null, null), listOf(before.fingerprint, before.fingerprintSha256))
         report(verifier = jobs().single()["verifier_agent_id"] as UUID, StepState.SUCCEEDED, passed)
+        loop.tick()
 
         val canonical = """{"facts":[{"name":"tables","rule":"exact","value":"3"}],"format":1,"plugin":"postgresql"}"""
         val bytes = canonical.toByteArray()
