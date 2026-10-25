@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io/fs"
 	"slices"
 	"strings"
 	"testing"
@@ -356,6 +357,49 @@ func TestACancelledFingerprintReturnsTheCause(t *testing.T) {
 		return -1, errTerminated
 	})
 	if _, err := d.plugin.Fingerprint(ctx, d.host, cfgOf(k()), sdk.FingerprintTarget{}); !errors.Is(err, cause) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// A copy is measured with psql alone: a verifier needs no pg_dump (only
+// pg_restore and psql), in the PATH or beside the pg_dump_path of the config of
+// the copy, which RestoreInto sets beside pg_restore.
+func TestTheFingerprintOfACopyNeedsPsqlOnly(t *testing.T) {
+	for name, tc := range map[string]struct {
+		installed string
+		cfg       map[string]any
+		want      string
+	}{
+		"in the PATH":             {"/usr/bin", nil, "/usr/bin/psql"},
+		"beside the pg_dump_path": {"/opt/pg/bin", map[string]any{"pg_dump_path": "/opt/pg/bin/pg_dump"}, "/opt/pg/bin/psql"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			d := newDirect()
+			files := &fakeFS{nodes: map[string]fs.FileMode{tc.installed: fs.ModeDir | 0o755}}
+			files.install(tc.installed, "psql")
+			d.plugin.FS = files
+			s := newSession()
+			d.proc.on("psql session", s.behaviour())
+			ref := sdk.Fingerprint{Plugin: "postgresql", Format: 1, Facts: []sdk.Fact{exactFact("rows:public.users", "7")}}
+			got, err := d.plugin.Fingerprint(context.Background(), d.host, cfgOf(k(tc.cfg)), sdk.FingerprintTarget{Reference: &ref})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if factMap(got)["rows:public.users"].Value != "7" {
+				t.Errorf("facts = %v", got.Facts)
+			}
+			if calls := d.proc.ran("psql session"); len(calls) != 1 || calls[0].Path != tc.want {
+				t.Errorf("psql = %+v", calls)
+			}
+		})
+	}
+}
+
+func TestAFingerprintWithoutPsqlNamesIt(t *testing.T) {
+	d := newDirect()
+	d.plugin.FS = &fakeFS{nodes: map[string]fs.FileMode{"/usr/bin": fs.ModeDir | 0o755}}
+	_, err := d.plugin.Fingerprint(context.Background(), d.host, cfgOf(k()), sdk.FingerprintTarget{})
+	if !errors.Is(err, sdk.ErrProgramMissing) || !strings.Contains(err.Error(), "psql") {
 		t.Errorf("err = %v", err)
 	}
 }

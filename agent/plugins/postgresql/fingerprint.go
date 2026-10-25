@@ -66,18 +66,22 @@ func (p Plugin) now() time.Time {
 // extensions, the number of tables pg_dump dumps, the size of the database and
 // the exact number of rows of the key tables, all in one REPEATABLE READ
 // transaction. Of a copy (t.Reference set) the rows of the tables the
-// reference counted are counted. A backup takes it in the transaction whose
-// snapshot pg_dump dumps (Dump), not through this method.
+// reference counted are counted. It needs psql only. A backup takes it in the
+// transaction whose snapshot pg_dump dumps (Dump), not through this method.
 func (p Plugin) Fingerprint(ctx context.Context, h sdk.Host, cfg sdk.Config, t sdk.FingerprintTarget) (sdk.Fingerprint, error) {
 	c, err := parse(cfg)
 	if err != nil {
 		return sdk.Fingerprint{}, err
 	}
-	password, tl, err := p.setup(h, c)
+	password, err := p.password(h, c)
 	if err != nil {
 		return sdk.Fingerprint{}, err
 	}
-	s, err := p.openSession(ctx, h, tl.psql, c.conninfo(), password)
+	psql, err := p.locatePsql(c)
+	if err != nil {
+		return sdk.Fingerprint{}, err
+	}
+	s, err := p.openSession(ctx, h, psql, c.conninfo(), password)
 	if err != nil {
 		return sdk.Fingerprint{}, err
 	}

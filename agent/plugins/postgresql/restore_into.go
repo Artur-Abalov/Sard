@@ -14,7 +14,8 @@ import (
 var _ sdk.CopyRestorer = Plugin{}
 
 // copyConfig is a config of the source that points at the restored database:
-// Fingerprint measures the copy through it, with psql beside pg_restore.
+// Fingerprint measures the copy through it, with psql beside pg_restore (its
+// pg_dump_path only names that directory: Fingerprint needs no pg_dump).
 type copyConfig struct {
 	Host           string `json:"host"`
 	Port           int    `json:"port"`
