@@ -1,0 +1,105 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# The checksums a Renovate PR cannot write itself (SC1, ADR
+# 00XX-draft-supply-chain): after Renovate changes a Gradle dependency or the
+# restic version, the lock files, gradle/verification-metadata.xml and the
+# SHA-256 lines of restic-version are written anew and committed to the
+# Renovate branch, then CI runs on that commit. The diff is reviewed in the PR
+# like the rest of it.
+#
+#   regenerate  read-only token; runs the build (scripts/gradle-lock.sh) and
+#               fetch-restic.sh --update-pins, which takes restic's sums only
+#               from a SHA256SUMS signed by the pinned key; hands on a patch
+#   commit      writes to the branch; runs no code of the branch, and refuses
+#               a patch that touches anything but the files above
+#
+# Only branches of this repository named renovate/* trigger it, and only
+# Renovate and the owner create those; forks never do.
+name: Renovate pins
+
+on:
+  push:
+    branches: ["renovate/**"]
+
+permissions: {}
+
+concurrency:
+  group: renovate-pins-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIN_FILES: >-
+    buildscript-gradle.lockfile
+    proto/jvm/gradle.lockfile
+    server/gradle.lockfile
+    test/e2e/gradle.lockfile
+    gradle/verification-metadata.xml
+    agent/internal/restic/restic-version
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-read-only: true
+      - name: Gradle lock files and checksums
+        run: scripts/gradle-lock.sh
+      - name: restic checksums from its signed SHA256SUMS
+        run: scripts/fetch-restic.sh --update-pins
+      - name: The patch
+        run: |
+          # shellcheck disable=SC2086 # PIN_FILES is a list of paths
+          git diff --binary -- $PIN_FILES >"$RUNNER_TEMP/pins.patch"
+          git diff --stat -- $PIN_FILES
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pins-patch
+          path: ${{ runner.temp }}/pins.patch
+          retention-days: 3
+
+  commit:
+    needs: regenerate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The push below needs the token; nothing of the branch runs in this job.
+          persist-credentials: true
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: pins-patch
+          path: ${{ runner.temp }}/pins
+      - name: Commit the checksums, run CI on them
+        env:
+          BRANCH: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          patch="$RUNNER_TEMP/pins/pins.patch"
+          if [ ! -s "$patch" ]; then echo "checksums up to date"; exit 0; fi
+          git apply --numstat "$patch" | while read -r _ _ path; do
+            case " $PIN_FILES " in
+              *" $path "*) ;;
+              *) echo "the patch touches $path, which is not a pin file" >&2; exit 1 ;;
+            esac
+          done
+          git apply --index "$patch"
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "build: lock files and checksums for this update (renovate-pins.yml)"
+          git push origin "HEAD:refs/heads/$BRANCH"
+          gh workflow run ci.yml --ref "$BRANCH"

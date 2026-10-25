@@ -26,6 +26,9 @@ on:
     paths-ignore:
       - "docs/**"
       - "**/*.md"
+  # A push with the workflow token runs no workflow: renovate-pins.yml starts
+  # this one on the commit it pushed to a Renovate branch.
+  workflow_dispatch:
 
 permissions:
   contents: read

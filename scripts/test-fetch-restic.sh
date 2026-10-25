@@ -106,4 +106,35 @@ cp "$WORK/sums" "$REL/SHA256SUMS" && cp "$WORK/sums.asc" "$REL/SHA256SUMS.asc"
 printf 'tampered\n' >>"$REL/SHA256SUMS"
 run "SHA256SUMS tampered with after signing" 1
 
+# update-pins: after Renovate moves version=, the SHA-256 lines are taken from
+# the release's SHA256SUMS, and only once its signature checks out.
+cp "$WORK/sums" "$REL/SHA256SUMS" && cp "$WORK/sums.asc" "$REL/SHA256SUMS.asc"
+(cd "$REL" && cp restic_9.9.9_linux_amd64.bz2 restic_9.9.9_linux_arm64.bz2 &&
+  sha256sum restic_9.9.9_linux_amd64.bz2 restic_9.9.9_linux_arm64.bz2 >SHA256SUMS)
+sign restic "$REL/SHA256SUMS"
+pin_file="$WORK/root/agent/internal/restic/restic-version"
+update() { # description, want exit
+  local rc=0 stale
+  stale="$(printf '%064d' 1)"
+  printf 'version=9.9.9\nsha256_linux_amd64=%s\nsha256_linux_arm64=%s\nsigning_key_fingerprint=%s\n' \
+    "$stale" "$stale" "$PINNED_FPR" >"$pin_file"
+  (
+    # shellcheck source=fetch-restic.sh
+    . "$HERE/fetch-restic.sh"
+    ROOT="$WORK/root" VERSION_FILE="$pin_file" VERSION=9.9.9 BASE="$REL"
+    RESTIC_SIGNING_KEY="$WORK/restic.asc" DEST="$WORK/root/.bin/restic/9.9.9" DL="$WORK/root/.bin/restic/9.9.9/download"
+    fetch() { cp "$1" "$2"; }
+    update_pins
+  ) >"$WORK/out" 2>&1 || rc=1
+  [ "$rc" -eq "$2" ] || { cat "$WORK/out" >&2; die "$1: exit $rc, want $2"; }
+}
+update "update-pins" 0
+grep -qx "sha256_linux_amd64=$GOOD_SHA" "$pin_file" || die "update-pins: amd64 not pinned: $(cat "$pin_file")"
+grep -qx "sha256_linux_arm64=$GOOD_SHA" "$pin_file" || die "update-pins: arm64 not pinned: $(cat "$pin_file")"
+grep -qx "signing_key_fingerprint=$PINNED_FPR" "$pin_file" || die "update-pins: the fingerprint changed"
+grep -qx "version=9.9.9" "$pin_file" || die "update-pins: the version changed"
+sign mallory "$REL/SHA256SUMS"
+update "update-pins with SHA256SUMS signed by another key" 1
+grep -qx "sha256_linux_amd64=$(printf '%064d' 1)" "$pin_file" || die "a wrongly signed SHA256SUMS changed the pins"
+
 echo "test-fetch-restic: OK"
