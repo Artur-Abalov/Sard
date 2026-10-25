@@ -8,6 +8,7 @@ import com.github.dockerjava.api.model.Bind
 import com.github.dockerjava.api.model.Volume
 import org.junit.jupiter.api.extension.RegisterExtension
 import org.testcontainers.containers.GenericContainer
+import org.testcontainers.containers.startupcheck.OneShotStartupCheckStrategy
 import org.testcontainers.utility.DockerImageName
 import java.security.MessageDigest
 import java.time.Duration
@@ -186,21 +187,11 @@ class VerificationFilesTest {
     /** The names on the verifier's work volume, as the holder of the volume sees them. */
     private fun workVolume(): List<String> = holder.execInContainer("ls", "-A", "/verify").stdout.lines().filter { it.isNotBlank() }
 
-    /** Runs [script] in a throwaway container with [volume] at [path]; its output. */
     private fun helper(
         volume: String,
         path: String,
         script: String,
-    ): String =
-        GenericContainer<Nothing>(DockerImageName.parse(E2e.agentImage)).use { c ->
-            c.withCreateContainerCmdModifier { create ->
-                create.withEntrypoint("/bin/sh", "-c", script).withUser("0")
-                create.hostConfig?.withBinds(Bind(volume, Volume(path)))
-            }
-            c.withStartupCheckStrategy(org.testcontainers.containers.startupcheck.OneShotStartupCheckStrategy().withTimeout(Duration.ofMinutes(1)))
-            c.start()
-            c.logs
-        }
+    ): String = runOnVolume(volume, path, script)
 
     private fun update(
         sql: String,
@@ -233,6 +224,22 @@ class VerificationFilesTest {
         @RegisterExtension
         val sard = SardEnvironment()
 
+        /** Runs [script] as root in a throwaway container with [volume] at [path]; its output. */
+        private fun runOnVolume(
+            volume: String,
+            path: String,
+            script: String,
+        ): String =
+            GenericContainer<Nothing>(DockerImageName.parse(E2e.agentImage)).use { c ->
+                c.withCreateContainerCmdModifier { create ->
+                    create.withEntrypoint("/bin/sh", "-c", script).withUser("0")
+                    create.hostConfig?.withBinds(Bind(volume, Volume(path)))
+                }
+                c.withStartupCheckStrategy(OneShotStartupCheckStrategy().withTimeout(Duration.ofMinutes(1)))
+                c.start()
+                c.logs
+            }
+
         private const val SPARE = "spare"
         private const val ACCEPTED = 202
         private const val MANY_FILES = 20_000
@@ -243,8 +250,14 @@ class VerificationFilesTest {
         private val FILES_STAGES =
             listOf("snapshot", "fingerprint_tag", "work_volume", "restic_check", "restore", "start", "fingerprint", "cleanup")
 
-        private val repository by lazy { sard.volume() }
-        private val spare by lazy { sard.volume() }
+        private val repository by lazy { agentsVolume() }
+        private val spare by lazy { agentsVolume() }
+
+        /** A new volume owned by the agent's user, as a repository directory the operator made for it. */
+        private fun agentsVolume(): String =
+            sard.volume().also { volume ->
+                runOnVolume(volume, "/v", "chown ${TarFiles.AGENT_UID}:${TarFiles.AGENT_UID} /v && chmod 0700 /v")
+            }
         private val work by lazy { sard.noexecVolume() }
 
         /** The repositories of a host: [repository] as `main`, [spare] as `spare`, under /srv. */
