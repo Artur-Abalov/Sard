@@ -18,6 +18,8 @@ const stNoExec = 0x8
 type OSDisk struct {
 	// Statfs is syscall.Statfs; tests replace it.
 	Statfs func(path string, st *syscall.Statfs_t) error
+	// Remove is os.RemoveAll; tests replace it.
+	Remove func(path string) error
 }
 
 var _ Disk = OSDisk{}
@@ -40,8 +42,12 @@ func (OSDisk) MakeDir(path string) error { return os.Mkdir(path, 0o700) }
 
 // RemoveAll implements Disk. A copy keeps the modes of the snapshot: a
 // directory it cannot write into is made writable, and the removal tried again.
-func (OSDisk) RemoveAll(path string) error {
-	if os.RemoveAll(path) == nil {
+func (d OSDisk) RemoveAll(path string) error {
+	remove := d.Remove
+	if remove == nil {
+		remove = os.RemoveAll
+	}
+	if remove(path) == nil {
 		return nil
 	}
 	_ = filepath.WalkDir(path, func(p string, e fs.DirEntry, err error) error {
@@ -50,7 +56,7 @@ func (OSDisk) RemoveAll(path string) error {
 		}
 		return nil
 	})
-	return os.RemoveAll(path)
+	return remove(path)
 }
 
 // Entries implements Disk.

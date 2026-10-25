@@ -80,6 +80,34 @@ func TestACopyWithReadOnlyDirectoriesIsRemoved(t *testing.T) {
 	}
 }
 
+// As root (the tests' container) a directory without write permission does
+// not stop a removal; the second attempt is made the way a service user needs.
+func TestARemovalThatFailsMakesTheDirectoriesWritableAndTriesAgain(t *testing.T) {
+	job := filepath.Join(t.TempDir(), "job")
+	inner := filepath.Join(job, "copy")
+	if err := os.MkdirAll(inner, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(inner, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	var modes []os.FileMode
+	attempts := 0
+	d := verifier.OSDisk{Remove: func(p string) error {
+		attempts++
+		info, _ := os.Stat(inner)
+		modes = append(modes, info.Mode().Perm())
+		if attempts == 1 {
+			return errors.New("permission denied")
+		}
+		return os.RemoveAll(p)
+	}}
+
+	if err := d.RemoveAll(job); err != nil || attempts != 2 || !slices.Equal(modes, []os.FileMode{0o500, 0o700}) {
+		t.Fatalf("err %v, attempts %d, modes %v", err, attempts, modes)
+	}
+}
+
 func TestTheEntriesOfAMissingWorkDirectoryAreNone(t *testing.T) {
 	d := verifier.OSDisk{}
 	if names, err := d.Entries(filepath.Join(t.TempDir(), "none")); err != nil || names != nil {
