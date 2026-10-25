@@ -43,6 +43,10 @@ class VerificationFilesTest {
         assertTrue(record.restoreMillis!! > 0, "no restore time")
         assertEquals(before, repositoryListing(), "the verification wrote to the repository")
         assertEquals(emptyList(), workVolume(), "the verification left a copy on the verifier")
+        // Verification is turned on once the record is there: a cycle job would otherwise race «verify now».
+        val sourceId = query("SELECT source_id FROM snapshots WHERE id = ?", snapshot) { it.getObject(1, UUID::class.java) }!!
+        val enabled = SardApi(sard).put("/api/v1/sources/$sourceId/verification", """{"enabled":true}""")
+        assertEquals(SardApi.HTTP_OK, enabled.status, enabled.body)
         assertNotNull(SardApi(sard).get("/api/v1/status").field("lastVerifiedRestoreAt"))
     }
 
@@ -152,9 +156,6 @@ class VerificationFilesTest {
         val started = Backups.start(sard, source.agentId, name, config, repository = repository)
         val step = Backups.awaitFinished(sard, started.stepId)
         assertEquals("succeeded", step.status, step.message)
-        val api = SardApi(sard)
-        val enabled = api.put("/api/v1/sources/${started.sourceId}/verification", """{"enabled":true}""")
-        assertEquals(SardApi.HTTP_OK, enabled.status, enabled.body)
         return query("SELECT id FROM snapshots WHERE step_id = ?", started.stepId) { it.getObject(1, UUID::class.java) }!!
     }
 

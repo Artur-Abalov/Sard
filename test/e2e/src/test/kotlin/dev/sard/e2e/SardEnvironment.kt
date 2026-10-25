@@ -150,8 +150,9 @@ class SardEnvironment(
     /**
      * A volume of the local driver on tmpfs mounted noexec, as a verifier's work volume (V5). Its
      * content lives while a container has it mounted: a holder container keeps it across restarts.
+     * 4 GiB: the server gives a job only to a verifier with twice the copy plus 1 GiB free.
      */
-    fun noexecVolume(): String = volume(mapOf("type" to "tmpfs", "device" to "tmpfs", "o" to "noexec,size=1g"))
+    fun noexecVolume(): String = volume(mapOf("type" to "tmpfs", "device" to "tmpfs", "o" to "noexec,size=4g"))
 
     /**
      * A new named Docker volume, removed with the environment (and by the Testcontainers reaper if
