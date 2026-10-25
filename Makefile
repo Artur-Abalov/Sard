@@ -220,11 +220,13 @@ check-sudo-u:
 	./scripts/test-check-sudo-u.sh
 	./scripts/check-sudo-u.sh
 
-## check-pins: every action by commit SHA, every image by digest (SC1), and the tests of that check and of test_image
+## check-pins: every action by commit SHA, every image by digest, no secret within reach of a PR (SC1), and the tests of these checks
 check-pins:
 	./scripts/test-check-pins.sh
 	./scripts/test-lib-test-image.sh
+	./scripts/test-check-workflow-secrets.sh
 	./scripts/check-pins.sh
+	./scripts/check-workflow-secrets.sh
 
 lint-proto: tools
 	cd proto && $(BIN)/buf lint

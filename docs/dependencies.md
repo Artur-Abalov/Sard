@@ -31,6 +31,29 @@
 | golang.org/x/tools/cmd/deadcode | v0.50.0 | BSD-3-Clause | мёртвый код Go: функции, недостижимые из `main` и тестов (ADR 00XX-draft-dead-code) |
 | github.com/goreleaser/nfpm/v2 | v2.47.0 | MIT | сборка deb и rpm агента (`make package`); запускается, в пакеты не попадает |
 
+`tools/cmd/vulngate` (порог сканирования уязвимостей, SC1) — свой код в том же модуле, только stdlib.
+
+## Инструменты CI (`tools/ci/go.mod`, отдельный модуль; в бинарники не попадают)
+
+Отдельный модуль: actionlint требует версию `go.yaml.in/yaml/v4`, несовместимую с зависимостями `tools/go.mod`.
+
+| Инструмент | Версия | Лицензия | Зачем |
+|---|---|---|---|
+| github.com/rhysd/actionlint | v1.7.12 | MIT | проверка workflow `.github/workflows` (`make lint-workflows`, SC1) |
+| golang.org/x/vuln/cmd/govulncheck | v1.9.0 | BSD-3-Clause | уязвимости, которые вызывает Go-код агента, CLI, SDK и proto (`scripts/vuln-scan.sh go`, SC1) |
+
+## Образы инструментов CI (`tools/images.env`, по digest)
+
+Запускаются в контейнере, в сборку и в пакеты не попадают.
+
+| Образ | Версия | Лицензия | Зачем |
+|---|---|---|---|
+| anchore/grype | v0.121.0 | Apache-2.0 | уязвимости в lock-файлах сервера и web и в образах релиза (`scripts/vuln-scan.sh`, SC1) |
+| anchore/syft | v1.55.0 | Apache-2.0 | SBOM образов и пакетов релиза (SC1) |
+| ghcr.io/zizmorcore/zizmor | 1.31.1 | MIT | анализ безопасности workflow (`make lint-workflows`, SC1) |
+
+Обновления зависимостей приходят PR от Renovate (`.github/renovate.json5`, приложение GitHub, в репозиторий не входит).
+
 ## Инструменты релиза (из apt раннера, не в `tools/go.mod`)
 
 | Инструмент | Версия | Лицензия | Зачем |
