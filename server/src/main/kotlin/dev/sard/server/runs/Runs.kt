@@ -374,6 +374,5 @@ internal object RunViews {
             warnings = warningsOf(node.path("warnings")),
         )
 
-    private fun warningsOf(warnings: JsonNode): List<String> =
-        (0 until warnings.size()).map { warnings.get(it).asString() }
+    private fun warningsOf(node: JsonNode): List<String> = (0 until node.size()).map { node.get(it).asString() }
 }
