@@ -43,6 +43,8 @@ expect 1 "every secret handed to a reusable workflow" $'on:\n  workflow_dispatch
 expect 1 "on: with a comment, then a pull request trigger" $'on: # triggers\n  pull_request:\njobs:\n  a:\n    steps:\n      - env:\n          T: ${{ secrets.X }}\n'
 expect 1 "triggers the checker cannot read" $'"on": [pull_request]\njobs: {}\n'
 expect 1 "triggers as a flow map" $'on: { pull_request_target: {} }\njobs: {}\n'
+expect 1 "a quoted trigger beside one it can read" $'on:\n  push:\n    tags: ["v*"]\n  "pull_request_target":\njobs: {}\n'
+expect 0 "a comment in the block of triggers" $'on:\n  # tags only\n  push:\n    tags: ["v*"]\njobs: {}\n'
 expect 0 "the workflow token in a pull request workflow" $'on: pull_request\njobs:\n  a:\n    steps:\n      - env:\n          T: ${{ secrets.GITHUB_TOKEN }}\n          U: ${{ github.token }}\n'
 expect 0 "another secret off pull requests" $'on:\n  workflow_dispatch:\njobs:\n  a:\n    steps:\n      - env:\n          T: ${{ secrets.QODANA_TOKEN }}\n'
 expect 1 "pull_request_target" $'on:\n  pull_request_target:\njobs: {}\n'
