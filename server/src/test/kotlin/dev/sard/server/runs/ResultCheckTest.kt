@@ -280,6 +280,6 @@ class FingerprintResultCheckTest {
                 """"facts":[{"name":"tables","rule":"exact","value":"3"}],"hidden":0},"warnings":["w"]}"""
         assertEquals(expected, json)
         assertEquals(SnapshotTotals(1, 1_000), backup.totals())
-        assertEquals(null, BACKUP.totals())
+        assertEquals(SnapshotTotals(null, 1_000), BACKUP.totals())
     }
 }

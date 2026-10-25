@@ -48,8 +48,8 @@ sealed interface StepOutput {
                 "warnings" to warnings,
             )
 
-        /** What restic counted, when it is known. */
-        fun totals(): SnapshotTotals? = totalFiles?.let { SnapshotTotals(it, totalBytes) }
+        /** What restic counted: its bytes always, its files when the agent knows them (V2). */
+        fun totals(): SnapshotTotals = SnapshotTotals(totalFiles, totalBytes)
 
         /** Why this output cannot prove a snapshot, or null when it can. */
         fun problem(): String? =

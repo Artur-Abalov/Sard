@@ -525,19 +525,20 @@ class StepResultsIntegrationTest(
         val source = sources.create(tenant.id, tenant.draft("www-old"))
         backedUp(source.id, fingerprinted("fp-old-a", 1_000, 10_000))
         val older = StepOutput.Backup("fp-old-b", 4_000, 1, REPOSITORY_ID)
-        backedUp(source.id, StepReport(StepState.SUCCEEDED, null, older))
+        val old = backedUp(source.id, StepReport(StepState.SUCCEEDED, null, older))
         val now = backedUp(source.id, fingerprinted("fp-old-c", 990, 3_900))
 
-        assertEquals(
-            emptyList(),
-            runs
-                .get(tenant.id, runOf(now))!!
-                .steps
-                .single()
-                .backup!!
-                .warnings,
-        )
+        assertEquals(listOf("the size fell by 60% since the last snapshot (10000 → 4000 bytes)"), warningsOf(old))
+        assertEquals(emptyList(), warningsOf(now))
     }
+
+    private fun warningsOf(step: UUID): List<String> =
+        runs
+            .get(tenant.id, runOf(step))!!
+            .steps
+            .single()
+            .backup!!
+            .warnings
 
     private fun runOf(step: UUID): UUID = row("run_steps", step)["run_id"] as UUID
 }

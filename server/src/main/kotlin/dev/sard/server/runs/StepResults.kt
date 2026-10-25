@@ -106,8 +106,8 @@ class StepResults(
         verdict: Verdict,
     ): Verdict {
         val backup = verdict.output as? StepOutput.Backup
-        val totals = backup?.totals() ?: return verdict
-        val warnings = VolumeDrop.warnings(previous(session, step), totals)
+        backup ?: return verdict
+        val warnings = VolumeDrop.warnings(previous(session, step), backup.totals())
         return verdict.copy(output = backup.copy(warnings = warnings))
     }
 
