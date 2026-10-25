@@ -587,3 +587,32 @@ func (b *blockingStore) VerifyData(ctx context.Context, percent int) (restic.Che
 	<-b.release
 	return b.fakeStore.VerifyData(ctx, percent)
 }
+
+// A fingerprint the tag vouches for but that is no canonical fingerprint was
+// spoiled before it was tagged: the backup's evidence is bad.
+func TestAnAuthenticFingerprintThatCannotBeReadFails(t *testing.T) {
+	r := newRig(t)
+	odd := []byte(`{"plugin":"files"}`)
+	hash := sdk.HashBytes(odd)
+	r.step.Verify.Fingerprint, r.step.Verify.FingerprintSha256 = odd, hash
+	r.store.snapshots[1].Tags[3] = "sard.fp=" + hash
+
+	result, _ := r.run()
+
+	if s := find(result.GetVerify(), "fingerprint_tag"); s.GetStatus() != failed || !strings.Contains(s.GetOutput(), "invalid fingerprint") {
+		t.Fatalf("stage = %v", s)
+	}
+}
+
+func TestDamageWhoseSnapshotsCannotBeListedAgainCannotBeVerified(t *testing.T) {
+	r := newRig(t)
+	r.store.checks = []checkReply{{err: fmt.Errorf("%w", restic.ErrDamaged)}}
+	calls := 0
+	lister := &listOnce{fakeStore: r.store, calls: &calls}
+
+	result, _ := newVerifier(r).Run(t.Context(), r.step, completing{r.plugin}, lister, r.reporter)
+
+	if s := find(result.GetVerify(), "restic_check"); s.GetStatus() != cannotRun || !strings.Contains(s.GetOutput(), "cannot list the snapshots") {
+		t.Fatalf("stage = %v", s)
+	}
+}
