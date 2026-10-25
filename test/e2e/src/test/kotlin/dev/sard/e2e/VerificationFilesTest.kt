@@ -43,10 +43,8 @@ class VerificationFilesTest {
         assertTrue(record.restoreMillis!! > 0, "no restore time")
         assertEquals(before, repositoryListing(), "the verification wrote to the repository")
         assertEquals(emptyList(), workVolume(), "the verification left a copy on the verifier")
-        // Verification is turned on once the record is there: a cycle job would otherwise race «verify now».
-        val sourceId = query("SELECT source_id FROM snapshots WHERE id = ?", snapshot) { it.getObject(1, UUID::class.java) }!!
-        val enabled = SardApi(sard).put("/api/v1/sources/$sourceId/verification", """{"enabled":true}""")
-        assertEquals(SardApi.HTTP_OK, enabled.status, enabled.body)
+        // The only source with verification on has passed: the last verified restore is a real one.
+        verification(query("SELECT source_id FROM snapshots WHERE id = ?", snapshot) { it.getObject(1, UUID::class.java) }!!, enabled = true)
         assertNotNull(SardApi(sard).get("/api/v1/status").field("lastVerifiedRestoreAt"))
     }
 
@@ -154,9 +152,20 @@ class VerificationFilesTest {
     ): UUID {
         val config = if (paths == Chain.DATA) Chain.files(paths, TREE.excludePatterns(paths)) else Chain.files(paths)
         val started = Backups.start(sard, source.agentId, name, config, repository = repository)
+        // Verification is on by default (V4): the cycle would give the snapshot a job of its own, before a test
+        // changes it and racing «verify now». Off before the snapshot exists; «verify now» does not need it.
+        verification(started.sourceId, enabled = false)
         val step = Backups.awaitFinished(sard, started.stepId)
         assertEquals("succeeded", step.status, step.message)
         return query("SELECT id FROM snapshots WHERE step_id = ?", started.stepId) { it.getObject(1, UUID::class.java) }!!
+    }
+
+    private fun verification(
+        sourceId: UUID,
+        enabled: Boolean,
+    ) {
+        val set = SardApi(sard).put("/api/v1/sources/$sourceId/verification", """{"enabled":$enabled}""")
+        assertEquals(SardApi.HTTP_OK, set.status, set.body)
     }
 
     /** «Verify now» of [snapshot]; the job's id. */
