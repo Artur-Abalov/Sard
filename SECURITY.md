@@ -81,10 +81,15 @@ unnoticed (ADR 00XX-draft-supply-chain):
   base and test image to a digest, every Gradle dependency by its lock file
   and SHA-256 (`gradle/verification-metadata.xml`), Go modules by `go.sum`,
   npm packages by `package-lock.json`; restic, shipped with the agent, by its
-  SHA-256 and the GPG signature of its release. CI fails on anything
-  unpinned (`scripts/check-pins.sh`). Updates arrive as Renovate pull
+  SHA-256 and the GPG signature of its release. CI fails on an action or
+  image named by tag (`scripts/check-pins.sh`), on a Gradle dependency off
+  its lock file or checksum (Gradle itself, `scripts/test-gradle-verification.sh`),
+  on a restic archive that is not as pinned and signed (`scripts/fetch-restic.sh`,
+  `scripts/test-fetch-restic.sh`), on a `go.sum` or `package-lock.json` the
+  build disagrees with (`go`, `npm ci`). Updates arrive as Renovate pull
   requests through the same checks.
-- **Scans.** `govulncheck` on every pull request; `grype` over the lock files
+- **Scans.** `govulncheck` on every pull request that runs CI (one that
+  changes only documentation does not); `grype` over the lock files
   and, nightly, over the released images. A fixable critical or high
   vulnerability, or one the Go code calls, fails the build unless
   `security/vuln-exceptions` names it with a reason and an expiry date at
@@ -200,10 +205,15 @@ Sard на ранней стадии разработки, выходят тол�
   базовый и тестовый образ — по digest, зависимости Gradle — lock-файлами и
   SHA-256 (`gradle/verification-metadata.xml`), Go — `go.sum`, npm —
   `package-lock.json`; restic, который поставляется с агентом, — по SHA-256
-  и подписи GPG его релиза. CI падает на незакреплённом
-  (`scripts/check-pins.sh`). Обновления приходят PR от Renovate через те же
-  проверки.
-- **Сканирование.** `govulncheck` на каждом PR; `grype` по lock-файлам и
+  и подписи GPG его релиза. CI падает на действии или образе по тегу
+  (`scripts/check-pins.sh`), на зависимости Gradle не по lock-файлу или не с
+  той суммой (сам Gradle, `scripts/test-gradle-verification.sh`), на архиве
+  restic не по закреплению или без подписи (`scripts/fetch-restic.sh`,
+  `scripts/test-fetch-restic.sh`), на `go.sum` или `package-lock.json`, с
+  которыми не согласна сборка (`go`, `npm ci`). Обновления приходят PR от
+  Renovate через те же проверки.
+- **Сканирование.** `govulncheck` на каждом PR, который запускает CI (PR
+  только с документацией его не запускает); `grype` по lock-файлам и
   каждую ночь по образам релиза. Исправимая критическая или высокая
   уязвимость или та, что вызывает Go-код, валит сборку, если её не называет
   `security/vuln-exceptions` с причиной и сроком не дальше 90 дней.

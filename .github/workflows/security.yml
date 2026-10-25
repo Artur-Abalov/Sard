@@ -103,7 +103,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="$(gh release list --limit 1 --json tagName --jq '.[0].tagName')"
+          # The newest published release; pre-releases count, they are what operators run before 0.1.0.
+          tag="$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName')"
+          [ -n "$tag" ] || { echo "no published release to scan" >&2; exit 1; }
           version="$(scripts/release-version.sh image "$tag")"
           . deploy/release/identity.env
           make tools

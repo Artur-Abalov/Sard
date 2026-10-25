@@ -43,6 +43,18 @@ root="$(fresh)"
 sed -i 's|^# SARD_IMAGE=.*|# SARD_IMAGE=ghcr.io/other/sard-server|' "$root/deploy/.env.example"
 expect 1 "another server in .env.example" "$root"
 
+# The names must be in the assignments themselves, not anywhere in the file.
+root="$(fresh)"
+server="$(sed -n 's/^SARD_REGISTRY_SERVER=//p' "$root/deploy/release/identity.env")"
+sed -i "s|\${SARD_IMAGE:-$server}|\${SARD_IMAGE:-ghcr.io/other/sard-server}|" "$root/deploy/docker-compose.yml"
+echo "# image: \${SARD_IMAGE:-$server}:\${SARD_VERSION}" >>"$root/deploy/docker-compose.yml"
+expect 1 "the right name in a comment, another in the image line" "$root"
+
+root="$(fresh)"
+sed -i 's|^# SARD_IMAGE=.*|# SARD_IMAGE=ghcr.io/other/sard-server|' "$root/deploy/.env.example"
+echo "# see # SARD_IMAGE=$server for the default" >>"$root/deploy/.env.example"
+expect 1 "the right name in prose, another in the template line" "$root"
+
 root="$(fresh)"
 rm "$root/deploy/release/cosign.pub"
 expect 1 "no cosign public key" "$root" --keys

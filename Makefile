@@ -220,12 +220,13 @@ check-sudo-u:
 	./scripts/test-check-sudo-u.sh
 	./scripts/check-sudo-u.sh
 
-## check-pins: every action by commit SHA, every image by digest, no secret within reach of a PR (SC1), and the tests of these checks
+## check-pins: every action by commit SHA, every image by digest, no secret within reach of a PR, the release identity (SC1), and the tests of these checks and of release-cosign.sh
 check-pins:
 	./scripts/test-check-pins.sh
 	./scripts/test-lib-test-image.sh
 	./scripts/test-check-workflow-secrets.sh
 	./scripts/test-check-identity.sh
+	./scripts/test-release-cosign.sh
 	./scripts/check-pins.sh
 	./scripts/check-workflow-secrets.sh
 	./scripts/check-identity.sh

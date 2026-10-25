@@ -38,24 +38,28 @@ cosign() { # extra docker run flags... -- cosign arguments...
     "${flags[@]}" "$TOOL_IMAGE_COSIGN" "$@"
 }
 
-# images <images.json>: "<name>@<digest> <sbom name>" per image.
+# images <images.json>: "<name>@<digest> <sbom name>" per image; a file that
+# names none is an error, so no mode can pass by doing nothing. Called as
+# list="$(images …)" in the main shell, where its failure stops the script.
 images() {
-  jq -er '.images[] | "\(.name)@\(.digest) \(.sbom)"' "$1" || die "$1: no images"
+  jq -er '.images | select(length > 0) | .[] | "\(.name)@\(.digest) \(.sbom)"' "$1" 2>/dev/null || die "$1: no images"
 }
 
 sign() {
-  local ref _sbom
+  local ref _sbom list
   [ -n "${COSIGN_PRIVATE_KEY:-}" ] || die "COSIGN_PRIVATE_KEY is empty"
   [ -n "${COSIGN_PASSWORD:-}" ] || die "COSIGN_PASSWORD is empty"
+  list="$(images "$1")"
   version="$(jq -er .version "$1")"
   while read -r ref _sbom; do
     cosign -- sign --recursive --key env://COSIGN_PRIVATE_KEY -a "sard.version=$version" "$ref"
-  done < <(images "$1")
+  done <<<"$list"
 }
 
 attest() {
-  local ref sbom arch sboms
+  local ref sbom arch sboms list
   [ -n "${COSIGN_PRIVATE_KEY:-}" ] || die "COSIGN_PRIVATE_KEY is empty"
+  list="$(images "$1")"
   sboms="$(cd "$2" && pwd)"
   while read -r ref sbom; do
     for arch in amd64 arm64; do
@@ -63,18 +67,19 @@ attest() {
       cosign -v "$sboms:/sbom:ro" -- attest --key env://COSIGN_PRIVATE_KEY --type cyclonedx \
         --predicate "/sbom/${sbom}_linux_$arch.cdx.json" "$ref"
     done
-  done < <(images "$1")
+  done <<<"$list"
 }
 
 verify() {
-  local pub="${2:-$ROOT/deploy/release/cosign.pub}" ref _sbom
+  local pub="${2:-$ROOT/deploy/release/cosign.pub}" ref _sbom list
   [ -f "$pub" ] || die "public key $pub missing"
+  list="$(images "$1")"
   pub="$(cd "$(dirname "$pub")" && pwd)/$(basename "$pub")"
   while read -r ref _sbom; do
     cosign -v "$pub:/cosign.pub:ro" -- verify --key /cosign.pub "$ref" >/dev/null
     cosign -v "$pub:/cosign.pub:ro" -- verify-attestation --key /cosign.pub --type cyclonedx "$ref" >/dev/null
     echo "release-cosign: $ref signed, its SBOMs attested"
-  done < <(images "$1")
+  done <<<"$list"
 }
 
 case "${1:-}" in
