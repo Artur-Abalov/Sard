@@ -152,3 +152,111 @@ restic
     (`v0.1.0-rc.0`? — не путать с `rc.1`) или форк с тестовыми ключами?
     Тег и подтверждение окружения — только у владельца; установку
     Renovate — тоже.
+
+### Решения владельца на контрольной точке 1 (2026-10-25)
+
+1. Подпись образов — (а) cosign с ключом, запись в Rekor.
+2. Офлайн — minisign над `SHA256SUMS.server` и манифестом образов: да.
+3. Ключи после `image` — (а) вторая задача в окружении `release`, второе подтверждение.
+4. Бот — Renovate; перегенерация `verification-metadata.xml` автоматизируется.
+5. Сканеры — красный ночной скан открывает issue; Trivy изучить (ниже).
+6. SBOM — CycloneDX JSON, syft: да.
+7. Provenance — да, как дополнительное.
+8. Qodana — на паузу (не работает пока нормально).
+9. apt без версий — «а нельзя без риска?» (ответ ниже, решение ждёт).
+10. Инструменты CI — да.
+11. Тестовый релиз — предрелиз `X.Y.Z-beta.N` в основном репозитории.
+
+## Фаза 2 — закрепление, права CI, бот, сканирование (СТОП, ждёт ревью)
+
+### Сделано
+
+Закрепление
+- `scripts/check-pins.sh` (тест `test-check-pins.sh`, `make check-pins`, CI
+  `licenses`): `uses:` только по 40-значному SHA с `# v<версия>`, `FROM`,
+  `image:` compose и `*IMAGE*` в env — только по digest; исключение —
+  `allow-unpinned: <причина>` на строке или над ней (наши образы релиза в
+  compose: подписываются cosign в фазе 3; образы, которые compose собирает сам).
+- Действия `ci.yml`, `docs.yml` — по SHA (версии как в `release.yml`, где они
+  совпадали; иначе — последняя в той же мажорной); `upload-artifact@v4` → v7.0.1;
+  `persist-credentials: false` у каждого checkout.
+- Базовые образы Dockerfile — по digest индекса (multi-arch). Образы тестов —
+  в одном месте, `test/images.env` (D24, как `deploy/postgres.env`); скрипты
+  берут их через `scripts/lib/test-image.sh` (`test_image debian:12`),
+  Kotlin — `TestImages` (сервер) и `E2e.testImage` (e2e); тег без закрепления
+  — ошибка теста, а не pull по тегу. Матрица дистрибутивов в `ci.yml` и
+  `release.yml` не менялась: она передаёт теги, скрипты их разрешают.
+- Gradle: `distributionSha256Sum` (сверена со страницей gradle.org/release-checksums;
+  `downloads.gradle.org` из окружения закрыт); блокировка всех конфигураций
+  (`LockMode.STRICT`, `buildscript-gradle.lockfile`, `*/gradle.lockfile`);
+  `gradle/verification-metadata.xml` (sha256, 629 компонентов), пишется
+  `scripts/gradle-lock.sh` с нуля, в режиме мутаций (надмножество
+  конфигураций), с protoc и protoc-gen-grpc-java для пяти платформ.
+- restic: подпись `SHA256SUMS` обязательна в каждой сборке, ключ по
+  умолчанию — из репозитория, `REQUIRE_SIGNATURE` убран (OQ-007 закрыт).
+- Go: `go.sum` есть везде; npm — `npm ci` уже везде.
+
+Права CI
+- Qodana на паузе: только `workflow_dispatch`, `contents: read` + `checks: write`.
+- `scripts/check-workflow-secrets.sh` (тест, `make check-pins`): нет
+  `pull_request_target`/`workflow_run`; в workflow, которые запускают PR,
+  — ни одного секрета, кроме токена workflow; ключи подписи
+  (`MINISIGN_*`, `COSIGN_*`) — только в задаче окружения `release` в
+  workflow, который запускается только тегом; никогда — все секреты разом.
+- actionlint (`tools/ci`, отдельный модуль: конфликт `yaml/v4` с
+  `tools/go.mod`) и zizmor (образ по digest, `tools/images.env`) —
+  `make lint-workflows`, CI `supply-chain`.
+
+Бот
+- `.github/renovate.json5`: еженедельно (пн до 7:00 МСК), безопасность — сразу,
+  мажорные — по запросу из dependency dashboard; группы: действия, PostgreSQL
+  установки, образы тестов (только digest), базовые образы, Gradle, Go, web,
+  тулчейн Go; regex-менеджеры для `restic-version`, `postgres.env`,
+  `.env.example`, `docker-compose.build.yml`, `test/images.env`,
+  `tools/images.env`, образов в workflow.
+- `.github/workflows/renovate-pins.yml`: на ветке `renovate/*` задача с
+  токеном только на чтение пишет lock-файлы, `verification-metadata.xml` и
+  sha256 restic (`fetch-restic.sh --update-pins` — только из
+  `SHA256SUMS`, подписанного закреплённым ключом); задача с правом записи
+  кода ветки не запускает, принимает патч только для этих файлов,
+  коммитит и запускает `ci.yml` (`workflow_dispatch`: пуш токеном workflow
+  CI не запускает).
+
+Сканирование
+- `tools/cmd/vulngate` + `tools/internal/vulngate` (гейт tools: покрытие 100 %,
+  CRAP ≤ 6, мутации 0.946): блокирует то, что вызывает код (govulncheck), и
+  исправимые critical/high (grype); неисправимые critical — предупреждение;
+  исключения — `security/vuln-exceptions`: `<id> <до YYYY-MM-DD> <причина>`,
+  не дальше 90 дней, просроченное валит скан.
+- `scripts/vuln-scan.sh go|deps|image`; govulncheck — на каждом PR (`ci.yml`,
+  `supply-chain`); grype по lock-файлам — на PR, меняющих зависимости
+  (`security.yml`), и каждую ночь вместе с образами последнего релиза;
+  красный ночной скан открывает или дополняет issue, чистый — закрывает.
+- `test/vuln/` — фикстуры с заведомо уязвимыми версиями (x/text v0.3.7 с
+  вызовом `ParseAcceptLanguage`, lodash 4.17.15); `scripts/test-vuln-scan.sh`:
+  без исключений — exit 2, с исключением на каждый ID — 0, с просроченным — 1.
+
+### Trivy (изучил, источники — разборы Aqua, Snyk, Wiz, SafeDep)
+
+19 марта 2026 года атакующий переписал 75–76 из 76–77 тегов
+`aquasecurity/trivy-action` (кража секретов CI перед настоящим сканом) и
+выпустил вредоносный бинарник Trivy v0.69.4; началось с неполной ротации
+ключей после взлома в феврале. Закреплённые по SHA безопасного коммита
+пользователи не пострадали. Вывод: сам сканер годный, но инфраструктура
+его релизов была скомпрометирована. Выбран grype (Anchore): тот же
+производитель, что у syft (SBOM фазы 3), grype сканирует тот же SBOM;
+запускается образом по digest; в задачах сканирования нет секретов, кроме
+токена только на чтение (у `report` — `issues: write`). Смена на Trivy —
+одна строка в `tools/images.env` и формат в vulngate.
+
+### Вопрос 9: apt «без риска»
+
+Подлинность apt-пакетов уже проверяется подписью архива дистрибутива; риск
+— плавающие версии (сегодня одна, завтра другая). Убрать его можно для
+образов: снимок архива на дату (`apt-get update --snapshot <дата>`, Ubuntu
+24.04 и Debian 13, snapshot.ubuntu.com / snapshot.debian.org), дату двигает
+Renovate. В отгружаемых образах apt один — `openssh-client` в образе агента
+(обе базы). Остаётся неустранимым: образ раннера GitHub (не закрепляется) и
+apt на нём (`minisign`, `gnupg`, `rpm`) — принятый риск в ADR, либо
+self-hosted раннеры (вне объёма). Не сделано: собрать образ здесь нельзя
+(нет демона Docker), поддержку `--snapshot` в базах полагаю, не проверял.
