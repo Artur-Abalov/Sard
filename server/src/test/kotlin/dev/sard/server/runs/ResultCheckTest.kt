@@ -245,7 +245,9 @@ private val FP_BYTES =
 @MutFlowTest
 class FingerprintResultCheckTest {
     // ResultCheckTest kills the mutants of the verdict; here only what a backup's fingerprint and count make of it.
-    private fun check(output: StepOutput.Backup) = ResultCheck.of(Action.BACKUP, StepReport(StepState.SUCCEEDED, null, output))
+    private fun check(output: StepOutput.Backup) = ResultCheck.of(Action.BACKUP, succeeded(output))
+
+    private fun succeeded(output: StepOutput.Backup) = StepReport(StepState.SUCCEEDED, null, output)
 
     private fun problem(output: StepOutput.Backup) = MutFlow.underTest { output.problem() }
 
