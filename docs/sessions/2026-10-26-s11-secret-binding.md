@@ -127,6 +127,24 @@ main `545331b0`.
 - Сценарий 7 (значение не утекает): `noLeak` в тестах плагина, проверки
   `assertValuesHidden` в тестах команды; `BindingError` не содержит пути.
 
+### Гейт
+- `./scripts/gate.sh sdk fast` — PASSED.
+- `./scripts/gate.sh agent fast` — PASSED (lint, покрытие ≥ 80 %, CRAP ≤ 6,
+  интеграционные тесты с restic, сборка стенда e2e).
+  По дороге найдена и исправлена гонка в `session.readUntil`: отменённый шаг
+  мог прийти как «psql session ended» вместо своей причины.
+  `TestACancelledFingerprintReturnsTheCause` падал 5 раз из 300 уже на
+  `main` 545331b0, после исправления — 0 из 300 (`-race -tags e2e`).
+- Мутации: полный прогон агента по 12 шардам — в CI; локально — только
+  изменённые файлы (`secretbind/*`, `pluginhost/secrets.go`, `secure.go`,
+  `conninfo.go`, `secret_set_run.go`, `secret_list_run.go`). Счёт 0.951
+  (239 убито, 16 выжило). Выжившие — эквивалентные мутанты (параметры
+  tabwriter, право в `OpenFile` без `O_CREAT`, `defer Close`) и строки,
+  которые были до S11 (возвраты `code` после разбора флагов).
+- `go test -tags libpq -run Libpq ./plugins/postgresql/` — PASS на psql 16.15.
+  В гейт не входит (тест требует клиент PostgreSQL на хосте);
+  `scripts/gate.sh` правит владелец.
+
 ### Не сделано в фазе 2 (фаза 3)
 - e2e: конфиги стенда объявляют секреты вручную — нужны файлы привязки
   (`PostgresStand.kt`, `VerificationPostgresTest.kt`,
