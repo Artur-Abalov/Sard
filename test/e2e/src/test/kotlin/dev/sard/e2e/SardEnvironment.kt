@@ -148,13 +148,22 @@ class SardEnvironment(
     }
 
     /**
+     * A volume of the local driver on tmpfs mounted noexec, as a verifier's work volume (V5). Its
+     * content lives while a container has it mounted: a holder container keeps it across restarts.
+     * 4 GiB: the server gives a job only to a verifier with twice the copy plus 1 GiB free.
+     */
+    fun noexecVolume(): String = volume(mapOf("type" to "tmpfs", "device" to "tmpfs", "o" to "noexec,size=4g"))
+
+    /**
      * A new named Docker volume, removed with the environment (and by the Testcontainers reaper if
      * the run dies first): an agent host's disk that outlives the containers run on it.
      */
-    fun volume(): String {
+    fun volume(driverOpts: Map<String, String> = emptyMap()): String {
         val name = "sard-e2e-${randomHex()}"
         val labels = DockerClientFactory.DEFAULT_LABELS + (DockerClientFactory.TESTCONTAINERS_SESSION_ID_LABEL to DockerClientFactory.SESSION_ID)
-        DockerClientFactory.instance().client().createVolumeCmd().withName(name).withLabels(labels).exec()
+        val create = DockerClientFactory.instance().client().createVolumeCmd().withName(name).withLabels(labels)
+        if (driverOpts.isNotEmpty()) create.withDriver("local").withDriverOpts(driverOpts)
+        create.exec()
         volumes += name
         return name
     }

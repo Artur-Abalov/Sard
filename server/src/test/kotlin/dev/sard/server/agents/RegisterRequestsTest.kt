@@ -9,12 +9,14 @@ import dev.sard.proto.agent.v1.RecoveryKeyState
 import dev.sard.proto.agent.v1.RegisterRequest
 import dev.sard.proto.agent.v1.RepositoryInfo
 import dev.sard.proto.agent.v1.Sandbox
+import dev.sard.proto.agent.v1.SandboxImage
 import dev.sard.proto.agent.v1.VerifierStatus
 import dev.sard.server.registration.AgentSnapshot
 import dev.sard.server.registration.PluginAction
 import dev.sard.server.registration.PluginEntry
 import dev.sard.server.registration.RecoveryKey
 import dev.sard.server.registration.RepositoryEntry
+import dev.sard.server.registration.SandboxImageEntry
 import dev.sard.server.registration.SandboxKind
 import dev.sard.server.registration.VerifierReport
 import io.github.anschnapp.mutflow.MutFlow
@@ -154,5 +156,33 @@ class RegisterRequestsTest {
         val flags = MutFlow.underTest { request.toSnapshot() }.repositories.map { it.recoveryKey }
 
         assertEquals(listOf(RecoveryKey.ABSENT, RecoveryKey.UNKNOWN), flags)
+    }
+
+    @Test
+    fun `a verifier status maps its sandbox version and images, an empty version to null (V5)`() {
+        val image =
+            SandboxImage
+                .newBuilder()
+                .setName("postgres")
+                .setVersion("17.6")
+                .setDigest("sha256:ab")
+        val status =
+            VerifierStatus
+                .newBuilder()
+                .setSandbox(Sandbox.SANDBOX_DOCKER)
+                .setSandboxVersion("29.9.2")
+                .addImages(image)
+        val request = RegisterRequest.newBuilder().setVerifier(status).build()
+
+        val expected =
+            VerifierReport(
+                null,
+                SandboxKind.DOCKER,
+                "29.9.2",
+                listOf(SandboxImageEntry("postgres", "17.6", "sha256:ab")),
+            )
+        assertEquals(expected, MutFlow.underTest { request.toSnapshot() }.verifier)
+        val bare = RegisterRequest.newBuilder().setVerifier(VerifierStatus.newBuilder().setSandboxVersion("")).build()
+        assertEquals(VerifierReport(null, null), MutFlow.underTest { bare.toSnapshot() }.verifier)
     }
 }

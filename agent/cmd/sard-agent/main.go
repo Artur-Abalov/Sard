@@ -38,6 +38,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/secrets"
 	"github.com/Artur-Abalov/sard/agent/internal/stepsecrets"
 	"github.com/Artur-Abalov/sard/agent/internal/transport"
+	"github.com/Artur-Abalov/sard/agent/internal/verifier"
 	"github.com/Artur-Abalov/sard/agent/plugins"
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
@@ -170,6 +171,11 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 	}
 	cfg, me := local.cfg, local.host
 	removeStale(local, rt)
+	// V5: what a killed verification left is removed before any step, too.
+	verify, err := newVerifying(cfg, me, verifier.OSDisk{}, slog.Default())
+	if err != nil {
+		return err
+	}
 	resticBinary, hostname, err := checkHostRuntime(ctx, cfg, configPath, hostnameOf, executable)
 	if err != nil {
 		return err
@@ -182,7 +188,9 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 	// R2a: before any step is accepted, what a killed restore left is removed.
 	engine := newRestoreEngine(cfg)
 	journal := newRestoreJournal(cfg, slog.Default())
-	agent := newAgentWith(cfg, hostname, resticBinary, me.machineID, engine, journal, rt)
+	agent := newAgentWith(cfg, hostname, resticBinary, me.machineID, engine, journal, rt, verify.readsOnly(), verify.options()...)
+	verify.attach(agent)
+	go verify.warnIfWritable(ctx, lockers(openRepositories(cfg, resticOptions(cfg, resticBinary))), slog.Default())
 	// R2c: the plugins recover their entries of the restore journal now, before
 	// the first step and before the first connection to the server.
 	recovered := recoverJournal(cfg, journal, rt.journalPlugins, agent.Plugins, slog.Default())
@@ -368,8 +376,8 @@ func checkHostFiles(cfg config.Config, sel certpair.Selection) error {
 }
 
 // newAgentWith is buildAgent whose steps a test may run with its own handlers.
-func newAgentWith(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine, journal *pluginhost.Journal, rt agentRuntime) *app.Agent {
-	agent := buildAgent(cfg, hostname, resticBinary, machineID, restores, journal)
+func newAgentWith(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine, journal *pluginhost.Journal, rt agentRuntime, readOnly bool, extra ...pluginhost.Option) *app.Agent {
+	agent := buildAgent(cfg, hostname, resticBinary, machineID, restores, journal, readOnly, extra...)
 	if rt.handlers != nil {
 		agent.Handlers = rt.handlers
 	}
@@ -377,21 +385,17 @@ func newAgentWith(cfg config.Config, hostname, resticBinary, machineID string, r
 }
 
 // buildAgent wires the built-in plugins to restic and the host's secrets.
-func buildAgent(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine, journal *pluginhost.Journal) *app.Agent {
-	// Repository keys stay on this host (ADR 0008).
-	repos := openRepositories(cfg, restic.Options{
-		Binary:   resticBinary,
-		CacheDir: cfg.Restic.CacheDir,
-		Path:     os.Getenv("PATH"),
-		Exec:     restic.ProcessExecutor{},
-		Keys:     crypto.NewResticAES(cfg.PasswordFiles()),
-		ReadFile: os.ReadFile,
-		Logger:   slog.Default(),
-	})
+// A verifier (readOnly) opens every repository without lock and cache: it
+// never writes to one, and restic takes a lock even to read the config.
+func buildAgent(cfg config.Config, hostname, resticBinary, machineID string, restores *consolerestore.Engine, journal *pluginhost.Journal, readOnly bool, extra ...pluginhost.Option) *app.Agent {
+	opts := resticOptions(cfg, resticBinary)
+	opts.ReadOnly = readOnly
+	repos := openRepositories(cfg, opts)
 	registry := plugins.Registry(version, pluginOptions(cfg)...)
+	handlerOpts := append([]pluginhost.Option{pluginhost.WithConsoleRestore(restores), pluginhost.WithRestoreJournal(journal), pluginhost.WithRepositoryWords(consolerestore.NewClassifier(restoreTargets(cfg, os.ReadFile))), pluginhost.WithLogger(slog.Default())}, extra...)
 	return &app.Agent{
 		Plugins:   registry,
-		Handlers:  plugins.Handlers(registry, pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), repos.get, restoreDir(cfg.Executor.StateDir), pluginhost.WithConsoleRestore(restores), pluginhost.WithRestoreJournal(journal), pluginhost.WithRepositoryWords(consolerestore.NewClassifier(restoreTargets(cfg, os.ReadFile))), pluginhost.WithLogger(slog.Default())),
+		Handlers:  plugins.Handlers(registry, pluginhost.NewSecrets(cfg.Secrets, os.ReadFile), repos.get, restoreDir(cfg.Executor.StateDir), handlerOpts...),
 		Hostname:  hostname,
 		MachineID: machineID,
 		Version:   version,
@@ -407,6 +411,20 @@ func buildAgent(cfg config.Config, hostname, resticBinary, machineID string, res
 		// V3: whether each repository has a recovery key, read again at every Register.
 		RecoveryKey: recoveryKeyReader(repos, os.ReadFile, registerKeysLimit),
 		Logger:      slog.Default(),
+	}
+}
+
+// resticOptions run the shipped restic as this process; repository keys stay
+// on this host (ADR 0008).
+func resticOptions(cfg config.Config, resticBinary string) restic.Options {
+	return restic.Options{
+		Binary:   resticBinary,
+		CacheDir: cfg.Restic.CacheDir,
+		Path:     os.Getenv("PATH"),
+		Exec:     restic.ProcessExecutor{},
+		Keys:     crypto.NewResticAES(cfg.PasswordFiles()),
+		ReadFile: os.ReadFile,
+		Logger:   slog.Default(),
 	}
 }
 
@@ -430,6 +448,7 @@ func serve(ctx context.Context, cfg config.Config, role role.Role, agent *app.Ag
 		Address:  cfg.Server.Address,
 		TLS:      cfg.TLS,
 		Register: agent.RegisterRequest,
+		Verifier: agent.VerifierChanged,
 		Commands: ref,
 		State:    ref,
 		Logger:   slog.Default(),

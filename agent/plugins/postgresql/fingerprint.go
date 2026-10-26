@@ -69,6 +69,9 @@ func (p Plugin) now() time.Time {
 // reference counted are counted. It needs psql only. A backup takes it in the
 // transaction whose snapshot pg_dump dumps (Dump), not through this method.
 func (p Plugin) Fingerprint(ctx context.Context, h sdk.Host, cfg sdk.Config, t sdk.FingerprintTarget) (sdk.Fingerprint, error) {
+	if sh, ok := h.(sdk.SandboxHost); ok {
+		p = p.inSandbox(sh)
+	}
 	c, err := parse(cfg)
 	if err != nil {
 		return sdk.Fingerprint{}, err

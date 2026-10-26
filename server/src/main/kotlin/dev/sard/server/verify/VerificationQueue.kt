@@ -114,6 +114,7 @@ class VerificationQueue(
                 job.fingerprintSha256,
                 job.deadline,
                 settings.stepTimeout.seconds,
+                job.sourceMachines.sorted(),
             )
         val attempt =
             VerificationAttempt(

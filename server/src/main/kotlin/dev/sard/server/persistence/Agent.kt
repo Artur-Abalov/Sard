@@ -88,6 +88,15 @@ class Agent(
     @Column(name = "verify_sandbox")
     var verifySandbox: String? = null
 
+    /** The sandbox runtime's version from the last report; null when unknown (V5). */
+    @Column(name = "verify_sandbox_version")
+    var verifySandboxVersion: String? = null
+
+    /** Sandbox images from the last report, JSON [{"name", "version", "digest"}] (V5). */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "verify_images", nullable = false)
+    var verifyImages: String = "[]"
+
     /** The last confirmed duplicate session (S8b, migration V202610011200); null if there never was one. */
     @Column(name = "duplicate_session_at")
     var duplicateSessionAt: Instant? = null

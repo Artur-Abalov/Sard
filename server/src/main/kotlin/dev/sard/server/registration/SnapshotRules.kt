@@ -52,6 +52,20 @@ object SnapshotRules {
         checkNames(snapshot.scriptNames, "script_names", MAX_SCRIPT_NAMES) { "script_names[$it]" }
         if (!MACHINE_ID.matches(snapshot.machineId)) throw invalid("machine_id")
         checkRestoreDir(snapshot.restoreDir)
+        checkVerifier(snapshot.verifier)
+    }
+
+    private fun checkVerifier(report: VerifierReport?) {
+        if (report != null && !storableVerifier(report)) throw invalid("verifier")
+    }
+
+    /**
+     * What a verifier reports goes to text and jsonb columns as it comes (V5), from Register and from every
+     * heartbeat: no NUL character, which PostgreSQL holds in neither.
+     */
+    fun storableVerifier(report: VerifierReport): Boolean {
+        val images = report.images.flatMap { listOf(it.name, it.version, it.digest) }
+        return (listOfNotNull(report.sandboxVersion) + images).none { '\u0000' in it }
     }
 
     /** Empty means the agent cannot restore from the console; otherwise an absolute path without NUL. */

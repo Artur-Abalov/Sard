@@ -35,6 +35,8 @@ type Config struct {
 	Executor Executor          `yaml:"executor"`
 	// Restore is where the console may restore to (host-only, ВК2).
 	Restore Restore `yaml:"restore"`
+	// Verify tunes restore verification on a verifier (V5, main config only).
+	Verify Verify `yaml:"verify"`
 	// Service names the user the service runs as (main config only).
 	Service Service `yaml:"service"`
 
@@ -141,7 +143,10 @@ func (c Config) validate() error {
 	if err := c.validateRepositories(); err != nil {
 		return err
 	}
-	return c.validateRestore()
+	if err := c.validateRestore(); err != nil {
+		return err
+	}
+	return c.validateVerify()
 }
 
 // validateRepositories checks every repository; one of a fragment is

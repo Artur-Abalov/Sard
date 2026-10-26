@@ -286,3 +286,13 @@ func (Plugin) RestoreInto(ctx context.Context, h sdk.RestoreHost, _ sdk.Config, 
 	}
 	return sdk.RestoredCopy{Root: root, Result: sdk.RestoreResult{Target: root}}, nil
 }
+
+// CopySize implements sdk.CopySizer: the bytes restic counted in the snapshot.
+func (Plugin) CopySize(f sdk.Fingerprint) (uint64, bool) {
+	fact, ok := f.Lookup(factBytes)
+	if !ok {
+		return 0, false
+	}
+	size, err := strconv.ParseUint(fact.Value, 10, 64)
+	return size, err == nil
+}

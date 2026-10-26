@@ -156,4 +156,28 @@ class AttemptOutcomeTest {
         assertEquals(0, settled.level)
         assertEquals("3 attempts without a verdict; the last: lost: agent message", settled.reason)
     }
+
+    // V5: a stage that ran out of its time means the verification did not take place, as a lost attempt does.
+    @Test
+    fun `an infrastructure failure from the verifier is tried again, whatever the step says`() {
+        val timedOut = output(VerifierVerdict.INFRASTRUCTURE_FAILURE, listOf(stage(0), stage(1, StageState.CANNOT_RUN)))
+
+        for (status in listOf(StepState.SUCCEEDED, StepState.FAILED)) {
+            assertEquals(AttemptOutcome.Retry(failedAttempts = 2), outcome(status, timedOut, failedBefore = 1))
+        }
+    }
+
+    @Test
+    fun `the third infrastructure failure in a row ends the job naming the stage that ran out of time`() {
+        // The cleanup runs after every pipeline: the stage that ran out of time is the first that did not pass.
+        val stages = listOf(stage(0), stage(1, StageState.CANNOT_RUN), stage(0))
+        val timedOut = output(VerifierVerdict.INFRASTRUCTURE_FAILURE, stages)
+
+        val settled = assertIs<AttemptOutcome.Settled>(outcome(StepState.FAILED, timedOut, failedBefore = 2))
+
+        assertEquals(VerificationStatus.INFRASTRUCTURE_FAILURE, settled.status)
+        assertEquals(0, settled.level)
+        val reason = "3 attempts without a verdict; the last: stage stage-1 ran out of time: agent message"
+        assertEquals(reason, settled.reason)
+    }
 }

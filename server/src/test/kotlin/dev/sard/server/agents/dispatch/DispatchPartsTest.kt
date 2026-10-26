@@ -41,7 +41,8 @@ class DispatchPartsTest {
     @Test
     fun `a verify step carries its snapshot, its task and its timeout, and nothing else`() {
         val deadline = Instant.parse("2026-10-20T04:30:00Z")
-        val task = VerifyTask(UUID(7, 1), "a".repeat(64), byteArrayOf(1, 2), "f".repeat(64), deadline, 21_600)
+        val machines = listOf("1".repeat(64), "2".repeat(64))
+        val task = VerifyTask(UUID(7, 1), "a".repeat(64), byteArrayOf(1, 2), "f".repeat(64), deadline, 21_600, machines)
         val step =
             step(1).copy(
                 action = Action.VERIFY,
@@ -63,7 +64,8 @@ class DispatchPartsTest {
                     com.google.protobuf.Timestamp
                         .newBuilder()
                         .setSeconds(deadline.epochSecond),
-                ).build()
+                ).addAllSourceMachineIds(machines)
+                .build()
         assertEquals(expected, command.verify)
         assertEquals("4e5f", command.snapshotId)
         assertEquals("shared", command.repositoryName)
@@ -88,7 +90,8 @@ class DispatchPartsTest {
      */
     @Test
     fun `a verify RunStep sets only fields that hold no secret`() {
-        val task = VerifyTask(UUID(7, 1), "a".repeat(64), byteArrayOf(1), "f".repeat(64), Instant.EPOCH, 60)
+        val machines = listOf("1")
+        val task = VerifyTask(UUID(7, 1), "a".repeat(64), byteArrayOf(1), "f".repeat(64), Instant.EPOCH, 60, machines)
         val step = step(1).copy(action = Action.VERIFY, repositoryName = "shared", snapshotId = "s", verifyTask = task)
 
         val command = MutFlow.underTest { RunSteps.of(step) }
@@ -111,7 +114,7 @@ class DispatchPartsTest {
             )
         assertEquals(expected, set)
         assertEquals(
-            setOf("job_id", "repository_id", "fingerprint", "fingerprint_sha256", "deadline"),
+            setOf("job_id", "repository_id", "fingerprint", "fingerprint_sha256", "deadline", "source_machine_ids"),
             command.verify.allFields.keys
                 .map { it.name }
                 .toSet(),

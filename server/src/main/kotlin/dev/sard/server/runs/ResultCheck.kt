@@ -201,6 +201,9 @@ enum class VerifierVerdict(
     PASSED("passed"),
     FAILED("failed"),
     CANNOT_VERIFY("cannot_verify"),
+
+    /** A stage ran out of its time (V5): the verification did not take place, the job retries. */
+    INFRASTRUCTURE_FAILURE("infrastructure_failure"),
     ;
 
     companion object {

@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -440,15 +441,19 @@ func TestAForgedServerCannotMakeAVerifierBackUp(t *testing.T) {
 	if r.GetCommandId() != "c1" || r.GetStatus() != agentv1.StepStatus_STEP_STATUS_REJECTED || r.GetRejectReason() != agentv1.RejectReason_REJECT_REASON_ROLE_MISMATCH {
 		t.Fatalf("result = %v", r)
 	}
-	h.requireNoStepWork()
+	// V5: at start a verifier asks for the lock of each repository, to warn
+	// about storage credentials that can write ("snapshots", no step).
+	h.requireNoStepWork("snapshots")
 }
 
-// requireNoStepWork: restic ran only for the start's version check and the
-// repository id of Register ("cat"), and the log has no work of c1.
-func (h *agentHost) requireNoStepWork() {
+// requireNoStepWork: restic ran only for the start's version check, the
+// repository id of Register ("cat") and the calls also allowed, and the log
+// has no work of c1.
+func (h *agentHost) requireNoStepWork(also ...string) {
 	h.t.Helper()
+	allowed := append([]string{"version", "cat"}, also...)
 	for _, call := range strings.Fields(fileContent(h.t, h.resticCalls)) {
-		if call != "version" && call != "cat" {
+		if !slices.Contains(allowed, call) {
 			h.t.Errorf("restic was run as %q", call)
 		}
 	}
