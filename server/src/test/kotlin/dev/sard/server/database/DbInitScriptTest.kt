@@ -131,34 +131,47 @@ class DbInitScriptTest {
     }
 
     @Test
-    fun `Повторный запуск не меняет пароли и каталог базы и молчит о предупреждениях`() {
+    fun `Повторный запуск не меняет файлы паролей и каталог базы и молчит о предупреждениях`() {
         initialise()
         val passwords = CONSUMERS.keys.associateWith(::password)
-        val verifiers =
-            cluster.query(
-                "select string_agg(rolpassword, ',' order by rolname) from pg_authid where rolname like 'sard\\_%'",
-            ) {
-                it.getString(1)
-            }
         val catalog = cluster.catalog()
 
         val again = initialise()
 
         assertEquals(0, again.exitCode, again.stderr)
         assertEquals(passwords, CONSUMERS.keys.associateWith(::password))
-        assertEquals(
-            verifiers,
-            cluster.query(
-                "select string_agg(rolpassword, ',' order by rolname) from pg_authid where rolname like 'sard\\_%'",
-            ) {
-                it.getString(1)
-            },
-        )
+        assertTrue(CONSUMERS.keys.all { logsIn(it, password(it)) })
         assertEquals(catalog, cluster.catalog())
         assertFalse(
             Regex("WARN|ERROR", RegexOption.IGNORE_CASE).containsMatchIn(again.stdout + again.stderr),
             again.stdout + again.stderr,
         )
+    }
+
+    @Test
+    fun `Пароль роли, изменённый в базе, возвращается из файла при повторном запуске`() {
+        initialise()
+        val fromFile = password("sard_app")
+        cluster.admin().use { c -> c.createStatement().use { it.execute("alter role sard_app password 'forged'") } }
+        assertTrue(logsIn("sard_app", "forged"))
+
+        val result = initialise()
+
+        assertEquals(0, result.exitCode, result.stderr)
+        assertTrue(logsIn("sard_app", fromFile))
+        assertFalse(logsIn("sard_app", "forged"))
+    }
+
+    @Test
+    fun `Файл пароля не из 64 hex-символов отвергается, и ничего не выполняется`() {
+        initialise()
+        sh("printf '%s' \"x'; drop schema sard cascade; --\" > /tmp/pw/app/password")
+
+        val result = initialise()
+
+        assertNotEquals(0, result.exitCode)
+        assertTrue("64" in result.stderr && "docs/operator/16-postgresql.md" in result.stderr, result.stderr)
+        assertEquals("1", cluster.query("select count(*) from pg_namespace where nspname = 'sard'") { it.getString(1) })
     }
 
     @Test
