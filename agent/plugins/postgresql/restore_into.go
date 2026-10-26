@@ -30,7 +30,16 @@ type copyConfig struct {
 
 // RestoreInto implements sdk.CopyRestorer: the restore of R2b into a new
 // database of the target (Restore), all or nothing; the copy is that database.
+// In a sandbox (V5) the target is the server of the sandbox, and its tools
+// restore.
 func (p Plugin) RestoreInto(ctx context.Context, h sdk.RestoreHost, target sdk.Config, req sdk.RestoreRequest) (sdk.RestoredCopy, error) {
+	if sh, ok := h.(sdk.SandboxHost); ok {
+		return p.inSandbox(sh).restoreInto(ctx, h, sandboxTarget(), req)
+	}
+	return p.restoreInto(ctx, h, target, req)
+}
+
+func (p Plugin) restoreInto(ctx context.Context, h sdk.RestoreHost, target sdk.Config, req sdk.RestoreRequest) (sdk.RestoredCopy, error) {
 	out, err := p.Restore(ctx, h, target, req)
 	if err != nil {
 		return sdk.RestoredCopy{}, err

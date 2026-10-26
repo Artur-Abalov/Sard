@@ -8,6 +8,7 @@
 package postgresql
 
 import (
+	"context"
 	_ "embed"
 	"io/fs"
 	"os"
@@ -43,6 +44,9 @@ type Plugin struct {
 	CountTimeout, CountBudget time.Duration
 	// Now is the clock of CountBudget; nil is time.Now.
 	Now func() time.Time
+	// Sleep waits d or until ctx ends, between two questions to the server of
+	// a sandbox (V5); nil waits on a timer.
+	Sleep func(ctx context.Context, d time.Duration) error
 }
 
 var _ sdk.Plugin = Plugin{}

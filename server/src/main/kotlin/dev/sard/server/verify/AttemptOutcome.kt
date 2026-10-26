@@ -149,8 +149,9 @@ sealed interface AttemptOutcome {
             return Levels.reached(stages.stages, stages.restoreMillis)
         }
 
+        /** The first stage that did not pass: the cleanup after it passes or fails on its own. */
         private fun stageOutOfTime(verify: StepOutput.Verify): String {
-            val stage = verify.stages.lastOrNull()?.name
+            val stage = verify.stages.firstOrNull { it.state != StageState.PASSED && it.state != StageState.NOT_APPLICABLE }?.name
             return "stage $stage ran out of time"
         }
 
