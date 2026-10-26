@@ -2,8 +2,9 @@
 
 Сервер ставится из опубликованного образа `ghcr.io/artur-abalov/sard-server`
 (amd64 и arm64) вместе с PostgreSQL через Docker Compose. Файлы установки —
-`docker-compose.yml` и `sard.env.example` — прикладываются к каждому релизу на
-GitHub. Без доступа к реестру — [раздел 11](11-offline.md).
+`docker-compose.yml`, `sard.env.example` и четыре файла каталога `db/`
+(`db-init.sh`, `bootstrap.sql`, `pg_hba.conf`, `postgres-entrypoint.sh`) —
+прикладываются к каждому релизу на GitHub. Без доступа к реестру — [раздел 11](11-offline.md).
 
 ## 1. Файлы релиза
 
@@ -12,8 +13,18 @@ SARD_TAG=v0.0.1-rc.1        # релиз: https://github.com/Artur-Abalov/Sard/r
 mkdir -p ~/sard && cd ~/sard
 curl -fsSLO "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/docker-compose.yml"
 curl -fsSL -o .env "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/sard.env.example"
+mkdir -p db
+curl -fsSL -o db/db-init.sh "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/db-init.sh"
+curl -fsSL -o db/bootstrap.sql "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/bootstrap.sql"
+curl -fsSL -o db/pg_hba.conf "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/pg_hba.conf"
+curl -fsSL -o db/postgres-entrypoint.sh "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/postgres-entrypoint.sh"
 sudo chgrp 10001 .env && chmod 640 .env
 ```
+
+Compose-файл ссылается на файлы `db/` относительными путями (`./db/…`), а не
+держит их копии: релиз не знает каталогов, поэтому каждый файл лежит в нём под
+своим именем, а команды выше кладут его в `db/`. Роли PostgreSQL создаёт
+`db-init` из этих файлов, вручную их создавать не нужно.
 
 В скачанном `.env` уже стоит `SARD_VERSION` этого релиза. Группа 10001 —
 агент-сосед самобэкапа: он читает `.env` (только чтение) и хранит его в

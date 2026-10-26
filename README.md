@@ -79,6 +79,11 @@ SARD_TAG=v0.1.0-beta.1
 mkdir -p ~/sard && cd ~/sard
 curl -fsSLO "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/docker-compose.yml"
 curl -fsSL -o .env "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/sard.env.example"
+mkdir -p db
+curl -fsSL -o db/db-init.sh "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/db-init.sh"
+curl -fsSL -o db/bootstrap.sql "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/bootstrap.sql"
+curl -fsSL -o db/pg_hba.conf "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/pg_hba.conf"
+curl -fsSL -o db/postgres-entrypoint.sh "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/postgres-entrypoint.sh"
 sudo chgrp 10001 .env && chmod 640 .env
 docker compose up -d --wait
 curl -fsS http://localhost:8080/api/v1/status

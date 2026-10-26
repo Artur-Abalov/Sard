@@ -87,7 +87,12 @@ docker compose exec -T postgres cat /etc/postgresql/postgresql.conf > postgresql
 cat > docker-compose.override.yml <<'EOF'
 services:
   postgres:
-    configs: !reset []
+    # The other files of the service stay: pg_hba.conf and the entrypoint (db/ next to docker-compose.yml)
+    configs: !override
+      - source: postgresql-hba
+        target: /etc/postgresql/pg_hba.conf
+      - source: postgres-entrypoint
+        target: /etc/sard/postgres-entrypoint.sh
     volumes:
       - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
 EOF

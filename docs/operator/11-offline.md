@@ -6,7 +6,7 @@
 |---|---|
 | `sard-<версия>-images-linux-amd64.tar.gz` | `docker save` образов `sard-server`, `sard-agent` (вариант `<версия>-pg18`: агент-сосед и restic для [восстановления](12-server-recovery.md)) и PostgreSQL для amd64 |
 | `sard-<версия>-images-linux-arm64.tar.gz` | то же для arm64 |
-| `docker-compose.yml`, `sard.env.example` | файлы установки этой версии |
+| `docker-compose.yml`, `sard.env.example`, `db-init.sh`, `bootstrap.sql`, `pg_hba.conf`, `postgres-entrypoint.sh` | файлы установки этой версии (последние четыре — в каталог `db/`) |
 | `images.json` | образы релиза по digest реестра |
 | `*.cdx.json` | SBOM образов (CycloneDX), [раздел 10](10-security.md#sbom) |
 | `SHA256SUMS.server`, `SHA256SUMS.server.minisig` | суммы файлов выше и их подпись ключом релиза (minisign) |
@@ -23,6 +23,7 @@ SARD_TAG=<vX.Y.Z>
 ARCH=<amd64 или arm64>      # архитектура сервера
 mkdir sard-offline && cd sard-offline
 for f in "sard-${SARD_TAG#v}-images-linux-$ARCH.tar.gz" docker-compose.yml sard.env.example \
+  db-init.sh bootstrap.sql pg_hba.conf postgres-entrypoint.sh \
   SHA256SUMS.server SHA256SUMS.server.minisig; do
   curl -fsSLO "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/$f"
 done
@@ -53,7 +54,8 @@ cosign в реестре; их digest — в `images.json`.
 ```bash
 cd ~/sard-offline
 gunzip -c sard-*-images-linux-*.tar.gz | docker load
-mkdir -p ~/sard && cp docker-compose.yml ~/sard/ && cp sard.env.example ~/sard/.env
+mkdir -p ~/sard/db && cp docker-compose.yml ~/sard/ && cp sard.env.example ~/sard/.env
+cp db-init.sh bootstrap.sql pg_hba.conf postgres-entrypoint.sh ~/sard/db/
 # PostgreSQL по тегу из архива: у загруженного образа нет digest реестра (раздел 16)
 sed -n 's/^# SARD_POSTGRES_IMAGE=\(.*\)@.*/SARD_POSTGRES_IMAGE=\1/p' sard.env.example >> ~/sard/.env
 cd ~/sard && sudo chgrp 10001 .env && chmod 640 .env
