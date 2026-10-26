@@ -170,7 +170,8 @@ class AttemptOutcomeTest {
     @Test
     fun `the third infrastructure failure in a row ends the job naming the stage that ran out of time`() {
         // The cleanup runs after every pipeline: the stage that ran out of time is the first that did not pass.
-        val timedOut = output(VerifierVerdict.INFRASTRUCTURE_FAILURE, listOf(stage(0), stage(1, StageState.CANNOT_RUN), stage(0)))
+        val stages = listOf(stage(0), stage(1, StageState.CANNOT_RUN), stage(0))
+        val timedOut = output(VerifierVerdict.INFRASTRUCTURE_FAILURE, stages)
 
         val settled = assertIs<AttemptOutcome.Settled>(outcome(StepState.FAILED, timedOut, failedBefore = 2))
 

@@ -43,7 +43,9 @@ object Levels {
     /** The level that proves the data matches the source (4); a passed verdict needs it. */
     const val DATA = 4
     private const val RESTORE_TIME = 5
-    private val PROVED = setOf(StageState.PASSED, StageState.NOT_APPLICABLE)
+
+    /** What a stage that did not stop the pipeline ended with. */
+    val PROVED = setOf(StageState.PASSED, StageState.NOT_APPLICABLE)
 
     fun reached(
         stages: List<StepOutput.Stage>,
@@ -151,7 +153,7 @@ sealed interface AttemptOutcome {
 
         /** The first stage that did not pass: the cleanup after it passes or fails on its own. */
         private fun stageOutOfTime(verify: StepOutput.Verify): String {
-            val stage = verify.stages.firstOrNull { it.state != StageState.PASSED && it.state != StageState.NOT_APPLICABLE }?.name
+            val stage = verify.stages.firstOrNull { it.state !in Levels.PROVED }?.name
             return "stage $stage ran out of time"
         }
 
