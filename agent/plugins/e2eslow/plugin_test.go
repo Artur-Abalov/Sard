@@ -21,9 +21,11 @@ import (
 // host is a fake sdk.Host that records progress.
 type host struct{ progress [][2]uint64 }
 
-func (h *host) Secret(name string) ([]byte, error) { return nil, &sdk.SecretError{Name: name} }
-func (h *host) Progress(done, total uint64)        { h.progress = append(h.progress, [2]uint64{done, total}) }
-func (h *host) Log(sdk.Level, string)              {}
+func (h *host) SecretFor(name string, _ sdk.Target) (sdk.Secret, error) {
+	return sdk.Secret{}, &sdk.SecretError{Name: name}
+}
+func (h *host) Progress(done, total uint64) { h.progress = append(h.progress, [2]uint64{done, total}) }
+func (h *host) Log(sdk.Level, string)       {}
 
 // clock is a fake e2eslow.Clock: time moves only by Sleep and by work, and
 // every Sleep is recorded.

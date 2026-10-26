@@ -102,25 +102,14 @@ func (p Plugin) newRestoreRun(ctx context.Context, h sdk.RestoreHost, cfg sdk.Co
 		// The code that writes enforces the rules of a plan itself (ADR 0008).
 		return nil, refuse(ReasonTargetInvalid, stageCheck, "the restore plan is invalid: %s", err)
 	}
-	to := settings.to
-	password, err := readPassword(h, to.PasswordRef)
+	to, password, err := settings.to.secured(h, settings.database)
 	if err != nil {
-		return nil, refuse(ReasonSecretInvalid, stageCheck, "%s", err)
+		return nil, refuse(secretReason(err), stageCheck, "%s", err)
 	}
 	return &restoreRun{
 		p: p, ctx: ctx, h: h, req: req, database: settings.database, globals: settings.globals,
 		conn: conn{p: p, log: h, to: to, password: password}, entry: newEntry(req.CommandID, to),
 	}, nil
-}
-
-// readPassword is the content of the secret without its line ending, neither
-// empty nor holding a NUL byte (F1 ПГ3).
-func readPassword(h sdk.Host, name string) ([]byte, error) {
-	value, err := h.Secret(name)
-	if err != nil {
-		return nil, err
-	}
-	return checkPassword(name, value)
 }
 
 // interrupted is the failure of a step whose context ended, at stage.

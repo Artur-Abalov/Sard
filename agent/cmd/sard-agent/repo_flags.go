@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/restore"
+	"github.com/Artur-Abalov/sard/agent/internal/secretbind"
 )
 
 // offer is the set of flags a command accepts besides --config.
@@ -54,6 +55,9 @@ const (
 	offerYes
 	// offerRecoveryKey: --recovery-key-file and --no-recovery-key of repo add and repo init (K15).
 	offerRecoveryKey
+	// offerBinding: --plugin, --target, --auth, --allow-tls, --ca-file and
+	// --allow-no-channel-binding of secret set (S11).
+	offerBinding
 )
 
 // hostOptions are the flags and the positional arguments of one command of
@@ -108,6 +112,8 @@ type hostOptions struct {
 	// recovery key goes to, and the refusal to issue one.
 	recoveryKeyFile string
 	noRecoveryKey   bool
+	// binding is what the flags of secret set bind the secret to (S11).
+	binding secretbind.Binding
 	// set are the flags the command line gave, even with an empty value.
 	set map[string]bool
 	// name and address are the first and the second positional argument.
@@ -151,7 +157,7 @@ var checkSpec = cmdSpec{"check", offerJSON | offerConnectTimeout | offerShortCon
 
 // secretSpecs are the commands of "sard-agent secret".
 var secretSpecs = map[string]cmdSpec{
-	"set":    {"secret set", offerNoRestart | offerStdin | offerFromFile, 1, "the name of a secret is required: sard-agent secret set [flags] <name>", 0},
+	"set":    {"secret set", offerNoRestart | offerStdin | offerFromFile | offerBinding, 1, "the name of a secret is required: sard-agent secret set [flags] <name> --plugin <plugin> --target <target>", 0},
 	"list":   {"secret list", offerJSON, 0, "", 0},
 	"remove": {"secret remove", offerNoRestart, 1, "the name of a secret is required: sard-agent secret remove [flags] <name>", 0},
 }
@@ -190,6 +196,14 @@ type flagValues struct {
 	purpose, label, toFile       *string
 	ifMissing, yes, noRecovery   *bool
 	recoveryKeyFile              *string
+	binding                      bindingFlags
+}
+
+// bindingFlags are the flags of the binding of a secret (S11).
+type bindingFlags struct {
+	plugin, allowTLS, caFile *string
+	targets, auth            *stringList
+	noChannelBinding         *bool
 }
 
 func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
@@ -204,6 +218,7 @@ func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
 		readData: new(int), removeStale: new(bool), offline: new(bool),
 		purpose: new(string), label: new(string), toFile: new(string), recoveryKeyFile: new(string),
 		ifMissing: new(bool), yes: new(bool), noRecovery: new(bool),
+		binding: bindingFlags{plugin: new(string), allowTLS: new(string), caFile: new(string), targets: new(stringList), auth: new(stringList), noChannelBinding: new(bool)},
 	}
 	if o&offerTimeout != 0 {
 		v.timeout = fs.Duration("timeout", defaultRepoTimeout, "")
@@ -233,9 +248,45 @@ func defineFlags(fs *flag.FlagSet, o offer, defaultConfig string) flagValues {
 	return v
 }
 
+// defineBindingFlags are the flags of the binding of a secret.
+func defineBindingFlags(fs *flag.FlagSet, b bindingFlags) {
+	fs.StringVar(b.plugin, "plugin", "", "")
+	fs.Var(b.targets, "target", "")
+	fs.Var(b.auth, "auth", "")
+	fs.StringVar(b.allowTLS, "allow-tls", "", "")
+	fs.StringVar(b.caFile, "ca-file", "", "")
+	fs.BoolVar(b.noChannelBinding, "allow-no-channel-binding", false, "")
+}
+
+// errBindingRequired: a secret is given only where it is bound (S11).
+var errBindingRequired = errors.New("--plugin and at least one --target are required: the agent gives a secret only to the plugin and the targets it is bound to, " +
+	"for example --plugin postgresql --target db.example.com:5432/app")
+
+// binding is the binding the flags give.
+func (b bindingFlags) binding() (secretbind.Binding, error) {
+	if *b.plugin == "" || len(*b.targets) == 0 {
+		return secretbind.Binding{}, errBindingRequired
+	}
+	binding, err := secretbind.New(*b.plugin, *b.targets)
+	if err != nil {
+		return secretbind.Binding{}, err
+	}
+	for _, list := range *b.auth {
+		for _, m := range strings.Split(list, ",") {
+			binding.Auth = append(binding.Auth, strings.TrimSpace(m))
+		}
+	}
+	binding.AllowTLS, binding.CAFile, binding.AllowNoChannelBinding = *b.allowTLS, *b.caFile, *b.noChannelBinding
+	return binding, binding.Check()
+}
+
 // defineKeyFlags are the flags of the restic key commands and of the recovery
-// key that repo add and repo init issue (V3).
+// key that repo add and repo init issue (V3), and of the binding of a secret
+// (S11).
 func defineKeyFlags(fs *flag.FlagSet, o offer, v *flagValues) {
+	if o&offerBinding != 0 {
+		defineBindingFlags(fs, v.binding)
+	}
 	if o&offerKeyAdd != 0 {
 		v.purpose = fs.String("for", "", "")
 		v.label = fs.String("label", "", "")
@@ -408,7 +459,7 @@ func parseFlags(spec cmdSpec, args []string, stderr io.Writer, defaultConfig str
 	fs.Visit(func(f *flag.Flag) { opts.set[f.Name] = true })
 	setNames(&opts, positional)
 	applyCheckDefaults(spec, &opts)
-	if err := checkCommandFlags(spec, &opts); err != nil {
+	if err := checkCommandFlags(spec, v, &opts); err != nil {
 		return hostOptions{}, usageFailure(stderr, spec.words, err.Error())
 	}
 	return opts, exitOK
@@ -423,12 +474,26 @@ func applyCheckDefaults(spec cmdSpec, opts *hostOptions) {
 }
 
 // checkCommandFlags: repo unlock removes nothing without --remove-stale
-// (Ч6); then the values of the flags of every command.
-func checkCommandFlags(spec cmdSpec, opts *hostOptions) error {
+// (Ч6), secret set binds the secret (S11); then the values of the flags of
+// every command.
+func checkCommandFlags(spec cmdSpec, v flagValues, opts *hostOptions) error {
 	if spec.offer&offerRemoveStale != 0 && !opts.removeStale {
 		return errors.New("--remove-stale is required: the command removes only the stale locks of this host, and only when asked to")
 	}
+	if err := takeBinding(spec, v, opts); err != nil {
+		return err
+	}
 	return checkFlagValues(spec, opts)
+}
+
+// takeBinding reads the binding of secret set (S11).
+func takeBinding(spec cmdSpec, v flagValues, opts *hostOptions) error {
+	if spec.offer&offerBinding == 0 {
+		return nil
+	}
+	b, err := v.binding.binding()
+	opts.binding = b
+	return err
 }
 
 // checkFlagValues are the checks of the values that follow the parse: the

@@ -88,7 +88,7 @@ func TestBuiltinPluginsShareTheAgentVersionAndFingerprintTheirSource(t *testing.
 // Every built-in plugin backs up, and both restore from the console (R2a, R2b).
 func TestBuiltinPluginsGetHandlersThatBackUpAndRestore(t *testing.T) {
 	reg := plugins.Registry("1.2.3")
-	h := plugins.Handlers(reg, pluginhost.NewSecrets(nil, nil), nil, t.TempDir())
+	h := plugins.Handlers(reg, pluginhost.NewSecrets(nil, nil, nil), nil, t.TempDir())
 	for _, name := range reg.Names() {
 		handler, ok := h.Handler(name)
 		wantActions := 1
@@ -140,7 +140,7 @@ func TestHandlersPanicOnASchemaThatDoesNotCompile(t *testing.T) {
 			t.Error("no panic")
 		}
 	}()
-	plugins.Handlers(reg, pluginhost.NewSecrets(nil, nil), nil, t.TempDir())
+	plugins.Handlers(reg, pluginhost.NewSecrets(nil, nil, nil), nil, t.TempDir())
 }
 
 // A version the server's format refuses is a programming error, not a

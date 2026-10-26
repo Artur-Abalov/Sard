@@ -71,7 +71,7 @@ func pgHandler(t *testing.T, repo restic.Repository, tools string) *pluginhost.H
 	journal := pluginhost.NewJournal(restorejournal.New(restorejournal.Options{
 		Dir: filepath.Join(state, "restore-journal"), FS: hostsetup.OS{}, Owner: hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid(), Mode: 0o700},
 	}), slog.New(slog.DiscardHandler))
-	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(map[string]string{"pg": password}, os.ReadFile),
+	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(map[string]string{"pg": password}, os.ReadFile, bound{plugin: "postgresql", targets: []string{"db"}}),
 		func(string, string, io.Writer) (restic.Repository, bool) { return repo, true }, filepath.Join(state, "restore"),
 		pluginhost.WithRestoreJournal(journal))
 	if err != nil {

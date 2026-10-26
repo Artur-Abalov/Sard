@@ -80,7 +80,7 @@ func testSource(t *testing.T) *pluginhost.Source {
 	if err := os.WriteFile(token, []byte("s3cret"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s, err := pluginhost.NewSource(testplugin.Plugin{}, pluginhost.NewSecrets(map[string]string{"token": token}, os.ReadFile))
+	s, err := pluginhost.NewSource(testplugin.Plugin{}, pluginhost.NewSecrets(map[string]string{"token": token}, os.ReadFile, bound{plugin: "test", targets: []string{testplugin.Target.String()}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestIntegrationCancellingDuringTheDumpStopsTheDumpAndRestic(t *testing.T) {
 	randomFile(t, file, 64<<20, 5)
 	r := newRepo(t)
 	spy := streamSpy{ended: make(chan error, 1)}
-	s, err := pluginhost.NewSource(spy, pluginhost.NewSecrets(nil, os.ReadFile))
+	s, err := pluginhost.NewSource(spy, pluginhost.NewSecrets(nil, os.ReadFile, nil))
 	if err != nil {
 		t.Fatal(err)
 	}

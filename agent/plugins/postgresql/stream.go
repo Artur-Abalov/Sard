@@ -27,7 +27,7 @@ func (p Plugin) Stream(ctx context.Context, h sdk.Host, cfg sdk.Config, _ sdk.Du
 	if err != nil {
 		return err
 	}
-	password, t, err := p.setup(h, c)
+	c, password, t, err := p.setup(h, c)
 	if err != nil {
 		return err
 	}

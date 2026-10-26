@@ -66,11 +66,11 @@ type boxHost struct {
 	ran     []sdk.Process
 }
 
-func (h *boxHost) Secret(name string) ([]byte, error) {
+func (h *boxHost) SecretFor(name string, _ sdk.Target) (sdk.Secret, error) {
 	if name == sdk.SandboxPassword {
-		return []byte("pw"), nil
+		return sdk.Secret{Value: []byte("pw")}, nil
 	}
-	return nil, errors.New("no secret")
+	return sdk.Secret{}, errors.New("no secret")
 }
 
 func (h *boxHost) Run(_ context.Context, p sdk.Process) (int, error) {
@@ -209,11 +209,11 @@ type rigBox struct {
 	ran []sdk.Process
 }
 
-func (b *rigBox) Secret(name string) ([]byte, error) {
+func (b *rigBox) SecretFor(name string, _ sdk.Target) (sdk.Secret, error) {
 	if name == sdk.SandboxPassword {
-		return []byte(rpSecret), nil
+		return sdk.Secret{Value: []byte(rpSecret)}, nil
 	}
-	return nil, &sdk.SecretError{Name: name}
+	return sdk.Secret{}, &sdk.SecretError{Name: name}
 }
 
 func (b *rigBox) Run(ctx context.Context, p sdk.Process) (int, error) {

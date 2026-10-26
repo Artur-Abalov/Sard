@@ -65,6 +65,71 @@ main `545331b0`.
   пользователь, пока PostgreSQL не запущен — для localhost TLS можно не
   требовать, но SCRAM — нужно.
 
-### Открытые вопросы — переданы на контрольную точку 1
+### Контрольная точка 1 — решения владельца (2026-10-26)
 
-См. ответ в сессии; решения будут записаны сюда после ревью.
+1. Решение «можно ли отдать секрет» принимает хост агента (`Host.SecretFor`). — да.
+2. Привязка — отдельный файл, который агент N−1 не читает, а не ключ в
+   `agent.d` (владелец выбрал второй вариант): `secret-bindings/<имя>.yaml`
+   рядом с главным конфигом.
+3. Синтаксис цели — как предложено: `host[:port][/db]`, IPv6 в скобках, сокет
+   `/dir[:port[/db]]`, `*` — только для порта и базы.
+4. Разрешения — флаги на команду, общие для всех её `--target`. — да.
+5. SCRAM по TCP и localhost, сокет — по привязке, `channel_binding=require` с
+   TLS. — да.
+6. «Ломать текущие установки можно, делать как правильно»: к серверу в сети
+   по умолчанию verify-full, `require` и `disable` — только по `--allow-tls`.
+7. CA в привязке (`--ca-file`); пути, которые задаёт сервер, — отдельный
+   пункт: OQ-261.
+8. libpq < 16: сеть — отказ с подсказкой, сокет — работает. — да.
+9. Секретов без привязки нет, старых установок нет: переходного режима и
+   предупреждений нет, привязка обязательна.
+10. Самобэкап: привязку `sard-db` добавить.
+11. Register: поле `secret_names` можно убрать, N−1 нет.
+
+## Фаза 2 — привязка в агенте и подключение PostgreSQL
+
+### Сделано
+- SDK (Apache-2.0): `sdk.Target`, `sdk.Grant`, `sdk.Secret`,
+  `sdk.BindingError` / `ErrSecretNotAllowed`; `Host.SecretFor` и
+  `RecoveryHost.SecretFor` вместо `Secret` (`agent/plugins/sdk/secret.go`).
+- `agent/internal/secretbind`: шаблон цели, файл привязки (строгий YAML),
+  чтение с проверкой прав (не пишут группа и прочие, владелец root или
+  агент, без ссылок).
+- `pluginhost.Secrets`: `Allow` / `SecretFor`: сначала привязка, файл значения —
+  только после неё. Хосты шага, восстановления и отката передают имя плагина.
+  Песочница верификатора отдаёт свой пароль без привязки.
+- Плагин postgresql: одна сборка параметров `target.secured` →
+  `target.conninfo`, общая для проверки, отпечатка, pg_dump, pg_dumpall,
+  восстановления и отката. В ней `require_auth`, `channel_binding`,
+  умолчание verify-full и `sslrootcert`; подсказки к отказам libpq; причина
+  восстановления `SECRET_NOT_ALLOWED`.
+- `sard-agent secret set --plugin --target … [--auth] [--allow-tls]
+  [--ca-file] [--allow-no-channel-binding]`, `PLUGIN_UNKNOWN`; `secret list`
+  (BOUND_TO, `binding` в `--json`); `secret remove` удаляет привязку.
+- Спецификация `docs/specs/agent/secret-binding.feature`, черновик ADR
+  `docs/adr/00XX-draft-secret-binding.md`, OQ-261.
+
+### Проверено
+- Сценарий 1 (цель вне привязки → отказ до подключения): `binding_test.go`,
+  `restore_binding_test.go`, `pluginhost/secrets_test.go`. Ни одна программа
+  не запускается, файл секрета не читается.
+- Сценарий 2 (сервер просит md5 или password): с настоящим psql 16 этого
+  контейнера и поддельным сервером протокола
+  (`libpq_integration_test.go`, `go test -tags libpq`): libpq отказывается,
+  сообщение `PasswordMessage` не приходит. С `--auth scram-sha-256,md5`
+  приходит. На сокете без `--auth` — приходит.
+- Сценарий 3 (TLS): `binding_test.go`, матрица tls_mode × `--allow-tls` ×
+  сеть, localhost, сокет.
+- Сценарий 4 (libpq < 16): проверена только подсказка по тексту ошибки
+  libpq («invalid connection option "require_auth"»). Что libpq < 16
+  отвергает параметр строки до подключения, я **полагаю** по документации
+  libpq. Клиента старше 16 в контейнере нет.
+- Сценарий 7 (значение не утекает): `noLeak` в тестах плагина, проверки
+  `assertValuesHidden` в тестах команды; `BindingError` не содержит пути.
+
+### Не сделано в фазе 2 (фаза 3)
+- e2e: конфиги стенда объявляют секреты вручную — нужны файлы привязки
+  (`PostgresStand.kt`, `VerificationPostgresTest.kt`,
+  `StepLogRedactionTest.kt`), а в образе sard-self — привязка `sard-db`.
+  Без этого e2e с PostgreSQL сейчас упадут.
+- Register, сервер, консоль, `check` (A8d), документация оператора.

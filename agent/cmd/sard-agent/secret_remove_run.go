@@ -97,10 +97,13 @@ func runSecretRemove(_ context.Context, args []string, stdout, stderr io.Writer,
 }
 
 // removeSecretFiles removes the fragment first: from then on the agent
-// does not know the secret; then the value file, unless it is not the one
-// this command makes or another key of the config uses it.
+// does not know the secret; then its binding, and the value file, unless it is
+// not the one this command makes or another key of the config uses it.
 func (c *hostCmd) removeSecretFiles(name string) error {
 	if _, err := hostsetup.RemoveFile(c.deps.fs, c.layout.SecretFragment(name)); err != nil {
+		return err
+	}
+	if _, err := hostsetup.RemoveFile(c.deps.fs, c.layout.SecretBinding(name)); err != nil {
 		return err
 	}
 	valueFile := c.layout.SecretFile(name)

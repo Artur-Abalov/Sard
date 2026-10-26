@@ -34,6 +34,16 @@ func (l Layout) SecretFragment(name string) string {
 	return filepath.Join(l.FragmentDir(), "secret-"+name+".yaml")
 }
 
+// BindingDir holds the bindings of the secrets to their plugins and targets
+// (S11): next to the main config, not a part of it, so that an agent of an
+// older version starts with it there.
+func (l Layout) BindingDir() string { return filepath.Join(l.dir(), "secret-bindings") }
+
+// SecretBinding is the file of the binding of a secret.
+func (l Layout) SecretBinding(name string) string {
+	return filepath.Join(l.BindingDir(), name+".yaml")
+}
+
 // LockFile is the lock of changes to the config (Р10).
 func (l Layout) LockFile() string { return filepath.Join(l.FragmentDir(), ".sard-config.lock") }
 

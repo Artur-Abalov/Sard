@@ -37,6 +37,8 @@ type config struct {
 	PgDumpPath           string   `json:"pg_dump_path"`
 	IncludeGlobals       *bool    `json:"include_globals"`
 	GlobalsRolePasswords bool     `json:"globals_role_passwords"`
+	// grant is what the binding of the secret allows, once it is read.
+	grant sdk.Grant
 }
 
 // parse reads the config and reports what the schema cannot express: a

@@ -37,7 +37,12 @@ func TestSecretListOpensNoValueFile(t *testing.T) {
 	t.Parallel()
 	h := newSetupHost(t)
 	ok(t, os.Remove(h.path("secrets/pg")))
-	failing := func(string) ([]byte, error) { t.Error("a file was read"); return nil, os.ErrNotExist }
+	failing := func(path string) ([]byte, error) {
+		if filepath.Dir(path) != h.path("secret-bindings") {
+			t.Errorf("a file was read: %s", path)
+		}
+		return nil, os.ErrNotExist
+	}
 	h.deps.readFile = failing
 	h.deps.openFile = nil
 	h.deps.stat = func(path string) (info secretsInfo, err error) {
@@ -117,7 +122,7 @@ func TestRemovingASecretRemovesTheFragmentAndTheValueFile(t *testing.T) {
 	h.sd.calls, h.log.lines = nil, nil
 	code, stdout, _ := h.sudo("secret", "remove", "db", "--config", "C")
 	assertCode(t, code, exitOK)
-	h.assertAbsent(h.path("agent.d/secret-db.yaml"), h.path("secrets/db"))
+	h.assertAbsent(h.path("agent.d/secret-db.yaml"), h.path("secrets/db"), h.path("secret-bindings/db.yaml"))
 	h.assertApplied(stdout)
 	if len(h.log.lines) != 1 || !strings.Contains(h.log.lines[0], "secret db removed") {
 		t.Fatalf("audit %q", h.log.lines)
@@ -296,7 +301,7 @@ func TestCommandsThatChangeNothingLeaveTheServiceAlone(t *testing.T) {
 	h.sd.calls = nil
 	steps := [][]string{{"secret", "remove", "nope"}, {"repo", "password", "base", "--reveal"}, {"repo", "list"}}
 	h.stdinIs("SECRET-MARKER")
-	h.sudo("secret", "set", "db", "--stdin", "--config", "C")
+	h.sudo("secret", "set", "db", "--plugin", "postgresql", "--target", "db.example.com:5432/app", "--stdin", "--config", "C")
 	for _, s := range steps {
 		h.sudo(append(s, "--config", "C")...)
 	}

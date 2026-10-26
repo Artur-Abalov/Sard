@@ -52,6 +52,8 @@ const (
 	SecretEmpty          Reason = "SECRET_EMPTY"
 	SecretTooLarge       Reason = "SECRET_TOO_LARGE"
 	SecretMismatch       Reason = "SECRET_MISMATCH"
+	// PluginUnknown: secret set binds a secret to a plugin the agent does not have (S11).
+	PluginUnknown        Reason = "PLUGIN_UNKNOWN"
 	BackendNotSupported  Reason = "BACKEND_NOT_SUPPORTED"
 	LocalPathInvalid     Reason = "LOCAL_PATH_INVALID"
 	RevealRequired       Reason = "REVEAL_REQUIRED"
@@ -174,7 +176,7 @@ var classes = map[Reason]Class{
 	PrivilegesRequired: ClassUsage, ServiceUserUnknown: ClassUsage, NameInvalid: ClassUsage,
 	DefinedInConfig: ClassUsage, PathInUse: ClassUsage,
 	SecretSourceMissing: ClassUsage, SecretSourceConflict: ClassUsage, SecretEmpty: ClassUsage,
-	SecretTooLarge: ClassUsage, SecretMismatch: ClassUsage,
+	SecretTooLarge: ClassUsage, SecretMismatch: ClassUsage, PluginUnknown: ClassUsage,
 	BackendNotSupported: ClassUsage, LocalPathInvalid: ClassUsage, RevealRequired: ClassUsage,
 	RepositoryConflict:   ClassExists,
 	ConfigLocked:         ClassTemporary,

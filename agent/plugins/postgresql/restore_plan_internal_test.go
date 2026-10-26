@@ -5,6 +5,7 @@ package postgresql
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -22,7 +23,7 @@ func TestTheSettingsOfARestoreCarryTheConnectionAndTheChoices(t *testing.T) {
 		to:       target{Host: "db2", Port: 6432, User: "restorer", PasswordRef: "pg-restore", TLSMode: "disable", TLSRootCert: "/etc/ca.pem", ClientPath: "/opt/pg/bin/pg_restore"},
 		database: "app_restored_20261011", globals: true,
 	}
-	if err != nil || got != want {
+	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("settings = %+v, %v", got, err)
 	}
 }

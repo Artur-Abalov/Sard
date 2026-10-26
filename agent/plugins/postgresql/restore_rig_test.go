@@ -742,6 +742,11 @@ func (j *rpJournal) count() int {
 type rpHost struct {
 	mu      sync.Mutex
 	secrets map[string][]byte
+	// grant is what the binding of every secret allows; refused, if set, is
+	// what SecretFor fails with; asked are the targets it was asked for.
+	grant   sdk.Grant
+	refused error
+	asked   []sdk.Target
 	repo    *rpRepo
 	journal *rpJournal
 	events  []rpEvent
@@ -755,13 +760,18 @@ type rpHost struct {
 
 var _ sdk.RestoreHost = (*rpHost)(nil)
 
-func (h *rpHost) Secret(name string) ([]byte, error) {
+func (h *rpHost) SecretFor(name string, target sdk.Target) (sdk.Secret, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if v, ok := h.secrets[name]; ok {
-		return slices.Clone(v), nil
+	h.asked = append(h.asked, target)
+	v, ok := h.secrets[name]
+	switch {
+	case !ok:
+		return sdk.Secret{}, &sdk.SecretError{Name: name}
+	case h.refused != nil:
+		return sdk.Secret{}, h.refused
 	}
-	return nil, &sdk.SecretError{Name: name}
+	return sdk.Secret{Value: slices.Clone(v), Grant: h.grant}, nil
 }
 
 func (h *rpHost) Progress(done, total uint64) {
@@ -984,7 +994,7 @@ func newPGHost(t *testing.T) *rpHostRig {
 	}
 	jr := &rpJournal{}
 	h := &rpHostRig{t: t, repo: repo, server: newRPServer(), share: 0.5,
-		host:  &rpHost{secrets: map[string][]byte{rpPasswordRef: []byte(rpSecret)}, repo: repo, journal: jr},
+		host:  &rpHost{secrets: map[string][]byte{rpPasswordRef: []byte(rpSecret)}, grant: sdk.Grant{TLS: "disable"}, repo: repo, journal: jr},
 		tools: rpTools{nodes: map[string]fs.FileMode{rpBin + "/pg_restore": 0o755, rpBin + "/psql": 0o755}},
 		path:  rpBin + ":/usr/bin",
 	}

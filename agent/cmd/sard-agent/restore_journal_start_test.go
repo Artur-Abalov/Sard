@@ -48,7 +48,7 @@ func registryOf(t *testing.T, plugins ...sdk.Plugin) *sdk.Registry {
 
 func recoveryWithJournal(t *testing.T, engine *consolerestore.Engine, journal *pluginhost.Journal, reg *sdk.Registry) *recovery {
 	t.Helper()
-	jr := pluginhost.RecoverJournal(pluginhost.RecoveryOptions{Journal: journal, Plugins: reg, Secrets: pluginhost.NewSecrets(nil, os.ReadFile), Logger: slog.New(slog.DiscardHandler)})
+	jr := pluginhost.RecoverJournal(pluginhost.RecoveryOptions{Journal: journal, Plugins: reg, Secrets: pluginhost.NewSecrets(nil, os.ReadFile, nil), Logger: slog.New(slog.DiscardHandler)})
 	return newRecoveryWith(engine, journal, jr)
 }
 

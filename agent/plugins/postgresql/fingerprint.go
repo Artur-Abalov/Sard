@@ -76,7 +76,7 @@ func (p Plugin) Fingerprint(ctx context.Context, h sdk.Host, cfg sdk.Config, t s
 	if err != nil {
 		return sdk.Fingerprint{}, err
 	}
-	password, err := p.password(h, c)
+	c, password, err := p.password(h, c)
 	if err != nil {
 		return sdk.Fingerprint{}, err
 	}

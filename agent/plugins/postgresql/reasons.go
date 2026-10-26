@@ -26,7 +26,10 @@ const (
 	// a journal that cannot be written.
 	ReasonTargetInvalid = "TARGET_INVALID"
 	ReasonSecretInvalid = "SECRET_INVALID"
-	ReasonTargetWrite   = "TARGET_WRITE"
+	// ReasonSecretNotAllowed: the binding of the secret on the agent host does
+	// not allow this plugin, this target, or this TLS mode there (S11).
+	ReasonSecretNotAllowed = "SECRET_NOT_ALLOWED"
+	ReasonTargetWrite      = "TARGET_WRITE"
 )
 
 // The stages of a restore of a database, in the order they happen.

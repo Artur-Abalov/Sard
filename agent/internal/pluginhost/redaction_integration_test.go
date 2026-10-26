@@ -97,7 +97,7 @@ func maskingAgent(t *testing.T, value, inPath string) (*executor.Executor, *logS
 	if err != nil {
 		t.Fatal(err)
 	}
-	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(cfg.Secrets, os.ReadFile),
+	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(cfg.Secrets, os.ReadFile, bound{plugin: "files"}),
 		func(name, _ string, stderr io.Writer) (restic.Repository, bool) {
 			return cli.WithStderr(stderr), name == "main"
 		},

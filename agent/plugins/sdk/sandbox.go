@@ -9,7 +9,8 @@ import (
 )
 
 // SandboxPassword is the name under which a SandboxHost gives the password of
-// the application of its sandbox (Host.Secret): a random one per check.
+// the application of its sandbox (Host.SecretFor, whatever the target): a
+// random one per check.
 const SandboxPassword = "sard.sandbox"
 
 // Sandboxed is implemented by a CopyRestorer whose copy runs in a throwaway
@@ -43,7 +44,7 @@ type SandboxSpec struct {
 }
 
 // SandboxHost is the RestoreHost of a check whose copy runs in a sandbox. Its
-// Secret(SandboxPassword) is the password of the sandbox.
+// SecretFor(SandboxPassword, …) is the password of the sandbox.
 type SandboxHost interface {
 	RestoreHost
 	// Run runs a program of the sandbox to completion and returns its exit

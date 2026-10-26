@@ -122,7 +122,7 @@ func TestARefusalThatLeavesSomethingBehindIsLoggedWithTheCommandThePluginAndWhat
 func TestAnEntryHoldingASecretOfOneByteIsNotSaved(t *testing.T) {
 	var saveErr error
 	p := &journaltest.Plugin{RestoreFn: func(_ context.Context, h sdk.RestoreHost, _ sdk.Config, _ sdk.RestoreRequest) (sdk.RestoreResult, error) {
-		if _, err := h.Secret("pg-restore"); err != nil {
+		if _, err := secretOf(h, "pg-restore"); err != nil {
 			return sdk.RestoreResult{}, err
 		}
 		saveErr = h.Journal().Save([]byte("a-q-b"))

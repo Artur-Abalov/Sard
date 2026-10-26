@@ -26,7 +26,7 @@ type Config = json.RawMessage
 // SecretFormat marks a string field of ConfigSchema that holds the name of
 // a secret defined on the agent host: {"type": "string", "format":
 // "sard-secret"}. The agent rejects a config naming an unknown secret
-// before Prepare runs; the plugin reads the value with Host.Secret.
+// before Prepare runs; the plugin reads the value with Host.SecretFor.
 const SecretFormat = "sard-secret"
 
 // Dump is what Plugin.Dump produced, in one of two forms:
@@ -103,11 +103,14 @@ const (
 // Host is what the agent offers a plugin while a step runs. It is safe for
 // concurrent use.
 type Host interface {
-	// Secret returns the value of the named secret, read from its file on
-	// the agent host. Within one step it is the value the step started with,
-	// the one the agent masks in the step's log. An unknown name is a
-	// *SecretError. The value must never be logged.
-	Secret(name string) ([]byte, error)
+	// SecretFor returns the value of the named secret, read from its file on
+	// the agent host, for the plugin of the step to send to target, and what
+	// the binding of the secret allows. Within one step it is the value the
+	// step started with, the one the agent masks in the step's log. An
+	// unknown name is a *SecretError; a secret the operator of the host did
+	// not bind to this plugin and target is a *BindingError, and its file is
+	// not read. The value must never be logged.
+	SecretFor(name string, target Target) (Secret, error)
 	// Progress reports the progress of the current step; total is 0 when
 	// unknown.
 	Progress(done, total uint64)

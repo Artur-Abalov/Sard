@@ -52,7 +52,7 @@ func pgTools(t *testing.T, pgDump, pgDumpall string) pgHost {
 	write("psql", psqlScript)
 	password := filepath.Join(dir, "pg-app.secret")
 	writeFile(t, password, "pw\n")
-	return pgHost{dir: dir, secrets: pluginhost.NewSecrets(map[string]string{"pg-app": password}, os.ReadFile)}
+	return pgHost{dir: dir, secrets: pluginhost.NewSecrets(map[string]string{"pg-app": password}, os.ReadFile, bound{plugin: "postgresql", targets: []string{"db"}})}
 }
 
 // psqlScript answers the probe of PREPARING and, as the session of the

@@ -150,7 +150,7 @@ func TestASecretMadeUnderSudoPassesTheCheckOfTheServiceStart(t *testing.T) {
 	deps, _ := hostDepsFor(t)
 	deps.stdin = strings.NewReader("SECRET-MARKER")
 	var out, errOut bytes.Buffer
-	code := runSecretWithDeps(context.Background(), []string{"set", "db", "--stdin", "--config", cfg}, &out, &errOut, deps)
+	code := runSecretWithDeps(context.Background(), []string{"set", "db", "--plugin", "postgresql", "--target", "db.example.com:5432/app", "--stdin", "--config", cfg}, &out, &errOut, deps)
 	assertCode(t, code, exitOK)
 	h.connects(cfg)
 }

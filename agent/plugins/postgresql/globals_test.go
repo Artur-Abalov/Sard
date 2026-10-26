@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
 
 // Scenario: Бэкап по умолчанию даёт снимок базы и связанный снимок глобальных объектов.
@@ -375,18 +377,18 @@ func TestDumpFailsWhenTheSecretCannotBeReadAfterPrepare(t *testing.T) {
 	}
 }
 
-// flakyHost answers Secret [reads] times, then fails.
+// flakyHost answers SecretFor [reads] times, then fails.
 type flakyHost struct {
 	host
 	reads int
 }
 
-func (h *flakyHost) Secret(name string) ([]byte, error) {
+func (h *flakyHost) SecretFor(name string, target sdk.Target) (sdk.Secret, error) {
 	if h.reads == 0 {
-		return nil, fmt.Errorf("secret %q: gone", name)
+		return sdk.Secret{}, fmt.Errorf("secret %q: gone", name)
 	}
 	h.reads--
-	return h.host.Secret(name)
+	return h.host.SecretFor(name, target)
 }
 
 // Scenario: Пароли ролей без глобальных объектов ничего не меняют.

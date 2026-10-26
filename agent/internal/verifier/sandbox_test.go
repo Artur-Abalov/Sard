@@ -80,8 +80,8 @@ func (d *database) Sandbox(f *sdk.Fingerprint) (sdk.SandboxSpec, error) {
 }
 
 func (d *database) SandboxReady(ctx context.Context, h sdk.SandboxHost, _ *sdk.Fingerprint) error {
-	pw, _ := h.Secret(sdk.SandboxPassword)
-	d.passwords = append(d.passwords, string(pw))
+	pw, _ := h.SecretFor(sdk.SandboxPassword, sdk.Target{})
+	d.passwords = append(d.passwords, string(pw.Value))
 	_, _ = h.Run(ctx, sdk.Process{Path: "pg_isready"})
 	return d.readyErr
 }

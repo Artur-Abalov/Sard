@@ -29,7 +29,7 @@ func (p *streaming) RestoreInto(ctx context.Context, h sdk.RestoreHost, _ sdk.Co
 	h.Progress(1, 2)
 	h.Log(sdk.LevelInfo, "restoring "+req.SnapshotID)
 	h.Log(p.levelOf(), "info")
-	_, p.secret = h.Secret("db")
+	_, p.secret = h.SecretFor("db", sdk.Target{Host: "db"})
 	if err := h.Journal().Save([]byte("{}")); err != nil {
 		return sdk.RestoredCopy{}, err
 	}

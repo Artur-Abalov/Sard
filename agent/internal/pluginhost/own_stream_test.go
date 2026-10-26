@@ -281,7 +281,7 @@ func cliRig(t *testing.T, p sdk.Plugin, process restic.Executor) (*executor.Exec
 	state := t.TempDir()
 	store := restorejournal.New(restorejournal.Options{Dir: filepath.Join(state, "restore-journal"), FS: hostsetup.OS{}, Owner: attrs})
 	repos := func(string, string, io.Writer) (restic.Repository, bool) { return cli, true }
-	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), repos, t.TempDir(), pluginhost.WithConsoleRestore(engine), pluginhost.WithRestoreJournal(pluginhost.NewJournal(store, nil)))
+	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil, nil), repos, t.TempDir(), pluginhost.WithConsoleRestore(engine), pluginhost.WithRestoreJournal(pluginhost.NewJournal(store, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -71,7 +71,7 @@ func newConsoleHost(t *testing.T, p sdk.Plugin) *consoleHost {
 	engine := consolerestore.New(consolerestore.Options{
 		Dir: dir, FS: hostsetup.OS{}, Owner: hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid(), Mode: 0o700}, Logger: slog.New(slog.DiscardHandler),
 	})
-	secrets := pluginhost.NewSecrets(map[string]string{"pg": "/etc/sard/pg"}, nil)
+	secrets := pluginhost.NewSecrets(map[string]string{"pg": "/etc/sard/pg"}, nil, bound{plugin: "fake"})
 	repos := func(name, commandID string, stderr io.Writer) (restic.Repository, bool) {
 		f.stderr = append(f.stderr, stderr)
 		f.commands = append(f.commands, commandID)
@@ -288,7 +288,7 @@ func TestARestoreThatCannotRollBackReportsWhatIsLeftInTheOutput(t *testing.T) {
 	engine := consolerestore.New(consolerestore.Options{
 		Dir: dir, FS: stuckFS{hostsetup.OS{}, "cmd-1"}, Owner: hostsetup.Attrs{UID: os.Getuid(), GID: os.Getgid(), Mode: 0o700}, Logger: slog.New(slog.DiscardHandler),
 	})
-	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return repoStub, true }, t.TempDir(), pluginhost.WithConsoleRestore(engine))
+	handlers, err := pluginhost.NewHandlers(reg, pluginhost.NewSecrets(nil, nil, nil), func(string, string, io.Writer) (restic.Repository, bool) { return repoStub, true }, t.TempDir(), pluginhost.WithConsoleRestore(engine))
 	if err != nil {
 		t.Fatal(err)
 	}

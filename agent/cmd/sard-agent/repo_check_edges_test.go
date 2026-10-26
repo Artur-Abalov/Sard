@@ -136,6 +136,8 @@ func argsOf(name string, n int) []string {
 		extra = append(extra, "--target", "/restore")
 	case "repo unlock":
 		extra = append(extra, "--remove-stale")
+	case "secret set":
+		extra = append(extra, bindFlags...)
 	case "check", "secret list":
 		extra = nil
 	}

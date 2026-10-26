@@ -234,7 +234,7 @@ func TestAPluginWritesOnlyTheEntryOfItsOwnCommand(t *testing.T) {
 func TestAnEntryHoldingTheValueOfASecretThePluginReadIsNotSaved(t *testing.T) {
 	var saveErr error
 	p := &journaltest.Plugin{RestoreFn: func(_ context.Context, h sdk.RestoreHost, _ sdk.Config, _ sdk.RestoreRequest) (sdk.RestoreResult, error) {
-		value, err := h.Secret("pg-restore")
+		value, err := secretOf(h, "pg-restore")
 		if err != nil {
 			return sdk.RestoreResult{}, err
 		}
@@ -292,7 +292,7 @@ func TestAnEntryNamingASecretOrHoldingAValueThePluginNeverReadIsSaved(t *testing
 
 func TestASecretThatHoldsNothingNeverBlocksAnEntry(t *testing.T) {
 	p := &journaltest.Plugin{RestoreFn: func(_ context.Context, h sdk.RestoreHost, _ sdk.Config, _ sdk.RestoreRequest) (sdk.RestoreResult, error) {
-		if _, err := h.Secret("pg-restore"); err != nil {
+		if _, err := secretOf(h, "pg-restore"); err != nil {
 			return sdk.RestoreResult{}, err
 		}
 		return sdk.RestoreResult{}, h.Journal().Save([]byte("e1"))
