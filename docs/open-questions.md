@@ -108,6 +108,7 @@
 | OQ-258 | V3: после `repo init` признак ключа восстановления на сервере устаревает до следующего Register (служба не перезапускается, К19 покрывает только `key add`/`key remove`), как и `repository_id`. Принято намеренно. | отложено | при жалобах операторов | ADR 0067 К19 |
 | OQ-259 | V3, структура: новая зависимость `hostcheck → restickeys` (единое правило К13) тянет `restickeys → repoinit → secrets/crypto` в `serverprobe`; тест-ограничитель `restickeys/seam_test.go` проверяет только прямые импорты stdlib. Варианты: вынести `Warn*`/`Warnings` в пакет без зависимостей и `NewPassword` в листовой пакет. Тянет за собой всех вызывающих `repoinit.NewPassword`. | отложено | cleaner | `agent/internal/hostcheck/repository_steps.go`, `agent/internal/restickeys/seam_test.go` |
 | OQ-260 | V3: выдача пароля нового ключа через `stdin` restic (`key add`) специфична для restic; будущий провайдер не-AES (ГОСТ, OQ-020) потребует собственный путь выпуска ключей. | отложено | вместе с ГОСТ (OQ-020) | ADR 0067, ADR 0008 |
+| OQ-261 | DB2: сценарий `@upgrade` (`docs/specs/server/self-agent.feature`, помечен `@отложено-до-выпуска`) и проверки 5 и 9 `scripts/test-self-agent.sh` (`UPGRADE_FROM`, убран из задачи self-agent в `ci.yml`) отложены, не удалены: исходной версии с `public` и суперпользователем нет (Р1). Включить обратно, когда выйдет первый выпуск с DB2: исходная версия обновления — этот выпуск. | отложено | первый выпуск с DB2 | ADR 0069 п. 13; `.github/workflows/ci.yml` (задача self-agent); `scripts/test-self-agent.sh` |
 
 ## Закрыто при сверке
 

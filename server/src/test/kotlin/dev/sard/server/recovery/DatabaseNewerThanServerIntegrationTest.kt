@@ -3,6 +3,7 @@
 
 package dev.sard.server.recovery
 
+import dev.sard.server.TestAdmin
 import dev.sard.server.database.MigrationSettings
 import dev.sard.server.database.Preparation
 import dev.sard.server.database.coreConfiguration
@@ -76,7 +77,8 @@ class DatabaseNewerThanServerIntegrationTest {
         success: Boolean = true,
     ) {
         installation.start().close()
-        jdbc().update(
+        // sard_app may not write the history of migrations: the superuser of the cluster plays the newer server.
+        TestAdmin.of(jdbc()).update(
             "insert into flyway_schema_history (installed_rank, version, description, type, script, checksum, " +
                 "installed_by, installed_on, execution_time, success) " +
                 "select max(installed_rank) + 1, ?, ?, 'SQL', 'V${version}__$description.sql', 1, 'sard', now(), " +

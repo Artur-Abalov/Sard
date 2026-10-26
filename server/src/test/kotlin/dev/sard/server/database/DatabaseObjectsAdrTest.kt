@@ -103,7 +103,9 @@ class DatabaseObjectsAdrTest {
                     "and not relispartition",
             )
 
-        assertTrue(listed.isNotEmpty() && listed.keys.all { it in tables }, "the tables of the ADR exist: $listed")
+        // The history of the extensions exists only where an extension migrated (MigratorIntegrationTest checks it).
+        val core = listed.keys.filterNot { it.endsWith("_extensions") }
+        assertTrue(core.isNotEmpty() && core.all { it in tables }, "the tables of the ADR exist: $listed")
         for (table in tables) {
             val expected = listed[table] ?: (PRIVILEGES - "TRUNCATE").toSet()
             val actual =
@@ -140,5 +142,24 @@ class DatabaseObjectsAdrTest {
 
         assertEquals(listed.filterValues { it == setOf("SELECT", "INSERT") }.keys, array("append_only"))
         assertEquals(listed.filterValues { it == setOf("SELECT") }.keys, array("read_only"))
+    }
+
+    @Test
+    fun `Функция SECURITY DEFINER закрепляет search_path с pg_temp в конце и закрыта от PUBLIC`() {
+        val definers =
+            strings(
+                "select p.oid::regprocedure::text || '|' || coalesce(array_to_string(p.proconfig, ';'), '') || " +
+                    "'|' || " +
+                    "has_function_privilege('public', p.oid, 'EXECUTE') from pg_proc p " +
+                    "where p.pronamespace = 'sard'::regnamespace and p.prosecdef order by 1",
+            )
+
+        assertTrue(definers.isNotEmpty(), "the schema has functions that run with the rights of their owner")
+        for (row in definers) {
+            val (function, config, public) = row.split("|")
+            val path = config.split(";").single { it.startsWith("search_path=") }.removePrefix("search_path=")
+            assertTrue(path.split(",").last().trim() == "pg_temp", "$function: search_path is '$path'")
+            assertEquals("false", public, "$function: PUBLIC may execute it")
+        }
     }
 }

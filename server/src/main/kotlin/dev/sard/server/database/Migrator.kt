@@ -77,9 +77,24 @@ class Migrator(
         val flyway = flyway(locations, table)
         if (onlyIfAny && flyway.info().all().isEmpty()) return 0
         try {
-            return flyway.migrate().migrationsExecuted
+            val executed = flyway.migrate().migrationsExecuted
+            withdrawHistoryWrites(table)
+            return executed
         } catch (e: FlywayException) {
             throw MigrationRefused("${describe(e)}; the failed migration changed nothing, see $DOCS", e)
+        }
+    }
+
+    /**
+     * The default privileges give sard_app the rights on every new table, the history of migrations included; a
+     * server that could write there could make `migrate` skip a migration that closes rights. Run as the owner after
+     * every migrate, so the table that Flyway has just created is covered, and repeatable.
+     */
+    private fun withdrawHistoryWrites(table: String) {
+        DriverManager.getConnection(settings.url, settings.user, settings.password).use { connection ->
+            connection.createStatement().use {
+                it.execute("SET ROLE $OWNER; REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON $SCHEMA.$table FROM sard_app")
+            }
         }
     }
 

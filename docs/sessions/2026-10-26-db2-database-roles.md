@@ -61,3 +61,13 @@ e2e `test/e2e`) и учения `ServerRecoveryDrillTest` в этой среде
 образы и пакеты агента не построены. Запущены: `db-init` из compose на настоящем
 PostgreSQL 18.6, `bootstrap.sql` на 16 и 17 (`scripts/test-bootstrap.sh`) и все тесты
 `:server`.
+
+## Исправления по ревью architect (coder)
+- verify-offline в `release.yml` скачивает все файлы установки и ставит их блоком `offline-install` страницы `docs/operator/11-offline.md` дословно; `DeployDatabaseComposeTest` проверяет и скачивание, и `cp … db/`.
+- `sard_app` только читает истории миграций: `Migrator` отзывает запись после каждого `migrate`, `bootstrap.sql` держит обе таблицы в `read_only`, ADR 0069 п. 12.
+- Только `postgres` и `db-init` монтируют сокет `postgres-socket` (тест).
+- Функции `SECURITY DEFINER`: `search_path = pg_catalog, sard, pg_temp`, имена отношений с `sard.` (миграции переписаны, Р1).
+- ADR 0069 п. 5 приведён к коду: проверяются только миграции ядра. OQ-261: отложенный `@upgrade`.
+- `db-init.sh` отвергает файл пароля не из 64 hex-символов и задаёт пароль из файла при каждом запуске.
+- `scripts/test-release-signing.sh` собирает набор файлов из `deploy/db/*`.
+- Тесты, подделывавшие историю от `sard_app`, делают это суперпользователем (`TestAdmin`).

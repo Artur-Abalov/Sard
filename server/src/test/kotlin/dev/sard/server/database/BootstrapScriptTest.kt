@@ -117,6 +117,18 @@ class BootstrapScriptTest {
                 it.getString(1)
             }
         assertEquals("sard_owner", owned)
+        val history =
+            cluster.query(
+                "select concat_ws(',', has_table_privilege('sard_app', 'sard.flyway_schema_history', 'SELECT')," +
+                    "has_table_privilege('sard_app', 'sard.flyway_schema_history', 'INSERT')," +
+                    "has_table_privilege('sard_app', 'sard.flyway_schema_history', 'UPDATE')," +
+                    "has_table_privilege('sard_app', 'sard.flyway_schema_history', 'DELETE')," +
+                    "has_table_privilege('sard_app', 'sard.flyway_schema_history', 'TRUNCATE'))",
+                restored,
+            ) {
+                it.getString(1)
+            }
+        assertEquals("t,f,f,f,f", history, "sard_app only reads the history after the rerun")
         assertEquals(
             cluster.catalog(installed).replace(installed, "DB"),
             cluster.catalog(restored).replace(restored, "DB"),

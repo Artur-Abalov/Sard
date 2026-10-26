@@ -112,7 +112,10 @@ CI запускает его на PostgreSQL 16, 17 и 18 (`scripts/test-bootstr
 `FlywayMigrationStrategy` сервера только читает историю: если у сборки есть миграция,
 которой в базе нет (или она записана как неудачная), сервер не стартует с
 `Database startup refused: MIGRATIONS_NOT_APPLIED` и называет службу `migrate`. Проверка
-идёт после проверок DB1 и ADR 0060. Миграции расширений проверяются так же (п. 6).
+идёт после проверок DB1 и ADR 0060 (`persistence/DatabaseVersionGuard.kt`) и касается
+только миграций ядра. Миграции расширений (п. 6) при старте сервера не проверяются: их
+применяет та же команда `migrate`, а проверка их применённости — отдельное решение, не
+принятое в DB2.
 
 ### 6. Миграции расширений (поправка к ADR 0013)
 ADR 0013 клал таблицы enterprise в схему `sard_<id>`. Теперь схема одна, `sard`.
@@ -184,6 +187,14 @@ function»). Блокировка, не полученная за 2 с, — ош
 Права `sard_app` на них (остальные таблицы — `SELECT, INSERT, UPDATE, DELETE`):
 - `restore_verifications` — `SELECT, INSERT`
 - `retention_floors` — `SELECT`
+- `flyway_schema_history` — `SELECT`
+- `flyway_schema_history_extensions` — `SELECT`
+
+Истории миграций `sard_app` только читает: иначе взломанный сервер подделал бы историю, и
+`migrate` пропустил бы миграцию, закрывающую права. Права по умолчанию дали бы ему запись,
+поэтому `Migrator` после каждого успешного `migrate` отзывает у `sard_app` `INSERT, UPDATE,
+DELETE, TRUNCATE` на использованной таблице истории (повторяемо), а `bootstrap.sql` держит
+обе таблицы в списке `read_only` — права возвращаются и после восстановления без ACL.
 
 ### 13. Отложенный `@upgrade` (решение владельца)
 Сценарий `@upgrade` в `docs/specs/server/self-agent.feature` и проверки 5 и 9

@@ -3,14 +3,16 @@
 
 package dev.sard.server.persistence
 
+import dev.sard.server.TestAdmin
 import dev.sard.server.onboarding.Database
 import dev.sard.server.onboarding.TestPostgres
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.flywaydb.core.Flyway
+import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.datasource.DriverManagerDataSource
 import java.nio.file.Files
 import java.nio.file.Path
-import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -44,25 +46,23 @@ class DatabaseVersionGuardTest {
         return database to flyway
     }
 
+    /** A row of a newer server's migration; sard_app may not write the history, the cluster superuser does. */
     private fun record(
         database: Database,
         version: String,
         description: String,
         success: Boolean = true,
-    ) = DriverManager.getConnection(database.url, database.user, database.password).use { c ->
-        c
-            .prepareStatement(
-                "insert into flyway_schema_history (installed_rank, version, description, type, script, checksum, " +
-                    "installed_by, installed_on, execution_time, success) " +
-                    "select max(installed_rank) + 1, ?, ?, 'SQL', ?, 1, 'sard', now(), 1, ? from flyway_schema_history",
-            ).use {
-                it.setString(1, version)
-                it.setString(2, description)
-                it.setString(3, "V${version}__$description.sql")
-                it.setBoolean(4, success)
-                it.executeUpdate()
-            }
-    }
+    ) = TestAdmin
+        .of(JdbcTemplate(DriverManagerDataSource(database.url, database.user, database.password)))
+        .update(
+            "insert into flyway_schema_history (installed_rank, version, description, type, script, checksum, " +
+                "installed_by, installed_on, execution_time, success) " +
+                "select max(installed_rank) + 1, ?, ?, 'SQL', ?, 1, 'sard', now(), 1, ? from flyway_schema_history",
+            version,
+            description,
+            "V${version}__$description.sql",
+            success,
+        )
 
     private fun refusal(flyway: Flyway) =
         assertFailsWith<DatabaseNewerThanServer> { MutFlow.underTest { refuseNewerDatabase(flyway, "0.1.0") } }.message

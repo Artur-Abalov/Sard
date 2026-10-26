@@ -31,7 +31,7 @@ CREATE TABLE step_logs (
 CREATE FUNCTION create_step_log_partition(month DATE) RETURNS TEXT
     LANGUAGE plpgsql
     SECURITY DEFINER
-    SET search_path = pg_catalog, sard
+    SET search_path = pg_catalog, sard, pg_temp
     SET lock_timeout = '2s'
 AS $$
 DECLARE
@@ -54,7 +54,7 @@ $$;
 CREATE FUNCTION drop_step_log_partition(partition_name TEXT) RETURNS BOOLEAN
     LANGUAGE plpgsql
     SECURITY DEFINER
-    SET search_path = pg_catalog, sard
+    SET search_path = pg_catalog, sard, pg_temp
     SET lock_timeout = '2s'
 AS $$
 BEGIN

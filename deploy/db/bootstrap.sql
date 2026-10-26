@@ -126,9 +126,10 @@ ALTER DEFAULT PRIVILEGES FOR ROLE sard_owner REVOKE EXECUTE ON FUNCTIONS FROM PU
 DO $bootstrap$
 DECLARE
     obj record;
-    -- Written by sard_app only by INSERT (append-only), and only read (a limit fixed by migrations).
+    -- Written by sard_app only by INSERT (append-only), and only read (a limit fixed by migrations, the histories
+    -- of migrations, which a compromised server must not forge).
     append_only constant text[] := ARRAY['restore_verifications'];
-    read_only constant text[] := ARRAY['retention_floors'];
+    read_only constant text[] := ARRAY['retention_floors', 'flyway_schema_history', 'flyway_schema_history_extensions'];
 BEGIN
     FOR obj IN
         SELECT c.oid::regclass::text AS name,

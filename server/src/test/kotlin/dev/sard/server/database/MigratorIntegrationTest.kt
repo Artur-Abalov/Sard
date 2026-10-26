@@ -211,6 +211,30 @@ class MigratorIntegrationTest {
     }
 
     @Test
+    fun `sard_app only reads the histories of migrations`() {
+        migrate(listOf(extension("create table e (i int);")))
+
+        for (history in listOf("flyway_schema_history", "flyway_schema_history_extensions")) {
+            assertTrue(
+                cluster.query("select count(*) from sard.$history where version::bigint > 0") { it.getInt(1) } > 0,
+                "$history has applied migrations above the baseline",
+            )
+            for (privilege in listOf("INSERT", "UPDATE", "DELETE", "TRUNCATE")) {
+                assertEquals(
+                    listOf("false"),
+                    strings("select has_table_privilege('sard_app', 'sard.$history', '$privilege')::text"),
+                    "$privilege on $history",
+                )
+            }
+            assertEquals(
+                listOf("true"),
+                strings("select has_table_privilege('sard_app', 'sard.$history', 'SELECT')::text"),
+                "SELECT on $history",
+            )
+        }
+    }
+
+    @Test
     fun `Без расширений таблицы истории расширений нет и сервер стартует`() {
         migrate()
 

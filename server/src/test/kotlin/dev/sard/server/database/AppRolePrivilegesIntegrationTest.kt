@@ -118,7 +118,9 @@ class AppRolePrivilegesIntegrationTest {
             assertTrue(path.isNotEmpty(), "no search_path: $line")
             val schemas = path.split(",").map { it.trim().trim('"') }
             assertTrue("public" !in schemas, line)
-            for (schema in schemas) {
+            // pg_temp is the session's own schema, last so that nothing can be planted ahead of the real ones.
+            assertEquals("pg_temp", schemas.last(), line)
+            for (schema in schemas - "pg_temp") {
                 val writable = strings("select has_schema_privilege('sard_app', '$schema', 'CREATE')::text")
                 assertEquals(listOf("false"), writable, "$schema in $line")
             }

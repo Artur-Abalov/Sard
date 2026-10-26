@@ -43,25 +43,25 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON retention_floors FROM sard_app;
 CREATE FUNCTION clear_verification_evidence(p_tenant UUID, p_cutoff TIMESTAMPTZ, p_limit INTEGER) RETURNS INTEGER
     LANGUAGE plpgsql
     SECURITY DEFINER
-    SET search_path = pg_catalog, sard
+    SET search_path = pg_catalog, sard, pg_temp
 AS $$
 DECLARE
     floor_days INTEGER;
     cutoff TIMESTAMPTZ;
     cleared INTEGER;
 BEGIN
-    SELECT min_days INTO STRICT floor_days FROM retention_floors WHERE name = 'verification_evidence';
+    SELECT min_days INTO STRICT floor_days FROM sard.retention_floors WHERE name = 'verification_evidence';
     cutoff := LEAST(p_cutoff, now() - make_interval(days => floor_days));
     WITH picked AS (
-        SELECT v.id FROM restore_verifications v
+        SELECT v.id FROM sard.restore_verifications v
         WHERE v.tenant_id = p_tenant AND v.verified_at < cutoff
           AND (v.stages <> '[]'::jsonb OR v.mismatches <> '[]'::jsonb)
-          AND EXISTS (SELECT 1 FROM restore_verifications n
+          AND EXISTS (SELECT 1 FROM sard.restore_verifications n
                       WHERE n.tenant_id = v.tenant_id AND n.source_id = v.source_id
                         AND (n.status = 'passed') = (v.status = 'passed')
                         AND (n.verified_at, n.id) > (v.verified_at, v.id))
         ORDER BY v.verified_at, v.id LIMIT p_limit FOR UPDATE SKIP LOCKED)
-    UPDATE restore_verifications r SET stages = '[]'::jsonb, mismatches = '[]'::jsonb
+    UPDATE sard.restore_verifications r SET stages = '[]'::jsonb, mismatches = '[]'::jsonb
     FROM picked WHERE r.tenant_id = p_tenant AND r.id = picked.id;
     GET DIAGNOSTICS cleared = ROW_COUNT;
     RETURN cleared;
