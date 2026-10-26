@@ -32,7 +32,8 @@ internal class AgentHost(
     // Not "env": inside a container's apply {} that name is the container's own getEnv().
     private val sardEnv: SardEnvironment,
     val hostname: String = "e2e-agent",
-    val local: String = "",
+    /** The host's own part of the config; a test may change it before it starts the agent again. */
+    var local: String = "",
     /** The agent image every command of this host runs: [E2e.agentImage] unless T3 needs the stand's. */
     private val image: String = E2e.agentImage,
     /**
@@ -45,6 +46,8 @@ internal class AgentHost(
     private val endpoint: String = SardEnvironment.AGENT_ENDPOINT,
     /** More volumes of the host, e.g. a repository two hosts share or a verifier's work volume (V5). */
     private val mounts: List<Bind> = emptyList(),
+    /** Supplementary groups of every container, e.g. the group of the Docker socket a verifier's sandboxes need (V5). */
+    private val groups: List<String> = emptyList(),
 ) {
     /** The volume mounted at [STATE_DIR]: state, TLS files, repository, the executor's journal. */
     val state = sardEnv.volume()
@@ -286,6 +289,7 @@ internal class AgentHost(
             withCreateContainerCmdModifier { create ->
                 create.withHostName(hostname)
                 create.hostConfig?.withBinds(*binds().toTypedArray())
+                if (groups.isNotEmpty()) create.hostConfig?.withGroupAdd(groups)
             }
         }
 

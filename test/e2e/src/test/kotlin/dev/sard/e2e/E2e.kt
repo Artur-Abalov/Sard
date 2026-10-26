@@ -24,6 +24,9 @@ internal object E2e {
      */
     fun pgAgentImage(major: Int): String = property("e2e.pg${major}AgentImage")
 
+    /** The release agent with the Docker CLI a verifier starts its sandboxes with (test/e2e/agent/Dockerfile.verifier, V5). */
+    val verifierImage: String get() = property("e2e.verifierImage")
+
     /** The stand's SFTP server (test/e2e/sftp, ADR 0047). */
     val sftpImage: String get() = property("e2e.sftpImage")
 

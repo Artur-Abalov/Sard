@@ -8,11 +8,7 @@ import com.github.dockerjava.api.model.Bind
 import com.github.dockerjava.api.model.Volume
 import org.junit.jupiter.api.extension.RegisterExtension
 import org.testcontainers.containers.GenericContainer
-import org.testcontainers.containers.startupcheck.OneShotStartupCheckStrategy
-import org.testcontainers.utility.DockerImageName
-import java.security.MessageDigest
 import java.time.Duration
-import java.util.HexFormat
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -35,7 +31,7 @@ class VerificationFilesTest {
         val snapshot = backup("passing")
         val before = repositoryListing()
 
-        val record = verify(snapshot)
+        val record = verifications.verify(snapshot)
 
         assertEquals("passed", record.status, record.reason)
         assertEquals(5, record.level)
@@ -44,7 +40,7 @@ class VerificationFilesTest {
         assertEquals(before, repositoryListing(), "the verification wrote to the repository")
         assertEquals(emptyList(), workVolume(), "the verification left a copy on the verifier")
         // The only source with verification on has passed: the last verified restore is a real one.
-        verification(query("SELECT source_id FROM snapshots WHERE id = ?", snapshot) { it.getObject(1, UUID::class.java) }!!, enabled = true)
+        verifications.enable(verifications.sourceOf(snapshot), enabled = true)
         assertNotNull(SardApi(sard).get("/api/v1/status").field("lastVerifiedRestoreAt"))
     }
 
@@ -54,9 +50,9 @@ class VerificationFilesTest {
         stand()
         val snapshot = backup("forged")
         val forged = """{"facts":[{"name":"files","rule":"exact","value":"1"}],"format":1,"plugin":"files"}""".toByteArray()
-        update("UPDATE snapshots SET fingerprint = ?, fingerprint_sha256 = ? WHERE id = ?", forged, sha256(forged), snapshot)
+        verifications.update("UPDATE snapshots SET fingerprint = ?, fingerprint_sha256 = ? WHERE id = ?", forged, verifications.sha256(forged), snapshot)
 
-        val record = verify(snapshot)
+        val record = verifications.verify(snapshot)
 
         assertEquals("failed", record.status)
         assertEquals(0, record.level)
@@ -69,9 +65,9 @@ class VerificationFilesTest {
     fun `a snapshot without a fingerprint reaches level 3 and cannot be verified`() {
         stand()
         val snapshot = backup("pre-v2")
-        update("UPDATE snapshots SET fingerprint = NULL, fingerprint_sha256 = NULL WHERE id = ?", snapshot)
+        verifications.update("UPDATE snapshots SET fingerprint = NULL, fingerprint_sha256 = NULL WHERE id = ?", snapshot)
 
-        val record = verify(snapshot)
+        val record = verifications.verify(snapshot)
 
         assertEquals("cannot_verify", record.status)
         assertEquals(3, record.level)
@@ -88,7 +84,7 @@ class VerificationFilesTest {
             helper(spare, "/repo", "for p in /repo/data/*/*; do printf XXXXXXXXXXXXXXXX | dd of=\$p bs=1 seek=64 conv=notrunc 2>/dev/null; done; echo done")
         assertContains(damaged, "done")
 
-        val record = verify(snapshot)
+        val record = verifications.verify(snapshot)
 
         assertEquals("failed", record.status)
         assertEquals(0, record.level)
@@ -103,7 +99,7 @@ class VerificationFilesTest {
         val many = (1..MANY_FILES).map { TarFiles.Entry("f$it", ByteArray(FILE_BYTES) { b -> (b * it).toByte() }, TarFiles.OWNER_ONLY) }
         source.host.put(MANY, TarFiles(listOf(TarFiles.Entry("", null, TarFiles.OWNER_DIR)) + many))
         val snapshot = backup("killed", paths = MANY)
-        val job = start(snapshot)
+        val job = verifications.start(snapshot)
         Await.until("a copy on the work volume", Duration.ofMinutes(2)) { workVolume().isNotEmpty() }
 
         val killed = checkNotNull(verifierContainer)
@@ -111,7 +107,7 @@ class VerificationFilesTest {
         verifierContainer = startVerifier("verifier-restarted")
 
         assertEquals(emptyList(), workVolume(), "the start did not remove what the killed verification left")
-        Await.until("job $job settled", VERIFY_TIMEOUT) { recordOf(job) != null }
+        Await.until("job $job settled", Verifications.VERIFY_TIMEOUT) { verifications.recordOf(job) != null }
         assertEquals(emptyList(), workVolume())
     }
 
@@ -120,29 +116,20 @@ class VerificationFilesTest {
     fun `a verifier refuses a source of its own machine`() {
         stand()
         val snapshot = backup("own-machine")
-        val own = query("SELECT machine_id FROM agents WHERE id = ?::uuid", verifier.agentId) { it.getString(1) }!!
-        val sourceMachine = query("SELECT machine_id FROM agents WHERE id = ?::uuid", source.agentId) { it.getString(1) }!!
-        update("UPDATE agents SET machine_id = ? WHERE id = ?::uuid", own, source.agentId)
-        update("UPDATE agents SET machine_id = ? WHERE id = ?::uuid", "f".repeat(64), verifier.agentId)
+        val own = verifications.query("SELECT machine_id FROM agents WHERE id = ?::uuid", verifier.agentId) { it.getString(1) }!!
+        val sourceMachine = verifications.query("SELECT machine_id FROM agents WHERE id = ?::uuid", source.agentId) { it.getString(1) }!!
+        verifications.update("UPDATE agents SET machine_id = ? WHERE id = ?::uuid", own, source.agentId)
+        verifications.update("UPDATE agents SET machine_id = ? WHERE id = ?::uuid", "f".repeat(64), verifier.agentId)
         try {
-            val record = verify(snapshot)
+            val record = verifications.verify(snapshot)
 
             assertEquals("infrastructure_failure", record.status)
             assertContains(record.reason.orEmpty(), "own machine")
         } finally {
-            update("UPDATE agents SET machine_id = ? WHERE id = ?::uuid", sourceMachine, source.agentId)
-            update("UPDATE agents SET machine_id = ? WHERE id = ?::uuid", own, verifier.agentId)
+            verifications.update("UPDATE agents SET machine_id = ? WHERE id = ?::uuid", sourceMachine, source.agentId)
+            verifications.update("UPDATE agents SET machine_id = ? WHERE id = ?::uuid", own, verifier.agentId)
         }
     }
-
-    /** A verification as the server recorded it. */
-    private class Record(
-        val status: String,
-        val level: Int,
-        val reason: String?,
-        val stageNames: List<String>,
-        val restoreMillis: Long?,
-    )
 
     /** Backs up [paths] as a new source [name] into [repository] and returns its snapshot's id (snapshots.id). */
     private fun backup(
@@ -154,42 +141,11 @@ class VerificationFilesTest {
         val started = Backups.start(sard, source.agentId, name, config, repository = repository)
         // Verification is on by default (V4): the cycle would give the snapshot a job of its own, before a test
         // changes it and racing «verify now». Off before the snapshot exists; «verify now» does not need it.
-        verification(started.sourceId, enabled = false)
+        verifications.enable(started.sourceId, enabled = false)
         val step = Backups.awaitFinished(sard, started.stepId)
         assertEquals("succeeded", step.status, step.message)
-        return query("SELECT id FROM snapshots WHERE step_id = ?", started.stepId) { it.getObject(1, UUID::class.java) }!!
+        return verifications.snapshotOfStep(started.stepId)
     }
-
-    private fun verification(
-        sourceId: UUID,
-        enabled: Boolean,
-    ) {
-        val set = SardApi(sard).put("/api/v1/sources/$sourceId/verification", """{"enabled":$enabled}""")
-        assertEquals(SardApi.HTTP_OK, set.status, set.body)
-    }
-
-    /** «Verify now» of [snapshot]; the job's id. */
-    private fun start(snapshot: UUID): UUID {
-        val sourceId = query("SELECT source_id FROM snapshots WHERE id = ?", snapshot) { it.getObject(1, UUID::class.java) }!!
-        val job = SardApi(sard).post("/api/v1/sources/$sourceId/verifications", """{"snapshotId":"$snapshot"}""")
-        assertEquals(ACCEPTED, job.status, job.body)
-        return UUID.fromString(job.require("id"))
-    }
-
-    private fun verify(snapshot: UUID): Record {
-        val job = start(snapshot)
-        return Await.value("the record of job $job", VERIFY_TIMEOUT) { recordOf(job) }
-    }
-
-    private fun recordOf(job: UUID): Record? =
-        query(
-            """
-            SELECT status, level, reason, (SELECT string_agg(s->>'name', ',' ORDER BY n) FROM jsonb_array_elements(stages) WITH ORDINALITY AS t(s, n)),
-                restore_duration_ms
-            FROM restore_verifications WHERE job_id = ?
-            """.trimIndent(),
-            job,
-        ) { Record(it.getString(1), it.getInt(2), it.getString(3), it.getString(4)?.split(",").orEmpty(), it.getObject(5) as Long?) }
 
     /** Every file of the shared repository with its size and time of change, sorted. */
     private fun repositoryListing(): String = helper(repository, "/repo", "find /repo -type f -printf '%p %s %T@\\n' | sort")
@@ -201,73 +157,27 @@ class VerificationFilesTest {
         volume: String,
         path: String,
         script: String,
-    ): String = runOnVolume(volume, path, script)
-
-    private fun update(
-        sql: String,
-        vararg args: Any,
-    ) {
-        sard.database().use { db ->
-            db.prepareStatement(sql).use { st ->
-                args.forEachIndexed { i, a -> st.setObject(i + 1, a) }
-                st.executeUpdate()
-            }
-        }
-    }
-
-    private fun <T> query(
-        sql: String,
-        vararg args: Any,
-        read: (java.sql.ResultSet) -> T,
-    ): T? =
-        sard.database().use { db ->
-            db.prepareStatement(sql).use { st ->
-                args.forEachIndexed { i, a -> st.setObject(i + 1, a) }
-                st.executeQuery().use { rs -> if (rs.next()) read(rs) else null }
-            }
-        }
-
-    private fun sha256(bytes: ByteArray): String = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes))
+    ): String = verifications.runOnVolume(volume, path, script)
 
     companion object {
         @JvmField
         @RegisterExtension
         val sard = SardEnvironment()
 
-        /** Runs [script] as root in a throwaway container with [volume] at [path]; its output. */
-        private fun runOnVolume(
-            volume: String,
-            path: String,
-            script: String,
-        ): String =
-            GenericContainer<Nothing>(DockerImageName.parse(E2e.agentImage)).use { c ->
-                c.withCreateContainerCmdModifier { create ->
-                    create.withEntrypoint("/bin/sh", "-c", script).withUser("0")
-                    create.hostConfig?.withBinds(Bind(volume, Volume(path)))
-                }
-                c.withStartupCheckStrategy(OneShotStartupCheckStrategy().withTimeout(Duration.ofMinutes(1)))
-                c.start()
-                c.logs
-            }
+        private val verifications = Verifications(sard)
 
         private const val SPARE = "spare"
         private const val ACCEPTED = 202
         private const val MANY_FILES = 20_000
         private const val FILE_BYTES = 2048
         private const val MANY = "${AgentHost.STATE_DIR}/many"
-        private val VERIFY_TIMEOUT: Duration = Duration.ofMinutes(5)
         private val TREE = SourceTree.generate(Chain.SEED)
         private val FILES_STAGES =
             listOf("snapshot", "fingerprint_tag", "work_volume", "restic_check", "restore", "start", "fingerprint", "cleanup")
 
-        private val repository by lazy { agentsVolume() }
-        private val spare by lazy { agentsVolume() }
+        private val repository by lazy { verifications.agentsVolume() }
+        private val spare by lazy { verifications.agentsVolume() }
 
-        /** A new volume owned by the agent's user, as a repository directory the operator made for it. */
-        private fun agentsVolume(): String =
-            sard.volume().also { volume ->
-                runOnVolume(volume, "/v", "chown ${TarFiles.AGENT_UID}:${TarFiles.AGENT_UID} /v && chmod 0700 /v")
-            }
         private val work by lazy { sard.noexecVolume() }
 
         /** The repositories of a host: [repository] as `main`, [spare] as `spare`, under /srv. */
@@ -328,18 +238,7 @@ class VerificationFilesTest {
         }
 
         /** Keeps the tmpfs of the work volume mounted while the verifier restarts. */
-        private val holder by lazy {
-            sard
-                .track(
-                    "verify-holder",
-                    GenericContainer<Nothing>(DockerImageName.parse(E2e.agentImage)).apply {
-                        withCreateContainerCmdModifier { create ->
-                            create.withEntrypoint("/bin/sleep", "infinity").withUser("0")
-                            create.hostConfig?.withBinds(Bind(work, Volume("/verify")))
-                        }
-                    },
-                ).apply { start() }
-        }
+        private val holder by lazy { verifications.holder(work) }
 
         private fun startVerifier(name: String): GenericContainer<*> {
             val container = sard.track(name, AgentContainer.of(verifier, keys)).apply { start() }
