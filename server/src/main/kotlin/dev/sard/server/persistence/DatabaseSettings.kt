@@ -10,7 +10,7 @@ import java.sql.Connection
 const val MIN_POSTGRES_MAJOR = 16
 const val TESTED_POSTGRES_MAJOR = 18
 
-private const val DOCS = "docs/operator/16-postgresql.md"
+internal const val DOCS = "docs/operator/16-postgresql.md"
 private val C_UTF8 = setOf("C.UTF-8", "C.utf8")
 private val UTC = setOf("UTC", "Etc/UTC")
 

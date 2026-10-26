@@ -6,8 +6,6 @@ package dev.sard.server.persistence
 import org.slf4j.LoggerFactory
 import java.sql.Connection
 
-private const val DOCS = "docs/operator/16-postgresql.md"
-
 /** More than the server needs, found in the role it connects as; [label] is the `reason` of the metric. */
 enum class RoleExcess(
     val label: String,

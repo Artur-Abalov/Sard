@@ -40,12 +40,10 @@ object TestPostgres {
         val name = cluster.newDatabase()
         cluster.bootstrap(name)
         if (migrated) Preparation.migrate(cluster.url(name))
-        val admin = Login(cluster.container.username, cluster.container.password)
-        return Database(cluster.url(name), EmbeddedPostgres.APP_USER, EmbeddedPostgres.appPassword, admin)
+        return Database(cluster.url(name), EmbeddedPostgres.APP_USER, EmbeddedPostgres.appPassword, superuser)
     }
 
-    /** The superuser of the cluster: for what the database's own roles may not do. */
-    val superuser: Login get() = Login(cluster.container.username, cluster.container.password)
+    private val superuser: Login get() = Login(cluster.container.username, cluster.container.password)
 
     fun databases(): Cluster = cluster
 }
