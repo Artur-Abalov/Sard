@@ -20,9 +20,11 @@ set -euo pipefail
 version="$1" arch="$2" outdir="$3"
 case "$arch" in amd64 | arm64) ;; *) echo "unknown arch: $arch" >&2; exit 2 ;; esac
 
-server="${SARD_IMAGE:-ghcr.io/artur-abalov/sard-server}:$version"
+# shellcheck source=../deploy/release/identity.env
+. "$(dirname "${BASH_SOURCE[0]}")/../deploy/release/identity.env"
+server="${SARD_IMAGE:-$SARD_REGISTRY_SERVER}:$version"
 # The agent next to the server in docker-compose.yml is the -pg18 variant (F6).
-agent="${SARD_AGENT_IMAGE:-ghcr.io/artur-abalov/sard-agent}:$version-pg18"
+agent="${SARD_AGENT_IMAGE:-$SARD_REGISTRY_AGENT}:$version-pg18"
 override="${SARD_POSTGRES_IMAGE:-}"
 # shellcheck source=../deploy/postgres.env
 . "$(dirname "${BASH_SOURCE[0]}")/../deploy/postgres.env"

@@ -150,7 +150,21 @@ server you downloaded the package from: `deploy/release/sard-release.pub`.
 minisign -Vm SHA256SUMS -p sard-release.pub && sha256sum -c --ignore-missing SHA256SUMS
 ```
 
-Details and the release process: [docs/release.md](docs/release.md).
+The server's install files and offline archives are signed the same way, over
+`SHA256SUMS.server`. The images in GHCR are signed with
+[cosign](https://docs.sigstore.dev/) by the key in `deploy/release/cosign.pub`,
+together with their SBOM:
+
+```bash
+cosign verify --key cosign.pub ghcr.io/artur-abalov/sard-server:<version>
+cosign verify-attestation --key cosign.pub --type cyclonedx ghcr.io/artur-abalov/sard-server:<version>
+```
+
+Every release carries SBOMs (CycloneDX) of the packages and images and GitHub
+build provenance. All of it, offline too:
+[docs/operator/10-security.md](docs/operator/10-security.md#проверка-релиза)
+and [docs/operator/11-offline.md](docs/operator/11-offline.md); keys and the
+release process: [docs/release.md](docs/release.md).
 
 ## Documentation
 

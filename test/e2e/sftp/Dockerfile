@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright 2026 Artur Abalov
 #
@@ -8,7 +8,7 @@
 # (writable by it) or /srv/sftp/ro (read-only to it). The host key is the one
 # openssh-server generates on install; a test reads its public half.
 
-FROM ubuntu:24.04
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 # Builds behind a TLS-intercepting proxy: as deploy/agent/Dockerfile.
 RUN --mount=type=secret,id=build-ca,required=false,mode=0444 \
     if [ -f /run/secrets/build-ca ]; then \

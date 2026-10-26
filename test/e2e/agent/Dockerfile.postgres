@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright 2026 Artur Abalov
 #
@@ -10,7 +10,7 @@
 # list. Build context: the unpacked tarball of `make package` with an empty
 # directory "empty/". Nothing is compiled or downloaded here but the base image.
 
-ARG BASE_IMAGE=postgres:18
+ARG BASE_IMAGE=postgres:18@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
 FROM ${BASE_IMAGE}
 COPY sard-agent restic /usr/libexec/sard/
 COPY LICENSE LICENSE.restic THIRD_PARTY_LICENSES NOTICE /usr/share/doc/sard-agent/

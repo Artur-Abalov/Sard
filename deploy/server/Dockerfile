@@ -26,7 +26,7 @@
 
 # The packages are files for every architecture, so this stage, like the two
 # build stages, runs once on the builder's platform.
-FROM --platform=$BUILDPLATFORM eclipse-temurin:25-jre AS agent-packages
+FROM --platform=$BUILDPLATFORM eclipse-temurin:25-jre@sha256:dbb43d81099eec91e0800226ed2296d03146ee7857165b95112372ad0d67e87f AS agent-packages
 ARG SARD_VERSION=dev
 ARG AGENT_PACKAGES=dist
 COPY ${AGENT_PACKAGES}/ /in/
@@ -41,7 +41,7 @@ RUN [ -f manifest.json ] && [ -f SHA256SUMS ] || \
     for f in $(awk '{print $2}' SHA256SUMS) SHA256SUMS; do cp "$f" /out/; done && \
     if [ -f SHA256SUMS.minisig ]; then cp SHA256SUMS.minisig /out/; fi
 
-FROM --platform=$BUILDPLATFORM node:24-slim AS web
+FROM --platform=$BUILDPLATFORM node:24-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS web
 WORKDIR /src/web
 # Builds behind a TLS-intercepting proxy: the standard HTTPS_PROXY build argument and the
 # same optional "build-ca" secret as the "build" stage (npm reads NODE_EXTRA_CA_CERTS).
@@ -61,7 +61,7 @@ COPY agent/plugins/postgresql/restore_schema.json /src/agent/plugins/postgresql/
 ARG SARD_VERSION=dev
 RUN SARD_VERSION="${SARD_VERSION}" npm run build
 
-FROM --platform=$BUILDPLATFORM eclipse-temurin:25-jdk AS build
+FROM --platform=$BUILDPLATFORM eclipse-temurin:25-jdk@sha256:2d5d5e9b533342a565907c84f47a2ec298c40cde7b13a3ca85d4950fa456a641 AS build
 WORKDIR /src
 COPY gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
 COPY gradle gradle
@@ -96,7 +96,7 @@ RUN --mount=type=cache,target=/root/.gradle \
 FROM scratch AS server-jar
 COPY --from=build /src/server/build/libs/sard-server.jar /sard-server.jar
 
-FROM eclipse-temurin:25-jre
+FROM eclipse-temurin:25-jre@sha256:dbb43d81099eec91e0800226ed2296d03146ee7857165b95112372ad0d67e87f
 ARG SARD_VERSION=dev
 LABEL org.opencontainers.image.title="sard-server" \
       org.opencontainers.image.description="Sard backup orchestrator: control-plane server" \

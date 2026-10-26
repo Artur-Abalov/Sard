@@ -8,9 +8,9 @@
 # host does through its own (docs/operator/17-verifier.md). Build context: the
 # unpacked tarball of `make package` with an empty directory "empty/".
 
-FROM docker:28-cli AS cli
+FROM docker:28-cli@sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d AS cli
 
-FROM ubuntu:24.04
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 COPY --from=cli /usr/local/bin/docker /usr/bin/docker
 COPY sard-agent restic /usr/libexec/sard/
 COPY LICENSE LICENSE.restic THIRD_PARTY_LICENSES NOTICE /usr/share/doc/sard-agent/

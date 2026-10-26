@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright 2026 Artur Abalov
+#
+# Vulnerabilities let through the scans (SC1, tools/cmd/vulngate, docs/operator/10-security.md):
+# one per line,
+#
+#   <id> <until YYYY-MM-DD> <reason>
+#
+# <id> is the scanner's ID or one of its aliases (CVE-…, GHSA-…, GO-…). <until> is at most 90 days
+# ahead; an expired exception fails every scan until it is removed or renewed with a new reason.
+# The reason says why the vulnerability does not reach Sard or what waits for the fix, and is
+# reviewed in the PR like code.

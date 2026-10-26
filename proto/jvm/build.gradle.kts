@@ -66,3 +66,15 @@ protobuf {
         }
     }
 }
+
+// The code generators are native executables of the build machine's platform. Locking (scripts/gradle-lock.sh)
+// resolves them for every platform a contributor builds on, so gradle/verification-metadata.xml checks them
+// all and not only the one of the machine that wrote it (SC1).
+tasks.named("resolveAndLockAll") {
+    val versions = dependencyManagement.importedProperties
+    val executables =
+        listOf("com.google.protobuf:protoc:${versions["protobuf-java.version"]}", "io.grpc:protoc-gen-grpc-java:${versions["grpc-java.version"]}")
+    val platforms = listOf("linux-x86_64", "linux-aarch_64", "osx-x86_64", "osx-aarch_64", "windows-x86_64")
+    val all = executables.flatMap { exe -> platforms.map { dependencies.create("$exe:$it@exe") } }
+    doLast { configurations.detachedConfiguration(*all.toTypedArray()).resolve() }
+}

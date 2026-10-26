@@ -72,8 +72,18 @@ internal object E2e {
 
     val postgresInitdbArgs: String get() = postgresPin.getValue("SARD_POSTGRES_INITDB_ARGS")
 
-    /** The server a source of the postgresql plugin backs up: the official image of [major]. */
-    fun pgServerImage(major: Int): String = "postgres:$major"
+    /** The server a source of the postgresql plugin backs up: the official image of [major], pinned in test/images.env. */
+    fun pgServerImage(major: Int): String = testImage("postgres:$major")
+
+    /** The reference test/images.env pins for [tag] (SC1): a test never pulls by tag, an unpinned one fails. */
+    fun testImage(tag: String): String =
+        Files
+            .readAllLines(Path.of(property("e2e.testImagesFile")))
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+            .map { it.substringAfter("=") }
+            .firstOrNull { it.startsWith("$tag@") }
+            ?: error("$tag is not pinned in test/images.env")
 
     private fun property(name: String): String =
         requireNotNull(System.getProperty(name)) { "system property $name is not set: run the tests with `make e2e`" }

@@ -5,7 +5,7 @@
 # of pulling the published images. make up adds this file on top of docker-compose.yml.
 services:
   server:
-    image: sard-server:dev
+    image: sard-server:dev # allow-unpinned: built from this checkout by this file
     build:
       context: ..
       dockerfile: deploy/server/Dockerfile
@@ -13,7 +13,7 @@ services:
         # The agent packages in dist/ must be of this version (make up passes it).
         SARD_VERSION: ${SARD_VERSION:-dev}
   self-agent:
-    image: sard-agent:dev-pg18
+    image: sard-agent:dev-pg18 # allow-unpinned: built from this checkout by this file
     build:
       # The tarballs of make package (dist/), every architecture; the image takes its own.
       context: ../dist

@@ -26,6 +26,9 @@ on:
     paths-ignore:
       - "docs/**"
       - "**/*.md"
+  # A push with the workflow token runs no workflow: renovate-pins.yml starts
+  # this one on the commit it pushed to a Renovate branch.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -44,9 +47,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: make license-check
       - run: make check-sudo-u
+      - run: make check-pins
+
+  # The supply chain of SC1 (ADR 00XX-draft-supply-chain), fast and in parallel with the rest:
+  # the workflows (actionlint, zizmor) and the vulnerabilities the Go code calls (govulncheck).
+  # The heavier scans of dependencies and images are in security.yml.
+  supply-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/go.mod
+          cache-dependency-path: "**/go.sum"
+      - name: actionlint and zizmor
+        env:
+          # zizmor's online audits (impostor commits, known vulnerable actions) read public data only.
+          GH_TOKEN: ${{ github.token }}
+        run: make lint-workflows
+      - name: govulncheck
+        run: make tools ci-tools && scripts/vuln-scan.sh go
 
   proto:
     runs-on: ubuntu-latest
@@ -56,10 +84,11 @@ jobs:
       # The first push of a branch has an all-zero "before"; it is compared with itself.
       PROTO_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before || github.sha) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: tools/go.mod
           cache-dependency-path: "**/go.sum"
@@ -75,14 +104,16 @@ jobs:
       matrix:
         module: [sdk, agent, cli, tools]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: tools/go.mod
           cache-dependency-path: "**/go.sum"
       # The agent's mutation testing runs as shards in agent-mutation.
       - run: ./scripts/gate.sh ${{ matrix.module }} ${{ matrix.module == 'agent' && 'fast' || '' }}
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always() && matrix.module != 'agent'
         with:
           name: mutation-${{ matrix.module }}
@@ -106,8 +137,10 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: tools/go.mod
           cache-dependency-path: "**/go.sum"
@@ -115,7 +148,7 @@ jobs:
       - run: ./scripts/gate.sh agent mutation ${{ matrix.shard }}/12
         env:
           MUTATION_STREAM: "1"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: mutation-agent-${{ matrix.shard }}
@@ -127,8 +160,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: mutation-agent-*
           path: build/mutation/agent
@@ -142,13 +177,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: tools/go.mod
           cache-dependency-path: "**/go.sum"
-      - name: rpm and minisign
-        run: sudo apt-get update && sudo apt-get install -y rpm minisign
+      - name: rpm, minisign and gpg
+        run: sudo apt-get update && sudo apt-get install -y rpm minisign gnupg
       # One rule from a tag to every version; dpkg and rpm order pre-releases
       # below their release (docs/adr/0048-release-versions.md).
       - name: Release version rule
@@ -159,6 +196,9 @@ jobs:
       # The helper that scripts use to go through the first-start wizard by the code from the log (F4a).
       - name: Setup wizard helper
         run: scripts/test-setup-wizard.sh
+      # restic is installed only as pinned and signed by its release key (SC1).
+      - name: restic checksum and signature
+        run: scripts/test-fetch-restic.sh
       - name: Package the agent with restic (tar.gz, deb, rpm; amd64 and arm64)
         env:
           REQUIRE_RPM: "1"
@@ -177,7 +217,7 @@ jobs:
         run: scripts/test-image-packages.sh "$VERSION"
       - name: The e2e stand's agent packages
         run: make package-stand
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sard-agent-packages
           path: |
@@ -187,7 +227,7 @@ jobs:
             dist/manifest.json
             dist/SHA256SUMS
           if-no-files-found: error
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sard-agent-stand
           path: test/e2e/build/stand-dist/
@@ -203,17 +243,19 @@ jobs:
       # locale only, never from JVM flags.
       LC_ALL: C.UTF-8
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: "25"
-      - uses: gradle/actions/setup-gradle@v6
-      - uses: actions/setup-go@v7
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: tools/go.mod
           cache-dependency-path: "**/go.sum"
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: sard-agent-packages
           path: dist
@@ -228,6 +270,9 @@ jobs:
           } >>"$GITHUB_ENV"
       # Testcontainers uses the runner's Docker.
       - run: ./scripts/gate.sh server
+      # A forged checksum or a version other than the locked one fails the build (SC1).
+      - name: Gradle refuses what it did not pin
+        run: scripts/test-gradle-verification.sh
       # gate.sh runs Gradle quietly; name the failed tests and their root causes in the log.
       - name: Failed server tests
         if: failure()
@@ -254,8 +299,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
           cache: npm
@@ -284,12 +331,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       # Lets `docker buildx build` in the Makefile reach the GitHub Actions cache.
-      - uses: crazy-max/ghaction-github-runtime@v3
-      - uses: actions/download-artifact@v7
+      - uses: crazy-max/ghaction-github-runtime@3cb05d89e1f492524af3d41a1c98c83bc3025124 # v3.1.0
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: sard-agent-packages
           path: dist
@@ -306,12 +355,12 @@ jobs:
         run: |
           make server-image SERVER_IMAGE=sard-server:e2e
           docker save -o "$RUNNER_TEMP/sard-server-image.tar" sard-server:e2e
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sard-server-jar
           path: build/server-jar/sard-server.jar
           if-no-files-found: error
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sard-server-image
           path: ${{ runner.temp }}/sard-server-image.tar
@@ -340,25 +389,27 @@ jobs:
     env:
       LC_ALL: C.UTF-8
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: "25"
-      - uses: gradle/actions/setup-gradle@v6
-      - uses: actions/setup-go@v7
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: tools/go.mod
           cache-dependency-path: "**/go.sum"
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: sard-agent-packages
           path: dist
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: sard-agent-stand
           path: test/e2e/build/stand-dist
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: sard-server-image
           path: ${{ runner.temp }}
@@ -372,13 +423,13 @@ jobs:
         if: always()
         run: scripts/e2e-shard.sh times test/e2e/build/test-results/test
       - if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-test-results-${{ matrix.shard }}
           path: test/e2e/build/test-results/test/*.xml
           if-no-files-found: ignore
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-logs-${{ matrix.shard }}
           path: |
@@ -388,7 +439,7 @@ jobs:
       # The recovery drill (F7, Р41) writes the time and the sizes the page's table "Сколько это займёт" takes
       # a row from; whatever the outcome, only the shard that ran the class has the files.
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: recovery-drill-${{ matrix.shard }}
           path: |
@@ -404,8 +455,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: e2e-test-results-*
           path: test/e2e/build/test-results/test
@@ -429,12 +482,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: sard-agent-packages
           path: dist
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: sard-server-image
           path: ${{ runner.temp }}
@@ -444,7 +499,7 @@ jobs:
           make e2e-agent-pg-image DIST=dist
       - run: SARD_IMAGE=sard-server SARD_AGENT_IMAGE=sard-agent SARD_VERSION=e2e scripts/test-self-agent.sh "$RUNNER_TEMP/self-agent"
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: self-agent-compose-log
           path: ${{ runner.temp }}/self-agent/compose.log
@@ -466,16 +521,18 @@ jobs:
       matrix:
         distro: ["rockylinux/rockylinux:9"]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: tools/go.mod
           cache-dependency-path: "**/go.sum"
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: sard-agent-packages
           path: dist-old
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: sard-server-image
           path: ${{ runner.temp }}
