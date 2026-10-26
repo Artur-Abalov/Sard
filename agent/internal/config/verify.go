@@ -89,10 +89,14 @@ func or[T comparable](value, def T) T {
 // and what restore.dir is kept apart from; a share of the data; a factor of at
 // least one; no negative limit. A zero setting is the default.
 func (c Config) validateVerify() error {
-	v := c.Verify
 	if err := c.validateWorkDir(c.VerifySettings().WorkDir); err != nil {
 		return err
 	}
+	return c.Verify.validate()
+}
+
+// validate judges the settings as written; zero is the default.
+func (v Verify) validate() error {
 	l := v.StageLimits
 	switch {
 	case v.CheckPercent < 0 || v.CheckPercent > 100:
