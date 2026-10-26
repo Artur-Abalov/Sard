@@ -3,8 +3,16 @@
 # Copyright 2026 Artur Abalov
 #
 # The agent next to the server (sard-self, docs/operations/self-agent.md) on a real
-# docker compose stack of deploy/docker-compose.yml: F5's checks 1, 2 and 4, and with
-# UPGRADE_FROM also check 5 (docs/specs/server/self-agent.feature, @e2e/@upgrade).
+# docker compose stack of deploy/docker-compose.yml: F5's checks 1, 2 and 4, the roles and
+# passwords of the database (DB2, checks 10 to 15), and with UPGRADE_FROM also check 5
+# (docs/specs/server/self-agent.feature, @e2e/@upgrade).
+#
+# DEFERRED until the first release with DB2 (owner's decision 2026-10-26, ADR 0069 section 13): checks 5
+# and 9 of the UPGRADE_FROM branch. There is no release to upgrade from (the migrations were rewritten,
+# there is no upgrade path from builds before DB2), so CI does not set UPGRADE_FROM and the branch stays
+# as it is, neither deleted nor skipped in code. WHEN THE FIRST RELEASE WITH DB2 SHIPS, SET UPGRADE_FROM
+# TO IT IN CI (.github/workflows/ci.yml, job self-agent) AND REVIEW THE BRANCH: it was written for the
+# compose file of a release with SARD_DB_PASSWORD in .env.
 # The first start goes through the wizard by the code from the server log (F4a): the
 # built-in token appears only after the step ca.
 #
@@ -28,14 +36,14 @@
 #      take the DB shortcut (sard_confirm_onboarding_in_database), this one does not.
 #   7  (F6) what the self-backup reads stays read-only in the sidecar: the CA directory and
 #      the installation directory are mounted read-only and refuse a write, .env is readable
-#      through group 10001; the role sard_self still cannot write to the database
+#      through group 10001; the role sard_backup still cannot write to the database
 #   9  (DB1) a clean install's database: the pinned PostgreSQL, page checksums, UTF8, the builtin
 #      C.UTF-8 locale, UTC and the settings of the profile small, and no warning in the server's
 #      log; after the upgrade (5) the old database keeps its locale, gets the profile, and the
 #      server's log names the difference
 #
 # Usage: SARD_IMAGE=sard-server SARD_AGENT_IMAGE=sard-agent SARD_VERSION=<tag> \
-#          [UPGRADE_FROM=ghcr.io/artur-abalov/sard-server:0.1.0-beta.1] scripts/test-self-agent.sh <workdir>
+#          [UPGRADE_FROM=ghcr.io/artur-abalov/sard-server:<first release with DB2>] scripts/test-self-agent.sh <workdir>
 # UPGRADE_FROM_AGENT is the agent image of that version (default: UPGRADE_FROM with
 # sard-server replaced by sard-agent); UPGRADE_COMPOSE is its compose file (default:
 # deploy/docker-compose.yml of the git tag v<its tag>, `git show`).
@@ -52,12 +60,11 @@ mkdir -p "$work" && cd "$work"
 cp "$root/deploy/docker-compose.yml" docker-compose.yml
 # The administrator password is set in the wizard and exists only in this run.
 admin="$(openssl rand -hex 16)"
-db_password="$(openssl rand -hex 24)"
+db_password="$(openssl rand -hex 24)" # only the deferred upgrade check (the old release's .env) uses it
 cat >.env <<EOF
 SARD_VERSION=${SARD_VERSION:?}
 SARD_IMAGE=${SARD_IMAGE:?}
 SARD_AGENT_IMAGE=${SARD_AGENT_IMAGE:?}
-SARD_DB_PASSWORD=$db_password
 EOF
 # Group 10001 is the sidecar's: it reads .env for the self-backup (docs/operator/02-install.md).
 chgrp 10001 .env 2>/dev/null || sudo chgrp 10001 .env
@@ -197,10 +204,15 @@ assert "sard-db" in a["secretNames"], a["secretNames"]' || fail "1: card: hostna
   channel '! test -e /var/lib/sard/self/enroll-token' || fail "1: the token file is still there"
   pass "1: the server removed the token file after enrollment"
 fi
-pw="$(channel 'cat /var/lib/sard/self/db-password')"
-docker compose exec -T -e PGPASSWORD="$pw" postgres psql -h 127.0.0.1 -U sard_self -d sard -qAtc 'select count(*) from agents' >/dev/null \
-  || fail "1: sard_self does not log in with the channel's password"
-pass "1: sard_self logs in with the password from the channel"
+# The passwords of the roles (DB2): db-init made them, each is a file of the volume of the one service that reads it.
+app_pw="$(docker compose exec -T server cat /run/sard-db/password)"
+pw="$(docker compose exec -T self-agent cat /run/sard-self/db-password)" # sard_backup
+migrator_pw="$(docker compose run --rm --no-deps -T --entrypoint cat migrate /run/sard-db/password)"
+login_as() { # role password: logs in over the network of the stack, not the local socket
+  docker compose exec -T -e PGPASSWORD="$2" postgres psql -h 127.0.0.1 -U "$1" -d sard -qAtc 'select current_user' 2>/dev/null
+}
+[ "$(login_as sard_backup "$pw")" = sard_backup ] || fail "1: sard_backup does not log in with its password"
+pass "1: sard_backup logs in with the password mounted in the neighbour"
 
 if [ -z "${UPGRADE_FROM:-}" ]; then
   settings="$(db1_settings)"
@@ -208,6 +220,60 @@ if [ -z "${UPGRADE_FROM:-}" ]; then
     || fail "9: the new database: $settings (want $pinned_version on UTF8 b C.UTF-8 UTC 256MB 50 replica on)"
   server_log | grep -q "$db1_warning" && fail "9: the server warns about a database it created itself"
   pass "9: the new database: $settings, no warning in the server's log"
+fi
+
+# 10 to 15 (DB2, docs/specs/server/database-roles.feature, @deploy): the roles and passwords of the database.
+if [ -z "${UPGRADE_FROM:-}" ]; then
+  psql_su() { docker compose exec -T postgres psql -U sard -d sard -qAtc "$1"; }
+  # 10: the five roles with their attributes, no sard_self, the schema sard owned by sard_owner, no table in public.
+  roles="$(psql_su "select string_agg(rolname || ':' || rolcanlogin::int || rolsuper::int || rolcreaterole::int || rolcreatedb::int || rolreplication::int || rolbypassrls::int, ' ' order by rolname) from pg_roles where rolname like 'sard\_%'")"
+  [ "$roles" = "sard_app:100000 sard_backup:100000 sard_migrator:100000 sard_monitor:100000 sard_owner:000000" ] \
+    || fail "10: the roles of Sard are: $roles"
+  [ "$(psql_su "select count(*) from pg_tables where schemaname = 'public'")" = 0 ] || fail "10: tables in public"
+  [ "$(psql_su "select string_agg(distinct tableowner, ',') from pg_tables where schemaname = 'sard'")" = sard_owner ] \
+    || fail "10: the tables of the schema sard are not all owned by sard_owner"
+  pass "10: five roles without superuser rights, no sard_self, the schema sard owned by sard_owner, public empty"
+  # 11: the server works as sard_app, the neighbour dumps as sard_backup.
+  users="$(psql_su "select string_agg(distinct usename, ',' order by usename) from pg_stat_activity where datname = 'sard' and backend_type = 'client backend' and pid <> pg_backend_pid()")"
+  case "$users" in sard_app | sard_app,sard_backup) ;; *) fail "11: sessions of the installation are of: $users" ;; esac
+  pass "11: the connections of the running server are sard_app's ($users)"
+  # 12: each password file is seen by its one consumer, read-only, 64 hex characters.
+  [ "$(printf '%s' "$app_pw" | grep -Ec '^[0-9a-f]{64}$')" = 1 ] && [ "$(printf '%s' "$pw" | grep -Ec '^[0-9a-f]{64}$')" = 1 ] \
+    && [ "$(printf '%s' "$migrator_pw" | grep -Ec '^[0-9a-f]{64}$')" = 1 ] || fail "12: a password is not 64 hex characters"
+  docker compose exec -T server test ! -w /run/sard-db/password || fail "12: the server may write its password file"
+  docker compose exec -T self-agent test ! -w /run/sard-self/db-password || fail "12: the neighbour may write its password file"
+  docker compose exec -T server sh -c '! test -e /run/sard-db/migrate && ! test -e /run/sard-self/db-password' \
+    || fail "12: the server sees a password of another consumer"
+  docker compose exec -T self-agent sh -c '! test -e /run/sard-db' || fail "12: the neighbour sees /run/sard-db"
+  for service in server self-agent postgres; do
+    docker inspect "$(docker compose ps -q "$service")" --format '{{range .Mounts}}{{.Name}} {{end}}' | grep -q 'sard-db-migrate' \
+      && fail "12: the volume of the password of sard_migrator is mounted in $service"
+    docker compose exec -T "$service" env 2>/dev/null | grep -F -q -e "$migrator_pw" && fail "12: the password of sard_migrator is in the environment of $service"
+  done
+  pass "12: each password file is 64 hex characters, seen by its one consumer, read-only; sard_migrator's is in no long-lived container"
+  # 13: no value of a password in .env, the compose file, docker inspect or the logs of the stack.
+  everything="$(cat .env docker-compose.yml; docker inspect $(docker compose ps -aq) 2>/dev/null; docker compose logs --no-color 2>&1)"
+  for secret in "$app_pw" "$pw" "$migrator_pw"; do
+    grep -F -q -e "$secret" <<<"$everything" && fail "13: a password of a database role is in .env, the compose file, docker inspect or a log"
+  done
+  grep -q 'DB_PASSWORD' .env && fail "13: .env names a database password"
+  pass "13: no password of a database role in .env, docker-compose.yml, docker inspect or the logs"
+  # 14: the superuser does not log in over the network with any password of the installation; the socket stays open.
+  for secret in "" "$app_pw" "$pw" "$migrator_pw"; do
+    docker compose exec -T -e PGPASSWORD="$secret" postgres psql -h postgres -U sard -d sard -qAtc 'select 1' >/dev/null 2>&1 \
+      && fail "14: the superuser logged in over the network"
+  done
+  [ "$(docker compose exec -T postgres psql -U sard -d sard -Atc 'select current_user')" = sard ] || fail "14: the local socket does not let the superuser in"
+  pass "14: the superuser is refused over the network and let in over the local socket without a password"
+  # 15: a restart changes neither the passwords nor the catalog of the schema sard, and says no WARN or ERROR in db-init and migrate.
+  catalog() { psql_su "select string_agg(x, ';' order by x) from (select 'r ' || rolname || rolcanlogin || rolsuper as x from pg_roles where rolname like 'sard\_%' union all select 'm ' || u.rolname || g.rolname from pg_auth_members m join pg_roles u on u.oid = m.member join pg_roles g on g.oid = m.roleid where u.rolname like 'sard\_%' union all select 'c ' || relname || relowner::regrole || coalesce(relacl::text, '-') from pg_class where relnamespace = 'sard'::regnamespace and relkind in ('r','p') union all select 'd ' || defaclrole::regrole || defaclobjtype::text || defaclacl::text from pg_default_acl) t"; }
+  catalog_before="$(catalog)"
+  docker compose down >/dev/null 2>&1 && docker compose up -d --wait >/dev/null || fail "15: the restart"
+  [ "$(docker compose exec -T server cat /run/sard-db/password)" = "$app_pw" ] || fail "15: the password of sard_app changed"
+  [ "$(docker compose exec -T self-agent cat /run/sard-self/db-password)" = "$pw" ] || fail "15: the password of sard_backup changed"
+  [ "$(catalog)" = "$catalog_before" ] || fail "15: the catalog of the roles and the schema sard changed"
+  docker compose logs --no-color db-init migrate 2>&1 | grep -E 'WARN|ERROR' | grep -v 'level=' && fail "15: a WARN or an ERROR in the logs of db-init or migrate"
+  pass "15: after down and up the passwords and the catalog are the same, db-init and migrate are quiet"
 fi
 
 # 2: re-created twice, the same agent and no new token.
@@ -242,14 +308,14 @@ docker compose exec -T self-agent sh -c 'test -r /etc/sard/install/.env && test 
 pass "7: the CA and the installation directory are read-only in the sidecar, .env and the CA key readable"
 # The role of the dump: even with read-only switched off for the session, nothing is written.
 role_write() {
-  docker compose exec -T -e PGPASSWORD="$pw" postgres psql -h 127.0.0.1 -U sard_self -d sard -v ON_ERROR_STOP=1 -qAtc \
+  docker compose exec -T -e PGPASSWORD="$pw" postgres psql -h 127.0.0.1 -U sard_backup -d sard -v ON_ERROR_STOP=1 -qAtc \
     "set default_transaction_read_only = off; $1" >/dev/null 2>&1
 }
-role_write 'select count(*) from agents' || fail "7: sard_self cannot read the database"
+role_write 'select count(*) from agents' || fail "7: sard_backup cannot read the database"
 for sql in "update tenants set name = name" "create table x (i int)" "create temp table x (i int)" "select lo_create(0)"; do
-  role_write "$sql" && fail "7: sard_self ran: $sql"
+  role_write "$sql" && fail "7: sard_backup ran: $sql"
 done
-pass "7: sard_self reads the database and writes nothing (update, create, temp, large object)"
+pass "7: sard_backup reads the database and writes nothing (update, create, temp, large object)"
 # The captured token from another container on the compose network: refused, TOKEN_USED (exit 3).
 # Only on the clean install: the token of an upgraded stack was used before the upgrade.
 if [ -n "$captured" ]; then
@@ -264,10 +330,11 @@ grep -q "TOKEN_USED\|already been used\|used" "$work/reuse.log" || fail "4: no T
 grep -q "$captured" "$work/reuse.log" && fail "4: the token in the enroll output"
 pass "4: the built-in token, used by sard-self, is refused from another container (exit 3)"
 fi
-for name in $(docker compose ps --services); do
-  docker compose logs --no-color "$name" 2>&1 | grep -F -q -e "${captured:-no-token}" -e "$pw" && fail "4: a token or the password in the logs of $name"
+for name in $(docker compose config --services); do
+  docker compose logs --no-color "$name" 2>&1 | grep -F -q -e "${captured:-no-token}" -e "$pw" -e "$app_pw" -e "$migrator_pw" \
+    && fail "4: a token or a password of a database role in the logs of $name"
 done
-pass "4: neither a token nor the role password in any service's log"
+pass "4: neither a token nor a password of a database role in any service's log"
 # Decision 7: revoked only with the confirmation, then the sidecar enrolls again by itself.
 post() { curl -s -o /dev/null -w '%{http_code}' -b "$cookies" -X POST "$api$1"; }
 status="$(post "/agents/$id/revoke")"
@@ -360,5 +427,17 @@ confirmed="$(send POST /self-backup/keys-confirmation '{"copiedOutsideServer":tr
 issued="$(send POST /enrollment-tokens '{"label":"after-onboarding"}')"
 [ "${issued%% *}" = 201 ] || fail "8: an enrollment token answered ${issued%% *}: ${issued#* }"
 pass "8: the key copy confirmed (204), restriction none, an enrollment token issued (201)"
+# 16 (DB2): the procedure of docs/operator/16-postgresql.md, "Смена пароля роли", for sard_app.
+if [ -z "${UPGRADE_FROM:-}" ]; then
+  docker compose run --rm --no-deps -T --entrypoint rm db-init /run/sard-db/app/password >/dev/null || fail "16: removing the password file"
+  docker compose up -d --wait >/dev/null || fail "16: up after the removal"
+  docker compose restart server >/dev/null && docker compose up -d --wait server >/dev/null || fail "16: restarting the server"
+  new_pw="$(docker compose exec -T server cat /run/sard-db/password)"
+  [ "$new_pw" != "$app_pw" ] && [ "$(printf '%s' "$new_pw" | grep -Ec '^[0-9a-f]{64}$')" = 1 ] || fail "16: the password file did not change"
+  [ "$(login_as sard_app "$new_pw")" = sard_app ] || fail "16: sard_app does not log in with the new password"
+  [ -z "$(login_as sard_app "$app_pw")" ] || fail "16: sard_app still logs in with the old password"
+  curl -fsS "$api/status" >/dev/null || fail "16: the server does not answer after the procedure"
+  pass "16: the password of sard_app changed by the documented procedure, the server answers"
+fi
 docker compose down -v --remove-orphans >/dev/null 2>&1 # it holds ports 8080 and 9090 of the host
 echo "PASSED"

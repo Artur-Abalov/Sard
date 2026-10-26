@@ -3,7 +3,7 @@
 
 package dev.sard.server.selfagent
 
-import dev.sard.server.EmbeddedPostgres
+import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.enrollment.Enrollment
 import dev.sard.server.enrollment.EnrollmentToken
 import dev.sard.server.enrollment.EnrollmentTokens
@@ -22,19 +22,13 @@ import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.junit.jupiter.api.Tag
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.test.context.TestConfiguration
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection
-import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.postgresql.PostgreSQLContainer
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
-import java.sql.DriverManager
-import java.sql.SQLException
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -42,7 +36,6 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -50,22 +43,10 @@ import kotlin.test.assertTrue
 private val T0: Instant = Instant.parse("2026-10-08T12:00:00Z")
 private val DEFAULT_TENANT = TenantResolver.DEFAULT_TENANT_ID
 private val MARGIN: Duration = Duration.ofMinutes(10)
-private val FORMAT = Regex("[0-9a-f]{64}")
-
-/** PostgreSQL that logs every statement, to prove the role's password never reaches its log. */
-@TestConfiguration(proxyBeanMethods = false)
-class StatementLoggingPostgres {
-    @Bean
-    @ServiceConnection
-    fun postgres(): PostgreSQLContainer =
-        EmbeddedPostgres
-            .container()
-            .withCommand("postgres", "-c", "log_statement=all")
-}
 
 /**
  * The mechanism switched on (SARD_SELF_DIR set): the whole context with the real database, the real token
- * store and the real role. Rules "Пароль роли sard_self ...", "Проверка ... " and "Регистрация по встроенному
+ * store. Rules "Проверка ... " and "Регистрация по встроенному
  * токену ..." of docs/specs/server/self-agent.feature.
  */
 @Tag("mutflow-isolated")
@@ -74,7 +55,7 @@ class StatementLoggingPostgres {
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = ["spring.grpc.server.port=0", "sard.self-agent.check-interval=1h"],
 )
-@Import(StatementLoggingPostgres::class, TokenServiceTestConfiguration::class, ConfirmedCaStep::class)
+@Import(TestcontainersConfiguration::class, TokenServiceTestConfiguration::class, ConfirmedCaStep::class)
 class SelfAgentWiringIntegrationTest(
     @Autowired private val check: SelfAgentCheck,
     @Autowired private val tokens: EnrollmentTokens,
@@ -82,12 +63,9 @@ class SelfAgentWiringIntegrationTest(
     @Autowired private val ca: CertificateAuthority,
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
-    @Autowired private val postgres: PostgreSQLContainer,
-    @Autowired private val dataSource: javax.sql.DataSource,
     @Autowired private val meters: io.micrometer.prometheusmetrics.PrometheusMeterRegistry,
 ) {
     private val tokenFile = channel.resolve("enroll-token")
-    private val passwordFile = channel.resolve("db-password")
 
     @BeforeTest
     fun `a known clock and no built-in tokens or agents`() {
@@ -124,8 +102,6 @@ class SelfAgentWiringIntegrationTest(
 
     private fun tokenOnDisk() = Files.readString(tokenFile)
 
-    private fun loginAs(password: String) = DriverManager.getConnection(postgres.jdbcUrl, "sard_self", password).use { }
-
     @Test
     fun `Экспозиция метрик несёт только счётчики sard, jvm и process, остальные остаются в реестре`() {
         val suffix = UUID.randomUUID().toString().replace("-", "")
@@ -143,37 +119,11 @@ class SelfAgentWiringIntegrationTest(
     }
 
     @Test
-    fun `Сервер при старте пишет пароль, а роль входит с ним и хранит проверочные данные SCRAM`() {
-        val password = Files.readString(passwordFile)
-
-        assertTrue(FORMAT.matches(password), password)
-        assertEquals("rw-------", PosixFilePermissions.toString(Files.getPosixFilePermissions(passwordFile)))
-        loginAs(password)
-        assertFailsWith<SQLException> { loginAs("0".repeat(64)) }
-        val sql = "select rolpassword from pg_authid where rolname = 'sard_self'"
-        val verifier = jdbc.queryForObject(sql, String::class.java)
-        assertTrue(verifier.orEmpty().startsWith("SCRAM-SHA-256$"))
-    }
-
-    @Test
-    fun `Роль, которой нет, даёт ошибку SQL, по которой сервер предупреждает`() {
-        val roles = ScramRolePasswords(dataSource)
-        val failure = assertFailsWith<SQLException> { MutFlow.underTest { roles.set("no_such_role", "0".repeat(64)) } }
-
-        assertEquals("42704", failure.sqlState)
-    }
-
-    @Test
-    fun `Пароль роли не попадает в журнал PostgreSQL`() {
-        assertFalse(Files.readString(passwordFile) in postgres.logs)
-    }
-
-    @Test
-    fun `В канале нет файлов, кроме db-password и enroll-token`() {
+    fun `В канале нет файлов, кроме enroll-token, а пароля роли в нём нет`() {
         runCheck()
 
         val names = Files.list(channel).use { files -> files.map { it.fileName.toString() }.sorted().toList() }
-        assertEquals(listOf("db-password", "enroll-token"), names)
+        assertEquals(listOf("enroll-token"), names)
     }
 
     @Test

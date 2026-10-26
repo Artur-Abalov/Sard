@@ -3,17 +3,11 @@
 
 package dev.sard.server.onboarding
 
-import dev.sard.server.TestcontainersConfiguration
-import org.flywaydb.core.Flyway
-import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.context.annotation.Import
+import dev.sard.server.database.MigrationSandbox
 import org.springframework.jdbc.core.JdbcTemplate
-import org.springframework.jdbc.datasource.SingleConnectionDataSource
 import java.sql.Timestamp
 import java.time.Instant
 import java.util.UUID
-import javax.sql.DataSource
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -22,7 +16,7 @@ private const val BEFORE_F4B = "202610121200"
 
 // F4b itself: later migrations (V1 makes agents.role NOT NULL) are not what this class checks.
 private const val F4B = "202610121300"
-private const val SCHEMA = "marks_migration"
+private const val SCHEMA = "sard"
 private val TENANT = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
 /**
@@ -30,33 +24,18 @@ private val TENANT = UUID.fromString("00000000-0000-0000-0000-000000000001")
  * Р21, rule "Обновлённая установка блокирует только регистрацию новых агентов"): the first start with F4b decides
  * once whether the installation is an upgraded one. Works in a schema of its own.
  */
-@SpringBootTest(
-    webEnvironment = SpringBootTest.WebEnvironment.NONE,
-    properties = ["spring.grpc.server.port=0", "sard.scheduler.interval=1h"],
-)
-@Import(TestcontainersConfiguration::class)
-class OnboardingMarksMigrationTest(
-    @Autowired private val dataSource: DataSource,
-) {
-    private val connection = dataSource.connection
-    private val single = SingleConnectionDataSource(connection, true)
+class OnboardingMarksMigrationTest {
+    private val sandbox = MigrationSandbox()
+    private val connection = sandbox.connection
+    private val single = sandbox.dataSource
     private val jdbc = JdbcTemplate(single)
 
     @AfterTest
-    fun `drop the schema`() {
-        jdbc.execute("set search_path to public")
-        jdbc.execute("drop schema if exists $SCHEMA cascade")
+    fun `close the connection`() {
         connection.close()
     }
 
-    private fun flyway(target: String? = null) =
-        Flyway
-            .configure()
-            .dataSource(single)
-            .schemas(SCHEMA)
-            .defaultSchema(SCHEMA)
-            .also { if (target != null) it.target(target) }
-            .load()
+    private fun flyway(target: String? = null) = sandbox.flyway(target)
 
     private fun agent(
         builtin: Boolean,

@@ -67,8 +67,8 @@ PostgreSQL только в новое место), проверки восста
 
 ## Быстрый старт: сервер за 10 минут
 
-Нужен Linux-хост (amd64 или arm64) с Docker Engine и плагином Compose, `curl`
-и `openssl`. Команды ниже запускают sard-server и PostgreSQL из
+Нужен Linux-хост (amd64 или arm64) с Docker Engine и плагином Compose (2.23 и новее)
+и `curl`. Команды ниже запускают sard-server и PostgreSQL из
 опубликованного образа релиза `SARD_TAG`
 ([релизы](https://github.com/Artur-Abalov/Sard/releases)); чтобы поставить
 другой релиз, поменяйте только эту строку.
@@ -79,7 +79,6 @@ SARD_TAG=v0.1.0-beta.1
 mkdir -p ~/sard && cd ~/sard
 curl -fsSLO "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/docker-compose.yml"
 curl -fsSL -o .env "https://github.com/Artur-Abalov/Sard/releases/download/$SARD_TAG/sard.env.example"
-sed -i -e "s/^SARD_DB_PASSWORD=.*/SARD_DB_PASSWORD=$(openssl rand -hex 24)/" .env
 sudo chgrp 10001 .env && chmod 640 .env
 docker compose up -d --wait
 curl -fsS http://localhost:8080/api/v1/status

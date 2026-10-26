@@ -84,6 +84,18 @@ class FirstStartDocsTest {
     }
 
     @Test
+    fun `The README quickstart sets no database password, db-init makes them (DB2)`() {
+        assertFalse(quickstart().contains("DB_PASSWORD"))
+        assertFalse(
+            text("README.ru.md")
+                .substringAfter("quickstart:begin")
+                .substringBefore("quickstart:end")
+                .contains("DB_PASSWORD"),
+        )
+        assertTrue(quickstart().contains("docker compose up -d --wait"))
+    }
+
+    @Test
     fun `The README quickstart goes through the setup code`() {
         assertFalse(quickstart().contains("SARD_ADMIN_PASSWORD"))
         val readme = text("README.md")

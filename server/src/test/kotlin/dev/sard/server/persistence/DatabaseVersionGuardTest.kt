@@ -4,7 +4,7 @@
 package dev.sard.server.persistence
 
 import dev.sard.server.onboarding.Database
-import dev.sard.server.recovery.RecoveryCluster
+import dev.sard.server.onboarding.TestPostgres
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
 import org.flywaydb.core.Flyway
@@ -33,8 +33,14 @@ private val LAST_KNOWN = MIGRATION_VERSIONS.maxBy { it.toLong() }
 @MutFlowTest
 class DatabaseVersionGuardTest {
     private fun migrated(): Pair<Database, Flyway> {
-        val database = RecoveryCluster.restoredDatabase()
-        val flyway = Flyway.configure().dataSource(database.url, database.user, database.password).load()
+        val database = TestPostgres.newDatabase()
+        val flyway =
+            Flyway
+                .configure()
+                .dataSource(database.url, database.user, database.password)
+                .schemas("sard")
+                .defaultSchema("sard")
+                .load()
         return database to flyway
     }
 

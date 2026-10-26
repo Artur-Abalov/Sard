@@ -39,14 +39,12 @@ private class RecordingScheduler : ScheduledThreadPoolExecutor(1) {
 @MutFlowTest
 class SelfAgentLoopTest {
     @Test
-    fun `Цикл сначала готовит канал, затем сразу проверяет и повторяет проверку с заданным интервалом`() {
+    fun `Цикл сразу проверяет и повторяет проверку с заданным интервалом`() {
         val scheduler = RecordingScheduler()
-        val events = mutableListOf<String>()
-        val loop = SelfAgentLoop(Duration.ofSeconds(5), { scheduler }, { events += "setup" }, { events += "check" })
+        val loop = SelfAgentLoop(Duration.ofSeconds(5), { scheduler }) {}
 
         MutFlow.underTest { loop.start() }
         try {
-            assertEquals(listOf("setup"), events)
             assertEquals(listOf(Triple(0L, 5000L, TimeUnit.MILLISECONDS)), scheduler.requests)
             assertTrue(MutFlow.underTest { loop.isRunning })
         } finally {
@@ -61,7 +59,7 @@ class SelfAgentLoopTest {
         val ticks = CountDownLatch(3)
         val names = mutableSetOf<String>()
         val loop =
-            SelfAgentLoop(Duration.ofMillis(10), { ScheduledThreadPoolExecutor(1) }, {}) {
+            SelfAgentLoop(Duration.ofMillis(10), { ScheduledThreadPoolExecutor(1) }) {
                 names += Thread.currentThread().name
                 ticks.countDown()
             }
@@ -78,7 +76,7 @@ class SelfAgentLoopTest {
     @Test
     fun `Остановка незапущенного цикла ничего не делает`() {
         val created = mutableListOf<ScheduledExecutorService>()
-        val loop = SelfAgentLoop(Duration.ofSeconds(1), { ScheduledThreadPoolExecutor(1).also(created::add) }, {}, {})
+        val loop = SelfAgentLoop(Duration.ofSeconds(1), { ScheduledThreadPoolExecutor(1).also(created::add) }) {}
 
         MutFlow.underTest { loop.stop() }
 

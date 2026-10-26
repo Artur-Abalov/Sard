@@ -7,8 +7,19 @@ spring:
     name: sard-server
   datasource:
     url: ${SARD_DB_URL:jdbc:postgresql://localhost:5432/sard}
-    username: ${SARD_DB_USER:sard}
+    # The server is sard_app (DB2, docs/operator/16-postgresql.md): it reads and writes rows and changes no schema.
+    username: ${SARD_DB_USER:sard_app}
+    # SARD_DB_PASSWORD_FILE, a file of a volume, takes precedence (dev.sard.server.database.DatabasePasswordFile).
     password: ${SARD_DB_PASSWORD:}
+    hikari:
+      # Whatever role it connects as, every session of the server works in the schema of Sard.
+      schema: sard
+  flyway:
+    # The server never migrates (the migrate step does, as sard_migrator): Flyway here only reads the history, in the
+    # schema the pool works in (sard), and the server refuses to start on a database whose migrations are not all
+    # applied (dev.sard.server.persistence.DatabaseVersionConfiguration). There are no callbacks to look for, and the
+    # search for them would take a second connection of the pool for nothing.
+    skip-default-callbacks: true
   mvc:
     # Errors are application/problem+json (RFC 9457), the format of the REST contract.
     problemdetails:

@@ -3,55 +3,34 @@
 
 package dev.sard.server.scheduler
 
-import dev.sard.server.TestcontainersConfiguration
-import org.flywaydb.core.Flyway
-import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.context.annotation.Import
+import dev.sard.server.database.MigrationSandbox
 import org.springframework.jdbc.core.JdbcTemplate
-import org.springframework.jdbc.datasource.SingleConnectionDataSource
 import java.sql.Timestamp
 import java.time.Instant
 import java.util.UUID
-import javax.sql.DataSource
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 private const val F3A = "202610091200"
 private const val F3B = "202610101200"
-private const val SCHEMA = "claims_migration"
+private const val SCHEMA = "sard"
 
 /** Migration V202610101200 over data F3a wrote (Р15): who a downtime belongs to. Works in a schema of its own. */
-@SpringBootTest(
-    webEnvironment = SpringBootTest.WebEnvironment.NONE,
-    properties = ["spring.grpc.server.port=0", QUIET_LOOP],
-)
-@Import(TestcontainersConfiguration::class)
-class CatchUpClaimMigrationTest(
-    @Autowired private val dataSource: DataSource,
-) {
-    private val connection = dataSource.connection
-    private val single = SingleConnectionDataSource(connection, true)
+class CatchUpClaimMigrationTest {
+    private val sandbox = MigrationSandbox()
+    private val connection = sandbox.connection
+    private val single = sandbox.dataSource
     private val jdbc = JdbcTemplate(single)
     private val tenant = UUID.randomUUID()
     private val schedule = UUID.randomUUID()
 
     @AfterTest
-    fun `drop the schema`() {
-        jdbc.execute("set search_path to public")
-        jdbc.execute("drop schema if exists $SCHEMA cascade")
+    fun `close the connection`() {
         connection.close()
     }
 
-    private fun flyway(target: String) =
-        Flyway
-            .configure()
-            .dataSource(single)
-            .schemas(SCHEMA)
-            .defaultSchema(SCHEMA)
-            .target(target)
-            .load()
+    private fun flyway(target: String) = sandbox.flyway(target)
 
     private fun at(text: String): Timestamp = Timestamp.from(Instant.parse(text))
 

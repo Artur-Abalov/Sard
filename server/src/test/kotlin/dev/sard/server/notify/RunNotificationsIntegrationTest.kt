@@ -3,6 +3,7 @@
 
 package dev.sard.server.notify
 
+import dev.sard.server.TestAdmin
 import dev.sard.server.TestcontainersConfiguration
 import dev.sard.server.notify.telegram.BotReply
 import dev.sard.server.notify.telegram.FakeBotApi
@@ -492,11 +493,11 @@ class RunNotificationsIntegrationTest(
     fun `Сбой базы во время отправки не теряет сообщение`() {
         val run = finished(SUCCEEDED)
         val before = runRow(run)
-        jdbc.execute("alter table notification_deliveries rename to notification_deliveries_off")
+        TestAdmin.of(jdbc).execute("alter table notification_deliveries rename to notification_deliveries_off")
         try {
             assertFailsWith<Exception> { service.tick() }
         } finally {
-            jdbc.execute("alter table notification_deliveries_off rename to notification_deliveries")
+            TestAdmin.of(jdbc).execute("alter table notification_deliveries_off rename to notification_deliveries")
         }
 
         ticks(1)

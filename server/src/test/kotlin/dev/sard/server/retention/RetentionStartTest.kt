@@ -12,7 +12,10 @@ import kotlin.test.assertTrue
 
 /** Starting the server with `sard.retention.*` and `sard.notify.ttl` as the operator sets them. */
 class RetentionStartTest {
-    private val runner = ApplicationContextRunner().withUserConfiguration(RetentionSettingsConfiguration::class.java)
+    private val runner =
+        ApplicationContextRunner()
+            .withUserConfiguration(RetentionSettingsConfiguration::class.java)
+            .withBean(VerificationEvidenceFloor::class.java, { VerificationEvidenceFloor { Duration.ofDays(180) } })
 
     private fun refusal(vararg properties: String): String {
         var message = ""
@@ -77,6 +80,26 @@ class RetentionStartTest {
             }
             runner.withPropertyValues("sard.notify.ttl=24h", "$property=25h").run { context ->
                 assertNotNull(context.getBean(RetentionSettings::class.java))
+            }
+        }
+    }
+
+    @Test
+    fun `Срок улик меньше предела базы не даёт серверу стартовать и называет свойство и предел`() {
+        for (value in listOf("179d", "30d", "1d")) {
+            val message = refusal("sard.retention.verifications=$value")
+            assertTrue("sard.retention.verifications ($value)" in message && "180d" in message, message)
+        }
+    }
+
+    @Test
+    fun `Срок улик ровно в пределе базы и больше принимается`() {
+        for (value in listOf("180d", "181d", "400d")) {
+            runner.withPropertyValues("sard.retention.verifications=$value").run { context ->
+                assertEquals(
+                    Duration.parse("PT${value.removeSuffix("d").toLong() * 24}H"),
+                    context.getBean(RetentionSettings::class.java).verifications,
+                )
             }
         }
     }

@@ -246,7 +246,7 @@ fi
 не создано, повторите шаг 0. `WRONG REPOSITORY` — адрес указывает на другой
 репозиторий: остановитесь и найдите правильный адрес. `no complete snapshot of
 the keys` — полных снимков ключей нет: карточка и старый `.env` (копия
-`SARD_DB_PASSWORD` и имён) нужны вручную, обратитесь к
+пароль `.env`, имена и настройки) нужны вручную, обратитесь к
 [разделу 8](08-migrate-and-remove.md) и к бэкапу CA, сделанному вами отдельно.
 
 ## Шаг 2. Ключи и конфигурация
@@ -291,9 +291,11 @@ grep '^SARD_VERSION=' ~/sard/.env
 
 Сначала поднимается только PostgreSQL: `docker compose up -d --wait postgres`
 (офлайн — с `--pull never`, как в блоке). Пустую базу `sard` создаёт
-инициализация образа из `.env`. Дамп из снимка D разворачивается в неё
-`pg_restore --no-owner`: владельцем всего становится пользователь `sard`.
-Роли `sard_self` в дампе нет — её вернёт сервер при старте.
+инициализация образа. Дамп из снимка D разворачивается в неё
+`pg_restore --no-owner --no-acl`: владельцем всего становится суперпользователь
+`sard`, прав у ролей Sard нет. Ролей Sard и их паролей в дампе нет: на шаге 4
+служба `db-init` создаёт роли и **новые пароли**, возвращает владельцем всего
+`sard_owner` и выдаёт права, как у новой установки.
 
 <!-- drill: database -->
 ```bash
@@ -303,7 +305,7 @@ cd ~/sard-recovery
 ./restic restore "$D" --target dump
 cd ~/sard
 docker compose up -d --wait --pull never postgres
-docker compose exec -T postgres pg_restore -U sard -d sard --no-owner < ~/sard-recovery/dump/sard.dump
+docker compose exec -T postgres pg_restore -U sard -d sard --no-owner --no-acl < ~/sard-recovery/dump/sard.dump
 docker compose exec -T postgres psql -U sard -d sard -Atc 'select count(*) from agents'
 docker compose exec -T postgres psql -U sard -d sard -Atc 'select version from flyway_schema_history order by installed_rank desc limit 1'
 ```
@@ -321,11 +323,11 @@ DATABASE sard WITH (FORCE)' -c 'CREATE DATABASE sard OWNER sard'`. Файла
 
 ## Шаг 4. Сервер
 
-`docker compose up -d --wait --pull never server` запускает сервер на
-восстановленной базе. Он делает три вещи, важные для восстановления: проверяет,
-что база не новее него (иначе отказ `DATABASE_NEWER_THAN_SERVER`, ничего не
-меняя), сверяет каталог CA с базой и сам возвращает роль `sard_self`, которой
-нет в дампе.
+`docker compose up -d --wait --pull never server` сначала запускает `db-init`
+(роли, владение, новые пароли) и `migrate` (миграции, которых нет в дампе),
+потом сервер на восстановленной базе. Сервер делает две вещи, важные для
+восстановления: проверяет, что база не новее него (иначе отказ
+`DATABASE_NEWER_THAN_SERVER`, ничего не меняя), и сверяет каталог CA с базой.
 
 <!-- drill: server -->
 ```bash
@@ -335,14 +337,16 @@ docker compose up -d --wait --pull never server
 docker compose logs server | grep -F 'CA fingerprint=<caFingerprint> origin=existing'
 curl -fsS http://localhost:8080/api/v1/status | grep -F '"version":"<sardVersion>"'
 curl -fsS http://localhost:8080/api/v1/onboarding | grep -o '"restriction":"none"'
-docker compose exec -T postgres psql -U sard -d sard -Atc "select count(*) from pg_roles where rolname = 'sard_self'"
+docker compose exec -T postgres psql -U sard -d sard -Atc "select count(*) from pg_roles where rolname = 'sard_app'"
+docker compose exec -T postgres psql -U sard -d sard -Atc "select distinct tableowner from pg_tables where schemaname = 'sard'"
 ```
 
 **Проверка.** Лог содержит строку `CA fingerprint=<отпечаток карточки>
 origin=existing` — отпечаток обязан совпасть с `caFingerprint` карточки;
 версия в `/api/v1/status` равна `sardVersion`; `restriction` — `none` (онбординг
-пройден, код настройки не печатается); последняя команда печатает `1`: роль
-`sard_self` на месте. Не совпал отпечаток — это другой CA: остановите сервер
+пройден, код настройки не печатается); предпоследняя команда печатает `1`: роль
+`sard_app` создана `db-init`; последняя — `sard_owner`, единственного владельца
+таблиц схемы `sard`. Не совпал отпечаток — это другой CA: остановите сервер
 (`docker compose stop server`), имя не переводите и вернитесь к шагу 1, взяв
 более старый снимок K.
 
@@ -359,9 +363,11 @@ origin=existing` — отпечаток обязан совпасть с `caFing
   `sard`, пересоздайте её (шаг 3).
 - `CA startup refused: … CA_MISSING` — база говорит, что CA в деле, а каталог
   пуст: повторите шаг 2.
-- `password authentication failed` — `SARD_DB_PASSWORD` в `.env` не тот, с
-  которым создан том базы: в новом томе пароль берётся из `.env` при первом
-  старте, поэтому причина — рассинхрон `.env` и тома.
+- `MIGRATIONS_NOT_APPLIED` или лог `db-init`/`migrate` с ошибкой — подготовка
+  базы не прошла, сервер не запущен: первая строка лога службы
+  (`docker compose logs db-init migrate`) называет причину
+  ([раздел 16](16-postgresql.md)). Для базы, залитой другим способом, чем в
+  шаге 3 (в `sard` уже лежали таблицы), пересоздайте её (шаг 3).
 
 Прочие отказы старта — [раздел 9](09-troubleshooting.md).
 
@@ -402,7 +408,7 @@ docker compose logs self-agent | grep -c 'waiting for the enrollment token'
 docker compose exec -T server ls /var/lib/sard/self
 ```
 
-Одна строка `waiting for the enrollment token` и в канале только `db-password`, без
+Одна строка `waiting for the enrollment token` и в канале только пустой `db-password` (заглушка `db-init`), без
 `enroll-token` — так и должно быть. Теперь отзыв X
 (`POST /api/v1/agents/<id>/revoke?confirm=sard-self`, в консоли — «Отозвать»
 с вводом `sard-self`). Отзыв переводит шаги X в `lost` с сообщением `agent
@@ -529,7 +535,7 @@ echo "$S" | grep -o '"warnings":\[[^]]*\]'
 перепривязке — сосед ещё не прислал репозиторий: подождите минуту.
 `first_backup_pending` при подтверждении — оба запуска ещё не завершены.
 Запуск `failed` — сообщение шага в консоли, чаще всего ключи хранилища или права
-`sard_self` ([агент-сосед](../operations/self-agent.md)).
+`sard_backup` ([агент-сосед](../operations/self-agent.md)).
 
 ## Шаг 6. Имя сервера и агенты
 

@@ -3,6 +3,7 @@
 
 package dev.sard.server.metrics
 
+import dev.sard.server.TestAdmin
 import dev.sard.server.api.captureLogs
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.persistence.TenantSessions
@@ -627,7 +628,7 @@ class MetricsStateIntegrationTest(
         tick(T0)
         val value = backupOf(source)
         val failures = exposition().value("sard_metrics_state_refresh_failures_total")!!
-        jdbc.execute("alter table notification_deliveries rename to notification_deliveries_unavailable")
+        TestAdmin.of(jdbc).execute("alter table notification_deliveries rename to notification_deliveries_unavailable")
         val finishedRun = scene.run(scene.source(), T0, status = "failed")
         jdbc.update("update runs set finished_at = ? where id = ?", Timestamp.from(T0.plusSeconds(15)), finishedRun.id)
         val failed = {
@@ -640,7 +641,9 @@ class MetricsStateIntegrationTest(
                     announcer.announce(scene.id, finishedRun.steps.single())
                 }
             } finally {
-                jdbc.execute("alter table notification_deliveries_unavailable rename to notification_deliveries")
+                TestAdmin.of(jdbc).execute(
+                    "alter table notification_deliveries_unavailable rename to notification_deliveries",
+                )
             }
 
         val now = exposition()

@@ -21,10 +21,7 @@ private val CLEANED =
         "runs",
         "run_steps",
         "schedule_fires",
-        "restore_verifications",
-        "verification_jobs",
         "notification_deliveries",
-        "verification_stale_episodes",
     )
 
 private val BATCHES =
@@ -32,7 +29,6 @@ private val BATCHES =
         "DELIVERIES" to DELIVERIES,
         "DOWNTIME_FIRES" to DOWNTIME_FIRES,
         "OTHER_FIRES" to OTHER_FIRES,
-        "VERIFICATIONS" to VERIFICATIONS,
         "RUNS" to RUNS,
     )
 

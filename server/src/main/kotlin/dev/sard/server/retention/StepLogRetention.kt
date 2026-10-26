@@ -3,10 +3,7 @@
 
 package dev.sard.server.retention
 
-import org.springframework.jdbc.core.ConnectionCallback
 import org.springframework.jdbc.core.JdbcTemplate
-import java.sql.Connection
-import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -29,11 +26,12 @@ fun partitionEnd(name: String): Instant? {
 
 /**
  * Drops whole monthly partitions of `step_logs`: log lines leave only this way, never one by one. A partition goes
- * once its upper bound is not later than the boundary of the term, so every line in it is older than the term.
+ * once its upper bound is not later than the boundary of the term, so every line in it is older than the term. The
+ * server is sard_app and may not detach or drop a table: `drop_step_log_partition` does it as sard_owner (DB2,
+ * ADR 0069), waits for a lock two seconds at most and serialises the servers on one advisory lock.
  */
 class StepLogRetention(
     private val jdbc: JdbcTemplate,
-    private val lockTimeout: Duration,
 ) {
     /** The partitions whose every line is older than the boundary [cutoff], oldest first. */
     fun expired(cutoff: Instant): List<String> =
@@ -44,53 +42,16 @@ class StepLogRetention(
             .sorted()
 
     /**
-     * Drops [name]; false if another server dropped it first. The partitions are dropped one at a time, serialised on
-     * `step_logs`, so two servers never both count the same drop. The drop itself takes `step_logs` too, so while it
-     * waits for a reader of the partition the writing of lines waits with it; a partition held longer than the lock
-     * timeout fails the drop and frees the writers.
+     * Drops [name]; false if another server dropped it first. A partition that a reader holds for longer than the
+     * function's lock timeout fails the drop with SQLSTATE 55P03, which frees the writers of log lines; the caller
+     * goes on and the next pass drops it.
      */
     fun drop(name: String): Boolean {
         require(PARTITION_NAME.matches(name)) { "not a log partition: $name" }
-        return checkNotNull(jdbc.execute(ConnectionCallback { connection -> dropIn(connection, name) }))
+        return jdbc.queryForObject("select drop_step_log_partition(?)", Boolean::class.java, name) == true
     }
-
-    /** One transaction: wait for the other servers' drops and for readers, then drop if still attached. */
-    private fun dropIn(
-        connection: Connection,
-        name: String,
-    ): Boolean {
-        connection.autoCommit = false
-        var committed = false
-        try {
-            connection.createStatement().use {
-                it.execute("set local lock_timeout = ${lockTimeout.toMillis()}")
-                it.execute("lock table step_logs in share update exclusive mode")
-            }
-            val attached = isAttached(connection, name)
-            // The name matched the pattern: digits only.
-            if (attached) connection.createStatement().use { it.execute("drop table $name") }
-            connection.commit()
-            committed = true
-            return attached
-        } finally {
-            if (!committed) connection.rollback()
-            connection.autoCommit = true
-        }
-    }
-
-    private fun isAttached(
-        connection: Connection,
-        name: String,
-    ): Boolean =
-        connection.prepareStatement(ATTACHED).use { statement ->
-            statement.setString(1, name)
-            statement.executeQuery().use { rows -> rows.next() && rows.getBoolean(1) }
-        }
 }
 
 private const val PARTITIONS =
     "select c.relname from pg_inherits i join pg_class c on c.oid = i.inhrelid " +
         "where i.inhparent = 'step_logs'::regclass"
-
-private const val ATTACHED =
-    "select exists (select 1 from pg_inherits where inhparent = 'step_logs'::regclass and inhrelid = to_regclass(?))"

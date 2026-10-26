@@ -47,6 +47,7 @@ HOST="$RUN_ID-host"
 # shellcheck source=lib/setup-wizard.sh
 source "$ROOT/scripts/lib/setup-wizard.sh"
 source "$ROOT/scripts/lib/test-image.sh"
+source "$ROOT/scripts/lib/prepare-db.sh"
 sard_curl() { docker exec -i "$HOST" curl "$@"; }
 server_log() { docker logs "$RUN_ID-server" 2>&1; }
 export SARD_WIZARD_COOKIES=/root/jar
@@ -105,8 +106,10 @@ start_server() {
   docker run -d --name "$RUN_ID-db" --network "$NET" --network-alias db \
     -e POSTGRES_DB=sard -e POSTGRES_USER=sard -e POSTGRES_PASSWORD=sard \
     -e POSTGRES_INITDB_ARGS="$(. "$ROOT/deploy/postgres.env" && echo "$SARD_POSTGRES_INITDB_ARGS")" "$POSTGRES_IMAGE" >/dev/null
+  # The server is sard_app: the roles, the schema and the migrations come first (DB2, scripts/lib/prepare-db.sh).
+  sard_prepare_db "$RUN_ID-db" "$NET" "$SERVER_IMAGE"
   docker run -d --name "$RUN_ID-server" --network "$NET" --network-alias sard-server \
-    -e SARD_DB_URL=jdbc:postgresql://db:5432/sard -e SARD_DB_USER=sard -e SARD_DB_PASSWORD=sard \
+    -e SARD_DB_URL=jdbc:postgresql://db:5432/sard -e SARD_DB_USER=sard_app -e SARD_DB_PASSWORD="$SARD_APP_PASSWORD" \
     -e SARD_PKI_SERVER_NAMES=sard-server -e SARD_AGENT_ENDPOINT=sard-server:9090 \
     "$SERVER_IMAGE" >/dev/null
 }

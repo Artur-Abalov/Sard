@@ -14,13 +14,20 @@ services:
   postgres:
     image: ${SARD_POSTGRES_IMAGE:-postgres:18.6-alpine@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5}
     restart: unless-stopped
+    # The superuser sard has a password made here from /dev/urandom for initdb, which writes only its hash into the
+    # volume: no file, no variable, no .env keeps it, and pg_hba.conf below refuses the superuser on the network anyway
+    # (DB2). The way in for an administrator is the local socket: docker compose exec postgres psql -U sard.
+    entrypoint:
+      - sh
+      - -c
+      - POSTGRES_PASSWORD=$$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n') exec docker-entrypoint.sh "$$@"
+      - --
     # The settings come from the file below, not from the one initdb wrote into the volume, so a new
     # value takes effect on a restart of this service.
     command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     environment:
       POSTGRES_DB: sard
       POSTGRES_USER: sard
-      POSTGRES_PASSWORD: ${SARD_DB_PASSWORD:?set SARD_DB_PASSWORD in .env}
       # Read by initdb on an empty volume only (D25): page checksums, UTF8, the built-in C.UTF-8 locale.
       # A database created before stays as it was; the server warns about it at start.
       POSTGRES_INITDB_ARGS: --data-checksums --encoding=UTF8 --locale-provider=builtin --builtin-locale=C.UTF-8 --locale=C.UTF-8
@@ -28,13 +35,60 @@ services:
     configs:
       - source: postgresql-conf
         target: /etc/postgresql/postgresql.conf
+      - source: postgresql-hba
+        target: /etc/postgresql/pg_hba.conf
     volumes:
       - postgres-data:/var/lib/postgresql
+      # The local socket, shared with db-init (the superuser's only way in).
+      - postgres-socket:/var/run/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sard -d sard"]
       interval: 2s
       timeout: 3s
       retries: 30
+
+  # db-init (DB2, docs/operator/16-postgresql.md): once per `docker compose up`, as the superuser over the local
+  # socket: the roles, the schema "sard", who owns what, and a password for each role that logs in, written into the
+  # volume of the one service that reads it. The script and bootstrap.sql are the files of deploy/db/ (DeployComposeTest
+  # compares them); a release ships this file alone. Repeatable: what exists stays. A failure stops the start here.
+  db-init:
+    image: ${SARD_POSTGRES_IMAGE:-postgres:18.6-alpine@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5}
+    restart: "no"
+    entrypoint: ["sh", "/etc/sard/db-init.sh"]
+    configs:
+      - source: db-init-script
+        target: /etc/sard/db-init.sh
+      - source: bootstrap-sql
+        target: /etc/sard/bootstrap.sql
+    volumes:
+      - postgres-socket:/var/run/postgresql
+      - sard-db-migrate:/run/sard-db/migrate
+      - sard-db-app:/run/sard-db/app
+      - sard-db-backup:/run/sard-db/backup
+      - sard-self-channel:/run/sard-db/channel
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # migrate (DB2): the migrations as sard_migrator, which becomes sard_owner for them (lock_timeout 5 s). The server
+  # starts only after it succeeds and never migrates itself; only this service has the password of sard_migrator.
+  migrate:
+    # allow-unpinned: the release image of SARD_VERSION, signed with cosign (docs/operator/10-security.md)
+    image: ${SARD_IMAGE:-ghcr.io/artur-abalov/sard-server}:${SARD_VERSION:?set SARD_VERSION in .env}
+    restart: "no"
+    command: ["migrate"]
+    environment:
+      SARD_DB_URL: jdbc:postgresql://postgres:5432/sard
+      SARD_MIGRATE_USER: sard_migrator
+      SARD_MIGRATE_PASSWORD_FILE: /run/sard-db/password
+    volumes:
+      - sard-db-migrate:/run/sard-db:ro
+    # A command, not a server: the image's HTTP check would fail.
+    healthcheck:
+      disable: true
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
 
   server:
     # allow-unpinned: the release image of SARD_VERSION, signed with cosign (docs/operator/10-security.md)
@@ -42,8 +96,9 @@ services:
     restart: unless-stopped
     environment:
       SARD_DB_URL: jdbc:postgresql://postgres:5432/sard
-      SARD_DB_USER: sard
-      SARD_DB_PASSWORD: ${SARD_DB_PASSWORD:?set SARD_DB_PASSWORD in .env}
+      # sard_app only reads and writes rows; its password is a file db-init wrote into a volume only this service has.
+      SARD_DB_USER: sard_app
+      SARD_DB_PASSWORD_FILE: /run/sard-db/password
       # "server", the name of this service, is always among them: the agent next to it (self-agent) dials it.
       SARD_PKI_SERVER_NAMES: ${SARD_PKI_SERVER_NAMES:-localhost,127.0.0.1,::1},server
       # A CA to take at the first start (a move to a new machine, ADR 0052): the path inside the container
@@ -79,13 +134,14 @@ services:
       SARD_METRICS_PORT: ${SARD_METRICS_PORT:-8081}
       SARD_METRICS_TOKEN: ${SARD_METRICS_TOKEN:-}
       SARD_METRICS_STATE_INTERVAL: ${SARD_METRICS_STATE_INTERVAL:-60s}
-      # The channel to self-agent: the server writes the password of the sard_self role and the agent's
-      # enrollment token here; only this service and self-agent mount the volume.
+      # The channel to self-agent: the server writes the agent's enrollment token here; only this service and
+      # self-agent mount the volume.
       SARD_SELF_DIR: /var/lib/sard/self
     volumes:
       # The CA key: its own volume, backed up apart from postgres-data (docs/operations/pki.md).
       - sard-pki:/var/lib/sard/pki
       - sard-self-channel:/var/lib/sard/self
+      - sard-db-app:/run/sard-db:ro
     ports:
       # REST API and console sessions. Plain HTTP, so by default only on the
       # host's loopback; SARD_HTTP_PUBLISH widens it.
@@ -96,6 +152,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
     # The image's HEALTHCHECK with a shorter interval, so `up --wait` returns
     # soon after the server is ready.
     healthcheck:
@@ -105,7 +165,7 @@ services:
       start_period: 10s
 
   # sard-self: the agent that backs up this installation (docs/operations/self-agent.md).
-  # It reads the database through a read-only role and the CA directory through a
+  # It reads the database as sard_backup, a read-only role whose password db-init put into a volume of its own, and the CA directory through a
   # read-only mount, and dials the server over this compose network, as any agent does.
   # It enrolls itself: the server writes its one-time token into the sard-self-channel
   # volume, which this service mounts read-only (no SARD_ENROLL_TOKEN here).
@@ -128,8 +188,15 @@ services:
       # container is the same agent.
       - sard-self-state:/var/lib/sard-self
       - sard-pki:/var/lib/sard/pki:ro
-      # The server's channel: the enrollment token and the database role's password, read-only.
+      # The server's channel: the enrollment token, read-only.
       - sard-self-channel:/run/sard-self:ro
+      # The password of sard_backup, laid over the placeholder db-init left in the channel (docker compose 2.23+).
+      - type: volume
+        source: sard-db-backup
+        target: /run/sard-self/db-password
+        read_only: true
+        volume:
+          subpath: password
       # This installation's directory (.env, this file, docker-compose.override.yml), read-only: the
       # self-backup keeps it with the CA (F6). .env must be readable by uid/gid 10001:
       # chgrp 10001 .env && chmod 640 .env (docs/operator/02-install.md).
@@ -163,9 +230,299 @@ configs:
       log_lock_waits = on
       log_autovacuum_min_duration = 10s
       track_io_timing = on
+      hba_file = '/etc/postgresql/pg_hba.conf'
+
+  # Who may connect how (DB2): the local socket without a password (an administrator's way in, and db-init's), the
+  # superuser sard never over the network, everyone else with a SCRAM password.
+  postgresql-hba:
+    content: |
+      local all all trust
+      host all sard all reject
+      host all all all scram-sha-256
+
+  db-init-script:
+    content: |
+      #!/bin/sh
+      # SPDX-License-Identifier: AGPL-3.0-only
+      # Copyright 2026 Artur Abalov
+      #
+      # The db-init service of deploy/docker-compose.yml (DB2, docs/adr/0069-database-roles.md): runs once per
+      # `docker compose up`, as the superuser of the postgres service over its local socket (the only way in for it: the
+      # network refuses it), and prepares the database for Sard:
+      #   1. deploy/db/bootstrap.sql: the roles, the schema "sard", who owns and may use what. Repeatable.
+      #   2. a password for each role that logs in and is not the superuser, written to the volume of the one consumer that
+      #      reads it, as a file of 64 hex characters, owner uid 10001, mode 0400:
+      #        sard_migrator  /run/sard-db/migrate/password  (the migrate service)
+      #        sard_app       /run/sard-db/app/password      (the server)
+      #        sard_backup    /run/sard-db/backup/password   (the agent next to the server)
+      #      A password that exists stays; the file removed is the way to a new one (docs/operator/16-postgresql.md).
+      #   3. a placeholder for the backup password in the channel volume, because the agent next to the server mounts the
+      #      password over /run/sard-self/db-password inside a volume it mounts read-only.
+      # A password reaches the database as text of a statement on the local socket and is never logged: the session turns
+      # the logging of statements off before it sends one. Nothing here is printed but the names of the roles.
+      set -eu
+
+      export PGHOST="$${PGHOST:-/var/run/postgresql}" PGUSER="$${PGUSER:-sard}" PGDATABASE="$${PGDATABASE:-sard}"
+      PASSWORDS="$${SARD_DB_PASSWORDS:-/run/sard-db}"
+      BOOTSTRAP="$${SARD_DB_BOOTSTRAP:-/etc/sard/bootstrap.sql}"
+      OWNER_UID=10001
+
+      die() {
+        echo "db-init: $$* (docs/operator/16-postgresql.md)" >&2
+        exit 1
+      }
+
+      sql() { psql -X -q -At -v ON_ERROR_STOP=1 "$$@"; }
+
+      sql -f "$$BOOTSTRAP" || die "bootstrap.sql failed; the database is as it was"
+      sql -c "ALTER DATABASE \"$$PGDATABASE\" SET search_path = sard" || die "cannot set the search_path of the database"
+
+      new_password() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+
+      # The role has a password in the database and the volume has its file.
+      ensure() {
+        role="$$1"
+        file="$$2/password"
+        created=no
+        if [ ! -s "$$file" ]; then
+          umask 077
+          new_password >"$$file.new" || die "cannot write the password of $$role into $$2"
+          chown "$$OWNER_UID:$$OWNER_UID" "$$file.new" && chmod 0400 "$$file.new" && mv -f "$$file.new" "$$file" ||
+            die "cannot write the password of $$role into $$2"
+          created=yes
+        fi
+        no_password=$$(sql -c "SELECT rolpassword IS NULL FROM pg_authid WHERE rolname = '$$role'") ||
+          die "cannot read the role $$role"
+        if [ "$$created" = yes ] || [ "$$no_password" = t ]; then
+          password=$$(cat "$$file")
+          sql <<SQL || die "cannot set the password of $$role"
+      SET log_statement = 'none';
+      SET log_min_duration_statement = -1;
+      SET log_min_error_statement = 'panic';
+      ALTER ROLE $$role PASSWORD '$$password';
+      SQL
+          echo "db-init: the password of $$role is set ($$2/password)"
+        fi
+      }
+
+      ensure sard_migrator "$$PASSWORDS/migrate"
+      ensure sard_app "$$PASSWORDS/app"
+      ensure sard_backup "$$PASSWORDS/backup"
+
+      if [ -d "$$PASSWORDS/channel" ] && [ ! -e "$$PASSWORDS/channel/db-password" ]; then
+        : >"$$PASSWORDS/channel/db-password"
+      fi
+      echo "db-init: done"
+
+  bootstrap-sql:
+    content: |
+      -- SPDX-License-Identifier: AGPL-3.0-only
+      -- Copyright 2026 Artur Abalov
+      --
+      -- Prepares a PostgreSQL database for Sard (DB2, docs/adr/0069-database-roles.md): the roles, the schema "sard" and
+      -- who owns and may use what. The embedded installation runs it as the db-init service over the local socket; the
+      -- operator of an external cluster runs it once with psql as a superuser, in the database Sard will use:
+      --
+      --     psql -d sard -f bootstrap.sql
+      --
+      -- It sets no password. Roles with LOGIN get theirs from the one who runs it (db-init writes them into volumes; an
+      -- external DBA chooses them and gives the server only sard_app's, the migrate command only sard_migrator's).
+      -- It is repeatable: a second run changes nothing, and after a restore by a superuser (pg_restore --no-owner
+      -- --no-acl) it gives the objects back to sard_owner and the roles their privileges again.
+      --
+      -- The roles (D26):
+      --   sard_owner     no LOGIN; owns the schema and everything in it
+      --   sard_migrator  LOGIN; member of sard_owner, becomes it for the migrations (SET ROLE), never for anything else
+      --   sard_app       LOGIN; the server: reads and writes rows, nothing more
+      --   sard_backup    LOGIN, read-only; the agent next to the server dumps the database with it
+      --   sard_monitor   LOGIN without a password; pg_monitor, for a monitoring system of the operator's
+      --
+      -- Needs a superuser. A role with CREATEROLE works too if it has the ADMIN option on pg_read_all_data and
+      -- pg_monitor and may create objects in the database; any other role is refused before anything is changed.
+      -- This is the one psql meta-command of the file: the script stops at the first error, and as it is one transaction,
+      -- nothing is left half done.
+      \set ON_ERROR_STOP on
+
+      BEGIN;
+      -- A second run says nothing about what it found in place.
+      SET LOCAL client_min_messages = warning;
+
+      DO $$bootstrap$$
+      BEGIN
+          IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = current_user AND (rolsuper OR rolcreaterole)) THEN
+              RAISE EXCEPTION 'bootstrap.sql needs a role with SUPERUSER or CREATEROLE; % has neither (docs/operator/16-postgresql.md)',
+                  current_user;
+          END IF;
+      END
+      $$bootstrap$$;
+
+      -- The roles, with the attributes of D26 set on every run, so a role changed by hand is brought back.
+      DO $$bootstrap$$
+      DECLARE
+          spec record;
+      BEGIN
+          FOR spec IN
+              SELECT * FROM (VALUES
+                  ('sard_owner', 'NOLOGIN'),
+                  ('sard_migrator', 'LOGIN'),
+                  ('sard_app', 'LOGIN'),
+                  ('sard_backup', 'LOGIN'),
+                  ('sard_monitor', 'LOGIN')) AS r (name, login)
+          LOOP
+              IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = spec.name) THEN
+                  EXECUTE format('CREATE ROLE %I', spec.name);
+              END IF;
+              EXECUTE format('ALTER ROLE %I %s NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS',
+                             spec.name, spec.login);
+          END LOOP;
+      END
+      $$bootstrap$$;
+
+      -- Someone who is not a superuser must be a member of sard_owner to give it the schema and the default
+      -- privileges; the membership lasts until the end of this script.
+      DO $$bootstrap$$
+      BEGIN
+          IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
+              EXECUTE format('GRANT sard_owner TO %I', current_user);
+          END IF;
+      END
+      $$bootstrap$$;
+
+      -- The dump role takes up to four sessions and starts every one read-only.
+      ALTER ROLE sard_backup CONNECTION LIMIT 4;
+      ALTER ROLE sard_backup SET default_transaction_read_only = on;
+      -- Every session of a Sard role starts in the schema "sard", wherever it is made.
+      ALTER ROLE sard_migrator SET search_path = sard;
+      ALTER ROLE sard_app SET search_path = sard;
+      ALTER ROLE sard_backup SET search_path = sard;
+
+      -- Membership. The migrations run as sard_owner through SET ROLE and never inherit its rights otherwise;
+      -- sard_app is a member of nothing of Sard's.
+      GRANT sard_owner TO sard_migrator WITH INHERIT FALSE, SET TRUE;
+      GRANT pg_read_all_data TO sard_backup;
+      GRANT pg_monitor TO sard_monitor;
+
+      -- The database: the Sard roles connect, and nobody but its owner makes temporary tables (the one way to write
+      -- left to a role that may only read). PUBLIC loses what it was granted by default and could write with.
+      DO $$bootstrap$$
+      BEGIN
+          EXECUTE format('GRANT CONNECT ON DATABASE %I TO sard_migrator, sard_app, sard_backup, sard_monitor',
+                         current_database());
+          EXECUTE format('REVOKE TEMPORARY ON DATABASE %I FROM PUBLIC', current_database());
+      END
+      $$bootstrap$$;
+      REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+      REVOKE EXECUTE ON FUNCTION lo_create(oid), lo_creat(integer), lo_from_bytea(oid, bytea),
+          lo_import(text), lo_import(text, oid) FROM PUBLIC;
+
+      -- The schema.
+      CREATE SCHEMA IF NOT EXISTS sard AUTHORIZATION sard_owner;
+      DO $$bootstrap$$
+      BEGIN
+          IF (SELECT nspowner FROM pg_namespace WHERE nspname = 'sard') <> 'sard_owner'::regrole THEN
+              ALTER SCHEMA sard OWNER TO sard_owner;
+          END IF;
+      END
+      $$bootstrap$$;
+      REVOKE ALL ON SCHEMA sard FROM PUBLIC;
+      GRANT USAGE ON SCHEMA sard TO sard_app;
+
+      -- What sard_owner creates from now on: rows to read and write for sard_app, functions for it to call and for
+      -- nobody else. No GRANT is needed in a migration. The tables that must not be written freely (the append-only
+      -- ones, REVOKEd by their migrations) are the exception, not the rule.
+      ALTER DEFAULT PRIVILEGES FOR ROLE sard_owner IN SCHEMA sard
+          GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO sard_app;
+      ALTER DEFAULT PRIVILEGES FOR ROLE sard_owner IN SCHEMA sard
+          GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO sard_app;
+      ALTER DEFAULT PRIVILEGES FOR ROLE sard_owner IN SCHEMA sard
+          GRANT EXECUTE ON FUNCTIONS TO sard_app;
+      ALTER DEFAULT PRIVILEGES FOR ROLE sard_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+
+      -- A database that someone else deployed (pg_restore --no-owner --no-acl by a superuser, the recovery of F7):
+      -- its objects go to sard_owner and get the privileges a migration would have given them. Nothing of this touches
+      -- an installation whose objects are right: an owner that is sard_owner already and an ACL that exists stay.
+      DO $$bootstrap$$
+      DECLARE
+          obj record;
+          -- Written by sard_app only by INSERT (append-only), and only read (a limit fixed by migrations).
+          append_only constant text[] := ARRAY['restore_verifications'];
+          read_only constant text[] := ARRAY['retention_floors'];
+      BEGIN
+          FOR obj IN
+              SELECT c.oid::regclass::text AS name,
+                     CASE c.relkind WHEN 'S' THEN 'SEQUENCE' WHEN 'v' THEN 'VIEW' WHEN 'm' THEN 'MATERIALIZED VIEW'
+                                    WHEN 'f' THEN 'FOREIGN TABLE' ELSE 'TABLE' END AS kind
+              FROM pg_class c
+              WHERE c.relnamespace = 'sard'::regnamespace AND c.relowner <> 'sard_owner'::regrole
+                AND c.relkind IN ('r', 'p', 'S', 'v', 'm', 'f')
+                -- A sequence that belongs to a column follows its table.
+                AND (c.relkind <> 'S' OR NOT EXISTS (SELECT FROM pg_depend d WHERE d.objid = c.oid
+                                                     AND d.deptype IN ('a', 'i') AND d.refclassid = 'pg_class'::regclass))
+          LOOP
+              EXECUTE format('ALTER %s %s OWNER TO sard_owner', obj.kind, obj.name);
+          END LOOP;
+          FOR obj IN
+              SELECT p.oid::regprocedure::text AS name, CASE p.prokind WHEN 'p' THEN 'PROCEDURE' ELSE 'FUNCTION' END AS kind
+              FROM pg_proc p
+              WHERE p.pronamespace = 'sard'::regnamespace AND p.proowner <> 'sard_owner'::regrole
+          LOOP
+              EXECUTE format('ALTER %s %s OWNER TO sard_owner', obj.kind, obj.name);
+          END LOOP;
+          FOR obj IN
+              SELECT t.oid::regtype::text AS name, CASE t.typtype WHEN 'd' THEN 'DOMAIN' ELSE 'TYPE' END AS kind
+              FROM pg_type t
+              WHERE t.typnamespace = 'sard'::regnamespace AND t.typowner <> 'sard_owner'::regrole
+                AND t.typtype IN ('e', 'd') AND t.typelem = 0
+          LOOP
+              EXECUTE format('ALTER %s %s OWNER TO sard_owner', obj.kind, obj.name);
+          END LOOP;
+
+          FOR obj IN
+              SELECT c.oid::regclass::text AS name, c.relname AS short
+              FROM pg_class c
+              WHERE c.relnamespace = 'sard'::regnamespace AND c.relkind IN ('r', 'p') AND c.relacl IS NULL
+          LOOP
+              IF obj.short = ANY (read_only) THEN
+                  EXECUTE format('GRANT SELECT ON %s TO sard_app', obj.name);
+              ELSIF obj.short = ANY (append_only) THEN
+                  EXECUTE format('GRANT SELECT, INSERT ON %s TO sard_app', obj.name);
+              ELSE
+                  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %s TO sard_app', obj.name);
+              END IF;
+          END LOOP;
+          FOR obj IN
+              SELECT c.oid::regclass::text AS name FROM pg_class c
+              WHERE c.relnamespace = 'sard'::regnamespace AND c.relkind = 'S' AND c.relacl IS NULL
+          LOOP
+              EXECUTE format('GRANT USAGE, SELECT, UPDATE ON SEQUENCE %s TO sard_app', obj.name);
+          END LOOP;
+          FOR obj IN
+              SELECT p.oid::regprocedure::text AS name, CASE p.prokind WHEN 'p' THEN 'PROCEDURE' ELSE 'FUNCTION' END AS kind
+              FROM pg_proc p WHERE p.pronamespace = 'sard'::regnamespace AND p.proacl IS NULL
+          LOOP
+              EXECUTE format('REVOKE EXECUTE ON %s %s FROM PUBLIC', obj.kind, obj.name);
+              EXECUTE format('GRANT EXECUTE ON %s %s TO sard_app', obj.kind, obj.name);
+          END LOOP;
+      END
+      $$bootstrap$$;
+
+      DO $$bootstrap$$
+      BEGIN
+          IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
+              EXECUTE format('REVOKE sard_owner FROM %I', current_user);
+          END IF;
+      END
+      $$bootstrap$$;
+
+      COMMIT;
 
 volumes:
   postgres-data:
+  postgres-socket:
+  # The passwords of the roles, one volume for each service that reads one (DB2): a service sees its own file only.
+  sard-db-migrate:
+  sard-db-app:
+  sard-db-backup:
   sard-pki:
   sard-self-channel:
   sard-self-config:

@@ -5,8 +5,10 @@ package dev.sard.server.persistence
 
 import dev.sard.server.EmbeddedPostgres
 import dev.sard.server.TestImages
+import dev.sard.server.database.Preparation
 import dev.sard.server.onboarding.Database
 import dev.sard.server.onboarding.Installation
+import dev.sard.server.onboarding.Login
 import dev.sard.server.onboarding.RunningServer
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
 import org.junit.jupiter.api.io.TempDir
@@ -154,9 +156,14 @@ private val counter =
     java.util.concurrent.atomic
         .AtomicInteger()
 
-/** A database of its own in the cluster: every start migrates an empty one. */
+/** A database of its own in the cluster, prepared as db-init and migrate prepare one (DB2); the server is sard_app. */
 private fun PostgreSQLContainer.freshDatabase(): Database {
     val name = "db1_${counter.incrementAndGet()}"
     createConnection("").use { it.createStatement().execute("create database $name") }
-    return Database("jdbc:postgresql://$host:$firstMappedPort/$name", username, password)
+    val url = "jdbc:postgresql://$host:$firstMappedPort/$name"
+    java.sql.DriverManager
+        .getConnection(url, username, password)
+        .use(Preparation::bootstrap)
+    Preparation.migrate(url)
+    return Database(url, EmbeddedPostgres.APP_USER, EmbeddedPostgres.appPassword, Login(username, password))
 }

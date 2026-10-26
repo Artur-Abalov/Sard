@@ -54,4 +54,7 @@ object SardMetricNames {
 
     // The server's database (DB1): 1 per way it differs from a new installation's, read at start.
     const val DATABASE_SETTINGS_MISMATCH = "sard.database.settings.mismatch"
+
+    // The server's database role (DB2): 1 per thing it is that the server does not need, read at start.
+    const val DATABASE_ROLE_EXCESS = "sard.database.role.excess"
 }

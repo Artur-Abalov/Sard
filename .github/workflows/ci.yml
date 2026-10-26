@@ -475,8 +475,10 @@ jobs:
   # The release compose file as an operator runs it (scripts/test-self-agent.sh): the stack with the agent
   # next to the server (sard-self), the first-start wizard, the self-backup to a local repository, and the
   # database a new installation gets (DB1: PostgreSQL pinned in deploy/postgres.env, page checksums, the
-  # builtin C.UTF-8 locale, UTC, the profile small). The upgrade from a release (UPGRADE_FROM) needs that
-  # release's images and stays a check run by hand (docs/release.md).
+  # builtin C.UTF-8 locale, UTC, the profile small), and the roles and passwords of the database (DB2: db-init,
+  # migrate, sard_app, checks 10 to 16). The upgrade from a release (UPGRADE_FROM, checks 5 and 9) is DEFERRED until
+  # the first release with DB2 (ADR 0069, section 13): there is no release to upgrade from, so UPGRADE_FROM is not
+  # set below. WHEN THAT RELEASE SHIPS, SET UPGRADE_FROM TO ITS SERVER IMAGE IN THE COMMAND OF THIS JOB.
   self-agent:
     needs: [packages, server-image]
     runs-on: ubuntu-latest
@@ -504,6 +506,24 @@ jobs:
           name: self-agent-compose-log
           path: ${{ runner.temp }}/self-agent/compose.log
           if-no-files-found: ignore
+
+  # bootstrap.sql of an external cluster (DB2, scripts/test-bootstrap.sh): a clean PostgreSQL 16, 17 and 18, the
+  # refusal without rights, the roles, the second run, then migrate and the server as sard_app from the images of this
+  # build.
+  bootstrap:
+    needs: [server-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: sard-server-image
+          path: ${{ runner.temp }}
+      - run: docker load -i "$RUNNER_TEMP/sard-server-image.tar"
+      - run: SARD_IMAGE=sard-server SARD_VERSION=e2e scripts/test-bootstrap.sh
 
   install-rpm:
     # The rpm installed, enrolled and upgraded on Rocky 9

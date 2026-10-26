@@ -50,8 +50,11 @@ journalctl -u sard-agent --since '-1h'
 | `CA import refused: IMPORT_WRITE_FAILED` | не удалось записать в `SARD_PKI_DIR` (диск полон, том только для чтения); в каталоге CA ничего не осталось |
 | `CA import refused: CA_ALREADY_PRESENT` | в `SARD_PKI_DIR` уже другой CA, чем в источнике (сообщение называет оба отпечатка): уберите `SARD_PKI_IMPORT_DIR` или очистите том, если это ошибочный старт |
 | права каталога PKI шире владельца | восстановление ключа CA с неверными правами: повторить команду `chown`/`chmod` из [раздела 6](06-data-and-backup.md#восстановление) |
-| ошибка подключения к базе, `password authentication failed` | `SARD_DB_PASSWORD` в `.env` не совпадает с паролем, с которым том базы создан впервые: том помнит первый пароль |
-| `set SARD_… in .env` от `docker compose` | обязательная переменная пустая: `SARD_VERSION`, `SARD_DB_PASSWORD` |
+| ошибка подключения к базе, `password authentication failed` | пароль роли в томе и в базе разошлись (том `sard_sard-db-app` пересоздан при живой базе, база восстановлена другой): удалите файл пароля роли и выполните процедуру из [раздела 16](16-postgresql.md#смена-пароля-роли) |
+| `Database startup refused: MIGRATIONS_NOT_APPLIED` | сервер сам не мигрирует: запускайте через `docker compose up -d`, где `migrate` идёт до него; лог службы `migrate` называет причину ([раздел 16](16-postgresql.md)) |
+| лог `db-init` или `migrate` называет раздел 16 | подготовка базы не прошла, сервер не запущен: причина в первой строке лога службы (`docker compose logs db-init migrate`) |
+| в логе сервера `WARN` о роли базы со ссылкой на раздел 16 | сервер подключён ролью с лишними правами (суперпользователь, владелец схемы): подключите `sard_app` ([раздел 16](16-postgresql.md#роли)) |
+| `set SARD_… in .env` от `docker compose` | обязательная переменная пустая: `SARD_VERSION` |
 
 ## Консоль: первый запуск и вход
 

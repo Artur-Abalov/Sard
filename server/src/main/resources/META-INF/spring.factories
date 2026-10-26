@@ -1,0 +1,1 @@
+org.springframework.boot.EnvironmentPostProcessor=dev.sard.server.database.DatabasePasswordFile

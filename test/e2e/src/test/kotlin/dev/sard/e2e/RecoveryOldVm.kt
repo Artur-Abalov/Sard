@@ -88,7 +88,6 @@ internal class RecoveryOldVm(
 ) {
     private val random = SecureRandom()
     private val adminPassword = hex().also(sard::secret)
-    private val dbPassword = hex().also(sard::secret)
     private lateinit var vm: RecoveryVm
     private lateinit var api: VmApi
 
@@ -136,7 +135,6 @@ internal class RecoveryOldVm(
                 runs = runs(),
                 afterSnapshotRun = after,
             )
-        sard.secret(old.envText.lines().first { it.startsWith("SARD_DB_PASSWORD=") }.substringAfter('='))
         return old
     }
 
@@ -154,7 +152,6 @@ internal class RecoveryOldVm(
             SARD_IMAGE=sard-server
             SARD_AGENT_IMAGE=sard-agent
             SARD_POSTGRES_IMAGE=${E2e.postgresTag}
-            SARD_DB_PASSWORD=$dbPassword
             SARD_PKI_SERVER_NAMES=localhost,127.0.0.1,$SERVER_NAME
             SARD_AGENT_ENDPOINT=$SERVER_NAME:9090
             """.trimIndent() + "\n"

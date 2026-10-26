@@ -3,6 +3,7 @@
 
 package dev.sard.server.retention
 
+import dev.sard.server.TestAdmin
 import dev.sard.server.persistence.StepLogPartitions
 import dev.sard.server.runs.RUNS_NOW
 import dev.sard.server.runs.RunsTenant
@@ -10,7 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import java.sql.Timestamp
 import java.time.Duration
 import java.time.Instant
-import java.time.YearMonth
+import java.time.LocalDate
 import java.util.UUID
 
 /** The moment of the pass in the specification (docs/specs/server/server-retention.feature, general conventions). */
@@ -354,7 +355,7 @@ internal class SceneTenant(
 
     /**
      * A verification record of [snapshot] verified at [at], with its closed job, which [run] (a verification run)
-     * ran when it is given, and the step of that run.
+     * ran when it is given, and the step of that run. [evidence] is the JSON of its stages and its mismatches.
      */
     fun verification(
         source: UUID,
@@ -363,6 +364,7 @@ internal class SceneTenant(
         status: String = "passed",
         run: SceneRun? = null,
         jobStatus: String = "closed",
+        evidence: String = "[]",
     ): UUID {
         // A verdict other than no_verifier states the step it ran; a record without a run of its own gets a failed one.
         val ran = run ?: run(source, at, status = "failed", trigger = "verification")
@@ -372,8 +374,8 @@ internal class SceneTenant(
             """
             insert into restore_verifications (id, tenant_id, job_id, source_id, snapshot_id, step_id,
                                                verifier_agent_id,
-                                               key_holders, status, level, verified_at)
-            values (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                                               key_holders, status, level, verified_at, stages, mismatches)
+            values (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?::jsonb, ?::jsonb)
             """.trimIndent(),
             verification,
             id,
@@ -385,6 +387,8 @@ internal class SceneTenant(
             status,
             if (status == "passed") 4 else 1,
             stamp(at),
+            evidence,
+            evidence,
         )
         return verification
     }
@@ -596,8 +600,10 @@ internal class SceneTenant(
         row: UUID,
     ): Boolean = count(table, "id = '$row'") == 1
 
+    /** Through the superuser: sard_app may not delete the records of verifications (DB2). */
     fun drop() {
-        for (table in TABLES) jdbc.update("delete from $table where tenant_id = ?", id)
+        val admin = TestAdmin.of(jdbc)
+        for (table in TABLES) admin.update("delete from $table where tenant_id = ?", id)
         owner?.drop()
     }
 
@@ -636,11 +642,17 @@ internal fun JdbcTemplate.partitionNames(): List<String> =
         String::class.java,
     ).filterNotNull()
 
-/** The partition `step_logs_YYYY_MM` of a month, if it is not there yet. */
+/** The partition `step_logs_YYYY_MM` of a month, if it is not there yet, made by the function the server uses. */
 internal fun JdbcTemplate.createPartition(month: String) {
     val (year, number) = month.split("_").map { it.toInt() }
-    val from = "%04d-%02d-01 00:00:00+00".format(year, number)
-    val next =
-        YearMonth.of(year, number).plusMonths(1).let { "%04d-%02d-01 00:00:00+00".format(it.year, it.monthValue) }
-    execute("create table if not exists step_logs_$month partition of step_logs for values from ('$from') to ('$next')")
+    queryForObject(
+        "select create_step_log_partition(?)",
+        String::class.java,
+        java.sql.Date.valueOf(LocalDate.of(year, number, 1)),
+    )
+}
+
+/** Drops the partitions of `step_logs` the way a pass does, with the function of the database. */
+internal fun JdbcTemplate.dropPartitions() {
+    for (name in partitionNames()) queryForObject("select drop_step_log_partition(?)", Boolean::class.java, name)
 }
