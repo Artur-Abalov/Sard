@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Artur-Abalov/sard/agent/internal/app"
 	"github.com/Artur-Abalov/sard/agent/internal/config"
@@ -88,16 +89,26 @@ func (*stuckDisk) Entries(string) ([]string, error) { return []string{"job-1"}, 
 
 func (*stuckDisk) RemoveAll(string) error { return errors.New("device or resource busy") }
 
-type lockAnswer struct{ err error }
+type lockAnswer struct {
+	err error
+	// left is how long the question had until its deadline.
+	left *time.Duration
+}
 
-func (l lockAnswer) CheckLock(context.Context) error { return l.err }
+func (l lockAnswer) CheckLock(ctx context.Context) error {
+	if l.left != nil {
+		deadline, _ := ctx.Deadline()
+		*l.left = time.Until(deadline)
+	}
+	return l.err
+}
 
 func TestStorageCredentialsThatCanWriteAreWarnedAboutAtStart(t *testing.T) {
 	var log bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&log, nil))
 
 	warnIfCanLock(t.Context(), "shared", lockAnswer{}, logger)
-	warnIfCanLock(t.Context(), "readonly", lockAnswer{errors.New("unable to create lock in backend")}, logger)
+	warnIfCanLock(t.Context(), "readonly", lockAnswer{err: errors.New("unable to create lock in backend")}, logger)
 
 	if !strings.Contains(log.String(), "repository=shared") || strings.Contains(log.String(), "readonly") {
 		t.Fatalf("log %q", log.String())
@@ -147,5 +158,68 @@ func recordingRestic(t *testing.T) (string, func() []string) {
 			t.Fatal(err)
 		}
 		return strings.Split(strings.TrimSpace(string(data)), "\n")
+	}
+}
+
+func TestTheQuestionOfTheLockHasTwoMinutes(t *testing.T) {
+	var left time.Duration
+	warnIfCanLock(t.Context(), "r", lockAnswer{err: errors.New("no"), left: &left}, slog.New(slog.DiscardHandler))
+
+	if left <= 2*time.Minute-10*time.Second || left > 2*time.Minute {
+		t.Fatalf("left %v", left)
+	}
+}
+
+func TestAVerifierAsksEveryRepositoryAndASourceNone(t *testing.T) {
+	var log bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&log, nil))
+	repos := map[string]locker{"a": lockAnswer{}, "b": lockAnswer{}}
+
+	(*verifying)(nil).warnIfWritable(t.Context(), repos, logger)
+	if log.Len() != 0 {
+		t.Fatalf("a source asked: %q", log.String())
+	}
+	(&verifying{}).warnIfWritable(t.Context(), repos, logger)
+	if !strings.Contains(log.String(), "repository=a") || !strings.Contains(log.String(), "repository=b") {
+		t.Fatalf("log %q", log.String())
+	}
+}
+
+func TestAVerifierRefreshesItsRuntimeEveryTenMinutes(t *testing.T) {
+	v := newVerifying(verifyConfig(t), hostIdentity{role: role.Verifier}, verifier.OSDisk{}, slog.New(slog.DiscardHandler))
+	if v.status.Refresh != 10*time.Minute {
+		t.Fatalf("refresh %v", v.status.Refresh)
+	}
+}
+
+func TestAnEmptyWorkDirectoryIsNotReportedAsSwept(t *testing.T) {
+	var log bytes.Buffer
+	_ = newVerifying(verifyConfig(t), hostIdentity{role: role.Verifier}, verifier.OSDisk{}, slog.New(slog.NewTextHandler(&log, nil)))
+	if strings.Contains(log.String(), "removed") {
+		t.Fatalf("log %q", log.String())
+	}
+}
+
+func TestAWorkDirectoryThatCannotBeMadeIsLogged(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Parse([]byte("server:\n  address: s:1\nverify:\n  work_dir: " + file + "/verify\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var log bytes.Buffer
+	_ = newVerifying(cfg, hostIdentity{role: role.Verifier}, verifier.OSDisk{}, slog.New(slog.NewTextHandler(&log, nil)))
+	if !strings.Contains(log.String(), "cannot make the work directory of verifications") {
+		t.Fatalf("log %q", log.String())
+	}
+}
+
+func TestLockersAreTheRepositoriesByName(t *testing.T) {
+	cfg, _ := config.Parse([]byte("server:\n  address: s:1\nrepositories:\n  - {name: main, url: /srv/main, password_file: /p}\n"))
+	got := lockers(openRepositories(cfg, resticOptions(cfg, "restic")))
+	if _, ok := got["main"]; !ok || len(got) != 1 {
+		t.Fatalf("lockers %v", got)
 	}
 }

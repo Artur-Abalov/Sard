@@ -144,13 +144,14 @@ type fakeDisk struct {
 	made      []string
 	removed   []string
 	removeErr error
+	makeErr   error
 }
 
 func (d *fakeDisk) Volume(string) (verifier.Volume, error) { return d.volume, d.volumeErr }
 
 func (d *fakeDisk) MakeDir(path string) error {
 	d.made = append(d.made, path)
-	return nil
+	return d.makeErr
 }
 
 func (d *fakeDisk) RemoveAll(path string) error {
@@ -171,16 +172,25 @@ type fakePlugin struct {
 	restoreTo string
 	size      uint64
 	sized     bool
+	// measureTook is how long measuring the copy takes; ctxs are the contexts of its stages.
+	clock       *fakeClock
+	measureTook time.Duration
+	ctxs        []context.Context
 }
 
 func (p *fakePlugin) Name() string { return p.name }
 
-func (p *fakePlugin) Fingerprint(_ context.Context, _ sdk.Host, _ sdk.Config, t sdk.FingerprintTarget) (sdk.Fingerprint, error) {
+func (p *fakePlugin) Fingerprint(ctx context.Context, _ sdk.Host, _ sdk.Config, t sdk.FingerprintTarget) (sdk.Fingerprint, error) {
 	p.measured = append(p.measured, t)
+	p.ctxs = append(p.ctxs, ctx)
+	if p.clock != nil {
+		p.clock.Advance(p.measureTook)
+	}
 	return p.copied, p.measure
 }
 
 func (p *fakePlugin) RestoreInto(ctx context.Context, h sdk.RestoreHost, _ sdk.Config, req sdk.RestoreRequest) (sdk.RestoredCopy, error) {
+	p.ctxs = append(p.ctxs, ctx)
 	root, err := h.RestoreTree(ctx, req.SnapshotID)
 	if err != nil {
 		return sdk.RestoredCopy{}, err
@@ -204,6 +214,7 @@ type fakeReporter struct {
 	mu     sync.Mutex
 	stages []*agentv1.VerifyStage
 	logs   []string
+	levels []agentv1.LogLevel
 }
 
 func (r *fakeReporter) Progress(agentv1.StepPhase, uint64, uint64)                      {}
@@ -211,10 +222,11 @@ func (r *fakeReporter) ProgressFiles(agentv1.StepPhase, uint64, uint64, uint64, 
 func (r *fakeReporter) Secret(string) ([]byte, bool)                                    { return nil, false }
 func (r *fakeReporter) Output() io.Writer                                               { return io.Discard }
 
-func (r *fakeReporter) Log(_ agentv1.LogLevel, text string) {
+func (r *fakeReporter) Log(level agentv1.LogLevel, text string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.logs = append(r.logs, text)
+	r.levels = append(r.levels, level)
 }
 
 func (r *fakeReporter) Stage(s *agentv1.VerifyStage) {
@@ -267,7 +279,7 @@ func newRig(t *testing.T) *rig {
 			{ID: "f1" + snapshotID[2:], Tags: []string{"sard.source=s1", "files.main_snapshot=" + snapshotID, "files.part=fingerprint", "sard.fp=" + hash}},
 		}},
 		disk:     &fakeDisk{volume: verifier.Volume{Free: 1 << 40, NoExec: true}},
-		plugin:   &fakePlugin{name: "files", copied: source(), size: 2048, sized: true},
+		plugin:   &fakePlugin{name: "files", copied: source(), size: 2048, sized: true, clock: clock},
 		reporter: &fakeReporter{},
 		step: &agentv1.RunStep{
 			CommandId: "c1", Plugin: "files", Action: agentv1.Action_ACTION_VERIFY, RepositoryName: "shared",

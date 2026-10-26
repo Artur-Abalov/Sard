@@ -58,6 +58,8 @@ func TestAnInvalidVerifySettingStopsTheAgent(t *testing.T) {
 		"more than all the data":      "verify:\n  check_percent: 101\n",
 		"a factor below one":          "verify:\n  space_factor: 0.5\n",
 		"a negative limit":            "verify:\n  stage_limits:\n    check: -1m\n",
+		"a nanosecond below zero":     "verify:\n  stage_limits:\n    prepare: -1ns\n",
+		"a negative factor":           "verify:\n  space_factor: -1\n",
 	}
 	for name, body := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -66,5 +68,25 @@ func TestAnInvalidVerifySettingStopsTheAgent(t *testing.T) {
 				t.Fatalf("err = %v", err)
 			}
 		})
+	}
+}
+
+// The boundaries are settings, a zero one is the default.
+func TestTheEdgesOfTheVerifySettingsAreValid(t *testing.T) {
+	for _, body := range []string{
+		"verify:\n  check_percent: 1\n", "verify:\n  check_percent: 100\n", "verify:\n  check_percent: 0\n",
+		"verify:\n  space_factor: 1\n", "verify:\n  space_factor: 0\n",
+		"verify:\n  stage_limits:\n    check: 0s\n    restore: 1ns\n",
+	} {
+		if _, err := config.Parse([]byte(restoreBase + body)); err != nil {
+			t.Errorf("%q: %v", body, err)
+		}
+	}
+}
+
+func TestTheRootAsAWorkDirectoryIsRefusedAsTheRoot(t *testing.T) {
+	_, err := config.Parse([]byte(restoreBase + "verify:\n  work_dir: /\n"))
+	if err == nil || !strings.Contains(err.Error(), "and not /") {
+		t.Fatalf("err = %v", err)
 	}
 }

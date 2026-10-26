@@ -82,19 +82,17 @@ func (v *verifying) attach(agent *app.Agent) {
 // writableCheckTimeout bounds the question of the lock to one repository.
 const writableCheckTimeout = 2 * time.Minute
 
-// warnIfWritable logs, in the background, a WARN for every repository whose
-// storage credentials can write (V5, K2): a verifier needs none that do. It
-// asks the storage for a lock, which only such credentials get and restic
-// removes at once.
-func (v *verifying) warnIfWritable(ctx context.Context, repos resticRepositories, log *slog.Logger) {
+// warnIfWritable logs a WARN for every repository whose storage credentials
+// can write (V5, K2): a verifier needs none that do. It asks the storage for a
+// lock, which only such credentials get and restic removes at once. The start
+// runs it in the background.
+func (v *verifying) warnIfWritable(ctx context.Context, repos map[string]locker, log *slog.Logger) {
 	if v == nil {
 		return
 	}
-	go func() {
-		for name, repo := range repos {
-			warnIfCanLock(ctx, name, repo, log)
-		}
-	}()
+	for name, repo := range repos {
+		warnIfCanLock(ctx, name, repo, log)
+	}
 }
 
 func warnIfCanLock(ctx context.Context, name string, repo locker, log *slog.Logger) {
@@ -108,4 +106,14 @@ func warnIfCanLock(ctx context.Context, name string, repo locker, log *slog.Logg
 // locker asks a repository for its lock.
 type locker interface {
 	CheckLock(ctx context.Context) error
+}
+
+// lockers are the repositories as lockers, opened apart from the steps' own:
+// with a lock, which the steps of a verifier never take.
+func lockers(repos resticRepositories) map[string]locker {
+	out := make(map[string]locker, len(repos))
+	for name, repo := range repos {
+		out[name] = repo
+	}
+	return out
 }

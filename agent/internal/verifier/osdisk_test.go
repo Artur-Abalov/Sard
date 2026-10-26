@@ -133,3 +133,48 @@ func TestAWorkDirectoryThatCannotBeReadIsAnError(t *testing.T) {
 		t.Fatal("a file listed as a directory")
 	}
 }
+
+func TestTheRealStatfsMeasuresAVolume(t *testing.T) {
+	if vol, err := (verifier.OSDisk{}).Volume(t.TempDir()); err != nil || vol.Free == 0 {
+		t.Fatalf("%+v, %v", vol, err)
+	}
+}
+
+func TestARemovalThatSucceedsIsTriedOnce(t *testing.T) {
+	attempts := 0
+	d := verifier.OSDisk{Remove: func(string) error { attempts++; return nil }}
+
+	if err := d.RemoveAll(filepath.Join(t.TempDir(), "job")); err != nil || attempts != 1 {
+		t.Fatalf("err %v, attempts %d", err, attempts)
+	}
+}
+
+// The walk of a second attempt meets a root that is gone, and files.
+func TestTheSecondAttemptMakesOnlyDirectoriesWritable(t *testing.T) {
+	job := filepath.Join(t.TempDir(), "job")
+	if err := os.MkdirAll(job, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(job, "f")
+	if err := os.WriteFile(file, nil, 0o400); err != nil {
+		t.Fatal(err)
+	}
+	var mode os.FileMode
+	attempts := 0
+	d := verifier.OSDisk{Remove: func(p string) error {
+		attempts++
+		if attempts == 1 {
+			return errors.New("permission denied")
+		}
+		info, _ := os.Stat(file)
+		mode = info.Mode().Perm()
+		return os.RemoveAll(p)
+	}}
+	if err := d.RemoveAll(job); err != nil || mode != 0o400 {
+		t.Fatalf("err %v, mode of the file %v", err, mode)
+	}
+	gone := verifier.OSDisk{Remove: func(string) error { return errors.New("no") }}
+	if err := gone.RemoveAll(filepath.Join(t.TempDir(), "never")); err == nil {
+		t.Fatal("a failing removal passed")
+	}
+}

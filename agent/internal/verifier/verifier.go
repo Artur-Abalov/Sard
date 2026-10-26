@@ -132,9 +132,9 @@ func (v *Verifier) admit(step *agentv1.RunStep) error {
 func wellFormed(step *agentv1.RunStep) error {
 	task := step.GetVerify()
 	switch {
-	case task == nil || task.GetDeadline() == nil:
+	case task.GetDeadline() == nil:
 		return errors.New("a verify step needs its task and the deadline of the job")
-	case task.GetJobId() == "" || !consolerestore.UsableName(task.GetJobId()):
+	case !consolerestore.UsableName(task.GetJobId()):
 		return fmt.Errorf("job id %q cannot name a directory", task.GetJobId())
 	case !snapshotID(step.GetSnapshotId()):
 		return fmt.Errorf("snapshot_id %q: want the full id of the snapshot", step.GetSnapshotId())

@@ -485,3 +485,20 @@ func TestBase64OfASecretIsMaskedOnEveryPathOfAStepsText(t *testing.T) {
 		t.Fatalf("result = %v", r)
 	}
 }
+
+// A duplicate of a running verification repeats its last stage, as it repeats
+// any progress.
+func TestADuplicateOfARunningCommandRepeatsItsLastStage(t *testing.T) {
+	f, _ := masked(t)
+	c := startMasked(t, f)
+	c.r.Stage(&agentv1.VerifyStage{Level: 1, Name: "restic_check"})
+	_ = f.sink.progress(t)
+
+	f.e.Submit(backup("c1"))
+
+	if p := f.sink.progress(t); p.GetStage().GetName() != "restic_check" {
+		t.Fatalf("progress = %v", p)
+	}
+	c.finish(snapshot("s1"), nil)
+	_ = f.sink.result(t)
+}

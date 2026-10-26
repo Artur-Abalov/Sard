@@ -187,7 +187,7 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 	verify := newVerifying(cfg, me, verifier.OSDisk{}, slog.Default())
 	agent := newAgentWith(cfg, hostname, resticBinary, me.machineID, engine, journal, rt, verify.readsOnly(), verify.options()...)
 	verify.attach(agent)
-	verify.warnIfWritable(ctx, openRepositories(cfg, resticOptions(cfg, resticBinary)), slog.Default())
+	go verify.warnIfWritable(ctx, lockers(openRepositories(cfg, resticOptions(cfg, resticBinary))), slog.Default())
 	// R2c: the plugins recover their entries of the restore journal now, before
 	// the first step and before the first connection to the server.
 	recovered := recoverJournal(cfg, journal, rt.journalPlugins, agent.Plugins, slog.Default())

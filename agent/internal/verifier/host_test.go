@@ -20,13 +20,15 @@ type streaming struct {
 	listed  []sdk.SnapshotInfo
 	secret  error
 	dumpErr error
+	// level is the level of its second line.
+	level sdk.Level
 }
 
 func (p *streaming) RestoreInto(ctx context.Context, h sdk.RestoreHost, _ sdk.Config, req sdk.RestoreRequest) (sdk.RestoredCopy, error) {
 	h.Phase(sdk.PhaseRestoring)
 	h.Progress(1, 2)
-	h.Log(sdk.LevelWarn, "restoring "+req.SnapshotID)
-	h.Log(sdk.LevelInfo, "info")
+	h.Log(sdk.LevelInfo, "restoring "+req.SnapshotID)
+	h.Log(p.levelOf(), "info")
 	_, p.secret = h.Secret("db")
 	if err := h.Journal().Save([]byte("{}")); err != nil {
 		return sdk.RestoredCopy{}, err
@@ -45,6 +47,13 @@ func streamingRig(t *testing.T) (*rig, *streaming) {
 	r := newRig(t)
 	r.store.snapshots[0].Tags = append(r.store.snapshots[0].Tags, "sard.fp="+r.step.GetVerify().GetFingerprintSha256())
 	return r, &streaming{fakePlugin: r.plugin}
+}
+
+func (p *streaming) levelOf() sdk.Level {
+	if p.level == 0 {
+		return sdk.LevelWarn
+	}
+	return p.level
 }
 
 func TestAPluginRestoresACopyWithTheRepositoryOfTheStepAndNoSecret(t *testing.T) {

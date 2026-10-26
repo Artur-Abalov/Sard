@@ -87,18 +87,19 @@ func or[T comparable](value, def T) T {
 
 // validateVerify: an absolute clean work_dir apart from the restore directory
 // and what restore.dir is kept apart from; a share of the data; a factor of at
-// least one; no negative limit.
+// least one; no negative limit. A zero setting is the default.
 func (c Config) validateVerify() error {
-	s := c.VerifySettings()
-	if err := c.validateWorkDir(s.WorkDir); err != nil {
+	v := c.Verify
+	if err := c.validateWorkDir(c.VerifySettings().WorkDir); err != nil {
 		return err
 	}
+	l := v.StageLimits
 	switch {
-	case s.CheckPercent < 1 || s.CheckPercent > 100:
-		return fmt.Errorf("%w: verify.check_percent: want 1..100, got %d", ErrInvalidVerify, s.CheckPercent)
-	case s.SpaceFactor < 1:
-		return fmt.Errorf("%w: verify.space_factor: want at least 1, got %v", ErrInvalidVerify, s.SpaceFactor)
-	case min(s.Limits.Prepare, s.Limits.Check, s.Limits.Restore, s.Limits.Fingerprint) < 0:
+	case v.CheckPercent < 0 || v.CheckPercent > 100:
+		return fmt.Errorf("%w: verify.check_percent: want 1..100, got %d", ErrInvalidVerify, v.CheckPercent)
+	case v.SpaceFactor != 0 && v.SpaceFactor < 1:
+		return fmt.Errorf("%w: verify.space_factor: want at least 1, got %v", ErrInvalidVerify, v.SpaceFactor)
+	case min(l.Prepare, l.Check, l.Restore, l.Fingerprint) < 0:
 		return fmt.Errorf("%w: verify.stage_limits: a limit is negative", ErrInvalidVerify)
 	}
 	return nil
