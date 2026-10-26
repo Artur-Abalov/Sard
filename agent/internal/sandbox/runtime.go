@@ -4,7 +4,11 @@
 package sandbox
 
 import (
+	"bufio"
 	"context"
+	"errors"
+	"io"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -16,12 +20,67 @@ type CLI interface {
 	Output(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
+// Command is a command of a container runtime with streams.
+type Command struct {
+	Name string
+	Args []string
+	// Env are variables added to the environment of the CLI.
+	Env    []string
+	Stdin  io.Reader
+	Stdout io.Writer
+	// Stderr gets each line of the standard error.
+	Stderr func(line string)
+}
+
+// Streamer runs a command to completion and returns its exit code; -1 and an
+// error when it did not start or was killed.
+type Streamer interface {
+	Stream(ctx context.Context, cmd Command) (int, error)
+}
+
 // ExecCLI runs the binaries of PATH.
 type ExecCLI struct{}
 
 // Output implements CLI.
 func (ExecCLI) Output(ctx context.Context, name string, args ...string) ([]byte, error) {
 	return exec.CommandContext(ctx, name, args...).Output()
+}
+
+// Stream implements Streamer: the process gets the agent's environment and
+// cmd.Env; a non-zero exit code is no error.
+func (ExecCLI) Stream(ctx context.Context, cmd Command) (int, error) {
+	c := exec.CommandContext(ctx, cmd.Name, cmd.Args...)
+	c.Env = append(os.Environ(), cmd.Env...)
+	c.Stdin, c.Stdout = cmd.Stdin, cmd.Stdout
+	stderr, err := c.StderrPipe()
+	if err != nil {
+		return -1, err
+	}
+	if err := c.Start(); err != nil {
+		return -1, err
+	}
+	lines(stderr, cmd.Stderr)
+	err = c.Wait()
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() >= 0 {
+		return exit.ExitCode(), nil
+	}
+	if err != nil {
+		return -1, err
+	}
+	return 0, nil
+}
+
+// lines hands each line of r to each; nil reads it to the end only.
+func lines(r io.Reader, each func(string)) {
+	s := bufio.NewScanner(r)
+	s.Buffer(make([]byte, 64*1024), 1024*1024)
+	for s.Scan() {
+		if each != nil {
+			each(s.Text())
+		}
+	}
+	_, _ = io.Copy(io.Discard, r)
 }
 
 // Runtime is the container runtime a verifier runs its sandbox with.

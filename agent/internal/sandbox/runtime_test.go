@@ -99,3 +99,33 @@ func TestWithoutARuntimeNoImageIsAskedFor(t *testing.T) {
 		t.Fatalf("present = %v", got)
 	}
 }
+
+func TestTheCLIStreamsAProcessAndReturnsItsExitCode(t *testing.T) {
+	var out strings.Builder
+	var lines []string
+	cmd := sandbox.Command{
+		Name: "/bin/sh", Args: []string{"-c", `cat; printf '%s' "$SARD_X"; echo one >&2; echo two >&2; exit 3`},
+		Env: []string{"SARD_X=x"}, Stdin: strings.NewReader("in "), Stdout: &out, Stderr: func(l string) { lines = append(lines, l) },
+	}
+
+	code, err := (sandbox.ExecCLI{}).Stream(t.Context(), cmd)
+
+	if err != nil || code != 3 || out.String() != "in x" || !slices.Equal(lines, []string{"one", "two"}) {
+		t.Fatalf("code %d, err %v, out %q, lines %q", code, err, out.String(), lines)
+	}
+}
+
+func TestTheCLIStreamsWithoutAReaderOfStderrAndTellsAProgramThatIsNotThere(t *testing.T) {
+	if code, err := (sandbox.ExecCLI{}).Stream(t.Context(), sandbox.Command{Name: "/bin/sh", Args: []string{"-c", "echo x >&2"}}); err != nil || code != 0 {
+		t.Fatalf("without a reader of stderr: %d, %v", code, err)
+	}
+	if code, err := (sandbox.ExecCLI{}).Stream(t.Context(), sandbox.Command{Name: "/nonexistent/sard"}); err == nil || code != -1 {
+		t.Fatalf("a program that is not there: %d, %v", code, err)
+	}
+}
+
+func TestTheCLIOutputIsTheStdoutOfTheProgram(t *testing.T) {
+	if out, err := (sandbox.ExecCLI{}).Output(t.Context(), "/bin/sh", "-c", "echo hi"); err != nil || string(out) != "hi\n" {
+		t.Fatalf("%q, %v", out, err)
+	}
+}
