@@ -97,9 +97,16 @@ CI запускает его на PostgreSQL 16, 17 и 18 (`scripts/test-bootstr
   `/run/sard-self` только на чтение, поэтому `db-init` оставляет в нём пустой файл
   `db-password`, поверх которого соседу монтируется файл `password` тома `sard-db-backup`
   (`volume.subpath`, Compose 2.23+).
-- `bootstrap.sql` и `db-init.sh` лежат в `deploy/db/`, а в `docker-compose.yml` —
-  копиями в `configs`, потому что релиз раздаёт compose-файл отдельно;
-  `DeployDatabaseComposeTest` сверяет копии.
+- `bootstrap.sql`, `db-init.sh`, `pg_hba.conf` и `postgres-entrypoint.sh` (случайный
+  пароль суперпользователя) лежат в `deploy/db/`, а `docker-compose.yml` ссылается на них
+  `configs: <имя>: file: ./db/…`, копий внутри нет (Р15; первая версия держала копии в
+  `content:` и сверяла их тестом и `scripts/sync-compose-db.sh` — владелец выбрал файлы:
+  копии расходятся и раздувают compose-файл). Релиз раздаёт эти файлы рядом с
+  `docker-compose.yml` под своими именами (у релиза нет каталогов), быстрый старт README
+  кладёт каждый в `db/`. `scripts/release-server-files.sh` собирает файлы релиза,
+  `DeployDatabaseComposeTest` проверяет, что каждый файл, на который ссылается
+  compose-файл, есть среди них, а копий в compose-файле нет; `SHA256SUMS.server`
+  (minisign) покрывает все файлы каталога ресурсов, поэтому новые файлы подписаны.
 
 ### 5. Сервер не мигрирует
 `FlywayMigrationStrategy` сервера только читает историю: если у сборки есть миграция,

@@ -57,7 +57,9 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$1"
 mkdir -p "$work" && cd "$work"
+# What a release ships: the compose file and the files it refers to as ./db/… (scripts/release-server-files.sh).
 cp "$root/deploy/docker-compose.yml" docker-compose.yml
+mkdir -p db && cp "$root"/deploy/db/* db/
 # The administrator password is set in the wizard and exists only in this run.
 admin="$(openssl rand -hex 16)"
 db_password="$(openssl rand -hex 24)" # only the deferred upgrade check (the old release's .env) uses it

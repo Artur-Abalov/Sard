@@ -102,6 +102,9 @@ server_fresh() { # name: a fake asset directory, signed by the test key
   mkdir -p "$d"
   echo archive >"$d/sard-${VERSION#v}-images-linux-amd64.tar.gz"
   echo compose >"$d/docker-compose.yml"
+  echo script >"$d/db-init.sh"
+  echo sql >"$d/bootstrap.sql"
+  echo hba >"$d/pg_hba.conf"
   echo '{"images":[]}' >"$d/images.json"
   (cd "$d" && sha256sum -- * >SHA256SUMS.server)
   server_sign "$d" release "$VERSION"
@@ -127,6 +130,14 @@ server_accepts "$(server_fresh good)" "the server assets as built"
 d="$(server_fresh byte)"
 echo tampered >>"$d/docker-compose.yml"
 server_refuses "$d" "docker-compose.yml changed" "a file does not match"
+
+d="$(server_fresh dbfile)"
+echo tampered >>"$d/db-init.sh"
+server_refuses "$d" "db-init.sh changed" "a file does not match"
+
+d="$(server_fresh dbmissing)"
+rm "$d/bootstrap.sql"
+server_refuses "$d" "bootstrap.sql missing from the assets" "a file does not match"
 
 d="$(server_fresh foreign)"
 server_sign "$d" foreign "$VERSION"

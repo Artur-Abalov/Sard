@@ -22,18 +22,22 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=lib/test-image.sh
 source "$root/scripts/lib/test-image.sh"
+# shellcheck source=lib/prepare-db.sh
+source "$root/scripts/lib/prepare-db.sh"
 script="$root/deploy/db/bootstrap.sql"
 versions="${BOOTSTRAP_VERSIONS:-16 17 18}"
 failures=0
 started=()
 
+# The containers and the network of one version (all named after it).
+remove_stack() {
+  docker rm -f "$1" "$1-migrate" "$1-server" >/dev/null 2>&1 || true
+  docker network rm "$1" >/dev/null 2>&1 || true
+}
 # Whatever a version started goes away when the script ends, however it ends.
 cleanup() {
   local name
-  for name in ${started[@]+"${started[@]}"}; do
-    docker rm -f "$name" "$name-migrate" "$name-server" >/dev/null 2>&1 || true
-    docker network rm "$name" >/dev/null 2>&1 || true
-  done
+  for name in ${started[@]+"${started[@]}"}; do remove_stack "$name"; done
 }
 trap cleanup EXIT
 
@@ -55,15 +59,11 @@ one_version() {
   image="$(test_image "postgres:$major")"
   name="sard-bootstrap-$major-$$"
   network="$name"
-  cleanup() { docker rm -f "$name" "$name-migrate" "$name-server" >/dev/null 2>&1 || true; docker network rm "$network" >/dev/null 2>&1 || true; }
-  trap cleanup RETURN
+  started+=("$name")
   docker network create "$network" >/dev/null
   docker run -d --name "$name" --network "$network" --network-alias postgres -e POSTGRES_PASSWORD=superuser -e POSTGRES_DB=sard "$image" >/dev/null
-  local i
-  for i in $(seq 1 60); do docker exec "$name" pg_isready -U postgres -d sard >/dev/null 2>&1 && break; sleep 1; done
-  docker exec "$name" pg_isready -U postgres -d sard >/dev/null || { fail "$major: PostgreSQL does not start"; return; }
-  sleep 2 # the entrypoint restarts the server once after its initialisation
-  until docker exec "$name" pg_isready -U postgres -d sard >/dev/null 2>&1; do sleep 1; done
+
+  sard_wait_postgres "$name" postgres sard || { fail "$major: PostgreSQL does not start"; return; }
   local as_postgres=(docker exec -i "$name" psql -X -q -At -U postgres -d sard -v ON_ERROR_STOP=1)
 
   # 1: a role without the right to create roles.
@@ -99,7 +99,7 @@ one_version() {
 
   # 4: migrate and the server, with the images of the build.
   if [ -n "${SARD_IMAGE:-}" ] && [ -n "${SARD_VERSION:-}" ]; then
-    local migrator app
+    local migrator app i
     migrator="$(openssl rand -hex 16)"
     app="$(openssl rand -hex 16)"
     "${as_postgres[@]}" -c "alter role sard_migrator password '$migrator'" -c "alter role sard_app password '$app'" >/dev/null
@@ -126,6 +126,9 @@ one_version() {
   fi
 }
 
-for v in $versions; do one_version "$v"; done
+for v in $versions; do
+  one_version "$v"
+  remove_stack "sard-bootstrap-$v-$$"
+done
 [ "$failures" -eq 0 ] || { echo "FAILED: $failures check(s)" >&2; exit 1; }
 echo PASSED

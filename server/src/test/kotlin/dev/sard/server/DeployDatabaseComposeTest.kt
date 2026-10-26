@@ -5,6 +5,7 @@ package dev.sard.server
 
 import org.yaml.snakeyaml.Yaml
 import java.io.File
+import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -12,9 +13,9 @@ import kotlin.test.assertTrue
 
 /**
  * What `deploy/docker-compose.yml` says about the roles and passwords of the database (DB2, docs/specs/server/
- * database-roles.feature): who mounts which password, what waits for what, and that the files a release ships
- * with it, db-init.sh and bootstrap.sql, are the ones in deploy/db/. The running stack is checked by
- * scripts/test-self-agent.sh.
+ * database-roles.feature): who mounts which password, what waits for what, that the files db-init and the database
+ * need are files next to it (no copy of them inside), and that a release ships every one of them. The running stack
+ * is checked by scripts/test-self-agent.sh.
  */
 class DeployDatabaseComposeTest {
     private val compose: Map<String, Any?> by lazy {
@@ -55,10 +56,65 @@ class DeployDatabaseComposeTest {
 
     private fun config(name: String) = map(map(compose["configs"])[name])["content"].toString().replace("$$", "$")
 
+    /** The `configs: <name>: file:` paths, as written in the compose file. */
+    private fun configFiles(): Map<String, String> =
+        map(compose["configs"])
+            .mapNotNull { (name, value) -> map(value)["file"]?.let { name to it.toString() } }
+            .toMap()
+
+    private fun configFile(name: String) = File("../deploy", configFiles().getValue(name)).readText()
+
+    private fun releaseFiles(): File {
+        val dest = createTempDirectory("release-files").toFile()
+        val process =
+            ProcessBuilder("../scripts/release-server-files.sh", dest.path, "v1.2.3")
+                .redirectErrorStream(true)
+                .start()
+        val output = process.inputStream.bufferedReader().readText()
+        assertEquals(0, process.waitFor(), output)
+        return dest
+    }
+
     @Test
-    fun `Скрипт db-init и bootstrap sql в compose те же, что файлы deploy db`() {
-        assertEquals(File("../deploy/db/db-init.sh").readText(), config("db-init-script"))
-        assertEquals(File("../deploy/db/bootstrap.sql").readText(), config("bootstrap-sql"))
+    fun `Каждый файл, на который ссылается compose-файл релиза, является файлом релиза`() {
+        val release = releaseFiles()
+        val referenced = configFiles().values
+        assertTrue(referenced.isNotEmpty())
+
+        for (path in referenced) {
+            assertTrue(path.startsWith("./db/"), "$path: a file of deploy/db/ under a relative path")
+            assertTrue(File(release, path.removePrefix("./db/")).isFile, "$path is not among the files of the release")
+            assertEquals(File("../deploy", path).readText(), File(release, path.removePrefix("./db/")).readText())
+        }
+        assertTrue(File(release, "docker-compose.yml").isFile)
+        assertTrue("SARD_VERSION=1.2.3" in File(release, "sard.env.example").readLines())
+    }
+
+    @Test
+    fun `Compose-файл не содержит копий db-init, bootstrap и конфигурации pg_hba`() {
+        val text = File("../deploy/docker-compose.yml").readText()
+
+        for (name in listOf("db-init-script", "bootstrap-sql", "postgresql-hba", "postgres-entrypoint")) {
+            assertTrue(name in configFiles(), "$name is a file")
+            assertFalse("content" in map(map(compose["configs"])[name]), name)
+        }
+        for (file in listOf("db-init.sh", "bootstrap.sql", "pg_hba.conf", "postgres-entrypoint.sh")) {
+            val body = File("../deploy/db", file).readLines().filter { it.isNotBlank() && !it.startsWith("#") }
+            assertTrue(body.none { it.trim() in text.lines().map(String::trim) }, "$file is inlined")
+        }
+        assertFalse("CREATE ROLE" in text)
+        assertFalse("host all all all scram-sha-256" in text)
+        assertTrue("/dev/urandom" !in text.lines().filterNot { it.trim().startsWith("#") }.joinToString("\n"))
+    }
+
+    @Test
+    fun `Пароль суперпользователя делает файл postgres-entrypoint, и нигде не сохраняет`() {
+        val entrypoint = configFile("postgres-entrypoint")
+
+        assertEquals(listOf("sh", "/etc/sard/postgres-entrypoint.sh"), service("postgres")["entrypoint"])
+        assertTrue("/dev/urandom" in entrypoint)
+        assertTrue("exec docker-entrypoint.sh \"\$@\"" in entrypoint)
+        assertTrue(entrypoint.lines().none { ">" in it && "POSTGRES_PASSWORD" in it })
     }
 
     @Test
@@ -118,11 +174,9 @@ class DeployDatabaseComposeTest {
             "POSTGRES_PASSWORD is set",
         )
         assertTrue(text.lines().none { it.trim().startsWith("POSTGRES_PASSWORD:") })
-        assertTrue("host all sard all reject" in config("postgresql-hba"), config("postgresql-hba"))
-        assertTrue(
-            config("postgresql-hba").lines().indexOf("host all sard all reject") <
-                config("postgresql-hba").lines().indexOf("host all all all scram-sha-256"),
-        )
+        val hba = configFile("postgresql-hba").lines()
+        assertTrue("host all sard all reject" in hba, hba.toString())
+        assertTrue(hba.indexOf("host all sard all reject") < hba.indexOf("host all all all scram-sha-256"))
         assertTrue("hba_file = '/etc/postgresql/pg_hba.conf'" in config("postgresql-conf"))
     }
 

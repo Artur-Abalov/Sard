@@ -155,8 +155,11 @@ internal class RecoveryOldVm(
             SARD_PKI_SERVER_NAMES=localhost,127.0.0.1,$SERVER_NAME
             SARD_AGENT_ENDPOINT=$SERVER_NAME:9090
             """.trimIndent() + "\n"
-        vm.succeed("mkdir -p ~/sard")
+        vm.succeed("mkdir -p ~/sard/db")
         vm.put("/root/sard/docker-compose.yml", java.nio.file.Files.readAllBytes(E2e.composeFile))
+        for (file in E2e.composeDbFiles) {
+            vm.put("/root/sard/db/${file.fileName}", java.nio.file.Files.readAllBytes(file))
+        }
         vm.put("/root/sard/.env", env.toByteArray(), TarFiles.OWNER_ONLY)
         vm.succeed("cd ~/sard && chgrp 10001 .env && chmod 640 .env && docker compose up -d --wait --pull never", timeout = Duration.ofMinutes(5))
         return env

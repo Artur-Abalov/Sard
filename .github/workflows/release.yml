@@ -557,11 +557,11 @@ jobs:
         with:
           name: sbom-images
           path: assets
-      - name: compose file, env template of this version, checksums
+      # docker-compose.yml, sard.env.example and the files of deploy/db/ (db-init.sh, bootstrap.sql, pg_hba.conf,
+      # postgres-entrypoint.sh): the compose file's ./db/<name> is the asset <name> (DB2, README quickstart).
+      - name: compose file, db files, env template of this version, checksums
         run: |
-          cp deploy/docker-compose.yml assets/docker-compose.yml
-          sed "s/^SARD_VERSION=.*/SARD_VERSION=${VERSION#v}/" deploy/.env.example >assets/sard.env.example
-          grep -qx "SARD_VERSION=${VERSION#v}" assets/sard.env.example
+          scripts/release-server-files.sh assets "$VERSION"
           (cd assets && sha256sum -- * >SHA256SUMS.server && cat SHA256SUMS.server)
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
