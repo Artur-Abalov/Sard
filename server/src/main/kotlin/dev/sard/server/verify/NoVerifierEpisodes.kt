@@ -44,12 +44,15 @@ object NoVerifierState {
         open: UUID?,
     ): NoVerifierTurn {
         val inState = sources > 0 && !anyVerifier
-        return when {
-            inState && open == null -> NoVerifierTurn.Open(sources)
-            !inState && open != null -> NoVerifierTurn.Close(open)
-            else -> NoVerifierTurn.Keep
-        }
+        return if (inState) opening(sources, open) else closing(open)
     }
+
+    private fun opening(
+        sources: Int,
+        open: UUID?,
+    ): NoVerifierTurn = if (open == null) NoVerifierTurn.Open(sources) else NoVerifierTurn.Keep
+
+    private fun closing(open: UUID?): NoVerifierTurn = open?.let { NoVerifierTurn.Close(it) } ?: NoVerifierTurn.Keep
 }
 
 /** Opens and closes the «no verifier» episode of a tenant once per tick, guarded so a second server changes nothing. */

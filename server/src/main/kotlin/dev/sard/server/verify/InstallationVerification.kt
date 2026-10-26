@@ -53,16 +53,21 @@ data class InstallationVerification(
             val summaries = verified.map { it.summary }
             return InstallationVerification(
                 enabled = verified.size,
-                verifiedLastDay = summaries.count { passedSince(it, now - LAST_DAY) },
-                failed = summaries.count { it.status == VerificationStatus.FAILED },
-                notHeld = summaries.count { it.status in DID_NOT_TAKE_PLACE },
-                stale = summaries.count { it.staleSince != null },
-                neverVerified = summaries.count { it.status == null },
+                verifiedLastDay = tally(summaries) { passedSince(it, now - LAST_DAY) },
+                failed = tally(summaries) { it.status == VerificationStatus.FAILED },
+                notHeld = tally(summaries) { it.status in DID_NOT_TAKE_PLACE },
+                stale = tally(summaries) { it.staleSince != null },
+                neverVerified = tally(summaries) { it.status == null },
                 disabled = off.size,
                 noVerifier = verified.isNotEmpty() && !anyVerifier,
                 attention = verified.sortedWith(WORST_FIRST).take(ATTENTION),
             )
         }
+
+        private fun tally(
+            summaries: List<VerificationSummary>,
+            test: (VerificationSummary) -> Boolean,
+        ): Int = summaries.count(test)
 
         private fun passedSince(
             summary: VerificationSummary,

@@ -6,6 +6,7 @@ package dev.sard.server.notify
 import org.slf4j.LoggerFactory
 import java.time.Clock
 import java.time.Duration
+import java.time.Instant
 
 private val log = LoggerFactory.getLogger(NotificationService::class.java)
 
@@ -83,6 +84,17 @@ class NotificationService(
         // One cut-off for every subject: older ones expire instead of being planned.
         val since = now - settings.ttl
         for (channel in channels.keys) {
+            planOperations(channel, since, now)
+            planVerifications(channel, since, now)
+        }
+    }
+
+    private fun planOperations(
+        channel: String,
+        since: Instant,
+        now: Instant,
+    ) {
+        run {
             val runs = deliveries.unplanned(channel, since, settings.batch)
             for ((tenantId, tenantRuns) in runs.groupBy({ it.tenantId }, { it.runId })) {
                 deliveries.plan(tenantId, tenantRuns, channel, now)
@@ -99,10 +111,17 @@ class NotificationService(
             for ((tenantId, tenantEvents) in expiring.groupBy({ it.tenantId }, { it.eventId })) {
                 certificates.plan(tenantId, tenantEvents, channel, now)
             }
-            val checked = verifications.unplanned(channel, since, settings.batch)
-            for ((tenantId, tenantSubjects) in checked.groupBy { it.tenantId }) {
-                verifications.plan(tenantId, tenantSubjects, channel, now)
-            }
+        }
+    }
+
+    private fun planVerifications(
+        channel: String,
+        since: Instant,
+        now: Instant,
+    ) {
+        val checked = verifications.unplanned(channel, since, settings.batch)
+        for ((tenantId, tenantSubjects) in checked.groupBy { it.tenantId }) {
+            verifications.plan(tenantId, tenantSubjects, channel, now)
         }
     }
 
@@ -145,9 +164,7 @@ class NotificationService(
             is Claimed.Alert -> alertFormatter.format(claimed.notice)
             is Claimed.Overdue -> overdueFormatter.format(claimed.notice)
             is Claimed.Certificate -> claimed.notice?.let(certificateFormatter::format)
-            is Claimed.Verification -> verificationFormatter.verification(claimed.notice)
-            is Claimed.Stale -> verificationFormatter.stale(claimed.notice)
-            is Claimed.NoVerifier -> verificationFormatter.noVerifier(claimed.notice)
+            is Claimed.Verifying -> verificationFormatter.message(claimed)
         }
 
     private fun finish(
@@ -179,3 +196,10 @@ class NotificationService(
         log.warn("Notification of {} through {} {}: {}", delivery.subject, delivery.channel, status, reason)
     }
 }
+
+private fun VerificationFormatter.message(claimed: Claimed.Verifying): Message? =
+    when (claimed) {
+        is Claimed.Verification -> verification(claimed.notice)
+        is Claimed.Stale -> stale(claimed.notice)
+        is Claimed.NoVerifier -> noVerifier(claimed.notice)
+    }

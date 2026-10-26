@@ -67,11 +67,16 @@ data class DueDelivery(
                 fireId != null -> "schedule fire $fireId"
                 certificateEventId != null -> "agent certificate $certificateSerial (${certificateLabel()})"
                 episodeId != null -> "overdue episode $episodeId ($episodeEvent)"
-                verificationId != null -> "verification $verificationId"
-                staleEpisodeId != null -> "stale episode $staleEpisodeId"
-                noVerifierEpisodeId != null -> "no verifier $noVerifierEpisodeId"
-                else -> "run $runId"
+                else -> verificationSubject()
             }
+
+    private fun verificationSubject(): String =
+        when {
+            verificationId != null -> "verification $verificationId"
+            staleEpisodeId != null -> "stale episode $staleEpisodeId"
+            noVerifierEpisodeId != null -> "no verifier $noVerifierEpisodeId"
+            else -> "run $runId"
+        }
 }
 
 /** "30/365" of a threshold event, "expired" of the expiry (П39). */
@@ -103,17 +108,20 @@ sealed interface Claimed {
         val notice: CertificateNotice?,
     ) : Claimed
 
+    /** The restore verification subjects (V6). */
+    sealed interface Verifying : Claimed
+
     data class Verification(
         val notice: VerificationNotice,
-    ) : Claimed
+    ) : Verifying
 
     data class Stale(
         val notice: StaleNotice,
-    ) : Claimed
+    ) : Verifying
 
     data class NoVerifier(
         val notice: NoVerifierNotice,
-    ) : Claimed
+    ) : Verifying
 }
 
 private const val UNPLANNED = """
@@ -361,24 +369,8 @@ class Deliveries(
                 Claimed.Certificate(Notices.certificate(session, delivery, now, connected))
             }
 
-            delivery.verificationId != null -> {
-                Claimed.Verification(
-                    VerificationNoticeReads.verification(session, delivery.tenantId, delivery.verificationId),
-                )
-            }
-
-            delivery.staleEpisodeId != null -> {
-                Claimed.Stale(VerificationNoticeReads.stale(session, delivery.tenantId, delivery.staleEpisodeId))
-            }
-
-            delivery.noVerifierEpisodeId != null -> {
-                Claimed.NoVerifier(
-                    VerificationNoticeReads.noVerifier(session, delivery.tenantId, delivery.noVerifierEpisodeId),
-                )
-            }
-
             else -> {
-                Claimed.Finished(Notices.finished(session, delivery.tenantId, checkNotNull(delivery.runId)))
+                otherClaimed(session, delivery)
             }
         }
 }
@@ -607,4 +599,29 @@ class VerificationDeliveries(
                     .executeUpdate()
             }
         }
+}
+
+/** The restore verification subjects (V6) and, when it is about none of them, the run. */
+private fun otherClaimed(
+    session: Session,
+    delivery: DueDelivery,
+): Claimed {
+    val tenant = delivery.tenantId
+    return when {
+        delivery.verificationId != null -> {
+            Claimed.Verification(VerificationNoticeReads.verification(session, tenant, delivery.verificationId))
+        }
+
+        delivery.staleEpisodeId != null -> {
+            Claimed.Stale(VerificationNoticeReads.stale(session, tenant, delivery.staleEpisodeId))
+        }
+
+        delivery.noVerifierEpisodeId != null -> {
+            Claimed.NoVerifier(VerificationNoticeReads.noVerifier(session, tenant, delivery.noVerifierEpisodeId))
+        }
+
+        else -> {
+            Claimed.Finished(Notices.finished(session, tenant, checkNotNull(delivery.runId)))
+        }
+    }
 }

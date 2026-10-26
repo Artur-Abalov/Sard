@@ -265,10 +265,13 @@ class VerificationNoticeFormatter(
 
     /** The first failed stage; without one, the comparison when it found mismatches; otherwise nothing is known. */
     private fun stageLine(notice: VerificationNotice): List<Message.Part>? {
-        val failed = notice.stages.firstOrNull { it.state == StageState.FAILED }?.name
-        val name = failed ?: COMPARISON_STAGE.takeIf { notice.mismatches.isNotEmpty() } ?: return null
+        val name = stageName(notice) ?: return null
         return listOf(Message.Text(words.stage + (words.stages[name] ?: name)))
     }
+
+    private fun stageName(notice: VerificationNotice): String? =
+        notice.stages.firstOrNull { it.state == StageState.FAILED }?.name
+            ?: COMPARISON_STAGE.takeIf { notice.mismatches.isNotEmpty() }
 
     /** The mismatches in words, or the reason when the verifier named none. */
     private fun whatDiffers(notice: VerificationNotice): List<List<Message.Part>> {

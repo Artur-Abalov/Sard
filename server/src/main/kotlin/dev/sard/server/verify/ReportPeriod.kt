@@ -35,10 +35,15 @@ data class ReportPeriod(
             now: Instant,
         ): ReportPeriod {
             check(from, to, LocalDate.ofInstant(now, zone))
-            val end = to?.plusDays(1)?.atStartOfDay(zone)?.toInstant() ?: now
-            val start = from?.atStartOfDay(zone)?.toInstant() ?: (end - DEFAULT_LENGTH)
+            val end = to?.let { startOfDay(it.plusDays(1), zone) } ?: now
+            val start = from?.let { startOfDay(it, zone) } ?: (end - DEFAULT_LENGTH)
             return ReportPeriod(start, end)
         }
+
+        private fun startOfDay(
+            date: LocalDate,
+            zone: ZoneId,
+        ): Instant = date.atStartOfDay(zone).toInstant()
 
         private fun check(
             from: LocalDate?,

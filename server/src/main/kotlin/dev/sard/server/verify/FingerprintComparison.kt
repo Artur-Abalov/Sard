@@ -74,7 +74,10 @@ object FingerprintComparison {
     ): Boolean =
         status == VerificationStatus.PASSED ||
             mismatches.isNotEmpty() ||
-            stages.any { it.name == FINGERPRINT_STAGE && it.state in RAN }
+            ranFingerprintStage(stages)
+
+    private fun ranFingerprintStage(stages: List<StepOutput.Stage>): Boolean =
+        stages.any { it.name == FINGERPRINT_STAGE && it.state in RAN }
 
     private fun row(
         fact: FingerprintFact,

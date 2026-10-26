@@ -88,3 +88,14 @@ Docker в песочнице не был запущен; поднят `dockerd` 
   `(tenant, предмет, channel)`, охраняемые запросы), что проверен для провала.
 - Мутационные прогоны (`gate.sh server` без `fast`, `gate.sh sdk/agent…`) не
   запускались.
+
+## Результат проверок
+
+- `./scripts/gate.sh server fast` — PASSED (spotless, detekt, тесты, покрытие,
+  CRAP). Функции с CRAP выше порога разрезаны на меньшие (`Deliveries`,
+  `NotificationService`, `ReportPeriod`, `FailureEpisodes` и др.) без смены
+  поведения.
+- `./scripts/gate.sh web fast` — PASSED; `make license-check` — OK.
+- Фоновый такт цикла проверок открывал эпизоды «нет верификатора» для тестовых
+  тенантов и ломал очистку в нескольких наборах: в их списки таблиц добавлен
+  `no_verifier_episodes`.

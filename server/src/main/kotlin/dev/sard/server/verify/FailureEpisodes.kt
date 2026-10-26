@@ -35,7 +35,7 @@ object FailureEpisodes {
         for (mark in history) {
             when (mark.status) {
                 VerificationStatus.FAILED -> {
-                    open = open?.let { it.copy(records = it.records + 1) } ?: FailureEpisode(mark.at, 1, null)
+                    open = continued(open, mark.at)
                 }
 
                 VerificationStatus.PASSED -> {
@@ -53,4 +53,9 @@ object FailureEpisodes {
         }
         return episodes + listOfNotNull(open)
     }
+
+    private fun continued(
+        open: FailureEpisode?,
+        at: Instant,
+    ): FailureEpisode = open?.let { it.copy(records = it.records + 1) } ?: FailureEpisode(at, 1, null)
 }
