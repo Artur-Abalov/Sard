@@ -23,7 +23,13 @@ type copyHost struct{ x *run }
 
 var _ sdk.RestoreHost = copyHost{}
 
-func (x *run) host() copyHost { return copyHost{x} }
+// host is the host of the plugin: with the sandbox once it runs.
+func (x *run) host() sdk.RestoreHost {
+	if x.box != nil {
+		return x.sandboxHost()
+	}
+	return copyHost{x}
+}
 
 func (copyHost) Secret(string) ([]byte, error) { return nil, errNoSecret }
 

@@ -39,7 +39,32 @@ type Verify struct {
 	SpaceHeadroom *uint64 `yaml:"space_headroom"`
 	// StageLimits are the longest each kind of stage may take, e.g. "4h".
 	StageLimits VerifyLimits `yaml:"stage_limits"`
+	// Images replace the sandbox images of the release: an own registry or
+	// mirror, images loaded beforehand in a closed network.
+	Images []VerifyImage `yaml:"images"`
+	// Pull lets a missing image be pulled by its digest; true by default.
+	Pull *bool `yaml:"pull"`
+	// Sandbox bounds the container of a check.
+	Sandbox SandboxLimits `yaml:"sandbox"`
 }
+
+// VerifyImage is an image of verify.images.
+type VerifyImage struct {
+	Name    string `yaml:"name"`
+	Version string `yaml:"version"`
+	Digest  string `yaml:"digest"`
+}
+
+// SandboxLimits bound the container of a check: CPUs and memory as Docker
+// and Podman take them ("1.5", "4g"), the number of processes.
+type SandboxLimits struct {
+	CPUs   string `yaml:"cpus"`
+	Memory string `yaml:"memory"`
+	Pids   int    `yaml:"pids"`
+}
+
+// DefaultSandboxLimits are the sandbox limits without a setting.
+var DefaultSandboxLimits = SandboxLimits{CPUs: "2", Memory: "4g", Pids: 1024}
 
 // VerifyLimits are the limits of the stages: preparation and cleanup,
 // restic check, restore and start, fingerprint of the copy.
@@ -57,6 +82,10 @@ type VerifySettings struct {
 	SpaceFactor   float64
 	SpaceHeadroom uint64
 	Limits        VerifyLimits
+	// Images are those of the config; nil: the list of the release.
+	Images  []VerifyImage
+	Pull    bool
+	Sandbox SandboxLimits
 }
 
 // VerifySettings returns the settings of a verifier.
@@ -72,6 +101,11 @@ func (c Config) VerifySettings() VerifySettings {
 	}
 	if v.SpaceHeadroom != nil {
 		s.SpaceHeadroom = *v.SpaceHeadroom
+	}
+	s.Images, s.Pull = v.Images, v.Pull == nil || *v.Pull
+	s.Sandbox = SandboxLimits{
+		CPUs: or(v.Sandbox.CPUs, DefaultSandboxLimits.CPUs), Memory: or(v.Sandbox.Memory, DefaultSandboxLimits.Memory),
+		Pids: or(v.Sandbox.Pids, DefaultSandboxLimits.Pids),
 	}
 	return s
 }
@@ -92,7 +126,10 @@ func (c Config) validateVerify() error {
 	if err := c.validateWorkDir(c.VerifySettings().WorkDir); err != nil {
 		return err
 	}
-	return c.Verify.validate()
+	if err := c.Verify.validate(); err != nil {
+		return err
+	}
+	return c.Verify.validateSandbox()
 }
 
 // validate judges the settings as written; zero is the default.
@@ -105,6 +142,20 @@ func (v Verify) validate() error {
 		return fmt.Errorf("%w: verify.space_factor: want at least 1, got %v", ErrInvalidVerify, v.SpaceFactor)
 	case min(l.Prepare, l.Check, l.Restore, l.Fingerprint) < 0:
 		return fmt.Errorf("%w: verify.stage_limits: a limit is negative", ErrInvalidVerify)
+	}
+	return nil
+}
+
+// validateSandbox: every image of the config names itself, no negative
+// limit. The agent checks the version and the digest when it builds the list.
+func (v Verify) validateSandbox() error {
+	for i, img := range v.Images {
+		if img.Name == "" || img.Version == "" || img.Digest == "" {
+			return fmt.Errorf("%w: verify.images[%d]: want name, version and digest", ErrInvalidVerify, i)
+		}
+	}
+	if v.Sandbox.Pids < 0 {
+		return fmt.Errorf("%w: verify.sandbox.pids: want a positive number, got %d", ErrInvalidVerify, v.Sandbox.Pids)
 	}
 	return nil
 }

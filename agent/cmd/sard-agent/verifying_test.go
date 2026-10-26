@@ -17,6 +17,7 @@ import (
 	"github.com/Artur-Abalov/sard/agent/internal/app"
 	"github.com/Artur-Abalov/sard/agent/internal/config"
 	"github.com/Artur-Abalov/sard/agent/internal/role"
+	"github.com/Artur-Abalov/sard/agent/internal/sandbox"
 	"github.com/Artur-Abalov/sard/agent/internal/verifier"
 )
 
@@ -31,7 +32,10 @@ func verifyConfig(t *testing.T) config.Config {
 }
 
 func TestASourceHasNoVerifier(t *testing.T) {
-	v := newVerifying(verifyConfig(t), hostIdentity{role: role.Source}, verifier.OSDisk{}, slog.New(slog.DiscardHandler))
+	v, err := newVerifying(verifyConfig(t), hostIdentity{role: role.Source}, verifier.OSDisk{}, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
 	agent := &app.Agent{}
 	v.attach(agent)
 	v.warnIfWritable(t.Context(), nil, nil)
@@ -49,7 +53,7 @@ func TestAVerifierRemovesWhatEarlierVerificationsLeftAndReportsItsStatus(t *test
 	}
 	var log bytes.Buffer
 
-	v := newVerifying(cfg, hostIdentity{role: role.Verifier, machineID: strings.Repeat("1", 64)}, verifier.OSDisk{}, slog.New(slog.NewTextHandler(&log, nil)))
+	v, _ := newVerifying(cfg, hostIdentity{role: role.Verifier, machineID: strings.Repeat("1", 64)}, verifier.OSDisk{}, slog.New(slog.NewTextHandler(&log, nil)))
 
 	if entries, err := os.ReadDir(work); err != nil || len(entries) != 0 {
 		t.Fatalf("left %v, %v", entries, err)
@@ -76,7 +80,7 @@ func TestAWorkDirectoryThatCannotBeSweptIsLoggedAsAnError(t *testing.T) {
 	var log bytes.Buffer
 	disk := &stuckDisk{}
 
-	_ = newVerifying(verifyConfig(t), hostIdentity{role: role.Verifier}, disk, slog.New(slog.NewTextHandler(&log, nil)))
+	_, _ = newVerifying(verifyConfig(t), hostIdentity{role: role.Verifier}, disk, slog.New(slog.NewTextHandler(&log, nil)))
 
 	if !strings.Contains(log.String(), "level=ERROR") || !strings.Contains(log.String(), "busy") {
 		t.Fatalf("log %q", log.String())
@@ -186,7 +190,7 @@ func TestAVerifierAsksEveryRepositoryAndASourceNone(t *testing.T) {
 }
 
 func TestAVerifierRefreshesItsRuntimeEveryTenMinutes(t *testing.T) {
-	v := newVerifying(verifyConfig(t), hostIdentity{role: role.Verifier}, verifier.OSDisk{}, slog.New(slog.DiscardHandler))
+	v, _ := newVerifying(verifyConfig(t), hostIdentity{role: role.Verifier}, verifier.OSDisk{}, slog.New(slog.DiscardHandler))
 	if v.status.Refresh != 10*time.Minute {
 		t.Fatalf("refresh %v", v.status.Refresh)
 	}
@@ -194,7 +198,7 @@ func TestAVerifierRefreshesItsRuntimeEveryTenMinutes(t *testing.T) {
 
 func TestAnEmptyWorkDirectoryIsNotReportedAsSwept(t *testing.T) {
 	var log bytes.Buffer
-	_ = newVerifying(verifyConfig(t), hostIdentity{role: role.Verifier}, verifier.OSDisk{}, slog.New(slog.NewTextHandler(&log, nil)))
+	_, _ = newVerifying(verifyConfig(t), hostIdentity{role: role.Verifier}, verifier.OSDisk{}, slog.New(slog.NewTextHandler(&log, nil)))
 	if strings.Contains(log.String(), "removed") {
 		t.Fatalf("log %q", log.String())
 	}
@@ -210,7 +214,7 @@ func TestAWorkDirectoryThatCannotBeMadeIsLogged(t *testing.T) {
 		t.Fatal(err)
 	}
 	var log bytes.Buffer
-	_ = newVerifying(cfg, hostIdentity{role: role.Verifier}, verifier.OSDisk{}, slog.New(slog.NewTextHandler(&log, nil)))
+	_, _ = newVerifying(cfg, hostIdentity{role: role.Verifier}, verifier.OSDisk{}, slog.New(slog.NewTextHandler(&log, nil)))
 	if !strings.Contains(log.String(), "cannot make the work directory of verifications") {
 		t.Fatalf("log %q", log.String())
 	}
@@ -221,5 +225,31 @@ func TestLockersAreTheRepositoriesByName(t *testing.T) {
 	got := lockers(openRepositories(cfg, resticOptions(cfg, "restic")))
 	if _, ok := got["main"]; !ok || len(got) != 1 {
 		t.Fatalf("lockers %v", got)
+	}
+}
+
+// Owner's decision 8: the list of the release, or the config's, checked.
+func TestTheSandboxImagesAreTheReleasesOrTheConfigsChecked(t *testing.T) {
+	if got, err := sandboxImages(nil); err != nil || len(got) != len(sandbox.ReleaseImages()) {
+		t.Fatalf("release: %d, %v", len(got), err)
+	}
+	digest := "sha256:" + strings.Repeat("a", 64)
+	got, err := sandboxImages([]config.VerifyImage{{Name: "postgres", Version: "17.6", Digest: digest}})
+	if err != nil || len(got) != 1 || got[0].Ref() != "postgres@"+digest {
+		t.Fatalf("config: %v, %v", got, err)
+	}
+	_, err = sandboxImages([]config.VerifyImage{{Name: "postgres", Version: "17.6", Digest: digest}, {Name: "postgres", Version: "latest", Digest: digest}})
+	if !errors.Is(err, config.ErrInvalidVerify) || !strings.Contains(err.Error(), "verify.images[1]") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestAVerifierWithImagesThatAreNoneDoesNotStart(t *testing.T) {
+	cfg, err := config.Parse([]byte("server:\n  address: s:1\nverify:\n  work_dir: " + filepath.Join(t.TempDir(), "v") + "\n  images:\n    - {name: postgres, version: x, digest: y}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, err := newVerifying(cfg, hostIdentity{role: role.Verifier}, verifier.OSDisk{}, slog.New(slog.DiscardHandler)); v != nil || err == nil {
+		t.Fatalf("v %v, err %v", v, err)
 	}
 }

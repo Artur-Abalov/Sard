@@ -78,6 +78,8 @@ type Options struct {
 	Space        Space
 	Clock        executor.Clock
 	Disk         Disk
+	// Sandboxes start the sandboxes of sandboxed plugins; nil: none here.
+	Sandboxes Sandboxes
 }
 
 // Plugin is a plugin whose snapshots can be verified.
@@ -147,15 +149,22 @@ func snapshotID(id string) bool {
 	return len(id) == 64 && !strings.ContainsFunc(id, func(r rune) bool { return (r < '0' || r > '9') && (r < 'a' || r > 'f') })
 }
 
-// Sweep removes what verifications that did not end left in the work
-// directory (the agent stopped or was killed); it runs at start, before any
-// step, and returns what it removed.
-func (v *Verifier) Sweep() ([]string, error) {
+// Sweep removes what verifications that did not end left (the agent stopped
+// or was killed): their sandboxes, then their directories of the work
+// directory. It runs at start, before any step, and returns what it removed.
+func (v *Verifier) Sweep(ctx context.Context) ([]string, error) {
+	var removed []string
+	if v.opts.Sandboxes != nil {
+		boxes, err := v.opts.Sandboxes.Sweep(ctx)
+		removed = append(removed, boxes...)
+		if err != nil {
+			return removed, err
+		}
+	}
 	names, err := v.opts.Disk.Entries(v.opts.WorkDir)
 	if err != nil {
-		return nil, err
+		return removed, err
 	}
-	var removed []string
 	for _, name := range names {
 		dir := path.Join(v.opts.WorkDir, name)
 		if err := v.opts.Disk.RemoveAll(dir); err != nil {

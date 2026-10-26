@@ -110,3 +110,16 @@ func TestTheSandboxIsAskedAgainOnlyAfterTheRefreshInterval(t *testing.T) {
 		t.Fatalf("after the interval: %v", got)
 	}
 }
+
+func TestTheRuntimeOfTheSandboxesIsTheOneTheStatusFound(t *testing.T) {
+	cli := &runtimeCLI{version: "29.9.2"}
+	s := newStatus(&fakeDisk{}, cli, &fakeClock{now: t0})
+
+	if rt := s.Runtime(t.Context()); rt.Binary != "docker" || rt.Version != "29.9.2" {
+		t.Fatalf("runtime %+v", rt)
+	}
+	asked := cli.calls
+	if _ = s.Runtime(t.Context()); cli.calls != asked {
+		t.Fatalf("asked again within the refresh: %d calls", cli.calls-asked)
+	}
+}

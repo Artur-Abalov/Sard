@@ -159,8 +159,12 @@ func restoreFailure(err error) outcome {
 	return failed("the snapshot could not be restored: %v", err)
 }
 
-// start: the application the copy needs (level 3). A tree of files needs none.
-func (x *run) start(context.Context) outcome {
+// start: the copy opens in the application it needs (level 3). A tree of
+// files needs none.
+func (x *run) start(ctx context.Context) outcome {
+	if sb, ok := x.sandboxed(); ok {
+		return x.openCopy(ctx, sb)
+	}
 	return outcome{status: agentv1.StageStatus_STAGE_STATUS_NOT_APPLICABLE, output: "a copy of " + x.plugin.Name() + " needs no application to start"}
 }
 
@@ -192,10 +196,21 @@ func (x *run) compared(res fingerprint.Result) outcome {
 	return passed("the copy matches the fingerprint of the source: %d facts", len(x.reference.Facts))
 }
 
-// cleanup removes the directory of the job, whatever happened before.
-func (x *run) cleanup(context.Context) outcome {
+// cleanup removes the sandbox and the directory of the job, whatever happened before.
+func (x *run) cleanup(ctx context.Context) outcome {
+	box := x.removeSandbox(ctx)
 	if err := x.opts.Disk.RemoveAll(x.dir); err != nil {
-		return cannotRun("cannot remove %s, remove it by hand: %v", x.dir, err)
+		return cannotRun("%scannot remove %s, remove it by hand: %v", prefixed(box), x.dir, err)
+	}
+	if box != "" {
+		return cannotRun("%s", box)
 	}
 	return passed("removed %s", x.dir)
+}
+
+func prefixed(s string) string {
+	if s == "" {
+		return ""
+	}
+	return s + "; "
 }

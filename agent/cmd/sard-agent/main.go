@@ -184,7 +184,10 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 	engine := newRestoreEngine(cfg)
 	journal := newRestoreJournal(cfg, slog.Default())
 	// V5: what a killed verification left is removed before any step, too.
-	verify := newVerifying(cfg, me, verifier.OSDisk{}, slog.Default())
+	verify, err := newVerifying(cfg, me, verifier.OSDisk{}, slog.Default())
+	if err != nil {
+		return err
+	}
 	agent := newAgentWith(cfg, hostname, resticBinary, me.machineID, engine, journal, rt, verify.readsOnly(), verify.options()...)
 	verify.attach(agent)
 	go verify.warnIfWritable(ctx, lockers(openRepositories(cfg, resticOptions(cfg, resticBinary))), slog.Default())

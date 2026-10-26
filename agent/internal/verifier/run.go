@@ -31,6 +31,8 @@ type outcome struct {
 	exitCode int32
 	// timedOut: the stage ran past its limit; the verification did not take place.
 	timedOut bool
+	// digest is the image of the sandbox the stage started.
+	digest string
 }
 
 func passed(format string, args ...any) outcome {
@@ -76,6 +78,11 @@ type run struct {
 	reference *sdk.Fingerprint
 	copied    sdk.RestoredCopy
 	restore   time.Duration
+	// box is the sandbox of a sandboxed plugin, password its application's.
+	box      Sandbox
+	password string
+	// digest is the image of the sandbox, in the evidence of every later stage.
+	digest string
 }
 
 func newRun(ctx context.Context, v *Verifier, step *agentv1.RunStep, p Plugin, store Store, r executor.Reporter) *run {
@@ -88,15 +95,21 @@ func newRun(ctx context.Context, v *Verifier, step *agentv1.RunStep, p Plugin, s
 
 func (x *run) pipeline() []stage {
 	l := x.opts.Limits
-	return []stage{
+	stages := []stage{
 		{0, "snapshot", l.Prepare, x.snapshot},
 		{0, "fingerprint_tag", l.Prepare, x.fingerprintTag},
 		{0, "work_volume", l.Prepare, x.workVolume},
 		{1, "restic_check", l.Check, x.check},
-		{2, "restore", l.Restore, x.restoreCopy},
-		{3, "start", l.Restore, x.start},
-		{4, "fingerprint", l.Fingerprint, x.fingerprint},
 	}
+	if _, ok := x.sandboxed(); ok {
+		// Pulling an image takes the time of a restore, not of a preparation.
+		stages = append(stages, stage{0, "sandbox", l.Restore, x.startSandbox})
+	}
+	return append(stages,
+		stage{2, "restore", l.Restore, x.restoreCopy},
+		stage{3, "start", l.Restore, x.start},
+		stage{4, "fingerprint", l.Fingerprint, x.fingerprint},
+	)
 }
 
 // execute runs the stages up to the first that does not pass, then the
@@ -125,9 +138,12 @@ func (x *run) stage(s stage) bool {
 	}
 	cancel(nil)
 	finished := x.opts.Clock.Now()
+	if o.digest != "" {
+		x.digest = o.digest
+	}
 	vs := &agentv1.VerifyStage{
 		Level: s.level, Name: s.name, Status: o.status, ExitCode: o.exitCode, Output: tail(o.output),
-		StartedAt: timestamppb.New(started), FinishedAt: timestamppb.New(finished),
+		StartedAt: timestamppb.New(started), FinishedAt: timestamppb.New(finished), ImageDigest: x.digest,
 	}
 	x.out.Stages = append(x.out.Stages, vs)
 	x.r.Stage(vs)

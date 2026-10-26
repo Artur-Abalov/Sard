@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -29,27 +30,53 @@ type verifying struct {
 // newVerifying builds the verifier of a verifier's host from the verify
 // section and removes what verifications the previous run did not finish
 // left on the work volume, before any step.
-func newVerifying(cfg config.Config, me hostIdentity, disk verifier.Disk, log *slog.Logger) *verifying {
+// A list of images of the config that is not one stops the agent.
+func newVerifying(cfg config.Config, me hostIdentity, disk verifier.Disk, log *slog.Logger) (*verifying, error) {
 	if me.role != role.Verifier {
-		return nil
+		return nil, nil
 	}
 	s := cfg.VerifySettings()
+	images, err := sandboxImages(s.Images)
+	if err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(s.WorkDir, 0o700); err != nil {
 		log.Warn("cannot make the work directory of verifications", "dir", s.WorkDir, "reason", err.Error())
+	}
+	status := &verifier.Status{WorkDir: s.WorkDir, Disk: disk, CLI: sandbox.ExecCLI{}, Images: images, Clock: verifier.SystemClock{}, Refresh: statusRefresh}
+	engine := &sandbox.Engine{
+		CLI: sandbox.ExecCLI{}, Images: images, Pull: s.Pull, User: fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
+		Limits:  sandbox.Limits{CPUs: s.Sandbox.CPUs, Memory: s.Sandbox.Memory, Pids: s.Sandbox.Pids},
+		Runtime: status.Runtime,
 	}
 	v := verifier.New(verifier.Options{
 		WorkDir: s.WorkDir, MachineID: me.machineID, CheckPercent: s.CheckPercent,
 		Limits: verifier.Limits(s.Limits), Space: verifier.Space{Factor: s.SpaceFactor, Headroom: s.SpaceHeadroom},
-		Clock: verifier.SystemClock{}, Disk: disk,
+		Clock: verifier.SystemClock{}, Disk: disk, Sandboxes: verifier.EngineSandboxes(engine),
 	})
 	sweep(v, log)
-	status := &verifier.Status{WorkDir: s.WorkDir, Disk: disk, CLI: sandbox.ExecCLI{}, Clock: verifier.SystemClock{}, Refresh: statusRefresh}
-	return &verifying{verifier: v, status: status}
+	return &verifying{verifier: v, status: status}, nil
+}
+
+// sandboxImages are the images of verify.images, each checked, or the list
+// of the release when the config names none (owner's decision 8).
+func sandboxImages(configured []config.VerifyImage) ([]sandbox.Image, error) {
+	if len(configured) == 0 {
+		return sandbox.ReleaseImages(), nil
+	}
+	images := make([]sandbox.Image, len(configured))
+	for i, c := range configured {
+		images[i] = sandbox.Image{Name: c.Name, Version: c.Version, Digest: c.Digest}
+		if err := images[i].Valid(); err != nil {
+			return nil, fmt.Errorf("%w: verify.images[%d]: %w", config.ErrInvalidVerify, i, err)
+		}
+	}
+	return images, nil
 }
 
 // sweep removes the leftovers of verifications that did not end and says which.
 func sweep(v *verifier.Verifier, log *slog.Logger) {
-	removed, err := v.Sweep()
+	removed, err := v.Sweep(context.Background())
 	if len(removed) > 0 {
 		log.Warn("removed what verifications that did not end left", "dirs", removed)
 	}

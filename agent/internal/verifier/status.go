@@ -42,6 +42,15 @@ func (s *Status) Current(ctx context.Context) *agentv1.VerifierStatus {
 	return s.reported
 }
 
+// Runtime is the container runtime as last asked, asked again once Refresh
+// has passed: the one the sandboxes of the checks start with.
+func (s *Status) Runtime(ctx context.Context) sandbox.Runtime {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ask(ctx)
+	return s.runtime
+}
+
 // Changed is the status when it differs from the last reported one, then
 // remembered as reported; nil when it does not.
 func (s *Status) Changed(ctx context.Context) *agentv1.VerifierStatus {

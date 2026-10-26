@@ -148,14 +148,14 @@ func TestASweepThatCannotListOrRemoveSaysSo(t *testing.T) {
 	r := newRig(t)
 	lister := &brokenEntries{fakeDisk: r.disk}
 	r.opts.Disk = lister
-	if removed, err := verifier.New(r.opts).Sweep(); err == nil || removed != nil {
+	if removed, err := verifier.New(r.opts).Sweep(t.Context()); err == nil || removed != nil {
 		t.Fatalf("removed %v, err %v", removed, err)
 	}
 	r = newRig(t)
 	r.disk.entries = []string{"a", "b"}
 	stuck := &stuckSecond{fakeDisk: r.disk}
 	r.opts.Disk = stuck
-	removed, err := verifier.New(r.opts).Sweep()
+	removed, err := verifier.New(r.opts).Sweep(t.Context())
 	if err == nil || len(removed) != 1 || removed[0] != workDir+"/a" {
 		t.Fatalf("removed %v, err %v", removed, err)
 	}

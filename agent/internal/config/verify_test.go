@@ -5,6 +5,7 @@ package config_test
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -22,10 +23,40 @@ func TestWithoutAVerifySectionTheVerifierHasTheDefaults(t *testing.T) {
 	}
 	want := config.VerifySettings{
 		WorkDir: "/var/lib/sard-agent/verify", CheckPercent: 10, SpaceFactor: 2, SpaceHeadroom: 1 << 30,
-		Limits: config.VerifyLimits{Prepare: 10 * time.Minute, Check: 2 * time.Hour, Restore: 4 * time.Hour, Fingerprint: time.Hour},
+		Limits:  config.VerifyLimits{Prepare: 10 * time.Minute, Check: 2 * time.Hour, Restore: 4 * time.Hour, Fingerprint: time.Hour},
+		Pull:    true,
+		Sandbox: config.SandboxLimits{CPUs: "2", Memory: "4g", Pids: 1024},
 	}
-	if got := c.VerifySettings(); got != want {
+	if got := c.VerifySettings(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("settings = %+v", got)
+	}
+}
+
+// Owner's decision 8: a closed network gives its own images, pulled from
+// nowhere; the list of the release is replaced, not merged.
+func TestTheImagesOfTheConfigReplaceTheReleaseListAndPullCanBeOff(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("a", 64)
+	body := "verify:\n  pull: false\n  images:\n    - {name: postgres, version: '17.6', digest: '" + digest + "'}\n" +
+		"  sandbox: {cpus: '0.5', memory: 1g, pids: 64}\n"
+	c, err := config.Parse([]byte(restoreBase + body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := c.VerifySettings()
+	if s.Pull || !reflect.DeepEqual(s.Images, []config.VerifyImage{{Name: "postgres", Version: "17.6", Digest: digest}}) ||
+		s.Sandbox != (config.SandboxLimits{CPUs: "0.5", Memory: "1g", Pids: 64}) {
+		t.Fatalf("settings = %+v", s)
+	}
+}
+
+func TestAnImageOfTheConfigThatIsNoImageStopsTheAgent(t *testing.T) {
+	_, err := config.Parse([]byte(restoreBase + "verify:\n  images:\n    - {name: postgres, version: '17.6'}\n"))
+	if !errors.Is(err, config.ErrInvalidVerify) || !strings.Contains(err.Error(), "verify.images[0]") {
+		t.Fatalf("err = %v", err)
+	}
+	_, err = config.Parse([]byte(restoreBase + "verify:\n  sandbox: {pids: -1}\n"))
+	if !errors.Is(err, config.ErrInvalidVerify) || !strings.Contains(err.Error(), "verify.sandbox.pids") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -38,9 +69,11 @@ func TestTheVerifySectionSetsEachSettingOnItsOwn(t *testing.T) {
 	}
 	want := config.VerifySettings{
 		WorkDir: "/srv/verify", CheckPercent: 100, SpaceFactor: 1.5, SpaceHeadroom: 0,
-		Limits: config.VerifyLimits{Prepare: 10 * time.Minute, Check: 30 * time.Minute, Restore: 12 * time.Hour, Fingerprint: time.Hour},
+		Limits:  config.VerifyLimits{Prepare: 10 * time.Minute, Check: 30 * time.Minute, Restore: 12 * time.Hour, Fingerprint: time.Hour},
+		Pull:    true,
+		Sandbox: config.SandboxLimits{CPUs: "2", Memory: "4g", Pids: 1024},
 	}
-	if got := c.VerifySettings(); got != want {
+	if got := c.VerifySettings(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("settings = %+v", got)
 	}
 }

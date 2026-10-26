@@ -559,7 +559,7 @@ func TestAtStartEverythingLeftByEarlierVerificationsIsRemoved(t *testing.T) {
 	r := newRig(t)
 	r.disk.entries = []string{jobID, "7a7a7a7a-0000-0000-0000-000000000000"}
 
-	removed, err := verifier.New(r.opts).Sweep()
+	removed, err := verifier.New(r.opts).Sweep(t.Context())
 
 	want := []string{workDir + "/" + jobID, workDir + "/7a7a7a7a-0000-0000-0000-000000000000"}
 	if err != nil || !slices.Equal(removed, want) || !slices.Equal(r.disk.removed, want) {
