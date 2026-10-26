@@ -103,7 +103,7 @@ func (s *session) query(ctx context.Context, sql string) (string, bool, error) {
 func (s *session) ask(ctx context.Context, sql string) (string, bool, error) {
 	marker := "M" + newMarker()
 	if err := s.send(sql + "\n\\echo " + marker + "\n"); err != nil {
-		return "", false, err
+		return "", false, outranked(ctx, err)
 	}
 	return s.readUntil(ctx, marker)
 }
@@ -117,7 +117,7 @@ func (s *session) readUntil(ctx context.Context, marker string) (string, bool, e
 			return "", false, context.Cause(ctx)
 		case line, open := <-s.lines:
 			if !open {
-				return "", false, s.ended()
+				return "", false, outranked(ctx, s.ended())
 			}
 			if line == marker {
 				return a.row, a.got, nil
@@ -125,6 +125,15 @@ func (s *session) readUntil(ctx context.Context, marker string) (string, bool, e
 			a.read(line)
 		}
 	}
+}
+
+// outranked: psql ended because the step's context did, which is the cause to
+// report, whichever of the two the plugin saw first.
+func outranked(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return context.Cause(ctx)
+	}
+	return err
 }
 
 // answer is the first row a request printed.
