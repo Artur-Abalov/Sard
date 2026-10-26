@@ -63,6 +63,7 @@ func (s *fakeSandboxes) Sweep(context.Context) ([]string, error) { return s.swep
 // database is a plugin like postgresql: its copy runs in a sandbox.
 type database struct {
 	*fakePlugin
+	specErr   error
 	readyErr  error
 	openErr   error
 	passwords []string
@@ -72,6 +73,9 @@ type database struct {
 
 func (d *database) Sandbox(f *sdk.Fingerprint) (sdk.SandboxSpec, error) {
 	d.reference = f
+	if d.specErr != nil {
+		return sdk.SandboxSpec{}, d.specErr
+	}
 	return sdk.SandboxSpec{Image: "postgres", Major: "17", DataDir: "/var/lib/postgresql/data", PasswordEnv: "POSTGRES_PASSWORD"}, nil
 }
 
@@ -299,5 +303,29 @@ func TestASnapshotWithoutFingerprintStartsTheSandboxWithoutAReference(t *testing
 
 	if db.reference != nil || find(result.GetVerify(), "start").GetStatus() != passed {
 		t.Fatalf("reference %v, stages %v", db.reference, stagesOf(result.GetVerify()))
+	}
+}
+
+// A plugin that cannot name the sandbox of a copy starts none.
+func TestAPluginThatNamesNoSandboxStartsNone(t *testing.T) {
+	r, db, boxes := dbRig(t)
+	db.specErr = errors.New("the fingerprint has no major_version")
+
+	result, _ := newVerifier(r).Run(t.Context(), r.step, db, r.store, r.reporter)
+
+	s := find(result.GetVerify(), "sandbox")
+	if s.GetStatus() != cannotRun || !strings.Contains(s.GetOutput(), "names no sandbox") || len(boxes.started) != 0 {
+		t.Fatalf("stage %v, started %v", s, boxes.started)
+	}
+}
+
+// The sandboxes of an engine: a start that fails is no sandbox, not a nil one.
+func TestASandboxOfAnEngineThatDoesNotStartIsNone(t *testing.T) {
+	e := &sandbox.Engine{Runtime: func(context.Context) sandbox.Runtime { return sandbox.Runtime{} }}
+
+	box, err := verifier.EngineSandboxes(e).Start(t.Context(), "j", sdk.SandboxSpec{Image: "postgres"}, "/d", "p")
+
+	if box != nil || !errors.Is(err, sandbox.ErrNoRuntime) {
+		t.Fatalf("box %v, err %v", box, err)
 	}
 }

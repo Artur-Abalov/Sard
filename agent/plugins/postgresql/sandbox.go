@@ -72,7 +72,7 @@ func (p Plugin) SandboxReady(ctx context.Context, h sdk.SandboxHost, f *sdk.Fing
 func (p Plugin) awaitServer(ctx context.Context, h sdk.SandboxHost) error {
 	for {
 		out, err := sandboxQuery(ctx, h, "postgres", "SHOW listen_addresses")
-		if err == nil && out != "" {
+		if out != "" {
 			return nil
 		}
 		if waited := p.sleep(ctx, readyPoll); waited != nil {
@@ -109,7 +109,7 @@ func (p Plugin) OpenCopy(ctx context.Context, h sdk.SandboxHost, c sdk.RestoredC
 }
 
 // sandboxQuery runs one query with psql in the sandbox, as its superuser over
-// the socket; the output without its line end.
+// the socket; the output without its line end, empty on a failure.
 func sandboxQuery(ctx context.Context, h sdk.SandboxHost, database, query string) (string, error) {
 	var out bytes.Buffer
 	var stderr []string
@@ -186,12 +186,10 @@ func (tool) ModTime() time.Time { return time.Time{} }
 func (tool) IsDir() bool        { return false }
 func (tool) Sys() any           { return nil }
 
-// CopySize implements sdk.CopySizer: the size of the database of the source.
+// CopySize implements sdk.CopySizer: the size of the database of the source;
+// without the fact its empty value does not parse.
 func (Plugin) CopySize(f sdk.Fingerprint) (uint64, bool) {
-	fact, ok := f.Lookup(factSize)
-	if !ok {
-		return 0, false
-	}
+	fact, _ := f.Lookup(factSize)
 	size, err := strconv.ParseUint(fact.Value, 10, 64)
 	return size, err == nil
 }

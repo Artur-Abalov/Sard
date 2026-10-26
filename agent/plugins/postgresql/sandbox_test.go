@@ -172,8 +172,12 @@ func TestASnapshotWithoutFingerprintNeedsNoExtension(t *testing.T) {
 func TestTheListOfExtensionsThatCannotBeReadIsTheFailure(t *testing.T) {
 	h := &boxHost{answers: map[string][]string{listen: {"*"}, extensions: {"!"}}}
 	f := pgFingerprint(sdk.Fact{Name: "extension:pg_trgm", Rule: sdk.RuleExact, Value: "present"})
-	if err := (postgresql.Plugin{}).SandboxReady(t.Context(), h, f); err == nil {
-		t.Fatal("a failed list passed")
+	err := (postgresql.Plugin{}).SandboxReady(t.Context(), h, f)
+
+	// A list that could not be read refuses nothing: it is a failure of its own.
+	var refusal *sdk.SandboxRefusal
+	if err == nil || errors.As(err, &refusal) || !strings.Contains(err.Error(), "psql exited 2") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -190,8 +194,9 @@ func TestACopyOpensWhenItsDatabaseAnswersFromItsCatalog(t *testing.T) {
 	if err := (postgresql.Plugin{}).OpenCopy(t.Context(), h, c); err == nil {
 		t.Fatal("a copy that does not answer opened")
 	}
-	if err := (postgresql.Plugin{}).OpenCopy(t.Context(), h, sdk.RestoredCopy{Config: sdk.Config("{")}); err == nil {
-		t.Fatal("a broken config opened")
+	ran := len(h.ran)
+	if err := (postgresql.Plugin{}).OpenCopy(t.Context(), h, sdk.RestoredCopy{Config: sdk.Config("{")}); err == nil || len(h.ran) != ran {
+		t.Fatalf("a broken config: err %v, ran %d more", err, len(h.ran)-ran)
 	}
 }
 

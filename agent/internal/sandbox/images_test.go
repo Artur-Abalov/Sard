@@ -55,3 +55,17 @@ func TestAListLineThatIsNoImageIsAnError(t *testing.T) {
 		t.Fatalf("list %+v, err %v", list, err)
 	}
 }
+
+// A zero is a number of a version (18.0); a name may not be empty.
+func TestAVersionWithAZeroIsAVersionAndANameMustBeThere(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("0f", 32)
+	if err := (sandbox.Image{Name: "postgres", Version: "18.0", Digest: digest}).Valid(); err != nil {
+		t.Fatal(err)
+	}
+	if err := (sandbox.Image{Name: "", Version: "18.0", Digest: digest}).Valid(); err == nil || !strings.Contains(err.Error(), "want a name") {
+		t.Fatalf("err = %v", err)
+	}
+	if err := (sandbox.Image{Name: "postgres", Version: "18.-1", Digest: digest}).Valid(); err == nil {
+		t.Fatal("a negative number is a version")
+	}
+}

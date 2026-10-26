@@ -24,6 +24,8 @@ type engineCLI struct {
 	images  map[string]bool
 	pulls   map[string]bool
 	ps      string
+	psErr   error
+	rmErr   map[string]error
 	runErr  error
 	streams []sandbox.Command
 	code    int
@@ -45,9 +47,9 @@ func (c *engineCLI) Output(ctx context.Context, name string, args ...string) ([]
 		}
 		return nil, errors.New("toomanyrequests")
 	case args[0] == "ps":
-		return []byte(c.ps), nil
+		return []byte(c.ps), c.psErr
 	case args[0] == "rm":
-		return nil, nil
+		return nil, c.rmErr[args[len(args)-1]]
 	}
 	return nil, errors.New("unexpected " + line)
 }
@@ -187,8 +189,11 @@ func TestTheNamesInTheReasonsAreTheImageAndItsVersion(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "postgres 17.11 (postgres@sha256:1711)") {
 		t.Fatalf("err = %v", err)
 	}
-	if _, err := e.Start(t.Context(), "j", sdk.SandboxSpec{Image: "mysql"}, "/d", "p"); err == nil || !strings.Contains(err.Error(), "mysql") {
+	if _, err := e.Start(t.Context(), "j", sdk.SandboxSpec{Image: "mysql"}, "/d", "p"); err == nil || !strings.Contains(err.Error(), "mysql (the newest)") {
 		t.Fatalf("err = %v", err)
+	}
+	if slices.ContainsFunc(c.calls, func(l string) bool { return strings.HasPrefix(l, "docker pull") }) {
+		t.Fatalf("pulled with verify.pull off: %q", c.calls)
 	}
 }
 
@@ -245,5 +250,19 @@ func TestASweepRemovesTheContainersOfEveryJob(t *testing.T) {
 	}
 	if removed, err := engine(c, agentv1.Sandbox_SANDBOX_NONE).Sweep(t.Context()); err != nil || removed != nil {
 		t.Fatalf("without a runtime: %v, %v", removed, err)
+	}
+}
+
+func TestASweepThatCannotListOrRemoveSaysSo(t *testing.T) {
+	c := &engineCLI{psErr: errors.New("permission denied")}
+	if removed, err := engine(c, agentv1.Sandbox_SANDBOX_DOCKER).Sweep(t.Context()); err == nil || removed != nil {
+		t.Fatalf("a failed listing: %q, %v", removed, err)
+	}
+
+	c = &engineCLI{ps: "aa11\nbb22\n", rmErr: map[string]error{"bb22": errors.New("device busy")}}
+	removed, err := engine(c, agentv1.Sandbox_SANDBOX_DOCKER).Sweep(t.Context())
+
+	if err == nil || !strings.Contains(err.Error(), "bb22") || !slices.Equal(removed, []string{"aa11"}) {
+		t.Fatalf("removed %q, err %v", removed, err)
 	}
 }
