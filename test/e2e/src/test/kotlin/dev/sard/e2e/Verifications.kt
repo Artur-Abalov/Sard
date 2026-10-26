@@ -58,9 +58,10 @@ internal class Verifications(
         return UUID.fromString(job.require("id"))
     }
 
+    /** The newest job of [snapshot], open or (if it closed after the 409) closed since. */
     private fun openJobOf(snapshot: UUID): UUID =
         checkNotNull(
-            query("SELECT id FROM verification_jobs WHERE snapshot_ref = ? AND status <> 'closed'", snapshot) {
+            query("SELECT id FROM verification_jobs WHERE snapshot_ref = ? ORDER BY created_at DESC LIMIT 1", snapshot) {
                 it.getObject(1, UUID::class.java)
             },
         ) { "the open job of the source is not of snapshot $snapshot" }
@@ -71,6 +72,13 @@ internal class Verifications(
     ): Record {
         val job = start(snapshot)
         return Await.value("the record of job $job", timeout) { recordOf(job) }
+    }
+
+    /** Until no verification job is open: what a check asserts was left must not be the next job's. */
+    fun awaitIdle(timeout: Duration = VERIFY_TIMEOUT) {
+        Await.until("no verification job open", timeout) {
+            query("SELECT count(*) FROM verification_jobs WHERE status <> 'closed'") { it.getLong(1) } == 0L
+        }
     }
 
     fun recordOf(job: UUID): Record? =

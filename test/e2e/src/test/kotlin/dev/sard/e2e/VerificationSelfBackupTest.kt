@@ -37,6 +37,8 @@ class VerificationSelfBackupTest {
 
         assertEquals("passed", record.status, record.reason)
         assertEquals(5, record.level)
+        // The cycle verifies the other system source too (the keys, files): what is left is judged once both ended.
+        verifications.awaitIdle()
         assertEquals(emptyList(), verifications.sandboxes())
         assertEquals(emptyList(), verifier.workVolume())
     }
