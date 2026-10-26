@@ -87,3 +87,15 @@ func TestTheImagesOfTheListThatAreOnTheHostAreReported(t *testing.T) {
 		t.Fatalf("without a runtime: %+v", none)
 	}
 }
+
+// yes is a container CLI that answers every command.
+type yes struct{}
+
+func (yes) Output(context.Context, string, ...string) ([]byte, error) { return []byte("ok"), nil }
+
+func TestWithoutARuntimeNoImageIsAskedFor(t *testing.T) {
+	list := []sandbox.Image{{Name: "postgres", Version: "17.6", Digest: "sha256:aa"}}
+	if got := (sandbox.Runtime{Kind: agentv1.Sandbox_SANDBOX_NONE}).Present(t.Context(), yes{}, list); got != nil {
+		t.Fatalf("present = %v", got)
+	}
+}
