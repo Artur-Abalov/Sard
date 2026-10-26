@@ -719,6 +719,7 @@ jobs:
           gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" \
             --pattern "sard-${VERSION#v}-images-linux-${{ matrix.arch }}.tar.gz" \
             --pattern docker-compose.yml --pattern sard.env.example \
+            --pattern db-init.sh --pattern bootstrap.sql --pattern pg_hba.conf --pattern postgres-entrypoint.sh \
             --pattern SHA256SUMS.server --pattern SHA256SUMS.server.minisig
           # As docs/operator/11-offline.md: the public key from the repository at this tag.
           curl -fsSLO "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${VERSION}/deploy/release/sard-release.pub"
@@ -738,15 +739,18 @@ jobs:
             if curl -fsS --max-time 5 -o /dev/null https://github.com; then echo "network reachable" >&2; exit 1; fi
             bash -euo pipefail "$1" | tee "$2"' _ "$RUNNER_TEMP/offline-verify.sh" "$RUNNER_TEMP/offline-verify.out"
           grep -q "Trusted comment: sard-server $VERSION$" "$RUNNER_TEMP/offline-verify.out"
-      - name: Load and start without a registry
-        working-directory: ${{ runner.temp }}/offline
+      # The installation of docs/operator/11-offline.md, run verbatim: the files of the release are put where the
+      # compose file looks for them (db/), so a file that the page forgets to copy fails here, not at the operator's.
+      - name: Load and install as docs/operator says
         run: |
-          gunzip -c "sard-${VERSION#v}-images-linux-${{ matrix.arch }}.tar.gz" | docker load
-          cp sard.env.example .env
-          # A loaded image has no registry digest: PostgreSQL by the tag the archive carries (docs/operator/11-offline.md).
-          echo "SARD_POSTGRES_IMAGE=$(grep '^SARD_POSTGRES_IMAGE=' "$GITHUB_WORKSPACE/deploy/postgres.env" | cut -d= -f2 | cut -d@ -f1)" >> .env
-          docker compose up -d --wait --pull never
-      - run: scripts/smoke-server.sh "$RUNNER_TEMP/offline/.env" "$VERSION"
+          ln -s "$RUNNER_TEMP/offline" ~/sard-offline
+          awk '/<!-- offline-install:begin -->/{f=1; next} /<!-- offline-install:end -->/{f=0} f' \
+            "$GITHUB_WORKSPACE/docs/operator/11-offline.md" | awk '/^```bash$/{f=1; next} /^```$/{f=0} f' >"$RUNNER_TEMP/offline-install.sh"
+          grep -q 'docker load' "$RUNNER_TEMP/offline-install.sh"
+          cat "$RUNNER_TEMP/offline-install.sh"
+          bash -euo pipefail "$RUNNER_TEMP/offline-install.sh"
+      - name: Start without a registry
+        run: cd ~/sard && docker compose up -d --wait --pull never
+      - run: scripts/smoke-server.sh ~/sard/.env "$VERSION"
       - if: failure()
-        working-directory: ${{ runner.temp }}/offline
-        run: docker compose logs --no-color
+        run: cd ~/sard && docker compose logs --no-color

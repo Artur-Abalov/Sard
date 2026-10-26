@@ -102,9 +102,9 @@ server_fresh() { # name: a fake asset directory, signed by the test key
   mkdir -p "$d"
   echo archive >"$d/sard-${VERSION#v}-images-linux-amd64.tar.gz"
   echo compose >"$d/docker-compose.yml"
-  echo script >"$d/db-init.sh"
-  echo sql >"$d/bootstrap.sql"
-  echo hba >"$d/pg_hba.conf"
+  # Every installation file of deploy/db/, by its release name, so the fake set cannot drift from the real one.
+  local f
+  for f in "$ROOT"/deploy/db/*; do echo "db $(basename "$f")" >"$d/$(basename "$f")"; done
   echo '{"images":[]}' >"$d/images.json"
   (cd "$d" && sha256sum -- * >SHA256SUMS.server)
   server_sign "$d" release "$VERSION"

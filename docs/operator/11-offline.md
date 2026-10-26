@@ -51,6 +51,7 @@ sha256sum --check --ignore-missing SHA256SUMS.server
 подменены или повреждены. Архив собран в релизе из образов, подписанных
 cosign в реестре; их digest — в `images.json`.
 
+<!-- offline-install:begin -->
 ```bash
 cd ~/sard-offline
 gunzip -c sard-*-images-linux-*.tar.gz | docker load
@@ -60,6 +61,7 @@ cp db-init.sh bootstrap.sql pg_hba.conf postgres-entrypoint.sh ~/sard/db/
 sed -n 's/^# SARD_POSTGRES_IMAGE=\(.*\)@.*/SARD_POSTGRES_IMAGE=\1/p' sard.env.example >> ~/sard/.env
 cd ~/sard && sudo chgrp 10001 .env && chmod 640 .env
 ```
+<!-- offline-install:end -->
 
 Последняя строка `.env` должна стать `SARD_POSTGRES_IMAGE=postgres:<версия>-alpine`.
 Образ в compose-файле закреплён по digest реестра. `docker load` такого digest

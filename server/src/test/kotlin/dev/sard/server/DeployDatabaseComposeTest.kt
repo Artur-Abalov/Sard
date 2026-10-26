@@ -91,6 +91,26 @@ class DeployDatabaseComposeTest {
     }
 
     @Test
+    fun `Задача verify-offline скачивает каждый файл compose и ставит его в db по странице оператора`() {
+        val workflow = File("../.github/workflows/release.yml").readText()
+        val job = workflow.substringAfter("\n  verify-offline:\n").split(Regex("\n  [a-z-]+:\n")).first()
+        val page = File("../docs/operator/11-offline.md").readText()
+        val install =
+            page.substringAfter("<!-- offline-install:begin -->").substringBefore("<!-- offline-install:end -->")
+        val names = configFiles().values.map { it.substringAfterLast("/") }
+
+        assertTrue(names.isNotEmpty())
+        assertTrue("offline-install:begin" in job, "the job runs the installation block of the page")
+        for (name in names) {
+            assertTrue("--pattern $name" in job, "$name is downloaded by the job")
+            assertTrue(
+                install.lines().any { it.startsWith("cp ") && name in it && it.trimEnd().endsWith("/db/") },
+                "$name is copied into db/ by the page",
+            )
+        }
+    }
+
+    @Test
     fun `Compose-файл не содержит копий db-init, bootstrap и конфигурации pg_hba`() {
         val text = File("../deploy/docker-compose.yml").readText()
 
@@ -124,6 +144,7 @@ class DeployDatabaseComposeTest {
         assertEquals(setOf("db-init", "migrate"), mounting("sard-db-migrate"))
         assertEquals(setOf("db-init", "server"), mounting("sard-db-app"))
         assertEquals(setOf("db-init", "self-agent"), mounting("sard-db-backup"))
+        assertEquals(setOf("postgres", "db-init"), mounting("postgres-socket"))
         assertTrue(mounting("sard-db-app").intersect(mounting("sard-db-migrate")) == setOf("db-init"))
     }
 
