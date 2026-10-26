@@ -60,15 +60,20 @@ func (ExecCLI) Stream(ctx context.Context, cmd Command) (int, error) {
 		return -1, err
 	}
 	lines(stderr, cmd.Stderr)
-	err = c.Wait()
+	return exitCode(c.Wait())
+}
+
+// exitCode is the code a process exited with: a non-zero one is no error,
+// a signal is -1 with the error.
+func exitCode(err error) (int, error) {
 	var exit *exec.ExitError
-	if errors.As(err, &exit) && exit.ExitCode() >= 0 {
+	switch {
+	case err == nil:
+		return 0, nil
+	case errors.As(err, &exit) && exit.ExitCode() >= 0:
 		return exit.ExitCode(), nil
 	}
-	if err != nil {
-		return -1, err
-	}
-	return 0, nil
+	return -1, err
 }
 
 // lines hands each line of r to each; nil reads it to the end only.

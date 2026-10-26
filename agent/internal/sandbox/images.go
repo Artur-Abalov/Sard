@@ -50,16 +50,20 @@ func ParseImages(text string) ([]Image, error) {
 
 // Valid: a name, a semantic version and a sha256 digest.
 func (i Image) Valid() error {
-	hex, ok := strings.CutPrefix(i.Digest, "sha256:")
 	switch {
 	case i.Name == "" || strings.ContainsAny(i.Name, "@: "):
 		return fmt.Errorf("image %q: want a name", i.Name)
 	case version(i.Version) == nil:
 		return fmt.Errorf("image %s: version %q: want numbers such as 17.6", i.Name, i.Version)
-	case !ok || len(hex) != 64 || strings.Trim(hex, "0123456789abcdef") != "":
+	case !sha256Digest(i.Digest):
 		return fmt.Errorf("image %s %s: digest %q: want sha256: and 64 hexadecimal characters", i.Name, i.Version, i.Digest)
 	}
 	return nil
+}
+
+func sha256Digest(d string) bool {
+	hex, ok := strings.CutPrefix(d, "sha256:")
+	return ok && len(hex) == 64 && strings.Trim(hex, "0123456789abcdef") == ""
 }
 
 // version is the numbers of a semantic version, nil when it is none.

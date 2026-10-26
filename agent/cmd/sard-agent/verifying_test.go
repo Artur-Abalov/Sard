@@ -253,3 +253,16 @@ func TestAVerifierWithImagesThatAreNoneDoesNotStart(t *testing.T) {
 		t.Fatalf("v %v, err %v", v, err)
 	}
 }
+
+// A verifier whose verify.images is no list of images stops before it connects.
+func TestAVerifierWithAWrongListOfImagesRefusesToStart(t *testing.T) {
+	h := newAgentHost(t)
+	installPair(t, h.dir, withRole("verifier")...)
+	h.extra = "verify:\n  work_dir: " + filepath.Join(h.dir, "verify") + "\n  images:\n    - {name: postgres, version: latest, digest: sha256:x}\n"
+
+	_, stderr := h.refuses()
+
+	if !strings.Contains(stderr, "verify.images[0]") {
+		t.Fatalf("stderr %q", stderr)
+	}
+}

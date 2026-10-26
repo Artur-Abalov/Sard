@@ -171,6 +171,11 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 	}
 	cfg, me := local.cfg, local.host
 	removeStale(local, rt)
+	// V5: what a killed verification left is removed before any step, too.
+	verify, err := newVerifying(cfg, me, verifier.OSDisk{}, slog.Default())
+	if err != nil {
+		return err
+	}
 	resticBinary, hostname, err := checkHostRuntime(ctx, cfg, configPath, hostnameOf, executable)
 	if err != nil {
 		return err
@@ -183,11 +188,6 @@ func startWith(ctx context.Context, configPath string, stdout io.Writer, hostnam
 	// R2a: before any step is accepted, what a killed restore left is removed.
 	engine := newRestoreEngine(cfg)
 	journal := newRestoreJournal(cfg, slog.Default())
-	// V5: what a killed verification left is removed before any step, too.
-	verify, err := newVerifying(cfg, me, verifier.OSDisk{}, slog.Default())
-	if err != nil {
-		return err
-	}
 	agent := newAgentWith(cfg, hostname, resticBinary, me.machineID, engine, journal, rt, verify.readsOnly(), verify.options()...)
 	verify.attach(agent)
 	go verify.warnIfWritable(ctx, lockers(openRepositories(cfg, resticOptions(cfg, resticBinary))), slog.Default())

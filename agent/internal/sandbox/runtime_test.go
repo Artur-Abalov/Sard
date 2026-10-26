@@ -129,3 +129,10 @@ func TestTheCLIOutputIsTheStdoutOfTheProgram(t *testing.T) {
 		t.Fatalf("%q, %v", out, err)
 	}
 }
+
+func TestAProcessKilledBySignalHasNoExitCode(t *testing.T) {
+	code, err := (sandbox.ExecCLI{}).Stream(t.Context(), sandbox.Command{Name: "/bin/sh", Args: []string{"-c", "kill -KILL $$"}})
+	if err == nil || code != -1 {
+		t.Fatalf("code %d, err %v", code, err)
+	}
+}
