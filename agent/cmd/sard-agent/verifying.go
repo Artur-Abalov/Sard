@@ -125,8 +125,11 @@ func (v *verifying) warnIfWritable(ctx context.Context, repos map[string]locker,
 func warnIfCanLock(ctx context.Context, name string, repo locker, log *slog.Logger) {
 	limited, cancel := context.WithTimeout(ctx, writableCheckTimeout)
 	defer cancel()
-	if repo.CheckLock(limited) == nil {
+	switch err := repo.CheckLock(limited); {
+	case err == nil:
 		log.Warn("these storage credentials can write: a verifier needs none that do; give it credentials that only read", "repository", name)
+	case !refusesLock(err):
+		log.Warn("cannot tell whether these storage credentials only read; sard-agent repo check asks again", "repository", name, "reason", err.Error())
 	}
 }
 

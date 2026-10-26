@@ -40,6 +40,7 @@ private fun snapshot(
     scriptNames: List<String> = listOf("pre-dump"),
     machineId: String = HEX64,
     restoreDir: String = "",
+    verifier: VerifierReport? = null,
 ) = AgentSnapshot(
     hostname,
     agentVersion,
@@ -52,6 +53,7 @@ private fun snapshot(
     scriptNames,
     machineId,
     restoreDir,
+    verifier,
 )
 
 /** What a refusal says on the wire: the reason and the ErrorInfo metadata. */
@@ -357,6 +359,24 @@ class SnapshotRulesTest {
             assertEquals(invalid("restore_dir"), refusalOf(snapshot(restoreDir = dir)), dir.take(20))
         }
         assertNull(refusalOf(snapshot(restoreDir = "/" + "a".repeat(4095))))
+    }
+
+    // V5: PostgreSQL holds no NUL in text or jsonb; what a verifier reports is stored as it comes.
+    @Test
+    fun `a verifier status with a NUL character is FIELD_INVALID`() {
+        val image = SandboxImageEntry("postgres", "17.11", "sha256:$HEX64")
+        val spoiled =
+            listOf(
+                VerifierReport(1, SandboxKind.DOCKER, sandboxVersion = "29.\u00009"),
+                VerifierReport(1, SandboxKind.DOCKER, images = listOf(image.copy(name = "post\u0000gres"))),
+                VerifierReport(1, SandboxKind.DOCKER, images = listOf(image.copy(version = "17.\u000011"))),
+                VerifierReport(1, SandboxKind.DOCKER, images = listOf(image, image.copy(digest = "sha256:\u0000"))),
+            )
+        for (report in spoiled) {
+            assertEquals(invalid("verifier"), refusalOf(snapshot(verifier = report)), "$report")
+        }
+        assertNull(refusalOf(snapshot(verifier = VerifierReport(1, SandboxKind.DOCKER, "29.0.1", listOf(image)))))
+        assertNull(refusalOf(snapshot(verifier = VerifierReport(null, null))))
     }
 
     @Test

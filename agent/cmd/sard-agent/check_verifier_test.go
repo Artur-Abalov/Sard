@@ -79,3 +79,21 @@ func TestTheIntegrityCheckOfAVerifierTakesNoLock(t *testing.T) {
 		t.Fatalf("%+v (code %d)", l, code)
 	}
 }
+
+// A lock the storage did not answer about (no network) says nothing of the
+// credentials: the check cannot tell, and says so.
+func TestAVerifierWhoseStorageDoesNotAnswerTheLockCannotTell(t *testing.T) {
+	h := verifierCheckHost(t)
+	h.base().script = func(sub string, args []string) (string, int, bool) {
+		return "Fatal: unable to open repository: dial tcp 10.0.0.9:443: connect: connection refused", 1,
+			sub == "snapshots" && !slices.Contains(args, "--no-lock")
+	}
+
+	_, stdout, _ := h.repoCheck("base")
+
+	lines, _ := parseOut(t, stdout)
+	l := line(t, lines, hostcheck.CheckRepositoryReadOnly, "base")
+	if l.status != "WARN" || !strings.Contains(l.message, "cannot tell") || !strings.Contains(l.message, "connection refused") {
+		t.Fatalf("%+v", l)
+	}
+}

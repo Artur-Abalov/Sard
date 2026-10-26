@@ -263,11 +263,24 @@ func (r *repoSteps) checkData(cli *restic.CLI) error {
 func (r *repoSteps) readOnlyStep() hostcheck.Line {
 	line := hostcheck.Line{Check: hostcheck.CheckRepositoryReadOnly, Subject: r.repo.Name, Status: hostcheck.OK, Message: "the credentials only read: the storage refuses a lock"}
 	cli := newRestic(r.cfg, r.binary, r.deps, r.repo, runAs(r.who))
-	if cli.CheckLock(r.ctx) == nil {
+	err := cli.CheckLock(r.ctx)
+	switch {
+	case err == nil:
 		line.Status, line.Message = hostcheck.Warn, "these storage credentials can write: a verifier needs none that do, and a leak of them would let an attacker spoil the backups"
 		line.Hint = "give the verifier storage credentials that only read, see " + hostcheck.HelpURL(hostcheck.CheckRepositoryReadOnly)
+	case !refusesLock(err):
+		line.Status, line.Message = hostcheck.Warn, "cannot tell whether these storage credentials only read: "+r.refusalMessage(err)
+		line.Hint = "repeat when the storage answers, see " + hostcheck.HelpURL(hostcheck.CheckRepositoryReadOnly)
 	}
 	return line
+}
+
+// refusesLock: the storage refused the lock because it may not be written
+// (credentials that only read, a read-only mount); any other failure says
+// nothing about the credentials.
+func refusesLock(err error) bool {
+	text := err.Error()
+	return repoinit.CannotLock(text) || strings.Contains(strings.ToLower(text), "read-only file system")
 }
 
 // integrityMessage says why restic check failed; what restic printed is

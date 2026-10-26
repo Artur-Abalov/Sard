@@ -112,9 +112,24 @@ func TestStorageCredentialsThatCanWriteAreWarnedAboutAtStart(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&log, nil))
 
 	warnIfCanLock(t.Context(), "shared", lockAnswer{}, logger)
-	warnIfCanLock(t.Context(), "readonly", lockAnswer{err: errors.New("unable to create lock in backend")}, logger)
+	warnIfCanLock(t.Context(), "readonly", lockAnswer{err: errors.New(lockDenied)}, logger)
+	// A local repository mounted read-only refuses the lock in the words of the file system.
+	warnIfCanLock(t.Context(), "readonly-mount", lockAnswer{err: errors.New("exit code 1: Fatal: unable to create lock in backend: open /srv/main/locks/1f: read-only file system")}, logger)
 
 	if !strings.Contains(log.String(), "repository=shared") || strings.Contains(log.String(), "readonly") {
+		t.Fatalf("log %q", log.String())
+	}
+}
+
+// A storage that did not answer about the lock leaves the question open: the
+// start says so instead of saying nothing.
+func TestStorageThatDoesNotAnswerAboutTheLockIsSaidAtStart(t *testing.T) {
+	var log bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&log, nil))
+
+	warnIfCanLock(t.Context(), "far", lockAnswer{err: errors.New("exit code 1: Fatal: dial tcp: connection refused")}, logger)
+
+	if !strings.Contains(log.String(), "cannot tell") || !strings.Contains(log.String(), "repository=far") || !strings.Contains(log.String(), "connection refused") {
 		t.Fatalf("log %q", log.String())
 	}
 }

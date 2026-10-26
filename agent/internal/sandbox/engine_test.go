@@ -27,6 +27,8 @@ type engineCLI struct {
 	psErr   error
 	rmErr   map[string]error
 	runErr  error
+	runCode int
+	gone    string
 	streams []sandbox.Command
 	code    int
 }
@@ -57,7 +59,10 @@ func (c *engineCLI) Output(ctx context.Context, name string, args ...string) ([]
 func (c *engineCLI) Stream(_ context.Context, cmd sandbox.Command) (int, error) {
 	c.streams = append(c.streams, cmd)
 	if cmd.Args[0] == "run" {
-		return 0, c.runErr
+		if c.runCode != 0 && cmd.Stderr != nil {
+			cmd.Stderr("docker: Error response from daemon: invalid value for --cpus")
+		}
+		return c.runCode, c.runErr
 	}
 	if cmd.Stdout != nil {
 		_, _ = io.WriteString(cmd.Stdout, "out")
@@ -65,6 +70,10 @@ func (c *engineCLI) Stream(_ context.Context, cmd sandbox.Command) (int, error) 
 	if cmd.Stdin != nil {
 		data, _ := io.ReadAll(cmd.Stdin)
 		_, _ = cmd.Stdout.Write(data)
+	}
+	if c.gone != "" {
+		cmd.Stderr(c.gone)
+		return 1, nil
 	}
 	if cmd.Stderr != nil {
 		cmd.Stderr("a line")
@@ -264,5 +273,43 @@ func TestASweepThatCannotListOrRemoveSaysSo(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "bb22") || !slices.Equal(removed, []string{"aa11"}) {
 		t.Fatalf("removed %q, err %v", removed, err)
+	}
+}
+
+// A runtime that refuses the container exits non-zero without an error of
+// the CLI: no container, and the reason of the runtime in the failure.
+func TestARunThatExitsNonZeroStartsNoSandboxAndSaysWhy(t *testing.T) {
+	c := &engineCLI{images: map[string]bool{"postgres@sha256:1711": true}, runCode: 125}
+
+	box, err := engine(c, agentv1.Sandbox_SANDBOX_DOCKER).Start(t.Context(), "j", spec, "/d", "p")
+
+	if box != nil || err == nil || !strings.Contains(err.Error(), "exited 125") || !strings.Contains(err.Error(), "invalid value for --cpus") {
+		t.Fatalf("box %v, err %v", box, err)
+	}
+	if !slices.Contains(c.calls, "docker rm -f -v sard-verify-j") {
+		t.Fatalf("calls %q", c.calls)
+	}
+}
+
+// A container that stopped runs nothing: the runtime's refusal is no exit
+// code of the program but an error, for Docker and for Podman.
+func TestAProgramOfAStoppedContainerDidNotRun(t *testing.T) {
+	for _, said := range []string{
+		"Error response from daemon: container 0f is not running",
+		"Error: can only create exec sessions on running containers: container state improper",
+	} {
+		c := &engineCLI{images: map[string]bool{"postgres@sha256:1711": true}}
+		box, _ := engine(c, agentv1.Sandbox_SANDBOX_DOCKER).Start(t.Context(), "j", spec, "/d", "p")
+		c.gone = said
+		var lines []string
+
+		code, err := box.Run(t.Context(), sdk.Process{Path: "psql", Stderr: func(l string) { lines = append(lines, l) }})
+
+		if code != -1 || !errors.Is(err, sandbox.ErrStopped) || !strings.Contains(err.Error(), said) {
+			t.Errorf("%q: code %d, err %v", said, code, err)
+		}
+		if len(lines) != 0 {
+			t.Errorf("%q: the runtime's refusal reached the program's stderr: %q", said, lines)
+		}
 	}
 }

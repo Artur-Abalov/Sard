@@ -86,3 +86,16 @@ func TestAQueryThatDidNotRunCarriesWhy(t *testing.T) {
 		t.Fatalf("out %q, err %v", out, err)
 	}
 }
+
+// A sandbox whose container stopped (initdb failed on the data directory)
+// is waited for no longer: psql that did not run is no server coming up.
+func TestASandboxThatStoppedIsNotWaitedFor(t *testing.T) {
+	slept := 0
+	p := Plugin{Sleep: func(context.Context, time.Duration) error { slept++; return nil }}
+
+	err := p.awaitServer(t.Context(), &gone{})
+
+	if !errors.Is(err, errGone) || slept != 0 {
+		t.Fatalf("err %v, slept %d", err, slept)
+	}
+}

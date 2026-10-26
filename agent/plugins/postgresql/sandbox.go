@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"path/filepath"
@@ -72,8 +73,13 @@ func (p Plugin) SandboxReady(ctx context.Context, h sdk.SandboxHost, f *sdk.Fing
 func (p Plugin) awaitServer(ctx context.Context, h sdk.SandboxHost) error {
 	for {
 		out, err := sandboxQuery(ctx, h, "postgres", "SHOW listen_addresses")
-		if out != "" {
+		var exited *psqlExit
+		switch {
+		case out != "":
 			return nil
+		case err != nil && !errors.As(err, &exited):
+			// psql did not run at all: the container has stopped.
+			return fmt.Errorf("the server of the sandbox did not come up: %w", err)
 		}
 		if waited := p.sleep(ctx, readyPoll); waited != nil {
 			return fmt.Errorf("the server of the sandbox did not come up: %w (last answer: %v)", waited, err)
@@ -121,10 +127,18 @@ func sandboxQuery(ctx context.Context, h sdk.SandboxHost, database, query string
 	case err != nil:
 		return "", err
 	case code != 0:
-		return "", fmt.Errorf("psql exited %d: %s", code, strings.Join(stderr, "; "))
+		return "", &psqlExit{code: code, said: strings.Join(stderr, "; ")}
 	}
 	return strings.TrimSpace(out.String()), nil
 }
+
+// psqlExit is psql that ran and failed, as against one that did not run.
+type psqlExit struct {
+	code int
+	said string
+}
+
+func (e *psqlExit) Error() string { return fmt.Sprintf("psql exited %d: %s", e.code, e.said) }
 
 func (p Plugin) sleep(ctx context.Context, d time.Duration) error {
 	if p.Sleep != nil {

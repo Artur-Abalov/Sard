@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"time"
 )
 
@@ -146,18 +147,41 @@ func (v Verify) validate() error {
 	return nil
 }
 
-// validateSandbox: every image of the config names itself, no negative
-// limit. The agent checks the version and the digest when it builds the list.
+// validateSandbox: every image of the config names itself, every limit is a
+// value the runtimes take. The agent checks the version and the digest when it builds the list.
 func (v Verify) validateSandbox() error {
 	for i, img := range v.Images {
 		if img.Name == "" || img.Version == "" || img.Digest == "" {
 			return fmt.Errorf("%w: verify.images[%d]: want name, version and digest", ErrInvalidVerify, i)
 		}
 	}
-	if v.Sandbox.Pids < 0 {
-		return fmt.Errorf("%w: verify.sandbox.pids: want a positive number, got %d", ErrInvalidVerify, v.Sandbox.Pids)
+	return v.Sandbox.validate()
+}
+
+// The values docker run and podman run take for --cpus and --memory: a
+// positive decimal; a positive integer with an optional unit b, k, m or g.
+var (
+	cpusValue   = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?$`)
+	memoryValue = regexp.MustCompile(`^[0-9]+[bkmgBKMG]?$`)
+	zero        = regexp.MustCompile(`^[0.]+[bkmgBKMG]?$`)
+)
+
+// validate: each limit set is one the runtimes take; empty is the default.
+func (l SandboxLimits) validate() error {
+	switch {
+	case !positive(l.CPUs, cpusValue):
+		return fmt.Errorf("%w: verify.sandbox.cpus: want a positive number such as 1.5, got %q", ErrInvalidVerify, l.CPUs)
+	case !positive(l.Memory, memoryValue):
+		return fmt.Errorf("%w: verify.sandbox.memory: want a size such as 512m or 4g, got %q", ErrInvalidVerify, l.Memory)
+	case l.Pids < 0:
+		return fmt.Errorf("%w: verify.sandbox.pids: want a positive number, got %d", ErrInvalidVerify, l.Pids)
 	}
 	return nil
+}
+
+// positive: value is empty (the default) or of format and not zero.
+func positive(value string, format *regexp.Regexp) bool {
+	return value == "" || format.MatchString(value) && !zero.MatchString(value)
 }
 
 func (c Config) validateWorkDir(dir string) error {

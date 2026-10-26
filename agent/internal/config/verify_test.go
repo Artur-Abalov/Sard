@@ -123,3 +123,22 @@ func TestTheRootAsAWorkDirectoryIsRefusedAsTheRoot(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// The CPUs and the memory of a sandbox reach docker run and podman run as
+// they are: a value neither takes stops the agent, not each check.
+func TestASandboxLimitTheRuntimeDoesNotTakeStopsTheAgent(t *testing.T) {
+	for setting, want := range map[string]string{
+		"{cpus: two}": "verify.sandbox.cpus", "{cpus: '0'}": "verify.sandbox.cpus", "{cpus: '-1'}": "verify.sandbox.cpus",
+		"{memory: 4 GB}": "verify.sandbox.memory", "{memory: 4gb}": "verify.sandbox.memory", "{memory: '0'}": "verify.sandbox.memory",
+	} {
+		_, err := config.Parse([]byte(restoreBase + "verify:\n  sandbox: " + setting + "\n"))
+		if !errors.Is(err, config.ErrInvalidVerify) || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: err = %v", setting, err)
+		}
+	}
+	for _, setting := range []string{"{cpus: '1.5', memory: 512m}", "{cpus: '4', memory: 2G}", "{memory: '1073741824'}", "{cpus: '0.25', memory: 1024k}"} {
+		if _, err := config.Parse([]byte(restoreBase + "verify:\n  sandbox: " + setting + "\n")); err != nil {
+			t.Errorf("%s: %v", setting, err)
+		}
+	}
+}

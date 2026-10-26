@@ -27,6 +27,8 @@ var (
 	ErrNoRuntime   = errors.New("neither Docker nor Podman answers the service user")
 	ErrNoImage     = errors.New("no image of the verifier's list fits")
 	ErrImageAbsent = errors.New("the image is not on this host")
+	// ErrStopped is a program that did not run: its container has stopped.
+	ErrStopped = errors.New("the sandbox has stopped")
 )
 
 // Limits bound a sandbox: CPUs and memory as the runtime's flags take them.
@@ -82,11 +84,23 @@ func (e *Engine) Start(ctx context.Context, job string, spec sdk.SandboxSpec, da
 	if spec.PasswordEnv != "" {
 		run.Env = []string{spec.PasswordEnv + "=" + password}
 	}
-	if _, err := e.CLI.Stream(ctx, run); err != nil {
+	if err := e.run(ctx, rt, run); err != nil {
 		_ = c.Remove(context.WithoutCancel(ctx))
 		return nil, fmt.Errorf("start the sandbox %s: %w", describe(img), err)
 	}
 	return c, nil
+}
+
+// run runs the container: a runtime that refuses it exits non-zero, with its
+// reason on stderr, and no error of the CLI.
+func (e *Engine) run(ctx context.Context, rt Runtime, cmd Command) error {
+	var said []string
+	cmd.Stderr = func(l string) { said = append(said, l) }
+	code, err := e.CLI.Stream(ctx, cmd)
+	if err == nil && code != 0 {
+		err = fmt.Errorf("%s run exited %d: %s", rt.Binary, code, strings.Join(said, "; "))
+	}
+	return err
 }
 
 func orNewest(major string) string {
@@ -135,7 +149,8 @@ func (e *Engine) runArgs(rt Runtime, job string, spec sdk.SandboxSpec, dataDir s
 func (c *Container) Image() Image { return c.image }
 
 // Run runs p in the container. Its variables reach it through the
-// environment of the CLI, so that no value shows in a command line.
+// environment of the CLI, so that no value shows in a command line. In a
+// container that has stopped p does not run: -1 and ErrStopped.
 func (c *Container) Run(ctx context.Context, p sdk.Process) (int, error) {
 	args := []string{"exec", "-i"}
 	for _, env := range p.Env {
@@ -143,7 +158,35 @@ func (c *Container) Run(ctx context.Context, p sdk.Process) (int, error) {
 		args = append(args, "-e", name)
 	}
 	args = append(append(args, c.name, p.Path), p.Args...)
-	return c.cli.Stream(ctx, Command{Name: c.rt.Binary, Args: args, Env: p.Env, Stdin: p.Stdin, Stdout: p.Stdout, Stderr: p.Stderr})
+	stderr := &stopped{next: p.Stderr}
+	code, err := c.cli.Stream(ctx, Command{Name: c.rt.Binary, Args: args, Env: p.Env, Stdin: p.Stdin, Stdout: p.Stdout, Stderr: stderr.line})
+	if err == nil && code != 0 && stderr.refusal != "" {
+		return -1, fmt.Errorf("%w: %s", ErrStopped, stderr.refusal)
+	}
+	return code, err
+}
+
+// stopped is the stderr of an exec: the runtime's refusal of a stopped
+// container is kept, every other line is the program's.
+type stopped struct {
+	next    func(string)
+	refusal string
+}
+
+func (s *stopped) line(l string) {
+	switch {
+	case stoppedSays(l):
+		s.refusal = l
+	case s.next != nil:
+		s.next(l)
+	}
+}
+
+// stoppedSays: the line is the runtime refusing an exec in a stopped
+// container, Docker's words or Podman's.
+func stoppedSays(l string) bool {
+	return strings.HasPrefix(l, "Error response from daemon: container ") && strings.HasSuffix(l, " is not running") ||
+		strings.Contains(l, "can only create exec sessions on running containers")
 }
 
 // Remove removes the container with its anonymous volumes.

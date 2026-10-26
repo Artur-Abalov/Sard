@@ -299,6 +299,23 @@ class AgentStreamsTest {
             agent.closedWith()
         }
 
+    // V5: a status PostgreSQL cannot store (a NUL character) is dropped; the stream stays.
+    @Test
+    fun `a heartbeat with a verifier status that cannot be stored keeps the stream and records nothing`() =
+        test {
+            val agent = open()
+            agent.requests.send(hello())
+            recorder.await("hello ")
+            val status = VerifierStatus.newBuilder().setWorkFreeBytes(5).setSandboxVersion("29\u0000")
+            val spoiled = ConnectRequest.newBuilder().setHeartbeat(Heartbeat.newBuilder().setVerifier(status)).build()
+            agent.requests.send(spoiled)
+            agent.requests.send(progress("after"))
+            recorder.await("progress after")
+            assertEquals(emptyList(), recorder.events.filter { it.startsWith("verifier") })
+            agent.requests.close()
+            agent.closedWith()
+        }
+
     @Test
     fun `last_seen_at is written at most once per heartbeat interval`() =
         test {
