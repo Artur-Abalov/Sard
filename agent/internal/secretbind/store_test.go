@@ -88,9 +88,41 @@ func TestReadFileReadsARegularFileAndNotALink(t *testing.T) {
 	if err := os.WriteFile(path, []byte("x"), 0o640); err != nil {
 		t.Fatal(err)
 	}
+	uid, gid := ownedByOther(t, path)
 	data, info, err := secretbind.ReadFile(path)
-	if err != nil || string(data) != "x" || info.Mode.Perm() != 0o640 || info.UID != uint32(os.Getuid()) {
-		t.Errorf("ReadFile = %q, %+v, %v", data, info, err)
+	if err != nil || string(data) != "x" || info.Mode.Perm() != 0o640 || info.UID != uid || info.GID != gid {
+		t.Errorf("ReadFile = %q, %+v, %v; want owner %d:%d", data, info, err, uid, gid)
+	}
+}
+
+// ownedByOther gives the file to another user when the test runs as root, so
+// that the owner it reads is not the zero value; it returns the owner.
+func ownedByOther(t *testing.T, path string) (uint32, uint32) {
+	t.Helper()
+	if os.Getuid() != 0 {
+		return uint32(os.Getuid()), uint32(os.Getgid())
+	}
+	if err := os.Chown(path, 4242, 4343); err != nil {
+		t.Fatal(err)
+	}
+	return 4242, 4343
+}
+
+func TestReadFileGivesNoDataOfADirectoryAndRefusesALargeFile(t *testing.T) {
+	dir := t.TempDir()
+	data, info, err := secretbind.ReadFile(dir)
+	if err != nil || data != nil || !info.Mode.IsDir() {
+		t.Errorf("a directory: %q, %+v, %v", data, info, err)
+	}
+	path := filepath.Join(dir, "big.yaml")
+	for size, ok := range map[int]bool{64 << 10: true, 64<<10 + 1: false} {
+		if err := os.WriteFile(path, make([]byte, size), 0o640); err != nil {
+			t.Fatal(err)
+		}
+		data, _, err := secretbind.ReadFile(path)
+		if ok != (err == nil) || ok != (len(data) == size) {
+			t.Errorf("%d bytes: %d read, %v", size, len(data), err)
+		}
 	}
 }
 

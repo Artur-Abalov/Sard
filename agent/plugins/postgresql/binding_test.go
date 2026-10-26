@@ -5,6 +5,7 @@ package postgresql_test
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -120,7 +121,7 @@ func TestTheServerMustAskForSCRAMUnlessTheBindingAllowsMore(t *testing.T) {
 			for _, key := range []string{"psql", "psql session", "pg_dump", "pg_dumpall"} {
 				conn := connection(t, r.proc.ran(key)[0])
 				for param, v := range map[string]string{"require_auth": c.auth, "channel_binding": c.channel, "sslrootcert": c.rootCert} {
-					if conn.values[param] != v {
+					if conn.values[param] != v || slices.Contains(conn.keys, param) != (v != "") {
 						t.Errorf("%s: %s = %q, want %q", key, param, conn.values[param], v)
 					}
 				}

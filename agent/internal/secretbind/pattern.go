@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/Artur-Abalov/sard/agent/plugins/sdk"
 )
@@ -56,20 +57,19 @@ func ParsePattern(s string) (Pattern, error) {
 
 // parseSocket is /dir[:port[/database]]: the last colon ends the directory.
 func parseSocket(s string) (Pattern, error) {
-	i := strings.LastIndex(s, ":")
-	if i < 0 {
+	if !strings.Contains(s, ":") {
 		return finish(Pattern{host: s})
 	}
+	i := strings.LastIndex(s, ":")
 	return parseTail(s[:i], s[i:])
 }
 
 // parseBracketed is [ipv6][:port][/database].
 func parseBracketed(s string) (Pattern, error) {
-	end := strings.Index(s, "]")
-	if end < 0 {
+	host, rest, closed := strings.Cut(s[1:], "]")
+	if !closed {
 		return Pattern{}, errors.New("an IPv6 address needs its closing brackets ]")
 	}
-	host, rest := s[1:end], s[end+1:]
 	if err := checkBracketed(host, rest); err != nil {
 		return Pattern{}, err
 	}
@@ -78,7 +78,7 @@ func parseBracketed(s string) (Pattern, error) {
 
 // checkBracketed: an IPv6 address in the brackets, :port or /database after.
 func checkBracketed(host, rest string) error {
-	if ip := net.ParseIP(host); ip == nil || !strings.Contains(host, ":") {
+	if !isIPv6(host) {
 		return errors.New("only an IPv6 address goes in brackets: want [address]:port/database")
 	}
 	if rest != "" && !strings.HasPrefix(rest, ":") && !strings.HasPrefix(rest, "/") {
@@ -87,9 +87,12 @@ func checkBracketed(host, rest string) error {
 	return nil
 }
 
+// isIPv6: the host is an IPv6 address.
+func isIPv6(host string) bool { return strings.Contains(host, ":") && net.ParseIP(host) != nil }
+
 // parseHost is host[:port][/database], or an IPv6 address alone.
 func parseHost(s string) (Pattern, error) {
-	if ip := net.ParseIP(s); ip != nil {
+	if isIPv6(s) {
 		return Pattern{host: s}, nil
 	}
 	hostport, _, _ := strings.Cut(s, "/")
@@ -140,7 +143,7 @@ func finish(p Pattern) (Pattern, error) {
 // checkHost: a name or an IPv4 address, without the characters libpq or a
 // pattern would read otherwise; no wildcard.
 func checkHost(host string) error {
-	if host == "" || strings.ContainsAny(host, ",@*[]\x00") || strings.IndexFunc(host, isSpace) >= 0 {
+	if host == "" || strings.ContainsAny(host, ",@*[]\x00") || strings.ContainsFunc(host, unicode.IsSpace) {
 		return fmt.Errorf("the host must be a name or an address, without , @ * [ ] or spaces; got %q", host)
 	}
 	return checkHostBytes(host)
@@ -151,10 +154,6 @@ func checkHostBytes(host string) error {
 		return fmt.Errorf("the host is longer than %d bytes or holds a NUL byte", maxHostBytes)
 	}
 	return nil
-}
-
-func isSpace(r rune) bool {
-	return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\v' || r == '\f'
 }
 
 // checkPort: empty, * or 1-65535.
@@ -173,7 +172,7 @@ func portNumber(port string) bool {
 
 // checkDatabase: empty, * or a name of 1-63 bytes without NUL and *.
 func checkDatabase(db string) error {
-	if db == "" || db == wildcard {
+	if db == wildcard {
 		return nil
 	}
 	if len(db) > maxDatabaseBytes || strings.ContainsAny(db, "*\x00") {
@@ -199,7 +198,7 @@ func (p Pattern) String() string {
 
 // bracketed: an IPv6 address followed by a port or a database.
 func (p Pattern) bracketed() bool {
-	return strings.Contains(p.host, ":") && !strings.HasPrefix(p.host, "/") && (p.port != "" || p.database != "")
+	return isIPv6(p.host) && (p.port != "" || p.database != "")
 }
 
 // Match says whether t is a target of the pattern.
@@ -217,14 +216,14 @@ func sameHost(pattern, host string) bool {
 	if strings.HasPrefix(pattern, "/") {
 		return sameSocket(pattern, host)
 	}
-	a, b := net.ParseIP(pattern), net.ParseIP(host)
-	if a != nil || b != nil {
-		return a != nil && b != nil && a.Equal(b)
+	if ip := net.ParseIP(pattern); ip != nil {
+		return ip.Equal(net.ParseIP(host))
 	}
 	return strings.EqualFold(pattern, host)
 }
 
-// sameSocket: host is the socket directory of the pattern.
+// sameSocket: host is the socket directory of the pattern; a clean path that
+// begins with / is never the clean form of a relative one.
 func sameSocket(pattern, host string) bool {
-	return strings.HasPrefix(host, "/") && filepath.Clean(pattern) == filepath.Clean(host)
+	return filepath.Clean(pattern) == filepath.Clean(host)
 }

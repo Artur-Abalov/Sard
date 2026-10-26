@@ -116,3 +116,59 @@ func TestAPatternThatIsNotATargetIsRefusedWithTheReason(t *testing.T) {
 		}
 	}
 }
+
+func TestTheEdgesOfAPatternAreItsLimits(t *testing.T) {
+	good := []string{
+		"db:1/app", "db:65535/app", "db:5432/" + strings.Repeat("d", 63), strings.Repeat("h", 255),
+		"/" + strings.Repeat("s", 254), "[::1]", "[::1]/app", "[::1]:5432", "10.0.0.5:5432", "/run/a:b:5432/app",
+	}
+	for _, s := range good {
+		p, err := secretbind.ParsePattern(s)
+		if err != nil {
+			t.Errorf("ParsePattern(%q): %v", s, err)
+			continue
+		}
+		if want := strings.TrimSuffix(strings.TrimPrefix(s, "["), "]"); p.String() != s && p.String() != want {
+			t.Errorf("String() = %q, want %q", p.String(), s)
+		}
+	}
+	bad := map[string]string{
+		"db:0":                          "port",
+		"db:65536":                      "port",
+		"db:01":                         "port",
+		"db:+5":                         "port",
+		"db:5432:1":                     "brackets",
+		":5432":                         "host",
+		" db:5432":                      "host",
+		"db\t:5432":                     "host",
+		"[10.0.0.5]:5432":               "IP",
+		"[::1]:":                        "port",
+		"/run\x00x":                     "NUL",
+		"/" + strings.Repeat("s", 255):  "longer",
+		"/run:5432/" + "\x00":           "database",
+		strings.Repeat("h", 256) + ":1": "longer",
+	}
+	for s, want := range bad {
+		if _, err := secretbind.ParsePattern(s); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("ParsePattern(%q) = %v, want an error about %q", s, err, want)
+		}
+	}
+}
+
+func TestAnAddressPatternMatchesTheAddressOnlyAndANameNoAddress(t *testing.T) {
+	ip, _ := secretbind.ParsePattern("127.0.0.1")
+	name, _ := secretbind.ParsePattern("localhost")
+	socket, _ := secretbind.ParsePattern("/var/run/postgresql")
+	for _, c := range []struct {
+		p    secretbind.Pattern
+		host string
+		want bool
+	}{
+		{ip, "localhost", false}, {name, "127.0.0.1", false}, {ip, "127.0.0.1", true}, {name, "LocalHost", true},
+		{socket, "var/run/postgresql", false}, {socket, "/var/run/postgresql/.", true},
+	} {
+		if got := c.p.Match(target(c.host, 5432, "app")); got != c.want {
+			t.Errorf("%s matches %q: %v, want %v", c.p, c.host, got, c.want)
+		}
+	}
+}

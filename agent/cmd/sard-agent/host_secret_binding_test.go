@@ -5,6 +5,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"reflect"
 	"slices"
@@ -26,7 +27,7 @@ func TestASecretIsBoundToItsPluginAndTargetsInAFileOfRoot(t *testing.T) {
 	assertCode(t, code, exitOK)
 	file := h.path("secret-bindings/db.yaml")
 	h.assertRootsFile(file, 0o640)
-	h.assertMode(h.path("secret-bindings"), 0o750)
+	h.assertRootsFile(h.path("secret-bindings"), 0o750)
 	want := secretbind.Binding{Plugin: "postgresql", Auth: []string{"scram-sha-256", "md5"}, AllowTLS: "require", CAFile: "/etc/sard/pg-ca.pem", AllowNoChannelBinding: true}
 	assertBinding(t, h.fileContent(file), want, "db.example.com:5432/app", "/var/run/postgresql:5432/*")
 	containsAll(t, stdout, "bound to:   postgresql at db.example.com:5432/app, /var/run/postgresql:5432/* (auth scram-sha-256,md5; tls require; CA /etc/sard/pg-ca.pem; no channel binding)", "binding:    "+file)
@@ -169,12 +170,49 @@ func TestSecretListSaysWhereEachSecretIsBound(t *testing.T) {
 	h.set("db", "SECRET-MARKER")
 	code, stdout, stderr := h.sudo("secret", "list", "--config", "C")
 	assertCode(t, code, exitOK)
-	lines := strings.Split(strings.TrimSpace(stdout), "\n")
-	if len(lines) != 3 || !strings.HasSuffix(lines[0], "BOUND_TO") {
-		t.Fatalf("stdout %q", stdout)
-	}
-	if !strings.HasSuffix(lines[1], "postgresql at db.example.com:5432/app") || !strings.HasSuffix(lines[2], "nothing (no binding: given to no plugin)") {
-		t.Fatalf("BOUND_TO: %q", stdout)
+	fragment := h.path("agent.d/secret-db.yaml")
+	w := max(len(fragment), len(h.cfgPath)) + 2
+	want := fmt.Sprintf("NAME  %-*sBOUND_TO\ndb    %-*spostgresql at db.example.com:5432/app\npg    %-*snothing (no binding: given to no plugin)\n",
+		w, "DEFINED_IN", w, fragment, w, h.cfgPath)
+	if stdout != want {
+		t.Fatalf("stdout\n%s\nwant\n%s", stdout, want)
 	}
 	h.assertValuesHidden(stdout, stderr)
+}
+
+func TestABindingThatCannotBeWrittenIsAWriteErrorAndTheSecretIsNotDefined(t *testing.T) {
+	t.Parallel()
+	for _, op := range []string{"mkdir", "rename"} {
+		h := newSetupHost(t)
+		h.fsys.failOn, h.fsys.failPath = op, "secret-bindings"
+		code, _, stderr := h.set("db", "SECRET-MARKER")
+		assertRefusal(t, code, stderr, exitWrite, "CONFIG_WRITE")
+		h.assertAbsent(h.path("agent.d/secret-db.yaml"))
+	}
+}
+
+func TestANewBindingOfTheSameValueLeavesTheFragmentAlone(t *testing.T) {
+	t.Parallel()
+	h := newSetupHost(t)
+	h.set("db", "SECRET-MARKER")
+	h.fsys.failOn, h.fsys.failPath = "rename", "agent.d"
+	code, stdout, stderr := h.set("db", "SECRET-MARKER", "--plugin", "postgresql", "--target", "db2.example.com", "--auth", "md5")
+	if code != exitOK {
+		t.Fatalf("the fragment was written again: %d %s", code, stderr)
+	}
+	containsAll(t, stdout, "bound to:   postgresql at db2.example.com (auth md5)\n")
+}
+
+func TestSecretListSaysWhyABindingCannotBeUsedWithoutItsPath(t *testing.T) {
+	t.Parallel()
+	h := newSetupHost(t)
+	if err := os.MkdirAll(h.path("secret-bindings/pg.yaml"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, _ := h.sudo("secret", "list", "--config", "C")
+	assertCode(t, code, exitOK)
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	if len(lines) != 2 || !strings.Contains(lines[1], "unusable: is a directory") || strings.Contains(lines[1], "secret-bindings") {
+		t.Fatalf("stdout %q", stdout)
+	}
 }

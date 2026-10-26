@@ -88,7 +88,10 @@ func ReadFile(path string) ([]byte, secrets.Info, error) {
 	if !st.Mode().IsRegular() {
 		return nil, info, nil
 	}
-	data, err := io.ReadAll(io.LimitReader(f, maxFileBytes))
+	data, err := io.ReadAll(io.LimitReader(f, maxFileBytes+1))
+	if err == nil && len(data) > maxFileBytes {
+		return nil, info, fmt.Errorf("the file is larger than %d bytes", maxFileBytes)
+	}
 	return data, info, err
 }
 

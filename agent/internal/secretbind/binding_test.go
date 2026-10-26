@@ -123,3 +123,10 @@ func TestASecretIsNotAllowedForAnotherPlugin(t *testing.T) {
 		t.Errorf("Allows(files) = %#v, want %#v", err, want)
 	}
 }
+
+func TestAnEmptyListOfMethodsIsNone(t *testing.T) {
+	b, err := secretbind.Parse([]byte("plugin: postgresql\ntargets: [db]\nauth: []\n"))
+	if err != nil || b.Auth != nil || !reflect.DeepEqual(b, mustBinding(t, "postgresql", "db")) {
+		t.Errorf("Parse = %+v, %v; want no methods", b, err)
+	}
+}

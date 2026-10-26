@@ -25,8 +25,8 @@ const (
 	systemCA = "system"
 )
 
-// tlsRank orders the TLS modes from the weakest.
-var tlsRank = map[string]int{tlsDisable: 0, tlsRequire: 1, tlsVerifyFull: 2}
+// tlsOrder are the TLS modes from the weakest.
+var tlsOrder = []string{tlsDisable, tlsRequire, tlsVerifyFull}
 
 // secretHost gives a secret for a target: sdk.Host and sdk.RecoveryHost.
 type secretHost interface {
@@ -54,11 +54,7 @@ func (t target) socket() bool { return strings.HasPrefix(t.Host, "/") }
 
 // loopback: the server is on this host, over TCP.
 func (t target) loopback() bool {
-	if strings.EqualFold(t.Host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(t.Host)
-	return ip != nil && ip.IsLoopback()
+	return strings.EqualFold(t.Host, "localhost") || net.ParseIP(t.Host).IsLoopback()
 }
 
 // network: the password crosses a network, where TLS is required.
@@ -69,7 +65,7 @@ func (t target) network() bool { return !t.socket() && !t.loopback() }
 func (t target) checkTLS() error {
 	allowed := firstNonEmpty(t.grant.TLS, tlsVerifyFull)
 	mode := t.sslmode()
-	if !t.network() || tlsRank[mode] >= tlsRank[allowed] {
+	if !t.network() || slices.Index(tlsOrder, mode) >= slices.Index(tlsOrder, allowed) {
 		return nil
 	}
 	return &tlsRefusal{fmt.Sprintf("tls_mode %s would send the password of secret %q to %s:%d %s; the binding of the secret on the agent host allows %s at the weakest. "+
