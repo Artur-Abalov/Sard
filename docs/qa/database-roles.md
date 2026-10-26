@@ -3,10 +3,8 @@
 
 # QA: роли PostgreSQL, bootstrap.sql и пароли базы (DB2)
 
-Сценарии: `docs/specs/server/database-roles.feature`. Шаги, помеченные «(ОВ1)»,
-проверяют рекомендацию к единственному открытому вопросу и меняются вместе с
-решением владельца. Обновление со сборок до DB2 не поддерживается и здесь не
-проверяется.
+Сценарии: `docs/specs/server/database-roles.feature`. Обновление со сборок до
+DB2 не поддерживается и здесь не проверяется.
 
 Здесь вручную проходятся сценарии с тегом `@qa`: новая установка, аварийный
 доступ, отказы `sard_app`, неизменность записей проверок, смена пароля, отказы
@@ -30,7 +28,9 @@ compose (`$NET`).
 
    ```bash
    QA=$(mktemp -d); cd "$QA"
+   # The files the README quickstart downloads (Р15); from a release, use the quickstart itself.
    cp ~/Sard/deploy/docker-compose.yml ~/Sard/deploy/.env.example .
+   mkdir db && cp ~/Sard/deploy/db/* db/
    cp .env.example .env
    sed -i "s/^SARD_VERSION=.*/SARD_VERSION=<версия>/" .env
    PSQL='docker compose exec -T postgres psql -U sard -d sard -Atc'
@@ -40,6 +40,10 @@ compose (`$NET`).
    → `grep -c DB_PASSWORD .env` печатает `0`.
 
 ## Часть 1. Новая установка
+
+1a. `grep -oE 'file: *\./[^ ]+' docker-compose.yml` → каждый путь существует в
+    каталоге стенда и есть среди файлов релиза; `grep -c 'CREATE ROLE' docker-compose.yml`
+    → `0` (копий db-init.sh и bootstrap.sql в compose-файле нет).
 
 2. `docker compose up -d --wait` → код 0; `docker compose ps -a` показывает
    `db-init` и `migrate` в состоянии `exited (0)`, `postgres`, `server`,
@@ -77,15 +81,19 @@ compose (`$NET`).
     `drop table runs;`, `truncate runs;`, `create temp table x (i int);`
     → каждая — `permission denied …` или `must be owner of table runs`
     (SQLSTATE 42501); `\d runs` после них без изменений.
+    Затем `grant select on runs to public;` → только `WARNING: no privileges were
+    granted`; `\dp runs` до и после совпадает, у PUBLIC прав нет.
 11. После первой проверки восстановления (часть 5, шаг 15, или ручной запуск
     проверки): в том же сеансе `select id from restore_verifications limit 1;`,
     затем `update restore_verifications set status = 'passed' where id = '<id>';`
     и `delete from restore_verifications where id = '<id>';`
     → обе — `permission denied for table restore_verifications`; строка до и
     после совпадает.
-12. (ОВ1) Под `sard_app` вызвать служебную функцию очистки улик с границей
-    `now()` (имя — из ADR DB2) → для записей моложе предела базы `stages` не
-    изменились.
+12. Под `sard_app` вызвать служебную функцию очистки улик с границей `now()`
+    (имя — из ADR DB2) → у записей моложе 180 дней (предел базы) `stages` не
+    изменились. Отдельно: сервер с `SARD_RETENTION_VERIFICATIONS=179d` (или
+    `sard.retention.verifications=179d`) не стартует, ошибка называет
+    `sard.retention.verifications`.
 
 ## Часть 4. Смена пароля роли
 
