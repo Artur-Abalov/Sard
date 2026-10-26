@@ -19,11 +19,11 @@ import kotlin.test.assertEquals
  */
 class VerificationSelfBackupTest {
     @Test
-    fun `the snapshot of Sard's own database passes every stage in its sandbox`() {
+    fun `the snapshots of Sard's own database and keys pass every stage, the database in its sandbox`() {
         self.addLocalRepository(agentId, REPOSITORY)
         val bound = api.put("/api/v1/self-backup/repository", """{"repositoryName":"$REPOSITORY","confirmLocalStorage":true}""")
         assertEquals(SardApi.HTTP_OK, bound.status, bound.body)
-        val snapshot = backUpDatabase()
+        val snapshots = backUpNow()
         self.shareWithGroup(REPOSITORY)
         val key = self.verifierKey(REPOSITORY)
         val verifier =
@@ -33,26 +33,31 @@ class VerificationSelfBackupTest {
                 start()
             }
 
-        val record = verifications.verify(snapshot)
+        val database = verifications.verify(snapshots.getValue("self_database"))
+        // The other system source, the keys and the configuration, is files; the cycle verifies it too.
+        val keys = verifications.verify(snapshots.getValue("self_keys"))
 
-        assertEquals("passed", record.status, record.reason)
-        assertEquals(5, record.level)
-        // The cycle verifies the other system source too (the keys, files): what is left is judged once both ended.
+        assertEquals("passed", database.status, database.reason)
+        assertEquals(5, database.level)
+        assertEquals("passed", keys.status, keys.reason)
         verifications.awaitIdle()
         assertEquals(emptyList(), verifications.sandboxes())
         assertEquals(emptyList(), verifier.workVolume())
     }
 
-    /** Runs the self-backup now and returns the snapshot of its database (snapshots.id). */
-    private fun backUpDatabase(): UUID {
+    /** Runs the self-backup now and returns the snapshot (snapshots.id) of each system source, by role. */
+    private fun backUpNow(): Map<String, UUID> {
         val started = api.post("/api/v1/self-backup/runs")
         assertEquals(SardApi.HTTP_OK, started.status, started.body)
         val ids = Regex("\"role\":\"([a-z_]+)\",\"sourceId\":\"([^\"]+)\",\"runId\":\"([^\"]+)\"").findAll(started.body).toList()
-        val database = ids.single { it.groupValues[1] == "self_database" }
-        val run = UUID.fromString(database.groupValues[3])
-        val step = Await.value("the step of run $run") { verifications.query("SELECT id FROM run_steps WHERE run_id = ?", run) { it.getObject(1, UUID::class.java) } }
-        assertEquals("succeeded", Backups.awaitFinished(sard, step, Duration.ofMinutes(3)).status)
-        return verifications.snapshotOfStep(step)
+        assertEquals(setOf("self_database", "self_keys"), ids.map { it.groupValues[1] }.toSet(), started.body)
+        return ids.associate { match ->
+            val run = UUID.fromString(match.groupValues[3])
+            val step =
+                Await.value("the step of run $run") { verifications.query("SELECT id FROM run_steps WHERE run_id = ?", run) { it.getObject(1, UUID::class.java) } }
+            assertEquals("succeeded", Backups.awaitFinished(sard, step, Duration.ofMinutes(3)).status)
+            match.groupValues[1] to verifications.snapshotOfStep(step)
+        }
     }
 
     companion object {
