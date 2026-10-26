@@ -70,10 +70,12 @@ class TenantSessions(
         tenantId: UUID,
         readOnly: Boolean,
     ) {
+        // mutflow:falsePositive the Boolean execute() returns is dropped by use { }; the statement runs either way
         if (readOnly) connection.createStatement().use { it.execute("SET TRANSACTION READ ONLY") }
         if (tenantId != SYSTEM_TENANT_ID) {
             connection.prepareStatement("select set_config('sard.tenant_id', ?, true)").use {
                 it.setString(1, tenantId.toString())
+                // mutflow:falsePositive the Boolean execute() returns is dropped; it runs either way
                 it.execute()
             }
         }

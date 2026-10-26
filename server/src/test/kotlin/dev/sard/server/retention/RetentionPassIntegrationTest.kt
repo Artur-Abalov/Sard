@@ -23,6 +23,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -213,6 +214,21 @@ class RetentionPassIntegrationTest(
         assertTrue(gone.none { a.exists("notification_deliveries", it) })
         assertTrue(listOf(pending, fresh, young).all { a.exists("notification_deliveries", it) })
         assertEquals(4, totals[RetentionKind.NOTIFICATION_DELIVERY])
+    }
+
+    @Test
+    fun `Пачка ровно в размер повторяется, пустая пачка ничего не сообщает`() {
+        val source = anchored()
+        a.runs(source, 4, old(RUNS_TERM), steps = 1)
+        val told = CopyOnWriteArrayList<Pair<RetentionKind, Int>>()
+        val metrics = RetentionMetrics { kind, count -> told += kind to count }
+        val small = RetentionPass(sessions, logs, clock, settings(batchSize = 2), metrics)
+
+        val totals = finishing { small.run() }
+
+        assertEquals(listOf(2, 2), told.filter { it.first == RetentionKind.RUN }.map { it.second })
+        assertEquals(4, totals[RetentionKind.RUN])
+        assertTrue(told.none { it.second == 0 }, "a batch that deleted nothing is not told: $told")
     }
 
     @Test
@@ -634,5 +650,6 @@ class RetentionPassIntegrationTest(
     private fun settings(
         stepLogs: Duration = LOGS_TERM,
         runs: Duration = RUNS_TERM,
-    ) = RetentionSettings(stepLogs, runs, RUNS_TERM, RUNS_TERM, DELIVERIES_TERM, Duration.ofHours(1), 500)
+        batchSize: Int = 500,
+    ) = RetentionSettings(stepLogs, runs, RUNS_TERM, RUNS_TERM, DELIVERIES_TERM, Duration.ofHours(1), batchSize)
 }

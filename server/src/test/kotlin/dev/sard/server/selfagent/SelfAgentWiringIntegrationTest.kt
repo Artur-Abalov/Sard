@@ -13,6 +13,7 @@ import dev.sard.server.enrollment.insertTenant
 import dev.sard.server.extension.TenantResolver
 import dev.sard.server.metrics.Exposition
 import dev.sard.server.onboarding.ConfirmedCaStep
+import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.CertificateAuthority
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.pki.PkiFixtures.resource
@@ -50,7 +51,7 @@ private val MARGIN: Duration = Duration.ofMinutes(10)
  * токену ..." of docs/specs/server/self-agent.feature.
  */
 @Tag("mutflow-isolated")
-@MutFlowTest
+@MutFlowTest(excludeTargets = [TenantSessions::class]) // TenantSessionsTest mutates it
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = ["spring.grpc.server.port=0", "sard.self-agent.check-interval=1h"],
