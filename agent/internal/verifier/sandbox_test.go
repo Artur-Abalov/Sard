@@ -329,3 +329,17 @@ func TestASandboxOfAnEngineThatDoesNotStartIsNone(t *testing.T) {
 		t.Fatalf("box %v, err %v", box, err)
 	}
 }
+
+// The data directory of the sandbox that cannot be made starts no sandbox.
+func TestADataDirectoryThatCannotBeMadeStartsNoSandbox(t *testing.T) {
+	r, db, boxes := dbRig(t)
+	r.disk.failMake = workDir + "/" + jobID + "/data"
+	r.disk.makeErr = errors.New("read-only file system")
+
+	result, _ := newVerifier(r).Run(t.Context(), r.step, db, r.store, r.reporter)
+
+	s := find(result.GetVerify(), "sandbox")
+	if s.GetStatus() != cannotRun || !strings.Contains(s.GetOutput(), "read-only file system") || len(boxes.started) != 0 {
+		t.Fatalf("stage %v, started %v", s, boxes.started)
+	}
+}

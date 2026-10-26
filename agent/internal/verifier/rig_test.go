@@ -145,12 +145,17 @@ type fakeDisk struct {
 	removed   []string
 	removeErr error
 	makeErr   error
+	// failMake is the one path MakeDir fails for, with makeErr.
+	failMake string
 }
 
 func (d *fakeDisk) Volume(string) (verifier.Volume, error) { return d.volume, d.volumeErr }
 
 func (d *fakeDisk) MakeDir(path string) error {
 	d.made = append(d.made, path)
+	if d.failMake != "" && path != d.failMake {
+		return nil
+	}
 	return d.makeErr
 }
 
