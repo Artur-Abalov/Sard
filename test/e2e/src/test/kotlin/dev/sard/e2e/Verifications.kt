@@ -46,12 +46,24 @@ internal class Verifications(
         assertEquals(SardApi.HTTP_OK, set.status, set.body)
     }
 
-    /** «Verify now» of [snapshot]; the job's id. */
+    /**
+     * «Verify now» of [snapshot]; the job's id. A source whose verification is on (a system source of the
+     * self-backup) may already have a job of the daily cycle open (409 verification_active): that job, if it is
+     * of the same snapshot, is the one to wait for.
+     */
     fun start(snapshot: UUID): UUID {
         val job = SardApi(sard).post("/api/v1/sources/${sourceOf(snapshot)}/verifications", """{"snapshotId":"$snapshot"}""")
+        if (job.status == CONFLICT && job.field("code") == "verification_active") return openJobOf(snapshot)
         assertEquals(ACCEPTED, job.status, job.body)
         return UUID.fromString(job.require("id"))
     }
+
+    private fun openJobOf(snapshot: UUID): UUID =
+        checkNotNull(
+            query("SELECT id FROM verification_jobs WHERE snapshot_ref = ? AND status <> 'closed'", snapshot) {
+                it.getObject(1, UUID::class.java)
+            },
+        ) { "the open job of the source is not of snapshot $snapshot" }
 
     fun verify(
         snapshot: UUID,
@@ -164,6 +176,7 @@ internal class Verifications(
 
     companion object {
         private const val ACCEPTED = 202
+        private const val CONFLICT = 409
         const val SANDBOX_LABEL = "sard.verify.job"
         val VERIFY_TIMEOUT: Duration = Duration.ofMinutes(5)
     }
