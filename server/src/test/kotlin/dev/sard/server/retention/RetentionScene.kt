@@ -212,6 +212,30 @@ internal class SceneTenant(
         return delivery
     }
 
+    /** A delivery about a verification record, a stale episode or none of these when both are null (V6). */
+    fun verificationDelivery(
+        verification: UUID? = null,
+        staleEpisode: UUID? = null,
+        createdAt: Instant,
+    ): UUID {
+        val delivery = UUID.randomUUID()
+        jdbc.update(
+            """
+            insert into notification_deliveries (id, tenant_id, verification_id, stale_episode_id, channel, status,
+                                                 attempts, next_attempt_at, created_at, finished_at)
+            values (?, ?, ?, ?, 'telegram', 'delivered', 1, ?, ?, ?)
+            """.trimIndent(),
+            delivery,
+            id,
+            verification,
+            staleEpisode,
+            stamp(createdAt),
+            stamp(createdAt),
+            stamp(createdAt),
+        )
+        return delivery
+    }
+
     /** [count] deliveries, each about a run of its own, all created at [createdAt]. */
     fun deliveries(
         source: UUID,
@@ -451,8 +475,8 @@ internal class SceneTenant(
         jdbc.update(
             """
             insert into verification_stale_episodes (id, tenant_id, source_id, counted_from, opened_at, closed_at,
-                                                     closed_by_id)
-            values (?, ?, ?, ?, ?, ?, ?)
+                                                     closed_by_id, threshold_days, timezone)
+            values (?, ?, ?, ?, ?, ?, ?, 2, 'UTC')
             """.trimIndent(),
             episode,
             id,

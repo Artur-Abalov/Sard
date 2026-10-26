@@ -7,7 +7,7 @@ import { UnauthenticatedError } from '../auth/session'
 import { ids, MOCK_PASSWORD } from '../mocks/fixtures'
 import { http } from '../mocks/http'
 import { server } from '../mocks/node'
-import { ApiError, call, describeError } from './call'
+import { ApiError, call, describeError, isNotFound } from './call'
 import { client } from './client'
 
 async function signedIn() {
@@ -102,5 +102,17 @@ describe('describeError', () => {
 
     expect(message.key).toBe('errors.generic')
     expect(JSON.stringify(message)).not.toContain('secret')
+  })
+})
+
+describe('isNotFound', () => {
+  test('is a 404 problem and nothing else', () => {
+    const problem = (status: number, code: string) =>
+      new ApiError({ kind: 'problem', status, code })
+
+    expect(isNotFound(problem(404, 'not_found'))).toBe(true)
+    expect(isNotFound(problem(409, 'verification_active'))).toBe(false)
+    expect(isNotFound(new ApiError({ kind: 'network' }))).toBe(false)
+    expect(isNotFound(new Error('404'))).toBe(false)
   })
 })

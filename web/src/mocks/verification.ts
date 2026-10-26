@@ -14,7 +14,5 @@ export const verificationSchedule = {
   cron: '30 4 * * *',
   timezone: 'Europe/Moscow',
   nextRunAt: '2026-09-23T01:30:00Z',
+  staleAfterDays: 2,
 }
-
-/** A verifier on another machine that has the key but no plugin that verifies yet (V5 adds one). */
-export const verifierId = '0d4a6c1e-2b3f-4a5d-8e7f-9a0b1c2d3e4f'

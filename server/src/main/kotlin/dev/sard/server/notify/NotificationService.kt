@@ -58,11 +58,13 @@ class NotificationService(
     private val deliveries: Deliveries,
     private val episodes: OverdueDeliveries,
     private val certificates: CertificateDeliveries,
+    private val verifications: VerificationDeliveries,
     channels: List<NotificationChannel>,
     private val formatter: NotificationFormatter,
     private val alertFormatter: SkipAlertFormatter,
     private val overdueFormatter: OverdueFormatter,
     private val certificateFormatter: CertificateFormatter,
+    private val verificationFormatter: VerificationFormatter,
     private val policy: RetryPolicy,
     private val settings: QueueSettings,
     private val clock: Clock,
@@ -96,6 +98,10 @@ class NotificationService(
             val expiring = certificates.unplanned(channel, since, settings.batch)
             for ((tenantId, tenantEvents) in expiring.groupBy({ it.tenantId }, { it.eventId })) {
                 certificates.plan(tenantId, tenantEvents, channel, now)
+            }
+            val checked = verifications.unplanned(channel, since, settings.batch)
+            for ((tenantId, tenantSubjects) in checked.groupBy { it.tenantId }) {
+                verifications.plan(tenantId, tenantSubjects, channel, now)
             }
         }
     }
@@ -139,6 +145,9 @@ class NotificationService(
             is Claimed.Alert -> alertFormatter.format(claimed.notice)
             is Claimed.Overdue -> overdueFormatter.format(claimed.notice)
             is Claimed.Certificate -> claimed.notice?.let(certificateFormatter::format)
+            is Claimed.Verification -> verificationFormatter.verification(claimed.notice)
+            is Claimed.Stale -> verificationFormatter.stale(claimed.notice)
+            is Claimed.NoVerifier -> verificationFormatter.noVerifier(claimed.notice)
         }
 
     private fun finish(

@@ -14,6 +14,7 @@ import { AppLink, ButtonLink } from '../components/links'
 import { PagedList } from '../components/PagedList'
 import { RunBackupButton } from '../components/RunBackupButton'
 import { SystemSourceMark } from '../components/SystemSourceMark'
+import { VerificationMetric } from '../components/VerificationMetric'
 import { usePaged } from '../components/usePaged'
 import { tones } from '../theme'
 import { Mono } from '../components/Mono'
@@ -62,6 +63,13 @@ function SourceRow({ source }: { source: Source }) {
         <Mono>{source.repositoryName}</Mono>
       </Table.Td>
       <Table.Td>
+        <VerificationMetric
+          enabled={source.verificationEnabled}
+          lastVerifiedAt={source.lastVerifiedAt}
+          lastVerifiedLevel={source.lastVerifiedLevel}
+        />
+      </Table.Td>
+      <Table.Td>
         <RunBackupButton sourceId={source.id} />
       </Table.Td>
     </Table.Tr>
@@ -94,6 +102,7 @@ export function Sources() {
                 <Table.Th>{t('sources.agent')}</Table.Th>
                 <Table.Th>{t('sources.plugin')}</Table.Th>
                 <Table.Th>{t('sources.repository')}</Table.Th>
+                <Table.Th>{t('verification.metric.title')}</Table.Th>
                 <Table.Th />
               </Table.Tr>
             </Table.Thead>

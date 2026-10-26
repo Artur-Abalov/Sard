@@ -4,31 +4,47 @@
 package dev.sard.server.api
 
 import dev.sard.server.extension.TenantResolver
+import dev.sard.server.fleet.Repositories
 import dev.sard.server.persistence.PageKey
 import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.runs.StageState
+import dev.sard.server.runs.StepOutput
+import dev.sard.server.verify.FingerprintRow
 import dev.sard.server.verify.JobReason
 import dev.sard.server.verify.Misfit
+import dev.sard.server.verify.MismatchWording
 import dev.sard.server.verify.OpenJob
+import dev.sard.server.verify.ReportEntry
 import dev.sard.server.verify.SourceVerification
 import dev.sard.server.verify.Unsuitable
+import dev.sard.server.verify.VerificationHint
 import dev.sard.server.verify.VerificationReads
+import dev.sard.server.verify.VerificationReport
+import dev.sard.server.verify.VerificationReports
 import dev.sard.server.verify.VerificationSettings
 import dev.sard.server.verify.VerificationStatus
 import dev.sard.server.verify.VerificationView
 import dev.sard.server.verify.Verifications
 import dev.sard.server.verify.VerifierView
 import dev.sard.server.verify.misfitsOf
+import org.springframework.boot.info.BuildProperties
 import org.springframework.stereotype.Component
+import java.math.BigDecimal
 import java.time.Clock
+import java.time.LocalDate
 import java.util.UUID
 import dev.sard.server.verify.VerificationSchedule as Schedule
+
+private const val READ_ONLY_NOTE = "Give the verifier's host a storage account that can only read the repository."
 
 /** The verification endpoints over [Verifications] and [VerificationReads], in the tenant of the session. */
 @Component
 class VerificationsApiImpl(
     private val verifications: Verifications,
     private val reads: VerificationReads,
+    private val repositories: Repositories,
+    private val reports: VerificationReports,
+    private val build: BuildProperties,
     private val tenants: TenantResolver,
     private val sessions: TenantSessions,
     private val clock: Clock,
@@ -68,15 +84,47 @@ class VerificationsApiImpl(
     override fun getVerificationSchedule(): VerificationSchedule =
         sessions.inTenant(tenants.currentTenantId()) { session ->
             val current = schedule.current(session)
-            VerificationSchedule(current.cron, current.timezone, Schedule.moments(current, clock.instant()).next)
+            VerificationSchedule(
+                current.cron,
+                current.timezone,
+                Schedule.moments(current, clock.instant()).next,
+                current.staleAfterDays,
+            )
         }
 
     override fun setVerificationSchedule(input: VerificationScheduleInput): VerificationSchedule =
         sessions.inTenant(tenants.currentTenantId()) { session ->
             val now = clock.instant()
-            val set = schedule.set(session, input.cron, input.timezone, now)
-            VerificationSchedule(set.cron, set.timezone, Schedule.moments(set, now).next)
+            val set = schedule.set(session, input.cron, input.timezone, input.staleAfterDays?.let(::wholeDays), now)
+            VerificationSchedule(set.cron, set.timezone, Schedule.moments(set, now).next, set.staleAfterDays)
         }
+
+    override fun getVerificationReport(
+        sourceId: UUID,
+        from: LocalDate?,
+        to: LocalDate?,
+    ): VerificationReportResponse {
+        val report = reports.of(tenants.currentTenantId(), sourceId, from, to)
+        return reportOf(report, build.serverVersion())
+    }
+
+    override fun getVerificationSetup(): VerificationSetup {
+        val setup = repositories.firstVerifierSetup(tenants.currentTenantId())
+        return VerificationSetup(
+            tokenRole = AgentRole.VERIFIER,
+            repositories =
+                setup.repositories.map {
+                    SetupRepository(
+                        it.sourceAgentId,
+                        it.sourceHostname,
+                        it.repositoryName,
+                        it.keyAddCommand,
+                    )
+                },
+            verifierRepoAdd = setup.verifierRepoAdd,
+            readOnlyNote = READ_ONLY_NOTE,
+        )
+    }
 
     override fun listVerifiers(sourceId: UUID?): List<Verifier> {
         val verifiers = reads.verifiers(tenants.currentTenantId(), sourceId)
@@ -92,6 +140,7 @@ private fun stateOf(state: SourceVerification) =
         lastVerifiedLevel = state.summary.lastVerifiedLevel,
         staleSince = state.summary.staleSince,
         openJob = state.openJob?.let(::jobOf),
+        hints = state.hints.map(::hintOf),
     )
 
 internal fun jobOf(job: OpenJob) =
@@ -135,11 +184,13 @@ private fun verificationOf(view: VerificationView) =
                     it.imageDigest,
                 )
             },
-        mismatches = view.mismatches.map { FingerprintMismatch(it.name, it.expected, it.actual) },
+        mismatches = view.mismatches.map(::mismatchOf),
         unsuitable = view.unsuitable?.map(::misfitOf),
         restoreDurationMs = view.restoreMillis,
         recovered = view.recovered,
         verifiedAt = view.verifiedAt,
+        fingerprint = view.fingerprint.rows.map(::fieldOf),
+        hiddenFacts = view.fingerprint.hidden,
     )
 
 private fun verifierOf(view: VerifierView) =
@@ -150,12 +201,15 @@ private fun verifierOf(view: VerifierView) =
         reported = view.candidate.reported,
         freeBytes = view.candidate.freeBytes,
         sandbox = view.sandbox?.let { stored -> SandboxRuntime.entries.single { it.name.lowercase() == stored } },
+        sandboxVersion = view.sandboxVersion,
         repositoryIds =
             view.candidate.repositories.keys
                 .sorted(),
         verifyPlugins = view.candidate.verifyPlugins.sorted(),
         busy = view.candidate.busy,
         recentVerifications = view.candidate.recentVerifications,
+        verificationsDone = view.done,
+        infrastructureFailures = view.infrastructureFailures,
         reasons = view.reasons?.map(::reasonOf)?.sortedBy { it.ordinal },
     )
 

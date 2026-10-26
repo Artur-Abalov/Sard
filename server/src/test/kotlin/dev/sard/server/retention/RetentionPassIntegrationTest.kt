@@ -475,6 +475,49 @@ class RetentionPassIntegrationTest(
         assertFalse(a.exists("restore_verifications", closing))
     }
 
+    private fun ageDelivery(delivery: UUID) {
+        val created = stamp(old(DELIVERIES_TERM))
+        jdbc.update("update notification_deliveries set created_at = ? where id = ?", created, delivery)
+    }
+
+    @Test
+    fun `Проверка, о которой есть доставка, остаётся, пока доставка не удалена`() {
+        val (source, snapshot) = verifiedSource()
+        val record = a.verification(source, snapshot, old(RUNS_TERM), "failed")
+        a.verification(source, snapshot, boundary(RUNS_TERM), "failed")
+        a.verification(source, snapshot, boundary(RUNS_TERM), "passed")
+        val delivery = a.verificationDelivery(verification = record, createdAt = T0.minus(Duration.ofDays(10)))
+
+        pass()
+
+        assertTrue(a.exists("restore_verifications", record), "its delivery is not yet old")
+
+        ageDelivery(delivery)
+        pass()
+
+        assertFalse(a.exists("notification_deliveries", delivery))
+        assertFalse(a.exists("restore_verifications", record))
+    }
+
+    @Test
+    fun `Эпизод устаревания с доставкой удерживает закрывшую его проверку, пока доставка не удалена`() {
+        val (source, snapshot) = verifiedSource()
+        val closing = a.verification(source, snapshot, old(RUNS_TERM).minus(Duration.ofDays(1)), "passed")
+        a.verification(source, snapshot, old(RUNS_TERM), "passed")
+        val episode = a.staleEpisode(source, closing)
+        val delivery = a.verificationDelivery(staleEpisode = episode, createdAt = T0.minus(Duration.ofDays(10)))
+
+        pass()
+
+        assertTrue(a.exists("verification_stale_episodes", episode) && a.exists("restore_verifications", closing))
+
+        ageDelivery(delivery)
+        pass()
+
+        assertFalse(a.exists("verification_stale_episodes", episode))
+        assertFalse(a.exists("restore_verifications", closing))
+    }
+
     @Test
     fun `Эпизод устаревания, закрытый последней проверкой источника, остаётся, открытый тоже`() {
         val (source, snapshot) = verifiedSource()

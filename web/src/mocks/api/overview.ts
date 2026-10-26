@@ -4,6 +4,7 @@
 import { http } from '../http'
 import { noSession, PROBLEM } from '../problems'
 import { state } from '../state'
+import { verificationOverview } from '../verificationOverview'
 
 // The counts and the first steps by the rules of docs/specs/server/rest-api-w2.feature.
 export const overviewHandlers = [
@@ -21,6 +22,7 @@ export const overviewHandlers = [
       agentsOnline: live.filter((a) => a.status === 'online').length,
       agentsTotal: live.length,
       firstSteps: { ...steps, complete: Object.values(steps).every(Boolean) },
+      verification: verificationOverview(state, Date.now()),
     })
   }),
 ]

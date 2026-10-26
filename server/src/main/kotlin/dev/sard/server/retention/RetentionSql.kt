@@ -43,9 +43,16 @@ internal const val OTHER_FIRES =
         order by f.recorded_at, f.id limit :limit for update of f skip locked)
     """
 
+/** A record that a delivery tells of, or whose closed stale episode a delivery tells of, goes after that delivery. */
+private const val NO_DELIVERY_OF_VERIFICATION =
+    """not exists (select 1 from notification_deliveries d where d.tenant_id = v.tenant_id and d.verification_id = v.id)
+       and not exists (select 1 from verification_stale_episodes e
+                       join notification_deliveries d on d.tenant_id = e.tenant_id and d.stale_episode_id = e.id
+                       where e.tenant_id = v.tenant_id and e.closed_by_id = v.id)"""
+
 /**
- * Old verifications whose job is closed, except the last passed and the last not passed one of each source, with
- * their jobs and the closed stale episodes they closed, which must go first.
+ * Old verifications whose job is closed, except the last passed and the last not passed one of each source and those a
+ * delivery refers to, with their jobs and the closed stale episodes they closed, which must go first.
  */
 internal const val VERIFICATIONS =
     """
@@ -53,6 +60,7 @@ internal const val VERIFICATIONS =
         select v.id, v.job_id from restore_verifications v
         join verification_jobs j on j.tenant_id = v.tenant_id and j.id = v.job_id
         where v.tenant_id = :tenant and v.verified_at < :cutoff and j.status = 'closed'
+          and $NO_DELIVERY_OF_VERIFICATION
           and exists (select 1 from restore_verifications n
                       where n.tenant_id = v.tenant_id and n.source_id = v.source_id
                         and (n.status = 'passed') = (v.status = 'passed')

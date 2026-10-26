@@ -18,7 +18,9 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import java.math.BigDecimal
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 private const val LEVEL =
@@ -111,6 +113,21 @@ enum class VerificationJobReason {
     MANUAL,
 }
 
+/** What a source's config lacks so that its verification proves more. */
+@Schema(
+    enumAsRef = true,
+    description =
+        "key_tables_missing: a PostgreSQL source without key tables is verified on its 10 largest tables; " +
+            "control_paths_missing: a files source without control paths cannot tell an unmounted disk from a backup",
+)
+enum class VerificationHintCode {
+    @JsonProperty("key_tables_missing")
+    KEY_TABLES_MISSING,
+
+    @JsonProperty("control_paths_missing")
+    CONTROL_PATHS_MISSING,
+}
+
 /** The container runtime a verifier has. */
 @Schema(enumAsRef = true)
 enum class SandboxRuntime {
@@ -158,6 +175,8 @@ data class SourceVerificationState(
     @field:Schema(description = "Not verified successfully since this moment, for longer than the configured days")
     val staleSince: Instant?,
     val openJob: VerificationJob?,
+    @field:Schema(description = "What the source's config lacks for a better verification; empty when nothing")
+    val hints: List<VerificationHintCode>,
 )
 
 @Schema(description = "Whether the source is verified")
@@ -189,9 +208,51 @@ data class VerificationStage(
 
 @Schema(description = "A fact of the fingerprint that differs between the source and the restored copy")
 data class FingerprintMismatch(
+    @field:Schema(description = "The fact's raw name, such as rows:public.orders")
     val name: String,
+    @field:Schema(
+        description =
+            "What the fact is about: rows, tables, extension, extension_version, control_path, files, bytes, " +
+                "file_hash or other; the console and Telegram put it into words",
+    )
+    val kind: String,
+    @field:Schema(description = "A table, a path or an extension; empty for a fact about the whole copy")
+    val subject: String,
     val expected: String,
     val actual: String,
+)
+
+/** Whether a fingerprint fact is compared with the copy. */
+@Schema(enumAsRef = true, description = "exact: compared with the copy; info: only shown")
+enum class FingerprintRule {
+    @JsonProperty("exact")
+    EXACT,
+
+    @JsonProperty("info")
+    INFO,
+}
+
+/** How a fact of the fingerprint stands against the copy. */
+@Schema(enumAsRef = true)
+enum class FingerprintOutcomeKind {
+    @JsonProperty("matched")
+    MATCHED,
+
+    @JsonProperty("mismatched")
+    MISMATCHED,
+
+    @JsonProperty("not_compared")
+    NOT_COMPARED,
+}
+
+@Schema(description = "A field of the fingerprint: the source's value and the restored copy's, side by side")
+data class FingerprintField(
+    val name: String,
+    val rule: FingerprintRule,
+    val source: String,
+    @field:Schema(description = "The copy's value; null when it is not compared or not known")
+    val copy: String?,
+    val outcome: FingerprintOutcomeKind,
 )
 
 @Schema(description = "One restore verification of a snapshot")
@@ -222,6 +283,10 @@ data class Verification(
     @field:Schema(description = "A pass right after a failure")
     val recovered: Boolean,
     val verifiedAt: Instant,
+    @field:Schema(description = "The snapshot's source fingerprint beside the copy's, in the order of the backup")
+    val fingerprint: List<FingerprintField>,
+    @field:Schema(description = "Facts of the hashed sample of files: counted, never listed")
+    val hiddenFacts: Int,
 )
 
 @Schema(description = "A page of verifications")
@@ -237,6 +302,15 @@ data class VerificationScheduleInput(
     val cron: String,
     @field:Schema(description = "An IANA time zone", example = "Europe/Moscow")
     val timezone: String,
+    @field:Schema(
+        description =
+            "Days without a successful verification after which a source is flagged, 1 to 90; null leaves it. " +
+                "A fraction is refused, not rounded: it is read as it came.",
+        types = ["integer"],
+        minimum = "1",
+        maximum = "90",
+    )
+    val staleAfterDays: BigDecimal? = null,
 )
 
 @Schema(description = "The daily verification cycle of the installation")
@@ -245,6 +319,8 @@ data class VerificationSchedule(
     val timezone: String,
     @field:Schema(description = "The cycle's next moment")
     val nextRunAt: Instant,
+    @field:Schema(description = "Days without a successful verification after which a source is flagged")
+    val staleAfterDays: Int,
 )
 
 @Schema(description = "A verifier agent, what it reported and whether it fits")
@@ -258,6 +334,8 @@ data class Verifier(
     val freeBytes: Long?,
     @field:Schema(description = "Null when unknown")
     val sandbox: SandboxRuntime?,
+    @field:Schema(description = "The runtime's version as the verifier reported it; null when unknown")
+    val sandboxVersion: String?,
     @field:Schema(description = "restic ids of the repositories it holds a key to")
     val repositoryIds: List<String>,
     @field:Schema(description = "Plugins that verify")
@@ -265,8 +343,91 @@ data class Verifier(
     val busy: Boolean,
     @field:Schema(description = "Verifications handed to it in the last day")
     val recentVerifications: Int,
+    @field:Schema(description = "Verifications it did in the last 30 days")
+    val verificationsDone: Int,
+    @field:Schema(description = "Of those, the ones that ended as its own infrastructure failure")
+    val infrastructureFailures: Int,
     @field:Schema(description = "With sourceId: why it would not take the source's job now (empty: it would)")
     val reasons: List<VerifierReason>?,
+)
+
+@Schema(description = "A repository a source writes to: the key command to run on the source's host")
+data class SetupRepository(
+    val sourceAgentId: UUID,
+    val sourceHostname: String,
+    val repositoryName: String,
+    @field:Schema(description = "Null when the repository name cannot be quoted for a shell")
+    val keyAddCommand: String?,
+)
+
+@Schema(description = "How to get the first verifier going: commands to copy; nothing here is a secret")
+data class VerificationSetup(
+    @field:Schema(description = "The role of the enrollment token to issue for the verifier")
+    val tokenRole: AgentRole,
+    @field:Schema(description = "One entry per source agent and repository of the sources with verification on")
+    val repositories: List<SetupRepository>,
+    @field:Schema(description = "The command for the verifier's host; <name>, <address> and <file> are its own")
+    val verifierRepoAdd: String,
+    @field:Schema(description = "What to tell the administrator about the storage account of the verifier")
+    val readOnlyNote: String,
+)
+
+@Schema(description = "Verifications of a period counted by outcome")
+data class ReportSummary(
+    val total: Int,
+    val passed: Int,
+    val failed: Int,
+    @field:Schema(description = "Cannot verify, infrastructure failure or no fitting verifier: no check took place")
+    val notHeld: Int,
+)
+
+@Schema(description = "A verification of the report: no evidence, no output")
+data class ReportItem(
+    val id: UUID,
+    val verifiedAt: Instant,
+    @field:Schema(description = "restic's id of the snapshot verified")
+    val resticSnapshotId: String,
+    @field:Schema(description = "The verifier's host; null when no verifier took part")
+    val verifierHostname: String?,
+    val status: VerificationOutcome,
+    @field:Schema(description = LEVEL)
+    val level: Int,
+    @field:Schema(description = "From the first stage's start to the last stage's finish; null without times")
+    val durationMs: Long?,
+    @field:Schema(description = "The actual time to restore (level 5)")
+    val restoreDurationMs: Long?,
+)
+
+@Schema(description = "A series of failed verifications and the pass that fixed it")
+data class ReportFailure(
+    @field:Schema(description = "The time of the first failure of the series")
+    val startedAt: Instant,
+    @field:Schema(description = "Failed verifications in the series")
+    val records: Int,
+    @field:Schema(description = "The pass that ended the series; null while not fixed")
+    val fixedAt: Instant?,
+)
+
+@Schema(description = "A source's restore verifications for a period, for print")
+data class VerificationReportResponse(
+    val sourceId: UUID,
+    val sourceName: String,
+    @field:Schema(description = "The source is deleted; its history stays")
+    val sourceDeleted: Boolean,
+    @field:Schema(description = "The start of the period, included")
+    val from: Instant,
+    @field:Schema(description = "The end of the period, excluded")
+    val to: Instant,
+    @field:Schema(description = "The zone of the verification cycle, in which the dates of the request are days")
+    val timezone: String,
+    val generatedAt: Instant,
+    @field:Schema(description = "The version of the server that made the report")
+    val serverVersion: String,
+    val summary: ReportSummary,
+    @field:Schema(description = "Newest first")
+    val items: List<ReportItem>,
+    @field:Schema(description = "Series of failures that lasted into the period, oldest first")
+    val failures: List<ReportFailure>,
 )
 
 /** What the verification endpoints do (V4). */
@@ -296,6 +457,14 @@ interface VerificationsApi {
     fun setVerificationSchedule(input: VerificationScheduleInput): VerificationSchedule
 
     fun listVerifiers(sourceId: UUID?): List<Verifier>
+
+    fun getVerificationSetup(): VerificationSetup
+
+    fun getVerificationReport(
+        sourceId: UUID,
+        from: LocalDate?,
+        to: LocalDate?,
+    ): VerificationReportResponse
 }
 
 @RestController
@@ -370,7 +539,8 @@ class VerificationsController(
     @ResponseStatus(HttpStatus.OK)
     @Operation(
         summary = "Set the daily verification cycle",
-        description = "The change counts from now: a moment it skipped is not fired. 422 names cron or timezone.",
+        description =
+            "The change counts from now: a moment it skipped is not fired. 422 names cron, timezone or staleAfterDays.",
     )
     @Unprocessable
     fun setVerificationSchedule(
@@ -387,4 +557,30 @@ class VerificationsController(
     fun listVerifiers(
         @RequestParam(required = false) sourceId: UUID?,
     ) = api.listVerifiers(sourceId)
+
+    @GetMapping("/verification-setup")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(
+        summary = "How to set up the first verifier",
+        description =
+            "The commands for the steps of getting a verifier going: the token role, a key command per repository " +
+                "of the sources, the repo add template for the verifier. No password passes through the console.",
+    )
+    fun getVerificationSetup() = api.getVerificationSetup()
+
+    @GetMapping("/sources/{sourceId}/verification-report")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(
+        summary = "Verification report of a source for a period",
+        description =
+            "from and to are dates, both included, in the zone of the verification cycle; without them the last " +
+                "30 days up to now; at most 366 days. 422 names from or to. A deleted source keeps its report.",
+    )
+    @NotFound
+    @Unprocessable
+    fun getVerificationReport(
+        @PathVariable sourceId: UUID,
+        @RequestParam(required = false) from: LocalDate?,
+        @RequestParam(required = false) to: LocalDate?,
+    ) = api.getVerificationReport(sourceId, from, to)
 }

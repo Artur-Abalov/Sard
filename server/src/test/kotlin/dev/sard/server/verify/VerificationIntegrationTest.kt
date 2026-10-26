@@ -4,6 +4,7 @@
 package dev.sard.server.verify
 
 import dev.sard.server.TestcontainersConfiguration
+import dev.sard.server.persistence.TenantSessions
 import dev.sard.server.pki.MovableClock
 import dev.sard.server.runs.RUNS_NOW
 import dev.sard.server.runs.RecordingStepsQueued
@@ -90,6 +91,7 @@ class VerificationIntegrationTest(
     @Autowired private val queued: RecordingStepsQueued,
     @Autowired private val clock: MovableClock,
     @Autowired private val verifications: Verifications,
+    @Autowired private val sessions: TenantSessions,
 ) {
     private lateinit var tenant: RunsTenant
     private lateinit var sourceId: UUID
@@ -109,10 +111,18 @@ class VerificationIntegrationTest(
 
     @AfterTest
     fun tearDown() {
-        val tables = listOf("verification_stale_episodes", "restore_verifications", "verification_jobs", "snapshots")
+        val tables =
+            listOf(
+                "no_verifier_episodes",
+                "verification_stale_episodes",
+                "restore_verifications",
+                "verification_jobs",
+                "snapshots",
+            )
         for (table in tables) {
             jdbc.update("delete from $table where tenant_id = ?", tenant.id)
         }
+        jdbc.update("delete from verification_schedule")
         jdbc.update("delete from step_logs where tenant_id = ?", tenant.id)
         tenant.drop()
     }
@@ -435,8 +445,8 @@ class VerificationIntegrationTest(
 
     private fun episodes(): List<Map<String, Any?>> =
         jdbc.queryForList(
-            "select counted_from, opened_at, closed_at, closed_by_id from verification_stale_episodes " +
-                "where tenant_id = ? order by opened_at, id",
+            "select counted_from, opened_at, closed_at, closed_by_id, threshold_days, timezone " +
+                "from verification_stale_episodes where tenant_id = ? order by opened_at, id",
             tenant.id,
         )
 
@@ -466,11 +476,11 @@ class VerificationIntegrationTest(
     }
 
     @Test
-    fun `a source not verified for more than seven days opens one episode, and a pass closes it`() {
+    fun `a source not verified for more than two days opens one episode, and a pass closes it`() {
         loop.tick()
         assertEquals(emptyList(), episodes())
 
-        clock.now = RUNS_NOW + Duration.ofDays(7) + Duration.ofSeconds(1)
+        clock.now = RUNS_NOW + Duration.ofDays(2) + Duration.ofSeconds(1)
         loop.tick()
         loop.tick()
         clock.now = clock.now + Duration.ofDays(1)
@@ -479,6 +489,8 @@ class VerificationIntegrationTest(
         val opened = episodes().single()
         assertEquals(Timestamp.from(RUNS_NOW), opened["counted_from"])
         assertEquals(null, opened["closed_at"])
+        assertEquals(2, opened["threshold_days"], "the threshold in force is kept with the episode")
+        assertEquals("UTC", opened["timezone"], "and the zone of the cycle")
 
         val verifier = verifier()
         loop.tick()
@@ -490,6 +502,67 @@ class VerificationIntegrationTest(
         val pass =
             jdbc.queryForObject("select id from restore_verifications where tenant_id = ?", UUID::class.java, tenant.id)
         assertEquals(pass, closed["closed_by_id"])
+    }
+
+    private fun saveThreshold(days: Int) {
+        jdbc.update("delete from verification_schedule")
+        jdbc.update(
+            "insert into verification_schedule (singleton, cron, timezone, updated_at, stale_after_days) " +
+                "values (true, '30 4 * * *', 'UTC', ?, ?)",
+            Timestamp.from(clock.now),
+            days,
+        )
+    }
+
+    @Test
+    fun `lowering the threshold opens the episode at the next tick, counted from the last pass`() {
+        saveThreshold(7)
+        clock.now = RUNS_NOW + Duration.ofDays(3)
+        loop.tick()
+        assertEquals(emptyList(), episodes())
+
+        saveThreshold(2)
+        loop.tick()
+
+        val opened = episodes().single()
+        assertEquals(Timestamp.from(RUNS_NOW), opened["counted_from"])
+        assertEquals(2, opened["threshold_days"])
+    }
+
+    @Test
+    fun `raising the threshold closes an episode that has no pass`() {
+        saveThreshold(2)
+        clock.now = RUNS_NOW + Duration.ofDays(3)
+        loop.tick()
+        assertEquals(null, episodes().single()["closed_at"])
+
+        saveThreshold(7)
+        loop.tick()
+
+        assertTrue(episodes().single()["closed_at"] != null)
+    }
+
+    @Test
+    fun `the property's threshold applies until the console saves one`() {
+        jdbc.update("delete from verification_schedule")
+        val schedule = VerificationSchedule(VerificationSettings(staleAfter = Duration.ofDays(5)))
+        val before = sessions.system { schedule.current(it) }.staleAfterDays
+
+        saveThreshold(3)
+        val after = sessions.system { schedule.current(it) }.staleAfterDays
+
+        assertEquals(5 to 3, before to after)
+    }
+
+    @Test
+    fun `the threshold of a self-backup source is the same as of any other`() {
+        jdbc.update("update sources set system_role = 'self_database' where id = ?", sourceId)
+        saveThreshold(2)
+        clock.now = RUNS_NOW + Duration.ofDays(3)
+
+        loop.tick()
+
+        assertEquals(Timestamp.from(RUNS_NOW), episodes().single()["counted_from"])
     }
 
     @Test

@@ -14,7 +14,7 @@ export interface paths {
         get: operations["getVerificationSchedule"];
         /**
          * Set the daily verification cycle
-         * @description The change counts from now: a moment it skipped is not fired. 422 names cron or timezone.
+         * @description The change counts from now: a moment it skipped is not fired. 422 names cron, timezone or staleAfterDays.
          */
         put: operations["setVerificationSchedule"];
         post?: never;
@@ -471,6 +471,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/verification-setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How to set up the first verifier
+         * @description The commands for the steps of getting a verifier going: the token role, a key command per repository of the sources, the repo add template for the verifier. No password passes through the console.
+         */
+        get: operations["getVerificationSetup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/status": {
         parameters: {
             query?: never;
@@ -483,6 +503,26 @@ export interface paths {
          * @description Public: the dashboard shows it before sign-in.
          */
         get: operations["status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources/{sourceId}/verification-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Verification report of a source for a period
+         * @description from and to are dates, both included, in the zone of the verification cycle; without them the last 30 days up to now; at most 366 days. 422 names from or to. A deleted source keeps its report.
+         */
+        get: operations["getVerificationReport"];
         put?: never;
         post?: never;
         delete?: never;
@@ -714,7 +754,7 @@ export interface paths {
         };
         /**
          * Overview
-         * @description Agent counts of the tenant and the state of the five first steps.
+         * @description Agent counts of the tenant, the state of the five first steps and the restore verification.
          */
         get: operations["overview"];
         put?: never;
@@ -875,6 +915,8 @@ export interface components {
              * @example Europe/Moscow
              */
             timezone: string;
+            /** @description Days without a successful verification after which a source is flagged, 1 to 90; null leaves it. A fraction is refused, not rounded: it is read as it came. */
+            staleAfterDays?: number | null;
         };
         /** @enum {string} */
         ErrorCode: "unauthenticated" | "too_many_attempts" | "not_found" | "validation_failed" | "unknown_agent" | "unknown_plugin" | "unknown_repository" | "invalid_config" | "run_active" | "token_used" | "token_expired" | "not_implemented" | "origin_rejected" | "agent_revoked" | "agent_role_mismatch" | "unavailable" | "self_agent_confirmation_required" | "system_source" | "self_agent_missing" | "repository_not_initialized" | "local_storage_unconfirmed" | "self_backup_not_configured" | "setup_required" | "setup_completed" | "ca_step_pending" | "wrong_password" | "onboarding_incomplete" | "first_backup_pending" | "snapshot_not_restorable" | "verification_active" | "snapshot_unusable";
@@ -911,6 +953,11 @@ export interface components {
              * @description The cycle's next moment
              */
             nextRunAt: string;
+            /**
+             * Format: int32
+             * @description Days without a successful verification after which a source is flagged
+             */
+            staleAfterDays: number;
         };
         /** @description What to back up, where from and where to */
         SourceInput: {
@@ -1009,7 +1056,14 @@ export interface components {
              */
             staleSince: string | null;
             openJob: components["schemas"]["VerificationJob"] | null;
+            /** @description What the source's config lacks for a better verification; empty when nothing */
+            hints: components["schemas"]["VerificationHintCode"][];
         };
+        /**
+         * @description key_tables_missing: a PostgreSQL source without key tables is verified on its 10 largest tables; control_paths_missing: a files source without control paths cannot tell an unmounted disk from a backup
+         * @enum {string}
+         */
+        VerificationHintCode: "key_tables_missing" | "control_paths_missing";
         /** @description A verification job that is queued or running */
         VerificationJob: {
             /** Format: uuid */
@@ -1713,6 +1767,8 @@ export interface components {
             freeBytes: number | null;
             /** @description Null when unknown */
             sandbox: components["schemas"]["SandboxRuntime"] | null;
+            /** @description The runtime's version as the verifier reported it; null when unknown */
+            sandboxVersion: string | null;
             /** @description restic ids of the repositories it holds a key to */
             repositoryIds: string[];
             /** @description Plugins that verify */
@@ -1723,15 +1779,46 @@ export interface components {
              * @description Verifications handed to it in the last day
              */
             recentVerifications: number;
+            /**
+             * Format: int32
+             * @description Verifications it did in the last 30 days
+             */
+            verificationsDone: number;
+            /**
+             * Format: int32
+             * @description Of those, the ones that ended as its own infrastructure failure
+             */
+            infrastructureFailures: number;
             /** @description With sourceId: why it would not take the source's job now (empty: it would) */
             reasons: components["schemas"]["VerifierReason"][] | null;
         };
+        /** @description A field of the fingerprint: the source's value and the restored copy's, side by side */
+        FingerprintField: {
+            name: string;
+            rule: components["schemas"]["FingerprintRule"];
+            source: string;
+            /** @description The copy's value; null when it is not compared or not known */
+            copy: string | null;
+            outcome: components["schemas"]["FingerprintOutcomeKind"];
+        };
         /** @description A fact of the fingerprint that differs between the source and the restored copy */
         FingerprintMismatch: {
+            /** @description The fact's raw name, such as rows:public.orders */
             name: string;
+            /** @description What the fact is about: rows, tables, extension, extension_version, control_path, files, bytes, file_hash or other; the console and Telegram put it into words */
+            kind: string;
+            /** @description A table, a path or an extension; empty for a fact about the whole copy */
+            subject: string;
             expected: string;
             actual: string;
         };
+        /** @enum {string} */
+        FingerprintOutcomeKind: "matched" | "mismatched" | "not_compared";
+        /**
+         * @description exact: compared with the copy; info: only shown
+         * @enum {string}
+         */
+        FingerprintRule: "exact" | "info";
         /** @description One restore verification of a snapshot */
         Verification: {
             /** Format: uuid */
@@ -1780,6 +1867,13 @@ export interface components {
             recovered: boolean;
             /** Format: date-time */
             verifiedAt: string;
+            /** @description The snapshot's source fingerprint beside the copy's, in the order of the backup */
+            fingerprint: components["schemas"]["FingerprintField"][];
+            /**
+             * Format: int32
+             * @description Facts of the hashed sample of files: counted, never listed
+             */
+            hiddenFacts: number;
         };
         /** @description A stage of the verification pipeline and its evidence */
         VerificationStage: {
@@ -1804,6 +1898,26 @@ export interface components {
         };
         /** @enum {string} */
         VerificationStageStatus: "passed" | "failed" | "cannot_run" | "not_applicable";
+        /** @description A repository a source writes to: the key command to run on the source's host */
+        SetupRepository: {
+            /** Format: uuid */
+            sourceAgentId: string;
+            sourceHostname: string;
+            repositoryName: string;
+            /** @description Null when the repository name cannot be quoted for a shell */
+            keyAddCommand: string | null;
+        };
+        /** @description How to get the first verifier going: commands to copy; nothing here is a secret */
+        VerificationSetup: {
+            /** @description The role of the enrollment token to issue for the verifier */
+            tokenRole: components["schemas"]["AgentRole"];
+            /** @description One entry per source agent and repository of the sources with verification on */
+            repositories: components["schemas"]["SetupRepository"][];
+            /** @description The command for the verifier's host; <name>, <address> and <file> are its own */
+            verifierRepoAdd: string;
+            /** @description What to tell the administrator about the storage account of the verifier */
+            readOnlyNote: string;
+        };
         StatusResponse: {
             /** @description sard-server version */
             version: string;
@@ -1824,6 +1938,94 @@ export interface components {
             items: components["schemas"]["Verification"][];
             /** @description Pass as cursor to get the next page; null on the last page */
             nextCursor: string | null;
+        };
+        /** @description A series of failed verifications and the pass that fixed it */
+        ReportFailure: {
+            /**
+             * Format: date-time
+             * @description The time of the first failure of the series
+             */
+            startedAt: string;
+            /**
+             * Format: int32
+             * @description Failed verifications in the series
+             */
+            records: number;
+            /**
+             * Format: date-time
+             * @description The pass that ended the series; null while not fixed
+             */
+            fixedAt: string | null;
+        };
+        /** @description A verification of the report: no evidence, no output */
+        ReportItem: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            verifiedAt: string;
+            /** @description restic's id of the snapshot verified */
+            resticSnapshotId: string;
+            /** @description The verifier's host; null when no verifier took part */
+            verifierHostname: string | null;
+            status: components["schemas"]["VerificationOutcome"];
+            /**
+             * Format: int32
+             * @description Highest level reached (V-D2): 1 storage integrity, 2 extraction, 3 the application starts, 4 the data matches the fingerprint, 5 the restore time is known; 0 when none
+             */
+            level: number;
+            /**
+             * Format: int64
+             * @description From the first stage's start to the last stage's finish; null without times
+             */
+            durationMs: number | null;
+            /**
+             * Format: int64
+             * @description The actual time to restore (level 5)
+             */
+            restoreDurationMs: number | null;
+        };
+        /** @description Verifications of a period counted by outcome */
+        ReportSummary: {
+            /** Format: int32 */
+            total: number;
+            /** Format: int32 */
+            passed: number;
+            /** Format: int32 */
+            failed: number;
+            /**
+             * Format: int32
+             * @description Cannot verify, infrastructure failure or no fitting verifier: no check took place
+             */
+            notHeld: number;
+        };
+        /** @description A source's restore verifications for a period, for print */
+        VerificationReportResponse: {
+            /** Format: uuid */
+            sourceId: string;
+            sourceName: string;
+            /** @description The source is deleted; its history stays */
+            sourceDeleted: boolean;
+            /**
+             * Format: date-time
+             * @description The start of the period, included
+             */
+            from: string;
+            /**
+             * Format: date-time
+             * @description The end of the period, excluded
+             */
+            to: string;
+            /** @description The zone of the verification cycle, in which the dates of the request are days */
+            timezone: string;
+            /** Format: date-time */
+            generatedAt: string;
+            /** @description The version of the server that made the report */
+            serverVersion: string;
+            summary: components["schemas"]["ReportSummary"];
+            /** @description Newest first */
+            items: components["schemas"]["ReportItem"][];
+            /** @description Series of failures that lasted into the period, oldest first */
+            failures: components["schemas"]["ReportFailure"][];
         };
         /** @enum {string} */
         RestoreBlockedReason: "partial" | "forgotten" | "plugin_not_supported";
@@ -2138,6 +2340,29 @@ export interface components {
              */
             withoutRecoveryKey: number;
         };
+        /** @description A source with verification on and the figures of its restore verification */
+        AttentionSource: {
+            /** Format: uuid */
+            sourceId: string;
+            sourceName: string;
+            /** @description The last verification's status; no_verifier while the installation has no verifier */
+            status: components["schemas"]["VerificationOutcome"] | null;
+            /**
+             * Format: date-time
+             * @description The last successful verification; null if never
+             */
+            lastVerifiedAt: string | null;
+            /**
+             * Format: int32
+             * @description The level of the last successful verification
+             */
+            lastVerifiedLevel: number | null;
+            /**
+             * Format: date-time
+             * @description Not verified successfully since this moment, for longer than the threshold
+             */
+            staleSince: string | null;
+        };
         /** @description The first steps of a tenant, each marked by the server by its own rule; recomputed per request */
         FirstSteps: {
             /** @description At least one enrollment token was created, in any status */
@@ -2166,6 +2391,49 @@ export interface components {
              */
             agentsTotal: number;
             firstSteps: components["schemas"]["FirstSteps"];
+            verification: components["schemas"]["VerificationOverview"];
+        };
+        /** @description Restore verification of the installation: the figures of the overview and who to look at first */
+        VerificationOverview: {
+            /**
+             * Format: int32
+             * @description Live sources whose verification is on; the figures below count only them
+             */
+            enabled: number;
+            /**
+             * Format: int32
+             * @description Of those, verified successfully in the last 24 hours
+             */
+            verifiedLastDay: number;
+            /**
+             * Format: int32
+             * @description The last verification failed: the backup is bad
+             */
+            failed: number;
+            /**
+             * Format: int32
+             * @description The last verification did not take place: cannot verify, infrastructure, no verifier
+             */
+            notHeld: number;
+            /**
+             * Format: int32
+             * @description Not verified successfully for longer than the threshold: open episodes
+             */
+            stale: number;
+            /**
+             * Format: int32
+             * @description No verification yet
+             */
+            neverVerified: number;
+            /**
+             * Format: int32
+             * @description Live sources whose verification is off: a decision, neither failed nor stale
+             */
+            disabled: number;
+            /** @description There are sources to verify and no verifier agent that is not revoked */
+            noVerifier: boolean;
+            /** @description At most 10 sources with verification on, the worst first: the server orders them */
+            attention: components["schemas"]["AttentionSource"][];
         };
         /** @description The CA of this server; public data, but only for a signed-in administrator */
         CaInfo: {
@@ -4368,6 +4636,44 @@ export interface operations {
             };
         };
     };
+    getVerificationSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationSetup"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     status: {
         parameters: {
             query?: never;
@@ -4384,6 +4690,67 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getVerificationReport: {
+        parameters: {
+            query?: {
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path: {
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationReportResponse"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not found in the session's tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
                 };
             };
             /** @description The database is unavailable; nothing was changed */

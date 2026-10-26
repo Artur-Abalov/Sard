@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import java.time.Instant
+import java.util.UUID
 
 @Schema(description = "The first steps of a tenant, each marked by the server by its own rule; recomputed per request")
 data class FirstSteps(
@@ -29,6 +31,42 @@ data class FirstSteps(
     val complete: Boolean,
 )
 
+@Schema(description = "A source with verification on and the figures of its restore verification")
+data class AttentionSource(
+    val sourceId: UUID,
+    val sourceName: String,
+    @field:Schema(description = "The last verification's status; no_verifier while the installation has no verifier")
+    val status: VerificationOutcome?,
+    @field:Schema(description = "The last successful verification; null if never")
+    val lastVerifiedAt: Instant?,
+    @field:Schema(description = "The level of the last successful verification")
+    val lastVerifiedLevel: Int?,
+    @field:Schema(description = "Not verified successfully since this moment, for longer than the threshold")
+    val staleSince: Instant?,
+)
+
+@Schema(description = "Restore verification of the installation: the figures of the overview and who to look at first")
+data class VerificationOverview(
+    @field:Schema(description = "Live sources whose verification is on; the figures below count only them")
+    val enabled: Int,
+    @field:Schema(description = "Of those, verified successfully in the last 24 hours")
+    val verifiedLastDay: Int,
+    @field:Schema(description = "The last verification failed: the backup is bad")
+    val failed: Int,
+    @field:Schema(description = "The last verification did not take place: cannot verify, infrastructure, no verifier")
+    val notHeld: Int,
+    @field:Schema(description = "Not verified successfully for longer than the threshold: open episodes")
+    val stale: Int,
+    @field:Schema(description = "No verification yet")
+    val neverVerified: Int,
+    @field:Schema(description = "Live sources whose verification is off: a decision, neither failed nor stale")
+    val disabled: Int,
+    @field:Schema(description = "There are sources to verify and no verifier agent that is not revoked")
+    val noVerifier: Boolean,
+    @field:Schema(description = "At most 10 sources with verification on, the worst first: the server orders them")
+    val attention: List<AttentionSource>,
+)
+
 @Schema(description = "What the console's overview page shows besides the lists")
 data class Overview(
     @field:Schema(description = "Not revoked agents that are online, as in the agent list")
@@ -36,6 +74,7 @@ data class Overview(
     @field:Schema(description = "Not revoked agents")
     val agentsTotal: Int,
     val firstSteps: FirstSteps,
+    val verification: VerificationOverview,
 )
 
 /** What the overview endpoint does; W2 implements it. */
@@ -53,7 +92,7 @@ class OverviewController(
     @ResponseStatus(HttpStatus.OK)
     @Operation(
         summary = "Overview",
-        description = "Agent counts of the tenant and the state of the five first steps.",
+        description = "Agent counts of the tenant, the state of the five first steps and the restore verification.",
     )
     fun overview(): Overview = api.overview()
 }
