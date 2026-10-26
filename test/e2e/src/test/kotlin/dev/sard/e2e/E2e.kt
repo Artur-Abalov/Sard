@@ -35,7 +35,10 @@ internal object E2e {
 
     /** The files of deploy/db/ that docker-compose.yml refers to as ./db/… (DB2); the installation has them in db/. */
     val composeDbFiles: List<Path>
-        get() = Files.list(Path.of(property("e2e.composeDbDir"))).use { files -> files.filter { Files.isRegularFile(it) }.toList() }
+        get() =
+            Files.list(Path.of(property("e2e.composeDbDir"))).use { files ->
+                files.filter { Files.isRegularFile(it) }.toList()
+            }
 
     /** deploy/db/bootstrap.sql (DB2): without its psql meta-command, which JDBC cannot run. */
     val bootstrapSql: String

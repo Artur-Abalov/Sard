@@ -98,9 +98,11 @@ class DeployDatabaseComposeTest {
             assertTrue(name in configFiles(), "$name is a file")
             assertFalse("content" in map(map(compose["configs"])[name]), name)
         }
-        for (file in listOf("db-init.sh", "bootstrap.sql", "pg_hba.conf", "postgres-entrypoint.sh")) {
-            val body = File("../deploy/db", file).readLines().filter { it.isNotBlank() && !it.startsWith("#") }
-            assertTrue(body.none { it.trim() in text.lines().map(String::trim) }, "$file is inlined")
+        val dbFiles = File("../deploy/db").listFiles { it.isFile }.orEmpty().sortedBy { it.name }
+        assertTrue(dbFiles.isNotEmpty(), "deploy/db has files")
+        for (file in dbFiles) {
+            val body = file.readLines().filter { it.isNotBlank() && !it.startsWith("#") }
+            assertTrue(body.none { it.trim() in text.lines().map(String::trim) }, "${file.name} is inlined")
         }
         assertFalse("CREATE ROLE" in text)
         assertFalse("host all all all scram-sha-256" in text)
