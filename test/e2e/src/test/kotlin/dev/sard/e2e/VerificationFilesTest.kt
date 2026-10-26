@@ -42,6 +42,10 @@ class VerificationFilesTest {
         // The only source with verification on has passed: the last verified restore is a real one.
         verifications.enable(verifications.sourceOf(snapshot), enabled = true)
         assertNotNull(SardApi(sard).get("/api/v1/status").field("lastVerifiedRestoreAt"))
+        // On, the source gets a job of the daily cycle at the next tick: off again, and that job done, before the
+        // next test looks at the work volume.
+        verifications.enable(verifications.sourceOf(snapshot), enabled = false)
+        verifications.awaitIdle()
     }
 
     // Check 2: the fingerprint the server sends is not the one the backup tagged.
