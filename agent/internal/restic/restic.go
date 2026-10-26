@@ -209,7 +209,7 @@ func (c *CLI) Restore(ctx context.Context, snapshotID, target string) error {
 	if snapshotID == "" || target == "" {
 		return fmt.Errorf("%w: snapshot and target are required", ErrInvalidRequest)
 	}
-	_, err := c.runRepo(ctx, call{args: []string{"restore", "--json", "--target", target, "--", snapshotID}})
+	_, err := c.runRepo(ctx, call{args: []string{"restore", "--json", "--target", target}, tail: []string{"--", snapshotID}})
 	return err
 }
 

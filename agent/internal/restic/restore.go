@@ -102,14 +102,14 @@ func (c *CLI) RestoreTo(ctx context.Context, req RestoreRequest) (RestoreSummary
 		return RestoreSummary{}, fmt.Errorf("%w: snapshot and target are required", ErrInvalidRequest)
 	}
 	var summary RestoreSummary
-	res, err := c.runRepo(ctx, call{args: restoreArgs(req, target), extra: extra, stdout: func(line []byte) {
+	res, err := c.runRepo(ctx, call{args: restoreArgs(req, target), tail: []string{"--", req.SnapshotID}, extra: extra, stdout: func(line []byte) {
 		summary = readSummary(line, summary)
 		reportProgress(line, req.Progress)
 	}})
 	return summary, incomplete(res, err)
 }
 
-// restoreArgs are the arguments of `restic restore` of the request.
+// restoreArgs are the flags of `restic restore` of the request; the snapshot follows them.
 func restoreArgs(req RestoreRequest, target string) []string {
 	args := []string{"restore", "--json", "--no-cache", "--no-lock", "--target", target, "--overwrite", "never"}
 	for _, p := range req.Include {
@@ -118,7 +118,7 @@ func restoreArgs(req RestoreRequest, target string) []string {
 	if req.SFTPCommand != "" {
 		args = append(args, "-o", "sftp.command="+req.SFTPCommand)
 	}
-	return append(args, "--", req.SnapshotID)
+	return args
 }
 
 // reportProgress passes the status line of restic restore to progress.
@@ -164,7 +164,7 @@ func incomplete(res *result, err error) error {
 // holds the file or the directory, listed without the lock.
 func (c *CLI) HasPath(ctx context.Context, snapshotID, path string) (bool, error) {
 	found := false
-	_, err := c.runRepo(ctx, call{args: []string{"ls", "--json", "--no-lock", "--", snapshotID, path}, stdout: func(line []byte) {
+	_, err := c.runRepo(ctx, call{args: []string{"ls", "--json", "--no-lock"}, tail: []string{"--", snapshotID, path}, stdout: func(line []byte) {
 		var msg struct {
 			Type string `json:"message_type"`
 		}
@@ -180,6 +180,6 @@ func (c *CLI) Dump(ctx context.Context, snapshotID, path string, w io.Writer) er
 	if snapshotID == "" || path == "" {
 		return fmt.Errorf("%w: snapshot and path are required", ErrInvalidRequest)
 	}
-	_, err := c.runRepo(ctx, call{args: []string{"dump", "--no-lock", "--", snapshotID, path}, stdoutTo: w})
+	_, err := c.runRepo(ctx, call{args: []string{"dump", "--no-lock"}, tail: []string{"--", snapshotID, path}, stdoutTo: w})
 	return err
 }
