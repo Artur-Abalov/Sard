@@ -67,6 +67,16 @@ class FirstVerifierSetupTest {
     }
 
     @Test
+    fun `a name with a space is quoted, one with only a quote or a control character gets no command`() {
+        fun command(name: String) = setup(SourceRepository(DB1, "db1", name)).repositories.single().keyAddCommand
+
+        assertEquals("sudo sard-agent repo key add 'my repo' --for verifier", command("my repo"))
+        assertNull(command("'"))
+        assertNull(command("\t"))
+        assertNull(command("a\nb"))
+    }
+
+    @Test
     fun `the verifier's own repo add is a template with placeholders, over a read-only account`() {
         val setup = setup()
 

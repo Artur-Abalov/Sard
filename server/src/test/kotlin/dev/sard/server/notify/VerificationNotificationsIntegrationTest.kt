@@ -46,23 +46,6 @@ import kotlin.test.assertTrue
 private const val CHAT = "-100778"
 private const val CONSOLE = "https://sard.example.com"
 
-/** What a seeded record carries besides its status; the level of a pass is 5 unless told otherwise. */
-private data class Evidence(
-    val level: Int? = null,
-    val mismatches: String = "[]",
-    val stages: String = "[]",
-    val reason: String? = null,
-    val restoreMillis: Long? = null,
-    val jobReason: String = "cycle",
-)
-
-/** A source of the tenant, its snapshot and the step that made it. */
-private class Watched(
-    val id: UUID,
-    val snapshot: UUID,
-    val step: UUID,
-)
-
 /**
  * V6 (verification-notifications.feature): a failed restore verification, a source not verified for too long, a pass
  * after either and the «no verifier» state reach Telegram through the same queue as runs; successes stay silent.
@@ -104,8 +87,8 @@ class VerificationNotificationsIntegrationTest(
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
 ) {
-    private val tenant = RunsTenant(jdbc)
-    private val verifier: UUID = UUID.randomUUID()
+    private val seed = VerificationSeeds(jdbc, sources, runs, clock)
+    private val tenant = seed.tenant
 
     companion object {
         private val fake = FakeBotApi()
@@ -130,7 +113,7 @@ class VerificationNotificationsIntegrationTest(
         fake.requests.clear()
         fake.fallback = FakeBotApi.ok()
         tenant.create()
-        addVerifier()
+        seed.addVerifier()
     }
 
     @AfterTest
@@ -150,150 +133,17 @@ class VerificationNotificationsIntegrationTest(
 
     // --- fixtures
 
-    private fun addVerifier() {
-        jdbc.update(
-            "insert into agents (id, tenant_id, hostname, registered_at, role) " +
-                "values (?, ?, 'vrf1.example.com', ?, 'verifier')",
-            verifier,
-            tenant.id,
-            Timestamp.from(RUNS_NOW),
-        )
-    }
-
     /** One tick of the notification queue, and the verification loop's. */
     private fun ticks(count: Int = 3) = repeat(count) { MutFlow.underTest { service.tick() } }
 
-    private fun at(minutes: Long): Instant = RUNS_NOW.plus(Duration.ofMinutes(minutes))
-
-    private fun watched(name: String = "db-main"): Watched {
-        val source = sources.create(tenant.id, tenant.draft(name)).id
-        val run = runs.start(tenant.id, source).id
-        // The backup behind the snapshot is not what these tests are about: no message of a run.
-        jdbc.update("update runs set trigger = 'verification' where id = ?", run)
-        tenant.finish(run)
-        val step = jdbc.queryForObject("select id from run_steps where run_id = ?", UUID::class.java, run)!!
-        val snapshot = UUID.randomUUID()
-        jdbc.update(
-            "insert into snapshots (id, tenant_id, source_id, step_id, agent_id, repository_name, repository_id, " +
-                "snapshot_id, total_bytes, added_bytes, created_at, partial) " +
-                "values (?, ?, ?, ?, ?, 'main', ?, ?, 10, 1, ?, false)",
-            snapshot,
-            tenant.id,
-            source,
-            step,
-            tenant.agentId,
-            "c".repeat(64),
-            "4f3a9c1e-$snapshot",
-            Timestamp.from(RUNS_NOW),
-        )
-        return Watched(source, snapshot, step)
-    }
-
-    private fun record(
-        source: Watched,
-        status: String,
-        minutes: Long,
-        evidence: Evidence = Evidence(),
-    ): UUID {
-        val job = UUID.randomUUID()
-        val record = UUID.randomUUID()
-        val time = Timestamp.from(at(minutes))
-        jdbc.update(
-            "insert into verification_jobs (id, tenant_id, source_id, snapshot_ref, repository_id, plugin, reason, " +
-                "status, created_at, deadline, closed_at) values (?, ?, ?, ?, ?, 'postgresql', ?, 'closed', ?, ?, ?)",
-            job,
-            tenant.id,
-            source.id,
-            source.snapshot,
-            "c".repeat(64),
-            evidence.jobReason,
-            time,
-            time,
-            time,
-        )
-        jdbc.update(
-            "insert into restore_verifications (id, tenant_id, job_id, source_id, snapshot_id, step_id, " +
-                "verifier_agent_id, key_holders, status, level, reason, stages, mismatches, restore_duration_ms, " +
-                "recovered, verified_at) values (?, ?, ?, ?, ?, ?, ?, 2, ?, ?, ?, cast(? as jsonb), " +
-                "cast(? as jsonb), ?, false, ?)",
-            record,
-            tenant.id,
-            job,
-            source.id,
-            source.snapshot,
-            source.step,
-            if (status == "no_verifier") null else verifier,
-            status,
-            evidence.level ?: if (status == "passed") 5 else 0,
-            evidence.reason,
-            evidence.stages,
-            evidence.mismatches,
-            evidence.restoreMillis,
-            time,
-        )
-        return record
-    }
-
-    private fun failedAt(
-        source: Watched,
-        minutes: Long,
-    ) = record(
-        source,
-        "failed",
-        minutes,
-        Evidence(
-            level = 3,
-            mismatches = """[{"name":"rows:public.orders","expected":"1204311","actual":"1204310"}]""",
-            stages =
-                """[{"level":4,"name":"fingerprint","state":"failed","exitCode":1,""" +
-                    """"output":"QA-OUTPUT-MARKER","imageDigest":""}]""",
-        ),
-    )
-
-    private fun episode(
-        source: Watched,
-        openedMinutes: Long,
-        countedFrom: Instant? = at(0),
-        closedBy: UUID? = null,
-    ): UUID {
-        val id = UUID.randomUUID()
-        jdbc.update(
-            "insert into verification_stale_episodes (id, tenant_id, source_id, counted_from, opened_at, closed_at, " +
-                "closed_by_id, threshold_days, timezone) values (?, ?, ?, ?, ?, ?, ?, 2, 'Europe/Berlin')",
-            id,
-            tenant.id,
-            source.id,
-            Timestamp.from(countedFrom ?: at(0)),
-            Timestamp.from(at(openedMinutes)),
-            closedBy?.let { Timestamp.from(clock.now) },
-            closedBy,
-        )
-        return id
-    }
-
     private fun texts(): List<String> = List(fake.requests.size) { fake.shownText(it) }
-
-    private fun statusOf(record: UUID): String? =
-        jdbc
-            .queryForList(
-                "select status from notification_deliveries where verification_id = ?",
-                String::class.java,
-                record,
-            ).singleOrNull()
-
-    private fun deliveries(): Int =
-        jdbc.queryForObject(
-            "select count(*) from notification_deliveries where tenant_id = ?",
-            Int::class.java,
-            tenant.id,
-        )!!
 
     // --- a failure
 
     @Test
     fun `the first failure of a source is told once, with the mismatch in words`() {
-        val source = watched()
-        val record = failedAt(source, 10)
+        val source = seed.watched()
+        val record = seed.failedAt(source, 10)
 
         ticks()
 
@@ -309,33 +159,33 @@ class VerificationNotificationsIntegrationTest(
             $CONSOLE/verifications/$record
             """.trimIndent()
         assertEquals(listOf(expected), texts())
-        assertEquals("delivered", statusOf(record))
+        assertEquals("delivered", seed.statusOf(record))
     }
 
     @Test
     fun `a second failure in a row is not told, nor is one after a verification that did not take place`() {
-        val source = watched()
-        record(source, "passed", 1)
-        val first = failedAt(source, 10)
+        val source = seed.watched()
+        seed.record(source, "passed", 1)
+        val first = seed.failedAt(source, 10)
         ticks()
-        val second = failedAt(source, 20)
-        record(source, "cannot_verify", 25)
-        val third = failedAt(source, 30)
+        val second = seed.failedAt(source, 20)
+        seed.record(source, "cannot_verify", 25)
+        val third = seed.failedAt(source, 30)
 
         ticks()
 
         assertEquals(1, fake.requests.size)
-        assertEquals(listOf("delivered", "skipped", "skipped"), listOf(first, second, third).map(::statusOf))
+        assertEquals(listOf("delivered", "skipped", "skipped"), listOf(first, second, third).map(seed::statusOf))
     }
 
     @Test
     fun `a failure after a pass is told again, and the pass between is told as a recovery`() {
-        val source = watched()
-        failedAt(source, 10)
+        val source = seed.watched()
+        seed.failedAt(source, 10)
         ticks()
-        record(source, "passed", 20, Evidence(restoreMillis = 252_000))
+        seed.record(source, "passed", 20, Evidence(restoreMillis = 252_000))
         ticks()
-        failedAt(source, 30)
+        seed.failedAt(source, 30)
         ticks()
 
         val first = texts().map { it.lines().first() }
@@ -351,15 +201,73 @@ class VerificationNotificationsIntegrationTest(
     }
 
     @Test
+    fun `the stage of a failure is the first failed one, else the comparison when it found mismatches, else none`() {
+        val mismatch = """[{"name":"rows:public.orders","expected":"2","actual":"1"}]"""
+
+        fun stages(vararg states: Pair<String, String>) =
+            states.joinToString(",", "[", "]") {
+                """{"level":1,"name":"${it.first}","state":"${it.second}","exitCode":0,"output":"","imageDigest":""}"""
+            }
+        val cases =
+            mapOf(
+                "db-failed" to Evidence(3, stages = stages("restic_check" to "passed", "restore" to "failed")),
+                "db-compared" to Evidence(3, mismatches = mismatch, stages = stages("restic_check" to "passed")),
+                "db-unknown" to Evidence(3, stages = stages("restic_check" to "passed")),
+            )
+        for ((name, evidence) in cases) seed.record(seed.watched(name), "failed", 10, evidence)
+
+        ticks()
+
+        val byName = texts().associateBy { it.lines().first().substringAfterLast(": ") }
+        assertEquals("Стадия: извлечение", byName.getValue("db-failed").lines()[1])
+        assertEquals("Стадия: сравнение отпечатков", byName.getValue("db-compared").lines()[1])
+        assertTrue(byName.getValue("db-unknown").lines().none { it.startsWith("Стадия") }, byName.toString())
+    }
+
+    @Test
+    fun `five mismatches are all listed, a sixth is told as one more`() {
+        fun mismatches(count: Int) =
+            List(count) { """{"name":"rows:public.t$it","expected":"2","actual":"1"}""" }.joinToString(",", "[", "]")
+        seed.record(seed.watched("db-five"), "failed", 10, Evidence(3, mismatches = mismatches(5)))
+        seed.record(seed.watched("db-six"), "failed", 10, Evidence(3, mismatches = mismatches(6)))
+
+        ticks()
+
+        val byName = texts().associateBy { it.lines().first().substringAfterLast(": ") }
+        val five = byName.getValue("db-five").lines()
+        assertEquals(5, five.count { it.startsWith("— ") })
+        assertTrue(five.none { it.contains("ещё") }, five.toString())
+        val six = byName.getValue("db-six").lines()
+        assertEquals(5, six.count { it.startsWith("— таблица") })
+        assertTrue("— и ещё 1" in six, six.toString())
+    }
+
+    @Test
+    fun `a recovery names the time to restore at level 5 only`() {
+        val timed = seed.watched("db-timed")
+        val shallow = seed.watched("db-shallow")
+        for (source in listOf(timed, shallow)) seed.failedAt(source, 10)
+        ticks()
+        seed.record(timed, "passed", 20, Evidence(level = 5, restoreMillis = 252_000))
+        seed.record(shallow, "passed", 20, Evidence(level = 4, restoreMillis = 252_000))
+
+        ticks()
+
+        val byName = texts().filter { it.startsWith("✅") }.associateBy { it.lines().first().substringAfterLast(": ") }
+        assertTrue("Время восстановления: 4 мин 12 с" in byName.getValue("db-timed").lines(), byName.toString())
+        assertTrue("Время восстановления" !in byName.getValue("db-shallow"), byName.toString())
+    }
+
+    @Test
     fun `a verification that did not take place is not told by itself`() {
         for (status in listOf("cannot_verify", "infrastructure_failure", "no_verifier")) {
-            val source = watched("db-$status")
-            record(source, "passed", 1)
-            val record = record(source, status, 10)
+            val source = seed.watched("db-$status")
+            seed.record(source, "passed", 1)
+            val record = seed.record(source, status, 10)
 
             ticks()
 
-            assertEquals("skipped", statusOf(record), status)
+            assertEquals("skipped", seed.statusOf(record), status)
         }
         assertEquals(0, fake.requests.size)
     }
@@ -374,23 +282,23 @@ class VerificationNotificationsIntegrationTest(
                 listOf("failed", "passed"),
             )
         for ((index, history) in histories.withIndex()) {
-            val source = watched("db-$index")
-            history.forEachIndexed { step, status -> record(source, status, 1L + step) }
+            val source = seed.watched("db-$index")
+            history.forEachIndexed { step, status -> seed.record(source, status, 1L + step) }
             fake.requests.clear()
             ticks()
-            val pass = record(source, "passed", 100L + index)
+            val pass = seed.record(source, "passed", 100L + index)
 
             ticks()
 
-            assertEquals("skipped", statusOf(pass), "history $history")
+            assertEquals("skipped", seed.statusOf(pass), "history $history")
         }
     }
 
     @Test
     fun `a manual verification is told by the same rules`() {
-        val source = watched()
-        record(source, "passed", 1)
-        record(source, "failed", 10, Evidence(level = 3, jobReason = "manual"))
+        val source = seed.watched()
+        seed.record(source, "passed", 1)
+        seed.record(source, "failed", 10, Evidence(level = 3, jobReason = "manual"))
 
         ticks()
 
@@ -399,7 +307,7 @@ class VerificationNotificationsIntegrationTest(
 
     @Test
     fun `a verification run does not give the message of a run`() {
-        val source = watched()
+        val source = seed.watched()
         val run = runs.start(tenant.id, source.id).id
         jdbc.update("update runs set trigger = 'verification' where id = ?", run)
         tenant.finish(run)
@@ -411,8 +319,8 @@ class VerificationNotificationsIntegrationTest(
 
     @Test
     fun `a source deleted before the send is still named`() {
-        val source = watched()
-        failedAt(source, 10)
+        val source = seed.watched()
+        seed.failedAt(source, 10)
         jdbc.update("update sources set deleted_at = ? where id = ?", Timestamp.from(clock.now), source.id)
 
         ticks()
@@ -422,8 +330,8 @@ class VerificationNotificationsIntegrationTest(
 
     @Test
     fun `the output of a stage, the config and the repository never reach the message`() {
-        val source = watched()
-        failedAt(source, 10)
+        val source = seed.watched()
+        seed.failedAt(source, 10)
 
         ticks()
 
@@ -437,10 +345,10 @@ class VerificationNotificationsIntegrationTest(
 
     @Test
     fun `a stale episode is told once, in the zone of the cycle, with the last outcome`() {
-        val source = watched()
-        record(source, "passed", 1)
-        record(source, "no_verifier", 30)
-        val episode = episode(source, openedMinutes = 60)
+        val source = seed.watched()
+        seed.record(source, "passed", 1)
+        seed.record(source, "no_verifier", 30)
+        val episode = seed.episode(source, openedMinutes = 60)
 
         ticks()
 
@@ -464,8 +372,8 @@ class VerificationNotificationsIntegrationTest(
 
     @Test
     fun `an episode that stays open is told once however many cycles pass`() {
-        val source = watched()
-        episode(source, openedMinutes = 60)
+        val source = seed.watched()
+        seed.episode(source, openedMinutes = 60)
         ticks()
 
         repeat(5) {
@@ -478,10 +386,10 @@ class VerificationNotificationsIntegrationTest(
 
     @Test
     fun `a new episode after a pass is told again`() {
-        val source = watched()
-        val first = episode(source, openedMinutes = 60)
+        val source = seed.watched()
+        val first = seed.episode(source, openedMinutes = 60)
         ticks()
-        val pass = record(source, "passed", 100)
+        val pass = seed.record(source, "passed", 100)
         jdbc.update(
             "update verification_stale_episodes set closed_at = ?, closed_by_id = ? where id = ?",
             Timestamp.from(clock.now),
@@ -489,7 +397,7 @@ class VerificationNotificationsIntegrationTest(
             first,
         )
         ticks()
-        episode(source, openedMinutes = 1000, countedFrom = at(100))
+        seed.episode(source, openedMinutes = 1000, countedFrom = seed.at(100))
         ticks()
 
         val titles = texts().map { it.lines().first() }
@@ -502,13 +410,13 @@ class VerificationNotificationsIntegrationTest(
             ),
             titles,
         )
-        assertEquals("delivered", statusOf(pass))
+        assertEquals("delivered", seed.statusOf(pass))
     }
 
     @Test
     fun `an episode closed by turning verification off gives no message`() {
-        val source = watched()
-        episode(source, openedMinutes = 60)
+        val source = seed.watched()
+        seed.episode(source, openedMinutes = 60)
         ticks()
         jdbc.update("update sources set verification_enabled = false where id = ?", source.id)
 
@@ -520,9 +428,9 @@ class VerificationNotificationsIntegrationTest(
 
     @Test
     fun `a stale episode is told before a failure made in the same tick`() {
-        val source = watched()
-        failedAt(source, 10)
-        episode(source, openedMinutes = 60)
+        val source = seed.watched()
+        seed.failedAt(source, 10)
+        seed.episode(source, openedMinutes = 60)
 
         ticks()
 
@@ -532,13 +440,13 @@ class VerificationNotificationsIntegrationTest(
 
     @Test
     fun `a series of failures does not hold back the stale episode`() {
-        val source = watched()
-        record(source, "passed", 1)
-        failedAt(source, 10)
-        failedAt(source, 20)
-        failedAt(source, 30)
+        val source = seed.watched()
+        seed.record(source, "passed", 1)
+        seed.failedAt(source, 10)
+        seed.failedAt(source, 20)
+        seed.failedAt(source, 30)
         ticks()
-        episode(source, openedMinutes = 60)
+        seed.episode(source, openedMinutes = 60)
 
         ticks()
 
@@ -548,7 +456,7 @@ class VerificationNotificationsIntegrationTest(
     @Test
     fun `each source that goes stale is told on its own`() {
         val names = listOf("a", "b", "c")
-        for (name in names) episode(watched(name), openedMinutes = 60)
+        for (name in names) seed.episode(seed.watched(name), openedMinutes = 60)
 
         ticks()
 
@@ -559,12 +467,12 @@ class VerificationNotificationsIntegrationTest(
 
     @Test
     fun `a pass that closed a stale episode is told as a recovery`() {
-        val source = watched()
-        record(source, "no_verifier", 10)
-        record(source, "no_verifier", 20)
-        val open = episode(source, openedMinutes = 30)
+        val source = seed.watched()
+        seed.record(source, "no_verifier", 10)
+        seed.record(source, "no_verifier", 20)
+        val open = seed.episode(source, openedMinutes = 30)
         ticks()
-        val pass = record(source, "passed", 100, Evidence(level = 4))
+        val pass = seed.record(source, "passed", 100, Evidence(level = 4))
         jdbc.update(
             "update verification_stale_episodes set closed_at = ?, closed_by_id = ? where id = ?",
             Timestamp.from(clock.now),
@@ -581,12 +489,12 @@ class VerificationNotificationsIntegrationTest(
 
     @Test
     fun `a pass after failures that also closed an episode is one message`() {
-        val source = watched()
-        failedAt(source, 10)
-        val open = episode(source, openedMinutes = 30)
+        val source = seed.watched()
+        seed.failedAt(source, 10)
+        val open = seed.episode(source, openedMinutes = 30)
         ticks()
         val before = fake.requests.size
-        val pass = record(source, "passed", 100)
+        val pass = seed.record(source, "passed", 100)
         jdbc.update(
             "update verification_stale_episodes set closed_at = ?, closed_by_id = ? where id = ?",
             Timestamp.from(clock.now),
@@ -602,11 +510,11 @@ class VerificationNotificationsIntegrationTest(
 
     // --- no verifier
 
-    private fun noVerifierSources(count: Int) = repeat(count) { watched("db-$it") }
+    private fun noVerifierSources(count: Int) = repeat(count) { seed.watched("db-$it") }
 
     private fun revokeVerifier() {
         val now = Timestamp.from(clock.now)
-        jdbc.update("update agents set revoked_at = ? where id = ?", now, verifier)
+        jdbc.update("update agents set revoked_at = ? where id = ?", now, seed.verifier)
     }
 
     @Test
@@ -646,7 +554,7 @@ class VerificationNotificationsIntegrationTest(
         }
         assertEquals(1, openEpisodes())
 
-        jdbc.update("update agents set revoked_at = null where id = ?", verifier)
+        jdbc.update("update agents set revoked_at = null where id = ?", seed.verifier)
         verification.tick()
         ticks()
         assertEquals(0, openEpisodes())
@@ -672,8 +580,8 @@ class VerificationNotificationsIntegrationTest(
 
     @Test
     fun `a verifier that fitted no source does not make the state`() {
-        val source = watched()
-        record(source, "no_verifier", 10)
+        val source = seed.watched()
+        seed.record(source, "no_verifier", 10)
 
         verification.tick()
         ticks()
@@ -686,8 +594,8 @@ class VerificationNotificationsIntegrationTest(
 
     @Test
     fun `a failure is held back while Telegram is unavailable and sent when it is back`() {
-        val source = watched()
-        failedAt(source, 10)
+        val source = seed.watched()
+        seed.failedAt(source, 10)
         fake.fallback = BotReply(503, "{}")
         ticks(1)
 
@@ -701,15 +609,15 @@ class VerificationNotificationsIntegrationTest(
 
     @Test
     fun `a message not sent within a day is logged as expired`(output: CapturedOutput) {
-        val source = watched()
-        val record = failedAt(source, 10)
+        val source = seed.watched()
+        val record = seed.failedAt(source, 10)
         fake.fallback = BotReply(503, "{}")
         ticks(1)
 
         clock.now = clock.now.plus(Duration.ofHours(25))
         ticks(1)
 
-        assertEquals("expired", statusOf(record))
+        assertEquals("expired", seed.statusOf(record))
         assertTrue(
             output.all.lines().any {
                 " WARN " in it && "Notification of verification $record through telegram expired" in it
@@ -719,8 +627,8 @@ class VerificationNotificationsIntegrationTest(
 
     @Test
     fun `a refusal of Telegram to tell of a stale episode is logged with its reason`(output: CapturedOutput) {
-        val source = watched()
-        val episode = episode(source, openedMinutes = 60)
+        val source = seed.watched()
+        val episode = seed.episode(source, openedMinutes = 60)
         fake.fallback = FakeBotApi.error(400, "Bad Request: chat not found")
 
         ticks(1)
@@ -734,8 +642,8 @@ class VerificationNotificationsIntegrationTest(
 
     @Test
     fun `a failure recorded before the server stopped is sent after it starts`() {
-        val source = watched()
-        failedAt(source, 10)
+        val source = seed.watched()
+        seed.failedAt(source, 10)
         val channel = CapturingChannel()
         val restarted = anotherServer(channel)
 
@@ -746,8 +654,8 @@ class VerificationNotificationsIntegrationTest(
 
     @Test
     fun `two servers send a failure once`() {
-        val source = watched()
-        failedAt(source, 10)
+        val source = seed.watched()
+        seed.failedAt(source, 10)
         val channel = CapturingChannel()
         val other = anotherServer(channel)
 

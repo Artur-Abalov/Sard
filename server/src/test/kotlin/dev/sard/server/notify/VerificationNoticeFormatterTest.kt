@@ -201,6 +201,21 @@ class VerificationNoticeFormatterTest {
     }
 
     @Test
+    fun `exactly five mismatches have no more line, six have one more`() {
+        fun lines(count: Int): List<String> {
+            val mismatches = List(count) { StepOutput.Mismatch("rows:public.t$it", "1", "2") }
+            return failure(failed(mismatches)).lines()
+        }
+
+        val five = lines(5)
+        assertEquals(5, five.count { it.startsWith("— ") })
+        assertFalse(five.any { it.contains("ещё") })
+        val six = lines(6)
+        assertEquals(6, six.count { it.startsWith("— ") })
+        assertEquals("— и ещё 1", six.last { it.startsWith("— ") })
+    }
+
+    @Test
     fun `a long value is cut to 120 characters`() {
         val long = "x".repeat(500)
 

@@ -42,6 +42,11 @@ class NoVerifierStateTest {
     }
 
     @Test
+    fun `a single source to verify is already the state`() {
+        assertEquals(NoVerifierTurn.Open(1), judge(1, anyVerifier = false))
+    }
+
+    @Test
     fun `no state and no episode is nothing to do`() {
         assertEquals(NoVerifierTurn.Keep, judge(3, anyVerifier = true))
     }
