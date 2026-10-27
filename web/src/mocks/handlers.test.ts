@@ -315,6 +315,25 @@ describe('with a session', () => {
     expect((await cancel(unknownId)).response.status).toBe(404)
   })
 
+  test('run defaults: 6 and 12 hours until saved, a value out of range is 422 at its field', async () => {
+    await signIn()
+    expect(must(await api.GET('/api/v1/run-defaults'))).toEqual({
+      backupTimeoutMinutes: 360,
+      restoreTimeoutMinutes: 720,
+    })
+    const saved = must(
+      await api.PUT('/api/v1/run-defaults', {
+        body: { backupTimeoutMinutes: 480, restoreTimeoutMinutes: 600 },
+      }),
+    )
+    expect(saved.backupTimeoutMinutes).toBe(480)
+    const refused = await api.PUT('/api/v1/run-defaults', {
+      body: { backupTimeoutMinutes: 480, restoreTimeoutMinutes: 1441 },
+    })
+    expect(refused.response.status).toBe(422)
+    expect(must(await api.GET('/api/v1/run-defaults')).restoreTimeoutMinutes).toBe(600)
+  })
+
   test('a second run of a source with an active run is 409 with the active run', async () => {
     const path = { params: { path: { sourceId: ids.etcSource } } }
     const { response, error } = await api.POST('/api/v1/sources/{sourceId}/runs', path)

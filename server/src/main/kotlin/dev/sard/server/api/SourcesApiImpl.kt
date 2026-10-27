@@ -117,7 +117,9 @@ class SourcesApiImpl(
         }
         val config = mapper.writeValueAsString(input.config)
         if (config.toByteArray().size > CONFIG_MAX_BYTES) throw RequestInvalid("config", "must be at most 64 KiB")
-        return SourceDraft(input.name, input.agentId, input.plugin, input.repositoryName, config)
+        val backup = timeoutOf("backupTimeoutMinutes", input.backupTimeoutMinutes)
+        val restore = timeoutOf("restoreTimeoutMinutes", input.restoreTimeoutMinutes)
+        return SourceDraft(input.name, input.agentId, input.plugin, input.repositoryName, config, backup, restore)
     }
 
     private fun sourceOf(view: SourceView): Source {
@@ -142,5 +144,7 @@ class SourcesApiImpl(
         verificationStatus = verification.status?.let(::outcomeOf),
         lastVerifiedAt = verification.lastVerifiedAt,
         lastVerifiedLevel = verification.lastVerifiedLevel,
+        backupTimeoutMinutes = view.backupTimeoutMinutes,
+        restoreTimeoutMinutes = view.restoreTimeoutMinutes,
     )
 }

@@ -99,6 +99,8 @@ class ApiSerializationIntegrationTest(
             at,
             at,
             lateStatus = StepStatus.SUCCEEDED,
+            timeoutSeconds = 21_600,
+            timedOutBy = StepTimedOutBy.SERVER,
         )
     private val queuedStep =
         RunStep(
@@ -124,9 +126,27 @@ class ApiSerializationIntegrationTest(
             startedAt = null,
             finishedAt = null,
             lateStatus = null,
+            timeoutSeconds = null,
+            timedOutBy = null,
         )
     private val source =
-        Source(id, "etc", id, "files", "local", mapOf("paths" to listOf("/etc")), at, at, null, true, null, null, null)
+        Source(
+            id,
+            "etc",
+            id,
+            "files",
+            "local",
+            mapOf("paths" to listOf("/etc")),
+            at,
+            at,
+            null,
+            true,
+            null,
+            null,
+            null,
+            120,
+            null,
+        )
     private val systemSource =
         Source(
             id,
@@ -142,6 +162,8 @@ class ApiSerializationIntegrationTest(
             verificationStatus = VerificationOutcome.PASSED,
             lastVerifiedAt = at,
             lastVerifiedLevel = 5,
+            backupTimeoutMinutes = null,
+            restoreTimeoutMinutes = 240,
         )
     private val token =
         EnrollmentToken(
@@ -273,6 +295,7 @@ class ApiSerializationIntegrationTest(
     private val samples: List<Any> =
         listOf(
             StatusResponse("1.0.0", lastVerifiedRestoreAt = null),
+            RunDefaults(480, 600),
             SourceVerificationInput(enabled = false),
             VerifyNowInput(snapshotId = id),
             VerificationScheduleInput("30 4 * * *", "UTC"),

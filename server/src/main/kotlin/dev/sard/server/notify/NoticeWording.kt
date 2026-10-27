@@ -25,6 +25,9 @@ internal class Wording(
     val onSchedule: String,
     val catchUpRun: String,
     val failuresBefore: String,
+    /** Before the timeout of a step that timed out (J1b), and the two causes a person should look at (КJ-7, Р-J9). */
+    val timeoutLine: String,
+    val timedOutHint: String,
     /** The words of a restore (R2). */
     val restore: RestoreWording,
 ) {
@@ -68,6 +71,7 @@ internal class RestoreWording(
     val rollbackFailed: String,
     val removeByHand: String,
     val lost: String,
+    val timedOutHint: String,
 )
 
 /** What each finished step is called in a headline. */
@@ -140,6 +144,10 @@ private val EN =
         onSchedule = "On schedule",
         catchUpRun = "Catch-up run after server downtime",
         failuresBefore = "Failures in a row before this: ",
+        timeoutLine = "Step timeout: ",
+        timedOutHint =
+            "If the storage is unreachable, check the connection to it. " +
+                "If the backup is long, raise the source's timeout.",
         restore =
             RestoreWording(
                 verdicts =
@@ -165,6 +173,9 @@ private val EN =
                 lost =
                     "The connection to the agent was interrupted while the step was running. " +
                         "The restore can be started again.",
+                timedOutHint =
+                    "If the storage is unreachable, check the connection to it. " +
+                        "If the restore is long, raise the source's timeout.",
             ),
     )
 
@@ -196,6 +207,9 @@ private val RU =
         onSchedule = "По расписанию",
         catchUpRun = "Догоняющий запуск после простоя сервера",
         failuresBefore = "Ошибок подряд перед этим: ",
+        timeoutLine = "Срок выполнения: ",
+        timedOutHint =
+            "Хранилище недоступно — проверьте связь с ним. Бэкап долгий — увеличьте срок у источника.",
         restore =
             RestoreWording(
                 verdicts =
@@ -219,6 +233,9 @@ private val RU =
                 rollbackFailed = "Откат не удался, осталось: ",
                 removeByHand = " Удалите вручную.",
                 lost = "Связь с агентом прервалась, пока шаг выполнялся. Можно повторить восстановление.",
+                timedOutHint =
+                    "Хранилище недоступно — проверьте связь с ним. " +
+                        "Восстановление долгое — увеличьте срок у источника.",
             ),
     )
 

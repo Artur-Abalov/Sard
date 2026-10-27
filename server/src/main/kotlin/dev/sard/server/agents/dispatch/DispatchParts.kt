@@ -72,8 +72,17 @@ object RunSteps {
                 .putTags(STEP_TAG, step.id.toString())
                 .putTags(RUN_TAG, step.runId.toString())
                 .putTags(SOURCE_TAG, step.sourceId?.toString().orEmpty())
-        step.verifyTask?.let { verify(command, it) }
+        withTimeout(command, step)
         return command.build()
+    }
+
+    /** The timeout the step was created with (J1b); a VERIFY step's own then replaces it. */
+    private fun withTimeout(
+        command: RunStep.Builder,
+        step: StepView,
+    ) {
+        step.timeoutSeconds?.let { command.setTimeout(Duration.newBuilder().setSeconds(it)) }
+        step.verifyTask?.let { verify(command, it) }
     }
 
     /**

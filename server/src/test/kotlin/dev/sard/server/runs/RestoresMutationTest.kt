@@ -54,6 +54,7 @@ class RestoresMutationTest(
     @Autowired private val restores: Restores,
     @Autowired private val sources: Sources,
     @Autowired private val runs: Runs,
+    @Autowired private val timeouts: TimeoutSettings,
     @Autowired private val queued: RecordingStepsQueued,
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
@@ -431,6 +432,32 @@ class RestoresMutationTest(
         assertEquals("$DIR/x/y", stored.restore?.target)
         assertEquals("copy", stored.steps.single().repositoryName)
         assertEquals(1, restoreRuns())
+    }
+
+    // J1b: the step of a restore gets the source's restore timeout, or the tenant's default
+    @Test
+    fun `a restore step takes the restore timeout of its source, else the tenant's default, and keeps it`() {
+        val s = source()
+        snapshot(s)
+        assertEquals(720 * 60L, start(s, draft(a)).steps.single().timeoutSeconds)
+
+        jdbc.update("update sources set restore_timeout_minutes = 45 where id = ?", s)
+        val own = start(s, draft(a))
+        assertEquals(45 * 60L, own.steps.single().timeoutSeconds)
+
+        jdbc.update("update sources set restore_timeout_minutes = 30 where id = ?", s)
+        timeouts.set(tenant.id, TimeoutDefaults(60, 90))
+        assertEquals(
+            45 * 60L,
+            runs
+                .get(tenant.id, own.id)!!
+                .steps
+                .single()
+                .timeoutSeconds,
+        )
+        assertEquals(30 * 60L, start(s, draft(a)).steps.single().timeoutSeconds)
+        jdbc.update("update sources set restore_timeout_minutes = null where id = ?", s)
+        assertEquals(90 * 60L, start(s, draft(a)).steps.single().timeoutSeconds)
     }
 
     @Test

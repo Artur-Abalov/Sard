@@ -858,6 +858,124 @@
         }
       }
     },
+    "/api/v1/run-defaults" : {
+      "get" : {
+        "tags" : [ "run-defaults" ],
+        "summary" : "The default step timeouts",
+        "description" : "6 h for a backup and 12 h for a restore until set. A source's own timeout overrides them.",
+        "operationId" : "getRunDefaults",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RunDefaults"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put" : {
+        "tags" : [ "run-defaults" ],
+        "summary" : "Set the default step timeouts",
+        "description" : "Both are required. They count for runs created after the change; runs in flight keep theirs.",
+        "operationId" : "setRunDefaults",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RunDefaults"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "422" : {
+            "description" : "Rejected values; errors name the fields",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RunDefaults"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "No session or it expired",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "Origin does not match the request (CSRF)",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "The database is unavailable; nothing was changed",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "The onboarding is not complete (onboarding_incomplete); or the onboarding is not complete",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sources" : {
       "get" : {
         "tags" : [ "sources" ],
@@ -4049,6 +4167,20 @@
             "type" : "object",
             "additionalProperties" : { },
             "description" : "Plugin config, valid against the plugin's configSchema; secrets by name only"
+          },
+          "backupTimeoutMinutes" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32",
+            "description" : "The step timeout of the source's backups in minutes, 1 to 1440; null: the installation's default (run-defaults)",
+            "maximum" : 1440,
+            "minimum" : 1
+          },
+          "restoreTimeoutMinutes" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32",
+            "description" : "The step timeout of restores of the source's snapshots in minutes, 1 to 1440; null: the installation's default",
+            "maximum" : 1440,
+            "minimum" : 1
           }
         },
         "required" : [ "agentId", "config", "name", "plugin", "repositoryName" ]
@@ -4144,9 +4276,19 @@
             "type" : [ "integer", "null" ],
             "format" : "int32",
             "description" : "The level the last successful verification reached"
+          },
+          "backupTimeoutMinutes" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32",
+            "description" : "The step timeout of the source's backups in minutes, 1 to 1440; null: the installation's default (run-defaults)"
+          },
+          "restoreTimeoutMinutes" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32",
+            "description" : "The step timeout of restores of the source's snapshots in minutes, 1 to 1440; null: the installation's default"
           }
         },
-        "required" : [ "agentId", "config", "createdAt", "id", "lastVerifiedAt", "lastVerifiedLevel", "name", "plugin", "repositoryName", "systemRole", "updatedAt", "verificationEnabled", "verificationStatus" ]
+        "required" : [ "agentId", "backupTimeoutMinutes", "config", "createdAt", "id", "lastVerifiedAt", "lastVerifiedLevel", "name", "plugin", "repositoryName", "restoreTimeoutMinutes", "systemRole", "updatedAt", "verificationEnabled", "verificationStatus" ]
       },
       "SystemSourceRole" : {
         "type" : "string",
@@ -4628,6 +4770,27 @@
         "type" : "string",
         "enum" : [ "agent_replaced", "overdue", "failing", "schedule_disabled", "local_storage", "keys_unconfirmed" ]
       },
+      "RunDefaults" : {
+        "type" : "object",
+        "description" : "The default step timeouts of the installation (J1b); a run takes them when it is created",
+        "properties" : {
+          "backupTimeoutMinutes" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "The step timeout of a backup in minutes, 1 to 1440, for a source that names none",
+            "maximum" : 1440,
+            "minimum" : 1
+          },
+          "restoreTimeoutMinutes" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "The step timeout of a restore in minutes, 1 to 1440, for a source that names none",
+            "maximum" : 1440,
+            "minimum" : 1
+          }
+        },
+        "required" : [ "backupTimeoutMinutes", "restoreTimeoutMinutes" ]
+      },
       "VerifyNowInput" : {
         "type" : "object",
         "description" : "What to verify now",
@@ -5087,9 +5250,22 @@
             }, {
               "type" : "null"
             } ]
+          },
+          "timeoutSeconds" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64",
+            "description" : "The timeout the step was created with, in seconds: the source's, or the installation's default at the time. null for a step without one (a verification's is its attempt's; records before J1b)"
+          },
+          "timedOutBy" : {
+            "description" : "Who closed a timed out step: the agent (its own deadline) or the server (the agent stayed silent past the timeout and the lost window); null for any other step",
+            "oneOf" : [ {
+              "$ref" : "#/components/schemas/StepTimedOutBy"
+            }, {
+              "type" : "null"
+            } ]
           }
         },
-        "required" : [ "action", "agentId", "backup", "bytesProcessed", "bytesTotal", "dispatchedAt", "filesProcessed", "filesTotal", "finishedAt", "id", "lateStatus", "message", "ordinal", "phase", "plugin", "queuedAt", "repositoryName", "restore", "restoreOutcome", "sourceId", "startedAt", "status" ]
+        "required" : [ "action", "agentId", "backup", "bytesProcessed", "bytesTotal", "dispatchedAt", "filesProcessed", "filesTotal", "finishedAt", "id", "lateStatus", "message", "ordinal", "phase", "plugin", "queuedAt", "repositoryName", "restore", "restoreOutcome", "sourceId", "startedAt", "status", "timedOutBy", "timeoutSeconds" ]
       },
       "StepAction" : {
         "type" : "string",
@@ -5102,6 +5278,10 @@
       "StepStatus" : {
         "type" : "string",
         "enum" : [ "queued", "dispatched", "running", "succeeded", "failed", "cancelled", "timed_out", "rejected", "lost" ]
+      },
+      "StepTimedOutBy" : {
+        "type" : "string",
+        "enum" : [ "agent", "server" ]
       },
       "RestorePreview" : {
         "type" : "object",

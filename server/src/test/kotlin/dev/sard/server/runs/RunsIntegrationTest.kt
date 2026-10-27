@@ -36,6 +36,7 @@ private const val POLL_MILLIS = 20L
 class RunsIntegrationTest(
     @Autowired private val sources: Sources,
     @Autowired private val runs: Runs,
+    @Autowired private val settings: TimeoutSettings,
     @Autowired private val queued: RecordingStepsQueued,
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
@@ -59,6 +60,37 @@ class RunsIntegrationTest(
     }
 
     private fun source(owner: RunsTenant = tenant) = sources.create(owner.id, owner.draft())
+
+    private fun timeoutOf(run: RunView) =
+        runs
+            .get(tenant.id, run.id)!!
+            .steps
+            .single()
+            .timeoutSeconds
+
+    // J1b: Шаг получает срок источника; Шаг источника без срока получает значение установки
+    @Test
+    fun `a backup step takes the backup timeout of its source, else the tenant's default, and keeps it`() {
+        val draft = tenant.draft().copy(backupTimeoutMinutes = 90, restoreTimeoutMinutes = 10)
+        val source = sources.create(tenant.id, draft)
+
+        val own = runs.start(tenant.id, source.id)
+
+        assertEquals(90 * 60L, own.steps.single().timeoutSeconds)
+        assertEquals(90 * 60L, timeoutOf(own))
+        tenant.finish(own.id)
+        sources.replace(tenant.id, source.id, tenant.draft())
+        val byDefault = runs.start(tenant.id, source.id)
+        assertEquals(360 * 60L, byDefault.steps.single().timeoutSeconds)
+
+        // Сценарий: Изменение настроек установки не меняет созданные запуски
+        settings.set(tenant.id, TimeoutDefaults(60, 90))
+        assertEquals(360 * 60L, timeoutOf(byDefault))
+        tenant.finish(byDefault.id)
+        assertEquals(60 * 60L, timeoutOf(runs.start(tenant.id, source.id)))
+        // Сценарий: Правка срока источника не меняет идущий запуск
+        assertEquals(360 * 60L, timeoutOf(byDefault))
+    }
 
     @Test
     fun `a started run is one queued backup step with the source's config as of now`() {
@@ -98,6 +130,7 @@ class RunsIntegrationTest(
                 RUNS_NOW,
                 null,
                 runId = run.id,
+                timeoutSeconds = 6 * 3600L,
             )
         assertEquals(expected, step)
         val row =

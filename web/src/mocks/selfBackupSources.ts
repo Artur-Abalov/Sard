@@ -3,6 +3,7 @@
 
 import type { components } from '../api/schema'
 import { neverVerified } from './verification'
+import { noTimeouts } from './timeouts'
 
 type Schemas = components['schemas']
 export type Role = Schemas['SystemSourceRole']
@@ -62,6 +63,7 @@ function systemSource(role: Role, agentId: string): Schemas['Source'] {
     agentId,
     plugin: PLUGINS[role],
     ...neverVerified,
+    ...noTimeouts,
     repositoryName: DEFAULT_REPOSITORY,
     config: CONFIGS[role],
     createdAt: DEFAULT_BOUND_AT,
@@ -91,6 +93,8 @@ function succeededRun(source: Schemas['Source']): Schemas['Run'] {
     restore: null,
     restoreOutcome: null,
     lateStatus: null,
+    timeoutSeconds: null,
+    timedOutBy: null,
     queuedAt,
     dispatchedAt: queuedAt,
     startedAt: queuedAt,

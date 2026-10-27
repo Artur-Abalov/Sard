@@ -7,8 +7,14 @@ import dev.sard.server.persistence.RunStepRecord
 import dev.sard.server.persistence.TenantSessions
 import org.hibernate.Session
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+
+/** The message of a step the server timed out: the agent sent no result within the timeout and the lost window. */
+internal const val SILENT_MESSAGE = "no result from the agent within the step timeout of "
+
+private fun silentMessage(timeoutSeconds: Long) = SILENT_MESSAGE + timeoutText(timeoutSeconds)
 
 /** The message of a step the agent lost (ADR 0038; REST shows it in RunStep.message). */
 const val LOST_MESSAGE = "agent lost the step"
@@ -36,11 +42,17 @@ private const val ACCEPT =
         "$STEP and status = 'dispatched'"
 internal const val MESSAGE = "message = cast(:message as text), finished_at = :now"
 private const val CLOSE = "update run_steps set status = :status, $MESSAGE $STEP"
+private const val AGENT_TIMED_OUT = "timed_out_by = case when cast(:status as text) = 'timed_out' then 'agent' end"
 private const val FINISH =
-    "update run_steps set status = :status, $MESSAGE, output = cast(:output as jsonb), $NO_DEADLINE $STEP " +
-        "and status in ('dispatched', 'running')"
+    "update run_steps set status = :status, $MESSAGE, output = cast(:output as jsonb), $AGENT_TIMED_OUT, " +
+        "$NO_DEADLINE $STEP and status in ('dispatched', 'running')"
 
 private const val CANCEL_UNSENT = "$CLOSE and status = 'dispatched' and $CANCEL_MARKED"
+
+// The server closes a running step its agent confirmed and has sent no result past the timeout and the window (J1b).
+private const val TIMEOUT_OF = "select timeout_seconds from run_steps $STEP"
+private const val TIME_OUT =
+    "update run_steps set status = 'timed_out', timed_out_by = 'server', $MESSAGE $STEP and $SILENT_STEP"
 private const val DUE = "status in ('dispatched', 'running') and lost_deadline <= :now"
 
 // A step whose run is marked for cancel is not lost: its agent did not confirm the cancel (J1a, Р-J4). Exactly one of
@@ -60,6 +72,16 @@ internal const val RUN_FINISHED =
 /** How a cancel ended when [step] closed the run: the agent's confirmation, or something that came first. */
 internal fun cancelResultOf(step: StepState): String =
     (if (step == StepState.CANCELLED) CancelResult.CANCELLED else CancelResult.FINISHED_FIRST).stored
+
+/** The timeout of a step in seconds, null when it has none or is not found. */
+private fun Session.timeoutOf(
+    tenantId: UUID,
+    stepId: UUID,
+): Long? =
+    createNativeQuery(TIMEOUT_OF, Long::class.javaObjectType)
+        .setParameter("tenant", tenantId)
+        .setParameter("step", stepId)
+        .uniqueResult()
 
 /** How the agent says a step ended (S7 maps StepResult to it). */
 data class StepOutcome(
@@ -97,6 +119,16 @@ interface DispatchLedger {
         tenantId: UUID,
         stepId: UUID,
         sentBefore: Instant,
+    ): Boolean
+
+    /**
+     * running → timed_out by the server: the agent confirmed the step, and has sent no result past its timeout and
+     * the lost [window] (J1b, Р-J7). False when the step is not (or not yet) in that state.
+     */
+    fun timedOutBySilence(
+        tenantId: UUID,
+        stepId: UUID,
+        window: Duration,
     ): Boolean
 
     /** dispatched or running → lost: its lost deadline has come and the agent did not report it (FXs). */
@@ -196,6 +228,21 @@ class StepTransitions(
         val unconfirmed = { move(tenantId, stepId, StepState.CANCELLED, UNCONFIRM, RUN_FINISHED, values) }
         val lose = { move(tenantId, stepId, StepState.LOST, LOSE, RUN_FINISHED, mapOf("message" to LOST_MESSAGE)) }
         val moved = unconfirmed() || lose() || unconfirmed()
+        if (moved) announcer.announce(tenantId, stepId)
+        return moved
+    }
+
+    override fun timedOutBySilence(
+        tenantId: UUID,
+        stepId: UUID,
+        window: Duration,
+    ): Boolean {
+        val moved =
+            sessions.inTenant(tenantId) { session ->
+                val timeout = session.timeoutOf(tenantId, stepId) ?: return@inTenant false
+                val values = mapOf("message" to silentMessage(timeout), "window" to window.seconds)
+                session.move(tenantId, stepId, StepState.TIMED_OUT, TIME_OUT, RUN_FINISHED, values)
+            }
         if (moved) announcer.announce(tenantId, stepId)
         return moved
     }

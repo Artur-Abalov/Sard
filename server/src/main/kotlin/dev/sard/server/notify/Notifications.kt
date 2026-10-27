@@ -50,6 +50,8 @@ data class RunNotice(
     val restore: RestoreNotice? = null,
     /** A person asked to cancel the run (J1a): what became of the cancel is not told (ВJ4). */
     val cancelRequested: Boolean = false,
+    /** The timeout the step had, for the message of a timed out one (J1b); null for a step without one. */
+    val timeoutSeconds: Long? = null,
 )
 
 /** The snapshot a restore run restores and what its step reported of it; [result] is null when it reported none. */

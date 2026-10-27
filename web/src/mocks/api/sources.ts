@@ -43,6 +43,8 @@ export function queuedRun(source: Schemas['Source']): Schemas['Run'] {
     restore: null,
     restoreOutcome: null,
     lateStatus: null,
+    timeoutSeconds: null,
+    timedOutBy: null,
     queuedAt: now,
     dispatchedAt: null,
     startedAt: null,
@@ -95,6 +97,8 @@ export const sourceHandlers = [
       updatedAt: now,
       systemRole: null,
       ...neverVerified,
+      backupTimeoutMinutes: input.backupTimeoutMinutes ?? null,
+      restoreTimeoutMinutes: input.restoreTimeoutMinutes ?? null,
     }
     state.sources.unshift(source)
     return response(201).json(source)

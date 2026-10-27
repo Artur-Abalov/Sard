@@ -24,6 +24,10 @@ spring:
     # Errors are application/problem+json (RFC 9457), the format of the REST contract.
     problemdetails:
       enabled: true
+  jackson:
+    deserialization:
+      # A fractional number for an integer field (a timeout of 1.5 minutes) is refused with 422, not cut to 1.
+      accept-float-as-int: false
   jpa:
     open-in-view: false
     hibernate:

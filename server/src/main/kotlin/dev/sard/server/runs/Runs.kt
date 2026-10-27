@@ -32,6 +32,9 @@ private const val LIST_RUNS =
 private const val LIST_STEP_STATUS = 3
 private val JSON = JsonMapper.builder().build()
 
+/** Timeouts are set in minutes and kept in seconds, as the agent takes them. */
+internal const val SECONDS_PER_MINUTE = 60L
+
 /** The run history of REST lists backups; verifications have their own (V4). */
 private const val BACKUPS_ONLY = "r.trigger <> 'verification'"
 
@@ -238,16 +241,23 @@ class Runs(
                 scheduleId,
                 requestedBy = requestedBy,
             )
-        val step = backupStep(run, source)
+        val minutes = source.backupTimeoutMinutes ?: defaultsOf(session, source).backupMinutes
+        val step = backupStep(run, source, minutes * SECONDS_PER_MINUTE)
         session.persist(run)
         session.persist(step)
         session.flush()
         return RunViews.of(run, source.agentId, source, listOf(step))
     }
 
+    private fun defaultsOf(
+        session: Session,
+        source: SourceRecord,
+    ) = TimeoutSettings.read(session, checkNotNull(source.tenantId))
+
     private fun backupStep(
         run: RunRecord,
         source: SourceRecord,
+        timeoutSeconds: Long,
     ) = RunStepRecord(
         id = ids.next(),
         runId = run.id,
@@ -260,6 +270,7 @@ class Runs(
         config = source.config,
         status = StepState.QUEUED.stored,
         queuedAt = run.queuedAt,
+        timeoutSeconds = timeoutSeconds,
     )
 }
 
@@ -323,6 +334,8 @@ internal object RunViews {
             snapshotId = record.snapshotId,
             verifyTask = VerifyTask.of(record.verifyTask),
             lateStatus = record.lateStatus?.let(StepState::of),
+            timeoutSeconds = record.timeoutSeconds,
+            timedOutBy = record.timedOutBy?.let(TimedOutBy::of),
         )
 
     fun restoreInfo(json: String): RestoreInfo {

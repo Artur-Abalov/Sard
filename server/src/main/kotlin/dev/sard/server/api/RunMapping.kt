@@ -97,6 +97,8 @@ internal object RunMapping {
             view.startedAt,
             view.finishedAt,
             view.lateStatus?.let(::stepStatus),
+            view.timeoutSeconds,
+            view.timedOutBy?.let { StepTimedOutBy.valueOf(it.name) },
         )
 
     // The domain's enums and the contract's have the same constants: one name is one value. RunMappingTest
@@ -175,11 +177,11 @@ internal object RestoreMapping {
             else -> RestoreOutcome.NOTHING // failed, rejected, timed out, cancelled: all or nothing
         }
 
-    /** The step was closed by the server (lost, or cancelled without its agent's confirmation) before its result. */
+    /** The step was closed by the server (lost, cancelled or timed out without its agent) before its result. */
     private fun isLate(
         status: StepState,
         lateStatus: StepState?,
-    ) = status == StepState.LOST || (status == StepState.CANCELLED && lateStatus != null)
+    ) = status == StepState.LOST || lateStatus != null
 
     // A step closed by the server is late only when its late output says where the data is.
     private fun late(result: DomainRestoreResult?): RestoreOutcome? =

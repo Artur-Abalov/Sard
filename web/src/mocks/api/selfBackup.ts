@@ -17,6 +17,7 @@ import { state } from '../state'
 import { activeRun, queuedRun } from './sources'
 import { FINGERPRINT } from './tokens'
 import { neverVerified } from '../verification'
+import { noTimeouts } from '../timeouts'
 
 type Schemas = components['schemas']
 
@@ -289,6 +290,7 @@ function keep(role: Role, agentId: string, repositoryName: string, now: string):
       plugin: PLUGINS[role],
       repositoryName,
       ...neverVerified,
+      ...noTimeouts,
       config: CONFIGS[role],
       createdAt: now,
       updatedAt: now,

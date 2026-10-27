@@ -278,6 +278,8 @@ export function queuedRestore(choice: Choice): Schemas['Run'] {
     restore: null,
     restoreOutcome: null,
     lateStatus: null,
+    timeoutSeconds: null,
+    timedOutBy: null,
     queuedAt: now,
     dispatchedAt: null,
     startedAt: null,

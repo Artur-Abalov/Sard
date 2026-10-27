@@ -46,6 +46,12 @@ class SourceRecord(
     @Column(name = "system_role", updatable = false)
     var systemRole: String? = null
 
+    @Column(name = "backup_timeout_minutes")
+    var backupTimeoutMinutes: Int? = null
+
+    @Column(name = "restore_timeout_minutes")
+    var restoreTimeoutMinutes: Int? = null
+
     override fun toString() = "SourceRecord(id=$id, agentId=$agentId, plugin=$plugin)"
 }
 
@@ -143,6 +149,9 @@ class RunStepRecord(
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "verify_task", updatable = false)
     val verifyTask: String? = null,
+    /** The timeout the step was created with, in seconds (J1b); null for a verification and old records. */
+    @Column(name = "timeout_seconds", updatable = false)
+    val timeoutSeconds: Long? = null,
 ) {
     @Column(insertable = false, updatable = false)
     val phase: String? = null
@@ -179,6 +188,10 @@ class RunStepRecord(
     /** What the agent reported after the server closed the step as cancelled (J1a); null if nothing came. */
     @Column(name = "late_status", insertable = false, updatable = false)
     val lateStatus: String? = null
+
+    /** agent or server, once the step is closed as timed out (J1b). */
+    @Column(name = "timed_out_by", insertable = false, updatable = false)
+    val timedOutBy: String? = null
 
     override fun toString() = "RunStepRecord(id=$id, runId=$runId, status=$status)"
 }

@@ -12,6 +12,7 @@ import dev.sard.server.runs.DispatchLedger
 import dev.sard.server.runs.InTenant
 import dev.sard.server.runs.LostDeadlines
 import dev.sard.server.runs.RoleLedger
+import dev.sard.server.runs.SilentStep
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepView
 import dev.sard.server.runs.WaitingSteps
@@ -61,6 +62,10 @@ internal class FakeLedger(
     val steps = steps.toMutableList()
     val calls = mutableListOf<String>()
     val deadlines = mutableMapOf<UUID, Instant>()
+
+    /** Steps the system read reports as silent past their timeout (J1b); the windows [timedOutBySilence] got. */
+    val silent = mutableSetOf<UUID>()
+    val windows = mutableListOf<Duration>()
 
     /** The roles of the agents; an agent not listed is a source. */
     val roles = mutableMapOf<UUID, AgentRole>()
@@ -125,6 +130,21 @@ internal class FakeLedger(
         calls += "redispatch ${stepId.leastSignificantBits} $moved"
         return moved
     }
+
+    override fun timedOutBySilence(
+        tenantId: UUID,
+        stepId: UUID,
+        window: Duration,
+    ): Boolean {
+        windows += window
+        return move(stepId, setOf(StepState.RUNNING)) { it.copy(status = StepState.TIMED_OUT) }
+            .also { calls += "timedOut ${stepId.leastSignificantBits} $it" }
+    }
+
+    override fun silent(
+        now: Instant,
+        window: Duration,
+    ) = steps.filter { it.id in silent }.map { SilentStep(TENANT, it.id, it.agentId) }
 
     override fun lost(
         tenantId: UUID,

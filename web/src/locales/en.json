@@ -322,6 +322,10 @@
       "rejected": "rejected",
       "lost": "lost"
     },
+    "StepTimedOutBy": {
+      "agent": "the agent (its own deadline)",
+      "server": "the server (the agent sent no result)"
+    },
     "StepPhase": {
       "accepted": "accepted",
       "preparing": "preparing",

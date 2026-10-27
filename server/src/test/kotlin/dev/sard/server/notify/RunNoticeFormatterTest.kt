@@ -35,6 +35,7 @@ private fun notice(
     previous: RunState? = null,
     failuresBefore: Int = if (previous == RunState.FAILED) 1 else 0,
     notifyOnSuccess: Boolean = false,
+    timeoutSeconds: Long? = null,
 ) = RunNotice(
     tenantId = UUID.randomUUID(),
     runId = RUN,
@@ -53,6 +54,7 @@ private fun notice(
     previousStatus = previous,
     failuresBefore = failuresBefore,
     notifyOnSuccess = notifyOnSuccess,
+    timeoutSeconds = timeoutSeconds,
 )
 
 private fun Message.text() = parts.joinToString("") { it.text }
@@ -332,6 +334,51 @@ class RunNoticeFormatterTest {
         for ((millis, language, expected) in cases) {
             val message = format(notice(startedAt = T0, finishedAt = T0.plusMillis(millis)), language)
             assertEquals(expected, message.lines()[2])
+        }
+    }
+
+    // Сценарий: Уведомление о превышенном сроке называет срок и обе подсказки (бэкап)
+    @Test
+    fun `Уведомление о превышенном сроке бэкапа называет срок и обе подсказки`() {
+        val ru = format(notice(StepState.TIMED_OUT, "deadline exceeded", timeoutSeconds = 21_600)).lines()
+        val timedOut = notice(StepState.TIMED_OUT, "deadline exceeded", timeoutSeconds = 21_600)
+        val en = format(timedOut, NoticeLanguage.EN).lines()
+
+        assertEquals("❌ Бэкап прерван по таймауту: db-main", ru.first())
+        assertTrue("Срок выполнения: 6 ч" in ru, ru.toString())
+        val hintRu = "Хранилище недоступно — проверьте связь с ним. Бэкап долгий — увеличьте срок у источника."
+        assertTrue(hintRu in ru, ru.toString())
+        assertEquals("❌ Backup timed out: db-main", en.first())
+        assertTrue("Step timeout: 6 h" in en, en.toString())
+        val hint =
+            "If the storage is unreachable, check the connection to it. " +
+                "If the backup is long, raise the source's timeout."
+        assertTrue(hint in en, en.toString())
+    }
+
+    @Test
+    fun `Срок в уведомлении называется целыми часами, минутами или секундами`() {
+        val cases =
+            mapOf(
+                5_400L to "Срок выполнения: 90 мин",
+                86_400L to "Срок выполнения: 24 ч",
+                59L to "Срок выполнения: 59 с",
+                61L to "Срок выполнения: 61 с",
+            )
+        for ((seconds, line) in cases) {
+            assertTrue(line in format(notice(StepState.TIMED_OUT, timeoutSeconds = seconds)).lines(), "$seconds")
+        }
+    }
+
+    @Test
+    fun `Запись без срока говорит только подсказки, а другие итоги срока и подсказок не несут`() {
+        val old = format(notice(StepState.TIMED_OUT, timeoutSeconds = null)).lines()
+        assertTrue(old.none { it.startsWith("Срок выполнения") }, old.toString())
+        assertTrue(old.any { it.startsWith("Хранилище недоступно") }, old.toString())
+        for (step in listOf(StepState.FAILED, StepState.LOST, StepState.REJECTED)) {
+            val lines = format(notice(step, timeoutSeconds = 21_600)).lines()
+            val told = lines.filter { it.startsWith("Срок выполнения") || it.startsWith("Хранилище недоступно") }
+            assertTrue(told.isEmpty(), "$step")
         }
     }
 

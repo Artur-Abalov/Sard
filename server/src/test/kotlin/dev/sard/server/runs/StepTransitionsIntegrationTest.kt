@@ -42,6 +42,7 @@ class StepTransitionsIntegrationTest(
     @Autowired private val sources: Sources,
     @Autowired private val runs: Runs,
     @Autowired private val steps: StepTransitions,
+    @Autowired private val deadlines: StepDeadlines,
     @Autowired private val clock: MovableClock,
     @Autowired private val jdbc: JdbcTemplate,
 ) {
@@ -84,6 +85,81 @@ class StepTransitionsIntegrationTest(
         assertTrue(steps.claim(tenant.id, step))
         assertTrue(steps.accepted(tenant.id, step, "accepted"))
         return step
+    }
+
+    private val window = Duration.ofSeconds(60)
+
+    /** A running step of a source with a 30 minute backup timeout, accepted at [RUNS_NOW]. */
+    private fun runningWithTimeout(
+        minutes: Int? = 30,
+        name: String = "timed",
+    ): Pair<RunView, UUID> {
+        val draft = tenant.draft(name).copy(backupTimeoutMinutes = minutes)
+        val run = runs.start(tenant.id, sources.create(tenant.id, draft).id)
+        return run to running(run)
+    }
+
+    // Сценарий: Агент на связи молчит после срока и окна — шаг закрывает сервер
+    @Test
+    fun `a running step silent past its timeout and the window is timed out by the server, and its run fails`() {
+        val (run, step) = runningWithTimeout()
+        clock.now = RUNS_NOW + Duration.ofMinutes(31)
+
+        assertTrue(steps.timedOutBySilence(tenant.id, step, window))
+        assertFalse(steps.timedOutBySilence(tenant.id, step, window), "closed once")
+
+        val stepRow = row("run_steps", step)
+        assertEquals(
+            listOf<Any?>("timed_out", "server", clock.now),
+            listOf(stepRow["status"], stepRow["timed_out_by"], instant(stepRow["finished_at"])),
+        )
+        val message = "no result from the agent within the step timeout of 30 min"
+        assertEquals(message, stepRow["message"])
+        val runRow = row("runs", run.id)
+        assertEquals(listOf<Any?>("failed", message), listOf(runRow["status"], runRow["message"]))
+        assertEquals(RunOutcome.TIMED_OUT, runs.get(tenant.id, run.id)!!.outcome)
+    }
+
+    // Сценарий: До срока плюс окно шаг сервером не закрывается
+    @Test
+    fun `the server waits the whole timeout and the window, to the second`() {
+        val (_, step) = runningWithTimeout()
+        clock.now = RUNS_NOW + Duration.ofMinutes(30) + Duration.ofSeconds(59)
+
+        assertFalse(steps.timedOutBySilence(tenant.id, step, window))
+
+        assertEquals("running", row("run_steps", step)["status"])
+        clock.now = RUNS_NOW + Duration.ofMinutes(31)
+        assertTrue(steps.timedOutBySilence(tenant.id, step, window))
+    }
+
+    // Сценарий: Пропавший агент даёт потерю, а не превышение срока
+    @Test
+    fun `a step with a lost deadline is the loss window's, not the timeout's, and a step without a timeout has none`() {
+        val (_, lostStep) = runningWithTimeout()
+        due(lostStep)
+        clock.now = RUNS_NOW + Duration.ofHours(1)
+        assertFalse(steps.timedOutBySilence(tenant.id, lostStep, window))
+        assertTrue(steps.lost(tenant.id, lostStep))
+
+        val run = started("old")
+        jdbc.update("update run_steps set timeout_seconds = null where id = ?", stepOf(run))
+        val old = running(run)
+        assertFalse(steps.timedOutBySilence(tenant.id, old, window))
+        assertEquals("running", row("run_steps", old)["status"])
+    }
+
+    @Test
+    fun `the silent steps of every tenant are listed with their agent, once their time has come`() {
+        val (_, step) = runningWithTimeout()
+        val (_, foreign) = runningWithTimeout(null, "by-default")
+
+        assertEquals(emptyList(), deadlines.silent(RUNS_NOW + Duration.ofMinutes(30) + Duration.ofSeconds(59), window))
+        val due = deadlines.silent(RUNS_NOW + Duration.ofMinutes(31), window)
+        assertEquals(listOf(SilentStep(tenant.id, step, tenant.agentId)), due)
+        assertEquals(listOf(step), deadlines.silent(RUNS_NOW + Duration.ofMinutes(31), window).map { it.id })
+        val later = deadlines.silent(RUNS_NOW + Duration.ofHours(7), window)
+        assertEquals(setOf(step, foreign), later.map { it.id }.toSet())
     }
 
     @Test

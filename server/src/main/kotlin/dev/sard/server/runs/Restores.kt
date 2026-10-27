@@ -109,12 +109,21 @@ class Restores(
                 status = StepState.QUEUED.stored,
                 queuedAt = now,
                 snapshotId = chosen.snapshot.snapshotId,
+                timeoutSeconds = timeoutOf(session, chosen) * SECONDS_PER_MINUTE,
             )
         session.persist(run)
         session.persist(step)
         session.flush()
         return RunViews.of(run, chosen.agent.id, chosen.source, listOf(step))
     }
+
+    /** The restore timeout of the source in minutes, else the tenant's default (J1b). */
+    private fun timeoutOf(
+        session: Session,
+        chosen: RestoreChoice,
+    ): Int =
+        chosen.source.restoreTimeoutMinutes
+            ?: TimeoutSettings.read(session, checkNotNull(chosen.source.tenantId)).restoreMinutes
 
     private fun restoreJson(chosen: RestoreChoice): String =
         JSON.writeValueAsString(

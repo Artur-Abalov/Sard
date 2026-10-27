@@ -12,6 +12,7 @@ import dev.sard.server.runs.RunState
 import dev.sard.server.runs.RunView
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepView
+import dev.sard.server.runs.TimedOutBy
 import dev.sard.server.runs.Trigger
 import dev.sard.server.scheduler.CatchUpPeriod
 import io.github.anschnapp.mutflow.MutFlow
@@ -279,6 +280,32 @@ class RunMappingTest {
 
         assertEquals(StepStatus.SUCCEEDED, MutFlow.underTest { RunMapping.step(late) }.lateStatus)
         assertNull(MutFlow.underTest { RunMapping.step(step(StepState.CANCELLED)) }.lateStatus)
+    }
+
+    // J1b: КВJ5 timeoutSeconds, timedOutBy
+    @Test
+    fun `a step names its timeout and who closed it as timed out`() {
+        val agent = step(StepState.TIMED_OUT).copy(timeoutSeconds = 21_600, timedOutBy = TimedOutBy.AGENT)
+        val server = step(StepState.TIMED_OUT).copy(timedOutBy = TimedOutBy.SERVER)
+
+        val mapped = MutFlow.underTest { RunMapping.step(agent) }
+        assertEquals(listOf(21_600L, StepTimedOutBy.AGENT), listOf(mapped.timeoutSeconds, mapped.timedOutBy))
+        assertEquals(StepTimedOutBy.SERVER, MutFlow.underTest { RunMapping.step(server) }.timedOutBy)
+        val none = MutFlow.underTest { RunMapping.step(step()) }
+        assertEquals(listOf(null, null), listOf(none.timeoutSeconds, none.timedOutBy))
+    }
+
+    // Сценарий: Поздний итог шага, закрытого сервером по сроку, сохраняется, статус не меняется
+    @Test
+    fun `a restore step the server timed out says where its late data is, or what its rollback left`() {
+        val left = RestoreResult(null, null, null, null, null, null, null, "/r/etc")
+        val late = step(StepState.TIMED_OUT, Action.RESTORE).copy(timedOutBy = TimedOutBy.SERVER)
+
+        val withData = late.copy(restore = written, lateStatus = StepState.TIMED_OUT)
+        assertEquals(RestoreOutcome.LATE, MutFlow.underTest { RunMapping.step(withData) }.restoreOutcome)
+        val withLeftover = late.copy(restore = left, lateStatus = StepState.TIMED_OUT)
+        assertEquals(RestoreOutcome.ROLLBACK_FAILED, MutFlow.underTest { RunMapping.step(withLeftover) }.restoreOutcome)
+        assertEquals(RestoreOutcome.NOTHING, MutFlow.underTest { RunMapping.step(late) }.restoreOutcome)
     }
 
     @Test

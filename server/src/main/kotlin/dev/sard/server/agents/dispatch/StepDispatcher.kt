@@ -10,6 +10,7 @@ import dev.sard.server.role.AgentRole
 import dev.sard.server.runs.DispatchLedger
 import dev.sard.server.runs.LostDeadlines
 import dev.sard.server.runs.RoleLedger
+import dev.sard.server.runs.SilentStep
 import dev.sard.server.runs.StepState
 import dev.sard.server.runs.StepView
 import dev.sard.server.runs.WaitingSteps
@@ -48,6 +49,7 @@ class StepDispatcher(
     private val locks = ConcurrentHashMap<UUID, Any>()
 
     private val cancels = CancelSteps(links)
+    private val silent = SilentSteps(ledger, links, lostAfter)
     private val guard = RoleGuard(roles)
 
     /** A run was committed (Runs.start): send its step now if the agent is online. Never throws. */
@@ -125,6 +127,9 @@ class StepDispatcher(
     fun tick() {
         for (step in deadlines.overdue(clock.instant())) {
             if (ledger.lost(step.tenantId, step.id)) log.warn("step {} lost: its agent did not report it", step.id)
+        }
+        for (step in deadlines.silent(clock.instant(), lostAfter)) {
+            silent.timeOut(step) { agent, work -> locked(agent, work) }
         }
         for (agent in links.connected()) {
             if (links.online(agent.agentId)) serve(agent.tenantId, agent.agentId)

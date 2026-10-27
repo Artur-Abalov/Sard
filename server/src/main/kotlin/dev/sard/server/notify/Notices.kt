@@ -153,6 +153,7 @@ internal object Notices {
             notifyOnSuccess = notifiesOnSuccess(session, run),
             kind = RunKind.of(run.kind),
             cancelRequested = run.cancelRequestedAt != null,
+            timeoutSeconds = stepView.timeoutSeconds,
             restore = restoreNotice(run, stepView),
         )
     }

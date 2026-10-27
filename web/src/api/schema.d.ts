@@ -134,6 +134,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/run-defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The default step timeouts
+         * @description 6 h for a backup and 12 h for a restore until set. A source's own timeout overrides them.
+         */
+        get: operations["getRunDefaults"];
+        /**
+         * Set the default step timeouts
+         * @description Both are required. They count for runs created after the change; runs in flight keep theirs.
+         */
+        put: operations["setRunDefaults"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sources": {
         parameters: {
             query?: never;
@@ -945,6 +969,16 @@ export interface components {
             config: {
                 [key: string]: unknown;
             };
+            /**
+             * Format: int32
+             * @description The step timeout of the source's backups in minutes, 1 to 1440; null: the installation's default (run-defaults)
+             */
+            backupTimeoutMinutes?: number | null;
+            /**
+             * Format: int32
+             * @description The step timeout of restores of the source's snapshots in minutes, 1 to 1440; null: the installation's default
+             */
+            restoreTimeoutMinutes?: number | null;
         };
         /** @description An error (RFC 9457) */
         Problem: {
@@ -995,6 +1029,16 @@ export interface components {
              * @description The level the last successful verification reached
              */
             lastVerifiedLevel: number | null;
+            /**
+             * Format: int32
+             * @description The step timeout of the source's backups in minutes, 1 to 1440; null: the installation's default (run-defaults)
+             */
+            backupTimeoutMinutes: number | null;
+            /**
+             * Format: int32
+             * @description The step timeout of restores of the source's snapshots in minutes, 1 to 1440; null: the installation's default
+             */
+            restoreTimeoutMinutes: number | null;
         };
         /** @enum {string} */
         SystemSourceRole: "self_database" | "self_keys";
@@ -1235,6 +1279,19 @@ export interface components {
         SelfBackupStatus: "not_configured" | "ok" | "agent_replaced" | "overdue" | "failing" | "schedule_disabled";
         /** @enum {string} */
         SelfBackupWarningCode: "agent_replaced" | "overdue" | "failing" | "schedule_disabled" | "local_storage" | "keys_unconfirmed";
+        /** @description The default step timeouts of the installation (J1b); a run takes them when it is created */
+        RunDefaults: {
+            /**
+             * Format: int32
+             * @description The step timeout of a backup in minutes, 1 to 1440, for a source that names none
+             */
+            backupTimeoutMinutes: number;
+            /**
+             * Format: int32
+             * @description The step timeout of a restore in minutes, 1 to 1440, for a source that names none
+             */
+            restoreTimeoutMinutes: number;
+        };
         /** @description What to verify now */
         VerifyNowInput: {
             /**
@@ -1465,6 +1522,13 @@ export interface components {
             finishedAt: string | null;
             /** @description What the agent reported after the server closed the step as cancelled (its agent did not confirm the cancel); null when nothing came. The step's and the run's status do not change */
             lateStatus: components["schemas"]["StepStatus"] | null;
+            /**
+             * Format: int64
+             * @description The timeout the step was created with, in seconds: the source's, or the installation's default at the time. null for a step without one (a verification's is its attempt's; records before J1b)
+             */
+            timeoutSeconds: number | null;
+            /** @description Who closed a timed out step: the agent (its own deadline) or the server (the agent stayed silent past the timeout and the lost window); null for any other step */
+            timedOutBy: components["schemas"]["StepTimedOutBy"] | null;
         };
         /** @enum {string} */
         StepAction: "backup" | "restore" | "verify" | "run";
@@ -1472,6 +1536,8 @@ export interface components {
         StepPhase: "accepted" | "preparing" | "dumping" | "uploading" | "restoring" | "verifying";
         /** @enum {string} */
         StepStatus: "queued" | "dispatched" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out" | "rejected" | "lost";
+        /** @enum {string} */
+        StepTimedOutBy: "agent" | "server";
         /** @description What a restore request would do; nothing is created */
         RestorePreview: {
             sourceName: string;
@@ -3069,6 +3135,113 @@ export interface operations {
             };
             /** @description Origin does not match the request (CSRF) */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Rejected values; errors name the fields */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getRunDefaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDefaults"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The database is unavailable; nothing was changed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    setRunDefaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunDefaults"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDefaults"];
+                };
+            };
+            /** @description No session or it expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin does not match the request (CSRF) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The onboarding is not complete (onboarding_incomplete); or the onboarding is not complete */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

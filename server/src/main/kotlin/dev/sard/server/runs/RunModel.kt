@@ -141,6 +141,9 @@ data class SourceDraft(
     val plugin: String,
     val repositoryName: String,
     val config: String,
+    /** The backup and restore timeouts of the source in minutes; null: the tenant's default (J1b). */
+    val backupTimeoutMinutes: Int? = null,
+    val restoreTimeoutMinutes: Int? = null,
 ) {
     override fun toString(): String {
         val names = "plugin=$plugin, repositoryName=$repositoryName"
@@ -159,6 +162,8 @@ data class SourceView(
     val createdAt: Instant,
     val updatedAt: Instant,
     val systemRole: SystemRole? = null,
+    val backupTimeoutMinutes: Int? = null,
+    val restoreTimeoutMinutes: Int? = null,
 ) {
     override fun toString() = "SourceView(id=$id, name=$name, agentId=$agentId, plugin=$plugin)"
 }
@@ -207,6 +212,22 @@ data class RestoreResult(
     val ownersRestored: Boolean?,
     val leftover: String?,
 )
+
+/** Who closed a step as timed out. */
+enum class TimedOutBy(
+    val stored: String,
+) {
+    /** The agent's own deadline: its StepResult was TIMED_OUT. */
+    AGENT("agent"),
+
+    /** The agent stayed silent past the timeout and the lost window (Р-J7). */
+    SERVER("server"),
+    ;
+
+    companion object {
+        fun of(stored: String): TimedOutBy = entries.single { it.stored == stored }
+    }
+}
 
 /** How a cancel of a run ended; pending until the run is final (J1a). */
 enum class CancelResult(
@@ -348,6 +369,10 @@ data class StepView(
     val cancelRequested: Boolean = false,
     /** What the agent reported after the server closed the step as cancelled; null if nothing came (J1a). */
     val lateStatus: StepState? = null,
+    /** The timeout the step was created with, in seconds; null for a step without one (J1b). */
+    val timeoutSeconds: Long? = null,
+    /** Who closed a timed out step: the agent's own deadline, or the server (J1b). */
+    val timedOutBy: TimedOutBy? = null,
 ) {
     override fun toString() = "StepView(id=$id, action=$action, status=$status, agentId=$agentId)"
 }

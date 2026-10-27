@@ -257,6 +257,16 @@ enum class RestoreOutcome {
     LATE,
 }
 
+/** Who closed a step as timed out (J1b). */
+@Schema(enumAsRef = true)
+enum class StepTimedOutBy {
+    @JsonProperty("agent")
+    AGENT,
+
+    @JsonProperty("server")
+    SERVER,
+}
+
 /** Step state (ADR 0013, run_steps.status): the server's own states around the agent's final ones. */
 @Schema(enumAsRef = true)
 enum class StepStatus {

@@ -436,6 +436,9 @@ class ApiContractIntegrationTest(
             Triple("GET", "/api/v1/verification-schedule", null),
             // A wrong cron: the installation's cycle stays as it was for the other tests of this database.
             Triple("PUT", "/api/v1/verification-schedule", """{"cron":"nope","timezone":"UTC"}"""),
+            Triple("GET", "/api/v1/run-defaults", null),
+            // Out of range: the defaults stay as they were for the other tests of this database.
+            Triple("PUT", "/api/v1/run-defaults", """{"backupTimeoutMinutes":0,"restoreTimeoutMinutes":720}"""),
             Triple("GET", "/api/v1/verifiers?sourceId=$id", null),
         ) + restoreCalls(id)
     }

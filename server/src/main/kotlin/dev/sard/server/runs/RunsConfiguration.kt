@@ -131,6 +131,16 @@ class RunsConfiguration {
     ) = Runs(sessions, clock, UuidV7(clock, SecureRandom()), queued.getIfUnique { StepsQueued.NONE })
 }
 
+/** The installation's default step timeouts (J1b, ДJ8). */
+@Configuration(proxyBeanMethods = false)
+class TimeoutSettingsConfiguration {
+    @Bean
+    fun timeoutSettings(
+        sessions: TenantSessions,
+        clock: Clock,
+    ) = TimeoutSettings(sessions, clock)
+}
+
 /** Cancel of a run (J1a): the endpoint's service; the dispatcher, if there is one, sends the agent its CancelStep. */
 @Configuration(proxyBeanMethods = false)
 class RunCancelsConfiguration {

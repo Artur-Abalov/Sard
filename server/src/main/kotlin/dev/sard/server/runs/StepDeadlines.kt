@@ -5,11 +5,18 @@ package dev.sard.server.runs
 
 import dev.sard.server.persistence.TenantSessions
 import org.hibernate.Session
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
 private const val IN_FLIGHT = "status in ('dispatched', 'running')"
 private const val OVERDUE = "select tenant_id, id from run_steps where $IN_FLIGHT and lost_deadline <= :now"
+
+// A running step the agent confirmed (no lost deadline) that has a timeout, past the timeout and the window (J1b).
+internal const val SILENT_STEP =
+    "status = 'running' and lost_deadline is null and timeout_seconds is not null " +
+        "and started_at + (timeout_seconds + :window) * interval '1 second' <= :now"
+private const val SILENT = "select tenant_id, id, agent_id from run_steps where $SILENT_STEP"
 private const val HOLDERS = "select distinct tenant_id, agent_id from run_steps where $IN_FLIGHT"
 
 // Native SQL names tenant_id explicitly (ADR 0013, rule 8). least() skips NULL: the earliest deadline holds (Д2).
@@ -18,6 +25,13 @@ private const val LISTED = "and id in (:steps)"
 private const val EXPECT = "update run_steps set lost_deadline = least(lost_deadline, :deadline) $OF_AGENT"
 private const val CONFIRM = "update run_steps set lost_deadline = null $OF_AGENT $LISTED"
 private const val RESTART = "update run_steps set lost_deadline = :deadline $OF_AGENT"
+
+/** A running step whose agent has stayed silent past the step's timeout and the lost window (J1b). */
+data class SilentStep(
+    val tenantId: UUID,
+    val id: UUID,
+    val agentId: UUID,
+)
 
 /** A step or an agent with the tenant it belongs to. */
 data class InTenant(
@@ -36,6 +50,15 @@ interface LostDeadlines {
 
     /** Agents with a dispatched or running step, across tenants. */
     fun holders(): List<InTenant>
+
+    /**
+     * Running steps whose timeout and the lost [window] have passed at [now]: the agent confirmed them (they have no
+     * lost deadline, which is the loss window's business) and sent no result (Р-J7). Across tenants.
+     */
+    fun silent(
+        now: Instant,
+        window: Duration,
+    ): List<SilentStep>
 
     /** The agent's session ended: its steps in flight are lost at [deadline], or at the earlier one they have. */
     fun expectAll(
@@ -74,6 +97,19 @@ class StepDeadlines(
     override fun overdue(now: Instant) = read(OVERDUE, mapOf("now" to now))
 
     override fun holders() = read(HOLDERS, emptyMap())
+
+    override fun silent(
+        now: Instant,
+        window: Duration,
+    ): List<SilentStep> =
+        sessions.system { session ->
+            session
+                .createNativeQuery(SILENT, Array<Any>::class.java)
+                .setParameter("now", now)
+                .setParameter("window", window.seconds)
+                .list()
+                .map { SilentStep(it[0] as UUID, it[1] as UUID, it[2] as UUID) }
+        }
 
     override fun expectAll(
         tenantId: UUID,

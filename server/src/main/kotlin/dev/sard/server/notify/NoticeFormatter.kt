@@ -108,7 +108,8 @@ class RunNoticeFormatter(
             }
 
             StepState.FAILED, StepState.REJECTED, StepState.TIMED_OUT, StepState.CANCELLED -> {
-                lines.reasonLines(notice.message) + snapshotLines(sizes)
+                val timeout = lines.timeoutLines(notice, words.timedOutHint)
+                lines.reasonLines(notice.message) + timeout + snapshotLines(sizes)
             }
 
             StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING -> {
@@ -155,6 +156,19 @@ internal class NoticeLines(
         } else {
             text.substring(0, text.offsetByCodePoints(0, MAX_REASON)) + ELLIPSIS
         }
+
+    /**
+     * A step that timed out: the timeout it had, when it is known, and the two causes to look at (J1b, КJ-7); no
+     * lines for a step that ended any other way.
+     */
+    fun timeoutLines(
+        notice: RunNotice,
+        hint: String,
+    ): List<List<Message.Part>> {
+        if (notice.stepStatus != StepState.TIMED_OUT) return emptyList()
+        val timeout = notice.timeoutSeconds?.let { listOf(Message.Text(words.timeoutLine + figures.timeout(it))) }
+        return listOfNotNull(timeout, listOf(Message.Text(hint)))
+    }
 
     fun durationLine(
         start: Instant?,
@@ -208,7 +222,8 @@ internal class RestoreNoticeFormatter(
             }
 
             StepState.FAILED, StepState.REJECTED, StepState.TIMED_OUT, StepState.CANCELLED -> {
-                lines.reasonLines(notice.message) + listOf(rollbackLine(result?.leftover))
+                val timeout = lines.timeoutLines(notice, words.restore.timedOutHint)
+                lines.reasonLines(notice.message) + timeout + listOf(rollbackLine(result?.leftover))
             }
 
             StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING -> {
@@ -271,6 +286,16 @@ internal class NoticeFigures(
             else -> {
                 "$seconds $s"
             }
+        }
+    }
+
+    /** A step timeout in the biggest unit that holds it whole, as the server's own messages tell it. */
+    fun timeout(seconds: Long): String {
+        val (s, min, h) = words.durationUnits
+        return when {
+            seconds % SECONDS_PER_HOUR == 0L -> "${seconds / SECONDS_PER_HOUR} $h"
+            seconds % SECONDS_PER_MINUTE == 0L -> "${seconds / SECONDS_PER_MINUTE} $min"
+            else -> "$seconds $s"
         }
     }
 

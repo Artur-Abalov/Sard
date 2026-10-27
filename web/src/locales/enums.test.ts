@@ -24,6 +24,7 @@ const enums = [
   'RunOutcome',
   'CancelResult',
   'StepStatus',
+  'StepTimedOutBy',
   'StepPhase',
   'EnrollmentTokenStatus',
   'AgentStatus',

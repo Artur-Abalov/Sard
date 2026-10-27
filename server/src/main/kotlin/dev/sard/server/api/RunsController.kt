@@ -229,6 +229,18 @@ data class RunStep(
                 "cancel); null when nothing came. The step's and the run's status do not change",
     )
     val lateStatus: StepStatus?,
+    @field:Schema(
+        description =
+            "The timeout the step was created with, in seconds: the source's, or the installation's default at the " +
+                "time. null for a step without one (a verification's is its attempt's; records before J1b)",
+    )
+    val timeoutSeconds: Long?,
+    @field:Schema(
+        description =
+            "Who closed a timed out step: the agent (its own deadline) or the server (the agent stayed silent " +
+                "past the timeout and the lost window); null for any other step",
+    )
+    val timedOutBy: StepTimedOutBy?,
 )
 
 @Schema(description = "A run with its steps")

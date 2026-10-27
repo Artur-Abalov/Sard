@@ -43,6 +43,7 @@ private fun restoreNotice(
     previous: RunState? = RunState.SUCCEEDED,
     trigger: Trigger = Trigger.MANUAL,
     tookSeconds: Long = 90,
+    timeoutSeconds: Long? = null,
 ) = RunNotice(
     tenantId = UUID.randomUUID(),
     runId = RUN,
@@ -61,6 +62,7 @@ private fun restoreNotice(
     previousStatus = previous,
     kind = RunKind.RESTORE,
     restore = RestoreNotice(SNAPSHOT, Instant.parse("2026-10-10T03:00:00Z"), result),
+    timeoutSeconds = timeoutSeconds,
 )
 
 private fun Message.text() = parts.joinToString("") { it.text }
@@ -127,6 +129,25 @@ class RestoreNoticeFormatterTest {
         assertTrue(at > 0, parts.toString())
         assertEquals(Message.Text("Database: "), parts[at - 1])
         assertEquals(Message.Text(", tables: 2"), parts[at + 1])
+    }
+
+    // Сценарий: Уведомление о превышенном сроке называет срок и обе подсказки (восстановление)
+    @Test
+    fun `Уведомление о превышенном сроке восстановления называет срок, обе подсказки и что ничего не восстановлено`() {
+        val notice = restoreNotice(StepState.TIMED_OUT, "deadline exceeded", timeoutSeconds = 43_200)
+        val ru = format(notice).text().lines()
+        val en = format(notice, NoticeLanguage.EN).text().lines()
+
+        assertEquals("❌ Восстановление прервано по таймауту: etc data", ru.first())
+        assertTrue("Срок выполнения: 12 ч" in ru, ru.toString())
+        val hintRu = "Хранилище недоступно — проверьте связь с ним. Восстановление долгое — увеличьте срок у источника."
+        assertTrue(hintRu in ru, ru.toString())
+        assertTrue("Ничего не восстановлено: изменения отменены." in ru, ru.toString())
+        assertTrue("Step timeout: 12 h" in en, en.toString())
+        val hintEn =
+            "If the storage is unreachable, check the connection to it. " +
+                "If the restore is long, raise the source's timeout."
+        assertTrue(hintEn in en, en.toString())
     }
 
     @Test

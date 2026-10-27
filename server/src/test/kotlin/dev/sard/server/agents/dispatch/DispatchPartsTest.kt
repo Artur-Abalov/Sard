@@ -41,6 +41,22 @@ class DispatchPartsTest {
         assertEquals(expected, MutFlow.underTest { RunSteps.of(step(1)) })
     }
 
+    // J1b: Шаг получает срок источника в RunStep timeout
+    @Test
+    fun `a step sends the timeout it was created with, a step without one sends none`() {
+        assertEquals(5_400L, MutFlow.underTest { RunSteps.of(step(1).copy(timeoutSeconds = 5_400)) }.timeout.seconds)
+        assertTrue(!MutFlow.underTest { RunSteps.of(step(1)) }.hasTimeout())
+    }
+
+    // J1b: Срок шага проверки задаёт проверка, а не источник
+    @Test
+    fun `a verify step sends the timeout of its attempt, not the step's`() {
+        val task = VerifyTask(UUID(7, 1), "a".repeat(64), null, null, Instant.EPOCH, 600)
+        val step = step(1).copy(action = Action.VERIFY, verifyTask = task, timeoutSeconds = 5_400)
+
+        assertEquals(600L, MutFlow.underTest { RunSteps.of(step) }.timeout.seconds)
+    }
+
     @Test
     fun `a verify step carries its snapshot, its task and its timeout, and nothing else`() {
         val deadline = Instant.parse("2026-10-20T04:30:00Z")
