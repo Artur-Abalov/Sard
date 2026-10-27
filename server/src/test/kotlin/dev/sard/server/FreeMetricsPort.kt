@@ -45,6 +45,10 @@ class FreeMetricsPort : ApplicationContextInitializer<ConfigurableApplicationCon
         if (!named("sard.metrics.state-interval")) {
             TestPropertyValues.of("sard.metrics.state-interval=1h").applyTo(environment)
         }
+        if (!named("sard.verification.interval")) {
+            // No tick opens a «no verifier» episode behind a test's back: it would hold the tenant at its teardown.
+            TestPropertyValues.of("sard.verification.interval=1h").applyTo(environment)
+        }
         context.addApplicationListener(
             ApplicationListener<ApplicationReadyEvent> { awaitFirstTick(it.applicationContext) },
         )

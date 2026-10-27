@@ -72,8 +72,8 @@
    `sudo sard-agent repo key add www --for verifier`; на верификаторе —
    шаблон `sudo sard-agent repo add …` с `<address>` и `<file>` и пометкой
    об учётке только на чтение. Полей ввода нет. Секретов нет.
-8. `curl -s -b $QA/jf $API/verification-setup | jq -r 'del(.verifierRepoAdd)' | grep -ciE 'password|secret'`
-   → `0` (слово «password» допустимо только как имя флага `--password-from-file`
+8. `curl -fsS -b $QA/jf $API/verification-setup | jq -r 'del(.verifierRepoAdd)' | grep -ciE 'password|secret'`
+   → `0`, без сообщения об ошибке от curl — иначе проверка не состоялась (слово «password» допустимо только как имя флага `--password-from-file`
    в шаблоне `verifierRepoAdd`; значений паролей и секретов в ответе нет).
 9. Подождать такт цикла проверок (`sard.verification.interval`).
    → в чат пришло **одно** сообщение «⚠️ Проверка восстановления не работает:
