@@ -14,6 +14,7 @@ import dev.sard.server.agents.stream.CommandReconciliation
 import dev.sard.server.agents.stream.SendResult
 import dev.sard.server.metrics.SardMetricNames
 import dev.sard.server.persistence.TenantSessions
+import dev.sard.server.runs.AgentWaits
 import dev.sard.server.runs.RoleLedger
 import dev.sard.server.runs.RoleRefusals
 import dev.sard.server.runs.RunAnnouncer
@@ -45,7 +46,10 @@ data class DispatchSettings(
     val checkInterval: Duration,
     /** After a server start no step in flight is lost sooner than this (OQ-138); at least [lostAfter] counts. */
     val startGrace: Duration,
-)
+) {
+    /** How long after a server start an agent not seen since is given to reconnect: the longer of grace and window. */
+    val reconnectGrace: Duration get() = maxOf(lostAfter, startGrace)
+}
 
 /** `sard.run.dispatch.*`; the window is counted in heartbeat intervals, like the stream's (ADR 0026). */
 @ConfigurationProperties("sard.run.dispatch")
@@ -144,6 +148,7 @@ class DispatchConfiguration {
         meters: MeterRegistry,
         counts: StepCounts,
         roles: RoleLedger,
+        waits: AgentWaits,
     ) = StepDispatcher(
         transitions,
         deadlines,
@@ -153,6 +158,7 @@ class DispatchConfiguration {
         MicrometerDispatchMetrics(meters),
         roles,
         settings.startGrace,
+        waits::expire,
         counts::waiting,
     )
 

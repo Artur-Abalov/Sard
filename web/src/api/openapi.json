@@ -4447,7 +4447,7 @@
       },
       "RunStatus" : {
         "type" : "string",
-        "enum" : [ "queued", "dispatched", "running", "succeeded", "failed", "cancelled" ]
+        "enum" : [ "queued", "dispatched", "running", "succeeded", "failed", "cancelled", "agent_unavailable" ]
       },
       "RunTrigger" : {
         "type" : "string",
@@ -5088,7 +5088,7 @@
           },
           "outcome" : {
             "$ref" : "#/components/schemas/RunOutcome",
-            "description" : "What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost) and the cancel (cancelling, cancelled, cancel_unconfirmed)"
+            "description" : "What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost), the cancel (cancelling, cancelled, cancel_unconfirmed) and the agent (waiting_for_agent: queued while the agent is offline; agent_unavailable: not run, the agent was offline until the wait deadline)"
           },
           "cancellation" : {
             "description" : "Set once somebody asked to cancel the run; null otherwise",
@@ -5097,9 +5097,19 @@
             }, {
               "type" : "null"
             } ]
+          },
+          "agentWaitUntil" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "Until when the queued run waits for an offline agent: the console shows \"starts when the agent connects, waiting until <time>\". null once the run left the queue, and for a run that never waited"
+          },
+          "agentUnavailableSince" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "The agent's last contact when the wait expired (outcome agent_unavailable); null: the agent never connected, or the run did not expire"
           }
         },
-        "required" : [ "agentId", "cancellation", "catchUp", "finishedAt", "id", "kind", "message", "outcome", "queuedAt", "requestedBy", "restore", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "steps", "trigger" ]
+        "required" : [ "agentId", "agentUnavailableSince", "agentWaitUntil", "cancellation", "catchUp", "finishedAt", "id", "kind", "message", "outcome", "queuedAt", "requestedBy", "restore", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "steps", "trigger" ]
       },
       "RunKind" : {
         "type" : "string",
@@ -5107,7 +5117,7 @@
       },
       "RunOutcome" : {
         "type" : "string",
-        "enum" : [ "queued", "dispatched", "running", "cancelling", "succeeded", "failed", "timed_out", "rejected", "lost", "cancelled", "cancel_unconfirmed" ]
+        "enum" : [ "queued", "waiting_for_agent", "dispatched", "running", "cancelling", "succeeded", "failed", "timed_out", "rejected", "lost", "cancelled", "cancel_unconfirmed", "agent_unavailable" ]
       },
       "RunRestore" : {
         "type" : "object",
@@ -5277,7 +5287,7 @@
       },
       "StepStatus" : {
         "type" : "string",
-        "enum" : [ "queued", "dispatched", "running", "succeeded", "failed", "cancelled", "timed_out", "rejected", "lost" ]
+        "enum" : [ "queued", "dispatched", "running", "succeeded", "failed", "cancelled", "timed_out", "rejected", "lost", "agent_unavailable" ]
       },
       "StepTimedOutBy" : {
         "type" : "string",
@@ -6577,7 +6587,7 @@
           },
           "outcome" : {
             "$ref" : "#/components/schemas/RunOutcome",
-            "description" : "What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost) and the cancel (cancelling, cancelled, cancel_unconfirmed)"
+            "description" : "What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost), the cancel (cancelling, cancelled, cancel_unconfirmed) and the agent (waiting_for_agent: queued while the agent is offline; agent_unavailable: not run, the agent was offline until the wait deadline)"
           }
         },
         "required" : [ "agentId", "catchUp", "finishedAt", "id", "kind", "message", "outcome", "queuedAt", "requestedBy", "sourceDeleted", "sourceId", "sourceName", "startedAt", "status", "trigger" ]

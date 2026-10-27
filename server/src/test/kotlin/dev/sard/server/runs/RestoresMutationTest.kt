@@ -434,6 +434,18 @@ class RestoresMutationTest(
         assertEquals(1, restoreRuns())
     }
 
+    // J1c: Ожидание не дольше потолка (восстановление), закрывает OQ-233
+    @Test
+    fun `a restore waits for an offline agent for a day, and keeps the deadline`() {
+        val s = source()
+        snapshot(s)
+
+        val run = start(s, draft(a))
+
+        assertEquals(RUNS_NOW.plusSeconds(24 * 3600), run.agentWaitUntil)
+        assertEquals(RUNS_NOW.plusSeconds(24 * 3600), runs.get(tenant.id, run.id)!!.agentWaitUntil)
+    }
+
     // J1b: the step of a restore gets the source's restore timeout, or the tenant's default
     @Test
     fun `a restore step takes the restore timeout of its source, else the tenant's default, and keeps it`() {

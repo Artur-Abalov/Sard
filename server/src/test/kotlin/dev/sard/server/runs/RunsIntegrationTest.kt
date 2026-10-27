@@ -112,6 +112,7 @@ class RunsIntegrationTest(
                 null,
                 null,
                 requestedBy = "admin",
+                agentWaitUntil = RUNS_NOW.plusSeconds(24 * 3600),
             ),
             run.copy(steps = emptyList()),
         )

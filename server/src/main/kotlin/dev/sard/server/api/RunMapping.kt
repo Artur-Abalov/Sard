@@ -47,6 +47,8 @@ internal object RunMapping {
         view.restore?.let(RestoreMapping::runRestore),
         CancelMapping.outcome(view.outcome),
         view.cancellation?.let(CancelMapping::cancellation),
+        view.agentWaitUntil,
+        view.agentUnavailableSince,
     )
 
     fun summary(

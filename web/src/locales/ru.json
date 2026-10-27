@@ -290,10 +290,12 @@
       "running": "выполняется",
       "succeeded": "успешно",
       "failed": "ошибка",
-      "cancelled": "отменён"
+      "cancelled": "отменён",
+      "agent_unavailable": "не выполнен: агент был недоступен"
     },
     "RunOutcome": {
       "queued": "в очереди",
+      "waiting_for_agent": "ждёт агента",
       "dispatched": "передан агенту",
       "running": "выполняется",
       "cancelling": "отменяется",
@@ -303,7 +305,8 @@
       "rejected": "отклонён",
       "lost": "потерян",
       "cancelled": "отменён",
-      "cancel_unconfirmed": "отменён (агент не подтвердил)"
+      "cancel_unconfirmed": "отменён (агент не подтвердил)",
+      "agent_unavailable": "не выполнен: агент был недоступен"
     },
     "CancelResult": {
       "pending": "ждём агента",
@@ -320,7 +323,8 @@
       "cancelled": "отменён",
       "timed_out": "превышено время",
       "rejected": "отклонён",
-      "lost": "потерян"
+      "lost": "потерян",
+      "agent_unavailable": "не отправлен: агент был недоступен"
     },
     "StepTimedOutBy": {
       "agent": "агент (собственный срок)",

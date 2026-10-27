@@ -110,6 +110,11 @@ sard:
       # counts): an agent backing off for its longest pause must find its step alive (OQ-138). A positive
       # duration; the server does not start with anything else.
       start-grace: ${SARD_RUN_START_GRACE:2m}
+    agent-wait:
+      # How long a run waits in the queue for an offline agent (J1c). A manual run, a restore and a self-backup
+      # wait this long; a scheduled run until the next fire of its schedule, at most this long. Then the run is
+      # "not run: the agent was unavailable". A positive duration; the server does not start with anything else.
+      max: ${SARD_RUN_AGENT_WAIT_MAX:24h}
     progress:
       # Byte counters of one step reach the database at most this often; a new phase at once (S7a).
       write-interval: 5s

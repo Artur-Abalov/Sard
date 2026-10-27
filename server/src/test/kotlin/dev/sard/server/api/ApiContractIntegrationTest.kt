@@ -197,12 +197,13 @@ class ApiContractIntegrationTest(
     @Test
     fun `step status is the proto final states plus the server's own`() {
         val final = protoValues(ProtoStepStatus.entries.toTypedArray())
-        assertEquals(listOf("queued", "dispatched", "running") + final + "lost", enumValues("StepStatus"))
+        val expected = listOf("queued", "dispatched", "running") + final + listOf("lost", "agent_unavailable")
+        assertEquals(expected, enumValues("StepStatus"))
     }
 
     @Test
     fun `run, trigger, agent and token states`() {
-        val run = listOf("queued", "dispatched", "running", "succeeded", "failed", "cancelled")
+        val run = listOf("queued", "dispatched", "running", "succeeded", "failed", "cancelled", "agent_unavailable")
         assertEquals(run, enumValues("RunStatus"))
         assertEquals(listOf("schedule", "manual", "verification", "catch_up"), enumValues("RunTrigger"))
         assertEquals(listOf("online", "offline"), enumValues("AgentStatus"))

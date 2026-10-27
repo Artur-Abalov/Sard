@@ -37,8 +37,9 @@ data class CatchUp(
 )
 
 private const val OUTCOME =
-    "What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost) " +
-        "and the cancel (cancelling, cancelled, cancel_unconfirmed)"
+    "What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost), " +
+        "the cancel (cancelling, cancelled, cancel_unconfirmed) and the agent (waiting_for_agent: queued while the " +
+        "agent is offline; agent_unavailable: not run, the agent was offline until the wait deadline)"
 
 @Schema(description = "A cancel somebody asked for")
 data class Cancellation(
@@ -271,6 +272,18 @@ data class Run(
     val outcome: RunOutcome,
     @field:Schema(description = "Set once somebody asked to cancel the run; null otherwise")
     val cancellation: Cancellation?,
+    @field:Schema(
+        description =
+            "Until when the queued run waits for an offline agent: the console shows \"starts when the agent " +
+                "connects, waiting until <time>\". null once the run left the queue, and for a run that never waited",
+    )
+    val agentWaitUntil: Instant?,
+    @field:Schema(
+        description =
+            "The agent's last contact when the wait expired (outcome agent_unavailable); null: the agent never " +
+                "connected, or the run did not expire",
+    )
+    val agentUnavailableSince: Instant?,
 )
 
 @Schema(description = "A page of runs")

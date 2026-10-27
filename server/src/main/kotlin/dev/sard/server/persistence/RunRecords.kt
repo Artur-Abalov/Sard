@@ -84,6 +84,9 @@ class RunRecord(
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(updatable = false)
     val restore: String? = null,
+    /** Until when the run waits in the queue for an offline agent (J1c); null: it does not wait. */
+    @Column(name = "agent_wait_until", updatable = false)
+    val agentWaitUntil: Instant? = null,
     @TenantId
     @Column(name = "tenant_id", nullable = false, updatable = false)
     val tenantId: UUID? = null,
@@ -106,6 +109,10 @@ class RunRecord(
 
     @Column(name = "cancel_result", insertable = false, updatable = false)
     val cancelResult: String? = null
+
+    /** The agent's last contact when the wait expired (J1c); set by the guarded update that expires the run. */
+    @Column(name = "agent_unavailable_since", insertable = false, updatable = false)
+    val agentUnavailableSince: Instant? = null
 }
 
 /**

@@ -36,6 +36,7 @@ private fun notice(
     failuresBefore: Int = if (previous == RunState.FAILED) 1 else 0,
     notifyOnSuccess: Boolean = false,
     timeoutSeconds: Long? = null,
+    agentUnavailableSince: Instant? = null,
 ) = RunNotice(
     tenantId = UUID.randomUUID(),
     runId = RUN,
@@ -55,7 +56,10 @@ private fun notice(
     failuresBefore = failuresBefore,
     notifyOnSuccess = notifyOnSuccess,
     timeoutSeconds = timeoutSeconds,
+    agentUnavailableSince = agentUnavailableSince,
 )
+
+private val SINCE: Instant = Instant.parse("2026-10-01T09:00:00Z")
 
 private fun Message.text() = parts.joinToString("") { it.text }
 
@@ -635,5 +639,57 @@ class RunNoticeFormatterTest {
     fun `Строка о консоли есть и без ссылки на консоль`() {
         val message = format(notice(StepState.FAILED, "x".repeat(501)), console = "")
         assertTrue("Полный текст — в консоли." in message.lines())
+    }
+
+    // --- J1c: the agent was unavailable
+
+    // J1c: Уведомление о недоступном агенте называет последнюю связь
+    @Test
+    fun `Уведомление о недоступном агенте называет итог и последнюю связь на обоих языках`() {
+        val ru = format(notice(StepState.AGENT_UNAVAILABLE, agentUnavailableSince = SINCE))
+        assertEquals("⏸ Бэкап не выполнен — агент был недоступен: db-main", ru.lines().first())
+        assertTrue("Агент не на связи с 2026-10-01 09:00 UTC" in ru.lines())
+        val en = format(notice(StepState.AGENT_UNAVAILABLE, agentUnavailableSince = SINCE), NoticeLanguage.EN)
+        assertEquals("⏸ Backup not run — the agent was unavailable: db-main", en.lines().first())
+        assertTrue("Agent offline since 2026-10-01 09:00 UTC" in en.lines())
+    }
+
+    // J1c: Уведомление об агенте, который ни разу не подключался, так и говорит
+    @Test
+    fun `Агент, который ни разу не подключался, назван так и без строки о связи`() {
+        val ru = format(notice(StepState.AGENT_UNAVAILABLE, agentUnavailableSince = null))
+        assertTrue("Агент ещё ни разу не подключался" in ru.lines())
+        assertTrue(ru.lines().none { it.startsWith("Агент не на связи") })
+        val en = format(notice(StepState.AGENT_UNAVAILABLE), NoticeLanguage.EN)
+        assertTrue("The agent has never connected" in en.lines())
+    }
+
+    @Test
+    fun `Недоступный агент не называет причины длительности и размеров`() {
+        val never = notice(StepState.AGENT_UNAVAILABLE, message = "x", startedAt = null, agentUnavailableSince = SINCE)
+        val lines = format(never).lines()
+        assertTrue(lines.none { it.startsWith("Причина") || it.startsWith("Длительность") || it.startsWith("Всего") })
+    }
+
+    // J1c: Второй подряд недоступный агент по расписанию не уведомляет
+    @Test
+    fun `Недоступный агент по расписанию уведомляет только первым в серии, ручной запуск всегда`() {
+        val formatter = RunNoticeFormatter(NoticeLanguage.RU, null)
+        val first = notice(StepState.AGENT_UNAVAILABLE, trigger = Trigger.SCHEDULE, previous = RunState.SUCCEEDED)
+        val afterFailure = notice(StepState.AGENT_UNAVAILABLE, trigger = Trigger.CATCH_UP, previous = RunState.FAILED)
+        val second =
+            notice(StepState.AGENT_UNAVAILABLE, trigger = Trigger.SCHEDULE, previous = RunState.AGENT_UNAVAILABLE)
+        val manual = notice(StepState.AGENT_UNAVAILABLE, previous = RunState.AGENT_UNAVAILABLE)
+        assertNotNull(MutFlow.underTest { formatter.format(first) })
+        assertNotNull(MutFlow.underTest { formatter.format(afterFailure) })
+        assertNull(MutFlow.underTest { formatter.format(second) })
+        assertNotNull(MutFlow.underTest { formatter.format(manual) })
+    }
+
+    @Test
+    fun `Успех после недоступного агента по расписанию не называет восстановлением`() {
+        val formatter = RunNoticeFormatter(NoticeLanguage.RU, null)
+        val succeeded = notice(trigger = Trigger.SCHEDULE, previous = RunState.AGENT_UNAVAILABLE)
+        assertNull(MutFlow.underTest { formatter.format(succeeded) })
     }
 }

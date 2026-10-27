@@ -493,6 +493,8 @@ class ApiSerializationIntegrationTest(
                 restore = RunRestore("4f1c", at, "main", mapOf("destination" to "etc/x"), "/r/etc/x"),
                 outcome = RunOutcome.CANCELLING,
                 cancellation = Cancellation(at, "admin", CancelResult.PENDING),
+                agentWaitUntil = at,
+                agentUnavailableSince = at,
             ),
             RunPage(listOf(summaryRun), nextCursor = null),
             LogPage(

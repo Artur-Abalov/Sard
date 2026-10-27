@@ -104,7 +104,12 @@ sealed interface AttemptOutcome {
                     verdict(status, message, verify, failedBefore)
                 }
 
-                StepState.LOST, StepState.REJECTED, StepState.TIMED_OUT, StepState.CANCELLED -> {
+                StepState.LOST,
+                StepState.REJECTED,
+                StepState.TIMED_OUT,
+                StepState.CANCELLED,
+                StepState.AGENT_UNAVAILABLE,
+                -> {
                     noVerdict(status.stored, message, failedBefore + 1)
                 }
 

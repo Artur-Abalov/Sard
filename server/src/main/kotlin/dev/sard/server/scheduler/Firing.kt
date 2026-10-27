@@ -108,7 +108,8 @@ internal class Firing(
     ): RunView? {
         val result =
             try {
-                val run = runs.startScheduled(session, schedule.sourceId, kind.trigger, schedule.id)
+                val nextFire = CronSchedule.parse(schedule.cron, schedule.timezone).nextAfter(now)
+                val run = runs.startScheduled(session, schedule.sourceId, kind.trigger, schedule.id, nextFire)
                 Result(FireOutcome.RUN_CREATED, run, run.id)
             } catch (e: RunActive) {
                 Result(FireOutcome.SKIPPED_ACTIVE, runId = e.activeRunId)

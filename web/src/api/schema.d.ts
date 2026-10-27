@@ -1126,7 +1126,7 @@ export interface components {
             notifyOnSuccess?: boolean;
         };
         /** @enum {string} */
-        RunStatus: "queued" | "dispatched" | "running" | "succeeded" | "failed" | "cancelled";
+        RunStatus: "queued" | "dispatched" | "running" | "succeeded" | "failed" | "cancelled" | "agent_unavailable";
         /** @enum {string} */
         RunTrigger: "schedule" | "manual" | "verification" | "catch_up";
         /** @description A source's schedule */
@@ -1440,15 +1440,25 @@ export interface components {
             requestedBy: string | null;
             /** @description Set for a restore run; null for a backup */
             restore: components["schemas"]["RunRestore"] | null;
-            /** @description What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost) and the cancel (cancelling, cancelled, cancel_unconfirmed) */
+            /** @description What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost), the cancel (cancelling, cancelled, cancel_unconfirmed) and the agent (waiting_for_agent: queued while the agent is offline; agent_unavailable: not run, the agent was offline until the wait deadline) */
             outcome: components["schemas"]["RunOutcome"];
             /** @description Set once somebody asked to cancel the run; null otherwise */
             cancellation: components["schemas"]["Cancellation"] | null;
+            /**
+             * Format: date-time
+             * @description Until when the queued run waits for an offline agent: the console shows "starts when the agent connects, waiting until <time>". null once the run left the queue, and for a run that never waited
+             */
+            agentWaitUntil: string | null;
+            /**
+             * Format: date-time
+             * @description The agent's last contact when the wait expired (outcome agent_unavailable); null: the agent never connected, or the run did not expire
+             */
+            agentUnavailableSince: string | null;
         };
         /** @enum {string} */
         RunKind: "backup" | "restore";
         /** @enum {string} */
-        RunOutcome: "queued" | "dispatched" | "running" | "cancelling" | "succeeded" | "failed" | "timed_out" | "rejected" | "lost" | "cancelled" | "cancel_unconfirmed";
+        RunOutcome: "queued" | "waiting_for_agent" | "dispatched" | "running" | "cancelling" | "succeeded" | "failed" | "timed_out" | "rejected" | "lost" | "cancelled" | "cancel_unconfirmed" | "agent_unavailable";
         /** @description What a restore run restores */
         RunRestore: {
             /** @description restic snapshot id */
@@ -1535,7 +1545,7 @@ export interface components {
         /** @enum {string} */
         StepPhase: "accepted" | "preparing" | "dumping" | "uploading" | "restoring" | "verifying";
         /** @enum {string} */
-        StepStatus: "queued" | "dispatched" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out" | "rejected" | "lost";
+        StepStatus: "queued" | "dispatched" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out" | "rejected" | "lost" | "agent_unavailable";
         /** @enum {string} */
         StepTimedOutBy: "agent" | "server";
         /** @description What a restore request would do; nothing is created */
@@ -2171,7 +2181,7 @@ export interface components {
             kind: components["schemas"]["RunKind"];
             /** @description Who started a manual run: "admin" in the open core, which has one administrator; null for a schedule */
             requestedBy: string | null;
-            /** @description What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost) and the cancel (cancelling, cancelled, cancel_unconfirmed) */
+            /** @description What the run came to in words a person reads: the status, told apart by the step (timed_out, rejected, lost), the cancel (cancelling, cancelled, cancel_unconfirmed) and the agent (waiting_for_agent: queued while the agent is offline; agent_unavailable: not run, the agent was offline until the wait deadline) */
             outcome: components["schemas"]["RunOutcome"];
         };
         /** @enum {string} */

@@ -377,6 +377,7 @@ export type IconName =
   | 'arrow'
   | 'play'
   | 'stop'
+  | 'pause'
   | 'dot'
   | 'circle'
   | 'minus'
@@ -401,6 +402,8 @@ export const statusVisuals: Record<string, StatusVisual> = {
   timed_out: { color: 'stale', icon: 'clock' },
   rejected: { color: 'failed', icon: 'x-square' },
   lost: { color: 'stale', icon: 'clock-dashed' },
+  // Not run, not a failure (J1c): the agent was offline until the wait deadline.
+  agent_unavailable: { color: 'paused', icon: 'pause' },
   active: { color: 'ok', icon: 'dot' },
   used: { color: 'paused', icon: 'check' },
   expired: { color: 'stale', icon: 'clock' },

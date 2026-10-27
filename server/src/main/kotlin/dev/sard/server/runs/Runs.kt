@@ -16,6 +16,7 @@ import org.hibernate.exception.ConstraintViolationException
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
@@ -31,6 +32,21 @@ private const val LIST_RUNS =
         "join SourceRecord src on src.id = r.sourceId"
 private const val LIST_STEP_STATUS = 3
 private val JSON = JsonMapper.builder().build()
+
+/**
+ * Whether an agent has a session now. The runs package does not know sessions: agents/dispatch implements it (J1c),
+ * and where nobody does, every agent counts as online.
+ */
+fun interface AgentPresence {
+    fun online(agentId: UUID): Boolean
+
+    companion object {
+        val ALWAYS = AgentPresence { true }
+    }
+}
+
+/** How long a run waits for an offline agent unless `sard.run.agent-wait.max` says otherwise (J1c, ВJ1). */
+val DEFAULT_AGENT_WAIT_MAX: Duration = Duration.ofHours(24)
 
 /** Timeouts are set in minutes and kept in seconds, as the agent takes them. */
 internal const val SECONDS_PER_MINUTE = 60L
@@ -102,6 +118,10 @@ class Runs(
     private val clock: Clock,
     private val ids: UuidV7,
     private val queued: StepsQueued,
+    /** The longest a run waits for an offline agent (J1c, `sard.run.agent-wait.max`). */
+    private val agentWaitMax: Duration = DEFAULT_AGENT_WAIT_MAX,
+    /** Whether an agent has a session now; a queued run of an offline agent is waiting for it (J1c). */
+    private val presence: AgentPresence = AgentPresence.ALWAYS,
 ) {
     /** A manual run of [sourceId] in [tenantId], the tenant of the caller. */
     fun start(
@@ -111,7 +131,7 @@ class Runs(
         val run =
             try {
                 sessions.inTenant(tenantId) { session ->
-                    create(session, sourceId, Trigger.MANUAL, null, LockModeType.PESSIMISTIC_READ)
+                    create(session, sourceId, Trigger.MANUAL, null, LockModeType.PESSIMISTIC_READ, null)
                 }
             } catch (e: ConstraintViolationException) {
                 if (e.constraintName != ACTIVE_RUN_KEY) throw e
@@ -127,14 +147,16 @@ class Runs(
      * A run of [sourceId] started by [scheduleId] inside the scheduler's transaction [session] (F3a): the same
      * checks and run as [start], refused with the same [RunsException]s. The source's row is locked exclusively,
      * so a concurrent manual start waits for this transaction and then sees its run, instead of racing on the
-     * D6 index. The caller tells [StepsQueued] once its transaction commits.
+     * D6 index. The caller tells [StepsQueued] once its transaction commits. The run waits for an offline agent
+     * until the schedule's [nextFire], at most [agentWaitMax] (J1c).
      */
     internal fun startScheduled(
         session: Session,
         sourceId: UUID,
         trigger: Trigger,
         scheduleId: UUID,
-    ): RunView = create(session, sourceId, trigger, scheduleId, LockModeType.PESSIMISTIC_WRITE)
+        nextFire: Instant,
+    ): RunView = create(session, sourceId, trigger, scheduleId, LockModeType.PESSIMISTIC_WRITE, nextFire)
 
     /** The run [runId] of the tenant with its steps; null if there is none (a deleted source's run is one). */
     fun get(
@@ -151,7 +173,8 @@ class Runs(
                     ).setParameter("run", runId)
                     .list()
             val source = session.find(SourceRecord::class.java, run.sourceId)!!
-            val view = RunViews.of(run, steps.first().agentId, source, steps)
+            val agentId = steps.first().agentId
+            val view = RunViews.of(run, agentId, source, steps, agentOnline = onlineOf(run, agentId))
             view.copy(steps = view.steps.map { withRestorable(session, it) })
         }
 
@@ -198,15 +221,23 @@ class Runs(
 
     /** A row of [LIST_RUNS]: the run, its step's agent, its source and its step's status. */
     private fun listed(row: Array<Any?>): RunView {
-        val (run, agent, source) = row
+        val run = row[0] as RunRecord
+        val agent = row[1] as UUID
         return RunViews.of(
-            run as RunRecord,
-            agent as UUID,
-            source as SourceRecord,
+            run,
+            agent,
+            row[2] as SourceRecord,
             emptyList(),
             StepState.of(row[LIST_STEP_STATUS] as String),
+            onlineOf(run, agent),
         )
     }
+
+    /** Only a queued run waits for its agent; whether the others' agents are online is not asked (J1c). */
+    private fun onlineOf(
+        run: RunRecord,
+        agentId: UUID,
+    ): Boolean = RunState.of(run.status) != RunState.QUEUED || presence.online(agentId)
 
     /**
      * A manual start takes a shared [sourceLock]: concurrent starts race on the index, a delete waits for them (and
@@ -218,6 +249,7 @@ class Runs(
         trigger: Trigger,
         scheduleId: UUID?,
         sourceLock: LockModeType,
+        nextFire: Instant?,
     ): RunView {
         val source = liveSource(session, sourceId, sourceLock)
         AgentOffer.require(
@@ -240,6 +272,7 @@ class Runs(
                 now,
                 scheduleId,
                 requestedBy = requestedBy,
+                agentWaitUntil = agentWaitUntil(now, nextFire),
             )
         val minutes = source.backupTimeoutMinutes ?: defaultsOf(session, source).backupMinutes
         val step = backupStep(run, source, minutes * SECONDS_PER_MINUTE)
@@ -248,6 +281,12 @@ class Runs(
         session.flush()
         return RunViews.of(run, source.agentId, source, listOf(step))
     }
+
+    /** A scheduled run waits until the schedule fires again, the others and the far fires, the longest wait. */
+    private fun agentWaitUntil(
+        now: Instant,
+        nextFire: Instant?,
+    ): Instant = minOf(now + agentWaitMax, nextFire ?: Instant.MAX)
 
     private fun defaultsOf(
         session: Session,
@@ -282,6 +321,7 @@ internal object RunViews {
         source: SourceRecord,
         steps: List<RunStepRecord>,
         stepStatus: StepState? = null,
+        agentOnline: Boolean = true,
     ) = RunView(
         id = run.id,
         sourceId = run.sourceId,
@@ -300,6 +340,9 @@ internal object RunViews {
         restore = run.restore?.let(::restoreInfo),
         cancellation = cancellation(run),
         stepStatus = stepStatus,
+        agentWaitUntil = run.agentWaitUntil.takeIf { RunState.of(run.status) == RunState.QUEUED },
+        agentUnavailableSince = run.agentUnavailableSince,
+        agentOnline = agentOnline,
     )
 
     private fun cancellation(run: RunRecord): Cancellation? {

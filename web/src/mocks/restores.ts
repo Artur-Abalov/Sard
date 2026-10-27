@@ -310,6 +310,8 @@ export function queuedRestore(choice: Choice): Schemas['Run'] {
     },
     outcome: 'queued',
     cancellation: null,
+    agentWaitUntil: null,
+    agentUnavailableSince: null,
   }
 }
 

@@ -17,6 +17,17 @@ internal const val SILENT_STEP =
     "status = 'running' and lost_deadline is null and timeout_seconds is not null " +
         "and started_at + (timeout_seconds + :window) * interval '1 second' <= :now"
 private const val SILENT = "select tenant_id, id, agent_id from run_steps where $SILENT_STEP"
+
+// A queued step whose run's wait for an agent is over, with its agent's last contact (J1c).
+private const val WAITS_OVER =
+    "select s.tenant_id, s.id, s.agent_id, a.last_seen_at from run_steps s " +
+        "join runs r on r.tenant_id = s.tenant_id and r.id = s.run_id " +
+        "join agents a on a.tenant_id = s.tenant_id and a.id = s.agent_id " +
+        "where r.status = 'queued' and s.status = 'queued' and r.agent_wait_until <= :now"
+private const val COL_TENANT = 0
+private const val COL_STEP = 1
+private const val COL_AGENT = 2
+private const val COL_SEEN = 3
 private const val HOLDERS = "select distinct tenant_id, agent_id from run_steps where $IN_FLIGHT"
 
 // Native SQL names tenant_id explicitly (ADR 0013, rule 8). least() skips NULL: the earliest deadline holds (Д2).
@@ -31,6 +42,14 @@ data class SilentStep(
     val tenantId: UUID,
     val id: UUID,
     val agentId: UUID,
+)
+
+/** A queued step whose run's wait for its agent is over, with the agent's last contact (J1c). */
+data class WaitOver(
+    val tenantId: UUID,
+    val stepId: UUID,
+    val agentId: UUID,
+    val lastSeenAt: Instant?,
 )
 
 /** A step or an agent with the tenant it belongs to. */
@@ -95,6 +114,16 @@ class StepDeadlines(
     private val sessions: TenantSessions,
 ) : LostDeadlines {
     override fun overdue(now: Instant) = read(OVERDUE, mapOf("now" to now))
+
+    /** Queued steps of runs whose wait for an agent has ended at [now], across tenants (J1c, ids and times only). */
+    fun waitsOver(now: Instant): List<WaitOver> =
+        sessions.system { session ->
+            session
+                .createNativeQuery(WAITS_OVER, Array<Any?>::class.java)
+                .setParameter("now", now)
+                .list()
+                .map(::waitOver)
+        }
 
     override fun holders() = read(HOLDERS, emptyMap())
 
@@ -170,3 +199,6 @@ private fun listed(
     stepIds: Collection<UUID>,
     update: (Collection<UUID>) -> Int,
 ) = if (stepIds.isEmpty()) 0 else update(stepIds)
+
+private fun waitOver(row: Array<Any?>) =
+    WaitOver(row[COL_TENANT] as UUID, row[COL_STEP] as UUID, row[COL_AGENT] as UUID, row[COL_SEEN] as Instant?)

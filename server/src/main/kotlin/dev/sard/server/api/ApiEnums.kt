@@ -95,7 +95,10 @@ enum class EnrollmentTokenStatus {
     REVOKED,
 }
 
-/** Run state; queued, dispatched and running are active (D6: one active run per source). */
+/**
+ * Run state; queued, dispatched and running are active (D6: one active run per source). agent_unavailable: not run,
+ * its agent was offline until the wait deadline (J1c); not a failure.
+ */
 @Schema(enumAsRef = true)
 enum class RunStatus {
     @JsonProperty("queued")
@@ -115,6 +118,9 @@ enum class RunStatus {
 
     @JsonProperty("cancelled")
     CANCELLED,
+
+    @JsonProperty("agent_unavailable")
+    AGENT_UNAVAILABLE,
 }
 
 /**
@@ -125,6 +131,9 @@ enum class RunStatus {
 enum class RunOutcome {
     @JsonProperty("queued")
     QUEUED,
+
+    @JsonProperty("waiting_for_agent")
+    WAITING_FOR_AGENT,
 
     @JsonProperty("dispatched")
     DISPATCHED,
@@ -155,6 +164,9 @@ enum class RunOutcome {
 
     @JsonProperty("cancel_unconfirmed")
     CANCEL_UNCONFIRMED,
+
+    @JsonProperty("agent_unavailable")
+    AGENT_UNAVAILABLE,
 }
 
 /** How a cancel of a run ended: pending until the run is final. */
@@ -296,6 +308,9 @@ enum class StepStatus {
 
     @JsonProperty("lost")
     LOST,
+
+    @JsonProperty("agent_unavailable")
+    AGENT_UNAVAILABLE,
 }
 
 /** Progress of a running step (proto StepPhase). */

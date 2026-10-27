@@ -146,6 +146,7 @@ class SchedulerIntegrationTest(
         val schedule = schedule(source())
         tickAt(at("2026-09-30T11:00:00Z"))
         val active = tables.runs().single().id
+        tables.startAll(at("2026-09-30T11:00:05Z"))
 
         for (hour in 12..15) tickAt(at("2026-09-30T$hour:00:00Z"))
 
@@ -664,6 +665,7 @@ class SchedulerIntegrationTest(
         val schedule = schedule(source)
         assertEquals(emptyList(), journal(source))
         tickAt(at("2026-09-30T11:00:00Z"))
+        tables.startAll(at("2026-09-30T11:00:05Z"))
         tickAt(at("2026-09-30T12:00:00Z"))
         tickAt(at("2026-09-30T13:00:00Z"))
 
@@ -708,5 +710,46 @@ class SchedulerIntegrationTest(
         val expected = LastRun(run.id, Trigger.SCHEDULE, RunState.QUEUED, at("2026-09-30T11:00:00Z"), null)
         assertEquals(expected, saved.lastRun)
         assertEquals(at("2026-09-30T11:10:00Z"), saved.updatedAt)
+    }
+
+    private fun waitUntil(runId: UUID): Instant =
+        jdbc
+            .queryForObject("select agent_wait_until from runs where id = ?", Timestamp::class.java, runId)!!
+            .toInstant()
+
+    // J1c: Запуск по расписанию ждёт агента до следующего срабатывания
+    @Test
+    fun `a scheduled run waits for an offline agent until the next fire of its schedule`() {
+        schedule(source(), cron = "0 */6 * * *")
+
+        tickAt(at("2026-09-30T12:00:00Z"))
+
+        assertEquals(at("2026-09-30T18:00:00Z"), waitUntil(tables.runs().single().id))
+    }
+
+    // J1c: Ожидание не дольше потолка
+    @Test
+    fun `a scheduled run of a weekly schedule waits no longer than a day`() {
+        schedule(source(), cron = "0 0 * * 0")
+
+        tickAt(at("2026-10-04T00:00:00Z"))
+
+        assertEquals(at("2026-10-05T00:00:00Z"), waitUntil(tables.runs().single().id))
+    }
+
+    // J1c: Срабатывание в момент истечения ожидания создаёт новый запуск, а не пропуск
+    @Test
+    fun `a fire at the moment a wait expires creates a new run, not a skip`() {
+        val schedule = schedule(source())
+        tickAt(at("2026-09-30T11:00:00Z"))
+        val waiting = tables.runs().single().id
+
+        tickAt(at("2026-09-30T12:00:00Z"))
+
+        val expired = jdbc.queryForObject("select status from runs where id = ?", String::class.java, waiting)
+        assertEquals("agent_unavailable", expired)
+        val fires = tables.fires(schedule.id)
+        assertEquals(listOf("run_created", "run_created"), fires.map { it.outcome })
+        assertEquals(2, tables.runs().size)
     }
 }

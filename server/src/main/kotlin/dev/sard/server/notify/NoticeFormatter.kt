@@ -14,6 +14,8 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 private const val BINARY = 1024
@@ -22,6 +24,8 @@ private const val SECONDS_PER_HOUR = 3600L
 private const val MAX_REASON = 500
 private const val ELLIPSIS = "…"
 private const val SHORT_ID = 8
+private val MOMENT: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC)
 
 /** What a finished run looks like in a message (S9b); the wording is the specification's, per language. */
 class RunNoticeFormatter(
@@ -95,8 +99,11 @@ class RunNoticeFormatter(
             emptyList()
         }
 
-    /** What came of the backup: its sizes, or why it failed and what is left of it. */
-    private fun outcome(notice: RunNotice): List<List<Message.Part>> {
+    /** What came of the backup: its sizes, or why it failed and what is left of it; or the agent's last contact. */
+    private fun outcome(notice: RunNotice): List<List<Message.Part>> =
+        if (notice.stepStatus == StepState.AGENT_UNAVAILABLE) lines.agentLines(notice) else ran(notice)
+
+    private fun ran(notice: RunNotice): List<List<Message.Part>> {
         val sizes = notice.backup?.let(::sizesLine)
         return when (notice.stepStatus) {
             StepState.SUCCEEDED -> {
@@ -112,8 +119,8 @@ class RunNoticeFormatter(
                 lines.reasonLines(notice.message) + timeout + snapshotLines(sizes)
             }
 
-            StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING -> {
-                error("a finished run has no active step: ${notice.stepStatus}")
+            StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING, StepState.AGENT_UNAVAILABLE -> {
+                error("a run that ended has no active step: ${notice.stepStatus}")
             }
         }
     }
@@ -170,6 +177,13 @@ internal class NoticeLines(
         return listOfNotNull(timeout, listOf(Message.Text(hint)))
     }
 
+    /** The run never started: when the agent was last in touch, or that it never was (J1c). */
+    fun agentLines(notice: RunNotice): List<List<Message.Part>> {
+        val since = notice.agentUnavailableSince
+        val line = if (since == null) words.agentNeverConnected else words.agentOfflineSince + MOMENT.format(since)
+        return listOf(listOf(Message.Text(line)))
+    }
+
     fun durationLine(
         start: Instant?,
         end: Instant,
@@ -210,7 +224,10 @@ internal class RestoreNoticeFormatter(
             )
         }
 
-    private fun restoreOutcome(notice: RunNotice): List<List<Message.Part>> {
+    private fun restoreOutcome(notice: RunNotice): List<List<Message.Part>> =
+        if (notice.stepStatus == StepState.AGENT_UNAVAILABLE) lines.agentLines(notice) else restoreRan(notice)
+
+    private fun restoreRan(notice: RunNotice): List<List<Message.Part>> {
         val result = notice.result
         return when (notice.stepStatus) {
             StepState.SUCCEEDED -> {
@@ -226,8 +243,8 @@ internal class RestoreNoticeFormatter(
                 lines.reasonLines(notice.message) + timeout + listOf(rollbackLine(result?.leftover))
             }
 
-            StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING -> {
-                error("a finished run has no active step: ${notice.stepStatus}")
+            StepState.QUEUED, StepState.DISPATCHED, StepState.RUNNING, StepState.AGENT_UNAVAILABLE -> {
+                error("a restore that ended has no active step: ${notice.stepStatus}")
             }
         }
     }

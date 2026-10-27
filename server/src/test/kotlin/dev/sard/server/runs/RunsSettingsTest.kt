@@ -5,10 +5,14 @@ package dev.sard.server.runs
 
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.springframework.boot.context.properties.bind.BindException
+import org.springframework.boot.context.properties.bind.Binder
+import org.springframework.boot.context.properties.source.MapConfigurationPropertySource
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 /** `sard.logs.*` and `sard.run.progress.*` (S7a, answers 6–8): defaults, and what is refused at start. */
 @MutFlowTest
@@ -50,5 +54,29 @@ class RunsSettingsTest {
             val e = assertFailsWith<IllegalArgumentException> { MutFlow.underTest { call() } }
             assertEquals(message, e.message)
         }
+    }
+
+    // J1c: Недопустимый потолок ожидания не даёт серверу стартовать; Потолок ожидания задаётся настройкой
+    @Test
+    fun `the wait for an agent is a day unless set, and a ceiling that is not positive is refused by name`() {
+        assertEquals(Duration.ofHours(24), MutFlow.underTest { AgentWaitProperties().limit() })
+        assertEquals(Duration.ofMinutes(1), MutFlow.underTest { AgentWaitProperties(Duration.ofMinutes(1)).limit() })
+        for (max in listOf(Duration.ZERO, Duration.ofHours(-1))) {
+            val e = assertFailsWith<IllegalArgumentException> { MutFlow.underTest { AgentWaitProperties(max).limit() } }
+            assertEquals("sard.run.agent-wait.max must be positive", e.message)
+        }
+    }
+
+    @Test
+    fun `a ceiling that is not a duration does not bind, the failure names the setting`() {
+        val source = MapConfigurationPropertySource(mapOf("sard.run.agent-wait.max" to "сутки"))
+        val failure =
+            assertFailsWith<BindException> {
+                Binder(source).bindOrCreate("sard.run.agent-wait", AgentWaitProperties::class.java)
+            }
+        assertTrue(failure.message!!.contains("sard.run.agent-wait.max"))
+        val bound = Binder(MapConfigurationPropertySource(mapOf("sard.run.agent-wait.max" to "1m")))
+        val properties = bound.bindOrCreate("sard.run.agent-wait", AgentWaitProperties::class.java)
+        assertEquals(Duration.ofMinutes(1), properties.max)
     }
 }

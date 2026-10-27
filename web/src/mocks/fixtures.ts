@@ -660,6 +660,8 @@ function runOf(
     restore: null,
     outcome: outcomeOf(status, step.status),
     cancellation: null,
+    agentWaitUntil: null,
+    agentUnavailableSince: null,
     ...extra,
   }
 }

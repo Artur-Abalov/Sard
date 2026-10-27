@@ -76,6 +76,23 @@ internal class ScheduleTables(
             scheduleId,
         )
 
+    /** Stands in for an agent that took the queued runs: they run, so they no longer wait for it (J1c). */
+    fun startAll(at: Instant) {
+        val time = Timestamp.from(at)
+        jdbc.update(
+            "update run_steps set status = 'running', dispatched_at = ?, started_at = ? " +
+                "where tenant_id = ? and status = 'queued'",
+            time,
+            time,
+            tenant.id,
+        )
+        jdbc.update(
+            "update runs set status = 'running', started_at = ? where tenant_id = ? and status = 'queued'",
+            time,
+            tenant.id,
+        )
+    }
+
     /** Stands in for the agent: every active run of the tenant succeeds. */
     fun finishAll(at: Instant) {
         val time = Timestamp.from(at)

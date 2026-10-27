@@ -143,6 +143,15 @@ class ScheduleNotificationsIntegrationTest(
 
     private fun ticks(count: Int = 3) = repeat(count) { tick() }
 
+    /** A run of [source] its agent is running: unlike one waiting for an offline agent, it holds the source (J1c). */
+    private fun held(source: UUID): dev.sard.server.runs.RunView {
+        val run = runs.start(tenant.id, source)
+        val step = run.steps.single().id
+        assertTrue(steps.claim(tenant.id, step))
+        assertTrue(steps.accepted(tenant.id, step, "accepted"))
+        return run
+    }
+
     private fun alerts(): List<String> =
         fake.requests.indices
             .map { fake.shownText(it) }
@@ -192,7 +201,7 @@ class ScheduleNotificationsIntegrationTest(
     @Test
     fun `Три пропуска подряд из-за идущего запуска дают один алерт, дальнейшие пропуски нового не дают`() {
         val (source, _) = scheduleOf()
-        val active = runs.start(tenant.id, source)
+        val active = held(source)
 
         fireNight(1)
         fireNight(2)
@@ -222,12 +231,14 @@ class ScheduleNotificationsIntegrationTest(
     @Test
     fun `После созданного запуска новая серия из трёх пропусков даёт второй алерт`() {
         val (source, _) = scheduleOf()
-        runs.start(tenant.id, source)
+        held(source)
         for (night in 1..3) fireNight(night)
         ticks()
         ScheduleTables(jdbc, tenant).finishAll(clock.now)
 
-        for (night in 4..7) fireNight(night)
+        fireNight(4)
+        ScheduleTables(jdbc, tenant).startAll(clock.now)
+        for (night in 5..7) fireNight(night)
         ticks()
 
         assertEquals(2, alerts().size, "night 4 created a run, 5 to 7 are three skips")
@@ -252,12 +263,9 @@ class ScheduleNotificationsIntegrationTest(
     @Test
     fun `Алерт и сообщение о запуске - разные сообщения`() {
         val (source, _) = scheduleOf()
-        val active = runs.start(tenant.id, source)
+        val active = held(source)
         for (night in 1..3) fireNight(night)
-        val step = active.steps.single().id
-        assertTrue(steps.claim(tenant.id, step))
-        assertTrue(steps.accepted(tenant.id, step, "accepted"))
-        results.record(tenant.id, tenant.agentId, step, FAILED)
+        results.record(tenant.id, tenant.agentId, active.steps.single().id, FAILED)
 
         ticks()
 
@@ -297,7 +305,7 @@ class ScheduleNotificationsIntegrationTest(
     @Test
     fun `При смешанных причинах алерт называет причину третьего пропуска`() {
         val (source, _) = scheduleOf()
-        runs.start(tenant.id, source)
+        held(source)
         fireNight(1)
         fireNight(2)
         ScheduleTables(jdbc, tenant).finishAll(clock.now)
@@ -314,7 +322,7 @@ class ScheduleNotificationsIntegrationTest(
     @Test
     fun `Порог алерта берётся из настройки`() {
         val (source, _) = scheduleOf()
-        runs.start(tenant.id, source)
+        held(source)
         val strict =
             Scheduler(
                 sessions,
@@ -410,7 +418,7 @@ class ScheduleNotificationsIntegrationTest(
     @Test
     fun `Срабатывание, откатившееся вместе с журналом, алерта не даёт`() {
         val (source, schedule) = scheduleOf()
-        runs.start(tenant.id, source)
+        held(source)
         fireNight(1)
         fireNight(2)
         TestAdmin.of(jdbc).execute(

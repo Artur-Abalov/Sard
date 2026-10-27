@@ -154,6 +154,7 @@ internal object Notices {
             kind = RunKind.of(run.kind),
             cancelRequested = run.cancelRequestedAt != null,
             timeoutSeconds = stepView.timeoutSeconds,
+            agentUnavailableSince = run.agentUnavailableSince,
             restore = restoreNotice(run, stepView),
         )
     }
@@ -172,13 +173,21 @@ internal object Notices {
         run: RunRecord,
     ): Boolean = run.scheduleId?.let { session.find(ScheduleRecord::class.java, it).notifyOnSuccess } ?: false
 
-    /** How many runs failed in a row right before [run], of any trigger; a cancelled or succeeded one ends it. */
+    /**
+     * How many runs failed in a row right before [run], of any trigger; a cancelled or succeeded one ends it. A run
+     * that was not run because its agent was unavailable is neither a failure nor the end of the series (J1c, Р-J14).
+     */
     private fun failuresBefore(
         session: Session,
         run: RunRecord,
     ): Int =
         previousStatuses(session, run).resultStream.use { statuses ->
-            statuses.takeWhile { RunState.of(it) == RunState.FAILED }.count().toInt()
+            statuses
+                .map(RunState::of)
+                .filter { it != RunState.AGENT_UNAVAILABLE }
+                .takeWhile { it == RunState.FAILED }
+                .count()
+                .toInt()
         }
 
     private fun previousStatus(

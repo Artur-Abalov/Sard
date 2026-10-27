@@ -18,38 +18,38 @@ enum class RunState(
     SUCCEEDED("succeeded", false),
     FAILED("failed", false),
     CANCELLED("cancelled", false),
+
+    /** Not run: the agent was offline until the wait deadline (J1c); not a failure. */
+    AGENT_UNAVAILABLE("agent_unavailable", false),
     ;
 
     companion object {
         fun of(stored: String): RunState = entries.single { it.stored == stored }
 
         /** A stage 1 run has one step: it follows it; any failure of the step fails the run (S8a, answer 2). */
-        fun following(step: StepState): RunState =
-            when (step) {
-                StepState.QUEUED -> QUEUED
-                StepState.DISPATCHED -> DISPATCHED
-                StepState.RUNNING -> RUNNING
-                StepState.SUCCEEDED -> SUCCEEDED
-                StepState.CANCELLED -> CANCELLED
-                StepState.FAILED, StepState.TIMED_OUT, StepState.REJECTED, StepState.LOST -> FAILED
-            }
+        fun following(step: StepState): RunState = step.run
     }
 }
 
 /** A step's status as stored; the proto's final states plus the server's own (ADR 0013, S8a). */
 enum class StepState(
     val stored: String,
+    /** The status of a stage 1 run whose only step this is: any failure of the step fails the run (S8a). */
+    val run: RunState,
     val active: Boolean = false,
 ) {
-    QUEUED("queued", true),
-    DISPATCHED("dispatched", true),
-    RUNNING("running", true),
-    SUCCEEDED("succeeded"),
-    FAILED("failed"),
-    CANCELLED("cancelled"),
-    TIMED_OUT("timed_out"),
-    REJECTED("rejected"),
-    LOST("lost"),
+    QUEUED("queued", RunState.QUEUED, true),
+    DISPATCHED("dispatched", RunState.DISPATCHED, true),
+    RUNNING("running", RunState.RUNNING, true),
+    SUCCEEDED("succeeded", RunState.SUCCEEDED),
+    FAILED("failed", RunState.FAILED),
+    CANCELLED("cancelled", RunState.CANCELLED),
+    TIMED_OUT("timed_out", RunState.FAILED),
+    REJECTED("rejected", RunState.FAILED),
+    LOST("lost", RunState.FAILED),
+
+    /** Never sent: the agent was offline until the run's wait deadline (J1c). */
+    AGENT_UNAVAILABLE("agent_unavailable", RunState.AGENT_UNAVAILABLE),
     ;
 
     companion object {
@@ -260,6 +260,9 @@ data class Cancellation(
 /** What a run came to, for a person to read: the server derives it from the run, its step and its cancel. */
 enum class RunOutcome {
     QUEUED,
+
+    /** Queued, and the agent is offline: the run starts when it connects, or expires at its wait deadline (J1c). */
+    WAITING_FOR_AGENT,
     DISPATCHED,
     RUNNING,
     CANCELLING,
@@ -270,28 +273,41 @@ enum class RunOutcome {
     LOST,
     CANCELLED,
     CANCEL_UNCONFIRMED,
+    AGENT_UNAVAILABLE,
     ;
 
     companion object {
-        /** A failed run is told by its step (ADR 0038: the run has only failed); a cancel in flight is cancelling. */
+        /**
+         * A failed run is told by its step (ADR 0038: the run has only failed); a cancel in flight is cancelling; a
+         * queued run is waiting for its agent when [agentOnline] is false (J1c).
+         */
         fun of(
             status: RunState,
             step: StepState?,
             cancellation: Cancellation?,
+            agentOnline: Boolean = true,
         ): RunOutcome =
             when (status) {
-                RunState.QUEUED -> QUEUED
-                RunState.DISPATCHED -> inFlight(DISPATCHED, cancellation)
-                RunState.RUNNING -> inFlight(RUNNING, cancellation)
+                RunState.QUEUED -> queued(agentOnline)
+                RunState.DISPATCHED, RunState.RUNNING -> inFlight(status, cancellation)
                 RunState.SUCCEEDED -> SUCCEEDED
                 RunState.FAILED -> failed(step)
                 RunState.CANCELLED -> cancelled(cancellation)
+                RunState.AGENT_UNAVAILABLE -> AGENT_UNAVAILABLE
             }
 
+        private fun queued(agentOnline: Boolean) = if (agentOnline) QUEUED else WAITING_FOR_AGENT
+
         private fun inFlight(
-            outcome: RunOutcome,
+            status: RunState,
             cancellation: Cancellation?,
-        ) = if (cancellation == null) outcome else CANCELLING
+        ) = if (cancellation != null) {
+            CANCELLING
+        } else if (status == RunState.DISPATCHED) {
+            DISPATCHED
+        } else {
+            RUNNING
+        }
 
         private fun cancelled(cancellation: Cancellation?) =
             if (cancellation?.result == CancelResult.UNCONFIRMED) CANCEL_UNCONFIRMED else CANCELLED
@@ -330,8 +346,15 @@ data class RunView(
     val cancellation: Cancellation? = null,
     /** The status of the run's step when [steps] is left out (a list), so that [outcome] can still tell failures. */
     val stepStatus: StepState? = null,
+    /** Until when a queued run waits for an offline agent (J1c); null once there is nothing to wait for. */
+    val agentWaitUntil: Instant? = null,
+    /** The agent's last contact when the wait expired; null: it never connected, or the run did not expire (J1c). */
+    val agentUnavailableSince: Instant? = null,
+    /** The run's agent has a session; read only for a queued run, for the others it is true (J1c). */
+    val agentOnline: Boolean = true,
 ) {
-    val outcome: RunOutcome get() = RunOutcome.of(status, steps.firstOrNull()?.status ?: stepStatus, cancellation)
+    val outcome: RunOutcome
+        get() = RunOutcome.of(status, steps.firstOrNull()?.status ?: stepStatus, cancellation, agentOnline)
 }
 
 /** One step; [id] is the command_id the agent sees. Progress fields stay null until S7 fills them. */

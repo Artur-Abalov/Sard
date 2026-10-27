@@ -44,6 +44,7 @@ private fun restoreNotice(
     trigger: Trigger = Trigger.MANUAL,
     tookSeconds: Long = 90,
     timeoutSeconds: Long? = null,
+    agentUnavailableSince: Instant? = null,
 ) = RunNotice(
     tenantId = UUID.randomUUID(),
     runId = RUN,
@@ -63,6 +64,7 @@ private fun restoreNotice(
     kind = RunKind.RESTORE,
     restore = RestoreNotice(SNAPSHOT, Instant.parse("2026-10-10T03:00:00Z"), result),
     timeoutSeconds = timeoutSeconds,
+    agentUnavailableSince = agentUnavailableSince,
 )
 
 private fun Message.text() = parts.joinToString("") { it.text }
@@ -305,5 +307,24 @@ class RestoreNoticeFormatterTest {
         val text = format(restoreNotice(StepState.FAILED, "boom", empty), NoticeLanguage.EN).text()
         assertTrue("Nothing was restored: the changes were rolled back." in text.lines(), text)
         assertTrue("Rollback failed" !in text, text)
+    }
+
+    // J1c: Уведомление о недоступном агенте называет последнюю связь
+    @Test
+    fun `Восстановление, не выполненное из-за агента, называет связь и не говорит о откате`() {
+        val since = Instant.parse("2026-10-01T09:00:00Z")
+        val ru = format(restoreNotice(StepState.AGENT_UNAVAILABLE, agentUnavailableSince = since)).text()
+        assertEquals("⏸ Восстановление не выполнено — агент был недоступен: etc data", ru.lines().first())
+        assertTrue("Агент не на связи с 2026-10-01 09:00 UTC" in ru.lines())
+        assertTrue("Ничего не восстановлено" !in ru)
+        val en = format(restoreNotice(StepState.AGENT_UNAVAILABLE, agentUnavailableSince = since), NoticeLanguage.EN)
+        assertEquals("⏸ Restore not run — the agent was unavailable: etc data", en.text().lines().first())
+        assertTrue("Agent offline since 2026-10-01 09:00 UTC" in en.text().lines())
+    }
+
+    @Test
+    fun `Восстановление, не выполненное из-за агента, уведомляет и по расписанию не гасится серией`() {
+        val repeated = restoreNotice(StepState.AGENT_UNAVAILABLE, previous = RunState.AGENT_UNAVAILABLE)
+        assertTrue(format(repeated).text().isNotEmpty())
     }
 }

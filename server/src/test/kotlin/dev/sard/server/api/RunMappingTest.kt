@@ -383,4 +383,23 @@ class RunMappingTest {
             assertNull(outcomeOf(StepState.FAILED, null, action), action.name)
         }
     }
+
+    // J1c: the wait-until time is exposed in run details
+    @Test
+    fun `a run shows until when it waits for the agent and since when the agent is gone`() {
+        val later = AT.plusSeconds(3600)
+        val waiting = run(RunState.QUEUED).copy(agentWaitUntil = later, agentOnline = false)
+        val mapped = MutFlow.underTest { RunMapping.run(waiting, null) }
+        assertEquals(later, mapped.agentWaitUntil)
+        assertNull(mapped.agentUnavailableSince)
+        assertEquals(RunOutcome.WAITING_FOR_AGENT, mapped.outcome)
+
+        val expired = run(RunState.AGENT_UNAVAILABLE).copy(steps = listOf(step(StepState.AGENT_UNAVAILABLE)))
+        val closed = MutFlow.underTest { RunMapping.run(expired.copy(agentUnavailableSince = AT), null) }
+        assertEquals(AT, closed.agentUnavailableSince)
+        assertNull(closed.agentWaitUntil)
+        assertEquals(RunOutcome.AGENT_UNAVAILABLE, closed.outcome)
+        assertEquals(RunStatus.AGENT_UNAVAILABLE, closed.status)
+        assertEquals(StepStatus.AGENT_UNAVAILABLE, closed.steps.single().status)
+    }
 }

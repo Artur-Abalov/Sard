@@ -11,6 +11,7 @@ import jakarta.persistence.LockModeType
 import org.hibernate.Session
 import tools.jackson.databind.json.JsonMapper
 import java.time.Clock
+import java.time.Duration
 import java.util.UUID
 
 private val JSON = JsonMapper.builder().build()
@@ -27,6 +28,8 @@ class Restores(
     private val clock: Clock,
     private val ids: UuidV7,
     private val queued: StepsQueued,
+    /** The longest a restore waits for an offline agent (J1c, `sard.run.agent-wait.max`, closes OQ-233). */
+    private val agentWaitMax: Duration = DEFAULT_AGENT_WAIT_MAX,
 ) {
     /** The options of restoring snapshot [snapshotId] (restic's id) of [sourceId], deleted or not. */
     fun options(
@@ -94,6 +97,7 @@ class Restores(
                 kind = RunKind.RESTORE.stored,
                 requestedBy = ADMIN,
                 restore = restoreJson(chosen),
+                agentWaitUntil = now + agentWaitMax,
             )
         val step =
             RunStepRecord(

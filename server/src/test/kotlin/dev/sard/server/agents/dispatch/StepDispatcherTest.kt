@@ -32,7 +32,8 @@ class StepDispatcherTest {
         ledger: FakeLedger,
         waiting: WaitingSteps = WaitingSteps(0, 0),
         startGrace: Duration = Duration.ZERO,
-    ) = StepDispatcher(ledger, ledger, links, clock, LOST_AFTER, metrics, ledger, startGrace) { waiting }
+        expireWaits: () -> Unit = {},
+    ) = StepDispatcher(ledger, ledger, links, clock, LOST_AFTER, metrics, ledger, startGrace, expireWaits) { waiting }
 
     /** Steps whose lost deadline the dispatcher's clock judges. */
     private fun ledger(vararg steps: StepView) = FakeLedger(*steps, now = { clock.now })
@@ -40,6 +41,20 @@ class StepDispatcherTest {
     private fun online() {
         links.online += AGENT.agentId
         links.sessions += AGENT
+    }
+
+    // J1c: Срок ожидания истёк - запуск не выполнен, агент был недоступен
+    @Test
+    fun `every tick closes the waits that are over, before the steps of online agents are served`() {
+        online()
+        val ledger = ledger(step(1))
+        val seen = mutableListOf<StepState>()
+        val dispatcher = dispatcher(ledger, expireWaits = { seen += ledger.steps.single().status })
+
+        MutFlow.underTest { dispatcher.tick() }
+
+        assertEquals(listOf(StepState.QUEUED), seen)
+        assertEquals(StepState.DISPATCHED, ledger.status(1))
     }
 
     @Test

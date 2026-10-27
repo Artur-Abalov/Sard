@@ -290,10 +290,12 @@
       "running": "running",
       "succeeded": "succeeded",
       "failed": "error",
-      "cancelled": "cancelled"
+      "cancelled": "cancelled",
+      "agent_unavailable": "not run: the agent was unavailable"
     },
     "RunOutcome": {
       "queued": "queued",
+      "waiting_for_agent": "waiting for the agent",
       "dispatched": "sent to the agent",
       "running": "running",
       "cancelling": "cancelling",
@@ -303,7 +305,8 @@
       "rejected": "rejected",
       "lost": "lost",
       "cancelled": "cancelled",
-      "cancel_unconfirmed": "cancelled (the agent did not confirm)"
+      "cancel_unconfirmed": "cancelled (the agent did not confirm)",
+      "agent_unavailable": "not run: the agent was unavailable"
     },
     "CancelResult": {
       "pending": "waiting for the agent",
@@ -320,7 +323,8 @@
       "cancelled": "cancelled",
       "timed_out": "timed out",
       "rejected": "rejected",
-      "lost": "lost"
+      "lost": "lost",
+      "agent_unavailable": "not sent: the agent was unavailable"
     },
     "StepTimedOutBy": {
       "agent": "the agent (its own deadline)",

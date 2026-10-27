@@ -52,6 +52,8 @@ data class RunNotice(
     val cancelRequested: Boolean = false,
     /** The timeout the step had, for the message of a timed out one (J1b); null for a step without one. */
     val timeoutSeconds: Long? = null,
+    /** The agent's last contact when the run's wait for it expired; null: it never connected (J1c). */
+    val agentUnavailableSince: Instant? = null,
 )
 
 /** The snapshot a restore run restores and what its step reported of it; [result] is null when it reported none. */
@@ -113,23 +115,28 @@ enum class Telling {
                 Trigger.VERIFICATION -> null
             }
 
-        private fun turn(notice: RunNotice): Telling? {
-            val failedBefore = notice.previousStatus == RunState.FAILED
-            return when {
-                notice.status == RunState.FAILED -> FIRST_FAILURE.takeUnless { failedBefore }
-                notice.status == RunState.SUCCEEDED -> success(failedBefore, notice.notifyOnSuccess)
-                else -> null
+        private fun turn(notice: RunNotice): Telling? =
+            when (notice.status) {
+                RunState.FAILED -> firstOfSeries(FIRST_FAILURE, notice)
+                RunState.SUCCEEDED -> success(notice)
+                RunState.AGENT_UNAVAILABLE -> firstOfSeries(RESULT, notice)
+                RunState.QUEUED, RunState.DISPATCHED, RunState.RUNNING, RunState.CANCELLED -> null
             }
-        }
+
+        /**
+         * A series of runs that ended alike is told by its first: [telling] unless the run before ended as [notice]
+         * does (a series of failures, ADR 0053; of runs the agent was unavailable for, ДJ2).
+         */
+        private fun firstOfSeries(
+            telling: Telling,
+            notice: RunNotice,
+        ): Telling? = telling.takeUnless { notice.previousStatus == notice.status }
 
         /** A success ends a series of failures, or is told on its own when the schedule asks for it. */
-        private fun success(
-            failedBefore: Boolean,
-            notifyOnSuccess: Boolean,
-        ): Telling? =
+        private fun success(notice: RunNotice): Telling? =
             when {
-                failedBefore -> RECOVERY
-                notifyOnSuccess -> RESULT
+                notice.previousStatus == RunState.FAILED -> RECOVERY
+                notice.notifyOnSuccess -> RESULT
                 else -> null
             }
     }

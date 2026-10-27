@@ -44,6 +44,8 @@ class StepDispatcher(
     private val metrics: DispatchMetrics,
     roles: RoleLedger,
     private val startGrace: Duration = Duration.ZERO,
+    /** Closes the runs whose wait for an offline agent is over (J1c); never throws. */
+    private val expireWaits: () -> Unit = {},
     private val waiting: () -> WaitingSteps,
 ) {
     private val locks = ConcurrentHashMap<UUID, Any>()
@@ -131,6 +133,7 @@ class StepDispatcher(
         for (step in deadlines.silent(clock.instant(), lostAfter)) {
             silent.timeOut(step) { agent, work -> locked(agent, work) }
         }
+        expireWaits()
         for (agent in links.connected()) {
             if (links.online(agent.agentId)) serve(agent.tenantId, agent.agentId)
         }

@@ -119,6 +119,8 @@ function succeededRun(source: Schemas['Source']): Schemas['Run'] {
     restore: null,
     outcome: 'succeeded',
     cancellation: null,
+    agentWaitUntil: null,
+    agentUnavailableSince: null,
   }
 }
 

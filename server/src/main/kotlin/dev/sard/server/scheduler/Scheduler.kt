@@ -85,8 +85,12 @@ class Scheduler(
     private val queued: StepsQueued,
     private val settings: SchedulerSettings,
     private val metrics: SchedulerMetrics,
+    /** Closes the runs whose wait for an offline agent is over (J1c); never throws. */
+    private val expireWaits: () -> Unit = {},
 ) {
     fun tick() {
+        // Before the fires are chosen: a fire at the moment a wait ends starts a run, it does not skip (Р-J12).
+        expireWaits()
         val now = clock.instant()
         val (due, lastSlot) = sessions.system { session -> due(session, now) to lastSlot(session) }
         metrics.lag(lagOf(due, now))

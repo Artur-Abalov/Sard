@@ -13,7 +13,7 @@ import kotlin.test.assertFailsWith
 @MutFlowTest
 class RunModelTest {
     @Test
-    fun `run states are the six of the schema, three of them active`() {
+    fun `run states are the seven of the schema, three of them active`() {
         val stored = MutFlow.underTest { RunState.entries.map { it.stored to it.active } }
         val expected =
             listOf(
@@ -23,6 +23,7 @@ class RunModelTest {
                 "succeeded" to false,
                 "failed" to false,
                 "cancelled" to false,
+                "agent_unavailable" to false,
             )
         assertEquals(expected, stored)
     }
@@ -54,11 +55,26 @@ class RunModelTest {
                     RunOutcome.CANCELLED,
                 Triple(RunState.CANCELLED, StepState.CANCELLED, cancel(CancelResult.UNCONFIRMED)) to
                     RunOutcome.CANCEL_UNCONFIRMED,
+                Triple(RunState.AGENT_UNAVAILABLE, StepState.AGENT_UNAVAILABLE, null) to RunOutcome.AGENT_UNAVAILABLE,
             )
         for ((input, expected) in cases) {
             val (status, step, cancellation) = input
             assertEquals(expected, MutFlow.underTest { RunOutcome.of(status, step, cancellation) }, "$input")
         }
+    }
+
+    // J1c: Запуск онлайн-агента в очереди не называется ждущим
+    @Test
+    fun `a queued run is waiting for the agent only while its agent is offline`() {
+        assertEquals(RunOutcome.QUEUED, MutFlow.underTest { RunOutcome.of(RunState.QUEUED, null, null, true) })
+        assertEquals(
+            RunOutcome.WAITING_FOR_AGENT,
+            MutFlow.underTest { RunOutcome.of(RunState.QUEUED, null, null, false) },
+        )
+        assertEquals(
+            RunOutcome.DISPATCHED,
+            MutFlow.underTest { RunOutcome.of(RunState.DISPATCHED, StepState.DISPATCHED, null, false) },
+        )
     }
 
     @Test
@@ -72,10 +88,10 @@ class RunModelTest {
     }
 
     @Test
-    fun `step states are the nine of the schema and read back`() {
+    fun `step states are the ten of the schema and read back`() {
         val expected =
             listOf("queued", "dispatched", "running", "succeeded", "failed", "cancelled") +
-                listOf("timed_out", "rejected", "lost")
+                listOf("timed_out", "rejected", "lost", "agent_unavailable")
         assertEquals(expected, MutFlow.underTest { StepState.entries.map { it.stored } })
         for (state in StepState.entries) assertEquals(state, MutFlow.underTest { StepState.of(state.stored) })
     }
@@ -99,6 +115,7 @@ class RunModelTest {
                 StepState.TIMED_OUT to RunState.FAILED,
                 StepState.REJECTED to RunState.FAILED,
                 StepState.LOST to RunState.FAILED,
+                StepState.AGENT_UNAVAILABLE to RunState.AGENT_UNAVAILABLE,
             )
         for ((step, run) in expected) assertEquals(run, MutFlow.underTest { RunState.following(step) }, "$step")
     }
