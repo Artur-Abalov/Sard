@@ -192,6 +192,24 @@ main `545331b0`.
   поднят в контейнере сессии).
 - `./scripts/gate.sh web` — PASSED. `make breaking-proto`, `buf lint` — без ошибок.
 
+### Гейты фазы 3
+- `./scripts/gate.sh server` (полный, с mutflow) — PASSED.
+  - По дороге mutflow нашёл выживших мутантов `SecretBindings` внутри чужого
+    теста `W2MutationTest`: `Sources` вызывал проверку привязок при каждом
+    просмотре источника.
+  - Предупреждения перенесены в отдельный компонент `SourceWarnings`, который
+    вызывает слой API. `Sources` хранит и проверяет источник, как раньше.
+- `./scripts/gate.sh agent fast` — PASSED; `proto`, `gen`, `sdk fast`, `web` — PASSED.
+- Мутации агента на новых файлах (`hostcheck/secret.go`, `app/app.go`,
+  `secretbind/store.go`) — 0.94. Выжили эквивалентные мутанты: права в
+  `OpenFile` без `O_CREAT`, `defer Close`.
+- Помехи окружения (не код S11):
+  - Хук остановки `scripts/claude/gate-changed.sh` запускает гейт параллельно с
+    уже идущим. Это портило `agent/.cover.out` (вставка NUL, «token too long»),
+    `server/build/test-results` (`EOFException`) и классы тестов
+    (`NoClassDefFoundError`); то же наблюдение, что в OQ-036.
+  - Чистые прогоны получились, когда ход не завершался до конца гейта.
+
 ### Не проверено: e2e
 Образы стенда не собираются в этой сессии.
 - Maven Central отвечал 429 из сборки `server-jar`. Обход: jar собран
