@@ -251,8 +251,8 @@ the keys` — полных снимков ключей нет: карточка 
 
 ## Шаг 2. Ключи и конфигурация
 
-Снимок K восстанавливается в `~/sard-recovery/keys`, оттуда `.env` и файлы
-compose идут в `~/sard`, а ключ и сертификат CA — прямо в том `sard_sard-pki`
+Снимок K восстанавливается в `~/sard-recovery/keys`, оттуда `.env`, файлы
+compose и каталог `db/` (скрипты и настройки базы, DB2) идут в `~/sard`, а ключ и сертификат CA — прямо в том `sard_sard-pki`
 с владельцем 10001 и правами `700` (каталоги) и `600` (файлы). `.env` читает
 группа 10001 (сосед работает под uid сервера): группа 10001, права `640`.
 
@@ -264,6 +264,7 @@ cd ~/sard-recovery
 ./restic restore "$K" --target keys
 mkdir -p ~/sard
 cp keys/etc/sard/install/.env keys/etc/sard/install/docker-compose.yml ~/sard/
+cp -R keys/etc/sard/install/db ~/sard/
 if [ -f keys/etc/sard/install/docker-compose.override.yml ]; then
   cp keys/etc/sard/install/docker-compose.override.yml ~/sard/
 fi

@@ -270,7 +270,7 @@ and the CA backup you made separately.
 ## Step 2. Keys and configuration
 
 Snapshot K is restored into `~/sard-recovery/keys`;
-from there `.env` and the compose files go to `~/sard`, and the CA key and
+from there `.env`, the compose files and the `db/` directory (the database scripts and settings, DB2) go to `~/sard`, and the CA key and
 certificate go straight into the volume `sard_sard-pki`, owner 10001, mode `700`
 (directories) and `600` (files). `.env` is read by group 10001 (the neighbour
 runs under the server's uid): group 10001, mode `640`.
@@ -283,6 +283,7 @@ cd ~/sard-recovery
 ./restic restore "$K" --target keys
 mkdir -p ~/sard
 cp keys/etc/sard/install/.env keys/etc/sard/install/docker-compose.yml ~/sard/
+cp -R keys/etc/sard/install/db ~/sard/
 if [ -f keys/etc/sard/install/docker-compose.override.yml ]; then
   cp keys/etc/sard/install/docker-compose.override.yml ~/sard/
 fi
