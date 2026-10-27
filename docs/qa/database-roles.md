@@ -139,6 +139,24 @@ compose (`$NET`).
 22. В новом чистом кластере `create role weak login` и выполнить скрипт под
     `weak` → ненулевой код, сообщение называет недостающее право; ролей Sard и
     схемы `sard` нет.
+22a. Новый кластер `qa-cr`; суперпользователем: `create role dba login createrole`,
+    `create database sard owner dba`, `grant pg_read_all_data, pg_monitor to dba with admin option`.
+    Выполнить скрипт под `dba` в базе `sard` → ненулевой код; сообщение
+    перечисляет `lo_create(oid), lo_creat(integer), lo_from_bytea(oid, bytea),
+    lo_import(text), lo_import(text, oid)`, говорит о чтении и записи файлов
+    сервера базы и содержит строку `REVOKE EXECUTE ON FUNCTION … FROM PUBLIC;`;
+    `select count(*) from pg_roles where rolname like 'sard\_%'` — `0`, схемы
+    `sard` нет.
+22b. Выполнить этот `REVOKE` суперпользователем в базе `sard`, затем скрипт под
+    `dba` два раза → оба раза код 0; запрос шага 3 и `\dn+ sard`, `\ddp` дают тот
+    же вывод, что в кластере шага 20.
+22c. Суперпользователем `create role r; grant r to sard_app;` и снова скрипт под
+    `dba` → ненулевой код, сообщение называет `r` и `REVOKE r FROM sard_app`;
+    членство `sard_app` в `r` и прочий каталог прежние. Затем
+    `grant pg_write_all_data to sard_app` суперпользователем, `revoke r from
+    sard_app`, скрипт суперпользователем → код 0, `select count(*) from
+    pg_auth_members where member = 'sard_app'::regrole` — `0`.
+    `docker rm -f qa-cr`.
 23. Задать пароли `sard_migrator` и `sard_app` (`\password`), выполнить
     `migrate` и запустить сервер по разделу 16, «Внешний кластер» →
     `GET /api/v1/status` — 200; в логе сервера нет строки `WARN` о правах роли.
