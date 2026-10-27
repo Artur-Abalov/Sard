@@ -157,6 +157,8 @@ class StepLossTest {
                 mapOf(
                     "SARD_AGENT_HEARTBEAT_INTERVAL" to "${HEARTBEAT.seconds}s",
                     "SARD_AGENT_STREAM_CHECKINTERVAL" to "1s",
+                    // Case 9 times the window from the start: a grace not longer than the window leaves it be (J1d).
+                    "SARD_RUN_START_GRACE" to "${LOST_WINDOW.seconds}s",
                 ),
             )
 

@@ -34,12 +34,15 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 
 private const val LOST_AFTER_HEARTBEATS = 2
+private val START_GRACE = Duration.ofMinutes(2)
 
 data class DispatchSettings(
     /** How long a step in flight waits for its agent after its session ended or a Hello missed it (FXs). */
     val lostAfter: Duration,
     /** How often the window is checked and queued steps of online agents are retried. */
     val checkInterval: Duration,
+    /** After a server start no step in flight is lost sooner than this (OQ-138); at least [lostAfter] counts. */
+    val startGrace: Duration,
 )
 
 /** `sard.run.dispatch.*`; the window is counted in heartbeat intervals, like the stream's (ADR 0026). */
@@ -48,6 +51,7 @@ data class DispatchProperties(
     val lostAfterHeartbeats: Int = LOST_AFTER_HEARTBEATS,
     /** Unset: `sard.agent.stream.check-interval`. */
     val checkInterval: Duration? = null,
+    val startGrace: Duration = START_GRACE,
 ) {
     fun settings(
         heartbeatInterval: Duration,
@@ -56,7 +60,8 @@ data class DispatchProperties(
         require(lostAfterHeartbeats >= 1) { "sard.run.dispatch.lost-after-heartbeats must be at least 1" }
         val interval = checkInterval ?: streamCheckInterval
         require(interval.isPositive) { "sard.run.dispatch.check-interval must be positive" }
-        return DispatchSettings(heartbeatInterval.multipliedBy(lostAfterHeartbeats.toLong()), interval)
+        require(startGrace.isPositive) { "sard.run.dispatch.start-grace must be positive" }
+        return DispatchSettings(heartbeatInterval.multipliedBy(lostAfterHeartbeats.toLong()), interval, startGrace)
     }
 }
 
@@ -137,6 +142,7 @@ class DispatchConfiguration {
         settings.lostAfter,
         MicrometerDispatchMetrics(meters),
         roles,
+        settings.startGrace,
         counts::waiting,
     )
 

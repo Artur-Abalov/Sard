@@ -31,7 +31,8 @@ class StepDispatcherTest {
     private fun dispatcher(
         ledger: FakeLedger,
         waiting: WaitingSteps = WaitingSteps(0, 0),
-    ) = StepDispatcher(ledger, ledger, links, clock, LOST_AFTER, metrics, ledger) { waiting }
+        startGrace: Duration = Duration.ZERO,
+    ) = StepDispatcher(ledger, ledger, links, clock, LOST_AFTER, metrics, ledger, startGrace) { waiting }
 
     /** Steps whose lost deadline the dispatcher's clock judges. */
     private fun ledger(vararg steps: StepView) = FakeLedger(*steps, now = { clock.now })
@@ -301,6 +302,48 @@ class StepDispatcherTest {
     }
 
     // --- FXs: the deadline is set when the session ends, at start, by a Hello; the earliest one holds
+
+    @Test
+    fun `an agent back within the start grace keeps its step, a Hello that lists it clears the deadline`() {
+        val ledger = ledger(step(1, StepState.RUNNING))
+        val dispatcher = dispatcher(ledger, startGrace = START_GRACE)
+        MutFlow.underTest { dispatcher.onStart() }
+
+        clock.now = DISPATCH_NOW + Duration.ofSeconds(110)
+        MutFlow.underTest { dispatcher.tick() }
+        MutFlow.underTest { dispatcher.onHello(AGENT, listOf(UUID(0, 1).toString())) }
+
+        assertEquals(StepState.RUNNING, ledger.status(1))
+        assertEquals(null, ledger.deadline(1))
+        clock.now = DISPATCH_NOW + Duration.ofHours(1)
+        dispatcher.tick()
+        assertEquals(StepState.RUNNING, ledger.status(1))
+    }
+
+    @Test
+    fun `an agent that is not back when the start grace ends loses its step`() {
+        val ledger = ledger(step(1, StepState.RUNNING))
+        val dispatcher = dispatcher(ledger, startGrace = START_GRACE)
+        MutFlow.underTest { dispatcher.onStart() }
+
+        clock.now = DISPATCH_NOW + START_GRACE - Duration.ofMillis(1)
+        MutFlow.underTest { dispatcher.tick() }
+        assertEquals(StepState.RUNNING, ledger.status(1))
+
+        clock.now = DISPATCH_NOW + START_GRACE
+        MutFlow.underTest { dispatcher.tick() }
+        assertEquals(StepState.LOST, ledger.status(1))
+    }
+
+    @Test
+    fun `a start grace shorter than the lost window does not shorten the window`() {
+        val ledger = ledger(step(1, StepState.RUNNING))
+        val dispatcher = dispatcher(ledger, startGrace = Duration.ofSeconds(10))
+
+        MutFlow.underTest { dispatcher.onStart() }
+
+        assertEquals(DISPATCH_NOW + LOST_AFTER, ledger.deadline(1))
+    }
 
     @Test
     fun `a session that ends gives its dispatched and running steps one window, then they are lost`() {

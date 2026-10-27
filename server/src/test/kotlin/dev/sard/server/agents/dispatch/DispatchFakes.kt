@@ -21,6 +21,7 @@ import java.util.UUID
 
 internal val DISPATCH_NOW: Instant = Instant.parse("2026-09-30T12:00:00Z")
 internal val LOST_AFTER: Duration = Duration.ofSeconds(60)
+internal val START_GRACE: Duration = Duration.ofMinutes(2)
 internal val TENANT: UUID = UUID(1, 1)
 internal val AGENT = ConnectedAgent(UUID(2, 2), TENANT, "serial")
 

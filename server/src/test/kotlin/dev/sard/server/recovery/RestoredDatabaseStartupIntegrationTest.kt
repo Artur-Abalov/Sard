@@ -38,7 +38,9 @@ import kotlin.test.assertTrue
 private const val CODE_LINE = "SARD SETUP CODE"
 private const val DAILY = "0 3 * * *"
 private val DOWNTIME = Duration.ofDays(3)
-private val LOST_WINDOW = Duration.ofSeconds(60)
+
+// The start grace (2 min by default, J1d) is longer than the lost window (60 s): it decides.
+private val LOST_WINDOW = Duration.ofMinutes(2)
 
 /**
  * Rule "Восстановленная база даёт ту же установку с тем же онбордингом и историей" of
@@ -163,7 +165,7 @@ class RestoredDatabaseStartupIntegrationTest {
     }
 
     @Test
-    fun `Шаг, шедший у отсутствующего агента в момент снимка, становится потерянным через окно от старта`() {
+    fun `Шаг, шедший у отсутствующего агента в момент снимка, становится потерянным через отсрочку от старта`() {
         val first = start()
         val (dump, run) = dumpWithSchedule(first, activeRun = true, inFlight = true)
         stop(first)

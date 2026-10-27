@@ -42,6 +42,7 @@ class StepDispatcher(
     private val lostAfter: Duration,
     private val metrics: DispatchMetrics,
     roles: RoleLedger,
+    private val startGrace: Duration = Duration.ZERO,
     private val waiting: () -> WaitingSteps,
 ) {
     private val locks = ConcurrentHashMap<UUID, Any>()
@@ -89,9 +90,12 @@ class StepDispatcher(
         }
     }
 
-    /** The server starts, before any agent can connect: every step in flight gets a fresh window. */
+    /**
+     * The server starts, before any agent can connect: every step in flight gets a fresh window, at
+     * least [startGrace] long, so an agent that backs off for a full pause is not lost (OQ-138).
+     */
     fun onStart() {
-        val deadline = clock.instant() + lostAfter
+        val deadline = clock.instant() + maxOf(lostAfter, startGrace)
         for (agent in deadlines.holders()) {
             locked(agent.id) { deadlines.restart(agent.tenantId, agent.id, deadline) }
         }

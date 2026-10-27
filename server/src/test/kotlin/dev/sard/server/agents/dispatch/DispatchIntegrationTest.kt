@@ -481,6 +481,42 @@ class DispatchIntegrationTest(
     }
 
     @Test
+    fun `an agent back within the start grace after a restart keeps its running step, and its result is accepted`() {
+        val agent = agent()
+        val run = runningThenLeft(agent)
+        val stepId = run.steps.single().id
+        awaitDeadline(stepId)
+        val started = clock.now
+        dispatcher.onStart()
+        assertEquals(started + settings.startGrace, deadline(stepId))
+
+        clock.now = started + Duration.ofSeconds(110)
+        dispatcher.tick()
+        greeted(clients, agent, stepId)
+        dispatcher.tick()
+
+        assertEquals(listOf("running", null), listOf(status(stepId)["status"], deadline(stepId)))
+        steps.finished(clients.tenant, stepId, StepOutcome(StepState.SUCCEEDED, null))
+        assertEquals("succeeded", runStatus(run.id))
+    }
+
+    @Test
+    fun `a server down for hours does not lose a step whose agent finished it meanwhile`() {
+        val agent = agent()
+        val run = runningThenLeft(agent)
+        val stepId = run.steps.single().id
+        awaitDeadline(stepId)
+        clock.now += Duration.ofHours(3)
+
+        dispatcher.onStart()
+        greeted(clients, agent)
+        steps.finished(clients.tenant, stepId, StepOutcome(StepState.SUCCEEDED, null))
+        dispatcher.tick()
+
+        assertEquals(listOf("succeeded", "succeeded"), listOf(status(stepId)["status"], runStatus(run.id)))
+    }
+
+    @Test
     fun `a server that stops sets no deadline, its start does`() {
         val agent = agent()
         val connection = greeted(clients, agent)

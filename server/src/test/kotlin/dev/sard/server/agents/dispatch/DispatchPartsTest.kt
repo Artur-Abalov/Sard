@@ -9,6 +9,9 @@ import dev.sard.server.runs.Action
 import dev.sard.server.runs.VerifyTask
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import org.springframework.boot.context.properties.bind.BindException
+import org.springframework.boot.context.properties.bind.Binder
+import org.springframework.boot.context.properties.source.MapConfigurationPropertySource
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -148,11 +151,11 @@ class DispatchPartsTest {
     fun `the lost window is two heartbeats by default, the check interval the stream's`() {
         val heartbeat = Duration.ofSeconds(30)
         val settings = MutFlow.underTest { DispatchProperties().settings(heartbeat, Duration.ofSeconds(15)) }
-        assertEquals(DispatchSettings(Duration.ofSeconds(60), Duration.ofSeconds(15)), settings)
+        assertEquals(DispatchSettings(Duration.ofSeconds(60), Duration.ofSeconds(15), Duration.ofMinutes(2)), settings)
 
         val properties = DispatchProperties(3, Duration.ofSeconds(5))
         val own = MutFlow.underTest { properties.settings(heartbeat, Duration.ofSeconds(15)) }
-        assertEquals(DispatchSettings(Duration.ofSeconds(90), Duration.ofSeconds(5)), own)
+        assertEquals(DispatchSettings(Duration.ofSeconds(90), Duration.ofSeconds(5), Duration.ofMinutes(2)), own)
     }
 
     @Test
@@ -165,5 +168,33 @@ class DispatchPartsTest {
         assertFailsWith<IllegalArgumentException> {
             MutFlow.underTest { DispatchProperties(2, Duration.ZERO).settings(heartbeat, heartbeat) }
         }
+    }
+
+    @Test
+    fun `a start grace that is not positive is refused, naming the setting`() {
+        val heartbeat = Duration.ofSeconds(30)
+        for (grace in listOf(Duration.ZERO, Duration.ofSeconds(-5))) {
+            val failure =
+                assertFailsWith<IllegalArgumentException> {
+                    MutFlow.underTest { DispatchProperties(startGrace = grace).settings(heartbeat, heartbeat) }
+                }
+            assertTrue(failure.message!!.contains("sard.run.dispatch.start-grace"))
+        }
+        val ten = DispatchProperties(startGrace = Duration.ofSeconds(10))
+        val custom = MutFlow.underTest { ten.settings(heartbeat, heartbeat) }
+        assertEquals(Duration.ofSeconds(10), custom.startGrace)
+    }
+
+    @Test
+    fun `a start grace that is not a duration does not bind, the failure names the setting`() {
+        val source = MapConfigurationPropertySource(mapOf("sard.run.dispatch.start-grace" to "долго"))
+        val failure =
+            assertFailsWith<BindException> {
+                Binder(source).bindOrCreate("sard.run.dispatch", DispatchProperties::class.java)
+            }
+        assertTrue(failure.message!!.contains("sard.run.dispatch.start-grace"))
+        val bound = Binder(MapConfigurationPropertySource(mapOf("sard.run.dispatch.start-grace" to "90s")))
+        val properties = bound.bindOrCreate("sard.run.dispatch", DispatchProperties::class.java)
+        assertEquals(Duration.ofSeconds(90), properties.startGrace)
     }
 }
