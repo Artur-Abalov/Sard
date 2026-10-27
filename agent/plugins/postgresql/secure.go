@@ -51,10 +51,11 @@ func (t target) secured(h secretHost, dbname string) (target, []byte, error) {
 
 // securedFor is secured for every database the plugin signs in to on the
 // target: the password goes to none of them unless the binding allows each.
+// An empty name is no database (a rollback of roles alone) and is not asked.
 func (t target) securedFor(h secretHost, dbnames ...string) (target, []byte, error) {
 	var password []byte
 	var err error
-	for _, db := range dbnames {
+	for _, db := range slices.DeleteFunc(dbnames, func(db string) bool { return db == "" }) {
 		if t, password, err = t.secured(h, db); err != nil {
 			return t, nil, err
 		}

@@ -94,3 +94,15 @@ func TestTheRollbackOfAnInterruptedRestoreKeepsToTheBindingToo(t *testing.T) {
 		t.Errorf("asked %v, want %v", h.host.asked, want)
 	}
 }
+
+func TestTheRollbackOfRolesAloneAsksForTheMaintenanceDatabaseOnly(t *testing.T) {
+	h := newPGHost(t)
+	h.server.roles["app_rw"] = 20002
+	h.recover(leftByAKill(`,"roles":[{"name":"app_rw","oid":20002}]`))
+	if h.server.hasRole("app_rw") {
+		t.Error("the role is still there")
+	}
+	if want := []sdk.Target{{Host: "db2", Port: 5432, Database: "postgres"}}; !slices.Equal(h.host.asked, want) {
+		t.Errorf("asked %v, want %v", h.host.asked, want)
+	}
+}

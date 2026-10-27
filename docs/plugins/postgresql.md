@@ -166,7 +166,7 @@ allow_tls: require    # необязательно
 - **TCP** (сеть и `localhost`): `require_auth=scram-sha-256`, если привязка не задаёт
   `--auth`. Сервер, который просит `md5` или пароль открытым текстом, пароль не получает:
   libpq обрывает вход до отправки. `require_auth` идёт в строке подключения, а не в
-  `PGREQUIREAUTH`: клиент старше PostgreSQL 16 отвергает неизвестный параметр строки до
+  `PGREQUIREAUTH`: клиент ниже PostgreSQL 16 отвергает неизвестный параметр строки до
   подключения, а неизвестную переменную пропустил бы молча.
 - **TLS со SCRAM**: `channel_binding=require` — обмен SCRAM привязан к сертификату
   сервера, и посредник, пересылающий его к настоящему серверу, будет замечен.
@@ -555,7 +555,7 @@ pg_restore --no-owner --no-acl -d restored app.dump
 | `tls_mode disable would send the password …` | `tls_mode` слабее, чем разрешает привязка: включите TLS (`verify-full`) или разрешите `--allow-tls`. |
 | `authentication method requirement "scram-sha-256" failed: server requested a hashed password` | Роль входит по `md5`: задайте `password_encryption = 'scram-sha-256'` и пароль роли заново, или разрешите `--auth scram-sha-256,md5`. Пароль не отправлен. |
 | `channel binding is required, but server did not offer …` | Между агентом и сервером пулер или роль без пароля SCRAM: исправьте сервер или разрешите `--allow-no-channel-binding`. |
-| `invalid connection option "require_auth"` | libpq на хосте старше 16: поставьте клиент PostgreSQL 16 или новее (образ агента `-pg18` его содержит) или укажите `pg_dump_path`. |
+| `invalid connection option "require_auth"` | libpq на хосте ниже 16: поставьте клиент PostgreSQL 16 или новее (образ агента `-pg18` его содержит) или укажите `pg_dump_path`. |
 | `root certificate file … does not exist` | Нет CA для `verify-full`: `--ca-file` в привязке или `tls_root_cert` источника. |
 | `permission denied for table …` | Роли нужно `pg_read_all_data` или `SELECT` на таблицу; либо `exclude_tables`. |
 | `pg_dump failed: empty output`, `not a custom-format archive` | `pg_dump` завершился, не создав архив: смотрите лог шага. |
