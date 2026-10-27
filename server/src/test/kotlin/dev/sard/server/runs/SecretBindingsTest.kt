@@ -89,6 +89,12 @@ class SecretBindingsTest {
     }
 
     @Test
+    fun `only the fields of a secret name secrets`() {
+        val userPg = PG_CONFIG.replace("\"user\":\"backup\"", "\"user\":\"pg\"")
+        assertEquals(1, warnings(bound("elsewhere"), userPg).size)
+    }
+
+    @Test
     fun `a schema without a target only checks the plugin`() {
         val schema = """{"type":"object","properties":{"token":{"type":"string","format":"sard-secret"}}}"""
         assertEquals(emptyList(), warnings(bound("anything"), """{"token":"pg"}""", schema))
@@ -143,9 +149,11 @@ class SecretBindingsTest {
 
     @Test
     fun `a target is written as the operator binds it`() {
-        assertEquals("db:5432/app", target("db").toString())
-        assertEquals("[::1]:5432/app", target("::1").toString())
-        assertEquals("/var/run/postgresql:5432", target("/var/run/postgresql", database = "").toString())
-        assertEquals("token", SecretTarget("token", 0, "").toString())
+        val written = { t: SecretTarget -> MutFlow.underTest { t.toString() } }
+        assertEquals("db:5432/app", written(target("db")))
+        assertEquals("[::1]:5432/app", written(target("::1")))
+        assertEquals("/var/run/postgresql:5432", written(target("/var/run/postgresql", database = "")))
+        assertEquals("token", written(SecretTarget("token", 0, "")))
+        assertEquals("::1/app", written(SecretTarget("::1", 0, "app")))
     }
 }

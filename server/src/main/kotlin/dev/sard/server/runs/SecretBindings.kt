@@ -172,10 +172,8 @@ internal object SecretTargets {
             Parts(pattern, "", "")
         }
 
-    private fun bracketed(pattern: String): Parts? {
-        val end = pattern.indexOf(']')
-        return if (end < 0) null else tail(pattern.substring(1, end), pattern.substring(end + 1))
-    }
+    private fun bracketed(pattern: String): Parts? =
+        if (']' in pattern) tail(pattern.substring(1).substringBefore(']'), pattern.substringAfter(']')) else null
 
     /** [rest] is [:port][/database] after [host]. */
     private fun tail(
