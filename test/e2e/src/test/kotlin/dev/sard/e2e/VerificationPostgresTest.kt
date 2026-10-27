@@ -175,7 +175,15 @@ class VerificationPostgresTest {
             val local =
                 Chain.repository("/srv/$REPOSITORY") +
                     "secrets:\n  pg-app: ${PgAgent.SECRET_FILE}\n"
-            val host = AgentHost(sard, "pg-source", local, image = E2e.pgAgentImage(18), mounts = listOf(Bind(repository, Volume("/srv/$REPOSITORY"))))
+            val host =
+                AgentHost(
+                    sard,
+                    "pg-source",
+                    local,
+                    image = E2e.pgAgentImage(18),
+                    mounts = listOf(Bind(repository, Volume("/srv/$REPOSITORY"))),
+                    bindings = mapOf("pg-app" to AgentHost.binding("postgresql", PgAgent.BOUND_SERVERS)),
+                )
             val agent = EnrolledAgent(AgentEnroller.enroll(host, EnrollmentTokens.create(sard, role = "source")), host)
             val init = host.repoInit(REPOSITORY, "--generate-password")
             assertEquals(0, init.code, init.stderr)

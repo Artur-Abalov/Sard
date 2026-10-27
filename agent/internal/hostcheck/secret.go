@@ -28,7 +28,7 @@ func SecretLine(name, path string, size int, err error) Line {
 	}
 	line.Status = Error
 	line.Message = fmt.Sprintf("%s %s", path, problem)
-	line.Hint = "sudo sard-agent secret set " + name
+	line.Hint = SecretSetHint(name)
 	return line
 }
 
@@ -52,7 +52,7 @@ func secretProblem(err error) string {
 // when it is in force; err why its file cannot be used; bound is false when
 // there is none: the agent then gives the secret to no plugin.
 func BindingLine(name, path, described string, bound bool, err error) Line {
-	hint := "sudo sard-agent secret set " + name + " --plugin <plugin> --target <host:port/database>"
+	hint := SecretSetHint(name)
 	switch {
 	case err != nil:
 		return Line{Check: CheckSecretBound, Subject: name, Status: Error, Message: fmt.Sprintf("%s cannot be used: %s", path, reasonOf(err)), Hint: hint}
@@ -60,4 +60,10 @@ func BindingLine(name, path, described string, bound bool, err error) Line {
 		return Line{Check: CheckSecretBound, Subject: name, Status: Error, Message: fmt.Sprintf("no binding (%s): the agent gives the secret to no plugin", path), Hint: hint}
 	}
 	return Line{Check: CheckSecretBound, Subject: name, Status: OK, Message: "bound to " + described}
+}
+
+// SecretSetHint is the command that sets the secret again: with its binding,
+// which secret set requires (S11).
+func SecretSetHint(name string) string {
+	return "sudo sard-agent secret set " + name + " --plugin <plugin> --target <host:port/database>"
 }

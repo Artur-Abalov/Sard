@@ -22,7 +22,7 @@
 
 | Что | Как |
 |---|---|
-| Читать базу целиком | роль PostgreSQL `sard_self`, член `pg_read_all_data`; по сети compose до `postgres:5432` |
+| Читать базу целиком | роль PostgreSQL `sard_self`, член `pg_read_all_data`; по сети compose до `postgres:5432`. Секрет `sard-db` привязан к плагину `postgresql` и цели `postgres:5432/sard` без TLS (файл `secret-bindings/sard-db.yaml` образа, S11): серверу ничего не стоит прислать другой хост, но пароль туда не уйдёт |
 | Читать каталог CA, ключ CA тоже | том `sard-pki` подключён `:ro` в `/var/lib/sard/pki` |
 | Читать конфигурацию установки | каталог compose (`./`) подключён `:ro` в `/etc/sard/install`; `.env` — группа 10001, 0640 |
 | Звонить серверу | `server:9090`, mTLS, как любой агент. Имя `server` всегда есть в сертификате сервера |
@@ -112,6 +112,21 @@ REVOKE EXECUTE ON FUNCTION lo_create(oid), lo_creat(integer), lo_from_bytea(oid,
 
 Пароль — содержимое файла `db-password` из `SARD_SELF_DIR`. Задайте его через
 `\password sard_self` в psql: так он не попадёт в журнал запросов PostgreSQL.
+
+Если база не `postgres:5432/sard` (`SARD_SELF_BACKUP_DATABASE_HOST`, `…_PORT`, `…_NAME`),
+поправьте привязку пароля в томе конфигурации sard-self: агент отдаёт его только туда, куда
+она разрешает ([привязка секрета](../plugins/postgresql.md#привязка-секрета)). Секрет
+объявлен в `agent.yaml` образа, поэтому `secret set` его не меняет: правьте файл.
+
+```bash
+docker compose exec -u 0 self-agent sh -c 'cat > /etc/sard/self/secret-bindings/sard-db.yaml' <<'YAML'
+plugin: postgresql
+targets:
+  - db.internal:5432/sard
+allow_tls: require    # или уберите строку, если сервер с проверяемым сертификатом
+YAML
+docker compose restart self-agent
+```
 
 ## Обновление
 
