@@ -85,6 +85,18 @@ export function formatDuration(
   return `${seconds} ${units.s}`
 }
 
+// A step timeout as hours and minutes: "6 h", "1 h 30 min", "45 min".
+export function formatTimeout(seconds: number, language: string): string {
+  const { units } = dictionary(language)
+  const hours = Math.floor(seconds / SECONDS_PER_HOUR)
+  const minutes = Math.floor((seconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE)
+  const parts = [
+    hours > 0 ? `${hours} ${units.h}` : null,
+    minutes > 0 ? `${minutes} ${units.min}` : null,
+  ]
+  return parts.filter((part) => part !== null).join(' ')
+}
+
 // "N of M files"; "N files" while the total is unknown; nothing without N.
 export function formatFiles(
   processed: number | null,

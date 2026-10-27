@@ -47,6 +47,13 @@ export const recoveryCardQuery = () =>
     retry: false,
   })
 
+// The installation's default step timeouts: the source form names them as the value of an empty field.
+export const runDefaultsQuery = () =>
+  queryOptions({
+    queryKey: ['run-defaults'],
+    queryFn: () => call(client.GET('/api/v1/run-defaults')),
+  })
+
 export const agentQuery = (agentId: string) =>
   queryOptions({
     queryKey: ['agent', agentId],

@@ -374,9 +374,12 @@ export type IconName =
   | 'clock'
   | 'clock-dashed'
   | 'hourglass'
+  | 'hourglass-dashed'
   | 'arrow'
   | 'play'
   | 'stop'
+  | 'stop-dashed'
+  | 'stop-dash'
   | 'pause'
   | 'dot'
   | 'circle'
@@ -404,6 +407,11 @@ export const statusVisuals: Record<string, StatusVisual> = {
   lost: { color: 'stale', icon: 'clock-dashed' },
   // Not run, not a failure (J1c): the agent was offline until the wait deadline.
   agent_unavailable: { color: 'paused', icon: 'pause' },
+  // Words of a run's outcome that its status does not have (J1e): a wait, a cancel under way, a cancel
+  // nobody confirmed. None of them is an error.
+  waiting_for_agent: { color: 'paused', icon: 'hourglass-dashed' },
+  cancelling: { color: 'paused', icon: 'stop-dashed' },
+  cancel_unconfirmed: { color: 'paused', icon: 'stop-dash' },
   active: { color: 'ok', icon: 'dot' },
   used: { color: 'paused', icon: 'check' },
   expired: { color: 'stale', icon: 'clock' },

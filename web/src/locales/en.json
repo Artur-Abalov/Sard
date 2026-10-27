@@ -91,7 +91,8 @@
     "sourceDeleted": "deleted",
     "status": "Status",
     "startedBy": "Started",
-    "kind": "Kind"
+    "kind": "Kind",
+    "waitingUntil": "waiting for the agent until {{time}}"
   },
   "notFound": {
     "title": "Page not found",
@@ -127,8 +128,8 @@
     "unknown_repository": "The agent does not report this repository",
     "invalid_config": "The source config is not valid",
     "run_active": "The source already has a run in progress",
-    "run_finished": "The run is already finished: there is nothing to cancel",
-    "run_not_cancellable": "The server cannot cancel this kind of run yet",
+    "run_finished": "The run is already finished",
+    "run_not_cancellable": "This run cannot be cancelled",
     "token_used": "The token is already used",
     "token_expired": "The token has expired",
     "origin_rejected": "The request was rejected: the origin does not match",
@@ -263,7 +264,10 @@
     "pluginGone": "The agent no longer offers the plugin {{plugin}}. Choose a plugin again.",
     "remove": "Remove",
     "save": "Save",
-    "schema": "Schema of the config"
+    "schema": "Schema of the config",
+    "backupTimeout": "Backup timeout (minutes)",
+    "restoreTimeout": "Restore timeout (minutes)",
+    "timeoutDefault": "Empty: the installation default, {{value}}"
   },
   "run": {
     "added": "Added: <m>{{size}}</m>",
@@ -281,7 +285,24 @@
     },
     "total": "Total: <m>{{size}}</m>",
     "trigger": "Started by",
-    "waitingForAgent": "The run starts when the agent connects:"
+    "cancel": {
+      "button": "Cancel",
+      "title": "Cancel the run?",
+      "backupText": "The agent is asked to stop the backup. Nothing already saved is deleted.",
+      "restoreWarning": "The restore will stop and the data restored so far will be deleted.",
+      "confirm": "Cancel the run"
+    },
+    "cancelledBy": "Cancelled by {{who}}, {{time}}",
+    "waitingUntil": "It starts when the agent connects; waiting until",
+    "timedOut": {
+      "storage": "Check the connection to the storage.",
+      "increase": "Raise the timeout in the source.",
+      "openSource": "Open the source"
+    },
+    "agentUnavailableSince": "The agent has been out of contact since {{time}}.",
+    "agentNeverConnected": "The agent has never connected.",
+    "lateStatus": "The agent reported later",
+    "cancellation": "Cancellation"
   },
   "enum": {
     "RunStatus": {
@@ -301,11 +322,11 @@
       "cancelling": "cancelling",
       "succeeded": "succeeded",
       "failed": "error",
-      "timed_out": "timed out",
+      "timed_out": "failed: timed out",
       "rejected": "rejected",
       "lost": "lost",
       "cancelled": "cancelled",
-      "cancel_unconfirmed": "cancelled (the agent did not confirm)",
+      "cancel_unconfirmed": "cancelled (not confirmed by the agent)",
       "agent_unavailable": "not run: the agent was unavailable"
     },
     "CancelResult": {
@@ -647,6 +668,14 @@
       "keysUnconfirmed": "The key copy of this storage is not confirmed yet.",
       "keysConfirmedAt": "The key copy is confirmed: {{time}}",
       "done": "The storage is changed."
+    },
+    "runDefaults": {
+      "title": "Default step timeouts",
+      "backup": "Backup timeout (minutes)",
+      "restore": "Restore timeout (minutes)",
+      "submit": "Save the timeouts",
+      "saved": "The timeouts are saved.",
+      "hint": "A source that sets none of its own takes these. 1 to 1440 minutes."
     }
   },
   "schedule": {

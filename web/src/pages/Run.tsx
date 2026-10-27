@@ -5,32 +5,90 @@ import { Alert, Badge, Code, Group, Stack, Table, Text, Title } from '@mantine/c
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { agentQuery, runQuery, type Run as RunModel } from '../api/queries'
+import { runQuery, type Run as RunModel } from '../api/queries'
 import { AgentName } from '../components/AgentName'
+import { CancelRunButton } from '../components/CancelRunButton'
+import { OutcomeBadge } from '../components/OutcomeBadge'
 import { AppLink, ButtonLink } from '../components/links'
 import { Loaded } from '../components/Loaded'
 import { RestoreButton } from '../components/RestoreButton'
 import { RunBackupButton } from '../components/RunBackupButton'
 import { SourceLabel, TriggerLabel } from '../components/RunsTable'
-import { StatusBadge } from '../components/StatusBadge'
 import { StepPanel } from '../components/StepPanel'
 import { restoreSearchOf } from '../restoreView'
-import { waitsForAgent } from '../stepNotes'
+import { timeoutOfRun } from '../runOutcome'
 import { tones } from '../theme'
 import { Mono } from '../components/Mono'
 import { Time } from '../components/Time'
+import { useFormat } from '../useFormat'
 
 const route = getRouteApi('/_app/runs/$runId')
 
-// A queued run of an agent that is offline starts when the agent connects; both facts are the server's.
-function WaitingForAgent({ run }: { run: RunModel }) {
+// The wait for an offline agent, with the deadline the server set.
+function WaitNote({ run }: { run: RunModel }) {
   const { t } = useTranslation()
-  const agent = useQuery(agentQuery(run.agentId))
-  if (!waitsForAgent(run.status, agent.data?.status)) return null
+  if (run.outcome !== 'waiting_for_agent') return null
   return (
     <Alert color={tones.info} role="status">
-      {t('run.waitingForAgent')} <AgentName agentId={run.agentId} />
+      {t('run.waitingUntil')} <Time value={run.agentWaitUntil} />{' '}
+      <AgentName agentId={run.agentId} />
     </Alert>
+  )
+}
+
+// What to check, and where to raise the timeout, when a step ran over it.
+function TimedOutNote({ run }: { run: RunModel }) {
+  const { t } = useTranslation()
+  if (run.outcome !== 'timed_out') return null
+  return (
+    <Alert color={tones.warning} role="status">
+      <Text>{t('run.timedOut.storage')}</Text>
+      <Text>
+        {t('run.timedOut.increase')}{' '}
+        {!run.sourceDeleted && (
+          <AppLink to="/sources/$sourceId/edit" params={{ sourceId: run.sourceId }}>
+            {t('run.timedOut.openSource')}
+          </AppLink>
+        )}
+      </Text>
+    </Alert>
+  )
+}
+
+// Since when the agent was out of contact, or that it never connected.
+function UnavailableNote({ run }: { run: RunModel }) {
+  const { t } = useTranslation()
+  const format = useFormat()
+  if (run.outcome !== 'agent_unavailable') return null
+  return (
+    <Alert color={tones.info} role="status">
+      {run.agentUnavailableSince === null
+        ? t('run.agentNeverConnected')
+        : t('run.agentUnavailableSince', { time: format.time(run.agentUnavailableSince) })}
+    </Alert>
+  )
+}
+
+// What the agent reported after the server had closed the step as cancelled.
+function LateNote({ run }: { run: RunModel }) {
+  const { t } = useTranslation()
+  const late = run.steps.find((step) => step.lateStatus !== null)?.lateStatus
+  if (late === undefined || late === null) return null
+  return (
+    <Alert color={tones.info} role="status">
+      {t('run.lateStatus')}: {t(`enum.StepStatus.${late}`)}
+    </Alert>
+  )
+}
+
+function OutcomeNotes({ run }: { run: RunModel }) {
+  return (
+    <>
+      <WaitNote run={run} />
+      <TimedOutNote run={run} />
+      <UnavailableNote run={run} />
+      <LateNote run={run} />
+    </>
   )
 }
 
@@ -86,19 +144,21 @@ function RestoreFacts({ run }: { run: RunModel }) {
 
 function RunCard({ run }: { run: RunModel }) {
   const { t } = useTranslation()
+  const format = useFormat()
   return (
     <Stack>
       <Group>
         <Title order={2}>
           <SourceLabel run={run} />
         </Title>
-        <StatusBadge group="RunStatus" value={run.status} />
+        <OutcomeBadge run={run} timeoutSeconds={timeoutOfRun(run.steps)} />
         <Badge variant="outline" color={tones.neutral}>
           {t(`enum.RunKind.${run.kind}`)}
         </Badge>
         <RunActions run={run} />
+        <CancelRunButton run={run} />
       </Group>
-      <WaitingForAgent run={run} />
+      <OutcomeNotes run={run} />
       <Table>
         <Table.Tbody>
           <Table.Tr>
@@ -107,6 +167,17 @@ function RunCard({ run }: { run: RunModel }) {
               <TriggerLabel run={run} />
             </Table.Td>
           </Table.Tr>
+          {run.cancellation !== null && (
+            <Table.Tr>
+              <Table.Th>{t('run.cancellation')}</Table.Th>
+              <Table.Td>
+                {t('run.cancelledBy', {
+                  who: run.cancellation.requestedBy,
+                  time: format.time(run.cancellation.requestedAt),
+                })}
+              </Table.Td>
+            </Table.Tr>
+          )}
           {run.requestedBy !== null && (
             <Table.Tr>
               <Table.Th>{t('restore.requestedBy')}</Table.Th>

@@ -2,7 +2,7 @@
 // Copyright 2026 Artur Abalov
 
 import { describe, expect, test } from 'vitest'
-import { partialNoteShown, stepNoteShown, waitsForAgent } from './stepNotes'
+import { partialNoteShown, stepNoteShown } from './stepNotes'
 
 const backup = (partial: boolean) => ({
   snapshotId: 'a1b2c3',
@@ -37,17 +37,5 @@ describe('the sentence before the reason of a step', () => {
     ['succeeded', false],
   ] as const)('a %s step: %s', (status, shown) => {
     expect(stepNoteShown(status)).toBe(shown)
-  })
-})
-
-describe('the note that a run waits for its agent', () => {
-  test.each([
-    ['queued', 'offline', true],
-    ['queued', 'online', false],
-    ['queued', undefined, false],
-    ['running', 'offline', false],
-    ['failed', 'offline', false],
-  ] as const)('a %s run, the agent %s: %s', (run, agent, shown) => {
-    expect(waitsForAgent(run, agent)).toBe(shown)
   })
 })

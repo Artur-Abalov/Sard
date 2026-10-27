@@ -21,6 +21,8 @@ describe('a path of the server maps to a field of the form', () => {
     ['config/compression', { kind: 'config' }],
     ['ttlSeconds', { kind: 'ttl' }],
     ['label', { kind: 'label' }],
+    ['backupTimeoutMinutes', { kind: 'backupTimeout' }],
+    ['restoreTimeoutMinutes', { kind: 'restoreTimeout' }],
     ['role', { kind: 'role' }],
     ['', { kind: 'form' }],
     ['unknownField', { kind: 'form' }],

@@ -131,7 +131,12 @@ export function settleRuns(): void {
     const run = state.runs.find((r) => r.id === id)
     if (run === undefined) continue
     const finishedAt = new Date(outcome.at).toISOString()
-    Object.assign(run, { status: outcome.status, message: outcome.message, finishedAt })
+    Object.assign(run, {
+      status: outcome.status,
+      outcome: outcome.status,
+      message: outcome.message,
+      finishedAt,
+    })
     for (const step of run.steps) {
       Object.assign(step, { status: outcome.status, message: outcome.message, finishedAt })
     }

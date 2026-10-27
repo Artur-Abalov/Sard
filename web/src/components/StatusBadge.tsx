@@ -7,12 +7,21 @@ import { statusVisual } from '../theme'
 import { StatusIcon } from './StatusIcon'
 
 // A status as text with an icon and a color; the meaning never rests on the color alone.
-export function StatusBadge({ group, value }: { group: string; value: string }) {
+export function StatusBadge({
+  group,
+  value,
+  text,
+}: {
+  group: string
+  value: string
+  // The words, when the plain name of the value is not all there is to say (a wait with its deadline).
+  text?: string
+}) {
   const { t } = useTranslation()
   const { color, icon } = statusVisual(value)
   return (
     <Badge color={color} leftSection={<StatusIcon name={icon} />}>
-      {t(`enum.${group}.${value}`)}
+      {text ?? t(`enum.${group}.${value}`)}
     </Badge>
   )
 }

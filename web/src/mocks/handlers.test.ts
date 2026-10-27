@@ -315,6 +315,15 @@ describe('with a session', () => {
     expect((await cancel(unknownId)).response.status).toBe(404)
   })
 
+  test('a run that settles shows its end as its outcome, so that no cancel is offered for it', async () => {
+    await signIn()
+    state.runOutcomes[ids.queuedRun] = { at: 0, status: 'succeeded', message: null }
+    const run = must(
+      await api.GET('/api/v1/runs/{runId}', { params: { path: { runId: ids.queuedRun } } }),
+    )
+    expect([run.status, run.outcome]).toEqual(['succeeded', 'succeeded'])
+  })
+
   test('run defaults: 6 and 12 hours until saved, a value out of range is 422 at its field', async () => {
     await signIn()
     expect(must(await api.GET('/api/v1/run-defaults'))).toEqual({
@@ -394,6 +403,17 @@ describe('sources', () => {
     expect((await api.DELETE('/api/v1/sources/{sourceId}', path)).response.status).toBe(204)
     expect((await api.GET('/api/v1/sources/{sourceId}', path)).response.status).toBe(404)
   })
+
+  test.each(['backupTimeoutMinutes', 'restoreTimeoutMinutes'] as const)(
+    'a %s out of 1 to 1440 is 422 at its field',
+    async (field) => {
+      const { response, error } = await api.POST('/api/v1/sources', {
+        body: { ...input, [field]: 1441 },
+      })
+      expect(response.status).toBe(422)
+      expect(error).toMatchObject({ code: 'validation_failed', errors: [{ field }] })
+    },
+  )
 
   test('a repository the agent did not report is 422 unknown_repository', async () => {
     const { response, error } = await api.POST('/api/v1/sources', {

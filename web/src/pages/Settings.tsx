@@ -10,6 +10,7 @@ import { changePassword } from '../onboarding/api'
 import { canChangePassword, confirmationMismatch } from '../onboarding/forms'
 import { passwordChangeResult, type Notice } from '../onboarding/outcomes'
 import { tones } from '../theme'
+import { RunDefaultsSection } from './settings/RunDefaultsSection'
 import { SelfBackupSection } from './settings/SelfBackupSection'
 
 type Outcome = { kind: 'changed' } | { kind: 'failed'; notice: Notice } | null
@@ -88,6 +89,7 @@ export function Settings() {
           </Button>
         </Stack>
       </form>
+      <RunDefaultsSection />
       <SelfBackupSection />
     </Stack>
   )

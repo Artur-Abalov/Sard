@@ -696,6 +696,9 @@ export const runs: Schemas['Run'][] = [
       phase: null,
     },
     'queued',
+    false,
+    // The server's word for a queued run whose agent is offline, with the wait deadline (J1c).
+    { outcome: 'waiting_for_agent', agentWaitUntil: '2026-09-28T09:59:00Z' },
   ),
   runOf(
     ids.runningRun,

@@ -36,9 +36,22 @@ const drawings: Record<IconName, ReactNode> = {
   hourglass: (
     <path d="M4.5 2.5h7m-7 11h7M5 2.5c0 3 3 4 3 5.5s-3 2.5-3 5.5m6-11c0 3-3 4-3 5.5s3 2.5 3 5.5" />
   ),
+  'hourglass-dashed': (
+    <path
+      strokeDasharray="2 1.5"
+      d="M4.5 2.5h7m-7 11h7M5 2.5c0 3 3 4 3 5.5s-3 2.5-3 5.5m6-11c0 3-3 4-3 5.5s3 2.5 3 5.5"
+    />
+  ),
   arrow: <path d="M3 8h9.5M8.5 4l4 4-4 4" />,
   play: <path d="M5 3.5 12.5 8 5 12.5z" />,
   stop: <rect x="4" y="4" width="8" height="8" rx="1" />,
+  'stop-dashed': <rect x="4" y="4" width="8" height="8" rx="1" strokeDasharray="2 1.5" />,
+  'stop-dash': (
+    <>
+      <rect x="4" y="4" width="8" height="8" rx="1" />
+      <path d="M6 8h4" />
+    </>
+  ),
   pause: <path d="M5.5 3.5v9m5-9v9" />,
   dot: <circle cx="8" cy="8" r="3.5" fill="currentColor" />,
   circle: <circle cx="8" cy="8" r="4.5" />,

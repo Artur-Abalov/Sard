@@ -25,10 +25,22 @@ export interface Draft {
   values: FormValues
   // The config as JSON text, when it cannot.
   json: string
+  // The step timeouts in minutes; null: the installation's default (J1b).
+  backupTimeout: number | null
+  restoreTimeout: number | null
 }
 
 export function emptyDraft(agentId = ''): Draft {
-  return { name: '', agentId, plugin: '', repository: '', values: {}, json: '{}' }
+  return {
+    name: '',
+    agentId,
+    plugin: '',
+    repository: '',
+    values: {},
+    json: '{}',
+    backupTimeout: null,
+    restoreTimeout: null,
+  }
 }
 
 // Only an agent that backs up can be given a source; a convenience, the server decides (RK7).
@@ -55,7 +67,12 @@ export function offeredPlugins(agent: Pick<Schemas['AgentDetails'], 'plugins'>):
 
 // Another agent: its plugins and repositories are not the old one's, so those and the config start over.
 export function withAgent(draft: Draft, agentId: string): Draft {
-  return { ...emptyDraft(agentId), name: draft.name }
+  return {
+    ...emptyDraft(agentId),
+    name: draft.name,
+    backupTimeout: draft.backupTimeout,
+    restoreTimeout: draft.restoreTimeout,
+  }
 }
 
 function startOf(plugin: Plugin): Pick<Draft, 'values' | 'json'> {
@@ -72,7 +89,16 @@ export function withPlugin(draft: Draft, plugin: Plugin): Draft {
 
 // The draft of an existing source; its plugin is `plugin` (undefined when the agent no longer offers it).
 export function draftOf(
-  source: Pick<Schemas['Source'], 'name' | 'agentId' | 'plugin' | 'repositoryName' | 'config'>,
+  source: Pick<
+    Schemas['Source'],
+    | 'name'
+    | 'agentId'
+    | 'plugin'
+    | 'repositoryName'
+    | 'config'
+    | 'backupTimeoutMinutes'
+    | 'restoreTimeoutMinutes'
+  >,
   plugin: Plugin | undefined,
 ): Draft {
   const base = {
@@ -80,6 +106,8 @@ export function draftOf(
     agentId: source.agentId,
     repository: source.repositoryName,
     json: configToJson(source.config),
+    backupTimeout: source.backupTimeoutMinutes,
+    restoreTimeout: source.restoreTimeoutMinutes,
   }
   if (plugin === undefined) return { ...base, plugin: '', values: {} }
   const model = buildFormModel(plugin.configSchema)
@@ -108,6 +136,19 @@ export function buildSourceInput(
   const { name, agentId, plugin: pluginName, repository } = draft
   return {
     ok: true,
-    input: { name, agentId, plugin: pluginName, repositoryName: repository, config },
+    input: {
+      name,
+      agentId,
+      plugin: pluginName,
+      repositoryName: repository,
+      config,
+      backupTimeoutMinutes: draft.backupTimeout,
+      restoreTimeoutMinutes: draft.restoreTimeout,
+    },
   }
+}
+
+// What a number field holds: its minutes, or null while it is empty (the installation's default).
+export function timeoutOfField(value: number | string): number | null {
+  return typeof value === 'number' ? value : null
 }

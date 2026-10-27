@@ -16,12 +16,3 @@ export function partialNoteShown(step: Pick<RunStep, 'status' | 'backup'>): bool
 export function stepNoteShown(status: components['schemas']['StepStatus']): boolean {
   return status === 'lost' || status === 'rejected'
 }
-
-// A queued run starts when its agent connects: the note shows two facts of the server, the run's
-// status and the agent's (G7); the console decides nothing else.
-export function waitsForAgent(
-  run: components['schemas']['RunStatus'],
-  agent: components['schemas']['AgentStatus'] | undefined,
-): boolean {
-  return run === 'queued' && agent === 'offline'
-}

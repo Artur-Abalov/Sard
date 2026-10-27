@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
-import { Badge, Table, Text } from '@mantine/core'
+import { Badge, Group, Table, Text } from '@mantine/core'
 import { useTranslation } from 'react-i18next'
 import type { components } from '../api/schema'
 import { AppLink } from './links'
-import { StatusBadge } from './StatusBadge'
+import { CancelRunButton } from './CancelRunButton'
+import { OutcomeBadge } from './OutcomeBadge'
 import { tones } from '../theme'
 import { Mono } from './Mono'
 import { Time } from './Time'
@@ -81,7 +82,7 @@ export function RunsTable({ runs }: { runs: RunSummary[] }) {
                 </Badge>
               </Table.Td>
               <Table.Td>
-                <StatusBadge group="RunStatus" value={run.status} />
+                <OutcomeBadge run={run} />
               </Table.Td>
               <Table.Td>
                 <TriggerLabel run={run} />
@@ -90,9 +91,12 @@ export function RunsTable({ runs }: { runs: RunSummary[] }) {
                 <Time value={run.queuedAt} />
               </Table.Td>
               <Table.Td>
-                <AppLink to="/runs/$runId" params={{ runId: run.id }}>
-                  {t('runs.open')}
-                </AppLink>
+                <Group gap="xs">
+                  <AppLink to="/runs/$runId" params={{ runId: run.id }}>
+                    {t('runs.open')}
+                  </AppLink>
+                  <CancelRunButton run={run} />
+                </Group>
               </Table.Td>
             </Table.Tr>
           ))}

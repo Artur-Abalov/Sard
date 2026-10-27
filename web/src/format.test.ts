@@ -16,6 +16,7 @@ import {
   formatTablesRestored,
   formatRelative,
   formatScheduleTime,
+  formatTimeout,
   formatTimestamp,
 } from './format'
 
@@ -267,5 +268,17 @@ describe('formatRolesRestored', () => {
     ['en', 1, '1 role'],
   ])('%s: %s is %s', (language, count, text) => {
     expect(formatRolesRestored(count, language)).toBe(text)
+  })
+})
+
+describe('formatTimeout', () => {
+  test.each([
+    [21600, 'ru', '6 ч'],
+    [5400, 'ru', '1 ч 30 мин'],
+    [60, 'ru', '1 мин'],
+    [86400, 'en', '24 h'],
+    [2700, 'en', '45 min'],
+  ] as const)('%s seconds in %s is %s', (seconds, language, text) => {
+    expect(formatTimeout(seconds, language)).toBe(text)
   })
 })

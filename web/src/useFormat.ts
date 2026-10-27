@@ -10,6 +10,7 @@ import {
   formatMissed,
   formatRelative,
   formatScheduleTime,
+  formatTimeout,
   formatTimestamp,
   type MissedFires,
 } from './format'
@@ -28,6 +29,7 @@ export function useFormat() {
       formatFiles(processed, total, language),
     scheduleTime: (value: string | null, timeZone: string) =>
       formatScheduleTime(value, timeZone, language),
+    timeout: (seconds: number) => formatTimeout(seconds, language),
     missed: (missed: MissedFires) => formatMissed(missed, language),
     catchUp: (missed: MissedFires) => formatCatchUp(missed, language),
   }

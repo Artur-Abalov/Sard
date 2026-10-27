@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright 2026 Artur Abalov
 
-import { Alert, Button, Group, Select, Stack, TextInput, Title } from '@mantine/core'
+import { Alert, Button, Group, NumberInput, Select, Stack, TextInput, Title } from '@mantine/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
@@ -11,6 +11,7 @@ import { client } from '../api/client'
 import {
   agentPickerQuery,
   agentQuery,
+  runDefaultsQuery,
   sourceQuery,
   type AgentDetails,
   type Source,
@@ -31,11 +32,13 @@ import {
   emptyDraft,
   offeredSourceAgents,
   offeredPlugins,
+  timeoutOfField,
   withAgent,
   withPlugin,
   type Draft,
 } from '../sourceDraft'
 import { tones } from '../theme'
+import { useFormat } from '../useFormat'
 
 const newRoute = getRouteApi('/_app/sources/new')
 const editRoute = getRouteApi('/_app/sources/$sourceId/edit')
@@ -142,6 +145,44 @@ function ConfigSection({ draft, onChange, agent, errors }: Props) {
         errors={errors}
       />
     </Stack>
+  )
+}
+
+const MAX_TIMEOUT_MINUTES = 1440
+
+// The step timeouts: empty means the installation's default, which the hint names.
+function TimeoutFields({ draft, onChange, errors }: Omit<Props, 'agent'>) {
+  const { t } = useTranslation()
+  const text = useErrorText()
+  const format = useFormat()
+  const defaults = useQuery(runDefaultsQuery()).data
+  const hint = (minutes: number | undefined) =>
+    minutes === undefined
+      ? undefined
+      : t('form.timeoutDefault', { value: format.timeout(minutes * 60) })
+  return (
+    <Group align="flex-start" grow>
+      <NumberInput
+        label={t('form.backupTimeout')}
+        description={hint(defaults?.backupTimeoutMinutes)}
+        min={1}
+        max={MAX_TIMEOUT_MINUTES}
+        allowDecimal={false}
+        value={draft.backupTimeout ?? ''}
+        onChange={(value) => onChange({ ...draft, backupTimeout: timeoutOfField(value) })}
+        error={text(errors.backupTimeout)}
+      />
+      <NumberInput
+        label={t('form.restoreTimeout')}
+        description={hint(defaults?.restoreTimeoutMinutes)}
+        min={1}
+        max={MAX_TIMEOUT_MINUTES}
+        allowDecimal={false}
+        value={draft.restoreTimeout ?? ''}
+        onChange={(value) => onChange({ ...draft, restoreTimeout: timeoutOfField(value) })}
+        error={text(errors.restoreTimeout)}
+      />
+    </Group>
   )
 }
 
@@ -261,6 +302,7 @@ function SourceEditor({
       <RepositorySelect {...props} />
       {errors.form && <Alert color={tones.error}>{text(errors.form)}</Alert>}
       <ConfigSection {...props} />
+      <TimeoutFields draft={draft} onChange={form.setDraft} errors={errors} />
       {form.jsonRefused && <Alert color={tones.error}>{t('form.jsonInvalid')}</Alert>}
       <SaveErrors error={form.save.error} failures={form.failures} />
       <Group>
