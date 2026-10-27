@@ -114,7 +114,7 @@ printf '%s' 'пароль роли backup' | sudo sard-agent secret set pg-app \
 подключения: ни одна программа не запускается, файл секрета не читается. Сообщение шага
 называет секрет и цель и даёт команду, которая её разрешает:
 
-```
+```text
 secret "pg-app" is not allowed for postgresql at evil.example:5432/app; if that is intended,
 run on the agent host: sudo sard-agent secret set pg-app --plugin postgresql --target evil.example:5432/app
 ```
