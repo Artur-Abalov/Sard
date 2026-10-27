@@ -376,3 +376,19 @@ func (h *treeHost) RestoreTree(_ context.Context, id string) (string, error) {
 	}
 	return h.root, nil
 }
+
+// V5: the verifier needs room for the copy before it restores it.
+func TestTheSizeOfACopyIsTheBytesOfTheSnapshot(t *testing.T) {
+	var p sdk.CopySizer = files.Plugin{}
+	fp := sdk.Fingerprint{Plugin: "files", Format: sdk.FingerprintFormat, Facts: []sdk.Fact{
+		{Name: "bytes", Rule: sdk.RuleExact, Value: "1048576"}, {Name: "files", Rule: sdk.RuleExact, Value: "3"},
+	}}
+	if size, ok := p.CopySize(fp); size != 1048576 || !ok {
+		t.Fatalf("size = %d, %v", size, ok)
+	}
+	for _, facts := range [][]sdk.Fact{nil, {{Name: "bytes", Rule: sdk.RuleExact, Value: "many"}}} {
+		if size, ok := p.CopySize(sdk.Fingerprint{Facts: facts}); size != 0 || ok {
+			t.Errorf("%v: size = %d, %v", facts, size, ok)
+		}
+	}
+}

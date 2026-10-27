@@ -9,6 +9,9 @@ import dev.sard.proto.agent.v1.ConnectRequest.MessageCase
 import dev.sard.proto.agent.v1.ConnectResponse
 import dev.sard.proto.agent.v1.Heartbeat
 import dev.sard.server.agents.AgentPrincipal
+import dev.sard.server.agents.toReport
+import dev.sard.server.registration.SnapshotRules
+import dev.sard.server.registration.VerifierReport
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.coroutineScope
@@ -141,11 +144,24 @@ class AgentStreams(
         stream: AgentStream,
         heartbeat: Heartbeat,
     ) {
+        if (heartbeat.hasVerifier()) verifierStatus(stream, heartbeat.verifier.toReport())
         if (!heartbeat.hasSentAt()) return
         val skew = Duration.between(clock.instant(), heartbeat.sentAt.toInstant())
         extensions.metrics.clockSkew(skew)
         if (skew.abs() > settings.clockSkewThreshold && stream.firstSkewReport()) {
             log.warn("agent {}: clock skew {} exceeds {}", stream.agent.agentId, skew, settings.clockSkewThreshold)
+        }
+    }
+
+    /** A status the database cannot hold is dropped, as Register would refuse it; the stream stays. */
+    private fun verifierStatus(
+        stream: AgentStream,
+        report: VerifierReport,
+    ) {
+        if (SnapshotRules.storableVerifier(report)) {
+            extensions.verifierStatus.record(stream.agent, report)
+        } else {
+            log.warn("agent {}: verifier status with a NUL character dropped", stream.agent.agentId)
         }
     }
 

@@ -54,6 +54,8 @@ E2E_STAND_AGENT_IMAGE ?= sard-agent-stand:e2e
 # The agent on the official postgres image (F1 ПГ20): pg_dump 18, and 14 for the old-client scenario.
 E2E_PG18_AGENT_IMAGE ?= sard-agent-pg18:e2e
 E2E_PG14_AGENT_IMAGE ?= sard-agent-pg14:e2e
+# The verifier with the Docker CLI for its sandboxes (V5).
+E2E_VERIFIER_IMAGE ?= sard-verifier:e2e
 # The stand's SFTP server (test/e2e/sftp, ADR 0047).
 E2E_SFTP_IMAGE ?= sard-sftp:e2e
 # The machine of the recovery drill (test/e2e/recovery-vm, F7).
@@ -157,17 +159,18 @@ e2e-agent-images: e2e-agent-pg-image
 e2e-agent-pg-image:
 	$(call agent_image,$(DIST),$(E2E_AGENT_PG_IMAGE),--build-arg BASE_IMAGE=$(SARD_AGENT_PG_BASE_IMAGE))
 
-## e2e-pg-agent-images: the agent on postgres:18 and on postgres:14 (test/e2e/agent/Dockerfile.postgres) from the tar.gz in DIST
+## e2e-pg-agent-images: the agent on postgres:18 and on postgres:14 (test/e2e/agent/Dockerfile.postgres) and the verifier (Dockerfile.verifier) from the tar.gz in DIST
 e2e-pg-agent-images:
 	$(call agent_image_unpacked,$(DIST),$(E2E_PG18_AGENT_IMAGE),pg18-agent-image,test/e2e/agent/Dockerfile.postgres,--build-arg BASE_IMAGE=$(TEST_IMAGE_POSTGRES_18))
 	$(call agent_image_unpacked,$(DIST),$(E2E_PG14_AGENT_IMAGE),pg14-agent-image,test/e2e/agent/Dockerfile.postgres,--build-arg BASE_IMAGE=$(TEST_IMAGE_POSTGRES_14))
+	$(call agent_image_unpacked,$(DIST),$(E2E_VERIFIER_IMAGE),verifier-image,test/e2e/agent/Dockerfile.verifier)
 
 ## e2e-test: the end-to-end tests against the assembled images, E2E_SHARD=i/n for one shard (needs Docker)
 e2e-test:
 	@tests=; if [ -n "$(E2E_SHARD)" ]; then tests="$$(scripts/e2e-shard.sh $(E2E_SHARD))" || exit 1; echo "e2e shard $(E2E_SHARD):" $$tests; fi; \
 	$(GRADLE) :e2e:test $$(for c in $$tests; do printf -- '--tests %s ' "$$c"; done) -Pe2e.serverImage=$(E2E_SERVER_IMAGE) -Pe2e.agentImage=$(E2E_AGENT_IMAGE) -Pe2e.agentPgImage=$(E2E_AGENT_PG_IMAGE) \
 		-Pe2e.standAgentImage=$(E2E_STAND_AGENT_IMAGE) -Pe2e.sftpImage=$(E2E_SFTP_IMAGE) -Pe2e.recoveryVmImage=$(E2E_RECOVERY_VM_IMAGE) \
-		-Pe2e.pg18AgentImage=$(E2E_PG18_AGENT_IMAGE) -Pe2e.pg14AgentImage=$(E2E_PG14_AGENT_IMAGE) -Pe2e.version=$(VERSION)
+		-Pe2e.pg18AgentImage=$(E2E_PG18_AGENT_IMAGE) -Pe2e.pg14AgentImage=$(E2E_PG14_AGENT_IMAGE) -Pe2e.verifierImage=$(E2E_VERIFIER_IMAGE) -Pe2e.version=$(VERSION)
 
 ## e2e: build the images, then run the end-to-end tests (needs Docker)
 e2e: e2e-images

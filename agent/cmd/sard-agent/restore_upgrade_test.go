@@ -475,6 +475,8 @@ func (*stepReporter) Secret(name string) ([]byte, bool) {
 }
 func (*stepReporter) Output() io.Writer { return io.Discard }
 
+func (*stepReporter) Stage(*agentv1.VerifyStage) {}
+
 func (r *stepReporter) Log(level agentv1.LogLevel, text string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

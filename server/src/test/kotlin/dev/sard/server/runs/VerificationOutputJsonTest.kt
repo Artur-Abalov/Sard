@@ -41,15 +41,36 @@ class VerificationOutputJsonTest {
     }
 
     @Test
-    fun `a verify task reads back from its stored JSON, with or without a fingerprint`() {
+    fun `a verify task reads back from its stored JSON, with or without a fingerprint and source machines`() {
+        val machines = listOf("1".repeat(64), "2".repeat(64))
         val tasks =
             listOf(
-                VerifyTask(UUID(1, 2), "a".repeat(64), byteArrayOf(0, 7, -1), "f".repeat(64), Instant.EPOCH, 60),
+                VerifyTask(UUID(1, 2), "r", byteArrayOf(0, 7, -1), "f".repeat(64), Instant.EPOCH, 60, machines),
                 VerifyTask(UUID(1, 2), "a".repeat(64), null, null, Instant.EPOCH, 21_600),
             )
         for (task in tasks) {
             assertEquals(task, MutFlow.underTest { VerifyTask.of(task.json()) })
         }
         assertEquals(null, MutFlow.underTest { VerifyTask.of(null) })
+    }
+
+    @Test
+    fun `a verify task stored before V5 reads back without source machines`() {
+        val stored =
+            """{"jobId":"00000000-0000-0001-0000-000000000002","repositoryId":"r","fingerprint":null,""" +
+                """"fingerprintSha256":null,"deadline":"1970-01-01T00:00:00Z","timeoutSeconds":60}"""
+
+        val task = MutFlow.underTest { VerifyTask.of(stored) }
+
+        assertEquals(VerifyTask(UUID(1, 2), "r", null, null, Instant.EPOCH, 60), task)
+        assertEquals(emptyList(), task?.sourceMachineIds)
+    }
+
+    @Test
+    fun `verify tasks that differ only in their source machines are not equal`() {
+        val one = VerifyTask(UUID(1, 2), "r", null, null, Instant.EPOCH, 60, listOf("1".repeat(64)))
+        val other = VerifyTask(UUID(1, 2), "r", null, null, Instant.EPOCH, 60, listOf("2".repeat(64)))
+
+        assertEquals(false, MutFlow.underTest { one == other })
     }
 }

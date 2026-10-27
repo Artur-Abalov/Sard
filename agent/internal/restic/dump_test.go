@@ -53,3 +53,22 @@ func TestDumpFailureCarriesTheResticMessage(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// V5: a verifier's CLI adds --no-lock --no-cache to every command; they go
+// before "--", or restic takes them for a third argument of dump.
+func TestTheFlagsOfAReadOnlyCLIGoBeforeTheSnapshotAndThePath(t *testing.T) {
+	f := newFixture(t, map[string]reply{"dump": {raw: "x"}, "ls": {}})
+	cli := f.build().WithReadOnly()
+	if err := cli.Dump(context.Background(), fullID, "/app.dump", &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = cli.HasPath(context.Background(), fullID, "/app.dump")
+	for name, want := range map[string][]string{
+		"dump": {"dump", "--no-lock", "--no-lock", "--no-cache", "--", fullID, "/app.dump"},
+		"ls":   {"ls", "--json", "--no-lock", "--no-lock", "--no-cache", "--", fullID, "/app.dump"},
+	} {
+		if args := f.exec.call(name).Args; !slices.Equal(args, want) {
+			t.Errorf("args %q, want %q", args, want)
+		}
+	}
+}

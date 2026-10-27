@@ -7,6 +7,7 @@ import com.github.dockerjava.api.model.AccessMode
 import com.github.dockerjava.api.model.Bind
 import com.github.dockerjava.api.model.Capability
 import com.github.dockerjava.api.model.Volume
+import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.startupcheck.OneShotStartupCheckStrategy
 import org.testcontainers.utility.DockerImageName
@@ -107,6 +108,35 @@ internal class SelfAgent(
             container.dockerClient.restartContainerCmd(container.containerId).exec()
         }
         return output
+    }
+
+    /** Where the daemon keeps the state volume: a verifier mounts a repository of it by this path (V5). */
+    val statePath: String
+        get() =
+            DockerClientFactory
+                .instance()
+                .client()
+                .inspectVolumeCmd(stateVolume)
+                .exec()
+                .mountpoint
+
+    /**
+     * A key of the repository [name] for a verifier (V3), issued in a one-off of the service as the operator runs
+     * `repo key add --for verifier`; registered as a log secret.
+     */
+    fun verifierKey(name: String): String {
+        val file = "$STATE/verifier-$name.pass"
+        oneOff("repo", "key", "add", "--config", CONFIG, "--for", "verifier", "--to-file", file, "--no-restart", name)
+        return container.copyFileFromContainer(file) { String(it.readAllBytes()) }.trimEnd('\n').also(sard::secret)
+    }
+
+    /**
+     * Opens the repository [name] to the group of the service, as an operator shares a repository with the user of
+     * another host; restic gives later files the group's access too.
+     */
+    fun shareWithGroup(name: String) {
+        val exit = exec("10001", "chmod", "-R", "g+rX", "$STATE/$name")
+        check(exit.code == 0) { "chmod exited ${exit.code}: ${exit.stderr}" }
     }
 
     /** The keys of the repository [name] as `repo key list --json` prints them, in the running sidecar as the agent. */

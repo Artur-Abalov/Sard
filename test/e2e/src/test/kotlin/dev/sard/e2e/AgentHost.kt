@@ -32,7 +32,8 @@ internal class AgentHost(
     // Not "env": inside a container's apply {} that name is the container's own getEnv().
     private val sardEnv: SardEnvironment,
     val hostname: String = "e2e-agent",
-    val local: String = "",
+    /** The host's own part of the config; a test may change it before it starts the agent again. */
+    var local: String = "",
     /** The agent image every command of this host runs: [E2e.agentImage] unless T3 needs the stand's. */
     private val image: String = E2e.agentImage,
     /**
@@ -43,6 +44,10 @@ internal class AgentHost(
     persistentEtc: Boolean = false,
     /** What the agent dials (`server.address`): the environment's server unless a test brings a server of its own (F7). */
     private val endpoint: String = SardEnvironment.AGENT_ENDPOINT,
+    /** More volumes of the host, e.g. a repository two hosts share or a verifier's work volume (V5). */
+    private val mounts: List<Bind> = emptyList(),
+    /** Supplementary groups of every container, e.g. the group of the Docker socket a verifier's sandboxes need (V5). */
+    private val groups: List<String> = emptyList(),
 ) {
     /** The volume mounted at [STATE_DIR]: state, TLS files, repository, the executor's journal. */
     val state = sardEnv.volume()
@@ -284,11 +289,12 @@ internal class AgentHost(
             withCreateContainerCmdModifier { create ->
                 create.withHostName(hostname)
                 create.hostConfig?.withBinds(*binds().toTypedArray())
+                if (groups.isNotEmpty()) create.hostConfig?.withGroupAdd(groups)
             }
         }
 
     private fun binds(): List<Bind> =
-        listOfNotNull(Bind(state, Volume(STATE_DIR)), Bind(cache, Volume(CACHE_DIR)), etc?.let { Bind(it, Volume(ETC_DIR)) })
+        listOfNotNull(Bind(state, Volume(STATE_DIR)), Bind(cache, Volume(CACHE_DIR)), etc?.let { Bind(it, Volume(ETC_DIR)) }) + mounts
 
     /** The text of the host's `/etc/sard/agent.yaml`: the server, the TLS files and [local]. */
     fun configText() =
