@@ -291,14 +291,24 @@ private class MismatchSentences(
 ) {
     fun of(mismatch: StepOutput.Mismatch): String {
         val wording = MismatchWording.of(mismatch.name)
+        return when (wording.kind) {
+            "bytes" -> words.bytes(size(cut(mismatch.expected)), size(cut(mismatch.actual)))
+            "control_path" -> controlPath(wording.subject, mismatch)
+            else -> counted(wording, mismatch)
+        }
+    }
+
+    /** A mismatch of counts, said with its digits in groups; any other kind is said as the generic one. */
+    private fun counted(
+        wording: MismatchWording,
+        mismatch: StepOutput.Mismatch,
+    ): String {
         val expected = cut(mismatch.expected)
         val actual = cut(mismatch.actual)
         return when (wording.kind) {
             "rows" -> words.rows(wording.subject, count(expected), count(actual))
             "tables" -> words.tables(count(expected), count(actual))
             "files" -> words.files(count(expected), count(actual))
-            "bytes" -> words.bytes(size(expected), size(actual))
-            "control_path" -> controlPath(wording.subject, mismatch)
             else -> words.other(mismatch.name, expected, actual)
         }
     }

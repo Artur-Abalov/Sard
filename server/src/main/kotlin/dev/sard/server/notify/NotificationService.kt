@@ -94,23 +94,21 @@ class NotificationService(
         since: Instant,
         now: Instant,
     ) {
-        run {
-            val runs = deliveries.unplanned(channel, since, settings.batch)
-            for ((tenantId, tenantRuns) in runs.groupBy({ it.tenantId }, { it.runId })) {
-                deliveries.plan(tenantId, tenantRuns, channel, now)
-            }
-            val alerts = deliveries.unplannedAlerts(channel, since, settings.batch)
-            for ((tenantId, fires) in alerts.groupBy({ it.tenantId }, { it.fireId })) {
-                deliveries.planAlerts(tenantId, fires, channel, now)
-            }
-            val overdue = episodes.unplanned(channel, since, settings.batch)
-            for ((tenantId, tenantEpisodes) in overdue.groupBy { it.tenantId }) {
-                episodes.plan(tenantId, tenantEpisodes, channel, now)
-            }
-            val expiring = certificates.unplanned(channel, since, settings.batch)
-            for ((tenantId, tenantEvents) in expiring.groupBy({ it.tenantId }, { it.eventId })) {
-                certificates.plan(tenantId, tenantEvents, channel, now)
-            }
+        val runs = deliveries.unplanned(channel, since, settings.batch)
+        for ((tenantId, tenantRuns) in runs.groupBy({ it.tenantId }, { it.runId })) {
+            deliveries.plan(tenantId, tenantRuns, channel, now)
+        }
+        val alerts = deliveries.unplannedAlerts(channel, since, settings.batch)
+        for ((tenantId, fires) in alerts.groupBy({ it.tenantId }, { it.fireId })) {
+            deliveries.planAlerts(tenantId, fires, channel, now)
+        }
+        val overdue = episodes.unplanned(channel, since, settings.batch)
+        for ((tenantId, tenantEpisodes) in overdue.groupBy { it.tenantId }) {
+            episodes.plan(tenantId, tenantEpisodes, channel, now)
+        }
+        val expiring = certificates.unplanned(channel, since, settings.batch)
+        for ((tenantId, tenantEvents) in expiring.groupBy({ it.tenantId }, { it.eventId })) {
+            certificates.plan(tenantId, tenantEvents, channel, now)
         }
     }
 

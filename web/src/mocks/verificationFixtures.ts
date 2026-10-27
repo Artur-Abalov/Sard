@@ -65,20 +65,29 @@ const facts = [
 
 type Fingerprint = Schemas['Verification']['fingerprint']
 
+type FingerprintRow = Fingerprint[number]
+
+/** What the copy holds of a field that differs. */
+function differingCopy(name: string): string {
+  return name.startsWith('rows') ? '1204310' : 'empty'
+}
+
+function fingerprintRow(fact: (typeof facts)[number], differs: boolean): FingerprintRow {
+  const { name, rule, source } = fact
+  if (rule === 'info') return { name, rule, source, copy: null, outcome: 'not_compared' }
+  const differing = differs && name !== 'tables'
+  return {
+    name,
+    rule,
+    source,
+    copy: differing ? differingCopy(name) : source,
+    outcome: differing ? 'mismatched' : 'matched',
+  }
+}
+
 /** The fingerprint of the fixtures' sources next to the copy's: one row of each outcome when [differs]. */
 function fingerprint(differs: boolean): Fingerprint {
-  return facts.map((fact) => {
-    const info = fact.rule === 'info'
-    const differing = differs && fact.name !== 'tables' && !info
-    const copy = differing ? (fact.name.startsWith('rows') ? '1204310' : 'empty') : fact.source
-    return {
-      name: fact.name,
-      rule: fact.rule,
-      source: fact.source,
-      copy: info ? null : copy,
-      outcome: info ? 'not_compared' : differing ? 'mismatched' : 'matched',
-    }
-  })
+  return facts.map((fact) => fingerprintRow(fact, differs))
 }
 
 interface Spec {

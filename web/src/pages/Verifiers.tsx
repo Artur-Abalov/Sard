@@ -15,9 +15,16 @@ import { useFormat } from '../useFormat'
 
 type Verifier = components['schemas']['Verifier']
 
+/** The sandbox runtime with its version, or [unknown] when the verifier reports none. */
+function sandboxText(verifier: Verifier, unknown: string): string {
+  if (verifier.sandbox === null) return unknown
+  return [verifier.sandbox, verifier.sandboxVersion].filter((part) => part !== null).join(' ')
+}
+
 function Row({ verifier }: { verifier: Verifier }) {
   const { t } = useTranslation()
   const format = useFormat()
+  const unknown = t('verification.verifiers.unknown')
   return (
     <Table.Tr>
       <Table.Td>
@@ -39,18 +46,10 @@ function Row({ verifier }: { verifier: Verifier }) {
         </Group>
       </Table.Td>
       <Table.Td>
-        <Mono>
-          {verifier.freeBytes === null
-            ? t('verification.verifiers.unknown')
-            : format.bytes(verifier.freeBytes)}
-        </Mono>
+        <Mono>{verifier.freeBytes === null ? unknown : format.bytes(verifier.freeBytes)}</Mono>
       </Table.Td>
       <Table.Td>
-        <Mono>
-          {verifier.sandbox === null
-            ? t('verification.verifiers.unknown')
-            : [verifier.sandbox, verifier.sandboxVersion].filter((part) => part !== null).join(' ')}
-        </Mono>
+        <Mono>{sandboxText(verifier, unknown)}</Mono>
       </Table.Td>
       <Table.Td ta="right">
         <Mono>{verifier.verificationsDone}</Mono>
