@@ -227,7 +227,10 @@ class SardEnvironment(
                     }
                     withCommand(
                         "-c",
-                        "printf '%s' '$backupPassword' > /channel/db-password && chown 10001:10001 /channel/db-password && chmod 600 /channel/db-password",
+                        // This mounts the fresh volume first, so it gives the volume the owner and mode of the server's
+                        // directory (10001, 0700) itself: the server writes its enrollment token there.
+                        "chown 10001:10001 /channel && chmod 0700 /channel && " +
+                            "printf '%s' '$backupPassword' > /channel/db-password && chown 10001:10001 /channel/db-password && chmod 600 /channel/db-password",
                     )
                 },
             )

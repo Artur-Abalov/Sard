@@ -25,7 +25,7 @@ class SelfBackupPlanTest {
                 "host" to "postgres",
                 "port" to 5432,
                 "database" to "sard",
-                "user" to "sard_self",
+                "user" to "sard_backup",
                 "password_ref" to "sard-db",
                 "tls_mode" to "disable",
                 "pg_dump_path" to "/usr/lib/postgresql/18/bin/pg_dump",

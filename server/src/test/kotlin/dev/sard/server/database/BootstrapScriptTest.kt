@@ -88,10 +88,11 @@ class BootstrapScriptTest {
     @Test
     fun `Скрипт bootstrap под ролью с CREATEROLE без SUPERUSER даёт то же, что под суперпользователем`() {
         // Roles belong to the cluster, so the superuser's run is in a cluster of its own.
-        val expected = Cluster().use {
-            it.bootstrap()
-            it.catalog()
-        }
+        val expected =
+            Cluster().use {
+                it.bootstrap()
+                it.catalog()
+            }
         cluster.admin().use {
             it.createStatement().use { s ->
                 s.execute("create role dba login createrole password 'dba'")
@@ -101,6 +102,7 @@ class BootstrapScriptTest {
         }
         val byDba = cluster.newDatabase()
         cluster.admin().use { it.createStatement().use { s -> s.execute("alter database $byDba owner to dba") } }
+
         fun run() =
             java.sql.DriverManager.getConnection(cluster.url(byDba), "dba", "dba").use {
                 it.createStatement().execute(BootstrapScript.text)

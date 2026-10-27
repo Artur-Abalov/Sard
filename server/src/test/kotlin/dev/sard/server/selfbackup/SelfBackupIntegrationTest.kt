@@ -136,7 +136,7 @@ class SelfBackupIntegrationTest(
         assertEquals(S3_REPOSITORY, database.repositoryName)
         assertEquals(tenant.agentId, database.agentId)
         val config = mapper.readTree(database.config)
-        assertEquals("sard_self", config["user"].asString())
+        assertEquals("sard_backup", config["user"].asString())
         assertEquals("sard-db", config["password_ref"].asString())
         assertEquals(settings.database.host, config["host"].asString())
         assertEquals(settings.database.name, config["database"].asString())
