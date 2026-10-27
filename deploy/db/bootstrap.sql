@@ -128,18 +128,22 @@ DO $bootstrap$
 DECLARE
     granted record;
 BEGIN
-    FOR granted IN SELECT DISTINCT roleid::regrole::text AS role FROM pg_auth_members WHERE member = 'sard_app'::regrole
+    -- Since PostgreSQL 16 a REVOKE removes only the grants made by the revoking role: every membership goes
+    -- with its own grantor.
+    FOR granted IN SELECT roleid::regrole::text AS role, grantor::regrole::text AS grantor
+                   FROM pg_auth_members WHERE member = 'sard_app'::regrole
     LOOP
         BEGIN
-            EXECUTE format('REVOKE %s FROM sard_app', granted.role);
+            EXECUTE format('REVOKE %s FROM sard_app GRANTED BY %s', granted.role, granted.grantor);
         EXCEPTION WHEN insufficient_privilege THEN
             NULL;
         END;
     END LOOP;
-    FOR granted IN SELECT DISTINCT roleid::regrole::text AS role FROM pg_auth_members WHERE member = 'sard_app'::regrole
+    FOR granted IN SELECT roleid::regrole::text AS role, grantor::regrole::text AS grantor
+                   FROM pg_auth_members WHERE member = 'sard_app'::regrole
     LOOP
-        RAISE EXCEPTION 'sard_app is a member of %, and % cannot revoke it: a superuser must run REVOKE % FROM sard_app, then bootstrap.sql again (docs/operator/16-postgresql.md)',
-            granted.role, current_user, granted.role;
+        RAISE EXCEPTION 'sard_app is a member of % (granted by %), and % cannot revoke it: a superuser must run REVOKE % FROM sard_app GRANTED BY %, then bootstrap.sql again (docs/operator/16-postgresql.md)',
+            granted.role, granted.grantor, current_user, granted.role, granted.grantor;
     END LOOP;
 END
 $bootstrap$;

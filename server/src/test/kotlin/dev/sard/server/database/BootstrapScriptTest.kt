@@ -101,6 +101,21 @@ class BootstrapScriptTest {
     }
 
     @Test
+    fun `sard_app, включённый в роль другой ролью-грантором, после запуска суперпользователя не член ничего`() {
+        admin(
+            "create role sard_app login",
+            "create role grp2 nologin",
+            "create role grantor2 nologin",
+            "grant grp2 to grantor2 with admin option",
+            "grant grp2 to sard_app granted by grantor2",
+        )
+
+        cluster.bootstrap()
+
+        assertEquals("", members("sard_app"))
+    }
+
+    @Test
     fun `Роль с CREATEROLE при EXECUTE у PUBLIC на lo_ функции получает отказ с лечением и ничего не создаёт`() {
         val byDba = createroleDatabase()
 
@@ -126,7 +141,8 @@ class BootstrapScriptTest {
         val failure = runCatching { runAsDba(byDba) }.exceptionOrNull()
 
         val message = failure?.message.orEmpty()
-        assertTrue("pg_write_all_data" in message && "REVOKE pg_write_all_data FROM sard_app" in message, message)
+        val expected = "REVOKE pg_write_all_data FROM sard_app GRANTED BY ${cluster.container.username}"
+        assertTrue(expected in message, message)
         assertEquals(
             0,
             cluster.query("select count(*) from pg_namespace where nspname = 'sard'", byDba) { it.getInt(1) },
