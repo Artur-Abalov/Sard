@@ -5,6 +5,7 @@ package dev.sard.server.api
 
 import dev.sard.server.runs.StepOutput
 import dev.sard.server.verify.FingerprintRow
+import dev.sard.server.verify.MismatchKind
 import dev.sard.server.verify.MismatchWording
 import dev.sard.server.verify.ReportEntry
 import dev.sard.server.verify.VerificationHint
@@ -58,8 +59,11 @@ internal fun hintOf(hint: VerificationHint): VerificationHintCode =
 
 internal fun mismatchOf(mismatch: StepOutput.Mismatch): FingerprintMismatch {
     val wording = MismatchWording.of(mismatch.name)
-    return FingerprintMismatch(mismatch.name, wording.kind, wording.subject, mismatch.expected, mismatch.actual)
+    return FingerprintMismatch(mismatch.name, kindOf(wording.kind), wording.subject, mismatch.expected, mismatch.actual)
 }
+
+/** The API's kind with the name of the domain's; the test over every [MismatchKind] pins that none is missing. */
+internal fun kindOf(kind: MismatchKind): FingerprintMismatchKind = FingerprintMismatchKind.valueOf(kind.name)
 
 internal fun fieldOf(row: FingerprintRow) =
     FingerprintField(

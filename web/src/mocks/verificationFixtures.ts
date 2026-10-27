@@ -115,6 +115,8 @@ const BLANK = {
   fingerprint: [],
 }
 
+const stagesOf = (own: Partial<Spec>) => own.stages?.length ?? 0
+
 function record(now: number, spec: Spec): Schemas['Verification'] {
   counter += 1
   const uuid = (base: number) =>
@@ -132,6 +134,8 @@ function record(now: number, spec: Spec): Schemas['Verification'] {
     stepId: judged ? uuid(800) : null,
     verifierAgentId: judged ? ids.verifierAgent : null,
     keyHolders: 2,
+    // The mocks' stages are 15 seconds each, one after another, as the pipeline above lays them.
+    durationMs: stagesOf(own) === 0 ? null : stagesOf(own) * 15_000,
     recovered: false,
     verifiedAt: new Date(now - hoursAgo * HOUR).toISOString(),
     hiddenFacts: own.fingerprint === undefined ? 0 : 100,

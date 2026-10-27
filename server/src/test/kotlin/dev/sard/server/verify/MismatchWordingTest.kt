@@ -17,15 +17,15 @@ class MismatchWordingTest {
     fun `a fact name gets its kind and subject`() {
         val expected =
             mapOf(
-                "rows:public.orders" to ("rows" to "public.orders"),
-                "tables" to ("tables" to ""),
-                "extension:postgis" to ("extension" to "postgis"),
-                "extension_version:hstore" to ("extension_version" to "hstore"),
-                "control:/srv/data" to ("control_path" to "/srv/data"),
-                "files" to ("files" to ""),
-                "bytes" to ("bytes" to ""),
-                "sha256:/srv/a.txt" to ("file_hash" to "/srv/a.txt"),
-                "something_new" to ("other" to "something_new"),
+                "rows:public.orders" to (MismatchKind.ROWS to "public.orders"),
+                "tables" to (MismatchKind.TABLES to ""),
+                "extension:postgis" to (MismatchKind.EXTENSION to "postgis"),
+                "extension_version:hstore" to (MismatchKind.EXTENSION_VERSION to "hstore"),
+                "control:/srv/data" to (MismatchKind.CONTROL_PATH to "/srv/data"),
+                "files" to (MismatchKind.FILES to ""),
+                "bytes" to (MismatchKind.BYTES to ""),
+                "sha256:/srv/a.txt" to (MismatchKind.FILE_HASH to "/srv/a.txt"),
+                "something_new" to (MismatchKind.OTHER to "something_new"),
             )
 
         for ((name, want) in expected) {
@@ -43,6 +43,26 @@ class MismatchWordingTest {
 
     @Test
     fun `a known prefix without a subject is another kind`() {
-        assertEquals("other" to "rows:", parse("rows:").let { it.kind to it.subject })
+        assertEquals(MismatchKind.OTHER to "rows:", parse("rows:").let { it.kind to it.subject })
+    }
+
+    @Test
+    fun `the kinds are named on the wire as the contract says`() {
+        val wire = MismatchKind.entries.map { it.wire }
+
+        assertEquals(
+            listOf(
+                "rows",
+                "tables",
+                "extension",
+                "extension_version",
+                "control_path",
+                "files",
+                "bytes",
+                "file_hash",
+                "other",
+            ),
+            wire,
+        )
     }
 }

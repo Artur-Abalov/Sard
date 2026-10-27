@@ -5,6 +5,7 @@ package dev.sard.server.notify
 
 import dev.sard.server.runs.StageState
 import dev.sard.server.runs.StepOutput
+import dev.sard.server.verify.MismatchKind
 import dev.sard.server.verify.MismatchWording
 import dev.sard.server.verify.VerificationStatus
 import java.time.Duration
@@ -292,9 +293,21 @@ private class MismatchSentences(
     fun of(mismatch: StepOutput.Mismatch): String {
         val wording = MismatchWording.of(mismatch.name)
         return when (wording.kind) {
-            "bytes" -> words.bytes(size(cut(mismatch.expected)), size(cut(mismatch.actual)))
-            "control_path" -> controlPath(wording.subject, mismatch)
-            else -> counted(wording, mismatch)
+            MismatchKind.BYTES -> {
+                words.bytes(size(cut(mismatch.expected)), size(cut(mismatch.actual)))
+            }
+
+            MismatchKind.CONTROL_PATH -> {
+                controlPath(wording.subject, mismatch)
+            }
+
+            MismatchKind.ROWS, MismatchKind.TABLES, MismatchKind.FILES -> {
+                counted(wording, mismatch)
+            }
+
+            MismatchKind.EXTENSION, MismatchKind.EXTENSION_VERSION, MismatchKind.FILE_HASH, MismatchKind.OTHER -> {
+                words.other(mismatch.name, cut(mismatch.expected), cut(mismatch.actual))
+            }
         }
     }
 
@@ -306,10 +319,19 @@ private class MismatchSentences(
         val expected = cut(mismatch.expected)
         val actual = cut(mismatch.actual)
         return when (wording.kind) {
-            "rows" -> words.rows(wording.subject, count(expected), count(actual))
-            "tables" -> words.tables(count(expected), count(actual))
-            "files" -> words.files(count(expected), count(actual))
-            else -> words.other(mismatch.name, expected, actual)
+            MismatchKind.ROWS -> words.rows(wording.subject, count(expected), count(actual))
+
+            MismatchKind.TABLES -> words.tables(count(expected), count(actual))
+
+            MismatchKind.FILES -> words.files(count(expected), count(actual))
+
+            MismatchKind.BYTES,
+            MismatchKind.CONTROL_PATH,
+            MismatchKind.EXTENSION,
+            MismatchKind.EXTENSION_VERSION,
+            MismatchKind.FILE_HASH,
+            MismatchKind.OTHER,
+            -> words.other(mismatch.name, expected, actual)
         }
     }
 

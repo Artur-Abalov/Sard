@@ -2,10 +2,10 @@
 // Copyright 2026 Artur Abalov
 
 import { describe, expect, test } from 'vitest'
+import type { components } from './api/schema'
 import {
   levelWords,
   restoreTimeText,
-  stagesSpan,
   mismatchText,
   outcomeView,
   stageHint,
@@ -135,6 +135,8 @@ describe('verifierReasonText', () => {
   })
 })
 
+type Kind = components['schemas']['FingerprintMismatchKind']
+
 describe('mismatchText', () => {
   test.each([
     [
@@ -151,13 +153,13 @@ describe('mismatchText', () => {
   ])('%s %s %s→%s', (kind, subject, expected, actual, text) => {
     const name = kind === 'other' ? subject : `${kind}:${subject}`
 
-    expect(mismatchText({ name, kind, subject, expected, actual }, 'ru')).toBe(text)
+    expect(mismatchText({ name, kind: kind as Kind, subject, expected, actual }, 'ru')).toBe(text)
   })
 
   test('in English, with the commas of the language', () => {
     const rows = {
       name: 'rows:public.orders',
-      kind: 'rows',
+      kind: 'rows' as const,
       subject: 'public.orders',
       expected: '1204311',
       actual: '1204310',
@@ -171,7 +173,7 @@ describe('mismatchText', () => {
   test('the other facts are said with their raw name and the values as they came', () => {
     const fact = {
       name: 'extension:postgis',
-      kind: 'extension',
+      kind: 'extension' as const,
       subject: 'postgis',
       expected: 'present',
       actual: 'absent',
@@ -181,8 +183,20 @@ describe('mismatchText', () => {
   })
 
   test('files and bytes are counts and sizes', () => {
-    const files = { name: 'files', kind: 'files', subject: '', expected: '1000', actual: '998' }
-    const bytes = { name: 'bytes', kind: 'bytes', subject: '', expected: '2048', actual: '1024' }
+    const files = {
+      name: 'files',
+      kind: 'files' as const,
+      subject: '',
+      expected: '1000',
+      actual: '998',
+    }
+    const bytes = {
+      name: 'bytes',
+      kind: 'bytes' as const,
+      subject: '',
+      expected: '2048',
+      actual: '1024',
+    }
 
     expect(mismatchText(files, 'ru')).toBe('файлов: в источнике 1 000, в копии 998')
     expect(mismatchText(bytes, 'ru')).toBe('объём: в источнике 2 КиБ, в копии 1 КиБ')
@@ -224,38 +238,6 @@ describe('stageLabel and stageHint', () => {
   test('a stage without a hint has none', () => {
     expect(stageHint('cleanup', 'ru')).toBeNull()
     expect(stageHint('future_stage', 'ru')).toBeNull()
-  })
-})
-
-describe('stagesSpan', () => {
-  const stage = (startedAt: string | null, finishedAt: string | null) => ({
-    level: 1,
-    name: 'restic_check',
-    status: 'passed' as const,
-    startedAt,
-    finishedAt,
-    exitCode: 0,
-    output: '',
-    imageDigest: '',
-  })
-
-  test('runs from the first start to the last finish', () => {
-    const stages = [
-      stage('2026-10-26T04:31:00Z', '2026-10-26T04:32:00Z'),
-      stage('2026-10-26T04:30:00Z', '2026-10-26T04:31:00Z'),
-      stage('2026-10-26T04:32:00Z', '2026-10-26T04:34:12Z'),
-    ]
-
-    expect(stagesSpan(stages)).toEqual({
-      start: '2026-10-26T04:30:00Z',
-      end: '2026-10-26T04:34:12Z',
-    })
-  })
-
-  test('is nothing without times', () => {
-    expect(stagesSpan([])).toBeNull()
-    expect(stagesSpan([stage(null, null)])).toBeNull()
-    expect(stagesSpan([stage('2026-10-26T04:30:00Z', null)])).toBeNull()
   })
 })
 

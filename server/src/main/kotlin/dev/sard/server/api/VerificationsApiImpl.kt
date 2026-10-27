@@ -187,6 +187,7 @@ private fun verificationOf(view: VerificationView) =
         mismatches = view.mismatches.map(::mismatchOf),
         unsuitable = view.unsuitable?.map(::misfitOf),
         restoreDurationMs = view.restoreMillis,
+        durationMs = view.durationMillis,
         recovered = view.recovered,
         verifiedAt = view.verifiedAt,
         fingerprint = view.fingerprint.rows.map(::fieldOf),

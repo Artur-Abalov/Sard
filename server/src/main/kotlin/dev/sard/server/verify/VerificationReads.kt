@@ -73,6 +73,8 @@ data class VerificationView(
     val mismatches: List<StepOutput.Mismatch>,
     val unsuitable: List<Misfit>?,
     val restoreMillis: Long?,
+    /** From the first stage's start to the last stage's finish; null without stage times. */
+    val durationMillis: Long?,
     val recovered: Boolean,
     val verifiedAt: Instant,
     /** The source's fingerprint beside the copy's; empty when the snapshot kept none. */
@@ -284,6 +286,7 @@ private fun viewOf(row: Array<Any?>): VerificationView {
         mismatches = mismatches,
         unsuitable = (row[Column.UNSUITABLE] as String?)?.let(::misfitsOf),
         restoreMillis = (row[Column.RESTORE] as Number?)?.toLong(),
+        durationMillis = ReportDuration.millis(stages),
         recovered = row[Column.RECOVERED] as Boolean,
         verifiedAt = row[Column.VERIFIED_AT] as Instant,
         fingerprint = fingerprint,

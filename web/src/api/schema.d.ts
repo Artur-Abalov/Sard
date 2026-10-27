@@ -1805,13 +1805,15 @@ export interface components {
         FingerprintMismatch: {
             /** @description The fact's raw name, such as rows:public.orders */
             name: string;
-            /** @description What the fact is about: rows, tables, extension, extension_version, control_path, files, bytes, file_hash or other; the console and Telegram put it into words */
-            kind: string;
+            /** @description What the fact is about; the console and Telegram put it into words */
+            kind: components["schemas"]["FingerprintMismatchKind"];
             /** @description A table, a path or an extension; empty for a fact about the whole copy */
             subject: string;
             expected: string;
             actual: string;
         };
+        /** @enum {string} */
+        FingerprintMismatchKind: "rows" | "tables" | "extension" | "extension_version" | "control_path" | "files" | "bytes" | "file_hash" | "other";
         /** @enum {string} */
         FingerprintOutcomeKind: "matched" | "mismatched" | "not_compared";
         /**
@@ -1863,6 +1865,11 @@ export interface components {
              * @description The actual time to restore (level 5)
              */
             restoreDurationMs: number | null;
+            /**
+             * Format: int64
+             * @description From the first stage's start to the last stage's finish; null without stage times
+             */
+            durationMs: number | null;
             /** @description A pass right after a failure */
             recovered: boolean;
             /** Format: date-time */

@@ -42,6 +42,7 @@ private val API_PACKAGE_REFERENCE = Regex("""\bdev\.sard\.server\.api\b""")
 private val CONSOLE_PACKAGE_REFERENCE = Regex("""\bdev\.sard\.server\.console\b""")
 private val TELEGRAM_REFERENCE = Regex("""\b(dev\.sard\.server\.notify\.telegram|Telegram\w*)\b""")
 private const val NOTIFY_COMPOSITION_ROOT = "NotifyConfiguration.kt"
+private const val VERIFY_COMPOSITION_ROOT = "VerificationConfiguration.kt"
 private val AGENT_ENTITY_REFERENCE =
     Regex("""\bfrom\s+Agent\b|\bAgent::class\b|\bdev\.sard\.server\.persistence\.Agent\b""")
 private val SELFAGENT_REFERENCE = Regex("""\bdev\.sard\.server\.selfagent\b""")
@@ -207,6 +208,26 @@ class ArchitectureTest {
                 }
             }
         assertTrue(offenders.isEmpty(), "wire concerns in the domain:\n${offenders.joinToString("\n")}")
+    }
+
+    @Test
+    fun `verify references neither api nor wire types, and only its composition root knows the agents boundary`() {
+        val files = ktFiles(File(mainRoot, "verify"))
+        assertTrue(files.size >= 20, "the scan found only ${files.size} files in verify")
+        val offenders =
+            files.flatMap { file ->
+                val text = withoutComments(file.readText())
+                val wire = WIRE_ANNOTATION_REFERENCE.findAll(text).map { it.value }
+                val api = API_PACKAGE_REFERENCE.findAll(text).map { it.value }
+                val boundary =
+                    if (file.name == VERIFY_COMPOSITION_ROOT) {
+                        emptySequence()
+                    } else {
+                        FORBIDDEN_FQN_REFERENCE.findAll(text).map { it.groupValues[1] }
+                    }
+                (wire + api + boundary).map { "${file.path}: $it" }.toList()
+            }
+        assertTrue(offenders.isEmpty(), "verify references:\n${offenders.joinToString("\n")}")
     }
 
     @Test

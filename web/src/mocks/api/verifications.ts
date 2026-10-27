@@ -180,7 +180,7 @@ function report(
       verifierHostname: state.agents.find((a) => a.id === r.verifierAgentId)?.hostname ?? null,
       status: r.status,
       level: r.level,
-      durationMs: r.stages.length === 0 ? null : r.stages.length * 15_000,
+      durationMs: r.durationMs,
       restoreDurationMs: r.restoreDurationMs,
     }))
   const count = (status: Schemas['VerificationOutcome']) =>

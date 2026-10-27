@@ -111,33 +111,49 @@ function sized(value: string, language: string): string {
   return /^\d+$/.test(value) ? formatBytes(Number(value), language) : value
 }
 
+type MismatchSentence = (mismatch: Schemas['FingerprintMismatch'], language: string) => string
+
+function generic(mismatch: Schemas['FingerprintMismatch'], language: string): string {
+  const { mismatch: words } = dictionary(language).verification
+  const { expected, actual } = mismatch
+  return fill(words.other, { name: mismatch.name, expected, actual })
+}
+
+function ofCounts(key: 'rows' | 'tables' | 'files'): MismatchSentence {
+  return (mismatch, language) => {
+    const { mismatch: words } = dictionary(language).verification
+    return fill(words[key], {
+      subject: mismatch.subject,
+      expected: counted(mismatch.expected, language),
+      actual: counted(mismatch.actual, language),
+    })
+  }
+}
+
+function ofBytes(mismatch: Schemas['FingerprintMismatch'], language: string): string {
+  const { mismatch: words } = dictionary(language).verification
+  return fill(words.bytes, {
+    expected: sized(mismatch.expected, language),
+    actual: sized(mismatch.actual, language),
+  })
+}
+
+// Every kind the server names has its place here; the ones without a sentence of their own are said as the generic.
+const SENTENCES: Record<Schemas['FingerprintMismatchKind'], MismatchSentence> = {
+  rows: ofCounts('rows'),
+  tables: ofCounts('tables'),
+  files: ofCounts('files'),
+  bytes: ofBytes,
+  control_path: (mismatch, language) => controlPath(mismatch, language),
+  extension: generic,
+  extension_version: generic,
+  file_hash: generic,
+  other: generic,
+}
+
 // A mismatch said in words (rule 4): the server gives the kind and the subject, the console the sentence.
 export function mismatchText(mismatch: Schemas['FingerprintMismatch'], language: string): string {
-  const { mismatch: words } = dictionary(language).verification
-  const { kind, subject, expected, actual } = mismatch
-  const plain = { name: mismatch.name, expected, actual }
-  const numbers = {
-    subject,
-    expected: counted(expected, language),
-    actual: counted(actual, language),
-  }
-  switch (kind) {
-    case 'rows':
-      return fill(words.rows, numbers)
-    case 'tables':
-      return fill(words.tables, numbers)
-    case 'files':
-      return fill(words.files, numbers)
-    case 'bytes':
-      return fill(words.bytes, {
-        expected: sized(expected, language),
-        actual: sized(actual, language),
-      })
-    case 'control_path':
-      return controlPath(mismatch, language)
-    default:
-      return fill(words.other, plain)
-  }
+  return SENTENCES[mismatch.kind](mismatch, language)
 }
 
 function controlPath(mismatch: Schemas['FingerprintMismatch'], language: string): string {
@@ -146,18 +162,6 @@ function controlPath(mismatch: Schemas['FingerprintMismatch'], language: string)
   if (actual === 'empty') return fill(words.controlEmpty, { subject })
   if (actual === 'missing') return fill(words.controlMissing, { subject })
   return fill(words.other, { name: mismatch.name, expected: mismatch.expected, actual })
-}
-
-// From the first stage's start to the last stage's finish; null while the stages carry no start or no finish.
-export function stagesSpan(
-  stages: Schemas['VerificationStage'][],
-): { start: string; end: string } | null {
-  const starts = stages.flatMap((stage) => (stage.startedAt === null ? [] : [stage.startedAt]))
-  const ends = stages.flatMap((stage) => (stage.finishedAt === null ? [] : [stage.finishedAt]))
-  if (starts.length === 0 || ends.length === 0) return null
-  const earliest = starts.reduce((a, b) => (Date.parse(a) <= Date.parse(b) ? a : b))
-  const latest = ends.reduce((a, b) => (Date.parse(a) >= Date.parse(b) ? a : b))
-  return { start: earliest, end: latest }
 }
 
 // The time to restore the server measured (level 5), as a duration; nothing measured is EMPTY.

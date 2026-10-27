@@ -31,7 +31,7 @@ import type { components } from '../api/schema'
 import { POLL_INTERVAL_MS } from '../polling'
 import { tones } from '../theme'
 import { useFormat } from '../useFormat'
-import { levelWords, restoreTimeText, stagesSpan, verifierReasonText } from '../verification'
+import { levelWords, restoreTimeText, verifierReasonText } from '../verification'
 import { AgentName } from './AgentName'
 import { EmptyState } from './EmptyState'
 import { ErrorBlock } from './ErrorBlock'
@@ -121,9 +121,15 @@ function VerifyNow({ sourceId, busy }: { sourceId: string; busy: boolean }) {
           body: snapshot === 'latest' ? {} : { snapshotId: snapshot },
         }),
       ),
-    onSuccess: () => {
+    onSuccess: async () => {
       setOpened(false)
-      void queryClient.invalidateQueries({ queryKey: ['verification', sourceId] })
+      await queryClient.invalidateQueries({ queryKey: ['verification', sourceId] })
+      // A job that ended before this first look was never seen open: the transition below will not come, so the
+      // history and the metric of the source are asked again here.
+      if (queryClient.getQueryData(sourceVerificationQuery(sourceId).queryKey)?.openJob === null) {
+        void queryClient.invalidateQueries({ queryKey: ['verifications', sourceId] })
+        void queryClient.invalidateQueries({ queryKey: sourceQuery(sourceId).queryKey })
+      }
     },
   })
   return (
@@ -197,8 +203,6 @@ function OpenJob({ job }: { job: components['schemas']['VerificationJob'] }) {
 
 function Row({ record }: { record: Verification }) {
   const { i18n } = useTranslation()
-  const format = useFormat()
-  const span = stagesSpan(record.stages)
   return (
     <Table.Tr>
       <Table.Td>
@@ -217,7 +221,7 @@ function Row({ record }: { record: Verification }) {
       </Table.Td>
       <Table.Td>{record.level === 0 ? '—' : levelWords(record.level, i18n.language)}</Table.Td>
       <Table.Td>
-        <Mono>{span === null ? '—' : format.duration(span.start, span.end)}</Mono>
+        <Mono>{restoreTimeText(record.durationMs, i18n.language)}</Mono>
       </Table.Td>
       <Table.Td>
         <Mono>{restoreTimeText(record.restoreDurationMs, i18n.language)}</Mono>

@@ -5,8 +5,10 @@ package dev.sard.server.api
 
 import dev.sard.server.verify.FingerprintOutcome
 import dev.sard.server.verify.FingerprintRow
+import dev.sard.server.verify.MismatchKind
 import io.github.anschnapp.mutflow.MutFlow
 import io.github.anschnapp.mutflow.junit.MutFlowTest
+import tools.jackson.databind.json.JsonMapper
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -23,5 +25,15 @@ class VerificationConsoleMappingTest {
         assertEquals(FingerprintRule.EXACT, ruleShown("exact"))
         assertEquals(FingerprintRule.INFO, ruleShown("info"))
         assertEquals(FingerprintRule.INFO, ruleShown("approximate"))
+    }
+
+    @Test
+    fun `every kind of mismatch is shown under its wire name`() {
+        val mapper = JsonMapper.builder().build()
+
+        for (kind in MismatchKind.entries) {
+            val shown = mapper.writeValueAsString(MutFlow.underTest { kindOf(kind) }).trim('"')
+            assertEquals(kind.wire, shown)
+        }
     }
 }

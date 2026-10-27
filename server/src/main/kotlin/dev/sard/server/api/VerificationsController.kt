@@ -210,17 +210,44 @@ data class VerificationStage(
 data class FingerprintMismatch(
     @field:Schema(description = "The fact's raw name, such as rows:public.orders")
     val name: String,
-    @field:Schema(
-        description =
-            "What the fact is about: rows, tables, extension, extension_version, control_path, files, bytes, " +
-                "file_hash or other; the console and Telegram put it into words",
-    )
-    val kind: String,
+    @field:Schema(description = "What the fact is about; the console and Telegram put it into words")
+    val kind: FingerprintMismatchKind,
     @field:Schema(description = "A table, a path or an extension; empty for a fact about the whole copy")
     val subject: String,
     val expected: String,
     val actual: String,
 )
+
+/** What a differing fact of the fingerprint is about. */
+@Schema(enumAsRef = true)
+enum class FingerprintMismatchKind {
+    @JsonProperty("rows")
+    ROWS,
+
+    @JsonProperty("tables")
+    TABLES,
+
+    @JsonProperty("extension")
+    EXTENSION,
+
+    @JsonProperty("extension_version")
+    EXTENSION_VERSION,
+
+    @JsonProperty("control_path")
+    CONTROL_PATH,
+
+    @JsonProperty("files")
+    FILES,
+
+    @JsonProperty("bytes")
+    BYTES,
+
+    @JsonProperty("file_hash")
+    FILE_HASH,
+
+    @JsonProperty("other")
+    OTHER,
+}
 
 /** Whether a fingerprint fact is compared with the copy. */
 @Schema(enumAsRef = true, description = "exact: compared with the copy; info: only shown")
@@ -280,6 +307,8 @@ data class Verification(
     val unsuitable: List<VerifierMisfit>?,
     @field:Schema(description = "The actual time to restore (level 5)")
     val restoreDurationMs: Long?,
+    @field:Schema(description = "From the first stage's start to the last stage's finish; null without stage times")
+    val durationMs: Long?,
     @field:Schema(description = "A pass right after a failure")
     val recovered: Boolean,
     val verifiedAt: Instant,
